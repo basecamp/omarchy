@@ -7,7 +7,10 @@
 #include "src/event/EventBus.hpp"
 #define private public
 #include "src/protocols/XDGShell.hpp"
+#include "src/protocols/XDGDecoration.hpp"
+#include "src/protocols/ServerDecorationKDE.hpp"
 #undef private
+#include "xdg-decoration-unstable-v1.hpp"
 #include "src/render/Renderer.hpp"
 #include "src/xwayland/XSurface.hpp"
 #include "src/managers/fullscreen/FullscreenController.hpp"
@@ -359,12 +362,14 @@ static bool coversWorkArea(PHLWINDOW w) {
   return std::abs(size.x - work.w) <= 16 && size.y >= work.h - 48 && pos.x <= work.x + 8 && pos.y <= work.y + 8;
 }
 
+static void restoreCsdCaption(PHLWINDOW w);
+
 static void applyDefaultFloat(PHLWINDOW w) {
   const auto work = monitorWork(w);
   if (work.w <= 0)
     return;
   (void)Config::Actions::floatWindow(Config::Actions::TOGGLE_ACTION_ENABLE, w);
-  Vector2D size{880, 560};
+  Vector2D size{1200, 740};
   if (size.x > work.w)
     size.x = work.w;
   if (size.y > work.h)
@@ -396,10 +401,7 @@ static void clearFakeMapMaximize(PHLWINDOW w) {
   g_inPluginApply = false;
   w->m_suppressNextMaximize = true;
   applyDefaultFloat(w);
-  if (auto xdg = w->m_xdgSurface.lock()) {
-    if (auto top = xdg->m_toplevel.lock())
-      top->setMaximized(false);
-  }
+  restoreCsdCaption(w);
 }
 
 static void syncCsdMaximizedState(PHLWINDOW w) {
@@ -421,6 +423,84 @@ static void syncCsdMaximizedState(PHLWINDOW w) {
       live->m_suppressNextMaximize = true;
     top->setMaximized(actually);
   });
+}
+
+// Hyprland's xdg-decoration implementation always replies SERVER_SIDE.
+// Chrome then must not draw caption buttons. hyprbars:no_bar hides the SSD
+// bar. The three buttons on Chrome's own tab strip disappear. Tell CSD
+// clients CLIENT_SIDE before the first commit, and keep answering CLIENT_SIDE
+// if they set_mode again.
+static void stickDecorationMode(CXDGDecoration* deco, zxdgToplevelDecorationV1Mode mode) {
+  if (!deco || !deco->m_resource)
+    return;
+  const auto res = deco->m_resource;
+  res->setSetMode([res, mode](CZxdgToplevelDecorationV1*, zxdgToplevelDecorationV1Mode) {
+    res->sendConfigure(mode);
+  });
+  res->setUnsetMode([res, mode](CZxdgToplevelDecorationV1*) { res->sendConfigure(mode); });
+  res->sendConfigure(mode);
+  deco->mostRecentlySent = mode;
+}
+
+static CXDGDecoration* decoForToplevel(wl_resource* topRes) {
+  if (!PROTO::xdgDecoration || !topRes)
+    return nullptr;
+  auto it = PROTO::xdgDecoration->m_decorations.find(topRes);
+  if (it == PROTO::xdgDecoration->m_decorations.end() || !it->second)
+    return nullptr;
+  return it->second.get();
+}
+
+static CXDGDecoration* decoForWindow(PHLWINDOW w) {
+  if (!w)
+    return nullptr;
+  auto xdg = w->m_xdgSurface.lock();
+  if (!xdg)
+    return nullptr;
+  auto top = xdg->m_toplevel.lock();
+  if (!top || !top->m_resource)
+    return nullptr;
+  return decoForToplevel(top->m_resource->resource());
+}
+
+// Hyprland answers xdg-decoration SERVER_SIDE. If a client still binds,
+// stick CLIENT_SIDE so Chrome does not wait for an SSD bar we hid.
+// Chrome's Ozone ShouldUseCustomFrame() is true only when the compositor
+// does not advertise xdg-decoration. Hyprland always advertises it and
+// answers SERVER_SIDE, so Chrome hides Aura min/max/close and waits for
+// SSD. hyprbars:no_bar then deletes the only remaining chrome. Hide the
+// globals so Chrome draws the three buttons on its own tab strip again.
+static void hideDecorationGlobals() {
+  if (PROTO::xdgDecoration)
+    PROTO::xdgDecoration->removeGlobal();
+  if (PROTO::serverDecorationKDE)
+    PROTO::serverDecorationKDE->removeGlobal();
+}
+
+static void hookDecorationManagers() {
+  if (!PROTO::xdgDecoration)
+    return;
+  for (auto& mgr : PROTO::xdgDecoration->m_managers) {
+    if (!mgr)
+      continue;
+    mgr->setGetToplevelDecoration([](CZxdgDecorationManagerV1* pMgr, uint32_t id, wl_resource* toplevel) {
+      PROTO::xdgDecoration->onGetDecoration(pMgr, id, toplevel);
+      if (auto* deco = decoForToplevel(toplevel))
+        stickDecorationMode(deco, ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE);
+    });
+  }
+}
+
+static void applyDecorationMode(PHLWINDOW w) {
+  auto* deco = decoForWindow(w);
+  if (!deco)
+    return;
+  if (isCsdWindow(w)) {
+    stickDecorationMode(deco, ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE);
+    return;
+  }
+  if (w->m_isMapped && !w->m_class.empty())
+    stickDecorationMode(deco, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 }
 
 static void advertiseWmCapabilities(PHLWINDOW w) {
@@ -453,6 +533,51 @@ static void advertiseWmCapabilities(PHLWINDOW w) {
   wl_array_release(&caps);
 }
 
+// Hyprland's xdg ctor queues TILED_LEFT/RIGHT/TOP/BOTTOM plus a fake
+// MAXIMIZED so SSD clients hide CSD. Chrome caches that first configure and
+// then paints the fused tab strip with only ×. A second wm_capabilities
+// without xdg_surface.configure is ignored. Strip the lie and configure.
+static void stripTiledAndMaximized(SP<CXDGToplevelResource> top) {
+  if (!top)
+    return;
+  auto& states = top->m_pendingApply.states;
+  states.erase(std::remove_if(states.begin(), states.end(),
+                              [](const auto& s) {
+                                const auto v = static_cast<uint32_t>(s);
+                                return v == XDG_TOPLEVEL_STATE_TILED_LEFT || v == XDG_TOPLEVEL_STATE_TILED_RIGHT ||
+                                       v == XDG_TOPLEVEL_STATE_TILED_TOP || v == XDG_TOPLEVEL_STATE_TILED_BOTTOM ||
+                                       v == XDG_TOPLEVEL_STATE_MAXIMIZED;
+                              }),
+               states.end());
+}
+
+static bool userMaximizedCsd(PHLWINDOW w) {
+  if (!w)
+    return false;
+  const auto key = reinterpret_cast<uintptr_t>(w.get());
+  return g_savedFloat.contains(key) && isMaximizedNow(w);
+}
+
+static void restoreCsdCaption(PHLWINDOW w) {
+  if (!w)
+    return;
+  hookDecorationManagers();
+  applyDecorationMode(w);
+  advertiseWmCapabilities(w);
+  auto xdg = w->m_xdgSurface.lock();
+  if (!xdg)
+    return;
+  auto top = xdg->m_toplevel.lock();
+  if (!top)
+    return;
+  if (!userMaximizedCsd(w)) {
+    stripTiledAndMaximized(top);
+    top->setMaximized(false);
+    w->m_suppressNextMaximize = true;
+  }
+  xdg->scheduleConfigure();
+}
+
 static void watchWindow(PHLWINDOW w) {
   if (!w)
     return;
@@ -476,9 +601,9 @@ static void watchWindow(PHLWINDOW w) {
   g_watches.insert_or_assign(key, std::move(watch));
   (void)attached;
 
-  // Chromium caches the first wm_capabilities event. Advertise on create,
-  // open, and openLate so a late xdg bind still gets min/max.
-  advertiseWmCapabilities(w);
+  // Chromium caches the first wm_capabilities + decoration mode. Advertise
+  // min/max and keep CLIENT_SIDE. Do not flood configure on every rule update.
+  restoreCsdCaption(w);
   syncCsdMaximizedState(w);
 }
 
@@ -532,6 +657,9 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     });
   });
   g_onUpdateRules = Event::bus()->m_events.window.updateRules.listen([](PHLWINDOW w) { watchWindow(w); });
+  hideDecorationGlobals();
+  hookDecorationManagers();
+  later([]() { hookDecorationManagers(); });
   watchAllWindows();
 
   return {"omarchy-minimize", "In-place native minimize via CWindow::setHidden", "Omarchy Ultimate", "1.0"};

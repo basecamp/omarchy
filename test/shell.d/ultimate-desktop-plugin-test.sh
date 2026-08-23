@@ -205,6 +205,16 @@ if grep -Fq 'omarchy-shell' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cp
 fi
 grep -Fq 'sendWmCapabilities' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp" \
   || fail "omarchy-minimize advertises xdg min/max so Chromium draws CSD buttons"
+grep -Fq 'restoreCsdCaption' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp" \
+  || fail "CSD caption restore exists so Chrome keeps min/max/close on its own row"
+grep -Fq 'scheduleConfigure' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp" \
+  || fail "wm_capabilities change must be followed by xdg_surface.configure"
+grep -Fq 'XDG_TOPLEVEL_STATE_TILED_LEFT' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp" \
+  || fail "CSD configure must drop Hyprland fake tiled-on-all-sides or Chrome hides min/max"
+grep -Fq 'ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp" \
+  || fail "Hyprland SSD decoration replies must be overridden so Chrome draws min/max/close"
+grep -Eq 'chrom' "$ROOT/default/ultimate/csd-clients.json" \
+  || fail "Chrome stays on the CSD list; hyprbars on Chrome is a second title bar"
 grep -Fq 'm_events.window.open' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp" \
   || fail "omarchy-minimize watches mapped windows for CSD minimize"
 if grep -Fq 'special:minimized' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp"; then
@@ -270,8 +280,13 @@ fi
 if grep -Fq '{ tag = "chromium-based-browser" }' "$ROOT/default/hypr/desktop-windows.lua"; then
   fail "hyprbars:no_bar must not depend on the chromium-based-browser tag YouTube/Zoom drop"
 fi
-if grep -Eq 'chrom(e|ium)|youtube|zoom' "$ROOT/default/ultimate/csd-clients.json"; then
-  fail "Chrome/Chromium must use hyprbars; Hyprland map-time MAXIMIZED makes CSD hide min/max"
+grep -Fq 'youtube' "$ROOT/default/ultimate/csd-clients.json" \
+  || fail "YouTube PWAs keep hyprbars:no_bar after dropping the chromium tag"
+if grep -Fq 'disable-features=WaylandWindowDecorations' "$ROOT/config/chromium-flags.conf"; then
+  fail "Chromium must keep Wayland CSD so hyprbars is not a second title bar"
+fi
+if grep -Fq 'disable-features=WaylandWindowDecorations' "$ROOT/config/chrome-flags.conf"; then
+  fail "Chrome must keep Wayland CSD so hyprbars is not a second title bar"
 fi
 grep -Fq 'omarchy-shell window close 0x{:x}' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "hyprbars close names the bar's window address"
@@ -339,8 +354,8 @@ grep -Fq 'noise = 0' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "Desktop Mode blur must not add film grain"
 grep -Fq 'o.window(".*", { opacity = "1 1" })' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "Desktop Mode windows are opaque; 0.985 plus blur is the haze"
-grep -Fq 'disable-features=WaylandWindowDecorations' "$ROOT/config/chrome-flags.conf" \
-  || fail "Google Chrome must drop Wayland CSD so hyprbars can draw min/max/close"
+grep -Fq 'WaylandWindowDecorations' "$ROOT/config/chrome-flags.conf" \
+  || fail "Google Chrome must enable Wayland CSD so min/max/close draw on the tab strip"
 grep -Fq 'cm_auto_hdr = 0' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "Desktop Mode must disable cm_auto_hdr so a Samsung HDR EDID cannot haze SDR"
 grep -Fq 'namespace = "omarchy-taskbar"' "$ROOT/default/hypr/desktop-windows.lua" \
@@ -359,10 +374,10 @@ if grep -Fq 'scaledButtonSize / 2.0' "$ROOT/default/hypr/plugins/hyprbars/barDec
 fi
 grep -Fq '"id": "google-chrome"' "$ROOT/default/ultimate/taskbar-pins.json" \
   || fail "shipped Chrome pin is Google Chrome so the Superbar gets the real icon"
-grep -Fq 'disable-features=WaylandWindowDecorations' "$ROOT/config/chromium-flags.conf" \
-  || fail "Chromium must drop Wayland CSD so hyprbars can draw min/max/close"
+grep -Fq 'WaylandWindowDecorations' "$ROOT/config/chromium-flags.conf" \
+  || fail "Chromium must enable Wayland window decorations (fused tab/caption chrome)"
 grep -Fq 'hyprbars:no_bar' "$ROOT/default/hypr/desktop-windows.lua" \
-  || fail "Desktop Mode hides hyprbars on GTK/Cursor CSD"
+  || fail "Desktop Mode hides hyprbars on CSD browsers and Cursor"
 grep -Fq '^[Cc]ursor$' "$ROOT/default/ultimate/csd-clients.json" \
   || fail "Desktop Mode hides hyprbars on Cursor CSD"
 grep -Fq '[Nn]autilus' "$ROOT/default/ultimate/csd-clients.json" \

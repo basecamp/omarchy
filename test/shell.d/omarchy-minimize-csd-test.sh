@@ -31,6 +31,29 @@ grep -Fq 'm_suppressNextMaximize' "$cpp" || fail "clearing fake maximized must n
 grep -Fq 'doLater' "$cpp" || fail "CSD min/max must apply on the event-loop idle, not inside the Wayland request"
 grep -Fq 'finishAnimation' "$cpp" || fail "CSD maximize must stop the popin animation before the modeset"
 grep -Fq 'm_isMapped' "$cpp" || fail "CSD maximize must not run setFullscreenMode before the window is mapped"
+grep -Fq 'restoreCsdCaption' "$cpp" || fail "CSD caption restore exists so Chrome keeps min/max/close on its own row"
+grep -Fq 'scheduleConfigure' "$cpp" || fail "wm_capabilities change must be followed by xdg_surface.configure"
+grep -Fq 'XDG_TOPLEVEL_STATE_TILED_LEFT' "$cpp" \
+  || fail "CSD configure must drop Hyprland fake tiled-on-all-sides or Chrome hides min/max"
+grep -Fq 'ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE' "$cpp" \
+  || fail "Hyprland SSD decoration replies must be overridden so Chrome draws min/max/close"
+grep -Fq 'applyDecorationMode' "$cpp" \
+  || fail "CSD clients must be told CLIENT_SIDE or hyprbars:no_bar deletes the three buttons"
+grep -Fq 'setGetToplevelDecoration' "$cpp" \
+  || fail "CLIENT_SIDE must be sent in get_toplevel_decoration, not after Chrome's first paint"
+grep -Fq 'onGetDecoration' "$cpp" \
+  || fail "decoration hook must still run Hyprland's onGetDecoration"
+grep -Fq 'hideDecorationGlobals' "$cpp" \
+  || fail "xdg-decoration must be hidden so Chrome ShouldUseCustomFrame draws min/max/close"
+grep -Fq 'removeGlobal' "$cpp" \
+  || fail "decoration globals must be removed, not answered SERVER_SIDE"
+grep -Fq ':minimize,maximize,close' "$ROOT/install/user/first-run/gnome-theme.sh" \
+  || fail "first-run must ship min/max/close; appmenu:close deletes Chrome CSD buttons"
+if grep -E '^gsettings set .*appmenu:close' "$ROOT/install/user/first-run/gnome-theme.sh"; then
+  fail "first-run must not set appmenu:close"
+fi
+grep -Fq ':minimize,maximize,close' "$ROOT/migrations/1787524000.sh" \
+  || fail "existing installs must migrate off appmenu:close"
 if grep -Fq 'omarchy-shell' "$cpp"; then
   fail "omarchy-minimize must not exec omarchy-shell from the compositor"
 fi
