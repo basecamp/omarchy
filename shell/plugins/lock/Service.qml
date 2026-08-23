@@ -20,8 +20,11 @@ Item {
   property bool pendingSessionLock: false
   property bool authenticatingPassword: false
   property bool fingerprintAuthenticating: false
+  property bool faceAuthenticating: false
   property bool passwordPamConfigured: false
   property bool fingerprintConfigured: false
+  property bool faceConfigured: false
+  property bool displayBlanked: false
   property bool previewVisible: false
   property string enteredPassword: ""
   property string pendingPassword: ""
@@ -35,7 +38,7 @@ Item {
   property bool strandedLockResolved: false
 
   readonly property bool locked: lockRequested || sessionLock.locked || sessionLock.secure
-  readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating
+  readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating || faceAuthenticating
 
   function realScreenCount() {
     var screens = Quickshell.screens || []
@@ -120,9 +123,12 @@ Item {
     failedAttempts = 0
     authenticatingPassword = false
     fingerprintAuthenticating = false
+    faceAuthenticating = false
     fingerprintRetryTimer.stop()
+    faceRetryTimer.stop()
     if (passwordPam.active) passwordPam.abort()
     if (fingerprintPam.active) fingerprintPam.abort()
+    if (facePam.active) facePam.abort()
   }
 
   function beginLock() {
@@ -165,11 +171,20 @@ Item {
   }
 
   function runWake() {
+    displayBlanked = false
     if (!wakeProcess.running) wakeProcess.running = true
     if (lockRequested) armBlankTimer()
+    startFace()
   }
 
   function runBlank() {
+    // Unlike a reader waiting on a finger, a face scan drives the IR camera and
+    // runs inference the whole time it is armed. A blanked panel means nobody is
+    // in front of it, so the scan loop stops there and picks back up on wake.
+    displayBlanked = true
+    faceRetryTimer.stop()
+    faceAuthenticating = false
+    if (facePam.active) facePam.abort()
     if (!blankProcess.running) blankProcess.running = true
   }
 
@@ -227,6 +242,28 @@ Item {
     }
   }
 
+  function startFace() {
+    if (!lockRequested || !sessionLock.secure || !faceConfigured) return
+    if (displayBlanked) return
+    if (facePam.active || faceAuthenticating) return
+
+    faceAuthenticating = true
+    if (!facePam.start()) {
+      faceAuthenticating = false
+    }
+  }
+
+  function handleFaceFinished(result) {
+    faceAuthenticating = false
+
+    if (!lockRequested) return
+    if (result === PamResult.Success) {
+      finishUnlock()
+    } else if (faceConfigured && !displayBlanked) {
+      faceRetryTimer.restart()
+    }
+  }
+
   WlSessionLock {
     id: sessionLock
 
@@ -239,6 +276,7 @@ Item {
         sessionLockStabilizeTimer.stop()
         pendingSessionLockTimer.stop()
         root.startFingerprint()
+        root.startFace()
       }
     }
 
@@ -271,6 +309,7 @@ Item {
         backgroundPath: root.backgroundPath
         backgroundVersion: root.backgroundVersion
         fingerprintConfigured: root.fingerprintConfigured
+        faceConfigured: root.faceConfigured
         authenticatingPassword: root.authenticatingPassword
         failureMessage: root.failureMessage
         failedAttempts: root.failedAttempts
@@ -301,6 +340,7 @@ Item {
       backgroundPath: root.backgroundPath
       backgroundVersion: root.backgroundVersion
       fingerprintConfigured: root.fingerprintConfigured
+      faceConfigured: root.faceConfigured
       authenticatingPassword: false
       failureMessage: ""
       failedAttempts: 0
@@ -358,6 +398,47 @@ Item {
     interval: 250
     repeat: false
     onTriggered: root.startFingerprint()
+  }
+
+  PamContext {
+    id: facePam
+    config: "omarchy-lock-face"
+    user: root.userName
+
+    onCompleted: function(result) {
+      root.handleFaceFinished(result)
+    }
+
+    onError: function(error) {
+      root.faceAuthenticating = false
+      if (root.lockRequested && root.faceConfigured && !root.displayBlanked) faceRetryTimer.restart()
+    }
+  }
+
+  // A failed scan has already spent the timeout Howdy is configured for, so this
+  // only has to space the retries out rather than pace them.
+  Timer {
+    id: faceRetryTimer
+    interval: 500
+    repeat: false
+    onTriggered: root.startFace()
+  }
+
+  // Unlike fingerprints, there is no per-user enrollment to query without root:
+  // the models live under /etc/howdy. Setup writes this PAM service only once a
+  // face is enrolled, so its presence stands in for that check.
+  FileView {
+    path: "/etc/pam.d/omarchy-lock-face"
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.faceConfigured = true
+    onLoadFailed: root.faceConfigured = false
+    onFileChanged: reload()
+  }
+
+  onFaceConfiguredChanged: {
+    if (faceConfigured) startFace()
+    else if (facePam.active) facePam.abort()
   }
 
   Process {
@@ -530,6 +611,7 @@ Item {
         realScreens: root.realScreenCount(),
         passwordPam: root.passwordPamConfigured,
         fingerprint: root.fingerprintConfigured,
+        face: root.faceConfigured,
         authenticating: root.authenticating,
         lastEvent: root.lastEvent,
         lastEventAt: root.lastEventAt

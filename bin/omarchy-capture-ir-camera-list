@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# omarchy:summary=List infrared camera devices suitable for face authentication
+# omarchy:hidden=true
+
+# An IR sensor is a capture device that only ever offers 8-bit greyscale. Colour
+# webcams advertise YUYV/MJPEG/NV12 and never GREY alone, so the format list
+# separates the two without needing a vendor table. Face authentication wants the
+# IR stream specifically: it sees in the dark and a photo held up to it does not
+# light up the way a real face does.
+greyscale_only() {
+  local device="$1"
+
+  v4l2-ctl --device "$device" --list-formats 2>/dev/null | awk '
+    /^[[:space:]]*\[[0-9]+\]:/ {
+      total++
+      if ($0 ~ /'\''GREY'\''/) grey++
+    }
+    END { exit !(total > 0 && total == grey) }
+  '
+}
+
+name=""
+
+while IFS= read -r line; do
+  if [[ -n $line && $line != [[:space:]]* ]]; then
+    name="$line"
+  else
+    device="${line#"${line%%[![:space:]]*}"}"
+
+    if [[ $device == /dev/video* ]] && greyscale_only "$device"; then
+      printf '%s  %s\n' "$device" "$name"
+    fi
+  fi
+done < <(v4l2-ctl --list-devices 2>/dev/null)
+
+exit 0

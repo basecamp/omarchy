@@ -1,0 +1,129 @@
+#!/bin/bash
+
+# omarchy:summary=Set up face authentication for sudo, polkit, and lock screen
+# omarchy:requires-sudo=true
+
+set -e
+
+
+# Howdy only accepts /dev/video* or a /dev/v4l/by-path entry. Bare /dev/video
+# numbers are handed out in probe order and move when a USB device is replugged
+# into another port, so prefer the by-path link that survives a reboot.
+stable_device_path() {
+  local device="$1" link target
+
+  for link in /dev/v4l/by-path/*; do
+    [[ -e $link ]] || continue
+    target=$(readlink -f "$link")
+
+    if [[ $target == "$device" ]]; then
+      echo "$link"
+      return 0
+    fi
+  done
+
+  echo "$device"
+}
+
+setup_pam_config() {
+  # Face auth goes in ahead of the password so PAM never has a token in hand
+  # when Howdy runs; pam_howdy declines to touch a prompt that already has one.
+  if grep -q pam_howdy.so /etc/pam.d/sudo; then
+    echo "Sudo is already configured for face authentication."
+  else
+    echo "Configuring sudo for face authentication..."
+    # `workaround=native` lets Howdy take over the terminal conversation and
+    # retire the password prompt itself once a face matches.
+    sudo sed -i '1i auth      sufficient pam_howdy.so workaround=native' /etc/pam.d/sudo
+  fi
+
+  if [[ -f /etc/pam.d/polkit-1 ]]; then
+    if grep -q pam_howdy.so /etc/pam.d/polkit-1; then
+      echo "Polkit is already configured for face authentication."
+    else
+      echo "Configuring polkit for face authentication..."
+      sudo sed -i '1i auth      sufficient pam_howdy.so' /etc/pam.d/polkit-1
+    fi
+  else
+    # Graphical prompts get no workaround: the input fallback injects Enter into
+    # whatever holds keyboard focus, which is not necessarily the polkit dialog.
+    echo "Creating polkit configuration with face authentication..."
+    sudo tee /etc/pam.d/polkit-1 >/dev/null <<EOF
+auth      sufficient pam_howdy.so
+auth      include system-auth
+account   include system-auth
+password  include system-auth
+session   include system-auth
+EOF
+  fi
+}
+
+setup_lock_face_pam() {
+  echo "Configuring lock screen for face authentication..."
+  sudo tee /etc/pam.d/omarchy-lock-face >/dev/null <<'EOF'
+#%PAM-1.0
+auth       required                    pam_howdy.so
+account    include                     system-local-login
+EOF
+}
+
+
+echo -e "\e[32mSetting up face authentication.\n\e[0m"
+
+# Bail before installing anything if there's no IR camera to talk to. A colour
+# webcam is deliberately not enough: it cannot see in the dark and is far easier
+# to fool with a photo.
+if ! omarchy-hw-ir-camera; then
+  echo -e "\e[31mNo infrared camera detected.\e[0m"
+  echo "Face authentication needs an IR sensor, such as the one in a Windows Hello webcam."
+  exit 1
+fi
+
+ir_cameras=$(omarchy-capture-ir-camera-list)
+ir_count=$(wc -l <<<"$ir_cameras")
+
+if (( ir_count > 1 )); then
+  echo "Multiple infrared cameras found:"
+  echo "$ir_cameras"
+  echo
+fi
+
+ir_device=$(awk 'NR == 1 { print $1 }' <<<"$ir_cameras")
+device_path=$(stable_device_path "$ir_device")
+echo -e "Using infrared camera \e[32m$ir_device\e[0m\n"
+
+echo "Installing required packages..."
+omarchy-pkg-add howdy-next
+
+echo "Downloading face recognition models..."
+sudo howdy download-models
+
+sudo howdy set device_path "$device_path"
+
+# Skip face auth over SSH, where there is nobody in front of the camera to check.
+sudo howdy set abort_if_ssh true
+
+echo -e "\e[32m\nLet's capture your face.\e[0m"
+echo -e "Look straight at the camera until the scan completes.\n"
+
+if sudo howdy -U "$USER" add primary; then
+  echo -e "\e[32m\nFace enrolled successfully!\e[0m"
+
+  # PAM comes last, once a face is enrolled. Detection only proves an IR stream
+  # exists, not that a face can be captured from it — a sensor behind a closed
+  # privacy shutter gets this far and then enrolls nothing. Editing the stacks up
+  # front would leave those machines pointing at pam_howdy with nothing to match.
+  setup_pam_config
+  setup_lock_face_pam
+
+  echo -e "\e[32m\nPerfect! Face authentication is now configured.\e[0m"
+  echo "You can use your face for sudo, polkit, and lock screen (Super + Ctrl + L)."
+  echo -e "\nLet's verify it works. Look at the camera:\n"
+
+  # A real end-to-end check through the stack just configured. Nothing is at
+  # stake if the face is missed: sudo falls through to the password prompt.
+  sudo -k -v
+else
+  echo -e "\e[31m\nEnrollment failed. Please try again.\e[0m"
+  exit 1
+fi
