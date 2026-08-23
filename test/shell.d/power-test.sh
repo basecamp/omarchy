@@ -78,6 +78,15 @@ assert(/openPanelIndicatorWidth:.*showPercentage.*button\.glyphPaintedWidth : 0/
 assert(/IpcHandler[\s\S]*?function togglePercentage\(\) \{ root\.togglePercentage\(\) \}/.test(panelSource), 'power exposes togglePercentage over IPC')
 assert(/manageIpc: false/.test(panelSource), 'power owns its IPC handler so it can extend the target methods')
 assert(/liveLaptopDevices\(powerDevices, opened \? batteryInfo : null\)/.test(panelSource), 'power panel reads live packs instead of DisplayDevice alone')
+
+const firstSample = power.applyEnergySample({}, { energy: '8.4Wh', size: '20.94Wh', rate: '8W', state: 'discharging' }, 1000)
+const cliffSample = power.applyEnergySample(firstSample, { energy: '1.3Wh', size: '20.94Wh', rate: '8W', state: 'discharging' }, 61000)
+assert(Math.abs(power.parseWh(cliffSample.energy) - 8.4) < 0.05, 'power rejects an EC fuel-gauge cliff that beats measured watts')
+assertEqual(
+  power.applyEnergySample(firstSample, { energy: '1.3Wh', size: '20.94Wh', rate: '8W', state: 'charging' }, 61000).energy,
+  '1.3Wh',
+  'power allows an energy drop across a charge/discharge flip'
+)
 assert(/chargeThresholdActiveForPacks/.test(panelSource), 'power panel uses the multi-pack hold detector')
 assert(!/UPower\.displayDevice/.test(panelSource.split('batteryFraction')[1].split('readonly property bool charging')[0]), 'power fill does not fall back to DisplayDevice')
 JS

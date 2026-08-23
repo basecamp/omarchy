@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# omarchy:summary=Take the critical low-battery action using live remaining energy.
+# omarchy:args=<percentage>
+# omarchy:hidden=true
+
+set -euo pipefail
+
+if (($# != 1)); then
+  echo "Usage: omarchy-battery-critical <percentage>" >&2
+  exit 1
+fi
+
+level=$1
+
+omarchy-hook battery-critical "$level"
+
+if systemctl suspend-then-hibernate; then
+  exit 0
+fi
+
+systemctl suspend
