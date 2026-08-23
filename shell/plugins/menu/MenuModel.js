@@ -103,9 +103,24 @@ function pluginMenuItems(plugins, isEnabled) {
 function mergeMenuSources(defaultItems, pluginItems, userItems) {
   var nextItems = ({})
   var nextOrder = []
-  var sources = userItems === undefined
-    ? [defaultItems || [], pluginItems || []]
-    : [defaultItems || [], pluginItems || [], userItems || []]
+  var sources
+  if (userItems === undefined) {
+    sources = [defaultItems || [], pluginItems || []]
+  } else {
+    var activePluginItems = ({})
+    var plugins = pluginItems || []
+    for (var p = 0; p < plugins.length; p++) {
+      if (plugins[p] && plugins[p].id) activePluginItems[plugins[p].id] = true
+    }
+
+    // Generated plugin ids are reserved for overrides. Do not let an override
+    // survive as a standalone launcher after its plugin has been disabled.
+    var users = (userItems || []).filter(function(entry) {
+      return !entry || !entry.id || entry.id.indexOf("plugin.") !== 0
+        || activePluginItems[entry.id]
+    })
+    sources = [defaultItems || [], plugins, users]
+  }
 
   for (var s = 0; s < sources.length; s++) {
     var src = sources[s]

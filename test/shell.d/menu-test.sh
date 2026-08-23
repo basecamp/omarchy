@@ -120,6 +120,18 @@ assertEqual(mergedWithPlugins.items['plugin.acme.polish'].label, 'My Polish', 'm
 assertEqual(mergedWithPlugins.items['plugin.acme.polish'].action, 'custom-polish', 'menu user actions override generated plugin actions')
 assertEqual(mergedWithPlugins.items['plugin.acme.polish'].parent, 'root', 'menu user overrides can keep dotted plugin ids on the root menu')
 assertEqual(mergedWithPlugins.items['plugin.acme.polish'].order, parsed.length, 'menu plugin launchers append after shipped entries')
+const mergedAfterPluginDisabled = menu.mergeMenuSources(parsed, [], [
+  userPluginOverride,
+  menu.normalizeItem('tools', { label: 'Tools' })
+])
+assert(
+  !mergedAfterPluginDisabled.items['plugin.acme.polish'],
+  'menu hides a plugin launcher override after its plugin is disabled'
+)
+assert(
+  mergedAfterPluginDisabled.items.tools,
+  'menu keeps ordinary user entries when plugin launcher overrides are hidden'
+)
 assert(
   /function enabledPluginMenuItems\(\)[\s\S]*registry\.isEnabled\(pluginId\)/.test(menuQml)
     && /function onPluginsChanged\(\) \{ root\.rebuildItemsFromSources\(\) \}/.test(menuQml),

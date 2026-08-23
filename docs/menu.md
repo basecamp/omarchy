@@ -60,7 +60,7 @@ A plugin with a `bar-widget`, `menu`, `overlay`, or `panel` kind can opt into on
 
 The block is presentation metadata, not a general menu entry. `label` falls back to the manifest name, `description` falls back to the manifest description, and `icon` plus `iconFont` are optional strings. The menu generates the action itself as `omarchy-shell shell toggle <plugin-id>`; manifests cannot inject a different shell command through this field.
 
-Launchers appear only while their plugin is enabled, update on plugin rescans and enable/disable changes, and disappear without mutating the user's extension file. Their generated id is `plugin.<plugin-id>`. A user extension can override that id because user entries merge last; since the generated id contains dots, an override that should remain at the top level must declare `"parent": "root"` explicitly.
+Launchers appear only while their plugin is enabled, update on plugin rescans and enable/disable changes, and disappear without mutating the user's extension file. Their generated id is `plugin.<plugin-id>`. A user extension can override that id because user entries merge last, but the override is ignored while the corresponding plugin launcher is absent. Since the generated id contains dots, an override that should remain at the top level must declare `"parent": "root"` explicitly.
 
 The manifest kind `menu` remains a different concept: it declares that the plugin's own entry point is a summoned menu surface. `menuItem` adds a launcher for a summonable plugin to the built-in Omarchy menu.
 
