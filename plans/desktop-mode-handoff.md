@@ -156,6 +156,22 @@ Did not move: Alt+Tab as a held number; peek thumbnails / jump lists; multi-moni
 
 The GTK window is the proof. Do not treat this tranche as a windowing go.
 
+## 0j. W0 windowing GO (2026-08-22) — product still rejected
+
+KEEP `4ea1dcf3` through `c1ae994f`. Do not amend them. Do not squash them. Do not restore `e90d75c8`'s `--disable-features=WaylandWindowDecorations`.
+
+Windowing Gate W0 is **GO** on the metal box (HDMI-A-1 1920×1080@60, reserved `[0,0,0,40]`). That is not an OS go. Do not merge PR #1 as the product.
+
+KEEP-WITH-FIX that landed:
+
+- hyprbars caption actions format the bar owner: `omarchy-shell window close 0x{:x}` (and maximize / snapChooser / minimize). `closeActive` / `active` on an unfocused SSD bar can kill the focused window. Live: two feet `0x55cc1a5f03b0` / `0x55cc15ae4b40`; addressed close unmapped B; A stayed. Rebuilt `/usr/lib/hyprland-plugins/hyprbars.so` 397224 bytes.
+- `hyprbars:no_bar` matches Chromium/Firefox/Cursor **class**, plus the YouTube/Zoom PWA class regex. Those PWAs drop `chromium-based-browser` for opacity; they must not grow a second bar.
+- One-row Chromium CSD re-shot after `3a545547` + `c1ae994f`: maximized `[1,1] 1918×1038` fullscreen `1`, origin border `(106,106,106)`, `hyprbars_red_close_px 0`. Tab strip fused with min/max/close; omnibox under that is Chromium UI, not a second OS title bar.
+
+Still not the OS (later phases, not this slice): ISO, gum, Tokyo Night seed, Nautilus-as-Files, nvim-as-txt, TTY first-boot, Steam/.exe, hyprbars as an ISO-mirror pacman package. Do not put `hyprland-plugin-hyprbars` in `install/omarchy-other.packages`.
+
+Next phase is Phase 2 (design system).
+
 ## 1. Read-first contract (mandatory, non-skippable)
 
 Before writing a single line of code, running a test, or booting a VM, read these files in full, in this order. They are the Project Ultimate source of truth and they override intuition, memory, and habit.
