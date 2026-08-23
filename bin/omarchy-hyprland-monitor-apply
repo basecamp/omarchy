@@ -10,8 +10,9 @@
 # Windows does not leave that as the desktop mode. This command does the same
 # ranking a PC display driver does:
 #   - 4K only when the link advertises UHD at >= 50 Hz
-#   - a TV (physical size >= 800 mm) with only cinema 4K uses 1080p60
-#   - otherwise the highest mode at >= 50 Hz
+#   - a TV (EDID size >= 800 mm, or kernel-preferred cinema UHD) with a
+#     desktop FHD mode uses 1080p60 — never the movie DTD
+#   - otherwise the highest mode at >= 50 Hz; cinema 4K is last resort
 #   - 8-bit SDR so HDR/10-bit infoframes cannot blank the sink
 # Disconnected DP/HDMI outputs stay disabled so they cannot steal the modeset.
 
@@ -41,8 +42,8 @@ monitor_line() {
 }
 
 disable_disconnected() {
-  local path status name
-  for path in /sys/class/drm/card*-DP-* /sys/class/drm/card*-HDMI-A-* /sys/class/drm/card*-HDMI-B-*; do
+  local path status name drm_root=${OMARCHY_TEST_DRM:-/sys/class/drm}
+  for path in "$drm_root"/card*-DP-* "$drm_root"/card*-HDMI-A-* "$drm_root"/card*-HDMI-B-*; do
     [[ -d $path ]] || continue
     status=$(<"$path/status")
     [[ $status == disconnected ]] || continue
@@ -76,7 +77,6 @@ pick_from_monitor_json() {
     | (
         if ($uhd_desk | length) > 0 then $uhd_desk
         elif $tv and ($fhd | length) > 0 then $fhd
-        elif ($uhd | length) > 0 and ($tv | not) then $uhd
         elif ($desk | length) > 0 then $desk
         elif ($uhd | length) > 0 then $uhd
         else $all
@@ -168,11 +168,27 @@ def modes_from_edid(data):
                 found.append(mode)
     if len(data) >= 256 and data[128] == 0x02:
         vics = {
-            95: (3840, 2160, 30.0),
-            97: (3840, 2160, 60.0),
-            102: (4096, 2160, 60.0),
+            4: (1280, 720, 60.0),
             16: (1920, 1080, 60.0),
+            19: (1280, 720, 50.0),
             31: (1920, 1080, 50.0),
+            32: (1920, 1080, 24.0),
+            33: (1920, 1080, 25.0),
+            34: (1920, 1080, 30.0),
+            63: (1920, 1080, 120.0),
+            64: (1920, 1080, 100.0),
+            93: (3840, 2160, 24.0),
+            94: (3840, 2160, 25.0),
+            95: (3840, 2160, 30.0),
+            96: (3840, 2160, 50.0),
+            97: (3840, 2160, 60.0),
+            98: (4096, 2160, 24.0),
+            99: (4096, 2160, 25.0),
+            100: (4096, 2160, 30.0),
+            101: (4096, 2160, 50.0),
+            102: (4096, 2160, 60.0),
+            106: (3840, 2160, 120.0),
+            107: (3840, 2160, 100.0),
         }
         i = 132
         end = 128 + 1 + data[130]
@@ -192,48 +208,76 @@ def is_tv(data):
         return False
     return data[21] >= 80 or data[22] >= 45
 
+def parse_mode_name(name):
+    m = re.match(r"^(\d+)x(\d+)(?:@([\d.]+))?", name)
+    if not m:
+        return None
+    hz = float(m.group(3)) if m.group(3) else None
+    return int(m.group(1)), int(m.group(2)), hz
+
+def merge_candidates(found, names):
+    cands = []
+    seen = set()
+
+    def add(w, h, hz):
+        key = (w, h, round(float(hz), 2))
+        if key in seen:
+            return
+        seen.add(key)
+        cands.append((w, h, float(hz)))
+
+    for w, h, hz in found:
+        add(w, h, hz)
+    for name in names:
+        parsed = parse_mode_name(name)
+        if not parsed:
+            continue
+        w, h, hz = parsed
+        if hz is None:
+            edid_hz = [m[2] for m in found if m[0] == w and m[1] == h]
+            if edid_hz:
+                hz = max(edid_hz)
+            elif w >= 3840 and h >= 2160:
+                hz = 30.0
+            else:
+                hz = 60.0
+        add(w, h, hz)
+    return cands
+
+def cinema_preferred(names):
+    if not names:
+        return False
+    parsed = parse_mode_name(names[0])
+    if not parsed:
+        return False
+    w, h, hz = parsed
+    if w < 3840 or h < 2160:
+        return False
+    return hz is None or hz < 50
+
 def pick(found, names, tv):
-    uhd = [m for m in found if m[0] == 3840 and m[1] == 2160]
+    cands = merge_candidates(found, names)
+    if not cands:
+        return None
+    tv = tv or cinema_preferred(names)
+    uhd = [m for m in cands if m[0] == 3840 and m[1] == 2160]
     uhd_desk = [m for m in uhd if m[2] >= 50]
+    desktop = [m for m in cands if m[2] >= 50]
+    fhd_desk = [m for m in desktop if m[0] == 1920 and m[1] == 1080]
     if uhd_desk:
         return max(uhd_desk, key=lambda m: m[2])
-    desktop = [m for m in found if m[2] >= 50]
-    fhd = [m for m in desktop if m[0] == 1920 and m[1] == 1080]
-    if tv and fhd:
-        return max(fhd, key=lambda m: m[2])
-    if uhd and not tv:
-        return max(uhd, key=lambda m: m[2])
+    if tv and fhd_desk:
+        return max(fhd_desk, key=lambda m: m[2])
     if desktop:
         return max(desktop, key=lambda m: (m[0] * m[1], m[2]))
     if uhd:
         return max(uhd, key=lambda m: m[2])
-    if names:
-        have_uhd = False
-        have_fhd = False
-        parsed = []
-        for name in names:
-            m = re.match(r"(\d+)x(\d+)", name)
-            if not m:
-                continue
-            w, h = int(m.group(1)), int(m.group(2))
-            parsed.append((w, h))
-            if w == 3840 and h == 2160:
-                have_uhd = True
-            if w == 1920 and h == 1080:
-                have_fhd = True
-        if tv and have_uhd and have_fhd:
-            return 1920, 1080, 60.0
-        for w, h in parsed:
-            if w >= 3840 and h == 2160:
-                return w, h, 60.0 if not tv else 30.0
-        if parsed:
-            return parsed[0][0], parsed[0][1], 60.0
-    return None
+    return max(cands, key=lambda m: (m[0] * m[1], m[2]))
 
 def scale_for(height):
     return 2 if height >= 2160 else 1
 
-drm = "/sys/class/drm"
+drm = os.environ.get("OMARCHY_TEST_DRM") or "/sys/class/drm"
 if not os.path.isdir(drm):
     sys.exit(1)
 
@@ -273,7 +317,7 @@ for entry in sorted(os.listdir(drm)):
         continue
     w, h, hz = mode
     scale = scale_for(h)
-    print(f'hl.monitor({{ output = "{name}", mode = "{w}x{h}@{hz:g}", position = "0x0", scale = {scale}, bitdepth = 8 }})')
+    print(f'hl.monitor({{ output = "{name}", mode = "{w}x{h}@{hz:.2f}", position = "0x0", scale = {scale}, bitdepth = 8 }})')
     print(f'hl.env("GDK_SCALE", "{scale}")')
     emitted = True
 

@@ -19,9 +19,10 @@ end
 
 -- Connector list was empty at parse (DRM not ready). Hyprland still needs a
 -- monitor statement; omarchy-hyprland-monitor-apply runs again from the
--- monitor watcher and replaces this once the EDID is readable.
+-- monitor watcher and replaces this once the EDID is readable. highrr is
+-- the highest refresh, not the EDID preferred DTD (often 4K@30 on a TV).
 local omarchy_monitor_scale = "auto"
-hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy_monitor_scale, bitdepth = 8 })
+hl.monitor({ output = "", mode = "highrr", position = "auto", scale = omarchy_monitor_scale, bitdepth = 8 })
 
 local omarchy_gdk_scale = 1
 hl.env("GDK_SCALE", tostring(omarchy_gdk_scale))
