@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# omarchy:summary=Push a power profile onto fan and TDP controls that power-profiles-daemon cannot reach.
+# omarchy:args=<power-saver|balanced|performance>
+# omarchy:hidden=true
+
+profile="${1:-}"
+[[ -n $profile ]] || exit 0
+
+# Slimbook Executive and its qc71 siblings.
+#
+# These machines register no ACPI platform_profile, so power-profiles-daemon
+# falls back to its placeholder platform driver and only moves intel_pstate's
+# energy_performance_preference. The fan and TDP modes live in the qc71 platform
+# driver instead. slimbook-service normally mirrors the profile onto them, but it
+# drops an event repeated inside a 1.25s window, so two quick profile changes
+# leave the machine in the mode the first one chose while the bar reports the
+# second. Writing the mode here closes that window: slimbook-service derives it
+# from the same profile, so the two never disagree about the value.
+if omarchy-hw-slimbook-qc71; then
+  performance_mode="${OMARCHY_QC71_PERFORMANCE_MODE:-/sys/devices/platform/qc71_laptop/performance_mode}"
+
+  case "$profile" in
+    power-saver) mode=1 ;;
+    balanced) mode=2 ;;
+    performance) mode=3 ;;
+    *) exit 0 ;;
+  esac
+
+  # Only write on a real difference, so the common case where slimbook-service
+  # already applied the mode costs a read and touches no hardware.
+  if [[ $(<"$performance_mode") != $mode ]]; then
+    # Group the write so the redirection's own failure is caught with it: a bare
+    # `2>/dev/null` on the printf is applied only after the redirect has already
+    # complained, leaking a raw "Permission denied" out of the bar's switch.
+    if ! { printf '%s\n' "$mode" >"$performance_mode"; } 2>/dev/null; then
+      echo "Could not set the qc71 performance mode; is 99-omarchy-slimbook-qc71-performance-mode.rules applied?" >&2
+    fi
+  fi
+fi
