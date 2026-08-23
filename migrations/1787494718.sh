@@ -19,6 +19,14 @@ if [[ -L $authfile ]]; then
   exit 0
 fi
 
+# A directory or a device here is no more ours to rewrite than a symlink is,
+# and chmod 600 on a directory would only make it untraversable.
+if [[ ! -f $authfile ]]; then
+  echo "  $authfile is not a regular file."
+  echo "  Leaving it alone. Remove it and re-run Setup > Security > Fido2."
+  exit 0
+fi
+
 # Migration state is per-user, so every account re-runs this. The file's own
 # ownership is the state check: the second account finds the repair already
 # done and exits without escalating.
@@ -33,5 +41,11 @@ fi
 # polkit-agent-helper-1, and accepts a root-owned authfile for any user, so
 # taking ownership only widens who FIDO2 works for -- while stopping the
 # registering user from rewriting their own PAM credential without root.
-sudo chown root:root "$authfile"
-sudo chmod 600 "$authfile"
+#
+# Rename a fresh copy over the path rather than chowning in place. A descriptor
+# opened while the file was still the user's own stays writable on that inode
+# through any later chmod or chown, since permission is checked at open(2), and
+# pam_u2f resolving the path would keep landing on it. Replacing the inode
+# leaves that descriptor writing to a file nothing reads.
+sudo install -T -m 600 -o root -g root "$authfile" "$authfile.new"
+sudo mv -Tf "$authfile.new" "$authfile"
