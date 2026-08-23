@@ -38,6 +38,11 @@ class SyncthingError(RuntimeError):
     self.reason = reason
 
 
+class RejectRedirectHandler(urllib.request.HTTPRedirectHandler):
+  def redirect_request(self, request, fp, code, message, headers, new_url):
+    raise SyncthingError("Syncthing API redirected away from its configured endpoint", "unsafe-redirect")
+
+
 def run(command, timeout=4):
   try:
     result = subprocess.run(command, check=False, capture_output=True, text=True, timeout=timeout)
@@ -151,8 +156,12 @@ def request_json(runtime, path, method="GET", query=None, body=None, timeout=DEF
     context = ssl.create_default_context()
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
+  handlers = [urllib.request.ProxyHandler({}), RejectRedirectHandler()]
+  if context is not None:
+    handlers.append(urllib.request.HTTPSHandler(context=context))
+  opener = urllib.request.build_opener(*handlers)
   try:
-    with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
+    with opener.open(request, timeout=timeout) as response:
       data = response.read().decode("utf-8").strip()
   except urllib.error.HTTPError as error:
     reason = "unauthorized" if error.code in {401, 403} else "api-error"
@@ -233,7 +242,7 @@ def summarize_folder(folder, status, errors):
     "globalBytes": global_bytes,
     "needBytes": need_bytes,
     "needItems": int(status.get("needTotalItems") or 0),
-    "errorCount": len(error_rows) + int(status.get("pullErrors") or 0),
+    "errorCount": max(len(error_rows), int(status.get("pullErrors") or 0)),
     "error": str(status.get("error") or ""),
     "watchError": str(status.get("watchError") or ""),
     "completion": completion,

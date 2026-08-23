@@ -72,6 +72,7 @@ import importlib.util
 import pathlib
 import sys
 import tempfile
+from unittest import mock
 
 root = pathlib.Path(sys.argv[1])
 helper_path = root / "shell/plugins/panels/syncthing/syncthing.py"
@@ -111,13 +112,67 @@ with tempfile.TemporaryDirectory() as temp_dir:
   assert runtime["baseUrl"] == "http://127.0.0.1:8384"
   assert runtime["apiKey"] == "secret-value"
 
+
+class FakeResponse:
+  def __enter__(self):
+    return self
+
+  def __exit__(self, *_args):
+    return False
+
+  def read(self):
+    return b'{}'
+
+
+class FakeOpener:
+  def open(self, _request, timeout):
+    assert timeout == helper.DEFAULT_TIMEOUT
+    return FakeResponse()
+
+
+with mock.patch.object(helper.urllib.request, "build_opener", return_value=FakeOpener()) as build_opener:
+  assert helper.request_json({"baseUrl": "http://127.0.0.1:8384", "apiKey": "secret-value"}, "/rest/system/status") == {}
+  handlers = build_opener.call_args.args
+  proxy_handlers = [handler for handler in handlers if isinstance(handler, helper.urllib.request.ProxyHandler)]
+  assert len(proxy_handlers) == 1 and proxy_handlers[0].proxies == {}
+  assert any(isinstance(handler, helper.RejectRedirectHandler) for handler in handlers)
+
+try:
+  helper.RejectRedirectHandler().redirect_request(None, None, 302, "Found", {}, "https://example.com/")
+except helper.SyncthingError as error:
+  assert error.reason == "unsafe-redirect"
+else:
+  raise AssertionError("accepted a redirect away from the configured loopback endpoint")
+
 folder = helper.summarize_folder(
   {"id": "docs", "label": "Documents", "path": "/home/amy/Sync", "paused": False},
   {"state": "syncing", "globalBytes": 1000, "needBytes": 250, "needTotalItems": 2},
   {"errors": []},
 )
 assert folder["completion"] == 75
+assert folder["errorCount"] == 0
 assert helper.classify([folder], [], [], []) == "syncing"
+
+folder_errors = helper.summarize_folder(
+  {"id": "docs", "paused": False},
+  {"state": "error", "pullErrors": 7},
+  {"errors": [
+    {"path": "one", "error": "denied"},
+    {"path": "two", "error": "denied"},
+  ]},
+)
+assert folder_errors["errorCount"] == 7
+
+page_exceeds_total = helper.summarize_folder(
+  {"id": "docs", "paused": False},
+  {"state": "error", "pullErrors": 1},
+  {"errors": [
+    {"path": "one", "error": "denied"},
+    {"path": "two", "error": "denied"},
+  ]},
+)
+assert page_exceeds_total["errorCount"] == 2
+
 folder["errors"] = [{"path": "bad", "error": "denied"}]
 folder["errorCount"] = 1
 assert helper.classify([folder], [], [], []) == "error"
