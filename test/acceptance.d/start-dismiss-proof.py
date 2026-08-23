@@ -91,6 +91,7 @@ def main() -> int:
     hide_start()
     wait_until("Start overlay unmapped before proof", 6, lambda: not start_open())
     saved_cursor = tuck_cursor_windows()
+    shell("notifications", "dismissAll")
 
     def fresh_pointer() -> AbsPointer:
       nonlocal pointer

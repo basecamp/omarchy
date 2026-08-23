@@ -134,17 +134,18 @@ def restore_cursor_windows(saved: list[dict] | None) -> None:
 
 
 def hyprbars_button(win: dict, which: str) -> tuple[int, int]:
-  # hyprbars sits above the window when there is room. Maximized windows sit
-  # at y≈0, so the caption is inside the top of the box.
+  # hyprbars sits above the client box when there is room. Maximized windows
+  # sit at y≈0, so the caption is inside the top of the box.
+  # desktop-windows.lua: bar_padding 12, button 22, button_padding 8, RTL close/max/min.
   x, y = win["at"]
   w = win["size"][0]
   bar_y = y + 16 if y < 24 else y - 16
   if which == "close":
-    return x + w - 16, bar_y
+    return x + w - 23, bar_y
   if which == "max":
-    return x + w - 36, bar_y
+    return x + w - 53, bar_y
   if which == "min":
-    return x + w - 56, bar_y
+    return x + w - 83, bar_y
   raise ProofError(f"unknown hyprbars button {which}")
 
 
@@ -331,6 +332,7 @@ def main() -> int:
     report["cursor_tucked"] = [c.get("address") for c in saved_cursor]
     as_user(["omarchy-shell", "window", "commitCycle"], wait=True, timeout=5)
     as_user(["omarchy-shell", "shell", "hide", "omarchy.ultimate-task-switcher"], wait=True, timeout=5)
+    as_user(["omarchy-shell", "notifications", "dismissAll"], wait=True, timeout=5)
 
     launch_feet(2)
     addrs = [c["address"] for c in feet()]
@@ -475,6 +477,7 @@ def main() -> int:
       "size": None if not maximized else maximized.get("size"),
       "fullscreen": None if not maximized else maximized.get("fullscreen"),
     }
+    as_user(["omarchy-shell", "notifications", "dismissAll"], wait=True, timeout=5)
     mx, my = hyprbars_button(maximized, "max")
     report["max_restore_aim"] = [mx, my]
     pointer.quick_click(mx, my)
@@ -523,11 +526,9 @@ def main() -> int:
       raise ProofError("foot vanished before maximize hover")
     hx, hy = hover_win["at"]
     hw = hover_win["size"][0]
-    # hyprbars draws RTL min / max / close. Close sits at x+w-16; maximize is
-    # the next 20px left (14px glyph + 6px button padding).
-    maxx, maxy = hx + hw - 36, hy - 16 if hy >= 24 else hy + 16
+    maxx, maxy = hyprbars_button(hover_win, "max")
     report["hover_max_aim"] = [maxx, maxy]
-    pointer.move(hx + hw // 2, hy - 16)
+    pointer.move(hx + hw // 2, hy - 16 if hy >= 24 else hy + 16)
     time.sleep(0.12)
     pointer.move(maxx, maxy)
     # handleButtonHover used to arm on motion and only fire on a later move.
@@ -585,7 +586,7 @@ def main() -> int:
       raise ProofError("unfocused foot vanished before caption close")
     ox, oy = parked["at"]
     ow = parked["size"][0]
-    oclosex, oclosey = ox + ow - 16, oy - 16
+    oclosex, oclosey = hyprbars_button(parked, "close")
     report["unfocused_close_aim"] = [oclosex, oclosey]
     report["unfocused_close_target"] = parked["address"]
     as_user(["omarchy-shell", "shell", "hide", "omarchy.ultimate-snap-chooser"], wait=True, timeout=5)
