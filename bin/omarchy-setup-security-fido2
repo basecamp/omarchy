@@ -55,8 +55,13 @@ if [[ ! -f /etc/fido2/fido2 ]]; then
   echo -e "\e[32m\nLet's setup your device by confirming on the device now.\e[0m"
   echo -e "Touch your FIDO2 key when it lights up...\n"
 
-  if pamu2fcfg >/tmp/fido2; then
-    sudo mv /tmp/fido2 /etc/fido2/fido2
+  mapping=$(mktemp)
+  trap 'rm -f "$mapping"' EXIT
+
+  if pamu2fcfg >"$mapping"; then
+    # install, not mv: mv preserves the invoking user's ownership, which would
+    # leave a file PAM trusts for sudo writable by the user it authenticates.
+    sudo install -o root -g root -m 644 "$mapping" /etc/fido2/fido2
     echo -e "\e[32mFIDO2 device registered successfully!\e[0m"
   else
     echo -e "\e[31m\nFIDO2 registration failed. Please try again.\e[0m"
