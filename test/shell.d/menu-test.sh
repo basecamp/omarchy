@@ -148,6 +148,12 @@ assert(menu.findKeybinding(parsedBindings, { id: 'unknown', action: 'something-e
 const compoundRecords = menu.parseKeybindingRecords("ALT + PRINT → Screenrecord\texec\tomarchy-capture-screenrecording --stop-recording || omarchy-menu toggle trigger.capture.screenrecord")
 assert(menu.findKeybinding(compoundRecords, { id: 'trigger.capture.screenrecord.none', action: 'omarchy-capture-screenrecording' }) === '', 'menu does not match compound binding to bare prefix action')
 
+const xRecords = menu.parseKeybindingRecords([
+  "SUPER + MINUS → Expand window left\texec\thyprctl dispatch splitratio -0.05",
+  "SUPER SHIFT + X → X\texec\tomarchy-launch-webapp https://x.com/"
+].join("\n"))
+assert(menu.findKeybinding(xRecords, { id: 'apps.x', kind: 'app', label: 'X' }) === 'SUPER SHIFT + X', 'menu matches exact app label without false substring matching on other descriptions')
+
 const testItems = {
   'system.lock': { id: 'system.lock', action: 'omarchy-system-lock' },
   'apps.term': { id: 'apps.term', kind: 'app', label: 'Terminal' }

@@ -155,7 +155,7 @@ link is followed to its target. The default Hyprland bindings in
 
 ## Keybindings
 
-The menu resolves shortcuts from Hyprland's keybinding records asynchronously on demand. Pressing `?` while browsing or filtering toggles keybinding visibility on the right edge of each row. Default visibility can be set in `~/.config/omarchy/shell.json`:
+The menu resolves shortcuts from Hyprland's keybinding records asynchronously on demand. Pressing `?` while browsing or filtering toggles keybinding visibility on the right edge of each row. Default visibility can be enabled by adding the `menu` key to your existing `~/.config/omarchy/shell.json`:
 
 ```json
 {

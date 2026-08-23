@@ -359,14 +359,14 @@ function findKeybinding(bindings, entry) {
 
   // 3. App Match (for desktop apps / AppLibrary rows)
   if (kind === "app") {
-    var appId = String(entry.appId || "").toLowerCase()
+    var appId = String(entry.appId || "").toLowerCase().replace(/\.desktop$/, "")
     for (var k = 0; k < bindings.length; k++) {
       var bDesc = String(bindings[k].desc || "").toLowerCase()
       var bArgApp = String(bindings[k].arg || "").toLowerCase()
-      if (bDesc && (bDesc === label || label.indexOf(bDesc) >= 0 || bDesc.indexOf(label) >= 0)) {
+      if (bDesc && bDesc === label) {
         return bindings[k].combo
       }
-      if (appId && bArgApp && bArgApp.indexOf(appId) >= 0) {
+      if (appId && (bArgApp === appId || bArgApp === "omarchy-launch-" + appId || bArgApp.indexOf("/" + appId) >= 0)) {
         return bindings[k].combo
       }
     }
