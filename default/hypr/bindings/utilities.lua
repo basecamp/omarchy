@@ -83,7 +83,10 @@ end)
 
 o.bind("SUPER + CTRL + S", "Share", "omarchy-menu toggle share")
 
-o.bind("SUPER + CTRL + PERIOD", "Transcode", "omarchy-transcode")
+-- Launched through uwsm so the encode lands in app.slice with the rest of the
+-- user's work, rather than inheriting the compositor's own scope: a libx265
+-- pass is exactly what the interactive tier must not be sharing a slice with.
+o.bind("SUPER + CTRL + PERIOD", "Transcode", o.launch("omarchy-transcode"))
 
 o.bind("SUPER + CTRL + R", "Set reminder", "omarchy-menu toggle reminder-set")
 o.bind("SUPER + CTRL + ALT + R", "Show reminders", "omarchy-reminder show")
