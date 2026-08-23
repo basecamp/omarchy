@@ -68,6 +68,26 @@ assertEqual(
   'bluetooth falls back to the advertised name when the alias is blank'
 )
 
+// Renaming writes BlueZ's Alias, the writable half of the pair quickshell
+// exposes; the advertised name is read-only and must never be written.
+assert(/device\.name = next/.test(panelSource), 'bluetooth writes the friendly name back to BlueZ')
+assert(!/\.deviceName = /.test(panelSource), 'bluetooth never writes the advertised device name')
+
+// Clearing the field is the reset: BlueZ restores Alias to Name when it is
+// written an empty string, so nothing may filter that empty value out.
+const commitRename = panelSource.match(/function commitRename\(\) \{[\s\S]*?\n {2}\}/)
+assert(commitRename, 'bluetooth has the rename commit')
+assert(/String\(renameText \|\| ""\)\.trim\(\)/.test(commitRename[0]), 'bluetooth trims the typed name before writing it')
+assert(!/next === ""/.test(commitRename[0]), 'bluetooth lets an empty name through so BlueZ resets the alias to the advertised name')
+
+// The open editor lives on the panel, keyed by address: rows are
+// primitives-only projections rebuilt on every BlueZ report, so a
+// delegate-owned editor would lose its text and its focus to a scan landing
+// mid-word, and a rename re-sorts the list under it besides.
+assert(/property string renameAddress: ""/.test(panelSource), 'bluetooth keeps the open editor on the panel, keyed by address')
+assert(/blocked: root\.renameAddress !== ""/.test(panelSource), 'bluetooth hands the keyboard to the editor while it is open')
+assert(/renameAddress !== "" && !deviceForAddress\(renameAddress\)/.test(panelSource), 'bluetooth closes the editor when its device goes away')
+
 assert(bluetooth.isUuidLike('0000110b-0000-1000-8000-00805f9b34fb'), 'bluetooth detects UUID-like names')
 assert(bluetooth.isAddressLike('AA:BB:CC:DD:EE:FF'), 'bluetooth detects address-like names')
 assertEqual(bluetooth.normalizedAddress('AA:BB_CC-dd-ee-ff'), 'aabbccddeeff', 'bluetooth normalizes BlueZ and PipeWire address formats')
