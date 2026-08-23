@@ -107,16 +107,22 @@ pass "only user app scopes are systemd-oomd kill candidates"
 # lagging behind by N ms", the pointer stutters, keys queue. Weighting the
 # interactive tier above apps is what keeps the desktop usable while compiling.
 cpu_slice="$ROOT/default/systemd/user/session.slice.d/10-cpuweight.conf"
-grep -Fx 'CPUWeight=1000' "$cpu_slice" >/dev/null ||
+# systemd takes the last assignment in a unit file, so assert the effective
+# value rather than that 1000 appears somewhere: a later CPUWeight= line would
+# quietly win while a match-anywhere grep still passed.
+[[ $(grep -E '^CPUWeight=' "$cpu_slice" | tail -n 1) == "CPUWeight=1000" ]] ||
   fail "session.slice has no CPU weight over app.slice, so saturating builds stall compositor input"
-grep -rlE '^CPUWeight=' "$ROOT/default/systemd/user" 2>/dev/null | grep -vFx "$cpu_slice" | grep -q . &&
-  fail "CPU weight is set on something other than session.slice; app scopes must stay at the default so the compositor out-ranks them"
+stray_cpuweight=$(grep -rlE '^CPUWeight=' "$ROOT/default/systemd/user" 2>/dev/null | grep -vFx "$cpu_slice" || true)
+[[ -z $stray_cpuweight ]] ||
+  fail "CPU weight is set on something other than session.slice; app scopes must stay at the default so the compositor out-ranks them: $stray_cpuweight"
 cpuweight_migration=$(grep -rl 'session.slice.d/10-cpuweight.conf' "$ROOT/migrations" | head -n 1 || true)
 [[ -n $cpuweight_migration ]] ||
   fail "existing installs never reload the user manager, so the session weight waits for the next login"
-grep -F 'systemctl --user daemon-reload' "$cpuweight_migration" >/dev/null ||
+# Anchored to the start of a line so a commented-out command cannot satisfy
+# these: a migration whose body is entirely comments does nothing at all.
+grep -qE '^[[:space:]]*systemctl --user daemon-reload' "$cpuweight_migration" ||
   fail "migration does not reload the user manager, so the session weight waits for the next login"
-grep -F 'set-property --runtime session.slice CPUWeight=1000' "$cpuweight_migration" >/dev/null ||
+grep -qE '^[[:space:]]*systemctl --user set-property --runtime session\.slice CPUWeight=1000' "$cpuweight_migration" ||
   fail "migration runs once; without a runtime fallback a session updated before the package ships the drop-in never gets the weight until relogin"
 pass "the session slice out-ranks app scopes for CPU, live on existing installs"
 
