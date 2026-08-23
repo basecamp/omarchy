@@ -50,6 +50,24 @@ assert(/sibling\.owesDiscoveryStop = true/.test(stopTimer[0]), 'bluetooth moves 
 assert(/onDiscoveringChanged[\s\S]{0,120}owesDiscoveryStop = false/.test(panelSource), 'bluetooth settles the stop it owes once discovery is confirmed down')
 assert(/Component\.onDestruction: \{[\s\S]{0,400}owesDiscoveryStop = true[\s\S]{0,200}discovering = false/.test(panelSource), 'bluetooth passes the stop it owes to a sibling when an instance is destroyed')
 
+// BlueZ keeps Name (advertised) and Alias (user-settable, defaults to Name).
+// Quickshell exposes them as deviceName and name, and the alias is the one the
+// user chose, so it is the one shown.
+const renamed = { name: "  Andrew's HSTN  ", deviceName: 'Oakley Meta 0091' }
+assertEqual(bluetooth.friendlyName(renamed), "Andrew's HSTN", 'bluetooth trims the friendly name')
+assertEqual(bluetooth.defaultName(renamed), 'Oakley Meta 0091', 'bluetooth reads the advertised name apart from the alias')
+assertEqual(bluetooth.deviceLabel(renamed), "Andrew's HSTN", 'bluetooth shows the friendly name')
+assert(bluetooth.hasFriendlyName(renamed), 'bluetooth sees a device the user renamed')
+assert(
+  !bluetooth.hasFriendlyName({ name: 'Xbox Wireless Controller', deviceName: 'Xbox Wireless Controller' }),
+  'bluetooth does not mistake BlueZ mirroring Name into Alias for a rename'
+)
+assertEqual(
+  bluetooth.deviceLabel({ name: '   ', deviceName: 'Oakley Meta 0091' }),
+  'Oakley Meta 0091',
+  'bluetooth falls back to the advertised name when the alias is blank'
+)
+
 assert(bluetooth.isUuidLike('0000110b-0000-1000-8000-00805f9b34fb'), 'bluetooth detects UUID-like names')
 assert(bluetooth.isAddressLike('AA:BB:CC:DD:EE:FF'), 'bluetooth detects address-like names')
 assertEqual(bluetooth.normalizedAddress('AA:BB_CC-dd-ee-ff'), 'aabbccddeeff', 'bluetooth normalizes BlueZ and PipeWire address formats')
@@ -98,7 +116,12 @@ assertDeepEqual(
   'bluetooth projects device rows with primitives only'
 )
 assertEqual(
-  bluetooth.deviceLabel(bluetooth.deviceRow({ name: 'Generic', deviceName: 'MX Master 3S', address: '2', connected: true })),
+  bluetooth.deviceLabel(bluetooth.deviceRow({ name: "Andrew's Headphones", deviceName: 'WH-1000XM5', address: '2', connected: true })),
+  "Andrew's Headphones",
+  'bluetooth labels a device with the friendly name over the advertised one'
+)
+assertEqual(
+  bluetooth.deviceLabel(bluetooth.deviceRow({ name: '', deviceName: 'MX Master 3S', address: '2', connected: true })),
   'MX Master 3S',
   'bluetooth keeps deviceName in row projections so labels survive QObject-free rows'
 )
@@ -136,6 +159,41 @@ assert(
   ),
   'bluetooth matches audio sinks by human device label when address is unavailable'
 )
+// PipeWire copies one name or the other into a node depending on the property,
+// so a renamed speaker has to match on either or it loses its sink.
+const renamedSpeaker = { address: '11:22:33:44:55:66', name: 'Kitchen Speaker', deviceName: 'JBL Go 3' }
+assert(
+  bluetooth.bluetoothSinkMatchesDevice(
+    {
+      isSink: true,
+      isStream: false,
+      ready: true,
+      name: 'alsa_output.usb-speaker',
+      properties: { 'device.product.name': 'JBL Go 3' }
+    },
+    renamedSpeaker
+  ),
+  'bluetooth matches a renamed device to a sink PipeWire labels with the advertised name'
+)
+assert(
+  bluetooth.bluetoothSinkMatchesDevice(
+    {
+      isSink: true,
+      isStream: false,
+      ready: true,
+      name: 'alsa_output.usb-speaker',
+      properties: { 'device.alias': 'Kitchen Speaker' }
+    },
+    renamedSpeaker
+  ),
+  'bluetooth matches a renamed device to a sink PipeWire labels with the friendly name'
+)
+assertDeepEqual(
+  bluetooth.deviceNames({ name: 'Xbox Wireless Controller', deviceName: 'Xbox Wireless Controller' }),
+  ['Xbox Wireless Controller'],
+  'bluetooth does not try the same name twice when the alias mirrors the advertised name'
+)
+
 assert(
   !bluetooth.bluetoothSinkMatchesDevice({ isSink: false, isStream: false, ready: true, name: 'bluez_output.AA_BB_CC_DD_EE_FF.1', properties: {} }, { address: 'AA:BB:CC:DD:EE:FF', name: 'JBL Go 3' }),
   'bluetooth ignores non-sink nodes when matching audio outputs'
