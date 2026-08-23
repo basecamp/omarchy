@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import pwd
 import struct
 import subprocess
 import sys
@@ -31,9 +32,20 @@ ABS_X, ABS_Y = 0, 1
 SYN_REPORT = 0
 ABS_MAX = 32767
 INPUT_PROP_DIRECT = 1
-USER_UID = 1000
-USER_HOME = "/home/omarchy"
-OMARCHY_PATH = os.environ.get("OMARCHY_PATH") or "/home/omarchy/omarchy7ultimate"
+
+
+def session_user() -> str:
+  for key in ("SUDO_USER", "USER", "LOGNAME"):
+    val = os.environ.get(key) or ""
+    if val and val != "root":
+      return val
+  return pwd.getpwuid(os.getuid()).pw_name
+
+
+USER_NAME = session_user()
+USER_UID = pwd.getpwnam(USER_NAME).pw_uid
+USER_HOME = pwd.getpwnam(USER_NAME).pw_dir
+OMARCHY_PATH = os.environ.get("OMARCHY_PATH") or os.path.join(USER_HOME, "omarchy7ultimate")
 
 
 class ProofError(RuntimeError):
@@ -63,7 +75,7 @@ def hypr(*args: str) -> str:
 def as_user(args: list[str], wait: bool = True, timeout: float | None = 20) -> subprocess.CompletedProcess[str]:
   env = hypr_env()
   if os.getuid() == 0:
-    cmd = ["runuser", "-u", "omarchy", "--", "env"]
+    cmd = ["runuser", "-u", USER_NAME, "--", "env"]
     for key in ("PATH", "OMARCHY_PATH", "XDG_RUNTIME_DIR", "WAYLAND_DISPLAY", "HOME", "HYPRLAND_INSTANCE_SIGNATURE", "LC_ALL"):
       cmd.append(f"{key}={env[key]}")
     cmd.extend(args)
@@ -221,11 +233,42 @@ def grim(path: str) -> None:
   as_user(["grim", path], wait=True)
 
 
+def pin_session_monitor() -> None:
+  mons = json.loads(hypr("-j", "monitors") or "[]")
+  focused = next((m for m in mons if m.get("focused")), mons[0] if mons else None)
+  if not focused:
+    return
+  name = focused.get("name") or ""
+  if name == "HDMI-A-1":
+    hypr("eval", 'hl.monitor({ output = "HDMI-A-1", mode = "1920x1080@60", position = "0x0", scale = 1 })')
+    try:
+      hypr("eval", 'hl.monitor({ output = "DP-1", disabled = true })')
+    except Exception:
+      pass
+    return
+  if name:
+    hypr("eval", f'hl.monitor({{ output = "{name}", mode = "1920x1080@60", position = "0x0", scale = 1 }})')
+
+
+def cycle_snapshot() -> dict:
+  proc = as_user(["omarchy-shell", "window", "cycleSnapshot"], wait=True, timeout=5)
+  if proc.returncode != 0:
+    raise ProofError(f"cycleSnapshot failed: {proc.stdout} {proc.stderr}")
+  raw = (proc.stdout or "").strip()
+  try:
+    data = json.loads(raw)
+  except json.JSONDecodeError as e:
+    raise ProofError(f"cycleSnapshot not JSON: {raw!r}") from e
+  if not isinstance(data, dict):
+    raise ProofError(f"cycleSnapshot was not an object: {raw!r}")
+  return data
+
+
 def main() -> int:
   report: dict = {"ok": False}
   pointer = None
   try:
-    hypr("eval", 'hl.monitor({ output = "Virtual-1", mode = "1920x1080@60", position = "0x0", scale = 1 })')
+    pin_session_monitor()
   except Exception:
     pass
   try:
@@ -248,13 +291,25 @@ def main() -> int:
     wait_until("task switcher overlay", 8, lambda: layer_named("omarchy-task-switcher"))
     time.sleep(2.0)
     grim("/tmp/w0-c-switcher.png")
+    snap = cycle_snapshot()
+    report["cycle"] = snap
+    cycle_list = list(snap.get("list") or [])
+    cycle_idx = int(snap.get("index") or 0)
+    if len(cycle_list) < 2:
+      raise ProofError(f"need at least two cycle cards to pick a different window: {snap}")
+    if cycle_idx < 0 or cycle_idx >= len(cycle_list):
+      raise ProofError(f"highlighted cycle index is out of range: {snap}")
+    want = cycle_list[cycle_idx]
+    if want == last:
+      raise ProofError(f"cycleNext kept the focused address highlighted: {snap}")
     # Create the ABS pointer after the overlay is mapped. A device that exists
     # before the layer maps does not deliver buttons onto this Quickshell surface.
     pointer = AbsPointer()
     gw, gh = monitor_size()
     report["monitor"] = [gw, gh]
-    click_x, click_y = card_center(0, len(addrs), gw, gh)
+    click_x, click_y = card_center(cycle_idx, len(cycle_list), gw, gh)
     report["card_aim"] = [click_x, click_y]
+    report["card_want"] = want
     pointer.move(click_x, click_y, gw, gh)
     time.sleep(0.25)
     def cursor_near():
@@ -273,10 +328,8 @@ def main() -> int:
       raise ProofError("Alt+Tab card click left omarchy-task-switcher mapped; MouseArea did not pick")
     active = json.loads(hypr("-j", "activewindow") or "{}")
     report["switcher_active"] = {"addr": active.get("address"), "class": active.get("class")}
-    if active.get("class") != "foot" or active.get("address") not in addrs:
-      raise ProofError(f"card click did not activate a cycled foot: {report['switcher_active']}")
-    if active.get("address") == last:
-      raise ProofError("card click kept the focused (last) address; highlighted card should activate the other foot")
+    if active.get("address") != want:
+      raise ProofError(f"card click did not activate the highlighted address {want}: {report['switcher_active']}")
     grim("/tmp/w0-c-switcher-picked.png")
 
     as_user(["omarchy-shell", "shell", "hide", "omarchy.ultimate-task-switcher"], wait=True, timeout=5)
@@ -323,8 +376,17 @@ def main() -> int:
       raise ProofError(f"drag away from the top edge did not restore: {report['aero_away']}")
     grim("/tmp/w0-g-aero-away.png")
 
-    x2, y2 = away["at"]
-    w2 = away["size"][0]
+    rx, ry = away["at"]
+    rw, rh = away["size"]
+    pointer.drag(rx + rw + 2, ry + max(48, rh // 2), rx + rw + 90, ry + max(48, rh // 2), steps=18)
+    time.sleep(0.45)
+    resized = next((c for c in feet() if c["address"] == addr), None)
+    report["resize"] = {"from": [rw, rh], "to": None if not resized else resized.get("size")}
+    if not resized or resized["size"][0] < rw + 24:
+      raise ProofError(f"edge resize did not grow the window: {report['resize']}")
+
+    x2, y2 = resized["at"]
+    w2 = resized["size"][0]
     closex, closey = x2 + w2 - 16, y2 - 16
     report["close_aim"] = [closex, closey]
     pointer.click(closex, closey)

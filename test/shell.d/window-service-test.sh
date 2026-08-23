@@ -129,6 +129,8 @@ grep -Fq 'aeroDragEnd(address: string, x: string, y: string)' "$ROOT/shell/shell
 grep -Fq '_addressesOnDesktop' "$ws" || fail "Alt+Tab cycles windows on the current desktop"
 grep -Fq 'function neighborMonitor' "$ROOT/shell/services/WindowModel.js" || fail "WindowModel can name the neighboring monitor"
 grep -Fq 'follow = false' "$ws" || fail "moveToDesktop does not steal the current desktop"
+grep -Fq 'function close(address: string)' "$ROOT/shell/shell.qml" || fail "window IPC close takes a window address"
+grep -Fq 'function cycleSnapshot' "$ROOT/shell/shell.qml" || fail "window IPC cycleSnapshot exposes the live Alt+Tab highlight"
 grep -Fq 'function maximize(address: string)' "$ROOT/shell/shell.qml" || fail "window IPC maximize takes a window address"
 grep -Fq 'function restoreOrMinimize(address: string)' "$ROOT/shell/shell.qml" || fail "window IPC restoreOrMinimize takes a window address"
 grep -Fq 'function restoreNormal' "$ws" || fail "WindowService exposes restoreNormal to unsnap"

@@ -201,8 +201,15 @@ grep -Fq '/dev/uinput is missing' "$ROOT/test/acceptance.d/hyprbars-pointer-proo
   || fail "pointer proof fails when uinput is missing instead of skipping"
 grep -Fq 'relative ydotool is not this gate' "$ROOT/test/acceptance.d/windows-native-test.sh" \
   || fail "windows-native harness must not skip-pass the mouse gate"
+if grep -Fq '/home/omarchy' "$ROOT/test/acceptance.d/hyprbars-pointer-proof.py"; then
+  fail "pointer proof must not hardcode the QEMU guest home"
+fi
+grep -Fq 'SUDO_USER' "$ROOT/test/acceptance.d/hyprbars-pointer-proof.py" \
+  || fail "pointer proof uses the live session user, not a hardcoded guest name"
 grep -Fq 'hyprbars-pointer-proof.py' "$ROOT/test/acceptance.d/windows-native-test.sh" \
   || fail "windows-native harness runs the absolute pointer proof"
+grep -Fq 'cycleSnapshot' "$ROOT/test/acceptance.d/hyprbars-pointer-proof.py" \
+  || fail "pointer proof aims at the live highlighted Alt+Tab card, not a two-foot layout"
 grep -Fq 'commitCycle' "$ROOT/test/acceptance.d/windows-native-test.sh" \
   || fail "Alt+Tab harness proves address-change with commitCycle, not only overlay summon"
 grep -Fq 'WlrKeyboardFocus.None' "$ROOT/shell/plugins/ultimate-task-switcher/Switcher.qml" \
@@ -217,12 +224,25 @@ if grep -Fq 'Virtual-1' "$ROOT/test/acceptance.d/windows-native-test.sh"; then
   fail "windows-native harness must not hardcode the QEMU output name Virtual-1"
 fi
 grep -Fq 'hl.dsp.window.close' "$ROOT/test/acceptance.d/base-test.sh" \
-  || fail "acceptance close_windows uses Hyprland 0.56 lua eval, not classic dispatch"
+  || fail "acceptance close_windows uses Hyprland 0.56 lua close, not classic dispatch"
+grep -Fq 'hyprctl dispatch' "$ROOT/test/acceptance.d/base-test.sh" \
+  || fail "acceptance close_windows dispatches the close object; hyprctl eval does not run it"
+grep -Fq 'function close(address: string)' "$ROOT/shell/shell.qml" \
+  || fail "window IPC exposes addressed close, not only closeActive"
 [[ -f $ROOT/test/acceptance.d/gtk-parented-dialog.py ]] \
   || fail "acceptance helper maps a GTK parented MessageDialog"
 grep -Fq 'transient_for=parent' "$ROOT/test/acceptance.d/gtk-parented-dialog.py" \
   || fail "GTK parented dialog is transient_for its parent"
 grep -Fq 'modal=True' "$ROOT/test/acceptance.d/gtk-parented-dialog.py" \
   || fail "GTK parented dialog is modal"
+[[ -f $ROOT/test/acceptance.d/qt-w0-window.qml ]] \
+  || fail "acceptance helper maps a resizable Qt Quick window"
+grep -Fq 'title: "W0-Qt"' "$ROOT/test/acceptance.d/qt-w0-window.qml" \
+  || fail "Qt W0 helper is a named Window, not a size-locked kdialog"
+grep -Fq 'qt-project' "$ROOT/test/acceptance.d/windows-native-test.sh" \
+  || fail "Qt snap probe matches qml6's live Wayland app id"
+if grep -Eq 'prove_toolkit .*kdialog' "$ROOT/test/acceptance.d/windows-native-test.sh"; then
+  fail "Qt snap probe must not use kdialog; that window cannot take a half-tile"
+fi
 pass "mouse proof helper fails honestly without an absolute pointer"
 

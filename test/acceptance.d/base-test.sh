@@ -64,7 +64,7 @@ wait_until() {
 }
 
 window_present() {
-  hyprctl -j clients | jq -e --arg class "$1" '[.[] | select(.class | test($class))] | length > 0'
+  hyprctl -j clients | jq -e --arg class "$1" '[.[] | select(.class | test($class))] | length > 0' >/dev/null
 }
 
 window_absent() {
@@ -72,7 +72,7 @@ window_absent() {
 }
 
 layer_present() {
-  hyprctl -j layers | jq -e --arg ns "$1" '[.. | objects | select(.namespace? == $ns)] | length > 0'
+  hyprctl -j layers | jq -e --arg ns "$1" '[.. | objects | select(.namespace? == $ns)] | length > 0' >/dev/null
 }
 
 layer_absent() {
@@ -140,7 +140,8 @@ chrome_layer_present() {
 }
 
 # Close every window matching a class regex, by address so multi-window apps
-# are fully closed. Tries the quattro Lua dispatcher first, then classic.
+# are fully closed. hyprctl eval only builds the Lua dispatcher object; the
+# compositor runs it through dispatch (or omarchy-shell window close).
 close_windows() {
   local class="$1"
   local addr pid
@@ -150,7 +151,7 @@ close_windows() {
     if [[ -n ${OMARCHY_PATH:-} ]] && command -v omarchy-shell >/dev/null; then
       omarchy-shell window close "$addr" >/dev/null 2>&1 || true
     fi
-    hyprctl eval "hl.dsp.window.close({ window = \"address:$addr\" })" >/dev/null 2>&1 || true
+    hyprctl dispatch "hl.dsp.window.close({ window = \"address:$addr\" })" >/dev/null 2>&1 || true
     if [[ -n $pid && $pid != 0 ]]; then
       kill "$pid" >/dev/null 2>&1 || true
     fi

@@ -11,6 +11,13 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
+if hyprctl -j monitors | jq -e '.[] | select(.name == "HDMI-A-1")' >/dev/null 2>&1; then
+  hyprctl eval 'hl.monitor({ output = "HDMI-A-1", mode = "1920x1080@60", position = "0x0", scale = 1 })' >/dev/null || true
+  hyprctl eval 'hl.monitor({ output = "DP-1", disabled = true })' >/dev/null || true
+fi
+PREEXISTING_ADDRS=$(hyprctl -j clients | jq -r '.[].address' | sort)
+
+
 MANIFEST="$ROOT/WINDOWS_NATIVE_ACCEPTANCE.md"
 PINS_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/ultimate/taskbar-pins.json"
 
@@ -178,11 +185,26 @@ launch_feet() {
 restore_native_windows() {
   close_windows "^foot$" >/dev/null 2>&1 || true
   close_windows "Nautilus|org\\.gnome\\.Nautilus" >/dev/null 2>&1 || true
-  close_windows "^[Cc]hromium" >/dev/null 2>&1 || true
   close_windows "[Xx][Ee]yes" >/dev/null 2>&1 || true
   close_windows "zenity|Zenity" >/dev/null 2>&1 || true
+  close_windows "kdialog|KDialog" >/dev/null 2>&1 || true
+  close_windows "gtk-parented-dialog" >/dev/null 2>&1 || true
+  pkill -f gtk-parented-dialog.py >/dev/null 2>&1 || true
   omarchy-shell window commitCycle >/dev/null 2>&1 || true
   omarchy-shell shell hide omarchy.ultimate-task-switcher >/dev/null 2>&1 || true
+  omarchy-shell shell hide omarchy.ultimate-snap-chooser >/dev/null 2>&1 || true
+  # Close only clients this harness mapped. Do not kill the user's Cursor or
+  # already-open Chromium on the live box.
+  while read -r addr class; do
+    [[ -n $addr ]] || continue
+    if grep -Fxq "$addr" <<<"$PREEXISTING_ADDRS"; then
+      continue
+    fi
+    if [[ $class == [Cc]ursor ]]; then
+      continue
+    fi
+    omarchy-shell window close "$addr" >/dev/null 2>&1 || true
+  done < <(hyprctl -j clients | jq -r '.[] | [.address, .class] | @tsv')
 }
 
 trap restore_native_windows EXIT
@@ -490,12 +512,12 @@ prove_toolkit() {
   local class_re="$3"
   local bin=${launch%% *}
   command -v "$bin" >/dev/null || fail "$name windowing" "$bin is not on this guest"
-  close_windows "$class_re" >/dev/null 2>&1 || true
+  local before addr
+  before=$(hyprctl -j clients | jq -r --arg re "$class_re" '.[] | select(.class | test($re)) | .address')
   launch_app "$launch"
-  wait_until "$name window is mapped" 40 window_present "$class_re"
-  local addr
-  addr=$(hyprctl -j clients | jq -r --arg re "$class_re" '.[] | select(.class | test($re)) | .address' | head -1)
-  [[ -n $addr ]] || fail "$name windowing" "no client matched $class_re"
+  wait_until "$name window is mapped" 40 toolkit_has_new "$class_re" "$before"
+  addr=$(toolkit_new_addr "$class_re" "$before")
+  [[ -n $addr ]] || fail "$name windowing" "no new client matched $class_re"
   omarchy-shell window snapTo "$addr" r >/dev/null
   sleep 1
   local area half left_x right_x right_w left_y left_h
@@ -509,18 +531,33 @@ prove_toolkit() {
   window_near_rect "$addr" "$right_x" "$left_y" "$right_w" "$left_h" \
     || fail "$name snap" "$name did not take the right half: $(hyprctl -j clients | jq --arg a "$addr" '.[] | select(.address == $a) | {class,at,size,xwayland,fullscreen}')"
   screenshot "success-$name"
-  close_windows "$class_re" >/dev/null 2>&1 || true
-  wait_until "$name window closed" 15 window_absent "$class_re"
+  omarchy-shell window close "$addr" >/dev/null 2>&1 || true
+  wait_until "$name window closed" 15 window_absent_addr "$addr"
   pass "$name snaps with hyprbars like any other window"
 }
 
+window_absent_addr() {
+  local addr="$1"
+  hyprctl -j clients | jq -e --arg addr "$addr" 'all(.address != $addr)' >/dev/null
+}
+
+toolkit_new_addr() {
+  hyprctl -j clients | jq -r --arg re "$1" --arg before "$2" '
+    .[] | select(.class | test($re)) | .address
+    | select(. as $a | ($before == "" or (($before | split("\n") | index($a)) == null)))
+  ' | sed -n '1p'
+}
+
+toolkit_has_new() {
+  [[ -n $(toolkit_new_addr "$1" "$2") ]]
+}
+
 prove_toolkit "GTK Nautilus" "nautilus --new-window" "Nautilus|org\\.gnome\\.Nautilus"
-prove_toolkit "Chromium" "chromium --no-first-run --disable-gpu --disable-dev-shm-usage --no-sandbox about:blank" "^[Cc]hromium"
+prove_toolkit "Chromium" "chromium --user-data-dir=/tmp/omarchy-w0-chromium --no-first-run about:blank" "^[Cc]hromium"
 
 if ! command -v xeyes >/dev/null; then
-  echo omarchy | sudo -S pacman -S --noconfirm xorg-xeyes >/dev/null
+  fail "XWayland" "xeyes is not installed; this guest cannot probe XWayland windowing"
 fi
-command -v xeyes >/dev/null || fail "XWayland" "xeyes could not be installed for the compositor probe"
 close_windows "xeyes|^XEyes$|[Xx][Ee]yes" >/dev/null 2>&1 || true
 launch_app xeyes
 wait_until "XWayland xeyes is mapped" 20 window_present "[Xx][Ee]yes"
@@ -535,53 +572,70 @@ sleep 1
 close_windows "[Xx][Ee]yes" >/dev/null 2>&1 || true
 pass "XWayland client maps, minimizes, and restores"
 
-qt_bin=""
-for cand in kdialog qt6ct designer assistant; do
-  if command -v "$cand" >/dev/null; then
-    qt_bin=$cand
-    break
-  fi
-done
-if [[ -n $qt_bin ]]; then
-  if [[ $qt_bin == kdialog ]]; then
-    prove_toolkit "Qt kdialog" "kdialog --msgbox W0" "kdialog|KDialog"
-  else
-    prove_toolkit "Qt $qt_bin" "$qt_bin" "$qt_bin"
-  fi
+qt_qml="$ROOT/test/acceptance.d/qt-w0-window.qml"
+if command -v qml6 >/dev/null && [[ -f $qt_qml ]]; then
+  prove_toolkit "Qt qml6" "qml6 --quiet $qt_qml" "org\\.qt-project\\.qml|qml6|omarchy-w0-qt|QtQmlViewer"
 else
-  printf 'skip - Qt GUI app is not on this guest disk\n'
+  qt_bin=""
+  for cand in qt6ct designer assistant; do
+    if command -v "$cand" >/dev/null; then
+      qt_bin=$cand
+      break
+    fi
+  done
+  if [[ -n $qt_bin ]]; then
+    prove_toolkit "Qt $qt_bin" "$qt_bin" "$qt_bin"
+  else
+    fail "Qt windowing" "no resizable Qt window client (qml6/qt6ct) on this disk; a size-locked KDE message box is not the probe"
+  fi
 fi
 
 electron_bin=""
-for cand in code code-oss obsidian discord slack spotify 1password electron; do
-  if command -v "$cand" >/dev/null; then
-    electron_bin=$cand
-    break
-  fi
-done
-if [[ -n $electron_bin ]]; then
-  prove_toolkit "Electron $electron_bin" "$electron_bin" "$electron_bin"
+cursor_mapped=$(hyprctl -j clients | jq -e '.[] | select(.class | test("^[Cc]ursor$"))' >/dev/null && echo yes || echo no)
+if [[ $cursor_mapped == yes ]]; then
+  cursor_json=$(hyprctl -j clients | jq -c '.[] | select(.class | test("^[Cc]ursor$"))' | sed -n '1p')
+  cursor_float=$(jq -r '.floating' <<<"$cursor_json")
+  [[ $cursor_float == true ]] || fail "Electron Cursor" "live Cursor is not a Desktop Mode float: $cursor_json"
+  pass "Electron Cursor is a mapped Desktop Mode float ($(jq -r '.at, .size' <<<"$cursor_json"))"
 else
-  printf 'skip - Electron app is not on this guest disk\n'
+  for cand in code code-oss obsidian discord slack spotify 1password electron; do
+    if command -v "$cand" >/dev/null; then
+      electron_bin=$cand
+      break
+    fi
+  done
+  if [[ -n $electron_bin ]]; then
+    prove_toolkit "Electron $electron_bin" "$electron_bin" "$electron_bin"
+  else
+    printf 'skip - Electron app is not on this guest disk\n'
+  fi
+fi
+
+if command -v steam >/dev/null; then
+  prove_toolkit "Steam" "steam" "steam|Steam"
+else
+  printf 'skip - Steam is not on this disk; XWayland is the windowing path\n'
+fi
+if command -v wine >/dev/null || command -v wine64 >/dev/null; then
+  wine_bin=$(command -v wine64 || command -v wine)
+  prove_toolkit "Wine" "$wine_bin winecfg" "winecfg|Wine"
+else
+  printf 'skip - Wine is not on this disk; XWayland is the windowing path\n'
 fi
 
 if ! command -v zenity >/dev/null; then
-  echo omarchy | sudo -S pacman -S --noconfirm zenity >/dev/null || true
-fi
-if command -v zenity >/dev/null; then
-  close_windows "zenity|Zenity" >/dev/null 2>&1 || true
-  launch_app "zenity --question --text=W0 --ok-label=OK --cancel-label=Cancel"
-  wait_until "modal zenity is mapped" 20 window_present "zenity|Zenity"
-  zen_json=$(hyprctl -j clients | jq -c '.[] | select(.class | test("zenity|Zenity"))')
-  zen_w=$(jq -r '.size[0]' <<<"$zen_json")
-  zen_modal=$(jq -r '.modal // false' <<<"$zen_json")
-  (( zen_w < 880 )) || fail "parented dialog" "zenity was forced to the 880px app size: $zen_json"
-  screenshot "success-modal-dialog"
-  close_windows "zenity|Zenity" >/dev/null 2>&1 || true
-  pass "modal dialog keeps its own size (modal=$zen_modal width=$zen_w)"
-else
   fail "parented dialog" "zenity is not available to probe an xdg modal"
 fi
+close_windows "zenity|Zenity" >/dev/null 2>&1 || true
+launch_app "zenity --question --text=W0 --ok-label=OK --cancel-label=Cancel"
+wait_until "modal zenity is mapped" 20 window_present "zenity|Zenity"
+zen_json=$(hyprctl -j clients | jq -c '.[] | select(.class | test("zenity|Zenity"))')
+zen_w=$(jq -r '.size[0]' <<<"$zen_json")
+zen_modal=$(jq -r '.modal // false' <<<"$zen_json")
+(( zen_w < 880 )) || fail "parented dialog" "zenity was forced to the 880px app size: $zen_json"
+screenshot "success-modal-dialog"
+close_windows "zenity|Zenity" >/dev/null 2>&1 || true
+pass "modal dialog keeps its own size (modal=$zen_modal width=$zen_w)"
 
 gtk_py="$ROOT/test/acceptance.d/gtk-parented-dialog.py"
 [[ -f $gtk_py ]] || fail "parented dialog" "missing $gtk_py"
