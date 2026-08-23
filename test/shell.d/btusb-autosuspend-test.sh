@@ -88,6 +88,16 @@ run_leaf "Apple Inc." 4425 0 1 >/dev/null
 [[ ! -f $conf ]] || fail "an Apple Silicon Mac is left alone; its Bluetooth isn't on btusb either"
 pass "an Apple Silicon Mac is left alone; its Bluetooth isn't on btusb either"
 
+# A listed Wi-Fi ID with PCIe Bluetooth and no T2 bridge is the only shape where
+# the Bluetooth function's own ID and the old bridge proxy disagree.
+run_leaf "Apple Inc." 4464 0 1 >/dev/null
+[[ ! -f $conf ]] || fail "a Mac with a listed Wi-Fi part but PCIe Bluetooth is left alone"
+pass "a Mac with a listed Wi-Fi part but PCIe Bluetooth is left alone"
+
+run_leaf "Apple Inc." 4464 0 0 >/dev/null
+[[ -f $conf ]] || fail "the same Wi-Fi part with USB Bluetooth gets the quirk"
+pass "the same Wi-Fi part with USB Bluetooth gets the quirk"
+
 run_leaf "Apple Inc." 43ba 0 >/dev/null
 grep -qx 'options btusb enable_autosuspend=n' "$conf" 2>/dev/null ||
   fail "a brcmfmac Mac without a T2 gets the quirk" "$(ls -R "$test_tmp/etc" 2>&1)"
@@ -146,6 +156,12 @@ run_migration "Apple Inc." 4425 0 1
 [[ ! -e $conf ]] || fail "the migration skips an Apple Silicon Mac" "$(cat "$conf")"
 [[ ! -s $calls ]] || fail "the migration escalates nothing on an Apple Silicon Mac" "$(cat "$calls")"
 pass "the migration skips an Apple Silicon Mac; its Bluetooth isn't on btusb either"
+
+rm -rf "$test_tmp/etc"
+run_migration "Apple Inc." 4464 0 1
+[[ ! -e $conf ]] || fail "the migration skips a listed Wi-Fi part with PCIe Bluetooth" "$(cat "$conf")"
+[[ ! -s $calls ]] || fail "the migration escalates nothing there" "$(cat "$calls")"
+pass "the migration skips a Mac with a listed Wi-Fi part but PCIe Bluetooth"
 
 rm -rf "$test_tmp/etc"
 run_migration "LENOVO" 43ba 0
