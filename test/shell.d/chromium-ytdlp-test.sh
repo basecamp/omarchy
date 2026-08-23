@@ -129,12 +129,13 @@ done
 printf '%s' "$filepath"
 EOF
 
+# A title that ends in a newline closes its own record, so the forged record is the
+# last one and the real path lands on a line the loop ignores.
 poisoned=$(
   printf '%s\n' \
-    $'OMARCHY_FILE\tsafe' \
-    $'OMARCHY_FILE\tCLICK THIS\t--include=not-a-file' \
-    $'ignored\t'"$good_file" \
-    $'OMARCHY_FILE\t'"$good_file" |
+    $'OMARCHY_FILE\t'"$good_file" \
+    $'OMARCHY_FILE\tPlay me\t--include=not-a-file' \
+    $'\t'"$good_file" |
     OMARCHY_PATH="$ROOT" OMARCHY_YTDLP_DIR="$download_dir" bash "$parse_script" "$ROOT/bin/omarchy-chromium-ytdlp-host"
 )
 
