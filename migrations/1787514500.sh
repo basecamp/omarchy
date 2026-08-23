@@ -1,0 +1,24 @@
+echo "Align Qt with packaged quickshell 0.3.1 so the shell can load"
+
+# 1787399318 switches quickshell-git to extra/quickshell 0.3.1. That
+# package was built against Qt 6.11.2's public Qt_6 ABI for
+# QUntypedPropertyBinding(QPropertyBindingPrivate*). qt6-base 6.11.1 only
+# exports that constructor as Qt_6_PRIVATE_API. A migrate-only run (no
+# pacman -Syu) then leaves Hyprland up with no layers: black desktop,
+# mouse only.
+#
+# Do not undo 1787399318. Do not reinstall quickshell-git.
+
+if ! command -v nm >/dev/null || [[ ! -e /usr/lib/libQt6Core.so.6 ]]; then
+  exit 0
+fi
+
+if ! pacman -Q quickshell >/dev/null 2>&1; then
+  exit 0
+fi
+
+if nm -D /usr/lib/libQt6Core.so.6 | grep -q 'QUntypedPropertyBindingC1EP23QPropertyBindingPrivate@@Qt_6$'; then
+  exit 0
+fi
+
+sudo pacman -S --noconfirm --needed qt6-base qt6-declarative qt6-svg qt6-5compat
