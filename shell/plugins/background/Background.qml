@@ -14,7 +14,6 @@ Item {
   readonly property string stateHome: home + "/.local/state"
   readonly property string currentBackgroundLink: stateHome + "/omarchy/current/background"
   readonly property real lowMemoryLimitKiB: 4 * 1024 * 1024
-  readonly property real lowMemoryDownscaleFactor: 1
 
   property string currentBackground: ""
   property string displayedBackground: ""
@@ -36,13 +35,6 @@ Item {
 
   function imageUrl(path) {
     return Util.fileUrl(path)
-  }
-
-  function lowMemorySourceSize(width, height, devicePixelRatio) {
-    return Qt.size(
-      Math.max(1, Math.ceil(width * devicePixelRatio / lowMemoryDownscaleFactor)),
-      Math.max(1, Math.ceil(height * devicePixelRatio / lowMemoryDownscaleFactor))
-    )
   }
 
   function refreshMemory() {
@@ -279,7 +271,7 @@ Item {
         // Qt never upscales a source smaller than sourceSize. Under memory
         // pressure this bounds large wallpapers to the physical display size.
         sourceSize: root.lowMemory
-          ? root.lowMemorySourceSize(width, height, Screen.devicePixelRatio)
+          ? Qt.size(Math.ceil(width * Screen.devicePixelRatio), Math.ceil(height * Screen.devicePixelRatio))
           : undefined
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
@@ -298,7 +290,7 @@ Item {
         anchors.fill: parent
         source: root.imageUrl(root.oldBackground)
         sourceSize: root.lowMemory
-          ? root.lowMemorySourceSize(width, height, Screen.devicePixelRatio)
+          ? Qt.size(Math.ceil(width * Screen.devicePixelRatio), Math.ceil(height * Screen.devicePixelRatio))
           : undefined
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
@@ -327,7 +319,7 @@ Item {
           anchors.fill: parent
           source: root.imageUrl(root.incomingBackground)
           sourceSize: root.lowMemory
-            ? root.lowMemorySourceSize(width, height, Screen.devicePixelRatio)
+            ? Qt.size(Math.ceil(width * Screen.devicePixelRatio), Math.ceil(height * Screen.devicePixelRatio))
             : undefined
           fillMode: Image.PreserveAspectCrop
           asynchronous: true

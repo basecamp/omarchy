@@ -21,7 +21,6 @@ assert(
 
 assert(
   backgroundQml.includes('lowMemoryLimitKiB: 4 * 1024 * 1024') &&
-    backgroundQml.includes('lowMemoryDownscaleFactor: 1') &&
     backgroundQml.includes('path: "/proc/meminfo"') &&
     backgroundQml.includes('MemAvailable:') &&
     backgroundQml.includes('availableMemoryKiB < lowMemoryLimitKiB'),
@@ -30,7 +29,7 @@ assert(
 
 assert(
   (backgroundQml.match(/sourceSize: root\.lowMemory/g) || []).length === 3 &&
-    backgroundQml.includes('root.lowMemorySourceSize(width, height, Screen.devicePixelRatio)') &&
+    backgroundQml.includes('Qt.size(Math.ceil(width * Screen.devicePixelRatio), Math.ceil(height * Screen.devicePixelRatio))') &&
     backgroundQml.includes(': undefined'),
   'background bounds all wallpaper frames only while memory is low'
 )
