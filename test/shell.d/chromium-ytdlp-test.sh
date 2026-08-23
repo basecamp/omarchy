@@ -120,26 +120,20 @@ forged_title=$(host_fn decode_title '"Clip\nOMARCHY_FILE\tPlay me\t--include=not
 pass "yt-dlp native host keeps only the readable part of a forged title"
 
 host_fn decode_title '"--include=not-a-file"' &&
-  fail "yt-dlp native host refuses a title notify-send would read as an option"
-pass "yt-dlp native host refuses a title notify-send would read as an option"
+  fail "yt-dlp native host refuses a leading-dash title the notifier would reject as an option"
+pass "yt-dlp native host refuses a leading-dash title the notifier would reject as an option"
 
 host_fn decode_title 'null' &&
   fail "yt-dlp native host refuses a title that is not a JSON string"
 pass "yt-dlp native host refuses a title that is not a JSON string"
 
 dash_title=$(host_fn title_from_file "$download_dir/--include.mp4")
-[[ $dash_title == "Video" ]] || fail "yt-dlp native host does not pass a leading-dash title to notify-send" "$dash_title"
-pass "yt-dlp native host does not pass a leading-dash title to notify-send"
+[[ $dash_title == "Video" ]] || fail "yt-dlp native host does not pass a leading-dash title to the notifier" "$dash_title"
+pass "yt-dlp native host does not pass a leading-dash title to the notifier"
 
-cmd=$(host_fn playback_command --include=not-a-file)
-[[ $cmd == "mpv -- --include=not-a-file" ]] ||
-  fail "yt-dlp native host runs mpv with -- before the path" "$cmd"
-pass "yt-dlp native host runs mpv with -- before the path"
-
-spaced_cmd=$(host_fn playback_command "$download_dir/a b.mp4")
-[[ $spaced_cmd == "mpv -- $download_dir/a\\ b.mp4" ]] ||
-  fail "yt-dlp native host shell-quotes the mpv path" "$spaced_cmd"
-pass "yt-dlp native host shell-quotes the mpv path"
+# The click action passes the path as a discrete --exec argument (asserted
+# end-to-end below against the real download); `--` keeps mpv from parsing a
+# leading-dash filename as an option.
 
 parse_script="$TMPDIR/parse-ytdlp-lines.sh"
 cat >"$parse_script" <<'EOF'
