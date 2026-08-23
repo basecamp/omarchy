@@ -222,6 +222,14 @@ grep -qF -- $'OMARCHY_TITLE\t%(title)j' "$ytdlp_argv" ||
   fail "yt-dlp native host asks for the title JSON-encoded" "$(cat "$ytdlp_argv")"
 pass "yt-dlp native host asks for the title JSON-encoded"
 
+grep -qF -- "-o %(title)s.%(ext)s" "$ytdlp_argv" ||
+  fail "yt-dlp native host names the saved file after the page title" "$(cat "$ytdlp_argv")"
+pass "yt-dlp native host names the saved file after the page title"
+
+grep -q -- '--restrict-filenames' "$ytdlp_argv" &&
+  fail "yt-dlp native host keeps spaces in the saved filename" "$(cat "$ytdlp_argv")"
+pass "yt-dlp native host keeps spaces in the saved filename"
+
 grep -qF -- $'OMARCHY_FILE\t%(title)s' "$ytdlp_argv" &&
   fail "yt-dlp native host never prints the title into the file record" "$(cat "$ytdlp_argv")"
 pass "yt-dlp native host never prints the title into the file record"

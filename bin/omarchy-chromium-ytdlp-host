@@ -100,7 +100,9 @@ download_url() {
 
   # Stream the download: OMARCHY_PROG carries the percent (drives the OSD), and
   # OMARCHY_FILE and OMARCHY_TITLE (printed only after a successful move) carry the
-  # path and the title. The title is JSON-encoded so metadata cannot forge a record.
+  # path and the title. The title is JSON-encoded so metadata cannot forge a record,
+  # and the file is named after it: yt-dlp strips control characters from a filename
+  # with or without --restrict-filenames, so a record is still only ever one line.
   local line pct intpct last="" er nowms lastms=0 title="" filepath="" resolved
   while IFS= read -r line; do
     case $line in
@@ -125,10 +127,10 @@ download_url() {
       title=$(decode_title "${line#OMARCHY_TITLE$'\t'}") || title=""
       ;;
     esac
-  done < <(PYTHONUNBUFFERED=1 yt-dlp --no-playlist --restrict-filenames --no-simulate \
+  done < <(PYTHONUNBUFFERED=1 yt-dlp --no-playlist --no-simulate \
     --quiet --no-warnings --no-exec --no-exec-before-download --progress --newline \
     --progress-template $'download:OMARCHY_PROG\t%(progress._percent_str)s' \
-    --paths "$DOWNLOAD_DIR" -o '%(title)s [%(id)s].%(ext)s' \
+    --paths "$DOWNLOAD_DIR" -o '%(title)s.%(ext)s' \
     --print $'after_move:OMARCHY_FILE\t%(filepath)s' \
     --print $'after_move:OMARCHY_TITLE\t%(title)j' \
     -- "$url" 2>&1)
