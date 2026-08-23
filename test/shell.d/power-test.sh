@@ -23,7 +23,11 @@ assertDeepEqual(
 assert(power.profileIcon('performance').length > 0, 'power maps profile icons')
 assertEqual(power.batteryFraction({ isPresent: true, percentage: 1.5 }), 1, 'power clamps battery fraction')
 
-assert(power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: states.PendingCharge }, false, states), 'power detects threshold by pending charge state')
+const inBand = { start: '75', end: '80' }
+
+assert(power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: states.PendingCharge }, false, states, inBand), 'power detects threshold by pending charge state inside the limit band')
+assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.1, state: states.PendingCharge }, false, states, { start: '', end: '100' }), 'power ignores pending charge outside a real limit band')
+assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: states.PendingCharge }, false, states), 'power requires reported limits before treating pending charge as a hold')
 assert(power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: states.Charging, changeRate: 0.1, timeToFull: 120 }, false, states), 'power detects threshold by stalled charging')
 assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: states.Charging, changeRate: 1.0, timeToFull: 120 }, false, states), 'power does not flag active charging as threshold')
 assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.5, state: states.Discharging }, false, states), 'power does not flag discharging as threshold')
