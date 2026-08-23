@@ -36,7 +36,7 @@ SPACE + r + q                    → Interrupt REPL (Ctrl+C)
 SPACE + r + x                    → Exit / Close REPL
 SPACE + r + c + c                → Clear REPL Screen
 SPACE + r + c + l                → Clear Mark Highlights
-ESC (TERMINAL MODE)              → Exit Terminal Mode to Normal Mode
+ESC (REPL TERMINAL)              → Exit Terminal Mode to Normal Mode
 BINDINGS
 }
 

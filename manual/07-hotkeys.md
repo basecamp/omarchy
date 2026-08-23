@@ -348,7 +348,7 @@ Ghostty terminal is installed using _Install > Terminal_ via the Omarchy menu.
 | `Space R Q`              | Interrupt REPL (`Ctrl + C`)     |
 | `Space R X`              | Exit / close REPL               |
 | `Space R C C`            | Clear REPL screen               |
-| `Escape` (Terminal mode) | Exit terminal mode to normal    |
+| `Escape` (REPL terminal) | Exit terminal mode to normal    |
 
 [See all the Neovim hotkeys configured by LazyVim](https://www.lazyvim.org/keymaps).
 
