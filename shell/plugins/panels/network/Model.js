@@ -347,11 +347,15 @@ var enterpriseConnectScript =
 // the passphrase in argv (world-readable via /proc), so it must not be used.
 // Deletes any same-named profile left behind by a prior join first, so
 // repeat connects to the same hidden SSID don't pile up duplicate profiles.
+// Key-mgmt comes from $2 ("wpa-psk" or "sae") -- always a literal we pass,
+// never user text. WPA3/SAE mandates Protected Management Frames, so $pmf
+// is set to "wifi-sec.pmf 3" for that case only; it's a fixed internal
+// string too, so the intentional word-split into the nmcli argv is safe.
 var hiddenPskConnectScript =
   "nmcli connection delete id \"$1\" >/dev/null 2>&1;" +
-  " u=$(uuidgen); IFS= read -r pw;" +
+  " u=$(uuidgen); IFS= read -r pw; pmf=\"\"; [ \"$2\" = \"sae\" ] && pmf=\"wifi-sec.pmf 3\";" +
   " nmcli connection add type wifi con-name \"$1\" ssid \"$1\" connection.uuid \"$u\"" +
-  " 802-11-wireless.hidden yes wifi-sec.key-mgmt wpa-psk >/dev/null" +
+  " 802-11-wireless.hidden yes wifi-sec.key-mgmt \"$2\" $pmf >/dev/null" +
   " && printf 'set wifi-sec.psk %s\\nsave\\nquit\\n' \"$pw\" | nmcli connection edit uuid \"$u\" >/dev/null" +
   " && nmcli connection up uuid \"$u\"" +
   " || { nmcli connection delete uuid \"$u\" >/dev/null 2>&1; false; }"

@@ -39,7 +39,7 @@ Panel {
     if (hiddenBusy) return
     hiddenFormOpen = false
     hiddenSsidText = ""
-    hiddenSecurity = "personal"
+    hiddenSecurity = "wpa-psk"
     // Done with this attempt (if any) -- past this point the shared
     // actionSsid/failureSsid state no longer belongs to the hidden form.
     hiddenConnecting = false
@@ -142,7 +142,7 @@ Panel {
   // panel-wide busy gate covers this action too.
   property bool hiddenFormOpen: false
   property string hiddenSsidText: ""
-  property string hiddenSecurity: "personal"  // "personal" | "none"
+  property string hiddenSecurity: "wpa-psk"  // "wpa-psk" | "sae" | "none"
   property string hiddenPasswordText: ""
   // Marks this attempt as the hidden form's own, so a scanned row sharing
   // the typed SSID doesn't read as this attempt (or vice versa).
@@ -947,8 +947,10 @@ Panel {
         // of its own flags (e.g. "--ask") as that flag instead of the SSID.
         hiddenConnect.command = ["nmcli", "device", "wifi", "connect", "--", ssid, "hidden", "yes"]
       } else {
+        // security is "wpa-psk" or "sae" -- the literal nmcli key-mgmt value,
+        // never user text -- passed through as $2 for the script to set.
         hiddenConnect.secret = passphrase
-        hiddenConnect.command = ["bash", "-c", Model.hiddenPskConnectScript, "nmcli-hidden-psk", ssid]
+        hiddenConnect.command = ["bash", "-c", Model.hiddenPskConnectScript, "nmcli-hidden-psk", ssid, security]
       }
       hiddenConnect.running = true
     })
@@ -1901,8 +1903,9 @@ Panel {
             fontFamily: root.bar.fontFamily
             foreground: root.bar.foreground
             options: [
-              { value: "personal", label: "WPA/WPA2/WPA3 Personal" },
-              { value: "none",     label: "None" }
+              { value: "wpa-psk", label: "WPA/WPA2 Personal" },
+              { value: "sae",     label: "WPA3 Personal" },
+              { value: "none",    label: "None" }
             ]
             value: root.hiddenSecurity
             hasCursor: root.cursorActive && root.focusSection === "hiddenSecurity"

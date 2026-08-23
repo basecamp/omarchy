@@ -304,6 +304,13 @@ assert(/IFS= read -r pw/.test(network.hiddenPskConnectScript), 'hidden PSK conne
 assert(/set wifi-sec\.psk %s/.test(network.hiddenPskConnectScript), 'hidden PSK connect script sets the psk through the connection editor')
 assert(!/password "\$pw"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script never passes the passphrase in argv')
 
+// One script serves both WPA/WPA2 Personal and WPA3 Personal: key-mgmt comes
+// from the caller-supplied $2 ("wpa-psk" or "sae"), and WPA3 additionally
+// requires Protected Management Frames, set only in the sae case.
+assert(/wifi-sec\.key-mgmt "\$2"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script sets key-mgmt from the $2 arg, not a hardcoded value')
+assert(!/wifi-sec\.key-mgmt wpa-psk/.test(network.hiddenPskConnectScript), 'hidden PSK connect script no longer hardcodes wpa-psk as the key-mgmt')
+assert(/\[ "\$2" = "sae" \] && pmf="wifi-sec\.pmf 3"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script sets PMF required only for the sae (WPA3) case')
+
 // A repeat join to the same hidden SSID must not pile up duplicate
 // NetworkManager profiles, so any same-named profile is deleted first.
 assert(/connection delete id "\$1"[\s\S]*nmcli connection add/.test(network.hiddenPskConnectScript), 'hidden PSK connect script deletes an existing same-named profile before adding a new one')
