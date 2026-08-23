@@ -12,3 +12,4 @@ omarchy-mise-install npm:@xai-official/grok grok
 omarchy-mise-install npm:@kitlangton/ghui ghui
 omarchy-mise-install aqua:modem-dev/hunk hunk
 omarchy-mise-install github:basecamp/hey-cli hey
+omarchy-mise-install github:OpenRouterLabs/ori-releases ori
