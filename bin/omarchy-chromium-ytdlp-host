@@ -47,7 +47,8 @@ resolve_download_file() {
   IFS= read -r -d '' dir_real < <(realpath -ze -- "$DOWNLOAD_DIR") || return 1
 
   [[ $file_real != *$'\n'* && $file_real != *$'\r'* && $file_real != *$'\t'* ]] || return 1
-  [[ $file_real == "$dir_real"/* ]] || return 1
+  # Trim the slash so a download directory of "/" still leaves a usable prefix.
+  [[ $file_real == "${dir_real%/}"/* ]] || return 1
 
   printf '%s' "$file_real"
 }

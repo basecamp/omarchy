@@ -107,6 +107,12 @@ host_fn resolve_download_file "$download_dir/newline-link.mp4" &&
   fail "yt-dlp native host rejects a symlink whose target name ends in a newline"
 pass "yt-dlp native host rejects a symlink whose target name ends in a newline"
 
+ln -s / "$TMPDIR/root-link"
+root_resolved=$(download_dir="$TMPDIR/root-link" host_fn resolve_download_file /etc/passwd)
+[[ $root_resolved == "/etc/passwd" ]] ||
+  fail "yt-dlp native host accepts a file when the download dir resolves to /" "$root_resolved"
+pass "yt-dlp native host accepts a file when the download dir resolves to /"
+
 title=$(host_fn title_from_file "$good_file")
 [[ $title == "clip [id]" ]] || fail "yt-dlp native host titles the toast from the filename" "$title"
 pass "yt-dlp native host titles the toast from the filename"
