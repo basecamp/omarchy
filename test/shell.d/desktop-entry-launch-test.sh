@@ -117,8 +117,8 @@ pass "install-app shell-quotes the display name"
 
 bash "$ROOT/bin/omarchy-install-app" "Example App" "alpha beta"
 presentation_command=$(<"$OMARCHY_TEST_PRESENTATION")
-[[ $presentation_command == *'omarchy-pkg-add alpha beta'* ]] ||
-  fail "install-app keeps space-separated packages as separate words" "$presentation_command"
+[[ $presentation_command == 'echo Installing\ Example\ App...; omarchy-pkg-add alpha beta' ]] ||
+  fail "install-app builds the presentation command with no stray argument" "$presentation_command"
 : >"$OMARCHY_TEST_LOG"
 run_presentation
 grep -Fxq 'pkg:alpha beta' "$OMARCHY_TEST_LOG" ||
@@ -178,3 +178,42 @@ fi
 grep -Fxq 'pkg:alpha' "$OMARCHY_TEST_LOG" ||
   fail "install-font still installs after quoting a hostile display name"
 pass "install-font does not run extra commands from a quote in the name or family"
+
+bash "$ROOT/bin/omarchy-install-app" "Example App" "alpha; echo PWNED"
+: >"$OMARCHY_TEST_LOG"
+run_presentation >"$test_tmp/app-pkg-inject.out"
+if grep -Fxq 'PWNED' "$test_tmp/app-pkg-inject.out"; then
+  fail "install-app does not run extra commands from a package list" "$(<"$test_tmp/app-pkg-inject.out")"
+fi
+grep -Fxq 'pkg:alpha; echo PWNED' "$OMARCHY_TEST_LOG" ||
+  fail "install-app hands a hostile package list to the package helper as arguments" "$(<"$OMARCHY_TEST_LOG")"
+pass "install-app does not run extra commands from a package list"
+
+bash "$ROOT/bin/omarchy-install-app" "Example App" "$(printf 'alpha\nbeta')"
+: >"$OMARCHY_TEST_LOG"
+run_presentation
+grep -Fxq 'pkg:alpha beta' "$OMARCHY_TEST_LOG" ||
+  fail "install-app keeps every package when the list is newline-separated" "$(<"$OMARCHY_TEST_LOG")"
+pass "install-app keeps every package when the list is newline-separated"
+
+bash "$ROOT/bin/omarchy-install-font" "Example Font" "alpha; echo PWNED" "Example Family"
+: >"$OMARCHY_TEST_LOG"
+run_presentation >"$test_tmp/font-pkg-inject.out"
+if grep -Fxq 'PWNED' "$test_tmp/font-pkg-inject.out"; then
+  fail "install-font does not run extra commands from its package" "$(<"$test_tmp/font-pkg-inject.out")"
+fi
+grep -Fxq 'pkg:alpha; echo PWNED' "$OMARCHY_TEST_LOG" ||
+  fail "install-font hands a hostile package to the package helper as one argument" "$(<"$OMARCHY_TEST_LOG")"
+grep -Fxq 'font:Example Family' "$OMARCHY_TEST_LOG" ||
+  fail "install-font still sets the family after a hostile package" "$(<"$OMARCHY_TEST_LOG")"
+pass "install-font does not run extra commands from its package"
+
+bash "$ROOT/bin/omarchy-install-and-launch" "Example App" "alpha; echo PWNED" "Disk Usage"
+: >"$OMARCHY_TEST_LOG"
+run_presentation >"$test_tmp/launch-pkg-inject.out"
+if grep -Fxq 'PWNED' "$test_tmp/launch-pkg-inject.out"; then
+  fail "install-and-launch does not run extra commands from a package list" "$(<"$test_tmp/launch-pkg-inject.out")"
+fi
+grep -Fxq 'pkg:alpha; echo PWNED' "$OMARCHY_TEST_LOG" ||
+  fail "install-and-launch hands a hostile package list to the package helper as arguments" "$(<"$OMARCHY_TEST_LOG")"
+pass "install-and-launch does not run extra commands from a package list"
