@@ -9,6 +9,7 @@ Item {
   property string backgroundPath: ""
   property int backgroundVersion: 0
   property bool fingerprintConfigured: false
+  property bool fingerprintUnavailable: false
   property bool authenticatingPassword: false
   property string failureMessage: ""
   property int failedAttempts: 0
@@ -200,20 +201,41 @@ Item {
       // Fingerprint hint pinned inside the field's right edge when a sensor is
       // enrolled, so the user knows they can touch to unlock instead of typing.
       // Matches hyprlock, which draws its fingerprint icon in the same spot.
+      // A reader the shell cannot reach crosses out rather than disappears, so
+      // it stops inviting touches that can never unlock.
       Text {
         id: fingerprintIcon
         objectName: "fingerprintIndicator"
+        textFormat: Text.PlainText
         anchors.right: parent.right
         anchors.rightMargin: inputField.borderRight + 18
         anchors.verticalCenter: parent.verticalCenter
         visible: root.fingerprintConfigured
-        text: "󰈷"
-        color: Color.lock.placeholder
+        text: root.fingerprintUnavailable ? "󰺱" : "󰈷"
+        color: root.fingerprintUnavailable ? Color.lock.textError : Color.lock.placeholder
         font.family: Style.font.family
         font.pixelSize: Math.round(root.fieldFontSize * 1.1)
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
       }
+    }
+
+    // The crossed-out icon has no meaning to a user who has never seen it — it
+    // is not intuitive that it signals a broken reader — so the words carry the
+    // explanation and the icon only reinforces it.
+    Text {
+      objectName: "fingerprintUnavailableNotice"
+      textFormat: Text.PlainText
+      anchors.top: inputField.bottom
+      anchors.topMargin: 18
+      anchors.horizontalCenter: inputField.horizontalCenter
+      visible: root.fingerprintConfigured && root.fingerprintUnavailable
+      text: "Fingerprint reader unavailable"
+      color: Color.lock.textError
+      font.family: Style.font.family
+      font.pixelSize: Style.font.heading
+      font.italic: true
+      horizontalAlignment: Text.AlignHCenter
     }
   }
 }

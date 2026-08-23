@@ -4,6 +4,7 @@ import Quickshell.Io
 import Quickshell.Services.Pam
 import Quickshell.Wayland
 import qs.Commons
+import "FingerprintModel.js" as FingerprintModel
 
 Item {
   id: root
@@ -22,6 +23,10 @@ Item {
   property bool fingerprintAuthenticating: false
   property bool passwordPamConfigured: false
   property bool fingerprintConfigured: false
+  property int fingerprintUnreachedStreak: 0
+  property bool fingerprintAttemptReachedDevice: false
+  property bool fingerprintAttemptSettled: false
+  property double fingerprintLastNudgeMs: 0
   property bool previewVisible: false
   property string enteredPassword: ""
   property string pendingPassword: ""
@@ -36,6 +41,13 @@ Item {
 
   readonly property bool locked: lockRequested || sessionLock.locked || sessionLock.secure
   readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating
+  // The reader is unavailable once enough consecutive attempts fail to even
+  // reach it (see FingerprintModel). Distinct from a finger that simply did not
+  // match, which reaches the device and clears the streak. The in-flight reach
+  // clears the notice the moment a prompt arrives, a settle ahead of the streak
+  // reset -- so a recovered reader stops saying "unavailable" at once instead of
+  // waiting out the current attempt.
+  readonly property bool fingerprintUnavailable: fingerprintConfigured && !fingerprintAttemptReachedDevice && FingerprintModel.isUnavailable(fingerprintUnreachedStreak)
 
   function realScreenCount() {
     var screens = Quickshell.screens || []
@@ -120,7 +132,10 @@ Item {
     failedAttempts = 0
     authenticatingPassword = false
     fingerprintAuthenticating = false
+    fingerprintUnreachedStreak = 0
+    fingerprintLastNudgeMs = 0
     fingerprintRetryTimer.stop()
+    fingerprintReachTimer.stop()
     if (passwordPam.active) passwordPam.abort()
     if (fingerprintPam.active) fingerprintPam.abort()
   }
@@ -167,6 +182,23 @@ Item {
   function runWake() {
     if (!wakeProcess.running) wakeProcess.running = true
     if (lockRequested) armBlankTimer()
+    nudgeFingerprint()
+  }
+
+  // A keypress, touch, or cursor move is the user saying the reader is worth
+  // trying now, so collapse a backed-off wait to a prompt retry rather than
+  // ride out the cap. Rate-limited (see shouldNudge): a moving cursor raises a
+  // wake per motion event, and without the floor each fresh backoff wait would
+  // be re-collapsed straight back into the storm the backoff exists to prevent.
+  function nudgeFingerprint() {
+    if (!lockRequested || !fingerprintConfigured) return
+    if (fingerprintPam.active || fingerprintAuthenticating) return
+    if (!fingerprintRetryTimer.running) return
+    var now = Date.now()
+    if (!FingerprintModel.shouldNudge(now, fingerprintLastNudgeMs, fingerprintRetryTimer.interval)) return
+    fingerprintLastNudgeMs = now
+    fingerprintRetryTimer.interval = FingerprintModel.MATCH_RETRY_MS
+    fingerprintRetryTimer.restart()
   }
 
   function runBlank() {
@@ -211,20 +243,61 @@ Item {
     if (fingerprintPam.active || fingerprintAuthenticating) return
 
     fingerprintAuthenticating = true
+    fingerprintAttemptReachedDevice = false
+    fingerprintAttemptSettled = false
     if (!fingerprintPam.start()) {
       fingerprintAuthenticating = false
+      settleFingerprintAttempt()
+      return
     }
+    // Bound the wait for the first prompt: a claim that never lands (a daemon
+    // restarted under the verify, e.g. by the resume hook) otherwise hangs
+    // here without ever erroring, and nothing downstream re-arms.
+    fingerprintReachTimer.restart()
+  }
+
+  // A verify prompt is the only PAM message pam_fprintd relays, and only once
+  // the claim has landed, so any non-error message means this attempt reached
+  // the reader — the device works, whatever the verify then does. It may now
+  // wait for a finger as long as pam_fprintd allows, so the reach bound stops.
+  function noteFingerprintReachedDevice() {
+    fingerprintAttemptReachedDevice = true
+    fingerprintReachTimer.stop()
+  }
+
+  // An attempt that never reached the reader within the bound is stuck rather
+  // than waiting for a finger — abort it so it settles as unreached, which
+  // advances the streak (and so the notice) and retries against a daemon that
+  // may now be fresh, instead of hanging silently behind a normal icon.
+  function timeoutFingerprintReach() {
+    if (fingerprintAttemptReachedDevice || fingerprintAttemptSettled) return
+    if (fingerprintPam.active) fingerprintPam.abort()
+    settleFingerprintAttempt()
+  }
+
+  // One PAM attempt can raise both onError and onCompleted, so fold each
+  // attempt into the streak exactly once. Reached attempts clear the streak;
+  // unreached ones advance it and stretch the next retry.
+  function settleFingerprintAttempt() {
+    if (fingerprintAttemptSettled) return
+    fingerprintAttemptSettled = true
+    fingerprintAuthenticating = false
+    fingerprintReachTimer.stop()
+    if (!lockRequested || !fingerprintConfigured) return
+
+    fingerprintUnreachedStreak = FingerprintModel.nextStreak(fingerprintUnreachedStreak, fingerprintAttemptReachedDevice)
+    fingerprintRetryTimer.interval = FingerprintModel.retryDelayMs(fingerprintUnreachedStreak)
+    fingerprintRetryTimer.restart()
   }
 
   function handleFingerprintFinished(result) {
-    fingerprintAuthenticating = false
-
-    if (!lockRequested) return
     if (result === PamResult.Success) {
-      finishUnlock()
-    } else if (fingerprintConfigured) {
-      fingerprintRetryTimer.restart()
+      fingerprintAuthenticating = false
+      if (lockRequested) finishUnlock()
+      return
     }
+
+    settleFingerprintAttempt()
   }
 
   WlSessionLock {
@@ -271,6 +344,7 @@ Item {
         backgroundPath: root.backgroundPath
         backgroundVersion: root.backgroundVersion
         fingerprintConfigured: root.fingerprintConfigured
+        fingerprintUnavailable: root.fingerprintUnavailable
         authenticatingPassword: root.authenticatingPassword
         failureMessage: root.failureMessage
         failedAttempts: root.failedAttempts
@@ -301,6 +375,7 @@ Item {
       backgroundPath: root.backgroundPath
       backgroundVersion: root.backgroundVersion
       fingerprintConfigured: root.fingerprintConfigured
+      fingerprintUnavailable: root.fingerprintUnavailable
       authenticatingPassword: false
       failureMessage: ""
       failedAttempts: 0
@@ -343,21 +418,31 @@ Item {
     config: "omarchy-lock-fingerprint"
     user: root.userName
 
+    onPamMessage: {
+      if (!messageIsError) root.noteFingerprintReachedDevice()
+    }
+
     onCompleted: function(result) {
       root.handleFingerprintFinished(result)
     }
 
     onError: function(error) {
-      root.fingerprintAuthenticating = false
-      if (root.lockRequested && root.fingerprintConfigured) fingerprintRetryTimer.restart()
+      root.settleFingerprintAttempt()
     }
   }
 
   Timer {
     id: fingerprintRetryTimer
-    interval: 250
+    interval: FingerprintModel.MATCH_RETRY_MS
     repeat: false
     onTriggered: root.startFingerprint()
+  }
+
+  Timer {
+    id: fingerprintReachTimer
+    interval: FingerprintModel.REACH_TIMEOUT_MS
+    repeat: false
+    onTriggered: root.timeoutFingerprintReach()
   }
 
   Process {
@@ -530,6 +615,7 @@ Item {
         realScreens: root.realScreenCount(),
         passwordPam: root.passwordPamConfigured,
         fingerprint: root.fingerprintConfigured,
+        fingerprintUnavailable: root.fingerprintUnavailable,
         authenticating: root.authenticating,
         lastEvent: root.lastEvent,
         lastEventAt: root.lastEventAt

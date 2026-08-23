@@ -84,6 +84,27 @@ ShellRoot {
 
           view.fingerprintConfigured = false
           root.assertTrue(view.fingerprintReserve === 0, "no space is reserved when no sensor is configured")
+
+          // An unreachable reader must announce itself instead of silently
+          // inviting touches that can never unlock.
+          view.fingerprintConfigured = true
+          var notice = findByObjectName(view, "fingerprintUnavailableNotice")
+          root.assertTrue(notice !== null, "unavailable notice exists in the lock view")
+
+          if (notice) {
+            var workingGlyph = indicator.text
+            root.assertTrue(!notice.visible, "notice stays hidden while the reader works")
+
+            view.fingerprintUnavailable = true
+            root.assertTrue(notice.visible, "notice appears when the reader is unavailable")
+            root.assertTrue(indicator.visible, "icon stays visible when the reader is unavailable")
+            root.assertTrue(indicator.text !== workingGlyph, "icon crosses out when the reader is unavailable")
+            root.assertTrue(view.fingerprintReserve > 0, "space stays reserved for the crossed-out icon")
+
+            view.fingerprintUnavailable = false
+            root.assertTrue(!notice.visible, "notice clears when the reader recovers")
+            root.assertTrue(indicator.text === workingGlyph, "icon restores when the reader recovers")
+          }
         }
 
         view.destroy()
