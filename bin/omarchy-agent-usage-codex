@@ -549,8 +549,12 @@ def fetch_codex_rpc():
 
     account = (account_msg.get("result") or {}).get("account") or {}
     limits_result = limits_msg.get("result") or {}
-    limits = ((limits_result.get("rateLimitsByLimitId") or {}).get("codex")
-              or limits_result.get("rateLimits") or {})
+    # A codex bucket can arrive with every window null while rateLimits still
+    # mirrors the account's real numbers, so choose on content, not presence.
+    codex_limits = (limits_result.get("rateLimitsByLimitId") or {}).get("codex") or {}
+    limits = limits_result.get("rateLimits") or {}
+    if codex_limits.get("primary") or codex_limits.get("secondary"):
+      limits = codex_limits
     plan = limits.get("planType") or account.get("planType") or account.get("type") or ""
     result["tierLabel"] = str(plan) if plan else ""
 

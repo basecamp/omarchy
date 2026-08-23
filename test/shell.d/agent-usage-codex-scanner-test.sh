@@ -40,6 +40,22 @@ while read -r request; do
         continue
       fi
 
+      if [[ -n $CODEX_TEST_NULL_CODEX_BUCKET ]]; then
+        jq -cn --argjson id "$id" '{
+          id: $id,
+          result: {
+            rateLimits: {
+              planType: "legacy",
+              primary: {usedPercent: 90, windowDurationMins: 300}
+            },
+            rateLimitsByLimitId: {
+              codex: {limitId: "codex", planType: null, primary: null, secondary: null}
+            }
+          }
+        }'
+        continue
+      fi
+
       jq -cn --argjson id "$id" '{
         id: $id,
         result: {
@@ -91,6 +107,16 @@ legacy_result=$(HOME="$TEST_HOME" CODEX_HOME="$TEST_HOME/.codex" XDG_DATA_HOME="
 [[ $(jq -c '{tierLabel, limits}' <<<"$legacy_result") == '{"tierLabel":"legacy","limits":[{"label":"5h window","percent":0.9,"resetsAt":""}]}' ]] ||
   fail "Codex collector reads the legacy single-bucket rate-limit response" "$legacy_result"
 pass "Codex collector supports legacy single-bucket rate limits"
+
+# A keyed bucket carrying no window is present but useless: preferring it on
+# presence alone would hide limits the legacy view still reports, and the panel
+# renders that as no limits section at all rather than as an error.
+null_bucket_result=$(HOME="$TEST_HOME" CODEX_HOME="$TEST_HOME/.codex" XDG_DATA_HOME="$TEST_HOME/.local/share" \
+  CODEX_TEST_NULL_CODEX_BUCKET=1 PATH="$TEST_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
+
+[[ $(jq -c '{tierLabel, limits}' <<<"$null_bucket_result") == '{"tierLabel":"legacy","limits":[{"label":"5h window","percent":0.9,"resetsAt":""}]}' ]] ||
+  fail "Codex collector ignores a Codex bucket with no rate-limit windows" "$null_bucket_result"
+pass "Codex collector ignores a Codex bucket with no rate-limit windows"
 
 # Pi and omp can both spend a Codex subscription without creating native
 # Codex sessions. Their compatible JSONL transcripts must be included.
