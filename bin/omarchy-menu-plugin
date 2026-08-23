@@ -30,17 +30,36 @@ rows=$(jq -r --arg icon "$PLUGIN_ICON" \
    | \$icon + \"\\t\" + .name + \"\\t\" + .id" <<<"$plugins")
 [[ -n $rows ]] || { omarchy-notification-send "No plugin to ${1}"; exit 0; }
 
-selection=$(omarchy-menu-select "${1^} plugin" <<<"$rows") || exit 0
-[[ -n $selection ]] || exit 0
+if [[ $1 == "clone" ]]; then
+  selection=$(omarchy-menu-select "${1^} plugin" <<<"$rows") || exit 0
+  [[ -n $selection ]] || exit 0
+  selections=("$selection")
+else
+  mapfile -t selections < <(omarchy-menu-select "${1^} plugins" -- --multi --width 520 --maxheight 520 <<<"$rows")
+  (( ${#selections[@]} > 0 )) || exit 0
+fi
 
-id=$(cut -f2 <<<"$selection")
-[[ -n $id ]] || exit 1
+ids=()
+for selection in "${selections[@]}"; do
+  id=$(cut -f2 <<<"$selection")
+  [[ -n $id ]] && ids+=("$id")
+done
+(( ${#ids[@]} > 0 )) || exit 1
 
 if [[ $1 == "clone" ]]; then
   omarchy-launch-floating-terminal-with-presentation \
-    "omarchy-plugin-clone $(printf '%q' "$id") --edit"
+    "omarchy-plugin-clone $(printf '%q' "${ids[0]}") --edit"
 elif [[ $1 == "remove" ]]; then
-  omarchy-launch-floating-terminal-with-presentation "omarchy-plugin-remove $(printf '%q' "$id")"
+  remove_command=""
+  for id in "${ids[@]}"; do
+    [[ -z $remove_command ]] || remove_command+="; "
+    remove_command+="omarchy-plugin-remove $(printf '%q' "$id")"
+  done
+  omarchy-launch-floating-terminal-with-presentation "$remove_command"
 else
-  "omarchy-plugin-$1" "$id"
+  status=0
+  for id in "${ids[@]}"; do
+    "omarchy-plugin-$1" "$id" || status=1
+  done
+  exit "$status"
 fi

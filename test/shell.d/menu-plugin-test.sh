@@ -30,6 +30,7 @@ done
 # Records the rows it was offered, then answers with the pick under test.
 cat >"$STUB_DIR/omarchy-menu-select" <<'STUB'
 #!/bin/bash
+printf '%s\n' "$*" >"$FAKE_MENU_ARGS"
 cat >"$FAKE_ROWS"
 printf '%s\n' "$FAKE_PICK"
 STUB
@@ -52,17 +53,20 @@ pick() {
   local verb="$1" choice="$2"
 
   : >"$TMPDIR/calls"
+  : >"$TMPDIR/menu-args"
   : >"$TMPDIR/rows"
   HOME="$TMPDIR/home" \
     PATH="$STUB_DIR:$PATH" \
     FAKE_PLUGINS="$TMPDIR/plugins.json" \
     FAKE_CALLS="$TMPDIR/calls" \
+    FAKE_MENU_ARGS="$TMPDIR/menu-args" \
     FAKE_ROWS="$TMPDIR/rows" \
     FAKE_PICK="$choice" \
     "$ROOT/bin/omarchy-menu-plugin" "$verb" >/dev/null 2>&1
 
   ROWS=$(cat "$TMPDIR/rows")
   CALLS=$(cat "$TMPDIR/calls")
+  MENU_ARGS=$(cat "$TMPDIR/menu-args")
 }
 
 # Two plugins can declare the same display name. The id rides along as row
@@ -81,11 +85,42 @@ pass "picker offers the id as subtext on every row"
 [[ $CALLS == *"omarchy-plugin-enable tester.clock"* ]] \
   || fail "picker acts on the row that was picked, not the one that shares its name" "$CALLS"
 pass "picker acts on the row that was picked, not the one that shares its name"
+[[ $MENU_ARGS == *"--multi"* ]] || fail "plugin enable picker opts into multi-select" "$MENU_ARGS"
+pass "plugin enable picker opts into multi-select"
+
+pick enable "$(printf 'Clock\tomarchy.clock\nClock\ttester.clock')"
+[[ $CALLS == $'omarchy-plugin-enable omarchy.clock\nomarchy-plugin-enable tester.clock' ]] \
+  || fail "picker enables every selected plugin" "$CALLS"
+pass "picker enables every selected plugin"
+
+cat >"$TMPDIR/plugins.json" <<'JSON'
+[
+  {"id": "omarchy.clock", "name": "Clock", "kinds": ["bar-widget"], "enabled": true, "active": false, "canDisable": true, "firstParty": true},
+  {"id": "tester.clock", "name": "Clock", "kinds": ["bar-widget"], "enabled": true, "active": false, "canDisable": true, "firstParty": false}
+]
+JSON
+
+pick disable "$(printf 'Clock\tomarchy.clock\nClock\ttester.clock')"
+[[ $CALLS == $'omarchy-plugin-disable omarchy.clock\nomarchy-plugin-disable tester.clock' ]] \
+  || fail "picker disables every selected plugin" "$CALLS"
+pass "picker disables every selected plugin"
 
 pick remove "$(printf 'Clock\ttester.clock')"
 [[ $CALLS == *"omarchy-plugin-remove tester.clock"* ]] \
   || fail "picker removes the plugin whose row was picked" "$CALLS"
 pass "picker removes the plugin whose row was picked"
+
+cat >"$TMPDIR/plugins.json" <<'JSON'
+[
+  {"id": "tester.clock", "name": "Clock", "kinds": ["bar-widget"], "enabled": true, "active": false, "canDisable": true, "firstParty": false},
+  {"id": "acme.weather", "name": "Weather", "kinds": ["bar-widget"], "enabled": false, "active": false, "canDisable": true, "firstParty": false}
+]
+JSON
+
+pick remove "$(printf 'Clock\ttester.clock\nWeather\tacme.weather')"
+[[ $CALLS == "terminal: omarchy-plugin-remove tester.clock; omarchy-plugin-remove acme.weather" ]] \
+  || fail "picker sends every selected plugin through the removal flow" "$CALLS"
+pass "picker sends every selected plugin through the removal flow"
 
 cat >"$TMPDIR/plugins.json" <<'JSON'
 [
@@ -114,6 +149,8 @@ pass "clone picker offers built-in plugins"
 [[ $CALLS == *"terminal: omarchy-plugin-clone omarchy.clock --edit"* ]] ||
   fail "clone picker delegates cloning and editing to the clone command" "$CALLS"
 pass "clone picker clones and opens the personal plugin"
+[[ $MENU_ARGS != *"--multi"* ]] || fail "plugin clone picker stays single-select" "$MENU_ARGS"
+pass "plugin clone picker stays single-select"
 
 # Once a clone pointing back at the source is discovered, whatever it is named,
 # the source no longer belongs in Clone.

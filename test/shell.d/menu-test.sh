@@ -8,6 +8,7 @@ run_node_test <<'JS'
 const fs = require('fs')
 const menu = requireFromRoot('shell/plugins/menu/MenuModel.js')
 const menuQml = fs.readFileSync(path.join(root, 'shell/plugins/menu/Menu.qml'), 'utf8')
+const menuSelect = fs.readFileSync(path.join(root, 'bin/omarchy-menu-select'), 'utf8')
 const defaultMenuJsonc = fs.readFileSync(path.join(root, 'default/omarchy/omarchy-menu.jsonc'), 'utf8')
 
 const parsed = menu.parseMenuJsonc(`
@@ -402,7 +403,8 @@ assert(
   'menu select mode reads a leading icon and a trailing subtext off an option'
 )
 assert(
-  /omarchy-launch-floating-terminal-with-presentation "omarchy-plugin-remove/.test(pluginPicker),
+  /remove_command\+="omarchy-plugin-remove/.test(pluginPicker)
+    && /omarchy-launch-floating-terminal-with-presentation "\$remove_command"/.test(pluginPicker),
   'plugin picker removes where the confirmation and backup path are visible'
 )
 
@@ -632,6 +634,33 @@ assert(
   /function activateIndex\(index, fromPointer\)[\s\S]*root\.setActiveMenu\(row\.target \|\| row\.itemId, true, fromPointer\)/.test(menuQml)
     && /onClicked:[\s\S]*root\.activateIndex\(row\.index, true\)/.test(menuQml),
   'mouse activation carries pointer intent into subordinate menus'
+)
+assert(
+  /function togglePin\(index\)\s*\{\s*if \(!root\.multiSelect \|\| root\.mode !== "select"\) return[\s\S]*root\.pinnedItems =[\s\S]*root\.pinnedCount =/.test(menuQml),
+  'menu only pins rows for multi-select requests'
+)
+assert(
+  /function applyDmenuConfirm\(index\)\s*\{[\s\S]*if \(root\.multiSelect && root\.pinnedCount > 0\)[\s\S]*root\.applyDmenuSelection\(selectedValues\.join\("\\n"\)\)/.test(menuQml),
+  'menu select mode returns all pinned items newline-joined when items are pinned'
+)
+assert(
+  /event\.key === Qt\.Key_Tab && event\.modifiers === Qt\.NoModifier[\s\S]*root\.mode === "select" && root\.multiSelect[\s\S]*root\.togglePin\(root\.selectedIndex\)/.test(menuQml)
+    && !/Qt\.Key_Backtab/.test(menuQml),
+  'menu multi-select pins items with plain Tab only'
+)
+assert(
+  /multiSelect = mode === "select" && payload\.multiSelect === true/.test(menuQml)
+    && /visible: root\.dmenuActive && root\.mode === "select" && root\.multiSelect/.test(menuQml),
+  'menu only exposes multi-select controls when the caller opts in'
+)
+assert(
+  /--multi\)\s*multi_select=1/.test(menuSelect)
+    && /\$payload->\{multiSelect\} = JSON::PP::true if \$ARGV\[6\] eq "1"/.test(menuSelect),
+  'menu select only requests multi-selection through its explicit flag'
+)
+assert(
+  /displayModel\.count > 0 \|\| \(root\.multiSelect && root\.pinnedCount > 0\)/.test(menuQml),
+  'menu confirms pinned items even when filtering hides every row'
 )
 JS
 

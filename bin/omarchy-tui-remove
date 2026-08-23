@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# omarchy:summary=Remove a terminal UI desktop launcher
-# omarchy:args=[name]
+# omarchy:summary=Remove terminal UI desktop launchers
+# omarchy:args=[name...]
 
 set -e
 
@@ -19,23 +19,28 @@ if (( $# == 0 )); then
 
   if ((${#TUIS[@]})); then
     mapfile -t SORTED_TUIS < <(printf '%s\n' "${TUIS[@]}" | sort)
-    APP_NAME=$(omarchy-menu-select "Select TUI to remove" "${SORTED_TUIS[@]}" -- --width 520 --maxheight 520)
+    mapfile -t APP_NAMES < <(omarchy-menu-select "Select TUI to remove" "${SORTED_TUIS[@]}" -- --multi --width 520 --maxheight 520)
   else
     echo "No TUIs to remove."
     exit 1
   fi
 else
-  APP_NAME="$*"
+  APP_NAMES=("$@")
 fi
 
-if [[ -z $APP_NAME ]]; then
+if (( ${#APP_NAMES[@]} == 0 )) || [[ -z ${APP_NAMES[0]} ]]; then
   echo "You must select a TUI to remove."
   exit 1
 fi
 
-icon_name=$(printf '%s\n' "$APP_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//')
-rm -f "$DESKTOP_DIR/$APP_NAME.desktop"
-rm -f "$ICON_DIR/$icon_name.png" "$ICON_DIR/$APP_NAME.png" "$OLD_ICON_DIR/$APP_NAME.png"
-if [[ ${OMARCHY_REMOVE_NOTIFY:-true} != "false" ]]; then
-  omarchy-notification-send -g  "TUI removed" "$APP_NAME"
-fi
+for APP_NAME in "${APP_NAMES[@]}"; do
+  [[ -z $APP_NAME ]] && continue
+  icon_name=$(printf '%s\n' "$APP_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//')
+  rm -f "$DESKTOP_DIR/$APP_NAME.desktop"
+  rm -f "$ICON_DIR/$icon_name.png" "$ICON_DIR/$APP_NAME.png" "$OLD_ICON_DIR/$APP_NAME.png"
+  if [[ ${OMARCHY_REMOVE_NOTIFY:-true} != "false" ]]; then
+    omarchy-notification-send -g  "TUI removed" "$APP_NAME"
+  fi
+done
+
+update-desktop-database "$DESKTOP_DIR" &>/dev/null

@@ -60,6 +60,7 @@ Item {
   property string doneFile: ""
   property int dmenuWidth: 300
   property int dmenuMaxHeight: 0
+  property bool multiSelect: false
   property bool requestActive: false
   property bool rowsLoaded: false
   property string activeMenu: "root"
@@ -80,7 +81,9 @@ Item {
   readonly property var appLibrary: root.shell ? root.shell.appLibrary : null
   property bool deleteConfirmOpen: false
   property var deleteTarget: null
-  onOpenedChanged: if (!opened) { deleteConfirmOpen = false; deleteTarget = null }
+  property var pinnedItems: ({})
+  property int pinnedCount: 0
+  onOpenedChanged: if (!opened) { deleteConfirmOpen = false; deleteTarget = null; pinnedItems = ({}); pinnedCount = 0 }
   // Bound to the central [menu] section in shell.toml via Color.qml.
   // Each color already includes its alpha companion (composed in the
   // singleton), so consumers can drop them straight into a Rectangle.
@@ -97,7 +100,9 @@ Item {
   readonly property real rowReservedBorderRight: Border.right(selectedBorderSpec)
   readonly property int cornerRadius: Style.cornerRadius
   property int contentMargin: Style.spacing.panelPadding
-  property int headerHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
+  property int headerHeight: (root.dmenuActive && root.mode === "select" && root.multiSelect)
+    ? Math.max(Style.space(48), Style.font.title + Style.font.caption + Style.spacing.controlPaddingY * 2)
+    : Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
   property int contentSpacing: Style.spacing.md
   property int baseRowHeight: Math.max(Style.space(50), Style.font.body + Style.spacing.rowPaddingX * 2)
   property int detailRowHeight: Math.max(Style.space(58), Style.font.body + Style.font.caption + Style.spacing.rowPaddingX * 2)
@@ -571,6 +576,7 @@ Item {
       var detail = parts.join("\t")
       if (query && label.toLowerCase().indexOf(query) < 0
           && detail.toLowerCase().indexOf(query) < 0) continue
+      var val = detail ? label + "\t" + detail : label
       displayModel.append({
         itemId: "dmenu." + i,
         disabled: false,
@@ -587,7 +593,8 @@ Item {
         action: "",
         provider: "",
         score: i,
-        section: ""
+        section: "",
+        pinned: !!root.pinnedItems[val]
       })
     }
 
@@ -671,7 +678,11 @@ Item {
       }
     }
 
-    for (var k = 0; k < rows.length; k++) displayModel.append(rows[k])
+    for (var k = 0; k < rows.length; k++) {
+      var r = rows[k]
+      r.pinned = false
+      displayModel.append(r)
+    }
     layoutSerial += 1
 
     root.settleCursor()
@@ -756,6 +767,51 @@ Item {
     return true
   }
 
+  function isOptionPinned(val) {
+    return !!(root.pinnedItems && root.pinnedItems[val])
+  }
+
+  function togglePin(index) {
+    if (!root.multiSelect || root.mode !== "select") return
+    if (index < 0 || index >= displayModel.count) return
+    var row = displayModel.get(index)
+    if (!row) return
+    var val = row.detail ? row.label + "\t" + row.detail : row.label
+    var next = Object.assign({}, root.pinnedItems)
+    if (next[val]) {
+      delete next[val]
+    } else {
+      next[val] = true
+    }
+    root.pinnedItems = next
+    root.pinnedCount = Object.keys(next).length
+    displayModel.setProperty(index, "pinned", !!next[val])
+  }
+
+  function applyDmenuConfirm(index) {
+    if (root.multiSelect && root.pinnedCount > 0) {
+      var selectedValues = []
+      for (var i = 0; i < root.dmenuOptions.length; i++) {
+        var parts = String(root.dmenuOptions[i] || "").split("\t")
+        if (parts.length > 1) parts.shift()
+        var lbl = parts.shift() || ""
+        var dtl = parts.join("\t")
+        var val = dtl ? lbl + "\t" + dtl : lbl
+        if (root.pinnedItems[val]) {
+          selectedValues.push(val)
+        }
+      }
+      if (selectedValues.length === 0) {
+        selectedValues = Object.keys(root.pinnedItems)
+      }
+      root.applyDmenuSelection(selectedValues.join("\n"))
+    } else {
+      if (index < 0 || index >= displayModel.count) return
+      var picked = displayModel.get(index)
+      root.applyDmenuSelection(picked.detail ? picked.label + "\t" + picked.detail : picked.label)
+    }
+  }
+
   function activateIndex(index, fromPointer) {
     if (root.deleteConfirmOpen) return
     if (root.dmenuActive) {
@@ -763,9 +819,7 @@ Item {
         root.applyDmenuSelection(root.filterText)
         return
       }
-      if (index < 0 || index >= displayModel.count) return
-      var picked = displayModel.get(index)
-      root.applyDmenuSelection(picked.detail ? picked.label + "\t" + picked.detail : picked.label)
+      root.applyDmenuConfirm(index)
       return
     }
 
@@ -830,6 +884,8 @@ Item {
 
   function cancel() {
     if (root.dmenuActive) root.finishRequest(null)
+    pinnedItems = ({})
+    pinnedCount = 0
     opened = false
     filterText = ""
   }
@@ -840,6 +896,7 @@ Item {
     requestActive = false
     selectionFile = ""
     doneFile = ""
+    multiSelect = false
     activeMenu = root.item(initialMenu) ? initialMenu : "root"
     navStack = []
     filterText = ""
@@ -861,11 +918,14 @@ Item {
   function openDmenu(payload) {
     requestSerial += 1
     mode = payload.mode === "input" ? "input" : "select"
+    multiSelect = mode === "select" && payload.multiSelect === true
     dmenuPrompt = String(payload.prompt || (mode === "input" ? "Input" : "Select"))
     dmenuOptions = Array.isArray(payload.options) ? payload.options : []
     selectionFile = String(payload.selectionFile || "")
     doneFile = String(payload.doneFile || "")
     requestActive = !!doneFile
+    pinnedItems = ({})
+    pinnedCount = 0
     dmenuWidth = Math.max(1, Number(payload.width || 300))
     dmenuMaxHeight = Math.max(0, Number(payload.maxHeight || 0))
     activeMenu = "root"
@@ -1133,6 +1193,12 @@ Item {
             if (root.filterText) root.setFilter("")
             else root.cancel()
             event.accepted = true
+          } else if (event.key === Qt.Key_Tab && event.modifiers === Qt.NoModifier
+                     && root.dmenuActive && root.mode === "select" && root.multiSelect) {
+            if (displayModel.count > 0 && root.selectedIndex >= 0 && root.selectedIndex < displayModel.count) {
+              root.togglePin(root.selectedIndex)
+            }
+            event.accepted = true
           } else if (Util.editsFilter(event, root.filterText)) {
             root.setFilter(Util.editedFilter(event, root.filterText))
             event.accepted = true
@@ -1154,7 +1220,7 @@ Item {
           } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Right) {
             if (root.dmenuActive) {
               if (root.mode === "input") root.applyDmenuSelection(root.filterText)
-              else if (displayModel.count > 0) root.activateIndex(root.cursorActive ? root.selectedIndex : 0)
+              else if (displayModel.count > 0 || (root.multiSelect && root.pinnedCount > 0)) root.activateIndex(root.cursorActive ? root.selectedIndex : 0)
             } else if (root.cursorActive) root.activateIndex(root.selectedIndex)
             else root.settleCursor()
             event.accepted = true
@@ -1198,16 +1264,36 @@ Item {
           radius: root.cornerRadius
           color: "transparent"
 
-          Text {
+          Column {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            text: root.filterText || (root.dmenuActive ? (root.dmenuPrompt + "…") : ((root.item(root.activeMenu) ? (root.item(root.activeMenu).title || root.item(root.activeMenu).label) : "Go") + "…"))
-            color: root.foreground
-            opacity: root.filterText ? 1 : 0.58
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.heading
-            elide: Text.ElideRight
+            spacing: Style.space(2)
+
+            Text {
+              width: parent.width
+              text: root.filterText
+                ? (root.filterText + (root.pinnedCount > 0 ? " (" + root.pinnedCount + " selected)" : ""))
+                : (root.dmenuActive
+                    ? ((root.pinnedCount > 0 ? root.dmenuPrompt + " (" + root.pinnedCount + " selected)" : root.dmenuPrompt) + "…")
+                    : ((root.item(root.activeMenu) ? (root.item(root.activeMenu).title || root.item(root.activeMenu).label) : "Go") + "…"))
+              color: root.foreground
+              opacity: root.filterText ? 1 : 0.58
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.heading
+              elide: Text.ElideRight
+            }
+
+            Text {
+              width: parent.width
+              visible: root.dmenuActive && root.mode === "select" && root.multiSelect
+              text: "Tab to select multiple"
+              color: root.foreground
+              opacity: 0.42
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+              elide: Text.ElideRight
+            }
           }
 
         }
@@ -1260,7 +1346,10 @@ Item {
               required property string action
               required property int childCount
               required property bool disabled
+              required property bool pinned
 
+              readonly property string optionValue: row.detail ? row.label + "\t" + row.detail : row.label
+              readonly property bool isPinned: (root.dmenuActive && root.mode === "select" && root.multiSelect && root.isOptionPinned(optionValue)) || row.pinned
               readonly property bool hasCursor: root.cursorActive && row.index === root.selectedIndex
               readonly property bool isApp: row.kind === "app"
               readonly property bool hasIcon: row.icon.length > 0 || row.isApp
@@ -1271,17 +1360,19 @@ Item {
               // installed, not to be picked.
               opacity: row.disabled ? 0.4 : 1
               radius: root.cornerRadius
-              color: row.hasCursor ? root.selectedBackground : "transparent"
+              color: row.hasCursor
+                ? (row.isPinned ? Util.alpha(root.selectedBackground, Math.max(root.selectedBackground.a * 2.25, 0.18)) : root.selectedBackground)
+                : (row.isPinned ? root.selectedBackground : "transparent")
               borderSpec: row.hasCursor ? root.selectedBorderSpec : Border.none()
 
               Rectangle {
-                visible: false
+                visible: row.isPinned
                 width: Style.space(4)
-                height: parent.height - Style.space(18)
-                radius: Math.min(root.cornerRadius, Style.space(4))
-                color: root.selectedBackground
+                height: parent.height - Style.space(16)
+                radius: Math.min(root.cornerRadius, Style.space(2))
+                color: row.hasCursor ? root.selectedText : root.selectedBorder
                 anchors.left: parent.left
-                anchors.leftMargin: root.rowReservedBorderLeft + Style.space(8)
+                anchors.leftMargin: root.rowReservedBorderLeft + Style.space(4)
                 anchors.verticalCenter: parent.verticalCenter
               }
 
@@ -1333,7 +1424,7 @@ Item {
                   color: row.hasCursor ? root.selectedText : root.foreground
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.heading
-                  font.weight: Font.Medium
+                  font.weight: row.isPinned ? Font.DemiBold : Font.Medium
                   elide: Text.ElideRight
                 }
 
@@ -1351,11 +1442,22 @@ Item {
 
               Row {
                 id: trail
-                width: Style.space(14)
+                width: row.isPinned ? Style.space(22) : Style.space(14)
                 anchors.right: parent.right
                 anchors.rightMargin: root.rowReservedBorderRight + Style.space(8)
                 y: contentColumn.y + labelText.y + (labelText.height - height) / 2
-                spacing: 0
+                spacing: Style.space(4)
+
+                Text {
+                  id: pinCheck
+                  visible: row.isPinned
+                  text: "✓"
+                  color: row.hasCursor ? root.selectedText : (row.isPinned ? root.selectedBorder : root.foreground)
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.heading
+                  font.weight: Font.Bold
+                  anchors.verticalCenter: parent.verticalCenter
+                }
 
                 Text {
                   visible: false
@@ -1394,6 +1496,10 @@ Item {
                   if (row.disabled) return
                   root.cursorActive = true
                   root.selectedIndex = row.index
+                  if (root.dmenuActive && root.mode === "select" && root.multiSelect && root.pinnedCount > 0) {
+                    root.togglePin(row.index)
+                    return
+                  }
                   root.activateIndex(row.index, true)
                 }
               }
