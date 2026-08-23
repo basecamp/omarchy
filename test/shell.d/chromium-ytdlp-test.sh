@@ -96,6 +96,17 @@ host_fn resolve_download_file $'clip.mp4\nOMARCHY_FILE\t--include=not-a-file' &&
   fail "yt-dlp native host rejects a path containing control characters"
 pass "yt-dlp native host rejects a path containing control characters"
 
+newline_target="$download_dir/target"$'\n'
+printf 'x' >"$newline_target"
+# The decoy is the point: dropping the trailing newline lands on a real, different
+# file, so a resolver that strips it resolves to the wrong one instead of failing.
+printf 'x' >"$download_dir/target"
+ln -s "target"$'\n' "$download_dir/newline-link.mp4"
+
+host_fn resolve_download_file "$download_dir/newline-link.mp4" &&
+  fail "yt-dlp native host rejects a symlink whose target name ends in a newline"
+pass "yt-dlp native host rejects a symlink whose target name ends in a newline"
+
 title=$(host_fn title_from_file "$good_file")
 [[ $title == "clip [id]" ]] || fail "yt-dlp native host titles the toast from the filename" "$title"
 pass "yt-dlp native host titles the toast from the filename"

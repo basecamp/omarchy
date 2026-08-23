@@ -41,8 +41,12 @@ resolve_download_file() {
   [[ $candidate != *$'\n'* && $candidate != *$'\r'* && $candidate != *$'\t'* ]] || return 1
   [[ -f $candidate ]] || return 1
 
-  file_real=$(realpath -e -- "$candidate") || return 1
-  dir_real=$(realpath -e -- "$DOWNLOAD_DIR") || return 1
+  # Read to a NUL: command substitution strips trailing newlines, which would
+  # resolve a name ending in one to a different file that may well exist.
+  IFS= read -r -d '' file_real < <(realpath -ze -- "$candidate") || return 1
+  IFS= read -r -d '' dir_real < <(realpath -ze -- "$DOWNLOAD_DIR") || return 1
+
+  [[ $file_real != *$'\n'* && $file_real != *$'\r'* && $file_real != *$'\t'* ]] || return 1
   [[ $file_real == "$dir_real"/* ]] || return 1
 
   printf '%s' "$file_real"
