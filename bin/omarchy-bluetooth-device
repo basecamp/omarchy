@@ -32,9 +32,12 @@ trust_device() {
 case "$action" in
   pair)
     power_on
-    timeout 20s bluetoothctl pair "$address" >/dev/null 2>&1 || true
-    trust_device
-    timeout 20s bluetoothctl connect "$address" >/dev/null 2>&1 || true
+    # Trust is not a bond. A failed pair that still trusts the address makes the
+    # panel treat the device as already paired and skip pairing on later clicks.
+    if timeout 20s bluetoothctl pair "$address" >/dev/null 2>&1; then
+      trust_device
+      timeout 20s bluetoothctl connect "$address" >/dev/null 2>&1 || true
+    fi
     ;;
   connect)
     power_on

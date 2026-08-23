@@ -109,7 +109,9 @@ function deviceLists(devices) {
     var d = values[i]
     if (!d || !hasHumanName(d)) continue
     if (d.connected) connected.push(d)
-    else if (d.paired || d.bonded || d.trusted) known.push(d)
+    // Trusted is not a bond. A trusted-but-unpaired device still needs pairing,
+    // so it stays with discovered devices instead of under PAIRED.
+    else if (d.paired || d.bonded) known.push(d)
     else discovered.push(d)
   }
 

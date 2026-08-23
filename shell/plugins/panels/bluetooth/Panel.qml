@@ -275,7 +275,7 @@ Panel {
 
   function connectDevice(device) {
     if (!device || device.connected) return
-    if (device.paired || device.bonded || device.trusted) runDeviceAction(device, "connect", "connecting")
+    if (device.paired || device.bonded) runDeviceAction(device, "connect", "connecting")
     else runDeviceAction(device, "pair", "connecting")
   }
 
