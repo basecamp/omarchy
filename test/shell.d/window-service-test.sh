@@ -186,6 +186,7 @@ assertEqual(m.windowAppId({ class: 'foot' }), 'foot', 'windowAppId reads Hyprlan
 assertEqual(m.hyprbarsSnapInset({ class: 'foot' }), 32, 'SSD clients reserve hyprbars height')
 assertEqual(m.hyprbarsSnapInset({ class: 'chromium' }), 0, 'Chromium CSD does not reserve hyprbars')
 assertEqual(m.hyprbarsSnapInset({ class: 'cursor' }), 0, 'Cursor CSD does not reserve hyprbars')
+assertEqual(m.hyprbarsSnapInset({ class: 'chrome-www.youtube.com__-Default' }), 0, 'YouTube PWAs keep Chromium CSD inset 0')
 assertEqual(m.usesWaylandCsd({ class: 'zenity' }), false, 'zenity is not the Zen browser')
 
 const pins = m.withPin([], { desktopId: 'firefox', name: 'Firefox', icon: 'firefox' })

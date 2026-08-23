@@ -385,8 +385,32 @@ def main() -> int:
     if not resized or resized["size"][0] < rw + 24:
       raise ProofError(f"edge resize did not grow the window: {report['resize']}")
 
-    x2, y2 = resized["at"]
-    w2 = resized["size"][0]
+    as_user(["bash", "-lc", "nohup foot >/tmp/omarchy-foot-unfocused.log 2>&1 & disown"], wait=True)
+    wait_until("second foot for unfocused caption close", 8, lambda: len(feet()) >= 2)
+    other = next((c for c in feet() if c["address"] != addr), None)
+    if not other:
+      raise ProofError("need a second foot to prove unfocused caption close")
+    ping = as_user(["omarchy-shell", "window", "focus", addr], wait=True)
+    if ping.returncode != 0:
+      raise ProofError(f"focus first foot failed: {ping.stdout} {ping.stderr}")
+    time.sleep(0.25)
+    focused = json.loads(hypr("-j", "activewindow") or "{}")
+    if focused.get("address") != addr:
+      raise ProofError(f"active window is {focused.get('address')}, not the first foot {addr}")
+    ox, oy = other["at"]
+    ow = other["size"][0]
+    oclosex, oclosey = ox + ow - 16, oy - 16
+    report["unfocused_close_aim"] = [oclosex, oclosey]
+    report["unfocused_close_target"] = other["address"]
+    pointer.click(oclosex, oclosey)
+    wait_until("unfocused hyprbars close unmaps that foot", 8, lambda: all(c["address"] != other["address"] for c in feet()))
+    still = next((c for c in feet() if c["address"] == addr), None)
+    if not still:
+      raise ProofError("unfocused × closed the focused window")
+    report["unfocused_close"] = "unmapped other, focused kept"
+
+    x2, y2 = still["at"]
+    w2 = still["size"][0]
     closex, closey = x2 + w2 - 16, y2 - 16
     report["close_aim"] = [closex, closey]
     pointer.click(closex, closey)

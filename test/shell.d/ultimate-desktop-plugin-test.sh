@@ -104,8 +104,8 @@ grep -Fq 'size = { 880, 560 }' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "desktop windowing opens overlapping floats, not leftover snap halves"
 grep -Fq 'hyprbars' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "desktop windowing loads compositor hyprbars title bars"
-grep -Fq 'omarchy-shell window minimize active' "$ROOT/default/hypr/desktop-windows.lua" \
-  || fail "hyprbars minimize goes through WindowService"
+grep -Fq 'omarchy-shell window minimize 0x{:x}' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "hyprbars minimize goes through WindowService with the bar's address"
 grep -Fq 'load_omarchy_minimize' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "desktop windowing loads omarchy-minimize"
 [[ -f $ROOT/default/hypr/plugins/omarchy-minimize/main.cpp ]] \
@@ -148,10 +148,25 @@ grep -Fq 'snapArrow' "$ROOT/default/hypr/bindings/desktop.lua" \
   || fail "Win+Arrow cycles halves then quarters through snapArrow"
 grep -Fq 'snapChooser' "$ROOT/default/hypr/bindings/desktop.lua" \
   || fail "Win+Z summons the snap layout chooser"
-grep -Fq 'omarchy-shell window snapChooser active' "$ROOT/default/hypr/desktop-windows.lua" \
+grep -Fq 'omarchy-shell window snapChooser 0x{:x}' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "hyprbars has a maximize-adjacent snap layout button"
 grep -Fq 'aeroDragEnd 0x{:x} {} {}' "$ROOT/default/hypr/plugins/hyprbars/barDeco.cpp" \
   || fail "hyprbars drag end sends cursor coordinates to aeroDragEnd"
+grep -Fq 'formatWindowCmd' "$ROOT/default/hypr/plugins/hyprbars/barDeco.cpp" \
+  || fail "hyprbars caption buttons format the owner address into the action"
+if grep -Fq 'closeActive' "$ROOT/default/hypr/desktop-windows.lua"; then
+  fail "hyprbars caption buttons must not call closeActive"
+fi
+if grep -Fq 'toggleMaximize active' "$ROOT/default/hypr/desktop-windows.lua"; then
+  fail "hyprbars caption buttons must not target the focused window"
+fi
+if grep -Fq '{ tag = "chromium-based-browser" }' "$ROOT/default/hypr/desktop-windows.lua"; then
+  fail "hyprbars:no_bar must not depend on the chromium-based-browser tag YouTube/Zoom drop"
+fi
+grep -Fq 'youtube' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "YouTube PWAs keep hyprbars:no_bar after dropping the chromium tag"
+grep -Fq 'omarchy-shell window close 0x{:x}' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "hyprbars close names the bar's window address"
 grep -Fq 'm_bDraggingThis || inputIsValid()' "$ROOT/default/hypr/plugins/hyprbars/barDeco.cpp" \
   || fail "hyprbars drag end still fires when the pointer is off the title bar"
 grep -Fq 'windows[(activeIndex + 1)' "$ROOT/shell/plugins/ultimate-taskbar/TaskButton.qml" \
@@ -217,6 +232,8 @@ grep -Fq 'hyprbars-pointer-proof.py' "$ROOT/test/acceptance.d/windows-native-tes
   || fail "windows-native harness runs the absolute pointer proof"
 grep -Fq 'cycleSnapshot' "$ROOT/test/acceptance.d/hyprbars-pointer-proof.py" \
   || fail "pointer proof aims at the live highlighted Alt+Tab card, not a two-foot layout"
+grep -Fq 'unfocused × closed the focused window' "$ROOT/test/acceptance.d/hyprbars-pointer-proof.py" \
+  || fail "pointer proof clicks × on an unfocused hyprbars and keeps the focused foot"
 grep -Fq 'commitCycle' "$ROOT/test/acceptance.d/windows-native-test.sh" \
   || fail "Alt+Tab harness proves address-change with commitCycle, not only overlay summon"
 grep -Fq 'WlrKeyboardFocus.None' "$ROOT/shell/plugins/ultimate-task-switcher/Switcher.qml" \

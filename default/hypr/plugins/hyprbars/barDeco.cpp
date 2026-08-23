@@ -29,8 +29,20 @@
 #include <climits>
 #include <cstdint>
 #include <format>
+#include <string>
 
 using namespace Render::GL;
+
+static std::string formatWindowCmd(const std::string& cmd, PHLWINDOW window) {
+    if (!window)
+        return cmd;
+    const auto addr = reinterpret_cast<uintptr_t>(window.get());
+    try {
+        return std::vformat(cmd, std::make_format_args(addr));
+    } catch (const std::format_error&) {
+        return cmd;
+    }
+}
 
 static CHyprColor configColor(Config::INTEGER color) {
     return CHyprColor{static_cast<uint64_t>(color)};
@@ -242,7 +254,7 @@ void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch:
 
     if (!ON_DOUBLE_CLICK.empty() &&
         std::chrono::duration_cast<std::chrono::milliseconds>(Time::steadyNow() - m_lastMouseDown).count() < 400 /* Arbitrary delay I found suitable */) {
-        Config::Supplementary::executor()->spawn(ON_DOUBLE_CLICK);
+        Config::Supplementary::executor()->spawn(formatWindowCmd(ON_DOUBLE_CLICK, PWINDOW));
         m_bDragPending = false;
     } else {
         m_lastMouseDown = Time::steadyNow();
@@ -296,8 +308,7 @@ bool CHyprBar::doButtonPress(Config::INTEGER barPadding, Config::INTEGER barButt
         Vector2D   currentPos = Vector2D{(BUTTONSRIGHT ? BARBUF.x - barButtonPadding - b.size - offset : offset), (BARBUF.y - b.size) / 2.0}.floor();
 
         if (VECINRECT(COORDS, currentPos.x, currentPos.y, currentPos.x + b.size + barButtonPadding, currentPos.y + b.size)) {
-            // hit on close
-            g_pKeybindManager->m_dispatchers["exec"](b.cmd);
+            g_pKeybindManager->m_dispatchers["exec"](formatWindowCmd(b.cmd, m_pWindow.lock()));
             return true;
         }
 

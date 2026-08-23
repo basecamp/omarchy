@@ -23,10 +23,11 @@ o.window(
 
 require("default.hypr.apps")
 
--- CSD clients already draw a fused caption (Chromium/Firefox tabs+buttons, Cursor).
--- hyprbars on those is a second OS title bar. Keep hyprbars on foot/GTK/Qt SSD.
-o.window({ tag = "chromium-based-browser" }, { float = true, ["hyprbars:no_bar"] = true })
-o.window({ tag = "firefox-based-browser" }, { float = true, ["hyprbars:no_bar"] = true })
+-- CSD by class, not the chromium-based-browser tag. YouTube/Zoom PWAs drop that
+-- tag for opacity; they still draw Chromium's fused caption. Keep hyprbars on foot/GTK/Qt SSD.
+o.window("((google-)?[cC]hrom(e|ium)|[bB]rave-browser|[mM]icrosoft-edge|Vivaldi-stable|helium)", { float = true, ["hyprbars:no_bar"] = true })
+o.window("([fF]irefox|zen|librewolf)", { float = true, ["hyprbars:no_bar"] = true })
+o.window("(^.+-youtube\\.com__.*$|^.+-app\\.zoom\\.us__wc_home.*$)", { ["hyprbars:no_bar"] = true })
 o.window("^[Cc]ursor$", { ["hyprbars:no_bar"] = true })
 
 o.window({ tag = "default-opacity" }, { opacity = "0.985 0.96" })
@@ -74,7 +75,7 @@ hl.config({
       icon_on_hover = false,
       bar_color = "rgba(1a1a1acc)",
       ["col.text"] = "rgb(eeeeee)",
-      on_double_click = "omarchy-shell window toggleMaximize active",
+      on_double_click = "omarchy-shell window toggleMaximize 0x{:x}",
     },
   },
 })
@@ -185,28 +186,28 @@ local function add_hyprbars_buttons()
     fg_color = "rgb(ffffff)",
     size = 14,
     icon = "×",
-    action = "omarchy-shell window closeActive",
+    action = "omarchy-shell window close 0x{:x}",
   })
   plugin.hyprbars.add_button({
     bg_color = "rgb(3d3d3d)",
     fg_color = "rgb(ffffff)",
     size = 14,
     icon = "□",
-    action = "omarchy-shell window toggleMaximize active",
+    action = "omarchy-shell window toggleMaximize 0x{:x}",
   })
   plugin.hyprbars.add_button({
     bg_color = "rgb(3d3d3d)",
     fg_color = "rgb(ffffff)",
     size = 14,
     icon = "▦",
-    action = "omarchy-shell window snapChooser active",
+    action = "omarchy-shell window snapChooser 0x{:x}",
   })
   plugin.hyprbars.add_button({
     bg_color = "rgb(3d3d3d)",
     fg_color = "rgb(ffffff)",
     size = 14,
     icon = "–",
-    action = "omarchy-shell window minimize active",
+    action = "omarchy-shell window minimize 0x{:x}",
   })
   _G.omarchy_hyprbars_buttons = true
 end
