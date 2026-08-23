@@ -13,6 +13,11 @@ mkdir -p "$TEST_HOME/.codex/sessions/$(date +%Y/%m/%d)" "$TEST_HOME/bin"
 cat >"$TEST_HOME/bin/codex" <<'EOF'
 #!/bin/bash
 
+[[ $* == "-s read-only -a never app-server" ]] || {
+  printf 'unexpected Codex app-server args: %s\n' "$*" >&2
+  exit 2
+}
+
 while read -r request; do
   id=$(jq -r '.id // empty' <<<"$request")
   method=$(jq -r '.method // empty' <<<"$request")
@@ -54,6 +59,10 @@ pass "Codex collector does not double-count cache or reasoning tokens"
 [[ $(jq -c '.id + "/" + (.limits|tostring)' <<<"$result") == '"codex/[]"' ]] ||
   fail "Codex collector identifies itself with an empty limits list" "$result"
 pass "Codex collector identifies itself with an empty limits list"
+
+[[ $(jq -r '.usageStatusText' <<<"$result") == "" ]] ||
+  fail "Codex collector completes the app-server handshake" "$result"
+pass "Codex collector completes the app-server handshake"
 
 # Pi and omp can both spend a Codex subscription without creating native
 # Codex sessions. Their compatible JSONL transcripts must be included.
