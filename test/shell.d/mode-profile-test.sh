@@ -50,6 +50,7 @@ pass "omarchy lists the mode command group"
 
 grep -Fq 'function overlayShellConfig' "$ROOT/shell/shell.qml" || fail "shell overlays Desktop Mode chrome"
 grep -Fq 'omarchy.ultimate-taskbar' "$ROOT/shell/shell.qml" || fail "Desktop Mode overlay selects the taskbar plugin"
+grep -Fq 'id: "omarchy.agents"' "$ROOT/shell/shell.qml" || fail "Desktop Mode overlay keeps omarchy.agents visible"
 pass "shell overlays the taskbar without rewriting shell.json"
 
 tmp=$(mktemp -d)

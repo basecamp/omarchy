@@ -3,7 +3,8 @@
 
 o.window(".*", { float = true })
 o.window(".*", { tag = "+default-opacity" })
--- Open as an overlapping float, not a 50/50 tile leftover from a snap probe.
+-- Open as an overlapping float. 880×560 is the compositor fallback when
+-- WindowService has no per-app placement for that class.
 o.window(".*", { size = { 880, 560 } })
 -- xdg modal dialogs keep the size they asked for instead of the 880×560 app default.
 o.window({ modal = true }, { float = true, center = true, size = { "window_w", "window_h" } })
@@ -23,12 +24,44 @@ o.window(
 
 require("default.hypr.apps")
 
--- CSD by class, not the chromium-based-browser tag. YouTube/Zoom PWAs drop that
--- tag for opacity; they still draw Chromium's fused caption. Keep hyprbars on foot/GTK/Qt SSD.
-o.window("((google-)?[cC]hrom(e|ium)|[bB]rave-browser|[mM]icrosoft-edge|Vivaldi-stable|helium)", { float = true, ["hyprbars:no_bar"] = true })
-o.window("([fF]irefox|librewolf|^zen$|^zen-)", { float = true, ["hyprbars:no_bar"] = true })
-o.window("(^.+-youtube\\.com__.*$|^.+-app\\.zoom\\.us__wc_home.*$)", { ["hyprbars:no_bar"] = true })
-o.window("^[Cc]ursor$", { ["hyprbars:no_bar"] = true })
+-- CSD by class from default/ultimate/csd-clients.json (single source of truth).
+-- Keep hyprbars on foot/Qt SSD. GTK Files (Nautilus) is in that list so it is
+-- not hyprbars + CSD two-row chrome.
+local function repo_root()
+  local omarchy = os.getenv("OMARCHY_PATH") or ""
+  if omarchy ~= "" then
+    return omarchy
+  end
+  local src = debug.getinfo(1, "S").source or ""
+  src = src:gsub("^@", "")
+  local root = src:match("(.+)/default/hypr/desktop%-windows%.lua$")
+  return root or ""
+end
+
+local function load_csd_patterns()
+  local root = repo_root()
+  if root == "" then
+    return {}
+  end
+  local file = io.open(root .. "/default/ultimate/csd-clients.json", "r")
+  if not file then
+    return {}
+  end
+  local body = file:read("*a")
+  file:close()
+  local patterns = {}
+  for quoted in body:gmatch('"([^"]+)"') do
+    if quoted ~= "classPatterns" then
+      local pat = quoted:gsub("\\\\", "\\")
+      patterns[#patterns + 1] = pat
+    end
+  end
+  return patterns
+end
+
+for _, class_pat in ipairs(load_csd_patterns()) do
+  o.window(class_pat, { float = true, ["hyprbars:no_bar"] = true })
+end
 
 o.window({ tag = "default-opacity" }, { opacity = "0.985 0.96" })
 
@@ -180,7 +213,8 @@ local function add_hyprbars_buttons()
   if not (plugin and plugin.hyprbars and plugin.hyprbars.add_button) then
     return
   end
-  -- hyprbars draws buttons right-to-left: close, maximize, minimize.
+  -- hyprbars draws buttons right-to-left, so the user sees min / max / close.
+  -- Snap layouts are maximize-hover (hover_action), drag-to-edge, and Win+Z.
   plugin.hyprbars.add_button({
     bg_color = "rgb(c42b1c)",
     fg_color = "rgb(ffffff)",
@@ -194,13 +228,7 @@ local function add_hyprbars_buttons()
     size = 14,
     icon = "□",
     action = "omarchy-shell window toggleMaximize 0x{:x}",
-  })
-  plugin.hyprbars.add_button({
-    bg_color = "rgb(3d3d3d)",
-    fg_color = "rgb(ffffff)",
-    size = 14,
-    icon = "▦",
-    action = "omarchy-shell window snapChooser 0x{:x}",
+    hover_action = "omarchy-shell window snapChooser 0x{:x}",
   })
   plugin.hyprbars.add_button({
     bg_color = "rgb(3d3d3d)",

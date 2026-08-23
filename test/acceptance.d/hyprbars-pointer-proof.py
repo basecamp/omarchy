@@ -385,23 +385,53 @@ def main() -> int:
     if not resized or resized["size"][0] < rw + 24:
       raise ProofError(f"edge resize did not grow the window: {report['resize']}")
 
+    as_user(["omarchy-shell", "shell", "hide", "omarchy.ultimate-snap-chooser"], wait=True, timeout=5)
+    hx, hy = resized["at"]
+    hw = resized["size"][0]
+    # hyprbars draws RTL min / max / close. Close sits at x+w-16; maximize is
+    # the next 20px left (14px glyph + 6px button padding).
+    maxx, maxy = hx + hw - 36, hy - 16
+    report["hover_max_aim"] = [maxx, maxy]
+    pointer.move(hx + hw // 2, hy - 16)
+    time.sleep(0.12)
+    pointer.move(maxx, maxy)
+    # handleButtonHover used to arm on motion and only fire on a later move.
+    deadline = time.time() + 1.2
+    while time.time() < deadline:
+      pointer.move(maxx + (1 if int(time.time() * 10) % 2 else 0), maxy)
+      time.sleep(0.08)
+      if layer_named("omarchy-snap-chooser"):
+        break
+    wait_until("maximize hover summons snap chooser", 2, lambda: layer_named("omarchy-snap-chooser"))
+    report["hover_snap_chooser"] = "mapped"
+    grim("/tmp/w0-hover-snap.png")
+    as_user(["omarchy-shell", "shell", "hide", "omarchy.ultimate-snap-chooser"], wait=True, timeout=5)
+    wait_until("snap chooser closed after hover proof", 4, lambda: not layer_named("omarchy-snap-chooser"))
+    pointer.click(960, 700)
+    time.sleep(0.25)
+    as_user(["omarchy-shell", "shell", "hide", "omarchy.ultimate-snap-chooser"], wait=True, timeout=5)
+    wait_until("snap chooser stays closed before caption close", 4, lambda: not layer_named("omarchy-snap-chooser"))
+
     as_user(["bash", "-lc", "nohup foot >/tmp/omarchy-foot-unfocused.log 2>&1 & disown"], wait=True)
     wait_until("second foot for unfocused caption close", 8, lambda: len(feet()) >= 2)
     other = next((c for c in feet() if c["address"] != addr), None)
     if not other:
       raise ProofError("need a second foot to prove unfocused caption close")
-    ping = as_user(["omarchy-shell", "window", "focus", addr], wait=True)
-    if ping.returncode != 0:
-      raise ProofError(f"focus first foot failed: {ping.stdout} {ping.stderr}")
-    time.sleep(0.25)
-    focused = json.loads(hypr("-j", "activewindow") or "{}")
-    if focused.get("address") != addr:
-      raise ProofError(f"active window is {focused.get('address')}, not the first foot {addr}")
-    ox, oy = other["at"]
-    ow = other["size"][0]
+    as_user(["omarchy-shell", "window", "moveTo", addr, "40", "40"], wait=True, timeout=5)
+    as_user(["omarchy-shell", "window", "resizeTo", addr, "640", "400"], wait=True, timeout=5)
+    as_user(["omarchy-shell", "window", "moveTo", other["address"], "1120", "80"], wait=True, timeout=5)
+    as_user(["omarchy-shell", "window", "resizeTo", other["address"], "720", "400"], wait=True, timeout=5)
+    as_user(["omarchy-shell", "window", "focus", addr], wait=True, timeout=5)
+    time.sleep(0.35)
+    parked = next((c for c in feet() if c["address"] == other["address"]), None)
+    if not parked:
+      raise ProofError("unfocused foot vanished before caption close")
+    ox, oy = parked["at"]
+    ow = parked["size"][0]
     oclosex, oclosey = ox + ow - 16, oy - 16
     report["unfocused_close_aim"] = [oclosex, oclosey]
-    report["unfocused_close_target"] = other["address"]
+    report["unfocused_close_target"] = parked["address"]
+    as_user(["omarchy-shell", "shell", "hide", "omarchy.ultimate-snap-chooser"], wait=True, timeout=5)
     pointer.click(oclosex, oclosey)
     wait_until("unfocused hyprbars close unmaps that foot", 8, lambda: all(c["address"] != other["address"] for c in feet()))
     still = next((c for c in feet() if c["address"] == addr), None)

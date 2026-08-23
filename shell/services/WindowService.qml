@@ -36,11 +36,24 @@ QtObject {
   property var shippedPins: []
   property bool userPinsMissing: false
   property string home: Quickshell.env("HOME")
+  property var capabilityBroker: null
+  property string _actor: "ui"
+  property var placements: ({})
+  property var _knownAddresses: ({})
+  property var _lastRect: ({})
+  property var _lastAppId: ({})
+  property int _cascadeIndex: 0
+  property bool _placementsReady: false
   property var monitorIpc: ({})
   property var monitorsIpc: []
   property var workspacesIpc: []
   property int activeDesktopId: 1
   property var clientsIpc: []
+  property Timer placeNewClientsTimer: Timer {
+    interval: 280
+    repeat: false
+    onTriggered: root._placeNewClients()
+  }
 
   readonly property var windows: {
     var values = Hyprland.toplevels.values
@@ -63,7 +76,220 @@ QtObject {
   readonly property var groups: WindowModel.buildGroups(root.desktopWindows, root.pins)
   readonly property string pinsPath: root.home + "/.local/state/omarchy/ultimate/taskbar-pins.json"
   readonly property string layoutPath: root.home + "/.local/state/omarchy/ultimate/window-layout.json"
+  readonly property string placementsPath: root.home + "/.local/state/omarchy/ultimate/window-placements.json"
   readonly property string shippedPinsPath: Quickshell.env("OMARCHY_PATH") + "/default/ultimate/taskbar-pins.json"
+
+  onWindowsChanged: root._forgetUnmapped()
+  onClientsIpcChanged: {
+    root._trackClientRects()
+    root._schedulePlaceNewClients()
+  }
+
+  function _ok() {
+    root.lastError = ""
+    return { changed: true, error: null }
+  }
+
+  function _noop() {
+    return { changed: false, error: null }
+  }
+
+  function _err(title, explanation, detail) {
+    root.lastError = String(title || "")
+    return { changed: false, error: { title: String(title || ""), explanation: String(explanation || ""), detail: String(detail || "") } }
+  }
+
+  function _finish(verb, target, result, undo) {
+    if (root.capabilityBroker && typeof root.capabilityBroker.record === "function")
+      root.capabilityBroker.record("window", verb, target, result, undo || null, root._actor || "ui")
+    return result
+  }
+
+  function _persistPlacements() {
+    root.placementFile.setText(WindowModel.serializePlacements(root.placements))
+  }
+
+  function _geomForRect(rect) {
+    var list = root.monitorsIpc || []
+    var i
+    var m
+    var name = rect && rect.monitor ? String(rect.monitor) : ""
+    var picked = name ? WindowModel.pickMonitor(list, name) : null
+    if (!picked && rect) {
+      var x = Number(rect.x)
+      var y = Number(rect.y)
+      for (i = 0; i < list.length; i++) {
+        m = list[i]
+        if (!m) continue
+        if (x >= Number(m.x || 0) && x < Number(m.x || 0) + Number(m.width || 0) &&
+            y >= Number(m.y || 0) && y < Number(m.y || 0) + Number(m.height || 0)) {
+          picked = m
+          break
+        }
+      }
+    }
+    if (!picked) picked = root.monitorIpc
+    if (picked && picked.width) return WindowModel.compositorMonitor(picked)
+    return root._monitorGeom()
+  }
+
+  function _trackClientRects() {
+    var list = root.clientsIpc || []
+    var rects = root._copyMap(root._lastRect)
+    var apps = root._copyMap(root._lastAppId)
+    var i
+    var c
+    var addr
+    var key
+    for (i = 0; i < list.length; i++) {
+      c = list[i]
+      if (!c || !c.address) continue
+      addr = root._canonAddr(c.address)
+      if (c.at && c.size && Number(c.size[0]) > 0) {
+        rects[addr] = {
+          x: Number(c.at[0] || 0),
+          y: Number(c.at[1] || 0),
+          width: Number(c.size[0]),
+          height: Number(c.size[1]),
+          fullscreen: Number(c.fullscreen || 0),
+          minimized: c.hidden === true,
+          monitor: String(c.monitor || "")
+        }
+      }
+      key = WindowModel.windowAppId({ class: c.class, appId: c.initialClass || c.class })
+      if (key) apps[addr] = key
+    }
+    root._lastRect = rects
+    root._lastAppId = apps
+  }
+
+  function _rememberPlacement(address) {
+    var rect = root._lastRect[address] || root._clientRect(address)
+    var key = root._lastAppId[address] || WindowModel.windowAppId(root._record(address) || {})
+    if (!key || !rect || !rect.width) return
+    if (rect.fullscreen || rect.minimized) return
+    var geom = root._geomForRect(rect)
+    if (geom && geom.width && (WindowModel.isSnapped(rect, geom, 8, 32) || WindowModel.isSnapped(rect, geom, 8, 0)))
+      return
+    var next = root._copyMap(root.placements)
+    next[key] = WindowModel.clampRect(rect, geom)
+    root.placements = next
+    root._persistPlacements()
+  }
+
+  function _hydrateIfNeeded() {
+    if (root._placementsReady) return
+    var list = root._addresses()
+    var init = ({})
+    var i
+    var addr
+    if (list.length === 0) {
+      var clients = root.clientsIpc || []
+      if (clients.length === 0) return
+      for (i = 0; i < clients.length; i++) {
+        if (!clients[i] || !clients[i].address) continue
+        addr = root._canonAddr(clients[i].address)
+        if (addr) init[addr] = true
+      }
+    } else {
+      for (i = 0; i < list.length; i++) init[list[i]] = true
+    }
+    var n = 0
+    for (addr in init) n++
+    if (n === 0) return
+    root._knownAddresses = init
+    root._placementsReady = true
+  }
+
+  function _forgetUnmapped() {
+    root._hydrateIfNeeded()
+    if (!root._placementsReady) return
+    var list = root._addresses()
+    var seen = ({})
+    var i
+    var addr
+    for (i = 0; i < list.length; i++) seen[list[i]] = true
+    if (list.length === 0) {
+      var clients = root.clientsIpc || []
+      for (i = 0; i < clients.length; i++) {
+        if (!clients[i] || !clients[i].address) continue
+        addr = root._canonAddr(clients[i].address)
+        if (addr) seen[addr] = true
+      }
+    }
+    for (addr in root._knownAddresses) {
+      if (seen[addr]) continue
+      root._rememberPlacement(addr)
+    }
+    var next = ({})
+    for (addr in root._knownAddresses) {
+      if (seen[addr]) next[addr] = true
+    }
+    root._knownAddresses = next
+  }
+
+  function _schedulePlaceNewClients() {
+    if (!root.placeNewClientsTimer) return
+    root._hydrateIfNeeded()
+    if (!root._placementsReady) return
+    if (!root._hasUnplacedClient()) return
+    if (!root.placeNewClientsTimer.running) root.placeNewClientsTimer.start()
+  }
+
+  function _hasUnplacedClient() {
+    var list = root.clientsIpc || []
+    var i
+    var c
+    var addr
+    for (i = 0; i < list.length; i++) {
+      c = list[i]
+      if (!c || !c.address) continue
+      addr = root._canonAddr(c.address)
+      if (!addr || root._knownAddresses[addr]) continue
+      if (c.hidden === true || c.mapped === false) continue
+      if (!WindowModel.windowAppId({ class: c.class, appId: c.initialClass || c.class })) continue
+      return true
+    }
+    return false
+  }
+
+  function _placeNewClients() {
+    if (!root._placementsReady) return
+    var list = root.clientsIpc || []
+    var known = root._copyMap(root._knownAddresses)
+    var i
+    var c
+    var addr
+    var key
+    var geom
+    var rec
+    for (i = 0; i < list.length; i++) {
+      c = list[i]
+      if (!c || !c.address) continue
+      addr = root._canonAddr(c.address)
+      if (!addr || known[addr]) continue
+      if (c.hidden === true || c.mapped === false) continue
+      key = WindowModel.windowAppId({ class: c.class, appId: c.initialClass || c.class })
+      if (!key) continue
+      rec = root._record(addr) || {}
+      if (rec.modal || c.mapped === false) {
+        known[addr] = true
+        continue
+      }
+      geom = root._monitorGeom(addr)
+      var remembered = key && root.placements[key] && root.placements[key].width ? root.placements[key] : null
+      if (remembered && geom && geom.width && (WindowModel.isSnapped(remembered, geom, 8, 32) || WindowModel.isSnapped(remembered, geom, 8, 0)))
+        remembered = null
+      if (remembered)
+        root._applyRect(addr, WindowModel.clampRect(remembered, geom))
+      else {
+        root._applyRect(addr, WindowModel.cascadeRect(geom, root._cascadeIndex))
+        root._cascadeIndex++
+      }
+      known[addr] = true
+    }
+    root._knownAddresses = known
+  }
 
   function _applyShippedPinsIfNeeded() {
     if (root.userPinsMissing && root.pins.length === 0 && root.shippedPins.length > 0)
@@ -235,7 +461,11 @@ QtObject {
   }
 
   function _hyprbarsInset(address) {
-    return WindowModel.hyprbarsSnapInset(root._record(address) || root._clientIpc(address) || {})
+    Hyprland.refreshToplevels()
+    var rec = root._record(address) || {}
+    var ipc = root._clientIpc(address) || {}
+    var cls = rec.class || rec.appId || ipc.class || ipc.initialClass || ""
+    return WindowModel.hyprbarsSnapInset({ class: cls, appId: cls })
   }
 
   function _clientRect(address) {
@@ -275,48 +505,56 @@ QtObject {
   function pin(entry) {
     root.pins = WindowModel.withPin(root.pins, entry || {})
     root._persistPins()
+    return root._finish("pin", (entry && (entry.desktopId || entry.id)) || "", root._ok())
   }
 
   function unpin(desktopId) {
     root.pins = WindowModel.withoutPin(root.pins, desktopId)
     root._persistPins()
+    return root._finish("unpin", desktopId, root._ok())
   }
 
   function togglePin(group) {
-    if (!group) return
-    if (group.pinned) root.unpin(group.desktopId || group.id)
-    else root.pin(group)
+    if (!group) return root._noop()
+    if (group.pinned) return root.unpin(group.desktopId || group.id)
+    return root.pin(group)
   }
 
   function focus(address) {
     var target = root._addr(address)
-    if (!target) return
+    if (!target) return root._finish("focus", address, root._err("No window", "There is no window to focus.", ""))
     root._dispatchLua("hl.dsp.focus({ " + root._luaWindow(target) + " })")
+    return root._finish("focus", target, root._ok())
   }
 
   function close(address) {
     var target = root._addr(address)
-    if (!target) return
+    if (!target) return root._finish("close", address, root._err("No window", "There is no window to close.", ""))
+    root._rememberPlacement(target)
     root._dispatchLua("hl.dsp.window.close({ " + root._luaWindow(target) + " })", true)
+    return root._finish("close", target, root._ok(), { verb: "activate", address: target })
   }
 
   function closeActive() {
     var address = root._activeAddress()
-    if (address) root.close(address)
+    if (address) return root.close(address)
+    return root._finish("closeActive", "", root._err("No window", "There is no active window to close.", ""))
   }
 
   function minimize(address) {
     var target = root._addr(address)
-    if (!target) return
+    if (!target) return root._finish("minimize", address, root._err("No window", "There is no window to minimize.", ""))
     root._markMinimized(target, true)
     root._dispatchLua("hl.plugin.omarchy_minimize.minimize({ " + root._luaWindow(target) + " })", true)
+    return root._finish("minimize", target, root._ok(), { verb: "restore", address: target })
   }
 
   function restore(address) {
     var target = root._addr(address)
-    if (!target) return
+    if (!target) return root._finish("restore", address, root._err("No window", "There is no window to restore.", ""))
     root._dispatchLua("hl.plugin.omarchy_minimize.restore({ " + root._luaWindow(target) + " })", true)
     root._markMinimized(target, false)
+    return root._finish("restore", target, root._ok(), { verb: "minimize", address: target })
   }
 
   function isActive(address) {
@@ -347,8 +585,8 @@ QtObject {
   }
 
   function toggleFromTaskbar(address) {
-    if (root.isActive(address)) root.minimize(address)
-    else root.activate(address)
+    if (root.isActive(address)) return root.minimize(address)
+    return root.activate(address)
   }
 
   // Alt+Tab and taskbar activation: unhide if needed, then focus. restore()
@@ -356,46 +594,50 @@ QtObject {
   // unmaps and returns keyboard focus to the previous client.
   function activate(address) {
     var target = root._addr(address)
-    if (!target) return
+    if (!target) return root._finish("activate", address, root._err("No window", "There is no window to activate.", ""))
     var rec = root._record(target)
     if (rec && rec.minimized) root.restore(target)
     root._dispatchLua("hl.dsp.window.bring_to_top({ " + root._luaWindow(target) + " })")
     root.focus(target)
+    return root._finish("activate", target, root._ok())
   }
 
   function maximize(address) {
     var target = root._addr(address)
-    if (!target) return
+    if (!target) return root._finish("maximize", address, root._err("No window", "There is no window to maximize.", ""))
     root._rememberNormal(target)
     root._setPlacedKind(target, "max")
     root._dispatchLua("hl.dsp.window.fullscreen({ mode = \"maximized\", action = \"set\", " + root._luaWindow(target) + " })", true)
+    return root._finish("maximize", target, root._ok(), { verb: "restoreNormal", address: target })
   }
 
   function unmaximize(address) {
     var target = root._addr(address)
-    if (!target) return
+    if (!target) return root._finish("unmaximize", address, root._err("No window", "There is no window to restore.", ""))
     if (root._placedKind[target] === "max") root._setPlacedKind(target, "float")
     root._dispatchLua("hl.dsp.window.fullscreen({ mode = \"maximized\", action = \"unset\", " + root._luaWindow(target) + " })", true)
+    return root._finish("unmaximize", target, root._ok())
   }
 
   function toggleMaximize(address) {
     var target = root._addr(address)
-    if (!target) return
-    if (root.isMaximized(target)) root.unmaximize(target)
-    else root.maximize(target)
+    if (!target) return root._finish("toggleMaximize", address, root._err("No window", "There is no window to maximize.", ""))
+    if (root.isMaximized(target)) return root.unmaximize(target)
+    return root.maximize(target)
   }
 
   function restoreOrMinimize(address) {
-    root.snapArrow(address, "d")
+    return root.snapArrow(address, "d")
   }
 
   function restoreNormal(address) {
     var target = root._addr(address)
-    if (!target) return
+    if (!target) return root._finish("restoreNormal", address, root._err("No window", "There is no window to restore.", ""))
     root._setPlacedKind(target, "float")
     var bounds = root._normalBounds[target]
     if (!bounds) bounds = WindowModel.defaultFloatRect(root._monitorGeom(target))
     root._applyRect(target, bounds)
+    return root._finish("restoreNormal", target, root._ok())
   }
 
   function _applyRect(target, bounds) {
@@ -410,31 +652,36 @@ QtObject {
 
   function moveTo(address, x, y) {
     var target = root._addr(address)
-    if (!target) return
+    if (!target) return root._finish("moveTo", address, root._err("No window", "There is no window to move.", ""))
     root._dispatchLua("hl.dsp.window.move({ x = " + Math.round(Number(x)) + ", y = " + Math.round(Number(y)) + ", relative = false, " + root._luaWindow(target) + " })")
+    return root._finish("moveTo", target, root._ok())
   }
 
   function resizeTo(address, w, h) {
     var target = root._addr(address)
-    if (!target) return
+    if (!target) return root._finish("resizeTo", address, root._err("No window", "There is no window to resize.", ""))
     root._dispatchLua("hl.dsp.window.resize({ x = " + Math.round(Number(w)) + ", y = " + Math.round(Number(h)) + ", relative = false, " + root._luaWindow(target) + " })")
+    return root._finish("resizeTo", target, root._ok())
   }
 
   function snapLeft(address) {
-    root.snapTo(address, "l")
+    return root.snapTo(address, "l")
   }
 
   function snapRight(address) {
-    root.snapTo(address, "r")
+    return root.snapTo(address, "r")
   }
 
   function snapTo(address, side) {
-    root._applySnapKind(root._addr(address), String(side || ""))
+    var target = root._addr(address)
+    if (!target) return root._finish("snapTo", address, root._err("No window", "There is no window to snap.", ""))
+    root._applySnapKind(target, String(side || ""))
+    return root._finish("snapTo", target, root._ok(), { verb: "restoreNormal", address: target })
   }
 
   function snapArrow(address, dir) {
     var target = root._addr(address)
-    if (!target) return
+    if (!target) return root._finish("snapArrow", address, root._err("No window", "There is no window to snap.", ""))
     var kind = "float"
     if (root.isMaximized(target)) kind = "max"
     else {
@@ -443,24 +690,24 @@ QtObject {
       if (rec && geom.width) kind = WindowModel.snapKind(rec, geom, 8, root._hyprbarsInset(target))
     }
     root._applySnapKind(target, WindowModel.nextSnap(kind, dir))
+    return root._finish("snapArrow", target, root._ok())
   }
 
   function aeroDragEnd(address, x, y) {
     var target = root._addr(address)
-    if (!target) return
+    if (!target) return root._finish("aeroDragEnd", address, root._err("No window", "There is no window to snap.", ""))
     Hyprland.refreshToplevels()
     var geom = root._monitorGeom(target)
-    if (!geom.width) return
+    if (!geom.width) return root._finish("aeroDragEnd", target, root._err("No monitor", "The window's monitor geometry is unavailable.", ""))
     var px = Number(x)
     var py = Number(y)
     if (x === undefined || y === undefined || x === "" || y === "" || isNaN(px) || isNaN(py)) {
-      root.lastError = "aeroDragEnd needs cursor coordinates"
-      return
+      return root._finish("aeroDragEnd", target, root._err("Missing cursor", "aeroDragEnd needs cursor coordinates.", ""))
     }
     var zone = WindowModel.aeroZone({ x: px, y: py }, geom)
     if (zone) {
       root._applySnapKind(target, zone)
-      return
+      return root._finish("aeroDragEnd", target, root._ok(), { verb: "restoreNormal", address: target })
     }
     // Interior drop. lastIpcObject and the clients poll can still show the
     // pre-max float after maximize(), so isMaximized/isSnapped on those boxes
@@ -469,10 +716,9 @@ QtObject {
     var placed = root._placedKind[target]
     var rec = root._clientRect(target) || root._record(target)
     if (placed === "max" || placed === "full" || root._isPlacedSnap(placed) || (rec && WindowModel.isSnapped(rec, geom, 8, root._hyprbarsInset(target)))) {
-      root.restoreNormal(target)
-      return
+      return root.restoreNormal(target)
     }
-    root.unmaximize(target)
+    return root.unmaximize(target)
   }
 
   function saveLayout() {
@@ -503,6 +749,7 @@ QtObject {
     }
     root.savedLayout = { windows: recs }
     root.layoutFile.setText(WindowModel.serializeLayout(root.savedLayout))
+    return root._finish("saveLayout", "", root._ok(), { verb: "restoreLayout" })
   }
 
   function restoreLayout() {
@@ -514,6 +761,7 @@ QtObject {
       if (entry.kind === "float") root._applyRect(entry.address, entry)
       else root._applySnapKind(entry.address, entry.kind)
     }
+    return root._finish("restoreLayout", "", root._ok())
   }
 
   function _applySnapKind(target, kind) {
@@ -563,6 +811,7 @@ QtObject {
       root._batch = batch
     }
     root._desktopShown = !root._desktopShown
+    return root._finish("toggleShowDesktop", "", root._ok())
   }
 
   function _addressesOnDesktop(desktopId) {
@@ -575,7 +824,7 @@ QtObject {
 
   function cycleNext() {
     var list = root._addressesOnDesktop(root.activeDesktopId)
-    if (list.length === 0) return
+    if (list.length === 0) return root._finish("cycleNext", "", root._noop())
     if (!root.cycling) {
       root.cycleList = list
       root.cycling = true
@@ -586,11 +835,12 @@ QtObject {
       root.cycleIndex = (root.cycleIndex + 1) % list.length
       root.cycleList = list
     }
+    return root._finish("cycleNext", "", root._ok())
   }
 
   function cyclePrev() {
     var list = root._addressesOnDesktop(root.activeDesktopId)
-    if (list.length === 0) return
+    if (list.length === 0) return root._finish("cyclePrev", "", root._noop())
     if (!root.cycling) {
       root.cycleList = list
       root.cycling = true
@@ -601,24 +851,28 @@ QtObject {
       root.cycleIndex = (root.cycleIndex - 1 + list.length) % list.length
       root.cycleList = list
     }
+    return root._finish("cyclePrev", "", root._ok())
   }
 
   function commitCycle() {
-    if (!root.cycling) return
+    if (!root.cycling) return root._finish("commitCycle", "", root._noop())
     var address = root.cycleList[root.cycleIndex]
     root.cancelCycle()
-    if (address) root.activate(address)
+    if (address) return root.activate(address)
+    return root._finish("commitCycle", "", root._ok())
   }
 
   function cancelCycle() {
     root.cycling = false
     root.cycleList = []
+    return root._finish("cancelCycle", "", root._ok())
   }
 
   function activateFromSwitcher(address) {
     var target = root._canonAddr(address)
     root.cancelCycle()
-    if (target) root.activate(target)
+    if (target) return root.activate(target)
+    return root._finish("activateFromSwitcher", address, root._err("No window", "There is no window to activate.", ""))
   }
 
   function isFullscreen(address) {
@@ -630,7 +884,7 @@ QtObject {
 
   function toggleFullscreen(address) {
     var target = root._addr(address)
-    if (!target) return
+    if (!target) return root._finish("toggleFullscreen", address, root._err("No window", "There is no window to fullscreen.", ""))
     // action=toggle is a no-op through hyprctl eval and is racy through
     // Quickshell when lastIpcObject still says 2 after restoreNormal. Set and
     // unset are explicit. layout_aware=false is default compositor fullscreen,
@@ -638,12 +892,13 @@ QtObject {
     if (root.isFullscreen(target)) {
       root._setPlacedKind(target, "float")
       root._dispatchLua("hl.dsp.window.fullscreen({ mode = \"fullscreen\", action = \"unset\", layout_aware = false, " + root._luaWindow(target) + " })", true)
-      return
+      return root._finish("toggleFullscreen", target, root._ok())
     }
     root._rememberNormal(target)
     root._setPlacedKind(target, "full")
     root.focus(target)
     root._dispatchLua("hl.dsp.window.fullscreen({ mode = \"fullscreen\", action = \"set\", layout_aware = false, " + root._luaWindow(target) + " })", true)
+    return root._finish("toggleFullscreen", target, root._ok(), { verb: "restoreNormal", address: target })
   }
 
   function createDesktop() {
@@ -653,43 +908,47 @@ QtObject {
     root.workspacesIpc = list
     root.activeDesktopId = next
     root._dispatchLua('hl.dsp.focus({ workspace = "' + next + '" })', true)
+    return root._finish("createDesktop", String(next), root._ok())
   }
 
   function switchDesktop(dir) {
     var dest = WindowModel.neighborDesktop(WindowModel.desktopIds(root.workspacesIpc), root.activeDesktopId, dir)
-    if (!dest || dest === root.activeDesktopId) return
-    root.switchToDesktop(dest)
+    if (!dest || dest === root.activeDesktopId) return root._finish("switchDesktop", "", root._noop())
+    return root.switchToDesktop(dest)
   }
 
   function switchToDesktop(id) {
     var dest = Number(id)
-    if (!(dest > 0)) return
+    if (!(dest > 0)) return root._finish("switchToDesktop", id, root._err("Invalid desktop", "Desktop id must be a positive number.", String(id)))
     root._dispatchLua('hl.dsp.focus({ workspace = "' + dest + '" })', true)
+    return root._finish("switchToDesktop", String(dest), root._ok())
   }
 
   function moveToDesktop(address, desktopId) {
     var target = root._addr(address)
     var dest = Number(desktopId)
-    if (!target || !(dest > 0)) return
+    if (!target || !(dest > 0)) return root._finish("moveToDesktop", address, root._err("Cannot move", "Window or desktop is missing.", ""))
     root._dispatchLua('hl.dsp.window.move({ workspace = "' + dest + '", follow = false, ' + root._luaWindow(target) + " })", true)
+    return root._finish("moveToDesktop", target, root._ok())
   }
 
   function closeDesktop() {
     var ids = WindowModel.desktopIds(root.workspacesIpc)
     var cur = root.activeDesktopId
-    if (ids.length <= 1) return
+    if (ids.length <= 1) return root._finish("closeDesktop", "", root._noop())
     var dest = WindowModel.neighborDesktop(ids, cur, "l")
     if (dest === cur) dest = WindowModel.neighborDesktop(ids, cur, "r")
-    if (!dest || dest === cur) return
+    if (!dest || dest === cur) return root._finish("closeDesktop", "", root._noop())
     var wins = root._addressesOnDesktop(cur)
     var i
     for (i = 0; i < wins.length; i++) root.moveToDesktop(wins[i], dest)
     root._dispatchLua('hl.dsp.focus({ workspace = "' + dest + '" })', true)
+    return root._finish("closeDesktop", String(cur), root._ok())
   }
 
   function moveToMonitor(address, dir) {
     var target = root._addr(address)
-    if (!target) return
+    if (!target) return root._finish("moveToMonitor", address, root._err("No window", "There is no window to move.", ""))
     var rec = root._record(target)
     var client = root._clientIpc(target)
     var hint = ""
@@ -698,10 +957,10 @@ QtObject {
     var current = WindowModel.pickMonitor(root.monitorsIpc, hint)
     var dest = WindowModel.neighborMonitor(root.monitorsIpc, current, dir)
     if (!dest || !dest.name) {
-      root.lastError = "no neighboring monitor"
-      return
+      return root._finish("moveToMonitor", target, root._err("No neighboring monitor", "There is no monitor in that direction.", String(dir)))
     }
     root._dispatchLua('hl.dsp.window.move({ monitor = "' + dest.name + '", ' + root._luaWindow(target) + " })", true)
+    return root._finish("moveToMonitor", target, root._ok())
   }
 
   property Process ensurePinsDir: Process {
@@ -804,6 +1063,23 @@ QtObject {
   property Timer activeDesktopRestart: Timer {
     interval: 400
     onTriggered: root.activeDesktopReader.running = true
+  }
+
+  property FileView csdClientsFile: FileView {
+    path: Quickshell.env("OMARCHY_PATH") + "/default/ultimate/csd-clients.json"
+    watchChanges: true
+    printErrors: false
+    onLoaded: WindowModel.setCsdClientsJson(text())
+    onFileChanged: reload()
+  }
+
+  property FileView placementFile: FileView {
+    path: root.placementsPath
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.placements = WindowModel.parsePlacements(text())
+    onLoadFailed: root.placements = ({})
+    onFileChanged: reload()
   }
 
   property FileView layoutFile: FileView {

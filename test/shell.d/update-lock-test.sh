@@ -39,6 +39,7 @@ for command in \
   omarchy-update-dev \
   omarchy-update-keyring \
   omarchy-update-system-pkgs \
+  omarchy-apply-hyprland-plugins \
   omarchy-migrate \
   omarchy-update-aur-pkgs \
   omarchy-update-mise \

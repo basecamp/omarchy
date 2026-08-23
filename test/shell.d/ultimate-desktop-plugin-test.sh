@@ -148,8 +148,20 @@ grep -Fq 'snapArrow' "$ROOT/default/hypr/bindings/desktop.lua" \
   || fail "Win+Arrow cycles halves then quarters through snapArrow"
 grep -Fq 'snapChooser' "$ROOT/default/hypr/bindings/desktop.lua" \
   || fail "Win+Z summons the snap layout chooser"
-grep -Fq 'omarchy-shell window snapChooser 0x{:x}' "$ROOT/default/hypr/desktop-windows.lua" \
-  || fail "hyprbars has a maximize-adjacent snap layout button"
+grep -Fq 'hover_action = "omarchy-shell window snapChooser 0x{:x}"' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "hyprbars maximize hover summons the snap layout chooser"
+grep -Fq 'handleButtonHover' "$ROOT/default/hypr/plugins/hyprbars/barDeco.cpp" \
+  || fail "hyprbars fires hover_action from the title-bar pointer path"
+awk '
+  $0 ~ /void CHyprBar::draw\(/ { infn = 1 }
+  infn && /handleButtonHover\(\)/ { found = 1 }
+  infn && /^void CHyprBar::/ && $0 !~ /void CHyprBar::draw\(/ { infn = 0 }
+  END { exit found ? 0 : 1 }
+' "$ROOT/default/hypr/plugins/hyprbars/barDeco.cpp" \
+  || fail "maximize hover dwell fires while the pointer is parked, not only on motion"
+if grep -Fq '▦' "$ROOT/default/hypr/desktop-windows.lua"; then
+  fail "hyprbars must not keep a dedicated snap caption button"
+fi
 grep -Fq 'aeroDragEnd 0x{:x} {} {}' "$ROOT/default/hypr/plugins/hyprbars/barDeco.cpp" \
   || fail "hyprbars drag end sends cursor coordinates to aeroDragEnd"
 grep -Fq 'formatWindowCmd' "$ROOT/default/hypr/plugins/hyprbars/barDeco.cpp" \
@@ -163,11 +175,11 @@ fi
 if grep -Fq '{ tag = "chromium-based-browser" }' "$ROOT/default/hypr/desktop-windows.lua"; then
   fail "hyprbars:no_bar must not depend on the chromium-based-browser tag YouTube/Zoom drop"
 fi
-grep -Fq 'youtube' "$ROOT/default/hypr/desktop-windows.lua" \
+grep -Fq 'youtube' "$ROOT/default/ultimate/csd-clients.json" \
   || fail "YouTube PWAs keep hyprbars:no_bar after dropping the chromium tag"
 grep -Fq 'omarchy-shell window close 0x{:x}' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "hyprbars close names the bar's window address"
-grep -Fq '^zen$' "$ROOT/default/hypr/desktop-windows.lua" \
+grep -Fq '^zen$' "$ROOT/default/ultimate/csd-clients.json" \
   || fail "Zen browser no_bar is anchored so zenity keeps hyprbars"
 if grep -Fq '|zen|' "$ROOT/default/hypr/desktop-windows.lua"; then
   fail "unanchored zen in desktop-windows would no_bar zenity"
@@ -215,8 +227,57 @@ grep -Fq 'WaylandWindowDecorations' "$ROOT/config/chromium-flags.conf" \
   || fail "Chromium must enable Wayland window decorations (fused tab/caption chrome)"
 grep -Fq 'hyprbars:no_bar' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "Desktop Mode hides hyprbars on CSD browsers and Cursor"
-grep -Fq '^[Cc]ursor$' "$ROOT/default/hypr/desktop-windows.lua" \
+grep -Fq '^[Cc]ursor$' "$ROOT/default/ultimate/csd-clients.json" \
   || fail "Desktop Mode hides hyprbars on Cursor CSD"
+grep -Fq '[Nn]autilus' "$ROOT/default/ultimate/csd-clients.json" \
+  || fail "Files/Nautilus is on the shared CSD list"
+grep -Fq 'csd-clients.json' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "desktop windowing loads CSD classes from the shared JSON"
+grep -Fq 'csdClassPatterns' "$ROOT/shell/services/WindowModel.js" \
+  || fail "WindowModel CSD classes match the shared JSON"
+grep -Fq 'omarchy-apply-hyprland-plugins' "$ROOT/bin/omarchy-update" \
+  || fail "omarchy-update rebuilds hyprbars and omarchy-minimize after system packages"
+awk '
+  $0 ~ /omarchy-update-system-pkgs/ { pkgs = 1 }
+  pkgs && $0 ~ /omarchy-apply-hyprland-plugins/ { apply = 1 }
+  apply && $0 ~ /omarchy-migrate/ { found = 1 }
+  END { exit found ? 0 : 1 }
+' "$ROOT/bin/omarchy-update" \
+  || fail "plugin rebuild is in the update transaction after packages and before migrate"
+grep -Fq 'id: "omarchy.agents"' "$ROOT/shell/shell.qml" \
+  || fail "Desktop Mode overlay includes omarchy.agents in the Superbar cluster"
+grep -Fq 'clusterEntries' "$ROOT/shell/plugins/ultimate-taskbar/TrayCluster.qml" \
+  || fail "Superbar notification cluster is driven from bar-widget layout"
+if grep -Fq 'persistShellConfig' "$ROOT/shell/shell.qml" && awk '
+  $0 ~ /function overlayShellConfig/ { infn = 1 }
+  infn && /persistShellConfig/ { found = 1 }
+  infn && /^  function / && $0 !~ /function overlayShellConfig/ { infn = 0 }
+  END { exit found ? 0 : 1 }
+' "$ROOT/shell/shell.qml"; then
+  fail "Desktop Mode overlay must not persist shell.json"
+fi
+grep -Fq '"Close group"' "$ROOT/shell/plugins/ultimate-taskbar/TaskButton.qml" \
+  || fail "grouped Superbar close is labeled Close group"
+grep -Fq 'function windowIpc' "$ROOT/shell/shell.qml" \
+  || fail "window IPC serializes { changed, error }"
+grep -Fq 'CapabilityBroker' "$ROOT/shell/shell.qml" \
+  || fail "shell wires the capability broker"
+[[ -f $ROOT/shell/services/CapabilityBroker.qml ]] || fail "CapabilityBroker.qml exists"
+grep -Fq 'capability-ledger.json' "$ROOT/shell/services/CapabilityBroker.qml" \
+  || fail "broker records a durable operation ledger"
+grep -Fq 'function undoLast' "$ROOT/shell/services/CapabilityBroker.qml" \
+  || fail "broker can invert the last window operation"
+grep -Fq 'window-placements.json' "$ROOT/shell/services/WindowService.qml" \
+  || fail "WindowService remembers per-app reopen placement"
+grep -Fq 'function _placeNewClients' "$ROOT/shell/services/WindowService.qml" \
+  || fail "reopen memory places mapped clients after compositor rules settle"
+grep -Fq 'function _hydrateIfNeeded' "$ROOT/shell/services/WindowService.qml" \
+  || fail "reopen memory hydrates existing windows without cascading them"
+grep -Fq 'function resizeTo' "$ROOT/shell/shell.qml" \
+  || fail "window IPC resizeTo is the same verb as WindowService"
+if grep -Fq 'visible: providers.length > 0' "$ROOT/shell/plugins/agents/Panel.qml"; then
+  fail "omarchy.agents must stay visible in Desktop Mode even with no usage files"
+fi
 jq -e '.features.taskView == true' "$ROOT/default/ultimate/profiles/desktop.json" >/dev/null \
   || fail "desktop profile enables Task View"
 grep -Fq 'omarchy-snap-chooser' "$ROOT/shell/plugins/ultimate-snap-chooser/Chooser.qml" \

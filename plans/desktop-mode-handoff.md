@@ -4,20 +4,19 @@ Live Hyprland evidence for Desktop Mode windowing, plus the current next-work lo
 
 Do not treat this file as advisory. Historical tranches below are evidence. **Current truth is this section, not §0–§0i (those still say “W0 is still open” because they were written before architecture GO).**
 
-## Current lock (2026-08-22 course-correction)
+## Current lock (2026-08-23)
 
 **Identity:** Windows 7 Ultimate's complete, obvious, mouse-native desktop model rebuilt for 2026, with an agent-native operating fabric underneath every system capability. **Not** Windows-like Omarchy with AI tools.
 
-**Branches:** default `main` (upstream tracking only; `2c247e39` == basecamp `quattro`). All Ultimate work is `work`. Do not create `cursor/*` or other slice branches. Do not merge `work` into `main` as the OS. Product is still **REJECTED**. Reconciliation ledger (outside git): `C:\dev\omarchy-vm\branch-reconciliation-ledger-2026-08-22.md` — two heads PASS; zero unique Jesse **content**; one orphan merge SHA `30aac92f` with empty diff. Ledger-time `work` was `c4c6ce29`; later docs moved HEAD — do not reset.
+**Branches:** default `main` (upstream tracking only; `2c247e39` == basecamp `quattro`). All Ultimate work is `work`. Do not create `cursor/*` or other slice branches. Do not merge `work` into `main` as the OS. Product is still **REJECTED**. Reconciliation ledger (outside git): `C:\dev\omarchy-vm\branch-reconciliation-ledger-2026-08-22.md` — two heads PASS; zero unique Jesse **content**; one orphan merge SHA `30aac92f` with empty diff. Ledger-time `work` was `c4c6ce29`; later commits moved HEAD — do not reset.
 
-**W0:** architecture **GO** on metal (Hyprland stays). That is not finished Windows 7 window management. Remaining product-windowing debt: fourth caption button (visible min / ▦ snapChooser / max / close; `formatWindowCmd` is in `barDeco.cpp`); 880×560 forced initial size (`_normalBounds` and `~/.local/state/omarchy/ultimate/window-layout.json` exist — missing is Win7 per-app reopen / cascade / per-monitor launch memory, not “no remembered geometry”); CSD lists duplicated in `desktop-windows.lua` + `WindowModel.js`, not identical, Nautilus omitted; plugins compile via `omarchy-apply-hyprland-plugins` into `/usr/lib/hyprland-plugins/`, `omarchy-update` does not rebuild, hash mismatch aborts hyprbars **and** minimize. Overlay chrome is gone. Do not restore `--disable-features=WaylandWindowDecorations`. Do not put `hyprland-plugin-hyprbars` in `install/omarchy-other.packages`.
+**W0:** architecture **GO** and **product-windowing GO** on metal (Hyprland stays). HDMI-A-1 1920×1080. `windows-native-test.sh` exit 0 (20–25 + unnumbered proofs). Pointer proof exit 0 (Alt+Tab card, title-bar drag, Aero, maximize hover → snap chooser, unfocused addressed close). Three-button SSD (min / max / close). CSD from `default/ultimate/csd-clients.json`; live grim Chromium one row, Files no hyprbars row. Per-app reopen via `window-placements.json`. `omarchy-update` rebuilds plugins after system packages. Overlay chrome gone. Do not restore `--disable-features=WaylandWindowDecorations`. Do not put `hyprland-plugin-hyprbars` in `install/omarchy-other.packages`. Versioned distro plugin packages remain later.
 
-**Honesty:** Superbar is a prototype (`TrayCluster` hard-coded; `barConfig` unused; chrome hexes include `#3a3a3a` `#4a4a4a`; `Variants` already maps per screen — policy missing, not rendering). Start is a 440×560 glass launcher with Power User on the footer. Settings is a five-button stub. Peek is a title list; right-click is only pin/unpin/close; “Close window” closes the group. Tokens are consumed; Superbar/hyprbars chrome bypass is the leak. Progress ~15–20% of the OS vision.
+**Phase 2 minimum:** WindowService `{ changed, error }`, `CapabilityBroker` (catalog, permit ui/ipc/agent/undo, ledger, `undoLast`), Superbar cluster from `BarWidgetRegistry` including `omarchy.agents`. Live disk `~/.config/omarchy/shell.json` not rewritten (`bar.id` unset, `position: top`). Agent Center UI is not this slice.
 
-**Next locked work (do this, not a huge Phase 3/4 visual pass):**
+**Honesty:** Superbar is still a prototype (chrome hexes include `#3a3a3a` `#4a4a4a`; peek is titles; Start is a 440×560 glass launcher; Settings is a five-button stub). Progress ~20% of the OS vision.
 
-1. Agent Fabric contract on top of WindowService (runtime, capability broker, permissions, ledger, undo). Agent UI can wait; architecture cannot.
-2. Restore `omarchy.agents` and Quattro plugin visibility in Desktop Mode Superbar. `TrayCluster.qml` hard-codes widgets and drops the heritage `omarchy.agents` entry. Agent Center belongs in Desktop Mode as native as Start; until it exists the usage widget stays visible.
+**Next locked work:** later Agent Fabric depth (full catalog, context broker, sandboxed runtime) **or** Phase 3 token unification for Superbar/hyprbars. Do not start Agent Center UI or a huge Desktop Mode visual pass.
 
 KEEP `4ea1dcf3` through `c1ae994f`. Do not amend them. Do not squash them.
 
@@ -193,7 +192,7 @@ KEEP-WITH-FIX that landed:
 
 Still not the OS (later phases, not this slice): ISO, gum, Tokyo Night seed, Nautilus-as-Files, nvim-as-txt, TTY first-boot, Steam/.exe, hyprbars as an ISO-mirror pacman package. Do not put `hyprland-plugin-hyprbars` in `install/omarchy-other.packages`.
 
-Historical next-line (superseded): design system. **Current next work is Agent Fabric + Superbar plugin/`omarchy.agents` visibility** — see Current lock.
+Historical next-line (superseded): design system, then Agent Fabric contract. **Current lock is above** — W0 product-windowing GO and Phase 2 window minimum closed 2026-08-23.
 
 ## 1. Read-first contract (mandatory, non-skippable)
 

@@ -68,7 +68,7 @@ omarchy mode set power-user
 
 Desktop Mode does not rewrite `~/.config/omarchy/shell.json`. `shell.qml` computes an effective config: when `features.taskbar` is on and `features.topBar` is off, `bar.id` becomes `omarchy.ultimate-taskbar` and `bar.position` becomes `bottom`. Plugin enable/disable and Settings still persist the on-disk file, so switching back to Power User Mode restores the heritage bar without a migration.
 
-That overlay currently **drops the heritage bar widget layout**, including `omarchy.agents`. Superbar `TrayCluster.qml` hard-codes a widget list and does not consume `BarWidgetRegistry`. Preserve the Quattro plugin model under Windows-quality Superbar presentation. Until Agent Center exists, `omarchy.agents` must stay visible in Desktop Mode.
+That overlay currently **sets a Desktop Mode notification-area layout** that includes `omarchy.agents`, without writing it to disk. Superbar `TrayCluster.qml` loads those ids from `barConfig` through `BarWidgetRegistry`. Preserve the Quattro plugin model under Windows-quality Superbar presentation. Until Agent Center exists, `omarchy.agents` stays visible in Desktop Mode (empty-state copy if no usage files).
 
 ## Hyprland
 

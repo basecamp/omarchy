@@ -22,6 +22,7 @@ steps=(
   omarchy-update-dev
   omarchy-update-keyring
   omarchy-update-system-pkgs
+  omarchy-apply-hyprland-plugins
   omarchy-migrate
   omarchy-hook
   omarchy-update-aur-pkgs
@@ -69,6 +70,7 @@ expected_steps() {
     omarchy-update-dev \
     omarchy-update-keyring \
     omarchy-update-system-pkgs \
+    omarchy-apply-hyprland-plugins \
     omarchy-migrate \
     omarchy-hook \
     omarchy-update-aur-pkgs \
@@ -100,9 +102,19 @@ pass "-y is what marks an update unattended, not the update itself"
 if FAILING_STEP=omarchy-update-system-pkgs run_update -y; then
   fail "an update whose packages did not upgrade passes for a whole one"
 fi
-for step in omarchy-migrate omarchy-hook omarchy-update-aur-pkgs omarchy-update-restart; do
+for step in omarchy-apply-hyprland-plugins omarchy-migrate omarchy-hook omarchy-update-aur-pkgs omarchy-update-restart; do
   if grep -q "^$step " "$test_tmp/steps"; then
     fail "a blocked package upgrade still runs $step"
   fi
 done
 pass "a blocked package upgrade stops the update before it migrates"
+
+if FAILING_STEP=omarchy-apply-hyprland-plugins run_update -y; then
+  fail "an update whose Hyprland plugins did not rebuild passes for a whole one"
+fi
+for step in omarchy-migrate omarchy-hook omarchy-update-aur-pkgs omarchy-update-restart; do
+  if grep -q "^$step " "$test_tmp/steps"; then
+    fail "a blocked plugin rebuild still runs $step"
+  fi
+done
+pass "a blocked Hyprland plugin rebuild stops the update before it migrates"

@@ -94,6 +94,7 @@ class CHyprBar : public IHyprWindowDecoration {
     void handleUpEvent(Event::SCallbackInfo& info);
     void handleMovement();
     bool doButtonPress(Config::INTEGER barPadding, Config::INTEGER barButtonPadding, Config::INTEGER barHeight, Vector2D COORDS, bool BUTTONSRIGHT);
+    void handleButtonHover();
 
     CBox assignedBoxGlobal();
 
@@ -114,6 +115,9 @@ class CHyprBar : public IHyprWindowDecoration {
 
     // store hover state for buttons as a bitfield
     unsigned int m_iButtonHoverState = 0;
+    int          m_hoverArmIndex     = -1;
+    bool         m_hoverFired        = false;
+    Time::steady_tp m_hoverArmedAt   = Time::steadyNow();
 
     // for dynamic updates
     int    m_iLastHeight = 0;

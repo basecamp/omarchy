@@ -182,6 +182,14 @@ int newLuaButton(lua_State* L) {
         button.cmd = lua_tostring(L, -1);
     }
 
+    {
+        Hyprutils::Utils::CScopeGuard x([L] { lua_pop(L, 1); });
+
+        lua_getfield(L, 1, "hover_action");
+        if (lua_isstring(L, -1))
+            button.hoverCmd = lua_tostring(L, -1);
+    }
+
     g_pGlobalState->buttons.push_back(std::move(button));
 
     for (auto& b : g_pGlobalState->bars) {

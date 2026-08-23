@@ -9,16 +9,46 @@ function windowAppId(win) {
   return normalizeId(win.appId || win["class"] || "")
 }
 
-// Keep in sync with hyprbars:no_bar in default/hypr/desktop-windows.lua.
-// Those clients draw Wayland CSD, so snap must not reserve 32px for hyprbars.
+// Canonical CSD classes live in default/ultimate/csd-clients.json.
+// Lua (hyprbars:no_bar) and this module both compile that file.
+var _csdRegexes = null
+
+function compileCsdPatterns(jsonText) {
+  var out = []
+  try {
+    var parsed = JSON.parse(String(jsonText || "{}"))
+    var list = parsed && parsed.classPatterns
+    if (!list || !list.length) return out
+    var i
+    for (i = 0; i < list.length; i++) {
+      try {
+        out.push(new RegExp(String(list[i]), "i"))
+      } catch (e) {
+      }
+    }
+  } catch (e) {
+  }
+  return out
+}
+
+function setCsdClientsJson(jsonText) {
+  _csdRegexes = compileCsdPatterns(jsonText)
+  return _csdRegexes
+}
+
+function csdClassPatterns() {
+  if (_csdRegexes && _csdRegexes.length) return _csdRegexes
+  return []
+}
+
 function usesWaylandCsd(win) {
   var cls = windowAppId(win)
   if (!cls) return false
-  if (/((google-)?chrom(e|ium)|brave-browser|microsoft-edge|vivaldi-stable|helium)/.test(cls)) return true
-  if (/(firefox|librewolf)/.test(cls)) return true
-  if (cls === "zen" || cls.indexOf("zen-") === 0) return true
-  if (/-youtube\.com__/.test(cls) || /-app\.zoom\.us__wc_home/.test(cls)) return true
-  if (cls === "cursor") return true
+  var pats = csdClassPatterns()
+  var i
+  for (i = 0; i < pats.length; i++) {
+    if (pats[i].test(cls)) return true
+  }
   return false
 }
 
@@ -450,6 +480,46 @@ function defaultFloatRect(monitor) {
   return { x: x, y: y, width: width, height: height }
 }
 
+function cascadeRect(monitor, index) {
+  var base = defaultFloatRect(monitor)
+  var area = workArea(monitor)
+  var step = 32
+  var n = Math.max(0, Number(index) || 0)
+  var x = base.x + step * (n % 12)
+  var y = base.y + step * (n % 12)
+  if (x + base.width > area.x + area.width) x = area.x + Math.max(24, area.width - base.width - 24)
+  if (y + base.height > area.y + area.height) y = area.y + Math.max(24, area.height - base.height - 24)
+  return { x: x, y: y, width: base.width, height: base.height }
+}
+
+function clampRect(rect, monitor) {
+  var area = workArea(monitor)
+  var width = Math.max(320, Math.min(Number(rect && rect.width) || 880, area.width))
+  var height = Math.max(240, Math.min(Number(rect && rect.height) || 560, area.height))
+  var x = Number(rect && rect.x)
+  var y = Number(rect && rect.y)
+  if (isNaN(x)) x = area.x + 48
+  if (isNaN(y)) y = area.y + 48
+  if (x < area.x) x = area.x
+  if (y < area.y) y = area.y
+  if (x + width > area.x + area.width) x = area.x + Math.max(0, area.width - width)
+  if (y + height > area.y + area.height) y = area.y + Math.max(0, area.height - height)
+  return { x: x, y: y, width: width, height: height, monitor: monitor && monitor.name ? String(monitor.name) : "" }
+}
+
+function parsePlacements(raw) {
+  try {
+    var parsed = JSON.parse(String(raw || "{}"))
+    if (parsed && parsed.placements && typeof parsed.placements === "object") return parsed.placements
+  } catch (e) {
+  }
+  return {}
+}
+
+function serializePlacements(placements) {
+  return JSON.stringify({ placements: placements || {} }, null, 2) + "\n"
+}
+
 function buildGroups(windows, pins) {
   var list = []
   var used = ({})
@@ -540,6 +610,22 @@ if (typeof module !== "undefined") {
     parseLayout: parseLayout,
     captureLayout: captureLayout,
     matchLayout: matchLayout,
-    defaultFloatRect: defaultFloatRect
+    defaultFloatRect: defaultFloatRect,
+    cascadeRect: cascadeRect,
+    clampRect: clampRect,
+    parsePlacements: parsePlacements,
+    serializePlacements: serializePlacements,
+    compileCsdPatterns: compileCsdPatterns,
+    setCsdClientsJson: setCsdClientsJson,
+    csdClassPatterns: csdClassPatterns
+  }
+}
+
+if (typeof require !== "undefined" && typeof __dirname !== "undefined") {
+  try {
+    var fs = require("fs")
+    var path = require("path")
+    setCsdClientsJson(fs.readFileSync(path.join(__dirname, "../../default/ultimate/csd-clients.json"), "utf8"))
+  } catch (e) {
   }
 }

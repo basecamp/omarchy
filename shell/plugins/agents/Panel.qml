@@ -294,10 +294,10 @@ Panel {
     return candidates
   }
 
-  // Nothing to report, nothing in the bar: Bar.qml collapses a slot whose item
-  // is invisible, so the icon appears the moment the first scan finds usage and
-  // stays away entirely on a machine that has never run either CLI.
-  visible: providers.length > 0
+  // Desktop Mode keeps the usage glyph visible until Agent Center exists, even
+  // on a machine that has never run a coding agent. The empty panel copy is the
+  // honest state, not a missing Superbar slot.
+  visible: true
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 

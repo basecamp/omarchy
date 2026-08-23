@@ -63,4 +63,4 @@ Give the same machine to an Omarchy/Arch power user. They should still be able t
 
 `test/acceptance.d/windows-native-test.sh` is the executable skeleton for this manifest inside the disposable-VM acceptance suite (see `agents/skills/acceptance-tests.md`). Numbered rows 1–40 map to named cases in the loop (`skip_task` for pending). After that loop the same file still proves maximize, plugin maps, overlay-chrome absence, Show Desktop, virtual desktops, Task View, fullscreen, multi-monitor, toolkit snap, and the absolute-pointer helper.
 
-A green harness that only talks to `omarchy-shell window` and checks `left.x <= right.x` does not pass the OS. The extra proofs were sufficient as architecture evidence for Windowing Gate W0 on Hyprland. They are not Windows 7 Ultimate.
+A green harness that only talks to `omarchy-shell window` and checks `left.x <= right.x` does not pass the OS. The extra proofs were sufficient as architecture evidence for Windowing Gate W0 on Hyprland, and (with three-button SSD, Files CSD, reopen memory, and pointer hover) as product-windowing evidence. They are not Windows 7 Ultimate.

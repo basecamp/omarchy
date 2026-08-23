@@ -57,8 +57,9 @@ Item {
       root.shell.hide("omarchy.ultimate-snap-chooser")
   }
 
-  PanelWindow {
-    visible: root.opened
+  Loader {
+    active: root.opened
+    sourceComponent: PanelWindow {
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
     anchors { top: true; bottom: true; left: true; right: true }
@@ -157,6 +158,7 @@ Item {
           }
         }
       }
+    }
     }
   }
 }

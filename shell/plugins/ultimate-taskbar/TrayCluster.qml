@@ -11,8 +11,19 @@ Item {
   implicitWidth: row.implicitWidth
   implicitHeight: parent ? parent.height : 40
 
-  function widgetUrl(rel) {
-    return Util.fileUrl(root.omarchyPath + "/shell/plugins/" + rel)
+  readonly property var clusterEntries: {
+    var _rev = bar && bar.barWidgetRegistry ? bar.barWidgetRegistry.revision : 0
+    var layout = bar && bar.barConfig && bar.barConfig.layout ? bar.barConfig.layout : {}
+    var right = layout && Array.isArray(layout.right) ? layout.right : []
+    var out = []
+    var i
+    for (i = 0; i < right.length; i++) {
+      var id = ""
+      if (typeof right[i] === "string") id = right[i]
+      else if (right[i] && right[i].id) id = String(right[i].id)
+      if (id) out.push({ id: id, settings: (right[i] && right[i]) || {} })
+    }
+    return out
   }
 
   Row {
@@ -21,53 +32,26 @@ Item {
     spacing: 0
 
     Repeater {
-      model: [
-        { id: "omarchy.audio", path: "panels/audio/Panel.qml" },
-        { id: "omarchy.bluetooth", path: "panels/bluetooth/Panel.qml" },
-        { id: "omarchy.network", path: "panels/network/Panel.qml" },
-        { id: "omarchy.monitor", path: "panels/monitor/Panel.qml" },
-        { id: "omarchy.power", path: "panels/power/Panel.qml" }
-      ]
+      model: root.clusterEntries
       delegate: Loader {
-        id: panelLoader
+        id: widgetLoader
+        required property var modelData
         height: row.height
         width: item ? Math.max(item.implicitWidth, 32) : 32
-        source: root.omarchyPath ? root.widgetUrl(modelData.path) : ""
+        readonly property var registryEntry: {
+          var w = root.bar && root.bar.barWidgetRegistry ? root.bar.barWidgetRegistry.widgets : {}
+          return w[modelData.id] || null
+        }
+        sourceComponent: registryEntry && registryEntry.component ? registryEntry.component : null
         onLoaded: {
           if (!item) return
           if ("bar" in item) item.bar = root.bar
+          if ("shell" in item && root.bar && root.bar.shell) item.shell = root.bar.shell
           if ("moduleName" in item) item.moduleName = modelData.id
+          if ("settings" in item && modelData.settings) item.settings = modelData.settings
           if (root.bar && typeof root.bar.registerSlot === "function")
             root.bar.registerSlot(modelData.id, item)
         }
-      }
-    }
-
-    Loader {
-      id: trayLoader
-      height: row.height
-      width: item ? Math.max(item.implicitWidth, 24) : 24
-      source: root.omarchyPath ? root.widgetUrl("bar/widgets/Tray.qml") : ""
-      onLoaded: {
-        if (!item) return
-        if ("bar" in item) item.bar = root.bar
-        if ("moduleName" in item) item.moduleName = "omarchy.tray"
-        if (root.bar && typeof root.bar.registerSlot === "function")
-          root.bar.registerSlot("omarchy.tray", item)
-      }
-    }
-
-    Loader {
-      id: clockLoader
-      height: row.height
-      width: item ? Math.max(item.implicitWidth, 72) : 72
-      source: root.omarchyPath ? root.widgetUrl("panels/clock/BarWidget.qml") : ""
-      onLoaded: {
-        if (!item) return
-        if ("bar" in item) item.bar = root.bar
-        if ("moduleName" in item) item.moduleName = "omarchy.clock"
-        if (root.bar && typeof root.bar.registerSlot === "function")
-          root.bar.registerSlot("omarchy.clock", item)
       }
     }
   }

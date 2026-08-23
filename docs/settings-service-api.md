@@ -65,8 +65,8 @@ Each capability domain is a QML singleton under `shell/services/` (or a broker-r
 
 ## What exists today
 
-- `shell/services/WindowService.qml` is the first real capability provider: pin/unpin, minimize/restore (`omarchy-minimize` `setHidden`), snap, maximize, activate, desktops, Show Desktop, layout save/restore. UI and `omarchy-shell window …` IPC call those verbs via `Hyprland.dispatch`.
-- That IPC currently returns `"ok"` strings, not the `{ changed, error }` result shape above. Closing the gap is Agent Fabric / WindowService contract work, not a new parallel API.
+- `shell/services/WindowService.qml` is the first real capability provider: pin/unpin, minimize/restore (`omarchy-minimize` `setHidden`), snap, maximize, activate, desktops, Show Desktop, layout save/restore, per-app reopen placement. UI and `omarchy-shell window …` IPC call those verbs via `Hyprland.dispatch`.
+- Writers return `{ changed, error: { title, explanation, detail } }`. IPC serializes that object (`ping` stays `"ok"`). `CapabilityBroker` catalogs window verbs, permits local-session actors, appends `capability-ledger.json`, and `undoLast` for recorded invertibles.
 - Display, audio, network, bluetooth, and power still live as Superbar/heritage **panels** that run `Process` / `execDetached` / `hyprctl` / `bash -c` (see `shell/plugins/panels/`). They are not yet typed `shell/services/` domains.
 - `omarchy.ultimate-settings` is a stub overlay that toggles those existing panels. It is not a Settings app.
 

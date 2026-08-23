@@ -19,6 +19,7 @@ ShellRoot {
   property BarWidgetRegistry barWidgetRegistry: BarWidgetRegistry { }
   property AppLibrary appLibrary: AppLibrary { }
   property WindowService windowService: WindowService { }
+  property CapabilityBroker capabilityBroker: CapabilityBroker { }
   property ModeProfileService modeProfileService: ModeProfileService { }
 
   property string home: Quickshell.env("HOME")
@@ -157,6 +158,8 @@ ShellRoot {
     // chains rescan() once the directory exists. We also kick a scan here in
     // case the user dir already existed at startup.
     pluginRegistry.rescan()
+    shell.windowService.capabilityBroker = shell.capabilityBroker
+    shell.capabilityBroker.windowService = shell.windowService
     shell._syncServices()
   }
 
@@ -175,6 +178,17 @@ ShellRoot {
     if (profile && profile.feature("taskbar") && !profile.feature("topBar")) {
       next.bar.id = "omarchy.ultimate-taskbar"
       next.bar.position = "bottom"
+      if (!Util.isPlainObject(next.bar.layout)) next.bar.layout = {}
+      next.bar.layout.right = [
+        { id: "omarchy.bluetooth" },
+        { id: "omarchy.network" },
+        { id: "omarchy.audio" },
+        { id: "omarchy.monitor" },
+        { id: "omarchy.power" },
+        { id: "omarchy.agents" },
+        { id: "omarchy.tray" },
+        { id: "omarchy.clock" }
+      ]
     }
     return next
   }
@@ -1058,111 +1072,163 @@ ShellRoot {
     }
   }
 
+  function windowIpc(result) {
+    if (!result || typeof result !== "object")
+      result = { changed: true, error: null }
+    return JSON.stringify(result)
+  }
+
   IpcHandler {
     target: "window"
 
     function ping(): string { return "ok" }
 
+    function invoke(capability: string, verb: string, argsJson: string): string {
+      var args = ({})
+      try { args = JSON.parse(argsJson || "{}") } catch (e) { args = ({}) }
+      return JSON.stringify(shell.capabilityBroker.invoke(capability, verb, args, "ipc"))
+    }
+
+    function undoLast(): string {
+      return JSON.stringify(shell.capabilityBroker.undoLast())
+    }
+
     function toggleShowDesktop(): string {
-      shell.windowService.toggleShowDesktop()
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.toggleShowDesktop()
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function snapLeft(address: string): string {
-      shell.windowService.snapLeft(address)
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.snapLeft(address)
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function snapRight(address: string): string {
-      shell.windowService.snapRight(address)
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.snapRight(address)
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function snapTo(address: string, side: string): string {
-      shell.windowService.snapTo(address, side)
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.snapTo(address, side)
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function snapArrow(address: string, dir: string): string {
-      shell.windowService.snapArrow(address, dir)
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.snapArrow(address, dir)
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function aeroDragEnd(address: string, x: string, y: string): string {
-      shell.windowService.aeroDragEnd(address, x, y)
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.aeroDragEnd(address, x, y)
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function saveLayout(): string {
-      shell.windowService.saveLayout()
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.saveLayout()
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function restoreLayout(): string {
-      shell.windowService.restoreLayout()
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.restoreLayout()
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function snapChooser(address: string): string {
       var target = address || "active"
       shell.summon("omarchy.ultimate-snap-chooser", JSON.stringify({ address: target }))
-      return "ok"
+      return shell.windowIpc({ changed: true, error: null })
     }
 
     function taskView(): string {
       shell.summon("omarchy.ultimate-task-switcher", JSON.stringify({ mode: "taskView" }))
-      return "ok"
+      return shell.windowIpc({ changed: true, error: null })
     }
 
     function createDesktop(): string {
-      shell.windowService.createDesktop()
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.createDesktop()
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function closeDesktop(): string {
-      shell.windowService.closeDesktop()
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.closeDesktop()
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function switchDesktop(dir: string): string {
-      shell.windowService.switchDesktop(dir)
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.switchDesktop(dir)
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function switchToDesktop(id: string): string {
-      shell.windowService.switchToDesktop(id)
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.switchToDesktop(id)
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function moveToDesktop(address: string, id: string): string {
-      shell.windowService.moveToDesktop(address, id)
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.moveToDesktop(address, id)
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function moveToMonitor(address: string, dir: string): string {
-      shell.windowService.moveToMonitor(address, dir)
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.moveToMonitor(address, dir)
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function toggleFullscreen(address: string): string {
-      shell.windowService.toggleFullscreen(address)
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.toggleFullscreen(address)
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function close(address: string): string {
-      shell.windowService.close(address)
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.close(address)
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function closeActive(): string {
-      shell.windowService.closeActive()
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.closeActive()
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function cycleNext(): string {
-      shell.windowService.cycleNext()
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.cycleNext()
+      shell.windowService._actor = "ui"
       shell.summon("omarchy.ultimate-task-switcher", "{}")
-      return "ok"
+      return shell.windowIpc(r)
     }
 
     function cycleSnapshot(): string {
@@ -1175,9 +1241,11 @@ ShellRoot {
     }
 
     function cyclePrev(): string {
-      shell.windowService.cyclePrev()
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.cyclePrev()
+      shell.windowService._actor = "ui"
       shell.summon("omarchy.ultimate-task-switcher", "{}")
-      return "ok"
+      return shell.windowIpc(r)
     }
 
     function commitCycle(): string {
@@ -1185,79 +1253,110 @@ ShellRoot {
       var address = ""
       if (svc && svc.cycling)
         address = String(svc.cycleList[svc.cycleIndex] || "")
-      // Hide first so layer unmap cannot steal focus. Capture the address
-      // before hide: Switcher.close() cancels the cycle.
       shell.hide("omarchy.ultimate-task-switcher")
       if (svc) {
         svc.cancelCycle()
         if (address) svc.activate(address)
       }
-      return "ok"
+      return shell.windowIpc({ changed: true, error: null })
     }
 
     function activate(address: string): string {
-      shell.windowService.activate(address)
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.activate(address)
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function focus(address: string): string {
-      shell.windowService.focus(address)
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.focus(address)
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function minimize(address: string): string {
-      shell.windowService.minimize(address)
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.minimize(address)
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function restore(address: string): string {
-      shell.windowService.restore(address)
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.restore(address)
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function maximize(address: string): string {
-      shell.windowService.maximize(address)
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.maximize(address)
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function unmaximize(address: string): string {
-      shell.windowService.unmaximize(address)
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.unmaximize(address)
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function restoreOrMinimize(address: string): string {
-      shell.windowService.restoreOrMinimize(address)
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.restoreOrMinimize(address)
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function restoreNormal(address: string): string {
-      shell.windowService.restoreNormal(address)
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.restoreNormal(address)
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function toggleMaximize(address: string): string {
-      shell.windowService.toggleMaximize(address)
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.toggleMaximize(address)
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function moveTo(address: string, x: string, y: string): string {
-      shell.windowService.moveTo(address, Number(x), Number(y))
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.moveTo(address, Number(x), Number(y))
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
+    }
+
+    function resizeTo(address: string, w: string, h: string): string {
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.resizeTo(address, Number(w), Number(h))
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function pin(desktopId: string): string {
-      shell.windowService.pin({ id: desktopId, desktopId: desktopId })
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.pin({ id: desktopId, desktopId: desktopId })
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function unpin(desktopId: string): string {
-      shell.windowService.unpin(desktopId)
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.unpin(desktopId)
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
 
     function toggleFromTaskbar(address: string): string {
-      shell.windowService.toggleFromTaskbar(address)
-      return "ok"
+      shell.windowService._actor = "ipc"
+      var r = shell.windowService.toggleFromTaskbar(address)
+      shell.windowService._actor = "ui"
+      return shell.windowIpc(r)
     }
   }
 }

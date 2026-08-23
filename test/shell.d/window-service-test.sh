@@ -116,6 +116,20 @@ grep -Fq 'function pin' "$ws" || fail "WindowService exposes pin for the taskbar
 pass "WindowService exposes task-switcher, Show Desktop, and pin verbs"
 
 grep -Fq 'target: "window"' "$ROOT/shell/shell.qml" || fail "shell registers a window IPC target"
+grep -Fq 'function _finish' "$ws" || fail "WindowService writers return through a recorded result"
+grep -Fq 'changed: true, error: null' "$ws" || fail "WindowService success is { changed, error: null }"
+grep -Fq 'function invoke' "$ROOT/shell/services/CapabilityBroker.qml" || fail "broker dispatches window verbs"
+grep -Fq 'function windowIpc' "$ROOT/shell/shell.qml" || fail "window IPC serializes the service result"
+if awk '
+  $0 ~ /IpcHandler \{/ { ipc = 1 }
+  ipc && /target: "window"/ { win = 1 }
+  win && /function minimize\(address: string\): string/ { infn = 1 }
+  infn && /return "ok"/ { found = 1 }
+  infn && /function / && $0 !~ /function minimize/ { infn = 0 }
+  END { exit found ? 0 : 1 }
+' "$ROOT/shell/shell.qml"; then
+  fail "window IPC minimize must not return a bare ok string"
+fi
 grep -Fq 'function snapTo' "$ws" || fail "WindowService exposes snapTo for quarters and the layout chooser"
 grep -Fq 'function snapArrow' "$ws" || fail "WindowService exposes snapArrow for Win+Arrow"
 grep -Fq 'function aeroDragEnd' "$ws" || fail "WindowService exposes aeroDragEnd for title-bar drag-to-edge"
@@ -191,6 +205,9 @@ assertEqual(m.hyprbarsSnapInset({ class: 'chrome-app.zoom.us__wc_home-Default' }
 assertEqual(m.hyprbarsSnapInset({ class: 'xyz-app.zoom.us__wc_home' }), 0, 'Zoom PWA class without chrome- still insets 0')
 assertEqual(m.hyprbarsSnapInset({ class: 'zoom' }), 32, 'native Zoom client keeps hyprbars inset')
 assertEqual(m.usesWaylandCsd({ class: 'zenity' }), false, 'zenity is not the Zen browser')
+assertEqual(m.usesWaylandCsd({ class: 'org.gnome.Nautilus' }), true, 'Nautilus uses GTK CSD')
+assertEqual(m.usesWaylandCsd({ class: 'Nautilus' }), true, 'Files class Nautilus uses GTK CSD')
+assertEqual(m.hyprbarsSnapInset({ class: 'org.gnome.Nautilus' }), 0, 'Files does not reserve a second hyprbars row')
 
 const pins = m.withPin([], { desktopId: 'firefox', name: 'Firefox', icon: 'firefox' })
 assertEqual(pins.length, 1, 'withPin adds a pin')
@@ -277,6 +294,14 @@ const mixed = m.compositorMonitor({ width: 1920, height: 1080, reserved: [0, 0, 
 assertEqual(mixed.height, 1080, 'compositorMonitor keeps the output height, not a gap-subtracted 1054')
 const floated = m.defaultFloatRect(mon)
 assert(floated.width < 960 && floated.height < 1040, 'default float must not be a work-area half-tile')
+const cascaded = m.cascadeRect(mon, 2)
+assertEqual(cascaded.width, floated.width, 'cascade keeps the fallback size')
+assert(cascaded.x > floated.x, 'cascade offsets later windows')
+const clamped = m.clampRect({ x: -40, y: -40, width: 4000, height: 4000 }, mon)
+assert(clamped.width <= area.width, 'clamp fits width to the monitor work area')
+assert(clamped.x >= area.x, 'clamp keeps x on the monitor')
+const stored = m.parsePlacements(m.serializePlacements({ foot: { x: 48, y: 48, width: 880, height: 560 } }))
+assertEqual(stored.foot.width, 880, 'placements round-trip through JSON')
 const snapped = { x: 0, y: 0, width: 960, height: 1040 }
 assert(m.isSnapped(snapped, mon, 8), '960x1040 at origin is the left snap')
 const snappedBar = { x: 0, y: 32, width: 960, height: 1008 }
@@ -293,4 +318,15 @@ const leftMon = { name: 'Virtual-1', x: 0, y: 0, width: 1920, height: 1080 }
 const rightMon = { name: 'HEADLESS-2', x: 1920, y: 0, width: 1920, height: 1080 }
 assertEqual(m.neighborMonitor([leftMon, rightMon], leftMon, 'r').name, 'HEADLESS-2', 'Win+Shift+Right picks the monitor to the right')
 assertEqual(m.neighborMonitor([leftMon, rightMon], leftMon, 'l'), null, 'Win+Shift+Left does nothing on the leftmost monitor')
+
+const csdJson = fs.readFileSync(path.join(root, 'default/ultimate/csd-clients.json'), 'utf8')
+const csd = JSON.parse(csdJson)
+assert(Array.isArray(csd.classPatterns) && csd.classPatterns.length > 0, 'csd-clients.json lists classPatterns')
+assert(m.csdClassPatterns().length === csd.classPatterns.length, 'WindowModel compiles every JSON CSD pattern')
+m.setCsdClientsJson(JSON.stringify({ classPatterns: ['^only-foo$'] }))
+assertEqual(m.usesWaylandCsd({ class: 'org.gnome.Nautilus' }), false, 'CSD matching follows the JSON file, not a second list')
+assertEqual(m.usesWaylandCsd({ class: 'only-foo' }), true, 'JSON CSD patterns are live')
+m.setCsdClientsJson(csdJson)
+assertEqual(m.usesWaylandCsd({ class: 'org.gnome.Nautilus' }), true, 'restored JSON still matches Files')
+assertEqual(m.usesWaylandCsd({ class: 'zenity' }), false, 'zenity stays off the JSON CSD list')
 JS

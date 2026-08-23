@@ -28,6 +28,7 @@
 
 #include <climits>
 #include <cstdint>
+#include <chrono>
 #include <format>
 #include <string>
 
@@ -166,6 +167,7 @@ void CHyprBar::onTouchUp(Event::SCallbackInfo& info, ITouch::SUpEvent e) {
 }
 
 void CHyprBar::onMouseMove(Vector2D coords) {
+    handleButtonHover();
     // ensure proper redraws of button icons on hover when using hardware cursors
     if (g_pGlobalState->config.iconOnHover->value())
         damageOnButtonHover();
@@ -297,6 +299,54 @@ void CHyprBar::handleMovement() {
     m_bDraggingThis = true;
     Log::logger->log(Log::DEBUG, "[hyprbars] Dragging initiated on {:x}", (uintptr_t)m_pWindow.lock().get());
     return;
+}
+
+void CHyprBar::handleButtonHover() {
+    if (!validMapped(m_pWindow) || m_bDraggingThis)
+        return;
+
+    const auto BARPADDING       = g_pGlobalState->config.barPadding->value();
+    const auto BARBUTTONPADDING = g_pGlobalState->config.barButtonPadding->value();
+    const auto HEIGHT           = g_pGlobalState->config.barHeight->value();
+    const auto ALIGNBUTTONS     = g_pGlobalState->config.barButtonsAlignment->value();
+    const bool BUTTONSRIGHT     = ALIGNBUTTONS != "left";
+    const auto COORDS           = cursorRelativeToBar();
+
+    float offset   = BARPADDING;
+    int   hoverIdx = -1;
+    int   i        = 0;
+    for (auto& b : g_pGlobalState->buttons) {
+        const auto BARBUF     = Vector2D{(int)assignedBoxGlobal().w, HEIGHT};
+        Vector2D   currentPos = Vector2D{(BUTTONSRIGHT ? BARBUF.x - BARBUTTONPADDING - b.size - offset : offset), (BARBUF.y - b.size) / 2.0}.floor();
+        if (VECINRECT(COORDS, currentPos.x, currentPos.y, currentPos.x + b.size + BARBUTTONPADDING, currentPos.y + b.size)) {
+            hoverIdx = i;
+            break;
+        }
+        offset += BARBUTTONPADDING + b.size;
+        ++i;
+    }
+
+    if (hoverIdx < 0 || g_pGlobalState->buttons[static_cast<size_t>(hoverIdx)].hoverCmd.empty()) {
+        m_hoverArmIndex = -1;
+        m_hoverFired    = false;
+        return;
+    }
+
+    if (m_hoverArmIndex != hoverIdx) {
+        m_hoverArmIndex = hoverIdx;
+        m_hoverArmedAt  = Time::steadyNow();
+        m_hoverFired    = false;
+        return;
+    }
+
+    if (m_hoverFired)
+        return;
+
+    if (std::chrono::duration_cast<std::chrono::milliseconds>(Time::steadyNow() - m_hoverArmedAt).count() < 280)
+        return;
+
+    Config::Supplementary::executor()->spawn(formatWindowCmd(g_pGlobalState->buttons[static_cast<size_t>(hoverIdx)].hoverCmd, m_pWindow.lock()));
+    m_hoverFired = true;
 }
 
 bool CHyprBar::doButtonPress(Config::INTEGER barPadding, Config::INTEGER barButtonPadding, Config::INTEGER barHeight, Vector2D COORDS, const bool BUTTONSRIGHT) {
@@ -460,6 +510,10 @@ void CHyprBar::draw(PHLMONITOR pMonitor, const float& a) {
 
     if (m_hidden || !validMapped(m_pWindow) || !ENABLED)
         return;
+
+    // Dwell actions (maximize hover → snap chooser) must fire while the
+    // pointer is parked, not only on the motion event that entered the button.
+    handleButtonHover();
 
     const auto PWINDOW = m_pWindow.lock();
 

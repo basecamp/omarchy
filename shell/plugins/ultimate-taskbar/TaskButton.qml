@@ -264,7 +264,7 @@ Item {
         Repeater {
           model: [
             { label: (group && group.pinned) ? "Unpin from taskbar" : "Pin to taskbar", action: "pin" },
-            { label: "Close window", action: "close" }
+            { label: (windows.length > 1) ? "Close group" : "Close window", action: "close" }
           ]
           delegate: Item {
             width: col.width

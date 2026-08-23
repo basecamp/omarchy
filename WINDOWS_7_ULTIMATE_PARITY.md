@@ -4,7 +4,7 @@ Job completeness for Project Ultimate. Names are **jobs**, not a requirement to 
 
 This matrix is the product bar. `WINDOWS_NATIVE_ACCEPTANCE.md` is the forty-task smoke test (necessary, not sufficient; six numbered rows automated, plus unnumbered harness proofs). `AGENT_NATIVE_ACCEPTANCE.md` is the same jobs on the agent path.
 
-Status (tree as of 2026-08-22, no live Hyprland session on this writer host):
+Status (tree as of 2026-08-23, metal HDMI-A-1 1920×1080 this session):
 
 - `missing` — no product surface for the job
 - `plumbing` — Omarchy/system machinery exists; no consumer mouse path that hides the plumbing
@@ -18,10 +18,10 @@ Do not mark a row `present` because a panel or hotkey exists for power users.
 | Job | Status | Tree notes |
 |-----|--------|------------|
 | Desktop (icons, wallpaper, context menu, Recycle) | prototype / missing | Wallpaper picker (`omarchy.image-picker`) exists. No desktop icon surface (`desktopIcons` is false). Background plugin exists. |
-| Superbar (taskbar) | prototype | `omarchy.ultimate-taskbar`: Start, Task View button, running groups, Show Desktop, hard-coded `TrayCluster` (`barConfig` unused; no `BarWidgetRegistry`). Peek is a title list. Right-click menu is only pin/unpin and "Close window"; that close kills the entire group (`TaskButton.qml`). Peek × closes one. Chrome hexes: `#1b1b1b` `#333333` `#3a3a3a` `#4a4a4a` `#e8943a` `#9cbc0d` `#55ffffff`. `Variants` already maps a bar per `Quickshell.screens` — missing is multi-monitor **policy**, not rendering. `omarchy.agents` omitted vs stock `shell.json`. |
+| Superbar (taskbar) | prototype | `omarchy.ultimate-taskbar`: Start, Task View button, running groups, Show Desktop. Notification cluster from `barConfig` + `BarWidgetRegistry` (Desktop Mode overlay includes `omarchy.agents`; does not rewrite `shell.json`). Peek is a title list. Right-click is pin/unpin and "Close group" / "Close window"; group close still kills the entire group (`TaskButton.qml`). Peek × closes one. Chrome hexes: `#1b1b1b` `#333333` `#3a3a3a` `#4a4a4a` `#e8943a` `#9cbc0d` `#55ffffff`. `Variants` already maps a bar per `Quickshell.screens` — missing is multi-monitor **policy**, not rendering. |
 | Start | prototype | `omarchy.ultimate-start` is a 440×560 glass launcher: search, pins, app list, lock/restart/shutdown, Power User Mode toggle on the footer. Idle list hides Terminal/Vim. Not Windows 7 Start (no All Programs tree, places, jump lists, user picture, Control Panel destinations). |
 | Search | prototype | Start `SearchBox` filters installed apps. Not a system Search (files, settings, control panel, history). |
-| Explorer / This PC | missing as product | Files launches Nautilus (`SUPER + E` → `omarchy = "nautilus"`). Not Dolphin, not This PC. Nautilus is GTK CSD and is **not** in `hyprbars:no_bar`; two-row chrome is the expected result (not live-reverified this run). |
+| Explorer / This PC | missing as product | Files launches Nautilus (`SUPER + E` → `omarchy = "nautilus"`). Not Dolphin, not This PC. Nautilus is on the shared CSD list (`default/ultimate/csd-clients.json`); live grim is GTK CSD only, no hyprbars two-row. |
 | Network | prototype | `omarchy.network` panel; still `Process` / `bash -c` / nmcli, not a typed Network service. |
 | Personalization | plumbing / prototype | Theme packs + image picker. No Personalization Settings app. Superbar/hyprbars colors are hard-coded, so light theme cannot propagate to chrome. |
 | Devices & Printers | missing | Forty-task "Add a printer" is pending. |
@@ -42,7 +42,7 @@ Do not mark a row `present` because a panel or hotkey exists for power users.
 | Resource Monitor | missing | |
 | Services | missing | |
 | Task Scheduler | missing | |
-| Event / history | prototype (toasts only) | Notification history directory + `showHistory` replay as toasts. Not Event Viewer. Not an operation ledger. |
+| Event / history | prototype (toasts + window ledger) | Notification history directory + `showHistory` replay as toasts. Window capability calls append `capability-ledger.json`. Not Event Viewer. |
 | Remote desktop | missing as product | |
 | Drive encryption | missing as product | |
 | Sharing | missing as product | Forty-task SMB row pending. |
@@ -62,9 +62,9 @@ Do not mark a row `present` because a panel or hotkey exists for power users.
 | Modern display (scaling, HDR, night light) | prototype / plumbing | Monitor panel + `omarchy.nightlight` service. Forty-task scaling and night light pending. |
 | Proton / gaming | missing | Steam install is forty-task pending; no Gaming / Proton surface. |
 | Privacy | missing | Doctrine refuses telemetry; no Privacy Settings. |
-| Agent Fabric | missing | See `AGENT_NATIVE_ACCEPTANCE.md`. WindowService exists; fabric does not. |
-| Agent Center | missing | `omarchy.agents` is a usage/limits bar-widget, not Agent Center. Superbar does not load it. |
+| Agent Fabric | prototype (window) | See `AGENT_NATIVE_ACCEPTANCE.md`. WindowService + `CapabilityBroker` (results, permit, ledger, window undo). Display/audio/network still panels. |
+| Agent Center | missing | `omarchy.agents` is a usage/limits bar-widget, not Agent Center. Superbar loads it until Agent Center exists. |
 
 ## Caption / windowing (not a substitute for the jobs above)
 
-W0 is an architecture GO (Hyprland stays). Remaining product-windowing debt is recorded in `plans/project-ultimate.md`. Do not treat this matrix as green because snap and Alt+Tab IPC work.
+W0 is architecture GO and product-windowing GO (Hyprland stays; three-button SSD, Files CSD, reopen memory, plugins in the update transaction). Remaining product surfaces are recorded in `plans/project-ultimate.md`. Do not treat this matrix as green because snap and Alt+Tab IPC work.
