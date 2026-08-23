@@ -49,3 +49,31 @@ if OMARCHY_TEST_NOTIFY_ARGS="$args_file" PATH="$tmpdir:$ROOT/bin:$PATH" \
   fail "notification wrapper rejects --exec without a command"
 fi
 pass "notification wrapper rejects --exec without a command"
+
+# --exec-arg builds an argv vector encoded as a JSON array, so shell
+# metacharacters in a value are carried as data, never as a command. The shell
+# runs this argv directly (no shell), which is what keeps a hostile title or
+# filename from becoming code when the toast is clicked.
+: >"$args_file"
+OMARCHY_TEST_NOTIFY_ARGS="$args_file" PATH="$tmpdir:$ROOT/bin:$PATH" \
+  omarchy-notification-send --exec-arg mpv --exec-arg -- --exec-arg '$(rm -rf ~); echo pwned' \
+  "Download complete" >/dev/null
+
+argv_hint=$(grep -- "--hint=string:omarchy-exec-argv:" "$args_file")
+argv_json=${argv_hint#--hint=string:omarchy-exec-argv:}
+[[ $(jq -r '.[0]' <<<"$argv_json") == "mpv" ]] || fail "notification wrapper puts the program first in the exec argv"
+[[ $(jq -r '.[1]' <<<"$argv_json") == "--" ]] || fail "notification wrapper preserves a -- separator in the exec argv"
+[[ $(jq -r '.[2]' <<<"$argv_json") == '$(rm -rf ~); echo pwned' ]] ||
+  fail "notification wrapper carries shell metacharacters as literal argv data" "$argv_json"
+grep -q "omarchy-exec:" "$args_file" && fail "notification wrapper emits no legacy exec string when --exec-arg is used"
+pass "notification wrapper encodes --exec-arg as a literal JSON argv vector"
+
+# The argv form is the safe one, so it wins when a caller supplies both.
+: >"$args_file"
+OMARCHY_TEST_NOTIFY_ARGS="$args_file" PATH="$tmpdir:$ROOT/bin:$PATH" \
+  omarchy-notification-send --exec 'legacy string' --exec-arg xdg-open --exec-arg /tmp/file \
+  "Headline" >/dev/null
+
+grep -q -- "--hint=string:omarchy-exec-argv:" "$args_file" || fail "notification wrapper emits the argv hint when both exec forms are given"
+grep -q -- "--hint=string:omarchy-exec:" "$args_file" && fail "notification wrapper drops the legacy exec string in favor of argv"
+pass "notification wrapper prefers the argv exec form over the legacy string"

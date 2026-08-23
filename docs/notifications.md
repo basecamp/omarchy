@@ -69,7 +69,8 @@ notify-send arguments and passes any unrecognized options through:
 | Flag | Becomes | Meaning |
 |---|---|---|
 | `-g` / `--glyph` | `--hint=string:omarchy-glyph:` | Nerd Font glyph for the icon slot when no image icon resolves |
-| `--exec` | `--hint=string:omarchy-exec:` | shell command the card runs when clicked |
+| `--exec-arg` (repeatable) | `--hint=string:omarchy-exec-argv:` | one literal argument of the click command; the collected args become a JSON argv the shell runs without a shell |
+| `--exec` | `--hint=string:omarchy-exec:` | legacy free-form shell command the card runs when clicked (deprecated — see below) |
 | `--image` | `--hint=string:image-path:` | the standard freedesktop image hint |
 | `--app-name` | `-a` | defaults to `omarchy-action` |
 | `-u` / `--urgency` | `-u` | defaults to `low` |
@@ -78,9 +79,9 @@ The defaults are the point: an unadorned `omarchy-notification-send "Done"`
 is a low-urgency user-action toast that pops through DND and is treated as
 ephemeral noise when silenced.
 
-`--exec` is deliberately not a libnotify action. An action keeps the sender
-blocked waiting for `ActionInvoked`, and dies unanswered whenever the shell
-restarts underneath it — the installer toasts restart the shell as their
+The click command is deliberately not a libnotify action. An action keeps the
+sender blocked waiting for `ActionInvoked`, and dies unanswered whenever the
+shell restarts underneath it — the installer toasts restart the shell as their
 first act. Carrying the command as a hint means the shell executes the click
 itself (detached, so the command outlives the shell process) from the copy it
 keeps with the popup, which the persistence files preserve: a restored toast
@@ -89,6 +90,25 @@ immediately. For third-party clients the click falls back to the libnotify
 `default` action while the sender is alive, then to focusing the sender's
 window by class via `omarchy-hyprland-focus-app` — chat apps rarely register
 an action and just expect click-to-jump.
+
+### Click commands must be argv, not shell strings
+
+Prefer `--exec-arg` for every click command. Each `--exec-arg` contributes one
+literal argument; the shell runs the resulting vector with
+`Quickshell.execDetached(argv)` and **no shell**, so a value carrying data an
+attacker controls — a downloaded video's title, a received filename, a crashed
+process's name — is only ever a single argument and can never be reparsed as a
+command. This is the parameterized form: pass untrusted data as its own
+`--exec-arg` rather than quoting it into a string.
+
+`--exec` is the legacy free-form variant, run through `bash -lc`. It is safe
+only when the caller shell-quoted every interpolated value perfectly — the same
+trap as string-concatenated SQL, and the exact shape of the yt-dlp title RCE
+that motivated the argv form. It is retained for compatibility and honored only
+from toasts whose `app_name` is Omarchy's own `omarchy-action`; new senders must
+use `--exec-arg`. The shell fails closed on a malformed argv hint (it must be a
+JSON array of strings whose program is present and not a leading-dash option)
+rather than letting it fall through to a shell.
 
 ## Helper commands
 
@@ -114,7 +134,8 @@ Everything goes through the same sender contract, so the pieces are small:
   `battery-low` hook.
 - **Crash capture** — `omarchy-crash-watch` follows the systemd-coredump
   journal stream and announces each crashed program (deduped per minute) as a
-  critical toast whose `--exec` runs `omarchy-agent-crash`. It waits for the
+  critical toast whose click runs `omarchy-agent-crash` (via `--exec-arg`, so a
+  hostile process name stays a literal argument). It waits for the
   server first: a shell crash takes the notification server down with it, and
   that crash is the one most worth reporting.
 - **Pending migrations** — `omarchy-migrate-notify` (from its user service

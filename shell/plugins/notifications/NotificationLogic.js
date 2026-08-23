@@ -63,8 +63,49 @@ function glyphFromHints(hints) {
 // after a shell restart clicks through exactly like a live one. A libnotify
 // action can't: its sender is still waiting on an id from a server generation
 // that no longer exists.
+//
+// This is a free-form shell string run through `bash -lc`, so it is safe only
+// when every value interpolated into it was shell-quoted perfectly. It is kept
+// for compatibility and honored only from Omarchy's own trusted toasts (see
+// Service.invokePopupDefault); new senders use --exec-arg / the argv form
+// below, which never reaches a shell.
 function execFromHints(hints) {
   return stringHint(hints, "omarchy-exec")
+}
+
+// The click action as an argv vector, sent by omarchy-notification-send
+// --exec-arg and carried as a JSON array string in the omarchy-exec-argv hint.
+// The shell runs it with Quickshell.execDetached (no shell), so a value that an
+// attacker controls — a video title, a filename, a URL — is only ever one
+// argument and can never be reparsed as a command. This is the parameterized
+// form: the "prepared statement" to execFromHints's string concatenation.
+function execArgvFromHints(hints) {
+  return stringHint(hints, "omarchy-exec-argv")
+}
+
+// Validate a persisted omarchy-exec-argv value into an argv the shell may run,
+// or null for anything that is not one. A malformed or hostile hint must fail
+// closed here rather than fall through to a shell: we require a JSON array of
+// strings, non-empty, whose first element (the program) is present and does not
+// start with "-" (which would let a forged record smuggle in a leading-dash
+// option in the program slot).
+function parseExecArgv(value) {
+  var text = String(value || "")
+  if (!text) return null
+
+  var parsed
+  try {
+    parsed = JSON.parse(text)
+  } catch (e) {
+    return null
+  }
+
+  if (!Array.isArray(parsed) || parsed.length === 0) return null
+  for (var i = 0; i < parsed.length; i++) {
+    if (typeof parsed[i] !== "string") return null
+  }
+  if (!parsed[0] || parsed[0].charAt(0) === "-") return null
+  return parsed
 }
 
 function shouldRenderCompactGlyph(glyph, iconSource, singleLineToast) {
@@ -86,6 +127,7 @@ function snapshotOf(notification, timestamp) {
     image: n.image || "",
     glyph: glyphFromHints(n.hints),
     exec: execFromHints(n.hints),
+    execArgv: execArgvFromHints(n.hints),
     urgency: n.urgency,
     expireTimeout: expireTimeout,
     timestamp: timestamp === undefined ? Date.now() : timestamp
@@ -94,7 +136,7 @@ function snapshotOf(notification, timestamp) {
 
 // Everything the popup card draws, and therefore everything an in-place
 // update has to write through to the row and its file.
-var POPUP_ROLES = ["app", "appIcon", "summary", "body", "image", "glyph", "exec", "urgency", "expireTimeout"]
+var POPUP_ROLES = ["app", "appIcon", "summary", "body", "image", "glyph", "exec", "execArgv", "urgency", "expireTimeout"]
 
 function popupRoles() {
   return POPUP_ROLES
@@ -137,6 +179,7 @@ function historyEntry(value, normalUrgency) {
     image: e.image || "",
     glyph: e.glyph || "",
     exec: e.exec || "",
+    execArgv: e.execArgv || "",
     urgency: typeof e.urgency === "number" ? e.urgency : normalUrgency,
     expireTimeout: 0,
     timestamp: e.timestamp || 0
@@ -347,6 +390,8 @@ if (typeof module !== "undefined") {
     stringHint: stringHint,
     glyphFromHints: glyphFromHints,
     execFromHints: execFromHints,
+    execArgvFromHints: execArgvFromHints,
+    parseExecArgv: parseExecArgv,
     shouldRenderCompactGlyph: shouldRenderCompactGlyph,
     snapshotOf: snapshotOf,
     popupRoles: popupRoles,

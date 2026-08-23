@@ -54,6 +54,14 @@ QtObject {
     Quickshell.execDetached(["bash", "-lc", command])
   }
 
+  // Run an argv vector directly, without a shell. Nothing in the array is
+  // reparsed, so an argument carrying attacker-controlled data (a filename, a
+  // title) can never turn into a command. Prefer this over execDetached for any
+  // command assembled from untrusted input.
+  function execArgv(argv) {
+    Quickshell.execDetached(argv)
+  }
+
   function isPlainObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value)
   }

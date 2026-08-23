@@ -49,6 +49,38 @@ assert(!notifications.shouldBypassDnd({ appName: 'Slack', urgency: 2 }, 2), 'cri
 assert(!notifications.shouldBypassDnd({ appName: 'omarchy-menu-keybindings', urgency: 1 }, 2), 'omarchy command app names do not bypass DND')
 assert(!notifications.isEphemeralApp('omarchy-menu-keybindings'), 'notifications treat omarchy command app names as normal apps')
 
+// The click action's argv form: parsed from the persisted omarchy-exec-argv
+// JSON only when it is a non-empty array of strings whose program is present
+// and not a leading-dash option. Everything else fails closed so a malformed or
+// hostile hint can never fall through to a shell.
+assertDeepEqual(
+  notifications.parseExecArgv('["mpv","--","/home/me/a b.mp4"]'),
+  ['mpv', '--', '/home/me/a b.mp4'],
+  'notifications parse a valid exec argv vector'
+)
+assertEqual(notifications.parseExecArgv(''), null, 'notifications reject an empty exec argv hint')
+assertEqual(notifications.parseExecArgv('not json'), null, 'notifications reject a non-JSON exec argv hint')
+assertEqual(notifications.parseExecArgv('"mpv"'), null, 'notifications reject an exec argv hint that is not an array')
+assertEqual(notifications.parseExecArgv('[]'), null, 'notifications reject an empty exec argv array')
+assertEqual(notifications.parseExecArgv('["mpv",5]'), null, 'notifications reject a non-string element in the exec argv')
+assertEqual(notifications.parseExecArgv('["--include=x","y"]'), null, 'notifications reject a leading-dash program in the exec argv')
+assertEqual(notifications.parseExecArgv('["",""]'), null, 'notifications reject an empty program in the exec argv')
+
+// The argv vector rides on the snapshot as the raw JSON string, so the model's
+// value comparison stays a plain string compare and the file round-trip is
+// lossless.
+const execSnapshot = notifications.snapshotOf({
+  id: 3,
+  appName: 'omarchy-action',
+  summary: 'Download complete',
+  hints: { 'omarchy-exec-argv': '["mpv","--","/tmp/clip.mp4"]' }
+}, 1)
+assertEqual(
+  execSnapshot.execArgv,
+  '["mpv","--","/tmp/clip.mp4"]',
+  'notifications carry the exec argv hint onto the snapshot'
+)
+
 assertDeepEqual(
   notifications.popupPlacement('top', 32, 6),
   {

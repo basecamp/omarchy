@@ -360,10 +360,25 @@ Item {
   function invokePopupDefault(index) {
     if (index < 0 || index >= popupModel.count) return
     var entry = popupModel.get(index)
+
+    // Preferred path: an argv vector run without a shell, so data an attacker
+    // controls (a video title, a filename) is only ever an argument and can
+    // never be reparsed as a command. Detached so it outlives the shell, which
+    // the installer toasts depend on: they restart the shell as their first act.
+    var argv = NotificationLogic.parseExecArgv(entry ? entry.execArgv : "")
+    if (argv) {
+      Util.execArgv(argv)
+      dismissPopup(index)
+      return
+    }
+
+    // Legacy free-form shell exec (deprecated). It runs through `bash -lc`, so
+    // it is only as safe as the sender's quoting — honored solely from
+    // Omarchy's own trusted toasts. app_name is spoofable, so this is a
+    // compatibility courtesy, not a security boundary; new callers use the argv
+    // form above.
     var command = entry ? String(entry.exec || "") : ""
-    if (command) {
-      // Detached so the launched command outlives the shell process, which the
-      // installer toasts depend on: they restart the shell as their first act.
+    if (command && String(entry.app || "") === "omarchy-action") {
       Util.execDetached(command)
       dismissPopup(index)
       return

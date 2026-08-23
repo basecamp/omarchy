@@ -131,15 +131,13 @@ dash_title=$(host_fn title_from_file "$download_dir/--include.mp4")
 [[ $dash_title == "Video" ]] || fail "yt-dlp native host does not pass a leading-dash title to notify-send" "$dash_title"
 pass "yt-dlp native host does not pass a leading-dash title to notify-send"
 
-cmd=$(host_fn playback_command --include=not-a-file)
-[[ $cmd == "mpv -- --include=not-a-file" ]] ||
-  fail "yt-dlp native host runs mpv with -- before the path" "$cmd"
-pass "yt-dlp native host runs mpv with -- before the path"
-
-spaced_cmd=$(host_fn playback_command "$download_dir/a b.mp4")
-[[ $spaced_cmd == "mpv -- $download_dir/a\\ b.mp4" ]] ||
-  fail "yt-dlp native host shell-quotes the mpv path" "$spaced_cmd"
-pass "yt-dlp native host shell-quotes the mpv path"
+# The click action is an argv vector the shell runs without a shell, so the path
+# is a literal --exec-arg rather than a value quoted into a command string. The
+# prefix is static; `--` keeps mpv from parsing a leading-dash filename.
+playback_argv=$(host_fn eval 'printf "%s\n" "${playback_exec_args[@]}"')
+[[ $playback_argv == $'--exec-arg\nmpv\n--exec-arg\n--\n--exec-arg' ]] ||
+  fail "yt-dlp native host runs mpv with -- before the path as argv" "$playback_argv"
+pass "yt-dlp native host runs mpv with -- before the path as argv"
 
 parse_script="$TMPDIR/parse-ytdlp-lines.sh"
 cat >"$parse_script" <<'EOF'
@@ -234,9 +232,9 @@ grep -qF -- $'OMARCHY_FILE\t%(title)s' "$ytdlp_argv" &&
   fail "yt-dlp native host never prints the title into the file record" "$(cat "$ytdlp_argv")"
 pass "yt-dlp native host never prints the title into the file record"
 
-grep -q -- "--exec mpv -- " "$notify_argv" ||
-  fail "yt-dlp native host builds the click command as mpv -- <path>" "$(cat "$notify_argv")"
-pass "yt-dlp native host builds the click command as mpv -- <path>"
+grep -q -- "--exec-arg mpv --exec-arg -- --exec-arg " "$notify_argv" ||
+  fail "yt-dlp native host builds the click command as an mpv -- <path> argv" "$(cat "$notify_argv")"
+pass "yt-dlp native host builds the click command as an mpv -- <path> argv"
 
 grep -qF -- "Download complete My Great Clip" "$notify_argv" ||
   fail "yt-dlp native host toasts the page title, not the sanitised filename" "$(cat "$notify_argv")"

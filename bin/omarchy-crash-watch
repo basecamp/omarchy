@@ -24,9 +24,7 @@ readonly ignore_pattern=${OMARCHY_CRASH_IGNORE:-}
 declare -A last_notified
 
 announce() {
-  local comm=$1 pid=$2 exe=$3 signal=$4 exec_command
-
-  exec_command=$(printf 'omarchy-agent-crash %q %q %q %q' "$pid" "$comm" "$exe" "$signal")
+  local comm=$1 pid=$2 exe=$3 signal=$4
 
   # The shell owns org.freedesktop.Notifications, so a shell crash takes the
   # notification server down with it and a toast sent into that gap is lost.
@@ -34,13 +32,15 @@ announce() {
   # likely to be delivered is the one most worth reporting.
   omarchy-notification-wait || return 1
 
-  # --exec rather than a libnotify action: the shell runs clicks from its own
-  # omarchy-exec hint and never emits ActionInvoked. Keeps the default
+  # --exec-arg rather than a libnotify action: the shell runs clicks from its own
+  # omarchy-exec-argv hint and never emits ActionInvoked. Keeps the default
   # "omarchy-action" app name too, the only one shouldBypassDnd() lets through.
+  # The argv form carries the crash details as literal arguments, so a hostile
+  # process name can't be reparsed as a command when the toast is clicked.
   omarchy-notification-send \
     --urgency critical \
     --glyph "$CRASH_GLYPH" \
-    --exec "$exec_command" \
+    --exec-arg omarchy-agent-crash --exec-arg "$pid" --exec-arg "$comm" --exec-arg "$exe" --exec-arg "$signal" \
     "Process crashed: $comm" \
     "Click to diagnose with AI"
 }
