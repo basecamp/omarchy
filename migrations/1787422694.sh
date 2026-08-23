@@ -9,7 +9,12 @@ echo "Silence the lid gate's per-sudo journal noise"
 # quiet only suppresses the terminal echo; quiet_log suppresses the log write.
 # Both are stock pam_exec options (quiet_log since Linux-PAM 1.5.2).
 
-for pam in /etc/pam.d/sudo /etc/pam.d/polkit-1; do
+pam_dir="${OMARCHY_LID_GATE_PAM_DIR:-/etc/pam.d}"
+
+for pam in "$pam_dir/sudo" "$pam_dir/polkit-1"; do
+  # Only the gate line is touched, so a hand-edited pam_exec elsewhere in the
+  # stack stands. Skipping a file that already carries quiet_log keeps a second
+  # run from rewriting a stack the user may have edited since.
   if [[ -f $pam ]] &&
     grep -q 'omarchy-hw-laptop-closed' "$pam" &&
     ! grep -q 'quiet_log.*omarchy-hw-laptop-closed' "$pam"; then
