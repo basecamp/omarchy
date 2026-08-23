@@ -203,7 +203,10 @@ ShellRoot {
     var revision = shell.pluginRegistry.registryRevision
     return shell.barOptionAvailable(shell.selectedBarId)
   }
-  readonly property string activeBarId: selectedBarId !== failedBarId && selectedBarAvailable ? selectedBarId : defaultBarId
+  readonly property string activeBarId: {
+    if (!shell.pluginRegistry.initialScanDone) return ""
+    return selectedBarId !== failedBarId && selectedBarAvailable ? selectedBarId : defaultBarId
+  }
   readonly property var activeBarManifest: {
     var revision = shell.pluginRegistry.registryRevision
     return shell.barManifestFor(shell.activeBarId)
@@ -272,8 +275,8 @@ ShellRoot {
   Loader {
     id: pluginBarLoader
 
-    active: !shell.pluginReloading && shell.activeBarId !== shell.defaultBarId && shell.activeBarSourceUrl !== ""
-    source: shell.activeBarId !== shell.defaultBarId ? shell.activeBarSourceUrl : ""
+    active: !shell.pluginReloading && shell.activeBarId !== "" && shell.activeBarId !== shell.defaultBarId && shell.activeBarSourceUrl !== ""
+    source: shell.activeBarId !== "" && shell.activeBarId !== shell.defaultBarId ? shell.activeBarSourceUrl : ""
     asynchronous: true
     onLoaded: shell.configureBar(item, shell.activeBarManifest)
     onActiveChanged: if (!active) shell.bar = null
@@ -1103,6 +1106,46 @@ ShellRoot {
     function snapChooser(address: string): string {
       var target = address || "active"
       shell.summon("omarchy.ultimate-snap-chooser", JSON.stringify({ address: target }))
+      return "ok"
+    }
+
+    function taskView(): string {
+      shell.summon("omarchy.ultimate-task-switcher", JSON.stringify({ mode: "taskView" }))
+      return "ok"
+    }
+
+    function createDesktop(): string {
+      shell.windowService.createDesktop()
+      return "ok"
+    }
+
+    function closeDesktop(): string {
+      shell.windowService.closeDesktop()
+      return "ok"
+    }
+
+    function switchDesktop(dir: string): string {
+      shell.windowService.switchDesktop(dir)
+      return "ok"
+    }
+
+    function switchToDesktop(id: string): string {
+      shell.windowService.switchToDesktop(id)
+      return "ok"
+    }
+
+    function moveToDesktop(address: string, id: string): string {
+      shell.windowService.moveToDesktop(address, id)
+      return "ok"
+    }
+
+    function moveToMonitor(address: string, dir: string): string {
+      shell.windowService.moveToMonitor(address, dir)
+      return "ok"
+    }
+
+    function toggleFullscreen(address: string): string {
+      shell.windowService.toggleFullscreen(address)
       return "ok"
     }
 

@@ -5,6 +5,8 @@ o.window(".*", { float = true })
 o.window(".*", { tag = "+default-opacity" })
 -- Open as an overlapping float, not a 50/50 tile leftover from a snap probe.
 o.window(".*", { size = { 880, 560 } })
+-- xdg modal dialogs keep the size they asked for instead of the 880×560 app default.
+o.window({ modal = true }, { float = true, center = true, size = { "window_w", "window_h" } })
 
 -- Fix some dragging issues with XWayland.
 o.window(

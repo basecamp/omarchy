@@ -41,6 +41,20 @@ if grep -Fq $'\u2630' "$ROOT/shell/plugins/ultimate-taskbar/StartButton.qml"; th
 fi
 grep -Fq 'Start' "$ROOT/shell/plugins/ultimate-taskbar/StartButton.qml" \
   || fail "Start button is labeled Start"
+grep -Fq 'initialScanDone' "$ROOT/shell/services/PluginRegistry.qml" \
+  || fail "plugin registry records the first scan so Desktop Mode can wait for the taskbar"
+grep -Fq 'if (!shell.pluginRegistry.initialScanDone) return ""' "$ROOT/shell/shell.qml" \
+  || fail "shell does not mount omarchy.bar before the plugin scan, which crashes PopupAnchor on the bar switch"
+grep -Fq 'shell.activeBarId !== ""' "$ROOT/shell/shell.qml" \
+  || fail "plugin bar loader stays idle until a bar id is chosen"
+grep -Fq 'hostWindow: barWindow' "$ROOT/shell/plugins/ultimate-taskbar/Taskbar.qml" \
+  || fail "taskbar peek/menu popups anchor to the PanelWindow, not QsWindow.window"
+grep -Fq 'anchor.window: root.hostWindow' "$ROOT/shell/plugins/ultimate-taskbar/TaskButton.qml" \
+  || fail "TaskButton PopupWindow anchors to the taskbar PanelWindow"
+if grep -Fq 'QsWindow' "$ROOT/shell/plugins/ultimate-taskbar/TaskButton.qml"; then
+  fail "TaskButton must not bind PopupAnchor to QsWindow.window during PanelWindow complete"
+fi
+pass "Desktop Mode does not flash omarchy.bar or bind taskbar popups to a half-created window"
 grep -Fq 'Power User Mode' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
   || fail "Start footer exposes the mode toggle"
 if grep -Eq '^import QtQuick.Controls' "$ROOT/shell/Ui/SearchBox.qml"; then
@@ -146,6 +160,20 @@ grep -Fq 'modelData.minimized' "$ROOT/shell/plugins/ultimate-taskbar/TaskButton.
   || fail "taskbar peek lists each window including minimized"
 grep -Fq 'function saveLayout' "$ROOT/shell/plugins/ultimate-snap-chooser/Chooser.qml" \
   || fail "snap chooser can save the current layout"
+grep -Fq 'omarchy.ultimate-task-switcher' "$ROOT/shell/plugins/ultimate-taskbar/TaskView.qml" \
+  || fail "taskbar has a mouse Task View button"
+grep -Fq 'taskView' "$ROOT/default/hypr/bindings/desktop.lua" \
+  || fail "Win+Tab summons Task View"
+grep -Fq 'createDesktop' "$ROOT/default/hypr/bindings/desktop.lua" \
+  || fail "Win+Ctrl+D creates a desktop"
+grep -Fq 'toggleFullscreen' "$ROOT/default/hypr/bindings/desktop.lua" \
+  || fail "F11 toggles true fullscreen"
+grep -Fq 'modal = true' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "xdg modal dialogs stay centered with the parent"
+grep -Fq 'window_w' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "modal dialogs keep the size they asked for instead of 880x560"
+jq -e '.features.taskView == true' "$ROOT/default/ultimate/profiles/desktop.json" >/dev/null \
+  || fail "desktop profile enables Task View"
 grep -Fq 'omarchy-snap-chooser' "$ROOT/shell/plugins/ultimate-snap-chooser/Chooser.qml" \
   || fail "snap chooser uses a distinct layer namespace"
 pass "desktop Hyprland path floats windows, uses hyprbars, and allows maximize"
@@ -172,5 +200,16 @@ grep -Fq 'activateFromSwitcher' "$ROOT/shell/plugins/ultimate-task-switcher/Swit
   || fail "task switcher cards call activateFromSwitcher"
 grep -Fq 'cancelCycle' "$ROOT/shell/plugins/ultimate-task-switcher/Switcher.qml" \
   || fail "closing the switcher cancels a leftover Alt+Tab cycle"
+if grep -Fq 'Virtual-1' "$ROOT/test/acceptance.d/windows-native-test.sh"; then
+  fail "windows-native harness must not hardcode the QEMU output name Virtual-1"
+fi
+grep -Fq 'hl.dsp.window.close' "$ROOT/test/acceptance.d/base-test.sh" \
+  || fail "acceptance close_windows uses Hyprland 0.56 lua eval, not classic dispatch"
+[[ -f $ROOT/test/acceptance.d/gtk-parented-dialog.py ]] \
+  || fail "acceptance helper maps a GTK parented MessageDialog"
+grep -Fq 'transient_for=parent' "$ROOT/test/acceptance.d/gtk-parented-dialog.py" \
+  || fail "GTK parented dialog is transient_for its parent"
+grep -Fq 'modal=True' "$ROOT/test/acceptance.d/gtk-parented-dialog.py" \
+  || fail "GTK parented dialog is modal"
 pass "mouse proof helper fails honestly without an absolute pointer"
 

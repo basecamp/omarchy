@@ -299,8 +299,32 @@ def main() -> int:
       raise ProofError(f"title-bar drag did not move more than 8px: {report['drag']}")
     grim("/tmp/w0-c-drag.png")
 
-    x2, y2 = moved["at"]
-    w2 = moved["size"][0]
+    as_user(["omarchy-shell", "window", "restoreNormal", addr], wait=True, timeout=5)
+    time.sleep(0.6)
+    floated = next((c for c in feet() if c["address"] == addr), None)
+    if not floated:
+      raise ProofError("window vanished before Aero drag")
+    fx, fy = floated["at"]
+    fw = floated["size"][0]
+    pointer.drag(fx + fw // 2, fy - 16, gw // 2, 4, steps=24)
+    time.sleep(0.7)
+    topped = next((c for c in feet() if c["address"] == addr), None)
+    report["aero_top"] = {"at": None if not topped else topped.get("at"), "size": None if not topped else topped.get("size"), "fullscreen": None if not topped else topped.get("fullscreen")}
+    if not topped or topped.get("fullscreen") != 1:
+      raise ProofError(f"title-bar drag to the top edge did not maximize: {report['aero_top']}")
+    grim("/tmp/w0-g-aero-top.png")
+    tx, ty = topped["at"]
+    tw = topped["size"][0]
+    pointer.drag(tx + tw // 2, max(8, ty - 16), gw // 2, 400, steps=24)
+    time.sleep(0.7)
+    away = next((c for c in feet() if c["address"] == addr), None)
+    report["aero_away"] = {"at": None if not away else away.get("at"), "size": None if not away else away.get("size"), "fullscreen": None if not away else away.get("fullscreen")}
+    if not away or away.get("fullscreen") not in (0, False, None):
+      raise ProofError(f"drag away from the top edge did not restore: {report['aero_away']}")
+    grim("/tmp/w0-g-aero-away.png")
+
+    x2, y2 = away["at"]
+    w2 = away["size"][0]
     closex, closey = x2 + w2 - 16, y2 - 16
     report["close_aim"] = [closex, closey]
     pointer.click(closex, closey)

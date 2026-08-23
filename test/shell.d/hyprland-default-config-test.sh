@@ -198,7 +198,11 @@ grep -Fq $'SUPER + D	Show desktop' <<<"$desktop_output" || fail "desktop mode bi
 grep -Fq $'SUPER + L	Lock' <<<"$desktop_output" || fail "desktop mode binds Win+L to Lock"
 grep -Fq $'SUPER + Super_L	Start' <<<"$desktop_output" || fail "desktop mode binds Super release to Start"
 grep -Fq $'ALT + F4	Close window' <<<"$desktop_output" || fail "desktop mode binds Alt+F4 to close"
-grep -Fq $'ALT + TAB	Switch windows' <<<"$desktop_output" || fail "desktop mode binds Alt+Tab to the task switcher"
+grep -Fq $'SUPER + TAB	Task View' <<<"$desktop_output" || fail "desktop mode binds Win+Tab to Task View"
+grep -Fq $'SUPER + CTRL + D	New desktop' <<<"$desktop_output" || fail "desktop mode binds Win+Ctrl+D to a new desktop"
+grep -Fq $'F11	Full screen' <<<"$desktop_output" || fail "desktop mode binds F11 to fullscreen"
+grep -Fq $'SUPER + CTRL + F4	Close desktop' <<<"$desktop_output" || fail "desktop mode binds Win+Ctrl+F4 to close the desktop"
+grep -Fq $'SUPER + SHIFT + LEFT	Move window to left monitor' <<<"$desktop_output" || fail "desktop mode binds Win+Shift+Left to the left monitor"
 if grep -Fq $'SUPER + SPACE	Omarchy menu' <<<"$desktop_output"; then
   fail "desktop mode does not bind the Omarchy menu to Super+Space"
 fi

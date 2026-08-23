@@ -143,14 +143,25 @@ chrome_layer_present() {
 # are fully closed. Tries the quattro Lua dispatcher first, then classic.
 close_windows() {
   local class="$1"
-  local addr
+  local addr pid
 
-  while read -r addr; do
-    hyprctl dispatch "hl.dsp.window.close({ window = \"address:$addr\" })" >/dev/null 2>&1 ||
-      hyprctl dispatch closewindow "address:$addr" >/dev/null 2>&1 || true
-  done < <(hyprctl -j clients | jq -r --arg class "$class" '.[] | select(.class | test($class)) | .address')
+  while read -r addr pid; do
+    [[ -z $addr ]] && continue
+    if [[ -n ${OMARCHY_PATH:-} ]] && command -v omarchy-shell >/dev/null; then
+      omarchy-shell window close "$addr" >/dev/null 2>&1 || true
+    fi
+    hyprctl eval "hl.dsp.window.close({ window = \"address:$addr\" })" >/dev/null 2>&1 || true
+    if [[ -n $pid && $pid != 0 ]]; then
+      kill "$pid" >/dev/null 2>&1 || true
+    fi
+  done < <(hyprctl -j clients | jq -r --arg class "$class" '.[] | select(.class | test($class)) | [.address, (.pid // 0)] | @tsv')
 }
 
 launch_app() {
-  setsid -f bash -c "$1" >/dev/null 2>&1
+  DISPLAY="${DISPLAY:-:0}" \
+    WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}" \
+    XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$UID}" \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    setsid -f bash -c "$1" >/dev/null 2>&1
 }

@@ -167,7 +167,8 @@ pin_missing() {
 launch_feet() {
   local want="$1"
   local i
-  close_windows "^foot$"
+  close_windows "^foot$" >/dev/null 2>&1 || true
+  wait_until "previous foot windows are gone" 15 window_absent "^foot$"
   for ((i = 0; i < want; i++)); do
     launch_app foot
   done
@@ -176,6 +177,10 @@ launch_feet() {
 
 restore_native_windows() {
   close_windows "^foot$" >/dev/null 2>&1 || true
+  close_windows "Nautilus|org\\.gnome\\.Nautilus" >/dev/null 2>&1 || true
+  close_windows "^[Cc]hromium" >/dev/null 2>&1 || true
+  close_windows "[Xx][Ee]yes" >/dev/null 2>&1 || true
+  close_windows "zenity|Zenity" >/dev/null 2>&1 || true
   omarchy-shell window commitCycle >/dev/null 2>&1 || true
   omarchy-shell shell hide omarchy.ultimate-task-switcher >/dev/null 2>&1 || true
 }
@@ -387,6 +392,225 @@ hidden=$(hyprctl -j clients | jq '[.[] | select(.class == "foot" and .hidden == 
 omarchy-shell window toggleShowDesktop >/dev/null
 sleep 1
 pass "Show Desktop hides and restores"
+
+home_ws=$(hyprctl -j activeworkspace | jq -r .id)
+omarchy-shell window createDesktop >/dev/null
+sleep 1
+created_ws=$(hyprctl -j activeworkspace | jq -r .id)
+(( created_ws != home_ws )) || fail "new desktop" "active workspace stayed $home_ws"
+omarchy-shell window switchToDesktop "$home_ws" >/dev/null
+sleep 1
+now_ws=$(hyprctl -j activeworkspace | jq -r .id)
+(( now_ws == home_ws )) || fail "switch desktop" "did not return to desktop $home_ws: $now_ws"
+omarchy-shell window moveToDesktop "${addrs[0]}" "$created_ws" >/dev/null
+sleep 1
+stay_ws=$(hyprctl -j activeworkspace | jq -r .id)
+(( stay_ws == home_ws )) || fail "move to desktop" "follow stole the current desktop: $stay_ws"
+foot_on_created=$(hyprctl -j clients | jq --arg a "${addrs[0]}" '.[] | select(.address == $a) | .workspace.id')
+(( foot_on_created == created_ws )) || fail "move to desktop" "window stayed on $foot_on_created not $created_ws"
+omarchy-shell window switchToDesktop "$created_ws" >/dev/null
+sleep 0.5
+omarchy-shell window closeDesktop >/dev/null
+sleep 1
+ws_after=$(hyprctl -j activeworkspace | jq -r .id)
+(( ws_after != created_ws )) || fail "close desktop" "active workspace stayed $created_ws"
+still=$(hyprctl -j workspaces | jq --argjson id "$created_ws" '[.[] | select(.id == $id)] | length')
+(( still == 0 )) || fail "close desktop" "desktop $created_ws is still listed: $(hyprctl -j workspaces | jq -c '[.[] | {id,windows}]')"
+foot_home=$(hyprctl -j clients | jq --arg a "${addrs[0]}" '.[] | select(.address == $a) | .workspace.id')
+(( foot_home == ws_after )) || fail "close desktop" "window is on $foot_home not $ws_after"
+pass "virtual desktops create, move, switch, and close"
+
+omarchy-shell window taskView >/dev/null
+wait_until "Task View is visible" 10 layer_present "omarchy-task-switcher"
+screenshot "success-task-view"
+omarchy-shell shell hide omarchy.ultimate-task-switcher >/dev/null || true
+wait_until "Task View closes" 10 layer_absent "omarchy-task-switcher"
+pass "Task View summons omarchy-task-switcher"
+
+omarchy-shell window restoreNormal "${addrs[0]}" >/dev/null
+sleep 1
+omarchy-shell window toggleFullscreen "${addrs[0]}" >/dev/null
+sleep 1
+fs=$(hyprctl -j clients | jq --arg a "${addrs[0]}" '.[] | select(.address == $a) | .fullscreen')
+(( fs == 2 )) || fail "fullscreen" "fullscreen is $fs not 2"
+omarchy-shell window toggleFullscreen "${addrs[0]}" >/dev/null
+sleep 1
+pass "F11-class fullscreen toggles"
+
+primary_name=$(hyprctl -j monitors | jq -r '.[] | select(.focused == true) | .name' | head -1)
+if [[ -z $primary_name ]]; then
+  primary_name=$(hyprctl -j monitors | jq -r '.[0].name')
+fi
+created_headless=""
+second_name=$(hyprctl -j monitors | jq -r --arg p "$primary_name" '[.[] | select(.name != $p and ((.disabled // false) | not))] | .[0].name // empty')
+if [[ -n $second_name ]]; then
+  second_w=$(hyprctl -j monitors | jq -r --arg n "$second_name" '.[] | select(.name == $n) | .width')
+  if (( second_w <= 1024 )); then
+    second_name=""
+  fi
+fi
+if [[ -z $second_name ]]; then
+  hyprctl output create headless HEADLESS-2 >/dev/null 2>&1 || hyprctl output create headless >/dev/null 2>&1 || true
+  sleep 0.5
+  second_name=$(hyprctl -j monitors | jq -r --arg p "$primary_name" '[.[] | select(.name != $p)] | .[0].name // empty')
+  created_headless=$second_name
+fi
+if [[ -n $second_name ]]; then
+  hyprctl eval "hl.monitor({ output = \"$second_name\", mode = \"1920x1080@60\", position = \"1920x0\", scale = 1 })" >/dev/null 2>&1 || true
+  sleep 0.4
+  omarchy-shell window restoreNormal "${addrs[0]}" >/dev/null
+  sleep 0.5
+  omarchy-shell window moveToMonitor "${addrs[0]}" r >/dev/null
+  sleep 1
+  mon_name=$(hyprctl -j clients | jq -r --arg a "${addrs[0]}" --argjson mons "$(hyprctl -j monitors)" '
+    .[] | select(.address == $a) | .monitor as $id | ($mons[] | select(.id == $id) | .name)
+  ')
+  [[ $mon_name == "$second_name" ]] || fail "move to monitor" "window is on ${mon_name:-none}, expected $second_name"
+  omarchy-shell window snapTo "${addrs[0]}" l >/dev/null
+  sleep 1
+  dest_x=$(hyprctl -j monitors | jq -r --arg n "$second_name" '.[] | select(.name == $n) | .x')
+  atx=$(hyprctl -j clients | jq --arg a "${addrs[0]}" '.[] | select(.address == $a) | .at[0]')
+  (( atx >= dest_x - 8 && atx <= dest_x + 16 )) || fail "snap on second monitor" "left snap x is $atx, expected near $dest_x"
+  pass "window moves to a second monitor and snaps there"
+  omarchy-shell window moveToMonitor "${addrs[0]}" l >/dev/null
+  sleep 0.5
+  hyprctl eval "hl.dsp.focus({ monitor = \"$primary_name\" })" >/dev/null 2>&1 || true
+  if [[ -n $created_headless ]]; then
+    hyprctl output remove "$created_headless" >/dev/null 2>&1 || true
+  fi
+  hyprctl eval "hl.monitor({ output = \"$primary_name\", mode = \"1920x1080@60\", position = \"0x0\", scale = 1 })" >/dev/null 2>&1 || true
+  hyprctl eval 'hl.monitor({ output = "DP-1", disabled = true })' >/dev/null 2>&1 || true
+else
+  fail "multi-monitor" "could not add a second monitor next to $primary_name: $(hyprctl -j monitors)"
+fi
+
+prove_toolkit() {
+  local name="$1"
+  local launch="$2"
+  local class_re="$3"
+  local bin=${launch%% *}
+  command -v "$bin" >/dev/null || fail "$name windowing" "$bin is not on this guest"
+  close_windows "$class_re" >/dev/null 2>&1 || true
+  launch_app "$launch"
+  wait_until "$name window is mapped" 40 window_present "$class_re"
+  local addr
+  addr=$(hyprctl -j clients | jq -r --arg re "$class_re" '.[] | select(.class | test($re)) | .address' | head -1)
+  [[ -n $addr ]] || fail "$name windowing" "no client matched $class_re"
+  omarchy-shell window snapTo "$addr" r >/dev/null
+  sleep 1
+  local area half left_x right_x right_w left_y left_h
+  area=$(work_area_json)
+  half=$(jq -r '.w / 2 | floor' <<<"$area")
+  left_x=$(jq -r .x <<<"$area")
+  right_x=$((left_x + half))
+  right_w=$(( $(jq -r .w <<<"$area") - half ))
+  left_y=$(jq -r '.y + 32' <<<"$area")
+  left_h=$(jq -r '.h - 32' <<<"$area")
+  window_near_rect "$addr" "$right_x" "$left_y" "$right_w" "$left_h" \
+    || fail "$name snap" "$name did not take the right half: $(hyprctl -j clients | jq --arg a "$addr" '.[] | select(.address == $a) | {class,at,size,xwayland,fullscreen}')"
+  screenshot "success-$name"
+  close_windows "$class_re" >/dev/null 2>&1 || true
+  wait_until "$name window closed" 15 window_absent "$class_re"
+  pass "$name snaps with hyprbars like any other window"
+}
+
+prove_toolkit "GTK Nautilus" "nautilus --new-window" "Nautilus|org\\.gnome\\.Nautilus"
+prove_toolkit "Chromium" "chromium --no-first-run --disable-gpu --disable-dev-shm-usage --no-sandbox about:blank" "^[Cc]hromium"
+
+if ! command -v xeyes >/dev/null; then
+  echo omarchy | sudo -S pacman -S --noconfirm xorg-xeyes >/dev/null
+fi
+command -v xeyes >/dev/null || fail "XWayland" "xeyes could not be installed for the compositor probe"
+close_windows "xeyes|^XEyes$|[Xx][Ee]yes" >/dev/null 2>&1 || true
+launch_app xeyes
+wait_until "XWayland xeyes is mapped" 20 window_present "[Xx][Ee]yes"
+xeyes_addr=$(hyprctl -j clients | jq -r '.[] | select(.class | test("[Xx][Ee]yes")) | .address' | head -1)
+hyprctl -j clients | jq -e --arg a "$xeyes_addr" '.[] | select(.address == $a) | .xwayland == true' >/dev/null \
+  || fail "XWayland" "xeyes is not an XWayland client: $(hyprctl -j clients | jq --arg a "$xeyes_addr" '.[] | select(.address == $a)')"
+omarchy-shell window minimize "$xeyes_addr" >/dev/null
+sleep 1
+window_is_minimized "$xeyes_addr" || fail "XWayland minimize" "xeyes did not hide in place"
+omarchy-shell window restore "$xeyes_addr" >/dev/null
+sleep 1
+close_windows "[Xx][Ee]yes" >/dev/null 2>&1 || true
+pass "XWayland client maps, minimizes, and restores"
+
+qt_bin=""
+for cand in kdialog qt6ct designer assistant; do
+  if command -v "$cand" >/dev/null; then
+    qt_bin=$cand
+    break
+  fi
+done
+if [[ -n $qt_bin ]]; then
+  if [[ $qt_bin == kdialog ]]; then
+    prove_toolkit "Qt kdialog" "kdialog --msgbox W0" "kdialog|KDialog"
+  else
+    prove_toolkit "Qt $qt_bin" "$qt_bin" "$qt_bin"
+  fi
+else
+  printf 'skip - Qt GUI app is not on this guest disk\n'
+fi
+
+electron_bin=""
+for cand in code code-oss obsidian discord slack spotify 1password electron; do
+  if command -v "$cand" >/dev/null; then
+    electron_bin=$cand
+    break
+  fi
+done
+if [[ -n $electron_bin ]]; then
+  prove_toolkit "Electron $electron_bin" "$electron_bin" "$electron_bin"
+else
+  printf 'skip - Electron app is not on this guest disk\n'
+fi
+
+if ! command -v zenity >/dev/null; then
+  echo omarchy | sudo -S pacman -S --noconfirm zenity >/dev/null || true
+fi
+if command -v zenity >/dev/null; then
+  close_windows "zenity|Zenity" >/dev/null 2>&1 || true
+  launch_app "zenity --question --text=W0 --ok-label=OK --cancel-label=Cancel"
+  wait_until "modal zenity is mapped" 20 window_present "zenity|Zenity"
+  zen_json=$(hyprctl -j clients | jq -c '.[] | select(.class | test("zenity|Zenity"))')
+  zen_w=$(jq -r '.size[0]' <<<"$zen_json")
+  zen_modal=$(jq -r '.modal // false' <<<"$zen_json")
+  (( zen_w < 880 )) || fail "parented dialog" "zenity was forced to the 880px app size: $zen_json"
+  screenshot "success-modal-dialog"
+  close_windows "zenity|Zenity" >/dev/null 2>&1 || true
+  pass "modal dialog keeps its own size (modal=$zen_modal width=$zen_w)"
+else
+  fail "parented dialog" "zenity is not available to probe an xdg modal"
+fi
+
+gtk_py="$ROOT/test/acceptance.d/gtk-parented-dialog.py"
+[[ -f $gtk_py ]] || fail "parented dialog" "missing $gtk_py"
+pkill -f gtk-parented-dialog.py >/dev/null 2>&1 || true
+launch_app "python3 $gtk_py"
+wait_until "GTK parented dialog is mapped" 20 window_present "gtk-parented-dialog"
+sleep 0.8
+gtk_parent=$(hyprctl -j clients | jq -c '.[] | select(.title == "W0-Parent")')
+gtk_dialog=$(hyprctl -j clients | jq -c '.[] | select(.title == "W0-Dialog")')
+[[ -n $gtk_parent && $gtk_parent != null ]] || fail "parented dialog" "GTK parent missing"
+[[ -n $gtk_dialog && $gtk_dialog != null ]] || fail "parented dialog" "GTK dialog missing"
+gtk_dw=$(jq -r '.size[0]' <<<"$gtk_dialog")
+gtk_dh=$(jq -r '.size[1]' <<<"$gtk_dialog")
+gtk_px=$(jq -r '.at[0]' <<<"$gtk_parent")
+gtk_py=$(jq -r '.at[1]' <<<"$gtk_parent")
+gtk_pw=$(jq -r '.size[0]' <<<"$gtk_parent")
+gtk_ph=$(jq -r '.size[1]' <<<"$gtk_parent")
+gtk_dx=$(jq -r '.at[0]' <<<"$gtk_dialog")
+gtk_dy=$(jq -r '.at[1]' <<<"$gtk_dialog")
+(( gtk_dw < 880 && gtk_dh < 560 )) || fail "parented dialog" "GTK dialog was forced to the app size: $gtk_dialog"
+(( gtk_dx >= gtk_px - 16 && gtk_dx + gtk_dw <= gtk_px + gtk_pw + 16 )) || fail "parented dialog" "dialog not on parent x: parent=$gtk_parent dialog=$gtk_dialog"
+(( gtk_dy >= gtk_py - 16 && gtk_dy + gtk_dh <= gtk_py + gtk_ph + 16 )) || fail "parented dialog" "dialog not on parent y: parent=$gtk_parent dialog=$gtk_dialog"
+screenshot "success-gtk-parented-dialog"
+pkill -f gtk-parented-dialog.py >/dev/null 2>&1 || true
+wait_until "GTK parented dialog closed" 10 window_absent "gtk-parented-dialog"
+pass "GTK parented dialog stays small on its parent (${gtk_dw}x${gtk_dh} at ${gtk_dx},${gtk_dy})"
+
+layer_present "omarchy-taskbar" || fail "tray chrome" "taskbar layer is missing"
+pass "taskbar tray cluster is mapped"
 
 # Mouse proof: one absolute pointer (USB-tablet class), not relative ydotool.
 # Missing /dev/uinput is a failure, not a skip.

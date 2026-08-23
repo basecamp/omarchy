@@ -22,6 +22,10 @@ QtObject {
   property string lastError: ""
   property var _minimized: ({})
   property var _normalBounds: ({})
+  // Last snap/max verb this service applied. Hyprland.refreshToplevels() does
+  // not wait for lastIpcObject, and hyprctl -j clients is a 400ms poll, so Aero
+  // drag-away cannot trust those boxes right after maximize().
+  property var _placedKind: ({})
   property bool _desktopShown: false
   property var _batch: []
   property var savedLayout: ({ windows: [] })
@@ -33,6 +37,9 @@ QtObject {
   property bool userPinsMissing: false
   property string home: Quickshell.env("HOME")
   property var monitorIpc: ({})
+  property var monitorsIpc: []
+  property var workspacesIpc: []
+  property int activeDesktopId: 1
   property var clientsIpc: []
 
   readonly property var windows: {
@@ -44,11 +51,16 @@ QtObject {
       if (hypr)
         hypr.lastIpcObject
       var rec = root._windowRecord(hypr)
-      if (rec && rec.address) out.push(rec)
+      if (rec && rec.address) {
+        if (WindowModel.isSpecialWorkspace(rec.workspace)) continue
+        out.push(rec)
+      }
     }
     return out
   }
-  readonly property var groups: WindowModel.buildGroups(root.windows, root.pins)
+  readonly property var desktopWindows: WindowModel.windowsOnDesktop(root.windows, root.activeDesktopId)
+  readonly property var desktopIds: WindowModel.desktopIds(root.workspacesIpc)
+  readonly property var groups: WindowModel.buildGroups(root.desktopWindows, root.pins)
   readonly property string pinsPath: root.home + "/.local/state/omarchy/ultimate/taskbar-pins.json"
   readonly property string layoutPath: root.home + "/.local/state/omarchy/ultimate/window-layout.json"
   readonly property string shippedPinsPath: Quickshell.env("OMARCHY_PATH") + "/default/ultimate/taskbar-pins.json"
@@ -99,7 +111,11 @@ QtObject {
     var at = ipc.at || (client && client.at) || [0, 0]
     var size = ipc.size || (client && client.size) || [0, 0]
     var hidden = (client && client.hidden === true) || ipc.hidden === true
-    var fullscreen = Number((ipc.fullscreen != null && ipc.fullscreen !== 0) ? ipc.fullscreen : ((client && client.fullscreen) || 0))
+    var fullscreen = 0
+    if (ipc.fullscreen != null && ipc.fullscreen !== "")
+      fullscreen = Number(ipc.fullscreen)
+    else if (client && client.fullscreen != null)
+      fullscreen = Number(client.fullscreen)
     return {
       address: address,
       title: String(hypr.title || ipc.title || ""),
@@ -115,7 +131,9 @@ QtObject {
       workspace: wsName,
       workspaceId: wsId,
       minimized: hidden,
-      monitorName: mon ? String(mon.name || "") : ""
+      monitorName: mon ? String(mon.name || "") : "",
+      xwayland: ipc.xwayland === true,
+      modal: ipc.modal === true || String(ipc.contentType || "") === "dialog" || String(ipc.xdgTag || "").indexOf("dialog") >= 0
     }
   }
 
@@ -169,18 +187,40 @@ QtObject {
     root._minimized = next
   }
 
-  function _monitorGeom() {
-    var ipc = root.monitorIpc
-    if (ipc && ipc.width && ipc.height && ipc.reserved)
-      return WindowModel.compositorMonitor(ipc)
+  function _monitorGeom(address) {
+    var hint = ""
+    if (address) {
+      var rec = root._record(root._addr(address))
+      var client = root._clientIpc(root._addr(address))
+      if (rec && rec.monitorName) hint = rec.monitorName
+      else if (client && client.monitor != null) hint = client.monitor
+    }
+    var picked = WindowModel.pickMonitor(root.monitorsIpc, hint)
+    if (!picked) picked = root.monitorIpc
+    if (picked && picked.width && picked.reserved)
+      return WindowModel.compositorMonitor(picked)
     root.lastError = "compositor monitor geometry is unavailable"
-    return { width: 0, height: 0, reserved: [0, 0, 0, 0] }
+    return { width: 0, height: 0, reserved: [0, 0, 0, 0], x: 0, y: 0 }
   }
 
   function _copyMap(src) {
     var next = ({})
     for (var key in src) next[key] = src[key]
     return next
+  }
+
+  function _setPlacedKind(address, kind) {
+    var target = root._canonAddr(address)
+    if (!target) return
+    var next = root._copyMap(root._placedKind)
+    var k = String(kind || "")
+    if (k === "" || k === "float" || k === "normal") delete next[target]
+    else next[target] = k
+    root._placedKind = next
+  }
+
+  function _isPlacedSnap(kind) {
+    return kind === "l" || kind === "r" || kind === "tl" || kind === "tr" || kind === "bl" || kind === "br"
   }
 
   function _clientIpc(address) {
@@ -213,7 +253,7 @@ QtObject {
   function _rememberNormal(address) {
     var rec = root._clientRect(address)
     if (!rec || rec.fullscreen || rec.minimized) return
-    var geom = root._monitorGeom()
+    var geom = root._monitorGeom(address)
     if (geom.width && WindowModel.isSnapped(rec, geom, 8, 32)) return
     var next = root._copyMap(root._normalBounds)
     next[address] = { x: rec.x, y: rec.y, width: rec.width, height: rec.height }
@@ -282,9 +322,16 @@ QtObject {
 
   function isMaximized(address) {
     var target = root._addr(address)
-    var rec = root._clientRect(target) || root._record(target)
-    if (rec && Number(rec.fullscreen) === 1) return true
-    var geom = root._monitorGeom()
+    if (root._placedKind[target] === "max") return true
+    // hyprctl -j clients is polled; after a maximize dispatcher it can still
+    // hold the previous float. Hyprland.refreshToplevels() does not wait for
+    // lastIpcObject. Prefer the verb we just ran, then compositor bits.
+    var live = root._record(target)
+    var ipc = root._clientRect(target)
+    if (live && Number(live.fullscreen) === 1) return true
+    if (ipc && Number(ipc.fullscreen) === 1) return true
+    var rec = ipc || live
+    var geom = root._monitorGeom(address)
     if (!rec || !geom.width) return false
     var area = WindowModel.workArea(geom)
     return Math.abs(Number(rec.width) - area.width) <= 16 && Number(rec.height) >= area.height - 48
@@ -308,6 +355,7 @@ QtObject {
     if (!target) return
     var rec = root._record(target)
     if (rec && rec.minimized) root.restore(target)
+    root._dispatchLua("hl.dsp.window.bring_to_top({ " + root._luaWindow(target) + " })")
     root.focus(target)
   }
 
@@ -315,12 +363,14 @@ QtObject {
     var target = root._addr(address)
     if (!target) return
     root._rememberNormal(target)
+    root._setPlacedKind(target, "max")
     root._dispatchLua("hl.dsp.window.fullscreen({ mode = \"maximized\", action = \"set\", " + root._luaWindow(target) + " })", true)
   }
 
   function unmaximize(address) {
     var target = root._addr(address)
     if (!target) return
+    if (root._placedKind[target] === "max") root._setPlacedKind(target, "float")
     root._dispatchLua("hl.dsp.window.fullscreen({ mode = \"maximized\", action = \"unset\", " + root._luaWindow(target) + " })", true)
   }
 
@@ -338,15 +388,17 @@ QtObject {
   function restoreNormal(address) {
     var target = root._addr(address)
     if (!target) return
+    root._setPlacedKind(target, "float")
     var bounds = root._normalBounds[target]
-    if (!bounds) bounds = WindowModel.defaultFloatRect(root._monitorGeom())
+    if (!bounds) bounds = WindowModel.defaultFloatRect(root._monitorGeom(target))
     root._applyRect(target, bounds)
   }
 
   function _applyRect(target, bounds) {
     if (!target || !bounds || !bounds.width || !bounds.height) return
-    root.unmaximize(target)
     var win = root._luaWindow(target)
+    root._dispatchLua("hl.dsp.window.fullscreen({ mode = \"fullscreen\", action = \"unset\", layout_aware = false, " + win + " })")
+    root.unmaximize(target)
     root._dispatchLua("hl.dsp.window.float({ action = \"enable\", " + win + " })")
     root._dispatchLua("hl.dsp.window.resize({ x = " + Math.round(Number(bounds.width)) + ", y = " + Math.round(Number(bounds.height)) + ", relative = false, " + win + " })")
     root._dispatchLua("hl.dsp.window.move({ x = " + Math.round(Number(bounds.x)) + ", y = " + Math.round(Number(bounds.y)) + ", relative = false, " + win + " })", true)
@@ -383,7 +435,7 @@ QtObject {
     if (root.isMaximized(target)) kind = "max"
     else {
       var rec = root._clientRect(target) || root._record(target)
-      var geom = root._monitorGeom()
+      var geom = root._monitorGeom(target)
       if (rec && geom.width) kind = WindowModel.snapKind(rec, geom, 8, 32)
     }
     root._applySnapKind(target, WindowModel.nextSnap(kind, dir))
@@ -393,7 +445,7 @@ QtObject {
     var target = root._addr(address)
     if (!target) return
     Hyprland.refreshToplevels()
-    var geom = root._monitorGeom()
+    var geom = root._monitorGeom(target)
     if (!geom.width) return
     var px = Number(x)
     var py = Number(y)
@@ -406,23 +458,33 @@ QtObject {
       root._applySnapKind(target, zone)
       return
     }
+    // Interior drop. lastIpcObject and the clients poll can still show the
+    // pre-max float after maximize(), so isMaximized/isSnapped on those boxes
+    // are a no-op. Trust the last verb; if that is also empty, unset
+    // compositor maximize (no-op when the window is already normal).
+    var placed = root._placedKind[target]
     var rec = root._clientRect(target) || root._record(target)
-    if (root.isMaximized(target) || (rec && WindowModel.isSnapped(rec, geom, 8, 32)))
+    if (placed === "max" || placed === "full" || root._isPlacedSnap(placed) || (rec && WindowModel.isSnapped(rec, geom, 8, 32))) {
       root.restoreNormal(target)
+      return
+    }
+    root.unmaximize(target)
   }
 
   function saveLayout() {
     Hyprland.refreshToplevels()
-    var geom = root._monitorGeom()
     var recs = []
     var list = root._addresses()
     var i
     var rec
     var rect
+    var geom
+    var captured
     for (i = 0; i < list.length; i++) {
       rec = root._record(list[i]) || {}
       rect = root._clientRect(list[i]) || rec
-      recs.push({
+      geom = root._monitorGeom(list[i])
+      captured = WindowModel.captureLayout([{
         address: list[i],
         appId: rec.appId || rec.class || "",
         title: rec.title || "",
@@ -432,9 +494,10 @@ QtObject {
         y: Number(rect.y || 0),
         width: Number(rect.width || 0),
         height: Number(rect.height || 0)
-      })
+      }], geom, 32)
+      if (captured.windows && captured.windows[0]) recs.push(captured.windows[0])
     }
-    root.savedLayout = WindowModel.captureLayout(recs, geom, 32)
+    root.savedLayout = { windows: recs }
     root.layoutFile.setText(WindowModel.serializeLayout(root.savedLayout))
   }
 
@@ -471,7 +534,7 @@ QtObject {
 
   function _snap(target, direction) {
     if (!target) return
-    var geom = root._monitorGeom()
+    var geom = root._monitorGeom(target)
     if (!geom.width || !geom.height) return
     if (root.isMaximized(target)) root.unmaximize(target)
     root._rememberNormal(target)
@@ -480,6 +543,7 @@ QtObject {
     // the title bar stays in the work area instead of clipping off-screen.
     var rect = WindowModel.snapRect(geom, direction, 32)
     var win = root._luaWindow(target)
+    root._setPlacedKind(target, direction)
     root._dispatchLua("hl.dsp.window.float({ action = \"enable\", " + win + " })")
     root._dispatchLua("hl.dsp.window.resize({ x = " + rect.width + ", y = " + rect.height + ", relative = false, " + win + " })")
     root._dispatchLua("hl.dsp.window.move({ x = " + rect.x + ", y = " + rect.y + ", relative = false, " + win + " })", true)
@@ -490,15 +554,23 @@ QtObject {
       for (var i = 0; i < root._batch.length; i++) root.restore(root._batch[i])
       root._batch = []
     } else {
-      var batch = root._addresses()
+      var batch = root._addressesOnDesktop(root.activeDesktopId)
       for (var j = 0; j < batch.length; j++) root.minimize(batch[j])
       root._batch = batch
     }
     root._desktopShown = !root._desktopShown
   }
 
+  function _addressesOnDesktop(desktopId) {
+    var wins = WindowModel.windowsOnDesktop(root.windows, desktopId)
+    var list = []
+    var i
+    for (i = 0; i < wins.length; i++) list.push(wins[i].address)
+    return list
+  }
+
   function cycleNext() {
-    var list = root._addresses()
+    var list = root._addressesOnDesktop(root.activeDesktopId)
     if (list.length === 0) return
     if (!root.cycling) {
       root.cycleList = list
@@ -513,7 +585,7 @@ QtObject {
   }
 
   function cyclePrev() {
-    var list = root._addresses()
+    var list = root._addressesOnDesktop(root.activeDesktopId)
     if (list.length === 0) return
     if (!root.cycling) {
       root.cycleList = list
@@ -545,6 +617,89 @@ QtObject {
     if (target) root.activate(target)
   }
 
+  function isFullscreen(address) {
+    var target = root._addr(address)
+    if (root._placedKind[target] === "full") return true
+    var rec = root._clientRect(target) || root._record(target)
+    return !!(rec && Number(rec.fullscreen) === 2)
+  }
+
+  function toggleFullscreen(address) {
+    var target = root._addr(address)
+    if (!target) return
+    // action=toggle is a no-op through hyprctl eval and is racy through
+    // Quickshell when lastIpcObject still says 2 after restoreNormal. Set and
+    // unset are explicit. layout_aware=false is default compositor fullscreen,
+    // not a layout handler that can swallow F11 on overlapping floats.
+    if (root.isFullscreen(target)) {
+      root._setPlacedKind(target, "float")
+      root._dispatchLua("hl.dsp.window.fullscreen({ mode = \"fullscreen\", action = \"unset\", layout_aware = false, " + root._luaWindow(target) + " })", true)
+      return
+    }
+    root._rememberNormal(target)
+    root._setPlacedKind(target, "full")
+    root.focus(target)
+    root._dispatchLua("hl.dsp.window.fullscreen({ mode = \"fullscreen\", action = \"set\", layout_aware = false, " + root._luaWindow(target) + " })", true)
+  }
+
+  function createDesktop() {
+    var next = WindowModel.nextDesktopId(WindowModel.desktopIds(root.workspacesIpc))
+    var list = (root.workspacesIpc || []).slice()
+    list.push({ id: next, name: String(next) })
+    root.workspacesIpc = list
+    root.activeDesktopId = next
+    root._dispatchLua('hl.dsp.focus({ workspace = "' + next + '" })', true)
+  }
+
+  function switchDesktop(dir) {
+    var dest = WindowModel.neighborDesktop(WindowModel.desktopIds(root.workspacesIpc), root.activeDesktopId, dir)
+    if (!dest || dest === root.activeDesktopId) return
+    root.switchToDesktop(dest)
+  }
+
+  function switchToDesktop(id) {
+    var dest = Number(id)
+    if (!(dest > 0)) return
+    root._dispatchLua('hl.dsp.focus({ workspace = "' + dest + '" })', true)
+  }
+
+  function moveToDesktop(address, desktopId) {
+    var target = root._addr(address)
+    var dest = Number(desktopId)
+    if (!target || !(dest > 0)) return
+    root._dispatchLua('hl.dsp.window.move({ workspace = "' + dest + '", follow = false, ' + root._luaWindow(target) + " })", true)
+  }
+
+  function closeDesktop() {
+    var ids = WindowModel.desktopIds(root.workspacesIpc)
+    var cur = root.activeDesktopId
+    if (ids.length <= 1) return
+    var dest = WindowModel.neighborDesktop(ids, cur, "l")
+    if (dest === cur) dest = WindowModel.neighborDesktop(ids, cur, "r")
+    if (!dest || dest === cur) return
+    var wins = root._addressesOnDesktop(cur)
+    var i
+    for (i = 0; i < wins.length; i++) root.moveToDesktop(wins[i], dest)
+    root._dispatchLua('hl.dsp.focus({ workspace = "' + dest + '" })', true)
+  }
+
+  function moveToMonitor(address, dir) {
+    var target = root._addr(address)
+    if (!target) return
+    var rec = root._record(target)
+    var client = root._clientIpc(target)
+    var hint = ""
+    if (rec && rec.monitorName) hint = rec.monitorName
+    else if (client && client.monitor != null) hint = client.monitor
+    var current = WindowModel.pickMonitor(root.monitorsIpc, hint)
+    var dest = WindowModel.neighborMonitor(root.monitorsIpc, current, dir)
+    if (!dest || !dest.name) {
+      root.lastError = "no neighboring monitor"
+      return
+    }
+    root._dispatchLua('hl.dsp.window.move({ monitor = "' + dest.name + '", ' + root._luaWindow(target) + " })", true)
+  }
+
   property Process ensurePinsDir: Process {
     command: ["bash", "-c", "mkdir -p \"$0\"", root.home + "/.local/state/omarchy/ultimate"]
     running: true
@@ -567,6 +722,7 @@ QtObject {
         }
         if (!picked && list.length) picked = list[0]
         if (picked && picked.width && picked.reserved) root.monitorIpc = picked
+        if (Array.isArray(list)) root.monitorsIpc = list
       } catch (e) {
         root.lastError = "compositor monitor geometry is unavailable"
       }
@@ -599,6 +755,51 @@ QtObject {
   property Timer clientsRestart: Timer {
     interval: 400
     onTriggered: root.clientsReader.running = true
+  }
+
+  property Process workspaceReader: Process {
+    command: ["hyprctl", "-j", "workspaces"]
+    running: true
+    stdout: StdioCollector {
+      id: workspaceStdout
+      waitForEnd: true
+    }
+    onExited: {
+      try {
+        var list = JSON.parse(workspaceStdout.text || "[]")
+        if (Array.isArray(list)) root.workspacesIpc = list
+      } catch (e) {
+      }
+      workspaceRestart.restart()
+    }
+  }
+
+  property Timer workspaceRestart: Timer {
+    interval: 400
+    onTriggered: root.workspaceReader.running = true
+  }
+
+  property Process activeDesktopReader: Process {
+    command: ["hyprctl", "-j", "activeworkspace"]
+    running: true
+    stdout: StdioCollector {
+      id: activeDesktopStdout
+      waitForEnd: true
+    }
+    onExited: {
+      try {
+        var ws = JSON.parse(activeDesktopStdout.text || "{}")
+        var id = Number(ws && ws.id)
+        if (id > 0) root.activeDesktopId = id
+      } catch (e) {
+      }
+      activeDesktopRestart.restart()
+    }
+  }
+
+  property Timer activeDesktopRestart: Timer {
+    interval: 400
+    onTriggered: root.activeDesktopReader.running = true
   }
 
   property FileView layoutFile: FileView {

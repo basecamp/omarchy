@@ -172,10 +172,17 @@ Item {
             Layout.fillHeight: true
           }
 
+          TaskView {
+            bar: root
+            Layout.preferredWidth: 44
+            Layout.fillHeight: true
+          }
+
           Repeater {
             model: root.groups
             delegate: TaskButton {
               bar: root
+              hostWindow: barWindow
               group: modelData
               Layout.preferredWidth: 44
               Layout.fillHeight: true

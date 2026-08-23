@@ -119,10 +119,35 @@ grep -Fq 'function saveLayout' "$ws" || fail "WindowService exposes saveLayout"
 grep -Fq 'function restoreLayout' "$ws" || fail "WindowService exposes restoreLayout"
 grep -Fq 'rect = root._clientRect(list[i])' "$ws" || fail "saveLayout reads compositor client boxes, not stale lastIpcObject"
 grep -Fq 'function snapChooser' "$ROOT/shell/shell.qml" || fail "window IPC snapChooser summons the layout overlay"
+grep -Fq 'function createDesktop' "$ws" || fail "WindowService exposes createDesktop for virtual desktops"
+grep -Fq 'function moveToMonitor' "$ws" || fail "WindowService exposes moveToMonitor"
+grep -Fq 'root._setPlacedKind(target, "full")' "$ws" || fail "toggleFullscreen records _placedKind full"
+grep -Fq 'mode = \"fullscreen\", action = \"set\", layout_aware = false' "$ws" \
+  || fail "F11 fullscreen must set layout_aware=false exclusive fullscreen, not toggle"
+grep -Fq 'function taskView' "$ROOT/shell/shell.qml" || fail "window IPC taskView summons Task View"
 grep -Fq 'aeroDragEnd(address: string, x: string, y: string)' "$ROOT/shell/shell.qml" || fail "aeroDragEnd IPC takes cursor coordinates"
+grep -Fq '_addressesOnDesktop' "$ws" || fail "Alt+Tab cycles windows on the current desktop"
+grep -Fq 'function neighborMonitor' "$ROOT/shell/services/WindowModel.js" || fail "WindowModel can name the neighboring monitor"
+grep -Fq 'follow = false' "$ws" || fail "moveToDesktop does not steal the current desktop"
 grep -Fq 'function maximize(address: string)' "$ROOT/shell/shell.qml" || fail "window IPC maximize takes a window address"
 grep -Fq 'function restoreOrMinimize(address: string)' "$ROOT/shell/shell.qml" || fail "window IPC restoreOrMinimize takes a window address"
 grep -Fq 'function restoreNormal' "$ws" || fail "WindowService exposes restoreNormal to unsnap"
+grep -Fq 'if (root._placedKind[target] === "max") return true' "$ws" \
+  || fail "isMaximized trusts the maximize verb; lastIpcObject and the clients poll lag behind it"
+grep -Fq 'if (live && Number(live.fullscreen) === 1) return true' "$ws" \
+  || fail "isMaximized still reads compositor fullscreen when this service did not place the window"
+if awk '
+  $0 ~ /function aeroDragEnd\(/ { infn = 1 }
+  infn && /placed === "max"/ { placed = 1 }
+  infn && /root.unmaximize\(target\)/ { unsetmax = 1 }
+  infn && /^  function / && $0 !~ /function aeroDragEnd\(/ { infn = 0 }
+  END { exit (placed && unsetmax) ? 0 : 1 }
+' "$ws"; then
+  :
+else
+  fail "aeroDragEnd interior drop must restore from _placedKind, then unmaximize if the poll is still the pre-max float"
+fi
+grep -Fq 'root._setPlacedKind(target, "max")' "$ws" || fail "maximize records _placedKind so Aero drag-away does not wait on lastIpcObject"
 grep -Fq 'hyprctl", "-j", "monitors"' "$ws" || fail "monitor geometry is read from hyprctl -j monitors, not stale lastIpcObject"
 grep -Fq 'hyprctl", "-j", "clients"' "$ws" || fail "client geometry for remember/restore is read from hyprctl -j clients"
 if grep -E 'mon\.width \|\| ipc\.width|mon\.height \|\| ipc\.height' "$ws"; then
@@ -243,4 +268,15 @@ assert(m.isSnapped(snapped, mon, 8), '960x1040 at origin is the left snap')
 const snappedBar = { x: 0, y: 32, width: 960, height: 1008 }
 assert(m.isSnapped(snappedBar, mon, 8, 32), '960x1008 at y=32 is the desktop left snap')
 assert(!m.isSnapped(floated, mon, 8), 'default float must not count as snapped')
+const mon2 = { x: 1920, y: 0, width: 1920, height: 1080, reserved: [0, 0, 0, 40] }
+assertEqual(m.workArea(mon2).x, 1920, 'second monitor work area uses global compositor x')
+assertEqual(m.snapRect(mon2, 'l', 32).x, 1920, 'left snap on the right monitor stays on that monitor')
+assertDeepEqual(m.desktopIds([{ id: 1, name: '1' }, { id: 2, name: '2' }, { id: -98, name: 'special:scratchpad' }]), [1, 2], 'desktopIds skips special workspaces')
+assertEqual(m.neighborDesktop([1, 2, 3], 2, 'l'), 1, 'Win+Ctrl+Left goes to the previous desktop')
+assertEqual(m.neighborDesktop([1, 2, 3], 1, 'l'), 1, 'Win+Ctrl+Left does not wrap off the first desktop')
+assertEqual(m.nextDesktopId([1, 2]), 3, 'New desktop is max id plus one')
+const leftMon = { name: 'Virtual-1', x: 0, y: 0, width: 1920, height: 1080 }
+const rightMon = { name: 'HEADLESS-2', x: 1920, y: 0, width: 1920, height: 1080 }
+assertEqual(m.neighborMonitor([leftMon, rightMon], leftMon, 'r').name, 'HEADLESS-2', 'Win+Shift+Right picks the monitor to the right')
+assertEqual(m.neighborMonitor([leftMon, rightMon], leftMon, 'l'), null, 'Win+Shift+Left does nothing on the leftmost monitor')
 JS

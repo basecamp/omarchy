@@ -24,6 +24,10 @@ QtObject {
   property var installedPlugins: ({})
   property int registryRevision: 0
   property bool scanning: false
+  // First rescan has finished. Desktop Mode must not mount omarchy.bar before
+  // this or the later switch to the taskbar tears down PopupAnchor mid-reload
+  // and Quickshell segfaults (PopupAnchor::onItemWindowChanged).
+  property bool initialScanDone: false
   property string lastEnableError: ""
 
   signal pluginsChanged()
@@ -611,6 +615,7 @@ QtObject {
     installedPlugins = merged
     registryRevision++
     scanning = false
+    initialScanDone = true
     pluginsChanged()
     scanFinished()
   }

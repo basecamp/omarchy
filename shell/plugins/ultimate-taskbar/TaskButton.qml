@@ -8,6 +8,7 @@ Item {
   id: root
 
   property var bar: null
+  property var hostWindow: null
   property var group: ({})
   property var windowService: bar && bar.shell ? bar.shell.windowService : null
   property var appLibrary: bar && bar.shell ? bar.shell.appLibrary : null
@@ -136,7 +137,7 @@ Item {
     color: "transparent"
     implicitWidth: 220
     implicitHeight: peekCol.implicitHeight + 16
-    anchor.window: root.QsWindow ? root.QsWindow.window : null
+    anchor.window: root.hostWindow
     anchor.item: root
     anchor.edges: Edges.Top | Edges.Left
     anchor.gravity: Edges.Top | Edges.Right
@@ -239,7 +240,7 @@ Item {
     color: "transparent"
     implicitWidth: 160
     implicitHeight: col.implicitHeight + 12
-    anchor.window: root.QsWindow ? root.QsWindow.window : null
+    anchor.window: root.hostWindow
     anchor.item: root
     anchor.edges: Edges.Top | Edges.Left
     anchor.gravity: Edges.Top | Edges.Right

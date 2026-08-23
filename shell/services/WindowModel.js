@@ -73,12 +73,14 @@ function reservedLTRB(reserved) {
 }
 
 function workArea(monitor) {
+  var originX = Number((monitor && monitor.x) || 0)
+  var originY = Number((monitor && monitor.y) || 0)
   var width = Number((monitor && monitor.width) || 0)
   var height = Number((monitor && monitor.height) || 0)
   var r = reservedLTRB(monitor && monitor.reserved)
   return {
-    x: r.left,
-    y: r.top,
+    x: originX + r.left,
+    y: originY + r.top,
     width: width - r.left - r.right,
     height: height - r.top - r.bottom
   }
@@ -108,10 +110,115 @@ function snapRect(monitor, side, titleBar) {
 function compositorMonitor(ipc) {
   ipc = ipc || {}
   return {
+    name: String(ipc.name || ""),
+    id: ipc.id,
+    x: Number(ipc.x || 0),
+    y: Number(ipc.y || 0),
     width: Number(ipc.width || 0),
     height: Number(ipc.height || 0),
-    reserved: ipc.reserved || [0, 0, 0, 0]
+    reserved: ipc.reserved || [0, 0, 0, 0],
+    focused: ipc.focused === true
   }
+}
+
+function pickMonitor(monitors, hint) {
+  var list = monitors || []
+  var i
+  if (hint != null && hint !== "") {
+    for (i = 0; i < list.length; i++) {
+      if (!list[i]) continue
+      if (String(list[i].name) === String(hint)) return list[i]
+      if (String(list[i].id) === String(hint)) return list[i]
+    }
+  }
+  for (i = 0; i < list.length; i++) {
+    if (list[i] && list[i].focused) return list[i]
+  }
+  return list[0] || null
+}
+
+function isSpecialWorkspace(ws) {
+  var name = ""
+  if (ws && typeof ws === "object") name = String(ws.name || "")
+  else name = String(ws || "")
+  return name.indexOf("special") === 0
+}
+
+function desktopIds(workspaces) {
+  var ids = []
+  var i
+  var id
+  workspaces = workspaces || []
+  for (i = 0; i < workspaces.length; i++) {
+    if (!workspaces[i] || isSpecialWorkspace(workspaces[i])) continue
+    id = Number(workspaces[i].id)
+    if (!(id > 0)) continue
+    if (ids.indexOf(id) < 0) ids.push(id)
+  }
+  ids.sort(function(a, b) { return a - b })
+  return ids
+}
+
+function neighborDesktop(ids, current, dir) {
+  var list = ids || []
+  var cur = Number(current)
+  var i
+  for (i = 0; i < list.length; i++) {
+    if (list[i] === cur) break
+  }
+  if (i >= list.length) i = 0
+  if (dir === "l" || dir === "left" || dir === "-1")
+    return i > 0 ? list[i - 1] : list[i]
+  if (dir === "r" || dir === "right" || dir === "+1")
+    return i < list.length - 1 ? list[i + 1] : list[i]
+  return list[i] || cur
+}
+
+function nextDesktopId(ids) {
+  var max = 0
+  var i
+  for (i = 0; i < (ids || []).length; i++) {
+    if (ids[i] > max) max = ids[i]
+  }
+  return max + 1
+}
+
+function neighborMonitor(monitors, current, dir) {
+  var list = []
+  var i
+  var idx = -1
+  var name = current && current.name
+  monitors = monitors || []
+  for (i = 0; i < monitors.length; i++) {
+    if (monitors[i] && monitors[i].name) list.push(monitors[i])
+  }
+  list.sort(function(a, b) { return Number(a.x) - Number(b.x) })
+  for (i = 0; i < list.length; i++) {
+    if (list[i].name === name) {
+      idx = i
+      break
+    }
+  }
+  if (idx < 0) idx = 0
+  if (dir === "l" || dir === "left" || dir === "-1")
+    return idx > 0 ? list[idx - 1] : null
+  if (dir === "r" || dir === "right" || dir === "+1")
+    return idx < list.length - 1 ? list[idx + 1] : null
+  return null
+}
+
+function windowsOnDesktop(windows, desktopId) {
+  var id = Number(desktopId)
+  var out = []
+  var i
+  var win
+  windows = windows || []
+  for (i = 0; i < windows.length; i++) {
+    win = windows[i]
+    if (!win || !win.address || isSpecialWorkspace(win.workspace)) continue
+    if (Number(win.workspaceId) === id) out.push(win)
+  }
+  return out
 }
 
 function nearRect(win, rect, slop) {
@@ -399,6 +506,13 @@ if (typeof module !== "undefined") {
     snapSides: snapSides,
     snapKind: snapKind,
     compositorMonitor: compositorMonitor,
+    pickMonitor: pickMonitor,
+    isSpecialWorkspace: isSpecialWorkspace,
+    desktopIds: desktopIds,
+    neighborDesktop: neighborDesktop,
+    nextDesktopId: nextDesktopId,
+    neighborMonitor: neighborMonitor,
+    windowsOnDesktop: windowsOnDesktop,
     nearRect: nearRect,
     isSnapped: isSnapped,
     nextSnap: nextSnap,
