@@ -4,9 +4,10 @@
 # omarchy:hidden=true
 """Collect GitHub Copilot usage and quota into one display-ready JSON record.
 
-Reads Copilot session data from ~/.copilot/session-store.db for historical
-usage statistics, and fetches account quota from the GitHub API using OAuth
-tokens managed by editor plugins (VS Code, JetBrains, copilot.vim).
+Reads Copilot session data from the standalone CLI's local session store,
+which lives in COPILOT_HOME (default ~/.copilot) as session-store.db. Quota
+fetches use OAuth tokens managed by editor plugins (VS Code, JetBrains,
+copilot.vim), which are separate from the CLI's local config directory.
 """
 
 from __future__ import annotations
@@ -23,12 +24,12 @@ from typing import Any
 
 AGENT_ID = "copilot"
 AGENT_NAME = "Copilot"
-AUTH_HELP = "Sign in with VS Code, JetBrains, or copilot.vim for quota display"
+AUTH_HELP = "Sign in with VS Code, JetBrains, or copilot.vim for quota display; the CLI keeps usage in COPILOT_HOME (~/.copilot by default)"
 
 GITHUB_API_BASE = "https://api.github.com"
 COPILOT_INTERNAL_URL = f"{GITHUB_API_BASE}/copilot_internal/user"
 
-COPILOT_CONFIG_DIR = Path("~/.config/github-copilot").expanduser()
+COPILOT_EDITOR_CONFIG_DIR = Path("~/.config/github-copilot").expanduser()
 COPILOT_TOKEN_FILES = ("apps.json", "hosts.json", "oauth.json")
 
 QUOTA_PRIORITY = ("premium_interactions", "premium_requests", "chat", "completions")
@@ -45,7 +46,11 @@ def expand_path(value: str) -> Path:
 
 
 def copilot_dir() -> Path:
-  return expand_path(os.environ.get("COPILOT_DIR") or "~/.copilot")
+  return expand_path(
+    os.environ.get("COPILOT_HOME")
+    or os.environ.get("COPILOT_DIR")
+    or "~/.copilot"
+  )
 
 
 def date_string(value: dt.date) -> str:
@@ -62,9 +67,13 @@ def local_date_string() -> str:
 
 
 def get_oauth_token() -> str | None:
-  """Read OAuth token from editor Copilot plugin config (VS Code, JetBrains, copilot.vim)."""
+  """Read OAuth token from editor plugin config (VS Code, JetBrains, copilot.vim).
+
+  The standalone Copilot CLI stores its local session history under COPILOT_HOME
+  (~/.copilot by default), which is separate from the editor plugin auth store.
+  """
   for token_file in COPILOT_TOKEN_FILES:
-    token_path = COPILOT_CONFIG_DIR / token_file
+    token_path = COPILOT_EDITOR_CONFIG_DIR / token_file
     if not token_path.exists():
       continue
     try:
