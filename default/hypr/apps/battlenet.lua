@@ -14,3 +14,9 @@ o.window({ class = "^steam_app_battlenet$", title = "^Battle\\.net Setup$" }, {
   no_blur = true,
   no_shadow = true,
 })
+
+-- Keep Hyprland in charge of WoW's fullscreen state and ignore background activation requests.
+o.window({ class = "^steam_app_battlenet$", title = "^World of Warcraft$", xwayland = true }, {
+  focus_on_activate = false,
+  suppress_event = "fullscreen maximize",
+})
