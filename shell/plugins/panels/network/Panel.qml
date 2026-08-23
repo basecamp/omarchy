@@ -31,22 +31,16 @@ Panel {
 
   function cancelHiddenForm() {
     hiddenPasswordText = ""
-    // Leave the form open (and ssid/security in place) while busy:
-    // hiddenBusy keys off hiddenSsidText, and closing the form here would
-    // make a reopened panel show nothing instead of "Connecting…" for the
-    // still-running attempt. The toggle button stays disabled meanwhile
-    // (enabled: !root.busy), so this doesn't reopen a way to cancel/resubmit.
+    // Keep the form (and its state) while a connect is in flight so a
+    // reopened panel still shows "Connecting…"; the disabled toggle
+    // prevents cancel/resubmit meanwhile.
     if (hiddenBusy) return
     hiddenFormOpen = false
     hiddenSsidText = ""
     hiddenSecurity = "wpa-psk"
-    // Done with this attempt (if any) -- past this point the shared
-    // actionSsid/failureSsid state no longer belongs to the hidden form.
     hiddenConnecting = false
-    // Dropdown.selectCurrent() imperatively assigns its own `value` on a
-    // user pick, which severs the `value: root.hiddenSecurity` binding.
-    // Re-arm it here so a programmatic reset (like the line above) is
-    // reflected in what the dropdown displays next time the form opens.
+    // A user pick severs the `value:` binding (Dropdown assigns its own
+    // value); re-arm it so this reset shows in the dropdown.
     hiddenSecurityDropdown.value = Qt.binding(function() { return root.hiddenSecurity })
   }
 
@@ -126,46 +120,40 @@ Panel {
   property string actionKind: ""  // "connect" | "disconnect" | "forget"
   property string failureSsid: ""
   property string failureReason: ""
-  // Which code path currently owns the shared action* state above -- a row
-  // (runNetworkAction) or the hidden form (runHiddenAction). String equality
-  // on actionSsid alone can't tell those apart when a typed hidden SSID
-  // happens to match a scanned row's, so hiddenBusy/hiddenFailed also check
-  // this before claiming the state as their own.
+  // Which path owns the shared action* state: a row (runNetworkAction) or
+  // the hidden form (runHiddenAction). actionSsid alone can't tell them
+  // apart when a typed hidden SSID matches a scanned row's.
   property bool actionIsHidden: false
   property string passwordSsid: ""
   property string passwordText: ""
   property string identityText: ""
 
-  // "Join hidden network" form state. Hidden SSIDs never scan in, so this
-  // form gathers everything up front instead of expanding out of a row.
-  // Reuses actionSsid/actionKind/failureSsid/failureReason above so the
-  // panel-wide busy gate covers this action too.
+  // "Join hidden network" form state. Hidden SSIDs never scan in, so the
+  // form gathers everything up front; it reuses the shared action* state
+  // above so the panel-wide busy gate covers it too.
   property bool hiddenFormOpen: false
   property string hiddenSsidText: ""
   property string hiddenSecurity: "wpa-psk"  // "wpa-psk" | "sae" | "none"
   property string hiddenPasswordText: ""
-  // Marks this attempt as the hidden form's own, so a scanned row sharing
-  // the typed SSID doesn't read as this attempt (or vice versa).
+  // True from submit until the attempt is dismissed/retried; keeps
+  // hiddenFailed rendering after the shared action state clears.
   property bool hiddenConnecting: false
   readonly property bool hiddenBusy: hiddenConnecting && actionIsHidden && actionKind === "connect" && hiddenSsidText !== "" && actionSsid === hiddenSsidText
   readonly property bool hiddenFailed: hiddenConnecting && actionIsHidden && failureReason !== "" && hiddenSsidText !== "" && failureSsid === hiddenSsidText
 
   // The Dropdown disappears with the rest of the form, so a cursor left
-  // pointing at it would be stuck on nothing -- same shape as
-  // onCanSelectBandChanged.
+  // pointing at it would be stuck on nothing -- fall back to the toggle,
+  // which stays visible when the form closes.
   onHiddenFormOpenChanged: {
-    if (!hiddenFormOpen && focusSection === "hiddenSecurity") focusSection = "dns"
+    if (!hiddenFormOpen && focusSection === "hiddenSecurity") focusSection = "hiddenToggle"
   }
 
-  // The whole hidden-form section vanishes with the Wi-Fi station, so a form
-  // left open (or a cursor left on its Dropdown) would be stuck on nothing --
-  // same shape as onCanSelectBandChanged. Set hiddenFormOpen directly rather
-  // than through cancelHiddenForm(), since the section is being hidden anyway.
-  // The field reset below is skipped while a hidden connect is in flight, same
-  // reasoning as cancelHiddenForm: don't yank state out from under a pending action.
+  // The section vanishes with the Wi-Fi station: close the form, evacuate
+  // the cursor, and reset the fields -- unless a connect is in flight
+  // (same reasoning as cancelHiddenForm).
   onWifiStationAvailableChanged: if (!wifiStationAvailable) {
     hiddenFormOpen = false
-    if (focusSection === "hiddenSecurity") focusSection = "dns"
+    if (focusSection === "hiddenSecurity" || focusSection === "hiddenToggle") focusSection = "dns"
     if (!hiddenBusy) {
       hiddenSsidText = ""
       hiddenSecurity = "wpa-psk"
@@ -197,11 +185,10 @@ Panel {
 
   // Keyboard focus zone for the panel. j/k crosses row boundaries:
   // header actions ⇄ portal ⇄ band ⇄ DNS row ⇄ Wi-Fi networks ⇄
-  // hidden-network security Dropdown (only reachable while the
-  // hidden-network form is open; the Dropdown owns its own option
-  // navigation once opened). h/l move within header actions, band pills,
-  // or DNS providers.
-  property string focusSection: "dns"  // "header" | "portal" | "band" | "dns" | "wifi" | "hiddenSecurity"
+  // Join-hidden-network toggle ⇄ security Dropdown (Dropdown only reachable
+  // while the form is open; it owns its own option navigation once opened).
+  // h/l move within header actions, band pills, or DNS providers.
+  property string focusSection: "dns"  // "header" | "portal" | "band" | "dns" | "wifi" | "hiddenToggle" | "hiddenSecurity"
   property int headerIndex: 0
   readonly property bool canDisconnect: !!connectedWifiNetwork
   readonly property bool headerHasDisconnect: false
@@ -860,10 +847,8 @@ Panel {
 
   function clearNetworkAction() {
     actionTimeout.stop()
-    // Guard on actionSsid matching the open prompt, and on !actionIsHidden --
-    // a completing hidden connect (whose typed SSID may coincidentally equal
-    // an unrelated row's) or any other row's connect must not clobber an
-    // unrelated row's still-open passphrase prompt.
+    // Only the row connect this prompt was opened for may close it --
+    // never a hidden connect that happens to share the SSID.
     if (!actionIsHidden && actionKind === "connect" && actionSsid === passwordSsid) passwordSsid = ""
     failureSsid = ""
     failureReason = ""
@@ -874,8 +859,7 @@ Panel {
   }
 
   function failNetworkAction(network, reason) {
-    // A hidden connect owns the shared action* state right now -- a scanned
-    // row sharing its typed SSID must not touch it (see actionIsHidden).
+    // Row-only: a hidden connect owns the action state right now.
     if (actionIsHidden) return
     if (!network || actionKind === "" || actionSsid !== (network.name || "")) return
     actionTimeout.stop()
@@ -895,8 +879,7 @@ Panel {
   }
 
   function checkActionCompletion(network) {
-    // A hidden connect owns the shared action* state right now -- a scanned
-    // row sharing its typed SSID must not touch it (see actionIsHidden).
+    // Row-only: a hidden connect owns the action state right now.
     if (actionIsHidden) return
     if (!network || actionKind === "" || actionSsid !== (network.name || "")) return
     if (actionKind === "connect" && network.connected) clearNetworkAction()
@@ -941,8 +924,6 @@ Panel {
     actionKind = "connect"
     failureSsid = ""
     failureReason = ""
-    // Marks this attempt as the hidden form's own, so a scanned row sharing
-    // the typed SSID doesn't read as this attempt (or vice versa).
     hiddenConnecting = true
     actionIsHidden = true
     callback()
@@ -953,12 +934,11 @@ Panel {
     runHiddenAction(ssid, function() {
       if (security === "none") {
         hiddenConnect.secret = ""
-        // "--" stops nmcli from parsing an SSID that happens to look like one
-        // of its own flags (e.g. "--ask") as that flag instead of the SSID.
+        // "--" keeps a flag-like SSID (e.g. "--ask") from being parsed as
+        // an nmcli option.
         hiddenConnect.command = ["nmcli", "device", "wifi", "connect", "--", ssid, "hidden", "yes"]
       } else {
-        // security is "wpa-psk" or "sae" -- the literal nmcli key-mgmt value,
-        // never user text -- passed through as $2 for the script to set.
+        // security is our own "wpa-psk"/"sae" literal, passed as $2.
         hiddenConnect.secret = passphrase
         hiddenConnect.command = ["bash", "-c", Model.hiddenPskConnectScript, "nmcli-hidden-psk", ssid, security]
       }
@@ -967,9 +947,8 @@ Panel {
   }
 
   function submitHiddenNetwork() {
-    // Leading/trailing spaces are legal SSID bytes, so trim only for the
-    // empty-input guard -- the exact typed SSID is what gets connected and
-    // what hiddenBusy/hiddenFailed compare against.
+    // Spaces are legal SSID bytes: trim only for the empty check, connect
+    // with the exact typed value.
     var ssid = hiddenSsidText
     if (busy || ssid.trim().length === 0) return
     if (hiddenSecurity !== "none" && hiddenPasswordText.length === 0) return
@@ -988,14 +967,12 @@ Panel {
     failureReason = reason
     actionSsid = ""
     actionKind = ""
-    // hiddenConnecting deliberately stays true (through this and the shared
-    // actionTimeout path) so hiddenFailed can render; it only clears via
-    // cancelHiddenForm (dismiss) or a fresh runHiddenAction (retry).
+    // hiddenConnecting stays true so hiddenFailed renders; it clears on
+    // dismiss (cancelHiddenForm) or retry (runHiddenAction).
   }
 
-  // Runs the hidden-network nmcli command (see Model.hiddenPskConnectScript).
-  // Same stdin-secret handoff as enterpriseConnect; the open path never
-  // sets a secret.
+  // Runs the hidden-network nmcli command; secret over stdin like
+  // enterpriseConnect (the open path sets none).
   Process {
     id: hiddenConnect
     property string secret: ""
@@ -1175,10 +1152,8 @@ Panel {
     repeat: false
     onTriggered: {
       if (!root.actionKind) return
-      // A hidden connect owns a long-lived nmcli process. Clearing the action
-      // here would strand that process: it can't be restarted while running,
-      // and its late exit would clobber whatever action started next. Kill it
-      // instead and let hiddenConnect.onExited settle the state.
+      // Kill the hidden connect's process instead of clearing the action --
+      // a stranded process's late exit would clobber the next action.
       if (root.actionIsHidden) {
         hiddenConnect.timedOut = true
         hiddenConnect.running = false
@@ -1237,12 +1212,11 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      // Freeze the cursor model while the inline password prompt, a hidden-form
-      // text field, or the hidden-security Dropdown's popup owns input. Without
-      // gating on the hidden fields, this BeforeItem catcher would eat Space,
-      // Enter, arrows, and h/j/k/l/x before the focused field saw them --
-      // blocking many valid SSIDs and passphrases.
+      // Stand down while an inline editor, the Dropdown popup, or the
+      // Dropdown trigger owns input -- this BeforeItem catcher would
+      // otherwise eat their keys.
       blocked: root.passwordSsid !== "" || hiddenSecurityDropdown.popupOpen
+        || hiddenSecurityDropdown.triggerFocused
         || hiddenSsidField.activeFocus || hiddenPasswordField.activeFocus
 
       onMoveRequested: function(dx, dy) {
@@ -1289,11 +1263,8 @@ Panel {
               root.focusSection = "dns"
             }
           } else if (root.focusSection === "dns") {
-            // k from DNS moves up into the band section when it's on screen,
-            // then the disconnect button; otherwise stays put. j drops into the
-            // wifi list if there's anywhere to land, or straight into the
-            // hidden-network security Dropdown when the list is empty but
-            // that form is open -- otherwise j would have nowhere to go.
+            // k: band section when on screen, else header. j: wifi list,
+            // or the hidden-network toggle when the list is empty.
             if (dy < 0) {
               if (root.canSelectBand) {
                 root.focusSection = "band"
@@ -1307,26 +1278,27 @@ Panel {
             } else if (root.wifiNetworks.length > 0) {
               root.focusSection = "wifi"
               if (root.selectedIndex < 0) root.selectedIndex = 0
-            } else if (root.hiddenFormOpen) {
-              root.focusSection = "hiddenSecurity"
+            } else if (root.wifiStationAvailable) {
+              root.focusSection = "hiddenToggle"
             }
           } else if (root.focusSection === "wifi") {
-            // k from the top row escapes back up to the DNS row rather than
-            // wrapping around to the bottom of the list. j from the bottom
-            // row drops into the hidden-network security Dropdown when that
-            // form is open; otherwise the list just clamps.
+            // k from the top row escapes to DNS instead of wrapping; j from
+            // the bottom row drops onto the hidden-network toggle.
             if (dy < 0 && root.selectedIndex <= 0) {
               root.focusSection = "dns"
               root.wifiActionFocused = false
-            } else if (dy > 0 && root.selectedIndex >= root.wifiNetworks.length - 1 && root.hiddenFormOpen) {
-              root.focusSection = "hiddenSecurity"
+            } else if (dy > 0 && root.selectedIndex >= root.wifiNetworks.length - 1) {
+              root.focusSection = "hiddenToggle"
+              root.wifiActionFocused = false
             } else {
               root.selectByDelta(dy)
             }
-          } else {  // hiddenSecurity
-            // Nothing below the Dropdown to escape into; k climbs back to
-            // the wifi list (or DNS, if the list is empty).
-            if (dy < 0) {
+          } else if (root.focusSection === "hiddenToggle") {
+            // j: the security Dropdown once the form is open. k: back to
+            // the wifi list, or DNS when the list is empty.
+            if (dy > 0 && root.hiddenFormOpen) {
+              root.focusSection = "hiddenSecurity"
+            } else if (dy < 0) {
               if (root.wifiNetworks.length > 0) {
                 root.focusSection = "wifi"
                 root.selectedIndex = root.wifiNetworks.length - 1
@@ -1334,6 +1306,9 @@ Panel {
                 root.focusSection = "dns"
               }
             }
+          } else {  // hiddenSecurity
+            // Nothing below the Dropdown; k climbs back to the toggle.
+            if (dy < 0) root.focusSection = "hiddenToggle"
           }
         }
         if (dx !== 0) {
@@ -1349,6 +1324,7 @@ Panel {
           else if (root.focusSection === "portal") root.openCaptivePortal()
           else if (root.focusSection === "band") root.activateBand()
           else if (root.focusSection === "dns") root.activateDns()
+          else if (root.focusSection === "hiddenToggle") root.toggleHiddenForm()
           else if (root.focusSection === "hiddenSecurity") hiddenSecurityDropdown.open()
           else root.activateSelected()
         }
@@ -1850,9 +1826,8 @@ Panel {
         }
       }
 
-      // Join hidden network — non-broadcasting SSIDs never scan in, so
-      // joining one gathers SSID/security/credentials up front and goes
-      // straight to nmcli (see connectHidden) instead of picking a row above.
+      // Join hidden network — non-broadcasting SSIDs never scan in, so the
+      // form gathers SSID/security/credentials and goes straight to nmcli.
       PanelSeparator {
         visible: root.wifiStationAvailable
         foreground: root.bar.foreground
@@ -1872,7 +1847,13 @@ Panel {
           fontFamily: root.bar.fontFamily
           horizontalPadding: Style.space(10)
           enabled: !root.busy
+          hasCursor: root.cursorActive && root.focusSection === "hiddenToggle"
           onClicked: root.toggleHiddenForm()
+          onHovered: function(isHovered) {
+            if (!isHovered) return
+            root.cursorActive = true
+            root.focusSection = "hiddenToggle"
+          }
         }
 
         Column {
@@ -1903,10 +1884,9 @@ Panel {
             Component.onCompleted: if (visible) Qt.callLater(forceActiveFocus)
           }
 
-          // Enterprise is deliberately not offered for hidden networks: without
-          // a broadcast beacon to scan, there is no CA/server validation UI
-          // here, and a hidden 802.1X join would be exposed to an evil-twin
-          // credential-theft AP impersonating the SSID.
+          // No enterprise option: with no beacon to verify and no CA/server
+          // validation UI, a hidden 802.1X join invites evil-twin credential
+          // theft.
           Dropdown {
             id: hiddenSecurityDropdown
             label: "Security"

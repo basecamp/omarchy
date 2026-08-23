@@ -341,40 +341,26 @@ var enterpriseConnectScript =
   " && nmcli connection up uuid \"$u\"" +
   " || { nmcli connection delete uuid \"$u\" >/dev/null 2>&1; false; }"
 
-// Same stdin-secret shape as enterpriseConnectScript above: create the hidden
-// profile first, then push the PSK through the scriptable `connection edit`
-// editor over stdin. `nmcli device wifi connect ... password "$pw"` would put
-// the passphrase in argv (world-readable via /proc), so it must not be used.
-// Key-mgmt comes from $2 ("wpa-psk" or "sae") -- always a literal we pass,
-// never user text. WPA3/SAE mandates Protected Management Frames, so $pmf
-// is set to "wifi-sec.pmf 3" for that case only; it's a fixed internal
-// string too, so the intentional word-split into the nmcli argv is safe.
+// Hidden PSK/SAE connect. Secrets stay off argv (same shape as
+// enterpriseConnectScript): create the profile, set wifi-sec.psk via the
+// `connection edit` stdin editor, then activate. $2 is the key-mgmt
+// ("wpa-psk"|"sae") and $pmf adds the PMF SAE requires -- both our own
+// literals, never user text.
 //
-// Repeat joins to the same hidden SSID shouldn't pile up duplicate profiles,
-// but con-name is not unique in NetworkManager -- `connection delete id
-// "$1"` would delete the FIRST match by NAME, which could be an unrelated
-// VPN/Ethernet/broadcast-Wi-Fi profile that happens to share that name, and
-// doing it before the new profile is proven to work means a typo/wrong
-// password destroys working config. Instead: capture the UUIDs of existing
-// 802-11-wireless profiles whose ssid == "$1" and hidden == yes (matched by
-// UUID/field, never by name) BEFORE adding the new one, and only remove them
-// AFTER the new profile activates successfully; a failed attempt deletes
-// nothing but its own new (still-unproven) profile. The type/ssid/hidden
-// fields are fetched in one `-g` call (one value per line) and split with
-// three `IFS= read -r` calls off a single here-string instead of three
-// separate nmcli invocations per candidate UUID, with `--escape no` so a
-// backslash-escaped SSID (nmcli escapes ":" and "\\" by default) still
-// compares equal to the raw "$1"; the `IFS=` prefix is required so a
-// space-padded SSID isn't silently trimmed before the comparison.
+// Dedupe: con-name isn't unique, so prior hidden wifi profiles for this
+// SSID are matched by UUID + type/ssid/hidden fields (`--escape no` so
+// escaped ":"/"\\" SSIDs still compare; `IFS=` so padded SSIDs aren't
+// trimmed) and removed only after the new profile activates AND autoconnect
+// is armed -- a failed arm keeps the old, still-autoconnecting profiles.
 //
-// The profile is created with `connection.autoconnect no` and only flipped
-// to "yes" after `connection up` succeeds, so a killed/failed attempt can
-// never be retried in the background by NetworkManager. `-w 25` bounds
-// nmcli's own wait below the QML side's 30s kill timeout, so a slow/stuck
-// activation hits the `||` cleanup path instead of being killed mid-command
-// and leaving a stray half-proven profile behind.
+// Cleanup is one mechanism: an EXIT trap deletes the new profile on any
+// failure or kill (TERM/INT exit into it; SIGKILL would bypass, Quickshell
+// sends TERM) and is disarmed once `connection up` proves it. The profile
+// starts autoconnect-off so even a leak can't retry in the background;
+// `-w 25` keeps nmcli under the panel's 30s kill.
 var hiddenPskConnectScript =
   "u=$(uuidgen); IFS= read -r pw; pmf=\"\"; [[ $2 == \"sae\" ]] && pmf=\"wifi-sec.pmf 3\";" +
+  " trap 'nmcli connection delete uuid \"$u\" >/dev/null 2>&1' EXIT; trap 'exit 143' TERM INT;" +
   " old=\"\";" +
   " for c in $(nmcli -t -f UUID connection show); do" +
   "   info=$(nmcli --escape no -g connection.type,802-11-wireless.ssid,802-11-wireless.hidden connection show uuid \"$c\" 2>/dev/null);" +
@@ -388,9 +374,10 @@ var hiddenPskConnectScript =
   " connection.autoconnect no 802-11-wireless.hidden yes wifi-sec.key-mgmt \"$2\" $pmf >/dev/null" +
   " && printf 'set wifi-sec.psk %s\\nsave\\nquit\\n' \"$pw\" | nmcli connection edit uuid \"$u\" >/dev/null" +
   " && nmcli -w 25 connection up uuid \"$u\"" +
-  " && { nmcli connection modify uuid \"$u\" connection.autoconnect yes >/dev/null 2>&1;" +
-  "     for o in $old; do [[ $o == \"$u\" ]] || nmcli connection delete uuid \"$o\" >/dev/null 2>&1; done; true; }" +
-  " || { nmcli connection delete uuid \"$u\" >/dev/null 2>&1; false; }"
+  " && { trap - EXIT;" +
+  "     if nmcli connection modify uuid \"$u\" connection.autoconnect yes >/dev/null 2>&1; then" +
+  "       for o in $old; do [[ $o == \"$u\" ]] || nmcli connection delete uuid \"$o\" >/dev/null 2>&1; done;" +
+  "     fi; true; }"
 
 function networkFailureReason(reason, needsCredentials, reasons) {
   var r = reasons || {}

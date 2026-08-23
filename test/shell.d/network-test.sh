@@ -325,28 +325,34 @@ assert(/connection\.type[\s\S]*"802-11-wireless"/.test(network.hiddenPskConnectS
 assert(/802-11-wireless\.ssid[\s\S]*"\$1"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script matches prior profiles by this SSID, not by name')
 assert(/802-11-wireless\.hidden[\s\S]*"yes"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script only considers hidden profiles for cleanup, never a broadcast network of the same SSID')
 assert(/connection up uuid "\$u"[\s\S]*connection delete uuid "\$o"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script only deletes old profiles after the new one activates successfully')
-assert(/connection delete uuid "\$u" >\/dev\/null 2>&1; false; \}$/.test(network.hiddenPskConnectScript), 'hidden PSK connect script leaves prior profiles alone on failure, deleting only its own new (unproven) profile')
 
-// The cleanup loop's own exit status must never leak into the `&&`/`||`
-// chain: a failed delete of a stale/already-gone old UUID (the loop's own
-// last command) would otherwise make the whole `up && { cleanup }` false,
-// tripping the `||` failure branch and deleting the profile that just
-// connected successfully. `true` pins the block's exit status regardless.
-assert(/for o in \$old;[\s\S]*done; true; \}/.test(network.hiddenPskConnectScript), 'hidden PSK connect script cleanup block always reports success so a stale old-UUID delete failure cannot delete the just-connected new profile')
+// Cleanup is a single EXIT trap: armed before the profile exists, deleting
+// it on any failure or TERM/INT kill, and disarmed (`trap - EXIT`) only
+// after `connection up` proves it. `true` pins the success block's status
+// so a stale old-UUID delete can't flip the chain to failure.
+assert(/trap 'nmcli connection delete uuid "\$u"[^']*' EXIT/.test(network.hiddenPskConnectScript), 'hidden PSK connect script arms an EXIT trap that removes the unproven profile on any failure or kill')
+assert(/trap 'exit 143' TERM INT/.test(network.hiddenPskConnectScript), 'hidden PSK connect script converts TERM/INT into an exit so the EXIT trap cleanup runs on a panel kill')
+assert(
+  network.hiddenPskConnectScript.indexOf("' EXIT") < network.hiddenPskConnectScript.indexOf('connection add'),
+  'hidden PSK connect script arms the cleanup trap before the profile is created'
+)
+assert(
+  network.hiddenPskConnectScript.indexOf('connection up uuid "$u"') < network.hiddenPskConnectScript.indexOf('trap - EXIT'),
+  'hidden PSK connect script disarms the cleanup trap only after connection up proves the profile'
+)
+assert(/for o in \$old;[\s\S]*done;[\s\S]*true; \}/.test(network.hiddenPskConnectScript), 'hidden PSK connect script pins the success block status so a stale old-UUID delete failure cannot fail the chain')
 
-// A kill mid-`connection up` (QML's own 30s timeout) must not leave a
-// half-proven profile that NetworkManager retries in the background:
-// the profile starts inert (autoconnect no) and is only armed
-// (autoconnect yes) after activation succeeds, and nmcli's own wait is
-// bounded below the QML kill timeout so the clean `||` cleanup path runs
-// instead of a hard kill.
+// The profile starts inert (autoconnect no), is armed only after activation,
+// and old profiles are removed only if that arm succeeded -- a failed arm
+// keeps the old, still-autoconnecting profiles. `-w 25` keeps nmcli under
+// the QML 30s kill.
 assert(/connection\.autoconnect no/.test(network.hiddenPskConnectScript), 'hidden PSK connect script creates the profile inert (autoconnect no) so a killed/failed attempt cannot be retried in the background')
 assert(/nmcli -w 25 connection up uuid "\$u"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script bounds nmcli\'s own wait below the QML 30s kill timeout')
-assert(/connection\.autoconnect yes/.test(network.hiddenPskConnectScript), 'hidden PSK connect script arms autoconnect only after activation succeeds')
 assert(
   network.hiddenPskConnectScript.indexOf('connection up uuid "$u"') < network.hiddenPskConnectScript.indexOf('connection.autoconnect yes'),
   'hidden PSK connect script only sets autoconnect yes after connection up, never before'
 )
+assert(/if nmcli connection modify uuid "\$u" connection\.autoconnect yes[\s\S]*for o in \$old/.test(network.hiddenPskConnectScript), 'hidden PSK connect script deletes old profiles only if the autoconnect arm succeeded')
 
 // A plain `read` strips leading/trailing whitespace, which would silently
 // corrupt a space-padded SSID (legal bytes) before it's compared against
