@@ -15,7 +15,9 @@ if ! id -nG "$USER" | tr " " "\n" | grep -qxF realtime; then
   sudo usermod -aG realtime "$USER"
 fi
 
-# The limit is read once, when pam_limits sets up the user manager's session,
-# and the compositor asks for realtime once, when it starts. Both of those are
-# behind a full logout, so say so rather than leaving it looking applied.
-echo "Log out and back in to pick this up: the user manager reads the new limit at login."
+# pam_limits applies the limit once, when it sets up the user manager, and the
+# compositor asks for realtime once, when it starts. There is one user manager
+# per user rather than per session, so any other session -- a second TTY, an SSH
+# login -- keeps the old one alive through a graphical logout and the new limit
+# never lands. Reboot is the instruction that is always true.
+echo "Reboot to pick this up: the user manager reads the new limit when it starts, and one stays alive for as long as any session does."

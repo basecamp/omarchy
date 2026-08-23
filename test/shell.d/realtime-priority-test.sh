@@ -35,13 +35,69 @@ realtime_migration="$ROOT/migrations/1787517200.sh"
   fail "existing installs never gain realtime privileges, so only new installs get a compositor that can ask for it"
 grep -qE '^omarchy-pkg-add realtime-privileges' "$realtime_migration" ||
   fail "migration does not install realtime-privileges, so pam_limits has no limits file to read"
-grep -qE '^  sudo usermod -aG realtime' "$realtime_migration" ||
-  fail "migration does not join the realtime group, so the limits file it just installed applies to nobody"
-# `id -nG | grep -qw realtime` also matches a group named pro-realtime, which
-# would skip the usermod and then mark the migration done.
-grep -qF 'grep -qxF realtime' "$realtime_migration" ||
-  fail "migration matches the realtime group loosely, so a similarly named group skips the grant and the marker still lands"
 pass "the compositor and audio graph can ask the kernel for realtime, on new and existing installs"
+
+# Run the migration rather than reading it: what matters is which groups make it
+# skip the grant, and a grep for the current implementation would pass for any
+# rewrite that got that wrong.
+TMPDIR=$(mktemp -d)
+trap 'rm -rf "$TMPDIR"' EXIT
+
+stub_bin="$TMPDIR/bin"
+mkdir -p "$stub_bin"
+
+cat >"$stub_bin/omarchy-pkg-add" <<'STUB'
+#!/bin/bash
+printf 'pkg-add %s\n' "$*" >>"$STUB_LOG"
+STUB
+
+# The migration reads membership from `id -nG`; GROUPS_OUT is what each case
+# wants it to find.
+cat >"$stub_bin/id" <<'STUB'
+#!/bin/bash
+[[ $1 == "-nG" ]] && { printf '%s\n' "$GROUPS_OUT"; exit 0; }
+exec /usr/bin/id "$@"
+STUB
+
+cat >"$stub_bin/sudo" <<'STUB'
+#!/bin/bash
+exec "$@"
+STUB
+
+cat >"$stub_bin/usermod" <<'STUB'
+#!/bin/bash
+printf 'usermod %s\n' "$*" >>"$STUB_LOG"
+STUB
+
+chmod +x "$stub_bin"/*
+
+# omarchy-migrate runs each migration with `bash -euo pipefail`, so match it.
+run_migration() {
+  local log="$TMPDIR/log"
+  : >"$log"
+  PATH="$stub_bin:$PATH" STUB_LOG="$log" GROUPS_OUT="$1" USER=tester \
+    bash -euo pipefail "$realtime_migration" >/dev/null 2>&1 ||
+    fail "migration exited non-zero with groups '$1', which stops every later migration"
+  cat "$log"
+}
+
+out=$(run_migration "omarchy wheel")
+grep -q '^pkg-add realtime-privileges$' <<<"$out" ||
+  fail "migration does not install realtime-privileges, so pam_limits has no limits file to read"
+grep -q '^usermod -aG realtime tester$' <<<"$out" ||
+  fail "migration does not join the realtime group, so the limits file it just installed applies to nobody"
+
+out=$(run_migration "omarchy realtime wheel")
+grep -q '^usermod' <<<"$out" &&
+  fail "migration re-runs usermod for a user already in the realtime group, so a rerun is not a no-op"
+
+# A group whose name merely contains realtime must not be mistaken for it: a
+# word-boundary match reads pro-realtime as membership, skips the grant, and the
+# completion marker then lands on a machine that never got the limit.
+out=$(run_migration "omarchy pro-realtime wheel")
+grep -q '^usermod -aG realtime tester$' <<<"$out" ||
+  fail "a group named pro-realtime is mistaken for realtime, so the grant is skipped and the migration is still marked done"
+pass "the migration grants the group exactly once, and only for real membership"
 
 # A libx265 transcode is the one stock workload that must not share a scope with
 # the compositor, and it has two entry points: the keybind dispatches a raw exec
