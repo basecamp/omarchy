@@ -611,10 +611,17 @@ QtObject {
     return null
   }
 
-  function _floatOpts(address) {
+  function _clientClass(address) {
     var rec = root._record(address) || {}
     var ipc = root._clientIpc(address) || {}
-    var cls = rec.class || rec.appId || ipc.class || ipc.initialClass || ""
+    var hypr = root._forAddress(address)
+    var hipc = hypr && hypr.lastIpcObject ? hypr.lastIpcObject : {}
+    return rec.class || rec.appId || ipc.class || ipc.initialClass
+      || hipc.class || hipc.initialClass || (hypr && hypr.appId) || ""
+  }
+
+  function _floatOpts(address) {
+    var cls = root._clientClass(address)
     return { csd: WindowModel.usesWaylandCsd({ class: cls, appId: cls }) }
   }
 
@@ -624,9 +631,7 @@ QtObject {
 
   function _hyprbarsInset(address) {
     Hyprland.refreshToplevels()
-    var rec = root._record(address) || {}
-    var ipc = root._clientIpc(address) || {}
-    var cls = rec.class || rec.appId || ipc.class || ipc.initialClass || ""
+    var cls = root._clientClass(address)
     return WindowModel.hyprbarsSnapInset({ class: cls, appId: cls })
   }
 

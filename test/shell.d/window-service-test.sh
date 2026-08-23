@@ -68,6 +68,7 @@ if awk '
   fail "restore must not assemble bash -c around a raw window address"
 fi
 grep -Fq 'function _hyprbarsInset' "$ws" || fail "snap inset follows hyprbars:no_bar CSD clients"
+grep -Fq 'function _clientClass' "$ws" || fail "snap inset reads class from hypr toplevels when the clients poll is empty"
 grep -Fq 'WindowModel.coversWorkArea' "$ws" || fail "unmaximize must not restore a work-area-covering box as the normal float"
 grep -Fq 'if (!root._knownAddresses[target]) return false' "$ws" \
   || fail "a new tiled Chromium must not count as maximized just because it covers the work area"
