@@ -17,25 +17,6 @@ exec_present=0
 args=()
 parsed_option_args=0
 
-# Split off the click command first: everything after --exec is its argv. The
-# caller's shell has already tokenized those words into discrete arguments, and
-# the shell runs them as-is (never re-parsed by a shell), so a value carrying
-# untrusted data — a title, a filename — is only ever one argument and can never
-# become a command. --exec therefore consumes the rest of the line and must
-# come last.
-pre_args=()
-while (($# > 0)); do
-  if [[ $1 == "--exec" ]]; then
-    shift
-    exec_args=("$@")
-    exec_present=1
-    break
-  fi
-  pre_args+=("$1")
-  shift
-done
-set -- "${pre_args[@]}"
-
 parse_omarchy_option() {
   case $1 in
   -g | --glyph)
@@ -101,7 +82,19 @@ if (($# > 0)) && [[ $1 != -* ]]; then
 fi
 
 while (($# > 0)); do
-  if parse_omarchy_option "$@"; then
+  if [[ $1 == "--exec" ]]; then
+    # --exec consumes the rest of the line as the click command's argv. The
+    # caller's shell already tokenized those words into discrete arguments, and
+    # the shell runs them as-is (never re-parsed), so untrusted data in an
+    # argument is only ever one argument and can never become a command.
+    # Detected only here, after the headline/description positionals are
+    # captured, so an untrusted headline that is literally "--exec" is taken as
+    # text and can't be mistaken for the delimiter. --exec therefore comes last.
+    shift
+    exec_args=("$@")
+    exec_present=1
+    break
+  elif parse_omarchy_option "$@"; then
     shift "$parsed_option_args"
   else
     args+=("$1")

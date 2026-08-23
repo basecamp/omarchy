@@ -85,3 +85,15 @@ if send "Head" --exec 2>/dev/null; then
   fail "notification wrapper rejects --exec with no command"
 fi
 pass "notification wrapper rejects --exec with no command"
+
+# --exec is recognized only after the positionals, so an untrusted headline or
+# description that is literally "--exec" is taken as text and cannot be mistaken
+# for the delimiter (the real --exec later still wins).
+: >"$args_file"
+send "--exec" "a body" --image /tmp/i.png --exec mpv -- /tmp/v.mp4 >/dev/null
+argv_hint=$(grep -- "--hint=string:omarchy-exec-argv:" "$args_file")
+argv_json=${argv_hint#--hint=string:omarchy-exec-argv:}
+[[ $(jq -c '.' <<<"$argv_json") == '["mpv","--","/tmp/v.mp4"]' ]] || fail "notification wrapper ignores a --exec-looking headline as the delimiter" "$argv_json"
+grep -qx -- "--exec" "$args_file" || fail "notification wrapper keeps a --exec-looking headline as text"
+grep -q 'image-path:/tmp/i.png' "$args_file" || fail "notification wrapper still parses options after a --exec-looking headline"
+pass "notification wrapper does not treat a --exec-looking positional as the delimiter"
