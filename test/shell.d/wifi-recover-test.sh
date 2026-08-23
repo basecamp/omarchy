@@ -38,10 +38,30 @@ fi
 printf '0: phy0: Wireless LAN\n\tSoft blocked: no\n\tHard blocked: no\n'
 EOF
 
+# Real iw: `info` reports the nl80211 interface type, `link` reports only a
+# station association -- an AP prints "Not connected." and an ad-hoc cell
+# prints "Joined IBSS", neither of which is a dead radio.
 cat >"$tmp_dir/bin/iw" <<'EOF'
 #!/bin/bash
+if [[ ${IW_FAIL:-0} == 1 ]]; then
+  exit 1
+fi
+if [[ $3 == info ]]; then
+  printf 'Interface %s\n\tifindex 3\n\twdev 0x1\n\ttype %s\n\twiphy 0\n' "$2" "${IW_TYPE:-managed}"
+  exit 0
+fi
+case ${IW_TYPE:-managed} in
+  AP | mesh)
+    printf 'Not connected.\n'
+    exit 0
+    ;;
+  IBSS)
+    printf 'Joined IBSS aa:bb:cc:dd:ee:ff (on %s)\n' "$2"
+    exit 0
+    ;;
+esac
 if [[ ${IW_CONNECTED:-0} == 1 ]]; then
-  printf 'Connected to aa:bb:cc:dd:ee:ff (on wlp9s0)\n'
+  printf 'Connected to aa:bb:cc:dd:ee:ff (on %s)\n' "$2"
   exit 0
 fi
 printf 'Not connected.\n'
@@ -71,7 +91,11 @@ EOF
 chmod +x "$tmp_dir/bin"/*
 
 add_phy() {
-  mkdir -p "$tmp_dir/net/wlp9s0/wireless"
+  local dev=${1:-wlp9s0} blocked=${2:-0}
+
+  mkdir -p "$tmp_dir/net/$dev/wireless" "$tmp_dir/net/$dev/phy80211/rfkill0"
+  printf '%s\n' "$blocked" >"$tmp_dir/net/$dev/phy80211/rfkill0/soft"
+  printf '0\n' >"$tmp_dir/net/$dev/phy80211/rfkill0/hard"
 }
 
 run_with_env() {
@@ -79,6 +103,7 @@ run_with_env() {
     IW_CONNECTED="${IW_CONNECTED:-0}" NM_STATUS="${NM_STATUS:-}" \
     NMCLI_RC="${NMCLI_RC:-0}" NM_HANG="${NM_HANG:-0}" \
     GRANT_FAIL="${GRANT_FAIL:-0}" RESTART_FAIL="${RESTART_FAIL:-0}" \
+    IW_TYPE="${IW_TYPE:-managed}" IW_FAIL="${IW_FAIL:-0}" \
     OMARCHY_WIFI_NET_ROOT="$tmp_dir/net" \
     OMARCHY_WIFI_RECOVER_PACKAGED_UNIT="${OMARCHY_WIFI_RECOVER_PACKAGED_UNIT:-$tmp_dir/no-packaged-unit}" \
     OMARCHY_WIFI_RECOVER_NM_TIMEOUT="${OMARCHY_WIFI_RECOVER_NM_TIMEOUT:-10}" \
@@ -104,6 +129,7 @@ run_loop() {
   CALLS="$tmp_dir/calls" run_with_env \
     env OMARCHY_WIFI_RECOVER_POLL=0 OMARCHY_WIFI_RECOVER_CONFIRM=2 \
     OMARCHY_WIFI_RECOVER_COOLDOWN=0 OMARCHY_WIFI_RECOVER_MAX_POLLS=$max \
+    OMARCHY_WIFI_RECOVER_MAX_RELOADS="${MAX_RELOADS:-0}" \
     "$ROOT/bin/omarchy-wifi-recover" >/dev/null 2>"$tmp_dir/err"
 }
 
@@ -133,11 +159,23 @@ if run_check >/dev/null; then
 fi
 pass "wifi recover leaves a user-disabled radio alone"
 
-NM_STATUS=$'wlp9s0:wifi:unavailable\n' RADIO=enabled RFKILL_BLOCKED=1
+rm -rf "$tmp_dir/net"; mkdir -p "$tmp_dir/net"; add_phy wlp9s0 1
+NM_STATUS=$'wlp9s0:wifi:connected\n' RADIO=enabled IW_CONNECTED=0
 if run_check >/dev/null; then
   fail "wifi recover leaves an rfkill-blocked radio alone"
 fi
 pass "wifi recover leaves an rfkill-blocked radio alone"
+
+# A dongle the user blocked must not hold the wedged adapter beside it down.
+rm -rf "$tmp_dir/net"; mkdir -p "$tmp_dir/net"
+add_phy wlp9s0 0
+add_phy wlx1 1
+NM_STATUS=$'wlp9s0:wifi:connected\nwlx1:wifi:unavailable\n' IW_CONNECTED=0
+if ! run_check >/dev/null; then
+  fail "wifi recover still recovers a wedged radio beside a blocked one"
+fi
+pass "wifi recover still recovers a wedged radio beside a blocked one"
+rm -rf "$tmp_dir/net"; mkdir -p "$tmp_dir/net"; add_phy
 
 # Sitting disconnected on purpose is not a wedge.
 NM_STATUS=$'wlp9s0:wifi:disconnected\n' RADIO=enabled RFKILL_BLOCKED=0 IW_CONNECTED=0
@@ -146,12 +184,14 @@ if run_check >/dev/null; then
 fi
 pass "wifi recover leaves a user-disconnected radio alone"
 
-# After a failed radio toggle: NM says unavailable, phy is still there, radio on.
-NM_STATUS=$'wlp9s0:wifi:unavailable\n'
+# After a failed radio toggle: NM says unavailable, the phy is still listed
+# in sysfs but the kernel no longer answers for it, radio on.
+NM_STATUS=$'wlp9s0:wifi:unavailable\n' IW_FAIL=1
 if ! run_check >/dev/null; then
   fail "wifi recover treats an unavailable phy with the radio on as wedged"
 fi
 pass "wifi recover treats an unavailable phy with the radio on as wedged"
+IW_FAIL=0
 
 # NM crash-looping is not a firmware wedge.
 NMCLI_RC=8 NM_STATUS=$'wlp9s0:wifi:connected\n' IW_CONNECTED=0
@@ -174,6 +214,44 @@ if run_check >/dev/null; then
   fail "wifi recover leaves a connecting radio alone"
 fi
 pass "wifi recover leaves a connecting radio alone"
+
+# A hotspot is "connected" to NetworkManager with no station association.
+# Unloading the driver under one drops every client on it.
+NM_STATUS=$'wlp9s0:wifi:connected\n' IW_CONNECTED=0 IW_TYPE=AP
+if run_check >/dev/null; then
+  fail "wifi recover leaves a hosted access point alone"
+fi
+pass "wifi recover leaves a hosted access point alone"
+
+NM_STATUS=$'wlp9s0:wifi:connected\n' IW_CONNECTED=0 IW_TYPE=IBSS
+if run_check >/dev/null; then
+  fail "wifi recover leaves an ad-hoc cell alone"
+fi
+pass "wifi recover leaves an ad-hoc cell alone"
+
+NM_STATUS=$'wlp9s0:wifi:connected\n' IW_CONNECTED=0 IW_TYPE=mesh
+if run_check >/dev/null; then
+  fail "wifi recover leaves a mesh point alone"
+fi
+pass "wifi recover leaves a mesh point alone"
+IW_TYPE=managed
+
+# #7323: the quattro upgrade left wifi.backend=iwd with no iwd, so NM parks
+# every device at unavailable while the driver is loaded and answering.
+# Reloading it changes nothing, so the watcher must not.
+NM_STATUS=$'wlp9s0:wifi:unavailable\n' IW_FAIL=0
+if run_check >/dev/null; then
+  fail "wifi recover leaves an unavailable device whose driver still answers alone"
+fi
+pass "wifi recover leaves an unavailable device whose driver still answers alone"
+
+# The same NM state with a phy the kernel can no longer talk to is the wedge.
+NM_STATUS=$'wlp9s0:wifi:unavailable\n' IW_FAIL=1
+if ! run_check >/dev/null; then
+  fail "wifi recover treats an unavailable device the kernel cannot reach as wedged"
+fi
+pass "wifi recover treats an unavailable device the kernel cannot reach as wedged"
+IW_FAIL=0
 
 NM_HANG=1 OMARCHY_WIFI_RECOVER_NM_TIMEOUT=1
 if ! run_check >/dev/null; then
@@ -227,6 +305,19 @@ run_loop 4
   fail "wifi recover still retries the reload after the first toast" "$(cat "$tmp_dir/calls")"
 pass "wifi recover toasts once per wedge episode"
 
+# A phy that will not come back must not be unloaded every two minutes for
+# the rest of the session. Stop after the cap, and say so once -- the old
+# behaviour was silent after the first toast.
+MAX_RELOADS=2 NM_STATUS=$'wlp9s0:wifi:connected\n' IW_CONNECTED=0 run_loop 6
+(( $(restart_count) == 2 )) ||
+  fail "wifi recover stops reloading after the cap" "$(cat "$tmp_dir/calls")"
+(( $(grep -c 'notify .*did not come back' "$tmp_dir/calls") == 1 )) ||
+  fail "wifi recover says once that it gave up" "$(cat "$tmp_dir/calls")"
+grep -q 'gave up after 2 reloads' "$tmp_dir/err" ||
+  fail "wifi recover logs that it gave up" "$(cat "$tmp_dir/err")"
+pass "wifi recover stops reloading after the cap"
+MAX_RELOADS=0
+
 # Missing grant: warn once, never toast, never run the restart command.
 GRANT_FAIL=1 NM_STATUS=$'wlp9s0:wifi:connected\n' IW_CONNECTED=0 run_loop 4
 (( $(grep -c 'sudo -n -l -l' "$tmp_dir/calls") == 3 )) ||
@@ -269,6 +360,26 @@ HOME="$tmp_dir/home" XDG_CONFIG_HOME="$tmp_dir/home/.config" \
   fail "wifi recover re-points the wants symlink at the packaged unit"
 pass "wifi recover removes a staged unit once the packaged one exists"
 
+# Once the packaged unit is revised upstream, a stock staged copy no longer
+# matches it. Matching the tree it was staged from is what stops it shadowing
+# /usr/lib for good.
+mkdir -p "$tmp_dir/revised/.config/systemd/user/graphical-session.target.wants" "$tmp_dir/lib2"
+printf 'revised packaged unit\n' >"$tmp_dir/lib2/omarchy-wifi-recover.service"
+install -Dm644 "$ROOT/default/systemd/user/omarchy-wifi-recover.service" \
+  "$tmp_dir/revised/.config/systemd/user/omarchy-wifi-recover.service"
+ln -sfn ../omarchy-wifi-recover.service \
+  "$tmp_dir/revised/.config/systemd/user/graphical-session.target.wants/omarchy-wifi-recover.service"
+HOME="$tmp_dir/revised" XDG_CONFIG_HOME="$tmp_dir/revised/.config" \
+  OMARCHY_PATH="$ROOT" \
+  OMARCHY_WIFI_RECOVER_PACKAGED_UNIT="$tmp_dir/lib2/omarchy-wifi-recover.service" \
+  OMARCHY_WIFI_NET_ROOT="$tmp_dir/net" RADIO=disabled \
+  OMARCHY_WIFI_RECOVER_POLL=0 OMARCHY_WIFI_RECOVER_MAX_POLLS=1 \
+  PATH="$tmp_dir/bin:$PATH" \
+  "$ROOT/bin/omarchy-wifi-recover" >/dev/null || true
+[[ ! -e $tmp_dir/revised/.config/systemd/user/omarchy-wifi-recover.service ]] ||
+  fail "wifi recover unstages a stock copy after the packaged unit is revised"
+pass "wifi recover unstages a stock copy after the packaged unit is revised"
+
 # A user-edited staged unit must not be deleted.
 mkdir -p "$tmp_dir/custom/.config/systemd/user" "$tmp_dir/lib"
 printf 'packaged\n' >"$tmp_dir/lib/omarchy-wifi-recover.service"
@@ -296,7 +407,7 @@ grep -F 'rm -f "$config_home/systemd/user/omarchy-wifi-recover.service"' \
   "$ROOT/migrations/1787444800.sh" >/dev/null ||
   fail "migration does not unstage a packaged wifi recover unit"
 grep -F 'sudo install -Dm440' "$ROOT/migrations/1787444800.sh" >/dev/null ||
-  fail "migration does not install the sudoers grant"
+  fail "first-run and migration unstage a packaged wifi recover unit"
 pass "first-run and migration unstage a packaged wifi recover unit"
 
 sudoers="$ROOT/etc/sudoers.d/omarchy-restart-wifi"
