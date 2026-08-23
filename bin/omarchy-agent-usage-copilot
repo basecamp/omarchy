@@ -61,18 +61,6 @@ def local_date_string() -> str:
   return date_string(dt.datetime.now().date())
 
 
-def config_path() -> Path:
-  config_home = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config"))
-  return config_home / "omarchy" / "agents" / "copilot.json"
-
-
-def read_config() -> dict:
-  try:
-    return json.loads(config_path().read_text())
-  except (OSError, json.JSONDecodeError):
-    return {}
-
-
 def get_oauth_token() -> str | None:
   """Read OAuth token from editor Copilot plugin config (VS Code, JetBrains, copilot.vim)."""
   for token_file in COPILOT_TOKEN_FILES:
@@ -156,7 +144,6 @@ def read_copilot_stats() -> dict[str, Any]:
       WHERE created_at IS NOT NULL
       GROUP BY DATE(created_at), model
       ORDER BY DATE(created_at) DESC
-      LIMIT 70
     """)
 
     date_stats = {}
@@ -215,13 +202,20 @@ def read_copilot_stats() -> dict[str, Any]:
     for i, date_str in enumerate(recent_date_strings()):
       if date_str in date_stats:
         stats["recentDays"][i]["messageCount"] = date_stats[date_str]["tokens"]
-        if date_str not in stats["activeDates"]:
-          stats["activeDates"].append(date_str)
 
+    stats["activeDates"] = sorted(date_stats.keys())
     stats["activeDays"] = len(stats["activeDates"])
 
     cursor.execute("SELECT COUNT(*) FROM assistant_usage_events")
     stats["totalPrompts"] = cursor.fetchone()[0] or 0
+
+    if today in date_stats:
+      cursor.execute("""
+        SELECT COUNT(DISTINCT session_id)
+        FROM assistant_usage_events
+        WHERE DATE(created_at) = ?
+      """, (today,))
+      stats["todaySessions"] = cursor.fetchone()[0] or 0
 
     conn.close()
   except Exception:
