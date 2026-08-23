@@ -59,11 +59,6 @@ claim_path() {
 announce() {
   local path="$1"
   local name="${path##*/}"
-  # A delivery arrives whenever the sender gets round to it, so the toast has
-  # to still be there when you come back to the machine. Critical urgency is
-  # what the shell reads as "stays until it is clicked or dismissed" -- it
-  # survives shell restarts too, and the file is no use if you never saw it
-  # land. omarchy-notification-send's default app name already bypasses DND.
   local args=("Received $name" "Saved to ${dir/#$HOME/~}" -u critical)
 
   case "${name,,}" in
