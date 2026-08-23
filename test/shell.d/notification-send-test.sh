@@ -18,7 +18,7 @@ chmod +x "$stub"
 
 OMARCHY_TEST_NOTIFY_ARGS="$args_file" PATH="$tmpdir:$ROOT/bin:$PATH" \
   omarchy-notification-send --app-name custom-app -g K -u critical --image /tmp/image.png \
-  --exec "omarchy-menu-keybindings 'a b'" "Learn Keybindings" "Body"
+  --exec-arg omarchy-menu-keybindings --exec-arg 'a b' "Learn Keybindings" "Body"
 
 mapfile -t args <"$args_file"
 
@@ -28,10 +28,10 @@ mapfile -t args <"$args_file"
 [[ ${args[3]} == "critical" ]] || fail "notification wrapper uses custom urgency"
 [[ ${args[4]} == "--hint=string:omarchy-glyph:K" ]] || fail "notification wrapper converts glyph to hint"
 [[ ${args[5]} == "--hint=string:image-path:/tmp/image.png" ]] || fail "notification wrapper converts image to hint"
-[[ ${args[6]} == "--hint=string:omarchy-exec:omarchy-menu-keybindings 'a b'" ]] || fail "notification wrapper converts exec to hint"
+[[ ${args[6]} == '--hint=string:omarchy-exec-argv:["omarchy-menu-keybindings","a b"]' ]] || fail "notification wrapper converts exec args to an argv hint" "${args[6]}"
 [[ ${args[7]} == "Learn Keybindings" ]] || fail "notification wrapper preserves headline"
 [[ ${args[8]} == "Body" ]] || fail "notification wrapper preserves description"
-pass "notification wrapper supports app, glyph, urgency, image, and exec options"
+pass "notification wrapper supports app, glyph, urgency, image, and exec-arg options"
 
 # The shell runs the click command itself, so nothing may block the sender on a
 # libnotify action round-trip.
@@ -44,11 +44,16 @@ OMARCHY_TEST_NOTIFY_ARGS="$args_file" PATH="$tmpdir:$ROOT/bin:$PATH" \
 grep -q "omarchy-exec" "$args_file" && fail "notification wrapper adds no exec hint without --exec"
 pass "notification wrapper omits the exec hint when no command is given"
 
+# The free-form shell-string --exec is gone: its existence let a caller skip
+# quoting and reintroduce the RCE, so it is rejected outright in favor of the
+# argv-only --exec-arg.
+: >"$args_file"
 if OMARCHY_TEST_NOTIFY_ARGS="$args_file" PATH="$tmpdir:$ROOT/bin:$PATH" \
-  omarchy-notification-send "Headline" --exec 2>/dev/null; then
-  fail "notification wrapper rejects --exec without a command"
+  omarchy-notification-send --exec 'anything' "Headline" 2>/dev/null; then
+  fail "notification wrapper rejects the removed --exec flag"
 fi
-pass "notification wrapper rejects --exec without a command"
+grep -q "omarchy-exec" "$args_file" && fail "notification wrapper emits no exec hint for a rejected --exec"
+pass "notification wrapper rejects the removed --exec flag"
 
 # --exec-arg builds an argv vector encoded as a JSON array, so shell
 # metacharacters in a value are carried as data, never as a command. The shell
@@ -67,13 +72,3 @@ argv_json=${argv_hint#--hint=string:omarchy-exec-argv:}
   fail "notification wrapper carries shell metacharacters as literal argv data" "$argv_json"
 grep -q "omarchy-exec:" "$args_file" && fail "notification wrapper emits no legacy exec string when --exec-arg is used"
 pass "notification wrapper encodes --exec-arg as a literal JSON argv vector"
-
-# The argv form is the safe one, so it wins when a caller supplies both.
-: >"$args_file"
-OMARCHY_TEST_NOTIFY_ARGS="$args_file" PATH="$tmpdir:$ROOT/bin:$PATH" \
-  omarchy-notification-send --exec 'legacy string' --exec-arg xdg-open --exec-arg /tmp/file \
-  "Headline" >/dev/null
-
-grep -q -- "--hint=string:omarchy-exec-argv:" "$args_file" || fail "notification wrapper emits the argv hint when both exec forms are given"
-grep -q -- "--hint=string:omarchy-exec:" "$args_file" && fail "notification wrapper drops the legacy exec string in favor of argv"
-pass "notification wrapper prefers the argv exec form over the legacy string"

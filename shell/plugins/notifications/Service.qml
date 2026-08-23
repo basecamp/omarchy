@@ -353,34 +353,19 @@ Item {
   }
 
   // Run the popup's click action, then dismiss. Omarchy's own toasts carry the
-  // action as a command in the `exec` role (see execFromHints), which the
-  // persistence files preserve, so restored toasts stay clickable. Third-party
-  // clients register a libnotify action under the canonical identifier
-  // "default" instead; that one only works while the sender is still live.
+  // action as an argv vector in the `execArgv` role (see execArgvFromHints),
+  // which the persistence files preserve, so restored toasts stay clickable.
+  // Third-party clients register a libnotify action under the canonical
+  // identifier "default" instead; that one only works while the sender is live.
   function invokePopupDefault(index) {
     if (index < 0 || index >= popupModel.count) return
     var entry = popupModel.get(index)
 
-    // Preferred path: an argv vector whose arguments are passed as bash
-    // positional parameters (never interpolated into a command), so data an
-    // attacker controls (a video title, a filename) is only ever an argument and
-    // can never be reparsed as a command. Detached so it outlives the shell,
-    // which the installer toasts depend on: they restart it as their first act.
+    // Run the argv (via Util.execArgv, no shell interpretation). Detached so it
+    // outlives the shell, which installer toasts depend on: they restart it.
     var argv = NotificationLogic.parseExecArgv(entry ? entry.execArgv : "")
     if (argv) {
       Util.execArgv(argv)
-      dismissPopup(index)
-      return
-    }
-
-    // Legacy free-form shell exec (deprecated). It runs through `bash -lc`, so
-    // it is only as safe as the sender's quoting — honored solely from
-    // Omarchy's own trusted toasts. app_name is spoofable, so this is a
-    // compatibility courtesy, not a security boundary; new callers use the argv
-    // form above.
-    var command = entry ? String(entry.exec || "") : ""
-    if (command && String(entry.app || "") === "omarchy-action") {
-      Util.execDetached(command)
       dismissPopup(index)
       return
     }
@@ -681,7 +666,7 @@ Item {
         body: row.body,
         image: row.image,
         glyph: row.glyph || "",
-        exec: row.exec || "",
+        execArgv: row.execArgv || "",
         urgency: row.urgency,
         timestamp: row.timestamp
       }, imagesDir).entry)
@@ -705,7 +690,7 @@ Item {
         body: "",
         image: "",
         glyph: "󰂚",
-        exec: "",
+        execArgv: "",
         urgency: NotificationUrgency.Low,
         expireTimeout: 0,
         timestamp: Date.now()

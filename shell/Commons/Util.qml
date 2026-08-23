@@ -54,15 +54,11 @@ QtObject {
     Quickshell.execDetached(["bash", "-lc", command])
   }
 
-  // Run an argv vector safely: the script text is the constant `exec "$@"`, so
-  // the arguments only ever land in bash's positional parameters, which it
-  // expands without re-tokenizing or re-evaluating — a value carrying
-  // attacker-controlled data ($(id), a filename, a title) stays one literal
-  // argument and can never turn into a command. The login shell (-l) is what
-  // makes this a drop-in for execDetached: click actions launch GUI apps
-  // (tensaku, mpv, xdg-open) that need the same PATH and session environment the
-  // login shell set up. Prefer this over execDetached for any command assembled
-  // from untrusted input.
+  // Run an argv vector without a shell interpreting it: the constant `exec "$@"`
+  // means the args only ever land in positional parameters, which bash expands
+  // without re-tokenizing — so untrusted data ($(id), a filename) stays literal.
+  // The login shell (-l) keeps the PATH/session env GUI targets (tensaku, mpv,
+  // xdg-open) need. Prefer this over execDetached for anything built from input.
   function execArgv(argv) {
     Quickshell.execDetached(["bash", "-lc", 'exec "$@"', "bash"].concat(argv))
   }

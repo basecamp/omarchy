@@ -69,8 +69,7 @@ notify-send arguments and passes any unrecognized options through:
 | Flag | Becomes | Meaning |
 |---|---|---|
 | `-g` / `--glyph` | `--hint=string:omarchy-glyph:` | Nerd Font glyph for the icon slot when no image icon resolves |
-| `--exec-arg` (repeatable) | `--hint=string:omarchy-exec-argv:` | one literal argument of the click command; the collected args become a JSON argv the shell runs without a shell |
-| `--exec` | `--hint=string:omarchy-exec:` | legacy free-form shell command the card runs when clicked (deprecated — see below) |
+| `--exec-arg` (repeatable) | `--hint=string:omarchy-exec-argv:` | one literal argument of the click command; the collected args become a JSON argv (see below). This is the only click-command mechanism |
 | `--image` | `--hint=string:image-path:` | the standard freedesktop image hint |
 | `--app-name` | `-a` | defaults to `omarchy-action` |
 | `-u` / `--urgency` | `-u` | defaults to `low` |
@@ -91,10 +90,10 @@ immediately. For third-party clients the click falls back to the libnotify
 window by class via `omarchy-hyprland-focus-app` — chat apps rarely register
 an action and just expect click-to-jump.
 
-### Click commands must be argv, not shell strings
+### Click commands are argv, never shell strings
 
-Prefer `--exec-arg` for every click command. Each `--exec-arg` contributes one
-literal argument; the shell runs the resulting vector through
+A click command is built from discrete `--exec-arg` arguments. Each `--exec-arg`
+contributes one literal argument; the shell runs the resulting vector through
 `Util.execArgv`, which invokes `bash -lc 'exec "$@"'` with the arguments as
 **positional parameters** — never interpolated into the script text. bash
 expands `"$@"` without re-tokenizing or re-evaluating it, so a value carrying
@@ -102,17 +101,20 @@ data an attacker controls — a downloaded video's title, a received filename, a
 crashed process's name — is only ever a single argument and can never be
 reparsed as a command. The login shell keeps the PATH and session environment
 that GUI click targets (the screenshot editor, mpv, xdg-open) expect. This is
-the parameterized form: pass untrusted data as its own `--exec-arg` rather than
-quoting it into a string.
+the parameterized form: pass untrusted data as its own `--exec-arg`.
 
-`--exec` is the legacy free-form variant, run through `bash -lc`. It is safe
-only when the caller shell-quoted every interpolated value perfectly — the same
-trap as string-concatenated SQL, and the exact shape of the yt-dlp title RCE
-that motivated the argv form. It is retained for compatibility and honored only
-from toasts whose `app_name` is Omarchy's own `omarchy-action`; new senders must
-use `--exec-arg`. The shell fails closed on a malformed argv hint (it must be a
-JSON array of strings whose program is present and not a leading-dash option)
-rather than letting it fall through to a shell.
+There is deliberately **no** free-form shell-string variant. An earlier `--exec`
+flag took a whole command as one string run through `bash -lc`; it was safe only
+when the caller shell-quoted every interpolated value perfectly — the same trap
+as string-concatenated SQL, and the exact shape of the yt-dlp title RCE. Even
+kept "for compatibility" it was a standing invitation for the next caller to
+skip the quoting and reintroduce the hole, so it was removed outright:
+`omarchy-notification-send --exec` now errors and points at `--exec-arg`. The
+shell fails closed on a malformed argv hint (it must be a JSON array of strings
+whose program is present and not a leading-dash option) rather than running
+anything it can't validate. A caller can still deliberately name a shell as the
+program (`--exec-arg sh --exec-arg -c …`), but that is an obvious, reviewable
+red flag rather than the default shape.
 
 ## Helper commands
 

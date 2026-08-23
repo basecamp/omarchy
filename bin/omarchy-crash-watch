@@ -33,10 +33,9 @@ announce() {
   omarchy-notification-wait || return 1
 
   # --exec-arg rather than a libnotify action: the shell runs clicks from its own
-  # omarchy-exec-argv hint and never emits ActionInvoked. Keeps the default
-  # "omarchy-action" app name too, the only one shouldBypassDnd() lets through.
-  # The argv form carries the crash details as literal arguments, so a hostile
-  # process name can't be reparsed as a command when the toast is clicked.
+  # hint and never emits ActionInvoked. Keeps the default "omarchy-action" app
+  # name, the only one shouldBypassDnd() lets through. Crash details ride as
+  # literal argv, so a hostile process name can't be reparsed as a command.
   omarchy-notification-send \
     --urgency critical \
     --glyph "$CRASH_GLYPH" \

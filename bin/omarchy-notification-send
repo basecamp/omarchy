@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Send an Omarchy desktop notification
-# omarchy:args=[--exec-arg <arg>]... [--exec <command>] [--app-name <app-name>] [-g <glyph>] [-u <low|normal|critical>] [--image <path-or-uri>] <headline> [description] [notify-send options]
+# omarchy:args=[--exec-arg <arg>]... [--app-name <app-name>] [-g <glyph>] [-u <low|normal|critical>] [--image <path-or-uri>] <headline> [description] [notify-send options]
 # omarchy:examples=omarchy notification send "Reminder" "5 minutes are up" -g 󰢌
 
 set -euo pipefail
@@ -12,7 +12,6 @@ glyph=
 urgency="low"
 app_name="omarchy-action"
 image=
-exec_command=
 exec_args=()
 args=()
 parsed_option_args=0
@@ -56,23 +55,17 @@ parse_omarchy_option() {
     return 0
     ;;
   --exec)
-    if (($# < 2)); then
-      echo "Missing value for $1" >&2
-      exit 1
-    fi
-    exec_command=$2
-    parsed_option_args=2
-    return 0
+    # Removed: a free-form shell string is safe only if the caller quotes every
+    # value, and its existence invites the next caller to skip that. Use --exec-arg.
+    echo "--exec is no longer supported: pass each argument with --exec-arg (e.g. --exec-arg mpv --exec-arg -- --exec-arg \"\$file\")" >&2
+    exit 1
     ;;
   --exec-arg)
     if (($# < 2)); then
       echo "Missing value for $1" >&2
       exit 1
     fi
-    # Each --exec-arg contributes one literal argument to the click command.
-    # The shell runs the resulting argv vector directly (no shell), so callers
-    # pass untrusted data as its own --exec-arg rather than quoting it into a
-    # command string. Value is taken verbatim, even when it starts with "-".
+    # One literal argument of the click command, taken verbatim (even a "-value").
     exec_args+=("$2")
     parsed_option_args=2
     return 0
@@ -91,7 +84,7 @@ while (($# > 0)); do
 done
 
 if (($# < 1)); then
-  echo "Usage: omarchy-notification-send [--exec-arg <arg>]... [--exec <command>] [--app-name <app-name>] [-g <glyph>] [-u <low|normal|critical>] [--image <path-or-uri>] <headline> [description] [notify-send options]"
+  echo "Usage: omarchy-notification-send [--exec-arg <arg>]... [--app-name <app-name>] [-g <glyph>] [-u <low|normal|critical>] [--image <path-or-uri>] <headline> [description] [notify-send options]"
   exit 1
 fi
 
@@ -123,22 +116,15 @@ if [[ -n $image ]]; then
   args+=("--hint=string:image-path:$image")
 fi
 
-# The shell runs the click command itself, from a copy it keeps alongside the
-# on-screen popup. A libnotify action would instead keep this process blocked
-# until the click, and die unanswered whenever the shell restarts underneath it.
-#
-# --exec-arg builds an argv vector the shell runs directly, so a value carrying
-# untrusted data is only ever one argument and never reaches a shell. It wins
-# over the legacy free-form --exec string, which is run through `bash -lc` and
-# is only safe when the caller quoted every interpolated value itself.
+# The click command travels with the popup as an argv hint the shell runs
+# itself, so restored toasts stay clickable and senders don't block on a
+# libnotify action (which dies when the shell restarts). --exec-arg is the only
+# form: no free-form shell string to interpolate into unsafely.
 if ((${#exec_args[@]} > 0)); then
-  # NUL-delimit the args into jq so every byte survives as data — jq's own
-  # --args would eat a bare "--", and a title with a newline must stay one
-  # element, not split the vector.
+  # NUL-delimit into jq so every byte survives as data: jq's own --args would eat
+  # a bare "--", and a newline in an arg must not split the vector.
   exec_argv_json=$(printf '%s\0' "${exec_args[@]}" | jq -Rsc 'split("\u0000")[:-1]')
   args+=("--hint=string:omarchy-exec-argv:$exec_argv_json")
-elif [[ -n $exec_command ]]; then
-  args+=("--hint=string:omarchy-exec:$exec_command")
 fi
 
 if [[ -n $description ]]; then

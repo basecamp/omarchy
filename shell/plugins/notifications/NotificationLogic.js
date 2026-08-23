@@ -57,39 +57,18 @@ function glyphFromHints(hints) {
   return stringHint(hints, "omarchy-glyph")
 }
 
-// Shell command to run when the card is clicked, sent by
-// omarchy-notification-send --exec. Carrying the action as data means it
-// travels with the popup through the persistence files, so a toast restored
-// after a shell restart clicks through exactly like a live one. A libnotify
-// action can't: its sender is still waiting on an id from a server generation
-// that no longer exists.
-//
-// This is a free-form shell string run through `bash -lc`, so it is safe only
-// when every value interpolated into it was shell-quoted perfectly. It is kept
-// for compatibility and honored only from Omarchy's own trusted toasts (see
-// Service.invokePopupDefault); new senders use --exec-arg / the argv form
-// below, which never reaches a shell.
-function execFromHints(hints) {
-  return stringHint(hints, "omarchy-exec")
-}
-
-// The click action as an argv vector, sent by omarchy-notification-send
-// --exec-arg and carried as a JSON array string in the omarchy-exec-argv hint.
-// The shell runs it via Util.execArgv, which passes the arguments as bash
-// positional parameters rather than interpolating them, so a value that an
-// attacker controls — a video title, a filename, a URL — is only ever one
-// argument and can never be reparsed as a command. This is the parameterized
-// form: the "prepared statement" to execFromHints's string concatenation.
+// The click action: a JSON argv string from omarchy-notification-send
+// --exec-arg. Carried as data so a toast restored after a shell restart stays
+// clickable (a libnotify action can't — its sender is gone). Run via
+// Util.execArgv as bash positional parameters, never a shell string, so
+// attacker-controlled values (a title, a filename) can't become commands.
 function execArgvFromHints(hints) {
   return stringHint(hints, "omarchy-exec-argv")
 }
 
-// Validate a persisted omarchy-exec-argv value into an argv the shell may run,
-// or null for anything that is not one. A malformed or hostile hint must fail
-// closed here rather than fall through to a shell: we require a JSON array of
-// strings, non-empty, whose first element (the program) is present and does not
-// start with "-" (which would let a forged record smuggle in a leading-dash
-// option in the program slot).
+// Validate a persisted omarchy-exec-argv into a runnable argv, or null. Fails
+// closed so a malformed/hostile hint never reaches a shell: must be a non-empty
+// JSON array of strings whose program is present and not a leading-dash option.
 function parseExecArgv(value) {
   var text = String(value || "")
   if (!text) return null
@@ -127,7 +106,6 @@ function snapshotOf(notification, timestamp) {
     body: n.body || "",
     image: n.image || "",
     glyph: glyphFromHints(n.hints),
-    exec: execFromHints(n.hints),
     execArgv: execArgvFromHints(n.hints),
     urgency: n.urgency,
     expireTimeout: expireTimeout,
@@ -137,7 +115,7 @@ function snapshotOf(notification, timestamp) {
 
 // Everything the popup card draws, and therefore everything an in-place
 // update has to write through to the row and its file.
-var POPUP_ROLES = ["app", "appIcon", "summary", "body", "image", "glyph", "exec", "execArgv", "urgency", "expireTimeout"]
+var POPUP_ROLES = ["app", "appIcon", "summary", "body", "image", "glyph", "execArgv", "urgency", "expireTimeout"]
 
 function popupRoles() {
   return POPUP_ROLES
@@ -179,7 +157,6 @@ function historyEntry(value, normalUrgency) {
     body: e.body || "",
     image: e.image || "",
     glyph: e.glyph || "",
-    exec: e.exec || "",
     execArgv: e.execArgv || "",
     urgency: typeof e.urgency === "number" ? e.urgency : normalUrgency,
     expireTimeout: 0,
@@ -390,7 +367,6 @@ if (typeof module !== "undefined") {
     isEphemeralApp: isEphemeralApp,
     stringHint: stringHint,
     glyphFromHints: glyphFromHints,
-    execFromHints: execFromHints,
     execArgvFromHints: execArgvFromHints,
     parseExecArgv: parseExecArgv,
     shouldRenderCompactGlyph: shouldRenderCompactGlyph,
