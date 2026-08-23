@@ -92,7 +92,7 @@ The living roadmap is `plans/project-ultimate.md`. Session-specific windowing pr
 
 ## Acceptance (three gates)
 
-The forty-task file `WINDOWS_NATIVE_ACCEPTANCE.md` is the smoke test: can a Windows person use this PC without a terminal or the web? It is **necessary and not sufficient**. Only six of forty rows are automated (pin, unpin, minimize three, restore one, snap two, Alt+Tab). A green subset does not ship the OS.
+The forty-task file `WINDOWS_NATIVE_ACCEPTANCE.md` is the smoke test: can a Windows person use this PC without a terminal or the web? It is **necessary and not sufficient**. Only six of the forty numbered rows are automated (20–25: pin, unpin, minimize three, restore one, snap two, Alt+Tab). The same harness also runs unnumbered proofs after that loop (maximize, plugin maps, overlay-chrome absence, Show Desktop, virtual desktops, Task View, fullscreen, multi-monitor, toolkit, pointer). Do not read "six numbered rows" as "only six tests exist." A green subset does not ship the OS.
 
 Job completeness is `WINDOWS_7_ULTIMATE_PARITY.md` (Windows 7 Ultimate jobs plus 2026 layers). Agent-callable completeness is `AGENT_NATIVE_ACCEPTANCE.md`. Release requires all three, plus the power-user second test in the forty-task file.
 

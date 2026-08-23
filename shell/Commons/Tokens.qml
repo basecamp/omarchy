@@ -10,9 +10,11 @@ import Quickshell
 // Tokens are derived from the existing Color (theme palette) and Style
 // (structure) singletons, so themes keep working unchanged: a theme swap
 // re-derives every semantic token automatically. Later phases can pin any
-// token from theme/shell.toml via the same override machinery Style uses;
-// nothing consumes Tokens until that lands, which is why this layer starts
-// as pure derivation.
+// token from theme/shell.toml via the same override machinery Style uses.
+// Start, Settings, TaskButton peek/menu, the task switcher, and the snap
+// chooser already consume Tokens. Superbar chrome and hyprbars caption
+// colors still bypass this layer with private hex/rgba — that leak is the
+// remaining debt, not "nothing consumes Tokens."
 //
 //   Tokens.surface.canvas   desktop wallpaper backdrop / main application background
 //   Tokens.surface.base     windows, settings pages, cards

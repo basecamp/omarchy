@@ -2,7 +2,7 @@
 
 Job completeness for Project Ultimate. Names are **jobs**, not a requirement to copy Microsoft's labels. A Windows 7 Ultimate user should recognize every row and complete it with a mouse.
 
-This matrix is the product bar. `WINDOWS_NATIVE_ACCEPTANCE.md` is the forty-task smoke test (necessary, not sufficient; six of forty automated). `AGENT_NATIVE_ACCEPTANCE.md` is the same jobs on the agent path.
+This matrix is the product bar. `WINDOWS_NATIVE_ACCEPTANCE.md` is the forty-task smoke test (necessary, not sufficient; six numbered rows automated, plus unnumbered harness proofs). `AGENT_NATIVE_ACCEPTANCE.md` is the same jobs on the agent path.
 
 Status (tree as of 2026-08-22, no live Hyprland session on this writer host):
 
@@ -18,8 +18,8 @@ Do not mark a row `present` because a panel or hotkey exists for power users.
 | Job | Status | Tree notes |
 |-----|--------|------------|
 | Desktop (icons, wallpaper, context menu, Recycle) | prototype / missing | Wallpaper picker (`omarchy.image-picker`) exists. No desktop icon surface (`desktopIcons` is false). Background plugin exists. |
-| Superbar (taskbar) | prototype | `omarchy.ultimate-taskbar`: Start, Task View button, running groups, Show Desktop, hard-coded `TrayCluster`. Not plugin-layout Superbar. Peek is a title list, not Aero Peek bitmaps. Group context "Close window" closes every window in the group (`TaskButton.qml`). Hard-coded charcoal/orange chrome, not the token pipeline. |
-| Start | prototype | `omarchy.ultimate-start`: search, pins, app list, lock/restart/shutdown, mode toggle. Idle list hides Terminal/Vim. Not Windows 7 Start (no All Programs tree, places, jump lists, user picture, Control Panel destinations). |
+| Superbar (taskbar) | prototype | `omarchy.ultimate-taskbar`: Start, Task View button, running groups, Show Desktop, hard-coded `TrayCluster` (`barConfig` unused; no `BarWidgetRegistry`). Peek is a title list. Right-click menu is only pin/unpin and "Close window"; that close kills the entire group (`TaskButton.qml`). Peek × closes one. Chrome hexes: `#1b1b1b` `#333333` `#3a3a3a` `#4a4a4a` `#e8943a` `#9cbc0d` `#55ffffff`. `Variants` already maps a bar per `Quickshell.screens` — missing is multi-monitor **policy**, not rendering. `omarchy.agents` omitted vs stock `shell.json`. |
+| Start | prototype | `omarchy.ultimate-start` is a 440×560 glass launcher: search, pins, app list, lock/restart/shutdown, Power User Mode toggle on the footer. Idle list hides Terminal/Vim. Not Windows 7 Start (no All Programs tree, places, jump lists, user picture, Control Panel destinations). |
 | Search | prototype | Start `SearchBox` filters installed apps. Not a system Search (files, settings, control panel, history). |
 | Explorer / This PC | missing as product | Files launches Nautilus (`SUPER + E` → `omarchy = "nautilus"`). Not Dolphin, not This PC. Nautilus is GTK CSD and is **not** in `hyprbars:no_bar`; two-row chrome is the expected result (not live-reverified this run). |
 | Network | prototype | `omarchy.network` panel; still `Process` / `bash -c` / nmcli, not a typed Network service. |

@@ -2,9 +2,9 @@
 
 Project Ultimate's semantic token layer lives in `shell/Commons/Tokens.qml`, registered as the `qs.Commons.Tokens` singleton. It derives everything from the existing theme system (`Color.qml` palette + `Style.qml` structure), so all current theme packs keep working unchanged — a theme swap re-derives every token automatically.
 
-First-party shell surfaces consume semantic tokens instead of arbitrary theme colors. That is how the whole operating system starts looking designed rather than themed.
+First-party shell surfaces consume semantic tokens instead of arbitrary theme colors. That is how the whole operating system starts looking designed rather than themed. `themes/ultimate-light/` exists. Calling Tokens a "seed only" understates consumption: Start, Settings, TaskButton peek/menu, the task switcher, and the snap chooser already use `qs.Commons.Tokens`. The leak is chrome that bypasses the pipeline.
 
-**Pipeline lock:** one token/theme pipeline must drive Superbar chrome **and** hyprbars caption chrome. Light theme must be able to propagate to both. New surfaces must not invent private hex palettes. Today's Superbar pins `#1b1b1b` / `#e8943a` / `#9cbc0d` in `Taskbar.qml`, and hyprbars pins `bar_color` / button colors in `default/hypr/desktop-windows.lua` — that split is known debt, not the design system. Agent Fabric can proceed without waiting for the token unification; Phase 2 must not sprawl more one-off palettes.
+**Pipeline lock:** one token/theme pipeline must drive Superbar chrome **and** hyprbars caption chrome. Light theme must be able to propagate to both. New surfaces must not invent private hex palettes. Superbar `Taskbar.qml` pins `#1b1b1b` `#333333` `#3a3a3a` `#4a4a4a` `#e8943a` `#9cbc0d` `#55ffffff`. hyprbars pins `bar_color = "rgba(1a1a1acc)"` plus caption `rgb(c42b1c)` / `rgb(3d3d3d)` in `default/hypr/desktop-windows.lua`. Agent Fabric can proceed without waiting for the token unification; Phase 3 must not sprawl more one-off palettes.
 
 ## Token vocabulary
 

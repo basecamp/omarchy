@@ -21,6 +21,8 @@ Verified against the tree (2026-08-22):
 - `snapLayouts` is true: `omarchy.ultimate-snap-chooser` exists. Muscle-memory API is still maximize-hover or drag-to-edge, not a fourth caption button.
 - `taskView` is true: `omarchy.ultimate-task-switcher` has a `taskView` mode (desktop list + window titles). It is not Windows Task View quality.
 
+Runtime `feature()` call sites today are only `shell.qml` (`taskbar` / `topBar` overlay) and `Start.qml` (`developerToolsInStart`). The other flags are honesty data, not live gates.
+
 ## Schema
 
 `default/ultimate/profiles/<mode>.json`:

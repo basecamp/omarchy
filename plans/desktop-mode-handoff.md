@@ -10,9 +10,9 @@ Do not treat this file as advisory. Historical tranches below are evidence. **Cu
 
 **Branches:** default `main` (upstream tracking only). All Ultimate work is `work`. Do not create `cursor/*` or other slice branches. Do not merge `work` into `main` as the OS. Product is still **REJECTED**.
 
-**W0:** architecture **GO** on metal (Hyprland stays). That is not finished Windows 7 window management. Remaining product-windowing debt: fourth caption snap button (want min/max/close; snap from maximize hover or drag); 880×560 prototype default size; brittle CSD class-regex (Nautilus two-row expected, not live-reverified here); per-app launch geometry missing (`restoreNormal` is in-session snap/max only); hyprbars/omarchy-minimize must become versioned distro packages in the Hyprland release transaction, not compile-at-install. Do not restore `--disable-features=WaylandWindowDecorations`. Do not put `hyprland-plugin-hyprbars` in `install/omarchy-other.packages`.
+**W0:** architecture **GO** on metal (Hyprland stays). That is not finished Windows 7 window management. Remaining product-windowing debt: fourth caption button (visible min / ▦ snapChooser / max / close; `formatWindowCmd` is in `barDeco.cpp`); 880×560 forced initial size (`_normalBounds` and `~/.local/state/omarchy/ultimate/window-layout.json` exist — missing is Win7 per-app reopen / cascade / per-monitor launch memory, not “no remembered geometry”); CSD lists duplicated in `desktop-windows.lua` + `WindowModel.js`, not identical, Nautilus omitted; plugins compile via `omarchy-apply-hyprland-plugins` into `/usr/lib/hyprland-plugins/`, `omarchy-update` does not rebuild, hash mismatch aborts hyprbars **and** minimize. Overlay chrome is gone. Do not restore `--disable-features=WaylandWindowDecorations`. Do not put `hyprland-plugin-hyprbars` in `install/omarchy-other.packages`.
 
-**Honesty:** Superbar is a prototype. Start is a launcher. Settings is a stub. Peek is a title list. Group menu “Close window” closes all windows in the group. Progress ~15–20% of the OS vision.
+**Honesty:** Superbar is a prototype (`TrayCluster` hard-coded; `barConfig` unused; chrome hexes include `#3a3a3a` `#4a4a4a`; `Variants` already maps per screen — policy missing, not rendering). Start is a 440×560 glass launcher with Power User on the footer. Settings is a five-button stub. Peek is a title list; right-click is only pin/unpin/close; “Close window” closes the group. Tokens are consumed; Superbar/hyprbars chrome bypass is the leak. Progress ~15–20% of the OS vision.
 
 **Next locked work (do this, not a huge Phase 3/4 visual pass):**
 
@@ -21,7 +21,7 @@ Do not treat this file as advisory. Historical tranches below are evidence. **Cu
 
 KEEP `4ea1dcf3` through `c1ae994f`. Do not amend them. Do not squash them.
 
-Read `PRODUCT_DOCTRINE.md` (eight rules), `plans/project-ultimate.md`, `WINDOWS_NATIVE_ACCEPTANCE.md` (smoke test; six of forty automated), `WINDOWS_7_ULTIMATE_PARITY.md`, `AGENT_NATIVE_ACCEPTANCE.md`.
+Read `PRODUCT_DOCTRINE.md` (eight rules), `plans/project-ultimate.md`, `WINDOWS_NATIVE_ACCEPTANCE.md` (smoke test; six numbered rows automated, plus unnumbered harness proofs), `WINDOWS_7_ULTIMATE_PARITY.md`, `AGENT_NATIVE_ACCEPTANCE.md`.
 
 ## Historical W0 tranches
 
@@ -200,7 +200,7 @@ Historical next-line (superseded): design system. **Current next work is Agent F
 Before writing a single line of code, running a test, or booting a VM, read these files in full, in this order. They are the Project Ultimate source of truth and they override intuition, memory, and habit.
 
 1. `PRODUCT_DOCTRINE.md` — the locked identity (Windows 7 Ultimate desktop model + agent-native fabric; not Windows-like Omarchy with AI tools) and the eight non-negotiable rules (zero-terminal ownership, zero-hotkey-required operation, "Windows muscle memory is an API", visible-before-memorable, progressive disclosure, all consequential operations have state, recoverability is a flagship feature, **agent-native same capability graph**), plus naming/error doctrine and Mode Profiles.
-2. `WINDOWS_NATIVE_ACCEPTANCE.md` — the forty-task smoke test (necessary, not sufficient; six of forty automated). This slice owned rows 20–25 (pin, unpin, minimize three, restore the one they want, snap two, Alt+Tab). Also read `WINDOWS_7_ULTIMATE_PARITY.md` and `AGENT_NATIVE_ACCEPTANCE.md`.
+2. `WINDOWS_NATIVE_ACCEPTANCE.md` — the forty-task smoke test (necessary, not sufficient; six numbered rows automated, plus unnumbered harness proofs after the loop). This slice owned rows 20–25 (pin, unpin, minimize three, restore the one they want, snap two, Alt+Tab). Also read `WINDOWS_7_ULTIMATE_PARITY.md` and `AGENT_NATIVE_ACCEPTANCE.md`.
 3. `docs/mode-profiles.md` — one toggle, two profiles, one platform: feature-flag resolution (flags mean capability exists), the shell overlay rule (Desktop Mode must not rewrite `~/.config/omarchy/shell.json`), Superbar plugin/`omarchy.agents` visibility, and the Hyprland state-file selection.
 4. `docs/settings-service-api.md` — the architecture rule: UI and agents → typed service verbs → existing Omarchy/system tooling. QML never spawns shell commands directly. WindowService is the first provider; Agent Fabric is the next gate.
 5. `docs/design-tokens.md` and `docs/omarchy-shell.md` — the semantic token layer and the shell/plugin/IPC contract.

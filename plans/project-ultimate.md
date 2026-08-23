@@ -9,7 +9,7 @@ Not: Windows-like Omarchy with AI tools.
 Read this file together with:
 
 - `PRODUCT_DOCTRINE.md` — eight rules (the original seven plus Agent-Native)
-- `WINDOWS_NATIVE_ACCEPTANCE.md` — forty-task smoke test (necessary, not sufficient; six of forty automated)
+- `WINDOWS_NATIVE_ACCEPTANCE.md` — forty-task smoke test (necessary, not sufficient; six numbered rows automated, plus unnumbered harness proofs)
 - `WINDOWS_7_ULTIMATE_PARITY.md` — job matrix
 - `AGENT_NATIVE_ACCEPTANCE.md` — same-path agent matrix
 - `docs/mode-profiles.md` — Desktop Mode vs Power User Mode as flags, one platform
@@ -44,19 +44,18 @@ What did not move (not this slice):
 
 Recorded against the tree, not as live re-proof:
 
-1. **Fourth caption button.** `desktop-windows.lua` adds close, maximize, snap-chooser (`▦`), minimize. hyprbars draws right-to-left. Muscle-memory API is minimize / maximize / close. Snap belongs on maximize hover or drag-to-edge, not a fourth caption control.
-2. **880×560 default size** is a prototype (`o.window(".*", { size = { 880, 560 } })`). It is not per-app remembered geometry.
-3. **CSD class-regex is brittle.** `hyprbars:no_bar` matches Chromium/Firefox/Cursor/PWA class patterns. Nautilus is not on that list; it is GTK CSD. Two-row chrome (hyprbars + headerbar) is the expected result; not live-reverified on this writer host.
-4. **Remembered geometry.** `WindowService._rememberNormal` / `restoreNormal` remember in-session snap/max bounds. `saveLayout` / `restoreLayout` persist an explicit layout. Windows-style per-app launch size/position is missing. New windows still open at 880×560.
-5. **Plugin ABI durability.** `omarchy-apply-hyprland-plugins` compiles vendored hyprbars and omarchy-minimize into `/usr/lib/hyprland-plugins` at install (`install/config/hyprland-plugins.sh`). That is compile-at-install, not versioned distro packages in the Hyprland release transaction. Silent post-update breakage is the failure mode. They must become versioned packages. Do not put `hyprland-plugin-hyprbars` in `install/omarchy-other.packages`.
+1. **Fourth caption button.** `desktop-windows.lua` (~183–211) `add_button`s close, maximize, snap-chooser (`▦`), then minimize. hyprbars draws right-to-left, so the visible order is **min / ▦ snapChooser / max / close**. Muscle-memory API is min / max / close. Snap belongs on maximize hover or drag-to-edge, not a fourth caption control. Address substitution is `formatWindowCmd` in `default/hypr/plugins/hyprbars/barDeco.cpp`, not in the Lua file.
+2. **880×560 forced initial size** (`o.window(".*", { size = { 880, 560 } })`). In-session `_normalBounds` / `restoreNormal` and explicit `saveLayout` / `restoreLayout` to `~/.local/state/omarchy/ultimate/window-layout.json` exist. Missing is Windows 7 per-app reopen / cascade / per-monitor launch memory. Do not write “no remembered geometry.”
+3. **CSD class lists are duplicated and not identical.** `hyprbars:no_bar` in `desktop-windows.lua` and `usesWaylandCsd` in `shell/services/WindowModel.js` both omit Nautilus (GTK CSD → expected two-row chrome; not live-reverified here). Zen is anchored in Lua (`^zen$` / `^zen-`) and compared after lowercase in JS; the regexes are not the same string.
+4. **Plugin ABI durability.** `omarchy-apply-hyprland-plugins` compiles vendored hyprbars and omarchy-minimize into `/usr/lib/hyprland-plugins` at install (`install/config/hyprland-plugins.sh`). `omarchy-update` does **not** rebuild them. Hash mismatch in each `PLUGIN_INIT` throws (`hyprbars/main.cpp`, `omarchy-minimize/main.cpp`) — a Hyprland upgrade aborts **both** plugins. They must become versioned distro packages in the Hyprland release transaction. Do not put `hyprland-plugin-hyprbars` in `install/omarchy-other.packages`. Overlay chrome is gone. `WaylandWindowDecorations` stays enabled.
 
 ## Taskbar / Start / Settings honesty (known defects, not features)
 
-- Superbar is a prototype, not the masterpiece. `TrayCluster.qml` hard-codes a widget list and does not host `BarWidgetRegistry` plugins.
-- Start is a launcher (search + pins + app list), not Windows 7 Start.
-- Settings (`omarchy.ultimate-settings`) is a stub that opens existing panels.
-- Peek is a title list, not Aero Peek thumbnails or jump lists.
-- Taskbar group menu **"Close window"** closes every window in the group (`TaskButton.qml`). Peek × closes one. The menu label is a defect.
+- Superbar is a prototype, not the masterpiece. `TrayCluster.qml` hard-codes widgets; `barConfig` is unused. `Variants` already draws a bar per `Quickshell.screens` — missing is multi-monitor **policy**, not rendering. Chrome hexes include `#1b1b1b` `#333333` `#3a3a3a` `#4a4a4a` `#e8943a` `#9cbc0d` `#55ffffff`. hyprbars `bar_color` is `rgba(1a1a1acc)`.
+- Start is a 440×560 glass launcher (search + pins + app list + Power User footer toggle), not Windows 7 Start.
+- Settings (`omarchy.ultimate-settings`) is a stub: five buttons (Display, Sound, Network, Bluetooth, Power) that toggle existing panels.
+- Peek is a title list. Right-click is **only** pin/unpin and "Close window." That close kills the entire group (`TaskButton.qml`). Peek × closes one.
+- `feature()` is only consulted in `shell.qml` (`taskbar`/`topBar`) and `Start.qml` (`developerToolsInStart`).
 
 ## Doctrine (do not weaken)
 
@@ -114,18 +113,18 @@ Windowing Gate W0 is **architecture GO** on the metal Hyprland 0.56.2 session. T
 What exists:
 
 - Desktop Mode profile (default) overlays the bottom `omarchy.ultimate-taskbar` without rewriting `shell.json`.
-- `default/hypr/desktop-windows.lua` floats by default (`size = { 880, 560 }`), zeros tiling gaps, enables `resize_on_border`, and loads **hyprbars** from `/usr/lib/hyprland-plugins/hyprbars.so`. Overlay plugin `omarchy.ultimate-window-chrome` is gone. Caption buttons exec `omarchy-shell window … 0x{:x}` for the bar owner, including a fourth snap-chooser button.
-- CSD browsers (class match, not the droppable `chromium-based-browser` tag) use `hyprbars:no_bar`. Live maximized Chromium `[1,1] 1918×1038`.
+- `default/hypr/desktop-windows.lua` floats by default (`size = { 880, 560 }`), zeros tiling gaps, enables `resize_on_border`, and loads **hyprbars** from `/usr/lib/hyprland-plugins/hyprbars.so`. Overlay plugin `omarchy.ultimate-window-chrome` is gone. `formatWindowCmd` in `barDeco.cpp` substitutes `0x{:x}`. Four caption buttons, visible min / ▦ snapChooser / max / close.
+- CSD lists are duplicated in `desktop-windows.lua` and `WindowModel.js` (not identical; Nautilus omitted). Live maximized Chromium `[1,1] 1918×1038`.
 - `WindowService` talks Lua `hl.dsp.window.*` through `Hyprland.dispatch`, and minimize/restore through `hl.plugin.omarchy_minimize`. First capability provider; not Agent Fabric.
 - Snap work area uses Hyprland 0.56 `reserved` as **left, top, right, bottom**. Live 1920×1080 reserved `[0,0,0,40]`. SSD snap insets 32px; CSD snap insets 0.
 - Minimize is in-place `CWindow::setHidden`, not `special:minimized`.
 - Start is a Desktop Mode launcher: idle Start hides Terminal/Vim (`developerToolsInStart` is false on the desktop profile), search still finds them, shipped pins are Chrome and Files (`5942beaa`).
 
-What W0 still does not pretend to be: finished captions, remembered launch geometry, durable plugin packages, peek thumbnails, jump lists, Agent Fabric, Agent Center, Settings, desktop icons, Software Center, Compatibility Center, OOBE, product ISO.
+What W0 still does not pretend to be: three-button captions, Win7 per-app reopen/cascade/per-monitor launch memory, durable plugin packages (`omarchy-update` does not rebuild), peek thumbnails, jump lists, Agent Fabric, Agent Center, Settings, desktop icons, Software Center, Compatibility Center, OOBE, product ISO.
 
 Profile flags for unimplemented surfaces are **false** (`desktopIcons`, `quickSettings`, `notificationCenter`). `snapLayouts` and `taskView` stay true because chooser and Task View overlay exist as prototypes.
 
-**Phases 2–11** are not product-complete. Tokens and `IconButton` exist as seeds. Superbar/Start/Settings are prototypes or stubs. There is no desktop icon surface, no Quick Settings composition, no Settings app, no Dolphin default, no Software Center, no Compatibility Center, no OOBE, no ISO.
+**Phases 2–11** are not product-complete. Tokens are consumed (Start, Settings, TaskButton, switcher, snap); `themes/ultimate-light/` exists. Superbar/hyprbars chrome bypass is the leak, not “seed only.” Superbar/Start/Settings are prototypes or stubs. There is no desktop icon surface, no Quick Settings composition, no Settings app, no Dolphin default, no Software Center, no Compatibility Center, no OOBE, no ISO.
 
 Default theme, Nautilus, nvim-for-txt, TTY first boot that teaches Super+K, and the missing product ISO remain later slices. Do not paper over them in a windowing PR.
 
@@ -137,13 +136,13 @@ Claims from the 2026-08-22 course-correction that this turn **verified in the tr
 - Start is a launcher — true (`Start.qml`).
 - Settings is a stub — true (`ultimate-settings/Settings.qml` says so).
 - Peek is titles — true. Group “Close window” closes all — true for the context menu; peek × closes one.
-- Fourth caption button — true. 880×560 default — true. Compile-at-install plugins — true. `--disable-features=WaylandWindowDecorations` must not return — true (`config/chromium-flags.conf` enables the feature). `hyprland-plugin-hyprbars` is not in `install/omarchy-other.packages` — true.
-- Six of forty automated — true (rows 20–25).
-- No Agent Fabric — true. WindowService exists — true.
+- Fourth caption button (visible min / ▦ / max / close) — true. `formatWindowCmd` lives in `barDeco.cpp` — true. 880×560 forced initial size — true. Compile-at-install plugins; `omarchy-update` does not rebuild; hash mismatch aborts both — true. `--disable-features=WaylandWindowDecorations` must not return — true (`config/chromium-flags.conf` enables the feature). `hyprland-plugin-hyprbars` is not in `install/omarchy-other.packages` — true.
+- Six numbered forty-task rows automated (20–25) — true. The same harness also runs unnumbered proofs after the loop — true. Do not say only six tests exist.
+- No Agent Fabric — true. WindowService exists — true. Settings-service “eventual AI” language is already gone; doctrine “eventually” is progressive disclosure only.
 
 **Nuance / disagreement:**
 
-- “Remembered geometry missing” is true for per-app launch persistence. It is false if read as “no `restoreNormal`.” In-session snap/max memory exists.
+- “Remembered geometry missing” is the wrong sentence. `_normalBounds` and `window-layout.json` exist. Missing is Win7 per-app reopen / cascade / per-monitor launch memory.
 - `snapLayouts` / `taskView` are not unimplemented; they are prototypes. Flags stay true.
 - `omarchy.notifications` exists as a toast/history daemon. That is not Notification Center. Flag is false without claiming notifications are absent.
 - Superbar **does** load a tray (`Tray.qml`). “Hard-coded widget list” is the defect, not “no tray.”

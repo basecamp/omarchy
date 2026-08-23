@@ -2,13 +2,13 @@
 
 Smoke test: can a Windows person use this PC? Give a Windows-native tester a completely clean machine. Do not give them documentation. Ask them to complete all forty tasks below.
 
-This file is **necessary and not sufficient**. Job completeness is `WINDOWS_7_ULTIMATE_PARITY.md`. Agent-callable completeness is `AGENT_NATIVE_ACCEPTANCE.md`. A green Superbar and six automated windowing rows do not ship the OS.
+This file is **necessary and not sufficient**. Job completeness is `WINDOWS_7_ULTIMATE_PARITY.md`. Agent-callable completeness is `AGENT_NATIVE_ACCEPTANCE.md`. A green Superbar and six numbered windowing rows do not ship the OS.
 
 Release still requires: **they complete all forty without opening Terminal and without searching the web.**
 
 Anything that requires documentation is a UX defect to investigate. Anything that requires the terminal is a missing product surface. Anything that requires memorizing a hotkey is a missing affordance.
 
-Only **six of forty** rows are automated (20–25). The rest are `pending`.
+Only **six of the forty numbered rows** are automated (20–25). The other numbered rows are `pending`. That is not the whole harness: after the numbered loop, `test/acceptance.d/windows-native-test.sh` still runs unnumbered proofs (maximize, hyprbars/omarchy-minimize maps from `/usr/lib/hyprland-plugins`, overlay chrome gone, Show Desktop, virtual desktops, Task View, fullscreen, multi-monitor, toolkit, pointer). Do not say only six tests exist.
 
 Status legend: `pending` (no automated coverage yet), `manual` (human-tested only), `automated` (covered by `test/acceptance.d/windows-native-test.sh` or another harness entry).
 
@@ -61,6 +61,6 @@ Give the same machine to an Omarchy/Arch power user. They should still be able t
 
 ## Harness
 
-`test/acceptance.d/windows-native-test.sh` is the executable skeleton for this manifest inside the disposable-VM acceptance suite (see `agents/skills/acceptance-tests.md`). Each row above maps to a named case; cases land there as vertical slices ship, per `plans/project-ultimate.md`.
+`test/acceptance.d/windows-native-test.sh` is the executable skeleton for this manifest inside the disposable-VM acceptance suite (see `agents/skills/acceptance-tests.md`). Numbered rows 1–40 map to named cases in the loop (`skip_task` for pending). After that loop the same file still proves maximize, plugin maps, overlay-chrome absence, Show Desktop, virtual desktops, Task View, fullscreen, multi-monitor, toolkit snap, and the absolute-pointer helper.
 
-A green harness that only talks to `omarchy-shell window` and checks `left.x <= right.x` does not pass the OS. It was sufficient as evidence for Windowing Gate W0 architecture on Hyprland. It is not Windows 7 Ultimate.
+A green harness that only talks to `omarchy-shell window` and checks `left.x <= right.x` does not pass the OS. The extra proofs were sufficient as architecture evidence for Windowing Gate W0 on Hyprland. They are not Windows 7 Ultimate.
