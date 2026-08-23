@@ -66,9 +66,13 @@ function execArgvFromHints(hints) {
   return stringHint(hints, "omarchy-exec-argv")
 }
 
-// Validate a persisted omarchy-exec-argv into a runnable argv, or null. Fails
-// closed so a malformed/hostile hint never reaches a shell: must be a non-empty
-// JSON array of strings whose program is present and not a leading-dash option.
+// Validate a persisted omarchy-exec-argv into a runnable argv, or null. This is
+// a STRUCTURAL check only: it fails closed on a malformed hint (non-array, a
+// non-string or empty program, or a leading-dash program that argv would read as
+// an option). It does not judge intent — a well-formed ["bash","-c",…] is
+// accepted. WHICH senders may set this hint is a separate boundary: any
+// session-bus process can, by the freedesktop protocol's design (see
+// docs/notifications.md), which is equivalent to same-uid code execution.
 function parseExecArgv(value) {
   var text = String(value || "")
   if (!text) return null
