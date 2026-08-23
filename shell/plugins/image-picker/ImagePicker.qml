@@ -57,12 +57,9 @@ Item {
   // up/left to the previous one, matching the arrow keys.
   function nudgeWheel(deltaX, deltaY) {
     var forward = Math.abs(deltaX) > Math.abs(deltaY) ? deltaX : -deltaY
-    root.wheelAccumulator += forward
-
-    while (Math.abs(root.wheelAccumulator) >= 120) {
-      root.selectAdjacent(root.wheelAccumulator > 0 ? 1 : -1)
-      root.wheelAccumulator -= root.wheelAccumulator > 0 ? 120 : -120
-    }
+    var wheel = Util.wheelSteps(root.wheelAccumulator, forward)
+    root.wheelAccumulator = wheel.remainder
+    if (wheel.steps !== 0) root.selectAdjacent(wheel.steps)
   }
 
   function scriptPath(name) {
