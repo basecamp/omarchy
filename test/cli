@@ -807,3 +807,30 @@ assert_output_contains "a --help behind -- belongs to the command and still forw
 
 output=$("$TMPDIR/omarchy" parenthelp --helpme x--help)
 assert_output_contains "help lookalike tokens do not trigger help" "$output" "parenthelp-parent-ran args=[--helpme x--help]"
+
+# USB device names are peripheral-controlled and land inside double-quoted Lua
+# string literals (hyprctl eval, persisted toggle state files), so the quoting
+# helper must keep hostile names inside the literal.
+output=$(omarchy-lua-quote 'ELAN1200:00 04F3:30BA Touchpad')
+[[ $output == 'ELAN1200:00 04F3:30BA Touchpad' ]] || fail "lua quote leaves a plain device name untouched"
+pass "lua quote leaves a plain device name untouched"
+
+output=$(omarchy-lua-quote 'foo"bar')
+[[ $output == 'foo\"bar' ]] || fail "lua quote escapes double quotes"
+pass "lua quote escapes double quotes"
+
+output=$(omarchy-lua-quote 'foo\bar')
+[[ $output == 'foo\\bar' ]] || fail "lua quote escapes backslashes"
+pass "lua quote escapes backslashes"
+
+output=$(omarchy-lua-quote $'line1\nline2')
+[[ $output == 'line1\nline2' ]] || fail "lua quote escapes newlines"
+pass "lua quote escapes newlines"
+
+output=$(omarchy-lua-quote $'line1\rline2')
+[[ $output == 'line1\rline2' ]] || fail "lua quote escapes carriage returns"
+pass "lua quote escapes carriage returns"
+
+output=$(omarchy-lua-quote 'evil" }); os.execute("id"); --')
+[[ $output == 'evil\" }); os.execute(\"id\"); --' ]] || fail "lua quote neutralizes a Lua injection attempt"
+pass "lua quote neutralizes a Lua injection attempt"

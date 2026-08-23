@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# omarchy:summary=Quote a string for embedding in a double-quoted Lua string literal
+# omarchy:args=<string>
+# omarchy:hidden=true
+
+# Externally sourced strings (e.g. USB device names from hyprctl) land inside
+# double-quoted Lua string literals via hyprctl eval and persisted toggle state
+# files. Escape the only characters that can break out of or corrupt such a
+# literal: backslashes first, so the escapes added below stay literal, then
+# double quotes, then raw newlines and carriage returns, which Lua rejects
+# inside a short literal. Everything else stays byte-for-byte intact so the
+# string still matches what Hyprland reports.
+value=${1-}
+value=${value//\\/\\\\}
+value=${value//\"/\\\"}
+value=${value//$'\n'/\\n}
+value=${value//$'\r'/\\r}
+printf '%s\n' "$value"

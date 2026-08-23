@@ -26,16 +26,21 @@ if [[ -z $device ]]; then
   exit 1
 fi
 
+# The device name is reported by the peripheral itself and can contain quotes
+# or other characters that would break out of the Lua string literals below
+# (live eval now, and the persisted state file on every Hyprland reload).
+device_lua="$(omarchy-lua-quote "$device")"
+
 enable() {
-  hyprctl eval "hl.device({ name = \"$device\", enabled = true })" >/dev/null
+  hyprctl eval "hl.device({ name = \"$device_lua\", enabled = true })" >/dev/null
   rm -f "$STATE_FILE"
   omarchy-osd -i "$ICON" -m "$LABEL enabled"
 }
 
 disable() {
-  hyprctl eval "hl.device({ name = \"$device\", enabled = false })" >/dev/null
+  hyprctl eval "hl.device({ name = \"$device_lua\", enabled = false })" >/dev/null
   mkdir -p "$(dirname "$STATE_FILE")"
-  printf 'hl.device({ name = "%s", enabled = false })\n' "$device" >"$STATE_FILE"
+  printf 'hl.device({ name = "%s", enabled = false })\n' "$device_lua" >"$STATE_FILE"
   omarchy-osd -i "$ICON" -m "$LABEL disabled"
 }
 
