@@ -17,6 +17,7 @@ function usesWaylandCsd(win) {
   if (/((google-)?chrom(e|ium)|brave-browser|microsoft-edge|vivaldi-stable|helium)/.test(cls)) return true
   if (/(firefox|librewolf)/.test(cls)) return true
   if (cls === "zen" || cls.indexOf("zen-") === 0) return true
+  if (/-youtube\.com__/.test(cls) || /-app\.zoom\.us__wc_home/.test(cls)) return true
   if (cls === "cursor") return true
   return false
 }

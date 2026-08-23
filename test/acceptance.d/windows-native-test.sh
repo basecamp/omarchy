@@ -520,20 +520,22 @@ prove_toolkit() {
   [[ -n $addr ]] || fail "$name windowing" "no new client matched $class_re"
   omarchy-shell window snapTo "$addr" r >/dev/null
   sleep 1
-  local area half left_x right_x right_w left_y left_h
+  local area half left_x right_x right_w left_y left_h cls inset
+  cls=$(hyprctl -j clients | jq -r --arg a "$addr" '.[] | select(.address == $a) | .class // empty')
+  inset=$(CLASS=$cls node -e 'const m=require(process.argv[1]); process.stdout.write(String(m.hyprbarsSnapInset({class: process.env.CLASS || ""})))' "$ROOT/shell/services/WindowModel.js")
   area=$(work_area_json)
   half=$(jq -r '.w / 2 | floor' <<<"$area")
   left_x=$(jq -r .x <<<"$area")
   right_x=$((left_x + half))
   right_w=$(( $(jq -r .w <<<"$area") - half ))
-  left_y=$(jq -r '.y + 32' <<<"$area")
-  left_h=$(jq -r '.h - 32' <<<"$area")
+  left_y=$(jq -r --argjson i "$inset" '.y + $i' <<<"$area")
+  left_h=$(jq -r --argjson i "$inset" '.h - $i' <<<"$area")
   window_near_rect "$addr" "$right_x" "$left_y" "$right_w" "$left_h" \
-    || fail "$name snap" "$name did not take the right half: $(hyprctl -j clients | jq --arg a "$addr" '.[] | select(.address == $a) | {class,at,size,xwayland,fullscreen}')"
+    || fail "$name snap" "$name did not take the right half (inset $inset): $(hyprctl -j clients | jq --arg a "$addr" '.[] | select(.address == $a) | {class,at,size,xwayland,fullscreen}') work=$(work_area_json)"
   screenshot "success-$name"
   omarchy-shell window close "$addr" >/dev/null 2>&1 || true
   wait_until "$name window closed" 15 window_absent_addr "$addr"
-  pass "$name snaps with hyprbars like any other window"
+  pass "$name snaps to the right work-area half"
 }
 
 window_absent_addr() {

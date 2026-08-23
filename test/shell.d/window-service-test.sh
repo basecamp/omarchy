@@ -187,6 +187,9 @@ assertEqual(m.hyprbarsSnapInset({ class: 'foot' }), 32, 'SSD clients reserve hyp
 assertEqual(m.hyprbarsSnapInset({ class: 'chromium' }), 0, 'Chromium CSD does not reserve hyprbars')
 assertEqual(m.hyprbarsSnapInset({ class: 'cursor' }), 0, 'Cursor CSD does not reserve hyprbars')
 assertEqual(m.hyprbarsSnapInset({ class: 'chrome-www.youtube.com__-Default' }), 0, 'YouTube PWAs keep Chromium CSD inset 0')
+assertEqual(m.hyprbarsSnapInset({ class: 'chrome-app.zoom.us__wc_home-Default' }), 0, 'Zoom PWAs keep Chromium CSD inset 0')
+assertEqual(m.hyprbarsSnapInset({ class: 'xyz-app.zoom.us__wc_home' }), 0, 'Zoom PWA class without chrome- still insets 0')
+assertEqual(m.hyprbarsSnapInset({ class: 'zoom' }), 32, 'native Zoom client keeps hyprbars inset')
 assertEqual(m.usesWaylandCsd({ class: 'zenity' }), false, 'zenity is not the Zen browser')
 
 const pins = m.withPin([], { desktopId: 'firefox', name: 'Firefox', icon: 'firefox' })

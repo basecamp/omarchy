@@ -26,7 +26,7 @@ require("default.hypr.apps")
 -- CSD by class, not the chromium-based-browser tag. YouTube/Zoom PWAs drop that
 -- tag for opacity; they still draw Chromium's fused caption. Keep hyprbars on foot/GTK/Qt SSD.
 o.window("((google-)?[cC]hrom(e|ium)|[bB]rave-browser|[mM]icrosoft-edge|Vivaldi-stable|helium)", { float = true, ["hyprbars:no_bar"] = true })
-o.window("([fF]irefox|zen|librewolf)", { float = true, ["hyprbars:no_bar"] = true })
+o.window("([fF]irefox|librewolf|^zen$|^zen-)", { float = true, ["hyprbars:no_bar"] = true })
 o.window("(^.+-youtube\\.com__.*$|^.+-app\\.zoom\\.us__wc_home.*$)", { ["hyprbars:no_bar"] = true })
 o.window("^[Cc]ursor$", { ["hyprbars:no_bar"] = true })
 

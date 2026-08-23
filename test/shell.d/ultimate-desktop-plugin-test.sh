@@ -167,6 +167,16 @@ grep -Fq 'youtube' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "YouTube PWAs keep hyprbars:no_bar after dropping the chromium tag"
 grep -Fq 'omarchy-shell window close 0x{:x}' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "hyprbars close names the bar's window address"
+grep -Fq '^zen$' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "Zen browser no_bar is anchored so zenity keeps hyprbars"
+if grep -Fq '|zen|' "$ROOT/default/hypr/desktop-windows.lua"; then
+  fail "unanchored zen in desktop-windows would no_bar zenity"
+fi
+if grep -Fq '|zen|' "$ROOT/default/hypr/apps/browser.lua"; then
+  fail "unanchored zen in browser.lua would tag zenity as Firefox"
+fi
+grep -Fq 'hyprbarsSnapInset' "$ROOT/test/acceptance.d/windows-native-test.sh" \
+  || fail "toolkit snap proof uses WindowModel inset, not a hard-coded Chromium +32"
 grep -Fq 'm_bDraggingThis || inputIsValid()' "$ROOT/default/hypr/plugins/hyprbars/barDeco.cpp" \
   || fail "hyprbars drag end still fires when the pointer is off the title bar"
 grep -Fq 'windows[(activeIndex + 1)' "$ROOT/shell/plugins/ultimate-taskbar/TaskButton.qml" \
