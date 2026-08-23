@@ -111,6 +111,7 @@ class CHyprBar : public IHyprWindowDecoration {
     bool                m_bTouchEv       = false;
     bool                m_bDragPending   = false;
     bool                m_bCancelledDown = false;
+    Vector2D            m_vDragOrigin;
     int                 m_touchId        = 0;
 
     // store hover state for buttons as a bitfield

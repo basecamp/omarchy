@@ -174,6 +174,10 @@ grep -Fq 'requestsMaximize' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cp
   || fail "omarchy-minimize honors xdg/X11 CSD maximize requests"
 grep -Fq 'FSMODE_MAXIMIZED' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp" \
   || fail "CSD maximize uses Hyprland maximized fullscreen, not omarchy-shell"
+grep -Fq 'syncCsdMaximizedState' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp" \
+  || fail "CSD windows must drop Hyprland's fake map-time maximized state"
+grep -Fq 'hyprbars:no_bar' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp" \
+  || fail "fake maximized is cleared only for hyprbars:no_bar CSD clients"
 if grep -Fq 'omarchy-shell' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp"; then
   fail "omarchy-minimize must not exec omarchy-shell from the compositor"
 fi
@@ -258,6 +262,8 @@ if grep -Fq '|zen|' "$ROOT/default/hypr/apps/browser.lua"; then
 fi
 grep -Fq 'hyprbarsSnapInset' "$ROOT/test/acceptance.d/windows-native-test.sh" \
   || fail "toolkit snap proof uses WindowModel inset, not a hard-coded Chromium +32"
+grep -Fq 'm_vDragOrigin' "$ROOT/default/hypr/plugins/hyprbars/barDeco.cpp" \
+  || fail "hyprbars must not start a move on sub-threshold motion between title-bar clicks"
 grep -Fq 'm_bDraggingThis || inputIsValid()' "$ROOT/default/hypr/plugins/hyprbars/barDeco.cpp" \
   || fail "hyprbars drag end still fires when the pointer is off the title bar"
 if grep -Fq 'm_pWindow != window' "$ROOT/default/hypr/plugins/hyprbars/barDeco.cpp"; then

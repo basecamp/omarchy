@@ -11,12 +11,16 @@
 #include "src/render/Renderer.hpp"
 #include "src/xwayland/XSurface.hpp"
 #include "src/managers/fullscreen/FullscreenController.hpp"
+#include "src/desktop/rule/windowRule/WindowRuleEffectContainer.hpp"
+#include "src/helpers/MiscFunctions.hpp"
+#include "src/output/Monitor.hpp"
 #include "xdg-shell.hpp"
 
 #include <wayland-server.h>
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <format>
 #include <optional>
 #include <stdexcept>
@@ -130,13 +134,23 @@ static int luaRestore(lua_State* L) {
 struct MinWatch {
   CHyprSignalListener xdg;
   CHyprSignalListener xwm;
+  CHyprSignalListener resize;
 };
 
-static std::unordered_map<uintptr_t, MinWatch> g_watches;
+struct SavedFloat {
+  Vector2D pos;
+  Vector2D size;
+};
+
+static std::unordered_map<uintptr_t, MinWatch>   g_watches;
+static std::unordered_map<uintptr_t, SavedFloat> g_savedFloat;
 static CHyprSignalListener                     g_onCreate;
 static CHyprSignalListener                     g_onOpen;
 static CHyprSignalListener                     g_onOpenLate;
 static CHyprSignalListener                     g_onDestroy;
+static CHyprSignalListener                     g_onFullscreen;
+static CHyprSignalListener                     g_onUpdateRules;
+static Desktop::Rule::CWindowRuleEffectContainer::storageType g_nobarEffectIdx = 0;
 
 static std::optional<bool> requestedMinimized(PHLWINDOW w) {
   if (!w)
@@ -185,6 +199,80 @@ static void setMaximized(PHLWINDOW w, bool maximized) {
     fs->setFullscreenMode(w, Fullscreen::FSMODE_NONE, Fullscreen::FSMODE_NONE, false);
 }
 
+static bool isMaximizedNow(PHLWINDOW w) {
+  auto& fs = Fullscreen::controller();
+  return w && fs && fs->isFullscreen(w, Fullscreen::FSMODE_MAXIMIZED);
+}
+
+static bool isCoveringFullscreen(PHLWINDOW w) {
+  auto& fs = Fullscreen::controller();
+  return w && fs && fs->isFullscreen(w, Fullscreen::FSMODE_FULLSCREEN);
+}
+
+static CBox monitorWork(PHLWINDOW w) {
+  auto mon = w->m_monitor.lock();
+  if (!mon)
+    return {};
+  return mon->m_reservedArea.apply(CBox(mon->m_position, mon->m_size));
+}
+
+static void saveNormalFloat(PHLWINDOW w) {
+  if (!w || w->isHidden())
+    return;
+  if (isMaximizedNow(w) || isCoveringFullscreen(w))
+    return;
+  const auto pos  = w->position(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
+  const auto size = w->size(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
+  if (size.x < 64 || size.y < 64)
+    return;
+  const auto work = monitorWork(w);
+  if (work.w <= 0)
+    return;
+  if (pos.y < work.y)
+    return;
+  if (std::abs(size.x - work.w) <= 16 && size.y >= work.h - 48)
+    return;
+  g_savedFloat[reinterpret_cast<uintptr_t>(w.get())] = {pos, size};
+}
+
+static void restoreFloatOnScreen(PHLWINDOW w) {
+  if (!w || w->isHidden())
+    return;
+  if (isMaximizedNow(w) || isCoveringFullscreen(w))
+    return;
+  const auto work = monitorWork(w);
+  if (work.w <= 0)
+    return;
+  const auto key = reinterpret_cast<uintptr_t>(w.get());
+  Vector2D   pos;
+  Vector2D   size;
+  if (auto it = g_savedFloat.find(key); it != g_savedFloat.end()) {
+    pos  = it->second.pos;
+    size = it->second.size;
+  } else {
+    pos  = w->position(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
+    size = w->size(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
+  }
+  if (size.x > work.w)
+    size.x = work.w;
+  if (size.y > work.h)
+    size.y = work.h;
+  if (pos.x < work.x)
+    pos.x = work.x;
+  if (pos.y < work.y)
+    pos.y = work.y;
+  if (pos.x + size.x > work.x + work.w)
+    pos.x = work.x + work.w - size.x;
+  if (pos.y + size.y > work.y + work.h)
+    pos.y = work.y + work.h - size.y;
+  const auto cur = w->position(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
+  const auto csz = w->size(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
+  if (std::abs(cur.x - pos.x) < 1 && std::abs(cur.y - pos.y) < 1 && std::abs(csz.x - size.x) < 1 && std::abs(csz.y - size.y) < 1)
+    return;
+  w->finishAnimation();
+  w->setBox(CBox(pos, size));
+}
+
 static void applyRequestedMinimize(PHLWINDOWREF ref) {
   auto w = ref.lock();
   if (!w)
@@ -202,12 +290,45 @@ static void applyRequestedMaximize(PHLWINDOWREF ref) {
   const auto want = requestedMaximized(w);
   if (!want.has_value())
     return;
+  if (*want && !isMaximizedNow(w))
+    saveNormalFloat(w);
   setMaximized(w, *want);
+  if (!*want)
+    restoreFloatOnScreen(w);
 }
 
 static void applyRequestedState(PHLWINDOWREF ref) {
   applyRequestedMinimize(ref);
   applyRequestedMaximize(ref);
+}
+
+// Hyprland sends XDG_TOPLEVEL_STATE_MAXIMIZED on first map to suppress CSD.
+// Cursor/Chromium still draw CSD (hyprbars:no_bar + wm_capabilities) and then
+// treat □ as a no-op because they already think they are maximized.
+static bool isCsdWindow(PHLWINDOW w) {
+  if (!w || !w->m_ruleApplicator)
+    return false;
+  const auto& props = w->m_ruleApplicator->m_otherProps.props;
+  if (!props.contains(g_nobarEffectIdx))
+    return false;
+  return truthy(props.at(g_nobarEffectIdx)->effect);
+}
+
+static void syncCsdMaximizedState(PHLWINDOW w) {
+  if (!w || !isCsdWindow(w))
+    return;
+  auto xdg = w->m_xdgSurface.lock();
+  if (!xdg)
+    return;
+  auto top = xdg->m_toplevel.lock();
+  if (!top)
+    return;
+  bool actually = false;
+  if (auto& fs = Fullscreen::controller(); fs)
+    actually = fs->isFullscreen(w, Fullscreen::FSMODE_MAXIMIZED);
+  if (!actually)
+    w->m_suppressNextMaximize = true;
+  top->setMaximized(actually);
 }
 
 static void advertiseWmCapabilities(PHLWINDOW w) {
@@ -259,12 +380,14 @@ static void watchWindow(PHLWINDOW w) {
     watch.xwm  = xwm->m_events.stateChanged.listen([ref]() { applyRequestedState(ref); });
     attached   = true;
   }
-  if (attached)
-    g_watches.insert_or_assign(key, std::move(watch));
+  watch.resize = w->m_events.resize.listen([ref]() { saveNormalFloat(ref.lock()); });
+  g_watches.insert_or_assign(key, std::move(watch));
+  (void)attached;
 
   // Chromium caches the first wm_capabilities event. Advertise on create,
   // open, and openLate so a late xdg bind still gets min/max.
   advertiseWmCapabilities(w);
+  syncCsdMaximizedState(w);
 }
 
 static void watchAllWindows() {
@@ -289,13 +412,24 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
   HyprlandAPI::addLuaFunction(PHANDLE, "omarchy_minimize", "minimize", luaMinimize);
   HyprlandAPI::addLuaFunction(PHANDLE, "omarchy_minimize", "restore", luaRestore);
 
+  g_nobarEffectIdx = Desktop::Rule::windowEffects()->registerEffect("hyprbars:no_bar");
+
   g_onCreate = Event::bus()->m_events.window.create.listen([](PHLWINDOW w) { watchWindow(w); });
   g_onOpen = Event::bus()->m_events.window.open.listen([](PHLWINDOW w) { watchWindow(w); });
   g_onOpenLate = Event::bus()->m_events.window.openLate.listen([](PHLWINDOW w) { watchWindow(w); });
   g_onDestroy  = Event::bus()->m_events.window.destroy.listen([](PHLWINDOWREF w) {
-    if (auto live = w.lock())
-      g_watches.erase(reinterpret_cast<uintptr_t>(live.get()));
+    if (auto live = w.lock()) {
+      const auto key = reinterpret_cast<uintptr_t>(live.get());
+      g_watches.erase(key);
+      g_savedFloat.erase(key);
+    }
   });
+  g_onFullscreen = Event::bus()->m_events.window.fullscreen.listen([](PHLWINDOW w) {
+    syncCsdMaximizedState(w);
+    if (w && !isMaximizedNow(w) && !isCoveringFullscreen(w))
+      restoreFloatOnScreen(w);
+  });
+  g_onUpdateRules = Event::bus()->m_events.window.updateRules.listen([](PHLWINDOW w) { watchWindow(w); });
   watchAllWindows();
 
   return {"omarchy-minimize", "In-place native minimize via CWindow::setHidden", "Omarchy Ultimate", "1.0"};
@@ -303,8 +437,11 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
 
 APICALL EXPORT void PLUGIN_EXIT() {
   g_watches.clear();
-  g_onCreate   = {};
-  g_onOpen     = {};
-  g_onOpenLate = {};
-  g_onDestroy  = {};
+  g_savedFloat.clear();
+  g_onCreate      = {};
+  g_onOpen        = {};
+  g_onOpenLate    = {};
+  g_onDestroy     = {};
+  g_onFullscreen  = {};
+  g_onUpdateRules = {};
 }

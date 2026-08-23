@@ -121,6 +121,20 @@ grep -Fq 'function _recordFromClient' "$ws" \
   || fail "taskbar keeps setHidden windows that dropped out of Hyprland.toplevels"
 grep -Fq 'Number(c.fullscreen || 0) > 0' "$ws" \
   || fail "new-window placement must not restomp a just-maximized client"
+grep -Fq 'if (root.isMaximized(addr))' "$ws" \
+  || fail "placement must not restomp a window that is already work-area sized"
+grep -Fq 'kinds[addr] = "max"' "$ws" \
+  || fail "clientsIpc fullscreen=1 records _placedKind max for CSD maximize"
+grep -Fq 'function _restoreFloatOnScreen' "$ws" \
+  || fail "unmaximize restores the pre-max float onto the work area"
+grep -Fq 'function _queueFloatRestore' "$ws" \
+  || fail "late compositor stomps after unmaximize must re-clamp chrome onto the work area"
+grep -Fq 'restoreFloatRetryTimer' "$ws" \
+  || fail "float restore retries after CSD configure can move chrome off-screen"
+grep -Fq 'WindowModel.clampRect(bounds, geom)' "$ws" \
+  || fail "_applyRect clamps so restore cannot place chrome above the monitor"
+grep -Fq 'prevFs === 1 && fs === 0' "$ws" \
+  || fail "CSD unmaximize must restore the remembered float, not Hyprland's last-floating box"
 grep -Fq 'function toggleShowDesktop' "$ws" || fail "WindowService exposes toggleShowDesktop"
 grep -Fq 'function pin' "$ws" || fail "WindowService exposes pin for the taskbar"
 pass "WindowService exposes task-switcher, Show Desktop, and pin verbs"
@@ -313,6 +327,9 @@ assert(cascaded.x > floated.x, 'cascade offsets later windows')
 const clamped = m.clampRect({ x: -40, y: -40, width: 4000, height: 4000 }, mon)
 assert(clamped.width <= area.width, 'clamp fits width to the monitor work area')
 assert(clamped.x >= area.x, 'clamp keeps x on the monitor')
+const offscreenChrome = m.clampRect({ x: 534, y: -479, width: 1252, height: 1000 }, mon)
+assert(offscreenChrome.y >= area.y, 'clamp pulls title chrome back onto the work area')
+assert(offscreenChrome.x >= area.x, 'clamp keeps a restored float on the monitor x')
 const stored = m.parsePlacements(m.serializePlacements({ foot: { x: 48, y: 48, width: 880, height: 560 } }))
 assertEqual(stored.foot.width, 880, 'placements round-trip through JSON')
 const snapped = { x: 0, y: 0, width: 960, height: 1040 }

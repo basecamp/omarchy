@@ -44,6 +44,25 @@ QtObject {
   property var _lastAppId: ({})
   property int _cascadeIndex: 0
   property bool _placementsReady: false
+  property bool _placingRect: false
+  property string _pendingFloatRestore: ""
+  property Timer restoreFloatTimer: Timer {
+    interval: 32
+    repeat: false
+    onTriggered: {
+      var addr = root._pendingFloatRestore
+      if (addr) root._restoreFloatOnScreen(addr)
+    }
+  }
+  property Timer restoreFloatRetryTimer: Timer {
+    interval: 220
+    repeat: false
+    onTriggered: {
+      var addr = root._pendingFloatRestore
+      root._pendingFloatRestore = ""
+      if (addr) root._restoreFloatOnScreen(addr)
+    }
+  }
   property var monitorIpc: ({})
   property var monitorsIpc: []
   property var workspacesIpc: []
@@ -163,30 +182,67 @@ QtObject {
     var list = root.clientsIpc || []
     var rects = root._copyMap(root._lastRect)
     var apps = root._copyMap(root._lastAppId)
+    var kinds = root._copyMap(root._placedKind)
+    var kindsChanged = false
     var i
     var c
     var addr
     var key
+    var fs
     for (i = 0; i < list.length; i++) {
       c = list[i]
       if (!c || !c.address) continue
       addr = root._canonAddr(c.address)
+      fs = Number(c.fullscreen || 0)
+      var prev = rects[addr]
+      var prevFs = prev ? Number(prev.fullscreen || 0) : 0
+      if (prevFs === 0 && fs === 1 && prev && Number(prev.width) > 0) {
+        var geom = root._monitorGeom(addr)
+        var area = WindowModel.workArea(geom)
+        var looksMax = area.width && Math.abs(Number(prev.width) - area.width) <= 16 && Number(prev.height) >= area.height - 48
+        if (!looksMax) {
+          var normals = root._copyMap(root._normalBounds)
+          normals[addr] = { x: Number(prev.x), y: Number(prev.y), width: Number(prev.width), height: Number(prev.height) }
+          root._normalBounds = normals
+        }
+      }
+      if (prevFs === 1 && fs === 0) {
+        if (kinds[addr] === "max") {
+          delete kinds[addr]
+          kindsChanged = true
+        }
+        root._queueFloatRestore(addr)
+      } else if (fs === 0 && c.hidden !== true && root._knownAddresses[addr] && c.at) {
+        var areaNow = WindowModel.workArea(root._monitorGeom(addr))
+        if (areaNow.width && Number(c.at[1]) < areaNow.y)
+          root._queueFloatRestore(addr)
+      }
       if (c.at && c.size && Number(c.size[0]) > 0) {
         rects[addr] = {
           x: Number(c.at[0] || 0),
           y: Number(c.at[1] || 0),
           width: Number(c.size[0]),
           height: Number(c.size[1]),
-          fullscreen: Number(c.fullscreen || 0),
+          fullscreen: fs,
           minimized: c.hidden === true,
           monitor: String(c.monitor || "")
         }
+      }
+      // CSD maximize never calls WindowService.maximize(), so record the
+      // compositor bit here or placement will treat the address as new.
+      if (fs === 1 && kinds[addr] !== "max") {
+        kinds[addr] = "max"
+        kindsChanged = true
+      } else if ((fs === 2 || fs === 3) && kinds[addr] !== "full") {
+        kinds[addr] = "full"
+        kindsChanged = true
       }
       key = WindowModel.windowAppId({ class: c.class, appId: c.initialClass || c.class })
       if (key) apps[addr] = key
     }
     root._lastRect = rects
     root._lastAppId = apps
+    if (kindsChanged) root._placedKind = kinds
   }
 
   function _rememberPlacement(address) {
@@ -282,6 +338,7 @@ QtObject {
       if (Number(c.fullscreen || 0) > 0) continue
       if (root._minimized[addr]) continue
       if (root._placedKind[addr] === "max" || root._placedKind[addr] === "full") continue
+      if (root.isMaximized(addr)) continue
       if (WindowModel.isLockSurface({
         class: c.class,
         appId: c.initialClass || c.class,
@@ -314,6 +371,10 @@ QtObject {
         continue
       }
       if (root._minimized[addr] || root._placedKind[addr] === "max" || root._placedKind[addr] === "full") {
+        known[addr] = true
+        continue
+      }
+      if (root.isMaximized(addr)) {
         known[addr] = true
         continue
       }
@@ -642,6 +703,14 @@ QtObject {
     if (!target) return root._finish("restore", address, root._err("No window", "There is no window to restore.", ""))
     root._dispatchLua("hl.plugin.omarchy_minimize.restore({ " + root._luaWindow(target) + " })", true)
     root._markMinimized(target, false)
+    var rec = root._clientRect(target)
+    if (rec && Number(rec.fullscreen) !== 1) {
+      var area = WindowModel.workArea(root._monitorGeom(target))
+      if (area.width && (Number(rec.y) < area.y || Number(rec.x) + Number(rec.width) < area.x + 80)) {
+        root._restoreFloatOnScreen(target, true)
+        root._queueFloatRestore(target)
+      }
+    }
     return root._finish("restore", target, root._ok(), { verb: "minimize", address: target })
   }
 
@@ -743,6 +812,8 @@ QtObject {
     if (!target) return root._finish("unmaximize", address, root._err("No window", "There is no window to restore.", ""))
     if (root._placedKind[target] === "max") root._setPlacedKind(target, "float")
     root._dispatchLua("hl.dsp.window.fullscreen({ mode = \"maximized\", action = \"unset\", " + root._luaWindow(target) + " })", true)
+    root._restoreFloatOnScreen(target, true)
+    root._queueFloatRestore(target)
     return root._finish("unmaximize", target, root._ok())
   }
 
@@ -767,14 +838,40 @@ QtObject {
     return root._finish("restoreNormal", target, root._ok())
   }
 
+  function _queueFloatRestore(addr) {
+    if (!addr) return
+    root._pendingFloatRestore = addr
+    if (root.restoreFloatTimer) root.restoreFloatTimer.restart()
+    if (root.restoreFloatRetryTimer) root.restoreFloatRetryTimer.restart()
+  }
+
+  function _restoreFloatOnScreen(target, force) {
+    if (!target || root._placingRect) return
+    var rec = root._clientRect(target)
+    if (!force) {
+      if (root._placedKind[target] === "max" || root._placedKind[target] === "full") return
+      if (rec && Number(rec.fullscreen) === 1) return
+    }
+    var bounds = root._normalBounds[target]
+    if (!bounds || !bounds.width) bounds = rec || root._lastRect[target]
+    if (!bounds || !bounds.width) return
+    root._applyRect(target, bounds)
+  }
+
   function _applyRect(target, bounds) {
     if (!target || !bounds || !bounds.width || !bounds.height) return
+    if (root._placingRect) return
+    root._placingRect = true
+    var geom = root._monitorGeom(target)
+    if (geom && geom.width) bounds = WindowModel.clampRect(bounds, geom)
     var win = root._luaWindow(target)
     root._dispatchLua("hl.dsp.window.fullscreen({ mode = \"fullscreen\", action = \"unset\", layout_aware = false, " + win + " })")
-    root.unmaximize(target)
+    if (root._placedKind[target] === "max") root._setPlacedKind(target, "float")
+    root._dispatchLua("hl.dsp.window.fullscreen({ mode = \"maximized\", action = \"unset\", " + win + " })")
     root._dispatchLua("hl.dsp.window.float({ action = \"enable\", " + win + " })")
     root._dispatchLua("hl.dsp.window.resize({ x = " + Math.round(Number(bounds.width)) + ", y = " + Math.round(Number(bounds.height)) + ", relative = false, " + win + " })")
     root._dispatchLua("hl.dsp.window.move({ x = " + Math.round(Number(bounds.x)) + ", y = " + Math.round(Number(bounds.y)) + ", relative = false, " + win + " })", true)
+    root._placingRect = false
   }
 
   function moveTo(address, x, y) {

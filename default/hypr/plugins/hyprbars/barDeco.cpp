@@ -29,6 +29,7 @@
 #include <climits>
 #include <cstdint>
 #include <chrono>
+#include <cmath>
 #include <format>
 #include <string>
 
@@ -176,6 +177,13 @@ void CHyprBar::onMouseMove(Vector2D coords) {
     if (!m_bDragPending || m_bTouchEv || !validMapped(m_pWindow) || m_touchId != 0)
         return;
 
+    // Windows waits SM_CXDRAG (~4px) before a caption drag. Any 1px twitch
+    // between the two clicks of a title-bar double-click used to start a move
+    // and then toggleMaximize, so restore looked like a slide + snap.
+    const auto now = cursorRelativeToBar();
+    if (std::abs(now.x - m_vDragOrigin.x) < 5 && std::abs(now.y - m_vDragOrigin.y) < 5)
+        return;
+
     m_bDragPending = false;
     handleMovement();
 }
@@ -262,6 +270,7 @@ void CHyprBar::handleDownEvent(Event::SCallbackInfo& info, std::optional<ITouch:
     } else {
         m_lastMouseDown = Time::steadyNow();
         m_bDragPending  = true;
+        m_vDragOrigin   = COORDS;
     }
 }
 

@@ -12,6 +12,13 @@ grep -Fq 'applyRequestedMaximize' "$cpp" || fail "CSD maximize applicator exists
 grep -Fq 'applyRequestedState' "$cpp" || fail "one stateChanged watcher applies min and max"
 grep -Fq 'requestsMaximize' "$cpp" || fail "omarchy-minimize honors xdg/X11 CSD maximize requests"
 grep -Fq 'FSMODE_MAXIMIZED' "$cpp" || fail "CSD maximize uses Hyprland maximized fullscreen, not omarchy-shell"
+grep -Fq 'syncCsdMaximizedState' "$cpp" || fail "CSD windows must drop Hyprland's fake map-time maximized state"
+grep -Fq 'restoreFloatOnScreen' "$cpp" \
+  || fail "CSD unmaximize must put the remembered float back on the work area immediately"
+grep -Fq 'saveNormalFloat' "$cpp" \
+  || fail "CSD maximize must remember the on-screen float before Hyprland eats it"
+grep -Fq 'hyprbars:no_bar' "$cpp" || fail "fake maximized is cleared only for hyprbars:no_bar CSD clients"
+grep -Fq 'm_suppressNextMaximize' "$cpp" || fail "clearing fake maximized must not be echoed back as a maximize request"
 if grep -Fq 'omarchy-shell' "$cpp"; then
   fail "omarchy-minimize must not exec omarchy-shell from the compositor"
 fi
