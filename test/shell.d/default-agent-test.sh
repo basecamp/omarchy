@@ -19,6 +19,7 @@ mise_history="$test_tmp/mise-history"
 stub_log="$test_tmp/stubs"
 terminal_log="$test_tmp/terminal"
 menu_log="$test_tmp/menu"
+openclaw_install_log="$test_tmp/openclaw-install"
 mkdir -p "$mock_bin" "$test_home"
 
 cat >"$mock_bin/omarchy-notification-send" <<'SH'
@@ -64,6 +65,15 @@ fi
 [[ ${OMARCHY_TEST_MISE_FAIL:-false} != "true" ]]
 SH
 
+# OpenClaw does not reach mise from omarchy-default-agent: it answers through a
+# gateway that has to be set up too, so the whole job goes to its own installer.
+cat >"$mock_bin/omarchy-install-ai-openclaw" <<'SH'
+#!/bin/bash
+printf '%s\0' "$@" >>"$OMARCHY_TEST_OPENCLAW_INSTALL_LOG"
+[[ $1 == "--check" ]] && exit "${OMARCHY_TEST_OPENCLAW_READY:-1}"
+[[ ${OMARCHY_TEST_OPENCLAW_FAIL:-false} != "true" ]]
+SH
+
 cat >"$mock_bin/omarchy-menu" <<'SH'
 #!/bin/bash
 printf '%s\0' "$@" >"$OMARCHY_TEST_AGENT_MENU_LOG"
@@ -91,6 +101,7 @@ export OMARCHY_TEST_MISE_HISTORY="$mise_history"
 export OMARCHY_TEST_STUB_LOG="$stub_log"
 export OMARCHY_TEST_AGENT_TERMINAL_LOG="$terminal_log"
 export OMARCHY_TEST_AGENT_MENU_LOG="$menu_log"
+export OMARCHY_TEST_OPENCLAW_INSTALL_LOG="$openclaw_install_log"
 export OMARCHY_PATH="$ROOT"
 
 grok_package="npm:@xai-official/grok"
@@ -116,6 +127,7 @@ assert_lazy_stub "$grok_package" grok
 assert_lazy_stub "$omp_package" omp
 assert_lazy_stub "$crush_package" crush
 assert_lazy_stub "$ori_package" ori
+assert_lazy_stub "npm:openclaw" openclaw
 pass "custom agent lazy stubs preserve their mise packages"
 
 source "$ROOT/install/user/mise.sh"
@@ -124,6 +136,7 @@ grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "user setup creates
 grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "user setup creates the Oh My Pi lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "user setup creates the Crush lazy stub"
 grep -Fx "$ori_package ori" "$stub_log" >/dev/null || fail "user setup creates the Ori lazy stub"
+grep -Fx "npm:openclaw openclaw" "$stub_log" >/dev/null || fail "user setup creates the OpenClaw lazy stub"
 pass "user setup creates the custom agent lazy stubs"
 
 : >"$stub_log"
@@ -242,7 +255,7 @@ pass "agent migrations install working wrappers without overriding the preinstal
 
 touch "$test_home/.local/bin/agy" "$test_home/.local/bin/ori"
 omarchy-remove-preinstalls >/dev/null
-for command in agy omp ori grok crush; do
+for command in agy omp openclaw ori grok crush; do
   [[ ! -e $test_home/.local/bin/$command ]] || fail "Remove Preinstalls deletes the $command lazy stub"
 done
 pass "Remove Preinstalls deletes every optional agent lazy stub"
@@ -380,6 +393,50 @@ mapfile -d '' -t agent_open_args <"$agent_open_log"
   fail "installed agent opens in a new terminal after selection"
 pass "installed agents select and open without notifications"
 
+# A stub is on PATH from first boot, so an OpenClaw nobody has installed still
+# answers `openclaw`. Selecting it has to ask the installer instead, or the
+# whole setup -- prompts and all -- runs inside the menu action.
+: >"$mise_log"
+: >"$openclaw_install_log"
+: >"$agent_open_log"
+: >"$terminal_log"
+OMARCHY_TEST_OPENCLAW_READY=1 omarchy-default-agent openclaw
+mapfile -d '' -t openclaw_install_args <"$openclaw_install_log"
+[[ ${openclaw_install_args[*]} == "--check" ]] ||
+  fail "selecting OpenClaw asks its installer whether it is really set up"
+[[ ! -s $mise_log ]] || fail "selecting an unset-up OpenClaw does not reach for mise"
+mapfile -d '' -t terminal_args <"$terminal_log"
+[[ ${terminal_args[0]} == "omarchy-default-agent" && ${terminal_args[1]} == "--install" && ${terminal_args[2]} == "openclaw" ]] ||
+  fail "an OpenClaw that is not set up installs in a terminal"
+[[ ! -s $agent_open_log ]] || fail "an OpenClaw that is not set up waits to open"
+[[ $(omarchy-default-agent) == "copilot" ]] ||
+  fail "an OpenClaw that is not set up waits to change the selection"
+
+# And installing it means onboarding it, not a bare `mise use` that would leave
+# the command on PATH with no gateway behind it to answer.
+: >"$mise_log"
+: >"$openclaw_install_log"
+omarchy-default-agent --install openclaw >/dev/null
+mapfile -d '' -t openclaw_install_args <"$openclaw_install_log"
+[[ ${#openclaw_install_args[@]} == 0 ]] &&
+  fail "installing OpenClaw runs its installer"
+[[ ${openclaw_install_args[*]} != *"--check"* ]] ||
+  fail "installing OpenClaw does more than ask whether it is set up"
+[[ ! -s $mise_log ]] || fail "installing OpenClaw goes through its installer rather than mise"
+[[ $(omarchy-default-agent) == "openclaw" ]] || fail "installing OpenClaw changes the selection"
+
+# An install that fails has to name what to go and run, and mise is not it.
+printf '%s\n' copilot >"$agent_file"
+if OMARCHY_TEST_OPENCLAW_FAIL=true omarchy-default-agent --install openclaw >"$test_tmp/openclaw-failure-output" 2>&1; then
+  fail "a failed OpenClaw install is rejected"
+fi
+grep -F "Could not install OpenClaw with omarchy-install-ai-openclaw" "$test_tmp/openclaw-failure-output" >/dev/null ||
+  fail "a failed OpenClaw install names its own installer rather than mise"
+[[ $(omarchy-default-agent) == "copilot" ]] || fail "a failed OpenClaw install preserves the current default agent"
+pass "selecting OpenClaw goes through its own installer rather than mise"
+
+printf '%s\n' copilot >"$agent_file"
+
 : >"$agent_open_log"
 if omarchy-default-agent unsupported >"$test_tmp/invalid-output" 2>&1; then
   fail "default agent rejects unsupported providers"
@@ -458,6 +515,7 @@ assert_launch pi pi "Review this project"
 assert_launch omp omp --auto-approve -- "Review this project"
 assert_launch opencode opencode --auto --prompt "Review this project"
 assert_launch ori ori code --prompt "Review this project"
+assert_launch openclaw openclaw tui --message "Review this project"
 assert_launch claude claude --permission-mode auto -- "Review this project"
 assert_launch codex codex --approve-for-me -- "Review this project"
 assert_launch crush crush run "Review this project"
@@ -470,6 +528,7 @@ assert_bypass pi pi
 assert_bypass omp omp --auto-approve
 assert_bypass opencode opencode --auto
 assert_bypass ori ori code
+assert_bypass openclaw openclaw tui
 assert_bypass claude claude --permission-mode auto
 assert_bypass codex codex --approve-for-me
 assert_bypass crush crush --yolo

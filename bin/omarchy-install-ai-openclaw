@@ -1,0 +1,70 @@
+#!/bin/bash
+
+# omarchy:summary=Install OpenClaw and set up the gateway it runs behind
+# omarchy:args=[--check]
+# omarchy:examples=omarchy install ai openclaw
+
+# OpenClaw is not a command you point at a checkout. It is a gateway that runs
+# as a user service, holds the channel connections and the session state, and
+# answers from whichever channel reaches it; the terminal UI is one more client
+# of that gateway. So installing it means onboarding it, and a machine with the
+# command on PATH and no gateway behind it has nothing to talk to.
+
+set -euo pipefail
+
+mode=${1:-}
+
+tool='npm:openclaw'
+
+# Whether OpenClaw is really installed, not merely whether the stub exists.
+# Omarchy writes that stub on every machine and it installs OpenClaw on first
+# run, so omarchy-cmd-present answers yes on a machine that has never had it.
+installed() {
+  mise where "$tool" &>/dev/null
+}
+
+# The config is written by onboarding, at the end, so it stands for the whole
+# setup having run rather than for the install having been unpacked.
+onboarded() {
+  [[ -f $HOME/.openclaw/openclaw.json ]]
+}
+
+# --check lets callers tell a cold stub from a working install before they
+# commit to a path that assumes OpenClaw is ready to answer.
+if [[ $mode == "--check" ]]; then
+  if installed && onboarded; then
+    exit 0
+  else
+    exit 1
+  fi
+fi
+
+# Setting OpenClaw as the default agent runs this on the way to launching it, so
+# a machine that is already set up must not be made to sit through the install.
+if installed && onboarded; then
+  echo "OpenClaw is already set up."
+  exit 0
+fi
+
+if ! installed; then
+  echo "Installing OpenClaw..."
+
+  # Exported rather than set on the install line alone, so the version resolved
+  # to run agrees with the one just installed. OpenClaw ships several times a
+  # week and mise's cooldown would otherwise hold a new release back for days.
+  export MISE_MINIMUM_RELEASE_AGE=0
+
+  mise use -g "$tool"
+fi
+
+# Onboarding asks for the inference provider and the channels to connect, so it
+# wants the terminal it was given rather than being run in the background.
+# --install-daemon is what leaves the gateway running afterwards; without it
+# OpenClaw is configured and nothing is listening.
+echo ""
+openclaw onboard --install-daemon
+
+echo ""
+echo "OpenClaw has been installed."
+echo "Its gateway runs as a user service; check on it with: openclaw gateway status"
+echo "Open the control dashboard with: openclaw dashboard"
