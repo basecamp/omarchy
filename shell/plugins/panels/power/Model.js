@@ -56,6 +56,18 @@ function deviceList(devices) {
   return []
 }
 
+function packPathKey(path) {
+  var parts = String(path || "").split("/")
+  return parts.length > 0 ? parts[parts.length - 1] : ""
+}
+
+function pathsMatch(a, b) {
+  var ka = packPathKey(a)
+  var kb = packPathKey(b)
+  if (!ka || !kb) return false
+  return ka === kb
+}
+
 function laptopDevices(devices) {
   var list = deviceList(devices)
   var packs = []
@@ -97,11 +109,15 @@ function liveLaptopDevices(devices, statusInfo) {
   var packs = laptopDevices(devices)
   var selected = selectedPackPaths(statusInfo)
   if (selected.length > 0) {
-    var wanted = {}
-    for (var i = 0; i < selected.length; i++) wanted[selected[i]] = true
     var matched = []
     for (var j = 0; j < packs.length; j++) {
-      if (wanted[String(packs[j].nativePath || "")]) matched.push(packs[j])
+      var nativePath = String(packs[j].nativePath || "")
+      for (var i = 0; i < selected.length; i++) {
+        if (pathsMatch(nativePath, selected[i])) {
+          matched.push(packs[j])
+          break
+        }
+      }
     }
     if (matched.length > 0) return matched
   }
@@ -255,6 +271,8 @@ if (typeof module !== "undefined") {
     batteryFraction: batteryFraction,
     laptopDevices: laptopDevices,
     isLivePack: isLivePack,
+    packPathKey: packPathKey,
+    pathsMatch: pathsMatch,
     selectedPackPaths: selectedPackPaths,
     liveLaptopDevices: liveLaptopDevices,
     packsEnergyFraction: packsEnergyFraction,

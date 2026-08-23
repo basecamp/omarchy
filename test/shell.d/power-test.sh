@@ -43,6 +43,16 @@ assertDeepEqual(
   ['BAT0', 'BAT1'],
   'power follows CLI-selected pack ids when voltage is missing'
 )
+assertEqual(power.packPathKey('/sys/class/power_supply/BAT1'), 'BAT1', 'power pack path key is the native-path basename')
+assert(power.pathsMatch('/sys/class/power_supply/BAT1', 'BAT1'), 'power matches a sysfs nativePath to a CLI BAT id')
+assert(!power.pathsMatch('BAT0', 'BAT1'), 'power does not match distinct pack ids')
+const deadSys = Object.assign({}, dead, { nativePath: '/sys/class/power_supply/BAT0' })
+const liveSys = Object.assign({}, live, { nativePath: '/sys/class/power_supply/BAT1' })
+assertDeepEqual(
+  power.liveLaptopDevices([deadSys, liveSys], { 'pack.0.path': 'BAT1' }).map((p) => p.nativePath),
+  ['/sys/class/power_supply/BAT1'],
+  'power matches CLI pack ids to UPower nativePath suffixes'
+)
 assertEqual(power.combinedEnergyFraction(packs), 20.43 / 20.94, 'power fill level follows live energy, not DisplayDevice')
 assert(!power.chargeThresholdActiveForPacks(packs, false, states, { state: 'holding' }), 'power does not hold while a live pack is charging')
 assertEqual(power.viewDevice(packs, display, states).percentage, 20.43 / 20.94, 'power icon uses live energy fraction')
