@@ -73,13 +73,14 @@ Item {
     enabled: root.opened
     function onActiveToplevelChanged() {
       var next = ToplevelManager.activeToplevel
+      // Opening Start can null the toplevel. Clicking the same window
+      // later must still close Start; comparing to focusedWhenOpened
+      // left the card mapped on click-through.
       if (!next)
         return
-      if (next !== root.focusedWhenOpened) {
-        if (!root.launchingFromStart)
-          root.raiseUnderCursorOnClose = true
-        root.close()
-      }
+      if (!root.launchingFromStart)
+        root.raiseUnderCursorOnClose = true
+      root.close()
     }
   }
 

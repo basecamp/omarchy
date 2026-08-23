@@ -303,3 +303,59 @@ hl.on("hyprland.start", function()
   add_hyprbars_buttons()
   load_omarchy_minimize()
 end)
+
+-- Start is a 440x560 card. Click-through onto the already-focused window
+-- does not change active toplevel, so QML cannot see it. Bind the click
+-- only while omarchy-start is mapped, skip the card and Start orb, and
+-- pass the event so the window underneath still raises.
+local start_clickthrough_bind = nil
+
+local function start_click_is_on_shell_chrome(pos)
+  if not pos or pos.x == nil or pos.y == nil then
+    return true
+  end
+  local mh = 1080
+  local ok, mons = pcall(function()
+    return hl.get_monitors()
+  end)
+  if ok and type(mons) == "table" then
+    for _, mon in pairs(mons) do
+      if type(mon) == "table" and mon.height then
+        if mon.focused or mon.focus then
+          mh = mon.height
+          break
+        end
+        mh = mon.height
+      end
+    end
+  end
+  if pos.y >= mh - 48 then
+    return true
+  end
+  local card_y = mh - 48 - 560
+  if pos.x >= 8 and pos.x < 448 and pos.y >= card_y and pos.y < mh - 48 then
+    return true
+  end
+  return false
+end
+
+hl.on("layer.opened", function(layer)
+  if not layer or layer.namespace ~= "omarchy-start" or start_clickthrough_bind then
+    return
+  end
+  start_clickthrough_bind = hl.bind("mouse:272", function()
+    local pos = hl.get_cursor_pos()
+    if start_click_is_on_shell_chrome(pos) then
+      return
+    end
+    hl.dispatch(hl.dsp.exec_cmd("omarchy-shell shell dismissOutside"))
+  end, { description = "Dismiss Start click-through", mouse = true, non_consuming = true })
+end)
+
+hl.on("layer.closed", function(layer)
+  if not layer or layer.namespace ~= "omarchy-start" or not start_clickthrough_bind then
+    return
+  end
+  start_clickthrough_bind:unbind()
+  start_clickthrough_bind = nil
+end)

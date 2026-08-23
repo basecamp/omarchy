@@ -52,6 +52,21 @@ grep -Fq 'onActiveToplevelChanged' "$ROOT/shell/plugins/ultimate-start/Start.qml
   || fail "Start closes when another window takes focus so the click already hit that window"
 grep -Fq 'if (!next)' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
   || fail "Start must not treat layer-shell keyboard focus as a window change"
+if grep -Fq 'next !== root.focusedWhenOpened' "$ROOT/shell/plugins/ultimate-start/Start.qml"; then
+  fail "Start must close when the previously focused window is clicked again"
+fi
+if grep -Fq 'WlrKeyboardFocus.Exclusive' "$ROOT/shell/plugins/ultimate-start/Start.qml"; then
+  fail "Exclusive Start keyboard focus swallows wallpaper clicks"
+fi
+grep -Fq 'omarchy-start' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "Desktop Mode tracks the Start layer for click-through"
+grep -Fq 'Dismiss Start click-through' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "Desktop Mode binds a pass-through click while Start is mapped"
+grep -Fq 'non_consuming = true' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "Start click-through bind must be non_consuming so the orb and the window still get the click"
+if grep -Fq 'o.bind("mouse:272"' "$ROOT/default/hypr/bindings/desktop.lua"; then
+  fail "global left-click must not bind dismissOutside; that bind eats CSD min/max/close"
+fi
 grep -Fq 'TransientSurfaceCoordinator' "$ROOT/shell/shell.qml" \
   || fail "shell owns a shared transient coordinator"
 grep -Fq 'transientCoordinator.dismiss' "$ROOT/shell/plugins/background/Background.qml" \
