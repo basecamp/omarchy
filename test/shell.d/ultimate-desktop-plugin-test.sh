@@ -109,6 +109,10 @@ pass "taskbar, Start, and switcher entry points exist"
 [[ -f $ROOT/default/hypr/desktop-windows.lua ]] || fail "desktop window rules exist"
 grep -Fq 'resize_on_border = true' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "desktop windowing enables resize-on-border"
+grep -Fq 'extend_border_grab_area = 4' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "desktop overlapping floats use a Windows-sized resize grab, not a 15px click sink"
+grep -Fq 'follow_mouse = 0' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "Desktop Mode is click-to-focus; follow_mouse 1 leaves background windows behind"
 grep -Fq 'gaps_out = 0' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "desktop windowing zeros tiling gaps so snap fills the work area"
 grep -Fq 'size = { 880, 560 }' "$ROOT/default/hypr/desktop-windows.lua" \
@@ -123,6 +127,12 @@ grep -Fq 'load_omarchy_minimize' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "omarchy-minimize plugin source exists"
 grep -Fq 'setHidden' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp" \
   || fail "omarchy-minimize calls CWindow::setHidden"
+grep -Fq 'requestsMinimize' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp" \
+  || fail "omarchy-minimize honors xdg/X11 CSD minimize requests"
+grep -Fq 'sendWmCapabilities' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp" \
+  || fail "omarchy-minimize advertises xdg min/max so Chromium draws CSD buttons"
+grep -Fq 'm_events.window.open' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp" \
+  || fail "omarchy-minimize watches mapped windows for CSD minimize"
 if grep -Fq 'special:minimized' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp"; then
   fail "omarchy-minimize must not park on special:minimized"
 fi
@@ -202,6 +212,13 @@ grep -Fq 'hyprbarsSnapInset' "$ROOT/test/acceptance.d/windows-native-test.sh" \
   || fail "toolkit snap proof uses WindowModel inset, not a hard-coded Chromium +32"
 grep -Fq 'm_bDraggingThis || inputIsValid()' "$ROOT/default/hypr/plugins/hyprbars/barDeco.cpp" \
   || fail "hyprbars drag end still fires when the pointer is off the title bar"
+if grep -Fq 'm_pWindow != window' "$ROOT/default/hypr/plugins/hyprbars/barDeco.cpp"; then
+  fail "focused hyprbars must not eat clicks that hit another window"
+fi
+grep -Fq 'WINDOWATCURSOR != m_pWindow' "$ROOT/default/hypr/plugins/hyprbars/barDeco.cpp" \
+  || fail "hyprbars only handles the window under the cursor"
+grep -Fq 'm_bDraggingThis || !inputIsValid()' "$ROOT/default/hypr/plugins/hyprbars/barDeco.cpp" \
+  || fail "hyprbars maximize hover must not fire for another window's title-bar screen rect"
 grep -Fq 'windows[(activeIndex + 1)' "$ROOT/shell/plugins/ultimate-taskbar/TaskButton.qml" \
   || fail "grouped taskbar click cycles windows"
 grep -Fq 'modelData.minimized' "$ROOT/shell/plugins/ultimate-taskbar/TaskButton.qml" \
@@ -316,6 +333,8 @@ grep -Fq 'cycleSnapshot' "$ROOT/test/acceptance.d/hyprbars-pointer-proof.py" \
   || fail "pointer proof aims at the live highlighted Alt+Tab card, not a two-foot layout"
 grep -Fq 'unfocused × closed the focused window' "$ROOT/test/acceptance.d/hyprbars-pointer-proof.py" \
   || fail "pointer proof clicks × on an unfocused hyprbars and keeps the focused foot"
+grep -Fq 'click on the exposed rear window raises it' "$ROOT/test/acceptance.d/hyprbars-pointer-proof.py" \
+  || fail "pointer proof clicks the exposed part of a background window"
 grep -Fq 'commitCycle' "$ROOT/test/acceptance.d/windows-native-test.sh" \
   || fail "Alt+Tab harness proves address-change with commitCycle, not only overlay summon"
 grep -Fq 'WlrKeyboardFocus.None' "$ROOT/shell/plugins/ultimate-task-switcher/Switcher.qml" \

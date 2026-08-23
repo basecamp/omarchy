@@ -115,10 +115,11 @@ bool CHyprBar::inputIsValid() {
 
     const auto              WINDOWATCURSOR = hitTester.windowAt(MOUSE, Desktop::View::RESERVED_EXTENTS | Desktop::View::INPUT_EXTENTS | Desktop::View::ALLOW_FLOATING);
 
-    auto                    focusState = Desktop::focusState();
-    auto                    window     = focusState->window();
-
-    if (WINDOWATCURSOR != m_pWindow && m_pWindow != window)
+    // Only the window under the cursor owns this bar. The focused-window
+    // exception stole clicks that hit another window wherever they landed in
+    // the focused title-bar screen rect — overlapping floats, Chrome CSD
+    // buttons, and click-to-raise.
+    if (WINDOWATCURSOR != m_pWindow)
         return false;
 
     PHLLS    foundSurface = nullptr;
@@ -302,7 +303,7 @@ void CHyprBar::handleMovement() {
 }
 
 void CHyprBar::handleButtonHover() {
-    if (!validMapped(m_pWindow) || m_bDraggingThis)
+    if (!validMapped(m_pWindow) || m_bDraggingThis || !inputIsValid())
         return;
 
     const auto BARPADDING       = g_pGlobalState->config.barPadding->value();

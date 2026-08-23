@@ -417,6 +417,28 @@ def main() -> int:
     other = next((c for c in feet() if c["address"] != addr), None)
     if not other:
       raise ProofError("need a second foot to prove unfocused caption close")
+    as_user(["omarchy-shell", "window", "moveTo", addr, "80", "80"], wait=True, timeout=5)
+    as_user(["omarchy-shell", "window", "resizeTo", addr, "720", "480"], wait=True, timeout=5)
+    as_user(["omarchy-shell", "window", "moveTo", other["address"], "280", "160"], wait=True, timeout=5)
+    as_user(["omarchy-shell", "window", "resizeTo", other["address"], "720", "480"], wait=True, timeout=5)
+    as_user(["omarchy-shell", "window", "focus", addr], wait=True, timeout=5)
+    time.sleep(0.35)
+    behind = next((c for c in feet() if c["address"] == other["address"]), None)
+    if not behind:
+      raise ProofError("rear foot vanished before click-to-raise")
+    bx, by = behind["at"]
+    bw, bh = behind["size"]
+    # addr is 80–800; the rear foot's exposed strip is x>=800.
+    raisex, raisey = bx + bw - 48, by + max(64, bh // 2)
+    report["click_to_raise_aim"] = [raisex, raisey]
+    report["click_to_raise_target"] = behind["address"]
+    pointer.click(raisex, raisey)
+    def raised():
+      active = json.loads(hypr("-j", "activewindow") or "{}")
+      return active.get("address") == other["address"]
+    wait_until("click on the exposed rear window raises it", 8, raised)
+    report["click_to_raise"] = "raised rear foot"
+    grim("/tmp/w0-click-to-raise.png")
     as_user(["omarchy-shell", "window", "moveTo", addr, "40", "40"], wait=True, timeout=5)
     as_user(["omarchy-shell", "window", "resizeTo", addr, "640", "400"], wait=True, timeout=5)
     as_user(["omarchy-shell", "window", "moveTo", other["address"], "1120", "80"], wait=True, timeout=5)

@@ -68,6 +68,9 @@ o.window({ tag = "default-opacity" }, { opacity = "0.985 0.96" })
 hl.config({
   general = {
     resize_on_border = true,
+    -- Windows resizes on a visible ~4px border. The Hyprland default of 15px
+    -- eats clicks meant for the window behind an overlapping float.
+    extend_border_grab_area = 4,
     gaps_in = 0,
     gaps_out = 0,
     border_size = 1,
@@ -75,6 +78,12 @@ hl.config({
       active_border = "rgba(6a6a6aff)",
       inactive_border = "rgba(3a3a3aff)",
     },
+  },
+  -- Windows muscle memory is click-to-focus and click-to-raise. follow_mouse
+  -- 1 focuses the window under the cursor without raising it, so a click on
+  -- the exposed part of a background window does not bring it forward.
+  input = {
+    follow_mouse = 0,
   },
   group = {
     col = {
@@ -167,13 +176,14 @@ local function load_hyprbars()
     return true
   end
   local omarchy = os.getenv("OMARCHY_PATH") or ""
-  local candidates = {
-    "/usr/lib/hyprland-plugins/hyprbars.so",
-    "/usr/local/lib/hyprland-plugins/hyprbars.so",
-  }
+  -- Prefer a checkout-built .so so `omarchy dev link` + make takes effect
+  -- without waiting on sudo install into /usr/lib/hyprland-plugins.
+  local candidates = {}
   if omarchy ~= "" then
     candidates[#candidates + 1] = omarchy .. "/default/hypr/plugins/hyprbars/hyprbars.so"
   end
+  candidates[#candidates + 1] = "/usr/lib/hyprland-plugins/hyprbars.so"
+  candidates[#candidates + 1] = "/usr/local/lib/hyprland-plugins/hyprbars.so"
   local path = first_existing(candidates)
   if not path then
     return false
@@ -191,13 +201,12 @@ local function load_omarchy_minimize()
     return true
   end
   local omarchy = os.getenv("OMARCHY_PATH") or ""
-  local candidates = {
-    "/usr/lib/hyprland-plugins/omarchy-minimize.so",
-    "/usr/local/lib/hyprland-plugins/omarchy-minimize.so",
-  }
+  local candidates = {}
   if omarchy ~= "" then
     candidates[#candidates + 1] = omarchy .. "/default/hypr/plugins/omarchy-minimize/omarchy-minimize.so"
   end
+  candidates[#candidates + 1] = "/usr/lib/hyprland-plugins/omarchy-minimize.so"
+  candidates[#candidates + 1] = "/usr/local/lib/hyprland-plugins/omarchy-minimize.so"
   local path = first_existing(candidates)
   if not path then
     return false
