@@ -17,6 +17,12 @@ hl.env("ELECTRON_OZONE_PLATFORM_HINT", "wayland")
 hl.env("OZONE_PLATFORM", "wayland")
 hl.env("XDG_SESSION_TYPE", "wayland")
 
+-- Keep Firefox's media wakelock on the compositor's idle-inhibit protocol.
+-- Auto-detection prefers the Inhibit portal, which xdg-desktop-portal-gtk answers
+-- successfully while inhibiting nothing under Hyprland, so video playback never
+-- holds off the screensaver or lock.
+hl.env("MOZ_WAKE_LOCK_TYPE", "WaylandIdleInhibit")
+
 -- Allow better support for screen sharing (Google Meet, Discord, etc).
 hl.env("XDG_CURRENT_DESKTOP", "Hyprland")
 hl.env("XDG_SESSION_DESKTOP", "Hyprland")
