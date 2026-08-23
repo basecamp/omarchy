@@ -234,6 +234,10 @@ QtObject {
     return null
   }
 
+  function _hyprbarsInset(address) {
+    return WindowModel.hyprbarsSnapInset(root._record(address) || root._clientIpc(address) || {})
+  }
+
   function _clientRect(address) {
     var ipc = root._clientIpc(address)
     if (!ipc || !ipc.at || !ipc.size || Number(ipc.size[0]) <= 0 || Number(ipc.size[1]) <= 0) {
@@ -254,7 +258,7 @@ QtObject {
     var rec = root._clientRect(address)
     if (!rec || rec.fullscreen || rec.minimized) return
     var geom = root._monitorGeom(address)
-    if (geom.width && WindowModel.isSnapped(rec, geom, 8, 32)) return
+    if (geom.width && WindowModel.isSnapped(rec, geom, 8, root._hyprbarsInset(address))) return
     var next = root._copyMap(root._normalBounds)
     next[address] = { x: rec.x, y: rec.y, width: rec.width, height: rec.height }
     root._normalBounds = next
@@ -436,7 +440,7 @@ QtObject {
     else {
       var rec = root._clientRect(target) || root._record(target)
       var geom = root._monitorGeom(target)
-      if (rec && geom.width) kind = WindowModel.snapKind(rec, geom, 8, 32)
+      if (rec && geom.width) kind = WindowModel.snapKind(rec, geom, 8, root._hyprbarsInset(target))
     }
     root._applySnapKind(target, WindowModel.nextSnap(kind, dir))
   }
@@ -464,7 +468,7 @@ QtObject {
     // compositor maximize (no-op when the window is already normal).
     var placed = root._placedKind[target]
     var rec = root._clientRect(target) || root._record(target)
-    if (placed === "max" || placed === "full" || root._isPlacedSnap(placed) || (rec && WindowModel.isSnapped(rec, geom, 8, 32))) {
+    if (placed === "max" || placed === "full" || root._isPlacedSnap(placed) || (rec && WindowModel.isSnapped(rec, geom, 8, root._hyprbarsInset(target)))) {
       root.restoreNormal(target)
       return
     }
@@ -494,7 +498,7 @@ QtObject {
         y: Number(rect.y || 0),
         width: Number(rect.width || 0),
         height: Number(rect.height || 0)
-      }], geom, 32)
+      }], geom, root._hyprbarsInset(list[i]))
       if (captured.windows && captured.windows[0]) recs.push(captured.windows[0])
     }
     root.savedLayout = { windows: recs }
@@ -539,9 +543,9 @@ QtObject {
     if (root.isMaximized(target)) root.unmaximize(target)
     root._rememberNormal(target)
     // hyprbars draws above hyprctl's client box even with bar_part_of_window.
-    // Inset the client top by bar_height (32, matching desktop-windows.lua) so
-    // the title bar stays in the work area instead of clipping off-screen.
-    var rect = WindowModel.snapRect(geom, direction, 32)
+    // SSD clients inset 32px (bar_height). CSD clients use hyprbars:no_bar, so
+    // the fused caption is already inside the client box.
+    var rect = WindowModel.snapRect(geom, direction, root._hyprbarsInset(target))
     var win = root._luaWindow(target)
     root._setPlacedKind(target, direction)
     root._dispatchLua("hl.dsp.window.float({ action = \"enable\", " + win + " })")

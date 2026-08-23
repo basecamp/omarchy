@@ -23,6 +23,12 @@ o.window(
 
 require("default.hypr.apps")
 
+-- CSD clients already draw a fused caption (Chromium/Firefox tabs+buttons, Cursor).
+-- hyprbars on those is a second OS title bar. Keep hyprbars on foot/GTK/Qt SSD.
+o.window({ tag = "chromium-based-browser" }, { float = true, ["hyprbars:no_bar"] = true })
+o.window({ tag = "firefox-based-browser" }, { float = true, ["hyprbars:no_bar"] = true })
+o.window("^[Cc]ursor$", { ["hyprbars:no_bar"] = true })
+
 o.window({ tag = "default-opacity" }, { opacity = "0.985 0.96" })
 
 hl.config({

@@ -9,6 +9,22 @@ function windowAppId(win) {
   return normalizeId(win.appId || win["class"] || "")
 }
 
+// Keep in sync with hyprbars:no_bar in default/hypr/desktop-windows.lua.
+// Those clients draw Wayland CSD, so snap must not reserve 32px for hyprbars.
+function usesWaylandCsd(win) {
+  var cls = windowAppId(win)
+  if (!cls) return false
+  if (/((google-)?chrom(e|ium)|brave-browser|microsoft-edge|vivaldi-stable|helium)/.test(cls)) return true
+  if (/(firefox|librewolf)/.test(cls)) return true
+  if (cls === "zen" || cls.indexOf("zen-") === 0) return true
+  if (cls === "cursor") return true
+  return false
+}
+
+function hyprbarsSnapInset(win) {
+  return usesWaylandCsd(win) ? 0 : 32
+}
+
 function windowMatchesPin(win, pin) {
   var app = windowAppId(win)
   var pinId = normalizeId(pin && (pin.id || pin.desktopId))
@@ -493,6 +509,8 @@ if (typeof module !== "undefined") {
   module.exports = {
     normalizeId: normalizeId,
     windowAppId: windowAppId,
+    usesWaylandCsd: usesWaylandCsd,
+    hyprbarsSnapInset: hyprbarsSnapInset,
     windowMatchesPin: windowMatchesPin,
     parsePins: parsePins,
     serializePins: serializePins,

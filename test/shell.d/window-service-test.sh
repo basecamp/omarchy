@@ -67,7 +67,11 @@ if awk '
 ' "$ws"; then
   fail "restore must not assemble bash -c around a raw window address"
 fi
-grep -Fq 'WindowModel.snapRect(geom, direction, 32)' "$ws" || fail "desktop snap insets 32px for hyprbars above the client box"
+grep -Fq 'function _hyprbarsInset' "$ws" || fail "snap inset follows hyprbars:no_bar CSD clients"
+grep -Fq 'WindowModel.hyprbarsSnapInset' "$ws" || fail "desktop snap asks WindowModel for hyprbars inset"
+if grep -Fq 'WindowModel.snapRect(geom, direction, 32)' "$ws"; then
+  fail "CSD clients must not always reserve 32px for hyprbars"
+fi
 grep -Fq 'function moveTo' "$ws" || fail "caption drag uses WindowService.moveTo"
 grep -Fq 'function _windowRecord' "$ws" || fail "taskbar windows are Hyprland records with addresses"
 pass "snap and maximize use addressed Lua dispatchers through Hyprland.dispatch"
@@ -179,6 +183,10 @@ const m = requireFromRoot('shell/services/WindowModel.js')
 assertEqual(m.normalizeId('Firefox.desktop'), 'firefox', 'normalizeId strips .desktop and case')
 assertEqual(m.windowAppId({ appId: 'org.mozilla.firefox' }), 'org.mozilla.firefox', 'windowAppId reads appId')
 assertEqual(m.windowAppId({ class: 'foot' }), 'foot', 'windowAppId reads Hyprland class')
+assertEqual(m.hyprbarsSnapInset({ class: 'foot' }), 32, 'SSD clients reserve hyprbars height')
+assertEqual(m.hyprbarsSnapInset({ class: 'chromium' }), 0, 'Chromium CSD does not reserve hyprbars')
+assertEqual(m.hyprbarsSnapInset({ class: 'cursor' }), 0, 'Cursor CSD does not reserve hyprbars')
+assertEqual(m.usesWaylandCsd({ class: 'zenity' }), false, 'zenity is not the Zen browser')
 
 const pins = m.withPin([], { desktopId: 'firefox', name: 'Firefox', icon: 'firefox' })
 assertEqual(pins.length, 1, 'withPin adds a pin')

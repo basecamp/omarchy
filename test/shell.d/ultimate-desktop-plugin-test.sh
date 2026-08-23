@@ -183,8 +183,15 @@ fi
 if grep -Fq 'Tokens.surface.glass' "$ROOT/shell/plugins/ultimate-taskbar/Taskbar.qml"; then
   fail "taskbar must not fill with theme glass (Tokyo Night blue)"
 fi
+if grep -Fq 'disable-features=WaylandWindowDecorations' "$ROOT/config/chromium-flags.conf"; then
+  fail "Chromium must keep Wayland CSD so hyprbars is not a second title bar"
+fi
 grep -Fq 'WaylandWindowDecorations' "$ROOT/config/chromium-flags.conf" \
-  || fail "Chromium must use compositor SSD instead of a second Wayland title bar"
+  || fail "Chromium must enable Wayland window decorations (fused tab/caption chrome)"
+grep -Fq 'hyprbars:no_bar' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "Desktop Mode hides hyprbars on CSD browsers and Cursor"
+grep -Fq '^[Cc]ursor$' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "Desktop Mode hides hyprbars on Cursor CSD"
 jq -e '.features.taskView == true' "$ROOT/default/ultimate/profiles/desktop.json" >/dev/null \
   || fail "desktop profile enables Task View"
 grep -Fq 'omarchy-snap-chooser' "$ROOT/shell/plugins/ultimate-snap-chooser/Chooser.qml" \
