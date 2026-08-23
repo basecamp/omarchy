@@ -14,7 +14,7 @@ Item {
   readonly property string stateHome: home + "/.local/state"
   readonly property string currentBackgroundLink: stateHome + "/omarchy/current/background"
   readonly property real lowMemoryLimitKiB: 4 * 1024 * 1024
-  readonly property real lowMemoryDownscaleFactor: 16
+  readonly property real lowMemoryDownscaleFactor: 1
 
   property string currentBackground: ""
   property string displayedBackground: ""

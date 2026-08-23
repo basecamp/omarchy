@@ -21,7 +21,7 @@ assert(
 
 assert(
   backgroundQml.includes('lowMemoryLimitKiB: 4 * 1024 * 1024') &&
-    backgroundQml.includes('lowMemoryDownscaleFactor: 16') &&
+    backgroundQml.includes('lowMemoryDownscaleFactor: 1') &&
     backgroundQml.includes('path: "/proc/meminfo"') &&
     backgroundQml.includes('MemAvailable:') &&
     backgroundQml.includes('availableMemoryKiB < lowMemoryLimitKiB'),

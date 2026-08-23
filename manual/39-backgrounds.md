@@ -10,8 +10,7 @@ You can find a huge collection of cool curated backgrounds on https://github.com
 
 On systems with less than 4 GiB of available memory, Omarchy automatically
 decodes wallpapers at a bounded size derived from the physical display size
-instead of keeping their full source resolution in memory. The current
-low-memory test factor is 16, so a 1366x768 display requests an approximately
-85x48 source image. The behavior is automatic and requires no setting; when
-more memory is available, wallpapers keep their current full-resolution
-behavior.
+instead of keeping their full source resolution in memory. The low-memory
+factor is 1, so a 1366x768 display requests a 1366x768 source image. The
+behavior is automatic and requires no setting; when more memory is available,
+wallpapers keep their current full-resolution behavior.
