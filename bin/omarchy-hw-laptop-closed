@@ -3,6 +3,18 @@
 # omarchy:summary=Returns true when the laptop lid is closed
 # omarchy:hidden=true
 
+# logind reads the lid through evdev's SW_LID, so it answers on hardware that
+# exposes no ACPI lid button at all. Apple Silicon has no /proc/acpi, where the
+# glob below matches nothing and reports the lid open forever.
+lid=$(busctl get-property org.freedesktop.login1 /org/freedesktop/login1 \
+  org.freedesktop.login1.Manager LidClosed 2>/dev/null)
+
+if [[ $lid == "b true" ]]; then
+  exit 0
+elif [[ $lid == "b false" ]]; then
+  exit 1
+fi
+
 for state in /proc/acpi/button/lid/*/state; do
   [[ -r $state ]] || continue
   [[ $(< "$state") == *"closed"* ]] && exit 0
