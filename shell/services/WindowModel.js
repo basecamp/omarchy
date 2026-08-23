@@ -476,8 +476,13 @@ function matchLayout(windows, layout) {
     entry = entries[i]
     if (!entry) continue
     found = null
-    if (entry.address) found = takeBy(function(win) { return String(win.address) === String(entry.address) })
-    if (!found) {
+    if (entry.address) {
+      found = takeBy(function(win) { return String(win.address) === String(entry.address) })
+      // A closed address must not steal another live window of the same app.
+      // That turned a second foot's right snap into the leftover float of a
+      // previous test's ghost client.
+      if (!found) continue
+    } else {
       found = takeBy(function(win) {
         return windowAppId(win) === normalizeId(entry.appId) || windowAppId(win) === windowAppId(entry)
       })

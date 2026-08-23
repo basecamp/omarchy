@@ -228,7 +228,7 @@ grep -Fq 'XDG_TOPLEVEL_STATE_TILED_LEFT' "$ROOT/default/hypr/plugins/omarchy-min
   || fail "CSD configure must drop Hyprland fake tiled-on-all-sides or Chrome hides min/max"
 grep -Fq 'ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp" \
   || fail "Hyprland SSD decoration replies must be overridden so Chrome draws min/max/close"
-grep -Eq 'chrom' "$ROOT/default/ultimate/csd-clients.json" \
+grep -Fq '[cC]hrom' "$ROOT/default/ultimate/csd-clients.json" \
   || fail "Chrome stays on the CSD list; hyprbars on Chrome is a second title bar"
 grep -Fq 'm_events.window.open' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp" \
   || fail "omarchy-minimize watches mapped windows for CSD minimize"
@@ -487,6 +487,10 @@ grep -Fq 'click on the exposed rear window raises it' "$ROOT/test/acceptance.d/h
   || fail "pointer proof clicks the exposed part of a background window"
 grep -Fq 'commitCycle' "$ROOT/test/acceptance.d/windows-native-test.sh" \
   || fail "Alt+Tab harness proves address-change with commitCycle, not only overlay summon"
+grep -Fq 'focus_is_not' "$ROOT/test/acceptance.d/windows-native-test.sh" \
+  || fail "Alt+Tab harness waits for commitCycle to change focus, not only overlay close"
+grep -Fq 'callIfLoaded("omarchy.ultimate-task-switcher", "pick"' "$ROOT/shell/shell.qml" \
+  || fail "IPC commitCycle uses switcher pick so overlay unmap cannot restore the previous window"
 grep -Fq 'WlrKeyboardFocus.None' "$ROOT/shell/plugins/ultimate-task-switcher/Switcher.qml" \
   || fail "task switcher must not steal keyboard focus; unmap would restore the previous window"
 grep -Fq 'pendingActivate' "$ROOT/shell/plugins/ultimate-task-switcher/Switcher.qml" \

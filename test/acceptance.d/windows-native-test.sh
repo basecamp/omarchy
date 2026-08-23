@@ -103,6 +103,13 @@ window_is_minimized() {
   ' >/dev/null
 }
 
+focus_is_not() {
+  local before="$1"
+  local now
+  now=$(hyprctl -j activewindow | jq -r .address)
+  [[ -n $now && $now != null && $now != "$before" ]]
+}
+
 focused_monitor_json() {
   hyprctl -j monitors | jq -c '.[] | select(.focused == true)'
 }
@@ -299,10 +306,18 @@ for task in "${tasks[@]}"; do
     omarchy-shell window cycleNext >/dev/null
     wait_until "task switcher overlay is visible" 10 layer_present "omarchy-task-switcher"
     screenshot "success-alt-tab"
+    snap=$(omarchy-shell window cycleSnapshot 2>/dev/null || true)
     omarchy-shell window commitCycle >/dev/null
     wait_until "task switcher overlay closes" 10 layer_absent "omarchy-task-switcher"
-    after=$(hyprctl -j activewindow | jq -r .address)
-    [[ $after != "$before" ]] || fail "use Alt+Tab" "commitCycle kept focus on $before; expected the other foot"
+    after=""
+    for ((i = 0; i < 25; i++)); do
+      after=$(hyprctl -j activewindow | jq -r .address)
+      if [[ -n $after && $after != null && $after != "$before" ]]; then
+        break
+      fi
+      sleep 0.2
+    done
+    [[ $after != "$before" ]] || fail "use Alt+Tab" "commitCycle kept focus on $before snap=$snap after=$after clients=$(hyprctl -j clients | jq -c '[.[] | {address,class,workspace,hidden}]')"
     screenshot "success-alt-tab-commit"
     pass "use Alt+Tab"
     ;;

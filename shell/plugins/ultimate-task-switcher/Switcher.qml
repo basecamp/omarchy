@@ -23,7 +23,7 @@ Item {
 
   Timer {
     id: activateAfterHide
-    interval: 16
+    interval: 48
     repeat: false
     onTriggered: {
       var target = root.pendingActivate

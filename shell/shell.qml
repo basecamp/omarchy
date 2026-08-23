@@ -1263,6 +1263,12 @@ ShellRoot {
       var address = ""
       if (svc && svc.cycling)
         address = String(svc.cycleList[svc.cycleIndex] || "")
+      if (!address && svc)
+        address = String(svc._lastCycleAddress || "")
+      // Card pick waits for overlay unmap. Immediate activate is undone when
+      // the layer closes and Hyprland restores the previous client.
+      if (address && shell.callIfLoaded("omarchy.ultimate-task-switcher", "pick", address) !== "unknown")
+        return shell.windowIpc({ changed: true, error: null })
       shell.hide("omarchy.ultimate-task-switcher")
       if (svc) {
         svc.cancelCycle()

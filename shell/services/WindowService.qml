@@ -32,6 +32,12 @@ QtObject {
   property bool cycling: false
   property int cycleIndex: 0
   property var cycleList: []
+  // Hyprland.toplevels.activated lags the compositor after focus(). Alt+Tab
+  // immediately after a focus verb must not treat the previous window as current.
+  property string _focusedAddress: ""
+  property double _focusedAt: 0
+  property string _lastCycleAddress: ""
+  property double _layoutSavedAt: 0
   property var pins: []
   property var shippedPins: []
   property bool userPinsMissing: false
@@ -533,13 +539,25 @@ QtObject {
     return null
   }
 
+  function _noteFocus(address) {
+    var target = root._canonAddr(address)
+    if (!target) return
+    root._focusedAddress = target
+    root._focusedAt = Date.now()
+  }
+
   function _activeAddress() {
+    var hinted = root._focusedAddress
+    // focus() updates this immediately. The activated flag can still name
+    // the previous client for a few hundred milliseconds.
+    if (hinted && (Date.now() - root._focusedAt) < 400)
+      return hinted
     var hypr = root._hyprlandToplevels()
     for (var i = 0; i < hypr.length; i++) {
       if (hypr[i] && hypr[i].activated && hypr[i].address)
         return root._canonAddr(hypr[i].address)
     }
-    return ""
+    return hinted
   }
 
   function _addresses() {
@@ -691,6 +709,7 @@ QtObject {
     var target = root._addr(address)
     if (!target) return root._finish("focus", address, root._err("No window", "There is no window to focus.", ""))
     root._dispatchLua("hl.dsp.focus({ " + root._luaWindow(target) + " })")
+    root._noteFocus(target)
     return root._finish("focus", target, root._ok())
   }
 
@@ -815,6 +834,7 @@ QtObject {
     if (!target) return root._finish("activate", address, root._err("No window", "There is no window to activate.", ""))
     var rec = root._record(target)
     if ((rec && rec.minimized) || root._minimized[target]) root.restore(target)
+    root._noteFocus(target)
     root._dispatchLua("hl.dsp.window.bring_to_top({ " + root._luaWindow(target) + " })")
     root.focus(target)
     return root._finish("activate", target, root._ok())
@@ -970,10 +990,43 @@ QtObject {
     return root.unmaximize(target)
   }
 
+  function _compositorAddresses() {
+    var clients = root.clientsIpc || []
+    var out = []
+    var seen = ({})
+    var i
+    var addr
+    for (i = 0; i < clients.length; i++) {
+      if (!clients[i] || !clients[i].address) continue
+      if (WindowModel.isSpecialWorkspace(clients[i].workspace || {})) continue
+      addr = root._canonAddr(clients[i].address)
+      if (!addr || seen[addr]) continue
+      seen[addr] = true
+      out.push(addr)
+    }
+    if (out.length) return out
+    return root._addresses()
+  }
+
+  function _clientRecords() {
+    var clients = root.clientsIpc || []
+    var out = []
+    var i
+    var rec
+    for (i = 0; i < clients.length; i++) {
+      if (!clients[i] || !clients[i].address) continue
+      if (WindowModel.isSpecialWorkspace(clients[i].workspace || {})) continue
+      rec = root._recordFromClient(clients[i])
+      if (rec && rec.address) out.push(rec)
+    }
+    if (out.length) return out
+    return root.windows || []
+  }
+
   function saveLayout() {
     Hyprland.refreshToplevels()
     var recs = []
-    var list = root._addresses()
+    var list = root._compositorAddresses()
     var i
     var rec
     var rect
@@ -997,12 +1050,13 @@ QtObject {
       if (captured.windows && captured.windows[0]) recs.push(captured.windows[0])
     }
     root.savedLayout = { windows: recs }
+    root._layoutSavedAt = Date.now()
     root.layoutFile.setText(WindowModel.serializeLayout(root.savedLayout))
     return root._finish("saveLayout", "", root._ok(), { verb: "restoreLayout" })
   }
 
   function restoreLayout() {
-    var matches = WindowModel.matchLayout(root.windows, root.savedLayout)
+    var matches = WindowModel.matchLayout(root._clientRecords(), root.savedLayout)
     var i
     var entry
     for (i = 0; i < matches.length; i++) {
@@ -1064,48 +1118,73 @@ QtObject {
   }
 
   function _addressesOnDesktop(desktopId) {
-    var wins = WindowModel.windowsOnDesktop(root.windows, desktopId)
-    var list = []
+    var id = Number(desktopId)
+    var seen = ({})
+    var out = []
     var i
-    for (i = 0; i < wins.length; i++) list.push(wins[i].address)
-    return list
+    var addr
+    var c
+    var ws
+    var clients = root.clientsIpc || []
+    // Quickshell toplevels keep closed feet. Alt+Tab must not highlight a
+    // ghost address; commitCycle then focuses nothing and leaves the current
+    // window. hyprctl clients is the live set.
+    for (i = 0; i < clients.length; i++) {
+      c = clients[i]
+      if (!c || !c.address || c.hidden === true) continue
+      ws = c.workspace || {}
+      if (WindowModel.isSpecialWorkspace(ws)) continue
+      if (id && Number(ws.id) !== id) continue
+      addr = root._canonAddr(c.address)
+      if (!addr || seen[addr]) continue
+      seen[addr] = true
+      out.push(addr)
+    }
+    if (out.length) return out
+    var wins = WindowModel.windowsOnDesktop(root.windows, desktopId)
+    for (i = 0; i < wins.length; i++) {
+      if (wins[i] && wins[i].address) out.push(wins[i].address)
+    }
+    return out
+  }
+
+  function _markCycle(list, index) {
+    root.cycleList = list
+    root.cycleIndex = index
+    root.cycling = true
+    root._lastCycleAddress = list[index] || ""
   }
 
   function cycleNext() {
+    Hyprland.refreshToplevels()
     var list = root._addressesOnDesktop(root.activeDesktopId)
     if (list.length === 0) return root._finish("cycleNext", "", root._noop())
     if (!root.cycling) {
-      root.cycleList = list
-      root.cycling = true
-      var current = root._activeAddress()
+      var current = root._canonAddr(root._activeAddress())
       var idx = list.indexOf(current)
-      root.cycleIndex = idx < 0 ? 0 : (idx + 1) % list.length
+      root._markCycle(list, idx < 0 ? 0 : (idx + 1) % list.length)
     } else {
-      root.cycleIndex = (root.cycleIndex + 1) % list.length
-      root.cycleList = list
+      root._markCycle(list, (root.cycleIndex + 1) % list.length)
     }
     return root._finish("cycleNext", "", root._ok())
   }
 
   function cyclePrev() {
+    Hyprland.refreshToplevels()
     var list = root._addressesOnDesktop(root.activeDesktopId)
     if (list.length === 0) return root._finish("cyclePrev", "", root._noop())
     if (!root.cycling) {
-      root.cycleList = list
-      root.cycling = true
-      var current = root._activeAddress()
+      var current = root._canonAddr(root._activeAddress())
       var idx = list.indexOf(current)
-      root.cycleIndex = idx < 0 ? 0 : (idx - 1 + list.length) % list.length
+      root._markCycle(list, idx < 0 ? 0 : (idx - 1 + list.length) % list.length)
     } else {
-      root.cycleIndex = (root.cycleIndex - 1 + list.length) % list.length
-      root.cycleList = list
+      root._markCycle(list, (root.cycleIndex - 1 + list.length) % list.length)
     }
     return root._finish("cyclePrev", "", root._ok())
   }
 
   function commitCycle() {
-    if (!root.cycling) return root._finish("commitCycle", "", root._noop())
-    var address = root.cycleList[root.cycleIndex]
+    var address = root.cycling ? root.cycleList[root.cycleIndex] : root._lastCycleAddress
     root.cancelCycle()
     if (address) return root.activate(address)
     return root._finish("commitCycle", "", root._ok())
@@ -1335,7 +1414,11 @@ QtObject {
     path: root.layoutPath
     watchChanges: true
     printErrors: false
-    onLoaded: root.savedLayout = WindowModel.parseLayout(text())
+    onLoaded: {
+      if (root._layoutSavedAt && (Date.now() - root._layoutSavedAt) < 5000)
+        return
+      root.savedLayout = WindowModel.parseLayout(text())
+    }
     onLoadFailed: root.savedLayout = { windows: [] }
     onFileChanged: reload()
   }

@@ -89,6 +89,25 @@ grep -Fq 'hl.get_cursor_pos' "$ws" || fail "activateAtCursor hit-tests with comp
 grep -Fq 'activateAtCursorSoon' "$ROOT/shell/plugins/ultimate-start/Start.qml" || fail "Start close re-activates the window under the cursor after unmap"
 grep -Fq 'function cycleNext' "$ws" || fail "WindowService exposes cycleNext for Alt+Tab"
 grep -Fq 'function commitCycle' "$ws" || fail "WindowService exposes commitCycle for Alt release"
+grep -Fq 'function _noteFocus' "$ws" || fail "focus verbs record the compositor target immediately"
+grep -Fq 'root._noteFocus(target)' "$ws" || fail "focus and activate call _noteFocus"
+grep -Fq 'Date.now() - root._focusedAt' "$ws" || fail "_activeAddress prefers a just-focused address over a stale activated flag"
+grep -Fq '_lastCycleAddress' "$ws" || fail "commitCycle keeps the highlighted address if the overlay closes first"
+grep -Fq 'function _compositorAddresses' "$ws" || fail "saveLayout reads live hyprctl clients, not stale Quickshell toplevels"
+grep -Fq '_layoutSavedAt' "$ws" || fail "saveLayout must not let FileView reload a stale layout over the just-saved one"
+grep -Fq 'function _clientRecords' "$ws" || fail "restoreLayout matches against live hyprctl clients"
+if awk '
+  $0 ~ /function _addressesOnDesktop\(/ { infn = 1 }
+  infn && /clientsIpc/ { found = 1 }
+  infn && /windowsOnDesktop/ { stale = 1 }
+  infn && found && stale { order = 1 }
+  infn && /^  function / && $0 !~ /function _addressesOnDesktop\(/ { infn = 0 }
+  END { exit (found && order) ? 0 : 1 }
+' "$ws"; then
+  :
+else
+  fail "Alt+Tab cycle list must prefer live hyprctl clients so closed toplevels cannot be highlighted"
+fi
 grep -Fq 'function activateFromSwitcher' "$ws" || fail "WindowService exposes activateFromSwitcher for clickable Alt+Tab cards"
 grep -Fq 'function cancelCycle' "$ws" || fail "WindowService can cancel an Alt+Tab cycle without commitCycle"
 if awk '
@@ -166,6 +185,17 @@ grep -Fq 'function aeroDragEnd' "$ws" || fail "WindowService exposes aeroDragEnd
 grep -Fq 'function saveLayout' "$ws" || fail "WindowService exposes saveLayout"
 grep -Fq 'function restoreLayout' "$ws" || fail "WindowService exposes restoreLayout"
 grep -Fq 'rect = root._clientRect(list[i])' "$ws" || fail "saveLayout reads compositor client boxes, not stale lastIpcObject"
+if awk '
+  $0 ~ /if \(entry.address\) \{/ { infn = 1 }
+  infn && /if \(!found\) continue/ { ok = 1 }
+  infn && /windowAppId/ { bad = 1 }
+  infn && /\} else \{/ { infn = 0 }
+  END { exit (ok && !bad) ? 0 : 1 }
+' "$ROOT/shell/services/WindowModel.js"; then
+  :
+else
+  fail "matchLayout must not apply a dead saved address to another window of the same app"
+fi
 grep -Fq 'function snapChooser' "$ROOT/shell/shell.qml" || fail "window IPC snapChooser summons the layout overlay"
 grep -Fq 'function createDesktop' "$ws" || fail "WindowService exposes createDesktop for virtual desktops"
 grep -Fq 'function moveToMonitor' "$ws" || fail "WindowService exposes moveToMonitor"
@@ -209,14 +239,15 @@ grep -Fq 'function activate(address: string)' "$ROOT/shell/shell.qml" \
 if awk '
   $0 ~ /function commitCycle\(\): string/ { infn = 1 }
   infn && /cycleList/ { captured = 1 }
-  infn && /shell.hide\("omarchy.ultimate-task-switcher"\)/ { hid = 1 }
-  infn && captured && hid { found = 1 }
+  infn && /pick/ { picked = 1 }
+  infn && /_lastCycleAddress/ { late = 1 }
+  infn && captured && picked && late { found = 1 }
   infn && /^    function / && $0 !~ /function commitCycle/ { infn = 0 }
   END { exit found ? 0 : 1 }
 ' "$ROOT/shell/shell.qml"; then
   :
 else
-  fail "commitCycle must capture the highlighted address before hiding the overlay"
+  fail "commitCycle must capture the highlight, remember it after overlay close, and pick it"
 fi
 pass "shell registers a window IPC target"
 
@@ -326,6 +357,11 @@ assertEqual(matched[0].address, '0x1', 'matchLayout prefers the saved address ev
 assertEqual(matched[0].kind, 'l', 'address 0x1 restores left')
 assertEqual(matched[1].address, '0x2', 'second saved address still restores')
 assertEqual(matched[1].kind, 'r', 'address 0x2 restores right')
+const stolen = m.matchLayout(
+  [{ address: '0xLIVE', appId: 'foot' }],
+  { windows: [{ address: '0xDEAD', appId: 'foot', kind: 'float', x: 520, y: 236, width: 880, height: 560 }] }
+)
+assertEqual(stolen.length, 0, 'a closed saved address must not steal another live foot')
 
 const mixed = m.compositorMonitor({ width: 1920, height: 1080, reserved: [0, 0, 0, 40] })
 assertEqual(mixed.height, 1080, 'compositorMonitor keeps the output height, not a gap-subtracted 1054')
