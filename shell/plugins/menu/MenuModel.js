@@ -384,6 +384,52 @@ function displayRow(items, itemOrder, checkedResults, disabledResults, entry, de
   }
 }
 
+function captureNavigationState(menuId, filterText, selectedIndex, selectedItemId) {
+  var index = Math.floor(Number(selectedIndex))
+  if (!isFinite(index) || index < 0) index = 0
+
+  return {
+    menuId: String(menuId || "root"),
+    filterText: String(filterText || ""),
+    selectedIndex: index,
+    selectedItemId: String(selectedItemId || "")
+  }
+}
+
+function restoreNavigationState(rows, state) {
+  var values = Array.isArray(rows) ? rows : []
+  var saved = state || {}
+  var selectedItemId = String(saved.selectedItemId || "")
+  var fallback = Math.floor(Number(saved.selectedIndex))
+  if (!isFinite(fallback) || fallback < 0) fallback = 0
+
+  for (var i = 0; i < values.length; i++) {
+    if (selectedItemId && values[i] && values[i].itemId === selectedItemId) {
+      fallback = i
+      break
+    }
+  }
+
+  if (values.length === 0) fallback = -1
+  else {
+    fallback = Math.min(fallback, values.length - 1)
+    for (var offset = 0; offset < values.length; offset++) {
+      var candidate = (fallback + offset) % values.length
+      if (values[candidate] && !values[candidate].disabled) {
+        fallback = candidate
+        break
+      }
+      if (offset === values.length - 1) fallback = -1
+    }
+  }
+
+  return {
+    menuId: String(saved.menuId || "root"),
+    filterText: String(saved.filterText || ""),
+    selectedIndex: fallback
+  }
+}
+
 // Commands a `checked:` expression reads a value out of. Every sibling row
 // asks the same one -- Defaults > Browser has seven rows all comparing
 // against `omarchy-default-browser` -- so the batch runs it once and the rows
@@ -519,6 +565,8 @@ if (typeof module !== "undefined") {
     descriptionTextMatches: descriptionTextMatches,
     matchesQuery: matchesQuery,
     searchScore: searchScore,
-    displayRow: displayRow
+    displayRow: displayRow,
+    captureNavigationState: captureNavigationState,
+    restoreNavigationState: restoreNavigationState
   }
 }
