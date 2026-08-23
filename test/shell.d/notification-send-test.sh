@@ -39,6 +39,20 @@ grep -q -- "-A" "$args_file" && fail "notification wrapper must not register a l
 
 : >"$args_file"
 OMARCHY_TEST_NOTIFY_ARGS="$args_file" PATH="$tmpdir:$ROOT/bin:$PATH" \
+  omarchy-notification-send "Received photo.png" "Saved to ~/Downloads" -u critical -g K
+
+mapfile -t args <"$args_file"
+
+[[ ${args[2]} == "-u" && ${args[3]} == "critical" ]] ||
+  fail "notification wrapper reads an urgency that follows the description" "$(printf '%s ' "${args[@]}")"
+(( $(grep -cFx -- "-u" "$args_file") == 1 )) ||
+  fail "notification wrapper sets the urgency once" "$(printf '%s ' "${args[@]}")"
+[[ ${args[4]} == "--hint=string:omarchy-glyph:K" ]] ||
+  fail "notification wrapper reads a glyph that follows the description" "$(printf '%s ' "${args[@]}")"
+pass "notification wrapper reads options that follow the headline and description"
+
+: >"$args_file"
+OMARCHY_TEST_NOTIFY_ARGS="$args_file" PATH="$tmpdir:$ROOT/bin:$PATH" \
   omarchy-notification-send "Plain" >/dev/null
 
 grep -q "omarchy-exec" "$args_file" && fail "notification wrapper adds no exec hint without --exec"

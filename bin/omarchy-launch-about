@@ -19,6 +19,15 @@ LOGO_PAD_LEFT=2
 LOGO_PAD_TOP=2
 LOGO_PAD_RIGHT=6
 
+# The content is measured once and then goes on living: an uptime that turns
+# minutes into hours and hours into days, a version string that grows, a module
+# that shows up on the next boot. A window fitted to exactly what was measured
+# has nowhere to put any of it, and the layout clips or scrolls the moment it
+# grows — which is also the moment the logo stops being where it was drawn. Keep
+# a little in hand rather than measure again every time something ticks over.
+FIT_SPARE_COLUMNS=2
+FIT_SPARE_ROWS=1
+
 POLL_SECONDS=0.5
 
 # fastfetch has no animation of its own, so the sheen is ours. It knows about a
@@ -144,9 +153,9 @@ fit_window() {
 
   # Mirror the logo block in the fastfetch config: 2 columns of padding left of
   # the logo, 6 between logo and modules. Then 2 columns of right padding to
-  # match, and a row for the cursor so the trailing break shows.
-  local target_c=$(( LOGO_PAD_LEFT + logo_w + LOGO_PAD_RIGHT + module_w + LOGO_PAD_LEFT ))
-  local target_r=$(( LAYOUT_ROWS + 1 ))
+  # match, a row for the cursor so the trailing break shows, and the spare above.
+  local target_c=$(( LOGO_PAD_LEFT + logo_w + LOGO_PAD_RIGHT + module_w + LOGO_PAD_LEFT + FIT_SPARE_COLUMNS ))
+  local target_r=$(( LAYOUT_ROWS + 1 + FIT_SPARE_ROWS ))
 
   local nudges=0 rows cols address width height shift_w shift_h target_w target_h
   while :; do
@@ -190,22 +199,50 @@ fit_window() {
 measure_layout() {
   [[ -n ${LAYOUT_ROWS:-} ]] && return 0
 
-  local rendered row
+  local rendered plain needle offset found row
 
   # --pipe false because fastfetch drops its colours when it is not writing to a
   # terminal, and it is writing to this substitution.
   rendered=$(fastfetch --pipe false 2>/dev/null; printf X)
   rendered=${rendered%X}
   LAYOUT_ROWS=$(printf '%s' "$rendered" | wc -l)
-  (( LAYOUT_ROWS > LOGO_PAD_TOP )) || return 1
+  (( LAYOUT_ROWS > 0 )) || return 1
 
-  # Whatever fastfetch set before the first row of the logo is what the sheen has
-  # to give those cells back.
-  row=$(printf '%s' "$rendered" | sed -n "$((LOGO_PAD_TOP + 1))p")
+  # Find the logo in what fastfetch drew rather than working it out from the
+  # padding this file was written against. The config that runs is the one in
+  # /etc, which a checkout does not replace, so the two can disagree — and a logo
+  # measured two rows above where it was drawn is a logo the sheen moves. Not
+  # finding it at all is the same answer as finding it somewhere unexpected:
+  # whatever is on screen is not the text in the file, so leave it alone.
+  IFS=$'\t' read -r offset needle < <(logo_landmark) || return 1
+  [[ -n $needle ]] || return 1
+
+  plain=$(printf '%s' "$rendered" | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g')
+  found=$(printf '%s' "$plain" | LC_ALL=C.UTF-8 awk -v needle="$needle" \
+    'index($0, needle) { print NR, index($0, needle); exit }')
+  [[ -n $found ]] || return 1
+  read -r LOGO_ROW LOGO_COLUMN <<<"$found"
+  LOGO_ROW=$(( LOGO_ROW - offset ))
+  (( LOGO_ROW >= 1 && LOGO_COLUMN >= 1 )) || return 1
+
+  # Whatever fastfetch set before that row is what the sheen has to give back.
+  row=$(printf '%s' "$rendered" | sed -n "$(( LOGO_ROW + offset ))p")
   LOGO_COLOR=""
   [[ $row =~ ^(($ESC\[[0-9;]*m)+) ]] && LOGO_COLOR=${BASH_REMATCH[1]}
 
   return 0
+}
+
+# The longest line of the logo, and how far down the logo it sits — the most
+# distinctive thing to look for in the render, and the offset that turns where it
+# was found back into where the logo starts.
+# Tab-separated, and the offset first, because the line may hold spaces of its
+# own and splitting on them would cut the landmark short.
+logo_landmark() {
+  LC_ALL=C.UTF-8 awk '
+    { if (length($0) > best) { best = length($0); line = $0; at = NR - 1 } }
+    END { if (best > 0) printf "%d\t%s\n", at, line }
+  ' "$LOGO_FILE" 2>/dev/null
 }
 
 # The About screen's own reasons the logo might not be where these frames would
@@ -226,7 +263,9 @@ build_sheen() {
   measure_layout || return 1
 
   # The layout needs a row for the cursor past its last line. Without one it has
-  # scrolled, and the logo is no longer on the rows the frames address.
+  # scrolled, and the logo is no longer on the rows the frames address. Ask the
+  # terminal where the cursor actually is rather than trust the arithmetic, and
+  # keep the arithmetic for a terminal that will not say.
   local rows cols
   read -r rows cols <<<"$(stty size)"
   (( rows > LAYOUT_ROWS )) || return 1
@@ -234,7 +273,7 @@ build_sheen() {
   # The cell the logo's first row starts on, every attribute fastfetch left on
   # those cells so a glint that has passed leaves them as it found them, and the
   # room it has to work in left of the module column.
-  sheen_build "$LOGO_FILE" "$(( LOGO_PAD_TOP + 1 ))" "$(( LOGO_PAD_LEFT + 1 ))" "${ESC}[0m${LOGO_COLOR}" "$(( cols - LOGO_PAD_LEFT ))"
+  sheen_build "$LOGO_FILE" "$LOGO_ROW" "$LOGO_COLUMN" "${ESC}[0m${LOGO_COLOR}" "$(( cols - LOGO_COLUMN + 1 ))"
 }
 
 # What the frames were built against. A window that resized, or a logo that was
