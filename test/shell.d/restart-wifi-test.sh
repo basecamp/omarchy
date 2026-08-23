@@ -67,9 +67,9 @@ run_restart
 
 grep -qx 'rfkill unblock wifi' "$tmp_dir/calls" ||
   fail "wifi still lifts the rfkill block" "$(cat "$tmp_dir/calls")"
-grep -qx 'sudo modprobe -r iwlmvm iwlwifi' "$tmp_dir/calls" ||
+grep -qx 'sudo modprobe -r -- iwlmvm iwlwifi' "$tmp_dir/calls" ||
   fail "wifi unloads iwlmvm before iwlwifi" "$(cat "$tmp_dir/calls")"
-grep -qx 'sudo modprobe iwlwifi' "$tmp_dir/calls" ||
+grep -qx 'sudo modprobe -- iwlwifi' "$tmp_dir/calls" ||
   fail "wifi reloads iwlwifi" "$(cat "$tmp_dir/calls")"
 grep -qx 'nmcli radio wifi on' "$tmp_dir/calls" ||
   fail "wifi turns the radio back on after the reload" "$(cat "$tmp_dir/calls")"
@@ -86,7 +86,7 @@ mkdir -p "$tmp_dir/net"
 add_iface wlan0 iwlwifi
 run_restart
 
-grep -qx 'sudo modprobe -r iwlmld iwlwifi' "$tmp_dir/calls" ||
+grep -qx 'sudo modprobe -r -- iwlmld iwlwifi' "$tmp_dir/calls" ||
   fail "wifi unloads iwlmld before iwlwifi" "$(cat "$tmp_dir/calls")"
 pass "wifi reloads a wedged iwlwifi/iwlmld radio"
 
@@ -98,7 +98,7 @@ mkdir -p "$tmp_dir/net"
 add_iface wlan0 iwlwifi
 run_restart
 
-grep -qx 'sudo modprobe -r iwldvm iwlwifi' "$tmp_dir/calls" ||
+grep -qx 'sudo modprobe -r -- iwldvm iwlwifi' "$tmp_dir/calls" ||
   fail "wifi unloads iwldvm before iwlwifi" "$(cat "$tmp_dir/calls")"
 pass "wifi reloads a wedged iwlwifi/iwldvm radio"
 
@@ -111,9 +111,9 @@ mkdir -p "$tmp_dir/net"
 add_iface wlp2s0 rtw89_8852be
 run_restart
 
-grep -qx 'sudo modprobe -r rtw89_8852be' "$tmp_dir/calls" ||
+grep -qx 'sudo modprobe -r -- rtw89_8852be' "$tmp_dir/calls" ||
   fail "wifi unloads the Realtek PCI driver" "$(cat "$tmp_dir/calls")"
-grep -qx 'sudo modprobe rtw89_8852be' "$tmp_dir/calls" ||
+grep -qx 'sudo modprobe -- rtw89_8852be' "$tmp_dir/calls" ||
   fail "wifi reloads the Realtek PCI driver" "$(cat "$tmp_dir/calls")"
 grep -q iwlwifi "$tmp_dir/calls" &&
   fail "wifi does not touch iwlwifi on a Realtek radio" "$(cat "$tmp_dir/calls")"
@@ -127,7 +127,7 @@ add_iface wlp9s0 iwlwifi
 add_iface p2p-dev-wlp9s0 iwlwifi
 run_restart
 
-unload_count=$(grep -c 'sudo modprobe -r iwlmvm iwlwifi' "$tmp_dir/calls" || true)
+unload_count=$(grep -c 'sudo modprobe -r -- iwlmvm iwlwifi' "$tmp_dir/calls" || true)
 (( unload_count == 1 )) ||
   fail "wifi reloads a shared driver once" "$(cat "$tmp_dir/calls")"
 pass "wifi reloads a shared driver once"
@@ -164,7 +164,7 @@ add_iface wlp9s0 iwlwifi
 run_restart
 [[ $(<"$tmp_dir/rc") == 1 ]] ||
   fail "wifi reports a failed driver unload" "$(cat "$tmp_dir/rc"; cat "$tmp_dir/calls")"
-grep -qx 'sudo modprobe iwlwifi' "$tmp_dir/calls" &&
+grep -qx 'sudo modprobe -- iwlwifi' "$tmp_dir/calls" &&
   fail "wifi does not reload after a failed unload" "$(cat "$tmp_dir/calls")"
 pass "wifi reports a failed driver unload"
 
@@ -183,10 +183,80 @@ add_iface wlp9s0 iwlwifi
 run_restart
 [[ $(<"$tmp_dir/rc") == 1 ]] ||
   fail "wifi reports a failed driver insert" "$(cat "$tmp_dir/rc"; cat "$tmp_dir/calls")"
-(( $(grep -c 'sudo modprobe iwlwifi' "$tmp_dir/calls" || true) >= 2 )) ||
+(( $(grep -c 'sudo modprobe -- iwlwifi' "$tmp_dir/calls" || true) >= 2 )) ||
   fail "wifi retries a failed insert" "$(cat "$tmp_dir/calls")"
 pass "wifi reports a failed driver insert"
 
-rg -F 'omarchy-restart-wifi' "$ROOT/default/omarchy/omarchy-menu.jsonc" >/dev/null ||
+# iwlmei pins iwlwifi on Intel platforms that ship the management engine
+# interface, and modprobe -r fails while it is loaded.
+cat >"$tmp_dir/bin/modprobe" <<'EOF'
+#!/bin/bash
+printf 'modprobe %s\n' "$*" >>"$CALLS"
+EOF
+chmod +x "$tmp_dir/bin/modprobe"
+printf 'iwlmei 1 0\niwlwifi 1 1\n' >"$tmp_dir/lsmod"
+rm -rf "$tmp_dir/net" "$tmp_dir/drivers"
+mkdir -p "$tmp_dir/net"
+add_iface wlp9s0 iwlwifi
+run_restart
+
+grep -qx 'sudo modprobe -r -- iwlmei iwlwifi' "$tmp_dir/calls" ||
+  fail "wifi unloads iwlmei before iwlwifi" "$(cat "$tmp_dir/calls")"
+pass "wifi unloads iwlmei before iwlwifi"
+
+# One busy driver must not leave a working adapter dark. The radio toggle is
+# what brings the reloaded one back, so it has to run regardless.
+cat >"$tmp_dir/bin/modprobe" <<'EOF'
+#!/bin/bash
+printf 'modprobe %s\n' "$*" >>"$CALLS"
+[[ $* == *rtw89_8852be* ]] && exit 1
+exit 0
+EOF
+chmod +x "$tmp_dir/bin/modprobe"
+printf 'iwlmvm 1 0\niwlwifi 1 1\nrtw89_8852be 1 0\n' >"$tmp_dir/lsmod"
+rm -rf "$tmp_dir/net" "$tmp_dir/drivers"
+mkdir -p "$tmp_dir/net"
+add_iface wlp9s0 iwlwifi
+add_iface wlp2s0 rtw89_8852be
+run_restart
+
+grep -qx 'sudo modprobe -- iwlwifi' "$tmp_dir/calls" ||
+  fail "wifi reloads the driver that can be reloaded" "$(cat "$tmp_dir/calls")"
+grep -qx 'nmcli radio wifi on' "$tmp_dir/calls" ||
+  fail "wifi turns the radio back on for the adapter that did reload" "$(cat "$tmp_dir/calls")"
+[[ $(<"$tmp_dir/rc") == 1 ]] ||
+  fail "wifi still reports the driver that failed" "$(cat "$tmp_dir/rc")"
+pass "wifi restores the radio for the adapter that did reload"
+
+# NetworkManager refusing the radio is not a recovery. The watcher toasts on
+# exit 0, so this has to be the difference between success and failure.
+cat >"$tmp_dir/bin/modprobe" <<'EOF'
+#!/bin/bash
+printf 'modprobe %s\n' "$*" >>"$CALLS"
+EOF
+cat >"$tmp_dir/bin/nmcli" <<'EOF'
+#!/bin/bash
+printf 'nmcli %s\n' "$*" >>"$CALLS"
+[[ $1 == radio ]] && exit 1
+exit 0
+EOF
+chmod +x "$tmp_dir/bin/modprobe" "$tmp_dir/bin/nmcli"
+printf 'iwlmvm 1 0\niwlwifi 1 1\n' >"$tmp_dir/lsmod"
+rm -rf "$tmp_dir/net" "$tmp_dir/drivers"
+mkdir -p "$tmp_dir/net"
+add_iface wlp9s0 iwlwifi
+run_restart
+
+[[ $(<"$tmp_dir/rc") == 1 ]] ||
+  fail "wifi reports a radio NetworkManager would not turn on" "$(cat "$tmp_dir/rc"; cat "$tmp_dir/calls")"
+pass "wifi reports a radio NetworkManager would not turn on"
+
+cat >"$tmp_dir/bin/nmcli" <<'EOF'
+#!/bin/bash
+printf 'nmcli %s\n' "$*" >>"$CALLS"
+EOF
+chmod +x "$tmp_dir/bin/nmcli"
+
+grep -F 'omarchy-restart-wifi' "$ROOT/default/omarchy/omarchy-menu.jsonc" >/dev/null ||
   fail "the hardware menu still points at omarchy-restart-wifi"
 pass "the hardware menu still points at omarchy-restart-wifi"
