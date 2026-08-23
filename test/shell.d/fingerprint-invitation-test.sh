@@ -33,7 +33,7 @@ cat >"$test_bin/omarchy-notification-send" <<'EOF'
 echo notification >>"$TEST_LOG"
 exec_args=()
 while (($# > 0)); do
-  [[ $1 == "--exec-arg" ]] && exec_args+=("$2")
+  if [[ $1 == "--exec" ]]; then shift; exec_args=("$@"); break; fi
   shift
 done
 ((${#exec_args[@]})) && echo "exec:${exec_args[*]}" >>"$TEST_LOG"

@@ -62,11 +62,11 @@ pass "taildrop receive announces other files with a glyph"
 
 # The shell keeps the click command with the toast, so receiving does not have
 # to sit blocked on an answer -- and the toast still opens the file after a shell
-# restart. The path rides as its own --exec-arg, so the shell runs it as literal
-# data with no quoting for a name with spaces to get wrong.
-grep -qF -- "--exec-arg xdg-open --exec-arg $downloads/photo.png" <<<"$notifications" ||
+# restart. The path rides as its own discrete --exec argument, so the shell runs
+# it as literal data with no quoting for a name with spaces to get wrong.
+grep -qF -- "--exec xdg-open $downloads/photo.png" <<<"$notifications" ||
   fail "taildrop receive attaches the open command to the notification" "$notifications"
-grep -qF -- "--exec-arg xdg-open --exec-arg $downloads/notes with space.pdf" <<<"$notifications" ||
+grep -qF -- "--exec xdg-open $downloads/notes with space.pdf" <<<"$notifications" ||
   fail "taildrop receive carries spaced names as a literal open argument" "$notifications"
 pass "taildrop receive lets a click open the received file"
 

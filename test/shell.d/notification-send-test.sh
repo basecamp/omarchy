@@ -16,9 +16,14 @@ printf '%s\n' \
   >"$stub"
 chmod +x "$stub"
 
-OMARCHY_TEST_NOTIFY_ARGS="$args_file" PATH="$tmpdir:$ROOT/bin:$PATH" \
-  omarchy-notification-send --app-name custom-app -g K -u critical --image /tmp/image.png \
-  --exec-arg omarchy-menu-keybindings --exec-arg 'a b' "Learn Keybindings" "Body"
+send() {
+  OMARCHY_TEST_NOTIFY_ARGS="$args_file" PATH="$tmpdir:$ROOT/bin:$PATH" \
+    omarchy-notification-send "$@"
+}
+
+# --exec consumes the rest of the line, so it comes after the headline/description.
+send --app-name custom-app -g K -u critical --image /tmp/image.png \
+  "Learn Keybindings" "Body" --exec omarchy-menu-keybindings 'a b'
 
 mapfile -t args <"$args_file"
 
@@ -28,47 +33,55 @@ mapfile -t args <"$args_file"
 [[ ${args[3]} == "critical" ]] || fail "notification wrapper uses custom urgency"
 [[ ${args[4]} == "--hint=string:omarchy-glyph:K" ]] || fail "notification wrapper converts glyph to hint"
 [[ ${args[5]} == "--hint=string:image-path:/tmp/image.png" ]] || fail "notification wrapper converts image to hint"
-[[ ${args[6]} == '--hint=string:omarchy-exec-argv:["omarchy-menu-keybindings","a b"]' ]] || fail "notification wrapper converts exec args to an argv hint" "${args[6]}"
+[[ ${args[6]} == '--hint=string:omarchy-exec-argv:["omarchy-menu-keybindings","a b"]' ]] || fail "notification wrapper converts the click command to an argv hint" "${args[6]}"
 [[ ${args[7]} == "Learn Keybindings" ]] || fail "notification wrapper preserves headline"
 [[ ${args[8]} == "Body" ]] || fail "notification wrapper preserves description"
-pass "notification wrapper supports app, glyph, urgency, image, and exec-arg options"
+pass "notification wrapper supports app, glyph, urgency, image, and exec options"
 
 # The shell runs the click command itself, so nothing may block the sender on a
 # libnotify action round-trip.
 grep -q -- "-A" "$args_file" && fail "notification wrapper must not register a libnotify action"
 
 : >"$args_file"
-OMARCHY_TEST_NOTIFY_ARGS="$args_file" PATH="$tmpdir:$ROOT/bin:$PATH" \
-  omarchy-notification-send "Plain" >/dev/null
-
+send "Plain" >/dev/null
 grep -q "omarchy-exec" "$args_file" && fail "notification wrapper adds no exec hint without --exec"
 pass "notification wrapper omits the exec hint when no command is given"
 
-# The free-form shell-string --exec is gone: its existence let a caller skip
-# quoting and reintroduce the RCE, so it is rejected outright in favor of the
-# argv-only --exec-arg.
+# Rest-of-line --exec: the caller's shell has already split the words into
+# discrete arguments, and the shell runs them without re-parsing, so shell
+# metacharacters in a value are carried as data, never as a command.
 : >"$args_file"
-if OMARCHY_TEST_NOTIFY_ARGS="$args_file" PATH="$tmpdir:$ROOT/bin:$PATH" \
-  omarchy-notification-send --exec 'anything' "Headline" 2>/dev/null; then
-  fail "notification wrapper rejects the removed --exec flag"
-fi
-grep -q "omarchy-exec" "$args_file" && fail "notification wrapper emits no exec hint for a rejected --exec"
-pass "notification wrapper rejects the removed --exec flag"
-
-# --exec-arg builds an argv vector encoded as a JSON array, so shell
-# metacharacters in a value are carried as data, never as a command. The shell
-# runs this argv directly (no shell), which is what keeps a hostile title or
-# filename from becoming code when the toast is clicked.
-: >"$args_file"
-OMARCHY_TEST_NOTIFY_ARGS="$args_file" PATH="$tmpdir:$ROOT/bin:$PATH" \
-  omarchy-notification-send --exec-arg mpv --exec-arg -- --exec-arg '$(rm -rf ~); echo pwned' \
-  "Download complete" >/dev/null
-
+send "Download complete" --exec mpv -- '$(rm -rf ~); echo pwned' >/dev/null
 argv_hint=$(grep -- "--hint=string:omarchy-exec-argv:" "$args_file")
 argv_json=${argv_hint#--hint=string:omarchy-exec-argv:}
 [[ $(jq -r '.[0]' <<<"$argv_json") == "mpv" ]] || fail "notification wrapper puts the program first in the exec argv"
 [[ $(jq -r '.[1]' <<<"$argv_json") == "--" ]] || fail "notification wrapper preserves a -- separator in the exec argv"
 [[ $(jq -r '.[2]' <<<"$argv_json") == '$(rm -rf ~); echo pwned' ]] ||
   fail "notification wrapper carries shell metacharacters as literal argv data" "$argv_json"
-grep -q "omarchy-exec:" "$args_file" && fail "notification wrapper emits no legacy exec string when --exec-arg is used"
-pass "notification wrapper encodes --exec-arg as a literal JSON argv vector"
+pass "notification wrapper encodes rest-of-line --exec as a literal JSON argv vector"
+
+# A quoted argument with spaces stays ONE argument — something a whitespace-split
+# of a single string could never do.
+: >"$args_file"
+send "Head" --exec mpv -- "/tmp/a b.mp4" >/dev/null
+argv_hint=$(grep -- "--hint=string:omarchy-exec-argv:" "$args_file")
+argv_json=${argv_hint#--hint=string:omarchy-exec-argv:}
+[[ $(jq 'length' <<<"$argv_json") == 3 ]] || fail "notification wrapper keeps a spaced path as one argument" "$argv_json"
+[[ $(jq -r '.[2]' <<<"$argv_json") == "/tmp/a b.mp4" ]] || fail "notification wrapper preserves the spaced path verbatim" "$argv_json"
+pass "notification wrapper keeps a spaced argument intact"
+
+# The muscle-memory trap: a single quoted whole command would run a program named
+# with spaces. Reject it and point at the unquoted form rather than splitting it
+# ourselves (which is the injection we avoid).
+: >"$args_file"
+if send "Head" --exec "omarchy toggle something" 2>/dev/null; then
+  fail "notification wrapper rejects a quoted whole command"
+fi
+grep -q "omarchy-exec" "$args_file" && fail "notification wrapper emits no hint for a rejected --exec"
+pass "notification wrapper rejects a single quoted whole command"
+
+# --exec with nothing after it is a usage error, not a silent no-op.
+if send "Head" --exec 2>/dev/null; then
+  fail "notification wrapper rejects --exec with no command"
+fi
+pass "notification wrapper rejects --exec with no command"

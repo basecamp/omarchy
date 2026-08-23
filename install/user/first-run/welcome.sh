@@ -2,4 +2,4 @@
 # elides past three lines.
 omarchy-notification-send -u critical -g  "Learn Keybindings" \
   $'Super + K for cheatsheet.\nSuper + Space for Omarchy Menu.' \
-  --exec-arg omarchy-menu-keybindings
+  --exec omarchy-menu-keybindings

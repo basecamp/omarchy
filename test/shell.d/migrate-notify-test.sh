@@ -158,7 +158,7 @@ exec {foreign_lock_fd}>&-
 rm -f "$test_tmp/notify-args"
 run_notify 1 >/dev/null 2>&1
 notify_args_written || fail "migration notifier sends the notification before exiting"
-grep -Fx -- '--exec-arg' "$test_tmp/notify-args" >/dev/null ||
+grep -Fx -- '--exec' "$test_tmp/notify-args" >/dev/null ||
   fail "migration notifier attaches the click command to the toast"
 grep -Fx 'omarchy-launch-floating-terminal-with-presentation' "$test_tmp/notify-args" >/dev/null &&
   grep -Fx 'omarchy-migrate' "$test_tmp/notify-args" >/dev/null ||

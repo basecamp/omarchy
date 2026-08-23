@@ -70,10 +70,6 @@ title_from_file() {
   fi
 }
 
-# Click action as argv (--exec-arg): the path is one literal argument, and `--`
-# keeps mpv from parsing a leading-dash filename as an option.
-playback_exec_args=(--exec-arg mpv --exec-arg -- --exec-arg)
-
 # Drive the Quickshell OSD — a single overlay that updates in place (like the
 # volume/brightness bar), so download progress never stacks like notifications.
 osd_progress() {
@@ -150,9 +146,11 @@ download_url() {
 
     # Best-effort: the download already succeeded, and under `set -e` a failed
     # toast would exit before the thumbnail cleanup below is ever scheduled.
+    # `--` keeps mpv from parsing a leading-dash filename as an option; the path
+    # is one discrete argument, so it never reaches a shell.
     omarchy-notification-send -g 󰄬 "Download complete" "$title" \
       -t 10000 --image "${preview:-$filepath}" \
-      "${playback_exec_args[@]}" "$filepath" || true
+      --exec mpv -- "$filepath" || true
 
     # The shell loads the thumbnail into memory when the toast appears and never
     # re-reads the file, so the preview only has to outlive that load, not the

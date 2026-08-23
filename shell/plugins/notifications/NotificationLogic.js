@@ -58,7 +58,7 @@ function glyphFromHints(hints) {
 }
 
 // The click action: a JSON argv string from omarchy-notification-send
-// --exec-arg. Carried as data so a toast restored after a shell restart stays
+// --exec. Carried as data so a toast restored after a shell restart stays
 // clickable (a libnotify action can't — its sender is gone). Run via
 // Util.execArgv as bash positional parameters, never a shell string, so
 // attacker-controlled values (a title, a filename) can't become commands.
