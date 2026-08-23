@@ -6,6 +6,7 @@ import QtQuick.Effects
 import QtQuick.Shapes
 import qs.Commons
 import qs.Ui
+import "BackgroundModel.js" as BackgroundModel
 
 Item {
   id: root
@@ -29,21 +30,15 @@ Item {
   property real availableMemoryKiB: -1
   property bool memoryReady: false
   property bool backgroundRefreshPending: false
-  readonly property bool lowMemory: memoryReady
-    && availableMemoryKiB >= 0
-    && availableMemoryKiB < lowMemoryLimitKiB
+  readonly property bool lowMemory: memoryReady && BackgroundModel.isLowMemory(availableMemoryKiB, lowMemoryLimitKiB)
 
   function imageUrl(path) {
     return Util.fileUrl(path)
   }
 
-  function refreshMemory() {
-    memoryFile.reload()
-  }
-
   function updateAvailableMemory(raw) {
-    var match = /^MemAvailable:\s+(\d+)\s+kB$/m.exec(String(raw || ""))
-    availableMemoryKiB = match ? Number(match[1]) : -1
+    if (memoryReady) return
+    availableMemoryKiB = BackgroundModel.parseAvailableMemoryKiB(raw)
     memoryReady = true
     if (backgroundRefreshPending) {
       backgroundRefreshPending = false
@@ -54,7 +49,6 @@ Item {
   function refreshBackground() {
     if (!memoryReady) {
       backgroundRefreshPending = true
-      refreshMemory()
       return
     }
     if (!readlinkProc.running) readlinkProc.running = true
@@ -211,10 +205,7 @@ Item {
     }
   }
 
-  Component.onCompleted: {
-    refreshMemory()
-    refreshBackground()
-  }
+  Component.onCompleted: refreshBackground()
 
   Variants {
     model: Quickshell.screens
@@ -260,8 +251,8 @@ Item {
         id: base
         anchors.fill: parent
         source: root.imageUrl(root.displayedBackground)
-        // Qt never upscales a source smaller than sourceSize. Under memory
-        // pressure this bounds large wallpapers to the physical display size.
+        // With PreserveAspectCrop, Qt decodes the cover-sized image needed for
+        // this physical display while avoiding full-resolution storage.
         sourceSize: root.lowMemory
           ? Qt.size(Math.ceil(width * Screen.devicePixelRatio), Math.ceil(height * Screen.devicePixelRatio))
           : undefined
