@@ -474,11 +474,18 @@ fi
 if [[ -z $second_name ]]; then
   hyprctl output create headless HEADLESS-2 >/dev/null 2>&1 || hyprctl output create headless >/dev/null 2>&1 || true
   sleep 0.5
-  second_name=$(hyprctl -j monitors | jq -r --arg p "$primary_name" '[.[] | select(.name != $p)] | .[0].name // empty')
+  # Prefer the new headless output. Do not pick a disabled phantom DP or the
+  # live HDMI TV — eval'ing those re-modesets the NVIDIA card.
+  second_name=$(hyprctl -j monitors | jq -r --arg p "$primary_name" '[.[] | select(.name != $p and (.name | startswith("HEADLESS")))] | .[0].name // empty')
   created_headless=$second_name
 fi
+if [[ $second_name == HDMI-A-1 || $second_name == HDMI-* ]]; then
+  second_name=""
+fi
 if [[ -n $second_name ]]; then
-  hyprctl eval "hl.monitor({ output = \"$second_name\", mode = \"1920x1080@60\", position = \"1920x0\", scale = 1 })" >/dev/null 2>&1 || true
+  if [[ $second_name == HEADLESS* ]]; then
+    hyprctl eval "hl.monitor({ output = \"$second_name\", mode = \"1920x1080@60\", position = \"1920x0\", scale = 1 })" >/dev/null 2>&1 || true
+  fi
   sleep 0.4
   omarchy-shell window restoreNormal "${addrs[0]}" >/dev/null
   sleep 0.5
@@ -702,10 +709,29 @@ run_csd_caption_pointer_proof() {
   fail "CSD caption pointer proof" "cannot write /dev/uinput and sudo -n is unavailable; relative ydotool is not this gate"
 }
 
+run_start_dismiss_proof() {
+  local script="$ROOT/test/acceptance.d/start-dismiss-proof.py"
+  [[ -f $script ]] || fail "Start dismiss proof" "missing $script"
+  if [[ ! -e /dev/uinput ]]; then
+    fail "Start dismiss proof" "/dev/uinput is missing; relative ydotool is not this gate"
+  fi
+  if [[ -w /dev/uinput ]]; then
+    python3 "$script" || fail "Start dismiss proof" "outside click, orb, card, or click-through failed"
+    return
+  fi
+  if sudo -n true >/dev/null 2>&1; then
+    sudo -n python3 "$script" || fail "Start dismiss proof" "outside click, orb, card, or click-through failed"
+    return
+  fi
+  fail "Start dismiss proof" "cannot write /dev/uinput and sudo -n is unavailable; relative ydotool is not this gate"
+}
+
 run_hyprbars_pointer_proof
 pass "hyprbars close, title-bar drag, maximize click, minimize click, and Alt+Tab card click via an absolute pointer"
 run_csd_caption_pointer_proof
 pass "Chromium CSD min/max/close via an absolute pointer (never Cursor)"
+run_start_dismiss_proof
+pass "Start outside click, orb, card, and click-through via an absolute pointer"
 
 trap - EXIT
 restore_native_windows
