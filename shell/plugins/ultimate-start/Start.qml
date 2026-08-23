@@ -24,6 +24,7 @@ Item {
 
   property var focusedWhenOpened: null
   property bool raiseUnderCursorOnClose: false
+  property bool launchingFromStart: false
 
   function open(payloadJson) {
     var payload = ({})
@@ -32,6 +33,7 @@ Item {
     root.filter = ""
     root.focusedWhenOpened = ToplevelManager.activeToplevel
     root.raiseUnderCursorOnClose = false
+    root.launchingFromStart = false
     if (root.shell && root.shell.transientCoordinator)
       root.shell.transientCoordinator.request(root)
     root.opened = true
@@ -39,8 +41,9 @@ Item {
   }
 
   function close() {
-    var raise = root.raiseUnderCursorOnClose
+    var raise = root.raiseUnderCursorOnClose && !root.launchingFromStart
     root.raiseUnderCursorOnClose = false
+    root.launchingFromStart = false
     if (root.shell && root.shell.transientCoordinator)
       root.shell.transientCoordinator.release(root)
     if (!root.opened) {
@@ -59,6 +62,8 @@ Item {
 
   function launchEntry(entry) {
     if (!entry || !appLibrary) return
+    root.launchingFromStart = true
+    root.raiseUnderCursorOnClose = false
     appLibrary.launch(entry.id, appLibrary.entryName(entry))
     root.close()
   }
@@ -71,7 +76,8 @@ Item {
       if (!next)
         return
       if (next !== root.focusedWhenOpened) {
-        root.raiseUnderCursorOnClose = true
+        if (!root.launchingFromStart)
+          root.raiseUnderCursorOnClose = true
         root.close()
       }
     }

@@ -115,6 +115,12 @@ if awk '
 else
   fail "inactive taskbar click must activate, not only restore"
 fi
+grep -Fq 'if (root.isMinimized(address)) return root.activate(address)' "$ws" \
+  || fail "taskbar click on a minimized window must restore, even if Hyprland still marks it active"
+grep -Fq 'function _recordFromClient' "$ws" \
+  || fail "taskbar keeps setHidden windows that dropped out of Hyprland.toplevels"
+grep -Fq 'Number(c.fullscreen || 0) > 0' "$ws" \
+  || fail "new-window placement must not restomp a just-maximized client"
 grep -Fq 'function toggleShowDesktop' "$ws" || fail "WindowService exposes toggleShowDesktop"
 grep -Fq 'function pin' "$ws" || fail "WindowService exposes pin for the taskbar"
 pass "WindowService exposes task-switcher, Show Desktop, and pin verbs"

@@ -79,6 +79,8 @@ grep -Fq 'activateAtCursorSoon' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
   || fail "Start close re-activates the window under the cursor after unmap, without a global click bind"
 grep -Fq 'raiseUnderCursorOnClose' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
   || fail "Start only raises the clicked window when another toplevel took focus"
+grep -Fq 'launchingFromStart' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
+  || fail "Start launch must not activateAtCursorSoon; that fights the new window"
 grep -Fq 'setExempt("start"' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
   || fail "Start card hover is exempt from outside-click dismiss"
 grep -Fq 'setExempt("taskbar"' "$ROOT/shell/plugins/ultimate-taskbar/Taskbar.qml" \

@@ -63,16 +63,37 @@ QtObject {
   readonly property var windows: {
     var values = Hyprland.toplevels.values
     var out = []
+    var seen = ({})
     var i
+    var rec
+    var addr
+    var c
     for (i = 0; i < values.length; i++) {
       var hypr = values[i]
       if (hypr)
         hypr.lastIpcObject
-      var rec = root._windowRecord(hypr)
+      rec = root._windowRecord(hypr)
       if (rec && rec.address) {
         if (WindowModel.isSpecialWorkspace(rec.workspace)) continue
+        if (root._minimized[rec.address]) rec.minimized = true
         out.push(rec)
+        seen[rec.address] = true
       }
+    }
+    // setHidden windows can drop out of Hyprland.toplevels while hyprctl
+    // clients still lists them. Keep those buttons on the taskbar.
+    var clients = root.clientsIpc || []
+    for (i = 0; i < clients.length; i++) {
+      c = clients[i]
+      if (!c || !c.address) continue
+      addr = root._canonAddr(c.address)
+      if (!addr || seen[addr]) continue
+      if (c.hidden !== true && !root._minimized[addr]) continue
+      rec = root._recordFromClient(c)
+      if (!rec || !rec.address) continue
+      if (WindowModel.isSpecialWorkspace(rec.workspace)) continue
+      out.push(rec)
+      seen[addr] = true
     }
     return out
   }
@@ -215,14 +236,18 @@ QtObject {
     var seen = ({})
     var i
     var addr
+    var kind
     for (i = 0; i < list.length; i++) seen[list[i]] = true
-    if (list.length === 0) {
-      var clients = root.clientsIpc || []
-      for (i = 0; i < clients.length; i++) {
-        if (!clients[i] || !clients[i].address) continue
-        addr = root._canonAddr(clients[i].address)
-        if (addr) seen[addr] = true
-      }
+    var clients = root.clientsIpc || []
+    for (i = 0; i < clients.length; i++) {
+      if (!clients[i] || !clients[i].address) continue
+      addr = root._canonAddr(clients[i].address)
+      if (addr) seen[addr] = true
+    }
+    for (addr in root._minimized) seen[addr] = true
+    for (addr in root._placedKind) {
+      kind = root._placedKind[addr]
+      if (kind === "max" || kind === "full") seen[addr] = true
     }
     for (addr in root._knownAddresses) {
       if (seen[addr]) continue
@@ -254,6 +279,9 @@ QtObject {
       addr = root._canonAddr(c.address)
       if (!addr || root._knownAddresses[addr]) continue
       if (c.hidden === true || c.mapped === false) continue
+      if (Number(c.fullscreen || 0) > 0) continue
+      if (root._minimized[addr]) continue
+      if (root._placedKind[addr] === "max" || root._placedKind[addr] === "full") continue
       if (WindowModel.isLockSurface({
         class: c.class,
         appId: c.initialClass || c.class,
@@ -281,6 +309,14 @@ QtObject {
       addr = root._canonAddr(c.address)
       if (!addr || known[addr]) continue
       if (c.hidden === true || c.mapped === false) continue
+      if (Number(c.fullscreen || 0) > 0) {
+        known[addr] = true
+        continue
+      }
+      if (root._minimized[addr] || root._placedKind[addr] === "max" || root._placedKind[addr] === "full") {
+        known[addr] = true
+        continue
+      }
       if (WindowModel.isLockSurface({
         class: c.class,
         appId: c.initialClass || c.class,
@@ -378,10 +414,40 @@ QtObject {
       fullscreen: fullscreen,
       workspace: wsName,
       workspaceId: wsId,
-      minimized: hidden,
+      minimized: hidden || !!root._minimized[address],
       monitorName: mon ? String(mon.name || "") : "",
       xwayland: ipc.xwayland === true,
       modal: ipc.modal === true || String(ipc.contentType || "") === "dialog" || String(ipc.xdgTag || "").indexOf("dialog") >= 0
+    }
+  }
+
+  function _recordFromClient(c) {
+    if (!c) return null
+    var address = root._canonAddr(c.address)
+    if (!address) return null
+    var at = c.at || [0, 0]
+    var size = c.size || [0, 0]
+    var ws = c.workspace || {}
+    var hidden = c.hidden === true || !!root._minimized[address]
+    return {
+      address: address,
+      title: String(c.title || ""),
+      appId: String(c.class || ""),
+      class: String(c.class || ""),
+      initialClass: String(c.initialClass || c.class || ""),
+      x: Number(at[0] || 0),
+      y: Number(at[1] || 0),
+      width: Number(size[0] || 0),
+      height: Number(size[1] || 0),
+      mapped: c.mapped !== false,
+      floating: c.floating === true,
+      fullscreen: Number(c.fullscreen || 0),
+      workspace: String(ws.name || ""),
+      workspaceId: ws.id,
+      minimized: hidden,
+      monitorName: String(c.monitor || ""),
+      xwayland: c.xwayland === true,
+      modal: c.modal === true
     }
   }
 
@@ -602,11 +668,14 @@ QtObject {
   }
 
   function isMinimized(address) {
-    var rec = root._record(root._addr(address))
+    var target = root._addr(address)
+    if (root._minimized[target]) return true
+    var rec = root._record(target)
     return !!(rec && rec.minimized)
   }
 
   function toggleFromTaskbar(address) {
+    if (root.isMinimized(address)) return root.activate(address)
     if (root.isActive(address)) return root.minimize(address)
     return root.activate(address)
   }
@@ -654,7 +723,7 @@ QtObject {
     var target = root._addr(address)
     if (!target) return root._finish("activate", address, root._err("No window", "There is no window to activate.", ""))
     var rec = root._record(target)
-    if (rec && rec.minimized) root.restore(target)
+    if ((rec && rec.minimized) || root._minimized[target]) root.restore(target)
     root._dispatchLua("hl.dsp.window.bring_to_top({ " + root._luaWindow(target) + " })")
     root.focus(target)
     return root._finish("activate", target, root._ok())
