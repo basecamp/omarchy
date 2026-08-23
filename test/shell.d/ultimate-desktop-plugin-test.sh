@@ -383,6 +383,10 @@ grep -Fq 'hyprbars-pointer-proof.py' "$ROOT/test/acceptance.d/windows-native-tes
   || fail "windows-native harness runs the absolute pointer proof"
 grep -Fq 'start-dismiss-proof.py' "$ROOT/test/acceptance.d/windows-native-test.sh" \
   || fail "windows-native harness runs the Start click-through proof"
+[[ -f $ROOT/test/shell.d/start-clickthrough-ipc-test.sh ]] \
+  || fail "Start IPC lifecycle test exists for compositor sessions without uinput"
+grep -Fq '440x560 omarchy-start card' "$ROOT/test/shell.d/start-clickthrough-ipc-test.sh" \
+  || fail "Start IPC test asserts the 440x560 card, not a fullscreen overlay"
 grep -Fq 'cycleSnapshot' "$ROOT/test/acceptance.d/hyprbars-pointer-proof.py" \
   || fail "pointer proof aims at the live highlighted Alt+Tab card, not a two-foot layout"
 grep -Fq 'unfocused × closed the focused window' "$ROOT/test/acceptance.d/hyprbars-pointer-proof.py" \
