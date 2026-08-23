@@ -194,14 +194,6 @@ Item {
     onTriggered: root.applyPendingTheme()
   }
 
-  Timer {
-    id: memoryRefreshTimer
-    interval: 5000
-    running: true
-    repeat: true
-    onTriggered: root.refreshMemory()
-  }
-
   NumberAnimation {
     id: revealAnimation
     target: root
