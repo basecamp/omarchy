@@ -141,11 +141,14 @@ Panel {
   readonly property bool hiddenBusy: hiddenConnecting && actionIsHidden && actionKind === "connect" && hiddenSsidText !== "" && actionSsid === hiddenSsidText
   readonly property bool hiddenFailed: hiddenConnecting && actionIsHidden && failureReason !== "" && hiddenSsidText !== "" && failureSsid === hiddenSsidText
 
-  // The Dropdown disappears with the rest of the form, so a cursor left
-  // pointing at it would be stuck on nothing -- fall back to the toggle,
-  // which stays visible when the form closes.
+  // On close: bounce the cursor off the vanished Dropdown onto the toggle,
+  // and restore keyCatcher focus (a hidden field may still hold it) so
+  // j/k/Enter resume -- same pattern as onPasswordSsidChanged.
   onHiddenFormOpenChanged: {
-    if (!hiddenFormOpen && focusSection === "hiddenSecurity") focusSection = "hiddenToggle"
+    if (!hiddenFormOpen) {
+      if (focusSection === "hiddenSecurity") focusSection = "hiddenToggle"
+      if (opened) Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
+    }
   }
 
   // The section vanishes with the Wi-Fi station: close the form, evacuate
@@ -581,6 +584,7 @@ Panel {
   function summonWifiQr(forceDetect) {
     controller.hide()
     cancelPasswordPrompt()
+    cancelHiddenForm()
     var payload = {}
     if (!forceDetect && info.type === "wifi" && info.iface) {
       payload.iface = info.iface
@@ -774,6 +778,7 @@ Panel {
   function summonSpeedTest() {
     controller.hide()
     cancelPasswordPrompt()
+    cancelHiddenForm()
     var connection = ""
     if (info.type === "wifi") connection = info.ssid || "Wi-Fi"
     else if (info.type === "ethernet") connection = "Ethernet"
