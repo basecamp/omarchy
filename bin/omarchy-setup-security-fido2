@@ -50,13 +50,30 @@ if ! check_fido2_hardware; then
 fi
 
 # Create the pamu2fcfg file
-if [[ ! -f /etc/fido2/fido2 ]]; then
-  sudo mkdir -p /etc/fido2
+authfile=/etc/fido2/fido2
+
+# -f follows symlinks, so a symlinked authfile would report as already
+# registered and be left in place. Nothing in Omarchy puts a link here.
+if [[ -L $authfile ]]; then
+  echo -e "\e[31m\n$authfile is a symlink, not a FIDO2 registration file.\e[0m"
+  echo "Run omarchy-remove-security-fido2 first, then set FIDO2 up again."
+  exit 1
+fi
+
+if [[ ! -f $authfile ]]; then
+  sudo install -d -m 755 -o root -g root /etc/fido2
   echo -e "\e[32m\nLet's setup your device by confirming on the device now.\e[0m"
   echo -e "Touch your FIDO2 key when it lights up...\n"
 
-  if pamu2fcfg >/tmp/fido2; then
-    sudo mv /tmp/fido2 /etc/fido2/fido2
+  # mktemp rather than a predictable /tmp path: any other local user can
+  # pre-create /tmp/fido2 as a symlink, and the privileged move installs that
+  # symlink itself as PAM's global authfile. install copies the bytes out as
+  # root, so the authfile is never an inode a non-root user still owns.
+  registration=$(mktemp)
+  trap 'rm -f "$registration"' EXIT
+
+  if pamu2fcfg >"$registration" && [[ -s $registration ]]; then
+    sudo install -m 600 -o root -g root "$registration" "$authfile"
     echo -e "\e[32mFIDO2 device registered successfully!\e[0m"
   else
     echo -e "\e[31m\nFIDO2 registration failed. Please try again.\e[0m"
