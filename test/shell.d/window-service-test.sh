@@ -71,6 +71,8 @@ grep -Fq 'function _hyprbarsInset' "$ws" || fail "snap inset follows hyprbars:no
 grep -Fq 'WindowModel.coversWorkArea' "$ws" || fail "unmaximize must not restore a work-area-covering box as the normal float"
 grep -Fq 'if (!root._knownAddresses[target]) return false' "$ws" \
   || fail "a new tiled Chromium must not count as maximized just because it covers the work area"
+grep -Fq 'usesWaylandCsd' "$ws" \
+  || fail "new CSD clients must cascade at 1200, not 880"
 grep -Fq 'WindowModel.hyprbarsSnapInset' "$ws" || fail "desktop snap asks WindowModel for hyprbars inset"
 if grep -Fq 'WindowModel.snapRect(geom, direction, 32)' "$ws"; then
   fail "CSD clients must not always reserve 32px for hyprbars"
@@ -228,11 +230,11 @@ assert(m.isLockSurface({ class: 'org.omarchy.screensaver' }), 'screensaver class
 assert(m.isLockSurface({ initialClass: 'org.omarchy.screensaver', class: 'foot' }), 'screensaver initialClass is a lock surface even if class looks like foot')
 assert(!m.isLockSurface({ class: 'foot' }), 'ordinary foot is not a lock surface')
 assertEqual(m.hyprbarsSnapInset({ class: 'foot' }), 32, 'SSD clients reserve hyprbars height')
-assertEqual(m.hyprbarsSnapInset({ class: 'chromium' }), 0, 'Chromium CSD does not reserve hyprbars')
+assertEqual(m.hyprbarsSnapInset({ class: 'chromium' }), 32, 'Chromium uses hyprbars so snap reserves the title bar')
+assertEqual(m.hyprbarsSnapInset({ class: 'google-chrome' }), 32, 'Google Chrome uses hyprbars so snap reserves the title bar')
 assertEqual(m.hyprbarsSnapInset({ class: 'cursor' }), 0, 'Cursor CSD does not reserve hyprbars')
-assertEqual(m.hyprbarsSnapInset({ class: 'chrome-www.youtube.com__-Default' }), 0, 'YouTube PWAs keep Chromium CSD inset 0')
-assertEqual(m.hyprbarsSnapInset({ class: 'chrome-app.zoom.us__wc_home-Default' }), 0, 'Zoom PWAs keep Chromium CSD inset 0')
-assertEqual(m.hyprbarsSnapInset({ class: 'xyz-app.zoom.us__wc_home' }), 0, 'Zoom PWA class without chrome- still insets 0')
+assertEqual(m.hyprbarsSnapInset({ class: 'chrome-www.youtube.com__-Default' }), 32, 'YouTube PWAs use hyprbars with Chrome')
+assertEqual(m.hyprbarsSnapInset({ class: 'chrome-app.zoom.us__wc_home-Default' }), 32, 'Zoom PWAs use hyprbars with Chrome')
 assertEqual(m.hyprbarsSnapInset({ class: 'zoom' }), 32, 'native Zoom client keeps hyprbars inset')
 assertEqual(m.usesWaylandCsd({ class: 'zenity' }), false, 'zenity is not the Zen browser')
 assertEqual(m.usesWaylandCsd({ class: 'org.gnome.Nautilus' }), true, 'Nautilus uses GTK CSD')
@@ -245,7 +247,10 @@ assertEqual(m.withoutPin(pins, 'firefox').length, 0, 'withoutPin removes a pin')
 
 const shipped = m.parsePins(fs.readFileSync(path.join(root, 'default/ultimate/taskbar-pins.json'), 'utf8'))
 assertEqual(shipped[0].name, 'Chrome', 'shipped pins lead with Chrome')
+assertEqual(shipped[0].id, 'google-chrome', 'shipped Chrome pin is Google Chrome, not the blue Chromium ball')
 assertEqual(shipped[1].name, 'Files', 'shipped pins include Files')
+assertEqual(m.usesWaylandCsd({ class: 'google-chrome' }), false, 'Google Chrome uses hyprbars, not Wayland CSD')
+assert(m.windowMatchesPin({ class: 'chromium' }, { id: 'google-chrome' }), 'Chromium still lights the Chrome pin')
 assert(
   shipped.every(pin => pin.id !== 'foot' && pin.desktopId !== 'foot' && pin.id !== 'vim'),
   'shipped pins do not make foot or vim first class'
@@ -324,6 +329,12 @@ const mixed = m.compositorMonitor({ width: 1920, height: 1080, reserved: [0, 0, 
 assertEqual(mixed.height, 1080, 'compositorMonitor keeps the output height, not a gap-subtracted 1054')
 const floated = m.defaultFloatRect(mon)
 assert(floated.width < 960 && floated.height < 1040, 'default float must not be a work-area half-tile')
+assertEqual(floated.width, 880, 'SSD default float stays 880')
+const chromeFloat = m.defaultFloatRect(mon, { csd: true })
+assertEqual(chromeFloat.width, 1200, 'CSD default float is wide enough for Chromium caption buttons')
+assertEqual(chromeFloat.height, 740, 'CSD default float is tall enough for a browser chrome')
+const chromeCascade = m.cascadeRect(mon, 1, { csd: true })
+assertEqual(chromeCascade.width, 1200, 'CSD cascade keeps the caption width')
 const cascaded = m.cascadeRect(mon, 2)
 assertEqual(cascaded.width, floated.width, 'cascade keeps the fallback size')
 assert(cascaded.x > floated.x, 'cascade offsets later windows')

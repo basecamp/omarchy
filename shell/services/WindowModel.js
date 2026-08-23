@@ -73,7 +73,10 @@ function windowMatchesPin(win, pin) {
   var app = windowAppId(win)
   var pinId = normalizeId(pin && (pin.id || pin.desktopId))
   if (!app || !pinId) return false
-  return app === pinId || app.indexOf(pinId) !== -1 || pinId.indexOf(app) !== -1
+  if (app === pinId || app.indexOf(pinId) !== -1 || pinId.indexOf(app) !== -1) return true
+  if ((pinId === "google-chrome" || pinId === "google-chrome-stable") && (app === "chromium" || app.indexOf("chrom") === 0))
+    return true
+  return false
 }
 
 function parsePins(raw) {
@@ -493,10 +496,15 @@ function matchLayout(windows, layout) {
   return out
 }
 
-function defaultFloatRect(monitor) {
+function defaultFloatRect(monitor, options) {
   var area = workArea(monitor)
-  var width = Math.min(880, Math.max(640, Math.floor(area.width * 0.46)))
-  var height = Math.min(560, Math.max(400, Math.floor(area.height * 0.54)))
+  var csd = !!(options && options.csd)
+  var maxW = csd ? 1200 : 880
+  var maxH = csd ? 740 : 560
+  var minW = csd ? 1100 : 640
+  var minH = csd ? 680 : 400
+  var width = Math.min(maxW, Math.max(minW, Math.floor(area.width * (csd ? 0.64 : 0.46))))
+  var height = Math.min(maxH, Math.max(minH, Math.floor(area.height * (csd ? 0.72 : 0.54))))
   if (area.width > 0 && width > area.width - 96) width = Math.max(320, area.width - 96)
   if (area.height > 0 && height > area.height - 96) height = Math.max(240, area.height - 96)
   var x = area.x + Math.max(48, Math.floor((area.width - width) / 5))
@@ -504,8 +512,8 @@ function defaultFloatRect(monitor) {
   return { x: x, y: y, width: width, height: height }
 }
 
-function cascadeRect(monitor, index) {
-  var base = defaultFloatRect(monitor)
+function cascadeRect(monitor, index, options) {
+  var base = defaultFloatRect(monitor, options)
   var area = workArea(monitor)
   var step = 32
   var n = Math.max(0, Number(index) || 0)

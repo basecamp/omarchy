@@ -66,13 +66,17 @@ end
 for _, class_pat in ipairs(load_csd_patterns()) do
   -- CSD already draws its own shadow and edge. A compositor border + drop
   -- shadow on top is the dark halo around Chrome.
-  o.window(class_pat, { float = true, ["hyprbars:no_bar"] = true, no_shadow = true, border_size = 0 })
+  -- 880×560 clips Chromium CSD: min/max fall off the right and only × remains.
+  o.window(class_pat, { float = true, ["hyprbars:no_bar"] = true, no_shadow = true, border_size = 0, size = { 1200, 740 } })
 end
 
 -- Lock surfaces are not 880×560 app windows. Fullscreen per output, no hyprbars.
 o.window("org.omarchy.screensaver", { float = true, fullscreen = true, ["hyprbars:no_bar"] = true })
 
-o.window({ tag = "default-opacity" }, { opacity = "0.985 0.96" })
+-- Tiling mode uses 0.985 so the wallpaper shows through. That plus blur is
+-- the grainy haze on every Desktop Mode window. Floats are opaque.
+o.window({ tag = "default-opacity" }, { opacity = "1 1" })
+o.window(".*", { opacity = "1 1" })
 
 -- Stock ~/.config/hypr/looknfeel.lua is a copy of the tiling defaults and is
 -- required AFTER this file. It restores cyan borders, gaps, and blur-off.
@@ -110,6 +114,17 @@ local function apply_desktop_look()
         range = 12,
         render_power = 3,
       },
+      blur = {
+        enabled = true,
+        size = 8,
+        passes = 2,
+        popups = true,
+        vibrancy = 0,
+        noise = 0,
+      },
+    },
+    render = {
+      cm_auto_hdr = 0,
     },
     cursor = {
       hide_on_key_press = false,
@@ -120,15 +135,16 @@ local function apply_desktop_look()
         bar_height = 32,
         bar_part_of_window = true,
         bar_precedence_over_border = true,
-        bar_padding = 8,
-        bar_button_padding = 6,
+        bar_padding = 12,
+        bar_button_padding = 8,
         bar_title_enabled = true,
         bar_text_size = 13,
         bar_text_font = "sans-serif",
         bar_text_align = "left",
         bar_buttons_alignment = "right",
         icon_on_hover = false,
-        bar_color = "rgba(1a1a1acc)",
+        bar_blur = true,
+        bar_color = "rgba(1c1c1e99)",
         ["col.text"] = "rgb(eeeeee)",
         on_double_click = "omarchy-shell window toggleMaximize 0x{:x}",
       },
@@ -141,6 +157,9 @@ end
 
 apply_desktop_look()
 _G.omarchy_apply_desktop_look = apply_desktop_look
+
+hl.layer_rule({ match = { namespace = "omarchy-taskbar" }, blur = true })
+hl.layer_rule({ match = { namespace = "omarchy-start" }, blur = true })
 
 pcall(function()
   hl.permission("/usr/lib/hyprland-plugins/hyprbars.so", "plugin", "allow")
@@ -252,22 +271,22 @@ local function add_hyprbars_buttons()
   plugin.hyprbars.add_button({
     bg_color = "rgb(c42b1c)",
     fg_color = "rgb(ffffff)",
-    size = 14,
+    size = 22,
     icon = "×",
     action = "omarchy-shell window close 0x{:x}",
   })
   plugin.hyprbars.add_button({
-    bg_color = "rgb(3d3d3d)",
-    fg_color = "rgb(ffffff)",
-    size = 14,
+    bg_color = "rgb(c8c8c8)",
+    fg_color = "rgb(1a1a1a)",
+    size = 22,
     icon = "□",
     action = "omarchy-shell window toggleMaximize 0x{:x}",
     hover_action = "omarchy-shell window snapChooser 0x{:x}",
   })
   plugin.hyprbars.add_button({
-    bg_color = "rgb(3d3d3d)",
-    fg_color = "rgb(ffffff)",
-    size = 14,
+    bg_color = "rgb(c8c8c8)",
+    fg_color = "rgb(1a1a1a)",
+    size = 22,
     icon = "–",
     action = "omarchy-shell window minimize 0x{:x}",
   })

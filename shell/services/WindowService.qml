@@ -401,7 +401,9 @@ QtObject {
       if (remembered)
         root._applyRect(addr, WindowModel.clampRect(remembered, geom))
       else {
-        root._applyRect(addr, WindowModel.cascadeRect(geom, root._cascadeIndex))
+        root._applyRect(addr, WindowModel.cascadeRect(geom, root._cascadeIndex, {
+          csd: WindowModel.usesWaylandCsd({ class: c.class, appId: c.initialClass || c.class })
+        }))
         root._cascadeIndex++
       }
       known[addr] = true
@@ -607,6 +609,17 @@ QtObject {
       if (root._canonAddr(list[i].address) === target) return list[i]
     }
     return null
+  }
+
+  function _floatOpts(address) {
+    var rec = root._record(address) || {}
+    var ipc = root._clientIpc(address) || {}
+    var cls = rec.class || rec.appId || ipc.class || ipc.initialClass || ""
+    return { csd: WindowModel.usesWaylandCsd({ class: cls, appId: cls }) }
+  }
+
+  function _defaultFloat(address) {
+    return WindowModel.defaultFloatRect(root._monitorGeom(address), root._floatOpts(address))
   }
 
   function _hyprbarsInset(address) {
@@ -837,7 +850,7 @@ QtObject {
     if (!target) return root._finish("restoreNormal", address, root._err("No window", "There is no window to restore.", ""))
     root._setPlacedKind(target, "float")
     var bounds = root._normalBounds[target]
-    if (!bounds) bounds = WindowModel.defaultFloatRect(root._monitorGeom(target))
+    if (!bounds) bounds = root._defaultFloat(target)
     root._applyRect(target, bounds)
     return root._finish("restoreNormal", target, root._ok())
   }
@@ -860,7 +873,7 @@ QtObject {
     if (!bounds || !bounds.width) bounds = rec || root._lastRect[target]
     var geom = root._monitorGeom(target)
     if (!bounds || !bounds.width || WindowModel.coversWorkArea(bounds, geom))
-      bounds = WindowModel.defaultFloatRect(geom)
+      bounds = root._defaultFloat(target)
     if (!bounds || !bounds.width) return
     root._applyRect(target, bounds)
   }

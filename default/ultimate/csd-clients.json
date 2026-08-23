@@ -1,11 +1,8 @@
 {
   "classPatterns": [
-    "((google-)?[cC]hrom(e|ium)|[bB]rave-browser|[mM]icrosoft-edge|Vivaldi-stable|helium)",
     "([fF]irefox|librewolf)",
     "^zen$",
     "^zen-",
-    "^.+-youtube\\.com__.*$",
-    "^.+-app\\.zoom\\.us__wc_home.*$",
     "^[Cc]ursor$",
     "^(org\\.gnome\\.)?[Nn]autilus$"
   ]

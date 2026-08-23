@@ -17,7 +17,8 @@ grep -Fq 'clearFakeMapMaximize' "$cpp" || fail "CSD map must unset fake maximize
 grep -Fq 'onCsdMapped' "$cpp" || fail "fake maximize is cleared on map, not on every window rule update"
 grep -Fq 'coversWorkArea' "$cpp" || fail "CSD map must also shrink a tiled work-area Chrome, not only FSMODE_MAXIMIZED"
 grep -Fq 'floatWindow' "$cpp" || fail "cleared CSD map must float a tiled Chromium before sizing it"
-grep -Fq '880' "$cpp" || fail "cleared CSD map uses the Desktop Mode default float size"
+grep -Fq '1200' "$cpp" || fail "cleared CSD map uses a float wide enough for Chromium CSD caption buttons"
+! grep -Fq '880' "$cpp" || fail "CSD default float must not be 880; that clips min/max off Chrome's caption"
 if grep -A2 'g_onUpdateRules' "$cpp" | grep -Fq 'onCsdMapped'; then
   fail "updateRules must not clear a real maximize"
 fi

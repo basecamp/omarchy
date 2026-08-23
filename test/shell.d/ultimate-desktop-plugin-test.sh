@@ -119,7 +119,9 @@ fi
 pass "Start lock glyph is distinct from shut down"
 grep -Fq 'fillMode: Image.PreserveAspectFit' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
   || fail "Start app icons scale into the row instead of painting at native SVG size"
-grep -Fq 'Layout.preferredWidth: 20' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
+grep -Fq 'sourceSize.width: 48 * Screen.devicePixelRatio' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
+  || fail "Start pinned tiles use 48px icons, not text-only chips"
+grep -Fq 'Layout.preferredWidth: 32' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
   || fail "Start app icons use layout preferred size so RowLayout cannot inherit a 512px implicitWidth"
 grep -Fq 'clip: true' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
   || fail "Start panel clips overflowing icon paints"
@@ -176,6 +178,8 @@ grep -Fq 'gaps_out = 0' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "desktop windowing zeros tiling gaps so snap fills the work area"
 grep -Fq 'size = { 880, 560 }' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "desktop windowing opens overlapping floats, not leftover snap halves"
+grep -Fq 'size = { 1200, 740 }' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "CSD clients open wide enough that Chromium can draw min/max/close"
 grep -Fq 'hyprbars' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "desktop windowing loads compositor hyprbars title bars"
 grep -Fq 'omarchy-shell window minimize 0x{:x}' "$ROOT/default/hypr/desktop-windows.lua" \
@@ -266,8 +270,9 @@ fi
 if grep -Fq '{ tag = "chromium-based-browser" }' "$ROOT/default/hypr/desktop-windows.lua"; then
   fail "hyprbars:no_bar must not depend on the chromium-based-browser tag YouTube/Zoom drop"
 fi
-grep -Fq 'youtube' "$ROOT/default/ultimate/csd-clients.json" \
-  || fail "YouTube PWAs keep hyprbars:no_bar after dropping the chromium tag"
+if grep -Eq 'chrom(e|ium)|youtube|zoom' "$ROOT/default/ultimate/csd-clients.json"; then
+  fail "Chrome/Chromium must use hyprbars; Hyprland map-time MAXIMIZED makes CSD hide min/max"
+fi
 grep -Fq 'omarchy-shell window close 0x{:x}' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "hyprbars close names the bar's window address"
 grep -Fq '^zen$' "$ROOT/default/ultimate/csd-clients.json" \
@@ -320,13 +325,44 @@ fi
 if grep -Fq 'Tokens.surface.glass' "$ROOT/shell/plugins/ultimate-taskbar/Taskbar.qml"; then
   fail "taskbar must not fill with theme glass (Tokyo Night blue)"
 fi
-if grep -Fq 'disable-features=WaylandWindowDecorations' "$ROOT/config/chromium-flags.conf"; then
-  fail "Chromium must keep Wayland CSD so hyprbars is not a second title bar"
+if grep -Fq 'Tokens.surface.glass' "$ROOT/shell/plugins/ultimate-start/Start.qml"; then
+  fail "Start must not fill with theme glass (Tokyo Night blue)"
 fi
-grep -Fq 'WaylandWindowDecorations' "$ROOT/config/chromium-flags.conf" \
-  || fail "Chromium must enable Wayland window decorations (fused tab/caption chrome)"
+if grep -Fq 'Tokens.surface.glass' "$ROOT/shell/plugins/ultimate-taskbar/TaskButton.qml"; then
+  fail "taskbar menus must not fill with theme glass (Tokyo Night blue)"
+fi
+grep -Fq 'Qt.rgba(0.11, 0.11, 0.12, 0.62)' "$ROOT/shell/plugins/ultimate-taskbar/Taskbar.qml" \
+  || fail "Superbar glass is graphite with alpha, not opaque charcoal"
+grep -Fq 'bar_blur = true' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "hyprbars title bars use compositor blur"
+grep -Fq 'noise = 0' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "Desktop Mode blur must not add film grain"
+grep -Fq 'o.window(".*", { opacity = "1 1" })' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "Desktop Mode windows are opaque; 0.985 plus blur is the haze"
+grep -Fq 'disable-features=WaylandWindowDecorations' "$ROOT/config/chrome-flags.conf" \
+  || fail "Google Chrome must drop Wayland CSD so hyprbars can draw min/max/close"
+grep -Fq 'cm_auto_hdr = 0' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "Desktop Mode must disable cm_auto_hdr so a Samsung HDR EDID cannot haze SDR"
+grep -Fq 'namespace = "omarchy-taskbar"' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "Superbar layer is blurred so graphite glass is translucent"
+grep -Fq 'namespace = "omarchy-start"' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "Start layer is blurred so the card is translucent"
+grep -Fq 'bg_color = "rgb(c8c8c8)"' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "hyprbars min/max must be light rectangles; dark-on-dark looks like only close"
+if grep -Fq 'bg_color = "rgb(3d3d3d)"' "$ROOT/default/hypr/desktop-windows.lua"; then
+  fail "hyprbars min/max must not be charcoal on a charcoal bar"
+fi
+grep -Fq '.round = 2' "$ROOT/default/hypr/plugins/hyprbars/barDeco.cpp" \
+  || fail "hyprbars caption buttons are rectangles, not traffic-light circles"
+if grep -Fq 'scaledButtonSize / 2.0' "$ROOT/default/hypr/plugins/hyprbars/barDeco.cpp"; then
+  fail "hyprbars must not round caption buttons to circles"
+fi
+grep -Fq '"id": "google-chrome"' "$ROOT/default/ultimate/taskbar-pins.json" \
+  || fail "shipped Chrome pin is Google Chrome so the Superbar gets the real icon"
+grep -Fq 'disable-features=WaylandWindowDecorations' "$ROOT/config/chromium-flags.conf" \
+  || fail "Chromium must drop Wayland CSD so hyprbars can draw min/max/close"
 grep -Fq 'hyprbars:no_bar' "$ROOT/default/hypr/desktop-windows.lua" \
-  || fail "Desktop Mode hides hyprbars on CSD browsers and Cursor"
+  || fail "Desktop Mode hides hyprbars on GTK/Cursor CSD"
 grep -Fq '^[Cc]ursor$' "$ROOT/default/ultimate/csd-clients.json" \
   || fail "Desktop Mode hides hyprbars on Cursor CSD"
 grep -Fq '[Nn]autilus' "$ROOT/default/ultimate/csd-clients.json" \
@@ -375,7 +411,7 @@ grep -Fq 'WindowModel.isLockSurface' "$ROOT/shell/services/WindowService.qml" \
   || fail "reopen memory must not cascade the screensaver into an 880x560 foot"
 grep -Fq 'org.omarchy.screensaver' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "Desktop Mode fullscreen screensaver is excluded from hyprbars"
-grep -Fq 'sourceSize.width: 20 * Screen.devicePixelRatio' "$ROOT/shell/plugins/ultimate-taskbar/TaskButton.qml" \
+grep -Fq 'sourceSize.width: 32 * Screen.devicePixelRatio' "$ROOT/shell/plugins/ultimate-taskbar/TaskButton.qml" \
   || fail "Superbar icons request a device-pixel sourceSize so they are not washed out"
 grep -Fq 'function _hydrateIfNeeded' "$ROOT/shell/services/WindowService.qml" \
   || fail "reopen memory hydrates existing windows without cascading them"
