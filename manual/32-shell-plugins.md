@@ -85,13 +85,27 @@ A plugin is a directory with a `manifest.json` and some QML. The manifest declar
 
 A plugin can declare several kinds at once — the media plugin is both a `service` and a `bar-widget`. Bar widgets get an extra `barWidget` block with a display name, a category, an optional `defaultSection`, and `allowMultiple`, which says whether it makes sense to have more than one on the bar. Most widgets set it to `false`; spacers and indicators set it to `true`.
 
+A plugin with a visible kind (`bar-widget`, `menu`, `overlay`, or `panel`) can also add one launcher to the root Omarchy menu. Include a `menuItem` block in the manifest with any of the optional string fields `label`, `icon`, `iconFont`, and `description`:
+
+```json
+{
+  "menuItem": {
+    "label": "Text Polish",
+    "icon": "󰚩",
+    "description": "Correct and refine clipboard text"
+  }
+}
+```
+
+The launcher appears only while the plugin is enabled and opens it through the standard toggle lifecycle. It cannot declare its own shell command. This is different from the `menu` kind, which means that the plugin itself provides a summoned menu surface.
+
 Before you publish anything, check it:
 
 ```
 omarchy plugin validate ./my-plugin
 ```
 
-That runs the same checks the shell does at load time: the schema version, the required fields, an id that isn't reserved, entry points that are safe relative paths and actually exist, an entry point for every kind you claimed, and no symlinks anywhere inside the folder.
+That runs the same checks the shell does at load time: the schema version, the required fields, an id that isn't reserved, entry points that are safe relative paths and actually exist, an entry point for every kind you claimed, valid menu launcher metadata, and no symlinks anywhere inside the folder.
 
 For the full picture, the source is the documentation: `shell/README.md` in the Omarchy repo covers the manifest schema, the shell's IPC contract, and the exact shape of `shell.json`, and `shell/plugins/README.md` lists every first-party plugin with its id, kinds, and entry points.
 
