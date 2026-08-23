@@ -6,7 +6,7 @@
 
 Reads Copilot session data from ~/.copilot/session-store.db for historical
 usage statistics, and fetches account quota from the GitHub API using OAuth
-tokens managed by official Copilot clients (VS Code, JetBrains, CLI).
+tokens managed by editor plugins (VS Code, JetBrains, copilot.vim).
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from typing import Any
 
 AGENT_ID = "copilot"
 AGENT_NAME = "Copilot"
-AUTH_HELP = "Sign in with the Copilot CLI or an editor (VS Code, JetBrains)"
+AUTH_HELP = "Sign in with VS Code, JetBrains, or copilot.vim for quota display"
 
 GITHUB_API_BASE = "https://api.github.com"
 COPILOT_INTERNAL_URL = f"{GITHUB_API_BASE}/copilot_internal/user"
@@ -74,7 +74,7 @@ def read_config() -> dict:
 
 
 def get_oauth_token() -> str | None:
-  """Read OAuth token from official Copilot client config."""
+  """Read OAuth token from editor Copilot plugin config (VS Code, JetBrains, copilot.vim)."""
   for token_file in COPILOT_TOKEN_FILES:
     token_path = COPILOT_CONFIG_DIR / token_file
     if not token_path.exists():
