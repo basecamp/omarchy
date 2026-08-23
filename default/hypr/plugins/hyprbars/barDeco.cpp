@@ -452,7 +452,9 @@ void CHyprBar::renderBarButtons(CBox* barBox, const float scale, const float a) 
                           scaledButtonSize};
         buttonBox.round();
 
-        g_pHyprOpenGL->renderRect(buttonBox, color, {.round = static_cast<int>(std::round(scaledButtonSize / 2.0)), .roundingPower = 2.F});
+        // Windows caption buttons are rectangles. round = size/2 made
+        // macOS traffic-light circles and hid the − □ × glyphs.
+        g_pHyprOpenGL->renderRect(buttonBox, color, {.round = 2, .roundingPower = 2.F});
 
         offset += scaledButtonsPad + scaledButtonSize;
     }

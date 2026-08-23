@@ -28,12 +28,11 @@ Item {
         rowSpacing: 1
         columnSpacing: 1
         Repeater {
-          model: 4
+          model: ["#c42b1c", "#6ea31c", "#1a6fb5", "#d4a017"]
           Rectangle {
-            width: 5
-            height: 5
-            color: bar.chromeStart
-            opacity: 0.45 + index * 0.15
+            width: 7
+            height: 7
+            color: modelData
           }
         }
       }

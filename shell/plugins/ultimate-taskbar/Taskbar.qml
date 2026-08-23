@@ -18,17 +18,19 @@ Item {
 
   property string home: Quickshell.env("HOME")
   property bool barHidden: false
-  property int barSize: Math.max(40, Style.bar.sizeHorizontal + 14)
+  property int barSize: Math.max(48, Style.bar.sizeHorizontal + 22)
   property bool vertical: false
   property string position: "bottom"
   property string fontFamily: Style.font.family
   property color foreground: Tokens.text.primary
   property color barForeground: Tokens.text.primary
-  // Windows 7 Superbar: charcoal + orange active glow, not Tokyo Night blue.
-  readonly property color chromeBar: "#1b1b1b"
-  readonly property color chromeHover: "#333333"
-  readonly property color chromeActive: "#3a3a3a"
-  readonly property color chromePressed: "#4a4a4a"
+  // Windows 7 Superbar glass: graphite, not Tokyo Night navy. Alpha + layer
+  // blur is the translucency. Do not fill with Tokens.surface.glass.
+  readonly property color chromeBar: Qt.rgba(0.11, 0.11, 0.12, 0.62)
+  readonly property color chromeHover: Qt.rgba(1, 1, 1, 0.10)
+  readonly property color chromeActive: Qt.rgba(1, 1, 1, 0.16)
+  readonly property color chromePressed: Qt.rgba(1, 1, 1, 0.22)
+  readonly property color chromeMenu: Qt.rgba(0.11, 0.11, 0.12, 0.88)
   readonly property color chromeGlow: "#e8943a"
   readonly property color chromeStart: "#9cbc0d"
   readonly property color chromeEdge: "#55ffffff"

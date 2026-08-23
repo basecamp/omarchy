@@ -73,9 +73,10 @@ Item {
     enabled: root.opened
     function onActiveToplevelChanged() {
       var next = ToplevelManager.activeToplevel
-      // Opening Start can null the toplevel. Clicking the same window
-      // later must still close Start; comparing to focusedWhenOpened
-      // left the card mapped on click-through.
+      // Opening Start Exclusive-focuses the card, so the previous window
+      // unfocuses (next is null — stay open). Clicking that same window
+      // focuses it again; that must close Start. Comparing to
+      // focusedWhenOpened left Start mapped on click-through.
       if (!next)
         return
       if (!root.launchingFromStart)
@@ -106,9 +107,9 @@ Item {
     Rectangle {
       anchors.fill: parent
       clip: true
-      color: Tokens.surface.glass
+      color: Qt.rgba(0.11, 0.11, 0.12, 0.78)
       radius: Tokens.radius.large
-      border.color: Tokens.border.subtle
+      border.color: "#59ffffff"
       border.width: 1
 
       HoverHandler {
@@ -149,14 +150,44 @@ Item {
         Flow {
           visible: root.filter.length === 0 && root.pins.length > 0
           Layout.fillWidth: true
-          spacing: 8
+          spacing: 12
           Repeater {
             model: root.pins
-            delegate: Button {
-              text: modelData.name || modelData.desktopId
-              onClicked: {
-                if (root.appLibrary) root.appLibrary.launch(modelData.desktopId || modelData.id, modelData.name)
-                root.close()
+            delegate: Item {
+              width: 88
+              height: 84
+              Column {
+                anchors.fill: parent
+                spacing: 6
+                Image {
+                  anchors.horizontalCenter: parent.horizontalCenter
+                  width: 48
+                  height: 48
+                  fillMode: Image.PreserveAspectFit
+                  asynchronous: true
+                  sourceSize.width: 48 * Screen.devicePixelRatio
+                  sourceSize.height: 48 * Screen.devicePixelRatio
+                  source: root.appLibrary ? root.appLibrary.iconSource(modelData.icon || modelData.desktopId) : ""
+                }
+                Text {
+                  width: parent.width
+                  horizontalAlignment: Text.AlignHCenter
+                  elide: Text.ElideRight
+                  text: modelData.name || modelData.desktopId
+                  color: Tokens.text.primary
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.bodySmall
+                }
+              }
+              MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  root.launchingFromStart = true
+                  if (root.appLibrary) root.appLibrary.launch(modelData.desktopId || modelData.id, modelData.name)
+                  root.close()
+                }
               }
             }
           }
@@ -170,21 +201,21 @@ Item {
           model: root.entries
           delegate: Item {
             width: ListView.view.width
-            height: 36
+            height: 44
             clip: true
             RowLayout {
               anchors.fill: parent
               spacing: 10
               Image {
-                Layout.preferredWidth: 20
-                Layout.preferredHeight: 20
+                Layout.preferredWidth: 32
+                Layout.preferredHeight: 32
                 Layout.alignment: Qt.AlignVCenter
-                width: 20
-                height: 20
+                width: 32
+                height: 32
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
-                sourceSize.width: 20 * Screen.devicePixelRatio
-                sourceSize.height: 20 * Screen.devicePixelRatio
+                sourceSize.width: 32 * Screen.devicePixelRatio
+                sourceSize.height: 32 * Screen.devicePixelRatio
                 source: root.appLibrary ? root.appLibrary.iconSource(modelData.icon) : ""
               }
               Text {

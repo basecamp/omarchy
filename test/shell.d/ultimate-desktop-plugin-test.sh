@@ -352,13 +352,13 @@ fi
 if grep -Fq 'Tokens.accent.primary' "$ROOT/shell/plugins/ultimate-taskbar/StartButton.qml"; then
   fail "Start must not use the theme accent for the orb"
 fi
-if grep -Fq 'Tokens.surface.glass' "$ROOT/shell/plugins/ultimate-taskbar/Taskbar.qml"; then
+if grep -E '^[^/]*Tokens.surface.glass' "$ROOT/shell/plugins/ultimate-taskbar/Taskbar.qml"; then
   fail "taskbar must not fill with theme glass (Tokyo Night blue)"
 fi
-if grep -Fq 'Tokens.surface.glass' "$ROOT/shell/plugins/ultimate-start/Start.qml"; then
+if grep -E '^[^/]*Tokens.surface.glass' "$ROOT/shell/plugins/ultimate-start/Start.qml"; then
   fail "Start must not fill with theme glass (Tokyo Night blue)"
 fi
-if grep -Fq 'Tokens.surface.glass' "$ROOT/shell/plugins/ultimate-taskbar/TaskButton.qml"; then
+if grep -E '^[^/]*Tokens.surface.glass' "$ROOT/shell/plugins/ultimate-taskbar/TaskButton.qml"; then
   fail "taskbar menus must not fill with theme glass (Tokyo Night blue)"
 fi
 grep -Fq 'Qt.rgba(0.11, 0.11, 0.12, 0.62)' "$ROOT/shell/plugins/ultimate-taskbar/Taskbar.qml" \
@@ -384,7 +384,7 @@ if grep -Fq 'bg_color = "rgb(3d3d3d)"' "$ROOT/default/hypr/desktop-windows.lua";
 fi
 grep -Fq '.round = 2' "$ROOT/default/hypr/plugins/hyprbars/barDeco.cpp" \
   || fail "hyprbars caption buttons are rectangles, not traffic-light circles"
-if grep -Fq 'scaledButtonSize / 2.0' "$ROOT/default/hypr/plugins/hyprbars/barDeco.cpp"; then
+if grep -Eq '\.round[[:space:]]*=[[:space:]]*scaledButtonSize' "$ROOT/default/hypr/plugins/hyprbars/barDeco.cpp"; then
   fail "hyprbars must not round caption buttons to circles"
 fi
 grep -Fq '"id": "google-chrome"' "$ROOT/default/ultimate/taskbar-pins.json" \

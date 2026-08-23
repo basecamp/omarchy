@@ -25,8 +25,8 @@ Item {
   readonly property string label: group && group.name ? group.name : ""
   readonly property string iconName: group && (group.icon || group.desktopId) ? (group.icon || group.desktopId) : ""
 
-  implicitWidth: 44
-  implicitHeight: parent ? parent.height : 40
+  implicitWidth: 52
+  implicitHeight: parent ? parent.height : 48
 
   function activate() {
     var startWasOpen = !!(root.bar && root.bar.shell && typeof root.bar.shell.isPluginOpen === "function"
@@ -95,11 +95,11 @@ Item {
     Image {
       id: icon
       anchors.centerIn: parent
-      width: 20
-      height: 20
+      width: 32
+      height: 32
       fillMode: Image.PreserveAspectFit
-      sourceSize.width: 20 * Screen.devicePixelRatio
-      sourceSize.height: 20 * Screen.devicePixelRatio
+      sourceSize.width: 32 * Screen.devicePixelRatio
+      sourceSize.height: 32 * Screen.devicePixelRatio
       source: root.appLibrary ? root.appLibrary.iconSource(root.iconName) : ""
       visible: status === Image.Ready
     }
@@ -167,7 +167,7 @@ Item {
 
     Rectangle {
       anchors.fill: parent
-      color: Tokens.surface.glass
+      color: bar.chromeMenu
       radius: Tokens.radius.medium
       border.color: Tokens.border.subtle
       border.width: 1
@@ -270,7 +270,7 @@ Item {
 
     Rectangle {
       anchors.fill: parent
-      color: Tokens.surface.glass
+      color: bar.chromeMenu
       radius: Tokens.radius.medium
       border.color: Tokens.border.subtle
       border.width: 1

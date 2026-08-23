@@ -1,10 +1,10 @@
 {
   "pins": [
     {
-      "id": "chromium",
-      "desktopId": "chromium",
+      "id": "google-chrome",
+      "desktopId": "google-chrome",
       "name": "Chrome",
-      "icon": "chromium"
+      "icon": "google-chrome"
     },
     {
       "id": "org.gnome.nautilus",
