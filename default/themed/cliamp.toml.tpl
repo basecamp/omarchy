@@ -1,0 +1,7 @@
+bg = "{{ background }}"
+accent = "{{ accent }}"
+bright_fg = "{{ bright_foreground }}"
+fg = "{{ foreground }}"
+green = "{{ green }}"
+yellow = "{{ yellow }}"
+red = "{{ red }}"

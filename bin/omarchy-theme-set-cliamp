@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# omarchy:summary=Sync the generated Omarchy theme to cliamp
+# omarchy:hidden=true
+
+set -euo pipefail
+
+CLIAMP_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/cliamp"
+CLIAMP_CONFIG_PATH="$CLIAMP_CONFIG_DIR/config.toml"
+CLIAMP_THEME_DIR="$CLIAMP_CONFIG_DIR/themes"
+CLIAMP_THEME_PATH="$CLIAMP_THEME_DIR/omarchy.toml"
+OMARCHY_THEME_PATH="$HOME/.local/state/omarchy/current/theme/cliamp.toml"
+
+[[ -f $OMARCHY_THEME_PATH ]] || exit 0
+
+mkdir -p "$CLIAMP_THEME_DIR"
+ln -sfn "$OMARCHY_THEME_PATH" "$CLIAMP_THEME_PATH"
+
+tmp=$(mktemp "$CLIAMP_CONFIG_PATH.XXXXXX")
+if [[ -f $CLIAMP_CONFIG_PATH ]]; then
+  awk '
+    BEGIN { written = 0; in_tables = 0 }
+    !in_tables && /^[[:space:]]*theme[[:space:]]*=/ {
+      if (!written) print "theme = \"omarchy\""
+      written = 1
+      next
+    }
+    /^[[:space:]]*\[/ {
+      if (!written) {
+        print "theme = \"omarchy\""
+        print ""
+        written = 1
+      }
+      in_tables = 1
+    }
+    { print }
+    END { if (!written) print "theme = \"omarchy\"" }
+  ' "$CLIAMP_CONFIG_PATH" >"$tmp"
+else
+  printf 'theme = "omarchy"\n' >"$tmp"
+fi
+mv "$tmp" "$CLIAMP_CONFIG_PATH"
+
+# A running cliamp reloads immediately. If none is running, the persisted
+# setting applies the next time it starts.
+cliamp theme omarchy >/dev/null 2>&1 || true
