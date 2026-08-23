@@ -63,16 +63,25 @@ Ephemeral ones (the freedesktop `transient` hint, or an `app_name` of
 ## The sender contract
 
 `bin/omarchy-notification-send` is the one way Omarchy code sends
-notifications — never raw `notify-send`. It translates its flags into
-notify-send arguments and passes any unrecognized options through:
+notifications — never raw `notify-send`. It calls
+`org.freedesktop.Notifications.Notify` directly over the session bus (via
+`busctl --user`), so each value is one typed D-Bus parameter and there is no
+argv layer that could reinterpret a relayed headline as an option or a hint. Its
+flags map onto that call:
 
 | Flag | Becomes | Meaning |
 |---|---|---|
-| `-g` / `--glyph` | `--hint=string:omarchy-glyph:` | Nerd Font glyph for the icon slot when no image icon resolves |
-| `--exec <program> [args…]` | `--hint=string:omarchy-exec-argv:` | the click command; consumes the rest of the line, so it comes last. Each word is a discrete argument the shell runs without re-parsing (see below) |
-| `--image` | `--hint=string:image-path:` | the standard freedesktop image hint |
-| `--app-name` | `-a` | defaults to `omarchy-action` |
-| `-u` / `--urgency` | `-u` | defaults to `low` |
+| `-g` / `--glyph` | hint `omarchy-glyph` | Nerd Font glyph for the icon slot when no image icon resolves |
+| `--exec <program> [args…]` | hint `omarchy-exec-argv` | the click command; consumes the rest of the line, so it comes last. Each word is a discrete argument the shell runs without re-parsing (see below) |
+| `--image` | hint `image-path` | the standard freedesktop image hint |
+| `-i` / `--icon` | `app_icon` | themed icon name for the toast |
+| `--app-name` | `app_name` | defaults to `omarchy-action` |
+| `-u` / `--urgency` | hint `urgency` (byte) | `low`/`normal`/`critical`; defaults to `low` |
+| `-t` / `--expire-time` | `expire_timeout` | milliseconds on screen; server default otherwise |
+
+Unknown flags are a hard error, not a silent pass-through: `--exec` is the only
+door to a click command, and there is no generic option pass-through to smuggle
+one through.
 
 The defaults are the point: an unadorned `omarchy-notification-send "Done"`
 is a low-urgency user-action toast that pops through DND and is treated as
@@ -127,11 +136,14 @@ and needs no notification to execute code. What is fully closed is untrusted
 *content* — web notifications can't set the exec hint at all, and any relayed
 title/filename is confined to inert argument data.
 
-The sender keeps that last part true rather than leaving it to each caller. The
-headline and description go to `notify-send` behind a `--`, so a relayed value
-beginning with a dash is text and not flags, and a word that reaches the
-pass-through option position carrying `omarchy-exec-argv` is refused outright:
-`--exec` is the only thing that may build a click command.
+The sender keeps that last part true structurally rather than leaving it to each
+caller. Because it calls `Notify` directly, the headline and description are
+typed string parameters — a relayed value like `--hint=…` or `-rf` is the
+summary or body, never an option or a hint, and there is no argv/option layer
+(no `notify-send`) left to reinterpret it. `--exec` is the only thing that can
+build the `omarchy-exec-argv` hint. (The leading `--` on the `busctl` call is a
+belt for `busctl`'s own getopt, which would otherwise read a dash-leading value
+as a `busctl` option; the summary/body themselves are never parsed as options.)
 
 ## Helper commands
 

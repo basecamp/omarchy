@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Send an Omarchy desktop notification
-# omarchy:args=[--app-name <app-name>] [-g <glyph>] [-u <low|normal|critical>] [--image <path-or-uri>] <headline> [description] [notify-send options] [--exec <program> [args...]]
+# omarchy:args=[--app-name <app-name>] [-g <glyph>] [-u <low|normal|critical>] [-i <icon>] [-t <ms>] [--image <path-or-uri>] <headline> [description] [--exec <program> [args...]]
 # omarchy:examples=omarchy notification send "Reminder" "5 minutes are up" -g 󰢌
 
 set -euo pipefail
@@ -11,46 +11,63 @@ description=""
 glyph=
 urgency="low"
 app_name="omarchy-action"
+app_icon=""
 image=
+expire_timeout=-1
 exec_args=()
 exec_present=0
-args=()
 parsed_option_args=0
+
+usage() {
+  echo "Usage: omarchy-notification-send [--app-name <app-name>] [-g <glyph>] [-u <low|normal|critical>] [-i <icon>] [-t <ms>] [--image <path-or-uri>] <headline> [description] [--exec <program> [args...]]" >&2
+}
+
+need_value() {
+  if (($1 < 2)); then
+    echo "Missing value for $2" >&2
+    exit 1
+  fi
+}
 
 parse_omarchy_option() {
   case $1 in
   -g | --glyph)
-    if (($# < 2)); then
-      echo "Missing value for $1" >&2
-      exit 1
-    fi
+    need_value $# "$1"
     glyph=$2
     parsed_option_args=2
     return 0
     ;;
   -u | --urgency)
-    if (($# < 2)); then
-      echo "Missing value for $1" >&2
-      exit 1
-    fi
+    need_value $# "$1"
     urgency="$2"
     parsed_option_args=2
     return 0
     ;;
   --app-name)
-    if (($# < 2)); then
-      echo "Missing value for $1" >&2
-      exit 1
-    fi
+    need_value $# "$1"
     app_name=$2
     parsed_option_args=2
     return 0
     ;;
-  --image)
-    if (($# < 2)); then
-      echo "Missing value for $1" >&2
+  -i | --icon)
+    need_value $# "$1"
+    app_icon=$2
+    parsed_option_args=2
+    return 0
+    ;;
+  -t | --expire-time)
+    need_value $# "$1"
+    if [[ $2 != *[!0-9-]* && $2 =~ ^-?[0-9]+$ ]]; then
+      expire_timeout=$2
+    else
+      echo "Invalid $1 value (milliseconds expected): $2" >&2
       exit 1
     fi
+    parsed_option_args=2
+    return 0
+    ;;
+  --image)
+    need_value $# "$1"
     image=$2
     parsed_option_args=2
     return 0
@@ -69,7 +86,7 @@ while (($# > 0)); do
 done
 
 if (($# < 1)); then
-  echo "Usage: omarchy-notification-send [--app-name <app-name>] [-g <glyph>] [-u <low|normal|critical>] [--image <path-or-uri>] <headline> [description] [notify-send options] [--exec <program> [args...]]"
+  usage
   exit 1
 fi
 
@@ -97,33 +114,35 @@ while (($# > 0)); do
   elif parse_omarchy_option "$@"; then
     shift "$parsed_option_args"
   else
-    # --exec is the only door to a click command. A relayed title or filename
-    # that lands here -- passthrough is the one position an untrusted value can
-    # still reach notify-send as an option -- must not be able to set the hint
-    # itself, which is the injection this transport exists to close.
-    if [[ $1 == *omarchy-exec-argv* ]]; then
-      echo "The click command hint can only be set with --exec, not passed through." >&2
-      exit 1
-    fi
-    args+=("$1")
-    shift
+    echo "Unknown option: $1" >&2
+    usage
+    exit 1
   fi
 done
 
-# Tag as a user-action toast so it pops through DND.
-args+=("-a" "$app_name" "-u" "$urgency")
+case $urgency in
+low) urgency_byte=0 ;;
+normal) urgency_byte=1 ;;
+critical) urgency_byte=2 ;;
+*)
+  echo "Unknown urgency: $urgency (use low, normal, or critical)" >&2
+  exit 1
+  ;;
+esac
+
+# a{sv} hints, as busctl triples (key, variant type, value). urgency is a byte;
+# the rest are strings. The click command rides here as omarchy-exec-argv, built
+# only from --exec below.
+hints=(urgency y "$urgency_byte")
 
 if [[ -n $glyph ]]; then
-  args+=("--hint=string:omarchy-glyph:$glyph")
+  hints+=(omarchy-glyph s "$glyph")
 fi
 
 if [[ -n $image ]]; then
-  args+=("--hint=string:image-path:$image")
+  hints+=(image-path s "$image")
 fi
 
-# The click command travels with the popup as an argv hint the shell runs
-# itself, so restored toasts stay clickable and senders don't block on a
-# libnotify action (which dies when the shell restarts).
 if ((exec_present)); then
   if ((${#exec_args[@]} == 0)); then
     echo "--exec needs a command: --exec <program> [args...]" >&2
@@ -141,14 +160,25 @@ if ((exec_present)); then
   # NUL-delimit into jq so every byte survives as data: jq's own --args would eat
   # a bare "--", and a newline in an arg must not split the vector.
   exec_argv_json=$(printf '%s\0' "${exec_args[@]}" | jq -Rsc 'split("\u0000")[:-1]')
-  args+=("--hint=string:omarchy-exec-argv:$exec_argv_json")
+  hints+=(omarchy-exec-argv s "$exec_argv_json")
 fi
 
-# `--` so notify-send reads the headline and description as text. Without it a
-# headline beginning with a dash is parsed as options ("-rf x" becomes -r), and
-# one shaped like `--hint=string:...` sets a hint of its own.
-if [[ -n $description ]]; then
-  notify-send "${args[@]}" -- "$headline" "$description"
-else
-  notify-send "${args[@]}" -- "$headline"
-fi
+hint_count=$((${#hints[@]} / 3))
+
+# Call org.freedesktop.Notifications.Notify directly — never notify-send. Its
+# argv parsing is the surface that reinterprets a relayed headline like
+# `--hint=…` or `-rf` as options or hints; busctl takes each value as one typed
+# D-Bus parameter instead, and the leading `--` keeps a dash-leading value
+# (headline, description, a negative timeout) positional rather than a busctl
+# option. So the summary and body are strings that can never become a hint, and
+# omarchy-exec-argv is set only from --exec.
+#
+# Signature susssasa{sv}i: app_name, replaces_id, app_icon, summary, body,
+# actions (empty), hints, expire_timeout.
+busctl --user -- call \
+  org.freedesktop.Notifications /org/freedesktop/Notifications \
+  org.freedesktop.Notifications Notify susssasa{sv}i \
+  "$app_name" 0 "$app_icon" "$headline" "$description" \
+  0 \
+  "$hint_count" "${hints[@]}" \
+  "$expire_timeout" >/dev/null
