@@ -52,9 +52,14 @@ notifications=$(<"$WORKDIR/notifications")
   fail "taildrop receive saves incoming files" "$(ls "$downloads")"
 pass "taildrop receive saves incoming files"
 
-grep -qF -- "Received photo.png Saved to $downloads --image $downloads/photo.png" <<<"$notifications" ||
+grep -qF -- "Received photo.png Saved to $downloads -u critical --image $downloads/photo.png" <<<"$notifications" ||
   fail "taildrop receive previews received images" "$notifications"
 pass "taildrop receive previews received images"
+
+while IFS= read -r line; do
+  [[ $line == *"-u critical"* ]] || fail "taildrop receive announcements wait to be answered" "$line"
+done <<<"$notifications"
+pass "taildrop receive announcements wait to be answered"
 
 grep -q "^Received notes with space.pdf .* -g " <<<"$notifications" ||
   fail "taildrop receive announces other files with a glyph" "$notifications"
