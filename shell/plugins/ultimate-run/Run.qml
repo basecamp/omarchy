@@ -19,11 +19,15 @@ Item {
 
   function open(payloadJson) {
     root.command = ""
+    if (root.shell && root.shell.transientCoordinator)
+      root.shell.transientCoordinator.request(root)
     root.opened = true
     Qt.callLater(function() { field.forceActiveFocus() })
   }
 
   function close() {
+    if (root.shell && root.shell.transientCoordinator)
+      root.shell.transientCoordinator.release(root)
     root.opened = false
     root.command = ""
   }

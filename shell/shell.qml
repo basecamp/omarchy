@@ -20,6 +20,7 @@ ShellRoot {
   property AppLibrary appLibrary: AppLibrary { }
   property WindowService windowService: WindowService { }
   property CapabilityBroker capabilityBroker: CapabilityBroker { }
+  property TransientSurfaceCoordinator transientCoordinator: TransientSurfaceCoordinator { }
   property ModeProfileService modeProfileService: ModeProfileService { }
 
   property string home: Quickshell.env("HOME")
@@ -1052,6 +1053,15 @@ ShellRoot {
 
     function toggle(id: string, payloadJson: string): void {
       shell.toggle(id, payloadJson)
+    }
+
+    function dismissOutside(): string {
+      if (shell.transientCoordinator && typeof shell.transientCoordinator.pointerIsExempt === "function"
+          && shell.transientCoordinator.pointerIsExempt())
+        return "ok"
+      if (shell.transientCoordinator && typeof shell.transientCoordinator.dismissOutside === "function")
+        shell.transientCoordinator.dismissOutside()
+      return "ok"
     }
 
     // A bar section's panels answer to their position as well as their id, so a

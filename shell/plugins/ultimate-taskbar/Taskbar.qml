@@ -165,6 +165,17 @@ Item {
         anchors.left: true
         anchors.right: true
 
+        HoverHandler {
+          onHoveredChanged: {
+            if (root.shell && root.shell.transientCoordinator)
+              root.shell.transientCoordinator.setExempt("taskbar", hovered)
+          }
+          Component.onDestruction: {
+            if (root.shell && root.shell.transientCoordinator)
+              root.shell.transientCoordinator.setExempt("taskbar", false)
+          }
+        }
+
         Rectangle {
           anchors.top: parent.top
           anchors.left: parent.left

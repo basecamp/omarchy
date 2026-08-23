@@ -29,9 +29,29 @@ Item {
   implicitHeight: parent ? parent.height : 40
 
   function activate() {
+    var startWasOpen = !!(root.bar && root.bar.shell && typeof root.bar.shell.isPluginOpen === "function"
+      && root.bar.shell.isPluginOpen("omarchy.ultimate-start"))
+    if (root.bar && root.bar.shell && root.bar.shell.transientCoordinator)
+      root.bar.shell.transientCoordinator.dismiss()
     if (!root.running) {
       if (root.appLibrary && group && group.desktopId)
         root.appLibrary.launch(group.desktopId, group.name)
+      return
+    }
+    if (startWasOpen) {
+      if (windows.length === 1)
+        windowService.activate(windows[0].address)
+      else {
+        var keep = 0
+        var j
+        for (j = 0; j < windows.length; j++) {
+          if (windowService.isActive(windows[j].address)) {
+            keep = j
+            break
+          }
+        }
+        windowService.activate(windows[keep].address)
+      }
       return
     }
     if (windows.length === 1) {

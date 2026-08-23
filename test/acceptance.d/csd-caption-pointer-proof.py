@@ -26,15 +26,12 @@ clients = mod.clients
 grim = mod.grim
 hypr = mod.hypr
 monitor_size = mod.monitor_size
-pin_session_monitor = mod.pin_session_monitor
 wait_until = mod.wait_until
+tuck_cursor_windows = mod.tuck_cursor_windows
+restore_cursor_windows = mod.restore_cursor_windows
 
 CHROME_CLASSES = {"chromium", "google-chrome", "google-chrome-stable", "brave-browser", "vivaldi-stable"}
 TITLE = "omarchy-w0-csd"
-
-
-def cursor_windows() -> list[dict]:
-  return [c for c in clients() if str(c.get("class") or "").lower() == "cursor"]
 
 
 def chrome_windows() -> list[dict]:
@@ -57,32 +54,6 @@ def proof_chrome() -> dict | None:
       return c
   titled = [c for c in chrome_windows() if TITLE in str(c.get("title") or "")]
   return titled[0] if titled else None
-
-
-def save_cursor() -> dict | None:
-  wins = cursor_windows()
-  if not wins:
-    return None
-  c = wins[0]
-  return {
-    "address": c.get("address"),
-    "at": list(c.get("at") or [210, 20]),
-    "size": list(c.get("size") or [1252, 1000]),
-  }
-
-
-def restore_cursor(saved: dict | None) -> None:
-  if not saved or not saved.get("address"):
-    return
-  addr = saved["address"]
-  x, y = saved["at"]
-  w, h = saved["size"]
-  x = max(0, int(x))
-  y = max(0, int(y))
-  as_user(["omarchy-shell", "window", "restore", addr], wait=True, timeout=5)
-  as_user(["omarchy-shell", "window", "moveTo", addr, str(x), str(y)], wait=True, timeout=5)
-  as_user(["omarchy-shell", "window", "resizeTo", addr, str(w), str(h)], wait=True, timeout=5)
-  as_user(["omarchy-shell", "window", "focus", addr], wait=True, timeout=5)
 
 
 def csd_button(win: dict, which: str) -> tuple[int, int]:
@@ -127,18 +98,11 @@ def launch_chrome() -> None:
 def main() -> int:
   report: dict = {"ok": False}
   pointer = None
-  saved_cursor = None
+  saved_cursor = []
   chrome_addr = None
   try:
-    try:
-      pin_session_monitor()
-    except Exception:
-      pass
-    saved_cursor = save_cursor()
-    report["cursor_saved"] = saved_cursor
-    if saved_cursor and saved_cursor.get("address"):
-      as_user(["omarchy-shell", "window", "moveTo", saved_cursor["address"], "20", "20"], wait=True, timeout=5)
-      as_user(["omarchy-shell", "window", "resizeTo", saved_cursor["address"], "480", "360"], wait=True, timeout=5)
+    saved_cursor = tuck_cursor_windows()
+    report["cursor_tucked"] = [c.get("address") for c in saved_cursor]
 
     launch_chrome()
     chrome = proof_chrome()
@@ -222,7 +186,7 @@ def main() -> int:
     if pointer is not None:
       pointer.close()
     try:
-      restore_cursor(saved_cursor)
+      restore_cursor_windows(saved_cursor)
     except Exception:
       pass
     try:

@@ -14,10 +14,14 @@ Item {
   property bool opened: false
 
   function open(payloadJson) {
+    if (root.shell && root.shell.transientCoordinator)
+      root.shell.transientCoordinator.request(root)
     root.opened = true
   }
 
   function close() {
+    if (root.shell && root.shell.transientCoordinator)
+      root.shell.transientCoordinator.release(root)
     root.opened = false
   }
 

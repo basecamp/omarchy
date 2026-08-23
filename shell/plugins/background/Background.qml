@@ -11,6 +11,7 @@ Item {
   id: root
 
   readonly property string home: Quickshell.env("HOME")
+  property var shell: null
   readonly property string stateHome: home + "/.local/state"
   readonly property string currentBackgroundLink: stateHome + "/omarchy/current/background"
 
@@ -312,6 +313,10 @@ Item {
       MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onClicked: function(mouse) {
+          if (mouse.button === Qt.LeftButton && root.shell && root.shell.transientCoordinator)
+            root.shell.transientCoordinator.dismiss()
+        }
         onDoubleClicked: function(mouse) {
           if (mouse.button === Qt.RightButton) root.openThemeSwitcher()
           else root.openSelector()

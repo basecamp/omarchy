@@ -77,6 +77,10 @@ grep -Fq 'function _windowRecord' "$ws" || fail "taskbar windows are Hyprland re
 pass "snap and maximize use addressed Lua dispatchers through Hyprland.dispatch"
 
 grep -Eq '^  function activate\(' "$ws" || fail "WindowService exposes activate for Alt+Tab and taskbar"
+grep -Fq 'function activateAtCursor' "$ws" || fail "WindowService exposes activateAtCursor for Start click-through"
+grep -Fq 'function activateAtCursorSoon' "$ws" || fail "Start dismiss delays activateAtCursor until overlay unmap returns"
+grep -Fq 'hl.get_cursor_pos' "$ws" || fail "activateAtCursor hit-tests with compositor cursor position, not a QML hyprctl"
+grep -Fq 'activateAtCursorSoon' "$ROOT/shell/plugins/ultimate-start/Start.qml" || fail "Start close re-activates the window under the cursor after unmap"
 grep -Fq 'function cycleNext' "$ws" || fail "WindowService exposes cycleNext for Alt+Tab"
 grep -Fq 'function commitCycle' "$ws" || fail "WindowService exposes commitCycle for Alt release"
 grep -Fq 'function activateFromSwitcher' "$ws" || fail "WindowService exposes activateFromSwitcher for clickable Alt+Tab cards"
@@ -197,6 +201,9 @@ const m = requireFromRoot('shell/services/WindowModel.js')
 assertEqual(m.normalizeId('Firefox.desktop'), 'firefox', 'normalizeId strips .desktop and case')
 assertEqual(m.windowAppId({ appId: 'org.mozilla.firefox' }), 'org.mozilla.firefox', 'windowAppId reads appId')
 assertEqual(m.windowAppId({ class: 'foot' }), 'foot', 'windowAppId reads Hyprland class')
+assert(m.isLockSurface({ class: 'org.omarchy.screensaver' }), 'screensaver class is a lock surface')
+assert(m.isLockSurface({ initialClass: 'org.omarchy.screensaver', class: 'foot' }), 'screensaver initialClass is a lock surface even if class looks like foot')
+assert(!m.isLockSurface({ class: 'foot' }), 'ordinary foot is not a lock surface')
 assertEqual(m.hyprbarsSnapInset({ class: 'foot' }), 32, 'SSD clients reserve hyprbars height')
 assertEqual(m.hyprbarsSnapInset({ class: 'chromium' }), 0, 'Chromium CSD does not reserve hyprbars')
 assertEqual(m.hyprbarsSnapInset({ class: 'cursor' }), 0, 'Cursor CSD does not reserve hyprbars')

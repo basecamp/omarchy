@@ -36,14 +36,53 @@ grep -Fq 'exclusiveZone:' "$ROOT/shell/plugins/ultimate-taskbar/Taskbar.qml" \
   || fail "taskbar sets an explicit exclusive zone so snap reads a bottom inset"
 grep -Fq 'omarchy.ultimate-start' "$ROOT/shell/plugins/ultimate-taskbar/StartButton.qml" \
   || fail "Start button toggles the Start plugin"
-grep -Fq 'anchors { top: true; bottom: true; left: true; right: true }' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
-  || fail "Start overlay covers the output so outside clicks reach it"
-grep -Fq 'onClicked: root.close()' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
-  || fail "clicking outside the Start card closes Start"
+grep -Fq 'implicitWidth: 440' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
+  || fail "Start maps a card-sized overlay, not a full-screen click sink"
+grep -Fq 'anchors.left: true' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
+  || fail "Start card sits on the bottom-left above the Superbar"
+grep -Fq 'margins.bottom: 48' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
+  || fail "Start card sits above the Superbar exclusive zone"
+if grep -Fq 'anchors { top: true; bottom: true; left: true; right: true }' "$ROOT/shell/plugins/ultimate-start/Start.qml"; then
+  fail "Start must not map a full-screen overlay that swallows outside clicks"
+fi
+if grep -Fq 'HyprlandFocusGrab {' "$ROOT/shell/plugins/ultimate-start/Start.qml"; then
+  fail "HyprlandFocusGrab swallows the outside click; Start click-through cannot use it"
+fi
+grep -Fq 'onActiveToplevelChanged' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
+  || fail "Start closes when another window takes focus so the click already hit that window"
+grep -Fq 'if (!next)' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
+  || fail "Start must not treat layer-shell keyboard focus as a window change"
+grep -Fq 'TransientSurfaceCoordinator' "$ROOT/shell/shell.qml" \
+  || fail "shell owns a shared transient coordinator"
+grep -Fq 'transientCoordinator.dismiss' "$ROOT/shell/plugins/background/Background.qml" \
+  || fail "empty-desktop clicks dismiss the active transient"
+grep -Fq 'transientCoordinator.dismiss' "$ROOT/shell/plugins/ultimate-taskbar/TaskButton.qml" \
+  || fail "Superbar activation dismisses Start without swallowing the click"
+grep -Fq 'startWasOpen' "$ROOT/shell/plugins/ultimate-taskbar/TaskButton.qml" \
+  || fail "clicking a Superbar icon while Start is open must not toggle-minimize the active window"
 grep -Fq 'shell.hide("omarchy.ultimate-start")' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
   || fail "Start hide stays in sync with the shell so Super and the orb can reopen"
 grep -Fq 'Loader {' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
   || fail "closed Start unmaps its overlay instead of leaving a click sink"
+grep -Fq 'clicking a window under Start left omarchy-start mapped' \
+  "$ROOT/test/acceptance.d/start-dismiss-proof.py" \
+  || fail "Start dismiss proof includes click-through onto a window"
+if grep -Fq 'o.bind("mouse:272"' "$ROOT/default/hypr/bindings/desktop.lua"; then
+  fail "global left-click must not bind dismissOutside; that bind eats CSD min/max/close"
+fi
+if grep -Fq 'omarchy-shell shell dismissOutside' "$ROOT/default/hypr/bindings/desktop.lua"; then
+  fail "desktop bindings must not exec dismissOutside on every left click"
+fi
+grep -Fq 'function dismissOutside' "$ROOT/shell/shell.qml" \
+  || fail "shell IPC still exposes dismissOutside for wallpaper and tests"
+grep -Fq 'activateAtCursorSoon' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
+  || fail "Start close re-activates the window under the cursor after unmap, without a global click bind"
+grep -Fq 'raiseUnderCursorOnClose' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
+  || fail "Start only raises the clicked window when another toplevel took focus"
+grep -Fq 'setExempt("start"' "$ROOT/shell/plugins/ultimate-start/Start.qml" \
+  || fail "Start card hover is exempt from outside-click dismiss"
+grep -Fq 'setExempt("taskbar"' "$ROOT/shell/plugins/ultimate-taskbar/Taskbar.qml" \
+  || fail "Superbar hover is exempt so the Start orb can toggle"
 if grep -Fq 'scrim' "$ROOT/shell/plugins/ultimate-start/Start.qml"; then
   fail "Start must not dim the desktop when open"
 fi
@@ -129,6 +168,13 @@ grep -Fq 'setHidden' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp" \
   || fail "omarchy-minimize calls CWindow::setHidden"
 grep -Fq 'requestsMinimize' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp" \
   || fail "omarchy-minimize honors xdg/X11 CSD minimize requests"
+grep -Fq 'requestsMaximize' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp" \
+  || fail "omarchy-minimize honors xdg/X11 CSD maximize requests"
+grep -Fq 'FSMODE_MAXIMIZED' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp" \
+  || fail "CSD maximize uses Hyprland maximized fullscreen, not omarchy-shell"
+if grep -Fq 'omarchy-shell' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp"; then
+  fail "omarchy-minimize must not exec omarchy-shell from the compositor"
+fi
 grep -Fq 'sendWmCapabilities' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp" \
   || fail "omarchy-minimize advertises xdg min/max so Chromium draws CSD buttons"
 grep -Fq 'm_events.window.open' "$ROOT/default/hypr/plugins/omarchy-minimize/main.cpp" \
@@ -299,6 +345,12 @@ grep -Fq 'window-placements.json' "$ROOT/shell/services/WindowService.qml" \
   || fail "WindowService remembers per-app reopen placement"
 grep -Fq 'function _placeNewClients' "$ROOT/shell/services/WindowService.qml" \
   || fail "reopen memory places mapped clients after compositor rules settle"
+grep -Fq 'WindowModel.isLockSurface' "$ROOT/shell/services/WindowService.qml" \
+  || fail "reopen memory must not cascade the screensaver into an 880x560 foot"
+grep -Fq 'org.omarchy.screensaver' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "Desktop Mode fullscreen screensaver is excluded from hyprbars"
+grep -Fq 'sourceSize.width: 20 * Screen.devicePixelRatio' "$ROOT/shell/plugins/ultimate-taskbar/TaskButton.qml" \
+  || fail "Superbar icons request a device-pixel sourceSize so they are not washed out"
 grep -Fq 'function _hydrateIfNeeded' "$ROOT/shell/services/WindowService.qml" \
   || fail "reopen memory hydrates existing windows without cascading them"
 grep -Fq 'function resizeTo' "$ROOT/shell/shell.qml" \
@@ -329,6 +381,8 @@ grep -Fq 'SUDO_USER' "$ROOT/test/acceptance.d/hyprbars-pointer-proof.py" \
   || fail "pointer proof uses the live session user, not a hardcoded guest name"
 grep -Fq 'hyprbars-pointer-proof.py' "$ROOT/test/acceptance.d/windows-native-test.sh" \
   || fail "windows-native harness runs the absolute pointer proof"
+grep -Fq 'start-dismiss-proof.py' "$ROOT/test/acceptance.d/windows-native-test.sh" \
+  || fail "windows-native harness runs the Start click-through proof"
 grep -Fq 'cycleSnapshot' "$ROOT/test/acceptance.d/hyprbars-pointer-proof.py" \
   || fail "pointer proof aims at the live highlighted Alt+Tab card, not a two-foot layout"
 grep -Fq 'unfocused × closed the focused window' "$ROOT/test/acceptance.d/hyprbars-pointer-proof.py" \

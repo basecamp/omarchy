@@ -22,24 +22,39 @@ Item {
   readonly property bool hideDeveloperTools: !(modeProfile && modeProfile.feature("developerToolsInStart"))
   readonly property var entries: appLibrary ? appLibrary.visibleEntries(root.filter, root.hideDeveloperTools) : []
 
+  property var focusedWhenOpened: null
+  property bool raiseUnderCursorOnClose: false
+
   function open(payloadJson) {
     var payload = ({})
     try { payload = JSON.parse(payloadJson || "{}") } catch (e) { payload = ({}) }
     root.focusSearch = payload.focusSearch === true
     root.filter = ""
+    root.focusedWhenOpened = ToplevelManager.activeToplevel
+    root.raiseUnderCursorOnClose = false
+    if (root.shell && root.shell.transientCoordinator)
+      root.shell.transientCoordinator.request(root)
     root.opened = true
     if (appLibrary) appLibrary.refreshIcons()
   }
 
   function close() {
+    var raise = root.raiseUnderCursorOnClose
+    root.raiseUnderCursorOnClose = false
+    if (root.shell && root.shell.transientCoordinator)
+      root.shell.transientCoordinator.release(root)
     if (!root.opened) {
       root.filter = ""
       return
     }
     root.opened = false
     root.filter = ""
+    root.focusedWhenOpened = null
     if (root.shell && typeof root.shell.hide === "function")
       root.shell.hide("omarchy.ultimate-start")
+    if (raise && root.shell && root.shell.windowService
+        && typeof root.shell.windowService.activateAtCursorSoon === "function")
+      root.shell.windowService.activateAtCursorSoon()
   }
 
   function launchEntry(entry) {
@@ -48,42 +63,56 @@ Item {
     root.close()
   }
 
-  // Exclusive keyboard focus on a 440×560 overlay eats pointer events that
-  // miss the card, including the Start button on the Superbar. A mapped
-  // full-screen layer catches those clicks. Loader unmaps it when closed so
-  // keepLoaded cannot leave an invisible input sink.
+  Connections {
+    target: ToplevelManager
+    enabled: root.opened
+    function onActiveToplevelChanged() {
+      var next = ToplevelManager.activeToplevel
+      if (!next)
+        return
+      if (next !== root.focusedWhenOpened) {
+        root.raiseUnderCursorOnClose = true
+        root.close()
+      }
+    }
+  }
+
+  // The Start card is the only mapped overlay. A full-screen MouseArea (or
+  // HyprlandFocusGrab) swallows the outside click. Windows click-outside
+  // must close Start and still raise the window or Superbar item underneath.
+  // Loader unmaps the card when closed so keepLoaded cannot leave a sink.
   Loader {
     active: root.opened
     sourceComponent: PanelWindow {
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
-    anchors { top: true; bottom: true; left: true; right: true }
+    implicitWidth: 440
+    implicitHeight: 560
+    anchors.left: true
+    anchors.bottom: true
+    margins.left: 8
+    margins.bottom: 48
     WlrLayershell.namespace: "omarchy-start"
     WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
-
-    MouseArea {
-      anchors.fill: parent
-      onClicked: root.close()
-    }
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
 
     Rectangle {
-      z: 1
-      anchors.left: parent.left
-      anchors.bottom: parent.bottom
-      anchors.leftMargin: 8
-      anchors.bottomMargin: 48
-      width: 440
-      height: 560
+      anchors.fill: parent
       clip: true
       color: Tokens.surface.glass
       radius: Tokens.radius.large
       border.color: Tokens.border.subtle
       border.width: 1
 
-      MouseArea {
-        anchors.fill: parent
-        onClicked: {}
+      HoverHandler {
+        onHoveredChanged: {
+          if (root.shell && root.shell.transientCoordinator)
+            root.shell.transientCoordinator.setExempt("start", hovered)
+        }
+        Component.onDestruction: {
+          if (root.shell && root.shell.transientCoordinator)
+            root.shell.transientCoordinator.setExempt("start", false)
+        }
       }
 
       ColumnLayout {
@@ -95,7 +124,7 @@ Item {
           id: searchField
           Layout.fillWidth: true
           onTextChanged: root.filter = text
-          Component.onCompleted: if (root.focusSearch) forceActiveFocus()
+          Component.onCompleted: searchField.forceActiveFocus()
           Keys.onReturnPressed: {
             if (root.entries.length > 0) root.launchEntry(root.entries[0])
           }

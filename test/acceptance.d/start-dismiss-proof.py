@@ -3,6 +3,8 @@
 
 The Super key already toggled both ways. Mouse did not: the Start panel was a
 440x560 exclusive overlay, so pointer events outside the card never arrived.
+Click-through: the same outside click must raise the window underneath. A
+full-screen MouseArea or HyprlandFocusGrab swallows that click.
 """
 
 from __future__ import annotations
@@ -22,12 +24,15 @@ spec.loader.exec_module(mod)
 AbsPointer = mod.AbsPointer
 ProofError = mod.ProofError
 as_user = mod.as_user
+clients = mod.clients
 grim = mod.grim
 hypr = mod.hypr
 layer_named = mod.layer_named
 monitor_size = mod.monitor_size
 pin_session_monitor = mod.pin_session_monitor
 wait_until = mod.wait_until
+tuck_cursor_windows = mod.tuck_cursor_windows
+restore_cursor_windows = mod.restore_cursor_windows
 
 
 def shell(*args: str, timeout: float = 8):
@@ -69,13 +74,23 @@ def click(pointer: AbsPointer, x: int, y: int, gw: int, gh: int) -> None:
   time.sleep(0.4)
 
 
+def close_proof_feet() -> None:
+  for client in clients():
+    blob = " ".join(str(client.get(k) or "") for k in ("title", "initialTitle", "class"))
+    if "omarchy-start-clickthrough" in blob:
+      as_user(["omarchy-shell", "window", "close", client["address"]], wait=True, timeout=5)
+
+
 def main() -> int:
   report: dict = {"ok": False}
   pointer = None
+  saved_cursor = []
+  foot_addr = None
   try:
     pin_session_monitor()
     hide_start()
     wait_until("Start overlay unmapped before proof", 6, lambda: not start_open())
+    saved_cursor = tuck_cursor_windows()
 
     def fresh_pointer() -> AbsPointer:
       nonlocal pointer
@@ -122,16 +137,81 @@ def main() -> int:
     grim("/tmp/start-still-open-card.png")
     report["card_stayed_open"] = True
 
-    proc = shell("shell", "toggle", "omarchy.ultimate-start", "{}")
-    if proc.returncode != 0:
-      raise ProofError(f"toggle hide failed: {proc.stdout} {proc.stderr}")
-    wait_until("Start overlay unmapped after toggle", 6, lambda: not start_open())
+    hide_start()
+    wait_until("Start overlay unmapped before click-through", 6, lambda: not start_open())
+    close_proof_feet()
+    proof_title = "omarchy-start-clickthrough"
+    as_user(["bash", "-lc", f"nohup foot -T {proof_title} >/tmp/omarchy-start-proof-foot.log 2>&1 & disown"], wait=True)
+
+    def proof_foot():
+      for client in clients():
+        blob = " ".join(str(client.get(k) or "") for k in ("title", "initialTitle", "class"))
+        if proof_title in blob:
+          return client
+      return None
+
+    wait_until("click-through foot mapped", 8, lambda: proof_foot() is not None)
+    foot = proof_foot()
+    foot_addr = foot["address"]
+    as_user(["omarchy-shell", "window", "moveTo", foot["address"], "900", "80"], wait=True, timeout=5)
+    as_user(["omarchy-shell", "window", "resizeTo", foot["address"], "640", "400"], wait=True, timeout=5)
+
+    def foot_ready():
+      client = proof_foot()
+      if not client:
+        return False
+      x, y = client["at"]
+      w, h = client["size"]
+      return x >= 800 and y < 220 and w >= 560 and h >= 300
+
+    wait_until("click-through foot placed in the open", 6, foot_ready)
+    summon_start()
+    time.sleep(0.35)
+    foot = proof_foot()
+    if not foot:
+      raise ProofError("click-through foot vanished before the click")
+    foot_addr = foot["address"]
+    fx, fy = foot["at"]
+    fw, fh = foot["size"]
+    through_x, through_y = fx + fw // 2, fy + max(64, fh // 2)
+    report["click_through"] = [through_x, through_y]
+    report["click_through_target"] = foot["address"]
+    click(fresh_pointer(), through_x, through_y, gw, gh)
+
+    def foot_raised():
+      if start_open():
+        return False
+      active = json.loads(hypr("-j", "activewindow") or "{}")
+      return active.get("address") == foot["address"]
+
+    if start_open():
+      raise ProofError("clicking a window under Start left omarchy-start mapped")
+    try:
+      wait_until("click-through raised the foot", 4, foot_raised)
+    except ProofError:
+      active = json.loads(hypr("-j", "activewindow") or "{}")
+      raise ProofError(
+        "click-through did not raise the foot (active="
+        + str(active.get("address"))
+        + " class="
+        + str(active.get("class"))
+        + ")"
+      )
+    grim("/tmp/start-click-through.png")
+    report["click_through_raised"] = True
+    as_user(["omarchy-shell", "window", "close", foot["address"]], wait=True, timeout=5)
+    foot_addr = None
+
+    hide_start()
+    wait_until("Start overlay unmapped before toggle", 6, lambda: not start_open())
     proc = shell("shell", "toggle", "omarchy.ultimate-start", "{}")
     if proc.returncode != 0:
       raise ProofError(f"toggle summon failed: {proc.stdout} {proc.stderr}")
     wait_until("Start overlay mapped after toggle", 8, start_open)
-    hide_start()
-    wait_until("Start overlay unmapped at end", 6, lambda: not start_open())
+    proc = shell("shell", "toggle", "omarchy.ultimate-start", "{}")
+    if proc.returncode != 0:
+      raise ProofError(f"toggle hide failed: {proc.stdout} {proc.stderr}")
+    wait_until("Start overlay unmapped after toggle", 6, lambda: not start_open())
     report["toggle_ok"] = True
 
     report["ok"] = True
@@ -147,6 +227,16 @@ def main() -> int:
       pointer.close()
     try:
       hide_start()
+    except Exception:
+      pass
+    try:
+      if foot_addr:
+        as_user(["omarchy-shell", "window", "close", foot_addr], wait=True, timeout=5)
+      close_proof_feet()
+    except Exception:
+      pass
+    try:
+      restore_cursor_windows(saved_cursor)
     except Exception:
       pass
     try:

@@ -54,6 +54,11 @@ QtObject {
     repeat: false
     onTriggered: root._placeNewClients()
   }
+  property Timer activateAtCursorTimer: Timer {
+    interval: 48
+    repeat: false
+    onTriggered: root.activateAtCursor()
+  }
 
   readonly property var windows: {
     var values = Hyprland.toplevels.values
@@ -164,6 +169,8 @@ QtObject {
   }
 
   function _rememberPlacement(address) {
+    var rec = root._record(address) || {}
+    if (WindowModel.isLockSurface(rec)) return
     var rect = root._lastRect[address] || root._clientRect(address)
     var key = root._lastAppId[address] || WindowModel.windowAppId(root._record(address) || {})
     if (!key || !rect || !rect.width) return
@@ -247,6 +254,11 @@ QtObject {
       addr = root._canonAddr(c.address)
       if (!addr || root._knownAddresses[addr]) continue
       if (c.hidden === true || c.mapped === false) continue
+      if (WindowModel.isLockSurface({
+        class: c.class,
+        appId: c.initialClass || c.class,
+        initialClass: c.initialClass
+      })) continue
       if (!WindowModel.windowAppId({ class: c.class, appId: c.initialClass || c.class })) continue
       return true
     }
@@ -269,6 +281,15 @@ QtObject {
       addr = root._canonAddr(c.address)
       if (!addr || known[addr]) continue
       if (c.hidden === true || c.mapped === false) continue
+      if (WindowModel.isLockSurface({
+        class: c.class,
+        appId: c.initialClass || c.class,
+        initialClass: c.initialClass,
+        title: c.title
+      })) {
+        known[addr] = true
+        continue
+      }
       key = WindowModel.windowAppId({ class: c.class, appId: c.initialClass || c.class })
       if (!key) continue
       rec = root._record(addr) || {}
@@ -347,6 +368,7 @@ QtObject {
       title: String(hypr.title || ipc.title || ""),
       appId: cls,
       class: cls,
+      initialClass: String(ipc.initialClass || (client && client.initialClass) || ""),
       x: Number(at[0] || 0),
       y: Number(at[1] || 0),
       width: Number(size[0] || 0),
@@ -587,6 +609,42 @@ QtObject {
   function toggleFromTaskbar(address) {
     if (root.isActive(address)) return root.minimize(address)
     return root.activate(address)
+  }
+
+  // Start click-through: the non-consuming left-click bind dismisses Start via
+  // Quickshell IPC. Unmapping an OnDemand layer then restores the window that
+  // had focus when Start opened, after the click already raised the target.
+  // Do not Hyprland.dispatch from dismissOutside itself — the compositor is
+  // still inside that bind and the socket deadlocks. activateAtCursorTimer
+  // fires after the bind returns.
+  function activateAtCursorSoon() {
+    root.activateAtCursorTimer.restart()
+  }
+
+  function activateAtCursor() {
+    // Hit-test in compositor Lua so this does not hyprctl from QML and does
+    // not assemble a shell string around a window address.
+    root._dispatchLua(
+      "function() " +
+      "local pos = hl.get_cursor_pos() " +
+      "if not pos then return end " +
+      "local hit, best = nil, 999999 " +
+      "local wins = hl.get_windows({ mapped = true }) or {} " +
+      "local i, w, x, y, ww, hh, fh " +
+      "for i = 1, #wins do " +
+      "w = wins[i] " +
+      "if w and (not w.hidden) and w.visible and w.at and w.size then " +
+      "x, y, ww, hh = w.at.x, w.at.y, w.size.x, w.size.y " +
+      "if pos.x >= x and pos.y >= y and pos.x < x + ww and pos.y < y + hh then " +
+      "fh = w.focus_history_id or 999 " +
+      "if fh < best then best = fh; hit = w end " +
+      "end end end " +
+      "if hit then " +
+      "hl.dispatch(hl.dsp.window.bring_to_top({ window = hit })) " +
+      "hl.dispatch(hl.dsp.focus({ window = hit })) " +
+      "end end"
+    )
+    return root._finish("activateAtCursor", "", root._ok())
   }
 
   // Alt+Tab and taskbar activation: unhide if needed, then focus. restore()
