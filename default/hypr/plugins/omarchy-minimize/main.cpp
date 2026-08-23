@@ -10,6 +10,7 @@
 #undef private
 #include "src/render/Renderer.hpp"
 #include "src/xwayland/XSurface.hpp"
+#include "src/managers/fullscreen/FullscreenController.hpp"
 #include "xdg-shell.hpp"
 
 #include <wayland-server.h>
@@ -153,6 +154,37 @@ static std::optional<bool> requestedMinimized(PHLWINDOW w) {
   return std::nullopt;
 }
 
+static std::optional<bool> requestedMaximized(PHLWINDOW w) {
+  if (!w)
+    return std::nullopt;
+  if (auto xdg = w->m_xdgSurface.lock()) {
+    if (auto top = xdg->m_toplevel.lock()) {
+      if (top->m_state.requestsMaximize.has_value())
+        return top->m_state.requestsMaximize;
+    }
+  }
+  if (auto xwm = w->m_xwaylandSurface.lock()) {
+    if (xwm->m_state.requestsMaximize.has_value())
+      return xwm->m_state.requestsMaximize;
+  }
+  return std::nullopt;
+}
+
+static void setMaximized(PHLWINDOW w, bool maximized) {
+  if (!w)
+    return;
+  auto& fs = Fullscreen::controller();
+  if (!fs)
+    return;
+  const bool currently = fs->isFullscreen(w, Fullscreen::FSMODE_MAXIMIZED);
+  if (maximized == currently)
+    return;
+  if (maximized)
+    fs->setFullscreenMode(w, Fullscreen::FSMODE_MAXIMIZED, Fullscreen::FSMODE_MAXIMIZED, false);
+  else
+    fs->setFullscreenMode(w, Fullscreen::FSMODE_NONE, Fullscreen::FSMODE_NONE, false);
+}
+
 static void applyRequestedMinimize(PHLWINDOWREF ref) {
   auto w = ref.lock();
   if (!w)
@@ -161,6 +193,21 @@ static void applyRequestedMinimize(PHLWINDOWREF ref) {
   if (!want.has_value())
     return;
   setMinimized(w, *want);
+}
+
+static void applyRequestedMaximize(PHLWINDOWREF ref) {
+  auto w = ref.lock();
+  if (!w)
+    return;
+  const auto want = requestedMaximized(w);
+  if (!want.has_value())
+    return;
+  setMaximized(w, *want);
+}
+
+static void applyRequestedState(PHLWINDOWREF ref) {
+  applyRequestedMinimize(ref);
+  applyRequestedMaximize(ref);
 }
 
 static void advertiseWmCapabilities(PHLWINDOW w) {
@@ -204,19 +251,20 @@ static void watchWindow(PHLWINDOW w) {
 
   if (auto xdg = w->m_xdgSurface.lock()) {
     if (auto top = xdg->m_toplevel.lock()) {
-      watch.xdg   = top->m_events.stateChanged.listen([ref]() { applyRequestedMinimize(ref); });
+      watch.xdg   = top->m_events.stateChanged.listen([ref]() { applyRequestedState(ref); });
       attached    = true;
     }
   }
   if (auto xwm = w->m_xwaylandSurface.lock()) {
-    watch.xwm  = xwm->m_events.stateChanged.listen([ref]() { applyRequestedMinimize(ref); });
+    watch.xwm  = xwm->m_events.stateChanged.listen([ref]() { applyRequestedState(ref); });
     attached   = true;
   }
-  if (!attached)
-    return;
+  if (attached)
+    g_watches.insert_or_assign(key, std::move(watch));
 
+  // Chromium caches the first wm_capabilities event. Advertise on create,
+  // open, and openLate so a late xdg bind still gets min/max.
   advertiseWmCapabilities(w);
-  g_watches.insert_or_assign(key, std::move(watch));
 }
 
 static void watchAllWindows() {

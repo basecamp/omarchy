@@ -95,6 +95,59 @@ def feet() -> list[dict]:
   return [c for c in clients() if c.get("class") == "foot"]
 
 
+def client_by_addr(addr: str) -> dict | None:
+  return next((c for c in clients() if c.get("address") == addr), None)
+
+
+def cursor_windows() -> list[dict]:
+  return [c for c in clients() if str(c.get("class") or "").lower() == "cursor"]
+
+
+def save_cursor_windows() -> list[dict]:
+  out = []
+  for c in cursor_windows():
+    out.append({
+      "address": c.get("address"),
+      "at": list(c.get("at") or [210, 20]),
+      "size": list(c.get("size") or [1252, 1000]),
+    })
+  return out
+
+
+def tuck_cursor_windows() -> list[dict]:
+  saved = save_cursor_windows()
+  for c in saved:
+    as_user(["omarchy-shell", "window", "minimize", c["address"]], wait=True, timeout=5)
+  return saved
+
+
+def restore_cursor_windows(saved: list[dict] | None) -> None:
+  for c in saved or []:
+    addr = c.get("address")
+    if not addr:
+      continue
+    x, y = c["at"]
+    w, h = c["size"]
+    as_user(["omarchy-shell", "window", "restore", addr], wait=True, timeout=5)
+    as_user(["omarchy-shell", "window", "moveTo", addr, str(x), str(y)], wait=True, timeout=5)
+    as_user(["omarchy-shell", "window", "resizeTo", addr, str(w), str(h)], wait=True, timeout=5)
+
+
+def hyprbars_button(win: dict, which: str) -> tuple[int, int]:
+  # hyprbars sits above the window when there is room. Maximized windows sit
+  # at y≈0, so the caption is inside the top of the box.
+  x, y = win["at"]
+  w = win["size"][0]
+  bar_y = y + 16 if y < 24 else y - 16
+  if which == "close":
+    return x + w - 16, bar_y
+  if which == "max":
+    return x + w - 36, bar_y
+  if which == "min":
+    return x + w - 56, bar_y
+  raise ProofError(f"unknown hyprbars button {which}")
+
+
 def wait_until(desc: str, seconds: float, fn) -> None:
   deadline = time.time() + seconds
   last = None
@@ -176,6 +229,15 @@ class AbsPointer:
     time.sleep(0.12)
     self.button(False)
 
+  def quick_click(self, x: int, y: int) -> None:
+    # Maximize hover_action dwell is 280ms. A slow click parks on □ and
+    # summons the snap chooser instead of maximizing.
+    self.move(x, y)
+    time.sleep(0.04)
+    self.button(True)
+    time.sleep(0.05)
+    self.button(False)
+
   def drag(self, x1: int, y1: int, x2: int, y2: int, steps: int = 16) -> None:
     self.move(x1, y1)
     time.sleep(0.12)
@@ -234,20 +296,12 @@ def grim(path: str) -> None:
 
 
 def pin_session_monitor() -> None:
-  mons = json.loads(hypr("-j", "monitors") or "[]")
-  focused = next((m for m in mons if m.get("focused")), mons[0] if mons else None)
-  if not focused:
-    return
-  name = focused.get("name") or ""
-  if name == "HDMI-A-1":
-    hypr("eval", 'hl.monitor({ output = "HDMI-A-1", mode = "1920x1080@60", position = "0x0", scale = 1 })')
-    try:
-      hypr("eval", 'hl.monitor({ output = "DP-1", disabled = true })')
-    except Exception:
-      pass
-    return
-  if name:
-    hypr("eval", f'hl.monitor({{ output = "{name}", mode = "1920x1080@60", position = "0x0", scale = 1 }})')
+  # Do not modeset. This Samsung HDMI panel's preferred mode is 4K@30, which is
+  # no-signal. hyprctl eval hl.monitor(...) re-modesets the NVIDIA card, logs
+  # EDID failures on phantom DP-0, and a later hyprctl reload/reboot reapplies
+  # ~/.config/hypr/monitors.lua. If that file is still stock `preferred`, the
+  # TV goes black until someone SSH-fixes it. Leave the live output alone.
+  return
 
 
 def cycle_snapshot() -> dict:
@@ -267,11 +321,14 @@ def cycle_snapshot() -> dict:
 def main() -> int:
   report: dict = {"ok": False}
   pointer = None
+  saved_cursor: list[dict] = []
   try:
     pin_session_monitor()
   except Exception:
     pass
   try:
+    saved_cursor = tuck_cursor_windows()
+    report["cursor_tucked"] = [c.get("address") for c in saved_cursor]
     as_user(["omarchy-shell", "window", "commitCycle"], wait=True, timeout=5)
     as_user(["omarchy-shell", "shell", "hide", "omarchy.ultimate-task-switcher"], wait=True, timeout=5)
 
@@ -302,6 +359,16 @@ def main() -> int:
     want = cycle_list[cycle_idx]
     if want == last:
       raise ProofError(f"cycleNext kept the focused address highlighted: {snap}")
+    foot_addrs = set(addrs)
+    if want not in foot_addrs:
+      picked = None
+      for i, candidate in enumerate(cycle_list):
+        if candidate in foot_addrs and candidate != last:
+          picked = (i, candidate)
+          break
+      if not picked:
+        raise ProofError(f"cycle list has no other foot to pick (won't AbsPointer Cursor): {snap}")
+      cycle_idx, want = picked
     # Create the ABS pointer after the overlay is mapped. A device that exists
     # before the layer maps does not deliver buttons onto this Quickshell surface.
     pointer = AbsPointer()
@@ -385,12 +452,80 @@ def main() -> int:
     if not resized or resized["size"][0] < rw + 24:
       raise ProofError(f"edge resize did not grow the window: {report['resize']}")
 
+    as_user(["omarchy-shell", "window", "restoreNormal", addr], wait=True, timeout=5)
+    as_user(["omarchy-shell", "window", "moveTo", addr, "120", "80"], wait=True, timeout=5)
+    as_user(["omarchy-shell", "window", "resizeTo", addr, "880", "560"], wait=True, timeout=5)
     as_user(["omarchy-shell", "shell", "hide", "omarchy.ultimate-snap-chooser"], wait=True, timeout=5)
-    hx, hy = resized["at"]
-    hw = resized["size"][0]
+    time.sleep(0.35)
+    cap = client_by_addr(addr)
+    if not cap:
+      raise ProofError("foot vanished before maximize caption click")
+    mx, my = hyprbars_button(cap, "max")
+    report["max_click_aim"] = [mx, my]
+    pointer.quick_click(mx, my)
+    wait_until(
+      "hyprbars maximize click maximizes",
+      8,
+      lambda: (w := client_by_addr(addr)) is not None and w.get("fullscreen") == 1,
+    )
+    grim("/tmp/w0-max-click.png")
+    maximized = client_by_addr(addr)
+    report["max_click"] = {
+      "at": None if not maximized else maximized.get("at"),
+      "size": None if not maximized else maximized.get("size"),
+      "fullscreen": None if not maximized else maximized.get("fullscreen"),
+    }
+    mx, my = hyprbars_button(maximized, "max")
+    report["max_restore_aim"] = [mx, my]
+    pointer.quick_click(mx, my)
+    wait_until(
+      "hyprbars maximize click restores",
+      8,
+      lambda: (w := client_by_addr(addr)) is not None and w.get("fullscreen") in (0, False, None),
+    )
+    grim("/tmp/w0-max-restore.png")
+    restored = client_by_addr(addr)
+    report["max_restore"] = {
+      "at": None if not restored else restored.get("at"),
+      "size": None if not restored else restored.get("size"),
+      "fullscreen": None if not restored else restored.get("fullscreen"),
+    }
+
+    cap = client_by_addr(addr)
+    if not cap:
+      raise ProofError("foot vanished before minimize caption click")
+    mix, miy = hyprbars_button(cap, "min")
+    report["min_click_aim"] = [mix, miy]
+    pointer.quick_click(mix, miy)
+    wait_until(
+      "hyprbars minimize click hides",
+      8,
+      lambda: (w := client_by_addr(addr)) is not None and w.get("hidden") is True,
+    )
+    grim("/tmp/w0-min-click.png")
+    report["min_click"] = "hidden"
+    ping = as_user(["omarchy-shell", "window", "restore", addr], wait=True, timeout=5)
+    if ping.returncode != 0:
+      raise ProofError(f"restore after minimize click failed: {ping.stdout} {ping.stderr}")
+    wait_until(
+      "restore after hyprbars minimize",
+      8,
+      lambda: (w := client_by_addr(addr)) is not None and w.get("hidden") in (False, None),
+    )
+
+    as_user(["omarchy-shell", "window", "restoreNormal", addr], wait=True, timeout=5)
+    as_user(["omarchy-shell", "window", "moveTo", addr, "120", "80"], wait=True, timeout=5)
+    as_user(["omarchy-shell", "window", "resizeTo", addr, "880", "560"], wait=True, timeout=5)
+    as_user(["omarchy-shell", "shell", "hide", "omarchy.ultimate-snap-chooser"], wait=True, timeout=5)
+    time.sleep(0.35)
+    hover_win = client_by_addr(addr)
+    if not hover_win:
+      raise ProofError("foot vanished before maximize hover")
+    hx, hy = hover_win["at"]
+    hw = hover_win["size"][0]
     # hyprbars draws RTL min / max / close. Close sits at x+w-16; maximize is
     # the next 20px left (14px glyph + 6px button padding).
-    maxx, maxy = hx + hw - 36, hy - 16
+    maxx, maxy = hx + hw - 36, hy - 16 if hy >= 24 else hy + 16
     report["hover_max_aim"] = [maxx, maxy]
     pointer.move(hx + hw // 2, hy - 16)
     time.sleep(0.12)
@@ -456,16 +591,15 @@ def main() -> int:
     as_user(["omarchy-shell", "shell", "hide", "omarchy.ultimate-snap-chooser"], wait=True, timeout=5)
     pointer.click(oclosex, oclosey)
     wait_until("unfocused hyprbars close unmaps that foot", 8, lambda: all(c["address"] != other["address"] for c in feet()))
-    still = next((c for c in feet() if c["address"] == addr), None)
+    still = client_by_addr(addr)
     if not still:
       raise ProofError("unfocused × closed the focused window")
     report["unfocused_close"] = "unmapped other, focused kept"
 
-    x2, y2 = still["at"]
-    w2 = still["size"][0]
-    closex, closey = x2 + w2 - 16, y2 - 16
+    closex, closey = hyprbars_button(still, "close")
     report["close_aim"] = [closex, closey]
-    pointer.click(closex, closey)
+    as_user(["omarchy-shell", "shell", "hide", "omarchy.ultimate-snap-chooser"], wait=True, timeout=5)
+    pointer.quick_click(closex, closey)
     wait_until("hyprbars close unmaps the aimed foot", 8, lambda: all(c["address"] != addr for c in feet()))
     report["close"] = "unmapped"
     grim("/tmp/w0-c-close.png")
@@ -480,6 +614,10 @@ def main() -> int:
   finally:
     if pointer is not None:
       pointer.close()
+    try:
+      restore_cursor_windows(saved_cursor)
+    except Exception:
+      pass
     try:
       as_user(["omarchy-shell", "shell", "hide", "omarchy.ultimate-task-switcher"], wait=True, timeout=5)
     except Exception:

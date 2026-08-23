@@ -11,10 +11,10 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
-if hyprctl -j monitors | jq -e '.[] | select(.name == "HDMI-A-1")' >/dev/null 2>&1; then
-  hyprctl eval 'hl.monitor({ output = "HDMI-A-1", mode = "1920x1080@60", position = "0x0", scale = 1 })' >/dev/null || true
-  hyprctl eval 'hl.monitor({ output = "DP-1", disabled = true })' >/dev/null || true
-fi
+# Do not hyprctl-eval monitor modes here. This Samsung HDMI TV's preferred
+# mode is 4K@30 (no-signal). Runtime modesets on the NVIDIA card plus a later
+# reload/reboot of stock `preferred` in monitors.lua black the panel. The
+# live output is already pinned in ~/.config/hypr/monitors.lua.
 PREEXISTING_ADDRS=$(hyprctl -j clients | jq -r '.[].address' | sort)
 
 
@@ -500,8 +500,6 @@ if [[ -n $second_name ]]; then
   if [[ -n $created_headless ]]; then
     hyprctl output remove "$created_headless" >/dev/null 2>&1 || true
   fi
-  hyprctl eval "hl.monitor({ output = \"$primary_name\", mode = \"1920x1080@60\", position = \"0x0\", scale = 1 })" >/dev/null 2>&1 || true
-  hyprctl eval 'hl.monitor({ output = "DP-1", disabled = true })' >/dev/null 2>&1 || true
 else
   fail "multi-monitor" "could not add a second monitor next to $primary_name: $(hyprctl -j monitors)"
 fi
@@ -677,18 +675,37 @@ run_hyprbars_pointer_proof() {
     fail "hyprbars pointer proof" "/dev/uinput is missing; relative ydotool is not this gate"
   fi
   if [[ -w /dev/uinput ]]; then
-    python3 "$script" || fail "hyprbars pointer proof" "absolute pointer did not close, drag, and pick an Alt+Tab card"
+    python3 "$script" || fail "hyprbars pointer proof" "absolute pointer did not close, drag, maximize, minimize, and pick an Alt+Tab card"
     return
   fi
   if sudo -n true >/dev/null 2>&1; then
-    sudo -n python3 "$script" || fail "hyprbars pointer proof" "absolute pointer did not close, drag, and pick an Alt+Tab card"
+    sudo -n python3 "$script" || fail "hyprbars pointer proof" "absolute pointer did not close, drag, maximize, minimize, and pick an Alt+Tab card"
     return
   fi
   fail "hyprbars pointer proof" "cannot write /dev/uinput and sudo -n is unavailable; relative ydotool is not this gate"
 }
 
+run_csd_caption_pointer_proof() {
+  local script="$ROOT/test/acceptance.d/csd-caption-pointer-proof.py"
+  [[ -f $script ]] || fail "CSD caption pointer proof" "missing $script"
+  if [[ ! -e /dev/uinput ]]; then
+    fail "CSD caption pointer proof" "/dev/uinput is missing; relative ydotool is not this gate"
+  fi
+  if [[ -w /dev/uinput ]]; then
+    python3 "$script" || fail "CSD caption pointer proof" "Chromium CSD min/max/close click failed"
+    return
+  fi
+  if sudo -n true >/dev/null 2>&1; then
+    sudo -n python3 "$script" || fail "CSD caption pointer proof" "Chromium CSD min/max/close click failed"
+    return
+  fi
+  fail "CSD caption pointer proof" "cannot write /dev/uinput and sudo -n is unavailable; relative ydotool is not this gate"
+}
+
 run_hyprbars_pointer_proof
-pass "hyprbars close, title-bar drag, and Alt+Tab card click via an absolute pointer"
+pass "hyprbars close, title-bar drag, maximize click, minimize click, and Alt+Tab card click via an absolute pointer"
+run_csd_caption_pointer_proof
+pass "Chromium CSD min/max/close via an absolute pointer (never Cursor)"
 
 trap - EXIT
 restore_native_windows

@@ -201,6 +201,10 @@ grep -Fq $'ALT + F4	Close window' <<<"$desktop_output" || fail "desktop mode bin
 grep -Fq $'SUPER + TAB	Task View' <<<"$desktop_output" || fail "desktop mode binds Win+Tab to Task View"
 grep -Fq $'SUPER + CTRL + D	New desktop' <<<"$desktop_output" || fail "desktop mode binds Win+Ctrl+D to a new desktop"
 grep -Fq $'F11	Full screen' <<<"$desktop_output" || fail "desktop mode binds F11 to fullscreen"
+if grep -Fq $'mouse:272	Dismiss Start if the click is outside the card' <<<"$desktop_output"; then
+  fail "global left-click must not dismiss Start; that bind eats caption clicks"
+fi
+grep -Fq $'SUPER + mouse:272	Move window' <<<"$desktop_output" || fail "desktop mode binds Super+left-drag to move"
 grep -Fq $'SUPER + CTRL + F4	Close desktop' <<<"$desktop_output" || fail "desktop mode binds Win+Ctrl+F4 to close the desktop"
 grep -Fq $'SUPER + SHIFT + LEFT	Move window to left monitor' <<<"$desktop_output" || fail "desktop mode binds Win+Shift+Left to the left monitor"
 if grep -Fq $'SUPER + SPACE	Omarchy menu' <<<"$desktop_output"; then
