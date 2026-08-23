@@ -40,9 +40,8 @@ Item {
   // Corner radius is shared with the menu and shell panels.
   // It mirrors Hyprland's current decoration:rounding value.
   readonly property int cornerRadius: Style.cornerRadius
-  // Toasts are fixed to the top-right corner. They only clear the omarchy bar
-  // when the bar occupies the top or right edge, so left/bottom bars do not
-  // pull notification popups away from the expected top-right location.
+  // Toasts clear the omarchy bar only when their configured position uses the
+  // same edge.
   // Falls back to the bar's default size (26 horizontal / 28 vertical) when
   // shell.bar isn't reachable so the popup never lands on top of the bar.
   readonly property string barPosition: shell && shell.barConfig ? String(shell.barConfig.position || "top") : "top"
@@ -56,6 +55,7 @@ Item {
   // The stack grows away from the edge it sits on, so a bottom corner wants
   // the newest toast nearest that edge: last in the model instead of first.
   readonly property bool stackNewestLast: NotificationLogic.parsePopupPosition(popupPosition).vertical === "bottom"
+  onStackNewestLastChanged: reversePopups()
   property var pluginRegistry: null
 
   // Live Notification objects by originalId, kept OUT of the ListModels: a
@@ -145,6 +145,15 @@ Item {
   function insertToast(entry) {
     if (stackNewestLast) popupModel.append(entry)
     else popupModel.insert(0, entry)
+  }
+
+  function insertRestoredToast(entry) {
+    if (stackNewestLast) popupModel.insert(0, entry)
+    else popupModel.append(entry)
+  }
+
+  function reversePopups() {
+    for (var i = 0; i < popupModel.count - 1; i++) popupModel.move(popupModel.count - 1, i, 1)
   }
 
   // The marks belong to the agents plugin, so they come from whichever one is
@@ -734,16 +743,15 @@ Item {
     }
 
     clearPopups()
-    // Rows arrive newest-first, and index 0 is the top of the toast stack, so
-    // a bottom-anchored stack takes them in reverse to keep the newest nearest
-    // its edge.
+    // Rows arrive newest-first; restored insertion keeps the newest nearest
+    // the configured edge.
     for (var i = 0; i < rows.length; i++) {
-      var row = service.stackNewestLast ? rows[rows.length - 1 - i] : rows[i]
+      var row = rows[i]
       // Replayed rows are restored rows: their notification died with the
       // sender long ago, so they must never resolve to a live server object
       // that has since been handed their old id.
       service.restoredPopups[NotificationLogic.popupFileName(row)] = true
-      popupModel.append(row)
+      insertRestoredToast(row)
     }
   }
 
@@ -804,12 +812,12 @@ Item {
           }
         }
         if (duplicate) continue
-        // Append (entries are newest-first) so restored toasts stack in
-        // their original order below anything that just arrived. Restored
-        // popups have no liveRefs entry — the server object died with the
-        // old shell — so dismissal and action fallbacks degrade gracefully.
+        // Entries arrive newest-first; restored insertion keeps them behind
+        // anything that just arrived. Restored popups have no liveRefs entry
+        // — the server object died with the old shell — so dismissal and
+        // action fallbacks degrade gracefully.
         service.restoredPopups[NotificationLogic.popupFileName(restored)] = true
-        popupModel.append(restored)
+        insertRestoredToast(restored)
       }
     })
   }

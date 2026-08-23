@@ -255,12 +255,7 @@ becomes the authoritative file — we do **not** deep-merge defaults back in.
 }
 ```
 
-`notifications.position` names the corner the toast stack grows from as
-`<top|middle|bottom>-<left|center|right>` and defaults to `top-right`.
-`notifications.agentIcons` (default `true`) badges plain `notify-send` toasts
-whose summary starts with `claude`, `codex`, or `agy` with that agent's mark
-from the enabled agents plugin. Both are optional and apply as soon as the file
-is saved.
+`notifications.position` names the corner the toast stack grows from as `<top|middle|bottom>-<left|center|right>` and defaults to `top-right`. `notifications.agentIcons` (default `true`) badges plain `notify-send` toasts whose summary starts with `claude`, `codex`, or `agy` with that agent's mark from the enabled agents plugin. Both are optional and apply as soon as the file is saved.
 
 ### Storage rules
 

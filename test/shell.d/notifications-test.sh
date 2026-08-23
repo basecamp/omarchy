@@ -102,6 +102,13 @@ assertDeepEqual(
   { vertical: 'top', horizontal: 'right' },
   'notifications fall back to top-right for an unknown position'
 )
+for (const invalid of ['bottom-sideways', 'left', 'center-bottom']) {
+  assertDeepEqual(
+    notifications.parsePopupPosition(invalid),
+    { vertical: 'top', horizontal: 'right' },
+    'notifications reject malformed toast position ' + invalid
+  )
+}
 assertDeepEqual(
   notifications.popupPlacement('bottom', 32, 6, 'bottom-left'),
   {
@@ -135,6 +142,8 @@ assertEqual(notifications.agentMarkFor('notify-send', '', 'claude finished', tru
 assertEqual(notifications.agentMarkFor('notify-send', 'mail', 'claude finished', false), '', 'notifications keep an icon the sender chose')
 assertEqual(notifications.agentMarkFor('Slack', '', 'claude finished', false), '', 'notifications only badge plain notify-send toasts')
 assertEqual(notifications.agentMarkFor('notify-send', '', 'Build finished', false), '', 'notifications leave other notify-send toasts unbadged')
+assert(fs.existsSync(path.join(root, 'shell/plugins/agents/assets/antigravity.svg')), 'notifications ship the Antigravity mark they resolve')
+assert(fs.existsSync(path.join(root, 'shell/plugins/agents/assets/antigravity-light.svg')), 'notifications ship the Antigravity light mark they resolve')
 
 const notification = {
   id: 12,
@@ -603,6 +612,16 @@ assert(
 assert(
   /function insertToast\(entry\) \{\s*if \(stackNewestLast\) popupModel\.append\(entry\)\s*else popupModel\.insert\(0, entry\)/.test(serviceQml),
   'notifications service stacks the newest toast nearest a bottom edge'
+)
+assert(
+  /function insertRestoredToast\(entry\) \{\s*if \(stackNewestLast\) popupModel\.insert\(0, entry\)\s*else popupModel\.append\(entry\)/.test(serviceQml)
+    && (serviceQml.match(/insertRestoredToast\((?:row|restored)\)/g) || []).length === 2,
+  'notifications service restores and replays newest nearest the configured edge'
+)
+assert(
+  /onStackNewestLastChanged: reversePopups\(\)/.test(serviceQml)
+    && /function reversePopups\(\) \{\s*for \([^)]+\) popupModel\.move\(popupModel\.count - 1, i, 1\)/.test(serviceQml),
+  'notifications service reorders visible toasts when their edge changes'
 )
 assert(
   !/popupModel\.insert\(0, (snapshot|\{)/.test(serviceQml),

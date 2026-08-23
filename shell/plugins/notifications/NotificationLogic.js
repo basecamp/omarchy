@@ -290,17 +290,9 @@ function popupExpired(entry, duration, now) {
 // grows from: "<top|middle|bottom>-<left|center|right>". Anything else keeps
 // the top-right default.
 function parsePopupPosition(value) {
-  var parts = String(value || "").trim().toLowerCase().split(/[-\s_]+/)
-  var vertical = "top"
-  var horizontal = "right"
-  for (var i = 0; i < parts.length; i++) {
-    var part = parts[i]
-    if (part === "top" || part === "bottom") vertical = part
-    else if (part === "middle" && i === 0) vertical = "middle"
-    else if (part === "left" || part === "right") horizontal = part
-    else if (part === "center" || part === "middle") horizontal = "center"
-  }
-  return { vertical: vertical, horizontal: horizontal }
+  var match = String(value || "").trim().toLowerCase().match(/^(top|middle|bottom)[-\s_]+(left|center|right|middle)$/)
+  if (!match) return { vertical: "top", horizontal: "right" }
+  return { vertical: match[1], horizontal: match[2] === "middle" ? "center" : match[2] }
 }
 
 function popupPlacement(barPosition, barClearance, gapsOut, position) {
