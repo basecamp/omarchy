@@ -4,9 +4,9 @@ This is a collection of common tailorings to the Omarchy setup. Know that it mig
 
 If you screw something up, you can restore individual configs to their original setup via _Update > Config_ in the Omarchy menu. If you _really_ screw everything up, you can reset all configs via `omarchy-reinstall`.
 
-### Reveal all tray icons all the time
+### Hide or rearrange tray icons
 
-By default, tray icons, like Dropbox, 1password, or Steam, are hidden behind the tray expander arrow, which reveals them when you hover it. If you'd like to have them exposed all the time, right-click the expander arrow to open the tray icon manager, then pin the icons you want to keep visible (you can also hide the ones you never want to see).
+By default, tray icons, like Dropbox, 1password, or Steam, sit behind the tray expander arrow, which reveals them when you hover it. Drag an icon within the open drawer to rearrange it. Right-click the expander arrow to open the tray manager: the Show System Icons switch hides or reveals them all at once, and each icon's row toggles just that one. You can also drag any bar widget onto the tray to store it in the drawer, and drag it back out whenever you want it on the bar full-time.
 
 ### Rounded window corners
 

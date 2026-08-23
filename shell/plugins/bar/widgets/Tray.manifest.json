@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "id": "omarchy.tray",
   "name": "System tray",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "author": "Omarchy",
-  "description": "Status notifier items",
+  "description": "Status notifier items, plus any bar widgets you drag into the drawer",
   "kinds": [
     "bar-widget"
   ],
@@ -13,7 +13,7 @@
   },
   "barWidget": {
     "displayName": "System tray",
-    "description": "Status notifier items",
+    "description": "Status notifier items, plus any bar widgets you drag into the drawer",
     "category": "Status",
     "allowMultiple": false
   },
