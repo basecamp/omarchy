@@ -282,10 +282,9 @@ PY
 }
 
 if (( emit_lua )); then
-  if apply_hyprctl; then
-    disable_disconnected
-    exit 0
-  fi
+  # Parse-time popen from monitors.lua. hyprctl here deadlocks Hyprland:
+  # config waits on this script, this script waits on the IPC that is not
+  # serving until config finishes.
   emit_from_drm
   exit $?
 fi

@@ -17,6 +17,10 @@ grep -Fq -- '--emit-lua' "$ROOT/config/hypr/monitors.lua" \
 grep -F 'omarchy-hyprland-monitor-apply.service' "$ROOT/install/user/first-run/enable-user-units.sh" \
   || fail "first-run enables the monitor apply unit so safe-mode still configures the panel"
 pass "monitor apply is wired through config load, the watcher, and login"
+if awk '/if \(\( emit_lua \)\)/,/^fi$/' "$apply" | grep -q apply_hyprctl; then
+  fail "emit-lua must not call hyprctl; that deadlocks Hyprland config parse"
+fi
+grep -Fq 'emit_from_drm' "$apply" || fail "parse-time emit reads the connector from DRM"
 
 test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
