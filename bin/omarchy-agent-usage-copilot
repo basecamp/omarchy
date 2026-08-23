@@ -107,11 +107,14 @@ def fetch_quota(token: str) -> dict[str, Any] | None:
             if snapshot.get("has_quota"):
               used = snapshot.get("credits_used", 0)
               total = snapshot.get("entitlement", 0)
-              return {
+              result = {
                 "displayName": QUOTA_DISPLAY_NAMES.get(quota_key, quota_key),
                 "used": used,
                 "total": total,
               }
+              if "quota_reset_date_utc" in data:
+                result["resetsAt"] = data["quota_reset_date_utc"]
+              return result
       return None
   except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, TimeoutError):
     return None
@@ -245,10 +248,13 @@ def main() -> None:
     pct = 0
     if quota["total"] > 0:
       pct = quota["used"] / quota["total"]
-    limits = [{
+    limit_entry = {
       "label": quota["displayName"],
       "percent": pct,
-    }]
+    }
+    if "resetsAt" in quota:
+      limit_entry["resetsAt"] = quota["resetsAt"]
+    limits = [limit_entry]
 
   record = {
     "schemaVersion": 1,
