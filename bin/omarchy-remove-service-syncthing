@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# omarchy:summary=Remove Syncthing and its native bar panel while preserving synced data.
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+FIREWALL_MARKER="$HOME/.local/state/omarchy/syncthing-ufw-managed"
+
+close_firewall() {
+  if [[ ! -f $FIREWALL_MARKER ]] || omarchy-cmd-missing ufw; then
+    return
+  fi
+
+  if sudo ufw status 2>/dev/null | grep -Eiq '^syncthing([[:space:]]|$)'; then
+    sudo ufw --force delete allow syncthing >/dev/null
+    sudo ufw reload >/dev/null
+  fi
+  rm -f "$FIREWALL_MARKER"
+}
+
+systemctl --user disable --now syncthing.service 2>/dev/null || true
+omarchy-plugin-disable omarchy.syncthing
+close_firewall
+omarchy-pkg-drop syncthing
+
+echo ""
+echo "Syncthing has been removed. Its configuration and synced folders were preserved."

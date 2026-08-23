@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.syncthing",
+  "name": "Syncthing",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "license": "MIT",
+  "description": "Syncthing health, folders, devices, alerts, and daily controls in the Omarchy bar.",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Syncthing",
+    "description": "Monitor Syncthing, inspect folders and devices, rescan, pause, and open the Web UI.",
+    "category": "Files",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "refreshIntervalSec": 60,
+      "actionableNotifications": true,
+      "disconnectGraceMinutes": 15
+    },
+    "schema": [
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Health refresh interval (seconds)",
+        "min": 15,
+        "max": 3600,
+        "step": 15,
+        "defaultValue": 60
+      },
+      {
+        "key": "actionableNotifications",
+        "type": "boolean",
+        "label": "Actionable notifications",
+        "defaultValue": true,
+        "description": "Notify about new errors, incoming offers, service failures, and prolonged disconnects."
+      },
+      {
+        "key": "disconnectGraceMinutes",
+        "type": "integer",
+        "label": "Disconnect grace period (minutes)",
+        "min": 1,
+        "max": 1440,
+        "step": 1,
+        "defaultValue": 15
+      }
+    ]
+  }
+}

@@ -7,6 +7,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 WEATHER_FILE="$HOME/.local/state/omarchy/settings/weather.json"
 weather_backup=$(mktemp)
 weather_existed=0
+syncthing_added=0
 
 if [[ -f $WEATHER_FILE ]]; then
   cp "$WEATHER_FILE" "$weather_backup"
@@ -16,13 +17,17 @@ fi
 hide_panels() {
   local plugin
 
-  for plugin in omarchy.weather omarchy.bluetooth omarchy.network omarchy.audio omarchy.monitor omarchy.power; do
+  for plugin in omarchy.weather omarchy.bluetooth omarchy.network omarchy.audio omarchy.monitor omarchy.power omarchy.syncthing; do
     omarchy-shell shell hide "$plugin" >/dev/null 2>&1 || true
   done
 }
 
 restore_weather() {
   hide_panels
+
+  if (( syncthing_added )); then
+    omarchy-plugin-disable omarchy.syncthing >/dev/null 2>&1 || true
+  fi
 
   if ((weather_existed)); then
     mkdir -p "$(dirname "$WEATHER_FILE")"
@@ -72,6 +77,20 @@ while IFS='|' read -r name plugin; do
     wait_until "$name failed panel is dismissed" 15 layer_absent "omarchy-keyboard-panel"
   fi
 done <<<"$panels"
+
+# Optional service panels still need to load cleanly before their package is
+# present. Put Syncthing on the disposable VM's bar long enough to exercise
+# the native empty/stopped state, then restore the original layout in the trap.
+if ! omarchy-shell shell listPlugins | jq -e '.[] | select(.id == "omarchy.syncthing" and .enabled == true)' >/dev/null; then
+  omarchy-plugin-enable omarchy.syncthing >/dev/null
+  syncthing_added=1
+fi
+omarchy-shell shell summon omarchy.syncthing >/dev/null
+wait_until "Syncthing panel opens" 15 layer_present "omarchy-keyboard-panel"
+wait_until "Syncthing panel identifies itself" 15 screen_contains "Syncthing"
+screenshot "success-panel-syncthing"
+omarchy-shell shell hide omarchy.syncthing >/dev/null
+wait_until "Syncthing panel closes" 15 layer_absent "omarchy-keyboard-panel"
 
 # The power widget intentionally disappears on desktops and VMs without a
 # battery. Exercise it on laptops, and verify that hardware-less sessions take

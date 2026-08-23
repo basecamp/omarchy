@@ -15,12 +15,14 @@ assert(!tray.itemNamed({ id: 'nextcloud' }, 'dropbox'), 'tray ignores items name
 const layout = {
   left: [{ id: 'omarchy.menu' }],
   center: [],
-  right: [{ id: 'omarchy.dropbox' }, { id: 'omarchy.tray' }]
+  right: [{ id: 'omarchy.dropbox' }, { id: 'omarchy.syncthing' }, { id: 'omarchy.tray' }]
 }
 
 assert(tray.layoutHasWidget(layout, 'omarchy.dropbox'), 'tray finds dedicated dropbox widget in layout')
 assert(tray.ownedByOmarchy({ id: 'dropbox' }, layout), 'tray suppresses dropbox when dedicated widget is in bar')
 assert(!tray.ownedByOmarchy({ id: 'dropbox' }, { left: [], center: [], right: [] }), 'tray keeps dropbox when dedicated widget is absent')
+assert(tray.ownedByOmarchy({ title: 'Syncthing Tray' }, layout), 'tray suppresses syncthing when dedicated widget is in bar')
+assert(!tray.ownedByOmarchy({ title: 'Syncthing Tray' }, { left: [], center: [], right: [] }), 'tray keeps syncthing when dedicated widget is absent')
 assert(tray.ownedByOmarchy({ id: 'qlBCprNUqU', title: 'localsend' }, { left: [], center: [], right: [] }), 'tray suppresses localsend regardless of layout')
 assert(!tray.ownedByOmarchy({ id: 'nextcloud' }, layout), 'tray keeps unrelated tray items')
 JS

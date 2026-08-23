@@ -40,6 +40,14 @@ That gives you a Tailscale panel in the bar, which connects and disconnects the 
 
 Installing it also adds a web app for the Tailscale admin console.
 
+## Syncthing
+
+[Syncthing](https://syncthing.net/) synchronizes folders directly between your devices without putting a central cloud service in the middle. Install it with _Install > Service > Syncthing_; Omarchy opens the packaged firewall profile for sync and discovery traffic, starts the per-user service, adds its native panel to the bar, and opens the local Web UI for first-time device and folder setup. The Web UI itself stays loopback-only and is not opened in the firewall.
+
+After setup, the panel handles the daily work: it shows folder progress and errors, device connectivity, and incoming sharing requests; it can rescan, pause, or resume a folder and stop or start the service. Use the Web UI for less frequent configuration such as adding devices, accepting shares, choosing folder paths, versioning, and ignore patterns. The panel talks only to a loopback Syncthing API and keeps the API key inside its local helper process.
+
+If your bar already uses a known community Syncthing widget, Omarchy leaves it in place during installation and default-layout restoration instead of adding a duplicate. Disable that plugin and run `omarchy plugin enable omarchy.syncthing` whenever you want to switch to the built-in panel.
+
 ## When it stops working
 
 Before rebooting, try restarting the offending piece on its own. _Update > Hardware_ has Wi-Fi, Bluetooth, Audio, and Trackpad, and reloading one of those clears up most "it worked five minutes ago" situations. See [troubleshooting](45-troubleshooting.md).

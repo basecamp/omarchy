@@ -1,0 +1,81 @@
+#!/bin/bash
+
+# omarchy:summary=Install Syncthing, start its user service, and add the native bar panel.
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+FIREWALL_MARKER="$HOME/.local/state/omarchy/syncthing-ufw-managed"
+
+community_plugin_ids() {
+  local config="$HOME/.config/omarchy/shell.json"
+  [[ -f $config ]] || return 0
+
+  jq -r '
+    [
+      .bar.layout.left[]?,
+      .bar.layout.center[]?,
+      .bar.layout.right[]?,
+      .plugins[]?
+    ]
+    | map(if type == "object" then (.id // "") else tostring end)
+    | map(select(IN(
+        "io.github.ilyazar.syncthing",
+        "explify.syncthing",
+        "hrdk.syncthing"
+      )))
+    | unique[]
+  ' "$config" 2>/dev/null || true
+}
+
+open_firewall() {
+  if omarchy-cmd-missing ufw; then
+    return
+  fi
+
+  if sudo ufw status 2>/dev/null | grep -Eiq '^syncthing([[:space:]]|$)'; then
+    return
+  fi
+
+  echo -e "\nOpening Syncthing sync and discovery ports..."
+  sudo ufw allow syncthing comment "omarchy-syncthing" >/dev/null
+  mkdir -p "$(dirname "$FIREWALL_MARKER")"
+  touch "$FIREWALL_MARKER"
+  sudo ufw reload >/dev/null
+}
+
+echo -e "\nInstalling Syncthing..."
+omarchy-pkg-add syncthing
+
+open_firewall
+
+echo -e "\nStarting Syncthing..."
+systemctl --user enable --now syncthing.service
+
+mapfile -t community_plugins < <(community_plugin_ids)
+if (( ${#community_plugins[@]} == 0 )); then
+  echo -e "\nAdding Syncthing to the bar..."
+  omarchy-plugin-enable omarchy.syncthing
+else
+  echo -e "\nKeeping your existing Syncthing widget in place:"
+  printf '  %s\n' "${community_plugins[@]}"
+  echo "The native omarchy.syncthing panel was not added, so you do not get duplicate widgets."
+  echo "Disable the community widget, then run 'omarchy plugin enable omarchy.syncthing' when you want to switch."
+fi
+
+echo -e "\nWaiting for the local Syncthing Web UI..."
+ready=0
+for (( attempt = 0; attempt < 30; attempt++ )); do
+  if curl --noproxy '*' --silent --fail --max-time 1 http://127.0.0.1:8384/rest/noauth/health >/dev/null 2>&1; then
+    ready=1
+    break
+  fi
+  sleep 0.5
+done
+
+if (( ready )); then
+  omarchy-launch-browser http://127.0.0.1:8384
+else
+  echo "Syncthing is installed, but its Web UI is not answering on 127.0.0.1:8384 yet."
+  echo "Open the bar panel or run 'systemctl --user status syncthing.service' to check it."
+fi
