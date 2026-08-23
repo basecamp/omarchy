@@ -78,6 +78,8 @@ Item {
       width: 20
       height: 20
       fillMode: Image.PreserveAspectFit
+      sourceSize.width: 20 * Screen.devicePixelRatio
+      sourceSize.height: 20 * Screen.devicePixelRatio
       source: root.appLibrary ? root.appLibrary.iconSource(root.iconName) : ""
       visible: status === Image.Ready
     }
