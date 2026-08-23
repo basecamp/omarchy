@@ -115,7 +115,6 @@ function liveLaptopDevices(devices, statusInfo) {
 
 function packsEnergyFraction(packs) {
   if (!packs || packs.length === 0) return -1
-  if (packs.length === 1) return batteryFraction(packs[0])
 
   var now = 0
   var full = 0
@@ -142,7 +141,18 @@ function combinedFractionFromStatus(info) {
 function viewDevice(devices, fallback, states, statusInfo) {
   var packs = liveLaptopDevices(devices, statusInfo)
   if (packs.length === 0) return fallback || {}
-  if (packs.length === 1) return packs[0]
+  if (packs.length === 1) {
+    var only = packs[0]
+    return {
+      isPresent: true,
+      percentage: packsEnergyFraction(packs),
+      state: only.state,
+      changeRate: only.changeRate,
+      timeToFull: only.timeToFull,
+      energy: only.energy,
+      energyCapacity: only.energyCapacity
+    }
+  }
 
   var s = states || {}
   var changeRate = 0

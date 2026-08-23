@@ -38,11 +38,11 @@ chmod +x "$tmp_dir/bin/upower"
 
 shell_output=$(OMARCHY_POWER_SUPPLY_PATH="$tmp_dir/power" PATH="$tmp_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status" --shell)
 
-grep -Fx $'percentage\t51%' <<<"$shell_output" >/dev/null || fail "battery status reports percentage"
+grep -Fx $'percentage\t50%' <<<"$shell_output" >/dev/null || fail "battery status reports energy-based percentage" "$shell_output"
 grep -Fx $'state\tdischarging' <<<"$shell_output" >/dev/null || fail "battery status reports state"
 grep -Fx $'rate\t10.8W' <<<"$shell_output" >/dev/null || fail "battery status reports live sysfs power rate"
-grep -Fx $'size\t56Wh' <<<"$shell_output" >/dev/null || fail "battery status reports full capacity"
-grep -Fx $'time\t2h 30m' <<<"$shell_output" >/dev/null || fail "battery status reports remaining time"
+grep -Fx $'size\t56.7Wh' <<<"$shell_output" >/dev/null || fail "battery status reports full capacity" "$shell_output"
+grep -Fx $'time\t2h 37m' <<<"$shell_output" >/dev/null || fail "battery status reports remaining time from Wh/W" "$shell_output"
 
 pass "battery status reports a single live pack"
 
@@ -60,6 +60,8 @@ printf '1\n' >"$tmp_dir/power/AC/online"
 printf '2169000\n' >"$tmp_dir/power/BAT1/power_now"
 printf '12257000\n' >"$tmp_dir/power/BAT1/voltage_now"
 printf '20430000\n' >"$tmp_dir/power/BAT1/energy_now"
+printf '100\n' >"$tmp_dir/power/BAT1/charge_control_end_threshold"
+printf '0\n' >"$tmp_dir/power/BAT1/charge_control_start_threshold"
 cat >"$tmp_dir/bin/upower" <<'STUB'
 #!/bin/bash
 
@@ -107,14 +109,25 @@ shell_output=$(OMARCHY_POWER_SUPPLY_PATH="$tmp_dir/power" PATH="$tmp_dir/bin:$PA
 grep -Fx $'percentage\t98%' <<<"$shell_output" >/dev/null || fail "battery status ignores a dead first pack" "$shell_output"
 grep -Fx $'state\tcharging' <<<"$shell_output" >/dev/null || fail "battery status does not treat a dead pending-charge pack as holding" "$shell_output"
 grep -Fx $'rate\t2.2W' <<<"$shell_output" >/dev/null || fail "battery status reports the live pack's power" "$shell_output"
-grep -Fx $'size\t20Wh' <<<"$shell_output" >/dev/null || fail "battery status reports live capacity, not dead+live energy-full" "$shell_output"
+grep -Fx $'size\t20.9Wh' <<<"$shell_output" >/dev/null || fail "battery status reports live capacity, not dead+live energy-full" "$shell_output"
 grep -Fx $'time\t14m' <<<"$shell_output" >/dev/null || fail "battery status reports the live pack's time to full" "$shell_output"
 grep -Fx $'pack.0.path\tBAT1' <<<"$shell_output" >/dev/null || fail "battery status names the live pack for the panel" "$shell_output"
 if grep -F $'pack.1.path' <<<"$shell_output" >/dev/null; then
   fail "battery status does not name a dead pack" "$shell_output"
 fi
+if grep -F $'threshold' <<<"$shell_output" >/dev/null; then
+  fail "battery status omits a 0-100 kernel charge window" "$shell_output"
+fi
 
 pass "battery status ignores a present-but-dead pack"
+
+# Signed sysfs power_now while UPower says charging must still yield a time.
+printf -- '-2169000\n' >"$tmp_dir/power/BAT1/power_now"
+shell_output=$(OMARCHY_POWER_SUPPLY_PATH="$tmp_dir/power" PATH="$tmp_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status" --shell)
+grep -Fx $'state\tcharging' <<<"$shell_output" >/dev/null || fail "signed charging rate keeps charging state" "$shell_output"
+grep -Fx $'rate\t2.2W' <<<"$shell_output" >/dev/null || fail "signed charging rate is displayed absolute" "$shell_output"
+grep -Fx $'time\t14m' <<<"$shell_output" >/dev/null || fail "signed charging rate still estimates time to full" "$shell_output"
+pass "battery status estimates time from signed charging watts"
 
 if matches=$(rg -n 'omarchy-battery-(capacity|remaining|remaining-time)' "$ROOT/bin" "$ROOT/test" "$ROOT/shell" "$ROOT/docs"); then
   fail "battery status owns capacity and remaining calculations" "$matches"

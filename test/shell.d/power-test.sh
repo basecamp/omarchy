@@ -43,9 +43,9 @@ assertDeepEqual(
   ['BAT0', 'BAT1'],
   'power follows CLI-selected pack ids when voltage is missing'
 )
-assertEqual(power.combinedEnergyFraction(packs), 0.98, 'power fill level follows the live pack, not DisplayDevice')
+assertEqual(power.combinedEnergyFraction(packs), 20.43 / 20.94, 'power fill level follows live energy, not DisplayDevice')
 assert(!power.chargeThresholdActiveForPacks(packs, false, states, { state: 'holding' }), 'power does not hold while a live pack is charging')
-assertEqual(power.viewDevice(packs, display, states).percentage, 0.98, 'power icon uses the live pack percentage')
+assertEqual(power.viewDevice(packs, display, states).percentage, 20.43 / 20.94, 'power icon uses live energy fraction')
 assertEqual(power.modeLabel({ isPresent: true, percentage: 1, state: states.FullyCharged }, false, states), 'Fully charged', 'power labels full battery')
 assertEqual(power.modeLabel({ isPresent: true, percentage: 0.5, state: states.Discharging }, true, states), 'On battery', 'power labels battery mode')
 assertEqual(power.modeLabel({ isPresent: true, percentage: 0.5, state: states.Discharging }, false, states), 'Charging', 'power treats external power as newer than stale discharging state')
@@ -69,4 +69,5 @@ assert(/IpcHandler[\s\S]*?function togglePercentage\(\) \{ root\.togglePercentag
 assert(/manageIpc: false/.test(panelSource), 'power owns its IPC handler so it can extend the target methods')
 assert(/liveLaptopDevices\(powerDevices, opened \? batteryInfo : null\)/.test(panelSource), 'power panel reads live packs instead of DisplayDevice alone')
 assert(/chargeThresholdActiveForPacks/.test(panelSource), 'power panel uses the multi-pack hold detector')
+assert(!/UPower\.displayDevice/.test(panelSource.split('batteryFraction')[1].split('readonly property bool charging')[0]), 'power fill does not fall back to DisplayDevice')
 JS

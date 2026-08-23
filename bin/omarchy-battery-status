@@ -56,23 +56,12 @@ format_hours() {
   }'
 }
 
-format_upower_time() {
-  awk '/time to (empty|full)/ {
-    value = $4
-    unit = $5
-    if (unit ~ /^minute/) {
-      printf "%dm", int(value)
-    } else {
-      hours = int(value)
-      minutes = int((value - hours) * 60)
-      if (minutes > 0) {
-        printf "%dh %dm", hours, minutes
-      } else {
-        printf "%dh", hours
-      }
-    }
-    exit
-  }' <<<"$1"
+format_wh() {
+  awk -v wh="${1:-0}" 'BEGIN {
+    rounded = sprintf("%.1f", wh)
+    sub(/\.0$/, "", rounded)
+    print rounded
+  }'
 }
 
 live_rate_watts() {
@@ -163,7 +152,7 @@ fi
 
 declare -a all_paths live_paths
 declare -A info_for path_for energy_for full_for rate_for pct_for state_for
-declare -A start_for end_for time_for cycle_for
+declare -A start_for end_for cycle_for
 
 for battery in "${battery_paths[@]}"; do
   battery_info=$(upower -i "$battery")
@@ -179,7 +168,6 @@ for battery in "${battery_paths[@]}"; do
   state=$(awk '/state/ { print $2; exit }' <<<"$battery_info")
   pack_start=$(awk '/charge-start-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
   pack_end=$(awk '/charge-end-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
-  pack_time=$(format_upower_time "$battery_info")
   pack_rate=$(live_rate_watts "$battery_path" "${energy_rate:-0}")
 
   pack_cycle=""
@@ -200,7 +188,6 @@ for battery in "${battery_paths[@]}"; do
   state_for[$battery]=$state
   start_for[$battery]=$pack_start
   end_for[$battery]=$pack_end
-  time_for[$battery]=$pack_time
   cycle_for[$battery]=$pack_cycle
 
   if pack_is_live "$battery_path" "${energy:-0}" "${energy_rate:-0}" "${percentage:-0}"; then
@@ -219,9 +206,9 @@ pack_holding() {
   local state=${state_for[$battery]}
   local percentage=${pct_for[$battery]}
   local pack_rate=${rate_for[$battery]}
-  local threshold_end=${end_for[$battery]}
 
   [[ $ac_online == "true" && -n $threshold_end ]] || return 1
+  ((threshold_end > 0 && threshold_end < 99)) || return 1
 
   if [[ $state == "pending-charge" ]]; then
     return 0
@@ -230,7 +217,7 @@ pack_holding() {
     return 0
   fi
   if [[ $state == "charging" ]] && rate_idle "$pack_rate" &&
-     ((threshold_end < 99 && percentage >= threshold_end)); then
+     ((percentage >= threshold_end)); then
     return 0
   fi
   return 1
@@ -263,11 +250,6 @@ for battery in "${selected_paths[@]}"; do
     any_discharging=true
   fi
 
-  if [[ -z $threshold_end && -n ${end_for[$battery]} ]]; then
-    threshold_start=${start_for[$battery]}
-    threshold_end=${end_for[$battery]}
-  fi
-
   if [[ -z $cycles && -n ${cycle_for[$battery]} && ${cycle_for[$battery]} != 0 ]]; then
     cycles=${cycle_for[$battery]}
   elif [[ -n ${cycle_for[$battery]} && ${cycle_for[$battery]} != 0 ]]; then
@@ -275,33 +257,44 @@ for battery in "${selected_paths[@]}"; do
   fi
 done
 
+threshold_start=""
+threshold_end=""
+for battery in "${selected_paths[@]}"; do
+  native=${path_for[$battery]}
+  sys_end=$(read_numeric "$power_supply_path/$native/charge_control_end_threshold" || true)
+  sys_start=$(read_numeric "$power_supply_path/$native/charge_control_start_threshold" || true)
+  if [[ -n $sys_end ]]; then
+    threshold_end=$sys_end
+    threshold_start=$sys_start
+    break
+  fi
+done
 if [[ -z $threshold_end ]]; then
   for battery in "${selected_paths[@]}"; do
-    native=${path_for[$battery]}
-    [[ -z $threshold_end ]] && threshold_end=$(read_numeric "$power_supply_path/$native/charge_control_end_threshold" || true)
-    [[ -z $threshold_start ]] && threshold_start=$(read_numeric "$power_supply_path/$native/charge_control_start_threshold" || true)
+    if [[ -n ${end_for[$battery]} ]]; then
+      threshold_end=${end_for[$battery]}
+      threshold_start=${start_for[$battery]}
+      break
+    fi
   done
 fi
-
-if ((${#selected_paths[@]} == 1)); then
-  only=${selected_paths[0]}
-  percentage=${pct_for[$only]}
-  state=${state_for[$only]}
-  time_remaining=${time_for[$only]}
-else
-  percentage=$(awk -v now="$total_energy" -v full="$total_full" 'BEGIN {
-    if (full <= 0) { print 0; exit }
-    printf "%d", (now / full) * 100
-  }')
-  state=${state_for[${selected_paths[0]}]}
+if [[ -n $threshold_end ]] && ((threshold_end <= 0 || threshold_end >= 99)); then
+  threshold_end=""
+  threshold_start=""
 fi
 
-capacity=$(awk -v full="$total_full" 'BEGIN { printf "%d", full }')
-power_rate_raw=$total_rate
+percentage=$(awk -v now="$total_energy" -v full="$total_full" 'BEGIN {
+  if (full <= 0) { print 0; exit }
+  printf "%d", (now / full) * 100 + 0.5
+}')
+state=${state_for[${selected_paths[0]}]}
+
+capacity=$(format_wh "$total_full")
+power_rate_raw=$(awk -v rate="$total_rate" 'BEGIN { if (rate < 0) rate = -rate; print rate }')
 power_rate=$(format_rate "$power_rate_raw")
 
 charge_holding=false
-if [[ $ac_online == "true" && $any_live_charge == "false" ]]; then
+if [[ $ac_online == "true" && $any_live_charge == "false" && -n $threshold_end ]]; then
   all_resting=true
   any_hold=false
   for battery in "${selected_paths[@]}"; do
@@ -315,13 +308,6 @@ if [[ $ac_online == "true" && $any_live_charge == "false" ]]; then
   done
   if [[ $any_hold == "true" && $all_resting == "true" ]]; then
     charge_holding=true
-  elif [[ $any_charging == "false" && $any_discharging == "false" && -n $threshold_end ]]; then
-    # Dead leftover pending-charge should not force Holding when a live pack
-    # is already excluded; only the selected set counts here.
-    first_state=${state_for[${selected_paths[0]}]}
-    if [[ $first_state == "pending-charge" ]]; then
-      charge_holding=true
-    fi
   fi
 fi
 
@@ -333,21 +319,17 @@ elif [[ $any_discharging == "true" ]]; then
   state="discharging"
 fi
 
-if [[ -z $time_remaining ]]; then
-  if [[ $state == "charging" ]] && ! rate_idle "$power_rate_raw"; then
-    time_remaining=$(format_hours "$(awk -v now="$total_energy" -v full="$total_full" -v rate="$power_rate_raw" 'BEGIN {
-      if (rate <= 0) exit
-      print (full - now) / rate
-    }')")
-  elif [[ $state == "discharging" ]] && ! rate_idle "$power_rate_raw"; then
-    time_remaining=$(format_hours "$(awk -v now="$total_energy" -v rate="$power_rate_raw" 'BEGIN {
-      if (rate < 0) rate = -rate
-      if (rate <= 0) exit
-      print now / rate
-    }')")
-  elif ((${#selected_paths[@]} == 1)); then
-    time_remaining=${time_for[${selected_paths[0]}]}
-  fi
+time_remaining=""
+if [[ $state == "charging" ]] && ! rate_idle "$power_rate_raw"; then
+  time_remaining=$(format_hours "$(awk -v now="$total_energy" -v full="$total_full" -v rate="$power_rate_raw" 'BEGIN {
+    if (rate <= 0) exit
+    print (full - now) / rate
+  }')")
+elif [[ $state == "discharging" ]] && ! rate_idle "$power_rate_raw"; then
+  time_remaining=$(format_hours "$(awk -v now="$total_energy" -v rate="$power_rate_raw" 'BEGIN {
+    if (rate <= 0) exit
+    print now / rate
+  }')")
 fi
 
 if [[ $shell_output == "true" ]]; then

@@ -51,7 +51,7 @@ Panel {
   }
 
   function viewDevice() {
-    return Model.viewDevice(root.powerDevices, UPower.displayDevice, upowerStates(), root.opened ? root.batteryInfo : null)
+    return Model.viewDevice(root.powerDevices, { isPresent: false }, upowerStates(), root.opened ? root.batteryInfo : null)
   }
 
   function batteryIcon() {
@@ -79,14 +79,13 @@ Panel {
   readonly property bool batteryFull: fullyCharged || (!root.discharging && batteryFraction >= 1)
   readonly property bool batteryFlowIdle: batteryFull || chargeThresholdActive
 
-  // 0..1 charge level, used by the visual progress bar. Prefer live packs
-  // over DisplayDevice, which still counts a present-but-dead cell's energy-full.
+  // Live watt-hours only. DisplayDevice still counts a dead pack's energy-full.
   readonly property real batteryFraction: {
     var fromStatus = root.opened ? Model.combinedFractionFromStatus(root.batteryInfo) : -1
     if (fromStatus >= 0) return fromStatus
     var combined = Model.combinedEnergyFraction(root.powerDevices, root.opened ? root.batteryInfo : null)
     if (combined >= 0) return combined
-    return Model.batteryFraction(UPower.displayDevice)
+    return 0
   }
 
   readonly property bool charging: {
