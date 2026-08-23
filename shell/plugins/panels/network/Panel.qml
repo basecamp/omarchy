@@ -170,6 +170,7 @@ Panel {
       hiddenSsidText = ""
       hiddenSecurity = "wpa-psk"
       hiddenPasswordText = ""
+      hiddenConnecting = false
       hiddenSecurityDropdown.value = Qt.binding(function() { return root.hiddenSecurity })
     }
   }
@@ -1009,7 +1010,9 @@ Panel {
     onExited: function(exitCode) {
       var wasTimeout = timedOut
       timedOut = false
-      if (wasTimeout) root.failHiddenAction("Timed out connecting")
+      // A kill can race a genuine success: if the process still exited 0,
+      // the connection is actually up -- report success, not a timeout.
+      if (wasTimeout && exitCode !== 0) root.failHiddenAction("Timed out connecting")
       else if (exitCode === 0) root.completeHiddenAction()
       else root.failHiddenAction("Failed to connect")
     }
@@ -1879,7 +1882,6 @@ Panel {
 
           TextField {
             id: hiddenSsidField
-            visible: root.hiddenFormOpen
             width: parent.width
             placeholderText: "Network name (SSID)"
             font.family: Style.font.family

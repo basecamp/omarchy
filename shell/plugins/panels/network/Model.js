@@ -360,26 +360,36 @@ var enterpriseConnectScript =
 // UUID/field, never by name) BEFORE adding the new one, and only remove them
 // AFTER the new profile activates successfully; a failed attempt deletes
 // nothing but its own new (still-unproven) profile. The type/ssid/hidden
-// fields are fetched in one `-g` call (one value per line) instead of three
+// fields are fetched in one `-g` call (one value per line) and split with
+// three `IFS= read -r` calls off a single here-string instead of three
 // separate nmcli invocations per candidate UUID, with `--escape no` so a
 // backslash-escaped SSID (nmcli escapes ":" and "\\" by default) still
-// compares equal to the raw "$1".
+// compares equal to the raw "$1"; the `IFS=` prefix is required so a
+// space-padded SSID isn't silently trimmed before the comparison.
+//
+// The profile is created with `connection.autoconnect no` and only flipped
+// to "yes" after `connection up` succeeds, so a killed/failed attempt can
+// never be retried in the background by NetworkManager. `-w 25` bounds
+// nmcli's own wait below the QML side's 30s kill timeout, so a slow/stuck
+// activation hits the `||` cleanup path instead of being killed mid-command
+// and leaving a stray half-proven profile behind.
 var hiddenPskConnectScript =
   "u=$(uuidgen); IFS= read -r pw; pmf=\"\"; [[ $2 == \"sae\" ]] && pmf=\"wifi-sec.pmf 3\";" +
   " old=\"\";" +
   " for c in $(nmcli -t -f UUID connection show); do" +
   "   info=$(nmcli --escape no -g connection.type,802-11-wireless.ssid,802-11-wireless.hidden connection show uuid \"$c\" 2>/dev/null);" +
-  "   type=$(printf '%s\\n' \"$info\" | sed -n 1p); ssid=$(printf '%s\\n' \"$info\" | sed -n 2p); hidden=$(printf '%s\\n' \"$info\" | sed -n 3p);" +
+  "   { IFS= read -r type; IFS= read -r ssid; IFS= read -r hidden; } <<< \"$info\";" +
   "   [[ $type == \"802-11-wireless\" ]] || continue;" +
   "   [[ $ssid == \"$1\" ]] || continue;" +
   "   [[ $hidden == \"yes\" ]] || continue;" +
   "   old=\"$old $c\";" +
   " done;" +
   " nmcli connection add type wifi con-name \"$1\" ssid \"$1\" connection.uuid \"$u\"" +
-  " 802-11-wireless.hidden yes wifi-sec.key-mgmt \"$2\" $pmf >/dev/null" +
+  " connection.autoconnect no 802-11-wireless.hidden yes wifi-sec.key-mgmt \"$2\" $pmf >/dev/null" +
   " && printf 'set wifi-sec.psk %s\\nsave\\nquit\\n' \"$pw\" | nmcli connection edit uuid \"$u\" >/dev/null" +
-  " && nmcli connection up uuid \"$u\"" +
-  " && { for o in $old; do [[ $o == \"$u\" ]] || nmcli connection delete uuid \"$o\" >/dev/null 2>&1; done; true; }" +
+  " && nmcli -w 25 connection up uuid \"$u\"" +
+  " && { nmcli connection modify uuid \"$u\" connection.autoconnect yes >/dev/null 2>&1;" +
+  "     for o in $old; do [[ $o == \"$u\" ]] || nmcli connection delete uuid \"$o\" >/dev/null 2>&1; done; true; }" +
   " || { nmcli connection delete uuid \"$u\" >/dev/null 2>&1; false; }"
 
 function networkFailureReason(reason, needsCredentials, reasons) {
