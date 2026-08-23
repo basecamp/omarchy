@@ -50,6 +50,13 @@ Item {
   readonly property int defaultBarSize: barVertical ? Style.bar.sizeVertical : Style.bar.sizeHorizontal
   readonly property int liveBarSize: shell && shell.bar && !shell.bar.barHidden ? Math.max(0, shell.bar.barSize) : defaultBarSize
   readonly property int barClearance: liveBarSize + Style.gapsOut
+  readonly property var notificationsConfig: shell && shell.shellConfig && Util.isPlainObject(shell.shellConfig.notifications) ? shell.shellConfig.notifications : ({})
+  readonly property string popupPosition: String(notificationsConfig.position || "top-right")
+  readonly property bool agentIconsEnabled: notificationsConfig.agentIcons !== false
+  // The stack grows away from the edge it sits on, so a bottom corner wants
+  // the newest toast nearest that edge: last in the model instead of first.
+  readonly property bool stackNewestLast: NotificationLogic.parsePopupPosition(popupPosition).vertical === "bottom"
+  property var pluginRegistry: null
 
   // Live Notification objects by originalId, kept OUT of the ListModels: a
   // QObject stored in a model role becomes a dangling C++ pointer when the
@@ -135,6 +142,35 @@ Item {
     return NotificationLogic.snapshotOf(notification, Date.now())
   }
 
+  function insertToast(entry) {
+    if (stackNewestLast) popupModel.append(entry)
+    else popupModel.insert(0, entry)
+  }
+
+  // The marks belong to the agents plugin, so they come from whichever one is
+  // enabled. A clone of it outranks the built-in, which the registry still
+  // reports as enabled while the clone stands in for it.
+  readonly property string agentAssetsDir: {
+    var plugins = pluginRegistry && pluginRegistry.installedPlugins ? pluginRegistry.installedPlugins : ({})
+    var dir = omarchyPath + "/shell/plugins/agents/assets/"
+    for (var id in plugins) {
+      var manifest = plugins[id]
+      if (!manifest || !manifest.__sourceDir) continue
+      var clonedFrom = manifest.omarchy && manifest.omarchy.clonedFrom ? String(manifest.omarchy.clonedFrom) : ""
+      if (clonedFrom !== "omarchy.agents" || !pluginRegistry.isEnabled(id)) continue
+      dir = String(manifest.__sourceDir) + "/assets/"
+    }
+    return dir
+  }
+
+  function agentIconFor(app, appIcon, summary) {
+    if (!agentIconsEnabled) return ""
+    var bg = Color.notifications.background
+    var luminance = 0.2126 * bg.r + 0.7152 * bg.g + 0.0722 * bg.b
+    var name = NotificationLogic.agentMarkFor(app, appIcon, summary, luminance >= 0.5)
+    return name === "" ? "" : Util.fileUrl(agentAssetsDir + name + ".svg")
+  }
+
   // A notification nobody looks back at:
   //   - the freedesktop `transient` hint is set ("popup only, don't store")
   //   - app_name is "notify-send" (the CLI default — means the sender
@@ -189,7 +225,7 @@ Item {
     // Repeater is mid-incubation while we mutate its model.
     Qt.callLater(function() {
       removePopupsByOriginalId(snapshot.originalId, NotificationLogic.popupFileName(snapshot))
-      popupModel.insert(0, snapshot)
+      insertToast(snapshot)
       // An update that arrived while the insert was deferred found no row to
       // write to, and a property that already changed will not change again.
       // Reading the object once the row exists catches up on it.
@@ -680,7 +716,7 @@ Item {
 
     // Replaying nothing at all looks like a dead keybinding, so say so.
     if (rows.length === 0) {
-      popupModel.insert(0, {
+      insertToast({
         id: -1,
         originalId: -1,
         app: "omarchy-action",
@@ -698,13 +734,16 @@ Item {
     }
 
     clearPopups()
-    // Rows arrive newest-first, and index 0 is the top of the toast stack.
+    // Rows arrive newest-first, and index 0 is the top of the toast stack, so
+    // a bottom-anchored stack takes them in reverse to keep the newest nearest
+    // its edge.
     for (var i = 0; i < rows.length; i++) {
+      var row = service.stackNewestLast ? rows[rows.length - 1 - i] : rows[i]
       // Replayed rows are restored rows: their notification died with the
       // sender long ago, so they must never resolve to a live server object
       // that has since been handed their old id.
-      service.restoredPopups[NotificationLogic.popupFileName(rows[i])] = true
-      popupModel.append(rows[i])
+      service.restoredPopups[NotificationLogic.popupFileName(row)] = true
+      popupModel.append(row)
     }
   }
 
@@ -964,7 +1003,9 @@ Item {
       color: "transparent"
 
       readonly property var popupPlacement: NotificationLogic.popupPlacement(
-        service.barPosition, service.barClearance, Style.gapsOut)
+        service.barPosition, service.barClearance, Style.gapsOut, service.popupPosition)
+      readonly property int popupAlignment: popupPlacement.anchors.left ? Qt.AlignLeft
+        : (popupPlacement.anchors.right ? Qt.AlignRight : Qt.AlignHCenter)
 
       // Full-screen, fixed-size surface (like the OSD overlay). Adding or
       // removing a toast changes only the content inside; the Wayland surface
@@ -978,10 +1019,18 @@ Item {
 
       ColumnLayout {
         id: popupColumn
-        anchors.right: parent.right
-        anchors.top: parent.top
-        anchors.topMargin: popupWindow.popupPlacement.margins.top
-        anchors.rightMargin: popupWindow.popupPlacement.margins.right
+        readonly property var placement: popupWindow.popupPlacement
+        width: implicitWidth
+        height: implicitHeight
+        // Positioned by hand rather than anchored: the corner is config, and
+        // a Layout whose anchors are rebound to undefined stops laying out
+        // its children.
+        x: placement.anchors.left ? placement.margins.left
+          : (placement.anchors.right ? parent.width - width - placement.margins.right
+          : Math.round((parent.width - width) / 2))
+        y: placement.anchors.top ? placement.margins.top
+          : (placement.anchors.bottom ? parent.height - height - placement.margins.bottom
+          : Math.round((parent.height - height) / 2))
         spacing: Style.space(8)
 
         Repeater {
@@ -1006,7 +1055,7 @@ Item {
             // Each card sizes itself based on mode (text vs media); the slot
             // tracks the card so the column auto-fits to whichever is widest.
             Layout.preferredWidth: card.implicitWidth
-            Layout.alignment: Qt.AlignRight
+            Layout.alignment: popupWindow.popupAlignment
             implicitHeight: card.implicitHeight
 
             readonly property real lifetime: service.durationFor(cardSlot.urgency, cardSlot.expireTimeout)
@@ -1039,9 +1088,12 @@ Item {
 
             NotificationCard {
               id: card
+              readonly property string agentIcon: service.agentIconFor(cardSlot.app, cardSlot.appIcon, cardSlot.summary)
               anchors.right: parent.right
               app: cardSlot.app
-              appIcon: cardSlot.appIcon
+              appIcon: cardSlot.appIcon || agentIcon
+              iconScale: agentIcon !== "" ? 0.7 : 1.0
+              iconOpacity: agentIcon !== "" ? 0.5 : 1.0
               summary: cardSlot.summary
               body: cardSlot.body
               image: cardSlot.image

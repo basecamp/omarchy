@@ -286,22 +286,69 @@ function popupExpired(entry, duration, now) {
   return (Number(now) - Number((entry || {}).timestamp || 0)) >= lifetime
 }
 
-function popupPlacement(barPosition, barClearance, gapsOut) {
-  var position = String(barPosition || "top")
+// shell.json `notifications.position` names the corner the toast stack
+// grows from: "<top|middle|bottom>-<left|center|right>". Anything else keeps
+// the top-right default.
+function parsePopupPosition(value) {
+  var parts = String(value || "").trim().toLowerCase().split(/[-\s_]+/)
+  var vertical = "top"
+  var horizontal = "right"
+  for (var i = 0; i < parts.length; i++) {
+    var part = parts[i]
+    if (part === "top" || part === "bottom") vertical = part
+    else if (part === "middle" && i === 0) vertical = "middle"
+    else if (part === "left" || part === "right") horizontal = part
+    else if (part === "center" || part === "middle") horizontal = "center"
+  }
+  return { vertical: vertical, horizontal: horizontal }
+}
+
+function popupPlacement(barPosition, barClearance, gapsOut, position) {
+  var bar = String(barPosition || "top")
   var clearance = Number(barClearance)
   var gap = Number(gapsOut)
   if (!isFinite(clearance)) clearance = 0
   if (!isFinite(gap)) gap = 0
+  var corner = parsePopupPosition(position)
+  var anchors = {
+    top: corner.vertical === "top",
+    bottom: corner.vertical === "bottom",
+    left: corner.horizontal === "left",
+    right: corner.horizontal === "right"
+  }
 
+  // Only an edge the stack sits on needs to clear the bar.
   return {
-    anchors: { top: true, bottom: false, left: false, right: true },
+    anchors: anchors,
     margins: {
-      top: position === "top" ? clearance : gap,
-      bottom: gap,
-      left: gap,
-      right: position === "right" ? clearance : gap
+      top: anchors.top && bar === "top" ? clearance : gap,
+      bottom: anchors.bottom && bar === "bottom" ? clearance : gap,
+      left: anchors.left && bar === "left" ? clearance : gap,
+      right: anchors.right && bar === "right" ? clearance : gap
     }
   }
+}
+
+// Agent CLIs notify through plain notify-send with no icon, and the summary
+// starts with the agent's name, so that word picks the mark the agents
+// plugin already ships. Marks drawn in white carry a -light twin for light
+// surfaces; Claude's brand orange works on both.
+var AGENT_MARKS = {
+  claude: { asset: "claude", light: false },
+  codex: { asset: "codex", light: true },
+  agy: { asset: "antigravity", light: true },
+  antigravity: { asset: "antigravity", light: true }
+}
+
+// The asset file name for a toast's agent mark, or "" when the toast is not
+// a plain notify-send from a known agent or already set its own icon.
+function agentMarkFor(app, appIcon, summary, lightSurface) {
+  if (String(appIcon || "").length > 0) return ""
+  if (String(app || "") !== "notify-send") return ""
+  var head = String(summary || "").trim().toLowerCase().split(/\s+/)[0] || ""
+  var mark = AGENT_MARKS[head]
+  if (!mark) return ""
+  return mark.light && lightSurface ? mark.asset + "-light" : mark.asset
 }
 
 // The archived files are the history. They are read back exactly like the
@@ -363,6 +410,8 @@ if (typeof module !== "undefined") {
     serializePopup: serializePopup,
     parsePopupFiles: parsePopupFiles,
     popupExpired: popupExpired,
-    popupPlacement: popupPlacement
+    parsePopupPosition: parsePopupPosition,
+    popupPlacement: popupPlacement,
+    agentMarkFor: agentMarkFor
   }
 }
