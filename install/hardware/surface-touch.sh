@@ -36,15 +36,16 @@ EOF
 
     omarchy-pkg-add linux-surface linux-surface-headers iptsd
 
-    # Boot the surface kernel by default so touch works out of the box; the
-    # stock kernel remains installed and selectable. Named to sort after
+    # Keep the stock kernel as the default boot entry and leave the surface
+    # kernel selectable for when touch support is wanted. Named to sort after
     # omarchy-defaults.conf: drop-ins are read in order and the last
     # BOOT_ORDER wins, so an earlier-sorting name is a silent no-op.
     mkdir -p /etc/limine-entry-tool.d
     rm -f /etc/limine-entry-tool.d/surface-touch.conf
     cat > /etc/limine-entry-tool.d/zz-surface-touch.conf <<'EOF'
-# Prefer the linux-surface kernel at boot on Surface devices
-BOOT_ORDER="linux-surface*, linux*, *fallback, Snapshots"
+# Keep the stock kernel first on Surface devices; linux-surface stays
+# available in the menu for touchscreen support.
+BOOT_ORDER="linux, linux-surface*, *fallback, Snapshots"
 EOF
   fi
 fi
