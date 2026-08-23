@@ -109,6 +109,24 @@ title=$(host_fn title_from_file "$good_file")
 [[ $title == "clip [id]" ]] || fail "yt-dlp native host titles the toast from the filename" "$title"
 pass "yt-dlp native host titles the toast from the filename"
 
+decoded_title=$(host_fn decode_title '"My Great Clip"')
+[[ $decoded_title == "My Great Clip" ]] ||
+  fail "yt-dlp native host shows the page title on the toast" "$decoded_title"
+pass "yt-dlp native host shows the page title on the toast"
+
+forged_title=$(host_fn decode_title '"Clip\nOMARCHY_FILE\tPlay me\t--include=not-a-file"')
+[[ $forged_title == "Clip" ]] ||
+  fail "yt-dlp native host keeps only the readable part of a forged title" "$forged_title"
+pass "yt-dlp native host keeps only the readable part of a forged title"
+
+host_fn decode_title '"--include=not-a-file"' &&
+  fail "yt-dlp native host refuses a title notify-send would read as an option"
+pass "yt-dlp native host refuses a title notify-send would read as an option"
+
+host_fn decode_title 'null' &&
+  fail "yt-dlp native host refuses a title that is not a JSON string"
+pass "yt-dlp native host refuses a title that is not a JSON string"
+
 dash_title=$(host_fn title_from_file "$download_dir/--include.mp4")
 [[ $dash_title == "Video" ]] || fail "yt-dlp native host does not pass a leading-dash title to notify-send" "$dash_title"
 pass "yt-dlp native host does not pass a leading-dash title to notify-send"
@@ -170,6 +188,7 @@ printf '%s\n' "$*" >>"$YTDLP_ARGV_LOG"
 for arg in "$@"; do
   if [[ $arg == "--no-simulate" ]]; then
     printf 'OMARCHY_FILE\t%s\n' "$YTDLP_FAKE_FILE"
+    [[ -n ${YTDLP_SKIP_TITLE:-} ]] || printf 'OMARCHY_TITLE\t%s\n' '"My Great Clip"'
     exit 0
   fi
 done
@@ -197,6 +216,12 @@ YTDLP_ARGV_LOG="$ytdlp_argv" NOTIFY_ARGV_LOG="$notify_argv" YTDLP_FAKE_FILE="$fa
   fail "yt-dlp native host disarms configured exec hooks on both yt-dlp runs" "$(cat "$ytdlp_argv")"
 pass "yt-dlp native host disarms configured exec hooks on both yt-dlp runs"
 
+# The stub answers with a title record whatever it is asked for, so assert the request
+# as well as the reply: without this the template could be dropped and nothing notice.
+grep -qF -- $'OMARCHY_TITLE\t%(title)j' "$ytdlp_argv" ||
+  fail "yt-dlp native host asks for the title JSON-encoded" "$(cat "$ytdlp_argv")"
+pass "yt-dlp native host asks for the title JSON-encoded"
+
 grep -qF -- $'OMARCHY_FILE\t%(title)s' "$ytdlp_argv" &&
   fail "yt-dlp native host never prints the title into the file record" "$(cat "$ytdlp_argv")"
 pass "yt-dlp native host never prints the title into the file record"
@@ -204,3 +229,21 @@ pass "yt-dlp native host never prints the title into the file record"
 grep -q -- "--exec mpv -- " "$notify_argv" ||
   fail "yt-dlp native host builds the click command as mpv -- <path>" "$(cat "$notify_argv")"
 pass "yt-dlp native host builds the click command as mpv -- <path>"
+
+grep -qF -- "Download complete My Great Clip" "$notify_argv" ||
+  fail "yt-dlp native host toasts the page title, not the sanitised filename" "$(cat "$notify_argv")"
+pass "yt-dlp native host toasts the page title, not the sanitised filename"
+
+# A page that gives no usable title falls back to the filename rather than an empty toast.
+: >"$notify_argv"
+: >"$ytdlp_argv"
+YTDLP_ARGV_LOG="$ytdlp_argv" NOTIFY_ARGV_LOG="$notify_argv" YTDLP_FAKE_FILE="$fake_file" \
+  YTDLP_SKIP_TITLE=1 OMARCHY_PATH="$fake_root" OMARCHY_YTDLP_DIR="$fake_dir" \
+  bash -c '
+    source "$1"
+    download_url "$2"
+  ' bash "$ROOT/bin/omarchy-chromium-ytdlp-host" "https://example.test/watch" >/dev/null 2>&1
+
+grep -qF -- "Download complete Real_Clip [id]" "$notify_argv" ||
+  fail "yt-dlp native host falls back to the filename when no title record arrives" "$(cat "$notify_argv")"
+pass "yt-dlp native host falls back to the filename when no title record arrives"

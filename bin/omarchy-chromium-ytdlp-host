@@ -47,6 +47,18 @@ resolve_download_file() {
   printf '%s' "$file_real"
 }
 
+# yt-dlp prints the title JSON-encoded, so a newline or tab in page metadata is an
+# escape sequence rather than a record boundary. This is toast text, never a command.
+decode_title() {
+  local decoded
+
+  decoded=$(jq -r 'if type == "string" then . else empty end' <<<"$1" 2>/dev/null) || return 1
+  decoded=${decoded%%[[:cntrl:]]*} # keep what a person would read, drop the forgery
+  [[ -n $decoded && $decoded != -* ]] || return 1
+
+  printf '%s' "$decoded"
+}
+
 title_from_file() {
   local name=${1##*/}
   name=${name%.*}
@@ -86,9 +98,9 @@ download_url() {
 
   osd_progress 0
 
-  # Stream the download: OMARCHY_PROG carries the percent (drives the OSD),
-  # OMARCHY_FILE (printed only after a successful move) carries the path.
-  # Do not print the title — page metadata can contain newlines and forge records.
+  # Stream the download: OMARCHY_PROG carries the percent (drives the OSD), and
+  # OMARCHY_FILE and OMARCHY_TITLE (printed only after a successful move) carry the
+  # path and the title. The title is JSON-encoded so metadata cannot forge a record.
   local line pct intpct last="" er nowms lastms=0 title="" filepath="" resolved
   while IFS= read -r line; do
     case $line in
@@ -108,7 +120,9 @@ download_url() {
     OMARCHY_FILE*)
       resolved=$(resolve_download_file "${line#OMARCHY_FILE$'\t'}") || continue
       filepath=$resolved
-      title=$(title_from_file "$filepath")
+      ;;
+    OMARCHY_TITLE*)
+      title=$(decode_title "${line#OMARCHY_TITLE$'\t'}") || title=""
       ;;
     esac
   done < <(PYTHONUNBUFFERED=1 yt-dlp --no-playlist --restrict-filenames --no-simulate \
@@ -116,12 +130,14 @@ download_url() {
     --progress-template $'download:OMARCHY_PROG\t%(progress._percent_str)s' \
     --paths "$DOWNLOAD_DIR" -o '%(title)s [%(id)s].%(ext)s' \
     --print $'after_move:OMARCHY_FILE\t%(filepath)s' \
+    --print $'after_move:OMARCHY_TITLE\t%(title)j' \
     -- "$url" 2>&1)
 
   osd_close
 
   # after_move only prints on a successful download+move, so a captured path == success.
   if [[ -n $filepath ]]; then
+    [[ -n $title ]] || title=$(title_from_file "$filepath")
     ((${#title} > 50)) && title="${title:0:50}…" # keep the toast compact
 
     # Square, center-cropped thumbnail so the notification preview isn't stretched.
