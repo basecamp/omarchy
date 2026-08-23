@@ -240,6 +240,21 @@ Item {
     return MenuModel.parseMenuJsonc(raw)
   }
 
+  function localizeItems(items) {
+    var localized = ({})
+    var ids = Object.keys(items || {})
+    for (var i = 0; i < ids.length; i++) {
+      var id = ids[i]
+      var source = items[id]
+      var entry = Object.assign({}, source)
+      if (entry.label) entry.label = I18n.tr(entry.label)
+      if (entry.title) entry.title = I18n.tr(entry.title)
+      if (entry.description) entry.description = I18n.tr(entry.description)
+      localized[id] = entry
+    }
+    return localized
+  }
+
   // Merge defaults + user extension. Later entries override earlier ones
   // on a per-key basis (so the user can tweak label/icon/action without
   // re-declaring the whole row).
@@ -248,7 +263,7 @@ Item {
     root.providerRevision += 1
     root.providersLoaded = ({})
     root.providerQueue = []
-    root.items = mergedMenu.items
+    root.items = root.localizeItems(mergedMenu.items)
     root.itemOrder = mergedMenu.itemOrder
     root.rowsLoaded = true
     root.evaluateGuards()
@@ -259,6 +274,11 @@ Item {
         else root.loadProviderForMenu(root.activeMenu)
       }
     }
+  }
+
+  Connections {
+    target: I18n
+    function onTranslationsChanged() { root.rebuildItemsFromSources() }
   }
 
   // Each known provider is a tiny bash one-liner that enumerates a list and
@@ -1170,8 +1190,8 @@ Item {
           anchors.fill: parent
           opened: root.deleteConfirmOpen
           z: 10
-          message: "Do you want to uninstall " + ((root.deleteTarget && root.deleteTarget.label) || "") + "?"
-          confirmText: "Uninstall"
+          message: I18n.tr("Do you want to uninstall %1?", [((root.deleteTarget && root.deleteTarget.label) || "")])
+          confirmText: I18n.tr("Uninstall")
           background: root.background
           foreground: root.foreground
           scrim: root.scrim
@@ -1202,7 +1222,7 @@ Item {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            text: root.filterText || (root.dmenuActive ? (root.dmenuPrompt + "…") : ((root.item(root.activeMenu) ? (root.item(root.activeMenu).title || root.item(root.activeMenu).label) : "Go") + "…"))
+            text: root.filterText || (root.dmenuActive ? (root.dmenuPrompt + "…") : ((root.item(root.activeMenu) ? (root.item(root.activeMenu).title || root.item(root.activeMenu).label) : I18n.tr("Go")) + "…"))
             color: root.foreground
             opacity: root.filterText ? 1 : 0.58
             font.family: root.fontFamily
@@ -1452,7 +1472,7 @@ Item {
             }
 
             Text {
-              text: root.filterText ? "No matches for “" + root.filterText + "”" : "Nothing here yet"
+              text: root.filterText ? I18n.tr("No matches for “%1”", [root.filterText]) : I18n.tr("Nothing here yet")
               color: root.foreground
               opacity: 0.7
               font.family: root.fontFamily

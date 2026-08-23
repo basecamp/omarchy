@@ -1,4 +1,5 @@
 import QtQuick
+import qs.Commons
 import qs.Ui
 
 BarIndicator {
@@ -9,8 +10,8 @@ BarIndicator {
   active: nightlightService ? nightlightService.enabled : false
   activeText: "󰔎"
   inactiveText: "󰔎"
-  activeTooltipText: "Day Light"
-  inactiveTooltipText: "Night Light"
+  activeTooltipText: I18n.tr("Day Light")
+  inactiveTooltipText: I18n.tr("Night Light")
 
   function toggle() {
     if (root.nightlightService) root.nightlightService.setNightlight(!root.active)

@@ -403,8 +403,8 @@ Item {
           anchors.fill: parent
           opened: root.clearConfirmOpen
           z: 10
-          message: "Delete entire clipboard history?"
-          confirmText: "Delete"
+          message: I18n.tr("Delete entire clipboard history?")
+          confirmText: I18n.tr("Delete")
           background: root.background
           foreground: root.foreground
           scrim: root.scrim

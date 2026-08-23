@@ -2,12 +2,14 @@
 
 # omarchy:summary=Toggle microphone mute. Drives the hardware mic-mute LED on laptops that expose one.
 
+source "$OMARCHY_PATH/default/bash/i18n"
+
 wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle >/dev/null
 
 if wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -q MUTED; then
   omarchy-brightness-keyboard-mute on
-  omarchy-osd -i microphone-muted -m "Microphone muted"
+  omarchy-osd -i microphone-muted -m "$(omarchy_t "Microphone muted")"
 else
   omarchy-brightness-keyboard-mute off
-  omarchy-osd -i microphone -m "Microphone on"
+  omarchy-osd -i microphone -m "$(omarchy_t "Microphone on")"
 fi

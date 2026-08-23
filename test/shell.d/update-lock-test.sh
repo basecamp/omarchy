@@ -16,6 +16,7 @@ run_with_lock_env() {
   HOME="$test_home" \
   XDG_RUNTIME_DIR="$runtime_dir" \
   XDG_STATE_HOME="$test_tmp/state" \
+  LANGUAGE=en \
   PATH="$stub_bin:$ROOT/bin:$PATH" \
     "$@"
 }
@@ -74,7 +75,7 @@ set -e
 wait "$update_pid"
 
 [[ $update_second_status -ne 0 ]] || fail "second omarchy-update exits non-zero while update lock is held"
-grep -q "already running" "$test_tmp/update-second.out" || fail "second omarchy-update reports held update lock"
+grep -q "already running" "$test_tmp/update-second.out" || fail "second omarchy-update reports held update lock" "$(<"$test_tmp/update-second.out")"
 [[ ! -f $test_tmp/update-second-snapshot-started ]] || fail "second omarchy-update did not snapshot while lock was held"
 pass "omarchy-update prevents overlapping top-level updates"
 

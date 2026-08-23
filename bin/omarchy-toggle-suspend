@@ -2,10 +2,12 @@
 
 # omarchy:summary=Toggle suspend availability in the system menu
 
+source "$OMARCHY_PATH/default/bash/i18n"
+
 omarchy-toggle suspend-off
 
 if omarchy-toggle-enabled suspend-off; then
-  omarchy-notification-send -g 󰒲 "Suspend removed from system menu"
+  omarchy-notification-send -g 󰒲 "$(omarchy_t "Suspend removed from system menu")"
 else
-  omarchy-notification-send -g 󰒲 "Suspend now available in system menu"
+  omarchy-notification-send -g 󰒲 "$(omarchy_t "Suspend now available in system menu")"
 fi

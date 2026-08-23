@@ -410,7 +410,7 @@ BarWidget {
       spacing: Style.space(8)
 
       Text {
-        text: "Tray icons"
+        text: I18n.tr("Tray icons")
         color: root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
@@ -418,7 +418,7 @@ BarWidget {
       }
 
       Text {
-        text: "Pinned icons stay visible. Hidden icons never show."
+        text: I18n.tr("Pinned icons stay visible. Hidden icons never show.")
         color: Qt.darker(root.foreground, 1.4)
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
@@ -428,7 +428,7 @@ BarWidget {
 
       Text {
         visible: root.allItems.length === 0
-        text: "No tray items reporting."
+        text: I18n.tr("No tray items reporting.")
         color: Qt.darker(root.foreground, 1.5)
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
@@ -484,7 +484,7 @@ BarWidget {
             anchors.verticalCenter: parent.verticalCenter
             anchors.right: parent.right
             iconText: "\uf08d"
-            text: rowRoot.isPinned ? "Unpin" : "Pin"
+            text: rowRoot.isPinned ? I18n.tr("Unpin") : I18n.tr("Pin")
             foreground: root.foreground
             horizontalPadding: 8
             verticalPadding: 3
@@ -499,7 +499,7 @@ BarWidget {
             anchors.right: rowPinBtn.left
             anchors.rightMargin: Style.space(6)
             iconText: "\uf06e"
-            text: rowRoot.isHidden ? "Show" : "Hide"
+            text: rowRoot.isHidden ? I18n.tr("Show") : I18n.tr("Hide")
             foreground: root.foreground
             horizontalPadding: 8
             verticalPadding: 3

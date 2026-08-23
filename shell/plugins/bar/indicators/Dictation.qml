@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell.Io
+import qs.Commons
 import qs.Ui
 
 BarIndicator {
@@ -12,7 +13,7 @@ BarIndicator {
   activeText: icon
   inactiveText: "󰍬"
   activeTooltipText: state
-  inactiveTooltipText: "Dictate"
+  inactiveTooltipText: I18n.tr("Dictate")
 
   function update(raw) {
     var data = extractData(raw)

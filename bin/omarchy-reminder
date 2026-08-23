@@ -6,6 +6,8 @@
 
 set -euo pipefail
 
+source "$OMARCHY_PATH/default/bash/i18n"
+
 format_remaining() {
   local seconds=$1
   local minutes=$((seconds / 60))
@@ -57,16 +59,16 @@ show_reminders() {
     [[ -f $reminder_dir/${timer%.timer}.message ]] && reminder_message=$(<"$reminder_dir/${timer%.timer}.message")
 
     if [[ -n $reminder_message ]]; then
-      body+="$reminder_message in $(format_remaining $remaining) ($(date -d "@$next" +%-H:%M))"$'\n'
+      body+="$(omarchy_t "%1 in %2 (%3)" "$reminder_message" "$(format_remaining "$remaining")" "$(date -d "@$next" +%-H:%M)")"$'\n'
     else
-      body+="${reminder_minutes}-min reminder in $(format_remaining $remaining) ($(date -d "@$next" +%-H:%M))"$'\n'
+      body+="$(omarchy_t "%1-min reminder in %2 (%3)" "$reminder_minutes" "$(format_remaining "$remaining")" "$(date -d "@$next" +%-H:%M)")"$'\n'
     fi
   done < <(active_reminder_timers "$now")
 
   if [[ -z $body ]]; then
-    omarchy-notification-send -g 󰢌 "Upcoming reminders" "No outstanding reminders"
+    omarchy-notification-send -g 󰢌 "$(omarchy_t "Upcoming reminders")" "$(omarchy_t "No outstanding reminders")"
   else
-    omarchy-notification-send -g 󰢌 "Upcoming reminders" "${body%$'\n'}"
+    omarchy-notification-send -g 󰢌 "$(omarchy_t "Upcoming reminders")" "${body%$'\n'}"
   fi
 }
 
@@ -75,7 +77,8 @@ show_json() {
   local reminder_dir="${XDG_RUNTIME_DIR:-/tmp}/omarchy-reminders"
   local now=$(date +%s)
   local count=0
-  local tooltip="Set Reminder"
+  local tooltip
+  tooltip=$(omarchy_t "Set Reminder")
 
   while IFS=$'\t' read -r timer next; do
     count=$((count + 1))
@@ -91,7 +94,7 @@ show_json() {
     if [[ -n $reminder_message ]]; then
       label=$reminder_message
     else
-      label="${reminder_minutes}-min reminder"
+      label=$(omarchy_t "%1-min reminder" "$reminder_minutes")
     fi
 
     item_json=$(jq -cn \
@@ -109,9 +112,9 @@ show_json() {
   done < <(active_reminder_timers "$now")
 
   if ((count == 1)); then
-    tooltip="1 reminder"
+    tooltip=$(omarchy_t "1 reminder")
   elif ((count > 1)); then
-    tooltip="$count reminders"
+    tooltip=$(omarchy_t "%1 reminders" "$count")
   fi
 
   jq -cn --argjson count "$count" --arg tooltip "$tooltip" --argjson reminders "$reminders_json" '{count:$count,active:($count > 0),tooltip:$tooltip,reminders:$reminders}'
@@ -129,7 +132,7 @@ clear_reminders() {
 
   rm -f "$reminder_dir"/omarchy-reminder-*.message 2>/dev/null || true
   refresh_indicator
-  omarchy-notification-send -g 󰢌 "All reminders have been cleared"
+  omarchy-notification-send -g 󰢌 "$(omarchy_t "All reminders have been cleared")"
 }
 
 usage() {
@@ -176,7 +179,7 @@ if [[ -z $minutes ]] || [[ ! $minutes =~ ^[0-9]+$ ]] || ((minutes == 0)); then
 fi
 
 if [[ -z $message ]]; then
-  message="Your ${minutes} minutes are up"
+  message=$(omarchy_t "Your %1 minutes are up" "$minutes")
 fi
 
 set_at=$(date +%s)
@@ -184,18 +187,18 @@ remind_at=$(date -d "+${minutes} minutes" +%H:%M)
 unit="omarchy-reminder-${minutes}m-$set_at"
 reminder_dir="${XDG_RUNTIME_DIR:-/tmp}/omarchy-reminders"
 message_file="$reminder_dir/$unit.message"
-confirmation="You'll be reminded at $remind_at"
-confirmation_title="Reminder set for ${minutes} minutes"
+confirmation=$(omarchy_t "You'll be reminded at %1" "$remind_at")
+confirmation_title=$(omarchy_t "Reminder set for %1 minutes" "$minutes")
 
 mkdir -p "$reminder_dir"
 
 if [[ -n $custom_message ]]; then
   printf "%s" "$custom_message" >"$message_file"
-  confirmation_title="$custom_message in ${minutes} minutes"
+  confirmation_title=$(omarchy_t "%1 in %2 minutes" "$custom_message" "$minutes")
 fi
 
 systemd-run --user --quiet --collect --on-active="${minutes}m" --unit="$unit" \
-  bash -c 'omarchy-notification-send -g 󰢌 "Reminder" "$1"; rm -f "$2"; omarchy-shell -q omarchy.indicators refresh >/dev/null 2>&1 || true' bash "$message" "$message_file"
+  bash -c 'omarchy-notification-send -g 󰢌 "$3" "$1"; rm -f "$2"; omarchy-shell -q omarchy.indicators refresh >/dev/null 2>&1 || true' bash "$message" "$message_file" "$(omarchy_t "Reminder")"
 
 refresh_indicator
 omarchy-notification-send -g 󰢌 "$confirmation_title" "$confirmation"

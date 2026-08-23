@@ -2,8 +2,11 @@
 
 # omarchy:summary=Remove preinstalled Omarchy applications (web apps, TUIs, and selected packages).
 
-if gum confirm "Are you sure you want to remove all preinstalled web apps, TUI wrappers, and desktop applications?"; then
-  echo -e "Removing preinstalled Omarchy applications...\n"
+source "$OMARCHY_PATH/default/bash/i18n"
+omarchy_i18n_load
+
+if gum confirm "$(omarchy_t "Are you sure you want to remove all preinstalled web apps, TUI wrappers, and desktop applications?")"; then
+  echo -e "$(omarchy_t "Removing preinstalled Omarchy applications...")\n"
 
   omarchy-webapp-remove-all
   omarchy-tui-remove-all

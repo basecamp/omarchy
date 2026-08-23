@@ -6,6 +6,8 @@
 
 set -euo pipefail
 
+source "$OMARCHY_PATH/default/bash/i18n"
+
 if (($# != 1)); then
   echo "Usage: omarchy-battery-low <percentage>" >&2
   exit 1
@@ -13,5 +15,5 @@ fi
 
 level=$1
 
-omarchy-notification-send -g 󱐋 -u critical "Time to recharge!" "Battery is down to ${level}%" -i battery-caution -t 30000
+omarchy-notification-send -g 󱐋 -u critical "$(omarchy_t "Time to recharge!")" "$(omarchy_t "Battery is down to %1%" "$level")" -i battery-caution -t 30000
 omarchy-hook battery-low "$level"

@@ -1,0 +1,102 @@
+# Shared translation helper for interactive Omarchy Bash commands.
+
+declare -gA OMARCHY_TRANSLATIONS
+OMARCHY_TRANSLATIONS_LOADED="false"
+
+omarchy_i18n_load() {
+  [[ $OMARCHY_TRANSLATIONS_LOADED == "false" ]] || return 0
+  OMARCHY_TRANSLATIONS_LOADED="true"
+
+  local manifest="$OMARCHY_PATH/shell/translations/catalogs.json"
+  [[ -r $manifest ]] || return 0
+  command -v jq >/dev/null || return 0
+
+  local raw="${LANGUAGE:-${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}}"
+  local -a requested=() candidates=() available=()
+  if [[ -n $LANGUAGE ]]; then
+    IFS=':' read -ra requested <<<"$raw"
+  else
+    requested=("$raw")
+  fi
+
+  mapfile -t available < <(jq -r '.[] | select(type == "string")' "$manifest")
+
+  # LANGUAGE is an ordered preference list. Walk it until we find a supported
+  # translation or hit "en", the untranslated source language -- a
+  # lower-priority catalog must not override the language actually requested.
+  local candidate normalized language region locale=""
+  for candidate in "${requested[@]}"; do
+    normalized="${candidate%%.*}"
+    normalized="${normalized%%@*}"
+    normalized="${normalized//-/_}"
+    language="${normalized%%_*}"
+    language="${language,,}"
+    [[ -n $language ]] || continue
+    region="${normalized#*_}"
+    if [[ $region != "$normalized" ]]; then
+      normalized="${language}_${region^^}"
+      candidates+=("$normalized")
+    fi
+    candidates+=("$language")
+  done
+
+  for candidate in "${candidates[@]}"; do
+    [[ $candidate == "en" ]] && return 0
+    for normalized in "${available[@]}"; do
+      if [[ $candidate == "$normalized" ]]; then
+        locale="$candidate"
+        break 2
+      fi
+    done
+  done
+  [[ -n $locale ]] || return 0
+
+  local catalog="$OMARCHY_PATH/shell/translations/$locale.json"
+  [[ -r $catalog ]] || return 0
+
+  local source=""
+  local translated=""
+  while IFS=$'\t' read -r source translated; do
+    [[ -n $source ]] && OMARCHY_TRANSLATIONS["$source"]="$translated"
+  done < <(jq -r 'to_entries[] | select((.key | contains("\n")) | not) | [.key, .value] | @tsv' "$catalog")
+}
+
+omarchy_t() {
+  local source="$1"
+  shift
+  omarchy_i18n_load
+  local translated="${OMARCHY_TRANSLATIONS[$source]:-$source}"
+  local args=("$@")
+  local output="" remaining="$translated" placeholder index
+
+  # Consume the template once so placeholder-like text inside an argument is
+  # appended verbatim and never treated as part of the template.
+  while [[ -n $remaining ]]; do
+    if [[ $remaining =~ ^%([1-9][0-9]*) ]]; then
+      placeholder="${BASH_REMATCH[0]}"
+      index="${BASH_REMATCH[1]}"
+      if ((index <= ${#args[@]})); then
+        output+="${args[index - 1]}"
+      else
+        output+="$placeholder"
+      fi
+      remaining="${remaining:${#placeholder}}"
+    else
+      output+="${remaining:0:1}"
+      remaining="${remaining:1}"
+    fi
+  done
+
+  printf '%s' "$output"
+}
+
+omarchy_nt() {
+  local count="$1" singular="$2" plural="$3"
+  shift 3
+
+  if [[ $count == "1" ]]; then
+    omarchy_t "$singular" "$@"
+  else
+    omarchy_t "$plural" "$@"
+  fi
+}

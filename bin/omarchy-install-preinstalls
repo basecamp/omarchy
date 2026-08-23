@@ -3,8 +3,11 @@
 # omarchy:summary=Restore the preinstalled Omarchy applications (web apps, TUIs, and selected packages).
 # omarchy:requires-sudo=true
 
-if gum confirm "Are you sure you want to restore all preinstalled web apps, TUI wrappers, and desktop applications?"; then
-  echo -e "Restoring preinstalled Omarchy applications...\n"
+source "$OMARCHY_PATH/default/bash/i18n"
+omarchy_i18n_load
+
+if gum confirm "$(omarchy_t "Are you sure you want to restore all preinstalled web apps, TUI wrappers, and desktop applications?")"; then
+  echo -e "$(omarchy_t "Restoring preinstalled Omarchy applications...")\n"
 
   # Recreates the shipped .desktop launchers (web apps and TUIs) and the mise stubs
   # that back claude, gh, opencode, and the rest of the agents
@@ -25,7 +28,7 @@ if gum confirm "Are you sure you want to restore all preinstalled web apps, TUI 
     omacut \
     omacalc \
     omawrite; then
-    echo -e "\nPreinstalls are still marked as removed. Fix the errors above and try again."
+    echo -e "\n$(omarchy_t "Preinstalls are still marked as removed. Fix the errors above and try again.")"
     exit 1
   fi
 

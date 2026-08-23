@@ -28,7 +28,14 @@ payload=$(</dev/stdin)
 printf '%s' "$payload" >"$QR_PAYLOAD_FILE"
 printf '##    \n  ##  \n    ##\n'
 EOF
-chmod +x "$tmp/bin/nmcli" "$tmp/bin/qrencode"
+
+# Route discovery may legitimately fail when there is no default route. The
+# helper must then fall back to NetworkManager's connected Wi-Fi device.
+cat >"$tmp/bin/ip" <<'EOF'
+#!/bin/bash
+exit 1
+EOF
+chmod +x "$tmp/bin/ip" "$tmp/bin/nmcli" "$tmp/bin/qrencode"
 
 run_success_case() {
   local description=$1 fields=$2 expected_payload=$3

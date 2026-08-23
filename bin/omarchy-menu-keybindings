@@ -5,6 +5,8 @@
 # Hyprland's Lua config provider currently reports Lua binds as dispatcher
 # __lua in `hyprctl binds`. Keep a lightweight source-derived cache so the
 # menu can still show and dispatch those bindings.
+source "$OMARCHY_PATH/default/bash/i18n"
+
 declare -A LUA_BIND_KEY_MAP
 declare -A LUA_BIND_DISPATCHER_MAP
 declare -A LUA_BIND_ARG_MAP
@@ -569,8 +571,32 @@ output_binding_records() {
   fi
 }
 
+localized_binding_records() {
+  local display dispatcher arg combo action
+
+  while IFS=$'\t' read -r display dispatcher arg; do
+    combo=${display%% → *}
+    action=${display#* → }
+    if [[ $action != "$display" ]]; then
+      case "$action" in
+        "Switch to workspace "*)
+          action="$(omarchy_t "Switch to workspace ")${action#Switch to workspace }" ;;
+        "Move window to workspace "*)
+          action="$(omarchy_t "Move window to workspace ")${action#Move window to workspace }" ;;
+        "Move window silently to workspace "*)
+          action="$(omarchy_t "Move window silently to workspace ")${action#Move window silently to workspace }" ;;
+        "Switch to group window "*)
+          action="$(omarchy_t "Switch to group window ")${action#Switch to group window }" ;;
+        *) action=$(omarchy_t "$action") ;;
+      esac
+      display="$combo → $action"
+    fi
+    printf '%s\t%s\t%s\n' "$display" "$dispatcher" "$arg"
+  done
+}
+
 output_keybindings() {
-  output_binding_records | cut -f1
+  output_binding_records | localized_binding_records | cut -f1
 }
 
 trim() {
@@ -655,7 +681,7 @@ dispatch_binding() {
 if [[ $1 == "--print" || $1 == "-p" ]]; then
   output_keybindings
 else
-  records=$(output_binding_records)
+  records=$(output_binding_records | localized_binding_records)
   selection=$(cut -f1 <<<"$records" |
     omarchy-menu-select 'Keybindings' -- --width 800 --height 500)
 

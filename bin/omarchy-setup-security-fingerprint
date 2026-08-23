@@ -4,7 +4,8 @@
 # omarchy:requires-sudo=true
 
 set -e
-
+source "$OMARCHY_PATH/default/bash/i18n"
+omarchy_i18n_load
 
 setup_pam_config() {
   # A clamshell gate runs before pam_fprintd in every stack: when the lid is
@@ -20,11 +21,11 @@ setup_pam_config() {
 
   # Configure sudo
   if ! grep -q pam_fprintd.so /etc/pam.d/sudo; then
-    echo "Configuring sudo for fingerprint authentication..."
+    echo "$(omarchy_t "Configuring sudo for fingerprint authentication...")"
     sudo sed -i '1i auth      sufficient pam_fprintd.so' /etc/pam.d/sudo
   fi
   if ! grep -q 'omarchy-hw-laptop-closed' /etc/pam.d/sudo; then
-    echo "Adding clamshell gate to sudo..."
+    echo "$(omarchy_t "Adding clamshell gate to sudo...")"
     # Insert immediately before pam_fprintd so success=1 skips exactly it.
     sudo sed -i "/pam_fprintd\.so/i $fprintd_gate" /etc/pam.d/sudo
   fi
@@ -32,15 +33,15 @@ setup_pam_config() {
   # Configure polkit
   if [[ -f /etc/pam.d/polkit-1 ]]; then
     if ! grep -q 'pam_fprintd.so' /etc/pam.d/polkit-1; then
-      echo "Configuring polkit for fingerprint authentication..."
+      echo "$(omarchy_t "Configuring polkit for fingerprint authentication...")"
       sudo sed -i '1i auth      sufficient pam_fprintd.so' /etc/pam.d/polkit-1
     fi
     if ! grep -q 'omarchy-hw-laptop-closed' /etc/pam.d/polkit-1; then
-      echo "Adding clamshell gate to polkit..."
+      echo "$(omarchy_t "Adding clamshell gate to polkit...")"
       sudo sed -i "/pam_fprintd\.so/i $fprintd_gate" /etc/pam.d/polkit-1
     fi
   else
-    echo "Creating polkit configuration with fingerprint authentication..."
+    echo "$(omarchy_t "Creating polkit configuration with fingerprint authentication...")"
     sudo tee /etc/pam.d/polkit-1 >/dev/null <<EOF
 $fprintd_gate
 auth      sufficient pam_fprintd.so
@@ -54,7 +55,7 @@ EOF
 }
 
 setup_lock_fingerprint_pam() {
-  echo "Configuring lock screen for fingerprint authentication..."
+  echo "$(omarchy_t "Configuring lock screen for fingerprint authentication...")"
   sudo tee /etc/pam.d/omarchy-lock-fingerprint >/dev/null <<'EOF'
 #%PAM-1.0
 auth       required                    pam_fprintd.so
@@ -63,16 +64,16 @@ EOF
 }
 
 
-echo -e "\e[32mSetting up fingerprint scanner for authentication.\n\e[0m"
+echo -e "\e[32m$(omarchy_t "Setting up fingerprint scanner for authentication.")\n\e[0m"
 
 # Bail before installing anything if there's no reader to talk to.
 if ! omarchy-hw-fingerprint; then
-  echo -e "\e[31mNo fingerprint sensor detected.\e[0m"
+  echo -e "\e[31m$(omarchy_t "No fingerprint sensor detected.")\e[0m"
   exit 1
 fi
 
 # Install required packages
-echo "Installing required packages..."
+echo "$(omarchy_t "Installing required packages...")"
 
 # libfprint-git provides+conflicts libfprint; pacman -S --noconfirm
 # defaults the conflict prompt to N and aborts. Pre-remove it (deps-only,
@@ -84,14 +85,14 @@ fi
 omarchy-pkg-add libfprint fprintd usbutils
 
 # Enroll first fingerprint
-echo -e "\e[32m\nLet's setup your right index finger as the first fingerprint.\e[0m"
-echo -e "Keep moving the finger around on sensor until the process completes.\n"
+echo -e "\e[32m\n$(omarchy_t "Let's setup your right index finger as the first fingerprint.")\e[0m"
+echo -e "$(omarchy_t "Keep moving the finger around on sensor until the process completes.")\n"
 
 if sudo fprintd-enroll "$USER"; then
-  echo -e "\e[32m\nFingerprint enrolled successfully!\e[0m"
+  echo -e "\e[32m\n$(omarchy_t "Fingerprint enrolled successfully!")\e[0m"
 
   # Verify
-  echo -e "\nNow let's verify that it's working correctly.\n"
+  echo -e "\n$(omarchy_t "Now let's verify that it's working correctly.")\n"
   if fprintd-verify; then
     # PAM comes last, once a print is enrolled and verified. Detection only
     # proves a reader is there, not that libfprint can drive it — an Elan MOC
@@ -100,12 +101,12 @@ if sudo fprintd-enroll "$USER"; then
     # pam_fprintd with nothing to match.
     setup_pam_config
     setup_lock_fingerprint_pam
-    echo -e "\e[32m\nPerfect! Fingerprint authentication is now configured.\e[0m"
-    echo "You can use your fingerprint for sudo, polkit, and lock screen (Super + Ctrl + L)."
+    echo -e "\e[32m\n$(omarchy_t "Perfect! Fingerprint authentication is now configured.")\e[0m"
+    echo "$(omarchy_t "You can use your fingerprint for sudo, polkit, and lock screen (Super + Ctrl + L).")"
   else
-    echo -e "\e[31m\nVerification failed. You may want to try enrolling again.\e[0m"
+    echo -e "\e[31m\n$(omarchy_t "Verification failed. You may want to try enrolling again.")\e[0m"
   fi
 else
-  echo -e "\e[31m\nEnrollment failed. Please try again.\e[0m"
+  echo -e "\e[31m\n$(omarchy_t "Enrollment failed. Please try again.")\e[0m"
   exit 1
 fi

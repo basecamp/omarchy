@@ -8,9 +8,7 @@ system.
 Two Arch packages are built from this one repo (PKGBUILDs live in the
 separate `omarchy-pkgs` repository, under `pkgbuilds/`):
 
-- **`omarchy`** — runtime binaries (`bin/`, including `bin/omarchy-dev-*`),
-  install/finalize scripts (`install/`), migrations, themes, and the
-  Quickshell desktop (`shell/`). Depends on `omarchy-settings`.
+- **`omarchy`** — runtime binaries (`bin/`, including `bin/omarchy-dev-*`), install/finalize scripts (`install/`), migrations, themes, and the Quickshell desktop (`shell/`). Runtime translation catalogs also live under `shell/translations/`; see [Internationalization](i18n.md). Depends on `omarchy-settings`.
 - **`omarchy-settings`** — everything that has to be on the target *before*
   the omarchy package installs (specifically before `useradd -m` and the
   limine bootloader install): all `/etc/skel/**`, `/etc/` drop-ins,

@@ -10,6 +10,16 @@ SHELL_TEST_DIR="$ROOT/test/shell.d"
 
 export ROOT
 
+# English-output assertions assume this; Spanish tests override LANGUAGE/LANG per call.
+# LC_ALL and LC_MESSAGES outrank LANG in the translation lookup, so an inherited
+# value (e.g. a host set up in Spanish) must be cleared too. default/bash/envs,
+# the target of the `env -u LANG` fallback test in locale-env-test.sh, only ever
+# checks LANG, so clearing these here doesn't disturb that test.
+export LANG=C
+export LANGUAGE=
+export LC_ALL=
+export LC_MESSAGES=
+
 pass() {
   printf 'ok - %s\n' "$1"
 }

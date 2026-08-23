@@ -5,6 +5,7 @@
 # omarchy:hidden=true
 
 set -e
+source "$OMARCHY_PATH/default/bash/i18n"
 
 lock_dir="${XDG_RUNTIME_DIR:-/tmp}"
 lock_path="$lock_dir/omarchy-update.lock"
@@ -26,14 +27,15 @@ case "${1:-}" in
   run)
     shift
     if (( $# == 0 )); then
-      echo "Usage: omarchy-update-lock run <command> [args...]" >&2
+      echo "$(omarchy_t "Usage:") omarchy-update-lock run <command> [args...]" >&2
       exit 2
     fi
 
     mkdir -p "$lock_dir" 2>/dev/null || true
     exec {OMARCHY_UPDATE_LOCK_FD}>"$lock_path"
     if ! flock -n "$OMARCHY_UPDATE_LOCK_FD"; then
-      echo "An Omarchy update is already running."
+      omarchy_t "An Omarchy update is already running."
+      echo
       exit 1
     fi
 
@@ -41,7 +43,7 @@ case "${1:-}" in
     exec "$@"
     ;;
   *)
-    echo "Usage: omarchy-update-lock <held|run> [command] [args...]" >&2
+    echo "$(omarchy_t "Usage:") omarchy-update-lock <held|run> [command] [args...]" >&2
     exit 2
     ;;
 esac

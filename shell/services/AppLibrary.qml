@@ -161,7 +161,7 @@ Item {
     root.launchSerial++
     root.launchToplevelCount = root.toplevelCount()
     root.launchActiveToplevel = ToplevelManager.activeToplevel
-    root.launchOsdMessage = "Launching " + String(name || "application") + "…"
+    root.launchOsdMessage = I18n.tr("Launching %1…", [String(name || I18n.tr("application"))])
     launchDelay.restart()
     launchTimeout.restart()
   }

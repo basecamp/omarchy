@@ -139,7 +139,7 @@ Panel {
   }
 
   function formatDuration(ms) {
-    if (!(ms > 0)) return "now"
+    if (!(ms > 0)) return I18n.tr("now")
     var minutes = Math.floor(ms / 60000)
     var hours = Math.floor(minutes / 60)
     var days = Math.floor(hours / 24)
@@ -169,8 +169,8 @@ Panel {
 
   function balanceDetailText(b) {
     if (!b || !(b.funded > 0)) return ""
-    var text = formatMoney(b.spent, b.currency) + " spent of " + formatMoney(b.funded, b.currency) + " funded"
-    if (b.estimated) text += " · estimated"
+    var text = I18n.tr("%1 spent of %2 funded", [formatMoney(b.spent, b.currency), formatMoney(b.funded, b.currency)])
+    if (b.estimated) text += " · " + I18n.tr("estimated")
     return text
   }
 
@@ -182,7 +182,7 @@ Panel {
     if (!p) return ""
     if (String(p.usageStatusText || "") !== "") return p.usageStatusText
     var tier = String(p.tierLabel || "")
-    if (tier === "") return "Subscription"
+    if (tier === "") return I18n.tr("Subscription")
     return tier.charAt(0).toUpperCase() + tier.slice(1)
   }
 
@@ -198,11 +198,11 @@ Panel {
   function dayName(date) {
     var parsed = new Date(String(date || "") + "T00:00:00")
     if (isNaN(parsed.getTime())) return String(date || "")
-    return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][parsed.getDay()]
+    return Qt.locale().dayName(parsed.getDay(), Locale.ShortFormat)
   }
 
   function dayLabel(date, today) {
-    if (today) return "Today"
+    if (today) return I18n.tr("Today")
     return dayName(date)
   }
 
@@ -212,13 +212,16 @@ Panel {
     var label = isNaN(parsed.getTime())
       ? String(day.date)
       : dayName(day.date) + " " + (parsed.getMonth() + 1) + "/" + parsed.getDate()
-    var text = label + " · " + usage.formatTokenCount(Number(day.messageCount || 0)) + " tokens"
+    var tokenCount = Number(day.messageCount || 0)
+    var text = label + " · " + I18n.ntr(tokenCount, "%1 token", "%1 tokens", [usage.formatTokenCount(tokenCount)])
     // Prompt and session counts only exist for today, so they ride along here
     // instead of taking a section of their own. Billing-API agents never
     // count prompts, and "0 prompts" would read as a quiet day, not a gap.
     if (today && provider && provider.hasPromptStats !== false)
-      text += " · " + Number(provider.todayPrompts || 0) + " prompts · "
-        + Number(provider.todaySessions || 0) + " sessions"
+      var promptCount = Number(provider.todayPrompts || 0)
+      var sessionCount = Number(provider.todaySessions || 0)
+      text += " · " + I18n.ntr(promptCount, "%1 prompt", "%1 prompts", [promptCount]) + " · "
+        + I18n.ntr(sessionCount, "%1 session", "%1 sessions", [sessionCount])
     return text
   }
 
@@ -253,17 +256,17 @@ Panel {
 
   function modelTooltip(row) {
     if (!row) return ""
-    return "In " + usage.formatTokenCount(row.input)
-      + " · out " + usage.formatTokenCount(row.output)
-      + " · cache read " + usage.formatTokenCount(row.cacheRead)
-      + " · cache write " + usage.formatTokenCount(row.cacheWrite)
+    return I18n.tr("In %1", [usage.formatTokenCount(row.input)])
+      + " · " + I18n.tr("out %1", [usage.formatTokenCount(row.output)])
+      + " · " + I18n.tr("cache read %1", [usage.formatTokenCount(row.cacheRead)])
+      + " · " + I18n.tr("cache write %1", [usage.formatTokenCount(row.cacheWrite)])
   }
 
   // Only speaks up when the numbers cover more than this machine.
   function footerText() {
     if (usage.syncStatusText !== "") return usage.syncStatusText
     if (provider && provider.syncEnabled && provider.syncDeviceCount > 0)
-      return "Merged from " + provider.syncDeviceCount + " device" + (provider.syncDeviceCount === 1 ? "" : "s")
+      return I18n.ntr(provider.syncDeviceCount, "Merged from %1 device", "Merged from %1 devices", [provider.syncDeviceCount])
     return ""
   }
 
@@ -449,7 +452,7 @@ Panel {
             visible: root.providers.length === 0
             width: parent.width
             topPadding: Style.space(24)
-            text: "No AI coding subscriptions found.\nAgents show up here once you've used them."
+            text: I18n.tr("No AI coding subscriptions found.\nAgents show up here once you've used them.")
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.body
@@ -537,7 +540,7 @@ Panel {
 
             PanelSectionHeader {
               width: parent.width
-              text: "BALANCE"
+              text: I18n.tr("BALANCE")
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -548,7 +551,7 @@ Panel {
 
               Text {
                 id: balanceLabel
-                text: "Prepaid credits"
+                text: I18n.tr("Prepaid credits")
                 color: root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.body
@@ -591,7 +594,7 @@ Panel {
             spacing: Style.space(10)
 
             PanelSectionHeader {
-              text: "LIMITS"
+              text: I18n.tr("LIMITS")
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -624,7 +627,7 @@ Panel {
 
             PanelSectionHeader {
               width: parent.width
-              text: "TOKENS BY DAY"
+              text: I18n.tr("TOKENS BY DAY")
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -660,7 +663,7 @@ Panel {
 
             PanelSectionHeader {
               width: parent.width
-              text: "TOKENS BY MODEL"
+              text: I18n.tr("TOKENS BY MODEL")
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -712,7 +715,7 @@ Panel {
         id: limitLabel
         // A model-scoped window is titled after its model, and those names run
         // long enough to reach the percentage, so the title gives way first.
-        text: limitRow.window ? limitRow.window.title : ""
+        text: limitRow.window ? I18n.tr(limitRow.window.title) : ""
         color: root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
@@ -747,7 +750,7 @@ Panel {
       width: parent.width
       text: {
         var remainingMs = root.resetMsFor(limitRow.window)
-        return remainingMs > 0 ? "Resets in " + root.formatDuration(remainingMs) : ""
+        return remainingMs > 0 ? I18n.tr("Resets in %1", [root.formatDuration(remainingMs)]) : ""
       }
       color: root.dim
       font.family: root.fontFamily

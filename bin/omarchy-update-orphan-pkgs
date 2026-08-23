@@ -4,26 +4,32 @@
 # omarchy:requires-sudo=true
 
 set -e
+source "$OMARCHY_PATH/default/bash/i18n"
+omarchy_i18n_load
 
 mapfile -t orphans < <(pacman -Qtdq 2>/dev/null || true)
 (( ${#orphans[@]} )) || exit 0
 
-echo -e "\e[32m\nOrphan system packages\e[0m"
+echo -e "\e[32m\n$(omarchy_t "Orphan system packages")\e[0m"
 printf '  %s\n' "${orphans[@]}"
 echo
 
 if [[ ! -t 0 || ! -t 1 ]]; then
-  echo "${#orphans[@]} orphaned package(s) found. Re-run omarchy-update-orphan-pkgs in a terminal to review/remove them."
+  omarchy_nt "${#orphans[@]}" \
+    "%1 orphaned package found. Re-run omarchy-update-orphan-pkgs in a terminal to review/remove it." \
+    "%1 orphaned packages found. Re-run omarchy-update-orphan-pkgs in a terminal to review/remove them." \
+    "${#orphans[@]}"
+  echo
   echo
   exit 0
 fi
 
-if ! gum confirm --default=false "Remove ${#orphans[@]} orphaned package(s)?"; then
-  echo "Keeping orphaned packages."
+if ! gum confirm --default=false "$(omarchy_nt "${#orphans[@]}" "Remove %1 orphaned package?" "Remove %1 orphaned packages?" "${#orphans[@]}")"; then
+  echo "$(omarchy_t "Keeping orphaned packages.")"
   echo
   exit 0
 fi
 
-echo -e "\e[32m\nRemoving orphan system packages\e[0m"
+echo -e "\e[32m\n$(omarchy_t "Removing orphan system packages")\e[0m"
 sudo pacman -Rns "${orphans[@]}"
 echo

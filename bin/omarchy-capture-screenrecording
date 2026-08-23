@@ -18,11 +18,13 @@
 # the picker target it was launched with) to /tmp/omarchy-screenrecord.log so
 # users can attach a log when reporting capture failures.
 
+source "$OMARCHY_PATH/default/bash/i18n"
+
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
 OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
 
 if [[ ! -d $OUTPUT_DIR ]]; then
-  omarchy-notification-send -u critical -t 3000 "Screen recording directory does not exist: $OUTPUT_DIR"
+  omarchy-notification-send -u critical -t 3000 "$(omarchy_t "Screen recording directory does not exist: %1" "$OUTPUT_DIR")"
   exit 1
 fi
 
@@ -66,7 +68,7 @@ start_webcam_overlay() {
   if [[ -z $WEBCAM_DEVICE ]]; then
     WEBCAM_DEVICE=$(omarchy-capture-webcam-list | sed -n '1s/[[:space:]].*//p')
     if [[ -z $WEBCAM_DEVICE ]]; then
-      omarchy-notification-send -u critical -t 3000 "No webcam devices found"
+      omarchy-notification-send -u critical -t 3000 "$(omarchy_t "No webcam devices found")"
       return 1
     fi
   fi
@@ -216,7 +218,7 @@ stop_screenrecording() {
 
   if pgrep -f "^gpu-screen-recorder" >/dev/null; then
     pkill -9 -f "^gpu-screen-recorder"
-    omarchy-notification-send -u critical -t 5000 "Screen recording error" "Recording process had to be force-killed. Video may be corrupted."
+    omarchy-notification-send -u critical -t 5000 "$(omarchy_t "Screen recording error")" "$(omarchy_t "Recording process had to be force-killed. Video may be corrupted.")"
   else
     finalize_recording
     local filename=$(cat "$RECORDING_FILE" 2>/dev/null)
@@ -226,7 +228,7 @@ stop_screenrecording() {
     # Generate a preview thumbnail from the first frame
     ffmpeg -y -i "$filename" -ss 00:00:00.1 -vframes 1 -q:v 2 "$preview" -loglevel quiet 2>/dev/null
 
-    omarchy-notification-send "Screen recording saved" "Open with Super + Alt + , (or click this)" \
+    omarchy-notification-send "$(omarchy_t "Screen recording saved")" "$(omarchy_t "Open with Super + Alt + , (or click this)")" \
       -t 10000 --image "${preview:-$filename}" \
       --exec "$(printf 'mpv %q' "$filename")"
 
