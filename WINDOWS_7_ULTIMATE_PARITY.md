@@ -19,7 +19,7 @@ Do not mark a row `present` because a panel or hotkey exists for power users.
 |-----|--------|------------|
 | Desktop (icons, wallpaper, context menu, Recycle) | prototype / missing | Wallpaper picker (`omarchy.image-picker`) exists. No desktop icon surface (`desktopIcons` is false). Background plugin exists. |
 | Superbar (taskbar) | prototype | `omarchy.ultimate-taskbar`: Start, Task View button, running groups, Show Desktop. Notification cluster from `barConfig` + `BarWidgetRegistry` (Desktop Mode overlay includes `omarchy.agents`; does not rewrite `shell.json`). Peek is a title list. Right-click is pin/unpin and "Close group" / "Close window"; group close still kills the entire group (`TaskButton.qml`). Peek × closes one. Chrome hexes: `#1b1b1b` `#333333` `#3a3a3a` `#4a4a4a` `#e8943a` `#9cbc0d` `#55ffffff`. `Variants` already maps a bar per `Quickshell.screens` — missing is multi-monitor **policy**, not rendering. |
-| Start | prototype | `omarchy.ultimate-start` is a 440×560 glass launcher: search, pins, app list, lock/restart/shutdown, Power User Mode toggle on the footer. Idle list hides Terminal/Vim. Not Windows 7 Start (no All Programs tree, places, jump lists, user picture, Control Panel destinations). |
+| Start | prototype | `omarchy.ultimate-start` is a 440×560 glass launcher: search, pins, app list, lock/restart/shutdown, Power User Mode toggle on the footer. Idle list hides Terminal/Vim. Outside-click and orb re-toggle: `e3bf9385`. Remaining: click-through (full-screen swallow today). Not Windows 7 Start (no All Programs tree, places, jump lists, user picture, Control Panel destinations). |
 | Search | prototype | Start `SearchBox` filters installed apps. Not a system Search (files, settings, control panel, history). |
 | Explorer / This PC | missing as product | Files launches Nautilus (`SUPER + E` → `omarchy = "nautilus"`). Not Dolphin, not This PC. Nautilus is on the shared CSD list (`default/ultimate/csd-clients.json`); live grim is GTK CSD only, no hyprbars two-row. |
 | Network | prototype | `omarchy.network` panel; still `Process` / `bash -c` / nmcli, not a typed Network service. |
@@ -67,4 +67,4 @@ Do not mark a row `present` because a panel or hotkey exists for power users.
 
 ## Caption / windowing (not a substitute for the jobs above)
 
-W0 is architecture GO and product-windowing GO (Hyprland stays; three-button SSD, Files CSD, reopen memory, plugins in the update transaction). Remaining product surfaces are recorded in `plans/project-ultimate.md`. Do not treat this matrix as green because snap and Alt+Tab IPC work.
+W0 is architecture GO and **agent-reported** product-windowing GO (Hyprland stays; three-button SSD, Files CSD, reopen memory, plugins in the update transaction). Independent review has not certified `687d022b` from a clean checkout. Remaining product surfaces and next-work order: `HANDOFF_NEW_BOX_2026-08-23.md`. Do not treat this matrix as green because snap and Alt+Tab IPC work.

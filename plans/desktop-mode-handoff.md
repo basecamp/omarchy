@@ -6,17 +6,21 @@ Do not treat this file as advisory. Historical tranches below are evidence. **Cu
 
 ## Current lock (2026-08-23)
 
+**Resume:** `HANDOFF_NEW_BOX_2026-08-23.md` is the immutable lock. This section is historical W0 evidence plus a pointer. If the two disagree, the HANDOFF file wins.
+
 **Identity:** Windows 7 Ultimate's complete, obvious, mouse-native desktop model rebuilt for 2026, with an agent-native operating fabric underneath every system capability. **Not** Windows-like Omarchy with AI tools.
 
 **Branches:** default `main` (upstream tracking only; `2c247e39` == basecamp `quattro`). All Ultimate work is `work`. Do not create `cursor/*` or other slice branches. Do not merge `work` into `main` as the OS. Product is still **REJECTED**. Reconciliation ledger (outside git): `C:\dev\omarchy-vm\branch-reconciliation-ledger-2026-08-22.md` — two heads PASS; zero unique Jesse **content**; one orphan merge SHA `30aac92f` with empty diff. Ledger-time `work` was `c4c6ce29`; later commits moved HEAD — do not reset.
 
-**W0:** architecture **GO** and **product-windowing GO** on metal (Hyprland stays). HDMI-A-1 1920×1080. `windows-native-test.sh` exit 0 (20–25 + unnumbered proofs). Pointer proof exit 0 (Alt+Tab card, title-bar drag, Aero, maximize hover → snap chooser, unfocused addressed close). Three-button SSD (min / max / close). CSD from `default/ultimate/csd-clients.json`; live grim Chromium one row, Files no hyprbars row. Per-app reopen via `window-placements.json`. `omarchy-update` rebuilds plugins after system packages. Overlay chrome gone. Do not restore `--disable-features=WaylandWindowDecorations`. Do not put `hyprland-plugin-hyprbars` in `install/omarchy-other.packages`. Versioned distro plugin packages remain later.
+**W0:** architecture **GO** and **agent-reported product-windowing GO** on metal (Hyprland stays). HDMI-A-1 1920×1080. `windows-native-test.sh` exit 0 (20–25 + unnumbered proofs). Pointer proof exit 0 (Alt+Tab card, title-bar drag, Aero, maximize hover → snap chooser, unfocused addressed close). Three-button SSD (min / max / close). CSD from `default/ultimate/csd-clients.json`; live grim Chromium one row, Files no hyprbars row. Per-app reopen via `window-placements.json`. `omarchy-update` rebuilds plugins after system packages. Overlay chrome gone. Do not restore `--disable-features=WaylandWindowDecorations`. Do not put `hyprland-plugin-hyprbars` in `install/omarchy-other.packages`. Versioned distro plugin packages remain later. Independent review has not certified `687d022b` from a clean checkout.
 
 **Phase 2 minimum:** WindowService `{ changed, error }`, `CapabilityBroker` (catalog, permit ui/ipc/agent/undo, ledger, `undoLast`), Superbar cluster from `BarWidgetRegistry` including `omarchy.agents`. Live disk `~/.config/omarchy/shell.json` not rewritten (`bar.id` unset, `position: top`). Agent Center UI is not this slice.
 
+**Start dismiss:** `e3bf9385` — outside click and Start-orb re-toggle proven on metal. Remaining Start debt is click-through / `HyprlandFocusGrab`, not “cannot close.”
+
 **Honesty:** Superbar is still a prototype (chrome hexes include `#3a3a3a` `#4a4a4a`; peek is titles; Start is a 440×560 glass launcher; Settings is a five-button stub). Progress ~20% of the OS vision.
 
-**Next locked work:** later Agent Fabric depth (full catalog, context broker, sandboxed runtime) **or** Phase 3 token unification for Superbar/hyprbars. Do not start Agent Center UI or a huge Desktop Mode visual pass.
+**Next locked work:** `HANDOFF_NEW_BOX_2026-08-23.md` §In flight — Download Video P0, FIDO2 P0, Start click-through, screensaver/branding. Not later Agent Fabric depth. Not Agent Center UI.
 
 KEEP `4ea1dcf3` through `c1ae994f`. Do not amend them. Do not squash them.
 

@@ -6,8 +6,11 @@ This is the working plan for the fork. It is not a theme plan. It is not a “mo
 
 Not: Windows-like Omarchy with AI tools.
 
+Resume from `HANDOFF_NEW_BOX_2026-08-23.md` (immutable). That file wins on next-work order if this plan still says fabric-next.
+
 Read this file together with:
 
+- `HANDOFF_NEW_BOX_2026-08-23.md` — current lock (P0s, Start click-through, screensaver, branding)
 - `PRODUCT_DOCTRINE.md` — eight rules (the original seven plus Agent-Native)
 - `WINDOWS_NATIVE_ACCEPTANCE.md` — forty-task smoke test (necessary, not sufficient; six numbered rows automated, plus unnumbered harness proofs)
 - `WINDOWS_7_ULTIMATE_PARITY.md` — job matrix
@@ -15,7 +18,7 @@ Read this file together with:
 - `docs/mode-profiles.md` — Desktop Mode vs Power User Mode as flags, one platform
 - `docs/settings-service-api.md` — UI and agents → typed service → Omarchy/system tooling
 - `docs/design-tokens.md` — one token pipeline for Superbar and hyprbars; no new private palettes
-- `plans/desktop-mode-handoff.md` — live Hyprland windowing evidence and current next-work lock
+- `plans/desktop-mode-handoff.md` — live Hyprland windowing evidence; current next-work lock is the HANDOFF file
 
 If those documents and this plan disagree, the doctrine wins. If this plan and a PR description disagree, this plan wins. Do not take PR #1’s old “Windowing go/no-go — GO” as an OS go; that writeup was rejected.
 
@@ -53,7 +56,7 @@ The four product-windowing debts from 2026-08-22 are **closed** on metal. Left f
 ## Taskbar / Start / Settings honesty (known defects, not features)
 
 - Superbar is a prototype, not the masterpiece. Notification-area cluster is driven from `barConfig.layout.right` + `BarWidgetRegistry` (`TrayCluster.qml`). Desktop Mode overlay includes `omarchy.agents` without rewriting `shell.json`. Chrome hexes include `#1b1b1b` `#333333` `#3a3a3a` `#4a4a4a` `#e8943a` `#9cbc0d` `#55ffffff`. hyprbars `bar_color` is `rgba(1a1a1acc)`. `Variants` already draws a bar per `Quickshell.screens` — missing is multi-monitor **policy**, not rendering.
-- Start is a 440×560 glass launcher (search + pins + app list + Power User footer toggle), not Windows 7 Start.
+- Start is a 440×560 glass launcher (search + pins + app list + Power User footer toggle), not Windows 7 Start. Outside-click and Start-orb re-toggle landed in `e3bf9385` (full-screen swallow). Remaining: Windows click-through via a shared transient coordinator (`HANDOFF_NEW_BOX_2026-08-23.md`).
 - Settings (`omarchy.ultimate-settings`) is a stub: five buttons (Display, Sound, Network, Bluetooth, Power) that toggle existing panels.
 - Peek is a title list. Right-click is pin/unpin and **Close group** / **Close window** (label follows `windows.length`). Peek × closes one.
 - `feature()` is only consulted in `shell.qml` (`taskbar`/`topBar`) and `Start.qml` (`developerToolsInStart`).
@@ -118,7 +121,9 @@ Do **not** claim mathematical zero unique Jesse *commits*. Claim zero unique Jes
 
 ## Current position (2026-08-23)
 
-Windowing Gate W0 is **architecture GO** and **product-windowing GO** on the metal Hyprland 0.56.2 session (HDMI-A-1 1920×1080). The product is still **REJECTED**. Progress against the locked identity is roughly **20%**. Do not let a future agent declare victory after a green harness.
+Windowing Gate W0 is **architecture GO** and **agent-reported product-windowing GO** on the metal Hyprland 0.56.2 session (HDMI-A-1 1920×1080). Independent review has not certified `687d022b` from a clean checkout. The product is still **REJECTED**. Desktop shell acceptance is **FAIL** until Start click-through is proven. Progress against the locked identity is roughly **20%**. Do not let a future agent declare victory after a green harness.
+
+**Next work is not more fabric and not Agent Center UI.** Order is `HANDOFF_NEW_BOX_2026-08-23.md` §In flight: Download Video P0, FIDO2 P0, Start click-through, screensaver/branding. `e3bf9385` already closed ordinary Start dismiss.
 
 **Phase 0 (foundation)** is mostly in the repo: doctrine, acceptance manifests, mode profiles, design-token singleton, settings-service convention, shell tests, VM acceptance skeleton.
 
@@ -167,7 +172,7 @@ Claims from the 2026-08-22 course-correction that this turn **verified in the tr
 
 ## Phases (vertical product capability)
 
-Do not reorder to “make QML pretty.” Agent Fabric is the gate immediately after W0. Design-system token work may run alongside it; new Desktop Mode surfaces may not sprawl ahead of the fabric.
+Do not reorder to “make QML pretty.” Phase 2 window-fabric minimum is closed. Remaining fabric depth is later. **Now:** P0 security, then Start click-through, then screensaver/branding (`HANDOFF_NEW_BOX_2026-08-23.md`). New Desktop Mode surfaces may not sprawl ahead of that.
 
 ### Phase 0 — Foundation
 
