@@ -18,4 +18,20 @@ assert(
     !backgroundQml.includes('pendingThemeVersion !== backgroundVersion'),
   'background theme transition applies pending colors even if image reveal stalls'
 )
+
+assert(
+  backgroundQml.includes('lowMemoryLimitKiB: 4 * 1024 * 1024') &&
+    backgroundQml.includes('lowMemoryDownscaleFactor: 16') &&
+    backgroundQml.includes('path: "/proc/meminfo"') &&
+    backgroundQml.includes('MemAvailable:') &&
+    backgroundQml.includes('availableMemoryKiB < lowMemoryLimitKiB'),
+  'background detects low memory from MemAvailable below 4 GiB'
+)
+
+assert(
+  (backgroundQml.match(/sourceSize: root\.lowMemory/g) || []).length === 3 &&
+    backgroundQml.includes('root.lowMemorySourceSize(width, height, Screen.devicePixelRatio)') &&
+    backgroundQml.includes(': undefined'),
+  'background bounds all wallpaper frames only while memory is low'
+)
 JS

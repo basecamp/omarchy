@@ -13,6 +13,8 @@ Item {
   readonly property string home: Quickshell.env("HOME")
   readonly property string stateHome: home + "/.local/state"
   readonly property string currentBackgroundLink: stateHome + "/omarchy/current/background"
+  readonly property real lowMemoryLimitKiB: 4 * 1024 * 1024
+  readonly property real lowMemoryDownscaleFactor: 16
 
   property string currentBackground: ""
   property string displayedBackground: ""
@@ -25,12 +27,44 @@ Item {
   property string pendingColorsRaw: ""
   property string pendingShellRaw: ""
   property real revealProgress: 1
+  property real availableMemoryKiB: -1
+  property bool memoryReady: false
+  property bool backgroundRefreshPending: false
+  readonly property bool lowMemory: memoryReady
+    && availableMemoryKiB >= 0
+    && availableMemoryKiB < lowMemoryLimitKiB
 
   function imageUrl(path) {
     return Util.fileUrl(path)
   }
 
+  function lowMemorySourceSize(width, height, devicePixelRatio) {
+    return Qt.size(
+      Math.max(1, Math.ceil(width * devicePixelRatio / lowMemoryDownscaleFactor)),
+      Math.max(1, Math.ceil(height * devicePixelRatio / lowMemoryDownscaleFactor))
+    )
+  }
+
+  function refreshMemory() {
+    memoryFile.reload()
+  }
+
+  function updateAvailableMemory(raw) {
+    var match = /^MemAvailable:\s+(\d+)\s+kB$/m.exec(String(raw || ""))
+    availableMemoryKiB = match ? Number(match[1]) : -1
+    memoryReady = true
+    if (backgroundRefreshPending) {
+      backgroundRefreshPending = false
+      refreshBackground()
+    }
+  }
+
   function refreshBackground() {
+    if (!memoryReady) {
+      backgroundRefreshPending = true
+      refreshMemory()
+      return
+    }
     if (!readlinkProc.running) readlinkProc.running = true
   }
 
@@ -120,6 +154,15 @@ Item {
     onExited: root.refreshBackground()
   }
 
+  FileView {
+    id: memoryFile
+    path: "/proc/meminfo"
+    watchChanges: false
+    printErrors: false
+    onLoaded: root.updateAvailableMemory(text())
+    onLoadFailed: root.updateAvailableMemory("")
+  }
+
   Process {
     id: readlinkProc
     command: ["readlink", "-f", root.currentBackgroundLink]
@@ -159,6 +202,14 @@ Item {
     onTriggered: root.applyPendingTheme()
   }
 
+  Timer {
+    id: memoryRefreshTimer
+    interval: 5000
+    running: true
+    repeat: true
+    onTriggered: root.refreshMemory()
+  }
+
   NumberAnimation {
     id: revealAnimation
     target: root
@@ -176,7 +227,10 @@ Item {
     }
   }
 
-  Component.onCompleted: refreshBackground()
+  Component.onCompleted: {
+    refreshMemory()
+    refreshBackground()
+  }
 
   Variants {
     model: Quickshell.screens
@@ -222,6 +276,11 @@ Item {
         id: base
         anchors.fill: parent
         source: root.imageUrl(root.displayedBackground)
+        // Qt never upscales a source smaller than sourceSize. Under memory
+        // pressure this bounds large wallpapers to the physical display size.
+        sourceSize: root.lowMemory
+          ? root.lowMemorySourceSize(width, height, Screen.devicePixelRatio)
+          : undefined
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         cache: true
@@ -238,6 +297,9 @@ Item {
         id: oldFrame
         anchors.fill: parent
         source: root.imageUrl(root.oldBackground)
+        sourceSize: root.lowMemory
+          ? root.lowMemorySourceSize(width, height, Screen.devicePixelRatio)
+          : undefined
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         cache: false
@@ -264,6 +326,9 @@ Item {
           id: incomingFrame
           anchors.fill: parent
           source: root.imageUrl(root.incomingBackground)
+          sourceSize: root.lowMemory
+            ? root.lowMemorySourceSize(width, height, Screen.devicePixelRatio)
+            : undefined
           fillMode: Image.PreserveAspectCrop
           asynchronous: true
           cache: false
