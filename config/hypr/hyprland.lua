@@ -11,7 +11,7 @@ dofile((os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/default/hypr/boo
 -- omarchy_preinstalled_bindings = false
 
 -- Pin outputs before Desktop Mode plugins load. A plugin error during
--- require("default.hypr.omarchy") must not skip the user monitor file —
+-- omarchy setup must not skip the user monitor file —
 -- this Samsung's EDID preferred mode is 4K@30, which is no-signal.
 require("hypr.monitors")
 
