@@ -1,0 +1,107 @@
+#!/bin/bash
+
+# omarchy:summary=Install the ESP-IDF toolchain for ESP32 boards (all chip variants)
+# omarchy:examples=omarchy install maker esp32
+# omarchy:requires-sudo=true
+
+set -e
+
+ESP_HOME=$HOME/.espressif
+EIM=$HOME/.local/bin/eim
+IDF_TARGETS=esp32,esp32s2,esp32s3,esp32c2,esp32c3,esp32c6,esp32h2,esp32p4,esp32c5,esp32c61
+IDF_TOOLS=xtensa-esp-elf,riscv32-esp-elf,xtensa-esp-elf-gdb,riscv32-esp-elf-gdb,esp32ulp-elf,esp-rom-elfs,openocd-esp32,ninja
+
+# EIM builds its python venvs against whatever python3 was first on PATH; when
+# that interpreter is upgraded away (system update, mise), every venv symlink
+# dangles and activation fails until the venvs are relinked to a live python.
+repair_idf_venvs() {
+  local venv py3 real minor replacement
+
+  for venv in $ESP_HOME/tools/python/*/venv; do
+    [[ -d $venv ]] || continue
+    py3=$venv/bin/python3
+    real=$(readlink -f $py3 2>/dev/null || true)
+    if [[ -x $real ]]; then
+      continue
+    fi
+    minor=$(grep -oE '^version = 3\.[0-9]+' $venv/pyvenv.cfg | grep -oE '3\.[0-9]+$' || true)
+    replacement=/usr/bin/python3
+    if [[ -n $minor && -x /usr/bin/python3.$minor ]]; then
+      replacement=/usr/bin/python3.$minor
+    fi
+    ln -sfn $replacement $py3
+    ln -sfn python3 $venv/bin/python
+    if [[ -n $minor ]]; then
+      ln -sfn python3 $venv/bin/python3.$minor
+    fi
+    sed -i -E "s|^home = .*|home = $(dirname $replacement)|" $venv/pyvenv.cfg
+    echo "Relinked $venv to $replacement"
+  done
+}
+
+echo "Installing ESP32 development environment (ESP-IDF, all chip variants)..."
+omarchy-pkg-add esptool
+
+# Serial port access without sudo
+if ! id -nG $USER | grep -qw uucp; then
+  sudo usermod -aG uucp $USER
+  echo "Added $USER to the uucp group — log out and back in for serial access."
+fi
+
+# JTAG debuggers like ESP-Prog
+if [[ ! -f /etc/udev/rules.d/99-espressif.rules ]]; then
+  sudo curl -fsSL -o /etc/udev/rules.d/99-espressif.rules https://raw.githubusercontent.com/espressif/esp-idf/master/tools/udev/99-espressif.rules
+  sudo udevadm control --reload && sudo udevadm trigger
+fi
+
+# Espressif's official installer manages ESP-IDF versions, toolchains and
+# python venvs inside ~/.espressif — nothing is installed system-wide
+if [[ ! -x $EIM ]]; then
+  echo ""
+  echo "Downloading Espressif's ESP-IDF Installation Manager..."
+  tmp=$(mktemp -d)
+  curl -fsSL -o $tmp/eim.zip https://github.com/espressif/idf-im-ui/releases/latest/download/eim-cli-linux-x64.zip
+  unzip -o -q $tmp/eim.zip -d $tmp
+  mkdir -p ~/.local/bin
+  install -m 755 $tmp/eim $EIM
+  rm -rf $tmp
+fi
+
+activation=$(ls $ESP_HOME/tools/activate_idf_*.sh 2>/dev/null | sort -V | tail -1 || true)
+
+# Idempotent: repair and verify an existing installation instead of re-downloading
+if [[ -z $activation ]]; then
+  idf_version=$(curl -fsSL https://api.github.com/repos/espressif/esp-idf/releases/latest | grep -oE '"tag_name": *"v[0-9.]+"' | grep -oE 'v[0-9.]+')
+  if [[ -z $idf_version ]]; then
+    idf_version=v6.0.1
+  fi
+
+  echo ""
+  echo "Installing ESP-IDF $idf_version into $ESP_HOME (~4.5 GB download)..."
+  $EIM install \
+    -p $ESP_HOME \
+    -t $IDF_TARGETS \
+    -i $idf_version \
+    --idf-features core \
+    --idf-tools $IDF_TOOLS \
+    --non-interactive true \
+    --cleanup true \
+    --config-file-save-path $ESP_HOME/eim_config.toml \
+    --esp-idf-json-path $ESP_HOME/tools \
+    --activation-script-path-override $ESP_HOME/tools
+
+  activation=$(ls $ESP_HOME/tools/activate_idf_*.sh | sort -V | tail -1)
+fi
+
+repair_idf_venvs
+
+if bash -c "source $activation >/dev/null 2>&1 && idf.py --version"; then
+  echo ""
+  echo "ESP-IDF is ready."
+  echo "Start a project shell with: source $activation"
+  echo "Then: idf.py create-project -c esp32s3 hello && cd hello && idf.py set-target esp32s3 && idf.py build"
+  echo "Flash with: idf.py -p /dev/ttyACM0 flash monitor"
+else
+  echo "ESP-IDF verification failed — try '$EIM fix' or reinstall with omarchy install maker esp32" >&2
+  exit 1
+fi

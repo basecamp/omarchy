@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# omarchy:summary=Remove the ESP-IDF toolchain for ESP32 boards
+# omarchy:examples=omarchy remove maker esp32
+
+set -e
+
+EIM=$HOME/.local/bin/eim
+
+echo "Removing ESP32 development environment..."
+
+if [[ -x $EIM ]]; then
+  $EIM purge --esp-idf-json-path $HOME/.espressif/tools || true
+fi
+
+rm -rf $HOME/.espressif
+
+omarchy-pkg-drop esptool
+
+echo ""
+echo "Done! Serial port access (uucp group) and udev rules were left in place."
