@@ -345,19 +345,35 @@ var enterpriseConnectScript =
 // profile first, then push the PSK through the scriptable `connection edit`
 // editor over stdin. `nmcli device wifi connect ... password "$pw"` would put
 // the passphrase in argv (world-readable via /proc), so it must not be used.
-// Deletes any same-named profile left behind by a prior join first, so
-// repeat connects to the same hidden SSID don't pile up duplicate profiles.
 // Key-mgmt comes from $2 ("wpa-psk" or "sae") -- always a literal we pass,
 // never user text. WPA3/SAE mandates Protected Management Frames, so $pmf
 // is set to "wifi-sec.pmf 3" for that case only; it's a fixed internal
 // string too, so the intentional word-split into the nmcli argv is safe.
+//
+// Repeat joins to the same hidden SSID shouldn't pile up duplicate profiles,
+// but con-name is not unique in NetworkManager -- `connection delete id
+// "$1"` would delete the FIRST match by NAME, which could be an unrelated
+// VPN/Ethernet/broadcast-Wi-Fi profile that happens to share that name, and
+// doing it before the new profile is proven to work means a typo/wrong
+// password destroys working config. Instead: capture the UUIDs of existing
+// 802-11-wireless profiles whose ssid == "$1" and hidden == yes (matched by
+// UUID/field, never by name) BEFORE adding the new one, and only remove them
+// AFTER the new profile activates successfully; a failed attempt deletes
+// nothing but its own new (still-unproven) profile.
 var hiddenPskConnectScript =
-  "nmcli connection delete id \"$1\" >/dev/null 2>&1;" +
-  " u=$(uuidgen); IFS= read -r pw; pmf=\"\"; [ \"$2\" = \"sae\" ] && pmf=\"wifi-sec.pmf 3\";" +
+  "u=$(uuidgen); IFS= read -r pw; pmf=\"\"; [[ $2 == \"sae\" ]] && pmf=\"wifi-sec.pmf 3\";" +
+  " old=\"\";" +
+  " for c in $(nmcli -t -f UUID connection show); do" +
+  "   [[ $(nmcli -g connection.type connection show uuid \"$c\" 2>/dev/null) == \"802-11-wireless\" ]] || continue;" +
+  "   [[ $(nmcli -g 802-11-wireless.ssid connection show uuid \"$c\" 2>/dev/null) == \"$1\" ]] || continue;" +
+  "   [[ $(nmcli -g 802-11-wireless.hidden connection show uuid \"$c\" 2>/dev/null) == \"yes\" ]] || continue;" +
+  "   old=\"$old $c\";" +
+  " done;" +
   " nmcli connection add type wifi con-name \"$1\" ssid \"$1\" connection.uuid \"$u\"" +
   " 802-11-wireless.hidden yes wifi-sec.key-mgmt \"$2\" $pmf >/dev/null" +
   " && printf 'set wifi-sec.psk %s\\nsave\\nquit\\n' \"$pw\" | nmcli connection edit uuid \"$u\" >/dev/null" +
   " && nmcli connection up uuid \"$u\"" +
+  " && { for o in $old; do [[ $o == \"$u\" ]] || nmcli connection delete uuid \"$o\" >/dev/null 2>&1; done; true; }" +
   " || { nmcli connection delete uuid \"$u\" >/dev/null 2>&1; false; }"
 
 function networkFailureReason(reason, needsCredentials, reasons) {

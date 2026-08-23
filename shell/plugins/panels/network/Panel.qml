@@ -851,10 +851,11 @@ Panel {
 
   function clearNetworkAction() {
     actionTimeout.stop()
-    // Guard on actionSsid matching the open prompt -- a completing hidden
-    // connect (or any other row's connect) must not clobber an unrelated
-    // row's still-open passphrase prompt.
-    if (actionKind === "connect" && actionSsid === passwordSsid) passwordSsid = ""
+    // Guard on actionSsid matching the open prompt, and on !actionIsHidden --
+    // a completing hidden connect (whose typed SSID may coincidentally equal
+    // an unrelated row's) or any other row's connect must not clobber an
+    // unrelated row's still-open passphrase prompt.
+    if (!actionIsHidden && actionKind === "connect" && actionSsid === passwordSsid) passwordSsid = ""
     failureSsid = ""
     failureReason = ""
     actionSsid = ""
@@ -2069,8 +2070,11 @@ Panel {
       function onConnectionFailed(reason) {
         // Background auto-connect retries fire this too; only reprompt for
         // the connect started from this panel. Checked before
-        // failNetworkAction, which clears the action state.
-        var ours = root.actionKind === "connect" && root.actionSsid === (row.net.ssid || "")
+        // failNetworkAction, which clears the action state. Also gate on
+        // !actionIsHidden: a hidden attempt whose typed SSID equals this
+        // row's would otherwise read as "ours" and reopen this row's
+        // passphrase prompt for a failure that isn't its own.
+        var ours = !root.actionIsHidden && root.actionKind === "connect" && root.actionSsid === (row.net.ssid || "")
         root.failNetworkAction(root.networkForSsid(row.net.ssid), reason)
         if (ours && root.shouldRepromptPassphrase(reason, row.requiresCredentials)) root.openPasswordPrompt(row.net.ssid)
       }

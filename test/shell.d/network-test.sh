@@ -309,9 +309,26 @@ assert(!/password "\$pw"/.test(network.hiddenPskConnectScript), 'hidden PSK conn
 // requires Protected Management Frames, set only in the sae case.
 assert(/wifi-sec\.key-mgmt "\$2"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script sets key-mgmt from the $2 arg, not a hardcoded value')
 assert(!/wifi-sec\.key-mgmt wpa-psk/.test(network.hiddenPskConnectScript), 'hidden PSK connect script no longer hardcodes wpa-psk as the key-mgmt')
-assert(/\[ "\$2" = "sae" \] && pmf="wifi-sec\.pmf 3"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script sets PMF required only for the sae (WPA3) case')
+assert(/\[\[ \$2 == "sae" \]\] && pmf="wifi-sec\.pmf 3"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script sets PMF required only for the sae (WPA3) case, using a [[ ]] string test per AGENTS.md')
 
-// A repeat join to the same hidden SSID must not pile up duplicate
-// NetworkManager profiles, so any same-named profile is deleted first.
-assert(/connection delete id "\$1"[\s\S]*nmcli connection add/.test(network.hiddenPskConnectScript), 'hidden PSK connect script deletes an existing same-named profile before adding a new one')
+// Repeat joins to the same hidden SSID must not pile up duplicate profiles,
+// but con-name is not unique in NetworkManager -- deleting by name (`id`)
+// could destroy an unrelated VPN/Ethernet/broadcast-Wi-Fi profile that just
+// happens to share it. Old profiles must be matched by UUID against
+// type + ssid + hidden, captured before the new profile exists, and only
+// removed after the new one activates -- never up front, and never by name.
+assert(!/connection delete id "\$1"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script never deletes an existing profile by name')
+assert(/nmcli -t -f UUID connection show/.test(network.hiddenPskConnectScript), 'hidden PSK connect script enumerates existing connections by UUID to find prior hidden profiles for this SSID')
+assert(/connection\.type[\s\S]*"802-11-wireless"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script only considers 802-11-wireless connections for cleanup')
+assert(/802-11-wireless\.ssid[\s\S]*"\$1"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script matches prior profiles by this SSID, not by name')
+assert(/802-11-wireless\.hidden[\s\S]*"yes"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script only considers hidden profiles for cleanup, never a broadcast network of the same SSID')
+assert(/nmcli connection up uuid "\$u"[\s\S]*connection delete uuid "\$o"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script only deletes old profiles after the new one activates successfully')
+assert(/connection delete uuid "\$u" >\/dev\/null 2>&1; false; \}$/.test(network.hiddenPskConnectScript), 'hidden PSK connect script leaves prior profiles alone on failure, deleting only its own new (unproven) profile')
+
+// The cleanup loop's own exit status must never leak into the `&&`/`||`
+// chain: a failed delete of a stale/already-gone old UUID (the loop's own
+// last command) would otherwise make the whole `up && { cleanup }` false,
+// tripping the `||` failure branch and deleting the profile that just
+// connected successfully. `true` pins the block's exit status regardless.
+assert(/for o in \$old;[\s\S]*done; true; \}/.test(network.hiddenPskConnectScript), 'hidden PSK connect script cleanup block always reports success so a stale old-UUID delete failure cannot delete the just-connected new profile')
 JS
