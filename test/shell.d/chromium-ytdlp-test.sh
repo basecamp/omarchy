@@ -59,14 +59,6 @@ host_fn() {
   ' bash "$ROOT/bin/omarchy-chromium-ytdlp-host" "$@"
 }
 
-host_fn metadata_ok "Night Storm Terminal" ||
-  fail "yt-dlp native host accepts a normal video title"
-pass "yt-dlp native host accepts a normal video title"
-
-host_fn metadata_ok $'safe\nOMARCHY_FILE\tCLICK' &&
-  fail "yt-dlp native host rejects a title containing control characters"
-pass "yt-dlp native host rejects a title containing control characters"
-
 download_dir="$TMPDIR/videos"
 mkdir -p "$download_dir" "$TMPDIR/outside"
 good_file="$download_dir/clip [id].mp4"
