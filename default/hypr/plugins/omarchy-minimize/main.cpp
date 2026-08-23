@@ -19,18 +19,26 @@
 #include "src/desktop/rule/windowRule/WindowRuleEffectContainer.hpp"
 #include "src/helpers/MiscFunctions.hpp"
 #include "src/output/Monitor.hpp"
+#define private public
+#include "src/Compositor.hpp"
+#undef private
 #include "xdg-shell.hpp"
 
 #include <wayland-server.h>
+#include <wayland-server-core.h>
 
 #include <algorithm>
 #include <cctype>
+#include <climits>
 #include <cmath>
+#include <fstream>
 #include <format>
 #include <functional>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <unistd.h>
 #include <unordered_map>
 
 extern "C" {
@@ -201,6 +209,8 @@ static std::optional<bool> requestedMaximized(PHLWINDOW w) {
   return std::nullopt;
 }
 
+static void restoreCsdCaption(PHLWINDOW w);
+
 static void setMaximized(PHLWINDOW w, bool maximized) {
   if (!w)
     return;
@@ -306,6 +316,10 @@ static void applyRequestedMaximize(PHLWINDOWREF ref, std::optional<bool> want) {
   // from this plugin is what aborted the compositor.
   if (w->m_suppressNextMaximize) {
     w->m_suppressNextMaximize = false;
+    // Hyprland's own handler may already have maxed the surface. Still tell
+    // Chrome so it relayouts the CSD frame to the work area.
+    if (isMaximizedNow(w) || isCoveringFullscreen(w))
+      restoreCsdCaption(w);
     return;
   }
   if (!w->m_isMapped)
@@ -315,14 +329,19 @@ static void applyRequestedMaximize(PHLWINDOWREF ref, std::optional<bool> want) {
   if (isMaximizedNow(w) == *want) {
     if (!*want)
       restoreFloatOnScreen(w);
+    else
+      restoreCsdCaption(w);
     return;
   }
   g_inPluginApply = true;
   w->finishAnimation();
   setMaximized(w, *want);
   g_inPluginApply = false;
-  if (!*want)
+  if (!*want) {
     restoreFloatOnScreen(w);
+    w->m_suppressNextMaximize = true;
+  }
+  restoreCsdCaption(w);
 }
 
 static void applyRequestedState(PHLWINDOWREF ref) {
@@ -361,8 +380,6 @@ static bool coversWorkArea(PHLWINDOW w) {
   const auto size = w->size(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
   return std::abs(size.x - work.w) <= 16 && size.y >= work.h - 48 && pos.x <= work.x + 8 && pos.y <= work.y + 8;
 }
-
-static void restoreCsdCaption(PHLWINDOW w);
 
 static void applyDefaultFloat(PHLWINDOW w) {
   const auto work = monitorWork(w);
@@ -418,9 +435,7 @@ static void syncCsdMaximizedState(PHLWINDOW w) {
     auto top = xdg->m_toplevel.lock();
     if (!top)
       return;
-    bool actually = isMaximizedNow(live);
-    if (!actually)
-      live->m_suppressNextMaximize = true;
+    bool actually = isMaximizedNow(live) || isCoveringFullscreen(live);
     top->setMaximized(actually);
   });
 }
@@ -463,18 +478,79 @@ static CXDGDecoration* decoForWindow(PHLWINDOW w) {
   return decoForToplevel(top->m_resource->resource());
 }
 
-// Hyprland answers xdg-decoration SERVER_SIDE. If a client still binds,
-// stick CLIENT_SIDE so Chrome does not wait for an SSD bar we hid.
-// Chrome's Ozone ShouldUseCustomFrame() is true only when the compositor
-// does not advertise xdg-decoration. Hyprland always advertises it and
-// answers SERVER_SIDE, so Chrome hides Aura min/max/close and waits for
-// SSD. hyprbars:no_bar then deletes the only remaining chrome. Hide the
-// globals so Chrome draws the three buttons on its own tab strip again.
+// Chrome Ozone ShouldUseCustomFrame() is true only when this client does
+// not see zxdg_decoration_manager_v1. Hyprland advertises it and answers
+// SERVER_SIDE, so Chrome hides Aura min/max/close and waits for SSD.
+// hyprbars:no_bar then deletes the only remaining chrome.
+//
+// removeGlobal() hid the manager from every client. Foot then logged
+// "no decoration manager — using CSDs" and hyprbars never attached.
+// Filter the two decoration globals per client instead: CSD processes
+// (Chrome, Files, Cursor) do not see them; SSD clients still do.
+static bool nameLooksCsd(std::string s) {
+  std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  if (s.find("zenity") != std::string::npos)
+    return false;
+  if (s == "zen" || s.rfind("zen-", 0) == 0 || s.find("zen-browser") != std::string::npos)
+    return true;
+  static constexpr const char* kNeedles[] = {"chrome", "chromium", "brave", "msedge", "microsoft-edge",
+                                             "vivaldi", "helium",  "firefox", "librewolf", "nautilus", "cursor"};
+  for (auto* needle : kNeedles) {
+    if (s.find(needle) != std::string::npos)
+      return true;
+  }
+  return false;
+}
+
+static bool clientLooksCsd(const wl_client* client) {
+  pid_t pid = 0;
+  uid_t uid = 0;
+  gid_t gid = 0;
+  wl_client_get_credentials(const_cast<wl_client*>(client), &pid, &uid, &gid);
+  if (pid <= 0)
+    return false;
+  std::string comm;
+  if (std::ifstream in{std::format("/proc/{}/comm", pid)})
+    std::getline(in, comm);
+  char exe[PATH_MAX]{};
+  const auto n = readlink(std::format("/proc/{}/exe", pid).c_str(), exe, sizeof(exe) - 1);
+  const std::string exePath = n > 0 ? std::string(exe, static_cast<size_t>(n)) : "";
+  return nameLooksCsd(comm) || nameLooksCsd(exePath);
+}
+
+static bool isDecorationGlobal(const wl_global* global) {
+  const auto* iface = wl_global_get_interface(global);
+  if (!iface || !iface->name)
+    return false;
+  const std::string_view name{iface->name};
+  return name == "zxdg_decoration_manager_v1" || name == "org_kde_kwin_server_decoration_manager";
+}
+
+static bool decorationGlobalFilter(const wl_client* client, const wl_global* global, void*) {
+  if (isDecorationGlobal(global) && clientLooksCsd(client))
+    return false;
+  return true;
+}
+
 static void hideDecorationGlobals() {
-  if (PROTO::xdgDecoration)
-    PROTO::xdgDecoration->removeGlobal();
-  if (PROTO::serverDecorationKDE)
-    PROTO::serverDecorationKDE->removeGlobal();
+  if (g_pCompositor && g_pCompositor->m_wlDisplay)
+    wl_display_set_global_filter(g_pCompositor->m_wlDisplay, decorationGlobalFilter, nullptr);
+}
+
+static PHLWINDOW windowForToplevel(wl_resource* topRes) {
+  if (!topRes)
+    return nullptr;
+  for (auto& w : Desktop::windowState()->windows()) {
+    if (!w)
+      continue;
+    auto xdg = w->m_xdgSurface.lock();
+    if (!xdg)
+      continue;
+    auto top = xdg->m_toplevel.lock();
+    if (top && top->m_resource && top->m_resource->resource() == topRes)
+      return w;
+  }
+  return nullptr;
 }
 
 static void hookDecorationManagers() {
@@ -485,8 +561,15 @@ static void hookDecorationManagers() {
       continue;
     mgr->setGetToplevelDecoration([](CZxdgDecorationManagerV1* pMgr, uint32_t id, wl_resource* toplevel) {
       PROTO::xdgDecoration->onGetDecoration(pMgr, id, toplevel);
-      if (auto* deco = decoForToplevel(toplevel))
-        stickDecorationMode(deco, ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE);
+      auto* deco = decoForToplevel(toplevel);
+      if (!deco)
+        return;
+      auto w = windowForToplevel(toplevel);
+      // CSD clients that still bind must get CLIENT_SIDE first. SSD clients
+      // (foot) must keep SERVER_SIDE so they do not invent a second chrome.
+      const auto mode = (w && isCsdWindow(w)) ? ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE
+                                              : ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE;
+      stickDecorationMode(deco, mode);
     });
   }
 }
@@ -537,25 +620,18 @@ static void advertiseWmCapabilities(PHLWINDOW w) {
 // MAXIMIZED so SSD clients hide CSD. Chrome caches that first configure and
 // then paints the fused tab strip with only ×. A second wm_capabilities
 // without xdg_surface.configure is ignored. Strip the lie and configure.
-static void stripTiledAndMaximized(SP<CXDGToplevelResource> top) {
+static void stripTiledAndMaximized(SP<CXDGToplevelResource> top, bool alsoMaximized) {
   if (!top)
     return;
   auto& states = top->m_pendingApply.states;
   states.erase(std::remove_if(states.begin(), states.end(),
-                              [](const auto& s) {
+                              [alsoMaximized](const auto& s) {
                                 const auto v = static_cast<uint32_t>(s);
                                 return v == XDG_TOPLEVEL_STATE_TILED_LEFT || v == XDG_TOPLEVEL_STATE_TILED_RIGHT ||
                                        v == XDG_TOPLEVEL_STATE_TILED_TOP || v == XDG_TOPLEVEL_STATE_TILED_BOTTOM ||
-                                       v == XDG_TOPLEVEL_STATE_MAXIMIZED;
+                                       (alsoMaximized && v == XDG_TOPLEVEL_STATE_MAXIMIZED);
                               }),
                states.end());
-}
-
-static bool userMaximizedCsd(PHLWINDOW w) {
-  if (!w)
-    return false;
-  const auto key = reinterpret_cast<uintptr_t>(w.get());
-  return g_savedFloat.contains(key) && isMaximizedNow(w);
 }
 
 static void restoreCsdCaption(PHLWINDOW w) {
@@ -570,11 +646,13 @@ static void restoreCsdCaption(PHLWINDOW w) {
   auto top = xdg->m_toplevel.lock();
   if (!top)
     return;
-  if (!userMaximizedCsd(w)) {
-    stripTiledAndMaximized(top);
-    top->setMaximized(false);
-    w->m_suppressNextMaximize = true;
-  }
+  // Keep MAXIMIZED in the configure when the compositor actually maximized.
+  // Stripping it (and arming suppress) on every float watch ate the user's
+  // CSD □ click: Hyprland grew the surface to 1920×1032, Chrome kept painting
+  // a 1200px frame in the corner, and the next set_maximized was ignored.
+  const bool actuallyMaxed = isMaximizedNow(w) || isCoveringFullscreen(w);
+  stripTiledAndMaximized(top, !actuallyMaxed);
+  top->setMaximized(actuallyMaxed);
   xdg->scheduleConfigure();
 }
 

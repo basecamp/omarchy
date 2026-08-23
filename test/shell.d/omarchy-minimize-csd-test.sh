@@ -28,6 +28,13 @@ grep -Fq 'saveNormalFloat' "$cpp" \
   || fail "CSD maximize must remember the on-screen float before Hyprland eats it"
 grep -Fq 'hyprbars:no_bar' "$cpp" || fail "fake maximized is cleared only for hyprbars:no_bar CSD clients"
 grep -Fq 'm_suppressNextMaximize' "$cpp" || fail "clearing fake maximized must not be echoed back as a maximize request"
+if grep -A25 '^static void restoreCsdCaption(PHLWINDOW w) {$' "$cpp" | grep -q 'm_suppressNextMaximize'; then
+  fail "restoreCsdCaption must not arm suppress on every float watch; that eats the user's CSD maximize click"
+fi
+if grep -A20 '^static void syncCsdMaximizedState(PHLWINDOW w) {$' "$cpp" | grep -q 'm_suppressNextMaximize'; then
+  fail "syncCsdMaximizedState must not arm suppress on an unmaxed CSD window"
+fi
+grep -Fq 'actuallyMaxed' "$cpp" || fail "CSD configure must keep MAXIMIZED when the compositor actually maximized"
 grep -Fq 'doLater' "$cpp" || fail "CSD min/max must apply on the event-loop idle, not inside the Wayland request"
 grep -Fq 'finishAnimation' "$cpp" || fail "CSD maximize must stop the popin animation before the modeset"
 grep -Fq 'm_isMapped' "$cpp" || fail "CSD maximize must not run setFullscreenMode before the window is mapped"
@@ -44,9 +51,18 @@ grep -Fq 'setGetToplevelDecoration' "$cpp" \
 grep -Fq 'onGetDecoration' "$cpp" \
   || fail "decoration hook must still run Hyprland's onGetDecoration"
 grep -Fq 'hideDecorationGlobals' "$cpp" \
-  || fail "xdg-decoration must be hidden so Chrome ShouldUseCustomFrame draws min/max/close"
-grep -Fq 'removeGlobal' "$cpp" \
-  || fail "decoration globals must be removed, not answered SERVER_SIDE"
+  || fail "decoration globals must be hidden from CSD clients so Chrome ShouldUseCustomFrame draws min/max/close"
+grep -Fq 'wl_display_set_global_filter' "$cpp" \
+  || fail "decoration globals must be filtered per client; removeGlobal hides them from foot and kills hyprbars"
+grep -Fq 'zxdg_decoration_manager_v1' "$cpp" \
+  || fail "CSD filter must match the xdg-decoration global by interface name"
+grep -Fq 'org_kde_kwin_server_decoration_manager' "$cpp" \
+  || fail "CSD filter must also hide the KDE server-decoration global"
+if grep -Fq 'PROTO::xdgDecoration->removeGlobal()' "$cpp"; then
+  fail "removeGlobal hides decoration from foot; SSD clients need the manager"
+fi
+grep -Fq 'ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE' "$cpp" \
+  || fail "SSD clients that still bind must be told SERVER_SIDE so they do not invent CSD"
 grep -Fq ':minimize,maximize,close' "$ROOT/install/user/first-run/gnome-theme.sh" \
   || fail "first-run must ship min/max/close; appmenu:close deletes Chrome CSD buttons"
 if grep -E '^gsettings set .*appmenu:close' "$ROOT/install/user/first-run/gnome-theme.sh"; then
