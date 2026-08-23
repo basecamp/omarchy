@@ -1,11 +1,13 @@
 #!/bin/bash
 
+set -euo pipefail
+
 # A theme installed with `omarchy theme install` is a stranger's git repo, so
 # omarchy-theme-set drops the files that would run its code -- Lua, terminal
 # configs, vscode.json -- and keeps the colour. A theme the user wrote themselves
 # is not filtered at all.
 
-source "$(dirname "$0")/base-test.sh"
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
@@ -21,7 +23,7 @@ set_theme() {
   HOME="$home" OMARCHY_PATH="$ROOT" PATH="$ROOT/bin:$PATH" \
     OMARCHY_THEME_HEADLESS=1 OMARCHY_THEME_SKIP_BACKGROUND=1 \
     XDG_RUNTIME_DIR="$test_tmp" \
-    bash "$ROOT/bin/omarchy-theme-set" "$1" 2>"$test_tmp/stderr"
+    bash "$ROOT/bin/omarchy-theme-set" "$1" 2>"$test_tmp/stderr" || return $?
 }
 
 staged() {
@@ -37,7 +39,7 @@ assert_not_staged() {
 }
 
 assert_no_marker() {
-  grep -q "$marker" "$(staged "$1")" && fail "$2"
+  ! grep -q "$marker" "$(staged "$1")" || fail "$2"
 }
 
 write_colors() {
@@ -113,7 +115,7 @@ assert_staged shell.toml "shell.toml is staged"
 grep -q '000000' "$(staged shell.toml)" || fail "an installed theme's shell.toml colours are kept"
 
 grep -q 'hyprland.lua' "$test_tmp/stderr" || fail "omarchy-theme-set names the files it ignored"
-grep -q 'README.md' "$test_tmp/stderr" && fail "omarchy-theme-set does not report a theme's documentation"
+! grep -q 'README.md' "$test_tmp/stderr" || fail "omarchy-theme-set does not report a theme's documentation"
 
 pass "an installed theme keeps its colour and loses everything that runs code"
 
@@ -194,7 +196,9 @@ pass "a symlinked working copy is the user's own"
 
 # The name is joined into paths that get removed and copied into.
 for name in .. . "../../evil"; do
-  set_theme "$name" >/dev/null && fail "omarchy-theme-set rejects the theme name '$name'"
+  if set_theme "$name" >/dev/null; then
+    fail "omarchy-theme-set rejects the theme name '$name'"
+  fi
 done
 
 pass "a theme name cannot climb out of the theme directories"
@@ -210,7 +214,10 @@ for tpl in "$ROOT"/default/themed/*.tpl; do
   classified=""
 
   for name in "${denied[@]}" "${colour_only[@]}"; do
-    [[ $generated == "$name" ]] && classified=1 && break
+    if [[ $generated == "$name" ]]; then
+      classified=1
+      break
+    fi
   done
 
   [[ -n $classified ]] ||
