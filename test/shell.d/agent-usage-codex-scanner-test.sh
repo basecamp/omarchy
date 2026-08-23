@@ -27,6 +27,19 @@ while read -r request; do
       jq -cn --argjson id "$id" '{id: $id, result: {account: {}}}'
       ;;
     account/rateLimits/read)
+      if [[ -n "$CODEX_TEST_LEGACY_RATE_LIMITS" ]]; then
+        jq -cn --argjson id "$id" '{
+          id: $id,
+          result: {
+            rateLimits: {
+              planType: "legacy",
+              primary: {usedPercent: 90, windowDurationMins: 300}
+            }
+          }
+        }'
+        continue
+      fi
+
       jq -cn --argjson id "$id" '{
         id: $id,
         result: {
@@ -71,6 +84,13 @@ pass "Codex collector does not double-count cache or reasoning tokens"
 [[ $(jq -c '{id, tierLabel, limits}' <<<"$result") == '{"id":"codex","tierLabel":"pro","limits":[{"label":"5h window","percent":0.2,"resetsAt":""},{"label":"Weekly (7-day)","percent":0.3,"resetsAt":""}]}' ]] ||
   fail "Codex collector reads the Codex-specific rate-limit bucket" "$result"
 pass "Codex collector uses the current app-server arguments and Codex-specific limits"
+
+legacy_result=$(HOME="$TEST_HOME" CODEX_HOME="$TEST_HOME/.codex" XDG_DATA_HOME="$TEST_HOME/.local/share" \
+  CODEX_TEST_LEGACY_RATE_LIMITS=1 PATH="$TEST_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
+
+[[ $(jq -c '{tierLabel, limits}' <<<"$legacy_result") == '{"tierLabel":"legacy","limits":[{"label":"5h window","percent":0.9,"resetsAt":""}]}' ]] ||
+  fail "Codex collector reads the legacy single-bucket rate-limit response" "$legacy_result"
+pass "Codex collector supports legacy single-bucket rate limits"
 
 # Pi and omp can both spend a Codex subscription without creating native
 # Codex sessions. Their compatible JSONL transcripts must be included.
