@@ -6,12 +6,15 @@ Omarchy themes live under `themes/<name>/` in the source tree (installed at
 `colors.toml`; Omarchy generates the active theme files from
 `default/themed/*.tpl` when `omarchy-theme-set <name>` runs.
 
-Beyond `colors.toml` and hand-written config overrides, a theme can ship
-`backgrounds/` (users overlay their own via
+Beyond `colors.toml` and hand-written config overrides, a first-party theme can
+ship `backgrounds/` (users overlay their own via
 `~/.config/omarchy/backgrounds/<name>/`; the active image is the
 `~/.local/state/omarchy/current/background` symlink), `preview.png` and
 `preview-unlock.png` for the theme switcher, `icons.theme`, `keyboard.rgb`,
 `unlock.png`, and a `light.mode` marker file.
+
+A theme under `~/.config/omarchy/themes/` is held to a much shorter list; see
+[What an extra theme may ship](#what-an-extra-theme-may-ship).
 
 ## Theme activation flow
 
@@ -19,7 +22,8 @@ Beyond `colors.toml` and hand-written config overrides, a theme can ship
 `~/.local/state/omarchy/current/next-theme`:
 
 1. Copy the first-party theme from `themes/<name>/`.
-2. Overlay any user theme files from `~/.config/omarchy/themes/<name>/`.
+2. Overlay the allowed files from `~/.config/omarchy/themes/<name>/`, naming
+   anything it dropped on stderr.
 3. If needed, generate `colors.toml` from `alacritty.toml`.
 4. Run `omarchy-theme-set-templates` to render templates into the staging
    theme.
@@ -42,6 +46,47 @@ and the rest of the `post_theme_commands` list in `bin/omarchy-theme-set`.
 Making a new app follow theme changes means adding its restart/retint command
 to that list. Runs serialize on a `flock`, so scripted theme changes queue
 instead of racing.
+
+## What an extra theme may ship
+
+`themes/<name>/` in this repo is Omarchy's own code and is trusted. A theme
+under `~/.config/omarchy/themes/<name>/` is not: `omarchy theme install <url>`
+clones a stranger's git repo straight into it, and nothing on disk distinguishes
+that from a theme the user wrote. So `omarchy-theme-set` stages only:
+
+- `colors.toml`
+- `light.mode`
+- `preview.png`, `preview-unlock.png`, `unlock.png`
+- `backgrounds/` — files with an image extension (`jpg`, `jpeg`, `png`, `gif`,
+  `bmp`, `webp`), matching what the background chooser will pick from
+
+Symlinks are never followed; in an untrusted theme they point wherever the theme
+author chose. Everything else is ignored and named on stderr, and the themed
+file with that name is generated from `default/themed/*.tpl` instead.
+
+The list is short because most themed files are code. A theme's `hyprland.lua`
+and `gum_env.lua` are Lua that Hyprland `require`s at login, `neovim.lua` is Lua
+the editor runs at startup, and `alacritty.toml`, `kitty.conf`, `foot.ini` and
+`ghostty.conf` each name the program the terminal launches. Staging any of them
+would make installing a theme the same act as running its code.
+
+A theme predating `colors.toml` is not left without a palette: its
+`alacritty.toml` is read through `omarchy-theme-colors-from-alacritty` into a
+scratch directory and only the resulting `colors.toml` is staged, so the colors
+survive and the terminal config does not.
+
+The restriction lives in `omarchy-theme-set` rather than in
+`omarchy-theme-install` on purpose. Filtering at staging also covers themes
+installed before the rule existed, themes copied in by hand, and files a theme
+gains later through `omarchy theme update`.
+
+Per-theme overrides of a generated file are not available to user themes as a
+result. Override the template instead: `~/.config/omarchy/themed/<file>.tpl`
+takes priority over the built-in template and applies to every theme. It does
+not beat a first-party theme's hand-written file, which is copied into the
+staging directory before any template runs — so `icons.theme`, which every
+first-party theme ships, cannot be overridden this way and is no longer settable
+by a user theme at all.
 
 ## `colors.toml`
 
@@ -352,6 +397,8 @@ local active_border_color = { colors = { "rgba(33ccffee)", "rgba(00ff99ee)" }, a
 ## Adding or overriding theme files
 
 - Add palette values to `themes/<name>/colors.toml`.
+- Hand-written overrides work in `themes/<name>/` only. A user theme that ships
+  one is ignored; see [What an extra theme may ship](#what-an-extra-theme-may-ship).
 - Prefer generated files when the theme can be expressed with templates.
 - Add a hand-written file in `themes/<name>/` only when that theme needs to
   override the generated output entirely.

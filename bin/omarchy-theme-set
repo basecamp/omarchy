@@ -17,6 +17,16 @@ THEME_SET_LOCK="${XDG_RUNTIME_DIR:-/tmp}/omarchy-theme-set.lock"
 USER_THEMES_PATH="$HOME/.config/omarchy/themes"
 OMARCHY_THEMES_PATH="$OMARCHY_PATH/themes"
 
+# A theme under ~/.config/omarchy/themes arrived from a stranger's git repo, so
+# it may contribute a palette, its images, and the light-mode marker, and
+# nothing else. Every other themed file is generated from Omarchy's own
+# templates: a theme's hyprland.lua and neovim.lua are Lua that the compositor
+# and the editor execute at startup, and a terminal config names the program the
+# terminal launches. Installing a theme would otherwise mean running its code.
+USER_THEME_FILES=(colors.toml light.mode preview.png preview-unlock.png unlock.png)
+USER_THEME_IMAGES=(jpg jpeg png gif bmp webp)
+IGNORED_USER_THEME_FILES=()
+
 run_parallel() {
   local pid
   local pids=()
@@ -122,10 +132,111 @@ set_theme_background() {
   ln -nsf "$new_background" "$CURRENT_BACKGROUND_LINK"
 }
 
+is_theme_image() {
+  local extension="${1##*.}"
+  local allowed
+
+  for allowed in "${USER_THEME_IMAGES[@]}"; do
+    [[ ${extension,,} == "$allowed" ]] && return 0
+  done
+
+  return 1
+}
+
+is_allowed_user_theme_file() {
+  local name="$1"
+  local allowed
+
+  for allowed in "${USER_THEME_FILES[@]}"; do
+    [[ $name == "$allowed" ]] && return 0
+  done
+
+  return 1
+}
+
+# Themes older than colors.toml still get their palette, but their
+# alacritty.toml never reaches the staged theme: an Alacritty config names the
+# program the terminal launches.
+stage_user_colors_from_alacritty() {
+  local source="$1"
+  local scratch
+
+  if [[ -f $NEXT_THEME_PATH/colors.toml ]]; then
+    return
+  fi
+
+  if [[ ! -f $source/alacritty.toml || -L $source/alacritty.toml ]]; then
+    return
+  fi
+
+  scratch=$(mktemp -d)
+  cp "$source/alacritty.toml" "$scratch/alacritty.toml"
+  omarchy-theme-colors-from-alacritty "$scratch"
+
+  if [[ -f $scratch/colors.toml ]]; then
+    cp "$scratch/colors.toml" "$NEXT_THEME_PATH/colors.toml"
+  fi
+
+  rm -rf "$scratch"
+}
+
+stage_user_backgrounds() {
+  local source="$1"
+  local entry name
+
+  for entry in "$source"/*; do
+    [[ -f $entry && ! -L $entry ]] || continue
+    name=${entry##*/}
+    is_theme_image "$name" || continue
+
+    mkdir -p "$NEXT_THEME_PATH/backgrounds"
+    cp "$entry" "$NEXT_THEME_PATH/backgrounds/$name"
+  done
+}
+
+# Symlinks are never followed: in an untrusted theme they point wherever the
+# theme author chose, which is how a colors.toml becomes a copy of any file the
+# session can read.
+stage_user_theme() {
+  local source="$1"
+  local entry name
+
+  [[ -d $source ]] || return 0
+
+  for entry in "$source"/*; do
+    name=${entry##*/}
+
+    if [[ $name == "backgrounds" && -d $entry && ! -L $entry ]]; then
+      stage_user_backgrounds "$entry"
+    elif [[ -f $entry && ! -L $entry ]] && is_allowed_user_theme_file "$name"; then
+      cp "$entry" "$NEXT_THEME_PATH/$name"
+    elif [[ -e $entry ]]; then
+      case "${name,,}" in
+        readme* | license* | changelog* | *.md | *.txt) ;;
+        *) IGNORED_USER_THEME_FILES+=("$name") ;;
+      esac
+    fi
+  done
+
+  stage_user_colors_from_alacritty "$source"
+}
+
+report_ignored_user_theme_files() {
+  (( ${#IGNORED_USER_THEME_FILES[@]} > 0 )) || return 0
+
+  echo "Ignored in $USER_THEMES_PATH/$THEME_NAME: ${IGNORED_USER_THEME_FILES[*]}" >&2
+  echo "An extra theme may only supply colors.toml, backgrounds, previews, and light.mode." >&2
+}
+
 THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
 THEME_HEADLESS=0
 if [[ ${OMARCHY_THEME_HEADLESS:-} == "1" || ${OMARCHY_THEME_OFFLINE:-} == "1" ]]; then
   THEME_HEADLESS=1
+fi
+
+if [[ -z $THEME_NAME || $THEME_NAME == "." || $THEME_NAME == ".." || $THEME_NAME == */* ]]; then
+  echo "Invalid theme name: $1"
+  exit 1
 fi
 
 if [[ ! -d $OMARCHY_THEMES_PATH/$THEME_NAME ]] && [[ ! -d $USER_THEMES_PATH/$THEME_NAME ]]; then
@@ -143,9 +254,10 @@ flock 9
 rm -rf "$NEXT_THEME_PATH"
 mkdir -p "$NEXT_THEME_PATH"
 
-# Copy official theme first, then overlay user customizations on top
+# Copy official theme first, then overlay the allowed user files on top
 cp -r "$OMARCHY_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
-cp -r "$USER_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
+stage_user_theme "$USER_THEMES_PATH/$THEME_NAME"
+report_ignored_user_theme_files
 
 # Generate colors.toml from alacritty.toml if theme is missing colors.toml
 if [[ ! -f $NEXT_THEME_PATH/colors.toml && -f $NEXT_THEME_PATH/alacritty.toml ]]; then

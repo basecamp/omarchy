@@ -6,13 +6,21 @@ The main file you have to tweak is `colors.toml`. That defines the color set tha
 
 You can also use the included Aether application to create a new theme using a lovely GUI interface to play with colors and search for backgrounds. Just start it via the apps menu on `Super + Alt + Space`.
 
+### What a theme can contain
+
+A theme supplies `colors.toml`, the images in `backgrounds/`, `preview.png`, `unlock.png`, `preview-unlock.png`, and the `light.mode` marker. That's the whole list. Every other file Omarchy themes — Hyprland, Neovim, the terminals, btop, Chromium, Helix, VSCode, Obsidian, and the shell — is generated on your own machine from that palette, and a copy of one shipped inside a theme is ignored when the theme is applied.
+
+That's deliberate, because several of those files are code rather than colors. A theme's `hyprland.lua` is Lua your compositor runs at login, and a terminal config names the program your terminal starts. Installing a theme should change what your desktop looks like, never what it runs — and since nothing on disk distinguishes a theme you wrote from one you installed from a stranger's repo, the rule is the same for both.
+
+To change how Omarchy themes an app, write a template instead — see [Theming apps Omarchy doesn't cover](#theming-apps-omarchy-doesnt-cover) below. Templates live in your own config, apply to every theme, and are not something a theme can install for you.
+
 ### Light mode
 
 If you're making a light mode theme, set `mode = "light"` at the top of your `colors.toml`. Then it'll automatically be paired with light mode for all the apps. (The old way of dropping an empty file called `light.mode` in the root of your theme still works too.)
 
 ### Icon colors
 
-If you'd like to color-match the file manager icons to your theme, add a file called `icons.theme` with the name of the icon set you want to use. By default, the options are: `Yaru Yaru-blue Yaru-dark Yaru-magenta Yaru-olive Yaru-prussiangreen Yaru-purple Yaru-red Yaru-sage Yaru-wartybrown Yaru-yellow`.
+Omarchy's own themes each name a matching icon set in an `icons.theme` file. A theme you write or install can't set one — it's not on the list above — so it gets `Yaru-blue`. To pick another, run `gsettings set org.gnome.desktop.interface icon-theme Yaru-red`; the options are `Yaru Yaru-blue Yaru-dark Yaru-magenta Yaru-olive Yaru-prussiangreen Yaru-purple Yaru-red Yaru-sage Yaru-wartybrown Yaru-yellow`. Switching to one of Omarchy's own themes sets it back to that theme's choice.
 
 ### Unlock image
 
