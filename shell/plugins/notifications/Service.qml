@@ -361,10 +361,11 @@ Item {
     if (index < 0 || index >= popupModel.count) return
     var entry = popupModel.get(index)
 
-    // Preferred path: an argv vector run without a shell, so data an attacker
-    // controls (a video title, a filename) is only ever an argument and can
-    // never be reparsed as a command. Detached so it outlives the shell, which
-    // the installer toasts depend on: they restart the shell as their first act.
+    // Preferred path: an argv vector whose arguments are passed as bash
+    // positional parameters (never interpolated into a command), so data an
+    // attacker controls (a video title, a filename) is only ever an argument and
+    // can never be reparsed as a command. Detached so it outlives the shell,
+    // which the installer toasts depend on: they restart it as their first act.
     var argv = NotificationLogic.parseExecArgv(entry ? entry.execArgv : "")
     if (argv) {
       Util.execArgv(argv)

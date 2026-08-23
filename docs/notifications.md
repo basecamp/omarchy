@@ -94,12 +94,16 @@ an action and just expect click-to-jump.
 ### Click commands must be argv, not shell strings
 
 Prefer `--exec-arg` for every click command. Each `--exec-arg` contributes one
-literal argument; the shell runs the resulting vector with
-`Quickshell.execDetached(argv)` and **no shell**, so a value carrying data an
-attacker controls — a downloaded video's title, a received filename, a crashed
-process's name — is only ever a single argument and can never be reparsed as a
-command. This is the parameterized form: pass untrusted data as its own
-`--exec-arg` rather than quoting it into a string.
+literal argument; the shell runs the resulting vector through
+`Util.execArgv`, which invokes `bash -lc 'exec "$@"'` with the arguments as
+**positional parameters** — never interpolated into the script text. bash
+expands `"$@"` without re-tokenizing or re-evaluating it, so a value carrying
+data an attacker controls — a downloaded video's title, a received filename, a
+crashed process's name — is only ever a single argument and can never be
+reparsed as a command. The login shell keeps the PATH and session environment
+that GUI click targets (the screenshot editor, mpv, xdg-open) expect. This is
+the parameterized form: pass untrusted data as its own `--exec-arg` rather than
+quoting it into a string.
 
 `--exec` is the legacy free-form variant, run through `bash -lc`. It is safe
 only when the caller shell-quoted every interpolated value perfectly — the same

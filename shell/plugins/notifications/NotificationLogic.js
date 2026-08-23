@@ -75,7 +75,8 @@ function execFromHints(hints) {
 
 // The click action as an argv vector, sent by omarchy-notification-send
 // --exec-arg and carried as a JSON array string in the omarchy-exec-argv hint.
-// The shell runs it with Quickshell.execDetached (no shell), so a value that an
+// The shell runs it via Util.execArgv, which passes the arguments as bash
+// positional parameters rather than interpolating them, so a value that an
 // attacker controls — a video title, a filename, a URL — is only ever one
 // argument and can never be reparsed as a command. This is the parameterized
 // form: the "prepared statement" to execFromHints's string concatenation.
