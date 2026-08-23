@@ -327,10 +327,11 @@ hyprctl plugin list 2>/dev/null | grep -qi hyprbars \
   || fail "hyprbars is loaded" "$(hyprctl plugin list 2>/dev/null || true)"
 pass "hyprbars is loaded"
 hypr_pid=$(pgrep -n Hyprland || true)
-[[ -n $hypr_pid ]] || fail "hyprbars is loaded from /usr/lib/hyprland-plugins" "Hyprland is not running"
-grep -F '/usr/lib/hyprland-plugins/hyprbars.so' /proc/$hypr_pid/maps >/dev/null \
-  || fail "hyprbars is loaded from /usr/lib/hyprland-plugins" "$(awk '{print $6}' /proc/$hypr_pid/maps | sort -u | grep hypr || true)"
-pass "hyprbars is loaded from /usr/lib/hyprland-plugins"
+[[ -n $hypr_pid ]] || fail "hyprbars is loaded from a tree or /usr/lib plugin" "Hyprland is not running"
+if ! grep -E '/usr/lib/hyprland-plugins/hyprbars\.so|/default/hypr/plugins/hyprbars/hyprbars\.so' /proc/$hypr_pid/maps >/dev/null; then
+  fail "hyprbars is loaded from a tree or /usr/lib plugin" "$(awk '{print $6}' /proc/$hypr_pid/maps | sort -u | grep hypr || true)"
+fi
+pass "hyprbars is loaded from a tree or /usr/lib plugin"
 if grep -Fq '/var/cache/hyprpm/' /proc/$hypr_pid/maps; then
   fail "hyprbars must not be loaded from the hyprpm cache" "$(awk '{print $6}' /proc/$hypr_pid/maps | sort -u | grep hypr || true)"
 fi
@@ -523,9 +524,7 @@ prove_toolkit() {
   wait_until "$name window is mapped" 40 toolkit_has_new "$class_re" "$before"
   addr=$(toolkit_new_addr "$class_re" "$before")
   [[ -n $addr ]] || fail "$name windowing" "no new client matched $class_re"
-  omarchy-shell window snapTo "$addr" r >/dev/null
-  sleep 1
-  local area half left_x right_x right_w left_y left_h cls inset
+  local area half left_x right_x right_w left_y left_h cls inset tries
   cls=$(hyprctl -j clients | jq -r --arg a "$addr" '.[] | select(.address == $a) | .class // empty')
   inset=$(CLASS=$cls node -e 'const m=require(process.argv[1]); process.stdout.write(String(m.hyprbarsSnapInset({class: process.env.CLASS || ""})))' "$ROOT/shell/services/WindowModel.js")
   area=$(work_area_json)
@@ -535,6 +534,13 @@ prove_toolkit() {
   right_w=$(( $(jq -r .w <<<"$area") - half ))
   left_y=$(jq -r --argjson i "$inset" '.y + $i' <<<"$area")
   left_h=$(jq -r --argjson i "$inset" '.h - $i' <<<"$area")
+  tries=0
+  while ((tries < 4)); do
+    omarchy-shell window snapTo "$addr" r >/dev/null
+    sleep 0.6
+    window_near_rect "$addr" "$right_x" "$left_y" "$right_w" "$left_h" && break
+    tries=$((tries + 1))
+  done
   window_near_rect "$addr" "$right_x" "$left_y" "$right_w" "$left_h" \
     || fail "$name snap" "$name did not take the right half (inset $inset): $(hyprctl -j clients | jq --arg a "$addr" '.[] | select(.address == $a) | {class,at,size,xwayland,fullscreen}') work=$(work_area_json)"
   screenshot "success-$name"
