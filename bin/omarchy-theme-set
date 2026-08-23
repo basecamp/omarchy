@@ -234,7 +234,7 @@ if [[ ${OMARCHY_THEME_HEADLESS:-} == "1" || ${OMARCHY_THEME_OFFLINE:-} == "1" ]]
   THEME_HEADLESS=1
 fi
 
-if [[ -z $THEME_NAME || $THEME_NAME == "." || $THEME_NAME == ".." || $THEME_NAME == */* ]]; then
+if [[ -z $THEME_NAME || $THEME_NAME == .* || $THEME_NAME == */* ]]; then
   echo "Invalid theme name: $1"
   exit 1
 fi
