@@ -25,6 +25,39 @@ valid_url() {
   [[ $1 =~ ^https?:// ]]
 }
 
+# A printed path is only usable if it is a regular file inside DOWNLOAD_DIR.
+# Forged records (leading-dash mpv options, paths with control chars, or
+# anything that escaped the download directory) must not reach --exec.
+resolve_download_file() {
+  local candidate=$1 file_real dir_real
+
+  [[ -n $candidate ]] || return 1
+  [[ $candidate != *$'\n'* && $candidate != *$'\r'* && $candidate != *$'\t'* ]] || return 1
+  [[ -f $candidate ]] || return 1
+
+  file_real=$(realpath -e -- "$candidate") || return 1
+  dir_real=$(realpath -e -- "$DOWNLOAD_DIR") || return 1
+  [[ $file_real == "$dir_real"/* ]] || return 1
+
+  printf '%s' "$file_real"
+}
+
+title_from_file() {
+  local name=${1##*/}
+  name=${name%.*}
+  name=${name//[$'\n\r\t']/}
+  if [[ -z $name || $name == -* ]]; then
+    printf '%s' "Video"
+  else
+    printf '%s' "$name"
+  fi
+}
+
+# `--` keeps a path that starts with `-` from being parsed as an mpv option.
+playback_command() {
+  printf 'mpv -- %q' "$1"
+}
+
 # Drive the Quickshell OSD — a single overlay that updates in place (like the
 # volume/brightness bar), so download progress never stacks like notifications.
 osd_progress() {
@@ -41,7 +74,7 @@ download_url() {
   mkdir -p "$DOWNLOAD_DIR"
 
   # Don't show anything until yt-dlp confirms there's actually a video to grab.
-  if ! yt-dlp --no-playlist --simulate --quiet --no-warnings "$url" >/dev/null 2>&1; then
+  if ! yt-dlp --no-playlist --simulate --quiet --no-warnings --no-exec -- "$url" >/dev/null 2>&1; then
     omarchy-notification-send -u critical -g 󰅖 "No video found for download" "$url"
     exit 0
   fi
@@ -49,8 +82,9 @@ download_url() {
   osd_progress 0
 
   # Stream the download: OMARCHY_PROG carries the percent (drives the OSD),
-  # OMARCHY_FILE (printed only after a successful move) carries title + path.
-  local line rest pct intpct last="" er nowms lastms=0 title="" filepath=""
+  # OMARCHY_FILE (printed only after a successful move) carries the path.
+  # Do not print the title — page metadata can contain newlines and forge records.
+  local line pct intpct last="" er nowms lastms=0 title="" filepath="" resolved
   while IFS= read -r line; do
     case $line in
     OMARCHY_PROG*)
@@ -67,17 +101,17 @@ download_url() {
       osd_progress "$intpct"
       ;;
     OMARCHY_FILE*)
-      rest=${line#OMARCHY_FILE$'\t'}
-      title=${rest%%$'\t'*}
-      filepath=${rest#*$'\t'}
+      resolved=$(resolve_download_file "${line#OMARCHY_FILE$'\t'}") || continue
+      filepath=$resolved
+      title=$(title_from_file "$filepath")
       ;;
     esac
   done < <(PYTHONUNBUFFERED=1 yt-dlp --no-playlist --restrict-filenames --no-simulate \
-    --quiet --no-warnings --progress --newline \
+    --quiet --no-warnings --no-exec --progress --newline \
     --progress-template $'download:OMARCHY_PROG\t%(progress._percent_str)s' \
     --paths "$DOWNLOAD_DIR" -o '%(title)s [%(id)s].%(ext)s' \
-    --print $'after_move:OMARCHY_FILE\t%(title)s\t%(filepath)s' \
-    "$url" 2>&1)
+    --print $'after_move:OMARCHY_FILE\t%(filepath)s' \
+    -- "$url" 2>&1)
 
   osd_close
 
@@ -96,7 +130,7 @@ download_url() {
     # toast would exit before the thumbnail cleanup below is ever scheduled.
     omarchy-notification-send -g 󰄬 "Download complete" "$title" \
       -t 10000 --image "${preview:-$filepath}" \
-      --exec "$(printf 'mpv %q' "$filepath")" || true
+      --exec "$(playback_command "$filepath")" || true
 
     # The shell loads the thumbnail into memory when the toast appears and never
     # re-reads the file, so the preview only has to outlive that load, not the

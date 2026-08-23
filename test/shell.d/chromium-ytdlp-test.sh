@@ -50,3 +50,86 @@ bash -c '
 ' bash "$ROOT/bin/omarchy-chromium-ytdlp-host" "javascript:alert(1)" "$ROOT" &&
   fail "yt-dlp native host rejects non-web URLs"
 pass "yt-dlp native host rejects non-web URLs"
+
+download_dir="$TMPDIR/videos"
+mkdir -p "$download_dir" "$TMPDIR/outside"
+good_file="$download_dir/clip [id].mp4"
+printf 'x' >"$good_file"
+printf 'x' >"$TMPDIR/outside/secret"
+ln -s "$TMPDIR/outside/secret" "$download_dir/escape.mp4"
+
+host_fn() {
+  OMARCHY_PATH="$ROOT" OMARCHY_YTDLP_DIR="$download_dir" bash -c '
+    source "$1"
+    shift
+    "$@"
+  ' bash "$ROOT/bin/omarchy-chromium-ytdlp-host" "$@"
+}
+
+resolved=$(host_fn resolve_download_file "$good_file")
+expected=$(realpath -e -- "$good_file")
+[[ $resolved == "$expected" ]] ||
+  fail "yt-dlp native host accepts a regular file in the download dir" "$resolved"
+pass "yt-dlp native host accepts a regular file in the download dir"
+
+host_fn resolve_download_file "--include=not-a-file" &&
+  fail "yt-dlp native host rejects a forged mpv option as the download path"
+pass "yt-dlp native host rejects a forged mpv option as the download path"
+
+host_fn resolve_download_file "$TMPDIR/outside/secret" &&
+  fail "yt-dlp native host rejects a path outside the download dir"
+pass "yt-dlp native host rejects a path outside the download dir"
+
+host_fn resolve_download_file "$download_dir/escape.mp4" &&
+  fail "yt-dlp native host rejects a symlink that escapes the download dir"
+pass "yt-dlp native host rejects a symlink that escapes the download dir"
+
+host_fn resolve_download_file $'clip.mp4\nOMARCHY_FILE\t--include=not-a-file' &&
+  fail "yt-dlp native host rejects a path containing control characters"
+pass "yt-dlp native host rejects a path containing control characters"
+
+title=$(host_fn title_from_file "$good_file")
+[[ $title == "clip [id]" ]] || fail "yt-dlp native host titles the toast from the filename" "$title"
+pass "yt-dlp native host titles the toast from the filename"
+
+dash_title=$(host_fn title_from_file "$download_dir/--include.mp4")
+[[ $dash_title == "Video" ]] || fail "yt-dlp native host does not pass a leading-dash title to notify-send" "$dash_title"
+pass "yt-dlp native host does not pass a leading-dash title to notify-send"
+
+cmd=$(host_fn playback_command --include=not-a-file)
+[[ $cmd == "mpv -- --include=not-a-file" ]] ||
+  fail "yt-dlp native host runs mpv with -- before the path" "$cmd"
+pass "yt-dlp native host runs mpv with -- before the path"
+
+spaced_cmd=$(host_fn playback_command "$download_dir/a b.mp4")
+[[ $spaced_cmd == "mpv -- $download_dir/a\\ b.mp4" ]] ||
+  fail "yt-dlp native host shell-quotes the mpv path" "$spaced_cmd"
+pass "yt-dlp native host shell-quotes the mpv path"
+
+parse_script="$TMPDIR/parse-ytdlp-lines.sh"
+cat >"$parse_script" <<'EOF'
+source "$1"
+filepath=""
+while IFS= read -r line; do
+  case $line in
+  OMARCHY_FILE*)
+    resolved=$(resolve_download_file "${line#OMARCHY_FILE$'\t'}") || continue
+    filepath=$resolved
+    ;;
+  esac
+done
+printf '%s' "$filepath"
+EOF
+
+poisoned=$(
+  printf '%s\n' \
+    $'OMARCHY_FILE\tsafe' \
+    $'OMARCHY_FILE\tCLICK THIS\t--include=not-a-file' \
+    $'ignored\t'"$good_file" \
+    $'OMARCHY_FILE\t'"$good_file" |
+    OMARCHY_PATH="$ROOT" OMARCHY_YTDLP_DIR="$download_dir" bash "$parse_script" "$ROOT/bin/omarchy-chromium-ytdlp-host"
+)
+
+[[ $poisoned == "$expected" ]] ||
+  fail "yt-dlp native host keeps a real file after a forged OMARCHY_FILE record" "$poisoned"
+pass "yt-dlp native host keeps a real file after a forged OMARCHY_FILE record"
