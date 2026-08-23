@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.pomodoro",
+  "name": "Pomodoro",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "license": "MIT",
+  "description": "Pomodoro focus timer with live countdown in the bar.",
+  "kinds": ["service", "bar-widget"],
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Pomodoro",
+    "description": "Focus timer with start/pause/reset controls and a live countdown in the bar.",
+    "category": "Productivity",
+    "allowMultiple": false,
+    "defaults": {
+      "focusMinutes": 25,
+      "shortBreakMinutes": 5,
+      "longBreakMinutes": 15,
+      "sessionsBeforeLongBreak": 4
+    },
+    "schema": [
+      { "key": "focusMinutes", "type": "integer", "label": "Focus duration (minutes)", "min": 1, "max": 120, "step": 1, "defaultValue": 25 },
+      { "key": "shortBreakMinutes", "type": "integer", "label": "Short break (minutes)", "min": 1, "max": 60, "step": 1, "defaultValue": 5 },
+      { "key": "longBreakMinutes", "type": "integer", "label": "Long break (minutes)", "min": 1, "max": 120, "step": 1, "defaultValue": 15 },
+      { "key": "sessionsBeforeLongBreak", "type": "integer", "label": "Sessions before long break", "min": 1, "max": 10, "step": 1, "defaultValue": 4 }
+    ]
+  }
+}
