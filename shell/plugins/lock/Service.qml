@@ -440,7 +440,7 @@ Item {
 
       // A lock taken while this was in flight is this shell's own.
       // Do not use `locked` here: stale sessionLock.secure would hide an orphan.
-      root.strandedLock = exitCode === 0 && !root.sessionLock.locked && !root.lockRequested
+      root.strandedLock = exitCode === 0 && !sessionLock.locked && !root.lockRequested
       if (root.strandedLock) root.recoverStrandedLock()
     }
   }

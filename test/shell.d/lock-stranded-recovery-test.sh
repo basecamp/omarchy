@@ -33,7 +33,7 @@ assert(
 // omarchy-restart-shell re-locks a fresh shell, possibly mid-question.
 // `locked` includes stale sessionLock.secure and would hide an orphan.
 assert(
-  /root\.strandedLock = exitCode === 0 && !root\.sessionLock\.locked && !root\.lockRequested/.test(serviceQml),
+  /root\.strandedLock = exitCode === 0 && !sessionLock\.locked && !root\.lockRequested/.test(serviceQml),
   'a lock this shell took while the check was in flight is not stranded'
 )
 

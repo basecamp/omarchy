@@ -13,6 +13,13 @@ assert(
   'plugin reload can tell when the lock service owns the session lock'
 )
 
+// `sessionLock` is an id inside Service.qml, so it is not reachable as a
+// property from here; the service exposes lockOwned for exactly this.
+assert(
+  /function lockServiceOwned\(\) \{[\s\S]*lockInst\.lockOwned/.test(shellQml),
+  'lock ownership is read through the property the service exposes'
+)
+
 assert(
   /function unloadPluginServices\(\) \{[\s\S]*existingId === "omarchy.lock" && lockServiceOwned\(\)/.test(shellQml),
   'plugin reload does not destroy omarchy.lock while it owns the session lock'

@@ -349,7 +349,7 @@ ShellRoot {
     var lockInst = _services["omarchy.lock"]
     if (!lockInst) return false
     if (lockInst.lockRequested) return true
-    return !!(lockInst.sessionLock && lockInst.sessionLock.locked)
+    return lockInst.lockOwned === true
   }
 
   function unloadPluginServices() {
