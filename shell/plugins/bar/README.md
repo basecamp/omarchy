@@ -46,7 +46,7 @@ Example `shell.json` (bar subtree only shown):
 }
 ```
 
-`centerAnchor` pins one center module to the exact horizontal/vertical center and flanks others around it. Set to an empty string to disable anchoring (the center list is centered as a group).
+`centerAnchor` pins one center module to the exact horizontal/vertical center and flanks others around it. A clone of the named widget is treated as that widget, so cloning the clock does not require rewriting `centerAnchor`. Set it to an empty string to disable anchoring (the center list is centered as a group).
 
 ## Module catalogue
 

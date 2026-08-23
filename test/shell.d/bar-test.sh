@@ -343,6 +343,50 @@ assertEqual(bar.entryIndex(entries, 'b'), 2, 'bar finds entry indexes')
 assertDeepEqual(bar.entriesBefore(entries, 'b').map(bar.entryId), ['a', 'omarchy.tray'], 'bar returns entries before target')
 assertDeepEqual(bar.entriesAfter(entries, 'a').map(bar.entryId), ['omarchy.tray', 'b'], 'bar returns entries after target')
 
+const center = [
+  { id: 'omarchy.indicators' },
+  { id: 'tester.clock', format: 'HH:mm' },
+  { id: 'omarchy.weather' }
+]
+const clones = { 'tester.clock': 'omarchy.clock' }
+assertEqual(
+  bar.resolveCenterAnchor(center, 'omarchy.clock', clones),
+  'tester.clock',
+  'bar pins a clone of the configured center anchor'
+)
+assertEqual(
+  bar.resolveCenterAnchor(center, 'tester.clock', clones),
+  'tester.clock',
+  'bar pins the named clone when it is already in the center'
+)
+assertEqual(
+  bar.resolveCenterAnchor(
+    [{ id: 'omarchy.indicators' }, { id: 'omarchy.clock' }, { id: 'omarchy.weather' }],
+    'omarchy.clock',
+    clones
+  ),
+  'omarchy.clock',
+  'bar prefers the exact center anchor over a clone of it'
+)
+assertEqual(
+  bar.resolveCenterAnchor(center, 'omarchy.clock', {}),
+  'omarchy.clock',
+  'bar leaves the configured pin when no clone metadata is present'
+)
+assertEqual(bar.resolveCenterAnchor(center, '', clones), '', 'bar treats an empty center pin as disabled')
+assert(
+  /BarModel\.resolveCenterAnchor\(/.test(barSource),
+  'bar resolves the center pin through clones'
+)
+assert(
+  /readonly property bool hasAnchor: root\.entryIndex\(entries, root\.resolvedCenterAnchor\) !== -1/.test(barSource),
+  'bar pins the resolved center widget, not the configured id'
+)
+assert(
+  /clonedFrom:\s*Util\.canonicalWidgetId/.test(shellSource),
+  'plugin widgets carry clonedFrom into the bar widget registry'
+)
+
 assertEqual(bar.expandPath('~/module.qml', '/home/dhh'), '/home/dhh/module.qml', 'bar expands tilde paths')
 assertEqual(bar.expandPath('$HOME/module.qml', '/home/dhh'), '/home/dhh/module.qml', 'bar expands HOME paths')
 assert(bar.customModuleSafeName('local.weather'), 'bar accepts safe custom module names')
