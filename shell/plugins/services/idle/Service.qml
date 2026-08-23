@@ -104,9 +104,12 @@ Item {
     if (root.lockDelaySeconds === 0) lockSystem("lock-timeout-immediate")
     else lockTimer.restart()
 
-    // When lock is the earliest deadline, its own post-lock timer already
-    // owns blanking (see lock/Service.qml armBlankTimer) -- don't race it.
-    if (root.blankConfigured && root.lockDelaySeconds !== 0) {
+    // Independent blanking only ever fires strictly before the lock deadline.
+    // At or after that point, lock/Service.qml's own post-lock timer owns
+    // blanking -- comparing absolute deadlines (rather than whichever delay
+    // happens to be 0) keeps that true even when blank and lock coincide
+    // exactly while screensaver is the earlier deadline.
+    if (root.blankConfigured && root.blankTimeoutSeconds < root.lockTimeoutSeconds) {
       if (root.blankDelaySeconds === 0) blankDisplay()
       else blankTimer.restart()
     }
@@ -293,7 +296,11 @@ Item {
     id: blankTimer
     interval: root.blankDelaySeconds * 1000
     repeat: false
-    onTriggered: if (root.idleEnabled && root.idledThisCycle) root.blankDisplay()
+    // shell.json reloads live: if idle.blank is removed while this timer is
+    // running, the interval binding above can drop to 0 and fire almost
+    // immediately. Recheck blankConfigured so a just-removed setting can't
+    // still blank the display.
+    onTriggered: if (root.idleEnabled && root.idledThisCycle && root.blankConfigured) root.blankDisplay()
   }
 
   Timer {

@@ -5,7 +5,9 @@ function secondsFromConfig(value, fallback) {
 }
 
 function blankEnabled(value) {
-  return value !== undefined && value !== null
+  if (value === undefined || value === null) return false
+  var n = Number(value)
+  return isFinite(n) && n >= 0
 }
 
 function eventParts(event, count) {
