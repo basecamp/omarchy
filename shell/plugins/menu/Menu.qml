@@ -1129,7 +1129,7 @@ Item {
           if (event.key === Qt.Key_Delete) {
             root.requestDeleteSelected()
             event.accepted = true
-          } else if (event.key === Qt.Key_Escape) {
+          } else if (Util.isCancelKey(event)) {
             if (root.filterText) root.setFilter("")
             else root.cancel()
             event.accepted = true

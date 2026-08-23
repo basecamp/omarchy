@@ -356,7 +356,7 @@ Item {
             return
           }
 
-          if (event.key === Qt.Key_Escape) {
+          if (Util.isCancelKey(event)) {
             if (root.filterText) root.setFilter("")
             else root.close()
             event.accepted = true

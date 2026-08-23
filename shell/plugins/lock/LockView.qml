@@ -176,7 +176,7 @@ Item {
 
         Keys.onPressed: function(event) {
           root.wakeRequested()
-          if (event.key === Qt.Key_Escape || (event.modifiers & Qt.ControlModifier && event.key === Qt.Key_U)) {
+          if (Util.isCancelKey(event) || (event.modifiers & Qt.ControlModifier && event.key === Qt.Key_U)) {
             root.passwordTextEdited("")
             event.accepted = true
           }

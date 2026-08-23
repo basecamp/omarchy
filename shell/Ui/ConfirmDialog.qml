@@ -23,7 +23,7 @@ Item {
   function handleKey(event) {
     if (!root.opened) return false
 
-    if (event.key === Qt.Key_Escape) {
+    if (Util.isCancelKey(event)) {
       root.canceled()
       return true
     } else if (event.key === Qt.Key_Left || event.key === Qt.Key_Right || event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {

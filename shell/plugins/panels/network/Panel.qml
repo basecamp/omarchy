@@ -1849,7 +1849,12 @@ Panel {
 
         onAccepted: pwField.forceActiveFocus()
         onTextChanged: if (row.isPasswordOpen && text !== root.identityText) root.identityText = text
-        Keys.onEscapePressed: root.cancelPasswordPrompt()
+        Keys.onPressed: function(event) {
+          if (Util.isCancelKey(event)) {
+            root.cancelPasswordPrompt()
+            event.accepted = true
+          }
+        }
 
         onVisibleChanged: if (visible) Qt.callLater(forceActiveFocus)
         Component.onCompleted: if (visible) Qt.callLater(forceActiveFocus)
@@ -1875,7 +1880,12 @@ Panel {
 
         onAccepted: row.submitCredentials()
         onTextChanged: if (row.isPasswordOpen && text !== root.passwordText) root.passwordText = text
-        Keys.onEscapePressed: root.cancelPasswordPrompt()
+        Keys.onPressed: function(event) {
+          if (Util.isCancelKey(event)) {
+            root.cancelPasswordPrompt()
+            event.accepted = true
+          }
+        }
 
         onVisibleChanged: if (visible && !row.isEnterprise) Qt.callLater(forceActiveFocus)
         Component.onCompleted: if (visible && !row.isEnterprise) Qt.callLater(forceActiveFocus)
@@ -1904,7 +1914,7 @@ Panel {
       }
 
       // 22×22 right-anchored to line up with lockIndicator above. Esc closes
-      // the prompt (handled by pwField.Keys.onEscapePressed)
+      // the prompt (handled by pwField.Keys.onPressed)
       // so there's no separate cancel button.
       PanelActionButton {
         id: connectPwBtn

@@ -106,7 +106,12 @@ PanelWindow {
     anchors.fill: parent
     focus: true
 
-    Keys.onEscapePressed: root.closeRequested()
+    Keys.onPressed: function(event) {
+      if (Util.isCancelKey(event)) {
+        root.closeRequested()
+        event.accepted = true
+      }
+    }
     Keys.onReturnPressed: if (!root.running) root.runAgainRequested()
     Keys.onEnterPressed: if (!root.running) root.runAgainRequested()
 

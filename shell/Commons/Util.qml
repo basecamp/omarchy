@@ -112,6 +112,11 @@ QtObject {
     return text.slice(0, -1)                                     // Backspace: char
   }
 
+  function isCancelKey(event) {
+    return event.key === Qt.Key_Escape
+      || (event.key === Qt.Key_G && event.modifiers === Qt.ControlModifier)
+  }
+
   // Layout normalization shared by bar config consumers
   // so the two never drift. Entries are deep-cloned to decouple from the
   // input config; consumers can mutate without leaking back to shell.json.

@@ -236,7 +236,12 @@ Item {
       anchors.fill: parent
       focus: true
 
-      Keys.onEscapePressed: root.dismiss()
+      Keys.onPressed: function(event) {
+        if (Util.isCancelKey(event)) {
+          root.dismiss()
+          event.accepted = true
+        }
+      }
 
       Item {
         anchors.centerIn: parent

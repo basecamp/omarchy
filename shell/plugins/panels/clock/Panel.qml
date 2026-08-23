@@ -184,7 +184,7 @@ Panel {
   // Shared by both fields: Tab hops to the other one, Enter commits the pair,
   // Escape drops the lot.
   function handleLifeKey(event, other) {
-    if (event.key === Qt.Key_Escape) {
+    if (Util.isCancelKey(event)) {
       root.cancelEditingLife()
       event.accepted = true
     } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {

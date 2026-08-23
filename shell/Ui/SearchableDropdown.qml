@@ -126,7 +126,7 @@ Item {
             || event.key === Qt.Key_Space || event.key === Qt.Key_Down) {
           popup.opened ? popup.close() : popup.open()
           event.accepted = true
-        } else if (event.key === Qt.Key_Escape && popup.opened) {
+        } else if (Util.isCancelKey(event) && popup.opened) {
           popup.close(); event.accepted = true
         }
       }
@@ -216,7 +216,7 @@ Item {
               }
 
               Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
+                if (Util.isCancelKey(event)) {
                   popup.close(); event.accepted = true
                 } else if (event.key === Qt.Key_Down) {
                   if (resultList.count > 0) {
@@ -274,7 +274,7 @@ Item {
 
               Keys.priority: Keys.BeforeItem
               Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
+                if (Util.isCancelKey(event)) {
                   popup.close(); event.accepted = true
                 } else if (event.key === Qt.Key_Down || event.text === "j") {
                   if (resultList.currentIndex >= resultList.count - 1) {

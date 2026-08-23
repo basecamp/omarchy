@@ -407,7 +407,7 @@ Item {
 
           Keys.priority: Keys.BeforeItem
           Keys.onPressed: function(event) {
-            if (event.key === Qt.Key_Escape) {
+            if (Util.isCancelKey(event)) {
               if (root.filterText) {
                 root.updateFilter("")
               } else {

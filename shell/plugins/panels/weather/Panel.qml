@@ -617,7 +617,7 @@ Panel {
               onTextChanged: if (root.editingLocation && !root.savingLocation) geocodeDebounce.restart()
 
               Keys.onPressed: function(event) {
-                if (event.key === Qt.Key_Escape) {
+                if (Util.isCancelKey(event)) {
                   root.cancelEditingLocation()
                   event.accepted = true
                 } else if (event.key === Qt.Key_Down) {

@@ -626,7 +626,7 @@ Panel {
                       event.accepted = true
                       return
                     }
-                    if (event.key === Qt.Key_Escape) {
+                    if (Util.isCancelKey(event)) {
                       root.mullvadPickerOpen = false
                       keyCatcher.forceActiveFocus()
                       event.accepted = true
@@ -1000,7 +1000,7 @@ Panel {
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         function handleKey(event) {
-          if (event.key === Qt.Key_Escape) {
+          if (Util.isCancelKey(event)) {
             close()
             event.accepted = true
             return
