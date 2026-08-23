@@ -72,6 +72,12 @@ printf 'state\t%s\n' "$*" >>"$TEST_CALLS"
 [[ $1 == "set" ]] && touch "$TEST_STATE_DIR/$2"
 STUB
 
+cat >"$stub_bin/omarchy-notification-dismiss" <<'STUB'
+#!/bin/bash
+
+printf 'notification-dismiss\t%s\n' "$*" >>"$TEST_CALLS"
+STUB
+
 chmod +x "$stub_bin"/*
 
 export TEST_CALLS="$calls"
@@ -131,6 +137,8 @@ grep -Fxq $'systemctl\tstart dev-zram0.swap' "$calls" ||
   fail "migration starts the generated swap unit" "$(cat "$calls")"
 assert_privileged_activation
 [[ -e $default_marker ]] || fail "successful zram repair is marked complete by omarchy-migrate"
+grep -Fxq $'notification-dismiss\tOmarchy Migrations' "$calls" ||
+  fail "successful migration dismisses notifications through the test stub" "$(cat "$calls")"
 pass "migration installs and activates missing zram support"
 
 : >"$calls"
@@ -187,6 +195,8 @@ fi
   fail "package installation failure is not converted to a reboot request" "$(cat "$calls")"
 ! grep -q '^systemctl' "$calls" ||
   fail "package installation failure stops before systemd changes" "$(cat "$calls")"
+! grep -q '^notification-dismiss' "$calls" ||
+  fail "package installation failure does not dismiss migration notifications" "$(cat "$calls")"
 run_migration
 [[ -e $default_marker ]] || fail "a repaired package installation retry is marked complete"
 [[ -e $package_installed && -e $swap_active ]] ||

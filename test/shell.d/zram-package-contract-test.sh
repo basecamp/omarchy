@@ -5,33 +5,34 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 require_command python3
+require_command makepkg
 
 ROOT="$ROOT" python3 <<'PY'
 import os
 import re
-import shlex
+import subprocess
 import sys
 from pathlib import Path
 
 
-def pkgbuild_array(path: Path, name: str) -> list[str]:
-  text = path.read_text()
-  match = re.search(
-    rf"^[ \t]*{re.escape(name)}=\([ \t]*\n(.*?)^[ \t]*\)",
-    text,
-    flags=re.MULTILINE | re.DOTALL,
-  )
-  if match is None:
-    raise ValueError(f"{path}: missing {name}=() array")
-
-  lexer = shlex.shlex(match.group(1), posix=True)
-  lexer.commenters = "#"
-  lexer.whitespace_split = True
-  return list(lexer)
-
-
 def dependency_names(path: Path) -> set[str]:
-  return {re.split(r"[<>=]", item, maxsplit=1)[0] for item in pkgbuild_array(path, "depends")}
+  try:
+    metadata = subprocess.run(
+      ["makepkg", "--printsrcinfo"],
+      cwd=path.parent,
+      check=True,
+      capture_output=True,
+      text=True,
+    ).stdout
+  except subprocess.CalledProcessError as error:
+    raise ValueError(f"{path}: makepkg --printsrcinfo failed: {error.stderr.strip()}") from error
+
+  dependencies = set()
+  for line in metadata.splitlines():
+    key, separator, value = line.strip().partition(" = ")
+    if separator and (key == "depends" or key.startswith("depends_")):
+      dependencies.add(re.split(r"[<>=]", value, maxsplit=1)[0])
+  return dependencies
 
 
 root = Path(os.environ["ROOT"])
