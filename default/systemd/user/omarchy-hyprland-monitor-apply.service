@@ -1,0 +1,14 @@
+[Unit]
+Description=Configure Hyprland outputs to a working desktop mode
+After=graphical-session.target
+PartOf=graphical-session.target
+ConditionEnvironment=WAYLAND_DISPLAY
+ConditionEnvironment=OMARCHY_PATH
+
+[Service]
+Type=oneshot
+EnvironmentFile=-%t/uwsm/env_session.conf
+ExecStart=/bin/bash -c 'exec "${OMARCHY_PATH:-/usr/share/omarchy}/bin/omarchy-hyprland-monitor-apply"'
+
+[Install]
+WantedBy=graphical-session.target

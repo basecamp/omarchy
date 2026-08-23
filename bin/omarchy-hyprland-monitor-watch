@@ -86,8 +86,13 @@ sync_poll_state() {
   fi
 }
 
+apply_connected_outputs() {
+  omarchy-hyprland-monitor-apply >/dev/null 2>&1 || true
+}
+
 sync_clamshell_after_monitor_change
 sync_poll_state
+apply_connected_outputs
 recover_modeless
 
 # Process substitution (not a pipe) keeps this loop in the main shell, so
@@ -97,17 +102,20 @@ while read -r event; do
     monitoradded\>\>*|monitoraddedv2\>\>*)
       sync_clamshell_after_monitor_change
       sync_poll_state
+      apply_connected_outputs
       recover_modeless
       ;;
     monitorremoved\>\>*|monitorremovedv2\>\>*)
       sync_clamshell_after_monitor_change
       sync_poll_state
+      apply_connected_outputs
       recover_modeless
       ;;
     # A reload while the monitor is unpowered leaves it at 0x0 with no hotplug
     # to notice, same as at boot. Our own recovery reload lands here too, and is
     # a no-op while its loop still holds the pid.
     configreloaded\>\>*)
+      apply_connected_outputs
       recover_modeless
       ;;
   esac

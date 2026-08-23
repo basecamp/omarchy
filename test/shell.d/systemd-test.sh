@@ -54,6 +54,17 @@ pass "migration notifier checks once per login after the graphical session is re
 
 grep -F 'omarchy-migrate-notify.service' "$first_run_units" >/dev/null ||
   fail "first-run does not enable the login migration notifier"
+grep -F 'omarchy-hyprland-monitor-apply.service' "$first_run_units" >/dev/null ||
+  fail "first-run does not enable EDID monitor apply"
+pass "first-run enables EDID monitor apply"
+
+apply_service="$ROOT/default/systemd/user/omarchy-hyprland-monitor-apply.service"
+grep -Fx 'After=graphical-session.target' "$apply_service" >/dev/null ||
+  fail "EDID apply can deadlock UWSM by blocking graphical-session.target"
+grep -Fx 'WantedBy=graphical-session.target' "$apply_service" >/dev/null ||
+  fail "EDID apply is never pulled in at login without a WantedBy"
+grep -Fx 'ConditionEnvironment=WAYLAND_DISPLAY' "$apply_service" >/dev/null ||
+  fail "EDID apply must not run from an SSH user manager with no display"
 grep -F 'omarchy-update-user-notify' "$first_run_units" >/dev/null &&
   fail "first-run still enables the retired notifier units"
 pass "first-run enables the login-only migration notifier"

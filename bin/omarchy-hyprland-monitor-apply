@@ -1,0 +1,294 @@
+#!/bin/bash
+
+# omarchy:summary=Configure each connected display to a working desktop mode
+# omarchy:hidden=true
+# omarchy:args=[--emit-lua]
+
+# Hyprland `preferred` is the EDID preferred DTD. On an HDMI TV that is often
+# 3840x2160@30, a movie timing. The compositor will modeset it; this Samsung
+# on NVIDIA HDMI does not lock it (picture in grim, no-signal on the glass).
+# Windows does not leave that as the desktop mode. This command does the same
+# ranking a PC display driver does:
+#   - 4K only when the link advertises UHD at >= 50 Hz
+#   - a TV (physical size >= 800 mm) with only cinema 4K uses 1080p60
+#   - otherwise the highest mode at >= 50 Hz
+#   - 8-bit SDR so HDR/10-bit infoframes cannot blank the sink
+# Disconnected DP/HDMI outputs stay disabled so they cannot steal the modeset.
+
+set -euo pipefail
+
+emit_lua=0
+if [[ ${1:-} == --emit-lua ]]; then
+  emit_lua=1
+elif [[ -n ${1:-} ]]; then
+  echo "Usage: omarchy-hyprland-monitor-apply [--emit-lua]" >&2
+  exit 1
+fi
+
+eval_or_print() {
+  local line=$1
+  if (( emit_lua )); then
+    printf '%s\n' "$line"
+    return
+  fi
+  hyprctl eval "$line" >/dev/null
+}
+
+monitor_line() {
+  local name=$1 mode=$2 scale=$3
+  printf 'hl.monitor({ output = "%s", mode = "%s", position = "0x0", scale = %s, bitdepth = 8 })' \
+    "$name" "$mode" "$scale"
+}
+
+disable_disconnected() {
+  local path status name
+  for path in /sys/class/drm/card*-DP-* /sys/class/drm/card*-HDMI-A-* /sys/class/drm/card*-HDMI-B-*; do
+    [[ -d $path ]] || continue
+    status=$(<"$path/status")
+    [[ $status == disconnected ]] || continue
+    name=${path##*/}
+    name=${name#card*-}
+    eval_or_print "hl.monitor({ output = \"$name\", disabled = true })"
+  done
+}
+
+# One monitor object in, "WxH@Hz" out. Cinema 4K on a TV is not a desktop mode.
+pick_from_monitor_json() {
+  jq -r '
+    def parse:
+      capture("^(?<w>[0-9]+)x(?<h>[0-9]+)@(?<hz>[0-9.]+)Hz$");
+    def uhd:
+      (.w | tonumber) == 3840 and (.h | tonumber) == 2160;
+    def fhd:
+      (.w | tonumber) == 1920 and (.h | tonumber) == 1080;
+    def desktop:
+      (.hz | tonumber) >= 50;
+    . as $mon
+    | (
+        (($mon.physicalWidth // 0) | tonumber) >= 800
+        or (($mon.physicalHeight // 0) | tonumber) >= 450
+      ) as $tv
+    | ($mon.availableModes | map(parse) | map(select(. != null))) as $all
+    | ($all | map(select(uhd and desktop))) as $uhd_desk
+    | ($all | map(select(desktop))) as $desk
+    | ($all | map(select(uhd))) as $uhd
+    | ($all | map(select(fhd and desktop))) as $fhd
+    | (
+        if ($uhd_desk | length) > 0 then $uhd_desk
+        elif $tv and ($fhd | length) > 0 then $fhd
+        elif ($uhd | length) > 0 and ($tv | not) then $uhd
+        elif ($desk | length) > 0 then $desk
+        elif ($uhd | length) > 0 then $uhd
+        else $all
+        end
+      )
+    | max_by([(.w | tonumber) * (.h | tonumber), (.hz | tonumber)])
+    | "\(.w)x\(.h)@\(.hz)"
+  '
+}
+
+scale_for() {
+  local height=$1
+  if (( height >= 2160 )); then
+    echo 2
+  else
+    echo 1
+  fi
+}
+
+apply_hyprctl() {
+  local monitors name disabled mode width height scale current_w current_h current_hz current_scale
+  monitors=$(hyprctl monitors all -j 2>/dev/null) || return 1
+  [[ -n $monitors && $monitors != null ]] || return 1
+
+  while IFS= read -r mon; do
+    [[ -n $mon ]] || continue
+    name=$(jq -r '.name' <<<"$mon")
+    disabled=$(jq -r '.disabled|tostring' <<<"$mon")
+    [[ -n $name ]] || continue
+    if [[ $disabled == true ]]; then
+      continue
+    fi
+    if jq -e '.availableModes | length == 0' <<<"$mon" >/dev/null; then
+      eval_or_print "hl.monitor({ output = \"$name\", disabled = true })"
+      continue
+    fi
+    mode=$(pick_from_monitor_json <<<"$mon") || continue
+    [[ -n $mode ]] || continue
+    width=${mode%%x*}
+    height=${mode#*x}
+    height=${height%%@*}
+    scale=$(scale_for "$height")
+    current_w=$(jq -r '.width' <<<"$mon")
+    current_h=$(jq -r '.height' <<<"$mon")
+    current_hz=$(jq -r '.refreshRate' <<<"$mon")
+    current_scale=$(jq -r '.scale' <<<"$mon")
+    printf -v current_hz_int '%.0f' "${current_hz:-0}"
+    printf -v want_hz_int '%.0f' "${mode##*@}"
+    if [[ $current_w == "$width" && $current_h == "$height" ]] &&
+      awk -v a="$current_scale" -v b="$scale" 'BEGIN { exit !(a + 0 == b + 0) }' &&
+      (( current_hz_int == want_hz_int )); then
+      if (( emit_lua )); then
+        eval_or_print "$(monitor_line "$name" "$mode" "$scale")"
+        eval_or_print "hl.env(\"GDK_SCALE\", \"$scale\")"
+      fi
+      continue
+    fi
+    eval_or_print "$(monitor_line "$name" "$mode" "$scale")"
+    eval_or_print "hl.env(\"GDK_SCALE\", \"$scale\")"
+  done < <(jq -c '.[]' <<<"$monitors")
+}
+
+# Config-time path: Hyprland is loading monitors.lua and hyprctl may not
+# answer yet. Rank from DRM + EDID the same way so the first modeset is a
+# desktop timing, not EDID "preferred".
+emit_from_drm() {
+  python3 - "$@" <<'PY'
+import os, re, sys
+
+def dtd_mode(block, offset):
+    clk = block[offset] | (block[offset + 1] << 8)
+    if clk == 0:
+        return None
+    ha = block[offset + 2] | ((block[offset + 4] & 0xF0) << 4)
+    hbl = block[offset + 3] | ((block[offset + 4] & 0x0F) << 8)
+    va = block[offset + 5] | ((block[offset + 7] & 0xF0) << 4)
+    vbl = block[offset + 6] | ((block[offset + 7] & 0x0F) << 8)
+    if ha == 0 or va == 0 or (ha + hbl) == 0 or (va + vbl) == 0:
+        return None
+    hz = (clk * 10000) / ((ha + hbl) * (va + vbl))
+    return ha, va, hz
+
+def modes_from_edid(data):
+    found = []
+    if len(data) >= 128:
+        for off in (54, 72, 90, 108):
+            mode = dtd_mode(data, off)
+            if mode:
+                found.append(mode)
+    if len(data) >= 256 and data[128] == 0x02:
+        vics = {
+            95: (3840, 2160, 30.0),
+            97: (3840, 2160, 60.0),
+            102: (4096, 2160, 60.0),
+            16: (1920, 1080, 60.0),
+            31: (1920, 1080, 50.0),
+        }
+        i = 132
+        end = 128 + 1 + data[130]
+        while i < end and i < len(data):
+            tag = data[i] >> 5
+            length = data[i] & 0x1F
+            if tag == 2:
+                for vic in data[i + 1 : i + 1 + length]:
+                    vic = vic & 0x7F
+                    if vic in vics:
+                        found.append(vics[vic])
+            i += 1 + length
+    return found
+
+def is_tv(data):
+    if len(data) < 23:
+        return False
+    return data[21] >= 80 or data[22] >= 45
+
+def pick(found, names, tv):
+    uhd = [m for m in found if m[0] == 3840 and m[1] == 2160]
+    uhd_desk = [m for m in uhd if m[2] >= 50]
+    if uhd_desk:
+        return max(uhd_desk, key=lambda m: m[2])
+    desktop = [m for m in found if m[2] >= 50]
+    fhd = [m for m in desktop if m[0] == 1920 and m[1] == 1080]
+    if tv and fhd:
+        return max(fhd, key=lambda m: m[2])
+    if uhd and not tv:
+        return max(uhd, key=lambda m: m[2])
+    if desktop:
+        return max(desktop, key=lambda m: (m[0] * m[1], m[2]))
+    if uhd:
+        return max(uhd, key=lambda m: m[2])
+    if names:
+        have_uhd = False
+        have_fhd = False
+        parsed = []
+        for name in names:
+            m = re.match(r"(\d+)x(\d+)", name)
+            if not m:
+                continue
+            w, h = int(m.group(1)), int(m.group(2))
+            parsed.append((w, h))
+            if w == 3840 and h == 2160:
+                have_uhd = True
+            if w == 1920 and h == 1080:
+                have_fhd = True
+        if tv and have_uhd and have_fhd:
+            return 1920, 1080, 60.0
+        for w, h in parsed:
+            if w >= 3840 and h == 2160:
+                return w, h, 60.0 if not tv else 30.0
+        if parsed:
+            return parsed[0][0], parsed[0][1], 60.0
+    return None
+
+def scale_for(height):
+    return 2 if height >= 2160 else 1
+
+drm = "/sys/class/drm"
+if not os.path.isdir(drm):
+    sys.exit(1)
+
+emitted = False
+for entry in sorted(os.listdir(drm)):
+    path = os.path.join(drm, entry)
+    if not os.path.isdir(path):
+        continue
+    m = re.match(r"card\d+-(HDMI-A-\d+|HDMI-B-\d+|DP-\d+|eDP-\d+|DSI-\d+|LVDS-\d+)$", entry)
+    if not m:
+        continue
+    name = m.group(1)
+    try:
+        status = open(os.path.join(path, "status"), encoding="ascii").read().strip()
+    except OSError:
+        continue
+    if status != "connected":
+        print(f'hl.monitor({{ output = "{name}", disabled = true }})')
+        emitted = True
+        continue
+    names = []
+    modes_file = os.path.join(path, "modes")
+    if os.path.isfile(modes_file):
+        names = [line.strip() for line in open(modes_file, encoding="ascii") if line.strip()]
+    found = []
+    tv = False
+    edid_path = os.path.join(path, "edid")
+    try:
+        data = open(edid_path, "rb").read()
+        if data:
+            found = modes_from_edid(data)
+            tv = is_tv(data)
+    except OSError:
+        pass
+    mode = pick(found, names, tv)
+    if not mode:
+        continue
+    w, h, hz = mode
+    scale = scale_for(h)
+    print(f'hl.monitor({{ output = "{name}", mode = "{w}x{h}@{hz:g}", position = "0x0", scale = {scale}, bitdepth = 8 }})')
+    print(f'hl.env("GDK_SCALE", "{scale}")')
+    emitted = True
+
+sys.exit(0 if emitted else 1)
+PY
+}
+
+if (( emit_lua )); then
+  if apply_hyprctl; then
+    disable_disconnected
+    exit 0
+  fi
+  emit_from_drm
+  exit $?
+fi
+
+apply_hyprctl || true
+disable_disconnected

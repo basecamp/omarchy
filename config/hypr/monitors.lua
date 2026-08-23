@@ -1,22 +1,27 @@
 -- See https://wiki.hypr.land/Configuring/Basics/Monitors/
 -- List current monitors and supported resolutions with: hyprctl monitors all
 
--- Monitor scale is Hyprland's scale for the output. It sizes everything
--- Wayland-native, accepts fractions (1.6, 1.75), and applies immediately.
--- "auto" lets Hyprland pick per display.
+-- Do not use mode = "preferred" as the desktop default. That string is the
+-- EDID preferred DTD. On an HDMI TV it is often 3840x2160@30 — a movie timing
+-- the compositor will set and this panel will not lock. Apply ranks modes the
+-- way a PC does: 4K only when UHD is advertised at >= 50 Hz; a TV with only
+-- cinema 4K gets 1080p60 so the glass lights up on plug-in.
+local apply = (os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/bin/omarchy-hyprland-monitor-apply"
+local emit = io.popen(apply .. " --emit-lua")
+local body = emit and emit:read("*a") or ""
+if emit then
+  emit:close()
+end
+if body:match("hl%.monitor") then
+  assert(load(body))()
+  return
+end
+
+-- Connector list was empty at parse (DRM not ready). Hyprland still needs a
+-- monitor statement; omarchy-hyprland-monitor-apply runs again from the
+-- monitor watcher and replaces this once the EDID is readable.
 local omarchy_monitor_scale = "auto"
-hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy_monitor_scale })
+hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy_monitor_scale, bitdepth = 8 })
 
--- Configure a specific monitor.
--- hl.monitor({ output = "DP-2", mode = "2560x1440@144", position = "0x0", scale = 1 })
-
--- Portrait/rotated secondary monitor (transform: 1 = 90°, 3 = 270°).
--- hl.monitor({ output = "DP-2", mode = "preferred", position = "auto", scale = 1, transform = 1 })
-
--- GDK scale is GDK_SCALE, the factor GTK draws its own UI at. It's what
--- sizes X11/XWayland windows, which Omarchy leaves unscaled so they stay
--- crisp instead of being stretched by the compositor. GTK only honors whole
--- numbers, so use the nearest integer to the monitor scale, and restart an
--- app for a change to reach it.
-local omarchy_gdk_scale = 2
+local omarchy_gdk_scale = 1
 hl.env("GDK_SCALE", tostring(omarchy_gdk_scale))

@@ -52,6 +52,10 @@ pass "modeless recovery retries unanswered queries without waiting on a dead com
 grep -F 'configreloaded\>\>*)' "$monitor_watch" >/dev/null
 pass "modeless recovery also runs after a config reload"
 
+grep -F 'apply_connected_outputs' "$monitor_watch" >/dev/null
+grep -F 'omarchy-hyprland-monitor-apply' "$monitor_watch" >/dev/null
+pass "monitor watcher configures connected outputs from EDID"
+
 grep -F 'omarchy-hyprland-reload-guard paused' "$monitor_watch" >/dev/null
 pass "modeless recovery does not reload into a package transaction"
 
