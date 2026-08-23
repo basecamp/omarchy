@@ -490,6 +490,19 @@ assert(
   'menu route changes only accept an initial pointer sample for mouse activation'
 )
 assert(
+  /function setActiveMenu\(id, pushHistory, fromPointer\)[\s\S]*root\.navStack = root\.navStack\.concat\(\[root\.activeMenu\]\)[\s\S]*root\.navSelectionStack = root\.navSelectionStack\.concat\(\[root\.selectedIndex\]\)/.test(menuQml),
+  'menu remembers the selected row when entering a submenu'
+)
+assert(
+  /function goBack\(\)[\s\S]*previousIndex[\s\S]*root\.setActiveMenu\(previous, false\)[\s\S]*Qt\.callLater\(function\(\)[\s\S]*root\.selectedIndex = Math\.max\([\s\S]*root\.settleCursor\(\)[\s\S]*root\.revealCursor\(\)/.test(menuQml),
+  'menu restores a valid visible selection after returning to its parent'
+)
+assert(
+  /function openExistingMenu\([\s\S]*navStack = \[\]\s*\n\s*navSelectionStack = \[\]/.test(menuQml)
+    && /function openDmenu\([\s\S]*navStack = \[\]\s*\n\s*navSelectionStack = \[\]/.test(menuQml),
+  'menu starts each new session with empty navigation history'
+)
+assert(
   /\(event\.key === Qt\.Key_Backspace \|\| event\.key === Qt\.Key_Left\) && !root\.filterText[\s\S]*root\.goBack\(\)/.test(menuQml),
   'menu Left key follows empty-filter Backspace navigation'
 )

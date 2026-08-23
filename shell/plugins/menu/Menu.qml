@@ -71,6 +71,7 @@ Item {
   property var items: ({})
   property var itemOrder: []
   property var navStack: []
+  property var navSelectionStack: []
   property var providersLoaded: ({})
   property var providerQueue: []
   property int providerRevision: 0
@@ -729,7 +730,10 @@ Item {
   function setActiveMenu(id, pushHistory, fromPointer) {
     panel.freezeCardTop()
     if (!root.item(id)) id = "root"
-    if (pushHistory && id !== root.activeMenu) root.navStack = root.navStack.concat([root.activeMenu])
+    if (pushHistory && id !== root.activeMenu) {
+      root.navStack = root.navStack.concat([root.activeMenu])
+      root.navSelectionStack = root.navSelectionStack.concat([root.selectedIndex])
+    }
     root.activeMenu = id
     root.filterText = ""
     root.selectedIndex = 0
@@ -746,8 +750,26 @@ Item {
 
     if (root.navStack.length > 0) {
       var previous = root.navStack[root.navStack.length - 1]
+      var previousIndex = root.navSelectionStack.length > 0
+        ? root.navSelectionStack[root.navSelectionStack.length - 1]
+        : 0
       root.navStack = root.navStack.slice(0, root.navStack.length - 1)
+      root.navSelectionStack = root.navSelectionStack.slice(0, root.navSelectionStack.length - 1)
       root.setActiveMenu(previous, false)
+
+      Qt.callLater(function() {
+        if (displayModel.count > 0) {
+          root.selectedIndex = Math.max(
+            0,
+            Math.min(previousIndex, displayModel.count - 1)
+          )
+          root.settleCursor()
+        } else {
+          root.selectedIndex = 0
+        }
+        root.revealCursor()
+      })
+
       return true
     }
 
@@ -842,6 +864,7 @@ Item {
     doneFile = ""
     activeMenu = root.item(initialMenu) ? initialMenu : "root"
     navStack = []
+    navSelectionStack = []
     filterText = ""
     selectedIndex = 0
     cursorActive = true
@@ -870,6 +893,7 @@ Item {
     dmenuMaxHeight = Math.max(0, Number(payload.maxHeight || 0))
     activeMenu = "root"
     navStack = []
+    navSelectionStack = []
     filterText = ""
     selectedIndex = 0
     cursorActive = mode !== "input"
