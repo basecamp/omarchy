@@ -97,6 +97,14 @@ while (($# > 0)); do
   elif parse_omarchy_option "$@"; then
     shift "$parsed_option_args"
   else
+    # --exec is the only door to a click command. A relayed title or filename
+    # that lands here -- passthrough is the one position an untrusted value can
+    # still reach notify-send as an option -- must not be able to set the hint
+    # itself, which is the injection this transport exists to close.
+    if [[ $1 == *omarchy-exec-argv* ]]; then
+      echo "The click command hint can only be set with --exec, not passed through." >&2
+      exit 1
+    fi
     args+=("$1")
     shift
   fi
@@ -136,8 +144,11 @@ if ((exec_present)); then
   args+=("--hint=string:omarchy-exec-argv:$exec_argv_json")
 fi
 
+# `--` so notify-send reads the headline and description as text. Without it a
+# headline beginning with a dash is parsed as options ("-rf x" becomes -r), and
+# one shaped like `--hint=string:...` sets a hint of its own.
 if [[ -n $description ]]; then
-  notify-send "${args[@]}" "$headline" "$description"
+  notify-send "${args[@]}" -- "$headline" "$description"
 else
-  notify-send "${args[@]}" "$headline"
+  notify-send "${args[@]}" -- "$headline"
 fi

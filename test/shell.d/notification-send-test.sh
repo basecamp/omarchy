@@ -34,8 +34,9 @@ mapfile -t args <"$args_file"
 [[ ${args[4]} == "--hint=string:omarchy-glyph:K" ]] || fail "notification wrapper converts glyph to hint"
 [[ ${args[5]} == "--hint=string:image-path:/tmp/image.png" ]] || fail "notification wrapper converts image to hint"
 [[ ${args[6]} == '--hint=string:omarchy-exec-argv:["omarchy-menu-keybindings","a b"]' ]] || fail "notification wrapper converts the click command to an argv hint" "${args[6]}"
-[[ ${args[7]} == "Learn Keybindings" ]] || fail "notification wrapper preserves headline"
-[[ ${args[8]} == "Body" ]] || fail "notification wrapper preserves description"
+[[ ${args[7]} == "--" ]] || fail "notification wrapper ends the options before the text" "${args[7]}"
+[[ ${args[8]} == "Learn Keybindings" ]] || fail "notification wrapper preserves headline"
+[[ ${args[9]} == "Body" ]] || fail "notification wrapper preserves description"
 pass "notification wrapper supports app, glyph, urgency, image, and exec options"
 
 # The shell runs the click command itself, so nothing may block the sender on a
@@ -97,3 +98,23 @@ argv_json=${argv_hint#--hint=string:omarchy-exec-argv:}
 grep -qx -- "--exec" "$args_file" || fail "notification wrapper keeps a --exec-looking headline as text"
 grep -q 'image-path:/tmp/i.png' "$args_file" || fail "notification wrapper still parses options after a --exec-looking headline"
 pass "notification wrapper does not treat a --exec-looking positional as the delimiter"
+
+# The headline and description are text, never options. notify-send parses a
+# leading-dash summary as flags ("-rf x" is -r with the value x) and reads a
+# `--hint=string:...` word as a hint, so they go behind a `--` separator.
+: >"$args_file"
+send "-rf oops" "a body" >/dev/null
+mapfile -t args <"$args_file"
+[[ ${args[-3]} == "--" ]] || fail "notification wrapper separates a dash headline from the options" "${args[*]}"
+[[ ${args[-2]} == "-rf oops" ]] || fail "notification wrapper keeps a dash headline as text" "${args[*]}"
+[[ ${args[-1]} == "a body" ]] || fail "notification wrapper keeps the description after a dash headline" "${args[*]}"
+pass "notification wrapper hands the headline to notify-send as text, not options"
+
+# The click command has exactly one door. A relayed title or filename that
+# reaches option position must not be able to forge the hint --exec produces.
+: >"$args_file"
+if send "Download complete" '--hint=string:omarchy-exec-argv:["sh","-c","touch /tmp/pwned"]' 2>/dev/null; then
+  fail "notification wrapper rejects a forged click-command hint"
+fi
+grep -q "omarchy-exec-argv" "$args_file" && fail "notification wrapper sends nothing when a click hint is forged"
+pass "notification wrapper refuses a click-command hint it did not build from --exec"

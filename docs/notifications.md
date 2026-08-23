@@ -127,6 +127,12 @@ and needs no notification to execute code. What is fully closed is untrusted
 *content* — web notifications can't set the exec hint at all, and any relayed
 title/filename is confined to inert argument data.
 
+The sender keeps that last part true rather than leaving it to each caller. The
+headline and description go to `notify-send` behind a `--`, so a relayed value
+beginning with a dash is text and not flags, and a word that reaches the
+pass-through option position carrying `omarchy-exec-argv` is refused outright:
+`--exec` is the only thing that may build a click command.
+
 ## Helper commands
 
 - `omarchy-notification-wait [timeout]` — polls until the shell answers IPC
