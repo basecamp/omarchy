@@ -13,6 +13,14 @@ grep -Fq 'applyRequestedState' "$cpp" || fail "one stateChanged watcher applies 
 grep -Fq 'requestsMaximize' "$cpp" || fail "omarchy-minimize honors xdg/X11 CSD maximize requests"
 grep -Fq 'FSMODE_MAXIMIZED' "$cpp" || fail "CSD maximize uses Hyprland maximized fullscreen, not omarchy-shell"
 grep -Fq 'syncCsdMaximizedState' "$cpp" || fail "CSD windows must drop Hyprland's fake map-time maximized state"
+grep -Fq 'clearFakeMapMaximize' "$cpp" || fail "CSD map must unset fake maximized and size a real float"
+grep -Fq 'onCsdMapped' "$cpp" || fail "fake maximize is cleared on map, not on every window rule update"
+grep -Fq 'coversWorkArea' "$cpp" || fail "CSD map must also shrink a tiled work-area Chrome, not only FSMODE_MAXIMIZED"
+grep -Fq 'floatWindow' "$cpp" || fail "cleared CSD map must float a tiled Chromium before sizing it"
+grep -Fq '880' "$cpp" || fail "cleared CSD map uses the Desktop Mode default float size"
+if grep -A2 'g_onUpdateRules' "$cpp" | grep -Fq 'onCsdMapped'; then
+  fail "updateRules must not clear a real maximize"
+fi
 grep -Fq 'restoreFloatOnScreen' "$cpp" \
   || fail "CSD unmaximize must put the remembered float back on the work area immediately"
 grep -Fq 'saveNormalFloat' "$cpp" \
@@ -20,6 +28,7 @@ grep -Fq 'saveNormalFloat' "$cpp" \
 grep -Fq 'hyprbars:no_bar' "$cpp" || fail "fake maximized is cleared only for hyprbars:no_bar CSD clients"
 grep -Fq 'm_suppressNextMaximize' "$cpp" || fail "clearing fake maximized must not be echoed back as a maximize request"
 grep -Fq 'doLater' "$cpp" || fail "CSD min/max must apply on the event-loop idle, not inside the Wayland request"
+grep -Fq 'finishAnimation' "$cpp" || fail "CSD maximize must stop the popin animation before the modeset"
 grep -Fq 'm_isMapped' "$cpp" || fail "CSD maximize must not run setFullscreenMode before the window is mapped"
 if grep -Fq 'omarchy-shell' "$cpp"; then
   fail "omarchy-minimize must not exec omarchy-shell from the compositor"

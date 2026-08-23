@@ -319,6 +319,17 @@ function isSnapped(win, monitor, slop, titleBar) {
   return snapKind(win, monitor, slop, titleBar) !== "float"
 }
 
+function coversWorkArea(win, monitor, slop) {
+  if (!win || !monitor) return false
+  var area = workArea(monitor)
+  if (!area.width || !area.height) return false
+  var pad = slop == null ? 16 : Number(slop)
+  return Math.abs(Number(win.width) - area.width) <= pad &&
+    Number(win.height) >= area.height - 48 &&
+    Number(win.x) <= area.x + pad &&
+    Number(win.y) <= area.y + pad
+}
+
 // Win+Arrow cycle. Returns a snap kind, "max", "min", or "normal".
 function nextSnap(kind, dir) {
   var k = String(kind || "float")
@@ -618,6 +629,7 @@ if (typeof module !== "undefined") {
     windowsOnDesktop: windowsOnDesktop,
     nearRect: nearRect,
     isSnapped: isSnapped,
+    coversWorkArea: coversWorkArea,
     nextSnap: nextSnap,
     aeroZone: aeroZone,
     serializeLayout: serializeLayout,

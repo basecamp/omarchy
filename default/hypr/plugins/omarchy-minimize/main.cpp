@@ -12,6 +12,7 @@
 #include "src/xwayland/XSurface.hpp"
 #include "src/managers/fullscreen/FullscreenController.hpp"
 #include "src/managers/eventLoop/EventLoopManager.hpp"
+#include "src/config/shared/actions/ConfigActions.hpp"
 #include "src/desktop/rule/windowRule/WindowRuleEffectContainer.hpp"
 #include "src/helpers/MiscFunctions.hpp"
 #include "src/output/Monitor.hpp"
@@ -314,6 +315,7 @@ static void applyRequestedMaximize(PHLWINDOWREF ref, std::optional<bool> want) {
     return;
   }
   g_inPluginApply = true;
+  w->finishAnimation();
   setMaximized(w, *want);
   g_inPluginApply = false;
   if (!*want)
@@ -346,6 +348,60 @@ static bool isCsdWindow(PHLWINDOW w) {
   return truthy(props.at(g_nobarEffectIdx)->effect);
 }
 
+static bool coversWorkArea(PHLWINDOW w) {
+  if (!w)
+    return false;
+  const auto work = monitorWork(w);
+  if (work.w <= 0)
+    return false;
+  const auto pos  = w->position(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
+  const auto size = w->size(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
+  return std::abs(size.x - work.w) <= 16 && size.y >= work.h - 48 && pos.x <= work.x + 8 && pos.y <= work.y + 8;
+}
+
+static void applyDefaultFloat(PHLWINDOW w) {
+  const auto work = monitorWork(w);
+  if (work.w <= 0)
+    return;
+  (void)Config::Actions::floatWindow(Config::Actions::TOGGLE_ACTION_ENABLE, w);
+  Vector2D size{880, 560};
+  if (size.x > work.w)
+    size.x = work.w;
+  if (size.y > work.h)
+    size.y = work.h;
+  Vector2D pos{work.x + (work.w - size.x) / 2.0, work.y + (work.h - size.y) / 2.0};
+  if (pos.x < work.x)
+    pos.x = work.x;
+  if (pos.y < work.y)
+    pos.y = work.y;
+  w->finishAnimation();
+  w->setBox(CBox(pos, size));
+}
+
+// Hyprland arms FSMODE_MAXIMIZED on first map so SSD clients hide CSD. Chrome
+// still draws CSD (hyprbars:no_bar) and then treats □ as restore of an
+// already-max window — a no-op on a work-area-sized float. Clear that fake
+// state only when we never saved a user float (real maximize saves first).
+static void clearFakeMapMaximize(PHLWINDOW w) {
+  if (!w || !isCsdWindow(w) || !w->m_isMapped || g_inPluginApply)
+    return;
+  if (!isMaximizedNow(w) && !coversWorkArea(w))
+    return;
+  const auto key = reinterpret_cast<uintptr_t>(w.get());
+  if (g_savedFloat.contains(key))
+    return;
+  g_inPluginApply = true;
+  w->finishAnimation();
+  setMaximized(w, false);
+  g_inPluginApply = false;
+  w->m_suppressNextMaximize = true;
+  applyDefaultFloat(w);
+  if (auto xdg = w->m_xdgSurface.lock()) {
+    if (auto top = xdg->m_toplevel.lock())
+      top->setMaximized(false);
+  }
+}
+
 static void syncCsdMaximizedState(PHLWINDOW w) {
   if (!w || !isCsdWindow(w) || g_inPluginApply)
     return;
@@ -360,9 +416,7 @@ static void syncCsdMaximizedState(PHLWINDOW w) {
     auto top = xdg->m_toplevel.lock();
     if (!top)
       return;
-    bool actually = false;
-    if (auto& fs = Fullscreen::controller(); fs)
-      actually = fs->isFullscreen(live, Fullscreen::FSMODE_MAXIMIZED);
+    bool actually = isMaximizedNow(live);
     if (!actually)
       live->m_suppressNextMaximize = true;
     top->setMaximized(actually);
@@ -428,9 +482,15 @@ static void watchWindow(PHLWINDOW w) {
   syncCsdMaximizedState(w);
 }
 
+static void onCsdMapped(PHLWINDOW w) {
+  watchWindow(w);
+  PHLWINDOWREF mapped = w;
+  later([mapped]() { clearFakeMapMaximize(mapped.lock()); });
+}
+
 static void watchAllWindows() {
   for (auto& w : Desktop::windowState()->windows())
-    watchWindow(w);
+    onCsdMapped(w);
 }
 
 APICALL EXPORT std::string PLUGIN_API_VERSION() {
@@ -452,9 +512,9 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
 
   g_nobarEffectIdx = Desktop::Rule::windowEffects()->registerEffect("hyprbars:no_bar");
 
-  g_onCreate = Event::bus()->m_events.window.create.listen([](PHLWINDOW w) { watchWindow(w); });
-  g_onOpen = Event::bus()->m_events.window.open.listen([](PHLWINDOW w) { watchWindow(w); });
-  g_onOpenLate = Event::bus()->m_events.window.openLate.listen([](PHLWINDOW w) { watchWindow(w); });
+  g_onCreate = Event::bus()->m_events.window.create.listen([](PHLWINDOW w) { onCsdMapped(w); });
+  g_onOpen = Event::bus()->m_events.window.open.listen([](PHLWINDOW w) { onCsdMapped(w); });
+  g_onOpenLate = Event::bus()->m_events.window.openLate.listen([](PHLWINDOW w) { onCsdMapped(w); });
   g_onDestroy  = Event::bus()->m_events.window.destroy.listen([](PHLWINDOWREF w) {
     if (auto live = w.lock()) {
       const auto key = reinterpret_cast<uintptr_t>(live.get());

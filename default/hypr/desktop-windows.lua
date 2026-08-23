@@ -22,7 +22,11 @@ o.window(
   { no_focus = true }
 )
 
+-- browser.lua tiles Chromium for tiling mode. Set this before that file
+-- so Desktop Mode keeps Chrome as a float.
+_G.omarchy_desktop_floats = true
 require("default.hypr.apps")
+o.window(".*", { float = true })
 
 -- CSD by class from default/ultimate/csd-clients.json (single source of truth).
 -- Keep hyprbars on foot/Qt SSD. GTK Files (Nautilus) is in that list so it is
@@ -60,7 +64,9 @@ local function load_csd_patterns()
 end
 
 for _, class_pat in ipairs(load_csd_patterns()) do
-  o.window(class_pat, { float = true, ["hyprbars:no_bar"] = true })
+  -- CSD already draws its own shadow and edge. A compositor border + drop
+  -- shadow on top is the dark halo around Chrome.
+  o.window(class_pat, { float = true, ["hyprbars:no_bar"] = true, no_shadow = true, border_size = 0 })
 end
 
 -- Lock surfaces are not 880×560 app windows. Fullscreen per output, no hyprbars.
@@ -68,62 +74,73 @@ o.window("org.omarchy.screensaver", { float = true, fullscreen = true, ["hyprbar
 
 o.window({ tag = "default-opacity" }, { opacity = "0.985 0.96" })
 
-hl.config({
-  general = {
-    resize_on_border = true,
-    -- Windows resizes on a visible ~4px border. The Hyprland default of 15px
-    -- eats clicks meant for the window behind an overlapping float.
-    extend_border_grab_area = 4,
-    gaps_in = 0,
-    gaps_out = 0,
-    border_size = 1,
-    col = {
-      active_border = "rgba(6a6a6aff)",
-      inactive_border = "rgba(3a3a3aff)",
+-- Stock ~/.config/hypr/looknfeel.lua is a copy of the tiling defaults and is
+-- required AFTER this file. It restores cyan borders, gaps, and blur-off.
+-- apply_desktop_look is called again from hyprland.lua after that file.
+local function apply_desktop_look()
+  hl.config({
+    general = {
+      resize_on_border = true,
+      -- Windows resizes on a visible ~4px border. The Hyprland default of 15px
+      -- eats clicks meant for the window behind an overlapping float.
+      extend_border_grab_area = 4,
+      gaps_in = 0,
+      gaps_out = 0,
+      border_size = 1,
+      col = {
+        active_border = "rgba(6a6a6aff)",
+        inactive_border = "rgba(3a3a3aff)",
+      },
     },
-  },
-  -- Windows muscle memory is click-to-focus and click-to-raise. follow_mouse
-  -- 1 focuses the window under the cursor without raising it, so a click on
-  -- the exposed part of a background window does not bring it forward.
-  input = {
-    follow_mouse = 0,
-  },
-  group = {
-    col = {
-      border_active = "rgba(6a6a6aff)",
-      border_inactive = "rgba(3a3a3aff)",
+    -- Windows muscle memory is click-to-focus and click-to-raise. follow_mouse
+    -- 1 focuses the window under the cursor without raising it, so a click on
+    -- the exposed part of a background window does not bring it forward.
+    input = {
+      follow_mouse = 0,
     },
-  },
-  decoration = {
-    shadow = {
-      enabled = true,
-      range = 12,
-      render_power = 3,
+    group = {
+      col = {
+        border_active = "rgba(6a6a6aff)",
+        border_inactive = "rgba(3a3a3aff)",
+      },
     },
-  },
-  cursor = {
-    hide_on_key_press = false,
-  },
-  plugin = {
-    hyprbars = {
-      enabled = true,
-      bar_height = 32,
-      bar_part_of_window = true,
-      bar_precedence_over_border = true,
-      bar_padding = 8,
-      bar_button_padding = 6,
-      bar_title_enabled = true,
-      bar_text_size = 13,
-      bar_text_font = "sans-serif",
-      bar_text_align = "left",
-      bar_buttons_alignment = "right",
-      icon_on_hover = false,
-      bar_color = "rgba(1a1a1acc)",
-      ["col.text"] = "rgb(eeeeee)",
-      on_double_click = "omarchy-shell window toggleMaximize 0x{:x}",
+    decoration = {
+      shadow = {
+        enabled = true,
+        range = 12,
+        render_power = 3,
+      },
     },
-  },
-})
+    cursor = {
+      hide_on_key_press = false,
+    },
+    plugin = {
+      hyprbars = {
+        enabled = true,
+        bar_height = 32,
+        bar_part_of_window = true,
+        bar_precedence_over_border = true,
+        bar_padding = 8,
+        bar_button_padding = 6,
+        bar_title_enabled = true,
+        bar_text_size = 13,
+        bar_text_font = "sans-serif",
+        bar_text_align = "left",
+        bar_buttons_alignment = "right",
+        icon_on_hover = false,
+        bar_color = "rgba(1a1a1acc)",
+        ["col.text"] = "rgb(eeeeee)",
+        on_double_click = "omarchy-shell window toggleMaximize 0x{:x}",
+      },
+    },
+  })
+  -- looknfeel uses windowsIn popin 87%. That is the maximize/minimize jank.
+  hl.animation({ leaf = "windowsIn", enabled = false })
+  hl.animation({ leaf = "windowsOut", enabled = false })
+end
+
+apply_desktop_look()
+_G.omarchy_apply_desktop_look = apply_desktop_look
 
 pcall(function()
   hl.permission("/usr/lib/hyprland-plugins/hyprbars.so", "plugin", "allow")
@@ -262,6 +279,7 @@ add_hyprbars_buttons()
 load_omarchy_minimize()
 
 hl.on("hyprland.start", function()
+  apply_desktop_look()
   load_hyprbars()
   add_hyprbars_buttons()
   load_omarchy_minimize()

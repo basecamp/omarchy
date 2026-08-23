@@ -68,6 +68,9 @@ if awk '
   fail "restore must not assemble bash -c around a raw window address"
 fi
 grep -Fq 'function _hyprbarsInset' "$ws" || fail "snap inset follows hyprbars:no_bar CSD clients"
+grep -Fq 'WindowModel.coversWorkArea' "$ws" || fail "unmaximize must not restore a work-area-covering box as the normal float"
+grep -Fq 'if (!root._knownAddresses[target]) return false' "$ws" \
+  || fail "a new tiled Chromium must not count as maximized just because it covers the work area"
 grep -Fq 'WindowModel.hyprbarsSnapInset' "$ws" || fail "desktop snap asks WindowModel for hyprbars inset"
 if grep -Fq 'WindowModel.snapRect(geom, direction, 32)' "$ws"; then
   fail "CSD clients must not always reserve 32px for hyprbars"
@@ -337,6 +340,8 @@ assert(m.isSnapped(snapped, mon, 8), '960x1040 at origin is the left snap')
 const snappedBar = { x: 0, y: 32, width: 960, height: 1008 }
 assert(m.isSnapped(snappedBar, mon, 8, 32), '960x1008 at y=32 is the desktop left snap')
 assert(!m.isSnapped(floated, mon, 8), 'default float must not count as snapped')
+assert(m.coversWorkArea({ x: 0, y: 0, width: 1920, height: 1040 }, mon), 'full work area is covering')
+assert(!m.coversWorkArea(floated, mon), 'default float is not covering')
 const mon2 = { x: 1920, y: 0, width: 1920, height: 1080, reserved: [0, 0, 0, 40] }
 assertEqual(m.workArea(mon2).x, 1920, 'second monitor work area uses global compositor x')
 assertEqual(m.snapRect(mon2, 'l', 32).x, 1920, 'left snap on the right monitor stays on that monitor')

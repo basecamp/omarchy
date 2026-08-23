@@ -24,7 +24,7 @@ Item {
   property string fontFamily: Style.font.family
   property color foreground: Tokens.text.primary
   property color barForeground: Tokens.text.primary
-  // Windows 7 Superbar: charcoal glass + orange active glow, not Tokyo Night blue.
+  // Windows 7 Superbar: charcoal + orange active glow, not Tokyo Night blue.
   readonly property color chromeBar: "#1b1b1b"
   readonly property color chromeHover: "#333333"
   readonly property color chromeActive: "#3a3a3a"

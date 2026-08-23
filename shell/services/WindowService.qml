@@ -396,7 +396,7 @@ QtObject {
       }
       geom = root._monitorGeom(addr)
       var remembered = key && root.placements[key] && root.placements[key].width ? root.placements[key] : null
-      if (remembered && geom && geom.width && (WindowModel.isSnapped(remembered, geom, 8, 32) || WindowModel.isSnapped(remembered, geom, 8, 0)))
+      if (remembered && geom && geom.width && (WindowModel.isSnapped(remembered, geom, 8, 32) || WindowModel.isSnapped(remembered, geom, 8, 0) || WindowModel.coversWorkArea(remembered, geom)))
         remembered = null
       if (remembered)
         root._applyRect(addr, WindowModel.clampRect(remembered, geom))
@@ -637,7 +637,7 @@ QtObject {
     var rec = root._clientRect(address)
     if (!rec || rec.fullscreen || rec.minimized) return
     var geom = root._monitorGeom(address)
-    if (geom.width && WindowModel.isSnapped(rec, geom, 8, root._hyprbarsInset(address))) return
+    if (geom.width && (WindowModel.isSnapped(rec, geom, 8, root._hyprbarsInset(address)) || WindowModel.coversWorkArea(rec, geom))) return
     var next = root._copyMap(root._normalBounds)
     next[address] = { x: rec.x, y: rec.y, width: rec.width, height: rec.height }
     root._normalBounds = next
@@ -729,6 +729,10 @@ QtObject {
     var ipc = root._clientRect(target)
     if (live && Number(live.fullscreen) === 1) return true
     if (ipc && Number(ipc.fullscreen) === 1) return true
+    // First map of a tiled Chromium covers the work area with fullscreen 0.
+    // That is not a user maximize; treating it as one blocked placement and
+    // made CSD □ a no-op.
+    if (!root._knownAddresses[target]) return false
     var rec = ipc || live
     var geom = root._monitorGeom(address)
     if (!rec || !geom.width) return false
@@ -854,6 +858,9 @@ QtObject {
     }
     var bounds = root._normalBounds[target]
     if (!bounds || !bounds.width) bounds = rec || root._lastRect[target]
+    var geom = root._monitorGeom(target)
+    if (!bounds || !bounds.width || WindowModel.coversWorkArea(bounds, geom))
+      bounds = WindowModel.defaultFloatRect(geom)
     if (!bounds || !bounds.width) return
     root._applyRect(target, bounds)
   }

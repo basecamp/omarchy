@@ -11,8 +11,8 @@ dofile((os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/default/hypr/boo
 -- omarchy_preinstalled_bindings = false
 
 -- Pin outputs before Desktop Mode plugins load. A plugin error during
--- omarchy setup must not skip the user monitor file —
--- this Samsung's EDID preferred mode is 4K@30, which is no-signal.
+-- omarchy setup must not skip the user monitor file. monitors.lua reads
+-- the connected EDID instead of Hyprland's preferred DTD.
 require("hypr.monitors")
 
 -- Load Omarchy defaults.
@@ -25,6 +25,11 @@ require("hypr.monitors")
 require("hypr.input")
 require("hypr.bindings")
 require("hypr.looknfeel")
+-- Stock looknfeel.lua copies tiling defaults (cyan borders, blur off) and
+-- would otherwise undo Desktop Mode chrome. Re-apply after that file.
+if _G.omarchy_apply_desktop_look then
+  _G.omarchy_apply_desktop_look()
+end
 require("hypr.autostart")
 
 -- Toggle config flags dynamically.

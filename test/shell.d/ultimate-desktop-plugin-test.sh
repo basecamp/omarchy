@@ -148,6 +148,24 @@ pass "taskbar, Start, and switcher entry points exist"
 
 [[ -f $ROOT/default/hypr/bindings/desktop.lua ]] || fail "desktop bindings exist"
 [[ -f $ROOT/default/hypr/desktop-windows.lua ]] || fail "desktop window rules exist"
+grep -Fq 'omarchy_desktop_floats = true' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "Desktop Mode must tell browser.lua not to tile Chromium"
+floats_line=$(grep -n 'omarchy_desktop_floats = true' "$ROOT/default/hypr/desktop-windows.lua" | head -1 | cut -d: -f1)
+apps_line=$(grep -n 'require("default.hypr.apps")' "$ROOT/default/hypr/desktop-windows.lua" | head -1 | cut -d: -f1)
+(( floats_line < apps_line )) || fail "omarchy_desktop_floats must be set before default.hypr.apps tiles Chromium"
+grep -Fq 'omarchy_desktop_floats' "$ROOT/default/hypr/apps/browser.lua" \
+  || fail "browser.lua must not tile Chromium in Desktop Mode"
+grep -Fq 'tile = true' "$ROOT/default/hypr/apps/browser.lua" \
+  || fail "tiling mode must still tile Chromium"
+grep -Fq 'omarchy_apply_desktop_look' "$ROOT/config/hypr/hyprland.lua" \
+  || fail "Desktop Mode chrome must re-apply after user looknfeel or cyan borders win"
+looknfeel_line=$(grep -n '^require("hypr.looknfeel")' "$ROOT/config/hypr/hyprland.lua" | head -1 | cut -d: -f1)
+apply_look_line=$(grep -n 'omarchy_apply_desktop_look' "$ROOT/config/hypr/hyprland.lua" | head -1 | cut -d: -f1)
+(( apply_look_line > looknfeel_line )) || fail "desktop look must run after hypr.looknfeel"
+grep -Fq 'windowsIn", enabled = false' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "desktop mode must disable looknfeel popin so maximize is not jank"
+grep -Fq 'no_shadow = true' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "CSD clients must not get a second compositor shadow"
 grep -Fq 'resize_on_border = true' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "desktop windowing enables resize-on-border"
 grep -Fq 'extend_border_grab_area = 4' "$ROOT/default/hypr/desktop-windows.lua" \
