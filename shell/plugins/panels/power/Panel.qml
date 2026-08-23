@@ -74,7 +74,7 @@ Panel {
     return !!(root.batteryPresent && UPower.onBattery)
   }
   readonly property bool chargeThresholdActive: {
-    return Model.chargeThresholdActiveForPacks(root.livePacks, root.discharging, upowerStates(), root.batteryInfo)
+    return Model.chargeThresholdActiveForPacks(root.livePacks, root.discharging, upowerStates(), root.opened ? root.batteryInfo : null)
   }
   readonly property bool batteryFull: fullyCharged || (!root.discharging && batteryFraction >= 1)
   readonly property bool batteryFlowIdle: batteryFull || chargeThresholdActive
