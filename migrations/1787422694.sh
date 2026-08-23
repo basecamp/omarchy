@@ -4,7 +4,7 @@ echo "Silence the lid gate's per-sudo journal noise"
 # exit 1 means "lid is open, carry on to pam_fprintd". pam_exec has no notion
 # of that and logs every non-zero exit as "failed: exit code 1", so machines
 # that took the gate from 1784818437 (or an older omarchy-setup-security-
-# fingerprint) write a NOTICE to the journal on every open-lid sudo and pkexec.
+# fingerprint) write an error to the journal on every open-lid sudo and pkexec.
 #
 # quiet only suppresses the terminal echo; quiet_log suppresses the log write.
 # Both are stock pam_exec options (quiet_log since Linux-PAM 1.5.2).
