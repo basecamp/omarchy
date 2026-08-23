@@ -17,7 +17,10 @@ if ! pacman -Q quickshell >/dev/null 2>&1; then
   exit 0
 fi
 
-if nm -D /usr/lib/libQt6Core.so.6 | grep -q 'QUntypedPropertyBindingC1EP23QPropertyBindingPrivate@@Qt_6$'; then
+# omarchy-migrate runs this under pipefail. nm | grep -q closes the pipe
+# on the first match; nm then SIGPIPEs and the pipeline fails even when
+# the public Qt_6 ctor exists, so the toast asked for sudo on an aligned box.
+if [[ $(nm -D /usr/lib/libQt6Core.so.6) == *QUntypedPropertyBindingC1EP23QPropertyBindingPrivate@@Qt_6* ]]; then
   exit 0
 fi
 

@@ -23,8 +23,10 @@ if grep -Eq 'pacman -S .*quickshell-git' "$qt_align"; then
 fi
 grep -Fq 'qt6-base' "$qt_align" \
   || fail "companion upgrades qt6-base to match packaged quickshell"
-grep -Fq 'QUntypedPropertyBindingC1EP23QPropertyBindingPrivate@@Qt_6$' "$qt_align" \
+grep -Fq 'QUntypedPropertyBindingC1EP23QPropertyBindingPrivate@@Qt_6' "$qt_align" \
   || fail "companion no-ops once the public Qt_6 ctor exists"
+grep -Fq '[[ $(nm -D /usr/lib/libQt6Core.so.6) ==' "$qt_align" \
+  || fail "companion must not use nm|grep -q under migrate pipefail"
 
 # Later stamp so it cannot run before the swap it is repairing.
 qs_stamp=${qs_swap##*/}
