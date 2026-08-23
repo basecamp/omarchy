@@ -19,16 +19,18 @@ if omarchy-hw-surface; then
   # The efivarfs variable holds a 4-byte attributes header followed by the
   # actual 1-byte enabled flag, so read the byte at offset 4. The surface
   # kernel is not signed with Microsoft keys, so skip when Secure Boot would
-  # refuse to boot it.
+  # refuse to boot it. Hardware leaves run without pipefail, so a failed or
+  # short read would surface as an empty value: fail closed on anything that
+  # is not a definite 0 or 1.
   secure_boot_var="$(compgen -G "$efivars_dir/SecureBoot-*" | head -1)"
-  secure_boot=0
+  secure_boot=""
   if [[ -n $secure_boot_var ]]; then
     secure_boot="$(dd if=$secure_boot_var bs=1 skip=4 count=1 status=none | od -An -tu1 | tr -d '[:space:]')"
   fi
 
   if [[ $secure_boot == "1" ]]; then
     echo "Secure Boot is enabled: skipping linux-surface install (touch will not work)."
-  else
+  elif [[ $secure_boot == "0" ]]; then
     # Trust the linux-surface package signing key before installing from the
     # repository, so package signatures verify on first use.
     if ! pacman-key --list-keys 56C464BAAC421453 &>/dev/null; then
@@ -61,5 +63,7 @@ EOF
 # available in the menu for touchscreen support.
 BOOT_ORDER="linux, linux-surface*, *fallback, Snapshots"
 EOF
+  else
+    echo "Could not determine the Secure Boot state: skipping linux-surface install (touch will not work)."
   fi
 fi

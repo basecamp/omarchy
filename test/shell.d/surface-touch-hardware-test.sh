@@ -85,6 +85,12 @@ printf '\t%s' "$@" >>"$TEST_LOG"
 printf '\n' >>"$TEST_LOG"
 SH
 
+cat >"$stub_bin/omarchy-pkg-present" <<'SH'
+#!/bin/bash
+
+(( ${SURFACE_KERNEL_INSTALLED:-0} == 1 ))
+SH
+
 chmod +x "$stub_bin"/*
 
 pacman_conf="$test_tmp/pacman.conf"
@@ -135,6 +141,17 @@ run_leaf 1
   fail "no boot order drop-in lands while Secure Boot blocks the kernel"
 pass "enabled Secure Boot skips the surface kernel install"
 
+# An unreadable or truncated efivar leaves the Secure Boot state unknown;
+# installing an unbootable kernel would be worse than skipping it.
+printf '\x06\x00' >"$secure_boot_var"
+: >"$calls"
+run_leaf 1
+! grep -Fq 'omarchy-pkg-add' "$calls" ||
+  fail "an undecidable Secure Boot state does not install the kernel"
+[[ ! -f $entry_tool_dir/zz-surface-touch.conf ]] ||
+  fail "an undecidable Secure Boot state creates no boot order drop-in"
+pass "undecidable Secure Boot state fails closed"
+
 # Surface with Secure Boot off: key trust, repository, packages, boot order.
 printf '\x06\x00\x00\x00\x00' >"$secure_boot_var"
 : >"$calls"
@@ -167,23 +184,41 @@ run_leaf 1
   fail "an imported signing key is not re-downloaded on reruns"
 pass "reruns are idempotent"
 
-# The persisted repository survives a post-install pacman.conf restore.
+# The persisted repository survives a post-install pacman.conf restore: start
+# from a pristine configuration without the entry, as the final restore
+# produces, then verify restoration and idempotence against it.
+cat >"$pacman_conf" <<'EOF'
+[options]
+HoldPkg = pacman glibc
+
+[core]
+Include = /etc/pacman.d/mirrorlist
+EOF
+
+run_pacman_hardware() {
+  PATH="$stub_bin:$PATH" \
+    TEST_LOG="$calls" \
+    SURFACE_HARDWARE=$1 \
+    SURFACE_KERNEL_INSTALLED=$2 \
+    OMARCHY_PACMAN_CONF="$pacman_conf" \
+    bash -eE -c 'source "$1"' bash "$pacman_hardware" >/dev/null
+}
+
+# A Secure Boot skip never installed the kernel, so its repository must not
+# appear either.
 : >"$calls"
-PATH="$stub_bin:$PATH" \
-  TEST_LOG="$calls" \
-  SURFACE_HARDWARE=1 \
-  OMARCHY_PACMAN_CONF="$pacman_conf" \
-  bash -eE -c 'source "$1"' bash "$pacman_hardware" >/dev/null
-cp -f "$pacman_conf" "$pacman_conf.restored"
-rm -f "$pacman_conf"
-mv "$pacman_conf.restored" "$pacman_conf"
-PATH="$stub_bin:$PATH" \
-  TEST_LOG="$calls" \
-  SURFACE_HARDWARE=1 \
-  OMARCHY_PACMAN_CONF="$pacman_conf" \
-  bash -eE -c 'source "$1"' bash "$pacman_hardware" >/dev/null
+run_pacman_hardware 1 0
+! grep -q '^\[linux-surface\]' "$pacman_conf" ||
+  fail "no repository is restored when the surface kernel is not installed"
+pass "Secure Boot skips keep the third-party repository away"
+
+run_pacman_hardware 1 1
 grep -q '^\[linux-surface\]' "$pacman_conf" ||
   fail "pacman.sh re-adds the linux-surface repository after a conf restore"
 (( $(grep -c '^\[linux-surface\]' "$pacman_conf") == 1 )) ||
   fail "pacman.sh does not duplicate the linux-surface repository entry"
+
+run_pacman_hardware 1 1
+(( $(grep -c '^\[linux-surface\]' "$pacman_conf") == 1 )) ||
+  fail "pacman.sh stays idempotent across reruns"
 pass "the linux-surface repository survives the final pacman.conf restore"

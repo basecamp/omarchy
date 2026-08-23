@@ -5,8 +5,9 @@ pacman_conf=${OMARCHY_PACMAN_CONF:-/etc/pacman.conf}
 
 # Touchscreen support on IPTS-era Surfaces installs the linux-surface kernel
 # (see surface-touch.sh); its repository has to be restored here too or future
-# kernel updates would fail.
-if omarchy-hw-surface && ! grep -q '^\[linux-surface\]' "$pacman_conf"; then
+# kernel updates would fail. Gate on the package instead of the hardware so a
+# Secure Boot skip never leaves a third-party repository without its key.
+if omarchy-hw-surface && omarchy-pkg-present linux-surface && ! grep -q '^\[linux-surface\]' "$pacman_conf"; then
   cat >> "$pacman_conf" <<'EOF'
 
 [linux-surface]
