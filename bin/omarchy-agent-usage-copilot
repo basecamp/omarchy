@@ -66,6 +66,13 @@ def local_date_string() -> str:
   return date_string(dt.datetime.now().date())
 
 
+def format_count(value: Any) -> str:
+  try:
+    return f"{int(round(float(value))):,}"
+  except (TypeError, ValueError):
+    return "0"
+
+
 def get_oauth_token() -> str | None:
   """Read OAuth token from editor plugin config (VS Code, JetBrains, copilot.vim).
 
@@ -251,9 +258,14 @@ def main() -> None:
     pct = 0
     if quota["total"] > 0:
       pct = quota["used"] / quota["total"]
+    usage_label = f"AI Credits (Premium Requests {format_count(quota['used'])}/{format_count(quota['total'])} used)"
     limit_entry = {
-      "label": quota["displayName"],
+      "label": usage_label,
+      "title": usage_label,
       "percent": pct,
+      "used": quota["used"],
+      "total": quota["total"],
+      "unit": "premium requests",
     }
     if "resetsAt" in quota:
       limit_entry["resetsAt"] = quota["resetsAt"]
