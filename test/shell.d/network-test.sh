@@ -294,18 +294,17 @@ assertDeepEqual(
 assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }), '', 'network keeps wifi band state out of the hero')
 assertEqual(network.headerDetail({ type: 'ethernet', speed: '100' }), '100mbit', 'network keeps ethernet speed in the hero')
 
-// Hidden-network connect scripts: SSID (and identity, for enterprise) must
-// travel as positional args -- never string-interpolated -- and the profile
-// must be marked hidden so NetworkManager probes for it instead of waiting
-// on a beacon that will never arrive.
+// Hidden-network connect script: SSID must travel as a positional arg --
+// never string-interpolated -- and the profile must be marked hidden so
+// NetworkManager probes for it instead of waiting on a beacon that will
+// never arrive.
 assert(/"\$1"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script maps ssid to the positional $1 arg')
 assert(/802-11-wireless\.hidden yes/.test(network.hiddenPskConnectScript), 'hidden PSK connect script marks the profile hidden')
 assert(/IFS= read -r pw/.test(network.hiddenPskConnectScript), 'hidden PSK connect script reads the passphrase from stdin, not argv')
 assert(/set wifi-sec\.psk %s/.test(network.hiddenPskConnectScript), 'hidden PSK connect script sets the psk through the connection editor')
 assert(!/password "\$pw"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script never passes the passphrase in argv')
 
-assert(/"\$1"/.test(network.hiddenEnterpriseConnectScript), 'hidden enterprise connect script maps ssid to the positional $1 arg')
-assert(/"\$2"/.test(network.hiddenEnterpriseConnectScript), 'hidden enterprise connect script maps identity to the positional $2 arg')
-assert(/802-11-wireless\.hidden yes/.test(network.hiddenEnterpriseConnectScript), 'hidden enterprise connect script marks the profile hidden')
-assert(/IFS= read -r pw/.test(network.hiddenEnterpriseConnectScript), 'hidden enterprise connect script reads the passphrase from stdin, not argv')
+// A repeat join to the same hidden SSID must not pile up duplicate
+// NetworkManager profiles, so any same-named profile is deleted first.
+assert(/connection delete id "\$1"[\s\S]*nmcli connection add/.test(network.hiddenPskConnectScript), 'hidden PSK connect script deletes an existing same-named profile before adding a new one')
 JS

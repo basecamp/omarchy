@@ -345,21 +345,14 @@ var enterpriseConnectScript =
 // profile first, then push the PSK through the scriptable `connection edit`
 // editor over stdin. `nmcli device wifi connect ... password "$pw"` would put
 // the passphrase in argv (world-readable via /proc), so it must not be used.
+// Deletes any same-named profile left behind by a prior join first, so
+// repeat connects to the same hidden SSID don't pile up duplicate profiles.
 var hiddenPskConnectScript =
-  "u=$(uuidgen); IFS= read -r pw;" +
+  "nmcli connection delete id \"$1\" >/dev/null 2>&1;" +
+  " u=$(uuidgen); IFS= read -r pw;" +
   " nmcli connection add type wifi con-name \"$1\" ssid \"$1\" connection.uuid \"$u\"" +
   " 802-11-wireless.hidden yes wifi-sec.key-mgmt wpa-psk >/dev/null" +
   " && printf 'set wifi-sec.psk %s\\nsave\\nquit\\n' \"$pw\" | nmcli connection edit uuid \"$u\" >/dev/null" +
-  " && nmcli connection up uuid \"$u\"" +
-  " || { nmcli connection delete uuid \"$u\" >/dev/null 2>&1; false; }"
-
-var hiddenEnterpriseConnectScript =
-  "u=$(uuidgen); IFS= read -r pw;" +
-  " nmcli connection add type wifi con-name \"$1\" ssid \"$1\" connection.uuid \"$u\"" +
-  " 802-11-wireless.hidden yes" +
-  " wifi-sec.key-mgmt wpa-eap 802-1x.eap peap 802-1x.phase2-auth mschapv2" +
-  " 802-1x.identity \"$2\" 802-1x.auth-timeout 8 >/dev/null" +
-  " && printf 'set 802-1x.password %s\\nsave\\nquit\\n' \"$pw\" | nmcli connection edit uuid \"$u\" >/dev/null" +
   " && nmcli connection up uuid \"$u\"" +
   " || { nmcli connection delete uuid \"$u\" >/dev/null 2>&1; false; }"
 
@@ -415,7 +408,6 @@ if (typeof module !== "undefined") {
     canForgetNetwork: canForgetNetwork,
     enterpriseConnectScript: enterpriseConnectScript,
     hiddenPskConnectScript: hiddenPskConnectScript,
-    hiddenEnterpriseConnectScript: hiddenEnterpriseConnectScript,
     networkFailureReason: networkFailureReason,
     shouldRepromptPassphrase: shouldRepromptPassphrase
   }
