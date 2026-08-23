@@ -13,6 +13,8 @@ mkdir -p "$TEST_HOME/.codex/sessions/$(date +%Y/%m/%d)" "$TEST_HOME/bin"
 cat >"$TEST_HOME/bin/codex" <<'EOF'
 #!/bin/bash
 
+[[ -n $CODEX_SPAWN_LOG ]] && printf '%s\n' "$*" >>"$CODEX_SPAWN_LOG"
+
 while read -r request; do
   id=$(jq -r '.id // empty' <<<"$request")
   method=$(jq -r '.method // empty' <<<"$request")
@@ -54,6 +56,19 @@ pass "Codex collector does not double-count cache or reasoning tokens"
 [[ $(jq -c '.id + "/" + (.limits|tostring)' <<<"$result") == '"codex/[]"' ]] ||
   fail "Codex collector identifies itself with an empty limits list" "$result"
 pass "Codex collector identifies itself with an empty limits list"
+
+# Codex 0.149 dropped "untrusted" from --ask-for-approval, which made the
+# app-server exit before answering initialize and left the limits meters dark.
+# The poller is detached, so its policy must also be one that cannot prompt.
+CODEX_SPAWN_LOG="$TEST_HOME/codex-spawn.log" \
+  HOME="$TEST_HOME" CODEX_HOME="$TEST_HOME/.codex" XDG_DATA_HOME="$TEST_HOME/.local/share" PATH="$TEST_HOME/bin:$PATH" \
+  "$ROOT/bin/omarchy-agent-usage-codex" >/dev/null
+grep -q -- '-a never' "$TEST_HOME/codex-spawn.log" ||
+  fail "Codex collector spawns app-server with a prompt-free approval policy" "$(cat "$TEST_HOME/codex-spawn.log")"
+if grep -q 'untrusted' "$TEST_HOME/codex-spawn.log"; then
+  fail "Codex collector still spawns app-server with the removed untrusted policy" "$(cat "$TEST_HOME/codex-spawn.log")"
+fi
+pass "Codex collector spawns app-server with a prompt-free approval policy"
 
 # Pi and omp can both spend a Codex subscription without creating native
 # Codex sessions. Their compatible JSONL transcripts must be included.

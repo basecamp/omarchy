@@ -527,8 +527,13 @@ def fetch_codex_rpc():
     return result
 
   try:
+    # Codex 0.149 dropped "untrusted" from --ask-for-approval, which made this
+    # spawn exit before answering initialize and left the limits meters empty.
+    # This poller is detached: an approval prompt can never be answered, so
+    # "never" plus the read-only sandbox is both valid across CLI versions and
+    # the only policy that cannot stall the poll.
     proc = subprocess.Popen(
-      [codex, "-s", "read-only", "-a", "untrusted", "app-server"],
+      [codex, "-s", "read-only", "-a", "never", "app-server"],
       stdin=subprocess.PIPE,
       stdout=subprocess.PIPE,
       stderr=subprocess.DEVNULL,
