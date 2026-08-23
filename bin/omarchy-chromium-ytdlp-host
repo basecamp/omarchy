@@ -79,7 +79,7 @@ download_url() {
   mkdir -p "$DOWNLOAD_DIR"
 
   # Don't show anything until yt-dlp confirms there's actually a video to grab.
-  if ! yt-dlp --no-playlist --simulate --quiet --no-warnings --no-exec -- "$url" >/dev/null 2>&1; then
+  if ! yt-dlp --no-playlist --simulate --quiet --no-warnings --no-exec --no-exec-before-download -- "$url" >/dev/null 2>&1; then
     omarchy-notification-send -u critical -g 󰅖 "No video found for download" "$url"
     exit 0
   fi
@@ -112,7 +112,7 @@ download_url() {
       ;;
     esac
   done < <(PYTHONUNBUFFERED=1 yt-dlp --no-playlist --restrict-filenames --no-simulate \
-    --quiet --no-warnings --no-exec --progress --newline \
+    --quiet --no-warnings --no-exec --no-exec-before-download --progress --newline \
     --progress-template $'download:OMARCHY_PROG\t%(progress._percent_str)s' \
     --paths "$DOWNLOAD_DIR" -o '%(title)s [%(id)s].%(ext)s' \
     --print $'after_move:OMARCHY_FILE\t%(filepath)s' \

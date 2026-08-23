@@ -151,3 +151,56 @@ poisoned=$(
 [[ $poisoned == "$expected" ]] ||
   fail "yt-dlp native host keeps a real file after a forged OMARCHY_FILE record" "$poisoned"
 pass "yt-dlp native host keeps a real file after a forged OMARCHY_FILE record"
+
+# Everything above tests the helpers in isolation. Drive the real download_url with
+# stubbed tools so the yt-dlp invocation and the toast's click command are covered
+# too: a record template that carried the title again would pass every test above.
+fake_root="$TMPDIR/fake"
+mkdir -p "$fake_root/bin"
+fake_dir="$TMPDIR/fake-videos"
+mkdir -p "$fake_dir"
+fake_file="$fake_dir/Real_Clip [id].mp4"
+printf 'x' >"$fake_file"
+ytdlp_argv="$TMPDIR/ytdlp-argv"
+notify_argv="$TMPDIR/notify-argv"
+
+cat >"$fake_root/bin/yt-dlp" <<'EOF'
+#!/bin/bash
+printf '%s\n' "$*" >>"$YTDLP_ARGV_LOG"
+for arg in "$@"; do
+  if [[ $arg == "--no-simulate" ]]; then
+    printf 'OMARCHY_FILE\t%s\n' "$YTDLP_FAKE_FILE"
+    exit 0
+  fi
+done
+exit 0
+EOF
+
+cat >"$fake_root/bin/omarchy-notification-send" <<'EOF'
+#!/bin/bash
+printf '%s\n' "$*" >>"$NOTIFY_ARGV_LOG"
+EOF
+
+for stub in omarchy-osd omarchy-shell ffmpeg; do
+  printf '#!/bin/bash\nexit 0\n' >"$fake_root/bin/$stub"
+done
+chmod +x "$fake_root/bin/"*
+
+YTDLP_ARGV_LOG="$ytdlp_argv" NOTIFY_ARGV_LOG="$notify_argv" YTDLP_FAKE_FILE="$fake_file" \
+  OMARCHY_PATH="$fake_root" OMARCHY_YTDLP_DIR="$fake_dir" \
+  bash -c '
+    source "$1"
+    download_url "$2"
+  ' bash "$ROOT/bin/omarchy-chromium-ytdlp-host" "https://example.test/watch" >/dev/null 2>&1
+
+(($(grep -c -- '--no-exec-before-download' "$ytdlp_argv") == 2)) ||
+  fail "yt-dlp native host disarms configured exec hooks on both yt-dlp runs" "$(cat "$ytdlp_argv")"
+pass "yt-dlp native host disarms configured exec hooks on both yt-dlp runs"
+
+grep -qF -- $'OMARCHY_FILE\t%(title)s' "$ytdlp_argv" &&
+  fail "yt-dlp native host never prints the title into the file record" "$(cat "$ytdlp_argv")"
+pass "yt-dlp native host never prints the title into the file record"
+
+grep -q -- "--exec mpv -- " "$notify_argv" ||
+  fail "yt-dlp native host builds the click command as mpv -- <path>" "$(cat "$notify_argv")"
+pass "yt-dlp native host builds the click command as mpv -- <path>"
