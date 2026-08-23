@@ -1,13 +1,13 @@
 {
   "mode": "power-user",
-  "description": "Omarchy heritage profile over the same platform: tiling-first layout, Super-key bindings, workspace-centric navigation, raw config editing, original Omarchy menu.",
+  "description": "Omarchy heritage profile over the same platform: tiling-first layout, Super-key bindings, workspace-centric navigation, raw config editing, original Omarchy menu. Flags are capabilities that exist, not intentions.",
   "features": {
-    "desktopIcons": true,
+    "desktopIcons": false,
     "taskbar": false,
     "startMenu": false,
     "systemTray": true,
-    "quickSettings": true,
-    "notificationCenter": true,
+    "quickSettings": false,
+    "notificationCenter": false,
     "floatingWindows": false,
     "tilingDefault": true,
     "snapLayouts": true,

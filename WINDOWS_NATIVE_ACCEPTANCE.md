@@ -1,10 +1,14 @@
 # Windows-Native Acceptance Manifest
 
-The acceptance test that defines this distro. Give a Windows-native tester a completely clean machine. Do not give them documentation. Ask them to complete all forty tasks below.
+Smoke test: can a Windows person use this PC? Give a Windows-native tester a completely clean machine. Do not give them documentation. Ask them to complete all forty tasks below.
 
-Release requirement: **they complete all forty without opening Terminal and without searching the web.**
+This file is **necessary and not sufficient**. Job completeness is `WINDOWS_7_ULTIMATE_PARITY.md`. Agent-callable completeness is `AGENT_NATIVE_ACCEPTANCE.md`. A green Superbar and six automated windowing rows do not ship the OS.
+
+Release still requires: **they complete all forty without opening Terminal and without searching the web.**
 
 Anything that requires documentation is a UX defect to investigate. Anything that requires the terminal is a missing product surface. Anything that requires memorizing a hotkey is a missing affordance.
+
+Only **six of forty** rows are automated (20–25). The rest are `pending`.
 
 Status legend: `pending` (no automated coverage yet), `manual` (human-tested only), `automated` (covered by `test/acceptance.d/windows-native-test.sh` or another harness entry).
 
@@ -57,4 +61,6 @@ Give the same machine to an Omarchy/Arch power user. They should still be able t
 
 ## Harness
 
-`test/acceptance.d/windows-native-test.sh` is the executable skeleton for this manifest inside the disposable-VM acceptance suite (see `agents/skills/acceptance-tests.md`). Each row above maps to a named case; cases land there as vertical slices ship, per the phase plan in `PRODUCT_DOCTRINE.md` history and `docs/`.
+`test/acceptance.d/windows-native-test.sh` is the executable skeleton for this manifest inside the disposable-VM acceptance suite (see `agents/skills/acceptance-tests.md`). Each row above maps to a named case; cases land there as vertical slices ship, per `plans/project-ultimate.md`.
+
+A green harness that only talks to `omarchy-shell window` and checks `left.x <= right.x` does not pass the OS. It was sufficient as evidence for Windowing Gate W0 architecture on Hyprland. It is not Windows 7 Ultimate.

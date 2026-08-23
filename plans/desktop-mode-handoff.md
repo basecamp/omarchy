@@ -1,10 +1,33 @@
 # Desktop Mode Slice — Local Session Handoff
 
-This is a binding handoff for a fresh session running on the developer's local machine, where a real QEMU guest with a live Hyprland session is available. It exists because the windowing go/no-go cannot be proven in the cloud pod: that pod has `/dev/kvm` but a degraded virtualization stack (a trivial QEMU freezes its own monitor loop, no guest serial output, no loadable kernel modules), so no faithful Hyprland session can be stood up there. Everything that does not need a live compositor has already been verified; what remains is the compositor-level proof and any fixes that proof justifies.
+Live Hyprland evidence for Desktop Mode windowing, plus the current next-work lock. Cloud pods cannot prove this: `/dev/kvm` without a faithful guest is not a session.
 
-Do not treat this file as advisory. It is a contract. Follow it in order and do not skip.
+Do not treat this file as advisory. Historical tranches below are evidence. **Current truth is this section, not §0–§0i (those still say “W0 is still open” because they were written before architecture GO).**
 
-## 0. Reviewer lock (2026-08-22)
+## Current lock (2026-08-22 course-correction)
+
+**Identity:** Windows 7 Ultimate's complete, obvious, mouse-native desktop model rebuilt for 2026, with an agent-native operating fabric underneath every system capability. **Not** Windows-like Omarchy with AI tools.
+
+**Branches:** default `main` (upstream tracking only). All Ultimate work is `work`. Do not create `cursor/*` or other slice branches. Do not merge `work` into `main` as the OS. Product is still **REJECTED**.
+
+**W0:** architecture **GO** on metal (Hyprland stays). That is not finished Windows 7 window management. Remaining product-windowing debt: fourth caption snap button (want min/max/close; snap from maximize hover or drag); 880×560 prototype default size; brittle CSD class-regex (Nautilus two-row expected, not live-reverified here); per-app launch geometry missing (`restoreNormal` is in-session snap/max only); hyprbars/omarchy-minimize must become versioned distro packages in the Hyprland release transaction, not compile-at-install. Do not restore `--disable-features=WaylandWindowDecorations`. Do not put `hyprland-plugin-hyprbars` in `install/omarchy-other.packages`.
+
+**Honesty:** Superbar is a prototype. Start is a launcher. Settings is a stub. Peek is a title list. Group menu “Close window” closes all windows in the group. Progress ~15–20% of the OS vision.
+
+**Next locked work (do this, not a huge Phase 3/4 visual pass):**
+
+1. Agent Fabric contract on top of WindowService (runtime, capability broker, permissions, ledger, undo). Agent UI can wait; architecture cannot.
+2. Restore `omarchy.agents` and Quattro plugin visibility in Desktop Mode Superbar. `TrayCluster.qml` hard-codes widgets and drops the heritage `omarchy.agents` entry. Agent Center belongs in Desktop Mode as native as Start; until it exists the usage widget stays visible.
+
+KEEP `4ea1dcf3` through `c1ae994f`. Do not amend them. Do not squash them.
+
+Read `PRODUCT_DOCTRINE.md` (eight rules), `plans/project-ultimate.md`, `WINDOWS_NATIVE_ACCEPTANCE.md` (smoke test; six of forty automated), `WINDOWS_7_ULTIMATE_PARITY.md`, `AGENT_NATIVE_ACCEPTANCE.md`.
+
+## Historical W0 tranches
+
+The following §0–§0j blocks are dated session locks. Do not execute “W0 is still open” or “next phase is Phase 2 design system” from them.
+
+## 0. Reviewer lock (2026-08-22) — historical, pre-GO
 
 Keep `4ea1dcf3` and `a5b945da`. Those are the accepted repair. Do not amend them. Do not squash them. Do not redo the LTRB / `Hyprland.dispatch` / Start-label / click-handler work as if it were still dirty.
 
@@ -170,28 +193,28 @@ KEEP-WITH-FIX that landed:
 
 Still not the OS (later phases, not this slice): ISO, gum, Tokyo Night seed, Nautilus-as-Files, nvim-as-txt, TTY first-boot, Steam/.exe, hyprbars as an ISO-mirror pacman package. Do not put `hyprland-plugin-hyprbars` in `install/omarchy-other.packages`.
 
-Next phase is Phase 2 (design system).
+Historical next-line (superseded): design system. **Current next work is Agent Fabric + Superbar plugin/`omarchy.agents` visibility** — see Current lock.
 
 ## 1. Read-first contract (mandatory, non-skippable)
 
 Before writing a single line of code, running a test, or booting a VM, read these files in full, in this order. They are the Project Ultimate source of truth and they override intuition, memory, and habit.
 
-1. `PRODUCT_DOCTRINE.md` — the objective and the seven non-negotiable rules (zero-terminal ownership, zero-hotkey-required operation, "Windows muscle memory is an API", visible-before-memorable, progressive disclosure, all consequential operations have state, recoverability is a flagship feature), plus naming/error doctrine and the Mode Profiles concept.
-2. `WINDOWS_NATIVE_ACCEPTANCE.md` — the forty-task release gate. This slice owns rows 20–25 (pin, unpin, minimize three, restore the one they want, snap two, Alt+Tab).
-3. `docs/mode-profiles.md` — one toggle, two profiles, one platform: feature-flag resolution, the shell overlay rule (Desktop Mode must not rewrite `~/.config/omarchy/shell.json`), and the Hyprland state-file selection.
-4. `docs/settings-service-api.md` — the architecture rule: UI → typed service verbs → existing Omarchy/system tooling. QML never spawns shell commands directly.
+1. `PRODUCT_DOCTRINE.md` — the locked identity (Windows 7 Ultimate desktop model + agent-native fabric; not Windows-like Omarchy with AI tools) and the eight non-negotiable rules (zero-terminal ownership, zero-hotkey-required operation, "Windows muscle memory is an API", visible-before-memorable, progressive disclosure, all consequential operations have state, recoverability is a flagship feature, **agent-native same capability graph**), plus naming/error doctrine and Mode Profiles.
+2. `WINDOWS_NATIVE_ACCEPTANCE.md` — the forty-task smoke test (necessary, not sufficient; six of forty automated). This slice owned rows 20–25 (pin, unpin, minimize three, restore the one they want, snap two, Alt+Tab). Also read `WINDOWS_7_ULTIMATE_PARITY.md` and `AGENT_NATIVE_ACCEPTANCE.md`.
+3. `docs/mode-profiles.md` — one toggle, two profiles, one platform: feature-flag resolution (flags mean capability exists), the shell overlay rule (Desktop Mode must not rewrite `~/.config/omarchy/shell.json`), Superbar plugin/`omarchy.agents` visibility, and the Hyprland state-file selection.
+4. `docs/settings-service-api.md` — the architecture rule: UI and agents → typed service verbs → existing Omarchy/system tooling. QML never spawns shell commands directly. WindowService is the first provider; Agent Fabric is the next gate.
 5. `docs/design-tokens.md` and `docs/omarchy-shell.md` — the semantic token layer and the shell/plugin/IPC contract.
 6. `AGENTS.md` (repo root) plus the task guides it points to: `agents/skills/shell-dev.md`, `agents/skills/acceptance-tests.md`, `agents/skills/visual-verification.md`, and `docs/testing.md`.
 7. `default/ultimate/profiles/desktop.json` and `default/ultimate/profiles/power-user.json` — the shipped profile data.
 
-Acknowledgement gate: in your first substantive reply, restate the seven doctrine rules in your own words and name the mode-profiles overlay rule and the settings-service architecture rule. Do not proceed until you have done this. If any listed file is missing, stop and report drift rather than guessing.
+Acknowledgement gate: in your first substantive reply, restate the eight doctrine rules in your own words and name the mode-profiles overlay rule and the settings-service architecture rule. Do not proceed until you have done this. If any listed file is missing, stop and report drift rather than guessing.
 
 ## 2. Ground truth: repository state
 
-- Remote: `github.com/jnadeau207-collab/omarchy-7-ultimate`. Default branch: `main` (clean upstream tracking). Work branch: `work` (all Ultimate product commits, including the locked W0 stack through `c1d6e6a6` plus later quattro).
-- Do not reconstruct deleted slice branches (`ultimate/foundation`, `cursor/desktop-mode-slice-00d6`, `cursor/cloud-agent-dev-environment-a448`). Those commits are ancestors of `work`.
-- Product is still REJECTED. Do not merge `work` into `main` as the OS.
-- Continue on `work`. Do not create new branches. Do not force-push. Do not amend locked SHAs `4ea1dcf3` through `c1d6e6a6`. Do not edit the external `.plan.md` file that lives on the developer's machine.
+- Remote: `github.com/jnadeau207-collab/omarchy-7-ultimate`. Default branch: `main` (clean upstream tracking). Work branch: `work` (all Ultimate product commits, including the locked W0 stack through `c1ae994f`, later `c1d6e6a6`, quattro merge, and doctrine on `work`).
+- Do not reconstruct deleted slice branches (`ultimate/foundation`, `cursor/desktop-mode-slice-00d6`, `cursor/cloud-agent-dev-environment-a448`). Those commits are ancestors of `work`. A bundle backup lives at `C:\dev\omarchy-vm\omarchy-all-refs-2026-08-22.bundle`; produce a reconciliation ledger from it. Do not claim proof of zero unique commits on deleted tips unless you verified the bundle in that run.
+- Product is still REJECTED. W0 is architecture GO. Do not merge `work` into `main` as the OS.
+- Continue on `work`. Do not create new branches. Do not force-push. Do not amend locked SHAs `4ea1dcf3` through `c1ae994f`. Do not edit the external `.plan.md` file that lives on the developer's machine.
 
 Fetch and check out before doing anything else:
 
@@ -218,9 +241,13 @@ bash -lc 'cd "$(git rev-parse --show-toplevel)" && ./test/all'
 
 Critical caveat: every compositor-dependent test prints `no Wayland compositor; skipping …`. The green suite does not prove windowing behavior. That is the entire reason for this handoff.
 
-## 4. The mission: prove conventional windowing on Hyprland, then finish the slice
+## 4. The mission now: Agent Fabric, not a second windowing go/no-go
 
-From the plan: prove conventional windowing on Hyprland (or stop), then ship Desktop Mode as a real product surface — profile-driven bottom taskbar, a Start that launches apps, pin/unpin, Show Desktop, and Windows keybindings — verified in the QEMU guest. The windowing proof is the gate. If `special:minimized` cannot restore a window with its identity intact, that is a compositor gate to surface honestly, not something to paper over with taskbar chrome.
+W0 architecture already passed on metal. Do not re-run the windowing go/no-go as if minimize were still `special:minimized`. Minimize is `CWindow::setHidden`. Overlay captions are gone.
+
+The next slice is Agent Fabric contract (WindowService first provider) and restoring `omarchy.agents` / plugin visibility on the Superbar. Do not start a huge design-system or Desktop Mode visual pass that treats agents as optional later.
+
+If a later turn must re-prove windowing, use §6 as the old checklist and the Current lock for remaining product-windowing debt. A QML service that fires Lua dispatchers is still not the OS.
 
 ## 5. Stand up the guest (do not skip, do not fake)
 
@@ -257,7 +284,7 @@ Prove each of these with evidence, not assertion:
 - Overlapping float: launch three windows (`foot`), confirm each is floating and they overlap (`hyprctl -j clients` shows `floating: true` and intersecting `at`/`size`), not tiled.
 - Title-bar drag moves; edge/corner drag resizes. `default/hypr/desktop-windows.lua` sets `resize_on_border = true` and floats by default; confirm the border resize and drag actually work in the session.
 - Maximize is real and not suppressed: maximize an active window and confirm it fills the work area (respecting the bar) and restores. This is the first place a dispatcher bug will surface — see §7.
-- Minimize three, then restore the specific one: minimize sends to `special:minimized`; restoring must return the exact same window (same address) to the active workspace with its title/app identity intact. This is the compositor gate. If identity is lost, stop and report it as a go/no-go failure.
+- Minimize three, then restore the specific one: minimize is `CWindow::setHidden` on the same workspace via `omarchy-minimize` (not `special:minimized`). Restoring must return the exact same window (same address) with title/app identity intact. Historical text below that still names `special:minimized` is pre-Tranche-D evidence.
 - Snap two windows: snap one left and one right; confirm each matches the Hyprland 0.56 work area (`reserved` is **left, top, right, bottom**). A bottom taskbar of 40px on 1920×1080 is left `[0,0] 960×1040` and right `[960,0] 960×1040`. `at[0] <=` plus non-zero width is not enough.
 - Maximize fills that same work area (`fullscreen == 1`, size within 32px of work width/height). This is required even though it is not a numbered acceptance row.
 - Alt+Tab: cycle raises the task-switcher overlay; cards are clickable; commit focuses the chosen window.
@@ -270,7 +297,7 @@ Classic token dispatchers are dead. `hyprctl dispatch fullscreen 2`, `movewindow
 
 - Maximize: `hl.dsp.window.fullscreen({ mode = "maximized", action = "set", window = "address:…" })`. Omitting `action` toggles.
 - Snap: ordered `hl.dsp.window.float({ action = "enable" })`, then `resize({ x, y, relative = false })`, then `move({ x, y, relative = false })`. Percent sizes are rejected. Pixels come from the focused monitor's work area.
-- Minimize: `hl.dsp.window.move({ workspace = "special:minimized", follow = false, window = "address:…" })`. Identity at the compositor holds: restoring the same address returns it to the active workspace with title intact. Parking on `special:minimized` is still a compositor trick, not a Windows minimize, until caption chrome and the taskbar are the mouse path.
+- Minimize (historical, superseded by Tranche D): `hl.dsp.window.move({ workspace = "special:minimized", follow = false, window = "address:…" })` was the 0.56 debug path. Current minimize is `hl.plugin.omarchy_minimize.*` / `CWindow::setHidden` on the same workspace.
 - Restore: Lua move to `Hyprland.focusedWorkspace.id` with `follow = true`. `Toplevel.activate()` on a parked client does not restore it.
 
 How dispatch is fired from QML:
@@ -314,8 +341,8 @@ Live numbers from the follow-up turn (Hyprland 0.56.2, virtio-vga 1920×1080, re
 
 ## 8. Non-negotiable engineering rules for the code you write
 
-- Architecture: UI → typed service verbs → Omarchy/system tooling. QML components never spawn shell commands; window operations go through `WindowService` verbs. New capability domains are QML singletons under `shell/services/` with structured readers and intent-named writers returning `{ changed, error: { title, explanation, detail } }` (`docs/settings-service-api.md`).
-- Mode profiles are data. UI registers against feature flags, never against mode strings. Desktop Mode must not rewrite `~/.config/omarchy/shell.json`; it computes an effective config in `shell.qml`. Switching modes must not require a reboot or lose user state (`docs/mode-profiles.md`).
+- Architecture: UI and agents → typed service verbs → Omarchy/system tooling. QML components never spawn shell commands; window operations go through `WindowService` verbs. New capability domains are QML singletons under `shell/services/` with structured readers and intent-named writers returning `{ changed, error: { title, explanation, detail } }` (`docs/settings-service-api.md`). Agent Fabric brokers those same verbs; do not add a parallel shell-string agent path.
+- Mode profiles are data. UI registers against feature flags, never against mode strings. Flags mean capability exists. Desktop Mode must not rewrite `~/.config/omarchy/shell.json`; it computes an effective config in `shell.qml`. Switching modes must not require a reboot or lose user state (`docs/mode-profiles.md`). Superbar must keep the Quattro plugin model; do not treat `TrayCluster.qml`'s hard-coded list as finished.
 - Runtime paths come from `$OMARCHY_PATH` / `Quickshell.env("OMARCHY_PATH")`. Do not derive fallback paths from `HOME` or `Quickshell.shellDir`, and do not re-export or default `OMARCHY_PATH`.
 - Bash style (`AGENTS.md`): `#!/bin/bash` shebangs; `[[ ]]` for string/file tests and `(( ))` for numeric; quote string literals in comparisons but not bare variables inside `[[ ]]`; two-space indent, no tabs; quote paths with spaces rather than escaping.
 - Commands are `omarchy-*` with purposeful prefixes; keep `GROUP_DESCRIPTIONS` in `bin/omarchy` current; every executable under `bin/` carries a `# omarchy:summary=` header. Use helper commands (`omarchy-pkg-add`, `omarchy-cmd-present`, `omarchy-notification-send`, …) instead of raw equivalents.
@@ -327,23 +354,26 @@ Live numbers from the follow-up turn (Hyprland 0.56.2, virtio-vga 1920×1080, re
 
 - Do not reconstruct deleted slice branches from memory; they are ancestors of `work`.
 - Do not edit the developer's local `.plan.md`.
-- Do not skip the live windowing go/no-go, and do not substitute a non-Hyprland compositor (Sway/Weston) — its dispatchers and behavior differ and prove nothing here.
-- Do not hide a `special:minimized` identity failure behind taskbar chrome. Report it.
+- Do not skip a live compositor when changing windowing, and do not substitute a non-Hyprland compositor (Sway/Weston) — its dispatchers and behavior differ and prove nothing here.
+- Do not hide a minimize identity failure behind taskbar chrome. Report it. Minimize is `setHidden`, not `special:minimized`.
 - Do not commit dispatcher changes that were never run on a live compositor.
 - Do not commit VM images, disks, or scratch artifacts into the repo.
-- Do not call windowing a go from IPC-only harness green, from screenshots that are not in the repo, or from this handoff.
-- Do not re-review `4ea1dcf3` + `a5b945da` as a product pass. Do not re-run the full bench on that writeup. Do not re-open `eddd0b57` / `9d80ecd6` / `aaf601ca` / `5942beaa` / `a4a046b3`. Next review is when a new turn actually moves a locked gate.
+- Do not call the OS a go from IPC-only harness green, from screenshots that are not in the repo, or from this handoff. W0 architecture GO is already recorded; that is not an OS go.
+- Do not re-review `4ea1dcf3` + `a5b945da` as a product pass. Do not re-run the full bench on that writeup. Do not re-open `eddd0b57` / `9d80ecd6` / `aaf601ca` / `5942beaa` / `a4a046b3`. Next review is when a new turn actually moves a locked gate (Agent Fabric or Superbar plugin visibility, not a recap of W0).
 - Do not treat Alt+Tab address-change as a locked number. Do not treat a painted-card click that only hides the overlay as activate-the-other-foot.
 - Do not grade grim as the QEMU window. The GTK window is the proof. virtio-vga `preferred` was `640×480`.
 - Do not make foot/vim first class because a guest disk lacked consumer apps.
 - Do not add `aliases` to new menu entries.
 - Do not put `hyprland-plugin-hyprbars` in `install/omarchy-other.packages`. Do not load hyprbars from `/var/cache/hyprpm/`.
+- Do not restore `--disable-features=WaylandWindowDecorations`.
+- Do not start a huge Phase 3/4 visual pass that assumes agents are optional later. Do not hide `omarchy.agents` in Desktop Mode while waiting for Agent Center.
 
 ## 10. Definition of done
 
-- The read-first contract in §1 is satisfied and acknowledged.
-- `./test/all` is green except the three `omarchy-pkgs`-dependent files (or fully green with `OMARCHY_PKGS_PATH` set).
-- Snap geometry is LTRB work-area, maximize is in the harness, taskbar clicks use Hyprland addresses, Alt+Tab cards are clickable, and caption chrome exists as mouse affordances. Live proof is hyprctl geometry plus mapped layers, not a self-graded go.
+- The read-first contract in §1 is satisfied and acknowledged (eight rules, overlay rule, typed-service rule, Agent-Native).
+- `./test/all` is green except the three `omarchy-pkgs`-dependent files (or fully green with `OMARCHY_PKGS_PATH` set). Counts in §3 were last recorded in an earlier session; re-run rather than citing them as this turn.
+- W0 architecture remains GO: snap geometry is LTRB work-area, maximize is in the harness, taskbar clicks use Hyprland addresses, Alt+Tab cards are clickable, captions are hyprbars, minimize is `setHidden`. Remaining product-windowing debt stays listed in the Current lock — do not paper it over.
+- Next product slice done only when Agent Fabric contract work and/or Superbar `omarchy.agents`/plugin visibility actually land — not when another taskbar restyle ships.
 - Visual verification done for every UI-affecting change.
-- Work is committed only when asked; do not amend `c253d193` / `a7b2c093` / `18370335` / `4ea1dcf3` / `a5b945da` / `eddd0b57` / `9d80ecd6` / `aaf601ca` / `5942beaa` / `a4a046b3`.
-- This slice is still not the OS: Tokyo Night, generic gear icons, Nautilus, nvim, TTY first boot, Chrome/games/Windows-app install, and the missing product ISO remain later work. Do not paper over them in the handoff.
+- Work is committed only when asked; do not amend `c253d193` / `a7b2c093` / `18370335` / `4ea1dcf3` / `a5b945da` / `eddd0b57` / `9d80ecd6` / `aaf601ca` / `5942beaa` / `a4a046b3` / `c1ae994f`.
+- This slice is still not the OS: Tokyo Night, generic gear icons, Nautilus, nvim, TTY first boot, Chrome/games/Windows-app install, Agent Fabric, Agent Center, and the missing product ISO remain later work. Do not paper over them in the handoff.

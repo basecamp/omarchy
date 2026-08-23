@@ -4,6 +4,8 @@ Project Ultimate's semantic token layer lives in `shell/Commons/Tokens.qml`, reg
 
 First-party shell surfaces consume semantic tokens instead of arbitrary theme colors. That is how the whole operating system starts looking designed rather than themed.
 
+**Pipeline lock:** one token/theme pipeline must drive Superbar chrome **and** hyprbars caption chrome. Light theme must be able to propagate to both. New surfaces must not invent private hex palettes. Today's Superbar pins `#1b1b1b` / `#e8943a` / `#9cbc0d` in `Taskbar.qml`, and hyprbars pins `bar_color` / button colors in `default/hypr/desktop-windows.lua` — that split is known debt, not the design system. Agent Fabric can proceed without waiting for the token unification; Phase 2 must not sprawl more one-off palettes.
+
 ## Token vocabulary
 
 | Group | Tokens | Meaning |

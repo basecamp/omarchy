@@ -15,15 +15,15 @@ QtObject {
   property int revision: 0
 
   property string mode: "desktop"
-  property string description: "Consumer default profile: floating windows, taskbar, Start, desktop icons, visible-before-memorable affordances. Windows muscle memory is the API."
+  property string description: "Consumer default profile: floating windows, Superbar, Start, visible-before-memorable affordances. Windows muscle memory is the API. Flags are capabilities that exist, not intentions."
   // Match desktop.json so the first frame is Desktop Mode before FileView lands.
   property var features: ({
-    desktopIcons: true,
+    desktopIcons: false,
     taskbar: true,
     startMenu: true,
     systemTray: true,
-    quickSettings: true,
-    notificationCenter: true,
+    quickSettings: false,
+    notificationCenter: false,
     floatingWindows: true,
     tilingDefault: false,
     snapLayouts: true,

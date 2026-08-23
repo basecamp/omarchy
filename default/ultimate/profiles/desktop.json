@@ -1,13 +1,13 @@
 {
   "mode": "desktop",
-  "description": "Consumer default profile: floating windows, taskbar, Start, desktop icons, visible-before-memorable affordances. Windows muscle memory is the API.",
+  "description": "Consumer default profile: floating windows, Superbar, Start, visible-before-memorable affordances. Windows muscle memory is the API. Flags are capabilities that exist, not intentions.",
   "features": {
-    "desktopIcons": true,
+    "desktopIcons": false,
     "taskbar": true,
     "startMenu": true,
     "systemTray": true,
-    "quickSettings": true,
-    "notificationCenter": true,
+    "quickSettings": false,
+    "notificationCenter": false,
     "floatingWindows": true,
     "tilingDefault": false,
     "snapLayouts": true,

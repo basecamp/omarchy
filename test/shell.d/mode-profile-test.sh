@@ -13,6 +13,18 @@ jq -e '.mode == "desktop" and .features.taskbar == true and .features.topBar == 
   || fail "desktop profile enables taskbar and Start, not the top bar, and keeps developer tools out of idle Start"
 pass "desktop profile enables taskbar and Start, not the top bar"
 
+jq -e '.features.desktopIcons == false and .features.quickSettings == false and .features.notificationCenter == false' "$desktop" >/dev/null \
+  || fail "desktop profile does not claim unimplemented Desktop/Quick Settings/Notification Center surfaces"
+pass "desktop profile keeps unimplemented surfaces false"
+
+jq -e '.features.desktopIcons == false and .features.quickSettings == false and .features.notificationCenter == false' "$power" >/dev/null \
+  || fail "power-user profile does not claim unimplemented Desktop/Quick Settings/Notification Center surfaces"
+pass "power-user profile keeps unimplemented surfaces false"
+
+jq -e '.features.snapLayouts == true and .features.taskView == true and .features.systemTray == true' "$desktop" >/dev/null \
+  || fail "desktop profile keeps snap chooser, Task View overlay, and tray as existing capabilities"
+pass "desktop profile marks existing snap/Task View/tray capabilities true"
+
 jq -e '.mode == "power-user" and .features.taskbar == false and .features.topBar == true and .features.omarchyBindings == true and .features.developerToolsInStart == true' "$power" >/dev/null \
   || fail "power-user profile keeps tiling heritage flags"
 pass "power-user profile keeps tiling heritage flags"
@@ -21,6 +33,14 @@ features=$(jq -r '.features | keys[]' "$desktop" | sort)
 power_features=$(jq -r '.features | keys[]' "$power" | sort)
 [[ $features == "$power_features" ]] || fail "both profiles declare the same feature keys"
 pass "both profiles declare the same feature keys"
+
+grep -Fq 'desktopIcons: false' "$ROOT/shell/services/ModeProfileService.qml" \
+  || fail "ModeProfileService first-frame defaults must not claim desktop icons"
+grep -Fq 'quickSettings: false' "$ROOT/shell/services/ModeProfileService.qml" \
+  || fail "ModeProfileService first-frame defaults must not claim Quick Settings"
+grep -Fq 'notificationCenter: false' "$ROOT/shell/services/ModeProfileService.qml" \
+  || fail "ModeProfileService first-frame defaults must not claim Notification Center"
+pass "ModeProfileService first-frame matches unimplemented-false honesty"
 
 [[ -x $ROOT/bin/omarchy-mode ]] || fail "omarchy-mode is executable"
 pass "omarchy-mode is executable"
