@@ -29,9 +29,11 @@ Panel {
     return !!(device && device.isPresent)
   }
 
-  // Mirrors the omarchy-battery-low notification threshold in
-  // shell/plugins/services/battery/Service.qml.
-  readonly property int lowBatteryThreshold: 10
+  // Intentionally lower than the omarchy-battery-low notification threshold
+  // (10, in shell/plugins/services/battery/Service.qml): the notification
+  // fires once as an early warning, while this drives a persistent bar
+  // indicator reserved for the final stretch before shutdown.
+  readonly property int lowBatteryThreshold: 5
   readonly property bool batteryLow: Model.isBatteryLow(UPower.displayDevice, UPower.onBattery, upowerStates(), root.lowBatteryThreshold)
 
   function upowerStates() {
