@@ -120,4 +120,8 @@ assert(/toggleVpn\(conn\.name, conn\.active\)/.test(activateVpn[0]), 'activateVp
 
 assert(/isSelected: root\.focusSection === "vpn" && root\.vpnIndex === index/.test(vpnRow[0]), 'VpnRow tracks whether it is the keyboard-selected row')
 assert(/hasCursor: root\.cursorActive && isSelected/.test(vpnRow[0]), 'VpnRow shows the keyboard cursor, not just mouse hover')
+assert(
+  /enabled: root\.vpnActionName === ""/.test(vpnRow[0]),
+  'VpnRow locks every row while any VPN toggle is in flight, not just its own'
+)
 JS

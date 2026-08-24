@@ -23,13 +23,15 @@ nm_get() {
 # left, rather than splitting on every ':' and assuming NAME never has one.
 list_vpn_connections() {
   nm_get NAME,TYPE,ACTIVE connection show |
-    awk -F: '{
-      active = $NF
-      type = $(NF - 1)
-      name = $1
-      for (i = 2; i <= NF - 2; i++) name = name ":" $i
-      if (type == "wireguard" || type == "vpn") print name "\t" active
-    }'
+    awk -F: '
+      NF == 0 { next }
+      {
+        active = $NF
+        type = $(NF - 1)
+        name = $1
+        for (i = 2; i <= NF - 2; i++) name = name ":" $i
+        if (type == "wireguard" || type == "vpn") print name "\t" active
+      }'
 }
 
 usage() {
@@ -52,7 +54,14 @@ deactivate_other_vpns() {
   while IFS=$'\t' read -r name active; do
     [[ $name == $keep ]] && continue
     [[ $active == "yes" ]] || continue
-    nmcli connection down "$name" >/dev/null 2>&1 || true
+    # Best-effort: a stuck old tunnel should not block bringing the new one
+    # up. If this fails, both can end up active at once -- rare (a transient
+    # D-Bus/NetworkManager error), but worth a line on stderr rather than
+    # disappearing outright, since it means the exclusivity guarantee above
+    # didn't hold.
+    if ! nmcli connection down "$name" >/dev/null 2>&1; then
+      echo "Warning: could not deactivate $name; it may still be active alongside $keep." >&2
+    fi
   done < <(list_vpn_connections)
 }
 
@@ -63,11 +72,23 @@ deactivate_other_vpns() {
 # the tunnel device is the only way to tell a working tunnel from one that
 # is locally configured but not actually carrying traffic.
 #
-# Only checked for a full tunnel (a default route through the device): a
-# split-tunnel profile that only routes specific subnets, or a peer that
-# firewalls off ICMP, would fail this probe while working exactly as
-# configured, so there is nothing generic to verify there -- take NetworkManager's
-# word for those instead of guessing at a false negative.
+# A full tunnel shows up either as a literal default route, or as the
+# classic wg-quick split of 0.0.0.0/1 + 128.0.0.0/1 that some NetworkManager
+# versions use instead, specifically to avoid clobbering an existing default
+# route. Either form covers "all traffic goes through this device".
+is_full_tunnel() {
+  local device=$1 routes
+  routes=$(ip route show table all dev "$device" 2>/dev/null)
+  [[ -n $routes ]] || return 1
+  grep -q '^default' <<<"$routes" && return 0
+  grep -q '^0\.0\.0\.0/1 ' <<<"$routes" && grep -q '^128\.0\.0\.0/1 ' <<<"$routes"
+}
+
+# Only checked for a full tunnel: a split-tunnel profile that only routes
+# specific subnets, or a peer that firewalls off ICMP, would fail this probe
+# while working exactly as configured, so there is nothing generic to verify
+# there -- take NetworkManager's word for those instead of guessing at a
+# false negative.
 verify_tunnel() {
   local name=$1 device state
 
@@ -77,7 +98,12 @@ verify_tunnel() {
   state=$(nm_get GENERAL.STATE device show "$device")
   [[ $state == 100* ]] || return 1
 
-  ip route show table all dev "$device" 2>/dev/null | grep -q '^default' || return 0
+  is_full_tunnel "$device" || return 0
+
+  # No ping binary is nothing to hold against the tunnel -- omarchy-network-status
+  # treats it the same way (omarchy-cmd-present ping || return) rather than
+  # failing a check it cannot actually run.
+  omarchy-cmd-present ping || return 0
 
   ping -c 1 -W 2 -I "$device" "$internet_probe" >/dev/null 2>&1
 }
@@ -87,8 +113,20 @@ case "$1" in
     # Nothing at the NetworkManager/WireGuard level stops two tunnels being
     # active at once -- they'd just fight over the default route. Treat VPN
     # selection as exclusive, one profile carrying traffic at a time.
+    previously_active=$(list_vpn_connections | awk -F'\t' -v keep="$2" '$1 != keep && $2 == "yes" { print $1 }')
+
     deactivate_other_vpns "$2"
-    nmcli connection up "$2" >/dev/null
+
+    if ! nmcli connection up "$2" >/dev/null 2>&1; then
+      echo "Error: failed to activate $2." >&2
+      # Bringing the new profile up failed outright -- put back whatever was
+      # working before rather than leaving the user with nothing active.
+      while IFS= read -r name; do
+        [[ -n $name ]] && nmcli connection up "$name" >/dev/null 2>&1
+      done <<<"$previously_active" || true
+      exit 1
+    fi
+
     if ! verify_tunnel "$2"; then
       echo "Warning: $2 connected but is not passing traffic." >&2
       exit 2

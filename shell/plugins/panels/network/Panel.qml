@@ -1794,7 +1794,10 @@ Panel {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
-      enabled: !row.isBusy
+      // Locks every row while any VPN toggle is in flight, not just this
+      // one's -- clicking a different row mid-toggle would otherwise no-op
+      // silently against toggleVpn's own vpnActionProc.running guard.
+      enabled: root.vpnActionName === ""
       onContainsMouseChanged: if (containsMouse) { root.cursorActive = true; root.focusSection = "vpn"; root.vpnIndex = row.index }
       onClicked: root.toggleVpn(row.conn.name, row.isActive)
     }
