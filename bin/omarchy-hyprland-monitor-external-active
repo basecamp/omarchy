@@ -3,4 +3,62 @@
 # omarchy:summary=Returns true when Hyprland has an active external monitor
 # omarchy:hidden=true
 
-hyprctl monitors all -j | jq -e '.[] | select(.name | test("^(eDP|LVDS|DSI)-") | not) | select(.disabled == false)' >/dev/null 2>&1
+# Hyprland runs outputs that have no display behind them, and a name test cannot
+# tell them apart from a real monitor. The FallbackStateKeeper
+# (src/state/FallbackState.cpp, since 0.56.0) creates one named literally
+# FALLBACK through the headless backend the moment the set of ENABLED monitors
+# becomes empty -- ENABLED matters: it watches `monitors()`, not
+# `allMonitors()`, so an internal panel sitting at `disabled = true` does not
+# stop it firing. `hyprctl output create headless` makes HEADLESS-n the same
+# way. Both report disabled=false and neither name matches the internal-panel
+# prefixes, so asking only about names counts them as an external monitor.
+#
+# That state is reached by ordinary use: disable the laptop panel while docked,
+# then unplug the external display. Zero enabled monitors leaves FALLBACK, this
+# helper answered "an external monitor is active", and every caller that uses it
+# to decide whether re-enabling the internal panel is safe backed off --
+# omarchy-hyprland-monitor-internal's recover(),
+# omarchy-hyprland-monitor-clamshell's enable_internal(), and the watcher's own
+# poll. The laptop was left with no display at all until the next login, where
+# omarchy-recover-internal-monitor.service finally cleared the toggle because
+# that unit asks omarchy-hw-external-monitors instead.
+#
+# So ask the kernel too: a real display has a DRM connector, a virtual output has
+# none. This is the hardware truth 96afc684 moved recovery onto for the same
+# class of reason ("deal with recover timing"), and which recover() lost when it
+# moved back onto this helper.
+#
+# Still `monitors all`, not plain `monitors` (see the mirror case in the tests):
+# a mirrored external is absent from plain `monitors`, which reads as a
+# disconnect and hands the mirror toggle to recovery. A mirrored external has a
+# connected connector, so it keeps counting here.
+
+drm_path="${OMARCHY_DRM_PATH:-/sys/class/drm}"
+
+# Connector directories are card<N>-<CONNECTOR> and Hyprland names outputs after
+# the connector, so card*-$name matches whatever the card index happens to be. A
+# name with no connector at all is virtual: no status file, nothing to read.
+physically_connected() {
+  local name="$1" status
+
+  for status in "$drm_path"/card*-"$name"/status; do
+    [[ -e $status ]] || continue
+    [[ $(<"$status") == connected ]] && return 0
+  done
+
+  return 1
+}
+
+# A hyprctl that fails or answers with nothing yields an empty loop and exit 1,
+# the same "no external active" the previous `jq -e` gave on bad input, so a
+# query hiccup shows callers no new behaviour.
+while read -r name; do
+  [[ -n $name ]] || continue
+  physically_connected "$name" && exit 0
+done < <(hyprctl monitors all -j 2>/dev/null | jq -r '
+  .[]
+  | select(.disabled == false)
+  | select(.name | test("^(eDP|LVDS|DSI)-") | not)
+  | .name' 2>/dev/null)
+
+exit 1
