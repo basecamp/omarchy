@@ -85,7 +85,7 @@ wait_for_pacman_transaction
 mkdir -p "$STATE_DIR"
 [[ -d $MIGRATIONS_DIR ]] || exit 0
 
-while IFS=$'\t' read -r name file marker; do
+while IFS=$'\t' read -r -u 3 name file marker; do
   [[ -n $name ]] || continue
 
   if [[ ! -f $marker ]]; then
@@ -94,7 +94,7 @@ while IFS=$'\t' read -r name file marker; do
     mkdir -p "$(dirname "$marker")"
     touch "$marker"
   fi
-done < <(migration_entries)
+done 3< <(migration_entries)
 
 # Clear a login-time notification the user left sitting there and then resolved
 # by running migrations some other way. The substring matches both the current

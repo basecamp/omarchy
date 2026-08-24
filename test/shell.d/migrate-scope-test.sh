@@ -75,3 +75,30 @@ set -e
 grep -q '^before-fail$' "$calls" || fail "migration runner started failing migration"
 ! grep -q '^after-fail$' "$calls" || fail "migration runner stops failing migration under strict mode"
 pass "migration runner does not mark failed migrations complete"
+
+stdin_root="$test_tmp/stdin-omarchy"
+stdin_home="$test_tmp/stdin-home"
+stdin_calls="$test_tmp/stdin-calls"
+mkdir -p "$stdin_root/migrations" "$stdin_home"
+
+# Migrations are expected to prompt, so they keep the caller's stdin. What they must not
+# inherit is the migration list itself: a migration that reads a line would take the next
+# migration's entry, and that migration would never run.
+cat >"$stdin_root/migrations/300-reads-stdin.sh" <<'SH'
+echo reads-stdin >>"$TEST_CALLS"
+if IFS= read -r -t 1 stolen; then
+  echo "stole:$stolen" >>"$TEST_CALLS"
+fi
+SH
+cat >"$stdin_root/migrations/400-after.sh" <<'SH'
+echo after >>"$TEST_CALLS"
+SH
+
+HOME="$stdin_home" \
+OMARCHY_PATH="$stdin_root" \
+TEST_CALLS="$stdin_calls" \
+  "$ROOT/bin/omarchy-migrate" >"$test_tmp/stdin-run.out" </dev/null
+! grep -q '^stole:' "$stdin_calls" || fail "migration runner keeps the migration list off a migration's stdin"
+grep -q '^after$' "$stdin_calls" || fail "migration runner runs the migration after one that reads stdin"
+[[ -f $stdin_home/.local/state/omarchy/migrations/400-after.sh ]] || fail "migration runner marks the migration after one that reads stdin"
+pass "migration runner keeps the migration list off a migration's stdin"
