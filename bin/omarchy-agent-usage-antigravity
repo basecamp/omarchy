@@ -1,0 +1,293 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Antigravity usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Antigravity (agy) usage into one display-ready JSON record.
+
+Local stats come from Gemini/Antigravity storage:
+  - ~/.gemini/antigravity-cli/conversation_summaries.db (CLI)
+  - ~/.gemini/antigravity-acp/conversations/*.db (ACP)
+Token counts are not exposed locally yet, so daily totals are
+derived from conversation steps (prompt count). Rate limits
+come from the free-tier quota (1500 req/day) when known.
+"""
+
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+import sqlite3
+import sys
+import tempfile
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+AGENT_ID = "antigravity"
+AGENT_NAME = "Antigravity"
+AUTH_HELP = "Run `agy` and authenticate with Google."
+
+SCAN_REUSE_SECONDS = 20
+LIMITS_ONLY_REUSE_SECONDS = 900
+
+now = datetime.now()
+today = now.strftime("%Y-%m-%d")
+recent_dates = [(now - timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(6, -1, -1)]
+recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
+today_tokens_by_model = {}
+model_usage = {}
+today_sessions = set()
+active_days = set()
+today_prompts = 0
+today_total_tokens = 0
+total_prompts = 0
+total_sessions = set()
+
+
+def local_day_from_iso(value):
+  if not value:
+    return today
+  try:
+    # sqlite datetime like "2026-08-24 16:21:30"
+    dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if dt.tzinfo is not None:
+      dt = dt.astimezone()
+    return dt.strftime("%Y-%m-%d")
+  except Exception:
+    try:
+      # try parse as timestamp
+      return datetime.fromtimestamp(float(value)).strftime("%Y-%m-%d")
+    except Exception:
+      return today
+
+
+def add_usage(day, session_key, prompts=1):
+  global today_prompts, today_total_tokens, total_prompts
+  total_prompts += prompts
+  total_sessions.add(session_key)
+  active_days.add(day)
+  if day in recent:
+    recent[day]["messageCount"] += prompts
+  if day == today:
+    today_prompts += prompts
+    today_sessions.add(session_key)
+    today_total_tokens += prompts
+
+
+def scan_antigravity_summaries():
+  db = Path.home() / ".gemini" / "antigravity-cli" / "conversation_summaries.db"
+  if not db.is_file():
+    return
+  try:
+    conn = sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
+  except sqlite3.Error:
+    return
+  try:
+    conn.execute("PRAGMA query_only = ON")
+    for conversation_id, step_count, last_modified_time, last_user_input_time in conn.execute(
+      "SELECT conversation_id, step_count, last_modified_time, last_user_input_time FROM conversation_summaries"
+    ):
+      try:
+        # Prefer last_user_input_time for "today" attribution, fallback to last_modified
+        raw_day = last_user_input_time or last_modified_time
+        day = local_day_from_iso(raw_day)
+        prompts = int(step_count or 0)
+        if prompts <= 0:
+          prompts = 1
+        add_usage(day, str(conversation_id), prompts)
+      except Exception:
+        continue
+  except sqlite3.Error:
+    pass
+  finally:
+    conn.close()
+
+
+def scan_antigravity_acp():
+  conv_dir = Path.home() / ".gemini" / "antigravity-acp" / "conversations"
+  if not conv_dir.is_dir():
+    return
+  for db in conv_dir.glob("*.db"):
+    try:
+      conn = sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
+    except sqlite3.Error:
+      continue
+    try:
+      conn.execute("PRAGMA query_only = ON")
+      # trajectory_meta holds trajectory_id, steps count is in steps table
+      try:
+        count = conn.execute("SELECT count(*) FROM steps").fetchone()[0]
+      except sqlite3.Error:
+        count = 0
+      if count and count > 0:
+        # Use file mtime for day attribution
+        try:
+          mtime = db.stat().st_mtime
+          day = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
+        except Exception:
+          day = today
+        add_usage(day, f"acp:{db.stem}", int(count))
+    except sqlite3.Error:
+      pass
+    finally:
+      conn.close()
+
+
+def cache_root():
+  root = Path(os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")) / "omarchy" / "agent-usage"
+  root.mkdir(parents=True, exist_ok=True)
+  return root
+
+
+def scan_cache_paths():
+  db1 = Path.home() / ".gemini" / "antigravity-cli" / "conversation_summaries.db"
+  db2 = Path.home() / ".gemini" / "antigravity-acp" / "conversations"
+  digest = hashlib.sha1(f"{db1}\n{db2}".encode("utf-8")).hexdigest()[:16]
+  root = cache_root()
+  return root / f"antigravity-scan-{digest}.json", root / f"antigravity-scan-{digest}.lock"
+
+
+def read_fresh_json(path, max_age_seconds):
+  if max_age_seconds <= 0 or not path.exists():
+    return None
+  try:
+    age = time.time() - path.stat().st_mtime
+    if 0 <= age <= max_age_seconds:
+      return json.loads(path.read_text(encoding="utf-8"))
+  except Exception:
+    return None
+  return None
+
+
+def write_json(path, payload):
+  handle_fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+  tmp = Path(tmp_name)
+  try:
+    with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+      handle.write(json.dumps(payload, separators=(",", ":")) + "\n")
+    tmp.chmod(0o644)
+    tmp.replace(path)
+  except BaseException:
+    tmp.unlink(missing_ok=True)
+    raise
+
+
+def read_cached_stats(cache_file, max_age_seconds):
+  cached = read_fresh_json(cache_file, max_age_seconds)
+  if not isinstance(cached, dict) or cached.get("schemaVersion") != 1:
+    return None
+  if cached.get("scanDate") != today:
+    return None
+  stats = cached.get("stats")
+  if not isinstance(stats, dict):
+    return None
+  if not all(key in stats for key in ("todayPrompts", "todayTotalTokens", "recentDays", "activeDates", "modelUsage")):
+    return None
+  return stats
+
+
+def write_cached_stats(cache_file, stats):
+  try:
+    write_json(cache_file, {"schemaVersion": 1, "scanDate": today, "stats": stats})
+  except Exception as exc:
+    print(f"omarchy-agent-usage-antigravity: could not write usage cache ({exc})", file=sys.stderr)
+
+
+def local_stats():
+  return {
+    "todayPrompts": today_prompts,
+    "todaySessions": len(today_sessions),
+    "todayTotalTokens": today_total_tokens,
+    "todayTokensByModel": today_tokens_by_model,
+    "recentDays": [recent[day] for day in recent_dates],
+    "totalPrompts": total_prompts,
+    "totalSessions": len(total_sessions),
+    "activeDays": len(active_days),
+    "activeDates": sorted(active_days),
+    "modelUsage": model_usage,
+  }
+
+
+def run_local_scans():
+  # Reset globals for fresh run (needed for cache miss rerun)
+  global today_prompts, today_total_tokens, total_prompts, today_tokens_by_model, model_usage, today_sessions, total_sessions, active_days, recent
+  today_prompts = 0
+  today_total_tokens = 0
+  total_prompts = 0
+  today_tokens_by_model = {}
+  model_usage = {}
+  today_sessions = set()
+  total_sessions = set()
+  active_days = set()
+  for d in recent_dates:
+    recent[d] = {"date": d, "messageCount": 0}
+  scan_antigravity_summaries()
+  scan_antigravity_acp()
+  return local_stats(), True
+
+
+def cached_local_stats(max_age):
+  try:
+    return _cached_local_stats(max_age)
+  except Exception as exc:
+    print(f"omarchy-agent-usage-antigravity: cache unavailable ({exc}); scanning directly", file=sys.stderr)
+    stats, _ = run_local_scans()
+    return stats
+
+
+def _cached_local_stats(max_age):
+  cache_file, lock_file = scan_cache_paths()
+  cached = read_cached_stats(cache_file, max_age)
+  if cached is not None:
+    return cached
+  with lock_file.open("w") as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    cached = read_cached_stats(cache_file, max_age)
+    if cached is not None:
+      return cached
+    stats, complete = run_local_scans()
+    if complete:
+      write_cached_stats(cache_file, stats)
+    return stats
+
+
+def fetch_limits():
+  # Try to infer tier from onboarding cache; default free-tier 1500 req/day has no live limit endpoint yet
+  tier = "Antigravity"
+  status = ""
+  # If no conversations yet, hint that tokens are prompts until real counts are exposed
+  if total_prompts == 0:
+    status = "No local Antigravity conversations yet"
+  return {"limits": [], "tierLabel": tier, "usageStatusText": status, "authHelpText": AUTH_HELP}
+
+
+def main():
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  args = parser.parse_args()
+
+  max_age = 0 if args.force else (LIMITS_ONLY_REUSE_SECONDS if args.limits_only else SCAN_REUSE_SECONDS)
+  stats = cached_local_stats(max_age)
+  rpc = fetch_limits()
+
+  record = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "ready": True,
+    "hasLocalStats": True,
+  }
+  record.update(stats)
+  record.update(rpc)
+  record["scope"] = "device"
+  # Panel hides agents with no data; keep hasPromptStats false when only steps are prompts
+  if total_prompts == 0:
+    record["hasPromptStats"] = False
+  print(json.dumps(record, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+  main()
