@@ -84,6 +84,13 @@ QtObject {
     repeat: false
     onTriggered: root.activateAtCursor()
   }
+  property string _pendingFocusAddr: ""
+  property int _focusVerifyAttempts: 0
+  property Timer focusVerifyTimer: Timer {
+    interval: 380
+    repeat: false
+    onTriggered: root._verifyFocusLanded()
+  }
 
   readonly property var windows: {
     var values = Hyprland.toplevels.values
@@ -837,7 +844,46 @@ QtObject {
     root._noteFocus(target)
     root._dispatchLua("hl.dsp.window.bring_to_top({ " + root._luaWindow(target) + " })")
     root.focus(target)
+    root._beginFocusVerify(target)
     return root._finish("activate", target, root._ok())
+  }
+
+  // The compositor can silently drop hl.focus (stale Lua window registry after
+  // a config reload reports "window not found" for live clients) while the
+  // dispatch itself returns ok. Verify the window actually took keyboard focus
+  // and say so when it did not — no silent no-ops.
+  function _beginFocusVerify(target) {
+    if (!target) return
+    root._pendingFocusAddr = target
+    root._focusVerifyAttempts = 0
+    root.focusVerifyTimer.restart()
+  }
+
+  function _verifyFocusLanded() {
+    var target = root._pendingFocusAddr
+    if (!target) return
+    Hyprland.refreshToplevels()
+    var tops = root._hyprlandToplevels()
+    for (var i = 0; i < tops.length; i++) {
+      var t = tops[i]
+      if (t && root._canonAddr(t.address) === target && t.activated) {
+        root._pendingFocusAddr = ""
+        root._focusVerifyAttempts = 0
+        return
+      }
+    }
+    if (root._focusVerifyAttempts < 1) {
+      // One retry: the first dispatch can race the switcher overlay unmap.
+      root._focusVerifyAttempts++
+      root._dispatchLua("hl.dsp.window.bring_to_top({ " + root._luaWindow(target) + " })")
+      root._dispatchLua("hl.dsp.focus({ " + root._luaWindow(target) + " })")
+      root.focusVerifyTimer.restart()
+      return
+    }
+    root._pendingFocusAddr = ""
+    root._focusVerifyAttempts = 0
+    root.lastError = { title: "Focus failed", explanation: "The compositor did not give this window keyboard focus.", detail: "The session window registry may be stale after a config reload. Reload the desktop session to recover." }
+    console.warn("WindowService: compositor refused focus for", target, "- session registry may be stale")
   }
 
   function maximize(address) {

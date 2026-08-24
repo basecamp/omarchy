@@ -30,6 +30,14 @@ grep -Fq 'hl.dsp.window.float' "$ws" || fail "snap uses hl.dsp.window.float inst
 if grep -Fq 'togglefloating' "$ws"; then
   fail "snap must not togglefloating an already-floating window"
 fi
+
+# Focus must be verified after activation. A stale compositor Lua registry can
+# drop hl.focus silently ("window not found" for live clients); the service
+# has to retry once and then report a structured error instead of ok.
+grep -Fq 'function _beginFocusVerify' "$ws" || fail "activate verifies focus landed"
+grep -Fq '_beginFocusVerify(target)' "$ws" || fail "activate wires focus verification"
+grep -Fq 'compositor refused focus' "$ws" || fail "focus failure is reported, never silent"
+
 if grep -E 'dispatchTokens.*movewindowpixel|movewindowpixel", "exact"' "$ws"; then
   fail "snap must not use classic movewindowpixel on the Lua dispatcher parser"
 fi
