@@ -437,8 +437,18 @@ Panel {
     openRenamePrompt(deviceAt(focusSection, selectedIndex))
   }
 
+  // Renaming is offered on exactly the devices forgetting is: the ones BlueZ
+  // remembers. A predicate rather than a section test, because the editor
+  // outlives the row it opened on — forgetting a device while its editor is
+  // open leaves the object alive in the scan and moves it to the discovered
+  // section, where the row offers no rename and an alias would not survive
+  // discovery dropping it anyway.
+  function renameable(device) {
+    return !!device && (device.connected || device.paired || device.bonded || device.trusted)
+  }
+
   function openRenamePrompt(device) {
-    if (!device || !device.address) return
+    if (!device || !device.address || !renameable(device)) return
     // Reopening the row already being edited keeps what has been typed;
     // moving to a different device starts from that device's own name.
     if (renameAddress !== device.address) renameText = Model.friendlyName(device)
@@ -459,17 +469,19 @@ Panel {
   // carry the editor away, on every keystroke.
   function commitRename() {
     var device = deviceForAddress(renameAddress)
-    if (!device) { cancelRename(); return }
+    // Asked again here, not only when the lists change: those signals are what
+    // close the editor, and a commit can land ahead of one.
+    if (!renameable(device)) { cancelRename(); return }
     var next = String(renameText || "").trim()
     if (next !== Model.friendlyName(device)) device.name = next
     cancelRename()
   }
 
-  // The editor cannot outlive its device: forgetting one, or losing it from a
-  // scan, takes the row with it, and a stale address would reopen the editor
-  // on whichever device inherited that row.
+  // The editor cannot outlive its device being remembered: forgetting one, or
+  // losing it from a scan, takes the row it opened on with it, and a stale
+  // address would reopen the editor on whichever device inherited that row.
   function syncRenameTarget() {
-    if (renameAddress !== "" && !deviceForAddress(renameAddress)) cancelRename()
+    if (renameAddress !== "" && !renameable(deviceForAddress(renameAddress))) cancelRename()
   }
 
   onRenameAddressChanged: {
@@ -999,7 +1011,7 @@ Panel {
     // Renaming is offered wherever forgetting is: both write to a device BlueZ
     // remembers, and an alias set on a device that is only passing through a
     // scan would go with it when discovery drops it.
-    readonly property bool isRenaming: root.renameAddress !== "" && root.renameAddress === (dev ? dev.address : "")
+    readonly property bool isRenaming: forgetAvailable && root.renameAddress !== "" && root.renameAddress === (dev ? dev.address : "")
     readonly property bool showRenameButton: forgetAvailable && (rowMouse.containsMouse || rowSelected || isRenaming)
     readonly property bool showActions: showRenameButton || showForgetButton
     readonly property string defaultName: Model.defaultName(dev)

@@ -86,7 +86,21 @@ assert(!/next === ""/.test(commitRename[0]), 'bluetooth lets an empty name throu
 // mid-word, and a rename re-sorts the list under it besides.
 assert(/property string renameAddress: ""/.test(panelSource), 'bluetooth keeps the open editor on the panel, keyed by address')
 assert(/blocked: root\.renameAddress !== ""/.test(panelSource), 'bluetooth hands the keyboard to the editor while it is open')
-assert(/renameAddress !== "" && !deviceForAddress\(renameAddress\)/.test(panelSource), 'bluetooth closes the editor when its device goes away')
+
+// Forgetting a device with its editor open leaves the object alive in the scan
+// and moves it to the discovered section, so an existence-only check would keep
+// the editor — and its hold on the key catcher — on a row that no longer offers
+// renaming at all.
+const renameable = panelSource.match(/function renameable\(device\) \{[\s\S]*?\n {2}\}/)
+assert(renameable, 'bluetooth has one predicate for what may be renamed')
+assert(
+  /device\.connected \|\| device\.paired \|\| device\.bonded \|\| device\.trusted/.test(renameable[0]),
+  'bluetooth renames only the devices BlueZ remembers, the same ones it offers to forget'
+)
+assert(/renameAddress !== "" && !renameable\(deviceForAddress\(renameAddress\)\)/.test(panelSource), 'bluetooth closes the editor when its device stops being remembered')
+assert(/function commitRename\(\)[\s\S]*?if \(!renameable\(device\)\)/.test(panelSource), 'bluetooth refuses the write when the device stopped being remembered')
+assert(/function openRenamePrompt\(device\)[\s\S]*?!renameable\(device\)/.test(panelSource), 'bluetooth opens the editor only on a device that may be renamed')
+assert(/readonly property bool isRenaming: forgetAvailable/.test(panelSource), 'bluetooth renders the editor only on rows that offer renaming')
 
 assert(bluetooth.isUuidLike('0000110b-0000-1000-8000-00805f9b34fb'), 'bluetooth detects UUID-like names')
 assert(bluetooth.isAddressLike('AA:BB:CC:DD:EE:FF'), 'bluetooth detects address-like names')
