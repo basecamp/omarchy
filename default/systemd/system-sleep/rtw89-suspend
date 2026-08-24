@@ -84,7 +84,7 @@ suspend_card() {
 }
 
 resume_card() {
-  local card=$1 bridge=$2 module=$3 try
+  local card=$1 bridge=$2 module=$3 try outcome="never reached the bus"
 
   poke 0 "$PCI_DEVICES/$bridge/d3cold_allowed"
   poke on "$PCI_DEVICES/$bridge/power/control"
@@ -108,16 +108,20 @@ resume_card() {
 
       # On the bus but unclaimed: a driver problem, so look for rtw89 errors
       # in dmesg rather than at power management.
+      outcome="enumerated but was never claimed by ${module:-its driver}"
       log "post: $card enumerated but no netdev appeared on attempt $try"
       poke 1 "$PCI_DEVICES/$card/remove"
     else
       # Never came back: the slot is still unpowered or the link is down.
+      outcome="never reappeared on the bus"
       log "post: $card did not reappear on attempt $try"
     fi
   done
 
   poke auto "$PCI_DEVICES/$bridge/power/control"
-  log "post: $card did not come back after 3 attempts"
+  # Name the failure that actually happened: "enumerated but unclaimed" sends
+  # you to rtw89 errors in dmesg, "never reappeared" to slot power and the link.
+  log "post: gave up on $card after 3 attempts, $outcome"
   return 1
 }
 
