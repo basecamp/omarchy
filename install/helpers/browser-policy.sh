@@ -145,13 +145,27 @@ browser_policy_write_color() {
   return 1
 }
 
+browser_policy_firefox_policy_file_ok() {
+  local file=$1
+  local mode
+  local group_write
+  local other_write
+
+  [[ -f $file && ! -L $file ]] || return 1
+  [[ $(stat -c '%U' "$file") == "root" ]] || return 1
+  mode=$(stat -c '%a' "$file")
+  group_write=$((8#${mode: -2:1}))
+  other_write=$((8#${mode: -1}))
+  (( (group_write & 2) == 0 && (other_write & 2) == 0 ))
+}
+
 browser_policy_firefox_hardened() {
   local dir=$1
 
   [[ -d $dir ]] || return 1
   [[ $(stat -c '%a' "$dir") == "755" ]] || return 1
   [[ $(stat -c '%U' "$dir") == "root" ]] || return 1
-  [[ -f $dir/policies.json && ! -L $dir/policies.json ]] || return 1
+  browser_policy_firefox_policy_file_ok "$dir/policies.json"
 }
 
 browser_policy_install_firefox_policies() {

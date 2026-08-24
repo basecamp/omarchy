@@ -168,6 +168,18 @@ fi
 BROWSER_POLICY_GROUP=omarchy-browser-policy
 pass "a hardened directory must be root-owned"
 
+fx_policy=$test_tmp/policies.json
+printf '%s\n' '{"policies":{}}' >"$fx_policy"
+chmod 644 "$fx_policy"
+if browser_policy_firefox_policy_file_ok "$fx_policy"; then
+  fail "a user-owned policies.json is not treated as hardened"
+fi
+ln -sf "$fx_policy" "$test_tmp/policies-link.json"
+if browser_policy_firefox_policy_file_ok "$test_tmp/policies-link.json"; then
+  fail "a policies.json symlink is not treated as hardened"
+fi
+pass "Firefox policy files must be root-owned regular files without group or other write"
+
 dist=$test_tmp/distribution
 mkdir -p "$dist"
 printf 'original\n' >"$test_tmp/firefox-pwn"
