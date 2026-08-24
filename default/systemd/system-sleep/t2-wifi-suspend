@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# BCM4377/4378-family PCIe Wi-Fi (brcmfmac) times out entering D3 during
+# suspend on T2 Macs, aborting the whole suspend/hibernate cycle:
+#
+#   brcmfmac 0000:01:00.0: brcmf_pcie_pm_enter_D3: Timeout on response for
+#     entering D3 substate
+#   brcmfmac 0000:01:00.0: PM: failed to suspend: error -5
+#   PM: Some devices failed to suspend, or early wake event detected
+#
+# systemd-sleep reports that as "Failed to put system to sleep: Input/output
+# error" and the caller (lid close, systemctl suspend) just retries, so the
+# machine never actually sleeps: it stays fully awake in a suspend/resume
+# loop that looks like hibernation from the lid but drains the battery.
+#
+# Unload the driver before sleep and reload it on resume instead of asking
+# firmware to do something it can't. See
+# install/hardware/apple/fix-brcmfmac-suspend.sh for where this is installed.
+
+case "$1" in
+  pre)
+    modprobe -r brcmfmac_wcc brcmfmac 2>/dev/null
+    ;;
+  post)
+    modprobe brcmfmac 2>/dev/null
+    ;;
+esac
