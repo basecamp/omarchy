@@ -98,12 +98,34 @@ LUA
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
 
+add_launcher_entries() {
+  local home="$1"
+  local name
+  shift
+
+  mkdir -p "$home/.local/share/applications"
+  for name in "$@"; do
+    touch "$home/.local/share/applications/$name.desktop"
+  done
+}
+
 fresh_home="$tmpdir/fresh-home"
 mkdir -p "$fresh_home"
+add_launcher_entries "$fresh_home" ChatGPT YouTube
 fresh_output=$(run_application_bindings "$fresh_home")
 grep -Fq $'SUPER + RETURN	Terminal' <<<"$fresh_output" || fail "default application bindings include essentials"
 grep -Fq $'SUPER + SHIFT + A	ChatGPT' <<<"$fresh_output" || fail "default application bindings include preinstalled web apps"
 pass "default application bindings load from package defaults"
+
+entry_removed_home="$tmpdir/entry-removed-home"
+mkdir -p "$entry_removed_home"
+add_launcher_entries "$entry_removed_home" YouTube
+entry_removed_output=$(run_application_bindings "$entry_removed_home")
+grep -Fq $'SUPER + SHIFT + Y	YouTube' <<<"$entry_removed_output" || fail "removing one launcher entry keeps the other bindings"
+if grep -Fq $'SUPER + SHIFT + A	ChatGPT' <<<"$entry_removed_output"; then
+  fail "removing a launcher entry skips its binding"
+fi
+pass "removing a launcher entry skips its binding"
 
 grep -F 'hl.dsp.send_key_state({ mods = mods, key = key, state = "down" })' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null ||
   fail "universal clipboard shortcuts send explicit mods to the focused surface"

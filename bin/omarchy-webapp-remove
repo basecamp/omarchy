@@ -41,3 +41,4 @@ if [[ ${OMARCHY_REMOVE_NOTIFY:-true} != "false" ]]; then
   omarchy-notification-send -g  "Web app removed" "$APP_NAME"
 fi
 update-desktop-database "$DESKTOP_DIR" &>/dev/null
+hyprctl reload >/dev/null
