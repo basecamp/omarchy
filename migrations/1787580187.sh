@@ -1,11 +1,20 @@
-echo "Refresh the Docker launcher now that daemon access goes through a prompt"
+echo "Move this install to the opt-in docker group default (the group is root-equivalent)"
 
-# The docker group is no longer granted by default (it is root-equivalent), so
-# the Docker app entry and the Super+Shift+D hotkey open lazydocker through a
-# polkit prompt via omarchy-launch-docker-tui. Existing installs still have the
-# old ~/.local/share/applications/Docker.desktop that runs lazydocker directly,
-# which now fails with a Docker socket permission error. Refresh just that entry;
-# users who opted into sudoless Docker are unaffected either way.
+# The docker group grants passwordless root (a container can bind-mount / and
+# rewrite the host), so Omarchy no longer puts users in it by default. Bring
+# existing installs in line: remove this user from the group if present. It takes
+# effect at next login, and the current session keeps working until then. Anyone
+# who wants passwordless docker back can opt in, behind a warning, with
+# Setup > Security > Sudoless Docker. Reuses the removal command so there is one
+# source of truth for the privileged change and its notice.
+if id -nG "$USER" | grep -qw docker; then
+  omarchy-remove-security-sudoless-docker
+fi
+
+# The Docker app entry copied into ~/.local/share/applications used to run
+# lazydocker directly; it now needs the wrapper that prompts for daemon access
+# (or runs directly under sudoless Docker). Refresh just that file.
 dest="$HOME/.local/share/applications/Docker.desktop"
-[[ -f $dest ]] || exit 0
-cp "$OMARCHY_PATH/applications/Docker.desktop" "$dest"
+if [[ -f $dest ]]; then
+  cp "$OMARCHY_PATH/applications/Docker.desktop" "$dest"
+fi
