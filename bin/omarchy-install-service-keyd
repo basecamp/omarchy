@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# omarchy:summary=Install the keyd low-level key remapping daemon.
+# omarchy:requires-sudo=true
+
+set -e
+
+echo "Installing keyd..."
+omarchy-pkg-add keyd
+
+if [[ ! -f /etc/keyd/default.conf ]]; then
+  echo "Seeding a starter config at /etc/keyd/default.conf..."
+  sudo install -Dm644 "$OMARCHY_PATH/default/keyd/default.conf" /etc/keyd/default.conf
+else
+  echo "Existing /etc/keyd/default.conf found, leaving it as-is."
+fi
+
+echo "Starting keyd..."
+sudo systemctl enable --now keyd.service
+
+echo ""
+echo "keyd is installed and running. Edit /etc/keyd/default.conf, then run"
+echo "'sudo systemctl reload keyd' to apply changes."
+echo ""
+echo "keyd remaps physical keys before Hyprland ever sees them, so a remap"
+echo "on CapsLock takes priority over Omarchy's compose:caps input option."
+echo "See the Keyboard, Mouse, Trackpad manual page for details."
