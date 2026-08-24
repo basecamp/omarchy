@@ -1,0 +1,48 @@
+#!/bin/bash
+
+# omarchy:summary=List or toggle WireGuard/VPN connections
+# omarchy:group=network
+# omarchy:args=[up|down <name>]
+# omarchy:examples=omarchy network vpn | omarchy network vpn up pvpn-ch | omarchy network vpn down pvpn-ch
+
+set -euo pipefail
+
+# `-e no` keeps ':' in a connection NAME from being escaped, matching the
+# convention already used by omarchy-network-band's nm_get.
+nm_get() {
+  LC_ALL=C nmcli -e no -g "$@" 2>/dev/null
+}
+
+# Wireguard profiles report TYPE=wireguard; other tunnel types NetworkManager
+# manages (OpenVPN, etc.) report TYPE=vpn. Both belong in the same list.
+list_vpn_connections() {
+  nm_get NAME,TYPE,ACTIVE connection show |
+    awk -F: '$2 == "wireguard" || $2 == "vpn" { print $1 "\t" $3 }'
+}
+
+usage() {
+  echo "Usage: omarchy-network-vpn [up|down <name>]" >&2
+}
+
+if (( $# == 0 )); then
+  list_vpn_connections
+  exit 0
+fi
+
+if (( $# != 2 )); then
+  usage
+  exit 1
+fi
+
+case "$1" in
+  up)
+    nmcli connection up "$2" >/dev/null
+    ;;
+  down)
+    nmcli connection down "$2" >/dev/null
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac

@@ -83,6 +83,12 @@ Panel {
   property var bandAvailable: []
   property string pendingBand: ""
 
+  // VPN/WireGuard connection profiles from `omarchy-network-vpn`.
+  // `vpnActionName` is the profile currently being brought up/down, so its
+  // row can render a busy state while the toggle is in flight.
+  property var vpnConnections: []
+  property string vpnActionName: ""
+
   // Per-row in-flight state. `actionSsid` flips on for the row whose action
   // is currently running so it can render "Connecting…" / "Disconnecting…" /
   // "Forgetting…". `passwordSsid` is the row currently expanded into
@@ -479,6 +485,7 @@ Panel {
       bandProc.command = ["omarchy-network-band"]
       bandProc.running = true
     }
+    if (!vpnProc.running) vpnProc.running = true
     // A closed panel has no nearby-network list to fill, and bare refresh()
     // reaches here from action completion, timeouts and construction.
     if (opened && wifiDevice) {
@@ -643,6 +650,20 @@ Panel {
     root.pendingBand = band
     actionProc.command = ["omarchy-network-band", band]
     actionProc.running = true
+  }
+
+  function updateVpnConnections(raw) {
+    vpnConnections = Model.sortVpnConnections(Model.parseVpnConnections(raw))
+  }
+
+  // Toggling stays open, same as setBand -- the row's own busy/active state
+  // is the feedback, and closing the panel would hide a failed toggle.
+  function toggleVpn(name, active) {
+    if (!name || vpnActionProc.running) return
+
+    vpnActionName = name
+    vpnActionProc.command = ["omarchy-network-vpn", active ? "down" : "up", name]
+    vpnActionProc.running = true
   }
 
   // The speed test is its own panel plugin (omarchy.speedtest) so a
@@ -862,6 +883,35 @@ Panel {
       if (bandProc.running) return
       bandProc.command = ["omarchy-network-band"]
       bandProc.running = true
+    }
+  }
+
+  Process {
+    id: vpnProc
+    command: ["omarchy-network-vpn"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateVpnConnections(text)
+    }
+  }
+
+  // Same cadence as bandPoll: an nmcli listing, not something that needs
+  // detailsPoll's faster tick.
+  Timer {
+    id: vpnPoll
+    interval: 4000
+    repeat: true
+    running: root.opened
+    onTriggered: if (!vpnProc.running) vpnProc.running = true
+  }
+
+  // Separate from actionProc: a VPN toggle can legitimately outlive a DNS or
+  // band change still in flight, and each needs its own exit handler.
+  Process {
+    id: vpnActionProc
+    onExited: {
+      root.vpnActionName = ""
+      if (!vpnProc.running) vpnProc.running = true
     }
   }
 
@@ -1452,6 +1502,49 @@ Panel {
         }
       }
 
+      // VPN/WireGuard connections (only shown once NetworkManager knows
+      // about at least one profile -- most machines have none).
+      PanelSeparator {
+        visible: root.vpnConnections.length > 0
+        foreground: root.bar.foreground
+      }
+
+      Column {
+        width: parent.width
+        spacing: Style.space(6)
+        visible: root.vpnConnections.length > 0
+
+        PanelSectionHeader {
+          text: "VPN"
+          foreground: root.bar.foreground
+          fontFamily: root.bar.fontFamily
+        }
+
+        Column {
+          width: parent.width
+          spacing: Style.space(4)
+
+          // Wrapper takes modelData from the Repeater's delegate context,
+          // which doesn't bind into nested `component` declarations, and
+          // passes it down explicitly -- same shape as the band pills and
+          // the network list delegate.
+          Repeater {
+            model: root.vpnConnections
+
+            delegate: Item {
+              required property var modelData
+              width: parent.width
+              height: vpnRow.implicitHeight
+
+              VpnRow {
+                id: vpnRow
+                width: parent.width
+                conn: modelData
+              }
+            }
+          }
+        }
+      }
 
       // Wi-Fi networks (only if a Wi-Fi station is available).
       PanelSeparator {
@@ -1583,6 +1676,64 @@ Panel {
       root.cursorActive = true
       root.focusSection = "dns"
       root.dnsIndex = pill.index
+    }
+  }
+
+  // A single VPN/WireGuard connection profile. Click toggles it up/down.
+  // Busy state comes from vpnActionName rather than a per-row Connections
+  // block: nmcli connection up/down is a single fire-and-forget call with no
+  // WifiNetwork-style signal to listen on.
+  component VpnRow: CursorSurface {
+    id: row
+    required property var conn
+
+    readonly property bool isActive: !!(conn && conn.active)
+    readonly property bool isBusy: root.vpnActionName !== "" && conn && root.vpnActionName === conn.name
+
+    current: isActive
+    foreground: root.bar.foreground
+    fill: root.hoverFill
+    currentFill: root.selectedFill
+    hasCursor: mouseArea.containsMouse
+
+    implicitHeight: rowBody.implicitHeight
+
+    MouseArea {
+      id: mouseArea
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      enabled: !row.isBusy
+      onClicked: root.toggleVpn(row.conn.name, row.isActive)
+    }
+
+    Item {
+      id: rowBody
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.leftMargin: Style.space(10)
+      anchors.rightMargin: Style.space(10)
+      implicitHeight: Math.max(nameText.implicitHeight, statusText.implicitHeight) + Style.spacing.rowPaddingX
+
+      Text {
+        id: nameText
+        text: row.conn ? row.conn.name : ""
+        color: root.bar.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.bodySmall
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+      }
+
+      Text {
+        id: statusText
+        text: row.isBusy ? (row.isActive ? "Disconnecting…" : "Connecting…") : (row.isActive ? "Connected" : "")
+        color: row.isActive ? root.bar.foreground : Qt.darker(root.bar.foreground, 1.5)
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.bodySmall
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+      }
     }
   }
 
