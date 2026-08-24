@@ -16,11 +16,13 @@ OUTPUT=""
 while (( $# > 0 )); do
   case "$1" in
     --file)
-      INPUT="${2:-}"
+      [[ -n ${2:-} ]] || { usage >&2; exit 1; }
+      INPUT="$2"
       shift 2
       ;;
     --out)
-      OUTPUT="${2:-}"
+      [[ -n ${2:-} ]] || { usage >&2; exit 1; }
+      OUTPUT="$2"
       shift 2
       ;;
     -h | --help)
@@ -61,6 +63,10 @@ try:
 except ModuleNotFoundError:
     print("omarchy-theme-colors-neovim: python3 is too old for tomllib (3.11+ needed)", file=sys.stderr)
     sys.exit(1)
+
+from datetime import date as _date
+from datetime import datetime as _datetime
+from datetime import time as _time
 
 BARE_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
@@ -135,6 +141,8 @@ def check_value(value):
         if isinstance(value, float) and not math.isfinite(value):
             fail("colors-neovim.toml numbers must be finite")
         return
+    if isinstance(value, (_date, _time, _datetime)):
+        fail("colors-neovim.toml values may not be dates or times")
     if isinstance(value, list):
         for item in value:
             check_value(item)
@@ -153,6 +161,8 @@ try:
         data = tomllib.load(handle)
 except tomllib.TOMLDecodeError as error:
     fail(f"invalid TOML in {os.path.basename(input_path)}: {error}")
+except UnicodeDecodeError:
+    fail(f"{os.path.basename(input_path)} is not valid UTF-8")
 
 for key in data:
     if key not in ("schema", "plugins"):
@@ -197,16 +207,27 @@ lines.append("}")
 rendered = "\n".join(lines) + "\n"
 
 directory = os.path.dirname(os.path.abspath(output_path))
-handle = tempfile.NamedTemporaryFile(
-    mode="w", dir=directory, prefix=".neovim.lua.", delete=False
-)
 try:
-    handle.write(rendered)
-    handle.flush()
-    os.fsync(handle.fileno())
-finally:
-    handle.close()
+    handle = tempfile.NamedTemporaryFile(
+        mode="w", dir=directory, prefix=".neovim.lua.", delete=False
+    )
+except OSError as error:
+    fail(f"cannot write next to {output_path}: {error}")
 
-os.chmod(handle.name, 0o644)
-os.replace(handle.name, output_path)
+try:
+    try:
+        handle.write(rendered)
+        handle.flush()
+        os.fsync(handle.fileno())
+    except OSError as error:
+        handle.close()
+        os.unlink(handle.name)
+        fail(f"cannot write {output_path}: {error}")
+    handle.close()
+    os.chmod(handle.name, 0o644)
+    os.replace(handle.name, output_path)
+except OSError as error:
+    if os.path.exists(handle.name):
+        os.unlink(handle.name)
+    fail(f"cannot replace {output_path}: {error}")
 PY

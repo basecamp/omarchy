@@ -163,6 +163,68 @@ file: keys other than `schema` and `plugins`, entries without a `spec`, or
 values a literal cannot represent (dates, non-finite numbers) keep the
 generated default `neovim.lua` in place and name the reason on stderr.
 
+The mental model is one sentence: write exactly the tables you would have put
+in `~/.config/nvim/lua/plugins/theme.lua`, one `[[plugins]]` per table. The
+`spec` string says who each entry configures — a theme's own entry names its
+colorscheme plugin, while an `opts.colorscheme` under LazyVim is what makes
+Neovim actually apply it:
+
+| TOML | Rendered Lua |
+|------|--------------|
+| `[[plugins]]` | `{ ... }` — one spec table per entry |
+| `spec = "tahadx/noir.nvim"` | `"tahadx/noir.nvim",` |
+| `priority = 1000` | `priority = 1000,` |
+| `config = true` | `config = true,` |
+| `[plugins.opts]` + keys | `opts = { ... },` |
+
+### Migrating a theme that shipped `neovim.lua`
+
+Before repo-installed themes stopped shipping code, Noir Dawn carried this
+hand-written file in its repo:
+
+```lua
+return {
+  {
+    "tahadx/noir.nvim",
+    priority = 1000,
+    config = true,
+    opts = {
+      variant = "dawn",
+    },
+  },
+  {
+    "LazyVim/LazyVim",
+    opts = {
+      colorscheme = "noir",
+    },
+  },
+}
+```
+
+The equivalent `colors-neovim.toml` replaces it — delete the `neovim.lua`
+from the theme repo and ship only this:
+
+```toml
+schema = 1
+
+[[plugins]]
+spec = "tahadx/noir.nvim"
+priority = 1000
+config = true
+
+[plugins.opts]
+variant = "dawn"
+
+[[plugins]]
+spec = "LazyVim/LazyVim"
+
+[plugins.opts]
+colorscheme = "noir"
+```
+
+When both exist in a theme directory, `colors-neovim.toml` wins: the staged
+`neovim.lua` is always its serialization.
+
 Safety comes from serialization, not from inspection: every string is emitted
 as an escaped Lua double-quoted literal, so no value can break out of its
 quotes and become code. What Neovim loads is exactly the data the TOML
