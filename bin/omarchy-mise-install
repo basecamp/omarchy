@@ -12,7 +12,26 @@ package=$1
 command=${2:-$1}
 bin=${3:-$command}
 
+# The command name becomes a file name under ~/.local/bin, so a slash in it
+# writes the wrapper somewhere else and the rm below deletes somewhere else. A
+# leading dot hides it or walks up, and a leading dash makes a name that reads
+# as an option to whatever picks it up. Checked before anything is removed or
+# written, and kept to those shapes so package names like npm:playwright still
+# stand in for the command name.
+case "$command" in
+  */* | .* | -* | *[[:cntrl:]]*)
+    echo "omarchy-mise-install: '$command' is not usable as a command name" >&2
+    exit 1
+    ;;
+esac
+
 mkdir -p "$HOME/.local/bin"
+
+# The heredoc below is unquoted, so whatever these hold is written into the
+# wrapper as shell source. Quote them the way omarchy-install-and-launch does, so
+# a package name carrying shell characters stays one argument instead of running.
+printf -v package_arg '%q' "$package"
+printf -v bin_arg '%q' "$bin"
 
 # These tools install and upgrade on first run, so mise's release cooldown would
 # hold a new version back for days after it ships. Exported rather than set on
@@ -22,8 +41,8 @@ rm -f "$HOME/.local/bin/$command"
 cat >"$HOME/.local/bin/$command" <<EOF
 #!/bin/bash
 export MISE_MINIMUM_RELEASE_AGE=0
-mise use -g --quiet "$package" || exit 1
-exec mise x "$package" -- "$bin" "\$@"
+mise use -g --quiet $package_arg || exit 1
+exec mise x $package_arg -- $bin_arg "\$@"
 EOF
 
 chmod +x "$HOME/.local/bin/$command"
