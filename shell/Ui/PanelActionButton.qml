@@ -42,6 +42,10 @@ BorderSurface {
   signal clicked()
   signal hovered(bool isHovered)
 
+  Accessible.role: Accessible.Button
+  Accessible.name: root.tooltipText
+  Accessible.onPressAction: if (root.enabled) root.clicked()
+
   activeFocusOnTab: focusable
   Keys.onReturnPressed: if (focusable) root.clicked()
   Keys.onEnterPressed: if (focusable) root.clicked()

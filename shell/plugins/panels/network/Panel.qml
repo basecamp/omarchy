@@ -774,14 +774,14 @@ Panel {
     runNetworkAction("connect", networkForSsid(ssid), function(network) { network.connect() })
   }
 
-  function connectWithPassphrase(ssid, passphrase) {
-    runNetworkAction("connect", networkForSsid(ssid), function(network) { network.connectWithPsk(passphrase) })
+  function connectWithPassphrase(network, passphrase) {
+    runNetworkAction("connect", network, function(liveNetwork) { liveNetwork.connectWithPsk(passphrase) })
   }
 
-  function connectEnterprise(ssid, identity, passphrase) {
-    runNetworkAction("connect", networkForSsid(ssid), function(network) {
+  function connectEnterprise(network, identity, passphrase) {
+    runNetworkAction("connect", network, function(liveNetwork) {
       enterpriseConnect.secret = passphrase
-      enterpriseConnect.command = ["bash", "-c", Model.enterpriseConnectScript, "nmcli-eap", ssid, identity]
+      enterpriseConnect.command = ["bash", "-c", Model.enterpriseConnectScript, "nmcli-eap", liveNetwork.name, identity]
       enterpriseConnect.running = true
     })
   }
@@ -1633,8 +1633,17 @@ Panel {
 
     function submitCredentials() {
       if (!net || root.busy || root.passwordText.length === 0) return
-      if (!isEnterprise) return root.connectWithPassphrase(net.ssid, root.passwordText)
-      if (root.identityText.length > 0) root.connectEnterprise(net.ssid, root.identityText, root.passwordText)
+      var liveNetwork = root.networkForSsid(net.ssid)
+      if (!liveNetwork) {
+        // The visible rows stay frozen during entry, but the selected access
+        // point can still disappear from the live scan. Close the stale
+        // prompt and publish the latest scan instead of accepting a submit
+        // that cannot start.
+        root.cancelPasswordPrompt()
+        return
+      }
+      if (!isEnterprise) return root.connectWithPassphrase(liveNetwork, root.passwordText)
+      if (root.identityText.length > 0) root.connectEnterprise(liveNetwork, root.identityText, root.passwordText)
     }
 
     Connections {

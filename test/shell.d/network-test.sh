@@ -8,6 +8,7 @@ run_node_test <<'JS'
 const fs = require('fs')
 const network = requireFromRoot('shell/plugins/panels/network/Model.js')
 const panelSource = fs.readFileSync(root + '/shell/plugins/panels/network/Panel.qml', 'utf8')
+const actionButtonSource = fs.readFileSync(root + '/shell/Ui/PanelActionButton.qml', 'utf8')
 
 assert(/IpcHandler[\s\S]*?function toggleNetwork\(\) \{ root\.toggleNetwork\(\) \}/.test(panelSource), 'network exposes the Wi-Fi radio toggle over IPC')
 assert(/manageIpc: false/.test(panelSource), 'network owns its IPC handler so it can extend the target methods')
@@ -118,6 +119,9 @@ assert(
 assert(/property bool passwordVisible: false/.test(panelSource), 'network keeps password visibility explicit and hidden by default')
 assert(/password: !root\.passwordVisible/.test(panelSource), 'network binds passphrase masking to the visibility control')
 assert(/tooltipText: root\.passwordVisible \? "Hide password" : "Show password"/.test(panelSource), 'network labels the password visibility action')
+assert(/Accessible\.role: Accessible\.Button/.test(actionButtonSource), 'panel action buttons expose their button role')
+assert(/Accessible\.name: root\.tooltipText/.test(actionButtonSource), 'panel action buttons expose their tooltip as an accessible name')
+assert(/Accessible\.onPressAction: if \(root\.enabled\) root\.clicked\(\)/.test(actionButtonSource), 'assistive technology can invoke enabled panel action buttons')
 assert(
   /id: revealPwBtn[\s\S]*onClicked: \{[\s\S]*passwordVisible = !root\.passwordVisible[\s\S]*pwField\.forceActiveFocus/.test(panelSource),
   'network exposes a password visibility toggle and returns focus to credential entry'
@@ -133,6 +137,14 @@ assert(
 assert(
   /function cancelPasswordPrompt\(\)[\s\S]*passwordVisible = false/.test(panelSource),
   'network hides the password again whenever credential entry is cancelled'
+)
+assert(
+  /function submitCredentials\(\)[\s\S]*var liveNetwork = root\.networkForSsid\(net\.ssid\)[\s\S]*if \(!liveNetwork\) \{[\s\S]*root\.cancelPasswordPrompt\(\)[\s\S]*return[\s\S]*root\.connectWithPassphrase\(liveNetwork, root\.passwordText\)/.test(panelSource),
+  'network closes a stale credential prompt instead of silently submitting after its access point disappears'
+)
+assert(
+  /function connectWithPassphrase\(network, passphrase\)[\s\S]*runNetworkAction\("connect", network/.test(panelSource),
+  'network submits credentials against the live access point resolved by the prompt'
 )
 
 // A row is a primitive snapshot that can outlive its WifiNetwork, and
