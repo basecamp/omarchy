@@ -72,15 +72,16 @@ for payload in '{"five_hour":{"utilization":78.0},"limits":[{"kind":"session","p
 done
 pass "Claude collector adds no limit when the payload scopes none"
 
-# Only the Claude Code CLI refreshes the saved token, so between its runs the
-# collector can find a lapsed one. Drive collect_limits over a planted cache
-# with the network unreachable, so nothing but the credential state decides
-# the answer.
+# Only the Claude Code CLI refreshes the saved tokens, so between its runs the
+# collector can find the access token lapsed while the refresh token behind it
+# is still good. Drive collect_limits over a planted cache with the network
+# unreachable, so nothing but the credential state decides the answer.
 CACHE_HOME=$(mktemp -d)
 trap 'rm -rf "$CACHE_HOME"' EXIT
 
 collect_limits() {
-  COLLECTOR="$ROOT/bin/omarchy-agent-usage-claude" TOKEN="$1" EXPIRES_AT="$2" CACHED="$3" \
+  COLLECTOR="$ROOT/bin/omarchy-agent-usage-claude" TOKEN="$1" EXPIRES_AT="$2" \
+    REFRESH_EXPIRES_AT="$3" CACHED="$4" \
     XDG_CACHE_HOME="$CACHE_HOME" python3 - <<'PY'
 import importlib.machinery, importlib.util, json, os, pathlib
 
@@ -100,7 +101,12 @@ def unreachable(request, timeout=None):
   raise OSError("no route to host")
 
 collector.urllib.request.urlopen = unreachable
-print(json.dumps(collector.collect_limits(os.environ["TOKEN"], int(os.environ["EXPIRES_AT"]), False)))
+print(json.dumps(collector.collect_limits(
+  os.environ["TOKEN"],
+  int(os.environ["EXPIRES_AT"]),
+  int(os.environ["REFRESH_EXPIRES_AT"]),
+  False,
+)))
 PY
 }
 
@@ -116,9 +122,10 @@ cache=$(jq -nc --arg open "$open_at" --arg past "$past_at" '{
   ]
 }')
 
-# An expired token used to return an empty limits list and no status at all,
-# which hides the panel's whole limits section without saying why.
-expired=$(collect_limits "token" 1000 "$cache")
+# Both tokens lapsed is a genuine sign-out. It used to return an empty limits
+# list and no status at all, which hides the panel's whole limits section
+# without saying why.
+expired=$(collect_limits "token" 1000 1000 "$cache")
 [[ $(jq -r '.usageStatusText' <<<"$expired") == "Sign-in expired" ]] ||
   fail "Claude collector reports an expired sign-in" "$expired"
 [[ $(jq -r '.authHelpText' <<<"$expired") == *"claude auth login"* ]] ||
@@ -131,15 +138,29 @@ pass "Claude collector reports an expired sign-in instead of hiding the section"
 pass "Claude collector keeps only cached windows that have not reset"
 
 # Nothing worth showing: the status still explains the silence.
-stale=$(collect_limits "token" 1000 "$(jq -c '.limits |= [.[0]]' <<<"$cache")")
+stale=$(collect_limits "token" 1000 1000 "$(jq -c '.limits |= [.[0]]' <<<"$cache")")
 [[ $(jq -c '.limits' <<<"$stale") == "[]" && $(jq -r '.usageStatusText' <<<"$stale") == "Sign-in expired" ]] ||
   fail "Claude collector drops a wholly reset cache but keeps explaining itself" "$stale"
 [[ $(jq -r '.authHelpText' <<<"$stale") != *"last known"* ]] ||
   fail "Claude collector promises no last-known limits when it has none" "$stale"
 pass "Claude collector drops a wholly reset cache but keeps explaining itself"
 
+# The access token lives about eight hours; the refresh token behind it lives
+# about thirty days, and the CLI mints a new access token from it on its next
+# run. A machine left overnight finds the first lapsed and the second fine --
+# routine, and nothing a person fixes by signing in again.
+live_refresh=$(python3 -c 'import time; print(round((time.time() + 30 * 86400) * 1000))')
+paused=$(collect_limits "token" 1000 "$live_refresh" "$cache")
+[[ $(jq -r '.usageStatusText' <<<"$paused") == "Limits paused" ]] ||
+  fail "Claude collector calls a lapsed access token paused, not signed out" "$paused"
+[[ $(jq -r '.authHelpText' <<<"$paused") != *"claude auth login"* ]] ||
+  fail "Claude collector does not send a signed-in machine back through login" "$paused"
+[[ $(jq -c '[.limits[].label]' <<<"$paused") == '["Weekly (7-day)"]' ]] ||
+  fail "Claude collector keeps open cached windows while the access token is stale" "$paused"
+pass "Claude collector calls a lapsed access token paused, not signed out"
+
 # A signed-out machine says so, and still shows what it last knew.
-signed_out=$(collect_limits "" 0 "$cache")
+signed_out=$(collect_limits "" 0 0 "$cache")
 [[ $(jq -r '.usageStatusText' <<<"$signed_out") == "Waiting for auth" ]] ||
   fail "Claude collector still reports a missing token" "$signed_out"
 [[ $(jq -c '[.limits[].label]' <<<"$signed_out") == '["Weekly (7-day)"]' ]] ||
@@ -148,7 +169,7 @@ pass "Claude collector serves open cached windows without a token"
 
 # A live token that cannot reach the endpoint keeps the old contract: the open
 # window stands in, and the shell is asked to retry sooner than its interval.
-unreachable=$(collect_limits "token" 0 "$cache")
+unreachable=$(collect_limits "token" 0 0 "$cache")
 [[ $(jq -c '[.limits[].label]' <<<"$unreachable") == '["Weekly (7-day)"]' ]] ||
   fail "Claude collector falls back to cache when the probe cannot connect" "$unreachable"
 [[ $(jq -r '.retryAdvised' <<<"$unreachable") == "true" ]] ||
@@ -177,7 +198,7 @@ def urlopen(request, timeout=None):
   return io.BytesIO(os.environ["PAYLOAD"].encode())
 
 collector.urllib.request.urlopen = urlopen
-result = collector.collect_limits("token", 0, os.environ["FORCE"] == "true")
+result = collector.collect_limits("token", 0, 0, os.environ["FORCE"] == "true")
 print(json.dumps({
   "result": result,
   "probes": len(probes),
