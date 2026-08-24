@@ -49,7 +49,7 @@ pass "Copilot collector identifies as 'copilot'"
 
 # Test 2: Today's token counts are summed correctly
 today_tokens=$(jq -r '.todayTotalTokens' <<<"$result")
-[[ $today_tokens == "493" ]] ||
+[[ $today_tokens == "450" ]] ||
   fail "Copilot collector sums today's tokens" "$result"
 pass "Copilot collector sums today's tokens"
 

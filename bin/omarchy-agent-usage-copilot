@@ -174,7 +174,7 @@ def read_copilot_stats() -> dict[str, Any]:
       if not date_str:
         continue
 
-      tokens = (input_tokens or 0) + (output_tokens or 0) + (cache_read or 0) + (cache_write or 0)
+      tokens = (input_tokens or 0) + (output_tokens or 0)
 
       if date_str not in date_stats:
         date_stats[date_str] = {"count": 0, "tokens": 0}
