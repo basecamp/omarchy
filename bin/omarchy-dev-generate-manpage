@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# omarchy:summary=Regenerate man/man1/omarchy.1 from the live command list
+# omarchy:group=dev
+
+set -euo pipefail
+
+OMARCHY_BIN_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+OMARCHY_ROOT=$(cd -- "$OMARCHY_BIN_DIR/.." && pwd)
+CLI="$OMARCHY_BIN_DIR/omarchy"
+OUT="$OMARCHY_ROOT/man/man1/omarchy.1"
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  cat <<'USAGE'
+Usage:
+  omarchy dev generate-manpage
+
+Regenerates man/man1/omarchy.1 from `omarchy commands --all --json`, piped
+through tools/man-gen. The output is generated — edit tools/man-gen/main.go
+and re-run this instead of hand-editing the .1 file.
+USAGE
+  exit 0
+fi
+
+if omarchy-cmd-missing go; then
+  echo "Error: go is required to regenerate the man page (contributor tooling only, not a runtime dependency)." >&2
+  exit 1
+fi
+
+"$CLI" commands --all --json |
+  (cd "$OMARCHY_ROOT/tools/man-gen" && go run . -out "$OUT" -version "$(cat "$OMARCHY_ROOT/version")")
+
+echo "Wrote $OUT"
