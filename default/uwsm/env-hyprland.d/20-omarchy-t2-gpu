@@ -15,8 +15,9 @@ case "$t2_wait_attempts" in
 ""|*[!0-9]*) t2_wait_attempts=150 ;;
 esac
 
-# The Radeon can register after UWSM starts on this hardware. Wait for the GPU
-# selected by apple-gmux so Aquamarine cannot make the other GPU primary first.
+# The Radeon can register after UWSM starts on this hardware. Let both DRM
+# devices settle before applying the explicit single-GPU list, otherwise
+# Aquamarine can add the late device as an unrestricted hotplugged backend.
 while [ "$t2_attempt" -lt "$t2_wait_attempts" ]; do
   t2_igpu=
   t2_dgpu=
@@ -32,8 +33,7 @@ while [ "$t2_attempt" -lt "$t2_wait_attempts" ]; do
     esac
   done
 
-  if { [ "$t2_primary_driver" = i915 ] && [ -n "$t2_igpu" ]; } ||
-    { [ "$t2_primary_driver" = amdgpu ] && [ -n "$t2_dgpu" ]; }; then
+  if [ -n "$t2_igpu" ] && [ -n "$t2_dgpu" ]; then
     break
   fi
 
@@ -42,9 +42,9 @@ while [ "$t2_attempt" -lt "$t2_wait_attempts" ]; do
 done
 
 if [ "$t2_primary_driver" = amdgpu ] && [ -n "$t2_dgpu" ]; then
-  export AQ_DRM_DEVICES="$t2_dgpu${t2_igpu:+:$t2_igpu}"
+  export AQ_DRM_DEVICES="$t2_dgpu"
 elif [ -n "$t2_igpu" ]; then
-  export AQ_DRM_DEVICES="$t2_igpu${t2_dgpu:+:$t2_dgpu}"
+  export AQ_DRM_DEVICES="$t2_igpu"
 fi
 
 unset t2_igpu t2_dgpu t2_drm_dir t2_gmux_conf t2_primary_driver

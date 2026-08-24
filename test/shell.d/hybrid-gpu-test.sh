@@ -112,8 +112,8 @@ renderer_devices=$(
   OMARCHY_T2_DRM_DIR="$fake_drm" OMARCHY_T2_GMUX_CONF="$gmux_conf" \
     sh -c '. "$1"; printf "%s" "$AQ_DRM_DEVICES"' _ "$renderer_source"
 )
-[[ $renderer_devices == "/dev/dri/card7:/dev/dri/card4" ]] ||
-  fail "T2 integrated renderer policy prioritizes Intel" "$renderer_devices"
+[[ $renderer_devices == "/dev/dri/card7" ]] ||
+  fail "T2 integrated renderer policy selects only Intel" "$renderer_devices"
 pass "T2 renderer policy discovers dynamic Intel and Radeon card numbers"
 
 rm "$fake_drm/card4/device/driver"
@@ -126,6 +126,20 @@ ln -s "$TEST_TMP/drivers/amdgpu" "$TEST_TMP/sys/class/drm/card4/device/driver"
 STUB
 chmod +x "$wait_bin/sleep"
 
+printf '%s\n' 'options apple-gmux force_igd=y' >"$gmux_conf"
+renderer_devices=$(
+  TEST_TMP="$test_tmp" OMARCHY_T2_DRM_DIR="$fake_drm" \
+    OMARCHY_T2_GMUX_CONF="$gmux_conf" OMARCHY_T2_GPU_WAIT_ATTEMPTS=2 \
+    PATH="$wait_bin:$PATH" \
+    sh -c '. "$1"; printf "%s" "$AQ_DRM_DEVICES"' _ "$renderer_source"
+)
+[[ $renderer_devices == "/dev/dri/card7" ]] ||
+  fail "T2 integrated renderer policy waits for Radeon before selecting only Intel" "$renderer_devices"
+[[ $(wc -l <"$test_tmp/renderer-waits") == "1" ]] ||
+  fail "T2 integrated renderer policy waits once for the delayed Radeon"
+pass "T2 integrated renderer policy excludes late Radeon initialization"
+
+rm "$fake_drm/card4/device/driver" "$test_tmp/renderer-waits"
 printf '%s\n' 'options apple-gmux force_igd=n' >"$gmux_conf"
 renderer_devices=$(
   TEST_TMP="$test_tmp" OMARCHY_T2_DRM_DIR="$fake_drm" \
@@ -133,8 +147,8 @@ renderer_devices=$(
     PATH="$wait_bin:$PATH" \
     sh -c '. "$1"; printf "%s" "$AQ_DRM_DEVICES"' _ "$renderer_source"
 )
-[[ $renderer_devices == "/dev/dri/card4:/dev/dri/card7" ]] ||
-  fail "T2 dedicated renderer policy waits for and prioritizes Radeon" "$renderer_devices"
+[[ $renderer_devices == "/dev/dri/card4" ]] ||
+  fail "T2 dedicated renderer policy waits for and selects only Radeon" "$renderer_devices"
 [[ $(wc -l <"$test_tmp/renderer-waits") == "1" ]] ||
   fail "T2 dedicated renderer policy waits once for the delayed Radeon"
 pass "T2 dedicated renderer policy handles late Radeon initialization"
@@ -182,7 +196,7 @@ renderer_devices=$(
   OMARCHY_T2_DRM_DIR="$fake_drm" OMARCHY_T2_GMUX_CONF="$gmux_conf" \
     sh -c '. "$1"; printf "%s" "$AQ_DRM_DEVICES"' _ "$renderer_env"
 )
-[[ $renderer_devices == "/dev/dri/card4:/dev/dri/card7" ]] ||
+[[ $renderer_devices == "/dev/dri/card4" ]] ||
   fail "T2 dedicated graphics configures Radeon as the primary renderer" "$renderer_devices"
 grep -Fq 'Enable dedicated GPU and reboot?' "$test_tmp/prompts" ||
   fail "T2 AMD mode uses the existing dedicated GPU prompt"
