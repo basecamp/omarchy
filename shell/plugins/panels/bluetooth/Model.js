@@ -72,9 +72,17 @@ function normalizedAddress(value) {
   return String(value || "").trim().toLowerCase().replace(/[^0-9a-f]/g, "")
 }
 
+// Whether a device is real enough to list, which is a question about the
+// device and not about what its owner called it. Both names are asked, because
+// judging by the label alone would let an address- or UUID-shaped alias — a
+// legal thing to type into the rename editor — drop the device out of every
+// section, including the row needed to type something else.
 function hasHumanName(device) {
-  var label = deviceLabel(device)
-  return label !== "" && !isUuidLike(label) && !isAddressLike(label)
+  var names = deviceNames(device)
+  for (var i = 0; i < names.length; i++) {
+    if (!isUuidLike(names[i]) && !isAddressLike(names[i])) return true
+  }
+  return false
 }
 
 function nodeProps(node) {

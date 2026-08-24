@@ -93,6 +93,28 @@ assert(bluetooth.isAddressLike('AA:BB:CC:DD:EE:FF'), 'bluetooth detects address-
 assertEqual(bluetooth.normalizedAddress('AA:BB_CC-dd-ee-ff'), 'aabbccddeeff', 'bluetooth normalizes BlueZ and PipeWire address formats')
 assert(!bluetooth.hasHumanName({ name: 'AA:BB:CC:DD:EE:FF' }), 'bluetooth rejects address-only device labels')
 assert(bluetooth.hasHumanName({ deviceName: 'MX Master 3S' }), 'bluetooth accepts human device labels')
+assert(
+  bluetooth.hasHumanName({ name: 'AA:BB:CC:DD:EE:FF', deviceName: 'MX Master 3S' }),
+  'bluetooth keeps a device whose advertised name is human when the alias looks like an address'
+)
+assert(
+  bluetooth.hasHumanName({ name: '0000110b-0000-1000-8000-00805f9b34fb', deviceName: 'MX Master 3S' }),
+  'bluetooth keeps a device whose advertised name is human when the alias looks like a UUID'
+)
+assert(
+  !bluetooth.hasHumanName({ name: 'AA:BB:CC:DD:EE:FF', deviceName: '11:22:33:44:55:66' }),
+  'bluetooth still drops a device with no human name of either kind'
+)
+
+// The rename editor accepts any string, so a device renamed to an address
+// shape has to stay on screen — the row is the only way back.
+assertDeepEqual(
+  bluetooth.deviceLists([
+    { name: 'AA:BB:CC:DD:EE:FF', deviceName: 'MX Master 3S', paired: true, address: '9' }
+  ]).known.map(bluetooth.deviceLabel),
+  ['AA:BB:CC:DD:EE:FF'],
+  'bluetooth still lists a device renamed to an address shape, so the rename can be undone'
+)
 
 const devices = [
   { name: 'Speaker', connected: false, paired: true, address: '2' },
