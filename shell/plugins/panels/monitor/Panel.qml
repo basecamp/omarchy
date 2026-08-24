@@ -431,7 +431,14 @@ Panel {
 
   Process {
     id: actionProc
-    stdout: StdioCollector { waitForEnd: true }
+    // hyprctl reports a refused monitor spec on stdout and exits 7, so without
+    // this a rejected change looks exactly like an applied one in the journal.
+    stdout: StdioCollector { id: actionStdout; waitForEnd: true }
+    onExited: function(exitCode) {
+      // Not the command: it may already have been reassigned by a click that
+      // arrived while this one was running. hyprctl quotes the spec it refused.
+      if (exitCode !== 0) console.warn("monitor", "display action exited", exitCode, String(actionStdout.text || "").trim())
+    }
     onRunningChanged: if (!running) root.refresh()
   }
 
