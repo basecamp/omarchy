@@ -31,8 +31,11 @@ CONTAINER="omarchy-windows"
 
 # --- privilege helpers -------------------------------------------------------
 
-# True when the user can reach the Docker socket directly (sudoless Docker on).
-in_docker_group() { id -nG 2>/dev/null | grep -qw docker; }
+# True when this session can reach the Docker socket directly (sudoless Docker
+# on and in effect). Asking about the socket rather than the configured groups
+# keeps the prompt in place through the window where sudoless Docker is enabled
+# but the reboot that grants the group has not happened yet.
+docker_needs_sudo() { omarchy-sudo-docker; }
 
 # The command to hand pkexec for the privileged re-exec. pkexec runs whatever
 # executable it is given (after authorization) and only shows the path in the
@@ -64,7 +67,7 @@ priv_target() {
 priv() {
   local action="$1"
   shift
-  if [[ $action != write_compose ]] && in_docker_group; then
+  if [[ $action != write_compose ]] && ! docker_needs_sudo; then
     "__priv_$action" "$@"
     return
   fi
