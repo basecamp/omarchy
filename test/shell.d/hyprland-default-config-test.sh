@@ -4,6 +4,26 @@ source "$(dirname "${BASH_SOURCE[0]}")/base-test.sh"
 
 require_command lua
 
+if ! helper_global_output=$(OMARCHY_PATH="$ROOT" lua <<'LUA'
+local helper_environment = setmetatable({}, { __index = _G })
+local helpers = assert(loadfile(os.getenv("OMARCHY_PATH") .. "/default/hypr/helpers.lua", "t", helper_environment))
+
+_G.o = nil
+helpers()
+
+assert(_G.o, "helpers store o globally")
+assert(rawget(helper_environment, "o") == nil, "helpers do not rely on their module environment")
+
+local later_environment = setmetatable({}, { __index = _G })
+local later_module = assert(load("return o", "later-module", "t", later_environment))
+assert(later_module() == _G.o, "later modules can access o")
+LUA
+); then
+  fail "Hyprland helpers load across module environments" "$helper_global_output"
+fi
+[[ -z $helper_global_output ]] || fail "helpers load without output" "$helper_global_output"
+pass "Hyprland helpers remain global across module environments"
+
 run_application_bindings() {
   local home="$1"
   local prelude="${2:-}"
