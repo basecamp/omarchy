@@ -120,6 +120,7 @@
   "style.about.default": {"icon":"","label":"Restore Default","action":"omarchy-branding-about reset"},
   "style.screensaver.text": {"icon":"","label":"Edit Text","action":"omarchy-branding-screensaver text"},
   "style.screensaver.image": {"icon":"","label":"Set From Image","action":"omarchy-branding-screensaver image"},
+  "style.screensaver.words": {"icon":"󰌌","label":"Set From Text","action":"omarchy-branding-screensaver words"},
   "style.screensaver.default": {"icon":"","label":"Restore Default","action":"omarchy-branding-screensaver reset"},
 
   // Setup

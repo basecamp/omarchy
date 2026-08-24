@@ -3,26 +3,110 @@
 # omarchy:summary=Edit, set, or reset screensaver branding
 # omarchy:group=branding
 # omarchy:name=screensaver
-# omarchy:args=<image|text|reset>
-# omarchy:examples=omarchy branding screensaver image | omarchy branding screensaver text | omarchy branding screensaver reset
+# omarchy:args=<image|text|words [text]|reset>
+# omarchy:examples=omarchy branding screensaver image | omarchy branding screensaver words | omarchy branding screensaver words Omarchy | omarchy branding screensaver reset
 
 set -euo pipefail
+
+SCREENSAVER_FILE=~/.config/omarchy/branding/screensaver.txt
+
+# The screensaver fills every monitor with a terminal and ttfx draws the art into
+# a canvas the size of it. It is not given --wrap-text, so art wider than the
+# canvas is cut off at both edges rather than wrapped, and the art has to fit the
+# narrowest monitor.
+#
+# Every screensaver terminal config sets JetBrains Mono at size 18. Its advance is
+# 0.6em, and foot -- which is what these sizes are measured against -- leaves
+# dpi-aware off by default, so a point is 96dpi and the monitor's scale is what
+# multiplies the font rather than its physical DPI. That puts a column at 14.4
+# scaled pixels, which the terminal then rounds to a whole pixel.
+#
+# Measured against real terminals: 1280 wide at scale 1 gives 91 columns, 1920 at
+# scale 1 gives 137, 1920 at scale 1.5 gives 87, and 3840 at scale 2 gives 132.
+# This reproduces all four.
+COLUMN_WIDTH=14.4
+
+# What the image path already targets, for a machine with no compositor to ask:
+# omarchy-transcode-ascii defaults to this width and the shipped logo fits it.
+FALLBACK_COLUMNS=80
+
+screensaver_columns() {
+  local columns=""
+
+  # A monitor turned on its side is as wide as it is tall, the same way the
+  # acceptance helpers read it.
+  columns=$(hyprctl monitors -j 2>/dev/null |
+    jq -r --argjson column "$COLUMN_WIDTH" '
+      [ .[]
+        | (if (.transform // 0) % 2 == 1 then .height else .width end) as $across
+        | ($column * .scale | round) as $cell
+        | $across / $cell | floor
+      ] | min' 2>/dev/null) || columns=""
+
+  [[ $columns =~ ^[0-9]+$ ]] && ((columns > 0)) || columns=$FALLBACK_COLUMNS
+
+  printf '%s' "$columns"
+}
+
+# wc -L counts display columns only in a UTF-8 locale. The art is drawn in block
+# characters, which a session that never set one counts as nothing.
+art_columns() {
+  LC_ALL=C.UTF-8 wc -L
+}
+
+set_from_words() {
+  local text="$1"
+  local columns art
+
+  columns=$(screensaver_columns)
+
+  # Drawn to a file rather than captured in a variable: the last row of a glyph
+  # like A or O is blank, and command substitution eats it, which would leave the
+  # art a row shorter than the renderer drew it and shift where ttfx centres it.
+  # Anything the font could not draw is named on stderr rather than swallowed.
+  art=$(mktemp)
+
+  if ! omarchy-ascii -- "$text" >"$art"; then
+    rm -f "$art"
+    omarchy-notification-send -g 󱄄 "Nothing to draw" "The screensaver font draws letters and spaces only"
+    exit 1
+  fi
+
+  if (($(art_columns <"$art") > columns)); then
+    rm -f "$art"
+    omarchy-notification-send -g 󱄄 "Text too long" "It draws wider than the $columns columns this screen has"
+    exit 1
+  fi
+
+  mkdir -p "$(dirname "$SCREENSAVER_FILE")"
+  cat "$art" >"$SCREENSAVER_FILE"
+  rm -f "$art"
+  omarchy-launch-screensaver force >/dev/null 2>&1
+}
 
 case "${1:-}" in
 image)
   image=$(omarchy-file-select --title "Pick PNG or SVG for screensaver" --extensions "png svg")
-  if omarchy-transcode-ascii "$image" ~/.config/omarchy/branding/screensaver.txt; then
+  if omarchy-transcode-ascii "$image" "$SCREENSAVER_FILE"; then
     omarchy-launch-screensaver force >/dev/null 2>&1
   fi
   ;;
+words)
+  shift
+  if (($# > 0)); then
+    set_from_words "$*"
+  else
+    omarchy-shell shell summon omarchy.screensaver-text "{\"columns\":$(screensaver_columns)}"
+  fi
+  ;;
 text)
-  omarchy-launch-editor ~/.config/omarchy/branding/screensaver.txt >/dev/null 2>&1 && omarchy-launch-screensaver force >/dev/null 2>&1
+  omarchy-launch-editor "$SCREENSAVER_FILE" >/dev/null 2>&1 && omarchy-launch-screensaver force >/dev/null 2>&1
   ;;
 reset)
-  cp "$OMARCHY_PATH/logo.txt" ~/.config/omarchy/branding/screensaver.txt && omarchy-launch-screensaver force >/dev/null 2>&1
+  cp "$OMARCHY_PATH/logo.txt" "$SCREENSAVER_FILE" && omarchy-launch-screensaver force >/dev/null 2>&1
   ;;
 *)
-  echo "Usage: omarchy-branding-screensaver <image|text|reset>" >&2
+  echo "Usage: omarchy-branding-screensaver <image|text|words [text]|reset>" >&2
   exit 1
   ;;
 esac

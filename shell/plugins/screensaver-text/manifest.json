@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.screensaver-text",
+  "name": "Screensaver Text",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Type the words the screensaver draws",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "ScreensaverTextFlow.qml"
+  }
+}
