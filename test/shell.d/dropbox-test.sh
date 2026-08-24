@@ -32,3 +32,42 @@ assertEqual(
   'dropbox file metadata includes relative time and folder'
 )
 JS
+
+test_tmp=$(mktemp -d)
+trap 'rm -rf "$test_tmp"' EXIT
+
+mock_bin="$test_tmp/bin"
+launch_log="$test_tmp/launch-log"
+mkdir -p "$mock_bin"
+
+cat >"$mock_bin/omarchy-pkg-add" <<'SH'
+#!/bin/bash
+:
+SH
+
+cat >"$mock_bin/omarchy-plugin-enable" <<'SH'
+#!/bin/bash
+:
+SH
+
+cat >"$mock_bin/setsid" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >"$OMARCHY_TEST_LAUNCH_LOG"
+SH
+
+cat >"$mock_bin/uwsm-app" <<'SH'
+#!/bin/bash
+printf 'direct:%s\n' "$*" >"$OMARCHY_TEST_LAUNCH_LOG"
+SH
+
+chmod +x "$mock_bin"/*
+
+PATH="$mock_bin:$PATH" OMARCHY_TEST_LAUNCH_LOG="$launch_log" \
+  bash "$ROOT/bin/omarchy-install-service-dropbox"
+for _ in {1..50}; do
+  [[ -s $launch_log ]] && break
+  sleep 0.01
+done
+grep -Fxq 'uwsm-app -- dropbox-cli start' "$launch_log" ||
+  fail "Dropbox installer detaches the service from its terminal" "$(cat "$launch_log")"
+pass "Dropbox installer detaches the service from its terminal"
