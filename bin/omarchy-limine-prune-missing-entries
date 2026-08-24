@@ -1,0 +1,121 @@
+#!/bin/bash
+
+# omarchy:summary=Drop Limine entries whose UKI no longer exists on the ESP.
+# omarchy:args=[limine.conf] [esp-root]
+# omarchy:hidden=true
+
+set -uo pipefail
+
+config="${1:-/boot/limine.conf}"
+esp="${2:-/boot}"
+
+[[ -f $config ]] || exit 0
+
+# Limine names an entry with a run of slashes: one for a top-level entry, more
+# for a nested one. Only top-level entries are considered here, and only when
+# they carry no nested entries of their own -- removing a branch would take its
+# children with it.
+entry_depth() {
+  local line="$1" depth=0
+
+  while [[ $line == /* ]]; do
+    line=${line#/}
+    ((depth++))
+  done
+
+  printf '%s\n' "$depth"
+}
+
+# `path: boot():/EFI/Linux/omarchy_linux.efi#4c516ba8...` -- the fragment after
+# `#` is limine-entry-tool's content hash, not part of the filename. Only the
+# `boot():` resolver is understood: uuid(), guid() and hdd() name a volume this
+# cannot map to a directory, so an entry using one is never pruned.
+entry_image() {
+  local value="$1"
+
+  [[ $value == boot\(\):/* ]] || return 1
+  value=${value#boot():}
+  printf '%s\n' "${value%%#*}"
+}
+
+mapfile -t lines <"$config"
+
+# Pass one: find the top-level entries whose image is gone.
+declare -a prune_from=() prune_to=()
+start=-1
+image=""
+has_child=0
+
+close_entry() {
+  local end="$1"
+
+  (( start >= 0 )) || return 0
+
+  if (( ! has_child )) && [[ -n $image ]] && [[ ! -e $esp$image ]]; then
+    prune_from+=("$start")
+    prune_to+=("$end")
+  fi
+
+  start=-1
+  image=""
+  has_child=0
+}
+
+for i in "${!lines[@]}"; do
+  line="${lines[$i]}"
+  trimmed="${line#"${line%%[![:space:]]*}"}"
+
+  if [[ $trimmed == /* ]]; then
+    depth=$(entry_depth "$trimmed")
+    if (( depth == 1 )); then
+      close_entry "$((i - 1))"
+      start=$i
+    else
+      has_child=1
+    fi
+    continue
+  fi
+
+  if (( start >= 0 )) && [[ $trimmed == path:* ]]; then
+    value="${trimmed#path:}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    image=$(entry_image "$value") || image=""
+  fi
+done
+close_entry "$((${#lines[@]} - 1))"
+
+(( ${#prune_from[@]} )) || exit 0
+
+# Never empty the menu: a config with no entries leaves nothing to boot. If
+# every entry points at a missing image the problem is bigger than a stale
+# hand-written entry, and silently rewriting the config would hide it.
+total_entries=0
+for line in "${lines[@]}"; do
+  trimmed="${line#"${line%%[![:space:]]*}"}"
+  [[ $trimmed == /* && $(entry_depth "$trimmed") == 1 ]] && ((total_entries++))
+done
+
+if (( ${#prune_from[@]} >= total_entries )); then
+  echo "Every Limine entry in $config points at a missing image; leaving it alone." >&2
+  exit 1
+fi
+
+# Pass two: write everything that was not pruned, byte for byte.
+declare -A pruned=()
+for i in "${!prune_from[@]}"; do
+  for (( n = prune_from[i]; n <= prune_to[i]; n++ )); do
+    pruned[$n]=1
+  done
+done
+
+tmp=$(mktemp) || exit 1
+for i in "${!lines[@]}"; do
+  [[ -n ${pruned[$i]:-} ]] && continue
+  printf '%s\n' "${lines[$i]}"
+done >"$tmp"
+
+cat "$tmp" >"$config" && rm -f "$tmp"
+
+for i in "${!prune_from[@]}"; do
+  printf 'Removed Limine entry %s (image missing from %s)\n' "${lines[${prune_from[i]}]}" "$esp"
+done
