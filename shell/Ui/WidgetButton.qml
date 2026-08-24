@@ -65,7 +65,7 @@ Item {
   readonly property real labelWidth: label.visible ? label.implicitWidth : 0
 
   visible: hasVisualContent || keepSpace
-  opacity: (!hasVisualContent || concealed ? 0 : (dimmed ? 0.45 : 1)) * blinkOpacity
+  opacity: !hasVisualContent || concealed ? 0 : (dimmed ? 0.45 : 1)
   implicitWidth: fixedWidth > 0 ? fixedWidth : (vertical ? barSize : Math.max(12, label.implicitWidth + scaledHorizontalMargin * 2))
   implicitHeight: fixedHeight > 0 ? fixedHeight : (vertical ? Math.max(12, label.implicitHeight + scaledVerticalPadding * 2) : barSize)
 
@@ -73,9 +73,16 @@ Item {
     NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
   }
 
-  // Kept separate from the opacity binding above so the pulse animation has
-  // a plain property to drive instead of fighting that binding directly.
+  // Text.NativeRendering (below and in BarIconButton's glyph) does not
+  // composite with an animated ancestor opacity, so the pulse instead fades
+  // the drawn color's alpha directly. blinkedColor() is exposed so
+  // BarIconButton can apply the same pulse to its icon glyph, which sets its
+  // own color and bypasses this Text.
   property real blinkOpacity: 1.0
+
+  function blinkedColor(baseColor) {
+    return root.blinking ? Util.alpha(baseColor, baseColor.a * root.blinkOpacity) : baseColor
+  }
 
   SequentialAnimation on blinkOpacity {
     running: root.blinking
@@ -90,7 +97,7 @@ Item {
     visible: root.labelVisible
     anchors.centerIn: parent
     text: root.text
-    color: root.active && root.useActiveColor ? root.activeColor : root.foreground
+    color: root.blinkedColor(root.active && root.useActiveColor ? root.activeColor : root.foreground)
     font.family: root.fontFamily
     font.pixelSize: root.fontSize
     renderType: Text.NativeRendering
@@ -98,8 +105,11 @@ Item {
     horizontalAlignment: Text.AlignHCenter
     verticalAlignment: Text.AlignVCenter
 
+    // Disabled while blinking: the pulse re-evaluates color every animation
+    // frame, and this Behavior would retrigger on each one, damping the
+    // sine pulse into a muddy fade instead of following it cleanly.
     Behavior on color {
-      enabled: !root.bar || root.bar.foregroundAnimationEnabled
+      enabled: !root.blinking && (!root.bar || root.bar.foregroundAnimationEnabled)
       ColorAnimation { duration: 160 }
     }
   }
