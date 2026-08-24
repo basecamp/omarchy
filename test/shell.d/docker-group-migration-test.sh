@@ -39,16 +39,30 @@ cat >"$stub_bin/gpasswd" <<'STUB'
 #!/bin/bash
 echo "$@" >>"${GPASSWD_CALLS:?}"
 STUB
-chmod +x "$stub_bin/id" "$stub_bin/sudo" "$stub_bin/gpasswd"
+# gum confirm always says yes, and reboot records that it fired: the migration
+# must still NOT reboot (it defers to omarchy-update-restart), so neither should
+# be reached.
+cat >"$stub_bin/gum" <<'STUB'
+#!/bin/bash
+[[ $1 == confirm ]] && exit 0
+exit 0
+STUB
+cat >"$stub_bin/omarchy-system-reboot" <<'STUB'
+#!/bin/bash
+touch "${REBOOT_CALLED:?}"
+STUB
+chmod +x "$stub_bin/id" "$stub_bin/sudo" "$stub_bin/gpasswd" "$stub_bin/gum" "$stub_bin/omarchy-system-reboot"
 
 reboot_flag="$home/.local/state/omarchy/reboot-required"
 gpasswd_calls="$test_dir/gpasswd-calls"
+reboot_called="$test_dir/reboot-called"
 launcher="$home/.local/share/applications/Docker.desktop"
 
 run_migration() {
-  rm -f "$gpasswd_calls" "$reboot_flag"
+  rm -f "$gpasswd_calls" "$reboot_flag" "$reboot_called"
   HOME="$home" OMARCHY_PATH="$omarchy_path" USER="tester" STUB_GROUPS="$1" \
-    GPASSWD_CALLS="$gpasswd_calls" PATH="$stub_bin:$ROOT/bin:$PATH" \
+    GPASSWD_CALLS="$gpasswd_calls" REBOOT_CALLED="$reboot_called" \
+    PATH="$stub_bin:$ROOT/bin:$PATH" \
     bash -euo pipefail "$migration" >/dev/null 2>&1
 }
 
@@ -56,6 +70,7 @@ run_migration() {
 run_migration "wheel input docker" || fail "migration runs when the user is in the docker group"
 grep -q -- "-d tester docker" "$gpasswd_calls" || fail "migration removes the user from the docker group"
 [[ -f $reboot_flag ]] || fail "migration flags a reboot so the group change takes effect"
+[[ ! -f $reboot_called ]] || fail "migration must defer the reboot (not reboot mid-update)"
 [[ $(cat "$launcher") == "NEW-LAUNCHER" ]] || fail "migration refreshes the stale Docker launcher entry"
 pass "migration removes the group, flags a reboot, and refreshes the launcher"
 

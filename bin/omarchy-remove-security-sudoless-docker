@@ -13,13 +13,18 @@ fi
 echo "Removing $USER from the docker group..."
 sudo gpasswd -d "$USER" docker >/dev/null
 
-# Group membership is fixed at login, so the running session keeps its docker
-# access until it ends. Flag a reboot so omarchy-update-restart prompts for one
-# (and the bar shows it pending); a plain log out and back in works too.
+# Group membership is only re-read by a fresh session, and in practice logging
+# out or newgrp isn't enough — only a reboot reliably applies it. Flag it so the
+# bar shows a reboot pending, then offer to do it now.
 omarchy-state set reboot-required
 
 echo ""
-echo "Sudoless Docker DISABLED. Reboot (or log out and back in) for the change to take effect."
-echo "Docker access now goes through a polkit/sudo prompt again: the Docker TUI"
-echo "(Super + Shift + D) and the Windows VM will ask when they need it, and the"
-echo "plain 'docker' CLI runs under sudo."
+echo "Sudoless Docker DISABLED. Docker access goes through a polkit/sudo prompt"
+echo "again: the Docker TUI (Super + Shift + D) and the Windows VM ask when they"
+echo "need it, and the plain 'docker' CLI runs under sudo. It takes effect after a reboot."
+echo ""
+# The migration reuses this command during 'omarchy update' and defers the
+# reboot to omarchy-update-restart, so it doesn't cut the update short.
+if [[ -z ${OMARCHY_DEFER_REBOOT:-} ]] && gum confirm "Reboot now to apply?"; then
+  omarchy-system-reboot
+fi
