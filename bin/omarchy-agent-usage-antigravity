@@ -253,13 +253,21 @@ def _cached_local_stats(max_age):
 
 
 def fetch_limits():
-  # Try to infer tier from onboarding cache; default free-tier 1500 req/day has no live limit endpoint yet
+  # Free-tier: 1500 req/day has no live limit endpoint yet; expose a dummy limit so panel shows tab even with 0 prompts
   tier = "Antigravity"
   status = ""
-  # If no conversations yet, hint that tokens are prompts until real counts are exposed
   if total_prompts == 0:
-    status = "No local Antigravity conversations yet"
-  return {"limits": [], "tierLabel": tier, "usageStatusText": status, "authHelpText": AUTH_HELP}
+    status = "No local Antigravity conversations yet — showing quota"
+  # Daily quota dummy: panel hides agents with no limits/prompts/tokens, so this forces visibility
+  # When we have prompts, show usage percent as todayPrompts/1500
+  quota = 1500
+  percent = 0.0
+  if today_prompts > 0:
+    percent = min(1.0, today_prompts / quota)
+  elif total_prompts > 0:
+    percent = min(1.0, total_prompts / quota)
+  dummy_limit = {"label": "Daily (1500 req)", "percent": percent, "resetsAt": ""}
+  return {"limits": [dummy_limit], "tierLabel": tier, "usageStatusText": status, "authHelpText": AUTH_HELP}
 
 
 def main():
