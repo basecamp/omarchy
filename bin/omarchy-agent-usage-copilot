@@ -261,7 +261,11 @@ def main() -> None:
     pct = 0
     if quota["total"] > 0:
       pct = quota["used"] / quota["total"]
-    usage_label = f"AI Credits (Premium Requests {format_count(quota['used'])}/{format_count(quota['total'])} used)"
+    # Use "No more" message if quota is exhausted, otherwise format the label
+    if "No more" in quota.get("displayName", ""):
+      usage_label = quota["displayName"]
+    else:
+      usage_label = f"AI Credits (Premium Requests {format_count(quota['used'])}/{format_count(quota['total'])} used)"
     limit_entry = {
       "label": usage_label,
       "title": usage_label,

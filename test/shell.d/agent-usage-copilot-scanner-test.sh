@@ -87,45 +87,87 @@ result_empty=$(HOME="$(mktemp -d)" COPILOT_HOME="$(mktemp -d)" "$ROOT/bin/omarch
   fail "Copilot collector returns empty stats when DB missing" "$result_empty"
 pass "Copilot collector returns empty stats when DB missing"
 
-# Test 9: Exhausted quota logic produces "No more" message
-# Test the formatting of exhausted quota (entitlement=0, credits_used=0)
-python3 << 'PYTEST'
+# Test 9: Exhausted quota end-to-end through real collector
+# Mock the API to return exhausted quota, then verify the collector's JSON output
+python3 << PYTEST
 import sys
+import json
+import os
+from unittest.mock import patch, MagicMock
+from io import StringIO
 
-# Test the exact formatting logic from fetch_quota
-QUOTA_DISPLAY_NAMES = {
-    "premium_interactions": "AI Credits",
-    "premium_requests": "Premium Requests",
-}
+# Set up test environment
+os.environ["HOME"] = "$TEST_HOME"
+os.environ["COPILOT_HOME"] = "$TEST_HOME/.copilot"
 
-# Simulate exhausted quota response
-quota_type = "premium_interactions"
-display_name = QUOTA_DISPLAY_NAMES.get(quota_type, quota_type)
-used = 0
-total = 0
+# Create mock OAuth token file in the correct format
+os.makedirs("$TEST_HOME/.config/github-copilot", exist_ok=True)
+with open("$TEST_HOME/.config/github-copilot/oauth.json", "w") as f:
+    json.dump({
+        "github.com": {
+            "oauth_token": "ghu_fake_token_for_testing"
+        }
+    }, f)
 
-# This is the exact formatting from fetch_quota (lines 114-120)
-formatted_label = display_name
-if total == 0 and used == 0:
-    formatted_label = f"No more {display_name} available"
+# Mock the urlopen to return exhausted quota response
+# The API returns quota_snapshots as a dict keyed by quota type
+def mock_urlopen(*args, **kwargs):
+    quota_response = {
+        "quota_snapshots": {
+            "premium_interactions": {
+                "quota_type": "premium_interactions",
+                "credits_used": 0,
+                "entitlement": 0,
+                "has_quota": True  # Must be True to process, even if exhausted
+            }
+        },
+        "quota_reset_date_utc": "2026-09-01T00:00:00Z"
+    }
+    response = MagicMock()
+    response.__enter__.return_value.read.return_value = json.dumps(quota_response).encode()
+    response.__exit__.return_value = None
+    return response
 
-# Verify the label has "No more"
-if "No more" not in formatted_label:
-    print(f"FAIL: Expected 'No more' in formatted label, got: {formatted_label}")
-    sys.exit(1)
-
-# Also verify normal quota still works
-used2 = 100
-total2 = 1000
-formatted_label2 = display_name
-if total2 == 0 and used2 == 0:
-    formatted_label2 = f"No more {display_name} available"
-
-if "No more" in formatted_label2:
-    print(f"FAIL: Normal quota should not have 'No more', got: {formatted_label2}")
-    sys.exit(1)
-
-print("PASS")
+with patch('urllib.request.urlopen', side_effect=mock_urlopen):
+    # Read and execute the collector code in this process
+    with open("$ROOT/bin/omarchy-agent-usage-copilot") as f:
+        collector_code = f.read()
+    
+    # Remove shebang
+    if collector_code.startswith("#!"):
+        collector_code = '\n'.join(collector_code.split('\n')[1:])
+    
+    # Capture stdout
+    old_stdout = sys.stdout
+    sys.stdout = StringIO()
+    
+    try:
+        # Execute the collector
+        exec(collector_code, {'__name__': '__main__'})
+        output = sys.stdout.getvalue()
+        sys.stdout = old_stdout
+        
+        # Parse the JSON output
+        try:
+            result = json.loads(output)
+        except json.JSONDecodeError as e:
+            print(f"FAIL: Could not parse collector JSON: {e}")
+            print(f"Output was: {output}")
+            sys.exit(1)
+        
+        # Verify the exhausted quota message is in the limits label
+        if "limits" not in result or len(result["limits"]) == 0:
+            print(f"FAIL: No limits in collector output")
+            sys.exit(1)
+        
+        label = result["limits"][0].get("label", "")
+        if "No more" not in label:
+            print(f"FAIL: Expected 'No more' in exhausted quota label, got: {label}")
+            sys.exit(1)
+        
+        print("PASS")
+    finally:
+        sys.stdout = old_stdout
 PYTEST
 
 if (( $? == 0 )); then
