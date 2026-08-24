@@ -1317,9 +1317,9 @@ apply_system_transition() {
   printf '%s\n' '{"browser":{"theme":{"color_scheme":0,"color_scheme2":0}}}' | \
     as_root tee /usr/lib/chromium/initial_preferences >/dev/null
 
-  if getent group docker >/dev/null; then
-    as_root usermod -aG docker "$target_user"
-  fi
+  # Deliberately do NOT add the user to the docker group. That group is
+  # root-equivalent, so it is opt-in now (Setup > Security > Sudoless Docker);
+  # re-granting it on upgrade would silently undo that default for everyone.
 
   if [[ -f /usr/bin/powerprofilesctl ]]; then
     as_root sed -i '/env python3/ c\#!/bin/python3' /usr/bin/powerprofilesctl || true

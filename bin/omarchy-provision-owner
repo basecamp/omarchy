@@ -676,6 +676,11 @@ user_groups() {
   if [[ -f $PROVISIONING_DIR/groups ]]; then
     while IFS= read -r group; do
       [[ -n $group ]] || continue
+      # Never grant docker at first boot, even if an older install recorded it
+      # (or a factory snapshot predating the opt-in default carries it): the
+      # docker group is root-equivalent. It is opt-in via
+      # omarchy-setup-security-sudoless-docker.
+      [[ $group == "docker" ]] && continue
       getent group "$group" >/dev/null || continue
       [[ ",$groups," == *",$group,"* ]] || groups+=",$group"
     done <"$PROVISIONING_DIR/groups"
