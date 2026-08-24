@@ -34,6 +34,7 @@ assert(power.batteryIcon({ isPresent: true, percentage: 0.4, state: states.Charg
 assert(power.isBatteryLow({ isPresent: true, percentage: 0.1, state: states.Discharging }, true, states, 10), 'power flags low battery at the threshold while discharging')
 assert(power.isBatteryLow({ isPresent: true, percentage: 0.08, state: states.Discharging }, true, states, 10), 'power flags low battery under the threshold while discharging')
 assert(!power.isBatteryLow({ isPresent: true, percentage: 0.11, state: states.Discharging }, true, states, 10), 'power does not flag low battery above the threshold')
+assert(power.isBatteryLow({ isPresent: true, percentage: 0.104, state: states.Discharging }, true, states, 10), 'power rounds like the low-battery notification so both switch together at 10.4%')
 assert(!power.isBatteryLow({ isPresent: true, percentage: 0.05, state: states.Charging }, false, states, 10), 'power does not flag low battery while charging')
 assert(!power.isBatteryLow({ isPresent: false, percentage: 0.05, state: states.Discharging }, true, states, 10), 'power does not flag low battery when no battery is present')
 assertEqual(

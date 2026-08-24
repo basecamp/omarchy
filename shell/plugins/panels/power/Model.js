@@ -82,7 +82,7 @@ function isBatteryLow(device, onBattery, states, threshold) {
   var d = device || {}
   if (!d.isPresent || !onBattery) return false
   if (d.state !== (states || {}).Discharging) return false
-  return batteryFraction(d) * 100 <= threshold
+  return Math.round(batteryFraction(d) * 100) <= threshold
 }
 
 function modeLabel(device, onBattery, states) {
