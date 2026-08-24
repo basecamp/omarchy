@@ -118,22 +118,35 @@ func groupDesc(g string) string {
 	return strings.ToUpper(g[:1]) + g[1:] + " commands"
 }
 
-// stripPUA drops Unicode Private Use Area codepoints. Omarchy examples
-// sometimes embed Nerd Font icon glyphs (e.g. U+F051B) that only render in
-// a patched terminal font; groff has no glyph for them and warns/garbles
-// the output, and a plain man page reader wouldn't see the icon anyway.
+// stripPUA replaces runs of Unicode Private Use Area codepoints with a
+// placeholder. Omarchy examples sometimes embed Nerd Font icon glyphs (e.g.
+// U+F051B) that only render in a patched terminal font; groff has no glyph
+// for them and warns/garbles the output, and a plain man page reader
+// wouldn't see the icon anyway. Dropping the rune outright (rather than
+// placeholding it) can leave a preceding flag with no value at all, e.g.
+// `-g <icon-was-here>` collapsing to a dangling `-g`.
 func stripPUA(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
+	inPUA := false
 	for _, r := range s {
-		if (r >= 0xE000 && r <= 0xF8FF) || // BMP PUA
-			(r >= 0xF0000 && r <= 0xFFFFD) || // Supplementary PUA-A
-			(r >= 0x100000 && r <= 0x10FFFD) { // Supplementary PUA-B
+		if isPUA(r) {
+			if !inPUA {
+				b.WriteString("<icon>")
+				inPUA = true
+			}
 			continue
 		}
+		inPUA = false
 		b.WriteRune(r)
 	}
 	return b.String()
+}
+
+func isPUA(r rune) bool {
+	return (r >= 0xE000 && r <= 0xF8FF) || // BMP PUA
+		(r >= 0xF0000 && r <= 0xFFFFD) || // Supplementary PUA-A
+		(r >= 0x100000 && r <= 0x10FFFD) // Supplementary PUA-B
 }
 
 // typographicEscapes maps Unicode punctuation that shows up in command
@@ -316,7 +329,10 @@ Print debugging information.
 			}
 			if len(notes) > 0 {
 				fmt.Fprintln(w, ".br")
-				fmt.Fprintln(w, escText(strings.Join(notes, " ")))
+				// notes are already groff-safe (a plain literal, or
+				// escAliases output) — escText-ing the joined string
+				// would double-escape the aliases' \- back-slashes.
+				fmt.Fprintln(w, strings.Join(notes, " "))
 			}
 			for _, ex := range c.Examples {
 				fmt.Fprintln(w, ".br")
