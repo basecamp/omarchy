@@ -28,7 +28,7 @@ write_stale_preferences() {
 stub_bin="$test_dir/bin"
 mkdir -p "$stub_bin"
 
-REAL_PYTHON=$(command -v python3)
+REAL_PYTHON=$(command -p -v python3)
 export REAL_PYTHON
 
 run_migration() {
