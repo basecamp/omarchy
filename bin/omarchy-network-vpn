@@ -34,8 +34,22 @@ if (( $# != 2 )); then
   exit 1
 fi
 
+deactivate_other_vpns() {
+  local keep=$1 name active
+
+  while IFS=$'\t' read -r name active; do
+    [[ $name == "$keep" ]] && continue
+    [[ $active == "yes" ]] || continue
+    nmcli connection down "$name" >/dev/null 2>&1 || true
+  done < <(list_vpn_connections)
+}
+
 case "$1" in
   up)
+    # Nothing at the NetworkManager/WireGuard level stops two tunnels being
+    # active at once -- they'd just fight over the default route. Treat VPN
+    # selection as exclusive, one profile carrying traffic at a time.
+    deactivate_other_vpns "$2"
     nmcli connection up "$2" >/dev/null
     ;;
   down)
