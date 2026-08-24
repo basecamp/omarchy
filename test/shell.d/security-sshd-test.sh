@@ -109,15 +109,33 @@ grep -q 'ssh-ed25519' "$test_tmp/good/home/.ssh/authorized_keys" ||
 pass "the key still reaches authorized_keys"
 
 # The drop-in has to be in place before the server starts listening, and the
-# port only opens once sshd confirms password logins are off.
-config_line=$(grep -n 'tee' "$test_tmp/good/sshd.log" | head -1 | cut -d: -f1)
-start_line=$(grep -n 'enable' "$test_tmp/good/sshd.log" | head -1 | cut -d: -f1)
-check_line=$(grep -n 'sshd' "$test_tmp/good/sshd.log" | grep -v enable | grep -v reload | head -1 | cut -d: -f1)
-firewall_line=$(grep -n 'ufw' "$test_tmp/good/sshd.log" | head -1 | cut -d: -f1)
+# port only opens once sshd itself confirms password logins are off. Match the
+# whole logged line: a loose "sshd" pattern also hits the sshd_config.d path in
+# the mkdir and tee lines, so the ordering would still read as correct with the
+# check moved after the firewall call.
+log_line_for() {
+  grep -Fxn "$1" "$test_tmp/good/sshd.log" | head -1 | cut -d: -f1
+}
+
+config_line=$(log_line_for $'sudo\ttee\t/etc/ssh/sshd_config.d/omarchy-keys-only.conf')
+start_line=$(log_line_for $'sudo\tsystemctl\tenable\t--now\tsshd.service')
+check_line=$(log_line_for $'sudo\tsshd\t-T')
+firewall_line=$(log_line_for $'sudo\tufw\tlimit\t22/tcp\tcomment\tomarchy-sshd')
+
+for step in config_line start_line check_line firewall_line; do
+  [[ -n ${!step} ]] ||
+    fail "every step the ordering checks read is in the log" "missing: $step, log: $(cat "$test_tmp/good/sshd.log")"
+done
 
 (( config_line < start_line )) ||
   fail "the drop-in is written before the server starts" "$(cat "$test_tmp/good/sshd.log")"
 pass "the drop-in is written before the server starts"
+
+# sshd -T wants host keys, and the first start is what creates them, so the
+# check cannot move above the start.
+(( start_line < check_line )) ||
+  fail "sshd is asked only once it has started" "$(cat "$test_tmp/good/sshd.log")"
+pass "sshd is asked only once it has started"
 
 (( check_line < firewall_line )) ||
   fail "the firewall opens only after sshd confirms the setting" "$(cat "$test_tmp/good/sshd.log")"
