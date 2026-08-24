@@ -22,9 +22,12 @@ trap 'rm -rf "$test_tmp"' EXIT
 stub_bin="$test_tmp/bin"
 mkdir -p "$stub_bin"
 conf_dir="$test_tmp/etc/systemd/sleep.conf.d"
+calls="$test_tmp/calls"
 
 cat >"$stub_bin/sudo" <<'SH'
 #!/bin/bash
+
+echo "$1" >>"$CALLS"
 
 if [[ $1 == mkdir ]]; then
   mkdir -p "$CONF_DIR"
@@ -36,7 +39,7 @@ chmod +x "$stub_bin/sudo"
 
 run_migration() {
   (cd "$test_tmp" &&
-    PATH="$stub_bin:$PATH" CONF_DIR="$conf_dir" \
+    PATH="$stub_bin:$PATH" CONF_DIR="$conf_dir" CALLS="$calls" \
     OMARCHY_HIBERNATE_MODE_CONF="$conf_dir/hibernatemode.conf" \
     bash "$migration")
 }
@@ -63,9 +66,12 @@ grep -qx 'HibernateMode=shutdown' "$conf_dir/hibernatemode.conf" ||
   fail "the migration writes HibernateMode=shutdown for ThinkBook X IMH"
 pass "the migration writes HibernateMode=shutdown for ThinkBook X IMH"
 
-# Re-running stays idempotent.
+# Re-running stays idempotent: no sudo call at all once the drop-in is in
+# place, not merely the same bytes written again.
 before=$(<"$conf_dir/hibernatemode.conf")
+: >"$calls"
 run_migration >/dev/null
 [[ $(<"$conf_dir/hibernatemode.conf") == "$before" ]] ||
   fail "the migration is idempotent when run twice"
+[[ ! -s $calls ]] || fail "an already-configured install is left untouched" "$(cat "$calls")"
 pass "re-running the migration changes nothing"
