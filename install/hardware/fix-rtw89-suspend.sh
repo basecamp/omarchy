@@ -9,7 +9,12 @@
 #
 # Verified on an ASUS TUF Gaming F16 (FX607VJ, Intel root port 8086:51bf).
 
-if lspci -nn | grep -q '\[10ec:b852\]'; then
+# Read lspci into a variable rather than piping it into grep -q: grep quits at
+# the first match, lspci catches SIGPIPE, and under the caller's pipefail that
+# 141 reads as "no such hardware" on the very machines this targets (#6608).
+pci_devices=$(lspci -nn)
+
+if [[ $pci_devices == *"[10ec:b852]"* ]]; then
   mkdir -p /etc/modprobe.d
   install -m 644 "$OMARCHY_PATH/default/modprobe.d/omarchy-rtw89.conf" \
     /etc/modprobe.d/omarchy-rtw89.conf

@@ -1,7 +1,12 @@
 echo "Keep RTL8852BE Wi-Fi alive across suspend"
 
-# Only machines carrying the affected Realtek card need any of this.
-lspci -nn | grep -q '\[10ec:b852\]' || exit 0
+# Only machines carrying the affected Realtek card need any of this. Read lspci
+# into a variable rather than piping it into grep -q: grep quits at the first
+# match, lspci catches SIGPIPE, and under the runner's pipefail that 141 reads
+# as "no such hardware" on the very machines this targets (#6608).
+pci_devices=$(lspci -nn)
+
+[[ $pci_devices == *"[10ec:b852]"* ]] || exit 0
 
 conf_source="$OMARCHY_PATH/default/modprobe.d/omarchy-rtw89.conf"
 conf=/etc/modprobe.d/omarchy-rtw89.conf
