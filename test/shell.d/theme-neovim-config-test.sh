@@ -160,6 +160,17 @@ grep -q "bjarneo/aether" "$(staged neovim.lua)" || fail "an unknown top-level ke
 
 pass "keys outside the schema are refused rather than ignored"
 
+bad_schema="$themes/bad-schema"
+mkdir -p "$bad_schema/.git"
+cp "$noir/colors.toml" "$bad_schema/colors.toml"
+printf 'schema = true\n[[plugins]]\nspec = "x/y"\n' >"$bad_schema/colors-neovim.toml"
+
+set_theme bad-schema || fail "a boolean schema value does not break theme-set"
+grep -q "unsupported schema version" "$test_tmp/stderr" || fail "a boolean schema value is named on stderr"
+grep -q "bjarneo/aether" "$(staged neovim.lua)" || fail "a boolean schema value keeps the generated default"
+
+pass "the schema gate rejects non-integer versions like true"
+
 nospec="$themes/nospec"
 mkdir -p "$nospec/.git"
 cp "$noir/colors.toml" "$nospec/colors.toml"

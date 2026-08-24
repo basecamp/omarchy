@@ -169,7 +169,9 @@ for key in data:
         fail(f"colors-neovim.toml does not support the top-level key '{key}'")
 
 schema = data.get("schema", 1)
-if schema != 1:
+# bool is an int subclass in Python, so True would otherwise pass the == 1
+# check; require a plain integer 1.
+if not isinstance(schema, int) or isinstance(schema, bool) or schema != 1:
     fail(f"unsupported schema version: {schema!r}")
 
 plugins = data.get("plugins")
