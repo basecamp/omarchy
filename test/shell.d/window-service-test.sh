@@ -32,11 +32,19 @@ if grep -Fq 'togglefloating' "$ws"; then
 fi
 
 # Focus must be verified after activation. A stale compositor Lua registry can
-# drop hl.focus silently ("window not found" for live clients); the service
-# has to retry once and then report a structured error instead of ok.
+# drop an address-form hl.focus silently ("window not found" for live clients);
+# look the window up from hl.get_windows, retry once, then set lastError as a
+# string — never an object on the string property, never a silent ok.
 grep -Fq 'function _beginFocusVerify' "$ws" || fail "activate verifies focus landed"
 grep -Fq '_beginFocusVerify(target)' "$ws" || fail "activate wires focus verification"
 grep -Fq 'compositor refused focus' "$ws" || fail "focus failure is reported, never silent"
+grep -Fq 'hl.get_windows' "$ws" || fail "focus looks up a live compositor window, not only an address handle"
+grep -Fq 'function _focusLiveLua' "$ws" || fail "focus builds a live-window Lua lookup"
+grep -Fq 'function _focusDispatch' "$ws" || fail "activate and focus share one live-window dispatch"
+grep -Fq 'lastError = "Focus failed"' "$ws" || fail "focus failure sets lastError as a string title"
+if grep -Fq 'lastError = { title:' "$ws"; then
+  fail "lastError is a string property; do not assign a JS object to it"
+fi
 
 if grep -E 'dispatchTokens.*movewindowpixel|movewindowpixel", "exact"' "$ws"; then
   fail "snap must not use classic movewindowpixel on the Lua dispatcher parser"

@@ -444,6 +444,55 @@ QtObject {
     return 'window = "address:' + String(address || "") + '"'
   }
 
+  // Address handles in the compositor Lua registry go stale after a config
+  // reload ("hl.focus: window not found" for live clients). Look the window
+  // up from hl.get_windows — the same path activateAtCursor uses — then
+  // fall back to the address form if the object is missing.
+  function _focusLiveLua(address) {
+    var want = root._canonAddr(address)
+    if (!/^0x[0-9a-fA-F]+$/.test(want)) return "function() end"
+    return (
+      "(function() " +
+      "local want = \"" + want + "\" " +
+      "local function norm(a) return tostring(a or \"\"):gsub(\"^address:\", \"\") end " +
+      "local hit = nil " +
+      "local wins = hl.get_windows({ mapped = true }) or {} " +
+      "local i, w, a " +
+      "for i = 1, #wins do " +
+      "w = wins[i] " +
+      "if w and (not w.hidden) then " +
+      "a = norm(w.address) " +
+      "if a == want or (\"0x\" .. a) == want or a == want:gsub(\"^0x\", \"\") then " +
+      "hit = w " +
+      "break " +
+      "end end end " +
+      "if hit then " +
+      "hl.dispatch(hl.dsp.window.bring_to_top({ window = hit })) " +
+      "hl.dispatch(hl.dsp.focus({ window = hit })) " +
+      "else " +
+      "hl.dispatch(hl.dsp.window.bring_to_top({ window = \"address:\" .. want })) " +
+      "hl.dispatch(hl.dsp.focus({ window = \"address:\" .. want })) " +
+      "end end)()"
+    )
+  }
+
+  function _focusDispatch(target) {
+    root._dispatchLua(root._focusLiveLua(target))
+  }
+
+  function _compositorFocusIs(target) {
+    var want = root._canonAddr(target)
+    if (!want) return false
+    Hyprland.refreshToplevels()
+    var tops = root._hyprlandToplevels()
+    var i, t
+    for (i = 0; i < tops.length; i++) {
+      t = tops[i]
+      if (t && t.activated && root._canonAddr(t.address) === want) return true
+    }
+    return false
+  }
+
   function _canonAddr(addr) {
     var s = String(addr || "")
     if (s === "") return ""
@@ -715,8 +764,9 @@ QtObject {
   function focus(address) {
     var target = root._addr(address)
     if (!target) return root._finish("focus", address, root._err("No window", "There is no window to focus.", ""))
-    root._dispatchLua("hl.dsp.focus({ " + root._luaWindow(target) + " })")
+    root._focusDispatch(target)
     root._noteFocus(target)
+    root._beginFocusVerify(target)
     return root._finish("focus", target, root._ok())
   }
 
@@ -841,17 +891,17 @@ QtObject {
     if (!target) return root._finish("activate", address, root._err("No window", "There is no window to activate.", ""))
     var rec = root._record(target)
     if ((rec && rec.minimized) || root._minimized[target]) root.restore(target)
+    root._focusDispatch(target)
     root._noteFocus(target)
-    root._dispatchLua("hl.dsp.window.bring_to_top({ " + root._luaWindow(target) + " })")
-    root.focus(target)
     root._beginFocusVerify(target)
     return root._finish("activate", target, root._ok())
   }
 
-  // The compositor can silently drop hl.focus (stale Lua window registry after
-  // a config reload reports "window not found" for live clients) while the
-  // dispatch itself returns ok. Verify the window actually took keyboard focus
-  // and say so when it did not — no silent no-ops.
+  // The compositor can silently drop an address-form hl.focus (stale Lua
+  // window registry after a config reload) while the dispatch itself returns
+  // ok. Look the window up live, retry once after the switcher unmaps, and
+  // put a string on lastError when it still did not land — never an object
+  // on a string property, and never a silent no-op.
   function _beginFocusVerify(target) {
     if (!target) return
     root._pendingFocusAddr = target
@@ -859,31 +909,33 @@ QtObject {
     root.focusVerifyTimer.restart()
   }
 
+  function _reportFocusFailure(target) {
+    root._pendingFocusAddr = ""
+    root._focusVerifyAttempts = 0
+    if (root._focusedAddress === target) {
+      root._focusedAddress = ""
+      root._focusedAt = 0
+    }
+    root.lastError = "Focus failed"
+    console.warn("WindowService: compositor refused focus for", target, "- session registry may be stale")
+  }
+
   function _verifyFocusLanded() {
     var target = root._pendingFocusAddr
     if (!target) return
-    Hyprland.refreshToplevels()
-    var tops = root._hyprlandToplevels()
-    for (var i = 0; i < tops.length; i++) {
-      var t = tops[i]
-      if (t && root._canonAddr(t.address) === target && t.activated) {
-        root._pendingFocusAddr = ""
-        root._focusVerifyAttempts = 0
-        return
-      }
+    if (root._compositorFocusIs(target)) {
+      root._pendingFocusAddr = ""
+      root._focusVerifyAttempts = 0
+      return
     }
     if (root._focusVerifyAttempts < 1) {
       // One retry: the first dispatch can race the switcher overlay unmap.
       root._focusVerifyAttempts++
-      root._dispatchLua("hl.dsp.window.bring_to_top({ " + root._luaWindow(target) + " })")
-      root._dispatchLua("hl.dsp.focus({ " + root._luaWindow(target) + " })")
+      root._focusDispatch(target)
       root.focusVerifyTimer.restart()
       return
     }
-    root._pendingFocusAddr = ""
-    root._focusVerifyAttempts = 0
-    root.lastError = { title: "Focus failed", explanation: "The compositor did not give this window keyboard focus.", detail: "The session window registry may be stale after a config reload. Reload the desktop session to recover." }
-    console.warn("WindowService: compositor refused focus for", target, "- session registry may be stale")
+    root._reportFocusFailure(target)
   }
 
   function maximize(address) {
