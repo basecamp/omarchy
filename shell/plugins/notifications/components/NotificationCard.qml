@@ -40,7 +40,8 @@ BorderSurface {
   readonly property bool hasGlyph: glyph.length > 0
   readonly property bool compactGlyph: NotificationLogic.shouldRenderCompactGlyph(glyph, smallIconSource, singleLineToast)
   readonly property bool hasSmallIcon: smallIconSource.length > 0
-  readonly property bool summaryStartsWithGlyph: NotificationLogic.summaryStartsWithGlyph(summary)
+  readonly property string sanitizedSummary: NotificationLogic.stripImageTags(summary)
+  readonly property bool summaryStartsWithGlyph: NotificationLogic.summaryStartsWithGlyph(sanitizedSummary)
   readonly property bool singleLineToast: sanitizedBody.length === 0
   readonly property bool collapseRedundantIcon: singleLineToast && !hasGlyph && summaryStartsWithGlyph
   readonly property string sanitizedBody: sanitizeBody(body)
@@ -160,8 +161,9 @@ BorderSurface {
 
         Text {
           Layout.fillWidth: true
-          visible: root.summary.length > 0
-          text: root.summary
+          visible: root.sanitizedSummary.length > 0
+          text: root.sanitizedSummary
+          textFormat: Text.PlainText
           font.family: "Liberation Sans"
           color: Color.notifications.text
           font.pixelSize: Style.font.title

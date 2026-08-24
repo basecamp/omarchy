@@ -5,8 +5,12 @@ function isChromiumDerived(app, appIcon) {
          source.indexOf("opera") >= 0
 }
 
+function stripImageTags(value) {
+  return String(value || "").replace(/<img\b[^>]*(?:>|$)/gi, "")
+}
+
 function sanitizeBody(body, app, appIcon) {
-  var text = String(body || "").replace(/<img[^>]*>/gi, "")
+  var text = stripImageTags(body)
   if (!isChromiumDerived(app, appIcon)) return text
 
   return text
@@ -365,6 +369,7 @@ function historyRows(raw, liveRows, normalUrgency, limit) {
 if (typeof module !== "undefined") {
   module.exports = {
     isChromiumDerived: isChromiumDerived,
+    stripImageTags: stripImageTags,
     sanitizeBody: sanitizeBody,
     summaryStartsWithGlyph: summaryStartsWithGlyph,
     shouldBypassDnd: shouldBypassDnd,

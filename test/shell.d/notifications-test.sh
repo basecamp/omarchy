@@ -13,9 +13,21 @@ assert(notifications.isChromiumDerived('', 'microsoft-edge'), 'notifications det
 assert(!notifications.isChromiumDerived('Slack', ''), 'notifications do not treat unrelated apps as chromium-derived')
 
 assertEqual(
+  notifications.stripImageTags('Before <IMG src="x"> after'),
+  'Before  after',
+  'notifications strip closed image tags from displayed text'
+)
+
+assertEqual(
+  notifications.stripImageTags('Before <img src'),
+  'Before ',
+  'notifications strip truncated image tags from displayed text'
+)
+
+assertEqual(
   notifications.sanitizeBody('<img src="x">Hello', 'Slack', ''),
   'Hello',
-  'notifications strip inline image tags'
+  'notifications sanitize image tags from bodies'
 )
 
 assertEqual(
