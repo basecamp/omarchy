@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# omarchy:summary=Apply the current theme accent color to OpenRGB devices
+# omarchy:hidden=true
+
+OPENRGB_THEME=$HOME/.local/state/omarchy/current/theme/colors.toml
+
+if omarchy-cmd-present openrgb && [[ -f $OPENRGB_THEME ]]; then
+  color=$(sed -n 's/^accent[[:space:]]*=[[:space:]]*"\?#\?\([0-9A-Fa-f]\{6\}\)"\?.*/\1/p' "$OPENRGB_THEME" | head -n1)
+  [[ $color =~ ^[0-9A-Fa-f]{6}$ ]] || exit 0
+
+  # Direct mode only. ENE DRAM modules and ASUS Aura controllers accept
+  # "static", report success, and never apply the color.
+  openrgb --noautoconnect -m direct -c "$color" >/dev/null 2>&1
+fi
