@@ -11,6 +11,7 @@ Item {
   property color foreground: bar ? bar.barForeground : Color.foreground
   property color activeColor: bar ? bar.urgent : Color.urgent
   property bool active: false
+  property bool blinking: false
   property real horizontalMargin: 8.5
   property real verticalPadding: 6
   property real fixedWidth: -1
@@ -64,12 +65,24 @@ Item {
   readonly property real labelWidth: label.visible ? label.implicitWidth : 0
 
   visible: hasVisualContent || keepSpace
-  opacity: !hasVisualContent || concealed ? 0 : (dimmed ? 0.45 : 1)
+  opacity: (!hasVisualContent || concealed ? 0 : (dimmed ? 0.45 : 1)) * blinkOpacity
   implicitWidth: fixedWidth > 0 ? fixedWidth : (vertical ? barSize : Math.max(12, label.implicitWidth + scaledHorizontalMargin * 2))
   implicitHeight: fixedHeight > 0 ? fixedHeight : (vertical ? Math.max(12, label.implicitHeight + scaledVerticalPadding * 2) : barSize)
 
   Behavior on opacity {
     NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+  }
+
+  // Kept separate from the opacity binding above so the pulse animation has
+  // a plain property to drive instead of fighting that binding directly.
+  property real blinkOpacity: 1.0
+
+  SequentialAnimation on blinkOpacity {
+    running: root.blinking
+    loops: Animation.Infinite
+    alwaysRunToEnd: true
+    NumberAnimation { from: 1.0; to: 0.25; duration: 500; easing.type: Easing.InOutSine }
+    NumberAnimation { from: 0.25; to: 1.0; duration: 500; easing.type: Easing.InOutSine }
   }
 
   Text {

@@ -29,6 +29,11 @@ Panel {
     return !!(device && device.isPresent)
   }
 
+  // Mirrors the omarchy-battery-low notification threshold in
+  // shell/plugins/services/battery/Service.qml.
+  readonly property int lowBatteryThreshold: 10
+  readonly property bool batteryLow: Model.isBatteryLow(UPower.displayDevice, UPower.onBattery, upowerStates(), root.lowBatteryThreshold)
+
   function upowerStates() {
     return {
       Charging: UPowerDeviceState.Charging,
@@ -281,6 +286,8 @@ Panel {
       ? Math.round(root.batteryFraction * 100) + "% " + root.batteryIcon()
       : root.batteryIcon()
     slotSize: Style.bar.iconSlot * (root.showPercentage && !vertical ? 2 : 1)
+    active: root.batteryLow
+    blinking: root.batteryLow
     tooltipText: ""
     onPressed: function(b) {
       if (!root.batteryPresent) return

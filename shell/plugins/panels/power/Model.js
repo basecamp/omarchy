@@ -78,6 +78,13 @@ function batteryIcon(device, onBattery, states) {
   return defaultIcons[index]
 }
 
+function isBatteryLow(device, onBattery, states, threshold) {
+  var d = device || {}
+  if (!d.isPresent || !onBattery) return false
+  if (d.state !== (states || {}).Discharging) return false
+  return batteryFraction(d) * 100 <= threshold
+}
+
 function modeLabel(device, onBattery, states) {
   var d = device || {}
   if (!d.isPresent) return ""
@@ -99,6 +106,7 @@ if (typeof module !== "undefined") {
     batteryFraction: batteryFraction,
     chargeThresholdActive: chargeThresholdActive,
     batteryIcon: batteryIcon,
+    isBatteryLow: isBatteryLow,
     modeLabel: modeLabel
   }
 }
