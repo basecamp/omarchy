@@ -495,7 +495,7 @@ remove_legacy_limine_configs() {
 }
 
 normalize_limine_config() {
-  local machine_id legacy_uki
+  local machine_id legacy_uki prune
 
   as_root test -f /boot/limine.conf || return 0
 
@@ -514,6 +514,18 @@ normalize_limine_config() {
   legacy_uki="/boot/EFI/Linux/${machine_id}_linux.efi"
   if [[ -n $machine_id ]] && as_root test -f /boot/EFI/Linux/omarchy_linux.efi && as_root test -f "$legacy_uki"; then
     as_root rm -f "$legacy_uki"
+  fi
+
+  # An archinstall Limine install writes its own `/Arch Linux (linux)` entry
+  # pointing at /EFI/Linux/arch-linux.efi. It carries no limine-entry-tool
+  # marker, so every regeneration correctly leaves it alone -- and it stays at
+  # the top of the menu, which is the entry the timeout selects. Once this
+  # upgrade switches the UKI to omarchy_linux.efi, the next kernel update
+  # deletes the image it names and the default boot entry panics.
+  prune=/usr/share/omarchy/bin/omarchy-limine-prune-missing-entries
+  if as_root test -x "$prune"; then
+    as_root "$prune" /boot/limine.conf /boot ||
+      warn "Stale Limine entries could not be pruned; check /boot/limine.conf before rebooting."
   fi
 }
 
