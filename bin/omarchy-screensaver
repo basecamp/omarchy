@@ -7,6 +7,7 @@ screensaver_in_focus() {
 }
 
 exit_screensaver() {
+  printf '\033[?1003l\033[?1006l'  # Stop mouse reporting before the pty goes away
   hyprctl eval 'hl.config({ cursor = { invisible = false } })' &>/dev/null || hyprctl keyword cursor:invisible false &>/dev/null || true
   pkill -x ttfx 2>/dev/null
   pkill -f '[o]rg.omarchy.screensaver' 2>/dev/null
@@ -33,7 +34,25 @@ wait_for_terminal_resize() {
   done
 }
 
+# ttfx never enables mouse reporting, so pointer motion never reaches this
+# script's stdin and only a keypress can dismiss the screensaver. Any-event
+# tracking makes the terminal deliver motion, so the read loop below exits on
+# pointer input too.
+#
+# Arm it late: omarchy-launch-screensaver focuses each monitor in turn, warping
+# the pointer on multi-monitor setups, and a warp that lands after arming reads
+# as user input and dismisses the screensaver on sight.
+arm_mouse_reporting() {
+  local settle_seconds=1
+  sleep $settle_seconds
+  printf '\033[?1003h\033[?1006h'
+}
+
 wait_for_terminal_resize
+
+# Backgrounded so the read loop starts now, keeping the keyboard responsive from
+# the first frame; the mouse joins once reporting is armed.
+arm_mouse_reporting &
 
 while true; do
   ttfx -i ~/.config/omarchy/branding/screensaver.txt \
