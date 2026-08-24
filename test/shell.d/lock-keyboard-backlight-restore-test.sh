@@ -89,6 +89,20 @@ assert(
   'the watcher blocks on the driver-notified event rather than checking on a timer'
 )
 
+// Before the first hardware-notified change since boot, the kernel has
+// nothing to report yet and reads raise ENODATA -- an uncaught read there
+// would crash the watcher on every restart until one happens to land during
+// one of the brief windows it is actually running.
+assert(
+  /if e\.errno != errno\.ENODATA: raise/.test(serviceQml),
+  'only ENODATA is swallowed while priming the watcher; any other read error still surfaces'
+)
+
+assert(
+  /drain\(f\); f\.seek\(0\)[\s\S]*?p = select\.poll\(\)/.test(serviceQml),
+  'the poll is registered even when there is nothing to prime yet, rather than only after a successful read'
+)
+
 assert(
   /if \(!root\.kbdTrackingSuspended\) root\.savedKeyboardBrightness = val/.test(serviceQml),
   'a value the watcher reports while locked is ignored, not treated as the new baseline'

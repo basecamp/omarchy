@@ -502,15 +502,23 @@ Item {
   // at zero cost until one actually happens rather than checking on a timer.
   Process {
     id: kbdWatcherProc
+    // Before the first hardware-notified change since boot, the kernel has
+    // nothing to report yet and reads raise ENODATA rather than returning
+    // content -- an unrelated error still needs to surface, so only that one
+    // is swallowed, on the priming read and after each wake alike.
     command: ["python3", "-u", "-c",
-      "import select\n" +
+      "import select, errno\n" +
+      "def drain(fh):\n" +
+      "    try: fh.read()\n" +
+      "    except OSError as e:\n" +
+      "        if e.errno != errno.ENODATA: raise\n" +
       "f = open('" + root.kbdBrightnessPath.replace(/brightness$/, "brightness_hw_changed") + "')\n" +
-      "f.read(); f.seek(0)\n" +
+      "drain(f); f.seek(0)\n" +
       "p = select.poll()\n" +
       "p.register(f, select.POLLPRI | select.POLLERR)\n" +
       "while True:\n" +
       "    if p.poll():\n" +
-      "        f.seek(0); f.read()\n" +
+      "        f.seek(0); drain(f)\n" +
       "        print(open('" + root.kbdBrightnessPath + "').read().strip(), flush=True)\n"]
     stdout: SplitParser {
       onRead: function(line) {
