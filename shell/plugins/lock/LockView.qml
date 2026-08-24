@@ -67,6 +67,45 @@ Item {
     syncingPasswordText = false
   }
 
+  // Quickshell Exclusive lock surface doesn't seed numlock from the seat (#7162).
+  // Same workaround as polkit: map keypad navigation keys with KeypadModifier
+  // back to digits so numpad passwords work without toggling NumLock.
+  function numpadDigitForEvent(event) {
+    if (!(event.modifiers & Qt.KeypadModifier)) return null
+    switch (event.key) {
+      case Qt.Key_Home: return "7"
+      case Qt.Key_Up: return "8"
+      case Qt.Key_PageUp: return "9"
+      case Qt.Key_Left: return "4"
+      case Qt.Key_Clear: return "5"
+      case Qt.Key_Right: return "6"
+      case Qt.Key_End: return "1"
+      case Qt.Key_Down: return "2"
+      case Qt.Key_PageDown: return "3"
+      case Qt.Key_Insert: return "0"
+      case Qt.Key_Delete: return "."
+      case Qt.Key_5: return "5"
+      default: break
+    }
+    if (event.key >= Qt.Key_KP_0 && event.key <= Qt.Key_KP_9) {
+      return String.fromCharCode(48 + (event.key - Qt.Key_KP_0))
+    }
+    if (event.key === Qt.Key_KP_Multiply) return "*"
+    if (event.key === Qt.Key_KP_Divide) return "/"
+    if (event.key === Qt.Key_KP_Add) return "+"
+    if (event.key === Qt.Key_KP_Subtract) return "-"
+    if (event.key === Qt.Key_KP_Decimal) return "."
+    return null
+  }
+
+  function handleNumpadEvent(event, field) {
+    var digit = numpadDigitForEvent(event)
+    if (digit === null) return false
+    field.insert(field.cursorPosition, digit)
+    event.accepted = true
+    return true
+  }
+
   onPasswordTextChanged: syncPasswordText()
   onInputEnabledChanged: {
     if (inputEnabled) Qt.callLater(forcePasswordFocus)
@@ -176,6 +215,7 @@ Item {
 
         Keys.onPressed: function(event) {
           root.wakeRequested()
+          if (root.handleNumpadEvent(event, passwordInput)) return
           if (event.key === Qt.Key_Escape || (event.modifiers & Qt.ControlModifier && event.key === Qt.Key_U)) {
             root.passwordTextEdited("")
             event.accepted = true
