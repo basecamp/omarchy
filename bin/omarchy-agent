@@ -95,6 +95,11 @@ ori)
   command=(ori code)
   [[ -n ${prompt:-} ]] && command+=(--prompt "$prompt")
   ;;
+junie)
+  # --brave skips approval prompts. --prompt stays interactive; a positional task is headless.
+  command=(junie --brave)
+  [[ -n ${prompt:-} ]] && command+=(--prompt "$prompt")
+  ;;
 pi)
   command=(pi)
   [[ -n ${prompt:-} ]] && command+=("$prompt")

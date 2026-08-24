@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Set and launch the default coding agent
-# omarchy:args=[pi|omp|opencode|ori|claude|codex|grok|agy|copilot|crush]
+# omarchy:args=[pi|omp|opencode|ori|claude|codex|grok|agy|copilot|crush|junie]
 # omarchy:examples=omarchy default agent | omarchy default agent codex | omarchy default agent claude
 
 installing=false
@@ -34,8 +34,9 @@ crush) agent="crush"; name="Crush" ;;
 grok) agent="grok"; name="Grok"; agent_package="npm:@xai-official/grok" ;;
 agy | antigravity | antigravity-cli | gemini | gemini-cli) agent="agy"; name="Antigravity"; agent_package="antigravity-cli" ;;
 copilot | github-copilot) agent="copilot"; name="GitHub Copilot" ;;
+junie) agent="junie"; name="Junie"; agent_package="npm:@jetbrains/junie" ;;
 *)
-  echo "Usage: omarchy-default-agent <pi|omp|opencode|ori|claude|codex|grok|agy|copilot|crush>"
+  echo "Usage: omarchy-default-agent <pi|omp|opencode|ori|claude|codex|grok|agy|copilot|crush|junie>"
   exit 1
   ;;
 esac
