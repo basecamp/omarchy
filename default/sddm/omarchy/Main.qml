@@ -1,5 +1,6 @@
 import QtQuick 2.0
 import SddmComponents 2.0
+import "resolve-current-user.js" as CurrentUser
 
 Rectangle {
   id: root
@@ -7,7 +8,7 @@ Rectangle {
   height: 480
   color: "#1a1b26"
 
-  property string currentUser: userModel.lastUser
+  property string currentUser: CurrentUser.resolveCurrentUser(userModel, Qt.DisplayRole)
   property bool loginFailed: false
   property int sessionIndex: {
     for (var i = 0; i < sessionModel.rowCount(); i++) {
