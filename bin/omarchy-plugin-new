@@ -1,0 +1,155 @@
+#!/bin/bash
+
+# omarchy:summary=Scaffold a new plugin ready for the registry
+# omarchy:group=plugin
+# omarchy:args=<publisher/name> [folder]
+# omarchy:examples=omarchy plugin new acme/weather
+
+set -euo pipefail
+
+fail() {
+  echo "omarchy-plugin-new: $*" >&2
+  exit 1
+}
+
+ref=""
+dir=""
+
+while (( $# > 0 )); do
+  case "$1" in
+  -h | --help)
+    echo "Usage: omarchy plugin new <publisher/name> [folder]"
+    exit 0
+    ;;
+  -*)
+    fail "unknown new option: $1"
+    ;;
+  *)
+    if [[ -z $ref ]]; then
+      ref="$1"
+    elif [[ -z $dir ]]; then
+      dir="$1"
+    else
+      fail "unexpected argument: $1"
+    fi
+    shift
+    ;;
+  esac
+done
+
+[[ $ref =~ ^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$ && $ref != *..* ]] ||
+  fail "a publisher/name is required (e.g. omarchy plugin new acme/weather)"
+
+publisher="${ref%%/*}"
+name="${ref##*/}"
+id="$publisher.$name"
+dir="${dir:-omarchy-$name}"
+
+[[ -e $dir ]] && fail "$dir already exists"
+mkdir -p "$dir/.github/workflows"
+
+cat >"$dir/manifest.json" <<MANIFEST
+{
+  "schemaVersion": 1,
+  "id": "$id",
+  "name": "$name",
+  "version": "0.1.0",
+  "author": "$publisher",
+  "description": "TODO: one line on what $name does",
+  "license": "MIT",
+  "repository": "https://github.com/$publisher/omarchy-$name",
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "Widget.qml" },
+  "barWidget": {
+    "displayName": "$name",
+    "description": "TODO",
+    "category": "Custom",
+    "defaultSection": "right"
+  }
+}
+MANIFEST
+
+cat >"$dir/Widget.qml" <<'WIDGET'
+import QtQuick
+
+Text {
+  text: "hello from a new omarchy plugin"
+  color: palette.windowText
+}
+WIDGET
+
+cat >"$dir/README.md" <<README
+# $name
+
+An Omarchy shell plugin.
+
+## Install
+
+\`\`\`sh
+omarchy plugin add $ref
+\`\`\`
+
+## Develop
+
+Symlink-free copy into \`~/.config/omarchy/plugins/$id\`, then
+\`omarchy plugin enable $id\`. Validate with \`omarchy plugin validate .\`.
+
+## Publish
+
+\`omarchy plugin publish $ref\` (device login), or push a tag and let the
+trusted-publishing workflow in \`.github/workflows/publish.yml\` do it.
+README
+
+cat >"$dir/.github/workflows/publish.yml" <<WORKFLOW
+# Trusted publishing: exchanges this job's GitHub OIDC token for a short-lived
+# registry publish token — no long-lived secrets. Register this repo +
+# environment as a trusted publisher for $ref on the registry first; the
+# exchange only works from tag builds in the pinned environment.
+name: Publish to the Omarchy plugin registry
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: release
+    env:
+      REGISTRY: https://plugins.omarchy.org
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build tarball
+        run: tar --exclude-vcs --exclude=.github -czf plugin.tar.gz *
+
+      - name: Exchange OIDC token for a publish token
+        id: exchange
+        run: |
+          oidc=\$(curl -sf -H "Authorization: Bearer \$ACTIONS_ID_TOKEN_REQUEST_TOKEN" \\
+            "\$ACTIONS_ID_TOKEN_REQUEST_URL&audience=plugins.omarchy.org" | jq -r .value)
+          token=\$(curl -sf -X POST "\$REGISTRY/api/v1/trusted/exchange" \\
+            -H "Content-Type: application/json" \\
+            -d "{\\"token\\":\\"\$oidc\\",\\"publisher\\":\\"$publisher\\",\\"plugin\\":\\"$name\\"}" | jq -r .token)
+          echo "::add-mask::\$token"
+          echo "token=\$token" >> "\$GITHUB_OUTPUT"
+
+      - name: Publish
+        run: |
+          curl -sf -X POST "\$REGISTRY/api/v1/plugins/$publisher/$name/versions" \\
+            -H "Authorization: Bearer \${{ steps.exchange.outputs.token }}" \\
+            -H "Content-Type: application/gzip" \\
+            --data-binary @plugin.tar.gz
+WORKFLOW
+
+echo "Scaffolded $dir/"
+echo "  manifest.json  (id: $id)"
+echo "  Widget.qml"
+echo "  README.md"
+echo "  .github/workflows/publish.yml  (trusted publishing on tag push)"
+echo
+echo "Validate with: omarchy plugin validate $dir"

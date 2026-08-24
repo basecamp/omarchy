@@ -1,0 +1,61 @@
+#!/bin/bash
+
+# omarchy:summary=Check installed registry plugins against the signed kill list
+# omarchy:group=plugin
+# omarchy:hidden=true
+
+# The one background network touch of the plugin system: a tiny, cacheable,
+# unparameterized GET of the signed kill list (empty almost always). Runs on
+# add, update, and periodically. Disable with:
+#   touch ~/.local/state/omarchy/plugin-revocations-check-disabled
+# On a hit the plugin is disabled via IPC, its folder quarantined, and a
+# notification sent.
+
+set -euo pipefail
+
+PLUGINS_DIR="$HOME/.config/omarchy/plugins"
+STATE_ROOT="$HOME/.local/state/omarchy"
+
+fail() {
+  echo "omarchy-plugin-revocations-check: $*" >&2
+  exit 1
+}
+
+[[ -f $STATE_ROOT/plugin-revocations-check-disabled ]] && exit 0
+[[ -d $PLUGINS_DIR ]] || exit 0
+
+receipts=()
+for dir in "$PLUGINS_DIR"/*/; do
+  [[ -f $dir/.registry-receipt.json ]] && receipts+=("$dir")
+done
+(( ${#receipts[@]} > 0 )) || exit 0
+
+# Verified fetch: fail closed — an expired or unverifiable kill list means we
+# cannot know what is revoked, which is exactly when quiet failure is wrong.
+revocations=$(omarchy-plugin-registry revocations) ||
+  fail "could not fetch a verifiable kill list"
+
+hits=0
+for dir in "${receipts[@]}"; do
+  id=$(basename "$dir")
+  ref=$(jq -r '"\(.publisher)/\(.name)"' "$dir/.registry-receipt.json")
+  version=$(jq -r '.version' "$dir/.registry-receipt.json")
+
+  # Kill-list entries are keyed by manifest id — the installed folder name.
+  reason=$(jq -r --arg p "$id" --arg v "$version" '
+    .revocations | map(select(.plugin == $p and ((.version // $v) == $v)))[0].reason // empty
+  ' <<<"$revocations")
+  [[ -n $reason ]] || continue
+
+  hits=1
+  omarchy-plugin-disable "$id" >/dev/null 2>&1 || true
+  quarantine="$PLUGINS_DIR/$id.quarantined-$(date +%F)"
+  rm -rf "$quarantine"
+  mv "$dir" "$quarantine"
+  omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+  omarchy-notification-send -g "󰀦" "Plugin revoked: $id" \
+    "$ref@$version was revoked by the registry: $reason. It has been disabled and quarantined at $quarantine. Details: $(omarchy-plugin-registry base-url)/plugins/$ref" || true
+  echo "omarchy-plugin-revocations-check: quarantined $id ($ref@$version): $reason" >&2
+done
+
+exit $(( hits ))

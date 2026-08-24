@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Update installed git-managed plugins
+# omarchy:summary=Update installed plugins (registry receipts and git checkouts)
 # omarchy:group=plugin
 # omarchy:args=[id] [--yes]
 
@@ -36,7 +36,7 @@ valid_plugin_id() {
   [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && $1 != *..* ]]
 }
 
-update_one() {
+update_one_git() {
   local id="$1"
   local dir="$PLUGINS_DIR/$id"
 
@@ -79,6 +79,94 @@ update_one() {
   UPDATED_ANY=1
 }
 
+update_one_registry() {
+  local id="$1"
+  local dir="$PLUGINS_DIR/$id"
+  local receipt="$dir/.registry-receipt.json"
+  local ref current record version tarball stage backup staged_id
+
+  ref=$(jq -r '"\(.publisher)/\(.name)"' "$receipt")
+  current=$(jq -r '.version' "$receipt")
+
+  # resolve re-verifies the signed index AND the kill list on every run — a
+  # revoked or yanked version can never be selected.
+  if ! record=$(omarchy-plugin-registry resolve "$ref"); then
+    echo "omarchy-plugin-update: could not resolve '$ref' for '$id'" >&2
+    return 1
+  fi
+  version=$(jq -r '.vers' <<<"$record")
+
+  if [[ $version == "$current" ]]; then
+    echo "$id is up to date ($ref $current)."
+    return 0
+  fi
+
+  if (( ! ASSUME_YES )); then
+    confirm "Update $id ($ref $current -> $version)?" || {
+      echo "Skipped $id."
+      return 0
+    }
+  fi
+
+  tarball="$PLUGINS_DIR/.update.dl.$$.tar.gz"
+  stage="$PLUGINS_DIR/.update.tmp.$$"
+  rm -rf "$tarball" "$stage"
+  if ! record=$(omarchy-plugin-registry download "$ref" "$version" "$tarball"); then
+    rm -f "$tarball"
+    echo "omarchy-plugin-update: download failed for '$ref@$version'" >&2
+    return 1
+  fi
+
+  mkdir -p "$stage"
+  if ! tar -xzf "$tarball" -C "$stage" --no-same-owner; then
+    rm -rf "$stage" "$tarball"
+    echo "omarchy-plugin-update: could not unpack '$ref@$version'" >&2
+    return 1
+  fi
+  rm -f "$tarball"
+
+  if ! omarchy-plugin-validate "$stage"; then
+    rm -rf "$stage"
+    echo "omarchy-plugin-update: '$ref@$version' failed validation; keeping $current" >&2
+    return 1
+  fi
+
+  staged_id=$(jq -r '.id' "$stage/manifest.json")
+  if [[ $staged_id != "$id" ]]; then
+    rm -rf "$stage"
+    echo "omarchy-plugin-update: '$ref@$version' declares id '$staged_id', not '$id'; refusing" >&2
+    return 1
+  fi
+
+  jq --arg version "$version" --arg sha256 "$(jq -r '.sha256' <<<"$record")" \
+    --arg updated_at "$(date -u +%FT%TZ)" \
+    '.version = $version | .sha256 = $sha256 | .installed_at = $updated_at' \
+    "$receipt" >"$stage/.registry-receipt.json"
+
+  backup="$PLUGINS_DIR/.$id.bak.$(date +%s)"
+  mv "$dir" "$backup"
+  if mv "$stage" "$dir"; then
+    rm -rf "$backup"
+  else
+    mv "$backup" "$dir"
+    rm -rf "$stage"
+    echo "omarchy-plugin-update: could not swap in '$ref@$version'; restored $current" >&2
+    return 1
+  fi
+
+  echo "Updated $id ($ref $current -> $version)."
+  UPDATED_ANY=1
+}
+
+update_one() {
+  local id="$1"
+  if [[ -f $PLUGINS_DIR/$id/.registry-receipt.json ]]; then
+    update_one_registry "$id"
+  else
+    update_one_git "$id"
+  fi
+}
+
 id=""
 
 while (( $# > 0 )); do
@@ -108,16 +196,16 @@ targets=()
 if [[ -n $id ]]; then
   valid_plugin_id "$id" || fail "invalid plugin id '$id'"
   [[ -d $PLUGINS_DIR/$id ]] || fail "plugin '$id' is not installed"
-  [[ -d $PLUGINS_DIR/$id/.git ]] ||
-    fail "plugin '$id' is not a git checkout, so there is nothing to pull from"
+  [[ -f $PLUGINS_DIR/$id/.registry-receipt.json || -d $PLUGINS_DIR/$id/.git ]] ||
+    fail "plugin '$id' has no registry receipt and is not a git checkout, so there is nothing to update from"
   targets=("$id")
 else
   for dir in "$PLUGINS_DIR"/*/; do
-    [[ -d $dir/.git ]] || continue
+    [[ -f $dir/.registry-receipt.json || -d $dir/.git ]] || continue
     targets+=("$(basename "$dir")")
   done
   if (( ${#targets[@]} == 0 )); then
-    echo "No git-managed plugins installed."
+    echo "No updatable plugins installed."
     exit 0
   fi
 fi

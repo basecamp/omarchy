@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# omarchy:summary=Add a shell plugin from git
+# omarchy:summary=Add a shell plugin from the registry
 # omarchy:group=plugin
-# omarchy:args=[git-url] [--enable] [--yes]
-# omarchy:examples=omarchy plugin add https://github.com/acme/omarchy-weather.git --enable
+# omarchy:args=[publisher/name[@version] | git-url --unsafe] [--enable] [--yes]
+# omarchy:examples=omarchy plugin add acme/weather | omarchy plugin add acme/weather@1.2.0 | omarchy plugin add https://github.com/acme/omarchy-weather.git --unsafe
 # omarchy:alias=omarchy plugin install
 
 set -euo pipefail
@@ -13,6 +13,7 @@ export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -oBatchMode=yes}"
 
 PLUGINS_DIR="$HOME/.config/omarchy/plugins"
 ASSUME_YES=0
+UNSAFE=0
 
 fail() {
   echo "omarchy-plugin-add: $*" >&2
@@ -31,6 +32,10 @@ confirm() {
   else
     fail "refusing to continue without confirmation; pass --yes"
   fi
+}
+
+registry_ref() {
+  [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*(@[A-Za-z0-9.+-]+)?$ && $1 != *..* ]]
 }
 
 ENABLE_PLACEMENT=()
@@ -58,7 +63,7 @@ plugin_id_manifest() {
   '
 }
 
-url=""
+source_arg=""
 enable_after=""
 
 while (( $# > 0 )); do
@@ -67,77 +72,152 @@ while (( $# > 0 )); do
     enable_after=true
     shift
     ;;
+  --unsafe)
+    UNSAFE=1
+    shift
+    ;;
   --yes | -y)
     ASSUME_YES=1
     shift
     ;;
   -h | --help)
-    echo "Usage: omarchy plugin add [git-url] [--enable] [--yes]"
+    echo "Usage: omarchy plugin add [publisher/name[@version] | git-url --unsafe] [--enable] [--yes]"
     exit 0
     ;;
   -*)
     fail "unknown add option: $1"
     ;;
   *)
-    [[ -z $url ]] || fail "unexpected argument: $1"
-    url="$1"
+    [[ -z $source_arg ]] || fail "unexpected argument: $1"
+    source_arg="$1"
     shift
     ;;
   esac
 done
 
-if [[ -z $url ]]; then
+if [[ -z $source_arg ]]; then
   interactive ||
-    fail "a git URL is required (e.g. omarchy plugin add https://github.com/acme/omarchy-weather.git)"
-  url=$(gum input --prompt "Git URL of the plugin repo: ") || fail "cancelled"
-  [[ -n $url ]] || fail "a git URL is required"
+    fail "a plugin is required (e.g. omarchy plugin add acme/weather)"
+  source_arg=$(gum input --prompt "Plugin (publisher/name): ") || fail "cancelled"
+  [[ -n $source_arg ]] || fail "a plugin is required"
 fi
 
-if (( ! ASSUME_YES )); then
-  cat >&2 <<WARN
+stage_install() {
+  # $1 = staged plugin folder; validates, checks id collisions, moves into
+  # place. Prints the installed id.
+  local stage="$1"
+  local id existing_manifest target
 
-⚠️  Plugins run as arbitrary, unsandboxed code inside your long-lived
-  omarchy-shell process. Only add repos you trust, and review the code
-  before you enable it.
+  if ! omarchy-plugin-validate "$stage" >&2; then
+    rm -rf "$stage"
+    fail "refusing to add: validation failed"
+  fi
 
-      URL: $url
+  id=$(jq -r '.id' "$stage/manifest.json")
+  existing_manifest=$(plugin_id_manifest "$id") || {
+    rm -rf "$stage"
+    fail "could not inspect installed plugin ids"
+  }
+  if [[ -n $existing_manifest ]]; then
+    rm -rf "$stage"
+    fail "plugin id '$id' is already used by $existing_manifest"
+  fi
 
-WARN
-  confirm "Clone and add this plugin?" || fail "aborted"
-fi
+  target="$PLUGINS_DIR/$id"
+  if [[ -e $target || -L $target ]]; then
+    rm -rf "$stage"
+    fail "plugin '$id' is already installed; update it with: omarchy plugin update $id"
+  fi
+
+  mv "$stage" "$target"
+  echo "$id"
+}
 
 mkdir -p "$PLUGINS_DIR"
-
 stage="$PLUGINS_DIR/.add.tmp.$$"
 rm -rf "$stage"
-if ! git clone -- "$url" "$stage"; then
-  rm -rf "$stage"
-  fail "failed to clone $url"
-fi
 
-if ! omarchy-plugin-validate "$stage"; then
-  rm -rf "$stage"
-  fail "refusing to add: validation failed"
-fi
+if registry_ref "$source_arg"; then
+  ref="${source_arg%%@*}"
+  want_version=""
+  [[ $source_arg == *@* ]] && want_version="${source_arg##*@}"
 
-id=$(jq -r '.id' "$stage/manifest.json")
-existing_manifest=$(plugin_id_manifest "$id") || {
-  rm -rf "$stage"
-  fail "could not inspect installed plugin ids"
-}
-if [[ -n $existing_manifest ]]; then
-  rm -rf "$stage"
-  fail "plugin id '$id' is already used by $existing_manifest"
-fi
+  record=$(omarchy-plugin-registry resolve "$ref" ${want_version:+"$want_version"}) ||
+    fail "could not resolve $source_arg"
+  version=$(jq -r '.vers' <<<"$record")
+  caps=$(jq -r '
+    (.caps // {})
+    | [to_entries[] | select((.value | type == "array" and length > 0) or .value == true) | .key]
+    | if length == 0 then "none declared" else join(", ") end
+  ' <<<"$record")
+  license=$(jq -r '.license // "unknown"' <<<"$record")
 
-target="$PLUGINS_DIR/$id"
-if [[ -e $target || -L $target ]]; then
-  rm -rf "$stage"
-  fail "plugin '$id' is already installed; update it with: omarchy plugin update $id"
-fi
+  if (( ! ASSUME_YES )); then
+    cat >&2 <<INFO
 
-mv "$stage" "$target"
-echo "Added $id into $target"
+  Plugin:       $ref
+  Version:      $version
+  License:      $license
+  Capabilities: $caps
+
+  Plugins run inside your omarchy-shell process. This one passed the
+  registry's automated review; it lands DISABLED until you enable it.
+
+INFO
+    confirm "Install $ref $version?" || fail "aborted"
+  fi
+
+  tarball="$PLUGINS_DIR/.add.dl.$$.tar.gz"
+  rm -f "$tarball"
+  record=$(omarchy-plugin-registry download "$ref" "$version" "$tarball") || {
+    rm -f "$tarball"
+    fail "download failed for $ref@$version"
+  }
+
+  mkdir -p "$stage"
+  if ! tar -xzf "$tarball" -C "$stage" --no-same-owner; then
+    rm -rf "$stage" "$tarball"
+    fail "could not unpack $ref@$version"
+  fi
+  rm -f "$tarball"
+
+  id=$(stage_install "$stage")
+
+  jq -n --arg publisher "${ref%%/*}" --arg name "${ref##*/}" \
+    --arg version "$version" --arg sha256 "$(jq -r '.sha256' <<<"$record")" \
+    --arg registry "$(omarchy-plugin-registry base-url)" \
+    --arg installed_at "$(date -u +%FT%TZ)" '
+    {source: "registry", publisher: $publisher, name: $name, version: $version,
+     sha256: $sha256, registry: $registry, installed_at: $installed_at}
+  ' >"$PLUGINS_DIR/$id/.registry-receipt.json"
+
+  echo "Added $id ($ref $version) into $PLUGINS_DIR/$id"
+else
+  (( UNSAFE )) ||
+    fail "git URLs are the unreviewed escape hatch; pass --unsafe to accept the risk (registry installs: omarchy plugin add publisher/name)"
+
+  if (( ! ASSUME_YES )); then
+    cat >&2 <<WARN
+
+⚠️  Plugins run as arbitrary, unsandboxed code inside your long-lived
+  omarchy-shell process. This git install bypasses the plugin registry's
+  review, signatures, checksums, and kill list entirely. Only add repos
+  you trust, and review the code before you enable it.
+
+      URL: $source_arg
+
+WARN
+    confirm "Clone and add this plugin?" || fail "aborted"
+  fi
+
+  if ! git clone -- "$source_arg" "$stage"; then
+    rm -rf "$stage"
+    fail "failed to clone $source_arg"
+  fi
+
+  id=$(stage_install "$stage")
+  echo "Added $id into $PLUGINS_DIR/$id"
+fi
 
 omarchy-shell shell rescanPlugins >/dev/null
 

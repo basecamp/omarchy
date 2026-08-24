@@ -1,0 +1,69 @@
+#!/bin/bash
+
+# omarchy:summary=Search the plugin registry
+# omarchy:group=plugin
+# omarchy:args=[term] [--json]
+# omarchy:examples=omarchy plugin search weather
+# omarchy:alias=omarchy plugin available
+
+set -euo pipefail
+
+fail() {
+  echo "omarchy-plugin-search: $*" >&2
+  exit 1
+}
+
+term=""
+as_json=0
+
+while (( $# > 0 )); do
+  case "$1" in
+  --json)
+    as_json=1
+    shift
+    ;;
+  -h | --help)
+    echo "Usage: omarchy plugin search [term] [--json]"
+    exit 0
+    ;;
+  -*)
+    fail "unknown search option: $1"
+    ;;
+  *)
+    [[ -z $term ]] || fail "unexpected argument: $1"
+    term="$1"
+    shift
+    ;;
+  esac
+done
+
+# The directory listing is a signed, verified document — see
+# omarchy-plugin-registry.
+matches=$(omarchy-plugin-registry all | jq -c --arg term "$term" '
+  (.plugins // [])
+  | map(select(
+      $term == "" or (tojson | ascii_downcase | contains($term | ascii_downcase))
+    ))
+')
+
+if (( as_json )); then
+  jq . <<<"$matches"
+  exit 0
+fi
+
+count=$(jq 'length' <<<"$matches")
+if (( count == 0 )); then
+  echo "No plugins found${term:+ matching '$term'}."
+  exit 0
+fi
+
+{
+  echo -e "PLUGIN\tVERSION\tSUMMARY"
+  jq -r '.[] | [
+    ((.publisher // "?") + "/" + (.name // "?")),
+    (.vers // .version // "?"),
+    (.summary // .description // "")
+  ] | @tsv' <<<"$matches"
+} | column -t -s $'\t'
+echo
+echo "Install with: omarchy plugin add publisher/name"

@@ -1,0 +1,270 @@
+#!/bin/bash
+
+# omarchy:summary=Verified registry transport (fetch, verify, resolve, download)
+# omarchy:group=plugin
+# omarchy:hidden=true
+
+# Single source of truth for talking to the Omarchy plugin registry
+# (plugins.omarchy.org). Every byte trusted by callers passes Ed25519
+# signature verification against the pinned registry key, plus freshness
+# (expires_at) and rollback (generation monotonicity) checks — see the
+# registry's client contract (docs/client-spec.md in the registry repo).
+# Other omarchy-plugin-* commands shell out to this instead of re-implementing
+# verification.
+#
+# Subcommands (all print JSON unless noted):
+#   base-url                       effective registry base URL (plain text)
+#   pubkey                         path to the pinned signing key (plain text)
+#   revocations                    verified kill list
+#   index <publisher> <name>       verified index file (JSON lines, raw)
+#   resolve <publisher/name> [v]   best installable version record
+#   all                            verified directory listing
+#   download <publisher/name> <v> <dest>   fetch tarball, verify sha256
+#   api-url                        base URL for the write API (plain text)
+
+set -euo pipefail
+
+REGISTRY_URL="${OMARCHY_PLUGIN_REGISTRY_URL:-https://plugins.omarchy.org}"
+REGISTRY_URL="${REGISTRY_URL%/}"
+
+fail() {
+  echo "omarchy-plugin-registry: $*" >&2
+  exit 1
+}
+
+# State is keyed by registry host so a test registry never shares pins or
+# generation counters with the real one.
+state_host=$(printf '%s' "$REGISTRY_URL" | sed -E 's|^[a-z]+://||; s|[/:]|_|g')
+STATE_DIR="${OMARCHY_PLUGIN_REGISTRY_STATE:-$HOME/.local/state/omarchy/registry}/$state_host"
+PUBKEY_B64="$STATE_DIR/signing-key.pub"
+PUBKEY_PEM="$STATE_DIR/signing-key.pem"
+GENERATIONS="$STATE_DIR/generations.json"
+
+WORKDIR=$(mktemp -d)
+trap 'rm -rf "$WORKDIR"' EXIT
+
+http_get() {
+  local path="$1" out="$2"
+  curl -sf --connect-timeout 15 --max-time 120 --retry 2 --retry-delay 1 \
+    -A "omarchy-plugin-registry" -o "$out" "$REGISTRY_URL$path" ||
+    fail "fetch failed: $REGISTRY_URL$path"
+}
+
+ensure_pubkey() {
+  [[ -f $PUBKEY_PEM ]] && return 0
+  mkdir -p "$STATE_DIR"
+  # Trust-on-first-use: the key is pinned the first time this registry is
+  # used and every later fetch fails closed against it. A key rotation is a
+  # coordinated re-pin: verify the announced key out-of-band, then delete
+  # this state directory.
+  http_get "/signing-key.pub" "$PUBKEY_B64.tmp"
+  tr -d '[:space:]' <"$PUBKEY_B64.tmp" >"$PUBKEY_B64"
+  rm -f "$PUBKEY_B64.tmp"
+  [[ $(base64 -d "$PUBKEY_B64" | wc -c) == 32 ]] || {
+    rm -f "$PUBKEY_B64"
+    fail "registry signing key is not a 32-byte Ed25519 key"
+  }
+  {
+    printf '\x30\x2a\x30\x05\x06\x03\x2b\x65\x70\x03\x21\x00'
+    base64 -d "$PUBKEY_B64"
+  } >"$WORKDIR/spki.der"
+  openssl pkey -pubin -inform DER -in "$WORKDIR/spki.der" -out "$PUBKEY_PEM.tmp" 2>/dev/null ||
+    fail "registry signing key is not a valid Ed25519 key"
+  mv "$PUBKEY_PEM.tmp" "$PUBKEY_PEM"
+  echo "omarchy-plugin-registry: pinned signing key for $REGISTRY_URL" >&2
+}
+
+check_freshness() {
+  local meta_json="$1" name="$2"
+  local expires now
+  expires=$(jq -r '.expires_at // empty' <<<"$meta_json")
+  [[ -n $expires ]] || fail "$name carries no expires_at; refusing stale-undetectable data"
+  now=$(date -u +%s)
+  if (( $(date -d "$expires" +%s) <= now )); then
+    fail "$name is EXPIRED (expires_at $expires) — the registry or a mirror is stale or rolled back"
+  fi
+}
+
+check_generation() {
+  local meta_json="$1" key="$2" name="$3" file="$4"
+  local generation last last_sha sha
+  generation=$(jq -r '.generation // empty' <<<"$meta_json")
+  [[ -n $generation ]] || fail "$name carries no generation; refusing rollback-undetectable data"
+  sha=$(sha256sum "$file" | cut -d' ' -f1)
+  [[ -f $GENERATIONS ]] || echo '{}' >"$GENERATIONS"
+  last=$(jq -r --arg k "$key" '.[$k].gen // 0' "$GENERATIONS")
+  last_sha=$(jq -r --arg k "$key" '.[$k].sha // ""' "$GENERATIONS")
+  # Contract: reject lower-or-equal-but-different — an unexpired older signed
+  # copy must never displace a newer one.
+  if (( generation < last )); then
+    fail "$name generation $generation is OLDER than last accepted $last — possible rollback attack"
+  fi
+  if (( generation == last )) && [[ -n $last_sha && $sha != "$last_sha" ]]; then
+    fail "$name generation $generation matches the last accepted one but the content differs — possible rollback attack"
+  fi
+  jq --arg k "$key" --argjson g "$generation" --arg s "$sha" \
+    '.[$k] = {gen: $g, sha: $s}' "$GENERATIONS" >"$GENERATIONS.tmp"
+  mv "$GENERATIONS.tmp" "$GENERATIONS"
+}
+
+# Fetch <path>, verify signature + freshness + generation. Prints the file
+# path inside WORKDIR. Index files keep their meta on the FIRST line; whole
+# JSON documents carry it at the top level.
+#
+# The file and its sidecar .sig are cached independently (60s TTLs), so a
+# fetch that straddles a regeneration can pair a cached file with a fresh
+# signature (or vice versa). The still-unverified generation from the file
+# keys the signature fetch (?g=) so both halves come from the same
+# generation's cache entry; one delayed retry covers the remaining races.
+verified_fetch() {
+  local path="$1" genkey="$2" meta_selector="${3:-whole}"
+  local name="${path##*/}"
+  local file="$WORKDIR/$name" sig="$WORKDIR/$name.sig"
+  local attempt meta claimed_gen
+  ensure_pubkey
+  for attempt in 1 2; do
+    http_get "$path" "$file"
+    if [[ $meta_selector == first-line ]]; then
+      meta=$(head -n 1 "$file")
+    else
+      meta=$(cat "$file")
+    fi
+    jq -e . >/dev/null 2>&1 <<<"$meta" || fail "$name meta record is not valid JSON"
+    claimed_gen=$(jq -r '.generation // empty' <<<"$meta")
+    http_get "$path.sig${claimed_gen:+?g=$claimed_gen}" "$sig"
+    if base64 -d "$sig" >"$WORKDIR/sig.bin" 2>/dev/null &&
+      openssl pkeyutl -verify -pubin -inkey "$PUBKEY_PEM" -rawin \
+        -in "$file" -sigfile "$WORKDIR/sig.bin" >/dev/null 2>&1; then
+      check_freshness "$meta" "$name"
+      check_generation "$meta" "$genkey" "$name" "$file"
+      echo "$file"
+      return 0
+    fi
+    (( attempt == 1 )) && sleep 3
+  done
+  fail "SIGNATURE VERIFICATION FAILED for $name — refusing to trust it"
+}
+
+registry_config() {
+  local file
+  file=$(verified_fetch "/config.json" "config.json")
+  cat "$file"
+}
+
+valid_ref() {
+  [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$ && $1 != *..* ]]
+}
+
+cmd_revocations() {
+  local file
+  file=$(verified_fetch "/revocations.json" "revocations.json")
+  cat "$file"
+}
+
+cmd_index() {
+  local publisher="$1" name="$2"
+  valid_ref "$publisher/$name" || fail "invalid plugin reference: $publisher/$name"
+  local file
+  file=$(verified_fetch "/index/$publisher/$name.json" "index/$publisher/$name" first-line)
+  cat "$file"
+}
+
+cmd_all() {
+  local file
+  file=$(verified_fetch "/all.json" "all.json")
+  cat "$file"
+}
+
+# Highest non-yanked, non-revoked version (optionally pinned to an exact
+# version). minOmarchyVersion gating is left to the caller's validate step —
+# the registry only publishes schemaVersion-1 plugins today.
+cmd_resolve() {
+  local ref="$1" want="${2:-}"
+  valid_ref "$ref" || fail "invalid plugin reference: $ref (expected publisher/name)"
+  local publisher="${ref%%/*}" name="${ref##*/}"
+  local index revocations record
+  index=$(cmd_index "$publisher" "$name")
+  revocations=$(cmd_revocations)
+
+  record=$(
+    jq -c -s --arg want "$want" '
+      .[1:]                                     # drop the meta record
+      | map(select(.yanked != true))
+      | (if $want == "" then . else map(select(.vers == $want)) end)
+      | sort_by(.vers | split(".") | map(tonumber? // 0))
+      | last // empty
+    ' <<<"$index"
+  )
+  [[ -n $record ]] || fail "no installable version of $ref${want:+ matching $want}"
+
+  # The kill list keys entries by MANIFEST id (publisher.name), matching the
+  # id in the index record and the installed folder name.
+  local vers manifest_id
+  vers=$(jq -r '.vers' <<<"$record")
+  manifest_id=$(jq -r '.id' <<<"$record")
+  if jq -e --arg p "$manifest_id" --arg v "$vers" '
+    .revocations | any(.plugin == $p and ((.version // $v) == $v))
+  ' <<<"$revocations" >/dev/null; then
+    fail "$ref@$vers is REVOKED by the registry kill list — refusing"
+  fi
+  jq --arg publisher "$publisher" --arg name "$name" \
+    '. + {publisher: $publisher, name: $name}' <<<"$record"
+}
+
+cmd_download() {
+  local ref="$1" vers="$2" dest="$3"
+  valid_ref "$ref" || fail "invalid plugin reference: $ref"
+  local publisher="${ref%%/*}" name="${ref##*/}"
+  local record expected_sha actual_sha url_template url
+  record=$(cmd_resolve "$ref" "$vers")
+  expected_sha=$(jq -r '.sha256' <<<"$record")
+  [[ -n $expected_sha && $expected_sha != null ]] || fail "index record for $ref@$vers has no sha256"
+
+  url_template=$(registry_config | jq -r '.dl')
+  url=${url_template//\{publisher\}/$publisher}
+  url=${url//\{name\}/$name}
+  url=${url//\{version\}/$vers}
+
+  curl -sf --connect-timeout 15 --max-time 600 --retry 2 --retry-delay 1 \
+    -A "omarchy-plugin-registry" -o "$dest.partial" "$url" ||
+    fail "tarball download failed: $url"
+  actual_sha=$(sha256sum "$dest.partial" | cut -d' ' -f1)
+  if [[ $actual_sha != "$expected_sha" ]]; then
+    rm -f "$dest.partial"
+    fail "CHECKSUM MISMATCH for $ref@$vers (expected $expected_sha, got $actual_sha) — refusing"
+  fi
+  mv "$dest.partial" "$dest"
+  jq --arg dest "$dest" '. + {tarball: $dest}' <<<"$record"
+}
+
+cmd_api_url() {
+  registry_config | jq -r '.api // empty' | grep . || echo "$REGISTRY_URL"
+}
+
+command="${1:-}"
+[[ -n $command ]] || fail "usage: omarchy-plugin-registry <base-url|pubkey|revocations|index|resolve|all|download|api-url> ..."
+shift
+
+case "$command" in
+base-url) echo "$REGISTRY_URL" ;;
+pubkey)
+  ensure_pubkey
+  echo "$PUBKEY_PEM"
+  ;;
+revocations) cmd_revocations ;;
+index)
+  (( $# == 2 )) || fail "usage: omarchy-plugin-registry index <publisher> <name>"
+  cmd_index "$1" "$2"
+  ;;
+resolve)
+  (( $# >= 1 && $# <= 2 )) || fail "usage: omarchy-plugin-registry resolve <publisher/name> [version]"
+  cmd_resolve "$@"
+  ;;
+all) cmd_all ;;
+download)
+  (( $# == 3 )) || fail "usage: omarchy-plugin-registry download <publisher/name> <version> <dest>"
+  cmd_download "$@"
+  ;;
+api-url) cmd_api_url ;;
+*) fail "unknown subcommand: $command" ;;
+esac

@@ -1,0 +1,206 @@
+#!/bin/bash
+
+# omarchy:summary=Publish a plugin version to the registry
+# omarchy:group=plugin
+# omarchy:args=<publisher/name> [plugin-folder] [--yes]
+# omarchy:examples=omarchy plugin publish acme/weather | omarchy plugin publish acme/weather ./my-widget
+
+set -euo pipefail
+
+ASSUME_YES=0
+
+fail() {
+  echo "omarchy-plugin-publish: $*" >&2
+  exit 1
+}
+
+interactive() {
+  [[ -t 0 && -t 1 ]]
+}
+
+confirm() {
+  local prompt="$1"
+  (( ASSUME_YES )) && return 0
+  if interactive; then
+    gum confirm "$prompt"
+  else
+    fail "refusing to continue without confirmation; pass --yes"
+  fi
+}
+
+registry_ref() {
+  [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$ && $1 != *..* ]]
+}
+
+ref=""
+dir=""
+
+while (( $# > 0 )); do
+  case "$1" in
+  --yes | -y)
+    ASSUME_YES=1
+    shift
+    ;;
+  -h | --help)
+    echo "Usage: omarchy plugin publish <publisher/name> [plugin-folder] [--yes]"
+    exit 0
+    ;;
+  -*)
+    fail "unknown publish option: $1"
+    ;;
+  *)
+    if [[ -z $ref ]]; then
+      ref="$1"
+    elif [[ -z $dir ]]; then
+      dir="$1"
+    else
+      fail "unexpected argument: $1"
+    fi
+    shift
+    ;;
+  esac
+done
+
+[[ -n $ref ]] || fail "a target is required (e.g. omarchy plugin publish acme/weather)"
+registry_ref "$ref" || fail "invalid target '$ref' (expected publisher/name)"
+dir="${dir:-.}"
+[[ -d $dir ]] || fail "plugin folder not found: $dir"
+[[ -f $dir/manifest.json ]] || fail "missing manifest.json in $dir"
+
+omarchy-plugin-validate "$dir" || fail "refusing to publish: validation failed"
+
+version=$(jq -r '.version // empty' "$dir/manifest.json")
+[[ -n $version ]] || fail "manifest.json has no version"
+
+api_url=$(omarchy-plugin-registry api-url)
+api_url="${api_url%/}"
+registry_url=$(omarchy-plugin-registry base-url)
+state_host=$(printf '%s' "$registry_url" | sed -E 's|^[a-z]+://||; s|[/:]|_|g')
+STATE_DIR="${OMARCHY_PLUGIN_REGISTRY_STATE:-$HOME/.local/state/omarchy/registry}/$state_host"
+TOKEN_FILE="$STATE_DIR/publish-token.json"
+
+api_post() {
+  # $1 = path, rest = extra curl args. Prints "HTTP_CODE\nBODY".
+  local path="$1"
+  shift
+  local response
+  response=$(curl -s --connect-timeout 15 --max-time 300 -A "omarchy-plugin-publish" \
+    -w '\n%{http_code}' "$@" "$api_url$path") || fail "request failed: $api_url$path"
+  printf '%s' "$response"
+}
+
+cached_token() {
+  [[ -f $TOKEN_FILE ]] || return 1
+  local scope expires
+  scope=$(jq -r '.scope // ""' "$TOKEN_FILE")
+  expires=$(jq -r '.expires_at // ""' "$TOKEN_FILE")
+  [[ $scope == "$ref" ]] || return 1
+  [[ -z $expires ]] || (( $(date -d "$expires" +%s) > $(date -u +%s) + 60 )) || return 1
+  jq -r '.token' "$TOKEN_FILE"
+}
+
+device_flow_token() {
+  local response code body device_code user_code verification_uri interval expires_in deadline
+  response=$(api_post "/api/v1/device/code" -X POST)
+  code="${response##*$'\n'}"
+  body="${response%$'\n'*}"
+  [[ $code == 201 ]] || fail "could not start device login (HTTP $code): $(jq -r '.error // .' <<<"$body" 2>/dev/null | head -c 200)"
+
+  device_code=$(jq -r '.device_code' <<<"$body")
+  user_code=$(jq -r '.user_code' <<<"$body")
+  verification_uri=$(jq -r '.verification_uri' <<<"$body")
+  interval=$(jq -r '.interval // 5' <<<"$body")
+  expires_in=$(jq -r '.expires_in // 900' <<<"$body")
+
+  cat >&2 <<LOGIN
+
+  To publish as $ref, approve this device in your browser:
+
+      $verification_uri
+
+  and enter the code:  $user_code
+
+  (approve it for publisher '${ref%%/*}', plugin '${ref##*/}')
+
+LOGIN
+  if interactive && omarchy-cmd-present xdg-open; then
+    xdg-open "$verification_uri" >/dev/null 2>&1 || true
+  fi
+
+  deadline=$(( $(date -u +%s) + expires_in ))
+  while (( $(date -u +%s) < deadline )); do
+    sleep "$interval"
+    response=$(api_post "/api/v1/device/token" -X POST --data-urlencode "device_code=$device_code")
+    code="${response##*$'\n'}"
+    body="${response%$'\n'*}"
+    case "$code" in
+    200)
+      local scope
+      scope=$(jq -r '.scope // ""' <<<"$body")
+      [[ $scope == "$ref" ]] ||
+        fail "the approval was scoped to '$scope', not '$ref' — approve it for the plugin you are publishing"
+      mkdir -p "$STATE_DIR"
+      (umask 077 && jq '{token, scope, expires_at}' <<<"$body" >"$TOKEN_FILE")
+      jq -r '.token' <<<"$body"
+      return 0
+      ;;
+    202) continue ;;
+    403) fail "device login was denied" ;;
+    429) sleep "$interval" ;;
+    *) fail "device login failed (HTTP $code): $(jq -r '.error // .' <<<"$body" 2>/dev/null | head -c 200)" ;;
+    esac
+  done
+  fail "device login expired before it was approved"
+}
+
+token=$(cached_token) || {
+  interactive || (( ASSUME_YES )) || fail "no publish token cached; run interactively to complete the device login"
+  token=$(device_flow_token)
+}
+
+tarball=$(mktemp --suffix=.tar.gz)
+trap 'rm -f "$tarball"' EXIT
+# Visible files only: receipts, .git, and other dotfiles never belong in a
+# published tarball. Manifest and entry points are always visible.
+(
+  cd "$dir"
+  files=()
+  for f in *; do
+    [[ -e $f ]] && files+=("$f")
+  done
+  (( ${#files[@]} > 0 )) || exit 1
+  tar --exclude-vcs -czf "$tarball" "${files[@]}"
+) || fail "could not build tarball from $dir"
+
+size=$(du -h "$tarball" | cut -f1)
+echo "Publishing $ref $version ($size) to $registry_url"
+confirm "Publish $ref $version?" || fail "aborted"
+
+response=$(api_post "/api/v1/plugins/${ref%%/*}/${ref##*/}/versions" -X POST \
+  -H "Authorization: Bearer $token" \
+  -H "Content-Type: application/gzip" \
+  --data-binary @"$tarball")
+code="${response##*$'\n'}"
+body="${response%$'\n'*}"
+
+case "$code" in
+201)
+  echo "Accepted: $ref $version is in the review pipeline."
+  jq -r '.hold_until // empty' <<<"$body" 2>/dev/null |
+    { read -r hold && echo "It goes live after the hold window (until $hold) unless review flags it." || true; }
+  echo "Track it at: $registry_url/plugins/$ref"
+  ;;
+401)
+  rm -f "$TOKEN_FILE"
+  fail "publish token was rejected; run again to log in afresh"
+  ;;
+409)
+  fail "version $version already exists for $ref — version numbers are burned forever; bump the version"
+  ;;
+422)
+  fail "rejected: $(jq -r '.error // .' <<<"$body" 2>/dev/null | head -c 400)"
+  ;;
+*)
+  fail "publish failed (HTTP $code): $(jq -r '.error // .' <<<"$body" 2>/dev/null | head -c 400)"
+  ;;
+esac
