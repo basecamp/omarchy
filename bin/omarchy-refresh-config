@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # omarchy:summary=Copy a shipped user config from $OMARCHY_PATH/config into ~/.config (backs up your version).
 # omarchy:args=<config-path>
 
@@ -19,7 +21,9 @@ fi
 
 user_config_file="${HOME}/.config/$config_file"
 default_config_file="$OMARCHY_PATH/config/$config_file"
-backup_config_file="$user_config_file.bak.$(date +%s)"
+# The pid keeps two refreshes of the same file in the same second from landing
+# on one name, where the second cp would overwrite the first one's backup.
+backup_config_file="$user_config_file.bak.$(date +%s).$$"
 
 if [[ ! -e $default_config_file ]]; then
   echo "Not a shipped user config: $config_file" >&2
@@ -29,8 +33,18 @@ fi
 mkdir -p "$(dirname "$user_config_file")"
 
 if [[ -f $user_config_file ]]; then
-  cp -f "$user_config_file" "$backup_config_file"
-  cp -f "$default_config_file" "$user_config_file"
+  # The backup is what this command promises, so a copy that fails has to stop
+  # here. Carrying on would put the default in place with nothing to go back to,
+  # and the message below would name a backup that was never written.
+  if ! cp -f "$user_config_file" "$backup_config_file"; then
+    echo -e "\e[31mCould not back up $user_config_file, so it was left alone.\e[0m" >&2
+    exit 1
+  fi
+
+  if ! cp -f "$default_config_file" "$user_config_file"; then
+    echo -e "\e[31mCould not write $user_config_file. Your version is at $backup_config_file.\e[0m" >&2
+    exit 1
+  fi
 
   if cmp -s "$user_config_file" "$backup_config_file"; then
     rm "$backup_config_file"
