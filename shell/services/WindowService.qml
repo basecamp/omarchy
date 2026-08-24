@@ -1145,7 +1145,14 @@ QtObject {
         width: Number(rect.width || 0),
         height: Number(rect.height || 0)
       }], geom, root._hyprbarsInset(list[i]))
-      if (captured.windows && captured.windows[0]) recs.push(captured.windows[0])
+      if (captured.windows && captured.windows[0]) {
+        // hyprctl -j clients lags the snap we just dispatched. Remember the
+        // verb so restoreLayout does not replay the previous 880x560 float.
+        var placed = root._placedKind[list[i]]
+        if (root._isPlacedSnap(placed) || placed === "max" || placed === "min" || placed === "full")
+          captured.windows[0].kind = placed
+        recs.push(captured.windows[0])
+      }
     }
     root.savedLayout = { windows: recs }
     root._layoutSavedAt = Date.now()

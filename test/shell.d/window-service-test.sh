@@ -111,6 +111,16 @@ grep -Fq 'Date.now() - root._focusedAt' "$ws" || fail "_activeAddress prefers a 
 grep -Fq '_lastCycleAddress' "$ws" || fail "commitCycle keeps the highlighted address if the overlay closes first"
 grep -Fq 'function _compositorAddresses' "$ws" || fail "saveLayout reads live hyprctl clients, not stale Quickshell toplevels"
 grep -Fq '_layoutSavedAt' "$ws" || fail "saveLayout must not let FileView reload a stale layout over the just-saved one"
+if awk '
+  $0 ~ /function saveLayout\(/ { infn = 1 }
+  infn && /_placedKind/ { found = 1 }
+  infn && /^  function / && $0 !~ /function saveLayout\(/ { infn = 0 }
+  END { exit found ? 0 : 1 }
+' "$ws"; then
+  :
+else
+  fail "saveLayout must stamp the snap verb so restoreLayout is not a lagged 880x560 float"
+fi
 grep -Fq 'function _clientRecords' "$ws" || fail "restoreLayout matches against live hyprctl clients"
 if awk '
   $0 ~ /function _addressesOnDesktop\(/ { infn = 1 }
