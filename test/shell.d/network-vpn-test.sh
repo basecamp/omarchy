@@ -63,8 +63,8 @@ assert(/root\.vpnActionName = ""/.test(vpnActionProc[0]), 'vpnActionProc clears 
 assert(/root\.vpnActionKind = ""/.test(vpnActionProc[0]), 'vpnActionProc clears the pending action kind on exit')
 assert(/exitCode === 0/.test(vpnActionProc[0]), 'vpnActionProc treats exit 0 as a plain success')
 assert(
-  /exitCode === 2\s*\n\s*\? "Connected, no traffic"/.test(vpnActionProc[0]),
-  'vpnActionProc reads exit code 2 as a connected-but-no-traffic warning'
+  /exitCode === 75\s*\n\s*\? "Connected, no traffic"/.test(vpnActionProc[0]),
+  'vpnActionProc reads the private exit code 75 as a connected-but-no-traffic warning, not nmcli\'s own exit 2'
 )
 assert(
   /root\.vpnActionKind === "down" \? "Failed to disconnect" : "Failed to connect"/.test(vpnActionProc[0]),
@@ -124,4 +124,18 @@ assert(
   /enabled: root\.vpnActionName === ""/.test(vpnRow[0]),
   'VpnRow locks every row while any VPN toggle is in flight, not just its own'
 )
+
+// The VPN list is a capped, scrollable ListView (like networkList below it),
+// not an unbounded Column -- a long profile list must scroll instead of
+// pushing DNS/wifi off the card.
+const vpnListView = panelSource.match(/ListView \{\n {10}id: vpnList[\s\S]*?\n {8}\}/)
+assert(vpnListView, 'network panel has a capped vpnList ListView')
+assert(/height: Math\.min\(contentHeight, Style\.space\(240\)\)/.test(vpnListView[0]), 'vpnList caps its height like networkList')
+assert(/clip: true/.test(vpnListView[0]), 'vpnList clips overflow instead of pushing later sections off the card')
+assert(/currentIndex: root\.vpnIndex/.test(vpnListView[0]), 'vpnList follows the keyboard cursor')
+assert(/positionViewAtIndex\(currentIndex, ListView\.Contain\)/.test(vpnListView[0]), 'vpnList scrolls the keyboard-selected row into view')
+
+// A long connection name must not run under the status text on its right.
+assert(/elide: Text\.ElideRight/.test(vpnRow[0]), 'VpnRow elides a name too long to fit')
+assert(/anchors\.right: statusText\.left/.test(vpnRow[0]), 'VpnRow name is width-constrained against the status text, not free to overlap it')
 JS

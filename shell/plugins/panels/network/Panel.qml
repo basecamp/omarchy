@@ -958,17 +958,20 @@ Panel {
   // band change still in flight, and each needs its own exit handler.
   Process {
     id: vpnActionProc
-    // Exit 2 is omarchy-network-vpn's own signal: nmcli brought the profile
-    // up, but the post-activation ping through the tunnel device found no
-    // real peer behind it. Any other nonzero code is nmcli itself failing
-    // the up/down outright. Only the most recent toggle's outcome is kept,
-    // same as the single failureSsid/failureReason pair Wi-Fi rows use.
+    // Exit 75 is omarchy-network-vpn's own private signal: nmcli brought the
+    // profile up, but the post-activation ping through the tunnel device
+    // found no real peer behind it. It deliberately sits outside nmcli's own
+    // documented 0-10 exit code range, so a raw nmcli failure (which can
+    // itself exit 2, "invalid user input") is never confused with it. Any
+    // other nonzero code is nmcli itself failing the up/down outright. Only
+    // the most recent toggle's outcome is kept, same as the single
+    // failureSsid/failureReason pair Wi-Fi rows use.
     onExited: function(exitCode) {
       if (exitCode === 0) {
         root.vpnFailureName = ""
       } else {
         root.vpnFailureName = root.vpnActionName
-        root.vpnFailureReason = exitCode === 2
+        root.vpnFailureReason = exitCode === 75
           ? "Connected, no traffic"
           : (root.vpnActionKind === "down" ? "Failed to disconnect" : "Failed to connect")
       }
@@ -1606,29 +1609,39 @@ Panel {
           fontFamily: root.bar.fontFamily
         }
 
-        Column {
+        // Capped and scrollable like networkList below: a handful of saved
+        // profiles is the common case, but nothing stops someone importing
+        // many, and an uncapped column would push the DNS/wifi sections
+        // below it off the card instead of scrolling.
+        ListView {
+          id: vpnList
           width: parent.width
+          height: Math.min(contentHeight, Style.space(240))
           spacing: Style.space(4)
+          clip: true
+          boundsBehavior: Flickable.StopAtBounds
+          interactive: contentHeight > height
 
-          // Wrapper takes modelData from the Repeater's delegate context,
-          // which doesn't bind into nested `component` declarations, and
-          // passes it down explicitly -- same shape as the band pills and
-          // the network list delegate.
-          Repeater {
-            model: root.vpnConnections
+          ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-            delegate: Item {
-              required property var modelData
-              required property int index
+          model: root.vpnConnections
+          currentIndex: root.vpnIndex
+          onCurrentIndexChanged: if (currentIndex >= 0) positionViewAtIndex(currentIndex, ListView.Contain)
+
+          // Wrapper takes modelData/index from the Repeater's delegate
+          // context, which doesn't bind into nested `component`
+          // declarations -- same shape as the band pills and networkList.
+          delegate: Item {
+            required property var modelData
+            required property int index
+            width: ListView.view.width
+            height: vpnRow.implicitHeight
+
+            VpnRow {
+              id: vpnRow
               width: parent.width
-              height: vpnRow.implicitHeight
-
-              VpnRow {
-                id: vpnRow
-                width: parent.width
-                conn: modelData
-                index: parent.index
-              }
+              conn: modelData
+              index: parent.index
             }
           }
         }
@@ -1816,7 +1829,10 @@ Panel {
         color: root.bar.foreground
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.bodySmall
+        elide: Text.ElideRight
         anchors.left: parent.left
+        anchors.right: statusText.left
+        anchors.rightMargin: Style.space(8)
         anchors.verticalCenter: parent.verticalCenter
       }
 

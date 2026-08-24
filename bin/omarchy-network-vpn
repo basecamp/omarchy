@@ -9,6 +9,14 @@ set -euo pipefail
 
 internet_probe=1.1.1.1
 
+# nmcli's own exit codes are documented as 0-10 (0 success, 1 unspecified
+# error, 2 invalid user input, ... 10 not found). A raw nmcli failure can
+# already legitimately exit 2, so the traffic-verification signal below
+# needs a code clearly outside that range or the two get confused -- a
+# `down` that nmcli itself refuses with its own exit 2 must not be reported
+# as "Connected, no traffic".
+EXIT_NO_TRAFFIC=75
+
 # `-e no` keeps ':' in a connection NAME from being escaped, matching the
 # convention already used by omarchy-network-band's nm_get.
 nm_get() {
@@ -129,11 +137,14 @@ case "$1" in
 
     if ! verify_tunnel "$2"; then
       echo "Warning: $2 connected but is not passing traffic." >&2
-      exit 2
+      exit "$EXIT_NO_TRAFFIC"
     fi
     ;;
   down)
-    nmcli connection down "$2" >/dev/null
+    if ! nmcli connection down "$2" >/dev/null 2>&1; then
+      echo "Error: failed to deactivate $2." >&2
+      exit 1
+    fi
     ;;
   *)
     usage
