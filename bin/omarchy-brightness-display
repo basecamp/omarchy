@@ -6,6 +6,11 @@
 
 no_osd=0
 monitor=""
+drm_path="${OMARCHY_DRM_PATH:-/sys/class/drm}"
+
+# omarchy-brightness-display-ddc's "this connector answers no DDC display",
+# as opposed to a transient read failure worth retrying.
+no_ddc_display=3
 
 while (( $# > 0 )); do
   case "$1" in
@@ -35,6 +40,29 @@ monitor_is_internal() {
   [[ $monitor =~ ^(eDP|LVDS|DSI)- ]]
 }
 
+# All-in-ones wire their built-in panel to a DisplayPort connector, so its
+# output name carries no hint that it is internal and the panel gets routed to
+# DDC/CI, which a built-in panel does not answer. The kernel backlight is the
+# right target there -- but only on a machine with no eDP/LVDS/DSI connector to
+# own that backlight instead, or a laptop's DDC-less external monitor would move
+# the laptop's own panel. Read the connectors rather than counting Hyprland
+# outputs: Hyprland invents a FALLBACK output when every monitor is disabled.
+machine_has_internal_connector() {
+  local status
+
+  for status in "$drm_path"/card*-*/status; do
+    [[ -e $status ]] || continue
+    [[ $status =~ -(eDP|LVDS|DSI)-[^/]+/status$ ]] || continue
+    [[ $(<"$status") == "connected" ]] && return 0
+  done
+
+  return 1
+}
+
+backlight_owns_named_monitor() {
+  ! machine_has_internal_connector && omarchy-hw-display >/dev/null 2>&1
+}
+
 use_apple_display() {
   omarchy-hyprland-monitor-focused-apple "$monitor"
 }
@@ -49,7 +77,9 @@ if (( $# == 0 )); then
     exit
   elif use_ddc_display; then
     omarchy-brightness-display-ddc "$monitor"
-    exit
+    ddc_status=$?
+    (( ddc_status == 0 )) && exit 0
+    (( ddc_status == no_ddc_display )) && backlight_owns_named_monitor || exit 1
   fi
 
   device="$(omarchy-hw-display)" || exit 1
@@ -82,41 +112,49 @@ if use_apple_display; then
   else
     omarchy-brightness-display-apple "$step"
   fi
-elif use_ddc_display; then
-  brightness="$(omarchy-brightness-display-ddc "$monitor" "$step")" || exit 1
-  (( no_osd )) || omarchy-osd -i brightness -p "$brightness"
-else
-  # Current device highlighted
-  device="$(omarchy-hw-display)" || exit 1
+  exit
+fi
 
-  # Current brightness percentage
-  current=$(backlight_brightness "$device") || exit 1
+if use_ddc_display; then
+  brightness="$(omarchy-brightness-display-ddc "$monitor" "$step")"
+  ddc_status=$?
+  if (( ddc_status == 0 )); then
+    (( no_osd )) || omarchy-osd -i brightness -p "$brightness"
+    exit 0
+  fi
+  (( ddc_status == no_ddc_display )) && backlight_owns_named_monitor || exit 1
+fi
 
-  # Apply non-uniform step size: 1% steps if at or below 5%, otherwise set an
-  # absolute target percentage to avoid raw backlight rounding causing uneven OSD steps.
-  if [[ $step == "+5%" ]]; then
-    if (( current < 5 )); then
-      (( target = current + 1 ))
-    else
-      (( target = current + 5 ))
-    fi
+# Current device highlighted
+device="$(omarchy-hw-display)" || exit 1
 
-    (( target > 100 )) && target=100
-    step="$target%"
-  elif [[ $step == "5%-" ]]; then
-    if (( current <= 5 )); then
-      (( target = current - 1 ))
-    else
-      (( target = current - 5 ))
-    fi
+# Current brightness percentage
+current=$(backlight_brightness "$device") || exit 1
 
-    (( target < 1 )) && target=1
-    step="$target%"
+# Apply non-uniform step size: 1% steps if at or below 5%, otherwise set an
+# absolute target percentage to avoid raw backlight rounding causing uneven OSD steps.
+if [[ $step == "+5%" ]]; then
+  if (( current < 5 )); then
+    (( target = current + 1 ))
+  else
+    (( target = current + 5 ))
   fi
 
-  # Set brightness of the display device.
-  brightnessctl -d "$device" set "$step" >/dev/null
+  (( target > 100 )) && target=100
+  step="$target%"
+elif [[ $step == "5%-" ]]; then
+  if (( current <= 5 )); then
+    (( target = current - 1 ))
+  else
+    (( target = current - 5 ))
+  fi
 
-  # Show the new brightness in OSD
-  (( no_osd )) || omarchy-osd -i brightness -p "$(backlight_brightness "$device")"
+  (( target < 1 )) && target=1
+  step="$target%"
 fi
+
+# Set brightness of the display device.
+brightnessctl -d "$device" set "$step" >/dev/null
+
+# Show the new brightness in OSD
+(( no_osd )) || omarchy-osd -i brightness -p "$(backlight_brightness "$device")"
