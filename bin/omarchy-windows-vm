@@ -196,13 +196,52 @@ EOF
   mv -f "$tmp" "$COMPOSE_FILE"
 }
 
-__priv_up() { dc up -d; }
+# Read the host source of a bind mount out of the compose (e.g. /storage).
+# valid_path kept a ':' out of the stored path, so splitting on it is safe.
+get_mount_source() {
+  sed -n "s|^[[:space:]]*-[[:space:]]*\(/[^:]*\):$1\$|\1|p" "$COMPOSE_FILE" | head -n1
+}
+
+# Refuse to bring the VM up if a bind-mount source is a symlink, or reached
+# through one. valid_path keeps a traversal string like /./ out of the compose,
+# but a symlink planted at ~/.windows or ~/Windows would redirect the privileged
+# mount just the same — docker follows it — and a string check cannot see that.
+# So verify the real directories here, as root, immediately before the mount. A
+# source that does not exist is fine: docker creates it as a plain directory.
+assert_mounts_safe() {
+  local mnt src real
+  for mnt in /storage /shared; do
+    src=$(get_mount_source "$mnt")
+    [[ -n $src ]] || {
+      echo "omarchy-windows-vm: missing $mnt mount source in the compose" >&2
+      return 1
+    }
+    if [[ -L $src ]]; then
+      echo "omarchy-windows-vm: refusing to start — $src is a symlink; the VM mount source must be a real directory" >&2
+      return 1
+    fi
+    if [[ -e $src ]]; then
+      [[ -d $src ]] || {
+        echo "omarchy-windows-vm: refusing to start — $src is not a directory" >&2
+        return 1
+      }
+      real=$(realpath "$src" 2>/dev/null)
+      [[ $real == "$src" ]] || {
+        echo "omarchy-windows-vm: refusing to start — $src resolves through a symlink to $real" >&2
+        return 1
+      }
+    fi
+  done
+}
+
+__priv_up() { assert_mounts_safe && dc up -d; }
 
 __priv_down() { dc down; }
 
 # Bring the VM up and wait until the guest reports it is ready, all under a
 # single elevation so the readiness poll does not prompt on every iteration.
 __priv_up_wait() {
+  assert_mounts_safe || return 1
   local status
   status=$(docker inspect --format='{{.State.Status}}' "$CONTAINER" 2>/dev/null)
   if [[ $status != "running" ]]; then

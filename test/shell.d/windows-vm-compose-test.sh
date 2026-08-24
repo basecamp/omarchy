@@ -94,6 +94,18 @@ grep -q -- '- /etc:/shared' "$COMPOSE_FILE" && fail "migration must not carry a 
 [[ ! -f $LEGACY_COMPOSE_FILE ]] || fail "migration removes the legacy compose"
 pass "migration reconstructs data paths from \$HOME and ignores tampered legacy volumes"
 
+# --- bring-up refuses a symlinked mount source (a symlink redirects the
+#     privileged bind mount the same way traversal would; the string check on
+#     the stored path cannot see it) ---
+rm -f "$COMPOSE"
+mkdir -p "$TMPDIR/realstore" "$TMPDIR/realshare"
+write 4G 2 64G dave pw UTC "$TMPDIR/realstore" "$TMPDIR/realshare"
+assert_mounts_safe || fail "real directory mount sources are accepted"
+ln -sfn / "$TMPDIR/evilshare"
+write 4G 2 64G dave pw UTC "$TMPDIR/realstore" "$TMPDIR/evilshare"
+assert_mounts_safe && fail "a symlinked mount source must be refused"
+pass "bring-up refuses a symlinked mount source"
+
 # --- valid_path rejects traversal and non-normalized paths ---
 for p in /home/u/.windows /var/lib/omarchy/windows; do
   valid_path "$p" || fail "valid_path rejected a normal path: $p"
