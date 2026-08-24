@@ -23,13 +23,13 @@ assert(
 // Restoring on every unlock regardless overwrote whatever the user actually
 // had (e.g. set with a firmware-handled brightness key) with a stale value.
 assert(
-  /function beginLock\(\) \{[\s\S]*keyboardBlanked = false/.test(serviceQml),
+  /function beginLock\(\) \{[\s\S]*keyboardBlanked = false\s*\n\s*keyboardOffSaved = false/.test(serviceQml),
   'each lock session starts assuming it never blanked the keyboard'
 )
 
 assert(
-  /function runBlank\(\) \{\s*(?:\/\/[^\n]*\n\s*)*keyboardBlanked = true/.test(serviceQml),
-  'blanking the keyboard is what makes restoring it on unlock legitimate'
+  /function runBlank\(\) \{\s*(?:\/\/[^\n]*\n\s*)*keyboardBlanked = true\s*\n\s*keyboardOffSaved = true/.test(serviceQml),
+  'the real off is what makes brightnessctl\'s own restore trustworthy again'
 )
 
 assert(
@@ -37,12 +37,27 @@ assert(
   'a suspend detected via the frozen timer also counts as reason to restore, even though this session never ran the blank itself'
 )
 
-// The restore has to target the value this session tracked, not
-// brightnessctl's own saved state, which only scripts calling `off` update
-// and so never learns about a hardware-driven brightness change.
 assert(
-  /root\.keyboardBlanked && root\.kbdDeviceName && root\.savedKeyboardBrightness >= 0[\s\S]*brightnessctl -d '" \+ root\.kbdDeviceName \+ "' set " \+ root\.savedKeyboardBrightness/.test(serviceQml),
-  'the wake command restores the tracked value directly, only when this session actually warrants it'
+  /if \(Date\.now\(\) - armedAt > interval \+ 2000\) \{[\s\S]{0,400}\bkeyboardOffSaved\b/.test(serviceQml) === false,
+  'the suspend-frozen guard never claims the real off ran, since it never did'
+)
+
+// A software change (e.g. the default Fn-key bindings calling
+// omarchy-brightness-keyboard) never reaches the hardware-change watcher, so
+// once the real off has captured it, that saved state must win over the
+// poll-tracked value -- which the watcher never updated for a software change
+// in the first place.
+assert(
+  /root\.keyboardOffSaved\s*\n\s*\? "; omarchy-brightness-keyboard restore"/.test(serviceQml),
+  'a session that ran the real off restores through brightnessctl\'s own save, correct for both software- and hardware-driven changes'
+)
+
+// Only reached when a suspend was detected without the blank timer ever
+// getting a turn: brightnessctl's saved state was never updated, so this is
+// the only thing that might still reflect what was showing beforehand.
+assert(
+  /: \(root\.savedKeyboardBrightness >= 0[\s\S]*brightnessctl -d '" \+ root\.kbdDeviceName \+ "' set " \+ root\.savedKeyboardBrightness/.test(serviceQml),
+  'the poll-tracked value is only ever used as a fallback, not the primary restore path'
 )
 
 // Without this, a session that never touches the brightness key would have

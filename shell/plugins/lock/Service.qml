@@ -20,6 +20,13 @@ Item {
   property bool pendingSessionLock: false
   property bool wakeRerunRequested: false
   property bool keyboardBlanked: false
+  // Only true once runBlank() itself actually ran the real "off": that
+  // captures whatever was current via brightnessctl's own save, correct
+  // regardless of whether a software or a hardware-driven change put it
+  // there. The poll-tracked value below only ever fills in for the one case
+  // that leaves this false while keyboardBlanked is still true: a suspend
+  // detected without the idle-blank timer ever having gotten a turn.
+  property bool keyboardOffSaved: false
   property string kbdDeviceName: ""
   property string kbdBrightnessPath: ""
   property int savedKeyboardBrightness: -1
@@ -145,6 +152,7 @@ Item {
     resetAuthenticationState()
     lockRequested = true
     keyboardBlanked = false
+    keyboardOffSaved = false
     armBlankTimer()
     logEvent("lock-requested")
     queueSessionLock()
@@ -186,10 +194,12 @@ Item {
   }
 
   function runBlank() {
-    // Tracking was already frozen back in beginLock(), holding whatever the
-    // keyboard legitimately showed right before this lock session started;
-    // nothing here needs to touch it.
+    // This is the real off, via brightnessctl's own save -- correct
+    // regardless of whether a software or a hardware-driven change is what
+    // the keyboard was showing, so the restore path below can prefer it over
+    // the poll-tracked value once this has actually run.
     keyboardBlanked = true
+    keyboardOffSaved = true
     if (!blankProcess.running) blankProcess.running = true
   }
 
@@ -425,14 +435,20 @@ Item {
     id: wakeProcess
     // Keyboard restore only makes sense if this lock session actually blanked
     // it: otherwise it overwrites the user's current brightness (e.g. set via
-    // a firmware-handled brightness key) with a stale value. And it has to
-    // target the poll-tracked value directly, not brightnessctl's own saved
-    // state: that file is only ever updated by scripts we call ourselves, so
-    // it never learns about a hardware-driven change in the first place.
+    // a firmware-handled brightness key) with a stale value. When the real
+    // off ran (keyboardOffSaved), brightnessctl's own restore is correct --
+    // it saved whatever was actually current, software- or hardware-driven,
+    // at that moment. Otherwise a suspend was merely detected without the
+    // blank timer ever getting a turn, and the poll-tracked value is the
+    // only thing that might still reflect what was showing beforehand.
     command: ["bash", "-c",
       "omarchy-brightness-display on" +
-      (root.keyboardBlanked && root.kbdDeviceName && root.savedKeyboardBrightness >= 0
-        ? ("; brightnessctl -d '" + root.kbdDeviceName + "' set " + root.savedKeyboardBrightness)
+      (root.keyboardBlanked && root.kbdDeviceName
+        ? (root.keyboardOffSaved
+            ? "; omarchy-brightness-keyboard restore"
+            : (root.savedKeyboardBrightness >= 0
+                ? ("; brightnessctl -d '" + root.kbdDeviceName + "' set " + root.savedKeyboardBrightness)
+                : ""))
         : "") +
       "; omarchy-hyprland-monitor-clamshell >/dev/null 2>&1 || true"]
 
