@@ -50,7 +50,7 @@ fi
   fail "workspace layout toggle does not persist a rule without a workspace id"
 pass "workspace layout toggle ignores broken hyprctl output"
 
-HOME="$home_dir" OMARCHY_PATH="$ROOT" lua <<'LUA'
+HOME="$home_dir" OMARCHY_PATH="$ROOT" run_lua_test "saved workspace layouts load into Hyprland configuration" <<'LUA'
 local rules = {}
 
 hl = {
@@ -66,4 +66,3 @@ assert(#rules == 1)
 assert(rules[1].workspace == "3")
 assert(rules[1].layout == "scrolling")
 LUA
-pass "saved workspace layouts load into Hyprland configuration"
