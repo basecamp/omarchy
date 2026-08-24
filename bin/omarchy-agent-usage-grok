@@ -1,0 +1,491 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Grok usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Grok CLI usage into one display-ready JSON record.
+
+Local stats come from the Grok CLI's session update logs at
+`~/.grok/sessions/<cwd>/<session>/updates.jsonl`; the weekly credit meter comes
+from `/v1/billing?format=credits` on the CLI chat proxy. The agents panel only
+ever reads the JSON this prints.
+"""
+
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+AGENT_ID = "grok"
+AGENT_NAME = "Grok"
+AUTH_HELP = "Run `grok login` to authenticate."
+
+# See omarchy-agent-usage-codex for the same reuse contract: a short window
+# just dedups concurrent collector runs; --limits-only reuses the local scan
+# for the panel's refreshLimits() call, so only the billing probe stays hot.
+SCAN_REUSE_SECONDS = 20
+LIMITS_ONLY_REUSE_SECONDS = 900
+
+DEFAULT_BILLING_BASE = "https://cli-chat-proxy.grok.com/v1"
+
+# Grok CLI reports weekly quotas today. Monthly and daily are named for
+# future-proofing; the panel's meter is bar-style either way.
+PERIOD_LABELS = {
+  "USAGE_PERIOD_TYPE_WEEKLY": "Weekly",
+  "USAGE_PERIOD_TYPE_MONTHLY": "Monthly",
+  "USAGE_PERIOD_TYPE_DAILY": "Daily",
+}
+
+
+def grok_home():
+  return Path(os.environ.get("GROK_HOME") or (Path.home() / ".grok"))
+
+
+def billing_base_url():
+  return (os.environ.get("GROK_CLI_CHAT_PROXY_BASE_URL") or DEFAULT_BILLING_BASE).rstrip("/")
+
+
+def cache_root():
+  root = Path(os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")) / "omarchy" / "agent-usage"
+  root.mkdir(parents=True, exist_ok=True)
+  return root
+
+
+def number(value):
+  try:
+    return max(0, int(value or 0))
+  except (TypeError, ValueError):
+    try:
+      return max(0, round(float(value)))
+    except (TypeError, ValueError):
+      return 0
+
+
+def empty_bucket():
+  return {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  }
+
+
+def empty_stats():
+  return {
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTotalTokens": 0,
+    "todayTokensByModel": {},
+    "recentDays": [],
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "activeDays": 0,
+    "activeDates": [],
+    "modelUsage": {},
+  }
+
+
+def local_day(timestamp, mtime=None):
+  raw = timestamp if timestamp is not None else mtime
+  if raw is None:
+    return None
+  try:
+    value = float(raw)
+  except (TypeError, ValueError):
+    return None
+  if value > 10_000_000_000:  # milliseconds
+    value = value / 1000.0
+  try:
+    return datetime.fromtimestamp(value).date().isoformat()
+  except (OverflowError, OSError, ValueError):
+    return None
+
+
+def iter_turn_completed(path):
+  """Yield (usage, day) tuples for each turn_completed update in one session."""
+  try:
+    mtime = path.stat().st_mtime
+  except OSError:
+    mtime = None
+  try:
+    handle = path.open("r", encoding="utf-8", errors="replace")
+  except OSError:
+    return
+  with handle:
+    for line in handle:
+      line = line.strip()
+      if not line:
+        continue
+      try:
+        entry = json.loads(line)
+      except json.JSONDecodeError:
+        continue
+      if not isinstance(entry, dict):
+        continue
+      params = entry.get("params")
+      update = params.get("update") if isinstance(params, dict) else None
+      if not isinstance(update, dict):
+        continue
+      if update.get("sessionUpdate") != "turn_completed":
+        continue
+      usage = update.get("usage")
+      if not isinstance(usage, dict):
+        continue
+      yield usage, local_day(entry.get("timestamp"), mtime)
+
+
+def scan_sessions(sessions_root, today):
+  stats = empty_stats()
+  if not sessions_root.is_dir():
+    return stats
+
+  recent_dates = [
+    (datetime.fromisoformat(today) - timedelta(days=offset)).date().isoformat()
+    for offset in range(6, -1, -1)
+  ]
+  recent = {day: 0 for day in recent_dates}
+  today_by_model = {}
+  model_usage = {}
+  active_dates = set()
+  sessions_touched = set()
+  today_sessions = set()
+  total_prompts = 0
+  today_prompts = 0
+
+  # Layout: ~/.grok/sessions/<url-encoded-cwd>/<session-id>/updates.jsonl
+  for updates_path in sorted(sessions_root.glob("*/*/updates.jsonl")):
+    session_dir = updates_path.parent
+    saw_session = False
+    saw_today = False
+    for usage, day in iter_turn_completed(updates_path):
+      saw_session = True
+      total_prompts += 1
+      per_model = usage.get("modelUsage") if isinstance(usage.get("modelUsage"), dict) else {}
+      if not per_model:
+        # A minimal session that dropped modelUsage still counts toward the
+        # rollup, filed under a generic bucket so the row is not lost.
+        per_model = {"grok": {
+          "inputTokens": usage.get("inputTokens"),
+          "outputTokens": usage.get("outputTokens"),
+          "cachedReadTokens": usage.get("cachedReadTokens"),
+          "cacheCreationTokens": usage.get("cacheCreationTokens"),
+        }}
+      turn_total = 0
+      for raw_model, mstats in per_model.items():
+        if not isinstance(mstats, dict):
+          continue
+        model = str(raw_model or "grok")
+        cached = number(mstats.get("cachedReadTokens"))
+        cache_create = number(mstats.get("cacheCreationTokens"))
+        input_total = number(mstats.get("inputTokens"))
+        # Grok's inputTokens already includes cached reads; split them so the
+        # widget's input/output/cache tooltip lines up with the other
+        # collectors' contract (input = uncached prompt tokens).
+        uncached = max(0, input_total - cached - cache_create)
+        output = number(mstats.get("outputTokens"))
+        bucket = model_usage.setdefault(model, empty_bucket())
+        bucket["inputTokens"] += uncached
+        bucket["outputTokens"] += output
+        bucket["cacheReadInputTokens"] += cached
+        bucket["cacheCreationInputTokens"] += cache_create
+        model_total = uncached + output + cached + cache_create
+        turn_total += model_total
+        if day == today:
+          today_by_model[model] = today_by_model.get(model, 0) + model_total
+      if day:
+        active_dates.add(day)
+        if day in recent:
+          recent[day] += turn_total
+      if day == today:
+        saw_today = True
+        today_prompts += 1
+    if saw_session:
+      sessions_touched.add(session_dir)
+    if saw_today:
+      today_sessions.add(session_dir)
+
+  stats.update({
+    "todayPrompts": today_prompts,
+    "todaySessions": len(today_sessions),
+    "todayTotalTokens": sum(today_by_model.values()),
+    "todayTokensByModel": today_by_model,
+    "recentDays": [{"date": day, "messageCount": recent[day]} for day in recent_dates],
+    "totalPrompts": total_prompts,
+    "totalSessions": len(sessions_touched),
+    "activeDays": len(active_dates),
+    "activeDates": sorted(active_dates),
+    "modelUsage": model_usage,
+  })
+  return stats
+
+
+def scan_cache_paths():
+  # The digest binds the cache to the resolved home so switching users or
+  # $GROK_HOME never hands the collector a stale fixture.
+  digest = hashlib.sha1(str(grok_home()).encode("utf-8")).hexdigest()[:16]
+  root = cache_root()
+  return root / f"grok-scan-{digest}.json", root / f"grok-scan-{digest}.lock"
+
+
+def read_fresh_json(path, max_age_seconds):
+  if max_age_seconds <= 0 or not path.exists():
+    return None
+  try:
+    age = time.time() - path.stat().st_mtime
+    if 0 <= age <= max_age_seconds:
+      return json.loads(path.read_text(encoding="utf-8"))
+  except Exception:
+    return None
+  return None
+
+
+def write_json(path, payload):
+  # A per-writer temp name; two collectors running at once (updater + panel)
+  # would otherwise trip over a shared temp path on the second replace.
+  handle_fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+  tmp = Path(tmp_name)
+  try:
+    with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+      handle.write(json.dumps(payload, separators=(",", ":")) + "\n")
+    tmp.chmod(0o644)
+    tmp.replace(path)
+  except BaseException:
+    tmp.unlink(missing_ok=True)
+    raise
+
+
+def read_cached_stats(cache_file, max_age_seconds, today):
+  cached = read_fresh_json(cache_file, max_age_seconds)
+  if not isinstance(cached, dict) or cached.get("schemaVersion") != 1:
+    return None
+  # today* fields only mean "today" on the day they were written.
+  if cached.get("scanDate") != today:
+    return None
+  stats = cached.get("stats")
+  if not isinstance(stats, dict):
+    return None
+  if not all(key in stats for key in ("todayPrompts", "todayTotalTokens", "recentDays", "activeDates", "modelUsage")):
+    return None
+  return stats
+
+
+def write_cached_stats(cache_file, today, stats):
+  try:
+    write_json(cache_file, {"schemaVersion": 1, "scanDate": today, "stats": stats})
+  except Exception as exc:
+    print(f"omarchy-agent-usage-grok: could not write usage cache ({exc})", file=sys.stderr)
+
+
+def cached_local_stats(max_age, today):
+  try:
+    return _cached_local_stats(max_age, today)
+  except Exception as exc:
+    print(f"omarchy-agent-usage-grok: cache unavailable ({exc}); scanning directly", file=sys.stderr)
+    return scan_sessions(grok_home() / "sessions", today)
+
+
+def _cached_local_stats(max_age, today):
+  cache_file, lock_file = scan_cache_paths()
+
+  cached = read_cached_stats(cache_file, max_age, today)
+  if cached is not None:
+    return cached
+
+  with lock_file.open("w") as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    cached = read_cached_stats(cache_file, max_age, today)
+    if cached is not None:
+      return cached
+    stats = scan_sessions(grok_home() / "sessions", today)
+    write_cached_stats(cache_file, today, stats)
+    return stats
+
+
+class GrokAuthError(Exception):
+  """Raised when the bearer cannot be used against the billing API."""
+
+
+class GrokBillingClient:
+  """Minimal client for the CLI chat proxy billing endpoint."""
+
+  def __init__(self, token, base_url):
+    self.token = token
+    self.base_url = base_url.rstrip("/")
+
+  def credits(self):
+    request = urllib.request.Request(
+      f"{self.base_url}/billing?format=credits",
+      headers={
+        "Authorization": f"Bearer {self.token}",
+        "Accept": "application/json",
+        "x-grok-client-mode": "cli",
+      },
+    )
+    try:
+      with urllib.request.urlopen(request, timeout=10) as response:
+        payload = json.load(response)
+    except urllib.error.HTTPError as error:
+      if error.code == 401:
+        raise GrokAuthError("Grok session expired")
+      if error.code == 403:
+        raise GrokAuthError("Grok billing scope denied")
+      raise GrokAuthError(f"Grok billing returned HTTP {error.code}")
+    except (urllib.error.URLError, TimeoutError) as error:
+      raise GrokAuthError("Could not reach the Grok billing API") from error
+    except (json.JSONDecodeError, OSError):
+      raise GrokAuthError("Grok returned an invalid billing response")
+    if not isinstance(payload, dict):
+      raise GrokAuthError("Grok returned an invalid billing response")
+    config = payload.get("config")
+    return config if isinstance(config, dict) else None
+
+
+def read_auth(auth_path):
+  """Return (bearer_token, tier_label, expired) from `~/.grok/auth.json`."""
+  if not auth_path.is_file():
+    return "", "Grok", False
+  try:
+    parsed = json.loads(auth_path.read_text(encoding="utf-8"))
+  except (OSError, json.JSONDecodeError):
+    return "", "Grok", False
+  if not isinstance(parsed, dict) or not parsed:
+    return "", "Grok", False
+  # Prefer the first oidc entry so an old api-key entry never masks a live
+  # login. Users rarely have more than one either way.
+  candidates = [value for value in parsed.values() if isinstance(value, dict)]
+  entry = next((value for value in candidates if str(value.get("auth_mode") or "").lower() == "oidc"), None)
+  entry = entry or (candidates[0] if candidates else {})
+  token = str(entry.get("key") or "").strip()
+  auth_mode = str(entry.get("auth_mode") or "").lower()
+  tier = "grok.com" if auth_mode == "oidc" else ("xAI API" if token else "Grok")
+  expired = False
+  expires_at = str(entry.get("expires_at") or "").strip()
+  if expires_at:
+    try:
+      parsed_expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+      if parsed_expiry.tzinfo is None:
+        parsed_expiry = parsed_expiry.replace(tzinfo=timezone.utc)
+      expired = parsed_expiry < datetime.now(timezone.utc)
+    except ValueError:
+      expired = False
+  return token, tier, expired
+
+
+def credentials(auth_path):
+  """Resolve (token, tier, statusText, helpText) from disk auth + env vars."""
+  env_key = str(os.environ.get("XAI_API_KEY") or "").strip()
+  disk_token, disk_tier, expired = read_auth(auth_path)
+  if env_key:
+    # A bare API key wins over disk auth so users can point the collector at a
+    # different account without disturbing their signed-in CLI.
+    return env_key, "xAI API", "", ""
+  if not disk_token:
+    return "", disk_tier, "Grok signed out", AUTH_HELP
+  if expired:
+    return disk_token, disk_tier, "Grok session expired", AUTH_HELP
+  return disk_token, disk_tier, "", ""
+
+
+def limits_from_billing(config):
+  """Translate the billing config into the widget's limits schema."""
+  limits = []
+  period = config.get("currentPeriod") if isinstance(config.get("currentPeriod"), dict) else {}
+  label = PERIOD_LABELS.get(str(period.get("type") or ""), "Period")
+  try:
+    percent = max(0.0, min(1.0, float(config.get("creditUsagePercent") or 0) / 100.0))
+  except (TypeError, ValueError):
+    percent = 0.0
+  resets_at = str(period.get("end") or config.get("billingPeriodEnd") or "").strip()
+  limits.append({"label": label, "percent": percent, "resetsAt": resets_at})
+
+  cap = 0
+  used = 0
+  try:
+    cap = int((config.get("onDemandCap") or {}).get("val") or 0)
+    used = int((config.get("onDemandUsed") or {}).get("val") or 0)
+  except (TypeError, ValueError):
+    pass
+  if cap > 0:
+    limits.append({
+      "label": "On-demand",
+      "percent": max(0.0, min(1.0, used / cap)),
+      "resetsAt": resets_at,
+    })
+  return limits
+
+
+def scan(max_age, limits_only=False, client_cls=GrokBillingClient):
+  today = datetime.now().astimezone().date().isoformat()
+  token, tier, status_text, help_text = credentials(grok_home() / "auth.json")
+
+  stats = empty_stats() if limits_only else cached_local_stats(max_age, today)
+  has_local = stats["totalPrompts"] > 0
+
+  limits = []
+  if token and not status_text:
+    try:
+      config = client_cls(token, billing_base_url()).credits()
+      if config:
+        limits = limits_from_billing(config)
+    except GrokAuthError as error:
+      status_text = str(error) or "Billing unavailable"
+      if "expired" in status_text.lower():
+        help_text = AUTH_HELP
+
+  record = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "ready": bool(token) or has_local,
+    "hasLocalStats": has_local,
+    "tierLabel": tier,
+    "usageStatusText": status_text,
+    "authHelpText": help_text,
+    "limits": limits,
+  }
+  record.update(stats)
+  return record
+
+
+def main():
+  parser = argparse.ArgumentParser(description="Print the Grok usage record as JSON")
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  args = parser.parse_args()
+
+  max_age = 0 if args.force else (LIMITS_ONLY_REUSE_SECONDS if args.limits_only else SCAN_REUSE_SECONDS)
+
+  try:
+    record = scan(max_age, limits_only=args.limits_only)
+  except Exception as error:
+    # An unexpected crash still has to leave a valid record: the update runner
+    # rejects anything that is not JSON, and the panel deserves a signal, not
+    # a silent gap.
+    record = {
+      "schemaVersion": 1,
+      "id": AGENT_ID,
+      "name": AGENT_NAME,
+      "updatedAt": datetime.now(timezone.utc).isoformat(),
+      "ready": False,
+      "hasLocalStats": False,
+      "tierLabel": "Grok",
+      "usageStatusText": "Grok usage scan failed",
+      "authHelpText": AUTH_HELP,
+      "limits": [],
+    }
+    record.update(empty_stats())
+    print(f"omarchy-agent-usage-grok: {type(error).__name__}: {error}", file=sys.stderr)
+
+  print(json.dumps(record, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+  main()
