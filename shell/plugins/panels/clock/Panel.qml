@@ -64,10 +64,9 @@ Panel {
   // convention. Clicking the grid's "W" heading writes the choice back to
   // shell.json.
   readonly property int weekStart: Model.normalizedWeekStart(setting("weekStartDay", null), Qt.locale().firstDayOfWeek)
-  // The interface is English throughout, so day names are not taken from the
-  // system locale. Where the week starts still is: that is a regional
-  // convention rather than a translation, and it stays overridable above.
-  readonly property var labelLocale: Qt.locale("en_US")
+  // Weekday and month names follow the system locale, matching the bar
+  // clock's own locale-aware formatting.
+  readonly property var labelLocale: Qt.locale()
   readonly property string nextWeekStartLabel: labelLocale.dayName(Model.toggledWeekStart(weekStart), Locale.LongFormat)
   readonly property var weekdays: Model.weekdayOrder(weekStart)
   readonly property var weeks: Model.monthGrid(viewYear, viewMonth, weekStart, todayKey)
@@ -217,9 +216,10 @@ Panel {
     setWeekStart(Model.toggledWeekStart(root.weekStart))
   }
 
-  // English short day names, matching the rest of the interface.
+  // Short day names in the system locale, with locale-aware casing so
+  // languages with special casing rules (e.g. Turkish) render correctly.
   function weekdayLabel(weekday) {
-    return String(labelLocale.dayName(weekday, Locale.ShortFormat)).toUpperCase()
+    return String(labelLocale.dayName(weekday, Locale.ShortFormat)).toLocaleUpperCase()
   }
 
   SystemClock {

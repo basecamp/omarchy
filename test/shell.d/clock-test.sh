@@ -214,6 +214,9 @@ assert(/width: Math\.max\(calendarScroll\.width, gridColumn\.width\)/.test(panel
 assert(/enabled: !root\.viewingCurrentMonth/.test(panelSource) && /onClicked: root\.goToToday\(\)/.test(panelSource), 'calendar hero returns to today once the view has stepped away')
 assert(!/clampMonth/.test(panelSource), 'calendar steps freely into future months')
 assert(/root\.today\.toLocaleDateString\(Qt\.locale\(\), "MMMM d"\)/.test(panelSource), 'calendar hero spells out today in the system locale')
+assert(/root\.viewDate\.toLocaleDateString\(Qt\.locale\(\), "MMMM yyyy"\)\.toLocaleUpperCase\(\)/.test(panelSource), 'calendar month label spells out the month in the system locale')
+assert(/labelLocale: Qt\.locale\(\)/.test(panelSource), 'calendar weekday grid headers follow the system locale')
+assert(/labelLocale\.dayName\(weekday, Locale\.ShortFormat\)\)\.toLocaleUpperCase\(\)/.test(panelSource), 'calendar weekday grid headers use locale-aware casing')
 assert(/id: yearLabel/.test(panelSource) && /root\.yearDone/.test(panelSource), 'calendar panel shows the year progress bar')
 
 // The memento mori bar is opt-in: double-tapping the year bar asks for an age,
