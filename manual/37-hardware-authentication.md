@@ -6,6 +6,8 @@ A lot of laptops come with a fingerprint sensor to do authentication. You can us
 
 That'll install the fingerprint package, collect your print, verify it, and you'll be set to go using your fingerprint to unlock from the lock screen (which you can trigger with `Super + Ctrl + L`), enter sudo mode, and authorize system prompts.
 
+Some Goodix readers found in Dell laptops (the 53xc family) have no open-source driver, so nothing in the stock fingerprint stack can talk to them. When setup detects one of those, it explains the situation and offers to install the proprietary driver Dell ships for Linux. That driver is closed source, which is why Omarchy asks before installing it. These sensors also read a finger that is pressed onto them rather than swiped: lay your finger flat and hold it still until each enrollment stage completes, and give the sensor a break if it reports that it has disabled itself to prevent overheating.
+
 When your laptop lid is closed, the fingerprint prompt is automatically skipped, so you go straight to the password prompt instead of waiting on a sensor you can't reach. If you otherwise need to work on an external keyboard that doesn't have a sensor, just hit `CTRL + C`, when you're prompted for your fingerprint during `sudo`.
 
 You can remove the fingerprint authentication under _Remove > Security > Fingerprint_ in the Omarchy menu.
