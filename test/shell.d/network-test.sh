@@ -75,6 +75,66 @@ assert(
 )
 assert(!/wifiDevice\.scannerEnabled\s*=/.test(panelSource), 'network writes scanner state through its owned device reference rather than the moving wifiDevice reference')
 
+// Access-point scans can add, remove, and reorder rows several times per
+// second. Once credential entry is open, keep the rendered row snapshot fixed
+// while still checking the live objects for connection completion.
+const syncWifiFn = panelSource.match(/function syncWifiNetworks\(\) \{[\s\S]*?\n {2}\}/)
+assert(syncWifiFn, 'network has a wifi snapshot synchronization function')
+assert(
+  /if \(passwordSsid !== ""\) return\s*wifiNetworks = Model\.sortWifiRows\(nets\)/.test(syncWifiFn[0]),
+  'network defers scan-driven row updates while credential entry is open'
+)
+assert(
+  /checkActionCompletion\(network\)[\s\S]*if \(passwordSsid !== ""\) return/.test(syncWifiFn[0]),
+  'network keeps checking live connection completion while its visible rows are frozen'
+)
+
+var Model = network
+var wifiNetworkObjects = [
+  { connected: false, known: false, name: 'Cafe', signalStrength: 0.4, security: 3 },
+  { connected: false, known: false, name: 'New arrival', signalStrength: 0.9, security: 3 },
+]
+var wifiDevice = {}
+var wifiNetworks = [{ connected: false, known: false, ssid: 'Cafe', signal: 40, security: 3 }]
+var passwordSsid = 'Cafe'
+var wifiStationAvailable = false
+var scanning = true
+var completionChecks = 0
+function checkActionCompletion() { completionChecks += 1 }
+eval(syncWifiFn[0])
+
+syncWifiNetworks()
+assertDeepEqual(wifiNetworks.map(row => row.ssid), ['Cafe'], 'network keeps the visible row snapshot fixed during credential entry')
+assertEqual(completionChecks, 2, 'network checks each live row while the visible snapshot is fixed')
+assertEqual(scanning, false, 'network still completes scan state while the visible snapshot is fixed')
+
+passwordSsid = ''
+syncWifiNetworks()
+assertDeepEqual(wifiNetworks.map(row => row.ssid), ['New arrival', 'Cafe'], 'network publishes the latest sorted scan after credential entry')
+assert(
+  /onPasswordSsidChanged:[\s\S]*Qt\.callLater[\s\S]*syncWifiNetworks\(\)[\s\S]*keyCatcher\.forceActiveFocus/.test(panelSource),
+  'network publishes the deferred scan and restores navigation after credential entry closes'
+)
+assert(/property bool passwordVisible: false/.test(panelSource), 'network keeps password visibility explicit and hidden by default')
+assert(/password: !root\.passwordVisible/.test(panelSource), 'network binds passphrase masking to the visibility control')
+assert(/tooltipText: root\.passwordVisible \? "Hide password" : "Show password"/.test(panelSource), 'network labels the password visibility action')
+assert(
+  /id: revealPwBtn[\s\S]*onClicked: \{[\s\S]*passwordVisible = !root\.passwordVisible[\s\S]*pwField\.forceActiveFocus/.test(panelSource),
+  'network exposes a password visibility toggle and returns focus to credential entry'
+)
+assert(
+  /id: idField[\s\S]*anchors\.right: parent\.right[\s\S]*id: pwField[\s\S]*anchors\.right: revealPwBtn\.left/.test(panelSource),
+  'enterprise identity keeps its full row while passphrase actions stay on the passphrase row'
+)
+assert(
+  /id: revealPwBtn[\s\S]*anchors\.verticalCenter: pwField\.verticalCenter[\s\S]*id: connectPwBtn[\s\S]*anchors\.verticalCenter: pwField\.verticalCenter/.test(panelSource),
+  'password visibility and connect actions align with the passphrase field'
+)
+assert(
+  /function cancelPasswordPrompt\(\)[\s\S]*passwordVisible = false/.test(panelSource),
+  'network hides the password again whenever credential entry is cancelled'
+)
+
 // A row is a primitive snapshot that can outlive its WifiNetwork, and
 // disconnect() falls back to the live connection when handed null, so row
 // activation must go through the guarded disconnectRow().
