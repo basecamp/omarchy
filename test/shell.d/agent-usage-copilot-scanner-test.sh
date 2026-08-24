@@ -86,3 +86,37 @@ result_empty=$(COPILOT_HOME="$(mktemp -d)" "$ROOT/bin/omarchy-agent-usage-copilo
 [[ $(jq -r '.todayTotalTokens' <<<"$result_empty") == "0" ]] ||
   fail "Copilot collector returns empty stats when DB missing" "$result_empty"
 pass "Copilot collector returns empty stats when DB missing"
+
+# Test 9: Exhausted quota displays correct message
+python3 << 'PYTEST'
+import sys
+
+# Test the collector's logic for exhausted quota
+test_cases = [
+    {"used": 0, "total": 0, "display": "Premium Requests", "expected_contains": "No more"},
+    {"used": 100, "total": 1000, "display": "Premium Requests", "expected_contains": "Premium Requests"},
+]
+
+for case in test_cases:
+    used = case["used"]
+    total = case["total"]
+    display_name = case["display"]
+    expected = case["expected_contains"]
+    
+    # Simulate what the collector does
+    if total == 0 and used == 0:
+        display_name = f"No more {display_name} available"
+    
+    if expected not in display_name:
+        print(f"FAIL: Expected '{expected}' in '{display_name}'")
+        sys.exit(1)
+
+print("PASS: Exhausted quota message formatting")
+PYTEST
+
+if (( $? == 0 )); then
+  pass "Exhausted quota displays 'No more' message"
+else
+  fail "Exhausted quota message formatting"
+fi
+

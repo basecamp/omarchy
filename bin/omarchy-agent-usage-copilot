@@ -111,11 +111,14 @@ def fetch_quota(token: str) -> dict[str, Any] | None:
             if snapshot.get("has_quota"):
               used = snapshot.get("credits_used", 0)
               total = snapshot.get("entitlement", 0)
+              display_name = QUOTA_DISPLAY_NAMES.get(quota_key, quota_key)
               result = {
-                "displayName": QUOTA_DISPLAY_NAMES.get(quota_key, quota_key),
+                "displayName": display_name,
                 "used": used,
                 "total": total,
               }
+              if total == 0 and used == 0:
+                result["displayName"] = f"No more {display_name} available"
               if "quota_reset_date_utc" in data:
                 result["resetsAt"] = data["quota_reset_date_utc"]
               return result
