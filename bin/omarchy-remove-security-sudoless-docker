@@ -13,8 +13,13 @@ fi
 echo "Removing $USER from the docker group..."
 sudo gpasswd -d "$USER" docker >/dev/null
 
+# Group membership is fixed at login, so the running session keeps its docker
+# access until it ends. Flag a reboot so omarchy-update-restart prompts for one
+# (and the bar shows it pending); a plain log out and back in works too.
+omarchy-state set reboot-required
+
 echo ""
-echo "Sudoless Docker DISABLED. Log out and back in for the change to take effect."
+echo "Sudoless Docker DISABLED. Reboot (or log out and back in) for the change to take effect."
 echo "Docker access now goes through a polkit/sudo prompt again: the Docker TUI"
 echo "(Super + Shift + D) and the Windows VM will ask when they need it, and the"
 echo "plain 'docker' CLI runs under sudo."
