@@ -186,11 +186,16 @@ file belongs to whoever created it first, so honouring it would let one user
 silence another user's notification. Missing an update and showing a redundant
 toast is the better failure.
 
-Suppression is why `omarchy-update-stay-awake` starts its sleep inhibitor with
-the lock descriptor closed. That inhibitor outlives the step that starts it, so
-an update killed before cleanup would otherwise leave it holding the flock
-indefinitely — blocking later updates and, now that the notifier reads the same
-lock, silencing migration notifications at every login.
+`omarchy-update-lock run` keeps the flock in the wrapper process and runs the
+update with that descriptor closed. AUR children that daemonize (Flutter's `adb`
+is the one that showed up in the wild) would otherwise inherit the flock, survive
+the update, and make every later `omarchy update` report that one is already
+running. `omarchy-update-stay-awake` still starts its sleep inhibitor with the
+lock descriptor closed when it has one, for the same reason: that inhibitor
+outlives the step that starts it, so an update killed before cleanup would
+otherwise leave it holding the flock indefinitely — blocking later updates and,
+now that the notifier reads the same lock, silencing migration notifications at
+every login.
 
 Fallbacks:
 

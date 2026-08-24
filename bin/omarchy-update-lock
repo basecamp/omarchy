@@ -9,14 +9,12 @@ set -e
 lock_dir="${XDG_RUNTIME_DIR:-/tmp}"
 lock_path="$lock_dir/omarchy-update.lock"
 
+# The wrapper process holds the flock. The command runs with the descriptor
+# closed, so AUR daemons that outlive the update (Flutter's adb, for example)
+# cannot keep the lock after we exit. held() is an env flag set only for that
+# child, which is how omarchy-update knows not to acquire the lock a second time.
 lock_is_held() {
-  local lock_fd_path=""
-
-  [[ -n ${OMARCHY_UPDATE_LOCK_FD:-} && -e /proc/$$/fd/$OMARCHY_UPDATE_LOCK_FD ]] || return 1
-
-  lock_fd_path=$(readlink -f "/proc/$$/fd/$OMARCHY_UPDATE_LOCK_FD" 2>/dev/null || true)
-  [[ $lock_fd_path == "$(readlink -m "$lock_path")" ]] &&
-    flock -n "$OMARCHY_UPDATE_LOCK_FD"
+  [[ ${OMARCHY_UPDATE_LOCKED:-} == "1" ]]
 }
 
 case "${1:-}" in
@@ -37,8 +35,8 @@ case "${1:-}" in
       exit 1
     fi
 
-    export OMARCHY_UPDATE_LOCK_FD
-    exec "$@"
+    export OMARCHY_UPDATE_LOCKED=1
+    "$@" {OMARCHY_UPDATE_LOCK_FD}>&-
     ;;
   *)
     echo "Usage: omarchy-update-lock <held|run> [command] [args...]" >&2
