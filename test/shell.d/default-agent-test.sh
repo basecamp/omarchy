@@ -307,6 +307,7 @@ declare -A expected_agents=(
   [gemini-cli]="agy"
   [copilot]="copilot"
   [github-copilot]="copilot"
+  [devin]="devin"
 )
 
 declare -A expected_packages=(
@@ -322,15 +323,26 @@ declare -A expected_packages=(
   [copilot]="copilot"
 )
 
+# Devin ships its own installer and is not available through mise, so the
+# default-agent script skips the mise install/activate flow for it.
+declare -A skip_mise_agents=(
+  [devin]=1
+)
+
 for selection in "${!expected_agents[@]}"; do
   expected=${expected_agents[$selection]}
   : >"$agent_open_log"
+  : >"$mise_log"
   OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent "$selection"
   [[ $(omarchy-default-agent) == $expected ]] || fail "default agent canonicalizes $selection"
 
-  mapfile -d '' -t mise_args <"$mise_log"
-  [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == ${expected_packages[$expected]} ]] ||
-    fail "default agent installs $selection globally through mise"
+  if [[ -z ${skip_mise_agents[$expected]:-} ]]; then
+    mapfile -d '' -t mise_args <"$mise_log"
+    [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == ${expected_packages[$expected]} ]] ||
+      fail "default agent installs $selection globally through mise"
+  else
+    [[ ! -s $mise_log ]] || fail "default agent skips mise for $selection"
+  fi
 
   mapfile -d '' -t agent_open_args <"$agent_open_log"
   [[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||
@@ -464,6 +476,7 @@ assert_launch crush crush run "Review this project"
 assert_launch grok grok --permission-mode bypassPermissions -- "Review this project"
 assert_launch agy agy --dangerously-skip-permissions --prompt-interactive "Review this project"
 assert_launch copilot copilot --allow-all --interactive "Review this project"
+assert_launch devin devin --permission-mode dangerous --respect-workspace-trust false -- "Review this project"
 pass "agent launcher adapts initial prompts for every supported agent"
 
 assert_bypass pi pi
@@ -476,6 +489,7 @@ assert_bypass crush crush --yolo
 assert_bypass grok grok --permission-mode bypassPermissions
 assert_bypass agy agy --dangerously-skip-permissions
 assert_bypass copilot copilot --allow-all
+assert_bypass devin devin --permission-mode dangerous --respect-workspace-trust false
 pass "agent launcher skips permission prompts for every supported agent"
 
 printf '%s\n' "opencode" >"$agent_file"
