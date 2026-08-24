@@ -45,9 +45,9 @@ assert_input() {
   local actual
 
   if (( $# > 2 )); then
-    actual=$(resolved_input "$3")
+    actual=$(resolved_input "$3") || fail "$description" "the Lua script failed"
   else
-    actual=$(resolved_input)
+    actual=$(resolved_input) || fail "$description" "the Lua script failed"
   fi
 
   [[ $actual == "$expected" ]] ||

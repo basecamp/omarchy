@@ -78,21 +78,14 @@ require_compositor() {
 
 # Run a Lua script supplied on stdin, passing its stdout through.
 #
-# `lua` reading a script from stdin exits 0 even when that script raises, so
-# `lua <<'LUA'` silently discards every failure: a failed assert leaves the
+# `lua` with no script argument reads stdin but discards the chunk's status, so
+# `lua <<'LUA'` silently swallows every failure: a failed assert leaves the
 # following pass() reporting success, and a script that dies half way returns
 # partial output that the caller compares against as if it were complete.
-# Running the script from a file is where the interpreter propagates the error.
+# Naming stdin explicitly as the script -- `lua -` -- runs the same chunk down
+# the path that does report the error.
 lua_script() {
-  local dir status
-  dir=$(mktemp -d)
-  cat >"$dir/script.lua"
-
-  lua "$dir/script.lua"
-  status=$?
-  rm -rf "$dir"
-
-  return $status
+  lua -
 }
 
 # Run a Lua script supplied on stdin and report it as a single assertion.
