@@ -31,8 +31,10 @@ touch "$existing_cache/xdg-terminal-exec"
 
 run_migration "$existing_home" "$existing_cache"
 
-[[ $(grep -cE '^[[:space:]]*gtk-single-instance[[:space:]]*=[[:space:]]*false[[:space:]]*$' "$existing_config") == 1 ]] ||
+single_false=$(grep -cE '^[[:space:]]*gtk-single-instance[[:space:]]*=[[:space:]]*false[[:space:]]*$' "$existing_config" || true)
+if (( single_false != 1 )); then
   fail "migration adds the multi-process default to an existing Ghostty config"
+fi
 cmp -s "$ROOT/default/ghostty/com.mitchellh.ghostty.desktop" "$existing_desktop" ||
   fail "migration installs Omarchy's Ghostty desktop entry"
 [[ ! -e $existing_cache/xdg-terminal-exec ]] ||
