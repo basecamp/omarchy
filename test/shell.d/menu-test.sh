@@ -642,12 +642,18 @@ assertEqual(menu.webSearchLooksLikeUrl('example.com/page'), true, 'web search tr
 assertEqual(menu.webSearchLooksLikeUrl('https://x.com'), true, 'web search keeps a scheme as a URL')
 assertEqual(menu.webSearchLooksLikeUrl('localhost'), true, 'web search treats localhost as a URL')
 assertEqual(menu.webSearchLooksLikeUrl('localhost:3000'), true, 'web search treats localhost with a port as a URL')
+assertEqual(menu.webSearchLooksLikeUrl('mailto:x@y.com'), true, 'web search treats a non-http scheme as a URL')
+assertEqual(menu.webSearchLooksLikeUrl('localhost#frag'), true, 'web search treats a localhost fragment as a URL')
 
 assertEqual(menu.webSearchTarget('hola'), 'https://www.google.com/search?q=hola', 'web search builds a Google query for plain text')
 assertEqual(menu.webSearchTarget('hola mundo'), 'https://www.google.com/search?q=hola%20mundo', 'web search URL-encodes the query')
 assertEqual(menu.webSearchTarget('hola.com'), 'https://hola.com', 'web search adds https to a bare domain')
 assertEqual(menu.webSearchTarget('https://x.com'), 'https://x.com', 'web search keeps an explicit scheme')
 assertEqual(menu.webSearchTarget('localhost:3000'), 'http://localhost:3000', 'web search uses http for localhost')
+assertEqual(menu.webSearchTarget('mailto:x@y.com'), 'mailto:x@y.com', 'web search keeps a non-http scheme')
+assertEqual(menu.webSearchTarget('chrome:settings'), 'chrome:settings', 'web search keeps a custom scheme')
+assertEqual(menu.webSearchTarget('localhost#frag'), 'http://localhost#frag', 'web search uses http for a localhost fragment')
+assertEqual(menu.webSearchTarget('example.com:8080'), 'example.com:8080', 'web search keeps a host with a port')
 assertEqual(menu.webSearchTarget('hola', 'https://duckduckgo.com/?q={searchTerms}'), 'https://duckduckgo.com/?q=hola', 'web search honors a custom template')
 JS
 

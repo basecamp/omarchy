@@ -495,7 +495,7 @@ function webSearchLooksLikeUrl(query) {
   // A space reads as search, matching the browser omnibox: URLs do not
   // carry raw whitespace.
   if (!q || /\s/.test(q)) return false
-  return q.indexOf("://") >= 0 || q.indexOf(".") >= 0 || /^localhost([/:]|$)/i.test(q)
+  return /^[a-z][a-z0-9+.-]*:/i.test(q) || q.indexOf(".") >= 0 || /^localhost([:/?#]|$)/i.test(q)
 }
 
 // Turn a menu-search query into the URL to open: a bare URL (with a scheme
@@ -506,8 +506,8 @@ function webSearchTarget(query, template) {
   var q = String(query || "").trim()
   if (!q) return ""
   if (webSearchLooksLikeUrl(q)) {
-    if (q.indexOf("://") >= 0) return q
-    if (/^localhost([/:]|$)/i.test(q)) return "http://" + q
+    if (/^localhost([:/?#]|$)/i.test(q)) return "http://" + q
+    if (/^[a-z][a-z0-9+.-]*:/i.test(q)) return q
     return "https://" + q
   }
   var tpl = String(template || "https://www.google.com/search?q={searchTerms}")
