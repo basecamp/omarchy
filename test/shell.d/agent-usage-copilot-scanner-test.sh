@@ -40,7 +40,7 @@ INSERT INTO assistant_usage_events VALUES
   ('session-2', 0, datetime('now'), 120, 60, 15, 3, 'gpt-4o');
 EOF
 
-result=$(COPILOT_HOME="$TEST_HOME/.copilot" "$ROOT/bin/omarchy-agent-usage-copilot")
+result=$(HOME="$TEST_HOME" COPILOT_HOME="$TEST_HOME/.copilot" "$ROOT/bin/omarchy-agent-usage-copilot")
 
 # Test 1: Collector identifies itself
 [[ $(jq -r '.id' <<<"$result") == "copilot" ]] ||
@@ -82,7 +82,7 @@ pass "Copilot collector reports active days"
 pass "Copilot collector emits correct schema"
 
 # Test 8: Without database, returns empty stats
-result_empty=$(COPILOT_HOME="$(mktemp -d)" "$ROOT/bin/omarchy-agent-usage-copilot")
+result_empty=$(HOME="$(mktemp -d)" COPILOT_HOME="$(mktemp -d)" "$ROOT/bin/omarchy-agent-usage-copilot")
 [[ $(jq -r '.todayTotalTokens' <<<"$result_empty") == "0" ]] ||
   fail "Copilot collector returns empty stats when DB missing" "$result_empty"
 pass "Copilot collector returns empty stats when DB missing"
