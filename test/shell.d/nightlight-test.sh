@@ -86,6 +86,46 @@ nightlight_cli >/dev/null
 [[ $(<"$STATE") == 6500 ]] || fail "nightlight toggle restores daylight from night light"
 pass "nightlight toggle restores daylight from night light"
 
+# The indicator and --status call anything at or above identity daylight, so the
+# toggle has to warm those too. Comparing against one exact daylight value left
+# a band -- a hyprsunset started with its own -t, another tool setting one, a
+# gradual transition caught part way -- where the indicator read off and the
+# first press did nothing the user could see.
+toggle_from() {
+  printf '%s\n' "$1" >"$STATE"
+  nightlight_cli >/dev/null
+  cat "$STATE"
+}
+
+for daylight in 6000 6200 6499; do
+  [[ $(nightlight_status "$daylight" | jq -r .enabled) == "false" ]] ||
+    fail "nightlight status reports ${daylight}K as disabled"
+  landed=$(toggle_from "$daylight")
+  [[ $landed == 4000 ]] ||
+    fail "nightlight toggle warms the screen from ${daylight}K" "landed on $landed"
+done
+pass "nightlight toggle warms the screen from any temperature the indicator calls off"
+
+# And the other direction stays intact: anything the indicator calls on goes
+# back to daylight in one press.
+for warm in 3000 4000 5999; do
+  [[ $(nightlight_status "$warm" | jq -r .enabled) == "true" ]] ||
+    fail "nightlight status reports ${warm}K as enabled"
+  landed=$(toggle_from "$warm")
+  [[ $landed == 6500 ]] ||
+    fail "nightlight toggle restores daylight from ${warm}K" "landed on $landed"
+done
+pass "nightlight toggle restores daylight from any temperature the indicator calls on"
+
+# One press is always the inverse of what the indicator shows, which is the
+# property the two halves have to share.
+grep -F 'IDENTITY_TEMP' "$ROOT/bin/omarchy-toggle-nightlight" >/dev/null ||
+  fail "nightlight toggle decides on the identity threshold"
+if grep -F '$CURRENT_TEMP == $OFF_TEMP' "$ROOT/bin/omarchy-toggle-nightlight" >/dev/null; then
+  fail "nightlight toggle does not decide on one exact daylight value"
+fi
+pass "nightlight toggle and indicator share the identity threshold"
+
 if rg -q 'omarchy.indicators' "$ROOT/bin/omarchy-toggle-nightlight"; then
   fail "nightlight toggle leaves indicator refresh to the nightlight service"
 fi

@@ -42,7 +42,13 @@ fi
 # Query the current temperature
 CURRENT_TEMP=$(current_temp)
 
-if [[ -z $CURRENT_TEMP || $CURRENT_TEMP == $OFF_TEMP ]]; then
+# Toggle against the same threshold status_json reports, not against one exact
+# daylight value. Any temperature that is neither exactly $OFF_TEMP nor below
+# identity -- a hyprsunset started with its own -t, another tool setting one, a
+# gradual transition caught part way -- reads as off in the indicator while the
+# toggle treats it as on and "turns it off", so the first press does nothing the
+# user can see and night light needs two.
+if [[ -z $CURRENT_TEMP ]] || (( CURRENT_TEMP >= IDENTITY_TEMP )); then
   TARGET_TEMP=$ON_TEMP
 else
   TARGET_TEMP=$OFF_TEMP
