@@ -5,8 +5,40 @@ function isChromiumDerived(app, appIcon) {
          source.indexOf("opera") >= 0
 }
 
+function decodeHtmlEntities(text) {
+  var s = String(text || "")
+  s = s.replace(/&#(\d+);/g, function(_, d) {
+    var code = parseInt(d, 10)
+    return isFinite(code) ? String.fromCharCode(code) : _
+  })
+  s = s.replace(/&#x([0-9a-fA-F]+);/g, function(_, h) {
+    var code = parseInt(h, 16)
+    return isFinite(code) ? String.fromCharCode(code) : _
+  })
+  var entities = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&apos;": "'", "&#39;": "'" }
+  var prev
+  do {
+    prev = s
+    for (var k in entities) s = s.split(k).join(entities[k])
+  } while (s !== prev)
+  return s
+}
+
+function normalizeBrTags(text) {
+  return String(text || "")
+    .replace(/&amp;lt;br\s*\/?&amp;gt;/gi, "\n")
+    .replace(/&lt;br\s*\/?&gt;/gi, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+}
+
 function sanitizeBody(body, app, appIcon) {
   var text = String(body || "").replace(/<img[^>]*>/gi, "")
+  text = normalizeBrTags(text)
+  // Decode entities iteratively so double-encoded payloads (e.g. &amp;quot; or &amp;lt;)
+  // from KDE Connect / Android bridges render as their intended characters
+  // instead of literal &quot; / &lt;br/&gt;. The card's StyledText will
+  // re-encode plain &/</> where needed, so decoding here is safe.
+  text = decodeHtmlEntities(text)
   if (!isChromiumDerived(app, appIcon)) return text
 
   return text
@@ -366,6 +398,8 @@ if (typeof module !== "undefined") {
   module.exports = {
     isChromiumDerived: isChromiumDerived,
     sanitizeBody: sanitizeBody,
+    decodeHtmlEntities: decodeHtmlEntities,
+    normalizeBrTags: normalizeBrTags,
     summaryStartsWithGlyph: summaryStartsWithGlyph,
     shouldBypassDnd: shouldBypassDnd,
     isEphemeralApp: isEphemeralApp,
