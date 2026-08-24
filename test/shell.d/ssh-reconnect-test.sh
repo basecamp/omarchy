@@ -94,11 +94,16 @@ attempts() {
   cat "$fake_dir/count"
 }
 
-disarm=$(printf '\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[?1004l\e[?1049l\e[?25h')
+disarm=$(printf '\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[?1004l\e[?25h')
+leave_alt_screen=$(printf '\e[?1049l')
 
 out=$(run_case "0 255" host)
 [[ $out == *"$disarm"* ]] || fail "stray terminal modes are reset after ssh exits" "$out"
 pass "stray terminal modes are reset after ssh exits"
+
+[[ $out != *"$leave_alt_screen"* ]] ||
+  fail "a session that never established leaves the alternate screen alone" "$out"
+pass "a session that never established leaves the alternate screen alone"
 
 [[ $out == *"rc=255"* ]] && (( $(attempts) == 1 )) ||
   fail "fast connection failure does not reconnect" "$out"
@@ -108,6 +113,10 @@ out=$(run_case $'2 255\n0 0' host)
 [[ $out == *"Connection lost"* ]] && [[ $out == *"rc=0"* ]] && (( $(attempts) == 2 )) ||
   fail "dropped session reconnects" "$out"
 pass "dropped session reconnects"
+
+[[ $out == *"$disarm$leave_alt_screen"* ]] ||
+  fail "a dropped session leaves the alternate screen" "$out"
+pass "a dropped session leaves the alternate screen"
 
 out=$(run_case $'2 255\n0 255\n0 0' host)
 [[ $out == *"rc=0"* ]] && (( $(attempts) == 3 )) ||

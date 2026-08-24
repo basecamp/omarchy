@@ -5,7 +5,7 @@
 # the connection dies instead of exiting cleanly, those modes stay armed on the
 # local terminal, and every mouse move floods the prompt with escape junk.
 ssh() {
-  local rc started
+  local rc started attempt
 
   started=$SECONDS
   command ssh "$@"
@@ -24,6 +24,10 @@ ssh() {
     return $rc
   fi
 
+  # Past here a session was established and then died, so a remote TUI may
+  # still be holding the alternate screen with no way to leave it itself.
+  _ssh_leave_alt_screen
+
   # Retry in a subshell: Ctrl-C reaches the whole foreground process group,
   # so it cancels both the in-flight attempt and the loop itself. Keep
   # retrying fast failures, since a rebooting server refuses connections too.
@@ -31,18 +35,30 @@ ssh() {
     while true; do
       echo "Connection lost. Reconnecting (Ctrl-C to stop)..."
       sleep 2
+      attempt=$SECONDS
       command ssh "$@"
       rc=$?
       _ssh_disarm
+      (( SECONDS - attempt < 30 )) || _ssh_leave_alt_screen
       (( rc != 255 )) && exit $rc
     done
   )
 }
 
 # Disarm mouse tracking (1000/1002/1003, 1006 encoding), focus reporting
-# (1004), and the alternate screen (1049), and show the cursor again.
+# (1004), and show the cursor again. Every sequence here is a plain toggle
+# with no side effect, so it is safe after any ssh.
 _ssh_disarm() {
-  printf '\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[?1004l\e[?1049l\e[?25h'
+  printf '\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[?1004l\e[?25h'
+}
+
+# Leave the alternate screen, for a remote TUI that died with the connection
+# and never left it itself. Sent only on that path, because 1049l also
+# restores the saved cursor and terminals disagree on what that means when no
+# 1049h ever arrived: foot ignores it, ghostty and herdr move the cursor to
+# 1;1, which paints the next prompt over the session output.
+_ssh_leave_alt_screen() {
+  printf '\e[?1049l'
 }
 
 # True for an interactive session: a destination and no remote command. The
