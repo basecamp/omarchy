@@ -35,8 +35,29 @@ assertEqual(
   'Charging',
   'power does not label a stalled pack below the band as Threshold'
 )
-assert(power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: states.Charging, changeRate: 0.1, timeToFull: 120 }, false, states), 'power detects threshold by stalled charging')
-assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: states.Charging, changeRate: 1.0, timeToFull: 120 }, false, states), 'power does not flag active charging as threshold')
+assert(power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: states.Charging, changeRate: 0.1, timeToFull: 120 }, false, states, '75-80%'), 'power detects threshold by stalled charging')
+assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: states.Charging, changeRate: 1.0, timeToFull: 120 }, false, states, '75-80%'), 'power does not flag active charging as threshold')
+
+// A stalled charge is only a hold when a limit is there to hold it, and only
+// once the pack has reached that limit. omarchy-battery-status gates its own
+// charging branch the same way; these two layers describe the same battery.
+assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: states.Charging, changeRate: 0.1, timeToFull: 120 }, false, states), 'power does not flag a stalled charge as threshold without a limit')
+assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.4, state: states.Charging, changeRate: 0.1, timeToFull: 120 }, false, states, '75-80%'), 'power does not flag a stalled charge below the limit as threshold')
+assertEqual(
+  power.modeLabel({ isPresent: true, percentage: 0.4, state: states.Charging, changeRate: 0.1, timeToFull: 120 }, false, states, '75-80%'),
+  'Charging',
+  'power labels a slow charge below the limit as charging'
+)
+
+// FullyCharged short of full is the same claim: with no limit configured it is
+// a worn pack reporting its own ceiling, not a hold.
+assert(power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: states.FullyCharged }, false, states, '75-80%'), 'power detects a limit holding below full')
+assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: states.FullyCharged }, false, states), 'power does not flag a worn pack reporting full early as threshold')
+assertEqual(
+  power.modeLabel({ isPresent: true, percentage: 0.8, state: states.FullyCharged }, false, states),
+  'Fully charged',
+  'power labels a worn pack reporting full early as fully charged'
+)
 assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.5, state: states.Discharging }, false, states), 'power does not flag discharging as threshold')
 assertEqual(power.modeLabel({ isPresent: true, percentage: 1, state: states.FullyCharged }, false, states), 'Fully charged', 'power labels full battery')
 assertEqual(power.modeLabel({ isPresent: true, percentage: 0.5, state: states.Discharging }, true, states), 'On battery', 'power labels battery mode')
