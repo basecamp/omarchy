@@ -93,6 +93,15 @@ if [[ -z $url ]]; then
   [[ -n $url ]] || fail "a git URL is required"
 fi
 
+# git reads a leading dash as an option, and `<helper>::<address>` as a remote
+# helper to run at clone time. Reject both so an untrusted URL cannot smuggle a
+# transport helper that executes before the plugin is validated or enabled. An
+# scp-style IPv6 host such as git@[2001:db8::1]:org/repo.git carries `::` too and
+# must still clone.
+if [[ $url == -* || $url =~ ^[A-Za-z0-9][A-Za-z0-9+.-]*:: ]]; then
+  fail "'$url' names a git option or transport helper, not a repository."
+fi
+
 if (( ! ASSUME_YES )); then
   cat >&2 <<WARN
 
