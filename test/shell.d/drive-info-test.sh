@@ -28,6 +28,7 @@ parent_of() {
   case "$1" in
     sda1|sda2) printf 'sda\n' ;;
     root) printf 'sda2\n' ;;
+    sdb1) printf 'sdb\n' ;;
     *) : ;;
   esac
 }
@@ -41,6 +42,8 @@ elif [[ $opts == *-no\ PKNAME* ]]; then
     sda2) printf 'sda\nsda2\n' ;;
     sda1) printf 'sda\n' ;;
     root) printf 'sda2\n' ;;
+    sdb) printf '\nsdb\n' ;;
+    sdb1) printf 'sdb\n' ;;
   esac
 elif [[ $opts == *-dno\ SIZE* ]]; then
   case "$name" in
@@ -48,12 +51,20 @@ elif [[ $opts == *-dno\ SIZE* ]]; then
     sda1) printf '2G\n' ;;
     sda2) printf '929.5G\n' ;;
     root) printf '929.5G\n' ;;
+    sdb) printf '931.5G\n' ;;
+    sdb1) printf '931.5G\n' ;;
   esac
 elif [[ $opts == *-dno\ VENDOR* ]]; then
   # Only the disk carries these; partitions and mappings report nothing.
-  [[ $name == sda ]] && printf 'ATA     \n'
+  case "$name" in
+    sda | sdb) printf 'ATA     \n' ;;
+  esac
 elif [[ $opts == *-dno\ MODEL* ]]; then
-  [[ $name == sda ]] && printf 'Samsung SSD 870 EVO 1TB\n'
+  case "$name" in
+    sda) printf 'Samsung SSD 870 EVO 1TB\n' ;;
+    # Some controllers repeat the vendor at the head of the model string.
+    sdb) printf 'ATA WDC WD10EZEX-08WN4A0\n' ;;
+  esac
 elif [[ $opts == *TYPE,NAME,FSTYPE,MOUNTPOINT* ]]; then
   case "$name" in
     sda)
@@ -65,6 +76,10 @@ elif [[ $opts == *TYPE,NAME,FSTYPE,MOUNTPOINT* ]]; then
     sda2)
       printf 'part sda2 crypto_LUKS \n'
       printf 'crypt root ext4 /\n'
+      ;;
+    sdb)
+      printf 'disk sdb  \n'
+      printf 'part sdb1 ext4 /home\n'
       ;;
   esac
 fi
@@ -97,7 +112,18 @@ out=$(drive_info /dev/root)
   fail "drive info walks up through a crypt mapping to the disk" "$out"
 pass "drive info walks up through a nested mapping"
 
-# ATA is a prefix of the model string, so it must not be printed twice.
-out=$(drive_info /dev/sda)
+# sdb reports the vendor twice: once as VENDOR and again at the head of MODEL.
+# sda cannot cover this -- its model shares no word with its vendor, so it reads
+# the same whether the labels are deduplicated or simply concatenated.
+out=$(drive_info /dev/sdb)
+[[ $out == *"ATA WDC WD10EZEX-08WN4A0"* ]] ||
+  fail "drive info keeps a model that begins with the vendor" "$out"
 [[ $out != *"ATA ATA"* ]] || fail "drive info does not duplicate the vendor" "$out"
 pass "drive info does not duplicate a vendor already in the model"
+
+# The dedup still has to resolve up first: a partition reports no vendor at all.
+out=$(drive_info /dev/sdb1)
+[[ $out == *"ATA WDC WD10EZEX-08WN4A0"* ]] ||
+  fail "drive info labels a partition from its disk" "$out"
+[[ $out != *"ATA ATA"* ]] || fail "drive info does not duplicate the vendor of a partition" "$out"
+pass "drive info deduplicates the vendor after resolving to the disk"
