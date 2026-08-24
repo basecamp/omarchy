@@ -48,18 +48,18 @@ marker="$(dirname -- "$TEST_LOG")/surface-key-imported"
 
 case "$1" in
 --list-keys)
-	# Exit status of the marker check is whether the key exists yet.
-	[[ -f $marker ]]
-	;;
+  # Exit status of the marker check is whether the key exists yet.
+  [[ -f $marker ]]
+  ;;
 *)
-	printf 'pacman-key' >>"$TEST_LOG"
-	printf '\t%s' "$@" >>"$TEST_LOG"
-	printf '\n' >>"$TEST_LOG"
-	if [[ $1 == "--add" ]]; then
-		touch "$marker"
-	fi
-	exit 0
-	;;
+  printf 'pacman-key' >>"$TEST_LOG"
+  printf '\t%s' "$@" >>"$TEST_LOG"
+  printf '\n' >>"$TEST_LOG"
+  if [[ $1 == "--add" ]]; then
+    touch "$marker"
+  fi
+  exit 0
+  ;;
 esac
 SH
 
