@@ -61,6 +61,17 @@ cat >"$stub_bin/omarchy-hw-clamshell" <<'SH'
 [[ ${OMARCHY_TEST_CLAMSHELL:-false} == "true" ]]
 SH
 
+cat >"$stub_bin/omarchy-hyprland-monitor-override" <<'SH'
+#!/bin/bash
+# Clamshell asks the overrides whether the internal display was switched off.
+# Stub it so the fixture decides, not whatever the machine running the tests
+# happens to have saved.
+case "$1" in
+  is-disabled) [[ ${OMARCHY_TEST_OVERRIDE_DISABLED:-false} == "true" ]] ;;
+  *) exit 0 ;;
+esac
+SH
+
 chmod +x "$stub_bin"/*
 
 write_auto_monitor_config() {
@@ -216,12 +227,13 @@ remember_scale() {
 
 run_clamshell() {
   HOME="$home_dir" \
-    PATH="$stub_bin:$PATH" \
+    PATH="$stub_bin:$ROOT/bin:$PATH" \
     OMARCHY_TEST_HYPRCTL_EVAL_LOG="$eval_log" \
     OMARCHY_TEST_INTERNAL_SCALE="${OMARCHY_TEST_INTERNAL_SCALE:-2}" \
     OMARCHY_TEST_INTERNAL_DISABLED="${OMARCHY_TEST_INTERNAL_DISABLED:-false}" \
     OMARCHY_TEST_EXTERNAL_ACTIVE="${OMARCHY_TEST_EXTERNAL_ACTIVE:-false}" \
     OMARCHY_TEST_CLAMSHELL="${OMARCHY_TEST_CLAMSHELL:-false}" \
+    OMARCHY_TEST_OVERRIDE_DISABLED="${OMARCHY_TEST_OVERRIDE_DISABLED:-false}" \
     "$ROOT/bin/omarchy-hyprland-monitor-clamshell"
 }
 

@@ -54,6 +54,30 @@ assertDeepEqual(
   'monitor keeps presets until display dimensions are known'
 )
 
+// The panel re-reads state constantly; replacing the list rebuilds every row,
+// which destroys the switch under the pointer mid-click.
+const twoDisplays = [
+  { name: 'eDP-1', enabled: true, focused: false, width: 2880, height: 1920, scale: 2 },
+  { name: 'DP-7', enabled: true, focused: true, width: 5120, height: 2880, scale: 2 }
+]
+assertEqual(monitor.displaysEqual(twoDisplays, twoDisplays.slice()), true, 'an unchanged read compares equal')
+assertEqual(
+  monitor.displaysEqual(twoDisplays, [{ ...twoDisplays[0], enabled: false }, twoDisplays[1]]),
+  false,
+  'a display switching off compares different'
+)
+assertEqual(
+  monitor.displaysEqual(twoDisplays, [{ ...twoDisplays[0], focused: true }, twoDisplays[1]]),
+  false,
+  'focus moving compares different'
+)
+assertEqual(
+  monitor.displaysEqual(twoDisplays, [{ ...twoDisplays[0], scale: 1 }, twoDisplays[1]]),
+  false,
+  'a scale change compares different'
+)
+assertEqual(monitor.displaysEqual(twoDisplays, [twoDisplays[0]]), false, 'a display disappearing compares different')
+
 assertEqual(monitor.brightnessName(96), 'Sun blast', 'monitor names very bright displays')
 assertEqual(monitor.brightnessName(12), 'Candlelit', 'monitor names dim displays')
 
@@ -76,3 +100,29 @@ assertDeepEqual(
 
 assertDeepEqual(monitor.parseDisplays('{'), { displays: [], enabledDisplayCount: 0 }, 'monitor handles invalid display JSON')
 JS
+
+# A mirroring display is enabled in `monitors all` but absent from plain
+# `monitors`, and the scaling command refuses it. The panel has to be able to
+# tell it apart from a display that is simply switched off, or it offers scale
+# controls whose every press is silently rejected.
+run_node_test <<'JS'
+const monitor = requireFromRoot('shell/plugins/panels/monitor/Model.js')
+
+const parsed = monitor.parseDisplays(JSON.stringify([
+  { name: 'eDP-1', enabled: true, driven: true, focused: true, width: 2880, height: 1920, scale: 2 },
+  { name: 'DP-7', enabled: true, driven: false, focused: false, width: 5120, height: 2880, scale: 2 }
+]))
+
+assertEqual(parsed.displays.length, 2, 'monitor lists a mirroring display')
+assertEqual(parsed.displays[1].driven, false, 'monitor carries through a display it is not driving')
+assertEqual(parsed.displays[1].enabled, true, 'monitor keeps a mirroring display enabled')
+
+const same = JSON.parse(JSON.stringify(parsed.displays))
+same[1].driven = true
+assertEqual(
+  monitor.displaysEqual(parsed.displays, same),
+  false,
+  'monitor treats a change in driven as a change'
+)
+JS
+pass "monitor distinguishes a display it is not driving from a disabled one"

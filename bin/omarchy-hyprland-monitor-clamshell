@@ -3,11 +3,11 @@
 # omarchy:summary=Apply clamshell display state to Hyprland monitors
 # omarchy:hidden=true
 
+source omarchy-hyprland-monitor-config
+
 TOGGLES_DIR="$HOME/.local/state/omarchy/toggles/hypr"
 CLAMSHELL_FLAG="$TOGGLES_DIR/internal-monitor-clamshell.lua"
-MANUAL_DISABLE_FLAG="$TOGGLES_DIR/internal-monitor-disable.lua"
 SCALE_STATE="$TOGGLES_DIR/internal-monitor-scale"
-MONITOR_LUA="$HOME/.config/hypr/monitors.lua"
 
 INTERNAL=$(omarchy-hyprland-monitor-laptop)
 
@@ -25,59 +25,6 @@ scales_match() {
     if (diff < 0) diff = -diff
     exit(diff < 0.001 ? 0 : 1)
   }'
-}
-
-lua_identifier() {
-  [[ $1 =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
-}
-
-# Value assigned by `local <name> = ...`, without its quotes or trailing comment.
-# Only a lone scalar counts: an expression like `1080 / 720` must stay unresolved
-# so the caller falls back rather than applying the first half of the sum.
-lua_local_value() {
-  local name="$1" value
-  lua_identifier "$name" && [[ -f $MONITOR_LUA ]] || return 0
-
-  value=$(sed -nE 's/^[[:space:]]*local[[:space:]]+'"$name"'[[:space:]]*=[[:space:]]*("[^"]*"|[^"[:space:]]+)[[:space:]]*(--.*)?$/\1/p' "$MONITOR_LUA" | head -1)
-  [[ $value == \"*\" ]] && value="${value:1:-1}"
-  printf '%s\n' "$value"
-}
-
-# A quoted capture is a Lua string and stands for itself; a bare word may instead
-# name a local the rule refers to, as the shipped scale = omarchy_monitor_scale
-# does. A bare word naming no local is left alone to fail validation.
-lua_scalar() {
-  local value="$1" resolved
-
-  if [[ $value == \"*\" ]]; then
-    printf '%s\n' "${value:1:-1}"
-    return
-  fi
-
-  resolved=$(lua_local_value "$value")
-  printf '%s\n' "${resolved:-$value}"
-}
-
-# The config with its comments cut away, so commented-out text can pose neither
-# as a rule nor as one of its keys.
-monitor_rules() {
-  [[ -f $MONITOR_LUA ]] || return 0
-
-  sed -E -e 's/--\[\[[^]]*\]\]//g' -e 's/--.*$//' "$MONITOR_LUA"
-}
-
-monitor_rule_regex() {
-  printf '^[[:space:]]*hl\\.monitor\\(\\{.*output[[:space:]]*=[[:space:]]*"%s"' "$1"
-}
-
-# A key is preceded by a table separator, so a longer key cannot stand in for it,
-# and its value is the whole of what sits between the `=` and the next separator.
-# Anything else is an expression this cannot evaluate.
-configured_monitor_value() {
-  local output="$1" key="$2" value
-
-  value=$(monitor_rules | sed -nE '/'"$(monitor_rule_regex "$output")"'/s/.*[{,;[:space:]]'"$key"'[[:space:]]*=[[:space:]]*("[^"]*"|[^,;}[:space:]]+)[[:space:]]*([,;}].*)?$/\1/p' | head -1)
-  lua_scalar "$value"
 }
 
 configured_internal_monitor_value() {
@@ -210,7 +157,7 @@ enable_internal() {
     hyprctl reload >/dev/null 2>&1 || true
   fi
 
-  [[ -f $MANUAL_DISABLE_FLAG ]] && omarchy-hyprland-monitor-external-active && return 0
+  omarchy-hyprland-monitor-override is-disabled "$INTERNAL" && omarchy-hyprland-monitor-external-active && return 0
   sync_internal_scale
 
   if (( changed )); then
@@ -220,7 +167,7 @@ enable_internal() {
 
 disable_internal() {
   [[ -n $INTERNAL ]] || exit 0
-  [[ -f $MANUAL_DISABLE_FLAG ]] && return 0
+  omarchy-hyprland-monitor-override is-disabled "$INTERNAL" && return 0
 
   mkdir -p "$TOGGLES_DIR"
   remember_internal_scale

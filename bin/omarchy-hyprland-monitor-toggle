@@ -1,0 +1,209 @@
+#!/bin/bash
+
+# omarchy:summary=Enable, disable, or toggle a display by output name
+# omarchy:args=<output> [on|off|toggle]
+# omarchy:examples=omarchy hyprland monitor toggle DP-1 off | omarchy hyprland monitor toggle DP-1 toggle
+
+# Not `hyprctl keyword monitor`: Hyprland's Lua parser rejects the keyword
+# command outright, and a runtime-only change would not survive a reload
+# anyway. Disabling records the display in the overrides file, whose generated
+# rules hyprland.lua requires after hypr/monitors.lua, so the override wins and
+# survives reboots.
+
+TOGGLE_DIR="$HOME/.local/state/omarchy/toggles/hypr"
+
+usage() {
+  echo "Usage: omarchy-hyprland-monitor-toggle <output> [on|off|toggle]" >&2
+}
+
+output="${1:-}"
+action="${2:-toggle}"
+
+if [[ -z $output ]]; then
+  usage
+  exit 1
+fi
+
+case $action in
+  on | off | toggle) ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac
+
+# The name lands in a filename, so hold it to the characters real outputs use.
+if [[ ! $output =~ ^[A-Za-z0-9-]+$ ]]; then
+  echo "Invalid output name: $output" >&2
+  exit 1
+fi
+
+monitors_json="$(hyprctl monitors all -j)"
+
+if ! printf '%s' "$monitors_json" | jq -e --arg name "$output" 'any(.[]; .name == $name)' >/dev/null; then
+  echo "No such display: $output" >&2
+  exit 1
+fi
+
+mirror_flag="$TOGGLE_DIR/internal-monitor-mirror.lua"
+focused="$(printf '%s' "$monitors_json" | jq -r '[.[] | select(.focused == true)][0].name // ""')"
+focused_workspace="$(printf '%s' "$monitors_json" | jq -r '[.[] | select(.focused == true)][0].activeWorkspace.id // ""')"
+target_disabled="$(printf '%s' "$monitors_json" | jq -r --arg name "$output" '.[] | select(.name == $name) | .disabled')"
+enabled_count="$(printf '%s' "$monitors_json" | jq '[.[] | select(.disabled != true)] | length')"
+
+# The internal display keeps a toggle flag of its own, driven by the
+# SUPER+CTRL+DEL binding. Delegate to it so both routes share one source of
+# truth instead of writing a second, competing flag.
+internal="$(omarchy-hyprland-monitor-laptop)"
+is_internal=0
+if [[ -n $internal && $output == "$internal" ]]; then
+  is_internal=1
+fi
+
+# Every display setting lives in the overrides file now. The per-display flag
+# files this replaces are still read and cleared by the overrides command, so an
+# install that has not been migrated yet keeps working and can still be
+# recovered.
+write_flag() {
+  omarchy-hyprland-monitor-override set "$output" disabled true
+}
+
+display_disabled() {
+  [[ $target_disabled == "true" ]] && return 0
+  omarchy-hyprland-monitor-override is-disabled "$output"
+}
+
+# Bringing a display back makes Hyprland move focus onto it roughly 0.7s later,
+# which yanks the user off whatever they were working on. Watch for that and
+# put focus back. Enabling gets a couple of seconds of watching; disabling only
+# needs one look, since the focused display is never the one going dark.
+restore_focus() {
+  local tries="${1:-1}"
+  local i now
+
+  [[ -n $focused ]] || return 0
+
+  for ((i = 0; i < tries; i++)); do
+    now="$(hyprctl monitors -j | jq -r '[.[] | select(.focused == true)][0].name // ""')"
+    if [[ -n $now && $now != "$focused" ]]; then
+      hyprctl dispatch "hl.dsp.focus({ monitor = \"$focused\" })" >/dev/null 2>&1 || true
+      return 0
+    fi
+    sleep 0.1
+  done
+}
+
+# `hyprctl reload` returns once the config has been parsed, not once the
+# display is actually back up. Mirroring a half-settled output produces a mirror
+# that reports every property correctly while still rendering its own region,
+# so the areas outside the mirrored image show desktop rather than black, and
+# nothing applied afterwards repairs it. Wait for the geometry to stop moving,
+# then give the modeset a moment beyond that.
+wait_for_display_settled() {
+  local name="$1"
+  local previous="" current i
+
+  for ((i = 0; i < 25; i++)); do
+    current="$(hyprctl monitors all -j | jq -r --arg name "$name" \
+      '[.[] | select(.name == $name)][0] | "\(.x),\(.y),\(.scale),\(.disabled)"')"
+
+    if [[ -n $current && $current == "$previous" ]]; then
+      sleep 1
+      return 0
+    fi
+
+    previous="$current"
+    sleep 0.2
+  done
+
+  sleep 1
+}
+
+# Rebuilding a display can leave it with no active workspace at all, and a
+# display with no workspace draws nothing until something selects one — which
+# is why closing a panel or pressing SUPER+N brings the desktop back. Re-select
+# the workspace that was active before, the same way the keybinds do.
+restore_workspace() {
+  [[ -n $focused_workspace && $focused_workspace != "0" ]] || return 0
+  hyprctl dispatch "hl.dsp.focus({ workspace = \"$focused_workspace\" })" >/dev/null 2>&1 || true
+}
+
+on() {
+  local remirror=0
+
+  # Nothing to undo, so skip the reload rather than flashing every display.
+  if ((!is_internal)); then
+    display_disabled || return 0
+  fi
+
+  # Bringing a display back while a mirror is already up leaves Hyprland
+  # rendering that display's own region rather than the display it mirrors, so
+  # everything outside the mirrored image shows desktop instead of black. Every
+  # measurable property matches a working mirror, so there is nothing to correct
+  # afterwards — the way out is to not take that path. Drop to extended, bring
+  # the display back there, and mirror again, which is the sequence that comes
+  # out right.
+  if [[ -f $mirror_flag ]]; then
+    omarchy-hyprland-monitor-internal-mirror off --quiet >/dev/null 2>&1 || true
+    remirror=1
+  fi
+
+  if ((is_internal)); then
+    omarchy-hyprland-monitor-internal on || return $?
+  else
+    omarchy-hyprland-monitor-override clear-disabled "$output"
+    hyprctl reload >/dev/null
+    omarchy-notification-send -g 󰍹 "$output enabled"
+  fi
+
+  if ((remirror)); then
+    wait_for_display_settled "$output"
+    omarchy-hyprland-monitor-internal-mirror on --quiet >/dev/null 2>&1 || true
+  fi
+
+  restore_focus 20
+  restore_workspace
+}
+
+off() {
+  # Turning off the display you are looking at leaves no pointer and no obvious
+  # way back, so refuse it however many displays are lit.
+  if [[ $output == "$focused" ]]; then
+    omarchy-notification-send -g 󰍹 "Can't disable the focused display"
+    exit 1
+  fi
+
+  if ((is_internal)); then
+    omarchy-hyprland-monitor-internal off || return $?
+    restore_focus
+    return 0
+  fi
+
+  # Already dark: persist that without a redundant reload.
+  if [[ $target_disabled == "true" ]]; then
+    write_flag
+    return 0
+  fi
+
+  if ((enabled_count <= 1)); then
+    omarchy-notification-send -g 󰍹 "Can't disable the only active display"
+    exit 1
+  fi
+
+  write_flag
+  hyprctl reload >/dev/null
+  restore_focus
+  omarchy-notification-send -g 󰍹 "$output disabled"
+}
+
+case $action in
+  on) on ;;
+  off) off ;;
+  toggle)
+    if display_disabled; then
+      on
+    else
+      off
+    fi
+    ;;
+esac

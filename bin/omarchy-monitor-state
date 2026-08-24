@@ -2,11 +2,24 @@
 
 # omarchy:summary=Print monitor panel state for the shell
 # omarchy:group=monitor
+# omarchy:args=[monitor]
+
+# The panel points brightness and scale at whichever display the user has
+# selected, which is the focused one until they pick another. An unknown or
+# missing name falls back to the focused display, so the output shape is the
+# same either way: the brightness and scale lines describe the target, and the
+# focused line always names the display Hyprland actually has focus on.
+target="${1:-}"
 
 monitors_json=$(hyprctl monitors all -j)
 focused_monitor=$(printf '%s\n' "$monitors_json" | jq -r '[.[] | select(.focused == true)][0].name // ""')
 
-{ omarchy-brightness-display --monitor "$focused_monitor" 2>/dev/null; echo; } | head -n 1
+if [[ -z $target ]] ||
+  ! printf '%s\n' "$monitors_json" | jq -e --arg name "$target" 'any(.[]; .name == $name)' >/dev/null; then
+  target="$focused_monitor"
+fi
+
+{ omarchy-brightness-display --monitor "$target" 2>/dev/null; echo; } | head -n 1
 
 printf '%s\n' "$monitors_json" | jq -r '
   def internal: test("^(eDP|LVDS|DSI)-");
@@ -17,7 +30,26 @@ printf '%s\n' "$monitors_json" | jq -r '
 '
 
 printf '%s\n' "$focused_monitor"
-omarchy-hyprland-monitor-scaling 2>/dev/null || echo
 
+# Read the target's scale straight out of the monitor list rather than shelling
+# back into the scaling command, which only ever reports the focused display.
+# The line must always be printed, even for a display with no scale, or every
+# line after it shifts up.
+target_scale="$(printf '%s\n' "$monitors_json" | jq -r --arg name "$target" '[.[] | select(.name == $name)][0].scale // ""')"
+if [[ -n $target_scale ]]; then
+  awk -v scale="$target_scale" 'BEGIN { printf "%g\n", scale }'
+else
+  echo
+fi
+
+# `driven` is not the same as `enabled`. A display that is mirroring another is
+# enabled here but absent from plain `hyprctl monitors`, because Hyprland is not
+# driving it as an output of its own, and the commands that take a `--monitor`
+# refuse it for exactly that reason. Without this the panel offers scale controls
+# for a mirroring display and every press is silently rejected.
+#
+# Read from the payload already in hand rather than asking for the other listing:
+# mirrored and disabled outputs are precisely the ones plain `monitors` leaves
+# out, so a second call would add a way for this to fail without adding an answer.
 printf '%s\n' "$monitors_json" | jq -c \
-  '[.[] | {name, enabled:(.disabled != true), focused:(.focused == true), width, height}]'
+  '[.[] | {name, enabled:(.disabled != true), driven:((.disabled != true) and ((.mirrorOf // "none") == "none")), focused:(.focused == true), width, height, scale}]'

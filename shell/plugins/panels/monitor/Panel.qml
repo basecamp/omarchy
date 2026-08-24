@@ -17,6 +17,9 @@ Panel {
   property int brightnessPercent: 0
   property int pendingBrightnessPercent: 0
   property bool brightnessSetQueued: false
+  property string pendingBrightnessMonitor: ""
+  property bool stateRefreshQueued: false
+  property var queuedAction: null
   property bool brightnessAvailable: false
   property string internalMonitor: ""
   property string externalMonitor: ""
@@ -26,6 +29,38 @@ Panel {
   property string monitorScale: ""
   property var displays: []
   property int enabledDisplayCount: 0
+
+  // The display the panel's controls act on. Empty means "whoever has focus",
+  // which is how every open starts; picking a row in DISPLAYS pins it to that
+  // display until the panel closes. Brightness and scale read and write this
+  // display, not the focused one, so the user can adjust a second monitor
+  // without walking over to it.
+  property string selectedMonitor: ""
+
+  readonly property var selectedDisplay: {
+    for (var i = 0; i < displays.length; i++) {
+      var display = displays[i]
+      if (display && display.name === selectedMonitor) return display
+    }
+    return null
+  }
+
+  // Coalesce the state re-read so repeated picks do not stack up a process
+  // each. Hovering a row deliberately does not select it — only a click or
+  // Enter does — so the pointer crossing the list costs nothing.
+  onSelectedMonitorChanged: selectionRefresh.restart()
+
+  function selectMonitor(name) {
+    if (!name || name === root.selectedMonitor) return
+    root.selectedMonitor = name
+  }
+
+  Timer {
+    id: selectionRefresh
+    interval: 120
+    repeat: false
+    onTriggered: root.refresh()
+  }
 
   // Carry sub-notch touchpad deltas between wheel events.
   property real wheelAccumulator: 0
@@ -37,17 +72,15 @@ Panel {
   //   "scale"      - 6 Button scale presets; treated as a single
   //                  horizontal row from j/k's perspective. h/l moves
   //                  between presets, identical to bluetooth's header.
-  //   "monitors"   - vertical display row list for enabling/disabling displays;
-  //                  j/k walks each row.
+  //   "monitors"   - vertical display row list; j/k walks each row, Enter
+  //                  selects the row the cursor is on (the keyboard's click)
+  //                  and Space works its enable switch.
   // Mouse hover on a target updates root state via the components' `hovered`
   // signal so keyboard cursor and pointer share one highlight.
   readonly property var scalePresets: ["1", "1.25", "1.6", "2", "3", "4"]
   readonly property var scaleValues: {
-    for (var i = 0; i < displays.length; i++) {
-      var display = displays[i]
-      if (display && display.focused)
-        return Model.availableScales(scalePresets, display.width, display.height)
-    }
+    var display = selectedDisplay
+    if (display) return Model.availableScales(scalePresets, display.width, display.height)
     return scalePresets
   }
   property string focusSection: "scale"
@@ -76,9 +109,20 @@ Panel {
     var list = []
     if (brightnessAvailable) list.push("brightness")
     list.push("textsize")
-    list.push("scale")
+    if (root.displayTakesScale(selectedDisplay)) list.push("scale")
     if (displays.length > 1) list.push("monitors")
     return list
+  }
+
+  // A display Hyprland is not driving as an output of its own, which today means
+  // one that is mirroring another, is enabled but cannot take a scale: the
+  // scaling command refuses it. Offering the controls anyway means every press
+  // is silently rejected. `driven` is absent from older state output, and an
+  // absent flag must not hide the controls.
+  function displayTakesScale(display) {
+    if (!display) return true
+    if (!display.enabled) return false
+    return display.driven !== false
   }
 
   function sectionCount(section) {
@@ -146,14 +190,18 @@ Panel {
     setBrightness(root.brightnessPercent + delta)
   }
 
-  function activateCursor() {
+  property bool enterPressed: false
+
+  function activateCursor(fromEnter) {
     if (focusSection === "scale" && selectedIndex >= 0 && selectedIndex < scaleValues.length) {
       setScale(scaleValues[selectedIndex])
       return
     }
     if (focusSection === "monitors" && selectedIndex >= 0 && selectedIndex < displays.length) {
       var d = displays[selectedIndex]
-      if (d) toggleDisplay(d.name, d.enabled)
+      if (!d) return
+      if (fromEnter) selectMonitor(d.name)
+      else toggleDisplay(d.name, d.enabled)
     }
     // brightness: no separate action; the slider value is the action.
   }
@@ -229,22 +277,45 @@ Panel {
     function hide() { root.close() }
   }
 
+  // A read in flight was started for whichever display was selected at the time,
+  // so dropping a later request leaves that display's brightness and scale shown
+  // under the newly selected one until the next poll, and a brightness set made
+  // in between sends the value the old display reported to the new one. Queue
+  // instead, and run once when the reader stops.
   function refresh() {
-    if (!stateProc.running) stateProc.running = true
+    if (stateProc.running) {
+      root.stateRefreshQueued = true
+      return
+    }
+
+    root.stateRefreshQueued = false
+    stateProc.command = root.selectedMonitor
+      ? ["omarchy-monitor-state", root.selectedMonitor]
+      : ["omarchy-monitor-state"]
+    stateProc.running = true
   }
 
-  function setBrightness(value) {
+  function setBrightness(value, monitor) {
     var percent = Model.clampBrightness(value)
     root.brightnessPercent = percent
     root.pendingBrightnessPercent = percent
 
+    // The display is settled here rather than when the queue drains. Draining
+    // later would read whichever display is selected by then, so a value queued
+    // for one display would be sent to another if the selection moved while the
+    // write was in flight.
+    var target = monitor || root.targetMonitor()
+    if (!target) return
+
     if (setBrightnessProc.running) {
       root.brightnessSetQueued = true
+      root.pendingBrightnessMonitor = target
       return
     }
 
     root.brightnessSetQueued = false
-    setBrightnessProc.command = ["omarchy-brightness-display", "--no-osd", "--monitor", root.focusedMonitor, percent + "%"]
+    root.pendingBrightnessMonitor = ""
+    setBrightnessProc.command = ["omarchy-brightness-display", "--no-osd", "--monitor", target, percent + "%"]
     setBrightnessProc.running = true
   }
 
@@ -266,20 +337,14 @@ Panel {
   }
 
   function activeScaleIndex() {
-    for (var i = 0; i < displays.length; i++) {
-      var display = displays[i]
-      if (display && display.focused)
-        return Model.matchingScaleIndex(scaleValues, monitorScale, display.width, display.height)
-    }
+    var display = selectedDisplay
+    if (display) return Model.matchingScaleIndex(scaleValues, monitorScale, display.width, display.height)
     return -1
   }
 
   function effectiveScale(scale) {
-    for (var i = 0; i < displays.length; i++) {
-      var display = displays[i]
-      if (display && display.focused)
-        return Model.cleanScale(scale, display.width, display.height)
-    }
+    var display = selectedDisplay
+    if (display) return Model.cleanScale(scale, display.width, display.height)
     return normalizeScale(scale)
   }
 
@@ -290,23 +355,73 @@ Panel {
     return Model.brightnessName(percent)
   }
 
+  function displayNamed(name) {
+    for (var i = 0; i < root.displays.length; i++) {
+      if (root.displays[i] && root.displays[i].name === name) return root.displays[i]
+    }
+    return null
+  }
+
   function updateDisplays(displaysJson) {
     var parsed = Model.parseDisplays(displaysJson)
-    root.displays = parsed.displays
+    // Only replace the list when something actually differs: assigning it
+    // rebuilds every row, which destroys the switch under the pointer and
+    // resets its cursor shape mid-click. Most reads change nothing, and the
+    // panel re-reads every few seconds while it is open.
+    if (!Model.displaysEqual(root.displays, parsed.displays)) root.displays = parsed.displays
     root.enabledDisplayCount = parsed.enabledDisplayCount
+  }
+
+  // Where brightness and scale land. The selection is seeded from the focused
+  // display on every open, so this is the focused display until the user picks
+  // another row.
+  readonly property string targetDisplayName: selectedMonitor || focusedMonitor
+
+  function targetMonitor() {
+    return root.targetDisplayName
+  }
+
+  // Until the first read of an open answers, there is no display to act on. An
+  // empty `--monitor` is Hyprland's catch-all, so acting anyway would reach
+  // every display rather than none.
+  readonly property bool targetKnown: root.targetDisplayName !== ""
+
+  // A display can be switched off only when it is neither the one being looked
+  // at nor the last one lit. The command enforces both again; this keeps the
+  // row from looking actionable when it isn't.
+  function canDisableDisplay(display) {
+    return !!display && display.enabled && !display.focused && root.enabledDisplayCount > 1
+  }
+
+  // One process serves both the toggles and the scale buttons, and switching a
+  // display on takes seconds while the output is rebuilt. Assigning a command
+  // while it runs neither starts it nor leaves anything to start it later, so a
+  // scale picked during a toggle used to be dropped with nothing said. Hold the
+  // most recent one and run it when the process stops.
+  function runAction(command) {
+    if (actionProc.running) {
+      root.queuedAction = command
+      return
+    }
+
+    root.queuedAction = null
+    actionProc.command = command
+    actionProc.running = true
   }
 
   function toggleDisplay(name, enabled) {
     if (!name) return
-    if (enabled && root.enabledDisplayCount <= 1) return
+    if (enabled && !root.canDisableDisplay(root.displayNamed(name))) return
 
-    actionProc.command = ["hyprctl", "keyword", "monitor", name + (enabled ? ",disable" : ",preferred,auto,auto")]
-    if (!actionProc.running) actionProc.running = true
+    // Not `hyprctl keyword`: Hyprland's Lua parser rejects that command, so the
+    // row silently did nothing in either direction. The helper applies the
+    // change and persists it through the toggles directory.
+    root.runAction(["omarchy-hyprland-monitor-toggle", name, enabled ? "off" : "on"])
   }
 
   function setScale(scale) {
-    actionProc.command = ["bash", "-c", "omarchy-hyprland-monitor-scaling " + scale]
-    if (!actionProc.running) actionProc.running = true
+    if (!root.targetKnown) return
+    root.runAction(["omarchy-hyprland-monitor-scaling", "--monitor", root.targetMonitor(), String(scale)])
   }
 
   // ---- Text size (shell base font + GTK text-scaling, via one CLI) ----
@@ -356,6 +471,13 @@ Panel {
   // the cursor until hover or the first navigation key.
   onOpenedChanged: {
     if (opened) {
+      // Every open starts on the display the user is actually looking at. Both
+      // are cleared, not just the selection: the read below is asynchronous, and
+      // the focused display left over from the previous open is not necessarily
+      // the one being looked at now. An empty target means "not known yet", and
+      // the controls stay out of the way until the read answers.
+      selectedMonitor = ""
+      focusedMonitor = ""
       refresh()
       if (brightnessAvailable) {
         focusSection = "brightness"
@@ -400,7 +522,16 @@ Panel {
         root.focusedMonitor = String(lines[5] || "").trim()
         root.monitorScale = root.normalizeScale(String(lines[6] || "").trim())
         root.updateDisplays(String(lines[7] || "[]").trim())
+
+        // Nothing picked yet, or the picked display went away: fall back to
+        // whatever Hyprland has focus on.
+        if (!root.selectedDisplay) root.selectedMonitor = root.focusedMonitor
       }
+    }
+
+    onRunningChanged: {
+      if (running) return
+      if (root.stateRefreshQueued) root.refresh()
     }
   }
 
@@ -424,7 +555,7 @@ Panel {
     onRunningChanged: {
       if (running) return
       if (root.brightnessSetQueued) {
-        root.setBrightness(root.pendingBrightnessPercent)
+        root.setBrightness(root.pendingBrightnessPercent, root.pendingBrightnessMonitor)
       }
     }
   }
@@ -432,7 +563,14 @@ Panel {
   Process {
     id: actionProc
     stdout: StdioCollector { waitForEnd: true }
-    onRunningChanged: if (!running) root.refresh()
+    onRunningChanged: {
+      if (running) return
+      if (root.queuedAction) {
+        root.runAction(root.queuedAction)
+        return
+      }
+      root.refresh()
+    }
   }
 
   // Applies text size via the CLI, which rewrites the shell override file;
@@ -503,7 +641,11 @@ Panel {
           else if (root.focusSection === "scale") root.moveCursorH(dx)
         }
       }
-      onActivateRequested: if (root.cursorActive) root.activateCursor()
+      onReturnRequested: root.enterPressed = true
+      onActivateRequested: {
+        if (root.cursorActive) root.activateCursor(root.enterPressed)
+        root.enterPressed = false
+      }
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
 
@@ -602,7 +744,9 @@ Panel {
 
               Text {
                 id: brightnessPercent
-                text: Math.round(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent) + "%"
+                text: (root.displays.length > 1 && root.targetDisplayName !== ""
+                       ? root.targetDisplayName + "  ·  " : "")
+                      + Math.round(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent) + "%"
                 color: Qt.darker(root.bar.foreground, 1.4)
                 font.family: root.bar.fontFamily
                 font.pixelSize: Style.font.caption
@@ -665,7 +809,7 @@ Panel {
 
               PanelSectionHeader {
                 id: textSizeHeader
-                text: "TEXT SIZE"
+                text: root.displays.length > 1 ? "TEXT SIZE · ALL DISPLAYS" : "TEXT SIZE"
                 foreground: root.bar.foreground
                 fontFamily: root.bar.fontFamily
                 anchors.left: parent.left
@@ -723,12 +867,16 @@ Panel {
 
           // ---------- Scale ----------
           PanelSeparator {
+            visible: root.displayTakesScale(root.selectedDisplay)
             foreground: root.bar.foreground
           }
 
           Column {
             width: parent.width
             spacing: Style.space(10)
+            // A dark display has no mode to scale, and the command refuses a
+            // display Hyprland is not driving.
+            visible: root.displayTakesScale(root.selectedDisplay)
 
             Item {
               width: parent.width
@@ -743,13 +891,13 @@ Panel {
                 anchors.verticalCenter: parent.verticalCenter
               }
 
-              // Name the monitor SCALE targets, since it only applies to the
-              // focused one.
+              // Name the display SCALE targets, since it only applies to the
+              // selected one.
               Text {
                 id: scaleMonitor
-                text: root.focusedMonitor
+                text: root.targetDisplayName
                 // Only worth naming when more than one display is in play.
-                visible: root.focusedMonitor !== "" && root.enabledDisplayCount > 1
+                visible: root.targetDisplayName !== "" && root.displays.length > 1
                 color: Qt.darker(root.bar.foreground, 1.4)
                 font.family: root.bar.fontFamily
                 font.pixelSize: Style.font.caption
@@ -856,16 +1004,38 @@ Panel {
     required property int rowIndex
 
     readonly property bool isFocused: display && display.focused
-    readonly property bool canToggle: display && (!display.enabled || root.enabledDisplayCount > 1)
+    readonly property bool isSelected: display && display.name === root.selectedMonitor
+    readonly property bool canToggle: display && (!display.enabled || root.canDisableDisplay(display))
 
     hasCursor: root.cursorActive && root.focusSection === "monitors" && root.selectedIndex === rowIndex
     onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(monitorRow)
-    current: isFocused
+    // The row highlight marks the display the controls above are pointed at,
+    // which is not necessarily the one Hyprland has focus on.
+    current: isSelected
     foreground: root.bar.foreground
     fill: Style.hoverFillFor(root.bar.foreground, Color.accent)
     currentFill: Style.selectedFillFor(root.bar.foreground, Color.accent)
     implicitHeight: monitorInner.implicitHeight + Style.spacing.xl
-    opacity: canToggle ? 1.0 : 0.45
+
+    function focusRow() {
+      if (root.reflowingText) return
+      root.cursorActive = true
+      root.focusSection = "monitors"
+      root.selectedIndex = monitorRow.rowIndex
+    }
+
+    // Declared ahead of the content so the switch drawn over it keeps its own
+    // clicks. The row picks the display; the switch turns it on and off.
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onContainsMouseChanged: if (containsMouse) monitorRow.focusRow()
+      onClicked: {
+        monitorRow.focusRow()
+        root.selectMonitor(monitorRow.display.name)
+      }
+    }
 
     Row {
       id: monitorInner
@@ -892,31 +1062,30 @@ Panel {
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.body
         elide: Text.ElideRight
-        width: parent.width - Style.space(22) - Style.space(14) - Style.space(16)
+        width: parent.width - Style.space(22) - enableSwitch.width - Style.space(16)
         anchors.verticalCenter: parent.verticalCenter
       }
 
-      Text {
-        text: monitorRow.display.enabled ? "󰄬" : ""
-        color: root.bar.foreground
-        font.family: root.bar.fontFamily
-        font.pixelSize: Style.font.subtitle
-        width: Style.space(14)
-        horizontalAlignment: Text.AlignRight
+      // Dimmed rather than hidden when it can't move, so the row still reads as
+      // a display that is on — it just happens to be the focused or last one.
+      ToggleSwitch {
+        id: enableSwitch
         anchors.verticalCenter: parent.verticalCenter
+        checked: monitorRow.display.enabled
+        interactive: monitorRow.canToggle
+        // cursorRing defaults to `interactive`, and it is what reserves the
+        // ring's padding in the switch's width. Left to default, an inert
+        // switch measures narrower than a live one and the column of switches
+        // stops lining up. Keep the padding on every row; an inert switch never
+        // draws the ring anyway, since its mouse area is disabled.
+        cursorRing: true
+        opacity: monitorRow.canToggle ? 1.0 : 0.45
+        foreground: root.bar.foreground
+        accent: Color.accent
+        trackHeight: Math.max(18, Math.round(Style.spacing.controlHeight * 0.42))
+        onToggled: root.toggleDisplay(monitorRow.display.name, monitorRow.display.enabled)
+        onHovered: function(isHovered) { if (isHovered) monitorRow.focusRow() }
       }
-    }
-
-    MouseArea {
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: monitorRow.canToggle ? Qt.PointingHandCursor : Qt.ArrowCursor
-      onContainsMouseChanged: if (containsMouse && !root.reflowingText) {
-        root.cursorActive = true
-        root.focusSection = "monitors"
-        root.selectedIndex = monitorRow.rowIndex
-      }
-      onClicked: if (monitorRow.canToggle) root.toggleDisplay(monitorRow.display.name, monitorRow.display.enabled)
     }
   }
 }
