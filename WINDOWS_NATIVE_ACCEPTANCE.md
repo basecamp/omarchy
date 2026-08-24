@@ -65,4 +65,4 @@ Give the same machine to an Omarchy/Arch power user. They should still be able t
 
 A green harness that only talks to `omarchy-shell window` and checks `left.x <= right.x` does not pass the OS. The extra proofs were sufficient as architecture evidence for Windowing Gate W0 on Hyprland, and (with three-button SSD, Files CSD, reopen memory, and pointer hover) as **agent-reported** product-windowing evidence. They are not Windows 7 Ultimate.
 
-Desktop shell acceptance is **FAIL** until Start click-through is proven (outside-click and orb re-toggle landed in `e3bf9385`; the overlay still swallows the click). See `HANDOFF_NEW_BOX_2026-08-23.md`.
+Start click-through is no longer the open defect it was: outside-click and orb re-toggle landed in `e3bf9385`, and the full-screen swallow was replaced by a compositor-delivered click in `6a548ba9` + `66805cdc`. `test/acceptance.d/start-dismiss-proof.py` is its proof. Desktop shell acceptance is now decided by the current dated `HANDOFF_*` certification record — not by this file, and not by any agent writeup.

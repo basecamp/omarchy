@@ -1,0 +1,2 @@
+# uinput for Desktop Mode pointer proofs / input injection
+KERNEL=="uinput", MODE="0660", GROUP="input"
