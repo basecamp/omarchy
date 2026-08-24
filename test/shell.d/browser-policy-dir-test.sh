@@ -251,6 +251,8 @@ grep -F 'browser_policy_grant_user' "${migrations[0]}" >/dev/null ||
   fail "the policy-directory migration still grants the current user the group"
 grep -F 'BROWSER_POLICY_FIREFOX_DIRS' "${migrations[0]}" >/dev/null ||
   fail "the policy-directory migration covers Firefox and Zen"
+grep -F 'browser_policy_firefox_policy_file_ok' "${migrations[0]}" >/dev/null ||
+  fail "the policy-directory migration keeps a trusted Firefox policies.json"
 grep -F '/opt/zen-browser/distribution' "$ROOT/install/helpers/browser-policy.sh" >/dev/null ||
   fail "the shared helper names the Zen distribution directory"
 pass "a migration locks existing policy directories"

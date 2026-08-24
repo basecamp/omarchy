@@ -20,5 +20,9 @@ fi
 for dir in "${BROWSER_POLICY_FIREFOX_DIRS[@]}"; do
   [[ -d $dir ]] || continue
   browser_policy_firefox_hardened "$dir" && continue
-  browser_policy_setup_firefox_distribution "$dir"
+  as_root install -d -m 0755 -o root -g root "$dir"
+  browser_policy_purge_dir "$dir"
+  if ! browser_policy_firefox_policy_file_ok "$dir/policies.json"; then
+    browser_policy_install_firefox_policies "$dir"
+  fi
 done
