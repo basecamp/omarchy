@@ -204,9 +204,17 @@ if grep -Fxq 'PWNED' "$test_tmp/font-pkg-inject.out"; then
 fi
 grep -Fxq 'pkg:alpha; echo PWNED' "$OMARCHY_TEST_LOG" ||
   fail "install-font hands a hostile package to the package helper as one argument" "$(<"$OMARCHY_TEST_LOG")"
-grep -Fxq 'font:Example Family' "$OMARCHY_TEST_LOG" ||
-  fail "install-font still sets the family after a hostile package" "$(<"$OMARCHY_TEST_LOG")"
 pass "install-font does not run extra commands from its package"
+
+bash "$ROOT/bin/omarchy-install-font" "Example Font" "alpha" "Example Family"
+: >"$OMARCHY_TEST_LOG"
+if OMARCHY_TEST_PKG_STATUS=1 run_presentation; then
+  fail "install-font propagates package installation failure"
+fi
+if grep -q '^font:' "$OMARCHY_TEST_LOG"; then
+  fail "install-font does not set the family after package installation failure" "$(<"$OMARCHY_TEST_LOG")"
+fi
+pass "install-font does not set the family after package installation failure"
 
 bash "$ROOT/bin/omarchy-install-and-launch" "Example App" "alpha; echo PWNED" "Disk Usage"
 : >"$OMARCHY_TEST_LOG"
