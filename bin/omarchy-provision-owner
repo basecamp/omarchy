@@ -141,7 +141,8 @@ say() {
 notice() {
   clear_logo
   echo
-  gum spin --spinner "pulse" --title "$1" -- sleep "${2:-2}"
+  printf '%*s\033[32m● \033[0m%s\n' "$PADDING_LEFT" '' "$1"
+  sleep "${2:-2}"
   echo
 }
 
