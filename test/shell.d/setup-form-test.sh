@@ -121,6 +121,8 @@ source "$ROOT/install/provisioning/setup-form.sh"
 ((OMARCHY_FORM_SIGNAL == 130)) || fail "Ctrl+C reports status 130"
 [[ $(printf '%s\n' "$OMARCHY_KEYBOARD_LAYOUTS" | head -n 1) == "English (US)|us" ]] ||
   fail "English (US) leads the keyboard layouts so gum choose opens on the default"
+grep -qxF 'English (US, International)|us-acentos' <<<"$OMARCHY_KEYBOARD_LAYOUTS" ||
+  fail "the international pick resolves to its console keymap" "$OMARCHY_KEYBOARD_LAYOUTS"
 pass "the form publishes the 0/1/130 status contract and leads with English (US)"
 
 # Keyboard
@@ -132,6 +134,12 @@ assert_status 0 "keyboard prompt succeeds"
 [[ $(head -n 1 "$tmp_dir/stdin.1") == "English (US)" ]] || fail "keyboard prompt offers English (US) first"
 grep -qF -- '--selected English (US)' "$GUM_ARGS" || fail "keyboard prompt preselects English (US)"
 pass "keyboard prompt maps the chosen label to its keymap"
+
+run_prompt omarchy_prompt_keyboard "0:English (US, International)"
+assert_status 0 "international keyboard prompt succeeds"
+[[ $(field keyboard) == "us-acentos" ]] || fail "keyboard prompt resolves the international pick to its keymap"
+[[ $(field keyboard_label) == "English (US, International)" ]] || fail "keyboard prompt keeps the international label"
+pass "keyboard prompt maps US International to us-acentos"
 
 run_prompt omarchy_prompt_keyboard "1:"
 assert_status "$OMARCHY_FORM_BACK" "keyboard prompt reports Esc as back"
