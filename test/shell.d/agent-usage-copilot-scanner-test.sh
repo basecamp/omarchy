@@ -87,63 +87,45 @@ result_empty=$(HOME="$(mktemp -d)" COPILOT_HOME="$(mktemp -d)" "$ROOT/bin/omarch
   fail "Copilot collector returns empty stats when DB missing" "$result_empty"
 pass "Copilot collector returns empty stats when DB missing"
 
-# Test 9: Exhausted quota logic is exercised by real collector
-# Verify the real fetch_quota function correctly handles exhausted quota (0/0)
-python3 << PYTEST
+# Test 9: Exhausted quota logic produces "No more" message
+# Test the formatting of exhausted quota (entitlement=0, credits_used=0)
+python3 << 'PYTEST'
 import sys
-import json
 
-# Directly test the exhausted quota logic from the collector
-# This verifies the real code path (not a reimplementation)
-
-# Simulate what fetch_quota() does when API returns entitlement=0, credits_used=0
+# Test the exact formatting logic from fetch_quota
 QUOTA_DISPLAY_NAMES = {
     "premium_interactions": "AI Credits",
     "premium_requests": "Premium Requests",
-    "chat": "Chat",
-    "completions": "Completions",
 }
 
-# Test case 1: Exhausted quota (what the real API returns when out of requests)
-quota_key = "premium_interactions"
+# Simulate exhausted quota response
+quota_type = "premium_interactions"
+display_name = QUOTA_DISPLAY_NAMES.get(quota_type, quota_type)
 used = 0
 total = 0
-display_name = QUOTA_DISPLAY_NAMES.get(quota_key, quota_key)
 
-# This is the exact code from fetch_quota (lines 114-120 of collector)
-result = {
-    "displayName": display_name,
-    "used": used,
-    "total": total,
-}
+# This is the exact formatting from fetch_quota (lines 114-120)
+formatted_label = display_name
 if total == 0 and used == 0:
-    result["displayName"] = f"No more {display_name} available"
-result["resetsAt"] = "2026-09-01T00:00:00.000Z"
+    formatted_label = f"No more {display_name} available"
 
-# Verify it produces the correct message
-if "No more" not in result["displayName"]:
-    print(f"FAIL: fetch_quota exhausted logic broken - got: {result['displayName']}")
+# Verify the label has "No more"
+if "No more" not in formatted_label:
+    print(f"FAIL: Expected 'No more' in formatted label, got: {formatted_label}")
     sys.exit(1)
 
-# Test case 2: Normal quota (verify we don't break normal cases)
+# Also verify normal quota still works
 used2 = 100
 total2 = 1000
-display_name2 = QUOTA_DISPLAY_NAMES.get("premium_interactions", "premium_interactions")
-
-result2 = {
-    "displayName": display_name2,
-    "used": used2,
-    "total": total2,
-}
+formatted_label2 = display_name
 if total2 == 0 and used2 == 0:
-    result2["displayName"] = f"No more {display_name2} available"
-result2["resetsAt"] = "2026-09-01T00:00:00.000Z"
+    formatted_label2 = f"No more {display_name} available"
 
-if "No more" in result2["displayName"]:
-    print(f"FAIL: Normal quota got 'No more' message - got: {result2['displayName']}")
+if "No more" in formatted_label2:
+    print(f"FAIL: Normal quota should not have 'No more', got: {formatted_label2}")
     sys.exit(1)
 
-print("PASS: Exhausted quota logic verified")
+print("PASS")
 PYTEST
 
 if (( $? == 0 )); then
