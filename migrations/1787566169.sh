@@ -1,12 +1,19 @@
 echo "Keep Ghostty terminal launches in the active working directory"
 
-ghostty_config="$HOME/.config/ghostty/config"
 ghostty_desktop="$HOME/.local/share/applications/com.mitchellh.ghostty.desktop"
+ghostty_configs=()
 
-[[ -f $ghostty_config ]] || exit 0
+if [[ -f $HOME/.config/ghostty/config ]]; then
+  ghostty_configs+=("$HOME/.config/ghostty/config")
+fi
+if [[ -f $HOME/.config/ghostty/config.ghostty ]]; then
+  ghostty_configs+=("$HOME/.config/ghostty/config.ghostty")
+fi
 
-if ! grep -Eq '^[[:space:]]*gtk-single-instance[[:space:]]*=' "$ghostty_config"; then
-  printf '\ngtk-single-instance = false\n' >>"$ghostty_config"
+(( ${#ghostty_configs[@]} > 0 )) || exit 0
+
+if ! grep -Eq '^[[:space:]]*gtk-single-instance[[:space:]]*=' "${ghostty_configs[@]}"; then
+  printf '\ngtk-single-instance = false\n' >>"${ghostty_configs[-1]}"
 fi
 
 if [[ ! -e $ghostty_desktop ]]; then
