@@ -43,3 +43,13 @@ omarchy transcode ascii ~/logo.svg ~/.config/omarchy/branding/screensaver.txt --
 ```
 
 It takes `--width` and `--height` in terminal columns and rows, a `--mode` of either `braille` (the default, and much finer) or `block`, a `--threshold` percentage for deciding which pixels count as part of the logo, and `--invert` for when your logo is light on a dark background. If a conversion comes out as a blob, the threshold is usually the knob to turn.
+
+### Words instead of a logo
+
+`omarchy ascii` draws text in Delta Corps Priest 1, the FIGlet font the Omarchy wordmark itself is drawn in, so a screensaver can say something rather than show a picture:
+
+```
+omarchy ascii "Back in five" > ~/.config/omarchy/branding/screensaver.txt
+```
+
+It takes the text as arguments, or reads it from a pipe when given none. The font carries letters and spaces only — it was drawn without digits or punctuation — so anything else is dropped and named on stderr rather than quietly swallowed.

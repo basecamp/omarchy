@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# omarchy:summary=Disable sudoless Docker by removing your user from the docker group
+# omarchy:requires-sudo=true
+
+set -e
+
+if ! id -nG "$USER" 2>/dev/null | grep -qw docker; then
+  echo "Sudoless Docker is not enabled: $USER is not in the docker group."
+  exit 0
+fi
+
+echo "Removing $USER from the docker group..."
+sudo gpasswd -d "$USER" docker >/dev/null
+
+echo ""
+echo "Sudoless Docker DISABLED. Log out and back in for the change to take effect."
+echo "Docker access now goes through a polkit/sudo prompt again: the Docker TUI"
+echo "(Super + Shift + D) and the Windows VM will ask when they need it, and the"
+echo "plain 'docker' CLI runs under sudo."
