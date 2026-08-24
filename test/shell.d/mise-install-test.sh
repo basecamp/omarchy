@@ -60,13 +60,26 @@ grep -Fqx $'mise\tuse\t-g\t--quiet\tnpm:pkg$(touch '"$tmpdir"'/PWNED)end' "$log"
 pass "a package name with shell characters reaches mise as one argument"
 
 # The command name is a file name under ~/.local/bin. These shapes escape it,
-# hide it, or make something that reads as an option.
-for name in ../escaped .hidden -dash; do
+# hide it, make something that reads as an option, or carry characters that have
+# no business in a file name. Labelled so a newline in the value does not end up
+# inside the test output.
+refused=(
+  "a slash" "../escaped"
+  "a leading dot" ".hidden"
+  "a leading dash" "-dash"
+  "a newline" $'with\nnewline'
+  "a tab" $'with\ttab'
+)
+
+for (( i = 0; i < ${#refused[@]}; i += 2 )); do
+  label=${refused[i]}
+  name=${refused[i + 1]}
+
   if install_wrapper somepkg "$name" >/dev/null 2>"$tmpdir/err"; then
-    fail "a command name of '$name' is refused"
+    fail "a command name with $label is refused"
   fi
   grep -Fq 'is not usable as a command name' "$tmpdir/err" ||
-    fail "the refusal says why for '$name'" "$(cat "$tmpdir/err")"
+    fail "the refusal says why for a command name with $label" "$(cat "$tmpdir/err")"
 done
 
 pass "command names that are not plain file names are refused"
