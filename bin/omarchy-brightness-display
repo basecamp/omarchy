@@ -1,16 +1,21 @@
 #!/bin/bash
 
 # omarchy:summary=Show or adjust brightness on the focused display.
-# omarchy:args=[--no-osd] [--monitor name] [+N%|N%-|N%|off|on]
+# omarchy:args=[--no-osd] [--nonblocking] [--monitor name] [+N%|N%-|N%|off|on]
 # omarchy:examples=omarchy brightness display | omarchy brightness display +5% | omarchy brightness display --monitor DP-1 50% | omarchy brightness display off | omarchy brightness display on
 
 no_osd=0
+nonblocking=0
 monitor=""
 
 while (( $# > 0 )); do
   case "$1" in
   --no-osd)
     no_osd=1
+    shift
+    ;;
+  --nonblocking)
+    nonblocking=1
     shift
     ;;
   --monitor)
@@ -74,7 +79,13 @@ fi
 # Drop overlapping brightness key events so concurrent invocations do not race.
 # Hardware key repeat present on some devices can otherwise glitch OSD rendering.
 exec {lock_fd}>"${XDG_RUNTIME_DIR:-/tmp}/omarchy-brightness-display.lock"
-flock -n "$lock_fd" || exit 0
+if (( nonblocking )); then
+  flock -n "$lock_fd" || exit 75
+elif [[ $step =~ ^[0-9]+%$ ]]; then
+  flock "$lock_fd"
+else
+  flock -n "$lock_fd" || exit 0
+fi
 
 if use_apple_display; then
   if (( no_osd )); then

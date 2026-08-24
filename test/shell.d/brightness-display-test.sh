@@ -80,6 +80,39 @@ grep -F 'ddcutil --bus 7 --skip-ddc-checks --noverify setvcp 10 24' "$call_log" 
   fail "absolute external brightness skips write verification"
 pass "absolute external brightness reuses the cached VCP range"
 
+lock_file="$runtime_dir/omarchy-brightness-display.lock"
+lock_ready="$test_tmp/lock-ready"
+lock_release="$test_tmp/lock-release"
+mkfifo "$lock_release"
+(
+  exec {held_lock_fd}>"$lock_file"
+  flock "$held_lock_fd"
+  touch "$lock_ready"
+  read -r <"$lock_release"
+) &
+lock_holder_pid=$!
+while [[ ! -e $lock_ready ]]; do sleep 0.01; done
+
+if run_brightness --nonblocking --no-osd --monitor DP-1 35%; then
+  fail "nonblocking automatic writes report lock contention"
+else
+  [[ $? == 75 ]] || fail "nonblocking automatic writes use the busy exit status"
+fi
+
+write_count=$(grep -c ' setvcp 10 ' "$call_log")
+if timeout 0.1 env CALL_LOG="$call_log" XDG_RUNTIME_DIR="$runtime_dir" PATH="$mock_bin:$ROOT/bin:$PATH" \
+  "$ROOT/bin/omarchy-brightness-display" --no-osd --monitor DP-1 35%; then
+  fail "manual absolute writes wait for the brightness lock"
+else
+  [[ $? == 124 ]] || fail "manual absolute writes block during lock contention"
+fi
+printf '\n' >"$lock_release"
+wait "$lock_holder_pid"
+run_brightness --no-osd --monitor DP-1 35%
+(( $(grep -c ' setvcp 10 ' "$call_log") == write_count + 1 )) ||
+  fail "manual absolute writes wait for the brightness lock"
+pass "automatic writes yield the brightness lock to manual absolute writes"
+
 brightness=$(run_brightness --monitor eDP-1)
 [[ $brightness == "40" ]] || fail "internal monitor uses the kernel backlight" "actual: $brightness"
 grep -F 'brightnessctl -d mock_backlight -m' "$call_log" >/dev/null || \

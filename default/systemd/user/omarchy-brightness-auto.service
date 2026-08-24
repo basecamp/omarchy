@@ -1,0 +1,14 @@
+[Unit]
+Description=Adjust display brightness from ambient light
+After=graphical-session.target
+PartOf=graphical-session.target
+ConditionEnvironment=WAYLAND_DISPLAY
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/omarchy-brightness-auto
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

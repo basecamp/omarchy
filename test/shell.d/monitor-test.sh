@@ -75,4 +75,15 @@ assertDeepEqual(
 )
 
 assertDeepEqual(monitor.parseDisplays('{'), { displays: [], enabledDisplayCount: 0 }, 'monitor handles invalid display JSON')
+
+assertDeepEqual(
+  monitor.parseAutoBrightnessStatus('{"supported":true,"enabled":true,"active":false}'),
+  { supported: true, enabled: true, active: false },
+  'monitor parses automatic brightness state'
+)
+assertDeepEqual(
+  monitor.parseAutoBrightnessStatus('{'),
+  { supported: false, enabled: false, active: false },
+  'monitor handles invalid automatic brightness state'
+)
 JS

@@ -118,12 +118,14 @@ if pkgs_root is None:
   )
   sys.exit(1)
 settings_pkgbuild_path = pkgs_root / "omarchy-settings/PKGBUILD"
+settings_dev_pkgbuild_path = pkgs_root / "omarchy-settings-dev/PKGBUILD"
 omarchy_pkgbuild_path = pkgs_root / "omarchy/PKGBUILD"
 if not settings_pkgbuild_path.exists():
   settings_pkgbuild_path = pkgs_root / "omarchy-settings-dev/PKGBUILD"
 if not omarchy_pkgbuild_path.exists():
   omarchy_pkgbuild_path = pkgs_root / "omarchy-dev/PKGBUILD"
 pkgbuild = settings_pkgbuild_path.read_text()
+settings_dev_pkgbuild = settings_dev_pkgbuild_path.read_text() if settings_dev_pkgbuild_path.exists() else ""
 omarchy_pkgbuild = omarchy_pkgbuild_path.read_text()
 errors = []
 package_defaults = [
@@ -135,6 +137,7 @@ package_defaults = [
   ("default/applications/mimeapps.list", "/usr/share/applications/mimeapps.list", "mimeapps.list"),
   ("etc/fastfetch/config.jsonc", "/etc/fastfetch/config.jsonc", "fastfetch/config.jsonc"),
   ("default/systemd/user/bt-agent.service", "/usr/lib/systemd/user/bt-agent.service", "systemd/user/bt-agent.service"),
+  ("default/systemd/user/omarchy-brightness-auto.service", None, "systemd/user/omarchy-brightness-auto.service"),
   ("default/systemd/user/omarchy-sleep-lock.service", "/usr/lib/systemd/user/omarchy-sleep-lock.service", "systemd/user/omarchy-sleep-lock.service"),
   ("default/systemd/user/omarchy-recover-internal-monitor.service", "/usr/lib/systemd/user/omarchy-recover-internal-monitor.service", "systemd/user/omarchy-recover-internal-monitor.service"),
   ("default/systemd/user/omarchy-migrate-notify.service", "/usr/lib/systemd/user/omarchy-migrate-notify.service", "systemd/user/omarchy-migrate-notify.service"),
@@ -153,6 +156,14 @@ for source, destination, legacy in package_defaults:
     errors.append(f"legacy path still in config/: {legacy}")
   if destination and (source not in pkgbuild or destination not in pkgbuild):
     errors.append(f"PKGBUILD does not explicitly install {source} -> {destination}")
+
+auto_brightness_source = "default/systemd/user/omarchy-brightness-auto.service"
+auto_brightness_destination = "/usr/lib/systemd/user/omarchy-brightness-auto.service"
+if auto_brightness_source not in settings_dev_pkgbuild or auto_brightness_destination not in settings_dev_pkgbuild:
+  errors.append(
+    "omarchy-settings-dev PKGBUILD does not explicitly install "
+    f"{auto_brightness_source} -> {auto_brightness_destination}"
+  )
 
 # Existing users have an absolute wants symlink to the old unit path, and the
 # migration that repoints it only runs for users who run an update -- the

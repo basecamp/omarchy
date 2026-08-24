@@ -18,6 +18,10 @@ Panel {
   property int pendingBrightnessPercent: 0
   property bool brightnessSetQueued: false
   property bool brightnessAvailable: false
+  property bool automaticBrightnessSupported: false
+  property bool automaticBrightnessEnabled: false
+  property bool automaticBrightnessActive: false
+  property bool automaticBrightnessBusy: false
   property string internalMonitor: ""
   property string externalMonitor: ""
   property string focusedMonitor: ""
@@ -75,6 +79,7 @@ Panel {
   readonly property var visibleSections: {
     var list = []
     if (brightnessAvailable) list.push("brightness")
+    if (automaticBrightnessSupported) list.push("automatic-brightness")
     list.push("textsize")
     list.push("scale")
     if (displays.length > 1) list.push("monitors")
@@ -83,6 +88,7 @@ Panel {
 
   function sectionCount(section) {
     if (section === "brightness") return 0  // only the slider sentinel at -1
+    if (section === "automatic-brightness") return 0
     if (section === "textsize") return 0    // slider sentinel at -1, like brightness
     if (section === "scale") return scaleValues.length
     if (section === "monitors") return displays.length
@@ -91,11 +97,12 @@ Panel {
 
   function sectionIsSingleRow(section) {
     // brightness and text size are lone sliders; scale presets sit horizontally.
-    return section === "brightness" || section === "textsize" || section === "scale"
+    return section === "brightness" || section === "automatic-brightness"
+      || section === "textsize" || section === "scale"
   }
 
   function sectionFirstIndex(section) {
-    if (section === "brightness" || section === "textsize") return -1
+    if (section === "brightness" || section === "automatic-brightness" || section === "textsize") return -1
     return 0
   }
 
@@ -147,6 +154,10 @@ Panel {
   }
 
   function activateCursor() {
+    if (focusSection === "automatic-brightness") {
+      toggleAutomaticBrightness()
+      return
+    }
     if (focusSection === "scale" && selectedIndex >= 0 && selectedIndex < scaleValues.length) {
       setScale(scaleValues[selectedIndex])
       return
@@ -169,7 +180,7 @@ Panel {
     var count = sectionCount(focusSection)
     if (sectionIsSingleRow(focusSection)) {
       // brightness/text size use the -1 sentinel; scale clamps into the presets.
-      if (focusSection === "brightness" || focusSection === "textsize") selectedIndex = -1
+      if (focusSection === "brightness" || focusSection === "automatic-brightness" || focusSection === "textsize") selectedIndex = -1
       else if (selectedIndex < 0 || selectedIndex >= count) selectedIndex = 0
       return
     }
@@ -231,6 +242,26 @@ Panel {
 
   function refresh() {
     if (!stateProc.running) stateProc.running = true
+    if (!automaticBrightnessStatusProc.running) automaticBrightnessStatusProc.running = true
+  }
+
+  function updateAutomaticBrightness(statusJson) {
+    var status = Model.parseAutoBrightnessStatus(statusJson)
+    root.automaticBrightnessSupported = status.supported
+    root.automaticBrightnessEnabled = status.enabled
+    root.automaticBrightnessActive = status.active
+  }
+
+  function toggleAutomaticBrightness() {
+    if (!root.automaticBrightnessSupported || root.automaticBrightnessBusy) return
+
+    root.automaticBrightnessEnabled = !root.automaticBrightnessEnabled
+    root.automaticBrightnessBusy = true
+    automaticBrightnessActionProc.command = [
+      "omarchy-brightness-auto",
+      root.automaticBrightnessEnabled ? "on" : "off"
+    ]
+    automaticBrightnessActionProc.running = true
   }
 
   function setBrightness(value) {
@@ -369,6 +400,7 @@ Panel {
   }
 
   onBrightnessAvailableChanged: clampCursor()
+  onAutomaticBrightnessSupportedChanged: clampCursor()
   onDisplaysChanged: clampCursor()
   onScaleValuesChanged: clampCursor()
   onVisibleSectionsChanged: clampCursor()
@@ -401,6 +433,25 @@ Panel {
         root.monitorScale = root.normalizeScale(String(lines[6] || "").trim())
         root.updateDisplays(String(lines[7] || "[]").trim())
       }
+    }
+  }
+
+  Process {
+    id: automaticBrightnessStatusProc
+    command: ["omarchy-brightness-auto", "status"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateAutomaticBrightness(text)
+    }
+  }
+
+  Process {
+    id: automaticBrightnessActionProc
+    stdout: StdioCollector { waitForEnd: true }
+    onRunningChanged: {
+      if (running) return
+      root.automaticBrightnessBusy = false
+      if (!automaticBrightnessStatusProc.running) automaticBrightnessStatusProc.running = true
     }
   }
 
@@ -648,6 +699,34 @@ Panel {
                 }
               }
             }
+
+          }
+
+          PanelSeparator {
+            visible: root.automaticBrightnessSupported
+            foreground: root.bar.foreground
+          }
+
+          Toggle {
+            id: automaticBrightnessToggle
+            visible: root.automaticBrightnessSupported
+            width: parent.width
+            label: "Automatic brightness"
+            description: root.automaticBrightnessActive ? "Following ambient light" : "Adjust to ambient light"
+            checked: root.automaticBrightnessEnabled
+            enabled: !root.automaticBrightnessBusy
+            opacity: enabled ? 1.0 : 0.65
+            hasCursor: root.cursorActive && root.focusSection === "automatic-brightness"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            onClicked: root.toggleAutomaticBrightness()
+            onHovered: function(isHovered) {
+              if (!isHovered || root.reflowingText) return
+              root.cursorActive = true
+              root.focusSection = "automatic-brightness"
+              root.selectedIndex = -1
+            }
+            onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(automaticBrightnessToggle)
           }
 
           // ---------- Text size ----------

@@ -111,6 +111,21 @@ function parseDisplays(raw) {
   }
 }
 
+function parseAutoBrightnessStatus(raw) {
+  var status = {}
+  try {
+    status = raw ? JSON.parse(String(raw)) : {}
+  } catch (e) {
+    status = {}
+  }
+
+  return {
+    supported: status.supported === true,
+    enabled: status.enabled === true,
+    active: status.active === true
+  }
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     clampBrightness: clampBrightness,
@@ -119,6 +134,7 @@ if (typeof module !== "undefined") {
     matchingScaleIndex: matchingScaleIndex,
     availableScales: availableScales,
     brightnessName: brightnessName,
-    parseDisplays: parseDisplays
+    parseDisplays: parseDisplays,
+    parseAutoBrightnessStatus: parseAutoBrightnessStatus
   }
 }

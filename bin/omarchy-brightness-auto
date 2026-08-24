@@ -1,0 +1,399 @@
+#!/bin/bash
+
+# omarchy:summary=Control automatic display brightness from an ambient light sensor.
+# omarchy:args=<on|off|toggle|status>
+
+curve_center_percent=30
+curve_percent_per_octave=7.5
+curve_center_lux=200
+smoothing_new_weight=0.25
+change_threshold=2
+max_step=3
+poll_seconds=1
+retry_seconds=5
+iio_root=${OMARCHY_AUTO_BRIGHTNESS_IIO_ROOT:-/sys/bus/iio/devices}
+service=omarchy-brightness-auto.service
+last_status=""
+
+is_apple_sensor() {
+  local path=""
+  local product=""
+  local vendor=""
+
+  path="$(realpath -e "$1")" || return 1
+  while [[ $path != "/" ]]; do
+    if [[ -r $path/idVendor && -r $path/idProduct ]]; then
+      read -r vendor <"$path/idVendor" || return 1
+      read -r product <"$path/idProduct" || return 1
+      [[ ${vendor,,} == "05ac" && ${product,,} == "1114" ]] && return 0
+    fi
+    path="${path%/*}"
+    [[ -n $path ]] || path="/"
+  done
+
+  return 1
+}
+
+find_illuminance_channel() {
+  local sensor="$1"
+  local channel=""
+  local name=""
+
+  if [[ -r $sensor/in_illuminance_input ]]; then
+    printf '%s\n' "$sensor/in_illuminance_input"
+    return
+  fi
+  for channel in "$sensor"/in_illuminance*_input; do
+    name=${channel##*/}
+    if [[ -r $channel && $name =~ ^in_illuminance[0-9]+_input$ ]]; then
+      printf '%s\n' "$channel"
+      return
+    fi
+  done
+  if [[ -r $sensor/in_illuminance_raw ]]; then
+    printf '%s\n' "$sensor/in_illuminance_raw"
+    return
+  fi
+  for channel in "$sensor"/in_illuminance*_raw; do
+    name=${channel##*/}
+    if [[ -r $channel && $name =~ ^in_illuminance[0-9]+_raw$ ]]; then
+      printf '%s\n' "$channel"
+      return
+    fi
+  done
+
+  return 1
+}
+
+find_sensor() {
+  local root="${1:-$iio_root}"
+  local fallback=""
+  local sensor=""
+
+  for sensor in "$root"/iio:device*; do
+    [[ -e $sensor ]] || continue
+    find_illuminance_channel "$sensor" >/dev/null || continue
+
+    if is_apple_sensor "$sensor"; then
+      printf '%s apple\n' "$sensor"
+      return 0
+    fi
+    [[ -n $fallback ]] || fallback="$sensor"
+  done
+
+  [[ -n $fallback ]] || return 1
+  printf '%s generic\n' "$fallback"
+}
+
+read_lux() {
+  local sensor="$1"
+  local channel=""
+  local input=""
+  local offset=0
+  local raw=""
+  local scale=1
+
+  channel="$(find_illuminance_channel "$sensor")" || return 1
+  if [[ $channel == *_input ]]; then
+    read -r input <"$channel" || return 1
+    awk -v value="$input" '
+      BEGIN {
+        if (value !~ /^[-+]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][-+]?[0-9]+)?$/) exit 1
+        printf "%.10g\n", value + 0
+      }
+    '
+    return
+  fi
+
+  read -r raw <"$channel" || return 1
+  if [[ -r ${channel%_raw}_offset ]]; then
+    read -r offset <"${channel%_raw}_offset" || return 1
+  elif [[ -r $sensor/in_illuminance_offset ]]; then
+    read -r offset <"$sensor/in_illuminance_offset" || return 1
+  fi
+  if [[ -r ${channel%_raw}_scale ]]; then
+    read -r scale <"${channel%_raw}_scale" || return 1
+  elif [[ -r $sensor/in_illuminance_scale ]]; then
+    read -r scale <"$sensor/in_illuminance_scale" || return 1
+  fi
+
+  awk -v raw="$raw" -v offset="$offset" -v scale="$scale" '
+    function number(value) {
+      return value ~ /^[-+]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][-+]?[0-9]+)?$/
+    }
+    BEGIN {
+      if (!number(raw) || !number(offset) || !number(scale)) exit 1
+      printf "%.10g\n", (raw + offset) * scale
+    }
+  '
+}
+
+curve_brightness() {
+  awk \
+    -v lux="$1" \
+    -v center_percent="$curve_center_percent" \
+    -v percent_per_octave="$curve_percent_per_octave" \
+    -v center_lux="$curve_center_lux" '
+      BEGIN {
+        if (lux !~ /^[-+]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][-+]?[0-9]+)?$/) exit 1
+        if (lux < 0.1) lux = 0.1
+        target = int(center_percent + percent_per_octave * log(lux / center_lux) / log(2) + 0.5)
+        print target
+      }
+    '
+}
+
+smooth_lux() {
+  awk -v old="$1" -v new="$2" -v new_weight="$smoothing_new_weight" '
+    BEGIN { printf "%.10g\n", old * (1 - new_weight) + new * new_weight }
+  '
+}
+
+target_with_offset() {
+  local target=$(( $1 + $2 ))
+
+  (( target < 1 )) && target=1
+  (( target > 100 )) && target=100
+  printf '%s\n' "$target"
+}
+
+needs_adjustment() {
+  local difference=$(( $1 - $2 ))
+
+  (( difference < 0 )) && difference=$(( -difference ))
+  (( difference >= change_threshold ))
+}
+
+adopt_manual_offset() {
+  printf '%s\n' "$(( $1 + $3 - $2 ))"
+}
+
+step_toward() {
+  local target="$1"
+  local current="$2"
+
+  if (( target - current > max_step )); then
+    printf '%s\n' "$(( current + max_step ))"
+  elif (( current - target > max_step )); then
+    printf '%s\n' "$(( current - max_step ))"
+  else
+    printf '%s\n' "$target"
+  fi
+}
+
+select_monitor() {
+  local kind="$1"
+  local monitors=""
+
+  monitors="$(hyprctl monitors -j 2>/dev/null)" || return 1
+  jq -er --arg kind "$kind" '
+    [.[] | select(.disabled == false)] as $active
+    | if $kind == "apple" then
+        [$active[]
+          | select(
+              .make == "Apple Computer Inc"
+              and ((.model // "") | test("StudioDisplay|ProDisplayXDR|Studio XDR"))
+            )]
+      else
+        [$active[] | select(.name | test("^(eDP|LVDS|DSI)-"))]
+      end as $preferred
+    | if ($preferred | length) == 1 then
+        $preferred[0].name
+      elif ($preferred | length) == 0 and ($active | length) == 1 then
+        $active[0].name
+      else
+        empty
+      end
+  ' <<<"$monitors"
+}
+
+read_brightness() {
+  local brightness=""
+
+  brightness="$(omarchy-brightness-display --monitor "$1" 2>/dev/null)" || return 1
+  [[ $brightness =~ ^[0-9]+$ ]] || return 1
+  (( brightness >= 0 && brightness <= 100 )) || return 1
+  printf '%s\n' "$brightness"
+}
+
+write_brightness() {
+  local monitor="$1"
+  local brightness="$2"
+
+  [[ $brightness =~ ^[0-9]+$ ]] || return 1
+  (( brightness >= 1 && brightness <= 100 )) || return 1
+  omarchy-brightness-display --nonblocking --no-osd --monitor "$monitor" "$brightness%" >/dev/null
+}
+
+log_message() {
+  printf 'omarchy-brightness-auto: %s\n' "$*" >&2
+}
+
+log_state() {
+  local status="$*"
+
+  [[ $status == $last_status ]] && return 0
+  last_status="$status"
+  log_message "$status"
+}
+
+control_session() {
+  local sensor="$1"
+  local kind="$2"
+  local monitor="$3"
+  local lux=""
+  local smoothed_lux=""
+  local base_target=""
+  local target=""
+  local current=""
+  local last_auto=""
+  local offset=""
+  local next=""
+  local mapped_monitor=""
+  local write_status=0
+
+  lux="$(read_lux "$sensor")" || {
+    log_state "unable to read sensor $sensor"
+    return 1
+  }
+  smoothed_lux="$lux"
+  base_target="$(curve_brightness "$smoothed_lux")" || return 1
+  current="$(read_brightness "$monitor")" || {
+    log_state "unable to read brightness for $monitor"
+    return 1
+  }
+  offset=$(( current - base_target ))
+  last_auto="$current"
+  log_state "controlling $monitor from $sensor at $current%"
+
+  while sleep "$poll_seconds"; do
+    mapped_monitor="$(select_monitor "$kind")" || {
+      log_state "lost display $monitor"
+      return 1
+    }
+    if [[ $mapped_monitor != $monitor ]]; then
+      log_state "display mapping changed from $monitor to $mapped_monitor"
+      return 1
+    fi
+    lux="$(read_lux "$sensor")" || {
+      log_state "lost sensor $sensor"
+      return 1
+    }
+    smoothed_lux="$(smooth_lux "$smoothed_lux" "$lux")" || return 1
+    base_target="$(curve_brightness "$smoothed_lux")" || return 1
+    target="$(target_with_offset "$base_target" "$offset")"
+    needs_adjustment "$target" "$last_auto" || continue
+
+    current="$(read_brightness "$monitor")" || {
+      log_state "lost brightness control for $monitor"
+      return 1
+    }
+    if (( current != last_auto )); then
+      offset="$(adopt_manual_offset "$offset" "$last_auto" "$current")"
+      last_auto="$current"
+      target="$(target_with_offset "$base_target" "$offset")"
+      needs_adjustment "$target" "$last_auto" || continue
+    fi
+
+    next="$(step_toward "$target" "$last_auto")"
+    if write_brightness "$monitor" "$next"; then
+      last_auto="$next"
+    else
+      write_status=$?
+      (( write_status == 75 )) && continue
+      log_state "unable to set brightness for $monitor"
+      return 1
+    fi
+  done
+}
+
+controller_pass() {
+  local sensor=""
+  local kind=""
+  local monitor=""
+
+  if ! read -r sensor kind < <(find_sensor); then
+    log_state "no ambient light sensor found"
+    return 1
+  fi
+  monitor="$(select_monitor "$kind")" || {
+    log_state "no unambiguous active monitor for $sensor"
+    return 1
+  }
+  control_session "$sensor" "$kind" "$monitor"
+}
+
+run_controller() {
+  while true; do
+    controller_pass || true
+    sleep "$retry_seconds" || return 0
+  done
+}
+
+automatic_brightness_supported() {
+  local sensor=""
+  local kind=""
+  local monitor=""
+
+  read -r sensor kind < <(find_sensor) || return 1
+  monitor="$(select_monitor "$kind")" || return 1
+  read_brightness "$monitor" >/dev/null
+}
+
+service_enabled() {
+  systemctl --user is-enabled --quiet "$service" 2>/dev/null
+}
+
+print_status() {
+  local supported=false
+  local enabled=false
+  local active=false
+
+  automatic_brightness_supported && supported=true
+  service_enabled && enabled=true
+  systemctl --user is-active --quiet "$service" 2>/dev/null && active=true
+  printf '{"supported":%s,"enabled":%s,"active":%s}\n' "$supported" "$enabled" "$active"
+}
+
+usage() {
+  printf 'Usage: omarchy-brightness-auto <on|off|toggle|status>\n' >&2
+}
+
+main() {
+  if (( $# == 0 )); then
+    run_controller
+    return
+  fi
+
+  (( $# == 1 )) || {
+    usage
+    return 2
+  }
+
+  case "$1" in
+  on)
+    systemctl --user enable --now "$service"
+    ;;
+  off)
+    systemctl --user disable --now "$service"
+    ;;
+  toggle)
+    if service_enabled; then
+      systemctl --user disable --now "$service"
+    else
+      systemctl --user enable --now "$service"
+    fi
+    ;;
+  status)
+    print_status
+    ;;
+  *)
+    usage
+    return 2
+    ;;
+  esac
+}
+
+if [[ ${BASH_SOURCE[0]} == $0 ]]; then
+  main "$@"
+fi
