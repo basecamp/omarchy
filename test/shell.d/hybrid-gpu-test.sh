@@ -87,6 +87,7 @@ chmod +x "$fake_bin"/*
 
 gmux_conf="$test_tmp/modprobe.d/apple-gmux.conf"
 dpm_rule="$test_tmp/udev/rules.d/30-omarchy-t2-amdgpu-pm.rules"
+dpm_source="$ROOT/default/udev/rules.d/30-omarchy-t2-amdgpu-pm.rules"
 renderer_env="$test_tmp/uwsm/env-hyprland.d/20-omarchy-t2-gpu"
 renderer_source="$ROOT/default/uwsm/env-hyprland.d/20-omarchy-t2-gpu"
 supergfx_conf="$test_tmp/supergfxd.conf"
@@ -154,6 +155,10 @@ renderer_devices=$(
 pass "T2 dedicated renderer policy handles late Radeon initialization"
 
 rm -f "$gmux_conf"
+legacy_renderer="$test_tmp/legacy/20-omarchy-t2-gpu"
+mkdir -p "$(dirname "$renderer_env")" "$(dirname "$legacy_renderer")"
+printf '%s\n' 'legacy omarchy-t2 renderer' >"$legacy_renderer"
+ln -s "$legacy_renderer" "$renderer_env"
 
 TEST_TMP="$test_tmp" T2_HARDWARE=1 CONFIRM_STATUS=0 \
   OMARCHY_T2_GMUX_CONF="$gmux_conf" OMARCHY_T2_DGPU_RULE="$dpm_rule" \
@@ -163,10 +168,12 @@ TEST_TMP="$test_tmp" T2_HARDWARE=1 CONFIRM_STATUS=0 \
 
 grep -Fxq 'options apple-gmux force_igd=y' "$gmux_conf" ||
   fail "T2 hybrid graphics can switch to integrated graphics"
-grep -Fxq 'SUBSYSTEM=="drm", ENV{DEVTYPE}=="drm_minor", KERNEL=="card[0-9]*", ATTR{device/vendor}=="0x1002", ATTR{device/power_dpm_force_performance_level}="low"' "$dpm_rule" ||
+cmp -s "$dpm_source" "$dpm_rule" ||
   fail "T2 integrated graphics keeps Radeon in its safe low-power mode"
 cmp -s "$renderer_source" "$renderer_env" ||
   fail "T2 integrated graphics prioritizes Intel rendering through UWSM"
+[[ ! -L $renderer_env ]] ||
+  fail "T2 graphics replaces a legacy omarchy-t2 renderer symlink"
 grep -Fq '"mode": "Hybrid"' "$supergfx_conf" ||
   fail "T2 graphics neutralizes stale supergfxd integrated mode"
 [[ ! -e $force_igpu ]] || fail "T2 graphics removes the supergfxd sleep hook"
