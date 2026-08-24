@@ -39,7 +39,9 @@ omarchy plugin add https://github.com/acme/omarchy-weather.git --enable
 
 Before it does anything, it tells you plainly that plugins run as arbitrary, unsandboxed code inside your long-lived shell process, shows you the URL, and asks you to confirm. Take that seriously. A plugin isn't a config file — it's code that runs for as long as your session does, with everything your user account can reach. Only add repos you're willing to run, and read them before you enable them.
 
-Then it clones the repo into a staging directory, validates the manifest, refuses the install if another plugin already claims that id, and moves it into `~/.config/omarchy/plugins/<id>/`. Without `--enable` it asks whether you want it on now, and you can say no and go read the code first. It never runs anything from the plugin, never executes an install hook, and never asks for sudo — it clones files, checks the manifest, and flips a bit over IPC.
+Then it clones the repo into a staging directory, validates the manifest, and refuses the install if another plugin already claims that id. If you have configured a default coding agent, the interactive installer offers to ask it for an advisory security review before moving the plugin into `~/.config/omarchy/plugins/<id>/`. Pass `--review` to request that review explicitly. The agent is instructed to inspect the staged checkout without executing or changing it, and the installer refuses to continue if the checkout changed during review. The findings are not a security guarantee, and you remain responsible for deciding whether to install and enable the code.
+
+Without `--enable` the installer asks whether you want the plugin on now, and you can say no and go read the code first. The installer itself never runs anything from the plugin, never executes an install hook, and never asks for sudo — it clones files, checks the manifest, optionally launches your coding agent, and flips a bit over IPC.
 
 Updating is a fast-forward pull of that same checkout:
 
