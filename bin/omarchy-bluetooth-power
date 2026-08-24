@@ -54,13 +54,22 @@ power_on() {
   # Usually all it takes: with AutoEnable at its default, bluetoothd powers the
   # adapter up on its own once the block is gone. It will not do that for an
   # adapter powered down without a block, so ask directly before giving up.
-  wait_powered && return 0
+  if ! wait_powered; then
+    timeout 5s bluetoothctl power on >/dev/null 2>&1
+    if ! wait_powered; then
+      echo "omarchy-bluetooth-power: adapter did not come up" >&2
+      return 1
+    fi
+  fi
 
-  timeout 5s bluetoothctl power on >/dev/null 2>&1
-  wait_powered && return 0
-
-  echo "omarchy-bluetooth-power: adapter did not come up" >&2
-  return 1
+  # On switch-gated hardware a login-time block removes the adapter from sysfs,
+  # so the enabled bt-agent.service failed its ConditionPathIsDirectory at
+  # session start and was skipped — systemd never rechecks a condition on its
+  # own, and pairing needs the NoInputNoOutput agent. Both of its gates hold
+  # now that bluetoothd reports the adapter powered, so start it here. A start
+  # is a no-op while the agent already runs, and a context without a user
+  # manager must not turn a successful power-on into a failure.
+  systemctl --user start bt-agent.service 2>/dev/null || true
 }
 
 case "${1:-}" in

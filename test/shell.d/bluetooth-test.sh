@@ -197,7 +197,16 @@ printf 'rfkill %s\n' "$*" >>"$BLUETOOTHCTL_LOG"
 exit 0
 SH
 
-chmod +x "$mock_bin/bluetoothctl" "$mock_bin/rfkill"
+# Stands in for the user manager that power-on asks to revive bt-agent, and
+# keeps the real systemctl out of the test run.
+cat >"$mock_bin/systemctl" <<'SH'
+#!/bin/bash
+
+printf 'systemctl %s\n' "$*" >>"$BLUETOOTHCTL_LOG"
+exit 0
+SH
+
+chmod +x "$mock_bin/bluetoothctl" "$mock_bin/rfkill" "$mock_bin/systemctl"
 
 # $ROOT/bin so omarchy-bluetooth-device resolves the real omarchy-bluetooth-power.
 bluetooth_run() {
@@ -227,6 +236,10 @@ grep -q "power off" "$off_log" &&
   fail "bluetooth does not also power the adapter down" "$(cat "$off_log")"
 pass "bluetooth does not also power the adapter down"
 
+grep -q "bt-agent" "$off_log" &&
+  fail "bluetooth leaves the pairing agent alone when turning off" "$(cat "$off_log")"
+pass "bluetooth leaves the pairing agent alone when turning off"
+
 # Unblocking is enough on its own, so there is nothing left to ask bluetoothctl.
 on_log=$(bluetooth_power no on)
 grep -qx "rfkill unblock bluetooth" "$on_log" ||
@@ -237,11 +250,22 @@ grep -q "power on" "$on_log" &&
   fail "bluetooth leaves the power-on to bluetoothd when the block is lifted" "$(cat "$on_log")"
 pass "bluetooth leaves the power-on to bluetoothd when the block is lifted"
 
+# A login-time block on switch-gated hardware removes the adapter from sysfs, so
+# the enabled bt-agent.service was skipped on its ConditionPathIsDirectory and
+# systemd never rechecks it. Power-on is the moment both of its gates hold again.
+grep -qx "systemctl --user start bt-agent.service" "$on_log" ||
+  fail "bluetooth revives the skipped pairing agent after power-on" "$(cat "$on_log")"
+pass "bluetooth revives the skipped pairing agent after power-on"
+
 # An adapter powered down without a block is one bluetoothd will not pick up.
 inert_log=$(RFKILL_INERT=1 bluetooth_power no on)
 grep -qx "power on" "$inert_log" ||
   fail "bluetooth powers the adapter on when unblocking does not" "$(cat "$inert_log")"
 pass "bluetooth powers the adapter on when unblocking does not"
+
+grep -qx "systemctl --user start bt-agent.service" "$inert_log" ||
+  fail "bluetooth revives the pairing agent after the fallback power-on too" "$(cat "$inert_log")"
+pass "bluetooth revives the pairing agent after the fallback power-on too"
 
 # The panel switch reads Powered, so that is what toggle has to invert.
 toggle_on_log=$(bluetooth_power yes toggle)
