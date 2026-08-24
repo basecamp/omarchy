@@ -20,6 +20,7 @@ QtObject {
   property color background: "#101315"
   property color accent: "#cacccc"
   property color urgent: "#a55555"
+  property color warning: "#a58a35"
   property color muted: "#707880"
 
   // Flat dictionary of "section.key" -> raw string from shell.toml.
@@ -74,6 +75,7 @@ QtObject {
     property color background: root.composed("bar.background", "bar.background-alpha", root.background, 1.0)
     property color text: root.pick("bar.text", root.foreground)
     property color active: root.pick("bar.active", root.urgent)
+    property color warning: root.pick("bar.warning", root.warning)
   }
   readonly property QtObject popups: QtObject {
     property color background: root.composed("popups.background", "popups.background-alpha", root.background, 1.0)
@@ -157,6 +159,7 @@ QtObject {
       else if (match[1] === "color7") color7Value = match[2]
       else if (match[1] === "color8") color8Value = match[2]
       else if (match[1] === "red" || match[1] === "color1") urgent = match[2]
+      else if (match[1] === "yellow" || match[1] === "color3") warning = match[2]
     }
     if (!loadedBackground && color0Value.length > 0) background = color0Value
     if (!loadedForeground && color7Value.length > 0) foreground = color7Value

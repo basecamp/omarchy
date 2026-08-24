@@ -29,12 +29,19 @@ Panel {
     return !!(device && device.isPresent)
   }
 
-  // Intentionally lower than the omarchy-battery-low notification threshold
-  // (10, in shell/plugins/services/battery/Service.qml): the notification
-  // fires once as an early warning, while this drives a persistent bar
-  // indicator reserved for the final stretch before shutdown.
-  readonly property int lowBatteryThreshold: 5
-  readonly property bool batteryLow: Model.isBatteryLow(UPower.displayDevice, UPower.onBattery, upowerStates(), root.lowBatteryThreshold)
+  // Three escalating thresholds while discharging: batteryWarning (yellow)
+  // mirrors the omarchy-battery-low notification threshold in
+  // shell/plugins/services/battery/Service.qml, batteryDanger (red) is the
+  // final stretch, and batteryCritical adds a blink once shutdown is close.
+  // Each is a superset of the next (danger implies warning, critical implies
+  // both), so the color/blink wiring below only needs to pick the reddest
+  // active tier.
+  readonly property int batteryWarningThreshold: 10
+  readonly property int batteryDangerThreshold: 5
+  readonly property int batteryCriticalThreshold: 2
+  readonly property bool batteryWarning: Model.isBatteryLow(UPower.displayDevice, UPower.onBattery, upowerStates(), root.batteryWarningThreshold)
+  readonly property bool batteryDanger: Model.isBatteryLow(UPower.displayDevice, UPower.onBattery, upowerStates(), root.batteryDangerThreshold)
+  readonly property bool batteryCritical: Model.isBatteryLow(UPower.displayDevice, UPower.onBattery, upowerStates(), root.batteryCriticalThreshold)
 
   function upowerStates() {
     return {
@@ -288,8 +295,9 @@ Panel {
       ? Math.round(root.batteryFraction * 100) + "% " + root.batteryIcon()
       : root.batteryIcon()
     slotSize: Style.bar.iconSlot * (root.showPercentage && !vertical ? 2 : 1)
-    active: root.batteryLow
-    blinking: root.batteryLow
+    active: root.batteryWarning
+    activeColor: root.batteryDanger ? (root.bar ? root.bar.urgent : Color.urgent) : (root.bar ? root.bar.warning : Color.warning)
+    blinking: root.batteryCritical
     tooltipText: ""
     onPressed: function(b) {
       if (!root.batteryPresent) return
