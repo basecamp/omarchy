@@ -39,9 +39,9 @@ Panel {
   readonly property int batteryWarningThreshold: 10
   readonly property int batteryDangerThreshold: 5
   readonly property int batteryCriticalThreshold: 2
-  readonly property bool batteryWarning: Model.isBatteryLow(UPower.displayDevice, UPower.onBattery, upowerStates(), root.batteryWarningThreshold)
-  readonly property bool batteryDanger: Model.isBatteryLow(UPower.displayDevice, UPower.onBattery, upowerStates(), root.batteryDangerThreshold)
-  readonly property bool batteryCritical: Model.isBatteryLow(UPower.displayDevice, UPower.onBattery, upowerStates(), root.batteryCriticalThreshold)
+  readonly property bool batteryWarning: Model.isBatteryLow(UPower.displayDevice, UPower.onBattery, root.batteryWarningThreshold)
+  readonly property bool batteryDanger: Model.isBatteryLow(UPower.displayDevice, UPower.onBattery, root.batteryDangerThreshold)
+  readonly property bool batteryCritical: Model.isBatteryLow(UPower.displayDevice, UPower.onBattery, root.batteryCriticalThreshold)
 
   function upowerStates() {
     return {

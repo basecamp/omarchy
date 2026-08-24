@@ -78,10 +78,14 @@ function batteryIcon(device, onBattery, states) {
   return defaultIcons[index]
 }
 
-function isBatteryLow(device, onBattery, states, threshold) {
+// onBattery alone (not device.state) matches root.discharging elsewhere in
+// Panel.qml: device.state can briefly lag UPower.onBattery after a plug
+// event (see the "stale discharging state" test below), and requiring it
+// here too would leave the bar icon uncolored for a beat while the rest of
+// the panel already reads as on-battery.
+function isBatteryLow(device, onBattery, threshold) {
   var d = device || {}
   if (!d.isPresent || !onBattery) return false
-  if (d.state !== (states || {}).Discharging) return false
   return Math.round(batteryFraction(d) * 100) <= threshold
 }
 
