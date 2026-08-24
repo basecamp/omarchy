@@ -7,6 +7,8 @@
 
 set -euo pipefail
 
+internet_probe=1.1.1.1
+
 # `-e no` keeps ':' in a connection NAME from being escaped, matching the
 # convention already used by omarchy-network-band's nm_get.
 nm_get() {
@@ -44,6 +46,24 @@ deactivate_other_vpns() {
   done < <(list_vpn_connections)
 }
 
+# NetworkManager reports a WireGuard profile as fully "activated" once its
+# own local setup (device, keys, routes) succeeds -- it does not wait on or
+# check the peer handshake. A wrong endpoint, a blocked UDP port, or a dead
+# server all still read as "connected" from nmcli alone. One ping bound to
+# the tunnel device is the only way to tell a working tunnel from one that
+# is locally configured but not actually carrying traffic.
+verify_tunnel() {
+  local name=$1 device state
+
+  device=$(nm_get GENERAL.DEVICES connection show "$name")
+  [[ -n $device ]] || return 1
+
+  state=$(nm_get GENERAL.STATE device show "$device")
+  [[ $state == 100* ]] || return 1
+
+  ping -c 1 -W 2 -I "$device" "$internet_probe" >/dev/null 2>&1
+}
+
 case "$1" in
   up)
     # Nothing at the NetworkManager/WireGuard level stops two tunnels being
@@ -51,6 +71,10 @@ case "$1" in
     # selection as exclusive, one profile carrying traffic at a time.
     deactivate_other_vpns "$2"
     nmcli connection up "$2" >/dev/null
+    if ! verify_tunnel "$2"; then
+      echo "Warning: $2 connected but is not passing traffic." >&2
+      exit 2
+    fi
     ;;
   down)
     nmcli connection down "$2" >/dev/null

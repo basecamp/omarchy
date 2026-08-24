@@ -86,8 +86,12 @@ Panel {
   // VPN/WireGuard connection profiles from `omarchy-network-vpn`.
   // `vpnActionName` is the profile currently being brought up/down, so its
   // row can render a busy state while the toggle is in flight.
+  // `vpnWarningName` is the profile whose last "up" reported connected but
+  // not actually passing traffic -- nmcli alone cannot tell a live tunnel
+  // from one whose peer never answered.
   property var vpnConnections: []
   property string vpnActionName: ""
+  property string vpnWarningName: ""
 
   // Per-row in-flight state. `actionSsid` flips on for the row whose action
   // is currently running so it can render "Connecting…" / "Disconnecting…" /
@@ -909,7 +913,12 @@ Panel {
   // band change still in flight, and each needs its own exit handler.
   Process {
     id: vpnActionProc
-    onExited: {
+    // Exit 2 is omarchy-network-vpn's own signal: nmcli brought the profile
+    // up, but the post-activation ping through the tunnel device found no
+    // real peer behind it. Only the most recent toggle's outcome is kept,
+    // same as the single failureSsid/failureReason pair Wi-Fi rows use.
+    onExited: function(exitCode) {
+      root.vpnWarningName = exitCode === 2 ? root.vpnActionName : ""
       root.vpnActionName = ""
       if (!vpnProc.running) vpnProc.running = true
     }
@@ -1689,6 +1698,7 @@ Panel {
 
     readonly property bool isActive: !!(conn && conn.active)
     readonly property bool isBusy: root.vpnActionName !== "" && conn && root.vpnActionName === conn.name
+    readonly property bool isWarning: !isBusy && root.vpnWarningName !== "" && conn && root.vpnWarningName === conn.name
 
     current: isActive
     foreground: root.bar.foreground
@@ -1727,8 +1737,12 @@ Panel {
 
       Text {
         id: statusText
-        text: row.isBusy ? (row.isActive ? "Disconnecting…" : "Connecting…") : (row.isActive ? "Connected" : "")
-        color: row.isActive ? root.bar.foreground : Qt.darker(root.bar.foreground, 1.5)
+        text: {
+          if (row.isBusy) return row.isActive ? "Disconnecting…" : "Connecting…"
+          if (row.isWarning) return "Connected, no traffic"
+          return row.isActive ? "Connected" : ""
+        }
+        color: row.isWarning ? root.bar.urgent : (row.isActive ? root.bar.foreground : Qt.darker(root.bar.foreground, 1.5))
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.bodySmall
         anchors.right: parent.right

@@ -50,12 +50,22 @@ assert(/running: root\.opened/.test(vpnPoll[0]), 'vpnPoll only runs while the pa
 const vpnActionProc = panelSource.match(/Process \{\n {4}id: vpnActionProc[\s\S]*?\n {2}\}/)
 assert(vpnActionProc, 'network panel has a vpnActionProc')
 assert(/root\.vpnActionName = ""/.test(vpnActionProc[0]), 'vpnActionProc clears the busy row on exit')
+assert(
+  /root\.vpnWarningName = exitCode === 2 \? root\.vpnActionName : ""/.test(vpnActionProc[0]),
+  'vpnActionProc reads exit code 2 as a connected-but-no-traffic warning'
+)
+
+assert(/property string vpnWarningName: ""/.test(panelSource), 'network panel declares vpnWarningName')
 
 const toggleVpn = panelSource.match(/function toggleVpn\(name, active\) \{[\s\S]*?\n {2}\}/)
 assert(toggleVpn, 'network panel has a toggleVpn function')
 assert(/vpnActionProc\.running/.test(toggleVpn[0]), 'toggleVpn guards against overlapping toggles')
 
 assert(/visible: root\.vpnConnections\.length > 0/.test(panelSource), 'VPN section is hidden when there are no profiles')
-assert(/component VpnRow: CursorSurface/.test(panelSource), 'network panel defines a VpnRow row component')
-assert(/onClicked: root\.toggleVpn\(row\.conn\.name, row\.isActive\)/.test(panelSource), 'VpnRow click toggles the connection')
+
+const vpnRow = panelSource.match(/component VpnRow: CursorSurface \{[\s\S]*?\n {2}\}/)
+assert(vpnRow, 'network panel defines a VpnRow row component')
+assert(/onClicked: root\.toggleVpn\(row\.conn\.name, row\.isActive\)/.test(vpnRow[0]), 'VpnRow click toggles the connection')
+assert(/isWarning: !isBusy && root\.vpnWarningName/.test(vpnRow[0]), 'VpnRow only shows a warning once its own toggle has settled')
+assert(/"Connected, no traffic"/.test(vpnRow[0]), 'VpnRow surfaces the no-traffic warning text')
 JS
