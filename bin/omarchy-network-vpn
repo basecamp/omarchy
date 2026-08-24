@@ -17,9 +17,19 @@ nm_get() {
 
 # Wireguard profiles report TYPE=wireguard; other tunnel types NetworkManager
 # manages (OpenVPN, etc.) report TYPE=vpn. Both belong in the same list.
+#
+# `-e no` leaves a ':' inside NAME unescaped (connection names allow it), so
+# TYPE and ACTIVE are read off the *end* of the line and NAME is whatever is
+# left, rather than splitting on every ':' and assuming NAME never has one.
 list_vpn_connections() {
   nm_get NAME,TYPE,ACTIVE connection show |
-    awk -F: '$2 == "wireguard" || $2 == "vpn" { print $1 "\t" $3 }'
+    awk -F: '{
+      active = $NF
+      type = $(NF - 1)
+      name = $1
+      for (i = 2; i <= NF - 2; i++) name = name ":" $i
+      if (type == "wireguard" || type == "vpn") print name "\t" active
+    }'
 }
 
 usage() {
@@ -40,7 +50,7 @@ deactivate_other_vpns() {
   local keep=$1 name active
 
   while IFS=$'\t' read -r name active; do
-    [[ $name == "$keep" ]] && continue
+    [[ $name == $keep ]] && continue
     [[ $active == "yes" ]] || continue
     nmcli connection down "$name" >/dev/null 2>&1 || true
   done < <(list_vpn_connections)
@@ -52,6 +62,12 @@ deactivate_other_vpns() {
 # server all still read as "connected" from nmcli alone. One ping bound to
 # the tunnel device is the only way to tell a working tunnel from one that
 # is locally configured but not actually carrying traffic.
+#
+# Only checked for a full tunnel (a default route through the device): a
+# split-tunnel profile that only routes specific subnets, or a peer that
+# firewalls off ICMP, would fail this probe while working exactly as
+# configured, so there is nothing generic to verify there -- take NetworkManager's
+# word for those instead of guessing at a false negative.
 verify_tunnel() {
   local name=$1 device state
 
@@ -60,6 +76,8 @@ verify_tunnel() {
 
   state=$(nm_get GENERAL.STATE device show "$device")
   [[ $state == 100* ]] || return 1
+
+  ip route show table all dev "$device" 2>/dev/null | grep -q '^default' || return 0
 
   ping -c 1 -W 2 -I "$device" "$internet_probe" >/dev/null 2>&1
 }

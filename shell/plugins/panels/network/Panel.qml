@@ -84,14 +84,17 @@ Panel {
   property string pendingBand: ""
 
   // VPN/WireGuard connection profiles from `omarchy-network-vpn`.
-  // `vpnActionName` is the profile currently being brought up/down, so its
-  // row can render a busy state while the toggle is in flight.
-  // `vpnWarningName` is the profile whose last "up" reported connected but
-  // not actually passing traffic -- nmcli alone cannot tell a live tunnel
-  // from one whose peer never answered.
+  // `vpnActionName`/`vpnActionKind` are the profile currently being brought
+  // up/down and which direction, so its row can render a busy state while
+  // the toggle is in flight. `vpnFailureName`/`vpnFailureReason` are the
+  // profile whose last toggle didn't end in a plain success -- either nmcli
+  // itself failed, or (see verify_tunnel in omarchy-network-vpn) it reported
+  // connected without a live peer behind it.
   property var vpnConnections: []
   property string vpnActionName: ""
-  property string vpnWarningName: ""
+  property string vpnActionKind: ""  // "up" | "down"
+  property string vpnFailureName: ""
+  property string vpnFailureReason: ""
 
   // Per-row in-flight state. `actionSsid` flips on for the row whose action
   // is currently running so it can render "Connecting…" / "Disconnecting…" /
@@ -656,8 +659,19 @@ Panel {
     actionProc.running = true
   }
 
+  // A failure tied to a connection that has since gone inactive (dropped,
+  // or torn down from outside the panel) no longer means anything -- clear
+  // it here rather than leaving a stale "Connected, no traffic" on a row
+  // that plainly is not connected. This does not catch the opposite case,
+  // a still-active tunnel that silently starts passing traffic again on its
+  // own: that would need re-running the ping check on a timer, which is
+  // more polling than a once-per-toggle verification is worth.
   function updateVpnConnections(raw) {
     vpnConnections = Model.sortVpnConnections(Model.parseVpnConnections(raw))
+
+    if (vpnFailureName === "") return
+    var stillActive = vpnConnections.some(function(conn) { return conn.name === vpnFailureName && conn.active })
+    if (!stillActive) vpnFailureName = ""
   }
 
   // Toggling stays open, same as setBand -- the row's own busy/active state
@@ -666,7 +680,8 @@ Panel {
     if (!name || vpnActionProc.running) return
 
     vpnActionName = name
-    vpnActionProc.command = ["omarchy-network-vpn", active ? "down" : "up", name]
+    vpnActionKind = active ? "down" : "up"
+    vpnActionProc.command = ["omarchy-network-vpn", vpnActionKind, name]
     vpnActionProc.running = true
   }
 
@@ -915,11 +930,20 @@ Panel {
     id: vpnActionProc
     // Exit 2 is omarchy-network-vpn's own signal: nmcli brought the profile
     // up, but the post-activation ping through the tunnel device found no
-    // real peer behind it. Only the most recent toggle's outcome is kept,
+    // real peer behind it. Any other nonzero code is nmcli itself failing
+    // the up/down outright. Only the most recent toggle's outcome is kept,
     // same as the single failureSsid/failureReason pair Wi-Fi rows use.
     onExited: function(exitCode) {
-      root.vpnWarningName = exitCode === 2 ? root.vpnActionName : ""
+      if (exitCode === 0) {
+        root.vpnFailureName = ""
+      } else {
+        root.vpnFailureName = root.vpnActionName
+        root.vpnFailureReason = exitCode === 2
+          ? "Connected, no traffic"
+          : (root.vpnActionKind === "down" ? "Failed to disconnect" : "Failed to connect")
+      }
       root.vpnActionName = ""
+      root.vpnActionKind = ""
       if (!vpnProc.running) vpnProc.running = true
     }
   }
@@ -1698,7 +1722,7 @@ Panel {
 
     readonly property bool isActive: !!(conn && conn.active)
     readonly property bool isBusy: root.vpnActionName !== "" && conn && root.vpnActionName === conn.name
-    readonly property bool isWarning: !isBusy && root.vpnWarningName !== "" && conn && root.vpnWarningName === conn.name
+    readonly property bool isFailed: !isBusy && root.vpnFailureName !== "" && conn && root.vpnFailureName === conn.name
 
     current: isActive
     foreground: root.bar.foreground
@@ -1739,10 +1763,10 @@ Panel {
         id: statusText
         text: {
           if (row.isBusy) return row.isActive ? "Disconnecting…" : "Connecting…"
-          if (row.isWarning) return "Connected, no traffic"
+          if (row.isFailed) return root.vpnFailureReason
           return row.isActive ? "Connected" : ""
         }
-        color: row.isWarning ? root.bar.urgent : (row.isActive ? root.bar.foreground : Qt.darker(root.bar.foreground, 1.5))
+        color: row.isFailed ? root.bar.urgent : (row.isActive ? root.bar.foreground : Qt.darker(root.bar.foreground, 1.5))
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.bodySmall
         anchors.right: parent.right
