@@ -24,6 +24,8 @@ if grep -A2 'g_onUpdateRules' "$cpp" | grep -Fq 'onCsdMapped'; then
 fi
 grep -Fq 'restoreFloatOnScreen' "$cpp" \
   || fail "CSD unmaximize must put the remembered float back on the work area immediately"
+grep -Fq 'work.y + bar' "$cpp" \
+  || fail "SSD restore must leave 32px for hyprbars so caption buttons stay on screen"
 grep -Fq 'saveNormalFloat' "$cpp" \
   || fail "CSD maximize must remember the on-screen float before Hyprland eats it"
 grep -Fq 'hyprbars:no_bar' "$cpp" || fail "fake maximized is cleared only for hyprbars:no_bar CSD clients"

@@ -247,7 +247,7 @@ Item {
               bar: root
               hostWindow: barWindow
               group: modelData
-              Layout.preferredWidth: 44
+              Layout.preferredWidth: 52
               Layout.fillHeight: true
             }
           }

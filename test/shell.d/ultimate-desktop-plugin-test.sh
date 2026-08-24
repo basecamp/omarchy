@@ -181,6 +181,10 @@ apply_look_line=$(grep -n 'omarchy_apply_desktop_look' "$ROOT/config/hypr/hyprla
 (( apply_look_line > looknfeel_line )) || fail "desktop look must run after hypr.looknfeel"
 grep -Fq 'windowsIn", enabled = false' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "desktop mode must disable looknfeel popin so maximize is not jank"
+grep -Fq 'leaf = "windows", enabled = false' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "desktop mode must disable the windows animation parent, not only windowsIn"
+grep -Fq 'rounding = 0' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "desktop mode must zero theme rounding or only one window corner looks round"
 grep -Fq 'no_shadow = true' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "CSD clients must not get a second compositor shadow"
 grep -Fq 'resize_on_border = true' "$ROOT/default/hypr/desktop-windows.lua" \

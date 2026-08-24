@@ -100,6 +100,9 @@ static void setMinimized(PHLWINDOW w, bool minimized) {
   if (!w)
     return;
 
+  // Popin/slide mid-hide leaves the client at an interpolated box off the
+  // work area. The caption is then undraggable.
+  w->finishAnimation();
   damageWindow(w);
   w->setHidden(minimized);
   damageWindow(w);
@@ -210,6 +213,7 @@ static std::optional<bool> requestedMaximized(PHLWINDOW w) {
 }
 
 static void restoreCsdCaption(PHLWINDOW w);
+static bool isCsdWindow(PHLWINDOW w);
 
 static void setMaximized(PHLWINDOW w, bool maximized) {
   if (!w)
@@ -284,14 +288,19 @@ static void restoreFloatOnScreen(PHLWINDOW w) {
     size.x = work.w;
   if (size.y > work.h)
     size.y = work.h;
+  // hyprbars draws 32px above the client box. Parking SSD at work.y puts
+  // min/max/close above the monitor.
+  const double bar = isCsdWindow(w) ? 0.0 : 32.0;
   if (pos.x < work.x)
     pos.x = work.x;
-  if (pos.y < work.y)
-    pos.y = work.y;
+  if (pos.y < work.y + bar)
+    pos.y = work.y + bar;
   if (pos.x + size.x > work.x + work.w)
     pos.x = work.x + work.w - size.x;
   if (pos.y + size.y > work.y + work.h)
     pos.y = work.y + work.h - size.y;
+  if (pos.y < work.y + bar)
+    pos.y = work.y + bar;
   const auto cur = w->position(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
   const auto csz = w->size(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
   if (std::abs(cur.x - pos.x) < 1 && std::abs(cur.y - pos.y) < 1 && std::abs(csz.x - size.x) < 1 && std::abs(csz.y - size.y) < 1)

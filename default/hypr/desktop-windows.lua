@@ -106,7 +106,7 @@ for _, class_pat in ipairs(load_csd_patterns()) do
   -- CSD already draws its own shadow and edge. A compositor border + drop
   -- shadow on top is the dark halo around Chrome.
   -- 880×560 clips Chromium CSD: min/max fall off the right and only × remains.
-  o.window(class_pat, { float = true, ["hyprbars:no_bar"] = true, no_shadow = true, border_size = 0, size = { 1200, 740 } })
+  o.window(class_pat, { float = true, ["hyprbars:no_bar"] = true, no_shadow = true, border_size = 0, rounding = 0, size = { 1200, 740 } })
 end
 
 -- Lock surfaces are not 880×560 app windows. Fullscreen per output, no hyprbars.
@@ -149,10 +149,15 @@ local function apply_desktop_look()
       },
     },
     decoration = {
+      -- Theme packs set rounding 6. hyprbars is square on top of that, so
+      -- only a bottom corner shows as a round chip. Desktop Mode chrome is
+      -- rectangular, like Windows 7.
+      rounding = 0,
+      rounding_power = 2,
       shadow = {
         enabled = true,
-        range = 12,
-        render_power = 3,
+        range = 8,
+        render_power = 2,
       },
       blur = {
         enabled = true,
@@ -190,7 +195,10 @@ local function apply_desktop_look()
       },
     },
   })
-  -- looknfeel uses windowsIn popin 87%. That is the maximize/minimize jank.
+  -- looknfeel uses windowsIn popin 87% and a live "windows" parent. Popin
+  -- during minimize leaves the client at an interpolated box off the work
+  -- area, so the caption slides out of reach.
+  hl.animation({ leaf = "windows", enabled = false })
   hl.animation({ leaf = "windowsIn", enabled = false })
   hl.animation({ leaf = "windowsOut", enabled = false })
 end

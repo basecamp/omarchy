@@ -120,6 +120,10 @@ Item {
     hoverEnabled: true
     acceptedButtons: Qt.LeftButton | Qt.RightButton
     cursorShape: Qt.PointingHandCursor
+    onPressed: {
+      peekTimer.stop()
+      peek.visible = false
+    }
     onClicked: function(event) {
       peekTimer.stop()
       peek.visible = false

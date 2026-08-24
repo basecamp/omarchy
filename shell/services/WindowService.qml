@@ -408,15 +408,20 @@ QtObject {
         continue
       }
       geom = root._monitorGeom(addr)
+      var csd = WindowModel.usesWaylandCsd({ class: c.class, appId: c.initialClass || c.class, initialClass: c.initialClass })
       var remembered = key && root.placements[key] && root.placements[key].width ? root.placements[key] : null
       if (remembered && geom && geom.width && (WindowModel.isSnapped(remembered, geom, 8, 32) || WindowModel.isSnapped(remembered, geom, 8, 0) || WindowModel.coversWorkArea(remembered, geom)))
         remembered = null
+      // Lua already sizes CSD to 1200×740 so min/max stay on the caption.
+      // Placing 880×560 here clips those buttons off the right.
+      if (csd && !remembered) {
+        known[addr] = true
+        continue
+      }
       if (remembered)
-        root._applyRect(addr, WindowModel.clampRect(remembered, geom))
+        root._applyRect(addr, WindowModel.clampRect(remembered, geom, csd ? 0 : 32))
       else {
-        root._applyRect(addr, WindowModel.cascadeRect(geom, root._cascadeIndex, {
-          csd: WindowModel.usesWaylandCsd({ class: c.class, appId: c.initialClass || c.class })
-        }))
+        root._applyRect(addr, WindowModel.cascadeRect(geom, root._cascadeIndex, { csd: csd }))
         root._cascadeIndex++
       }
       known[addr] = true
@@ -1006,7 +1011,7 @@ QtObject {
     if (root._placingRect) return
     root._placingRect = true
     var geom = root._monitorGeom(target)
-    if (geom && geom.width) bounds = WindowModel.clampRect(bounds, geom)
+    if (geom && geom.width) bounds = WindowModel.clampRect(bounds, geom, root._hyprbarsInset(target))
     var win = root._luaWindow(target)
     root._dispatchLua("hl.dsp.window.fullscreen({ mode = \"fullscreen\", action = \"unset\", layout_aware = false, " + win + " })")
     if (root._placedKind[target] === "max") root._setPlacedKind(target, "float")

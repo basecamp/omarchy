@@ -524,23 +524,30 @@ function cascadeRect(monitor, index, options) {
   var n = Math.max(0, Number(index) || 0)
   var x = base.x + step * (n % 12)
   var y = base.y + step * (n % 12)
+  var titleBar = (options && options.csd) ? 0 : 32
   if (x + base.width > area.x + area.width) x = area.x + Math.max(24, area.width - base.width - 24)
-  if (y + base.height > area.y + area.height) y = area.y + Math.max(24, area.height - base.height - 24)
+  if (y + base.height > area.y + area.height) y = area.y + titleBar + Math.max(24, area.height - titleBar - base.height - 24)
+  if (y < area.y + titleBar) y = area.y + titleBar
+  if (x < area.x) x = area.x
   return { x: x, y: y, width: base.width, height: base.height }
 }
 
-function clampRect(rect, monitor) {
+function clampRect(rect, monitor, titleBar) {
   var area = workArea(monitor)
+  var inset = Number(titleBar) || 0
+  if (inset < 0) inset = 0
   var width = Math.max(320, Math.min(Number(rect && rect.width) || 880, area.width))
-  var height = Math.max(240, Math.min(Number(rect && rect.height) || 560, area.height))
+  var height = Math.max(240, Math.min(Number(rect && rect.height) || 560, area.height - inset))
   var x = Number(rect && rect.x)
   var y = Number(rect && rect.y)
+  var minY = area.y + inset
   if (isNaN(x)) x = area.x + 48
-  if (isNaN(y)) y = area.y + 48
+  if (isNaN(y)) y = minY + 16
   if (x < area.x) x = area.x
-  if (y < area.y) y = area.y
+  if (y < minY) y = minY
   if (x + width > area.x + area.width) x = area.x + Math.max(0, area.width - width)
-  if (y + height > area.y + area.height) y = area.y + Math.max(0, area.height - height)
+  if (y + height > area.y + area.height) y = area.y + Math.max(inset, area.height - height)
+  if (y < minY) y = minY
   return { x: x, y: y, width: width, height: height, monitor: monitor && monitor.name ? String(monitor.name) : "" }
 }
 

@@ -109,6 +109,7 @@ grep -Fq 'function _noteFocus' "$ws" || fail "focus verbs record the compositor 
 grep -Fq 'root._noteFocus(target)' "$ws" || fail "focus and activate call _noteFocus"
 grep -Fq 'Date.now() - root._focusedAt' "$ws" || fail "_activeAddress prefers a just-focused address over a stale activated flag"
 grep -Fq '_lastCycleAddress' "$ws" || fail "commitCycle keeps the highlighted address if the overlay closes first"
+grep -Fq 'csd && !remembered' "$ws" || fail "placement must not shrink CSD clients to 880 and clip caption buttons"
 grep -Fq 'function _compositorAddresses' "$ws" || fail "saveLayout reads live hyprctl clients, not stale Quickshell toplevels"
 grep -Fq '_layoutSavedAt' "$ws" || fail "saveLayout must not let FileView reload a stale layout over the just-saved one"
 if awk '
@@ -182,7 +183,7 @@ grep -Fq 'function _queueFloatRestore' "$ws" \
   || fail "late compositor stomps after unmaximize must re-clamp chrome onto the work area"
 grep -Fq 'restoreFloatRetryTimer' "$ws" \
   || fail "float restore retries after CSD configure can move chrome off-screen"
-grep -Fq 'WindowModel.clampRect(bounds, geom)' "$ws" \
+grep -Fq 'WindowModel.clampRect(bounds, geom, root._hyprbarsInset(target))' "$ws" \
   || fail "_applyRect clamps so restore cannot place chrome above the monitor"
 grep -Fq 'prevFs === 1 && fs === 0' "$ws" \
   || fail "CSD unmaximize must restore the remembered float, not Hyprland's last-floating box"
@@ -408,6 +409,8 @@ assert(clamped.x >= area.x, 'clamp keeps x on the monitor')
 const offscreenChrome = m.clampRect({ x: 534, y: -479, width: 1252, height: 1000 }, mon)
 assert(offscreenChrome.y >= area.y, 'clamp pulls title chrome back onto the work area')
 assert(offscreenChrome.x >= area.x, 'clamp keeps a restored float on the monitor x')
+const offscreenSsd = m.clampRect({ x: 40, y: -40, width: 880, height: 560 }, mon, 32)
+assert(offscreenSsd.y >= area.y + 32, 'SSD clamp keeps hyprbars caption on the work area')
 const stored = m.parsePlacements(m.serializePlacements({ foot: { x: 48, y: 48, width: 880, height: 560 } }))
 assertEqual(stored.foot.width, 880, 'placements round-trip through JSON')
 const snapped = { x: 0, y: 0, width: 960, height: 1040 }
