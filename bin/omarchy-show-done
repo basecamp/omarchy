@@ -1,6 +1,16 @@
 #!/bin/bash
 
-# omarchy:summary=Display a "Done!" message with a spinner and wait for user to press any key.
+# omarchy:summary=Display a "Done!" message and wait for user to press any key.
+
+[[ -e /dev/tty ]] || exit 0
 
 echo
-gum spin --spinner "globe" --title "Done! Press any key to close..." -- bash -c 'read -n 1 -s'
+
+# gum 2.0 no longer lets a spun command read the terminal, so the wait has to
+# happen here. Its own query replies are still queued on the tty; drop those or
+# they answer the keypress for the user.
+while read -rsn 1 -t 0.1 _ </dev/tty; do :; done
+
+printf '\033[32m● \033[0mDone! Press any key to close...'
+read -rsn 1 </dev/tty
+echo
