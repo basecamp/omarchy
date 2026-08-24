@@ -49,9 +49,17 @@ assert(/if \(!vpnProc\.running\) vpnProc\.running = true/.test(panelSource), 're
 const vpnPoll = panelSource.match(/Timer \{\n {4}id: vpnPoll[\s\S]*?\n {2}\}/)
 assert(vpnPoll, 'network panel has a vpnPoll timer')
 assert(/running: root\.opened/.test(vpnPoll[0]), 'vpnPoll only runs while the panel is open, like bandPoll')
+assert(
+  /running: root\.opened && root\.vpnConnections\.length > 0/.test(vpnPoll[0]),
+  'vpnPoll does not shell out to nmcli every 4s on a machine with no VPN profiles'
+)
 
 const updateVpnConnections = panelSource.match(/function updateVpnConnections\(raw\) \{[\s\S]*?\n {2}\}/)
 assert(updateVpnConnections, 'network panel has an updateVpnConnections function')
+assert(
+  /if \(vpnFailureName === "" \|\| vpnFailureReason !== "Connected, no traffic"\) return/.test(updateVpnConnections[0]),
+  'updateVpnConnections only auto-clears the no-traffic warning, not a plain connect/disconnect failure'
+)
 assert(
   /if \(!stillActive\) vpnFailureName = ""/.test(updateVpnConnections[0]),
   'updateVpnConnections drops a failure once its connection is no longer active'

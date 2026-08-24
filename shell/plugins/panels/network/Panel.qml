@@ -696,10 +696,18 @@ Panel {
   // a still-active tunnel that silently starts passing traffic again on its
   // own: that would need re-running the ping check on a timer, which is
   // more polling than a once-per-toggle verification is worth.
+  // Only the "connected but not passing traffic" warning goes stale on its
+  // own: if that connection is later found inactive (dropped, or torn down
+  // from outside the panel), the warning no longer describes anything real.
+  // A plain "Failed to connect"/"Failed to disconnect" reflects the toggle
+  // that just ran, not the connection's current active state -- a failed
+  // connect leaves the row inactive by definition, so clearing on inactive
+  // the same way would wipe the message before the user ever saw it. That
+  // one clears only when a new toggle supersedes it, in vpnActionProc.onExited.
   function updateVpnConnections(raw) {
     vpnConnections = Model.sortVpnConnections(Model.parseVpnConnections(raw))
 
-    if (vpnFailureName === "") return
+    if (vpnFailureName === "" || vpnFailureReason !== "Connected, no traffic") return
     var stillActive = vpnConnections.some(function(conn) { return conn.name === vpnFailureName && conn.active })
     if (!stillActive) vpnFailureName = ""
   }
@@ -945,12 +953,16 @@ Panel {
   }
 
   // Same cadence as bandPoll: an nmcli listing, not something that needs
-  // detailsPoll's faster tick.
+  // detailsPoll's faster tick. Gated on already having profiles to show --
+  // most machines have none, and there's nothing worth polling nmcli every
+  // 4s for on those. refresh() still checks once on open either way, so a
+  // profile added after that point needs a close/reopen to show up, which
+  // is a fair trade against shelling out to nmcli forever for nothing.
   Timer {
     id: vpnPoll
     interval: 4000
     repeat: true
-    running: root.opened
+    running: root.opened && root.vpnConnections.length > 0
     onTriggered: if (!vpnProc.running) vpnProc.running = true
   }
 

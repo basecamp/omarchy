@@ -56,11 +56,21 @@ if (( $# != 2 )); then
   exit 1
 fi
 
+# Reads connections (as printed by list_vpn_connections) on stdin, rather
+# than calling it again itself -- the caller already fetched one listing for
+# previously_active, and a second nmcli shellout back to back would only
+# reread the same thing (or, worse, a slightly different snapshot if
+# something else changed NetworkManager state in between the two calls).
 deactivate_other_vpns() {
   local keep=$1 name active
 
   while IFS=$'\t' read -r name active; do
-    [[ $name == $keep ]] && continue
+    # $keep is compared literally, not as a glob pattern -- unquoted here it
+    # would treat a name with a glob metacharacter (e.g. "work*") as a
+    # pattern instead of a literal, matching connections it was never meant
+    # to. This is the one place in this file a variable is deliberately
+    # quoted inside [[ ]] against the repo's usual style, for that reason.
+    [[ $name == "$keep" ]] && continue
     [[ $active == "yes" ]] || continue
     # Best-effort: a stuck old tunnel should not block bringing the new one
     # up. If this fails, both can end up active at once -- rare (a transient
@@ -70,7 +80,7 @@ deactivate_other_vpns() {
     if ! nmcli connection down "$name" >/dev/null 2>&1; then
       echo "Warning: could not deactivate $name; it may still be active alongside $keep." >&2
     fi
-  done < <(list_vpn_connections)
+  done
 }
 
 # NetworkManager reports a WireGuard profile as fully "activated" once its
@@ -121,9 +131,15 @@ case "$1" in
     # Nothing at the NetworkManager/WireGuard level stops two tunnels being
     # active at once -- they'd just fight over the default route. Treat VPN
     # selection as exclusive, one profile carrying traffic at a time.
-    previously_active=$(list_vpn_connections | awk -F'\t' -v keep="$2" '$1 != keep && $2 == "yes" { print $1 }')
+    #
+    # Fetched once and reused below: a bare `x=$(...)` assignment under
+    # set -e aborts the whole script outright if the pipeline inside it
+    # fails (a transient nmcli/D-Bus hiccup), so `|| true` degrades to "no
+    # connections known" instead of killing the up attempt before it starts.
+    connections=$(list_vpn_connections) || true
+    previously_active=$(awk -F'\t' -v keep="$2" '$1 != keep && $2 == "yes" { print $1 }' <<<"$connections")
 
-    deactivate_other_vpns "$2"
+    deactivate_other_vpns "$2" <<<"$connections"
 
     if ! nmcli connection up "$2" >/dev/null 2>&1; then
       echo "Error: failed to activate $2." >&2
