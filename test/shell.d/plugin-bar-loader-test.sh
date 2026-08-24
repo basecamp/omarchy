@@ -18,6 +18,15 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 TMPDIR=""
 QS_PID=""
+test_root=""
+
+shell_ipc() {
+  OMARCHY_PATH="$test_root" "$ROOT/bin/omarchy-shell" "$@"
+}
+
+shell_ipc_quiet() {
+  OMARCHY_PATH="$test_root" "$ROOT/bin/omarchy-shell" -q "$@"
+}
 
 cleanup() {
   if [[ -n $QS_PID ]] && kill -0 "$QS_PID" 2>/dev/null; then
@@ -194,22 +203,39 @@ write_broken_bar "$home_broken/.config/omarchy/plugins/acme.broken-bar"
 write_shell_json "$home_broken" "acme.broken-bar"
 start_shell "$home_broken" "$log_broken"
 
+# The Loader.Error handler prints its warning before assigning failedBarId, so
+# the log says nothing about whether the fallback actually took. Ask the shell
+# instead: once it has given up on the broken bar, activeBarId is the built-in
+# one, and listPlugins reports that as the active bar option.
+fallback_took='any(.[]; .id == "omarchy.bar" and .active == true)
+  and any(.[]; .id == "acme.broken-bar" and .active == false)'
+
 for _ in {1..150}; do
-  grep -q "failed to load, falling back to" "$log_broken" 2>/dev/null && break
+  shell_ipc_quiet shell ping >/dev/null 2>&1 && break
   if ! kill -0 "$QS_PID" 2>/dev/null; then
-    break
+    sed -n '1,120p' "$log_broken" >&2
+    fail "shell exited before its IPC became available"
   fi
   sleep 0.1
 done
 
-if ! grep -q "failed to load, falling back to omarchy.bar" "$log_broken"; then
+plugins=""
+for _ in {1..150}; do
+  plugins=$(shell_ipc shell listPlugins 2>/dev/null || true)
+  if jq -e "$fallback_took" <<<"$plugins" >/dev/null 2>&1; then
+    break
+  fi
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    sed -n '1,120p' "$log_broken" >&2
+    fail "shell exited before falling back to the built-in bar"
+  fi
+  sleep 0.1
+done
+
+if ! jq -e "$fallback_took" <<<"$plugins" >/dev/null 2>&1; then
+  jq -e 'map(select(.kinds | index("bar")))' <<<"$plugins" >&2 || printf '%s\n' "$plugins" >&2
   sed -n '1,120p' "$log_broken" >&2
   fail "a bar plugin that cannot load did not fall back to the built-in bar"
-fi
-
-if grep -q "ReferenceError" "$log_broken"; then
-  grep -n "ReferenceError" "$log_broken" >&2
-  fail "the Loader.Error handler threw instead of selecting the fallback"
 fi
 
 pass "a bar plugin that cannot load falls back to the built-in bar"
