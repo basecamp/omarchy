@@ -1,6 +1,7 @@
 -- Shared helpers for Hyprland Lua configuration.
 
-o = o or {}
+_G.o = _G.o or {}
+local o = _G.o
 
 local function shell_quote(value)
   return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
