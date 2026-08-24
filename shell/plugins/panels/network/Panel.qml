@@ -83,6 +83,14 @@ Panel {
   property var bandAvailable: []
   property string pendingBand: ""
 
+  // Buffers the 3 NameOwnerChanged args (name, old owner, new owner) that
+  // dbus-monitor prints one per line; see nmOwnerWatch below.
+  property var nmOwnerLines: []
+  // Set when a NetworkManager daemon restart is detected while the panel is
+  // open, so the resulting shell restart doesn't yank an in-progress
+  // password prompt out from under the user.
+  property bool nmSelfHealPending: false
+
   // Per-row in-flight state. `actionSsid` flips on for the row whose action
   // is currently running so it can render "Connecting…" / "Disconnecting…" /
   // "Forgetting…". `passwordSsid` is the row currently expanded into
@@ -344,6 +352,10 @@ Panel {
       internetPingLatency = -1
       internetPingPacketLoss = 0
       setScannerEnabled(false)
+      if (nmSelfHealPending) {
+        nmSelfHealPending = false
+        root.restartShellForNmSelfHeal()
+      }
     }
   }
 
@@ -495,6 +507,51 @@ Panel {
 
   function formatHeaderSpeed(mbps) {
     return Model.formatHeaderSpeed(mbps)
+  }
+
+  // Quickshell.Networking exposes no reload/reconnect call, so a
+  // NetworkManager daemon restart (e.g. `systemctl restart NetworkManager`)
+  // leaves its D-Bus subscriptions orphaned and kind/icon frozen at their
+  // pre-restart value forever, with no periodic re-poll to correct it.
+  // Restarting the whole shell is the only known way to force
+  // Quickshell.Networking to reconnect, so detect the daemon replacement
+  // ourselves and self-heal instead of requiring `omarchy restart shell`.
+  function handleNmOwnerLine(line) {
+    var value = Model.extractDbusString(line)
+    if (value === null) {
+      if (String(line).indexOf("member=NameOwnerChanged") >= 0) nmOwnerLines = []
+      return
+    }
+    var lines = nmOwnerLines.concat([value])
+    if (lines.length < 3) {
+      nmOwnerLines = lines
+      return
+    }
+    nmOwnerLines = []
+    if (Model.nmServiceOwnerLost(lines[1], lines[2])) nmSelfHealDebounce.restart()
+  }
+
+  // NetworkManager restarts fire several NameOwnerChanged/device-transition
+  // events in quick succession; debounce so a single restart triggers one heal.
+  function performNmSelfHeal() {
+    if (root.opened) {
+      nmSelfHealPending = true
+      return
+    }
+    root.restartShellForNmSelfHeal()
+  }
+
+  // Every monitor gets its own Panel.qml instance and therefore its own
+  // nmOwnerWatch, so a multi-monitor setup can react to the same
+  // NetworkManager restart more than once. omarchy-restart-shell does a
+  // kill-then-relaunch of the single shared shell process with no lock of
+  // its own, so two near-simultaneous calls could race into launching a
+  // duplicate instance. Guard with a lock file so only the first caller
+  // actually restarts; the lock lives in a detached process, so it is
+  // released even though this process is the one about to die.
+  function restartShellForNmSelfHeal() {
+    Quickshell.execDetached(["bash", "-c",
+      "mkdir /tmp/omarchy-network-nm-selfheal.lock 2>/dev/null || exit 0; omarchy-restart-shell; rmdir /tmp/omarchy-network-nm-selfheal.lock 2>/dev/null"])
   }
 
   function formatHeaderFreq(mhz) {
@@ -863,6 +920,35 @@ Panel {
       bandProc.command = ["omarchy-network-band"]
       bandProc.running = true
     }
+  }
+
+  // Watches for NetworkManager's D-Bus service being replaced (daemon
+  // restart), which orphans Quickshell.Networking's live subscriptions and
+  // freezes the bar icon; see handleNmOwnerLine(). Runs regardless of
+  // whether the panel is open, since the bar pill is always live.
+  Process {
+    id: nmOwnerWatch
+    command: ["dbus-monitor", "--system",
+      "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.freedesktop.NetworkManager'"]
+    running: true
+    stdout: SplitParser { onRead: function(line) { root.handleNmOwnerLine(line) } }
+    onExited: nmOwnerWatchRestart.restart()
+  }
+
+  Timer {
+    // dbus-monitor dying (OOM, transient D-Bus hiccup) must not permanently
+    // disable the watchdog.
+    id: nmOwnerWatchRestart
+    interval: 3000
+    repeat: false
+    onTriggered: nmOwnerWatch.running = true
+  }
+
+  Timer {
+    id: nmSelfHealDebounce
+    interval: 2000
+    repeat: false
+    onTriggered: root.performNmSelfHeal()
   }
 
   // Action runner for DNS provider changes. Wi-Fi actions use the

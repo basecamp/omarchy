@@ -14,6 +14,26 @@ function wifiIconFor(strength) {
   return icons[index]
 }
 
+// `dbus-monitor` prints each NameOwnerChanged arg on its own line, e.g.
+// `   string "org.freedesktop.NetworkManager"`. Returns the quoted value, or
+// null for a line that carries none (the signal header, blank lines).
+function extractDbusString(line) {
+  var match = String(line || "").match(/^\s*string\s+"([^"]*)"/)
+  return match ? match[1] : null
+}
+
+// `systemctl restart` stops the old daemon before starting the new one, so
+// NetworkManager's D-Bus name changes hands as two separate NameOwnerChanged
+// signals rather than one atomic swap: first the old owner releases the name
+// (new owner empty), then the new process claims it (old owner empty). The
+// release is what actually orphans anything already subscribed to the old
+// owner, so that's the moment to react to — no need to wait for the reclaim.
+// An empty old owner (the name's first-ever claim, e.g. at boot) is not a
+// restart and must not trigger a heal.
+function nmServiceOwnerLost(oldOwner, newOwner) {
+  return !!oldOwner && !newOwner
+}
+
 function connectionIcon(kind, signalStrength) {
   if (kind === "wifi") return wifiIconFor(signalStrength)
   if (kind === "ethernet") return "󰈀"
@@ -349,6 +369,8 @@ function shouldRepromptPassphrase(reason, needsCredentials, reasons) {
 
 if (typeof module !== "undefined") {
   module.exports = {
+    extractDbusString: extractDbusString,
+    nmServiceOwnerLost: nmServiceOwnerLost,
     parseNetworkStatus: parseNetworkStatus,
     wifiIconFor: wifiIconFor,
     connectionIcon: connectionIcon,
