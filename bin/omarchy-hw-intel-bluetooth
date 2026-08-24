@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# omarchy:summary=Detect an Intel Bluetooth controller.
+
+# Read sysfs rather than shelling out: usbutils is not part of the base install,
+# so lsusb is usually absent. Intel's USB vendor is 8087 and Bluetooth
+# controllers report the wireless device class (0xe0).
+
+for device in /sys/bus/usb/devices/*/; do
+  [[ $(cat "$device/idVendor" 2>/dev/null) == "8087" ]] || continue
+  [[ $(cat "$device/bDeviceClass" 2>/dev/null) == "e0" ]] || continue
+  exit 0
+done
+
+exit 1

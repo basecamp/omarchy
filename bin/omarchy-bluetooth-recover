@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# omarchy:summary=Reload btusb when an rfkill unblock leaves no Bluetooth adapter
+# omarchy:group=bluetooth
+# omarchy:hidden=true
+
+# omarchy-bluetooth-power keeps the off state in the rfkill soft block, and
+# systemd-rfkill restores that block early on the next boot. On Intel CNVi
+# adapters that restore can land while btusb is still downloading the firmware:
+# the device drops off the bus mid-transfer, the download fails with -19
+# (ENODEV), and hci0 is torn down completely.
+#
+#   Bluetooth: hci0: Failed to send firmware data (-19)
+#   Bluetooth: hci0: FW download error recovery failed (-19)
+#
+# BlueZ is then left with no controller at all, so the unblock-and-wait in
+# power_on() has nothing to wait for and turning Bluetooth back on always
+# reports that the adapter did not come up. Reloading btusb starts the firmware
+# download over.
+
+set -u
+
+ADAPTER_WAIT_SECONDS=${OMARCHY_BLUETOOTH_ADAPTER_WAIT_SECONDS:-5}
+
+adapter_present() {
+  compgen -G "/sys/class/bluetooth/hci*" >/dev/null
+}
+
+# The ordinary case is an adapter that just needs a moment to appear after the
+# unblock. Only a wait that runs out means the firmware never loaded, so nothing
+# is reloaded on hardware that does not have this problem.
+deadline=$((SECONDS + ADAPTER_WAIT_SECONDS))
+while :; do
+  adapter_present && exit 0
+  ((SECONDS < deadline)) || break
+  sleep 0.2
+done
+
+# Still blocked means Bluetooth is meant to be off, and a missing adapter is the
+# correct state rather than something to recover.
+rfkill list bluetooth 2>/dev/null | grep -q "Soft blocked: yes" && exit 0
+
+logger -t omarchy-bluetooth-recover "No Bluetooth adapter after unblock; reloading btusb"
+
+modprobe -r btusb btintel 2>/dev/null
+modprobe btusb || exit 1
+systemctl restart bluetooth

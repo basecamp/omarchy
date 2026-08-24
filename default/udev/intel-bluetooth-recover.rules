@@ -1,0 +1,4 @@
+# Lifting the Bluetooth rfkill block can leave no adapter behind when a
+# boot-time block interrupted the firmware download. Check once the block is
+# gone, and reload btusb if the adapter never came back.
+SUBSYSTEM=="rfkill", ACTION=="change", ENV{RFKILL_TYPE}=="bluetooth", ENV{RFKILL_STATE}=="1", TAG+="systemd", ENV{SYSTEMD_WANTS}+="omarchy-bluetooth-recover.service"
