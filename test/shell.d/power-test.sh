@@ -44,8 +44,15 @@ assertEqual(
 
 assert(/if \(b === Qt\.RightButton\) root\.togglePercentage\(\)/.test(panelSource), 'power right click toggles the bar percentage')
 assert(/Object\.assign\([^\n]+showPercentage: !root\.showPercentage[^\n]+\)[\s\S]*updateEntryInline/.test(panelSource), 'power persists the bar percentage setting')
-assert(/Math\.round\(root\.batteryFraction \* 100\) \+ "% " \+ root\.batteryIcon\(\)/.test(panelSource), 'power places the percentage before the battery icon')
-assert(/openPanelIndicatorWidth:.*showPercentage.*button\.glyphPaintedWidth : 0/.test(panelSource), 'power spans the open-panel mark across the painted percentage block')
+assert(/setting\("showProfile", false\)/.test(panelSource), 'power can show the active profile in the bar')
+assert(/PowerProfiles\.profile === PowerProfile\.Performance/.test(panelSource), 'power tracks the active profile while its panel is closed')
+assert(/barProfileText:.*profileIcon\(activeProfile\) \+ " "/.test(panelSource), 'power places the profile before the battery icon')
+assert(/readonly property bool hybridGpuAvailable: activeGpuMode !== ""/.test(panelSource), 'power only enables graphics controls when the current mode is available')
+assert(/command: \["timeout", "--kill-after=1s", "3s", "supergfxctl", "-g"\]/.test(panelSource), 'power bounds the hybrid GPU mode query')
+assert(/visible: root\.hybridGpuAvailable[\s\S]*text: "GRAPHICS MODE"/.test(panelSource), 'power only shows graphics controls on supported systems')
+assert(/hasCursor: root\.cursorActive && root\.gpuModeFocused && root\.gpuModeIndex === index/.test(panelSource), 'power exposes keyboard cursor state on graphics choices')
+assert(/onActivateRequested:[\s\S]*root\.selectGpuMode\(root\.gpuModeIndex === 0 \? "Integrated" : "Hybrid"\)/.test(panelSource), 'power activates graphics choices from the keyboard')
+assert(/if \(root\.hybridGpuAvailable\) root\.gpuModeFocused = dy > 0[\s\S]*else root\.selectProfileByDelta\(dy\)/.test(panelSource), 'power keeps vertical profile navigation without graphics controls')
 assert(/IpcHandler[\s\S]*?function togglePercentage\(\) \{ root\.togglePercentage\(\) \}/.test(panelSource), 'power exposes togglePercentage over IPC')
 assert(/manageIpc: false/.test(panelSource), 'power owns its IPC handler so it can extend the target methods')
 JS
