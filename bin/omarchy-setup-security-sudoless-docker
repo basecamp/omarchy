@@ -28,8 +28,12 @@ echo ""
 
 if gum confirm "Enable sudoless Docker? This gives anything running as you passwordless root."; then
   sudo usermod -aG docker "$USER"
+  # Group membership is fixed at login, so docker won't be reachable without a
+  # prompt until the session restarts. Flag a reboot so omarchy-update-restart
+  # prompts for one (and the bar shows it pending).
+  omarchy-state set reboot-required
   echo ""
-  echo "Sudoless Docker ENABLED. Log out and back in (or run 'newgrp docker')"
+  echo "Sudoless Docker ENABLED. Reboot, or log out and back in (or run 'newgrp docker'),"
   echo "for the new group membership to take effect."
   echo "To disable it again, run: omarchy-remove-security-sudoless-docker"
 else
