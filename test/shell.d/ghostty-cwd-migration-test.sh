@@ -121,6 +121,29 @@ for explicit_name in config config.ghostty; do
 done
 pass "migration preserves explicit settings in either Ghostty config file"
 
+symlink_home="$test_tmp/symlink-home"
+symlink_config="$symlink_home/.config/ghostty/config"
+symlink_desktop="$symlink_home/.local/share/applications/com.mitchellh.ghostty.desktop"
+symlink_target="$test_tmp/custom-ghostty-target"
+symlink_cache="$symlink_home/custom-cache"
+symlink_error="$test_tmp/migration-symlink-error"
+
+mkdir -p "$(dirname "$symlink_config")" "$(dirname "$symlink_desktop")" "$symlink_cache"
+printf '%s\n' 'window-theme = ghostty' >"$symlink_config"
+ln -s "$symlink_target" "$symlink_desktop"
+touch "$symlink_cache/xdg-terminal-exec"
+
+if ! run_migration "$symlink_home" "$symlink_cache" 2>"$symlink_error"; then
+  fail "migration preserves a dangling Ghostty desktop symlink" "$(<"$symlink_error")"
+fi
+[[ -L $symlink_desktop && $(readlink "$symlink_desktop") == "$symlink_target" ]] ||
+  fail "migration leaves a dangling Ghostty desktop symlink unchanged"
+[[ ! -e $symlink_target ]] ||
+  fail "migration does not create a dangling desktop symlink target"
+[[ ! -e $symlink_cache/xdg-terminal-exec ]] ||
+  fail "migration invalidates the cache while preserving a desktop symlink"
+pass "migration preserves a dangling Ghostty desktop symlink"
+
 unused_home="$test_tmp/unused-home"
 unused_cache="$unused_home/custom-cache"
 mkdir -p "$unused_cache"

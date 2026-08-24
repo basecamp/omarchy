@@ -34,7 +34,7 @@ if omarchy-pkg-add $package; then
   elif [[ $package == "foot" ]]; then
     mkdir -p ~/.local/share/applications
     cp "$OMARCHY_PATH/applications/$desktop_id" ~/.local/share/applications/
-  elif [[ $package == "ghostty" && ! -e ~/.local/share/applications/$desktop_id ]]; then
+  elif [[ $package == "ghostty" && ! -e ~/.local/share/applications/$desktop_id && ! -L ~/.local/share/applications/$desktop_id ]]; then
     mkdir -p ~/.local/share/applications
     cp "$OMARCHY_PATH/default/ghostty/$desktop_id" ~/.local/share/applications/
   fi

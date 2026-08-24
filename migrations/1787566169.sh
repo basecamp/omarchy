@@ -16,7 +16,7 @@ if ! grep -Eq '^[[:space:]]*gtk-single-instance[[:space:]]*=' "${ghostty_configs
   printf '\ngtk-single-instance = false\n' >>"${ghostty_configs[-1]}"
 fi
 
-if [[ ! -e $ghostty_desktop ]]; then
+if [[ ! -e $ghostty_desktop && ! -L $ghostty_desktop ]]; then
   mkdir -p "$(dirname "$ghostty_desktop")"
   cp "$OMARCHY_PATH/default/ghostty/com.mitchellh.ghostty.desktop" "$ghostty_desktop"
 fi

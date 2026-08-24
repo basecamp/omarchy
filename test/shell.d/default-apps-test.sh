@@ -277,6 +277,22 @@ cmp -s "$ghostty_desktop_ref" "$ghostty_desktop" ||
   fail "selecting a terminal invalidates the xdg-terminal-exec cache"
 pass "selecting Ghostty preserves an existing user desktop entry"
 
+ghostty_symlink_target="$test_tmp/custom-ghostty-target"
+ghostty_symlink_error="$test_tmp/ghostty-symlink-error"
+rm "$ghostty_desktop"
+ln -s "$ghostty_symlink_target" "$ghostty_desktop"
+touch "$cache_home/xdg-terminal-exec"
+XDG_CACHE_HOME="$cache_home" omarchy-default-terminal ghostty 2>"$ghostty_symlink_error"
+[[ ! -s $ghostty_symlink_error ]] ||
+  fail "selecting Ghostty does not write through a dangling desktop symlink" "$(<"$ghostty_symlink_error")"
+[[ -L $ghostty_desktop && $(readlink "$ghostty_desktop") == "$ghostty_symlink_target" ]] ||
+  fail "selecting Ghostty preserves a dangling desktop symlink"
+[[ ! -e $ghostty_symlink_target ]] ||
+  fail "selecting Ghostty does not create a dangling symlink target"
+[[ ! -e $cache_home/xdg-terminal-exec ]] ||
+  fail "selecting Ghostty invalidates the cache while preserving a symlink"
+pass "selecting Ghostty preserves a dangling desktop symlink"
+
 rm -rf "$test_home/.config/ghostty" "$test_home/.local/share/applications"
 mkdir -p "$cache_home"
 touch "$cache_home/xdg-terminal-exec"
@@ -297,6 +313,21 @@ XDG_CACHE_HOME="$cache_home" "$ROOT/bin/omarchy-install-terminal" ghostty
 cmp -s "$ghostty_desktop_ref" "$ghostty_desktop" ||
   fail "direct Ghostty install preserves an existing user desktop entry"
 pass "direct Ghostty install preserves an existing user desktop entry"
+
+rm "$ghostty_desktop"
+ln -s "$ghostty_symlink_target" "$ghostty_desktop"
+touch "$cache_home/xdg-terminal-exec"
+XDG_CACHE_HOME="$cache_home" "$ROOT/bin/omarchy-install-terminal" ghostty \
+  >"$test_tmp/direct-ghostty-symlink-output" 2>"$ghostty_symlink_error"
+[[ ! -s $ghostty_symlink_error ]] ||
+  fail "direct Ghostty install does not write through a dangling desktop symlink" "$(<"$ghostty_symlink_error")"
+[[ -L $ghostty_desktop && $(readlink "$ghostty_desktop") == "$ghostty_symlink_target" ]] ||
+  fail "direct Ghostty install preserves a dangling desktop symlink"
+[[ ! -e $ghostty_symlink_target ]] ||
+  fail "direct Ghostty install does not create a dangling symlink target"
+[[ ! -e $cache_home/xdg-terminal-exec ]] ||
+  fail "direct Ghostty install invalidates the cache while preserving a symlink"
+pass "direct Ghostty install preserves a dangling desktop symlink"
 
 for entry in "${editor_cases[@]}"; do
   read -r selection command installer <<<"$entry"

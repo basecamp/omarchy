@@ -42,7 +42,7 @@ if omarchy-cmd-missing "$terminal"; then
   fi
 fi
 
-if [[ $terminal == "ghostty" && ! -e ~/.local/share/applications/$desktop_id ]]; then
+if [[ $terminal == "ghostty" && ! -e ~/.local/share/applications/$desktop_id && ! -L ~/.local/share/applications/$desktop_id ]]; then
   mkdir -p ~/.local/share/applications
   cp "$OMARCHY_PATH/default/ghostty/$desktop_id" ~/.local/share/applications/
 fi

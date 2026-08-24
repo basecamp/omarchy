@@ -71,6 +71,21 @@ cmp -s "$custom_desktop" "$installed_desktop" ||
   fail "application refresh preserves an existing Ghostty desktop entry"
 pass "application refresh preserves an existing Ghostty desktop entry"
 
+refresh_symlink_target="$test_tmp/custom-ghostty-target"
+refresh_symlink_log="$test_tmp/refresh-symlink-log"
+rm "$installed_desktop"
+ln -s "$refresh_symlink_target" "$installed_desktop"
+HOME="$refresh_home" PATH="$refresh_bin:$PATH" OMARCHY_PATH="$refresh_root" \
+  "$ROOT/bin/omarchy-refresh-applications" >"$refresh_symlink_log" 2>&1
+
+[[ ! -s $refresh_symlink_log ]] ||
+  fail "application refresh does not write through a dangling Ghostty desktop symlink" "$(<"$refresh_symlink_log")"
+[[ -L $installed_desktop && $(readlink "$installed_desktop") == "$refresh_symlink_target" ]] ||
+  fail "application refresh preserves a dangling Ghostty desktop symlink"
+[[ ! -e $refresh_symlink_target ]] ||
+  fail "application refresh does not create a dangling Ghostty symlink target"
+pass "application refresh preserves a dangling Ghostty desktop symlink"
+
 rm "$installed_desktop"
 HOME="$refresh_home" PATH="$refresh_bin:$PATH" OMARCHY_PATH="$refresh_root" \
   "$ROOT/bin/omarchy-refresh-applications"
