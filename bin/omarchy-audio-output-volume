@@ -1,20 +1,24 @@
 #!/bin/bash
 
-# omarchy:summary=Adjust output volume and show the Omarchy OSD
-# omarchy:args=<raise|lower|mute-toggle|+N|-N>
-# omarchy:examples=omarchy audio output volume raise | omarchy audio output volume lower | omarchy audio output volume mute-toggle | omarchy audio output volume +1
+# omarchy:summary=Adjust volume for the default or a named output and show the Omarchy OSD
+# omarchy:args=<raise|lower|mute-toggle|+N|-N> [sink-name]
+# omarchy:examples=omarchy audio output volume raise | omarchy audio output volume lower | omarchy audio output volume mute-toggle | omarchy audio output volume +1 | omarchy audio output volume raise alsa_output.usb-Headset-00.pro-output-1
 
 action="${1:-}"
 
 if [[ -z $action ]]; then
-  echo "Usage: omarchy-audio-output-volume <raise|lower|mute-toggle|+N|-N>"
+  echo "Usage: omarchy-audio-output-volume <raise|lower|mute-toggle|+N|-N> [sink-name]"
   exit 1
 fi
 
 # Resolve through any DSP sink to the physical one, so the keys always move real
 # loudness and the processing always sees full-scale input. Shared with the audio
 # panel and the output switcher.
-sink="$(omarchy-audio-output-sink)"
+#
+# A named sink targets an output that is deliberately not the default -- the chat
+# endpoint of a game/chat headset, a second zone -- which is otherwise unreachable,
+# since the default is the only thing this resolves without one.
+sink="$(omarchy-audio-output-sink "${2:-}")"
 if [[ -z $sink ]]; then
   echo "Could not resolve an audio sink to control." >&2
   exit 1
