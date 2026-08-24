@@ -16,5 +16,7 @@
 # means a fingerprint reader is configured.
 
 if [[ $1 == "post" ]]; then
-  systemctl try-restart fprintd.service 2>/dev/null || true
+  # user.slice stays frozen until this returns and systemctl waits out the whole
+  # job, so bound it — killing the client leaves systemd to finish the restart.
+  timeout 10s systemctl try-restart fprintd.service 2>/dev/null || true
 fi
