@@ -43,7 +43,10 @@ Item {
   }
 
   // Dismiss the toast on plug-in rather than leaving it to its own expiry —
-  // the warning is moot once the user has already acted on it.
+  // the warning is moot once the user has already acted on it. The title
+  // below must match bin/omarchy-battery-low's exactly, or it stops
+  // matching the live toast; test/shell.d/battery-test.sh asserts the two
+  // stay in sync.
   function dismissLowBatteryWarning() {
     if (dismissProcess.running) return
     dismissProcess.command = ["omarchy-notification-dismiss", "Time to recharge!"]

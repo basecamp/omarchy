@@ -31,6 +31,15 @@ assertDeepEqual(
 
 const fs = require('fs')
 const serviceSource = fs.readFileSync(root + '/shell/plugins/services/battery/Service.qml', 'utf8')
-assert(/dismissProcess\.command = \["omarchy-notification-dismiss", "Time to recharge!"\]/.test(serviceSource), 'battery service dismisses the low-battery toast through Omarchy command')
+const dismissMatch = serviceSource.match(/dismissProcess\.command = \["omarchy-notification-dismiss", "([^"]+)"\]/)
+assert(!!dismissMatch, 'battery service dismisses the low-battery toast through Omarchy command')
 assert(/if \(!UPower\.onBattery && persisted\.notifiedLowBattery\) root\.dismissLowBatteryWarning\(\)/.test(serviceSource), 'battery service dismisses the low-battery toast on plug-in')
+
+// The dismiss above matches by title, independently of the title
+// omarchy-battery-low sends — assert they're the same string so the two
+// can't silently drift apart.
+const sendSource = fs.readFileSync(root + '/bin/omarchy-battery-low', 'utf8')
+const sendMatch = sendSource.match(/omarchy-notification-send[^\n]*?"([^"\n]+)"/)
+assert(!!sendMatch, 'omarchy-battery-low sends a titled notification')
+assertEqual(dismissMatch[1], sendMatch[1], 'battery service dismisses the exact toast title omarchy-battery-low sends')
 JS
