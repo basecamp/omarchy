@@ -8,7 +8,10 @@ Rectangle {
   height: 480
   color: "#1a1b26"
 
-  property string currentUser: CurrentUser.resolveCurrentUser(userModel, Qt.DisplayRole)
+  // SDDM's UserModel.data() only handles its own UserRoles enum (NameRole =
+  // Qt.UserRole + 1); it has no Qt.DisplayRole case and returns an invalid
+  // QVariant for it, so DisplayRole must not be used here.
+  property string currentUser: CurrentUser.resolveCurrentUser(userModel, Qt.UserRole + 1)
   property bool loginFailed: false
   property int sessionIndex: {
     for (var i = 0; i < sessionModel.rowCount(); i++) {

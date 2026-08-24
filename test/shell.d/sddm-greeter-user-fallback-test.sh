@@ -15,6 +15,7 @@ const sandbox = {}
 vm.createContext(sandbox)
 vm.runInContext(source, sandbox)
 
+const NAME_ROLE = 257
 const DISPLAY_ROLE = 0
 
 function mockUserModel(lastUser, users) {
@@ -22,31 +23,37 @@ function mockUserModel(lastUser, users) {
     lastUser,
     rowCount: () => users.length,
     index: (row, _column) => row,
-    data: (idx, _role) => users[idx],
+    data: (idx, role) => (role === NAME_ROLE ? users[idx] : undefined),
   }
 }
 
 assertEqual(
-  sandbox.resolveCurrentUser(mockUserModel('alice', ['alice']), DISPLAY_ROLE),
+  sandbox.resolveCurrentUser(mockUserModel('alice', ['alice']), NAME_ROLE),
   'alice',
   'uses the recorded last user when state.conf has one'
 )
 
 assertEqual(
-  sandbox.resolveCurrentUser(mockUserModel('', ['alice']), DISPLAY_ROLE),
+  sandbox.resolveCurrentUser(mockUserModel('', ['alice']), NAME_ROLE),
   'alice',
   'falls back to the sole account when lastUser is empty (#7949)'
 )
 
 assertEqual(
-  sandbox.resolveCurrentUser(mockUserModel('', ['alice', 'bob']), DISPLAY_ROLE),
+  sandbox.resolveCurrentUser(mockUserModel('', ['alice', 'bob']), NAME_ROLE),
   '',
   'does not guess a user when lastUser is empty and multiple accounts exist'
 )
 
 assertEqual(
-  sandbox.resolveCurrentUser(mockUserModel('', []), DISPLAY_ROLE),
+  sandbox.resolveCurrentUser(mockUserModel('', []), NAME_ROLE),
   '',
   'stays empty rather than crashing when the model has no accounts at all'
+)
+
+assertEqual(
+  sandbox.resolveCurrentUser(mockUserModel('', ['alice']), DISPLAY_ROLE),
+  '',
+  'querying Qt.DisplayRole instead of NameRole resolves nothing, as it does on real SDDM'
 )
 JS

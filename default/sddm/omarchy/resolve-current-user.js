@@ -7,10 +7,10 @@
 // single-account machine is unambiguous enough to guess; leave multi-user
 // machines to populate lastUser normally rather than picking one of several
 // accounts.
-function resolveCurrentUser(userModel, displayRole) {
+function resolveCurrentUser(userModel, nameRole) {
   if (userModel.lastUser)
     return userModel.lastUser
   if (userModel.rowCount() === 1)
-    return (userModel.data(userModel.index(0, 0), displayRole) || "").toString()
+    return (userModel.data(userModel.index(0, 0), nameRole) || "").toString()
   return ""
 }
