@@ -11,9 +11,11 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 # the loader omitting the injected properties at creation (so a bar declaring
 # them `required` could not be instantiated at all), and Loader.Error failing to
 # select the fallback (so a broken bar left the session with no bar and no
-# message).
+# message). A third case covers switching straight from one bar plugin to
+# another: `active` stays true across that, so only the url change can drive the
+# reload, and nothing else here would notice if it stopped.
 #
-# Both cases run the real shell rather than a stand-in, because the loader is
+# Every case runs the real shell rather than a stand-in, because the loader is
 # part of shell.qml and a reimplementation in a fixture would only test itself.
 
 TMPDIR=""
@@ -132,6 +134,49 @@ Item {
 QML
 }
 
+# Two of these stand in for two installed bar options. Each reports its own id
+# when it loads, so the result file says *which* bar is up rather than just that
+# some bar is.
+write_named_bar() {
+  local dir="$1" id="$2" name="$3"
+  mkdir -p "$dir"
+  cat >"$dir/manifest.json" <<JSON
+{
+  "schemaVersion": 1,
+  "id": "$id",
+  "name": "$name",
+  "version": "1.0.0",
+  "kinds": ["bar"],
+  "entryPoints": {"bar": "Bar.qml"}
+}
+JSON
+  {
+    printf 'import QtQuick\nimport Quickshell\n\nItem {\n  id: root\n\n'
+    printf '  readonly property string barId: "%s"\n' "$id"
+    cat <<'QML'
+
+  property string omarchyPath: ""
+  property var barWidgetRegistry: null
+  property var barConfig: null
+  property var shell: null
+  property var manifest: null
+
+  readonly property string resultPath: Quickshell.env("OMARCHY_QML_TEST_RESULT")
+
+  function shellQuote(value) {
+    return "'" + String(value).replace(/'/g, "'\''") + "'"
+  }
+
+  Component.onCompleted: {
+    if (resultPath)
+      Quickshell.execDetached(["bash", "-lc",
+        "printf '%s' " + shellQuote(JSON.stringify({id: root.barId})) + " > " + shellQuote(resultPath)])
+  }
+}
+QML
+  } >"$dir/Bar.qml"
+}
+
 write_shell_json() {
   local home="$1" bar_id="$2"
   mkdir -p "$home/.config/omarchy"
@@ -239,3 +284,66 @@ if ! jq -e "$fallback_took" <<<"$plugins" >/dev/null 2>&1; then
 fi
 
 pass "a bar plugin that cannot load falls back to the built-in bar"
+stop_shell
+
+# ----------------------------------------------------------------- bar switch
+#
+# Both bars are valid and both are plugins, so pluginBarLoader.active is true
+# before and after -- neither onActiveChanged nor Component.onCompleted fires.
+# Only activeBarSourceUrl changes, so the loader reloads solely because the url
+# change drives it. Drop that and this case hangs on bar one.
+home_switch="$TMPDIR/home-switch"
+log_switch="$TMPDIR/switch-bar.log"
+switch_result="$TMPDIR/switch-result.json"
+plugins_dir="$home_switch/.config/omarchy/plugins"
+write_named_bar "$plugins_dir/acme.bar-one" "acme.bar-one" "Bar One"
+write_named_bar "$plugins_dir/acme.bar-two" "acme.bar-two" "Bar Two"
+write_shell_json "$home_switch" "acme.bar-one"
+start_shell "$home_switch" "$log_switch" "$switch_result"
+
+wait_for_bar() {
+  local want="$1" what="$2"
+  for _ in {1..150}; do
+    if [[ -s $switch_result ]] && jq -e --arg id "$want" '.id == $id' "$switch_result" >/dev/null 2>&1; then
+      return 0
+    fi
+    if ! kill -0 "$QS_PID" 2>/dev/null; then
+      sed -n '1,120p' "$log_switch" >&2
+      fail "shell exited before $what"
+    fi
+    sleep 0.1
+  done
+  [[ -s $switch_result ]] && jq . "$switch_result" >&2
+  sed -n '1,120p' "$log_switch" >&2
+  fail "$what"
+}
+
+wait_for_bar "acme.bar-one" "the first bar plugin never loaded"
+
+# Truncated so the poll below cannot pass on bar one's own report.
+: >"$switch_result"
+
+for _ in {1..150}; do
+  shell_ipc_quiet shell ping >/dev/null 2>&1 && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    sed -n '1,120p' "$log_switch" >&2
+    fail "shell exited before its IPC became available"
+  fi
+  sleep 0.1
+done
+
+# Switched by enabling the second bar option, which sets bar.id through the
+# in-process config mutator. Rewriting shell.json and reloading it instead would
+# not test this path: the reload empties the config on its way through, so
+# activeBarSourceUrl passes through "", the loader deactivates and reactivates,
+# and onActiveChanged does the work. Mutating in place keeps both plugins
+# installed and the url non-empty throughout, so `active` never drops.
+switched=$(shell_ipc shell enablePlugin acme.bar-two '{}' 2>&1 || true)
+if [[ $switched != *ok* ]]; then
+  sed -n '1,120p' "$log_switch" >&2
+  fail "could not select the second bar plugin: $switched"
+fi
+
+wait_for_bar "acme.bar-two" "switching between two bar plugins did not load the second entry point"
+
+pass "switching straight from one bar plugin to another loads the second entry point"
