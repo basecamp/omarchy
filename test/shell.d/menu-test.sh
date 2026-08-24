@@ -633,6 +633,22 @@ assert(
     && /onClicked:[\s\S]*root\.activateIndex\(row\.index, true\)/.test(menuQml),
   'mouse activation carries pointer intent into subordinate menus'
 )
+
+// Web search fallback: URL-vs-search decision and template substitution.
+assertEqual(menu.webSearchLooksLikeUrl('hola'), false, 'web search treats bare text as a search')
+assertEqual(menu.webSearchLooksLikeUrl('hola mundo'), false, 'web search treats whitespace as a search')
+assertEqual(menu.webSearchLooksLikeUrl('hola.com'), true, 'web search treats a dotted name as a URL')
+assertEqual(menu.webSearchLooksLikeUrl('example.com/page'), true, 'web search treats a path as a URL')
+assertEqual(menu.webSearchLooksLikeUrl('https://x.com'), true, 'web search keeps a scheme as a URL')
+assertEqual(menu.webSearchLooksLikeUrl('localhost'), true, 'web search treats localhost as a URL')
+assertEqual(menu.webSearchLooksLikeUrl('localhost:3000'), true, 'web search treats localhost with a port as a URL')
+
+assertEqual(menu.webSearchTarget('hola'), 'https://www.google.com/search?q=hola', 'web search builds a Google query for plain text')
+assertEqual(menu.webSearchTarget('hola mundo'), 'https://www.google.com/search?q=hola%20mundo', 'web search URL-encodes the query')
+assertEqual(menu.webSearchTarget('hola.com'), 'https://hola.com', 'web search adds https to a bare domain')
+assertEqual(menu.webSearchTarget('https://x.com'), 'https://x.com', 'web search keeps an explicit scheme')
+assertEqual(menu.webSearchTarget('localhost:3000'), 'http://localhost:3000', 'web search uses http for localhost')
+assertEqual(menu.webSearchTarget('hola', 'https://duckduckgo.com/?q={searchTerms}'), 'https://duckduckgo.com/?q=hola', 'web search honors a custom template')
 JS
 
 font_charset=$(fc-query --format='%{charset}' "$ROOT/default/fonts/omarchy/omarchy.ttf")

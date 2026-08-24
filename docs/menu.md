@@ -153,6 +153,20 @@ link is followed to its target. The default Hyprland bindings in
 `default/hypr/bindings/utilities.lua` all go through this surface
 (SUPER+SPACE toggles root, SUPER+ESCAPE the system menu, and so on).
 
+## Web search fallback
+
+While a search query is typed, the menu appends a fallback row that opens the default browser with the query. Text that reads as a URL (a scheme, a dot, or a `localhost` host) opens that URL; anything else becomes a search-engine query. The search URL is the `{searchTerms}` template in `shell.json` under `menu.webSearchUrl`, defaulting to Google:
+
+```json
+{
+  "menu": {
+    "webSearchUrl": "https://www.google.com/search?q={searchTerms}"
+  }
+}
+```
+
+The URL-vs-search decision and template substitution live in `webSearchLooksLikeUrl` and `webSearchTarget` in `MenuModel.js`, so the shell tests exercise them directly.
+
 ## Select and input modes
 
 The same plugin doubles as the system's dmenu. `omarchy-menu-select` and

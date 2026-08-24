@@ -490,6 +490,30 @@ function guardScript(items) {
   return guards ? guardPrelude(guards) + guards : ""
 }
 
+function webSearchLooksLikeUrl(query) {
+  var q = String(query || "").trim()
+  // A space reads as search, matching the browser omnibox: URLs do not
+  // carry raw whitespace.
+  if (!q || /\s/.test(q)) return false
+  return q.indexOf("://") >= 0 || q.indexOf(".") >= 0 || /^localhost([/:]|$)/i.test(q)
+}
+
+// Turn a menu-search query into the URL to open: a bare URL (with a scheme
+// added when missing, http for localhost) or a search-engine query when the
+// text does not read as a URL. `template` is the search URL with a
+// {searchTerms} placeholder; Google is the fallback.
+function webSearchTarget(query, template) {
+  var q = String(query || "").trim()
+  if (!q) return ""
+  if (webSearchLooksLikeUrl(q)) {
+    if (q.indexOf("://") >= 0) return q
+    if (/^localhost([/:]|$)/i.test(q)) return "http://" + q
+    return "https://" + q
+  }
+  var tpl = String(template || "https://www.google.com/search?q={searchTerms}")
+  return tpl.split("{searchTerms}").join(encodeURIComponent(q))
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     guardReaders: GUARD_READERS,
@@ -519,6 +543,8 @@ if (typeof module !== "undefined") {
     descriptionTextMatches: descriptionTextMatches,
     matchesQuery: matchesQuery,
     searchScore: searchScore,
-    displayRow: displayRow
+    displayRow: displayRow,
+    webSearchLooksLikeUrl: webSearchLooksLikeUrl,
+    webSearchTarget: webSearchTarget
   }
 }
