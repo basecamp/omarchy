@@ -37,7 +37,7 @@ Item {
   property var screensaverWindows: ({})
   property int screensaverWindowCount: 0
 
-  onFirstIdleTimeoutSecondsChanged: {
+  function handleIdleTimeoutsChanged() {
     logEvent("idle-timeout-rearm", "screensaver=" + root.screensaverTimeoutSeconds + " lock=" + root.lockTimeoutSeconds)
     if (root.idledThisCycle) {
       root.cancelIdleCycle("timeout-change")
@@ -49,6 +49,9 @@ Item {
       })
     }
   }
+
+  onScreensaverTimeoutSecondsChanged: root.handleIdleTimeoutsChanged()
+  onLockTimeoutSecondsChanged: root.handleIdleTimeoutsChanged()
 
   function secondsFromConfig(value, fallback) {
     return IdleModel.secondsFromConfig(value, fallback)
