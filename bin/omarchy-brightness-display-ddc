@@ -9,6 +9,11 @@ step="${2:-}"
 
 [[ -n $monitor ]] || exit 1
 
+# Distinguishes "this connector answers no DDC display" from a transient read
+# failure, so a caller can route the connector somewhere else rather than retry
+# a bus that is never going to appear.
+no_ddc_display=3
+
 cache_dir="${XDG_RUNTIME_DIR:-/tmp}/omarchy-brightness-display-ddc"
 cache_name="${monitor//[^[:alnum:]_.-]/_}"
 cache_file="$cache_dir/$cache_name.bus"
@@ -51,7 +56,7 @@ find_bus() {
   if [[ $bus == "unavailable" ]]; then
     now=$(date +%s)
     if [[ $cached_value =~ ^[0-9]+$ ]] && (( now - cached_value < unavailable_cache_seconds )); then
-      return 1
+      return "$no_ddc_display"
     fi
     bus=""
     rm -f "$cache_file"
@@ -61,7 +66,7 @@ find_bus() {
     bus="$(detect_bus)" || return 1
     if [[ ! $bus =~ ^[0-9]+$ ]]; then
       cache_unavailable
-      return 1
+      return "$no_ddc_display"
     fi
     mkdir -p "$cache_dir" 2>/dev/null || true
     printf '%s\n' "$bus" >"$cache_file" 2>/dev/null || true
@@ -89,7 +94,7 @@ read_brightness() {
   local now=0
   local values=""
 
-  bus="$(find_bus)" || return 1
+  bus="$(find_bus)" || return $?
   values="$(read_vcp "$bus")" || {
     rm -f "$cache_file"
     return 1
@@ -108,7 +113,8 @@ percent=""
 range_cached_at=""
 
 if [[ -z $step ]]; then
-  read -r bus current maximum < <(read_brightness) || exit 1
+  brightness="$(read_brightness)" || exit $?
+  read -r bus current maximum <<<"$brightness"
   [[ -n ${bus:-} && -n ${current:-} && -n ${maximum:-} ]] || exit 1
   (( percent = (current * 100 + maximum / 2) / maximum ))
   printf '%s\n' "$percent"
@@ -130,10 +136,12 @@ if [[ $step =~ ^([0-9]+)%$ ]]; then
   fi
 
   if (( ! range_cache_fresh )); then
-    read -r bus current maximum < <(read_brightness) || exit 1
+    brightness="$(read_brightness)" || exit $?
+    read -r bus current maximum <<<"$brightness"
   fi
 elif [[ $step =~ ^\+([0-9]+)%$ ]]; then
-  read -r bus current maximum < <(read_brightness) || exit 1
+  brightness="$(read_brightness)" || exit $?
+  read -r bus current maximum <<<"$brightness"
   [[ -n ${bus:-} && -n ${current:-} && -n ${maximum:-} ]] || exit 1
   (( percent = (current * 100 + maximum / 2) / maximum ))
   amount="${BASH_REMATCH[1]}"
@@ -143,7 +151,8 @@ elif [[ $step =~ ^\+([0-9]+)%$ ]]; then
     (( target = percent + amount ))
   fi
 elif [[ $step =~ ^([0-9]+)%-$ ]]; then
-  read -r bus current maximum < <(read_brightness) || exit 1
+  brightness="$(read_brightness)" || exit $?
+  read -r bus current maximum <<<"$brightness"
   [[ -n ${bus:-} && -n ${current:-} && -n ${maximum:-} ]] || exit 1
   (( percent = (current * 100 + maximum / 2) / maximum ))
   amount="${BASH_REMATCH[1]}"
