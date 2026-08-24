@@ -2,12 +2,12 @@
 
 # omarchy:summary=Install a supported development environment
 # omarchy:name=dev-env
-# omarchy:args=<ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala>
+# omarchy:args=<ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|swift|ocaml|dotnet|clojure|scala>
 # omarchy:examples=omarchy install dev-env ruby | omarchy install dev-env node
 # omarchy:requires-sudo=true
 
 if [[ -z $1 ]]; then
-  echo "Usage: omarchy-install-dev-env <ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala>" >&2
+  echo "Usage: omarchy-install-dev-env <ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|swift|ocaml|dotnet|clojure|scala>" >&2
   exit 1
 fi
 
@@ -129,6 +129,10 @@ zig)
   echo -e "Installing Zig...\n"
   mise use --global zig@latest
   mise use -g zls@latest
+  ;;
+swift)
+  echo -e "Installing Swift...\n"
+  omarchy-pkg-aur-add swift-bin || exit 1
   ;;
 ocaml)
   echo -e "Installing OCaml...\n"
