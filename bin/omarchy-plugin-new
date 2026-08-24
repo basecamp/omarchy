@@ -120,7 +120,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: release
     env:
-      REGISTRY: https://plugins.omarchy.org
+      REGISTRY: https://omarchy-plugins.ryanhughes.me # TODO: plugins.omarchy.org at launch
     steps:
       - uses: actions/checkout@v6
 

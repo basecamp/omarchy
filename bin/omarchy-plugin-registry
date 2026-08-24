@@ -24,7 +24,9 @@
 
 set -euo pipefail
 
-REGISTRY_URL="${OMARCHY_PLUGIN_REGISTRY_URL:-https://plugins.omarchy.org}"
+# Staging default while the registry lives at ryanhughes.me — flip back to
+# https://plugins.omarchy.org at launch (also in omarchy-plugin-new).
+REGISTRY_URL="${OMARCHY_PLUGIN_REGISTRY_URL:-https://omarchy-plugins.ryanhughes.me}"
 REGISTRY_URL="${REGISTRY_URL%/}"
 
 fail() {
