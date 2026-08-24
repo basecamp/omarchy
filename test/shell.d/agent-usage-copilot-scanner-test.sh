@@ -49,7 +49,7 @@ pass "Copilot collector identifies as 'copilot'"
 
 # Test 2: Today's token counts are summed correctly
 today_tokens=$(jq -r '.todayTotalTokens' <<<"$result")
-[[ "$today_tokens" -gt 0 ]] ||
+[[ $today_tokens == "493" ]] ||
   fail "Copilot collector sums today's tokens" "$result"
 pass "Copilot collector sums today's tokens"
 
@@ -103,23 +103,23 @@ def simulate_exhausted_quota():
         "chat": "Chat",
         "completions": "Completions",
     }
-    
+
     # Simulate exhausted quota response
     quota_key = "premium_interactions"
     used = 0
     total = 0
-    
+
     display_name = QUOTA_DISPLAY_NAMES.get(quota_key, quota_key)
     result = {
         "displayName": display_name,
         "used": used,
         "total": total,
     }
-    
+
     # This is the actual code from fetch_quota
     if total == 0 and used == 0:
         result["displayName"] = f"No more {display_name} available"
-    
+
     result["resetsAt"] = "2026-09-01T00:00:00.000Z"
     return result
 
