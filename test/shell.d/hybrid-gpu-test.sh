@@ -62,6 +62,12 @@ cat >"$fake_bin/omarchy-system-reboot" <<'STUB'
 echo reboot >>"$TEST_TMP/reboots"
 STUB
 
+cat >"$fake_bin/systemctl" <<'STUB'
+#!/bin/bash
+printf '%s\n' "$*" >>"$TEST_TMP/systemctl"
+exit "${SYSTEMCTL_STATUS:-0}"
+STUB
+
 cat >"$fake_bin/supergfxctl" <<'STUB'
 #!/bin/bash
 attempts_file="$TEST_TMP/attempts"
@@ -83,18 +89,57 @@ gmux_conf="$test_tmp/modprobe.d/apple-gmux.conf"
 dpm_rule="$test_tmp/udev/rules.d/30-omarchy-t2-amdgpu-pm.rules"
 renderer_env="$test_tmp/uwsm/env-hyprland.d/20-omarchy-t2-gpu"
 renderer_source="$ROOT/default/uwsm/env-hyprland.d/20-omarchy-t2-gpu"
+supergfx_conf="$test_tmp/supergfxd.conf"
+force_igpu="$test_tmp/system-sleep/force-igpu"
+supergfx_delay="$test_tmp/supergfxd.service.d/delay-start.conf"
+
+export OMARCHY_T2_SUPERGFX_CONF="$supergfx_conf"
+export OMARCHY_T2_FORCE_IGPU="$force_igpu"
+export OMARCHY_T2_SUPERGFX_DELAY="$supergfx_delay"
+
+mkdir -p "$(dirname "$gmux_conf")" "$(dirname "$force_igpu")" "$(dirname "$supergfx_delay")"
+printf '{\n  "mode": "Integrated"\n}\n' >"$supergfx_conf"
+touch "$force_igpu" "$supergfx_delay"
 
 fake_drm="$test_tmp/sys/class/drm"
 mkdir -p "$fake_drm/card4/device" "$fake_drm/card7/device" \
   "$test_tmp/drivers/amdgpu" "$test_tmp/drivers/i915"
 ln -s "$test_tmp/drivers/amdgpu" "$fake_drm/card4/device/driver"
 ln -s "$test_tmp/drivers/i915" "$fake_drm/card7/device/driver"
-sed "s|/sys/class/drm|$fake_drm|" "$renderer_source" >"$test_tmp/renderer-env"
 
-renderer_devices=$(sh -c '. "$1"; printf "%s" "$AQ_DRM_DEVICES"' _ "$test_tmp/renderer-env")
+printf '%s\n' 'options apple-gmux force_igd=y' >"$gmux_conf"
+renderer_devices=$(
+  OMARCHY_T2_DRM_DIR="$fake_drm" OMARCHY_T2_GMUX_CONF="$gmux_conf" \
+    sh -c '. "$1"; printf "%s" "$AQ_DRM_DEVICES"' _ "$renderer_source"
+)
 [[ $renderer_devices == "/dev/dri/card7:/dev/dri/card4" ]] ||
-  fail "T2 renderer policy discovers dynamic Intel and Radeon card numbers" "$renderer_devices"
-pass "T2 renderer policy prioritizes Intel without persistent DRM aliases"
+  fail "T2 integrated renderer policy prioritizes Intel" "$renderer_devices"
+pass "T2 renderer policy discovers dynamic Intel and Radeon card numbers"
+
+rm "$fake_drm/card4/device/driver"
+wait_bin="$test_tmp/wait-bin"
+mkdir -p "$wait_bin"
+cat >"$wait_bin/sleep" <<'STUB'
+#!/bin/bash
+echo wait >>"$TEST_TMP/renderer-waits"
+ln -s "$TEST_TMP/drivers/amdgpu" "$TEST_TMP/sys/class/drm/card4/device/driver"
+STUB
+chmod +x "$wait_bin/sleep"
+
+printf '%s\n' 'options apple-gmux force_igd=n' >"$gmux_conf"
+renderer_devices=$(
+  TEST_TMP="$test_tmp" OMARCHY_T2_DRM_DIR="$fake_drm" \
+    OMARCHY_T2_GMUX_CONF="$gmux_conf" OMARCHY_T2_GPU_WAIT_ATTEMPTS=2 \
+    PATH="$wait_bin:$PATH" \
+    sh -c '. "$1"; printf "%s" "$AQ_DRM_DEVICES"' _ "$renderer_source"
+)
+[[ $renderer_devices == "/dev/dri/card4:/dev/dri/card7" ]] ||
+  fail "T2 dedicated renderer policy waits for and prioritizes Radeon" "$renderer_devices"
+[[ $(wc -l <"$test_tmp/renderer-waits") == "1" ]] ||
+  fail "T2 dedicated renderer policy waits once for the delayed Radeon"
+pass "T2 dedicated renderer policy handles late Radeon initialization"
+
+rm -f "$gmux_conf"
 
 TEST_TMP="$test_tmp" T2_HARDWARE=1 CONFIRM_STATUS=0 \
   OMARCHY_T2_GMUX_CONF="$gmux_conf" OMARCHY_T2_DGPU_RULE="$dpm_rule" \
@@ -108,6 +153,12 @@ grep -Fxq 'SUBSYSTEM=="drm", ENV{DEVTYPE}=="drm_minor", KERNEL=="card[0-9]*", AT
   fail "T2 integrated graphics keeps Radeon in its safe low-power mode"
 cmp -s "$renderer_source" "$renderer_env" ||
   fail "T2 integrated graphics prioritizes Intel rendering through UWSM"
+grep -Fq '"mode": "Hybrid"' "$supergfx_conf" ||
+  fail "T2 graphics neutralizes stale supergfxd integrated mode"
+[[ ! -e $force_igpu ]] || fail "T2 graphics removes the supergfxd sleep hook"
+[[ ! -e $supergfx_delay ]] || fail "T2 graphics removes the supergfxd startup delay"
+grep -Fxq 'disable --now supergfxd' "$test_tmp/systemctl" ||
+  fail "T2 graphics disables the incompatible supergfxd service"
 grep -Fq 'Use integrated low-power mode and reboot?' "$test_tmp/prompts" ||
   fail "T2 Intel mode makes the Radeon performance tradeoff explicit"
 [[ $(wc -l <"$test_tmp/reboots") == "1" ]] || fail "T2 Intel mode requests one reboot"
@@ -125,7 +176,14 @@ TEST_TMP="$test_tmp" T2_HARDWARE=1 CONFIRM_STATUS=0 \
 grep -Fxq 'options apple-gmux force_igd=n' "$gmux_conf" ||
   fail "T2 hybrid graphics can switch to dedicated graphics"
 [[ ! -e $dpm_rule ]] || fail "T2 dedicated graphics restores automatic Radeon performance"
-[[ ! -e $renderer_env ]] || fail "T2 dedicated graphics restores automatic renderer selection"
+cmp -s "$renderer_source" "$renderer_env" ||
+  fail "T2 dedicated graphics keeps explicit renderer selection through UWSM"
+renderer_devices=$(
+  OMARCHY_T2_DRM_DIR="$fake_drm" OMARCHY_T2_GMUX_CONF="$gmux_conf" \
+    sh -c '. "$1"; printf "%s" "$AQ_DRM_DEVICES"' _ "$renderer_env"
+)
+[[ $renderer_devices == "/dev/dri/card4:/dev/dri/card7" ]] ||
+  fail "T2 dedicated graphics configures Radeon as the primary renderer" "$renderer_devices"
 grep -Fq 'Enable dedicated GPU and reboot?' "$test_tmp/prompts" ||
   fail "T2 AMD mode uses the existing dedicated GPU prompt"
 [[ $(wc -l <"$test_tmp/reboots") == "2" ]] || fail "T2 AMD mode requests one reboot"

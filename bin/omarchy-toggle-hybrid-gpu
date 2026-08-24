@@ -9,6 +9,9 @@ toggle_t2_hybrid_gpu() {
   local dpm_rule="${OMARCHY_T2_DGPU_RULE:-/etc/udev/rules.d/30-omarchy-t2-amdgpu-pm.rules}"
   local renderer_env="${OMARCHY_T2_RENDERER_ENV:-$config_home/uwsm/env-hyprland.d/20-omarchy-t2-gpu}"
   local renderer_source="$OMARCHY_PATH/default/uwsm/env-hyprland.d/20-omarchy-t2-gpu"
+  local supergfx_conf="${OMARCHY_T2_SUPERGFX_CONF:-/etc/supergfxd.conf}"
+  local force_igpu="${OMARCHY_T2_FORCE_IGPU:-/usr/lib/systemd/system-sleep/force-igpu}"
+  local supergfx_delay="${OMARCHY_T2_SUPERGFX_DELAY:-/etc/systemd/system/supergfxd.service.d/delay-start.conf}"
   local force_igd prompt
   local -a rebuild
 
@@ -21,6 +24,26 @@ toggle_t2_hybrid_gpu() {
   fi
 
   if gum confirm "$prompt"; then
+    if omarchy-cmd-present supergfxctl; then
+      if [[ -f $supergfx_conf ]]; then
+        if ! sudo sed -i -E 's/"mode": "[^"]*"/"mode": "Hybrid"/' "$supergfx_conf" ||
+          ! grep -qF '"mode": "Hybrid"' "$supergfx_conf"; then
+          echo "Could not neutralize $supergfx_conf. Graphics mode unchanged." >&2
+          exit 1
+        fi
+      fi
+
+      if ! sudo systemctl disable --now supergfxd; then
+        echo "Could not disable supergfxd. Graphics mode unchanged." >&2
+        exit 1
+      fi
+    fi
+
+    if ! sudo rm -f "$force_igpu" "$supergfx_delay"; then
+      echo "Could not remove stale supergfxd policies. Graphics mode unchanged." >&2
+      exit 1
+    fi
+
     sudo mkdir -p "$(dirname "$gmux_conf")" "$(dirname "$dpm_rule")"
 
     if ! echo "options apple-gmux force_igd=$force_igd" | sudo tee "$gmux_conf" >/dev/null; then
@@ -34,15 +57,13 @@ toggle_t2_hybrid_gpu() {
         exit 1
       fi
 
-      if ! install -Dm644 "$renderer_source" "$renderer_env"; then
-        echo "Could not install $renderer_env. Graphics mode change incomplete." >&2
-        exit 1
-      fi
     elif ! sudo rm -f "$dpm_rule"; then
       echo "Could not remove $dpm_rule. Graphics mode change incomplete." >&2
       exit 1
-    elif ! rm -f "$renderer_env"; then
-      echo "Could not remove $renderer_env. Graphics mode change incomplete." >&2
+    fi
+
+    if ! install -Dm644 "$renderer_source" "$renderer_env"; then
+      echo "Could not install $renderer_env. Graphics mode change incomplete." >&2
       exit 1
     fi
 
