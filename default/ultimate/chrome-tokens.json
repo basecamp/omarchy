@@ -1,0 +1,11 @@
+{
+  "_readme": "Single source for Desktop Mode chrome colors. Consumed by default/hypr/desktop-windows.lua (hyprbars caption) and shell/plugins/ultimate-taskbar/Taskbar.qml (Superbar glass). Phase 3 token unification: new chrome colors go here, not in private palettes.",
+  "glassRed": "28",
+  "glassGreen": "28",
+  "glassBlue": "30",
+  "glassAlphaPct": "62",
+  "hyprbarsTextHex": "#eeeeee",
+  "chromeGlowHex": "#e8943a",
+  "chromeStartHex": "#9cbc0d",
+  "chromeEdgeHex": "#55ffffff"
+}

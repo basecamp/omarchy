@@ -26,19 +26,44 @@ Item {
   property color barForeground: Tokens.text.primary
   // Windows 7 Superbar glass: graphite, not Tokyo Night navy. Alpha + layer
   // blur is the translucency. Do not fill with Tokens.surface.glass.
-  readonly property color chromeBar: Qt.rgba(0.11, 0.11, 0.12, 0.62)
+  // Defaults match default/ultimate/chrome-tokens.json so the first frame is
+  // correct before FileView lands, and so a missing file cannot bleach chrome.
+  property color chromeBar: Qt.rgba(0.11, 0.11, 0.12, 0.62)
   readonly property color chromeHover: Qt.rgba(1, 1, 1, 0.10)
   readonly property color chromeActive: Qt.rgba(1, 1, 1, 0.16)
   readonly property color chromePressed: Qt.rgba(1, 1, 1, 0.22)
-  readonly property color chromeMenu: Qt.rgba(0.11, 0.11, 0.12, 0.88)
-  readonly property color chromeGlow: "#e8943a"
-  readonly property color chromeStart: "#9cbc0d"
-  readonly property color chromeEdge: "#55ffffff"
+  property color chromeMenu: Qt.rgba(0.11, 0.11, 0.12, 0.88)
+  property color chromeGlow: "#e8943a"
+  property color chromeStart: "#9cbc0d"
+  property color chromeEdge: "#55ffffff"
   property color background: chromeBar
   property var moduleSlots: []
   readonly property var windowService: shell ? shell.windowService : null
   readonly property var appLibrary: shell ? shell.appLibrary : null
   readonly property var groups: windowService ? windowService.groups : []
+
+  function applyChromeTokens(body) {
+    var t
+    try {
+      t = JSON.parse(body || "{}")
+    } catch (e) {
+      return
+    }
+    if (!t || typeof t !== "object") return
+    var r = Number(t.glassRed)
+    var g = Number(t.glassGreen)
+    var b = Number(t.glassBlue)
+    var pct = Number(t.glassAlphaPct)
+    if (isNaN(r)) r = 28
+    if (isNaN(g)) g = 28
+    if (isNaN(b)) b = 30
+    if (isNaN(pct)) pct = 62
+    root.chromeBar = Qt.rgba(r / 255, g / 255, b / 255, pct / 100)
+    root.chromeMenu = Qt.rgba(r / 255, g / 255, b / 255, 0.88)
+    if (t.chromeGlowHex) root.chromeGlow = t.chromeGlowHex
+    if (t.chromeStartHex) root.chromeStart = t.chromeStartHex
+    if (t.chromeEdgeHex) root.chromeEdge = t.chromeEdgeHex
+  }
 
   function registerSlot(pluginId, item) {
     if (!item) return
@@ -128,6 +153,14 @@ Item {
     if (!next || !next.activeItem) return false
     next.activeItem.open()
     return true
+  }
+
+  FileView {
+    path: (root.omarchyPath || Quickshell.env("OMARCHY_PATH")) + "/default/ultimate/chrome-tokens.json"
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.applyChromeTokens(text())
+    onFileChanged: reload()
   }
 
   FileView {

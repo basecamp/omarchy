@@ -363,6 +363,17 @@ if grep -E '^[^/]*Tokens.surface.glass' "$ROOT/shell/plugins/ultimate-taskbar/Ta
 fi
 grep -Fq 'Qt.rgba(0.11, 0.11, 0.12, 0.62)' "$ROOT/shell/plugins/ultimate-taskbar/Taskbar.qml" \
   || fail "Superbar glass is graphite with alpha, not opaque charcoal"
+[[ -f $ROOT/default/ultimate/chrome-tokens.json ]] || fail "chrome tokens exist as the Superbar/hyprbars palette"
+grep -Fq 'chrome-tokens.json' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "hyprbars caption chrome reads chrome-tokens.json"
+grep -Fq 'bar_color = chrome_glass_rgba' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "hyprbars bar_color comes from chrome tokens, not a private rgba"
+grep -Fq 'chrome-tokens.json' "$ROOT/shell/plugins/ultimate-taskbar/Taskbar.qml" \
+  || fail "Superbar glass reads chrome-tokens.json"
+grep -Fq 'function applyChromeTokens' "$ROOT/shell/plugins/ultimate-taskbar/Taskbar.qml" \
+  || fail "Superbar applies chrome tokens after FileView loads"
+hlcfg=$(grep -F -c 'hl.config({' "$ROOT/default/hypr/desktop-windows.lua" || true)
+(( hlcfg == 1 )) || fail "desktop-windows apply_desktop_look must call hl.config once (parse error otherwise)"
 grep -Fq 'bar_blur = true' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "hyprbars title bars use compositor blur"
 grep -Fq 'noise = 0' "$ROOT/default/hypr/desktop-windows.lua" \

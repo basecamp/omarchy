@@ -63,6 +63,45 @@ local function load_csd_patterns()
   return patterns
 end
 
+-- Desktop Mode chrome colors from default/ultimate/chrome-tokens.json (single
+-- source shared with the Superbar glass in Taskbar.qml). Phase 3 token
+-- unification: hyprbars caption chrome must not carry a private palette.
+local function load_chrome_tokens()
+  local root = repo_root()
+  if root == "" then
+    return {}
+  end
+  local file = io.open(root .. "/default/ultimate/chrome-tokens.json", "r")
+  if not file then
+    return {}
+  end
+  local body = file:read("*a")
+  file:close()
+  local tokens = {}
+  for key, value in body:gmatch('"([A-Za-z]+)"%s*:%s*"([^"]*)"') do
+    tokens[key] = value
+  end
+  return tokens
+end
+
+local function chrome_glass_rgba(tokens)
+  local r = tonumber(tokens.glassRed) or 28
+  local g = tonumber(tokens.glassGreen) or 28
+  local b = tonumber(tokens.glassBlue) or 30
+  local pct = tonumber(tokens.glassAlphaPct) or 62
+  local a = math.floor(pct * 255 / 100 + 0.5)
+  return string.format("rgba(%02x%02x%02x%02x)", r, g, b, a)
+end
+
+local function chrome_text_rgb(tokens)
+  local hex = tokens.hyprbarsTextHex or "#eeeeee"
+  hex = hex:gsub("^#", "")
+  if #hex < 6 then
+    hex = "eeeeee"
+  end
+  return string.format("rgb(%s)", hex:sub(1, 6))
+end
+
 for _, class_pat in ipairs(load_csd_patterns()) do
   -- CSD already draws its own shadow and edge. A compositor border + drop
   -- shadow on top is the dark halo around Chrome.
@@ -82,6 +121,7 @@ o.window(".*", { opacity = "1 1" })
 -- required AFTER this file. It restores cyan borders, gaps, and blur-off.
 -- apply_desktop_look is called again from hyprland.lua after that file.
 local function apply_desktop_look()
+  local chrome = load_chrome_tokens()
   hl.config({
     general = {
       resize_on_border = true,
@@ -144,8 +184,8 @@ local function apply_desktop_look()
         bar_buttons_alignment = "right",
         icon_on_hover = false,
         bar_blur = true,
-        bar_color = "rgba(1c1c1e99)",
-        ["col.text"] = "rgb(eeeeee)",
+        bar_color = chrome_glass_rgba(chrome),
+        ["col.text"] = chrome_text_rgb(chrome),
         on_double_click = "omarchy-shell window toggleMaximize 0x{:x}",
       },
     },
