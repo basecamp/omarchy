@@ -709,7 +709,18 @@ QtObject {
     if (relative.indexOf("/.git/") !== -1 || relative.endsWith("/.git")) return ""
 
     var slash = relative.indexOf("/")
-    return slash === -1 ? relative : relative.slice(0, slash)
+    var directoryName = slash === -1 ? relative : relative.slice(0, slash)
+    var sourceDir = base + directoryName
+    for (var id in installedPlugins) {
+      var manifest = installedPlugins[id]
+      if (!manifest || manifest.__isFirstParty === true) continue
+      if (String(manifest.__sourceDir || "").replace(/\/$/, "") === sourceDir)
+        return String(id)
+    }
+
+    // A newly created directory has not reached the registry yet. Queue it by
+    // directory name so the rescan still discovers its manifest.
+    return directoryName
   }
 
   Component.onCompleted: ensureUserDir()

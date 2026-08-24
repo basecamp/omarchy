@@ -75,7 +75,9 @@ Item {
 QML
 
 widget_reload_id="acme.widget-hot-reload"
-widget_reload_dir="$test_home/.config/omarchy/plugins/$widget_reload_id"
+# Keep the source directory different from the manifest id: local development
+# checkouts commonly use their repository name rather than their plugin id.
+widget_reload_dir="$test_home/.config/omarchy/plugins/widget-source-directory"
 widget_reload_result="$TMPDIR/widget-hot-reload-result"
 mkdir -p "$widget_reload_dir"
 cat >"$widget_reload_dir/manifest.json" <<JSON
