@@ -110,7 +110,7 @@ Panel {
     "Draining watts",
     "Burning electrons",
     "Sipping juice",
-    "Circulating coulombs",
+    "Cascading coulombs",
     "Bleeding amps",
     "Guzzling volts",
     "Munching reserves"
