@@ -8,6 +8,7 @@
 set -e
 
 AUTHORIZED_KEYS="$HOME/.ssh/authorized_keys"
+KEYS_ONLY_CONFIG="/etc/ssh/sshd_config.d/omarchy-keys-only.conf"
 KEY=""
 GITHUB_USER=""
 
@@ -57,10 +58,49 @@ if [[ -n $KEY && -n $GITHUB_USER ]]; then
   exit 2
 fi
 
-setup_sshd() {
-  echo "Installing and starting the OpenSSH server..."
+install_sshd() {
+  echo "Installing the OpenSSH server..."
   omarchy-pkg-add openssh
+}
+
+# The key is authorized before this runs, and the setup never asks for the
+# user's password, so the server has no reason to take passwords from the
+# network. Written before the server starts, so it never spends a moment
+# listening with password logins on.
+write_keys_only_config() {
+  echo "Turning off password logins over SSH..."
+  sudo mkdir -p "$(dirname "$KEYS_ONLY_CONFIG")"
+  sudo tee "$KEYS_ONLY_CONFIG" >/dev/null <<'EOF'
+# Written by omarchy-setup-security-sshd. Remove this file to let the server
+# take passwords from the network again.
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+EOF
+  sudo chmod 644 "$KEYS_ONLY_CONFIG"
+}
+
+start_sshd() {
+  echo "Starting the OpenSSH server..."
   sudo systemctl enable --now sshd.service
+  # Reload too, so a server that was already running picks up the drop-in.
+  sudo systemctl reload sshd.service
+}
+
+# sshd reads the drop-in through an Include line, and for most keywords the
+# first value it finds wins. A PasswordAuthentication line sitting above that
+# Include would beat the drop-in, so ask sshd what it settled on instead of
+# trusting that writing the file was enough. This runs after the server starts,
+# because sshd -T wants host keys and the first start is what creates them.
+require_password_logins_off() {
+  if sudo sshd -T 2>/dev/null | grep -qx 'passwordauthentication no'; then
+    return 0
+  fi
+
+  echo -e "\e[31m\nPassword logins over SSH are still on.\e[0m" >&2
+  echo "Something in /etc/ssh/sshd_config sets PasswordAuthentication ahead of the" >&2
+  echo "line that includes $KEYS_ONLY_CONFIG. Fix that and run this again." >&2
+  echo "The firewall was left closed, so the server is not reachable yet." >&2
+  return 1
 }
 
 open_firewall() {
@@ -145,8 +185,10 @@ authorize_pasted_key() {
 
 echo -e "\e[32mSetting up SSH server access with key-based authentication.\n\e[0m"
 
-setup_sshd
-open_firewall
+# Nothing is enabled and no port is opened until a key is in place. Installing
+# still has to come first, because the key check below runs ssh-keygen, which
+# the openssh package ships.
+install_sshd
 
 echo
 if [[ -n $KEY ]]; then
@@ -161,5 +203,11 @@ else
   esac
 fi
 
+write_keys_only_config
+start_sshd
+require_password_logins_off || exit 1
+open_firewall
+
 echo -e "\e[32m\nPerfect! The SSH server is running and your key is authorized.\e[0m"
+echo "Password logins over SSH are off, so your key is the only way in."
 echo "You can now connect with: ssh $USER@$(hostname)"
