@@ -1,0 +1,187 @@
+#!/usr/bin/python3
+# omarchy:summary=Apply the current theme keyboard color to QMK/VIA keyboards
+# omarchy:hidden=true
+"""Apply the current Omarchy theme color to a VIA-enabled QMK keyboard.
+
+Omarchy renders a keyboard color for every stock theme (state theme
+keyboard.rgb, falling back to the palette accent) but only drives ASUS ROG and
+Framework 16 laptop keyboards with it. This pushes the same color to a QMK
+board over raw HID, using the VIA protocol's rgb_matrix channel. The board
+must be reachable by the user, which for most boards means a udev rule granting
+access to its hidraw node (as set up for Via/Vial use).
+
+No flashing: changes apply immediately and live in RAM, so the keyboard falls
+back to its own saved settings if this is never run. Pass --save to commit to
+the keyboard's EEPROM instead.
+"""
+from __future__ import annotations
+
+import argparse, colorsys, glob, os, re, sys, time
+
+# Keebio Iris Rev. 8. Override for another board via OMARCHY_KB_VID / _PID.
+VID = int(os.environ.get("OMARCHY_KB_VID", "0xCB10"), 16)
+PID = int(os.environ.get("OMARCHY_KB_PID", "0x8256"), 16)
+
+# Raw HID report descriptor prologue: usage page 0xFF60, usage 0x61.
+RAW_PREFIX = bytes([0x06, 0x60, 0xFF, 0x09, 0x61])
+
+VIA_SET, VIA_GET, VIA_SAVE = 0x07, 0x08, 0x09
+CH_RGB_MATRIX = 3
+V_BRIGHTNESS, V_EFFECT, V_SPEED, V_COLOR = 1, 2, 3, 4
+EFFECT_SOLID = 1  # RGB_MATRIX_SOLID_COLOR is always compiled in, always index 1
+
+STATE = os.path.expanduser("~/.local/state/omarchy/current/theme")
+THEME_RGB = os.path.join(STATE, "keyboard.rgb")
+THEME_COLORS = os.path.join(STATE, "colors.toml")
+
+HEX = re.compile(r"#?([0-9A-Fa-f]{6})\b")
+
+
+def find_device():
+    """Locate the raw-HID node for the keyboard. The hidraw number is not
+    stable across replugs, so match on VID/PID plus the report descriptor."""
+    for node in sorted(glob.glob("/sys/class/hidraw/hidraw*")):
+        dev = os.path.join(node, "device")
+        try:
+            with open(os.path.join(dev, "uevent")) as f:
+                uevent = f.read()
+        except OSError:
+            continue
+        m = re.search(r"HID_ID=\w+:0*([0-9A-Fa-f]{4}):0*([0-9A-Fa-f]{4})", uevent)
+        if not m or (int(m.group(1), 16), int(m.group(2), 16)) != (VID, PID):
+            continue
+        try:
+            with open(os.path.join(dev, "report_descriptor"), "rb") as f:
+                if f.read(5) != RAW_PREFIX:
+                    continue
+        except OSError:
+            continue
+        return "/dev/" + os.path.basename(node)
+    return None
+
+
+class Keyboard:
+    """VIA raw-HID transport. 32-byte reports, no report ID."""
+
+    def __init__(self, path):
+        self.fd = os.open(path, os.O_RDWR | os.O_NONBLOCK)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        os.close(self.fd)
+
+    def xfer(self, payload, timeout=1.0):
+        os.write(self.fd, bytes(payload) + b"\x00" * (32 - len(payload)))
+        end = time.time() + timeout
+        while time.time() < end:
+            try:
+                resp = os.read(self.fd, 32)
+            except BlockingIOError:
+                time.sleep(0.005)
+                continue
+            if resp[0] == 0xFF:
+                raise RuntimeError(f"firmware rejected command {list(payload[:3])}")
+            return resp
+        raise TimeoutError(f"no response to {list(payload[:3])}")
+
+    def get(self, value_id):
+        return self.xfer([VIA_GET, CH_RGB_MATRIX, value_id])[3:7]
+
+    def set(self, value_id, *data):
+        self.xfer([VIA_SET, CH_RGB_MATRIX, value_id, *data])
+
+    def save(self):
+        self.xfer([VIA_SAVE, CH_RGB_MATRIX])
+
+
+def theme_color():
+    """keyboard.rgb is the color Omarchy intends for keyboards; fall back to
+    the palette accent when a theme does not ship one."""
+    try:
+        with open(THEME_RGB) as f:
+            m = HEX.search(f.read())
+            if m:
+                return m.group(1)
+    except OSError:
+        pass
+    try:
+        with open(THEME_COLORS) as f:
+            for line in f:
+                if line.startswith("accent"):
+                    m = HEX.search(line)
+                    if m:
+                        return m.group(1)
+    except OSError:
+        pass
+    raise SystemExit("no theme color found (keyboard.rgb or colors.toml accent)")
+
+
+def to_hsv(hexstr):
+    """#rrggbb -> QMK's 0-255 hue/sat/val."""
+    r, g, b = (int(hexstr[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    h, s, v = colorsys.rgb_to_hsv(r, g, b)
+    return round(h * 255) % 256, round(s * 255), round(v * 255)
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("color", nargs="?", help="#rrggbb (default: current theme color)")
+    p.add_argument("--effect", type=int, default=EFFECT_SOLID, metavar="N",
+                   help="RGB matrix effect (default 1 = solid; -1 keeps current)")
+    p.add_argument("--brightness", choices=["color", "keep", "max"], default="color",
+                   help="'color' derives it from the color's value component")
+    p.add_argument("--save", action="store_true", help="persist to keyboard EEPROM")
+    p.add_argument("--show", action="store_true", help="print current state and exit")
+    p.add_argument("-q", "--quiet", action="store_true",
+                   help="say nothing and succeed if no keyboard is attached (for hooks)")
+    args = p.parse_args()
+
+    path = find_device()
+    if not path:
+        if args.quiet:
+            return 0
+        print("keyboard not found (not plugged in?)", file=sys.stderr)
+        return 1
+
+    try:
+        with Keyboard(path) as kb:
+            if args.show:
+                hue, sat = kb.get(V_COLOR)[:2]
+                print(f"device     {path}")
+                print(f"effect     {kb.get(V_EFFECT)[0]}")
+                print(f"speed      {kb.get(V_SPEED)[0]}")
+                print(f"brightness {kb.get(V_BRIGHTNESS)[0]}")
+                print(f"hue/sat    {hue}/{sat}")
+                return 0
+
+            m = HEX.fullmatch(args.color) if args.color else None
+            if args.color and not m:
+                raise SystemExit(f"not a #rrggbb color: {args.color}")
+            hexstr = m.group(1) if m else theme_color()
+
+            hue, sat, val = to_hsv(hexstr)
+            if args.effect >= 0:
+                kb.set(V_EFFECT, args.effect)
+            kb.set(V_COLOR, hue, sat)
+            if args.brightness == "color":
+                kb.set(V_BRIGHTNESS, val)
+            elif args.brightness == "max":
+                kb.set(V_BRIGHTNESS, 255)
+            if args.save:
+                kb.save()
+            if not args.quiet:
+                print(f"#{hexstr} -> hue={hue} sat={sat} val={val} on {path}"
+                      + (" (saved)" if args.save else ""))
+        return 0
+    except (OSError, RuntimeError, TimeoutError) as e:
+        if args.quiet:
+            return 0
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
