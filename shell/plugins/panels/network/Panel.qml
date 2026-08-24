@@ -531,11 +531,29 @@ Panel {
     if (Model.nmServiceOwnerLost(lines[1], lines[2])) nmSelfHealDebounce.restart()
   }
 
+  // The NetworkManager event reaches every per-monitor instance's own
+  // nmOwnerWatch independently, but only one instance's panel is ever open
+  // at a time (the popout follows the active monitor, same as Bluetooth's
+  // openSibling() at bluetooth/Panel.qml:427). Defer on whichever instance
+  // is actually open, not on `root` (whose own watcher happened to fire the
+  // event) — otherwise a closed sibling would restart the shell out from
+  // under an open password prompt on another monitor.
+  function openPanelInstance() {
+    if (root.opened) return root
+    if (!bar || typeof bar.moduleWidgets !== "function") return null
+    var items = bar.moduleWidgets(moduleName)
+    for (var i = 0; i < items.length; i++) {
+      if (items[i] && items[i] !== root && items[i].opened === true) return items[i]
+    }
+    return null
+  }
+
   // NetworkManager restarts fire several NameOwnerChanged/device-transition
   // events in quick succession; debounce so a single restart triggers one heal.
   function performNmSelfHeal() {
-    if (root.opened) {
-      nmSelfHealPending = true
+    var opener = root.openPanelInstance()
+    if (opener) {
+      opener.nmSelfHealPending = true
       return
     }
     root.restartShellForNmSelfHeal()
@@ -546,12 +564,24 @@ Panel {
   // NetworkManager restart more than once. omarchy-restart-shell does a
   // kill-then-relaunch of the single shared shell process with no lock of
   // its own, so two near-simultaneous calls could race into launching a
-  // duplicate instance. Guard with a lock file so only the first caller
-  // actually restarts; the lock lives in a detached process, so it is
-  // released even though this process is the one about to die.
+  // duplicate instance. Guard with flock on a per-user runtime path so only
+  // the first caller actually restarts: flock releases automatically if the
+  // worker dies, unlike a plain mkdir lock directory, which would otherwise
+  // strand future heals, and a runtime-dir path (unlike shared /tmp) can't
+  // be won by another user's worker on a multi-user system.
+  //
+  // omarchy-restart-shell also refuses outright while the session holds a
+  // secure lock screen, since killing the live lock client would strand the
+  // session behind Hyprland's failsafe. That refusal would otherwise consume
+  // this NM-restart event for good, leaving the icon stale even after
+  // unlock, so keep retrying while the session is confirmed locked and stop
+  // once it either succeeds or is no longer locked (a real, unrelated
+  // failure shouldn't retry forever).
   function restartShellForNmSelfHeal() {
+    var runtimeDir = Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"
     Quickshell.execDetached(["bash", "-c",
-      "mkdir /tmp/omarchy-network-nm-selfheal.lock 2>/dev/null || exit 0; omarchy-restart-shell; rmdir /tmp/omarchy-network-nm-selfheal.lock 2>/dev/null"])
+      "flock -n \"$0\" -c 'until omarchy-restart-shell || ! omarchy-hyprland-session-locked; do sleep 5; done'",
+      runtimeDir + "/omarchy-network-nm-selfheal.lock"])
   }
 
   function formatHeaderFreq(mhz) {

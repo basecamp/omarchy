@@ -312,15 +312,23 @@ assert(
   'network respawns its D-Bus watcher if dbus-monitor exits'
 )
 assert(
-  /function performNmSelfHeal\(\) \{\s*if \(root\.opened\) \{\s*nmSelfHealPending = true/.test(panelSource),
-  'network defers its self-heal restart while the panel is open'
+  /function openPanelInstance\(\) \{\s*if \(root\.opened\) return root[\s\S]*?bar\.moduleWidgets\(moduleName\)/.test(panelSource),
+  'network finds whichever per-monitor instance actually has its panel open'
+)
+assert(
+  /function performNmSelfHeal\(\) \{\s*var opener = root\.openPanelInstance\(\)\s*if \(opener\) \{\s*opener\.nmSelfHealPending = true/.test(panelSource),
+  'network defers its self-heal restart on whatever instance is open, not just itself'
 )
 assert(
   /if \(nmSelfHealPending\) \{\s*nmSelfHealPending = false\s*root\.restartShellForNmSelfHeal\(\)/.test(panelSource),
   'network flushes a pending self-heal restart once the panel closes'
 )
 assert(
-  /function restartShellForNmSelfHeal\(\) \{\s*Quickshell\.execDetached\(\["bash", "-c",\s*"mkdir \/tmp\/omarchy-network-nm-selfheal\.lock[\s\S]*?omarchy-restart-shell[\s\S]*?rmdir \/tmp\/omarchy-network-nm-selfheal\.lock/.test(panelSource),
-  'network lock-guards its self-heal restart so a multi-monitor setup cannot fire it twice'
+  /function restartShellForNmSelfHeal\(\) \{[\s\S]*?Quickshell\.env\("XDG_RUNTIME_DIR"\)[\s\S]*?flock -n[\s\S]*?omarchy-restart-shell/.test(panelSource),
+  'network lock-guards its self-heal restart under the runtime dir so a multi-monitor setup cannot fire it twice'
+)
+assert(
+  /until omarchy-restart-shell \|\| ! omarchy-hyprland-session-locked; do sleep 5; done/.test(panelSource),
+  'network retries its self-heal restart while the session is locked instead of dropping the event'
 )
 JS
