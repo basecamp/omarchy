@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-source "$(dirname "$0")/base-test.sh"
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
