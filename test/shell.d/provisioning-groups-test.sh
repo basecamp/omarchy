@@ -27,16 +27,40 @@ cat >"$TMPDIR/bin/usermod" <<STUB
 #!/bin/bash
 echo "\$@" >>"$TMPDIR/usermod.calls"
 STUB
-chmod +x "$TMPDIR/bin/getent" "$TMPDIR/bin/usermod"
+cat >"$TMPDIR/bin/groupadd" <<STUB
+#!/bin/bash
+echo "\$@" >>"$TMPDIR/groupadd.calls"
+STUB
+cat >"$TMPDIR/bin/install" <<STUB
+#!/bin/bash
+echo "\$@" >>"$TMPDIR/install.calls"
+STUB
+cat >"$TMPDIR/bin/find" <<STUB
+#!/bin/bash
+echo "\$@" >>"$TMPDIR/find.calls"
+STUB
+cat >"$TMPDIR/bin/sudo" <<STUB
+#!/bin/bash
+echo "\$@" >>"$TMPDIR/sudo.calls"
+exec "\$@"
+STUB
+chmod +x "$TMPDIR/bin"/{getent,usermod,groupadd,install,find,sudo}
 export PATH="$TMPDIR/bin:$PATH"
+export OMARCHY_PATH="$ROOT"
 
-# No install user (deferred-provisioning install): input recorded, usermod not called.
+# No install user (deferred-provisioning install): groups recorded, usermod not called.
 OMARCHY_INSTALL_USER="" bash -eE "$ROOT/install/config/docker.sh"
 OMARCHY_INSTALL_USER="" bash -eE "$ROOT/install/hardware/input-group.sh"
+OMARCHY_INSTALL_USER="" bash -eE "$ROOT/install/config/browser-policy.sh"
 
 [[ -f $OMARCHY_PROVISIONING_DIR/groups ]] || fail "groups file written without an install user"
 grep -qxF input "$OMARCHY_PROVISIONING_DIR/groups" || fail "input group recorded"
+grep -qxF omarchy-browser-policy "$OMARCHY_PROVISIONING_DIR/groups" || fail "browser-policy group recorded"
 [[ ! -f $TMPDIR/usermod.calls ]] || fail "usermod not called without an install user"
+grep -F -- '--system --force omarchy-browser-policy' "$TMPDIR/groupadd.calls" >/dev/null ||
+  fail "browser-policy group is created as a system group"
+grep -F -- '-d -m 2775 -o root -g omarchy-browser-policy /etc/chromium/policies/managed' "$TMPDIR/install.calls" >/dev/null ||
+  fail "browser-policy directory is created group-writable"
 pass "deferred provisioning records groups without calling usermod"
 
 # The docker group is root-equivalent and must never be granted automatically.
@@ -45,17 +69,24 @@ pass "docker group is not recorded at install"
 
 # Missing user (defensive): no usermod either.
 OMARCHY_INSTALL_USER=ghost bash -eE "$ROOT/install/hardware/input-group.sh"
+OMARCHY_INSTALL_USER=ghost bash -eE "$ROOT/install/config/browser-policy.sh"
 [[ ! -f $TMPDIR/usermod.calls ]] || fail "usermod not called for a missing user"
 pass "missing install user defers group grants"
 
 # Re-running never duplicates entries.
 OMARCHY_INSTALL_USER="" bash -eE "$ROOT/install/hardware/input-group.sh"
 [[ $(grep -cxF input "$OMARCHY_PROVISIONING_DIR/groups") == 1 ]] || fail "input group recorded once"
+OMARCHY_INSTALL_USER="" bash -eE "$ROOT/install/config/browser-policy.sh"
+[[ $(grep -cxF omarchy-browser-policy "$OMARCHY_PROVISIONING_DIR/groups") == 1 ]] ||
+  fail "browser-policy group recorded once"
 pass "group recording is idempotent"
 
 # Existing user: usermod applies the recorded groups, and docker is never among them.
 OMARCHY_INSTALL_USER=existing bash -eE "$ROOT/install/config/docker.sh"
 OMARCHY_INSTALL_USER=existing bash -eE "$ROOT/install/hardware/input-group.sh"
+OMARCHY_INSTALL_USER=existing bash -eE "$ROOT/install/config/browser-policy.sh"
 grep -qx -- "-aG input existing" "$TMPDIR/usermod.calls" || fail "usermod grants input to the install user"
+grep -qx -- "-aG omarchy-browser-policy existing" "$TMPDIR/usermod.calls" ||
+  fail "usermod grants browser-policy to the install user"
 ! grep -q -- "docker" "$TMPDIR/usermod.calls" || fail "usermod must not grant docker to the install user"
-pass "existing install user gets input but never docker"
+pass "existing install user gets input and browser-policy but never docker"

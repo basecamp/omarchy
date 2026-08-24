@@ -61,11 +61,13 @@ if [[ $installer == "omarchy-install-browser" && ${OMARCHY_TEST_REAL_BROWSER_INS
 fi
 
 case $installer in
-omarchy-pkg-add)
+omarchy-pkg-add|omarchy-pkg-aur-add)
   package=$1
   printf 'pkg:%s\n' "$package" >>"$OMARCHY_TEST_INSTALL_LOG"
   case $package in
   chromium) command=chromium ;;
+  firefox) command=firefox ;;
+  zen-browser-bin) command=zen-browser ;;
   cursor-bin) command=cursor ;;
   sublime-text-4) command=sublime_text ;;
   vim) command=vim ;;
@@ -107,6 +109,7 @@ SH
 
 for installer in \
   omarchy-pkg-add \
+  omarchy-pkg-aur-add \
   omarchy-install-browser \
   omarchy-install-terminal \
   omarchy-install-editor-vscode \
@@ -205,10 +208,14 @@ OMARCHY_TEST_REAL_BROWSER_INSTALL=true omarchy-default-browser --install chromiu
 [[ $(omarchy-default-browser) == "chromium" ]] || fail "Chromium becomes the default after its full installer succeeds"
 cmp -s "$ROOT/config/chromium-flags.conf" "$test_home/.config/chromium-flags.conf" ||
   fail "Chromium browser installer copies the default flags"
-grep -Fxq 'sudo:mkdir -p /etc/chromium/policies/managed' "$setup_log" ||
-  fail "Chromium browser installer creates its policy directory"
-grep -Fxq 'sudo:chmod a+rw /etc/chromium/policies/managed' "$setup_log" ||
-  fail "Chromium browser installer makes its policy directory writable"
+grep -Fxq 'sudo:groupadd --system --force omarchy-browser-policy' "$setup_log" ||
+  fail "Chromium browser installer creates the browser-policy group"
+grep -Fxq 'sudo:install -d -m 2775 -o root -g omarchy-browser-policy /etc/chromium/policies/managed' "$setup_log" ||
+  fail "Chromium browser installer creates a group-writable managed policy directory"
+grep -Fxq 'sudo:find /etc/chromium/policies/managed -mindepth 1 -maxdepth 1 ! -user root -exec rm -rf -- {} +' "$setup_log" ||
+  fail "Chromium browser installer drops non-root files from its policy directory"
+grep -Fxq "sudo:usermod -aG omarchy-browser-policy ${USER:-$(id -un)}" "$setup_log" ||
+  fail "Chromium browser installer grants the installing user the browser-policy group"
 grep -Fxq 'omarchy-install-chromium-copy-url:' "$setup_log" ||
   fail "Chromium browser installer registers the Copy URL host"
 grep -Fxq 'omarchy-install-chromium-ytdlp:' "$setup_log" ||
@@ -216,6 +223,36 @@ grep -Fxq 'omarchy-install-chromium-ytdlp:' "$setup_log" ||
 grep -Fxq 'omarchy-theme-set-browser:' "$setup_log" ||
   fail "Chromium browser installer applies the current theme"
 pass "Chromium browser installer restores the complete Omarchy setup"
+
+: >"$install_log"
+: >"$setup_log"
+rm -f "$installed_dir/firefox"
+OMARCHY_TEST_REAL_BROWSER_INSTALL=true omarchy-default-browser --install firefox >/dev/null
+[[ $(<"$install_log") == "pkg:firefox" ]] || fail "Firefox browser installer installs the package"
+[[ $(omarchy-default-browser) == "firefox" ]] || fail "Firefox becomes the default after its full installer succeeds"
+grep -Fxq 'sudo:install -d -m 0755 -o root -g root /usr/lib/firefox/distribution' "$setup_log" ||
+  fail "Firefox browser installer creates its distribution directory"
+grep -Fxq 'sudo:find /usr/lib/firefox/distribution -mindepth 1 -maxdepth 1 ! -user root -exec rm -rf -- {} +' "$setup_log" ||
+  fail "Firefox browser installer drops non-root files from its distribution directory"
+grep -Fxq "sudo:install -m 644 -o root -g root -T $ROOT/default/firefox/policies.json /usr/lib/firefox/distribution/policies.json" "$setup_log" ||
+  fail "Firefox browser installer copies policies.json without following a destination symlink"
+[[ -e $installed_dir/firefox ]] || fail "Firefox browser installer marks firefox installed"
+pass "Firefox browser installer restores the complete Omarchy setup"
+
+: >"$install_log"
+: >"$setup_log"
+rm -f "$installed_dir/zen-browser"
+OMARCHY_TEST_REAL_BROWSER_INSTALL=true omarchy-default-browser --install zen >/dev/null
+[[ $(<"$install_log") == "pkg:zen-browser-bin" ]] || fail "Zen browser installer installs the package"
+[[ $(omarchy-default-browser) == "zen" ]] || fail "Zen becomes the default after its full installer succeeds"
+grep -Fxq 'sudo:install -d -m 0755 -o root -g root /opt/zen-browser/distribution' "$setup_log" ||
+  fail "Zen browser installer creates its distribution directory"
+grep -Fxq 'sudo:find /opt/zen-browser/distribution -mindepth 1 -maxdepth 1 ! -user root -exec rm -rf -- {} +' "$setup_log" ||
+  fail "Zen browser installer drops non-root files from its distribution directory"
+grep -Fxq "sudo:install -m 644 -o root -g root -T $ROOT/default/firefox/policies.json /opt/zen-browser/distribution/policies.json" "$setup_log" ||
+  fail "Zen browser installer copies policies.json without following a destination symlink"
+[[ -e $installed_dir/zen-browser ]] || fail "Zen browser installer marks zen-browser installed"
+pass "Zen browser installer restores the complete Omarchy setup"
 
 omarchy-default-browser zen
 rm -f "$installed_dir/chromium"
