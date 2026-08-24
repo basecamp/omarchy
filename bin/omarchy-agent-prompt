@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# omarchy:summary=Launch the default coding agent with a prompt
+# omarchy:args=[--inline] <prompt...>
+# omarchy:examples=omarchy agent prompt "Review this project"
+
+# Prompts live here rather than on `omarchy agent`, where a bare prompt would
+# shadow the subcommands under that group.
+
+set -euo pipefail
+
+inline=()
+if [[ ${1:-} == "--inline" ]]; then
+  inline=(--inline)
+  shift
+fi
+
+if (($# == 0)); then
+  echo "Usage: omarchy agent prompt [--inline] <prompt...>" >&2
+  exit 1
+fi
+
+exec omarchy-agent "${inline[@]}" --prompt "$*"

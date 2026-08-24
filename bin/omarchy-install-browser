@@ -1,8 +1,10 @@
 #!/bin/bash
 
 # omarchy:summary=Install a supported browser
-# omarchy:args=<chrome|brave|brave-origin|edge|firefox|zen>
-# omarchy:examples=omarchy install browser firefox | omarchy install browser brave
+# omarchy:args=<chromium|chrome|brave|brave-origin|edge|firefox|zen>
+# omarchy:examples=omarchy install browser chromium | omarchy install browser firefox
+
+set -e
 
 setup_policy_directory() {
   sudo mkdir -p "$1"
@@ -34,6 +36,15 @@ setup_firefox_wayland() {
 }
 
 case $1 in
+chromium)
+  echo "Installing Chromium..."
+  omarchy-pkg-add chromium
+
+  setup_policy_directory /etc/chromium/policies/managed
+  copy_chromium_flags ~/.config/chromium-flags.conf
+  omarchy-theme-set-browser
+  announce_browser_installed "Chromium"
+  ;;
 chrome)
   echo "Installing Chrome..."
   omarchy-pkg-aur-add google-chrome || exit 1
@@ -87,7 +98,7 @@ zen)
   announce_browser_installed "Zen"
   ;;
 *)
-  echo "Usage: omarchy-install-browser <chrome|brave|brave-origin|edge|firefox|zen>"
+  echo "Usage: omarchy-install-browser <chromium|chrome|brave|brave-origin|edge|firefox|zen>"
   exit 1
   ;;
 esac

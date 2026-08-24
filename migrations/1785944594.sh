@@ -1,6 +1,6 @@
 echo "Update T2 Mac suspend, Touch Bar, and fan defaults"
 
-if ! lspci -nn | grep -q "106b:180[12]"; then
+if ! lspci -nn | grep "106b:180[12]" >/dev/null; then
   exit 0
 fi
 

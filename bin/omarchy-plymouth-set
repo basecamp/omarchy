@@ -34,6 +34,15 @@ if [[ ! -f $logo_path ]]; then
   exit 1
 fi
 
+# omarchy-plymouth-set-by-theme passes a theme's unlock.png straight from
+# ~/.config/omarchy/themes, where an installed theme can make it a symlink to
+# anything. The copies below land in world-readable /usr/share, so following one
+# would republish whatever it points at.
+if [[ -L $logo_path ]]; then
+  echo "Logo file is a symlink, which is not accepted: $logo_path" >&2
+  exit 1
+fi
+
 bg_r=$(awk -v n=$((16#${bg_hex:0:2})) 'BEGIN{printf "%.3f", n/255}')
 bg_g=$(awk -v n=$((16#${bg_hex:2:2})) 'BEGIN{printf "%.3f", n/255}')
 bg_b=$(awk -v n=$((16#${bg_hex:4:2})) 'BEGIN{printf "%.3f", n/255}')
@@ -72,7 +81,7 @@ sed \
   -e "s/#ffffff/#$text_hex/g" \
   "$sddm_template" | sudo tee "$sddm_dir/Main.qml" >/dev/null
 
-sudo cp "$logo_path" "$sddm_dir/logo.png"
+sudo cp "$staging_dir/logo.png" "$sddm_dir/logo.png"
 for asset in bullet.png entry.png lock.png; do
   sudo cp "$staging_dir/$asset" "$sddm_dir/$asset"
 done

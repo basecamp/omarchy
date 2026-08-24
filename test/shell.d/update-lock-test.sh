@@ -33,7 +33,9 @@ SH
 
 for command in \
   omarchy-toggle-idle \
+  pkexec \
   systemd-inhibit \
+  omarchy-update-pkg-prune \
   omarchy-update-dev \
   omarchy-update-keyring \
   omarchy-update-system-pkgs \
@@ -48,6 +50,7 @@ for command in \
   write_stub "$command" 'exit 0'
 done
 write_stub omarchy-update-available 'exit 1'
+write_stub pkexec 'exec "$@"'
 
 # omarchy-update should hold the lock before snapshotting, so a second update
 # cannot even enter its pre-update snapshot.
@@ -74,32 +77,6 @@ wait "$update_pid"
 grep -q "already running" "$test_tmp/update-second.out" || fail "second omarchy-update reports held update lock"
 [[ ! -f $test_tmp/update-second-snapshot-started ]] || fail "second omarchy-update did not snapshot while lock was held"
 pass "omarchy-update prevents overlapping top-level updates"
-
-# omarchy-update-perform is now only a compatibility wrapper around
-# omarchy-update -y, but it should still respect the same update lock.
-perform_marker="$test_tmp/perform-started"
-write_stub omarchy-update-keyring 'echo started >"$TEST_MARKER"; sleep 2; exit 0'
-
-TEST_MARKER="$perform_marker" run_with_lock_env "$ROOT/bin/omarchy-update-perform" >"$test_tmp/perform-first.out" 2>&1 &
-perform_pid=$!
-
-for _ in {1..50}; do
-  [[ -f $perform_marker ]] && break
-  sleep 0.05
-done
-[[ -f $perform_marker ]] || fail "first omarchy-update-perform delegated to update under lock"
-
-set +e
-TEST_MARKER="$test_tmp/perform-second-started" run_with_lock_env "$ROOT/bin/omarchy-update-perform" >"$test_tmp/perform-second.out" 2>&1
-perform_second_status=$?
-set -e
-
-wait "$perform_pid"
-
-[[ $perform_second_status -ne 0 ]] || fail "second omarchy-update-perform exits non-zero while update lock is held"
-grep -q "already running" "$test_tmp/perform-second.out" || fail "second omarchy-update-perform reports held update lock"
-[[ ! -f $test_tmp/perform-second-started ]] || fail "second omarchy-update-perform did not snapshot while lock was held"
-pass "omarchy-update-perform compatibility wrapper respects update lock"
 
 # The sleep inhibitor deliberately outlives the step that starts it, so it must
 # not inherit the update lock. An update killed before restore_update_inhibitors
@@ -139,6 +116,42 @@ pass "omarchy-update keeps the update lock out of its sleep inhibitor"
 kill -0 "$inhibitor_pid" 2>/dev/null &&
   fail "update waits for its sleep inhibitor to stop before continuing"
 pass "omarchy-update waits for its sleep inhibitor to stop"
+
+if (( EUID != 0 )); then
+  sudo_log="$test_tmp/sudo.log"
+  pkexec_marker="$test_tmp/pkexec-used"
+  terminal_inhibit_pid_file="$test_tmp/terminal-inhibit-pid"
+  write_stub sudo '
+printf "%s\n" "$*" >>"$SUDO_LOG"
+if [[ $1 == "-v" ]]; then
+  exit 0
+fi
+exec "$@"'
+  write_stub pkexec 'touch "$PKEXEC_MARKER"; exec "$@"'
+
+  # start leaves the inhibitor running on purpose, but script tears the pty down
+  # the moment its command returns, which SIGHUPs that inhibitor before it can
+  # exec. Keep the session open from the inside until the stub has logged.
+  terminal_driver="$test_tmp/terminal-stay-awake"
+  cat >"$terminal_driver" <<'SH'
+#!/bin/bash
+omarchy-update-stay-awake start
+for _ in {1..200}; do
+  grep -q '^systemd-inhibit ' "$SUDO_LOG" && break
+  sleep 0.05
+done
+SH
+  chmod +x "$terminal_driver"
+
+  SUDO_LOG="$sudo_log" PKEXEC_MARKER="$pkexec_marker" INHIBIT_PID_FILE="$terminal_inhibit_pid_file" \
+    run_with_lock_env script -qefc "$terminal_driver" /dev/null >/dev/null
+
+  grep -qx -- '-v' "$sudo_log" || fail "terminal sleep inhibition validates sudo in the foreground"
+  grep -q '^systemd-inhibit ' "$sudo_log" || fail "terminal sleep inhibition runs through sudo"
+  [[ ! -e $pkexec_marker ]] || fail "terminal sleep inhibition does not use pkexec"
+  run_with_lock_env "$ROOT/bin/omarchy-update-stay-awake" stop
+  pass "terminal updates use sudo instead of Polkit for sleep inhibition"
+fi
 
 # Update-owned Stay Awake state must be cleared before the restart helper can
 # reboot the machine, rather than relying on an EXIT trap during shutdown.

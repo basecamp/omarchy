@@ -19,7 +19,7 @@ else
 fi
 
 if [[ $editor == "doom" ]]; then
-  if ! command -v doom &>/dev/null && [[ -x $HOME/.config/emacs/bin/doom ]]; then
+  if ! omarchy-cmd-present doom && [[ -x $HOME/.config/emacs/bin/doom ]]; then
     export PATH="$HOME/.config/emacs/bin:$PATH"
   fi
   if ! omarchy-cmd-present emacs && ! omarchy-cmd-present doom; then

@@ -25,14 +25,6 @@ SH
 cat >"$WORKDIR/bin/omarchy-notification-send" <<SH
 #!/bin/bash
 printf '%s\n' "\$*" >>"$WORKDIR/notifications"
-# Only the photo notification gets clicked.
-[[ \$* == *photo.png* ]] && echo default
-exit 0
-SH
-
-cat >"$WORKDIR/bin/xdg-open" <<SH
-#!/bin/bash
-printf '%s\n' "\$1" >>"$WORKDIR/opened"
 SH
 
 chmod +x "$WORKDIR/bin/"*
@@ -60,17 +52,28 @@ notifications=$(<"$WORKDIR/notifications")
   fail "taildrop receive saves incoming files" "$(ls "$downloads")"
 pass "taildrop receive saves incoming files"
 
-grep -qF -- "Received photo.png Saved to $downloads --image $downloads/photo.png" <<<"$notifications" ||
+grep -qF -- "Received photo.png Saved to $downloads -u critical --image $downloads/photo.png" <<<"$notifications" ||
   fail "taildrop receive previews received images" "$notifications"
 pass "taildrop receive previews received images"
+
+while IFS= read -r line; do
+  [[ $line == *"-u critical"* ]] || fail "taildrop receive announcements wait to be answered" "$line"
+done <<<"$notifications"
+pass "taildrop receive announcements wait to be answered"
 
 grep -q "^Received notes with space.pdf .* -g " <<<"$notifications" ||
   fail "taildrop receive announces other files with a glyph" "$notifications"
 pass "taildrop receive announces other files with a glyph"
 
-grep -qxF "$downloads/photo.png" "$WORKDIR/opened" ||
-  fail "taildrop receive opens a clicked file" "$(cat "$WORKDIR/opened" 2>/dev/null)"
-pass "taildrop receive opens a clicked file"
+# The shell keeps the click command with the toast, so receiving does not have
+# to sit blocked on an answer -- and the toast still opens the file after a shell
+# restart. The path rides as its own discrete --exec argument, so the shell runs
+# it as literal data with no quoting for a name with spaces to get wrong.
+grep -qF -- "--exec xdg-open $downloads/photo.png" <<<"$notifications" ||
+  fail "taildrop receive attaches the open command to the notification" "$notifications"
+grep -qF -- "--exec xdg-open $downloads/notes with space.pdf" <<<"$notifications" ||
+  fail "taildrop receive carries spaced names as a literal open argument" "$notifications"
+pass "taildrop receive lets a click open the received file"
 
 grep -q "unrelated.txt" <<<"$notifications" &&
   fail "taildrop receive leaves the rest of the downloads directory alone" "$notifications"

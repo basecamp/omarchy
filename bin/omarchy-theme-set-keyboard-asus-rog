@@ -5,6 +5,8 @@
 
 ASUSCTL_THEME=$HOME/.local/state/omarchy/current/theme/keyboard.rgb
 
-if omarchy-cmd-present asusctl; then
-  asusctl aura effect static -c $(sed 's/^#//' $ASUSCTL_THEME)
+if omarchy-cmd-present asusctl && [[ -f $ASUSCTL_THEME ]]; then
+  color=$(sed 's/^#//' "$ASUSCTL_THEME")
+  [[ $color =~ ^[0-9A-Fa-f]{6}$ ]] || exit 0
+  asusctl aura effect static -c "$color"
 fi

@@ -120,7 +120,7 @@ tuned_hardware_sink() {
 }
 
 tuning_present() {
-  pactl list sinks short 2>/dev/null | awk '{print $2}' | grep -qx "$sink_name"
+  pactl list sinks short 2>/dev/null | awk '{print $2}' | grep -x "$sink_name" >/dev/null
 }
 
 # Only real application streams may be moved. A filter-chain's own output is also
@@ -151,7 +151,7 @@ tuning_downstream_sink() {
 }
 
 easyeffects_running() {
-  pactl list sinks short 2>/dev/null | awk '{print $2}' | grep -qx easyeffects_sink ||
+  pactl list sinks short 2>/dev/null | awk '{print $2}' | grep -x easyeffects_sink >/dev/null ||
     pgrep -u "$(id -u)" -x easyeffects >/dev/null 2>&1 ||
     systemctl --user is-active --quiet easyeffects.service 2>/dev/null
 }

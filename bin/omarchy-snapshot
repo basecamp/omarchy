@@ -40,7 +40,8 @@ create)
     sudo snapper -c "$config" create -c number -d "$DESC"
     sudo snapper -c "$config" cleanup number
   done
-  echo
+
+  echo "Snapshots can be selected during boot."
   ;;
 restore)
   sudo limine-snapper-restore

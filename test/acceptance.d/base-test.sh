@@ -40,7 +40,7 @@ screen_contains() {
     rm -f "$snapshot"
     return 1
   fi
-  tesseract "$snapshot" stdout --psm 11 2>/dev/null | grep -Fqi -- "$text"
+  tesseract "$snapshot" stdout --psm 11 2>/dev/null | grep -Fi -- "$text" >/dev/null
   local status=$?
   rm -f "$snapshot"
   return $status
@@ -77,6 +77,34 @@ layer_present() {
 
 layer_absent() {
   ! layer_present "$1"
+}
+
+# A layer can be mapped but parked off the monitor: the bar hides that way so
+# revealing it does not have to rebuild the surface. Assert on geometry when
+# what matters is that the user can actually see it. Layer boxes are local to
+# their monitor and in logical coordinates, so compare them with local bounds
+# derived from the monitor's scaled pixel size.
+layer_on_screen() {
+  local monitors
+  monitors=$(hyprctl -j monitors) || return 1
+
+  hyprctl -j layers | jq -e --arg ns "$1" --argjson monitors "$monitors" '
+    to_entries[]
+    | .key as $name
+    | .value as $levels
+    | ($monitors[] | select(.name == $name)) as $m
+    | (if ($m.transform // 0) % 2 == 1 then $m.height else $m.width end) / $m.scale | round as $width
+    | (if ($m.transform // 0) % 2 == 1 then $m.width else $m.height end) / $m.scale | round as $height
+    | [$levels | .. | objects | select(.namespace? == $ns)][]
+    | select(
+        .x + .w > 0 and .x < $width and
+        .y + .h > 0 and .y < $height
+      )
+  ' >/dev/null
+}
+
+layer_off_screen() {
+  ! layer_on_screen "$1"
 }
 
 # Close every window matching a class regex, by address so multi-window apps

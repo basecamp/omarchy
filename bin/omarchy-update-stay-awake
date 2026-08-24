@@ -83,21 +83,31 @@ stop() {
 start() {
   local inhibit_pid=""
   local inhibit_start_time=""
+  local inhibit_runner=()
   local idle_owner="$$:$RANDOM:$RANDOM"
 
   stop
   mkdir -p "$state_dir"
 
   if omarchy-cmd-present systemd-inhibit; then
+    if (( EUID != 0 )); then
+      if [[ -t 0 ]]; then
+        sudo -v
+        inhibit_runner=(sudo)
+      else
+        inhibit_runner=(pkexec)
+      fi
+    fi
+
     if [[ -n ${OMARCHY_UPDATE_LOCK_FD:-} ]]; then
-      systemd-inhibit \
+      "${inhibit_runner[@]}" systemd-inhibit \
         --what=sleep:idle \
         --who=omarchy-update \
         --why="Omarchy update in progress" \
         --mode=block \
         sleep infinity >/dev/null 2>&1 {OMARCHY_UPDATE_LOCK_FD}>&- &
     else
-      systemd-inhibit \
+      "${inhibit_runner[@]}" systemd-inhibit \
         --what=sleep:idle \
         --who=omarchy-update \
         --why="Omarchy update in progress" \

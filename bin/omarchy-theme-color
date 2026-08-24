@@ -151,6 +151,21 @@ parse_colors_file() {
       value="${value%"${value##*[![:space:]]}"}" # trim unquoted values
     fi
 
+    # Values reach consumers as sed replacement text, so the charset excludes
+    # the delimiter, backslash, and & while still covering everything a real
+    # palette holds: hex, rgb()/rgba() lists, gradient angles like -45deg,
+    # decimals, and bare words. Rejections are announced so a third-party theme
+    # doesn't lose a key silently and leave a raw {{ placeholder }} behind.
+    if [[ ! $key =~ ^[abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-]+$ ]]; then
+      printf 'omarchy-theme-color: skipping key with unsupported characters\n' >&2
+      continue
+    fi
+
+    if [[ ! $value =~ ^[abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#(),._+/%\ -]*$ ]]; then
+      printf 'omarchy-theme-color: skipping %s: unsupported characters in value\n' "$key" >&2
+      continue
+    fi
+
     THEME_COLORS[$key]="$value"
     [[ $OUTPUT == "raw" ]] && printf '%s\t%s\n' "$key" "$value"
   done <"$COLORS_FILE"

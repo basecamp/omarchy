@@ -50,6 +50,7 @@ gum
 gvfs-mtp
 gvfs-nfs
 gvfs-smb
+herdr
 hyprland
 hyprland-guiutils
 hyprland-preview-share-picker
@@ -68,6 +69,7 @@ lazydocker
 lazygit
 less
 libsecret
+libvips
 libyaml
 libreoffice-fresh
 llvm
@@ -76,7 +78,7 @@ lua51
 luarocks
 man-db
 mariadb-libs
-mise
+mise-bin
 moonlight-qt
 mpv
 mpv-mpris
@@ -103,10 +105,11 @@ postgresql-libs
 power-profiles-daemon
 python-gobject
 python-poetry-core
-python-terminaltexteffects
+ttfx
 qemu-user-static-binfmt
 qrencode
-quickshell-git
+qt6-imageformats
+quickshell
 ripgrep
 ruby
 tensaku
@@ -144,4 +147,5 @@ xournalpp
 yaru-icon-theme
 yay
 yt-dlp
+zbar
 zoxide

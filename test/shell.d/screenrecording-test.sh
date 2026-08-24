@@ -15,12 +15,44 @@ cat >"$stub_bin/v4l2-ctl" <<'SH'
 
 [[ ${OMARCHY_TEST_NO_WEBCAM:-false} == "true" ]] && exit 0
 
-printf '%s\n' "Built-in Webcam: Integrated Camera"
-printf '\t%s\n' "/dev/video0"
-printf '\t%s\n' "/dev/video1"
-printf '\n'
-printf '%s\n' "USB Capture Card: External Camera"
-printf '\t%s\n' "/dev/video2"
+case "$1" in
+--list-devices)
+  printf '%s\n' "ipu6 (PCI:0000:00:05.0):"
+  printf '\t%s\n' "/dev/video0"
+  printf '\t%s\n' "/dev/video1"
+
+  if [[ ${OMARCHY_TEST_RAW_WEBCAM:-false} != "true" ]]; then
+    printf '\n%s\n' "Built-in Webcam: Integrated Camera"
+    printf '\t%s\n' "/dev/video42"
+    printf '\t%s\n' "/dev/video43"
+    printf '\n%s\n' "USB Capture Card: External Camera"
+    printf '\t%s\n' "/dev/video2"
+  fi
+
+  if [[ ${OMARCHY_TEST_DUAL_NODE_WEBCAM:-false} == "true" ]]; then
+    printf '\n%s\n' "Dual Node Camera: ISP Wrapper"
+    printf '\t%s\n' "/dev/video7"
+    printf '\t%s\n' "/dev/video8"
+    printf '\n%s\n' "Metadata Only: Sensor"
+    printf '\t%s\n' "/dev/video9"
+  fi
+  ;;
+--device)
+  case "$2" in
+  /dev/video0) device_capability="Video Output" ;;
+  /dev/video1) device_capability="Metadata Capture" ;;
+  /dev/video7 | /dev/video9) device_capability="Video Output" ;;
+  *) device_capability="Video Capture" ;;
+  esac
+
+  printf '%s\n' \
+    "Driver Info:" \
+    $'\tCapabilities     : 0x84a00001' \
+    $'\t\tVideo Capture' \
+    $'\tDevice Caps      : 0x04200001' \
+    $'\t\t'"$device_capability"
+  ;;
+esac
 SH
 
 cat >"$stub_bin/omarchy-menu-select" <<'SH'
@@ -51,10 +83,39 @@ export OMARCHY_TEST_MENU_ARGS="$tmp_dir/menu-args"
 export OMARCHY_TEST_RECORDER_ARGS="$tmp_dir/recorder-args"
 export OMARCHY_TEST_NOTIFICATION_ARGS="$tmp_dir/notification-args"
 
+mapfile -t capture_devices < <(omarchy-capture-webcam-list)
+expected_capture_devices=(
+  "/dev/video42  Built-in Webcam: Integrated Camera"
+  "/dev/video2  USB Capture Card: External Camera"
+)
+
+if [[ ${capture_devices[*]} != "${expected_capture_devices[*]}" ]]; then
+  fail "webcam detection filters output-only devices and collapses each capture group" \
+    "expected: ${expected_capture_devices[*]}\nactual:   ${capture_devices[*]}"
+fi
+pass "webcam detection filters output-only devices and collapses each capture group"
+
+dual_node=$(OMARCHY_TEST_DUAL_NODE_WEBCAM=true omarchy-capture-webcam-list) ||
+  fail "webcam listing exits zero when the trailing device is filtered"
+pass "webcam listing exits zero when the trailing device is filtered"
+
+expected_dual_node="/dev/video42  Built-in Webcam: Integrated Camera
+/dev/video2  USB Capture Card: External Camera
+/dev/video8  Dual Node Camera: ISP Wrapper"
+[[ $dual_node == "$expected_dual_node" ]] ||
+  fail "webcam detection falls through to a later capture-capable node in a group" "$dual_node"
+pass "webcam detection falls through to a later capture-capable node in a group"
+
 if "$ROOT/bin/omarchy-hw-webcam"; then
-  pass "webcam hardware detection succeeds when a video device is available"
+  pass "webcam hardware detection succeeds when a capture device is available"
 else
-  fail "webcam hardware detection succeeds when a video device is available"
+  fail "webcam hardware detection succeeds when a capture device is available"
+fi
+
+if OMARCHY_TEST_RAW_WEBCAM=true "$ROOT/bin/omarchy-hw-webcam"; then
+  fail "webcam hardware detection rejects output-only video devices"
+else
+  pass "webcam hardware detection rejects output-only video devices"
 fi
 
 if OMARCHY_TEST_NO_WEBCAM=true "$ROOT/bin/omarchy-hw-webcam"; then
@@ -63,12 +124,19 @@ else
   pass "webcam hardware detection fails when no video device is available"
 fi
 
+if OMARCHY_TEST_RAW_WEBCAM=true "$ROOT/bin/omarchy-capture-screenrecording-with-webcam"; then
+  fail "screenrecording webcam picker rejects output-only video devices"
+fi
+grep -Fx 'No webcam devices found' "$OMARCHY_TEST_NOTIFICATION_ARGS" >/dev/null || \
+  fail "screenrecording webcam picker reports no capture-capable device"
+pass "screenrecording webcam picker rejects output-only video devices"
+
 "$ROOT/bin/omarchy-capture-screenrecording-with-webcam"
 
 expected_menu_args="$tmp_dir/expected-menu-args"
 printf '%s\n' \
   "Select Webcam" \
-  "/dev/video0  Built-in Webcam: Integrated Camera" \
+  "/dev/video42  Built-in Webcam: Integrated Camera" \
   "/dev/video2  USB Capture Card: External Camera" \
   "--" \
   "--width" \
@@ -92,6 +160,12 @@ if ! cmp -s "$OMARCHY_TEST_RECORDER_ARGS" "$expected_recorder_args"; then
   fail "screenrecording webcam picker starts recording with selected device" "$(diff -u "$expected_recorder_args" "$OMARCHY_TEST_RECORDER_ARGS")"
 fi
 pass "screenrecording webcam picker starts recording with selected device"
+
+first_webcam=$(omarchy-capture-webcam-list | sed -n '1s/[[:space:]].*//p')
+[[ $first_webcam == "/dev/video42" ]] || fail "screenrecording auto-detection selects the first capture device"
+grep -F 'WEBCAM_DEVICE=$(omarchy-capture-webcam-list' "$ROOT/bin/omarchy-capture-screenrecording" >/dev/null || \
+  fail "screenrecording auto-detection uses capture-capable webcams"
+pass "screenrecording auto-detection uses the first capture-capable webcam"
 
 cat >"$stub_bin/hyprctl" <<'SH'
 #!/bin/bash

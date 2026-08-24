@@ -157,6 +157,20 @@ function fullText(entry) {
   return String(entry.text || "")
 }
 
+// The picker only ever searches and renders a prefix of an entry, so scan and
+// render just that much. A single huge paste otherwise costs hundreds of
+// megabytes of string work on every keystroke and stalls the whole shell.
+// Pasting reads the full entry back from history by index, so nothing is lost.
+var displayTextLimit = 8192
+
+function cappedEntry(entry) {
+  if (!entry || entry.type !== "text" || entry.text.length <= displayTextLimit) return entry
+
+  // Cut on a line break so a file:// URI never truncates into a bogus path.
+  var cut = entry.text.lastIndexOf("\n", displayTextLimit)
+  return { type: "text", text: entry.text.slice(0, cut > 0 ? cut : displayTextLimit) }
+}
+
 function displayRows(history, query, limit) {
   var values = Array.isArray(history) ? history : []
   var needle = String(query || "").trim().toLowerCase()
@@ -168,7 +182,7 @@ function displayRows(history, query, limit) {
   var rows = []
 
   for (var i = 0; i < values.length; i++) {
-    var entry = normalizeEntry(values[i])
+    var entry = cappedEntry(normalizeEntry(values[i]))
     if (!entry) continue
     if (needle && searchableText(entry).toLowerCase().indexOf(needle) < 0) continue
 

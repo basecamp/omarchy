@@ -17,6 +17,7 @@
     "description": "Toggle Tailscale, switch connections, browse machines, and copy machine IPs or names.",
     "category": "Network",
     "allowMultiple": false,
+    "defaultSection": "right",
     "defaults": {
       "refreshIntervalSec": 30
     },

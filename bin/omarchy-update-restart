@@ -46,5 +46,6 @@ done
 # Updates routinely replace the shell's QML, and a stale process can lazy-load
 # new files into old code. A restart failure (locked session, ssh, TTY) only
 # prints its reason: the next update or login gets a fresh shell anyway.
-echo "Restarting shell"
+echo -e "\e[32m\nRestarting shell\e[0m"
+echo "All plugins have been reloaded"
 omarchy-restart-shell || true

@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# omarchy:summary=Launch or attach to the persistent herdr session in a terminal
+
+exec omarchy-launch-terminal herdr

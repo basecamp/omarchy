@@ -1,8 +1,8 @@
 #!/usr/bin/python3
 
 # omarchy:summary=Pick files with the desktop file chooser
-# omarchy:args=[--title <title>] [--multiple] [--extensions "<ext ext...>"]
-# omarchy:examples=omarchy file select --title "Send with Tailscale" --multiple | omarchy file select --title "Pick image" --extensions "png svg"
+# omarchy:args=[--title <title>] [--multiple] [--directory] [--extensions "<ext ext...>"]
+# omarchy:examples=omarchy file select --title "Send with Tailscale" --multiple | omarchy file select --title "Pick image" --extensions "png svg" | omarchy file select --title "Share folder" --directory
 
 # Python rather than bash, alone among the commands here, because the portal
 # answers a request with a Response signal addressed to the connection that
@@ -36,6 +36,7 @@ def main():
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--title", default="Select file")
     parser.add_argument("--multiple", action="store_true")
+    parser.add_argument("--directory", action="store_true")
     parser.add_argument("--extensions", default="")
     args, unknown = parser.parse_known_args()
 
@@ -77,7 +78,11 @@ def main():
         "multiple": GLib.Variant("b", args.multiple),
     }
 
-    if args.extensions:
+    if args.directory:
+        options["directory"] = GLib.Variant("b", True)
+
+    # Filters name file formats, which a directory chooser has no use for.
+    if args.extensions and not args.directory:
         # Glob matching in the chooser is case-sensitive, so cover both cases.
         exts = [ext.lstrip(".").lower() for ext in args.extensions.split()]
         patterns = [(0, "*." + ext) for ext in exts] + [(0, "*." + ext.upper()) for ext in exts]

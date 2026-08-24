@@ -71,7 +71,7 @@ grep -Fx 'systemctl disable --now snapper-timeline.timer' "$test_tmp/calls.log" 
 grep -Fx 'systemctl enable --now snapper-cleanup.timer limine-snapper-sync.service' "$test_tmp/calls.log" >/dev/null || fail "snapshot configure enables cleanup and Limine snapshot sync"
 pass "snapshot configure normalizes Snapper policy and services"
 
-setup_system="$ROOT/bin/omarchy-setup-system"
+setup_system="$ROOT/bin/omarchy-apply-system"
 grep -F 'config/all.sh' "$setup_system" >/dev/null ||
   fail "system setup runs the config phase"
 grep -F 'config/snapper.sh' "$ROOT/install/config/all.sh" >/dev/null ||

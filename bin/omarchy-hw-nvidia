@@ -2,4 +2,15 @@
 
 # omarchy:summary=Detect whether the computer has an NVIDIA GPU.
 
-lspci | grep -qi 'nvidia' &>/dev/null
+# Read the cached sysfs IDs rather than lspci, which reads PCI config space and
+# resumes runtime-suspended GPUs.
+pci_devices_path="${OMARCHY_PCI_DEVICES_PATH:-/sys/bus/pci/devices}"
+
+shopt -s nullglob
+
+for device in "$pci_devices_path"/*; do
+  [[ $(< "$device/vendor") == "0x10de" ]] || continue
+  [[ $(< "$device/class") == 0x03* ]] && exit 0
+done
+
+exit 1

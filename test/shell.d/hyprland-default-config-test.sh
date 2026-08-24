@@ -175,6 +175,36 @@ if grep -Fq $'SUPER + CTRL + X	Toggle dictation' <<<"$missing_voxtype_output"; t
 fi
 pass "missing Voxtype skips dictation bindings"
 
+# The Grave shortcuts are aliases, so the original SUPER + S pair has to keep
+# working alongside them.
+scratchpad_home="$tmpdir/scratchpad-home"
+mkdir -p "$scratchpad_home"
+scratchpad_output=$(run_omarchy_bindings "$scratchpad_home")
+grep -Fqx $'SUPER + S	Toggle scratchpad' <<<"$scratchpad_output" ||
+  fail "scratchpad keeps its existing toggle binding"
+grep -Fqx $'SUPER + grave	Toggle scratchpad' <<<"$scratchpad_output" ||
+  fail "scratchpad supports a Quake-style toggle binding"
+grep -Fqx $'SUPER + ALT + S	Move window to scratchpad' <<<"$scratchpad_output" ||
+  fail "scratchpad keeps its existing move binding"
+grep -Fqx $'SUPER + SHIFT + grave	Move window to scratchpad' <<<"$scratchpad_output" ||
+  fail "scratchpad supports a Quake-style move binding"
+pass "scratchpad retains existing bindings and adds Grave shortcuts"
+
+# The panel hotkeys claim a row of keys that workspace switching already uses
+# under other modifiers, so the count matters as much as the bindings: a tenth
+# claim on SUPER + CTRL + a number is a collision with one of these.
+panels_home="$tmpdir/panels-home"
+mkdir -p "$panels_home"
+panels_output=$(run_omarchy_bindings "$panels_home")
+for panel in 1 2 3 4 5 6 7 8 9; do
+  grep -Fqx "SUPER + CTRL + code:$((panel + 9))"$'\t'"Bar panel $panel" <<<"$panels_output" ||
+    fail "bar panel hotkeys count the right section" "$panel"
+done
+number_claims=$(cut -f1 <<<"$panels_output" | grep -cE '^SUPER \+ CTRL \+ code:1[0-9]$' || true)
+(( number_claims == 9 )) ||
+  fail "only the bar panel hotkeys bind SUPER + CTRL + a number" "$number_claims"
+pass "bar panel hotkeys bind SUPER + CTRL + a number without a collision"
+
 migration=$(grep -rl 'Move stock Hyprland user overrides into package defaults' "$ROOT/migrations" | head -n 1 || true)
 [[ -n $migration ]] || fail "Hyprland default config migration exists"
 

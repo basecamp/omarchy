@@ -18,7 +18,19 @@ if (( ${#tests[@]} == 0 )); then
   exit 1
 fi
 
+# Keep going after a failing file. A test file exits at its first failed
+# assertion, so aborting the run there too would hide every file after it --
+# one packaging failure was masking 114 of 134 files.
+failed=()
 for test in "${tests[@]}"; do
   printf '==> %s\n' "${test#$ROOT/}"
-  bash "$test"
+  bash "$test" || failed+=("${test#$ROOT/}")
 done
+
+if (( ${#failed[@]} > 0 )); then
+  printf '\n%d of %d test files failed:\n' "${#failed[@]}" "${#tests[@]}" >&2
+  printf '  %s\n' "${failed[@]}" >&2
+  exit 1
+fi
+
+printf '\nAll %d test files passed.\n' "${#tests[@]}"

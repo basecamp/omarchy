@@ -1,6 +1,6 @@
 # Detect T2 MacBook models using PCI IDs
 # Vendor: 106b (Apple), Device IDs: 1801 or 1802 (T2 Security Chip)
-if lspci -nn | grep -q "106b:180[12]"; then
+if lspci -nn | grep "106b:180[12]" >/dev/null; then
   echo "Detected MacBook with T2 chip. Installing support items..."
 
   omarchy-pkg-add \
@@ -25,12 +25,6 @@ if lspci -nn | grep -q "106b:180[12]"; then
   mkdir -p /etc/mkinitcpio.conf.d
   echo "MODULES+=(t2bce_vhci usbhid hid_apple hid_generic xhci_pci xhci_hcd)" > \
     /etc/mkinitcpio.conf.d/apple-t2.conf
-
-  mkdir -p /etc/modprobe.d
-  cat > /etc/modprobe.d/brcmfmac.conf <<'EOF'
-# Fix for T2 MacBook WiFi connectivity issues
-options brcmfmac feature_disable=0x82000
-EOF
 
   mkdir -p /etc/limine-entry-tool.d
   cat > /etc/limine-entry-tool.d/t2-mac.conf <<'EOF'

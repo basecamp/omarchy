@@ -37,7 +37,7 @@ Item {
   property int cardWidth: Math.min(Style.space(875), panel.width - Style.gapsOut * 2)
   property int cardHeight: Math.min(Style.space(600), panel.height - Style.gapsOut * 2)
   property int rowHeight: Math.max(Style.space(50), Style.font.body + Style.font.caption + Style.spacing.rowPaddingX * 2)
-  property int historyLimit: 300
+  property int historyLimit: 500
 
   function open(payloadJson) {
     root.opened = true

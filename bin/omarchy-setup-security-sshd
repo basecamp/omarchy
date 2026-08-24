@@ -1,31 +1,61 @@
 #!/bin/bash
 
 # omarchy:summary=Set up the OpenSSH server, open the firewall, and authorize an SSH key
-# omarchy:args=[--key=<public-key>]
-# omarchy:examples=omarchy-setup-security-sshd | omarchy-setup-security-sshd --key="ssh-ed25519 AAAA... user@host"
+# omarchy:args=[--key=<public-key>] [--gh-keys <github-username>]
+# omarchy:examples=omarchy-setup-security-sshd | omarchy-setup-security-sshd --gh-keys dhh | omarchy-setup-security-sshd --key="ssh-ed25519 AAAA... user@host"
 # omarchy:requires-sudo=true
 
 set -e
 
 AUTHORIZED_KEYS="$HOME/.ssh/authorized_keys"
 KEY=""
+GITHUB_USER=""
 
-for arg in "$@"; do
-  case "$arg" in
-  --key=*) KEY="${arg#--key=}" ;;
+# Checked while parsing, before anything is installed or opened: an empty or
+# option-shaped username otherwise falls through to the interactive menu having
+# already changed the machine, and `--gh-keys --help` would take --help as the
+# username and set the server up on its way to failing.
+require_github_user() {
+  if [[ -z $1 || $1 == -* ]]; then
+    echo "omarchy-setup-security-sshd: --gh-keys needs a GitHub username." >&2
+    exit 2
+  fi
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+  --key=*) KEY="${1#--key=}" ;;
+  --gh-keys=*)
+    GITHUB_USER="${1#--gh-keys=}"
+    require_github_user "$GITHUB_USER"
+    ;;
+  --gh-keys)
+    shift
+    GITHUB_USER="${1:-}"
+    require_github_user "$GITHUB_USER"
+    ;;
   -h | --help)
-    echo "Usage: omarchy-setup-security-sshd [--key=<public-key>]"
+    echo "Usage: omarchy-setup-security-sshd [--key=<public-key>] [--gh-keys <github-username>]"
     echo
     echo "Sets up the OpenSSH server, opens the SSH port in the UFW firewall,"
     echo "and authorizes an SSH key (from GitHub, pasted, or passed via --key)."
+    echo
+    echo "Passing --key or --gh-keys skips the prompts, so the command can run"
+    echo "unattended from a script or a fresh machine's first login."
     exit 0
     ;;
   *)
-    echo "omarchy-setup-security-sshd: unknown option '$arg'. Try --help." >&2
+    echo "omarchy-setup-security-sshd: unknown option '$1'. Try --help." >&2
     exit 2
     ;;
   esac
+  shift
 done
+
+if [[ -n $KEY && -n $GITHUB_USER ]]; then
+  echo "omarchy-setup-security-sshd: pass either --key or --gh-keys, not both." >&2
+  exit 2
+fi
 
 setup_sshd() {
   echo "Installing and starting the OpenSSH server..."
@@ -70,13 +100,7 @@ authorize_key() {
 }
 
 authorize_keys_from_github() {
-  local username keys added=0
-
-  username=$(gum input --prompt "GitHub username> " --placeholder "dhh") || exit 1
-  if [[ -z $username ]]; then
-    echo -e "\e[31mNo GitHub username given.\e[0m" >&2
-    exit 1
-  fi
+  local username="$1" keys added=0
 
   echo "Fetching keys from https://github.com/$username.keys..."
   if ! keys=$(curl -fsSL "https://github.com/$username.keys") || [[ -z $keys ]]; then
@@ -93,6 +117,18 @@ authorize_keys_from_github() {
     echo -e "\e[31mNo valid SSH keys found for GitHub user '$username'.\e[0m" >&2
     exit 1
   fi
+}
+
+prompt_for_github_user() {
+  local username
+
+  username=$(gum input --prompt "GitHub username> " --placeholder "dhh") || exit 1
+  if [[ -z $username ]]; then
+    echo -e "\e[31mNo GitHub username given.\e[0m" >&2
+    exit 1
+  fi
+
+  authorize_keys_from_github "$username"
 }
 
 authorize_pasted_key() {
@@ -115,9 +151,11 @@ open_firewall
 echo
 if [[ -n $KEY ]]; then
   authorize_key "$KEY" || exit 1
+elif [[ -n $GITHUB_USER ]]; then
+  authorize_keys_from_github "$GITHUB_USER"
 else
   case $(gum choose "Grab key from GitHub" "Paste key manually" --header "How would you like to add your SSH key?") in
-  "Grab key from GitHub") authorize_keys_from_github ;;
+  "Grab key from GitHub") prompt_for_github_user ;;
   "Paste key manually") authorize_pasted_key ;;
   *) exit 1 ;;
   esac

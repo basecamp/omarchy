@@ -12,14 +12,13 @@ cleanup() {
     kill "$QS_PID" 2>/dev/null || true
     wait "$QS_PID" 2>/dev/null || true
   fi
-  [[ -n $TMPDIR && -d $TMPDIR ]] && rm -rf "$TMPDIR"
+  if [[ -n $TMPDIR && -d $TMPDIR ]]; then
+    rm -rf "$TMPDIR"
+  fi
 }
 trap cleanup EXIT
 
-if [[ -z ${WAYLAND_DISPLAY:-} ]]; then
-  pass "no Wayland compositor; skipping lock fingerprint indicator test"
-  exit 0
-fi
+require_compositor "lock fingerprint indicator test"
 
 if ! command -v quickshell >/dev/null 2>&1; then
   pass "quickshell not installed; skipping lock fingerprint indicator test"

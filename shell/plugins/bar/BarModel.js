@@ -154,6 +154,29 @@ function pickDrawnSlot(slots) {
   return placeholder
 }
 
+// A bar surface is built per monitor, so a panel hotkey has several live
+// copies of the same widget to route to, and the panel opens on whichever
+// monitor's copy answers. Candidates are `{ slot, screenName, opened }`.
+//
+// An open copy wins first: hide and toggle have to reach the panel the user
+// can actually see, wherever it was opened from. Otherwise the focused
+// monitor's copy wins, so a summon lands where the user is working instead of
+// on whichever output registered its slot first. Neither narrowing applies on
+// a single monitor, or when the focused output has no bar of its own.
+function pickPanelSlot(candidates, focusedScreen) {
+  var rows = Array.isArray(candidates) ? candidates : []
+  var pool = rows.filter(function(row) { return row && row.opened === true })
+  if (pool.length === 0) pool = rows.filter(function(row) { return !!row })
+
+  var focused = String(focusedScreen || "")
+  if (focused) {
+    var onFocused = pool.filter(function(row) { return row.screenName === focused })
+    if (onFocused.length > 0) pool = onFocused
+  }
+
+  return pickDrawnSlot(pool.map(function(row) { return row.slot }))
+}
+
 // Resolve a pointer anywhere along the bar to the closest insertion edge.
 // Requiring the pointer to sit inside another widget makes the empty space
 // around a centered group a dead zone, even though it visually reads as the
@@ -189,6 +212,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     isDrawnSlot: isDrawnSlot,
     pickDrawnSlot: pickDrawnSlot,
+    pickPanelSlot: pickPanelSlot,
     nearestDropTarget: nearestDropTarget,
     normalizePosition: normalizePosition,
     entrySettings: entrySettings,

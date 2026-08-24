@@ -8,7 +8,16 @@ tests=(
   "$ROOT/test/shell"
 )
 
+# Run every suite even when an earlier one fails, so a single failure can't
+# hide whole suites behind it.
+failed=()
 for test in "${tests[@]}"; do
   printf '==> %s\n' "${test#$ROOT/}"
-  "$test"
+  "$test" || failed+=("${test#$ROOT/}")
 done
+
+if (( ${#failed[@]} > 0 )); then
+  printf '\n%d of %d suites failed:\n' "${#failed[@]}" "${#tests[@]}" >&2
+  printf '  %s\n' "${failed[@]}" >&2
+  exit 1
+fi

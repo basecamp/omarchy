@@ -1,0 +1,91 @@
+#!/bin/bash
+
+# omarchy:summary=Launch the Omarchy shell with its log kept in the journal
+# omarchy:hidden=true
+
+# Quickshell only logs to its instance runtime dir (tmpfs), so when the shell
+# dies the idle/lock event trail is gone after a reboot. The journal keeps it
+# across sessions, bounded and timestamped, under the omarchy-shell tag.
+#
+# Backgrounded because bash defers a trap until a foreground command returns but
+# interrupts wait. systemd-cat execs, so the job is Quickshell itself.
+#
+# Quickshell's own reloading is off; Omarchy restarts the shell deliberately.
+# A package upgrade rewriting $OMARCHY_PATH/shell would otherwise reload it
+# against a half-written tree, and that failed reload leaves a second engine
+# generation behind that turns the next restart's IPC kill into a crash.
+run_shell() {
+  QS_DISABLE_FILE_WATCHER=1 QS_NO_RELOAD_POPUP=1 \
+    systemd-cat -t omarchy-shell -- quickshell -n -p "$OMARCHY_PATH/shell" &
+  shell_pid=$!
+
+  local status
+  while true; do
+    wait "$shell_pid"
+    status=$?
+
+    # An interrupted wait and a shell killed by that signal report alike.
+    kill -0 "$shell_pid" 2>/dev/null || break
+  done
+
+  shell_pid=""
+  return $status
+}
+
+# A compositor busy reconfiguring outputs can miss a query without being gone,
+# and that is when the shell dies.
+compositor_alive() {
+  local attempt
+
+  for attempt in 1 2 3; do
+    hyprctl -j monitors >/dev/null 2>&1 && return 0
+    (( attempt < 3 )) && sleep 0.5
+  done
+
+  return 1
+}
+
+# Quickshell relaunches itself from its signal handlers, but Qt leaves through
+# _exit() when the Wayland connection fails, raising no signal: no crash report,
+# no relaunch, no bar. Supervise those deaths. A clean exit is a deliberate stop
+# (omarchy-restart-shell starts its own replacement); a signal here means the
+# session is going, and has to reach the shell the launcher used to exec.
+terminating=0
+shell_pid=""
+
+stop() {
+  terminating=1
+  [[ -n $shell_pid ]] && kill -TERM "$shell_pid" 2>/dev/null
+  return 0
+}
+trap stop HUP INT TERM
+
+attempts=0
+window_started=$SECONDS
+
+while true; do
+  # A signal during the backoff only reaches the trap once the sleep is over.
+  (( terminating )) && exit 0
+
+  run_shell
+  status=$?
+
+  (( terminating )) && exit 0
+  (( status == 0 )) && exit 0
+
+  # Relaunching into a session already tearing down burns the attempt budget.
+  compositor_alive || exit 0
+
+  if (( SECONDS - window_started > 60 )); then
+    attempts=0
+    window_started=$SECONDS
+  fi
+
+  if (( ++attempts > 5 )); then
+    logger -t omarchy-shell "Giving up on the Omarchy shell after $attempts relaunches in under a minute."
+    exit 1
+  fi
+
+  logger -t omarchy-shell "Omarchy shell exited with status $status; relaunching."
+  sleep 1
+done

@@ -27,9 +27,12 @@ section "Recent idle logs"
 quickshell --no-color log -p "$OMARCHY_PATH/shell" --any-display --tail "$lines" --log-times -r 'quickshell.wayland.idle_notify=true' 2>&1 \
   | grep -Ei 'omarchy idle|idle_notify|screensaver|lock|error|warn|failed' || true
 
+section "Persisted shell log"
+journalctl -t omarchy-shell -n "$lines" --no-pager --quiet 2>/dev/null || true
+
 section "Relevant processes"
 ps -eo pid=,args= \
-  | grep -E 'quickshell -n -p|omarchy-system-sleep-monitor|systemd-inhibit.*Lock screen before suspend|org\.omarchy\.screensaver|omarchy-screensaver|(^|/| )tte( |$)' \
+  | grep -E 'quickshell -n -p|omarchy-system-sleep-monitor|systemd-inhibit.*Lock screen before suspend|org\.omarchy\.screensaver|omarchy-screensaver|(^|/| )ttfx( |$)' \
   | grep -v grep || true
 
 section "Sleep lock service"
