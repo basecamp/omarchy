@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# omarchy:summary=Install the Grok Bot desktop app
+# omarchy:requires-sudo=true
+
+set -e
+
+echo "Installing Grok Bot..."
+# omarchy/grok-bot 0.18.0 is broken as of 2026-08-24 and conflicts with the
+# replacement. Drop the exact package name only; grokbot-linux-port-bin
+# provides grok-bot, so pacman -Q grok-bot is not a safe install-time check.
+omarchy-pkg-drop grok-bot
+omarchy-pkg-aur-add grokbot-linux-port-bin
+
+echo "Opening Grok Bot..."
+setsid uwsm-app -- /usr/bin/grok-bot >/dev/null 2>&1 &
+
+echo ""
+echo "Grok Bot has been installed."

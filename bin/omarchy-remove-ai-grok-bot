@@ -5,7 +5,7 @@
 
 set -e
 
-omarchy-pkg-drop grok-bot
+omarchy-pkg-drop grokbot-linux-port-bin grokbot-linux-port grok-bot
 
 # Not ~/.grok: that is the Grok CLI, which is installed and used on its own.
 rm -rf \

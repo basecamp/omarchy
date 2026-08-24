@@ -77,6 +77,7 @@ pass "T3 Code removal keeps the agent state it bootstrapped"
 
 # ~/.grok belongs to the Grok CLI that omarchy-default-agent installs.
 fresh_home
+: >"$TEST_LOG"
 mkdir -p "$HOME/.config/Grok Bot" "$HOME/.grokbot" "$HOME/.grok"
 "$ROOT/bin/omarchy-remove-ai-grok-bot" >/dev/null
 
@@ -85,6 +86,18 @@ pass "Grok Bot removal deletes its own data"
 
 [[ -d $HOME/.grok ]] || fail "Grok Bot removal keeps the Grok CLI's state"
 pass "Grok Bot removal keeps the Grok CLI's state"
+
+drop_line=$(<"$TEST_LOG")
+[[ $drop_line == drop:grokbot-linux-port-bin\ grokbot-linux-port\ grok-bot ]] ||
+  fail "Grok Bot removal drops the linux-port package and the stale grok-bot" "$drop_line"
+pass "Grok Bot removal drops the linux-port package and the stale grok-bot"
+
+install_row=$(grep '^  "install.ai.grok-bot":' "$ROOT/default/omarchy/omarchy-menu.jsonc")
+[[ $install_row == *'omarchy-install-ai-grok-bot'* ]] ||
+  fail "Grok Bot install uses the linux-port installer" "$install_row"
+[[ $install_row == *'grokbot-linux-port-bin'* ]] ||
+  fail "Grok Bot install is disabled only when linux-port is present" "$install_row"
+pass "Grok Bot install uses grokbot-linux-port-bin"
 
 # Every acceleration variant depends on the base package, so package presence is
 # the test the remover can actually act on; the command alone is also provided by
