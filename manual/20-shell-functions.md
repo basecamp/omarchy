@@ -16,9 +16,9 @@ Omarchy comes with a set of shell functions to simplify common tasks and encapsu
 
 Instant multi-pane development layouts for tmux:
 
-- `tdl [ai]`: Create a Tmux Dev Layout with your editor, an AI agent, and a terminal. Use the agent aliases, like `tdl c` for opencode or `tdl cx` for Claude Code, or pass a second agent to run both, like `tdl c cx`.
+- `tdl [ai] [second_ai]`: Create a Tmux Dev Layout with your editor, an AI agent, and a terminal. Run it without arguments to use your default coding agent (set with `omarchy default agent`), or use the agent aliases, like `tdl c` for opencode or `tdl cx` for Claude Code, or pass a second agent to run both, like `tdl c cx`.
 - `tds`: Create a Tmux Dev Square with editor, diff watching (via `hunk diff --watch`), terminal, and opencode.
-- `tdlm [ai]`: Create a `tdl` window for every subdirectory in the current directory.
+- `tdlm [ai] [second_ai]`: Create a `tdl` window for every subdirectory in the current directory.
 - `tsl [count] [command]`: Create a swarm of panes tiled in a grid, all running the same command (great for AI agents).
 
 The same layouts are available for Herdr as `hdl`, `hds`, `hdlm`, and `hsl`.

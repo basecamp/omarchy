@@ -46,3 +46,34 @@ expected_first=$(printf 'cd %q && hdl %q' "$test_dir/first project's files" "cod
 
 [[ ${commands[0]} == "$expected_first" ]] || fail "hdlm omits an absent second agent argument"
 pass "hdlm omits an absent second agent argument"
+
+: >"$log"
+hdlm
+mapfile -t commands <"$log"
+expected_first=$(printf 'cd %q && hdl' "$test_dir/first project's files")
+
+[[ ${commands[0]} == "$expected_first" ]] || fail "hdlm without agents queues a bare hdl"
+pass "hdlm without agents queues a bare hdl"
+
+export HERDR_TAB_ID="tab"
+: >"$log"
+hdl
+mapfile -t commands <"$log"
+
+[[ ${commands[0]} == "omarchy-agent --inline" ]] || fail "hdl without an agent runs the default agent"
+pass "hdl without an agent runs the default agent"
+
+: >"$log"
+hdl "codex --quiet"
+mapfile -t commands <"$log"
+
+[[ ${commands[0]} == "codex --quiet" ]] || fail "hdl with an agent runs that agent"
+pass "hdl with an agent runs that agent"
+
+for flag in -h --help; do
+  [[ $(hdl "$flag") == "Usage: hdl "* ]] || fail "hdl $flag prints usage"
+  pass "hdl $flag prints usage"
+
+  [[ $(hdlm "$flag") == "Usage: hdlm "* ]] || fail "hdlm $flag prints usage"
+  pass "hdlm $flag prints usage"
+done

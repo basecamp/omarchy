@@ -273,8 +273,8 @@ These functions must be run inside a Tmux session.
 
 | Command | Function |
 | ------- | -------- |
-| `tdl <ai> [<second_ai>]` | Create dev layout with editor, AI, and terminal |
-| `tdlm <ai> [<second_ai>]` | Create dev layout per subdirectory |
+| `tdl [<ai>] [<second_ai>]` | Create dev layout with editor, AI, and terminal |
+| `tdlm [<ai>] [<second_ai>]` | Create dev layout per subdirectory |
 | `tsl <count> <command>` | Create multi-pane swarm layout |
 
 ## Ghostty Terminal
