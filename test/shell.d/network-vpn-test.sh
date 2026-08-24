@@ -83,4 +83,41 @@ assert(vpnRow, 'network panel defines a VpnRow row component')
 assert(/onClicked: root\.toggleVpn\(row\.conn\.name, row\.isActive\)/.test(vpnRow[0]), 'VpnRow click toggles the connection')
 assert(/isFailed: !isBusy && root\.vpnFailureName/.test(vpnRow[0]), 'VpnRow only shows a failure once its own toggle has settled')
 assert(/root\.vpnFailureReason/.test(vpnRow[0]), 'VpnRow renders the failure reason the panel recorded')
+
+// Keyboard navigation: PanelKeyCatcher maps both arrow keys and j/k/h/l to
+// the same onMoveRequested(dx, dy), so wiring the "vpn" section into that
+// one handler covers both input styles at once -- nothing arrow-specific to
+// test separately.
+assert(/property int vpnIndex: -1/.test(panelSource), 'network panel declares vpnIndex')
+assert(/"header" \| "band" \| "dns" \| "vpn" \| "wifi"/.test(panelSource), 'focusSection docs list vpn between dns and wifi')
+
+const moveHandler = panelSource.match(/onMoveRequested: function\(dx, dy\) \{[\s\S]*?\n {6}\}\n {4}\}/)
+assert(moveHandler, 'network panel has the onMoveRequested handler')
+assert(
+  /root\.focusSection === "dns"[\s\S]*?root\.vpnConnections\.length > 0\)[\s\S]*?root\.focusSection = "vpn"/.test(moveHandler[0]),
+  'j from DNS enters the VPN section when it has profiles'
+)
+assert(
+  /root\.focusSection === "vpn"[\s\S]*?dy < 0 && root\.vpnIndex <= 0[\s\S]*?root\.focusSection = "dns"/.test(moveHandler[0]),
+  'k from the top VPN row escapes back to DNS'
+)
+assert(
+  /root\.focusSection === "vpn"[\s\S]*?dy > 0 && root\.vpnIndex >= root\.vpnConnections\.length - 1[\s\S]*?root\.focusSection = "wifi"/.test(moveHandler[0]),
+  'j from the bottom VPN row drops into wifi when there is somewhere to land'
+)
+assert(
+  /root\.selectedIndex <= 0\)[\s\S]*?root\.vpnConnections\.length > 0\)[\s\S]*?root\.focusSection = "vpn"/.test(moveHandler[0]),
+  'k from the top wifi row returns to VPN when it has profiles'
+)
+
+const activateHandler = panelSource.match(/onActivateRequested: \{[\s\S]*?\n {6}\}\n {4}\}/)
+assert(activateHandler, 'network panel has the onActivateRequested handler')
+assert(/root\.focusSection === "vpn"\) root\.activateVpn\(\)/.test(activateHandler[0]), 'Enter/Space on the VPN section activates the selected row')
+
+const activateVpn = panelSource.match(/function activateVpn\(\) \{[\s\S]*?\n {2}\}/)
+assert(activateVpn, 'network panel has an activateVpn function')
+assert(/toggleVpn\(conn\.name, conn\.active\)/.test(activateVpn[0]), 'activateVpn toggles the row under the keyboard cursor')
+
+assert(/isSelected: root\.focusSection === "vpn" && root\.vpnIndex === index/.test(vpnRow[0]), 'VpnRow tracks whether it is the keyboard-selected row')
+assert(/hasCursor: root\.cursorActive && isSelected/.test(vpnRow[0]), 'VpnRow shows the keyboard cursor, not just mouse hover')
 JS

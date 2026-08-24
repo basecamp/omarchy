@@ -130,11 +130,13 @@ Panel {
   property int selectedIndex: -1
   property bool wifiActionFocused: false
   property bool cursorActive: false
+  // Index into `vpnConnections` for keyboard navigation. -1 = no selection.
+  property int vpnIndex: -1
 
   // Keyboard focus zone for the panel. j/k crosses row boundaries:
-  // header actions ⇄ band ⇄ DNS row ⇄ Wi-Fi networks. h/l move
+  // header actions ⇄ band ⇄ DNS row ⇄ VPN ⇄ Wi-Fi networks. h/l move
   // within header actions, band pills, or DNS providers.
-  property string focusSection: "dns"  // "header" | "band" | "dns" | "wifi"
+  property string focusSection: "dns"  // "header" | "band" | "dns" | "vpn" | "wifi"
   property int headerIndex: 0
   readonly property bool canDisconnect: !!connectedWifiNetwork
   readonly property bool headerHasDisconnect: false
@@ -396,6 +398,20 @@ Panel {
     }
   }
 
+  // Keep vpnIndex valid as the VPN list refreshes on its poll, mirroring
+  // onWifiNetworksChanged above: an emptied list bounces the cursor back to
+  // DNS instead of leaving focusSection pointed at rows that no longer exist.
+  onVpnConnectionsChanged: {
+    if (vpnConnections.length === 0) {
+      vpnIndex = -1
+      if (focusSection === "vpn") focusSection = "dns"
+    } else if (vpnIndex >= vpnConnections.length) {
+      vpnIndex = vpnConnections.length - 1
+    } else if (vpnIndex < 0 && opened) {
+      vpnIndex = 0
+    }
+  }
+
   onWifiDeviceChanged: {
     setScannerEnabled(true)
     syncWifiNetworks()
@@ -408,6 +424,20 @@ Panel {
     if (selectedIndex < 0) selectedIndex = delta > 0 ? 0 : wifiNetworks.length - 1
     else selectedIndex = Math.max(0, Math.min(wifiNetworks.length - 1, selectedIndex + delta))
     wifiActionFocused = false
+  }
+
+  function selectVpnByDelta(delta) {
+    if (vpnConnections.length === 0) { vpnIndex = -1; return }
+    if (vpnIndex < 0) vpnIndex = delta > 0 ? 0 : vpnConnections.length - 1
+    else vpnIndex = Math.max(0, Math.min(vpnConnections.length - 1, vpnIndex + delta))
+  }
+
+  // Enter/Space on the highlighted VPN row. Mirrors row-click semantics.
+  function activateVpn() {
+    if (vpnIndex < 0 || vpnIndex >= vpnConnections.length) return
+    var conn = vpnConnections[vpnIndex]
+    if (!conn) return
+    toggleVpn(conn.name, conn.active)
   }
 
   function canForgetNetwork(net) {
@@ -1112,8 +1142,8 @@ Panel {
             }
           } else if (root.focusSection === "dns") {
             // k from DNS moves up into the band section when it's on screen,
-            // then the disconnect button; otherwise stays put. j drops into the
-            // wifi list if there's anywhere to land.
+            // then the disconnect button; otherwise stays put. j drops into
+            // VPN if there's anywhere to land there, otherwise the wifi list.
             if (dy < 0) {
               if (root.canSelectBand) {
                 root.focusSection = "band"
@@ -1122,15 +1152,37 @@ Panel {
                 root.focusSection = "header"
                 root.headerIndex = 0
               }
+            } else if (root.vpnConnections.length > 0) {
+              root.focusSection = "vpn"
+              if (root.vpnIndex < 0) root.vpnIndex = 0
             } else if (root.wifiNetworks.length > 0) {
               root.focusSection = "wifi"
               if (root.selectedIndex < 0) root.selectedIndex = 0
             }
-          } else {  // wifi
-            // k from the top row escapes back up to the DNS row rather than
-            // wrapping around to the bottom of the list.
-            if (dy < 0 && root.selectedIndex <= 0) {
+          } else if (root.focusSection === "vpn") {
+            // k from the top row escapes back up to DNS; j from the bottom
+            // row drops into wifi if there's anywhere to land there.
+            if (dy < 0 && root.vpnIndex <= 0) {
               root.focusSection = "dns"
+            } else if (dy > 0 && root.vpnIndex >= root.vpnConnections.length - 1) {
+              if (root.wifiNetworks.length > 0) {
+                root.focusSection = "wifi"
+                if (root.selectedIndex < 0) root.selectedIndex = 0
+              }
+            } else {
+              root.selectVpnByDelta(dy)
+            }
+          } else {  // wifi
+            // k from the top row escapes back up to VPN when it's on screen,
+            // otherwise DNS, rather than wrapping around to the bottom of
+            // the list.
+            if (dy < 0 && root.selectedIndex <= 0) {
+              if (root.vpnConnections.length > 0) {
+                root.focusSection = "vpn"
+                root.vpnIndex = root.vpnConnections.length - 1
+              } else {
+                root.focusSection = "dns"
+              }
               root.wifiActionFocused = false
             }
             else root.selectByDelta(dy)
@@ -1148,6 +1200,7 @@ Panel {
           if (root.focusSection === "header") root.activateHeader()
           else if (root.focusSection === "band") root.activateBand()
           else if (root.focusSection === "dns") root.activateDns()
+          else if (root.focusSection === "vpn") root.activateVpn()
           else root.activateSelected()
         }
       }
@@ -1566,6 +1619,7 @@ Panel {
 
             delegate: Item {
               required property var modelData
+              required property int index
               width: parent.width
               height: vpnRow.implicitHeight
 
@@ -1573,6 +1627,7 @@ Panel {
                 id: vpnRow
                 width: parent.width
                 conn: modelData
+                index: parent.index
               }
             }
           }
@@ -1719,16 +1774,18 @@ Panel {
   component VpnRow: CursorSurface {
     id: row
     required property var conn
+    required property int index
 
     readonly property bool isActive: !!(conn && conn.active)
     readonly property bool isBusy: root.vpnActionName !== "" && conn && root.vpnActionName === conn.name
     readonly property bool isFailed: !isBusy && root.vpnFailureName !== "" && conn && root.vpnFailureName === conn.name
+    readonly property bool isSelected: root.focusSection === "vpn" && root.vpnIndex === index
 
     current: isActive
     foreground: root.bar.foreground
     fill: root.hoverFill
     currentFill: root.selectedFill
-    hasCursor: mouseArea.containsMouse
+    hasCursor: root.cursorActive && isSelected
 
     implicitHeight: rowBody.implicitHeight
 
@@ -1738,6 +1795,7 @@ Panel {
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       enabled: !row.isBusy
+      onContainsMouseChanged: if (containsMouse) { root.cursorActive = true; root.focusSection = "vpn"; root.vpnIndex = row.index }
       onClicked: root.toggleVpn(row.conn.name, row.isActive)
     }
 
