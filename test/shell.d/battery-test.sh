@@ -28,4 +28,9 @@ assertDeepEqual(
   { level: 40, notify: false, notifiedLowBattery: false },
   'battery clears notified state after recovery'
 )
+
+const fs = require('fs')
+const serviceSource = fs.readFileSync(root + '/shell/plugins/services/battery/Service.qml', 'utf8')
+assert(/dismissProcess\.command = \["omarchy-notification-dismiss", "Time to recharge!"\]/.test(serviceSource), 'battery service dismisses the low-battery toast through Omarchy command')
+assert(/if \(!UPower\.onBattery && persisted\.notifiedLowBattery\) root\.dismissLowBatteryWarning\(\)/.test(serviceSource), 'battery service dismisses the low-battery toast on plug-in')
 JS
