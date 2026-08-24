@@ -17,8 +17,25 @@ assert(/IpcHandler[\s\S]*?function toggleBluetooth\(\) \{ root\.toggleBluetooth\
 assert(/manageIpc: false/.test(panelSource), 'bluetooth owns its IPC handler so it can extend the target methods')
 
 // Writing adapter.enabled sets BlueZ Powered, which does not survive a reboot.
-assert(/function toggleBluetooth\(\)[\s\S]*?execDetached\(\["omarchy-bluetooth-power", adapter\.enabled \? "off" : "on"\]\)/.test(panelSource), 'bluetooth toggles the radio through the rfkill soft block')
+assert(/function toggleBluetooth\(\)[\s\S]*?execDetached\(\["omarchy-bluetooth-power", adapter && adapter\.enabled \? "off" : "on"\]\)/.test(panelSource), 'bluetooth toggles the radio through the rfkill soft block')
 assert(!/adapter\.enabled = /.test(panelSource), 'bluetooth never writes the adapter power state directly')
+
+// A soft block can remove the adapter from BlueZ. The shell must remove the block
+// in exactly this case, with no adapter to read. A guard on the adapter made the
+// block permanent. rfkill is the only layer that still knows the hardware is
+// present, so the probe reports the hardware, and BlueZ does not.
+assert(/function toggleBluetooth\(\)\s*\{\s*if \(!hasBluetooth\) return\b/.test(panelSource), 'bluetooth does not try to unblock hardware that does not exist')
+assert(/command: \["omarchy-hw-bluetooth"\]/.test(panelSource), 'bluetooth probes for hardware the adapter cannot report')
+assert(/onExited: function\(exitCode\)[\s\S]*?bluetoothPresent = exitCode === 0/.test(panelSource), 'bluetooth takes hardware presence from the probe exit code')
+assert(/readonly property bool hasBluetooth: adapter !== null \|\| bluetoothPresent/.test(panelSource), 'bluetooth treats the rfkill probe as hardware presence when BlueZ has no adapter')
+assert(/visible: hasBluetooth\b/.test(panelSource), 'bluetooth stays in the bar while the radio is blocked')
+assert(/visible: root\.hasBluetooth\b/.test(panelSource), 'bluetooth offers the power switch while the radio is blocked')
+
+// BarIconButton has no visual content at an empty string. A visible widget with no
+// glyph is then a blank slot in the bar. A blocked radio reuses the off glyph.
+assert(/if \(!adapter \|\| !adapter\.enabled\) return hasBluetooth \? "\u{f00b2}" : ""/u.test(panelSource), 'bluetooth draws the off glyph while blocked instead of a blank bar entry')
+assert(/if \(!adapter\) return hasBluetooth \? "Blocked" : "No adapter"/.test(panelSource), 'bluetooth names the blocked state instead of reporting no adapter')
+assert(/!root\.hasBluetooth \? "No Bluetooth adapter"/.test(panelSource), 'bluetooth only reports a missing adapter when the machine has no radio at all')
 
 // Discovery is a BlueZ session that nothing ends at panel close: it persists
 // until StopDiscovery or until quickshell's D-Bus connection drops with the
