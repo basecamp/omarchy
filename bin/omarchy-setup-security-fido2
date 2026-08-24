@@ -4,6 +4,7 @@
 # omarchy:requires-sudo=true
 
 set -e
+set -o pipefail
 
 
 check_fido2_hardware() {
@@ -54,8 +55,8 @@ authfile=/etc/fido2/fido2
 
 # -f follows symlinks, so the already-registered check below reads a symlinked
 # authfile as a registration and leaves it in place, and is false for a
-# directory, so it tries to register over one. Nothing in Omarchy puts anything
-# but a regular file here.
+# directory, so it tries to register over one. Only a regular file is a valid
+# pam_u2f authfile.
 if [[ -L $authfile || ( -e $authfile && ! -f $authfile ) ]]; then
   echo -e "\e[31m\n$authfile is not a FIDO2 registration file.\e[0m"
   echo "Run omarchy-remove-security-fido2 first, then set FIDO2 up again."
@@ -67,16 +68,33 @@ if [[ ! -f $authfile ]]; then
   echo -e "\e[32m\nLet's setup your device by confirming on the device now.\e[0m"
   echo -e "Touch your FIDO2 key when it lights up...\n"
 
-  # mktemp rather than a predictable /tmp path: any other local user can
-  # pre-create /tmp/fido2 as a symlink, and the privileged move installs that
-  # symlink itself as PAM's global authfile. install copies the bytes out as
-  # root, so the authfile is never an inode a non-root user still owns, and -T
-  # keeps it from staging the credential inside a directory sitting on the path.
-  registration=$(mktemp)
-  trap 'rm -f "$registration"' EXIT
+  # A unique sibling created by root cannot be replaced by another process
+  # running as this user. Stream pamu2fcfg into it instead of asking root to
+  # reopen a caller-owned path: an observed temporary name could otherwise be
+  # replaced with a symlink before the privileged copy. The final rename is
+  # atomic, and -T refuses a directory at the destination. Mode 644 keeps the
+  # root-owned global authfile readable when pam_u2f uses openasuser; only root
+  # can still rewrite it.
+  stage=""
 
-  if pamu2fcfg >"$registration" && [[ -s $registration ]]; then
-    sudo install -T -m 600 -o root -g root "$registration" "$authfile"
+  cleanup_stage() {
+    local status=$?
+
+    if [[ -n $stage ]]; then
+      sudo rm -f -- "$stage" || true
+    fi
+
+    return "$status"
+  }
+
+  trap cleanup_stage EXIT
+  stage=$(sudo mktemp "$authfile.new.XXXXXX")
+
+  if pamu2fcfg | sudo tee "$stage" >/dev/null && [[ -s $stage ]]; then
+    sudo chmod 644 "$stage"
+    sudo mv -Tf "$stage" "$authfile"
+    stage=""
+    trap - EXIT
     echo -e "\e[32mFIDO2 device registered successfully!\e[0m"
   else
     echo -e "\e[31m\nFIDO2 registration failed. Please try again.\e[0m"
