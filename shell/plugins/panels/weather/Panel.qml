@@ -76,8 +76,9 @@ Panel {
   // omarchy-weather-location). The query is the wttr.in path segment
   // (coordinates when stored, else the encoded name); empty means IP
   // auto-detect. The watch makes hand edits take effect live.
-  property var configuredLocationState: ({ name: "", latitude: null, longitude: null })
+  property var configuredLocationState: ({ name: "", latitude: null, longitude: null, country: "" })
   readonly property string configuredLocation: configuredLocationState.name
+  readonly property string configuredCountry: configuredLocationState.country || ""
   readonly property string locationQuery: Model.wttrLocationQuery(configuredLocationState.name, configuredLocationState.latitude, configuredLocationState.longitude)
 
   // Keep the previous report visible while the new location loads. The
@@ -97,7 +98,9 @@ Panel {
     watchChanges: true
     printErrors: false
     onFileChanged: reload()
-    onLoaded: root.configuredLocationState = Model.parseLocationFile(text())
+    onLoaded: {
+      root.configuredLocationState = Model.parseLocationFile(text())
+    }
     onLoadFailed: root.configuredLocationState = Model.parseLocationFile("")
   }
 
@@ -135,7 +138,10 @@ Panel {
   readonly property var forecastDays: buildForecastDays()
   readonly property string reportCountry: areaInfo && areaInfo.country && areaInfo.country[0] ? areaInfo.country[0].value : ""
 
-  readonly property bool useImperial: Model.shouldUseImperial(setting("unit", ""), Qt.locale().name, reportCountry)
+  // Unit precedence: explicit shell.json override, then the configured
+  // location's country (known without any network round-trip), then wttr's
+  // reported area, then the session locale.
+  readonly property bool useImperial: Model.shouldUseImperial(setting("unit", ""), Qt.locale().name, configuredCountry || reportCountry)
 
   // Auto-refresh interval in minutes; clamped to a sane minimum.
   readonly property int refreshMinutes: Math.max(1, parseInt(setting("refreshMinutes", 15), 10) || 15)
@@ -221,9 +227,10 @@ Panel {
     configuredLocationState = {
       name: location.name,
       latitude: location.latitude,
-      longitude: location.longitude
+      longitude: location.longitude,
+      country: location.country || ""
     }
-    persistLocation(location.name, location.latitude, location.longitude)
+    persistLocation(location.name, location.latitude, location.longitude, location.country)
   }
 
   function clearLocation() {
@@ -239,18 +246,23 @@ Panel {
     configuredLocationState = {
       name: suggestion.name,
       latitude: suggestion.latitude,
-      longitude: suggestion.longitude
+      longitude: suggestion.longitude,
+      country: suggestion.country || ""
     }
-    persistLocation(suggestion.name, suggestion.latitude, suggestion.longitude)
+    persistLocation(suggestion.name, suggestion.latitude, suggestion.longitude, suggestion.country)
   }
 
   function finishSavingLocation() {
     if (savingLocation && savingLocationQueryStarted) cancelEditingLocation()
   }
 
-  function persistLocation(name, latitude, longitude) {
-    if (name && latitude !== null && longitude !== null)
-      locationSaveProc.command = ["omarchy-weather-location", "--set", name, latitude + "," + longitude]
+  function persistLocation(name, latitude, longitude, country) {
+    var trimmedCountry = String(country || "").replace(/^\s+|\s+$/g, "")
+    if (name && latitude !== null && longitude !== null) {
+      var args = ["omarchy-weather-location", "--set", name, latitude + "," + longitude]
+      if (trimmedCountry !== "") args.push(trimmedCountry)
+      locationSaveProc.command = args
+    }
     else if (name)
       locationSaveProc.command = ["omarchy-weather-location", "--set", name]
     else

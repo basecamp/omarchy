@@ -10,17 +10,19 @@ const weather = requireFromRoot('shell/plugins/panels/weather/Model.js')
 const panelSource = fs.readFileSync(root + '/shell/plugins/panels/weather/Panel.qml', 'utf8')
 const widgetSource = fs.readFileSync(root + '/shell/plugins/panels/weather/BarWidget.qml', 'utf8')
 
-assertDeepEqual(weather.parseLocationFile('{"name": "Malibu", "latitude": 34.02577, "longitude": -118.7804}\n'), { name: 'Malibu', latitude: 34.02577, longitude: -118.7804 }, 'weather parses name plus coordinates from weather.json')
-assertDeepEqual(weather.parseLocationFile('{"name": "New York"}'), { name: 'New York', latitude: null, longitude: null }, 'weather parses a name-only weather.json')
-assertDeepEqual(weather.parseLocationFile('{"name": "Malibu", "latitude": 34.02577}'), { name: 'Malibu', latitude: null, longitude: null }, 'weather requires both coordinates')
-assertDeepEqual(weather.parseLocationFile('not json'), { name: '', latitude: null, longitude: null }, 'weather treats an unparseable weather.json as auto-detect')
-assertDeepEqual(weather.parseLocationFile(''), { name: '', latitude: null, longitude: null }, 'weather treats a missing weather.json as auto-detect')
+assertDeepEqual(weather.parseLocationFile('{"name": "Malibu", "latitude": 34.02577, "longitude": -118.7804}\n'), { name: 'Malibu', latitude: 34.02577, longitude: -118.7804, country: '' }, 'weather parses name plus coordinates from weather.json')
+assertDeepEqual(weather.parseLocationFile('{"name": "New York"}'), { name: 'New York', latitude: null, longitude: null, country: '' }, 'weather parses a name-only weather.json')
+assertDeepEqual(weather.parseLocationFile('{"name": "Malibu", "latitude": 34.02577}'), { name: 'Malibu', latitude: null, longitude: null, country: '' }, 'weather requires both coordinates')
+assertDeepEqual(weather.parseLocationFile('{"name": "Turbaco", "latitude": 10.32944, "longitude": -75.41137, "country": "Colombia"}'), { name: 'Turbaco', latitude: 10.32944, longitude: -75.41137, country: 'Colombia' }, 'weather parses the stored country')
+assertDeepEqual(weather.parseLocationFile('{"name": "Windsor", "country": "  Canada  "}'), { name: 'Windsor', latitude: null, longitude: null, country: 'Canada' }, 'weather trims whitespace around a stored country')
+assertDeepEqual(weather.parseLocationFile('not json'), { name: '', latitude: null, longitude: null, country: '' }, 'weather treats an unparseable weather.json as auto-detect')
+assertDeepEqual(weather.parseLocationFile(''), { name: '', latitude: null, longitude: null, country: '' }, 'weather treats a missing weather.json as auto-detect')
 
-assertDeepEqual(weather.locationCommit('  Pasadena  ', [], 0), { name: 'Pasadena', latitude: null, longitude: null }, 'weather commits typed locations before suggestions load')
-assertDeepEqual(weather.locationCommit('', [], 0), { name: '', latitude: null, longitude: null }, 'weather commits an empty location as auto-detect')
+assertDeepEqual(weather.locationCommit('  Pasadena  ', [], 0), { name: 'Pasadena', latitude: null, longitude: null, country: '' }, 'weather commits typed locations before suggestions load')
+assertDeepEqual(weather.locationCommit('', [], 0), { name: '', latitude: null, longitude: null, country: '' }, 'weather commits an empty location as auto-detect')
 assertDeepEqual(
-  weather.locationCommit('mal', [{ name: 'Malibu', latitude: 34.02577, longitude: -118.7804 }], 0),
-  { name: 'Malibu', latitude: 34.02577, longitude: -118.7804 },
+  weather.locationCommit('mal', [{ name: 'Malibu', latitude: 34.02577, longitude: -118.7804, country: 'United States' }], 0),
+  { name: 'Malibu', latitude: 34.02577, longitude: -118.7804, country: 'United States' },
   'weather commits the selected geocoding suggestion when available'
 )
 
@@ -41,9 +43,9 @@ assertDeepEqual(
     ]
   })),
   [
-    { name: 'Malibu', description: 'California, United States', latitude: 34.02577, longitude: -118.7804 },
-    { name: 'Malibu', description: 'Tanganyika, Democratic Republic of Congo', latitude: -7.18333, longitude: 29.65 },
-    { name: 'Bare', description: '', latitude: 2.0, longitude: 3.0 }
+    { name: 'Malibu', description: 'California, United States', latitude: 34.02577, longitude: -118.7804, country: 'United States' },
+    { name: 'Malibu', description: 'Tanganyika, Democratic Republic of Congo', latitude: -7.18333, longitude: 29.65, country: 'Democratic Republic of Congo' },
+    { name: 'Bare', description: '', latitude: 2.0, longitude: 3.0, country: '' }
   ],
   'weather parses geocoding suggestions and drops incomplete rows'
 )
@@ -145,6 +147,20 @@ assert(
   panelSource.split('root.controller.show()\n    locationFile.reload()\n    root.refresh()').length === 3,
   'weather reloads external location changes whenever either open path runs'
 )
+assert(
+  panelSource.includes('Model.shouldUseImperial(setting("unit", ""), Qt.locale().name, configuredCountry || reportCountry)'),
+  'weather prefers the configured location country over wttr and locale for units'
+)
+assert(
+  /persistLocation\(location\.name, location\.latitude, location\.longitude, location\.country\)/.test(panelSource) &&
+    /persistLocation\(suggestion\.name, suggestion\.latitude, suggestion\.longitude, suggestion\.country\)/.test(panelSource),
+  'weather persists the geocoded country alongside name and coordinates'
+)
+assert(
+  panelSource.includes("configuredLocationState = Model.parseLocationFile(text())"),
+  'weather reads location directly from the file without a mid-write guard'
+)
+
 assert(!weather.weatherResponseCompletesSave(true, 'wttr'), 'weather keeps the spinner through a non-authoritative pinned-location response')
 assert(weather.weatherResponseCompletesSave(true, 'open-meteo'), 'weather completes a pinned-location save with Open-Meteo data')
 assert(weather.weatherResponseCompletesSave(false, 'wttr'), 'weather completes a name-only location save with wttr data')
@@ -165,6 +181,14 @@ weather_location() {
 weather_location --set "Malibu" "34.02577,-118.7804"
 [[ $(jq -c . "$test_tmp/.local/state/omarchy/settings/weather.json") == '{"name":"Malibu","latitude":34.02577,"longitude":-118.7804}' ]] || fail "weather location stores name and coordinates as JSON"
 pass "weather location stores name and coordinates as JSON"
+
+weather_location --set "Turbaco" "10.32944,-75.41137" "Colombia"
+[[ $(jq -c . "$test_tmp/.local/state/omarchy/settings/weather.json") == '{"name":"Turbaco","latitude":10.32944,"longitude":-75.41137,"country":"Colombia"}' ]] || fail "weather location stores an optional country alongside coordinates"
+pass "weather location stores an optional country alongside coordinates"
+
+weather_location --set "Malibu" "34.02577,-118.7804"
+[[ $(jq 'has("country")' "$test_tmp/.local/state/omarchy/settings/weather.json") == "false" ]] || fail "weather location omits the country key when none is given"
+pass "weather location omits the country key when none is given"
 
 [[ $(weather_location) == "Malibu" ]] || fail "weather location returns the stored name"
 pass "weather location returns the stored name"
