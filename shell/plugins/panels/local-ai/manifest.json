@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.local-ai",
+  "name": "Local AI",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Local AI model server: load, unload, and switch models sized to this GPU",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Local AI",
+    "description": "Load, unload, and switch the local AI model server",
+    "category": "System",
+    "allowMultiple": false
+  }
+}
