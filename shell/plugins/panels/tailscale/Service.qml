@@ -287,6 +287,8 @@ Item {
     selfUserId = parsed.selfUserId
     fileSharing = parsed.fileSharing
     peers = parsed.running ? parsed.peers : []
+    // Stop hurrying as soon as there is something to show.
+    if (peers.length > 0) peersRamp.ticks = 0
     tailnetExitNodes = parsed.running ? parsed.exitNodes : []
     exitNodes = parsed.running ? tailnetExitNodes.concat(mullvadRegions) : []
 
@@ -556,27 +558,18 @@ Item {
   }
 
   Timer {
-    id: refreshTimer
-    interval: root.refreshIntervalSec * 1000
-    repeat: true
-    running: true
-    triggeredOnStart: true
-    onTriggered: root.refresh()
-  }
-
-  Timer {
-    // After a fresh boot the startup poll usually lands before tailscaled has
-    // connected, which left the icon stale until the next periodic refresh.
-    // Poll quickly until the service shows up, or give up after ~30 seconds.
-    id: startupRamp
+    // A tailnet answers within a second or two of coming up, but the ordinary
+    // poll is half a minute away, so an empty list sat there for the rest of
+    // the interval whatever it actually contained. Ask again quickly while
+    // there is nothing to show, and stop the moment there is.
+    id: peersRamp
     property int ticks: 0
     interval: 2000
     repeat: true
-    running: true
+    running: root.running && root.peers.length === 0 && ticks < 8
     onTriggered: {
       ticks += 1
-      if (root.running || ticks >= 15) startupRamp.running = false
-      else root.refresh()
+      root.refreshStatusAndAccounts(false)
     }
   }
 

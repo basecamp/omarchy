@@ -30,6 +30,12 @@ Inside the panel:
 - `r`: refresh status
 - `esc`: close
 
+The machines list carries only peers that are online, and shows nothing when
+there are none -- an empty section says that on its own, and a machine list is
+one of the things this panel is worst placed to be certain about. While it is
+empty and the machine is up, the panel polls quickly rather than waiting out
+the refresh interval, so the list appears about as fast as the tailnet answers.
+
 Adding a tailnet runs `tailscale login`, which makes the new profile current
 before the browser half finishes -- the machine leaves the tailnet it is on the
 moment it starts. The row asks before doing that, offers a cancel while it runs,

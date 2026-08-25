@@ -386,6 +386,18 @@ assert(/_previousBackendState = backendState/.test(serviceSource), 'tailscale on
 assert(/opacity: shown \? 1 : 0\s*\n\s*enabled: shown/.test(panelSource), 'tailscale keeps the row action in the layout so hovering cannot resize the row')
 assert(!/visible: accountRow\.addingAccount \|\| accountRow\.addArmed/.test(panelSource), 'tailscale no longer toggles the row action with visible')
 
+// after it, so running-and-named is not on its own enough to call it empty.
+// before the peer list arrives, so the list says it is loading until it turns
+// up or has had long enough to be an answer.
+assert(/interval: 10000/.test(serviceSource), 'tailscale waits long enough to be sure')
+// polls never landed outside Running never looked like a transition at all.
+// The list emptying while the machine is up is the signal, whatever caused it.
+// The ordinary poll is half a minute away, so an empty list stayed empty for
+// the rest of the interval whatever the tailnet actually held.
+assert(/id: peersRamp/.test(serviceSource), 'tailscale asks again quickly while it has nothing to show')
+assert(/running: root\.running && root\.peers\.length === 0 && ticks < 8/.test(serviceSource), 'tailscale only hurries while the list is empty, and not forever')
+assert(/if \(peers\.length > 0\) peersRamp\.ticks = 0/.test(serviceSource), 'tailscale stops hurrying once the list arrives')
+
 // The real shape of a second tailnet: Tailscale names the profile after the
 // login it was made from, and the tailnet carries the name set in the admin
 // console.
