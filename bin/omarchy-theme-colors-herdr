@@ -1,0 +1,217 @@
+#!/bin/bash
+
+# omarchy:summary=Serialize a theme's colors-herdr.toml into a herdr-theme.toml snippet
+# omarchy:args=--file <colors-herdr.toml> --out <herdr-theme.toml>
+# omarchy:hidden=true
+
+set -euo pipefail
+
+usage() {
+  echo "Usage: omarchy-theme-colors-herdr --file <colors-herdr.toml> --out <herdr-theme.toml>"
+}
+
+INPUT=""
+OUTPUT=""
+
+while (( $# > 0 )); do
+  case "$1" in
+    --file)
+      [[ -n ${2:-} ]] || { usage >&2; exit 1; }
+      INPUT="$2"
+      shift 2
+      ;;
+    --out)
+      [[ -n ${2:-} ]] || { usage >&2; exit 1; }
+      OUTPUT="$2"
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ -z $INPUT || -z $OUTPUT || -n ${1:-} ]]; then
+  usage >&2
+  exit 1
+fi
+
+if [[ ! -f $INPUT ]]; then
+  echo "omarchy-theme-colors-herdr: no such file: $INPUT" >&2
+  exit 1
+fi
+
+if ! omarchy-cmd-present python3; then
+  echo "omarchy-theme-colors-herdr: python3 is required to read colors-herdr.toml" >&2
+  exit 1
+fi
+
+python3 - "$INPUT" "$OUTPUT" <<'PY'
+import os
+import re
+import sys
+import tempfile
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    print("omarchy-theme-colors-herdr: python3 is too old for tomllib (3.11+ needed)", file=sys.stderr)
+    sys.exit(1)
+
+from datetime import date as _date
+from datetime import datetime as _datetime
+from datetime import time as _time
+
+HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
+BARE_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def fail(message):
+    print(f"omarchy-theme-colors-herdr: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def toml_string(value):
+    """Escape a value for TOML double-quoted string."""
+    out = []
+    for ch in value:
+        if ch == "\\":
+            out.append("\\\\")
+        elif ch == '"':
+            out.append('\\"')
+        elif ch == "\n":
+            out.append("\\n")
+        elif ch == "\r":
+            out.append("\\r")
+        elif ch == "\t":
+            out.append("\\t")
+        elif ord(ch) < 32 or ord(ch) == 127:
+            out.append(f"\\{ord(ch)}")
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'
+
+
+def check_value(value):
+    if isinstance(value, bool) or isinstance(value, str) or isinstance(value, int) or isinstance(value, float):
+        return
+    if isinstance(value, (_date, _time, _datetime)):
+        fail("colors-herdr.toml values may not be dates or times")
+    if isinstance(value, list):
+        for item in value:
+            check_value(item)
+        return
+    if isinstance(value, dict):
+        for item in value.values():
+            check_value(item)
+        return
+    fail("colors-herdr.toml values may only be strings, numbers, booleans, arrays, and tables")
+
+
+input_path, output_path = sys.argv[1], sys.argv[2]
+
+try:
+    with open(input_path, "rb") as handle:
+        data = tomllib.load(handle)
+except tomllib.TOMLDecodeError as error:
+    fail(f"invalid TOML in {os.path.basename(input_path)}: {error}")
+except UnicodeDecodeError:
+    fail(f"{os.path.basename(input_path)} is not valid UTF-8")
+
+for key in data:
+    if key not in ("schema", "theme"):
+        fail(f"colors-herdr.toml does not support the top-level key '{key}'")
+
+schema = data.get("schema", 1)
+if not isinstance(schema, int) or isinstance(schema, bool) or schema != 1:
+    fail(f"unsupported schema version: {schema!r}")
+
+theme = data.get("theme")
+if not isinstance(theme, dict) or not theme:
+    fail("colors-herdr.toml defines no [theme] entries")
+
+# Validate theme section: only allowed keys
+THEME_ALLOWED = {"name", "auto_switch", "dark_name", "light_name"}
+CUSTOM_ALLOWED = {
+    "accent", "panel_bg", "sidebar_bg", "active_row_bg", "selection_bg",
+    "surface0", "surface1", "surface_dim", "overlay0", "overlay1",
+    "text", "subtext0", "mauve", "green", "yellow", "red", "blue", "teal", "peach",
+}
+
+for key in theme:
+    if key == "custom":
+        continue
+    if key not in THEME_ALLOWED:
+        fail(f"[theme] does not support the key '{key}'")
+
+custom = theme.get("custom", {})
+if not isinstance(custom, dict):
+    fail("[theme.custom] must be a table")
+
+for key, value in custom.items():
+    if key not in CUSTOM_ALLOWED:
+        fail(f"[theme.custom] does not support the key '{key}'")
+    if not isinstance(value, str):
+        fail(f"[theme.custom] value for '{key}' must be a string")
+    if not HEX_COLOR.match(value):
+        fail(f"[theme.custom] value for '{key}' is not a valid hex color: {value!r}")
+
+check_value(theme)
+
+# Build the output TOML snippet
+lines = []
+
+# [theme] section
+theme_keys = {k: v for k, v in theme.items() if k != "custom"}
+if theme_keys:
+    lines.append("[theme]")
+    for key, value in theme_keys.items():
+        name = key if BARE_KEY.fullmatch(key) else toml_string(key)
+        if isinstance(value, bool):
+            lines.append(f"{name} = {'true' if value else 'false'}")
+        elif isinstance(value, str):
+            lines.append(f"{name} = {toml_string(value)}")
+        else:
+            lines.append(f"{name} = {value}")
+    lines.append("")
+
+# [theme.custom] section
+if custom:
+    lines.append("[theme.custom]")
+    for key, value in custom.items():
+        name = key if BARE_KEY.fullmatch(key) else toml_string(key)
+        lines.append(f"{name} = {toml_string(value)}")
+    lines.append("")
+
+rendered = "\n".join(lines)
+
+directory = os.path.dirname(os.path.abspath(output_path))
+try:
+    handle = tempfile.NamedTemporaryFile(
+        mode="w", dir=directory, prefix=".herdr-theme.toml.", delete=False
+    )
+except OSError as error:
+    fail(f"cannot write next to {output_path}: {error}")
+
+try:
+    try:
+        handle.write(rendered)
+        handle.flush()
+        os.fsync(handle.fileno())
+    except OSError as error:
+        handle.close()
+        os.unlink(handle.name)
+        fail(f"cannot write {output_path}: {error}")
+    handle.close()
+    os.chmod(handle.name, 0o644)
+    os.replace(handle.name, output_path)
+except OSError as error:
+    if os.path.exists(handle.name):
+        os.unlink(handle.name)
+    fail(f"cannot replace {output_path}: {error}")
+PY

@@ -234,6 +234,30 @@ without it the generated default is kept.
 Neovim picks the staged file up through its theme hot-reload watcher, so
 switching themes retints running instances like any other theme change.
 
+## `colors-herdr.toml`
+
+A theme can carry its own Herdr integration declaratively in `colors-herdr.toml`.
+The file is pure data: `omarchy-theme-colors-herdr` serializes it into the staged
+theme's `herdr-theme.toml` as TOML literals while `omarchy-theme-set-templates`
+runs, replacing the generated default for that one file. An installed theme may
+ship `colors-herdr.toml` but not `herdr-theme.toml` itself — the serializer is
+the only path to that file because Herdr loads it as configuration:
+
+```toml
+schema = 1
+
+[theme]
+name = "terminal"
+
+[theme.custom]
+accent = "#8a9a7b"
+panel_bg = "#1c1c1c"
+```
+
+The `[theme]` section controls the theme name and auto-switch behavior. The `[theme.custom]` section maps Herdr color token names to hex values. Every custom value must be a six-digit hex color (`#rrggbb`), and every key must be a Herdr token that Omarchy recognizes (`accent`, `panel_bg`, `sidebar_bg`, `active_row_bg`, `selection_bg`, `surface0`, `surface1`, `surface_dim`, `overlay0`, `overlay1`, `text`, `subtext0`, `mauve`, `green`, `yellow`, `red`, `blue`, `teal`, `peach`).
+
+Safety comes from serialization, not from inspection: every value is emitted as a TOML double-quoted literal, so no value can break out of its context and become code. What Herdr loads is exactly the data the TOML carries, nothing more. Rendering needs python3 3.11+ (stdlib `tomllib`); without it the generated default is kept.
+
 ## Template placeholders
 
 Templates are plain files ending in `.tpl`. `omarchy-theme-set-templates`
