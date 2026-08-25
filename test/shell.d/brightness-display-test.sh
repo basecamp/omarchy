@@ -10,7 +10,8 @@ trap 'rm -rf "$test_tmp"' EXIT
 mock_bin="$test_tmp/bin"
 call_log="$test_tmp/calls"
 runtime_dir="$test_tmp/runtime"
-mkdir -p "$mock_bin" "$runtime_dir"
+backlight_dir="$test_tmp/backlight"
+mkdir -p "$mock_bin" "$runtime_dir" "$backlight_dir"
 
 cat >"$mock_bin/omarchy-hyprland-monitor-focused-apple" <<'SH'
 #!/bin/bash
@@ -24,7 +25,7 @@ SH
 
 cat >"$mock_bin/omarchy-hw-display" <<'SH'
 #!/bin/bash
-printf 'mock_backlight\n'
+printf '%s\n' "${BACKLIGHT_DEVICE:-mock_backlight}"
 SH
 
 cat >"$mock_bin/brightnessctl" <<'SH'
@@ -54,7 +55,7 @@ SH
 chmod +x "$mock_bin"/*
 
 run_brightness() {
-  CALL_LOG="$call_log" XDG_RUNTIME_DIR="$runtime_dir" PATH="$mock_bin:$ROOT/bin:$PATH" \
+  CALL_LOG="$call_log" XDG_RUNTIME_DIR="$runtime_dir" OMARCHY_BACKLIGHT_PATH="$backlight_dir" PATH="$mock_bin:$ROOT/bin:$PATH" \
     "$ROOT/bin/omarchy-brightness-display" "$@"
 }
 
@@ -85,6 +86,20 @@ brightness=$(run_brightness --monitor eDP-1)
 grep -F 'brightnessctl -d mock_backlight -m' "$call_log" >/dev/null || \
   fail "internal monitor queries brightnessctl"
 pass "internal monitor uses the kernel backlight"
+
+mkdir -p "$backlight_dir/gmux_backlight"
+printf '1794\n' >"$backlight_dir/gmux_backlight/brightness"
+printf '52428\n' >"$backlight_dir/gmux_backlight/actual_brightness"
+printf '65535\n' >"$backlight_dir/gmux_backlight/max_brightness"
+
+brightness=$(BACKLIGHT_DEVICE=gmux_backlight run_brightness --monitor eDP-1)
+[[ $brightness == "80" ]] || fail "gmux reports the hardware brightness instead of a stale requested value" "actual: $brightness"
+pass "gmux reports the hardware brightness instead of a stale requested value"
+
+BACKLIGHT_DEVICE=gmux_backlight run_brightness --no-osd --monitor eDP-1 +5%
+grep -F 'brightnessctl -d gmux_backlight set 85%' "$call_log" >/dev/null || \
+  fail "gmux brightness steps start from the hardware brightness"
+pass "gmux brightness steps start from the hardware brightness"
 
 brightness=$(FOCUSED_MONITOR=DP-1 run_brightness)
 [[ $brightness == "50" ]] || fail "brightness follows the focused external monitor" "actual: $brightness"

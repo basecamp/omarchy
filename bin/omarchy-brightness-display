@@ -26,7 +26,19 @@ done
 
 # Get the brightness of the passed display
 backlight_brightness() {
-  brightnessctl -d "$1" -m 2>/dev/null | awk -F, '{ gsub("%", "", $4); print $4; found=1 } END{ exit !found }'
+  local device="$1"
+  local backlight_path="${OMARCHY_BACKLIGHT_PATH:-/sys/class/backlight}"
+
+  # apple-gmux can retain a stale requested value after switching GPUs while
+  # the hardware keeps a different level. Its actual_brightness register uses
+  # the same scale as max_brightness, so report the level the panel is using.
+  if [[ $device == "gmux_backlight" && -r $backlight_path/$device/actual_brightness && -r $backlight_path/$device/max_brightness ]]; then
+    awk 'NR == FNR { actual = $1; next } $1 > 0 { print int(actual * 100 / $1 + 0.5); found = 1 } END { exit !found }' \
+      "$backlight_path/$device/actual_brightness" "$backlight_path/$device/max_brightness"
+    return
+  fi
+
+  brightnessctl -d "$device" -m 2>/dev/null | awk -F, '{ gsub("%", "", $4); print $4; found=1 } END{ exit !found }'
 }
 
 [[ -n $monitor ]] || monitor="$(omarchy-hyprland-monitor-focused 2>/dev/null || true)"
