@@ -19,6 +19,14 @@ LOGO_PAD_LEFT=2
 LOGO_PAD_TOP=2
 LOGO_PAD_RIGHT=6
 
+# The packaged config prints a wordmark sized to the terminal: file logos are 1:1
+# characters and ignore width, so that config is command-raw. About still draws
+# the branding file, or the sheen would look for about.txt in a logo that was
+# never drawn.
+about_fastfetch() {
+  fastfetch --logo-type file --logo "$LOGO_FILE" "$@"
+}
+
 # The content is measured once and then goes on living: an uptime that turns
 # minutes into hours and hours into days, a version string that grows, a module
 # that shows up on the next boot. A window fitted to exactly what was measured
@@ -203,7 +211,7 @@ measure_layout() {
 
   # --pipe false because fastfetch drops its colours when it is not writing to a
   # terminal, and it is writing to this substitution.
-  rendered=$(fastfetch --pipe false 2>/dev/null; printf X)
+  rendered=$(about_fastfetch --pipe false 2>/dev/null; printf X)
   rendered=${rendered%X}
   LAYOUT_ROWS=$(printf '%s' "$rendered" | wc -l)
   (( LAYOUT_ROWS > 0 )) || return 1
@@ -341,7 +349,7 @@ if [[ ${1:-} == "--render" ]]; then
     resized=false
     LAYOUT_ROWS=""
     clear
-    fastfetch
+    about_fastfetch
     # A second pass picks up a fit that could not measure the window the first
     # time. Beyond that, a window that will not settle would be fitted again on
     # every repaint.

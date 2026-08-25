@@ -1,0 +1,96 @@
+#!/bin/bash
+
+# omarchy:summary=Print an Omarchy wordmark sized to the terminal for fastfetch
+# omarchy:hidden=true
+
+# Fastfetch file logos are 1:1 characters and ignore --logo-width, so a 26-row
+# About icon (or the 81-column wordmark) overflows typical terminals and the
+# modules collide with it on resize. Pick the largest green Omarchy mark that
+# still leaves room for the module column. About overrides this to the branding
+# file, which is how the sheen finds those cells.
+
+set -euo pipefail
+
+# Must match etc/fastfetch/config.jsonc logo.padding and the Hardware/Software
+# box width — the picker subtracts these from the grid so the layout fits.
+PAD_LEFT=2
+PAD_RIGHT=6
+PAD_TOP=2
+MODULE_COLUMNS=54
+
+omarchy_path=${OMARCHY_PATH:-/usr/share/omarchy}
+omarchy_path=${omarchy_path%/}
+
+cols=${COLUMNS:-}
+rows=${LINES:-}
+
+if [[ $cols =~ ^[0-9]+$ && $rows =~ ^[0-9]+$ ]]; then
+  :
+else
+  stty_rows=""
+  stty_cols=""
+  if [[ -r /dev/tty ]]; then
+    read -r stty_rows stty_cols < <(stty size </dev/tty 2>/dev/null) || true
+  fi
+  [[ $cols =~ ^[0-9]+$ ]] || cols=${stty_cols:-80}
+  [[ $rows =~ ^[0-9]+$ ]] || rows=${stty_rows:-24}
+fi
+
+max_w=$(( cols - PAD_LEFT - PAD_RIGHT - MODULE_COLUMNS ))
+max_h=$(( rows - PAD_TOP - 1 ))
+(( max_w < 1 )) && max_w=1
+(( max_h < 1 )) && max_h=1
+
+logo_width() {
+  local line max=0
+  while IFS= read -r line || [[ -n $line ]]; do
+    if (( ${#line} > max )); then
+      max=${#line}
+    fi
+  done <"$1"
+  printf '%s' "$max"
+}
+
+logo_height() {
+  wc -l <"$1"
+}
+
+# Largest first: the full wordmark, a half-width one, then the compact O.
+variants=(
+  "$omarchy_path/logo.txt"
+  "$omarchy_path/etc/fastfetch/logo.txt"
+  "$omarchy_path/etc/fastfetch/logo-small.txt"
+)
+
+chosen=""
+fallback=""
+for file in "${variants[@]}"; do
+  [[ -f $file ]] || continue
+  fallback=$file
+  w=$(logo_width "$file")
+  h=$(logo_height "$file")
+  if (( w <= max_w && h <= max_h )); then
+    chosen=$file
+    break
+  fi
+done
+[[ -n $chosen ]] || chosen=$fallback
+[[ -n $chosen ]] || exit 1
+
+print_logo() {
+  local file=$1 line
+
+  # command-raw does not honour logo.color, so paint the wordmark here — the
+  # same bold green a file logo with color.1=green would have used.
+  if [[ -n ${NO_COLOR:-} ]]; then
+    cat "$file"
+    return
+  fi
+
+  local green=$'\e[1m\e[32m' reset=$'\e[0m'
+  while IFS= read -r line || [[ -n $line ]]; do
+    printf '%s%s%s\n' "$green" "$line" "$reset"
+  done <"$file"
+}
+
+print_logo "$chosen"
