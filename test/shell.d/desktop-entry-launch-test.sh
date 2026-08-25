@@ -196,6 +196,16 @@ grep -Fxq 'pkg:alpha beta' "$OMARCHY_TEST_LOG" ||
   fail "install-app keeps every package when the list is newline-separated" "$(<"$OMARCHY_TEST_LOG")"
 pass "install-app keeps every package when the list is newline-separated"
 
+env SHELLOPTS=errexit bash "$ROOT/bin/omarchy-install-app" "Example App" "alpha beta" ||
+  fail "install-app builds its command under an inherited errexit"
+[[ $(<"$OMARCHY_TEST_PRESENTATION") == 'echo Installing\ Example\ App...; omarchy-pkg-add alpha beta' ]] ||
+  fail "install-app builds the same command under an inherited errexit" "$(<"$OMARCHY_TEST_PRESENTATION")"
+env SHELLOPTS=errexit bash "$ROOT/bin/omarchy-install-and-launch" "Example App" "alpha beta" "Disk Usage" ||
+  fail "install-and-launch builds its command under an inherited errexit"
+grep -Fq 'omarchy-pkg-add alpha beta' "$OMARCHY_TEST_PRESENTATION" ||
+  fail "install-and-launch keeps its package list under an inherited errexit" "$(<"$OMARCHY_TEST_PRESENTATION")"
+pass "the installers build their command under an inherited errexit"
+
 bash "$ROOT/bin/omarchy-install-font" "Example Font" "alpha; echo PWNED" "Example Family"
 : >"$OMARCHY_TEST_LOG"
 run_presentation >"$test_tmp/font-pkg-inject.out"
