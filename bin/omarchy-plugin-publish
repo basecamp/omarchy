@@ -82,9 +82,9 @@ api_url="${api_url%/}"
 registry_url=$(omarchy-plugin-registry base-url)
 state_host=$(printf '%s' "$registry_url" | sed -E 's|^[a-z]+://||; s|[/:]|_|g')
 STATE_DIR="${OMARCHY_PLUGIN_REGISTRY_STATE:-$HOME/.local/state/omarchy/registry}/$state_host"
-# Tokens are scoped to one publisher/plugin, so cache one per scope — each
-# lives its full 7 days even when publishing several plugins.
-TOKEN_FILE="$STATE_DIR/publish-token.${ref//\//_}.json"
+# One account-wide token per registry covers every plugin you own for its
+# full 7 days.
+TOKEN_FILE="$STATE_DIR/publish-token.json"
 
 api_post() {
   # $1 = path, rest = extra curl args. Prints "HTTP_CODE\nBODY".
@@ -98,17 +98,18 @@ api_post() {
 
 cached_token() {
   [[ -f $TOKEN_FILE ]] || return 1
-  local scope expires
-  scope=$(jq -r '.scope // ""' "$TOKEN_FILE")
+  local expires
   expires=$(jq -r '.expires_at // ""' "$TOKEN_FILE")
-  [[ $scope == "$ref" ]] || return 1
   [[ -z $expires ]] || (( $(date -d "$expires" +%s) > $(date -u +%s) + 60 )) || return 1
   jq -r '.token' "$TOKEN_FILE"
 }
 
 device_flow_token() {
   local response code body device_code user_code verification_uri interval expires_in deadline
-  response=$(api_post "/api/v1/device/code" -X POST)
+  # Send the target as a display hint so the approval page shows the scope
+  # read-only instead of asking the human to re-type it.
+  response=$(api_post "/api/v1/device/code" -X POST \
+    --data-urlencode "publisher=${ref%%/*}" --data-urlencode "plugin=${ref##*/}")
   code="${response##*$'\n'}"
   body="${response%$'\n'*}"
   [[ $code == 201 ]] || fail "could not start device login (HTTP $code): $(jq -r '.error // .' <<<"$body" 2>/dev/null | head -c 200)"
@@ -142,10 +143,6 @@ LOGIN
     body="${response%$'\n'*}"
     case "$code" in
     200)
-      local scope
-      scope=$(jq -r '.scope // ""' <<<"$body")
-      [[ $scope == "$ref" ]] ||
-        fail "the approval was scoped to '$scope', not '$ref' — approve it for the plugin you are publishing"
       mkdir -p "$STATE_DIR"
       (umask 077 && jq '{token, scope, expires_at}' <<<"$body" >"$TOKEN_FILE")
       jq -r '.token' <<<"$body"
