@@ -1,6 +1,6 @@
 # Local AI
 
-How Omarchy serves a local model and wires it into the coding agents. User-facing documentation lives in `manual/17-ai.md`; this page is the reference for the catalog contract and the moving parts.
+How Omarchy serves a local model and wires it into the coding agents. User-facing documentation lives in `manual/17-ai.md`; this page is the reference for the catalog contract and the moving parts. The proposed shared API, registry ownership, safe recipe boundary, and complete interface contract live in [`plans/local-ai-registry/PROPOSAL.md`](../plans/local-ai-registry/PROPOSAL.md) and [`plans/local-ai-registry/INTERFACES.md`](../plans/local-ai-registry/INTERFACES.md).
 
 ## Shape
 
