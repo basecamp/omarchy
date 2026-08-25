@@ -507,6 +507,7 @@ function webSearchTarget(query, template) {
   if (!q) return ""
   if (webSearchLooksLikeUrl(q)) {
     if (/^localhost([:/?#]|$)/i.test(q)) return "http://" + q
+    if (/^[^:/?#]+\.[^:/?#]+:\d+(?:[/?#]|$)/.test(q)) return "https://" + q
     if (/^[a-z][a-z0-9+.-]*:/i.test(q)) return q
     return "https://" + q
   }
