@@ -51,7 +51,7 @@ hl.config({
 
 `kb_options` and Hyprland's bindings cover window-manager shortcuts, but they can't do physical key remapping — swapping what a key sends before it reaches Hyprland at all, tap/hold behavior on a single key, or layers. For that, install [keyd](https://github.com/rvaiya/keyd) from _Install > Service > keyd_ in the Omarchy menu (`Super + Space`), or run `omarchy-install-service-keyd`.
 
-keyd ships with an inert starter config at `/etc/keyd/default.conf` — edit it as root, then `sudo systemctl reload keyd` to apply. A common example, tap CapsLock for Escape and hold it as a layer:
+keyd ships with an inert starter config at `/etc/keyd/default.conf` — edit it as root, then `sudo keyd reload` to apply. A common example, tap CapsLock for Escape and hold it as a layer:
 
 ```
 [main]

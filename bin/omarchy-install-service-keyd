@@ -20,7 +20,7 @@ sudo systemctl enable --now keyd.service
 
 echo ""
 echo "keyd is installed and running. Edit /etc/keyd/default.conf, then run"
-echo "'sudo systemctl reload keyd' to apply changes."
+echo "'sudo keyd reload' to apply changes."
 echo ""
 echo "keyd remaps physical keys before Hyprland ever sees them, so a remap"
 echo "on CapsLock takes priority over Omarchy's compose:caps input option."
