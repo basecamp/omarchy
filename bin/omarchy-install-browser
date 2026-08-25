@@ -7,8 +7,16 @@
 set -e
 
 setup_policy_directory() {
-  sudo mkdir -p "$1"
-  sudo chmod a+rw "$1"
+  sudo install -d -m 755 "$1"
+}
+
+# Chromium-family browsers write their theme colour here (color.json) as the
+# user through omarchy-theme-set-browser, so hand the directory to that user at
+# 0755 instead of making it world-writable. A world-writable managed-policy
+# directory lets any local user or process drop a mandatory browser policy -- an
+# extension forcelist, a proxy, disabled Safe Browsing -- that every browser obeys.
+setup_chromium_policy_directory() {
+  sudo install -d -o "$USER" -g "$(id -gn)" -m 755 "$1"
 }
 
 announce_browser_installed() {
@@ -40,7 +48,7 @@ chromium)
   echo "Installing Chromium..."
   omarchy-pkg-add chromium
 
-  setup_policy_directory /etc/chromium/policies/managed
+  setup_chromium_policy_directory /etc/chromium/policies/managed
   copy_chromium_flags ~/.config/chromium-flags.conf
   omarchy-theme-set-browser
   announce_browser_installed "Chromium"
@@ -49,7 +57,7 @@ chrome)
   echo "Installing Chrome..."
   omarchy-pkg-aur-add google-chrome || exit 1
 
-  setup_policy_directory /etc/opt/chrome/policies/managed
+  setup_chromium_policy_directory /etc/opt/chrome/policies/managed
   copy_chromium_flags ~/.config/chrome-flags.conf
   omarchy-theme-set-browser
   announce_browser_installed "Chrome"
@@ -58,7 +66,7 @@ edge)
   echo "Installing Edge..."
   omarchy-pkg-aur-add microsoft-edge-stable-bin || exit 1
 
-  setup_policy_directory /etc/opt/edge/policies/managed
+  setup_chromium_policy_directory /etc/opt/edge/policies/managed
   copy_chromium_flags ~/.config/microsoft-edge-stable-flags.conf
   omarchy-theme-set-browser
   announce_browser_installed "Edge"
@@ -67,7 +75,7 @@ brave)
   echo "Installing Brave..."
   omarchy-pkg-aur-add brave-bin || exit 1
 
-  setup_policy_directory /etc/brave/policies/managed
+  setup_chromium_policy_directory /etc/brave/policies/managed
   copy_chromium_flags ~/.config/brave-flags.conf
   omarchy-theme-set-browser
   announce_browser_installed "Brave"
@@ -76,7 +84,7 @@ brave-origin)
   echo "Installing Brave Origin..."
   omarchy-pkg-aur-add brave-origin-bin || exit 1
 
-  setup_policy_directory /etc/brave/policies/managed
+  setup_chromium_policy_directory /etc/brave/policies/managed
   copy_chromium_flags ~/.config/brave-origin-flags.conf
   omarchy-theme-set-browser
   announce_browser_installed "Brave Origin"

@@ -1312,7 +1312,10 @@ apply_system_transition() {
     /usr/share/icons/Yaru/scalable/actions/go-next-symbolic.svg
   as_root gtk-update-icon-cache /usr/share/icons/Yaru >/dev/null 2>&1 || true
 
-  as_root install -d -m 0777 /etc/chromium/policies/managed
+  # Owned by the upgrading user at 0755, not world-writable: the theme colour
+  # file is written here as that user, and a world-writable managed-policy
+  # directory would let any local user force a mandatory browser policy.
+  as_root install -d -o "$target_user" -g "$(id -gn "$target_user")" -m 0755 /etc/chromium/policies/managed
   as_root install -d -m 0755 /usr/lib/chromium
   printf '%s\n' '{"browser":{"theme":{"color_scheme":0,"color_scheme2":0}}}' | \
     as_root tee /usr/lib/chromium/initial_preferences >/dev/null
