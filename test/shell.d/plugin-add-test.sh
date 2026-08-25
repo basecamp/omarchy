@@ -111,6 +111,20 @@ for bad in "ext::sh -c touch /tmp/omarchy-guard-test" "fd::17"; do
 done
 pass "plugin add rejects transport-helper URLs before cloning"
 
+# The `://` spelling of the same thing: git resolves git-remote-<scheme> for any
+# scheme it does not implement itself, so `ext::` and `ext://` reach the same
+# helper and both have to be refused.
+for bad in "ext://sh -c id" "gcrypt://example.com/x"; do
+  rm -f "$clone_marker"
+  output=$(add_url "$bad") &&
+    fail "plugin add rejects a transport-scheme URL: $bad" "$output"
+  grep -qF "which Omarchy does not clone from" <<<"$output" ||
+    fail "plugin add names the transport-scheme rejection: $bad" "$output"
+  [[ ! -e $clone_marker ]] ||
+    fail "plugin add reached git clone for a transport-scheme URL: $bad"
+done
+pass "plugin add rejects transport-scheme URLs before cloning"
+
 # Option-shaped URLs on argv are refused before clone — by the option parser
 # (`-*` falls to "unknown add option"), not the guard. The guard's own
 # leading-dash arm is only reachable through the interactive gum prompt and is
