@@ -2,8 +2,8 @@
 
 # omarchy:summary=Publish a plugin version to the registry
 # omarchy:group=plugin
-# omarchy:args=<publisher/name> [plugin-folder] [--yes]
-# omarchy:examples=omarchy plugin publish acme/weather | omarchy plugin publish acme/weather ./my-widget
+# omarchy:args=[plugin-folder] [--yes]
+# omarchy:examples=omarchy plugin publish | omarchy plugin publish ./my-widget
 
 set -euo pipefail
 
@@ -28,11 +28,6 @@ confirm() {
   fi
 }
 
-registry_ref() {
-  [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$ && $1 != *..* ]]
-}
-
-ref=""
 dir=""
 
 while (( $# > 0 )); do
@@ -42,35 +37,45 @@ while (( $# > 0 )); do
     shift
     ;;
   -h | --help)
-    echo "Usage: omarchy plugin publish <publisher/name> [plugin-folder] [--yes]"
+    echo "Usage: omarchy plugin publish [plugin-folder] [--yes]"
+    echo
+    echo "The target is read from the folder's manifest.json: an id of"
+    echo "'acme.weather' publishes as acme/weather. The folder defaults to"
+    echo "the current directory."
     exit 0
     ;;
   -*)
     fail "unknown publish option: $1"
     ;;
   *)
-    if [[ -z $ref ]]; then
-      ref="$1"
-    elif [[ -z $dir ]]; then
-      dir="$1"
-    else
-      fail "unexpected argument: $1"
-    fi
+    [[ -z $dir ]] || fail "unexpected argument: $1"
+    dir="$1"
     shift
     ;;
   esac
 done
 
-[[ -n $ref ]] || fail "a target is required (e.g. omarchy plugin publish acme/weather)"
-registry_ref "$ref" || fail "invalid target '$ref' (expected publisher/name)"
 dir="${dir:-.}"
-[[ -d $dir ]] || fail "plugin folder not found: $dir"
+# A publisher/name argument is indistinguishable from a relative path, so one
+# message covers both the typo and the old calling convention.
+[[ -d $dir ]] ||
+  fail "plugin folder not found: $dir (the target is read from its manifest.json, not the command line)"
 [[ -f $dir/manifest.json ]] || fail "missing manifest.json in $dir"
 
 omarchy-plugin-validate "$dir" || fail "refusing to publish: validation failed"
 
 version=$(jq -r '.version // empty' "$dir/manifest.json")
 [[ -n $version ]] || fail "manifest.json has no version"
+
+# The manifest id is the target: <publisher>.<name> becomes publisher/name.
+# Deriving it here (instead of taking it as an argument) means a publish can
+# never land in a different namespace than the manifest claims. Registry names
+# use lowercase letters, digits, - and _, so the id carries exactly one dot
+# and the split is unambiguous.
+id=$(jq -r '.id // empty' "$dir/manifest.json")
+[[ $id =~ ^[a-z0-9_-]+\.[a-z0-9_-]+$ ]] ||
+  fail "manifest id '$id' is not publishable: the registry needs <publisher>.<name>, each lowercase letters, digits, - or _"
+ref="${id%%.*}/${id#*.}"
 
 api_url=$(omarchy-plugin-registry api-url)
 api_url="${api_url%/}"

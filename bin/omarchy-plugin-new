@@ -96,8 +96,9 @@ Symlink-free copy into \`~/.config/omarchy/plugins/$id\`, then
 
 ## Publish
 
-\`omarchy plugin publish $ref\` (device login), or push a tag and let the
-trusted-publishing workflow in \`.github/workflows/publish.yml\` do it.
+Run \`omarchy plugin publish\` from this folder (device login; the target
+comes from the manifest id), or push a tag and let the trusted-publishing
+workflow in \`.github/workflows/publish.yml\` do it.
 README
 
 cat >"$dir/.github/workflows/publish.yml" <<WORKFLOW
