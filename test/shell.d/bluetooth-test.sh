@@ -19,6 +19,13 @@ assert(/manageIpc: false/.test(panelSource), 'bluetooth owns its IPC handler so 
 // Writing adapter.enabled sets BlueZ Powered, which does not survive a reboot.
 assert(/function toggleBluetooth\(\)[\s\S]*?execDetached\(\["omarchy-bluetooth-power", adapter\.enabled \? "off" : "on"\]\)/.test(panelSource), 'bluetooth toggles the radio through the rfkill soft block')
 assert(!/adapter\.enabled = /.test(panelSource), 'bluetooth never writes the adapter power state directly')
+assert(/if \(!adapter\) \{\s+Quickshell\.execDetached\(\["omarchy-bluetooth-power", "on"\]\)/.test(panelSource), 'bluetooth unblocks radio through helper when adapter is soft-blocked')
+
+// Hardware presence probe keeps the panel visible and toggle functional when the adapter is soft-blocked.
+assert(/visible: root\.hardwarePresenceKnown \? root\.hardwarePresent : \(root\.adapter !== null\)/.test(panelSource), 'bluetooth panel visibility gates on probed hardware presence')
+assert(/property int probeGeneration: 0/.test(panelSource), 'bluetooth probe tracks generation to prevent cross-probe races')
+assert(/command: \["rfkill", "-n", "-o", "DEVICE", "list", "bluetooth"\]/.test(panelSource), 'bluetooth probes hardware via named-column rfkill')
+
 
 // Discovery is a BlueZ session that nothing ends at panel close: it persists
 // until StopDiscovery or until quickshell's D-Bus connection drops with the
