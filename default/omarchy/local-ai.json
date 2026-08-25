@@ -1,7 +1,15 @@
 {
   "port": 8000,
-  "sources": [
-    "0xSero"
+  "registries": [
+    {
+      "owner": "0xSero",
+      "repo": "inference-index",
+      "branch": "main",
+      "catalog": "catalog.json",
+      "hardware_slugs": [
+        "rtx-3090-24gb"
+      ]
+    }
   ],
   "recipes": [
     {

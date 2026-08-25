@@ -100,8 +100,8 @@ cat >"$mock_bin/curl" <<'SH'
 #!/bin/bash
 for arg in "$@"; do
   case $arg in
-  *api.github.test/users/*) cat "$OMARCHY_TEST_FIXTURES/repos.json"; exit 0 ;;
-  *raw.github.test/*/recipe-repo/*) cat "$OMARCHY_TEST_FIXTURES/omarchy-recipe.json"; exit 0 ;;
+  *raw.github.test/0xSero/inference-index/main/catalog.json) cat "$OMARCHY_TEST_FIXTURES/registry-catalog.json"; exit 0 ;;
+  *raw.github.test/0xSero/inference-index/main/hardware/rtx-3090-24gb/registry-fast/recipe.json) cat "$OMARCHY_TEST_FIXTURES/registry-leaf.json"; exit 0 ;;
   *raw.github.test/*) exit 22 ;;
   */v1/models)
     if [[ ${OMARCHY_TEST_ACCEPT_FAIL:-false} == "true" ]]; then
@@ -330,18 +330,70 @@ for agent in pi omp; do
 done
 pass "remove restores agent configuration and preserves caches"
 
-jq -n '[{name: "recipe-repo", default_branch: "main"}, {name: "no-recipe", default_branch: "main"}]' >"$fixtures/repos.json"
-jq -n '{name: "step3-flash", label: "Step 3 Flash (test)", status: "validated", min_vram_mb: 90000, image: "ghcr.io/test/step3:latest"}' >"$fixtures/omarchy-recipe.json"
-OMARCHY_AI_GITHUB_API="https://api.github.test" OMARCHY_AI_GITHUB_RAW="https://raw.github.test" omarchy-ai-sync >"$test_tmp/sync-output"
+jq -n '{
+  schema_version: "inference-index/catalog-v1",
+  recipes: [{
+    id: "registry-fast",
+    hardware_slug: "rtx-3090-24gb",
+    status: "validated",
+    launchable_by_cli: true,
+    runtime_kind: "docker",
+    recipe_path: "hardware/rtx-3090-24gb/registry-fast/recipe.json"
+  }]
+}' >"$fixtures/registry-catalog.json"
+jq -n '{
+  schema_version: "inference-index/v1",
+  id: "registry-fast",
+  status: "validated",
+  profile: "tp1",
+  model: {
+    slug: "qwen3.8-27b",
+    name: "Qwen3.8-27B",
+    source: "test/Qwen3.8-27B-AWQ-INT4",
+    revision: "0123456789abcdef0123456789abcdef01234567",
+    served_name: "Qwen3.8-27B-registry"
+  },
+  weights: {slug: "awq-int4", format: "AWQ", precision: "INT4 W4A16", size_gb: 20},
+  hardware: {slug: "rtx-3090-24gb", accelerator: "NVIDIA GeForce RTX 3090 24GB", count: 1, memory_gb_each: 24},
+  engine: {name: "vllm", version: "0.27.1", graph_mode: "full-and-piecewise"},
+  runtime: {
+    kind: "docker",
+    image: "ghcr.io/test/registry-fast@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    container_port: 8000,
+    host_port: 12434,
+    ipc: "host",
+    shm_size: "16g",
+    environment: {REGISTRY_TEST: "1"},
+    mounts: [{source: "~/.cache/huggingface", target: "/root/.cache/huggingface", read_only: false}],
+    arguments: ["--model", "test/Qwen3.8-27B-AWQ-INT4", "--tensor-parallel-size", "1"]
+  },
+  serving: {api: "openai/v1", tensor_parallel: 1, configured_max_context_tokens: 131072},
+  capabilities: {chat: true, reasoning: true, tools: true, vision: true}
+}' >"$fixtures/registry-leaf.json"
+OMARCHY_AI_GITHUB_RAW="https://raw.github.test" omarchy-ai-sync >"$test_tmp/sync-output"
 cache="$test_home/.local/state/omarchy/local-ai/catalog.json"
-jq -e '.recipes[] | select(.name == "step3-flash") | .source == "github:0xSero/recipe-repo"' "$cache" >/dev/null ||
-  fail "sync merges a sourced recipe"
-jq -e '.recipes[] | select(.name == "step3-flash") | .status == "candidate"' "$cache" >/dev/null ||
-  fail "sync downgrades self-asserted validation to candidate"
-listing=$(OMARCHY_AI_HARDWARE_JSON="$(hardware_json 1 98304)" omarchy-ai-list --json)
-jq -e '.recipes[] | select(.name == "step3-flash") | .compatible and (.fits | not)' <<<"$listing" >/dev/null ||
-  fail "synced candidates remain non-runnable"
-pass "sync cannot bypass the validation gate"
+jq -e '.recipes[] | select(.name == "registry-fast") | .source == "github:0xSero/inference-index" and .status == "validated" and .registry_path == "hardware/rtx-3090-24gb/registry-fast/recipe.json"' "$cache" >/dev/null ||
+  fail "sync preserves the canonical registry identity and validation"
+listing=$(OMARCHY_AI_CATALOG="$cache" OMARCHY_AI_HARDWARE_JSON="$one_gpu" omarchy-ai-list --json)
+jq -e '.recipes[] | select(.name == "registry-fast") | .compatible and .available and .fits' <<<"$listing" >/dev/null ||
+  fail "validated registry recipes become runnable on matching hardware"
+plan=$(OMARCHY_AI_CATALOG="$cache" OMARCHY_AI_HARDWARE_JSON="$one_gpu" omarchy-ai-run registry-fast --dry-run --json)
+jq -e '
+  .ok
+  and .plan.port == 12434
+  and (.plan.docker_argv | index("127.0.0.1:12434:8000") != null)
+  and (.plan.docker_argv | index("ghcr.io/test/registry-fast@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef") != null)
+  and (.plan.docker_argv | index("--tensor-parallel-size") != null)
+' <<<"$plan" >/dev/null || fail "planner translates the canonical leaf without replacing its launch contract"
+if jq -r '.plan.docker_argv[]' <<<"$plan" | grep -Eq -- '--disable[^ ]*cuda-graph|--enforce-eager'; then
+  fail "registry adapter keeps CUDA graphs enabled"
+fi
+cp "$cache" "$test_tmp/catalog-before-failed-sync.json"
+if OMARCHY_AI_GITHUB_RAW="https://missing.github.test" omarchy-ai-sync >"$test_tmp/failed-sync-output" 2>&1; then
+  fail "an unavailable configured registry reports sync failure"
+fi
+cmp -s "$test_tmp/catalog-before-failed-sync.json" "$cache" || fail "failed sync preserves the last good catalog"
+pass "sync consumes canonical registry leaves without weakening validation"
 
 panel_dir="$ROOT/shell/plugins/panels/local-ai"
 jq -e '.id == "omarchy.local-ai" and .entryPoints.barWidget == "Panel.qml"' "$panel_dir/manifest.json" >/dev/null ||

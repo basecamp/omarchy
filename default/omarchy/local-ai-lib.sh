@@ -164,7 +164,7 @@ ai_resolve_json() {
 ai_plan_json() {
   local wanted="${1:-}"
   local port="${2:-}"
-  local resolution recipe selected ids image container_port pair source target argv_json port_available
+  local resolution recipe selected ids image container_port network_mode pair source target argv_json port_available
   resolution=$(ai_resolve_json "$wanted")
   if [[ $(jq -r '.ok' <<<"$resolution") != "true" ]]; then
     jq . <<<"$resolution"
@@ -175,6 +175,9 @@ ai_plan_json() {
   selected=$(jq '.selected_device_ids' <<<"$resolution")
   ids=$(jq -r 'map(tostring) | join(",")' <<<"$selected")
   if [[ -z $port ]]; then
+    port=$(jq -r '.host_port // empty' <<<"$recipe")
+  fi
+  if [[ -z $port ]]; then
     port=$(jq -r '.port' "$(ai_catalog_path)")
   fi
   port_available=false
@@ -182,9 +185,15 @@ ai_plan_json() {
     port_available=true
   fi
   container_port=$(jq -r '.container_port // 8000' <<<"$recipe")
+  network_mode=$(jq -r '.network_mode // empty' <<<"$recipe")
   image=$(jq -r '.image' <<<"$recipe")
 
-  local docker_args=(docker run --detach --name "$AI_CONTAINER" --label io.omarchy.local-ai=1 --label "io.omarchy.local-ai.recipe=$(jq -r '.name' <<<"$recipe")" --restart unless-stopped --gpus "device=$ids" --publish "127.0.0.1:$port:$container_port")
+  local docker_args=(docker run --detach --name "$AI_CONTAINER" --label io.omarchy.local-ai=1 --label "io.omarchy.local-ai.recipe=$(jq -r '.name' <<<"$recipe")" --restart unless-stopped --gpus "device=$ids")
+  if [[ $network_mode == "host" ]]; then
+    docker_args+=(--network host)
+  else
+    docker_args+=(--publish "127.0.0.1:$port:$container_port")
+  fi
   mapfile -t run_args < <(jq -r '.run_args[]?' <<<"$recipe")
   docker_args+=("${run_args[@]}")
   while IFS= read -r pair; do

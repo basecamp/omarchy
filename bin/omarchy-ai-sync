@@ -1,55 +1,149 @@
 #!/bin/bash
 
-# omarchy:summary=Fetch local AI recipes published on GitHub and refresh the catalog
+# omarchy:summary=Refresh local AI recipes from trusted inference registries
 
 set -euo pipefail
+source "$OMARCHY_PATH/default/omarchy/local-ai-lib.sh"
 
-state_dir="$HOME/.local/state/omarchy/local-ai"
+state_dir="$AI_STATE_DIR"
 shipped="$OMARCHY_PATH/default/omarchy/local-ai.json"
-api="${OMARCHY_AI_GITHUB_API:-https://api.github.com}"
 raw="${OMARCHY_AI_GITHUB_RAW:-https://raw.githubusercontent.com}"
-
-# A recipe source is a GitHub account; a recipe is any public repo of that
-# account carrying an omarchy-recipe.json at its root. Discovery cannot promote
-# a recipe: every remote manifest enters the cache as a candidate.
+github_token="${OMARCHY_AI_GITHUB_TOKEN:-${GITHUB_TOKEN:-}}"
 remote="[]"
+imported=0
+skipped=0
+successful_registries=0
 tmp=""
+
 cleanup() {
   [[ -z $tmp ]] || rm -f "$tmp"
 }
 trap cleanup EXIT
 
-while read -r owner; do
-  [[ -n $owner ]] || continue
-  echo "Scanning github.com/$owner..."
-  listing=$(curl --fail --silent --max-time 30 "$api/users/$owner/repos?per_page=100" 2>/dev/null) || continue
-  jq -e 'type == "array"' <<<"$listing" >/dev/null 2>&1 || continue
-  repos=$(jq -r '.[] | "\(.name) \(.default_branch)"' <<<"$listing")
-  while read -r repo branch; do
-    [[ -n $repo ]] || continue
-    manifest=$(curl --fail --silent --max-time 10 "$raw/$owner/$repo/$branch/omarchy-recipe.json" 2>/dev/null) || continue
-    if jq -e '
-      type == "object"
-      and (.name | type == "string" and test("^[a-z0-9][a-z0-9-]*$"))
-      and (.label | type == "string" and length > 0)
-      and (.image | type == "string" and length > 0)
-      and (.min_vram_mb | type == "number" and . > 0 and floor == .)
-      and ((.min_gpus // 1) | type == "number" and . > 0 and floor == .)
-    ' <<<"$manifest" >/dev/null 2>&1; then
-      remote=$(jq --argjson recipe "$(jq --arg src "github:$owner/$repo" '. + {source: $src, status: "candidate"}' <<<"$manifest")" \
-        '. + [$recipe]' <<<"$remote")
-      echo "  found: $(jq -r '.name' <<<"$manifest") ($owner/$repo)"
+if [[ -z $github_token ]] && command -v gh >/dev/null 2>&1; then
+  github_token=$(gh auth token 2>/dev/null || true)
+fi
+
+fetch_github() {
+  local timeout="$1" url="$2"
+  local args=(--fail --silent --location --max-time "$timeout")
+  if [[ -n $github_token ]]; then
+    args+=(--header "Authorization: Bearer $github_token")
+  fi
+  curl "${args[@]}" "$url"
+}
+
+while IFS= read -r registry; do
+  owner=$(jq -r '.owner' <<<"$registry")
+  repo=$(jq -r '.repo' <<<"$registry")
+  branch=$(jq -r '.branch // "main"' <<<"$registry")
+  catalog_path=$(jq -r '.catalog // "catalog.json"' <<<"$registry")
+  hardware_slugs=$(jq '.hardware_slugs // []' <<<"$registry")
+  base="$raw/$owner/$repo/$branch"
+
+  echo "Syncing github.com/$owner/$repo@$branch..."
+  registry_catalog=$(fetch_github 30 "$base/$catalog_path") || {
+    echo "  registry unavailable" >&2
+    continue
+  }
+  if ! jq -e '.schema_version == "inference-index/catalog-v1" and (.recipes | type == "array")' <<<"$registry_catalog" >/dev/null 2>&1; then
+    echo "  invalid registry catalog" >&2
+    continue
+  fi
+  ((successful_registries += 1))
+
+  while IFS= read -r entry; do
+    recipe_path=$(jq -r '.recipe_path' <<<"$entry")
+    if [[ -z $recipe_path || $recipe_path == /* || $recipe_path == *".."* ]]; then
+      ((skipped += 1))
+      continue
     fi
-  done <<<"$repos"
-done < <(jq -r '.sources[]?' "$shipped")
+    leaf=$(fetch_github 15 "$base/$recipe_path" 2>/dev/null) || {
+      ((skipped += 1))
+      continue
+    }
+    if ! jq --arg id "$(jq -r '.id' <<<"$entry")" -e '
+      .schema_version == "inference-index/v1"
+      and .id == $id
+      and (.status == "validated" or .status == "candidate")
+      and .runtime.kind == "docker"
+      and (.runtime.image | type == "string" and length > 0)
+      and (.runtime.arguments | type == "array")
+      and (.runtime.network_mode // "bridge") != "host"
+      and all(.runtime.mounts[]?; (.source | startswith("~") or startswith("/")))
+    ' <<<"$leaf" >/dev/null 2>&1; then
+      ((skipped += 1))
+      continue
+    fi
+
+    recipe=$(jq --argjson entry "$entry" --arg src "github:$owner/$repo" --arg registry_path "$recipe_path" '
+      {
+        name: .id,
+        label: (.model.name + " · " + .weights.precision + " · " + .engine.name + " " + (.profile | ascii_upcase)),
+        status: (
+          if .status == "validated"
+            and $entry.status == "validated"
+            and ($entry.launchable_by_cli // false)
+            and (.runtime.image | test("@sha256:[0-9a-f]{64}$"))
+            and (.model.revision | test("^[0-9a-f]{40,64}$"))
+          then "validated"
+          else "candidate"
+          end
+        ),
+        min_vram_mb: ((.hardware.memory_gb_each * 1024 * 0.94) | floor),
+        min_gpus: .hardware.count,
+        image: .runtime.image,
+        served_name: .model.served_name,
+        context_window: .serving.configured_max_context_tokens,
+        thinking_format: (if (.model.slug | startswith("qwen")) then "qwen-chat-template" elif (.model.slug | startswith("glm")) then "zai" else "openai" end),
+        weights_gb: .weights.size_gb,
+        reasoning: (.capabilities.reasoning // false),
+        vision: (.capabilities.vision // false),
+        tools: (.capabilities.tools // false),
+        container_port: .runtime.container_port,
+        host_port: .runtime.host_port,
+        network_mode: (.runtime.network_mode // "bridge"),
+        run_args: (
+          (if .runtime.shm_size then ["--shm-size", .runtime.shm_size] else [] end)
+          + (if .runtime.ipc == "host" then ["--ipc=host"] else [] end)
+          + (if .runtime.entrypoint then ["--entrypoint", .runtime.entrypoint] else [] end)
+        ),
+        env: (.runtime.environment // {}),
+        volumes: ((.runtime.mounts // []) | map({key: .source, value: (.target + (if .read_only then ":ro" else "" end))}) | from_entries),
+        args: .runtime.arguments,
+        source: $src,
+        registry_id: .id,
+        registry_path: $registry_path
+      }
+    ' <<<"$leaf")
+    remote=$(jq --argjson recipe "$recipe" '. + [$recipe]' <<<"$remote")
+    ((imported += 1))
+  done < <(jq -c --argjson hardware_slugs "$hardware_slugs" '
+    .recipes[]
+    | select(.hardware_slug as $slug | $hardware_slugs | index($slug))
+    | select(.runtime_kind == "docker")
+  ' <<<"$registry_catalog")
+done < <(jq -c '.registries[]?' "$shipped")
+
+if ((successful_registries == 0)) && jq -e '(.registries // []) | length > 0' "$shipped" >/dev/null; then
+  if [[ -f $state_dir/catalog.json ]]; then
+    echo "No registry was refreshed; keeping the existing cached catalog." >&2
+  else
+    echo "No registry was refreshed; using the shipped catalog." >&2
+  fi
+  exit 1
+fi
 
 mkdir -p "$state_dir"
 tmp=$(mktemp "$state_dir/catalog.XXXXXX")
-jq --argjson remote "$remote" \
-  '.recipes = ((.recipes + $remote) | group_by(.name) | map(. as $group | (($group | map(select((.status // "candidate") == "validated")) | first) // $group[-1])) | sort_by([-.min_vram_mb, -(.min_gpus // 1), .name]))' \
-  "$shipped" >"$tmp"
+jq --argjson remote "$remote" '
+  .recipes = ((.recipes + $remote)
+    | group_by(.name)
+    | map(. as $group | (($group | map(select(.source != null)) | first) // $group[0]))
+    | sort_by([-.min_vram_mb, -(.min_gpus // 1), .name]))
+' "$shipped" >"$tmp"
 mv "$tmp" "$state_dir/catalog.json"
 tmp=""
 
-echo "Catalog now carries $(jq '.recipes | length' "$state_dir/catalog.json") recipes ($(jq 'length' <<<"$remote") from GitHub)."
-omarchy-shell -q omarchy.local-ai refresh || true
+echo "Catalog now carries $(jq '.recipes | length' "$state_dir/catalog.json") recipes ($imported imported, $skipped skipped)."
+omarchy-shell -q omarchy.local-ai refresh 2>/dev/null || true
