@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# omarchy:summary=Fetch local AI recipes published on GitHub and refresh the catalog
+# omarchy:examples=omarchy ai sync
+
+set -euo pipefail
+
+state_dir="$HOME/.local/state/omarchy/local-ai"
+shipped="$OMARCHY_PATH/default/omarchy/local-ai.json"
+api="${OMARCHY_AI_GITHUB_API:-https://api.github.com}"
+raw="${OMARCHY_AI_GITHUB_RAW:-https://raw.githubusercontent.com}"
+
+# A recipe source is a GitHub account; a recipe is any public repo of that
+# account carrying an omarchy-recipe.json at its root. Remote recipes override
+# shipped ones that share a name, so a repo can refine what Omarchy ships.
+remote="[]"
+while read -r owner; do
+  [[ -n $owner ]] || continue
+  echo "Scanning github.com/$owner..."
+  listing=$(curl --fail --silent --max-time 30 "$api/users/$owner/repos?per_page=100" 2>/dev/null) || continue
+  jq -e 'type == "array"' <<<"$listing" >/dev/null 2>&1 || continue
+  repos=$(jq -r '.[] | "\(.name) \(.default_branch)"' <<<"$listing")
+  while read -r repo branch; do
+    [[ -n $repo ]] || continue
+    manifest=$(curl --fail --silent --max-time 10 "$raw/$owner/$repo/$branch/omarchy-recipe.json" 2>/dev/null) || continue
+    if jq -e '.name and .label and .min_vram_mb and .image' <<<"$manifest" >/dev/null 2>&1; then
+      remote=$(jq --argjson recipe "$(jq --arg src "github:$owner/$repo" '. + {source: $src}' <<<"$manifest")" \
+        '. + [$recipe]' <<<"$remote")
+      echo "  found: $(jq -r '.name' <<<"$manifest") ($owner/$repo)"
+    fi
+  done <<<"$repos"
+done < <(jq -r '.sources[]?' "$shipped")
+
+mkdir -p "$state_dir"
+jq --argjson remote "$remote" \
+  '.recipes = ((.recipes + $remote) | group_by(.name) | map(last) | sort_by([-.min_vram_mb, -(.min_gpus // 1), .name]))' \
+  "$shipped" >"$state_dir/catalog.json"
+
+echo "Catalog now carries $(jq '.recipes | length' "$state_dir/catalog.json") recipes ($(jq 'length' <<<"$remote") from GitHub)."
+omarchy-shell -q omarchy.local-ai refresh || true

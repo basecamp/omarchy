@@ -1,0 +1,111 @@
+{
+  "port": 12434,
+  "sources": [
+    "0xSero"
+  ],
+  "recipes": [
+    {
+      "name": "fast",
+      "label": "Qwen3.8-27B",
+      "min_vram_mb": 23000,
+      "image": "ghcr.io/0xsero/qwen38-3090-sglang@sha256:ff2aac202b4fe45000f813a2d07acb90d1d120ded2f497893f33daff9cb2f64f",
+      "served_name": "Qwen3.8-27B",
+      "context_window": 8192,
+      "thinking_format": "qwen-chat-template",
+      "weights_gb": 26,
+      "reasoning": true,
+      "run_args": [
+        "--shm-size",
+        "32g",
+        "--entrypoint",
+        "bash"
+      ],
+      "volumes": {
+        "~/.cache/omarchy-local-ai/models": "/models"
+      },
+      "args": [
+        "-c",
+        "set -e; TP=${TP:-1} AWQ=/models/Qwen3.8-27B-AWQ-INT4 DRAFT=/models/Qwen3.8-27B-DSpark; [ -f \"$AWQ/model.safetensors.index.json\" ] || hf download cyankiwi/Qwen3.8-27B-AWQ-INT4 --local-dir \"$AWQ\"; if [ \"$TP\" = 1 ]; then DSPARK=0; FLAGS=\"--mem-fraction-static 0.92 --max-mamba-cache-size 8 --disable-prefill-cuda-graph --cuda-graph-max-bs 8\"; elif [ \"$TP\" = 2 ]; then DSPARK=1; FLAGS=\"--mem-fraction-static 0.85 --max-mamba-cache-size 16 --disable-prefill-cuda-graph --cuda-graph-max-bs 16\"; else DSPARK=1; FLAGS=\"--mem-fraction-static 0.72\"; fi; SPEC=\"\"; if [ \"$DSPARK\" = 1 ]; then [ -f \"$DRAFT/model.safetensors\" ] || hf download RadixArk/Qwen3.8-27B-DSpark --local-dir \"$DRAFT\"; SPEC=\"--speculative-algorithm DSPARK --speculative-draft-model-path $DRAFT --speculative-dspark-block-size 7 --speculative-draft-model-quantization unquant\"; fi; exec python3 -m sglang.launch_server --model-path \"$AWQ\" --tp \"$TP\" --chunked-prefill-size 4096 --mamba-radix-cache-strategy extra_buffer $FLAGS $SPEC --served-model-name Qwen3.8-27B --tool-call-parser qwen3_coder --reasoning-parser qwen3 --host 0.0.0.0 --port 8000"
+      ],
+      "scale": {
+        "2": {
+          "env": {
+            "TP": "2"
+          },
+          "context_window": 65536
+        },
+        "4": {
+          "env": {
+            "TP": "4"
+          },
+          "context_window": 131072
+        }
+      },
+      "vision": true
+    },
+    {
+      "name": "smart",
+      "label": "Qwen3.6-35B",
+      "min_vram_mb": 23000,
+      "min_gpus": 2,
+      "image": "vllm/vllm-openai:v0.27.1",
+      "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+      "served_name": "Qwen3.6-35B",
+      "context_window": 131072,
+      "thinking_format": "qwen-chat-template",
+      "weights_gb": 36,
+      "reasoning": true,
+      "run_args": [
+        "--shm-size",
+        "32g"
+      ],
+      "volumes": {
+        "~/.cache/huggingface": "/root/.cache/huggingface",
+        "~/.cache/omarchy-local-ai/vllm": "/root/.cache/vllm"
+      },
+      "args": [
+        "--model",
+        "Qwen/Qwen3.6-35B-A3B-FP8",
+        "--served-model-name",
+        "Qwen3.6-35B",
+        "--tensor-parallel-size",
+        "2",
+        "--gpu-memory-utilization",
+        "0.92",
+        "--max-model-len",
+        "131072",
+        "--max-num-seqs",
+        "4",
+        "--enable-auto-tool-choice",
+        "--tool-call-parser",
+        "qwen3_xml",
+        "--reasoning-parser",
+        "qwen3"
+      ],
+      "scale": {
+        "4": {
+          "args": [
+            "--model",
+            "Qwen/Qwen3.6-35B-A3B-FP8",
+            "--served-model-name",
+            "Qwen3.6-35B",
+            "--tensor-parallel-size",
+            "4",
+            "--gpu-memory-utilization",
+            "0.92",
+            "--max-model-len",
+            "131072",
+            "--max-num-seqs",
+            "4",
+            "--enable-auto-tool-choice",
+            "--tool-call-parser",
+            "qwen3_xml",
+            "--reasoning-parser",
+            "qwen3"
+          ]
+        }
+      },
+      "vision": true
+    }
+  ]
+}

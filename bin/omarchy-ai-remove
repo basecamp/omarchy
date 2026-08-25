@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# omarchy:summary=Remove the local AI model server, its weights, and its agent wiring
+
+set -euo pipefail
+
+state_dir="$HOME/.local/state/omarchy/local-ai"
+container="omarchy-local-ai"
+
+image=""
+if [[ -f $state_dir/recipe.json ]]; then
+  image=$(jq -r '.image' "$state_dir/recipe.json")
+  model=$(jq -r '.model // ""' "$state_dir/recipe.json")
+  if [[ -n $model ]]; then
+    rm -rf "$HOME/.cache/huggingface/hub/models--${model//\//--}"
+  fi
+fi
+rm -rf "$HOME/.cache/omarchy-local-ai"
+
+docker rm --force "$container" &>/dev/null || true
+
+for agent in pi omp; do
+  dir="$HOME/.$agent/agent"
+  if [[ -f $dir/models.json ]]; then
+    jq 'del(.providers.local)' "$dir/models.json" >"$dir/models.json.tmp"
+    mv "$dir/models.json.tmp" "$dir/models.json"
+  fi
+  if [[ -f $dir/settings.json ]]; then
+    jq 'if .defaultProvider == "local" then del(.defaultProvider, .defaultModel) else . end' \
+      "$dir/settings.json" >"$dir/settings.json.tmp"
+    mv "$dir/settings.json.tmp" "$dir/settings.json"
+  fi
+done
+
+rm -rf "$state_dir"
+omarchy-shell -q omarchy.local-ai refresh || true
+
+echo "Local AI has been removed."
+if [[ -n $image ]]; then
+  echo "The vLLM engine image was kept for reuse; reclaim the space with: docker rmi $image"
+fi

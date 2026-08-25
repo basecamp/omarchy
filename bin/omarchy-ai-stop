@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# omarchy:summary=Unload the local AI model server
+
+set -euo pipefail
+
+if [[ ! -f $HOME/.local/state/omarchy/local-ai/recipe.json ]]; then
+  echo "Local AI is not set up. Run: omarchy ai setup" >&2
+  exit 2
+fi
+
+docker stop omarchy-local-ai >/dev/null
+omarchy-shell -q omarchy.local-ai refresh || true

@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# omarchy:summary=Tail the local AI model server logs
+
+exec docker logs --tail 100 --follow omarchy-local-ai

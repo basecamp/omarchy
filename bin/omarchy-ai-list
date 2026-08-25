@@ -1,0 +1,63 @@
+#!/bin/bash
+
+# omarchy:summary=List local AI recipes, what fits this GPU, and the serving state
+# omarchy:args=[--json]
+
+set -euo pipefail
+
+state_dir="$HOME/.local/state/omarchy/local-ai"
+
+catalog="${OMARCHY_AI_CATALOG:-$state_dir/catalog.json}"
+if [[ ! -f $catalog ]]; then
+  catalog="$OMARCHY_PATH/default/omarchy/local-ai.json"
+fi
+
+mapfile -t vram_list < <(
+  if [[ -n ${OMARCHY_AI_VRAM_MB:-} ]]; then
+    printf '%s\n' "$OMARCHY_AI_VRAM_MB"
+  elif omarchy-cmd-present nvidia-smi; then
+    nvidia-smi ${OMARCHY_AI_GPUS:+-i "$OMARCHY_AI_GPUS"} --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null
+  fi | grep -E '^[0-9]+$' | sort -rn || true)
+vram_mb=${vram_list[0]:-0}
+vrams_json=$(printf '%s\n' "${vram_list[@]:-}" | jq -Rn '[inputs | select(. != "") | tonumber]')
+
+active=$(jq -r '.name // empty' "$state_dir/recipe.json" 2>/dev/null || true)
+# The id the server actually answers to — clients must send this, not the
+# recipe name (vLLM rejects unknown model ids).
+active_model=$(jq -r '.served_name // empty' "$state_dir/recipe.json" 2>/dev/null || true)
+if [[ -z $active ]]; then
+  state="not-setup"
+elif [[ $(docker inspect --format '{{.State.Running}}' omarchy-local-ai 2>/dev/null) == "true" ]]; then
+  state="running"
+else
+  state="stopped"
+fi
+
+listing=$(jq --argjson vram "$vram_mb" --argjson vrams "$vrams_json" --arg active "$active" \
+  --arg model "$active_model" --arg state "$state" '{
+  vram_mb: $vram,
+  gpus: $vrams,
+  state: $state,
+  active: $active,
+  model: $model,
+  port: .port,
+  recipes: (.recipes | sort_by([-.min_vram_mb, -(.min_gpus // 1), .name]) | map(. as $r | {
+    name, label, min_vram_mb,
+    min_gpus: (.min_gpus // 1),
+    source: (.source // "built-in"),
+    fits: (([$vrams[] | select(. >= $r.min_vram_mb)] | length) >= ($r.min_gpus // 1)),
+    active: (.name == $active)
+  }))
+}' "$catalog")
+
+if [[ ${1:-} == "--json" ]]; then
+  jq . <<<"$listing"
+else
+  echo "state: $state${active:+ ($active)} · GPUs: $(jq -r '.gpus | length' <<<"$listing")× up to $((vram_mb / 1024)) GB"
+  jq -r '.recipes[] |
+    (if .active then "●" elif .fits then "○" else "·" end) + " " +
+    (.name | . + (" " * ([26 - length, 1] | max))) + " " + .label +
+    "  — needs \(if .min_gpus > 1 then "\(.min_gpus)× " else "" end)\(.min_vram_mb / 1024 | ceil) GB" +
+    (if .fits then "" else " (does not fit)" end) +
+    "  [\(.source)]"' <<<"$listing"
+fi

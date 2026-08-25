@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle the local AI model server between loaded and unloaded
+# omarchy:hidden=true
+
+set -euo pipefail
+
+if omarchy-ai-status >/dev/null; then
+  omarchy-ai-stop
+else
+  omarchy-ai-start
+fi
