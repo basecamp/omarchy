@@ -42,7 +42,7 @@ Item {
   property string lastError: ""
 
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 30, 5, 3600)
-  readonly property bool busy: whichProcess.running || statusProcess.running || mullvadExitNodesProcess.running || accountsProcess.running || actionProcess.running || loginProcess.running || switchProcess.running || operatorProcess.running || exitNodeProcess.running
+  readonly property bool busy: whichProcess.running || statusProcess.running || mullvadExitNodesProcess.running || accountsProcess.running || actionProcess.running || loginProcess.running || switchProcess.running || addAccountProcess.running || operatorProcess.running || exitNodeProcess.running
   readonly property string userName: Quickshell.env("USER") || Quickshell.env("LOGNAME")
 
   property string _statusOutput: ""
@@ -59,6 +59,9 @@ Item {
   property bool _loginUrlOpened: false
   property string _preLoginAuthUrl: ""
   property double _lastAccountsRefreshMs: 0
+  property string _addAccountOutput: ""
+  property string _addAccountError: ""
+  property bool _addAccountUrlOpened: false
   property string _switchOutput: ""
   property string _switchError: ""
   property string _exitNodeOutput: ""
@@ -324,6 +327,33 @@ Item {
     switchProcess.running = true
   }
 
+  // Adding a tailnet runs its own login rather than borrowing the toggle's.
+  // The toggle keys its browser hand-off off _loginInProgress, and a status
+  // poll clears that as soon as it sees a running tailscaled — which is
+  // exactly the state we are in here, so a poll landing between launching
+  // the login and its first line of output would swallow the auth URL.
+  function addAccount() {
+    if (!installed || addAccountProcess.running) return
+    _addAccountOutput = ""
+    _addAccountError = ""
+    _addAccountUrlOpened = false
+    actionStatus = "Opening Tailscale login…"
+    // Match how the service install brings the first profile up, so a tailnet
+    // added here does not quietly differ from the one already on the machine.
+    addAccountProcess.command = ["tailscale", "login", "--accept-routes"]
+    addAccountProcess.running = true
+  }
+
+  function openAddAccountUrl(text) {
+    if (_addAccountUrlOpened) return true
+    var match = String(text || "").match(/https?:\/\/\S+/)
+    if (!match || !match[0]) return false
+    _addAccountUrlOpened = true
+    actionStatus = "Finish signing in in your browser"
+    Quickshell.execDetached(["omarchy-launch-browser", match[0]])
+    return true
+  }
+
   function exitNodeTarget(peer) {
     if (!peer) return ""
     if (peer.Mullvad === true) {
@@ -585,6 +615,33 @@ Item {
         root._lastAccountsRefreshMs = 0
       }
       root.switchingAccountId = ""
+      delayedRefresh.restart()
+    }
+  }
+
+  Process {
+    id: addAccountProcess
+    running: false
+    command: []
+    // The auth URL arrives on whichever stream tailscale feels like using, and
+    // it arrives while the process is still running: `tailscale login` blocks
+    // until the browser half finishes.
+    stdout: SplitParser { onRead: function(data) { root._addAccountOutput += data + "\n"; root.openAddAccountUrl(data) } }
+    stderr: SplitParser { onRead: function(data) { root._addAccountError += data + "\n"; root.openAddAccountUrl(data) } }
+    onExited: function(exitCode) {
+      var combined = String(root._addAccountOutput || "") + "\n" + String(root._addAccountError || "")
+      var opened = root.openAddAccountUrl(combined)
+      if (exitCode !== 0 && !opened) {
+        root.lastError = elideStatus(combined || "tailscale login failed")
+        root.actionStatus = root.lastError
+        actionStatusTimer.restart()
+      } else {
+        root.lastError = ""
+        root.actionStatus = ""
+      }
+      // A fresh login lands on a new profile and makes it the active one, so
+      // don't sit behind the accounts throttle waiting to notice.
+      root._lastAccountsRefreshMs = 0
       delayedRefresh.restart()
     }
   }

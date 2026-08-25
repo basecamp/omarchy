@@ -270,6 +270,17 @@ function parseStatus(raw) {
   }
 }
 
+// The panel offers adding a tailnet as a row in the connection list, so a
+// machine with a single profile has something to switch from. The exit node
+// list carries its Mullvad picker the same way.
+function connectionRows(accounts, canAdd) {
+  var rows = []
+  var list = accounts instanceof Array ? accounts : []
+  for (var i = 0; i < list.length; i++) rows.push(list[i])
+  if (canAdd === true) rows.push({ id: "account:add", AddAccount: true })
+  return rows
+}
+
 function parseAccounts(raw) {
   var text = String(raw || "").trim()
   if (text === "") return { accounts: [], selectedAccountId: "", selectedAccountLabel: "" }
@@ -320,6 +331,7 @@ if (typeof module !== "undefined") {
     mullvadRegionOptions: mullvadRegionOptions,
     mullvadCountryOptions: mullvadCountryOptions,
     parseStatus: parseStatus,
-    parseAccounts: parseAccounts
+    parseAccounts: parseAccounts,
+    connectionRows: connectionRows
   }
 }

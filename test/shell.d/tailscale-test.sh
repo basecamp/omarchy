@@ -8,6 +8,7 @@ run_node_test <<'JS'
 const fs = require('fs')
 const tailscale = requireFromRoot('shell/plugins/panels/tailscale/Model.js')
 const panelSource = fs.readFileSync(root + '/shell/plugins/panels/tailscale/Panel.qml', 'utf8')
+const serviceSource = fs.readFileSync(root + '/shell/plugins/panels/tailscale/Service.qml', 'utf8')
 
 assert(/function toggleTailscale\(\): string \{ tailscale\.toggleTailscale\(\); return "ok" \}/.test(panelSource), 'tailscale exposes the connection toggle over IPC')
 
@@ -188,6 +189,30 @@ assertEqual(
   'tailnet.example',
   'tailscale labels connections by tailnet when nickname is missing'
 )
+
+assertDeepEqual(
+  tailscale.connectionRows(accounts.accounts, true).map(row => row.id),
+  ['db1b', '1785', 'account:add'],
+  'tailscale offers adding a tailnet after the existing connections'
+)
+assertDeepEqual(
+  tailscale.connectionRows([{ id: 'db1b', nickname: 'Home', selected: true }], true).map(row => row.id),
+  ['db1b', 'account:add'],
+  'tailscale offers adding a tailnet when only one connection exists'
+)
+assertDeepEqual(
+  tailscale.connectionRows(accounts.accounts, false).map(row => row.id),
+  ['db1b', '1785'],
+  'tailscale withholds the add row while disconnected'
+)
+assertDeepEqual(tailscale.connectionRows(null, true).map(row => row.id), ['account:add'], 'tailscale handles a missing connection list')
+
+assert(/if \(account\.AddAccount === true\) tailscale\.addAccount\(\)/.test(panelSource), 'tailscale activates the add row as a login rather than a switch')
+assert(/addAccountProcess\.command = \["tailscale", "login", "--accept-routes"\]/.test(serviceSource), 'tailscale adds a connection the way the service install brings one up')
+// The toggle's login hand-off keys off _loginInProgress, which a status poll
+// clears as soon as tailscaled is running — the state adding an account starts
+// from. Sharing that process would drop the auth URL.
+assert(/Process \{\s*\n\s*id: addAccountProcess/.test(serviceSource), 'tailscale adds a connection on its own process, not the toggle\'s')
 
 assertDeepEqual(
   tailscale.loginPlan(true, 'https://login.tailscale.com/a/existing'),

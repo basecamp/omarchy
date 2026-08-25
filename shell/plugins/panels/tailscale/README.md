@@ -8,6 +8,7 @@ Native Omarchy bar widget for Tailscale.
 - Left click opens a keyboard-friendly panel
 - Right click toggles Tailscale on/off
 - Switch between available Tailscale connections when multiple are available
+- Add another tailnet, so a machine with a single connection has one to switch to
 - Browse machines from `tailscale status --json`
 - Copy a machine's Tailscale IP, host name, or DNS name
 - Send files to a machine with Taildrop, when the tailnet allows file sharing

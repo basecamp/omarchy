@@ -5,6 +5,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import "Model.js" as Model
 
 Panel {
   id: root
@@ -41,7 +42,8 @@ Panel {
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
-  readonly property bool showConnections: tailscale.accounts.length > 1 || tailscale.accountsAccessDenied
+  readonly property var connections: displayConnections()
+  readonly property bool showConnections: connections.length > 1 || tailscale.accountsAccessDenied
   readonly property bool showPeers: tailscale.active && tailscale.peers.length > 0
   readonly property var recentMullvadRegions: settings.recentMullvadRegions instanceof Array ? settings.recentMullvadRegions : (settings.recentMullvadCountries instanceof Array ? settings.recentMullvadCountries : [])
   readonly property var recentMullvadExitNodes: recentMullvadNodes()
@@ -78,6 +80,12 @@ Panel {
     for (var j = 0; j < recentMullvadExitNodes.length; j++) nodes.push(recentMullvadExitNodes[j])
     if (tailscale.mullvadRegions.length > 0) nodes.push({ id: "mullvad:add", AddMullvad: true, DisplayName: "Choose Mullvad region" })
     return nodes
+  }
+
+  // Switching tailnets is only reachable once a second profile exists, and the
+  // CLI was the only thing that could create one.
+  function displayConnections() {
+    return Model.connectionRows(tailscale.accounts, tailscale.installed && tailscale.active)
   }
 
   function recentMullvadNodes() {
@@ -173,21 +181,27 @@ Panel {
   }
 
   function selectedAccount() {
-    if (tailscale.accounts.length === 0) return null
-    return tailscale.accounts[Math.max(0, Math.min(accountIndex, tailscale.accounts.length - 1))]
+    if (connections.length === 0) return null
+    return connections[Math.max(0, Math.min(accountIndex, connections.length - 1))]
+  }
+
+  function chooseConnection(account) {
+    if (!account) return
+    if (account.AddAccount === true) tailscale.addAccount()
+    else tailscale.switchAccount(account.id)
   }
 
   function ensureCursor() {
     if (headerIndex < 0) headerIndex = 0
     if (headerIndex > 0) headerIndex = 0
-    if (accountIndex >= tailscale.accounts.length) accountIndex = Math.max(0, tailscale.accounts.length - 1)
+    if (accountIndex >= root.connections.length) accountIndex = Math.max(0, root.connections.length - 1)
     if (peerIndex >= tailscale.peers.length) peerIndex = Math.max(0, tailscale.peers.length - 1)
     if (exitNodeIndex >= exitNodes.length) exitNodeIndex = Math.max(0, exitNodes.length - 1)
     if (mullvadRegionIndex >= filteredMullvadRegions.length) mullvadRegionIndex = Math.max(0, filteredMullvadRegions.length - 1)
-    if (focusSection === "auth" && !tailscale.accountsAccessDenied) focusSection = tailscale.accounts.length > 1 ? "accounts" : (showExitNodes ? "exitNodes" : (showPeers ? "peers" : "header"))
-    if (focusSection === "accounts" && tailscale.accounts.length <= 1) focusSection = tailscale.accountsAccessDenied ? "auth" : (showExitNodes ? "exitNodes" : (showPeers ? "peers" : "header"))
-    if (focusSection === "peers" && !showPeers) focusSection = showExitNodes ? "exitNodes" : (tailscale.accountsAccessDenied ? "auth" : (tailscale.accounts.length > 1 ? "accounts" : "header"))
-    if (focusSection === "exitNodes" && !showExitNodes) focusSection = showPeers ? "peers" : (tailscale.accountsAccessDenied ? "auth" : (tailscale.accounts.length > 1 ? "accounts" : "header"))
+    if (focusSection === "auth" && !tailscale.accountsAccessDenied) focusSection = root.connections.length > 1 ? "accounts" : (showExitNodes ? "exitNodes" : (showPeers ? "peers" : "header"))
+    if (focusSection === "accounts" && root.connections.length <= 1) focusSection = tailscale.accountsAccessDenied ? "auth" : (showExitNodes ? "exitNodes" : (showPeers ? "peers" : "header"))
+    if (focusSection === "peers" && !showPeers) focusSection = showExitNodes ? "exitNodes" : (tailscale.accountsAccessDenied ? "auth" : (root.connections.length > 1 ? "accounts" : "header"))
+    if (focusSection === "exitNodes" && !showExitNodes) focusSection = showPeers ? "peers" : (tailscale.accountsAccessDenied ? "auth" : (root.connections.length > 1 ? "accounts" : "header"))
   }
 
   function moveCursor(dx, dy) {
@@ -197,13 +211,13 @@ Panel {
       if (focusSection === "header") {
         if (dy > 0) {
           if (tailscale.accountsAccessDenied) focusSection = "auth"
-          else if (tailscale.accounts.length > 1) focusSection = "accounts"
+          else if (root.connections.length > 1) focusSection = "accounts"
           else if (showExitNodes) focusSection = "exitNodes"
           else if (showPeers) focusSection = "peers"
         }
       } else if (focusSection === "auth") {
         if (dy < 0) focusSection = "header"
-        else if (tailscale.accounts.length > 1) focusSection = "accounts"
+        else if (root.connections.length > 1) focusSection = "accounts"
         else if (showExitNodes) focusSection = "exitNodes"
         else if (showPeers) focusSection = "peers"
       } else if (focusSection === "accounts") {
@@ -211,20 +225,20 @@ Panel {
           if (accountIndex <= 0) focusSection = tailscale.accountsAccessDenied ? "auth" : "header"
           else accountIndex--
         } else {
-          if (accountIndex < tailscale.accounts.length - 1) accountIndex++
+          if (accountIndex < root.connections.length - 1) accountIndex++
           else if (showExitNodes) focusSection = "exitNodes"
           else if (showPeers) focusSection = "peers"
         }
       } else if (focusSection === "peers") {
         if (dy < 0) {
-          if (peerIndex <= 0) focusSection = showExitNodes ? "exitNodes" : (tailscale.accounts.length > 1 ? "accounts" : (tailscale.accountsAccessDenied ? "auth" : "header"))
+          if (peerIndex <= 0) focusSection = showExitNodes ? "exitNodes" : (root.connections.length > 1 ? "accounts" : (tailscale.accountsAccessDenied ? "auth" : "header"))
           else peerIndex--
         } else if (peerIndex < tailscale.peers.length - 1) {
           peerIndex++
         }
       } else if (focusSection === "exitNodes") {
         if (dy < 0) {
-          if (exitNodeIndex <= 0) focusSection = tailscale.accounts.length > 1 ? "accounts" : (tailscale.accountsAccessDenied ? "auth" : "header")
+          if (exitNodeIndex <= 0) focusSection = root.connections.length > 1 ? "accounts" : (tailscale.accountsAccessDenied ? "auth" : "header")
           else exitNodeIndex--
         } else if (exitNodeIndex < exitNodes.length - 1) {
           exitNodeIndex++
@@ -245,7 +259,7 @@ Panel {
       tailscale.authorizeTailscaleOperator()
     } else if (focusSection === "accounts") {
       var account = selectedAccount()
-      if (account) tailscale.switchAccount(account.id)
+      if (account) chooseConnection(account)
     } else if (focusSection === "peers") {
       openSelectedPeerCopyMenu()
     } else if (focusSection === "exitNodes") {
@@ -549,7 +563,7 @@ Panel {
             }
 
             Repeater {
-              model: tailscale.accounts
+              model: root.connections
               AccountRow {
                 required property var modelData
                 required property int index
@@ -800,9 +814,10 @@ Panel {
     id: accountRow
     property var account: null
     property int rowIndex: 0
-    readonly property bool selectedAccount: account && account.selected === true
-    readonly property bool switchingAccount: account && tailscale.switchingAccountId === String(account.id || "")
-    readonly property string accountText: account ? tailscale.accountLabel(account) : "Account"
+    readonly property bool addAccount: account && account.AddAccount === true
+    readonly property bool selectedAccount: !addAccount && account && account.selected === true
+    readonly property bool switchingAccount: !addAccount && account && tailscale.switchingAccountId === String(account.id || "")
+    readonly property string accountText: addAccount ? "Add account…" : (account ? tailscale.accountLabel(account) : "Account")
 
     hasCursor: root.cursorActive && root.focusSection === "accounts" && root.accountIndex === rowIndex
     current: selectedAccount
@@ -823,8 +838,8 @@ Panel {
 
       Text {
         id: accountGlyph
-        text: ""
-        color: accountRow.selectedAccount || accountRow.switchingAccount ? root.foreground : root.dim
+        text: accountRow.addAccount ? "+" : ""
+        color: accountRow.selectedAccount || accountRow.switchingAccount || accountRow.addAccount ? root.foreground : root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
         width: Style.space(22)
@@ -857,7 +872,7 @@ Panel {
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       onEntered: root.setAccountCursor(accountRow.rowIndex)
-      onClicked: if (accountRow.account) tailscale.switchAccount(accountRow.account.id)
+      onClicked: root.chooseConnection(accountRow.account)
     }
   }
 
