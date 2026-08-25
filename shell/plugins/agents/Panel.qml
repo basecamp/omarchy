@@ -101,11 +101,13 @@ Panel {
   // and that beats reading it back out of the label: a model-scoped limit is
   // titled after its model, and a name like "Opus 5 (1M context)" would parse
   // as a one-minute window.
-  function limitWindow(label, percent, resetAt, title) {
+  function limitWindow(label, percent, resetAt, title, resetLabel, detail) {
     return {
       title: String(title || "") !== "" ? String(title) : windowTitle(label),
       percent: Number(percent),
-      resetAt: String(resetAt || "")
+      resetAt: String(resetAt || ""),
+      resetLabel: String(resetLabel || "Resets in"),
+      detail: String(detail || "")
     }
   }
 
@@ -116,7 +118,7 @@ Panel {
     for (var i = 0; i < list.length; i++) {
       var entry = list[i] || {}
       var percent = Number(entry.percent)
-      if (percent >= 0) out.push(limitWindow(entry.label, percent, entry.resetsAt, entry.title))
+      if (percent >= 0) out.push(limitWindow(entry.label, percent, entry.resetsAt, entry.title, entry.resetLabel, entry.detail))
     }
     return out
   }
@@ -742,16 +744,41 @@ Panel {
       alarming: limitRow.alarming
     }
 
-    Text {
-      id: resetText
+    Item {
       width: parent.width
-      text: {
-        var remainingMs = root.resetMsFor(limitRow.window)
-        return remainingMs > 0 ? "Resets in " + root.formatDuration(remainingMs) : ""
+      implicitHeight: Math.max(quotaDetail.implicitHeight, resetText.implicitHeight)
+
+      Text {
+        id: quotaDetail
+        text: limitRow.window ? String(limitRow.window.detail || "") : ""
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        elide: Text.ElideRight
+        anchors.left: parent.left
+        anchors.right: resetText.left
+        anchors.rightMargin: Style.spacing.sm
+        anchors.verticalCenter: parent.verticalCenter
       }
-      color: root.dim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
+
+      Text {
+        id: resetText
+        text: {
+          var remainingMs = root.resetMsFor(limitRow.window)
+          return remainingMs > 0
+            ? String(limitRow.window.resetLabel || "Resets in") + " " + root.formatDuration(remainingMs)
+            : ""
+        }
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        elide: Text.ElideRight
+        // Cap the reset countdown so a long label or duration cannot starve
+        // the detail text on the left. Detail gives way first when both overflow.
+        width: Math.min(implicitWidth, parent.width * 0.55)
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+      }
     }
   }
 
