@@ -35,6 +35,7 @@ User-installed plugins live alongside these conceptually but on disk under
 | Night light   | `omarchy.nightlight`      | `service`               | `services/nightlight/Service.qml`     |
 | Lock screen   | `omarchy.lock`            | `service`               | `lock/Service.qml`                    |
 | OSD           | `omarchy.osd`             | `panel`                 | `osd/Osd.qml`                         |
+| Legend        | `omarchy.legend`          | `panel`                 | `legend/Legend.qml`                   |
 | Polkit agent  | `omarchy.polkit`          | `service`               | `polkit/PolkitAgent.qml`              |
 
 First-party bar-only widgets also carry manifests next to their QML files,
@@ -83,6 +84,31 @@ separate PAM services: `omarchy-lock-password` for password auth and,
 only when fingerprints are enrolled, `omarchy-lock-fingerprint` for
 fingerprint auth. It mirrors the previous lock screen field dimensions,
 colors, blurred wallpaper, placeholder, and Hyprland-driven corners.
+
+## Legend
+
+Themed keyboard-shortcut hint card, for any process — not just Omarchy's own
+shell code — to show. Same shape as the OSD plugin (payload-driven IPC, no
+polling), but persistent rather than auto-hiding: it stays up until the
+caller explicitly hides it, since a legend is meant to accompany an
+in-progress interaction rather than flash on a single state change.
+
+Two ways to drive it, mirroring OSD's own CLI wrapper:
+
+- `omarchy-legend -e "key:action" -e "key:action" ... [-c <corner>]` to show.
+  `-c/--corner` is one of `top-left`, `top-right` (default), `bottom-left`,
+  `bottom-right`.
+- `omarchy-legend --hide` to dismiss, or directly over IPC:
+  `omarchy-shell -q legend show '{"entries":[["key","action"]],"corner":"top-right"}'`
+  / `omarchy-shell -q legend close`.
+
+This exists because there was no answer to "how do I show a shortcut legend
+that looks like it belongs on Omarchy" for third-party tools — every
+existing overlay tool in the ecosystem (including community tools like
+omasnap) rolls its own bespoke hint-card styling. This plugin, plus the
+already-general-purpose OSD plugin above for transient status/toggle
+messages, are meant as the same kind of stable, themed, structured-data-in
+primitive that `omarchy-notification-send` already is for notifications.
 
 ## Polkit agent
 
