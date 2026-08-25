@@ -8,8 +8,8 @@ Item {
   // Injected by omarchy-shell (the first-party service loader).
   property var shell: null
 
-  // Keep in sync with bin/omarchy-toggle-nightlight, which sets the same
-  // temperatures for callers outside the shell (keybindings, menu, ssh).
+  // Only for the optimistic display below: applying goes through
+  // omarchy-toggle-nightlight, which owns the temperatures these mirror.
   readonly property int nightTemperature: 4000
   readonly property int dayTemperature: 6500
 
@@ -46,9 +46,12 @@ Item {
   }
 
   function runApply(temp) {
-    applyProcess.command = ["bash", "-lc",
-      "pgrep -x hyprsunset >/dev/null || { setsid uwsm-app -- hyprsunset >/dev/null 2>&1 & sleep 1; }; " +
-      "hyprctl hyprsunset temperature " + Number(temp)]
+    // Delegate rather than drive hyprsunset from here. The command starts it
+    // through its systemd user service, so a hyprsunset that dies is restarted,
+    // and it records the choice where that restart can read it back — which
+    // this service cannot do, since a shell restart loses the state above.
+    applyProcess.command = ["omarchy-toggle-nightlight",
+      temp === root.nightTemperature ? "on" : "off"]
     applyProcess.running = true
   }
 

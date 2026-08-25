@@ -124,6 +124,7 @@ default/**                     ──►  omarchy-settings    /usr/share/omarchy
   ├─ applications/mimeapps.list                         /usr/share/applications/mimeapps.list
   ├─ systemd/user/*.service                             /usr/lib/systemd/user/
   ├─ systemd/user/app.slice.d/10-oomd.conf              /usr/lib/systemd/user/app.slice.d/
+  ├─ systemd/user/hyprsunset.service.d/10-omarchy.conf  /usr/lib/systemd/user/hyprsunset.service.d/
   ├─ systemd/system-sleep/{force-igpu,
   │    keyboard-backlight,unmount-fuse}                 /usr/lib/systemd/system-sleep/
   ├─ systemd/zram-generator.conf.d/90-omarchy.conf      /usr/lib/systemd/zram-generator.conf.d/

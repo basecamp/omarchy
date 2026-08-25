@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Toggle nightlight screen temperature
-# omarchy:args=[--status]
+# omarchy:args=[--status|--apply|on|off]
 # omarchy:examples=omarchy toggle nightlight
 
 ON_TEMP=4000
@@ -29,31 +29,65 @@ status_json() {
     '{enabled:$enabled, temperature:(($temp | tonumber?) // null)}'
 }
 
-if [[ ${1:-} == "--status" ]]; then
-  status_json
-  exit 0
-fi
-
-# Ensure hyprsunset is running
-if ! pgrep -x hyprsunset >/dev/null; then
-  setsid uwsm-app -- hyprsunset &
-fi
-
-# Query the current temperature
-CURRENT_TEMP=$(current_temp)
-
-if [[ -z $CURRENT_TEMP || $CURRENT_TEMP == $OFF_TEMP ]]; then
-  TARGET_TEMP=$ON_TEMP
-else
-  TARGET_TEMP=$OFF_TEMP
-fi
-
 # A freshly-started hyprsunset applies its default temperature at the end of
 # its boot, overriding anything set before then — so resend until it sticks
-for _ in {1..10}; do
-  hyprctl hyprsunset temperature $TARGET_TEMP >/dev/null 2>&1
-  sleep 0.2
-  [[ $(current_temp) == "$TARGET_TEMP" ]] && break
-done
+apply_temp() {
+  local target=$1
 
-omarchy-shell -q nightlight refresh
+  for _ in {1..10}; do
+    hyprctl hyprsunset temperature $target >/dev/null 2>&1
+    sleep 0.2
+    [[ $(current_temp) == "$target" ]] && break
+  done
+
+  omarchy-shell -q nightlight refresh
+}
+
+case ${1:-} in
+  --status)
+    status_json
+    exit 0
+    ;;
+  --apply)
+    # Run from hyprsunset.service's ExecStartPost. Every hyprsunset start
+    # re-reads hyprsunset.conf, whose shipped profile is identity, so one that
+    # died holding night light comes back neutral — a healthy daemon and a cold
+    # screen. Re-assert the temperature the toggle last asked for.
+    #
+    # Only when the flag is set: with night light off, hyprsunset.conf is the
+    # standing intent, and forcing a temperature here would stomp the scheduled
+    # profiles the manual points people at. Never starts the unit either, or it
+    # would recurse into the start job it is part of.
+    omarchy-toggle-enabled nightlight || exit 0
+    apply_temp $ON_TEMP
+    exit 0
+    ;;
+  on) TARGET_TEMP=$ON_TEMP ;;
+  off) TARGET_TEMP=$OFF_TEMP ;;
+  *)
+    # Read the direction off the screen rather than the flag, so a toggle still
+    # does the obvious thing when the two have drifted apart.
+    CURRENT_TEMP=$(current_temp)
+
+    if [[ -z $CURRENT_TEMP || $CURRENT_TEMP == $OFF_TEMP ]]; then
+      TARGET_TEMP=$ON_TEMP
+    else
+      TARGET_TEMP=$OFF_TEMP
+    fi
+    ;;
+esac
+
+# Record the intent before starting hyprsunset, so the service's own re-apply
+# sees the new state rather than the one being replaced.
+if (( TARGET_TEMP == ON_TEMP )); then
+  omarchy-toggle nightlight on
+else
+  omarchy-toggle nightlight off
+fi
+
+# hyprsunset runs as a systemd user service so a crash comes back on its own.
+# --no-block: the start job runs --apply above, and waiting for it here would
+# just pay for the same resend loop twice. The loop below waits for the socket.
+systemctl --user start --no-block hyprsunset.service >/dev/null
+
+apply_temp $TARGET_TEMP
