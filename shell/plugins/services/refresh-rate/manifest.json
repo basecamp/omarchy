@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.refresh-rate",
+  "name": "Refresh Rate",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Runs the built-in panel at its fastest advertised rate on mains and its slowest on battery.",
+  "kinds": [
+    "service"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}
