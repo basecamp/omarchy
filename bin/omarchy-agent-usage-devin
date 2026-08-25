@@ -1,0 +1,222 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Devin CLI usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Devin CLI usage into one display-ready JSON record.
+
+Token stats come from the Devin CLI session database at
+~/.local/share/devin/cli/sessions.db. Each assistant message carries
+metadata.metrics with input/output/cache token counts and the generation
+model, so the collector aggregates those by day and by model the same way
+the Claude and Codex collectors do. Devin does not expose rate limits or a
+prepaid balance through the CLI, so the record carries local stats only.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+import sqlite3
+import sys
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "devin"
+AGENT_NAME = "Devin"
+
+
+def data_dir() -> Path:
+  return Path(os.environ.get("DEVIN_DATA_DIR") or (Path.home() / ".local" / "share" / "devin" / "cli"))
+
+
+def db_path() -> Path:
+  return data_dir() / "sessions.db"
+
+
+def date_string(value: dt.date) -> str:
+  return value.strftime("%Y-%m-%d")
+
+
+def recent_date_strings() -> list[str]:
+  today = dt.datetime.now().date()
+  return [date_string(today - dt.timedelta(days=offset)) for offset in range(6, -1, -1)]
+
+
+def local_date_string() -> str:
+  return date_string(dt.datetime.now().date())
+
+
+def empty_bucket() -> dict[str, int]:
+  return {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  }
+
+
+def base_record(**overrides: Any) -> dict[str, Any]:
+  record: dict[str, Any] = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+    "ready": False,
+    "hasLocalStats": False,
+    "hasPromptStats": True,
+    "tierLabel": "",
+    "usageStatusText": "",
+    "authHelpText": "",
+    "limits": [],
+  }
+  record.update({
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTotalTokens": 0,
+    "todayTokensByModel": {},
+    "recentDays": [{"date": day, "messageCount": 0} for day in recent_date_strings()],
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "activeDays": 0,
+    "activeDates": [],
+    "modelUsage": {},
+  })
+  record.update(overrides)
+  return record
+
+
+def number(value: Any) -> int:
+  try:
+    return int(value or 0)
+  except (TypeError, ValueError):
+    return 0
+
+
+def model_name(raw: Any) -> str:
+  value = str(raw or "devin")
+  return value if value else "devin"
+
+
+def scan() -> dict[str, Any]:
+  path = db_path()
+  if not path.is_file():
+    return base_record(usageStatusText="Devin CLI not installed")
+
+  conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+  conn.row_factory = sqlite3.Row
+  try:
+    return collect(conn)
+  finally:
+    conn.close()
+
+
+def collect(conn: sqlite3.Connection) -> dict[str, Any]:
+  today = dt.datetime.now().date()
+  recent_dates = recent_date_strings()
+  recent: dict[str, int] = {day: 0 for day in recent_dates}
+  today_by_model: dict[str, int] = {}
+  model_usage: dict[str, dict[str, int]] = {}
+  active_dates: set[str] = set()
+
+  rows = conn.execute(
+    """
+    SELECT
+      date(mn.created_at, 'unixepoch', 'localtime') AS day,
+      json_extract(mn.chat_message, '$.metadata.metrics.input_tokens') AS input_tokens,
+      json_extract(mn.chat_message, '$.metadata.metrics.output_tokens') AS output_tokens,
+      json_extract(mn.chat_message, '$.metadata.metrics.cache_read_tokens') AS cache_read_tokens,
+      json_extract(mn.chat_message, '$.metadata.metrics.cache_creation_tokens') AS cache_creation_tokens,
+      json_extract(mn.chat_message, '$.metadata.generation_model') AS model
+    FROM message_nodes mn
+    WHERE json_extract(mn.chat_message, '$.metadata.metrics') IS NOT NULL
+    """
+  ).fetchall()
+
+  for row in rows:
+    inp = number(row["input_tokens"])
+    out = number(row["output_tokens"])
+    cache_read = number(row["cache_read_tokens"])
+    cache_write = number(row["cache_creation_tokens"])
+    total = inp + out + cache_read + cache_write
+    if total <= 0:
+      continue
+
+    model = model_name(row["model"])
+    day = row["day"] or local_date_string()
+
+    bucket = model_usage.setdefault(model, empty_bucket())
+    bucket["inputTokens"] += inp
+    bucket["outputTokens"] += out
+    bucket["cacheReadInputTokens"] += cache_read
+    bucket["cacheCreationInputTokens"] += cache_write
+
+    if day:
+      active_dates.add(day)
+    if day in recent:
+      recent[day] += total
+    if day == date_string(today):
+      today_by_model[model] = today_by_model.get(model, 0) + total
+
+  prompt_rows = conn.execute(
+    """
+    SELECT
+      date(timestamp, 'unixepoch', 'localtime') AS day,
+      COUNT(*) AS prompts,
+      COUNT(DISTINCT session_id) AS sessions
+    FROM prompt_history
+    GROUP BY day
+    """
+  ).fetchall()
+
+  today_prompts = 0
+  today_sessions = 0
+  total_prompts = 0
+  total_sessions = 0
+
+  for row in prompt_rows:
+    day = row["day"] or local_date_string()
+    prompts = number(row["prompts"])
+    sessions = number(row["sessions"])
+    total_prompts += prompts
+    total_sessions += sessions
+    if day == date_string(today):
+      today_prompts = prompts
+      today_sessions = sessions
+
+  return base_record(
+    ready=True,
+    hasLocalStats=True,
+    todayPrompts=today_prompts,
+    todaySessions=today_sessions,
+    todayTotalTokens=sum(today_by_model.values()),
+    todayTokensByModel=today_by_model,
+    recentDays=[{"date": day, "messageCount": recent[day]} for day in recent_dates],
+    totalPrompts=total_prompts,
+    totalSessions=total_sessions,
+    activeDays=len(active_dates),
+    activeDates=sorted(active_dates),
+    modelUsage=model_usage,
+  )
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser(description="Print the Devin CLI usage record as JSON")
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  args = parser.parse_args()
+
+  try:
+    record = scan()
+  except sqlite3.Error as error:
+    record = base_record(usageStatusText="Devin usage unavailable", authHelpText=str(error))
+  except Exception as error:
+    record = base_record(usageStatusText="Devin usage unavailable", authHelpText="Devin usage scan failed")
+    print(f"omarchy-agent-usage-devin: {type(error).__name__}", file=sys.stderr)
+  print(json.dumps(record, separators=(",", ":")))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
