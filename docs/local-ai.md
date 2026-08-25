@@ -6,6 +6,44 @@ How Omarchy serves a local model and wires it into the coding agents. User-facin
 
 Three desktop surfaces (the menu, the bar panel, the terminal) call the `omarchy-ai-*` commands in `bin/`; the commands drive one Docker container (`omarchy-local-ai`) bound to `127.0.0.1:12434` and edit the agent configs under `~/.pi/agent` and `~/.omp/agent`. There is no daemon: Docker's `--restart unless-stopped` is the supervisor, and the state marker `~/.local/state/omarchy/local-ai/recipe.json` is what every surface keys off — menu guards test its existence, the bar panel hides without it, and `omarchy ai status` exits 2 when it is missing.
 
+## Architecture decisions
+
+### Keep behavior in the CLI
+
+The menu and bar panel invoke the same `omarchy-ai-*` commands available in a terminal. QML renders the state returned by `omarchy-ai-list --json`; it does not select hardware, interpret recipes, or manage Docker itself. The desktop UI can therefore remain optional, and a broken or disabled panel cannot strand the model server.
+
+### Resolve hardware on the machine
+
+The CLI reads NVIDIA VRAM with `nvidia-smi` and selects from recipes that fit the detected cards. Hardware inventory does not leave the machine. The first version supports NVIDIA GPUs with at least 24 GB of VRAM; AMD and Intel support should arrive as additional hardware and runtime adapters rather than branches in the panel.
+
+### Keep model-specific behavior in recipe data
+
+The catalog owns the image, model source, engine arguments, topology, context window, parser settings, environment, and mounts. The Bash workflow owns selection, validation, lifecycle, and agent wiring. A `scale` map changes recipe data for larger GPU counts without adding model-specific conditionals to the commands.
+
+### Pin recipes before promotion
+
+A recipe is not release-ready until its container image is pinned by digest, its model source is pinned to an immutable revision, and its exact launch arguments have passed completion and speed acceptance on the target hardware. Mutable tags and model heads are acceptable while a recipe is a candidate in a draft, but not as the final shared default.
+
+### Treat recipe sources as a trust boundary
+
+`omarchy-ai-sync` only scans the GitHub accounts named in the shipped catalog. A recipe can select a container image, arguments, environment, and host mounts, so adding a source is a code-review and security decision. The synced catalog is a local cache, the shipped catalog remains the fallback, and this version does not accept arbitrary user-supplied registries.
+
+### Keep serving private by default
+
+Docker publishes one OpenAI-compatible endpoint on `127.0.0.1:12434`; it is not exposed on the LAN or Tailnet. Remote access through Tailscale is a separate capability with its own authentication and disclosure decisions, not an automatic side effect of setup.
+
+### Require a completion before claiming readiness
+
+A listening port and a successful `/v1/models` response only mean the engine has started. Setup records state and wires the agents only after `/v1/chat/completions` returns non-empty model output. This keeps configured, running, and accepted as separate states.
+
+### Merge agent configuration without taking ownership
+
+Setup adds or updates only the `local` provider in Pi and OMP. It selects that provider only when no default exists or Local AI already owns the default, and removal deletes only the configuration it owns. Existing cloud-provider choices survive setup, model switches, and removal.
+
+### Use Docker as the supervisor
+
+Omarchy does not add another daemon. One named container owns the serving process, Docker's restart policy owns process supervision, and the recipe state file records the selected model. Start and stop preserve downloaded weights so users can free VRAM without repeating setup.
+
 ## Commands
 
 - `omarchy-ai-setup [recipe] [--dry-run]` — probe VRAM, pick (or take) a recipe, bootstrap Docker and the NVIDIA container toolkit when missing, serve, verify with a real chat completion, then wire pi and omp with a `local` provider. The default provider is claimed only when the agent has none.
@@ -28,7 +66,7 @@ A recipe is pure data describing one `docker run`:
 | `name`, `label` | tier identifier and human title |
 | `min_vram_mb` | per-card fit gate (`nvidia-smi memory.total`) |
 | `min_gpus` | how many qualifying cards the recipe needs (default 1) |
-| `image` | pinned OpenAI-compatible serving image |
+| `image` | OpenAI-compatible serving image; pin by digest before promotion |
 | `container_port` | port the image serves inside the container (default 8000) |
 | `args` | verbatim image command arguments (nothing is injected) |
 | `run_args` | extra `docker run` flags (e.g. `--shm-size`) |
