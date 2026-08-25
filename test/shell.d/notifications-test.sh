@@ -608,8 +608,8 @@ assert(
   'notifications service keeps image copies beside the popup and history files'
 )
 assert(
-  /copyImagesScript \+\n\s*"printf/.test(serviceQml),
-  'notifications service copies images before writing the JSON that references them'
+  /copyImagesScript \+\n\s*"IFS= read -r json \|\| exit 0\\n" \+\n\s*"printf/.test(serviceQml),
+  'notifications service copies images before reading and writing the JSON that references them'
 )
 assert(
   /timeout 5 head -c 5242881 -- \\"\$1\\" > \\"\$2\.tmp\\"[\s\S]{0,120}?mv -f -- \\"\$2\.tmp\\" \\"\$2\\"/.test(serviceQml),
