@@ -69,21 +69,44 @@ function hyprbarsSnapInset(win) {
   return usesWaylandCsd(win) ? 0 : 32
 }
 
-// A floating Chromium insets its frame 12px from the left and top of the box
-// the compositor gives it (its invisible resize border) and is then clipped by
-// that same box on the right and bottom — measured on metal: a 1000px box at
-// x=460 paints frame from x=472 and is cut at x=1459, losing 12px of the right
-// edge including the top-right corner. That inset is present in every
+// Chromium paints its visible frame CHROMIUM_FRAME_INSET px right and down of
+// the box the compositor hands it, then runs past the far edge and is clipped
+// there. A box sized to the rect we want therefore shows desktop along the left
+// and top and cuts the right and bottom — measured on metal, maximized at
+// [0,0] 1920x1032: wallpaper at x=0..10, frame from x=12, frame still painting
+// at x=1919 with the close glyph only 11px from the edge. It happens in every
 // configuration (CSD or hyprbars SSD, with or without WaylandWindowDecorations,
-// custom_chrome_frame either way) and disappears only when the window is
-// maximized. GTK CSD clients such as Nautilus do not do this. Open browsers
-// maximized so their frame is not cut.
-var _opensMaximizedRegex = /(google-)?chrom(e|ium)|brave-browser|microsoft-edge|vivaldi-stable|helium/i
+// custom_chrome_frame either way) and at every size, maximized included. GTK CSD
+// clients such as Nautilus do not do it.
+//
+// Expanding the box by the inset puts the visible frame exactly on the rect we
+// asked for: box [288,188 912x612] paints frame 300..1199, the requested
+// 900px-wide rect at x=300, with no gap and nothing cut.
+var CHROMIUM_FRAME_INSET = 12
+var _chromiumFrameRegex = /(google-)?chrom(e|ium)|brave-browser|microsoft-edge|vivaldi-stable|helium/i
 
-function opensMaximized(win) {
+function usesChromiumFrame(win) {
   var cls = windowAppId(win)
   if (!cls) return false
-  return _opensMaximizedRegex.test(cls)
+  return _chromiumFrameRegex.test(cls)
+}
+
+function chromiumFrameInset(win) {
+  return usesChromiumFrame(win) ? CHROMIUM_FRAME_INSET : 0
+}
+
+// Grow a target rect into the compositor box that makes Chromium's visible
+// frame land on it. A no-op for every other client.
+function frameBox(rect, win) {
+  var inset = chromiumFrameInset(win)
+  if (!inset || !rect || !rect.width || !rect.height) return rect
+  return {
+    x: Number(rect.x) - inset,
+    y: Number(rect.y) - inset,
+    width: Number(rect.width) + inset,
+    height: Number(rect.height) + inset,
+    monitor: rect.monitor
+  }
 }
 
 function windowMatchesPin(win, pin) {
@@ -644,7 +667,9 @@ if (typeof module !== "undefined") {
     windowAppId: windowAppId,
     isLockSurface: isLockSurface,
     usesWaylandCsd: usesWaylandCsd,
-    opensMaximized: opensMaximized,
+    usesChromiumFrame: usesChromiumFrame,
+    chromiumFrameInset: chromiumFrameInset,
+    frameBox: frameBox,
     hyprbarsSnapInset: hyprbarsSnapInset,
     windowMatchesPin: windowMatchesPin,
     parsePins: parsePins,

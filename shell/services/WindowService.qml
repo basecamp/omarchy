@@ -412,16 +412,6 @@ QtObject {
       var remembered = key && root.placements[key] && root.placements[key].width ? root.placements[key] : null
       if (remembered && geom && geom.width && (WindowModel.isSnapped(remembered, geom, 8, 32) || WindowModel.isSnapped(remembered, geom, 8, 0) || WindowModel.coversWorkArea(remembered, geom)))
         remembered = null
-      // A floating Chromium insets its frame 12px left/top and is clipped by the
-      // same box on the right, losing the right edge; only a maximized window is
-      // free of that inset. See WindowModel.opensMaximized for the measurements.
-      // Always maximize on map, ignoring a remembered mid-screen float that
-      // would reintroduce the clip.
-      if (csd && WindowModel.opensMaximized({ class: c.class, appId: c.initialClass || c.class, initialClass: c.initialClass })) {
-        known[addr] = true
-        root.maximize(addr)
-        continue
-      }
       // Lua already sizes CSD to 1200×740 so min/max stay on the caption.
       // Placing 880×560 here clips those buttons off the right.
       if (csd && !remembered) {
@@ -989,7 +979,7 @@ QtObject {
     // corner). Apply the work-area rect the same explicit way snap does — that
     // sends a real configure the client honors. hyprbars inset keeps the SSD
     // caption on-screen; CSD clients inset 0.
-    var rect = WindowModel.snapRect(geom, "max", root._hyprbarsInset(target))
+    var rect = root._frameBox(target, WindowModel.snapRect(geom, "max", root._hyprbarsInset(target)))
     var win = root._luaWindow(target)
     root._setPlacedKind(target, "max")
     root._dispatchLua("hl.dsp.window.fullscreen({ mode = \"fullscreen\", action = \"unset\", layout_aware = false, " + win + " })")
@@ -1053,12 +1043,20 @@ QtObject {
     root._applyRect(target, bounds)
   }
 
+  // Chromium's visible frame sits inside the box we hand it, so the box has to
+  // grow for the frame to land on the rect we actually want. No-op elsewhere.
+  function _frameBox(target, rect) {
+    var cls = root._clientClass(target)
+    return WindowModel.frameBox(rect, { class: cls, appId: cls })
+  }
+
   function _applyRect(target, bounds) {
     if (!target || !bounds || !bounds.width || !bounds.height) return
     if (root._placingRect) return
     root._placingRect = true
     var geom = root._monitorGeom(target)
     if (geom && geom.width) bounds = WindowModel.clampRect(bounds, geom, root._hyprbarsInset(target))
+    bounds = root._frameBox(target, bounds)
     var win = root._luaWindow(target)
     root._dispatchLua("hl.dsp.window.fullscreen({ mode = \"fullscreen\", action = \"unset\", layout_aware = false, " + win + " })")
     if (root._placedKind[target] === "max") root._setPlacedKind(target, "float")
@@ -1272,7 +1270,7 @@ QtObject {
     // hyprbars draws above hyprctl's client box even with bar_part_of_window.
     // SSD clients inset 32px (bar_height). CSD clients use hyprbars:no_bar, so
     // the fused caption is already inside the client box.
-    var rect = WindowModel.snapRect(geom, direction, root._hyprbarsInset(target))
+    var rect = root._frameBox(target, WindowModel.snapRect(geom, direction, root._hyprbarsInset(target)))
     var win = root._luaWindow(target)
     root._setPlacedKind(target, direction)
     root._dispatchLua("hl.dsp.window.float({ action = \"enable\", " + win + " })")
