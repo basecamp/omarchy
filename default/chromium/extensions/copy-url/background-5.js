@@ -17,12 +17,10 @@ function copyMarkdownLink(tab) {
 }
 
 chrome.commands.onCommand.addListener((command) => {
-  if (command !== 'copy-url' && command !== 'copy-markdown-link') return;
-
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (command === 'copy-url') {
       copyUrl(tabs[0] && tabs[0].url);
-    } else {
+    } else if (command === 'copy-markdown-link') {
       copyMarkdownLink(tabs[0]);
     }
   });
