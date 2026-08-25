@@ -71,10 +71,17 @@ normalize_scale() {
   awk 'NR == 1 { printf "%g\n", $0 }'
 }
 
-# Persisting GDK_SCALE happens from three places below.
+# GDK_SCALE is one integer for the whole session, so it can only follow a
+# monitor scale when there is a single monitor to follow. With several outputs
+# enabled, rewriting it here resizes XWayland windows on the displays the user
+# did not touch.
 persist_gdk_scale() {
   local gdk_scale="$1"
   local file="$2"
+  local enabled
+
+  enabled="$(hyprctl monitors -j | jq '[.[] | select(.disabled != true)] | length')"
+  [[ $enabled == 1 ]] || return 0
 
   sed -i -E \
     -e "s|^local omarchy_gdk_scale = .*|local omarchy_gdk_scale = ${gdk_scale}|" \

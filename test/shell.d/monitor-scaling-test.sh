@@ -19,8 +19,13 @@ cat >"$stub_bin/hyprctl" <<'SH'
 #!/bin/bash
 
 if [[ $1 == "monitors" && $2 == "-j" ]]; then
-  printf '[{"name":"eDP-1","focused":true,"scale":%s,"width":%s,"height":%s,"refreshRate":120.0}]' \
-    "${OMARCHY_TEST_MONITOR_SCALE:-2}" "${OMARCHY_TEST_MONITOR_WIDTH:-2880}" "${OMARCHY_TEST_MONITOR_HEIGHT:-1800}"
+  primary=$(printf '{"name":"eDP-1","focused":true,"scale":%s,"width":%s,"height":%s,"refreshRate":120.0}' \
+    "${OMARCHY_TEST_MONITOR_SCALE:-2}" "${OMARCHY_TEST_MONITOR_WIDTH:-2880}" "${OMARCHY_TEST_MONITOR_HEIGHT:-1800}")
+  if [[ -n ${OMARCHY_TEST_SECOND_MONITOR:-} ]]; then
+    printf '[%s,{"name":"HDMI-A-1","focused":false,"scale":1,"width":2560,"height":1440,"refreshRate":60.0}]' "$primary"
+  else
+    printf '[%s]' "$primary"
+  fi
 elif [[ $1 == "eval" ]]; then
   printf '%s\n' "$2" >"$OMARCHY_TEST_HYPRCTL_EVAL_OUT"
 else
@@ -184,3 +189,19 @@ OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
 grep -Fx 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", transform = 3, scale = 1.6 })' "$monitor_lua" >/dev/null ||
   fail "monitor scaling adds a scale to a named rule that has none"
 pass "monitor scaling adds a scale to a named rule that has none"
+
+# GDK_SCALE is one integer for the whole session. Following one display's scale
+# while another is enabled resizes XWayland windows on the untouched display.
+write_named_config
+OMARCHY_TEST_SECOND_MONITOR=1 OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.25
+grep -Fx 'local omarchy_gdk_scale = 2' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling leaves GDK scale alone while a second display is enabled"
+grep -F 'position = "0x0", scale = 1.25 })' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling still writes the per-output scale with two displays"
+pass "monitor scaling leaves GDK scale alone with two displays enabled"
+
+write_named_config
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.25
+grep -Fx 'local omarchy_gdk_scale = 1' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling still tracks GDK scale on a single display"
+pass "monitor scaling still tracks GDK scale on a single display"
