@@ -46,6 +46,9 @@ Panel {
   property var importResolutions: ({})
   property string importError: ""
   property bool importBusy: false
+  // Scratch buffer: importPreviewProc stdout onStreamFinished stores here so
+  // the stderr onStreamFinished can pass both to onImportPreviewFinished.
+  property string _importPreviewStdout: ""
 
   readonly property var rows: SnippetStore.displayRows(root.snippets, root.filterText)
   readonly property color foreground: Color.popups.text
@@ -85,9 +88,9 @@ Panel {
   }
 
   function copySnippet(id, name) {
-    Quickshell.execDetached(["omarchy-snippets-copy", id])
-    root.close()
-    Quickshell.execDetached(["omarchy-notification-send", "Copied \"" + name + "\"", "-t", "1500"])
+    copyProc.pendingName = name
+    copyProc.command = ["omarchy-snippets-copy", id]
+    copyProc.running = true
   }
 
   function snippetById(id) {
@@ -220,6 +223,7 @@ Panel {
     if (!path) return
     root.importFilePath = path
     root.importBusy = true
+    root._importPreviewStdout = ""
     importPreviewProc.command = ["omarchy-snippets-import-preview", path]
     importPreviewProc.running = true
   }
@@ -296,47 +300,98 @@ Panel {
     onFileChanged: reload()
   }
 
+  // copyProc is separate from the detached pattern so the UI can confirm
+  // success or surface a failure notification only after the clipboard write
+  // completes. pendingName carries the display name through to onExited.
+  Process {
+    id: copyProc
+    property string pendingName: ""
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var name = copyProc.pendingName
+        var code = copyProc.exitCode
+        if (code === 0) {
+          root.close()
+          Quickshell.execDetached(["omarchy-notification-send", "Copied \"" + name + "\"", "-t", "1500"])
+        } else {
+          Quickshell.execDetached(["omarchy-notification-send", text.trim() || "Could not copy snippet.", "-u", "critical", "-t", "3000"])
+        }
+      }
+    }
+  }
+
   Process {
     id: saveProc
-    stdout: StdioCollector { id: saveStdout }
-    stderr: StdioCollector { id: saveStderr }
-    onExited: function(exitCode) { root.onSaveFinished(exitCode, saveStderr.text) }
+    stdout: StdioCollector {}
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.onSaveFinished(saveProc.exitCode, text)
+    }
   }
 
   Process {
     id: deleteProc
-    stderr: StdioCollector {}
-    onExited: function(exitCode) { if (exitCode === 0) root.onDeleteFinished() }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (deleteProc.exitCode === 0) {
+          root.onDeleteFinished()
+        } else {
+          Quickshell.execDetached(["omarchy-notification-send", text.trim() || "Could not delete snippet.", "-u", "critical", "-t", "3000"])
+          root.view = "list"
+          Qt.callLater(function() { searchField.forceActiveFocus() })
+        }
+      }
+    }
   }
 
   Process {
     id: exportPickProc
-    stdout: StdioCollector { id: exportPickStdout }
-    onExited: function(exitCode) { root.onExportPathPicked(exitCode === 0 ? exportPickStdout.text.trim() : "") }
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.onExportPathPicked(exportPickProc.exitCode === 0 ? text.trim() : "")
+    }
   }
 
   Process {
     id: exportProc
-    stderr: StdioCollector {}
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (exportProc.exitCode !== 0) {
+          Quickshell.execDetached(["omarchy-notification-send", text.trim() || "Export failed.", "-u", "critical", "-t", "3000"])
+        }
+      }
+    }
   }
 
   Process {
     id: importPickProc
-    stdout: StdioCollector { id: importPickStdout }
-    onExited: function(exitCode) { root.onImportPathPicked(exitCode === 0 ? importPickStdout.text.trim() : "") }
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.onImportPathPicked(importPickProc.exitCode === 0 ? text.trim() : "")
+    }
   }
 
   Process {
     id: importPreviewProc
-    stdout: StdioCollector { id: importPreviewStdout }
-    stderr: StdioCollector { id: importPreviewStderr }
-    onExited: function(exitCode) { root.onImportPreviewFinished(exitCode, importPreviewStdout.text, importPreviewStderr.text) }
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root._importPreviewStdout = text
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.onImportPreviewFinished(importPreviewProc.exitCode, root._importPreviewStdout, text)
+    }
   }
 
   Process {
     id: importApplyProc
-    stderr: StdioCollector { id: importApplyStderr }
-    onExited: function(exitCode) { root.onImportApplyFinished(exitCode, importApplyStderr.text) }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.onImportApplyFinished(importApplyProc.exitCode, text)
+    }
   }
 
   BarIconButton {

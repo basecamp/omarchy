@@ -32,9 +32,9 @@ rm -f "$SNIPPETS_STORE"
 
 bar_config="$HOME/.config/omarchy/shell.json"
 [[ -f $bar_config ]] || bar_config="$ROOT/config/omarchy/shell.json"
-jq -e '.bar.layout.left[0].id == "omarchy.snippets"' "$bar_config" >/dev/null \
-  || fail "snippets bar widget is placed leftmost in the shipped bar layout"
-pass "snippets bar widget is placed leftmost in the shipped bar layout"
+jq -e '[.bar.layout.right[].id] | index("omarchy.snippets") != null' "$bar_config" > /dev/null \
+  || fail "snippets bar widget is placed in the right section of the shipped bar layout"
+pass "snippets bar widget is placed in the right section of the shipped bar layout"
 screenshot "success-snippets-bar-icon"
 
 # ---- open shows the empty state, anchored at the bar icon, not centered --
@@ -141,14 +141,22 @@ jq -e '[.snippets[] | select(.name == "Control" and .content == "untouched")] | 
   || fail "snippets export/import round trip restores name and content exactly"
 pass "snippets export/import round trip restores name and content exactly"
 
-jq -n '{version:1, snippets:[{name:"Control", content:"conflicting content"}]}' >"$export_path.conflict"
-omarchy-shell shell summon omarchy.snippets >/dev/null
+jq -n '{version:1, snippets:[{name:"Control", content:"conflicting content"}]}' > "$export_path.conflict"
+omarchy-shell shell summon omarchy.snippets > /dev/null
 wait_until "snippets panel reopens for import" 15 layer_present "omarchy-keyboard-panel"
-wtype -k Tab -k Tab -k Tab
+# Tab×3 focuses the import (⤓) button; Return activates it.
+wtype -k Tab -k Tab -k Tab -k Return
+# The file picker portal dialog opens. Use Ctrl+L to open the path-entry bar,
+# type the absolute path to the conflict fixture, then confirm.
+wait_until "file picker opens for import" 15 screen_contains "Import Snippets"
+wtype -M ctrl -k l -m ctrl
+sleep 0.3
+wtype "$export_path.conflict"
+wtype -k Return
 wait_until "snippets import conflict view opens" 15 screen_contains "need a decision"
 screenshot "success-snippets-import-conflict"
 
-omarchy-shell shell hide omarchy.snippets >/dev/null
+omarchy-shell shell hide omarchy.snippets > /dev/null
 wait_until "snippets panel closes after import preview" 15 layer_absent "omarchy-keyboard-panel"
 rm -f "$export_path" "$export_path.conflict"
 
