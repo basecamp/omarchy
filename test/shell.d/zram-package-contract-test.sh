@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 
-def dependency_names(path: Path) -> set[str]:
+def dependency_names(path: Path) -> tuple[set[str], set[str]]:
   try:
     metadata = subprocess.run(
       ["makepkg", "--printsrcinfo"],
@@ -27,12 +27,16 @@ def dependency_names(path: Path) -> set[str]:
   except subprocess.CalledProcessError as error:
     raise ValueError(f"{path}: makepkg --printsrcinfo failed: {error.stderr.strip()}") from error
 
-  dependencies = set()
+  plain_dependencies = set()
+  all_dependencies = set()
   for line in metadata.splitlines():
     key, separator, value = line.strip().partition(" = ")
     if separator and (key == "depends" or key.startswith("depends_")):
-      dependencies.add(re.split(r"[<>=]", value, maxsplit=1)[0])
-  return dependencies
+      dependency = re.split(r"[<>=]", value, maxsplit=1)[0]
+      all_dependencies.add(dependency)
+      if key == "depends":
+        plain_dependencies.add(dependency)
+  return plain_dependencies, all_dependencies
 
 
 root = Path(os.environ["ROOT"])
@@ -70,14 +74,14 @@ for package in target_packages + settings_packages:
     continue
 
   try:
-    dependencies = dependency_names(pkgbuild)
+    plain_dependencies, all_dependencies = dependency_names(pkgbuild)
   except ValueError as error:
     errors.append(str(error))
     continue
 
-  if package in target_packages and "zram-generator" not in dependencies:
+  if package in target_packages and "zram-generator" not in plain_dependencies:
     errors.append(f"{package} must hard-depend on zram-generator")
-  if package in settings_packages and "zram-generator" in dependencies:
+  if package in settings_packages and "zram-generator" in all_dependencies:
     errors.append(
       f"{package} must not hard-depend on zram-generator because it is installed in the live ISO"
     )
