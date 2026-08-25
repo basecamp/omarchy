@@ -43,3 +43,9 @@ if FAIL_PACKAGE_CALL=1 "$ROOT/bin/omarchy-remove-dev-env" swift >/dev/null; then
   fail "Swift remover propagates package removal failure"
 fi
 pass "Swift remover propagates package removal failure"
+
+base_packages="$ROOT/install/omarchy-base.packages"
+for package in libxml2-legacy patchelf; do
+  grep -qx "$package" "$base_packages" || fail "Swift dependency is installed on pristine offline systems: $package"
+done
+pass "Swift dependencies are installed on pristine offline systems"
