@@ -177,17 +177,13 @@ The helper does not choose the first color unless you use `gradient_start`.
 
 ### Value helper
 
-`{{ value key fallback }}` resolves a plain (non-color) `colors.toml` key with
-a fallback, the same way the gradient helpers do:
+`{{ value key fallback }}` resolves a plain (non-color) `colors.toml` key with a fallback, the same way the gradient helpers do:
 
 ```text
 {{ value hyprland_rounding 0 }}
 ```
 
-If the theme defines `hyprland_rounding`, that value is used; otherwise the
-fallback is tried as another palette key first, then used literally (`0`
-here). This is how optional numeric/boolean settings, like the Hyprland
-decoration keys below, stay valid Lua even when a theme never mentions them.
+If the theme defines `hyprland_rounding`, that value is used; otherwise the fallback is tried as another palette key first, then used literally (`0` here). This is how optional numeric/boolean settings, like the Hyprland decoration keys below, stay valid Lua even when a theme never mentions them.
 
 ## `shell.toml`
 
@@ -385,9 +381,7 @@ For a gradient it renders:
 local active_border_color = { colors = { "rgba(33ccffee)", "rgba(00ff99ee)" }, angle = 45 }
 ```
 
-`hyprland.lua.tpl` also renders a `decoration` block from optional `colors.toml`
-keys, using the `value` helper so a theme that never sets them still gets valid
-Lua matching Omarchy's own defaults:
+`hyprland.lua.tpl` also renders a `decoration` block from optional `colors.toml` keys, using the `value` helper so a theme that never sets them still gets valid Lua matching Omarchy's own defaults:
 
 | `colors.toml` key | Default | `decoration` field |
 |---|---|---|
@@ -400,10 +394,7 @@ Lua matching Omarchy's own defaults:
 | `hyprland_shadow_color` | `rgba(1a1a1aee)` | `shadow.color` |
 | `hyprland_shadow_color_inactive` | `rgba(1a1a1aee)` | `shadow.color_inactive` |
 
-This is what lets a theme installed from a git repo (see
-[What an installed theme may not ship](#what-an-installed-theme-may-not-ship))
-still ship rounded corners and a window shadow, without shipping a
-hand-written `hyprland.lua` that the staging filter would drop.
+This is what lets a theme installed from a git repo (see [What an installed theme may not ship](#what-an-installed-theme-may-not-ship)) still ship rounded corners and a window shadow, without shipping a hand-written `hyprland.lua` that the staging filter would drop.
 
 ## Adding or overriding theme files
 
