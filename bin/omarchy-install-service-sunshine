@@ -69,9 +69,24 @@ enable_hyprland_autostart() {
   fi
 }
 
+enable_sunshine_unit() {
+  local unit=app-dev.lizardbyte.app.Sunshine.service
+
+  # systemd only resolves Alias= after enable by the real unit name. Arch
+  # ships this unit with Alias=sunshine.service, so enabling "sunshine" fails
+  # on a fresh install ("Unit sunshine.service does not exist").
+  if [[ -f /usr/lib/systemd/user/$unit ]]; then
+    systemctl --user enable --now "$unit"
+  elif systemctl --user is-enabled sunshine.service >/dev/null 2>&1; then
+    systemctl --user enable --now sunshine.service
+  else
+    systemctl --user enable --now "$unit"
+  fi
+}
+
 echo "Installing Sunshine..."
 omarchy-pkg-add sunshine
-systemctl --user enable --now sunshine
+enable_sunshine_unit
 
 echo "Opening Sunshine firewall ports..."
 open_ufw_ports
