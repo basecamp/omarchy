@@ -110,13 +110,11 @@ if override:
   pkgs_candidates = [Path(override) / "pkgbuilds", Path(override)] + pkgs_candidates
 pkgs_root = next((path for path in pkgs_candidates if path.exists()), None)
 if pkgs_root is None:
-  print("not ok - omarchy-pkgs checkout found for PKGBUILD coverage", file=sys.stderr)
-  print(
-    "looked in:\n  " + "\n  ".join(str(path) for path in pkgs_candidates) +
-    "\nset OMARCHY_PKGS_PATH to the omarchy-pkgs checkout",
-    file=sys.stderr,
-  )
-  sys.exit(1)
+  if override:
+    print("not ok - OMARCHY_PKGS_PATH resolves to an omarchy-pkgs checkout", file=sys.stderr)
+    sys.exit(1)
+  print("ok - no omarchy-pkgs checkout; skipping PKGBUILD coverage")
+  sys.exit(0)
 settings_pkgbuild_path = pkgs_root / "omarchy-settings/PKGBUILD"
 omarchy_pkgbuild_path = pkgs_root / "omarchy/PKGBUILD"
 if not settings_pkgbuild_path.exists():
@@ -180,8 +178,8 @@ for hook in alpm_hooks:
 if errors:
   print("\n".join(errors), file=sys.stderr)
   sys.exit(1)
+print("ok - package-owned defaults live outside config")
 PY
-pass "package-owned defaults live outside config"
 
 grep -F 'dofile((os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/default/hypr/bootstrap.lua")' "$ROOT/config/hypr/hyprland.lua" >/dev/null
 grep -F 'require("default.hypr.omarchy")' "$ROOT/config/hypr/hyprland.lua" >/dev/null
