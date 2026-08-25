@@ -11,6 +11,18 @@ if (( $# < 1 )); then
 fi
 
 HOOK=$1
+
+# Hook names are fixed labels chosen by Omarchy code (post-update, theme-set,
+# font-set). The name becomes a filename under the hooks directory. A slash
+# would turn it into directory levels, and a bare `.` or `..` would point bash
+# at the directory itself or its parent. Refuse those rather than follow them.
+# Dots inside a name (a..b) are fine; once slashes are out, only the whole
+# name being `.` or `..` can leave the directory.
+if [[ -z $HOOK || $HOOK == */* || $HOOK == "." || $HOOK == ".." ]]; then
+  echo "Invalid hook name: $HOOK" >&2
+  exit 2
+fi
+
 HOOK_PATH="$HOME/.config/omarchy/hooks/$1"
 HOOK_DIR="$HOOK_PATH.d"
 shift
