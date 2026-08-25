@@ -7,6 +7,8 @@ echo "Store Hyprland input-device names as data instead of generated Lua"
 # trusted. The old script wrote to ~/.local/state regardless of XDG_STATE_HOME.
 toggles_dir="$HOME/.local/state/omarchy/toggles/hypr"
 
+reapply=0
+
 for kind in touchpad touchscreen; do
   state_file="$toggles_dir/$kind-disabled.lua"
   name_file="$toggles_dir/$kind-disabled-name"
@@ -22,4 +24,16 @@ for kind in touchpad touchscreen; do
   fi
 
   rm -f "$state_file"
+
+  if [[ -f $name_file ]]; then
+    reapply=1
+  fi
 done
+
+# The package hook reloads Hyprland before migrations run, so this session has
+# already dropped the disable: the generated Lua is no longer loaded and the
+# name file did not exist yet to replace it. Reload once more now that it does,
+# or the device the user switched off stays on until their next login.
+if (( reapply )); then
+  hyprctl reload >/dev/null 2>&1 || true
+fi
