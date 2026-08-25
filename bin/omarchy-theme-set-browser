@@ -5,20 +5,23 @@
 
 CHROMIUM_THEME=$HOME/.local/state/omarchy/current/theme/chromium.theme
 
+# A neutral grey, used for a theme that ships no color and for a chromium.theme
+# this cannot read as an RGB triple.
+THEME_HEX_COLOR="1c2027"
+
 if [[ -f $CHROMIUM_THEME ]]; then
-  THEME_RGB_COLOR=$(<$CHROMIUM_THEME)
-  THEME_HEX_COLOR=$(printf '#%02x%02x%02x' ${THEME_RGB_COLOR//,/ })
-else
-  # Use a default, neutral grey if theme doesn't have a color
-  THEME_HEX_COLOR="#1c2027"
+  theme_rgb=$(<$CHROMIUM_THEME)
+
+  # Themes are user-installed, so read the file as data. Handing unvetted words
+  # to printf does not produce a color: printf repeats its format for extra
+  # arguments and errors on non-numeric ones, so a malformed or hostile
+  # chromium.theme could put something other than six hex digits downstream.
+  # Take the value only when it is exactly three 0-255 components.
+  if [[ $theme_rgb =~ ^[[:space:]]*([0-9]{1,3})[[:space:]]*,[[:space:]]*([0-9]{1,3})[[:space:]]*,[[:space:]]*([0-9]{1,3})[[:space:]]*$ ]] &&
+    ((BASH_REMATCH[1] < 256 && BASH_REMATCH[2] < 256 && BASH_REMATCH[3] < 256)); then
+    THEME_HEX_COLOR=$(printf '%02x%02x%02x' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}")
+  fi
 fi
-
-set_browser_policy() {
-  local policy_dir="$1"
-
-  [[ -d $policy_dir ]] || return
-  echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\", \"BrowserColorScheme\": \"device\"}" | tee "$policy_dir/color.json" >/dev/null
-}
 
 refresh_running_browser() {
   local process="$1"
@@ -30,16 +33,16 @@ refresh_running_browser() {
   fi
 }
 
-set_browser_policy /etc/chromium/policies/managed
+# The policy directories are enterprise policy trust roots, so they are
+# root-owned and not writable by ordinary users. omarchy-theme-set-browser-policy
+# is the privileged half that writes color.json into the ones that exist; it
+# takes root of its own and accepts nothing but the color. It covers every
+# browser in one call, so this runs it once and then refreshes whatever is up.
+omarchy-theme-set-browser-policy "$THEME_HEX_COLOR"
+
 refresh_running_browser chromium chromium
-
-set_browser_policy /etc/opt/chrome/policies/managed
 refresh_running_browser chrome google-chrome-stable || refresh_running_browser chrome google-chrome
-
-set_browser_policy /etc/opt/edge/policies/managed
 refresh_running_browser msedge microsoft-edge-stable
-
-set_browser_policy /etc/brave/policies/managed
 refresh_running_browser brave brave
 # Match on the binary path: the running process is named plain "brave", and a
 # bare -f brave-origin pattern would also match the installer's own terminal.

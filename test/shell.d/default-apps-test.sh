@@ -205,10 +205,14 @@ OMARCHY_TEST_REAL_BROWSER_INSTALL=true omarchy-default-browser --install chromiu
 [[ $(omarchy-default-browser) == "chromium" ]] || fail "Chromium becomes the default after its full installer succeeds"
 cmp -s "$ROOT/config/chromium-flags.conf" "$test_home/.config/chromium-flags.conf" ||
   fail "Chromium browser installer copies the default flags"
-grep -Fxq 'sudo:mkdir -p /etc/chromium/policies/managed' "$setup_log" ||
-  fail "Chromium browser installer creates its policy directory"
-grep -Fxq 'sudo:chmod a+rw /etc/chromium/policies/managed' "$setup_log" ||
-  fail "Chromium browser installer makes its policy directory writable"
+grep -Fxq 'sudo:install -d -m 0755 -o root -g root /etc/chromium/policies/managed' "$setup_log" ||
+  fail "Chromium browser installer creates its policy directory root-owned and not world-writable"
+# The policy directory is an enterprise policy trust root. It was world-writable
+# so an unprivileged theme switch could write color.json; that write goes through
+# omarchy-theme-set-browser-policy now, and nothing may open the directory again.
+if grep -Eq 'a\+rw|o\+w|0777' "$setup_log"; then
+  fail "Chromium browser installer leaves its policy directory writable by other users"
+fi
 grep -Fxq 'omarchy-install-chromium-copy-url:' "$setup_log" ||
   fail "Chromium browser installer registers the Copy URL host"
 grep -Fxq 'omarchy-install-chromium-ytdlp:' "$setup_log" ||

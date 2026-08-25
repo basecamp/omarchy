@@ -1,0 +1,110 @@
+#!/bin/bash
+
+# omarchy:summary=Write the current theme color into the browser policy directories
+# omarchy:args=<rrggbb>
+# omarchy:hidden=true
+
+set -euo pipefail
+
+# Whenever this runs as root — invoked directly through the passwordless
+# sudoers rule, or re-execed by require_root below — sudo's secure_path decides
+# where a bare helper resolves, and a dev link (etc/sudoers.d/omarchy-dev-path)
+# prepends a user-writable checkout bin/ to it. Every helper this script calls
+# by bare name (printf's builtin aside: chmod, mv, rm) is a system tool, never
+# an omarchy-* command, so pin PATH to trusted system directories and keep root
+# from resolving one out of that checkout. The unprivileged wrapper phase keeps
+# the caller's PATH so it can still find sudo.
+if (( EUID == 0 )); then
+  export PATH=/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
+fi
+
+# Enterprise policy trust roots. Browsers read every JSON file under these as
+# administrator-managed policy, so they stay root-owned and not writable by
+# ordinary users, and this helper is the only thing Omarchy points at them with
+# root. The list is fixed here rather than taken from the caller: the caller
+# chooses a color, never a path.
+POLICY_DIRS=(
+  /etc/chromium/policies/managed
+  /etc/opt/chrome/policies/managed
+  /etc/opt/edge/policies/managed
+  /etc/brave/policies/managed
+)
+
+# The path etc/sudoers.d/omarchy-theme-browser names. The privileged half always
+# runs from there rather than from whichever copy was invoked, so the rule
+# matches even where $OMARCHY_PATH points at a checkout.
+PACKAGED_PATH=/usr/bin/omarchy-theme-set-browser-policy
+
+usage() {
+  echo "Usage: omarchy-theme-set-browser-policy <rrggbb>" >&2
+}
+
+if (( $# != 1 )); then
+  usage
+  exit 1
+fi
+
+color="$1"
+
+# The color reaches this helper from the current theme's chromium.theme, which
+# lives under the user's own state directory and is therefore chosen by whoever
+# installed the theme. Six lowercase hex digits is the whole of what this
+# accepts, so nothing out of that file can land in a policy file as anything but
+# a color. The leading "#" is added when the JSON is written rather than passed
+# in: "#" opens a comment in sudoers, and keeping it out of argv lets the
+# sudoers rule spell the argument as a plain six-character glob.
+if [[ ! $color =~ ^[0-9a-f]{6}$ ]]; then
+  echo "omarchy-theme-set-browser-policy: expected six lowercase hex digits, got '$color'" >&2
+  exit 1
+fi
+
+# True when sudo would run this exact command without stopping for a password.
+# `sudo -l` on its own reports whether a command is permitted, which the blanket
+# %wheel rule answers yes to for everything; the long listing prints the matched
+# entry's tags, so !authenticate is the grant in
+# etc/sudoers.d/omarchy-theme-browser and nothing else. Listing runs nothing
+# and, under -n, prompts for nothing.
+sudo_grants_passwordless() {
+  sudo -n -l -l "$PACKAGED_PATH" "$@" 2>/dev/null | grep -q '!authenticate'
+}
+
+require_root() {
+  if (( EUID == 0 )); then
+    return
+  elif [[ -t 0 ]] || sudo_grants_passwordless "$@"; then
+    # A terminal can carry sudo's own password prompt. Without one, sudo is
+    # right only where the grant reaches.
+    exec sudo "$PACKAGED_PATH" "$@"
+  else
+    # Unlike omarchy-dns, this does not fall back to pkexec. It runs unattended
+    # on every theme switch, and a browser accent color does not justify putting
+    # an authentication dialog on screen. Where the grant does not reach — an
+    # install still on an older omarchy-settings, or a user outside %wheel —
+    # leave the policy directories alone and let the rest of the theme apply.
+    exit 0
+  fi
+}
+
+require_root "$color"
+
+staged=""
+cleanup() {
+  [[ -n $staged ]] && rm -f "$staged"
+}
+trap cleanup EXIT
+
+for policy_dir in "${POLICY_DIRS[@]}"; do
+  # Only browsers Omarchy has installed have a policy directory. Creating one
+  # here would hand a browser a managed-policy root it does not otherwise have.
+  [[ -d $policy_dir ]] || continue
+
+  staged="$policy_dir/.color.json.omarchy"
+  printf '{"BrowserThemeColor": "#%s", "BrowserColorScheme": "device"}\n' "$color" >"$staged"
+  chmod 0644 "$staged"
+  # Replacing through a staged file in the same directory gives the policy this
+  # run's root ownership and mode instead of inheriting whatever the
+  # world-writable era left on the old file, and never leaves a browser reading
+  # a half-written policy.
+  mv -f "$staged" "$policy_dir/color.json"
+  staged=""
+done
