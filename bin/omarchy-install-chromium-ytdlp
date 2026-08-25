@@ -17,6 +17,9 @@ browser_dirs=(
   "$HOME/.config/BraveSoftware/Brave-Browser"
   "$HOME/.config/BraveSoftware/Brave-Browser-Beta"
   "$HOME/.config/BraveSoftware/Brave-Browser-Nightly"
+  # Brave Origin is a separate browser, not a Brave channel: its own package,
+  # binary, flags conf and profile root.
+  "$HOME/.config/BraveSoftware/Brave-Origin"
   "$HOME/.config/microsoft-edge"
   "$HOME/.config/microsoft-edge-dev"
 )

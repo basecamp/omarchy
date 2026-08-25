@@ -33,6 +33,12 @@ jq -e --arg path "$ROOT/bin/omarchy-chromium-ytdlp-host" '
 ' "$manifest_path" >/dev/null
 pass "yt-dlp native host manifest uses Omarchy host path and extension id"
 
+# Brave Origin is a separate browser with its own profile root, and
+# omarchy-install-browser installs it, so the host has to reach it too.
+[[ -f $test_home/.config/BraveSoftware/Brave-Origin/NativeMessagingHosts/com.omarchy.ytdlp.json ]] ||
+  fail "yt-dlp native host installer registers Brave Origin"
+pass "yt-dlp native host installer registers Brave Origin"
+
 parse_result=$(bash -c '
   OMARCHY_PATH="$3"
   source "$1"
