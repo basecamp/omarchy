@@ -57,6 +57,26 @@ device=$(hw_display)
 [[ $device == "gmux_backlight" ]] || fail "gmux outranks the GPU backlights on dual-GPU Macs" "actual: $device"
 pass "gmux outranks the GPU backlights on dual-GPU Macs"
 
+write_backlights 228600000.dsi.0 apple-panel-bl
+device=$(hw_display)
+[[ $device == "apple-panel-bl" ]] || fail "apple-panel-bl beats the alphabetical DSI fallback" "actual: $device"
+pass "apple-panel-bl beats the alphabetical DSI fallback"
+
+write_backlights apple-panel-bl
+device=$(hw_display)
+[[ $device == "apple-panel-bl" ]] || fail "apple-panel-bl is used when it is the only backlight" "actual: $device"
+pass "apple-panel-bl is used when it is the only backlight"
+
+write_backlights apple-panel-bl gmux_backlight
+device=$(hw_display)
+[[ $device == "gmux_backlight" ]] || fail "gmux outranks apple-panel-bl on T2 Macs" "actual: $device"
+pass "gmux outranks apple-panel-bl on T2 Macs"
+
+write_backlights 228600000.dsi.0 appletb_backlight
+device=$(hw_display)
+[[ $device == "228600000.dsi.0" ]] || fail "the Touch Bar is skipped even when the fallback is a DSI backlight" "actual: $device"
+pass "the Touch Bar is skipped even when the fallback is a DSI backlight"
+
 write_backlights
 if hw_display >/dev/null 2>&1; then
   fail "no backlight device reports failure"
