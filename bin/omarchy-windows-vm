@@ -357,7 +357,7 @@ migrate_legacy_compose() {
   [[ -z $tz ]] && tz="UTC"
   if ! write_compose "$ram" "$cores" "$disk" "$username" "$password" "$tz" "$storage" "$shared"; then
     echo "Could not migrate the existing configuration automatically." >&2
-    echo "Re-run: omarchy-windows-vm install" >&2
+    echo "Re-run: omarchy windows vm install" >&2
     return 1
   fi
   write_credentials "$username" "$password"
@@ -411,7 +411,7 @@ install_windows() {
 [Desktop Entry]
 Name=Windows
 Comment=Start Windows VM via Docker and connect with RDP
-Exec=uwsm app -- omarchy-windows-vm launch
+Exec=uwsm app -- omarchy windows vm launch
 Icon=windows
 Terminal=false
 Type=Application
@@ -585,7 +585,7 @@ EOF
   echo ""
   echo "Once finished, launch 'Windows' via Super + Space"
   echo ""
-  echo "To stop the VM: omarchy-windows-vm stop"
+  echo "To stop the VM: omarchy windows vm stop"
   echo ""
 }
 
@@ -618,7 +618,7 @@ launch_windows() {
 
   if ! migrate_legacy_compose; then
     if [[ ! -f $COMPOSE_FILE ]]; then
-      echo "Windows VM not configured. Please run: omarchy-windows-vm install"
+      echo "Windows VM not configured. Please run: omarchy windows vm install"
       exit 1
     fi
   fi
@@ -637,7 +637,7 @@ launch_windows() {
   echo "Starting Windows VM (this may prompt for authorization)..."
   if ! priv up_wait; then
     echo "❌ Failed to start Windows VM!"
-    echo "   Try checking: omarchy-windows-vm status"
+    echo "   Try checking: omarchy windows vm status"
     omarchy-notification-send -u critical "Windows VM" "Failed to start Windows VM"
     exit 1
   fi
@@ -645,7 +645,7 @@ launch_windows() {
   # Build the connection info
   if [[ $KEEP_ALIVE = "true" ]]; then
     LIFECYCLE="VM will keep running after RDP closes
-To stop: omarchy-windows-vm stop"
+To stop: omarchy windows vm stop"
   else
     LIFECYCLE="VM will auto-stop when RDP closes"
   fi
@@ -695,12 +695,12 @@ To stop: omarchy-windows-vm stop"
       echo "Windows VM stopped."
     else
       echo "⚠️  Could not stop the Windows VM (authorization declined?)."
-      echo "   It may still be running. Stop it with: omarchy-windows-vm stop"
+      echo "   It may still be running. Stop it with: omarchy windows vm stop"
     fi
   else
     echo ""
     echo "RDP session closed. Windows VM is still running."
-    echo "To stop it: omarchy-windows-vm stop"
+    echo "To stop it: omarchy windows vm stop"
   fi
 }
 
@@ -724,19 +724,19 @@ status_windows() {
   migrate_legacy_compose 2>/dev/null || true
   if [[ ! -f $COMPOSE_FILE ]]; then
     echo "Windows VM not configured."
-    echo "To set up: omarchy-windows-vm install"
+    echo "To set up: omarchy windows vm install"
     exit 1
   fi
 
   if ! CONTAINER_STATUS=$(priv status); then
     echo "Could not query the Windows VM (authorization declined?)."
-    echo "To try again: omarchy-windows-vm status"
+    echo "To try again: omarchy windows vm status"
     exit 1
   fi
 
   if [[ -z $CONTAINER_STATUS ]]; then
     echo "Windows VM container not found."
-    echo "To start: omarchy-windows-vm launch"
+    echo "To start: omarchy windows vm launch"
   elif [[ $CONTAINER_STATUS = "running" ]]; then
     gum style \
       --border normal \
@@ -748,16 +748,16 @@ status_windows() {
       "Web interface: http://127.0.0.1:8006" \
       "RDP available: port 3389" \
       "" \
-      "To connect: omarchy-windows-vm launch" \
-      "To stop:    omarchy-windows-vm stop"
+      "To connect: omarchy windows vm launch" \
+      "To stop:    omarchy windows vm stop"
   else
     echo "Windows VM is stopped (status: $CONTAINER_STATUS)"
-    echo "To start: omarchy-windows-vm launch"
+    echo "To start: omarchy windows vm launch"
   fi
 }
 
 show_usage() {
-  echo "Usage: omarchy-windows-vm [command] [options]"
+  echo "Usage: omarchy windows vm [command] [options]"
   echo ""
   echo "Commands:"
   echo "  install              Install and configure Windows VM"
@@ -770,10 +770,10 @@ show_usage() {
   echo "  help                 Show this help message"
   echo ""
   echo "Examples:"
-  echo "  omarchy-windows-vm install           # Set up Windows VM for first time"
-  echo "  omarchy-windows-vm launch            # Connect to VM (auto-stop on exit)"
-  echo "  omarchy-windows-vm launch -k         # Connect to VM (keep running)"
-  echo "  omarchy-windows-vm stop              # Shut down the VM"
+  echo "  omarchy windows vm install           # Set up Windows VM for first time"
+  echo "  omarchy windows vm launch            # Connect to VM (auto-stop on exit)"
+  echo "  omarchy windows vm launch -k         # Connect to VM (keep running)"
+  echo "  omarchy windows vm stop              # Shut down the VM"
 }
 
 # Main command dispatcher
