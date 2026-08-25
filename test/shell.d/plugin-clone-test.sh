@@ -4,6 +4,16 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
+# A cloned bar is the same QML as omarchy.bar. Required properties must be
+# passed at construction; Loader.source + later `"in"` assignment never maps it.
+if ! rg -qF 'function barInitialProperties' "$ROOT/shell/shell.qml" ||
+   ! rg -qF 'loader.setSource(url, barInitialProperties(manifest))' "$ROOT/shell/shell.qml" ||
+   ! rg -qF 'shell.loadBar(pluginBarLoader' "$ROOT/shell/shell.qml" ||
+   ! rg -qF 'shell.loadBar(defaultBarLoader' "$ROOT/shell/shell.qml"; then
+  fail "cloned bars are not given required properties at create time"
+fi
+pass "cloned bars share create-time host injection with the built-in bar"
+
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 mkdir -p "$TMPDIR/home/.config/omarchy" "$TMPDIR/bin"
