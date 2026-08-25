@@ -54,6 +54,9 @@ hl.config({
 keyd ships with an inert starter config at `/etc/keyd/default.conf` — edit it as root, then `sudo keyd reload` to apply. A common example, tap CapsLock for Escape and hold it as a layer:
 
 ```
+[ids]
+*
+
 [main]
 capslock = overload(capslock, esc)
 
