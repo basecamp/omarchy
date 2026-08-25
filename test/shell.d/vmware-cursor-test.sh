@@ -43,3 +43,9 @@ if grep -q 'no_hardware_cursors' "$looknfeel"; then
   fail "vmware cursor setup ignores other video drivers"
 fi
 pass "vmware cursor setup ignores other video drivers"
+
+printf '%s\n' '-- User look and feel' '-- no_hardware_cursors is mentioned in a comment' >"$looknfeel"
+run_fix >/dev/null
+grep -F 'no_hardware_cursors = true' "$looknfeel" >/dev/null ||
+  fail "a comment mentioning the setting still gets a real assignment"
+pass "vmware cursor setup ignores a comment mentioning the setting"
