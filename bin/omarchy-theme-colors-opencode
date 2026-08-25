@@ -1,0 +1,225 @@
+#!/bin/bash
+
+# omarchy:summary=Serialize a theme's colors-opencode.toml into a data-only opencode.json
+# omarchy:args=--file <colors-opencode.toml> --out <opencode.json>
+# omarchy:hidden=true
+
+set -euo pipefail
+
+usage() {
+  echo "Usage: omarchy-theme-colors-opencode --file <colors-opencode.toml> --out <opencode.json>"
+}
+
+INPUT=""
+OUTPUT=""
+
+while (( $# > 0 )); do
+  case "$1" in
+    --file)
+      [[ -n ${2:-} ]] || { usage >&2; exit 1; }
+      INPUT="$2"
+      shift 2
+      ;;
+    --out)
+      [[ -n ${2:-} ]] || { usage >&2; exit 1; }
+      OUTPUT="$2"
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ -z $INPUT || -z $OUTPUT || -n ${1:-} ]]; then
+  usage >&2
+  exit 1
+fi
+
+if [[ ! -f $INPUT ]]; then
+  echo "omarchy-theme-colors-opencode: no such file: $INPUT" >&2
+  exit 1
+fi
+
+if ! omarchy-cmd-present python3; then
+  echo "omarchy-theme-colors-opencode: python3 is required to read colors-opencode.toml" >&2
+  exit 1
+fi
+
+python3 - "$INPUT" "$OUTPUT" <<'PY'
+import json
+import os
+import re
+import sys
+import tempfile
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    print("omarchy-theme-colors-opencode: python3 is too old for tomllib (3.11+ needed)", file=sys.stderr)
+    sys.exit(1)
+
+from datetime import date as _date
+from datetime import datetime as _datetime
+from datetime import time as _time
+
+HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+DEFAULT_THEME = {
+    "primary": "accent",
+    "secondary": "numeric",
+    "accent": "accentBright",
+    "error": "accent",
+    "warning": "grey",
+    "success": "type",
+    "info": "numeric",
+    "text": "fg",
+    "textMuted": "muted",
+    "background": "bg",
+    "backgroundPanel": "panel",
+    "backgroundElement": "element",
+    "border": "accent",
+    "borderActive": "accentBright",
+    "borderSubtle": "line",
+    "backgroundMenu": "panel",
+    "selectedListItemText": "bg",
+    "diffAdded": "fg",
+    "diffRemoved": "warm",
+    "diffContext": "dim",
+    "diffHunkHeader": "grey",
+    "diffHighlightAdded": "bright",
+    "diffHighlightRemoved": "accentBright",
+    "diffAddedBg": "addedBg",
+    "diffRemovedBg": "removedBg",
+    "diffContextBg": "ctxBg",
+    "diffLineNumber": "muted",
+    "diffAddedLineNumberBg": "panel",
+    "diffRemovedLineNumberBg": "panel",
+    "markdownText": "fg",
+    "markdownHeading": "numeric",
+    "markdownLink": "accentBright",
+    "markdownLinkText": "warm",
+    "markdownCode": "accentBright",
+    "markdownBlockQuote": "dim",
+    "markdownEmph": "accent",
+    "markdownStrong": "bright",
+    "markdownHorizontalRule": "line",
+    "markdownListItem": "accent",
+    "markdownListEnumeration": "accentBright",
+    "markdownImage": "numeric",
+    "markdownImageText": "warm",
+    "markdownCodeBlock": "fg",
+    "syntaxComment": "muted",
+    "syntaxKeyword": "keyword",
+    "syntaxFunction": "operator",
+    "syntaxVariable": "fg",
+    "syntaxString": "warm",
+    "syntaxNumber": "numeric",
+    "syntaxType": "type",
+    "syntaxOperator": "operator",
+    "syntaxPunctuation": "dim",
+}
+
+
+def fail(message):
+    print(f"omarchy-theme-colors-opencode: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def check_value(value):
+    if isinstance(value, bool) or isinstance(value, str) or isinstance(value, int) or isinstance(value, float):
+        if isinstance(value, str) and not HEX_COLOR.match(value) and value != value.lower():
+            pass  # Allow non-hex strings in defs
+        return
+    if isinstance(value, (_date, _time, _datetime)):
+        fail("colors-opencode.toml values may not be dates or times")
+    if isinstance(value, list):
+        for item in value:
+            check_value(item)
+        return
+    if isinstance(value, dict):
+        for item in value.values():
+            check_value(item)
+        return
+    fail("colors-opencode.toml values may only be strings, numbers, booleans, arrays, and tables")
+
+
+input_path, output_path = sys.argv[1], sys.argv[2]
+
+try:
+    with open(input_path, "rb") as handle:
+        data = tomllib.load(handle)
+except tomllib.TOMLDecodeError as error:
+    fail(f"invalid TOML in {os.path.basename(input_path)}: {error}")
+except UnicodeDecodeError:
+    fail(f"{os.path.basename(input_path)} is not valid UTF-8")
+
+for key in data:
+    if key not in ("schema", "defs", "theme"):
+        fail(f"colors-opencode.toml does not support the top-level key '{key}'")
+
+schema = data.get("schema", 1)
+if not isinstance(schema, int) or isinstance(schema, bool) or schema != 1:
+    fail(f"unsupported schema version: {schema!r}")
+
+defs = data.get("defs")
+if not isinstance(defs, dict) or not defs:
+    fail("colors-opencode.toml defines no [defs] entries")
+
+for key, value in defs.items():
+    if not isinstance(value, str):
+        fail(f"[defs] value for '{key}' must be a string")
+    if not HEX_COLOR.match(value):
+        fail(f"[defs] value for '{key}' is not a valid hex color: {value!r}")
+
+check_value(defs)
+
+theme_overrides = data.get("theme", {})
+if not isinstance(theme_overrides, dict):
+    fail("[theme] must be a table")
+
+for key, value in theme_overrides.items():
+    if not isinstance(value, str):
+        fail(f"[theme] value for '{key}' must be a string reference")
+
+theme = dict(DEFAULT_THEME)
+theme.update(theme_overrides)
+
+output = {
+    "$schema": "https://opencode.ai/theme.json",
+    "defs": defs,
+    "theme": theme,
+}
+
+rendered = json.dumps(output, indent=2, sort_keys=False) + "\n"
+
+directory = os.path.dirname(os.path.abspath(output_path))
+try:
+    handle = tempfile.NamedTemporaryFile(
+        mode="w", dir=directory, prefix=".opencode.json.", delete=False
+    )
+except OSError as error:
+    fail(f"cannot write next to {output_path}: {error}")
+
+try:
+    try:
+        handle.write(rendered)
+        handle.flush()
+        os.fsync(handle.fileno())
+    except OSError as error:
+        handle.close()
+        os.unlink(handle.name)
+        fail(f"cannot write {output_path}: {error}")
+    handle.close()
+    os.chmod(handle.name, 0o644)
+    os.replace(handle.name, output_path)
+except OSError as error:
+    if os.path.exists(handle.name):
+        os.unlink(handle.name)
+    fail(f"cannot replace {output_path}: {error}")
+PY

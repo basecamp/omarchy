@@ -410,4 +410,13 @@ if [[ -f $NEXT_THEME_DIR/colors-neovim.toml ]]; then
   fi
 fi
 
+# A theme may carry a declarative OpenCode integration in colors-opencode.toml.
+# It is pure data -- no JSON is shipped or run -- so an installed theme may ship
+# it, and it replaces whatever opencode.json was generated above.
+if [[ -f $NEXT_THEME_DIR/colors-opencode.toml ]]; then
+  if ! omarchy-theme-colors-opencode --file "$NEXT_THEME_DIR/colors-opencode.toml" --out "$NEXT_THEME_DIR/opencode.json"; then
+    echo "omarchy-theme-set-templates: keeping the generated opencode.json" >&2
+  fi
+fi
+
 apply_shell_section_overrides

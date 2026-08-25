@@ -234,6 +234,39 @@ without it the generated default is kept.
 Neovim picks the staged file up through its theme hot-reload watcher, so
 switching themes retints running instances like any other theme change.
 
+## `colors-opencode.toml`
+
+A theme can carry its own OpenCode integration declaratively in `colors-opencode.toml`.
+The file is pure data: `omarchy-theme-colors-opencode` serializes it into the staged
+theme's `opencode.json` as JSON literals while `omarchy-theme-set-templates` runs,
+replacing the generated default for that one file. An installed theme may ship
+`colors-opencode.toml` but not `opencode.json` itself — the serializer is the only
+path to that file because OpenCode loads it as configuration:
+
+```toml
+schema = 1
+
+[defs]
+bg = "#1c1c1c"
+fg = "#c1c1c1"
+```
+
+The `[defs]` section maps theme author–chosen identifiers to hex color values.
+Every value must be a six-digit hex color (`#rrggbb`), but the key names are
+free-form — theme authors choose whatever identifiers they want and reference
+them in `[theme]`. An optional `[theme]` section can override the default theme
+mapping (e.g. `primary = "accent"`), but is not required — the serializer supplies
+sensible defaults for every OpenCode theme slot.
+
+Safety comes from serialization, not from inspection: every value is emitted as an
+escaped JSON double-quoted literal, so no value can break out of its context and
+become code. What OpenCode loads is exactly the data the TOML carries, nothing
+more. Rendering needs python3 3.11+ (stdlib `tomllib`); without it the generated
+default is kept.
+
+OpenCode picks the staged file up through `SIGUSR2`, so switching themes retints
+running instances like any other theme change.
+
 ## Template placeholders
 
 Templates are plain files ending in `.tpl`. `omarchy-theme-set-templates`
