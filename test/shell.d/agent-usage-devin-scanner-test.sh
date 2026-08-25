@@ -81,9 +81,9 @@ pass "Devin collector counts today's prompts and sessions"
 
 # Model usage (all-time): glm-5-2 = (100+80+50) input, (20+10+5) output, (60+50+0) cache_read, 0 cache_write
 #                         devin-pro = 200 input, 40 output, 0 cache_read, 10 cache_write
-[[ $(jq -c '.modelUsage["glm-5-2"]' <<<"$result") == '{"inputTokens":230,"outputTokens":35,"cacheReadInputTokens":110,"cacheCreationInputTokens":0}' ]] ||
+[[ $(jq -c '.modelUsage["glm-5-2"]' <<<"$result") == '{"cacheCreationInputTokens":0,"cacheReadInputTokens":110,"inputTokens":230,"outputTokens":35}' ]] ||
   fail "Devin collector aggregates glm-5-2 model usage" "$result"
-[[ $(jq -c '.modelUsage["devin-pro"]' <<<"$result") == '{"inputTokens":200,"outputTokens":40,"cacheReadInputTokens":0,"cacheCreationInputTokens":10}' ]] ||
+[[ $(jq -c '.modelUsage["devin-pro"]' <<<"$result") == '{"cacheCreationInputTokens":10,"cacheReadInputTokens":0,"inputTokens":200,"outputTokens":40}' ]] ||
   fail "Devin collector aggregates devin-pro model usage" "$result"
 pass "Devin collector aggregates model usage correctly"
 
@@ -124,4 +124,112 @@ result=$(HOME="$TEST_HOME" DEVIN_DATA_DIR="$DEVIN_DATA_DIR" \
   "$ROOT/bin/omarchy-agent-usage-devin")
 [[ $(jq -r '.usageStatusText' <<<"$result") == "Devin CLI not installed" ]] ||
   fail "Devin collector reports missing database" "$result"
+[[ $(jq -r '.authHelpText' <<<"$result") != "" ]] ||
+  fail "Devin collector shows install hint for missing database" "$result"
 pass "Devin collector reports missing database gracefully"
+
+# Caching: a second run without --force should reuse the cached scan
+# (rebuild the DB since we deleted it above)
+mkdir -p "$DEVIN_DATA_DIR"
+python3 - "$DEVIN_DATA_DIR/sessions.db" "$now" <<'PY'
+import json, sqlite3, sys
+db_path, now = sys.argv[1], int(sys.argv[2])
+conn = sqlite3.connect(db_path)
+conn.execute("CREATE TABLE message_nodes (row_id INTEGER PRIMARY KEY, session_id TEXT, node_id INTEGER, chat_message TEXT, created_at INTEGER, metadata TEXT)")
+conn.execute("CREATE TABLE prompt_history (id INTEGER PRIMARY KEY, content TEXT, timestamp INTEGER, session_id TEXT, is_shell INTEGER)")
+conn.execute("INSERT INTO message_nodes (session_id, node_id, chat_message, created_at) VALUES ('s1', 1, ?, ?)",
+             (json.dumps({"metadata": {"metrics": {"input_tokens": 10, "output_tokens": 5, "cache_read_tokens": 0, "cache_creation_tokens": 0}, "generation_model": "test"}}), now))
+conn.execute("INSERT INTO prompt_history (content, timestamp, session_id, is_shell) VALUES ('hi', ?, 's1', 0)", (now,))
+conn.commit()
+conn.close()
+PY
+
+# First run populates the cache
+result1=$(HOME="$TEST_HOME" DEVIN_DATA_DIR="$DEVIN_DATA_DIR" XDG_CACHE_HOME="$TEST_HOME/.cache" \
+  "$ROOT/bin/omarchy-agent-usage-devin")
+[[ $(jq -r '.todayTotalTokens' <<<"$result1") == "15" ]] ||
+  fail "Devin collector first scan populates cache" "$result1"
+
+# Add more data after the cache is written
+python3 - "$DEVIN_DATA_DIR/sessions.db" "$now" <<'PY'
+import json, sqlite3, sys
+db_path, now = sys.argv[1], int(sys.argv[2])
+conn = sqlite3.connect(db_path)
+conn.execute("INSERT INTO message_nodes (session_id, node_id, chat_message, created_at) VALUES ('s1', 2, ?, ?)",
+             (json.dumps({"metadata": {"metrics": {"input_tokens": 100, "output_tokens": 50, "cache_read_tokens": 0, "cache_creation_tokens": 0}, "generation_model": "test"}}), now))
+conn.commit()
+conn.close()
+PY
+
+# Second run without --force should still serve the cached value (15, not 165)
+result2=$(HOME="$TEST_HOME" DEVIN_DATA_DIR="$DEVIN_DATA_DIR" XDG_CACHE_HOME="$TEST_HOME/.cache" \
+  "$ROOT/bin/omarchy-agent-usage-devin")
+[[ $(jq -r '.todayTotalTokens' <<<"$result2") == "15" ]] ||
+  fail "Devin collector serves cached scan without --force" "$result2"
+pass "Devin collector serves cached scan without --force"
+
+# --force bypasses the cache and sees the new data (165)
+result3=$(HOME="$TEST_HOME" DEVIN_DATA_DIR="$DEVIN_DATA_DIR" XDG_CACHE_HOME="$TEST_HOME/.cache" \
+  "$ROOT/bin/omarchy-agent-usage-devin" --force)
+[[ $(jq -r '.todayTotalTokens' <<<"$result3") == "165" ]] ||
+  fail "Devin collector --force rescans past the cache" "$result3"
+pass "Devin collector --force rescans past the cache"
+
+# Quota / limits from user-status cache
+# Build a minimal protobuf PlanStatus: field 1 (PlanInfo) with field 2 (plan name "Pro"),
+# field 14 (daily_used_pct=69), field 15 (weekly_remaining_pct=53),
+# field 17 (daily_reset_unix), field 18 (weekly_reset_unix)
+python3 - "$TEST_HOME/.cache/devin/cli" "$now" <<'PY'
+import base64, json, os, struct, sys
+
+cache_dir, now = sys.argv[1], int(sys.argv[2])
+os.makedirs(cache_dir, exist_ok=True)
+
+def varint(val):
+    out = b""
+    while True:
+        byte = val & 0x7F
+        val >>= 7
+        if val:
+            out += bytes([byte | 0x80])
+        else:
+            out += bytes([byte])
+            break
+    return out
+
+def field(fn, data):
+    if isinstance(data, int):
+        return varint((fn << 3) | 0) + varint(data)
+    return varint((fn << 3) | 2) + varint(len(data)) + data
+
+# PlanInfo: field 2 = "Pro"
+plan_info = field(2, b"Pro")
+# PlanStatus: field 1 = PlanInfo, field 14 = 69, field 15 = 53,
+#   field 17 = now+3600, field 18 = now+86400*4
+plan_status = field(1, plan_info) + field(14, 69) + field(15, 53) + field(17, now + 3600) + field(18, now + 86400 * 4)
+# Top-level: field 13 = PlanStatus
+payload = field(13, plan_status)
+
+cache = {
+    "version": 1,
+    "identity_digest": "test123",
+    "fetched_at_secs": now,
+    "payload": base64.b64encode(payload).decode("ascii"),
+}
+with open(os.path.join(cache_dir, "user_status.test123.bin"), "w") as f:
+    json.dump(cache, f)
+PY
+
+result=$(HOME="$TEST_HOME" DEVIN_DATA_DIR="$DEVIN_DATA_DIR" XDG_CACHE_HOME="$TEST_HOME/.cache" \
+  "$ROOT/bin/omarchy-agent-usage-devin" --force)
+[[ $(jq -r '.tierLabel' <<<"$result") == "Pro" ]] ||
+  fail "Devin collector reads plan name from user-status cache" "$result"
+[[ $(jq -r '.limits[0].label' <<<"$result") == "Daily" ]] ||
+  fail "Devin collector reports daily limit label" "$result"
+[[ $(jq -r '.limits[0].percent' <<<"$result") == "0.69" ]] ||
+  fail "Devin collector reports daily limit percent (69%)" "$result"
+[[ $(jq -r '.limits[1].label' <<<"$result") == "Weekly" ]] ||
+  fail "Devin collector reports weekly limit label" "$result"
+[[ $(jq -r '.limits[1].percent' <<<"$result") == "0.47" ]] ||
+  fail "Devin collector reports weekly limit percent (47% used = 53% remaining)" "$result"
+pass "Devin collector parses quota from user-status cache"
