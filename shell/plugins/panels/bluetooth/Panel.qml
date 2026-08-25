@@ -25,38 +25,62 @@ Panel {
 
   // True when BlueZ exposes an adapter or rfkill indicates Bluetooth hardware is present on the system.
   property bool hardwarePresent: false
+  property bool hardwarePresenceKnown: false
+  property bool probePending: false
+
   onAdapterChanged: {
     if (adapter) {
-      probeTimeout.stop()
+      probeWatchdog.stop()
       hardwareCheck.running = false
+      root.probePending = false
+      root.hardwarePresenceKnown = true
       root.hardwarePresent = true
+      root.hasPendingPowerState = false
+      root.pendingPowerState = false
+      powerTimer.stop()
     } else {
       root.hasPendingPowerState = false
       root.pendingPowerState = false
       powerTimer.stop()
-      root.hardwarePresent = false
+      // Do not clear hardwarePresent here -- keeping the previous state
+      // avoids icon and switch flicker during the probe when powering off.
       root.startHardwareProbe()
     }
   }
 
   function startHardwareProbe() {
+    if (probePending) return
+    probePending = true
+    probeWatchdog.restart()
     hardwareCheck.running = true
-    probeTimeout.restart()
   }
 
-  // How long to wait for the hardware probe before assuming hardware is present
+  function finishProbe(exitCode, stdoutText) {
+    probeWatchdog.stop()
+    if (!probePending) return
+    probePending = false
+    hardwareCheck.running = false
+
+    root.hardwarePresenceKnown = true
+    if (root.adapter) {
+      root.hardwarePresent = true
+    } else if (exitCode === 0) {
+      root.hardwarePresent = String(stdoutText).trim().length > 0
+    } else {
+      // Non-zero exit or abnormal exit (e.g. kernel without /dev/rfkill or VM without radios):
+      // On machines without Bluetooth hardware, rfkill exits non-zero.
+      // Therefore, non-zero exit means hardware is NOT present.
+      root.hardwarePresent = false
+    }
+  }
+
+  // How long to wait for the hardware probe before timing out
   readonly property int hardwareProbeTimeout: 2000
 
   Timer {
-    id: probeTimeout
+    id: probeWatchdog
     interval: root.hardwareProbeTimeout
-    onTriggered: {
-      if (!root.adapter && hardwareCheck.running) {
-        hardwareCheck.running = false
-        // If rfkill probe hangs or times out, assume hardware is present so controls aren't locked
-        root.hardwarePresent = true
-      }
-    }
+    onTriggered: root.finishProbe(-1, "")
   }
 
   // When BlueZ has no default adapter (e.g. rfkill soft-blocked), probe rfkill
@@ -69,25 +93,29 @@ Panel {
       id: hardwareCheckStdout
       waitForEnd: true
       onStreamFinished: {
-        if (!root.adapter) {
-          root.hardwarePresent = String(text).trim().length > 0
-        }
+        // Output handled upon process exit / completion
       }
     }
     onExited: function(exitCode) {
-      probeTimeout.stop()
-      if (root.adapter) {
-        root.hardwarePresent = true
-      } else if (exitCode !== 0) {
-        // If rfkill command is missing, permission-restricted, or errored out,
-        // treat hardware as unknown/present so the user is not locked out of controls.
-        root.hardwarePresent = true
+      root.finishProbe(exitCode, hardwareCheckStdout.text)
+    }
+    onRunningChanged: {
+      // Quickshell's Process does not emit exited when a binary fails to start (FailedToStart),
+      // only transitioning running back to false. Catch this immediately so probePending
+      // is not left stranded until the watchdog fires.
+      if (!running && root.probePending) {
+        Qt.callLater(function() {
+          if (!hardwareCheck.running && root.probePending) {
+            root.finishProbe(-1, "")
+          }
+        })
       }
     }
   }
 
   Component.onCompleted: {
     if (root.adapter) {
+      root.hardwarePresenceKnown = true
       root.hardwarePresent = true
     } else {
       root.startHardwareProbe()
@@ -571,7 +599,7 @@ Panel {
     if (selectedIndex < 0) selectedIndex = 0
   }
 
-  visible: root.hardwarePresent || hardwareCheck.running
+  visible: root.hardwarePresenceKnown ? root.hardwarePresent : (root.adapter !== null)
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
