@@ -346,6 +346,11 @@ assertEqual(tailscale.commandMessage(''), '', 'tailscale handles empty command o
 assertEqual(tailscale.commandMessage(null), '', 'tailscale handles missing command output')
 
 assert(tailscale.isAccessDenied('Access denied: checkprefs access denied'), 'tailscale spots a refusal for want of the operator')
+// tailscale login --operator is refused by the very check it would fix, so the
+// add row can only dead-end while the panel already knows it lacks the operator.
+assertDeepEqual(tailscale.connectionRows([{ id: 'db1b' }], false).map(row => row.id), ['db1b'], 'tailscale withholds the add row when it cannot be used')
+assert(/tailscale\.active && !tailscale\.accountsAccessDenied/.test(panelSource), 'tailscale hides the add row while it lacks the operator')
+assert(/if \(Model\.isAccessDenied\(outcome\.error\)\) \{\s*\n\s*root\.reportCommandError/.test(serviceSource), 'tailscale offers the operator fix when the add is refused')
 assert(tailscale.isAccessDenied('profiles access denied'), 'tailscale spots the profiles refusal too')
 assert(!tailscale.isAccessDenied('tailscale up failed'), 'tailscale does not mistake an ordinary failure for a refusal')
 

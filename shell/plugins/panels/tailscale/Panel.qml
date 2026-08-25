@@ -87,7 +87,7 @@ Panel {
   // Switching tailnets is only reachable once a second profile exists, and the
   // CLI was the only thing that could create one.
   function displayConnections() {
-    return Model.connectionRows(tailscale.accounts, tailscale.installed && tailscale.active)
+    return Model.connectionRows(tailscale.accounts, tailscale.installed && tailscale.active && !tailscale.accountsAccessDenied)
   }
 
   function recentMullvadNodes() {

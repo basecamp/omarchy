@@ -730,9 +730,13 @@ Item {
       var outcome = Model.addAccountOutcome(exitCode, opened, root._addAccountPreviousId, root.elideStatus(combined))
       if (outcome.returnTo !== "") root.returnToPreviousAccount()
       else root._addAccountPreviousId = ""
-      root.lastError = outcome.error
-      root.actionStatus = outcome.status
-      if (outcome.status !== "") actionStatusTimer.restart()
+      if (Model.isAccessDenied(outcome.error)) {
+        root.reportCommandError(outcome.error, "")
+      } else {
+        root.lastError = outcome.error
+        root.actionStatus = outcome.status
+        if (outcome.status !== "") actionStatusTimer.restart()
+      }
       // A fresh login lands on a new profile and makes it the active one, so
       // don't sit behind the accounts throttle waiting to notice.
       root._lastAccountsRefreshMs = 0
