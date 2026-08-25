@@ -1,5 +1,5 @@
 {
-  "_readme": "Dark Desktop Mode chrome. Superbar glass, hyprbars bar, and caption min/max/close. Light themes load chrome-tokens-light.json (or a theme-local chrome-tokens.json). No private hex in Lua.",
+  "_readme": "Dark Desktop Mode chrome. Copied to ~/.local/state/omarchy/current/theme on theme set.",
   "glassRed": "28",
   "glassGreen": "28",
   "glassBlue": "30",

@@ -52,6 +52,15 @@ grep -Fq 'setGetToplevelDecoration' "$cpp" \
   || fail "CLIENT_SIDE must be sent in get_toplevel_decoration, not after Chrome's first paint"
 grep -Fq 'onGetDecoration' "$cpp" \
   || fail "decoration hook must still run Hyprland's onGetDecoration"
+grep -Fq 'csd-clients.json' "$cpp" \
+  || fail "decoration-global filter must read csd-clients.json instead of a second needle list"
+grep -Fq 'loadCsdClassPatterns' "$cpp" \
+  || fail "plugin must load CSD class patterns from JSON at init"
+if grep -Fq 'static constexpr const char* kNeedles' "$cpp"; then
+  fail "plugin must not keep a hardcoded CSD process needle list"
+fi
+grep -Fq 'zenity' "$cpp" \
+  || fail "zenity must stay excluded so dialogs do not lose SSD"
 grep -Fq 'hideDecorationGlobals' "$cpp" \
   || fail "decoration globals must be hidden from CSD clients so Chrome ShouldUseCustomFrame draws min/max/close"
 grep -Fq 'wl_display_set_global_filter' "$cpp" \

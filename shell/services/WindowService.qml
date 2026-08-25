@@ -591,6 +591,31 @@ QtObject {
     return null
   }
 
+  function _isLockAddress(address) {
+    var rec = root._record(address)
+    if (rec && WindowModel.isLockSurface(rec)) return true
+    var ipc = root._clientIpc(address) || {}
+    return WindowModel.isLockSurface({
+      class: ipc.class,
+      appId: ipc.initialClass || ipc.class,
+      initialClass: ipc.initialClass
+    })
+  }
+
+  function _isLiveClient(address) {
+    var target = root._canonAddr(address)
+    if (!target) return false
+    var clients = root.clientsIpc || []
+    var i
+    var c
+    for (i = 0; i < clients.length; i++) {
+      c = clients[i]
+      if (!c || !c.address || c.hidden === true) continue
+      if (root._canonAddr(c.address) === target) return true
+    }
+    return false
+  }
+
   function _forAddress(address) {
     var target = root._canonAddr(address)
     var hypr = root._hyprlandToplevels()
@@ -1025,14 +1050,32 @@ QtObject {
   function moveTo(address, x, y) {
     var target = root._addr(address)
     if (!target) return root._finish("moveTo", address, root._err("No window", "There is no window to move.", ""))
-    root._dispatchLua("hl.dsp.window.move({ x = " + Math.round(Number(x)) + ", y = " + Math.round(Number(y)) + ", relative = false, " + root._luaWindow(target) + " })")
+    if (root._isLockAddress(target)) return root._finish("moveTo", target, root._ok())
+    var rec = root._clientRect(target) || {}
+    var bounds = WindowModel.clampRect({
+      x: Number(x),
+      y: Number(y),
+      width: Number(rec.width) || 880,
+      height: Number(rec.height) || 560
+    }, root._monitorGeom(target), root._hyprbarsInset(target))
+    root._dispatchLua("hl.dsp.window.move({ x = " + Math.round(Number(bounds.x)) + ", y = " + Math.round(Number(bounds.y)) + ", relative = false, " + root._luaWindow(target) + " })")
     return root._finish("moveTo", target, root._ok())
   }
 
   function resizeTo(address, w, h) {
     var target = root._addr(address)
     if (!target) return root._finish("resizeTo", address, root._err("No window", "There is no window to resize.", ""))
-    root._dispatchLua("hl.dsp.window.resize({ x = " + Math.round(Number(w)) + ", y = " + Math.round(Number(h)) + ", relative = false, " + root._luaWindow(target) + " })")
+    if (root._isLockAddress(target)) return root._finish("resizeTo", target, root._ok())
+    var rec = root._clientRect(target) || {}
+    var bounds = WindowModel.clampRect({
+      x: Number(rec.x) || 0,
+      y: Number(rec.y) || 0,
+      width: Number(w),
+      height: Number(h)
+    }, root._monitorGeom(target), root._hyprbarsInset(target))
+    root._dispatchLua("hl.dsp.window.resize({ x = " + Math.round(Number(bounds.width)) + ", y = " + Math.round(Number(bounds.height)) + ", relative = false, " + root._luaWindow(target) + " })")
+    if (Math.round(Number(bounds.x)) !== Math.round(Number(rec.x) || 0) || Math.round(Number(bounds.y)) !== Math.round(Number(rec.y) || 0))
+      root._dispatchLua("hl.dsp.window.move({ x = " + Math.round(Number(bounds.x)) + ", y = " + Math.round(Number(bounds.y)) + ", relative = false, " + root._luaWindow(target) + " })")
     return root._finish("resizeTo", target, root._ok())
   }
 
@@ -1171,6 +1214,7 @@ QtObject {
     var entry
     for (i = 0; i < matches.length; i++) {
       entry = matches[i]
+      if (root._isLockAddress(entry.address)) continue
       if (entry.kind === "float") root._applyRect(entry.address, entry)
       else root._applySnapKind(entry.address, entry.kind)
     }
@@ -1295,8 +1339,15 @@ QtObject {
 
   function commitCycle() {
     var address = root.cycling ? root.cycleList[root.cycleIndex] : root._lastCycleAddress
+    var list = root.cycleList ? root.cycleList.slice() : []
     root.cancelCycle()
-    if (address) return root.activate(address)
+    if (address && root._isLiveClient(address)) return root.activate(address)
+    var i
+    for (i = 0; i < list.length; i++) {
+      if (list[i] !== address && root._isLiveClient(list[i])) return root.activate(list[i])
+    }
+    if (address)
+      return root._finish("commitCycle", address, root._err("Focus failed", "That window is no longer open.", ""))
     return root._finish("commitCycle", "", root._ok())
   }
 

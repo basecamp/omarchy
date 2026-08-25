@@ -1,0 +1,17 @@
+{
+  "_readme": "Light Desktop Mode chrome. Copied to ~/.local/state/omarchy/current/theme on theme set.",
+  "glassRed": "232",
+  "glassGreen": "236",
+  "glassBlue": "240",
+  "glassAlphaPct": "78",
+  "hyprbarsTextHex": "#20262c",
+  "chromeGlowHex": "#3a76a8",
+  "chromeStartHex": "#55875c",
+  "chromeEdgeHex": "#3320262c",
+  "captionCloseBgHex": "#b85750",
+  "captionCloseFgHex": "#ffffff",
+  "captionMaxBgHex": "#5c6873",
+  "captionMaxFgHex": "#ffffff",
+  "captionMinBgHex": "#5c6873",
+  "captionMinFgHex": "#ffffff"
+}

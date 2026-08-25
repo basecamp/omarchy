@@ -4,7 +4,7 @@ Project Ultimate's semantic token layer lives in `shell/Commons/Tokens.qml`, reg
 
 First-party shell surfaces consume semantic tokens instead of arbitrary theme colors. That is how the whole operating system starts looking designed rather than themed. `themes/ultimate-light/` exists. Calling Tokens a "seed only" understates consumption: Start, Settings, TaskButton peek/menu, the task switcher, and the snap chooser already use `qs.Commons.Tokens`. The leak is chrome that bypasses the pipeline.
 
-**Pipeline lock:** one token/theme pipeline must drive Superbar chrome **and** hyprbars caption chrome. Light theme must be able to propagate to both. New surfaces must not invent private hex palettes. Superbar `Taskbar.qml` pins `#1b1b1b` `#333333` `#3a3a3a` `#4a4a4a` `#e8943a` `#9cbc0d` `#55ffffff`. hyprbars pins `bar_color = "rgba(1a1a1acc)"` plus caption `rgb(c42b1c)` / `rgb(3d3d3d)` in `default/hypr/desktop-windows.lua`. Agent Fabric can proceed without waiting for the token unification; Phase 3 must not sprawl more one-off palettes.
+**Pipeline lock:** one token/theme pipeline must drive Superbar chrome **and** hyprbars caption chrome. Light theme must be able to propagate to both. New surfaces must not invent private hex palettes. Superbar glass and hyprbars bar + min/max/close read `default/ultimate/chrome-tokens.json` (dark) or `chrome-tokens-light.json` (light), or a theme-local `chrome-tokens.json` copied into `~/.local/state/omarchy/current/theme`. Agent Fabric can proceed without waiting for further token work; do not sprawl more one-off palettes.
 
 ## Token vocabulary
 

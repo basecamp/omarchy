@@ -95,6 +95,50 @@ if grep -Fq 'WindowModel.snapRect(geom, direction, 32)' "$ws"; then
   fail "CSD clients must not always reserve 32px for hyprbars"
 fi
 grep -Fq 'function moveTo' "$ws" || fail "caption drag uses WindowService.moveTo"
+grep -Fq 'function _isLockAddress' "$ws" || fail "lock surfaces are identified before move/resize/restoreLayout"
+grep -Fq 'function _isLiveClient' "$ws" || fail "commitCycle can tell a live hyprctl client from a ghost highlight"
+if awk '
+  $0 ~ /function moveTo\(/ { infn = 1 }
+  infn && /_isLockAddress/ { lock = 1 }
+  infn && /clampRect/ { clamp = 1 }
+  infn && /^  function / && $0 !~ /function moveTo\(/ { infn = 0 }
+  END { exit (lock && clamp) ? 0 : 1 }
+' "$ws"; then
+  :
+else
+  fail "moveTo must no-op lock surfaces and clamp onto the work area"
+fi
+if awk '
+  $0 ~ /function resizeTo\(/ { infn = 1 }
+  infn && /_isLockAddress/ { lock = 1 }
+  infn && /clampRect/ { clamp = 1 }
+  infn && /^  function / && $0 !~ /function resizeTo\(/ { infn = 0 }
+  END { exit (lock && clamp) ? 0 : 1 }
+' "$ws"; then
+  :
+else
+  fail "resizeTo must no-op lock surfaces and clamp onto the work area"
+fi
+if awk '
+  $0 ~ /function restoreLayout\(/ { infn = 1 }
+  infn && /_isLockAddress/ { found = 1 }
+  infn && /^  function / && $0 !~ /function restoreLayout\(/ { infn = 0 }
+  END { exit found ? 0 : 1 }
+' "$ws"; then
+  :
+else
+  fail "restoreLayout must skip lock surfaces"
+fi
+if awk '
+  $0 ~ /function commitCycle\(/ { infn = 1 }
+  infn && /_isLiveClient/ { found = 1 }
+  infn && /^  function / && $0 !~ /function commitCycle\(/ { infn = 0 }
+  END { exit found ? 0 : 1 }
+' "$ws"; then
+  :
+else
+  fail "commitCycle must drop a dead highlight instead of activating it"
+fi
 grep -Fq 'function _windowRecord' "$ws" || fail "taskbar windows are Hyprland records with addresses"
 pass "snap and maximize use addressed Lua dispatchers through Hyprland.dispatch"
 

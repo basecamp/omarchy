@@ -31,15 +31,19 @@
 #include <cctype>
 #include <climits>
 #include <cmath>
+#include <cstdlib>
 #include <fstream>
 #include <format>
 #include <functional>
+#include <iterator>
 #include <optional>
+#include <regex>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unistd.h>
 #include <unordered_map>
+#include <vector>
 
 extern "C" {
 #include <lauxlib.h>
@@ -496,16 +500,76 @@ static CXDGDecoration* decoForWindow(PHLWINDOW w) {
 // "no decoration manager — using CSDs" and hyprbars never attached.
 // Filter the two decoration globals per client instead: CSD processes
 // (Chrome, Files, Cursor) do not see them; SSD clients still do.
+static std::vector<std::regex> g_csdClassRegexes;
+static bool g_csdClassPatternsLoaded = false;
+
+static std::string csdClientsJsonPath() {
+  const char* omarchy = std::getenv("OMARCHY_PATH");
+  if (omarchy && *omarchy) {
+    std::string path = std::string(omarchy) + "/default/ultimate/csd-clients.json";
+    if (std::ifstream{path})
+      return path;
+  }
+  if (std::ifstream in{"/usr/share/omarchy/default/ultimate/csd-clients.json"})
+    return "/usr/share/omarchy/default/ultimate/csd-clients.json";
+  return "";
+}
+
+static std::string unescapeJsonString(const std::string& raw) {
+  std::string out;
+  out.reserve(raw.size());
+  for (size_t i = 0; i < raw.size(); ++i) {
+    if (raw[i] == '\\' && i + 1 < raw.size()) {
+      out.push_back(raw[++i]);
+      continue;
+    }
+    out.push_back(raw[i]);
+  }
+  return out;
+}
+
+static void loadCsdClassPatterns() {
+  if (g_csdClassPatternsLoaded)
+    return;
+  g_csdClassPatternsLoaded = true;
+  const auto path = csdClientsJsonPath();
+  if (path.empty())
+    return;
+  std::ifstream in{path};
+  if (!in)
+    return;
+  const std::string body((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  const auto key = body.find("classPatterns");
+  if (key == std::string::npos)
+    return;
+  const auto start = body.find('[', key);
+  const auto stop = body.find(']', start);
+  if (start == std::string::npos || stop == std::string::npos)
+    return;
+  const auto slice = body.substr(start, stop - start);
+  const std::regex quoted{"\"((?:[^\"\\\\]|\\\\.)*)\""};
+  for (std::sregex_iterator it{slice.begin(), slice.end(), quoted}, end; it != end; ++it) {
+    const auto pat = unescapeJsonString((*it)[1].str());
+    if (pat.empty())
+      continue;
+    try {
+      g_csdClassRegexes.emplace_back(pat, std::regex::icase | std::regex::ECMAScript);
+    } catch (const std::regex_error&) {
+    }
+  }
+}
+
 static bool nameLooksCsd(std::string s) {
   std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
   if (s.find("zenity") != std::string::npos)
     return false;
-  if (s == "zen" || s.rfind("zen-", 0) == 0 || s.find("zen-browser") != std::string::npos)
-    return true;
-  static constexpr const char* kNeedles[] = {"chrome", "chromium", "brave", "msedge", "microsoft-edge",
-                                             "vivaldi", "helium",  "firefox", "librewolf", "nautilus", "cursor"};
-  for (auto* needle : kNeedles) {
-    if (s.find(needle) != std::string::npos)
+  loadCsdClassPatterns();
+  std::string base = s;
+  const auto slash = s.find_last_of('/');
+  if (slash != std::string::npos)
+    base = s.substr(slash + 1);
+  for (const auto& re : g_csdClassRegexes) {
+    if (std::regex_search(s, re) || std::regex_search(base, re))
       return true;
   }
   return false;
@@ -744,6 +808,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     });
   });
   g_onUpdateRules = Event::bus()->m_events.window.updateRules.listen([](PHLWINDOW w) { watchWindow(w); });
+  loadCsdClassPatterns();
   hideDecorationGlobals();
   hookDecorationManagers();
   later([]() { hookDecorationManagers(); });

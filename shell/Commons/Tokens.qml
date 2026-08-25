@@ -12,9 +12,9 @@ import Quickshell
 // re-derives every semantic token automatically. Later phases can pin any
 // token from theme/shell.toml via the same override machinery Style uses.
 // Start, Settings, TaskButton peek/menu, the task switcher, and the snap
-// chooser already consume Tokens. Superbar chrome and hyprbars caption
-// colors still bypass this layer with private hex/rgba — that leak is the
-// remaining debt, not "nothing consumes Tokens."
+// chooser already consume Tokens. Superbar glass and hyprbars caption
+// chrome (bar + min/max/close) read chrome-tokens.json / chrome-tokens-light.json
+// so a light theme moves all three. Do not add private hex in Lua.
 //
 //   Tokens.surface.canvas   desktop wallpaper backdrop / main application background
 //   Tokens.surface.base     windows, settings pages, cards

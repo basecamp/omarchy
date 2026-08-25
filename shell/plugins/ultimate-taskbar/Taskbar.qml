@@ -36,6 +36,8 @@ Item {
   property color chromeGlow: "#e8943a"
   property color chromeStart: "#9cbc0d"
   property color chromeEdge: "#55ffffff"
+  property bool themeChromeReady: false
+  property bool themeIsLight: false
   property color background: chromeBar
   property var moduleSlots: []
   readonly property var windowService: shell ? shell.windowService : null
@@ -156,10 +158,39 @@ Item {
   }
 
   FileView {
-    path: (root.omarchyPath || Quickshell.env("OMARCHY_PATH")) + "/default/ultimate/chrome-tokens.json"
+    path: root.home + "/.local/state/omarchy/current/theme/chrome-tokens.json"
     watchChanges: true
     printErrors: false
-    onLoaded: root.applyChromeTokens(text())
+    onLoaded: {
+      root.themeChromeReady = true
+      root.applyChromeTokens(text())
+    }
+    onLoadFailed: {
+      root.themeChromeReady = false
+      fallbackChromeTokens.reload()
+    }
+    onFileChanged: reload()
+  }
+
+  FileView {
+    path: root.home + "/.local/state/omarchy/current/theme/colors.toml"
+    watchChanges: true
+    printErrors: false
+    onLoaded: {
+      root.themeIsLight = /mode\s*=\s*"light"/.test(text() || "")
+      if (!root.themeChromeReady) fallbackChromeTokens.reload()
+    }
+    onFileChanged: reload()
+  }
+
+  FileView {
+    id: fallbackChromeTokens
+    path: (root.omarchyPath || Quickshell.env("OMARCHY_PATH") || "") + (root.themeIsLight ? "/default/ultimate/chrome-tokens-light.json" : "/default/ultimate/chrome-tokens.json")
+    watchChanges: true
+    printErrors: false
+    onLoaded: {
+      if (!root.themeChromeReady) root.applyChromeTokens(text())
+    }
     onFileChanged: reload()
   }
 

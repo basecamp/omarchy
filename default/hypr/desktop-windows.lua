@@ -63,15 +63,46 @@ local function load_csd_patterns()
   return patterns
 end
 
--- Desktop Mode chrome colors from default/ultimate/chrome-tokens.json (single
--- source shared with the Superbar glass in Taskbar.qml). Phase 3 token
--- unification: hyprbars caption chrome must not carry a private palette.
+-- Desktop Mode chrome colors. Prefer the current theme's chrome-tokens.json
+-- (theme-set copies it). Light themes without a local file use
+-- chrome-tokens-light.json so Superbar glass, hyprbars bar, and caption
+-- buttons all move. No private hex in add_hyprbars_buttons.
+local function theme_is_light()
+  local home = os.getenv("HOME") or ""
+  if home == "" then
+    return false
+  end
+  local file = io.open(home .. "/.local/state/omarchy/current/theme/colors.toml", "r")
+  if not file then
+    return false
+  end
+  local body = file:read("*a")
+  file:close()
+  return body:match('mode%s*=%s*"light"') ~= nil
+end
+
+local function chrome_tokens_path(root)
+  local home = os.getenv("HOME") or ""
+  if home ~= "" then
+    local current = home .. "/.local/state/omarchy/current/theme/chrome-tokens.json"
+    local file = io.open(current, "r")
+    if file then
+      file:close()
+      return current
+    end
+  end
+  if theme_is_light() then
+    return root .. "/default/ultimate/chrome-tokens-light.json"
+  end
+  return root .. "/default/ultimate/chrome-tokens.json"
+end
+
 local function load_chrome_tokens()
   local root = repo_root()
   if root == "" then
     return {}
   end
-  local file = io.open(root .. "/default/ultimate/chrome-tokens.json", "r")
+  local file = io.open(chrome_tokens_path(root), "r")
   if not file then
     return {}
   end
@@ -93,13 +124,20 @@ local function chrome_glass_rgba(tokens)
   return string.format("rgba(%02x%02x%02x%02x)", r, g, b, a)
 end
 
-local function chrome_text_rgb(tokens)
-  local hex = tokens.hyprbarsTextHex or "#eeeeee"
+local function chrome_hex_rgb(tokens, key, fallback)
+  local hex = tokens[key] or fallback or "#eeeeee"
   hex = hex:gsub("^#", "")
+  if #hex < 6 then
+    hex = (fallback or "#eeeeee"):gsub("^#", "")
+  end
   if #hex < 6 then
     hex = "eeeeee"
   end
   return string.format("rgb(%s)", hex:sub(1, 6))
+end
+
+local function chrome_text_rgb(tokens)
+  return chrome_hex_rgb(tokens, "hyprbarsTextHex", "#eeeeee")
 end
 
 for _, class_pat in ipairs(load_csd_patterns()) do
@@ -307,38 +345,40 @@ local function load_omarchy_minimize()
 end
 
 local function add_hyprbars_buttons()
-  if _G.omarchy_hyprbars_buttons then
-    return
-  end
   local plugin = plugin_table()
   if not (plugin and plugin.hyprbars and plugin.hyprbars.add_button) then
     return
   end
   -- hyprbars draws buttons right-to-left, so the user sees min / max / close.
   -- Snap layouts are maximize-hover (hover_action), drag-to-edge, and Win+Z.
+  local chrome = load_chrome_tokens()
+  local sig = (chrome.captionCloseBgHex or "") .. (chrome.captionMaxBgHex or "") .. (chrome.glassRed or "")
+  if _G.omarchy_hyprbars_buttons == sig then
+    return
+  end
   plugin.hyprbars.add_button({
-    bg_color = "rgb(c42b1c)",
-    fg_color = "rgb(ffffff)",
+    bg_color = chrome_hex_rgb(chrome, "captionCloseBgHex", "#c42b1c"),
+    fg_color = chrome_hex_rgb(chrome, "captionCloseFgHex", "#ffffff"),
     size = 22,
     icon = "×",
     action = "omarchy-shell window close 0x{:x}",
   })
   plugin.hyprbars.add_button({
-    bg_color = "rgb(c8c8c8)",
-    fg_color = "rgb(1a1a1a)",
+    bg_color = chrome_hex_rgb(chrome, "captionMaxBgHex", "#c8c8c8"),
+    fg_color = chrome_hex_rgb(chrome, "captionMaxFgHex", "#1a1a1a"),
     size = 22,
     icon = "□",
     action = "omarchy-shell window toggleMaximize 0x{:x}",
     hover_action = "omarchy-shell window snapChooser 0x{:x}",
   })
   plugin.hyprbars.add_button({
-    bg_color = "rgb(c8c8c8)",
-    fg_color = "rgb(1a1a1a)",
+    bg_color = chrome_hex_rgb(chrome, "captionMinBgHex", "#c8c8c8"),
+    fg_color = chrome_hex_rgb(chrome, "captionMinFgHex", "#1a1a1a"),
     size = 22,
     icon = "–",
     action = "omarchy-shell window minimize 0x{:x}",
   })
-  _G.omarchy_hyprbars_buttons = true
+  _G.omarchy_hyprbars_buttons = sig
 end
 
 load_hyprbars()

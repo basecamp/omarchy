@@ -98,9 +98,15 @@ download_url() {
   # Stream the download: OMARCHY_PROG carries the percent (drives the OSD),
   # OMARCHY_FILE (printed only after a successful move) carries the path.
   # Do not print the title — page metadata can contain newlines and forge records.
-  local line pct intpct last="" er nowms lastms=0 title="" filepath="" resolved
+  # Stderr is discarded: a forged OMARCHY_FILE line there must not count as
+  # success. Process substitution cannot surface yt-dlp's exit, so the wrapper
+  # prints a sentinel after it exits and we require that status to be 0.
+  local line pct intpct last="" er nowms lastms=0 title="" filepath="" resolved ytdlp_status=""
   while IFS= read -r line; do
     case $line in
+    __OMARCHY_YTDLP_STATUS__:*)
+      ytdlp_status=${line#__OMARCHY_YTDLP_STATUS__:}
+      ;;
     OMARCHY_PROG*)
       pct=${line#OMARCHY_PROG$'\t'}
       intpct=${pct%%.*}
@@ -120,17 +126,19 @@ download_url() {
       title=$(title_from_file "$filepath")
       ;;
     esac
-  done < <(PYTHONUNBUFFERED=1 yt-dlp --no-playlist --restrict-filenames --no-simulate \
-    --quiet --no-warnings --no-exec --progress --newline \
-    --progress-template $'download:OMARCHY_PROG\t%(progress._percent_str)s' \
-    --paths "$DOWNLOAD_DIR" -o '%(title)s [%(id)s].%(ext)s' \
-    --print $'after_move:OMARCHY_FILE\t%(filepath)s' \
-    -- "$url" 2>&1)
+  done < <(
+    PYTHONUNBUFFERED=1 yt-dlp --no-playlist --restrict-filenames --no-simulate \
+      --quiet --no-warnings --no-exec --progress --newline \
+      --progress-template $'download:OMARCHY_PROG\t%(progress._percent_str)s' \
+      --paths "$DOWNLOAD_DIR" -o '%(title)s [%(id)s].%(ext)s' \
+      --print $'after_move:OMARCHY_FILE\t%(filepath)s' \
+      -- "$url" 2>/dev/null
+    printf '__OMARCHY_YTDLP_STATUS__:%s\n' "$?"
+  )
 
   osd_close
 
-  # after_move only prints on a successful download+move, so a captured path == success.
-  if [[ -n $filepath ]]; then
+  if [[ $ytdlp_status == 0 && -n $filepath ]]; then
     ((${#title} > 50)) && title="${title:0:50}…" # keep the toast compact
 
     # Square, center-cropped thumbnail so the notification preview isn't stretched.

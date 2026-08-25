@@ -149,3 +149,53 @@ poisoned=$(
 [[ $poisoned == "$expected" ]] ||
   fail "yt-dlp native host keeps a real file after a forged OMARCHY_FILE record" "$poisoned"
 pass "yt-dlp native host keeps a real file after a forged OMARCHY_FILE record"
+
+grep -Fq '__OMARCHY_YTDLP_STATUS__' "$ROOT/bin/omarchy-chromium-ytdlp-host" \
+  || fail "yt-dlp native host records the download process exit"
+pass "yt-dlp native host records the download process exit"
+
+grep -Fq 'ytdlp_status == 0 && -n $filepath' "$ROOT/bin/omarchy-chromium-ytdlp-host" \
+  || fail "yt-dlp native host requires exit 0 and a real file before toasting success"
+pass "yt-dlp native host requires exit 0 and a real file before toasting success"
+
+if awk '
+  /yt-dlp --no-playlist --restrict-filenames/ { infn = 1 }
+  infn && /2>&1/ { found = 1 }
+  infn && /__OMARCHY_YTDLP_STATUS__/ { infn = 0 }
+  END { exit found ? 0 : 1 }
+' "$ROOT/bin/omarchy-chromium-ytdlp-host"; then
+  fail "yt-dlp download must parse stdout only; merging stderr lets a forged OMARCHY_FILE succeed"
+fi
+pass "yt-dlp download parses stdout only"
+
+mockbin="$TMPDIR/mockbin"
+mkdir -p "$mockbin"
+notify_log="$TMPDIR/notify.log"
+cat >"$mockbin/yt-dlp" <<EOF
+#!/bin/bash
+if printf '%s\\n' "\$*" | grep -Fq -- '--simulate'; then
+  printf '%s\\n' 'Night Storm'
+  exit 0
+fi
+printf 'OMARCHY_FILE\\t%s\\n' "$good_file" >&2
+exit 1
+EOF
+chmod +x "$mockbin/yt-dlp"
+printf '%s\n' '#!/bin/bash' "printf '%s\\n' \"\$*\" >>\"$notify_log\"" 'exit 0' >"$mockbin/omarchy-notification-send"
+printf '%s\n' '#!/bin/bash' 'exit 0' >"$mockbin/omarchy-osd"
+printf '%s\n' '#!/bin/bash' 'exit 0' >"$mockbin/omarchy-shell"
+printf '%s\n' '#!/bin/bash' 'exit 0' >"$mockbin/ffmpeg"
+chmod +x "$mockbin/omarchy-notification-send" "$mockbin/omarchy-osd" "$mockbin/omarchy-shell" "$mockbin/ffmpeg"
+
+PATH="$mockbin:$PATH" HOME="$test_home" OMARCHY_PATH="$ROOT" OMARCHY_YTDLP_DIR="$download_dir" \
+  bash -c '
+    source "$1"
+    export PATH="'"$mockbin"':$PATH"
+    download_url "https://example.test/watch"
+  ' bash "$ROOT/bin/omarchy-chromium-ytdlp-host"
+if grep -Fq 'Download complete' "$notify_log"; then
+  fail "forged stderr OMARCHY_FILE must not toast Download complete" "$(cat "$notify_log")"
+fi
+grep -Fq 'Download failed' "$notify_log" \
+  || fail "failed yt-dlp with a forged stderr path must toast Download failed" "$(cat "$notify_log")"
+pass "forged stderr OMARCHY_FILE does not succeed"

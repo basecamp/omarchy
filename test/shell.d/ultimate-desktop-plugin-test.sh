@@ -152,9 +152,9 @@ grep -Fq 'shippedPinsPath' "$ROOT/shell/services/WindowService.qml" \
   || fail "WindowService loads shipped pins when the user has none"
 grep -Fq 'omarchy-task-switcher' "$ROOT/shell/plugins/ultimate-task-switcher/Switcher.qml" \
   || fail "task switcher uses a distinct layer namespace"
-rg -q 'virtio-vga,xres=1920,yres=1080' "$ROOT/test/vm/vm-run.ps1" \
+grep -Fq 'virtio-vga,xres=1920,yres=1080' "$ROOT/test/vm/vm-run.ps1" \
   || fail "Desktop Mode VM launcher pins virtio-vga to 1920x1080 so preferred is not 640x480@240"
-rg -q 'gtk,zoom-to-fit=on' "$ROOT/test/vm/vm-run.ps1" \
+grep -Fq 'gtk,zoom-to-fit=on' "$ROOT/test/vm/vm-run.ps1" \
   || fail "Desktop Mode VM launcher zoom-to-fits GTK to the guest framebuffer"
 grep -Fq 'anchors { top: true; bottom: true; left: true; right: true }' \
   "$ROOT/shell/plugins/ultimate-task-switcher/Switcher.qml" \
@@ -368,12 +368,41 @@ fi
 grep -Fq 'Qt.rgba(0.11, 0.11, 0.12, 0.62)' "$ROOT/shell/plugins/ultimate-taskbar/Taskbar.qml" \
   || fail "Superbar glass is graphite with alpha, not opaque charcoal"
 [[ -f $ROOT/default/ultimate/chrome-tokens.json ]] || fail "chrome tokens exist as the Superbar/hyprbars palette"
+[[ -f $ROOT/default/ultimate/chrome-tokens-light.json ]] || fail "light chrome tokens exist so light theme can move caption chrome"
+[[ -f $ROOT/themes/ultimate-light/chrome-tokens.json ]] || fail "ultimate-light ships chrome-tokens.json for theme-set"
+[[ -f $ROOT/themes/ultimate-dark/chrome-tokens.json ]] || fail "ultimate-dark ships chrome-tokens.json for theme-set"
 grep -Fq 'chrome-tokens.json' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "hyprbars caption chrome reads chrome-tokens.json"
+grep -Fq 'chrome-tokens-light.json' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "hyprbars reads chrome-tokens-light.json when the current theme is light"
 grep -Fq 'bar_color = chrome_glass_rgba' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "hyprbars bar_color comes from chrome tokens, not a private rgba"
+grep -Fq 'captionCloseBgHex' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "hyprbars close button color comes from chrome tokens"
+grep -Fq 'captionMaxBgHex' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "hyprbars maximize button color comes from chrome tokens"
+grep -Fq 'captionMinBgHex' "$ROOT/default/hypr/desktop-windows.lua" \
+  || fail "hyprbars minimize button color comes from chrome tokens"
+if grep -Fq 'bg_color = "rgb(c42b1c)"' "$ROOT/default/hypr/desktop-windows.lua"; then
+  fail "hyprbars close must not hardcode rgb(c42b1c); that blocks light theme"
+fi
+if grep -Fq 'bg_color = "rgb(c8c8c8)"' "$ROOT/default/hypr/desktop-windows.lua"; then
+  fail "hyprbars min/max must not hardcode rgb(c8c8c8); that blocks light theme"
+fi
+if grep -Fq '"captionCloseBgHex": "#c42b1c"' "$ROOT/default/ultimate/chrome-tokens-light.json"; then
+  fail "light chrome tokens must not reuse the dark close button color"
+fi
+if grep -Fq '"captionMaxBgHex": "#c8c8c8"' "$ROOT/default/ultimate/chrome-tokens-light.json"; then
+  fail "light chrome tokens must not reuse the dark min/max button color"
+fi
+grep -Fq '"captionCloseBgHex"' "$ROOT/default/ultimate/chrome-tokens.json" \
+  || fail "dark chrome tokens include caption close color"
+grep -Fq '"captionMaxBgHex"' "$ROOT/default/ultimate/chrome-tokens.json" \
+  || fail "dark chrome tokens include caption maximize color"
 grep -Fq 'chrome-tokens.json' "$ROOT/shell/plugins/ultimate-taskbar/Taskbar.qml" \
   || fail "Superbar glass reads chrome-tokens.json"
+grep -Fq 'chrome-tokens-light.json' "$ROOT/shell/plugins/ultimate-taskbar/Taskbar.qml" \
+  || fail "Superbar glass reads chrome-tokens-light.json for a light theme"
 grep -Fq 'function applyChromeTokens' "$ROOT/shell/plugins/ultimate-taskbar/Taskbar.qml" \
   || fail "Superbar applies chrome tokens after FileView loads"
 hlcfg=$(grep -F -c 'hl.config({' "$ROOT/default/hypr/desktop-windows.lua" || true)
@@ -392,8 +421,6 @@ grep -Fq 'namespace = "omarchy-taskbar"' "$ROOT/default/hypr/desktop-windows.lua
   || fail "Superbar layer is blurred so graphite glass is translucent"
 grep -Fq 'namespace = "omarchy-start"' "$ROOT/default/hypr/desktop-windows.lua" \
   || fail "Start layer is blurred so the card is translucent"
-grep -Fq 'bg_color = "rgb(c8c8c8)"' "$ROOT/default/hypr/desktop-windows.lua" \
-  || fail "hyprbars min/max must be light rectangles; dark-on-dark looks like only close"
 if grep -Fq 'bg_color = "rgb(3d3d3d)"' "$ROOT/default/hypr/desktop-windows.lua"; then
   fail "hyprbars min/max must not be charcoal on a charcoal bar"
 fi
