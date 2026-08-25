@@ -186,6 +186,8 @@ pass "--no-color is the raw wordmark"
 # keep getting the same bytes. --color is how a test (or a script that wants
 # the paint) asks for the theme wrap anyway.
 theme_home=$(mktemp -d)
+empty_home=""
+trap 'rm -rf "$theme_home" "$empty_home"' EXIT
 mkdir -p "$theme_home/.local/state/omarchy/current/theme"
 cat >"$theme_home/.local/state/omarchy/current/theme/colors.toml" <<'TOML'
 green = "#12ab34"
@@ -239,5 +241,3 @@ if command -v python3 >/dev/null; then
   [[ $tty_auto == *$'\033[38;2;170;187;204m'* ]] || fail "a tty colors by default" "got: $tty_auto"
   pass "a tty colors by default"
 fi
-
-rm -rf "$theme_home" "$empty_home"
