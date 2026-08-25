@@ -27,6 +27,7 @@ Panel {
   property bool hardwarePresent: false
   property bool hardwarePresenceKnown: false
   property bool probePending: false
+  property int probeGeneration: 0
 
   onAdapterChanged: {
     if (adapter) {
@@ -50,14 +51,15 @@ Panel {
 
   function startHardwareProbe() {
     if (probePending) return
+    probeGeneration++
     probePending = true
     probeWatchdog.restart()
     hardwareCheck.running = true
   }
 
-  function finishProbe(exitCode, stdoutText) {
+  function finishProbe(generation, exitCode, stdoutText) {
+    if (generation !== root.probeGeneration || !probePending) return
     probeWatchdog.stop()
-    if (!probePending) return
     probePending = false
     hardwareCheck.running = false
 
@@ -65,12 +67,16 @@ Panel {
     if (root.adapter) {
       root.hardwarePresent = true
     } else if (exitCode === 0) {
+      // util-linux rfkill exits 0 when it runs successfully.
+      // On machines without Bluetooth hardware, stdout is empty.
+      // On machines with Bluetooth hardware (even if soft-blocked), stdout lists devices.
       root.hardwarePresent = String(stdoutText).trim().length > 0
     } else {
-      // Non-zero exit or abnormal exit (e.g. kernel without /dev/rfkill or VM without radios):
-      // On machines without Bluetooth hardware, rfkill exits non-zero.
-      // Therefore, non-zero exit means hardware is NOT present.
-      root.hardwarePresent = false
+      // Inconclusive probe (watchdog timeout or abnormal process termination):
+      // On machines with no Bluetooth hardware, rfkill exits 0 with empty output.
+      // A non-zero exit or watchdog trigger is not evidence of hardware absence.
+      // Default to assuming hardware is present so controls are not permanently locked out.
+      root.hardwarePresent = true
     }
   }
 
@@ -80,14 +86,14 @@ Panel {
   Timer {
     id: probeWatchdog
     interval: root.hardwareProbeTimeout
-    onTriggered: root.finishProbe(-1, "")
+    onTriggered: root.finishProbe(root.probeGeneration, -1, "")
   }
 
   // When BlueZ has no default adapter (e.g. rfkill soft-blocked), probe rfkill
   // to detect if hardware is present so the panel can remain available to power it on.
   Process {
     id: hardwareCheck
-    command: ["rfkill", "list", "bluetooth"]
+    command: ["rfkill", "-n", "-o", "DEVICE", "list", "bluetooth"]
     running: false
     stdout: StdioCollector {
       id: hardwareCheckStdout
@@ -97,16 +103,17 @@ Panel {
       }
     }
     onExited: function(exitCode) {
-      root.finishProbe(exitCode, hardwareCheckStdout.text)
+      root.finishProbe(root.probeGeneration, exitCode, hardwareCheckStdout.text)
     }
     onRunningChanged: {
       // Quickshell's Process does not emit exited when a binary fails to start (FailedToStart),
       // only transitioning running back to false. Catch this immediately so probePending
       // is not left stranded until the watchdog fires.
       if (!running && root.probePending) {
+        var currentGen = root.probeGeneration
         Qt.callLater(function() {
-          if (!hardwareCheck.running && root.probePending) {
-            root.finishProbe(-1, "")
+          if (!hardwareCheck.running && root.probePending && root.probeGeneration === currentGen) {
+            root.finishProbe(currentGen, -1, "")
           }
         })
       }
