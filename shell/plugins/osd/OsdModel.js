@@ -28,6 +28,13 @@ function iconFor(name, percent) {
   if (n === "media-next" || n === "player-next") return "󰒭"
   if (n === "media-previous" || n === "player-previous") return "󰒮"
   if (n.length > 0) return name
+  // stateForShow() passes percent = -1 specifically to mean "no progress
+  // requested at all" (a plain message-only OSD, e.g. `omarchy-osd -m
+  // "..."` with no -i/-p). That's a different case from a real 0% volume
+  // reading and shouldn't fall into the volume-glyph ladder below, which
+  // would otherwise pick the muted-speaker glyph for every icon-less,
+  // progress-less caller.
+  if (percent < 0) return ""
   if (percent <= 0) return ""
   if (percent <= 33) return ""
   if (percent <= 66) return ""

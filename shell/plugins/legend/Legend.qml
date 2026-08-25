@@ -18,9 +18,22 @@ Item {
   property var entries: [] // [[key, action], ...]
   property string corner: "top-right" // top-left | top-right | bottom-left | bottom-right
 
-  readonly property int pad: Style.spacing.popupPadding
+  readonly property int pad: 14
   readonly property int columnGap: Style.spacing.xxl
-  readonly property int rowHeight: Style.spacing.popupRowHeight
+  readonly property int rowGap: 10
+
+  function flippedCorner(c) {
+    if (c === "top-right") return "top-left"
+    if (c === "top-left") return "top-right"
+    if (c === "bottom-right") return "bottom-left"
+    if (c === "bottom-left") return "bottom-right"
+    return c
+  }
+  // Hovering the card (see the HoverHandler below) flips it to the
+  // opposite horizontal corner while the pointer is over it, and back the
+  // moment it isn't — entirely self-contained, so no caller needs to know
+  // where the card actually sits on screen.
+  readonly property string effectiveCorner: card.hovered ? flippedCorner(corner) : corner
 
   FontMetrics {
     id: fm
@@ -28,6 +41,7 @@ Item {
     font.pixelSize: Style.font.bodySmall
   }
 
+  readonly property int rowHeight: Math.ceil(fm.height)
   readonly property int keyColumnWidth: {
     var w = 0
     for (var i = 0; i < root.entries.length; i++)
@@ -42,6 +56,7 @@ Item {
   }
   readonly property int contentWidth: root.keyColumnWidth + root.columnGap + root.actionColumnWidth
   readonly property int contentHeight: root.entries.length * root.rowHeight
+    + Math.max(0, root.entries.length - 1) * root.rowGap
 
   function open(payloadJson) {
     try {
@@ -71,29 +86,36 @@ Item {
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore
-    // Visual-only surface: keep the layer-shell input region empty so the
-    // legend never blocks clicks to the desktop (or the calling tool's own
-    // overlay) below it.
-    mask: Region {}
+    // The input region is scoped to just the card (not the full surface),
+    // so hovering it can flip it away from the pointer without the legend
+    // ever blocking clicks to the desktop or the calling tool's own
+    // overlay anywhere else on screen.
+    mask: Region { item: card }
 
     BorderSurface {
       id: card
+      readonly property bool hovered: hoverHandler.hovered
       width: card.borderLeft + root.pad + root.contentWidth + root.pad + card.borderRight
       height: card.borderTop + root.pad + root.contentHeight + root.pad + card.borderBottom
-      anchors.top: root.corner.indexOf("top") === 0 ? parent.top : undefined
-      anchors.bottom: root.corner.indexOf("bottom") === 0 ? parent.bottom : undefined
-      anchors.left: root.corner.indexOf("left") !== -1 ? parent.left : undefined
-      anchors.right: root.corner.indexOf("right") !== -1 ? parent.right : undefined
+      anchors.top: root.effectiveCorner.indexOf("top") === 0 ? parent.top : undefined
+      anchors.bottom: root.effectiveCorner.indexOf("bottom") === 0 ? parent.bottom : undefined
+      anchors.left: root.effectiveCorner.indexOf("left") !== -1 ? parent.left : undefined
+      anchors.right: root.effectiveCorner.indexOf("right") !== -1 ? parent.right : undefined
       anchors.margins: Style.space(14)
       color: Util.alpha(Color.background, 0.97)
       borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
       radius: Style.cornerRadius
+
+      HoverHandler {
+        id: hoverHandler
+      }
 
       Column {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.topMargin: card.borderTop + root.pad
         anchors.leftMargin: card.borderLeft + root.pad
+        spacing: root.rowGap
 
         Repeater {
           model: root.entries
