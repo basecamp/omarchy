@@ -49,7 +49,8 @@ band_for_freq() {
 # Every value read back from nmcli goes through here. LC_ALL=C because nmcli
 # translates state words such as "connected", which would silently stop matching
 # under a non-English session; `-e no` because `-g` otherwise escapes ':' and
-# '\' in values, and an escaped SSID would never match iw's raw one.
+# '\' in values, and nmcli's escaping is not iw's, so two differently escaped
+# spellings of one SSID would never match.
 nm_get() {
   LC_ALL=C nmcli -e no -g "$@" 2>/dev/null
 }
@@ -67,12 +68,23 @@ selected_band() {
   band_from_nm "$(nm_get 802-11-wireless.band connection show "$1")"
 }
 
+# iw prints an SSID through its own escaper: every byte that is not printable
+# ASCII becomes \xNN, as do a backslash and a leading or trailing space. So a
+# name carrying an accent, a CJK character or an emoji reaches us escaped while
+# nmcli prints it raw, and comparing the two as they arrive never matches. Turn
+# it back into the bytes the AP broadcasts, the way the panel's own
+# decodeIwSsid does. printf %b is enough on its own here: the only backslash iw
+# ever emits is the one opening an escape.
+decode_iw_ssid() {
+  printf '%b' "$1"
+}
+
 # Sets $ssid and $freq from one `iw dev <device> link`. iw prints the SSID as
 # the rest of its line, so an SSID containing ':' needs no special handling.
 read_link() {
   local link
   link=$(iw dev "$1" link 2>/dev/null)
-  ssid=$(awk '/SSID:/ { sub(/.*SSID: /, ""); print; exit }' <<<"$link")
+  ssid=$(decode_iw_ssid "$(awk '/SSID:/ { sub(/.*SSID: /, ""); print; exit }' <<<"$link")")
   freq=$(awk '/freq:/ { print $2; exit }' <<<"$link")
 }
 
