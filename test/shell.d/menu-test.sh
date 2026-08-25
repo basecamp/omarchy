@@ -112,6 +112,7 @@ assertDeepEqual(
     kind: 'action',
     icon: '',
     iconFont: '',
+    labelFont: '',
     appIcon: '',
     appId: '',
     label: 'Theme picker',
@@ -441,6 +442,12 @@ assertEqual(
 assert(
   /font\.family: row\.iconFont\.length > 0 \? row\.iconFont : root\.fontFamily/.test(menuQml),
   'menu rows support per-icon font families'
+)
+assert(
+  /labelFont: providerKey === "fonts" \? value : ""/.test(menuQml)
+    && /font\.family: row\.labelFont\.length > 0 \? row\.labelFont : root\.fontFamily/.test(menuQml)
+    && /text: "Ag 01"[\s\S]*font\.family: row\.labelFont/.test(menuQml),
+  'font provider rows preview each family in their label and specimen'
 )
 
 assert(

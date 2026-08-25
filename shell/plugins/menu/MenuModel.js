@@ -370,6 +370,7 @@ function displayRow(items, itemOrder, checkedResults, disabledResults, entry, de
     kind: entry.kind,
     icon: entry.icon,
     iconFont: entry.iconFont || "",
+    labelFont: entry.labelFont || "",
     appIcon: entry.appIcon || "",
     appId: entry.appId || "",
     label: labelFor(entry, checkedResults, disabledResults),
