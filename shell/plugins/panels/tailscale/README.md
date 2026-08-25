@@ -8,7 +8,8 @@ Native Omarchy bar widget for Tailscale.
 - Left click opens a keyboard-friendly panel
 - Right click toggles Tailscale on/off
 - Switch between available Tailscale connections when multiple are available
-- Add another tailnet, so a machine with a single connection has one to switch to
+- Add another tailnet, so a machine with a single connection has one to switch to,
+  after confirming the sign-out it costs
 - Remove a tailnet you no longer use, with an inline confirmation
 - Browse machines from `tailscale status --json`
 - Copy a machine's Tailscale IP, host name, or DNS name
@@ -28,6 +29,13 @@ Inside the panel:
 - `t`: toggle Tailscale
 - `r`: refresh status
 - `esc`: close
+
+Adding a tailnet runs `tailscale login`, which makes the new profile current
+before the browser half finishes -- the machine leaves the tailnet it is on the
+moment it starts. The row asks before doing that, offers a cancel while it runs,
+and returns to the previous connection if the login never lands. The profile is
+created with the same operator as the install sets, so the way back never needs
+sudo.
 
 Removing a connection drops it from this machine only. The account itself is
 untouched, and logging in again brings it back. The connection in use is never

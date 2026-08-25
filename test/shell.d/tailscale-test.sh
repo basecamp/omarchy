@@ -207,11 +207,26 @@ assertDeepEqual(
 )
 assertDeepEqual(tailscale.connectionRows(null, true).map(row => row.id), ['account:add'], 'tailscale handles a missing connection list')
 
-assert(/if \(account\.AddAccount === true\) \{\s*\n\s*disarmRemoval\(\)\s*\n\s*tailscale\.addAccount\(\)/.test(panelSource), 'tailscale activates the add row as a login rather than a switch')
-assert(/addAccountProcess\.command = \["tailscale", "login", "--accept-routes"\]/.test(serviceSource), 'tailscale adds a connection the way the service install brings one up')
+assert(/addArmed = false\s*\n\s*tailscale\.addAccount\(\)/.test(panelSource), 'tailscale activates the add row as a login rather than a switch')
+assert(/var command = \["tailscale", "login", "--accept-routes"\]/.test(serviceSource), 'tailscale adds a connection the way the service install brings one up')
+// A fresh profile without an operator answers even `tailscale switch` with
+// access denied, so an abandoned login would lock the way back behind sudo.
+assert(/command\.push\("--operator=" \+ userName\)/.test(serviceSource), 'tailscale keeps operator access on the profile it creates')
+// tailscale login makes the new profile current before the browser half
+// finishes, so an abandoned login must not leave the machine stranded on it.
+assert(/_addAccountPreviousId = selectedAccountId/.test(serviceSource), 'tailscale remembers the connection it is leaving')
+assert(/root\.returnToPreviousAccount\(\)/.test(serviceSource), 'tailscale goes back when the login does not land')
+// The accounts list is only re-read once a minute, so at the moment the login
+// fails selectedAccountId still names the profile being returned to. Comparing
+// against it there skips the one switch that matters.
+assert(!/if \(previous === "" \|\| previous === selectedAccountId/.test(serviceSource), 'tailscale does not skip the return on a stale selected account')
+assert(/function cancelAddAccount\(\) \{[\s\S]*?addAccountProcess\.running = false[\s\S]*?returnToPreviousAccount\(\)/.test(serviceSource), 'tailscale can bail out of a login in progress')
+assert(/if \(accountRow\.addingAccount\) tailscale\.cancelAddAccount\(\)/.test(panelSource), 'tailscale offers the bail-out on the row that is running')
+assert(/if \(!addArmed\) \{\s*\n\s*addArmed = true/.test(panelSource), 'tailscale asks before signing the machine out to add a tailnet')
 assert(/readonly property bool addingAccount: addAccountProcess\.running/.test(serviceSource), 'tailscale publishes that a connection is being added')
 assert(/running: accountRow\.working/.test(panelSource), 'tailscale animates the row while it is adding or switching')
-assert(/addingAccount \? "Opening browser…" : "Add account…"/.test(panelSource), 'tailscale says what the add row is doing while it runs')
+assert(/if \(addingAccount\) return "Opening browser…"/.test(panelSource), 'tailscale says what the add row is doing while it runs')
+assert(/"Signs out of " \+ current \+ " — confirm\?"/.test(panelSource), 'tailscale says which connection adding will sign out of')
 
 assert(/removeProcess\.command = \["tailscale", "switch", "remove", accountId\]/.test(serviceSource), 'tailscale removes a connection from this machine')
 // Removing the profile in use would strand the machine mid-session.

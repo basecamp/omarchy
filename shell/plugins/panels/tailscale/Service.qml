@@ -63,6 +63,7 @@ Item {
   property double _lastAccountsRefreshMs: 0
   property string _removeOutput: ""
   property string _removeError: ""
+  property string _addAccountPreviousId: ""
   property string _addAccountOutput: ""
   property string _addAccountError: ""
   property bool _addAccountUrlOpened: false
@@ -336,16 +337,53 @@ Item {
   // poll clears that as soon as it sees a running tailscaled — which is
   // exactly the state we are in here, so a poll landing between launching
   // the login and its first line of output would swallow the auth URL.
+  // Match how the service install brings the first profile up, so a tailnet
+  // added here does not quietly differ from the one already on the machine.
+  // The operator matters most: tailscale login starts a fresh profile, and
+  // without it that profile answers even `tailscale switch` with "access
+  // denied", so an abandoned login locks the way back behind sudo.
+  function addAccountCommand() {
+    var command = ["tailscale", "login", "--accept-routes"]
+    if (userName !== "") command.push("--operator=" + userName)
+    return command
+  }
+
   function addAccount() {
     if (!installed || addAccountProcess.running) return
     _addAccountOutput = ""
     _addAccountError = ""
     _addAccountUrlOpened = false
+    // tailscale login makes the new profile current before the browser half
+    // finishes, so the machine leaves the tailnet it is on the moment this
+    // starts. Remember where to put it back if the login never lands.
+    _addAccountPreviousId = selectedAccountId
     actionStatus = "Opening Tailscale login…"
-    // Match how the service install brings the first profile up, so a tailnet
-    // added here does not quietly differ from the one already on the machine.
-    addAccountProcess.command = ["tailscale", "login", "--accept-routes"]
+    addAccountProcess.command = addAccountCommand()
     addAccountProcess.running = true
+  }
+
+  function cancelAddAccount() {
+    if (!addAccountProcess.running) return
+    actionStatus = "Returning to the previous connection…"
+    addAccountProcess.running = false
+    returnToPreviousAccount()
+  }
+
+  // Clears the record as it goes, so the exit handler and an explicit cancel
+  // can both call it and only the first one does anything.
+  function returnToPreviousAccount() {
+    var previous = _addAccountPreviousId
+    _addAccountPreviousId = ""
+    // Nothing is compared against selectedAccountId here: the accounts list is
+    // only re-read once a minute, so at this point it still names the profile
+    // being returned to and the comparison would skip the switch that matters.
+    // Switching to the profile already current is a harmless no-op anyway.
+    if (previous === "" || switchProcess.running) return
+    _switchOutput = ""
+    _switchError = ""
+    switchingAccountId = previous
+    switchProcess.command = ["tailscale", "switch", previous]
+    switchProcess.running = true
   }
 
   function openAddAccountUrl(text) {
@@ -649,11 +687,15 @@ Item {
     onExited: function(exitCode) {
       var combined = String(root._addAccountOutput || "") + "\n" + String(root._addAccountError || "")
       var opened = root.openAddAccountUrl(combined)
-      if (exitCode !== 0 && !opened) {
-        root.lastError = elideStatus(combined || "tailscale login failed")
-        root.actionStatus = root.lastError
+      if (exitCode !== 0) {
+        // A login that was abandoned, cancelled or refused leaves the machine
+        // on a half-made profile it never asked to be on.
+        root.returnToPreviousAccount()
+        root.lastError = opened ? "" : elideStatus(combined || "tailscale login failed")
+        root.actionStatus = opened ? "Login not completed — back on the previous connection" : root.lastError
         actionStatusTimer.restart()
       } else {
+        root._addAccountPreviousId = ""
         root.lastError = ""
         root.actionStatus = ""
       }

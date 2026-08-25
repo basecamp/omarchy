@@ -43,6 +43,7 @@ Panel {
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   property string removeArmedId: ""
+  property bool addArmed: false
   readonly property var connections: displayConnections()
   readonly property bool showConnections: connections.length > 1 || tailscale.accountsAccessDenied
   readonly property bool showPeers: tailscale.active && tailscale.peers.length > 0
@@ -199,6 +200,7 @@ Panel {
 
   function disarmRemoval() {
     removeArmedId = ""
+    addArmed = false
   }
 
   function confirmRemoval(account) {
@@ -218,7 +220,15 @@ Panel {
   function chooseConnection(account) {
     if (!account) return
     if (account.AddAccount === true) {
-      disarmRemoval()
+      if (tailscale.addingAccount) return
+      removeArmedId = ""
+      // Adding signs this machine out of the tailnet it is on until the
+      // browser half finishes, so it asks before it does that.
+      if (!addArmed) {
+        addArmed = true
+        return
+      }
+      addArmed = false
       tailscale.addAccount()
       return
     }
@@ -878,11 +888,19 @@ Panel {
     readonly property bool removingAccount: !addAccount && accountId !== "" && tailscale.removingAccountId === accountId
     readonly property bool removable: root.canRemoveAccount(account)
     readonly property bool armed: removable && root.removeArmedId === accountId
+    readonly property bool addArmed: addAccount && root.addArmed && !addingAccount
     // The row is the thing being clicked, so it carries the progress rather
     // than leaving it to the status line under the panel.
     readonly property bool working: switchingAccount || addingAccount || removingAccount
     readonly property string accountText: {
-      if (addAccount) return addingAccount ? "Opening browser…" : "Add account…"
+      if (addAccount) {
+        if (addingAccount) return "Opening browser…"
+        if (addArmed) {
+          var current = tailscale.selectedAccountLabel
+          return current === "" ? "Signs this machine out — confirm?" : "Signs out of " + current + " — confirm?"
+        }
+        return "Add account…"
+      }
       if (!account) return "Account"
       var label = tailscale.accountLabel(account)
       if (removingAccount) return "Removing " + label + "…"
@@ -891,7 +909,7 @@ Panel {
     }
 
     hasCursor: root.cursorActive && root.focusSection === "accounts" && root.accountIndex === rowIndex
-    current: selectedAccount || armed
+    current: selectedAccount || armed || addArmed
     foreground: root.foreground
     fill: root.hoverFill
     currentFill: root.selectedFill
@@ -939,7 +957,7 @@ Panel {
         Layout.fillWidth: true
         Layout.alignment: Qt.AlignVCenter
         text: accountRow.accountText
-        color: accountRow.armed ? root.urgent : root.foreground
+        color: accountRow.armed || accountRow.addArmed ? root.urgent : root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
         font.bold: accountRow.selectedAccount
@@ -947,14 +965,22 @@ Panel {
       }
 
       PanelActionButton {
-        visible: accountRow.removable && !accountRow.removingAccount && (accountRow.armed || accountRow.hasCursor || accountMouse.containsMouse)
-        iconText: accountRow.armed ? "󰄬" : "󰅙"
-        tooltipText: accountRow.armed ? "Confirm removal" : "Remove from this machine"
-        foreground: accountRow.armed ? root.urgent : root.foreground
+        // Removing, confirming an add, and bailing out of one in progress all
+        // land on the same trailing control.
+        visible: accountRow.addingAccount || accountRow.addArmed
+                 || (accountRow.removable && !accountRow.removingAccount
+                     && (accountRow.armed || accountRow.hasCursor || accountMouse.containsMouse))
+        iconText: accountRow.addingAccount ? "󰅙" : (accountRow.armed || accountRow.addArmed ? "󰄬" : "󰅙")
+        tooltipText: accountRow.addingAccount ? "Cancel and go back"
+                     : (accountRow.addArmed ? "Sign out and add a tailnet"
+                        : (accountRow.armed ? "Confirm removal" : "Remove from this machine"))
+        foreground: accountRow.armed || accountRow.addArmed || accountRow.addingAccount ? root.urgent : root.foreground
         fontFamily: root.fontFamily
         Layout.alignment: Qt.AlignVCenter
         onClicked: {
-          if (accountRow.armed) root.confirmRemoval(accountRow.account)
+          if (accountRow.addingAccount) tailscale.cancelAddAccount()
+          else if (accountRow.addArmed) root.chooseConnection(accountRow.account)
+          else if (accountRow.armed) root.confirmRemoval(accountRow.account)
           else root.armRemoval(accountRow.account)
         }
       }
