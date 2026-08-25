@@ -474,18 +474,31 @@ def _cached_local_stats(max_age):
     return stats
 
 
+def rpc_send(proc, payload, operation):
+  try:
+    proc.stdin.write(json.dumps(payload) + "\n")
+    proc.stdin.flush()
+  except OSError as exc:
+    try:
+      proc.stdin.close()
+    except OSError:
+      pass
+    raise RuntimeError(f"Codex app-server exited before {operation}") from exc
+
+
 def rpc_request(proc, request_id, method, params=None, timeout=8):
   payload = {"id": request_id, "method": method, "params": params or {}}
-  proc.stdin.write(json.dumps(payload) + "\n")
-  proc.stdin.flush()
+  rpc_send(proc, payload, method)
   deadline = time.time() + timeout
   while time.time() < deadline:
     ready, _, _ = select.select([proc.stdout], [], [], 0.25)
     if not ready:
+      if proc.poll() is not None:
+        raise RuntimeError(f"Codex app-server exited before {method}")
       continue
     line = proc.stdout.readline()
     if not line:
-      break
+      raise RuntimeError(f"Codex app-server exited before {method}")
     try:
       message = json.loads(line)
     except Exception:
@@ -542,8 +555,7 @@ def fetch_codex_rpc():
 
   try:
     rpc_request(proc, 1, "initialize", {"clientInfo": {"name": "omarchy-agent-usage", "version": "1"}}, timeout=8)
-    proc.stdin.write(json.dumps({"method": "initialized", "params": {}}) + "\n")
-    proc.stdin.flush()
+    rpc_send(proc, {"method": "initialized", "params": {}}, "initialized")
     account_msg = rpc_request(proc, 2, "account/read", timeout=4)
     limits_msg = rpc_request(proc, 3, "account/rateLimits/read", timeout=4)
 
