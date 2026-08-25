@@ -13,7 +13,8 @@ mkdir -p "$mock_bin" "$tmp/leds/chromeos::kbd_backlight"
 state="$tmp/brightness"
 saved="$tmp/saved"
 printf '40\n' >"$state"
-printf '40\n' >"$saved"
+# Distinct from the lit level so a no-op off that never saves still fails.
+printf '7\n' >"$saved"
 
 cat >"$mock_bin/brightnessctl" <<'SH'
 #!/bin/bash
@@ -57,6 +58,8 @@ run_kb() {
     OMARCHY_LEDS_PATH="$tmp/leds" PATH="$mock_bin:$ROOT/bin:$PATH" \
     omarchy-brightness-keyboard "$@"
 }
+
+[[ $(<"$saved") == 7 ]] || fail "saved sentinel starts distinct from lit level"
 
 run_kb off
 [[ $(<"$state") == 0 ]] || fail "first off blanks the backlight"
