@@ -318,7 +318,7 @@ Panel {
     if (focusSection === "header") {
       tailscale.toggleTailscale()
     } else if (focusSection === "auth") {
-      tailscale.authorizeTailscaleOperator()
+      tailscale.startConnecting()
     } else if (focusSection === "accounts") {
       var account = selectedAccount()
       if (account) chooseConnection(account)
@@ -830,7 +830,7 @@ Panel {
       cursorShape: tailscale.busy ? Qt.ArrowCursor : Qt.PointingHandCursor
       enabled: !tailscale.busy
       onEntered: root.setAuthCursor()
-      onClicked: tailscale.authorizeTailscaleOperator()
+      onClicked: tailscale.startConnecting()
     }
 
     RowLayout {

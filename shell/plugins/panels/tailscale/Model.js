@@ -329,6 +329,19 @@ function isAccessDenied(text) {
   return /access denied/i.test(String(text || ""))
 }
 
+// Getting connected can take three things in order -- authorize the operator,
+// sign in, come up -- and the panel knows which are still outstanding. Naming
+// the next one lets it run the sequence instead of making someone rediscover
+// the next step after finishing each.
+function nextConnectStep(state) {
+  var s = state || {}
+  if (s.installed !== true) return "none"
+  if (s.accessDenied === true) return "authorize"
+  if (s.needsLogin === true) return "login"
+  if (s.running !== true) return "up"
+  return "done"
+}
+
 function parseAccounts(raw) {
   var text = String(raw || "").trim()
   if (text === "") return { accounts: [], selectedAccountId: "", selectedAccountLabel: "" }
@@ -383,6 +396,7 @@ if (typeof module !== "undefined") {
     connectionRows: connectionRows,
     addAccountOutcome: addAccountOutcome,
     commandMessage: commandMessage,
-    isAccessDenied: isAccessDenied
+    isAccessDenied: isAccessDenied,
+    nextConnectStep: nextConnectStep
   }
 }

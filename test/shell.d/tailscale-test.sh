@@ -327,7 +327,7 @@ assert(/root\.actionStatus = "Tailscale login link not available yet"\s*\n(\s*\/
 assert(/loginTimeoutTimer\.attempts = 0/.test(serviceSource), 'tailscale starts each login with a fresh attempt count')
 // pkexec exits 126 when the dialog is dismissed, which is a decision rather
 // than a failure and should not be reported as one.
-assert(/if \(exitCode === 126\) \{\s*\n\s*root\.lastError = ""\s*\n\s*root\.actionStatus = ""/.test(serviceSource), 'tailscale leaves nothing behind when the operator prompt is dismissed')
+assert(/if \(exitCode === 126\) \{[\s\S]{0,120}?root\.lastError = ""\s*\n\s*root\.actionStatus = ""/.test(serviceSource), 'tailscale leaves nothing behind when the operator prompt is dismissed')
 assert(/\} else if \(exitCode !== 0\) \{\s*\n\s*root\.lastError = elideStatus\(stderr \|\| stdout \|\| "Tailscale authorization failed"\)/.test(serviceSource), 'tailscale still reports a real authorization failure')
 // Exactly what the panel showed on a machine whose client and daemon differ:
 // the warning arrives on stderr ahead of the real refusal.
@@ -350,6 +350,30 @@ assert(tailscale.isAccessDenied('Access denied: checkprefs access denied'), 'tai
 // add row can only dead-end while the panel already knows it lacks the operator.
 assertDeepEqual(tailscale.connectionRows([{ id: 'db1b' }], false).map(row => row.id), ['db1b'], 'tailscale withholds the add row when it cannot be used')
 assert(/tailscale\.active && !tailscale\.accountsAccessDenied/.test(panelSource), 'tailscale hides the add row while it lacks the operator')
+
+// Getting connected can take three things in order, and the panel runs them
+// rather than making someone rediscover the next step after each one.
+assertEqual(tailscale.nextConnectStep({ installed: false }), 'none', 'tailscale has no step without the CLI')
+assertEqual(tailscale.nextConnectStep({ installed: true, accessDenied: true, needsLogin: true }), 'authorize', 'tailscale authorizes before anything it would refuse')
+assertEqual(tailscale.nextConnectStep({ installed: true, needsLogin: true }), 'login', 'tailscale signs in once it is allowed to')
+assertEqual(tailscale.nextConnectStep({ installed: true, needsLogin: false, running: false }), 'up', 'tailscale comes up after signing in, without a second ask')
+assertEqual(tailscale.nextConnectStep({ installed: true, needsLogin: false, running: true }), 'done', 'tailscale stops once it is connected')
+assertEqual(tailscale.nextConnectStep(null), 'none', 'tailscale handles a missing state')
+
+assert(/root\.continueConnecting\(\)/.test(serviceSource), 'tailscale carries on after authorizing instead of stopping there')
+assert(/if \(exitCode === 126\) \{\s*\n\s*root\.stopConnecting\(\)/.test(serviceSource), 'tailscale stops the sequence when the prompt is dismissed')
+assert(/if \(_connectSteps >= 4\) \{ stopConnecting\(\); return \}/.test(serviceSource), 'tailscale will not loop on a step that keeps failing')
+assert(/function down\(\) \{[\s\S]*?stopConnecting\(\)/.test(serviceSource), 'tailscale abandons the sequence when told to disconnect')
+
+// Adding a tailnet is a login of its own and owns the daemon's pending
+// registration. Running the connect sequence beside it starts a second one and
+// the two race for the daemon, which is how a completed sign-in still landed
+// on a machine that was logged out.
+assert(/function startConnecting\(\) \{\s*\n\s*if \(addAccountProcess\.running\) return/.test(serviceSource), 'tailscale will not start the sequence beside a login that is adding')
+assert(/function continueConnecting\(\) \{[\s\S]{0,200}?if \(addAccountProcess\.running\) return/.test(serviceSource), 'tailscale will not continue the sequence beside a login that is adding')
+assert(/if \(!installed \|\| loginProcess\.running \|\| addAccountProcess\.running\) return/.test(serviceSource), 'tailscale will not connect over a login that is adding')
+assert(/stopConnecting\(\)\s*\n\s*actionStatus = "Opening Tailscale login…"/.test(serviceSource), 'tailscale drops the pending sequence when an add supersedes it')
+assert(/if \(addAccountProcess\.running\) \{\s*\n\s*root\._loginInProgress = false/.test(serviceSource), 'tailscale stops waiting on a link an add has superseded')
 assert(/if \(Model\.isAccessDenied\(outcome\.error\)\) \{\s*\n\s*root\.reportCommandError/.test(serviceSource), 'tailscale offers the operator fix when the add is refused')
 assert(tailscale.isAccessDenied('profiles access denied'), 'tailscale spots the profiles refusal too')
 assert(!tailscale.isAccessDenied('tailscale up failed'), 'tailscale does not mistake an ordinary failure for a refusal')

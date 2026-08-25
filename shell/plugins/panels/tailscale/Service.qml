@@ -64,6 +64,10 @@ Item {
   property string _removeOutput: ""
   property string _removeError: ""
   property string _addAccountPreviousId: ""
+  // Only ever set by someone asking to connect, so the panel never brings
+  // Tailscale up on its own.
+  property bool _connecting: false
+  property int _connectSteps: 0
   property bool _returnedFromAddAccount: false
   property string _addAccountOutput: ""
   property string _addAccountError: ""
@@ -287,6 +291,9 @@ Item {
         actionStatusTimer.restart()
       }
     }
+    if (_connecting && !needsLogin && !running && !loginProcess.running && !actionProcess.running && backendState !== "NoState") {
+      continueConnecting()
+    }
     if (needsLogin) statusText = "Needs login"
     else if (running) {
       statusText = "Connected"
@@ -319,18 +326,50 @@ Item {
   function toggleTailscale() {
     if (!installed) return
     if (active) down()
+    else startConnecting()
+  }
+
+  function connectState() {
+    return { installed: installed, accessDenied: accountsAccessDenied, needsLogin: needsLogin, running: running }
+  }
+
+  function startConnecting() {
+    if (addAccountProcess.running) return
+    _connecting = true
+    _connectSteps = 0
+    continueConnecting()
+  }
+
+  function stopConnecting() {
+    _connecting = false
+    _connectSteps = 0
+  }
+
+  // Runs the outstanding steps in order. Each one only continues on its own
+  // success, and the count is a backstop against a step that keeps failing in
+  // a way that leaves the state unchanged.
+  function continueConnecting() {
+    if (!_connecting) return
+    // A login is already under way and owns the daemon's pending registration.
+    if (addAccountProcess.running) return
+    if (_connectSteps >= 4) { stopConnecting(); return }
+    var step = Model.nextConnectStep(connectState())
+    if (step === "done" || step === "none") { stopConnecting(); return }
+    _connectSteps += 1
+    if (step === "authorize") authorizeTailscaleOperator()
     else loginOrUp()
   }
 
   function down() {
     // No progress status here — the greyed icon and hero line already convey
     // the optimistic off; only surface a message if the command fails.
+    stopConnecting()
     _desired = 0
     runAction(["tailscale", "down"])
   }
 
   function loginOrUp() {
-    if (!installed || loginProcess.running) return
+    if (!installed || loginProcess.running || addAccountProcess.running) return
     _desired = -1
     var plan = Model.loginPlan(needsLogin, authUrl)
     if (plan.authUrl !== "") {
@@ -388,6 +427,8 @@ Item {
     // finishes, so the machine leaves the tailnet it is on the moment this
     // starts. Remember where to put it back if the login never lands.
     _addAccountPreviousId = selectedAccountId
+    // Whatever the sequence was going to do next, this login supersedes it.
+    stopConnecting()
     actionStatus = "Opening Tailscale login…"
     addAccountProcess.command = addAccountCommand()
     addAccountProcess.running = true
@@ -570,6 +611,12 @@ Item {
     repeat: false
     onTriggered: {
       if (!root._loginInProgress || root._loginUrlOpened) return
+      // An add took over the daemon's pending registration, so this is no
+      // longer the login whose link is worth waiting on.
+      if (addAccountProcess.running) {
+        root._loginInProgress = false
+        return
+      }
       if (root.openAuthUrlFrom(root.authUrl, true)) return
       attempts += 1
       if (attempts < 3) {
@@ -800,6 +847,7 @@ Item {
       // is an answer rather than a failure, so it leaves nothing behind; 127
       // and the rest are real errors and still get reported.
       if (exitCode === 126) {
+        root.stopConnecting()
         root.lastError = ""
         root.actionStatus = ""
       } else if (exitCode !== 0) {
@@ -812,6 +860,7 @@ Item {
         root.actionStatus = "Tailscale operator authorized"
         actionStatusTimer.restart()
         root._lastAccountsRefreshMs = 0
+        root.continueConnecting()
       }
       delayedRefresh.restart()
     }

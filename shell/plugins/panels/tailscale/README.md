@@ -41,6 +41,12 @@ Removing a connection drops it from this machine only. The account itself is
 untouched, and logging in again brings it back. The connection in use is never
 offered for removal, so a removal cannot strand the machine mid-session.
 
+Connecting can take three things in order: authorizing the operator, signing
+in, and coming up. The panel runs whichever are outstanding rather than
+stopping after each, so connecting is one action however much of the sequence
+is left. It only ever starts from someone asking to connect, never on its own,
+and stops on the first step that fails or a dismissed prompt.
+
 ## Requirements
 
 - `tailscale` CLI on `PATH`
