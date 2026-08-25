@@ -354,6 +354,11 @@ assertEqual(shipped[0].name, 'Chrome', 'shipped pins lead with Chrome')
 assertEqual(shipped[0].id, 'google-chrome', 'shipped Chrome pin is Google Chrome, not the blue Chromium ball')
 assertEqual(shipped[1].name, 'Files', 'shipped pins include Files')
 assertEqual(m.usesWaylandCsd({ class: 'google-chrome' }), true, 'Google Chrome uses CSD like Chromium')
+assertEqual(m.opensMaximized({ class: 'google-chrome' }), true, 'Chrome opens maximized so its close button is not clipped')
+assertEqual(m.opensMaximized({ class: 'chromium' }), true, 'Chromium opens maximized')
+assertEqual(m.opensMaximized({ class: 'brave-browser' }), true, 'Brave opens maximized')
+assertEqual(m.opensMaximized({ class: 'org.gnome.Nautilus' }), false, 'Nautilus is not force-maximized (its GTK close renders fine)')
+assertEqual(m.opensMaximized({ class: 'foot' }), false, 'foot is not force-maximized')
 assert(m.windowMatchesPin({ class: 'chromium' }, { id: 'google-chrome' }), 'Chromium still lights the Chrome pin')
 assert(
   shipped.every(pin => pin.id !== 'foot' && pin.desktopId !== 'foot' && pin.id !== 'vim'),
