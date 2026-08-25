@@ -40,7 +40,7 @@ install_theme() {
   : >"$git_calls"
   : >"$theme_calls"
 
-  HOME="$test_tmp/home" PATH="$mock_bin:$PATH" \
+  HOME="$test_tmp/home" PATH="${2-$mock_bin:$ROOT/bin:$PATH}" \
     OMARCHY_TEST_GIT_CALLS="$git_calls" OMARCHY_TEST_THEME_CALLS="$theme_calls" \
     bash "$ROOT/bin/omarchy-theme-install" "$1" >"$test_tmp/out" 2>&1 || return $?
 }
@@ -57,6 +57,29 @@ for url in "-x" "--upload-pack=touch /tmp/pwned" "ext::sh -c id" "fd::0,1"; do
 done
 
 pass "a URL that names a git option or a transport helper never reaches git"
+
+# git resolves git-remote-<scheme> for any scheme it does not implement itself,
+# so the `://` spelling of a helper has to be refused as well as the `::` one.
+for url in "ext://sh -c id" "fd://17" "gcrypt://example.com/x"; do
+  if install_theme "$url"; then
+    fail "omarchy-theme-install refuses the URL '$url'"
+  fi
+
+  [[ ! -s $git_calls ]] || fail "omarchy-theme-install refuses '$url' before running git" "$(cat "$git_calls")"
+done
+
+pass "a URL naming a transport git does not implement never reaches git"
+
+# The checker is a separate command, so its absence has to refuse the URL rather
+# than wave it through to git.
+if install_theme "https://github.com/example/omarchy-cool-theme.git" "$mock_bin:$PATH"; then
+  fail "omarchy-theme-install refuses a URL it cannot check"
+fi
+
+[[ ! -s $git_calls ]] ||
+  fail "omarchy-theme-install refuses an unchecked URL before running git" "$(cat "$git_calls")"
+
+pass "a missing url checker refuses the URL instead of cloning it"
 
 # A URL whose derived name would escape the themes directory.
 for url in "https://example.com/..git" "https://example.com/.git"; do
