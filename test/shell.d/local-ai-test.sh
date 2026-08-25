@@ -103,6 +103,9 @@ jq -e '[.recipes[].min_vram_mb] | min <= 24000' "$catalog" >/dev/null ||
 # silently shatters into separate docker args.
 jq -e '[.. | strings | contains("\n")] | any | not' "$catalog" >/dev/null ||
   fail "no recipe string contains a newline"
+if grep -Eq -- '--disable[^ ]*cuda-graph|--enforce-eager' "$catalog"; then
+  fail "recipes keep CUDA graphs enabled"
+fi
 pass "local AI catalog is fast and smart, nothing else"
 
 port=$(jq -r '.port' "$catalog")

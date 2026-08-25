@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # omarchy:summary=Fetch local AI recipes published on GitHub and refresh the catalog
-# omarchy:examples=omarchy ai sync
 
 set -euo pipefail
 
