@@ -6,14 +6,14 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 service="$ROOT/default/systemd/user/bt-agent.service"
 
-grep -Fx 'ExecCondition=/usr/bin/systemctl is-active --quiet bluetooth.service' "$service" >/dev/null
+grep -Fx 'ExecCondition=/usr/bin/systemctl is-active --quiet bluetooth.service' "$service" >/dev/null || fail "bt-agent skips when bluetooth.service is inactive"
 pass "bt-agent skips when bluetooth.service is inactive"
 
-grep -Fx 'Restart=on-failure' "$service" >/dev/null
+grep -Fx 'Restart=on-failure' "$service" >/dev/null || fail "bt-agent still restarts after runtime failures"
 pass "bt-agent still restarts after runtime failures"
 
 sleep_service="$ROOT/default/systemd/user/omarchy-sleep-lock.service"
-grep -Fx 'ExecStart=/usr/bin/omarchy-system-sleep-monitor' "$sleep_service" >/dev/null
+grep -Fx 'ExecStart=/usr/bin/omarchy-system-sleep-monitor' "$sleep_service" >/dev/null || fail "sleep lock service uses the package-backed monitor path"
 pass "sleep lock service uses the package-backed monitor path"
 
 grep -Fx 'After=dbus.socket wayland-session-waitenv.service' "$sleep_service" >/dev/null ||
@@ -27,16 +27,16 @@ grep -Fx 'ConditionEnvironment=WAYLAND_DISPLAY' "$sleep_service" >/dev/null ||
 pass "sleep lock service follows the initialized graphical session"
 
 first_run_units="$ROOT/install/user/first-run/enable-user-units.sh"
-grep -Fx 'systemctl --user daemon-reload' "$first_run_units" >/dev/null
-grep -F 'omarchy-sleep-lock.service' "$first_run_units" >/dev/null
+grep -Fx 'systemctl --user daemon-reload' "$first_run_units" >/dev/null || fail "first-run reloads the user manager before enabling units"
+grep -F 'omarchy-sleep-lock.service' "$first_run_units" >/dev/null || fail "first-run enables the sleep lock service"
 pass "first-run reloads and enables the sleep lock service"
 
 upgrade_to_quattro="$ROOT/bin/omarchy-upgrade-to-quattro"
-grep -F '6870b232a6c0474b59187882e6d25ae771bba735098bcbedef8a2b73b97e2b6a' "$upgrade_to_quattro" >/dev/null
-grep -F 'bcd1a76cb5c63514922bc5e11af22ae480fc6d06a99863364e02bdf3c7bdceaf' "$upgrade_to_quattro" >/dev/null
-grep -F 'ExecStart=%h/.local/share/omarchy/bin/omarchy-system-sleep-monitor' "$upgrade_to_quattro" >/dev/null
-grep -F 'ExecStart=/usr/bin/omarchy-system-sleep-monitor' "$upgrade_to_quattro" >/dev/null
-grep -F 'reset-failed omarchy-sleep-lock.service' "$upgrade_to_quattro" >/dev/null
+grep -F '6870b232a6c0474b59187882e6d25ae771bba735098bcbedef8a2b73b97e2b6a' "$upgrade_to_quattro" >/dev/null || fail "Omarchy 4 upgrade knows the first legacy sleep lock unit checksum"
+grep -F 'bcd1a76cb5c63514922bc5e11af22ae480fc6d06a99863364e02bdf3c7bdceaf' "$upgrade_to_quattro" >/dev/null || fail "Omarchy 4 upgrade knows the second legacy sleep lock unit checksum"
+grep -F 'ExecStart=%h/.local/share/omarchy/bin/omarchy-system-sleep-monitor' "$upgrade_to_quattro" >/dev/null || fail "Omarchy 4 upgrade recognizes the legacy sleep lock ExecStart"
+grep -F 'ExecStart=/usr/bin/omarchy-system-sleep-monitor' "$upgrade_to_quattro" >/dev/null || fail "Omarchy 4 upgrade rewrites the sleep lock ExecStart to the package path"
+grep -F 'reset-failed omarchy-sleep-lock.service' "$upgrade_to_quattro" >/dev/null || fail "Omarchy 4 upgrade clears the failed state on the sleep lock unit"
 pass "Omarchy 4 upgrade repairs the legacy sleep lock unit path"
 
 [[ -e $ROOT/default/systemd/user/omarchy-update-user-notify.path ]] &&
@@ -46,8 +46,8 @@ grep -rlE '^(Path[A-Za-z]+|DirectoryNotEmpty)=.*/usr/share/omarchy/migrations' "
 pass "no unit watches the migration directory, so package updates cannot trigger the notifier"
 
 notify_service="$ROOT/default/systemd/user/omarchy-migrate-notify.service"
-grep -Fx 'ExecStart=/usr/bin/omarchy-migrate-notify' "$notify_service" >/dev/null
-grep -Fx 'WantedBy=graphical-session.target' "$notify_service" >/dev/null
+grep -Fx 'ExecStart=/usr/bin/omarchy-migrate-notify' "$notify_service" >/dev/null || fail "migration notifier runs omarchy-migrate-notify"
+grep -Fx 'WantedBy=graphical-session.target' "$notify_service" >/dev/null || fail "migration notifier is pulled in at graphical login"
 grep -Fx 'After=graphical-session.target' "$notify_service" >/dev/null ||
   fail "migration notifier can deadlock UWSM by blocking graphical-session.target"
 pass "migration notifier checks once per login after the graphical session is ready"
@@ -59,7 +59,7 @@ grep -F 'omarchy-update-user-notify' "$first_run_units" >/dev/null &&
 pass "first-run enables the login-only migration notifier"
 
 fcitx_service="$ROOT/default/systemd/user/omarchy-fcitx5.service"
-grep -Fx 'ExecStart=/usr/bin/fcitx5 --disable notificationitem' "$fcitx_service" >/dev/null
+grep -Fx 'ExecStart=/usr/bin/fcitx5 --disable notificationitem' "$fcitx_service" >/dev/null || fail "fcitx5 unit starts fcitx5 with the notification item disabled"
 grep -Fx 'Restart=always' "$fcitx_service" >/dev/null ||
   fail "fcitx5 exits 0 on a duplicate bus name, so on-failure would leave the user with no input method"
 grep -Fx 'After=graphical-session.target' "$fcitx_service" >/dev/null ||

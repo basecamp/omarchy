@@ -60,6 +60,13 @@ Assertions are TAP-flavored and blunt:
   already invalidated.
 - `require_command <cmd>` fails the file when a needed tool is absent.
 
+Every assertion has to route its own failure through `fail`. A bare command used as an assertion is caught by `set -e` instead, which ends the file before any `fail` runs: the TAP stream carries no `not ok` line. The preceding `ok` lines still narrow the failure to one assertion block, but nothing names the predicate that broke, and a block can hold a dozen of them.
+
+```bash
+grep -F 'MANUAL_DISABLE_FLAG' "$clamshell" >/dev/null                      # silent on failure
+grep -F 'MANUAL_DISABLE_FLAG' "$clamshell" >/dev/null || fail "sync reads the flag"
+```
+
 The runner compensates for that early exit: `./test/shell` continues past a
 failing file and summarizes the failures at the end. Aborting the whole run at
 the first bad file once let a single packaging failure mask 114 of 134 files.

@@ -8,15 +8,15 @@ template="$ROOT/default/snapper/root"
 limine_defaults="$ROOT/etc/limine-entry-tool.d/omarchy-defaults.conf"
 limine_notify_autostart="$ROOT/config/autostart/limine-snapper-notify.desktop"
 
-grep -Fx 'NUMBER_CLEANUP="yes"' "$template" >/dev/null
-grep -Fx 'NUMBER_LIMIT="5"' "$template" >/dev/null
-grep -Fx 'TIMELINE_CREATE="no"' "$template" >/dev/null
+grep -Fx 'NUMBER_CLEANUP="yes"' "$template" >/dev/null || fail "Snapper template caps snapshots by number"
+grep -Fx 'NUMBER_LIMIT="5"' "$template" >/dev/null || fail "Snapper template keeps five numbered snapshots"
+grep -Fx 'TIMELINE_CREATE="no"' "$template" >/dev/null || fail "Snapper template leaves timeline snapshot creation off"
 ! grep -Eq '^TIMELINE_(CLEANUP|LIMIT_)' "$template" || fail "Snapper template keeps timeline cleanup details out of the default config"
 grep -Fx 'MAX_SNAPSHOT_ENTRIES=6' "$limine_defaults" >/dev/null || fail "Limine allows for a snapshot created before Snapper cleanup"
 pass "Snapper and Limine retain update snapshots without a transient limit mismatch"
 
-grep -Fx '[Desktop Entry]' "$limine_notify_autostart" >/dev/null
-grep -Fx 'Hidden=true' "$limine_notify_autostart" >/dev/null
+grep -Fx '[Desktop Entry]' "$limine_notify_autostart" >/dev/null || fail "Limine Snapper notifier autostart is a desktop entry"
+grep -Fx 'Hidden=true' "$limine_notify_autostart" >/dev/null || fail "Limine Snapper notifier autostart ships hidden"
 pass "Limine Snapper warning notifier is disabled by default"
 
 test_tmp=$(mktemp -d)
@@ -39,9 +39,9 @@ chmod +x "$fake_bin/systemctl"
 
 notification_migration=$(grep -rl 'Disable Limine Snapper warning notifier' "$ROOT/migrations" | head -n 1 || true)
 [[ -n $notification_migration ]] || fail "Limine Snapper warning notifier migration exists"
-grep -F 'limine-snapper-notify.desktop' "$notification_migration" >/dev/null
-grep -F 'systemctl --user daemon-reload' "$notification_migration" >/dev/null
-grep -F "app-limine\\x2dsnapper\\x2dnotify@autostart.service" "$notification_migration" >/dev/null
+grep -F 'limine-snapper-notify.desktop' "$notification_migration" >/dev/null || fail "notifier migration overrides limine-snapper-notify.desktop"
+grep -F 'systemctl --user daemon-reload' "$notification_migration" >/dev/null || fail "notifier migration reloads the user manager"
+grep -F "app-limine\\x2dsnapper\\x2dnotify@autostart.service" "$notification_migration" >/dev/null || fail "notifier migration stops the escaped autostart unit"
 
 migration_home="$test_tmp/migration-home"
 mkdir -p "$migration_home"
@@ -80,10 +80,10 @@ pass "system setup normalizes Snapper during fresh installs"
 
 migration=$(grep -rl 'Normalize Snapper snapshot services' "$ROOT/migrations" | head -n 1 || true)
 [[ -n $migration ]] || fail "Snapper service migration exists"
-grep -F 'unit_active snapper-cleanup.timer' "$migration" >/dev/null
-grep -F 'unit_active limine-snapper-sync.service' "$migration" >/dev/null
-grep -F 'sudo "$@"' "$migration" >/dev/null
-grep -F 'as_root env OMARCHY_PATH="$OMARCHY_PATH" bash -euo pipefail "$snapper_config_script"' "$migration" >/dev/null
+grep -F 'unit_active snapper-cleanup.timer' "$migration" >/dev/null || fail "Snapper service migration checks snapper-cleanup.timer"
+grep -F 'unit_active limine-snapper-sync.service' "$migration" >/dev/null || fail "Snapper service migration checks limine-snapper-sync.service"
+grep -F 'sudo "$@"' "$migration" >/dev/null || fail "Snapper service migration escalates with sudo"
+grep -F 'as_root env OMARCHY_PATH="$OMARCHY_PATH" bash -euo pipefail "$snapper_config_script"' "$migration" >/dev/null || fail "Snapper service migration reruns the packaged Snapper config script"
 ! grep -F 'NUMBER_LIMIT="5"' "$migration" >/dev/null || fail "Snapper service migration does not overwrite working custom retention"
 pass "Snapper service migration only repairs broken services idempotently"
 
