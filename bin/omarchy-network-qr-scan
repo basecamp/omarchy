@@ -1,0 +1,58 @@
+#!/bin/bash
+
+# omarchy:summary=Scan a Wi-Fi QR code with a webcam
+# omarchy:group=network
+# omarchy:hidden=true
+
+set -euo pipefail
+
+picker_pid=""
+picker_output=""
+picker_active=false
+
+cancel_picker() {
+  trap - INT TERM HUP
+  if [[ $picker_active == "true" ]]; then
+    if omarchy-shell shell hide omarchy.menu >/dev/null 2>&1; then
+      for _ in {1..20}; do
+        kill -0 "$picker_pid" 2>/dev/null || break
+        sleep 0.05
+      done
+    fi
+  fi
+  if [[ -n $picker_pid ]] && kill -0 "$picker_pid" 2>/dev/null; then
+    kill "$picker_pid" 2>/dev/null || true
+  fi
+  [[ -z $picker_pid ]] || wait "$picker_pid" 2>/dev/null || true
+  [[ -z $picker_output ]] || rm -f "$picker_output"
+  exit 130
+}
+trap cancel_picker INT TERM HUP
+
+mapfile -t cameras < <(omarchy-capture-webcam-list)
+if (( ${#cameras[@]} == 0 )); then
+  echo "No webcam devices found" >&2
+  exit 1
+fi
+
+if (( ${#cameras[@]} == 1 )); then
+  selection=${cameras[0]}
+else
+  picker_output=$(mktemp)
+  picker_active=true
+  omarchy-menu-select "Select Webcam" "${cameras[@]}" -- --width 520 --maxheight 520 >"$picker_output" &
+  picker_pid=$!
+  if wait "$picker_pid"; then
+    selection=$(<"$picker_output")
+  else
+    rm -f "$picker_output"
+    exit 0
+  fi
+  picker_pid=""
+  picker_active=false
+  rm -f "$picker_output"
+  picker_output=""
+fi
+
+device=${selection%%[[:space:]]*}
+exec zbarcam --oneshot --raw --quiet --nodbus -Sdisable -Sqrcode.enable "$device"

@@ -1,0 +1,125 @@
+#!/bin/bash
+
+# omarchy:summary=Connect to a personal Wi-Fi network from QR fields
+# omarchy:group=network
+# omarchy:args=<type> <hidden> <ssid>
+# omarchy:hidden=true
+
+set -euo pipefail
+
+if (( $# != 3 )); then
+  echo "Usage: omarchy-network-connect-qr <type> <hidden> <ssid>" >&2
+  exit 1
+fi
+
+security=${1^^}
+hidden=${2,,}
+ssid=$3
+IFS= read -r password || true
+
+if [[ -z $ssid || $security == *[[:cntrl:]]* || $hidden == *[[:cntrl:]]* || $ssid == *[[:cntrl:]]* || $password == *[[:cntrl:]]* ]]; then
+  echo "Invalid Wi-Fi QR fields" >&2
+  exit 1
+fi
+
+case "$hidden" in
+  true|yes|1) hidden=yes ;;
+  false|no|0|"") hidden=no ;;
+  *)
+    echo "Invalid hidden network flag: $2" >&2
+    exit 1
+    ;;
+esac
+
+case "$security" in
+  NOPASS|OPEN)
+    key_management=""
+    secret_property=""
+    ;;
+  WPA|WPA2|WPA-PSK)
+    key_management=wpa-psk
+    secret_property=802-11-wireless-security.psk
+    ;;
+  SAE|WPA3)
+    key_management=sae
+    secret_property=802-11-wireless-security.psk
+    ;;
+  WEP)
+    key_management=none
+    secret_property=802-11-wireless-security.wep-key0
+    wep_key_type=1
+    ;;
+  *)
+    echo "Unsupported Wi-Fi security type: $1" >&2
+    exit 1
+    ;;
+esac
+
+if [[ -n $secret_property && -z $password ]]; then
+  echo "Wi-Fi password is required for $1" >&2
+  exit 1
+fi
+
+uuid=$(</proc/sys/kernel/random/uuid)
+cleanup_needed=true
+child_pid=""
+
+terminate_child() {
+  trap - INT TERM HUP
+  if [[ -n $child_pid ]]; then
+    kill "$child_pid" 2>/dev/null || true
+    wait "$child_pid" 2>/dev/null || true
+    child_pid=""
+  fi
+  exit 130
+}
+trap terminate_child INT TERM HUP
+
+run_nmcli() {
+  local status=0
+  nmcli "$@" &
+  child_pid=$!
+  wait "$child_pid" || status=$?
+  child_pid=""
+  return "$status"
+}
+
+run_nmcli_with_input() {
+  local input=$1 status=0
+  shift
+  nmcli "$@" <<<"$input" &
+  child_pid=$!
+  wait "$child_pid" || status=$?
+  child_pid=""
+  return "$status"
+}
+
+cleanup() {
+  local status=$?
+
+  if [[ $cleanup_needed == "true" ]]; then
+    nmcli connection delete uuid "$uuid" >/dev/null 2>&1 || true
+  fi
+  trap - EXIT
+  exit "$status"
+}
+trap cleanup EXIT
+
+run_nmcli connection add type wifi ifname "*" con-name "$ssid" connection.uuid "$uuid" ssid "$ssid" >/dev/null
+run_nmcli connection modify uuid "$uuid" 802-11-wireless.hidden "$hidden" >/dev/null
+
+if [[ -n $key_management ]]; then
+  run_nmcli connection modify uuid "$uuid" 802-11-wireless-security.key-mgmt "$key_management" >/dev/null
+fi
+if [[ -n ${wep_key_type:-} ]]; then
+  run_nmcli connection modify uuid "$uuid" 802-11-wireless-security.wep-key-type "$wep_key_type" >/dev/null
+fi
+if [[ -n $secret_property ]]; then
+  editor_secret=${password//\\/\\\\}
+  editor_secret=${editor_secret//\"/\\\"}
+  printf -v editor_input 'set %s "%s"\nsave\nquit\n' "$secret_property" "$editor_secret"
+  run_nmcli_with_input "$editor_input" connection edit uuid "$uuid" >/dev/null
+fi
+
+run_nmcli connection up uuid "$uuid" >/dev/null
+cleanup_needed=false
