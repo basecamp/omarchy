@@ -93,7 +93,8 @@ device_path=$(stable_device_path "$ir_device")
 echo -e "Using infrared camera \e[32m$ir_device\e[0m\n"
 
 echo "Installing required packages..."
-omarchy-pkg-add howdy-next
+# howdy-next lives in the AUR only, so pacman cannot resolve it.
+omarchy-pkg-aur-add howdy-next || exit 1
 
 echo "Downloading face recognition models..."
 sudo howdy download-models
