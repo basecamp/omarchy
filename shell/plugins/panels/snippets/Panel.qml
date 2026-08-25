@@ -627,7 +627,8 @@ Panel {
       Text {
         visible: root.rows.length === 0 && root.snippets.length > 0
         width: parent.width
-        text: "No matches for “" + root.filterText + "”"
+text: "No matches for “" + root.filterText + "”"
+        textFormat: Text.PlainText
         color: root.foreground
         opacity: 0.7
         font.family: root.fontFamily
