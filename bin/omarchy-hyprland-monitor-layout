@@ -1,0 +1,386 @@
+#!/bin/bash
+
+# omarchy:summary=Read or apply a snapped Hyprland monitor layout
+# omarchy:args=state|apply '<json>'|place [NAME] <left|right|top|bottom>
+# omarchy:examples=omarchy hyprland monitor layout state | omarchy hyprland monitor layout place right
+
+set -euo pipefail
+
+LAYOUT_START="-- omarchy-layout-managed:start"
+LAYOUT_END="-- omarchy-layout-managed:end"
+
+layout_is_internal() {
+  [[ $1 =~ ^(eDP|LVDS|DSI)- ]]
+}
+
+layout_state_from_hypr() {
+  local hypr_json="$1"
+  local external="$2"
+  local clamshell="$3"
+  jq -c \
+    --argjson external "$external" \
+    --argjson clamshell "$clamshell" '
+      def internal: test("^(eDP|LVDS|DSI)-");
+      {
+        monitors: [.[] | {
+          name,
+          width,
+          height,
+          x,
+          y,
+          scale,
+          refreshRate: (.refreshRate | floor),
+          enabled: (.disabled != true),
+          focused: (.focused == true),
+          internal: (.name | internal)
+        }],
+        externalConnected: $external,
+        clamshell: $clamshell,
+        internalOn: (any(.[]; (.name | internal) and (.disabled != true))),
+        mirrorOn: (any(.[]; .mirrorOf != "none"))
+      }
+    ' <<<"$hypr_json"
+}
+
+layout_is_laptop_only() {
+  local hypr_json="$1"
+  jq -e '
+    def internal: test("^(eDP|LVDS|DSI)-");
+    all(.[]; ((.name | internal) or (.disabled == true)))
+  ' <<<"$hypr_json" >/dev/null
+}
+
+layout_merged_rects() {
+  local hypr_json="$1"
+  local apply_json="$2"
+  jq -c --argjson apply "$apply_json" '
+    def internal: test("^(eDP|LVDS|DSI)-");
+    ($apply.monitors) as $want
+    | [
+        .[]
+        | select(.disabled != true)
+        | . as $live
+        | ($want[] | select(.name == $live.name)) as $pos
+        | {
+            name: $live.name,
+            x: $pos.x,
+            y: $pos.y,
+            w: (($live.width / $live.scale) | floor),
+            h: (($live.height / $live.scale) | floor)
+          }
+      ]
+  ' <<<"$hypr_json"
+}
+
+layout_validate_apply() {
+  local hypr_json="$1"
+  local apply_json="$2"
+  local names missing rects apply_count live_enabled_count rects_count
+
+  if jq -e '(.monitors | length) == 0' <<<"$apply_json" >/dev/null; then
+    echo "unknown" >&2
+    return 1
+  fi
+
+  names=$(jq -r '.[].name' <<<"$hypr_json")
+  missing=$(jq -r --arg names "$names" '
+    .monitors[].name as $n
+    | select(($names | split("\n") | index($n)) == null)
+    | $n
+  ' <<<"$apply_json")
+  if [[ -n $missing ]]; then
+    echo "unknown" >&2
+    return 1
+  fi
+
+  if ! rects=$(layout_merged_rects "$hypr_json" "$apply_json"); then
+    echo "unknown" >&2
+    return 1
+  fi
+
+  apply_count=$(jq '.monitors | length' <<<"$apply_json")
+  live_enabled_count=$(jq '[.[] | select(.disabled != true)] | length' <<<"$hypr_json")
+  rects_count=$(jq 'length' <<<"$rects")
+  if [[ $rects_count != "$apply_count" || $rects_count != "$live_enabled_count" ]]; then
+    echo "unknown" >&2
+    return 1
+  fi
+
+  if jq -e '
+    . as $all
+    | any(
+        range(0; length) as $i
+        | range($i + 1; length) as $j
+        | $all[$i] as $a | $all[$j] as $b
+        | ($a.x < $b.x + $b.w) and ($b.x < $a.x + $a.w)
+          and ($a.y < $b.y + $b.h) and ($b.y < $a.y + $a.h)
+      )
+  ' <<<"$rects" >/dev/null; then
+    echo "overlap" >&2
+    return 1
+  fi
+
+  if ! jq -e '
+    def edge($a; $b):
+      (($a.x + $a.w == $b.x) or ($b.x + $b.w == $a.x))
+        and ($a.y < $b.y + $b.h) and ($b.y < $a.y + $a.h)
+      or (($a.y + $a.h == $b.y) or ($b.y + $b.h == $a.y))
+        and ($a.x < $b.x + $b.w) and ($b.x < $a.x + $a.w);
+    def neighbors:
+      . as $all
+      | [ range(0; length) as $i | [
+            range(0; length) as $j
+            | select($i != $j and edge($all[$i]; $all[$j]))
+            | $j
+          ] ];
+    if length <= 1 then true else
+      (neighbors) as $n
+      | {q:[0], seen:{ "0": true }}
+      | until((.q | length) == 0;
+          .q[0] as $i
+          | .q = .q[1:]
+          | reduce ($n[$i][]) as $j
+              (.; if .seen[$j|tostring] then . else .seen[$j|tostring] = true | .q += [$j] end)
+        )
+      | (.seen | length) == ($n | length)
+    end
+  ' <<<"$rects" >/dev/null; then
+    echo "disconnected" >&2
+    return 1
+  fi
+}
+
+layout_keyword_lines() {
+  local hypr_json="$1"
+  local apply_json="$2"
+  jq -r --argjson apply "$apply_json" '
+    . as $live
+    | $apply.monitors[]
+    | . as $pos
+    | ($live[] | select(.name == $pos.name)) as $m
+    | "\($m.name),\($m.width)x\($m.height)@\($m.refreshRate | floor),\($pos.x)x\($pos.y),\($m.scale)"
+  ' <<<"$hypr_json"
+}
+
+layout_managed_block() {
+  local hypr_json="$1"
+  local apply_json="$2"
+  {
+    printf '%s\n' "$LAYOUT_START"
+    jq -r --argjson apply "$apply_json" '
+      . as $live
+      | $apply.monitors[]
+      | . as $pos
+      | ($live[] | select(.name == $pos.name)) as $m
+      | "hl.monitor({ output = \"\($m.name)\", mode = \"\($m.width)x\($m.height)@\($m.refreshRate | floor)\", position = \"\($pos.x)x\($pos.y)\", scale = \($m.scale) })"
+    ' <<<"$hypr_json"
+    jq -r --argjson apply "$apply_json" '
+      .[]
+      | select(.disabled == true)
+      | "hl.monitor({ output = \"\(.name)\", disabled = true })"
+    ' <<<"$hypr_json"
+    printf '%s\n' "$LAYOUT_END"
+  }
+}
+
+layout_patch_lua() {
+  local src="$1"
+  local block="$2"
+  if grep -q -F -e "$LAYOUT_START" <<<"$src"; then
+    awk -v start="$LAYOUT_START" -v end="$LAYOUT_END" -v block="$block" '
+      $0 == start { lines[n++] = block; skip = 1; next }
+      skip && $0 == end { skip = 0; next }
+      !skip { lines[n++] = $0 }
+      END {
+        if (skip) exit 1
+        for (i = 0; i < n; i++) print lines[i]
+      }
+    ' <<<"$src"
+  else
+    printf '%s\n\n%s\n' "$src" "$block"
+  fi
+}
+
+layout_place_json() {
+  local hypr_json="$1"
+  local name="$2"
+  local side="$3"
+  jq -ce --arg name "$name" --arg side "$side" '
+    def lw: ((.width / .scale) | floor);
+    def lh: ((.height / .scale) | floor);
+    [.[] | select(.disabled != true)] as $en
+    | ($en | map(select(.name == $name))[0]) as $m
+    | ($en | map(select(.name != $name))[0]) as $o
+    | if $m == null or $o == null then error("unknown") else . end
+    | ($m | lw) as $mw
+    | ($m | lh) as $mh
+    | ($o | lw) as $ow
+    | ($o | lh) as $oh
+    | (if $side == "right" then {x: ($o.x + $ow), y: $o.y}
+       elif $side == "left" then {x: ($o.x - $mw), y: $o.y}
+       elif $side == "bottom" then {x: $o.x, y: ($o.y + $oh)}
+       elif $side == "top" then {x: $o.x, y: ($o.y - $mh)}
+       else error("unknown") end) as $pos
+    | { monitors: [ $en[] | {
+          name,
+          x: (if .name == $name then $pos.x else .x end),
+          y: (if .name == $name then $pos.y else .y end)
+        } ] }
+  ' <<<"$hypr_json"
+}
+
+layout_read_hypr() {
+  if [[ -n ${OMARCHY_MONITOR_LAYOUT_MONITORS_JSON:-} ]]; then
+    cat "$OMARCHY_MONITOR_LAYOUT_MONITORS_JSON"
+    return
+  fi
+  hyprctl monitors all -j
+}
+
+layout_read_external() {
+  if [[ -n ${OMARCHY_MONITOR_LAYOUT_EXTERNAL:-} ]]; then
+    printf '%s' "$OMARCHY_MONITOR_LAYOUT_EXTERNAL"
+    return
+  fi
+  if omarchy-hw-external-monitors >/dev/null 2>&1; then
+    echo true
+  else
+    echo false
+  fi
+}
+
+layout_read_clamshell() {
+  if [[ -n ${OMARCHY_MONITOR_LAYOUT_CLAMSHELL:-} ]]; then
+    printf '%s' "$OMARCHY_MONITOR_LAYOUT_CLAMSHELL"
+    return
+  fi
+  if omarchy-hw-clamshell >/dev/null 2>&1; then
+    echo true
+  else
+    echo false
+  fi
+}
+
+layout_print_state() {
+  layout_state_from_hypr "$(layout_read_hypr)" "$(layout_read_external)" "$(layout_read_clamshell)"
+}
+
+layout_lua_path() {
+  printf '%s' "${OMARCHY_MONITOR_LAYOUT_LUA_PATH:-$HOME/.config/hypr/monitors.lua}"
+}
+
+layout_cmd_state() {
+  layout_print_state
+}
+
+layout_cmd_apply() {
+  local apply_json="$1"
+  local hypr_json err
+  hypr_json=$(layout_read_hypr)
+
+  if layout_is_laptop_only "$hypr_json"; then
+    layout_print_state
+    return 0
+  fi
+
+  if ! err=$(layout_validate_apply "$hypr_json" "$apply_json" 2>&1); then
+    echo "$err" >&2
+    layout_print_state
+    return 1
+  fi
+
+  if [[ ${OMARCHY_MONITOR_LAYOUT_DRY_RUN:-0} == 1 ]]; then
+    jq -nc --arg lines "$(layout_keyword_lines "$hypr_json" "$apply_json")" --arg block "$(layout_managed_block "$hypr_json" "$apply_json")" '
+      { keywords: ($lines | split("\n") | map(select(length > 0))), block: $block }
+    '
+    return 0
+  fi
+
+  if [[ ${OMARCHY_MONITOR_LAYOUT_WRITE_ONLY:-0} != 1 ]]; then
+    while IFS= read -r spec; do
+      hyprctl keyword monitor "$spec" >/dev/null
+    done < <(layout_keyword_lines "$hypr_json" "$apply_json")
+  fi
+
+  local lua_path patched
+  lua_path=$(layout_lua_path)
+  if ! patched=$(layout_patch_lua "$(cat "$lua_path")" "$(layout_managed_block "$hypr_json" "$apply_json")"); then
+    echo "unknown" >&2
+    return 1
+  fi
+
+  local bak ts i
+  ts=$(date +%s)
+  bak="${lua_path}.bak.$ts"
+  i=0
+  while [[ -e $bak ]]; do
+    i=$((i + 1))
+    bak="${lua_path}.bak.${ts}.$i"
+  done
+  cp "$lua_path" "$bak"
+
+  local tmp
+  tmp=$(mktemp "${lua_path}.tmp.XXXXXX")
+  printf '%s\n' "$patched" >"$tmp"
+  chmod --reference="$lua_path" "$tmp" 2>/dev/null || true
+  mv -f "$tmp" "$lua_path"
+
+  if [[ ${OMARCHY_MONITOR_LAYOUT_WRITE_ONLY:-0} == 1 ]]; then
+    layout_print_state
+    return 0
+  fi
+
+  hyprctl reload >/dev/null
+  local errors
+  errors=$(hyprctl configerrors)
+  if [[ -n $errors ]]; then
+    echo "$errors" >&2
+    return 1
+  fi
+  layout_print_state
+}
+
+layout_cmd_place() {
+  local hypr_json name side apply_json
+  hypr_json=$(layout_read_hypr)
+  if [[ $# -eq 1 ]]; then
+    side=$1
+    name=$(jq -r '.[] | select(.disabled != true and ((.name | test("^(eDP|LVDS|DSI)-")) | not)) | .name' <<<"$hypr_json" | head -n 1)
+  else
+    name=$1
+    side=$2
+  fi
+  if [[ -z $name || -z $side ]]; then
+    echo "usage: omarchy-hyprland-monitor-layout place [NAME] <left|right|top|bottom>" >&2
+    exit 2
+  fi
+  if ! apply_json=$(layout_place_json "$hypr_json" "$name" "$side"); then
+    echo "unknown" >&2
+    layout_print_state
+    return 1
+  fi
+  layout_cmd_apply "$apply_json"
+}
+
+if [[ ${BASH_SOURCE[0]} != "$0" ]]; then
+  return 0
+fi
+
+case "${1:-}" in
+  state) layout_cmd_state ;;
+  apply)
+    if [[ -z ${2:-} ]]; then
+      echo "usage: omarchy-hyprland-monitor-layout apply '<json>'" >&2
+      exit 2
+    fi
+    layout_cmd_apply "$2"
+    ;;
+  place)
+    shift
+    layout_cmd_place "$@"
+    ;;
+  *)
+    echo "usage: omarchy-hyprland-monitor-layout state|apply '<json>'|place [NAME] <left|right|top|bottom>" >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,14 @@
+[
+  {
+    "name": "eDP-2",
+    "width": 2560,
+    "height": 1600,
+    "refreshRate": 165.002,
+    "x": 0,
+    "y": 0,
+    "scale": 2,
+    "focused": true,
+    "disabled": false,
+    "mirrorOf": "none"
+  }
+]
