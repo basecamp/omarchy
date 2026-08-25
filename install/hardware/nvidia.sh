@@ -25,9 +25,24 @@ if lspci | grep -qi 'nvidia'; then
 options nvidia_drm modeset=1
 EOF
 
-  # Configure mkinitcpio for early loading
+  # Early-load the driver in the initramfs only when NVIDIA owns every display
+  # controller. That is the one case that needs it: without it an NVIDIA-only
+  # machine has no KMS at the LUKS prompt.
+  #
+  # A hybrid machine gets early KMS from its iGPU, and early-loading nvidia
+  # there breaks resume from hibernation: the kernel freezes devices to restore
+  # the image while the driver is already loaded but nothing has called its
+  # procfs suspend interface (nvidia-hibernate.service only runs from the real
+  # root), so nv_pmops_freeze returns -5 and the machine boots fresh instead.
+  # udev still loads the driver once the root is mounted.
+  #
+  # Same scan omarchy_hooks.conf uses to decide whether to drop the kms hook.
   mkdir -p /etc/mkinitcpio.conf.d
-  cat > /etc/mkinitcpio.conf.d/nvidia.conf <<'EOF'
+  if omarchy-hw-nvidia-only-display; then
+    cat > /etc/mkinitcpio.conf.d/nvidia.conf <<'EOF'
 MODULES+=(nvidia nvidia_modeset nvidia_uvm nvidia_drm)
 EOF
+  else
+    rm -f /etc/mkinitcpio.conf.d/nvidia.conf
+  fi
 fi
