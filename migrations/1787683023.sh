@@ -16,6 +16,18 @@ omarchy-cmd-present limine-mkinitcpio || exit 0
 omarchy-hw-nvidia-only-display && exit 0
 
 echo "This is a hybrid GPU machine; removing nvidia from the initramfs and rebuilding it"
+
+# The drop-in has to be gone before the rebuild, but the rebuild is what makes
+# the change real. If it fails, put the drop-in back so the next run finds it
+# and retries instead of exiting at the check above with a stale image.
+backup=$(mktemp)
+cp "$nvidia_conf" "$backup"
 sudo rm -f "$nvidia_conf"
-sudo limine-mkinitcpio
+if ! sudo limine-mkinitcpio; then
+  sudo install -m644 "$backup" "$nvidia_conf"
+  rm -f "$backup"
+  echo "Rebuilding the initramfs failed; restored $nvidia_conf so the migration retries" >&2
+  exit 1
+fi
+rm -f "$backup"
 sudo install -Dm644 /dev/null "$rebuild_marker"
