@@ -14,7 +14,7 @@ cat >"$TEST_HOME/bin/codex" <<'EOF'
 #!/bin/bash
 
 if [[ -n ${CODEX_ARGS_FILE:-} ]]; then
-  printf '%s\n' "$*" >"$CODEX_ARGS_FILE"
+  printf '%s\0' "$@" >"$CODEX_ARGS_FILE"
 fi
 
 while read -r request; do
@@ -47,8 +47,13 @@ EOF
 result=$(HOME="$TEST_HOME" CODEX_HOME="$TEST_HOME/.codex" CODEX_ARGS_FILE="$TEST_HOME/codex-args" XDG_DATA_HOME="$TEST_HOME/.local/share" PATH="$TEST_HOME/bin:$PATH" \
   "$ROOT/bin/omarchy-agent-usage-codex")
 
-[[ $(<"$TEST_HOME/codex-args") == "-s read-only -a on-request app-server" ]] ||
-  fail "Codex collector uses the supported approval policy" "$(<"$TEST_HOME/codex-args")"
+# NUL-separated, so the assertion sees argument boundaries: a single "-a on-request"
+# would flatten to the same text as two arguments but is not a policy codex accepts.
+expected_args=(-s read-only -a on-request app-server)
+mapfile -d '' -t codex_args <"$TEST_HOME/codex-args"
+
+[[ ${codex_args[*]@Q} == "${expected_args[*]@Q}" ]] ||
+  fail "Codex collector uses the supported approval policy" "${codex_args[*]@Q}"
 pass "Codex collector uses the supported approval policy"
 
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "210" ]] ||
