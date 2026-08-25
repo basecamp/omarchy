@@ -59,9 +59,17 @@ function osIcon(os) {
 
 function accountLabel(account) {
   if (!account) return "Unknown account"
-  if (account.nickname) return String(account.nickname)
-  if (account.tailnet) return String(account.tailnet)
-  if (account.account) return String(account.account)
+  var nickname = String(account.nickname || "")
+  var tailnet = String(account.tailnet || "")
+  var login = String(account.account || "")
+  // Tailscale names a profile after the login it was created from unless one
+  // is set explicitly, so a nickname only carries intent once it differs from
+  // that login. Otherwise the tailnet's display name -- the one set in the
+  // admin console, and what `tailscale switch --list` prints -- says more
+  // about which tailnet this row is.
+  if (nickname !== "" && nickname !== login) return nickname
+  if (tailnet !== "") return tailnet
+  if (login !== "") return login
   return String(account.id || "Unknown account")
 }
 

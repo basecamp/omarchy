@@ -189,6 +189,29 @@ assertEqual(
   'tailnet.example',
   'tailscale labels connections by tailnet when nickname is missing'
 )
+// Tailscale names a profile after its login unless one is set explicitly, so
+// the nickname is never empty and would otherwise hide the display name the
+// admin console set.
+assertEqual(
+  tailscale.accountLabel({ nickname: 'user@example', tailnet: 'Acme Corp', account: 'user@example', id: 'abcd' }),
+  'Acme Corp',
+  'tailscale labels connections by tailnet display name when the profile only carries its login'
+)
+assertEqual(
+  tailscale.accountLabel({ nickname: 'Work', tailnet: 'Acme Corp', account: 'user@example', id: 'abcd' }),
+  'Work',
+  'tailscale prefers a deliberately set nickname over the tailnet display name'
+)
+assertEqual(
+  tailscale.accountLabel({ nickname: 'user@example', tailnet: '', account: 'user@example', id: 'abcd' }),
+  'user@example',
+  'tailscale falls back to the login when no display name is available'
+)
+assertEqual(
+  tailscale.accountLabel({ nickname: '', tailnet: '', account: '', id: 'abcd' }),
+  'abcd',
+  'tailscale falls back to the profile id'
+)
 
 assertDeepEqual(
   tailscale.connectionRows(accounts.accounts, true).map(row => row.id),
