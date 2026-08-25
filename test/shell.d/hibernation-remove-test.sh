@@ -113,8 +113,9 @@ fi
 # Combined drop-in rm must appear before the rebuild in the sudo log.
 rm_line=$(grep -n $'sudo\trm\t-f\t' "$log" | grep 'limine-entry-tool.d/resume.conf' | head -n1 | cut -d: -f1)
 rebuild_line=$(grep -n $'sudo\tlimine-mkinitcpio$' "$log" | head -n1 | cut -d: -f1)
-[[ -n $rm_line && -n $rebuild_line && $rm_line -lt $rebuild_line ]] ||
+if [[ -z $rm_line || -z $rebuild_line ]] || (( rm_line >= rebuild_line )); then
   fail "drop-ins are removed before limine-mkinitcpio" "$(cat "$log")"
+fi
 
 pass "remove deletes resume drop-ins before limine-mkinitcpio"
 
