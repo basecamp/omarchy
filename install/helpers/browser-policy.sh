@@ -68,7 +68,7 @@ browser_policy_purge_dir() {
 browser_policy_dir_hardened() {
   local dir=$1
 
-  [[ -d $dir ]] || return 1
+  [[ -d $dir && ! -L $dir ]] || return 1
   [[ $(stat -c '%a' "$dir") == "2775" ]] || return 1
   [[ $(stat -c '%U' "$dir") == "root" ]] || return 1
   [[ $(stat -c '%G' "$dir") == $BROWSER_POLICY_GROUP ]] || return 1
@@ -116,6 +116,9 @@ browser_policy_setup_dir() {
   local dir=$1
 
   browser_policy_setup_parents_for "$dir"
+  if [[ -L $dir || ( -e $dir && ! -d $dir ) ]]; then
+    as_root rm -rf -- "$dir"
+  fi
   as_root install -d -m 2775 -o root -g "$BROWSER_POLICY_GROUP" "$dir"
   browser_policy_purge_dir "$dir"
 }
@@ -229,7 +232,7 @@ browser_policy_firefox_policy_file_ok() {
 browser_policy_firefox_hardened() {
   local dir=$1
 
-  [[ -d $dir ]] || return 1
+  [[ -d $dir && ! -L $dir ]] || return 1
   [[ $(stat -c '%a' "$dir") == "755" ]] || return 1
   [[ $(stat -c '%U' "$dir") == "root" ]] || return 1
   browser_policy_firefox_policy_file_ok "$dir/policies.json"
@@ -246,7 +249,7 @@ browser_policy_setup_firefox_distribution() {
   local distribution_dir=$1
   local policies=${2:-$OMARCHY_PATH/default/firefox/policies.json}
 
-  as_root install -d -m 0755 -o root -g root "$distribution_dir"
+  browser_policy_setup_parent "$distribution_dir"
   browser_policy_purge_dir "$distribution_dir"
   browser_policy_install_firefox_policies "$distribution_dir" "$policies"
 }

@@ -213,6 +213,50 @@ grep -Fxq 'planted' "$symlink_root/attacker/policies/managed/evil.json" ||
 BROWSER_POLICY_PARENT_DIRS=("${saved_parent_dirs[@]}")
 pass "policy setup does not follow a planted parent symlink"
 
+leaf_link_root=$test_tmp/leaf-link
+mkdir -p "$leaf_link_root/etc/chromium/policies" "$leaf_link_root/attacker"
+printf 'planted\n' >"$leaf_link_root/attacker/evil.json"
+chmod 755 "$leaf_link_root/etc/chromium" "$leaf_link_root/etc/chromium/policies"
+ln -s "$leaf_link_root/attacker" "$leaf_link_root/etc/chromium/policies/managed"
+BROWSER_POLICY_PARENT_DIRS=(
+  "$leaf_link_root/etc/chromium"
+  "$leaf_link_root/etc/chromium/policies"
+)
+as_root() { unprivileged_as_root "$@"; }
+if browser_policy_dir_hardened "$leaf_link_root/etc/chromium/policies/managed"; then
+  fail "a planted managed symlink is not treated as hardened"
+fi
+browser_policy_setup_dir "$leaf_link_root/etc/chromium/policies/managed"
+[[ ! -L $leaf_link_root/etc/chromium/policies/managed ]] ||
+  fail "setup replaces a planted managed symlink"
+[[ -d $leaf_link_root/etc/chromium/policies/managed && ! -L $leaf_link_root/etc/chromium/policies/managed ]] ||
+  fail "setup recreates managed as a real directory"
+[[ ! -e $leaf_link_root/etc/chromium/policies/managed/evil.json ]] ||
+  fail "setup does not keep policy that lived behind a planted managed symlink"
+grep -Fxq 'planted' "$leaf_link_root/attacker/evil.json" ||
+  fail "replacing a managed symlink does not delete the symlink target"
+BROWSER_POLICY_PARENT_DIRS=("${saved_parent_dirs[@]}")
+pass "policy setup does not follow a planted managed symlink"
+
+fx_link_root=$test_tmp/fx-link
+mkdir -p "$fx_link_root/attacker" "$fx_link_root/opt"
+printf 'planted\n' >"$fx_link_root/attacker/policies.json"
+ln -s "$fx_link_root/attacker" "$fx_link_root/opt/zen"
+as_root() { unprivileged_as_root "$@"; }
+if browser_policy_firefox_hardened "$fx_link_root/opt/zen"; then
+  fail "a planted Firefox distribution symlink is not treated as hardened"
+fi
+browser_policy_setup_firefox_distribution "$fx_link_root/opt/zen" ||
+  fail "Firefox setup replaces a planted distribution symlink"
+[[ ! -L $fx_link_root/opt/zen ]] || fail "Firefox setup unlinks a planted distribution symlink"
+[[ -d $fx_link_root/opt/zen && ! -L $fx_link_root/opt/zen ]] ||
+  fail "Firefox setup recreates the distribution directory"
+[[ -f $fx_link_root/opt/zen/policies.json && ! -L $fx_link_root/opt/zen/policies.json ]] ||
+  fail "Firefox setup writes policies.json into the recreated directory"
+grep -Fxq 'planted' "$fx_link_root/attacker/policies.json" ||
+  fail "replacing a Firefox distribution symlink does not delete the symlink target"
+pass "Firefox setup does not follow a planted distribution symlink"
+
 [[ $(browser_policy_theme_hex "242,240,229") == "#f2f0e5" ]] ||
   fail "theme colour converts an RGB triple to hex"
 [[ $(browser_policy_theme_hex $'14,31,41\n') == "#0e1f29" ]] ||
