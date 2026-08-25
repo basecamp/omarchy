@@ -281,6 +281,25 @@ function connectionRows(accounts, canAdd) {
   return rows
 }
 
+// What to do once the login that adds a tailnet exits. tailscale login makes
+// the new profile current before the browser half finishes, so anything other
+// than a clean exit leaves the machine on a profile it never asked to be on
+// and the previous connection has to be put back.
+function addAccountOutcome(exitCode, urlOpened, previousId, output) {
+  if (exitCode === 0) return { returnTo: "", status: "", error: "" }
+
+  var previous = String(previousId || "")
+  // Having opened the browser says the login was reachable and simply was not
+  // finished, which is a plain outcome rather than a failure worth shouting.
+  if (urlOpened === true) {
+    return { returnTo: previous, status: "Login not completed — back on the previous connection", error: "" }
+  }
+
+  var message = String(output || "").trim()
+  if (message === "") message = "tailscale login failed"
+  return { returnTo: previous, status: message, error: message }
+}
+
 function parseAccounts(raw) {
   var text = String(raw || "").trim()
   if (text === "") return { accounts: [], selectedAccountId: "", selectedAccountLabel: "" }
@@ -332,6 +351,7 @@ if (typeof module !== "undefined") {
     mullvadCountryOptions: mullvadCountryOptions,
     parseStatus: parseStatus,
     parseAccounts: parseAccounts,
-    connectionRows: connectionRows
+    connectionRows: connectionRows,
+    addAccountOutcome: addAccountOutcome
   }
 }

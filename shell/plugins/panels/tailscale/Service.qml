@@ -64,6 +64,7 @@ Item {
   property string _removeOutput: ""
   property string _removeError: ""
   property string _addAccountPreviousId: ""
+  property bool _returnedFromAddAccount: false
   property string _addAccountOutput: ""
   property string _addAccountError: ""
   property bool _addAccountUrlOpened: false
@@ -259,6 +260,17 @@ Item {
     tailnetExitNodes = parsed.running ? parsed.exitNodes : []
     exitNodes = parsed.running ? tailnetExitNodes.concat(mullvadRegions) : []
 
+    // Adding a tailnet re-registers the machine, which can supersede the node
+    // key the previous connection was using. Returning to it then lands on a
+    // profile that needs signing in again, and "disconnected" alone does not
+    // say that.
+    if (_returnedFromAddAccount && !switchProcess.running) {
+      _returnedFromAddAccount = false
+      if (needsLogin) {
+        actionStatus = "Back on your connection — sign in again to reconnect"
+        actionStatusTimer.restart()
+      }
+    }
     if (needsLogin) statusText = "Needs login"
     else if (running) {
       statusText = "Connected"
@@ -382,6 +394,7 @@ Item {
     _switchOutput = ""
     _switchError = ""
     switchingAccountId = previous
+    _returnedFromAddAccount = true
     switchProcess.command = ["tailscale", "switch", previous]
     switchProcess.running = true
   }
@@ -687,18 +700,12 @@ Item {
     onExited: function(exitCode) {
       var combined = String(root._addAccountOutput || "") + "\n" + String(root._addAccountError || "")
       var opened = root.openAddAccountUrl(combined)
-      if (exitCode !== 0) {
-        // A login that was abandoned, cancelled or refused leaves the machine
-        // on a half-made profile it never asked to be on.
-        root.returnToPreviousAccount()
-        root.lastError = opened ? "" : elideStatus(combined || "tailscale login failed")
-        root.actionStatus = opened ? "Login not completed — back on the previous connection" : root.lastError
-        actionStatusTimer.restart()
-      } else {
-        root._addAccountPreviousId = ""
-        root.lastError = ""
-        root.actionStatus = ""
-      }
+      var outcome = Model.addAccountOutcome(exitCode, opened, root._addAccountPreviousId, root.elideStatus(combined))
+      if (outcome.returnTo !== "") root.returnToPreviousAccount()
+      else root._addAccountPreviousId = ""
+      root.lastError = outcome.error
+      root.actionStatus = outcome.status
+      if (outcome.status !== "") actionStatusTimer.restart()
       // A fresh login lands on a new profile and makes it the active one, so
       // don't sit behind the accounts throttle waiting to notice.
       root._lastAccountsRefreshMs = 0

@@ -220,6 +220,43 @@ assert(/root\.returnToPreviousAccount\(\)/.test(serviceSource), 'tailscale goes 
 // fails selectedAccountId still names the profile being returned to. Comparing
 // against it there skips the one switch that matters.
 assert(!/if \(previous === "" \|\| previous === selectedAccountId/.test(serviceSource), 'tailscale does not skip the return on a stale selected account')
+
+// The whole point of the recovery is what happens on each way this can end, so
+// the decision is a plain function rather than something only a real second
+// tailnet could exercise.
+assertDeepEqual(
+  tailscale.addAccountOutcome(0, true, 'db1b', ''),
+  { returnTo: '', status: '', error: '' },
+  'tailscale stays put when the login lands'
+)
+assertDeepEqual(
+  tailscale.addAccountOutcome(1, true, 'db1b', ''),
+  { returnTo: 'db1b', status: 'Login not completed — back on the previous connection', error: '' },
+  'tailscale returns to the previous connection when the login is abandoned'
+)
+assertDeepEqual(
+  tailscale.addAccountOutcome(1, false, 'db1b', 'access denied'),
+  { returnTo: 'db1b', status: 'access denied', error: 'access denied' },
+  'tailscale reports a login that failed before it reached the browser'
+)
+assertDeepEqual(
+  tailscale.addAccountOutcome(1, false, 'db1b', '   '),
+  { returnTo: 'db1b', status: 'tailscale login failed', error: 'tailscale login failed' },
+  'tailscale still says something when the login fails silently'
+)
+assertDeepEqual(
+  tailscale.addAccountOutcome(1, true, '', ''),
+  { returnTo: '', status: 'Login not completed — back on the previous connection', error: '' },
+  'tailscale has nowhere to return when there was no previous connection'
+)
+// A cancel kills the process, which exits non-zero like any other failure.
+assertDeepEqual(
+  tailscale.addAccountOutcome(143, true, 'db1b', ''),
+  { returnTo: 'db1b', status: 'Login not completed — back on the previous connection', error: '' },
+  'tailscale returns to the previous connection when the login is cancelled'
+)
+
+assert(/Back on your connection — sign in again to reconnect/.test(serviceSource), 'tailscale says the returned connection needs signing in again')
 assert(/function cancelAddAccount\(\) \{[\s\S]*?addAccountProcess\.running = false[\s\S]*?returnToPreviousAccount\(\)/.test(serviceSource), 'tailscale can bail out of a login in progress')
 assert(/if \(accountRow\.addingAccount\) tailscale\.cancelAddAccount\(\)/.test(panelSource), 'tailscale offers the bail-out on the row that is running')
 assert(/if \(!addArmed\) \{\s*\n\s*addArmed = true/.test(panelSource), 'tailscale asks before signing the machine out to add a tailnet')
