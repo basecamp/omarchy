@@ -69,6 +69,8 @@ l = right
 
 keyd intercepts keys below Hyprland and XKB, so remapping CapsLock here takes priority over the `compose:caps` option above — test that Compose still fires the way you expect before relying on both together, or move Compose to another key first. See `man keyd` for the full remapping, layer, and macro syntax.
 
+keyd's virtual keyboard is otherwise indistinguishable from an external one, which stops libinput's disable-while-typing from suppressing the touchpad while you type. The installer adds a libinput quirk marking it internal, at `/etc/libinput/local-overrides.quirks` — a reboot is needed for it to take effect.
+
 ### Trackpad gestures
 
 You can also turn on [touchpad gestures](https://wiki.hypr.land/Configuring/Advanced-and-Cool/Gestures/), like swiping with three fingers to change workspaces:
