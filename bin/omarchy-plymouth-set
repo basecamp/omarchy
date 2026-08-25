@@ -51,6 +51,15 @@ theme_dir="/usr/share/plymouth/themes/omarchy"
 staging_dir=$(mktemp -d)
 trap 'rm -rf "$staging_dir"' EXIT
 
+# Publish a staged asset without ever asking a privileged process to resolve
+# its user-writable source path. The shell opens source before sudo starts, so
+# the inherited descriptor pins the bytes and a replacement symlink to a
+# root-only file either loses the race or fails under the caller's permissions.
+publish_asset() {
+  local source="$1" destination="$2"
+  sudo tee "$destination" <"$source" >/dev/null && sudo chmod 0644 "$destination"
+}
+
 find "$OMARCHY_PATH/default/plymouth" -maxdepth 1 -type f -exec cp -t "$staging_dir/" {} +
 cp "$logo_path" "$staging_dir/logo.png"
 
@@ -63,7 +72,9 @@ for asset in bullet.png entry.png lock.png progress_bar.png; do
   magick "$staging_dir/$asset" -channel RGB +level-colors "#$text_hex","#$text_hex" "$staging_dir/$asset"
 done
 
-sudo cp -a --no-preserve=mode,ownership "$staging_dir/." "$theme_dir/"
+for asset in bullet.png entry.png lock.png logo.png omarchy.plymouth omarchy.script preview-unlock.png progress_bar.png progress_box.png; do
+  publish_asset "$staging_dir/$asset" "$theme_dir/$asset" || exit 1
+done
 sudo plymouth-set-default-theme omarchy
 
 if omarchy-cmd-present limine-mkinitcpio; then
@@ -81,12 +92,12 @@ sed \
   -e "s/#ffffff/#$text_hex/g" \
   "$sddm_template" | sudo tee "$sddm_dir/Main.qml" >/dev/null
 
-sudo cp "$staging_dir/logo.png" "$sddm_dir/logo.png"
+publish_asset "$staging_dir/logo.png" "$sddm_dir/logo.png" || exit 1
 for asset in bullet.png entry.png lock.png; do
-  sudo cp "$staging_dir/$asset" "$sddm_dir/$asset"
+  publish_asset "$staging_dir/$asset" "$sddm_dir/$asset" || exit 1
 done
 for asset in entry lock; do
   magick "$staging_dir/$asset.png" -channel RGB +level-colors "#f7768e","#f7768e" "$staging_dir/$asset-failed.png"
-  sudo cp "$staging_dir/$asset-failed.png" "$sddm_dir/$asset-failed.png"
+  publish_asset "$staging_dir/$asset-failed.png" "$sddm_dir/$asset-failed.png" || exit 1
 done
 sudo rm -f "$sddm_dir/logo.svg"
