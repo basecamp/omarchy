@@ -744,11 +744,8 @@ create_user() {
   chmod 440 /etc/sudoers.d/00-omarchy-wheel
 
   source "$OMARCHY_PATH/install/helpers/browser-policy.sh"
-  OMARCHY_INSTALL_USER=$username
-  OMARCHY_PROVISIONING_DIR=$PROVISIONING_DIR
-  browser_policy_setup_group
   for dir in "${BROWSER_POLICY_MANAGED_DIRS[@]}"; do
-    [[ -d $dir ]] || continue
+    [[ -d $dir || -L $dir ]] || continue
     browser_policy_setup_dir "$dir"
   done
 }

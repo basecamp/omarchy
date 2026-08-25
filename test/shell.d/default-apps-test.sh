@@ -208,18 +208,17 @@ OMARCHY_TEST_REAL_BROWSER_INSTALL=true omarchy-default-browser --install chromiu
 [[ $(omarchy-default-browser) == "chromium" ]] || fail "Chromium becomes the default after its full installer succeeds"
 cmp -s "$ROOT/config/chromium-flags.conf" "$test_home/.config/chromium-flags.conf" ||
   fail "Chromium browser installer copies the default flags"
-grep -Fxq 'sudo:groupadd --system --force omarchy-browser-policy' "$setup_log" ||
-  fail "Chromium browser installer creates the browser-policy group"
 grep -Fxq 'sudo:install -d -m 0755 -o root -g root /etc/chromium' "$setup_log" ||
   fail "Chromium browser installer creates a root-owned Chromium policy parent"
 grep -Fxq 'sudo:install -d -m 0755 -o root -g root /etc/chromium/policies' "$setup_log" ||
   fail "Chromium browser installer creates a root-owned Chromium policies parent"
-grep -Fxq 'sudo:install -d -m 2775 -o root -g omarchy-browser-policy /etc/chromium/policies/managed' "$setup_log" ||
-  fail "Chromium browser installer creates a group-writable managed policy directory"
+grep -Fxq 'sudo:install -d -m 0755 -o root -g root /etc/chromium/policies/managed' "$setup_log" ||
+  fail "Chromium browser installer creates a root-owned managed policy directory"
 grep -Fxq 'sudo:find /etc/chromium/policies/managed -mindepth 1 -maxdepth 1 ! -user root -exec rm -rf -- {} +' "$setup_log" ||
   fail "Chromium browser installer drops non-root files from its policy directory"
-grep -Fxq "sudo:usermod -aG omarchy-browser-policy ${USER:-$(id -un)}" "$setup_log" ||
-  fail "Chromium browser installer grants the installing user the browser-policy group"
+if grep -E 'groupadd|usermod|omarchy-browser-policy' "$setup_log" >/dev/null; then
+  fail "Chromium browser installer does not create a browser-policy group" "$(cat "$setup_log")"
+fi
 grep -Fxq 'omarchy-install-chromium-copy-url:' "$setup_log" ||
   fail "Chromium browser installer registers the Copy URL host"
 grep -Fxq 'omarchy-install-chromium-ytdlp:' "$setup_log" ||

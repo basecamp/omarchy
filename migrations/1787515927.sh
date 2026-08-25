@@ -2,15 +2,9 @@ echo "Stop world-writable Chromium and Firefox policy directories"
 
 source "$OMARCHY_PATH/install/helpers/browser-policy.sh"
 
-browser_policy_setup_group
-browser_policy_grant_user "${USER:-$(id -un)}"
-
 repaired=0
 for dir in "${BROWSER_POLICY_MANAGED_DIRS[@]}"; do
   [[ -d $dir || -L $dir ]] || continue
-  if browser_policy_dir_hardened "$dir" && browser_policy_parents_hardened "$dir"; then
-    continue
-  fi
   browser_policy_setup_dir "$dir"
   repaired=1
 done
@@ -21,7 +15,10 @@ fi
 
 for dir in "${BROWSER_POLICY_FIREFOX_DIRS[@]}"; do
   [[ -d $dir || -L $dir ]] || continue
-  browser_policy_firefox_hardened "$dir" && continue
+  if browser_policy_firefox_hardened "$dir"; then
+    browser_policy_purge_dir "$dir"
+    continue
+  fi
   browser_policy_setup_parent "$dir"
   browser_policy_purge_dir "$dir"
   if ! browser_policy_firefox_policy_file_ok "$dir/policies.json"; then

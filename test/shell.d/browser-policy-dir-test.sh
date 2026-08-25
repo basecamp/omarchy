@@ -7,24 +7,6 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
 
-mock_bin=$test_tmp/bin
-mkdir -p "$mock_bin"
-elev_log=$test_tmp/elev.log
-cat >"$mock_bin/sudo" <<SH
-#!/bin/bash
-printf 'SUDO %s\\n' "\$*" >>"$elev_log"
-[[ \${OMARCHY_TEST_SUDO_FAIL:-} == 1 ]] && exit 1
-exit 0
-SH
-cat >"$mock_bin/pkexec" <<SH
-#!/bin/bash
-printf 'PKEXEC %s\\n' "\$*" >>"$elev_log"
-[[ \${OMARCHY_TEST_SUDO_FAIL:-} == 1 ]] && exit 1
-exit 0
-SH
-chmod +x "$mock_bin/sudo" "$mock_bin/pkexec"
-export PATH="$mock_bin:$PATH"
-: >"$elev_log"
 export OMARCHY_PATH="$ROOT"
 export OMARCHY_PROVISIONING_DIR="$test_tmp/provisioning"
 
@@ -55,20 +37,20 @@ unprivileged_as_root() {
 
 write_dir=$test_tmp/writable
 mkdir -p "$write_dir"
-browser_policy_write_color "$write_dir" "#aabbcc" ||
+browser_policy_install_color "$write_dir" "#aabbcc" ||
   fail "theme colour writes into a writable policy directory"
 grep -F '"BrowserThemeColor": "#aabbcc"' "$write_dir/color.json" >/dev/null ||
   fail "theme colour writes BrowserThemeColor"
 mode=$(stat -c '%a' "$write_dir/color.json")
-[[ $mode == "664" ]] || fail "theme colour creates a group-writable policy file" "mode=$mode"
-pass "theme colour writes a group-writable color.json"
+[[ $mode == "644" ]] || fail "theme colour creates a root-mode policy file" "mode=$mode"
+pass "theme colour writes a 0644 color.json"
 
 if (( EUID == 0 )); then
   pass "running as root; skipping the mktemp-failure check"
 else
   chmod u+w "$write_dir"
   export TMPDIR=$test_tmp/missing-tmp
-  if browser_policy_write_color "$write_dir" "#dead00" 2>/dev/null; then
+  if browser_policy_install_color "$write_dir" "#dead00" 2>/dev/null; then
     fail "theme colour fails when mktemp cannot create a file"
   fi
   unset TMPDIR
@@ -80,7 +62,7 @@ fi
 printf 'original\n' >"$test_tmp/pwn"
 rm -f "$write_dir/color.json"
 ln -s "$test_tmp/pwn" "$write_dir/color.json"
-browser_policy_write_color "$write_dir" "#aabbcc" ||
+browser_policy_install_color "$write_dir" "#aabbcc" ||
   fail "theme colour replaces a planted color.json symlink"
 [[ -f $write_dir/color.json && ! -L $write_dir/color.json ]] ||
   fail "theme colour unlinks a planted color.json symlink instead of writing through it"
@@ -90,62 +72,25 @@ pass "theme colour does not follow a planted color.json symlink"
 plant_write=$test_tmp/plant-dir
 mkdir -p "$plant_write/color.json/nested"
 printf 'inside\n' >"$plant_write/color.json/nested/x"
-browser_policy_write_color "$plant_write" "#aabbcc" ||
+browser_policy_install_color "$plant_write" "#aabbcc" ||
   fail "theme colour replaces a planted color.json directory"
 [[ -f $plant_write/color.json && ! -d $plant_write/color.json ]] ||
   fail "theme colour does not write into a planted color.json directory"
 pass "theme colour does not write into a planted color.json directory"
 
 missing_dir=$test_tmp/missing
-browser_policy_write_color "$missing_dir" "#aabbcc" ||
+browser_policy_install_color "$missing_dir" "#aabbcc" ||
   fail "theme colour skips a policy directory that does not exist"
 [[ ! -e $missing_dir ]] || fail "theme colour does not create a missing policy directory"
 pass "theme colour skips a missing policy directory"
 
-if (( EUID == 0 )); then
-  pass "running as root; skipping elevation checks"
-else
-  denied_dir=$test_tmp/denied
-  mkdir -p "$denied_dir"
-  chmod a-w "$denied_dir"
-  owner=${USER:-$(id -un)}
-  : >"$elev_log"
-  browser_policy_write_color "$denied_dir" "#aabbcc" ||
-    fail "elevated install reports success from pkexec"
-  grep -E "^PKEXEC install -m 664 -o $owner -g omarchy-browser-policy -T .+ $denied_dir/color.json$" "$elev_log" >/dev/null ||
-    fail "without a controlling tty, colour write elevates through pkexec as the owner" "$(cat "$elev_log")"
-  if grep -E '^SUDO ' "$elev_log" >/dev/null; then
-    fail "without a controlling tty, colour write does not call sudo" "$(cat "$elev_log")"
-  fi
-  pass "without a controlling tty, colour write elevates through pkexec"
-
-  : >"$elev_log"
-  export OMARCHY_TEST_SUDO_FAIL=1
-  if browser_policy_write_color "$denied_dir" "#aabbcc" 2>"$test_tmp/write.err"; then
-    fail "theme colour fails when the policy directory is not writable"
-  fi
-  unset OMARCHY_TEST_SUDO_FAIL
-  grep -F 'omarchy-browser-policy' "$test_tmp/write.err" >/dev/null ||
-    fail "theme colour names the group when the write is denied"
-  pass "theme colour reports a denied policy write"
-
-  if command -v script >/dev/null; then
-    : >"$elev_log"
-    cat >"$test_tmp/tty-write.sh" <<EOF
-source "$ROOT/install/helpers/browser-policy.sh"
-browser_policy_write_color "$denied_dir" "#aabbcc"
-EOF
-    script -q -c "PATH='$mock_bin:$PATH' OMARCHY_PATH='$ROOT' bash '$test_tmp/tty-write.sh'" /dev/null >/dev/null
-    grep -E "^SUDO install -m 664 -o $owner -g omarchy-browser-policy -T .+ $denied_dir/color.json$" "$elev_log" >/dev/null ||
-      fail "with a controlling tty, colour write elevates through sudo" "$(cat "$elev_log")"
-    if grep -E '^PKEXEC ' "$elev_log" >/dev/null; then
-      fail "with a controlling tty, colour write does not call pkexec" "$(cat "$elev_log")"
-    fi
-    pass "with a controlling tty, colour write elevates through sudo"
-  else
-    pass "script(1) unavailable; skipping the controlling-tty elevation check"
-  fi
+if browser_policy_install_color "$write_dir" "aabbcc" 2>/dev/null; then
+  fail "theme colour rejects hex without a leading #"
 fi
+if browser_policy_install_color "$write_dir" "#AABBCC" 2>/dev/null; then
+  fail "theme colour rejects uppercase hex"
+fi
+pass "theme colour accepts only # plus six lowercase hex digits"
 
 planted_dir=$test_tmp/planted
 mkdir -p "$planted_dir/evil"
@@ -156,16 +101,16 @@ browser_policy_setup_dir "$planted_dir"
 [[ ! -e $planted_dir/evil ]] || fail "policy setup drops a non-empty non-root subdirectory"
 [[ ! -e $planted_dir/color.json ]] || fail "policy setup drops a non-root color.json"
 [[ -d $planted_dir ]] || fail "policy setup leaves the managed directory in place"
+mode=$(stat -c '%a' "$planted_dir")
+[[ $mode == "755" ]] || fail "policy setup leaves the managed directory 0755" "mode=$mode"
 pass "policy setup drops non-root files and non-empty subdirectories"
 
 owned=$test_tmp/not-root
 mkdir -p "$owned"
-chmod 2775 "$owned"
-BROWSER_POLICY_GROUP=$(id -gn)
+chmod 755 "$owned"
 if browser_policy_dir_hardened "$owned"; then
-  fail "a user-owned 2775 directory is not treated as hardened"
+  fail "a user-owned 0755 directory is not treated as hardened"
 fi
-BROWSER_POLICY_GROUP=omarchy-browser-policy
 pass "a hardened directory must be root-owned"
 
 saved_parent_dirs=("${BROWSER_POLICY_PARENT_DIRS[@]}")
@@ -173,7 +118,7 @@ parent_root=$test_tmp/parents
 mkdir -p "$parent_root/etc/chromium/policies/managed/keep"
 printf 'keep\n' >"$parent_root/etc/chromium/policies/managed/keep/x"
 chmod 0777 "$parent_root/etc/chromium" "$parent_root/etc/chromium/policies"
-chmod 2775 "$parent_root/etc/chromium/policies/managed"
+chmod 755 "$parent_root/etc/chromium/policies/managed"
 BROWSER_POLICY_PARENT_DIRS=(
   "$parent_root/etc/chromium"
   "$parent_root/etc/chromium/policies"
@@ -270,7 +215,7 @@ pass "Firefox setup does not follow a planted distribution symlink"
 for malformed in "" "not,a,color" "1,2" "1,2,3,4" "256,0,0" "999,999,999" "-1,0,0" \
   "1,2,3;id" '1,2,$(id)' "0x10,0,0" "1,2,3 4,5,6"; do
   [[ $(browser_policy_theme_hex "$malformed") == "#1c2027" ]] ||
-    fail "theme colour falls back to the neutral grey for '$malformed'"
+    fail "theme colour falls back to the stock grey for '$malformed'"
 done
 pass "theme colour is six hex digits or the stock grey"
 
@@ -288,6 +233,8 @@ pass "shipped chromium.theme files parse as RGB triples"
 
 grep -F 'browser_policy_theme_hex' "$ROOT/bin/omarchy-theme-set-browser" >/dev/null ||
   fail "omarchy-theme-set-browser parses chromium.theme through browser_policy_theme_hex"
+grep -F 'omarchy-theme-set-browser-policy' "$ROOT/bin/omarchy-theme-set-browser" >/dev/null ||
+  fail "omarchy-theme-set-browser writes colour through omarchy-theme-set-browser-policy"
 if grep -E 'printf.*THEME_RGB_COLOR' "$ROOT/bin/omarchy-theme-set-browser" >/dev/null; then
   fail "omarchy-theme-set-browser does not hand unvetted theme words to printf"
 fi
@@ -328,27 +275,6 @@ fi
 [[ -d $dir_dist/policies.json ]] || fail "Firefox policy install leaves a planted policies.json directory in place"
 pass "Firefox policy install does not write into a planted policies.json directory"
 
-grant_log=$test_tmp/usermod.calls
-as_root() {
-  if [[ $1 == "usermod" ]]; then
-    printf '%s\n' "$*" >>"$grant_log"
-    return 0
-  fi
-  unprivileged_as_root "$@"
-}
-invoker=${USER:-$(id -un)}
-: >"$grant_log"
-SUDO_USER=$invoker
-browser_policy_grant_user root
-unset SUDO_USER
-grep -qx -- "usermod -aG omarchy-browser-policy $invoker" "$grant_log" ||
-  fail "granting as root uses SUDO_USER" "$(cat "$grant_log")"
-: >"$grant_log"
-OMARCHY_INSTALL_USER=""
-browser_policy_grant_user ""
-[[ ! -s $grant_log ]] || fail "an empty grant does not usermod"
-pass "sudo install browser grants the invoking user, not root"
-
 grep -F 'exit "$failed"' "$ROOT/bin/omarchy-theme-set-browser" >/dev/null ||
   fail "omarchy-theme-set-browser exits non-zero when a policy write fails"
 pass "omarchy-theme-set-browser exits non-zero when a policy write fails"
@@ -357,25 +283,25 @@ policy_files=(
   "$ROOT/bin/omarchy-install-browser"
   "$ROOT/bin/omarchy-provision-owner"
   "$ROOT/bin/omarchy-theme-set-browser"
+  "$ROOT/bin/omarchy-theme-set-browser-policy"
   "$ROOT/bin/omarchy-upgrade-to-quattro"
   "$ROOT/install/config/theme-system.sh"
   "$ROOT/install/config/browser-policy.sh"
   "$ROOT/install/helpers/browser-policy.sh"
   "$ROOT/migrations/1787515927.sh"
 )
-if grep -nE 'chmod a\+rwx\b|chmod a\+rw\b|chmod a\+w\b|chmod o\+w|chmod ugo\+w|chmod 2777\b|chmod 0777\b|chmod 777\b|install -d -m 0?[27]?777' "${policy_files[@]}" >/dev/null; then
-  fail "browser policy setup is not world-writable"
+if grep -nE 'chmod a\+rwx\b|chmod a\+rw\b|chmod a\+w\b|chmod o\+w|chmod ugo\+w|chmod 2775\b|chmod 2777\b|chmod 0777\b|chmod 777\b|install -d -m 0?[27]?777|omarchy-browser-policy' "${policy_files[@]}" >/dev/null; then
+  fail "browser policy setup is not world-writable and does not use omarchy-browser-policy"
 fi
 pass "browser policy setup is not world-writable"
 
 mapfile -t migrations < <(rg -l 'Stop world-writable Chromium and Firefox policy directories' "$ROOT/migrations")
 (( ${#migrations[@]} == 1 )) || fail "exactly one migration locks existing policy directories" "${migrations[*]}"
-grep -F 'browser_policy_dir_hardened' "${migrations[0]}" >/dev/null ||
-  fail "the policy-directory migration no-ops a machine already repaired"
-grep -F 'browser_policy_parents_hardened' "${migrations[0]}" >/dev/null ||
-  fail "the policy-directory migration repairs a world-writable parent of a hardened leaf"
-grep -F 'browser_policy_grant_user' "${migrations[0]}" >/dev/null ||
-  fail "the policy-directory migration still grants the current user the group"
+grep -F 'browser_policy_setup_dir' "${migrations[0]}" >/dev/null ||
+  fail "the policy-directory migration repairs managed directories"
+if grep -F 'browser_policy_grant_user' "${migrations[0]}" >/dev/null; then
+  fail "the policy-directory migration does not grant a browser-policy group"
+fi
 grep -F 'BROWSER_POLICY_FIREFOX_DIRS' "${migrations[0]}" >/dev/null ||
   fail "the policy-directory migration covers Firefox and Zen"
 grep -F 'browser_policy_firefox_policy_file_ok' "${migrations[0]}" >/dev/null ||

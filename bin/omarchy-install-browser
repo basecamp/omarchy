@@ -9,8 +9,6 @@ set -e
 source "$OMARCHY_PATH/install/helpers/browser-policy.sh"
 
 setup_chromium_policy_directory() {
-  browser_policy_setup_group
-  browser_policy_grant_user "${USER:-$(id -un)}"
   browser_policy_setup_dir "$1"
 }
 

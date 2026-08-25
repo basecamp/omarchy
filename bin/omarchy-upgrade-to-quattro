@@ -1316,14 +1316,13 @@ apply_system_transition() {
   if ! as_root test -f "$browser_policy_helper"; then
     warn "$browser_policy_helper is unavailable; Chromium policy directories were not hardened."
   else
-    as_root env OMARCHY_PATH=/usr/share/omarchy OMARCHY_INSTALL_USER="$target_user" \
+    as_root env OMARCHY_PATH=/usr/share/omarchy \
       bash -euo pipefail -c '
         source "$OMARCHY_PATH/install/helpers/browser-policy.sh"
-        browser_policy_setup_group
         browser_policy_setup_dir /etc/chromium/policies/managed
         for dir in "${BROWSER_POLICY_MANAGED_DIRS[@]}"; do
           [[ $dir == "/etc/chromium/policies/managed" ]] && continue
-          [[ -d $dir ]] || continue
+          [[ -d $dir || -L $dir ]] || continue
           browser_policy_setup_dir "$dir"
         done
       '
