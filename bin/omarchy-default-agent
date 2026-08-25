@@ -42,6 +42,11 @@ esac
 
 agent_package=${agent_package:-$agent}
 
+if [[ $agent == claude || $agent == pi ]] && ! omarchy-hw-cpu-sse4_2; then
+  echo "Cannot install $name: this CPU lacks SSE4.2/POPCNT, which Bun's linux-x64 builds need" >&2
+  exit 1
+fi
+
 if [[ $installing == "false" ]] && ! mise where "$agent_package" &>/dev/null; then
   exec omarchy-launch-floating-terminal-with-presentation omarchy-default-agent --install "$agent"
 fi

@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# omarchy:summary=Install a Bun linux-x64 agent when the CPU can run it.
+# omarchy:args=<package> [command-name [bin-name]]
+# omarchy:hidden=true
+
+# Claude and Pi ship Bun linux-x64 natives that SIGILL without SSE4.2/POPCNT.
+# Skip (don't install) on incompatible x86; ARM/aarch64 still installs.
+
+if [[ -z $1 ]]; then
+  echo "Usage: omarchy-mise-install-bun <package> [command-name [bin-name]]"
+  exit 1
+fi
+
+if omarchy-hw-cpu-sse4_2; then
+  omarchy-mise-install "$@"
+else
+  echo "Skipping $1: this CPU lacks SSE4.2/POPCNT, which Bun's linux-x64 builds need"
+fi
