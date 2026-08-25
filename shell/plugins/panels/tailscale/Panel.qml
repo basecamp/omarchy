@@ -42,6 +42,7 @@ Panel {
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
+  property string removeArmedId: ""
   readonly property var connections: displayConnections()
   readonly property bool showConnections: connections.length > 1 || tailscale.accountsAccessDenied
   readonly property bool showPeers: tailscale.active && tailscale.peers.length > 0
@@ -185,13 +186,63 @@ Panel {
     return connections[Math.max(0, Math.min(accountIndex, connections.length - 1))]
   }
 
+  // Removing the connection in use would strand the machine, so the panel
+  // only offers it on the others; the CLI still covers the general case.
+  function canRemoveAccount(account) {
+    return !!account && account.AddAccount !== true && account.selected !== true && String(account.id || "") !== ""
+  }
+
+  function armRemoval(account) {
+    if (!canRemoveAccount(account)) return
+    removeArmedId = String(account.id || "")
+  }
+
+  function disarmRemoval() {
+    removeArmedId = ""
+  }
+
+  function confirmRemoval(account) {
+    if (!canRemoveAccount(account)) return
+    tailscale.removeAccount(account.id)
+    removeArmedId = ""
+  }
+
+  function toggleRemoval() {
+    if (focusSection !== "accounts") return
+    var account = selectedAccount()
+    if (!canRemoveAccount(account)) return
+    if (removeArmedId === String(account.id || "")) confirmRemoval(account)
+    else armRemoval(account)
+  }
+
   function chooseConnection(account) {
     if (!account) return
-    if (account.AddAccount === true) tailscale.addAccount()
-    else tailscale.switchAccount(account.id)
+    if (account.AddAccount === true) {
+      disarmRemoval()
+      tailscale.addAccount()
+      return
+    }
+    // A row waiting on its confirmation takes the activation, so the second
+    // press finishes what the first one asked for.
+    if (removeArmedId === String(account.id || "")) {
+      confirmRemoval(account)
+      return
+    }
+    disarmRemoval()
+    tailscale.switchAccount(account.id)
   }
 
   function ensureCursor() {
+    if (removeArmedId !== "") {
+      var stillOffered = false
+      for (var c = 0; c < connections.length; c++) {
+        if (canRemoveAccount(connections[c]) && String(connections[c].id || "") === removeArmedId) {
+          stillOffered = true
+          break
+        }
+      }
+      if (!stillOffered) removeArmedId = ""
+    }
     if (headerIndex < 0) headerIndex = 0
     if (headerIndex > 0) headerIndex = 0
     if (accountIndex >= root.connections.length) accountIndex = Math.max(0, root.connections.length - 1)
@@ -206,6 +257,7 @@ Panel {
 
   function moveCursor(dx, dy) {
     cursorActive = true
+    disarmRemoval()
     ensureCursor()
     if (dy !== 0) {
       if (focusSection === "header") {
@@ -433,7 +485,10 @@ Panel {
         root.moveCursor(dx, dy)
       }
       onActivateRequested: if (root.cursorActive) root.activateCursor()
-      onCloseRequested: root.close()
+      onCloseRequested: {
+        if (root.removeArmedId !== "") root.disarmRemoval()
+        else root.close()
+      }
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
         if (t === "t" || t === "T") tailscale.toggleTailscale()
@@ -441,6 +496,7 @@ Panel {
         else if (t === "n" || t === "N") tailscale.copyPeerName(root.selectedPeer())
         else if (t === "d" || t === "D") tailscale.copyPeerDnsName(root.selectedPeer())
         else if (t === "s" || t === "S") root.sendPeerFile(root.selectedPeer())
+        else if (t === "x" || t === "X") root.toggleRemoval()
       }
 
       Flickable {
@@ -814,20 +870,44 @@ Panel {
     id: accountRow
     property var account: null
     property int rowIndex: 0
+    readonly property string accountId: account ? String(account.id || "") : ""
     readonly property bool addAccount: account && account.AddAccount === true
     readonly property bool selectedAccount: !addAccount && account && account.selected === true
-    readonly property bool switchingAccount: !addAccount && account && tailscale.switchingAccountId === String(account.id || "")
-    readonly property string accountText: addAccount ? "Add account…" : (account ? tailscale.accountLabel(account) : "Account")
+    readonly property bool switchingAccount: !addAccount && accountId !== "" && tailscale.switchingAccountId === accountId
+    readonly property bool addingAccount: addAccount && tailscale.addingAccount
+    readonly property bool removingAccount: !addAccount && accountId !== "" && tailscale.removingAccountId === accountId
+    readonly property bool removable: root.canRemoveAccount(account)
+    readonly property bool armed: removable && root.removeArmedId === accountId
+    // The row is the thing being clicked, so it carries the progress rather
+    // than leaving it to the status line under the panel.
+    readonly property bool working: switchingAccount || addingAccount || removingAccount
+    readonly property string accountText: {
+      if (addAccount) return addingAccount ? "Opening browser…" : "Add account…"
+      if (!account) return "Account"
+      var label = tailscale.accountLabel(account)
+      if (removingAccount) return "Removing " + label + "…"
+      if (armed) return "Remove " + label + "?"
+      return label
+    }
 
     hasCursor: root.cursorActive && root.focusSection === "accounts" && root.accountIndex === rowIndex
-    current: selectedAccount
+    current: selectedAccount || armed
     foreground: root.foreground
     fill: root.hoverFill
     currentFill: root.selectedFill
 
     implicitHeight: accountInner.implicitHeight + Style.spacing.xl
 
-    Row {
+    MouseArea {
+      id: accountMouse
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onEntered: root.setAccountCursor(accountRow.rowIndex)
+      onClicked: root.chooseConnection(accountRow.account)
+    }
+
+    RowLayout {
       id: accountInner
       anchors.left: parent.left
       anchors.right: parent.right
@@ -839,16 +919,16 @@ Panel {
       Text {
         id: accountGlyph
         text: accountRow.addAccount ? "+" : ""
-        color: accountRow.selectedAccount || accountRow.switchingAccount || accountRow.addAccount ? root.foreground : root.dim
+        color: accountRow.selectedAccount || accountRow.working || accountRow.addAccount ? root.foreground : root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
-        width: Style.space(22)
         horizontalAlignment: Text.AlignHCenter
-        anchors.verticalCenter: parent.verticalCenter
-        opacity: accountRow.switchingAccount ? 0.45 : 1.0
+        Layout.preferredWidth: Style.space(22)
+        Layout.alignment: Qt.AlignVCenter
+        opacity: accountRow.working ? 0.45 : 1.0
 
         SequentialAnimation on opacity {
-          running: accountRow.switchingAccount
+          running: accountRow.working
           NumberAnimation { to: 1.0; duration: 420; easing.type: Easing.InOutQuad }
           NumberAnimation { to: 0.45; duration: 420; easing.type: Easing.InOutQuad }
           loops: Animation.Infinite
@@ -856,23 +936,28 @@ Panel {
       }
 
       Text {
+        Layout.fillWidth: true
+        Layout.alignment: Qt.AlignVCenter
         text: accountRow.accountText
-        color: root.foreground
+        color: accountRow.armed ? root.urgent : root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
         font.bold: accountRow.selectedAccount
         elide: Text.ElideRight
-        width: parent.width - Style.space(22) - Style.space(8)
-        anchors.verticalCenter: parent.verticalCenter
       }
-    }
 
-    MouseArea {
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onEntered: root.setAccountCursor(accountRow.rowIndex)
-      onClicked: root.chooseConnection(accountRow.account)
+      PanelActionButton {
+        visible: accountRow.removable && !accountRow.removingAccount && (accountRow.armed || accountRow.hasCursor || accountMouse.containsMouse)
+        iconText: accountRow.armed ? "󰄬" : "󰅙"
+        tooltipText: accountRow.armed ? "Confirm removal" : "Remove from this machine"
+        foreground: accountRow.armed ? root.urgent : root.foreground
+        fontFamily: root.fontFamily
+        Layout.alignment: Qt.AlignVCenter
+        onClicked: {
+          if (accountRow.armed) root.confirmRemoval(accountRow.account)
+          else root.armRemoval(accountRow.account)
+        }
+      }
     }
   }
 

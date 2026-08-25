@@ -36,13 +36,15 @@ Item {
   property string selectedAccountId: ""
   property string selectedAccountLabel: ""
   property string switchingAccountId: ""
+  readonly property bool addingAccount: addAccountProcess.running
+  property string removingAccountId: ""
   property string settingExitNodeId: ""
   property bool accountsAccessDenied: false
   property string actionStatus: ""
   property string lastError: ""
 
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 30, 5, 3600)
-  readonly property bool busy: whichProcess.running || statusProcess.running || mullvadExitNodesProcess.running || accountsProcess.running || actionProcess.running || loginProcess.running || switchProcess.running || addAccountProcess.running || operatorProcess.running || exitNodeProcess.running
+  readonly property bool busy: whichProcess.running || statusProcess.running || mullvadExitNodesProcess.running || accountsProcess.running || actionProcess.running || loginProcess.running || switchProcess.running || addAccountProcess.running || removeProcess.running || operatorProcess.running || exitNodeProcess.running
   readonly property string userName: Quickshell.env("USER") || Quickshell.env("LOGNAME")
 
   property string _statusOutput: ""
@@ -59,6 +61,8 @@ Item {
   property bool _loginUrlOpened: false
   property string _preLoginAuthUrl: ""
   property double _lastAccountsRefreshMs: 0
+  property string _removeOutput: ""
+  property string _removeError: ""
   property string _addAccountOutput: ""
   property string _addAccountError: ""
   property bool _addAccountUrlOpened: false
@@ -354,6 +358,20 @@ Item {
     return true
   }
 
+  // Removing a connection only drops it from this machine -- the account
+  // itself is untouched, and logging in again brings it back.
+  function removeAccount(id) {
+    var accountId = String(id || "")
+    if (!installed || accountId === "" || removeProcess.running) return
+    // Removing the connection in use would strand the machine mid-session.
+    if (accountId === selectedAccountId) return
+    _removeOutput = ""
+    _removeError = ""
+    removingAccountId = accountId
+    removeProcess.command = ["tailscale", "switch", "remove", accountId]
+    removeProcess.running = true
+  }
+
   function exitNodeTarget(peer) {
     if (!peer) return ""
     if (peer.Mullvad === true) {
@@ -642,6 +660,29 @@ Item {
       // A fresh login lands on a new profile and makes it the active one, so
       // don't sit behind the accounts throttle waiting to notice.
       root._lastAccountsRefreshMs = 0
+      delayedRefresh.restart()
+    }
+  }
+
+  Process {
+    id: removeProcess
+    running: false
+    command: []
+    stdout: StdioCollector { id: removeStdout; waitForEnd: true; onStreamFinished: root._removeOutput = text }
+    stderr: StdioCollector { id: removeStderr; waitForEnd: true; onStreamFinished: root._removeError = text }
+    onExited: function(exitCode) {
+      var stdout = String(removeStdout.text || root._removeOutput || "")
+      var stderr = String(removeStderr.text || root._removeError || "")
+      if (exitCode !== 0) {
+        root.lastError = elideStatus(stderr || stdout || "Could not remove the connection")
+        root.actionStatus = root.lastError
+        actionStatusTimer.restart()
+      } else {
+        root.lastError = ""
+        root.actionStatus = ""
+        root._lastAccountsRefreshMs = 0
+      }
+      root.removingAccountId = ""
       delayedRefresh.restart()
     }
   }

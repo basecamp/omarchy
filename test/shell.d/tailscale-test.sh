@@ -207,8 +207,21 @@ assertDeepEqual(
 )
 assertDeepEqual(tailscale.connectionRows(null, true).map(row => row.id), ['account:add'], 'tailscale handles a missing connection list')
 
-assert(/if \(account\.AddAccount === true\) tailscale\.addAccount\(\)/.test(panelSource), 'tailscale activates the add row as a login rather than a switch')
+assert(/if \(account\.AddAccount === true\) \{\s*\n\s*disarmRemoval\(\)\s*\n\s*tailscale\.addAccount\(\)/.test(panelSource), 'tailscale activates the add row as a login rather than a switch')
 assert(/addAccountProcess\.command = \["tailscale", "login", "--accept-routes"\]/.test(serviceSource), 'tailscale adds a connection the way the service install brings one up')
+assert(/readonly property bool addingAccount: addAccountProcess\.running/.test(serviceSource), 'tailscale publishes that a connection is being added')
+assert(/running: accountRow\.working/.test(panelSource), 'tailscale animates the row while it is adding or switching')
+assert(/addingAccount \? "Opening browser…" : "Add account…"/.test(panelSource), 'tailscale says what the add row is doing while it runs')
+
+assert(/removeProcess\.command = \["tailscale", "switch", "remove", accountId\]/.test(serviceSource), 'tailscale removes a connection from this machine')
+// Removing the profile in use would strand the machine mid-session.
+assert(/if \(accountId === selectedAccountId\) return/.test(serviceSource), 'tailscale refuses to remove the connection in use')
+assert(/account\.selected !== true && String\(account\.id \|\| ""\) !== ""/.test(panelSource), 'tailscale offers removal only on connections that are not in use')
+// Two deliberate activations, so a stray click cannot drop a connection.
+assert(/if \(removeArmedId === String\(account\.id \|\| ""\)\) \{\s*\n\s*confirmRemoval\(account\)/.test(panelSource), 'tailscale takes a second activation to confirm a removal')
+assert(/armed \? "Remove " \+ label \+ "\?"/.test(panelSource) || /if \(armed\) return "Remove " \+ label \+ "\?"/.test(panelSource), 'tailscale asks before removing')
+assert(/onCloseRequested: \{\s*\n\s*if \(root\.removeArmedId !== ""\) root\.disarmRemoval\(\)/.test(panelSource), 'tailscale backs out of the question before closing the panel')
+assert(/disarmRemoval\(\)\s*\n\s*ensureCursor\(\)/.test(panelSource), 'tailscale abandons the question when the cursor moves off the row')
 // The toggle's login hand-off keys off _loginInProgress, which a status poll
 // clears as soon as tailscaled is running — the state adding an account starts
 // from. Sharing that process would drop the auth URL.

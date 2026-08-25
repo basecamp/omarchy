@@ -9,6 +9,7 @@ Native Omarchy bar widget for Tailscale.
 - Right click toggles Tailscale on/off
 - Switch between available Tailscale connections when multiple are available
 - Add another tailnet, so a machine with a single connection has one to switch to
+- Remove a tailnet you no longer use, with an inline confirmation
 - Browse machines from `tailscale status --json`
 - Copy a machine's Tailscale IP, host name, or DNS name
 - Send files to a machine with Taildrop, when the tailnet allows file sharing
@@ -23,9 +24,14 @@ Inside the panel:
 - `n`: copy selected peer name
 - `d`: copy selected peer DNS name
 - `s`: send files to selected peer
+- `x`: remove the selected connection, press again to confirm
 - `t`: toggle Tailscale
 - `r`: refresh status
 - `esc`: close
+
+Removing a connection drops it from this machine only. The account itself is
+untouched, and logging in again brings it back. The connection in use is never
+offered for removal, so a removal cannot strand the machine mid-session.
 
 ## Requirements
 
