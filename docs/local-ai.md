@@ -26,7 +26,7 @@ Compatibility only means the hardware can satisfy a recipe. A candidate remains 
 
 ### Treat recipe sources as a trust boundary
 
-`omarchy-ai-sync` scans only the GitHub accounts named in the shipped catalog and forces every discovered recipe to `candidate`. A recipe can select a container image, arguments, environment, and host mounts, so adding a source or promoting one of its recipes is a code-review and security decision. Discovery cannot replace a validated shipped recipe.
+`omarchy-ai-sync` reads only the registries pinned in the shipped catalog. A registry leaf can select a container image, arguments, environment, and host mounts, so adding a registry is a code-review and security decision. Omarchy preserves `validated` only when both the canonical catalog and leaf agree and the catalog marks the leaf launchable by its CLI; everything else remains a candidate.
 
 ### Keep serving private by default
 
@@ -40,9 +40,9 @@ A running container, listening port, and `/v1/models` response are intermediate 
 
 Setup adds or updates only the `local` provider in Pi and OMP. It selects that provider only when no default exists or Local AI already owns the default, and removal deletes only Omarchy-owned configuration. Existing provider choices survive setup, model switches, and removal.
 
-### Use Docker as the supervisor
+### Keep the runtime behind the recipe adapter
 
-Omarchy does not add another daemon. One named container owns the serving process, Docker's restart policy owns supervision, and the state file records the accepted recipe. Start and stop preserve downloaded weights so users can free VRAM without repeating setup.
+Omarchy does not add another daemon. The current validated registry leaves use Docker, so one named container owns the serving process and Docker's restart policy owns supervision. The registry remains authoritative about the launch contract, while the Omarchy adapter translates it into the local lifecycle and state file. A future native runtime can be added as another validated registry runtime without changing the panel or agent wiring. Start and stop preserve downloaded weights so users can free VRAM without repeating setup.
 
 ## Commands
 
@@ -68,7 +68,7 @@ A recipe is pure data describing one `docker run`:
 | `min_vram_mb` | per-card fit gate (`nvidia-smi memory.total`) |
 | `min_gpus` | how many qualifying cards the recipe needs (default 1) |
 | `image` | pinned OpenAI-compatible serving image |
-| `container_port` | port the image serves inside the container (default 8000) |
+| `host_port`, `container_port` | default local endpoint and the port served inside the container |
 | `args` | verbatim image command arguments (nothing is injected) |
 | `run_args` | extra `docker run` flags (e.g. `--shm-size`) |
 | `env` | environment map passed with `--env` |
@@ -77,13 +77,18 @@ A recipe is pure data describing one `docker run`:
 | `served_name`, `context_window`, `thinking_format`, `reasoning` | agent wiring; wiring is skipped when `served_name` is absent |
 | `vision` | the model takes images — the agent provider gets `["text", "image"]` input |
 | `weights_gb` | optional download-size hint for setup's progress message |
+| `source`, `registry_id`, `registry_path` | canonical registry provenance retained by sync |
 | `scale` | GPU-count overrides, keyed by count (`{"2": {…}, "4": {…}}`) |
 
 `scale` is how one recipe covers 1, 2, and 4 GPUs instead of shipping a variant per box: setup counts the cards that pass `min_vram_mb` and deep-merges the largest step that count reaches over the base recipe (objects merge, scalars and arrays replace). `fast` uses it to raise tensor parallelism and context; `smart` only flips `--tensor-parallel-size`.
 
 ## Sources
 
-`sources` in the shipped catalog lists GitHub accounts. `omarchy-ai-sync` scans each account's public repos for an `omarchy-recipe.json` at the repo root (raw fetch off the default branch), validates the recipe name, non-empty label and image, and positive integer VRAM/GPU requirements, stamps `source: "github:<owner>/<repo>"` and `status: "candidate"`, then atomically updates the cache. Discovery never promotes a recipe or replaces a validated shipped recipe; a remote candidate may refine another candidate with the same name. Publishing a recipe for inspection is therefore: put an `omarchy-recipe.json` next to your Dockerfile and push.
+`registries` in the shipped catalog pins the GitHub repository, branch, catalog path, and hardware slugs Omarchy trusts. `omarchy-ai-sync` reads the registry's `inference-index/catalog-v1` catalog, fetches the referenced `inference-index/v1` leaves, validates the catalog-to-leaf identity, and atomically translates supported leaves into the local cache. The canonical leaf remains the source of truth for the image, model revision, engine arguments, ports, environment, mounts, capabilities, and validation evidence.
+
+The first adapter imports Docker leaves with bridge networking and self-contained absolute or home-relative mounts. Leaves requiring host networking or registry-relative files are skipped until the adapter can reproduce those contracts safely. Omarchy does not maintain a second model registry, and a synced leaf remains a candidate unless the registry catalog and leaf both mark it validated and `launchable_by_cli` is true.
+
+Public registries need no credentials. For a private registry, sync uses `OMARCHY_AI_GITHUB_TOKEN`, then `GITHUB_TOKEN`, then the active `gh` login when GitHub CLI is installed. Credentials stay outside the catalog and repository. If no configured registry can be refreshed, sync fails without replacing the last good cache; a fresh machine continues to use the shipped catalog.
 
 ## The panel
 
