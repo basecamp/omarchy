@@ -784,7 +784,13 @@ Item {
     onExited: function(exitCode) {
       var stdout = String(operatorStdout.text || root._operatorOutput || "")
       var stderr = String(operatorStderr.text || root._operatorError || "")
-      if (exitCode !== 0) {
+      // pkexec exits 126 when the dialog was dismissed. Declining to authorize
+      // is an answer rather than a failure, so it leaves nothing behind; 127
+      // and the rest are real errors and still get reported.
+      if (exitCode === 126) {
+        root.lastError = ""
+        root.actionStatus = ""
+      } else if (exitCode !== 0) {
         root.lastError = elideStatus(stderr || stdout || "Tailscale authorization failed")
         root.actionStatus = root.lastError
         actionStatusTimer.restart()

@@ -325,6 +325,10 @@ assert(/if \(attempts < 3\) \{/.test(serviceSource), 'tailscale waits more than 
 assert(/attempts \+= 1/.test(serviceSource), 'tailscale counts its attempts at the login link')
 assert(/root\.actionStatus = "Tailscale login link not available yet"\s*\n(\s*\/\/[^\n]*\n)*\s*actionStatusTimer\.restart\(\)/.test(serviceSource), 'tailscale clears the login link message instead of freezing on it')
 assert(/loginTimeoutTimer\.attempts = 0/.test(serviceSource), 'tailscale starts each login with a fresh attempt count')
+// pkexec exits 126 when the dialog is dismissed, which is a decision rather
+// than a failure and should not be reported as one.
+assert(/if \(exitCode === 126\) \{\s*\n\s*root\.lastError = ""\s*\n\s*root\.actionStatus = ""/.test(serviceSource), 'tailscale leaves nothing behind when the operator prompt is dismissed')
+assert(/\} else if \(exitCode !== 0\) \{\s*\n\s*root\.lastError = elideStatus\(stderr \|\| stdout \|\| "Tailscale authorization failed"\)/.test(serviceSource), 'tailscale still reports a real authorization failure')
 
 assertDeepEqual(tailscale.parseStatus('{'), { ok: false, unavailable: true, message: 'Status error', error: 'Failed to parse tailscale status' }, 'tailscale reports invalid status JSON')
 assertDeepEqual(tailscale.parseAccounts('{'), { accounts: [], selectedAccountId: '', selectedAccountLabel: '' }, 'tailscale handles invalid account JSON')
