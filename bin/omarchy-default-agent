@@ -54,6 +54,13 @@ if [[ -n ${agent_installer:-} ]]; then
   agent_present() { "$agent_installer" --check; }
   agent_install() { "$agent_installer" --now; }
 else
+  # Agents ship several builds a week, so mise's release cooldown would hold a
+  # new version back for days after it ships. Exported rather than set on the
+  # install line alone, so the probe resolves the same version the install
+  # activates. Only this branch needs it: the stub omarchy-install-hermes-cli
+  # writes carries its own.
+  export MISE_MINIMUM_RELEASE_AGE=0
+
   agent_present() { mise where "$agent_package" &>/dev/null; }
   agent_install() { mise use -g "$agent_package"; }
 fi

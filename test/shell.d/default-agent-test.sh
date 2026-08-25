@@ -55,6 +55,7 @@ cat >"$mock_bin/mise" <<'SH'
 #!/bin/bash
 printf '%s\0' "$@" >"$OMARCHY_TEST_MISE_LOG"
 printf '%s\n' "$*" >>"$OMARCHY_TEST_MISE_HISTORY"
+printf '%s %s\n' "$1" "${MISE_MINIMUM_RELEASE_AGE-unset}" >>"$OMARCHY_TEST_MISE_LOG.env"
 
 if [[ $1 == "where" ]]; then
   [[ ${OMARCHY_TEST_AGENT_INSTALLED:-false} == "true" ]]
@@ -325,12 +326,20 @@ declare -A expected_packages=(
 for selection in "${!expected_agents[@]}"; do
   expected=${expected_agents[$selection]}
   : >"$agent_open_log"
+  : >"$mise_log.env"
   OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent "$selection"
   [[ $(omarchy-default-agent) == $expected ]] || fail "default agent canonicalizes $selection"
 
   mapfile -d '' -t mise_args <"$mise_log"
   [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == ${expected_packages[$expected]} ]] ||
     fail "default agent installs $selection globally through mise"
+
+  # mise withholds releases younger than its cooldown. The probe and the install
+  # both have to run with the override, or they resolve different versions and
+  # the probe never finds what the install just activated.
+  grep -Fxq "where 0" "$mise_log.env" && grep -Fxq "use 0" "$mise_log.env" ||
+    fail "default agent defeats the mise release cooldown for $selection" \
+      "expected: where 0 and use 0, actual: $(paste -sd, <"$mise_log.env")"
 
   mapfile -d '' -t agent_open_args <"$agent_open_log"
   [[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||
