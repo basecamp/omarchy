@@ -1282,9 +1282,11 @@ Panel {
 
       // Which output this application comes out of. Click to send it to the
       // next device, and again to hand it back to the default. Hidden when
-      // there is only one output, where there is nothing to choose.
+      // there is only one output to choose from, counted after sinkAvailable()
+      // has removed the ones routing will not offer, so the row cannot appear
+      // with nothing to cycle to.
       Item {
-        visible: root.candidateSinks.length > 1
+        visible: root.audioSinks.length > 1
         width: parent.width
         implicitHeight: visible ? routeText.implicitHeight : 0
         height: implicitHeight
