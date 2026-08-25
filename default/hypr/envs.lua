@@ -18,7 +18,12 @@ hl.env("OZONE_PLATFORM", "wayland")
 hl.env("XDG_SESSION_TYPE", "wayland")
 
 -- Allow better support for screen sharing (Google Meet, Discord, etc).
-hl.env("XDG_CURRENT_DESKTOP", "Hyprland")
+-- Chromium draws its own caption and only recognizes a known desktop here. On a
+-- bare "Hyprland" it falls back to a degraded layout that paints the close
+-- button as a "›" chevron instead of an "×" in every non-maximized window.
+-- Hyprland stays first, so xdg-desktop-portal-hyprland is still preferred; the
+-- GNOME entry is what Chromium matches for the standard min/max/close layout.
+hl.env("XDG_CURRENT_DESKTOP", "Hyprland:GNOME")
 hl.env("XDG_SESSION_DESKTOP", "Hyprland")
 
 -- Use XCompose file.
