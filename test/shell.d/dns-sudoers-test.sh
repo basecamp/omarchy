@@ -51,33 +51,38 @@ gated=$(grep -A1 -E '^if \(\( EUID == 0 \)\); then$' "$dns" || true)
 # tr while EUID is 0 without giving an ordinary test run any host privileges.
 root_runner=()
 if (( EUID != 0 )); then
-  if ! unshare --user --map-root-user true 2>/dev/null; then
-    fail "dns trusted-PATH check requires an available unprivileged user namespace"
-  fi
   root_runner=(unshare --user --map-root-user)
 fi
 
-poison_dir=$(mktemp -d)
-poison_ran="$poison_dir/ran"
-for helper in tr awk dirname install tee; do
-  cat >"$poison_dir/$helper" <<SH
+# A sandbox or a hardened kernel can refuse unprivileged user namespaces, and
+# the non-graphical suites have to stay green on any machine -- a skip is a
+# passing test. Only the runtime probe needs the namespace; the static checks
+# above and the elevation checks below run either way.
+if (( EUID == 0 )) || unshare --user --map-root-user true 2>/dev/null; then
+  poison_dir=$(mktemp -d)
+  poison_ran="$poison_dir/ran"
+  for helper in tr awk dirname install tee; do
+    cat >"$poison_dir/$helper" <<SH
 #!/bin/bash
 printf 'x' >"$poison_ran"
 exec "/usr/bin/$helper" "\$@"
 SH
-  chmod +x "$poison_dir/$helper"
-done
+    chmod +x "$poison_dir/$helper"
+  done
 
-if ! PATH="$poison_dir:$PATH" "${root_runner[@]}" bash "$dns" </dev/null >/dev/null 2>&1; then
+  if ! PATH="$poison_dir:$PATH" "${root_runner[@]}" bash "$dns" </dev/null >/dev/null 2>&1; then
+    rm -rf "$poison_dir"
+    fail "root omarchy-dns failed its read-only trusted-PATH probe"
+  fi
+  if [[ -e $poison_ran ]]; then
+    rm -rf "$poison_dir"
+    fail "root omarchy-dns resolved a bare helper from the front of PATH instead of a trusted system path"
+  fi
   rm -rf "$poison_dir"
-  fail "root omarchy-dns failed its read-only trusted-PATH probe"
+  pass "root omarchy-dns resolves system helpers from a trusted PATH, not the invocation PATH"
+else
+  pass "no unprivileged user namespace; skipping the root trusted-PATH probe"
 fi
-if [[ -e $poison_ran ]]; then
-  rm -rf "$poison_dir"
-  fail "root omarchy-dns resolved a bare helper from the front of PATH instead of a trusted system path"
-fi
-rm -rf "$poison_dir"
-pass "root omarchy-dns resolves system helpers from a trusted PATH, not the invocation PATH"
 
 # require_root returns immediately for root, so the stubs below would not stand
 # between the script and the host's real NetworkManager and resolved config.
