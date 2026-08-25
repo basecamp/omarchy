@@ -12,6 +12,8 @@ ConditionEnvironment=WAYLAND_DISPLAY
 [Service]
 Type=simple
 ExecStart=/usr/bin/omarchy-system-sleep-monitor
+# The monitor re-arms itself across suspend/resume. Restart=always is a crash
+# net; RestartSec freezes during suspend and cannot beat a fast second sleep.
 Restart=always
 RestartSec=2
 
