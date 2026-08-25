@@ -25,6 +25,50 @@ stable_device_path() {
   echo "$device"
 }
 
+# Some infrared modules keep their emitter dark until a vendor-specific UVC
+# control is written, and that control resets every time the stream closes.
+# linux-enable-ir-emitter finds the control once, stores it, and reapplies it on
+# demand. Cameras whose emitter is always lit never need any of this, so every
+# helper below is a no-op until a configuration actually exists.
+ir_emitter_config="$HOME/.config/linux-enable-ir-emitter.toml"
+
+ir_emitter_configured() {
+  # Both halves matter: a configuration left behind after the tool was removed
+  # would otherwise build a PAM line with an empty command in it.
+  [[ -s $ir_emitter_config ]] && command -v linux-enable-ir-emitter >/dev/null
+}
+
+enable_ir_emitter() {
+  ir_emitter_configured || return 0
+
+  # Never fatal: a camera that lights up on its own still enrolls fine.
+  linux-enable-ir-emitter run --config "$ir_emitter_config" >/dev/null 2>&1 || true
+}
+
+setup_ir_emitter_pam() {
+  ir_emitter_configured || return 0
+
+  # PAM runs this as root, so the config path has to be spelled out; the tool
+  # would otherwise look in root's home and find nothing. pam_exec sends the
+  # command's stdout to /dev/null unless asked not to, which keeps the emitter
+  # from printing over the sudo prompt.
+  local line="auth      optional  pam_exec.so quiet $(command -v linux-enable-ir-emitter) run --config $ir_emitter_config"
+  local pam line_number
+
+  echo "Configuring the infrared emitter to light up for authentication..."
+
+  for pam in /etc/pam.d/sudo /etc/pam.d/polkit-1 /etc/pam.d/omarchy-lock-face; do
+    [[ -f $pam ]] || continue
+    grep -q linux-enable-ir-emitter "$pam" && continue
+
+    # The emitter has to be lit before Howdy opens the camera, not after.
+    line_number=$(grep -n 'pam_howdy\.so' "$pam" | head -1 | cut -d: -f1)
+    [[ -n $line_number ]] || continue
+
+    sudo sed -i "${line_number}i ${line}" "$pam"
+  done
+}
+
 setup_pam_config() {
   # Face auth goes in ahead of the password so PAM never has a token in hand
   # when Howdy runs; pam_howdy declines to touch a prompt that already has one.
@@ -107,6 +151,8 @@ sudo howdy set abort_if_ssh true
 echo -e "\e[32m\nLet's capture your face.\e[0m"
 echo -e "Look straight at the camera until the scan completes.\n"
 
+enable_ir_emitter
+
 if sudo howdy -U "$USER" add primary; then
   echo -e "\e[32m\nFace enrolled successfully!\e[0m"
 
@@ -116,6 +162,7 @@ if sudo howdy -U "$USER" add primary; then
   # front would leave those machines pointing at pam_howdy with nothing to match.
   setup_pam_config
   setup_lock_face_pam
+  setup_ir_emitter_pam
 
   echo -e "\e[32m\nPerfect! Face authentication is now configured.\e[0m"
   echo "You can use your face for sudo, polkit, and lock screen (Super + Ctrl + L)."
@@ -126,5 +173,30 @@ if sudo howdy -U "$USER" add primary; then
   sudo -k -v
 else
   echo -e "\e[31m\nEnrollment failed. Please try again.\e[0m"
+
+  # Detection proves the sensor streams; it says nothing about whether anything
+  # is lit. An emitter that never switches on looks exactly like this — the
+  # stream opens, frames arrive, and there is no face anywhere in them.
+  if ! ir_emitter_configured; then
+    echo
+    echo "If the camera saw nothing at all, its infrared emitter may stay off"
+    echo "until it is told otherwise. Configure it, then run this setup again:"
+    echo
+    echo "  omarchy pkg aur add linux-enable-ir-emitter"
+    echo "  linux-enable-ir-emitter configure"
+    echo
+    # 6.1.2, the current stable release, builds against opencv4 and so fails
+    # outright on a current Arch: "Dependency opencv4 not found". Version 7 is a
+    # rewrite that dropped OpenCV altogether and builds cleanly, but upstream
+    # has only tagged a beta of it, so -git is presently the one that works.
+    # Drop this fallback once 7.x is tagged stable and the AUR package follows.
+    echo "Should that package fail to build against OpenCV 5, install"
+    echo "linux-enable-ir-emitter-git instead. Version 7 dropped the OpenCV"
+    echo "dependency but is still only tagged as a beta."
+    echo
+    echo "Face away from windows while configuring and enrolling. Daylight"
+    echo "carries enough infrared to wash out both."
+  fi
+
   exit 1
 fi

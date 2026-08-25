@@ -18,6 +18,8 @@ That'll install Howdy, capture your face, and set you up to unlock from the lock
 
 Omarchy insists on an infrared camera rather than an ordinary webcam. IR sees in the dark, and a face lit by an infrared emitter looks nothing like a photo or a phone screen held up to the lens.
 
+Some of those cameras ship with their emitter switched off, and only turn it on when a vendor-specific control tells them to. Enrollment then fails with an empty frame, because nothing is lighting you. Setup will say so and point you at `linux-enable-ir-emitter`, which hunts down that control once; after that Omarchy switches the emitter on by itself whenever it needs the camera. It is worth facing away from windows while you set this up — daylight carries plenty of infrared, and a bright window behind you washes out the very frames the camera is trying to read.
+
 Face authentication is skipped over SSH, where there's nobody in front of the camera to look at. Your password keeps working everywhere, so if the camera misses you, just type it as usual.
 
 Bear in mind that a face is weaker proof than a password: someone who looks a lot like you may get in. Don't rely on it alone if that matters to you.
