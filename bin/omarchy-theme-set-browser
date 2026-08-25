@@ -28,7 +28,7 @@ omarchy-theme-set-browser-policy "${THEME_HEX_COLOR#\#}" || failed=1
 refresh_running_browser chromium chromium
 refresh_running_browser chrome google-chrome-stable || refresh_running_browser chrome google-chrome
 refresh_running_browser msedge microsoft-edge-stable
-refresh_running_browser brave brave
+refresh_running_browser /opt/brave-bin/ brave -f
 # Match on the binary path: the running process is named plain "brave", and a
 # bare -f brave-origin pattern would also match the installer's own terminal.
 refresh_running_browser /opt/brave-origin-bin/ brave-origin -f
