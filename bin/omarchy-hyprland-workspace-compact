@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# omarchy:summary=Close gaps between occupied workspace numbers
+
+set -euo pipefail
+
+clients_json=$(hyprctl clients -j)
+active_workspace=$(hyprctl activeworkspace -j | jq -r '.id')
+[[ $active_workspace =~ ^-?[0-9]+$ ]] || exit 1
+
+commands=()
+active_destination=
+
+# Build every move from a single client snapshot. Special workspaces are
+# excluded, and only workspaces containing windows participate in compaction.
+while IFS=$'\t' read -r source_workspace destination_workspace address; do
+  if ((source_workspace == active_workspace)); then
+    active_destination=$destination_workspace
+  fi
+
+  if ((source_workspace != destination_workspace)); then
+    commands+=("dispatch hl.dsp.window.move({ workspace = \"$destination_workspace\", follow = false, window = \"address:$address\" })")
+  fi
+done < <(
+  jq -r '
+    [.[] | select(.workspace.id > 0)]
+    | sort_by(.workspace.id)
+    | group_by(.workspace.id)
+    | to_entries[]
+    | (.key + 1) as $destination
+    | .value[]
+    | [.workspace.id, $destination, .address]
+    | @tsv
+  ' <<<"$clients_json"
+)
+
+if [[ -n $active_destination ]] && ((active_workspace != active_destination)); then
+  commands+=("dispatch hl.dsp.focus({ workspace = \"$active_destination\" })")
+fi
+
+if ((${#commands[@]} > 0)); then
+  printf -v batch '%s;' "${commands[@]}"
+  hyprctl --batch "${batch%;}" >/dev/null
+fi
