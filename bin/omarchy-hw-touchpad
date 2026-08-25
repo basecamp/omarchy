@@ -2,5 +2,42 @@
 
 # omarchy:summary=Print the detected Hyprland touchpad or trackpad device name
 
-device=$(hyprctl devices -j | jq -r '[.mice[] | .name | select(test("touchpad|trackpad"; "i"))] | first // empty')
-[[ -n $device ]] && echo "$device"
+# Hyprland lists pads as mice. Most already have "touchpad" or "trackpad" in
+# the name; keep that match first so machines that already work stay the same.
+# Older ThinkPads (and some other pads) report a chip name such as
+# synaptics-tm3053-004, which udev still tags ID_INPUT_TOUCHPAD=1. Map that
+# back onto the Hyprland mouse name, skipping pointing sticks.
+
+devices_json=$(hyprctl devices -j)
+device=$(jq -r '[.mice[] | .name | select(test("touchpad|trackpad"; "i"))] | first // empty' <<<"$devices_json")
+if [[ -n $device ]]; then
+  printf '%s\n' "$device"
+else
+  input_class_path="${OMARCHY_INPUT_CLASS_PATH:-/sys/class/input}"
+  mapfile -t mice < <(jq -r '.mice[]?.name // empty' <<<"$devices_json")
+
+  for event in "$input_class_path"/event*; do
+    [[ -e $event ]] || continue
+
+    props=$(udevadm info -q property "$event" 2>/dev/null) || continue
+    grep -qx 'ID_INPUT_TOUCHPAD=1' <<<"$props" || continue
+    grep -qx 'ID_INPUT_POINTINGSTICK=1' <<<"$props" && continue
+
+    [[ -r $event/device/name ]] || continue
+    raw=$(tr -d '\n' <"$event/device/name")
+    [[ -n $raw ]] || continue
+
+    # Hyprland lowercases the kernel name and turns spaces into hyphens.
+    candidate=${raw,,}
+    candidate=${candidate// /-}
+
+    for m in "${mice[@]}"; do
+      if [[ $m == "$candidate" || $m == "$candidate"-* ]]; then
+        printf '%s\n' "$m"
+        exit 0
+      fi
+    done
+  done
+
+  exit 1
+fi
