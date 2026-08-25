@@ -105,6 +105,22 @@ grep -Fq $'SUPER + RETURN	Terminal' <<<"$fresh_output" || fail "default applicat
 grep -Fq $'SUPER + SHIFT + A	ChatGPT' <<<"$fresh_output" || fail "default application bindings include preinstalled web apps"
 pass "default application bindings load from package defaults"
 
+input_gestures=$(ROOT="$ROOT" lua <<'LUA'
+hl = {
+  config = function() end,
+  gesture = function(spec)
+    print(spec.fingers .. "\t" .. spec.direction .. "\t" .. spec.action)
+  end,
+}
+o = { window = function() end }
+
+dofile(os.getenv("ROOT") .. "/default/hypr/input.lua")
+LUA
+)
+grep -Fqx $'3\thorizontal\tworkspace' <<<"$input_gestures" ||
+  fail "default input enables three-finger workspace swiping"
+pass "default input enables three-finger workspace swiping"
+
 grep -F 'hl.dsp.send_key_state({ mods = mods, key = key, state = "down" })' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null ||
   fail "universal clipboard shortcuts send explicit mods to the focused surface"
 pass "universal clipboard shortcuts send explicit mods to the focused surface"
