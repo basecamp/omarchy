@@ -111,7 +111,7 @@ grep -F 'hl.device({ name = "touchpad\"' "$log_file" >/dev/null ||
   fail "hyprctl eval Lua-quotes quotes in the device name" "$(<"$log_file")"
 pass "touchpad disable treats USB device names as data"
 
-HOME="$home_dir" XDG_STATE_HOME="$xdg_decoy" OMARCHY_PATH="$ROOT" MARKER="$marker" lua <<'LUA'
+HOME="$home_dir" XDG_STATE_HOME="$xdg_decoy" OMARCHY_PATH="$ROOT" MARKER="$marker" lua - <<'LUA'
 local seen = {}
 hl = {
   device = function(opts)
@@ -139,7 +139,7 @@ run_toggle touchpad off
 [[ ! -e $state_lua ]] || fail "PoC device name is not written as Lua"
 
 HOME="$home_dir" XDG_STATE_HOME="$xdg_decoy" OMARCHY_PATH="$ROOT" \
-  POC_NAME="$poc_name" EVAL_SNIPPET="$(<"$log_file")" lua <<'LUA'
+  POC_NAME="$poc_name" EVAL_SNIPPET="$(<"$log_file")" lua - <<'LUA'
 local poc = os.getenv("POC_NAME")
 local snippet = os.getenv("EVAL_SNIPPET")
 local seen, executed = {}, false
@@ -264,7 +264,7 @@ printf 'hl.device({ name = "trackpad"})os.execute("touch %s")--", enabled = fals
   >"$reload_state/touchpad-disabled.lua"
 printf 'elan-touchpad\n' >"$reload_state/touchpad-disabled-name"
 
-HOME="$reload_home" XDG_STATE_HOME="$reload_home/.local/state" OMARCHY_PATH="$ROOT" lua <<'LUA'
+HOME="$reload_home" XDG_STATE_HOME="$reload_home/.local/state" OMARCHY_PATH="$ROOT" lua - <<'LUA'
 local disabled = {}
 hl = { device = function(opts) table.insert(disabled, opts) end }
 dofile(os.getenv("OMARCHY_PATH") .. "/default/hypr/bootstrap.lua")
