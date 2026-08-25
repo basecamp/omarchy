@@ -51,7 +51,18 @@ if ! check_fido2_hardware; then
 fi
 
 # Create the pamu2fcfg file
+authdir=/etc/fido2
 authfile=/etc/fido2/fido2
+
+# install -d follows a symlink here and applies the mode and ownership to
+# whatever it points at, so the credential would be staged and published inside
+# the link target and that directory reopened to root:root 755. This is the
+# threat omarchy-remove-security-fido2 already names on its side.
+if [[ -L $authdir || ( -e $authdir && ! -d $authdir ) ]]; then
+  echo -e "\e[31m\n$authdir is not a FIDO2 configuration directory.\e[0m"
+  echo "Run omarchy-remove-security-fido2 first, then set FIDO2 up again."
+  exit 1
+fi
 
 # -f follows symlinks, so the already-registered check below reads a symlinked
 # authfile as a registration and leaves it in place, and is false for a
@@ -64,7 +75,7 @@ if [[ -L $authfile || ( -e $authfile && ! -f $authfile ) ]]; then
 fi
 
 if [[ ! -f $authfile ]]; then
-  sudo install -d -m 755 -o root -g root /etc/fido2
+  sudo install -d -m 755 -o root -g root "$authdir"
   echo -e "\e[32m\nLet's setup your device by confirming on the device now.\e[0m"
   echo -e "Touch your FIDO2 key when it lights up...\n"
 
@@ -77,10 +88,23 @@ if [[ ! -f $authfile ]]; then
   # can still rewrite it.
   stage=""
 
+  # mktemp's output is an operand for four privileged commands below, one of
+  # them an rm. Take only the name this script asked for rather than whatever
+  # came back on stdout.
+  safe_stage_path() {
+    local candidate=$1
+    local prefix="$authfile.new."
+    local suffix
+
+    [[ $candidate == "$prefix"* ]] || return 1
+    suffix=${candidate#"$prefix"}
+    [[ $suffix =~ ^[[:alnum:]]{6}$ ]]
+  }
+
   cleanup_stage() {
     local status=$?
 
-    if [[ -n $stage ]]; then
+    if safe_stage_path "$stage"; then
       sudo rm -f -- "$stage" || true
     fi
 
@@ -89,6 +113,11 @@ if [[ ! -f $authfile ]]; then
 
   trap cleanup_stage EXIT
   stage=$(sudo mktemp "$authfile.new.XXXXXX")
+
+  if ! safe_stage_path "$stage" || [[ ! -f $stage || -L $stage ]]; then
+    echo -e "\e[31m\nCould not create a safe staging file beside $authfile.\e[0m"
+    exit 1
+  fi
 
   if pamu2fcfg | sudo tee "$stage" >/dev/null && [[ -s $stage ]]; then
     sudo chmod 644 "$stage"
