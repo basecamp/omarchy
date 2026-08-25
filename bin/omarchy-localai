@@ -1,0 +1,330 @@
+#!/bin/bash
+
+# omarchy:summary=Run a validated local AI recipe for this hardware
+# omarchy:args=[list|hardware|show|run|status|stop|logs] [options]
+# omarchy:examples=omarchy localai | omarchy localai run --dry-run | omarchy localai list fast
+
+set -euo pipefail
+
+API=${OMARCHY_LOCALAI_API:-https://inference-index-api.vercel.app/v1}
+CONTAINER=${OMARCHY_LOCALAI_CONTAINER:-omarchy-localai}
+
+die() {
+  echo "$1" >&2
+  exit 2
+}
+
+usage() {
+  cat <<'EOF'
+Usage: omarchy localai [command] [options]
+
+Commands:
+  list [intent]        List recommendations for this hardware
+  hardware             Show detected API hardware
+  show <recipe>        Show one launch-safe recipe
+  run [recipe]         Run a recipe, or the top balanced recommendation
+  status               Show container and endpoint readiness
+  stop                 Stop the managed container
+  logs [--follow]      Show container logs
+
+Options:
+  --hardware <id>      Override hardware detection with an API ID or alias
+  --intent <intent>    balanced, fast, or long-context
+  --gpus <ids>         Comma-separated NVIDIA device indexes
+  --port <port>        Local OpenAI-compatible API port, default 8000
+  --json               Print JSON
+  --dry-run            Print the exact Docker command without running it
+EOF
+}
+
+api_get() {
+  [[ $API == "https://"* || ${OMARCHY_LOCALAI_ALLOW_HTTP:-false} == "true" ]] || die "Local AI API must use HTTPS"
+  curl --fail --silent --show-error --location --max-time 30 "$API/$1"
+}
+
+valid_id() {
+  [[ $1 =~ ^[a-z0-9][a-z0-9._-]*$ ]]
+}
+
+valid_intent() {
+  [[ $1 == "balanced" || $1 == "fast" || $1 == "long-context" ]]
+}
+
+hardware_by_name() {
+  local wanted=$1 index=$2
+  jq --arg wanted "$wanted" 'first(.hardware[] | select(.id == $wanted or (.aliases | index($wanted)))) // empty' <<<"$index"
+}
+
+hardware_by_probe() {
+  local index=$1 vendor=$2 product=$3 count=$4 memory=$5
+  jq --arg vendor "$vendor" --arg product "$product" --argjson count "$count" --argjson memory "$memory" '
+    def norm:
+      ascii_downcase
+      | gsub("[0-9]+[ ]*gb"; "")
+      | gsub("nvidia|geforce|amd|instinct|intel|corporation|generation|server|workstation|edition|unified|memory"; "")
+      | gsub("[^a-z0-9]"; "");
+    [.hardware[]
+      | select(.vendor == $vendor)
+      | select(.acceleratorCount <= $count)
+      | select(.memoryBytesEach <= ($memory * 1.02))
+      | select((.product | norm) == ($product | norm) or ($product | test("GB10"; "i") and (.aliases | index("dgx-spark-gb10-128gb"))))]
+    | sort_by(.acceleratorCount)
+    | last // empty
+  ' <<<"$index"
+}
+
+detect_hardware() {
+  local wanted=${1:-${OMARCHY_LOCALAI_HARDWARE:-}} index record rows probe product count memory
+  index=$(api_get hardware/index.json)
+
+  if [[ -n $wanted ]]; then
+    record=$(hardware_by_name "$wanted" "$index")
+  elif omarchy-cmd-present nvidia-smi; then
+    rows=$(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits 2>/dev/null || true)
+    [[ -n $rows ]] || die "nvidia-smi found no usable GPUs"
+    probe=$(awk -F, '
+      {gsub(/^[ \t]+|[ \t]+$/, "", $1); gsub(/[ \t]/, "", $2); key = $1 "\t" $2; devices[key]++}
+      END {for (key in devices) print devices[key] "\t" key}
+    ' <<<"$rows" | sort -t $'\t' -k1,1nr | head -1)
+    IFS=$'\t' read -r count product memory <<<"$probe"
+    memory=$((memory * 1048576))
+    record=$(hardware_by_probe "$index" nvidia "$product" "$count" "$memory")
+  elif omarchy-cmd-present lspci; then
+    count=$(lspci -Dnn 2>/dev/null | grep -c 'Intel Corporation Battlemage G31 \[Arc Pro B70\]' || true)
+    if (( count > 0 )); then
+      record=$(hardware_by_probe "$index" intel "Intel Arc Pro B70" "$count" 34359738368)
+    fi
+  fi
+
+  [[ -n ${record:-} ]] || die "No registry hardware matched. Pass --hardware with an ID from: omarchy localai hardware --all"
+  jq . <<<"$record"
+}
+
+recommendations() {
+  local intent=$1 wanted=${2:-} hardware id
+  hardware=$(detect_hardware "$wanted")
+  id=$(jq -r '.id' <<<"$hardware")
+  api_get "hardware/$id/recommendations/$intent.json"
+}
+
+show_hardware() {
+  local wanted="" json=false all=false
+  while (( $# > 0 )); do
+    case $1 in
+      --hardware) wanted=${2:-}; shift 2 ;;
+      --json) json=true; shift ;;
+      --all) all=true; shift ;;
+      *) die "Unknown hardware option: $1" ;;
+    esac
+  done
+  if $all; then
+    api_get hardware/index.json | jq .
+    return
+  fi
+  local hardware
+  hardware=$(detect_hardware "$wanted")
+  if $json; then
+    jq . <<<"$hardware"
+  else
+    jq -r '"\(.id)\n  \(.acceleratorCount)x \(.product) · \(.memoryBytesEach / 1073741824 | floor) GB each · \(.topology.kind)"' <<<"$hardware"
+  fi
+}
+
+list_recipes() {
+  local intent=balanced wanted="" json=false
+  if (( $# > 0 )) && [[ $1 != --* ]]; then
+    intent=$1
+    shift
+  fi
+  while (( $# > 0 )); do
+    case $1 in
+      --intent) intent=${2:-}; shift 2 ;;
+      --hardware) wanted=${2:-}; shift 2 ;;
+      --json) json=true; shift ;;
+      *) die "Unknown list option: $1" ;;
+    esac
+  done
+  valid_intent "$intent" || die "Intent must be balanced, fast, or long-context"
+  local response
+  response=$(recommendations "$intent" "$wanted")
+  if $json; then
+    jq . <<<"$response"
+  else
+    jq -r '"\(.hardware.id) · \(.intent)\n", (.recommendations[] | "\(.rank). \(.label) · \(.model.weights)\n   \(.recipeId)\n   \(.reason)")' <<<"$response"
+  fi
+}
+
+show_recipe() {
+  local id=${1:-}
+  [[ -n $id ]] || die "Recipe ID required"
+  valid_id "$id" || die "Invalid recipe ID"
+  local recipe
+  recipe=$(api_get "recipes/$id.json")
+  if [[ ${2:-} == "--json" ]]; then
+    jq . <<<"$recipe"
+  else
+    jq -r '"\(.id)\n  model: \(.model.repository)@\(.model.revision)\n  engine: \(.engine.name) \(.engine.version)\n  image: \(.launch.image)\n  context: \(.serving.measuredMaxContextTokens)\n  hardware: \(.compatibility.hardwareId)"' <<<"$recipe"
+  fi
+}
+
+print_command() {
+  printf '%q ' "$@"
+  printf '\n'
+}
+
+run_recipe() {
+  local id="" intent=balanced wanted="" gpu_ids="" port=8000 dry_run=false
+  while (( $# > 0 )); do
+    case $1 in
+      --intent) intent=${2:-}; shift 2 ;;
+      --hardware) wanted=${2:-}; shift 2 ;;
+      --gpus) gpu_ids=${2:-}; shift 2 ;;
+      --port) port=${2:-}; shift 2 ;;
+      --dry-run) dry_run=true; shift ;;
+      --*) die "Unknown run option: $1" ;;
+      *) [[ -z $id ]] || die "Only one recipe ID is allowed"; id=$1; shift ;;
+    esac
+  done
+  valid_intent "$intent" || die "Intent must be balanced, fast, or long-context"
+  if [[ ! $port =~ ^[0-9]+$ ]] || (( port < 1024 || port > 65535 )); then
+    die "Port must be between 1024 and 65535"
+  fi
+  [[ -z $gpu_ids || $gpu_ids =~ ^[0-9]+(,[0-9]+)*$ ]] || die "GPU IDs must be comma-separated integers"
+
+  local hardware recipe response backend count memory image cache container_cache entrypoint shared ipc
+  hardware=$(detect_hardware "$wanted")
+  if [[ -z $id ]]; then
+    response=$(api_get "hardware/$(jq -r '.id' <<<"$hardware")/recommendations/$intent.json")
+    id=$(jq -r '.recommendations[0].recipeId // empty' <<<"$response")
+    [[ -n $id ]] || die "No validated $intent recipe matches this hardware"
+  fi
+  valid_id "$id" || die "Invalid recipe ID"
+  recipe=$(api_get "recipes/$id.json")
+  jq -e --argjson hardware "$hardware" '
+    def family: sub("\\.x[0-9]+\\."; ".x.");
+    .status == "validated"
+    and .launch.adapter == "docker.openai-v1"
+    and .compatibility.acceleratorBackend == $hardware.acceleratorBackend
+    and (.compatibility.hardwareId | family) == ($hardware.id | family)
+    and .compatibility.acceleratorCount <= $hardware.acceleratorCount
+    and .compatibility.minimumMemoryBytesEach <= $hardware.memoryBytesEach
+  ' <<<"$recipe" >/dev/null || die "Recipe $id is not launch-safe on $(jq -r '.id' <<<"$hardware")"
+
+  backend=$(jq -r '.compatibility.acceleratorBackend' <<<"$recipe")
+  count=$(jq -r '.compatibility.acceleratorCount' <<<"$recipe")
+  memory=$(jq -r '.compatibility.minimumMemoryBytesEach' <<<"$recipe")
+  image=$(jq -r '.launch.image' <<<"$recipe")
+  [[ $image =~ @sha256:[0-9a-f]{64}$ ]] || die "Recipe image is not digest-pinned"
+  if [[ -n $gpu_ids ]]; then
+    local provided=${gpu_ids//[^,]/}
+    (( ${#provided} + 1 == count )) || die "Recipe needs $count GPU(s), but --gpus selected $((${#provided} + 1))"
+  fi
+  cache=${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/localai
+  container_cache=$(jq -r '.launch.environment.HF_HOME // .launch.modelCache.containerPath' <<<"$recipe")
+  entrypoint=$(jq -r '.launch.entrypoint // empty' <<<"$recipe")
+  shared=$(jq -r '.launch.sharedMemoryBytes' <<<"$recipe")
+  ipc=$(jq -r '.launch.ipc' <<<"$recipe")
+
+  local docker_args=(docker run --detach --name "$CONTAINER" --restart unless-stopped --label io.omarchy.localai=1 --label "io.omarchy.localai.recipe=$id" --label "io.omarchy.localai.port=$port" --label "io.omarchy.localai.model=$(jq -r '.model.servedName' <<<"$recipe")")
+  case $backend in
+    nvidia)
+      if [[ -n $gpu_ids ]]; then
+        docker_args+=(--gpus "device=$gpu_ids")
+      else
+        docker_args+=(--gpus "$count")
+      fi
+      ;;
+    amd-rocm) docker_args+=(--device /dev/kfd --device /dev/dri --group-add video) ;;
+    intel-xpu) docker_args+=(--device /dev/dri:/dev/dri) ;;
+    *) die "Unsupported accelerator backend: $backend" ;;
+  esac
+  docker_args+=(--publish "127.0.0.1:$port:$(jq -r '.endpoint.containerPort' <<<"$recipe")")
+  (( shared > 0 )) && docker_args+=(--shm-size "$shared")
+  [[ $ipc == "host" ]] && docker_args+=(--ipc host)
+  [[ -n $entrypoint ]] && docker_args+=(--entrypoint "$entrypoint")
+  while IFS= read -r pair; do
+    docker_args+=(--env "$(jq -r '.key + "=" + (.value | tostring)' <<<"$pair")")
+  done < <(jq -c '.launch.environment | to_entries[]' <<<"$recipe")
+  docker_args+=(--volume "$cache:$container_cache")
+  docker_args+=("$image")
+  mapfile -t engine_args < <(jq -r '.launch.arguments[]' <<<"$recipe")
+  docker_args+=("${engine_args[@]}")
+
+  if $dry_run; then
+    print_command "${docker_args[@]}"
+    return
+  fi
+  docker info >/dev/null 2>&1 || die "Docker is not running"
+  if docker inspect "$CONTAINER" >/dev/null 2>&1; then
+    [[ $(docker inspect --format '{{.State.Running}}' "$CONTAINER") != "true" ]] || die "$CONTAINER is already running"
+    docker rm "$CONTAINER" >/dev/null
+  fi
+  (( memory > 0 )) || die "Recipe has no memory requirement"
+  mkdir -p "$cache"
+  "${docker_args[@]}" >/dev/null
+  echo "Starting $id on http://127.0.0.1:$port/v1"
+  echo "Check readiness with: omarchy localai status"
+}
+
+status() {
+  local json=false
+  if [[ ${1:-} == "--json" ]]; then
+    json=true
+    shift
+  fi
+  (( $# == 0 )) || die "Unknown status option: $1"
+  local inspect running recipe model port ready=false
+  inspect=$(docker inspect "$CONTAINER" 2>/dev/null || true)
+  if [[ -z $inspect ]]; then
+    $json && jq -n '{state: "not-setup", ready: false}' || echo "not set up"
+    return 2
+  fi
+  running=$(jq -r '.[0].State.Running' <<<"$inspect")
+  recipe=$(jq -r '.[0].Config.Labels["io.omarchy.localai.recipe"]' <<<"$inspect")
+  model=$(jq -r '.[0].Config.Labels["io.omarchy.localai.model"]' <<<"$inspect")
+  port=$(jq -r '.[0].Config.Labels["io.omarchy.localai.port"]' <<<"$inspect")
+  if [[ $running == "true" ]] && curl --fail --silent --max-time 2 "http://127.0.0.1:$port/v1/models" | jq -e --arg model "$model" '.data[]?.id == $model' >/dev/null 2>&1; then
+    ready=true
+  fi
+  if $json; then
+    jq -n --arg recipe "$recipe" --arg model "$model" --argjson port "$port" --argjson running "$running" --argjson ready "$ready" '{state: (if $ready then "ready" elif $running then "loading" else "stopped" end), ready: $ready, running: $running, recipe: $recipe, model: $model, endpoint: ("http://127.0.0.1:" + ($port | tostring) + "/v1")}'
+  elif $ready; then
+    echo "ready · $recipe · http://127.0.0.1:$port/v1"
+  elif [[ $running == "true" ]]; then
+    echo "loading · $recipe"
+  else
+    echo "stopped · $recipe"
+  fi
+  $ready
+}
+
+stop() {
+  if docker inspect "$CONTAINER" >/dev/null 2>&1; then
+    docker stop "$CONTAINER" >/dev/null
+  fi
+  echo "Local AI stopped"
+}
+
+logs() {
+  local args=(--tail 200)
+  if [[ ${1:-} == "--follow" ]]; then
+    args+=(--follow)
+    shift
+  fi
+  (( $# == 0 )) || die "Unknown logs option: $1"
+  exec docker logs "${args[@]}" "$CONTAINER"
+}
+
+command=${1:-list}
+(( $# == 0 )) || shift
+case $command in
+  list) list_recipes "$@" ;;
+  hardware) show_hardware "$@" ;;
+  show) show_recipe "$@" ;;
+  run) run_recipe "$@" ;;
+  status) status "$@" ;;
+  stop) stop "$@" ;;
+  logs) logs "$@" ;;
+  help | --help | -h) usage ;;
+  *) usage >&2; die "Unknown Local AI command: $command" ;;
+esac
