@@ -17,5 +17,7 @@ printf -v install_message '%q' "Installing ${name}..."
 printf -v desktop_id_arg '%q' "$desktop_id"
 
 # The subshell keeps & from backgrounding the package installation too.
+# Exiting 130 tells the presentation wrapper not to show the trailing done
+# prompt, avoiding a focus race with the GUI window this command just launched.
 exec omarchy-launch-floating-terminal-with-presentation \
-  "echo ${install_message}; omarchy-pkg-add ${packages} && (setsid uwsm-app -- gtk-launch ${desktop_id_arg} >/dev/null 2>&1 &)"
+  "echo ${install_message}; omarchy-pkg-add ${packages} && (setsid uwsm-app -- gtk-launch ${desktop_id_arg} >/dev/null 2>&1 &) && exit 130"

@@ -79,15 +79,23 @@ presentation_command=$(<"$OMARCHY_TEST_PRESENTATION")
   fail "generic installer shell-quotes the display name" "$presentation_command"
 [[ $presentation_command == *'omarchy-pkg-add alpha beta && (setsid uwsm-app -- gtk-launch Disk\ Usage >/dev/null 2>&1 &)'* ]] ||
   fail "generic installer waits for packages and detaches only the scoped launch" "$presentation_command"
+[[ $presentation_command == *'&& exit 130' ]] ||
+  fail "generic installer suppresses the wrapper done prompt after launching" "$presentation_command"
 pass "generic installer waits for packages and detaches only the scoped launch"
 
 : >"$OMARCHY_TEST_LOG"
+set +e
 bash -c "$presentation_command"
+status=$?
+set -e
+(( status == 130 )) ||
+  fail "generic installer exits with wrapper skip status after launching" "$status"
 grep -Fxq 'pkg:alpha beta' "$OMARCHY_TEST_LOG" ||
   fail "generic installer passes every package to the package helper"
 wait_for_launch 'launch:uwsm-app -- gtk-launch Disk Usage' ||
   fail "generic installer preserves a desktop ID containing spaces"
 pass "generic installer preserves a desktop ID containing spaces"
+pass "generic installer suppresses the wrapper done prompt after launching"
 
 : >"$OMARCHY_TEST_LOG"
 if OMARCHY_TEST_PKG_STATUS=1 bash -c "$presentation_command"; then
