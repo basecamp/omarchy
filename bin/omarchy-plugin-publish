@@ -82,7 +82,9 @@ api_url="${api_url%/}"
 registry_url=$(omarchy-plugin-registry base-url)
 state_host=$(printf '%s' "$registry_url" | sed -E 's|^[a-z]+://||; s|[/:]|_|g')
 STATE_DIR="${OMARCHY_PLUGIN_REGISTRY_STATE:-$HOME/.local/state/omarchy/registry}/$state_host"
-TOKEN_FILE="$STATE_DIR/publish-token.json"
+# Tokens are scoped to one publisher/plugin, so cache one per scope — each
+# lives its full 7 days even when publishing several plugins.
+TOKEN_FILE="$STATE_DIR/publish-token.${ref//\//_}.json"
 
 api_post() {
   # $1 = path, rest = extra curl args. Prints "HTTP_CODE\nBODY".
