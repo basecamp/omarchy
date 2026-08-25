@@ -25,6 +25,18 @@ done
 
 pass "a <helper>::<address> URL is refused"
 
+# `<scheme>://<address>`, the shape #8067 left open: git looks up
+# git-remote-<scheme> for any scheme it does not implement itself, so an
+# allowlist is the only form of this check that holds.
+for url in "ext://sh -c id" "fd://17" "gcrypt://example.com/x" "zzz://a" "ZZZ://a" "HTTPS://github.com/a/b"; do
+  output=$(check "$url") &&
+    fail "omarchy-git-url-check refuses the '$url' transport" "$output"
+  grep -qF "which Omarchy does not clone from" <<<"$output" ||
+    fail "omarchy-git-url-check names the transport rejection for '$url'" "$output"
+done
+
+pass "a <scheme>://<address> URL outside git's own transports is refused"
+
 # A leading dash is an option to git, not a URL.
 for url in "-x" "--upload-pack=touch /tmp/pwned" "-oProxyCommand=x"; do
   output=$(check "$url") &&

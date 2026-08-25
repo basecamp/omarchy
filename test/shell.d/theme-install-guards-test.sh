@@ -58,6 +58,17 @@ done
 
 pass "a URL that names a git option or a transport helper never reaches git"
 
+# git resolves git-remote-<scheme> for any scheme it does not implement itself,
+# so the `://` spelling of a helper has to be refused as well as the `::` one.
+for url in "ext://sh -c id" "fd://17" "gcrypt://example.com/x"; do
+  if install_theme "$url"; then
+    fail "omarchy-theme-install refuses the URL '$url'"
+  fi
+
+  [[ ! -s $git_calls ]] || fail "omarchy-theme-install refuses '$url' before running git" "$(cat "$git_calls")"
+done
+
+pass "a URL naming a transport git does not implement never reaches git"
 
 # The checker is a separate command, so its absence has to refuse the URL rather
 # than wave it through to git.
