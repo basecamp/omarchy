@@ -26,7 +26,9 @@ omarchy windows vm launch    # start and connect
 
 ## Sharing files
 
-The directory `~/Windows` in your home directory is automatically shared with the VM. Put files there if you want them accessible to Windows. The VM has no access to any other part of your file system, so you're safe from anything nasty on the Windows side. Its own virtual disk lives in `~/.windows`.
+The directory `~/Windows` in your home directory is automatically shared with the VM. Put files there if you want them accessible to Windows. The VM has no access to any other part of your file system, so you're safe from anything nasty on the Windows side. Its own virtual disk is available at `~/.windows`.
+
+Those familiar home paths are links to per-user mount anchors in a root-owned `.omarchy-windows` directory beside your home directory. Keeping the anchors on the home filesystem preserves the expected disk location, while their protected parent prevents another process running as you from swapping a checked directory for a symlink while the privileged VM is starting.
 
 The VM's ports are bound to localhost only, so nothing on your network can reach the Windows machine.
 
