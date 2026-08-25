@@ -145,10 +145,14 @@ pass "first-run does not enable the GZ302 chassis LED watcher"
 z13_lightbar="$ROOT/install/user/hardware/asus/fix-z13-lightbar.sh"
 grep -F 'omarchy-hw-match "GZ302"' "$z13_lightbar" >/dev/null ||
   fail "Z13 lightbar install leaf is not gated on GZ302"
+grep -F 'cp "$OMARCHY_PATH/default/systemd/user/omarchy-brightness-keyboard-watch.service"' "$z13_lightbar" >/dev/null ||
+  fail "Z13 lightbar install leaf never copies the waiter from the checkout into the user unit dir"
 grep -F 'systemctl --user enable omarchy-brightness-keyboard-watch.service' "$z13_lightbar" >/dev/null ||
   fail "Z13 lightbar install leaf never enables the waiter"
 grep -F 'enable --now omarchy-brightness-keyboard-watch' "$z13_lightbar" >/dev/null &&
   fail "Z13 lightbar install leaf enables the waiter with --now"
+grep -F '/usr/lib/systemd/user/omarchy-brightness-keyboard-watch.service' "$z13_lightbar" >/dev/null &&
+  fail "Z13 lightbar install leaf still wants the unit from /usr/lib"
 grep -F 'is-active --quiet graphical-session.target' "$z13_lightbar" >/dev/null ||
   fail "Z13 lightbar install leaf starts the waiter outside a graphical session"
 grep -F 'fix-z13-lightbar.sh' "$ROOT/install/user/all.sh" >/dev/null ||
