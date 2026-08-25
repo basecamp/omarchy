@@ -1,0 +1,203 @@
+#!/bin/bash
+
+# omarchy:summary=Equalize tiled windows on the active workspace
+
+set -euo pipefail
+
+lua_quote() {
+  jq -Rn --arg value "$1" '$value'
+}
+
+ensure_workspace() {
+  local current
+  current=$(hyprctl activeworkspace -j)
+
+  [[ $(jq -r '.id' <<<"$current") == "$workspace_id" ]] &&
+    [[ $(jq -r '.tiledLayout // empty' <<<"$current") == "dwindle" ]]
+}
+
+dispatch() {
+  local result
+
+  ensure_workspace
+  result=$(hyprctl dispatch "$1")
+  [[ $result == "ok" ]]
+}
+
+move_window() {
+  local address="$1"
+  local workspace="$2"
+
+  dispatch "hl.dsp.window.move({ window = $(lua_quote "address:$address"), workspace = $(lua_quote "$workspace"), follow = false })"
+}
+
+focus_window() {
+  dispatch "hl.dsp.focus({ window = $(lua_quote "address:$1") })"
+}
+
+layout_message() {
+  dispatch "hl.dsp.layout($(lua_quote "$1"))"
+}
+
+workspace=$(hyprctl activeworkspace -j)
+workspace_id=$(jq -r '.id' <<<"$workspace")
+workspace_name=$(jq -r '.name' <<<"$workspace")
+workspace_layout=$(jq -r '.tiledLayout // empty' <<<"$workspace")
+
+if [[ $workspace_layout != "dwindle" ]]; then
+  echo "Equalizing windows requires a Dwindle workspace" >&2
+  exit 1
+fi
+
+if [[ -z ${XDG_RUNTIME_DIR:-} ]]; then
+  echo "XDG_RUNTIME_DIR is required for window equalization" >&2
+  exit 1
+fi
+
+lock_file="$XDG_RUNTIME_DIR/omarchy-window-equalize.lock"
+exec 9>"$lock_file"
+if ! flock -n 9; then
+  echo "Window equalization is already running" >&2
+  exit 1
+fi
+
+clients=$(hyprctl clients -j)
+unsafe_fullscreen=$(jq -r --argjson workspace "$workspace_id" '
+  any(.[];
+    .workspace.id == $workspace and
+    .mapped == true and
+    .floating == false and
+    ((.fullscreen // 0) != 0 or (.fullscreenClient // 0) != 0)
+  )
+' <<<"$clients")
+
+if [[ $unsafe_fullscreen == "true" ]]; then
+  echo "Exit fullscreen before equalizing windows" >&2
+  exit 1
+fi
+
+unsafe_grouped=$(jq -r --argjson workspace "$workspace_id" '
+  any(.[];
+    .workspace.id == $workspace and
+    .mapped == true and
+    .floating == false and
+    ((.grouped // []) | length > 0)
+  )
+' <<<"$clients")
+
+if [[ $unsafe_grouped == "true" ]]; then
+  echo "Move windows out of groups before equalizing them" >&2
+  exit 1
+fi
+
+mapfile -t windows < <(jq -r --argjson workspace "$workspace_id" '
+  [.[]
+    | select(.workspace.id == $workspace and .mapped == true and .floating == false)
+    | { address, x: .at[0], y: .at[1] }]
+  | sort_by(.x, .y)
+  | .[].address
+' <<<"$clients")
+
+count=${#windows[@]}
+(( count >= 2 )) || exit 0
+
+case $count in
+2) columns=2 ;;
+3) columns=3 ;;
+4) columns=2 ;;
+*)
+  columns=1
+  while ((columns * columns < count)); do
+    columns=$((columns + 1))
+  done
+  ;;
+esac
+
+base=$((count / columns))
+extra=$((count % columns))
+declare -a column_sizes column_starts representatives
+index=0
+for ((column = 0; column < columns; column++)); do
+  size=$base
+  if ((column < extra)); then
+    size=$((size + 1))
+  fi
+
+  column_sizes[column]=$size
+  column_starts[column]=$index
+  representatives[column]=${windows[index]}
+  index=$((index + size))
+done
+
+active=$(hyprctl activewindow -j | jq -r '.address // empty')
+if [[ -z $active ]]; then
+  active=${representatives[0]}
+fi
+
+temporary="special:equalize-$$"
+destination="name:$workspace_name"
+rebuilding=false
+
+rollback_on_failure() {
+  local status=$?
+
+  if ((status != 0)) && [[ $rebuilding == "true" ]]; then
+    set +e
+    for window in "${windows[@]}"; do
+      hyprctl dispatch "hl.dsp.window.move({ window = $(lua_quote "address:$window"), workspace = $(lua_quote "$destination"), follow = false })" >/dev/null
+    done
+    hyprctl dispatch "hl.dsp.focus({ workspace = $(lua_quote "$destination") })" >/dev/null
+    if [[ -n $active ]]; then
+      hyprctl dispatch "hl.dsp.focus({ window = $(lua_quote "address:$active") })" >/dev/null
+    fi
+  fi
+
+  exit "$status"
+}
+trap rollback_on_failure EXIT
+rebuilding=true
+
+for window in "${windows[@]}"; do
+  move_window "$window" "$temporary"
+done
+
+move_window "${representatives[0]}" "$destination"
+focus_window "${representatives[0]}"
+for ((column = 1; column < columns; column++)); do
+  focus_window "${representatives[column - 1]}"
+  layout_message "preselect r"
+  move_window "${representatives[column]}" "$destination"
+done
+
+remaining=$count
+for ((column = 0; column < columns - 1; column++)); do
+  size=${column_sizes[column]}
+  ratio=$(printf '%.8f' "$(jq -nr --argjson part "$size" --argjson total "$remaining" '$part * 2 / $total')")
+  focus_window "${representatives[column]}"
+  layout_message "splitratio $ratio exact"
+  remaining=$((remaining - size))
+done
+
+for ((column = 0; column < columns; column++)); do
+  start=${column_starts[column]}
+  size=${column_sizes[column]}
+
+  for ((row = 1; row < size; row++)); do
+    previous=${windows[start + row - 1]}
+    current=${windows[start + row]}
+    focus_window "$previous"
+    layout_message "preselect d"
+    move_window "$current" "$destination"
+  done
+
+  remaining=$size
+  for ((row = 0; row < size - 1; row++)); do
+    ratio=$(printf '%.8f' "$(jq -nr --argjson total "$remaining" '2 / $total')")
+    focus_window "${windows[start + row]}"
+    layout_message "splitratio $ratio exact"
+    remaining=$((remaining - 1))
+  done
+done
+
+focus_window "$active"
+rebuilding=false
