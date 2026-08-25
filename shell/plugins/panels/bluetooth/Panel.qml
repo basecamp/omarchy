@@ -450,12 +450,26 @@ Panel {
 
   function applyPairable(opened) {
     if (opened === undefined) opened = root.opened
+    // Widgets are constructed with bar === null; injectProps assigns it from
+    // Loader.onLoaded. Without bar we cannot see an open sibling, so do not
+    // write pairable false — that would lock out a panel already open on
+    // another monitor while this instance is still coming up.
+    if (!opened && !bar) return
     var siblingOpen = openSibling() !== null
     var enabled = adapter !== null && !!adapter.enabled
     setPairable(Model.wantedPairable(opened, enabled, siblingOpen))
   }
 
+  // After bar is injected, ask an already-open sibling to reassert true in
+  // case this instance wrote false during the bar === null window.
+  function reassertPairable() {
+    applyPairable()
+    var sibling = openSibling()
+    if (sibling && typeof sibling.applyPairable === "function") sibling.applyPairable()
+  }
+
   onAdapterChanged: applyPairable()
+  onBarChanged: reassertPairable()
 
   function updateFocusedAddress() {
     var d = deviceAt(focusSection, selectedIndex)

@@ -56,6 +56,9 @@ assert(/Component\.onDestruction: \{[\s\S]{0,400}owesDiscoveryStop = true[\s\S]{
 // is only safe inside that window.
 assert(/function setPairable\(want\)[\s\S]*?adapter\.pairable === want[\s\S]*?adapter\.pairable = want/.test(panelSource), 'bluetooth only writes pairable when it differs from the adapter')
 assert(/function applyPairable\(opened\)[\s\S]*?Model\.wantedPairable\(opened/.test(panelSource), 'bluetooth derives pairable from panel open, adapter power, and sibling state')
+assert(/if \(!opened && !bar\) return/.test(panelSource), 'bluetooth does not turn pairable off before bar is injected')
+assert(/onBarChanged: reassertPairable\(\)/.test(panelSource), 'bluetooth re-evaluates pairable once bar is injected')
+assert(/function reassertPairable\(\)[\s\S]*?sibling\.applyPairable\(\)/.test(panelSource), 'bluetooth asks an open sibling to reassert pairable after bar is injected')
 
 assert(/onOpenedChanged: \{[\s\S]*?if \(opened\) \{[\s\S]*?applyPairable\(\)/.test(panelSource), 'bluetooth writes pairable on the open path')
 assert(retryTimer && /applyPairable\(\)/.test(retryTimer[0]), 'bluetooth writes pairable on the discovery start path')
