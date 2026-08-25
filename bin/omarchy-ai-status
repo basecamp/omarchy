@@ -1,19 +1,20 @@
 #!/bin/bash
 
-# omarchy:summary=Report whether the local AI model server is running
+# omarchy:summary=Report whether the local AI model server is ready
+# omarchy:args=[--json]
 
 set -euo pipefail
+source "$OMARCHY_PATH/default/omarchy/local-ai-lib.sh"
 
-state="$HOME/.local/state/omarchy/local-ai/recipe.json"
-
-if [[ ! -f $state ]]; then
-  echo "not set up"
-  exit 2
-fi
-
-if [[ $(docker inspect --format '{{.State.Running}}' omarchy-local-ai 2>/dev/null) == "true" ]]; then
-  echo "$(jq -r '.name' "$state") on 127.0.0.1:$(jq -r '.port' "$state")"
+status=$(ai_status_json)
+if [[ ${1:-} == "--json" ]]; then
+  jq . <<<"$status"
 else
-  echo "stopped"
-  exit 1
+  jq -r 'if .state == "not-setup" then "not set up" elif .state == "stopped" then "stopped — \(.recipe_id)" else "\(.state) — \(.model) — \(.endpoint)" end' <<<"$status"
 fi
+
+case $(jq -r '.state' <<<"$status") in
+ready) exit 0 ;;
+not-setup) exit 2 ;;
+*) exit 1 ;;
+esac

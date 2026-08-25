@@ -1,5 +1,5 @@
 {
-  "port": 12434,
+  "port": 8000,
   "sources": [
     "0xSero"
   ],
@@ -7,6 +7,7 @@
     {
       "name": "fast",
       "label": "Qwen3.8-27B",
+      "status": "validated",
       "min_vram_mb": 23000,
       "image": "ghcr.io/0xsero/qwen38-3090-sglang@sha256:ff2aac202b4fe45000f813a2d07acb90d1d120ded2f497893f33daff9cb2f64f",
       "served_name": "Qwen3.8-27B",
@@ -46,6 +47,7 @@
     {
       "name": "smart",
       "label": "Qwen3.6-35B",
+      "status": "candidate",
       "min_vram_mb": 23000,
       "min_gpus": 2,
       "image": "vllm/vllm-openai:v0.27.1",

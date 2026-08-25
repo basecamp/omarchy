@@ -1,0 +1,204 @@
+#!/bin/bash
+
+# omarchy:summary=Resolve, launch, verify, and configure a local AI model
+# omarchy:args=[recipe] [--gpus ids] [--port port] [--dry-run] [--json] [--set-default] [--no-configure]
+# omarchy:examples=omarchy ai setup | omarchy ai setup fast --dry-run | omarchy ai setup fast --gpus 0 --set-default
+# omarchy:hidden=true
+
+set -euo pipefail
+source "$OMARCHY_PATH/default/omarchy/local-ai-lib.sh"
+
+wanted=""
+port=""
+dry_run=false
+json=false
+set_default=false
+configure=true
+while (($# > 0)); do
+  case "$1" in
+  --gpus)
+    export OMARCHY_AI_GPUS="$2"
+    shift 2
+    ;;
+  --port)
+    port="$2"
+    shift 2
+    ;;
+  --dry-run)
+    dry_run=true
+    shift
+    ;;
+  --json)
+    json=true
+    shift
+    ;;
+  --set-default)
+    set_default=true
+    shift
+    ;;
+  --no-configure)
+    configure=false
+    shift
+    ;;
+  *)
+    wanted="$1"
+    shift
+    ;;
+  esac
+done
+
+plan=$(ai_plan_json "$wanted" "$port")
+if [[ $(jq -r '.ok' <<<"$plan") != "true" ]]; then
+  if $json; then
+    jq . <<<"$plan"
+  else
+    jq -r '.error.code + ": " + .error.message' <<<"$plan" >&2
+  fi
+  exit 2
+fi
+
+recipe=$(jq -r '.recipe.name' <<<"$plan")
+model=$(jq -r '.recipe.served_name' <<<"$plan")
+port=$(jq -r '.plan.port' <<<"$plan")
+existing=""
+container_exists=false
+existing_running=false
+state_port=""
+previous_container="${AI_CONTAINER}-previous"
+previous_running=false
+rollback_previous=false
+cleanup_new=false
+
+rollback_launch() {
+  local status=$?
+  trap - EXIT
+  if $cleanup_new; then
+    if $rollback_previous; then
+      docker rm --force "$AI_CONTAINER" >/dev/null 2>&1 || true
+    else
+      docker stop "$AI_CONTAINER" >/dev/null 2>&1 || true
+    fi
+  fi
+  if $rollback_previous; then
+    docker rename "$previous_container" "$AI_CONTAINER" >/dev/null 2>&1 || true
+    if $previous_running; then
+      docker start "$AI_CONTAINER" >/dev/null 2>&1 || true
+    fi
+  fi
+  exit "$status"
+}
+
+if docker inspect "$AI_CONTAINER" >/dev/null 2>&1; then
+  container_exists=true
+  existing=$(docker inspect --format '{{index .Config.Labels "io.omarchy.local-ai.recipe"}}' "$AI_CONTAINER" 2>/dev/null || true)
+  if [[ $(docker inspect --format '{{.State.Running}}' "$AI_CONTAINER" 2>/dev/null) == "true" ]]; then
+    existing_running=true
+  fi
+  if [[ -f $AI_STATE_FILE ]]; then
+    state_port=$(jq -r '.port // empty' "$AI_STATE_FILE")
+  fi
+fi
+
+if $dry_run; then
+  if $json; then
+    jq . <<<"$plan"
+  else
+    printf 'docker plan: '
+    while IFS= read -r arg; do
+      printf '%q ' "$arg"
+    done < <(jq -r '.plan.docker_argv[]' <<<"$plan")
+    printf '\navailable: %s — %s\nport: %s — %s\n' "$(jq -r '.availability.available' <<<"$plan")" "$(jq -r '.availability.reason' <<<"$plan")" "$port" "$(if [[ $(jq -r '.plan.port_available' <<<"$plan") == "true" ]]; then printf 'available'; else printf 'already in use'; fi)"
+  fi
+  exit 0
+fi
+
+if [[ $(jq -r '.recipe.status // "candidate"' <<<"$plan") != "validated" ]]; then
+  if $json; then
+    jq '{ok: false, error: {code: "UNVALIDATED_RECIPE", message: ("Recipe " + .recipe.name + " is not validated")}, hardware: .hardware, recipe: .recipe, plan: .plan}' <<<"$plan"
+  else
+    echo "Recipe $wanted is not validated." >&2
+  fi
+  exit 3
+fi
+if [[ $(jq -r '.hardware.runtime.ready' <<<"$plan") != "true" ]]; then
+  echo "Docker is not ready. Run: omarchy ai doctor" >&2
+  exit 4
+fi
+if [[ $(jq -r '.hardware.runtime.nvidia' <<<"$plan") != "true" ]]; then
+  echo "The NVIDIA Docker runtime is not ready. Run: omarchy ai doctor" >&2
+  exit 4
+fi
+if $container_exists && [[ -z $existing ]]; then
+  echo "$AI_CONTAINER is not labeled as an Omarchy-managed container. Remove or rename it before setup." >&2
+  exit 5
+fi
+if $configure && ! ai_validate_agent_configs; then
+  exit 5
+fi
+if [[ $(jq -r '.plan.port_available' <<<"$plan") != "true" ]] && { ! $container_exists || ! $existing_running || [[ $state_port != "$port" ]]; }; then
+  if $json; then
+    jq '{ok: false, error: {code: "PORT_IN_USE", message: ("Port " + (.plan.port | tostring) + " is already in use")}, hardware: .hardware, recipe: .recipe, plan: .plan}' <<<"$plan"
+  else
+    echo "Port $port is already in use. Choose another with --port." >&2
+  fi
+  exit 3
+fi
+if [[ $(jq -r '.availability.available' <<<"$plan") != "true" ]] && ! $existing_running; then
+  if $json; then
+    jq '{ok: false, error: {code: "INSUFFICIENT_CAPACITY", message: .availability.reason}, hardware: .hardware, recipe: .recipe, plan: .plan}' <<<"$plan"
+  else
+    jq -r '.availability.reason' <<<"$plan" >&2
+  fi
+  exit 3
+fi
+if $container_exists && { [[ $existing != "$recipe" ]] || [[ -n $state_port && $state_port != "$port" ]]; }; then
+  if docker inspect "$previous_container" >/dev/null 2>&1; then
+    echo "Cannot switch while rollback container $previous_container exists. Inspect it, or run omarchy ai remove to clear both managed containers." >&2
+    exit 5
+  fi
+  if $existing_running; then
+    previous_running=true
+    docker stop "$AI_CONTAINER" >/dev/null
+  fi
+  docker rename "$AI_CONTAINER" "$previous_container" >/dev/null
+  rollback_previous=true
+  trap rollback_launch EXIT
+  container_exists=false
+fi
+if $container_exists; then
+  if [[ $(docker inspect --format '{{.State.Running}}' "$AI_CONTAINER") != "true" ]]; then
+    docker start "$AI_CONTAINER" >/dev/null
+  fi
+else
+  mapfile -t docker_args < <(jq -r '.plan.docker_argv[]' <<<"$plan")
+  "${docker_args[@]}" >/dev/null
+  cleanup_new=true
+  trap rollback_launch EXIT
+fi
+
+weights=$(jq -r '.recipe.weights_gb // empty' <<<"$plan")
+if [[ -n $weights ]]; then
+  echo "Waiting for $model to become ready (about $weights GB of weights; follow progress with: omarchy ai logs --follow)..."
+fi
+if ! ai_accept "$port" "$model"; then
+  echo "The container did not pass acceptance and was stopped with its logs preserved. Run: omarchy ai logs" >&2
+  exit 6
+fi
+ai_write_state "$plan"
+if $rollback_previous; then
+  docker rm --force "$previous_container" >/dev/null
+fi
+rollback_previous=false
+cleanup_new=false
+trap - EXIT
+if $configure; then
+  ai_configure_agents "$plan" "$set_default"
+fi
+omarchy-shell -q omarchy.local-ai refresh 2>/dev/null || true
+
+result=$(ai_status_json)
+if $json; then
+  jq . <<<"$result"
+else
+  jq -r '"ready     \(.model)\nendpoint  \(.endpoint)"' <<<"$result"
+fi

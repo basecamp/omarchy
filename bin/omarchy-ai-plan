@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# omarchy:summary=Print the exact local AI launch plan without running it
+# omarchy:args=[recipe] [--gpus ids] [--port port] [--json]
+# omarchy:examples=omarchy ai plan | omarchy ai plan fast --gpus 2,3
+
+omarchy-ai-run --dry-run "$@"

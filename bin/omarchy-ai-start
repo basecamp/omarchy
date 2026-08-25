@@ -1,13 +1,31 @@
 #!/bin/bash
 
-# omarchy:summary=Load the local AI model server
+# omarchy:summary=Start the configured local AI model server
 
 set -euo pipefail
+source "$OMARCHY_PATH/default/omarchy/local-ai-lib.sh"
 
-if [[ ! -f $HOME/.local/state/omarchy/local-ai/recipe.json ]]; then
+if [[ ! -f $AI_STATE_FILE ]]; then
   echo "Local AI is not set up. Run: omarchy ai setup" >&2
   exit 2
+elif ! docker inspect "$AI_CONTAINER" >/dev/null 2>&1; then
+  echo "The configured local AI container is missing. Run: omarchy ai setup" >&2
+  exit 2
+else
+  recipe=$(jq -r '.recipe_id // .name' "$AI_STATE_FILE")
+  container_recipe=$(docker inspect --format '{{index .Config.Labels "io.omarchy.local-ai.recipe"}}' "$AI_CONTAINER" 2>/dev/null || true)
+  if [[ -z $container_recipe || $container_recipe != "$recipe" ]]; then
+    echo "$AI_CONTAINER is not the container recorded by Local AI. Remove or rename it before setup." >&2
+    exit 2
+  fi
+  port=$(jq -r '.port' "$AI_STATE_FILE")
+  model=$(jq -r '.served_name' "$AI_STATE_FILE")
+  docker start "$AI_CONTAINER" >/dev/null
+  if ai_accept "$port" "$model"; then
+    omarchy-shell -q omarchy.local-ai refresh 2>/dev/null || true
+    printf 'Local AI ready on http://127.0.0.1:%s/v1\n' "$port"
+  else
+    echo "The configured model did not pass acceptance. Run: omarchy ai logs" >&2
+    exit 1
+  fi
 fi
-
-docker start omarchy-local-ai >/dev/null
-omarchy-shell -q omarchy.local-ai refresh || true

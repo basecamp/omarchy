@@ -1,13 +1,12 @@
 #!/bin/bash
 
-# omarchy:summary=Unload the local AI model server
+# omarchy:summary=Stop the local AI model server without deleting it
 
 set -euo pipefail
+source "$OMARCHY_PATH/default/omarchy/local-ai-lib.sh"
 
-if [[ ! -f $HOME/.local/state/omarchy/local-ai/recipe.json ]]; then
-  echo "Local AI is not set up. Run: omarchy ai setup" >&2
-  exit 2
+if docker inspect "$AI_CONTAINER" >/dev/null 2>&1; then
+  docker stop "$AI_CONTAINER" >/dev/null
 fi
-
-docker stop omarchy-local-ai >/dev/null
-omarchy-shell -q omarchy.local-ai refresh || true
+omarchy-shell -q omarchy.local-ai refresh 2>/dev/null || true
+echo "Local AI stopped."

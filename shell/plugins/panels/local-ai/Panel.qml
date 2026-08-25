@@ -5,7 +5,7 @@ import qs.Commons
 import qs.Ui
 
 // Local AI: one bar icon plus a popup for the model server. The popup is
-// deliberately small — the serving state and the two modes, fast and smart.
+// deliberately small — the serving state and the validated catalog modes.
 // Everything else (sync, logs, removal) lives in the omarchy-ai-* commands.
 Panel {
   id: root
@@ -19,7 +19,8 @@ Panel {
 
   readonly property var recipes: info.recipes instanceof Array ? info.recipes : []
   readonly property bool installed: !!info.state && info.state !== "not-setup"
-  readonly property bool serving: info.state === "running"
+  readonly property bool serving: info.state === "ready"
+  readonly property bool loaded: serving || info.state === "loading"
   readonly property color dim: bar ? Qt.darker(bar.foreground, 1.55) : Color.foreground
   readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
   readonly property string activeLabel: {
@@ -40,10 +41,10 @@ Panel {
     if (!recipe || !recipe.fits) return
     if (recipe.active) {
       // Selecting the model that is already set up loads it when stopped.
-      if (!serving) toggleServer()
+      if (!loaded) toggleServer()
       return
     }
-    if (bar) bar.run("omarchy-launch-floating-terminal-with-presentation 'omarchy-ai-setup " + recipe.name + "'")
+    if (bar) bar.run("omarchy-launch-floating-terminal-with-presentation " + Util.shellQuote("omarchy-ai-setup " + recipe.name))
     close()
   }
 
@@ -108,9 +109,10 @@ Panel {
     text: "󰚩"
     slotSize: Style.bar.statusSlot
     fontSize: Style.font.caption
-    opacity: root.serving ? 1 : 0.5
+    opacity: root.serving ? 1 : root.loaded ? 0.75 : 0.5
     tooltipText: root.serving ? "Local AI: serving " + String(root.info.active || "") + " — right-click to unload"
-                              : "Local AI: stopped — right-click to load"
+                              : root.loaded ? "Local AI: loading " + String(root.info.active || "") + " — right-click to unload"
+                                            : "Local AI: stopped — right-click to load"
     onPressed: function(b) {
       if (b === Qt.RightButton) root.toggleServer()
       else root.toggle()
@@ -170,9 +172,9 @@ Panel {
             }
 
             Text {
-              text: (root.serving ? "SERVING · " + root.activeLabel : "UNLOADED").toUpperCase()
-              color: root.serving ? root.bar.foreground : root.dim
-              opacity: root.serving ? 0.75 : 1
+              text: (root.serving ? "SERVING · " + root.activeLabel : root.loaded ? "LOADING · " + root.activeLabel : "UNLOADED").toUpperCase()
+              color: root.loaded ? root.bar.foreground : root.dim
+              opacity: root.loaded ? 0.75 : 1
               font.family: root.bar.fontFamily
               font.pixelSize: Style.font.caption
               font.bold: true
@@ -186,21 +188,21 @@ Panel {
             id: heroToggle
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            text: root.serving ? "Unload" : "Load"
+            text: root.loaded ? "Unload" : "Load"
             fontSize: Style.font.bodySmall
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
             horizontalPadding: Style.spacing.controlPaddingX
             verticalPadding: Style.spacing.controlPaddingY
             bordered: true
-            active: root.serving
+            active: root.loaded
             onClicked: root.toggleServer()
           }
         }
 
         PanelSeparator { foreground: root.bar.foreground }
 
-        // ---------- The two modes ----------
+        // ---------- Catalog modes ----------
         Column {
           width: parent.width
           spacing: Style.space(6)

@@ -10,9 +10,15 @@ api="${OMARCHY_AI_GITHUB_API:-https://api.github.com}"
 raw="${OMARCHY_AI_GITHUB_RAW:-https://raw.githubusercontent.com}"
 
 # A recipe source is a GitHub account; a recipe is any public repo of that
-# account carrying an omarchy-recipe.json at its root. Remote recipes override
-# shipped ones that share a name, so a repo can refine what Omarchy ships.
+# account carrying an omarchy-recipe.json at its root. Discovery cannot promote
+# a recipe: every remote manifest enters the cache as a candidate.
 remote="[]"
+tmp=""
+cleanup() {
+  [[ -z $tmp ]] || rm -f "$tmp"
+}
+trap cleanup EXIT
+
 while read -r owner; do
   [[ -n $owner ]] || continue
   echo "Scanning github.com/$owner..."
@@ -22,8 +28,15 @@ while read -r owner; do
   while read -r repo branch; do
     [[ -n $repo ]] || continue
     manifest=$(curl --fail --silent --max-time 10 "$raw/$owner/$repo/$branch/omarchy-recipe.json" 2>/dev/null) || continue
-    if jq -e '.name and .label and .min_vram_mb and .image' <<<"$manifest" >/dev/null 2>&1; then
-      remote=$(jq --argjson recipe "$(jq --arg src "github:$owner/$repo" '. + {source: $src}' <<<"$manifest")" \
+    if jq -e '
+      type == "object"
+      and (.name | type == "string" and test("^[a-z0-9][a-z0-9-]*$"))
+      and (.label | type == "string" and length > 0)
+      and (.image | type == "string" and length > 0)
+      and (.min_vram_mb | type == "number" and . > 0 and floor == .)
+      and ((.min_gpus // 1) | type == "number" and . > 0 and floor == .)
+    ' <<<"$manifest" >/dev/null 2>&1; then
+      remote=$(jq --argjson recipe "$(jq --arg src "github:$owner/$repo" '. + {source: $src, status: "candidate"}' <<<"$manifest")" \
         '. + [$recipe]' <<<"$remote")
       echo "  found: $(jq -r '.name' <<<"$manifest") ($owner/$repo)"
     fi
@@ -31,9 +44,12 @@ while read -r owner; do
 done < <(jq -r '.sources[]?' "$shipped")
 
 mkdir -p "$state_dir"
+tmp=$(mktemp "$state_dir/catalog.XXXXXX")
 jq --argjson remote "$remote" \
-  '.recipes = ((.recipes + $remote) | group_by(.name) | map(last) | sort_by([-.min_vram_mb, -(.min_gpus // 1), .name]))' \
-  "$shipped" >"$state_dir/catalog.json"
+  '.recipes = ((.recipes + $remote) | group_by(.name) | map(. as $group | (($group | map(select((.status // "candidate") == "validated")) | first) // $group[-1])) | sort_by([-.min_vram_mb, -(.min_gpus // 1), .name]))' \
+  "$shipped" >"$tmp"
+mv "$tmp" "$state_dir/catalog.json"
+tmp=""
 
 echo "Catalog now carries $(jq '.recipes | length' "$state_dir/catalog.json") recipes ($(jq 'length' <<<"$remote") from GitHub)."
 omarchy-shell -q omarchy.local-ai refresh || true

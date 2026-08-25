@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# omarchy:summary=Diagnose local AI hardware and runtime readiness
+# omarchy:args=[--json]
+
+set -euo pipefail
+source "$OMARCHY_PATH/default/omarchy/local-ai-lib.sh"
+
+report=$(ai_doctor_json)
+if [[ ${1:-} == "--json" ]]; then
+  jq . <<<"$report"
+else
+  jq -r '.checks[] | (if .ok then "✓" else "✗" end) + " " + (.id + (" " * ([18 - (.id | length), 1] | max))) + .detail' <<<"$report"
+fi
+[[ $(jq -r '.ok' <<<"$report") == "true" ]]
