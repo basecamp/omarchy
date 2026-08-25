@@ -50,16 +50,42 @@ power_rate_raw=$(awk '/energy-rate/ { print $2; exit }' <<<"$battery_info")
 
 # Per-pack readings (live wattage, cycle counts) cover every system battery.
 # Peripheral batteries (mice, keyboards) also report type Battery, but carry
-# scope Device and are not part of the machine's power budget.
+# scope Device and are not part of the machine's power budget. A pack showing
+# no voltage, stored energy, or current flow is electrically dead — a healthy
+# empty cell still reports voltage. energy_full is no sign of life: a dead
+# pack keeps advertising the capacity it once had (#7916).
 batteries=()
+dead_packs=()
 for supply in "$power_supply_path"/*; do
   [[ -r $supply/type && $(<"$supply/type") == "Battery" ]] || continue
   [[ -r $supply/scope && $(<"$supply/scope") == "Device" ]] && continue
   if [[ -r $supply/present ]]; then
     [[ $(<"$supply/present") == "1" ]] || continue
   fi
-  batteries+=("$supply")
+
+  live=false
+  for attr in voltage_now energy_now charge_now current_now power_now; do
+    value=$(cat "$supply/$attr" 2>/dev/null) || continue
+    [[ $value =~ ^-?[0-9]+$ ]] || continue
+    if (( value != 0 )); then
+      live=true
+      break
+    fi
+  done
+
+  if [[ $live == "true" ]]; then
+    batteries+=("$supply")
+  else
+    dead_packs+=("$supply")
+  fi
 done
+
+# No telemetry at all is not proof of death: if every pack reads dead, keep
+# them all rather than reporting nothing.
+if (( ${#batteries[@]} == 0 )); then
+  batteries=("${dead_packs[@]}")
+  dead_packs=()
+fi
 
 # UPower's energy-rate can lag the kernel telemetry by tens of seconds. Sum
 # the instantaneous sysfs readings so the open panel stays live and a
@@ -99,6 +125,47 @@ power_rate=$(awk -v rate="${power_rate_raw:-0}" 'BEGIN {
   print rounded
 }')
 state=$(awk '/state/ { print $2; exit }' <<<"$battery_info")
+
+# UPower's composite DisplayDevice still counts a dead pack's advertised
+# energy-full, sagging the percentage and stretching time-to-full toward a
+# pack that holds nothing (#7916). When a dead pack was excluded, rebuild the
+# headline figures from the live packs' own energy readings; firmware that
+# only exposes charge counters keeps the aggregate values.
+if (( ${#dead_packs[@]} > 0 )); then
+  live_energy=0
+  live_energy_full=0
+  for supply in "${batteries[@]}"; do
+    energy=$(cat "$supply/energy_now" 2>/dev/null)
+    full=$(cat "$supply/energy_full" 2>/dev/null)
+    if [[ ! $energy =~ ^[0-9]+$ || ! $full =~ ^[0-9]+$ ]]; then
+      live_energy_full=0
+      break
+    fi
+    live_energy=$((live_energy + energy))
+    live_energy_full=$((live_energy_full + full))
+  done
+
+  if (( live_energy_full > 0 )); then
+    percentage=$((100 * live_energy / live_energy_full))
+    capacity=$((live_energy_full / 1000000))
+    time_remaining=$(awk -v energy="$live_energy" -v full="$live_energy_full" \
+      -v rate="${power_rate_raw:-0}" -v state="$state" 'BEGIN {
+      if (rate <= 0) exit
+      if (state == "charging") hours = (full - energy) / 1000000 / rate
+      else if (state == "discharging") hours = energy / 1000000 / rate
+      else exit
+      whole = int(hours)
+      minutes = int((hours - whole) * 60)
+      if (whole == 0) {
+        printf "%dm", minutes
+      } else if (minutes > 0) {
+        printf "%dh %dm", whole, minutes
+      } else {
+        printf "%dh", whole
+      }
+    }')
+  fi
+fi
 
 # Charge thresholds are per-device values the aggregate does not carry, so
 # they still come from the first battery's own UPower info.

@@ -96,6 +96,7 @@ printf '12000000\n' >"$tmp_dir/power2/BAT0/power_now"
 printf 'Battery\n' >"$tmp_dir/power2/BAT1/type"
 printf '1\n' >"$tmp_dir/power2/BAT1/present"
 printf '46530000\n' >"$tmp_dir/power2/BAT1/energy_full"
+printf '12600000\n' >"$tmp_dir/power2/BAT1/voltage_now"
 printf '5\n' >"$tmp_dir/power2/BAT1/cycle_count"
 printf '18500000\n' >"$tmp_dir/power2/BAT1/power_now"
 
@@ -130,10 +131,74 @@ pass "an empty power_now read falls back to UPower's aggregate rate"
 
 rm "$tmp_dir/power2/BAT1/power_now"
 : >"$tmp_dir/power2/BAT1/current_now"
-printf '12600000\n' >"$tmp_dir/power2/BAT1/voltage_now"
 
 shell_output=$(OMARCHY_POWER_SUPPLY_PATH="$tmp_dir/power2" PATH="$tmp_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status" --shell)
 
 grep -Fx $'rate\t30.9W' <<<"$shell_output" >/dev/null || fail "an empty current_now read falls back to the aggregate rate instead of 0W" "$shell_output"
 
 pass "an empty current_now read falls back to UPower's aggregate rate"
+
+# UPower's composite DisplayDevice keeps a dead pack's advertised energy-full
+# in the percentage denominator: a 20.65Wh corpse next to a 20.94Wh live pack
+# near full reads as 49% with a ten-hour charge (#7916). The headline figures
+# must follow the packs that actually hold a charge — and a dead pack still
+# advertising its old energy_full must not count as alive.
+mkdir -p "$tmp_dir/power3/BAT0" "$tmp_dir/power3/BAT1" "$tmp_dir/bin3"
+
+printf 'Battery\n' >"$tmp_dir/power3/BAT0/type"
+printf '1\n' >"$tmp_dir/power3/BAT0/present"
+printf '0\n' >"$tmp_dir/power3/BAT0/voltage_now"
+printf '0\n' >"$tmp_dir/power3/BAT0/energy_now"
+printf '20650000\n' >"$tmp_dir/power3/BAT0/energy_full"
+printf '0\n' >"$tmp_dir/power3/BAT0/power_now"
+
+printf 'Battery\n' >"$tmp_dir/power3/BAT1/type"
+printf '1\n' >"$tmp_dir/power3/BAT1/present"
+printf '12300000\n' >"$tmp_dir/power3/BAT1/voltage_now"
+printf '20400000\n' >"$tmp_dir/power3/BAT1/energy_now"
+printf '20940000\n' >"$tmp_dir/power3/BAT1/energy_full"
+printf '2200000\n' >"$tmp_dir/power3/BAT1/power_now"
+
+cat >"$tmp_dir/bin3/upower" <<'STUB'
+#!/bin/bash
+
+if [[ $1 == "-e" ]]; then
+  echo "/org/freedesktop/UPower/devices/battery_BAT0"
+  echo "/org/freedesktop/UPower/devices/battery_BAT1"
+  exit 0
+fi
+
+if [[ $1 == "-i" && $2 == "/org/freedesktop/UPower/devices/DisplayDevice" ]]; then
+  cat <<'INFO'
+  state:                charging
+  energy:               20.4 Wh
+  energy-full:          41.59 Wh
+  energy-rate:          2.2 W
+  time to full:         9.6 hours
+  percentage:           49%
+INFO
+  exit 0
+fi
+
+if [[ $1 == "-i" ]]; then
+  cat <<'INFO'
+  native-path:          BAT0
+  state:                pending-charge
+  percentage:           0%
+INFO
+  exit 0
+fi
+
+exit 1
+STUB
+chmod +x "$tmp_dir/bin3/upower"
+
+shell_output=$(OMARCHY_POWER_SUPPLY_PATH="$tmp_dir/power3" PATH="$tmp_dir/bin3:$PATH" "$ROOT/bin/omarchy-battery-status" --shell)
+
+grep -Fx $'percentage\t97%' <<<"$shell_output" >/dev/null || fail "a dead pack's energy-full stays out of the percentage denominator" "$shell_output"
+grep -Fx $'state\tcharging' <<<"$shell_output" >/dev/null || fail "the live pack's charging state survives a dead sibling" "$shell_output"
+grep -Fx $'rate\t2.2W' <<<"$shell_output" >/dev/null || fail "the rate reflects the live pack's draw" "$shell_output"
+grep -Fx $'size\t20Wh' <<<"$shell_output" >/dev/null || fail "capacity counts only packs that hold a charge" "$shell_output"
+grep -Fx $'time\t14m' <<<"$shell_output" >/dev/null || fail "time to full is not stretched by a dead pack's capacity" "$shell_output"
+
+pass "a dead pack's advertised capacity does not drag down the headline figures"
