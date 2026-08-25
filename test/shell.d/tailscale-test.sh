@@ -295,7 +295,7 @@ assert(/account\.selected !== true && String\(account\.id \|\| ""\) !== ""/.test
 // Two deliberate activations, so a stray click cannot drop a connection.
 assert(/if \(removeArmedId === String\(account\.id \|\| ""\)\) \{\s*\n\s*confirmRemoval\(account\)/.test(panelSource), 'tailscale takes a second activation to confirm a removal')
 assert(/armed \? "Remove " \+ label \+ "\?"/.test(panelSource) || /if \(armed\) return "Remove " \+ label \+ "\?"/.test(panelSource), 'tailscale asks before removing')
-assert(/onCloseRequested: \{\s*\n\s*if \(root\.removeArmedId !== ""\) root\.disarmRemoval\(\)/.test(panelSource), 'tailscale backs out of the question before closing the panel')
+assert(/onCloseRequested: \{\s*\n\s*if \(root\.removeArmedId !== "" \|\| root\.addArmed\) root\.disarmRemoval\(\)/.test(panelSource), 'tailscale backs out of the question before closing the panel')
 assert(/disarmRemoval\(\)\s*\n\s*ensureCursor\(\)/.test(panelSource), 'tailscale abandons the question when the cursor moves off the row')
 // The toggle's login hand-off keys off _loginInProgress, which a status poll
 // clears as soon as tailscaled is running — the state adding an account starts
@@ -395,6 +395,22 @@ assert(/interval: 10000/.test(serviceSource), 'tailscale waits long enough to be
 // The ordinary poll is half a minute away, so an empty list stayed empty for
 // the rest of the interval whatever the tailnet actually held.
 assert(/id: peersRamp/.test(serviceSource), 'tailscale asks again quickly while it has nothing to show')
+// The quick ramp is on top of the ordinary poll, not instead of it: without
+// the periodic timer the panel never refreshes once the list is populated, and
+// without the startup one it does not look until something opens the panel.
+assert(/id: refreshTimer\s*\n\s*interval: root\.refreshIntervalSec \* 1000\s*\n\s*repeat: true\s*\n\s*running: true\s*\n\s*triggeredOnStart: true/.test(serviceSource), 'tailscale keeps polling on its own interval')
+assert(/id: startupRamp/.test(serviceSource), 'tailscale still looks for the service at startup')
+
+// A step that failed ends the sequence, or the next poll picks it straight up.
+assert(/function reportCommandError\(text, fallback\) \{[\s\S]{0,260}?stopConnecting\(\)/.test(serviceSource), 'tailscale stops the sequence on a reported failure')
+// Removal was the one account command reporting for itself, so a refusal there
+// showed the CLI's sudo advice rather than the authorization the panel offers.
+assert(/root\.reportCommandError\(stderr \|\| stdout, "Could not remove the connection"\)/.test(serviceSource), 'tailscale reports a failed removal like every other refusal')
+// A login owns the daemon's pending registration until it finishes.
+assert(/if \(switchProcess\.running \|\| removeProcess\.running \|\| loginProcess\.running \|\| operatorProcess\.running\) return/.test(serviceSource), 'tailscale will not start a login beside another profile change')
+assert(/if \(!account\) return\s*\n(\s*\/\/[^\n]*\n)*\s*if \(tailscale\.addingAccount\) return/.test(panelSource), 'tailscale blocks every row while a login is running, not just the add row')
+// Either question left open would otherwise survive the panel closing.
+assert(/if \(root\.removeArmedId !== "" \|\| root\.addArmed\) root\.disarmRemoval\(\)/.test(panelSource), 'tailscale backs out of whichever confirmation is open')
 assert(/running: root\.running && root\.peers\.length === 0 && ticks < 8/.test(serviceSource), 'tailscale only hurries while the list is empty, and not forever')
 assert(/if \(peers\.length > 0\) peersRamp\.ticks = 0/.test(serviceSource), 'tailscale stops hurrying once the list arrives')
 

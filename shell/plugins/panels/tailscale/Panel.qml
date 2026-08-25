@@ -219,8 +219,10 @@ Panel {
 
   function chooseConnection(account) {
     if (!account) return
+    // A login owns the daemon's pending registration until it finishes, so no
+    // row starts anything beside it. Cancelling goes straight to the service.
+    if (tailscale.addingAccount) return
     if (account.AddAccount === true) {
-      if (tailscale.addingAccount) return
       removeArmedId = ""
       // Adding signs this machine out of the tailnet it is on until the
       // browser half finishes, so it asks before it does that.
@@ -496,7 +498,7 @@ Panel {
       }
       onActivateRequested: if (root.cursorActive) root.activateCursor()
       onCloseRequested: {
-        if (root.removeArmedId !== "") root.disarmRemoval()
+        if (root.removeArmedId !== "" || root.addArmed) root.disarmRemoval()
         else root.close()
       }
       onTabRequested: function(direction) { root.switchPanel(direction) }

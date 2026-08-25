@@ -216,6 +216,10 @@ Item {
   // A command refused for want of the operator has a fix the panel can offer,
   // so raise that rather than repeating the CLI's advice to go and use sudo.
   function reportCommandError(text, fallback) {
+    // A step that failed ends the sequence: it is the stop-on-first-failure
+    // the sequence promises, and without it the next status poll picks the
+    // same step straight back up.
+    stopConnecting()
     var message = elideStatus(text)
     if (message === "") message = String(fallback || "")
     if (Model.isAccessDenied(message)) {
@@ -432,6 +436,10 @@ Item {
 
   function addAccount() {
     if (!installed || addAccountProcess.running) return
+    // Every one of these is already moving daemon profile state, and the
+    // recovery switch is skipped while one is running, so a login started
+    // beside them can strand the machine on the half-made profile.
+    if (switchProcess.running || removeProcess.running || loginProcess.running || operatorProcess.running) return
     _addAccountOutput = ""
     _addAccountError = ""
     _addAccountUrlOpened = false
@@ -555,6 +563,31 @@ Item {
     if (isError) _loginError += text + "\n"
     else _loginOutput += text + "\n"
     if (_loginInProgress && !_loginUrlOpened) openAuthUrlFrom(text, false)
+  }
+
+  Timer {
+    id: refreshTimer
+    interval: root.refreshIntervalSec * 1000
+    repeat: true
+    running: true
+    triggeredOnStart: true
+    onTriggered: root.refresh()
+  }
+
+  Timer {
+    // After a fresh boot the startup poll usually lands before tailscaled has
+    // connected, which left the icon stale until the next periodic refresh.
+    // Poll quickly until the service shows up, or give up after ~30 seconds.
+    id: startupRamp
+    property int ticks: 0
+    interval: 2000
+    repeat: true
+    running: true
+    onTriggered: {
+      ticks += 1
+      if (root.running || ticks >= 15) startupRamp.running = false
+      else root.refresh()
+    }
   }
 
   Timer {
@@ -804,9 +837,7 @@ Item {
       var stdout = String(removeStdout.text || root._removeOutput || "")
       var stderr = String(removeStderr.text || root._removeError || "")
       if (exitCode !== 0) {
-        root.lastError = elideStatus(stderr || stdout || "Could not remove the connection")
-        root.actionStatus = root.lastError
-        actionStatusTimer.restart()
+        root.reportCommandError(stderr || stdout, "Could not remove the connection")
       } else {
         root.lastError = ""
         root.actionStatus = ""
