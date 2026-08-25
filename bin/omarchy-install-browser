@@ -7,8 +7,7 @@
 set -e
 
 setup_policy_directory() {
-  sudo mkdir -p "$1"
-  sudo chmod a+rw "$1"
+  sudo install -d -m 0755 -o root -g root "$1"
 }
 
 announce_browser_installed() {
@@ -27,7 +26,7 @@ setup_firefox_preferences() {
   local distribution_dir="$1"
 
   setup_policy_directory "$distribution_dir"
-  sudo cp -f "$OMARCHY_PATH/default/firefox/policies.json" "$distribution_dir/policies.json"
+  sudo install -m 0644 -o root -g root -T "$OMARCHY_PATH/default/firefox/policies.json" "$distribution_dir/policies.json"
 }
 
 setup_firefox_wayland() {

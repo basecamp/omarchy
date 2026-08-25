@@ -7,8 +7,7 @@ ln -snf /usr/share/icons/Adwaita/symbolic/actions/go-next-symbolic.svg \
 gtk-update-icon-cache /usr/share/icons/Yaru &>/dev/null || true
 
 # Chromium policy directory for theme
-mkdir -p /etc/chromium/policies/managed
-chmod a+rw /etc/chromium/policies/managed
+install -d -m 0755 -o root -g root /etc/chromium/policies/managed
 
 # Default Chromium to follow system appearance ("device") instead of dark
 mkdir -p /usr/lib/chromium

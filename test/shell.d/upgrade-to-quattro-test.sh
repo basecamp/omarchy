@@ -139,6 +139,12 @@ grep -F '/etc/systemd/system.conf.d/99-omarchy-nofile.conf' "$upgrade_to_quattro
 grep -F '/etc/systemd/user.conf.d/99-omarchy-nofile.conf' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade removes stale nofile drop-ins"
 
+grep -F 'as_root install -d -m 0755 -o root -g root /etc/chromium/policies/managed' "$upgrade_to_quattro" >/dev/null ||
+  fail "Omarchy 4 upgrade secures the Chromium policy directory"
+! grep -F 'install -d -m 0777 /etc/chromium/policies/managed' "$upgrade_to_quattro" >/dev/null ||
+  fail "Omarchy 4 upgrade does not leave Chromium policy world-writable"
+pass "Omarchy 4 upgrade secures the Chromium policy directory"
+
 cmdline_line=$(grep -n '^preserve_kernel_cmdline_root$' "$upgrade_to_quattro" | cut -d: -f1)
 packages_line=$(grep -n '^install_omarchy_quattro_packages$' "$upgrade_to_quattro" | cut -d: -f1)
 [[ -n $cmdline_line && -n $packages_line ]] || fail "kernel cmdline preservation and package install calls exist"

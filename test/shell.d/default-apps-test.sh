@@ -205,10 +205,8 @@ OMARCHY_TEST_REAL_BROWSER_INSTALL=true omarchy-default-browser --install chromiu
 [[ $(omarchy-default-browser) == "chromium" ]] || fail "Chromium becomes the default after its full installer succeeds"
 cmp -s "$ROOT/config/chromium-flags.conf" "$test_home/.config/chromium-flags.conf" ||
   fail "Chromium browser installer copies the default flags"
-grep -Fxq 'sudo:mkdir -p /etc/chromium/policies/managed' "$setup_log" ||
-  fail "Chromium browser installer creates its policy directory"
-grep -Fxq 'sudo:chmod a+rw /etc/chromium/policies/managed' "$setup_log" ||
-  fail "Chromium browser installer makes its policy directory writable"
+grep -Fxq 'sudo:install -d -m 0755 -o root -g root /etc/chromium/policies/managed' "$setup_log" ||
+  fail "Chromium browser installer secures its policy directory"
 grep -Fxq 'omarchy-install-chromium-copy-url:' "$setup_log" ||
   fail "Chromium browser installer registers the Copy URL host"
 grep -Fxq 'omarchy-install-chromium-ytdlp:' "$setup_log" ||
@@ -216,6 +214,15 @@ grep -Fxq 'omarchy-install-chromium-ytdlp:' "$setup_log" ||
 grep -Fxq 'omarchy-theme-set-browser:' "$setup_log" ||
   fail "Chromium browser installer applies the current theme"
 pass "Chromium browser installer restores the complete Omarchy setup"
+
+: >"$setup_log"
+rm -f "$installed_dir/firefox"
+OMARCHY_TEST_REAL_BROWSER_INSTALL=true omarchy-default-browser --install firefox >/dev/null
+grep -Fxq 'sudo:install -d -m 0755 -o root -g root /usr/lib/firefox/distribution' "$setup_log" ||
+  fail "Firefox browser installer secures its policy directory"
+grep -Fxq "sudo:install -m 0644 -o root -g root -T $ROOT/default/firefox/policies.json /usr/lib/firefox/distribution/policies.json" "$setup_log" ||
+  fail "Firefox browser installer replaces its policy without following a planted symlink"
+pass "Firefox browser installer secures its policy setup"
 
 omarchy-default-browser zen
 rm -f "$installed_dir/chromium"
