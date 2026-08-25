@@ -27,8 +27,30 @@ layout=$(<"$state")
 if [[ $1 == "activeworkspace" && -n $HYPRCTL_BROKEN ]]; then
   printf '{}\n'
 elif [[ $1 == "activeworkspace" ]]; then
-  printf '{"id":%s,"name":"%s","tiledLayout":"%s"}\n' \
+  # A second query can land after the user has switched away. Count calls so
+  # the readback test can prove we do not re-query the active workspace.
+  count_file="${state}.aw_count"
+  count=0
+  [[ -f $count_file ]] && count=$(<"$count_file")
+  count=$((count + 1))
+  printf '%s\n' "$count" >"$count_file"
+
+  if [[ -n $HYPRCTL_SWITCHED ]] && (( count > 1 )); then
+    printf '{"id":%s,"name":"%s","tiledLayout":"%s"}\n' \
+      "${HYPRCTL_OTHER_ID:-1}" "${HYPRCTL_OTHER_NAME:-1}" "${HYPRCTL_OTHER_LAYOUT:-dwindle}"
+  else
+    printf '{"id":%s,"name":"%s","tiledLayout":"%s"}\n' \
+      "${HYPRCTL_ID:-3}" "${HYPRCTL_NAME:-3}" "$layout"
+  fi
+elif [[ $1 == "workspaces" ]]; then
+  printf '%s\n' "$*" >>"$HYPRCTL_LOG"
+  printf '[{"id":%s,"name":"%s","tiledLayout":"%s"}' \
     "${HYPRCTL_ID:-3}" "${HYPRCTL_NAME:-3}" "$layout"
+  if [[ -n $HYPRCTL_SWITCHED ]]; then
+    printf ',{"id":%s,"name":"%s","tiledLayout":"%s"}' \
+      "${HYPRCTL_OTHER_ID:-1}" "${HYPRCTL_OTHER_NAME:-1}" "${HYPRCTL_OTHER_LAYOUT:-dwindle}"
+  fi
+  printf ']\n'
 else
   printf '%s\n' "$*" >>"$HYPRCTL_LOG"
   if [[ $1 == "eval" && -n $HYPRCTL_ACCEPTS && $* == *"workspace = \"$HYPRCTL_ACCEPTS\""* ]]; then
@@ -94,9 +116,44 @@ grep -q "Workspace layout set to" "$notify_file" &&
   fail "workspace layout toggle does not claim success for a rule that matched nothing"
 pass "workspace layout toggle reports a rule that applied to nothing"
 
+# ── leftover id-keyed file is removed on upgrade ─────────────────────────────
+# require_all.files globs every *.lua, so a leftover <id>.lua from the old
+# scheme would load alongside the new name-based rule.
+: >"$log_file"
+: >"$notify_file"
+stale_id_file="$home_dir/.local/state/omarchy/workspace-layouts/-1340.lua"
+mkdir -p "$(dirname "$stale_id_file")"
+printf 'hl.workspace_rule({ workspace = "-1340", layout = "dwindle" })\n' >"$stale_id_file"
+run_toggle HYPRCTL_STATE="$tmpdir/s4" HYPRCTL_ID=-1340 HYPRCTL_NAME="DP-1 desk:1" \
+  HYPRCTL_ACCEPTS="name:DP-1 desk:1" ||
+  fail "workspace layout toggle succeeds when replacing an id-keyed state file"
+[[ -f $stale_id_file ]] &&
+  fail "workspace layout toggle removes the leftover id-keyed file"
+[[ -f $named_file ]] ||
+  fail "workspace layout toggle still writes the name-based state file"
+pass "workspace layout toggle removes the leftover id-keyed state file"
+
+# ── readback uses the named workspace, not a later active workspace ──────────
+# If the user switches away between apply and readback, re-querying
+# activeworkspace would read a different workspace and fail a change that
+# worked.
+: >"$log_file"
+: >"$notify_file"
+run_toggle HYPRCTL_STATE="$tmpdir/s5" HYPRCTL_ID=-1340 HYPRCTL_NAME="DP-1 desk:1" \
+  HYPRCTL_ACCEPTS="name:DP-1 desk:1" HYPRCTL_SWITCHED=1 \
+  HYPRCTL_OTHER_ID=7 HYPRCTL_OTHER_NAME=7 HYPRCTL_OTHER_LAYOUT=dwindle ||
+  fail "workspace layout toggle still succeeds if the active workspace changes after apply"
+grep -q "Could not set workspace layout" "$notify_file" &&
+  fail "workspace layout toggle does not fail readback against a different workspace"
+grep -q "Workspace layout set to scrolling" "$notify_file" ||
+  fail "workspace layout toggle confirms the layout on the named workspace"
+grep -F 'workspaces -j' "$log_file" >/dev/null ||
+  fail "workspace layout toggle reads the layout back from the workspace list"
+pass "workspace layout toggle reads back the named workspace after a switch"
+
 # ── malformed hyprctl output ─────────────────────────────────────────────────
 : >"$log_file"
-if run_toggle HYPRCTL_STATE="$tmpdir/s4" HYPRCTL_BROKEN=1 2>/dev/null; then
+if run_toggle HYPRCTL_STATE="$tmpdir/s6" HYPRCTL_BROKEN=1 2>/dev/null; then
   fail "workspace layout toggle exits nonzero without a workspace id"
 fi
 [[ -f "$home_dir/.local/state/omarchy/workspace-layouts/null.lua" ]] &&
@@ -122,5 +179,6 @@ end
 
 assert(seen["3"] == "scrolling", "numeric workspace rule did not load")
 assert(seen["name:DP-1 desk:1"] == "scrolling", "named workspace rule did not load")
+assert(seen["-1340"] == nil, "stale id-keyed rule was not left behind")
 LUA
 pass "saved workspace layouts load into Hyprland configuration"

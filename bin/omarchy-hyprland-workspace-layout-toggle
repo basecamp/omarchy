@@ -41,12 +41,21 @@ LAYOUT_FILE="$LAYOUTS_DIR/$STATE_KEY.lua"
 mkdir -p "$LAYOUTS_DIR"
 printf 'hl.workspace_rule({ workspace = "%s", layout = "%s" })\n' "$ESCAPED_SELECTOR" "$NEW_LAYOUT" >"$LAYOUT_FILE"
 
+# Named workspaces used to persist as <id>.lua. require_all.files globs every
+# *.lua at -maxdepth 1, so leaving that file behind loads both the new name
+# rule and a leftover keyed on an id Hyprland will reassign next session.
+if (( ACTIVE_WORKSPACE_ID < 0 )); then
+  rm -f "$LAYOUTS_DIR/${ACTIVE_WORKSPACE_ID}.lua"
+fi
+
 hyprctl eval "hl.workspace_rule({ workspace = \"$ESCAPED_SELECTOR\", layout = \"$NEW_LAYOUT\" })" >/dev/null 2>&1 ||
   hyprctl keyword workspace "$WORKSPACE_SELECTOR, layout:$NEW_LAYOUT"
 
 # `hyprctl eval` reports ok for a rule that matched no workspace, so the only
-# honest confirmation is reading the layout back.
-APPLIED_LAYOUT=$(hyprctl activeworkspace -j | jq -r '.tiledLayout // empty')
+# honest confirmation is reading the layout back — from the workspace we
+# applied to, not whatever is active now. The user can switch away between
+# apply and this query.
+APPLIED_LAYOUT=$(hyprctl workspaces -j | jq -r --arg n "$ACTIVE_WORKSPACE_NAME" '.[] | select(.name==$n) | .tiledLayout // empty')
 if [[ $APPLIED_LAYOUT != "$NEW_LAYOUT" ]]; then
   omarchy-notification-send -u critical -g 󱂬 "Could not set workspace layout to $NEW_LAYOUT"
   exit 1
