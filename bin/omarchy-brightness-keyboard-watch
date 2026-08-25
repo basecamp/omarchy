@@ -196,13 +196,20 @@ def apply(cmd: Apply) -> None:
         show_osd(cmd)
 
 
+def follow(last: int | None, *, osd: bool) -> int | None:
+    while True:
+        now = read_level()
+        if now is None or now == last:
+            return last
+        last = now
+        apply(Apply(level=last, rgb=read_rgb(), osd=osd))
+
+
 def watch() -> int:
     if not os.path.isfile(HW):
         return 1
 
-    last = read_level()
-    if last is not None:
-        apply(Apply(level=last, rgb=read_rgb(), osd=False))
+    last = follow(None, osd=False)
 
     poller = select.poll()
     fd = open_hw()
@@ -214,15 +221,11 @@ def watch() -> int:
             continue
         os.lseek(fd, 0, os.SEEK_SET)
         os.read(fd, 4096)
-        now = read_level()
-        if now is not None and now != last:
-            last = now
-            apply(Apply(level=now, rgb=read_rgb(), osd=True))
-        # Re-open so a stuck POLLPRI cannot spin.
         poller.unregister(fd)
         os.close(fd)
         fd = open_hw()
         poller.register(fd, select.POLLPRI | select.POLLERR | select.POLLHUP)
+        last = follow(last, osd=True)
 
 
 def main(argv: list[str]) -> int:
