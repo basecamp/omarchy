@@ -1,0 +1,25 @@
+// Setting the timezone from the Omarchy menu must not stop for a password: the
+// menu is launched from the shell and has no terminal to type one into. What
+// used to buy that was a NOPASSWD sudoers rule on /usr/bin/timedatectl, and
+// keeping it safe took three rounds of narrowing -- first to the set-timezone
+// subcommand, then to a single argument, because sudoers matches arguments as
+// one concatenated string and a trailing wildcard let options like -H (which
+// makes timedatectl spawn ssh) ride along behind the timezone.
+//
+// Naming the timedated action leaves nothing to narrow. The action is the whole
+// of what is granted, the timezone travels as a typed D-Bus string, and
+// systemd-timedated validates it against tzdata itself.
+//
+// This is also tighter than the sudoers rule in a way sudoers cannot express:
+// sudo has no notion of a session, so that rule covered SSH logins and
+// background jobs too. This one reaches only a local, active seat session.
+// Anything else -- remote, inactive, not in wheel -- falls through to polkit's
+// default for the action, which is to authenticate.
+polkit.addRule(function (action, subject) {
+  if (action.id == "org.freedesktop.timedate1.set-timezone" &&
+      subject.isInGroup("wheel") &&
+      subject.local &&
+      subject.active) {
+    return polkit.Result.YES;
+  }
+});

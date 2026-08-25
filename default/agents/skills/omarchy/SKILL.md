@@ -83,15 +83,38 @@ If the request is to develop Omarchy itself, this skill is out of scope. Follow 
 
 ## Privilege Escalation
 
-For an interactive script or command run in a visible terminal, use `sudo` for
-privileged work. Omarchy may grant passwordless `sudo` access to particular
-commands, and the terminal is the appropriate place to request a password
-when one is needed.
+Before escalating anything, check whether a privileged service already does the
+job on the system bus. systemd ships bounded, bus-activated daemons for much of
+what Omarchy changes — `timedate1` for the timezone and NTP, `hostname1` for the
+hostname, `locale1` for the locale, `logind` for power and sessions — and
+NetworkManager, UPower and others cover more. Calling one beats escalating a
+binary twice over. The value crosses as a typed D-Bus argument the service
+validates itself, so there is no argument string for a second option to ride
+along in; and the service is confined by its own unit, where a `sudo`'d command
+is a full root process. `systemd-timedated` runs with
+`CapabilityBoundingSet=CAP_SYS_TIME` and `IPAddressDeny=any`, so it cannot open a
+socket even if it is broken into. `bin/omarchy-menu-timezone` is the worked
+example.
+
+Where the caller has no terminal, grant the action with a polkit rule rather than
+a sudoers entry — see `default/polkit-1/rules.d/49-omarchy-timezone.rules`. A
+polkit rule names one action and can require a local, active session. A sudoers
+entry names a binary, matches its arguments as a single concatenated string (so
+wildcards run past the argument they were meant for), and applies to SSH logins
+and background jobs alike.
+
+When no service covers the work, use `sudo` for an interactive script or command
+run in a visible terminal. Omarchy may grant passwordless `sudo` access to
+particular commands, and the terminal is the appropriate place to request a
+password when one is needed.
 
 Use `pkexec` only when the caller cannot interact with a terminal or cannot
 enter a password there, such as a command launched by an agent or a graphical
 background process. Do not replace `sudo` with `pkexec` merely because a
 command changes system state.
+
+Never ship a SUID binary. A privileged program of our own belongs behind a
+bus-activated service confined by its unit, not behind a setuid bit.
 
 ## System Architecture
 

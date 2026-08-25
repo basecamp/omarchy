@@ -65,9 +65,13 @@ guidance does not drift from the router.
 
 # Privileged Commands
 
-- Follow the "Privilege Escalation" section of `default/agents/skills/omarchy/SKILL.md`. It draws the
-  `sudo`/`pkexec` line by whether the caller has a terminal to enter a password in, and the repo's
-  own scripts follow it.
+- Follow the "Privilege Escalation" section of `default/agents/skills/omarchy/SKILL.md`. It asks first
+  whether a privileged service on the system bus already does the job, prefers a polkit rule over a
+  sudoers entry for granting one, and otherwise draws the `sudo`/`pkexec` line by whether the caller
+  has a terminal to enter a password in. The repo's own scripts follow it.
+- Prefer a typed call to an existing bounded daemon over escalating a general-purpose binary. An
+  escalated binary takes its input as an argument string, which is a thing that has to be escaped and
+  kept narrow; a D-Bus method takes a typed value the service validates itself, which is not.
 
 # Git
 
