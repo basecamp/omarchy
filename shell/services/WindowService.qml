@@ -412,9 +412,9 @@ QtObject {
       var remembered = key && root.placements[key] && root.placements[key].width ? root.placements[key] : null
       if (remembered && geom && geom.width && (WindowModel.isSnapped(remembered, geom, 8, 32) || WindowModel.isSnapped(remembered, geom, 8, 0) || WindowModel.coversWorkArea(remembered, geom)))
         remembered = null
-      // Chromium browsers clip their restored-frame close button unless the
-      // window edge is at the monitor edge, so open them maximized (their frame
-      // renders correctly there). WindowModel.opensMaximized is the browser set.
+      // A floating Chromium insets its frame 12px left/top and is clipped by the
+      // same box on the right, losing the right edge; only a maximized window is
+      // free of that inset. See WindowModel.opensMaximized for the measurements.
       // Always maximize on map, ignoring a remembered mid-screen float that
       // would reintroduce the clip.
       if (csd && WindowModel.opensMaximized({ class: c.class, appId: c.initialClass || c.class, initialClass: c.initialClass })) {

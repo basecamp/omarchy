@@ -69,11 +69,15 @@ function hyprbarsSnapInset(win) {
   return usesWaylandCsd(win) ? 0 : 32
 }
 
-// Chromium-family browsers clip their own restored-frame close button on
-// Wayland unless the window's right edge is at the monitor edge (they only
-// square the top-right corner when snapped/maximized; floating in the middle
-// rounds it and draws the close under it). GTK CSD clients (Nautilus) don't.
-// Open these maximized so the caption buttons render correctly.
+// A floating Chromium insets its frame 12px from the left and top of the box
+// the compositor gives it (its invisible resize border) and is then clipped by
+// that same box on the right and bottom — measured on metal: a 1000px box at
+// x=460 paints frame from x=472 and is cut at x=1459, losing 12px of the right
+// edge including the top-right corner. That inset is present in every
+// configuration (CSD or hyprbars SSD, with or without WaylandWindowDecorations,
+// custom_chrome_frame either way) and disappears only when the window is
+// maximized. GTK CSD clients such as Nautilus do not do this. Open browsers
+// maximized so their frame is not cut.
 var _opensMaximizedRegex = /(google-)?chrom(e|ium)|brave-browser|microsoft-edge|vivaldi-stable|helium/i
 
 function opensMaximized(win) {
