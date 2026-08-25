@@ -40,16 +40,33 @@ cat >"$session" <<EOF
 {"timestamp":"$timestamp","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":180,"cached_input_tokens":110,"output_tokens":30,"reasoning_output_tokens":8,"total_tokens":210},"last_token_usage":{"input_tokens":80,"cached_input_tokens":50,"output_tokens":10,"reasoning_output_tokens":3,"total_tokens":90}}}}
 EOF
 
+# A session with no turn_context at all: the model only appears in a
+# thread_settings_applied event, and the first token count precedes it. Both
+# the pre-pass model seeding and the in-loop lookup must attribute these
+# turns to the real model instead of a generic "codex" bucket.
+thread_session="$TEST_HOME/.codex/sessions/$(date +%Y/%m/%d)/rollout-thread.jsonl"
+cat >"$thread_session" <<EOF
+{"timestamp":"$timestamp","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":40,"cached_input_tokens":20,"output_tokens":10,"reasoning_output_tokens":2,"total_tokens":50},"last_token_usage":{"input_tokens":40,"cached_input_tokens":20,"output_tokens":10,"reasoning_output_tokens":2,"total_tokens":50}}}}
+{"timestamp":"$timestamp","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"model":"gpt-thread","model_provider_id":"openai"}}}
+{"timestamp":"$timestamp","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":90,"cached_input_tokens":45,"output_tokens":22,"reasoning_output_tokens":4,"total_tokens":112},"last_token_usage":{"input_tokens":50,"cached_input_tokens":25,"output_tokens":12,"reasoning_output_tokens":2,"total_tokens":62}}}}
+EOF
+
 result=$(HOME="$TEST_HOME" CODEX_HOME="$TEST_HOME/.codex" XDG_DATA_HOME="$TEST_HOME/.local/share" PATH="$TEST_HOME/bin:$PATH" \
   "$ROOT/bin/omarchy-agent-usage-codex")
 
-[[ $(jq -r '.todayTotalTokens' <<<"$result") == "210" ]] ||
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "322" ]] ||
   fail "Codex collector counts each turn once" "$result"
 pass "Codex collector counts each turn once"
 
 [[ $(jq -c '.modelUsage["gpt-test"]' <<<"$result") == '{"inputTokens":70,"outputTokens":30,"cacheReadInputTokens":110,"cacheCreationInputTokens":0}' ]] ||
   fail "Codex collector does not double-count cache or reasoning tokens" "$result"
 pass "Codex collector does not double-count cache or reasoning tokens"
+
+[[ $(jq -c '.modelUsage["gpt-thread"]' <<<"$result") == '{"inputTokens":45,"outputTokens":22,"cacheReadInputTokens":45,"cacheCreationInputTokens":0}' ]] ||
+  fail "Codex collector attributes early token counts to the thread-settings model" "$result"
+[[ $(jq -c '.modelUsage | has("codex")' <<<"$result") == "false" ]] ||
+  fail "Codex collector leaves no generic codex bucket" "$result"
+pass "Codex collector attributes thread-settings sessions to their model"
 
 [[ $(jq -c '.id + "/" + (.limits|tostring)' <<<"$result") == '"codex/[]"' ]] ||
   fail "Codex collector identifies itself with an empty limits list" "$result"
@@ -63,6 +80,7 @@ mkdir -p "$PI_HOME/bin" "$PI_HOME/.pi/agent/sessions/project" "$PI_HOME/.omp/age
 cp "$TEST_HOME/bin/codex" "$PI_HOME/bin/codex"
 cat >"$PI_HOME/.pi/agent/sessions/project/pi.jsonl" <<EOF
 {"type":"message","id":"pi-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","api":"openai-codex-responses","model":"gpt-pi","usage":{"input":10,"output":4,"cacheRead":3,"cacheWrite":2,"totalTokens":19}}}
+{"type":"message","id":"pi-router-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"third-party-router","api":"openai-codex-responses","model":"gpt-5.6-sol","usage":{"input":500,"output":200,"totalTokens":700}}}
 EOF
 cat >"$PI_HOME/.omp/agent/sessions/project/omp.jsonl" <<EOF
 { "type": "message", "id": "omp-1", "timestamp": "$timestamp", "message": { "role": "assistant", "provider": "openai-codex", "model": "gpt-omp", "usage": { "input": 20, "output": 5, "cacheRead": 4, "cacheWrite": 1, "totalTokens": 30 } } }
@@ -77,6 +95,17 @@ result=$(HOME="$PI_HOME" CODEX_HOME="$PI_HOME/.codex" XDG_DATA_HOME="$PI_HOME/.l
 [[ $(jq -c '.modelUsage' <<<"$result") == '{"gpt-pi":{"inputTokens":10,"outputTokens":4,"cacheReadInputTokens":3,"cacheCreationInputTokens":2},"gpt-omp":{"inputTokens":20,"outputTokens":5,"cacheReadInputTokens":4,"cacheCreationInputTokens":1}}' ]] ||
   fail "Codex collector filters pi and omp sessions to Codex providers" "$result"
 pass "Codex collector counts pi and omp subscription usage"
+
+# A third-party router can serve an openai-codex-style api while serving
+# models that are not this subscription. Attribution must stay strict to the
+# provider so those pods never land in the Codex record.
+result_router=$(HOME="$PI_HOME" CODEX_HOME="$PI_HOME/.codex" XDG_DATA_HOME="$PI_HOME/.local/share" \
+  PATH="$PI_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
+[[ $(jq -r '.todayTotalTokens' <<<"$result_router") == "49" ]] ||
+  fail "Codex collector leaves no bucket for a third-party provider" "$result_router"
+[[ $(jq -r '((.modelUsage["gpt-5.6-sol"] // null) == null)' <<<"$result_router") == "true" ]] ||
+  fail "Codex collector ignores api-prefix lookalikes" "$result_router"
+pass "Codex collector ignores api-prefix lookalikes from other providers"
 
 # A subscription burned entirely through opencode has no native session files;
 # usage must come from opencode's message database, filtered to OpenAI.
