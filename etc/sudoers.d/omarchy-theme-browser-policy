@@ -1,0 +1,3 @@
+# Theme changes can run from the graphical menu without a terminal. The helper
+# accepts exactly one hex color and writes only Omarchy's fixed browser policy.
+%wheel ALL=(root) NOPASSWD: /usr/bin/omarchy-theme-browser-policy *

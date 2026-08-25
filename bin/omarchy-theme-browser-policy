@@ -1,0 +1,98 @@
+#!/bin/bash
+
+# omarchy:summary=Write the Omarchy browser theme policy
+# omarchy:args=<hex-color>
+# omarchy:hidden=true
+
+set -euo pipefail
+
+PACKAGED_PATH=/usr/bin/omarchy-theme-browser-policy
+
+POLICY_DIRS=(
+  /etc/chromium/policies/managed
+  /etc/opt/chrome/policies/managed
+  /etc/opt/edge/policies/managed
+  /etc/brave/policies/managed
+)
+
+if (( EUID == 0 )); then
+  export PATH=/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
+fi
+
+usage() {
+  echo "Usage: omarchy-theme-browser-policy <#RRGGBB>" >&2
+}
+
+valid_color() {
+  (( $# == 1 )) && [[ $1 =~ ^#[0-9A-Fa-f]{6}$ ]]
+}
+
+sudo_grants_passwordless() {
+  sudo -n -l -l "$PACKAGED_PATH" "$@" 2>/dev/null | grep -q '!authenticate'
+}
+
+require_root() {
+  if (( EUID == 0 )); then
+    return
+  elif [[ -t 0 ]] || sudo_grants_passwordless "$@"; then
+    exec sudo "$PACKAGED_PATH" "$@"
+  else
+    exec pkexec "$PACKAGED_PATH" "$@"
+  fi
+}
+
+safe_admin_policy() {
+  local path=$1
+  local mode
+
+  [[ -f $path && ! -L $path ]] || return 1
+  [[ $(stat -c '%u' -- "$path") == 0 ]] || return 1
+
+  mode=$(stat -c '%a' -- "$path")
+  (( (8#$mode & 022) == 0 ))
+}
+
+if ! valid_color "$@"; then
+  usage
+  exit 1
+fi
+
+require_root "$@"
+
+color=$1
+tmp=""
+
+cleanup() {
+  [[ -z $tmp ]] || rm -f -- "$tmp"
+}
+trap cleanup EXIT
+
+shopt -s dotglob nullglob
+
+for policy_dir in "${POLICY_DIRS[@]}"; do
+  [[ -e $policy_dir || -L $policy_dir ]] || continue
+
+  if [[ -L $policy_dir || ! -d $policy_dir ]]; then
+    echo "Refusing unsafe browser policy path: $policy_dir" >&2
+    exit 1
+  fi
+
+  # Close directory writes before inspecting files left by the old 0777 setup.
+  install -d -m 0755 -o root -g root "$policy_dir"
+
+  for entry in "$policy_dir"/*; do
+    if [[ $entry != "$policy_dir/color.json" ]] && safe_admin_policy "$entry"; then
+      continue
+    fi
+
+    printf 'Removing unsafe browser policy entry: %q\n' "$entry" >&2
+    rm -rf -- "$entry"
+  done
+
+  tmp=$(mktemp "$policy_dir/.color.json.XXXXXX")
+  printf '{"BrowserThemeColor": "%s", "BrowserColorScheme": "device"}\n' "$color" >"$tmp"
+  chown root:root "$tmp"
+  chmod 0644 "$tmp"
+  mv -fT -- "$tmp" "$policy_dir/color.json"
+  tmp=""
+done
