@@ -971,9 +971,21 @@ QtObject {
   function maximize(address) {
     var target = root._addr(address)
     if (!target) return root._finish("maximize", address, root._err("No window", "There is no window to maximize.", ""))
+    var geom = root._monitorGeom(target)
+    if (!geom.width || !geom.height) return root._finish("maximize", target, root._err("No monitor", "The window's monitor geometry is unavailable.", ""))
     root._rememberNormal(target)
+    // Hyprland's "maximized" fullscreen mode grows the window box but never
+    // resizes a floating client (foot, Chromium keep their surface size in the
+    // corner). Apply the work-area rect the same explicit way snap does — that
+    // sends a real configure the client honors. hyprbars inset keeps the SSD
+    // caption on-screen; CSD clients inset 0.
+    var rect = WindowModel.snapRect(geom, "max", root._hyprbarsInset(target))
+    var win = root._luaWindow(target)
     root._setPlacedKind(target, "max")
-    root._dispatchLua("hl.dsp.window.fullscreen({ mode = \"maximized\", action = \"set\", " + root._luaWindow(target) + " })", true)
+    root._dispatchLua("hl.dsp.window.fullscreen({ mode = \"fullscreen\", action = \"unset\", layout_aware = false, " + win + " })")
+    root._dispatchLua("hl.dsp.window.float({ action = \"enable\", " + win + " })")
+    root._dispatchLua("hl.dsp.window.resize({ x = " + rect.width + ", y = " + rect.height + ", relative = false, " + win + " })")
+    root._dispatchLua("hl.dsp.window.move({ x = " + rect.x + ", y = " + rect.y + ", relative = false, " + win + " })", true)
     return root._finish("maximize", target, root._ok(), { verb: "restoreNormal", address: target })
   }
 

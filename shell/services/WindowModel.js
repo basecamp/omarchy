@@ -165,6 +165,7 @@ function snapRect(monitor, side, titleBar) {
   if (side === "tr") return { x: area.x + half, y: y, width: rest, height: qh }
   if (side === "bl") return { x: area.x, y: y + qh, width: half, height: qh2 }
   if (side === "br") return { x: area.x + half, y: y + qh, width: rest, height: qh2 }
+  if (side === "max" || side === "full") return { x: area.x, y: y, width: area.width, height: height }
   return { x: area.x, y: y, width: half, height: height }
 }
 
