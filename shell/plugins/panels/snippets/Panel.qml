@@ -46,9 +46,6 @@ Panel {
   property var importResolutions: ({})
   property string importError: ""
   property bool importBusy: false
-  // Scratch buffer: importPreviewProc stdout onStreamFinished stores here so
-  // the stderr onStreamFinished can pass both to onImportPreviewFinished.
-  property string _importPreviewStdout: ""
 
   readonly property var rows: SnippetStore.displayRows(root.snippets, root.filterText)
   readonly property color foreground: Color.popups.text
@@ -223,7 +220,6 @@ Panel {
     if (!path) return
     root.importFilePath = path
     root.importBusy = true
-    root._importPreviewStdout = ""
     importPreviewProc.command = ["omarchy-snippets-import-preview", path]
     importPreviewProc.running = true
   }
@@ -348,9 +344,44 @@ Panel {
 
   Process {
     id: exportPickProc
+    property bool exited: false
+    property bool stdoutFinished: false
+    property int finalExitCode: -1
+    property string stdoutText: ""
+
+    function checkFinished() {
+      if (exited && stdoutFinished) {
+        if (finalExitCode === 0) {
+          root.onExportPathPicked(stdoutText.trim())
+        } else if (finalExitCode !== 1) {
+          root.onExportPathPicked("")
+          Quickshell.execDetached(["omarchy-notification-send", "File selection failed.", "-u", "critical", "-t", "3000"])
+        } else {
+          root.onExportPathPicked("")
+        }
+      }
+    }
+
+    onRunningChanged: {
+      if (running) {
+        exited = false; stdoutFinished = false;
+        finalExitCode = -1; stdoutText = "";
+      }
+    }
+
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.onExportPathPicked(exportPickProc.exitCode === 0 ? text.trim() : "")
+      onStreamFinished: {
+        exportPickProc.stdoutText = text
+        exportPickProc.stdoutFinished = true
+        exportPickProc.checkFinished()
+      }
+    }
+
+    onExited: function(exitCode) {
+      exportPickProc.finalExitCode = exitCode
+      exportPickProc.exited = true
+      exportPickProc.checkFinished()
     }
   }
 
@@ -368,29 +399,125 @@ Panel {
 
   Process {
     id: importPickProc
+    property bool exited: false
+    property bool stdoutFinished: false
+    property int finalExitCode: -1
+    property string stdoutText: ""
+
+    function checkFinished() {
+      if (exited && stdoutFinished) {
+        if (finalExitCode === 0) {
+          root.onImportPathPicked(stdoutText.trim())
+        } else if (finalExitCode !== 1) {
+          root.onImportPathPicked("")
+          Quickshell.execDetached(["omarchy-notification-send", "File selection failed.", "-u", "critical", "-t", "3000"])
+        } else {
+          root.onImportPathPicked("")
+        }
+      }
+    }
+
+    onRunningChanged: {
+      if (running) {
+        exited = false; stdoutFinished = false;
+        finalExitCode = -1; stdoutText = "";
+      }
+    }
+
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.onImportPathPicked(importPickProc.exitCode === 0 ? text.trim() : "")
+      onStreamFinished: {
+        importPickProc.stdoutText = text
+        importPickProc.stdoutFinished = true
+        importPickProc.checkFinished()
+      }
+    }
+
+    onExited: function(exitCode) {
+      importPickProc.finalExitCode = exitCode
+      importPickProc.exited = true
+      importPickProc.checkFinished()
     }
   }
 
   Process {
     id: importPreviewProc
+    property bool exited: false
+    property bool stdoutFinished: false
+    property bool stderrFinished: false
+    property int finalExitCode: -1
+    property string stdoutText: ""
+    property string stderrText: ""
+
+    function checkFinished() {
+      if (exited && stdoutFinished && stderrFinished) {
+        root.onImportPreviewFinished(finalExitCode, stdoutText, stderrText)
+      }
+    }
+
+    onRunningChanged: {
+      if (running) {
+        exited = false; stdoutFinished = false; stderrFinished = false;
+        finalExitCode = -1; stdoutText = ""; stderrText = "";
+      }
+    }
+
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root._importPreviewStdout = text
+      onStreamFinished: {
+        importPreviewProc.stdoutText = text
+        importPreviewProc.stdoutFinished = true
+        importPreviewProc.checkFinished()
+      }
     }
     stderr: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.onImportPreviewFinished(importPreviewProc.exitCode, root._importPreviewStdout, text)
+      onStreamFinished: {
+        importPreviewProc.stderrText = text
+        importPreviewProc.stderrFinished = true
+        importPreviewProc.checkFinished()
+      }
+    }
+    onExited: function(exitCode) {
+      importPreviewProc.finalExitCode = exitCode
+      importPreviewProc.exited = true
+      importPreviewProc.checkFinished()
     }
   }
 
   Process {
     id: importApplyProc
+    property bool exited: false
+    property bool stderrFinished: false
+    property int finalExitCode: -1
+    property string stderrText: ""
+
+    function checkFinished() {
+      if (exited && stderrFinished) {
+        root.onImportApplyFinished(finalExitCode, stderrText)
+      }
+    }
+
+    onRunningChanged: {
+      if (running) {
+        exited = false; stderrFinished = false;
+        finalExitCode = -1; stderrText = "";
+      }
+    }
+
     stderr: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.onImportApplyFinished(importApplyProc.exitCode, text)
+      onStreamFinished: {
+        importApplyProc.stderrText = text
+        importApplyProc.stderrFinished = true
+        importApplyProc.checkFinished()
+      }
+    }
+
+    onExited: function(exitCode) {
+      importApplyProc.finalExitCode = exitCode
+      importApplyProc.exited = true
+      importApplyProc.checkFinished()
     }
   }
 
