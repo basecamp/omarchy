@@ -124,6 +124,8 @@ wrapped_cmd=${launcher_args[2]}
   fail "install-and-launch does not background gtk-launch before Done" "$wrapped_cmd"
 [[ $after_done == *'uwsm-app -- gtk-launch Disk\ Usage'* ]] ||
   fail "install-and-launch launches through uwsm-app after Done" "$after_done"
+[[ $after_done != *'& '* && $after_done != *' &' ]] ||
+  fail "install-and-launch does not background gtk-launch" "$after_done"
 pass "install-and-launch sequences gtk-launch after Done, not before it"
 
 script=$(<"$OMARCHY_TEST_SCRIPT")

@@ -93,7 +93,7 @@ after_done=$(<"$OMARCHY_TEST_AFTER_DONE")
   fail "generic installer installs packages in the presentation command" "$presentation_command"
 [[ $presentation_command != *gtk-launch* && $presentation_command != *uwsm-app* ]] ||
   fail "generic installer does not launch during the presentation command" "$presentation_command"
-[[ $after_done == *'setsid uwsm-app -- gtk-launch Disk\ Usage >/dev/null 2>&1 &'* ]] ||
+[[ $after_done == *'setsid uwsm-app -- gtk-launch Disk\ Usage >/dev/null 2>&1'* ]] ||
   fail "generic installer detaches the scoped launch after Done" "$after_done"
 pass "generic installer waits for packages then detaches the scoped launch after Done"
 
