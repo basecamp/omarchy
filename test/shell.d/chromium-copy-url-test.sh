@@ -44,11 +44,11 @@ jq -e '
   (.permissions | index("notifications") | not) and
   (.permissions | index("clipboardWrite") | not) and
   (.permissions | index("offscreen") | not) and
-  .background.service_worker == "background-4.js"
+  .background.service_worker == "background-5.js"
 ' "$ROOT/default/chromium/extensions/copy-url/manifest.json" >/dev/null ||
   fail "copy-url extension uses its native messaging host"
 grep -q "sendNativeMessage('com.omarchy.copy_url'" \
-  "$ROOT/default/chromium/extensions/copy-url/background-4.js" ||
+  "$ROOT/default/chromium/extensions/copy-url/background-5.js" ||
   fail "copy-url extension sends URLs to its native messaging host"
 pass "copy-url extension uses its native messaging host"
 
