@@ -50,7 +50,9 @@ fi
   fail "workspace layout toggle does not persist a rule without a workspace id"
 pass "workspace layout toggle ignores broken hyprctl output"
 
-HOME="$home_dir" OMARCHY_PATH="$ROOT" lua <<'LUA'
+lua_script="$tmpdir/workspace-layouts.lua"
+
+cat >"$lua_script" <<'LUA'
 local rules = {}
 
 hl = {
@@ -66,4 +68,10 @@ assert(#rules == 1)
 assert(rules[1].workspace == "3")
 assert(rules[1].layout == "scrolling")
 LUA
+
+# Lua 5.5 exits 0 when a script that failed came in on stdin, so a heredoc piped
+# straight into lua reports every assertion above as passing. Run it as a file.
+if ! HOME="$home_dir" OMARCHY_PATH="$ROOT" lua "$lua_script"; then
+  fail "saved workspace layouts load into Hyprland configuration"
+fi
 pass "saved workspace layouts load into Hyprland configuration"
