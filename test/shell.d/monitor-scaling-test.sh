@@ -129,3 +129,58 @@ grep -F 'scale = 2' "$eval_out" >/dev/null || fail "monitor scaling down skips d
 grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
   fail "monitor scaling down persists 2x after skipping duplicate approximation"
 pass "monitor scaling down skips duplicate approximation"
+
+# A rule naming an output overrides the catch-all, so writing the catch-all
+# leaves it stale and the reload that write triggers undoes the live change.
+
+write_named_config() {
+  cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 2
+hl.env("GDK_SCALE", tostring(omarchy_gdk_scale))
+hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy_monitor_scale })
+hl.monitor({ output = "eDP-1", mode = "2880x1800@120", position = "0x0", scale = 2 })
+hl.monitor({ output = "HDMI-A-1", mode = "2560x1440@60", position = "auto-right", scale = 1 })
+-- hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = 4 })
+LUA
+}
+
+write_named_config
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
+grep -Fx 'hl.monitor({ output = "eDP-1", mode = "2880x1800@120", position = "0x0", scale = 1.6 })' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling writes onto the rule naming the focused output"
+grep -Fx 'hl.monitor({ output = "HDMI-A-1", mode = "2560x1440@60", position = "auto-right", scale = 1 })' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling leaves another output's rule alone"
+grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling leaves the catch-all alone once a named rule matched"
+grep -Fx -e '-- hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = 4 })' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling leaves a commented-out rule alone"
+pass "monitor scaling writes onto a named per-output rule"
+
+# nwg-displays writes one field per line.
+cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 2
+hl.monitor({
+  output = "eDP-1",
+  mode = "2880x1800@120",
+  position = "0x0",
+  scale = 2,
+})
+LUA
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
+grep -Fx '  scale = 1.6,' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling rewrites the multi-line rule form"
+pass "monitor scaling rewrites the multi-line rule form"
+
+# A named rule may leave scale to the catch-all; it still has to be pinned here,
+# or the reload puts the catch-all's value back.
+cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 2
+hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", transform = 3 })
+LUA
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
+grep -Fx 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", transform = 3, scale = 1.6 })' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling adds a scale to a named rule that has none"
+pass "monitor scaling adds a scale to a named rule that has none"
