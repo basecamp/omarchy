@@ -10,7 +10,7 @@ gtk-update-icon-cache /usr/share/icons/Yaru &>/dev/null || true
 mkdir -p /etc/chromium/policies/managed
 chmod a+rw /etc/chromium/policies/managed
 
-# Default Chromium to follow system appearance ("device") instead of dark
+# Set Chromium first-run defaults
 mkdir -p /usr/lib/chromium
-echo '{"browser":{"theme":{"color_scheme":0,"color_scheme2":0}}}' > \
+echo '{"distribution":{"require_eula":false},"browser":{"theme":{"color_scheme":0,"color_scheme2":0}}}' > \
   /usr/lib/chromium/initial_preferences
