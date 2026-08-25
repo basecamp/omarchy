@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# Intel BE200/BE211 Wi-Fi 7 cards fail to recover their PCIe link from D3cold
+# on modern standby (s2idle), causing the PCIe bridge to timeout and driver crash.
+# Unload before suspend and reload after wake to cleanly re-enumerate the device.
+
+state_file="${OMARCHY_IWLWIFI_STATE_FILE:-/run/iwlwifi-suspended}"
+
+case "$1" in
+  pre)
+    # Only unload before suspend (not on full hibernate where S4 powers off completely)
+    if [[ $2 != "hibernate" ]] && lsmod | grep -q "^iwlwifi"; then
+      logger -t iwlwifi-reset "Pre-suspend: unloading wifi drivers"
+      if lsmod | grep -q "^iwlmld"; then
+        echo "iwlmld" > "$state_file"
+        modprobe -r iwlmld 2>&1 | logger -t iwlwifi-reset
+      elif lsmod | grep -q "^iwlmvm"; then
+        echo "iwlmvm" > "$state_file"
+        modprobe -r iwlmvm 2>&1 | logger -t iwlwifi-reset
+      elif lsmod | grep -q "^iwldvm"; then
+        echo "iwldvm" > "$state_file"
+        modprobe -r iwldvm 2>&1 | logger -t iwlwifi-reset
+      else
+        echo "iwlwifi" > "$state_file"
+      fi
+      modprobe -r iwlwifi 2>&1 | logger -t iwlwifi-reset
+    fi
+    ;;
+  post)
+    if [[ -f $state_file ]]; then
+      opmode=$(cat "$state_file" 2>/dev/null)
+      rm -f "$state_file"
+      logger -t iwlwifi-reset "Post-resume: reloading wifi drivers ($opmode)"
+      modprobe iwlwifi 2>&1 | logger -t iwlwifi-reset
+      if [[ -n $opmode && $opmode != "iwlwifi" ]]; then
+        modprobe "$opmode" 2>&1 | logger -t iwlwifi-reset
+      fi
+    elif ! lsmod | grep -q "^iwlwifi" && lspci -d 8086: 2>/dev/null | grep -qi "Network controller\|Wireless"; then
+      logger -t iwlwifi-reset "Post-resume: reloading iwlwifi (Intel hardware detected)"
+      modprobe iwlwifi 2>&1 | logger -t iwlwifi-reset
+    fi
+    ;;
+esac
