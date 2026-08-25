@@ -39,7 +39,11 @@ pass "dns sudoers rule is scoped to the stock providers"
 # the pin is gated on EUID rather than set unconditionally.
 grep -Eq '^\s*export PATH=/usr/local/sbin:/usr/local/bin:/usr/bin' "$dns" ||
   fail "omarchy-dns pins PATH to trusted system directories when it holds root"
-grep -Eq '\(\( EUID == 0 \)\)' "$dns" ||
+# require_root carries its own `(( EUID == 0 ))`, so matching that text alone
+# would pass with the pin deleted. Anchor on the unindented guard and require the
+# pin to be the line it opens.
+gated=$(grep -A1 -E '^if \(\( EUID == 0 \)\); then$' "$dns" || true)
+[[ $gated == *"export PATH=/usr/local/sbin:/usr/local/bin:/usr/bin"* ]] ||
   fail "omarchy-dns gates the trusted-PATH pin on holding root"
 
 # The no-argument path only reads DNS config, so exercise the privileged phase
