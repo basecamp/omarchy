@@ -381,6 +381,11 @@ assert(/if \(addAccountProcess\.running\) \{\s*\n\s*root\._loginInProgress = fal
 assert(/if \(backendState === "Running" && _previousBackendState !== "Running"\) \{\s*\n\s*_lastAccountsRefreshMs = 0/.test(serviceSource), 'tailscale re-reads the connections once the machine comes up')
 assert(/_previousBackendState = backendState/.test(serviceSource), 'tailscale only re-reads on the transition, not every poll')
 
+// The action button is taller than the row's text, so showing it on hover grew
+// the row and re-elided the label under the pointer.
+assert(/opacity: shown \? 1 : 0\s*\n\s*enabled: shown/.test(panelSource), 'tailscale keeps the row action in the layout so hovering cannot resize the row')
+assert(!/visible: accountRow\.addingAccount \|\| accountRow\.addArmed/.test(panelSource), 'tailscale no longer toggles the row action with visible')
+
 // The real shape of a second tailnet: Tailscale names the profile after the
 // login it was made from, and the tailnet carries the name set in the admin
 // console.

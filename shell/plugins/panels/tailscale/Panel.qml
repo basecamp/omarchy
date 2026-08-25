@@ -966,10 +966,17 @@ Panel {
 
       PanelActionButton {
         // Removing, confirming an add, and bailing out of one in progress all
-        // land on the same trailing control.
-        visible: accountRow.addingAccount || accountRow.addArmed
+        // land on the same trailing control, which stays in the layout whether
+        // or not it shows: the button is taller than the row's text, so
+        // appearing on hover grew the row and re-elided the label under the
+        // pointer. Disabled, it passes hover and clicks through to the row.
+        readonly property bool shown: accountRow.addingAccount || accountRow.addArmed
                  || (accountRow.removable && !accountRow.removingAccount
                      && (accountRow.armed || accountRow.hasCursor || accountMouse.containsMouse))
+        opacity: shown ? 1 : 0
+        enabled: shown
+
+        Behavior on opacity { NumberAnimation { duration: 90; easing.type: Easing.OutQuad } }
         iconText: accountRow.addingAccount ? "󰅙" : (accountRow.armed || accountRow.addArmed ? "󰄬" : "󰅙")
         tooltipText: accountRow.addingAccount ? "Cancel and go back"
                      : (accountRow.addArmed ? "Sign out and add a tailnet"
