@@ -2,11 +2,44 @@ echo "Take ownership of the FIDO2 authfile so it cannot be rewritten without roo
 
 authfile="/etc/fido2/fido2"
 
+# omarchy-migrate records this migration as complete whenever it exits zero, so
+# a line printed here scrolls past once in the update terminal and is never
+# shown again. The states below cannot be repaired without deciding what to do
+# with a file we do not own, and they are exactly the ones where the authfile
+# may already be under someone else's control, so say so where it outlives the
+# scrollback as well.
+report_unrepairable() {
+  echo "  $1"
+  echo "  $2"
+  omarchy-notification-send -u critical -g  "FIDO2 authfile needs attention" "$1 $2" || true
+}
+
 # Nothing to repair on any machine that never set FIDO2 up, which is almost all
 # of them. Checked before any sudo so those machines never see a password
 # prompt. -L as well as -e: a dangling symlink is invisible to -e.
 if [[ ! -L $authfile && ! -e $authfile ]]; then
-  exit 0
+  # Absence and "cannot look" are the same answer to the tests above. The old
+  # setup created /etc/fido2 with `sudo mkdir -p`, which took the union of the
+  # caller's umask and sudoers' 0022, so anyone registering under `umask 077`
+  # left it mode 0700 with the user-owned authfile still inside. Escalate for
+  # that case alone -- a machine that never set FIDO2 up has no directory here
+  # and still reaches exit 0 without a password prompt. Not through a symlink:
+  # chmod would act on whatever it points at.
+  authdir=${authfile%/*}
+
+  if [[ -L $authdir || ! -d $authdir || -x $authdir ]]; then
+    exit 0
+  fi
+
+  # Ask root whether a registration is behind it before touching the directory
+  # itself. An aborted setup that left an empty 0700 directory, or one an
+  # administrator deliberately keeps private, must not have its mode widened
+  # and its group and special bits discarded for a repair it does not need.
+  if ! sudo test -e "$authfile" && ! sudo test -L "$authfile"; then
+    exit 0
+  fi
+
+  sudo chmod 755 "$authdir"
 fi
 
 # The old privileged move could install a symlink here if its fixed staging path
@@ -14,16 +47,16 @@ fi
 # ownership of the target instead, and removing it would strip sudo and polkit
 # from anyone whose only credential is the token.
 if [[ -L $authfile ]]; then
-  echo "  $authfile is a symlink, not a regular file."
-  echo "  Leaving it alone. If you did not create it, remove it and re-run Setup > Security > Fido2."
+  report_unrepairable "$authfile is a symlink, not a regular file." \
+    "Leaving it alone. If you did not create it, remove it and re-run Setup > Security > Fido2."
   exit 0
 fi
 
 # A directory or a device here is no more ours to rewrite than a symlink is,
 # and changing a directory's mode would alter an object we do not own.
 if [[ ! -f $authfile ]]; then
-  echo "  $authfile is not a regular file."
-  echo "  Leaving it alone. Remove it and re-run Setup > Security > Fido2."
+  report_unrepairable "$authfile is not a regular file." \
+    "Leaving it alone. Remove it and re-run Setup > Security > Fido2."
   exit 0
 fi
 

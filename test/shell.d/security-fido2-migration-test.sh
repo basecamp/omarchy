@@ -12,10 +12,16 @@ trap 'rm -rf "$test_tmp"' EXIT
 stub_bin="$test_tmp/bin"
 calls="$test_tmp/calls.log"
 stages="$test_tmp/stages.log"
-authfile="$test_tmp/fido2"
+notifications="$test_tmp/notifications.log"
+# A directory of its own, not $test_tmp: the migration derives the FIDO2
+# directory from the authfile, and the case below where that directory is
+# untraversable has to be able to take the permissions off it.
+authdir="$test_tmp/etc-fido2"
+authfile="$authdir/fido2"
 migration_copy="$test_tmp/migration.sh"
-mkdir -p "$stub_bin"
+mkdir -p "$stub_bin" "$authdir"
 : >"$stages"
+: >"$notifications"
 
 # The migration repairs an absolute path no unprivileged suite can write, and an
 # environment override in the shipped file would hand a root install and mv an
@@ -46,7 +52,7 @@ reject() {
   exit 97
 }
 
-if [[ ${TEST_TMP:-} != /* || ${TEST_AUTHFILE:-} != "$TEST_TMP/fido2" || ${TEST_LOG:-} != "$TEST_TMP/calls.log" || ${TEST_STAGES:-} != "$TEST_TMP/stages.log" ]]; then
+if [[ ${TEST_TMP:-} != /* || ${TEST_AUTHDIR:-} != "$TEST_TMP/etc-fido2" || ${TEST_AUTHFILE:-} != "$TEST_AUTHDIR/fido2" || ${TEST_LOG:-} != "$TEST_TMP/calls.log" || ${TEST_STAGES:-} != "$TEST_TMP/stages.log" ]]; then
   reject "$@"
 fi
 
@@ -130,6 +136,31 @@ case "$1" in
 
     exec /usr/bin/mv -Tf -- "$3" "$4"
     ;;
+  chmod)
+    # Only ever the FIDO2 directory, and only back to the mode the setup
+    # installs. Nothing here may reopen the authfile itself.
+    if (( $# != 3 )) || [[ $2 != "755" || $3 != "$TEST_AUTHDIR" ]]; then
+      reject "$@"
+    fi
+
+    exec /usr/bin/chmod 755 "$TEST_AUTHDIR"
+    ;;
+  test)
+    # Looking behind an untraversable directory, never a write. This stub is not
+    # really root, so open the directory just long enough to answer the way root
+    # would and put its mode straight back -- the suite then still sees whether
+    # production left the mode alone.
+    if (( $# != 3 )) || [[ $2 != "-e" && $2 != "-L" ]] || [[ $3 != "$TEST_AUTHFILE" ]]; then
+      reject "$@"
+    fi
+
+    saved_mode=$(/usr/bin/stat -c %a "$TEST_AUTHDIR")
+    /usr/bin/chmod 755 "$TEST_AUTHDIR"
+    probe_status=0
+    /usr/bin/test "$2" "$3" || probe_status=$?
+    /usr/bin/chmod "$saved_mode" "$TEST_AUTHDIR"
+    exit "$probe_status"
+    ;;
   rm)
     if (( $# != 4 )) || [[ $2 != "-f" || $3 != "--" ]]; then
       reject "$@"
@@ -155,7 +186,7 @@ cat >"$stub_bin/stat" <<'SH'
 
 set -euo pipefail
 
-if [[ ${TEST_FAKE_STAT:-0} == "1" && ${TEST_AUTHFILE:-} == "${TEST_TMP:-}/fido2" ]] &&
+if [[ ${TEST_FAKE_STAT:-0} == "1" && ${TEST_AUTHFILE:-} == "${TEST_AUTHDIR:-}/fido2" ]] &&
   (( $# == 3 )) && [[ $1 == "-c" && $3 == "$TEST_AUTHFILE" ]]; then
   case "$2" in
     %U) printf '%s\n' "$TEST_STAT_OWNER" ;;
@@ -170,6 +201,20 @@ SH
 
 chmod +x "$stub_bin/stat"
 
+# omarchy-migrate records this migration complete on any zero exit, so the
+# states it cannot repair have to reach the user somewhere that outlives the
+# update terminal's scrollback.
+cat >"$stub_bin/omarchy-notification-send" <<'SH'
+#!/bin/bash
+
+printf 'notify' >>"$TEST_NOTIFICATIONS"
+printf '\t%s' "$@" >>"$TEST_NOTIFICATIONS"
+printf '\n' >>"$TEST_NOTIFICATIONS"
+exit "${TEST_NOTIFY_STATUS:-0}"
+SH
+
+chmod +x "$stub_bin/omarchy-notification-send"
+
 run_migration() {
   local fail_install="${1:-0}"
   local fail_mv="${2:-0}"
@@ -177,6 +222,7 @@ run_migration() {
   local stat_group="${4:-}"
   local stat_mode="${5:-}"
   local mktemp_mode="${6:-normal}"
+  local notify_status="${7:-0}"
   local fake_stat=0
 
   if [[ -n $stat_owner || -n $stat_group || -n $stat_mode ]]; then
@@ -186,11 +232,13 @@ run_migration() {
   fi
 
   : >"$calls"
+  : >"$notifications"
   sed "s|/etc/fido2/fido2|$authfile|" "$migration" >"$migration_copy"
 
-  PATH="$stub_bin:$PATH" TEST_AUTHFILE="$authfile" TEST_FAIL_INSTALL="$fail_install" \
-    TEST_FAIL_MV="$fail_mv" TEST_FAKE_STAT="$fake_stat" TEST_LOG="$calls" \
-    TEST_MKTEMP_MODE="$mktemp_mode" TEST_STAGES="$stages" TEST_STAT_GROUP="$stat_group" \
+  PATH="$stub_bin:$PATH" TEST_AUTHDIR="$authdir" TEST_AUTHFILE="$authfile" \
+    TEST_FAIL_INSTALL="$fail_install" TEST_FAIL_MV="$fail_mv" TEST_FAKE_STAT="$fake_stat" \
+    TEST_LOG="$calls" TEST_MKTEMP_MODE="$mktemp_mode" TEST_NOTIFICATIONS="$notifications" \
+    TEST_NOTIFY_STATUS="$notify_status" TEST_STAGES="$stages" TEST_STAT_GROUP="$stat_group" \
     TEST_STAT_MODE="$stat_mode" TEST_STAT_OWNER="$stat_owner" TEST_TMP="$test_tmp" \
     bash -euo pipefail "$migration_copy" >/dev/null
 }
@@ -413,15 +461,97 @@ ln -s "$test_tmp/elsewhere" "$authfile"
 : >"$test_tmp/elsewhere"
 run_migration
 [[ ! -s $calls ]] || fail "a symlinked authfile escalates nothing" "$(cat "$calls")"
+[[ -s $notifications ]] ||
+  fail "a symlinked authfile is raised where the update terminal cannot swallow it"
 
 rm -f "$authfile"
 ln -s "$test_tmp/missing" "$authfile"
 run_migration
 [[ ! -s $calls ]] || fail "a dangling symlink escalates nothing" "$(cat "$calls")"
+[[ -s $notifications ]] || fail "a dangling symlink is raised the same way"
 pass "migration reports a symlinked authfile and repairs nothing"
 
 rm -f "$authfile"
 mkdir -p "$authfile"
 run_migration
 [[ ! -s $calls ]] || fail "a directory at the authfile path escalates nothing" "$(cat "$calls")"
+[[ -s $notifications ]] || fail "a non-regular authfile is raised the same way"
 pass "migration reports a non-regular authfile and repairs nothing"
+
+# omarchy-migrate writes this migration's completion marker on any zero exit, so
+# a machine it cannot repair gets one shot at telling the user. The states above
+# are exactly the ones where the authfile may already be under someone else's
+# control, and a line in the update terminal scrolls past.
+# Assert the argument shape rather than a substring. The glyph is a private-use
+# codepoint that an edit can silently drop, and losing it shifts every argument
+# left: -g swallows the headline, the body becomes the title, and the message
+# goes out with no description. A substring match sees all of that as fine.
+awk -F'\t' '
+  $1 == "notify" && NF == 7 && $2 == "-u" && $3 == "critical" && $4 == "-g" &&
+    $5 != "" && $6 == "FIDO2 authfile needs attention" && $7 != "" { found = 1 }
+  END { exit !found }
+' "$notifications" ||
+  fail "the notification passes a glyph, headline and body as separate arguments" \
+    "$(cat -A "$notifications")"
+pass "migration raises its unrepairable states as a desktop notification"
+
+# The old setup created the FIDO2 directory with `sudo mkdir -p`, which took the
+# caller's umask: registering under `umask 077` left it mode 0700 with the
+# user-owned authfile still inside. Absence and "cannot look" are the same
+# answer to an unprivileged test, so keying the early exit on the authfile
+# recorded a repair on exactly the machines that still needed one.
+rm -rf "$authfile"
+write_authfile 644 || fail "the test can stage the untraversable-directory fixture"
+before_inode=$(stat -c %i "$authfile")
+chmod 000 "$authdir"
+run_migration 0 0 caller caller 644
+[[ $(stat -c %a "$authdir") == "755" ]] ||
+  fail "the migration reopens the directory the old umask closed" "got: $(stat -c %a "$authdir")"
+grep -Fxq $'sudo\tchmod\t755\t'"$authdir" "$calls" ||
+  fail "the migration asks root to reopen the FIDO2 directory" "$(cat "$calls")"
+grep -Fq $'sudo\tinstall\t-T\t' "$calls" ||
+  fail "an authfile hidden behind an untraversable directory is still repaired" "$(cat "$calls")"
+[[ $(stat -c %i "$authfile") != "$before_inode" ]] ||
+  fail "the repair behind an untraversable directory still replaces the inode"
+pass "migration repairs an authfile an unreadable directory hid from it"
+
+# The narrow escalation above must not reach a machine that never registered a
+# key, which is almost all of them.
+rm -f "$authfile"
+rm -rf "$authdir"
+run_migration
+[[ ! -s $calls ]] ||
+  fail "a machine with no FIDO2 directory still escalates nothing" "$(cat "$calls")"
+mkdir -p "$authdir"
+run_migration
+[[ ! -s $calls ]] ||
+  fail "an empty readable FIDO2 directory escalates nothing" "$(cat "$calls")"
+pass "migration still costs no password prompt on a machine that never set FIDO2 up"
+
+# An aborted setup can leave the directory behind with nothing in it, and an
+# administrator may keep one deliberately private. Looking costs a probe, but
+# neither may have its mode widened, or its group and special bits discarded,
+# for a repair that is not needed.
+rm -f "$authfile"
+chmod 000 "$authdir"
+run_migration
+[[ $(stat -c %a "$authdir") == "0" ]] ||
+  fail "an empty inaccessible FIDO2 directory keeps its mode" "got: $(stat -c %a "$authdir")"
+! grep -Fq $'sudo\tchmod\t' "$calls" ||
+  fail "an empty inaccessible FIDO2 directory is never reopened" "$(cat "$calls")"
+if grep -Fq $'sudo\tinstall\t' "$calls" || grep -Fq $'sudo\tmv\t' "$calls"; then
+  fail "an empty inaccessible FIDO2 directory is never repaired" "$(cat "$calls")"
+fi
+chmod 755 "$authdir"
+pass "migration looks behind an inaccessible FIDO2 directory without widening it"
+
+# Notification delivery fails on a machine with no user bus or no notification
+# server. That must not abort the migration under `bash -euo pipefail` and take
+# every later migration with it.
+rm -f "$authfile"
+ln -s "$test_tmp/missing" "$authfile"
+run_migration 0 0 "" "" "" normal 1
+[[ -s $notifications ]] ||
+  fail "the failing notification was still attempted" "$(cat "$notifications")"
+pass "migration survives a notification it could not deliver"
+rm -f "$authfile"
