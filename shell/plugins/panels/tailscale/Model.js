@@ -308,6 +308,27 @@ function addAccountOutcome(exitCode, urlOpened, previousId, output) {
   return { returnTo: previous, status: message, error: message }
 }
 
+// tailscale prints a version skew warning on every invocation whenever the
+// client and the daemon differ, so it arrives in front of whatever actually
+// went wrong and crowds the real message out of the panel's one status line.
+function commandMessage(text) {
+  var lines = String(text || "").split("\n")
+  var kept = []
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].replace(/\s+/g, " ").trim()
+    if (line === "") continue
+    if (/^Warning: client version .*tailscaled server version/.test(line)) continue
+    kept.push(line)
+  }
+  return kept.join(" ")
+}
+
+// Being told to go and use sudo is not something to read out: the panel can
+// offer to grant the operator itself.
+function isAccessDenied(text) {
+  return /access denied/i.test(String(text || ""))
+}
+
 function parseAccounts(raw) {
   var text = String(raw || "").trim()
   if (text === "") return { accounts: [], selectedAccountId: "", selectedAccountLabel: "" }
@@ -360,6 +381,8 @@ if (typeof module !== "undefined") {
     parseStatus: parseStatus,
     parseAccounts: parseAccounts,
     connectionRows: connectionRows,
-    addAccountOutcome: addAccountOutcome
+    addAccountOutcome: addAccountOutcome,
+    commandMessage: commandMessage,
+    isAccessDenied: isAccessDenied
   }
 }

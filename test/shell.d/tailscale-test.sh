@@ -329,6 +329,30 @@ assert(/loginTimeoutTimer\.attempts = 0/.test(serviceSource), 'tailscale starts 
 // than a failure and should not be reported as one.
 assert(/if \(exitCode === 126\) \{\s*\n\s*root\.lastError = ""\s*\n\s*root\.actionStatus = ""/.test(serviceSource), 'tailscale leaves nothing behind when the operator prompt is dismissed')
 assert(/\} else if \(exitCode !== 0\) \{\s*\n\s*root\.lastError = elideStatus\(stderr \|\| stdout \|\| "Tailscale authorization failed"\)/.test(serviceSource), 'tailscale still reports a real authorization failure')
+// Exactly what the panel showed on a machine whose client and daemon differ:
+// the warning arrives on stderr ahead of the real refusal.
+assertEqual(
+  tailscale.commandMessage('Warning: client version "1.102.3" != tailscaled server version "1.102.2"\nAccess denied: checkprefs access denied\nUse \'sudo tailscale up\'.'),
+  "Access denied: checkprefs access denied Use 'sudo tailscale up'.",
+  'tailscale drops the version skew warning from what it shows'
+)
+assertEqual(
+  tailscale.commandMessage('Warning: client version "1.2" != tailscaled server version "1.1"'),
+  '',
+  'tailscale is left with nothing when the warning was the whole of it'
+)
+assertEqual(tailscale.commandMessage('  boom  \n\n  bang \n'), 'boom bang', 'tailscale joins what is left onto one line')
+assertEqual(tailscale.commandMessage(''), '', 'tailscale handles empty command output')
+assertEqual(tailscale.commandMessage(null), '', 'tailscale handles missing command output')
+
+assert(tailscale.isAccessDenied('Access denied: checkprefs access denied'), 'tailscale spots a refusal for want of the operator')
+assert(tailscale.isAccessDenied('profiles access denied'), 'tailscale spots the profiles refusal too')
+assert(!tailscale.isAccessDenied('tailscale up failed'), 'tailscale does not mistake an ordinary failure for a refusal')
+
+// A refusal has a fix the panel can offer, so it raises that instead of
+// repeating the CLI's advice to go and use sudo.
+assert(/accountsAccessDenied = true\s*\n\s*message = "Tailscale needs permission on this machine"/.test(serviceSource), 'tailscale offers the operator fix when a command is refused')
+assert(/root\.reportCommandError\(combined, "tailscale up failed"\)/.test(serviceSource), 'tailscale reports a failed connect through the same path')
 
 assertDeepEqual(tailscale.parseStatus('{'), { ok: false, unavailable: true, message: 'Status error', error: 'Failed to parse tailscale status' }, 'tailscale reports invalid status JSON')
 assertDeepEqual(tailscale.parseAccounts('{'), { accounts: [], selectedAccountId: '', selectedAccountLabel: '' }, 'tailscale handles invalid account JSON')

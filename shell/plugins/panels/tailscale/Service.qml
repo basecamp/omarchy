@@ -202,8 +202,24 @@ Item {
   }
 
   function elideStatus(text) {
-    var value = String(text || "").replace(/\s+/g, " ").trim()
+    // Drop the version skew warning before measuring, or it eats the budget
+    // and elides away the part that says what went wrong.
+    var value = Model.commandMessage(text)
     return value.length > 140 ? value.substring(0, 137) + "…" : value
+  }
+
+  // A command refused for want of the operator has a fix the panel can offer,
+  // so raise that rather than repeating the CLI's advice to go and use sudo.
+  function reportCommandError(text, fallback) {
+    var message = elideStatus(text)
+    if (message === "") message = String(fallback || "")
+    if (Model.isAccessDenied(message)) {
+      accountsAccessDenied = true
+      message = "Tailscale needs permission on this machine"
+    }
+    lastError = message
+    actionStatus = message
+    actionStatusTimer.restart()
   }
 
   function resetUnavailable(message) {
@@ -648,9 +664,7 @@ Item {
       var stderr = String(actionStderr.text || root._actionError || "")
       if (exitCode !== 0) {
         root._desired = -1
-        root.lastError = elideStatus(stderr || stdout || "Tailscale command failed")
-        root.actionStatus = root.lastError
-        actionStatusTimer.restart()
+        root.reportCommandError(stderr || stdout, "Tailscale command failed")
       } else {
         root.lastError = ""
         root.actionStatus = ""
@@ -671,9 +685,7 @@ Item {
       if (exitCode !== 0 && !opened) {
         root._desired = -1
         root._loginInProgress = false
-        root.lastError = elideStatus(combined || "tailscale up failed")
-        root.actionStatus = root.lastError
-        actionStatusTimer.restart()
+        root.reportCommandError(combined, "tailscale up failed")
       } else if (!opened) {
         root.lastError = ""
         root.actionStatus = ""
@@ -692,9 +704,7 @@ Item {
       var stdout = String(switchStdout.text || root._switchOutput || "")
       var stderr = String(switchStderr.text || root._switchError || "")
       if (exitCode !== 0) {
-        root.lastError = elideStatus(stderr || stdout || "Account switch failed")
-        root.actionStatus = root.lastError
-        actionStatusTimer.restart()
+        root.reportCommandError(stderr || stdout, "Account switch failed")
       } else {
         root.lastError = ""
         root.actionStatus = ""
@@ -763,9 +773,7 @@ Item {
       var stdout = String(exitNodeStdout.text || root._exitNodeOutput || "")
       var stderr = String(exitNodeStderr.text || root._exitNodeError || "")
       if (exitCode !== 0) {
-        root.lastError = elideStatus(stderr || stdout || "Exit node selection failed")
-        root.actionStatus = root.lastError
-        actionStatusTimer.restart()
+        root.reportCommandError(stderr || stdout, "Exit node selection failed")
       } else {
         root.lastError = ""
         root.actionStatus = ""
