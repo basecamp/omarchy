@@ -13,13 +13,6 @@ else
   THEME_HEX_COLOR="#1c2027"
 fi
 
-set_browser_policy() {
-  local policy_dir="$1"
-
-  [[ -d $policy_dir ]] || return
-  echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\", \"BrowserColorScheme\": \"device\"}" | tee "$policy_dir/color.json" >/dev/null
-}
-
 refresh_running_browser() {
   local process="$1"
   local command="$2"
@@ -30,16 +23,14 @@ refresh_running_browser() {
   fi
 }
 
-set_browser_policy /etc/chromium/policies/managed
+omarchy-theme-browser-policy "$THEME_HEX_COLOR" || exit 1
+
 refresh_running_browser chromium chromium
 
-set_browser_policy /etc/opt/chrome/policies/managed
 refresh_running_browser chrome google-chrome-stable || refresh_running_browser chrome google-chrome
 
-set_browser_policy /etc/opt/edge/policies/managed
 refresh_running_browser msedge microsoft-edge-stable
 
-set_browser_policy /etc/brave/policies/managed
 refresh_running_browser brave brave
 # Match on the binary path: the running process is named plain "brave", and a
 # bare -f brave-origin pattern would also match the installer's own terminal.

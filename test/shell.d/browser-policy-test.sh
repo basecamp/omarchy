@@ -92,6 +92,57 @@ assert_rejected "browser theme policy rejects input containing a newline" $'#112
 
 pass "browser theme policy accepts only one six-digit hex color"
 
+theme_set_browser="$ROOT/bin/omarchy-theme-set-browser"
+theme_home="$test_tmp/home"
+theme_dir="$theme_home/.local/state/omarchy/current/theme"
+policy_log="$test_tmp/policy-calls"
+refresh_log="$test_tmp/refresh-calls"
+mkdir -p "$theme_dir"
+
+cat >"$stub_bin/omarchy-theme-browser-policy" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >>"$POLICY_LOG"
+[[ ${POLICY_FAIL:-0} != 1 ]]
+SH
+
+cat >"$stub_bin/omarchy-cmd-present" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >>"$REFRESH_LOG"
+exit 1
+SH
+
+chmod +x "$stub_bin/omarchy-theme-browser-policy" "$stub_bin/omarchy-cmd-present"
+
+run_theme_set_browser() {
+  : >"$policy_log"
+  : >"$refresh_log"
+  HOME="$theme_home" \
+  POLICY_LOG="$policy_log" \
+  REFRESH_LOG="$refresh_log" \
+  PATH="$stub_bin:$PATH" \
+    bash "$theme_set_browser"
+}
+
+printf '26,27,38\n' >"$theme_dir/chromium.theme"
+run_theme_set_browser
+[[ $(<"$policy_log") == "#1a1b26" ]] ||
+  fail "browser theme set converts the staged RGB color for the policy helper" "got: $(<"$policy_log")"
+
+rm "$theme_dir/chromium.theme"
+run_theme_set_browser
+[[ $(<"$policy_log") == "#1c2027" ]] ||
+  fail "browser theme set passes the neutral fallback to the policy helper" "got: $(<"$policy_log")"
+
+if POLICY_FAIL=1 run_theme_set_browser >/dev/null 2>&1; then
+  fail "browser theme set reports a failed policy write"
+fi
+[[ $(wc -l <"$policy_log") == 1 ]] ||
+  fail "browser theme set invokes the policy helper exactly once" "got: $(<"$policy_log")"
+[[ ! -s $refresh_log ]] ||
+  fail "browser theme set does not refresh browsers after a failed policy write" "got: $(<"$refresh_log")"
+
+pass "browser theme set delegates one resolved color before refreshing browsers"
+
 # A direct root run would reach the real policy directories before these PATH
 # stubs could stop it, because root intentionally pins PATH. The static checks
 # and all validation coverage above remain safe under a root-run test suite.
