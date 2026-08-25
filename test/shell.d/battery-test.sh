@@ -36,5 +36,8 @@ assertDeepEqual(
 
 const serviceSource = require('fs').readFileSync(root + '/shell/plugins/services/battery/Service.qml', 'utf8')
 assert(/triggeredOnStart:\s*false/.test(serviceSource), 'battery defers the first low-battery check past shell start')
-assert(/interval:\s*5000[\s\S]*onTriggered:\s*root\.checkBattery\(\)/.test(serviceSource), 'battery runs a delayed first low-battery check')
+assert(/lowBatteryChecksReady:\s*false/.test(serviceSource), 'battery gates low-battery checks until UPower settles')
+assert(/lowBatteryChecksReady\s*=\s*true[\s\S]*checkBattery\(\)/.test(serviceSource), 'battery enables checks on the settle timer before the first evaluation')
+assert(/function checkBattery\(\)\s*\{[\s\S]*if\s*\(\s*!lowBatteryChecksReady\s*\)\s*return/.test(serviceSource), 'battery skips low-battery warnings until settle completes')
+assert(/onOnBatteryChanged\(\)\s*\{[\s\S]*applyPowerProfile\(\)[\s\S]*checkBattery\(\)/.test(serviceSource), 'battery still applies power profiles immediately on charger changes')
 JS
