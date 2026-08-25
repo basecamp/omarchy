@@ -331,7 +331,10 @@ Item {
     _preLoginAuthUrl = authUrl
     loginProcess.command = plan.command
     loginProcess.running = true
-    if (needsLogin) loginTimeoutTimer.restart()
+    if (needsLogin) {
+      loginTimeoutTimer.attempts = 0
+      loginTimeoutTimer.restart()
+    }
   }
 
   function switchAccount(id) {
@@ -542,14 +545,28 @@ Item {
 
   Timer {
     id: loginTimeoutTimer
+    // tailscaled does not always have the URL ready within one interval, and
+    // standing down on the first miss stranded the login: the flag below is
+    // what lets a status poll open the URL when it does arrive, so clearing it
+    // early left the panel holding a link it would never open.
+    property int attempts: 0
     interval: 10000
     repeat: false
     onTriggered: {
       if (!root._loginInProgress || root._loginUrlOpened) return
-      if (!root.openAuthUrlFrom(root.authUrl, true)) {
-        root._loginInProgress = false
-        root.actionStatus = "Tailscale login link not available yet"
+      if (root.openAuthUrlFrom(root.authUrl, true)) return
+      attempts += 1
+      if (attempts < 3) {
+        root.actionStatus = "Waiting for the Tailscale login link…"
+        actionStatusTimer.restart()
+        loginTimeoutTimer.restart()
+        return
       }
+      root._loginInProgress = false
+      root.actionStatus = "Tailscale login link not available yet"
+      // Every other status message clears itself. This one used to sit there
+      // for good, which reads as a frozen panel rather than a failed attempt.
+      actionStatusTimer.restart()
     }
   }
 

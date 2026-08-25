@@ -295,6 +295,14 @@ assertDeepEqual(
   'tailscale ignores stale authorization URLs outside the login state'
 )
 
+// The login hand-off keys off _loginInProgress, so standing down on the first
+// missed interval left the panel holding a URL it would never open, behind a
+// message that never cleared.
+assert(/if \(attempts < 3\) \{/.test(serviceSource), 'tailscale waits more than one interval for the login link')
+assert(/attempts \+= 1/.test(serviceSource), 'tailscale counts its attempts at the login link')
+assert(/root\.actionStatus = "Tailscale login link not available yet"\s*\n(\s*\/\/[^\n]*\n)*\s*actionStatusTimer\.restart\(\)/.test(serviceSource), 'tailscale clears the login link message instead of freezing on it')
+assert(/loginTimeoutTimer\.attempts = 0/.test(serviceSource), 'tailscale starts each login with a fresh attempt count')
+
 assertDeepEqual(tailscale.parseStatus('{'), { ok: false, unavailable: true, message: 'Status error', error: 'Failed to parse tailscale status' }, 'tailscale reports invalid status JSON')
 assertDeepEqual(tailscale.parseAccounts('{'), { accounts: [], selectedAccountId: '', selectedAccountLabel: '' }, 'tailscale handles invalid account JSON')
 JS
