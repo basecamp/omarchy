@@ -22,6 +22,8 @@ Some of those cameras ship with their emitter switched off, and only turn it on 
 
 Face authentication is skipped over SSH, where there's nobody in front of the camera to look at. Your password keeps working everywhere, so if the camera misses you, just type it as usual.
 
+On OpenCV 5 you may notice a couple of lines like `[ WARN:0@0.004] global net_impl_backend.cpp:345 setPreferableTarget Targets are not supported by the new graph engine for now` every time face authentication runs. Nothing is wrong. OpenCV's new inference engine already runs on the CPU, so the request it is grumbling about was a no-op, and recognition is unaffected. The fix is already merged upstream in OpenCV and arrives with 5.1. There is nothing to configure in the meantime, and no environment variable will silence it, because the comparison runs in a process whose environment is deliberately scrubbed.
+
 Bear in mind that a face is weaker proof than a password: someone who looks a lot like you may get in. Don't rely on it alone if that matters to you.
 
 You can remove the face authentication under _Remove > Security > Face_ in the Omarchy menu.
