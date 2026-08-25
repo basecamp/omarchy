@@ -188,8 +188,8 @@ BorderSurface {
     }
   }
 
-  // Hover-revealed close. Stacked after mainColumn so its MouseArea sits
-  // above the full-card one and the click never reaches cardClicked.
+  // Hover-revealed close for normal toasts; critical stays sticky and must
+  // show a dismiss control without hovering (#7711).
   Item {
     anchors.top: parent.top
     anchors.right: parent.right
@@ -198,7 +198,7 @@ BorderSurface {
     width: Style.space(18)
     height: Style.space(18)
     visible: opacity > 0
-    opacity: root.hovered ? 1 : 0
+    opacity: (root.hovered || root.urgency === 2) ? 1 : 0
 
     Behavior on opacity { NumberAnimation { duration: 100 } }
 
