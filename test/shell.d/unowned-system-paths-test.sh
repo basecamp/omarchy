@@ -2,7 +2,7 @@
 
 # A file Omarchy writes into /usr belongs to nobody, and the
 # day a package starts shipping that same path, pacman refuses the upgrade for
-# everyone who has the file. omarchy-update-system-pkgs-when-conflicted recovers from
+# everyone who has the file. omarchy-update-file-conflicts recovers from
 # that, but the cheaper answer is to ship the file in the package instead.
 #
 # This flags a script writing such a path unless a PKGBUILD installs it, or it
@@ -36,7 +36,7 @@ allowed = {
   "/usr/share/chromium/extensions",
   "/usr/lib/firefox/distribution",
   # Static content that belongs in omarchy-settings. It cannot move there in the
-  # same release that first ships omarchy-update-system-pkgs-when-conflicted: the
+  # same release that first ships omarchy-update-file-conflicts: the
   # upgrade carrying the handler is the one that would hit the conflict, and the
   # handler only helps once it is on disk. Package it the release after.
   "/usr/lib/chromium/initial_preferences",

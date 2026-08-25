@@ -8,269 +8,371 @@ test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
 
 stub_bin="$test_tmp/bin"
+system_root="$test_tmp/system"
+archive_root="$test_tmp/archive"
+helper_copy="$test_tmp/omarchy-update-file-conflicts"
+package_list="$test_tmp/package-files"
+owned_list="$test_tmp/owned-paths"
+retry_installs="$test_tmp/retry-installs"
+package_cache="$system_root/var/cache/pacman/pkg"
 mkdir -p "$stub_bin"
 
-cat >"$stub_bin/sudo" <<'STUB'
+# Retarget only a scratch copy of the root helper. Production contains no test
+# path override and always uses /etc, /usr, and /var/lib/omarchy/replaced.
+test_uid=$(id -u)
+test_gid=$(id -g)
+sed \
+  -e 's/if ((EUID != 0)); then/if false; then/' \
+  -e 's|export PATH=/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin|export PATH=${OMARCHY_TEST_HELPER_PATH:?}|' \
+  -e 's/readonly ROOT_UID=0/readonly ROOT_UID='"$test_uid"'/' \
+  -e 's/readonly ROOT_GID=0/readonly ROOT_GID='"$test_gid"'/' \
+  -e "s|readonly ARCHIVE_ROOT=/var/lib/omarchy/replaced|readonly ARCHIVE_ROOT=$archive_root|" \
+  -e "s|readonly PACKAGE_CACHE_ROOT=/var|readonly PACKAGE_CACHE_ROOT=$system_root/var|" \
+  -e "s|readonly PACKAGE_CACHE=/var/cache/pacman/pkg|readonly PACKAGE_CACHE=$package_cache|" \
+  -e "s|allowed_roots=(/etc /usr)|allowed_roots=($system_root/etc $system_root/usr)|" \
+  "$ROOT/bin/omarchy-update-file-conflicts" >"$helper_copy"
+chmod +x "$helper_copy"
+
+cat >"$stub_bin/sudo" <<'SH'
 #!/bin/bash
+if [[ ${1:-} == /usr/bin/omarchy-update-file-conflicts ]]; then
+  shift
+  exec "$TEST_CONFLICT_HELPER" "$@"
+fi
 exec "$@"
-STUB
+SH
 
-# Fails the first -Syu with the report under test, then succeeds unless the case
-# asked for the retry to fail too.
-cat >"$stub_bin/pacman" <<'STUB'
+cat >"$stub_bin/pacman" <<'SH'
 #!/bin/bash
-if [[ $1 == -Qo ]]; then
-  # Anything in OWNED_PATHS has a package behind it; everything else is unowned.
-  [[ " $OWNED_PATHS " == *" $2 "* ]]
-  exit $?
-fi
+set -euo pipefail
 
-attempt=$(($(cat "$PACMAN_ATTEMPTS") + 1))
-echo "$attempt" >"$PACMAN_ATTEMPTS"
-if ((attempt == 1)); then
-  cat "$CONFLICT_REPORT" >&2
-  exit 1
-fi
-if [[ -n ${RETRY_FAILS:-} ]]; then
-  # Optionally commit the file first, as a partial transaction would.
-  [[ -n ${RETRY_INSTALLS:-} ]] && echo "packaged" >"$RETRY_INSTALLS"
-  echo "error: failed to retrieve some files" >&2
-  exit 1
-fi
-echo "upgrade complete"
-STUB
+case ${1:-} in
+-Qo)
+  path=${@: -1}
+  grep -Fxq -- "$path" "$OWNED_LIST"
+  ;;
+-Sp)
+  package=${@: -1}
+  printf '%s\tfile://%s/%s.pkg.tar.zst\n' "$package" "$PACKAGE_CACHE" "$package"
+  ;;
+-Qlp)
+  while IFS=$'\t' read -r listed_package path; do
+    printf '%s %s\n' "$listed_package" "$path"
+  done <"$PACKAGE_LIST"
+  ;;
+-Syu)
+  attempt=$(($(<"$PACMAN_ATTEMPTS") + 1))
+  printf '%s\n' "$attempt" >"$PACMAN_ATTEMPTS"
+  if ((attempt == 1)) && [[ ${CLEAN_UPDATE:-0} != 1 ]]; then
+    cat "$CONFLICT_REPORT" >&2
+    exit 1
+  fi
 
-chmod +x "$stub_bin/sudo" "$stub_bin/pacman"
+  if [[ -n ${PIVOT_PARENT:-} ]]; then
+    /usr/bin/mv -T -- "$PIVOT_PARENT" "$PIVOT_PARENT-original"
+    /usr/bin/ln -s -- "$PIVOT_TARGET" "$PIVOT_PARENT"
+  fi
 
-replaced="$test_tmp/replaced"
+  while IFS= read -r path; do
+    [[ -n $path ]] || continue
+    /usr/bin/mkdir -p -- "$(dirname -- "$path")"
+    printf 'packaged\n' >"$path"
+  done <"$RETRY_INSTALLS"
+
+  if [[ ${RETRY_FAILS:-0} == 1 ]]; then
+    echo "error: simulated retry failure" >&2
+    exit 1
+  fi
+  echo "upgrade complete"
+  ;;
+*)
+  echo "unexpected pacman invocation: $*" >&2
+  exit 97
+  ;;
+esac
+SH
+
+# Deterministically insert a symlink into the first moved directory before the
+# second forward move. A mirrored quarantine would let that link redirect the
+# later root destination; opaque sibling slots must make it irrelevant.
+cat >"$stub_bin/mv" <<'SH'
+#!/bin/bash
+/usr/bin/mv "$@"
+status=$?
+((status == 0)) || exit "$status"
+
+destination=${@: -1}
+if [[ ${FORWARD_ATTACK:-0} == 1 && $destination == */.omarchy-update-conflicts.*/item-0 && -d $destination && ! -e $FORWARD_ATTACK_MARK ]]; then
+  /usr/bin/ln -s -- "$FORWARD_ATTACK_TARGET" "$destination/escape"
+  : >"$FORWARD_ATTACK_MARK"
+fi
+SH
+
+chmod +x "$stub_bin"/*
 
 run_update() {
-  OMARCHY_REPLACED_DIR="$replaced" \
-    RETRY_FAILS="${RETRY_FAILS:-}" \
-    RETRY_INSTALLS="${RETRY_INSTALLS:-}" \
-    PACMAN_ATTEMPTS="$test_tmp/attempts" \
-    CONFLICT_REPORT="$test_tmp/report" \
-    OWNED_PATHS="${OWNED_PATHS:-}" \
-    PATH="$stub_bin:$ROOT/bin:$PATH" \
-    bash "$ROOT/bin/omarchy-update-system-pkgs"
+  TEST_CONFLICT_HELPER="$helper_copy" \
+    OMARCHY_TEST_HELPER_PATH="$stub_bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin" \
+    PACKAGE_LIST="$package_list" OWNED_LIST="$owned_list" RETRY_INSTALLS="$retry_installs" \
+    PACKAGE_CACHE="$package_cache" \
+    PACMAN_ATTEMPTS="$test_tmp/attempts" CONFLICT_REPORT="$test_tmp/report" \
+    RETRY_FAILS="${RETRY_FAILS:-0}" CLEAN_UPDATE="${CLEAN_UPDATE:-0}" \
+    PIVOT_PARENT="${PIVOT_PARENT:-}" PIVOT_TARGET="${PIVOT_TARGET:-}" \
+    FORWARD_ATTACK="${FORWARD_ATTACK:-0}" FORWARD_ATTACK_TARGET="${FORWARD_ATTACK_TARGET:-}" \
+    FORWARD_ATTACK_MARK="$test_tmp/forward-attack-mark" \
+    PATH="$stub_bin:$ROOT/bin:$PATH" bash "$ROOT/bin/omarchy-update-system-pkgs"
 }
 
-# $1 blamed package, $2 path, $3 optional owning package.
+reset_case() {
+  rm -rf "$system_root" "$archive_root" "$package_cache"
+  mkdir -p "$system_root/etc" "$system_root/usr" "$package_cache"
+  chmod 0755 "$system_root/etc" "$system_root/usr" "$system_root/var" \
+    "$system_root/var/cache" "$system_root/var/cache/pacman" "$package_cache"
+  : >"$package_list"
+  : >"$owned_list"
+  : >"$retry_installs"
+  : >"$test_tmp/report"
+  rm -f "$test_tmp/forward-attack-mark"
+  printf '0\n' >"$test_tmp/attempts"
+}
+
+make_file() {
+  local path="$1" content="${2:-ours}"
+  mkdir -p "$(dirname -- "$path")"
+  chmod 0755 "$(dirname -- "$path")"
+  printf '%s\n' "$content" >"$path"
+}
+
+ship_path() {
+  printf '%s\t%s\n' "$1" "$2" >>"$package_list"
+  : >"$package_cache/$1.pkg.tar.zst"
+  chmod 0644 "$package_cache/$1.pkg.tar.zst"
+}
+
 write_report() {
-  echo 0 >"$test_tmp/attempts"
+  local package="$1" path="$2" owner="${3:-}"
   {
     echo "error: failed to commit transaction (conflicting files)"
-    echo "$1: $2 exists in filesystem${3:+ (owned by $3)}"
+    echo "$package: $path exists in filesystem${owner:+ (owned by $owner)}"
   } >"$test_tmp/report"
 }
 
-# Raw conflict lines, for reports the recovery must refuse wholesale.
 write_raw_report() {
-  echo 0 >"$test_tmp/attempts"
   {
     echo "error: failed to commit transaction (conflicting files)"
     printf '%s\n' "$@"
   } >"$test_tmp/report"
 }
 
-work="$test_tmp/work"
-fresh_work() {
-  rm -rf "$work" "$replaced"
-  mkdir -p "$work"
+find_archived_content() {
+  local content="$1"
+  grep -Rlx -- "$content" "$archive_root" 2>/dev/null | head -n1
 }
 
-# An unowned path one of the packages is taking over.
-fresh_work
-stray="$work/omarchy-fcitx5.service"
-echo "stray content" >"$stray"
+# A legitimate unowned package target under a fixed system root is moved to an
+# opaque slot, pacman installs its replacement, and the old bytes are retained.
+reset_case
+stray="$system_root/usr/lib/omarchy-test/legacy.conf"
+make_file "$stray" "stray content"
 write_report omarchy-settings-dev "$stray"
+ship_path omarchy-settings-dev "$stray"
+printf '%s\n' "$stray" >"$retry_installs"
 run_update >"$test_tmp/out" 2>"$test_tmp/err" ||
-  fail "an unowned file conflict is not resolved"
-[[ ! -e $stray ]] ||
-  fail "the file is left in pacman's way"
-pass "a file pacman is taking over is moved out of its way"
+  fail "a verified unowned file conflict is not resolved" "$(cat "$test_tmp/out" "$test_tmp/err")"
+grep -qx packaged "$stray" || fail "pacman does not install the replacement after quarantine"
+archived=$(find_archived_content "stray content")
+[[ -n $archived && $(basename -- "$archived") == item-0 ]] || fail "replaced bytes are not stored under an opaque item name"
+grep -Fq "$stray" "$archive_root"/transaction.*/manifest || fail "archive manifest records the original fixed path"
+pass "verified file conflicts use an opaque root-owned quarantine"
 
-# Kept out of the directory it came from, where SDDM and systemd-sleep read
-# every file and every executable respectively.
-[[ -z $(ls -A "$work") ]] ||
-  fail "something is left in the directory the replaced file came from"
-grep -qx "stray content" "$replaced$stray" ||
-  fail "the replaced file is destroyed rather than kept out of the way"
-pass "the replaced file is quarantined outside the directory it came from"
-
-# A real fight between packages, not Omarchy's leftovers. pacman appends
-# "(owned by ...)" here.
-fresh_work
-echo "theirs" >"$stray"
-write_report omarchy-settings-dev "$stray" someone-else
-if run_update >"$test_tmp/out" 2>"$test_tmp/err"; then
-  fail "a file owned by another package is silently taken"
-fi
-[[ -e $stray && ! -e $replaced$stray ]] ||
-  fail "a file owned by another package is silently taken"
-pass "a conflict owned by another package stops the upgrade instead of being taken"
-
-# Report reads unowned, database disagrees: the parse is never the only thing
-# between a retry and another package's file.
-fresh_work
-echo "theirs" >"$stray"
+# Text attribution is never enough: both package ownership and the package's
+# sync file list are authoritative gates.
+reset_case
+stray="$system_root/usr/lib/omarchy-test/legacy.conf"
+make_file "$stray"
 write_report omarchy-settings-dev "$stray"
-if OWNED_PATHS="$stray" run_update >"$test_tmp/out" 2>"$test_tmp/err"; then
-  fail "pacman -Qo is not consulted before moving a file"
-fi
-[[ -e $stray && ! -e $replaced$stray ]] ||
-  fail "pacman -Qo is not consulted before moving a file"
-pass "an owned path is left alone even when the report reads as unowned"
+ship_path omarchy-settings-dev "$stray"
+printf '%s\n' "$stray" >"$owned_list"
+if run_update >"$test_tmp/out" 2>"$test_tmp/err"; then fail "a package-owned path is moved"; fi
+[[ -f $stray ]] || fail "a package-owned path does not remain in place"
 
-# A name prefix is not a namespace; only the packages that own system paths.
-fresh_work
-echo "stray" >"$stray"
-write_report omarchy-chromium-bin "$stray"
-if run_update >"$test_tmp/out" 2>"$test_tmp/err"; then
-  fail "an optional omarchy-prefixed package gets its conflicts auto-resolved"
-fi
-pass "only the packages that own system paths get their conflicts resolved"
+: >"$owned_list"
+: >"$package_list"
+printf '0\n' >"$test_tmp/attempts"
+if run_update >"$test_tmp/out" 2>"$test_tmp/err"; then fail "a path absent from the package file list is moved"; fi
+[[ -f $stray ]] || fail "an unverified path does not remain in place"
 
-# Not Omarchy's conflict to resolve.
-fresh_work
-echo "stray" >"$stray"
-write_report some-other-pkg "$stray"
-if run_update >"$test_tmp/out" 2>"$test_tmp/err"; then
-  fail "a conflict from an unrelated package is auto-resolved"
-fi
-pass "a conflict from a non-Omarchy package is left for a human"
+ship_path omarchy-settings-dev "$stray"
+chmod 0777 "$package_cache"
+printf '0\n' >"$test_tmp/attempts"
+if run_update >"$test_tmp/out" 2>"$test_tmp/err"; then fail "a package archive below a writable cache is trusted"; fi
+[[ -f $stray ]] || fail "an untrusted package-cache path authorizes a move"
+pass "live ownership and a trusted cached package archive both authorize cleanup"
 
-# The path is used literally, so glob characters in a name mean nothing.
-fresh_work
-globby="$work/omarchy-[1].conf"
-echo "globby" >"$globby"
-write_report omarchy-settings-dev "$globby"
-run_update >"$test_tmp/out" 2>"$test_tmp/err" ||
-  fail "a path whose name contains glob characters is not resolved"
-[[ -f "$replaced$globby" && ! -e "$globby" ]] ||
-  fail "a path whose name contains glob characters is treated as a pattern"
-pass "a path whose name would act as a glob is moved literally"
+# A forged report cannot name a home/tmp path, an unrelated package, or mix one
+# healable line with one unsupported conflict.
+reset_case
+outside="$test_tmp/home/stage/payload"
+make_file "$outside"
+write_report omarchy-settings-dev "$outside"
+ship_path omarchy-settings-dev "$outside"
+if run_update >"$test_tmp/out" 2>"$test_tmp/err"; then fail "a conflict outside fixed system roots is accepted"; fi
+[[ -f $outside ]] || fail "an out-of-bound path was moved"
 
-# A leftover directory is cleared the same way a file is.
-fresh_work
-conflict_dir="$work/omarchy-dir"
-mkdir -p "$conflict_dir"
-write_report omarchy-settings-dev "$conflict_dir"
-run_update >"$test_tmp/out" 2>"$test_tmp/err" ||
-  fail "a conflicting directory is not cleared out of pacman's way"
-[[ -d "$replaced$conflict_dir" && ! -e $conflict_dir ]] ||
-  fail "a conflicting directory is left in place"
-pass "a conflicting directory is moved away"
+reset_case
+stray="$system_root/etc/omarchy-test.conf"
+make_file "$stray"
+write_report some-other-package "$stray"
+ship_path some-other-package "$stray"
+if run_update >"$test_tmp/out" 2>"$test_tmp/err"; then fail "an unrelated package conflict is accepted"; fi
+[[ -f $stray ]] || fail "an unrelated package path was moved"
 
-# A space is legal in a package path; the parse must not truncate it.
-fresh_work
-spaced="$work/omarchy theme.conf"
-echo "spaced" >"$spaced"
-write_report omarchy-settings-dev "$spaced"
-run_update >"$test_tmp/out" 2>"$test_tmp/err" ||
-  fail "a conflicting path containing a space is not resolved"
-[[ -f "$replaced$spaced" && ! -e "$spaced" ]] ||
-  fail "a conflicting path containing a space is truncated"
-pass "a conflicting path containing a space is parsed whole"
-
-# An earlier quarantined copy is the more original one, and might not be ours.
-fresh_work
-echo "current" >"$stray"
-mkdir -p "$replaced$work"
-echo "from an earlier run" >"$replaced$stray"
-write_report omarchy-settings-dev "$stray"
-run_update >"$test_tmp/out" 2>"$test_tmp/err" ||
-  fail "a conflict with an existing quarantined copy is not resolved"
-grep -qrx "from an earlier run" "$replaced" ||
-  fail "an existing quarantined copy is destroyed to make room for a new one"
-pass "an existing quarantined copy survives a later run needing the same name"
-
-# mv without -T would move the source inside an existing destination directory.
-fresh_work
-echo "ours" >"$stray"
-mkdir -p "$replaced$stray"
-write_report omarchy-settings-dev "$stray"
-run_update >"$test_tmp/out" 2>"$test_tmp/err" ||
-  fail "a conflict whose destination is a directory is not resolved"
-[[ -f "$replaced$stray" ]] ||
-  fail "the leftover was moved inside the existing destination directory"
-pass "an existing destination directory is replaced, not moved into"
-
-# One healable conflict beside one that is not. Moving only the first leaves the
-# retry blocked by the second, and that config inactive for nothing.
-fresh_work
-echo "ours" >"$stray"
+reset_case
+make_file "$stray"
 write_raw_report \
   "omarchy-settings-dev: $stray exists in filesystem" \
-  "some-package: $work/theirs exists in filesystem (owned by other-package)"
-if run_update >"$test_tmp/out" 2>"$test_tmp/err"; then
-  fail "an upgrade with an unhealable conflict reports success"
-fi
-[[ -e $stray && ! -e $replaced$stray ]] ||
-  fail "a healable conflict is moved even though another conflict dooms the retry"
-pass "nothing moves unless every reported conflict is healable"
+  "some-package: $system_root/etc/theirs exists in filesystem (owned by other-package)"
+ship_path omarchy-settings-dev "$stray"
+if run_update >"$test_tmp/out" 2>"$test_tmp/err"; then fail "a partially supported report is accepted"; fi
+[[ -f $stray ]] || fail "anything moves before every conflict is validated"
+pass "forged, unrelated, and partially supported reports cannot authorize root moves"
 
-# The retry can still fail for an unrelated reason. Leave nothing inactive.
-fresh_work
-echo "ours" >"$stray"
+# Parent components must be real root-owned, non-writable directories.
+reset_case
+unsafe_parent="$system_root/usr/lib/writable-parent"
+mkdir -p "$unsafe_parent"
+chmod 0777 "$unsafe_parent"
+stray="$unsafe_parent/legacy.conf"
+printf 'ours\n' >"$stray"
 write_report omarchy-settings-dev "$stray"
-if RETRY_FAILS=1 run_update >"$test_tmp/out" 2>"$test_tmp/err"; then
-  fail "a failed retry reports success"
-fi
-[[ -f $stray ]] ||
-  fail "a failed retry leaves the file moved away and inactive"
-grep -qx "ours" "$stray" ||
-  fail "the restored file is not the original content"
-[[ $(cat "$test_tmp/attempts") == 2 ]] ||
-  fail "the handler and the upgrade re-invoke each other instead of stopping"
-pass "a failed retry puts the files back, without re-invoking the handler"
+ship_path omarchy-settings-dev "$stray"
+if run_update >"$test_tmp/out" 2>"$test_tmp/err"; then fail "a writable parent is trusted"; fi
+[[ -f $stray ]] || fail "a path below a writable parent was moved"
 
-# A retry that failed after committing the files has nothing to restore, and
-# should not announce a restore it is not doing.
-fresh_work
-echo "ours" >"$stray"
+reset_case
+pivot_target="$test_tmp/pivot-target"
+mkdir -p "$pivot_target"
+mkdir -p "$system_root/usr/lib"
+ln -s "$pivot_target" "$system_root/usr/lib/symlink-parent"
+stray="$system_root/usr/lib/symlink-parent/legacy.conf"
+printf 'ours\n' >"$pivot_target/legacy.conf"
 write_report omarchy-settings-dev "$stray"
-if RETRY_FAILS=1 RETRY_INSTALLS="$stray" run_update >"$test_tmp/out" 2>"$test_tmp/err"; then
-  fail "a failed retry reports success"
-fi
-grep -qi "restoring" "$test_tmp/out" "$test_tmp/err" &&
-  fail "a restore is announced when no file is put back"
-grep -qx "packaged" "$stray" ||
-  fail "the file pacman installed was overwritten by the restore"
-pass "no restore is announced when there is nothing to put back"
+ship_path omarchy-settings-dev "$stray"
+if run_update >"$test_tmp/out" 2>"$test_tmp/err"; then fail "a symlinked parent is trusted"; fi
+[[ -f $pivot_target/legacy.conf ]] || fail "a path through a symlinked parent was moved"
+pass "writable and symlinked parent chains are refused"
 
-# A dangling symlink reads as absent to -e, so a relative link that no longer
-# resolves from inside the quarantine must still be recognised and put back.
-fresh_work
-ln -s ./neighbour "$stray"
+# Spaces are data, and a conflicting directory can be renamed without any root
+# traversal through its attacker-controlled contents.
+reset_case
+spaced="$system_root/etc/omarchy theme.conf"
+make_file "$spaced" spaced
+write_report omarchy-settings-dev "$spaced"
+ship_path omarchy-settings-dev "$spaced"
+printf '%s\n' "$spaced" >"$retry_installs"
+run_update >/dev/null 2>&1 || fail "a package path containing spaces is rejected"
+grep -qx packaged "$spaced" || fail "a path containing spaces is truncated"
+
+reset_case
+conflict_dir="$system_root/usr/lib/omarchy-test/legacy-dir"
+mkdir -p "$conflict_dir"
+printf 'inside\n' >"$conflict_dir/file"
+write_report omarchy-settings-dev "$conflict_dir"
+ship_path omarchy-settings-dev "$conflict_dir"
+run_update >/dev/null 2>&1 || fail "a verified conflicting directory is not cleared"
+[[ -n $(find_archived_content inside) ]] || fail "a conflicting directory is not retained in quarantine"
+pass "spaces and directories remain supported without mirrored destinations"
+
+# On a failed retry, unchanged trusted parents allow an atomic same-filesystem
+# restore. A partial pacman install is never overwritten by that rollback.
+reset_case
+stray="$system_root/usr/lib/omarchy-test/legacy.conf"
+make_file "$stray" ours
 write_report omarchy-settings-dev "$stray"
-if RETRY_FAILS=1 run_update >"$test_tmp/out" 2>"$test_tmp/err"; then
-  fail "a failed retry reports success"
-fi
-[[ -L $stray ]] ||
-  fail "a symlink that dangles from the quarantine is never restored"
-pass "a dangling symlink is restored rather than stranded in the quarantine"
+ship_path omarchy-settings-dev "$stray"
+if RETRY_FAILS=1 run_update >"$test_tmp/out" 2>"$test_tmp/err"; then fail "a failed retry reports success"; fi
+grep -qx ours "$stray" || fail "a failed retry does not restore the original file"
+[[ ! -d $archive_root ]] || fail "a fully restored retry leaves a quarantine archive"
+[[ $(<"$test_tmp/attempts") == 2 ]] || fail "the retry count is not bounded"
 
-# The handler acts on a pacman report; an old or hand-written one would move
-# live files aside for an upgrade that is not happening.
-fresh_work
-echo "ours" >"$stray"
+reset_case
+make_file "$stray" ours
 write_report omarchy-settings-dev "$stray"
-if PATH="$stub_bin:$ROOT/bin:$PATH" OMARCHY_REPLACED_DIR="$replaced" \
-  bash "$ROOT/bin/omarchy-update-system-pkgs-when-conflicted" "$test_tmp/report" \
-  >"$test_tmp/out" 2>"$test_tmp/err"; then
-  fail "the handler acts on a report handed to it outside an update"
-fi
-[[ -f $stray ]] ||
-  fail "the handler moved a live file when run outside an update"
-pass "the handler refuses a report handed to it outside an update"
+ship_path omarchy-settings-dev "$stray"
+printf '%s\n' "$stray" >"$retry_installs"
+if RETRY_FAILS=1 run_update >"$test_tmp/out" 2>"$test_tmp/err"; then fail "a failed partial retry reports success"; fi
+grep -qx packaged "$stray" || fail "rollback overwrites a file pacman installed"
+[[ -n $(find_archived_content ours) ]] || fail "the displaced original is lost after a partial retry"
+pass "failed retries restore safely without overwriting package output"
 
-# The happy path must not pay for any of this.
-fresh_work
-: >"$test_tmp/report"
-echo 1 >"$test_tmp/attempts"
-run_update >"$test_tmp/out" 2>"$test_tmp/err" ||
-  fail "a clean upgrade fails"
-[[ $(cat "$test_tmp/attempts") == 2 ]] ||
-  fail "a clean upgrade runs more than one pacman transaction"
-pass "a clean upgrade runs a single pacman transaction"
+# A dangling symlink is the moved object and is restored as a symlink.
+reset_case
+stray="$system_root/etc/omarchy-link"
+ln -s ./missing-target "$stray"
+write_report omarchy-settings-dev "$stray"
+ship_path omarchy-settings-dev "$stray"
+if RETRY_FAILS=1 run_update >/dev/null 2>&1; then fail "a failed symlink retry reports success"; fi
+[[ -L $stray && $(readlink "$stray") == ./missing-target ]] || fail "a dangling symlink is not restored literally"
+pass "dangling symlinks are restored without being followed"
+
+# Primary regression: swap the original parent for a symlink while pacman is
+# retrying. The helper must revalidate the parent and archive the payload, never
+# write through the replacement link.
+reset_case
+pivot_parent="$system_root/usr/lib/stage/escape"
+mkdir -p "$pivot_parent"
+stray="$pivot_parent/payload"
+printf 'payload\n' >"$stray"
+pivot_target="$test_tmp/fake-root"
+mkdir -p "$pivot_target"
+write_report omarchy-settings-dev "$stray"
+ship_path omarchy-settings-dev "$stray"
+if RETRY_FAILS=1 PIVOT_PARENT="$pivot_parent" PIVOT_TARGET="$pivot_target" \
+  run_update >"$test_tmp/out" 2>"$test_tmp/err"; then
+  fail "the deliberately failed pivot retry reports success"
+fi
+[[ -L $pivot_parent ]] || fail "the rollback test did not replace the original parent"
+[[ ! -e $pivot_target/payload ]] || fail "rollback followed a replaced parent and escaped its trusted root"
+[[ -n $(find_archived_content payload) ]] || fail "payload is lost when an unsafe restore is refused"
+pass "rollback cannot follow a user-controlled parent symlink"
+
+# Secondary regression: a symlink inserted inside the first moved directory
+# cannot influence the destination of the next move because every item is a
+# sibling under an opaque root-generated name.
+reset_case
+first="$system_root/usr/lib/omarchy-test/first-dir"
+second="$system_root/usr/lib/omarchy-test/second.conf"
+mkdir -p "$first"
+printf 'first\n' >"$first/file"
+make_file "$second" second
+escape_target="$test_tmp/forward-escape"
+mkdir -p "$escape_target"
+write_raw_report \
+  "omarchy-settings-dev: $first exists in filesystem" \
+  "omarchy-settings-dev: $second exists in filesystem"
+ship_path omarchy-settings-dev "$first"
+ship_path omarchy-settings-dev "$second"
+if FORWARD_ATTACK=1 FORWARD_ATTACK_TARGET="$escape_target" RETRY_FAILS=1 \
+  run_update >"$test_tmp/out" 2>"$test_tmp/err"; then
+  fail "the deliberately failed forward-race retry reports success"
+fi
+[[ -f $test_tmp/forward-attack-mark ]] || fail "the forward-race fixture did not insert its symlink"
+[[ ! -e $escape_target/second.conf && ! -e $escape_target/item-1 ]] ||
+  fail "a symlink inside a moved directory redirected a later root move"
+[[ -f $first/file && -f $second ]] || fail "failed forward-race retry does not restore both original objects"
+pass "forward moves cannot traverse a symlink inside an earlier quarantined directory"
+
+# A direct caller cannot invoke either privileged mutation path, while a clean
+# update still runs exactly one pacman transaction.
+if bash "$ROOT/bin/omarchy-update-file-conflicts" </dev/null >/dev/null 2>&1; then
+  fail "unprivileged callers can invoke the root conflict helper"
+fi
+write_report omarchy-settings-dev "$system_root/etc/noop"
+if PATH="$stub_bin:$ROOT/bin:$PATH" bash "$ROOT/bin/omarchy-update-system-pkgs-when-conflicted" "$test_tmp/report" >/dev/null 2>&1; then
+  fail "the interactive handler accepts a direct file-conflict report"
+fi
+
+reset_case
+CLEAN_UPDATE=1 run_update >/dev/null 2>&1 || fail "a clean upgrade fails"
+[[ $(<"$test_tmp/attempts") == 1 ]] || fail "a clean upgrade runs more than one pacman transaction"
+pass "privileged conflict handling is internal and clean updates stay single-pass"

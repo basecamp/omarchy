@@ -1,0 +1,297 @@
+#!/bin/bash
+
+# omarchy:summary=Safely retry an Omarchy package update after file conflicts
+# omarchy:hidden=true
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+if ((EUID != 0)); then
+  echo "omarchy-update-file-conflicts must run as root" >&2
+  exit 1
+fi
+
+# This helper acts on root files after parsing attacker-modifiable text. Resolve
+# every command from system directories, never from an active dev checkout.
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
+export LC_ALL=C
+
+readonly ROOT_UID=0
+readonly ROOT_GID=0
+readonly ARCHIVE_ROOT=/var/lib/omarchy/replaced
+readonly PACKAGE_CACHE_ROOT=/var
+readonly PACKAGE_CACHE=/var/cache/pacman/pkg
+readonly MAX_REPORT_BYTES=1048576
+
+allowed_packages=(omarchy omarchy-dev omarchy-settings omarchy-settings-dev)
+allowed_roots=(/etc /usr)
+
+declare -a conflict_packages=() conflict_paths=() moved_paths=() moved_slots=()
+declare -A stage_for_root=()
+report=""
+retry_succeeded=0
+
+valid_package() {
+  local package="$1" allowed
+  for allowed in "${allowed_packages[@]}"; do
+    [[ $package == "$allowed" ]] && return 0
+  done
+  return 1
+}
+
+root_for_path() {
+  local path="$1" root
+  for root in "${allowed_roots[@]}"; do
+    [[ $path == "$root/"* ]] && { printf '%s\n' "$root"; return 0; }
+  done
+  return 1
+}
+
+valid_canonical_path() {
+  local path="$1"
+  [[ $path == /* && $path != / && $path != *$'\n'* && $path != *$'\r'* && $path != *$'\t'* ]] || return 1
+  case "$path" in
+  *//* | */./* | */../* | */. | */..) return 1 ;;
+  esac
+  root_for_path "$path" >/dev/null
+}
+
+assert_root_directory() {
+  local directory="$1" owner mode canonical
+  [[ -d $directory && ! -L $directory ]] || return 1
+  canonical=$(realpath -e -- "$directory" 2>/dev/null) || return 1
+  [[ $canonical == "$directory" ]] || return 1
+  owner=$(stat -Lc '%u' "$directory") || return 1
+  mode=$(stat -Lc '%a' "$directory") || return 1
+  [[ $owner == "$ROOT_UID" ]] && ! ((8#$mode & 022))
+}
+
+assert_safe_parent_chain() {
+  local path="$1" root="$2" directory next
+  directory=$(dirname -- "$path")
+  [[ $directory == "$root" || $directory == "$root/"* ]] || return 1
+
+  while :; do
+    assert_root_directory "$directory" || return 1
+    [[ $directory == "$root" ]] && return 0
+    next=$(dirname -- "$directory")
+    [[ $next == "$root" || $next == "$root/"* ]] || return 1
+    directory=$next
+  done
+}
+
+package_archive_for() {
+  local package="$1" listed_package location filename candidate owner mode
+  assert_safe_parent_chain "$PACKAGE_CACHE/.archive-probe" "$PACKAGE_CACHE_ROOT" || return 1
+  while IFS=$'\t' read -r listed_package location; do
+    [[ $listed_package == "$package" && -n $location ]] || continue
+    location=${location%%\?*}
+    filename=${location##*/}
+    [[ -n $filename && $filename != "$location" ]] || continue
+    candidate=$PACKAGE_CACHE/$filename
+    [[ -f $candidate && ! -L $candidate ]] || continue
+    owner=$(stat -Lc '%u' "$candidate") || continue
+    mode=$(stat -Lc '%a' "$candidate") || continue
+    [[ $owner == "$ROOT_UID" ]] && ! ((8#$mode & 022)) || continue
+    printf '%s\n' "$candidate"
+    return 0
+  done < <(pacman -Sp --print-format $'%n\t%l' -- "$package" 2>/dev/null)
+  return 1
+}
+
+package_contains_path() {
+  local package="$1" expected="$2" archive listed_package listed_path
+  archive=$(package_archive_for "$package") || return 1
+  while read -r listed_package listed_path; do
+    [[ $listed_package == "$package" && -n $listed_path ]] || continue
+    listed_path=${listed_path%/}
+    [[ $listed_path == "$expected" ]] && return 0
+  done < <(pacman -Qlp -- "$archive" 2>/dev/null)
+  return 1
+}
+
+parse_report() {
+  local line clean package path conflict_count=0
+  local conflict_pattern='^(omarchy|omarchy-dev|omarchy-settings|omarchy-settings-dev): (.+) exists in filesystem$'
+  declare -A seen=()
+
+  while IFS= read -r line; do
+    # Pacman may color its "error:" prefix when a caller forces color. Strip
+    # CSI sequences before matching, while still treating all text as data.
+    clean=$(printf '%s' "$line" | sed $'s/\033\[[0-9;]*[[:alpha:]]//g')
+    [[ $clean == *" exists in filesystem"* ]] && ((conflict_count += 1))
+    if [[ $clean =~ $conflict_pattern ]]; then
+      package=${BASH_REMATCH[1]}
+      path=${BASH_REMATCH[2]}
+      valid_package "$package" || return 1
+      valid_canonical_path "$path" || return 1
+      [[ -z ${seen[$path]:-} ]] || return 1
+      seen[$path]=1
+      conflict_packages+=("$package")
+      conflict_paths+=("$path")
+    fi
+  done <<<"$report"
+
+  ((${#conflict_paths[@]} > 0 && ${#conflict_paths[@]} == conflict_count))
+}
+
+validate_conflicts() {
+  local index package path root other
+  for index in "${!conflict_paths[@]}"; do
+    package=${conflict_packages[$index]}
+    path=${conflict_paths[$index]}
+    root=$(root_for_path "$path") || return 1
+
+    package_contains_path "$package" "$path" || {
+      echo "Refusing conflict path not shipped by $package: $path" >&2
+      return 1
+    }
+    if pacman -Qo -- "$path" &>/dev/null; then
+      echo "Refusing package-owned conflict path: $path" >&2
+      return 1
+    fi
+    [[ -e $path || -L $path ]] || {
+      echo "Conflict path disappeared before it could be secured: $path" >&2
+      return 1
+    }
+    assert_safe_parent_chain "$path" "$root" || {
+      echo "Refusing conflict below an unsafe parent: $path" >&2
+      return 1
+    }
+
+    # Reject overlapping candidates. Moving one must never turn another path
+    # into a traversal through attacker-owned content.
+    for other in "${conflict_paths[@]}"; do
+      [[ $other == "$path" ]] && continue
+      [[ $other != "$path/"* && $path != "$other/"* ]] || {
+        echo "Refusing overlapping conflict paths: $path and $other" >&2
+        return 1
+      }
+    done
+  done
+}
+
+stage_for() {
+  local root="$1" stage
+  if [[ -n ${stage_for_root[$root]:-} ]]; then
+    STAGE_RESULT=${stage_for_root[$root]}
+    return 0
+  fi
+  stage=$(mktemp -d "$root/.omarchy-update-conflicts.XXXXXX")
+  chown "$ROOT_UID:$ROOT_GID" "$stage"
+  chmod 0700 "$stage"
+  stage_for_root[$root]=$stage
+  STAGE_RESULT=$stage
+}
+
+move_conflicts() {
+  local index path root stage slot
+  echo -e "\e[33m\nTaking over files pacman doesn't own yet:\e[0m"
+  for index in "${!conflict_paths[@]}"; do
+    path=${conflict_paths[$index]}
+    root=$(root_for_path "$path")
+    stage_for "$root"
+    stage=$STAGE_RESULT
+    slot="$stage/item-$index"
+    mv --no-copy -T -- "$path" "$slot"
+    moved_paths+=("$path")
+    moved_slots+=("$slot")
+    printf '  %s -> protected item %d\n' "$path" "$index"
+  done
+  echo
+}
+
+restore_moved() {
+  local index path slot root
+  local announced=0
+  for index in "${!moved_paths[@]}"; do
+    path=${moved_paths[$index]}
+    slot=${moved_slots[$index]}
+    [[ -e $slot || -L $slot ]] || continue
+    [[ ! -e $path && ! -L $path ]] || continue
+    root=$(root_for_path "$path") || continue
+    assert_safe_parent_chain "$path" "$root" || {
+      echo "Refusing to restore below a changed parent: $path" >&2
+      continue
+    }
+    if ((announced == 0)); then
+      echo -e "\e[33m\nPutting back what the upgrade didn't take:\e[0m"
+      announced=1
+    fi
+    if mv --no-copy -T -- "$slot" "$path"; then
+      printf '  %s\n' "$path"
+    else
+      echo "Could not safely restore $path; retaining it in protected quarantine." >&2
+    fi
+  done
+}
+
+archive_remaining() {
+  local root stage archive transaction label has_items=0
+  for stage in "${stage_for_root[@]}"; do
+    [[ -d $stage ]] || continue
+    if find "$stage" -mindepth 1 -print -quit | grep -q .; then has_items=1; break; fi
+  done
+  ((has_items)) || {
+    for stage in "${stage_for_root[@]}"; do rmdir -- "$stage" 2>/dev/null || true; done
+    return 0
+  }
+
+  install -d -o "$ROOT_UID" -g "$ROOT_GID" -m 0700 "$ARCHIVE_ROOT"
+  transaction=$(mktemp -d "$ARCHIVE_ROOT/transaction.XXXXXX")
+  chown "$ROOT_UID:$ROOT_GID" "$transaction"
+  chmod 0700 "$transaction"
+
+  for root in "${!stage_for_root[@]}"; do
+    stage=${stage_for_root[$root]}
+    [[ -d $stage ]] || continue
+    label=$(basename -- "$root")
+    if find "$stage" -mindepth 1 -print -quit | grep -q .; then
+      mv -T -- "$stage" "$transaction/$label"
+    else
+      rmdir -- "$stage"
+    fi
+  done
+
+  {
+    for root in "${!moved_paths[@]}"; do
+      printf 'item-%s\t%s\n' "$root" "${moved_paths[$root]}"
+    done
+  } >"$transaction/manifest"
+  chown "$ROOT_UID:$ROOT_GID" "$transaction/manifest"
+  chmod 0600 "$transaction/manifest"
+  printf 'Replaced files retained in %s\n' "$transaction"
+}
+
+cleanup() {
+  local status=$?
+  trap - EXIT INT TERM
+  ((retry_succeeded)) || restore_moved
+  archive_remaining || echo "Warning: protected conflict staging could not be archived." >&2
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 1' INT TERM
+
+report=$(head -c $((MAX_REPORT_BYTES + 1)))
+((${#report} <= MAX_REPORT_BYTES)) || {
+  echo "Refusing an oversized pacman error report" >&2
+  exit 1
+}
+
+parse_report || {
+  echo "Pacman report contains unsupported or incomplete file conflicts" >&2
+  exit 1
+}
+validate_conflicts
+move_conflicts
+
+echo -e "\e[32m\nUpdate system packages\e[0m"
+if env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --noconfirm --overwrite '/usr/share/omarchy/*'; then
+  retry_succeeded=1
+  archive_remaining
+  stage_for_root=()
+  trap - EXIT INT TERM
+  exit 0
+fi
+exit 1
