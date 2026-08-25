@@ -35,9 +35,9 @@ Panel {
       root.probePending = false
       root.hardwarePresenceKnown = true
       root.hardwarePresent = true
-      root.hasPendingPowerState = false
-      root.pendingPowerState = false
-      powerTimer.stop()
+      // The pending state is not cleared here: BlueZ exposes the adapter before
+      // AutoEnable powers it, so "Turning on…" has to outlive its arrival.
+      // onIsActuallyOnChanged clears it when the radio is really up.
     } else {
       root.hasPendingPowerState = false
       root.pendingPowerState = false
