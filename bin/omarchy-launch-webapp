@@ -10,4 +10,12 @@ google-chrome* | brave* | microsoft-edge* | opera* | vivaldi* | helium*) ;;
 *) browser="chromium.desktop" ;;
 esac
 
-exec setsid uwsm-app -- $(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1) --app="$1" "${@:2}"
+browser_exec=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1)
+
+# Opera is Chromium-based but ignores --app= and opens the start page instead.
+# A positional URL opens a tab in the existing window, or starts Opera with that tab.
+if [[ $browser == opera* ]]; then
+  exec setsid uwsm-app -- "$browser_exec" "$1" "${@:2}"
+else
+  exec setsid uwsm-app -- "$browser_exec" --app="$1" "${@:2}"
+fi
