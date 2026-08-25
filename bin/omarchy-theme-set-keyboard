@@ -5,4 +5,7 @@
 
 omarchy-theme-set-keyboard-asus-rog
 omarchy-theme-set-keyboard-f16
-omarchy-brightness-keyboard-watch sync
+
+if omarchy-hw-asus-rog && omarchy-hw-match "GZ302"; then
+  omarchy-brightness-keyboard-watch sync
+fi

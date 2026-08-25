@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-# omarchy:summary=Watch keyboard backlight for OSD and GZ302 chassis LED
+# omarchy:summary=Mirror GZ302 keyboard backlight onto the chassis window LED
 # omarchy:args=[watch|show|sync]
 # omarchy:hidden=true
 
