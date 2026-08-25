@@ -5,6 +5,7 @@
 # no input can inject a host-root bind mount or a privileged flag, the password
 # survives both the YAML and the compose-interpolation layer, only known
 # privileged actions dispatch, and legacy configs migrate without redownloading.
+# Install also follows the host locale into LANGUAGE/REGION/KEYBOARD.
 
 set -euo pipefail
 
@@ -32,6 +33,9 @@ grep -q 'image: dockurr/windows' "$COMPOSE" || fail "image is pinned"
 grep -q -- '- NET_ADMIN' "$COMPOSE" || fail "cap_add is pinned"
 grep -q -- '- /home/alice/.windows:/storage' "$COMPOSE" || fail "storage volume uses the given path"
 grep -q -- '- /:/' "$COMPOSE" && fail "compose must never contain a host-root bind mount"
+grep -q 'LANGUAGE: "en"' "$COMPOSE" || fail "missing LANGUAGE defaults to en"
+grep -q 'REGION: "en-US"' "$COMPOSE" || fail "missing REGION defaults to en-US"
+grep -q 'KEYBOARD: "en-US"' "$COMPOSE" || fail "missing KEYBOARD defaults to en-US"
 pass "writer emits a pinned compose with no host-root mount"
 
 # --- injection attempts are rejected, no file written ---
@@ -92,6 +96,8 @@ grep -q -- "- $HOME/.windows:/storage" "$COMPOSE_FILE" || fail "migration uses t
 grep -q -- '- /:/' "$COMPOSE_FILE" && fail "migration must not carry a host-root bind mount from a tampered legacy file"
 grep -q -- '- /etc:/shared' "$COMPOSE_FILE" && fail "migration must not carry a tampered legacy volume path"
 [[ ! -f $LEGACY_COMPOSE_FILE ]] || fail "migration removes the legacy compose"
+grep -q 'LANGUAGE: "' "$COMPOSE_FILE" || fail "migration writes LANGUAGE"
+[[ $(grep -c '^[[:space:]]*LANGUAGE:' "$COMPOSE_FILE" || true) == 1 ]] || fail "migration duplicated LANGUAGE"
 pass "migration reconstructs data paths from \$HOME and ignores tampered legacy volumes"
 
 # --- bring-up refuses a symlinked mount source (a symlink redirects the
@@ -122,3 +128,88 @@ write_credentials 'carol' 'p=a$$w"x'
 [[ $(read_credential USERNAME) == "carol" ]] || fail "username round-trips"
 [[ $(read_credential PASSWORD) == 'p=a$$w"x' ]] || fail "password (with =) round-trips"
 pass "credentials are written 0600 and round-trip"
+
+# --- host locale follows localectl / LANG / vconsole into the compose ---
+priv() { local a=$1; shift; "__priv_$a" "$@"; }
+export OMARCHY_VCONSOLE="$TMPDIR/missing-vconsole"
+
+compose_from_host() {
+  rm -f "$COMPOSE"
+  write_compose 4G 2 64G alice pw UTC /home/alice/.windows /home/alice/Windows
+}
+
+locale_env() {
+  grep -E '^[[:space:]]*(LANGUAGE|REGION|KEYBOARD):' "$COMPOSE"
+}
+
+# Issue #7901: LANG stays en_US while localectl reports a German keyboard.
+localectl() {
+  cat <<'EOF'
+   System Locale: LANG=en_US.UTF-8
+       VC Keymap: de
+      X11 Layout: de
+EOF
+}
+export LANG=en_US.UTF-8
+compose_from_host
+grep -q 'LANGUAGE: "de"' "$COMPOSE" || fail "de keyboard sets LANGUAGE=de" "$(locale_env)"
+grep -q 'REGION: "de-DE"' "$COMPOSE" || fail "de keyboard sets REGION=de-DE" "$(locale_env)"
+grep -q 'KEYBOARD: "de-DE"' "$COMPOSE" || fail "de keyboard sets KEYBOARD=de-DE" "$(locale_env)"
+grep -q 'TZ: "UTC"' "$COMPOSE" || fail "TZ is still written alongside locale"
+pass "German localectl layout maps to de / de-DE / de-DE"
+
+localectl() {
+  cat <<'EOF'
+   System Locale: LANG=en_US.UTF-8
+       VC Keymap: us
+      X11 Layout: us
+EOF
+}
+export LANG=en_US.UTF-8
+compose_from_host
+grep -q 'LANGUAGE: "en"' "$COMPOSE" || fail "English host sets LANGUAGE=en" "$(locale_env)"
+grep -q 'REGION: "en-US"' "$COMPOSE" || fail "English host sets REGION=en-US" "$(locale_env)"
+grep -q 'KEYBOARD: "en-US"' "$COMPOSE" || fail "English host sets KEYBOARD=en-US" "$(locale_env)"
+[[ $(grep -c '^[[:space:]]*LANGUAGE:' "$COMPOSE" || true) == 1 ]] || fail "English compose duplicated LANGUAGE"
+pass "English host maps to en / en-US"
+
+localectl() { return 1; }
+export LANG=de_DE.UTF-8
+compose_from_host
+grep -q 'LANGUAGE: "de"' "$COMPOSE" || fail "LANG=de_DE sets LANGUAGE=de" "$(locale_env)"
+grep -q 'REGION: "de-DE"' "$COMPOSE" || fail "LANG=de_DE sets REGION=de-DE" "$(locale_env)"
+grep -q 'KEYBOARD: "de-DE"' "$COMPOSE" || fail "LANG=de_DE sets KEYBOARD=de-DE" "$(locale_env)"
+pass "LANG=de_DE.UTF-8 maps to de / de-DE without localectl"
+
+localectl() { return 1; }
+export LANG=C
+printf 'XKBLAYOUT=de\n' >"$TMPDIR/vconsole.conf"
+export OMARCHY_VCONSOLE="$TMPDIR/vconsole.conf"
+compose_from_host
+grep -q 'LANGUAGE: "de"' "$COMPOSE" || fail "vconsole XKBLAYOUT=de sets LANGUAGE=de" "$(locale_env)"
+grep -q 'REGION: "de-DE"' "$COMPOSE" || fail "vconsole XKBLAYOUT=de sets REGION=de-DE" "$(locale_env)"
+grep -q 'KEYBOARD: "de-DE"' "$COMPOSE" || fail "vconsole XKBLAYOUT=de sets KEYBOARD=de-DE" "$(locale_env)"
+pass "vconsole XKBLAYOUT=de maps to de / de-DE"
+export OMARCHY_VCONSOLE="$TMPDIR/missing-vconsole"
+
+localectl() {
+  cat <<'EOF'
+   System Locale: LANG=de_DE.UTF-8
+       VC Keymap: de
+      X11 Layout: de
+EOF
+}
+export LANG=de_DE.UTF-8
+compose_from_host
+write_compose 4G 2 64G alice pw UTC /home/alice/.windows /home/alice/Windows
+[[ $(grep -c '^[[:space:]]*LANGUAGE:' "$COMPOSE" || true) == 1 ]] || fail "re-install duplicated LANGUAGE"
+[[ $(grep -c '^[[:space:]]*REGION:' "$COMPOSE" || true) == 1 ]] || fail "re-install duplicated REGION"
+[[ $(grep -c '^[[:space:]]*KEYBOARD:' "$COMPOSE" || true) == 1 ]] || fail "re-install duplicated KEYBOARD"
+pass "re-install writes LANGUAGE/REGION/KEYBOARD once"
+
+rm -f "$COMPOSE"
+printf 'RAM=%s\nCORES=%s\nDISK=%s\nUSERNAME=%s\nPASSWORD=%s\nTZ=%s\nSTORAGE=%s\nSHARED=%s\nLANGUAGE=%s\n' \
+  4G 2 64G alice pw UTC /a /b 'de; rm -rf /' | __priv_write_compose
+grep -q 'LANGUAGE: "en"' "$COMPOSE" || fail "invalid LANGUAGE should fall back to en"
+grep -q 'de; rm' "$COMPOSE" && fail "invalid LANGUAGE must not be copied into the compose"
+pass "invalid LANGUAGE falls back to en instead of being copied"

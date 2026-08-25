@@ -88,6 +88,8 @@ valid_cores() { [[ $1 =~ ^[0-9]{1,2}$ ]] && ((10#$1 >= 1)); }
 valid_disk() { [[ $1 =~ ^[0-9]{1,4}G$ ]]; }
 valid_username() { [[ $1 =~ ^[A-Za-z0-9_-]{1,20}$ ]]; }
 valid_tz() { [[ $1 =~ ^[A-Za-z0-9_/.+-]{1,64}$ ]]; }
+# dockur LANGUAGE / REGION / KEYBOARD: de, en-US, pt-br, sr-Latn-RS.
+valid_windows_locale() { [[ $1 =~ ^[A-Za-z]{2,3}(-[A-Za-z]{2,8}){0,2}$ ]]; }
 valid_path() {
   [[ $1 =~ ^/[A-Za-z0-9._/-]+$ ]] || return 1
   # Reject non-normalized paths: a . or .. component canonicalizes at mount time
@@ -120,6 +122,7 @@ valid_priv_action() {
 # port bindings are hard-coded and never taken from input.
 __priv_write_compose() {
   local ram cores disk username password tz storage shared key value
+  local language= region= keyboard=
 
   while IFS='=' read -r key value; do
     case "$key" in
@@ -131,6 +134,9 @@ __priv_write_compose() {
     TZ) tz="$value" ;;
     STORAGE) storage="$value" ;;
     SHARED) shared="$value" ;;
+    LANGUAGE) language="$value" ;;
+    REGION) region="$value" ;;
+    KEYBOARD) keyboard="$value" ;;
     esac
   done
 
@@ -140,6 +146,9 @@ __priv_write_compose() {
   valid_username "$username" || { echo "invalid username: $username" >&2; exit 2; }
   valid_password "$password" || { echo "invalid password" >&2; exit 2; }
   valid_tz "$tz" || tz="UTC"
+  valid_windows_locale "$language" || language="en"
+  valid_windows_locale "$region" || region="en-US"
+  valid_windows_locale "$keyboard" || keyboard="en-US"
   valid_path "$storage" || { echo "invalid storage path: $storage" >&2; exit 2; }
   valid_path "$shared" || { echo "invalid shared path: $shared" >&2; exit 2; }
 
@@ -173,6 +182,9 @@ services:
       USERNAME: "$username"
       PASSWORD: "$esc_password"
       TZ: "$tz"
+      LANGUAGE: "$language"
+      REGION: "$region"
+      KEYBOARD: "$keyboard"
       ARGUMENTS: "-rtc base=localtime,clock=host,driftfix=slew"
     devices:
       - /dev/kvm
@@ -281,11 +293,196 @@ __priv_remove() {
 
 # --- config helpers ----------------------------------------------------------
 
+# dockur LANGUAGE / REGION / KEYBOARD for a language or xkb layout code.
+# de → de de-DE de-DE, matching the ISO dockur downloads for a German host.
+windows_locale_for_code() {
+  local code=${1,,}
+  case "$code" in
+  ar) printf '%s %s %s\n' ar ar-SA ar-SA ;;
+  bg) printf '%s %s %s\n' bg bg-BG bg-BG ;;
+  cs | cz) printf '%s %s %s\n' cs cs-CZ cs-CZ ;;
+  da | dk) printf '%s %s %s\n' da da-DK da-DK ;;
+  de) printf '%s %s %s\n' de de-DE de-DE ;;
+  el | gr) printf '%s %s %s\n' el el-GR el-GR ;;
+  us | en) printf '%s %s %s\n' en en-US en-US ;;
+  gb | uk | en-gb) printf '%s %s %s\n' en-gb en-GB en-GB ;;
+  es) printf '%s %s %s\n' es es-ES es-ES ;;
+  mx) printf '%s %s %s\n' es es-MX es-MX ;;
+  et) printf '%s %s %s\n' et et-EE et-EE ;;
+  fi) printf '%s %s %s\n' fi fi-FI fi-FI ;;
+  fr) printf '%s %s %s\n' fr fr-FR fr-FR ;;
+  ca | cf) printf '%s %s %s\n' ca fr-CA fr-CA ;;
+  he | il) printf '%s %s %s\n' he he-IL he-IL ;;
+  hr | cr) printf '%s %s %s\n' hr hr-HR hr-HR ;;
+  hu) printf '%s %s %s\n' hu hu-HU hu-HU ;;
+  it) printf '%s %s %s\n' it it-IT it-IT ;;
+  ja | jp) printf '%s %s %s\n' ja ja-JP ja-JP ;;
+  ko | kr) printf '%s %s %s\n' ko ko-KR ko-KR ;;
+  lt) printf '%s %s %s\n' lt lt-LT lt-LT ;;
+  lv) printf '%s %s %s\n' lv lv-LV lv-LV ;;
+  nb | nn | no) printf '%s %s %s\n' nn nb-NO nb-NO ;;
+  nl) printf '%s %s %s\n' nl nl-NL nl-NL ;;
+  pl) printf '%s %s %s\n' pl pl-PL pl-PL ;;
+  br | pt-br) printf '%s %s %s\n' pt-br pt-BR pt-BR ;;
+  pt) printf '%s %s %s\n' pt-pt pt-PT pt-PT ;;
+  ro) printf '%s %s %s\n' ro ro-RO ro-RO ;;
+  ru) printf '%s %s %s\n' ru ru-RU ru-RU ;;
+  sk) printf '%s %s %s\n' sk sk-SK sk-SK ;;
+  sl | si) printf '%s %s %s\n' sl sl-SI sl-SI ;;
+  sr) printf '%s %s %s\n' sr sr-Latn-RS sr-Latn-RS ;;
+  sv | se) printf '%s %s %s\n' sv sv-SE sv-SE ;;
+  th) printf '%s %s %s\n' th th-TH th-TH ;;
+  tr) printf '%s %s %s\n' tr tr-TR tr-TR ;;
+  uk | ua) printf '%s %s %s\n' uk uk-UA uk-UA ;;
+  zh | cn) printf '%s %s %s\n' zh zh-CN zh-CN ;;
+  tw) printf '%s %s %s\n' tw zh-TW zh-TW ;;
+  hk) printf '%s %s %s\n' hk zh-TW zh-TW ;;
+  dvorak | colemak) printf '%s %s %s\n' en en-US en-US ;;
+  *) return 1 ;;
+  esac
+}
+
+# First token of an xkb layout (us,de / de-latin1 / jp106) as a language code.
+windows_layout_code() {
+  local s=${1,,}
+  [[ -n $s && $s != "n/a" ]] || return 1
+  s=${s%%,*}
+  s=${s%% *}
+  case "$s" in
+  jp106) printf '%s\n' jp ;;
+  br-abnt2) printf '%s\n' br ;;
+  *)
+    s=${s%%-*}
+    s=${s%%_*}
+    [[ $s =~ ^[a-z]{2,3}$ ]] || return 1
+    printf '%s\n' "$s"
+    ;;
+  esac
+}
+
+# POSIX locale (de_DE.UTF-8, LANG=en_US.UTF-8) → LANGUAGE REGION KEYBOARD.
+windows_locale_from_posix() {
+  local raw=$1
+  raw=${raw##*LANG=}
+  raw=${raw%%.*}
+  raw=${raw%%@*}
+  [[ -n $raw && $raw != "C" && $raw != "POSIX" ]] || return 1
+
+  local lang=${raw%%_*} terr=
+  [[ $raw == *_* ]] && terr=${raw#*_}
+  lang=${lang,,}
+  terr=${terr^^}
+
+  local mapped language region keyboard
+  mapped=$(windows_locale_for_code "$lang") || return 1
+  read -r language region keyboard <<<"$mapped"
+
+  if [[ -n $terr ]]; then
+    case "${lang}-${terr}" in
+    en-GB)
+      language=en-gb
+      region=en-GB
+      keyboard=en-GB
+      ;;
+    pt-BR)
+      language=pt-br
+      region=pt-BR
+      keyboard=pt-BR
+      ;;
+    pt-PT)
+      language=pt-pt
+      region=pt-PT
+      keyboard=pt-PT
+      ;;
+    *)
+      region="${lang}-${terr}"
+      keyboard=$region
+      ;;
+    esac
+  fi
+  printf '%s %s %s\n' "$language" "$region" "$keyboard"
+}
+
+# Derive dockur LANGUAGE/REGION/KEYBOARD from the host the same way TZ follows
+# timedatectl. Prefer localectl (X11 layout / VC keymap first — a host can keep
+# LANG=en_US.UTF-8 while the keyboard is de), then $LANG, then vconsole
+# XKBLAYOUT. Unrecognised values fall back to en / en-US.
+host_windows_locale() {
+  local status_out= sys_lang= layout= posix= mapped= layout_code=
+  local language=en region=en-US keyboard=en-US
+  local lang_l= lang_r= lang_k= kbd_l= kbd_r= kbd_k=
+
+  status_out=$(localectl status 2>/dev/null) || status_out=
+
+  if [[ -n $status_out ]]; then
+    sys_lang=$(printf '%s\n' "$status_out" | sed -n 's/^.*LANG=\([^[:space:]]*\).*/\1/p' | head -n1)
+    layout=$(printf '%s\n' "$status_out" | sed -n 's/^[[:space:]]*X11 Layout:[[:space:]]*//p' | head -n1)
+    if [[ -z $layout ]]; then
+      layout=$(printf '%s\n' "$status_out" | sed -n 's/^[[:space:]]*VC Keymap:[[:space:]]*//p' | head -n1)
+    fi
+  fi
+
+  [[ -z $sys_lang && -n ${LANG-} ]] && sys_lang=$LANG
+
+  if [[ -z $layout ]]; then
+    local vconsole=${OMARCHY_VCONSOLE:-/etc/vconsole.conf}
+    if [[ -f $vconsole ]]; then
+      layout=$(awk -F= '
+        $1 == "XKBLAYOUT" {
+          v=$2
+          sub(/^[[:space:]]*/, "", v)
+          sub(/[[:space:]]*$/, "", v)
+          gsub(/^"/, "", v)
+          gsub(/"$/, "", v)
+          print v
+          exit
+        }
+      ' "$vconsole")
+    fi
+  fi
+
+  if posix=$(windows_locale_from_posix "$sys_lang"); then
+    read -r lang_l lang_r lang_k <<<"$posix"
+  fi
+  if layout_code=$(windows_layout_code "$layout"); then
+    if mapped=$(windows_locale_for_code "$layout_code"); then
+      read -r kbd_l kbd_r kbd_k <<<"$mapped"
+    fi
+  fi
+
+  # English LANG + a non-English keyboard: follow the layout so the matching
+  # ISO is downloaded, not English Windows with a foreign keymap.
+  if [[ -n $kbd_l && ( -z $lang_l || $lang_l == en || $lang_l == en-gb ) && $kbd_l != en && $kbd_l != en-gb ]]; then
+    language=$kbd_l
+    region=$kbd_r
+    keyboard=$kbd_k
+  else
+    [[ -n $lang_l ]] && language=$lang_l
+    [[ -n $lang_r ]] && region=$lang_r
+    if [[ -n $kbd_k ]]; then
+      keyboard=$kbd_k
+    elif [[ -n $lang_k ]]; then
+      keyboard=$lang_k
+    fi
+  fi
+
+  printf '%s %s %s\n' "$language" "$region" "$keyboard"
+}
+
 # Feed the collected settings to the elevated writer.
 write_compose() {
   local ram="$1" cores="$2" disk="$3" username="$4" password="$5" tz="$6" storage="$7" shared="$8"
-  printf 'RAM=%s\nCORES=%s\nDISK=%s\nUSERNAME=%s\nPASSWORD=%s\nTZ=%s\nSTORAGE=%s\nSHARED=%s\n' \
-    "$ram" "$cores" "$disk" "$username" "$password" "$tz" "$storage" "$shared" |
+  local language=${9:-} region=${10:-} keyboard=${11:-}
+  if [[ -z $language || -z $region || -z $keyboard ]]; then
+    local derived_lang derived_region derived_keyboard
+    read -r derived_lang derived_region derived_keyboard < <(host_windows_locale)
+    [[ -z $language ]] && language=$derived_lang
+    [[ -z $region ]] && region=$derived_region
+    [[ -z $keyboard ]] && keyboard=$derived_keyboard
+  fi
+  printf 'RAM=%s\nCORES=%s\nDISK=%s\nUSERNAME=%s\nPASSWORD=%s\nTZ=%s\nSTORAGE=%s\nSHARED=%s\nLANGUAGE=%s\nREGION=%s\nKEYBOARD=%s\n' \
+    "$ram" "$cores" "$disk" "$username" "$password" "$tz" "$storage" "$shared" \
+    "$language" "$region" "$keyboard" |
     priv write_compose
 }
 
@@ -542,13 +739,15 @@ EOF
 
   mkdir -p "$HOME/Windows"
 
-  local tz
+  local tz language region keyboard
   tz=$(timedatectl show -p Timezone --value 2>/dev/null || echo UTC)
+  read -r language region keyboard < <(host_windows_locale)
 
   # Write the root-owned compose from the validated settings (one prompt if
   # sudoless Docker is off), then bring the stack up.
   write_compose "$SELECTED_RAM" "$SELECTED_CORES" "$SELECTED_DISK" \
-    "$USERNAME" "$PASSWORD" "$tz" "$HOME/.windows" "$HOME/Windows" || {
+    "$USERNAME" "$PASSWORD" "$tz" "$HOME/.windows" "$HOME/Windows" \
+    "$language" "$region" "$keyboard" || {
     echo "❌ Failed to write the Windows VM configuration."
     exit 1
   }

@@ -14,3 +14,7 @@ if rg -q '^    restart: unless-stopped$' "$windows_vm_command"; then
   fail "Windows VM does not restart automatically at boot"
 fi
 pass "Windows VM does not restart automatically at boot"
+
+rg -q 'read -r language region keyboard < <\(host_windows_locale\)' "$windows_vm_command" ||
+  fail "install derives LANGUAGE/REGION/KEYBOARD from the host"
+pass "install derives LANGUAGE/REGION/KEYBOARD from the host"
