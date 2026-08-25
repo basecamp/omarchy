@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# omarchy:summary=Check that a git URL names a repository, not a transport helper
+# omarchy:args=<git-url>
+# omarchy:hidden=true
+
+set -euo pipefail
+
+# git reads a leading dash as an option, and `<helper>::<address>` as a remote
+# helper -- an executable it runs at clone time. omarchy-theme-install and
+# omarchy-plugin-add both clone a URL a stranger can choose, and both refuse
+# these before doing it; the rule lives here so the two cannot drift apart.
+
+fail() {
+  echo "omarchy-git-url-check: $*" >&2
+  exit 1
+}
+
+url="${1-}"
+
+if [[ -z $url ]]; then
+  fail "a git URL is required"
+fi
+
+if [[ $url == -* || $url =~ ^[A-Za-z0-9][A-Za-z0-9+.-]*:: ]]; then
+  fail "'$url' names a git option or transport helper, not a repository."
+fi
