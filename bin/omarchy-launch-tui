@@ -7,7 +7,7 @@ if [[ ${1:-} == --app-id=* ]]; then
   APP_ID="${1#--app-id=}"
   shift
 else
-  APP_ID="org.omarchy.$(basename $1)"
+  APP_ID="org.omarchy.$(basename "$1")"
 fi
 
-exec setsid uwsm-app -- xdg-terminal-exec --app-id=$APP_ID -e "$1" "${@:2}"
+exec setsid uwsm-app -- xdg-terminal-exec --app-id="$APP_ID" -e "$1" "${@:2}"
