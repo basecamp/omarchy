@@ -3,6 +3,14 @@
 # omarchy:summary=Launch the default browser as determined by xdg-settings.
 # omarchy:args=[url]
 
+# Repair a stale Copy URL shortcut before Chromium reads Preferences. Fresh
+# installs stamp the migration complete, so a profile that arrives later via
+# sync only gets this repair from a non-stamped hook. Skip (and retry next
+# launch) if the profile is already open.
+if [[ -x ${OMARCHY_PATH:-}/bin/omarchy-cmd-repair-chromium-copy-url ]]; then
+  "$OMARCHY_PATH/bin/omarchy-cmd-repair-chromium-copy-url" || true
+fi
+
 default_browser=$(env -u BROWSER xdg-settings get default-web-browser)
 if [[ -z $default_browser ]]; then
   default_browser=$(xdg-mime query default x-scheme-handler/https)
