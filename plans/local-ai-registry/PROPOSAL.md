@@ -4,7 +4,7 @@
 
 Omarchy should make running a useful local model feel like installing any other optional system capability.
 
-A user chooses **Local AI**. Omarchy detects the machine, shows two to four models that are known to work on that exact hardware, starts the selected model, proves that it can answer a real request, and connects the Omarchy agent to it. The user should not need to choose an inference engine, quantization, tensor-parallel setting, container image, context limit, or cache layout.
+A user chooses **Local AI**. Omarchy detects the machine, shows up to four models that are known to work on compatible hardware, starts the selected model, proves that it can answer a real request, and connects the Omarchy agent to it. The user should not need to choose an inference engine, quantization, tensor-parallel setting, container image, context limit, or cache layout.
 
 The configuration remains inspectable and overrideable, but it is not the starting point.
 
@@ -28,8 +28,8 @@ This is not a greenfield registry. The existing Inference Index already has hard
 ## The user flow
 
 1. Omarchy detects a canonical hardware ID such as `nvidia.rtx-3090.24gb.x1.pcie`.
-2. The CLI requests recommendations for that hardware ID and an optional intent such as `balanced`, `fast`, `smart`, or `long-context`.
-3. The registry returns two to four validated recipe summaries with a plain-language reason for each recommendation.
+2. The CLI requests recommendations for that hardware ID and an optional intent such as `balanced`, `fast`, or `long-context`.
+3. The registry returns up to four validated recipe summaries with a plain-language reason for each recommendation.
 4. The user selects a recipe, or accepts the default.
 5. The CLI fetches the exact recipe and verifies its schema, status, image digest, model revision, and supported runtime adapter.
 6. The CLI checks current local conditions: free VRAM, disk, Docker, accelerator runtime, port availability, and cached weights.
@@ -83,9 +83,9 @@ registry/
 ├── models/
 │   └── qwen3.8-27b.json
 ├── recipes/
-│   └── qwen3.8-27b-q4km-rtx3090-llamacpp-tp1-r1.json
+│   └── qwen3.8-27b-q4km-rtx3090-llamacpp-tp1.json
 ├── evidence/
-│   └── qwen3.8-27b-q4km-rtx3090-llamacpp-tp1-r1/
+│   └── qwen3.8-27b-q4km-rtx3090-llamacpp-tp1/
 │       ├── acceptance-2026-08-25.json
 │       └── sweep-2026-08-25.json
 └── policies/
@@ -112,10 +112,10 @@ Friendly aliases such as `rtx-3090` may resolve locally when unambiguous, but th
 A recipe ID names the full immutable compatibility unit:
 
 ```text
-<model>-<weights>-<hardware>-<engine>-<profile>-r<revision>
+<model>-<weights>-<hardware>-<engine>-<profile>
 ```
 
-Changing the model revision, image digest, topology, engine version, or material launch configuration creates a new recipe ID with an `-r2`, `-r3`, or later revision suffix. Display labels such as **Fast**, **Smart**, and **Long context** are recommendation metadata, not recipe identity.
+The API pairs that semantic ID with `contentSha256`. Omarchy caches both and refuses a changed payload under an already accepted hash. A material recipe change requires a new content hash and fresh evidence; display labels such as **Fast** and **Long context** are recommendation metadata, not recipe identity.
 
 ## Recommendation policy
 
@@ -131,13 +131,12 @@ A recipe must pass these hard gates before it can be recommended:
 - successful real completion on the declared hardware
 - current evidence for every advertised capability
 
-The API then ranks the eligible set for an intent. It returns the score components and reason rather than hiding the choice behind one unexplained number. Quality comes from a named evaluation policy, speed and context come from accepted sweep rows, and confidence comes from evidence coverage and recency. Memory requirements come from observed peak usage plus a declared safety margin.
+The API then orders the eligible set for an intent. It returns the measured fields, evidence identity, and a plain-language reason instead of inventing a composite score. Speed and context come from accepted sweep rows. Memory requirements come from the recipe plus a declared safety margin. A quality-ranked intent remains out of version one until a real quality signal exists.
 
 | Intent | Primary ordering |
 | --- | --- |
-| `balanced` | capability coverage, quality class, decode speed, context, confidence |
+| `balanced` | capability coverage, measured context, then decode speed |
 | `fast` | warm decode speed, time to first token, footprint |
-| `smart` | quality class, capability coverage, measured context |
 | `long-context` | measured context, concurrency, then decode speed |
 
 The API returns at most four recommendations by default. Free VRAM and free disk are deliberately excluded from remote ranking because they are current machine state; the CLI applies those gates locally.
@@ -234,7 +233,7 @@ Setup should not silently make Local AI the default agent provider when the user
 ### Phase 3: Recommendation quality
 
 - Add reproducible speed sweeps and capability evidence.
-- Generate `fast`, `balanced`, `smart`, and `long-context` views.
+- Generate `fast`, `balanced`, and `long-context` views.
 - Expand hardware coverage only when a real machine passes acceptance.
 
 ### Phase 4: Optional remote access
@@ -248,7 +247,7 @@ Setup should not silently make Local AI the default agent provider when the user
 The proposal is working when all of the following are true on a fresh supported Omarchy machine:
 
 - hardware detection produces a canonical ID
-- recommendations return two to four understandable choices
+- recommendations return zero to four understandable choices without manufacturing unsupported options
 - the selected response resolves to one immutable recipe
 - the CLI can render the exact Docker invocation before running it
 - the model starts on loopback and returns a real completion
@@ -265,5 +264,5 @@ The proposal is working when all of the following are true on a fresh supported 
 - automatically running unreviewed community recipes
 - treating all GPUs with the same VRAM as equivalent
 - exposing the endpoint to the LAN or Tailnet during setup
-- promising AMD, Intel, or multi-node support before hardware acceptance exists
+- promising a backend or topology before hardware acceptance exists
 - ranking models from marketing claims when measured evidence is available

@@ -22,7 +22,7 @@ type RegistryStatus =
   | "revoked"
 
 type AcceleratorBackend = "nvidia" | "amd-rocm" | "intel-xpu"
-type RecommendationIntent = "balanced" | "fast" | "smart" | "long-context"
+type RecommendationIntent = "balanced" | "fast" | "long-context"
 type Capability = "chat" | "reasoning" | "tools" | "vision" | "structured-output"
 type EvidenceResult = "passed" | "failed" | "unsupported" | "unrun"
 ```
@@ -156,12 +156,9 @@ interface Recommendation {
     minimumFreeMemoryBytesEach: number
     minimumFreeDiskBytes: number
   }
-  score: {
-    qualityClass: number
-    capabilityCoverage: number
-    speed: number
-    context: number
-    confidence: number
+  evidence: {
+    acceptedAt: IsoDate
+    sourceCommit: GitCommit
   }
 }
 ```
@@ -196,7 +193,7 @@ Example response:
       "rank": 1,
       "label": "Balanced",
       "reason": "Validated 128K chat model with the strongest measured balance of capability and speed on one RTX 3090.",
-      "recipeId": "gemma-4-12b-it-exl3-4bpw-rtx3090-tabbyapi-tp1-r1",
+      "recipeId": "gemma-4-12b-it-exl3-4bpw-rtx3090-tabbyapi-tp1",
       "model": {
         "id": "gemma-4-12b-it",
         "name": "Gemma 4 12B IT",
@@ -219,19 +216,16 @@ Example response:
         "minimumFreeMemoryBytesEach": 22548578304,
         "minimumFreeDiskBytes": 12884901888
       },
-      "score": {
-        "qualityClass": 70,
-        "capabilityCoverage": 50,
-        "speed": 78,
-        "context": 90,
-        "confidence": 95
+      "evidence": {
+        "acceptedAt": "2026-08-25",
+        "sourceCommit": "179b951612b2e07d447f496269a35def93719646"
       }
     }
   ]
 }
 ```
 
-The numeric values in this example illustrate the response shape; they are not benchmark claims.
+The measured values in this example illustrate the response shape; they are not benchmark claims.
 
 ## Recipe
 
@@ -481,7 +475,7 @@ Returns `RecommendationResponse`.
 ### Get a recipe
 
 ```http
-GET /v1/recipes/gemma-4-12b-it-exl3-4bpw-rtx3090-tabbyapi-tp1-r1.json
+GET /v1/recipes/gemma-4-12b-it-exl3-4bpw-rtx3090-tabbyapi-tp1.json
 ```
 
 Returns `Recipe`.
@@ -489,7 +483,7 @@ Returns `Recipe`.
 ### Get benchmarks
 
 ```http
-GET /v1/recipes/gemma-4-12b-it-exl3-4bpw-rtx3090-tabbyapi-tp1-r1/benchmarks.json
+GET /v1/recipes/gemma-4-12b-it-exl3-4bpw-rtx3090-tabbyapi-tp1/benchmarks.json
 ```
 
 ```ts
@@ -510,10 +504,8 @@ GET /v1/catalog.json
 interface OfflineCatalog {
   schemaVersion: SchemaVersion
   generatedFrom: GitCommit
-  generatedAt: string
   hardware: HardwareRecord[]
-  recommendations: Record<HardwareId, Partial<Record<RecommendationIntent, Recommendation[]>>>
-  recipes: Array<Pick<Recipe, "id" | "contentSha256" | "status" | "compatibility" | "model" | "engine" | "serving" | "capabilities" | "validation">>
+  recipes: Recipe[]
 }
 ```
 
@@ -525,7 +517,7 @@ The initial API is static. It returns `200`, `304`, or `404`; it does not synthe
 
 - The URL major version and `schemaVersion` change only for breaking changes.
 - Additive fields may appear within version one; clients ignore unknown fields.
-- A recipe never mutates after validation. A material change creates a new recipe ID with a revision suffix.
+- A recipe response carries `contentSha256`; clients persist the accepted ID and hash and refuse an unexpected mismatch.
 - Deprecated recipes remain resolvable so installed systems can explain their state.
 - Revoked recipes remain resolvable but every client must refuse to start them.
 - Every response identifies the Git commit from which it was generated.
