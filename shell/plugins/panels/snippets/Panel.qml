@@ -781,6 +781,7 @@ text: "No matches for “" + root.filterText + "”"
         visible: root.formError.length > 0
         width: parent.width
         text: root.formError
+        textFormat: Text.PlainText
         color: Color.urgent
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
@@ -901,6 +902,7 @@ text: "No matches for “" + root.filterText + "”"
 
           Text {
             text: conflictRow.modelData.name
+            textFormat: Text.PlainText
             color: root.foreground
             font.family: root.fontFamily
             font.pixelSize: Style.font.body
