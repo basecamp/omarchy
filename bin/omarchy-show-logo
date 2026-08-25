@@ -1,9 +1,17 @@
 #!/bin/bash
 
-# omarchy:summary=Display the Omarchy logo in the terminal using green color.
+# omarchy:summary=Display the Omarchy logo in the current theme's green
 
 clear
-echo -e "\033[32m"
-cat <$OMARCHY_PATH/logo.txt
+
+# Theme green, else accent, else the stock ANSI 32 the wordmark used to be.
+hex=$(omarchy-theme-color green accent 2>/dev/null || true)
+if [[ $hex =~ ^#[0-9A-Fa-f]{6}$ ]]; then
+  hex="${hex#\#}"
+  printf '\033[38;2;%d;%d;%dm\n' "0x${hex:0:2}" "0x${hex:2:2}" "0x${hex:4:2}"
+else
+  printf '\033[32m\n'
+fi
+cat <"$OMARCHY_PATH/logo.txt"
 echo -e "\033[0m"
 echo
