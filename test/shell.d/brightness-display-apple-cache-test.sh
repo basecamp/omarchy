@@ -5,7 +5,20 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 TMPDIR=$(mktemp -d)
-trap 'rm -rf "$TMPDIR"' EXIT
+# The /tmp-fallback case (below) must place its decoy at exactly the fixed path the
+# old wrapper would have formed, so it cannot use a random mktemp name. Track whether
+# we created it and remove it on exit only then -- never touch a path we did not create.
+tmp_cache="/tmp/omarchy-brightness-display-apple.device"
+created_tmp_cache=0
+
+cleanup() {
+  rm -rf "$TMPDIR"
+  # Remove the /tmp decoy only if this test is the one that created it.
+  if (( created_tmp_cache )); then
+    rm -f "$tmp_cache"
+  fi
+}
+trap cleanup EXIT
 
 # Stubs on PATH: drop sudo so asdcontrol runs directly, record every asdcontrol
 # invocation, make detection deterministic by having --detect report no device,
@@ -102,14 +115,14 @@ else
 fi
 
 # --- With no XDG_RUNTIME_DIR, the predictable /tmp cache is not consulted ------
-# Guard on the real path not pre-existing so we never clobber a live cache, and
-# remove what we create. Old code read /tmp and would hand /dev/null to
-# asdcontrol; new code has no cache path at all when XDG_RUNTIME_DIR is unset.
-tmp_cache="/tmp/omarchy-brightness-display-apple.device"
-if [[ -e $tmp_cache ]]; then
-  pass "$tmp_cache already exists on this host; skipping the /tmp-fallback case"
-else
-  printf '%s\n' "/dev/null" >"$tmp_cache"
+# Create the decoy atomically with noclobber (O_EXCL) instead of check-then-create:
+# this refuses to overwrite an existing file or follow a symlink at the fixed path,
+# closing the TOCTOU/symlink race. The fixed path is required -- it is exactly the
+# path the old code would have formed, so a decoy anywhere else would prove nothing.
+# If the path is already taken, skip rather than touch it; the EXIT trap removes the
+# decoy only when this test created it.
+if ( set -C; printf '%s\n' "/dev/null" >"$tmp_cache" ) 2>/dev/null; then
+  created_tmp_cache=1
   output=$(run_wrapper "" "+5%")
   used=1
   grep -qF -- "/dev/null -- +5%" "$asd_log" || used=0
@@ -117,4 +130,6 @@ else
   (( used == 0 )) ||
     fail "wrapper consulted the world-writable /tmp cache with no XDG_RUNTIME_DIR" "$output"
   pass "wrapper ignores the /tmp cache path when XDG_RUNTIME_DIR is unset"
+else
+  pass "$tmp_cache already present or not safely creatable; skipping the /tmp-fallback case"
 fi
