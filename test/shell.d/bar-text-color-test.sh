@@ -25,6 +25,21 @@ result=$(HOME="$TMPDIR" omarchy-bar-text-color top 20 '#ffffff' '#101010' --back
 [[ $result == "#ffffff" ]] || fail "transparent bar text keeps text color on dark wallpaper" "expected #ffffff, got $result"
 pass "transparent bar text keeps text color on dark wallpaper"
 
+# Screens wider than 512px are sampled at a reduced scale. A 5K screen with a
+# 26px bar shrinks by 10x, so the strip is a few rows tall: the light band still
+# has to win at the top and the dark band at the bottom. The image shares the
+# screen's aspect so cover-fitting does not crop the band away.
+wide="$TMPDIR/wide.jpg"
+magick -size 2560x1080 xc:'#202020' -fill '#f5f5f5' -draw 'rectangle 0,0 2559,19' "$wide"
+
+result=$(HOME="$TMPDIR" omarchy-bar-text-color top 26 '#ffffff' '#101010' --background "$wide" --screen 5120x2160)
+[[ $result == "#101010" ]] || fail "transparent bar text samples a light strip at reduced scale" "expected #101010, got $result"
+pass "transparent bar text samples a light strip at reduced scale"
+
+result=$(HOME="$TMPDIR" omarchy-bar-text-color bottom 26 '#ffffff' '#101010' --background "$wide" --screen 5120x2160)
+[[ $result == "#ffffff" ]] || fail "transparent bar text samples the bottom strip at reduced scale" "expected #ffffff, got $result"
+pass "transparent bar text samples the bottom strip at reduced scale"
+
 result=$(HOME="$TMPDIR" omarchy-bar-text-color top 20 '#ffffff' '#101010' --background "$TMPDIR/missing.png" --screen 100x100)
 [[ $result == "#ffffff" ]] || fail "transparent bar text falls back to text color when sampling fails" "expected #ffffff, got $result"
 pass "transparent bar text falls back to text color when sampling fails"
