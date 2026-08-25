@@ -14,7 +14,7 @@ mkdir -p "$home/.config" "$config_home" "$stub_bin"
 
 cat >"$stub_bin/fc-list" <<'STUB'
 #!/bin/bash
-printf 'Test Font\n'
+printf 'Test & | Font\n'
 STUB
 chmod +x "$stub_bin/fc-list"
 
@@ -54,14 +54,14 @@ mkdir -p "$home/.config/alacritty"
 printf 'family = "Legacy Font"\n' >"$home/.config/alacritty/alacritty.toml"
 
 HOME="$home" XDG_CONFIG_HOME="$config_home" FONT_LOG="$test_tmp/font.log" \
-  PATH="$stub_bin:$PATH" "$ROOT/bin/omarchy-font-set" "Test Font"
+  PATH="$stub_bin:$PATH" "$ROOT/bin/omarchy-font-set" "Test & | Font"
 
-grep -qxF 'family = "Test Font"' "$config_home/alacritty/alacritty.toml" || fail "XDG Alacritty config is updated"
-grep -qxF 'font_family Test Font' "$config_home/kitty/kitty.conf" || fail "XDG Kitty config is updated"
-grep -qxF 'font-family = "Test Font"' "$config_home/ghostty/config" || fail "XDG Ghostty config is updated"
-grep -qxF 'font=Test Font:size=9' "$config_home/foot/foot.ini" || fail "XDG Foot config is updated"
+grep -qxF 'family = "Test & | Font"' "$config_home/alacritty/alacritty.toml" || fail "XDG Alacritty config is updated"
+grep -qxF 'font_family Test & | Font' "$config_home/kitty/kitty.conf" || fail "XDG Kitty config is updated"
+grep -qxF 'font-family = "Test & | Font"' "$config_home/ghostty/config" || fail "XDG Ghostty config is updated"
+grep -qxF 'font=Test & | Font:size=9' "$config_home/foot/foot.ini" || fail "XDG Foot config is updated"
 grep -qxF 'family = "Legacy Font"' "$home/.config/alacritty/alacritty.toml" || fail "legacy HOME config is left untouched"
-grep -q '<string>Test Font</string>' "$config_home/fontconfig/fonts.conf" || fail "fontconfig is written under XDG_CONFIG_HOME"
+grep -q '<string>Test &amp; | Font</string>' "$config_home/fontconfig/fonts.conf" || fail "fontconfig escapes special characters"
 grep -qxF 'restart' "$test_tmp/font.log" || fail "font change restarts the shell"
-grep -qxF 'hook: font-set Test Font' "$test_tmp/font.log" || fail "font change invokes the hook"
+grep -qxF 'hook: font-set Test & | Font' "$test_tmp/font.log" || fail "font change invokes the hook"
 pass "font set honors XDG_CONFIG_HOME"

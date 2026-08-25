@@ -27,22 +27,28 @@ if ! fc-list | grep -Fqi -- "$font_name"; then
   exit 1
 fi
 
+# Font names are inserted into both sed replacements and XML text. Escape the
+# replacement metacharacters before editing terminal configs, and XML entities
+# before writing fontconfig, so a valid font name cannot corrupt either file.
+sed_font_name="$(printf '%s' "$font_name" | sed 's/[\\&|]/\\&/g')"
+xml_font_name="$(printf '%s' "$font_name" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')"
+
 if [[ -f $config_home/alacritty/alacritty.toml ]]; then
-  sed -i "s/family = \".*\"/family = \"$font_name\"/g" "$config_home/alacritty/alacritty.toml"
+  sed -i "s|family = \".*\"|family = \"$sed_font_name\"|g" "$config_home/alacritty/alacritty.toml"
 fi
 
 if [[ -f $config_home/kitty/kitty.conf ]]; then
-  sed -i "s/^font_family .*/font_family $font_name/g" "$config_home/kitty/kitty.conf"
+  sed -i "s|^font_family .*|font_family $sed_font_name|g" "$config_home/kitty/kitty.conf"
   pkill -USR1 kitty
 fi
 
 if [[ -f $config_home/ghostty/config ]]; then
-  sed -i "s/font-family = \".*\"/font-family = \"$font_name\"/g" "$config_home/ghostty/config"
+  sed -i "s|font-family = \".*\"|font-family = \"$sed_font_name\"|g" "$config_home/ghostty/config"
   pkill -SIGUSR2 ghostty
 fi
 
 if [[ -f $config_home/foot/foot.ini ]]; then
-  sed -i "s/^font=.*/font=$font_name:size=9/g" "$config_home/foot/foot.ini"
+  sed -i "s|^font=.*|font=$sed_font_name:size=9|g" "$config_home/foot/foot.ini"
 fi
 
 # fontconfig is the canonical source of truth — the omarchy shell, Qt apps,
@@ -60,7 +66,7 @@ cat >"$fontconfig_file" <<XML
       <string>monospace</string>
     </test>
     <edit name="family" mode="prepend_first" binding="strong">
-      <string>$font_name</string>
+      <string>$xml_font_name</string>
     </edit>
   </match>
 </fontconfig>

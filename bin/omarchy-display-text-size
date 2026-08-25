@@ -6,7 +6,7 @@
 
 # One knob for apparent text size across the desktop. It drives three settings
 # in lockstep, all anchored to the shell default of 12px:
-#   • the omarchy shell's font base-size (~/.config/omarchy/shell.toml [font])
+#   • the omarchy shell's font base-size ($XDG_CONFIG_HOME/omarchy/shell.toml [font])
 #   • GNOME/GTK's text-scaling-factor    (12px -> 1.0, quantized so the GTK
 #     interface font lands on a whole point size, so 16 -> 15pt/11pt = 1.3636)
 #   • the terminal font point size       (12px -> 9pt, so terminal_pt = px * 9/12)
