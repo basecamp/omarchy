@@ -1,38 +1,113 @@
 #!/bin/bash
 
+set -euo pipefail
+
 source "$(dirname "$0")/base-test.sh"
 
 setup_script="$ROOT/install/user/xdg-desktop-portal.sh"
 migration="$ROOT/migrations/1787508122.sh"
-test_home=$(mktemp -d)
-trap 'rm -rf "$test_home"' EXIT
 
-HOME="$test_home" bash -euo pipefail "$setup_script"
+fresh=$(mktemp -d)
+legacy=$(mktemp -d)
+busless=$(mktemp -d)
+trap 'rm -rf "$fresh" "$legacy" "$busless"' EXIT
 
-portal_config="$test_home/.config/xdg-desktop-portal/hyprland-portals.conf"
-nautilus_portal="$test_home/.local/share/xdg-desktop-portal/portals/nautilus.portal"
+# Keep each case isolated and use non-default XDG paths so the test proves the
+# setup script honours the base-directory variables instead of hard-coding HOME.
+run_in_home() {
+  local home="$1"
+  shift
+  env \
+    HOME="$home" \
+    XDG_CONFIG_HOME="$home/xdg-config" \
+    XDG_DATA_HOME="$home/xdg-data" \
+    "$@"
+}
 
-grep -Fx 'org.freedesktop.impl.portal.FileChooser=nautilus' "$portal_config" >/dev/null || fail "Nautilus is selected for file chooser requests"
-grep -Fx 'default=hyprland;gtk' "$portal_config" >/dev/null || fail "Hyprland and GTK remain the default portal backends"
-grep -Fx 'DBusName=org.gnome.Nautilus' "$nautilus_portal" >/dev/null || fail "Nautilus portal descriptor names the Nautilus D-Bus service"
-grep -Fx 'Interfaces=org.freedesktop.impl.portal.FileChooser' "$nautilus_portal" >/dev/null || fail "Nautilus portal descriptor exposes only the file chooser"
+assert_generated() {
+  local home="$1" label="$2"
+  local conf="$home/xdg-config/xdg-desktop-portal/hyprland-portals.conf"
+  local portal="$home/xdg-data/xdg-desktop-portal/portals/nautilus.portal"
+  local service="$home/xdg-data/dbus-1/services/org.gnome.Nautilus.service"
+
+  grep -Fx 'org.freedesktop.impl.portal.FileChooser=nautilus' "$conf" >/dev/null ||
+    fail "$label: Nautilus is selected for file chooser requests"
+  grep -Fx 'default=hyprland;gtk' "$conf" >/dev/null ||
+    fail "$label: Hyprland and GTK remain the default portal backends"
+  grep -Fx 'DBusName=org.gnome.Nautilus' "$portal" >/dev/null ||
+    fail "$label: portal descriptor names the Nautilus D-Bus service"
+  grep -Fx 'Interfaces=org.freedesktop.impl.portal.FileChooser' "$portal" >/dev/null ||
+    fail "$label: portal descriptor exposes only the file chooser"
+  if grep -q 'UseIn' "$portal"; then
+    fail "$label: portal descriptor does not carry the deprecated UseIn key"
+  fi
+  grep -Fx 'Exec=/usr/bin/env GDK_DEBUG=no-portals ADW_DISABLE_PORTAL=1 /usr/bin/nautilus --gapplication-service' "$service" >/dev/null ||
+    fail "$label: Nautilus activation disarms both synchronous portal callers"
+}
+
+# A stub that records how it was called, so the migration's service reload and
+# portal restart can be asserted exactly.
+install_recording_systemctl() {
+  local dir="$1/stub"
+  mkdir -p "$dir"
+  cat >"$dir/systemctl" <<'STUB'
+#!/bin/bash
+printf '%s\n' "$*" >>"$SYSTEMCTL_LOG"
+STUB
+  chmod +x "$dir/systemctl"
+  printf '%s\n' "$dir"
+}
+
+# 1. Fresh install.
+run_in_home "$fresh" bash -euo pipefail "$setup_script"
+assert_generated "$fresh" "fresh install"
 pass "fresh installs route file chooser requests to Nautilus"
 
+# 2. An explicit user preference survives a re-run.
+fresh_conf="$fresh/xdg-config/xdg-desktop-portal/hyprland-portals.conf"
 printf '%s\n' \
   '[preferred]' \
   'default=hyprland;gtk' \
-  'org.freedesktop.impl.portal.FileChooser=custom' >"$portal_config"
+  'org.freedesktop.impl.portal.FileChooser=custom' >"$fresh_conf"
 
-HOME="$test_home" bash -euo pipefail "$setup_script"
+run_in_home "$fresh" bash -euo pipefail "$setup_script"
 
-grep -Fx 'org.freedesktop.impl.portal.FileChooser=custom' "$portal_config" >/dev/null || fail "Existing file chooser preference is preserved"
-[[ $(grep -c '^org\.freedesktop\.impl\.portal\.FileChooser=' "$portal_config") -eq 1 ]] || fail "File chooser preference is not duplicated"
+grep -Fx 'org.freedesktop.impl.portal.FileChooser=custom' "$fresh_conf" >/dev/null ||
+  fail "Existing file chooser preference is preserved"
+chooser_count=$(grep -c '^org\.freedesktop\.impl\.portal\.FileChooser=' "$fresh_conf")
+((chooser_count == 1)) || fail "File chooser preference is not duplicated"
 pass "explicit user portal preferences are preserved"
 
-stub_bin="$test_home/bin"
-mkdir -p "$stub_bin"
-printf '%s\n' '#!/bin/bash' 'exit 0' >"$stub_bin/systemctl"
-chmod +x "$stub_bin/systemctl"
+# 2b. A [preferred] header with stray whitespace must not gain a second section.
+printf '%s\n' '  [preferred]  ' 'default=hyprland;gtk' >"$fresh_conf"
+run_in_home "$fresh" bash -euo pipefail "$setup_script"
+section_count=$(grep -cE '^[[:space:]]*\[preferred\]' "$fresh_conf")
+((section_count == 1)) || fail "A whitespace-padded [preferred] header is not duplicated"
+pass "a whitespace-padded [preferred] section is amended, not duplicated"
 
-HOME="$test_home" PATH="$stub_bin:$PATH" OMARCHY_PATH="$ROOT" bash -euo pipefail "$migration" >/dev/null
+# 3. The migration repairs a separate empty home and restarts the portal.
+legacy_stub=$(install_recording_systemctl "$legacy")
+run_in_home "$legacy" \
+  PATH="$legacy_stub:$PATH" SYSTEMCTL_LOG="$legacy/systemctl.log" OMARCHY_PATH="$ROOT" \
+  bash -euo pipefail "$migration" >/dev/null
+
+assert_generated "$legacy" "migration"
+grep -Fx -- '--user reload dbus-broker.service' "$legacy/systemctl.log" >/dev/null ||
+  fail "migration reloads the D-Bus service registry"
+grep -Fx -- '--user try-restart xdg-desktop-portal.service' "$legacy/systemctl.log" >/dev/null ||
+  fail "migration restarts the portal frontend"
 pass "existing installs apply the portal migration"
+
+# 4. No user bus reachable: the migration must still succeed, or omarchy-migrate
+# aborts the whole run and skips every later pending migration.
+busless_stub="$busless/stub"
+mkdir -p "$busless_stub"
+printf '%s\n' '#!/bin/bash' 'echo "Failed to connect to bus: No medium found" >&2' 'exit 1' \
+  >"$busless_stub/systemctl"
+chmod +x "$busless_stub/systemctl"
+
+run_in_home "$busless" PATH="$busless_stub:$PATH" OMARCHY_PATH="$ROOT" \
+  bash -euo pipefail "$migration" >/dev/null ||
+  fail "migration tolerates an unreachable user bus"
+assert_generated "$busless" "migration without a user bus"
+pass "the migration does not abort when no user bus is reachable"
