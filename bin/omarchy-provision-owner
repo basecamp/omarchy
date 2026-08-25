@@ -744,6 +744,20 @@ create_user() {
   chmod 440 /etc/sudoers.d/00-omarchy-wheel
 }
 
+# In the deferred-provisioning path OMARCHY_INSTALL_USER is empty when
+# install/config/theme-system.sh creates /etc/chromium/policies/managed, so the
+# directory stays root-owned and omarchy-theme-set-browser (which runs as the
+# user) cannot write color.json. Now that the account exists, hand the directory
+# to the user at 0755 so theming works, without ever making it world-writable.
+claim_browser_policy_dir() {
+  local dir=/etc/chromium/policies/managed
+
+  [[ -d $dir ]] || return 0
+
+  chown "$username:$username" "$dir"
+  chmod 755 "$dir"
+}
+
 install_authorized_keys() {
   [[ -f $PROVISIONING_DIR/authorized_keys ]] || return 0
 
@@ -991,6 +1005,7 @@ cleanup_oem_state() {
 run_provisioning() {
   log_step "creating user $username"
   create_user
+  claim_browser_policy_dir
   install_authorized_keys
   configure_login
 
