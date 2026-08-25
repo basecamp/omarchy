@@ -234,6 +234,43 @@ without it the generated default is kept.
 Neovim picks the staged file up through its theme hot-reload watcher, so
 switching themes retints running instances like any other theme change.
 
+## `colors-tmux.toml`
+
+A theme can carry its own tmux integration declaratively in `colors-tmux.toml`.
+The file is pure data: `omarchy-theme-colors-tmux` serializes it into the staged
+theme's `tmux-theme.conf` while `omarchy-theme-set-templates` runs, replacing
+the generated default for that one file. An installed theme may ship
+`colors-tmux.toml` but not `tmux-theme.conf` itself — the serializer is the
+only path to that file because it is executable tmux configuration, not colour
+data:
+
+```toml
+schema = 1
+
+[theme]
+status_bg = "#1c1c1c"
+session_bg = "#8a9a7b"
+window_active_fg = "#8a9a7b"
+window_inactive_fg = "#666666"
+pane_border = "#666666"
+pane_active_border = "#8a9a7b"
+message_fg = "#8a9a7b"
+mode_bg = "#8a9a7b"
+mode_fg = "#0c0b0c"
+clock_color = "#8a9a7b"
+```
+
+Every key in `[theme]` is required. The serializer indexes all of them
+unconditionally; a missing key keeps the generated fallback and names the
+reason on stderr. Every value must be a six-digit hex color (`#rrggbb`). Hex
+colors are emitted as-is for use in `#[...]` style strings and `set -g` options.
+
+Safety comes from serialization, not from inspection: every value is emitted as a
+tmux color literal, so no value can break out of its context and become code.
+What tmux loads is exactly the data the TOML carries, nothing more. Rendering
+needs python3 3.11+ (stdlib `tomllib`); without it the generated default is
+kept.
+
 ## Template placeholders
 
 Templates are plain files ending in `.tpl`. `omarchy-theme-set-templates`
