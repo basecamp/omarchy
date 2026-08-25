@@ -102,7 +102,7 @@ pass "symlink preserves argv[0] via exec -a"
 
 grep -qx 'use -g --quiet claude' "$mise_log" || fail "installer still calls mise use -g --quiet"
 grep -qx 'where claude' "$mise_log" || fail "installer resolves the binary with mise where"
-if grep -q ' x ' "$mise_log"; then
+if awk '$1 == "x" { found = 1 } END { exit found ? 0 : 1 }' "$mise_log"; then
   fail "installer no longer re-execs through mise x"
 fi
 pass "installer still calls mise use -g --quiet"
