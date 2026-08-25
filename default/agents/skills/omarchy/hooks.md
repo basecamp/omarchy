@@ -19,6 +19,10 @@ file first, if one exists.
 └── theme-set.d/            # After theme change (theme slug in $1)
 ```
 
+`post-boot.d` is the first-class way to run a script after the desktop is up.
+Do not `Requires=` `graphical-session.target` from a systemd user unit to get
+the same effect — see [`user-units.md`](user-units.md).
+
 Example hook script:
 ```bash
 #!/bin/bash
