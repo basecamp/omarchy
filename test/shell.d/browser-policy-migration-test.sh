@@ -8,14 +8,18 @@ migration="$ROOT/migrations/1787676640.sh"
 
 [[ -f $migration ]] || fail "browser policy repair migration exists"
 [[ $(stat -c '%a' "$migration") == 644 ]] || fail "browser policy repair migration is not executable"
-grep -Fxq '    omarchy-theme-set-browser ||' "$migration" ||
+grep -Fxq '    omarchy-theme-set-browser' "$migration" ||
   fail "browser policy migration reuses the constrained Chromium policy writer"
 grep -Fq '/usr/lib/firefox/distribution /opt/zen-browser/distribution' "$migration" ||
   fail "browser policy migration covers Firefox and Zen distribution directories"
 grep -Fq 'not a root-owned Omarchy tree' "$migration" ||
   fail "browser policy migration refuses to install policy out of a non-root-owned tree"
-grep -Fq 'could not finish the Chromium theme write' "$migration" ||
-  fail "browser policy migration tolerates one refused Chromium path"
+grep -Fq 'chromium_has_refused_policy_path' "$migration" ||
+  fail "browser policy migration detects refused Chromium paths by inspection"
+grep -Fq 'needs admin attention' "$migration" ||
+  fail "browser policy migration warns on refused paths instead of swallowing failures"
+grep -Fxq '    omarchy-theme-set-browser' "$migration" ||
+  fail "browser policy migration propagates Chromium theme write failures"
 
 pass "browser policy migration covers existing supported browser installs"
 
@@ -242,9 +246,96 @@ run_migration "$refusal_log"
 [[ ! -e $firefox_b/unsafe-file ]] || fail "the tolerated run still repairs the reachable browser"
 cmp -s <(printf '{"Custom": true}\n') "$firefox_b/policies.json" ||
   fail "the tolerated run keeps a safe administrator policy"
-grep -Fq 'Refusing unsafe browser distribution path: /opt/zen-browser/distribution' "$refusal_log" ||
+grep -Fq 'Browser policy repair skipped: /opt/zen-browser/distribution needs admin attention' "$refusal_log" ||
   fail "the refused distribution path is reported" "got: $(<"$refusal_log")"
-grep -Fq 'Browser policy repair could not secure /opt/zen-browser/distribution' "$refusal_log" ||
-  fail "the refused distribution path does not stop the migration" "got: $(<"$refusal_log")"
 
 pass "browser policy migration tolerates one refused path while repairing the rest"
+
+# Operational failures must propagate: the runner leaves the migration pending
+# so it retries, instead of marking a half-repaired machine complete.
+
+# A failing theme write (a canceled sudo prompt, say) aborts the whole run.
+chromium_c="$test_tmp/chromium-c/managed"
+mkdir -p "$chromium_c"
+chmod 0777 "$chromium_c"
+printf '{"Evil": true}\n' >"$chromium_c/unsafe.json"
+chmod 0666 "$chromium_c/unsafe.json"
+
+cat >"$stub_bin/omarchy-theme-set-browser" <<'SH'
+#!/bin/bash
+printf 'theme\n' >>"$THEME_CALLS"
+exit 77
+SH
+
+sandbox_args=(
+  "${common_sandbox_args[@]}"
+  --dir /etc/chromium
+  --dir /etc/chromium/policies
+  --bind "$chromium_c" /etc/chromium/policies/managed
+)
+
+failure_log="$test_tmp/failure-log"
+: >"$theme_calls"
+: >"$sudo_calls"
+set +e
+run_migration "$failure_log"
+theme_status=$?
+set -e
+(( theme_status == 77 )) ||
+  fail "an operational Chromium theme failure propagates its exit status" "got: $theme_status"
+[[ $(wc -l <"$theme_calls") == 1 ]] || fail "the failing theme write is attempted once"
+[[ ! -s $sudo_calls ]] || fail "no privileged work happens after a refused theme write"
+
+pass "browser policy migration stays pending when the Chromium repair fails operationally"
+
+# A failing privileged step in a distribution repair aborts the run too.
+# The unused Chromium paths get clean binds so host /etc state (whose
+# ownership is unmapped inside the namespace) cannot look dirty and drag the
+# failing theme stub into the run.
+chromium_unused=(chromium-clean chrome-clean edge-clean brave-clean)
+for browser in "${chromium_unused[@]}"; do
+  mkdir -p "$test_tmp/$browser"
+  chmod 0755 "$test_tmp/$browser"
+done
+
+firefox_c="$test_tmp/firefox-c/distribution"
+mkdir -p "$firefox_c"
+chmod 0777 "$firefox_c"
+printf '{"policies":{"DisableSecurity":true}}\n' >"$firefox_c/policies.json"
+chmod 0666 "$firefox_c/policies.json"
+
+cat >"$stub_bin/sudo" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >>"$SUDO_CALLS"
+if [[ $1 == install ]]; then
+  exit 9
+fi
+exec "$@"
+SH
+
+sandbox_args=(
+  "${common_sandbox_args[@]}"
+  --dir /etc/chromium
+  --dir /etc/chromium/policies
+  --bind "$test_tmp/chromium-clean" /etc/chromium/policies/managed
+  --dir /etc/opt
+  --bind "$test_tmp/chrome-clean" /etc/opt/chrome/policies/managed
+  --bind "$test_tmp/edge-clean" /etc/opt/edge/policies/managed
+  --dir /etc/brave
+  --bind "$test_tmp/brave-clean" /etc/brave/policies/managed
+  --dir /usr/lib/firefox
+  --bind "$firefox_c" /usr/lib/firefox/distribution
+)
+
+distribution_log="$test_tmp/distribution-log"
+: >"$sudo_calls"
+set +e
+run_migration "$distribution_log"
+distribution_status=$?
+set -e
+(( distribution_status == 9 )) ||
+  fail "an operational distribution repair failure propagates its exit status" "got: $distribution_status"
+[[ -f $firefox_c/policies.json ]] ||
+  fail "a failed distribution repair changes nothing before it aborts"
+
+pass "browser policy migration stays pending when a distribution repair fails operationally"

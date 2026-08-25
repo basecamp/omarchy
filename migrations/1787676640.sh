@@ -64,13 +64,21 @@ distribution_needs_repair() {
   return 1
 }
 
+chromium_has_refused_policy_path() {
+  local policy_dir
+
+  for policy_dir in "${chromium_policy_dirs[@]}"; do
+    [[ -e $policy_dir || -L $policy_dir ]] || continue
+    if [[ -L $policy_dir || ! -d $policy_dir ]]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 repair_distribution() {
   local distribution_dir=$1 policy_file="$1/policies.json" entry
-
-  if [[ -L $distribution_dir || ! -d $distribution_dir ]]; then
-    echo "Refusing unsafe browser distribution path: $distribution_dir" >&2
-    return 1
-  fi
 
   sudo install -d -m 0755 -o root -g root "$distribution_dir"
 
@@ -108,17 +116,26 @@ repair_distribution() {
 (
   shopt -s dotglob nullglob
 
-  # One refused path (an admin-symlinked policy directory, say) must not stop
-  # the remaining repairs or leave this migration permanently pending.
-  if chromium_needs_repair; then
-    omarchy-theme-set-browser ||
-      echo "Browser policy repair could not finish the Chromium theme write" >&2
+  # A refused path (an admin-symlinked policy directory, say) never heals by
+  # retrying, so it is detected by inspection up front and tolerated with a
+  # warning; when one exists alongside repairable dirt, the dirt waits for the
+  # admin to resolve the path first. Everything below is an operational step:
+  # any failure propagates so the runner leaves this migration pending and it
+  # retries on the next update or login.
+  if chromium_has_refused_policy_path; then
+    echo "Browser policy repair skipped: a Chromium policy path needs admin attention" >&2
+  elif chromium_needs_repair; then
+    omarchy-theme-set-browser
   fi
 
   for distribution_dir in /usr/lib/firefox/distribution /opt/zen-browser/distribution; do
-    if distribution_needs_repair "$distribution_dir"; then
-      repair_distribution "$distribution_dir" ||
-        echo "Browser policy repair could not secure $distribution_dir" >&2
+    distribution_needs_repair "$distribution_dir" || continue
+
+    if [[ -L $distribution_dir || ! -d $distribution_dir ]]; then
+      echo "Browser policy repair skipped: $distribution_dir needs admin attention" >&2
+      continue
     fi
+
+    repair_distribution "$distribution_dir"
   done
 )
