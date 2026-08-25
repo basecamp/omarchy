@@ -1,0 +1,19 @@
+[Unit]
+Description=Keyboard backlight OSD and GZ302 chassis window LED
+# Fn+F11 is consumed in-kernel by hid-asus. This waits on brightness_hw_changed
+# to show Off/Low/Med/High and mirror the level to the GZ302 chassis window.
+After=graphical-session.target
+PartOf=graphical-session.target
+# OSD talks to the shell over the graphical session. An SSH update has a user
+# manager and no display; starting there wedges the unit active-but-blind.
+ConditionEnvironment=WAYLAND_DISPLAY
+ConditionPathExists=/sys/class/leds/asus::kbd_backlight/brightness_hw_changed
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/omarchy-brightness-keyboard-watch watch
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

@@ -118,3 +118,37 @@ oomd_migration=$(grep -rl 'systemd-oomd.service' "$ROOT/migrations" | head -n 1 
 grep -F 'systemctl --user daemon-reload' "$oomd_migration" >/dev/null ||
   fail "migration leaves the user manager unaware of app.slice candidacy until the next login"
 pass "existing installs enable systemd-oomd and report app.slice without a relogin"
+
+kbd_watch_service="$ROOT/default/systemd/user/omarchy-brightness-keyboard-watch.service"
+grep -Fx 'ExecStart=/usr/bin/omarchy-brightness-keyboard-watch watch' "$kbd_watch_service" >/dev/null
+grep -Fx 'ConditionPathExists=/sys/class/leds/asus::kbd_backlight/brightness_hw_changed' "$kbd_watch_service" >/dev/null
+grep -Fx 'After=graphical-session.target' "$kbd_watch_service" >/dev/null ||
+  fail "keyboard backlight watcher can start before the graphical session is up"
+grep -Fx 'PartOf=graphical-session.target' "$kbd_watch_service" >/dev/null ||
+  fail "keyboard backlight watcher must stop with the compositor"
+grep -Fx 'WantedBy=graphical-session.target' "$kbd_watch_service" >/dev/null ||
+  fail "keyboard backlight watcher is never pulled in at login without a WantedBy"
+grep -Fx 'ConditionEnvironment=WAYLAND_DISPLAY' "$kbd_watch_service" >/dev/null ||
+  fail "an update over SSH has a live user manager and no display; starting the keyboard watcher there wedges the unit active-but-blind"
+grep -Fx 'Restart=always' "$kbd_watch_service" >/dev/null ||
+  fail "keyboard backlight watcher should come back after a crash"
+pass "keyboard backlight watcher follows the graphical session and the asus kbd_backlight node"
+
+grep -F 'omarchy-brightness-keyboard-watch.service' "$first_run_units" >/dev/null ||
+  fail "first-run does not enable the keyboard backlight watcher"
+pass "first-run enables the keyboard backlight watcher"
+
+kbd_watch_migration=$(grep -rl 'omarchy-brightness-keyboard-watch.service' "$ROOT/migrations" | head -n 1 || true)
+[[ -n $kbd_watch_migration ]] ||
+  fail "existing installs never enable the keyboard backlight watcher; enable-user-units.sh only runs at first login"
+grep -F 'systemctl --user enable omarchy-brightness-keyboard-watch.service' "$kbd_watch_migration" >/dev/null ||
+  fail "migration must enable without --now; --now starts the unit before the session-gate check"
+grep -F 'enable --now omarchy-brightness-keyboard-watch' "$kbd_watch_migration" >/dev/null &&
+  fail "migration enables the keyboard watcher with --now, which starts it before the graphical-session gate"
+grep -F 'is-active --quiet graphical-session.target' "$kbd_watch_migration" >/dev/null ||
+  fail "migration starts the keyboard watcher outside a graphical session"
+pass "existing installs enable the keyboard backlight watcher and start it only in a graphical session"
+
+grep -F 'omarchy-brightness-keyboard-watch sync' "$ROOT/bin/omarchy-theme-set-keyboard" >/dev/null ||
+  fail "theme-set-keyboard never syncs the GZ302 chassis LED to the new keyboard color"
+pass "theme-set-keyboard syncs the keyboard watcher after applying keyboard colors"
