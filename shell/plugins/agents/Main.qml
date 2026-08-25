@@ -255,6 +255,7 @@ Item {
       // across devices.
       limits: Array.isArray(record.limits) ? record.limits : [],
       tierLabel: String(record.tierLabel || ""),
+      accountEmail: String(record.accountEmail || ""),
       balance: balanceValue(record.balance),
 
       todayPrompts: synced ? numberValue(stats.todayPrompts) : numberValue(record.todayPrompts),

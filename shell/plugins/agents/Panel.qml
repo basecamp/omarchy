@@ -116,6 +116,16 @@ Panel {
     for (var i = 0; i < list.length; i++) {
       var entry = list[i] || {}
       var percent = Number(entry.percent)
+      var status = String(entry.status || "")
+      if (status !== "" && !(percent >= 0)) {
+        out.push({
+          title: String(entry.title || entry.label || "Limit"),
+          percent: -1,
+          resetAt: "",
+          status: status
+        })
+        continue
+      }
       if (percent >= 0) out.push(limitWindow(entry.label, percent, entry.resetsAt, entry.title))
     }
     return out
@@ -181,9 +191,24 @@ Panel {
   function heroMeta(p) {
     if (!p) return ""
     if (String(p.usageStatusText || "") !== "") return p.usageStatusText
-    var tier = String(p.tierLabel || "")
-    if (tier === "") return "Subscription"
-    return tier.charAt(0).toUpperCase() + tier.slice(1)
+    var email = String(p.accountEmail || "").trim()
+    if (email !== "") return email
+    var tier = String(p.tierLabel || "").trim()
+    var title = String(p.providerName || "").trim()
+    if (tier !== "" && tier.toLowerCase() !== title.toLowerCase())
+      return tier.charAt(0).toUpperCase() + tier.slice(1)
+    if (tier !== "") return ""
+    return "Subscription"
+  }
+
+  function formatResetClock(iso) {
+    var ms = new Date(String(iso || "")).getTime()
+    if (!isFinite(ms)) return ""
+    var d = new Date(ms)
+    var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    var hh = String(d.getHours()).padStart(2, "0")
+    var mm = String(d.getMinutes()).padStart(2, "0")
+    return d.getDate() + " " + months[d.getMonth()] + ", " + hh + ":" + mm
   }
 
   // Local calendar date, recomputed from nowMs so a panel left open across
@@ -725,9 +750,12 @@ Panel {
 
       Text {
         id: limitValue
-        text: limitRow.window && limitRow.window.percent >= 0
-          ? Math.round(limitRow.window.percent * 100) + "%"
-          : "—"
+        text: {
+          if (!limitRow.window) return "—"
+          if (limitRow.window.percent >= 0)
+            return Math.round(limitRow.window.percent * 100) + "%"
+          return String(limitRow.window.status || "Off")
+        }
         color: limitRow.alarming ? root.urgent : root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
@@ -737,6 +765,7 @@ Panel {
     }
 
     Meter {
+      visible: !!(limitRow.window && limitRow.window.percent >= 0)
       width: parent.width
       value: limitRow.window ? limitRow.window.percent : -1
       alarming: limitRow.alarming
@@ -746,8 +775,12 @@ Panel {
       id: resetText
       width: parent.width
       text: {
+        if (!limitRow.window || !(limitRow.window.percent >= 0)) return ""
         var remainingMs = root.resetMsFor(limitRow.window)
-        return remainingMs > 0 ? "Resets in " + root.formatDuration(remainingMs) : ""
+        if (!(remainingMs > 0)) return ""
+        var clock = root.formatResetClock(limitRow.window.resetAt)
+        var wait = "in " + root.formatDuration(remainingMs)
+        return clock !== "" ? "Resets " + clock + " · " + wait : "Resets " + wait
       }
       color: root.dim
       font.family: root.fontFamily
