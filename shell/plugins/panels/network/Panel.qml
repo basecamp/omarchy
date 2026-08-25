@@ -7,6 +7,7 @@ import Quickshell.Networking
 import qs.Ui
 import qs.Commons
 import "Model.js" as Model
+import "Scanner.js" as Scanner
 
 Panel {
   id: root
@@ -292,27 +293,36 @@ Panel {
   readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
   readonly property color selectedFill: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "transparent"
 
-  // scannerEnabled lives on the shared WifiDevice, which has no reference
-  // counting, and a bar widget is instantiated once per monitor. Tracking the
-  // device this instance turned scanning on for keeps the release correct when
-  // the panel closes, the device is replaced, or the widget is destroyed —
-  // without a closed instance ever claiming the scanner.
-  property var scannerDevice: null
-
+  // scannerEnabled is shared mutable state on the WifiDevice and this widget
+  // outlives no instance alone — one per monitor, plus a transient overlap
+  // across a plugin reload — so claims are reference counted in
+  // Scanner.js rather than tracked per instance. This instance holds a claim
+  // exactly while its own panel is open; the scanner stops when the last
+  // instance lets go, and keeps running for the panels that still want it.
   function setScannerEnabled(enabled) {
-    var nextDevice = opened ? wifiDevice : null
-
-    if (scannerDevice && scannerDevice !== nextDevice)
-      scannerDevice.scannerEnabled = false
-
-    scannerDevice = nextDevice
-
-    if (scannerDevice)
-      scannerDevice.scannerEnabled = enabled
+    Scanner.acquire(root, opened && enabled ? wifiDevice : null)
   }
 
-  Component.onDestruction: {
-    if (scannerDevice) scannerDevice.scannerEnabled = false
+  Component.onDestruction: Scanner.release(root)
+
+  // The scanner costs real airtime — a full scan parks the radio off-channel
+  // for seconds on a slow card — so re-assert the invariant periodically
+  // instead of trusting every release path to fire. The sweep is what bounds
+  // a missed release: it drops claims whose owner died or closed and drives
+  // the device from what is left, so no instance can pin the scanner on after
+  // its panel is gone.
+  Timer {
+    interval: 30000
+    repeat: true
+    running: true
+    onTriggered: {
+      // Reconciling inside the 100ms scanRestart window would re-enable the
+      // scanner early and undo the deferral that keeps opening the panel off
+      // NetworkManager's access-point flood.
+      if (scanRestart.running) return
+      root.setScannerEnabled(root.opened)
+      Scanner.sweep(root.wifiDevice)
+    }
   }
 
   // KeyboardPanel primes layer-shell focus whenever the panel opens. That's
