@@ -69,19 +69,6 @@ function hyprbarsSnapInset(win) {
   return usesWaylandCsd(win) ? 0 : 32
 }
 
-// Chromium-family browsers clip their own restored-frame close button on
-// Wayland unless the window's right edge is at the monitor edge (they only
-// square the top-right corner when snapped/maximized; floating in the middle
-// rounds it and draws the close under it). GTK CSD clients (Nautilus) don't.
-// Open these maximized so the caption buttons render correctly.
-var _opensMaximizedRegex = /(google-)?chrom(e|ium)|brave-browser|microsoft-edge|vivaldi-stable|helium/i
-
-function opensMaximized(win) {
-  var cls = windowAppId(win)
-  if (!cls) return false
-  return _opensMaximizedRegex.test(cls)
-}
-
 function windowMatchesPin(win, pin) {
   var app = windowAppId(win)
   var pinId = normalizeId(pin && (pin.id || pin.desktopId))
@@ -640,7 +627,6 @@ if (typeof module !== "undefined") {
     windowAppId: windowAppId,
     isLockSurface: isLockSurface,
     usesWaylandCsd: usesWaylandCsd,
-    opensMaximized: opensMaximized,
     hyprbarsSnapInset: hyprbarsSnapInset,
     windowMatchesPin: windowMatchesPin,
     parsePins: parsePins,
