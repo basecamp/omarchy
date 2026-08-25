@@ -10,17 +10,40 @@ const network = requireFromRoot('shell/plugins/panels/network/Model.js')
 const panelSource = fs.readFileSync(root + '/shell/plugins/panels/network/Panel.qml', 'utf8')
 
 assert(/IpcHandler[\s\S]*?function toggleNetwork\(\) \{ root\.toggleNetwork\(\) \}/.test(panelSource), 'network exposes the Wi-Fi radio toggle over IPC')
-assert(/IpcHandler[\s\S]*?function scanQr\(\) \{ root\.startQrScan\(\) \}/.test(panelSource), 'network exposes Wi-Fi QR scanning over IPC')
+assert(/IpcHandler[\s\S]*?function scanQr\(\) \{ root\.requestQrScan\(\) \}/.test(panelSource), 'network exposes Wi-Fi QR scanning over IPC')
 assert(/manageIpc: false/.test(panelSource), 'network owns its IPC handler so it can extend the target methods')
 assert(/iconText: "󰄀"[\s\S]*?tooltipText: root\.qrScanActive \? "Cancel Wi-Fi QR scan" : "Scan Wi-Fi QR code"/.test(panelSource), 'network exposes a camera action for Wi-Fi QR scanning')
-assert(/readonly property bool canScanWifiQr: !connectedWifiNetwork && webcamAvailable && networkManagerAvailable && wifiStationAvailable/.test(panelSource), 'network only offers Wi-Fi QR scanning while disconnected')
+assert(/readonly property bool canStartWifiQrScan: !connectedWifiNetwork && webcamAvailable && networkManagerAvailable && wifiStationAvailable/.test(panelSource), 'network only starts Wi-Fi QR scanning while disconnected')
+assert(/readonly property bool canScanWifiQr: qrScanActive \|\| canStartWifiQrScan/.test(panelSource), 'network preserves the QR scan action while a scan is active')
 assert(/qrScanProc\.command = \["omarchy-network-qr-scan"\]/.test(panelSource), 'network launches the dedicated webcam QR scanner')
+assert(/function requestQrScan\(\) \{[\s\S]*?root\.open\(\)[\s\S]*?qrScanPending = true[\s\S]*?startPendingQrScan\(\)/.test(panelSource), 'network opens the panel and waits for webcam availability when scanning over IPC')
+assert(/id: webcamProbe[\s\S]*?webcamProbeComplete = true[\s\S]*?root\.startPendingQrScan\(\)/.test(panelSource), 'network starts a pending IPC scan after the webcam probe completes')
 assert(/function close\(\) \{[\s\S]*?cancelQrScan\(\)[\s\S]*?cancelQrConnect\(\)[\s\S]*?clearQrCandidate\(\)/.test(panelSource), 'network closing cancels QR work and clears decoded credentials')
 assert(/qrConnectProc\.command = \[[\s\S]*?candidate\.security[\s\S]*?candidate\.ssid[\s\S]*?\]/.test(panelSource), 'network fallback connection arguments omit the QR password')
 assert(/id: qrConnectProc[\s\S]*?stdinEnabled: true[\s\S]*?write\(root\.qrConnectSecret \+ "\\n"\)[\s\S]*?root\.qrConnectSecret = ""/.test(panelSource), 'network sends fallback QR passwords over stdin and clears the staging value')
 assert(/candidate\.hidden \|\| candidate\.security === "WEP" \? null : networkForSsid/.test(panelSource), 'network routes visible WEP through the profile helper instead of the PSK-only native path')
 assert(/function settleQrScan\(\)[\s\S]*?qrScanExited && qrScanStdoutDone && qrScanStderrDone/.test(panelSource), 'network keeps canceled scan state until all buffered output has settled')
+assert(/function settleQrScan\(\)[\s\S]*?qrScanActive = false[\s\S]*?startPendingQrScan\(\)/.test(panelSource), 'network retries a pending IPC scan after a canceled scanner finishes settling')
 assert(/focusSection === "qr"[\s\S]*?activateQrChoice\(\)/.test(panelSource), 'network confirmation participates in keyboard navigation')
+assert(/text: root\.qrCandidate \? root\.qrCandidate\.ssid : ""\s*textFormat: Text\.PlainText/.test(panelSource), 'network renders scanned SSIDs as plain text')
+assert(/text: root\.qrError\s*textFormat: Text\.PlainText/.test(panelSource), 'network renders QR and command errors as plain text')
+
+const pendingScanHelper = panelSource.match(/function startPendingQrScan\(\) \{[\s\S]*?\n {2}\}/)
+assert(pendingScanHelper, 'network has a pending QR scan helper')
+
+var qrScanPending = true
+var opened = true
+var webcamProbeComplete = true
+var qrScanActive = true
+var pendingScanStarts = 0
+function startQrScan() { pendingScanStarts += 1 }
+eval(pendingScanHelper[0])
+
+startPendingQrScan()
+assert(qrScanPending && pendingScanStarts === 0, 'network keeps an IPC scan pending while a canceled scanner settles')
+qrScanActive = false
+startPendingQrScan()
+assert(!qrScanPending && pendingScanStarts === 1, 'network starts the pending IPC scan after settlement')
 
 // Opening from the bar must call open() and nothing else. open() runs
 // refresh(true), which defers the PHY scan; a second bare refresh() defaults

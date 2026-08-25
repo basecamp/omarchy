@@ -18,6 +18,7 @@ Panel {
 
   // Centralized close so callers can't forget to drop the passphrase prompt.
   function close() {
+    qrScanPending = false
     cancelQrScan()
     cancelQrConnect()
     clearQrCandidate()
@@ -77,9 +78,11 @@ Panel {
   property bool scanning: false
   property bool wifiStationAvailable: false
   property bool webcamAvailable: false
+  property bool webcamProbeComplete: false
   property var qrCandidate: null  // { ssid, password, security, hidden }
   property string qrError: ""
   property int qrChoiceIndex: 1  // 0 = Cancel, 1 = Connect
+  property bool qrScanPending: false
   property bool qrScanActive: false
   property bool qrScanExpectedStop: false
   property bool qrScanFailed: false
@@ -147,7 +150,8 @@ Panel {
   readonly property bool canDisconnect: !!connectedWifiNetwork
   readonly property bool headerHasDisconnect: false
   readonly property bool canShareWifi: info.type === "wifi" && canShareNetwork(connectedWifiNetwork)
-  readonly property bool canScanWifiQr: !connectedWifiNetwork && webcamAvailable && networkManagerAvailable && wifiStationAvailable
+  readonly property bool canStartWifiQrScan: !connectedWifiNetwork && webcamAvailable && networkManagerAvailable && wifiStationAvailable
+  readonly property bool canScanWifiQr: qrScanActive || canStartWifiQrScan
   // The hero switch is the Wi-Fi radio, so it only exists when there is a
   // radio to switch. On a wired box it would otherwise sit there reading
   // "off" beside a perfectly live Ethernet connection.
@@ -243,7 +247,7 @@ Panel {
     // Compat routes for configs that summon the centered cards through the
     // network target; both cards are their own plugins now.
     function showQr() { root.summonWifiQr(true) }
-    function scanQr() { root.startQrScan() }
+    function scanQr() { root.requestQrScan() }
     function speedTest() { root.summonSpeedTest() }
   }
 
@@ -350,8 +354,9 @@ Panel {
   onOpenedChanged: {
     if (opened) {
       refresh(true)
-      webcamProbe.running = false
-      webcamProbe.running = true
+      webcamAvailable = false
+      webcamProbeComplete = false
+      if (!webcamProbe.running) webcamProbe.running = true
       selectedIndex = wifiNetworks.length > 0 ? 0 : -1
       wifiActionFocused = false
       focusSection = wifiNetworks.length > 0 ? "wifi" : "dns"
@@ -360,6 +365,7 @@ Panel {
       syncBandIndex()
       cursorActive = false
     } else {
+      qrScanPending = false
       // Drop a restart armed by this open: without it a close/reopen inside
       // the 100ms window reuses the running timer and re-enables the scanner
       // almost immediately, undoing the deferral #6605 restored.
@@ -821,8 +827,22 @@ Panel {
     else startQrScan()
   }
 
+  function requestQrScan() {
+    root.open()
+    if (qrScanActive && !qrScanExpectedStop) return
+    qrScanPending = true
+    startPendingQrScan()
+  }
+
+  function startPendingQrScan() {
+    if (qrScanPending && opened && webcamProbeComplete && !qrScanActive) {
+      qrScanPending = false
+      startQrScan()
+    }
+  }
+
   function startQrScan() {
-    if (!canScanWifiQr || busy || qrScanActive) return
+    if (!canStartWifiQrScan || busy || qrScanActive) return
     clearQrCandidate()
     qrScanActive = true
     qrScanExpectedStop = false
@@ -842,7 +862,10 @@ Panel {
   }
 
   function settleQrScan() {
-    if (qrScanExited && qrScanStdoutDone && qrScanStderrDone) qrScanActive = false
+    if (qrScanExited && qrScanStdoutDone && qrScanStderrDone) {
+      qrScanActive = false
+      startPendingQrScan()
+    }
   }
 
   function acceptQrScan(raw) {
@@ -911,7 +934,11 @@ Panel {
   Process {
     id: webcamProbe
     command: ["omarchy-hw-webcam"]
-    onExited: function(exitCode) { root.webcamAvailable = exitCode === 0 }
+    onExited: function(exitCode) {
+      root.webcamAvailable = exitCode === 0
+      root.webcamProbeComplete = true
+      root.startPendingQrScan()
+    }
   }
 
   Process {
@@ -1490,6 +1517,7 @@ Panel {
           visible: root.qrCandidate !== null
           width: parent.width
           text: root.qrCandidate ? root.qrCandidate.ssid : ""
+          textFormat: Text.PlainText
           color: root.bar.foreground
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.title
@@ -1516,6 +1544,7 @@ Panel {
           visible: root.qrError !== ""
           width: parent.width
           text: root.qrError
+          textFormat: Text.PlainText
           color: root.bar.urgent
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.bodySmall
