@@ -1,3 +1,6 @@
+[window]
+opacity = {{ terminal_opacity }}
+
 [colors.primary]
 background = "{{ background }}"
 foreground = "{{ foreground }}"

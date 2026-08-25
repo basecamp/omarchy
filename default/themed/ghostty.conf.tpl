@@ -1,4 +1,5 @@
 background = {{ background }}
+background-opacity = {{ terminal_opacity }}
 foreground = {{ foreground }}
 cursor-color = {{ bright_foreground }}
 selection-background = {{ selection_background }}
