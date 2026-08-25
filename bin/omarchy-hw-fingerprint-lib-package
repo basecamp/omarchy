@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# omarchy:summary=Names where the libfprint provider comes from and the package to install
+# omarchy:hidden=true
+
+# Prints "<source> <package>" for the package providing libfprint for the
+# fingerprint reader present on this machine: "repo libfprint" for ordinary
+# readers, or an alternate provider for a sensor stock libfprint has no
+# driver for.
+usb_devices_path="${OMARCHY_USB_DEVICES_PATH:-/sys/bus/usb/devices}"
+alternate_lib_package="libfprint-elanmoc2-git"
+
+# An installed replacement provider always wins, so re-running setup never
+# swaps a working alternate library back to stock.
+if pacman -Q "$alternate_lib_package" &>/dev/null; then
+  echo "aur $alternate_lib_package"
+  exit 0
+fi
+
+# Elan stamps "ELAN:ARM-M4" on several incompatible sensors, so match on the
+# exact USB ID rather than the product string. 04f3:0c4c is an ELAN
+# match-on-chip v2 reader whose elanmoc2 driver stock libfprint does not ship.
+for dev in "$usb_devices_path"/*; do
+  [[ -r $dev/idVendor && -r $dev/idProduct ]] || continue
+  if [[ $(<"$dev/idVendor") == "04f3" && $(<"$dev/idProduct") == "0c4c" ]]; then
+    echo "aur $alternate_lib_package"
+    exit 0
+  fi
+done
+
+echo "repo libfprint"
