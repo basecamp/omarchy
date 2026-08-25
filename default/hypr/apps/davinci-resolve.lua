@@ -10,4 +10,5 @@ o.window(".*[Rr]esolve.*", {
 })
 
 o.window({ class = ".*[Rr]esolve.*", title = "^DaVinci Resolve( Studio)? - .+$" }, { fullscreen = true })
-o.window({ class = ".*[Rr]esolve.*", title = "^(DaVinci Resolve( Studio)? - .+|Project Manager|Preferences|Find Directory)$" }, { stay_focused = false })
+-- Resolve exposes the Voiceover panel under the generic "Dialog" title.
+o.window({ class = ".*[Rr]esolve.*", title = "^(DaVinci Resolve( Studio)? - .+|Project Manager|Preferences|Find Directory|Dialog)$" }, { stay_focused = false })
