@@ -7,7 +7,8 @@
 # Each omarchy-agent-usage-<agent> collector prints one display-ready JSON
 # record; this writes them to ~/.local/state/omarchy/agents/usage/ where the
 # agents panel watches them. Adding an agent is adding a collector — the
-# panel picks up any record that appears here.
+# panel picks up any record that appears here, and collectors are read from
+# both Omarchy's bin and ~/.local/bin.
 
 USAGE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/agents/usage"
 mkdir -p "$USAGE_DIR"
@@ -51,13 +52,34 @@ collect() {
   mv "$tmp" "$USAGE_DIR/$agent.json"
 }
 
-pids=()
-for collector in "$OMARCHY_PATH"/bin/omarchy-agent-usage-*; do
-  [[ -x $collector ]] || continue
+declare -A collector_for
+agents=()
+
+register() {
+  local collector="$1" agent
+  [[ -x $collector ]] || return
   agent="${collector##*/omarchy-agent-usage-}"
-  [[ $agent == "update" ]] && continue
+  [[ $agent == "update" ]] && return
+  if [[ -z ${collector_for[$agent]:-} ]]; then
+    agents+=("$agent")
+  fi
+  collector_for[$agent]="$collector"
+}
+
+for collector in "$OMARCHY_PATH"/bin/omarchy-agent-usage-*; do
+  register "$collector"
+done
+
+# A user collector wins a name collision: overriding a packaged one is the
+# reason to put a script there in the first place.
+for collector in "$HOME"/.local/bin/omarchy-agent-usage-*; do
+  register "$collector"
+done
+
+pids=()
+for agent in "${agents[@]}"; do
   wanted "$agent" || continue
-  collect "$collector" "$agent" &
+  collect "${collector_for[$agent]}" "$agent" &
   pids+=($!)
 done
 
