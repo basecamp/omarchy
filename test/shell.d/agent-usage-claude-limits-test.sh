@@ -240,4 +240,5 @@ assertDeepEqual(
   [{ title: 'Weekly', percent: 0.12, resetAt: '' }],
   'agents panel still reads a window out of a label that carries no title'
 )
+
 JS
