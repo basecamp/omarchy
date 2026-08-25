@@ -160,6 +160,26 @@ assert(
   panelSource.includes("configuredLocationState = Model.parseLocationFile(text())"),
   'weather reads location directly from the file without a mid-write guard'
 )
+assert(
+  panelSource.includes('function persistSettings(values)') && panelSource.includes('updateEntryInline'),
+  'weather persists unit changes back into its shell.json entry'
+)
+assert(
+  panelSource.includes('function pinOppositeUnit()') && panelSource.includes('onTapped: root.pinOppositeUnit()'),
+  'weather pins the requested unit from the hero degree label itself'
+)
+assert(
+  panelSource.includes('unitPinned ? "" :') && panelSource.includes('function unitAuto()'),
+  'weather toggle restores automatic when pinned, and the dot returns it'
+)
+assert(
+  panelSource.includes('function toggleUnit(): void { root.toggleUnit() }'),
+  'weather exposes toggleUnit over IPC so keybindings and menus can reach it'
+)
+assert(
+  widgetSource.includes('target.moduleName = root.moduleName'),
+  'weather hands the mounted (possibly cloned) widget id to its panel so settings persist'
+)
 
 assert(!weather.weatherResponseCompletesSave(true, 'wttr'), 'weather keeps the spinner through a non-authoritative pinned-location response')
 assert(weather.weatherResponseCompletesSave(true, 'open-meteo'), 'weather completes a pinned-location save with Open-Meteo data')
@@ -206,3 +226,27 @@ pass "weather location rejects malformed coordinates"
 weather_location --clear
 [[ ! -e "$test_tmp/.local/state/omarchy/settings/weather.json" ]] || fail "weather location clear removes the state file"
 pass "weather location clear removes the state file"
+
+# ---- Weather unit toggle command
+
+toggle_stub_dir=$(mktemp -d)
+trap 'rm -rf "$test_tmp" "$toggle_stub_dir"' EXIT
+mkdir -p "$toggle_stub_dir"
+cat >"$toggle_stub_dir/omarchy-shell" <<'STUB'
+#!/bin/bash
+printf '%s\n' "$*" >>"${CAPTURE_FILE:?}"
+STUB
+chmod +x "$toggle_stub_dir/omarchy-shell"
+
+capture_file="$test_tmp/toggle-capture"
+: >"$capture_file"
+CAPTURE_FILE="$capture_file" HOME="$test_tmp" PATH="$toggle_stub_dir:$PATH" \
+  "$ROOT/bin/omarchy-toggle-weather-unit"
+[[ $(cat "$capture_file") == "omarchy.weather toggleUnit" ]] || fail "weather unit toggle flips units through the shell IPC"
+pass "weather unit toggle flips units through the shell IPC"
+
+if CAPTURE_FILE="$capture_file" PATH="$toggle_stub_dir:$PATH" \
+  "$ROOT/bin/omarchy-toggle-weather-unit" fahrenheit >/dev/null 2>&1; then
+  fail "weather unit toggle rejects arguments"
+fi
+pass "weather unit toggle rejects arguments"

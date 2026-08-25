@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle the weather widget between Celsius and Fahrenheit
+# omarchy:examples=omarchy toggle weather unit
+
+(( $# <= 0 )) || { echo "Usage: omarchy-toggle-weather-unit" >&2; exit 1; }
+
+exec omarchy-shell omarchy.weather toggleUnit

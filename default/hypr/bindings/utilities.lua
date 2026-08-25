@@ -27,6 +27,8 @@ o.bind_toggle("SUPER + CTRL + comma", "Toggle silencing notifications", "notific
 o.bind("SUPER + ALT + comma", "Invoke last notification", "omarchy-shell notifications invokeLast")
 o.bind("SUPER + SHIFT + ALT + comma", "Open notification history", "omarchy-shell notifications showHistory")
 
+o.bind_toggle("SUPER + ALT + U", "Toggle weather units", "weather-unit")
+
 o.bind_toggle("SUPER + CTRL + I", "Toggle locking on idle", "idle")
 o.bind_toggle("SUPER + CTRL + N", "Toggle nightlight", "nightlight")
 o.bind("SUPER + CTRL + Delete", "Toggle laptop display", "omarchy-hyprland-monitor-internal toggle")
