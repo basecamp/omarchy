@@ -28,4 +28,13 @@ assertDeepEqual(
   { level: 40, notify: false, notifiedLowBattery: false },
   'battery clears notified state after recovery'
 )
+assertDeepEqual(
+  battery.shouldWarnLowBattery({ isPresent: true, percentage: 0.08, state: discharging }, false, discharging, 10, false),
+  { level: 8, notify: false, notifiedLowBattery: false },
+  'battery does not warn while on AC even if percentage is low'
+)
+
+const serviceSource = require('fs').readFileSync(root + '/shell/plugins/services/battery/Service.qml', 'utf8')
+assert(/triggeredOnStart:\s*false/.test(serviceSource), 'battery defers the first low-battery check past shell start')
+assert(/interval:\s*5000[\s\S]*onTriggered:\s*root\.checkBattery\(\)/.test(serviceSource), 'battery runs a delayed first low-battery check')
 JS
