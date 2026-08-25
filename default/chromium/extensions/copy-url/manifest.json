@@ -15,6 +15,10 @@
     "copy-url": {
       "suggested_key": {"default": "Alt+Shift+L"},
       "description": "Copy URL"
+    },
+    "copy-markdown-link": {
+      "suggested_key": {"default": "Alt+Shift+M"},
+      "description": "Copy Markdown Link"
     }
   },
   "background": {"service_worker": "background-5.js"}
