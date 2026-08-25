@@ -48,4 +48,9 @@ assert(/Math\.round\(root\.batteryFraction \* 100\) \+ "% " \+ root\.batteryIcon
 assert(/openPanelIndicatorWidth:.*showPercentage.*button\.glyphPaintedWidth : 0/.test(panelSource), 'power spans the open-panel mark across the painted percentage block')
 assert(/IpcHandler[\s\S]*?function togglePercentage\(\) \{ root\.togglePercentage\(\) \}/.test(panelSource), 'power exposes togglePercentage over IPC')
 assert(/manageIpc: false/.test(panelSource), 'power owns its IPC handler so it can extend the target methods')
+assert(!/if \(!batteryPresent\) \{\s*close\(\)/.test(panelSource), 'power does not self-close when opened without a battery')
+assert(!/onBatteryPresentChanged: if \(!batteryPresent\) close\(\)/.test(panelSource), 'power does not close when battery presence drops')
+assert(/open: root\.opened\b/.test(panelSource), 'power panel opens from the opened flag even without a battery')
+assert(/visible: root\.batteryPresent/.test(panelSource), 'power hides battery chrome when no battery is present')
+assert(/if \(batteryPresent && !batteryProc\.running\)/.test(panelSource), 'power still refreshes profiles without a battery')
 JS

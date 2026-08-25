@@ -133,9 +133,9 @@ Panel {
   }
 
   function refresh() {
-    if (!batteryPresent) return
-
-    if (!batteryProc.running) batteryProc.running = true
+    // Profiles and system stats belong on desktops too; only skip the battery
+    // collector when UPower has no display device (#7119).
+    if (batteryPresent && !batteryProc.running) batteryProc.running = true
     if (!profilesProc.running) profilesProc.running = true
     if (!systemProc.running) systemProc.running = true
   }
@@ -187,11 +187,6 @@ Panel {
 
   onOpenedChanged: {
     if (opened) {
-      if (!batteryPresent) {
-        close()
-        return
-      }
-
       refresh()
       var idx = profiles.indexOf(activeProfile)
       profileIndex = idx >= 0 ? idx : 0
@@ -199,8 +194,8 @@ Panel {
     }
   }
 
-  onBatteryPresentChanged: if (!batteryPresent) close()
-
+  // Bar slot stays battery-gated; the panel itself must still open from
+  // Super+Ctrl+P on desktops so power profiles remain reachable (#7119).
   visible: batteryPresent
   implicitWidth: batteryPresent ? button.implicitWidth : 0
   implicitHeight: batteryPresent ? button.implicitHeight : 0
@@ -283,7 +278,6 @@ Panel {
     slotSize: Style.bar.iconSlot * (root.showPercentage && !vertical ? 2 : 1)
     tooltipText: ""
     onPressed: function(b) {
-      if (!root.batteryPresent) return
       if (b === Qt.RightButton) root.togglePercentage()
       else root.toggle()
     }
@@ -294,7 +288,7 @@ Panel {
     anchorItem: button
     owner: root
     bar: root.bar
-    open: root.opened && root.batteryPresent
+    open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(380))
     contentHeight: panel.fittedContentHeight(column.implicitHeight)
@@ -320,8 +314,11 @@ Panel {
 
         // ---------- Hero: battery icon · title/status · percentage ----------
         Item {
+          visible: root.batteryPresent
           width: parent.width
-          implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight, heroPercent.implicitHeight)
+          implicitHeight: visible
+            ? Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight, heroPercent.implicitHeight)
+            : 0
 
           Text {
             id: heroIcon
@@ -383,8 +380,9 @@ Panel {
 
         // ---------- Battery progress bar ----------
         Item {
+          visible: root.batteryPresent
           width: parent.width
-          implicitHeight: Style.space(8)
+          implicitHeight: visible ? Style.space(8) : 0
 
           Rectangle {
             id: barTrack
@@ -423,7 +421,7 @@ Panel {
         // the battery sits above the charge-control start threshold, and we
         // refuse to flicker the whole panel for that ~1s window.
         Row {
-          visible: root.batteryInfo.percentage !== undefined
+          visible: root.batteryPresent && root.batteryInfo.percentage !== undefined
           width: parent.width
           spacing: Style.space(20)
 
@@ -450,6 +448,7 @@ Panel {
 
         // ---------- Power profile picker ----------
         PanelSeparator {
+          visible: root.batteryPresent
           foreground: root.bar.foreground
         }
 
