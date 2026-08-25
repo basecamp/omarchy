@@ -91,14 +91,22 @@ pass "Snapper service migration only repairs broken services idempotently"
 # Accepts either the omarchy-pkgs checkout or its pkgbuilds/ directory.
 find_omarchy_pks_root() {
   local candidate
-  for candidate in \
-    ${OMARCHY_PKGS_PATH:+"$OMARCHY_PKGS_PATH/pkgbuilds" "$OMARCHY_PKGS_PATH"} \
-    "$ROOT/../omarchy-pkgs/pkgbuilds" \
-    "$ROOT/../omarchy/omarchy-pkgs/pkgbuilds" \
-    "$ROOT/../../omarchy-pkgs/pkgbuilds" \
-    "$ROOT/../omacom/omarchy-pkgs/pkgbuilds" \
-    "$ROOT/../../omacom/omarchy-pkgs/pkgbuilds" \
-    "$HOME/Work/omacom/omarchy-pkgs/pkgbuilds"; do
+  local -a candidates
+
+  if [[ -n ${OMARCHY_PKGS_PATH:-} ]]; then
+    candidates=("$OMARCHY_PKGS_PATH/pkgbuilds" "$OMARCHY_PKGS_PATH")
+  else
+    candidates=(
+      "$ROOT/../omarchy-pkgs/pkgbuilds"
+      "$ROOT/../omarchy/omarchy-pkgs/pkgbuilds"
+      "$ROOT/../../omarchy-pkgs/pkgbuilds"
+      "$ROOT/../omacom/omarchy-pkgs/pkgbuilds"
+      "$ROOT/../../omacom/omarchy-pkgs/pkgbuilds"
+      "$HOME/Work/omacom/omarchy-pkgs/pkgbuilds"
+    )
+  fi
+
+  for candidate in "${candidates[@]}"; do
     if [[ -d $candidate ]]; then
       cd "$candidate" && pwd
       return 0
@@ -128,14 +136,22 @@ fi
 # Same per-machine checkout problem as omarchy-pkgs; OMARCHY_ISO_PATH points at it.
 find_omarchy_iso_root() {
   local candidate
-  for candidate in \
-    ${OMARCHY_ISO_PATH:+"$OMARCHY_ISO_PATH"} \
-    "$ROOT/../omarchy-iso" \
-    "$ROOT/../omarchy/omarchy-iso" \
-    "$ROOT/../../omarchy-iso" \
-    "$ROOT/../omacom/omarchy-iso" \
-    "$ROOT/../../omacom/omarchy-iso" \
-    "$HOME/Work/omacom/omarchy-iso"; do
+  local -a candidates
+
+  if [[ -n ${OMARCHY_ISO_PATH:-} ]]; then
+    candidates=("$OMARCHY_ISO_PATH")
+  else
+    candidates=(
+      "$ROOT/../omarchy-iso"
+      "$ROOT/../omarchy/omarchy-iso"
+      "$ROOT/../../omarchy-iso"
+      "$ROOT/../omacom/omarchy-iso"
+      "$ROOT/../../omacom/omarchy-iso"
+      "$HOME/Work/omacom/omarchy-iso"
+    )
+  fi
+
+  for candidate in "${candidates[@]}"; do
     if [[ -d $candidate ]]; then
       cd "$candidate" && pwd
       return 0

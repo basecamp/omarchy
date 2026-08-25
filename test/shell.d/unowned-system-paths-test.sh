@@ -54,7 +54,7 @@ pkgs_candidates = [
 ]
 override = os.environ.get("OMARCHY_PKGS_PATH")
 if override:
-  pkgs_candidates = [Path(override) / "pkgbuilds", Path(override)] + pkgs_candidates
+  pkgs_candidates = [Path(override) / "pkgbuilds", Path(override)]
 pkgs_root = next((p for p in pkgs_candidates if p.exists()), None)
 if pkgs_root is None:
   if override:
