@@ -34,6 +34,8 @@ Omarchy's default layout is called dwindle. It keeps all the windows you open on
 
 But you can also choose to turn a workspace into the scrolling layout where windows are lined up side-by-side, beyond the visible edge of the display. You turn a single workspace into this layout via `Super + L`.
 
+Pressing `Super + L` again turns the workspace floating, where windows overlap freely and you place them yourself, and a third press returns it to dwindle. A window that floats anyway — one you popped out with `Super + T`, or an app that always opens floating — keeps floating when the workspace goes back to tiling.
+
  ![navigation-scrolling-layout](images/navigation-scrolling-layout.webp)
 
 The choice is per workspace, and it sticks. So you can keep workspace 1 on dwindle for browsing and workspace 2 on scrolling for code, and they'll come back that way after a restart. (The same toggle is under _Trigger > Toggle > Workspace Layout_ in the Omarchy menu).
