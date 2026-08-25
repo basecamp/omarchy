@@ -374,6 +374,26 @@ assert(/function continueConnecting\(\) \{[\s\S]{0,200}?if \(addAccountProcess\.
 assert(/if \(!installed \|\| loginProcess\.running \|\| addAccountProcess\.running\) return/.test(serviceSource), 'tailscale will not connect over a login that is adding')
 assert(/stopConnecting\(\)\s*\n\s*actionStatus = "Opening Tailscale login…"/.test(serviceSource), 'tailscale drops the pending sequence when an add supersedes it')
 assert(/if \(addAccountProcess\.running\) \{\s*\n\s*root\._loginInProgress = false/.test(serviceSource), 'tailscale stops waiting on a link an add has superseded')
+
+// A profile's tailnet name arrives with the netmap, so a connection list read
+// while the machine was still coming up names a new one by whatever it had
+// then, and the throttle keeps that for a minute.
+assert(/if \(backendState === "Running" && _previousBackendState !== "Running"\) \{\s*\n\s*_lastAccountsRefreshMs = 0/.test(serviceSource), 'tailscale re-reads the connections once the machine comes up')
+assert(/_previousBackendState = backendState/.test(serviceSource), 'tailscale only re-reads on the transition, not every poll')
+
+// The real shape of a second tailnet: Tailscale names the profile after the
+// login it was made from, and the tailnet carries the name set in the admin
+// console.
+assertEqual(
+  tailscale.accountLabel({ id: '1785', nickname: 'you@example.com', tailnet: 'example.com', account: 'you@example.com' }),
+  'example.com',
+  'tailscale names a second connection by its tailnet rather than the login it was made from'
+)
+assertEqual(
+  tailscale.accountLabel({ id: 'db1b', nickname: 'a@example.com', tailnet: 'a@example.com', account: 'a@example.com' }),
+  'a@example.com',
+  'tailscale falls back to the login when the tailnet has no name of its own'
+)
 assert(/if \(Model\.isAccessDenied\(outcome\.error\)\) \{\s*\n\s*root\.reportCommandError/.test(serviceSource), 'tailscale offers the operator fix when the add is refused')
 assert(tailscale.isAccessDenied('profiles access denied'), 'tailscale spots the profiles refusal too')
 assert(!tailscale.isAccessDenied('tailscale up failed'), 'tailscale does not mistake an ordinary failure for a refusal')

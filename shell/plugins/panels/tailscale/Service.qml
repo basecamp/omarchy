@@ -61,6 +61,7 @@ Item {
   property bool _loginUrlOpened: false
   property string _preLoginAuthUrl: ""
   property double _lastAccountsRefreshMs: 0
+  property string _previousBackendState: ""
   property string _removeOutput: ""
   property string _removeError: ""
   property string _addAccountPreviousId: ""
@@ -265,6 +266,15 @@ Item {
     }
 
     backendState = parsed.backendState
+    // A profile's tailnet name arrives with the netmap, so a connection list
+    // read while the machine was still coming up names a new profile by
+    // whatever it had then -- and the refresh throttle keeps that for a
+    // minute. Coming up is exactly when it is worth reading again.
+    if (backendState === "Running" && _previousBackendState !== "Running") {
+      _lastAccountsRefreshMs = 0
+      delayedRefresh.restart()
+    }
+    _previousBackendState = backendState
     running = parsed.running
     // Reality caught up to the pending toggle — stop overriding.
     if (_desired !== -1 && running === (_desired === 1)) _desired = -1
