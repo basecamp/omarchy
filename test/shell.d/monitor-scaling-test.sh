@@ -205,3 +205,16 @@ OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.25
 grep -Fx 'local omarchy_gdk_scale = 1' "$monitor_lua" >/dev/null ||
   fail "monitor scaling still tracks GDK scale on a single display"
 pass "monitor scaling still tracks GDK scale on a single display"
+
+# monitors.lua is commonly a symlink into a dotfiles repo. Replacing the link
+# with a regular file detaches the config from the repo without saying so.
+real_lua="$test_tmp/dotfiles-monitors.lua"
+write_named_config
+mv "$monitor_lua" "$real_lua"
+ln -s "$real_lua" "$monitor_lua"
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
+[[ -L $monitor_lua ]] || fail "monitor scaling keeps a symlinked monitors.lua a symlink"
+grep -F 'position = "0x0", scale = 1.6 })' "$real_lua" >/dev/null ||
+  fail "monitor scaling writes through a symlinked monitors.lua"
+pass "monitor scaling keeps a symlinked monitors.lua a symlink"
+rm -f "$monitor_lua"

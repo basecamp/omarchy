@@ -83,7 +83,7 @@ persist_gdk_scale() {
   enabled="$(hyprctl monitors -j | jq '[.[] | select(.disabled != true)] | length')"
   [[ $enabled == 1 ]] || return 0
 
-  sed -i -E \
+  sed -i --follow-symlinks -E \
     -e "s|^local omarchy_gdk_scale = .*|local omarchy_gdk_scale = ${gdk_scale}|" \
     -e 's|^hl\.env\("GDK_SCALE", ".*"\)|hl.env("GDK_SCALE", "'"$gdk_scale"'")|' \
     "$file"
@@ -156,7 +156,10 @@ update_named_monitor_scale() {
     }
   ' "$file" >"$tmp" || { rm -f "$tmp"; return 1; }
 
-  mv "$tmp" "$file"
+  # cat rather than mv: monitors.lua is commonly a symlink into a dotfiles
+  # repo, and mv would replace the link with a regular file.
+  cat "$tmp" >"$file"
+  rm -f "$tmp"
 }
 
 set_scale() {
@@ -198,12 +201,12 @@ set_scale() {
   # Persist to monitors.lua if the user still has Omarchy's generic catch-all
   # defaults, so the scale survives reboots.
   if grep -q '^local omarchy_monitor_scale = ' "$monitor_lua"; then
-    sed -i -E \
+    sed -i --follow-symlinks -E \
       -e "s|^local omarchy_monitor_scale = .*|local omarchy_monitor_scale = ${new_scale}|" \
       "$monitor_lua"
     persist_gdk_scale "$new_gdk_scale" "$monitor_lua"
   elif grep -Eq '^hl\.monitor\(\{ output = "", mode = "preferred", position = "auto", scale = ("auto"|[0-9.]+) \}\)' "$monitor_lua"; then
-    sed -i -E \
+    sed -i --follow-symlinks -E \
       -e "s|^(hl\.monitor\(\{ output = \"\", mode = \"preferred\", position = \"auto\", scale = )([^ ]+)( \}\))|\\1${new_scale}\\3|" \
       "$monitor_lua"
     persist_gdk_scale "$new_gdk_scale" "$monitor_lua"
