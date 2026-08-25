@@ -8,7 +8,6 @@
       "appearance": "{{ mode }}",
       "style": {
         "background": "{{ background }}",
-        "foreground": "{{ foreground }}",
         "border": "{{ dark_background }}",
         "border.variant": "{{ lighter_background }}",
         "border.focused": "{{ accent }}",
@@ -159,12 +158,6 @@
             "selection": "{{ color2 }}33"
           }
         ],
-        "version_control.added": "{{ green }}",
-        "version_control.added_background": "{{ green }}33",
-        "version_control.deleted": "{{ red }}",
-        "version_control.deleted_background": "{{ red }}33",
-        "version_control.modified": "{{ yellow }}",
-        "version_control.modified_background": "{{ yellow }}33",
         "syntax": {
           "attribute": {
             "color": "{{ color3 }}",
