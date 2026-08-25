@@ -3,17 +3,14 @@
 # omarchy:summary=Apply the current theme color to Chromium, Chrome, Edge, and Brave
 # omarchy:hidden=true
 
+source "$OMARCHY_PATH/install/helpers/browser-policy.sh"
+
 CHROMIUM_THEME=$HOME/.local/state/omarchy/current/theme/chromium.theme
+THEME_HEX_COLOR=$BROWSER_POLICY_DEFAULT_COLOR
 
 if [[ -f $CHROMIUM_THEME ]]; then
-  THEME_RGB_COLOR=$(<$CHROMIUM_THEME)
-  THEME_HEX_COLOR=$(printf '#%02x%02x%02x' ${THEME_RGB_COLOR//,/ })
-else
-  # Use a default, neutral grey if theme doesn't have a color
-  THEME_HEX_COLOR="#1c2027"
+  THEME_HEX_COLOR=$(browser_policy_theme_hex "$(<$CHROMIUM_THEME)")
 fi
-
-source "$OMARCHY_PATH/install/helpers/browser-policy.sh"
 
 set_browser_policy() {
   browser_policy_write_color "$1" "$THEME_HEX_COLOR"

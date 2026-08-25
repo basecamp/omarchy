@@ -13,10 +13,25 @@ BROWSER_POLICY_MANAGED_DIRS=(
   /etc/brave/policies/managed
 )
 
+# Ancestors of the managed dirs, shortest first. A writable or attacker-owned
+# parent can rename the leaf aside; install -d follows a planted symlink.
+BROWSER_POLICY_PARENT_DIRS=(
+  /etc/chromium
+  /etc/chromium/policies
+  /etc/opt/chrome
+  /etc/opt/chrome/policies
+  /etc/opt/edge
+  /etc/opt/edge/policies
+  /etc/brave
+  /etc/brave/policies
+)
+
 BROWSER_POLICY_FIREFOX_DIRS=(
   /usr/lib/firefox/distribution
   /opt/zen-browser/distribution
 )
+
+BROWSER_POLICY_DEFAULT_COLOR="#1c2027"
 
 browser_policy_setup_group() {
   local provisioning_dir="${OMARCHY_PROVISIONING_DIR:-/var/lib/omarchy/provisioning}"
@@ -59,11 +74,63 @@ browser_policy_dir_hardened() {
   [[ $(stat -c '%G' "$dir") == $BROWSER_POLICY_GROUP ]] || return 1
 }
 
+browser_policy_parent_hardened() {
+  local dir=$1
+
+  [[ -d $dir && ! -L $dir ]] || return 1
+  [[ $(stat -c '%a' "$dir") == "755" ]] || return 1
+  [[ $(stat -c '%U' "$dir") == "root" ]] || return 1
+}
+
+browser_policy_parents_hardened() {
+  local dir=$1
+  local parent
+
+  for parent in "${BROWSER_POLICY_PARENT_DIRS[@]}"; do
+    [[ $dir == "$parent"/* ]] || continue
+    [[ -e $parent || -L $parent ]] || continue
+    browser_policy_parent_hardened "$parent" || return 1
+  done
+}
+
+browser_policy_setup_parent() {
+  local dir=$1
+
+  if [[ -L $dir || ( -e $dir && ! -d $dir ) ]]; then
+    as_root rm -rf -- "$dir"
+  fi
+  as_root install -d -m 0755 -o root -g root "$dir"
+}
+
+browser_policy_setup_parents_for() {
+  local dir=$1
+  local parent
+
+  for parent in "${BROWSER_POLICY_PARENT_DIRS[@]}"; do
+    [[ $dir == "$parent"/* ]] || continue
+    browser_policy_setup_parent "$parent"
+  done
+}
+
 browser_policy_setup_dir() {
   local dir=$1
 
+  browser_policy_setup_parents_for "$dir"
   as_root install -d -m 2775 -o root -g "$BROWSER_POLICY_GROUP" "$dir"
   browser_policy_purge_dir "$dir"
+}
+
+# Themes are user-installed. Accept only three 0-255 components.
+browser_policy_theme_hex() {
+  local theme_rgb=$1
+
+  if [[ $theme_rgb =~ ^[[:space:]]*([0-9]{1,3})[[:space:]]*,[[:space:]]*([0-9]{1,3})[[:space:]]*,[[:space:]]*([0-9]{1,3})[[:space:]]*$ ]] &&
+    (( 10#${BASH_REMATCH[1]} < 256 && 10#${BASH_REMATCH[2]} < 256 && 10#${BASH_REMATCH[3]} < 256 )); then
+    printf '#%02x%02x%02x' "$((10#${BASH_REMATCH[1]}))" "$((10#${BASH_REMATCH[2]}))" "$((10#${BASH_REMATCH[3]}))"
+    return
+  fi
+
+  printf '%s' "$BROWSER_POLICY_DEFAULT_COLOR"
 }
 
 browser_policy_file_owner() {

@@ -8,7 +8,9 @@ browser_policy_grant_user "${USER:-$(id -un)}"
 repaired=0
 for dir in "${BROWSER_POLICY_MANAGED_DIRS[@]}"; do
   [[ -d $dir ]] || continue
-  browser_policy_dir_hardened "$dir" && continue
+  if browser_policy_dir_hardened "$dir" && browser_policy_parents_hardened "$dir"; then
+    continue
+  fi
   browser_policy_setup_dir "$dir"
   repaired=1
 done

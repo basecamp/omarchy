@@ -210,6 +210,10 @@ cmp -s "$ROOT/config/chromium-flags.conf" "$test_home/.config/chromium-flags.con
   fail "Chromium browser installer copies the default flags"
 grep -Fxq 'sudo:groupadd --system --force omarchy-browser-policy' "$setup_log" ||
   fail "Chromium browser installer creates the browser-policy group"
+grep -Fxq 'sudo:install -d -m 0755 -o root -g root /etc/chromium' "$setup_log" ||
+  fail "Chromium browser installer creates a root-owned Chromium policy parent"
+grep -Fxq 'sudo:install -d -m 0755 -o root -g root /etc/chromium/policies' "$setup_log" ||
+  fail "Chromium browser installer creates a root-owned Chromium policies parent"
 grep -Fxq 'sudo:install -d -m 2775 -o root -g omarchy-browser-policy /etc/chromium/policies/managed' "$setup_log" ||
   fail "Chromium browser installer creates a group-writable managed policy directory"
 grep -Fxq 'sudo:find /etc/chromium/policies/managed -mindepth 1 -maxdepth 1 ! -user root -exec rm -rf -- {} +' "$setup_log" ||

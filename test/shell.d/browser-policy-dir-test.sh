@@ -168,6 +168,87 @@ fi
 BROWSER_POLICY_GROUP=omarchy-browser-policy
 pass "a hardened directory must be root-owned"
 
+saved_parent_dirs=("${BROWSER_POLICY_PARENT_DIRS[@]}")
+parent_root=$test_tmp/parents
+mkdir -p "$parent_root/etc/chromium/policies/managed/keep"
+printf 'keep\n' >"$parent_root/etc/chromium/policies/managed/keep/x"
+chmod 0777 "$parent_root/etc/chromium" "$parent_root/etc/chromium/policies"
+chmod 2775 "$parent_root/etc/chromium/policies/managed"
+BROWSER_POLICY_PARENT_DIRS=(
+  "$parent_root/etc/chromium"
+  "$parent_root/etc/chromium/policies"
+)
+as_root() { unprivileged_as_root "$@"; }
+if browser_policy_parents_hardened "$parent_root/etc/chromium/policies/managed"; then
+  fail "a world-writable policy parent is not treated as hardened"
+fi
+browser_policy_setup_parents_for "$parent_root/etc/chromium/policies/managed"
+mode=$(stat -c '%a' "$parent_root/etc/chromium")
+[[ $mode == "755" ]] || fail "setup tightens /etc/chromium" "mode=$mode"
+mode=$(stat -c '%a' "$parent_root/etc/chromium/policies")
+[[ $mode == "755" ]] || fail "setup tightens /etc/chromium/policies" "mode=$mode"
+[[ -d $parent_root/etc/chromium/policies/managed/keep ]] ||
+  fail "parent repair does not purge the managed directory"
+pass "policy parent directories are tightened to 0755 without purging the leaf"
+
+symlink_root=$test_tmp/symlink-parents
+mkdir -p "$symlink_root/etc" "$symlink_root/attacker/policies/managed"
+printf 'planted\n' >"$symlink_root/attacker/policies/managed/evil.json"
+ln -s "$symlink_root/attacker" "$symlink_root/etc/chromium"
+BROWSER_POLICY_PARENT_DIRS=(
+  "$symlink_root/etc/chromium"
+  "$symlink_root/etc/chromium/policies"
+)
+as_root() { unprivileged_as_root "$@"; }
+browser_policy_setup_dir "$symlink_root/etc/chromium/policies/managed"
+[[ ! -L $symlink_root/etc/chromium ]] || fail "setup replaces a planted /etc/chromium symlink"
+[[ -d $symlink_root/etc/chromium && ! -L $symlink_root/etc/chromium ]] ||
+  fail "setup recreates /etc/chromium as a real directory"
+[[ -d $symlink_root/etc/chromium/policies && ! -L $symlink_root/etc/chromium/policies ]] ||
+  fail "setup recreates /etc/chromium/policies as a real directory"
+[[ ! -e $symlink_root/etc/chromium/policies/managed/evil.json ]] ||
+  fail "setup does not keep policy that lived behind a planted parent symlink"
+grep -Fxq 'planted' "$symlink_root/attacker/policies/managed/evil.json" ||
+  fail "replacing a parent symlink does not delete the symlink target"
+BROWSER_POLICY_PARENT_DIRS=("${saved_parent_dirs[@]}")
+pass "policy setup does not follow a planted parent symlink"
+
+[[ $(browser_policy_theme_hex "242,240,229") == "#f2f0e5" ]] ||
+  fail "theme colour converts an RGB triple to hex"
+[[ $(browser_policy_theme_hex $'14,31,41\n') == "#0e1f29" ]] ||
+  fail "theme colour accepts a trailing newline"
+[[ $(browser_policy_theme_hex "0,0,0") == "#000000" ]] ||
+  fail "theme colour pads single-digit components"
+[[ $(browser_policy_theme_hex " 12 , 11 , 12 ") == "#0c0b0c" ]] ||
+  fail "theme colour tolerates surrounding whitespace"
+[[ $(browser_policy_theme_hex "08,09,10") == "#08090a" ]] ||
+  fail "theme colour treats leading zeros as decimal"
+for malformed in "" "not,a,color" "1,2" "1,2,3,4" "256,0,0" "999,999,999" "-1,0,0" \
+  "1,2,3;id" '1,2,$(id)' "0x10,0,0" "1,2,3 4,5,6"; do
+  [[ $(browser_policy_theme_hex "$malformed") == "#1c2027" ]] ||
+    fail "theme colour falls back to the neutral grey for '$malformed'"
+done
+pass "theme colour is six hex digits or the stock grey"
+
+for theme in "$ROOT"/themes/*/chromium.theme; do
+  [[ -f $theme ]] || continue
+  rgb=$(<$theme)
+  hex=$(browser_policy_theme_hex "$rgb")
+  [[ $hex =~ ^#[0-9a-f]{6}$ ]] ||
+    fail "shipped $(basename "$(dirname "$theme")") chromium.theme parses as hex" "got: $hex from $(printf %q "$rgb")"
+  if [[ $hex == "#1c2027" && ! $rgb =~ ^[[:space:]]*28[[:space:]]*,[[:space:]]*32[[:space:]]*,[[:space:]]*39[[:space:]]*$ ]]; then
+    fail "shipped $(basename "$(dirname "$theme")") chromium.theme is a valid RGB triple" "got: $(printf %q "$rgb")"
+  fi
+done
+pass "shipped chromium.theme files parse as RGB triples"
+
+grep -F 'browser_policy_theme_hex' "$ROOT/bin/omarchy-theme-set-browser" >/dev/null ||
+  fail "omarchy-theme-set-browser parses chromium.theme through browser_policy_theme_hex"
+if grep -E 'printf.*THEME_RGB_COLOR' "$ROOT/bin/omarchy-theme-set-browser" >/dev/null; then
+  fail "omarchy-theme-set-browser does not hand unvetted theme words to printf"
+fi
+pass "omarchy-theme-set-browser validates the theme colour"
+
 fx_policy=$test_tmp/policies.json
 printf '%s\n' '{"policies":{}}' >"$fx_policy"
 chmod 644 "$fx_policy"
@@ -247,6 +328,8 @@ mapfile -t migrations < <(rg -l 'Stop world-writable Chromium and Firefox policy
 (( ${#migrations[@]} == 1 )) || fail "exactly one migration locks existing policy directories" "${migrations[*]}"
 grep -F 'browser_policy_dir_hardened' "${migrations[0]}" >/dev/null ||
   fail "the policy-directory migration no-ops a machine already repaired"
+grep -F 'browser_policy_parents_hardened' "${migrations[0]}" >/dev/null ||
+  fail "the policy-directory migration repairs a world-writable parent of a hardened leaf"
 grep -F 'browser_policy_grant_user' "${migrations[0]}" >/dev/null ||
   fail "the policy-directory migration still grants the current user the group"
 grep -F 'BROWSER_POLICY_FIREFOX_DIRS' "${migrations[0]}" >/dev/null ||
