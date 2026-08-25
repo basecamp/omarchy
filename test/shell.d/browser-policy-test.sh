@@ -81,13 +81,6 @@ printf 'sudo %s\n' "$*" >"$ELEVATION_LOG"
 SH
 chmod +x "$stub_bin/sudo"
 
-# Running as root skips require_root entirely, and the helper would then write
-# this machine's real browser policy directories.
-if ((EUID == 0)); then
-  pass "running as root; skipping the elevation checks, which would rewrite this machine's browser policy"
-  exit 0
-fi
-
 elevation_for() {
   : >"$test_tmp/elevation"
   ELEVATION_LOG="$test_tmp/elevation" \
@@ -96,33 +89,42 @@ elevation_for() {
   cat "$test_tmp/elevation"
 }
 
-elevation=$(elevation_for 1c2027)
-[[ $elevation == "sudo /usr/bin/omarchy-theme-set-browser-policy 1c2027" ]] ||
-  fail "omarchy-theme-set-browser-policy takes the passwordless sudo grant without a terminal" \
-    "got: $elevation"
+# require_root returns immediately for root, so a run that passes validation
+# would fall through to the write and rewrite this machine's real policy
+# directories. Only the valid-color scenarios reach that far: everything below
+# is either rejected before require_root or does not run the helper at all, so
+# the guard stays around these and no further.
+if ((EUID == 0)); then
+  pass "running as root; skipping the valid-color elevation checks, which would rewrite this machine's browser policy"
+else
+  elevation=$(elevation_for 1c2027)
+  [[ $elevation == "sudo /usr/bin/omarchy-theme-set-browser-policy 1c2027" ]] ||
+    fail "omarchy-theme-set-browser-policy takes the passwordless sudo grant without a terminal" \
+      "got: $elevation"
 
-# A dev-linked checkout elevates the packaged path like everyone else, rather
-# than handing sudo a path no rule can name and losing the grant.
-dev_linked=$(OMARCHY_PATH="$test_tmp/checkout" elevation_for 1c2027)
-[[ $dev_linked == "sudo /usr/bin/omarchy-theme-set-browser-policy 1c2027" ]] ||
-  fail "omarchy-theme-set-browser-policy elevates the system install wherever OMARCHY_PATH points" \
-    "got: $dev_linked"
+  # A dev-linked checkout elevates the packaged path like everyone else, rather
+  # than handing sudo a path no rule can name and losing the grant.
+  dev_linked=$(OMARCHY_PATH="$test_tmp/checkout" elevation_for 1c2027)
+  [[ $dev_linked == "sudo /usr/bin/omarchy-theme-set-browser-policy 1c2027" ]] ||
+    fail "omarchy-theme-set-browser-policy elevates the system install wherever OMARCHY_PATH points" \
+      "got: $dev_linked"
 
-pass "browser policy helper elevates a valid color through the sudo grant"
+  pass "browser policy helper elevates a valid color through the sudo grant"
 
-# Where the grant does not reach and there is no terminal, the helper leaves the
-# policy alone. A browser accent color does not justify an authentication dialog
-# on every theme switch, so this must not reach pkexec either.
-ungranted=$(STUB_GRANTED="" elevation_for 1c2027)
-[[ -z $ungranted ]] ||
-  fail "omarchy-theme-set-browser-policy stays quiet where the grant does not reach" "got: $ungranted"
+  # Where the grant does not reach and there is no terminal, the helper leaves
+  # the policy alone. A browser accent color does not justify an authentication
+  # dialog on every theme switch, so this must not reach pkexec either.
+  ungranted=$(STUB_GRANTED="" elevation_for 1c2027)
+  [[ -z $ungranted ]] ||
+    fail "omarchy-theme-set-browser-policy stays quiet where the grant does not reach" "got: $ungranted"
 
-if ! STUB_GRANTED="" PATH="$stub_bin:$PATH" ELEVATION_LOG="$test_tmp/elevation" \
-  bash "$helper" 1c2027 </dev/null >/dev/null 2>&1; then
-  fail "omarchy-theme-set-browser-policy succeeds when it declines to elevate, so the rest of the theme applies"
+  if ! STUB_GRANTED="" PATH="$stub_bin:$PATH" ELEVATION_LOG="$test_tmp/elevation" \
+    bash "$helper" 1c2027 </dev/null >/dev/null 2>&1; then
+    fail "omarchy-theme-set-browser-policy succeeds when it declines to elevate, so the rest of the theme applies"
+  fi
+
+  pass "browser policy helper skips the write rather than prompting where the grant is absent"
 fi
-
-pass "browser policy helper skips the write rather than prompting where the grant is absent"
 
 # Validation runs before any elevation, so a rejected argument never reaches
 # sudo. Anything but six lowercase hex digits is rejected, and the sudoers glob
