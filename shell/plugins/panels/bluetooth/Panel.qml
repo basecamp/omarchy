@@ -411,12 +411,15 @@ Panel {
       // from another monitor, or one leaked by an instance that could not
       // finish its own stop — so this close settles it either way.
       if (adapter !== null && adapter.discovering) owesDiscoveryStop = true
+      applyPairable()
       if (connectedDevices.length > 0) { focusSection = "connected"; selectedIndex = 0 }
       else if (knownDevices.length > 0) { focusSection = "known"; selectedIndex = 0 }
       else if (discoveredDevices.length > 0) { focusSection = "discovered"; selectedIndex = 0 }
       else { focusSection = "header" }
       actionFocused = false
       cursorActive = false
+    } else {
+      applyPairable()
     }
   }
 
@@ -432,6 +435,27 @@ Panel {
     }
     return null
   }
+
+  // Pairable is the inbound-pairing gate bt-agent.service's NoInputNoOutput
+  // comment relies on. BlueZ defaults PairableTimeout=0, so once true it
+  // stays true forever unless we write it false. Quickshell only forwards a
+  // pairable write that differs from the last state it holds, same as
+  // discovering. Sibling care matches discovery: a close on one monitor
+  // must not lock out a panel still open on another.
+  function setPairable(want) {
+    if (want == null || adapter === null) return
+    if (adapter.pairable === want) return
+    adapter.pairable = want
+  }
+
+  function applyPairable(opened) {
+    if (opened === undefined) opened = root.opened
+    var siblingOpen = openSibling() !== null
+    var enabled = adapter !== null && !!adapter.enabled
+    setPairable(Model.wantedPairable(opened, enabled, siblingOpen))
+  }
+
+  onAdapterChanged: applyPairable()
 
   function updateFocusedAddress() {
     var d = deviceAt(focusSection, selectedIndex)
@@ -513,6 +537,7 @@ Panel {
     onTriggered: {
       root.owesDiscoveryStop = true
       root.adapter.discovering = true
+      root.applyPairable()
     }
   }
 
@@ -547,6 +572,7 @@ Panel {
         root.owesDiscoveryStop = false
         return
       }
+      root.applyPairable()
       attempts += 1
       if (attempts > 3) { root.owesDiscoveryStop = false; return }
       root.adapter.discovering = false
@@ -562,6 +588,9 @@ Panel {
     function onDiscoveringChanged() {
       if (!root.adapter.discovering) root.owesDiscoveryStop = false
     }
+    function onEnabledChanged() {
+      root.applyPairable()
+    }
   }
 
   // A destroyed instance cannot wait for BlueZ confirmations, so it hands any
@@ -569,12 +598,13 @@ Panel {
   // confirmed after this object is gone — and only writes the stop directly
   // when it is the last one standing.
   Component.onDestruction: {
-    if (!owesDiscoveryStop) return
+    if (!owesDiscoveryStop) { applyPairable(false); return }
     var items = bar && typeof bar.moduleWidgets === "function" ? bar.moduleWidgets(moduleName) : []
     for (var i = 0; i < items.length; i++) {
-      if (items[i] && items[i] !== root) { items[i].owesDiscoveryStop = true; return }
+      if (items[i] && items[i] !== root) { items[i].owesDiscoveryStop = true; applyPairable(false); return }
     }
     if (adapter !== null && adapter.discovering) adapter.discovering = false
+    applyPairable(false)
   }
 
   Timer {
