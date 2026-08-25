@@ -3,9 +3,9 @@
 # omarchy:summary=Install Zed Editor and configure it with the current Omarchy theme
 
 echo "Installing Zed Editor..."
-omarchy-pkg-add zed omazed
+omarchy-pkg-add zed
 
 # Apply Omarchy theme to Zed
-omazed setup
+omarchy-theme-set-zed --select
 
 setsid uwsm-app -- gtk-launch dev.zed.Zed >/dev/null 2>&1 &

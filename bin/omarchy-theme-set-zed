@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# omarchy:summary=Sync Omarchy theme to Zed
+# omarchy:args=[--select]
+# omarchy:hidden=true
+
+CURRENT_THEME_DIR="$HOME/.local/state/omarchy/current/theme"
+ZED_CONFIG_DIR="$HOME/.config/zed"
+ZED_SETTINGS_PATH="$ZED_CONFIG_DIR/settings.json"
+
+if omarchy-cmd-missing zed && omarchy-cmd-missing zeditor && [[ ! -d $ZED_CONFIG_DIR ]]; then
+  exit 0
+fi
+
+[[ -f $CURRENT_THEME_DIR/zed.json ]] || exit 0
+
+mkdir -p "$ZED_CONFIG_DIR/themes"
+cp "$CURRENT_THEME_DIR/zed.json" "$ZED_CONFIG_DIR/themes/omarchy.json"
+
+[[ ${1:-} == "--select" ]] || exit 0
+
+if [[ ! -f $ZED_SETTINGS_PATH ]]; then
+  printf '{\n  "theme": "Omarchy"\n}\n' >"$ZED_SETTINGS_PATH"
+elif grep -qE '"theme"[[:space:]]*:[[:space:]]*"' "$ZED_SETTINGS_PATH"; then
+  sed -i --follow-symlinks -E \
+    's|("theme"[[:space:]]*:[[:space:]]*")[^"]*(")|\1Omarchy\2|' \
+    "$ZED_SETTINGS_PATH"
+elif grep -qE '"theme"[[:space:]]*:[[:space:]]*\{' "$ZED_SETTINGS_PATH"; then
+  sed -i --follow-symlinks -zE \
+    's|"theme"[[:space:]]*:[[:space:]]*\{[^}]*\}|"theme": "Omarchy"|' \
+    "$ZED_SETTINGS_PATH"
+else
+  sed -i --follow-symlinks -E '0,/\{/{s/\{/{\n  "theme": "Omarchy",/}' "$ZED_SETTINGS_PATH"
+fi
