@@ -14,12 +14,21 @@ Item {
   property var record: null
 
   FileView {
+    id: fileView
     path: root.path
     watchChanges: true
+    // The update command rebuilds each record with an atomic rename, which
+    // swaps out the watched inode. Watch for those replacements so the panel
+    // picks up new numbers without being told to reload.
+    atomicWrites: true
     printErrors: false
     onFileChanged: reload()
     onLoaded: root.parse(text())
     onLoadFailed: root.record = null
+  }
+
+  function reload() {
+    fileView.reload()
   }
 
   function parse(content) {

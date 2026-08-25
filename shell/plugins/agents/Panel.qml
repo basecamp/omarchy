@@ -306,6 +306,11 @@ Panel {
     cursorActive = false
     nowMs = Date.now()
     if (panelFlick) panelFlick.contentY = 0
+    // Show the latest on-disk numbers immediately, discover any record a
+    // standalone collector wrote since the last scan, then regenerate and let
+    // the atomic-write watchers pick up the fresh records.
+    usage.reloadRecords()
+    usage.rescanAgents()
     usage.refreshLimits()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
@@ -339,8 +344,22 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "󱚣"
     active: root.alarming
+    iconComponent: Component {
+      Item {
+        width: Style.font.display
+        height: Style.font.display
+
+        Image {
+          id: barIconImage
+          anchors.fill: parent
+          source: root.provider ? Qt.resolvedUrl("assets/" + root.provider.providerId + ".svg") : ""
+          sourceSize.width: Style.font.display * 2
+          sourceSize.height: Style.font.display * 2
+          fillMode: Image.PreserveAspectFit
+        }
+      }
+    }
     onPressed: function(buttonCode) {
       if (buttonCode === Qt.RightButton) root.launchAgent()
       else if (buttonCode === Qt.MiddleButton) root.selectProvider(root.providerIndex + 1)
@@ -431,15 +450,6 @@ Panel {
                   // binding-loop detector; defer the step one tick.
                   onStatusChanged: if (status === Image.Error && heroMark.candidateIndex < heroMark.candidates.length)
                     Qt.callLater(function() { heroMark.candidateIndex++ })
-                }
-
-                Text {
-                  anchors.centerIn: parent
-                  visible: heroMarkImage.status !== Image.Ready
-                  text: button.text
-                  color: root.foreground
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.display
                 }
               }
             }
