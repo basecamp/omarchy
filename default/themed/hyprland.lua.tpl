@@ -15,4 +15,18 @@ hl.config({
       border_inactive = inactive_border_color,
     },
   },
+
+  decoration = {
+    rounding = {{ value hyprland_rounding 0 }},
+    rounding_power = {{ value hyprland_rounding_power 2 }},
+
+    shadow = {
+      enabled = {{ value hyprland_shadow_enabled false }},
+      range = {{ value hyprland_shadow_range 4 }},
+      render_power = {{ value hyprland_shadow_render_power 3 }},
+      offset = "{{ value hyprland_shadow_offset 0 0 }}",
+      color = "{{ value hyprland_shadow_color rgba(1a1a1aee) }}",
+      color_inactive = "{{ value hyprland_shadow_color_inactive rgba(1a1a1aee) }}",
+    },
+  },
 })

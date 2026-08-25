@@ -257,6 +257,14 @@ cat >"$NEXT_THEME/colors.toml" <<'EOF'
 mode = "light"
 accent = "#336699"
 hyprland_active_border = "rgba(010203ee) rgba(040506ee) 45deg"
+hyprland_rounding = "6"
+hyprland_rounding_power = "3"
+hyprland_shadow_enabled = "true"
+hyprland_shadow_range = "22"
+hyprland_shadow_render_power = "3"
+hyprland_shadow_offset = "0 6"
+hyprland_shadow_color = "rgba(00000099)"
+hyprland_shadow_color_inactive = "rgba(00000055)"
 background = "#000000"
 dark_background = "#010101"
 darker_background = "#020202"
@@ -304,6 +312,9 @@ shell-gradient={{ shell_gradient hyprland_active_border accent }}
 fallback-hypr={{ hypr_gradient missing accent }}
 fallback-shell={{ gradient_start missing accent }}
 fallback-shell-gradient={{ shell_gradient missing accent }}
+value={{ value hyprland_rounding 0 }}
+fallback-value={{ value missing 0 }}
+fallback-value-key={{ value missing accent }}
 EOF
 
 cat >"$USER_THEMED/alias-test.txt.tpl" <<'EOF'
@@ -454,6 +465,23 @@ grep -qx 'fallback-hypr="#336699"' "$NEXT_THEME/gradient-test.txt" || fail "them
 grep -qx 'fallback-shell=#336699' "$NEXT_THEME/gradient-test.txt" || fail "theme template gradient_start fallback works"
 grep -qx 'fallback-shell-gradient=#336699' "$NEXT_THEME/gradient-test.txt" || fail "theme template shell_gradient fallback works"
 pass "theme template gradient helpers work"
+
+grep -qx 'value=6' "$NEXT_THEME/gradient-test.txt" || fail "theme template value helper works"
+grep -qx 'fallback-value=0' "$NEXT_THEME/gradient-test.txt" || fail "theme template value helper literal fallback works"
+grep -qx 'fallback-value-key=#336699' "$NEXT_THEME/gradient-test.txt" || fail "theme template value helper key fallback works"
+pass "theme template value helper works"
+
+grep -Fq 'rounding = 6,' "$NEXT_THEME/hyprland.lua" || fail "theme template renders custom hyprland rounding"
+grep -Fq 'rounding_power = 3,' "$NEXT_THEME/hyprland.lua" || fail "theme template renders custom hyprland rounding power"
+grep -Fq 'enabled = true,' "$NEXT_THEME/hyprland.lua" || fail "theme template renders custom hyprland shadow enabled"
+grep -Fq 'range = 22,' "$NEXT_THEME/hyprland.lua" || fail "theme template renders custom hyprland shadow range"
+grep -Fq 'offset = "0 6",' "$NEXT_THEME/hyprland.lua" || fail "theme template renders custom hyprland shadow offset"
+grep -Fq 'color = "rgba(00000099)",' "$NEXT_THEME/hyprland.lua" || fail "theme template renders custom hyprland shadow color"
+pass "theme template renders custom hyprland decoration settings"
+
+grep -Fq 'rounding = 0,' "$LEGACY_NEXT_THEME/hyprland.lua" || fail "theme without decoration keys falls back to default rounding"
+grep -Fq 'enabled = false,' "$LEGACY_NEXT_THEME/hyprland.lua" || fail "theme without decoration keys falls back to shadow disabled"
+pass "theme without decoration keys falls back to Omarchy's default look'n'feel"
 
 awk '
   /^\[lock\]$/ { in_lock = 1; next }
