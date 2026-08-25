@@ -124,7 +124,7 @@ if [[ $(jq -r '.hardware.runtime.ready' <<<"$plan") != "true" ]]; then
   echo "Docker is not ready. Run: omarchy ai doctor" >&2
   exit 4
 fi
-if [[ $(jq -r '.hardware.runtime.nvidia' <<<"$plan") != "true" ]]; then
+if [[ $(jq -r '.recipe.accelerator_backend // "nvidia"' <<<"$plan") == "nvidia" && $(jq -r '.hardware.runtime.nvidia' <<<"$plan") != "true" ]]; then
   echo "The NVIDIA Docker runtime is not ready. Run: omarchy ai doctor" >&2
   exit 4
 fi

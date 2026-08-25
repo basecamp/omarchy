@@ -20,7 +20,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [[ -z $github_token ]] && command -v gh >/dev/null 2>&1; then
+if [[ -z $github_token ]] && omarchy-cmd-present gh; then
   github_token=$(gh auth token 2>/dev/null || true)
 fi
 
@@ -32,6 +32,51 @@ fetch_github() {
   fi
   curl "${args[@]}" "$url"
 }
+
+api="${OMARCHY_AI_API:-$(jq -r '.registries[0].api // empty' "$shipped")}"
+if [[ -n $api && $api != "off" ]]; then
+  echo "Syncing $api..."
+  api_catalog=$(curl --fail --silent --location --max-time 30 "$api/catalog.json")
+  if ! jq -e '.schemaVersion == "omarchy-local-ai/v1" and (.recipes | type == "array")' <<<"$api_catalog" >/dev/null 2>&1; then
+    echo "Invalid Local AI registry API" >&2
+    exit 1
+  fi
+  remote=$(jq --arg api "$api" '
+    [.recipes[] | {
+      name: .id,
+      label: (.model.id + " · " + .model.weightPrecision + " · " + .engine.name),
+      status: .status,
+      accelerator_backend: .compatibility.acceleratorBackend,
+      min_vram_mb: ((.compatibility.minimumMemoryBytesEach / 1048576) | floor),
+      min_gpus: .compatibility.acceleratorCount,
+      image: .launch.image,
+      served_name: .model.servedName,
+      context_window: .serving.configuredMaxContextTokens,
+      weights_gb: ((.model.downloadBytes / 1073741824) | ceil),
+      reasoning: (.capabilities.reasoning // false),
+      vision: (.capabilities.vision // false),
+      tools: (.capabilities.tools // false),
+      container_port: .endpoint.containerPort,
+      host_port: .endpoint.containerPort,
+      network_mode: "bridge",
+      run_args: ((if .launch.sharedMemoryBytes > 0 then ["--shm-size", (((.launch.sharedMemoryBytes / 1073741824) | tostring) + "g")] else [] end) + (if .launch.ipc == "host" then ["--ipc=host"] else [] end)),
+      env: .launch.environment,
+      volumes: {(("~/.local/share/omarchy/local-ai/models/" + .id)): .launch.modelCache.containerPath},
+      args: .launch.arguments,
+      source: ("api:" + $api),
+      registry_id: .id,
+      content_sha256: .contentSha256
+    }]
+  ' <<<"$api_catalog")
+  mkdir -p "$state_dir"
+  tmp=$(mktemp "$state_dir/catalog.XXXXXX")
+  jq --argjson remote "$remote" '.recipes = ((.recipes + $remote) | group_by(.name) | map(last) | sort_by([-.min_vram_mb, -(.min_gpus // 1), .name]))' "$shipped" >"$tmp"
+  mv "$tmp" "$state_dir/catalog.json"
+  tmp=""
+  echo "Catalog now carries $(jq '.recipes | length' "$state_dir/catalog.json") recipes ($(jq 'length' <<<"$remote") imported)."
+  omarchy-shell -q omarchy.local-ai refresh 2>/dev/null || true
+  exit 0
+fi
 
 while IFS= read -r registry; do
   owner=$(jq -r '.owner' <<<"$registry")

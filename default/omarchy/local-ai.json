@@ -2,12 +2,14 @@
   "port": 8000,
   "registries": [
     {
+      "api": "https://0xsero.github.io/inference-index/v1",
       "owner": "0xSero",
       "repo": "inference-index",
       "branch": "main",
       "catalog": "catalog.json",
       "hardware_slugs": [
-        "rtx-3090-24gb"
+        "rtx-3090-24gb",
+        "intel-arc-pro-b70-32gb"
       ]
     }
   ],

@@ -370,7 +370,7 @@ jq -n '{
   serving: {api: "openai/v1", tensor_parallel: 1, configured_max_context_tokens: 131072},
   capabilities: {chat: true, reasoning: true, tools: true, vision: true}
 }' >"$fixtures/registry-leaf.json"
-OMARCHY_AI_GITHUB_RAW="https://raw.github.test" omarchy-ai-sync >"$test_tmp/sync-output"
+OMARCHY_AI_API=off OMARCHY_AI_GITHUB_RAW="https://raw.github.test" omarchy-ai-sync >"$test_tmp/sync-output"
 cache="$test_home/.local/state/omarchy/local-ai/catalog.json"
 jq -e '.recipes[] | select(.name == "registry-fast") | .source == "github:0xSero/inference-index" and .status == "validated" and .registry_path == "hardware/rtx-3090-24gb/registry-fast/recipe.json"' "$cache" >/dev/null ||
   fail "sync preserves the canonical registry identity and validation"
@@ -389,7 +389,7 @@ if jq -r '.plan.docker_argv[]' <<<"$plan" | grep -Eq -- '--disable[^ ]*cuda-grap
   fail "registry adapter keeps CUDA graphs enabled"
 fi
 cp "$cache" "$test_tmp/catalog-before-failed-sync.json"
-if OMARCHY_AI_GITHUB_RAW="https://missing.github.test" omarchy-ai-sync >"$test_tmp/failed-sync-output" 2>&1; then
+if OMARCHY_AI_API=off OMARCHY_AI_GITHUB_RAW="https://missing.github.test" omarchy-ai-sync >"$test_tmp/failed-sync-output" 2>&1; then
   fail "an unavailable configured registry reports sync failure"
 fi
 cmp -s "$test_tmp/catalog-before-failed-sync.json" "$cache" || fail "failed sync preserves the last good catalog"

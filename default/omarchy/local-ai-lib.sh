@@ -22,6 +22,7 @@ ai_trim() {
 }
 
 ai_hardware_json() {
+  local backend="${1:-nvidia}"
   if [[ -n ${OMARCHY_AI_HARDWARE_JSON:-} ]]; then
     jq . <<<"$OMARCHY_AI_HARDWARE_JSON"
     return
@@ -35,7 +36,14 @@ ai_hardware_json() {
     selector=(-i "$OMARCHY_AI_GPUS")
   fi
 
-  if command -v nvidia-smi >/dev/null 2>&1; then
+  if [[ $backend == "intel-xpu" ]] && command -v lspci >/dev/null 2>&1; then
+    local intel_index=0
+    while IFS= read -r row; do
+      [[ $row == *"Intel Corporation Battlemage G31 [Arc Pro B70]"* ]] || continue
+      devices=$(jq --argjson index "$intel_index" '. + [{index: $index, name: "Intel Arc Pro B70", uuid: null, total_vram_mb: 32768, free_vram_mb: 32768, compute_capability: null, vendor: "intel"}]' <<<"$devices")
+      ((intel_index += 1))
+    done < <(lspci -Dnn 2>/dev/null || true)
+  elif command -v nvidia-smi >/dev/null 2>&1; then
     rows=$(nvidia-smi "${selector[@]}" --query-gpu="$query" --format=csv,noheader,nounits 2>/dev/null || true)
     if [[ -z $rows ]]; then
       query="index,name,uuid,memory.total,memory.free"
@@ -52,12 +60,12 @@ ai_hardware_json() {
     free=$(ai_trim "$free")
     compute=$(ai_trim "${compute:-}")
     [[ $index =~ ^[0-9]+$ && $total =~ ^[0-9]+$ && $free =~ ^[0-9]+$ ]] || continue
-    devices=$(jq --argjson index "$index" --arg name "$name" --arg uuid "$uuid" --argjson total "$total" --argjson free "$free" --arg compute "$compute" '. + [{index: $index, name: $name, uuid: $uuid, total_vram_mb: $total, free_vram_mb: $free, compute_capability: (if $compute == "" then null else $compute end)}]' <<<"$devices")
+    devices=$(jq --argjson index "$index" --arg name "$name" --arg uuid "$uuid" --argjson total "$total" --argjson free "$free" --arg compute "$compute" '. + [{index: $index, name: $name, uuid: $uuid, total_vram_mb: $total, free_vram_mb: $free, compute_capability: (if $compute == "" then null else $compute end), vendor: "nvidia"}]' <<<"$devices")
   done <<<"$rows"
 
   local count family family_id hardware_id total_vram free_vram disk_kb runtime_installed runtime_ready runtime_version nvidia_runtime
   count=$(jq 'length' <<<"$devices")
-  family=$(jq -r '.[0].name // "unsupported"' <<<"$devices" | tr '[:upper:]' '[:lower:]' | sed -E 's/^nvidia //; s/^geforce //; s/[^a-z0-9]+/-/g; s/^-|-$//g')
+  family=$(jq -r '.[0].name // "unsupported"' <<<"$devices" | tr '[:upper:]' '[:lower:]' | sed -E 's/^nvidia //; s/^geforce //; s/^intel //; s/[^a-z0-9]+/-/g; s/^-|-$//g')
   family_id="$family"
   total_vram=$(jq '[.[].total_vram_mb] | add // 0' <<<"$devices")
   free_vram=$(jq '[.[].free_vram_mb] | add // 0' <<<"$devices")
@@ -89,7 +97,7 @@ ai_hardware_json() {
   disk_kb=$(df -Pk "$HOME" 2>/dev/null | awk 'NR == 2 {print $4}' || printf '0')
   [[ $disk_kb =~ ^[0-9]+$ ]] || disk_kb=0
 
-  jq -n --arg hardware_id "$hardware_id" --arg family_id "$family_id" --argjson devices "$devices" --argjson total "$total_vram" --argjson free "$free_vram" --argjson installed "$runtime_installed" --argjson ready "$runtime_ready" --arg version "$runtime_version" --argjson nvidia "$nvidia_runtime" --argjson disk "$((disk_kb * 1024))" '{schema_version: 1, hardware_id: $hardware_id, family_id: $family_id, vendor: (if ($devices | length) > 0 then "nvidia" else "unsupported" end), devices: $devices, total_vram_mb: $total, free_vram_mb: $free, runtime: {name: "docker", installed: $installed, ready: $ready, version: $version, nvidia: $nvidia}, disk_free_bytes: $disk}'
+  jq -n --arg hardware_id "$hardware_id" --arg family_id "$family_id" --arg backend "$backend" --argjson devices "$devices" --argjson total "$total_vram" --argjson free "$free_vram" --argjson installed "$runtime_installed" --argjson ready "$runtime_ready" --arg version "$runtime_version" --argjson nvidia "$nvidia_runtime" --argjson disk "$((disk_kb * 1024))" '{schema_version: 1, hardware_id: $hardware_id, family_id: $family_id, vendor: (if ($devices | length) > 0 then $devices[0].vendor else "unsupported" end), accelerator_backend: $backend, devices: $devices, total_vram_mb: $total, free_vram_mb: $free, runtime: {name: "docker", installed: $installed, ready: $ready, version: $version, nvidia: $nvidia}, disk_free_bytes: $disk}'
 }
 
 ai_error_json() {
@@ -113,15 +121,8 @@ ai_port_available() {
 
 ai_resolve_json() {
   local wanted="${1:-}"
-  local hardware catalog devices recipe qualifying step resolved gpu_count available_count selected available reason
-  hardware=$(ai_hardware_json)
+  local hardware catalog devices recipe backend qualifying step resolved gpu_count available_count selected available reason
   catalog=$(ai_catalog_path)
-  devices=$(jq '.devices' <<<"$hardware")
-
-  if [[ $(jq 'length' <<<"$devices") == 0 ]]; then
-    ai_error_json "NO_SUPPORTED_GPU" "No supported NVIDIA GPU was detected"
-    return
-  fi
   if [[ ! -f $catalog ]]; then
     ai_error_json "NO_CATALOG" "No local recipe catalog was found"
     return
@@ -133,16 +134,24 @@ ai_resolve_json() {
       ai_error_json "UNKNOWN_RECIPE" "No recipe named $wanted"
       return
     fi
-    if ! jq --argjson devices "$devices" -e '. as $recipe | (([$devices[] | select(.total_vram_mb >= $recipe.min_vram_mb)] | length) >= ($recipe.min_gpus // 1))' <<<"$recipe" >/dev/null; then
-      ai_error_json "INCOMPATIBLE_HARDWARE" "Recipe $wanted does not fit this hardware"
-      return
-    fi
   else
-    recipe=$(jq --argjson devices "$devices" '[.recipes[] | . as $recipe | select((.status // "candidate") == "validated") | select(([$devices[] | select(.total_vram_mb >= $recipe.min_vram_mb)] | length) >= ($recipe.min_gpus // 1))] | sort_by([-.min_vram_mb, -(.min_gpus // 1), .name]) | first // empty' "$catalog")
+    recipe=$(jq '[.recipes[] | select((.status // "candidate") == "validated") | select((.accelerator_backend // "nvidia") == "nvidia")] | sort_by([-.min_vram_mb, -(.min_gpus // 1), .name]) | first // empty' "$catalog")
     if [[ -z $recipe ]]; then
       ai_error_json "NO_COMPATIBLE_RECIPE" "No recipe in the local catalog fits this hardware"
       return
     fi
+  fi
+
+  backend=$(jq -r '.accelerator_backend // "nvidia"' <<<"$recipe")
+  hardware=$(ai_hardware_json "$backend")
+  devices=$(jq '.devices' <<<"$hardware")
+  if [[ $(jq 'length' <<<"$devices") == 0 ]]; then
+    ai_error_json "NO_SUPPORTED_GPU" "No GPU for backend $backend was detected"
+    return
+  fi
+  if ! jq --argjson devices "$devices" -e '. as $recipe | (([$devices[] | select(.total_vram_mb >= $recipe.min_vram_mb)] | length) >= ($recipe.min_gpus // 1))' <<<"$recipe" >/dev/null; then
+    ai_error_json "INCOMPATIBLE_HARDWARE" "Recipe $wanted does not fit this hardware"
+    return
   fi
 
   qualifying=$(jq --argjson devices "$devices" '. as $recipe | [$devices[] | select(.total_vram_mb >= $recipe.min_vram_mb)] | length' <<<"$recipe")
@@ -188,7 +197,15 @@ ai_plan_json() {
   network_mode=$(jq -r '.network_mode // empty' <<<"$recipe")
   image=$(jq -r '.image' <<<"$recipe")
 
-  local docker_args=(docker run --detach --name "$AI_CONTAINER" --label io.omarchy.local-ai=1 --label "io.omarchy.local-ai.recipe=$(jq -r '.name' <<<"$recipe")" --restart unless-stopped --gpus "device=$ids")
+  local backend
+  backend=$(jq -r '.accelerator_backend // "nvidia"' <<<"$recipe")
+  local docker_args=(docker run --detach --name "$AI_CONTAINER" --label io.omarchy.local-ai=1 --label "io.omarchy.local-ai.recipe=$(jq -r '.name' <<<"$recipe")" --restart unless-stopped)
+  if [[ $backend == "intel-xpu" ]]; then
+    docker_args+=(--device /dev/dri:/dev/dri)
+    docker_args+=(--volume /dev/dri/by-path:/dev/dri/by-path:ro)
+  else
+    docker_args+=(--gpus "device=$ids")
+  fi
   if [[ $network_mode == "host" ]]; then
     docker_args+=(--network host)
   else
