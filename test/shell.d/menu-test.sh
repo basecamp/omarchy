@@ -226,6 +226,7 @@ const expectedAgents = {
   grok: { icon: '\ue904', iconFont: 'omarchy', label: 'Grok' },
   copilot: { icon: '', label: 'Copilot' },
   crush: { icon: '󰋑', label: 'Crush' },
+  devin: { icon: '󰚩', label: 'Devin' },
 }
 assert(
   Object.entries(expectedAgents).every(([agent, expected]) => {
@@ -244,7 +245,7 @@ assertDeepEqual(
   defaultItems
     .filter(item => item.parent === 'setup.default.agent')
     .map(item => item.label),
-  ['Antigravity', 'Claude', 'Codex', 'Copilot', 'Crush', 'Grok', 'omp', 'OpenCode', 'Ori', 'Pi'],
+  ['Antigravity', 'Claude', 'Codex', 'Copilot', 'Crush', 'Devin', 'Grok', 'omp', 'OpenCode', 'Ori', 'Pi'],
   'menu sorts coding agents alphabetically'
 )
 const expectedDefaults = {
