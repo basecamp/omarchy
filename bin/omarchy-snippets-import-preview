@@ -1,0 +1,53 @@
+#!/bin/bash
+
+# omarchy:summary=Validate a snippet file and report import conflicts
+# omarchy:args=<file>
+# omarchy:hidden=true
+
+set -euo pipefail
+
+source "$(dirname "$(readlink -f "$0")")/omarchy-snippets-lib"
+
+file=${1:-}
+[[ -n $file && -f $file ]] || snippets_fail "Invalid snippet file."
+
+jq -e 'type == "object" and has("version") and has("snippets")' "$file" >/dev/null 2>&1 \
+  || snippets_fail "Invalid snippet file."
+
+version=$(jq -r '.version' "$file" 2>/dev/null || echo "")
+[[ $version == "$SNIPPETS_VERSION" ]] || snippets_fail "Unsupported snippet format version."
+
+jq -e '
+  (.snippets | type == "array")
+  and (.snippets | all(
+    type == "object"
+    and (has("name") and has("content"))
+    and (.name | type == "string")
+    and (.content | type == "string")
+    and (.name | gsub("[ \t\n\r]"; "") | length > 0)
+    and (.content | gsub("[ \t\n\r]"; "") | length > 0)
+  ))
+' "$file" >/dev/null 2>&1 || snippets_fail "Invalid snippet file."
+
+store=$(snippets_load)
+existing=$(jq '[.snippets[] | {(.name): .content}] | add // {}' <<<"$store")
+imported=$(jq '.snippets' "$file")
+
+jq -n --argjson existing "$existing" --argjson imported "$imported" '
+  reduce $imported[] as $item (
+    {conflicts: [], newCount: 0, map: $existing};
+    ($item.name) as $name
+    | if (.map | has($name)) then
+        if (.map[$name] == $item.content) then
+          .
+        else
+          .conflicts += [{name: $name, existingContent: .map[$name], importedContent: $item.content}]
+          | .map[$name] = $item.content
+        end
+      else
+        .newCount += 1
+        | .map[$name] = $item.content
+      end
+  )
+  | {newCount: .newCount, conflicts: .conflicts}
+'

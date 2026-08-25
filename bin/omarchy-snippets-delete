@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# omarchy:summary=Delete a snippet
+# omarchy:args=<id>
+# omarchy:hidden=true
+
+set -euo pipefail
+
+source "$(dirname "$(readlink -f "$0")")/omarchy-snippets-lib"
+
+id=${1:-}
+[[ -n $id ]] || snippets_fail "Could not delete snippet."
+
+store=$(snippets_load)
+
+exists=$(jq -r --arg id "$id" '[.snippets[] | select(.id == $id)] | length' <<<"$store")
+(( exists > 0 )) || snippets_fail "Snippet not found."
+
+store=$(jq --arg id "$id" '.snippets |= map(select(.id != $id))' <<<"$store")
+snippets_write "$store"

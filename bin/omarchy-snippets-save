@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# omarchy:summary=Create or update a snippet
+# omarchy:args=<json>
+# omarchy:hidden=true
+
+set -euo pipefail
+
+source "$(dirname "$(readlink -f "$0")")/omarchy-snippets-lib"
+
+payload=${1:-}
+[[ -n $payload ]] || snippets_fail "Could not save snippet."
+
+jq -e 'type == "object" and (has("name") and has("content"))' <<<"$payload" >/dev/null 2>&1 \
+  || snippets_fail "Could not save snippet."
+
+id=$(jq -r '.id // ""' <<<"$payload")
+name=$(jq -r '.name' <<<"$payload")
+content=$(jq -r '.content' <<<"$payload")
+
+snippets_blank "$name" && snippets_fail "A snippet needs a name."
+snippets_blank "$content" && snippets_fail "A snippet needs content."
+
+store=$(snippets_load)
+
+duplicate=$(jq -r --arg id "$id" --arg name "$name" \
+  '[.snippets[] | select(.name == $name and .id != $id)] | length' <<<"$store")
+if (( duplicate > 0 )); then
+  printf 'A snippet named "%s" already exists.\n' "$name" >&2
+  exit 1
+fi
+
+if [[ -z $id ]]; then
+  id=$(snippets_new_id)
+  store=$(jq --arg id "$id" --arg name "$name" --arg content "$content" \
+    '.snippets += [{id: $id, name: $name, content: $content}]' <<<"$store")
+else
+  exists=$(jq -r --arg id "$id" '[.snippets[] | select(.id == $id)] | length' <<<"$store")
+  (( exists > 0 )) || snippets_fail "Could not save snippet."
+  store=$(jq --arg id "$id" --arg name "$name" --arg content "$content" \
+    '.snippets |= map(if .id == $id then {id: $id, name: $name, content: $content} else . end)' <<<"$store")
+fi
+
+snippets_write "$store"
+jq -cn --arg id "$id" --arg name "$name" --arg content "$content" '{id: $id, name: $name, content: $content}'

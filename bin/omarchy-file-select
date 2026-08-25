@@ -1,8 +1,8 @@
 #!/usr/bin/python3
 
 # omarchy:summary=Pick files with the desktop file chooser
-# omarchy:args=[--title <title>] [--multiple] [--directory] [--extensions "<ext ext...>"]
-# omarchy:examples=omarchy file select --title "Send with Tailscale" --multiple | omarchy file select --title "Pick image" --extensions "png svg" | omarchy file select --title "Share folder" --directory
+# omarchy:args=[--title <title>] [--multiple] [--directory] [--extensions "<ext ext...>"] [--save-as <filename>]
+# omarchy:examples=omarchy file select --title "Send with Tailscale" --multiple | omarchy file select --title "Pick image" --extensions "png svg" | omarchy file select --title "Share folder" --directory | omarchy file select --save-as snippets.json --title "Export Snippets" --extensions json
 
 # Python rather than bash, alone among the commands here, because the portal
 # answers a request with a Response signal addressed to the connection that
@@ -38,6 +38,7 @@ def main():
     parser.add_argument("--multiple", action="store_true")
     parser.add_argument("--directory", action="store_true")
     parser.add_argument("--extensions", default="")
+    parser.add_argument("--save-as", default="")
     args, unknown = parser.parse_known_args()
 
     if unknown:
@@ -73,13 +74,16 @@ def main():
     predicted = "/org/freedesktop/portal/desktop/request/%s/%s" % (sender, token)
     subscribe(predicted)
 
-    options = {
-        "handle_token": GLib.Variant("s", token),
-        "multiple": GLib.Variant("b", args.multiple),
-    }
+    method = "SaveFile" if args.save_as else "OpenFile"
 
-    if args.directory:
-        options["directory"] = GLib.Variant("b", True)
+    options = {"handle_token": GLib.Variant("s", token)}
+
+    if method == "OpenFile":
+        options["multiple"] = GLib.Variant("b", args.multiple)
+        if args.directory:
+            options["directory"] = GLib.Variant("b", True)
+    else:
+        options["current_name"] = GLib.Variant("s", args.save_as)
 
     # Filters name file formats, which a directory chooser has no use for.
     if args.extensions and not args.directory:
@@ -95,7 +99,7 @@ def main():
         "org.freedesktop.portal.Desktop",
         "/org/freedesktop/portal/desktop",
         "org.freedesktop.portal.FileChooser",
-        "OpenFile",
+        method,
         GLib.Variant("(ssa{sv})", ("", args.title, options)),
         None,
         Gio.DBusCallFlags.NONE,

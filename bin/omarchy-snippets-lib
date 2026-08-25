@@ -1,0 +1,47 @@
+# Shared helpers for the Snippet Manager CLI. Sourced by omarchy-snippets-*;
+# not executable and not routed by bin/omarchy.
+#
+# Snippet content can hold credentials (§29 of docs/snippet-manager.md), so
+# every write here chmods the store to 600 before the atomic rename lands it
+# in place -- FileView's own atomic write (temp file + rename) does not
+# preserve a chosen mode across that rename, which is why QML never writes
+# this file directly and every mutation goes through these scripts instead.
+
+SNIPPETS_DIR="$HOME/.local/state/omarchy"
+SNIPPETS_PATH="$SNIPPETS_DIR/snippets.json"
+SNIPPETS_VERSION=1
+
+snippets_load() {
+  if [[ -f $SNIPPETS_PATH ]]; then
+    cat "$SNIPPETS_PATH"
+  else
+    printf '{"version":%s,"snippets":[]}' "$SNIPPETS_VERSION"
+  fi
+}
+
+# Atomically replace the store with $1 (a JSON document), keeping it
+# non-readable to other users throughout.
+snippets_write() {
+  local json=$1 tmp
+
+  mkdir -p "$SNIPPETS_DIR"
+  tmp=$(mktemp "$SNIPPETS_DIR/.snippets.XXXXXX")
+  chmod 600 "$tmp"
+  printf '%s' "$json" >"$tmp"
+  mv "$tmp" "$SNIPPETS_PATH"
+}
+
+snippets_new_id() {
+  cat /proc/sys/kernel/random/uuid
+}
+
+snippets_fail() {
+  echo "$1" >&2
+  exit 1
+}
+
+# Non-empty after trimming leading/trailing whitespace.
+snippets_blank() {
+  local value=$1
+  [[ ${value//[$' \t\n\r']/} == "" ]]
+}

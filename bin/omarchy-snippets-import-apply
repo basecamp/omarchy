@@ -1,0 +1,84 @@
+#!/bin/bash
+
+# omarchy:summary=Apply a previously-validated snippet import
+# omarchy:args=<file> <resolutions-json>
+# omarchy:hidden=true
+#
+# <resolutions-json> is an array of {"name": "...", "action": "skip"|"replace"|"keep-both"},
+# one entry per name omarchy-snippets-import-preview reported as a conflict.
+# Names not in the resolutions list are handled automatically: new names are
+# added, and names whose content is byte-identical to the current store are
+# skipped -- see docs/snippet-manager.md section 35.
+
+set -euo pipefail
+
+source "$(dirname "$(readlink -f "$0")")/omarchy-snippets-lib"
+
+file=${1:-}
+resolutions=${2:-[]}
+[[ -n $file && -f $file ]] || snippets_fail "Invalid snippet file."
+
+jq -e 'type == "object" and has("version") and has("snippets")' "$file" >/dev/null 2>&1 \
+  || snippets_fail "Invalid snippet file."
+version=$(jq -r '.version' "$file" 2>/dev/null || echo "")
+[[ $version == "$SNIPPETS_VERSION" ]] || snippets_fail "Unsupported snippet format version."
+jq -e '
+  (.snippets | type == "array")
+  and (.snippets | all(
+    type == "object"
+    and (has("name") and has("content"))
+    and (.name | type == "string")
+    and (.content | type == "string")
+    and (.name | gsub("[ \t\n\r]"; "") | length > 0)
+    and (.content | gsub("[ \t\n\r]"; "") | length > 0)
+  ))
+' "$file" >/dev/null 2>&1 || snippets_fail "Invalid snippet file."
+jq -e 'type == "array" and all(type == "object" and has("name") and has("action"))' \
+  <<<"$resolutions" >/dev/null 2>&1 || snippets_fail "Could not import snippets."
+
+store=$(snippets_load)
+imported=$(jq '.snippets' "$file")
+
+# One new id per imported entry is the worst case (every entry turns out to
+# be brand-new or resolved as "keep both"); over-provisioning is cheap and
+# keeps the jq reduce below free of any need to shell out mid-reduce.
+id_count=$(jq 'length' <<<"$imported")
+ids=$(for _ in $(seq 1 "$id_count"); do snippets_new_id; done | jq -R -s -c 'split("\n") | map(select(length > 0))')
+
+result=$(jq -n \
+  --argjson store "$store" \
+  --argjson imported "$imported" \
+  --argjson resolutions "$resolutions" \
+  --argjson ids "$ids" '
+  def nextUniqueName($byName; $base):
+    def cand($n): if $n == 1 then $base + " (Imported)" else $base + " (Imported " + ($n | tostring) + ")" end;
+    first(range(1; 1000000) | cand(.) as $c | select($byName | has($c) | not) | $c);
+
+  ($resolutions | map({(.name): .action}) | add // {}) as $resolutionMap
+  | reduce $imported[] as $item (
+      {byName: ($store.snippets | map({(.name): .}) | add // {}), idPos: 0};
+      ($item.name) as $name
+      | if (.byName | has($name)) then
+          if (.byName[$name].content == $item.content) then
+            .
+          else
+            ($resolutionMap[$name] // "skip") as $action
+            | if $action == "replace" then
+                .byName[$name].content = $item.content
+              elif $action == "keep-both" then
+                (nextUniqueName(.byName; $name)) as $newName
+                | .byName[$newName] = {id: $ids[.idPos], name: $newName, content: $item.content}
+                | .idPos += 1
+              else
+                .
+              end
+          end
+        else
+          .byName[$name] = {id: $ids[.idPos], name: $name, content: $item.content}
+          | .idPos += 1
+        end
+    )
+  | {version: 1, snippets: (.byName | to_entries | map(.value))}
+')
+
+snippets_write "$result"
