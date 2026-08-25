@@ -29,6 +29,19 @@ fi
 SH
 chmod +x "$stub_bin/hyprctl"
 
+# The command under test uses GNU `sed -i`; BSD sed wants `sed -i ''`.
+if ! sed --version >/dev/null 2>&1; then
+  real_sed=$(command -v sed)
+  cat >"$stub_bin/sed" <<SH
+#!/bin/bash
+if [[ \$1 == "-i" && \$2 == "-E" ]]; then
+  exec "$real_sed" -i "" -E "\${@:3}"
+fi
+exec "$real_sed" "\$@"
+SH
+  chmod +x "$stub_bin/sed"
+fi
+
 write_monitor_config() {
   cat >"$monitor_lua" <<'LUA'
 local omarchy_gdk_scale = 2
@@ -129,3 +142,61 @@ grep -F 'scale = 2' "$eval_out" >/dev/null || fail "monitor scaling down skips d
 grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
   fail "monitor scaling down persists 2x after skipping duplicate approximation"
 pass "monitor scaling down skips duplicate approximation"
+
+# Named per-output rules override the catch-all. Persist to the focused
+# output's rule so the clamshell poller does not revert the live eval, and
+# leave every other output's scale alone.
+cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 2
+hl.monitor({ output = "eDP-1", mode = "preferred", position = "0x0", scale = 2 })
+hl.monitor({ output = "HDMI-A-1", mode = "preferred", position = "auto", scale = 1 })
+LUA
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling up
+grep -F 'scale = 3' "$eval_out" >/dev/null || fail "monitor scaling applies named-rule 3x via hyprctl eval"
+grep -Fx 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "0x0", scale = 3 })' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling persists 3x on the focused output's named rule"
+grep -Fx 'hl.monitor({ output = "HDMI-A-1", mode = "preferred", position = "auto", scale = 1 })' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling leaves an unrelated output's named rule unchanged"
+grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling leaves the catch-all variable alone when a named rule is updated"
+grep -Fx 'local omarchy_gdk_scale = 3' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling persists GDK scale alongside a named rule"
+pass "monitor scaling persists to the focused output's named rule"
+
+cat >"$monitor_lua" <<'LUA'
+hl.monitor({
+    output = "eDP-1",
+    mode = "2880x1800@120.0",
+    position = "0x0",
+    scale = 2
+})
+hl.monitor({
+    output = "HDMI-A-1",
+    mode = "2560x1440@144.0",
+    position = "2880x0",
+    scale = 1
+})
+LUA
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
+grep -F 'scale = 1.6' "$eval_out" >/dev/null || fail "monitor scaling applies multi-line 1.6x via hyprctl eval"
+grep -Fx '    scale = 1.6' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling persists 1.6x on a multi-line nwg-displays eDP-1 rule"
+grep -Fx '    scale = 1' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling leaves a multi-line HDMI-A-1 rule unchanged"
+grep -Fx '    output = "HDMI-A-1",' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling keeps the unrelated HDMI-A-1 block"
+pass "monitor scaling persists to a multi-line nwg-displays named rule"
+
+# No named rule and no generic default: append one for this output rather
+# than silently leaving the live eval to be undone.
+cat >"$monitor_lua" <<'LUA'
+hl.monitor({ output = "HDMI-A-1", mode = "preferred", position = "auto", scale = 1 })
+LUA
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 3
+grep -F 'scale = 3' "$eval_out" >/dev/null || fail "monitor scaling applies appended-rule 3x via hyprctl eval"
+grep -Fx 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = 3 })' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling appends a named rule when none matches the focused output"
+grep -Fx 'hl.monitor({ output = "HDMI-A-1", mode = "preferred", position = "auto", scale = 1 })' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling leaves an existing unrelated rule in place when appending"
+pass "monitor scaling appends a named rule when none matches"
