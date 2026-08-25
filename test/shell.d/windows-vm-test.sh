@@ -16,7 +16,9 @@ if rg -q '^    restart: unless-stopped$' "$windows_vm_command"; then
 fi
 pass "Windows VM does not restart automatically at boot"
 
-rg -q '/title:"Windows VM - Omarchy"' "$windows_vm_command" ||
+# Tolerate either shell quoting of the argument -- what must not drift is the
+# title itself, since the Hyprland rule below matches on it.
+rg -q 'title:"?Windows VM - Omarchy"' "$windows_vm_command" ||
   fail "Windows VM launches FreeRDP with its expected title"
 rg -q 'class = "\^xfreerdp\$", title = "\^Windows VM - Omarchy\$"' "$windows_vm_rules" ||
   fail "Windows VM opacity rule targets its FreeRDP window"
