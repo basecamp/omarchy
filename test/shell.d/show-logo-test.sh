@@ -20,7 +20,7 @@ chmod +x "$tmp/bin/clear"
 
 # omarchy-theme-color needs bash 4 associative arrays. Invoke it with this
 # test's bash rather than the shebang, so the suite can run where /bin/bash is older.
-printf '#!/usr/bin/env bash\nexec bash %q "$@"\n' "$ROOT/bin/omarchy-theme-color" >"$tmp/bin/omarchy-theme-color"
+printf '#!/bin/bash\nexec %q %q "$@"\n' "$BASH" "$ROOT/bin/omarchy-theme-color" >"$tmp/bin/omarchy-theme-color"
 chmod +x "$tmp/bin/omarchy-theme-color"
 
 run_logo() {
