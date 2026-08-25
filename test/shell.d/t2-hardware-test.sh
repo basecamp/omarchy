@@ -7,6 +7,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 fix_t2="$ROOT/install/hardware/apple/fix-t2.sh"
 other_packages="$ROOT/install/omarchy-other.packages"
 migration="$ROOT/migrations/1785944594.sh"
+t2_ncm_migration="$ROOT/migrations/1787652557.sh"
 
 grep -Fq 'KERNEL_CMDLINE[default]+=" intel_iommu=on iommu=pt pm_async=off mem_sleep_default=deep"' "$fix_t2" ||
   fail "T2 setup installs the suspend kernel parameters"
@@ -20,7 +21,15 @@ grep -Fq 'KERNEL_CMDLINE[default]+=" intel_iommu=on iommu=pt pm_async=off mem_sl
   fail "T2 setup leaves optional Touch Bar customization uninstalled"
 ! grep -qx 'tiny-dfr' "$other_packages" ||
   fail "the ISO no longer caches tiny-dfr"
-pass "fresh T2 setup uses t2bce-compatible suspend, fan, and Touch Bar defaults"
+grep -Fq 'ATTRS{idVendor}=="05ac", ATTRS{idProduct}=="8233", NAME="t2_ncm"' "$fix_t2" ||
+  fail "T2 setup identifies only the internal Apple NCM interface"
+grep -Fq 'match-device=interface-name:t2_ncm' "$fix_t2" ||
+  fail "T2 setup scopes NetworkManager configuration to the internal NCM interface"
+grep -Fq 'managed=0' "$fix_t2" ||
+  fail "T2 setup stops NetworkManager probing the internal NCM interface"
+! grep -Fq 'no-auto-default=' "$fix_t2" ||
+  fail "T2 setup preserves existing global NetworkManager exclusions"
+pass "fresh T2 setup uses t2bce-compatible suspend, fan, Touch Bar, and network defaults"
 
 test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
@@ -65,6 +74,14 @@ cat >"$stub_bin/omarchy-pkg-present" <<'SH'
 #!/bin/bash
 
 (( ${TINY_DFR_INSTALLED:-0} == 1 ))
+SH
+
+cat >"$stub_bin/omarchy-state" <<'SH'
+#!/bin/bash
+
+printf 'omarchy-state' >>"$TEST_LOG"
+printf '\t%s' "$@" >>"$TEST_LOG"
+printf '\n' >>"$TEST_LOG"
 SH
 
 cat >"$stub_bin/omarchy-pkg-drop" <<'SH'
@@ -212,3 +229,51 @@ grep -Fxq 'limine-mkinitcpio' "$calls" ||
   fail "T2 rerun migration rebuilds the boot image"
 [[ -f $repair_marker ]] || fail "T2 rerun migration records the machine-wide repair"
 pass "T2 rerun migration repairs installs the broken hardware check skipped"
+
+ncm_udev_rule="$test_tmp/etc/udev/rules.d/99-network-t2-ncm.rules"
+ncm_nm_conf="$test_tmp/etc/NetworkManager/conf.d/99-network-t2-ncm.conf"
+rm -rf "$test_tmp/etc"
+: >"$calls"
+
+PATH="$stub_bin:$PATH" \
+  TEST_LOG="$calls" \
+  T2_HARDWARE=1 \
+  OMARCHY_T2_NCM_UDEV_RULE="$ncm_udev_rule" \
+  OMARCHY_T2_NCM_NM_CONF="$ncm_nm_conf" \
+  bash -euo pipefail "$t2_ncm_migration" >/dev/null
+
+grep -Fqx 'SUBSYSTEM=="net", ACTION=="add", ATTRS{idVendor}=="05ac", ATTRS{idProduct}=="8233", NAME="t2_ncm"' "$ncm_udev_rule" ||
+  fail "T2 NCM migration installs the device-specific udev rule"
+grep -Fqx '[device-t2-ncm]' "$ncm_nm_conf" ||
+  fail "T2 NCM migration installs a device-scoped NetworkManager section"
+grep -Fqx 'match-device=interface-name:t2_ncm' "$ncm_nm_conf" ||
+  fail "T2 NCM migration matches only the internal interface"
+grep -Fqx 'managed=0' "$ncm_nm_conf" ||
+  fail "T2 NCM migration leaves the internal interface unmanaged"
+grep -Fq $'omarchy-state\tset\treboot-required' "$calls" ||
+  fail "T2 NCM migration requests the reboot that renames the interface"
+pass "T2 NCM migration stops automatic probes without disabling Ethernet"
+
+: >"$calls"
+PATH="$stub_bin:$PATH" \
+  TEST_LOG="$calls" \
+  T2_HARDWARE=1 \
+  OMARCHY_T2_NCM_UDEV_RULE="$ncm_udev_rule" \
+  OMARCHY_T2_NCM_NM_CONF="$ncm_nm_conf" \
+  bash -euo pipefail "$t2_ncm_migration" >/dev/null
+
+[[ ! -s $calls ]] || fail "an already configured T2 NCM interface is left unchanged" "$(cat "$calls")"
+pass "T2 NCM migration is idempotent"
+
+rm -rf "$test_tmp/etc"
+: >"$calls"
+PATH="$stub_bin:$PATH" \
+  TEST_LOG="$calls" \
+  T2_HARDWARE=0 \
+  OMARCHY_T2_NCM_UDEV_RULE="$ncm_udev_rule" \
+  OMARCHY_T2_NCM_NM_CONF="$ncm_nm_conf" \
+  bash -euo pipefail "$t2_ncm_migration" >/dev/null
+
+[[ ! -e $ncm_udev_rule && ! -e $ncm_nm_conf ]] || fail "non-T2 network configuration is unchanged"
+[[ ! -s $calls ]] || fail "non-T2 systems skip the NCM repair" "$(cat "$calls")"
+pass "T2 NCM migration skips unrelated hardware"
