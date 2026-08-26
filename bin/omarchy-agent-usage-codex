@@ -135,12 +135,28 @@ def add_usage(day, session_key, model, input_tokens, output_tokens, cache_read, 
     today_tokens_by_model[model] = today_tokens_by_model.get(model, 0) + total
 
 
-def scan_pi_sessions():
+def pi_session_roots():
+  coding_agent_dir = Path(os.environ.get("PI_CODING_AGENT_DIR") or (Path.home() / ".config" / "pi"))
   roots = [
     Path.home() / ".pi" / "agent" / "sessions",
     Path.home() / ".omp" / "agent" / "sessions",
+    coding_agent_dir / "sessions",
   ]
+  normalized = []
+  for root in roots:
+    try:
+      root = root.expanduser().resolve()
+    except (OSError, RuntimeError):
+      root = root.absolute()
+    if root not in normalized:
+      normalized.append(root)
+  return normalized
+
+
+def scan_pi_sessions(roots=None):
   rg = find_command("rg") or "rg"
+  if roots is None:
+    roots = pi_session_roots()
   for root in roots:
     if not root.exists():
       continue
@@ -343,12 +359,15 @@ def cache_root():
   return root
 
 
-def scan_cache_paths():
+def scan_cache_paths(pi_roots=None):
   codex_home = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
   db = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "opencode" / "opencode.db"
   # The digest covers every data path the scan reads: the codex session
-  # roots, the opencode DB, and (via Path.home()) the pi/omp session roots.
-  digest = hashlib.sha1((str(Path.home()) + "\n" + str(codex_home) + "\n" + str(db)).encode("utf-8")).hexdigest()[:16]
+  # roots, the opencode DB, and each supported Pi session root.
+  if pi_roots is None:
+    pi_roots = pi_session_roots()
+  scan_paths = [codex_home, db, *pi_roots]
+  digest = hashlib.sha1("\n".join(str(path) for path in scan_paths).encode("utf-8")).hexdigest()[:16]
   root = cache_root()
   return root / f"codex-scan-{digest}.json", root / f"codex-scan-{digest}.lock"
 
@@ -432,8 +451,10 @@ def local_stats():
   }
 
 
-def run_local_scans():
-  scan_pi_sessions()
+def run_local_scans(pi_roots=None):
+  if pi_roots is None:
+    pi_roots = pi_session_roots()
+  scan_pi_sessions(pi_roots)
   scan_native_codex_sessions()
   complete = scan_opencode_sessions()
   return local_stats(), complete
@@ -455,7 +476,8 @@ def cached_local_stats(max_age):
 
 
 def _cached_local_stats(max_age):
-  cache_file, lock_file = scan_cache_paths()
+  pi_roots = pi_session_roots()
+  cache_file, lock_file = scan_cache_paths(pi_roots)
 
   cached = read_cached_stats(cache_file, max_age)
   if cached is not None:
@@ -466,7 +488,7 @@ def _cached_local_stats(max_age):
     cached = read_cached_stats(cache_file, max_age)
     if cached is not None:
       return cached
-    stats, complete = run_local_scans()
+    stats, complete = run_local_scans(pi_roots)
     # An interrupted scan still serves this run, but caching it would
     # suppress the missing usage for every reader until the cache expires.
     if complete:
