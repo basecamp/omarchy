@@ -54,7 +54,7 @@ light surfaces — and the bar glyph stands in when there is none.
 |---|---|---|
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
-| `grok` | The weekly credit allowance, when the billing endpoint (or grok's log) includes a percentage | `~/.grok/sessions` transcripts |
+| `grok` | The weekly credit allowance from grok's ACP billing method (or its log), when the reading includes a percentage | `~/.grok/sessions` transcripts |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
@@ -67,20 +67,30 @@ signed in there.
 
 ### Grok credits
 
-Grok publishes no supported way to read its weekly allowance: no subcommand
-prints it and the ACP surface has no account-credits method. The collector
-asks the same billing endpoint the CLI itself calls — with the token grok
-has already cached, never one of its own — and falls back to the newest
-usable reading in `~/.grok/logs/unified.jsonl` when the call can't be made
-or the answer can't be read.
+The plan and the weekly allowance come from grok's own ACP `_x.ai/billing`
+method, asked over `grok agent stdio`. Grok owns that call, so the collector
+never reads `auth.json` and never talks to an xAI endpoint itself — the same
+boundary the Codex collector keeps.
 
-A usable reading is a percentage that belongs to a period that is still
-open, and neither half is guaranteed. A log line from a closed week is the
-wrong week's number. More to the point, grok 1.0.0 stopped reporting the
-percentage: it answers with the current window and no percentage at all,
-where 0.2.118 carried one in 100 of 102 readings on the same account. So the
-meter is omitted rather than guessed, and on 1.0.0 the tab shows tokens
-only until xAI publishes the figure again.
+`_x.ai/billing` is a vendor extension with no stability promise, and from
+here a method grok has renamed looks the same as a grok that is signed out.
+Grok also logs the config it fetched at startup, so the newest usable reading
+in `~/.grok/logs/unified.jsonl` stands in when the call says nothing. That
+fallback matches on a log message, which is the more brittle of the two —
+hence the fallback rather than the source. The plan and the meter are filled
+independently, so an answer that carries one but not the other keeps what it
+gave.
+
+A usable reading is a percentage that belongs to a period that is still open,
+and neither half is guaranteed. A reading from a closed week is the wrong
+week's number, and a window with no percentage in it is not a meter of zero —
+it is no meter. Either way the meter is omitted rather than guessed, and the
+tab shows tokens only.
+
+That omission is not hypothetical: grok 1.0.0 stopped reporting the
+percentage for every reading, where 0.2.118 had carried one in 100 of 102 on
+the same account. It came back in 1.0.5, and the meter lit up again on its
+own — which is the behaviour to expect the next time the field moves.
 
 Worth knowing when reading the panel: the meter and the token chart do not
 agree and cannot be made to. Grok's transcripts are overwhelmingly cache

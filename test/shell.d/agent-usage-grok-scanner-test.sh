@@ -11,9 +11,15 @@ trap 'rm -rf "$TEST_HOME"' EXIT
 GROK_HOME="$TEST_HOME/.grok"
 mkdir -p "$GROK_HOME/sessions/%2Fhome%2Fdev%2Fone/session-a" \
   "$GROK_HOME/sessions/%2Fhome%2Fdev%2Ftwo/session-b" \
-  "$GROK_HOME/logs"
+  "$GROK_HOME/logs" \
+  "$TEST_HOME/bin" \
+  "$TEST_HOME/empty-bin"
 
 now=$(date +%s)
+open_period_start=$(date -u -d '2 days ago' +%Y-%m-%dT%H:%M:%S+00:00)
+open_period_end=$(date -u -d '5 days' +%Y-%m-%dT%H:%M:%S+00:00)
+expired_period_start=$(date -u -d '14 days ago' +%Y-%m-%dT%H:%M:%S+00:00)
+expired_period_end=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%S+00:00)
 
 usage_line() {
   local prompt_id="$1" models="$2"
@@ -42,6 +48,68 @@ usage_line() {
   usage_line p3 '{"grok-4.5-build":{"inputTokens":200,"cachedReadTokens":150,"outputTokens":40,"totalTokens":240},"grok-4.5":{"inputTokens":100,"cachedReadTokens":0,"outputTokens":10,"totalTokens":110}}'
 } >"$GROK_HOME/sessions/%2Fhome%2Fdev%2Ftwo/session-b/updates.jsonl"
 
+write_fake_grok() {
+  local mode="$1"
+  cat >"$TEST_HOME/bin/grok" <<EOF
+#!/bin/bash
+while read -r request; do
+  id=\$(jq -r '.id // empty' <<<"\$request")
+  method=\$(jq -r '.method // empty' <<<"\$request")
+  [[ -n \$id ]] || continue
+  case "\$method" in
+    initialize)
+      if [[ $mode == noise ]]; then
+        echo 'mise tools: grok@1.0.5'
+        echo '{"jsonrpc":"2.0","method":"_x.ai/mcp/servers_updated","params":{"mcpServers":[]}}'
+      fi
+      if jq -e '.params | .protocolVersion == 1 and .clientCapabilities.terminal == false
+          and ._meta.clientType == "omarchy-agent-usage"
+          and (._meta.clientVersion | type) == "string" and ._meta.clientVersion == "1"
+          and ._meta.startupHints.nonInteractive and ._meta.startupHints.skipGitStatus
+          and ._meta.startupHints.skipProjectLayout' <<<"\$request" >/dev/null; then
+        jq -cn --argjson id "\$id" '{jsonrpc:"2.0",id:\$id,result:{}}'
+      else
+        jq -cn --argjson id "\$id" '{jsonrpc:"2.0",id:\$id,error:{code:-32602,message:"bad initialize"}}'
+      fi
+      ;;
+    _x.ai/billing)
+      if [[ $mode == noise ]]; then
+        echo 'not-json'
+        echo '{"jsonrpc":"2.0","method":"_x.ai/mcp/servers_updated","params":{}}'
+      fi
+      if [[ $mode == error ]]; then
+        jq -cn --argjson id "\$id" '{jsonrpc:"2.0",id:\$id,error:{code:-32000,message:"Authentication required"}}'
+      elif [[ $mode == expired ]]; then
+        jq -cn --argjson id "\$id" --arg start "$expired_period_start" --arg end "$expired_period_end" \
+          '{jsonrpc:"2.0",id:\$id,result:{config:{creditUsagePercent:22.0,currentPeriod:{type:"USAGE_PERIOD_TYPE_WEEKLY",start:\$start,end:\$end}},subscription_tier:"SuperGrok"}}'
+      elif [[ $mode == nopercent ]]; then
+        # The plan and the current window, with no reading in it — the shape a
+        # window that has not been measured yet comes back as. This is also
+        # what grok 1.0.0 returned for every reading.
+        jq -cn --argjson id "\$id" --arg start "$open_period_start" --arg end "$open_period_end" \
+          '{jsonrpc:"2.0",id:\$id,result:{config:{currentPeriod:{type:"USAGE_PERIOD_TYPE_WEEKLY",start:\$start,end:\$end},prepaidBalance:{val:0},onDemandCap:{val:0},onDemandUsed:{val:0},isUnifiedBillingUser:true},subscription_tier:"SuperGrok"}}'
+      elif [[ $mode == noise ]]; then
+        jq -cn --argjson id "\$id" --arg start "$open_period_start" --arg end "$open_period_end" \
+          '{jsonrpc:"2.0",id:\$id,result:{config:{creditUsagePercent:22.0,currentPeriod:{type:"USAGE_PERIOD_TYPE_WEEKLY",start:\$start,end:\$end}},subscriptionTier:"SuperGrok"}}'
+      else
+        jq -cn --argjson id "\$id" --arg start "$open_period_start" --arg end "$open_period_end" \
+          '{jsonrpc:"2.0",id:\$id,result:{config:{creditUsagePercent:22.0,currentPeriod:{type:"USAGE_PERIOD_TYPE_WEEKLY",start:\$start,end:\$end}},subscription_tier:"SuperGrok"}}'
+      fi
+      ;;
+  esac
+done
+EOF
+  chmod +x "$TEST_HOME/bin/grok"
+}
+
+run_collector() {
+  HOME="$TEST_HOME" GROK_HOME="$GROK_HOME" PATH="$TEST_HOME/bin:$PATH" \
+    "$ROOT/bin/omarchy-agent-usage-grok" "$@"
+}
+
+# The reading grok writes to its own log, which stands in when the ACP call
+# says nothing. A negative percent stands for a logged config that carries a
+# window and no reading at all.
 credits_record() {
   local percent="$1" start="$2" end="$3"
   jq -cn --argjson percent "$percent" --arg start "$start" --arg end "$end" \
@@ -56,80 +124,11 @@ write_credits_log() {
   credits_record "$@" >"$GROK_HOME/logs/unified.jsonl"
 }
 
-open_period_start=$(date -u -d '2 days ago' +%Y-%m-%dT%H:%M:%S+00:00)
-open_period_end=$(date -u -d '5 days' +%Y-%m-%dT%H:%M:%S+00:00)
-
-# Port 9 is the discard port: the live credits call reaches nothing there,
-# standing in for an xAI outage or a network the bar cannot see. Every run below
-# needs a base URL of its own, or the collector would call the real endpoint.
-run_collector() {
-  HOME="$TEST_HOME" GROK_HOME="$GROK_HOME" \
-    GROK_CLI_CHAT_PROXY_BASE_URL="${STUB_BASE:-http://127.0.0.1:9/v1}" \
-    "$ROOT/bin/omarchy-agent-usage-grok" "$@"
+clear_credits_log() {
+  rm -f "$GROK_HOME/logs/unified.jsonl"
 }
 
-# Without a usable token the collector never opens a socket, so every live case
-# below would quietly become a no-token case instead of the one it names.
-cat >"$GROK_HOME/auth.json" <<EOF
-{"https://auth.x.ai::test": {"key": "test-token", "expires_at": "$(date -u -d '5 hours' +%Y-%m-%dT%H:%M:%SZ)"}}
-EOF
-
-# Serves one canned credits body so the live call can be given a reply that
-# parses but cannot be used. The request path is recorded so a collector that
-# wanders off /billing?format=credits cannot hide behind a 200.
-cat >"$TEST_HOME/stub.py" <<'EOF'
-import sys
-from http.server import BaseHTTPRequestHandler, HTTPServer
-
-body = sys.argv[1].encode()
-port_file = sys.argv[2]
-
-
-class Handler(BaseHTTPRequestHandler):
-  def do_GET(self):
-    with open(port_file + ".path", "w") as handle:
-      handle.write(self.path)
-    self.send_response(200)
-    self.send_header("Content-Type", "application/json")
-    self.send_header("Content-Length", str(len(body)))
-    self.end_headers()
-    self.wfile.write(body)
-
-  def log_message(self, *args):
-    pass
-
-
-server = HTTPServer(("127.0.0.1", 0), Handler)
-with open(port_file, "w") as handle:
-  handle.write(str(server.server_port))
-server.serve_forever()
-EOF
-
-STUB_PID=""
-STUB_BASE=""
-start_stub() {
-  local port_file="$TEST_HOME/stub.port"
-  rm -f "$port_file"
-  python3 "$TEST_HOME/stub.py" "$1" "$port_file" &
-  STUB_PID=$!
-  for _ in $(seq 1 60); do
-    [[ -s $port_file ]] && break
-    sleep 0.1
-  done
-  [[ -s $port_file ]] || fail "Grok collector test could not start its stub credits endpoint" ""
-  STUB_BASE="http://127.0.0.1:$(cat "$port_file")/v1"
-}
-
-stop_stub() {
-  [[ -n $STUB_PID ]] && kill "$STUB_PID" 2>/dev/null
-  wait "$STUB_PID" 2>/dev/null
-  STUB_PID=""
-  STUB_BASE=""
-}
-
-trap 'stop_stub; rm -rf "$TEST_HOME"' EXIT
-
-write_credits_log 22.0 "$open_period_start" "$open_period_end"
+write_fake_grok ok
 result=$(run_collector)
 
 # 120 + 90 from session-a, 350 from the two-model turn in session-b.
@@ -160,22 +159,59 @@ pass "Grok collector prints the display-ready record contract"
 
 [[ $(jq -c '.limits' <<<"$result") == '[{"label":"Weekly (7-day)","percent":0.22,"resetsAt":"'"$open_period_end"'"}]' ]] &&
   [[ $(jq -r '.tierLabel' <<<"$result") == "SuperGrok" ]] ||
-  fail "Grok collector reads the weekly credit allowance from the CLI log" "$result"
-pass "Grok collector reads the weekly credit allowance from the CLI log"
+  fail "Grok collector reads the weekly credit allowance from ACP billing" "$result"
+pass "Grok collector reads the weekly credit allowance from ACP billing"
 
-# A cached percentage belongs to the period it was fetched in. Once that period
-# has ended the figure is the wrong week's, so the meter has to disappear.
-write_credits_log 22.0 "$(date -u -d '14 days ago' +%Y-%m-%dT%H:%M:%S+00:00)" \
-  "$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%S+00:00)"
+write_fake_grok expired
 expired=$(run_collector)
 
 [[ $(jq -r '.limits | length' <<<"$expired") == "0" ]] ||
   fail "Grok collector drops a credit reading from a period that has ended" "$expired"
 pass "Grok collector drops a credit reading from a period that has ended"
 
+write_fake_grok noise
+noisy=$(run_collector)
+
+[[ $(jq -c '.limits' <<<"$noisy") == '[{"label":"Weekly (7-day)","percent":0.22,"resetsAt":"'"$open_period_end"'"}]' ]] &&
+  [[ $(jq -r '.tierLabel' <<<"$noisy") == "SuperGrok" ]] ||
+  fail "Grok collector ignores non-JSON stdout and unrelated ACP notifications" "$noisy"
+pass "Grok collector ignores non-JSON stdout and unrelated ACP notifications"
+
+write_fake_grok error
+errored=$(run_collector)
+
+[[ $(jq -r '.limits | length' <<<"$errored") == "0" ]] &&
+  [[ $(jq -r '.totalPrompts' <<<"$errored") == "3" ]] &&
+  [[ $(jq -r '.usageStatusText' <<<"$errored") == "Grok limits unavailable" ]] ||
+  fail "Grok collector keeps local stats when ACP billing returns an error" "$errored"
+pass "Grok collector keeps local stats when ACP billing returns an error"
+
+# `_x.ai/billing` is a vendor extension: a grok that renames it looks the same
+# from here as one that is signed out, and the log may still hold this week's
+# reading. Losing the meter to either is what the fallback exists to prevent.
+write_credits_log 22.0 "$open_period_start" "$open_period_end"
+write_fake_grok error
+logged=$(run_collector)
+
+[[ $(jq -c '.limits' <<<"$logged") == '[{"label":"Weekly (7-day)","percent":0.22,"resetsAt":"'"$open_period_end"'"}]' ]] &&
+  [[ $(jq -r '.tierLabel' <<<"$logged") == "SuperGrok" ]] ||
+  fail "Grok collector falls back to the log when ACP billing fails" "$logged"
+pass "Grok collector falls back to the log when ACP billing fails"
+
+# An answer is not a reading. A window with no percentage has to yield to the
+# log rather than blank the meter — and the tier ACP did give must survive it,
+# since the two halves are filled independently.
+write_fake_grok nopercent
+half=$(run_collector)
+
+[[ $(jq -r '.limits[0].percent' <<<"$half") == "0.22" ]] &&
+  [[ $(jq -r '.tierLabel' <<<"$half") == "SuperGrok" ]] ||
+  fail "Grok collector falls back to the log when ACP reports a window with no reading" "$half"
+pass "Grok collector falls back to the log when ACP reports a window with no reading"
+
 # Grok logs a config on every startup and not all of them carry a percentage,
 # so the meter must come from the newest reading that has one — still this
-# period's, because a closed period is rejected above.
+# period's, because a closed period is rejected either way.
 {
   credits_record 20.0 "$open_period_start" "$open_period_end"
   credits_record -1 "$open_period_start" "$open_period_end"
@@ -183,48 +219,38 @@ pass "Grok collector drops a credit reading from a period that has ended"
 walked_back=$(run_collector)
 
 [[ $(jq -r '.limits[0].percent' <<<"$walked_back") == "0.2" ]] ||
-  fail "Grok collector walks back to the newest usable credit reading" "$walked_back"
-pass "Grok collector walks back to the newest usable credit reading"
+  fail "Grok collector walks back to the newest usable logged reading" "$walked_back"
+pass "Grok collector walks back to the newest usable logged reading"
 
-# The live call must degrade to the log rather than lose the meter.
-write_credits_log 22.0 "$open_period_start" "$open_period_end"
-offline=$(run_collector)
-
-[[ $(jq -r '.limits[0].percent' <<<"$offline") == "0.22" ]] &&
-  [[ $(jq -r '.tierLabel' <<<"$offline") == "SuperGrok" ]] ||
-  fail "Grok collector falls back to the log when the live credits call fails" "$offline"
-pass "Grok collector falls back to the log when the live credits call fails"
-
-# A 200 is not the same as an answer. This is the body grok 1.0.0 actually
-# returns — the current window, no percentage anywhere — and it has to yield
-# to the log rather than blank the meter.
-start_stub "{\"config\":{\"currentPeriod\":{\"type\":\"USAGE_PERIOD_TYPE_WEEKLY\",\"start\":\"$(date -u -d '1 day ago' +%Y-%m-%dT%H:%M:%S+00:00)\",\"end\":\"$(date -u -d '6 days' +%Y-%m-%dT%H:%M:%S+00:00)\"},\"prepaidBalance\":{\"val\":0},\"onDemandCap\":{\"val\":0},\"onDemandUsed\":{\"val\":0},\"isUnifiedBillingUser\":true}}"
-unusable=$(run_collector)
-stop_stub
-
-[[ $(jq -r '.limits[0].percent' <<<"$unusable") == "0.22" ]] ||
-  fail "Grok collector falls back to the log when the live body carries no percentage" "$unusable"
-pass "Grok collector falls back to the log when the live body carries no percentage"
-
-# And a live body that is usable has to win over the log's older number.
-start_stub "{\"config\":{\"creditUsagePercent\":44.0,\"currentPeriod\":{\"type\":\"USAGE_PERIOD_TYPE_WEEKLY\",\"start\":\"$(date -u -d '1 day ago' +%Y-%m-%dT%H:%M:%S+00:00)\",\"end\":\"$(date -u -d '6 days' +%Y-%m-%dT%H:%M:%S+00:00)\"}}}"
+# And a live ACP reading has to win over the log's older number.
+write_fake_grok ok
 live=$(run_collector)
-stop_stub
 
-[[ $(jq -r '.limits[0].percent' <<<"$live") == "0.44" ]] &&
-  [[ $(jq -r '.tierLabel' <<<"$live") == "SuperGrok" ]] &&
-  [[ $(cat "$TEST_HOME/stub.port.path") == "/v1/billing?format=credits" ]] ||
-  fail "Grok collector prefers a usable live reading over the log" "$live"
-pass "Grok collector prefers a usable live reading over the log"
+[[ $(jq -r '.limits[0].percent' <<<"$live") == "0.22" ]] ||
+  fail "Grok collector prefers a usable ACP reading over the log" "$live"
+pass "Grok collector prefers a usable ACP reading over the log"
 
-rm -f "$GROK_HOME/logs/unified.jsonl"
-missing=$(run_collector)
+# A logged reading from a period that has since rolled over is the wrong
+# week's number, so it cannot stand in for one ACP would not give.
+write_credits_log 22.0 "$expired_period_start" "$expired_period_end"
+write_fake_grok error
+stale=$(run_collector)
+
+[[ $(jq -r '.limits | length' <<<"$stale") == "0" ]] &&
+  [[ $(jq -r '.totalPrompts' <<<"$stale") == "3" ]] ||
+  fail "Grok collector drops a logged reading from a period that has ended" "$stale"
+pass "Grok collector drops a logged reading from a period that has ended"
+
+clear_credits_log
+
+missing=$(HOME="$TEST_HOME" GROK_HOME="$GROK_HOME" PATH="$TEST_HOME/empty-bin" \
+  "$ROOT/bin/omarchy-agent-usage-grok")
 
 [[ $(jq -r '.limits | length' <<<"$missing") == "0" ]] &&
   [[ $(jq -r '.totalPrompts' <<<"$missing") == "3" ]] &&
   [[ $(jq -r '.usageStatusText' <<<"$missing") == "Grok limits unavailable" ]] ||
-  fail "Grok collector still reports tokens with no log to read limits from" "$missing"
-pass "Grok collector still reports tokens with no log to read limits from"
+  fail "Grok collector still reports tokens when grok is absent" "$missing"
+pass "Grok collector still reports tokens when grok is absent"
 
 # A turn from yesterday must not inflate today. local_day is easy to get
 # wrong around UTC midnight — this machine's sessions stamp unix seconds.
@@ -236,6 +262,7 @@ jq -cn --argjson ts "$yesterday" \
     sessionUpdate: "turn_completed", prompt_id: "old", stop_reason: "end_turn",
     usage: {modelUsage: {"grok-4.5-build":{"inputTokens":30,"outputTokens":10,"totalTokens":40}}}}}}' \
   >"$GROK_HOME/sessions/%2Fhome%2Fdev%2Fthree/session-c/updates.jsonl"
+write_fake_grok ok
 dated=$(run_collector)
 
 [[ $(jq -r '.todayPrompts' <<<"$dated") == "3" ]] &&
@@ -259,10 +286,10 @@ retried=$(run_collector)
   fail "Grok collector counts a retried turn whose cancelled attempt shared its id" "$retried"
 pass "Grok collector counts a retried turn whose cancelled attempt shared its id"
 
-# No sessions and no log is a machine that has never signed in: a full record
+# No sessions and no grok is a machine that has never signed in: a full record
 # the update runner can write, with nothing in it for the panel to show.
-empty=$(GROK_HOME="$TEST_HOME/.grok-empty" HOME="$TEST_HOME" \
-  GROK_CLI_CHAT_PROXY_BASE_URL="http://127.0.0.1:9/v1" "$ROOT/bin/omarchy-agent-usage-grok")
+empty=$(GROK_HOME="$TEST_HOME/.grok-empty" HOME="$TEST_HOME" PATH="$TEST_HOME/empty-bin" \
+  "$ROOT/bin/omarchy-agent-usage-grok")
 
 [[ $(jq -r '.id + ":" + (.ready | tostring) + ":" + (.totalPrompts | tostring)' <<<"$empty") == "grok:false:0" ]] ||
   fail "Grok collector prints a valid record with nothing installed" "$empty"
