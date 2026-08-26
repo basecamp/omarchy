@@ -83,6 +83,9 @@ EOF
 start_sshd() {
   echo "Starting the OpenSSH server..."
   sudo systemctl enable --now sshd.service
+  # `enable --now` leaves a daemon from an earlier run alone, and sshd parses
+  # its config once at startup, so without this it keeps taking passwords.
+  sudo systemctl reload sshd.service
 }
 
 open_firewall() {

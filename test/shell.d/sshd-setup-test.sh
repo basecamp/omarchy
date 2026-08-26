@@ -92,6 +92,13 @@ pass "sshd is configured key-only before it is started"
   fail "sshd starts and the port opens only after a key is authorized" "$(cat "$TEST_LOG")"
 pass "sshd starts and the port opens only after a key is authorized"
 
+# A machine that already had sshd running gets the drop-in only through a reload.
+reload_line=$(grep -n 'systemctl reload sshd.service' "$TEST_LOG" | head -1 | cut -d: -f1)
+
+[[ -n $reload_line ]] && (( config_line < reload_line )) ||
+  fail "the key-only config is applied to a server an earlier run left running" "$(cat "$TEST_LOG")"
+pass "the key-only config is applied to a server an earlier run left running"
+
 # A key that never lands must leave the machine unreachable rather than
 # listening with nothing to log in with.
 : >"$TEST_LOG"
