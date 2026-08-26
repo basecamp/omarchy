@@ -92,6 +92,34 @@ done
 
 pass "a URL whose name would climb out of the themes directory never reaches git"
 
+# The derived name outlives the clone: it is the theme's directory name, and
+# Style > Unlock builds a command line out of the name the picker returned. A
+# repo whose name carries shell syntax would hand that picker its own command,
+# so the name is refused here rather than quoted at each place it lands.
+for url in \
+  "https://example.com/omarchy-a';id;'b-theme.git" \
+  'https://example.com/a$(id).git' \
+  'https://example.com/a`id`.git' \
+  "https://example.com/a b.git" \
+  "https://example.com/-a.git"; do
+  if install_theme "$url"; then
+    fail "omarchy-theme-install refuses the derived name from '$url'"
+  fi
+
+  [[ ! -s $git_calls ]] || fail "omarchy-theme-install refuses '$url' before running git" "$(cat "$git_calls")"
+done
+
+pass "a URL whose name would be shell syntax never reaches git"
+
+# And the check is an allowlist, so the punctuation a real theme name uses has
+# to keep working.
+install_theme "https://github.com/example/omarchy-tokyo_night.2-theme.git" ||
+  fail "omarchy-theme-install accepts the punctuation a theme name uses"
+grep -Fq "/themes/tokyo_night.2" "$git_calls" ||
+  fail "omarchy-theme-install derives a name carrying an underscore and a dot" "$(cat "$git_calls")"
+
+pass "a theme name may still hold an underscore, a dot, and a dash"
+
 # basename reads a leading dash as an option once the scp-style prefix is gone.
 install_theme "host:-s/foo.git" || fail "omarchy-theme-install accepts a normal scp-style URL"
 grep -Fq -- "-- host:-s/foo.git" "$git_calls" || fail "omarchy-theme-install passes the URL after --" "$(cat "$git_calls")"
