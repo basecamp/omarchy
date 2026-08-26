@@ -94,6 +94,7 @@ omarchy-install-editor-*)
   printf 'editor:%s\n' "$editor" >>"$OMARCHY_TEST_INSTALL_LOG"
   case $editor in
   vscode) command=code ;;
+  cursor) command=cursor ;;
   zed) command=zeditor ;;
   helix) command=helix ;;
   emacs) command=emacs ;;
@@ -110,6 +111,7 @@ for installer in \
   omarchy-install-browser \
   omarchy-install-terminal \
   omarchy-install-editor-vscode \
+  omarchy-install-editor-cursor \
   omarchy-install-editor-zed \
   omarchy-install-editor-helix \
   omarchy-install-editor-emacs; do
@@ -164,7 +166,7 @@ terminal_cases=(
 
 editor_cases=(
   'code code editor:vscode'
-  'cursor cursor pkg:cursor-bin'
+  'cursor cursor editor:cursor'
   'zed zeditor editor:zed'
   'sublime_text sublime_text pkg:sublime-text-4'
   'helix helix editor:helix'
