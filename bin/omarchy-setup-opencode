@@ -1,0 +1,43 @@
+#!/bin/bash
+# Setup OpenCode as the default Omarchy agent.
+# Copies default AGENTS.md and merges skills path into opencode.json.
+# Idempotent — safe to run multiple times.
+
+set -euo pipefail
+
+OPENCODE_DIR="$HOME/.config/opencode"
+OMARCHY_SKILLS="/usr/share/omarchy/default/agents/skills"
+TEMPLATE_DIR="/usr/share/omarchy/config/opencode"
+
+mkdir -p "$OPENCODE_DIR"
+
+# --- AGENTS.md ---
+# Only write if missing or still the stock Omarchy placeholder.
+if [[ ! -f "$OPENCODE_DIR/AGENTS.md" ]] || \
+   grep -q "Omarchy Linux system" "$OPENCODE_DIR/AGENTS.md" 2>/dev/null; then
+  cp "$TEMPLATE_DIR/AGENTS.md" "$OPENCODE_DIR/AGENTS.md"
+  echo "Copied default AGENTS.md"
+else
+  echo "AGENTS.md already customized — skipped"
+fi
+
+# --- opencode.json ---
+# Merge skills path into existing config. Never overwrite user customizations.
+if [[ ! -f "$OPENCODE_DIR/opencode.json" ]]; then
+  cp "$TEMPLATE_DIR/opencode.json" "$OPENCODE_DIR/opencode.json"
+  echo "Copied default opencode.json"
+else
+  if ! grep -q "$OMARCHY_SKILLS" "$OPENCODE_DIR/opencode.json" 2>/dev/null; then
+    jq --arg path "$OMARCHY_SKILLS" \
+      '.skills.paths = ((.skills.paths // []) + [$path]) | .skills.paths |= unique' \
+      "$OPENCODE_DIR/opencode.json" > "$OPENCODE_DIR/opencode.json.tmp"
+    mv "$OPENCODE_DIR/opencode.json.tmp" "$OPENCODE_DIR/opencode.json"
+    echo "Added omarchy skills path to opencode.json"
+  else
+    echo "opencode.json already has omarchy skills — skipped"
+  fi
+fi
+
+echo ""
+echo "OpenCode is ready. Launch with: opencode"
+echo "Or set it as default: omarchy default agent opencode"
