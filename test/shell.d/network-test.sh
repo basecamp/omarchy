@@ -360,4 +360,34 @@ assert(/if nmcli connection modify uuid "\$u" connection\.autoconnect yes[\s\S]*
 // between profiles, so the uuid read skips blanks to keep 3-line groups aligned.
 assert(/IFS= read -r ssid; IFS= read -r hidden;/.test(network.hiddenPskConnectScript), 'hidden PSK connect script parses ssid/hidden with IFS= read -r so a space-padded SSID is not trimmed')
 assert(/\[\[ -n \$c \]\] \|\| continue/.test(network.hiddenPskConnectScript), 'hidden PSK connect script skips the blank separator lines between batched profiles so field groups stay aligned')
+
+// An open hidden network has no credentials, but must still avoid `nmcli
+// device wifi connect`, which persists an autoconnecting profile before
+// activation -- a timed-out or killed attempt would stay saved and retry in
+// the background. It shares the PSK script's dedupe/EXIT-trap lifecycle,
+// minus the secret.
+assert(/"\$1"/.test(network.hiddenOpenConnectScript), 'hidden open connect script maps ssid to the positional $1 arg')
+assert(/802-11-wireless\.hidden yes/.test(network.hiddenOpenConnectScript), 'hidden open connect script marks the profile hidden')
+assert(/connection\.autoconnect no/.test(network.hiddenOpenConnectScript), 'hidden open connect script creates the profile inert (autoconnect no) so a killed/failed attempt cannot be retried in the background')
+assert(!/wifi-sec/.test(network.hiddenOpenConnectScript), 'hidden open connect script sets no wifi security properties on an open profile')
+assert(!/IFS= read -r pw/.test(network.hiddenOpenConnectScript), 'hidden open connect script never reads a passphrase, since open networks have none')
+
+assert(/trap 'nmcli connection delete uuid "\$u"[^']*' EXIT/.test(network.hiddenOpenConnectScript), 'hidden open connect script arms an EXIT trap that removes the unproven profile on any failure or kill')
+assert(/trap 'exit 143' TERM INT/.test(network.hiddenOpenConnectScript), 'hidden open connect script converts TERM/INT into an exit so the EXIT trap cleanup runs on a panel kill')
+assert(
+  network.hiddenOpenConnectScript.indexOf("' EXIT") < network.hiddenOpenConnectScript.indexOf('connection add'),
+  'hidden open connect script arms the cleanup trap before the profile is created'
+)
+assert(
+  network.hiddenOpenConnectScript.indexOf('connection up uuid "$u"') < network.hiddenOpenConnectScript.indexOf('trap - EXIT'),
+  'hidden open connect script disarms the cleanup trap only after connection up proves the profile'
+)
+assert(/nmcli -w 25 connection up uuid "\$u"/.test(network.hiddenOpenConnectScript), 'hidden open connect script bounds nmcli\'s own wait below the QML 30s kill timeout')
+assert(
+  network.hiddenOpenConnectScript.indexOf('connection up uuid "$u"') < network.hiddenOpenConnectScript.indexOf('connection.autoconnect yes'),
+  'hidden open connect script only sets autoconnect yes after connection up, never before'
+)
+assert(/if nmcli connection modify uuid "\$u" connection\.autoconnect yes[\s\S]*nmcli connection delete \$old/.test(network.hiddenOpenConnectScript), 'hidden open connect script deletes old profiles only if the autoconnect arm succeeded')
+
+assert(/nmcli --escape no -g connection\.uuid,802-11-wireless\.ssid,802-11-wireless\.hidden connection show \$wifi/.test(network.hiddenOpenConnectScript), 'hidden open connect script shares the same batched dedupe query as the PSK script, so it dedupes prior hidden profiles too')
 JS

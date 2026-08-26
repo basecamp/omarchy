@@ -341,10 +341,10 @@ var enterpriseConnectScript =
   " && nmcli connection up uuid \"$u\"" +
   " || { nmcli connection delete uuid \"$u\" >/dev/null 2>&1; false; }"
 
-// Join a hidden SSID. Only $1 (ssid) and the stdin passphrase are user input;
-// $2 (key-mgmt "wpa-psk"|"sae") and $pmf are our own literals. The secret
-// reaches nmcli through the `connection edit` editor, not argv (see
-// enterpriseConnectScript).
+// Join a hidden SSID. Only $1 (ssid) and, for the PSK variant, the stdin
+// passphrase are user input; $2 (key-mgmt "wpa-psk"|"sae") and $pmf are our
+// own literals. The secret reaches nmcli through the `connection edit`
+// editor, not argv (see enterpriseConnectScript).
 //
 // Dedupe is by UUID, not con-name (not unique -- a name match could delete an
 // unrelated profile), in two fixed nmcli calls, never one per connection:
@@ -352,14 +352,7 @@ var enterpriseConnectScript =
 // ":"/"\\" SSID compares raw). It must stay wifi-only on exactly three fields
 // -- -g prints one line per field (blank when unset) plus a blank line
 // between connections, so a missing field would slip the group alignment.
-//
-// A lone EXIT trap deletes the unproven profile on any failure or TERM/INT
-// kill, disarmed only after `connection up`. The profile is born
-// autoconnect-off so a leak can't retry; old duplicates go in one batched
-// delete, only once it is up and armed; `-w 25` bounds nmcli under the
-// panel's 30s kill.
-var hiddenPskConnectScript =
-  "u=$(uuidgen); IFS= read -r pw; pmf=\"\"; [[ $2 == \"sae\" ]] && pmf=\"wifi-sec.pmf 3\";" +
+var hiddenConnectDedupe =
   " trap 'nmcli connection delete uuid \"$u\" >/dev/null 2>&1' EXIT; trap 'exit 143' TERM INT;" +
   " old=\"\"; wifi=\"\";" +
   " while IFS=: read -r c t; do [[ $t == \"802-11-wireless\" ]] && wifi=\"$wifi uuid $c\"; done <<< \"$(nmcli -t -f UUID,TYPE connection show)\";" +
@@ -371,15 +364,41 @@ var hiddenPskConnectScript =
   "     [[ $hidden == \"yes\" ]] || continue;" +
   "     old=\"$old uuid $c\";" +
   "   done <<< \"$(nmcli --escape no -g connection.uuid,802-11-wireless.ssid,802-11-wireless.hidden connection show $wifi 2>/dev/null)\";" +
-  " fi;" +
-  " nmcli connection add type wifi con-name \"$1\" ssid \"$1\" connection.uuid \"$u\"" +
-  " connection.autoconnect no 802-11-wireless.hidden yes wifi-sec.key-mgmt \"$2\" $pmf >/dev/null" +
-  " && printf 'set wifi-sec.psk %s\\nsave\\nquit\\n' \"$pw\" | nmcli connection edit uuid \"$u\" >/dev/null" +
+  " fi;"
+
+// A lone EXIT trap deletes the unproven profile on any failure or TERM/INT
+// kill, disarmed only after `connection up`. The profile is born
+// autoconnect-off so a leak can't retry; old duplicates go in one batched
+// delete, only once it is up and armed; `-w 25` bounds nmcli under the
+// panel's 30s kill.
+var hiddenConnectActivate =
   " && nmcli -w 25 connection up uuid \"$u\"" +
   " && { trap - EXIT;" +
   "     if nmcli connection modify uuid \"$u\" connection.autoconnect yes >/dev/null 2>&1; then" +
   "       [[ -n $old ]] && nmcli connection delete $old >/dev/null 2>&1;" +
   "     fi; true; }"
+
+// The passphrase arrives on stdin and reaches nmcli through the scriptable
+// `connection edit` editor, never argv.
+var hiddenPskConnectScript =
+  "u=$(uuidgen); IFS= read -r pw; pmf=\"\"; [[ $2 == \"sae\" ]] && pmf=\"wifi-sec.pmf 3\";" +
+  hiddenConnectDedupe +
+  " nmcli connection add type wifi con-name \"$1\" ssid \"$1\" connection.uuid \"$u\"" +
+  " connection.autoconnect no 802-11-wireless.hidden yes wifi-sec.key-mgmt \"$2\" $pmf >/dev/null" +
+  " && printf 'set wifi-sec.psk %s\\nsave\\nquit\\n' \"$pw\" | nmcli connection edit uuid \"$u\" >/dev/null" +
+  hiddenConnectActivate
+
+// An open hidden network has no credentials, but still must not use `nmcli
+// device wifi connect`, which persists an autoconnecting profile before
+// activation -- a timed-out or killed attempt would stay saved and retry in
+// the background. It shares the PSK script's dedupe/EXIT-trap lifecycle,
+// minus the secret.
+var hiddenOpenConnectScript =
+  "u=$(uuidgen);" +
+  hiddenConnectDedupe +
+  " nmcli connection add type wifi con-name \"$1\" ssid \"$1\" connection.uuid \"$u\"" +
+  " connection.autoconnect no 802-11-wireless.hidden yes >/dev/null" +
+  hiddenConnectActivate
 
 function networkFailureReason(reason, needsCredentials, reasons) {
   var r = reasons || {}
@@ -433,6 +452,7 @@ if (typeof module !== "undefined") {
     canForgetNetwork: canForgetNetwork,
     enterpriseConnectScript: enterpriseConnectScript,
     hiddenPskConnectScript: hiddenPskConnectScript,
+    hiddenOpenConnectScript: hiddenOpenConnectScript,
     networkFailureReason: networkFailureReason,
     shouldRepromptPassphrase: shouldRepromptPassphrase
   }

@@ -939,9 +939,7 @@ Panel {
     runHiddenAction(ssid, function() {
       if (security === "none") {
         hiddenConnect.secret = ""
-        // "--" keeps a flag-like SSID (e.g. "--ask") from being parsed as
-        // an nmcli option.
-        hiddenConnect.command = ["nmcli", "device", "wifi", "connect", "--", ssid, "hidden", "yes"]
+        hiddenConnect.command = ["bash", "-c", Model.hiddenOpenConnectScript, "nmcli-hidden-open", ssid]
       } else {
         // security is our own "wpa-psk"/"sae" literal, passed as $2.
         hiddenConnect.secret = passphrase
@@ -977,7 +975,8 @@ Panel {
   }
 
   // Runs the hidden-network nmcli command; secret over stdin like
-  // enterpriseConnect (the open path sets none).
+  // enterpriseConnect (the open path writes an empty secret, which its
+  // script ignores).
   Process {
     id: hiddenConnect
     property string secret: ""
