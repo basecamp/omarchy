@@ -34,7 +34,10 @@ OPEN_ELEMENT = re.compile(r'(?:^|[:\s])([A-Z][A-Za-z0-9_.]*)\s*\{\s*$')
 PROP = re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_.]*)\s*:')
 STRING_LITERAL = re.compile(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'')
 PROPERTY_DECL = re.compile(r'^\s*(?:readonly\s+)?property\b')
-ROOT_TEXT = re.compile(r'^Text\s*\{\s*$')
+# A binding that runs onto the next line: this line ends on an operator, or the
+# next line opens with one.
+TRAILING_OPERATOR = re.compile(r'(?:&&|\|\||[?:+\-*/,(\[=&|])$')
+LEADING_OPERATOR = re.compile(r'^\s*(?:&&|\|\||[?:+\-*/,)\]&|.])')
 
 
 def strip_noise(line, keep_strings=False):
@@ -76,6 +79,40 @@ def is_pure_literal(expr):
     return residue == '' and STRING_LITERAL.search(expr) is not None
 
 
+def binding_expression(lines, start):
+    """The whole right-hand side of the binding beginning on line `start`.
+
+    The literal exemption has to be judged on the complete expression. Reading
+    only the physical `text:` line would exempt `text: "prefix"` while
+    `+ externalValue` sits underneath, letting a dynamic AutoText binding
+    through. Reading a wrapped concatenation of literals as dynamic would be
+    the opposite error, so follow the expression to its end either way.
+    """
+    parts = []
+    parens = brackets = 0
+    i = start
+    while i < len(lines):
+        parts.append(strip_noise(lines[i], keep_strings=True))
+        counted = strip_noise(lines[i])
+        parens += counted.count('(') - counted.count(')')
+        brackets += counted.count('[') - counted.count(']')
+        following = strip_noise(lines[i + 1]) if i + 1 < len(lines) else ''
+        continues = (parens > 0 or brackets > 0
+                     or TRAILING_OPERATOR.search(counted.rstrip())
+                     or LEADING_OPERATOR.match(following))
+        if not continues:
+            break
+        i += 1
+
+    chunk = ' '.join(parts)
+    return chunk.split(':', 1)[1] if ':' in chunk else chunk
+
+
+def exempt_as_literal(lines, tline):
+    """True when the binding is only string literals, however many lines."""
+    return is_pure_literal(binding_expression(lines, tline))
+
+
 def blocks(lines):
     stack = []
     done = []
@@ -89,17 +126,41 @@ def blocks(lines):
             stack[-1]['props'].setdefault(prop.group(1), idx)
         n_open = code.count('{')
         n_close = code.count('}')
+        depth += n_open - n_close
         if opened and n_open > 0:
-            depth += 1
+            # OPEN_ELEMENT anchors at the end of the line, so the element it
+            # matched is the innermost one opened here and its depth is the
+            # depth after every brace on the line.
             stack.append({'name': opened.group(1), 'depth': depth,
                           'props': {}, 'start': idx})
-            depth += n_open - 1 - n_close
-        else:
-            depth += n_open - n_close
         while stack and depth < stack[-1]['depth']:
             done.append(stack.pop())
     done.extend(stack)
     return done
+
+
+INLINE_TEXT = re.compile(r'(?:^|[:\s])Text\s*\{([^{}]*)\}')
+INLINE_BINDING = re.compile(r'\btext\s*:\s*(.*?)\s*(?:;|$)')
+
+
+def inline_violations(lines, rel):
+    """Whole Text blocks written on one line.
+
+    OPEN_ELEMENT anchors at the end of the line, so the brace scanner never
+    sees these. A Repeater delegate is a plausible place for one.
+    """
+    out = []
+    for idx, raw in enumerate(lines):
+        code = strip_noise(raw, keep_strings=True)
+        for match in INLINE_TEXT.finditer(code):
+            body = match.group(1)
+            if 'textFormat' in body:
+                continue
+            binding = INLINE_BINDING.search(body)
+            if not binding or is_pure_literal(binding.group(1)):
+                continue
+            out.append(f'{rel}:{idx + 1}: inline Text block without textFormat')
+    return out
 
 
 root = Path(os.environ['ROOT'])
@@ -107,21 +168,28 @@ found = []
 for path in sorted((root / 'shell').rglob('*.qml')):
     lines = path.read_text().splitlines()
     rel = path.relative_to(root)
-
-    # A component whose root element is a Text takes its binding from callers,
-    # so the default has to be declared in the component itself.
-    if lines and any(ROOT_TEXT.match(l) for l in lines[:40]):
-        if not any(re.match(r'\s*textFormat\s*:', l) for l in lines):
-            found.append(f'{rel}: root Text element declares no textFormat')
+    found.extend(inline_violations(lines, rel))
 
     for b in blocks(lines):
         if b['name'] != 'Text' or 'textFormat' in b['props']:
             continue
+
+        # Read the block's own properties. A nested child declaring textFormat
+        # says nothing about its parent, so `Text { Text { textFormat: ... } }`
+        # must still report the outer element.
+        # The root element of a component takes its binding from callers, so it
+        # needs the default whether or not this file binds `text`. Require both
+        # depth 1 and column 0: the scanner attributes one element per line, so
+        # a `Row { Text {` line would report depth 1 for a nested block, and
+        # falling through to the binding check below is the safe reading.
+        if b['depth'] == 1 and lines[b['start']].startswith('Text'):
+            found.append(f'{rel}:{b["start"] + 1}: root Text element declares no textFormat')
+            continue
+
         if 'text' not in b['props']:
             continue
         tline = b['props']['text']
-        expr = strip_noise(lines[tline], keep_strings=True).split(':', 1)[1]
-        if is_pure_literal(expr):
+        if exempt_as_literal(lines, tline):
             continue
         found.append(f'{rel}:{tline + 1}: text binding without textFormat')
 

@@ -5,30 +5,58 @@ function isChromiumDerived(app, appIcon) {
          source.indexOf("opera") >= 0
 }
 
+// True when a `<...>` run is an image tag, so the name is read the way Qt's
+// parser reads it: after the `<` and an optional `/`, the leading run of
+// letters and digits.
+function isImageTag(tag) {
+  var name = /^<\/?\s*([A-Za-z0-9]+)/.exec(tag)
+  return !!name && name[1].toLowerCase() === "img"
+}
+
 // The body renders as StyledText so notifications can use the markup the
 // body-markup capability advertises (see Service.qml). StyledText honours
 // <img src>, and a remote src makes the shell issue an unauthenticated GET
 // with no user action, so image tags go before the renderer sees them.
 //
-// One replace() pass is not enough. String.replace scans left to right once,
-// so a payload spliced inside the literal "<img" prefix reassembles into a
-// live tag out of the surviving halves:
+// Work in whole tags, never in substrings of one. A `<` opens a tag that runs
+// to the next `>`, nested `<` and all — that is how Qt's parser bounds it —
+// and only a tag whose own name is `img` is dropped.
+//
+// Deleting a substring is what makes a naive `/<img[^>]*>/g` unsafe. Given
 //
 //   <im<img src="http://a/decoy.png">g src="http://a/beacon.png">
-//     -> <img src="http://a/beacon.png">
 //
-// Repeat to a fixed point. Each pass can only shorten the string, so this
-// terminates.
+// Qt reads ONE malformed tag named `im` and renders nothing, but removing the
+// inner match closes the surviving halves up into `<img src=".../beacon.png">`
+// — a live tag the input never contained. The stripper would be manufacturing
+// the very thing it exists to remove.
+//
+// Because every `<` opens a tag, the text between tags never contains one, so
+// dropping a tag cannot splice its neighbours into a new one. That makes a
+// single pass sufficient, with no re-scanning and no input bound to police.
 function stripImageTags(text) {
-  var current = text
-  var previous
-  do {
-    previous = current
-    // The `$` alternative catches a tag left unterminated at the end of the
-    // string, which the renderer closes for itself.
-    current = current.replace(/<img[^>]*(?:>|$)/gi, "")
-  } while (current !== previous)
-  return current
+  var out = ""
+  var i = 0
+
+  while (i < text.length) {
+    var open = text.indexOf("<", i)
+    if (open === -1) {
+      out += text.slice(i)
+      break
+    }
+
+    out += text.slice(i, open)
+
+    // An unterminated tag at the end of the string still reaches the renderer,
+    // which closes it itself, so treat the remainder as one tag.
+    var close = text.indexOf(">", open)
+    var tag = close === -1 ? text.slice(open) : text.slice(open, close + 1)
+
+    if (!isImageTag(tag)) out += tag
+    i = close === -1 ? text.length : close + 1
+  }
+
+  return out
 }
 
 function sanitizeBody(body, app, appIcon) {

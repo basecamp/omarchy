@@ -18,20 +18,61 @@ assertEqual(
   'notifications strip inline image tags'
 )
 
-// The body renders as StyledText, which fetches <img src> over the network, so
-// the strip has to survive a payload built to outlive one replace() pass. A
-// single left-to-right pass consumes the inner tag and lets the outer halves
-// close up into a live tag: <im + g src="..."> .
-assertEqual(
-  notifications.sanitizeBody('<im<img src="http://host/decoy.png">g src="http://host/beacon.png">', 'Slack', ''),
-  '',
-  'notifications strip image tags that reassemble after one substitution'
+// The body renders as StyledText, which fetches <img src> over the network. The
+// invariant that matters is not a particular output string but that no tag Qt
+// would honour as an image survives, so assert that directly. Tags are bounded
+// the way Qt bounds them: a `<` opens a tag that runs to the next `>`.
+function survivingTagNames(text) {
+  const names = []
+  let i = 0
+  while (i < text.length) {
+    const open = text.indexOf('<', i)
+    if (open === -1) break
+    const close = text.indexOf('>', open)
+    const tag = close === -1 ? text.slice(open) : text.slice(open, close + 1)
+    const name = /^<\/?\s*([A-Za-z0-9]+)/.exec(tag)
+    if (name) names.push(name[1].toLowerCase())
+    i = close === -1 ? text.length : close + 1
+  }
+  return names
+}
+
+function assertNoImageSurvives(body, description) {
+  const out = notifications.sanitizeBody(body, 'Slack', '')
+  const names = survivingTagNames(out)
+  assert(
+    !names.includes('img'),
+    description,
+    `input:  ${body}\noutput: ${out}\ntags:   ${JSON.stringify(names)}`
+  )
+}
+
+assertNoImageSurvives(
+  '<img src="http://host/plain.png">',
+  'notifications leave no image tag for a plain payload'
 )
 
-assertEqual(
-  notifications.sanitizeBody('<im<im<img src=a>g src=b>g src="http://host/deep.png">', 'Slack', ''),
-  '',
-  'notifications strip nested image tags to a fixed point'
+// A payload spliced inside the literal "<img" prefix. Qt reads ONE malformed
+// tag named `im` here and renders nothing; a stripper that deleted the inner
+// match would close the halves up into a live <img> the input never had.
+assertNoImageSurvives(
+  '<im<img src="http://host/decoy.png">g src="http://host/beacon.png">',
+  'notifications leave no image tag when a payload is spliced inside <img'
+)
+
+assertNoImageSurvives(
+  '<im<im<img src=a>g src=b>g src="http://host/deep.png">',
+  'notifications leave no image tag for a doubly nested payload'
+)
+
+assertNoImageSurvives(
+  '<img<img src="http://host/twin.png">',
+  'notifications leave no image tag when the outer tag is itself named img'
+)
+
+assertNoImageSurvives(
+  '< img src="http://host/spaced.png">',
+  'notifications leave no image tag when whitespace follows the angle bracket'
 )
 
 assertEqual(
