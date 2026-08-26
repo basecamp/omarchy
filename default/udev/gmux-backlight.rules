@@ -1,0 +1,5 @@
+# Apple GMUX backlight is a PNP device. systemd's path_id builtin fails for it
+# ("No such file or directory"), so 99-systemd.rules never sets SYSTEMD_WANTS
+# and brightness is not saved or restored across reboot.
+SUBSYSTEM=="backlight", KERNEL=="gmux_backlight", \
+  TAG+="systemd", ENV{SYSTEMD_WANTS}+="systemd-backlight@backlight:gmux_backlight.service"
