@@ -169,7 +169,8 @@ Panel {
 
   function balanceDetailText(b) {
     if (!b || !(b.funded > 0)) return ""
-    var text = formatMoney(b.spent, b.currency) + " spent of " + formatMoney(b.funded, b.currency) + " funded"
+    var denominator = b.type === "spend_limit" ? " limit" : " funded"
+    var text = formatMoney(b.spent, b.currency) + " spent of " + formatMoney(b.funded, b.currency) + denominator
     if (b.estimated) text += " · estimated"
     return text
   }
