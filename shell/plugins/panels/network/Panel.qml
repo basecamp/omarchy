@@ -1330,7 +1330,10 @@ Panel {
           else if (root.focusSection === "band") root.activateBand()
           else if (root.focusSection === "dns") root.activateDns()
           else if (root.focusSection === "hiddenToggle") root.toggleHiddenForm()
-          else if (root.focusSection === "hiddenSecurity") hiddenSecurityDropdown.open()
+          // open() bypasses enabled, so the busy gate must be explicit here;
+          // it sits inside the branch so a busy Enter stays a no-op instead
+          // of falling through to activateSelected().
+          else if (root.focusSection === "hiddenSecurity") { if (!root.busy) hiddenSecurityDropdown.open() }
           else root.activateSelected()
         }
       }
@@ -1904,6 +1907,7 @@ Panel {
               { value: "none",    label: "None" }
             ]
             value: root.hiddenSecurity
+            enabled: !root.busy
             hasCursor: root.cursorActive && root.focusSection === "hiddenSecurity"
             onHovered: function(h) { if (h) { root.cursorActive = true; root.focusSection = "hiddenSecurity" } }
             onChanged: function(v) { root.hiddenSecurity = v }
