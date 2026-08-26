@@ -73,6 +73,23 @@ const status = tailscale.parseStatus(JSON.stringify({
       UserID: 1001,
       TaildropTarget: 1
     },
+    funnelIngress: {
+      HostName: 'funnel-ingress-node',
+      DNSName: '',
+      TailscaleIPs: ['fd7a:115c:a1e0::a801:26ab'],
+      Tags: ['tag:ingress'],
+      ShareeNode: true,
+      Online: true,
+      OS: ''
+    },
+    sharee: {
+      HostName: 'sharee-laptop',
+      DNSName: 'sharee-laptop.tail32f559.ts.net.',
+      TailscaleIPs: ['100.1.1.9'],
+      ShareeNode: true,
+      Online: true,
+      OS: 'macos'
+    },
     mullvadExit: {
       HostName: 'al-tia-wg-003',
       DNSName: 'al-tia-wg-003.mullvad.ts.net.',
@@ -91,6 +108,9 @@ assertDeepEqual(status.peers.map(peer => peer.HostName), ['alpha', 'zed'], 'tail
 assertDeepEqual(status.peers[0].TailscaleIPv6, ['fd7a:115c:a1e0::1901:334b'], 'tailscale preserves peer IPv6 addresses for copy menu')
 assert(status.peers[1].ExitNodeOption && status.peers[1].ExitNode, 'tailscale preserves exit node flags')
 assertDeepEqual(status.exitNodes.map(peer => peer.HostName), ['zed'], 'tailscale lists only online tailnet exit nodes')
+assertDeepEqual(status.serviceNodes.map(peer => peer.HostName), ['funnel-ingress-node'], 'tailscale keeps Funnel ingress relays out of the machine list')
+assert(tailscale.isIngressRelay({ Tags: ['tag:ingress'] }), 'tailscale detects Funnel ingress relays by tag')
+assert(!tailscale.isIngressRelay({ Tags: ['tag:server'] }), 'tailscale leaves other tagged nodes alone')
 assert(tailscale.isMullvadPeer({ HostName: 'al-tia-wg-003', DNSName: 'al-tia-wg-003.mullvad.ts.net.' }), 'tailscale detects Mullvad status peers')
 
 assert(status.fileSharing, 'tailscale reads Taildrop capability from the status capability map')
