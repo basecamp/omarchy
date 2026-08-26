@@ -4,6 +4,7 @@
 # omarchy:args=[watch|show|sync]
 # omarchy:hidden=true
 
+import errno
 import json
 import os
 import re
@@ -76,7 +77,12 @@ def show_osd(cmd: Apply) -> None:
 
 def open_hw():
     fd = os.open(HW, os.O_RDONLY)
-    os.read(fd, 4096)
+    try:
+        os.read(fd, 4096)
+    except OSError as e:
+        if e.errno != errno.ENODATA:
+            os.close(fd)
+            raise
     return fd
 
 
