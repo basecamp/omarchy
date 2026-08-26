@@ -3,24 +3,54 @@
 # omarchy:summary=Install and configure Voxtype dictation
 # omarchy:requires-sudo=true
 
-set -e
-
 # Install voxtype and configure it for use.
 
 if gum confirm "Install Voxtype + AI model (~150MB) to enable dictation?"; then
-  omarchy-pkg-add wtype voxtype-bin
+  omarchy-pkg-add wtype || exit 1
+
+  voxtype_pkg=voxtype-bin
+  if ! omarchy-hw-x86-64-v3; then
+    gum style --foreground 3 \
+      "Your CPU is missing instructions (AVX2/x86-64-v3) that the prebuilt Voxtype binary requires."
+
+    if gum confirm "Build Voxtype from source instead? This can take 20+ minutes and may result in noticeably slower dictation on this CPU."; then
+      if ! omarchy-pkg-aur-accessible; then
+        gum style --foreground 1 "The AUR is unreachable right now, so Voxtype can't be built from source. Try again later."
+        exit 1
+      fi
+      voxtype_pkg=voxtype
+    else
+      echo "Skipping Voxtype install."
+      exit 0
+    fi
+  fi
+
+  if [[ $voxtype_pkg == voxtype-bin ]]; then
+    omarchy-pkg-add voxtype-bin || exit 1
+  else
+    omarchy-pkg-aur-add voxtype || exit 1
+  fi
 
   # Setup voxtype
-  mkdir -p ~/.config/voxtype
-  cp "$OMARCHY_PATH/default/voxtype/config.toml" ~/.config/voxtype/
+  install_voxtype() {
+    mkdir -p ~/.config/voxtype
+    cp "$OMARCHY_PATH/default/voxtype/config.toml" ~/.config/voxtype/ || return 1
 
-  voxtype setup --download --no-post-install
-  if omarchy-hw-vulkan; then
-    voxtype setup gpu --enable || true
+    voxtype setup --download --no-post-install || return 1
+    if omarchy-hw-vulkan; then
+      voxtype setup gpu --enable || true
+    fi
+    voxtype setup systemd || return 1
+
+    hyprctl reload >/dev/null
+    omarchy-restart-shell
+  }
+
+  if install_voxtype; then
+    omarchy-notification-send -g  "Voxtype Dictation Ready" "Hold F9 to dictate (or toggle with Super + Ctrl + X)." -t 10000
+  else
+    gum style --foreground 1 "Voxtype setup failed. Rolling back the install."
+    omarchy-voxtype-remove
+    exit 1
   fi
-  voxtype setup systemd
-
-  hyprctl reload >/dev/null
-  omarchy-restart-shell
-  omarchy-notification-send -g  "Voxtype Dictation Ready" "Hold F9 to dictate (or toggle with Super + Ctrl + X)." -t 10000
 fi
