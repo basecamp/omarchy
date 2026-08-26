@@ -46,7 +46,39 @@ if [[ ! -f $core_path ]]; then
   exit 1
 fi
 
-game_name=$(printf '%s' "${game_path##*/}" | sed 's/\.[^.]*$//; s/[[:space:]]*([^)]*)//g; s/[[:space:]]\+/ /g; s/^ //; s/ $//' | perl -Mopen=locale -pe 's/(^|[[:space:]])([^[:space:]])/$1\U$2/g')
+rom_filename="${game_path##*/}"
+
+# Arcade ROM filenames are short codes (e.g. ffight.zip) rather than game
+# titles. Look up the canonical title in RetroArch's own arcade databases,
+# preferring FBNeo's (the most complete, actively maintained arcade set)
+# over the MAME variants.
+db_name=""
+arcade_rdbs=(
+  "FBNeo - Arcade Games"
+  "MAME"
+  "MAME 2003-Plus"
+  "MAME 2003"
+  "MAME 2010"
+  "MAME 2015"
+  "MAME 2016"
+  "MAME 2000"
+  "HBMAME"
+)
+for collection in "${arcade_rdbs[@]}"; do
+  rdb="/usr/share/libretro/database/rdb/$collection.rdb"
+  [[ -f $rdb ]] || continue
+  match=$(omarchy-games-retro-rdb-name "$rdb" "$rom_filename" 2>/dev/null) || continue
+  [[ -n $match ]] || continue
+  db_name="$match"
+  break
+done
+
+if [[ -n $db_name ]]; then
+  game_name=$(printf '%s' "$db_name" | sed 's/[[:space:]]*([^)]*)//g; s/[[:space:]]\+/ /g; s/^ //; s/ $//')
+else
+  game_name=$(printf '%s' "$rom_filename" | sed 's/\.[^.]*$//; s/[[:space:]]*([^)]*)//g; s/[[:space:]]\+/ /g; s/^ //; s/ $//' | perl -Mopen=locale -pe 's/(^|[[:space:]])([^[:space:]])/$1\U$2/g')
+fi
+
 desktop_name="$game_name"
 desktop_id=$(printf '%s' "$desktop_name" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]' '-' | sed 's/^-//; s/-$//')
 desktop_dir="$HOME/.local/share/applications"
