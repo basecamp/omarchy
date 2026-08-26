@@ -363,7 +363,7 @@ var hiddenConnectDedupe =
   "     [[ $ssid == \"$1\" ]] || continue;" +
   "     [[ $hidden == \"yes\" ]] || continue;" +
   "     old=\"$old uuid $c\";" +
-  "   done <<< \"$(nmcli --escape no -g connection.uuid,802-11-wireless.ssid,802-11-wireless.hidden connection show $wifi 2>/dev/null)\";" +
+  "   done <<< \"$(LC_ALL=C nmcli --escape no -g connection.uuid,802-11-wireless.ssid,802-11-wireless.hidden connection show $wifi 2>/dev/null)\";" +
   " fi;"
 
 // A lone EXIT trap deletes the unproven profile on any failure or TERM/INT
