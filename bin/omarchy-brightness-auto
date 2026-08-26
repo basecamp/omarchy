@@ -222,7 +222,7 @@ write_brightness() {
 
   [[ $brightness =~ ^[0-9]+$ ]] || return 1
   (( brightness >= 1 && brightness <= 100 )) || return 1
-  omarchy-brightness-display --nonblocking --no-osd --monitor "$monitor" "$brightness%" >/dev/null
+  omarchy-brightness-display --no-osd --monitor "$monitor" "$brightness%" --nonblocking >/dev/null
 }
 
 log_message() {

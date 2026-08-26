@@ -29,6 +29,13 @@ while (( $# > 0 )); do
   esac
 done
 
+# Keep this form compatible with older dispatchers, which ignore arguments
+# after the brightness value.
+if (( $# == 2 )) && [[ $2 == "--nonblocking" ]]; then
+  nonblocking=1
+  set -- "$1"
+fi
+
 # Get the brightness of the passed display
 backlight_brightness() {
   brightnessctl -d "$1" -m 2>/dev/null | awk -F, '{ gsub("%", "", $4); print $4; found=1 } END{ exit !found }'

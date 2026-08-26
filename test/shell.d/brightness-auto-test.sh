@@ -108,8 +108,8 @@ cat >"$mock_bin/omarchy-brightness-display" <<'SH'
 [[ ${BRIGHTNESS_AVAILABLE:-1} == "1" ]] || exit 1
 if (( $# == 2 )) && [[ $1 == "--monitor" ]]; then
   printf '%s\n' "${BRIGHTNESS_VALUE:-30}"
-elif (( $# == 4 )) && [[ $1 == "--no-osd" && $2 == "--monitor" ]]; then
-  printf '%s\n' "$4" >>"$BRIGHTNESS_WRITES"
+elif (( $# == 5 )) && [[ $1 == "--no-osd" && $2 == "--monitor" && $5 == "--nonblocking" ]]; then
+  printf '%s\n' "$*" >>"$BRIGHTNESS_WRITES"
 else
   exit 2
 fi
@@ -133,6 +133,15 @@ case "$*" in
 esac
 SH
 chmod +x "$mock_bin"/*
+
+brightness_writes="$test_tmp/brightness-writes"
+: >"$brightness_writes"
+if ! BRIGHTNESS_WRITES="$brightness_writes" PATH="$mock_bin:$PATH" write_brightness eDP-1 31; then
+  fail "automatic brightness keeps silent writes compatible with older display commands"
+fi
+grep -Fx -- '--no-osd --monitor eDP-1 31% --nonblocking' "$brightness_writes" >/dev/null ||
+  fail "automatic brightness keeps silent writes compatible with older display commands"
+pass "automatic brightness keeps silent writes compatible with older display commands"
 
 run_auto() {
   OMARCHY_AUTO_BRIGHTNESS_IIO_ROOT="${AUTO_IIO_ROOT:-$test_tmp/iio-generic}" \
@@ -169,7 +178,6 @@ pass "automatic brightness exposes persistent service controls"
 
 session_sensor="$test_tmp/session-sensor"
 sleep_count="$test_tmp/sleep-count"
-brightness_writes="$test_tmp/brightness-writes"
 mkdir -p "$session_sensor"
 printf '200\n' >"$session_sensor/in_illuminance_input"
 printf '0\n' >"$sleep_count"

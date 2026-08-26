@@ -153,6 +153,13 @@ else
   [[ $? == 75 ]] || fail "nonblocking automatic writes use the busy exit status"
 fi
 
+if timeout 0.1 env CALL_LOG="$call_log" XDG_RUNTIME_DIR="$runtime_dir" PATH="$mock_bin:$ROOT/bin:$PATH" \
+  "$ROOT/bin/omarchy-brightness-display" --no-osd --monitor DP-1 35% --nonblocking; then
+  fail "trailing nonblocking writes report lock contention"
+else
+  [[ $? == 75 ]] || fail "trailing nonblocking writes use the busy exit status"
+fi
+
 write_count=$(grep -c ' setvcp 10 ' "$call_log")
 if timeout 0.1 env CALL_LOG="$call_log" XDG_RUNTIME_DIR="$runtime_dir" PATH="$mock_bin:$ROOT/bin:$PATH" \
   "$ROOT/bin/omarchy-brightness-display" --no-osd --monitor DP-1 35%; then
