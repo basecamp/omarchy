@@ -210,18 +210,37 @@ run_phase() {
   fi
 }
 
-# The read phase runs first, so its data must be staged before any measuring
-# starts. Direct I/O leaves nothing in the page cache to serve reads from.
-for file in "${test_files[@]}"; do
-  dd if="$chunk_file" of="$file" bs=${chunk_mb}M oflag=direct conv=notrunc status=none 2>/dev/null &
-  worker_pids+=("$!")
-done
+  # The read phase runs first, so its data must be staged before any measuring
+  # starts. Direct I/O leaves nothing in the page cache to serve reads from.
+  # Report the write throughput of this staging so the panel is not stuck at 0.
+  stage_failed=0
+  (
+    fail=0
+    pids=()
+    for file in "${test_files[@]}"; do
+      dd if="$chunk_file" of="$file" bs=${chunk_mb}M oflag=direct conv=notrunc status=none 2>/dev/null &
+      pids+=("$!")
+    done
+    for pid in "${pids[@]}"; do
+      wait "$pid" || fail=1
+    done
+    exit $fail
+  ) &
+  stager=$!
 
-stage_failed=0
-for pid in "${worker_pids[@]}"; do
-  wait "$pid" || stage_failed=1
-done
-worker_pids=()
+  before=$(device_sectors write)
+  while kill -0 "$stager" 2>/dev/null; do
+    sleep 1
+    after=$(device_sectors write)
+    rate=$(awk -v before="$before" -v after="$after" 'BEGIN {
+      if (after < before) print 0
+      else print (after - before) * 512 / 1000000
+    }')
+    echo "stage $(format_rate "$rate")"
+    before=$after
+  done
+  wait "$stager" || stage_failed=1
+  worker_pids=()
 
 if (( stage_failed )) || [[ ! -s ${test_files[0]} ]]; then
   echo "Direct disk I/O is not available on $target_dir" >&2
