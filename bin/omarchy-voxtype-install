@@ -41,12 +41,14 @@ if gum confirm "Install Voxtype + AI model (~150MB) to enable dictation?"; then
       voxtype setup gpu --enable || true
     fi
     voxtype setup systemd || return 1
-
-    hyprctl reload >/dev/null
-    omarchy-restart-shell
   }
 
+  # Reloading and restarting the shell only picks up the new bindings; both can
+  # fail for reasons that have nothing to do with Voxtype (a locked session, a
+  # slow shell), so they sit outside the rollback and never undo a good install.
   if install_voxtype; then
+    hyprctl reload >/dev/null
+    omarchy-restart-shell
     omarchy-notification-send -g  "Voxtype Dictation Ready" "Hold F9 to dictate (or toggle with Super + Ctrl + X)." -t 10000
   else
     gum style --foreground 1 "Voxtype setup failed. Rolling back the install."
