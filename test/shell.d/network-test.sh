@@ -311,15 +311,10 @@ assert(/wifi-sec\.key-mgmt "\$2"/.test(network.hiddenPskConnectScript), 'hidden 
 assert(!/wifi-sec\.key-mgmt wpa-psk/.test(network.hiddenPskConnectScript), 'hidden PSK connect script no longer hardcodes wpa-psk as the key-mgmt')
 assert(/\[\[ \$2 == "sae" \]\] && pmf="wifi-sec\.pmf 3"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script sets PMF required only for the sae (WPA3) case, using a [[ ]] string test per AGENTS.md')
 
-// Repeat joins to the same hidden SSID must not pile up duplicate profiles,
-// but con-name is not unique in NetworkManager -- deleting by name (`id`)
-// could destroy an unrelated VPN/Ethernet/broadcast-Wi-Fi profile that just
-// happens to share it. Old profiles must be matched by UUID against
-// type + ssid + hidden, captured before the new profile exists, and only
-// removed after the new one activates -- never up front, and never by name.
-// Enumeration is two fixed nmcli calls (a UUID/TYPE listing, then one
-// batched ssid/hidden query over the wifi profiles) -- never one nmcli
-// spawn per profile.
+// Dedupe must never delete by con-name (not unique -- could hit an unrelated
+// profile): match prior profiles by UUID over (ssid, hidden), and only once
+// the new one is up. Enumeration is two fixed nmcli calls, never one per
+// connection.
 assert(!/connection delete id "\$1"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script never deletes an existing profile by name')
 assert(!network.hiddenPskConnectScript.includes('connection delete id '), 'hidden PSK connect script never deletes any existing profile by name (id), regardless of the argument')
 assert(/nmcli -t -f UUID,TYPE connection show/.test(network.hiddenPskConnectScript), 'hidden PSK connect script lists all connections (UUID + type) in a single nmcli call')
@@ -328,7 +323,9 @@ assert(/nmcli --escape no -g connection\.uuid,802-11-wireless\.ssid,802-11-wirel
 assert(/\[\[ \$t == "802-11-wireless" \]\] && wifi=/.test(network.hiddenPskConnectScript), 'hidden PSK connect script only considers 802-11-wireless connections for cleanup')
 assert(/\[\[ \$ssid == "\$1" \]\] \|\| continue/.test(network.hiddenPskConnectScript), 'hidden PSK connect script matches prior profiles by this SSID, not by name')
 assert(/\[\[ \$hidden == "yes" \]\] \|\| continue/.test(network.hiddenPskConnectScript), 'hidden PSK connect script only considers hidden profiles for cleanup, never a broadcast network of the same SSID')
-assert(/connection up uuid "\$u"[\s\S]*connection delete uuid "\$o"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script only deletes old profiles after the new one activates successfully')
+assert(/old="\$old uuid \$c"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script accumulates old profiles as delete-ready "uuid <id>" tokens')
+assert(!/for o in \$old/.test(network.hiddenPskConnectScript), 'hidden PSK connect script deletes duplicates in one batched nmcli call, not one per profile')
+assert(/connection up uuid "\$u"[\s\S]*nmcli connection delete \$old/.test(network.hiddenPskConnectScript), 'hidden PSK connect script only deletes old profiles after the new one activates successfully')
 
 // Cleanup is a single EXIT trap: armed before the profile exists, deleting
 // it on any failure or TERM/INT kill, and disarmed (`trap - EXIT`) only
@@ -344,7 +341,7 @@ assert(
   network.hiddenPskConnectScript.indexOf('connection up uuid "$u"') < network.hiddenPskConnectScript.indexOf('trap - EXIT'),
   'hidden PSK connect script disarms the cleanup trap only after connection up proves the profile'
 )
-assert(/for o in \$old;[\s\S]*done;[\s\S]*true; \}/.test(network.hiddenPskConnectScript), 'hidden PSK connect script pins the success block status so a stale old-UUID delete failure cannot fail the chain')
+assert(/\[\[ -n \$old \]\] && nmcli connection delete \$old[\s\S]*true; \}/.test(network.hiddenPskConnectScript), 'hidden PSK connect script pins the success block status with `true` so a stale old-UUID delete failure cannot fail the chain')
 
 // The profile starts inert (autoconnect no), is armed only after activation,
 // and old profiles are removed only if that arm succeeded -- a failed arm
@@ -356,13 +353,11 @@ assert(
   network.hiddenPskConnectScript.indexOf('connection up uuid "$u"') < network.hiddenPskConnectScript.indexOf('connection.autoconnect yes'),
   'hidden PSK connect script only sets autoconnect yes after connection up, never before'
 )
-assert(/if nmcli connection modify uuid "\$u" connection\.autoconnect yes[\s\S]*for o in \$old/.test(network.hiddenPskConnectScript), 'hidden PSK connect script deletes old profiles only if the autoconnect arm succeeded')
+assert(/if nmcli connection modify uuid "\$u" connection\.autoconnect yes[\s\S]*nmcli connection delete \$old/.test(network.hiddenPskConnectScript), 'hidden PSK connect script deletes old profiles only if the autoconnect arm succeeded')
 
-// A plain `read` strips leading/trailing whitespace, which would silently
-// corrupt a space-padded SSID (legal bytes) before it's compared against
-// the raw "$1" -- IFS= is required on every field read. The batched query
-// separates profiles with a blank line, which the uuid read must skip to
-// keep the 3-line groups aligned.
+// IFS= on every field read: a bare `read` trims whitespace and would corrupt
+// a space-padded SSID before the "$1" compare. The batched query blank-lines
+// between profiles, so the uuid read skips blanks to keep 3-line groups aligned.
 assert(/IFS= read -r ssid; IFS= read -r hidden;/.test(network.hiddenPskConnectScript), 'hidden PSK connect script parses ssid/hidden with IFS= read -r so a space-padded SSID is not trimmed')
 assert(/\[\[ -n \$c \]\] \|\| continue/.test(network.hiddenPskConnectScript), 'hidden PSK connect script skips the blank separator lines between batched profiles so field groups stay aligned')
 JS
