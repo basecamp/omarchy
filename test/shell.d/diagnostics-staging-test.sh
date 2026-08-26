@@ -26,10 +26,17 @@ SH
 
 # The upload is the point of the staging file, so capture what curl was handed
 # rather than sending anything.
+# The staging directory is removed when the upload exits, so the mode has to be
+# read here, while the payload still exists.
 cat >"$stub_bin/curl" <<'SH'
 #!/bin/bash
 for arg in "$@"; do
-  [[ $arg == file=@* ]] && printf '%s\n' "${arg#file=@}" >"$OMARCHY_TEST_UPLOAD_PATH"
+  if [[ $arg == file=@* ]]; then
+    payload="${arg#file=@}"
+    printf '%s\n' "$payload" >"$OMARCHY_TEST_UPLOAD_PATH"
+    stat -c '%a' "${payload%/*}" >"$OMARCHY_TEST_UPLOAD_MODE" 2>/dev/null ||
+      stat -f '%Lp' "${payload%/*}" >"$OMARCHY_TEST_UPLOAD_MODE" 2>/dev/null || true
+  fi
 done
 printf 'https://logs.omarchy.org/test\n'
 SH
@@ -39,6 +46,7 @@ export PATH="$stub_bin:$ROOT/bin:$PATH"
 export HOME="$tmp_dir/home"
 export XDG_RUNTIME_DIR="$tmp_dir/run"
 export OMARCHY_TEST_UPLOAD_PATH="$tmp_dir/upload-path"
+export OMARCHY_TEST_UPLOAD_MODE="$tmp_dir/upload-mode"
 
 # omarchy-debug: the log holds sudo dmesg and the journal, so it must not be
 # staged under a name every account on the machine can predict and read.
@@ -68,11 +76,20 @@ pass "omarchy-debug no longer names a world-writable path"
 "$ROOT/bin/omarchy-upload-log" system-info >/dev/null
 
 uploaded=$(<"$OMARCHY_TEST_UPLOAD_PATH")
-[[ $uploaded != /tmp/* ]] ||
-  fail "the uploaded payload is staged outside /tmp" "uploaded: $uploaded"
-pass "the uploaded payload is staged outside /tmp"
-
 staging_dir=${uploaded%/*}
+
+# mktemp still puts its directory under /tmp; the boundary is that the
+# directory is unpredictable and only its owner can enter it, not that the
+# path leaves /tmp behind.
+[[ $uploaded != "/tmp/upload-log.txt" && $staging_dir != "/tmp" ]] ||
+  fail "the uploaded payload is not staged at a shared, predictable name" "uploaded: $uploaded"
+pass "the uploaded payload is not staged at a shared, predictable name"
+
+staging_mode=$(<"$OMARCHY_TEST_UPLOAD_MODE")
+[[ $staging_mode == "700" ]] ||
+  fail "the staging directory is reachable only by its owner" "mode: ${staging_mode:-unreadable}"
+pass "the staging directory is reachable only by its owner"
+
 if [[ -d $staging_dir ]]; then
   fail "the staging directory is cleaned up after the upload" "left behind: $staging_dir"
 fi
