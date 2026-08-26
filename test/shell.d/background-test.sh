@@ -18,4 +18,18 @@ assert(
     !backgroundQml.includes('pendingThemeVersion !== backgroundVersion'),
   'background theme transition applies pending colors even if image reveal stalls'
 )
+
+// The wallpaper is decoded at the screen's physical size, never at the size
+// the file was shipped at, and never at native size first.
+assert(
+  backgroundQml.includes('readonly property bool sized: width > 0 && height > 0') &&
+    backgroundQml.includes('readonly property int decodeWidth: sized ? Math.ceil(width * screen.devicePixelRatio) : 0') &&
+    backgroundQml.includes('readonly property int decodeHeight: sized ? Math.ceil(height * screen.devicePixelRatio) : 0'),
+  'background derives its decode size from the screen in physical pixels'
+)
+
+const count = (needle) => backgroundQml.split(needle).length - 1
+assertEqual(count('sourceSize.width: panel.decodeWidth'), 3, 'all three wallpaper images bound their decode width to the screen')
+assertEqual(count('sourceSize.height: panel.decodeHeight'), 3, 'all three wallpaper images bound their decode height to the screen')
+assertEqual(count('source: panel.sized ? root.imageUrl('), 3, 'all three wallpaper images wait for the window size before loading')
 JS
