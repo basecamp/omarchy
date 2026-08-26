@@ -26,9 +26,12 @@ scan_dirs+=("$HOME/.nix-profile/share/applications")
     printf 'D:%s\0' "$dir"
     find "$dir" -type f -name '*.desktop' -printf 'F:%p\0' 2>/dev/null | sort -z
   done
-} | awk -v RS='\0' -v names="$desktop_names" '
+} | desktop_names="$desktop_names" awk -v RS='\0' '
+# Read the names from the environment rather than -v: gawk runs escape processing
+# over a -v assignment, so a name containing a backslash would arrive mangled and
+# silently stop matching.
 function desktop_matches(list,   i, j, name_count, entry_count, parts, entries) {
-  name_count = split(names, parts, ":")
+  name_count = split(ENVIRON["desktop_names"], parts, ":")
   entry_count = split(list, entries, ";")
 
   for (i = 1; i <= name_count; i++) {
@@ -59,8 +62,15 @@ function desktop_matches(list,   i, j, name_count, entry_count, parts, entries) 
   # file arrives as a single record. Split it rather than fighting RS: one read
   # per file beats one per line either way.
   contents = ""
-  while ((getline chunk < file) > 0) contents = contents chunk
+  while ((status = (getline chunk < file)) > 0) contents = contents chunk
+  # Read ERRNO before close(), which overwrites it when the file never opened.
+  if (status < 0) reason = ERRNO
   close(file)
+
+  if (status < 0) {
+    print file ": " reason > "/dev/stderr"
+    next
+  }
 
   in_desktop_entry = 0
   hidden = 0

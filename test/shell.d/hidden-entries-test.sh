@@ -27,7 +27,14 @@ hidden_entries() {
 }
 
 lists_entry() {
-  hidden_entries "${2:-}" | grep -qx "$1"
+  local output
+  # Capture first: piping straight into grep would discard the script's exit
+  # status, so a crash would read the same as an entry that is simply absent.
+  if ! output=$(hidden_entries "${2:-}"); then
+    fail "hidden-entries.sh exited non-zero"
+  fi
+
+  grep -Fqx -- "$1" <<<"$output"
 }
 
 write_entry "$user_apps/plain.desktop" <<'EOF'
@@ -147,3 +154,14 @@ EOF
 
 lists_entry "with space-spaced" || fail "a path containing a space is scanned"
 pass "hidden-entries scans paths containing spaces"
+
+# Desktop names reach awk through the environment, so a backslash has to arrive
+# intact. Passing them via -v would let gawk eat the escape and hide the entry.
+write_entry "$system_dir/applications/backslash.desktop" <<'ENTRY'
+[Desktop Entry]
+Name=Backslash
+OnlyShowIn=Foo\Bar;
+ENTRY
+
+lists_entry "backslash" 'Foo\Bar' && fail "a backslash in a desktop name survives transport"
+pass "hidden-entries passes desktop names to awk without escape processing"
