@@ -169,6 +169,10 @@ Rules:
    First-party non-bar plugins are enabled unless listed in `disabledPlugins[]`.
 6. `barWidget.allowMultiple: true` in the manifest permits multiple instances.
 7. `idle.screensaver` and `idle.lock` are seconds since user idle began.
+   `idle.lockScreensaver` draws the branding animation on the lock surface
+   itself; `idle.lockScreensaverDelay` is seconds after locking before it
+   appears, and `idle.lockScreensaverDuration` is how long it runs before the
+   display blanks, where `0` means it never blanks.
 8. `version: 1` is required.
 
 `config/omarchy/shell.json` describes the fresh-install state. When no
