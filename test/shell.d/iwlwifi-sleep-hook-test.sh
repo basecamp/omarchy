@@ -171,3 +171,48 @@ mkdir -p "$inst_dir/etc/modprobe.d" "$inst_dir/usr/lib/systemd/system-sleep"
 [[ -f $inst_dir/usr/lib/systemd/system-sleep/iwlwifi-reset ]] || fail "installer copies iwlwifi-reset hook"
 pass "hardware installer installs iwlwifi-reset hook for BE200"
 rm -rf "$inst_dir"
+
+# Test 12: migration installs hook on BE200 system
+migration="$ROOT/migrations/1787718500.sh"
+[[ -f $migration ]] || fail "migration 1787718500.sh exists"
+pass "migration 1787718500.sh exists"
+
+mig_dir=$(mktemp -d)
+mkdir -p "$mig_dir/bin" "$mig_dir/system-sleep"
+cat >"$mig_dir/bin/sudo" <<'SH'
+#!/bin/bash
+echo "sudo $*" >>"$CALLS_FILE"
+exec "$@"
+SH
+chmod +x "$mig_dir/bin/sudo"
+
+run_migration() {
+  local pci_info="$1"
+  : >"$mig_dir/calls"
+  setup_env "" "$pci_info"
+  PATH="$mig_dir/bin:$tmp_dir/bin:$PATH" \
+  CALLS_FILE="$mig_dir/calls" \
+  OMARCHY_PATH="$ROOT" \
+  OMARCHY_SYSTEM_SLEEP_DIR="$mig_dir/system-sleep" \
+  bash -euo pipefail "$migration" >/dev/null
+}
+
+# Affected install copies hook
+run_migration "$be200_pci"
+[[ -f $mig_dir/system-sleep/iwlwifi-reset ]] || fail "migration copies iwlwifi-reset hook for BE200"
+grep -q 'sudo cp -p' "$mig_dir/calls" || fail "migration uses sudo to copy hook"
+pass "migration installs iwlwifi-reset hook for BE200"
+
+# Up-to-date no-op skips sudo copy
+run_migration "$be200_pci"
+[[ ! -s $mig_dir/calls ]] || fail "migration does not copy when already up-to-date"
+pass "migration is idempotent and skips copy when hook is up-to-date"
+
+# Unaffected no-op skips copy
+rm -f "$mig_dir/system-sleep/iwlwifi-reset"
+run_migration "$ax210_pci"
+[[ ! -f $mig_dir/system-sleep/iwlwifi-reset ]] || fail "migration must not install hook on AX210"
+[[ ! -s $mig_dir/calls ]] || fail "migration must not invoke sudo on AX210"
+pass "migration no-ops on unaffected hardware"
+
+rm -rf "$mig_dir"
