@@ -10,6 +10,7 @@ Item {
 
   // Injected by omarchy-shell (the first-party service loader).
   property var shell: null
+  property string omarchyPath: Quickshell.env("OMARCHY_PATH")
 
   readonly property string home: Quickshell.env("HOME")
   readonly property string stayAwakeStateDir: home + "/.local/state/omarchy/indicators"
@@ -363,11 +364,10 @@ Item {
 
   Process {
     id: externalInhibitProbe
-    // The daemon's JSON carries no trailing newline; normalize through command
-    // substitution so the line parser always sees exactly one whole line, and
-    // a missing file yields one empty line (the tolerant parser reads that as
-    // no inhibit).
-    command: ["bash", "-c", "printf '%s\\n' \"$(cat \"$1\" 2>/dev/null)\"", "bash", root.externalInhibitStateDir + "/state"]
+    // The probe normalizes the daemon's newline-less JSON into exactly one
+    // line and stays silent when the serving pid is gone — silence is the
+    // consumer's "not inhibited", so a dead daemon cannot pin idle off.
+    command: [root.omarchyPath + "/bin/omarchy-idle-inhibit-probe", root.externalInhibitStateDir + "/state"]
     stdout: SplitParser {
       onRead: function(line) { root.applyExternalInhibitState(line) }
     }

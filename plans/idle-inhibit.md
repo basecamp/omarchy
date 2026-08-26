@@ -77,14 +77,17 @@ A session-bus responder owned by a systemd user unit
 (`omarchy-idle-inhibit.service`, `WantedBy=graphical-session.target`, the
 crash-watch/migrate-notify pattern) so it is running before any browser probes:
 
-- Owns **`org.freedesktop.ScreenSaver`**, exporting `Inhibit(ss) → u`,
-  `UnInhibit(u)`, and the KDE-compat extras `GetActive() → b` +
-  `ActiveChanged(b)` signal, on **both** `/org/freedesktop/ScreenSaver` and
-  `/ScreenSaver`.
+- Owns **`org.freedesktop.ScreenSaver`**, exporting `Inhibit(ss) → u` and
+  `UnInhibit(u)` on **both** `/org/freedesktop/ScreenSaver` and `/ScreenSaver`.
+  The KDE-legacy `GetActive`/`ActiveChanged` extras are deliberately *not*
+  offered: they mean "the screensaver is showing", which this daemon cannot
+  honestly report — emitting them for inhibit-held state would be exactly
+  inverted.
 - Owns **`org.freedesktop.PowerManagement`**, exporting `Inhibit(ss) → u`,
   `UnInhibit(u)`, `HasInhibit() → b` + `HasInhibitChanged(b)` at
   `/org/freedesktop/PowerManagement/Inhibit` (what Chromium's second inhibit
-  and Firefox's third backend expect).
+  and Firefox's third backend expect; Clight-class clients listen to the
+  signal).
 - Cookies are a global counter; each cookie records the caller's unique bus
   name. `UnInhibit` with an unknown cookie returns normally (hypridle
   precedent; a restarted browser replaying a stale cookie must not wedge).
@@ -92,17 +95,29 @@ crash-watch/migrate-notify pattern) so it is running before any browser probes:
   run code; matching hypridle).
 - Watches `NameOwnerChanged`; when a cookie's owner disappears the cookie is
   reaped — a crashed browser cannot leave the session inhibited forever.
+- Application/reason strings are truncated and outstanding inhibits capped;
+  over the cap a caller gets `LimitsExceeded` rather than unbounded state.
 - If either well-known name cannot be acquired (another screensaver service is
   present), logs and exits 0: never fight over the name, never show a failed
-  unit for a machine that has its own screensaver daemon.
+  unit for a machine that has its own screensaver daemon. The unit uses
+  `Restart=on-failure` so that clean stand-down does not respawn forever.
 - Publishes the inhibit state as JSON to
   `$XDG_RUNTIME_DIR/omarchy/idle-inhibit/state` — written with
-  write-temp-then-rename so readers never see a torn file, mode 0600, on
-  **every** state change including the initial "nothing inhibited" snapshot:
+  write-temp-then-rename at 0600, on **every** state change including the
+  initial "nothing inhibited" snapshot:
 
   ```json
-  {"inhibited": false, "count": 0, "holders": []}
+  {"pid": 12345, "inhibited": false, "count": 0, "holders": []}
   ```
+
+  The **pid** is the liveness contract: consumers read a snapshot whose pid is
+  no longer running as released, which is what makes daemon death — SIGKILL
+  mid-inhibit included — self-healing without any cross-process cleanup. An
+  orderly exit additionally republishes an empty snapshot.
+- An `omarchy-idle-inhibit-probe` helper consumes the file for the shell: it
+  prints the JSON as exactly one line when the serving pid is alive, one empty
+  line for absence/garbage, and nothing for a dead pid. Silence means "not
+  inhibited", so every failure mode lands on the safe side.
 
   `holders` entries carry `{app, reason, owner, cookie, since}` — enough for
   `omarchy debug` to say *who* is keeping the screen awake, which no
@@ -126,10 +141,13 @@ atomic renames surface as change events):
 - `IdleMonitor.enabled` gains `&& !externalInhibit`: while any D-Bus inhibit is
   held, no idle cycle can start — the same gate `stay-awake` already uses, one
   row over.
+- The shell reads the file only through the probe script: every failure mode —
+  daemon down, file torn, garbage, stale pid — lands on "not inhibited", the
+  one direction that can never wedge idle behavior.
 - An inhibit arriving mid-cycle cancels it (consistent with toggling Stay
-  Awake, which also cancels: starting a video should clear a screensaver that
-  is already up, and Omarchy's screensaver is intrusive enough that leaving it
-  over a playing video is the worse failure).
+  Awake, which also cancels): a browser that started playing video owns the
+  screen, screensaver included. A lock that already fired is left alone —
+  inhibits never dismiss a lock.
 - The watcher is best-effort: missing runtime dir, unreadable file, or a
   daemon that is not running all degrade to "no external inhibits" and the
   idle timers behave exactly as they do today.

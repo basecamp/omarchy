@@ -9,7 +9,9 @@ PartOf=graphical-session.target
 [Service]
 Type=simple
 ExecStart=/usr/bin/omarchy-idle-inhibit-daemon
-Restart=always
+# on-failure, not always: standing down when the names are owned elsewhere is
+# a clean exit 0, and restarting into the same loss would respawn forever.
+Restart=on-failure
 RestartSec=5
 
 [Install]

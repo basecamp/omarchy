@@ -25,6 +25,21 @@ rg -F 'idle-inhibit' "$service" >/dev/null ||
   fail "idle service watches the inhibit daemon's state directory"
 pass "idle service watches the inhibit daemon's state directory"
 
+# Liveness rides in the state itself: snapshots carry the serving pid, and
+# the probe script is what refuses a dead daemon's last write. Assert both
+# halves so neither can regress silently.
+[[ -x $ROOT/bin/omarchy-idle-inhibit-probe ]] ||
+  fail "the inhibit probe script exists"
+pass "the inhibit probe script exists"
+
+rg -F 'omarchy-idle-inhibit-probe' "$service" >/dev/null ||
+  fail "idle service consumes state through the liveness-aware probe"
+pass "idle service consumes state through the liveness-aware probe"
+
+grep -q '"pid"' "$ROOT/bin/omarchy-idle-inhibit-daemon" ||
+  fail "daemon snapshots carry the serving pid"
+pass "daemon snapshots carry the serving pid"
+
 rg -F 'external-inhibit' "$service" >/dev/null ||
   fail "an arriving inhibit cancels an in-flight idle cycle"
 pass "an arriving inhibit cancels an in-flight idle cycle"

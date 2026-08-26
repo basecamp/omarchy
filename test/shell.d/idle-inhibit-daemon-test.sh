@@ -23,6 +23,7 @@ runtime_dir="$session_dir/runtime"
 mkdir -p "$runtime_dir"
 
 inner="$session_dir/inner.sh"
+PROBE="$ROOT/bin/omarchy-idle-inhibit-probe"
 
 cat >"$inner" <<'INNER'
 #!/bin/bash
@@ -73,6 +74,10 @@ holders_are() {
 
 without_app() {
   jq -e --arg app "$1" '(.holders | map(.app) | index($app)) == null' "$state_file" >/dev/null 2>&1
+}
+
+free_name() {
+  ! name_owned "${1:?}"
 }
 
 inhibit() {
@@ -188,9 +193,44 @@ jq -e --arg owner "$holder_pid" 'all(.holders[]; (.owner | startswith(":1.")))' 
 pass "holders record the owning bus name"
 
 active=$(busctl --user --no-pager call org.freedesktop.ScreenSaver "$SS_NEW" \
-  org.freedesktop.ScreenSaver GetActive 2>/dev/null | awk '{ print $2; exit }')
-[[ $active == "true" ]] || fail "GetActive reports active inhibits" "$active"
-pass "GetActive agrees with the state file"
+  org.freedesktop.ScreenSaver GetActive 2>&1 || true)
+grep -q "GetActive" <<<"$active" && grep -qi "no such method\|unknown method\|unknownmethod" <<<"$active" ||
+  fail "GetActive is not offered: reporting screensaver activation it does not own would be backwards" "$active"
+pass "the KDE-legacy GetActive is deliberately absent"
+
+# ... and no ActiveChanged signal may fire either: emitting the KDE semantics
+# ("screensaver blanked") from inhibit-held state would be exactly backwards.
+signal_absent=$(python3 - <<'PY'
+import gi
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib
+
+bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+seen = []
+loop = GLib.MainLoop()
+
+def on_signal(conn, sender, path, iface, signal, params):
+    seen.append(signal)
+
+bus.signal_subscribe("org.freedesktop.ScreenSaver", "org.freedesktop.ScreenSaver",
+                     "ActiveChanged", None, None, Gio.DBusSignalFlags.NONE, on_signal)
+
+res = bus.call_sync("org.freedesktop.ScreenSaver", "/ScreenSaver",
+                    "org.freedesktop.ScreenSaver", "Inhibit",
+                    GLib.Variant("(ss)", ("nosignal.client", "probe")),
+                    GLib.VariantType("(u)"), Gio.DBusCallFlags.NONE, -1, None)
+cookie = res.unpack()[0]
+bus.call_sync("org.freedesktop.ScreenSaver", "/ScreenSaver",
+              "org.freedesktop.ScreenSaver", "UnInhibit",
+              GLib.Variant("(u)", (cookie,)), None,
+              Gio.DBusCallFlags.NONE, -1, None)
+GLib.timeout_add(300, loop.quit)
+loop.run()
+print("ActiveChanged" not in seen)
+PY
+)
+[[ $signal_absent == "True" ]] || fail "no ActiveChanged fires for inhibit transitions"
+pass "no ActiveChanged fires for inhibit transitions"
 
 has=$(busctl --user --no-pager call org.freedesktop.PowerManagement "$PM" \
   org.freedesktop.PowerManagement.Inhibit HasInhibit 2>/dev/null | awk '{ print $2; exit }')
@@ -223,7 +263,11 @@ kill "$holder_pid" 2>/dev/null || true
 wait_for "a crashed client's inhibits are reaped" not_inhibited
 pass "inhibits are reaped when their client leaves the bus"
 
-# --- Signal emissions --------------------------------------------------------
+# --- HasInhibitChanged is the one transition signal that survives ------------
+
+# (ActiveChanged was dropped above: it belongs to "screensaver blanked"
+# semantics the daemon cannot honestly report. HasInhibitChanged has unambiguous
+# inhibit semantics, and Clight-class clients listen for it.)
 
 signal_seen=$(python3 - <<'PY'
 import gi
@@ -231,16 +275,14 @@ gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib
 
 bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-seen = {}
+seen = []
 loop = GLib.MainLoop()
 
 def on_signal(conn, sender, path, iface, signal, params):
-    seen[signal] = params.unpack()[0]
-    if len(seen) == 2:
+    seen.append(params.unpack()[0])
+    if len(seen) == 1:
         loop.quit()
 
-bus.signal_subscribe("org.freedesktop.ScreenSaver", "org.freedesktop.ScreenSaver",
-                     "ActiveChanged", None, None, Gio.DBusSignalFlags.NONE, on_signal)
 bus.signal_subscribe("org.freedesktop.PowerManagement", "org.freedesktop.PowerManagement.Inhibit",
                      "HasInhibitChanged", None, None, Gio.DBusSignalFlags.NONE, on_signal)
 
@@ -249,20 +291,19 @@ res = bus.call_sync("org.freedesktop.ScreenSaver", "/ScreenSaver",
                     GLib.Variant("(ss)", ("signal.client", "signal probe")),
                     GLib.VariantType("(u)"), Gio.DBusCallFlags.NONE, -1, None)
 cookie = res.unpack()[0]
-# This connection stays alive until the checks below are queued, so the
-# inhibit is not reaped before the signals fire.
+# This connection stays alive until the check below is queued, so the
+# inhibit is not reaped before the signal fires.
 GLib.timeout_add(1500, loop.quit)
 GLib.idle_add(lambda: bus.call_sync("org.freedesktop.ScreenSaver", "/ScreenSaver",
                                     "org.freedesktop.ScreenSaver", "UnInhibit",
                                     GLib.Variant("(u)", (cookie,)), None,
                                     Gio.DBusCallFlags.NONE, -1, None) and False)
 loop.run()
-print("ActiveChanged" in seen and "HasInhibitChanged" in seen and
-      seen.get("ActiveChanged") is True and seen.get("HasInhibitChanged") is True)
+print(len(seen) >= 1 and seen[0] is True)
 PY
 )
-[[ $signal_seen == "True" ]] || fail "ActiveChanged and HasInhibitChanged fire on transitions"
-pass "ActiveChanged and HasInhibitChanged fire on transitions"
+[[ $signal_seen == "True" ]] || fail "HasInhibitChanged fires on transitions"
+pass "HasInhibitChanged fires on transitions"
 
 wait_for "state settles after the signal probe" not_inhibited
 
@@ -288,22 +329,44 @@ pass "a second daemon exits quietly and the first keeps the name"
 
 wait_for "state settles after the duplicate start" not_inhibited
 
-# The survivor must still be fully functional. busctl is transient, so its
-# inhibit self-releases with the connection; the cookie reply proves the
-# survivor still serves, and the file settling back proves it still publishes.
-c=$(inhibit "final.client" "after duplicate" "$SS_NEW")
-[[ $c =~ ^[0-9]+$ ]] || fail "the surviving daemon still serves Inhibit" "$c"
-pass "the surviving daemon still serves Inhibit"
+# --- A dead daemon's last write reads as released -----------------------------
+#
+# A SIGKILL leaves no orderly final publish — whatever the file claimed while
+# serving stays on disk. Every snapshot therefore carries the serving pid, and
+# the probe falls silent for a file whose pid is gone, so a crashed daemon
+# cannot pin the idle timers off; no bystander cleanup or coordination is
+# involved.
 
-wait_for "the surviving daemon still publishes state transitions" not_inhibited
-pass "the surviving daemon still publishes state transitions"
+stop_daemon
+sleep 1
+[[ -s $state_file ]] || fail "the kill test needs the dead daemon's last write"
+dead_pid=$(jq -r '.pid' "$state_file")
+if kill -0 "$dead_pid" 2>/dev/null; then fail "the killed daemon's pid is really gone"; fi
+if "$PROBE" "$state_file" | grep -q .; then fail "the probe is silent for a dead daemon's state"; fi
+pass "the probe is silent for a dead daemon's state"
+
+# Missing state: one empty line.
+out=$("$PROBE" "$runtime_dir/does-not-exist" ; printf 'x')
+[[ $out == $'\nx' ]] || fail "a missing state file reads as nothing inhibited" "$(printf %q "$out")"
+pass "a missing state file reads as nothing inhibited"
+
+# Torn/garbage state: one empty line.
+printf '%s' '{"inhibited":tru' >"$state_file"
+out=$("$PROBE" "$state_file" ; printf 'x')
+[[ $out == $'\nx' ]] || fail "a torn state file yields exactly one empty line" "$(printf %q "$out")"
+pass "missing and torn state files read as nothing inhibited"
+
+start_daemon
+wait_for "a fresh daemon republishes over the stale file" not_inhibited
 
 echo "all inner assertions passed"
+
 INNER
 
 chmod +x "$inner"
 
-DAEMON="$daemon" timeout 120 dbus-run-session -- bash "$inner" "$runtime_dir" ||
+export DAEMON="$daemon" PROBE="$PROBE"
+timeout 120 dbus-run-session -- bash "$inner" "$runtime_dir" ||
   fail "omarchy-idle-inhibit-daemon passes the live session-bus contract" \
     "see the inner assertion output above"
 

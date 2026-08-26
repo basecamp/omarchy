@@ -18,8 +18,8 @@ grep -Fx 'After=graphical-session.target' "$unit" >/dev/null ||
   fail "the unit starts with the graphical session"
 grep -Fx 'WantedBy=graphical-session.target' "$unit" >/dev/null ||
   fail "the unit is enabled with the graphical session"
-grep -Fx 'Restart=always' "$unit" >/dev/null ||
-  fail "the daemon restarts after a crash"
+grep -Fx 'Restart=on-failure' "$unit" >/dev/null ||
+  fail "the daemon restarts on failure but does not flap a clean stand-down"
 pass "the inhibit unit follows the house service pattern"
 
 grep -q 'omarchy-idle-inhibit\.service' "$ROOT/install/user/first-run/enable-user-units.sh" ||
