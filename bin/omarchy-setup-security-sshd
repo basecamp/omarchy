@@ -8,6 +8,7 @@
 set -e
 
 AUTHORIZED_KEYS="$HOME/.ssh/authorized_keys"
+SSHD_DROPIN="/etc/ssh/sshd_config.d/50-omarchy-key-only.conf"
 KEY=""
 GITHUB_USER=""
 
@@ -57,9 +58,30 @@ if [[ -n $KEY && -n $GITHUB_USER ]]; then
   exit 2
 fi
 
-setup_sshd() {
-  echo "Installing and starting the OpenSSH server..."
+install_sshd() {
+  echo "Installing the OpenSSH server..."
   omarchy-pkg-add openssh
+}
+
+# OpenSSH's own default is PasswordAuthentication yes, and Arch's
+# /etc/ssh/sshd_config.d/99-archlinux.conf does not change it -- it only turns
+# KbdInteractiveAuthentication off. So a server started without this file takes
+# password logins from whatever network the machine is on, which is not what a
+# command that exists to authorize a key should leave behind. Arch prepends
+# `Include /etc/ssh/sshd_config.d/*.conf` to sshd_config, so a drop-in is read.
+write_key_only_config() {
+  echo "Turning off SSH password authentication..."
+  sudo install -d -m 755 "${SSHD_DROPIN%/*}"
+  sudo tee "$SSHD_DROPIN" >/dev/null <<'EOF'
+# Managed by omarchy-setup-security-sshd. `omarchy remove security sshd`
+# removes it; delete it by hand to go back to the distribution defaults.
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+EOF
+}
+
+start_sshd() {
+  echo "Starting the OpenSSH server..."
   sudo systemctl enable --now sshd.service
 }
 
@@ -145,8 +167,12 @@ authorize_pasted_key() {
 
 echo -e "\e[32mSetting up SSH server access with key-based authentication.\n\e[0m"
 
-setup_sshd
-open_firewall
+# The package first, because ssh-keygen validates the key and ships with it.
+# Everything that makes the machine reachable waits until a key is in place: a
+# cancelled prompt or a GitHub fetch that comes back empty exits here, and it
+# must not leave a listening server and an open port behind it.
+install_sshd
+write_key_only_config
 
 echo
 if [[ -n $KEY ]]; then
@@ -160,6 +186,10 @@ else
   *) exit 1 ;;
   esac
 fi
+
+echo
+start_sshd
+open_firewall
 
 echo -e "\e[32m\nPerfect! The SSH server is running and your key is authorized.\e[0m"
 echo "You can now connect with: ssh $USER@$(hostname)"
