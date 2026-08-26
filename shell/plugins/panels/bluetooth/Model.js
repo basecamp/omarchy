@@ -38,6 +38,35 @@ function hasHumanName(device) {
   return label !== "" && !isUuidLike(label) && !isAddressLike(label)
 }
 
+function deviceIconName(device) {
+  if (!device) return ""
+  return String(device.icon || "").trim().toLowerCase().replace(/-symbolic$/, "")
+}
+
+function deviceKind(device) {
+  var icon = deviceIconName(device)
+  if (icon.indexOf("audio-card") === 0 || icon.indexOf("audio-speaker") === 0) return "speaker"
+  if (icon.indexOf("audio-headphone") === 0) return "headphones"
+  if (icon.indexOf("audio-headset") === 0) return "headset"
+  if (icon.indexOf("input-keyboard") === 0) return "keyboard"
+  if (icon.indexOf("input-mouse") === 0) return "mouse"
+  if (icon.indexOf("input-gaming") === 0) return "gamepad"
+  if (icon.indexOf("input-tablet") === 0) return "tablet"
+  if (icon === "phone" || icon.indexOf("phone-") === 0) return "phone"
+  return ""
+}
+
+function deviceGlyph(kind, connected) {
+  if (kind === "speaker") return "󰓃"
+  if (kind === "headphones" || kind === "headset") return "󰋋"
+  if (kind === "keyboard") return "󰌌"
+  if (kind === "mouse") return "󰍽"
+  if (kind === "gamepad") return "󰊴"
+  if (kind === "tablet") return "󰓫"
+  if (kind === "phone") return "󰄜"
+  return connected ? "󰂱" : "󰂯"
+}
+
 function nodeProps(node) {
   return node && node.ready && node.properties ? node.properties : {}
 }
@@ -91,6 +120,7 @@ function deviceRow(d) {
     address: d.address || "",
     name: d.name || "",
     deviceName: d.deviceName || "",
+    icon: d.icon || "",
     connected: !!d.connected,
     state: d.state !== undefined ? d.state : -1,
     batteryAvailable: !!d.batteryAvailable,
@@ -162,6 +192,9 @@ if (typeof module !== "undefined") {
     isAddressLike: isAddressLike,
     normalizedAddress: normalizedAddress,
     hasHumanName: hasHumanName,
+    deviceIconName: deviceIconName,
+    deviceKind: deviceKind,
+    deviceGlyph: deviceGlyph,
     nodeProps: nodeProps,
     nodeText: nodeText,
     bluetoothSinkMatchesDevice: bluetoothSinkMatchesDevice,

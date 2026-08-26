@@ -56,6 +56,16 @@ assertEqual(bluetooth.normalizedAddress('AA:BB_CC-dd-ee-ff'), 'aabbccddeeff', 'b
 assert(!bluetooth.hasHumanName({ name: 'AA:BB:CC:DD:EE:FF' }), 'bluetooth rejects address-only device labels')
 assert(bluetooth.hasHumanName({ deviceName: 'MX Master 3S' }), 'bluetooth accepts human device labels')
 
+assertEqual(bluetooth.deviceKind({ icon: 'audio-card' }), 'speaker', 'bluetooth maps audio-card to speaker')
+assertEqual(bluetooth.deviceKind({ icon: 'audio-headphones' }), 'headphones', 'bluetooth maps audio-headphones')
+assertEqual(bluetooth.deviceKind({ icon: 'input-keyboard' }), 'keyboard', 'bluetooth maps input-keyboard')
+assertEqual(bluetooth.deviceKind({ icon: 'input-mouse' }), 'mouse', 'bluetooth maps input-mouse')
+assertEqual(bluetooth.deviceKind({ icon: 'input-gaming' }), 'gamepad', 'bluetooth maps input-gaming')
+assertEqual(bluetooth.deviceKind({ icon: '' }), '', 'bluetooth gives icon-less devices no kind')
+assertEqual(bluetooth.deviceGlyph('speaker', false), '󰓃', 'bluetooth uses the speaker glyph')
+assertEqual(bluetooth.deviceGlyph('keyboard', true), '󰌌', 'bluetooth uses the keyboard glyph')
+assertEqual(bluetooth.deviceGlyph('', true), '󰂱', 'bluetooth keeps the connected glyph when kind is unknown')
+
 const devices = [
   { name: 'Speaker', connected: false, paired: true, address: '2' },
   { name: 'Headphones', connected: true, address: '1' },
@@ -79,6 +89,15 @@ const lists = bluetooth.deviceLists(devices)
 assertDeepEqual(lists.connected.map(bluetooth.deviceLabel), ['Headphones'], 'bluetooth groups connected devices')
 assertDeepEqual(lists.known.map(bluetooth.deviceLabel), ['Mouse', 'Speaker'], 'bluetooth groups known devices by label')
 assertDeepEqual(lists.discovered.map(bluetooth.deviceLabel), ['Keyboard'], 'bluetooth groups discovered devices')
+assertDeepEqual(
+  bluetooth.deviceLists([
+    { name: 'soundcore Boom 2', address: 'aa', icon: 'audio-card' },
+    { name: 'soundcore Boom 2', address: 'bb' },
+    { name: 'FB0467', address: 'cc' }
+  ]).discovered.map(function(d) { return d.address }).sort(),
+  ['aa', 'bb', 'cc'],
+  'bluetooth keeps every named device in Available, including icon-less radios'
+)
 assertDeepEqual(bluetooth.visibleSections(lists, true), ['connected', 'known', 'discovered'], 'bluetooth shows discovered section while scanning')
 assertDeepEqual(bluetooth.visibleSections(lists, false), ['connected', 'known'], 'bluetooth hides discovered section when not scanning')
 
@@ -94,7 +113,7 @@ assertDeepEqual(arrayLikeLists.discovered.map(bluetooth.deviceLabel), ['Gamepad'
 
 assertDeepEqual(
   bluetooth.deviceRow({ name: 'Deadbeef', address: '1', connected: false }),
-  { address: '1', name: 'Deadbeef', deviceName: '', connected: false, state: -1, batteryAvailable: false, battery: 0, pairing: false },
+  { address: '1', name: 'Deadbeef', deviceName: '', icon: '', connected: false, state: -1, batteryAvailable: false, battery: 0, pairing: false },
   'bluetooth projects device rows with primitives only'
 )
 assertEqual(
