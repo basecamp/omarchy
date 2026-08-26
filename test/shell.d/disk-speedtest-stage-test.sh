@@ -4,17 +4,16 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
-run_node_test <<'JS'
-const fs = require('fs')
-const panel = fs.readFileSync(path.join(root, 'shell/plugins/panels/disk-speedtest/Panel.qml'), 'utf8')
-const script = fs.readFileSync(path.join(root, 'bin/omarchy-disk-speedtest'), 'utf8')
+panel="$ROOT/shell/plugins/panels/disk-speedtest/Panel.qml"
+script="$ROOT/bin/omarchy-disk-speedtest"
 
-assert(panel.includes('parts[0] === "write" || parts[0] === "stage"'),
-  'disk speedtest panel treats staging samples as write-dial input')
-assert(panel.includes('root.phase === "write" || root.phase === "stage"'),
-  'disk speedtest panel keeps the write dial live during staging')
-assert(panel.includes('phase = ""'),
-  'disk speedtest panel starts with no phase so the read dial is not live at 0')
-assert(script.includes('echo "stage '),
-  'disk speedtest emits stage rates while it writes the read-test files')
-JS
+grep -Fq 'parts[0] === "write" || parts[0] === "stage"' "$panel" ||
+  fail "disk speedtest panel treats staging samples as write-dial input"
+grep -Fq 'root.phase === "write" || root.phase === "stage"' "$panel" ||
+  fail "disk speedtest panel keeps the write dial live during staging"
+grep -Fq 'phase = ""' "$panel" ||
+  fail "disk speedtest panel starts with no phase so the read dial is not live at 0"
+grep -Fq 'echo "stage ' "$script" ||
+  fail "disk speedtest emits stage rates while it writes the read-test files"
+
+pass "disk speedtest reports staging write throughput to the panel"
