@@ -75,6 +75,31 @@ result=$(HOME="$OPENCODE_HOME" XDG_CACHE_HOME="$OPENCODE_HOME/.cache" XDG_DATA_H
   fail "Antigravity collector counts Google tokens from opencode database" "$result"
 pass "Antigravity collector merges opencode Google provider stats"
 
+# Pi and omp sessions with Google provider
+PI_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$OPENCODE_HOME" "$PI_HOME"' EXIT
+mkdir -p "$PI_HOME/.pi/agent/sessions/project" "$PI_HOME/.omp/agent/sessions/project"
+
+timestamp="$(date +%Y-%m-%d)T12:00:00Z"
+cat >"$PI_HOME/.pi/agent/sessions/project/pi.jsonl" <<EOF
+{"type":"message","id":"pi-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"google","model":"gemini-pi","usage":{"input":15,"output":5,"cacheRead":2,"cacheWrite":1,"totalTokens":23}}}
+{"type":"message","id":"codex-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","model":"gpt-test","usage":{"input":999,"output":999}}}
+EOF
+cat >"$PI_HOME/.omp/agent/sessions/project/omp.jsonl" <<EOF
+{ "type": "message", "id": "omp-1", "timestamp": "$timestamp", "message": { "role": "assistant", "provider": "gemini", "model": "gemini-omp", "usage": { "input": 25, "output": 10, "cacheRead": 5, "cacheWrite": 2, "totalTokens": 42 } } }
+{ "type": "message", "id": "claude-1", "timestamp": "$timestamp", "message": { "role": "assistant", "provider": "anthropic", "model": "claude-test", "usage": { "input": 999, "output": 999 } } }
+EOF
+
+result=$(HOME="$PI_HOME" XDG_CACHE_HOME="$PI_HOME/.cache" XDG_DATA_HOME="$PI_HOME/.local/share" \
+  "$ROOT/bin/omarchy-agent-usage-agy" --force)
+
+[[ $(jq -r '.modelUsage["gemini-pi"].inputTokens' <<<"$result") == "15" && \
+   $(jq -r '.modelUsage["gemini-omp"].inputTokens' <<<"$result") == "25" && \
+   $(jq -r '.modelUsage["claude-test"] // null' <<<"$result") == "null" && \
+   $(jq -r '.modelUsage["gpt-test"] // null' <<<"$result") == "null" ]] ||
+  fail "Antigravity collector filters pi and omp sessions to Google/Gemini providers" "$result"
+pass "Antigravity collector counts pi and omp Google subscription usage"
+
 # Concurrent write safety
 race_output=$(python3 - "$ROOT/bin/omarchy-agent-usage-agy" "$TEST_HOME/race.json" <<'PY'
 import importlib.util
