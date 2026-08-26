@@ -190,6 +190,19 @@ grep -Fx 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", 
   fail "monitor scaling adds a scale to a named rule that has none"
 pass "monitor scaling adds a scale to a named rule that has none"
 
+# A hand-written rule spaces its keys however the author likes.
+cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 2
+hl.monitor({ output  =  "eDP-1", mode = "preferred", position = "auto", scale = 2 })
+LUA
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
+grep -Fx 'hl.monitor({ output  =  "eDP-1", mode = "preferred", position = "auto", scale = 1.6 })' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling matches a named rule whose keys are spaced out"
+grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling leaves the catch-all alone for a spaced-out named rule"
+pass "monitor scaling matches a named rule whose keys are spaced out"
+
 # GDK_SCALE is one integer for the whole session. Following one display's scale
 # while another is enabled resizes XWayland windows on the untouched display.
 write_named_config

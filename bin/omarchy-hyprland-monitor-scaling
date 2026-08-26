@@ -101,6 +101,13 @@ update_named_monitor_scale() {
   local tmp="${file}.omarchy-scale.$$"
 
   awk -v monitor="$monitor" -v scale="$scale" '
+    BEGIN {
+      # A hand-written rule may space its keys out, and matching a fixed
+      # "output = " would send those to the catch-all the reload overrides.
+      named = monitor
+      gsub(/\./, "[.]", named)
+      named = "output[[:space:]]*=[[:space:]]*\"" named "\""
+    }
     function uncommented(text,   n, i, lines, out) {
       n = split(text, lines, "\n")
       out = ""
@@ -111,7 +118,7 @@ update_named_monitor_scale() {
       return out
     }
     function rewrite(text,   n, i, lines, line, head, out, done, pos, end) {
-      if (index(uncommented(text), "output = \"" monitor "\"") == 0) return ""
+      if (uncommented(text) !~ named) return ""
       n = split(text, lines, "\n")
       out = ""
       done = 0
