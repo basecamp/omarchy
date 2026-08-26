@@ -26,6 +26,11 @@ tee)
 test)
   exit 1
   ;;
+sshd)
+  printf 'sudo %s\n' "$*" >>"$TEST_LOG"
+  [[ ${OMARCHY_TEST_SSHD_T_FAILS:-false} == true ]] && exit 1
+  printf 'passwordauthentication no\n'
+  ;;
 *)
   printf 'sudo %s\n' "$*" >>"$TEST_LOG"
   ;;
@@ -75,22 +80,25 @@ grep -qxF 'ssh-ed25519 AAAATEST tester@omarchy' "$HOME/.ssh/authorized_keys" ||
   fail "sshd setup authorizes the key it was given"
 pass "sshd setup authorizes the key it was given"
 
-# Nothing may listen or be reachable before a key is in place.
+# Nothing may listen or be reachable before a key is in place, and the
+# drop-in itself waits for the key too -- a cancelled run must leave nothing
+# written that a later reboot could apply on its own.
 config_line=$(grep -n 'sudo tee /etc/ssh/sshd_config.d/' "$TEST_LOG" | head -1 | cut -d: -f1)
 key_line=$(grep -n '^ssh-keygen ' "$TEST_LOG" | head -1 | cut -d: -f1)
 start_line=$(grep -n 'systemctl enable --now sshd.service' "$TEST_LOG" | head -1 | cut -d: -f1)
+confirm_line=$(grep -n 'sudo sshd -T' "$TEST_LOG" | head -1 | cut -d: -f1)
 firewall_line=$(grep -n 'ufw limit 22/tcp' "$TEST_LOG" | head -1 | cut -d: -f1)
 
-[[ -n $config_line && -n $key_line && -n $start_line && -n $firewall_line ]] ||
-  fail "sshd setup configures, authorizes, starts and opens the firewall" "$(cat "$TEST_LOG")"
+[[ -n $config_line && -n $key_line && -n $start_line && -n $confirm_line && -n $firewall_line ]] ||
+  fail "sshd setup authorizes, configures, starts, confirms, and opens the firewall" "$(cat "$TEST_LOG")"
 
-(( config_line < start_line )) ||
-  fail "sshd is configured key-only before it is started" "$(cat "$TEST_LOG")"
-pass "sshd is configured key-only before it is started"
+(( key_line < config_line )) ||
+  fail "the key-only config is not written until a key is authorized" "$(cat "$TEST_LOG")"
+pass "the key-only config is not written until a key is authorized"
 
-(( key_line < start_line && key_line < firewall_line )) ||
-  fail "sshd starts and the port opens only after a key is authorized" "$(cat "$TEST_LOG")"
-pass "sshd starts and the port opens only after a key is authorized"
+(( config_line < start_line && start_line < confirm_line && confirm_line < firewall_line )) ||
+  fail "sshd is configured, started, confirmed key-only, and only then opened" "$(cat "$TEST_LOG")"
+pass "sshd is configured, started, confirmed key-only, and only then opened"
 
 # A machine that already had sshd running gets the drop-in only through a reload.
 reload_line=$(grep -n 'systemctl reload sshd.service' "$TEST_LOG" | head -1 | cut -d: -f1)
@@ -137,3 +145,23 @@ if grep -q 'ufw limit 22/tcp' "$TEST_LOG"; then
   fail "a key that could not be stored leaves the firewall port closed" "$(cat "$TEST_LOG")"
 fi
 pass "a key that could not be stored leaves the firewall port closed"
+
+# A lower-numbered drop-in of the user's own can still win, even though ours
+# was written and sshd was started. The port must not open on the strength of
+# the file alone -- only on what the daemon actually resolved.
+: >"$TEST_LOG"
+rm -rf "$HOME/.ssh"
+
+if OMARCHY_TEST_SSHD_T_FAILS=true "$ROOT/bin/omarchy-setup-security-sshd" \
+  --key="ssh-ed25519 AAAATEST tester@omarchy" >/dev/null 2>&1; then
+  fail "sshd setup fails when the daemon does not confirm key-only"
+fi
+
+grep -q 'sudo sshd -T' "$TEST_LOG" ||
+  fail "sshd setup checks what the daemon actually resolved to" "$(cat "$TEST_LOG")"
+pass "sshd setup checks what the daemon actually resolved to"
+
+if grep -q 'ufw limit 22/tcp' "$TEST_LOG"; then
+  fail "the firewall stays closed when password authentication is not confirmed off" "$(cat "$TEST_LOG")"
+fi
+pass "the firewall stays closed when password authentication is not confirmed off"

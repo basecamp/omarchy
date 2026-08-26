@@ -88,6 +88,13 @@ start_sshd() {
   sudo systemctl reload sshd.service
 }
 
+# The drop-in's own precedence only holds on a stock system; a user's own
+# lower-numbered file can still set PasswordAuthentication yes and win. Ask
+# the daemon what it actually resolved to rather than trust the file we wrote.
+confirm_key_only() {
+  sudo sshd -T 2>/dev/null | grep -qx 'passwordauthentication no'
+}
+
 open_firewall() {
   if omarchy-cmd-missing ufw; then
     echo "UFW is not installed; skipping firewall rule."
@@ -177,7 +184,6 @@ echo -e "\e[32mSetting up SSH server access with key-based authentication.\n\e[0
 # cancelled prompt or a GitHub fetch that comes back empty exits here, and it
 # must not leave a listening server and an open port behind it.
 install_sshd
-write_key_only_config
 
 echo
 if [[ -n $KEY ]]; then
@@ -192,8 +198,19 @@ else
   esac
 fi
 
+# Configured only once a key is actually in place: a cancelled prompt above
+# has exited already, so nothing here leaves password auth turned off, on
+# disk, unapplied for a server this run never started.
 echo
+write_key_only_config
 start_sshd
+
+if ! confirm_key_only; then
+  echo -e "\e[31mA drop-in with a lower number still allows password authentication; sshd was not confirmed key-only, so the firewall port was left closed.\e[0m" >&2
+  echo "Check: sudo sshd -T | grep -i passwordauthentication" >&2
+  exit 1
+fi
+
 open_firewall
 
 echo -e "\e[32m\nPerfect! The SSH server is running and your key is authorized.\e[0m"
