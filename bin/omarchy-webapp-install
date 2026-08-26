@@ -65,6 +65,26 @@ fetch_site_icon() {
     download_icon "https://www.google.com/s2/favicons?domain=${site_url}&sz=256" "$dest"
 }
 
+desktop_string_escape() {
+  # Desktop Entry "string" value (freedesktop Desktop Entry Spec, "Value types"):
+  # a raw newline would start a new key line and let a value inject a second
+  # Exec=. Escape backslash first, then tab/CR/LF and a leading space. Every value
+  # written into the .desktop file passes through here.
+  printf '%s' "$1" \
+    | sed -e ':a;N;$!ba' \
+          -e 's/\\/\\\\/g' -e 's/\t/\\t/g' -e 's/\r/\\r/g' -e 's/\n/\\n/g' -e 's/^ /\\s/'
+}
+
+desktop_exec_arg() {
+  # One Exec argument, double-quoted per the freedesktop Exec spec: inside quotes
+  # " ` $ \ take a backslash and a literal % becomes %%. Only the default Exec's
+  # URL needs this; $CUSTOM_EXEC stays a whole command line (file-syntax only).
+  local escaped
+  escaped=$(printf '%s' "$1" \
+    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/`/\\`/g' -e 's/\$/\\$/g' -e 's/%/%%/g')
+  printf '"%s"' "$escaped"
+}
+
 if (( $# < 3 )); then
   echo -e "\e[32mLet's create a new web app you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
@@ -128,28 +148,38 @@ else
   ICON_VALUE=$(icon_name_from_ref "$ICON_REF")
 fi
 
-# Use custom exec if provided, otherwise default behavior
-EXEC_COMMAND="${CUSTOM_EXEC:-omarchy-launch-webapp $APP_URL}"
+# Default Exec quotes the URL as one Exec-spec argument; the whole line then gets
+# the file-syntax escaping below (unescaped first at read time per spec, so the
+# layers compose). $CUSTOM_EXEC is a full command line, so it gets file-syntax only.
+if [[ -n $CUSTOM_EXEC ]]; then
+  EXEC_COMMAND=$CUSTOM_EXEC
+else
+  EXEC_COMMAND="omarchy-launch-webapp $(desktop_exec_arg "$APP_URL")"
+fi
 
 # Create application .desktop file
 DESKTOP_FILE="$HOME/.local/share/applications/$APP_NAME.desktop"
 mkdir -p "$(dirname "$DESKTOP_FILE")"
 
+name_field=$(desktop_string_escape "$APP_NAME")
+exec_field=$(desktop_string_escape "$EXEC_COMMAND")
+icon_field=$(desktop_string_escape "$ICON_VALUE")
+
 cat >"$DESKTOP_FILE" <<EOF
 [Desktop Entry]
 Version=1.0
-Name=$APP_NAME
-Comment=$APP_NAME
-Exec=$EXEC_COMMAND
+Name=$name_field
+Comment=$name_field
+Exec=$exec_field
 Terminal=false
 Type=Application
-Icon=$ICON_VALUE
+Icon=$icon_field
 StartupNotify=true
 EOF
 
 # Add mime types if provided
 if [[ -n $MIME_TYPES ]]; then
-  echo "MimeType=$MIME_TYPES" >>"$DESKTOP_FILE"
+  printf 'MimeType=%s\n' "$(desktop_string_escape "$MIME_TYPES")" >>"$DESKTOP_FILE"
 fi
 
 chmod +x "$DESKTOP_FILE"
