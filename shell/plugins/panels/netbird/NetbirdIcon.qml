@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Shapes
 import qs.Commons
 import qs.Ui
 
@@ -11,41 +12,50 @@ Item {
   property bool crossed: false
   property bool warning: false
 
-  width: iconSize
+  // NetBird's own mark, in the 512 x 372.2 box its artwork is drawn in. The two
+  // wings are one path with both contours wound the same way: the logo overlaps
+  // them and shades the intersection, and a monochrome draw whose contours
+  // disagree punches that intersection out into a hole instead of filling it.
+  readonly property real markWidth: 512.0
+  readonly property real markHeight: 372.2
+  readonly property string markPath: "M363.9 0.0 C302.1 5.7 271.4 41.3 259.8 59.3 L254.6 68.4 C254.2 69.2 254.0 69.7 254.0 69.7 L253.9 69.6 L79.1 372.2 L297.1 372.2 L512.0 0.0 Z M368.7 248.4 C336.0 -33.2 -0.0 57.0 -0.0 57.0 L297.1 372.2 Z"
+
+  readonly property real markScale: iconSize / markHeight
+
+  width: markWidth * markScale
   height: iconSize
-  implicitWidth: iconSize
-  implicitHeight: iconSize
+  implicitWidth: width
+  implicitHeight: height
 
-  readonly property real dotSize: Math.max(2, root.iconSize * 0.26)
-  readonly property real hubSize: Math.max(2, root.iconSize * 0.3)
-  readonly property real spoke: (root.iconSize - dotSize) / 2
-  readonly property real linkWidth: Math.max(1, root.iconSize * 0.1)
+  Item {
+    width: root.markWidth
+    height: root.markHeight
+    transformOrigin: Item.TopLeft
+    scale: root.markScale
 
-  // A mesh drawn natively rather than an SVG: one hub with three peers, which
-  // is what NetBird is and what survives being rendered at bar size. Tiny SVGs
-  // pick up Qt rendering quirks in a bar slot, so the Tailscale widget next
-  // door draws its mark the same way.
-  Link { angle: -90 }
-  Link { angle: 30 }
-  Link { angle: 150 }
+    Shape {
+      anchors.fill: parent
+      antialiasing: true
+      layer.enabled: true
+      layer.samples: 4
 
-  Peer { angle: -90 }
-  Peer { angle: 30 }
-  Peer { angle: 150 }
-
-  Rectangle {
-    width: root.hubSize
-    height: root.hubSize
-    radius: width / 2
-    color: root.color
-    anchors.centerIn: parent
+      ShapePath {
+        fillColor: root.color
+        strokeWidth: 0
+        // The wings overlap, and the default odd-even rule would punch that
+        // overlap out into a hole. Winding fills it, which is why both contours
+        // are wound the same way above.
+        fillRule: ShapePath.WindingFill
+        PathSvg { path: root.markPath }
+      }
+    }
   }
 
   Rectangle {
     visible: root.crossed
     anchors.centerIn: parent
-    width: parent.width * 1.22
-    height: Math.max(2, parent.height * 0.14)
+    width: parent.width * 1.1
+    height: Math.max(2, root.iconSize * 0.14)
     radius: height / 2
     color: root.color
     rotation: -45
@@ -53,7 +63,7 @@ Item {
 
   BorderSurface {
     visible: root.warning
-    width: Math.max(7, parent.width * 0.42)
+    width: Math.max(7, root.iconSize * 0.42)
     height: width
     radius: width / 2
     color: root.badgeColor
@@ -69,32 +79,5 @@ Item {
       font.pixelSize: Math.max(6, parent.height * 0.72)
       font.bold: true
     }
-  }
-
-  // Anchored at the icon's centre and rotated outward, so the spoke always
-  // starts at the hub whatever size the bar hands us.
-  component Link: Rectangle {
-    required property real angle
-
-    width: root.spoke
-    height: root.linkWidth
-    radius: height / 2
-    color: root.color
-    opacity: 0.45
-    x: root.iconSize / 2
-    y: (root.iconSize - height) / 2
-    transformOrigin: Item.Left
-    rotation: angle
-  }
-
-  component Peer: Rectangle {
-    required property real angle
-
-    width: root.dotSize
-    height: root.dotSize
-    radius: width / 2
-    color: root.color
-    x: (root.iconSize - root.dotSize) / 2 + root.spoke * Math.cos(angle * Math.PI / 180)
-    y: (root.iconSize - root.dotSize) / 2 + root.spoke * Math.sin(angle * Math.PI / 180)
   }
 }

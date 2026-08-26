@@ -207,6 +207,99 @@ assertEqual(netbird.adminConsoleUrl(''), 'https://app.netbird.io/peers', 'netbir
 assertEqual(netbird.adminConsoleUrl('https://api.netbird.io:443/some/path'), 'https://app.netbird.io/peers', 'netbird ignores a path on the management URL')
 assert(/Model\.adminConsoleUrl\(managementUrl\)/.test(serviceSource), 'netbird opens the console it derived, not a hardcoded one')
 
+// Go's zero time reaches the panel verbatim, in two spellings.
+assert(netbird.isNeverTimestamp('0001-01-01T00:00:00Z'), 'netbird reads a zero handshake as never')
+assert(netbird.isNeverTimestamp('0000-12-31T16:07:02-07:52'), 'netbird reads a zero status update in a local offset as never')
+assert(netbird.isNeverTimestamp(''), 'netbird reads a missing timestamp as never')
+assert(!netbird.isNeverTimestamp('2026-08-26T12:00:00Z'), 'netbird reads a real timestamp as a time')
+
+assertEqual(netbird.formatBytes(0), '', 'netbird shows no traffic for a peer that moved none')
+assertEqual(netbird.formatBytes(512), '512 B', 'netbird keeps bytes whole')
+assertEqual(netbird.formatBytes(1536), '1.5 KB', 'netbird keeps one decimal under ten of a unit')
+assertEqual(netbird.formatBytes(52428800), '50 MB', 'netbird drops the decimal past ten of a unit')
+
+const NOW = Date.parse('2026-08-26T12:00:00Z')
+assertEqual(netbird.relativeSince('2026-08-26T11:59:30Z', NOW), 'just now', 'netbird calls the last half minute just now')
+assertEqual(netbird.relativeSince('2026-08-26T11:30:00Z', NOW), '30m ago', 'netbird counts back in minutes')
+assertEqual(netbird.relativeSince('2026-08-26T09:00:00Z', NOW), '3h ago', 'netbird counts back in hours')
+assertEqual(netbird.relativeSince('2026-08-24T12:00:00Z', NOW), '2d ago', 'netbird counts back in days')
+assertEqual(netbird.relativeSince('0001-01-01T00:00:00Z', NOW), '', 'netbird reports no last-seen for a peer that never connected')
+
+assertEqual(netbird.sessionExpiry('2026-08-27T10:00:00Z', NOW).text, 'Session expires in 22h', 'netbird counts a session down in hours')
+assert(!netbird.sessionExpiry('2026-08-27T10:00:00Z', NOW).urgent, 'netbird leaves a session with hours left calm')
+assertEqual(netbird.sessionExpiry('2026-08-26T12:38:00Z', NOW).text, 'Session expires in 38m', 'netbird counts the last hour down in minutes')
+assert(netbird.sessionExpiry('2026-08-26T12:38:00Z', NOW).urgent, 'netbird marks the last hour of a session urgent')
+assertEqual(netbird.sessionExpiry('2026-08-26T11:00:00Z', NOW).text, 'Session expired', 'netbird says so once the session has gone')
+assert(netbird.sessionExpiry('2026-08-26T11:00:00Z', NOW).expired, 'netbird flags an expired session as expired')
+assertEqual(netbird.sessionExpiry('', NOW).text, '', 'netbird stays quiet with no session expiry')
+
+assertEqual(netbird.wireguardMode(true), 'kernel', 'netbird names the kernel WireGuard interface')
+assertEqual(netbird.wireguardMode(false), 'userspace', 'netbird names the userspace WireGuard interface')
+
+assertEqual(
+  netbird.peerActivity({ TransferReceived: 5033165, TransferSent: 1258291, LastHandshake: '2026-08-26T09:00:00Z' }, NOW),
+  '↓ 4.8 MB · ↑ 1.2 MB · last seen 3h ago',
+  'netbird lines up a peer\'s traffic and last handshake'
+)
+assertEqual(
+  netbird.peerActivity({ TransferReceived: 0, TransferSent: 0, LastHandshake: '0001-01-01T00:00:00Z' }, NOW),
+  'never connected',
+  'netbird says plainly when a peer has never connected'
+)
+
+const richStatus = netbird.parseStatus(JSON.stringify({
+  daemonStatus: 'Connected',
+  management: { url: 'https://fleetfold.com:443', connected: true },
+  signal: { url: 'https://fleetfold.com:443', connected: true, error: '' },
+  relays: { total: 2, available: 2 },
+  usesKernelInterface: true,
+  wireguardPort: 51820,
+  sessionExpiresAt: '2026-08-27T12:25:37.510912187Z',
+  peers: { total: 1, connected: 0, details: [
+    { fqdn: 'proxy.netbird.selfhosted', netbirdIp: '100.122.124.134', status: 'Idle',
+      transferSent: 10, transferReceived: 20, lastWireguardHandshake: '0001-01-01T00:00:00Z' }
+  ] }
+}))
+assertEqual(richStatus.signalUrl, 'https://fleetfold.com:443', 'netbird reads the signal server URL')
+assert(richStatus.signalConnected, 'netbird reads the signal connection')
+assertEqual(richStatus.relaysAvailable + '/' + richStatus.relaysTotal, '2/2', 'netbird reads relay availability')
+assertEqual(richStatus.wireguardMode, 'kernel', 'netbird reads the WireGuard interface mode from status')
+assertEqual(richStatus.wireguardPort, 51820, 'netbird reads the WireGuard port')
+assertEqual(richStatus.sessionExpiresAt, '2026-08-27T12:25:37.510912187Z', 'netbird carries the session expiry through')
+assertEqual(richStatus.peers[0].TransferReceived, 20, 'netbird carries a peer\'s received bytes through')
+assertEqual(richStatus.peers[0].TransferSent, 10, 'netbird carries a peer\'s sent bytes through')
+
+assertEqual(netbird.urlHost('https://fleetfold.com:443'), 'fleetfold.com', 'netbird reads a host out of a management URL')
+assertEqual(netbird.urlHost('https://[2001:db8::1]:443/x'), '[2001:db8::1]', 'netbird keeps an IPv6 host bracketed')
+assertEqual(netbird.urlHost(''), '', 'netbird reads no host from an empty URL')
+
+const health = netbird.healthRows({
+  managementUrl: 'https://fleetfold.com:443', managementConnected: true,
+  signalUrl: 'https://fleetfold.com:443', signalConnected: true,
+  relaysAvailable: 2, relaysTotal: 2, wireguardMode: 'kernel', wireguardPort: 51820
+})
+assertEqual(health.map(r => r.label).join(','), 'Management,Signal,Relays,WireGuard', 'netbird lays out every health row')
+assertEqual(health[0].value + ' ' + health[0].detail, 'fleetfold.com connected', 'netbird reports management by host and state')
+assertEqual(health[2].value, '2/2', 'netbird reports relay availability as a fraction')
+assertEqual(health[3].detail, 'port 51820', 'netbird reports the WireGuard port')
+assert(!health.some(r => r.warn), 'netbird flags nothing on a healthy connection')
+
+const degraded = netbird.healthRows({
+  managementUrl: 'https://fleetfold.com:443', managementConnected: true,
+  signalUrl: 'https://fleetfold.com:443', signalConnected: false,
+  relaysAvailable: 0, relaysTotal: 2, wireguardMode: 'userspace', wireguardPort: 0
+})
+assert(degraded[1].warn, 'netbird flags a signal server that is not connected')
+assert(degraded[2].warn, 'netbird flags a network with no relay available')
+assert(!degraded[0].warn, 'netbird leaves reachable management unflagged while signal is down')
+assertEqual(degraded[3].detail, '', 'netbird omits the WireGuard port when the daemon reports none')
+
+// A relay-less deployment is a configuration, not a fault.
+const norelays = netbird.healthRows({ relaysAvailable: 0, relaysTotal: 0 })
+assert(!norelays[2].warn, 'netbird does not flag a deployment that configures no relays')
+assertEqual(norelays[2].detail, 'none configured', 'netbird says when no relays are configured')
+assertEqual(norelays.length, 3, 'netbird drops the WireGuard row when the mode is unknown')
+
 assertDeepEqual(
   netbird.loginPlan(true, 'https://app.netbird.io/device?user_code=ABCD-EFGH'),
   { authUrl: 'https://app.netbird.io/device?user_code=ABCD-EFGH', command: [] },

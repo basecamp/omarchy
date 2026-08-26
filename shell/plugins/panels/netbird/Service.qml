@@ -26,6 +26,13 @@ Item {
   property string selfIp: ""
   property string managementUrl: ""
   property bool managementConnected: false
+  property string signalUrl: ""
+  property bool signalConnected: false
+  property int relaysAvailable: 0
+  property int relaysTotal: 0
+  property string wireguardMode: ""
+  property int wireguardPort: 0
+  property string sessionExpiresAt: ""
   property int connectedPeers: 0
   property int totalPeers: 0
   property string authUrl: ""
@@ -48,6 +55,22 @@ Item {
   // Non-empty when NetBird is serving DNS for its own domains and the system
   // DNS provider overrides it; the value is the provider doing the overriding.
   readonly property string dnsOverride: Model.dnsOverrideWarning(managedDns, systemDnsProvider)
+
+  // "Last seen 3h ago" and "expires in 38m" are relative to now, so they have to
+  // be recomputed as time passes rather than only when the daemon is polled.
+  property double nowMs: Date.now()
+  readonly property var sessionExpiry: Model.sessionExpiry(sessionExpiresAt, nowMs)
+
+  readonly property var healthRows: Model.healthRows({
+    managementUrl: managementUrl,
+    managementConnected: managementConnected,
+    signalUrl: signalUrl,
+    signalConnected: signalConnected,
+    relaysAvailable: relaysAvailable,
+    relaysTotal: relaysTotal,
+    wireguardMode: wireguardMode,
+    wireguardPort: wireguardPort
+  })
 
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 30, 5, 3600)
   readonly property bool busy: whichProcess.running || statusProcess.running || routesProcess.running || profilesProcess.running || actionProcess.running || loginProcess.running || profileProcess.running || routeProcess.running || daemonProcess.running || dnsProcess.running || dnsFixProcess.running
@@ -114,6 +137,10 @@ Item {
 
   function connectionLabel(peer) {
     return Model.connectionLabel(peer)
+  }
+
+  function peerActivity(peer) {
+    return Model.peerActivity(peer, nowMs)
   }
 
   function profileLabel(profile) {
@@ -214,6 +241,13 @@ Item {
     selfIp = ""
     managementUrl = ""
     managementConnected = false
+    signalUrl = ""
+    signalConnected = false
+    relaysAvailable = 0
+    relaysTotal = 0
+    wireguardMode = ""
+    wireguardPort = 0
+    sessionExpiresAt = ""
     connectedPeers = 0
     totalPeers = 0
     authUrl = ""
@@ -253,6 +287,13 @@ Item {
     selfIp = parsed.selfIp
     managementUrl = parsed.managementUrl
     managementConnected = parsed.managementConnected
+    signalUrl = parsed.signalUrl
+    signalConnected = parsed.signalConnected
+    relaysAvailable = parsed.relaysAvailable
+    relaysTotal = parsed.relaysTotal
+    wireguardMode = parsed.wireguardMode
+    wireguardPort = parsed.wireguardPort
+    sessionExpiresAt = parsed.sessionExpiresAt
     connectedPeers = parsed.connectedPeers
     totalPeers = parsed.totalPeers
     peers = parsed.running ? parsed.peers : []
@@ -485,6 +526,14 @@ Item {
       if (profilesProcess.running) profilesProcess.running = false
       if (dnsProcess.running) dnsProcess.running = false
     }
+  }
+
+  Timer {
+    id: clockTimer
+    interval: 30000
+    repeat: true
+    running: true
+    onTriggered: root.nowMs = Date.now()
   }
 
   Timer {

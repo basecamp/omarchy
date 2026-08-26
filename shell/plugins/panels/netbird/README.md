@@ -8,7 +8,9 @@ Native Omarchy bar widget for [NetBird](https://netbird.io/).
 - Left click opens a keyboard-friendly panel
 - Right click connects or disconnects, middle click refreshes
 - Switch between NetBird profiles when the CLI supports them and more than one exists
-- Browse peers from `netbird status --json`, including idle ones
+- Browse peers from `netbird status --json`, including idle ones, with traffic and last-seen
+- Counts the SSO session down, urgent in its last hour
+- Reports management, signal, and relay health, plus the WireGuard mode and port
 - Select and deselect network routes, with exit nodes listed first
 - Copy a peer's NetBird IP, host name, or full domain name
 - Warns when the daemon is down, when this user cannot reach its socket, and when system DNS overrides the DNS NetBird serves
@@ -81,9 +83,11 @@ plus a non-DHCP system provider — and offers to hand DNS back to DHCP.
 
 ## Icon
 
-Renders a NetBird-style mesh natively as a theme-colored hub with three linked
-peers, which avoids the tiny-SVG rendering quirks Qt has in bar slots. The
-Tailscale widget next door draws its mark the same way.
+Draws NetBird's own mark from its path data in a `Shape`, theme-colored, the way
+`DropboxIcon.qml` draws its tiles. The mark's two wings overlap, so the contours
+are wound the same way and the fill rule is `WindingFill`; odd-even would punch
+that overlap out into a hole. The menu draws the same mark from the Omarchy icon
+font at `U+E90A`.
 
 ## Add to the bar
 

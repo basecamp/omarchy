@@ -427,6 +427,18 @@ Panel {
             wrapMode: Text.WordWrap
           }
 
+          // The tunnel keeps reporting itself healthy right up to the moment the
+          // SSO session lapses, so the countdown is worth its own line.
+          Text {
+            visible: netbird.installed && netbird.sessionExpiry.text !== ""
+            width: parent.width
+            text: netbird.sessionExpiry.text
+            color: netbird.sessionExpiry.urgent ? root.urgent : root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            wrapMode: Text.WordWrap
+          }
+
           CursorSurface {
             visible: !netbird.installed
             width: parent.width
@@ -573,6 +585,49 @@ Panel {
                   width: peerColumn.width
                   peer: modelData
                   rowIndex: index
+                }
+              }
+            }
+          }
+
+          Column {
+            id: healthColumn
+            visible: netbird.installed && netbird.active && netbird.healthRows.length > 0
+            width: parent.width
+            spacing: Style.space(6)
+
+            PanelSectionHeader {
+              text: "HEALTH"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+            }
+
+            Repeater {
+              model: netbird.healthRows
+
+              RowLayout {
+                required property var modelData
+
+                width: healthColumn.width
+                spacing: Style.space(8)
+
+                Text {
+                  text: modelData.label
+                  color: root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  Layout.preferredWidth: Math.round(healthColumn.width * 0.3)
+                }
+
+                Text {
+                  Layout.fillWidth: true
+                  text: modelData.detail !== "" ? modelData.value + " · " + modelData.detail : modelData.value
+                  color: modelData.warn ? root.urgent : root.foreground
+                  opacity: modelData.warn ? 1.0 : 0.75
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  elide: Text.ElideRight
+                  horizontalAlignment: Text.AlignRight
                 }
               }
             }
@@ -933,6 +988,17 @@ Panel {
             return parts.join(" · ")
           }
           color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          elide: Text.ElideRight
+        }
+
+        Text {
+          Layout.fillWidth: true
+          text: netbird.peerActivity(peerRow.peer)
+          visible: text !== ""
+          color: root.dim
+          opacity: 0.75
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
           elide: Text.ElideRight

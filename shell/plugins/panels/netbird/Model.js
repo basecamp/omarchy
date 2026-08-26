@@ -80,6 +80,72 @@ function formatLatency(value) {
   return text === "0s" ? "" : text
 }
 
+// Go marshals an unset time as its zero value, and NetBird hands that straight
+// through — as "0001-01-01T00:00:00Z" for a handshake that never happened, and
+// as the same instant in a local offset ("0000-12-31T16:07:02-07:52") for a
+// status that never updated. Read the year rather than trying to match either
+// spelling, so a peer that has never connected reads as never, not as 2000
+// years ago.
+function isNeverTimestamp(value) {
+  var text = String(value || "").trim()
+  if (text === "") return true
+  var year = parseInt(text.slice(0, 4), 10)
+  return !isFinite(year) || year <= 1
+}
+
+function formatBytes(value) {
+  var n = Number(value)
+  if (!isFinite(n) || n <= 0) return ""
+
+  var units = ["B", "KB", "MB", "GB", "TB"]
+  var i = 0
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024
+    i += 1
+  }
+  // A decimal earns its place under ten of a unit; past that it is noise.
+  return ((n >= 10 || i === 0) ? String(Math.round(n)) : n.toFixed(1)) + " " + units[i]
+}
+
+function relativeSince(value, nowMs) {
+  if (isNeverTimestamp(value)) return ""
+
+  var then = Date.parse(String(value))
+  if (!isFinite(then)) return ""
+
+  var secs = Math.floor((Number(nowMs) - then) / 1000)
+  if (secs < 45) return "just now"
+  if (secs < 3600) return Math.round(secs / 60) + "m ago"
+  if (secs < 86400) return Math.round(secs / 3600) + "h ago"
+  return Math.round(secs / 86400) + "d ago"
+}
+
+// The SSO session is what actually lapses on a NetBird peer: the tunnel keeps
+// reporting itself healthy right up to the point the session goes and every name
+// stops resolving. Say how long is left, and call it urgent inside the last hour
+// so a re-login is a decision rather than a surprise.
+function sessionExpiry(value, nowMs) {
+  var none = { text: "", expired: false, urgent: false }
+  if (isNeverTimestamp(value)) return none
+
+  var at = Date.parse(String(value))
+  if (!isFinite(at)) return none
+
+  var secs = Math.floor((at - Number(nowMs)) / 1000)
+  if (secs <= 0) return { text: "Session expired", expired: true, urgent: true }
+
+  var left
+  if (secs < 3600) left = Math.max(1, Math.round(secs / 60)) + "m"
+  else if (secs < 86400) left = Math.round(secs / 3600) + "h"
+  else left = Math.round(secs / 86400) + "d"
+
+  return { text: "Session expires in " + left, expired: false, urgent: secs < 3600 }
+}
+
+function wireguardMode(usesKernelInterface) {
+  return usesKernelInterface === true ? "kernel" : "userspace"
+}
+
 function connectionLabel(peer) {
   if (!peer || peer.Online !== true) return String((peer && peer.Status) || "Disconnected")
   var parts = []
@@ -108,8 +174,28 @@ function peerFromStatus(peer) {
     ConnectionType: connectionType,
     Relayed: source.relayed === true || connectionType.toLowerCase() === "relayed",
     Latency: formatLatency(source.latency !== undefined ? source.latency : source.Latency),
-    LastHandshake: String(source.lastWireguardHandshake || source.lastStatusUpdate || "")
+    LastHandshake: String(source.lastWireguardHandshake || source.lastStatusUpdate || ""),
+    TransferSent: Number(source.transferSent || source.TransferSent || 0),
+    TransferReceived: Number(source.transferReceived || source.TransferReceived || 0)
   }
+}
+
+// A peer row's second line: what has flowed, and when it was last actually
+// reachable. An idle NetBird peer is the normal case rather than a fault, so
+// "never" is a real answer here and not an error to dress up.
+function peerActivity(peer, nowMs) {
+  var source = peer || {}
+  var sent = formatBytes(source.TransferSent)
+  var received = formatBytes(source.TransferReceived)
+  var seen = relativeSince(source.LastHandshake, nowMs)
+
+  var parts = []
+  if (received !== "") parts.push("↓ " + received)
+  if (sent !== "") parts.push("↑ " + sent)
+  if (seen !== "") parts.push("last seen " + seen)
+  else if (parts.length === 0) parts.push("never connected")
+
+  return parts.join(" · ")
 }
 
 // NetBird hands DNS for its own domains to nameserver groups. They only work
@@ -220,9 +306,16 @@ function parseStatus(raw) {
       managementUrl: String(management.url || management.URL || ""),
       managementConnected: management.connected === true,
       managementError: String(management.error || management.Error || ""),
+      signalUrl: String(signal.url || signal.URL || ""),
       signalConnected: signal.connected === true,
+      signalError: String(signal.error || signal.Error || ""),
       relaysAvailable: Number(relays.available || relays.Available || 0),
       relaysTotal: Number(relays.total || relays.Total || 0),
+      wireguardMode: wireguardMode(data.usesKernelInterface === undefined
+        ? data.UsesKernelInterface
+        : data.usesKernelInterface),
+      wireguardPort: Number(data.wireguardPort || data.WireguardPort || 0),
+      sessionExpiresAt: String(data.sessionExpiresAt || data.SessionExpiresAt || ""),
       peers: peers,
       connectedPeers: connected,
       totalPeers: peers.length,
@@ -437,12 +530,11 @@ var CLOUD_ADMIN_URL = "https://app.netbird.io/peers"
 // self-hosted deployment serves its dashboard from the same host, so derive the
 // console from that and special-case the cloud, whose API and dashboard live on
 // different hostnames.
-function adminConsoleUrl(managementUrl) {
-  var value = String(managementUrl || "").trim()
-  if (value === "") return CLOUD_ADMIN_URL
+function urlHost(url) {
+  var value = String(url || "").trim()
+  if (value === "") return ""
 
-  var withoutScheme = value.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
-  var host = withoutScheme.split("/")[0]
+  var host = value.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split("/")[0]
   // Leave an IPv6 literal's brackets alone; only a trailing :port is noise here.
   if (host.charAt(0) === "[") {
     var closing = host.indexOf("]")
@@ -450,10 +542,59 @@ function adminConsoleUrl(managementUrl) {
   } else {
     host = host.split(":")[0]
   }
+  return host
+}
 
+function adminConsoleUrl(managementUrl) {
+  var host = urlHost(managementUrl)
   if (host === "") return CLOUD_ADMIN_URL
   if (/(^|\.)netbird\.io$/i.test(host)) return CLOUD_ADMIN_URL
   return "https://" + host + "/peers"
+}
+
+// Management being reachable is not the same as signal being reachable, and
+// neither says whether a relay is available — a peer that cannot reach one is
+// what "connected but nothing works" usually turns out to be. The daemon reports
+// all three plus how the tunnel is actually implemented, so lay them out
+// together and flag the parts that are down.
+function healthRows(state) {
+  var s = state || {}
+  var rows = []
+
+  rows.push({
+    label: "Management",
+    value: urlHost(s.managementUrl) || "unknown",
+    detail: s.managementConnected === true ? "connected" : "offline",
+    warn: s.managementConnected !== true
+  })
+  rows.push({
+    label: "Signal",
+    value: urlHost(s.signalUrl) || "unknown",
+    detail: s.signalConnected === true ? "connected" : "offline",
+    warn: s.signalConnected !== true
+  })
+
+  var total = Number(s.relaysTotal || 0)
+  var available = Number(s.relaysAvailable || 0)
+  rows.push({
+    label: "Relays",
+    value: available + "/" + total,
+    detail: total === 0 ? "none configured" : "available",
+    warn: total > 0 && available === 0
+  })
+
+  var mode = String(s.wireguardMode || "")
+  var port = Number(s.wireguardPort || 0)
+  if (mode !== "") {
+    rows.push({
+      label: "WireGuard",
+      value: mode,
+      detail: port > 0 ? "port " + port : "",
+      warn: false
+    })
+  }
+
+  return rows
 }
 
 if (typeof module !== "undefined") {
@@ -483,6 +624,14 @@ if (typeof module !== "undefined") {
     parseProfiles: parseProfiles,
     isUnsupportedCommand: isUnsupportedCommand,
     isPermissionError: isPermissionError,
-    adminConsoleUrl: adminConsoleUrl
+    adminConsoleUrl: adminConsoleUrl,
+    isNeverTimestamp: isNeverTimestamp,
+    formatBytes: formatBytes,
+    relativeSince: relativeSince,
+    sessionExpiry: sessionExpiry,
+    wireguardMode: wireguardMode,
+    peerActivity: peerActivity,
+    urlHost: urlHost,
+    healthRows: healthRows
   }
 }
