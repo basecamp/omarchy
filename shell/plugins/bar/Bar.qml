@@ -893,6 +893,10 @@ Item {
   Process {
     id: transparentBackgroundProbe
     property bool rerun: false
+    // Resolve once at startup too: FileView reports no change for its initial
+    // load, and without a baseline the first unrelated write would still
+    // compare against "" and sample.
+    running: true
     command: ["readlink", "-f", root.stateHome + "/omarchy/current/background"]
     stdout: StdioCollector {
       onStreamFinished: {
