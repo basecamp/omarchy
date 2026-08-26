@@ -59,6 +59,53 @@ mix_color() {
   '
 }
 
+# Pick black or white for text drawn on a solid hex background. Themes can
+# override any derived *_foreground token explicitly when they need another
+# pairing; unsupported color expressions keep the semantic fallback.
+contrast_foreground() {
+  local color fallback
+
+  color=$(color_to_shell_hex "$1")
+  fallback="$2"
+
+  if [[ ! $color =~ ^#[0-9A-Fa-f]{6}$ ]]; then
+    printf "%s" "$fallback"
+    return
+  fi
+
+  awk -v color="${color#\#}" '
+    function hex_value(char) {
+      return index("0123456789abcdef", tolower(char)) - 1
+    }
+
+    function channel(hex, position, value) {
+      value = (hex_value(substr(hex, position, 1)) * 16 + hex_value(substr(hex, position + 1, 1))) / 255
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ^ 2.4
+    }
+
+    BEGIN {
+      luminance = 0.2126 * channel(color, 1) + 0.7152 * channel(color, 3) + 0.0722 * channel(color, 5)
+      white_contrast = 1.05 / (luminance + 0.05)
+      black_contrast = (luminance + 0.05) / 0.05
+      print (black_contrast > white_contrast ? "#000000" : "#ffffff")
+    }
+  '
+}
+
+add_contrast_foregrounds() {
+  local color fallback output_key
+
+  while read -r color fallback output_key; do
+    [[ -n ${THEME_COLORS[$output_key]:-} ]] && continue
+    THEME_COLORS[$output_key]=$(contrast_foreground "${THEME_COLORS[$color]}" "$fallback")
+  done <<'EOF'
+accent #ffffff accent_foreground
+red #ffffff red_foreground
+green #ffffff green_foreground
+yellow #000000 yellow_foreground
+EOF
+}
+
 trim() {
   local value="$1"
 
@@ -379,6 +426,8 @@ if [[ -f $COLORS_FILE ]]; then
   while IFS=$'\t' read -r key value; do
     THEME_COLORS[$key]="$value"
   done < <(omarchy-theme-color --file "$COLORS_FILE" --all)
+
+  add_contrast_foregrounds
 
   for key in "${!THEME_COLORS[@]}"; do
     add_template_value "$key" "${THEME_COLORS[$key]}"
