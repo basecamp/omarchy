@@ -6,38 +6,65 @@
 
 state_file="${OMARCHY_IWLWIFI_STATE_FILE:-/run/iwlwifi-suspended}"
 
+log() {
+  logger -t iwlwifi-reset "$*"
+}
+
+run_modprobe() {
+  local out
+  if ! out=$(modprobe "$@" 2>&1); then
+    log "modprobe $* failed: $out"
+    return 1
+  fi
+  [[ -n $out ]] && log "$out"
+  return 0
+}
+
+is_affected_device() {
+  lspci -nn 2>/dev/null | grep -qE '\[8086:(e440|272b)\]'
+}
+
 case "$1" in
   pre)
-    # Only unload before suspend (not on full hibernate where S4 powers off completely)
-    if [[ $2 != "hibernate" ]] && lsmod | grep -q "^iwlwifi"; then
-      logger -t iwlwifi-reset "Pre-suspend: unloading wifi drivers"
+    # Only unload before suspend on affected BE200/BE211 hardware, not on full hibernate
+    if [[ $2 != "hibernate" ]] && is_affected_device && lsmod | grep -q "^iwlwifi"; then
+      log "Pre-suspend: unloading wifi drivers"
+      opmode="iwlwifi"
       if lsmod | grep -q "^iwlmld"; then
-        echo "iwlmld" > "$state_file"
-        modprobe -r iwlmld 2>&1 | logger -t iwlwifi-reset
+        opmode="iwlmld"
       elif lsmod | grep -q "^iwlmvm"; then
-        echo "iwlmvm" > "$state_file"
-        modprobe -r iwlmvm 2>&1 | logger -t iwlwifi-reset
+        opmode="iwlmvm"
       elif lsmod | grep -q "^iwldvm"; then
-        echo "iwldvm" > "$state_file"
-        modprobe -r iwldvm 2>&1 | logger -t iwlwifi-reset
-      else
-        echo "iwlwifi" > "$state_file"
+        opmode="iwldvm"
       fi
-      modprobe -r iwlwifi 2>&1 | logger -t iwlwifi-reset
+
+      if [[ $opmode != "iwlwifi" ]]; then
+        run_modprobe -r "$opmode" || true
+      fi
+
+      if run_modprobe -r iwlwifi; then
+        echo "$opmode" > "$state_file"
+      else
+        log "Failed to unload iwlwifi before suspend"
+        rm -f "$state_file"
+      fi
     fi
     ;;
   post)
     if [[ -f $state_file ]]; then
       opmode=$(cat "$state_file" 2>/dev/null)
-      rm -f "$state_file"
-      logger -t iwlwifi-reset "Post-resume: reloading wifi drivers ($opmode)"
-      modprobe iwlwifi 2>&1 | logger -t iwlwifi-reset
-      if [[ -n $opmode && $opmode != "iwlwifi" ]]; then
-        modprobe "$opmode" 2>&1 | logger -t iwlwifi-reset
+      log "Post-resume: reloading wifi drivers ($opmode)"
+      if run_modprobe iwlwifi; then
+        if [[ -n $opmode && $opmode != "iwlwifi" ]]; then
+          run_modprobe "$opmode" || true
+        fi
+        rm -f "$state_file"
+      else
+        log "Failed to reload iwlwifi on resume"
       fi
-    elif ! lsmod | grep -q "^iwlwifi" && lspci -d 8086: 2>/dev/null | grep -qi "Network controller\|Wireless"; then
-      logger -t iwlwifi-reset "Post-resume: reloading iwlwifi (Intel hardware detected)"
-      modprobe iwlwifi 2>&1 | logger -t iwlwifi-reset
+    elif ! lsmod | grep -q "^iwlwifi" && is_affected_device; then
+      log "Post-resume: reloading iwlwifi (Intel BE200/BE211 detected)"
+      run_modprobe iwlwifi || true
     fi
     ;;
 esac
