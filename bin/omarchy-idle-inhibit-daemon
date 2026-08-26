@@ -45,6 +45,9 @@ warnings.filterwarnings("ignore", message=".*register_object is deprecated.*")
 gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402
 
+gi.require_version("GLibUnix", "2.0")
+from gi.repository import GLibUnix  # noqa: E402
+
 SS_NAME = "org.freedesktop.ScreenSaver"
 SS_IFACE = "org.freedesktop.ScreenSaver"
 SS_PATHS = ["/org/freedesktop/ScreenSaver", "/ScreenSaver"]  # Chromium / VLC+Firefox
@@ -329,12 +332,30 @@ class Daemon:
     def stop_serving(self):
         """One last write when ending orderly: an inhibit claimed by a client
         of ours does not survive us losing the bus names, so the file must not
-        go on claiming one either. Writing the empty snapshot rather than
-        deleting keeps the consumer's contract total: the file always parses."""
+        go on claiming one either. That is why this writes a forced-empty
+        snapshot instead of republishing the live table — the holder client is
+        usually still connected while we are being stopped, so the honest
+        final claim is nothing."""
         if not self.owned_names:
             return
         try:
-            self.publish()
+            os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
+            tmp = STATE_FILE + ".tmp"
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "pid": os.getpid(),
+                        "inhibited": False,
+                        "count": 0,
+                        "holders": [],
+                    },
+                    handle,
+                    separators=(",", ":"),
+                )
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp, STATE_FILE)
         except OSError as error:
             print(f"omarchy-idle-inhibit: final publish failed ({error})", file=sys.stderr)
 
@@ -366,13 +387,20 @@ def main():
 
     # An orderly exit (systemd stop, session end) leaves the file honest: the
     # last thing it claims is nothing inhibited, rather than whatever clients
-    # held when the stop arrived.
-    def on_term(signum, frame):
+    # held when the stop arrived. Registered through GLibUnix, not Python's
+    # signal module: a Python handler never runs while the C mainloop sits
+    # inside loop.run(), so the process would die by default disposition and
+    # skip the final publish entirely. (GLib.unix_signal_add's shim looks
+    # registered but is equally dead here — verified.)
+    def on_term():
         daemon.stop_serving()
         GLib.idle_add(lambda: (loop.quit(), False)[1])
+        return GLib.SOURCE_REMOVE
+        GLib.idle_add(lambda: (loop.quit(), False)[1])
+        return GLib.SOURCE_REMOVE
 
-    signal.signal(signal.SIGTERM, on_term)
-    signal.signal(signal.SIGINT, on_term)
+    GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, on_term)
+    GLibUnix.signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, on_term)
 
     try:
         loop.run()

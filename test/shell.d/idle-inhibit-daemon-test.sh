@@ -359,6 +359,42 @@ pass "missing and torn state files read as nothing inhibited"
 start_daemon
 wait_for "a fresh daemon republishes over the stale file" not_inhibited
 
+# --- An orderly stop leaves the file honest -----------------------------------
+#
+# systemd stops are clean: before exiting, the daemon republishes an empty
+# snapshot rather than leaving whatever clients held at the moment of the
+# stop on disk.
+
+held=$(python3 - <<'PY'
+import time
+import gi
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib
+
+bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+res = bus.call_sync(
+    "org.freedesktop.ScreenSaver", "/ScreenSaver", "org.freedesktop.ScreenSaver",
+    "Inhibit", GLib.Variant("(ss)", ("term.client", "hold across sigterm")),
+    GLib.VariantType("(u)"), Gio.DBusCallFlags.NONE, -1, None)
+print(res.unpack()[0], flush=True)
+time.sleep(600)
+PY
+) &
+holder_term_pid=$!
+wait_for "the term-test holder is visible" inhibited
+
+kill -TERM "$daemon_pid"
+deadline=$((SECONDS + 10))
+while ((SECONDS < deadline)) && kill -0 "$daemon_pid" 2>/dev/null; do sleep 0.1; done
+if kill -0 "$daemon_pid" 2>/dev/null; then fail "the daemon exits cleanly on SIGTERM"; fi
+
+jq -e '.inhibited == false and .count == 0' "$state_file" >/dev/null ||
+  fail "SIGTERM leaves a clean nothing-inhibited snapshot" "$(cat "$state_file")"
+pass "SIGTERM leaves a clean nothing-inhibited snapshot"
+kill "$holder_term_pid" 2>/dev/null || true
+wait "$holder_term_pid" 2>/dev/null || true
+daemon_pid=
+
 echo "all inner assertions passed"
 
 INNER
