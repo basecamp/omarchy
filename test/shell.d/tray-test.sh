@@ -4,6 +4,22 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
+run_node_test "tray application text boundaries" <<'JS'
+const fs = require('fs')
+const trayQml = fs.readFileSync(path.join(root, 'shell/plugins/bar/widgets/Tray.qml'), 'utf8')
+const barQml = fs.readFileSync(path.join(root, 'shell/plugins/bar/Bar.qml'), 'utf8')
+
+function bindingUsesPlainText(source, binding) {
+  const start = source.indexOf(binding)
+  return start !== -1 && source.slice(start, start + 200).includes('textFormat: Text.PlainText')
+}
+
+assert(bindingUsesPlainText(trayQml, 'text: rowRoot.displayName'), 'tray manage-list application title is plain text')
+assert(bindingUsesPlainText(trayQml, 'text: root.currentTitle'), 'tray submenu application title is plain text')
+assert(bindingUsesPlainText(trayQml, 'text: menuRow.rowText'), 'tray application menu row is plain text')
+assert(bindingUsesPlainText(barQml, 'id: tooltipLabel'), 'bar tooltip application metadata is plain text')
+JS
+
 run_node_test "tray model helpers" <<'JS'
 const tray = requireFromRoot('shell/plugins/bar/widgets/TrayModel.js')
 

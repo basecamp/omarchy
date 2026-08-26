@@ -1092,6 +1092,7 @@ Item {
           id: tooltipLabel
           anchors.centerIn: parent
           text: root.tooltipText
+          textFormat: Text.PlainText
           color: Color.tooltip.text
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
