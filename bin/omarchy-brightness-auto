@@ -197,7 +197,7 @@ select_monitor() {
       else
         [$active[] | select(.name | test("^(eDP|LVDS|DSI)-"))]
       end as $preferred
-    | if ($preferred | length) == 1 then
+    | if ($preferred | length) == 1 or ($kind == "apple" and ($preferred | length) > 0) then
         $preferred[0].name
       elif ($preferred | length) == 0 and ($active | length) == 1 then
         $active[0].name

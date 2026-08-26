@@ -135,7 +135,7 @@ SH
 chmod +x "$mock_bin"/*
 
 run_auto() {
-  OMARCHY_AUTO_BRIGHTNESS_IIO_ROOT="$test_tmp/iio-generic" \
+  OMARCHY_AUTO_BRIGHTNESS_IIO_ROOT="${AUTO_IIO_ROOT:-$test_tmp/iio-generic}" \
     SYSTEMCTL_STATE="$systemctl_state" SYSTEMCTL_CALLS="$systemctl_calls" \
     MONITORS_FILE="$monitors_file" BRIGHTNESS_WRITES="$test_tmp/brightness-writes" \
     PATH="$mock_bin:$PATH" "$script" "$@"
@@ -150,6 +150,15 @@ jq -e '.supported == true and .enabled == false and .active == false' <<<"$statu
 status=$(BRIGHTNESS_AVAILABLE=0 run_auto status)
 jq -e '.supported == false' <<<"$status" >/dev/null ||
   fail "automatic brightness hides when its mapped display is not controllable" "$status"
+
+printf '%s\n' '[
+  {"name":"DP-1","make":"Apple Computer Inc","model":"StudioDisplay","disabled":false},
+  {"name":"DP-3","make":"Apple Computer Inc","model":"StudioDisplay","disabled":false}
+]' >"$monitors_file"
+status=$(AUTO_IIO_ROOT="$test_tmp/iio" run_auto status)
+jq -e '.supported == true' <<<"$status" >/dev/null ||
+  fail "automatic brightness supports a group of Apple displays" "$status"
+
 run_auto on
 run_auto toggle
 grep -Fx -- '--user enable --now omarchy-brightness-auto.service' "$systemctl_calls" >/dev/null ||

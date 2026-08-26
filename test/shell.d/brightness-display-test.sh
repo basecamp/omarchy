@@ -14,7 +14,7 @@ mkdir -p "$mock_bin" "$runtime_dir"
 
 cat >"$mock_bin/omarchy-hyprland-monitor-focused-apple" <<'SH'
 #!/bin/bash
-exit 1
+[[ ${APPLE_MONITOR:-0} == "1" ]]
 SH
 
 cat >"$mock_bin/omarchy-hyprland-monitor-focused" <<'SH'
@@ -32,6 +32,36 @@ cat >"$mock_bin/brightnessctl" <<'SH'
 printf 'brightnessctl %s\n' "$*" >>"$CALL_LOG"
 if [[ $* == *" -m"* ]]; then
   printf 'mock_backlight,backlight,40,40%%\n'
+fi
+SH
+
+cat >"$mock_bin/sudo" <<'SH'
+#!/bin/bash
+exec "$@"
+SH
+
+cat >"$mock_bin/asdcontrol" <<'SH'
+#!/bin/bash
+printf 'asdcontrol %s\n' "$*" >>"$CALL_LOG"
+
+if [[ ${1:-} == "--detect" ]]; then
+  shift
+  for device in "$@"; do
+    case "$device" in
+    *hiddev5 | *hiddev10) printf '%s: USB Monitor - SUPPORTED.\n' "$device" ;;
+    *hiddev7) printf '%s: USB Monitor - UNSUPPORTED.\n' "$device" ;;
+    esac
+  done
+elif (( $# == 1 )); then
+  case "$1" in
+  *hiddev5) printf 'BRIGHTNESS=24000\n' ;;
+  *hiddev10) printf 'BRIGHTNESS=36000\n' ;;
+  *) exit 1 ;;
+  esac
+elif (( $# == 3 )) && [[ $2 == "--" ]]; then
+  [[ ${ASD_WRITE_FAIL_DEVICE:-} != "$1" ]]
+else
+  exit 2
 fi
 SH
 
@@ -54,9 +84,33 @@ SH
 chmod +x "$mock_bin"/*
 
 run_brightness() {
-  CALL_LOG="$call_log" XDG_RUNTIME_DIR="$runtime_dir" PATH="$mock_bin:$ROOT/bin:$PATH" \
+  CALL_LOG="$call_log" XDG_RUNTIME_DIR="$runtime_dir" \
+    OMARCHY_BRIGHTNESS_APPLE_DEV_ROOT="$test_tmp/dev" PATH="$mock_bin:$ROOT/bin:$PATH" \
     "$ROOT/bin/omarchy-brightness-display" "$@"
 }
+
+mkdir -p "$test_tmp/dev/usb"
+touch "$test_tmp/dev/usb/hiddev5" "$test_tmp/dev/usb/hiddev7" "$test_tmp/dev/usb/hiddev10"
+
+if ! brightness=$(APPLE_MONITOR=1 run_brightness --monitor DP-1); then
+  fail "Apple displays report their group brightness"
+fi
+[[ $brightness == "50" ]] || fail "Apple displays report their group brightness" "actual: $brightness"
+APPLE_MONITOR=1 run_brightness --no-osd --monitor DP-1 +5%
+grep -F "asdcontrol $test_tmp/dev/usb/hiddev5 -- 55%" "$call_log" >/dev/null ||
+  fail "Apple brightness is written to the first display"
+grep -F "asdcontrol $test_tmp/dev/usb/hiddev10 -- 55%" "$call_log" >/dev/null ||
+  fail "Apple brightness is written to the second display"
+if grep -F "asdcontrol $test_tmp/dev/usb/hiddev7 -- 55%" "$call_log" >/dev/null; then
+  fail "unsupported HID devices are excluded from the Apple brightness group"
+fi
+pass "Apple displays share one brightness"
+
+if APPLE_MONITOR=1 ASD_WRITE_FAIL_DEVICE="$test_tmp/dev/usb/hiddev10" \
+  run_brightness --no-osd --monitor DP-1 55%; then
+  fail "Apple group brightness reports a partial write failure"
+fi
+pass "Apple group brightness reports a partial write failure"
 
 brightness=$(run_brightness --monitor DP-1)
 [[ $brightness == "50" ]] || fail "external brightness is converted to a percentage" "actual: $brightness"
