@@ -125,11 +125,41 @@ unverified_repairs_exist() {
 # A browser only rewrites its own Preferences on exit, so a repair can only be
 # reverted by a browser attached to a profile this migration has to touch.
 # Whether a profile is open is mechanical: a running Chromium-family browser
-# holds a SingletonLock (and socket) inside its user-data-dir.
+# holds SingletonLock as a symlink to <hostname>-<pid> of the browser process
+# and SingletonSocket pointing at its live socket under /tmp. A crash or
+# reboot leaves both behind as dangling symlinks — the pid belongs to the dead
+# session, the socket is gone with /tmp — and Chromium reclaims such a lock on
+# its next start, so it must not hold the migration either (#6866).
 profile_open() {
-  # -L catches a SingletonLock left as a dangling symlink; -e covers a plain
-  # file, and -S the socket — any of them means a browser is attached.
-  [[ -L $1/SingletonLock || -e $1/SingletonLock || -S $1/SingletonSocket ]]
+  local lock=$1/SingletonLock socket=$1/SingletonSocket target host pid
+
+  if [[ -L $lock ]]; then
+    target=$(readlink -- "$lock")
+    pid=${target##*-}
+    host=${target%-*}
+    if [[ $pid =~ ^[0-9]+$ ]]; then
+      # A lock naming another host is a leftover from before a hostname change
+      # or a copied profile; the browser it names cannot be running here.
+      [[ $host == "$(uname -n)" ]] || return 1
+      # The pid the dead session named is gone, and a pid since recycled by an
+      # unrelated process is caught by the socket check, which dies with the
+      # browser.
+      kill -0 "$pid" 2>/dev/null || return 1
+      [[ ! -L $socket || -e $socket ]] || return 1
+      return 0
+    fi
+    # A lock in an unrecognized shape is not Chromium's symlink; assume a
+    # browser is attached rather than guess it away.
+    return 0
+  fi
+
+  # A plain lock file, or a real socket file sitting in the profile, is not
+  # Chromium's shape either — assume attached. A socket symlink alone, its
+  # lock already gone, is a torn teardown: an attached browser always holds
+  # the lock too, so nothing is waiting on this profile.
+  [[ -e $lock ]] && return 0
+  [[ -S $socket ]] && return 0
+  return 1
 }
 
 # Gate on a pending — or to-be-verified — profile actually being open, not on

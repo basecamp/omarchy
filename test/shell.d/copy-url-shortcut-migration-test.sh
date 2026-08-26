@@ -9,7 +9,13 @@ require_command python3
 
 migration="$ROOT/migrations/1786643346.sh"
 test_dir=$(mktemp -d)
-trap 'rm -rf "$test_dir"' EXIT
+
+# A live browser process to name in the locks; its pid stays allocated for the
+# whole run, and a socket target that stays resolvable.
+sleep 600 & live_browser_pid=$!
+live_socket_file="$test_dir/live-singleton-socket"
+: >"$live_socket_file"
+trap 'rm -rf "$test_dir"; kill "$live_browser_pid" 2>/dev/null || true' EXIT
 
 home="$test_dir/home"
 profile_root="$home/.config/chromium"
@@ -36,14 +42,19 @@ run_migration() {
 }
 
 # A running Chromium-family browser marks its profile root with a SingletonLock
-# symlink to <hostname>-<pid>, a target that never exists on disk. That lock —
-# not the mere presence of a browser process — is what the migration waits on.
+# symlink to <hostname>-<pid> of a live browser process, and SingletonSocket
+# pointing at a socket that still exists. That pair — not the mere presence of
+# a browser process — is what the migration waits on.
+create_browser_lock() {
+  ln -sfn "$(uname -n)-$live_browser_pid" "$1/SingletonLock"
+  ln -sfn "$live_socket_file" "$1/SingletonSocket"
+}
 open_browser() {
   mkdir -p "$profile_root"
-  ln -sfn "test-host-1234" "$profile_root/SingletonLock"
+  create_browser_lock "$profile_root"
 }
 close_browser() {
-  rm -f "$profile_root/SingletonLock"
+  rm -f "$profile_root/SingletonLock" "$profile_root/SingletonSocket"
 }
 
 # The affected profile being open prompts for the windows to be closed;
@@ -61,9 +72,59 @@ run_migration && fail "migration defers while the affected profile is open"
   fail "migration leaves preferences alone while the affected profile is open"
 pass "migration defers the repair while the affected profile is open"
 
+# A crash or reboot leaves both Singleton symlinks behind as dangling links:
+# the pid named in the lock belongs to the dead session, and the socket under
+# /tmp is gone with it. Chromium itself reclaims such a lock on its next
+# start, so the migration must not wait on it — otherwise the close-the-browser
+# prompt loops forever no matter how often it is answered (#6866). gum still
+# declines here: a migration that wrongly prompts fails rather than hangs.
+sleep 600 & dead_session_pid=$!
+kill "$dead_session_pid" 2>/dev/null || true
+wait "$dead_session_pid" 2>/dev/null || true
+
+write_stale_preferences
+ln -sfn "$(uname -n)-$dead_session_pid" "$profile_root/SingletonLock"
+ln -sfn "$test_dir/socket-gone-with-tmp" "$profile_root/SingletonSocket"
+run_migration || fail "migration repairs past a stale lock left by a dead session"
+jq -e --arg pinned "$pinned_id" '.extensions.commands["linux:Alt+Shift+L"].extension == $pinned' "$preferences" >/dev/null ||
+  fail "migration repairs the shortcut under a stale singleton lock"
+pass "migration ignores a stale lock whose pid died with the session"
+rm -f "$preferences.omarchy-copy-url-repair.bak" "$profile_root/SingletonLock" "$profile_root/SingletonSocket"
+
+# A pid from a dead session can be reused by an unrelated process, so a live
+# pid alone must not read as an attached browser: the socket dies with the
+# browser, and a dangling socket means nothing is holding the lock.
+write_stale_preferences
+ln -sfn "$(uname -n)-$live_browser_pid" "$profile_root/SingletonLock"
+ln -sfn "$test_dir/socket-gone-with-tmp" "$profile_root/SingletonSocket"
+run_migration || fail "migration repairs past a recycled pid with a dangling socket"
+pass "migration ignores a lock held by a recycled pid and a dead socket"
+rm -f "$preferences.omarchy-copy-url-repair.bak" "$profile_root/SingletonLock" "$profile_root/SingletonSocket"
+
+# A lock naming another host is a leftover from before a hostname change or a
+# copied profile; the browser it names cannot be running on this machine.
+write_stale_preferences
+ln -sfn "some-other-host-$live_browser_pid" "$profile_root/SingletonLock"
+ln -sfn "$live_socket_file" "$profile_root/SingletonSocket"
+run_migration || fail "migration repairs past a lock naming another host"
+pass "migration ignores a lock naming another host"
+rm -f "$preferences.omarchy-copy-url-repair.bak" "$profile_root/SingletonLock" "$profile_root/SingletonSocket"
+
+# A browser that crashed without a reboot leaves its socket file behind under
+# /tmp until the next reboot, so a resolvable socket alone cannot mean
+# attached either: the pid it served is gone, and no browser holds the lock.
+write_stale_preferences
+ln -sfn "$(uname -n)-$dead_session_pid" "$profile_root/SingletonLock"
+ln -sfn "$live_socket_file" "$profile_root/SingletonSocket"
+run_migration || fail "migration repairs past a crashed browser's lingering socket"
+pass "migration ignores a crashed browser's lingering socket"
+rm -f "$preferences.omarchy-copy-url-repair.bak" "$profile_root/SingletonLock" "$profile_root/SingletonSocket"
+
 # gum paints its prompt on stderr, so that stream has to stay attached:
 # suppressing it leaves gum reading keys behind an unpainted screen, which
 # reads as a hung update.
+write_stale_preferences
+open_browser
 cat >"$stub_bin/gum" <<'STUB'
 #!/bin/bash
 echo "gum-prompt-painted" >&2
@@ -80,13 +141,13 @@ pass "migration keeps the browser prompt visible"
 # prompt, which the still-declining gum stub would otherwise fail.
 close_browser
 mkdir -p "$home/.config/google-chrome"
-ln -sfn "test-host-1234" "$home/.config/google-chrome/SingletonLock"
+create_browser_lock "$home/.config/google-chrome"
 write_stale_preferences
 run_migration || fail "migration repairs while a different profile root is open"
 jq -e --arg pinned "$pinned_id" '.extensions.commands["linux:Alt+Shift+L"].extension == $pinned' "$preferences" >/dev/null ||
   fail "migration repairs the shortcut while a different profile root is open"
 pass "migration ignores a browser on a different profile root"
-rm -f "$home/.config/google-chrome/SingletonLock" "$preferences.omarchy-copy-url-repair.bak"
+rm -f "$home/.config/google-chrome/SingletonLock" "$home/.config/google-chrome/SingletonSocket" "$preferences.omarchy-copy-url-repair.bak"
 
 # Closing the affected profile and confirming the prompt lets the repair
 # proceed.
@@ -167,11 +228,15 @@ cat >"$stub_bin/python3" <<'STUB'
 # the check calls report a surviving ghost through their exit status.
 "${REAL_PYTHON}" "$@"
 status=$?
-[[ ${5:-} == "repair" ]] && ln -sfn "test-host-1234" "$HOME/.config/chromium/SingletonLock"
+[[ ${5:-} == "repair" ]] && {
+  ln -sfn "$LIVE_LOCK_TARGET" "$HOME/.config/chromium/SingletonLock"
+  ln -sfn "$LIVE_SOCKET_TARGET" "$HOME/.config/chromium/SingletonSocket"
+}
 exit $status
 STUB
 chmod +x "$stub_bin/python3"
-if HOME="$home" PATH="$stub_bin:$PATH" bash -euo pipefail "$migration" >/dev/null 2>&1; then
+if HOME="$home" PATH="$stub_bin:$PATH" LIVE_LOCK_TARGET="$(uname -n)-$live_browser_pid" \
+  LIVE_SOCKET_TARGET="$live_socket_file" bash -euo pipefail "$migration" >/dev/null 2>&1; then
   fail "migration stays pending when a browser starts mid-repair"
 fi
 jq -e --arg pinned "$pinned_id" '.extensions.commands["linux:Alt+Shift+L"].extension == $pinned' "$preferences" >/dev/null ||
