@@ -6,6 +6,8 @@ Shell plugins run unsandboxed inside the long-lived `omarchy-shell` process, wit
 
 `omarchy plugin audit` fills that gap. It statically reads a plugin's own QML, JS, and shell files and reports the capabilities it can reach — every binary it spawns, network host it contacts, and file it reads or writes — then compares that against the plugin's declared `capabilities`. Anything observed but not declared is surfaced; the headline case is a binary the plugin spawns that it never declared.
 
+The scan skips unit tests and dev specs (`test/`, `tests/`, `__tests__/`, `spec/`, `*.test.*`, `*.spec.*`), since the shell never loads them — they are dev artifacts, not plugin behavior. This is safe: a payload hidden in a "test" file only runs if loadable code references it, and that reference is still scanned.
+
 ```bash
 omarchy plugin audit ./my-plugin           # audit a folder
 omarchy plugin audit acme.weather          # audit an installed plugin by id

@@ -357,6 +357,23 @@ jq -e '([.observed.network[].host] | index("cli.example.com") != null) and ([.ob
   || fail "a URL followed by a literal escape yields a clean host" "$report"
 pass "a URL with a trailing literal escape extracts a clean host"
 
+# Test and spec files are dev artifacts the shell never loads, so their contents
+# must not count toward the verdict. A themebook-style test/*.test.js that evals
+# the plugin source (or a top-level *.spec.js) must not raise dynamic-code or push
+# the verdict up -- otherwise every plugin that ships tests reads as critical.
+dir=$(write_plugin has-tests '{"commands":["notify-send"]}' \
+  'import Quickshell.Io
+QtObject { property Process p: Process { command: ["notify-send", "hi"] } }')
+mkdir -p "$dir/test"
+printf 'const src = "x";\neval(src + "\\nmodule.exports = {}")\n' >"$dir/test/model.test.js"
+printf 'eval("also ignored")\n' >"$dir/helpers.spec.js"
+report=$(audit "$dir" --json)
+jq -e '[.risks[].kind] | index("dynamic-code") == null' <<<"$report" >/dev/null \
+  || fail "an eval inside a test/spec file is excluded from the scan" "$report"
+[[ $(verdict "$dir") == low ]] \
+  || fail "test and spec files do not affect the verdict" "$report"
+pass "test and spec files are excluded from every scan"
+
 # ---------------------------------------------------------------- resolution errors
 
 output=$(audit "$TMPDIR/does-not-exist" 2>&1) && fail "audit fails on a missing target" "$output"

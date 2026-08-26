@@ -183,19 +183,29 @@ QML_GLOBS=(-g '*.qml' -g '*.js' -g '*.mjs')
 # not network access), so *.md / *.json / images are deliberately excluded.
 CODE_GLOBS=(-g '*.qml' -g '*.js' -g '*.mjs' -g '*.py' -g '*.rb' -g '*.pl' -g '*.php' -g '*.lua' -g '*.sh' -g '*.bash')
 
+# Unit tests and dev specs are never loaded by the shell -- only declared entry
+# points and the code they invoke are -- so they are dev artifacts, not plugin
+# behavior, and are excluded from every content scan. This is safe: a payload
+# hidden in a "test" file only runs if runtime code references it, and that
+# reference lives in loadable code, which is still scanned. EXCLUDE_GLOBS is for
+# rg; FIND_PRUNE / FIND_NOTEST are the find equivalents.
+EXCLUDE_GLOBS=(-g '!**/test/**' -g '!**/tests/**' -g '!**/__tests__/**' -g '!**/spec/**' -g '!*.test.*' -g '!*.spec.*')
+FIND_PRUNE=(\( -name .git -o -name test -o -name tests -o -name __tests__ -o -name spec \) -prune -o)
+FIND_NOTEST=(! -name '*.test.*' ! -name '*.spec.*')
+
 # Files the shell treats as shell scripts: *.sh/*.bash plus extensionless files
 # whose first line is a bash/sh shebang. Redirection and fs-mutation patterns are
 # only scanned in these, so a QML string literal is not misread as a redirect.
 shell_files() {
-  find "$plugin_dir" -name .git -prune -o -type f \( -name '*.sh' -o -name '*.bash' \) -print 2>/dev/null || true
-  find "$plugin_dir" -name .git -prune -o -type f ! -name '*.*' -print 2>/dev/null |
+  find "$plugin_dir" "${FIND_PRUNE[@]}" -type f \( -name '*.sh' -o -name '*.bash' \) "${FIND_NOTEST[@]}" -print 2>/dev/null || true
+  find "$plugin_dir" "${FIND_PRUNE[@]}" -type f ! -name '*.*' -print 2>/dev/null |
     while IFS= read -r f; do
       IFS= read -r first <"$f" 2>/dev/null || continue
       [[ $first == '#!'*sh* ]] && printf '%s\n' "$f"
     done || true
 }
 
-rg_qml() { rg --no-messages -oN -I -U "${QML_GLOBS[@]}" "$@" "$plugin_dir" 2>/dev/null || true; }
+rg_qml() { rg --no-messages -oN -I -U "${QML_GLOBS[@]}" "${EXCLUDE_GLOBS[@]}" "$@" "$plugin_dir" 2>/dev/null || true; }
 
 # Extract quoted string tokens (double or single) from stdin, unquoted, one per line.
 quoted_tokens() {
@@ -349,7 +359,7 @@ while IFS= read -r qf; do
     grep -oE 'path\s*:\s*("[^"]*"|'\''[^'\'']*'\'')' "$qf" 2>/dev/null |
       sed -E 's/^path[[:space:]]*:[[:space:]]*//' | quoted_tokens >>"$files_write_out" || true
   fi
-done < <(find "$plugin_dir" -name .git -prune -o -type f \( -name '*.qml' -o -name '*.js' \) -print 2>/dev/null)
+done < <(find "$plugin_dir" "${FIND_PRUNE[@]}" -type f \( -name '*.qml' -o -name '*.js' \) "${FIND_NOTEST[@]}" -print 2>/dev/null)
 
 # --- network: URLs, sockets, and network binaries -------------------------------
 # Scan all code, not just QML/JS, so a URL in a bundled helper script (a Python or
@@ -357,7 +367,7 @@ done < <(find "$plugin_dir" -name .git -prune -o -type f \( -name '*.qml' -o -na
 # Match only the host charset after the scheme (letters, digits, dot, hyphen), so a
 # literal escape or path glued onto the URL inside a string -- e.g.
 # "https://cli.github.com\n\nMake ..." -- does not become part of the host.
-rg --no-messages -oN -I "${CODE_GLOBS[@]}" -e 'https?://[A-Za-z0-9.-]+' "$plugin_dir" 2>/dev/null |
+rg --no-messages -oN -I "${CODE_GLOBS[@]}" "${EXCLUDE_GLOBS[@]}" -e 'https?://[A-Za-z0-9.-]+' "$plugin_dir" 2>/dev/null |
   sed -E 's|^https?://||; s|\.$||' | grep -E '.' >>"$network_out" || true
 
 if rg_qml -e 'XMLHttpRequest' -e 'WebSocket' -e 'Socket\s*\{' -e 'connectToHost' | grep -q .; then
@@ -370,11 +380,11 @@ rg_qml -e 'Qt\.createQmlObject' -e 'Qt\.createComponent\s*\(\s*[A-Za-z_$]' -e '\
   grep -q . && add_risk high dynamic-code "constructs and runs code at runtime (eval / createQmlObject / dynamic createComponent)"
 
 # curl|bash and remote-build patterns across every file.
-if rg --no-messages -I -U -e '(curl|wget)[^\n|]*\|\s*(bash|sh|zsh)' "$plugin_dir" 2>/dev/null | grep -q .; then
+if rg --no-messages -I -U "${EXCLUDE_GLOBS[@]}" -e '(curl|wget)[^\n|]*\|\s*(bash|sh|zsh)' "$plugin_dir" 2>/dev/null | grep -q .; then
   add_risk high pipe-to-shell "pipes a download straight into a shell"
 fi
 # base64 decoding is a common way to hide a payload.
-rg --no-messages -I -e 'base64\s+-d' -e 'base64\s+--decode' -e '\batob\s*\(' "$plugin_dir" 2>/dev/null |
+rg --no-messages -I "${EXCLUDE_GLOBS[@]}" -e 'base64\s+-d' -e 'base64\s+--decode' -e '\batob\s*\(' "$plugin_dir" 2>/dev/null |
   grep -q . && add_risk medium base64-decode "decodes base64 at runtime (can conceal a payload)"
 # Spawning a second Quickshell process is called out in the plugin docs.
 grep -qxE 'quickshell|qs' "$commands_out" 2>/dev/null &&
@@ -398,9 +408,9 @@ while IFS= read -r hs; do
   [[ -n $hs ]] || continue
   add_risk medium partial-coverage "ships a helper script only shallowly scanned; review it by hand: ${hs#"$plugin_dir"/}"
 done < <(
-  find "$plugin_dir" -name .git -prune -o -type f \
-    \( -name '*.py' -o -name '*.rb' -o -name '*.pl' -o -name '*.php' -o -name '*.lua' \) -print 2>/dev/null
-  find "$plugin_dir" -name .git -prune -o -type f ! -name '*.*' -print 2>/dev/null |
+  find "$plugin_dir" "${FIND_PRUNE[@]}" -type f \
+    \( -name '*.py' -o -name '*.rb' -o -name '*.pl' -o -name '*.php' -o -name '*.lua' \) "${FIND_NOTEST[@]}" -print 2>/dev/null
+  find "$plugin_dir" "${FIND_PRUNE[@]}" -type f ! -name '*.*' -print 2>/dev/null |
     while IFS= read -r f; do
       IFS= read -r first <"$f" 2>/dev/null || continue
       [[ $first == '#!'* && $first != *sh* ]] && printf '%s\n' "$f"
