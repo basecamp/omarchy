@@ -1,10 +1,14 @@
 #!/bin/bash
 
+set -euo pipefail
+
 source "$(dirname "${BASH_SOURCE[0]}")/base-test.sh"
 
 require_command lua
 
-OMARCHY_PATH="$ROOT" lua <<'LUA'
+# "lua -" rather than "lua": reading the chunk off bare stdin, Lua 5.5 reports the
+# error and still exits 0, so every assertion below would be dead.
+OMARCHY_PATH="$ROOT" lua - <<'LUA'
 package.path = os.getenv("OMARCHY_PATH") .. "/?.lua;" .. package.path
 
 local rules = {}
