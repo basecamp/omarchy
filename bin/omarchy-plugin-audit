@@ -264,23 +264,32 @@ while IFS= read -r block; do
   argv0=$(basename_of "${toks[0]}")
   printf '%s\n' "$argv0" >>"$commands_out"
 
-  # Unwrap env/sudo/pkexec/timeout... to the command they actually run.
+  # Unwrap env/sudo/pkexec/timeout... to the command they actually run. The || true
+  # matters: first_real_arg exits non-zero when a wrapper carries only flags, and
+  # under set -e/pipefail a failed command substitution would abort the whole audit.
   if [[ " $WRAPPERS " == *" $argv0 "* ]]; then
-    inner=$(printf '%s\n' "${toks[@]:1}" | first_real_arg)
+    inner=$(printf '%s\n' "${toks[@]:1}" | first_real_arg || true)
     [[ -n $inner ]] && basename_of "$inner" >>"$commands_out"
     [[ $argv0 == sudo || $argv0 == pkexec || $argv0 == doas ]] &&
       add_risk high privilege-escalation "spawns via $argv0: ${toks[*]}"
   fi
 
   # Interpreters running an inline script hide their real work in a string arg.
+  # The || true is load-bearing for the same reason: when every argument is a flag
+  # (or the script is a non-literal like ["bash","-c",someVar]), grep -v matches
+  # nothing and exits 1, which would otherwise abort the audit with no output.
   if [[ " $INTERPRETERS " == *" $argv0 "* ]] && printf '%s\n' "${toks[@]}" | grep -qE '^-[a-z]*c$'; then
-    script=$(printf '%s\n' "${toks[@]:1}" | grep -vE '^-' | head -n1)
+    script=$(printf '%s\n' "${toks[@]:1}" | grep -vE '^-' | head -n1 || true)
     if [[ -n $script ]]; then
       add_risk medium inline-shell "$argv0 -c runs an inline script"
       printf '%s' "$script" | binaries_from_shell >>"$commands_out"
       printf '%s' "$script" | writes_from_shell >>"$files_write_out"
       printf '%s' "$script" | grep -qE '\|\s*(bash|sh|zsh)\b' &&
         add_risk high pipe-to-shell "downloads or pipes into a shell interpreter"
+    else
+      # -c present but no literal script: the shell runs a string built at runtime,
+      # whose contents (commands, redirects, downloads) the scan cannot see.
+      add_risk medium dynamic-command "$argv0 -c runs a script assembled at runtime; its contents are not statically visible"
     fi
   fi
 # Both the QML binding form (command: [...]) and the JS assignment form
@@ -345,8 +354,11 @@ done < <(find "$plugin_dir" -name .git -prune -o -type f \( -name '*.qml' -o -na
 # --- network: URLs, sockets, and network binaries -------------------------------
 # Scan all code, not just QML/JS, so a URL in a bundled helper script (a Python or
 # shell companion) is caught -- but not docs, where a README link is not a call.
-rg --no-messages -oN -I "${CODE_GLOBS[@]}" -e 'https?://[^"'"'"' )]+' "$plugin_dir" 2>/dev/null |
-  sed -E 's|^https?://||; s|[/:].*$||' | grep -E '.' >>"$network_out" || true
+# Match only the host charset after the scheme (letters, digits, dot, hyphen), so a
+# literal escape or path glued onto the URL inside a string -- e.g.
+# "https://cli.github.com\n\nMake ..." -- does not become part of the host.
+rg --no-messages -oN -I "${CODE_GLOBS[@]}" -e 'https?://[A-Za-z0-9.-]+' "$plugin_dir" 2>/dev/null |
+  sed -E 's|^https?://||; s|\.$||' | grep -E '.' >>"$network_out" || true
 
 if rg_qml -e 'XMLHttpRequest' -e 'WebSocket' -e 'Socket\s*\{' -e 'connectToHost' | grep -q .; then
   echo "(dynamic)" >>"$network_out"

@@ -335,6 +335,28 @@ output=$(audit "$dir" --strict) \
   && fail "--strict fails on a high verdict even when every capability is declared" "$output"
 pass "--strict fails on any high or critical verdict, not just high-severity risks"
 
+# A `bash -c` whose script is a non-literal (a property/variable) must not crash
+# the audit -- grep -v over an all-flags argument list exits 1, which under
+# set -e/pipefail once aborted the whole run with blank output -- and the computed
+# script must be flagged rather than silently dropped.
+dir=$(write_plugin sh-computed 'null' \
+  'import Quickshell.Io
+QtObject { property string script: "x"; property Process p: Process { command: ["bash", "-c", root.script] } }')
+report=$(audit "$dir" --json) || fail "audit must not crash on a computed bash -c script"
+jq -e '([.observed.commands[].name] | index("bash") != null) and ([.risks[].kind] | index("dynamic-command") != null)' <<<"$report" >/dev/null \
+  || fail "a computed bash -c script is reported (bash captured, flagged dynamic)" "$report"
+pass "a computed bash -c script is reported, not crashed on"
+
+# A URL glued to a literal escape inside a string yields a clean host, not the
+# trailing text (https://host\n\nMore -> host), and never a host with a backslash.
+dir=$(write_plugin url-escape 'null' \
+  'import Quickshell.Io
+QtObject { property string help: "See https://cli.example.com\n\nMore info"; property Process p: Process { command: ["curl", help] } }')
+report=$(audit "$dir" --json)
+jq -e '([.observed.network[].host] | index("cli.example.com") != null) and ([.observed.network[].host] | all(test("\\\\") | not))' <<<"$report" >/dev/null \
+  || fail "a URL followed by a literal escape yields a clean host" "$report"
+pass "a URL with a trailing literal escape extracts a clean host"
+
 # ---------------------------------------------------------------- resolution errors
 
 output=$(audit "$TMPDIR/does-not-exist" 2>&1) && fail "audit fails on a missing target" "$output"
