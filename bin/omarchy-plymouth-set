@@ -5,6 +5,28 @@
 # omarchy:examples=omarchy plymouth set '#1d2021' '#ebdbb2' ~/.local/state/omarchy/current/theme/plymouth/logo.png
 # omarchy:requires-sudo=true
 
+# Paint the SDDM greeter from the template. The template's background
+# placeholder is #1a1b26 and its (currently unused) text placeholder is
+# #ffffff. Both go through unique tokens so a background of #ffffff cannot be
+# eaten by the text pass, and a text color of #1a1b26 cannot be eaten by the
+# background pass.
+sddm_qml_with_colors() {
+  local bg_hex=$1
+  local text_hex=$2
+  local template=$3
+
+  sed \
+    -e "s/#1a1b26/#__OMARCHY_SDDM_BG__/g" \
+    -e "s/#ffffff/#__OMARCHY_SDDM_TEXT__/g" \
+    -e "s/#__OMARCHY_SDDM_BG__/#$bg_hex/g" \
+    -e "s/#__OMARCHY_SDDM_TEXT__/#$text_hex/g" \
+    "$template"
+}
+
+if [[ ${BASH_SOURCE[0]} != $0 ]]; then
+  return 0
+fi
+
 # Configure the Plymouth boot theme with a custom background color, text color, and logo.
 # Stages the change in a temp dir, then commits the staged files to /usr/share and
 # rebuilds the initramfs. Also syncs the SDDM login screen (the post-logout
@@ -76,10 +98,7 @@ fi
 sddm_dir="/usr/share/sddm/themes/omarchy"
 sddm_template="$OMARCHY_PATH/default/sddm/omarchy/Main.qml"
 
-sed \
-  -e "s/#1a1b26/#$bg_hex/g" \
-  -e "s/#ffffff/#$text_hex/g" \
-  "$sddm_template" | sudo tee "$sddm_dir/Main.qml" >/dev/null
+sddm_qml_with_colors "$bg_hex" "$text_hex" "$sddm_template" | sudo tee "$sddm_dir/Main.qml" >/dev/null
 
 sudo cp "$staging_dir/logo.png" "$sddm_dir/logo.png"
 for asset in bullet.png entry.png lock.png; do
