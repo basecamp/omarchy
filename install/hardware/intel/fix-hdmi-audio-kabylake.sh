@@ -1,16 +1,15 @@
-#!/bin/bash
 # Fix missing HDMI/DP audio on systems with Intel Kabylake HDMI codec
 # (0x8086280b) where the pins report Devices: 0 and no PCM devices are created.
 # Common on some HP / Conexant CX20632 platforms (e.g. Samsung Odyssey G85SB).
 
 # Detect the Intel Kabylake HDMI codec
 if ! grep -q "0x8086280b" /proc/asound/card*/codec* 2>/dev/null; then
-  exit 0
+  return 0 2>/dev/null || exit 0
 fi
 
 # Already applied?
 if [[ -f /etc/modprobe.d/hda-jack-retask.conf ]]; then
-  exit 0
+  return 0 2>/dev/null || exit 0
 fi
 
 echo "Applying Intel Kabylake HDMI pin fix..."
