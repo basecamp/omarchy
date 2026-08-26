@@ -17,6 +17,10 @@ if gum confirm "Are you sure you want to remove all preinstalled web apps, TUI w
        ~/.local/bin/gh ~/.local/bin/opencode ~/.local/bin/playwright ~/.local/bin/playwright-cli ~/.local/bin/pi \
        ~/.local/bin/omp ~/.local/bin/ori ~/.local/bin/grok ~/.local/bin/crush ~/.local/bin/ghui ~/.local/bin/hunk
 
+  # Hermes Desktop owns this path once installed, and its own CLI is not a
+  # preinstall to sweep away.
+  omarchy-pkg-present hermes-desktop || rm -f ~/.local/bin/hermes
+
   omarchy-pkg-drop \
     aether \
     cliamp \
