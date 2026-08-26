@@ -28,9 +28,10 @@ Item {
   }
 
   function checkBattery() {
-    var state = BatteryModel.shouldWarnLowBattery(UPower.displayDevice, UPower.onBattery, UPowerDeviceState.Discharging, batteryThreshold, persisted.notifiedLowBattery)
+    var state = BatteryModel.lowBatteryWarningState(UPower.displayDevice, UPower.onBattery, UPowerDeviceState.Discharging, batteryThreshold, persisted.notifiedLowBattery)
     persisted.notifiedLowBattery = state.notifiedLowBattery
     if (state.notify) sendLowBatteryWarning(state.level)
+    else if (state.dismiss) clearLowBatteryWarning()
   }
 
   function sendLowBatteryWarning(level) {
@@ -40,6 +41,14 @@ Item {
       String(level)
     ]
     warningProcess.running = true
+  }
+
+  // Plugging in answers the warning, so the toast goes with it rather than
+  // waiting to be swatted away by hand.
+  function clearLowBatteryWarning() {
+    if (clearProcess.running) return
+    clearProcess.command = ["omarchy-battery-low", "--clear"]
+    clearProcess.running = true
   }
 
   function applyPowerProfile() {
@@ -54,6 +63,7 @@ Item {
   }
 
   Process { id: warningProcess }
+  Process { id: clearProcess }
 
   Process {
     id: powerProfileProcess
