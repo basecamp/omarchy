@@ -131,21 +131,30 @@ unverified_repairs_exist() {
 # session, the socket is gone with /tmp — and Chromium reclaims such a lock on
 # its next start, so it must not hold the migration either (#6866).
 profile_open() {
-  local lock=$1/SingletonLock socket=$1/SingletonSocket target host pid
+  local lock=$1/SingletonLock socket=$1/SingletonSocket target pid
 
   if [[ -L $lock ]]; then
     target=$(readlink -- "$lock")
     pid=${target##*-}
-    host=${target%-*}
     if [[ $pid =~ ^[0-9]+$ ]]; then
-      # A lock naming another host is a leftover from before a hostname change
-      # or a copied profile; the browser it names cannot be running here.
-      [[ $host == "$(uname -n)" ]] || return 1
-      # The pid the dead session named is gone, and a pid since recycled by an
-      # unrelated process is caught by the socket check, which dies with the
-      # browser.
+      # Hostname is not a liveness signal: Chromium keeps running after
+      # hostname change (ProcessSingletonPosixTest.NotifyOtherProcessHostChanged)
+      # and still holds this lock and socket. A copied profile is stale
+      # because its pid is dead or its socket does not accept connections.
       kill -0 "$pid" 2>/dev/null || return 1
       [[ ! -L $socket || -e $socket ]] || return 1
+      [[ -e $socket ]] || return 1
+      # -e only proves the pathname resolves. A crash leaves the unix
+      # socket inode behind with no listener, and a recycled pid then looks
+      # attached. Chromium itself connects; we do the same.
+      python3 -c 'import socket, sys
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.settimeout(0.2)
+try:
+    s.connect(sys.argv[1])
+except OSError:
+    raise SystemExit(1)
+' "$socket" 2>/dev/null || return 1
       return 0
     fi
     # A lock in an unrecognized shape is not Chromium's symlink; assume a
@@ -153,12 +162,12 @@ profile_open() {
     return 0
   fi
 
-  # A plain lock file, or a real socket file sitting in the profile, is not
-  # Chromium's shape either — assume attached. A socket symlink alone, its
-  # lock already gone, is a torn teardown: an attached browser always holds
-  # the lock too, so nothing is waiting on this profile.
+  # A plain lock file, or a real (non-symlink) socket file sitting in the
+  # profile, is not Chromium's shape either — assume attached. A socket
+  # symlink alone, its lock already gone, is a torn teardown: an attached
+  # browser always holds the lock too, so nothing is waiting on this profile.
   [[ -e $lock ]] && return 0
-  [[ -S $socket ]] && return 0
+  [[ ! -L $socket && -S $socket ]] && return 0
   return 1
 }
 

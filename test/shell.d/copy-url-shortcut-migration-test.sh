@@ -10,12 +10,29 @@ require_command python3
 migration="$ROOT/migrations/1786643346.sh"
 test_dir=$(mktemp -d)
 
-# A live browser process to name in the locks; its pid stays allocated for the
-# whole run, and a socket target that stays resolvable.
-sleep 600 & live_browser_pid=$!
+# A live browser process to name in the locks: Chromium's ProcessSingleton
+# is a pid plus a unix socket that still accepts connections. A regular file
+# at the socket path is not enough — a crash leaves that inode behind with
+# no listener.
 live_socket_file="$test_dir/live-singleton-socket"
-: >"$live_socket_file"
+python3 - "$live_socket_file" <<'PY' &
+import socket
+import sys
+import time
+
+path = sys.argv[1]
+sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+sock.bind(path)
+sock.listen(8)
+time.sleep(600)
+PY
+live_browser_pid=$!
 trap 'rm -rf "$test_dir"; kill "$live_browser_pid" 2>/dev/null || true' EXIT
+for _ in {1..50}; do
+  [[ -S $live_socket_file ]] && break
+  sleep 0.05
+done
+[[ -S $live_socket_file ]] || fail "the live singleton socket is listening"
 
 home="$test_dir/home"
 profile_root="$home/.config/chromium"
@@ -101,13 +118,23 @@ run_migration || fail "migration repairs past a recycled pid with a dangling soc
 pass "migration ignores a lock held by a recycled pid and a dead socket"
 rm -f "$preferences.omarchy-copy-url-repair.bak" "$profile_root/SingletonLock" "$profile_root/SingletonSocket"
 
-# A lock naming another host is a leftover from before a hostname change or a
-# copied profile; the browser it names cannot be running on this machine.
+# Chromium's ProcessSingleton still talks to a live browser after a hostname
+# change (NotifyOtherProcessHostChanged). A lock naming another host with a
+# live pid and a listening socket is attached, not stale — repairing would
+# edit a live profile the browser later overwrites.
 write_stale_preferences
 ln -sfn "some-other-host-$live_browser_pid" "$profile_root/SingletonLock"
 ln -sfn "$live_socket_file" "$profile_root/SingletonSocket"
-run_migration || fail "migration repairs past a lock naming another host"
-pass "migration ignores a lock naming another host"
+run_migration && fail "migration defers while a live browser's lock still names the old hostname"
+pass "migration treats a live browser after a hostname change as attached"
+rm -f "$profile_root/SingletonLock" "$profile_root/SingletonSocket"
+
+# A copied profile from another machine names a pid that is not running here.
+write_stale_preferences
+ln -sfn "some-other-host-$dead_session_pid" "$profile_root/SingletonLock"
+ln -sfn "$live_socket_file" "$profile_root/SingletonSocket"
+run_migration || fail "migration repairs past a copied profile's lock naming another host"
+pass "migration ignores a copied profile's lock naming another host"
 rm -f "$preferences.omarchy-copy-url-repair.bak" "$profile_root/SingletonLock" "$profile_root/SingletonSocket"
 
 # A browser that crashed without a reboot leaves its socket file behind under
@@ -119,6 +146,28 @@ ln -sfn "$live_socket_file" "$profile_root/SingletonSocket"
 run_migration || fail "migration repairs past a crashed browser's lingering socket"
 pass "migration ignores a crashed browser's lingering socket"
 rm -f "$preferences.omarchy-copy-url-repair.bak" "$profile_root/SingletonLock" "$profile_root/SingletonSocket"
+
+# A crash can leave a unix socket inode with no listener, and the dead pid
+# can be reused by an unrelated process. Filesystem existence is not
+# liveness — Chromium itself connects. Combined, that used to look attached.
+stale_crash_socket="$test_dir/stale-crash-socket"
+python3 -c 'import socket, sys; s = socket.socket(socket.AF_UNIX); s.bind(sys.argv[1])' "$stale_crash_socket"
+write_stale_preferences
+ln -sfn "$(uname -n)-$live_browser_pid" "$profile_root/SingletonLock"
+ln -sfn "$stale_crash_socket" "$profile_root/SingletonSocket"
+run_migration || fail "migration repairs past a recycled pid with a leftover socket inode"
+pass "migration ignores a recycled pid whose leftover socket is not listening"
+rm -f "$preferences.omarchy-copy-url-repair.bak" "$profile_root/SingletonLock" "$profile_root/SingletonSocket"
+
+# -S follows symlinks, so a lone SingletonSocket symlink whose target still
+# exists would otherwise count as attached after the lock is gone. An attached
+# browser always holds the lock too; this is torn teardown.
+write_stale_preferences
+rm -f "$profile_root/SingletonLock"
+ln -sfn "$live_socket_file" "$profile_root/SingletonSocket"
+run_migration || fail "migration repairs past a torn teardown with only a socket symlink"
+pass "migration ignores a leftover SingletonSocket symlink with no lock"
+rm -f "$preferences.omarchy-copy-url-repair.bak" "$profile_root/SingletonSocket"
 
 # gum paints its prompt on stderr, so that stream has to stay attached:
 # suppressing it leaves gum reading keys behind an unpainted screen, which
