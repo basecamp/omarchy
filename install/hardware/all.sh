@@ -4,6 +4,7 @@ run_logged "$OMARCHY_INSTALL/hardware/dell-xps-touchpad-haptics.sh"
 run_logged "$OMARCHY_INSTALL/hardware/surface.sh"
 
 run_logged "$OMARCHY_INSTALL/hardware/network.sh"
+run_logged "$OMARCHY_INSTALL/hardware/spice-vdagent.sh"
 run_logged "$OMARCHY_INSTALL/hardware/set-wireless-regdom.sh"
 run_logged "$OMARCHY_INSTALL/hardware/fix-fkeys.sh"
 run_logged "$OMARCHY_INSTALL/hardware/fix-synaptic-touchpad.sh"

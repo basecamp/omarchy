@@ -1,0 +1,217 @@
+#!/usr/bin/env python3
+# omarchy:summary=Bridge the SPICE guest clipboard to Wayland
+# omarchy:hidden=true
+# Copyright (c) 2026 Gabriel
+# SPDX-License-Identifier: MIT
+# Adapted from https://github.com/ggalancs/omarchy-arm-utm
+"""Bridge the SPICE guest clipboard to a native Wayland clipboard.
+
+The host SPICE client talks to the system spice-vdagentd daemon over the
+com.redhat.spice.0 virtio port. The daemon then multiplexes messages to the
+active graphical session over /run/spice-vdagentd/spice-vdagent-sock.
+
+The stock session agent only exposes an X11 clipboard. This replacement speaks
+the same udscs protocol to spice-vdagentd and uses wl-copy/wl-paste on the
+session side, so text can move in both directions under Hyprland.
+
+Keep spice-vdagentd's normal logind session integration enabled. Running the
+daemon with -X is unnecessary on current Omarchy sessions and can break its
+uinput tablet, making the guest cursor disappear.
+
+Only UTF-8 text is supported; images and files are intentionally ignored.
+"""
+
+import os
+import signal
+import shutil
+import socket
+import struct
+import subprocess
+import sys
+import threading
+import time
+
+VDAGENTD_SOCKET = os.environ.get(
+    "VDAGENTD_SOCK", "/run/spice-vdagentd/spice-vdagent-sock"
+)
+
+# vdagentd-proto.h
+GUEST_XORG_RESOLUTION = 0
+MONITORS_CONFIG = 1
+CLIPBOARD_GRAB = 2
+CLIPBOARD_REQUEST = 3
+CLIPBOARD_DATA = 4
+CLIPBOARD_RELEASE = 5
+VERSION = 6
+CLIENT_DISCONNECTED = 12
+
+CLIPBOARD_SELECTION = 0  # VD_AGENT_CLIPBOARD_SELECTION_CLIPBOARD
+UTF8_TEXT = 1  # VD_AGENT_CLIPBOARD_UTF8_TEXT
+
+DEBUG = bool(os.environ.get("VDAGENT_DEBUG"))
+
+
+def debug(*args):
+    if DEBUG:
+        print("[vdagent]", *args, file=sys.stderr, flush=True)
+
+
+class Agent:
+    def __init__(self, connection):
+        self.connection = connection
+        self.lock = threading.Lock()
+        self.last_local = None
+        self.waiting = threading.Event()
+        self.received = None
+
+    def send(self, message_type, arg1=0, arg2=0, data=b""):
+        header = struct.pack("<IIII", message_type, arg1, arg2, len(data))
+        with self.lock:
+            self.connection.sendall(header + data)
+        debug("→", message_type, arg1, arg2, len(data))
+
+    def _read(self, size):
+        data = b""
+        while len(data) < size:
+            chunk = self.connection.recv(size - len(data))
+            if not chunk:
+                raise EOFError
+            data += chunk
+        return data
+
+    def run(self):
+        while True:
+            try:
+                message_type, arg1, arg2, size = struct.unpack(
+                    "<IIII", self._read(16)
+                )
+                data = self._read(size) if size else b""
+            except (EOFError, OSError) as error:
+                debug("socket closed:", error)
+                return
+            debug("←", message_type, arg1, arg2, size)
+
+            if message_type == CLIPBOARD_GRAB:
+                # The host offers clipboard content, so request it.
+                self.send(CLIPBOARD_REQUEST, CLIPBOARD_SELECTION, UTF8_TEXT)
+
+            elif message_type == CLIPBOARD_REQUEST:
+                text = read_clipboard() or ""
+                self.send(
+                    CLIPBOARD_DATA,
+                    CLIPBOARD_SELECTION,
+                    UTF8_TEXT,
+                    text.encode("utf-8"),
+                )
+
+            elif message_type == CLIPBOARD_DATA:
+                if arg2 == UTF8_TEXT:
+                    text = data.decode("utf-8", "replace")
+                    write_clipboard(text)
+                    self.last_local = text
+                    debug("  received from host:", len(text), "bytes")
+
+            elif message_type == VERSION:
+                debug("  vdagentd version:", data.decode("utf-8", "replace").strip())
+
+
+def read_clipboard():
+    try:
+        result = subprocess.run(
+            ["wl-paste", "--no-newline", "--type", "text/plain"],
+            capture_output=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.decode("utf-8", "replace")
+    except Exception:
+        pass
+    return None
+
+
+def write_clipboard(text):
+    try:
+        subprocess.run(
+            ["wl-copy", "--type", "text/plain;charset=utf-8"],
+            input=text.encode("utf-8"),
+            timeout=5,
+        )
+    except Exception as error:
+        debug("wl-copy failed:", error)
+
+
+def resolution():
+    """Return the current Hyprland resolution, or a conservative fallback."""
+    try:
+        result = subprocess.run(
+            ["hyprctl", "monitors", "-j"], capture_output=True, timeout=4
+        )
+        if result.returncode == 0:
+            import json
+
+            monitor = json.loads(result.stdout)[0]
+            return int(monitor["width"]), int(monitor["height"])
+    except Exception:
+        pass
+    return 1920, 1200
+
+
+def watch_clipboard(agent):
+    """Offer clipboard changes made inside the guest to the host."""
+    while True:
+        text = read_clipboard()
+        if text is not None and text != agent.last_local:
+            agent.last_local = text
+            if text:
+                agent.send(
+                    CLIPBOARD_GRAB,
+                    CLIPBOARD_SELECTION,
+                    0,
+                    struct.pack("<I", UTF8_TEXT),
+                )
+        time.sleep(1)
+
+
+def main():
+    for command in ("wl-paste", "wl-copy"):
+        if shutil.which(command) is None:
+            print(f"missing {command} (install wl-clipboard)", file=sys.stderr)
+            return 1
+
+    if not os.path.exists(VDAGENTD_SOCKET):
+        print(f"missing {VDAGENTD_SOCKET}", file=sys.stderr)
+        print(
+            "start the daemon with: sudo systemctl start spice-vdagentd.socket",
+            file=sys.stderr,
+        )
+        return 1
+
+    connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    connection.connect(VDAGENTD_SOCKET)
+    agent = Agent(connection)
+
+    # The stock agent announces its resolution immediately. vdagentd uses this
+    # to identify a live graphical session. The payload is five ints: width,
+    # height, x, y, display_id (vdagentd-proto.h).
+    width, height = resolution()
+    agent.send(
+        GUEST_XORG_RESOLUTION,
+        width,
+        height,
+        struct.pack("<iiiii", width, height, 0, 0, 0),
+    )
+
+    agent.last_local = read_clipboard()
+    threading.Thread(target=watch_clipboard, args=(agent,), daemon=True).start()
+    try:
+        agent.run()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        connection.close()
+    return 0
+
+
+if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    sys.exit(main())
