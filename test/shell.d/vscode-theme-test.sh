@@ -36,6 +36,8 @@ EDITOR_PROBE_LOG="$TEST_HOME/editor-probes.log" \
   "$ROOT/bin/omarchy-theme-set-vscode"
 
 grep -Fxq '/usr/bin/cursor' "$TEST_HOME/editor-probes.log" || fail "VS Code theme sync probes the packaged Cursor executable"
+grep -Fxq 'positron' "$TEST_HOME/editor-probes.log" || fail "VS Code theme sync probes Positron"
 [[ ! -e $TEST_HOME/cursor-shim-called ]] || fail "VS Code theme sync ignores a PATH-provided Cursor Agent shim"
 [[ ! -e $TEST_HOME/.config/Cursor/User/settings.json ]] || fail "VS Code theme sync skips Cursor when the packaged executable is unavailable"
 pass "VS Code theme sync selects the packaged Cursor executable"
+pass "VS Code theme sync covers Positron"
