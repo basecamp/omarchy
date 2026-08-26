@@ -26,7 +26,12 @@ if [[ -z $device ]]; then
 fi
 
 if [[ $direction == "off" ]]; then
-  brightnessctl -sd "$device" set 0 >/dev/null
+  # -s saves the current level into a single slot before zeroing it. Blanking
+  # again while already dark would save 0 over the level restore needs, and the
+  # lock screen can blank more than once per lock.
+  if (( $(brightnessctl -d "$device" get) > 0 )); then
+    brightnessctl -sd "$device" set 0 >/dev/null
+  fi
   exit 0
 elif [[ $direction == "restore" ]]; then
   brightnessctl -rd "$device" >/dev/null
