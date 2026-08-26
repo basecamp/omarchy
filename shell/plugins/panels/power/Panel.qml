@@ -325,6 +325,7 @@ Panel {
 
           Text {
             id: heroIcon
+            textFormat: Text.PlainText
             text: root.batteryIcon()
             color: root.bar.foreground
             font.family: root.bar.fontFamily
@@ -356,6 +357,7 @@ Panel {
 
             Text {
               id: heroStatus
+              textFormat: Text.PlainText
               text: root.heroStatusText.toUpperCase()
               color: Qt.darker(root.bar.foreground, 1.4)
               font.family: root.bar.fontFamily
@@ -369,6 +371,7 @@ Panel {
 
           Text {
             id: heroPercent
+            textFormat: Text.PlainText
             text: root.batteryInfo.percentage || "—"
             color: root.bar.foreground
             font.family: root.bar.fontFamily

@@ -5,8 +5,34 @@ function isChromiumDerived(app, appIcon) {
          source.indexOf("opera") >= 0
 }
 
+// The body renders as StyledText so notifications can use the markup the
+// body-markup capability advertises (see Service.qml). StyledText honours
+// <img src>, and a remote src makes the shell issue an unauthenticated GET
+// with no user action, so image tags go before the renderer sees them.
+//
+// One replace() pass is not enough. String.replace scans left to right once,
+// so a payload spliced inside the literal "<img" prefix reassembles into a
+// live tag out of the surviving halves:
+//
+//   <im<img src="http://a/decoy.png">g src="http://a/beacon.png">
+//     -> <img src="http://a/beacon.png">
+//
+// Repeat to a fixed point. Each pass can only shorten the string, so this
+// terminates.
+function stripImageTags(text) {
+  var current = text
+  var previous
+  do {
+    previous = current
+    // The `$` alternative catches a tag left unterminated at the end of the
+    // string, which the renderer closes for itself.
+    current = current.replace(/<img[^>]*(?:>|$)/gi, "")
+  } while (current !== previous)
+  return current
+}
+
 function sanitizeBody(body, app, appIcon) {
-  var text = String(body || "").replace(/<img[^>]*>/gi, "")
+  var text = stripImageTags(String(body || ""))
   if (!isChromiumDerived(app, appIcon)) return text
 
   return text

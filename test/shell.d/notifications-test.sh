@@ -18,6 +18,40 @@ assertEqual(
   'notifications strip inline image tags'
 )
 
+// The body renders as StyledText, which fetches <img src> over the network, so
+// the strip has to survive a payload built to outlive one replace() pass. A
+// single left-to-right pass consumes the inner tag and lets the outer halves
+// close up into a live tag: <im + g src="..."> .
+assertEqual(
+  notifications.sanitizeBody('<im<img src="http://host/decoy.png">g src="http://host/beacon.png">', 'Slack', ''),
+  '',
+  'notifications strip image tags that reassemble after one substitution'
+)
+
+assertEqual(
+  notifications.sanitizeBody('<im<im<img src=a>g src=b>g src="http://host/deep.png">', 'Slack', ''),
+  '',
+  'notifications strip nested image tags to a fixed point'
+)
+
+assertEqual(
+  notifications.sanitizeBody('trailing <img src="http://host/z.png"', 'Slack', ''),
+  'trailing ',
+  'notifications strip an unterminated image tag the renderer would close itself'
+)
+
+assertEqual(
+  notifications.sanitizeBody('<IMG SRC="http://host/u.png">shout', 'Slack', ''),
+  'shout',
+  'notifications strip image tags regardless of case'
+)
+
+assertEqual(
+  notifications.sanitizeBody('<b>bold</b> and <a href="http://host">link</a>', 'Slack', ''),
+  '<b>bold</b> and <a href="http://host">link</a>',
+  'notifications keep the body markup the body-markup capability advertises'
+)
+
 assertEqual(
   notifications.sanitizeBody('<a href="https://example.com">example.com</a> Message body', 'Chromium', ''),
   'Message body',

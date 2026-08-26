@@ -32,6 +32,7 @@ BarWidget {
 
     Text {
       id: glyph
+      textFormat: Text.PlainText
       anchors.verticalCenter: parent.verticalCenter
       text: root.playIcon
       color: activePlayer && activePlayer.isPlaying ? root.bar.barForeground : Qt.darker(root.bar.barForeground, 1.5)
@@ -53,6 +54,7 @@ BarWidget {
 
       Text {
         id: labelText
+        textFormat: Text.PlainText
         text: root.title + (root.artist ? "  ·  " + root.artist : "")
         color: root.bar.barForeground
         font.family: root.bar.fontFamily
@@ -148,6 +150,7 @@ BarWidget {
           width: parent.width - Style.space(74)
 
           Text {
+            textFormat: Text.PlainText
             text: root.title || "Nothing playing"
             color: root.bar.foreground
             font.family: root.bar.fontFamily
@@ -158,6 +161,7 @@ BarWidget {
           }
 
           Text {
+            textFormat: Text.PlainText
             text: root.artist
             color: Qt.darker(root.bar.foreground, 1.3)
             font.family: root.bar.fontFamily
@@ -168,6 +172,7 @@ BarWidget {
           }
 
           Text {
+            textFormat: Text.PlainText
             text: root.activePlayer && root.activePlayer.trackAlbum ? root.activePlayer.trackAlbum : ""
             color: Qt.darker(root.bar.foreground, 1.6)
             font.family: root.bar.fontFamily
@@ -255,6 +260,7 @@ BarWidget {
               spacing: Style.space(8)
 
               Text {
+                textFormat: Text.PlainText
                 text: sourceRow.player && sourceRow.player.isPlaying ? "󰏤" : "󰐊"
                 color: root.bar.foreground
                 font.family: root.bar.fontFamily
@@ -270,6 +276,7 @@ BarWidget {
                 anchors.verticalCenter: parent.verticalCenter
 
                 Text {
+                  textFormat: Text.PlainText
                   text: sourceRow.sourceTitle
                   color: root.bar.foreground
                   font.family: root.bar.fontFamily
@@ -280,6 +287,7 @@ BarWidget {
                 }
 
                 Text {
+                  textFormat: Text.PlainText
                   text: sourceRow.sourceDetail
                   color: Qt.darker(root.bar.foreground, 1.5)
                   font.family: root.bar.fontFamily

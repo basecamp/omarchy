@@ -133,6 +133,7 @@ BorderSurface {
         // Glyph fallback (Nerd Font character) when no image icon is
         // available. Used by omarchy-notification-send's `-g` flag.
         Text {
+          textFormat: Text.PlainText
           anchors.centerIn: parent
           visible: root.hasGlyph && smallIconImage.status !== Image.Ready
           text: root.glyph
@@ -143,6 +144,7 @@ BorderSurface {
       }
 
       Text {
+        textFormat: Text.PlainText
         Layout.alignment: Qt.AlignVCenter
         visible: root.compactGlyph
         text: root.glyph
@@ -159,6 +161,11 @@ BorderSurface {
         spacing: Style.space(2)
 
         Text {
+          // The spec defines the summary as a single line of plain text, so
+          // AutoText could only ever promote a hostile string to rich text.
+          // The body below is StyledText on purpose — see Service.qml's
+          // bodyMarkupSupported — and is stripped in NotificationLogic.
+          textFormat: Text.PlainText
           Layout.fillWidth: true
           visible: root.summary.length > 0
           text: root.summary
