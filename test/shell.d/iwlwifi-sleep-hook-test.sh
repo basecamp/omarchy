@@ -75,13 +75,21 @@ grep -Fx 'modprobe -r iwlmld' "$tmp_dir/calls" >/dev/null || fail "pre suspend u
 grep -Fx 'modprobe -r iwlwifi' "$tmp_dir/calls" >/dev/null || fail "pre suspend unloads iwlwifi"
 pass "pre suspend with BE200 unloads modules and records state"
 
-# Test 2: pre suspend with BE211 (8086:e440) works identically
-setup_env "iwlmld 123 0\niwlwifi 456 1 iwlmld" "$be211_pci"
+# Test 2: pre suspend with BE211 (8086:e440) and iwlmvm selects, unloads, records, and restores opmode
+setup_env "iwlmvm 123 0\niwlwifi 456 1 iwlmvm" "$be211_pci"
 run_hook pre suspend
 
-[[ -f $tmp_dir/run/iwlwifi-suspended ]] || fail "pre suspend creates state file for BE211"
+[[ -f $tmp_dir/run/iwlwifi-suspended ]] || fail "pre suspend creates state file for BE211 with iwlmvm"
+[[ $(<"$tmp_dir/run/iwlwifi-suspended") == "iwlmvm" ]] || fail "state file records iwlmvm opmode"
+grep -Fx 'modprobe -r iwlmvm' "$tmp_dir/calls" >/dev/null || fail "pre suspend unloads iwlmvm on BE211"
 grep -Fx 'modprobe -r iwlwifi' "$tmp_dir/calls" >/dev/null || fail "pre suspend unloads iwlwifi on BE211"
-pass "pre suspend with BE211 unloads modules and records state"
+
+# Verify subsequent restore on post-resume
+run_hook post suspend
+[[ ! -f $tmp_dir/run/iwlwifi-suspended ]] || fail "post suspend cleans up state file for iwlmvm"
+grep -Fx 'modprobe iwlwifi' "$tmp_dir/calls" >/dev/null || fail "post suspend reloads iwlwifi"
+grep -Fx 'modprobe iwlmvm' "$tmp_dir/calls" >/dev/null || fail "post suspend reloads iwlmvm"
+pass "pre suspend with BE211 and iwlmvm unloads, records, and restores opmode"
 
 # Test 3: post suspend reloads iwlwifi then iwlmld and removes state file on success
 setup_env "" "$be200_pci"
@@ -147,3 +155,19 @@ run_hook pre suspend
 [[ ! -f $tmp_dir/run/iwlwifi-suspended ]] || fail "pre suspend on non-Intel must not create state file"
 [[ ! -s $tmp_dir/calls ]] || fail "pre suspend on non-Intel must not execute modprobe"
 pass "pre suspend on non-Intel system is a no-op"
+
+# Test 11: installation script copies hook when BE200 is present
+inst_dir=$(mktemp -d)
+mkdir -p "$inst_dir/etc/modprobe.d" "$inst_dir/usr/lib/systemd/system-sleep"
+(
+  export OMARCHY_PATH="$ROOT"
+  export PATH="$tmp_dir/bin:$PATH"
+  setup_env "" "$be200_pci"
+  # Override paths to test install script in isolation
+  sed -e "s|/etc/modprobe.d|$inst_dir/etc/modprobe.d|g" \
+      -e "s|/usr/lib/systemd/system-sleep|$inst_dir/usr/lib/systemd/system-sleep|g" \
+      "$ROOT/install/hardware/intel/fix-wifi7-eht.sh" | bash
+)
+[[ -f $inst_dir/usr/lib/systemd/system-sleep/iwlwifi-reset ]] || fail "installer copies iwlwifi-reset hook"
+pass "hardware installer installs iwlwifi-reset hook for BE200"
+rm -rf "$inst_dir"
