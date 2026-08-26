@@ -429,6 +429,33 @@ function isPermissionError(text) {
   return /permission denied|connection refused|failed to connect|dial unix|no such file or directory/i.test(value)
 }
 
+var CLOUD_ADMIN_URL = "https://app.netbird.io/peers"
+
+// The admin panel URL a peer was joined with is only kept in
+// /var/lib/netbird/<profile>.json, which is root-only, so the panel cannot read
+// it back. The management URL does come through `netbird status --json`, and a
+// self-hosted deployment serves its dashboard from the same host, so derive the
+// console from that and special-case the cloud, whose API and dashboard live on
+// different hostnames.
+function adminConsoleUrl(managementUrl) {
+  var value = String(managementUrl || "").trim()
+  if (value === "") return CLOUD_ADMIN_URL
+
+  var withoutScheme = value.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
+  var host = withoutScheme.split("/")[0]
+  // Leave an IPv6 literal's brackets alone; only a trailing :port is noise here.
+  if (host.charAt(0) === "[") {
+    var closing = host.indexOf("]")
+    if (closing !== -1) host = host.slice(0, closing + 1)
+  } else {
+    host = host.split(":")[0]
+  }
+
+  if (host === "") return CLOUD_ADMIN_URL
+  if (/(^|\.)netbird\.io$/i.test(host)) return CLOUD_ADMIN_URL
+  return "https://" + host + "/peers"
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     stripCidr: stripCidr,
@@ -455,6 +482,7 @@ if (typeof module !== "undefined") {
     profileLabel: profileLabel,
     parseProfiles: parseProfiles,
     isUnsupportedCommand: isUnsupportedCommand,
-    isPermissionError: isPermissionError
+    isPermissionError: isPermissionError,
+    adminConsoleUrl: adminConsoleUrl
   }
 }

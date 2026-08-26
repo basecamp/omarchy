@@ -362,8 +362,10 @@ Item {
     dnsFixProcess.running = true
   }
 
+  readonly property string adminConsoleUrl: Model.adminConsoleUrl(managementUrl)
+
   function openAdminConsole() {
-    Quickshell.execDetached(["omarchy-launch-browser", "https://app.netbird.io/peers"])
+    Quickshell.execDetached(["omarchy-launch-browser", adminConsoleUrl])
   }
 
   function runAction(command, label) {
@@ -630,6 +632,14 @@ Item {
       } else if (!opened) {
         root.lastError = ""
         root.actionStatus = ""
+      } else {
+        // The browser is carrying the login from here, and whether the user
+        // finishes it is not something `netbird up` exiting tells us. Hand the
+        // line over to a prompt that ages out, rather than leaving "Starting
+        // NetBird login…" pinned under the hero for the rest of the session.
+        root.lastError = ""
+        root.actionStatus = "Finish the NetBird login in your browser"
+        actionStatusTimer.restart()
       }
       delayedRefresh.restart()
     }

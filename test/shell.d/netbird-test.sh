@@ -195,6 +195,18 @@ assert(netbird.isPermissionError('dial unix /var/run/netbird.sock: connect: perm
 assert(netbird.isPermissionError('connection refused'), 'netbird recognizes a daemon that is not listening')
 assert(!netbird.isPermissionError('peer is not logged in'), 'netbird does not mistake a logged-out daemon for an unreachable one')
 
+// The admin panel URL is only in root-only daemon config, so the console is
+// derived from the management URL that `netbird status --json` does report.
+assertEqual(netbird.adminConsoleUrl('https://api.netbird.io:443'), 'https://app.netbird.io/peers', 'netbird sends the cloud management URL to the cloud console')
+assertEqual(netbird.adminConsoleUrl('https://netbird.example.com:443'), 'https://netbird.example.com/peers', 'netbird derives a self-hosted console from its management URL')
+assertEqual(netbird.adminConsoleUrl('https://nb.corp.net:33073'), 'https://nb.corp.net/peers', 'netbird drops a non-standard management port from the console URL')
+assertEqual(netbird.adminConsoleUrl('http://nb.corp.net'), 'https://nb.corp.net/peers', 'netbird serves the console over https even when management is plain http')
+assertEqual(netbird.adminConsoleUrl('nb.corp.net:443'), 'https://nb.corp.net/peers', 'netbird reads a management URL that carries no scheme')
+assertEqual(netbird.adminConsoleUrl('https://[2001:db8::1]:443'), 'https://[2001:db8::1]/peers', 'netbird keeps an IPv6 literal bracketed')
+assertEqual(netbird.adminConsoleUrl(''), 'https://app.netbird.io/peers', 'netbird falls back to the cloud console with no management URL')
+assertEqual(netbird.adminConsoleUrl('https://api.netbird.io:443/some/path'), 'https://app.netbird.io/peers', 'netbird ignores a path on the management URL')
+assert(/Model\.adminConsoleUrl\(managementUrl\)/.test(serviceSource), 'netbird opens the console it derived, not a hardcoded one')
+
 assertDeepEqual(
   netbird.loginPlan(true, 'https://app.netbird.io/device?user_code=ABCD-EFGH'),
   { authUrl: 'https://app.netbird.io/device?user_code=ABCD-EFGH', command: [] },

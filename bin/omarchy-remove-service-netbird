@@ -4,10 +4,20 @@
 # omarchy:requires-sudo=true
 
 sudo netbird down 2>/dev/null || true
-sudo systemctl disable --now netbird.service 2>/dev/null || true
+
+# NetBird wrote /etc/systemd/system/netbird.service itself, so the unit is not
+# package-owned and dropping the package would leave it behind. Uninstalling the
+# service stops it and takes the unit with it; fall back to plain systemctl for a
+# machine whose unit came from somewhere else.
+if ! sudo netbird service uninstall 2>/dev/null; then
+  sudo systemctl disable --now netbird.service 2>/dev/null || true
+fi
 omarchy-plugin-disable omarchy.netbird
 omarchy-webapp-remove "NetBird" 2>/dev/null || true
-omarchy-pkg-drop netbird
+# Building netbird from source leaves a netbird-debug package behind, since Arch
+# ships makepkg with `debug` in OPTIONS. pkg-drop ignores what is not installed,
+# so naming it here is free on a machine that never had it.
+omarchy-pkg-drop netbird netbird-debug
 
 echo ""
 echo "NetBird has been removed."

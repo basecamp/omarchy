@@ -4,14 +4,60 @@
 # omarchy:requires-sudo=true
 
 echo -e "\nInstalling NetBird..."
-omarchy-pkg-add netbird
+omarchy-pkg-aur-add netbird || exit 1
 
 echo -e "\nStarting NetBird..."
+# The package ships only a templated netbird@.service, and that template runs the
+# daemon on /var/run/netbird/%i.sock while the CLI talks to /var/run/netbird.sock.
+# Let NetBird register its own unit instead, so the daemon lands on the socket
+# every `netbird` command — and the bar panel — already reaches for. It refuses
+# outright when the unit is already there, so only ask on the first install.
+if [[ ! -e /etc/systemd/system/netbird.service ]]; then
+  sudo netbird service install
+fi
 sudo systemctl enable --now netbird.service
+
+# A self-hosted deployment serves its management API and its dashboard from the
+# same host, so one domain answers for both. Accept a bare domain or a full URL
+# and normalize; NetBird wants a scheme and a port on both flags.
+normalize_netbird_url() {
+  local value="${1#"${1%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  value="${value%/}"
+
+  [[ $value != *://* ]] && value="https://$value"
+
+  local hostport="${value#*://}"
+  if [[ $hostport != *:* ]]; then
+    value="$value:443"
+  fi
+
+  printf '%s' "$value"
+}
+
+management_url=""
+admin_url=""
+
+if ! gum confirm "Use NetBird Cloud?"; then
+  # gum 2.0.0 panics laying out an input that has to size itself, so pin a width.
+  domain=$(gum input --width 50 --prompt "NetBird domain> " --placeholder "netbird.example.com") || exit 1
+  if [[ -z ${domain//[[:space:]]/} ]]; then
+    echo "No domain given; aborting." >&2
+    exit 1
+  fi
+
+  management_url=$(normalize_netbird_url "$domain")
+  admin_url=$management_url
+fi
 
 echo -e "\nConnecting to your NetBird network..."
 echo "A browser window opens for SSO; finish the login there to join the network."
-sudo netbird up
+if [[ -n $management_url ]]; then
+  echo "Using self-hosted NetBird at $management_url."
+  sudo netbird up --management-url "$management_url" --admin-url "$admin_url"
+else
+  sudo netbird up
+fi
 
 echo -e "\nAdding NetBird to the bar..."
 omarchy-plugin-enable omarchy.netbird
@@ -28,4 +74,15 @@ if [[ $dns_provider != "DHCP" ]]; then
   echo "Run 'omarchy dns DHCP' if NetBird names do not resolve."
 fi
 
-omarchy-webapp-install "NetBird" "https://app.netbird.io/peers" https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/netbird.png
+# Keep this in step with adminConsoleUrl() in the panel's Model.js, which derives
+# the same console from the management URL that `netbird status --json` reports.
+if [[ -n $admin_url ]]; then
+  admin_host="${admin_url#*://}"
+  admin_host="${admin_host%%/*}"
+  admin_host="${admin_host%%:*}"
+  webapp_url="https://$admin_host/peers"
+else
+  webapp_url="https://app.netbird.io/peers"
+fi
+
+omarchy-webapp-install "NetBird" "$webapp_url" https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/netbird.png
