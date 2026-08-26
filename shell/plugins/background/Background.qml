@@ -189,6 +189,17 @@ Item {
       visible: !remapGuard.remapping
       anchors { top: true; bottom: true; left: true; right: true }
 
+      // Decode the wallpaper at the size this screen can show, not the size
+      // it was shipped at. With PreserveAspectCrop Qt takes sourceSize as the
+      // area to cover, so this is the smallest decode that still fills the
+      // screen. Stock wallpapers go up to 10456x3455 (144 MB as RGBA); a
+      // 1080p laptop paid all of that for the 8 MB it can display, and paid
+      // it up to three times over during a transition. The images wait for
+      // the window's size so nothing is ever decoded at native size first.
+      readonly property bool sized: width > 0 && height > 0
+      readonly property int decodeWidth: sized ? Math.ceil(width * screen.devicePixelRatio) : 0
+      readonly property int decodeHeight: sized ? Math.ceil(height * screen.devicePixelRatio) : 0
+
       ScreenMoveRemap {
         id: remapGuard
         window: panel
@@ -221,7 +232,9 @@ Item {
       Image {
         id: base
         anchors.fill: parent
-        source: root.imageUrl(root.displayedBackground)
+        source: panel.sized ? root.imageUrl(root.displayedBackground) : ""
+        sourceSize.width: panel.decodeWidth
+        sourceSize.height: panel.decodeHeight
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         cache: true
@@ -237,7 +250,9 @@ Item {
       Image {
         id: oldFrame
         anchors.fill: parent
-        source: root.imageUrl(root.oldBackground)
+        source: panel.sized ? root.imageUrl(root.oldBackground) : ""
+        sourceSize.width: panel.decodeWidth
+        sourceSize.height: panel.decodeHeight
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         cache: false
@@ -263,7 +278,9 @@ Item {
         Image {
           id: incomingFrame
           anchors.fill: parent
-          source: root.imageUrl(root.incomingBackground)
+          source: panel.sized ? root.imageUrl(root.incomingBackground) : ""
+          sourceSize.width: panel.decodeWidth
+          sourceSize.height: panel.decodeHeight
           fillMode: Image.PreserveAspectCrop
           asynchronous: true
           cache: false
