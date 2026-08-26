@@ -73,14 +73,16 @@ done
 pass "Claude collector adds no limit when the payload scopes none"
 
 # Only the Claude Code CLI refreshes the saved token, so between its runs the
-# collector can find a lapsed one. Drive collect_limits over a planted cache
-# with the network unreachable, so nothing but the credential state decides
-# the answer.
+# collector can find a lapsed one and turns to a sibling CLI signed into the
+# same subscription. Drive collect_limits over a planted cache with the network
+# unreachable and that lookup pinned, so nothing but the credential state
+# decides the answer — never whichever agent CLIs this machine happens to have
+# installed.
 CACHE_HOME=$(mktemp -d)
 trap 'rm -rf "$CACHE_HOME"' EXIT
 
 collect_limits() {
-  COLLECTOR="$ROOT/bin/omarchy-agent-usage-claude" TOKEN="$1" EXPIRES_AT="$2" CACHED="$3" \
+  COLLECTOR="$ROOT/bin/omarchy-agent-usage-claude" TOKEN="$1" EXPIRES_AT="$2" CACHED="$3" SIBLING="${4:-}" \
     XDG_CACHE_HOME="$CACHE_HOME" python3 - <<'PY'
 import importlib.machinery, importlib.util, json, os, pathlib
 
@@ -99,6 +101,7 @@ elif cache.exists():
 def unreachable(request, timeout=None):
   raise OSError("no route to host")
 
+collector.sibling_access_token = lambda: os.environ["SIBLING"]
 collector.urllib.request.urlopen = unreachable
 print(json.dumps(collector.collect_limits(os.environ["TOKEN"], int(os.environ["EXPIRES_AT"]), False)))
 PY
@@ -137,6 +140,58 @@ stale=$(collect_limits "token" 1000 "$(jq -c '.limits |= [.[0]]' <<<"$cache")")
 [[ $(jq -r '.authHelpText' <<<"$stale") != *"last known"* ]] ||
   fail "Claude collector promises no last-known limits when it has none" "$stale"
 pass "Claude collector drops a wholly reset cache but keeps explaining itself"
+
+# A lapsed saved token is not the end of the story: pi and omp hold the same
+# subscription and refresh their own copy, so the collector asks them and
+# probes with what they answer. Serve the endpoint here — the point is that the
+# request happens at all, carrying the token that works.
+collect_with_sibling() {
+  COLLECTOR="$ROOT/bin/omarchy-agent-usage-claude" SIBLING="$1" CACHED="$2" PAYLOAD="$3" \
+    TOKEN="$4" EXPIRES_AT="$5" XDG_CACHE_HOME="$CACHE_HOME" python3 - <<'PY'
+import importlib.machinery, importlib.util, io, json, os
+
+loader = importlib.machinery.SourceFileLoader("collector", os.environ["COLLECTOR"])
+spec = importlib.util.spec_from_loader(loader.name, loader)
+collector = importlib.util.module_from_spec(spec)
+loader.exec_module(collector)
+
+(collector.cache_root() / "claude-limits.json").write_text(os.environ["CACHED"], encoding="utf-8")
+
+authorizations = []
+
+def urlopen(request, timeout=None):
+  authorizations.append(request.headers.get("Authorization"))
+  return io.BytesIO(os.environ["PAYLOAD"].encode())
+
+collector.sibling_access_token = lambda: os.environ["SIBLING"]
+collector.urllib.request.urlopen = urlopen
+print(json.dumps({
+  "result": collector.collect_limits(os.environ["TOKEN"], int(os.environ["EXPIRES_AT"]), False),
+  "authorizations": authorizations,
+}))
+PY
+}
+
+refreshed=$(collect_with_sibling "sk-ant-oat01-sibling" "$cache" '{"five_hour":{"utilization":44.0}}' "lapsed-token" 1000)
+[[ $(jq -c '[.result.limits[].percent]' <<<"$refreshed") == "[0.44]" ]] ||
+  fail "Claude collector probes with a sibling CLI's token when the saved one lapsed" "$refreshed"
+[[ $(jq -r '.authorizations[0]' <<<"$refreshed") == "Bearer sk-ant-oat01-sibling" ]] ||
+  fail "Claude collector sends the sibling's token, not the lapsed one" "$refreshed"
+[[ -z $(jq -r '.result.usageStatusText' <<<"$refreshed") ]] ||
+  fail "Claude collector reports no auth problem once a sibling token works" "$refreshed"
+pass "Claude collector probes with a sibling CLI's token when the saved one lapsed"
+
+# A machine that never ran Claude Code has no saved token at all, which is a
+# different branch from a lapsed one and just as answerable: the sibling is
+# holding the same subscription either way.
+unsaved=$(collect_with_sibling "sk-ant-oat01-sibling" "$cache" '{"five_hour":{"utilization":21.0}}' "" 0)
+[[ $(jq -c '[.result.limits[].percent]' <<<"$unsaved") == "[0.21]" ]] ||
+  fail "Claude collector probes with a sibling CLI's token when nothing is saved" "$unsaved"
+[[ $(jq -r '.authorizations[0]' <<<"$unsaved") == "Bearer sk-ant-oat01-sibling" ]] ||
+  fail "Claude collector sends the sibling's token when nothing is saved" "$unsaved"
+[[ -z $(jq -r '.result.usageStatusText' <<<"$unsaved") ]] ||
+  fail "Claude collector stops waiting for auth once a sibling token works" "$unsaved"
+pass "Claude collector probes with a sibling CLI's token when nothing is saved"
 
 # A signed-out machine says so, and still shows what it last knew.
 signed_out=$(collect_limits "" 0 "$cache")

@@ -56,9 +56,15 @@ light surfaces — and the bar glyph stands in when there is none.
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
 
-Claude limits need a signed-in CLI; without credentials the panel says so and
-falls back to local stats only. A non-default Claude directory is honored via
-`CLAUDE_CONFIG_DIR`, Codex via `CODEX_HOME`. Fireworks reads
+Claude limits need a signed-in CLI. Only Claude Code refreshes the token in
+`~/.claude/.credentials.json`, so once that copy has lapsed — about eight hours
+after its last run — the collector asks `omp`, then `pi`, for a live one, since
+either may be signed into the same subscription. Their refresh tokens stay
+theirs: nothing is written back. With no usable credential anywhere the panel
+says so, keeps drawing the last known windows until their reset passes, and is
+left with local stats only once even those are gone. A non-default Claude
+directory is honored via `CLAUDE_CONFIG_DIR`, Codex via `CODEX_HOME`.
+Fireworks reads
 `FIREWORKS_API_KEY` and `FIREWORKS_ACCOUNT_ID` first, then
 `~/.fireworks/auth.ini` (which `firectl set-api-key` creates), then the key
 opencode stores in `~/.local/share/opencode/auth.json` when Fireworks is

@@ -21,7 +21,9 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import time
@@ -35,6 +37,19 @@ AGENT_NAME = "Claude Code"
 AUTH_HELP = "Run `claude auth login` to restore authoritative usage."
 USAGE_ENDPOINT = "https://api.anthropic.com/api/oauth/usage"
 PROBE_MIN_INTERVAL_SECONDS = 15
+
+# Claude Code is not the only client that signs into a Claude subscription,
+# but it is the only one that refreshes ~/.claude/.credentials.json. A machine
+# that codes through pi or omp — whose sessions this collector already counts
+# — therefore keeps a live credential in that tool's own store and a lapsed
+# copy in Claude's. Both print an access token on demand, refreshing it first
+# when it has lapsed, so ask them before reporting that the limits cannot be
+# read. Nothing travels the other way: Anthropic rotates a refresh token when
+# it is spent, so a display widget must never spend another tool's.
+SIBLING_TOKEN_COMMANDS = (
+  ("omp", "token", "anthropic"),
+  ("pi", "token", "anthropic"),
+)
 
 
 def config_dir() -> Path:
@@ -603,6 +618,30 @@ def plan_label(tier: str, subscription: str) -> str:
   return ""
 
 
+# The first sibling CLI that is installed and signed in wins. Every failure is
+# quiet and moves on to the next: a CLI that is absent, signed out, or too old
+# to know the subcommand is the ordinary case on most machines, not a fault
+# worth printing next to the usage numbers.
+def sibling_access_token() -> str:
+  for name, *arguments in SIBLING_TOKEN_COMMANDS:
+    binary = shutil.which(name)
+    if binary is None:
+      continue
+    try:
+      result = subprocess.run([binary, *arguments], capture_output=True, text=True, timeout=20)
+    except Exception:
+      continue
+    if result.returncode != 0:
+      continue
+    lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    token = lines[-1] if lines else ""
+    # The token is the whole output on success; anything else — a prompt, a
+    # warning, a usage message — is not a credential.
+    if token.startswith("sk-ant-"):
+      return token
+  return ""
+
+
 def parse_utilization(value: Any) -> float:
   try:
     return float(str(value).strip().replace("%", ""))
@@ -801,32 +840,36 @@ def collect_limits(access_token: str, expires_at_ms: int, force: bool) -> dict[s
   cached = read_fresh_json(probe_cache, float("inf")) or {}
   fallback = usable_cached_limits(cached)
 
-  # Probing needs a live token and only the Claude Code CLI can mint one: it
-  # refreshes the credential file when it runs, so a machine left alone long
-  # enough finds the saved token lapsed. Say so — an empty limits list with
-  # nothing else set hides the whole section and explains nothing — and keep
-  # showing the last numbers whose window has not since reset.
-  if access_token == "":
-    result["limits"] = fallback
-    result["usageStatusText"] = "Waiting for auth"
-    return result
-  if expires_at_ms > 0 and expires_at_ms <= time.time() * 1000:
-    result["limits"] = fallback
-    result["usageStatusText"] = "Sign-in expired"
-    result["authHelpText"] = (
-      "Claude Code's saved sign-in expired"
-      + (" — showing the last known limits." if fallback else ".")
-      + " Start Claude Code, or run `claude auth login`, to refresh it."
-    )
-    return result
-
   # --force is a person asking for fresh numbers, so it skips the reuse window
   # entirely; the interval is there to absorb repeated panel opens, not to
-  # overrule someone who pressed refresh.
+  # overrule someone who pressed refresh. It is settled before the token is: a
+  # cache this young is already the answer, and spawning a sibling CLI to
+  # confirm what it says would put a process behind every flick of the panel.
   fetched_at = number(cached.get("fetchedAtMs")) / 1000
   if fallback and not force and time.time() - fetched_at < PROBE_MIN_INTERVAL_SECONDS:
     result["limits"] = fallback
     return result
+
+  # Probing needs a live token. The saved one lapses after about eight hours
+  # and only the Claude Code CLI refreshes it, so a sibling CLI signed into the
+  # same subscription is asked next. When nothing can mint one, say why the
+  # section is thin — an empty limits list with nothing else set hides it and
+  # explains nothing — and keep showing the last numbers whose window has not
+  # since reset.
+  if access_token == "" or (expires_at_ms > 0 and expires_at_ms <= time.time() * 1000):
+    saved_token, access_token = access_token, sibling_access_token()
+    if access_token == "":
+      result["limits"] = fallback
+      if saved_token == "":
+        result["usageStatusText"] = "Waiting for auth"
+      else:
+        result["usageStatusText"] = "Sign-in expired"
+        result["authHelpText"] = (
+          "Claude Code's saved sign-in expired"
+          + (" — showing the last known limits." if fallback else ".")
+          + " Start Claude Code, or run `claude auth login`, to refresh it."
+        )
+      return result
 
   probe = probe_limits(access_token)
   if probe["ok"]:
