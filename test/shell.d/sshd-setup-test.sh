@@ -117,3 +117,23 @@ if grep -q 'ufw limit 22/tcp' "$TEST_LOG"; then
   fail "a rejected key leaves the firewall port closed" "$(cat "$TEST_LOG")"
 fi
 pass "a rejected key leaves the firewall port closed"
+
+# A key the machine accepts but cannot store is the same unreachable end state.
+# A file where ~/.ssh belongs is the cheapest way to make the write fail.
+: >"$TEST_LOG"
+rm -rf "$HOME/.ssh"
+: >"$HOME/.ssh"
+
+if "$ROOT/bin/omarchy-setup-security-sshd" --key="ssh-ed25519 AAAATEST tester@omarchy" >/dev/null 2>&1; then
+  fail "sshd setup fails when the key cannot be written to disk"
+fi
+
+if grep -q 'systemctl enable --now sshd.service' "$TEST_LOG"; then
+  fail "a key that could not be stored leaves the ssh server stopped" "$(cat "$TEST_LOG")"
+fi
+pass "a key that could not be stored leaves the ssh server stopped"
+
+if grep -q 'ufw limit 22/tcp' "$TEST_LOG"; then
+  fail "a key that could not be stored leaves the firewall port closed" "$(cat "$TEST_LOG")"
+fi
+pass "a key that could not be stored leaves the firewall port closed"

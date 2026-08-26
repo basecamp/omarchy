@@ -111,15 +111,17 @@ authorize_key() {
     return 1
   fi
 
-  mkdir -p "$HOME/.ssh"
-  chmod 700 "$HOME/.ssh"
-  touch "$AUTHORIZED_KEYS"
-  chmod 600 "$AUTHORIZED_KEYS"
+  # errexit is off inside a function called on the left of `||`, so these have
+  # to refuse for themselves or an unwritable home still reports a key.
+  mkdir -p "$HOME/.ssh" || return 1
+  chmod 700 "$HOME/.ssh" || return 1
+  touch "$AUTHORIZED_KEYS" || return 1
+  chmod 600 "$AUTHORIZED_KEYS" || return 1
 
   if grep -qxF "$key" "$AUTHORIZED_KEYS"; then
     echo "Key already authorized: $(ssh-keygen -lf /dev/stdin <<<"$key")"
   else
-    echo "$key" >>"$AUTHORIZED_KEYS"
+    echo "$key" >>"$AUTHORIZED_KEYS" || return 1
     echo "Authorized key: $(ssh-keygen -lf /dev/stdin <<<"$key")"
   fi
 }
