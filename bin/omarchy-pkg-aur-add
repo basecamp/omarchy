@@ -2,12 +2,19 @@
 
 # omarchy:summary=Add the named packages to the system from the AUR if they're missing. Returns false if it couldn't be done.
 # omarchy:args=<packages...>
+#
+# Each package may be given as a plain name or as "aur/name" to force
+# resolution from the AUR even when a same-named package is also provided
+# by a sync repo (yay's --noconfirm silently prefers the repo provider in
+# that case, which defeats callers that specifically want the AUR build).
 
-if omarchy-pkg-missing "$@"; then
+names=("${@#*/}")
+
+if omarchy-pkg-missing "${names[@]}"; then
   yay -S --noconfirm --needed "$@" || exit 1
 fi
 
-for pkg in "$@"; do
+for pkg in "${names[@]}"; do
   # Secondary check to handle states where pacman doesn't actually register an error
   if ! pacman -Q "$pkg" &>/dev/null; then
     echo -e "\033[31mError: Package '$pkg' did not install\033[0m" >&2

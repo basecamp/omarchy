@@ -28,7 +28,7 @@ if gum confirm "Install Voxtype + AI model (~150MB) to enable dictation?"; then
   if [[ $voxtype_pkg == voxtype-bin ]]; then
     omarchy-pkg-add voxtype-bin || exit 1
   else
-    omarchy-pkg-aur-add voxtype || exit 1
+    omarchy-pkg-aur-add aur/voxtype || exit 1
   fi
 
   # Setup voxtype

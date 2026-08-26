@@ -108,7 +108,7 @@ grep -q '^omarchy-pkg-aur-add:' "$log_file" && fail "declining the source build 
 write_hw_x86_64_v3 1
 write_voxtype_stub 0
 run_install "yes yes" 0
-grep -qx 'omarchy-pkg-aur-add:voxtype' "$log_file" || fail "accepting the source build installs voxtype via the AUR"
+grep -qx 'omarchy-pkg-aur-add:aur/voxtype' "$log_file" || fail "accepting the source build installs voxtype via the AUR"
 grep -q '^omarchy-pkg-add:voxtype-bin' "$log_file" && fail "accepting the source build does not install voxtype-bin"
 
 # If the AUR is unreachable, the source-build offer fails cleanly.
