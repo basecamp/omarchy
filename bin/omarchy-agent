@@ -108,6 +108,13 @@ pi)
   command=(pi)
   [[ -n ${prompt:-} ]] && command+=("$prompt")
   ;;
+openzoo)
+  # openzoo launches Claude Code against a pay-per-call gateway, so the flags
+  # are Claude's. It is listed separately because the difference is not the TUI,
+  # it is that this one needs no API key and no account to answer.
+  command=(openzoo claude --permission-mode auto)
+  [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  ;;
 *)
   echo "Unsupported default agent: $agent" >&2
   exit 1
