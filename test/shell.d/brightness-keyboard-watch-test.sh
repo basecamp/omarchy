@@ -43,3 +43,50 @@ PY
 
 pass "follow applies every sysfs change that happens during a slow apply"
 pass "follow is a no-op when the level did not change"
+
+python3 - "$ROOT/bin/omarchy-brightness-keyboard-watch" <<'PY'
+import errno
+import os
+import runpy
+import sys
+
+open_hw = runpy.run_path(sys.argv[1])["open_hw"]
+g = open_hw.__globals__
+
+
+class FakeOS:
+    O_RDONLY = os.O_RDONLY
+
+    def __init__(self, err):
+        self.err = err
+        self.closed = False
+
+    def open(self, path, flags):
+        return 7
+
+    def read(self, fd, n):
+        raise OSError(self.err, "x")
+
+    def close(self, fd):
+        self.closed = True
+
+
+nodata = FakeOS(errno.ENODATA)
+g["os"] = nodata
+fd = open_hw()
+if fd != 7 or nodata.closed:
+    raise SystemExit(f"ENODATA fd={fd} closed={nodata.closed}")
+
+io = FakeOS(errno.EIO)
+g["os"] = io
+try:
+    open_hw()
+except OSError as e:
+    if e.errno != errno.EIO or not io.closed:
+        raise SystemExit(f"EIO errno={e.errno} closed={io.closed}")
+else:
+    raise SystemExit("EIO was swallowed")
+PY
+
+pass "open_hw keeps the fd when brightness_hw_changed has never fired"
+pass "open_hw still raises other read errors"
