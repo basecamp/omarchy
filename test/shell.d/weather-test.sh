@@ -176,6 +176,10 @@ const nwsCommand = weather.nwsFetchCommand(36.023, -95.968)
 assertEqual(nwsCommand[0], 'bash', 'weather NWS fetch runs through bash')
 assert(nwsCommand[2].includes('api.weather.gov/points/36.023,-95.968'), 'weather NWS fetch starts at the points API')
 assert(nwsCommand[2].includes(weather.nwsUserAgent()), 'weather NWS fetch sends an identifying User-Agent')
+assert(
+  nwsCommand[2].includes(".observationStations[0] // empty' || true"),
+  'weather NWS station lookup is best-effort so a failed observation still yields the forecast'
+)
 
 const nwsForecast = {
   forecast: {
@@ -218,6 +222,15 @@ assertDeepEqual(
   'weather normalizes NWS observations to the shared current-condition shape'
 )
 assertEqual(weather.nwsCurrentCondition({ forecast: nwsForecast.forecast }).temp_F, '95', 'weather falls back to the first NWS period without an observation')
+assertEqual(weather.nwsPeriodIsDay({ isDaytime: false }), 0, 'weather reads nighttime from an NWS period')
+assertEqual(
+  weather.nwsCurrentCondition({
+    forecast: { properties: { periods: [{ isDaytime: false, temperature: 72, temperatureUnit: 'F', shortForecast: 'Mostly Clear' }] } },
+    observation: nwsForecast.observation
+  }).isDay,
+  0,
+  'weather uses the current NWS period for observation day/night icons'
+)
 assertEqual(weather.iconCodeFromNwsText('Mostly Sunny'), 2, 'weather maps NWS partly-sunny text to a partly-cloudy icon')
 assertEqual(weather.iconCodeFromNwsText('Thunderstorms'), 95, 'weather maps NWS thunder text to a storm icon')
 assertEqual(weather.nwsWindMph('5 to 10 mph'), 10, 'weather reads the upper NWS wind range')
@@ -238,6 +251,8 @@ assert(panelSource.includes('onWeatherProviderChanged:'), 'weather refetches whe
 assert(panelSource.includes('Model.openMeteoForecastUrl'), 'weather panel builds Open-Meteo URLs from the selected model')
 assert(panelSource.includes('Model.nwsFetchCommand'), 'weather panel fetches NWS through the shared command builder')
 assert(panelSource.includes('blocked: root.editingLocation || providerDropdown.popupOpen'), 'weather blocks panel keys while the provider dropdown is open')
+assert(panelSource.includes('t === "f" || t === "F"'), 'weather opens the forecast dropdown from the f key')
+assert(panelSource.includes('providerDropdown.toggle()'), 'weather toggles the forecast dropdown from the keyboard')
 JS
 
 test_tmp=$(mktemp -d)

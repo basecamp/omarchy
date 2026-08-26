@@ -604,6 +604,9 @@ Panel {
       onReturnRequested: root.startEditingLocation()
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
+      onTextKey: function(t) {
+        if (t === "f" || t === "F") providerDropdown.toggle()
+      }
 
       Flickable {
         id: weatherScroll

@@ -206,9 +206,9 @@ function nwsFetchCommand(lat, lon) {
     + "forecast_url=$(jq -er .properties.forecast <<<\"$points\")\n"
     + "forecast=$(curl -fsS -A \"$ua\" --max-time 6 \"$forecast_url\")\n"
     + "obs='{}'\n"
-    + "stations_url=$(jq -r '.properties.observationStations // empty' <<<\"$points\")\n"
+    + "stations_url=$(jq -r '.properties.observationStations // empty' <<<\"$points\" || true)\n"
     + "if [[ -n $stations_url ]]; then\n"
-    + "  station=$(curl -fsS -A \"$ua\" --max-time 6 \"$stations_url\" | jq -r '.observationStations[0] // empty')\n"
+    + "  station=$(curl -fsS -A \"$ua\" --max-time 6 \"$stations_url\" | jq -r '.observationStations[0] // empty' || true)\n"
     + "  if [[ -n $station ]]; then\n"
     + "    obs=$(curl -fsS -A \"$ua\" --max-time 6 \"$station/observations/latest\" || printf '%s' '{}')\n"
     + "  fi\n"
@@ -257,7 +257,12 @@ function iconCodeFromNwsText(text) {
   return 3
 }
 
-function nwsObservationCondition(observation) {
+function nwsPeriodIsDay(period) {
+  if (!period || period.isDaytime === undefined || period.isDaytime === null) return 1
+  return period.isDaytime ? 1 : 0
+}
+
+function nwsObservationCondition(observation, isDay) {
   var props = observation && observation.properties ? observation.properties : null
   if (!props) return null
   var tempC = nwsQuantity(props.temperature)
@@ -277,7 +282,7 @@ function nwsObservationCondition(observation) {
     windspeedMiles: roundedTemp(windKmh * 0.621371),
     humidity: humidity === null ? "" : roundedTemp(humidity),
     openMeteoWeatherCode: iconCodeFromNwsText(props.textDescription),
-    isDay: 1
+    isDay: Number(isDay) === 0 ? 0 : 1
   }
 }
 
@@ -300,11 +305,12 @@ function nwsPeriodCondition(period) {
 }
 
 function nwsCurrentCondition(nwsReport) {
-  var fromObs = nwsObservationCondition(nwsReport && nwsReport.observation)
-  if (fromObs) return fromObs
   var periods = nwsReport && nwsReport.forecast && nwsReport.forecast.properties
     ? nwsReport.forecast.properties.periods : []
-  return nwsPeriodCondition(periods && periods[0] ? periods[0] : null)
+  var period = periods && periods[0] ? periods[0] : null
+  var fromObs = nwsObservationCondition(nwsReport && nwsReport.observation, nwsPeriodIsDay(period))
+  if (fromObs) return fromObs
+  return nwsPeriodCondition(period)
 }
 
 function nwsForecastDays(nwsReport, todayString) {
@@ -531,6 +537,7 @@ if (typeof module !== "undefined") {
     nwsTemps: nwsTemps,
     nwsWindMph: nwsWindMph,
     iconCodeFromNwsText: iconCodeFromNwsText,
+    nwsPeriodIsDay: nwsPeriodIsDay,
     nwsObservationCondition: nwsObservationCondition,
     nwsCurrentCondition: nwsCurrentCondition,
     nwsForecastDays: nwsForecastDays,
