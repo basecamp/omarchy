@@ -6,8 +6,8 @@ if lspci -nn 2>/dev/null | grep -qE '\[8086:(e440|272b)\]'; then
 
   if [[ -f $hook_src ]]; then
     if [[ ! -f $hook_dest ]] || ! cmp -s "$hook_src" "$hook_dest"; then
-      sudo mkdir -p /usr/lib/systemd/system-sleep 2>/dev/null || true
-      sudo cp -p "$hook_src" "$hook_dest" 2>/dev/null || echo "Could not install $hook_dest (requires sudo privileges)" >&2
+      sudo mkdir -p /usr/lib/systemd/system-sleep
+      sudo cp -p "$hook_src" "$hook_dest"
     fi
   fi
 fi
