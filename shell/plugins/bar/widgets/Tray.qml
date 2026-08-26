@@ -20,6 +20,8 @@ BarWidget {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property var pinnedIds: settings.pinned instanceof Array ? settings.pinned : []
   readonly property var hiddenIds: settings.hidden instanceof Array ? settings.hidden : []
+  readonly property var unpinnedIds: settings.unpinned instanceof Array ? settings.unpinned : []
+  readonly property bool pinNew: setting("pinNew", false) === true
   readonly property var pinnedItems: bucket("pinned")
   readonly property var drawerItems: bucket("drawer")
   readonly property var allItems: bucket("all")
@@ -153,10 +155,12 @@ BarWidget {
   }
 
   function classifyItem(item) {
-    var iid = String(item.id || "")
-    if (hiddenIds.indexOf(iid) !== -1) return "hidden"
-    if (pinnedIds.indexOf(iid) !== -1) return "pinned"
-    return "drawer"
+    return TrayModel.classifyItem(item, {
+      pinnedIds: root.pinnedIds,
+      hiddenIds: root.hiddenIds,
+      unpinnedIds: root.unpinnedIds,
+      pinNew: root.pinNew
+    })
   }
 
   function ownedByOmarchy(item) {
@@ -180,34 +184,27 @@ BarWidget {
     return result
   }
 
-  function persistTrayState(pinned, hidden) {
+  function persistTrayState(pinned, hidden, unpinned, pinNew) {
     if (!root.bar || !root.bar.shell || typeof root.bar.shell.updateEntryInline !== "function") return
     var id = root.moduleName || "omarchy.tray"
-    root.bar.shell.updateEntryInline(id, { id: id, pinned: pinned, hidden: hidden })
+    var entry = { id: id, pinned: pinned, hidden: hidden }
+    if (pinNew === true) entry.pinNew = true
+    if (unpinned instanceof Array && unpinned.length > 0) entry.unpinned = unpinned
+    root.bar.shell.updateEntryInline(id, entry)
   }
 
   function togglePin(iid) {
-    var p = pinnedIds.slice(), h = hiddenIds.slice()
-    var idx = p.indexOf(iid)
-    if (idx !== -1) p.splice(idx, 1)
-    else {
-      p.push(iid)
-      var hi = h.indexOf(iid)
-      if (hi !== -1) h.splice(hi, 1)
-    }
-    persistTrayState(p, h)
+    var next = TrayModel.togglePin(iid, root.pinnedIds, root.unpinnedIds, root.hiddenIds, root.pinNew)
+    persistTrayState(next.pinned, next.hidden, next.unpinned, root.pinNew)
   }
 
   function toggleHide(iid) {
-    var p = pinnedIds.slice(), h = hiddenIds.slice()
-    var idx = h.indexOf(iid)
-    if (idx !== -1) h.splice(idx, 1)
-    else {
-      h.push(iid)
-      var pi = p.indexOf(iid)
-      if (pi !== -1) p.splice(pi, 1)
-    }
-    persistTrayState(p, h)
+    var next = TrayModel.toggleHide(iid, root.pinnedIds, root.unpinnedIds, root.hiddenIds)
+    persistTrayState(next.pinned, next.hidden, next.unpinned, root.pinNew)
+  }
+
+  function togglePinNew() {
+    persistTrayState(root.pinnedIds.slice(), root.hiddenIds.slice(), root.unpinnedIds.slice(), !root.pinNew)
   }
 
   visible: pinnedItems.length > 0 || drawerCount > 0
@@ -426,6 +423,16 @@ BarWidget {
         width: parent.width
       }
 
+      Toggle {
+        width: parent.width
+        label: "Always show"
+        description: "New apps stay visible instead of landing in the drawer."
+        checked: root.pinNew
+        foreground: root.foreground
+        fontFamily: root.fontFamily
+        onClicked: root.togglePinNew()
+      }
+
       Text {
         visible: root.allItems.length === 0
         text: "No tray items reporting."
@@ -454,7 +461,7 @@ BarWidget {
             var slash = id.lastIndexOf("/")
             return slash !== -1 ? id.substring(slash + 1) : (id || "Unknown")
           }
-          readonly property bool isPinned: root.pinnedIds.indexOf(itemId) !== -1
+          readonly property bool isPinned: root.classifyItem(modelData) === "pinned"
           readonly property bool isHidden: root.hiddenIds.indexOf(itemId) !== -1
 
           TrayIcon {

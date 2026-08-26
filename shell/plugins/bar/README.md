@@ -74,6 +74,8 @@ Example `shell.json` (bar subtree only shown):
 
 The `omarchy.indicators` widget loads individual bar indicators from `indicators/`. Omit `items` (or set it to an empty array) to show all indicators in the default order, or set `items` to a subset such as `["Dnd", "Reminder", "NightLight"]`. Set `alwaysShow` to `true` to keep inactive indicators visible instead of revealing them only on hover. Multiple `omarchy.indicators` instances are allowed, so different sections can show different subsets.
 
+The `omarchy.tray` widget hides new StatusNotifier icons in the hover drawer unless they are pinned. Set `pinNew` to `true`, or turn on **Always show** in the right-click manager, so new icons stay visible. Hidden icons stay hidden; unpin still sends an icon back to the drawer.
+
 ## Orientation
 
 All widgets work in `top`, `bottom`, `left`, and `right` positions. Popups anchor on the side opposite the bar edge, sliding into the workspace. Vertical bars use 28px width; widgets that show text fall back to compact icon-only forms (e.g. `media` hides its scrolling label).
