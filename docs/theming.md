@@ -67,9 +67,7 @@ What this does not cover: a theme distributed as an archive rather than a git re
 
 ## `colors.toml`
 
-`colors.toml` provides the palette and visual settings used by templates. Color
-keys are grouped semantic-first: accent/selection/muted, then the backgrounds,
-then the foregrounds, then the named colors:
+`colors.toml` provides the palette and visual settings used by templates. Color keys are grouped semantic-first: accent/selection/muted, then the backgrounds, then the foregrounds, then the named colors:
 
 ```toml
 mode = "dark"
@@ -93,13 +91,7 @@ red = "#f7768e"
 blue = "#7aa2f7"
 ```
 
-`terminal_opacity` controls the terminal emulator's default background
-translucency. It accepts a decimal from `0.0` (transparent) through `1.0`
-(opaque) and defaults to `1.0` when omitted or invalid. It is separate from
-Hyprland window opacity, which affects the whole window including its text.
-Running Foot windows keep the opacity they started with, so reopen Foot after a
-theme change to apply a new value. Existing windows in other terminals follow
-their emulator's normal configuration-reload behavior.
+`terminal_opacity` controls the terminal emulator's default background translucency. It accepts a decimal from `0.0` (transparent) through `1.0` (opaque) and defaults to `1.0` when omitted or invalid. It is separate from Hyprland window opacity, which affects the whole window including its text. Running Foot windows keep the opacity they started with, so reopen Foot after a theme change to apply a new value. Existing windows in other terminals follow their emulator's normal configuration-reload behavior.
 
 Any key can be referenced from a template with `{{ key }}`. The foundational
 shell palette is loaded from:
