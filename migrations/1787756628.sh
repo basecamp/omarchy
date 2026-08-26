@@ -14,5 +14,5 @@ if [[ -e $extension_target ]]; then
 fi
 
 mkdir -p "$extensions_dir"
-omarchy-theme-refresh
 cp "$extension_source" "$extension_target"
+omarchy-theme-refresh || true

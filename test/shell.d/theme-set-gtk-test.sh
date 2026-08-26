@@ -107,6 +107,8 @@ pass "GTK installation does not overwrite an unrelated omarchy.css"
 PYTHONPYCACHEPREFIX="$test_tmp/pycache" python -m py_compile "$ROOT/default/nautilus-python/extensions/omarchy_theme.py"
 grep -Fq 'monitor_directory' "$ROOT/default/nautilus-python/extensions/omarchy_theme.py" || fail "Nautilus extension monitors GTK CSS"
 grep -Fq 'load_from_path' "$ROOT/default/nautilus-python/extensions/omarchy_theme.py" || fail "Nautilus extension reloads GTK CSS"
+grep -Fq 'notify::gtk-interface-color-scheme' "$ROOT/default/nautilus-python/extensions/omarchy_theme.py" || fail "Nautilus extension follows live color-scheme changes"
+grep -Fq 'provider.props.prefers_color_scheme' "$ROOT/default/nautilus-python/extensions/omarchy_theme.py" || fail "Nautilus CSS provider uses the current color scheme"
 pass "Nautilus live-reload extension is syntactically valid"
 
 migration_home="$test_tmp/migration-home"
@@ -129,5 +131,20 @@ cmp -s \
   fail "GTK migration installs the Nautilus extension"
 [[ $(grep -Fxc refresh "$migration_log") == 1 ]] || fail "GTK migration refreshes the active theme once"
 pass "GTK migration installs live reload and refreshes the theme"
+
+failed_refresh_home="$test_tmp/failed-refresh-home"
+mkdir -p "$failed_refresh_home"
+cat >"$stub_bin/omarchy-theme-refresh" <<'SH'
+#!/bin/bash
+exit 1
+SH
+chmod +x "$stub_bin/omarchy-theme-refresh"
+HOME="$failed_refresh_home" OMARCHY_PATH="$ROOT" \
+  PATH="$stub_bin:$PATH" bash -euo pipefail "$ROOT/migrations/1787756628.sh" >/dev/null
+cmp -s \
+  "$ROOT/default/nautilus-python/extensions/omarchy_theme.py" \
+  "$failed_refresh_home/.local/share/nautilus-python/extensions/omarchy_theme.py" || \
+  fail "GTK migration keeps the Nautilus extension when theme refresh fails"
+pass "GTK migration does not lose live reload to an unrelated retint failure"
 
 echo "ok - omarchy GTK theming"

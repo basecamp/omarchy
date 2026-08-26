@@ -17,6 +17,7 @@ class OmarchyThemeExtension(GObject.GObject, Nautilus.MenuProvider):
         super().__init__()
         self._provider = None
         self._display = None
+        self._settings = None
         self._monitor = None
         self._reload_source = 0
         self._css_path = os.path.join(GLib.get_user_config_dir(), "gtk-4.0", "gtk.css")
@@ -27,6 +28,10 @@ class OmarchyThemeExtension(GObject.GObject, Nautilus.MenuProvider):
         if self._display is None:
             return GLib.SOURCE_CONTINUE
 
+        self._settings = Gtk.Settings.get_for_display(self._display)
+        self._settings.connect(
+            "notify::gtk-interface-color-scheme", self._on_color_scheme_changed
+        )
         self._reload_css()
 
         css_dir = Gio.File.new_for_path(os.path.dirname(self._css_path))
@@ -51,9 +56,18 @@ class OmarchyThemeExtension(GObject.GObject, Nautilus.MenuProvider):
             GLib.source_remove(self._reload_source)
         self._reload_source = GLib.timeout_add(100, self._reload_css)
 
+    def _on_color_scheme_changed(self, settings, _property):
+        if self._provider is not None:
+            self._provider.props.prefers_color_scheme = (
+                settings.props.gtk_interface_color_scheme
+            )
+
     def _reload_css(self):
         self._reload_source = 0
         provider = Gtk.CssProvider()
+        provider.props.prefers_color_scheme = (
+            self._settings.props.gtk_interface_color_scheme
+        )
         parsing_errors = []
         provider.connect(
             "parsing-error",
