@@ -485,3 +485,22 @@ put_output=$(PATH="$put_tmp/bin:$ROOT/bin:$PATH" \
   fail "put places a widget through a ready shell" "$put_output"
 [[ $put_output == "omarchy.keyboard-layout is on the bar" ]] || fail "put reports the placed widget" "$put_output"
 pass "put places a widget through a ready shell"
+
+# A plugin bar is loaded through pluginBarLoader's `source`, which carries no
+# initial bindings, so the host assigns these in onLoaded — after construction.
+# Marking any of them `required` aborts creation first, which left a cloned bar
+# rendering nothing at all on every monitor.
+for injected in omarchyPath barWidgetRegistry barConfig; do
+  if rg -q "required property [A-Za-z<>]+ $injected\b" "$ROOT/shell/plugins/bar/Bar.qml"; then
+    fail "host-injected bar property $injected must not be required"
+  fi
+done
+pass "host-injected bar properties are assignable after construction"
+
+# Loader has no errorString(): the bare identifier raises a ReferenceError that
+# aborts the very handler meant to report the failure, so a plugin that fails to
+# load did so silently. Only a QQmlComponent can be asked for a detail string.
+if perl -0ne 's{//[^\n]*}{}g; exit(/(?<![.\w])errorString\s*\(/ ? 0 : 1)' "$ROOT/shell/shell.qml"; then
+  fail "plugin load failures must not call an unqualified errorString()"
+fi
+pass "plugin load failures report through a qualified errorString()"
