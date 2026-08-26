@@ -75,3 +75,6 @@ t2fanrd
 
 # Framework 16
 qmk-hid
+
+# Qualcomm Snapdragon support packages
+qcom-firmware-extract
