@@ -1,0 +1,106 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle presentation mode (stay awake, silence notifications, hide the bar)
+# omarchy:group=toggle
+# omarchy:args=[toggle|on|off|status]
+# omarchy:examples=omarchy toggle presentation | omarchy toggle presentation on | omarchy toggle presentation status
+
+set -euo pipefail
+
+STATE_DIR="$HOME/.local/state/omarchy/toggles"
+STATE_FILE="$STATE_DIR/presentation"
+RESTORE_FILE="$HOME/.local/state/omarchy/presentation-restore"
+STAY_AWAKE_FILE="$HOME/.local/state/omarchy/indicators/stay-awake"
+
+enabled() {
+  [[ -f $STATE_FILE ]]
+}
+
+dnd_state() {
+  local state
+  state=$(omarchy-shell notifications dndState 2>/dev/null || true)
+  if [[ $state == "on" ]]; then
+    printf 'on\n'
+  else
+    printf 'off\n'
+  fi
+}
+
+write_restore() {
+  local bar_off=0 stay=0 dnd
+  mkdir -p "$(dirname "$RESTORE_FILE")"
+  omarchy-toggle-enabled bar-off && bar_off=1 || true
+  [[ -f $STAY_AWAKE_FILE ]] && stay=1 || true
+  dnd=$(dnd_state)
+  printf 'bar_off=%s\ndnd=%s\nstay_awake=%s\n' "$bar_off" "$dnd" "$stay" >"$RESTORE_FILE"
+}
+
+enable_presentation() {
+  mkdir -p "$STATE_DIR"
+  if enabled; then
+    return 0
+  fi
+  write_restore
+  omarchy-toggle-bar on
+  omarchy-shell -q notifications setDnd on
+  omarchy-toggle-idle stay-awake >/dev/null
+  touch "$STATE_FILE"
+  omarchy-shell -q omarchy.indicators refresh
+  omarchy-notification-send -g 󰐼 "Presentation mode on" "Stay awake, notifications silenced, bar hidden"
+}
+
+disable_presentation() {
+  local bar_off=0 stay=0 dnd=off
+  if [[ -f $RESTORE_FILE ]]; then
+    bar_off=$(awk -F= '$1 == "bar_off" { print $2 }' "$RESTORE_FILE")
+    dnd=$(awk -F= '$1 == "dnd" { print $2 }' "$RESTORE_FILE")
+    stay=$(awk -F= '$1 == "stay_awake" { print $2 }' "$RESTORE_FILE")
+  fi
+  rm -f "$STATE_FILE" "$RESTORE_FILE"
+
+  if [[ $bar_off != "1" ]]; then
+    omarchy-toggle-bar off
+  fi
+  if [[ $dnd != "on" ]]; then
+    omarchy-shell -q notifications setDnd off
+  fi
+  if [[ $stay != "1" ]]; then
+    omarchy-toggle-idle allow-idle >/dev/null
+  fi
+  omarchy-shell -q omarchy.indicators refresh
+  omarchy-notification-send -g 󰐼 "Presentation mode off"
+}
+
+print_status() {
+  if enabled; then
+    printf 'on\n'
+  else
+    printf 'off\n'
+  fi
+}
+
+case "${1:-toggle}" in
+  toggle)
+    if enabled; then
+      disable_presentation
+    else
+      enable_presentation
+    fi
+    print_status
+    ;;
+  on)
+    enable_presentation
+    print_status
+    ;;
+  off)
+    disable_presentation
+    print_status
+    ;;
+  status|--status)
+    print_status
+    ;;
+  *)
+    echo "Usage: omarchy-toggle-presentation [toggle|on|off|status]" >&2
+    exit 1
+    ;;
+esac
