@@ -1,0 +1,136 @@
+#!/bin/bash
+
+# omarchy:summary=Install the Hermes CLI as a mise-backed wrapper in ~/.local/bin
+# omarchy:args=[--now]
+# omarchy:examples=omarchy install hermes cli | omarchy install hermes cli --now
+
+# Hermes pins every one of its dependencies exactly and declares
+# Requires-Python >=3.11,<3.14, so it can neither be built against Arch's
+# Python nor share the python-* packages. mise builds it a private environment
+# instead.
+#
+# It gets its own installer rather than a line in omarchy-mise-install because
+# of the interpreter pin. Given no compatible interpreter to hand, uv builds
+# the venv against the system Python in violation of Hermes' own bound,
+# reports success, and leaves the breakage to surface later inside a
+# dependency -- and omarchy-mise-install writes a fixed stub with nowhere to
+# say otherwise.
+#
+# There is only ever one Hermes on a machine. hermes-desktop cannot run against
+# this one -- it needs a runtime built from its own commit, and the version gap
+# fails its readiness probe -- so it installs its own under ~/.hermes and puts
+# that on PATH. When the package is present it therefore owns Hermes outright:
+# this installer stands aside and removes its own copy, so the terminal, the
+# default agent and the app are all the same installation.
+
+set -euo pipefail
+
+mode=${1:-}
+
+tool='pipx:hermes-agent[extras=all]'
+python='3.13'
+
+# The package, not the runtime directory: it is installed before the app has
+# ever run, and that is exactly when we must not start building a second copy.
+desktop_owns_hermes() {
+  omarchy-pkg-present hermes-desktop
+}
+
+# The venv appears at the python-deps stage, several stages before the one that
+# installs the command, so its presence says nothing about being usable. The
+# marker is written last, and the command is what the agent actually runs.
+desktop_hermes_ready() {
+  [[ -f $HOME/.hermes/hermes-agent/.hermes-bootstrap-complete ]] || return 1
+  [[ -x $HOME/.local/bin/hermes ]] || return 1
+
+  # An executable of that name proves nothing about whose it is; the app's own
+  # points into ~/.hermes, and anything else is not the install we are asking
+  # about.
+  grep -q "$HOME/.hermes" "$HOME/.local/bin/hermes"
+}
+
+# Whether Hermes is really installed, not merely whether the stub exists. A
+# stub on its own is cold: running it installs Hermes, which takes minutes.
+installed() {
+  [[ -d "$(mise where "$tool" 2>/dev/null)/hermes-agent/lib/python$python" ]]
+}
+
+# --check lets callers tell a cold stub from a working one before they commit
+# to a path that assumes Hermes is ready.
+if [[ $mode == "--check" ]]; then
+  if desktop_owns_hermes; then
+    if desktop_hermes_ready; then exit 0; else exit 1; fi
+  fi
+  if installed; then exit 0; else exit 1; fi
+fi
+
+# Hand Hermes over to the app rather than keeping a second copy beside it.
+if desktop_owns_hermes; then
+  # Not gated on that copy being healthy: `mise up` can rebuild it against the
+  # wrong interpreter and a half-finished install answers to neither test, and
+  # either way it is still a second Hermes. Removing nothing is harmless.
+  if mise where "$tool" >/dev/null 2>&1; then
+    echo "Hermes Desktop provides Hermes; removing the separate CLI install..." >&2
+  fi
+
+  mise rm -g "$tool" >/dev/null 2>&1 || true
+  mise uninstall --all "$tool" >/dev/null 2>&1 || true
+
+  # Our own stub has to go with it. Left in place it still answers `hermes`
+  # until the app's bootstrap overwrites it, and answering means building the
+  # second Hermes this whole arrangement exists to avoid.
+  if [[ -f $HOME/.local/bin/hermes ]] && grep -q omarchy-install-hermes-cli "$HOME/.local/bin/hermes"; then
+    rm -f "$HOME/.local/bin/hermes"
+  fi
+
+  if desktop_hermes_ready; then
+    exit 0
+  fi
+
+  echo "Hermes Desktop is installed but has not set Hermes up yet." >&2
+  echo "Launch Hermes Desktop once to finish installing it." >&2
+  exit 1
+fi
+
+mkdir -p "$HOME/.local/bin"
+rm -f "$HOME/.local/bin/hermes"
+
+cat >"$HOME/.local/bin/hermes" <<EOF
+#!/bin/bash
+
+# Written by omarchy-install-hermes-cli.
+
+export UV_PYTHON="$python"
+
+# Exported rather than set on the install line alone, so the version resolved
+# to run agrees with the one just installed. Hermes ships several times a week
+# and mise's cooldown would otherwise hold a new release back for days.
+export MISE_MINIMUM_RELEASE_AGE=0
+
+# mise up -- which omarchy update runs -- reinstalls without that pin, so this
+# asks which interpreter is actually there rather than whether anything is.
+if ! [[ -d "\$(mise where '$tool' 2>/dev/null)/hermes-agent/lib/python$python" ]]; then
+  echo "Installing Hermes on Python $python (this takes a minute)..." >&2
+
+  # mise's pipx backend shells out to uv, which a stock Omarchy does not have.
+  # It is fetched here rather than when this stub was written, so setting up a
+  # machine that never runs Hermes costs nothing.
+  if omarchy-cmd-missing uv && ! mise where uv >/dev/null 2>&1; then
+    mise use -g --quiet uv@latest || exit 1
+  fi
+
+  mise use -g --quiet --force '$tool' || exit 1
+fi
+
+exec mise x '$tool' -- hermes "\$@"
+EOF
+
+chmod +x "$HOME/.local/bin/hermes"
+
+# The desktop app resolves a hermes on PATH by running `hermes --version` with
+# a 15 second budget, then falls back to cloning its own copy when that times
+# out. A first-run mise install does not fit in 15 seconds, so anything that
+# hands Hermes to the GUI has to install it here rather than leave it stubbed.
+if [[ $mode == "--now" ]]; then
+  "$HOME/.local/bin/hermes" --version
+fi
