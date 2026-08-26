@@ -31,6 +31,8 @@ import re
 from pathlib import Path
 
 OPEN_ELEMENT = re.compile(r'(?:^|[:\s])([A-Z][A-Za-z0-9_.]*)\s*\{\s*$')
+INLINE_COMPONENT = re.compile(r'^\s*component\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*Text\s*\{\s*$')
+INLINE_COMPONENT_ONELINE = re.compile(r'^\s*component\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*Text\s*\{')
 PROP = re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_.]*)\s*:')
 STRING_LITERAL = re.compile(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'')
 PROPERTY_DECL = re.compile(r'^\s*(?:readonly\s+)?property\b')
@@ -96,7 +98,17 @@ def binding_expression(lines, start):
         counted = strip_noise(lines[i])
         parens += counted.count('(') - counted.count(')')
         brackets += counted.count('[') - counted.count(']')
-        following = strip_noise(lines[i + 1]) if i + 1 < len(lines) else ''
+        # Look past blank and comment-only lines for the continuation. A
+        # comment or a blank line dropped into a wrapped expression does not
+        # end it, and stopping there would read `text: "prefix"` as the whole
+        # binding and exempt it as a literal while `+ externalValue` waits
+        # below — the exact misreading this function exists to prevent.
+        following = ''
+        for ahead in range(i + 1, len(lines)):
+            candidate = strip_noise(lines[ahead])
+            if candidate.strip():
+                following = candidate
+                break
         continues = (parens > 0 or brackets > 0
                      or TRAILING_OPERATOR.search(counted.rstrip())
                      or LEADING_OPERATOR.match(following))
@@ -156,6 +168,12 @@ def inline_violations(lines, rel):
             body = match.group(1)
             if 'textFormat' in body:
                 continue
+            # A component root written on one line needs the default whether or
+            # not this line binds `text`, for the same reason the block form
+            # does: every caller supplies the binding.
+            if INLINE_COMPONENT_ONELINE.match(code):
+                out.append(f'{rel}:{idx + 1}: inline component root Text declares no textFormat')
+                continue
             binding = INLINE_BINDING.search(body)
             if not binding or is_pure_literal(binding.group(1)):
                 continue
@@ -163,12 +181,75 @@ def inline_violations(lines, rel):
     return out
 
 
+# `Text { text: someValue` with the block carrying on below is valid QML and is
+# invisible to both scanners: OPEN_ELEMENT anchors its `{` at the end of the
+# line so the brace tracker never opens the block, and INLINE_TEXT needs the
+# closing brace on the same line. A dynamic AutoText binding written that way
+# passes this file in silence, which is the one failure a test like this must
+# not have.
+#
+# Rather than teach a line scanner to parse QML, require the two forms it can
+# read: the whole block on one line, or nothing after the opening brace. Every
+# Text in this tree is already written that way, so keeping to it costs nothing.
+UNSCANNABLE_TEXT = re.compile(r'(?:^|[:\s])Text\s*\{\s*\S')
+BARE_TEXT_OPENER = re.compile(r'(?:^|[:\s])Text\s*$')
+
+UNSCANNABLE = ('Text block written in a form this scanner cannot read; put the '
+               'opening brace last on the line, or write the whole block on '
+               'one line with no nested braces')
+
+
+def unscannable_violations(lines, rel):
+    out = []
+    for idx, raw in enumerate(lines):
+        code = strip_noise(raw)
+
+        # `Text` with its brace on the next line. OPEN_ELEMENT needs both on
+        # one line, so the block is never opened and everything in it is
+        # attributed to the enclosing element instead.
+        if BARE_TEXT_OPENER.search(code):
+            following = ''
+            for ahead in range(idx + 1, len(lines)):
+                candidate = strip_noise(lines[ahead]).strip()
+                if candidate:
+                    following = candidate
+                    break
+            if following.startswith('{'):
+                out.append(f'{rel}:{idx + 1}: {UNSCANNABLE}')
+                continue
+
+        for match in UNSCANNABLE_TEXT.finditer(code):
+            # A complete one-line block with no nested braces is fine —
+            # inline_violations reads those. Count rather than looking for a
+            # `}`, because `Text { text: ({ a: external }).a }` closes on this
+            # line yet INLINE_TEXT's brace-free body pattern cannot match it,
+            # so treating any `}` as "handled elsewhere" would drop it.
+            rest = code[match.end() - 1:]
+            depth = 1
+            closed = False
+            for char in rest:
+                if char == '{':
+                    depth += 1
+                elif char == '}':
+                    depth -= 1
+                    if depth == 0:
+                        closed = True
+                        break
+            if closed and '{' not in rest:
+                continue
+            out.append(f'{rel}:{idx + 1}: {UNSCANNABLE}')
+    return out
+
+
 root = Path(os.environ['ROOT'])
 found = []
+scanned = 0
 for path in sorted((root / 'shell').rglob('*.qml')):
+    scanned += 1
     lines = path.read_text().splitlines()
     rel = path.relative_to(root)
     found.extend(inline_violations(lines, rel))
+    found.extend(unscannable_violations(lines, rel))
 
     for b in blocks(lines):
         if b['name'] != 'Text' or 'textFormat' in b['props']:
@@ -182,8 +263,22 @@ for path in sorted((root / 'shell').rglob('*.qml')):
         # depth 1 and column 0: the scanner attributes one element per line, so
         # a `Row { Text {` line would report depth 1 for a nested block, and
         # falling through to the binding check below is the safe reading.
-        if b['depth'] == 1 and lines[b['start']].startswith('Text'):
+        # Indentation is not what makes it a root; depth 1 is. A `Row { Text {`
+        # line still reads as `Row` here, so leading whitespace can be ignored
+        # without letting a nested block be mistaken for the file's root.
+        if b['depth'] == 1 and lines[b['start']].lstrip().startswith('Text'):
             found.append(f'{rel}:{b["start"] + 1}: root Text element declares no textFormat')
+            continue
+
+        # A QML inline component is a root for the same reason, and the rule
+        # above cannot see one: `component InfoValue: Text {` sits inside
+        # another element, so its depth is not 1 and its line does not start
+        # with `Text`. Its `text` comes from every caller, so the file it lives
+        # in never binds it and the binding check below lets it through in
+        # silence. Only one file-level root Text exists in this tree, so
+        # without this the root rule is very nearly dead code.
+        if INLINE_COMPONENT.match(lines[b['start']]):
+            found.append(f'{rel}:{b["start"] + 1}: inline component root Text declares no textFormat')
             continue
 
         if 'text' not in b['props']:
@@ -192,6 +287,12 @@ for path in sorted((root / 'shell').rglob('*.qml')):
         if exempt_as_literal(lines, tline):
             continue
         found.append(f'{rel}:{tline + 1}: text binding without textFormat')
+
+# A scan that read nothing reports nothing, and an all-clear from a run that
+# never opened a file is the one result this test must never give. Only a
+# checkout with no shell/ QML at all reaches this.
+if scanned == 0:
+    raise SystemExit('no .qml files found under shell/; the scan read nothing')
 
 for line in found:
     print(line)
