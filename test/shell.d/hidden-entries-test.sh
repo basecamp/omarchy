@@ -163,5 +163,5 @@ Name=Backslash
 OnlyShowIn=Foo\Bar;
 ENTRY
 
-lists_entry "backslash" 'Foo\Bar' && fail "a backslash in a desktop name survives transport"
+lists_entry backslash 'Foo\Bar' && fail "a backslash in a desktop name survives transport"
 pass "hidden-entries passes desktop names to awk without escape processing"
