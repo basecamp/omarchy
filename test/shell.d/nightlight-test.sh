@@ -21,6 +21,7 @@ trap 'rm -rf "$TMPDIR"' EXIT
 mkdir -p "$TMPDIR/bin"
 STATE="$TMPDIR/hyprsunset-temp"
 SHELL_LOG="$TMPDIR/omarchy-shell-log"
+HYPRSHADE_LOG="$TMPDIR/hyprshade-log"
 
 cat >"$TMPDIR/bin/hyprctl" <<'SH'
 #!/bin/bash
@@ -53,6 +54,7 @@ nightlight_cli() {
   PATH="$TMPDIR/bin:$PATH" \
   HYPRSUNSET_STATE="$STATE" \
   OMARCHY_SHELL_LOG="$SHELL_LOG" \
+  HYPRSHADE_LOG="$HYPRSHADE_LOG" \
     "$ROOT/bin/omarchy-toggle-nightlight" "$@"
 }
 
@@ -90,3 +92,33 @@ if rg -q 'omarchy.indicators' "$ROOT/bin/omarchy-toggle-nightlight"; then
   fail "nightlight toggle leaves indicator refresh to the nightlight service"
 fi
 pass "nightlight toggle leaves indicator refresh to the nightlight service"
+
+# Test hyprshade cleanup when toggling off
+cat >"$TMPDIR/bin/hyprshade" <<SH
+#!/bin/bash
+printf '%s\\n' "\$*" >>"$HYPRSHADE_LOG"
+SH
+chmod +x "$TMPDIR/bin/hyprshade"
+
+# Start with nightlight ON (4000K), then toggle off — hyprshade off should be called
+printf '4000\n' >"$STATE"
+: >"$HYPRSHADE_LOG"
+nightlight_cli >/dev/null
+grep -qFx 'off' "$HYPRSHADE_LOG" || fail "nightlight toggle off clears hyprshade shader"
+pass "nightlight toggle off clears hyprshade shader"
+
+# Turn on again — hyprshade should NOT be called
+printf '6500\n' >"$STATE"
+: >"$HYPRSHADE_LOG"
+nightlight_cli >/dev/null
+if [[ -s "$HYPRSHADE_LOG" ]]; then
+  fail "nightlight toggle on does not touch hyprshade"
+fi
+pass "nightlight toggle on does not touch hyprshade"
+
+# When hyprshade is not installed, toggle off should still work
+rm "$TMPDIR/bin/hyprshade"
+printf '4000\n' >"$STATE"
+nightlight_cli >/dev/null
+[[ $(<"$STATE") == 6500 ]] || fail "nightlight toggle off works without hyprshade"
+pass "nightlight toggle off works without hyprshade"

@@ -56,4 +56,10 @@ for _ in {1..10}; do
   [[ $(current_temp) == "$TARGET_TEMP" ]] && break
 done
 
+# hyprshade shaders apply their own color temperature and override hyprsunset
+# visually — clear any active shader when toggling to keep state consistent
+if [[ $TARGET_TEMP == "$OFF_TEMP" ]] && command -v hyprshade >/dev/null 2>&1; then
+  hyprshade off >/dev/null 2>&1 || true
+fi
+
 omarchy-shell -q nightlight refresh
