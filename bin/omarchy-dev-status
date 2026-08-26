@@ -44,11 +44,20 @@ sudo_bin_dir() {
   dirname "$resolved"
 }
 
+session_matches=0
+if [[ ${OMARCHY_PATH:-$default_target} == "$configured" ]]; then
+  session_matches=1
+fi
+
 if (( linked )); then
   echo "dev-link: configured"
   echo "  /etc/omarchy.conf -> OMARCHY_PATH=$configured"
   echo "  sudo resolves omarchy-* from: $(sudo_bin_dir)"
-  echo "  status: reboot required before all session layers use this checkout"
+  if (( session_matches )); then
+    echo "  status: active in this session"
+  else
+    echo "  status: reboot required before all session layers use this checkout"
+  fi
 else
   echo "dev-link: inactive"
   if (( conf_present )); then
@@ -58,7 +67,11 @@ fi
 
 echo "  current shell:       OMARCHY_PATH=${OMARCHY_PATH:-<unset>}"
 
-if [[ ${OMARCHY_PATH:-$default_target} != "$configured" ]]; then
+if (( ! session_matches )); then
   echo
-  echo "Note: the running session does not match /etc/omarchy.conf. Reboot to settle it."
+  if [[ -z ${OMARCHY_PATH:-} ]]; then
+    echo "Note: this shell has no session OMARCHY_PATH. That is normal under sudo or outside the desktop session; check from a session terminal."
+  else
+    echo "Note: the running session does not match /etc/omarchy.conf. Reboot to settle it."
+  fi
 fi
