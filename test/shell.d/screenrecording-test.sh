@@ -334,14 +334,19 @@ SH
 chmod +x "$stub_bin"/pgrep "$stub_bin"/omarchy-hyprland-monitor-focused \
   "$stub_bin"/gpu-screen-recorder "$stub_bin"/omarchy-shell
 
+# Compare that name across the run rather than demanding it be absent: the
+# whole point of the finding is that anyone can own it already, and a leftover
+# from a pre-fix recording would red-light the fixed script.
+tmp_state="/tmp/omarchy-screenrecord-filename"
+tmp_state_before=$(stat -c '%y %s' "$tmp_state" 2>/dev/null)
+
 OMARCHY_SCREENRECORD_DIR="$recording_dir" \
   "$ROOT/bin/omarchy-capture-screenrecording" --fullscreen >/dev/null 2>&1
 
 pkill -f "$stub_bin/gpu-screen-recorder" 2>/dev/null || true
 
-if [[ -e /tmp/omarchy-screenrecord-filename ]]; then
+[[ $(stat -c '%y %s' "$tmp_state" 2>/dev/null) == "$tmp_state_before" ]] ||
   fail "screen recording keeps no state under a fixed /tmp name"
-fi
 pass "screen recording keeps no state under a fixed /tmp name"
 
 [[ -s $XDG_RUNTIME_DIR/omarchy-screenrecord-filename ]] ||
