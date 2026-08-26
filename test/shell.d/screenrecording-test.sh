@@ -299,3 +299,57 @@ grep -F 'move = { "(monitor_w-monitor_h*2/9-40)", "(monitor_h-monitor_h/4-40)" }
 grep -F 'move = { "(monitor_w-monitor_h*3/10-40)", "(monitor_h-monitor_h*27/80-40)" }' "$webcam_rules" >/dev/null || \
   fail "large webcam starts at its final corner position"
 pass "webcam size rules place the initial window in its final corner"
+
+# The stop path reads the recording state file back and uses its contents as a
+# path -- ffmpeg writes beside it, `mv` replaces it, `rm -f` deletes its
+# preview -- so it has to live in the per-user runtime directory rather than
+# under a name in world-writable /tmp that another account can create first.
+recording_dir="$tmp_dir/recordings"
+mkdir -p "$recording_dir"
+
+cat >"$stub_bin/pgrep" <<'SH'
+#!/bin/bash
+exit 1
+SH
+
+cat >"$stub_bin/omarchy-hyprland-monitor-focused" <<'SH'
+#!/bin/bash
+printf 'DP-1\n'
+SH
+
+cat >"$stub_bin/gpu-screen-recorder" <<'SH'
+#!/bin/bash
+for i in "$@"; do
+  [[ -n ${take_next:-} ]] && { : >"$i"; break; }
+  [[ $i == "-o" ]] && take_next=1
+done
+sleep 5
+SH
+
+cat >"$stub_bin/omarchy-shell" <<'SH'
+#!/bin/bash
+exit 0
+SH
+
+chmod +x "$stub_bin"/pgrep "$stub_bin"/omarchy-hyprland-monitor-focused \
+  "$stub_bin"/gpu-screen-recorder "$stub_bin"/omarchy-shell
+
+OMARCHY_SCREENRECORD_DIR="$recording_dir" \
+  "$ROOT/bin/omarchy-capture-screenrecording" --fullscreen >/dev/null 2>&1
+
+pkill -f "$stub_bin/gpu-screen-recorder" 2>/dev/null || true
+
+if [[ -e /tmp/omarchy-screenrecord-filename ]]; then
+  fail "screen recording keeps no state under a fixed /tmp name"
+fi
+pass "screen recording keeps no state under a fixed /tmp name"
+
+[[ -s $XDG_RUNTIME_DIR/omarchy-screenrecord-filename ]] ||
+  fail "the recording state file lives in the per-user runtime directory" \
+    "$(ls -a "$XDG_RUNTIME_DIR")"
+pass "the recording state file lives in the per-user runtime directory"
+
+[[ $(<"$XDG_RUNTIME_DIR/omarchy-screenrecord-filename") == "$recording_dir"/* ]] ||
+  fail "the recording state file names the recording that was started" \
+    "$(<"$XDG_RUNTIME_DIR/omarchy-screenrecord-filename")"
+pass "the recording state file names the recording that was started"
