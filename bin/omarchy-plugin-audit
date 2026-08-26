@@ -2,7 +2,7 @@
 
 # omarchy:summary=Report a plugin's capabilities and flag anything outside its declared set
 # omarchy:group=plugin
-# omarchy:args=<plugin-folder|id> [--json] [--strict]
+# omarchy:args=<plugin-folder|id> [--json] [--strict] | --explain
 # omarchy:examples=omarchy plugin audit ./my-plugin | omarchy plugin audit acme.weather --strict
 
 # Static capability report for a shell plugin. Plugins run unsandboxed inside the
@@ -79,9 +79,9 @@ plugin reaches without declaring stands out. The report ends with one overall
 risk level (see --explain).
 
   --json     Emit the report as JSON instead of text.
-  --strict   Exit non-zero when the plugin spawns an undeclared binary, contacts
-             an undeclared host, writes an undeclared path, or trips a
-             high-severity risk. Intended for CI and marketplace baselines.
+  --strict   Exit non-zero when the plugin reaches a high or critical verdict, or
+             has an undeclared command, host, or write. Intended for CI and
+             marketplace baselines.
   --explain  Describe the overall risk levels and how they are derived, then exit.
 
 Declare capabilities in manifest.json so an audit stays quiet on intended use:
@@ -658,11 +658,17 @@ if [[ $valid == false ]]; then
 fi
 
 if (( strict )); then
+  # Fail on the two things a CI/marketplace gate should block: a verdict of high
+  # or critical (which already folds in every high-severity risk and the two-front
+  # evasion escalation), and any undeclared command, host, or write. A moderate
+  # verdict -- a single evasion signal or a declared but exposed-network plugin --
+  # is advisory and does not hard-fail on its own; undeclared reads never do.
   jq -e '
-    .summary.undeclaredCommands > 0
+    .verdict.level == "high"
+    or .verdict.level == "critical"
+    or .summary.undeclaredCommands > 0
     or .summary.undeclaredNetwork > 0
     or .summary.undeclaredWrites > 0
-    or .summary.highRisks > 0
   ' <<<"$report" >/dev/null && exit 1
 fi
 

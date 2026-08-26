@@ -57,12 +57,12 @@ The report ends with one level, computed only from what the scan found — a tri
 | `high` | A high-severity risk on its own (privilege escalation, an autostart/systemd/hypr/crontab write, a credential read, a second Quickshell, a refused git origin), hiding what it does on more than one front at once (e.g. both a concatenated binary name and a runtime-built URL), or a third-party plugin that fails `omarchy-plugin-validate`. |
 | `critical` | A pattern dangerous almost regardless of intent — pipe-to-shell, runtime code construction, reading credentials while also reaching the network, or privilege escalation (`sudo`/`pkexec`) combined with network access or a credential read. |
 
-The highest matching rule wins. Hiding a capability raises the level rather than lowering it: a benign plugin rarely needs to assemble a binary name or a host from fragments, so the scan not being able to see the real value is itself the signal. `--strict` (below) keys off undeclared commands, hosts, and writes and high-severity risks, so it corresponds to the `high` and `critical` levels and most `moderate` ones.
+The highest matching rule wins. Hiding a capability raises the level rather than lowering it: a benign plugin rarely needs to assemble a binary name or a host from fragments, so the scan not being able to see the real value is itself the signal. `--strict` (below) fails on any `high` or `critical` verdict and on any undeclared command, host, or write; a `moderate` verdict — a single evasion signal, or a declared-but-exposed-network plugin — is reported but does not hard-fail on its own.
 
 ## Exit status
 
 - `0` — the plugin is well-formed (or first-party) and, without `--strict`, always when validation passed. The report is advisory by default.
-- `1` — `--strict` only: the plugin spawns an undeclared binary, contacts an undeclared host, writes an undeclared path, or trips a high-severity risk. Undeclared *reads* are reported but do not fail `--strict` on their own.
+- `1` — `--strict` only: the plugin reaches a `high` or `critical` verdict, or has an undeclared command, host, or write. A `moderate` verdict and undeclared *reads* are reported but do not fail `--strict` on their own.
 - `2` — the target could not be resolved, or a third-party plugin failed `omarchy-plugin-validate`. First-party (`omarchy.*`) plugins skip that gate, since validate deliberately rejects the reserved namespace.
 
 `--strict` is the mode for CI and for a marketplace security baseline: it turns the capability report into a pass/fail gate on a specific commit.
