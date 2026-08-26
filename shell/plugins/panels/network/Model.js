@@ -348,10 +348,12 @@ var enterpriseConnectScript =
 // literals, never user text.
 //
 // Dedupe: con-name isn't unique, so prior hidden wifi profiles for this
-// SSID are matched by UUID + type/ssid/hidden fields (`--escape no` so
-// escaped ":"/"\\" SSIDs still compare; `IFS=` so padded SSIDs aren't
-// trimmed) and removed only after the new profile activates AND autoconnect
-// is armed -- a failed arm keeps the old, still-autoconnecting profiles.
+// SSID are found in two fixed nmcli calls -- a UUID/TYPE listing, then one
+// batched ssid/hidden query over just the wifi profiles (groups come back
+// blank-line separated; `--escape no` so ":"/"\\" SSIDs compare raw, `IFS=`
+// so padded SSIDs aren't trimmed) -- and removed only after the new profile
+// activates AND autoconnect is armed; a failed arm keeps the old,
+// still-autoconnecting profiles.
 //
 // Cleanup is one mechanism: an EXIT trap deletes the new profile on any
 // failure or kill (TERM/INT exit into it; SIGKILL would bypass, Quickshell
@@ -361,15 +363,17 @@ var enterpriseConnectScript =
 var hiddenPskConnectScript =
   "u=$(uuidgen); IFS= read -r pw; pmf=\"\"; [[ $2 == \"sae\" ]] && pmf=\"wifi-sec.pmf 3\";" +
   " trap 'nmcli connection delete uuid \"$u\" >/dev/null 2>&1' EXIT; trap 'exit 143' TERM INT;" +
-  " old=\"\";" +
-  " for c in $(nmcli -t -f UUID connection show); do" +
-  "   info=$(nmcli --escape no -g connection.type,802-11-wireless.ssid,802-11-wireless.hidden connection show uuid \"$c\" 2>/dev/null);" +
-  "   { IFS= read -r type; IFS= read -r ssid; IFS= read -r hidden; } <<< \"$info\";" +
-  "   [[ $type == \"802-11-wireless\" ]] || continue;" +
-  "   [[ $ssid == \"$1\" ]] || continue;" +
-  "   [[ $hidden == \"yes\" ]] || continue;" +
-  "   old=\"$old $c\";" +
-  " done;" +
+  " old=\"\"; wifi=\"\";" +
+  " while IFS=: read -r c t; do [[ $t == \"802-11-wireless\" ]] && wifi=\"$wifi uuid $c\"; done <<< \"$(nmcli -t -f UUID,TYPE connection show)\";" +
+  " if [[ -n $wifi ]]; then" +
+  "   while IFS= read -r c; do" +
+  "     [[ -n $c ]] || continue;" +
+  "     IFS= read -r ssid; IFS= read -r hidden;" +
+  "     [[ $ssid == \"$1\" ]] || continue;" +
+  "     [[ $hidden == \"yes\" ]] || continue;" +
+  "     old=\"$old $c\";" +
+  "   done <<< \"$(nmcli --escape no -g connection.uuid,802-11-wireless.ssid,802-11-wireless.hidden connection show $wifi 2>/dev/null)\";" +
+  " fi;" +
   " nmcli connection add type wifi con-name \"$1\" ssid \"$1\" connection.uuid \"$u\"" +
   " connection.autoconnect no 802-11-wireless.hidden yes wifi-sec.key-mgmt \"$2\" $pmf >/dev/null" +
   " && printf 'set wifi-sec.psk %s\\nsave\\nquit\\n' \"$pw\" | nmcli connection edit uuid \"$u\" >/dev/null" +
