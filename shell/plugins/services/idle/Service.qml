@@ -364,12 +364,20 @@ Item {
 
   Process {
     id: externalInhibitProbe
-    // The probe normalizes the daemon's newline-less JSON into exactly one
-    // line and stays silent when the serving pid is gone — silence is the
-    // consumer's "not inhibited", so a dead daemon cannot pin idle off.
+    // SplitParser.onRead never fires when the probe emits no bytes (a
+    // SIGKILL'd daemon's last write). Track whether this run produced a
+    // line, and apply empty state on exit so a crash cannot pin idle off.
+    property bool sawProbeOutput: false
     command: [root.omarchyPath + "/bin/omarchy-idle-inhibit-probe", root.externalInhibitStateDir + "/state"]
     stdout: SplitParser {
-      onRead: function(line) { root.applyExternalInhibitState(line) }
+      onRead: function(line) {
+        sawProbeOutput = true
+        root.applyExternalInhibitState(line)
+      }
+    }
+    onRunningChanged: if (running) sawProbeOutput = false
+    onExited: function() {
+      if (!sawProbeOutput) root.applyExternalInhibitState("")
     }
   }
 

@@ -36,6 +36,24 @@ rg -F 'omarchy-idle-inhibit-probe' "$service" >/dev/null ||
   fail "idle service consumes state through the liveness-aware probe"
 pass "idle service consumes state through the liveness-aware probe"
 
+# SplitParser.onRead never fires when the probe emits no bytes (dead pid).
+# The Process must apply an empty state on exit so a crash cannot pin idle off.
+python3 - "$service" <<'PY' || fail "probe exit without stdout applies an empty inhibit state"
+import re
+import sys
+
+qml = open(sys.argv[1]).read()
+block = re.search(r"id:\s*externalInhibitProbe\b.*?(?=\n  (?:Process|FileView|Timer|Component|IpcHandler)\b|\Z)", qml, re.S)
+if not block:
+    sys.exit(1)
+text = block.group(0)
+if "onExited" not in text or 'applyExternalInhibitState("")' not in text:
+    sys.exit(1)
+if "sawProbeOutput" not in text:
+    sys.exit(1)
+PY
+pass "probe exit without stdout applies an empty inhibit state"
+
 grep -q '"pid"' "$ROOT/bin/omarchy-idle-inhibit-daemon" ||
   fail "daemon snapshots carry the serving pid"
 pass "daemon snapshots carry the serving pid"

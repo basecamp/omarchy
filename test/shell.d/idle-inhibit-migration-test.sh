@@ -14,8 +14,12 @@ unit="$ROOT/default/systemd/user/omarchy-idle-inhibit.service"
 
 grep -Fx 'ExecStart=/usr/bin/omarchy-idle-inhibit-daemon' "$unit" >/dev/null ||
   fail "the unit starts the packaged daemon path"
-grep -Fx 'After=graphical-session.target' "$unit" >/dev/null ||
-  fail "the unit starts with the graphical session"
+grep -Fx 'After=dbus.socket' "$unit" >/dev/null ||
+  fail "the unit starts after dbus.socket so it can own names before graphical-session apps probe"
+grep -Fx 'Requires=dbus.socket' "$unit" >/dev/null ||
+  fail "the unit requires the session bus"
+grep -Fx 'After=graphical-session.target' "$unit" >/dev/null &&
+  fail "After=graphical-session.target starts the daemon after autostarted browsers can already probe NameHasOwner"
 grep -Fx 'WantedBy=graphical-session.target' "$unit" >/dev/null ||
   fail "the unit is enabled with the graphical session"
 grep -Fx 'Restart=on-failure' "$unit" >/dev/null ||

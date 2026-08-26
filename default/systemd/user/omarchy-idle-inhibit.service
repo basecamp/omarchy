@@ -1,9 +1,13 @@
 [Unit]
 Description=Own the freedesktop screensaver inhibit names for the session
-# Browsers and players request idle inhibition over D-Bus
-# (org.freedesktop.ScreenSaver); the daemon must own the names before any of
-# them probe, which means starting with the graphical session, not on demand.
-After=graphical-session.target
+# Browsers and players probe NameHasOwner before Inhibit, which never
+# auto-starts. After=graphical-session.target would start us only once the
+# target is already reached — autostarted browsers would win that race.
+# Keep the target's default ordering (WantedBy= pulls this in before the
+# target is reached) and wait only on the session bus, matching
+# omarchy-sleep-lock.service.
+After=dbus.socket
+Requires=dbus.socket
 PartOf=graphical-session.target
 
 [Service]

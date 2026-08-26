@@ -99,8 +99,10 @@ PM=/org/freedesktop/PowerManagement/Inhibit
 daemon_pid=
 
 start_daemon() {
+  set +m
   "$DAEMON" &
   daemon_pid=$!
+  disown "$daemon_pid" 2>/dev/null || true
 }
 
 stop_daemon() {
@@ -333,17 +335,47 @@ wait_for "state settles after the duplicate start" not_inhibited
 #
 # A SIGKILL leaves no orderly final publish — whatever the file claimed while
 # serving stays on disk. Every snapshot therefore carries the serving pid, and
-# the probe falls silent for a file whose pid is gone, so a crashed daemon
-# cannot pin the idle timers off; no bystander cleanup or coordination is
-# involved.
+# the probe emits one empty line for a file whose pid is gone, so a crashed
+# daemon cannot pin the idle timers off; no bystander cleanup or coordination
+# is involved. The holder stays connected so the last write still claims it.
 
-stop_daemon
-sleep 1
-[[ -s $state_file ]] || fail "the kill test needs the dead daemon's last write"
-dead_pid=$(jq -r '.pid' "$state_file")
-if kill -0 "$dead_pid" 2>/dev/null; then fail "the killed daemon's pid is really gone"; fi
-if "$PROBE" "$state_file" | grep -q .; then fail "the probe is silent for a dead daemon's state"; fi
-pass "the probe is silent for a dead daemon's state"
+python3 - >"$runtime_dir/kill-holder.out" <<'PY' &
+import time
+import gi
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib
+
+bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+res = bus.call_sync(
+    "org.freedesktop.ScreenSaver", "/ScreenSaver", "org.freedesktop.ScreenSaver",
+    "Inhibit", GLib.Variant("(ss)", ("kill.client", "hold across sigkill")),
+    GLib.VariantType("(u)"), Gio.DBusCallFlags.NONE, -1, None)
+print(res.unpack()[0], flush=True)
+time.sleep(600)
+PY
+kill_holder_pid=$!
+wait_for "the kill-test holder is visible" inhibited
+
+killed_pid=$daemon_pid
+kill -KILL "$daemon_pid"
+deadline=$((SECONDS + 10))
+while ((SECONDS < deadline)) && kill -0 "$daemon_pid" 2>/dev/null; do sleep 0.1; done
+if kill -0 "$daemon_pid" 2>/dev/null; then fail "the daemon dies on SIGKILL"; fi
+wait "$daemon_pid" 2>/dev/null || true
+daemon_pid=
+
+jq -e '.inhibited == true and (.holders | length > 0)' "$state_file" >/dev/null ||
+  fail "SIGKILL leaves the last live snapshot on disk" "$(cat "$state_file")"
+jq -e --argjson pid "$killed_pid" '.pid == $pid' "$state_file" >/dev/null ||
+  fail "SIGKILL snapshot still names the dead serving pid" "$(cat "$state_file")"
+if kill -0 "$killed_pid" 2>/dev/null; then fail "the killed daemon's pid is really gone"; fi
+
+out=$("$PROBE" "$state_file" ; printf 'x')
+[[ $out == $'\nx' ]] || fail "the probe emits one empty line for a SIGKILL'd daemon's last write" "$(printf %q "$out")"
+pass "SIGKILL mid-inhibit still reads as released"
+
+kill "$kill_holder_pid" 2>/dev/null || true
+wait "$kill_holder_pid" 2>/dev/null || true
 
 # Missing state: one empty line.
 out=$("$PROBE" "$runtime_dir/does-not-exist" ; printf 'x')
@@ -365,7 +397,7 @@ wait_for "a fresh daemon republishes over the stale file" not_inhibited
 # snapshot rather than leaving whatever clients held at the moment of the
 # stop on disk.
 
-held=$(python3 - <<'PY'
+python3 - >"$runtime_dir/term-holder.out" <<'PY' &
 import time
 import gi
 gi.require_version("Gio", "2.0")
@@ -379,7 +411,6 @@ res = bus.call_sync(
 print(res.unpack()[0], flush=True)
 time.sleep(600)
 PY
-) &
 holder_term_pid=$!
 wait_for "the term-test holder is visible" inhibited
 
