@@ -30,11 +30,12 @@ Panel {
   }
 
   function cancelHiddenForm() {
-    hiddenPasswordText = ""
-    // Keep the form (and its state) while a connect is in flight so a
-    // reopened panel still shows "Connecting…"; the disabled toggle
-    // prevents cancel/resubmit meanwhile.
+    // Keep the form and its full state — passphrase included — while a
+    // connect is in flight so a reopened panel still shows "Connecting…"
+    // and a later failure can be retried without retyping; the disabled
+    // toggle prevents cancel/resubmit meanwhile.
     if (hiddenBusy) return
+    hiddenPasswordText = ""
     hiddenFormOpen = false
     hiddenSsidText = ""
     hiddenSecurity = "wpa-psk"
