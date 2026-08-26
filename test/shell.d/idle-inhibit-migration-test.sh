@@ -26,7 +26,10 @@ grep -q 'omarchy-idle-inhibit\.service' "$ROOT/install/user/first-run/enable-use
   fail "first-run starts the inhibit daemon on fresh installs"
 pass "first-run starts the inhibit daemon on fresh installs"
 
-migration=$(ls "$ROOT"/migrations/*.sh | sort | tail -n1)
+# Anchor on the migration that mentions the daemon, not on filename order:
+# another migration can land with a higher timestamp before this merges.
+migration=$(grep -l 'omarchy-idle-inhibit' "$ROOT"/migrations/*.sh | head -n1)
+[[ -n $migration ]] || fail "a migration enables the inhibit daemon"
 [[ -x $migration ]] && fail "a migration is 0644, not executable"
 head -n1 "$migration" | grep -q '^echo ' ||
   fail "a migration starts with an echo of what it does" "$(head -n1 "$migration")"
