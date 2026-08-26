@@ -80,6 +80,29 @@ Both numbers are seconds counted from the moment you went idle — not from each
 
 If you dismiss the screensaver before the lock deadline, that counts as activity and the pending lock is cancelled. You don't get locked out for glancing at your machine.
 
+### Keeping the screensaver on the lock screen
+
+The screensaver you see before the lock is a terminal window, and the lock screen draws over every window on the machine — so by default locking ends the animation and blanks the display. If you want something moving on screen while the machine is still locked, turn on the lock screensaver:
+
+```json
+{
+  "version": 1,
+  "idle": {
+    "screensaver": 150,
+    "lock": 300,
+    "lockScreensaver": true,
+    "lockScreensaverDelay": 20,
+    "lockScreensaverDuration": 0
+  }
+}
+```
+
+`lockScreensaverDelay` is how many seconds the ordinary lock screen stays up before the animation fades in, and `lockScreensaverDuration` is how long the animation runs before the display blanks — `0` means it never does, so it keeps going for as long as the machine stays locked. It draws the same branding art as the regular screensaver, so _Style > Screensaver_ changes both.
+
+The machine stays locked the whole time. Any key or a real mouse movement brings the password box straight back, and the keystroke you typed goes into it, so you can start typing your password without waiting for the animation to clear. `omarchy toggle screensaver` turns this off along with the regular one.
+
+Leaving it at `0` means the display never sleeps while locked, which is the point — but it is your monitor staying lit, not a screen blanking after a few seconds as it normally would.
+
 To stop locking on idle entirely, `Super + Ctrl + I` — or `omarchy toggle idle` — flips stay awake on, and the coffee cup indicator appears in the bar. That's the one to hit before a long presentation or a build you want to watch. Hit it again to go back to normal. `omarchy toggle idle status` prints the current state as JSON if you need it from a script.
 
 This is about locking and the screensaver, not power. Suspend and hibernation have their own setup in [system sleep](36-system-sleep.md).

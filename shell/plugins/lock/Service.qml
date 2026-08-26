@@ -11,6 +11,28 @@ Item {
   property var shell: null
   property string omarchyPath: ""
 
+  // Lock-surface screensaver settings, alongside the other idle timings in
+  // ~/.config/omarchy/shell.json under `idle`.
+  readonly property var idleConfig: shell && shell.shellConfig && shell.shellConfig.idle ? shell.shellConfig.idle : ({})
+  // `omarchy toggle screensaver` opts out of the screensaver everywhere, so it
+  // opts out of this one too.
+  readonly property bool lockScreensaverEnabled: idleConfig.lockScreensaver === true && !screensaverToggledOff
+  readonly property int lockScreensaverDelaySec: {
+    var n = Number(idleConfig.lockScreensaverDelay)
+    return (!isFinite(n) || n < 1) ? 20 : Math.floor(n)
+  }
+  // How long the screensaver runs before the display is blanked. 0, the
+  // default, means it never blanks: it animates for as long as the session
+  // stays locked.
+  readonly property int lockScreensaverDurationSec: {
+    var n = Number(idleConfig.lockScreensaverDuration)
+    return (!isFinite(n) || n < 0) ? 0 : Math.floor(n)
+  }
+  readonly property bool lockScreensaverForever: lockScreensaverEnabled && lockScreensaverDurationSec === 0
+  readonly property string lockBrandingPath: home + "/.config/omarchy/branding/screensaver.txt"
+  property bool screensaverToggledOff: false
+  property bool displayBlanked: false
+
   readonly property string home: Quickshell.env("HOME")
   readonly property string stateHome: home + "/.local/state"
   readonly property string userName: Quickshell.env("USER") || Quickshell.env("LOGNAME")
@@ -160,16 +182,24 @@ Item {
   }
 
   function armBlankTimer() {
+    // "Runs forever" means there is no blank deadline at all.
+    if (root.lockScreensaverForever) {
+      idleBlankTimer.stop()
+      return
+    }
+
     idleBlankTimer.armedAt = Date.now()
     idleBlankTimer.restart()
   }
 
   function runWake() {
+    root.displayBlanked = false
     if (!wakeProcess.running) wakeProcess.running = true
     if (lockRequested) armBlankTimer()
   }
 
   function runBlank() {
+    root.displayBlanked = true
     if (!blankProcess.running) blankProcess.running = true
   }
 
@@ -277,6 +307,10 @@ Item {
         inputEnabled: root.lockRequested
         loadBackground: root.locked
         passwordText: root.enteredPassword
+        screensaverEnabled: root.lockScreensaverEnabled
+        screensaverDelaySec: root.lockScreensaverDelaySec
+        screensaverBrandingPath: root.lockBrandingPath
+        screensaverPaused: root.displayBlanked
         onPasswordTextEdited: function(password) { root.enteredPassword = password }
         onSubmitPassword: function(password) { root.submitPassword(password) }
         onClearFailureRequested: root.failureMessage = ""
@@ -307,6 +341,9 @@ Item {
       inputEnabled: false
       loadBackground: root.previewVisible
       passwordText: ""
+      screensaverEnabled: root.lockScreensaverEnabled
+      screensaverDelaySec: root.lockScreensaverDelaySec
+      screensaverBrandingPath: root.lockBrandingPath
     }
 
     MouseArea {
@@ -413,7 +450,11 @@ Item {
 
   Timer {
     id: idleBlankTimer
-    interval: 5000
+    // The deadline is measured from the lock, so it has to cover the delay
+    // before the screensaver appears as well as its own run time.
+    interval: root.lockScreensaverEnabled
+      ? Math.max(1000, (root.lockScreensaverDelaySec + root.lockScreensaverDurationSec) * 1000)
+      : 5000
     repeat: false
     property double armedAt: 0
     onTriggered: {
@@ -479,6 +520,25 @@ Item {
     if (!lockRequested) return
     if (authenticatingPassword) idleBlankTimer.stop()
     else armBlankTimer()
+  }
+
+  FileView {
+    id: screensaverToggleFile
+    path: root.home + "/.local/state/omarchy/toggles/screensaver-off"
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.screensaverToggledOff = true
+    onLoadFailed: root.screensaverToggledOff = false
+    onFileChanged: reload()
+  }
+
+  FileView {
+    // The flag is created and deleted rather than edited, and a watcher on a
+    // missing file never fires on creation, so watch the directory too.
+    path: root.home + "/.local/state/omarchy/toggles"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: screensaverToggleFile.reload()
   }
 
   FileView {

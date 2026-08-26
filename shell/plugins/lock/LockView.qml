@@ -17,6 +17,20 @@ Item {
   property string passwordText: ""
   property bool syncingPasswordText: false
 
+  // Lock-surface screensaver. `screensaverShowing` only changes what is
+  // painted: the password field stays enabled and focused underneath, so the
+  // first keystroke both dismisses the animation and starts the password.
+  property bool screensaverEnabled: false
+  property int screensaverDelaySec: 20
+  property string screensaverBrandingPath: ""
+  property bool screensaverPaused: false
+  property bool screensaverActive: false
+  readonly property bool screensaverShowing: screensaverEnabled && screensaverActive && !screensaverPaused
+  // Pointer jitter must not read as presence, or the animation never starts.
+  readonly property real pointerSlop: 40
+  property real lastPointerX: -1
+  property real lastPointerY: -1
+
   readonly property string placeholderText: "Enter Password"
   readonly property int fieldWidth: 381
   readonly property int fieldHeight: 67
@@ -60,6 +74,32 @@ Item {
     passwordTextEdited("")
   }
 
+  function noteActivity() {
+    if (root.screensaverActive) {
+      root.screensaverActive = false
+      // Re-baseline the pointer so the next move is measured from here.
+      root.lastPointerX = -1
+      root.lastPointerY = -1
+    }
+    if (root.screensaverEnabled) screensaverIdleTimer.restart()
+  }
+
+  function notePointer(x, y) {
+    if (root.lastPointerX < 0) {
+      root.lastPointerX = x
+      root.lastPointerY = y
+      return
+    }
+
+    var dx = x - root.lastPointerX
+    var dy = y - root.lastPointerY
+    if (Math.sqrt(dx * dx + dy * dy) < root.pointerSlop) return
+
+    root.lastPointerX = x
+    root.lastPointerY = y
+    root.noteActivity()
+  }
+
   function syncPasswordText() {
     if (passwordInput.text === passwordText) return
     syncingPasswordText = true
@@ -78,6 +118,14 @@ Item {
 
   // Measures the masked password at full size; passwordDotScale compares this
   // against the field width to decide how far the dots must shrink to fit.
+  Timer {
+    id: screensaverIdleTimer
+    interval: Math.max(1, root.screensaverDelaySec) * 1000
+    repeat: false
+    running: root.screensaverEnabled && !root.screensaverActive
+    onTriggered: if (root.screensaverEnabled) root.screensaverActive = true
+  }
+
   TextMetrics {
     id: dotMetrics
     font.family: Style.font.family
@@ -94,6 +142,7 @@ Item {
       id: wallpaper
       anchors.fill: parent
       source: root.loadBackground ? root.fileUrl(root.backgroundPath) : ""
+      visible: !root.screensaverShowing
       fillMode: Image.PreserveAspectCrop
       asynchronous: true
       cache: false
@@ -105,18 +154,30 @@ Item {
       anchors.fill: wallpaper
       source: wallpaper
       autoPaddingEnabled: false
-      blurEnabled: root.loadBackground && wallpaper.status === Image.Ready
+      visible: !root.screensaverShowing
+      blurEnabled: root.loadBackground && wallpaper.status === Image.Ready && !root.screensaverShowing
       blur: 1.0
       blurMax: 128
       blurMultiplier: 1.25
       contrast: -0.08
     }
 
+    Screensaver {
+      anchors.fill: parent
+      brandingPath: root.screensaverBrandingPath
+      opacity: root.screensaverShowing ? 1 : 0
+      visible: opacity > 0.01
+      Behavior on opacity { NumberAnimation { duration: 800; easing.type: Easing.InOutQuad } }
+    }
+
     MouseArea {
       anchors.fill: parent
       hoverEnabled: true
-      onClicked: { root.wakeRequested(); root.forcePasswordFocus() }
-      onPositionChanged: root.wakeRequested()
+      onClicked: { root.wakeRequested(); root.noteActivity(); root.forcePasswordFocus() }
+      onPositionChanged: function(mouse) {
+        root.wakeRequested()
+        root.notePointer(mouse.x, mouse.y)
+      }
     }
 
     BorderSurface {
@@ -128,6 +189,10 @@ Item {
       borderSpec: root.inputBorderSpec
       radius: Style.cornerRadius
       clip: true
+      // Faded, never hidden: an invisible TextInput cannot hold focus, and
+      // losing focus here would swallow the first keystroke of the password.
+      opacity: root.screensaverShowing ? 0 : 1
+      Behavior on opacity { NumberAnimation { duration: 500; easing.type: Easing.InOutQuad } }
 
       TextInput {
         id: passwordInput
@@ -176,6 +241,7 @@ Item {
 
         Keys.onPressed: function(event) {
           root.wakeRequested()
+          root.noteActivity()
           if (event.key === Qt.Key_Escape || (event.modifiers & Qt.ControlModifier && event.key === Qt.Key_U)) {
             root.passwordTextEdited("")
             event.accepted = true
