@@ -1,3 +1,4 @@
+import Quickshell
 import QtQuick
 import QtQuick.Layouts
 import Quickshell.Hyprland
@@ -7,6 +8,10 @@ import qs.Ui
 BarWidget {
   id: root
   moduleName: "omarchy.workspaces"
+
+  readonly property var monitor: root.QsWindow.window !== null
+    ? Hyprland.monitorFor(root.QsWindow.window.screen)
+    : null
 
   function workspaceById(id) {
     var values = Hyprland.workspaces.values
@@ -56,7 +61,9 @@ BarWidget {
 
         readonly property var workspace: root.workspaceById(modelData)
         readonly property bool occupied: workspace !== null && workspace.toplevels.values.length > 0
-        readonly property bool focused: Hyprland.focusedWorkspace !== null && Hyprland.focusedWorkspace.id === modelData
+        readonly property bool focused: workspace !== null
+          && workspace.active
+          && workspace.monitor === root.monitor
 
         bar: root.bar
         text: focused ? "\uDB85\uDCFB" : (modelData === 10 ? "0" : String(modelData))
