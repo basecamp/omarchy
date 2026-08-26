@@ -2,7 +2,14 @@
 
 # omarchy:summary=Check the update log for known failure conditions
 
-update_log="/tmp/omarchy-update.log"
+# Must resolve to the same file omarchy-update writes its transcript to: the
+# per-user runtime directory (0700), or the state directory when there is no
+# session runtime dir. See the comment there for why this is not a /tmp name.
+update_log_dir="${XDG_RUNTIME_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/omarchy}"
+update_log="$update_log_dir/omarchy-update.log"
+
+# A standalone run with no transcript behind it is a no-op, not a grep error.
+[[ -r $update_log ]] || exit 0
 
 # Check for initramfs generation failure
 if grep -q "Updating linux initcpios" "$update_log"; then
