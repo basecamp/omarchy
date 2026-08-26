@@ -45,16 +45,18 @@ verdict lists the specific findings that set the level.
             while also reading your files or running an interpreter. That last one
             holds even when every capability is declared -- declaring a capability
             explains it, it does not make it safe. Worth a read.
-  high      Tripped a high-severity risk -- privilege escalation (sudo/pkexec), a
-            write to an autostart/systemd/hyprland/crontab location, a read of
-            credential material, spawning a second Quickshell, a git origin Omarchy
-            refuses to clone -- or hid what it does on more than one front at once
-            (e.g. both a concatenated binary name and a runtime-built URL). Read the
-            code before enabling.
-  critical  A pattern dangerous almost regardless of intent: piping a download
-            into a shell, constructing and running code at runtime, or reading
-            credentials while also reaching the network (an exfiltration shape).
-            Do not enable without understanding exactly what it does.
+  high      Tripped a high-severity risk on its own -- privilege escalation
+            (sudo/pkexec), a write to an autostart/systemd/hyprland/crontab
+            location, a read of credential material, spawning a second Quickshell, a
+            git origin Omarchy refuses to clone -- hid what it does on more than one
+            front at once (e.g. both a concatenated binary name and a runtime-built
+            URL), or is a third-party plugin that fails omarchy-plugin-validate. Read
+            the code before enabling.
+  critical  A pattern dangerous almost regardless of intent: piping a download into
+            a shell, constructing and running code at runtime, reading credentials
+            while also reaching the network, or escalating privilege (sudo/pkexec)
+            alongside network access or a credential read. Do not enable without
+            understanding exactly what it does.
 
 Hiding a capability raises the level rather than lowering it: a benign plugin
 rarely needs to assemble a binary name or a host from fragments, so the scan not

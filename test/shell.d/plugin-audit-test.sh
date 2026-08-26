@@ -308,6 +308,20 @@ jq -e '([.risks[].kind] | (index("dynamic-command") != null) and (index("partial
   || fail "weak signals (variable command + helper) stay moderate, not high" "$report"
 pass "common weak signals do not escalate past moderate"
 
+# Privilege escalation combined with network access is critical -- and --explain
+# must document that, so the printed levels never contradict the implemented rule.
+dir=$(write_plugin ev-priv-net '{"commands":["pkexec"],"network":["x.example"]}' \
+  'import Quickshell.Io
+QtObject {
+  property Process a: Process { command: ["pkexec", "systemctl", "restart", "x"] }
+  property Process b: Process { command: ["curl", "https://x.example/y"] }
+}')
+[[ $(verdict "$dir") == critical ]] \
+  || fail "privilege escalation + network verdicts critical" "$(audit "$dir" --json)"
+audit --explain | grep -qi 'escalating privilege' \
+  || fail "--explain documents privilege escalation + network as a critical trigger"
+pass "privilege escalation + network is critical and documented in --explain"
+
 # ---------------------------------------------------------------- resolution errors
 
 output=$(audit "$TMPDIR/does-not-exist" 2>&1) && fail "audit fails on a missing target" "$output"
