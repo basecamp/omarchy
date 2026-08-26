@@ -92,3 +92,31 @@ output=$(XDG_RUNTIME_DIR="$fresh_run" "$ROOT/bin/omarchy-update-analyze-logs" 2>
 [[ -z $output ]] ||
   fail "analyze-logs without a transcript is silent" "$output"
 pass "analyze-logs without a transcript is silent"
+
+docs="$ROOT/docs/update-process.md"
+python3 - "$docs" <<'PY' || fail "the failure-output list item names both transcript paths on one line"
+import sys
+
+items = [
+    line for line in open(sys.argv[1])
+    if line.startswith("- A failure should leave")
+]
+if len(items) != 1:
+    raise SystemExit(1)
+if "XDG_RUNTIME_DIR" not in items[0] or "XDG_STATE_HOME" not in items[0]:
+    raise SystemExit(1)
+PY
+pass "the failure-output list item names both transcript paths on one line"
+
+python3 - "$docs" <<'PY' || fail "the omarchy-update flow documents the no-session transcript fallback"
+import sys
+
+text = open(sys.argv[1]).read()
+start = text.find("## Path 1:")
+end = text.find("## Path 2:")
+block = text[start:end]
+fence = block.split("```text", 1)[1].split("```", 1)[0]
+if "XDG_RUNTIME_DIR" not in fence or "XDG_STATE_HOME" not in fence:
+    raise SystemExit(1)
+PY
+pass "the omarchy-update flow documents the no-session transcript fallback"

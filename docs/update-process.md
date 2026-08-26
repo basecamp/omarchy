@@ -113,6 +113,7 @@ High-level flow:
 ```text
 omarchy-update
   ├─ ensure transcript logging through script(1) → $XDG_RUNTIME_DIR/omarchy-update.log
+  │    └─ or ${XDG_STATE_HOME:-~/.local/state}/omarchy/omarchy-update.log when XDG_RUNTIME_DIR is unset
   ├─ omarchy-update-lock
   │    └─ acquire the update lock and run omarchy-update inside it
   ├─ omarchy-update-requires-free-space
@@ -145,10 +146,7 @@ Important behavior:
   check is silently skipped. Set `OMARCHY_UPDATE_FORCE=1` to bypass the check.
 - `omarchy update` checks/runs migrations in the same visible terminal via
   `omarchy-migrate` after pacman finishes.
-- A failure should leave enough output in the update transcript
-  (`$XDG_RUNTIME_DIR/omarchy-update.log`, or
-  `${XDG_STATE_HOME:-~/.local/state}/omarchy/omarchy-update.log` without a
-  session) and the terminal transcript to debug.
+- A failure should leave enough output in the update transcript (`$XDG_RUNTIME_DIR/omarchy-update.log`, or `${XDG_STATE_HOME:-~/.local/state}/omarchy/omarchy-update.log` without a session) and the terminal transcript to debug.
 
 ## Path 2: direct `sudo pacman -Syu` attempt
 
