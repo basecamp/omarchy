@@ -2,7 +2,7 @@
 
 # omarchy:summary=Show or pin the Wi-Fi band for the active connection
 # omarchy:group=network
-# omarchy:args=[auto|2.4|5|6]
+# omarchy:args=[--iface <name>] [auto|2.4|5|6]
 # omarchy:examples=omarchy network band | omarchy network band 5 | omarchy network band auto
 
 set -euo pipefail
@@ -54,7 +54,16 @@ nm_get() {
   LC_ALL=C nmcli -e no -g "$@" 2>/dev/null
 }
 
+# A machine can have several Wi-Fi NICs, and the panel's adapter selector lets
+# the user act on one that is not the first connected device. An explicit
+# --iface pins the target; without it, keep the historical behaviour of taking
+# the first connected Wi-Fi device.
 wifi_device() {
+  if [[ -n ${want_iface:-} ]]; then
+    printf '%s\n' "$want_iface"
+    return
+  fi
+
   nm_get DEVICE,TYPE,STATE device status |
     awk -F: '$2 == "wifi" && $3 == "connected" { print $1; exit }'
 }
@@ -168,8 +177,26 @@ set_band() {
 }
 
 usage() {
-  echo "Usage: omarchy-network-band [auto|2.4|5|6]" >&2
+  echo "Usage: omarchy-network-band [--iface <name>] [auto|2.4|5|6]" >&2
 }
+
+want_iface=""
+
+while (($#)); do
+  case "$1" in
+    --iface)
+      if [[ -z ${2:-} ]]; then
+        usage
+        exit 1
+      fi
+      want_iface=$2
+      shift 2
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
 
 if (($# == 0)); then
   print_status

@@ -2,27 +2,56 @@
 
 # omarchy:summary=Print active network status for the shell
 # omarchy:group=network
-# omarchy:args=[--verbose]
+# omarchy:args=[--verbose] [--iface <name>]
 
 verbose=false
 internet_probe=1.1.1.1
+want_iface=""
 
-case "${1:-}" in
-  "")
-    ;;
-  --verbose)
-    verbose=true
-    ;;
-  *)
-    echo "Usage: omarchy-network-status [--verbose]" >&2
-    exit 2
-    ;;
-esac
+while (($#)); do
+  case "$1" in
+    --verbose)
+      verbose=true
+      shift
+      ;;
+    --iface)
+      if [[ -z ${2:-} ]]; then
+        echo "Usage: omarchy-network-status [--verbose] [--iface <name>]" >&2
+        exit 2
+      fi
+      want_iface=$2
+      shift 2
+      ;;
+    *)
+      echo "Usage: omarchy-network-status [--verbose] [--iface <name>]" >&2
+      exit 2
+      ;;
+  esac
+done
+
+# The panel can pin a specific interface so a multi-NIC machine reports the
+# adapter the user is looking at rather than whichever one owns the default
+# route. Unpinned callers keep the route-derived behaviour exactly as before.
+route_device() {
+  ip route get "$internet_probe" 2>/dev/null |
+    awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }'
+}
+
+selected_device() {
+  if [[ -n $want_iface ]]; then
+    # A pinned interface that has gone away is reported as disconnected rather
+    # than silently falling back to a different adapter.
+    [[ -d /sys/class/net/$want_iface ]] && printf '%s\n' "$want_iface"
+    return
+  fi
+
+  route_device
+}
 
 print_status() {
   local device nm state ssid signal freq
 
-  device=$(ip route get "$internet_probe" 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
+  device=$(selected_device)
 
   if [[ -z $device ]]; then
     printf 'disconnected\t\t\t\n'
@@ -85,14 +114,25 @@ print_ping_samples() {
 print_verbose() {
   local route_json iface gw src prefix link
 
-  route_json=$(ip -j route get "$internet_probe" 2>/dev/null)
-  [[ -z $route_json ]] && return
-
-  iface=$(jq -r '.[0].dev // ""' <<<"$route_json" 2>/dev/null)
-  gw=$(jq -r '.[0].gateway // ""' <<<"$route_json" 2>/dev/null)
-  src=$(jq -r '.[0].prefsrc // ""' <<<"$route_json" 2>/dev/null)
-
+  iface=$(selected_device)
   [[ -z $iface ]] && return
+
+  # For the routed interface, `ip route get` is the cheapest source of both the
+  # gateway and the preferred source address. A pinned interface that is not
+  # the default route needs its own lookup instead, since the route to the
+  # probe address says nothing about it.
+  if [[ -n $want_iface && $want_iface != "$(route_device)" ]]; then
+    src=$(ip -j addr show "$iface" 2>/dev/null |
+      jq -r '.[0].addr_info[]? | select(.family == "inet") | .local // ""' 2>/dev/null | head -n 1)
+    gw=$(ip -j route show default dev "$iface" 2>/dev/null |
+      jq -r '.[0].gateway // ""' 2>/dev/null)
+  else
+    route_json=$(ip -j route get "$internet_probe" 2>/dev/null)
+    [[ -z $route_json ]] && return
+
+    gw=$(jq -r '.[0].gateway // ""' <<<"$route_json" 2>/dev/null)
+    src=$(jq -r '.[0].prefsrc // ""' <<<"$route_json" 2>/dev/null)
+  fi
 
   prefix=$(ip -j addr show "$iface" 2>/dev/null | jq -r '.[0].addr_info[]? | select(.family == "inet") | .prefixlen // ""' 2>/dev/null | head -n 1)
 
