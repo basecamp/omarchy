@@ -16,6 +16,27 @@
     "description": "Weather pill with detail popup",
     "category": "Info",
     "allowMultiple": false,
-    "settingsForm": "weatherSettings"
+    "settingsForm": "weatherSettings",
+    "defaults": {
+      "provider": "open-meteo"
+    },
+    "schema": [
+      {
+        "key": "provider",
+        "type": "enum",
+        "label": "Forecast provider",
+        "description": "Open-Meteo is the default global forecast. National Weather Service matches US apps like Apple Weather. NOAA National Blend is a calibrated US model. ECMWF and DWD ICON are independent global models. wttr.in is the original lookup service.",
+        "options": [
+          { "value": "open-meteo", "label": "Open-Meteo" },
+          { "value": "nws", "label": "National Weather Service" },
+          { "value": "nbm", "label": "NOAA National Blend" },
+          { "value": "gfs", "label": "NOAA GFS" },
+          { "value": "ecmwf", "label": "ECMWF" },
+          { "value": "icon", "label": "DWD ICON" },
+          { "value": "wttr", "label": "wttr.in" }
+        ],
+        "defaultValue": "open-meteo"
+      }
+    ]
   }
 }

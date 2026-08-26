@@ -61,7 +61,7 @@ Example `shell.json` (bar subtree only shown):
 | `omarchy.indicators` | Manual state indicators | left = indicator action |
 | `omarchy.system-update` | Available update indicator | left = update |
 | `omarchy.tray` | System tray | hover = reveal drawer · right on chevron = manage |
-| `omarchy.weather` | Weather icon + popup with forecast | left = popup · right = full notification |
+| `omarchy.weather` | Weather icon + popup with forecast and provider picker | left = popup · right = full notification |
 | `omarchy.microphone` | Mic icon + scroll volume | left = mute toggle · middle = audio panel · scroll = source volume |
 
 | `omarchy.audio` | Volume icon + popup with master slider, output-device picker, per-app mixer | left = popup · right = mute · middle = popup · scroll = volume |
