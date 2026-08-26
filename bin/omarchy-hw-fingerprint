@@ -9,14 +9,17 @@
 # also make USB touchscreens) are left out to avoid nagging laptops with no
 # reader — those still match on the product string below when present.
 fingerprint_vendors=" 27c6 138a 06cb 08ff 1c7a 147e "
+# The Microarray MAFP reader exposes only a generic product descriptor, so
+# match its libfprint-supported USB ID explicitly.
+fingerprint_devices=" 3274:8012 "
 usb_devices_path="${OMARCHY_USB_DEVICES_PATH:-/sys/bus/usb/devices}"
 
 # libfprint drives every reader it supports from userspace over libusb, so a
 # real reader sits there with no kernel driver bound to any of its interfaces.
 # The other things these vendors build — Synaptics webcam bridges (usbio-bridge
 # on the Dell XPS 14), touchpads and touchscreens (usbhid), cameras (uvcvideo)
-# — all bind one. Only the vendor-ID guess needs this; a device that names
-# itself a fingerprint reader is trusted outright.
+# — all bind one. ID-based matches need this check; a device that names itself
+# a fingerprint reader is trusted outright.
 has_kernel_driver() {
   local intf driver
   for intf in "$1"/*:*; do
@@ -46,8 +49,11 @@ for dev in "$usb_devices_path"/*; do
     [[ $product == *fingerprint* || $product == *biometric* || $product == *elan:arm-m4* || $product == "fpc "* ]] && exit 0
   fi
 
-  if [[ -r $dev/idVendor ]]; then
+  if [[ -r $dev/idVendor && -r $dev/idProduct ]]; then
     vendor=$(<"$dev/idVendor")
+    product_id=$(<"$dev/idProduct")
+    [[ $fingerprint_devices == *" $vendor:$product_id "* ]] &&
+      ! has_kernel_driver "$dev" && exit 0
     [[ $fingerprint_vendors == *" $vendor "* ]] &&
       ! has_kernel_driver "$dev" && exit 0
   fi
