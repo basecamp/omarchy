@@ -117,7 +117,20 @@ update_named_monitor_scale() {
       }
       return out
     }
-    function rewrite(text,   n, i, lines, line, head, out, done, pos, end) {
+    # The same text with comments blanked rather than cut, so a position found
+    # in it still indexes the original.
+    function blanked(text,   n, i, lines, line, cut, out) {
+      n = split(text, lines, "\n")
+      out = ""
+      for (i = 1; i <= n; i++) {
+        line = lines[i]
+        cut = index(line, "--")
+        if (cut > 0) line = substr(line, 1, cut - 1) sprintf("%" (length(line) - cut + 1) "s", "")
+        out = (i == 1) ? line : out "\n" line
+      }
+      return out
+    }
+    function rewrite(text,   n, i, lines, line, head, out, done, pos, end, tail) {
       if (uncommented(text) !~ named) return ""
       n = split(text, lines, "\n")
       out = ""
@@ -135,13 +148,19 @@ update_named_monitor_scale() {
         out = (i == 1) ? line : out "\n" line
       }
       if (done) return out
+      # Append against the blanked copy: a brace or a separator inside a
+      # trailing comment would otherwise take the field, leaving the rule with
+      # no scale while this reports one was written.
+      tail = blanked(out)
       pos = 0
-      for (i = length(out); i >= 1; i--)
-        if (substr(out, i, 1) == "}") { pos = i; break }
+      for (i = length(tail); i >= 1; i--)
+        if (substr(tail, i, 1) == "}") { pos = i; break }
       if (pos == 0) return ""
       end = pos - 1
-      while (end > 0 && substr(out, end, 1) ~ /[[:space:]]/) end--
-      if (substr(out, end, 1) == ",")
+      while (end > 0 && substr(tail, end, 1) ~ /[[:space:]]/) end--
+      # Lua takes , and ; interchangeably between table fields, and so does the
+      # rule reader in omarchy-hyprland-monitor-clamshell.
+      if (substr(tail, end, 1) ~ /[,;]/)
         return substr(out, 1, end) " scale = " scale substr(out, end + 1)
       return substr(out, 1, end) ", scale = " scale substr(out, end + 1)
     }

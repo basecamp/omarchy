@@ -203,6 +203,43 @@ grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
   fail "monitor scaling leaves the catch-all alone for a spaced-out named rule"
 pass "monitor scaling matches a named rule whose keys are spaced out"
 
+# Lua takes ; between table fields, and appending a comma after one is a syntax
+# error Hyprland reports as a config that will not load.
+cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 2
+hl.monitor({ output = "eDP-1"; mode = "preferred"; position = "auto"; })
+LUA
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
+grep -Fx 'hl.monitor({ output = "eDP-1"; mode = "preferred"; position = "auto"; scale = 1.6 })' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling appends a scale after a semicolon separator"
+pass "monitor scaling appends a scale after a semicolon separator"
+
+# A comment carries commas and braces of its own, and the field goes in the
+# table rather than in the comment.
+cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 2
+hl.monitor({
+  output = "eDP-1",
+  transform = 3, -- keep the panel rotated
+})
+LUA
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
+grep -Fx '  transform = 3, scale = 1.6 -- keep the panel rotated' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling appends a scale beside a commented field, not inside the comment"
+pass "monitor scaling appends a scale beside a commented field"
+
+cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 2
+hl.monitor({ output = "eDP-1", transform = 3 }) -- was { 1 }
+LUA
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
+grep -Fx 'hl.monitor({ output = "eDP-1", transform = 3, scale = 1.6 }) -- was { 1 }' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling ignores a brace inside a trailing comment"
+pass "monitor scaling ignores a brace inside a trailing comment"
+
 # GDK_SCALE is one integer for the whole session. Following one display's scale
 # while another is enabled resizes XWayland windows on the untouched display.
 write_named_config
