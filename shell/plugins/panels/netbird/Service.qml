@@ -90,7 +90,15 @@ Item {
   readonly property string routeVerb: routeCommandIndex >= 2 ? "networks" : "routes"
 
   // Profiles are newer than the oldest NetBird an Omarchy box might carry.
-  // A CLI that has never heard of them is not an error worth showing.
+  // A CLI that has never heard of them is not an error worth showing. The ones
+  // that do have them still take the table spelling: no release ships
+  // `profile list --json` yet, so ask for it and fall back the way routes do,
+  // rather than reading a rejected flag as "this CLI has no profiles".
+  readonly property var profileCommands: [
+    ["netbird", "profile", "list", "--json"],
+    ["netbird", "profile", "list"]
+  ]
+  property int profileCommandIndex: 0
   property bool profilesSupported: true
 
   property string _statusOutput: ""
@@ -214,7 +222,7 @@ Item {
       _profilesOutput = ""
       _profilesError = ""
       _lastProfilesRefreshMs = now
-      profilesProcess.command = ["netbird", "profile", "list", "--json"]
+      profilesProcess.command = profileCommands[profileCommandIndex]
       profilesProcess.running = true
       launched = true
     }
@@ -378,7 +386,13 @@ Item {
     _routeOutput = ""
     _routeError = ""
     settingRouteId = id
-    routeProcess.command = ["netbird", routeVerb, route.Selected === true ? "deselect" : "select", id]
+    // `select` replaces the whole selection unless asked to append, so a bare
+    // select turns one route on by turning every other one off — and there is no
+    // way back to more than one from the panel. Toggling a row should only ever
+    // change that row.
+    routeProcess.command = route.Selected === true
+      ? ["netbird", routeVerb, "deselect", id]
+      : ["netbird", routeVerb, "select", "--append", id]
     routeProcess.running = true
   }
 
@@ -512,6 +526,21 @@ Item {
   }
 
   Timer {
+    // Same reason as routesRetry: step out of the exit handler before relaunching.
+    id: profilesRetry
+    interval: 50
+    repeat: false
+    onTriggered: {
+      if (!root.installed || !root.profilesSupported || profilesProcess.running) return
+      root._profilesOutput = ""
+      root._profilesError = ""
+      root._lastProfilesRefreshMs = Date.now()
+      profilesProcess.command = root.profileCommands[root.profileCommandIndex]
+      profilesProcess.running = true
+    }
+  }
+
+  Timer {
     // Every poll is skipped while its own process is still running, so one that
     // never exits — netbird can hang on a network that is coming and going —
     // silently stops the panel refreshing at all, and it stays stopped. Reap
@@ -637,7 +666,15 @@ Item {
         return
       }
       root.parseProfiles("")
-      if (Model.isUnsupportedCommand(stderr) || Model.isUnsupportedCommand(stdout)) root.profilesSupported = false
+      // Walk to the table spelling before concluding the CLI has no profiles.
+      if (Model.isUnsupportedCommand(stderr) || Model.isUnsupportedCommand(stdout)) {
+        if (root.profileCommandIndex + 1 < root.profileCommands.length) {
+          root.profileCommandIndex += 1
+          profilesRetry.restart()
+        } else {
+          root.profilesSupported = false
+        }
+      }
     }
   }
 

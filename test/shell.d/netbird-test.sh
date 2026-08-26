@@ -158,6 +158,19 @@ assertDeepEqual(netbird.parseRoutes(''), [], 'netbird handles empty route output
 assertDeepEqual(netbird.parseRoutes('{'), [], 'netbird handles invalid route JSON')
 
 assert(netbird.isExitNodeNetwork('0.0.0.0/0'), 'netbird treats the IPv4 default route as an exit node')
+// What a real dual-stack exit node actually reports: both defaults in one field.
+assert(netbird.isExitNodeNetwork('0.0.0.0/0, ::/0'), 'netbird treats a dual-stack default pair as an exit node')
+assert(netbird.isExitNodeNetwork('::/0, 0.0.0.0/0'), 'netbird reads a dual-stack pair in either order')
+assert(!netbird.isExitNodeNetwork('10.173.10.0/24, 172.28.10.0/24'), 'netbird does not read a pair of subnets as an exit node')
+assertEqual(
+  netbird.sortRoutes(netbird.parseRoutesText(
+    'Available Networks:\n\n  - ID: Docker Services\n    Network: 172.28.10.0/24\n    Status: Selected\n\n' +
+    '  - ID: Exit Node\n    Network: 0.0.0.0/0, ::/0\n    Status: Selected\n\n' +
+    '  - ID: Main Subnet\n    Network: 10.173.10.0/24\n    Status: Selected\n'
+  )).map(r => r.DisplayName).join(','),
+  'Exit Node,Docker Services,Main Subnet',
+  'netbird sorts a real dual-stack exit node ahead of the subnets'
+)
 assert(netbird.isExitNodeNetwork('::/0'), 'netbird treats the IPv6 default route as an exit node')
 assert(!netbird.isExitNodeNetwork('10.0.0.0/8'), 'netbird treats a private range as a plain route')
 
@@ -299,6 +312,29 @@ const norelays = netbird.healthRows({ relaysAvailable: 0, relaysTotal: 0 })
 assert(!norelays[2].warn, 'netbird does not flag a deployment that configures no relays')
 assertEqual(norelays[2].detail, 'none configured', 'netbird says when no relays are configured')
 assertEqual(norelays.length, 3, 'netbird drops the WireGuard row when the mode is unknown')
+
+// No release ships `profile list --json`, so the table is the real interface.
+const profileTable = netbird.parseProfiles('NAME     ACTIVE\ndefault  ✓\n')
+assertEqual(profileTable.profiles.length, 1, 'netbird reads a profile out of the table listing')
+assertEqual(profileTable.selectedProfileName, 'default', 'netbird reads the active profile from the table glyph')
+
+const profileTableMulti = netbird.parseProfiles('NAME     ACTIVE\ndefault\nwork     ✓\n')
+assertEqual(profileTableMulti.profiles.length, 2, 'netbird reads every profile in the table')
+assertEqual(profileTableMulti.selectedProfileName, 'work', 'netbird picks the marked profile out of several')
+assert(!profileTableMulti.profiles[0].selected, 'netbird leaves an unmarked profile unselected')
+
+const profileTableEmail = netbird.parseProfiles('NAME     EMAIL            ACTIVE\nwork     dev@example.com  ✓\n')
+assertEqual(profileTableEmail.profiles[0].email, 'dev@example.com', 'netbird reads a profile email when the table carries one')
+assertEqual(profileTableEmail.selectedProfileName, 'work', 'netbird finds the active column whatever its position')
+
+assertEqual(netbird.parseProfiles('No profiles found.\n').profiles.length, 0, 'netbird reads no profiles from output with no table')
+
+// `netbird <verb> select` replaces the entire selection unless told to append,
+// so selecting one route without --append silently turns every other one off.
+assert(/"select", "--append", id/.test(serviceSource), 'netbird appends when selecting a route instead of replacing the selection')
+assert(/"deselect", id/.test(serviceSource), 'netbird deselects a single route by id')
+// The JSON spelling stays first in the list, with the table behind it as fallback.
+assert(/profileCommands\[profileCommandIndex\]/.test(serviceSource), 'netbird walks the profile listing spellings rather than pinning one')
 
 assertDeepEqual(
   netbird.loginPlan(true, 'https://app.netbird.io/device?user_code=ABCD-EFGH'),

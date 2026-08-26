@@ -327,9 +327,17 @@ function parseStatus(raw) {
   }
 }
 
+// A dual-stack exit node arrives as one field carrying both default routes
+// ("0.0.0.0/0, ::/0"), so test the ranges rather than the whole string: matching
+// it whole leaves the exit node sorted in among the plain subnets, which is the
+// one row people open this section to find.
 function isExitNodeNetwork(network) {
-  var value = String(network || "").trim()
-  return value === "0.0.0.0/0" || value === "::/0"
+  var parts = String(network || "").split(",")
+  for (var i = 0; i < parts.length; i++) {
+    var value = parts[i].trim()
+    if (value === "0.0.0.0/0" || value === "::/0") return true
+  }
+  return false
 }
 
 function routeSelected(status) {
@@ -475,9 +483,57 @@ function profileLabel(profile) {
   return "Unknown profile"
 }
 
+// No NetBird release ships `profile list --json` yet, so the padded table is the
+// only way to read profiles. It names its columns in a header, and marks the
+// active row with a glyph rather than a word.
+function parseProfilesText(raw) {
+  var lines = String(raw || "").split(/\r?\n/)
+  var columns = null
+  var profiles = []
+  var selected = null
+
+  for (var i = 0; i < lines.length; i++) {
+    var line = String(lines[i] || "").trim()
+    if (line === "") continue
+
+    var fields = line.split(/\s+/)
+    if (columns === null) {
+      // Read the columns off the header, and treat anything before it as noise.
+      if (/^NAME\b/i.test(line)) {
+        columns = []
+        for (var h = 0; h < fields.length; h++) columns.push(fields[h].toUpperCase())
+      }
+      continue
+    }
+
+    var row = {}
+    for (var c = 0; c < fields.length; c++) row[columns[c] || ("COL" + c)] = fields[c]
+
+    var name = String(row.NAME || "")
+    if (name === "") continue
+
+    var active = String(row.ACTIVE || "")
+    var profile = {
+      name: name,
+      email: String(row.EMAIL || ""),
+      selected: active !== "" && active !== "-" && !/^(false|no)$/i.test(active)
+    }
+    profiles.push(profile)
+    if (profile.selected) selected = profile
+  }
+
+  return {
+    profiles: profiles,
+    selectedProfileName: selected ? selected.name : "",
+    selectedProfileLabel: selected ? profileLabel(selected) : ""
+  }
+}
+
 function parseProfiles(raw) {
   var text = String(raw || "").trim()
   if (text === "") return { profiles: [], selectedProfileName: "", selectedProfileLabel: "" }
+
+  if (text.charAt(0) !== "[" && text.charAt(0) !== "{") return parseProfilesText(text)
 
   try {
     var parsed = JSON.parse(text)
