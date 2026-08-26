@@ -109,6 +109,21 @@ Panel {
   property var displayAudioSources: []
   property var displayAudioStreams: []
 
+  // Per-application routing is separate from the preferred default sink.
+  // pactl and Quickshell expose the same PipeWire object.serial values, so
+  // this map is exact even when several applications share a display name.
+  property var streamRoutes: ({})
+  property bool streamOutputMenuOpen: false
+  property string streamRouteReadError: ""
+  property string streamRouteSetError: ""
+  readonly property string streamRouteError: streamRouteSetError !== ""
+    ? streamRouteSetError : streamRouteReadError
+  property var pendingStreamRoute: null
+
+  // The default is ordered first and named by behavior. Applications on that
+  // option follow later default changes; all other routes stay on their device.
+  readonly property var streamOutputOptions: Model.streamOutputOptions(displayAudioSinks, sink)
+
   // A DSP sink -- a speaker tuning, or EasyEffects -- can be the selected output
   // without being where loudness lives: changing its volume alters the level going
   // *into* the processing, so the slider would move while the speakers did not,
@@ -302,8 +317,12 @@ Panel {
       return
     }
     if (focusSection === "streams" && selectedIndex >= 0) {
-      var st = displayAudioStreams[selectedIndex]
-      if (st && st.audio) st.audio.muted = !st.audio.muted
+      var row = streamRepeater.itemAt(selectedIndex)
+      if (row && displayAudioSinks.length > 1) row.toggleOutputMenu()
+      else {
+        var st = displayAudioStreams[selectedIndex]
+        if (st && st.audio) st.audio.muted = !st.audio.muted
+      }
     }
   }
 
@@ -315,6 +334,7 @@ Panel {
       cursorActive = false
       Qt.callLater(resetScroll)
     } else {
+      streamOutputMenuOpen = false
       clearDisplayAudioModels()
     }
   }
@@ -333,6 +353,7 @@ Panel {
     displayAudioSinks = listSnapshot(audioSinks)
     displayAudioSources = listSnapshot(audioSources)
     displayAudioStreams = listSnapshot(audioStreams)
+    refreshStreamRoutes()
     clampCursor()
   }
 
@@ -346,6 +367,67 @@ Panel {
     displayAudioSinks = []
     displayAudioSources = []
     displayAudioStreams = []
+    streamRoutes = ({})
+    streamRouteReadError = ""
+    streamRouteSetError = ""
+    pendingStreamRoute = null
+  }
+
+  function refreshStreamRoutes() {
+    if (!opened || displayAudioStreams.length === 0 || streamRoutesProc.running) return
+    streamRoutesProc.running = true
+  }
+
+  function updateStreamRoutes(raw) {
+    try {
+      var routes = JSON.parse(String(raw || "{}"))
+      if (!routes || typeof routes !== "object") routes = ({})
+      if (pendingStreamRoute)
+        routes[pendingStreamRoute.stream] = {
+          sink: pendingStreamRoute.sink,
+          mode: pendingStreamRoute.mode
+        }
+      streamRoutes = routes
+      streamRouteReadError = ""
+    } catch (e) {
+      streamRoutes = ({})
+      streamRouteReadError = "Could not read application outputs"
+    }
+  }
+
+  function streamSerial(node) {
+    return Model.nodeSerial(node)
+  }
+
+  function streamRoute(node) {
+    var serial = streamSerial(node)
+    if (serial === "") return null
+    var route = streamRoutes[serial]
+    return route && typeof route === "object" ? route : null
+  }
+
+  function setStreamRoute(node, optionValue) {
+    var streamSerialValue = streamSerial(node)
+    var route = Model.parseStreamOutputOption(optionValue)
+    if (streamSerialValue === "" || route.sink === "" || route.mode === "" || streamRouteSetProc.running) return
+
+    var next = ({})
+    for (var key in streamRoutes) next[key] = streamRoutes[key]
+    next[streamSerialValue] = { sink: route.sink, mode: route.mode }
+    streamRoutes = next
+    streamRouteSetError = ""
+    pendingStreamRoute = {
+      stream: streamSerialValue,
+      sink: route.sink,
+      mode: route.mode
+    }
+    streamRouteSetProc.command = [
+      "omarchy-audio-stream-route-set",
+      streamSerialValue,
+      route.sink,
+      route.mode
+    ]
+    streamRouteSetProc.running = true
   }
 
   // Keep the keyboard-focused row inside the visible viewport of the
@@ -462,12 +544,14 @@ Panel {
 
   function setDefaultSink(node) {
     if (!node) return
+    var previousSinkName = sink && sink.name ? String(sink.name) : ""
     Pipewire.preferredDefaultAudioSink = node
     if (node.id !== undefined && node.name) {
       Quickshell.execDetached([
         "omarchy-audio-output-set-default",
         String(node.id),
-        String(node.name)
+        String(node.name),
+        previousSinkName
       ])
     }
   }
@@ -601,6 +685,29 @@ Panel {
     }
   }
 
+  Process {
+    id: streamRoutesProc
+    command: ["omarchy-audio-stream-routes"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateStreamRoutes(text)
+    }
+    onExited: function(exitCode) {
+      if (exitCode !== 0 && root.opened && root.displayAudioStreams.length > 0)
+        root.streamRouteReadError = "Could not read application outputs"
+    }
+  }
+
+  Process {
+    id: streamRouteSetProc
+    onExited: function(exitCode) {
+      if (exitCode !== 0) root.streamRouteSetError = "Could not change the application output"
+      else root.streamRouteSetError = ""
+      root.pendingStreamRoute = null
+      streamRouteRefreshTimer.restart()
+    }
+  }
+
   Timer {
     interval: 5000
     running: root.opened
@@ -625,6 +732,21 @@ Panel {
     interval: 75
     repeat: false
     onTriggered: root.refreshDisplayAudioModels()
+  }
+
+  Timer {
+    id: streamRouteRefreshTimer
+    interval: 150
+    repeat: false
+    onTriggered: root.refreshStreamRoutes()
+  }
+
+  Timer {
+    interval: 1500
+    running: root.opened && root.displayAudioStreams.length > 0
+    repeat: true
+    onTriggered: if (!root.streamOutputMenuOpen && !streamRouteSetProc.running)
+      root.refreshStreamRoutes()
   }
 
   BarIconButton {
@@ -660,6 +782,7 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
+      blocked: root.streamOutputMenuOpen
       onMoveRequested: function(dx, dy) {
         if (!root.cursorActive) { root.cursorActive = true; return }
         if (dy !== 0) root.moveCursor(dy)
@@ -985,6 +1108,7 @@ Panel {
             }
 
             Repeater {
+              id: streamRepeater
               model: root.displayAudioStreams
 
               StreamRow {
@@ -994,6 +1118,16 @@ Panel {
                 node: modelData
                 rowIndex: index
               }
+            }
+
+            Text {
+              visible: root.streamRouteError !== ""
+              width: parent.width
+              text: root.streamRouteError
+              color: root.bar.urgent
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.bodySmall
+              wrapMode: Text.WordWrap
             }
           }
         }
@@ -1124,9 +1258,9 @@ Panel {
   }
 
   // Per-app stream row — cursor target inside the "streams" section.
-  // The stream has its own slider inline, so h/l from the keyboard
-  // adjusts THIS stream's volume (not the global output) when the cursor
-  // sits on this row. Enter/Space mutes the stream.
+  // The stream has its own slider inline, so h/l from the keyboard adjusts
+  // THIS stream's volume. With multiple outputs, a compact device button (or
+  // Enter/Space from the row cursor) opens routing; `m` remains direct mute.
   component StreamRow: CursorSurface {
     id: streamRow
     required property var node
@@ -1135,14 +1269,24 @@ Panel {
     readonly property real streamVolume: node && node.audio ? node.audio.volume : 0
     readonly property bool streamMuted: node && node.audio ? node.audio.muted : false
     readonly property bool isActive: root.streamRepresentsPlayer(node, root.activeMediaPlayer)
-
+    readonly property string streamSerial: root.streamSerial(node)
+    readonly property var currentRoute: root.streamRoute(node)
+    readonly property string sinkSerial: currentRoute ? String(currentRoute.sink || "") : ""
+    readonly property string routeMode: currentRoute ? String(currentRoute.mode || "") : ""
+    readonly property string routeOptionValue: routeMode !== "" && sinkSerial !== "" ? routeMode + ":" + sinkSerial : ""
+    readonly property bool routeIsExplicit: routeMode === "override"
     hasCursor: root.cursorActive && root.focusSection === "streams" && root.selectedIndex === rowIndex
     onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(streamRow)
-    current: isActive
     foreground: root.bar.foreground
     fill: root.hoverFill
-    currentFill: root.selectedFill
     implicitHeight: streamColumn.implicitHeight + Style.spacing.xl
+
+    function toggleOutputMenu() {
+      if (root.displayAudioSinks.length > 1 && streamRow.sinkSerial !== "" && routeDropdown.enabled)
+        routeDropdown.toggle()
+    }
+
+    Component.onDestruction: if (routeDropdown.popupOpen) root.streamOutputMenuOpen = false
 
     Column {
       id: streamColumn
@@ -1153,53 +1297,140 @@ Panel {
       anchors.rightMargin: Style.space(6)
       spacing: Style.space(2)
 
-      Row {
+      Item {
+        id: streamHeader
         width: parent.width
-        spacing: Style.space(8)
+        height: streamHeaderContent.implicitHeight
 
-        Text {
-          id: streamMuteIcon
-          text: streamRow.streamMuted ? "󰝟" : "󰕾"
-          color: root.bar.foreground
-          font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.title
-          width: Style.space(22)
-          horizontalAlignment: Text.AlignHCenter
-          anchors.verticalCenter: parent.verticalCenter
-          opacity: streamRow.streamMuted ? 0.5 : 1.0
+        Row {
+          id: streamHeaderContent
+          anchors.fill: parent
+          spacing: Style.space(8)
 
-          MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: {
-              if (streamRow.node && streamRow.node.audio)
-                streamRow.node.audio.muted = !streamRow.node.audio.muted
+          Text {
+            id: streamMuteIcon
+            text: streamRow.streamMuted ? "󰝟" : "󰕾"
+            color: root.bar.foreground
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.title
+            width: Style.space(22)
+            horizontalAlignment: Text.AlignHCenter
+            anchors.verticalCenter: parent.verticalCenter
+            opacity: streamRow.streamMuted ? 0.5 : 1.0
+
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: {
+                if (streamRow.node && streamRow.node.audio)
+                  streamRow.node.audio.muted = !streamRow.node.audio.muted
+              }
             }
+          }
+
+          Item {
+            id: streamNameArea
+            width: parent.width - streamMuteIcon.width - streamPct.width - Style.space(16)
+            height: Math.max(streamName.implicitHeight, routeChevron.visible ? routeChevron.height : 0)
+
+            Text {
+              id: streamName
+              text: root.streamLabel(streamRow.node)
+              color: root.bar.foreground
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.body
+              font.bold: streamRow.isActive
+              elide: Text.ElideRight
+              width: Math.min(implicitWidth, parent.width
+                - (routeChevron.visible ? routeChevron.width + Style.space(4) : 0))
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Text {
+              id: routeChevron
+              visible: root.displayAudioSinks.length > 1 && streamRow.sinkSerial !== ""
+              width: Style.space(22)
+              text: {
+                var position = root.bar ? root.bar.position : "left"
+                if (position === "top") return "󰅀"
+                if (position === "bottom") return "󰅃"
+                return position === "right" ? "󰅁" : "󰅂"
+              }
+              color: streamRow.routeIsExplicit
+                ? Style.selectedStateColor(root.bar.foreground, Color.accent)
+                : Qt.darker(root.bar.foreground, 1.2)
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.body
+              horizontalAlignment: Text.AlignHCenter
+              anchors.left: streamName.right
+              anchors.leftMargin: Style.space(4)
+              anchors.verticalCenter: parent.verticalCenter
+            }
+          }
+
+          Text {
+            id: streamPct
+            text: Math.round(streamRow.streamVolume * 100) + "%"
+            color: Qt.darker(root.bar.foreground, 1.5)
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.caption
+            font.bold: true
+            width: Style.space(36)
+            horizontalAlignment: Text.AlignRight
+            anchors.verticalCenter: parent.verticalCenter
+            opacity: streamRow.streamMuted ? 0.5 : 1.0
           }
         }
 
-        Text {
-          text: root.streamLabel(streamRow.node)
-          color: root.bar.foreground
-          font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.body
-          font.bold: streamRow.isActive
-          elide: Text.ElideRight
-          width: parent.width - streamMuteIcon.width - streamPct.width - Style.space(16)
-          anchors.verticalCenter: parent.verticalCenter
-        }
+        // Routing is a property of the application, so the dropdown's actual
+        // trigger spans the whole header. Its chrome is hidden: the adjacent
+        // chevron communicates the submenu while the speaker exclusively owns
+        // mute and the slider below continues to own volume changes.
+        Dropdown {
+          id: routeDropdown
+          anchors.left: parent.left
+          anchors.leftMargin: streamMuteIcon.width
+          anchors.right: parent.right
+          anchors.top: parent.top
+          anchors.bottom: parent.bottom
+          z: 1
+          visible: root.displayAudioSinks.length > 1 && streamRow.sinkSerial !== ""
+          rowHeight: height
+          popupRowHeight: Style.space(34)
+          popupDirection: {
+            var position = root.bar ? root.bar.position : "left"
+            if (position === "top") return "down"
+            if (position === "bottom") return "up"
+            return position === "right" ? "left" : "right"
+          }
+          popupGap: popupDirection === "left"
+            ? Style.space(6) + streamMuteIcon.width
+            : (popupDirection === "right" ? Style.space(6) : Style.spacing.xxs)
+          popupOffsetX: popupDirection === "down" || popupDirection === "up"
+            ? -Style.space(6) - streamMuteIcon.width : 0
+          popupSideAlignment: "center"
+          popupAnchorHeight: streamColumn.height
+          popupWidth: streamRow.width
+          chevronOnly: true
+          showChevron: false
+          triggerChrome: false
+          value: streamRow.routeOptionValue
+          options: root.streamOutputOptions
+          enabled: streamRow.streamSerial !== "" && !streamRouteSetProc.running
+          foreground: root.bar.foreground
+          fontFamily: root.bar.fontFamily
 
-        Text {
-          id: streamPct
-          text: Math.round(streamRow.streamVolume * 100) + "%"
-          color: Qt.darker(root.bar.foreground, 1.5)
-          font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.caption
-          font.bold: true
-          width: Style.space(36)
-          horizontalAlignment: Text.AlignRight
-          anchors.verticalCenter: parent.verticalCenter
-          opacity: streamRow.streamMuted ? 0.5 : 1.0
+          onHovered: function(on) { if (on) {
+            root.cursorActive = true
+            root.focusSection = "streams"
+            root.selectedIndex = streamRow.rowIndex
+          } }
+          onChanged: function(route) { root.setStreamRoute(streamRow.node, route) }
+          onPopupOpenChanged: {
+            root.streamOutputMenuOpen = popupOpen
+            if (!popupOpen) Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+          }
         }
       }
 

@@ -61,6 +61,46 @@ function nodeProps(node) {
   return node && node.ready && node.properties ? node.properties : {}
 }
 
+function nodeSerial(node) {
+  var serial = nodeProps(node)["object.serial"]
+  return serial === undefined || serial === null ? "" : String(serial)
+}
+
+function streamOutputOptions(outputs, defaultOutput) {
+  var values = Array.isArray(outputs) ? outputs : []
+  var options = []
+  var defaultSerial = nodeSerial(defaultOutput)
+
+  for (var i = 0; i < values.length; i++) {
+    var candidate = values[i]
+    var serial = nodeSerial(candidate)
+    if (serial !== "" && serial === defaultSerial) {
+      options.push({ value: "default:" + serial, label: "Follow default output" })
+      options.push({ value: "override:" + serial, label: "Pin to " + nodeLabel(candidate) })
+      break
+    }
+  }
+
+  for (var j = 0; j < values.length; j++) {
+    var output = values[j]
+    var outputSerial = nodeSerial(output)
+    if (outputSerial === "" || outputSerial === defaultSerial) continue
+    options.push({ value: "override:" + outputSerial, label: nodeLabel(output) })
+  }
+  return options
+}
+
+function parseStreamOutputOption(value) {
+  var text = String(value || "")
+  var separator = text.indexOf(":")
+  if (separator < 1) return { mode: "", sink: "" }
+  var mode = text.substring(0, separator)
+  var sink = text.substring(separator + 1)
+  if ((mode !== "default" && mode !== "override") || !/^\d+$/.test(sink))
+    return { mode: "", sink: "" }
+  return { mode: mode, sink: sink }
+}
+
 function nodeLabel(node) {
   if (!node) return "Unknown"
   var p = nodeProps(node)
@@ -242,6 +282,9 @@ if (typeof module !== "undefined") {
     parseSinkAvailability: parseSinkAvailability,
     friendlyDeviceLabel: friendlyDeviceLabel,
     nodeProps: nodeProps,
+    nodeSerial: nodeSerial,
+    streamOutputOptions: streamOutputOptions,
+    parseStreamOutputOption: parseStreamOutputOption,
     nodeLabel: nodeLabel,
     isHeadphones: isHeadphones,
     sinkGlyph: sinkGlyph,
