@@ -92,6 +92,14 @@ percentage for every reading, where 0.2.118 had carried one in 100 of 102 on
 the same account. It came back in 1.0.5, and the meter lit up again on its
 own — which is the behaviour to expect the next time the field moves.
 
+The same reply carries `prepaidBalance`, `onDemandCap`, and `onDemandUsed`,
+each as a `{"val": N}` object. None of them feed the panel's balance ledger:
+they read `0` on every account this has been seen on, and nothing in the reply
+names a unit, so credits, dollars, and cents are indistinguishable at zero.
+Mapping them would mean guessing the scale of a number nobody has yet seen be
+non-zero, and the failure mode of guessing wrong is a confidently wrong
+balance rather than a missing one.
+
 Worth knowing when reading the panel: the meter and the token chart do not
 agree and cannot be made to. Grok's transcripts are overwhelmingly cache
 reads, and the allowance is billed per X identity rather than per machine, so
