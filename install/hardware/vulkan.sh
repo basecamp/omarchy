@@ -15,6 +15,11 @@ for vendor in "${!VULKAN_DRIVERS[@]}"; do
   fi
 done
 
+# Adreno GPUs are platform devices, so lspci never sees them.
+if omarchy-hw-qualcomm-soc; then
+  PACKAGES+=(vulkan-freedreno)
+fi
+
 if (( ${#PACKAGES[@]} > 0 )); then
   omarchy-pkg-add "${PACKAGES[@]}"
 fi
