@@ -494,6 +494,48 @@ HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-pi" --activate
 jq -e '.theme == "omarchy-system" and .model == "keep-me"' "$PI_TMPDIR/.pi/agent/settings.json" >/dev/null
 pass "pi theme activation preserves existing settings"
 
+jq -e '.name == "omarchy-system" and .vars.panel == "#0f0f0f" and .colors.statusLineBg == "panelAlt" and .colors.pythonMode == "color4"' "$NEXT_THEME/omp.json" >/dev/null
+pass "omp theme template is generated from standard themed templates"
+cp "$NEXT_THEME/omp.json" "$CURRENT_THEME/omp.json"
+
+OMP_TEST_AGENT_DIR="$PI_TMPDIR/.omp-work"
+OMP_STUB_BIN="$PI_TMPDIR/omp-stub-bin"
+OMP_STUB_LOG="$PI_TMPDIR/omp-config-calls"
+HOME="$PI_TMPDIR" PI_CODING_AGENT_DIR="$OMP_TEST_AGENT_DIR" "$ROOT/bin/omarchy-theme-set-omp"
+[[ ! -d $OMP_TEST_AGENT_DIR ]] || fail "omp theme sync skips missing Oh My Pi agent when not activating"
+[[ ! -d $PI_TMPDIR/.omp ]] || fail "omp theme sync avoids the default directory when configured"
+pass "omp theme sync respects PI_CODING_AGENT_DIR"
+
+mkdir -p "$OMP_STUB_BIN"
+cat >"$OMP_STUB_BIN/omp" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >>"$OMP_TEST_CONFIG_CALLS"
+SH
+chmod +x "$OMP_STUB_BIN/omp"
+
+HOME="$PI_TMPDIR" PI_CODING_AGENT_DIR="$OMP_TEST_AGENT_DIR" PATH="$OMP_STUB_BIN:$PATH" \
+  OMP_TEST_CONFIG_CALLS="$OMP_STUB_LOG" "$ROOT/bin/omarchy-theme-set-omp" --activate
+[[ -f $OMP_TEST_AGENT_DIR/themes/omarchy-system.json ]] || fail "omp theme file is synced"
+jq -e '.name == "omarchy-system" and .vars.panel == "#0f0f0f"' "$OMP_TEST_AGENT_DIR/themes/omarchy-system.json" >/dev/null
+pass "omp synced theme JSON is valid"
+
+# Oh My Pi picks the dark or the light slot from the terminal background, which
+# Omarchy themes too, so activation has to claim both.
+grep -Fxq 'config set theme.dark omarchy-system' "$OMP_STUB_LOG" || fail "omp theme activation sets the dark slot"
+grep -Fxq 'config set theme.light omarchy-system' "$OMP_STUB_LOG" || fail "omp theme activation sets the light slot"
+pass "omp generated theme is activated in both theme slots"
+
+: >"$OMP_STUB_LOG"
+rm -rf "$OMP_TEST_AGENT_DIR"
+# A PATH without the stub also has to exclude a real Oh My Pi on the developer's
+# machine, whose config this test has no business rewriting.
+HOME="$PI_TMPDIR" PI_CODING_AGENT_DIR="$OMP_TEST_AGENT_DIR" PATH="$ROOT/bin:/usr/bin:/bin" \
+  "$ROOT/bin/omarchy-theme-set-omp" --activate 2>"$PI_TMPDIR/omp-activate-stderr"
+[[ -f $OMP_TEST_AGENT_DIR/themes/omarchy-system.json ]] || fail "omp theme file is synced without the agent installed"
+[[ ! -s $OMP_STUB_LOG ]] || fail "omp theme activation runs no config writer when Oh My Pi is missing"
+grep -q "not installed" "$PI_TMPDIR/omp-activate-stderr" || fail "omp theme activation reports a missing Oh My Pi install"
+pass "omp theme activation degrades to a plain sync without Oh My Pi"
+
 jq -e '.name == "Omarchy" and .base == "light" and .overrides.text == "#ffffff"' "$NEXT_THEME/claude.json" >/dev/null
 pass "claude theme template is generated from standard themed templates"
 cp "$NEXT_THEME/claude.json" "$CURRENT_THEME/claude.json"
