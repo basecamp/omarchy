@@ -15,8 +15,32 @@ MODE="$1"
 shift
 
 if [[ $MODE == "clipboard" ]]; then
-  TEMP_FILE=$(mktemp --suffix=.txt)
-  wl-paste >"$TEMP_FILE"
+  types=$(wl-paste --list-types 2>/dev/null || true)
+
+  mime=""
+  for candidate in image/png image/jpeg image/webp image/gif image/bmp image/tiff; do
+    if grep -qx "$candidate" <<<"$types"; then
+      mime=$candidate
+      break
+    fi
+  done
+
+  if [[ -n $mime ]]; then
+    ext=${mime#image/}
+    [[ $ext == jpeg ]] && ext=jpg
+    TEMP_FILE=$(mktemp --suffix=".$ext")
+    wl-paste --type "$mime" >"$TEMP_FILE"
+  else
+    TEMP_FILE=$(mktemp --suffix=.txt)
+    wl-paste --type text --no-newline >"$TEMP_FILE"
+  fi
+
+  if [[ ! -s $TEMP_FILE ]]; then
+    rm -f "$TEMP_FILE"
+    omarchy-notification-send -g "" -u critical "Could not share" "Clipboard is empty"
+    exit 1
+  fi
+
   FILE_ARRAY=("$TEMP_FILE")
 elif (($# > 0)); then
   FILE_ARRAY=("$@")
