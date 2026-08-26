@@ -98,17 +98,26 @@ setup_env "" "$be200_pci" "iwlwifi"
 echo "iwlmld" >"$tmp_dir/run/iwlwifi-suspended"
 run_hook post suspend
 
-[[ -f $tmp_dir/run/iwlwifi-suspended ]] || fail "post suspend retains state file if reload fails"
-pass "post suspend retains state file if reload fails"
+[[ -f $tmp_dir/run/iwlwifi-suspended ]] || fail "post suspend retains state file if iwlwifi reload fails"
+pass "post suspend retains state file if iwlwifi reload fails"
 
-# Test 5: pre suspend removes state file if unload fails
-setup_env "iwlmld 123 0\niwlwifi 456 1 iwlmld" "$be200_pci" "iwlwifi"
+# Test 5: post suspend retains state file if opmode reload fails
+setup_env "" "$be200_pci" "iwlmld"
+echo "iwlmld" >"$tmp_dir/run/iwlwifi-suspended"
+run_hook post suspend
+
+[[ -f $tmp_dir/run/iwlwifi-suspended ]] || fail "post suspend retains state file if opmode reload fails"
+pass "post suspend retains state file if opmode reload fails"
+
+# Test 6: pre suspend removes state file and restores opmode when iwlwifi unload fails
+setup_env "iwlmld 123 0\niwlwifi 456 1 iwlmld" "$be200_pci" "-r iwlwifi"
 run_hook pre suspend
 
 [[ ! -f $tmp_dir/run/iwlwifi-suspended ]] || fail "pre suspend must not keep state file when unload fails"
-pass "pre suspend cleans up state file when unload fails"
+grep -Fx 'modprobe iwlmld' "$tmp_dir/calls" >/dev/null || fail "pre suspend restores opmode when iwlwifi unload fails"
+pass "pre suspend cleans up state file and restores opmode when unload fails"
 
-# Test 6: unaffected Intel card (AX210) is not unloaded
+# Test 7: unaffected Intel card (AX210) is not unloaded
 setup_env "iwlmvm 123 0\niwlwifi 456 1 iwlmvm" "$ax210_pci"
 run_hook pre suspend
 
@@ -116,7 +125,7 @@ run_hook pre suspend
 [[ ! -s $tmp_dir/calls ]] || fail "pre suspend must not unload AX210 drivers"
 pass "pre suspend skips unaffected Intel AX210 hardware"
 
-# Test 7: pre hibernate does not unload drivers
+# Test 8: pre hibernate does not unload drivers
 setup_env "iwlmld 123 0\niwlwifi 456 1 iwlmld" "$be200_pci"
 run_hook pre hibernate
 
@@ -124,14 +133,14 @@ run_hook pre hibernate
 [[ ! -s $tmp_dir/calls ]] || fail "pre hibernate must not unload drivers"
 pass "pre hibernate leaves drivers untouched"
 
-# Test 8: post fallback reloads iwlwifi when missing and affected Intel card is present
+# Test 9: post fallback reloads iwlwifi when missing and affected Intel card is present
 setup_env "" "$be200_pci"
 run_hook post suspend
 
 grep -Fx 'modprobe iwlwifi' "$tmp_dir/calls" >/dev/null || fail "post fallback reloads iwlwifi when BE200 detected"
 pass "post fallback reloads iwlwifi when BE200 is present"
 
-# Test 9: pre suspend on non-Intel system is a no-op
+# Test 10: pre suspend on non-Intel system is a no-op
 setup_env "rtw89_8852be 123 0" "0000:02:00.0 Network controller [0280]: Realtek [10ec:c852]"
 run_hook pre suspend
 

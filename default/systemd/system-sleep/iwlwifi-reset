@@ -46,6 +46,9 @@ case "$1" in
         echo "$opmode" > "$state_file"
       else
         log "Failed to unload iwlwifi before suspend"
+        if [[ $opmode != "iwlwifi" ]]; then
+          run_modprobe "$opmode" || true
+        fi
         rm -f "$state_file"
       fi
     fi
@@ -56,9 +59,14 @@ case "$1" in
       log "Post-resume: reloading wifi drivers ($opmode)"
       if run_modprobe iwlwifi; then
         if [[ -n $opmode && $opmode != "iwlwifi" ]]; then
-          run_modprobe "$opmode" || true
+          if run_modprobe "$opmode"; then
+            rm -f "$state_file"
+          else
+            log "Failed to reload $opmode on resume"
+          fi
+        else
+          rm -f "$state_file"
         fi
-        rm -f "$state_file"
       else
         log "Failed to reload iwlwifi on resume"
       fi
