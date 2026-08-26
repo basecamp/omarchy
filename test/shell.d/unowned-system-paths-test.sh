@@ -53,11 +53,11 @@ pkgs_candidates = [
   Path.home() / "Work/omacom/omarchy-pkgs/pkgbuilds",
 ]
 override = os.environ.get("OMARCHY_PKGS_PATH")
-if override:
-  pkgs_candidates = [Path(override) / "pkgbuilds", Path(override)]
+if override is not None:
+  pkgs_candidates = [Path(override) / "pkgbuilds", Path(override)] if override else []
 pkgs_root = next((p for p in pkgs_candidates if p.exists()), None)
 if pkgs_root is None:
-  if override:
+  if override is not None:
     print("not ok - OMARCHY_PKGS_PATH resolves to an omarchy-pkgs checkout", file=sys.stderr)
     sys.exit(1)
   print("ok - no omarchy-pkgs checkout; skipping package ownership check")

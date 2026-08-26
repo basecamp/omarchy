@@ -93,8 +93,12 @@ find_omarchy_pks_root() {
   local candidate
   local -a candidates
 
-  if [[ -n ${OMARCHY_PKGS_PATH:-} ]]; then
-    candidates=("$OMARCHY_PKGS_PATH/pkgbuilds" "$OMARCHY_PKGS_PATH")
+  if [[ -v OMARCHY_PKGS_PATH ]]; then
+    if [[ -n $OMARCHY_PKGS_PATH ]]; then
+      candidates=("$OMARCHY_PKGS_PATH/pkgbuilds" "$OMARCHY_PKGS_PATH")
+    else
+      candidates=()
+    fi
   else
     candidates=(
       "$ROOT/../omarchy-pkgs/pkgbuilds"
@@ -127,7 +131,7 @@ if pkgs_root=$(find_omarchy_pks_root); then
   grep -F 'cp -a install "$pkgdir/usr/share/omarchy/"' "$omarchy_pkgbuild" >/dev/null || fail "omarchy package bundles install scripts"
   grep -F 'cp -a migrations "$pkgdir/usr/share/omarchy/"' "$omarchy_pkgbuild" >/dev/null || fail "omarchy package bundles migrations"
   pass "omarchy-pkgs packages Snapper template, setup, and migration coverage"
-elif [[ -n ${OMARCHY_PKGS_PATH:-} ]]; then
+elif [[ -v OMARCHY_PKGS_PATH ]]; then
   fail "OMARCHY_PKGS_PATH resolves to an omarchy-pkgs checkout"
 else
   pass "no omarchy-pkgs checkout; skipping packaging coverage"
@@ -138,8 +142,12 @@ find_omarchy_iso_root() {
   local candidate
   local -a candidates
 
-  if [[ -n ${OMARCHY_ISO_PATH:-} ]]; then
-    candidates=("$OMARCHY_ISO_PATH")
+  if [[ -v OMARCHY_ISO_PATH ]]; then
+    if [[ -n $OMARCHY_ISO_PATH ]]; then
+      candidates=("$OMARCHY_ISO_PATH")
+    else
+      candidates=()
+    fi
   else
     candidates=(
       "$ROOT/../omarchy-iso"
@@ -176,7 +184,7 @@ if iso_root=$(find_omarchy_iso_root); then
     ! grep -F '/etc/systemd/system/timers.target.wants/snapper-timeline.timer' "$manifest" >/dev/null || fail "fresh ISO manifest does not enable snapper timeline timer"
   fi
   pass "omarchy-iso delegates Snapper setup to packaged system setup"
-elif [[ -n ${OMARCHY_ISO_PATH:-} ]]; then
+elif [[ -v OMARCHY_ISO_PATH ]]; then
   fail "OMARCHY_ISO_PATH resolves to an omarchy-iso checkout"
 else
   pass "no omarchy-iso checkout; skipping installer coverage"

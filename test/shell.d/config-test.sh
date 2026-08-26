@@ -106,11 +106,11 @@ pkgs_candidates = [
 # Checkouts differ per machine, so allow an explicit pointer at the sibling repo.
 # Accepts either the omarchy-pkgs checkout or its pkgbuilds/ directory.
 override = os.environ.get("OMARCHY_PKGS_PATH")
-if override:
-  pkgs_candidates = [Path(override) / "pkgbuilds", Path(override)]
+if override is not None:
+  pkgs_candidates = [Path(override) / "pkgbuilds", Path(override)] if override else []
 pkgs_root = next((path for path in pkgs_candidates if path.exists()), None)
 if pkgs_root is None:
-  if override:
+  if override is not None:
     print("not ok - OMARCHY_PKGS_PATH resolves to an omarchy-pkgs checkout", file=sys.stderr)
     sys.exit(1)
   pkgbuild = None
