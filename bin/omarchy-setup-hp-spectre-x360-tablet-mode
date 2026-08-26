@@ -1,0 +1,107 @@
+#!/bin/bash
+
+# omarchy:summary=Detect and fix a stuck tablet-mode sensor that disables the keyboard/touchpad on some 2019 HP Spectre x360 (13-ap0xxx) units
+# omarchy:requires-sudo=true
+
+set -e
+
+BLACKLIST_FILE="/etc/modprobe.d/blacklist-intel-hid.conf"
+
+echo -e "\e[32mChecking for the HP Spectre x360 (2019, 13-ap0xxx) stuck tablet-mode sensor issue.\n\e[0m"
+
+if ! omarchy-hw-hp-spectre-x360-2019; then
+  echo -e "\e[31mThis isn't a 2019 HP Spectre x360 (13-ap0xxx). This fix works around a hardware defect confirmed on that specific model — applying it elsewhere could disable tablet-mode/rotation for no reason, so it's restricted to that model.\e[0m"
+  exit 1
+fi
+
+if grep -q '^blacklist intel_hid$' "$BLACKLIST_FILE" 2>/dev/null; then
+  echo -e "\e[32mAlready applied — intel_hid is blacklisted in $BLACKLIST_FILE.\e[0m"
+  exit 0
+fi
+
+# On the affected units, a faulty hinge sensor gets stuck reporting tablet
+# mode. intel_hid reacts to that by telling the EC to disable the keyboard
+# matrix and touchpad. A working sensor toggles the switch as the lid moves;
+# a stuck one reports the same value no matter what. Poll it live instead of
+# assuming every 13-ap0xxx unit is affected, since this is a per-unit defect,
+# not a universal flaw in the model.
+echo "Move the lid through a few positions over the next 15 seconds (open flat, folded back into tablet position, back to laptop position)..."
+
+verdict=$(python3 - <<'PY'
+import fcntl, os, sys, time
+
+def ioc(direction, type_char, nr, size):
+    return (direction << 30) | (size << 16) | (ord(type_char) << 8) | nr
+
+# From asm-generic/ioctl.h and linux/input.h: EVIOCGSW(len) = _IOC(_IOC_READ, 'E', 0x1b, len)
+EVIOCGSW = ioc(2, "E", 0x1B, 8)
+SW_TABLET_MODE_BIT = 1  # linux/input-event-codes.h: SW_TABLET_MODE 0x01
+
+
+def find_device():
+    name = handler = None
+    for block in open("/proc/bus/input/devices").read().split("\n\n"):
+        name = handler = None
+        for line in block.splitlines():
+            if line.startswith("N: Name="):
+                name = line.split("=", 1)[1].strip('"')
+            elif line.startswith("H: Handlers="):
+                for tok in line.split("=", 1)[1].split():
+                    if tok.startswith("event"):
+                        handler = "/dev/input/" + tok
+        if name == "Intel HID switches" and handler:
+            return handler
+    return None
+
+
+device = find_device()
+if not device:
+    print("NOT_FOUND")
+    sys.exit(0)
+
+try:
+    fd = os.open(device, os.O_RDONLY)
+except PermissionError:
+    print("NO_PERMISSION")
+    sys.exit(0)
+
+
+def read_tablet_mode():
+    buf = bytearray(8)
+    fcntl.ioctl(fd, EVIOCGSW, buf, True)
+    return (buf[0] >> SW_TABLET_MODE_BIT) & 1
+
+
+seen = set()
+deadline = time.time() + 15
+while time.time() < deadline:
+    seen.add(read_tablet_mode())
+    time.sleep(0.5)
+os.close(fd)
+
+print("STUCK" if seen == {1} else "OK")
+PY
+)
+
+case "$verdict" in
+STUCK)
+  echo -e "\e[33m\nTablet-mode switch stayed on the whole time regardless of lid position — sensor looks stuck.\e[0m"
+  if gum confirm "Blacklist intel_hid to restore the keyboard/touchpad? (this also disables tablet-mode/rotation support)"; then
+    echo "blacklist intel_hid" | sudo tee "$BLACKLIST_FILE" >/dev/null
+    sudo mkinitcpio -P
+    echo -e "\e[32m\nDone. Reboot for the keyboard and touchpad to come back.\e[0m"
+  fi
+  ;;
+OK)
+  echo -e "\e[32m\nTablet-mode switch changed value as the lid moved — your sensor isn't stuck, so this fix doesn't apply to your unit.\e[0m"
+  exit 1
+  ;;
+NOT_FOUND)
+  echo -e "\e[31m\nCouldn't find the \"Intel HID switches\" input device — intel_hid isn't currently loaded, so this can't be tested live right now. If it's blacklisted from a previous attempt, remove that first and reboot, then rerun this.\e[0m"
+  exit 1
+  ;;
+NO_PERMISSION)
+  echo -e "\e[31m\nNo permission to read the switch device. Your user should already be in the input group by default — try logging out and back in, then rerun this.\e[0m"
+  exit 1
+  ;;
+esac

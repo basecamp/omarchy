@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# omarchy:summary=Detect the 2019 HP Spectre x360 Convertible (13-ap0xxx)
+# omarchy:hidden=true
+
+omarchy-hw-match "13-ap0xxx"
