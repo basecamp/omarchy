@@ -373,6 +373,10 @@ Item {
           } else if (event.key === Qt.Key_Down) {
             root.select(1)
             event.accepted = true
+          } else if ((event.key === Qt.Key_J || event.key === Qt.Key_K) && (event.modifiers & Qt.ControlModifier)) {
+            // Ctrl+J / Ctrl+K mirror Down / Up for vim-style list navigation.
+            root.select(event.key === Qt.Key_J ? 1 : -1)
+            event.accepted = true
           } else if (event.key === Qt.Key_PageUp) {
             root.select(-6)
             event.accepted = true
