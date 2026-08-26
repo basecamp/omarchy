@@ -30,9 +30,16 @@
 import json
 import os
 import sys
+import warnings
 from datetime import datetime, timezone
 
 import gi
+
+# The dispatch-table register_object is the maintained way to serve methods
+# from PyGObject; the deprecation it emits is for the closure-based variant's
+# benefit and fires on every start, so it is quieted rather than printed to
+# the journal forever.
+warnings.filterwarnings("ignore", message=".*register_object is deprecated.*")
 
 gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402
@@ -46,7 +53,7 @@ PM_IFACE = "org.freedesktop.PowerManagement.Inhibit"
 PM_PATH = "/org/freedesktop/PowerManagement/Inhibit"
 
 STATE_DIR = os.path.join(
-    os.environ.get("XDG_RUNTIME_DIR", os.path.expanduser("~/.runtime")), "omarchy", "idle-inhibit"
+    os.environ.get("XDG_RUNTIME_DIR", ""), "omarchy", "idle-inhibit"
 )
 STATE_FILE = os.path.join(STATE_DIR, "state")
 
@@ -111,11 +118,14 @@ class Daemon:
     def publish(self):
         os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
         tmp = STATE_FILE + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as handle:
+        # Create-and-write in one step at 0600: a plain open() honors the umask
+        # first, leaving a window where holder names are world-readable under
+        # a permissive umask.
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(self.state.snapshot(), handle, separators=(",", ":"))
             handle.flush()
             os.fsync(handle.fileno())
-        os.chmod(tmp, 0o600)
         os.replace(tmp, STATE_FILE)
 
     def after_change(self):
@@ -289,6 +299,14 @@ class Daemon:
 
 
 def main():
+    if not os.environ.get("XDG_RUNTIME_DIR"):
+        # The state dir belongs to the session runtime, which a systemd user
+        # service always has. Writing it anywhere else (a home dir, /tmp)
+        # would leak holder names and recreate exactly the predictable-path
+        # problems the diagnostics fixes removed.
+        print("omarchy-idle-inhibit: XDG_RUNTIME_DIR is not set; no session to serve", file=sys.stderr)
+        return 1
+
     state = InhibitState()
     try:
         connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
