@@ -40,6 +40,16 @@ That gives you a Tailscale panel in the bar, which connects and disconnects the 
 
 Installing it also adds a web app for the Tailscale admin console.
 
+## NetBird
+
+[NetBird](https://netbird.io/) is an open source mesh VPN built on WireGuard, and an alternative to Tailscale rather than a companion to it. Install it with _Install > Service > NetBird_, which starts the daemon, walks you through the SSO login, and adds a web app for the admin console.
+
+The NetBird panel in the bar connects and disconnects, browses the peers on your network, and selects the routes your admin has published — exit nodes are listed first, followed by any internal networks and domains. Idle peers stay in the list rather than disappearing, dimmed, because on a NetBird network most peers sit idle until you actually reach for them. Select a peer and press `c`, `n`, or `d` to copy its IP, name, or full domain name; `a` opens the admin console, and `r` refreshes. If your account has more than one profile, a profile switcher appears above the routes.
+
+One thing to know if names stop resolving: `omarchy dns` pins DNS through a NetworkManager global-DNS block, and NetworkManager applies that ahead of the split DNS a VPN installs. So a machine set to Cloudflare or Google can stop resolving the domains NetBird serves while NetBird itself still looks perfectly healthy. The panel spots that combination and offers to hand DNS back to DHCP in one click, and the installer warns about it up front. Nothing to do if you're on DHCP already, which is the default.
+
+Pick one mesh VPN and stick with it. Tailscale and NetBird both install routes and DNS for the same kind of overlay network, and running both at once gives you two things fighting over your resolver.
+
 ## When it stops working
 
 Before rebooting, try restarting the offending piece on its own. _Update > Hardware_ has Wi-Fi, Bluetooth, Audio, and Trackpad, and reloading one of those clears up most "it worked five minutes ago" situations. See [troubleshooting](45-troubleshooting.md).

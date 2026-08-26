@@ -60,15 +60,17 @@ Every panel takes the keyboard as well as the mouse: arrows move, Return activat
 
 `Super + Ctrl + 1-9` counts panels left to right in the right section, skipping the tray since it has no panel of its own. So the number matches the icon you'd point at.
 
-### Tailscale and Dropbox
+### Tailscale, NetBird, and Dropbox
 
-Two more widgets appear on the bar only once you install the matching service from **Install → Service**, and both are worth knowing about because they do more than report status.
+A few more widgets appear on the bar only once you install the matching service from **Install → Service**, and they're worth knowing about because they do more than report status.
 
 The **Tailscale** panel connects and disconnects the tailnet, switches between accounts, and picks an exit node (your own machines and Mullvad regions both show up in that list). It also browses your machines — and with one selected, `s` sends files to it over Taildrop, which is the fastest way to move a file to your phone or another laptop. `c` copies the machine's IP, `n` its name, and `d` its full DNS name. There's a send button on each machine row too, if you'd rather click. The same thing from the terminal is `omarchy tailscale send <machine> [file...]`.
 
+The **NetBird** panel does the same job for [NetBird](35-networking.md), which is the other mesh VPN Omarchy installs: connect and disconnect, browse peers, and select the routes and exit nodes your admin has published. `c`, `n`, and `d` copy a peer's IP, name, and domain name, `a` opens the admin console, and `r` refreshes. It also warns you when the system DNS provider is overriding the DNS NetBird serves, and offers to fix it.
+
 The **Dropbox** panel handles login, shows how much storage you've used, and lists recently synced files.
 
-Removing either service takes its widget back off the bar.
+Removing a service takes its widget back off the bar.
 
 ## Indicators
 

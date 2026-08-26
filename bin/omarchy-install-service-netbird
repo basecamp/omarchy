@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# omarchy:summary=Install the NetBird mesh VPN service and a web app for the NetBird admin console.
+# omarchy:requires-sudo=true
+
+echo -e "\nInstalling NetBird..."
+omarchy-pkg-add netbird
+
+echo -e "\nStarting NetBird..."
+sudo systemctl enable --now netbird.service
+
+echo -e "\nConnecting to your NetBird network..."
+echo "A browser window opens for SSO; finish the login there to join the network."
+sudo netbird up
+
+echo -e "\nAdding NetBird to the bar..."
+omarchy-plugin-enable omarchy.netbird
+
+# `omarchy dns` pins DNS through a NetworkManager [global-dns-domain-*] block,
+# which NetworkManager applies ahead of every other source — including the
+# split DNS a VPN installs. NetBird stays green while its own domains stop
+# resolving, so say so here rather than leaving it to be discovered.
+dns_provider=$(omarchy-dns 2>/dev/null || echo "DHCP")
+if [[ $dns_provider != "DHCP" ]]; then
+  echo ""
+  echo "Note: system DNS is pinned to $dns_provider."
+  echo "That can override the DNS NetBird serves for your own domains."
+  echo "Run 'omarchy dns DHCP' if NetBird names do not resolve."
+fi
+
+omarchy-webapp-install "NetBird" "https://app.netbird.io/peers" https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/netbird.png

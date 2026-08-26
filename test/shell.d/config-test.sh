@@ -359,6 +359,13 @@ set -euo pipefail
 [[ ${OMARCHY_TEST_TAILSCALE:-0} == "1" ]]
 SH
 
+cat >"$mock_bin/omarchy-installed-service-netbird" <<'SH'
+#!/bin/bash
+set -euo pipefail
+
+[[ ${OMARCHY_TEST_NETBIRD:-0} == "1" ]]
+SH
+
 chmod +x "$mock_bin"/*
 mock_path="$mock_bin:$ROOT/bin:$PATH"
 
@@ -379,6 +386,30 @@ jq -e '
   (.bar.layout.center | ids | index("omarchy.tailscale") == null)
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "bar defaults places plugins for running optional services"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" \
+  OMARCHY_TEST_DROPBOX=1 OMARCHY_TEST_NETBIRD=1 OMARCHY_TEST_TAILSCALE=1 \
+  omarchy-bar defaults
+jq -e '
+  def ids: map(.id // .);
+  (.bar.layout.right | ids) as $right |
+  ($right | index("omarchy.tray")) as $tray |
+  ($right | index("omarchy.tailscale") == $tray + 1) and
+  ($right | index("omarchy.netbird") == $tray + 2) and
+  ($right | index("omarchy.dropbox") == $tray + 3)
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "bar defaults places every running optional service widget"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" OMARCHY_TEST_NETBIRD=1 omarchy-bar defaults
+jq -e '
+  def ids: map(.id // .);
+  (.bar.layout.right | ids) as $right |
+  ($right | index("omarchy.tray")) as $tray |
+  ($right | index("omarchy.netbird") == $tray + 1) and
+  ($right | index("omarchy.tailscale") == null) and
+  ($right | index("omarchy.dropbox") == null)
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "bar defaults places NetBird alone when it is the only running service"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" \
   OMARCHY_TEST_SHELL_DOWN=1 OMARCHY_TEST_DROPBOX=1 OMARCHY_TEST_TAILSCALE=1 \

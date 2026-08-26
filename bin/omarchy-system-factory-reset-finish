@@ -92,7 +92,7 @@ scrub_legacy_degraded_state() {
 
   rm -f /etc/ssh/ssh_host_*
   rm -f /etc/NetworkManager/system-connections/*
-  rm -rf /var/lib/NetworkManager/* /var/lib/tailscale /var/lib/iwd
+  rm -rf /var/lib/NetworkManager/* /var/lib/tailscale /var/lib/netbird /var/lib/iwd
   rm -f /var/lib/sddm/state.conf /etc/sddm.conf.d/autologin.conf
 
   # Fresh machine identity from the next boot on.
