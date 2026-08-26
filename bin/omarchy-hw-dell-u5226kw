@@ -1,8 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Detect a Dell U5226KW display connected to an Intel GPU using the i915 driver.
-
-lspci -k 2>/dev/null | grep -A3 -iE 'vga|3d controller' | grep -q 'Kernel driver in use: i915' || exit 1
+# omarchy:summary=Detect a Dell U5226KW display.
 
 drm_path="${OMARCHY_DRM_PATH:-/sys/class/drm}"
 

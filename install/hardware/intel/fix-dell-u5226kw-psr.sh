@@ -10,7 +10,8 @@
 
 DROP_IN="/etc/limine-entry-tool.d/dell-u5226kw-psr.conf"
 
-if omarchy-hw-dell-u5226kw; then
+if lspci -k 2>/dev/null | grep -A3 -iE 'vga|3d controller' | grep -q 'Kernel driver in use: i915' &&
+  omarchy-hw-dell-u5226kw; then
   if [[ ! -f $DROP_IN ]] || ! grep -q 'enable_psr=0' "$DROP_IN"; then
     sudo mkdir -p /etc/limine-entry-tool.d
     cat <<EOF | sudo tee "$DROP_IN" >/dev/null
