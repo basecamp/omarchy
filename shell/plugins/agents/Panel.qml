@@ -529,15 +529,16 @@ Panel {
             width: parent.width
             spacing: Style.space(10)
 
-            // The meter shows what is left, not what is used: a prepaid
-            // account drains toward empty rather than filling toward a cap.
+            readonly property bool isSpendLimit: root.balance && root.balance.type === "spend_limit"
+
+            // Prepaid accounts drain toward empty. Spend limits fill toward a cap.
             readonly property real ratio: root.balance && root.balance.funded > 0
-              ? root.clamp(root.balance.remaining / root.balance.funded, 0, 1)
+              ? root.clamp(balanceSection.isSpendLimit ? (root.balance.spent / root.balance.funded) : (root.balance.remaining / root.balance.funded), 0, 1)
               : -1
 
             PanelSectionHeader {
               width: parent.width
-              text: "BALANCE"
+              text: balanceSection.isSpendLimit ? "SPEND LIMIT" : "BALANCE"
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -548,7 +549,7 @@ Panel {
 
               Text {
                 id: balanceLabel
-                text: "Prepaid credits"
+                text: balanceSection.isSpendLimit ? "Used" : "Prepaid credits"
                 color: root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.body
@@ -558,7 +559,7 @@ Panel {
 
               Text {
                 id: balanceValue
-                text: root.balance ? root.formatMoney(root.balance.remaining, root.balance.currency) : ""
+                text: root.balance ? root.formatMoney(balanceSection.isSpendLimit ? root.balance.spent : root.balance.remaining, root.balance.currency) : ""
                 color: root.balanceAlarming ? root.urgent : root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
