@@ -5,8 +5,17 @@
 # omarchy:hidden=true
 
 LOG_TYPE="${1:-install}"
-TEMP_LOG="/tmp/upload-log.txt"
-SYSTEM_INFO="/tmp/system-info.txt"
+
+# What lands in these two files is the whole journal, the package list and a
+# hardware inventory, and the first of them is then published to a paste. A
+# fixed name in world-writable /tmp lets any other local account create the
+# file first and read what the upload gathered, redirect the write through a
+# symlink, or swap the contents between the last append and the upload. mktemp
+# picks an unpredictable name and creates it 0600.
+staging_dir=$(mktemp -d) || exit 1
+trap 'rm -rf "$staging_dir"' EXIT
+TEMP_LOG="$staging_dir/upload-log.txt"
+SYSTEM_INFO="$staging_dir/system-info.txt"
 
 # Get system information if fastfetch is available
 if omarchy-cmd-present fastfetch; then

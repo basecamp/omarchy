@@ -26,7 +26,16 @@ while (( $# > 0 )); do
   esac
 done
 
-LOG_FILE="/tmp/omarchy-debug.log"
+# /tmp is world-writable, so a fixed name there is a file any other local
+# account can create first and then read -- and this one holds `sudo dmesg`,
+# the journal, and a full hardware inventory. It is also what a symlink planted
+# at the same path would redirect the write into. Keep it under the per-user
+# runtime directory (0700) instead, and fall back to the state directory where
+# Omarchy keeps everything else of its own when there is no session runtime dir.
+log_dir="${XDG_RUNTIME_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/omarchy}"
+mkdir -p "$log_dir"
+LOG_FILE="$log_dir/omarchy-debug.log"
+install -m 600 /dev/null "$LOG_FILE"
 
 if [[ $NO_SUDO = "true" ]]; then
   DMESG_OUTPUT="(skipped - --no-sudo flag used)"
