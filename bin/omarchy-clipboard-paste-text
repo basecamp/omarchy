@@ -6,7 +6,7 @@
 # omarchy:examples=omarchy clipboard paste text "hello" | omarchy clipboard paste text --shift-insert "hello"
 # omarchy:hidden=true
 
-use_shift_insert=false
+use_paste_shortcut=false
 copy_only=false
 history_index=""
 text=""
@@ -14,7 +14,7 @@ text=""
 while (( $# > 0 )); do
   case "$1" in
     --shift-insert)
-      use_shift_insert=true
+      use_paste_shortcut=true
       shift
       ;;
     --copy-only)
@@ -31,6 +31,16 @@ while (( $# > 0 )); do
   esac
 done
 
+# Terminals take Shift+Insert, everything else Ctrl+V — same split as universal
+# paste in default/hypr/bindings/clipboard.lua.
+paste_into_focused_window() {
+  if hyprctl -j activewindow 2>/dev/null | jq -e '[.tags[]? | sub("\\*$"; "")] | index("terminal")' >/dev/null; then
+    wtype -M shift -k Insert -m shift 2>/dev/null || true
+  else
+    wtype -M ctrl v -m ctrl 2>/dev/null || true
+  fi
+}
+
 copy_history_entry() {
   local history_path="$HOME/.local/state/omarchy/clipboard-history.json"
 
@@ -42,7 +52,7 @@ copy_history_entry() {
 if [[ -n $history_index ]]; then
   copy_history_entry
   if [[ $copy_only != "true" ]]; then
-    use_shift_insert=true
+    use_paste_shortcut=true
   fi
 else
   text=${1:-}
@@ -56,8 +66,8 @@ fi
 
 sleep 0.15
 
-if [[ $use_shift_insert == "true" ]]; then
-  wtype -M shift -k Insert -m shift 2>/dev/null || true
+if [[ $use_paste_shortcut == "true" ]]; then
+  paste_into_focused_window
 else
   wtype "$text" 2>/dev/null || true
 fi
