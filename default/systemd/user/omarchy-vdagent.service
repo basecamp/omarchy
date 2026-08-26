@@ -1,6 +1,6 @@
 [Unit]
 Description=Bridge the SPICE guest clipboard to Wayland
-Documentation=https://github.com/basecamp/omarchy/blob/master/manual/49-omarchy-on.md
+Documentation=https://github.com/basecamp/omarchy/blob/quattro/manual/49-omarchy-on.md
 After=graphical-session.target
 PartOf=graphical-session.target
 ConditionEnvironment=WAYLAND_DISPLAY
