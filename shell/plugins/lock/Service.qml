@@ -33,6 +33,10 @@ Item {
   property string lastEventAt: ""
   property bool strandedLock: false
   property bool strandedLockResolved: false
+  property bool fingerprintSleepPaused: false
+  property bool fingerprintCheckAborted: false
+  property int fingerprintResumeAttempts: 0
+  property bool awaitingSleepSignalValue: false
 
   readonly property bool locked: lockRequested || sessionLock.locked || sessionLock.secure
   readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating
@@ -104,6 +108,7 @@ Item {
   }
 
   function refreshFingerprintStatus() {
+    if (fingerprintSleepPaused) return
     if (!fingerprintCheckProc.running) fingerprintCheckProc.running = true
   }
 
@@ -207,23 +212,77 @@ Item {
   }
 
   function startFingerprint() {
-    if (!lockRequested || !sessionLock.secure || !fingerprintConfigured) return
+    if (fingerprintSleepPaused || !lockRequested || !sessionLock.secure || !fingerprintConfigured) return
     if (fingerprintPam.active || fingerprintAuthenticating) return
 
     fingerprintAuthenticating = true
     if (!fingerprintPam.start()) {
       fingerprintAuthenticating = false
+      fingerprintRetryTimer.restart()
+    } else {
+      fingerprintResumeAttempts = 0
     }
   }
 
   function handleFingerprintFinished(result) {
     fingerprintAuthenticating = false
 
-    if (!lockRequested) return
+    if (fingerprintSleepPaused || !lockRequested) return
     if (result === PamResult.Success) {
       finishUnlock()
     } else if (fingerprintConfigured) {
       fingerprintRetryTimer.restart()
+    }
+  }
+
+  function abortFingerprintCheck() {
+    if (!fingerprintCheckProc.running) return
+    fingerprintCheckAborted = true
+    fingerprintCheckProc.running = false
+  }
+
+  // A sleep can catch fprintd mid-probe: it D-Bus-activates during suspend,
+  // sees the reader too early, and reports "unsupported firmware version"
+  // before it has actually come back. Pause checks across the sleep boundary
+  // and drop whatever result was already in flight, rather than trust a
+  // probe that straddled it.
+  function pauseFingerprintForSleep() {
+    fingerprintSleepPaused = true
+    fingerprintResumeAttempts = 0
+    fingerprintResumeTimer.stop()
+    fingerprintRetryTimer.stop()
+    fingerprintAuthenticating = false
+    if (fingerprintPam.active) fingerprintPam.abort()
+    abortFingerprintCheck()
+    logEvent("fingerprint-paused-for-sleep")
+  }
+
+  // The reader can take a few seconds to recover after resume, so re-probe
+  // for a while instead of accepting the first (possibly still-stale) answer.
+  function resumeFingerprintAfterSleep() {
+    if (!fingerprintSleepPaused) return
+    fingerprintSleepPaused = false
+    fingerprintAuthenticating = false
+    fingerprintRetryTimer.stop()
+    fingerprintResumeAttempts = 20
+    abortFingerprintCheck()
+    logEvent("fingerprint-resume-pending")
+    fingerprintResumeTimer.restart()
+  }
+
+  function handleSleepMonitorLine(data) {
+    var line = String(data || "")
+    if (line.indexOf("member=PrepareForSleep") !== -1) {
+      awaitingSleepSignalValue = true
+      return
+    }
+    if (!awaitingSleepSignalValue) return
+    if (line.indexOf("boolean true") !== -1) {
+      awaitingSleepSignalValue = false
+      pauseFingerprintForSleep()
+    } else if (line.indexOf("boolean false") !== -1) {
+      awaitingSleepSignalValue = false
+      resumeFingerprintAfterSleep()
     }
   }
 
@@ -349,7 +408,7 @@ Item {
 
     onError: function(error) {
       root.fingerprintAuthenticating = false
-      if (root.lockRequested && root.fingerprintConfigured) fingerprintRetryTimer.restart()
+      if (!root.fingerprintSleepPaused && root.lockRequested && root.fingerprintConfigured) fingerprintRetryTimer.restart()
     }
   }
 
@@ -358,6 +417,36 @@ Item {
     interval: 250
     repeat: false
     onTriggered: root.startFingerprint()
+  }
+
+  Timer {
+    id: fingerprintResumeTimer
+    interval: 1000
+    repeat: false
+    onTriggered: {
+      if (root.fingerprintResumeAttempts > 0) root.fingerprintResumeAttempts -= 1
+      root.refreshFingerprintStatus()
+    }
+  }
+
+  // login1 emits PrepareForSleep(true) just before suspend and (false) on
+  // resume. dbus-monitor is simpler than a proper signal-match subscription
+  // here, and this process is cheap to keep running for the plugin's lifetime.
+  Process {
+    id: fingerprintSleepMonitor
+    running: true
+    command: ["dbus-monitor", "--system", "type='signal',sender='org.freedesktop.login1',interface='org.freedesktop.login1.Manager',member='PrepareForSleep'"]
+    stdout: SplitParser {
+      onRead: function(data) { root.handleSleepMonitorLine(data) }
+    }
+    onExited: fingerprintSleepMonitorRestart.restart()
+  }
+
+  Timer {
+    id: fingerprintSleepMonitorRestart
+    interval: 2000
+    repeat: false
+    onTriggered: if (!fingerprintSleepMonitor.running) fingerprintSleepMonitor.running = true
   }
 
   Process {
@@ -377,12 +466,33 @@ Item {
 
   Process {
     id: fingerprintCheckProc
-    command: ["bash", "-c", "if [[ -f /etc/pam.d/omarchy-lock-fingerprint ]] && command -v fprintd-list >/dev/null 2>&1 && fprintd-list \"$USER\" 2>/dev/null | grep -qi finger; then echo yes; else echo no; fi"]
+    // fprintd-list can hang instead of failing if the reader is wedged mid-resume.
+    command: ["bash", "-c", "if [[ -f /etc/pam.d/omarchy-lock-fingerprint ]] && command -v fprintd-list >/dev/null 2>&1 && timeout 8 fprintd-list \"$USER\" 2>/dev/null | grep -qi finger; then echo yes; else echo no; fi"]
     stdout: StdioCollector { id: fingerprintCheckStdout; waitForEnd: true }
     onExited: {
-      root.fingerprintConfigured = String(fingerprintCheckStdout.text || "").trim() === "yes"
-      if (root.lockRequested && root.fingerprintConfigured) root.startFingerprint()
-      else if (!root.fingerprintConfigured && fingerprintPam.active) fingerprintPam.abort()
+      // This result was in flight when sleep started or ended; it answers a
+      // question that no longer applies. Drop it and let the next probe decide.
+      if (root.fingerprintCheckAborted) {
+        root.fingerprintCheckAborted = false
+        return
+      }
+      if (root.fingerprintSleepPaused) return
+
+      var configured = String(fingerprintCheckStdout.text || "").trim() === "yes"
+      if (configured) {
+        root.fingerprintConfigured = true
+        root.fingerprintResumeAttempts = 0
+        root.logEvent("fingerprint-configured=true")
+        if (root.lockRequested) root.startFingerprint()
+      } else if (root.fingerprintResumeAttempts > 0) {
+        // Fresh out of sleep, the reader is still probably recovering. Keep
+        // re-probing on the resume budget instead of taking "no" at face value.
+        fingerprintResumeTimer.restart()
+      } else {
+        root.fingerprintConfigured = false
+        if (fingerprintPam.active) fingerprintPam.abort()
+        root.logEvent("fingerprint-configured=false")
+      }
     }
   }
 
@@ -530,6 +640,8 @@ Item {
         realScreens: root.realScreenCount(),
         passwordPam: root.passwordPamConfigured,
         fingerprint: root.fingerprintConfigured,
+        fingerprintSleepPaused: root.fingerprintSleepPaused,
+        fingerprintResumeAttempts: root.fingerprintResumeAttempts,
         authenticating: root.authenticating,
         lastEvent: root.lastEvent,
         lastEventAt: root.lastEventAt
