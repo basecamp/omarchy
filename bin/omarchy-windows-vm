@@ -78,21 +78,11 @@ priv() {
     "__priv_$action" "$@"
     return
   fi
-  local target self target_real
+  local target
   target=$(priv_target) || {
     echo "omarchy-windows-vm: refusing to run a non-root-owned command as root" >&2
     return 1
   }
-  # pkexec only runs a root-owned helper. A checkout of this script can collect
-  # settings, but write_compose/up still execute /usr/bin/omarchy-windows-vm —
-  # which is why QEMU kept `-smbios type=1,serial=...` and never got MSDM.
-  self=$(readlink -f -- "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")
-  target_real=$(readlink -f -- "$target" 2>/dev/null || printf '%s' "$target")
-  if [[ $self != "$target_real" ]]; then
-    echo "omarchy-windows-vm: privileged actions run $target_real, not $self" >&2
-    echo "OEM firmware passthrough in this copy will not reach QEMU." >&2
-    echo "Install it: sudo install -o root -g root -m 0755 \"$self\" /usr/bin/omarchy-windows-vm" >&2
-  fi
   pkexec "$target" __priv "$action" "$@"
 }
 
@@ -136,9 +126,8 @@ valid_priv_action() {
 
 # --- privileged actions (run as root via pkexec, or directly when sudoless) ---
 
-# Dump one ACPI table from sysfs into OEM_FIRMWARE_DIR. The sysfs node is 0400
-# root, so this must run as root. A missing table is not an error: machines that
-# did not ship with Windows have no MSDM/SLIC.
+# ACPI OEM tables are 0400 root; a missing table is normal on machines that
+# did not ship with Windows.
 dump_acpi_table() {
   local name="$1"
   local src="/sys/firmware/acpi/tables/$name"
@@ -150,13 +139,10 @@ dump_acpi_table() {
   chown root:docker "$dest" 2>/dev/null || chown root:root "$dest" 2>/dev/null || true
 }
 
-# Copy host SMBIOS structures into files QEMU's `-smbios file=` option accepts.
-# Types 0/1/2/3 are what Windows OEM activation matches (BIOS, system, board,
-# chassis); type 11 carries OEM strings used by older SLP checks. Binary blobs
-# keep the host strings intact — dockurr space-splits ARGUMENTS, so
-# `-smbios type=1,...` cannot carry values like "Dell Inc." without breaking
-# QEMU's argv. Prefer the kernel's per-type raw nodes; fall back to slicing
-# the packed DMI table when those are missing (some kernels omit dmi/entries).
+# Copy SMBIOS types 0/1/2/3/11 as binary blobs for QEMU `-smbios file=`.
+# dockurr word-splits ARGUMENTS, so values with spaces cannot go on the
+# command line. Prefer sysfs per-type raw nodes; fall back to the packed DMI
+# table when the kernel omits dmi/entries.
 dump_host_smbios() {
   local out="$OEM_FIRMWARE_DIR/smbios" t raw copied=0
   mkdir -p "$out"
@@ -205,9 +191,8 @@ while i + 4 <= n:
   chown -R root:docker "$out" 2>/dev/null || chown -R root:root "$out" 2>/dev/null || true
 }
 
-# install.bat is copied by dockurr to C:\OEM and run at the end of unattended
-# setup. Once MSDM is visible in the guest, Windows exposes the OA3 key; apply
-# it and activate. No-op when the table is missing or the edition does not match.
+# dockurr copies /oem to C:\OEM and runs install.bat at the end of unattended
+# setup. Applies the OA3 key from MSDM when present.
 write_oem_setup() {
   mkdir -p "$OEM_SETUP_DIR"
   cat >"$OEM_SETUP_DIR/install.bat" <<'BAT'
@@ -221,9 +206,7 @@ BAT
   chown -R root:docker "$OEM_SETUP_DIR" 2>/dev/null || chown -R root:root "$OEM_SETUP_DIR" 2>/dev/null || true
 }
 
-# Snapshot host OEM firmware into the root-owned runtime dir. Called from the
-# compose writer (to know which QEMU flags to emit) and from bring-up (so a BIOS
-# update is picked up without rewriting compose).
+# Snapshot host OEM firmware into the root-owned runtime dir.
 prepare_oem_firmware() {
   mkdir -p "$OEM_FIRMWARE_DIR"
   chmod 0750 "$OEM_FIRMWARE_DIR" 2>/dev/null || true
@@ -248,9 +231,7 @@ host_system_uuid() {
   printf '%s' "$uuid"
 }
 
-# Extra QEMU args that forward OEM firmware. Paths are inside the container
-# (OEM_GUEST_FIRMWARE); every token is space-free so dockurr's unquoted
-# ARGUMENTS expansion keeps them as a single argv element.
+# Container-side paths; tokens are space-free for dockurr's unquoted ARGUMENTS.
 oem_acpi_arguments() {
   local args=""
   [[ -f $OEM_FIRMWARE_DIR/msdm.bin ]] && args+=" -acpitable file=$OEM_GUEST_FIRMWARE/msdm.bin"
@@ -258,9 +239,8 @@ oem_acpi_arguments() {
   printf '%s' "$args"
 }
 
-# Goes in SM_BIOS (not ARGUMENTS) so it replaces dockurr's
-# `-smbios type=1,serial=...`. Mixing that with `-smbios file=` for type 1
-# makes QEMU refuse the binary table.
+# SM_BIOS rather than ARGUMENTS: QEMU rejects mixing `-smbios file=` with
+# `-smbios type=` for the same structure.
 oem_smbios_arguments() {
   local args="" t
   for t in 0 1 2 3 11; do
@@ -277,8 +257,8 @@ extract_msdm_key() {
   printf '%s' "$key"
 }
 
-# Keep user ARGUMENTS (rtc, USB, …) and drop any OEM tokens we previously
-# injected, so a rewrite does not stack duplicate -acpitable flags.
+# Preserve ARGUMENTS from the main compose, stripping any previously injected
+# OEM tokens so a rewrite does not stack duplicates.
 existing_qemu_arguments() {
   local args=""
   if [[ -f $COMPOSE_FILE ]]; then
@@ -290,9 +270,8 @@ existing_qemu_arguments() {
   printf '%s' "$args"
 }
 
-# Root-owned compose overlay applied on every bring-up. Existing installs never
-# re-run write_compose, which is why 0xC004F213 persisted: the guest QEMU line
-# had no MSDM table and only a type-1 serial.
+# Compose overlay applied on bring-up so existing installs pick up OEM firmware
+# without rewriting the password-bearing compose file.
 write_oem_override() {
   prepare_oem_firmware
 
@@ -304,7 +283,6 @@ write_oem_override() {
 
   if [[ -z $acpi_args && -z $smbios_args ]]; then
     rm -f "$OEM_OVERRIDE"
-    echo "omarchy-windows-vm: no host OEM firmware tables found; the guest will not auto-activate" >&2
     return 0
   fi
 
@@ -315,8 +293,7 @@ write_oem_override() {
   if host_uuid=$(host_system_uuid); then
     env_lines+=$'\n      UUID: "'"$host_uuid"'"'
   fi
-  # VM=N drops dockurr's +hypervisor CPUID bit. kvm=off hides KVMKVMKVM
-  # (KVM acceleration stays on). Last-wins against dockurr's kvm=on.
+  # kvm=off hides the KVM CPUID signature; KVM acceleration stays on.
   env_lines+=$'\n      VM: "N"'
   env_lines+=$'\n      CPU_FLAGS: "kvm=off,-hypervisor"'
   if oem_key=$(extract_msdm_key); then
@@ -339,12 +316,6 @@ EOF
   chmod 0640 "$tmp" 2>/dev/null || true
   chown root:docker "$tmp" 2>/dev/null || chown root:root "$tmp" 2>/dev/null || true
   mv -f "$tmp" "$OEM_OVERRIDE"
-
-  echo "omarchy-windows-vm: forwarding host OEM firmware (ACPI MSDM/SLIC, SMBIOS) to the guest" >&2
-  if [[ -n ${oem_key:-} ]]; then
-    echo "omarchy-windows-vm: OEM product key from MSDM: $oem_key" >&2
-    echo "omarchy-windows-vm: if Windows is already installed, run: slmgr /ipk $oem_key && slmgr /ato" >&2
-  fi
 }
 
 # Reads KEY=VALUE lines on stdin, re-validates every field, and writes the
@@ -472,7 +443,7 @@ assert_mounts_safe() {
   done
 }
 
-__priv_up() { assert_mounts_safe && write_oem_override && dc up -d --force-recreate; }
+__priv_up() { assert_mounts_safe && write_oem_override && dc up -d; }
 
 __priv_down() { dc down; }
 
@@ -481,15 +452,7 @@ __priv_down() { dc down; }
 __priv_up_wait() {
   assert_mounts_safe || return 1
   write_oem_override
-  local status dests=""
-  status=$(docker inspect --format='{{.State.Status}}' "$CONTAINER" 2>/dev/null)
-  dests=$(docker inspect --format='{{range .Mounts}}{{.Destination}} {{end}}' "$CONTAINER" 2>/dev/null) || true
-  if [[ $status != "running" ]]; then
-    dc up -d --force-recreate || return 1
-  elif [[ -f $OEM_OVERRIDE && $dests != *"$OEM_GUEST_FIRMWARE"* ]]; then
-    # Guest is up on the old QEMU line (no MSDM). Recreate so 0xC004F213 can clear.
-    dc up -d --force-recreate || return 1
-  fi
+  dc up -d || return 1
 
   # docker logs persists across restarts, so anchor the scan to the current
   # start time; an empty --since would match a stale "started successfully".
@@ -759,13 +722,6 @@ EOF
     PASSWORD_DISPLAY="(default)"
   fi
 
-  local oem_display="not detected (guest will need its own license)"
-  if [[ -e /sys/firmware/acpi/tables/MSDM ]]; then
-    oem_display="host MSDM table will be passed through"
-  elif [[ -e /sys/firmware/dmi/tables/DMI ]]; then
-    oem_display="host SMBIOS will be passed through (no MSDM table)"
-  fi
-
   # Display configuration summary
   gum style \
     --border normal \
@@ -779,8 +735,7 @@ EOF
     "CPU:       $SELECTED_CORES cores" \
     "Disk:      $SELECTED_DISK" \
     "Username:  $USERNAME" \
-    "Password:  $PASSWORD_DISPLAY" \
-    "OEM:       $oem_display"
+    "Password:  $PASSWORD_DISPLAY"
 
   # Ask for confirmation
   echo ""
@@ -836,15 +791,6 @@ EOF
   echo ""
   echo "To stop the VM: omarchy-windows-vm stop"
   echo ""
-  if [[ -e /sys/firmware/acpi/tables/MSDM ]]; then
-    echo "This machine's OEM firmware (MSDM + SMBIOS) is forwarded into the guest"
-    echo "so Windows can activate with the device license. The key must match the"
-    echo "installed edition (this VM installs Windows 11 Pro)."
-    echo "If the guest is already installed, stop it and launch again so QEMU is"
-    echo "recreated with the MSDM table, then in Windows run slmgr /ato"
-    echo "(or slmgr /ipk <key> && slmgr /ato using the key printed at start)."
-    echo ""
-  fi
 }
 
 remove_windows() {
@@ -1008,10 +954,6 @@ status_windows() {
       "" \
       "To connect: omarchy-windows-vm launch" \
       "To stop:    omarchy-windows-vm stop"
-    if [[ -r $OEM_OVERRIDE ]] && grep -q 'oem-firmware' "$OEM_OVERRIDE" 2>/dev/null; then
-      echo ""
-      echo "OEM firmware passthrough: enabled (MSDM/SLIC/SMBIOS)"
-    fi
   else
     echo "Windows VM is stopped (status: $CONTAINER_STATUS)"
     echo "To start: omarchy-windows-vm launch"
