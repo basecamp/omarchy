@@ -71,6 +71,7 @@ Item {
   property var items: ({})
   property var itemOrder: []
   property var navStack: []
+  property var originIndex: ({})
   property var providersLoaded: ({})
   property var providerQueue: []
   property int providerRevision: 0
@@ -726,13 +727,13 @@ Item {
     root.rebuildDisplay()
   }
 
-  function setActiveMenu(id, pushHistory, fromPointer) {
+  function setActiveMenu(id, pushHistory, fromPointer, restoreIndex) {
     panel.freezeCardTop()
     if (!root.item(id)) id = "root"
     if (pushHistory && id !== root.activeMenu) root.navStack = root.navStack.concat([root.activeMenu])
     root.activeMenu = id
     root.filterText = ""
-    root.selectedIndex = 0
+    root.selectedIndex = (typeof restoreIndex === "number" && restoreIndex > 0) ? restoreIndex : 0
     root.cursorActive = true
     if (fromPointer) pointerGate.allowInitialSample()
     else root.disarmPointer()
@@ -747,12 +748,13 @@ Item {
     if (root.navStack.length > 0) {
       var previous = root.navStack[root.navStack.length - 1]
       root.navStack = root.navStack.slice(0, root.navStack.length - 1)
-      root.setActiveMenu(previous, false)
+      root.setActiveMenu(previous, false, false, root.originIndex[previous])
       return true
     }
 
     var active = root.item(root.activeMenu)
-    root.setActiveMenu((active && active.parent) ? active.parent : "root", false)
+    var parentId = (active && active.parent) ? active.parent : "root"
+    root.setActiveMenu(parentId, false, false, root.originIndex[parentId])
     return true
   }
 
@@ -773,6 +775,9 @@ Item {
 
     var row = displayModel.get(index)
     if (row.kind === "menu" || row.kind === "link") {
+      // Remember where each descent leaves the parent so Back can restore it.
+      // Search-result indices do not map onto the parent list, so skip them.
+      if (!root.filterText) root.originIndex[root.activeMenu] = index
       root.setActiveMenu(row.target || row.itemId, true, fromPointer)
     } else if (row.kind === "app") {
       var appId = row.appId
@@ -842,6 +847,7 @@ Item {
     doneFile = ""
     activeMenu = root.item(initialMenu) ? initialMenu : "root"
     navStack = []
+    originIndex = ({})
     filterText = ""
     selectedIndex = 0
     cursorActive = true
@@ -870,6 +876,7 @@ Item {
     dmenuMaxHeight = Math.max(0, Number(payload.maxHeight || 0))
     activeMenu = "root"
     navStack = []
+    originIndex = ({})
     filterText = ""
     selectedIndex = 0
     cursorActive = mode !== "input"
