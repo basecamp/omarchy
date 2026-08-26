@@ -4,7 +4,7 @@
   "name": "Lock Screen",
   "version": "1.0.0",
   "author": "Omarchy",
-  "description": "Quickshell session lock with separate password and fingerprint PAM flows.",
+  "description": "Quickshell session lock with separate password, fingerprint, and face PAM flows.",
   "kinds": [
     "service"
   ],

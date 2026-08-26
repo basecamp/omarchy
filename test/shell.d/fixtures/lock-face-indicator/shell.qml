@@ -57,20 +57,18 @@ ShellRoot {
           return
         }
 
-        var indicator = view.children ? findByObjectName(view, "fingerprintIndicator") : null
-        root.assertTrue(indicator !== null, "fingerprint indicator exists in the lock view")
+        var indicator = view.children ? findByObjectName(view, "faceIndicator") : null
+        root.assertTrue(indicator !== null, "face indicator exists in the lock view")
 
         if (indicator) {
-          view.fingerprintConfigured = false
-          root.assertTrue(!indicator.visible, "fingerprint indicator is hidden when no sensor is configured")
+          view.faceConfigured = false
+          root.assertTrue(!indicator.visible, "face indicator is hidden when face auth is not configured")
 
-          view.fingerprintConfigured = true
-          root.assertTrue(indicator.visible, "fingerprint indicator is shown when a sensor is configured")
+          view.faceConfigured = true
+          root.assertTrue(indicator.visible, "face indicator is shown when face auth is configured")
 
           // The field reserves space for the icon so a long password can never
-          // slide underneath it. The reserve must exceed the icon's own width
-          // (leaving a gap), and the shrunk dots must fit the reserved-clear
-          // area even at extreme lengths.
+          // slide underneath it, whichever biometric icons are shown.
           root.assertTrue(view.iconReserve > indicator.width,
             "reserved space exceeds the icon width, got reserve " + view.iconReserve + " vs icon " + indicator.width)
 
@@ -80,15 +78,20 @@ ShellRoot {
           probe.font.letterSpacing = view.passwordDotLetterSpacing * view.passwordDotScale
           probe.text = "●".repeat(80)
           root.assertTrue(probe.advanceWidth <= clearWidth,
-            "80 dots stay clear of the fingerprint icon, need " + probe.advanceWidth + "px of " + clearWidth)
+            "80 dots stay clear of the face icon, need " + probe.advanceWidth + "px of " + clearWidth)
 
+          // Both biometric icons shown together share one symmetric reserve.
+          view.fingerprintConfigured = true
+          root.assertTrue(view.iconReserve > 0, "space stays reserved with both icons shown")
           view.fingerprintConfigured = false
-          root.assertTrue(view.iconReserve === 0, "no space is reserved when no sensor is configured")
+
+          view.faceConfigured = false
+          root.assertTrue(view.iconReserve === 0, "no space is reserved when nothing is configured")
         }
 
         view.destroy()
       } catch (error) {
-        root.fail("lock fingerprint indicator fixture threw: " + error)
+        root.fail("lock face indicator fixture threw: " + error)
       } finally {
         root.writeResult()
       }
