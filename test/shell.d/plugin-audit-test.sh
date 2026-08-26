@@ -245,6 +245,69 @@ for lvl in minimal low moderate high critical; do
 done
 pass "--explain describes every risk level without needing a target"
 
+# ---------------------------------------------------------------- evasion & floors
+
+# Declaring a malicious capability silences its undeclared warning, but network
+# paired with reading files holds the floor at moderate -- declaration explains a
+# capability, it does not make it safe.
+dir=$(write_plugin ev-declared '{"commands":["curl"],"network":["evil.example"],"reads":["~/.config/x"]}' \
+  'import Quickshell.Io
+QtObject {
+  property Process p: Process { command: ["curl", "https://evil.example/x"] }
+  property FileView f: FileView { path: "~/.config/x/a" }
+}')
+[[ $(verdict "$dir") == moderate ]] \
+  || fail "a declared network+read plugin holds at moderate, not low" "$(audit "$dir" --json)"
+pass "declaration does not drop a network+read plugin below moderate"
+
+# A URL assembled at runtime hides the host: one strong evasion signal -> moderate.
+dir=$(write_plugin ev-url '{"commands":["curl"]}' \
+  'import Quickshell.Io
+QtObject { property string h: "evil.example"; property Process p: Process { command: ["curl", "https://"+h+"/x"] } }')
+report=$(audit "$dir" --json)
+jq -e '([.risks[].kind] | index("computed-url") != null) and (.verdict.level == "moderate")' <<<"$report" >/dev/null \
+  || fail "a runtime-built URL is flagged and verdicts moderate" "$report"
+pass "a runtime-built URL (hidden host) verdicts moderate"
+
+# A concatenated argv[0] hides the binary: one strong evasion signal -> moderate.
+dir=$(write_plugin ev-argv 'null' \
+  'import Quickshell.Io
+QtObject { property Process p: Process { command: ["cur"+"l", "status"] } }')
+report=$(audit "$dir" --json)
+jq -e '[.risks[].kind] | index("obfuscated-command") != null' <<<"$report" >/dev/null \
+  || fail "a concatenated argv[0] raises obfuscated-command" "$report"
+[[ $(verdict "$dir") == moderate ]] || fail "a single evasion signal verdicts moderate" "$report"
+pass "a concatenated argv[0] (hidden binary) verdicts moderate"
+
+# Hiding both the binary and the host at once -> high.
+dir=$(write_plugin ev-both 'null' \
+  'import Quickshell.Io
+QtObject { property string h: "evil.example"; property Process p: Process { command: ["cur"+"l", "https://"+h+"/x"] } }')
+[[ $(verdict "$dir") == high ]] || fail "two evasion signals verdict high" "$(audit "$dir" --json)"
+pass "hiding on two fronts (argv[0] and URL) verdicts high"
+
+# A concatenated *argument* is not a hidden binary: it must not count as
+# obfuscated-command (only computed-url), so it does not wrongly escalate to high.
+dir=$(write_plugin ev-argonly '{"commands":["curl"],"network":["api.x.example"]}' \
+  'import Quickshell.Io
+QtObject { property string q: "a"; property Process p: Process { command: ["curl", "https://api.x.example/?x="+q] } }')
+report=$(audit "$dir" --json)
+jq -e '([.risks[].kind] | index("obfuscated-command") == null) and (.verdict.level != "high")' <<<"$report" >/dev/null \
+  || fail "a concatenated argument is not mistaken for a hidden binary" "$report"
+pass "a concatenated argument is not counted as a hidden binary"
+
+# The common, benign combo -- a command set from a variable plus a bundled helper --
+# must stay moderate: dynamic-command and partial-coverage are weak signals and must
+# not escalate on their own (guards mozilla-vpn-style plugins against a false high).
+dir=$(write_plugin ev-benign '{"commands":["python3"]}' \
+  'import Quickshell.Io
+QtObject { property Process a: Process {} function go(){ var c = ["python3", "h.py"]; a.command = c } }')
+printf 'import os\n' >"$dir/h.py"
+report=$(audit "$dir" --json)
+jq -e '([.risks[].kind] | (index("dynamic-command") != null) and (index("partial-coverage") != null)) and (.verdict.level == "moderate")' <<<"$report" >/dev/null \
+  || fail "weak signals (variable command + helper) stay moderate, not high" "$report"
+pass "common weak signals do not escalate past moderate"
+
 # ---------------------------------------------------------------- resolution errors
 
 output=$(audit "$TMPDIR/does-not-exist" 2>&1) && fail "audit fails on a missing target" "$output"

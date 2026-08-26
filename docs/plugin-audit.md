@@ -53,11 +53,11 @@ The report ends with one level, computed only from what the scan found — a tri
 |-------|-------------|
 | `minimal` | Spawns no command, contacts no host, writes no file, trips no risk. |
 | `low` | Does real work, but every capability it uses is declared and nothing tripped a risk. |
-| `moderate` | Reaches something undeclared (command/host/write), or a medium risk — inline/dynamic command, a shallowly-scanned helper, base64, a raw socket. |
-| `high` | A high-severity risk — privilege escalation, an autostart/systemd/hypr/crontab write, a credential read, a second Quickshell, or a refused git origin. |
+| `moderate` | Reaches something undeclared (command/host/write); a medium risk (inline/dynamic command, a shallowly-scanned helper, base64, a raw socket); a single evasion signal (a concatenated `argv[0]` or a runtime-built URL); or network access paired with reading files or running an interpreter — which holds even when every capability is declared, since declaring a capability does not make it safe. |
+| `high` | A high-severity risk (privilege escalation, an autostart/systemd/hypr/crontab write, a credential read, a second Quickshell, a refused git origin), or hiding what it does on more than one front at once (e.g. both a concatenated binary name and a runtime-built URL). |
 | `critical` | A pattern dangerous almost regardless of intent — pipe-to-shell, runtime code construction, or reading credentials while also reaching the network (exfiltration shape). |
 
-The highest matching rule wins. `--strict` (below) keys off undeclared commands, hosts, and writes and high-severity risks, so it corresponds to the `high` and `critical` levels and most `moderate` ones.
+The highest matching rule wins. Hiding a capability raises the level rather than lowering it: a benign plugin rarely needs to assemble a binary name or a host from fragments, so the scan not being able to see the real value is itself the signal. `--strict` (below) keys off undeclared commands, hosts, and writes and high-severity risks, so it corresponds to the `high` and `critical` levels and most `moderate` ones.
 
 ## Exit status
 
@@ -74,3 +74,5 @@ When the plugin folder is a git checkout, the audit reports its `origin` URL and
 ## Risk heuristics
 
 Beyond the declared-set diff, the audit flags patterns that are worth a human look regardless of declaration: runtime code construction (`eval`, `Qt.createQmlObject`, a dynamically-sourced `Qt.createComponent`), piping a download into a shell, base64 decoding, privilege escalation via `sudo`/`pkexec`, spawning a second Quickshell process, writing to autostart / systemd-user / hypr / crontab locations, and touching credential material (`~/.ssh`, `~/.gnupg`, `~/.aws`, `.netrc`, shell history, browser secrets, `/etc/shadow`). High-severity risks fail `--strict`.
+
+A second group of heuristics targets *evasion* — code shaped to keep a capability out of the scan's view. `obfuscated-command` fires when `argv[0]` is assembled from string fragments (`["cur"+"l"]`) or set from a variable or call, hiding which binary runs; `computed-url` fires when a URL is built at runtime (`"https://" + host`), hiding the destination. These raise the floor rather than lowering it: one puts the verdict at `moderate`, two together at `high`, because a benign plugin rarely needs to hide either. Because these are static, regex-based heuristics, a determined author can still route around them; the audit raises the cost of shipping obvious malware, it does not replace a runtime sandbox.
