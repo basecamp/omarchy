@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# omarchy:summary=Detect a Dell U5226KW display connected to an Intel GPU using the i915 driver.
+
+lspci -k 2>/dev/null | grep -A3 -iE 'vga|3d controller' | grep -q 'Kernel driver in use: i915' || exit 1
+
+drm_path="${OMARCHY_DRM_PATH:-/sys/class/drm}"
+
+for edid in "$drm_path"/card*-*/edid; do
+  [[ -s $edid ]] || continue
+  # EDID bytes 8-11 are the manufacturer ID + product code; 10ac9e43 is Dell's
+  # manufacturer ID (10ac) followed by the U5226KW's product code (9e43, LE).
+  [[ $(od -An -tx1 -j8 -N4 "$edid" 2>/dev/null | tr -d ' \n') == 10ac9e43 ]] && exit 0
+done
+exit 1
