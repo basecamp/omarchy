@@ -6,10 +6,21 @@ function isChromiumDerived(app, appIcon) {
 }
 
 // True when a `<...>` run is an image tag, so the name is read the way Qt's
-// parser reads it: after the `<` and an optional `/`, the leading run of
-// letters and digits.
+// parser reads it: after the `<`, the leading run of letters and digits.
+//
+// Skip everything up to that run rather than matching the separator, because
+// there is no JavaScript expression for what Qt skips. QQuickStyledText calls
+// skipSpace(), which is QChar::isSpace(), and that set is not `\s`: Qt counts
+// U+0085 NEL and `\s` does not, while `\s` counts U+FEFF and Qt does not. A
+// name read with `\s` therefore misses a tag written as `<`, U+0085, `img`:
+// Qt skips the NEL, reads `img` and issues the GET, while the regex finds no
+// name at all and the tag is kept. Measured against Qt 6.11.2.
+//
+// Over-skipping is the safe direction. It can only classify more runs as
+// images, and dropping a run never manufactures a tag: a dropped run joins two
+// stretches of text that each contain no `<`.
 function isImageTag(tag) {
-  var name = /^<\/?\s*([A-Za-z0-9]+)/.exec(tag)
+  var name = /^<[^A-Za-z0-9]*([A-Za-z0-9]+)/.exec(tag)
   return !!name && name[1].toLowerCase() === "img"
 }
 
@@ -19,8 +30,15 @@ function isImageTag(tag) {
 // with no user action, so image tags go before the renderer sees them.
 //
 // Work in whole tags, never in substrings of one. A `<` opens a tag that runs
-// to the next `>`, nested `<` and all — that is how Qt's parser bounds it —
-// and only a tag whose own name is `img` is dropped.
+// to the next `>`, nested `<` and all, and only a tag whose own name is `img`
+// is dropped.
+//
+// That is the conservative bound, not Qt's exact one: Qt lets a `>` inside a
+// quoted attribute value pass without closing the tag, so a Qt tag can be
+// longer than the run taken here. Do not "correct" this to match Qt. Taking
+// the shorter run only ever splits one Qt tag into several, and a split can
+// only expose an `<img` to be dropped, never hide one — whereas honouring
+// quotes would let `<b title="a>b"><img src="http://host/x.png">` through.
 //
 // Deleting a substring is what makes a naive `/<img[^>]*>/g` unsafe. Given
 //

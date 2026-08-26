@@ -21,7 +21,10 @@ assertEqual(
 // The body renders as StyledText, which fetches <img src> over the network. The
 // invariant that matters is not a particular output string but that no tag Qt
 // would honour as an image survives, so assert that directly. Tags are bounded
-// the way Qt bounds them: a `<` opens a tag that runs to the next `>`.
+// the conservative way the stripper bounds them: a `<` opens a tag that runs to
+// the next `>`. Qt's own bound can be longer, since a `>` inside a quoted
+// attribute value does not close a tag there — which only ever splits one Qt
+// tag into several here, so a name this helper reads is a name Qt reads too.
 function survivingTagNames(text) {
   const names = []
   let i = 0
@@ -30,7 +33,11 @@ function survivingTagNames(text) {
     if (open === -1) break
     const close = text.indexOf('>', open)
     const tag = close === -1 ? text.slice(open) : text.slice(open, close + 1)
-    const name = /^<\/?\s*([A-Za-z0-9]+)/.exec(tag)
+    // Read the name the way Qt does, skipping anything that is not part of it.
+    // Matching the separator with \s instead would give this helper the same
+    // blind spot as the code it is checking — Qt skips U+0085 and \s does not —
+    // and an assertion that shares the implementation's bug proves nothing.
+    const name = /^<[^A-Za-z0-9]*([A-Za-z0-9]+)/.exec(tag)
     if (name) names.push(name[1].toLowerCase())
     i = close === -1 ? text.length : close + 1
   }
@@ -73,6 +80,23 @@ assertNoImageSurvives(
 assertNoImageSurvives(
   '< img src="http://host/spaced.png">',
   'notifications leave no image tag when whitespace follows the angle bracket'
+)
+
+// Qt skips the separator between `<` and the tag name with QChar::isSpace(),
+// which counts U+0085 NEL. JavaScript's \s does not. Reading the name with \s
+// finds none here, keeps the tag, and Qt then reads `img` and fetches it —
+// measured against Qt 6.11.2, where this exact body makes a StyledText Text
+// issue an outbound GET. Asserted on the whole output rather than through
+// assertNoImageSurvives so it holds even if that helper is ever loosened.
+assertEqual(
+  notifications.sanitizeBody('<\u0085img src="http://host/nel.png">after', 'Slack', ''),
+  'after',
+  'notifications strip an image tag whose separator is U+0085, which Qt skips but \\s does not'
+)
+
+assertNoImageSurvives(
+  '<\u0085img src="http://host/nel2.png">',
+  'notifications leave no image tag when U+0085 follows the angle bracket'
 )
 
 assertEqual(
