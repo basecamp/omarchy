@@ -1,0 +1,310 @@
+#!/bin/bash
+
+# Drives bin/omarchy-idle-inhibit-daemon over a real private session bus
+# (dbus-run-session) and asserts the org.freedesktop.ScreenSaver contract the
+# browsers rely on: both object paths, cookie stacking, disconnect reaping,
+# tolerant uninhibit, and an atomically published state file.
+
+set -euo pipefail
+
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
+
+require_command busctl
+require_command dbus-run-session
+require_command python3
+
+daemon="$ROOT/bin/omarchy-idle-inhibit-daemon"
+[[ -x $daemon ]] || fail "omarchy-idle-inhibit-daemon exists and is executable"
+
+session_dir=$(mktemp -d)
+trap 'rm -rf "$session_dir"' EXIT
+
+runtime_dir="$session_dir/runtime"
+mkdir -p "$runtime_dir"
+
+inner="$session_dir/inner.sh"
+
+cat >"$inner" <<'INNER'
+#!/bin/bash
+set -euo pipefail
+
+runtime_dir="$1"
+export XDG_RUNTIME_DIR="$runtime_dir"
+state_dir="$runtime_dir/omarchy/idle-inhibit"
+state_file="$state_dir/state"
+
+fail() {
+  echo "not ok - $1 ${2:-}" >&2
+  exit 1
+}
+pass() {
+  echo "ok - $1"
+}
+
+wait_for() {
+  local description="$1" deadline=$((SECONDS + 10))
+  while ((SECONDS < deadline)); do
+    "${@:2}" && return 0
+    sleep 0.1
+  done
+  fail "$description (timed out)"
+}
+
+name_owned() {
+  busctl --user --no-pager status "${1:?}" >/dev/null 2>&1
+}
+
+state_json() {
+  cat "$state_file" 2>/dev/null || printf ''
+}
+
+inhibited() {
+  jq -e '.inhibited == true and (.holders | length > 0)' "$state_file" >/dev/null 2>&1
+}
+
+not_inhibited() {
+  jq -e '.inhibited == false and .count == 0 and (.holders | length == 0)' "$state_file" >/dev/null 2>&1
+}
+
+holders_are() {
+  jq -e --argjson n "$1" '(.holders | length) == $n and .count == $n and .inhibited == ($n > 0)' \
+    "$state_file" >/dev/null 2>&1
+}
+
+without_app() {
+  jq -e --arg app "$1" '(.holders | map(.app) | index($app)) == null' "$state_file" >/dev/null 2>&1
+}
+
+inhibit() {
+  # app reason path
+  busctl --user --no-pager call org.freedesktop.ScreenSaver "$3" \
+    org.freedesktop.ScreenSaver Inhibit ss "$1" "$2" 2>/dev/null |
+    awk '/^u / { print $2; exit }'
+}
+
+uninhibit() {
+  busctl --user --no-pager call org.freedesktop.ScreenSaver "${2:?}" \
+    org.freedesktop.ScreenSaver UnInhibit u "${1:?}" >/dev/null 2>&1
+}
+
+SS_NEW=/org/freedesktop/ScreenSaver
+SS_LEGACY=/ScreenSaver
+PM=/org/freedesktop/PowerManagement/Inhibit
+
+daemon_pid=
+
+start_daemon() {
+  "$DAEMON" &
+  daemon_pid=$!
+}
+
+stop_daemon() {
+  [[ -n $daemon_pid ]] && kill "$daemon_pid" 2>/dev/null || true
+  wait "$daemon_pid" 2>/dev/null || true
+  daemon_pid=
+}
+trap stop_daemon EXIT
+
+# --- startup ---------------------------------------------------------------
+
+start_daemon
+wait_for "daemon owns org.freedesktop.ScreenSaver" name_owned org.freedesktop.ScreenSaver
+pass "daemon owns org.freedesktop.ScreenSaver"
+
+wait_for "daemon owns org.freedesktop.PowerManagement" name_owned org.freedesktop.PowerManagement
+pass "daemon owns org.freedesktop.PowerManagement"
+
+# The nothing-inhibited snapshot exists before any caller, so a consumer that
+# starts after the daemon never guesses its initial state.
+wait_for "initial state snapshot published" test -s "$state_file"
+not_inhibited || fail "initial state reports nothing inhibited" "$(state_json)"
+pass "initial state snapshot reports nothing inhibited"
+
+mode=$(stat -c '%a' "$state_file" 2>/dev/null || stat -f '%Lp' "$state_file")
+[[ $mode == "600" ]] || fail "state file is owner-only readable" "mode: $mode"
+pass "state file is owner-only readable"
+
+# --- Raw contract on both object paths --------------------------------------
+#
+# Chromium calls /org/freedesktop/ScreenSaver; VLC and Firefox call the legacy
+# /ScreenSaver path. Each busctl call is transient (the spec releases its
+# inhibit when the caller disconnects), so these assert the reply only — held
+# state is the live-connection section below.
+
+c=$(inhibit "path.probe.new" "probe" "$SS_NEW")
+[[ $c =~ ^[0-9]+$ ]] || fail "Inhibit answers on /org/freedesktop/ScreenSaver (Chromium path)" "$c"
+pass "Inhibit answers on /org/freedesktop/ScreenSaver (Chromium path)"
+
+c=$(inhibit "path.probe.legacy" "probe" "$SS_LEGACY")
+[[ $c =~ ^[0-9]+$ ]] || fail "Inhibit answers on /ScreenSaver (VLC/Firefox legacy path)" "$c"
+pass "Inhibit answers on /ScreenSaver (VLC/Firefox legacy path)"
+
+# --- Held inhibits from one live connection ---------------------------------
+#
+# busctl is a transient bus connection: it exits with its call, and the spec
+# ends an inhibition when its client disconnects — so every busctl inhibit is
+# reaped almost immediately. Assertions about *held* state therefore come from
+# one python client that keeps its connection open; the busctl calls above
+# prove the raw per-path contract only.
+
+holder="$runtime_dir/holder.out"
+python3 - >"$holder" <<'PY' &
+import os, sys, time
+import gi
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib
+
+bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+
+def inhibit(path, iface, app, reason):
+    return bus.call_sync(
+        "org.freedesktop.ScreenSaver", path, iface, "Inhibit",
+        GLib.Variant("(ss)", (app, reason)), GLib.VariantType("(u)"),
+        Gio.DBusCallFlags.NONE, -1, None).unpack()[0]
+
+c1 = inhibit("/org/freedesktop/ScreenSaver", "org.freedesktop.ScreenSaver",
+             "org.chromium.chromium", "Video Wake Lock")
+c2 = inhibit("/ScreenSaver", "org.freedesktop.ScreenSaver",
+             "org.videolan.vlc", "Playing media")
+c3 = inhibit("/org/freedesktop/PowerManagement/Inhibit",
+             "org.freedesktop.PowerManagement.Inhibit",
+             "org.chromium.chromium", "Playing audio")
+print(f"{c1} {c2} {c3}", flush=True)
+time.sleep(600)
+PY
+holder_pid=$!
+wait_for "holder published its cookies" test -s "$holder"
+read -r cookie_chromium cookie_vlc cookie_pm <"$holder"
+
+wait_for "held inhibits stack in the state file" holders_are 3
+pass "concurrent inhibits from Chromium, VLC, and PowerManagement stack"
+
+jq -e '([.holders[].app] | sort) == (["org.chromium.chromium", "org.chromium.chromium", "org.videolan.vlc"] | sort)' \
+  "$state_file" >/dev/null || fail "state names each inhibiting application" "$(state_json)"
+pass "state names each inhibiting application"
+
+jq -e --arg owner "$holder_pid" 'all(.holders[]; (.owner | startswith(":1.")))' \
+  "$state_file" >/dev/null || fail "holders record the owning bus name" "$(state_json)"
+pass "holders record the owning bus name"
+
+active=$(busctl --user --no-pager call org.freedesktop.ScreenSaver "$SS_NEW" \
+  org.freedesktop.ScreenSaver GetActive 2>/dev/null | awk '{ print $2; exit }')
+[[ $active == "true" ]] || fail "GetActive reports active inhibits" "$active"
+pass "GetActive agrees with the state file"
+
+has=$(busctl --user --no-pager call org.freedesktop.PowerManagement "$PM" \
+  org.freedesktop.PowerManagement.Inhibit HasInhibit 2>/dev/null | awk '{ print $2; exit }')
+[[ $has == "true" ]] || fail "HasInhibit reports held inhibits" "$has"
+pass "HasInhibit agrees with the state file"
+
+# --- UnInhibit --------------------------------------------------------------
+
+# Released from a different connection than the one that inhibited (busctl):
+# sender identity is not verified, matching hypridle — any same-uid process
+# can already run code.
+uninhibit "$cookie_vlc" "$SS_NEW"
+wait_for "uninhibit releases one holder and its app leaves the state" holders_are 2
+wait_for "uninhibit releases the vlc holder" without_app org.videolan.vlc
+pass "UnInhibit releases a held inhibit"
+
+# An unknown cookie is tolerated, not an error: a restarted browser replaying
+# a stale cookie must not wedge or error the session.
+unknown=$((cookie_chromium + 1000000))
+uninhibit "$unknown" "$SS_NEW"
+wait_for "unknown uninhibit changed nothing" holders_are 2
+pass "UnInhibit with an unknown cookie returns normally"
+
+# --- Disconnect reaping ------------------------------------------------------
+
+# Killing the holder drops its bus connection: every cookie it still held must
+# go with it, which is what keeps a crashed browser from pinning the session
+# awake forever.
+kill "$holder_pid" 2>/dev/null || true
+wait_for "a crashed client's inhibits are reaped" not_inhibited
+pass "inhibits are reaped when their client leaves the bus"
+
+# --- Signal emissions --------------------------------------------------------
+
+signal_seen=$(python3 - <<'PY'
+import gi
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib
+
+bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+seen = {}
+loop = GLib.MainLoop()
+
+def on_signal(conn, sender, path, iface, signal, params):
+    seen[signal] = params.unpack()[0]
+    if len(seen) == 2:
+        loop.quit()
+
+bus.signal_subscribe("org.freedesktop.ScreenSaver", "org.freedesktop.ScreenSaver",
+                     "ActiveChanged", None, None, Gio.DBusSignalFlags.NONE, on_signal)
+bus.signal_subscribe("org.freedesktop.PowerManagement", "org.freedesktop.PowerManagement.Inhibit",
+                     "HasInhibitChanged", None, None, Gio.DBusSignalFlags.NONE, on_signal)
+
+res = bus.call_sync("org.freedesktop.ScreenSaver", "/ScreenSaver",
+                    "org.freedesktop.ScreenSaver", "Inhibit",
+                    GLib.Variant("(ss)", ("signal.client", "signal probe")),
+                    GLib.VariantType("(u)"), Gio.DBusCallFlags.NONE, -1, None)
+cookie = res.unpack()[0]
+# This connection stays alive until the checks below are queued, so the
+# inhibit is not reaped before the signals fire.
+GLib.timeout_add(1500, loop.quit)
+GLib.idle_add(lambda: bus.call_sync("org.freedesktop.ScreenSaver", "/ScreenSaver",
+                                    "org.freedesktop.ScreenSaver", "UnInhibit",
+                                    GLib.Variant("(u)", (cookie,)), None,
+                                    Gio.DBusCallFlags.NONE, -1, None) and False)
+loop.run()
+print("ActiveChanged" in seen and "HasInhibitChanged" in seen and
+      seen.get("ActiveChanged") is True and seen.get("HasInhibitChanged") is True)
+PY
+)
+[[ $signal_seen == "True" ]] || fail "ActiveChanged and HasInhibitChanged fire on transitions"
+pass "ActiveChanged and HasInhibitChanged fire on transitions"
+
+wait_for "state settles after the signal probe" not_inhibited
+
+# --- Atomic publication under churn ------------------------------------------
+
+storm_ok=1
+for i in {1..30}; do
+  c=$(inhibit "storm.client" "churn $i" "$SS_NEW" || true)
+  jq -e . "$state_file" >/dev/null 2>&1 || { storm_ok=0; break; }
+  [[ -n ${c:-} ]] && uninhibit "$c" "$SS_NEW"
+  jq -e . "$state_file" >/dev/null 2>&1 || { storm_ok=0; break; }
+done
+(( storm_ok )) || fail "state file is always complete JSON during inhibit churn"
+pass "state file stays complete JSON during inhibit churn"
+
+# --- A second daemon never fights over the name -------------------------------
+
+"$DAEMON" >/dev/null 2>&1
+second_status=$?
+(( second_status == 0 )) || fail "a daemon that cannot own the name exits 0 (got $second_status)"
+name_owned org.freedesktop.ScreenSaver || fail "the first daemon keeps the name"
+pass "a second daemon exits quietly and the first keeps the name"
+
+wait_for "state settles after the duplicate start" not_inhibited
+
+# The survivor must still be fully functional. busctl is transient, so its
+# inhibit self-releases with the connection; the cookie reply proves the
+# survivor still serves, and the file settling back proves it still publishes.
+c=$(inhibit "final.client" "after duplicate" "$SS_NEW")
+[[ $c =~ ^[0-9]+$ ]] || fail "the surviving daemon still serves Inhibit" "$c"
+pass "the surviving daemon still serves Inhibit"
+
+wait_for "the surviving daemon still publishes state transitions" not_inhibited
+pass "the surviving daemon still publishes state transitions"
+
+echo "all inner assertions passed"
+INNER
+
+chmod +x "$inner"
+
+DAEMON="$daemon" timeout 120 dbus-run-session -- bash "$inner" "$runtime_dir" ||
+  fail "omarchy-idle-inhibit-daemon passes the live session-bus contract" \
+    "see the inner assertion output above"
+
+pass "omarchy-idle-inhibit-daemon passes the live session-bus contract"

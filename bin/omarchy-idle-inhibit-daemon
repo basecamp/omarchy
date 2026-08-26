@@ -1,0 +1,314 @@
+#!/usr/bin/env python3
+
+# omarchy:summary=Own the freedesktop screensaver inhibit names and publish their state for the idle service
+# omarchy:hidden=true
+
+# Quattro's idle logic lives in the Quickshell idle service, whose
+# IdleMonitor honors only the Wayland idle-inhibit protocol. Applications that
+# request their inhibit over D-Bus — every browser playing a video, VLC —
+# address org.freedesktop.ScreenSaver and org.freedesktop.PowerManagement,
+# and nothing owned those names since hypridle was replaced, so the requests
+# were dropped and the screensaver fired over playing videos.
+#
+# This daemon owns both names for the session and answers the interfaces the
+# clients actually call (verified against Chromium, Firefox, and VLC source;
+# see plans/idle-inhibit.md), reaping inhibits whose client left the bus, and
+# publishes the state as JSON so the idle service can hold its idle cycles:
+#
+#   {"inhibited": false, "count": 0, "holders": []}
+#
+# The file is written with write-temp-then-rename so a reader never sees a
+# torn write, is published BEFORE each method reply (a caller that has its
+# cookie can already read its own inhibit), and starts at "nothing inhibited"
+# so consumers never have to guess the initial state. A stale file after a
+# daemon crash must be read as no-inhibit, never as a permanent inhibit —
+# the idle service's parser is the tolerant side of that contract.
+#
+# If the names cannot be owned — a machine running its own screensaver daemon
+# — exit 0 without fighting: the other service is doing this job.
+
+import json
+import os
+import sys
+from datetime import datetime, timezone
+
+import gi
+
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib  # noqa: E402
+
+SS_NAME = "org.freedesktop.ScreenSaver"
+SS_IFACE = "org.freedesktop.ScreenSaver"
+SS_PATHS = ["/org/freedesktop/ScreenSaver", "/ScreenSaver"]  # Chromium / VLC+Firefox
+
+PM_NAME = "org.freedesktop.PowerManagement"
+PM_IFACE = "org.freedesktop.PowerManagement.Inhibit"
+PM_PATH = "/org/freedesktop/PowerManagement/Inhibit"
+
+STATE_DIR = os.path.join(
+    os.environ.get("XDG_RUNTIME_DIR", os.path.expanduser("~/.runtime")), "omarchy", "idle-inhibit"
+)
+STATE_FILE = os.path.join(STATE_DIR, "state")
+
+
+class InhibitState:
+    """Pure bookkeeping: cookie table plus the state derived from it."""
+
+    def __init__(self):
+        self.cookies = {}
+        self.next_cookie = 1
+
+    def add(self, app, reason, owner):
+        cookie = self.next_cookie
+        self.next_cookie += 1
+        self.cookies[cookie] = {
+            "app": str(app),
+            "reason": str(reason),
+            "owner": str(owner),
+            "cookie": cookie,
+            "since": datetime.now(timezone.utc).isoformat(),
+        }
+        return cookie
+
+    def remove(self, cookie):
+        return self.cookies.pop(int(cookie), None)
+
+    def drop_owner(self, owner):
+        gone = [c for c, h in self.cookies.items() if h["owner"] == owner]
+        for c in gone:
+            del self.cookies[c]
+        return gone
+
+    def holders(self):
+        return [self.cookies[c] for c in sorted(self.cookies)]
+
+    def count(self):
+        return len(self.cookies)
+
+    def inhibited(self):
+        return bool(self.cookies)
+
+    def snapshot(self):
+        holders = self.holders()
+        return {
+            "inhibited": bool(holders),
+            "count": len(holders),
+            "holders": holders,
+        }
+
+
+class Daemon:
+    def __init__(self, state, connection):
+        self.state = state
+        self.connection = connection
+        self.registration_ids = []
+        self.signal_match = None
+        self.owned_names = 0
+        self.published_inhibited = None
+
+    # -- state publication --------------------------------------------------
+
+    def publish(self):
+        os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
+        tmp = STATE_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as handle:
+            json.dump(self.state.snapshot(), handle, separators=(",", ":"))
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, STATE_FILE)
+
+    def after_change(self):
+        """Publish the file, then signal the transition, before the reply.
+
+        Both the file and the signals describe the same transition, and the
+        file landing first means a caller holding a returned cookie never
+        reads a state that lacks its own inhibit.
+        """
+        self.publish()
+        inhibited = self.state.inhibited()
+        if inhibited != self.published_inhibited:
+            self.published_inhibited = inhibited
+            active = GLib.Variant("(b)", (inhibited,))
+            for path in SS_PATHS:
+                self.connection.emit_signal(None, path, SS_IFACE, "ActiveChanged", active)
+            self.connection.emit_signal(None, PM_PATH, PM_IFACE, "HasInhibitChanged", active)
+
+    # -- method handlers -----------------------------------------------------
+
+    def handle_ss_inhibit(self, connection, sender, path, iface, method, params, invocation):
+        app, reason = params.unpack()
+        cookie = self.state.add(app, reason, sender)
+        self.after_change()
+        invocation.return_value(GLib.Variant("(u)", (cookie,)))
+
+    def handle_ss_uninhibit(self, connection, sender, path, iface, method, params, invocation):
+        (cookie,) = params.unpack()
+        # An unknown cookie is not an error: a restarted client replaying a
+        # stale cookie must not wedge the session (hypridle precedent).
+        self.state.remove(cookie)
+        self.after_change()
+        invocation.return_value(None)
+
+    def handle_ss_get_active(self, connection, sender, path, iface, method, params, invocation):
+        invocation.return_value(GLib.Variant("(b)", (self.state.inhibited(),)))
+
+    def handle_pm_inhibit(self, connection, sender, path, iface, method, params, invocation):
+        app, reason = params.unpack()
+        cookie = self.state.add(app, reason, sender)
+        self.after_change()
+        invocation.return_value(GLib.Variant("(u)", (cookie,)))
+
+    def handle_pm_uninhibit(self, connection, sender, path, iface, method, params, invocation):
+        (cookie,) = params.unpack()
+        self.state.remove(cookie)
+        self.after_change()
+        invocation.return_value(None)
+
+    def handle_pm_has_inhibit(self, connection, sender, path, iface, method, params, invocation):
+        invocation.return_value(GLib.Variant("(b)", (self.state.inhibited(),)))
+
+    # -- client lifetime -----------------------------------------------------
+
+    def handle_name_owner_changed(self, connection, sender, path, iface, signal, params):
+        name, old_owner, new_owner = params.unpack()
+        if old_owner and not new_owner:
+            # The client's connection is gone — crashed or exited without
+            # uninhibiting. The spec ends the inhibition with the
+            # disconnection; leaving it held would pin the session awake
+            # forever.
+            if self.state.drop_owner(old_owner):
+                self.after_change()
+
+    # -- startup -------------------------------------------------------------
+
+    def export_objects(self):
+        node_ss = Gio.DBusNodeInfo.new_for_xml(
+            """
+            <node>
+              <interface name="org.freedesktop.ScreenSaver">
+                <method name="Inhibit">
+                  <arg name="application_name" type="s" direction="in"/>
+                  <arg name="reason_for_inhibit" type="s" direction="in"/>
+                  <arg name="cookie" type="u" direction="out"/>
+                </method>
+                <method name="UnInhibit">
+                  <arg name="cookie" type="u" direction="in"/>
+                </method>
+                <method name="GetActive">
+                  <arg name="active" type="b" direction="out"/>
+                </method>
+                <signal name="ActiveChanged">
+                  <arg name="new_state" type="b"/>
+                </signal>
+              </interface>
+            </node>
+            """
+        )
+        node_pm = Gio.DBusNodeInfo.new_for_xml(
+            """
+            <node>
+              <interface name="org.freedesktop.PowerManagement.Inhibit">
+                <method name="Inhibit">
+                  <arg name="application" type="s" direction="in"/>
+                  <arg name="reason" type="s" direction="in"/>
+                  <arg name="cookie" type="u" direction="out"/>
+                </method>
+                <method name="UnInhibit">
+                  <arg name="cookie" type="u" direction="in"/>
+                </method>
+                <method name="HasInhibit">
+                  <arg name="has_inhibit" type="b" direction="out"/>
+                </method>
+                <signal name="HasInhibitChanged">
+                  <arg name="has_inhibit" type="b"/>
+                </signal>
+              </interface>
+            </node>
+            """
+        )
+
+        ss_handlers = {
+            "Inhibit": self.handle_ss_inhibit,
+            "UnInhibit": self.handle_ss_uninhibit,
+            "GetActive": self.handle_ss_get_active,
+        }
+        pm_handlers = {
+            "Inhibit": self.handle_pm_inhibit,
+            "UnInhibit": self.handle_pm_uninhibit,
+            "HasInhibit": self.handle_pm_has_inhibit,
+        }
+
+        def make_dispatcher(handlers):
+            def dispatch(connection, sender, path, iface, method, params, invocation):
+                handlers[method](connection, sender, path, iface, method, params, invocation)
+
+            return dispatch
+
+        for path in SS_PATHS:
+            self.registration_ids.append(
+                self.connection.register_object(
+                    path, node_ss.interfaces[0], make_dispatcher(ss_handlers)
+                )
+            )
+        self.registration_ids.append(
+            self.connection.register_object(
+                PM_PATH, node_pm.interfaces[0], make_dispatcher(pm_handlers)
+            )
+        )
+
+        self.signal_match = self.connection.signal_subscribe(
+            "org.freedesktop.DBus",
+            "org.freedesktop.DBus",
+            "NameOwnerChanged",
+            None,
+            None,
+            Gio.DBusSignalFlags.NONE,
+            self.handle_name_owner_changed,
+        )
+
+    def own_name(self, name):
+        def on_acquired(connection, name):
+            self.owned_names += 1
+            self.publish()
+
+        def on_lost(connection, name):
+            # Somebody else owns it (or took it from us): that service is the
+            # session's screensaver-inhibit answer. Leave quietly rather than
+            # flap a failed unit or fight over the name.
+            print(f"omarchy-idle-inhibit: {name} is owned elsewhere, standing down", file=sys.stderr)
+            GLib.idle_add(lambda: (loop.quit(), False)[1])
+
+        Gio.bus_own_name_on_connection(
+            self.connection,
+            name,
+            Gio.BusNameOwnerFlags.NONE,
+            on_acquired,
+            on_lost,
+        )
+
+
+def main():
+    state = InhibitState()
+    try:
+        connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    except GLib.Error as error:
+        print(f"omarchy-idle-inhibit: no session bus ({error.message})", file=sys.stderr)
+        return 1
+
+    daemon = Daemon(state, connection)
+    daemon.export_objects()
+    daemon.own_name(SS_NAME)
+    daemon.own_name(PM_NAME)
+
+    global loop
+    loop = GLib.MainLoop()
+    try:
+        loop.run()
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

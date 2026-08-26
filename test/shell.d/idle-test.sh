@@ -33,6 +33,77 @@ assertDeepEqual(
   { windows: { a: true }, count: 1 },
   'idle leaves screensaver windows unchanged without an address'
 )
+
+// The D-Bus inhibit state file is read back through the same model so the
+// tolerance lives in one place: a daemon that is down, crashed mid-write, or
+// publishing garbage must read as "nothing inhibited" — a stale or torn file
+// may never pin the idle timers off permanently.
+assertDeepEqual(
+  idle.externalInhibitFromState('{"inhibited":false,"count":0,"holders":[]}'),
+  { inhibited: false },
+  'idle reads a clean nothing-inhibited state'
+)
+
+assertDeepEqual(
+  idle.externalInhibitFromState(
+    '{"inhibited":true,"count":2,"holders":[{"app":"org.chromium.chromium","reason":"Video Wake Lock"},{"app":"org.videolan.vlc","reason":"Playing media"}]}'
+  ),
+  { inhibited: true },
+  'idle reads a held inhibit'
+)
+
+assertDeepEqual(
+  idle.externalInhibitFromState(''),
+  { inhibited: false },
+  'idle treats an absent state file as not inhibited'
+)
+
+assertDeepEqual(
+  idle.externalInhibitFromState('{"inhibited":tru'),
+  { inhibited: false },
+  'idle treats a torn state file as not inhibited'
+)
+
+assertDeepEqual(
+  idle.externalInhibitFromState('not json at all'),
+  { inhibited: false },
+  'idle treats garbage as not inhibited'
+)
+
+assertDeepEqual(
+  idle.externalInhibitFromState('{"inhibited":true,"count":1,"holders":[]}'),
+  { inhibited: false },
+  'idle refuses to claim inhibited without holders'
+)
+
+assertDeepEqual(
+  idle.externalInhibitFromState('null'),
+  { inhibited: false },
+  'idle treats a non-object state as not inhibited'
+)
+
+assertDeepEqual(
+  idle.externalInhibitFromState('{"inhibited":"true","count":1,"holders":[{"app":"x"}]}'),
+  { inhibited: false },
+  'idle requires a boolean inhibited flag'
+)
+
+assertEqual(
+  idle.idleEnabledAfter(true, false, false), true,
+  'idle runs with state loaded, no stay-awake, no external inhibit'
+)
+assertEqual(
+  idle.idleEnabledAfter(true, true, false), false,
+  'idle stays off while stay-awake is on'
+)
+assertEqual(
+  idle.idleEnabledAfter(true, false, true), false,
+  'idle stays off while an external inhibit is held'
+)
+assertEqual(
+  idle.idleEnabledAfter(false, false, false), false,
+  'idle stays off until the stay-awake state is loaded'
+)
 JS
 
 test_tmp=$(mktemp -d)

@@ -1,0 +1,16 @@
+[Unit]
+Description=Own the freedesktop screensaver inhibit names for the session
+# Browsers and players request idle inhibition over D-Bus
+# (org.freedesktop.ScreenSaver); the daemon must own the names before any of
+# them probe, which means starting with the graphical session, not on demand.
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/omarchy-idle-inhibit-daemon
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

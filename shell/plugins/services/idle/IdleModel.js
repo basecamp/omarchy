@@ -12,6 +12,34 @@ function eventParts(event, count) {
   return String(event && event.data ? event.data : "").split(",")
 }
 
+// The D-Bus inhibit daemon (omarchy-idle-inhibit-daemon) publishes its state
+// as JSON to the runtime dir; the idle service reads it back through this
+// parser. Tolerance is the contract: a daemon that is down, crashed mid-write,
+// or publishing garbage reads as "nothing inhibited", so a broken state file
+// can never pin the idle timers off permanently.
+function externalInhibitFromState(raw) {
+  var state = { inhibited: false }
+
+  try {
+    var parsed = JSON.parse(String(raw || ""))
+    if (!parsed || typeof parsed !== "object") return state
+    if (parsed.inhibited !== true) return state
+    if (!Array.isArray(parsed.holders) || parsed.holders.length === 0) return state
+    return { inhibited: true }
+  } catch (error) {
+    return state
+  }
+}
+
+// The IdleMonitor gate. stayAwakeStateLoaded stays a term because an unloaded
+// indicator state must not read as "idle allowed" on a race with the probe.
+function idleEnabledAfter(stayAwakeStateLoaded, stayAwake, externalInhibit) {
+  if (!stayAwakeStateLoaded) return false
+  if (stayAwake) return false
+  if (externalInhibit) return false
+  return true
+}
+
 function screensaverWindowsAfter(windows, address, visible) {
   var key = String(address || "")
   if (!key) {
@@ -47,6 +75,8 @@ if (typeof module !== "undefined") {
   module.exports = {
     secondsFromConfig: secondsFromConfig,
     eventParts: eventParts,
-    screensaverWindowsAfter: screensaverWindowsAfter
+    screensaverWindowsAfter: screensaverWindowsAfter,
+    externalInhibitFromState: externalInhibitFromState,
+    idleEnabledAfter: idleEnabledAfter
   }
 }
