@@ -37,7 +37,7 @@ THEME_PATH="$THEMES_DIR/$THEME_NAME"
 # ~/.config/omarchy with it, and one called `a';'id` would carry its own
 # command into that picker. The leading character is kept out of `.` and `-`,
 # which also covers `host:-s/foo.git` leaving basename with `.git`.
-if [[ ! $THEME_NAME =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
+if [[ ! $THEME_NAME =~ ^[a-z0-9_][a-z0-9._+-]*$ ]]; then
   echo "Error: '$REPO_URL' does not give a usable theme name."
   exit 1
 fi

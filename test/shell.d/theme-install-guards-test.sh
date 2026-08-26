@@ -120,6 +120,21 @@ grep -Fq "/themes/tokyo_night.2" "$git_calls" ||
 
 pass "a theme name may still hold an underscore, a dot, and a dash"
 
+# A plus is neither path-climb nor shell syntax, and a leading underscore is
+# neither the `..` climb nor the dash that reads as an option, so the allowlist
+# keeps both rather than stranding a repo that names itself with them.
+install_theme "https://github.com/example/omarchy-c++-theme.git" ||
+  fail "omarchy-theme-install accepts a name holding a plus"
+grep -Fq "/themes/c++" "$git_calls" ||
+  fail "omarchy-theme-install derives a name carrying a plus" "$(cat "$git_calls")"
+
+install_theme "https://github.com/example/_private.git" ||
+  fail "omarchy-theme-install accepts a name starting with an underscore"
+grep -Fq "/themes/_private" "$git_calls" ||
+  fail "omarchy-theme-install derives a name starting with an underscore" "$(cat "$git_calls")"
+
+pass "a plus and a leading underscore are still usable theme names"
+
 # basename reads a leading dash as an option once the scp-style prefix is gone.
 install_theme "host:-s/foo.git" || fail "omarchy-theme-install accepts a normal scp-style URL"
 grep -Fq -- "-- host:-s/foo.git" "$git_calls" || fail "omarchy-theme-install passes the URL after --" "$(cat "$git_calls")"
