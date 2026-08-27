@@ -93,7 +93,7 @@ Panel {
     if (text.indexOf("month") >= 0) return "Monthly"
     if (windowIsLong(text)) return "Weekly"
     if (text.indexOf("session") >= 0 || windowSpanMs(label) > 0) return "Session"
-    var plain = String(label || "").replace(/\s*\(.*\)\s*/, "").trim()
+    var plain = String(label || "").trim()
     return plain === "" ? "Limit" : plain
   }
 
