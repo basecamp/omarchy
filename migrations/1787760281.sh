@@ -4,8 +4,14 @@ echo "Install the Hermes CLI wrapper for existing installs"
 # is one of them.
 [[ -f $HOME/.local/state/omarchy/preinstalls-removed ]] && exit 0
 
-# Hermes Desktop provides its own Hermes; the installer would only stand aside.
-omarchy-pkg-present hermes-desktop && exit 0
+# Hermes Desktop provides its own Hermes. The installer stands aside for it,
+# removing the mise copy and the Omarchy wrapper an earlier install may have
+# left beside the app. It also reports when the app has not finished setting
+# Hermes up, which is the app's to finish, not this migration's to fail on.
+if omarchy-pkg-present hermes-desktop; then
+  omarchy-install-hermes-cli || true
+  exit 0
+fi
 
 # Anything already answering to hermes that this installer did not write --
 # an official install, a hand-rolled wrapper, even a dangling link -- belongs to

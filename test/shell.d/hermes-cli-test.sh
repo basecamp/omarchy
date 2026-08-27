@@ -87,8 +87,10 @@ pass "takeover removes an unhealthy mise copy"
 rm -rf "$test_home/.hermes"
 rm -f "$test_home/.local/bin/hermes"
 run_installer 1 --check && fail "--check reports Hermes missing before the app installs it"
+# The venv command answers --version, as the real one does: foreign wrappers
+# below exec it, and the installer probes them by running exactly that.
 mkdir -p "$test_home/.hermes/hermes-agent/venv/bin"
-printf '%s\n' "#!/bin/bash" >"$test_home/.hermes/hermes-agent/venv/bin/hermes"
+printf '%s\n' "#!/bin/bash" 'echo "hermes-agent 0.0.0-test"' >"$test_home/.hermes/hermes-agent/venv/bin/hermes"
 chmod +x "$test_home/.hermes/hermes-agent/venv/bin/hermes"
 run_installer 1 --check && fail "--check waits for the install to finish, not just the venv"
 touch "$test_home/.hermes/hermes-agent/.hermes-bootstrap-complete"
@@ -130,6 +132,32 @@ run_installer 0 && fail "the installer does not succeed over a non-executable fo
   fail "a non-executable foreign hermes is left untouched"
 pass "a non-executable foreign hermes is preserved"
 
+# The executable bit is not enough: a wrapper whose interpreter is gone passes
+# -x and still cannot run. The probe has to run it to find out, and finding
+# out never touches the file.
+broken_interp_body="#!$test_home/nowhere/python3
+print('hermes')"
+printf '%s\n' "$broken_interp_body" >"$test_home/.local/bin/hermes"
+chmod +x "$test_home/.local/bin/hermes"
+run_installer 0 --check && fail "--check rejects a foreign hermes whose interpreter is missing"
+run_installer 0 && fail "the installer does not succeed over a foreign hermes whose interpreter is missing"
+run_installer 0 --now && fail "--now does not succeed over a foreign hermes whose interpreter is missing"
+[[ -x $test_home/.local/bin/hermes && $(cat "$test_home/.local/bin/hermes") == "$broken_interp_body" ]] ||
+  fail "a foreign hermes whose interpreter is missing is left untouched"
+pass "a foreign hermes with a missing interpreter is preserved and rejected"
+
+# Likewise a wrapper that execs a target that is no longer there.
+broken_target_body="#!/bin/bash
+exec $test_home/nowhere/hermes \"\$@\""
+printf '%s\n' "$broken_target_body" >"$test_home/.local/bin/hermes"
+chmod +x "$test_home/.local/bin/hermes"
+run_installer 0 --check && fail "--check rejects a foreign hermes whose target is missing"
+run_installer 0 && fail "the installer does not succeed over a foreign hermes whose target is missing"
+run_installer 0 --now && fail "--now does not succeed over a foreign hermes whose target is missing"
+[[ -x $test_home/.local/bin/hermes && $(cat "$test_home/.local/bin/hermes") == "$broken_target_body" ]] ||
+  fail "a foreign hermes whose target is missing is left untouched"
+pass "a foreign hermes with a missing target is preserved and rejected"
+
 foreign_target="$test_home/foreign/hermes"
 mkdir -p "$(dirname "$foreign_target")"
 printf '%s\n' "$official_body" >"$foreign_target"
@@ -161,9 +189,9 @@ pass "a directory at the hermes path is preserved and rejected"
 
 # Mentioning the installer is not the same as being written by it.
 rmdir "$test_home/.local/bin/hermes"
-mentions_body='#!/bin/bash
+mentions_body="#!/bin/bash
 # Replaces the stub omarchy-install-hermes-cli used to write.
-exec /usr/local/bin/hermes "$@"'
+exec $test_home/.hermes/hermes-agent/venv/bin/hermes \"\$@\""
 printf '%s\n' "$mentions_body" >"$test_home/.local/bin/hermes"
 chmod +x "$test_home/.local/bin/hermes"
 run_installer 0 || fail "installing over a wrapper that mentions the installer returns success"

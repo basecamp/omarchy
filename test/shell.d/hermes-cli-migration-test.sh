@@ -24,8 +24,10 @@ cat >"$mock_bin/omarchy-cmd-missing" <<'SH'
 ! command -v "$1" >/dev/null 2>&1
 SH
 
+mise_log="$test_tmp/mise-log"
 cat >"$mock_bin/mise" <<'SH'
 #!/bin/bash
+printf '%s\0' "$@" >>"$OMARCHY_TEST_MISE_LOG"
 [[ $1 != "where" ]]
 SH
 
@@ -35,6 +37,7 @@ chmod +x "$mock_bin"/*
 # copy of it.
 run_migration() {
   OMARCHY_TEST_DESKTOP_INSTALLED="${1:-0}" \
+    OMARCHY_TEST_MISE_LOG="$mise_log" \
     HOME="$test_home" \
     PATH="$mock_bin:$ROOT/bin:$PATH" \
     bash -euo pipefail "$migration" >/dev/null 2>&1
@@ -65,6 +68,33 @@ rm -f "$test_home/.local/state/omarchy/preinstalls-removed"
 run_migration 1 || fail "the migration succeeds when Hermes Desktop owns Hermes"
 [[ ! -e $hermes ]] || fail "the migration writes nothing when Hermes Desktop owns Hermes"
 pass "the migration stands aside for Hermes Desktop"
+
+# Standing aside is not the same as leaving a second Hermes behind: the wrapper
+# an earlier install wrote and the mise copy it points at both go when the
+# desktop app owns Hermes, even though the app has not finished setting up.
+printf '%s\n' "#!/bin/bash" "$marker" >"$hermes"
+chmod +x "$hermes"
+: >"$mise_log"
+run_migration 1 || fail "the migration succeeds when Hermes Desktop owns Hermes and the old wrapper is present"
+[[ ! -e $hermes ]] || fail "the migration removes the Omarchy wrapper when Hermes Desktop owns Hermes"
+mise_calls=$(tr '\0' ' ' <"$mise_log")
+[[ $mise_calls == *"rm -g "* ]] || fail "the migration removes the global mise Hermes for Hermes Desktop"
+[[ $mise_calls == *"uninstall --all "* ]] || fail "the migration uninstalls the mise Hermes for Hermes Desktop"
+pass "the migration clears the old Omarchy Hermes for Hermes Desktop"
+
+# ...while anyone else's hermes stays exactly where it is, and is not run.
+foreign_ran="$test_tmp/foreign-ran"
+foreign_body="#!/bin/bash
+touch $foreign_ran
+exec $test_home/.hermes/hermes-agent/venv/bin/hermes \"\$@\""
+printf '%s\n' "$foreign_body" >"$hermes"
+chmod +x "$hermes"
+run_migration 1 || fail "the migration succeeds over a foreign hermes when Hermes Desktop owns Hermes"
+[[ -x $hermes && $(cat "$hermes") == "$foreign_body" ]] ||
+  fail "the migration leaves a foreign hermes alone when Hermes Desktop owns Hermes"
+[[ ! -e $foreign_ran ]] || fail "the migration does not run a foreign hermes"
+pass "the migration preserves a foreign hermes for Hermes Desktop"
+rm -f "$hermes"
 
 official_body="#!/bin/bash
 unset PYTHONPATH
