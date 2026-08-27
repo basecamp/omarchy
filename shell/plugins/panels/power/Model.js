@@ -119,6 +119,7 @@ if (typeof module !== "undefined") {
     parseSnapshot: parseSnapshot,
     buildTopProcesses: buildTopProcesses,
     buildSystemRows: buildSystemRows,
+    buildSystemAnchorRow: buildSystemAnchorRow,
     buildRowImpact: buildRowImpact,
     wattsBasis: wattsBasis,
     COMM_MAX_CHARS: COMM_MAX_CHARS,
@@ -274,29 +275,35 @@ function buildTopProcesses(prevSnapshot, nextSnapshot, limit, drawWatts, baseWat
     out.push({ label: shares[i].label, value: cols.join(" · ") })
   }
   var otherShare = drawWatts >= 0 ? Math.max(0, 1 - topShareSum) : 0
-  if (drawWatts >= 0) {
-    if (baseWatts > 0.5) out.unshift({ label: "system base", value: wtxt(baseWatts), key: "base" })
-    if (otherShare > 0.02 && variable * otherShare > 0.5)
-      out.push({ label: "everything else", value: wtxt(variable * otherShare), key: "else" })
-  }
   // One graphic line per process: each row carries metric cells (CPU, RAM,
   // W discharging only) rendered as mini-meters in fixed columns. Cells are
-  // built here so QML only draws them. Normalization, per metric: CPU cell =
-  // the process's CPU share clamped to the cell width (shares can exceed 1
-  // across cores — the clamp is display-only, the number tells the truth);
-  // RAM cell = comm RSS / MemTotal; W cell = attributed watts / measured
-  // draw. Each cell's intensity ramps with its own magnitude, normalized to
-  // its metric's top row (0.35 floor, 1.0 at the column's max) so the
-  // strongest signal in every column reads at full strength.
+  // built here so QML only draws them. Normalization, per metric — ONE CPU
+  // denominator everywhere: a process's CPU cell is its jiffies over ALL
+  // ticks including idle (machine capacity), the same denominator as the
+  // global CPU bar and the CPU composition bar, so process cells plus the
+  // everything-else row sum to the global CPU% by construction. Rows still
+  // rank by share of busy activity, which is the identical ordering — a
+  // snapshot's busy fraction is a common factor — merely re-scaled for
+  // display. RAM cell = comm RSS / MemTotal. W cell = attributed watts over
+  // measured draw. Each cell's intensity ramps with its own magnitude,
+  // normalized to its metric's top row (0.35 floor, 1.0 at the column max).
   function ramp(value, top) { return top > 0 ? 0.35 + 0.65 * Math.max(0, Math.min(1, value / top)) : 0.35 }
+  function cellAtIntensity(metric, display, normalized, intensity) {
+    return { metric: metric, value: display, normalized: Math.max(0, Math.min(1, normalized)), intensity: intensity }
+  }
   function cell(metric, display, normalized, top) {
-    return { metric: metric, value: display, normalized: Math.max(0, Math.min(1, normalized)), intensity: ramp(normalized, top) }
+    return cellAtIntensity(metric, display, normalized, ramp(normalized, top))
   }
 
   var topShare = shares.length > 0 ? shares[0].share : 0
   var topRamKb = 0
   for (var rk in ramByName) if (ramByName[rk] > topRamKb) topRamKb = ramByName[rk]
   var memTotal = nextSnapshot.memTotalKb
+  // busy/total fraction = the global CPU%: the scale that converts
+  // share-of-work into share-of-capacity
+  var totalAllDelta = prevSnapshot && nextSnapshot.cpuTotal !== null && prevSnapshot.cpuTotal !== null
+    ? Math.max(0, nextSnapshot.cpuTotal - prevSnapshot.cpuTotal) : 0
+  var busyFrac = totalAllDelta > 0 ? agg.totalDelta / totalAllDelta : 0
   // the W column's ramp normalizes against its largest cell, whichever row
   // owns it (usually the top process, sometimes the base floor)
   var topW = 0
@@ -306,29 +313,74 @@ function buildTopProcesses(prevSnapshot, nextSnapshot, limit, drawWatts, baseWat
   }
 
   var procIdx = 0
+  var cpuUsedByRows = 0
+  var ramUsedByRows = 0
   for (var r = 0; r < out.length; r++) {
-    if (out[r].key === "base") {
-      out[r].cells = drawWatts >= 0
-        ? [cell("W", wtxt(baseWatts), baseWatts / drawWatts, topW)]
-        : []
-      continue
-    }
-    if (out[r].key === "else") {
-      out[r].cells = drawWatts >= 0
-        ? [cell("W", wtxt(variable * otherShare), variable * otherShare / drawWatts, topW)]
-        : []
-      continue
-    }
     var share = shares[procIdx].share
+    var cpuFrac = Math.min(1, share * busyFrac)
     var ramKb = ramByName[shares[procIdx].label] !== undefined ? ramByName[shares[procIdx].label] : 0
-    var cells = [cell("CPU", pct(share), share, topShare)]
+    cpuUsedByRows += cpuFrac
+    ramUsedByRows += memTotal !== null ? ramKb / memTotal : 0
+    var cells = [cell("CPU", pct(cpuFrac), cpuFrac, Math.min(1, topShare * busyFrac))]
     if (memTotal !== null && ramKb > 0) cells.push(cell("RAM", ramTxt(ramKb), ramKb / memTotal, topRamKb / memTotal))
     if (drawWatts >= 0) cells.push(cell("W", wtxt(variable * share), variable * share / drawWatts, topW))
     out[r].cells = cells
     out[r].key = out[r].label
     procIdx++
   }
+
+  // The everything-else row is a whole-machine remainder row: the CPU left
+  // over after the listed processes (closing the sum to global CPU%), the
+  // used RAM beyond the listed processes' RSS (clamped at zero — shared
+  // pages double-counted per process can push it negative, the standing
+  // disclosure), and the watts tail. It exists when ANY metric has a
+  // meaningful remainder — its old existence gate was watts-only, which
+  // starved the CPU/RAM closure whenever the watts tail was display noise.
+  var usedFracAll = memTotal !== null && nextSnapshot.memAvailKb !== null
+    ? Math.max(0, Math.min(1, 1 - nextSnapshot.memAvailKb / memTotal)) : 0
+  var elseCpuRem = totalAllDelta > 0 ? Math.max(0, busyFrac - cpuUsedByRows) : 0
+  var elseRamRem = memTotal !== null ? Math.max(0, usedFracAll - ramUsedByRows) : 0
+  var wTail = drawWatts >= 0 ? variable * otherShare / drawWatts : 0
+  if (elseCpuRem > 0.005 || elseRamRem > 0.005 || (drawWatts >= 0 && otherShare > 0.02 && variable * otherShare > 0.5)) {
+    var eCells = []
+    if (totalAllDelta > 0) eCells.push(cellAtIntensity("CPU", pct(elseCpuRem), elseCpuRem, 0.8))
+    if (memTotal !== null) eCells.push(cellAtIntensity("RAM", ramTxt(Math.round(elseRamRem * memTotal)), elseRamRem, 0.8))
+    if (drawWatts >= 0) eCells.push(cellAtIntensity("W", wtxt(variable * otherShare), wTail, 0.8))
+    out.push({ label: "everything else", value: drawWatts >= 0 ? wtxt(variable * otherShare) : "", key: "else", cells: eCells })
+  }
+
+  if (drawWatts >= 0 && baseWatts > 0.5) {
+    out.unshift({ label: "base load", value: wtxt(baseWatts), key: "base",
+      cells: [cell("W", wtxt(baseWatts), baseWatts / drawWatts, topW)] })
+  }
   return out
+}
+
+// The anchor row: the machine itself, rendered first in the process table
+// with global values on the same grid and scale — CPU global%, RAM used%,
+// and total draw while the watts basis is active (its W cell fills the whole
+// column because the draw IS the whole the rows below decompose). The panel
+// renders it in theme foreground (never literal white) so it reads as the
+// neutral machine against metric-colored processes.
+function buildSystemAnchorRow(prevSnapshot, nextSnapshot, drawWatts) {
+  var cells = []
+  if (prevSnapshot && nextSnapshot.cpuTotal !== null && prevSnapshot.cpuTotal !== null
+    && nextSnapshot.cpuBusy !== null && prevSnapshot.cpuBusy !== null) {
+    var totalDelta = nextSnapshot.cpuTotal - prevSnapshot.cpuTotal
+    if (totalDelta > 0) {
+      var g = Math.min(1, Math.max(0, (nextSnapshot.cpuBusy - prevSnapshot.cpuBusy) / totalDelta))
+      cells.push({ metric: "CPU", value: Math.round(g * 100) + "%", normalized: g, intensity: 1 })
+    }
+  }
+  if (nextSnapshot.memTotalKb !== null && nextSnapshot.memAvailKb !== null && nextSnapshot.memTotalKb > 0) {
+    var used = Math.max(0, Math.min(1, 1 - nextSnapshot.memAvailKb / nextSnapshot.memTotalKb))
+    cells.push({ metric: "RAM", value: Math.round(used * 100) + "%", normalized: used, intensity: 1 })
+  }
+  if (drawWatts >= 0) {
+    cells.push({ metric: "W", value: (drawWatts < 10 ? drawWatts.toFixed(1) : Math.round(drawWatts)) + " W", normalized: 1, intensity: 1 })
+  }
+  if (cells.length === 0) return null
+  return { label: "system", key: "system", value: "", cells: cells }
 }
 
 // ---- Power Hungry: system vitals rows ----------------------------------------

@@ -310,7 +310,11 @@ Panel {
       else if (draw < baseWatts) baseWatts = draw
       else baseWatts += (draw - baseWatts) * 0.02
     }
-    if (prevSnapshot) topProcesses = Model.buildTopProcesses(prevSnapshot, snap, 5, draw, baseWatts)
+    if (prevSnapshot) {
+      var procRows = Model.buildTopProcesses(prevSnapshot, snap, 5, draw, baseWatts)
+      var anchorRow = Model.buildSystemAnchorRow(prevSnapshot, snap, draw)
+      topProcesses = anchorRow !== null ? [anchorRow].concat(procRows) : procRows
+    }
     // column set = the first row's cell metrics, in the builder's fixed
     // order (CPU, RAM, W discharging only, GPU when a source exists)
     var cols = []
@@ -715,9 +719,12 @@ Panel {
               label: modelData.label
               cells: modelData.cells !== undefined ? modelData.cells : []
               columns: root.processColumns
-              commColor: modelData.key === "base" || modelData.key === "else"
-                ? root.segmentColor({ kind: modelData.key, key: modelData.key })
-                : root.segmentColor({ kind: "comm", key: modelData.key })
+              anchor: modelData.key === "system"
+              commColor: modelData.key === "system"
+                ? (root.bar ? root.bar.foreground : Color.foreground)
+                : (modelData.key === "base" || modelData.key === "else"
+                  ? root.segmentColor({ kind: modelData.key, key: modelData.key })
+                  : root.segmentColor({ kind: "comm", key: modelData.key }))
             }
           }
 
@@ -832,6 +839,7 @@ Panel {
     property string label: ""
     property var cells: []
     property var columns: []
+    property bool anchor: false
     property color commColor: root.bar ? root.bar.foreground : Color.foreground
 
     width: column.width
@@ -919,7 +927,9 @@ Panel {
                 : 0
               height: parent.height - Style.space(4)
               radius: height / 3
-              color: root.metricColor(cellSlot.modelData)
+              color: metricRow.anchor
+                ? (root.bar ? root.bar.foreground : Color.foreground)
+                : root.metricColor(cellSlot.modelData)
               opacity: cellSlot.cellData !== null ? cellSlot.cellData.intensity : 0
             }
           }
