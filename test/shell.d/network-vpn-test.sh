@@ -147,3 +147,152 @@ assert(/positionViewAtIndex\(currentIndex, ListView\.Contain\)/.test(vpnListView
 assert(/elide: Text\.ElideRight/.test(vpnRow[0]), 'VpnRow elides a name too long to fit')
 assert(/anchors\.right: statusText\.left/.test(vpnRow[0]), 'VpnRow name is width-constrained against the status text, not free to overlap it')
 JS
+
+# The JS tests above only regex-match Panel.qml/omarchy-network-vpn source; they
+# never exercise the shell script itself. These stub nmcli/ip/ping on PATH and
+# run the real binary, covering exclusivity, rollback, and probe-failure
+# mapping end to end.
+tmp_dir=$(mktemp -d)
+trap 'rm -rf "$tmp_dir"' EXIT
+
+mock_bin="$tmp_dir/bin"
+mkdir -p "$mock_bin"
+call_log="$tmp_dir/calls"
+
+cat >"$mock_bin/nmcli" <<'STUB'
+#!/bin/bash
+
+printf 'nmcli %s\n' "$*" >>"$CALL_LOG"
+
+if [[ $1 == "-e" && $2 == "no" && $3 == "-g" ]]; then
+  field=$4
+  obj=$5
+  target=${7:-}
+
+  if [[ $obj == "connection" && -z $target ]]; then
+    printf '%s\n' "$CONN_LIST"
+  elif [[ $field == "GENERAL.DEVICES" ]]; then
+    [[ $target == "$VPN_NAME" ]] && printf '%s\n' "$VPN_DEVICE"
+  elif [[ $field == "GENERAL.STATE" ]]; then
+    [[ $target == "$VPN_DEVICE" ]] && printf '%s\n' "$VPN_STATE"
+  fi
+  exit 0
+fi
+
+if [[ $1 == "connection" && $2 == "up" ]]; then
+  [[ $3 == "${NMCLI_UP_FAIL:-}" ]] && exit 1
+  exit 0
+fi
+
+if [[ $1 == "connection" && $2 == "down" ]]; then
+  [[ $3 == "${NMCLI_DOWN_FAIL:-}" ]] && exit 1
+  exit 0
+fi
+
+exit 1
+STUB
+
+cat >"$mock_bin/ip" <<'STUB'
+#!/bin/bash
+
+printf 'ip %s\n' "$*" >>"$CALL_LOG"
+[[ $6 == "$VPN_DEVICE" ]] && printf '%s\n' "$VPN_ROUTES"
+exit 0
+STUB
+
+cat >"$mock_bin/ping" <<'STUB'
+#!/bin/bash
+
+printf 'ping %s\n' "$*" >>"$CALL_LOG"
+exit "${PING_EXIT:-0}"
+STUB
+
+chmod +x "$mock_bin/nmcli" "$mock_bin/ip" "$mock_bin/ping"
+
+export CALL_LOG="$call_log" VPN_NAME="" VPN_DEVICE="" VPN_STATE="" VPN_ROUTES="" \
+  PING_EXIT=0 CONN_LIST="" NMCLI_UP_FAIL="" NMCLI_DOWN_FAIL=""
+
+# $ROOT/bin so omarchy-network-vpn resolves the real omarchy-cmd-present.
+vpn_run() {
+  : >"$call_log"
+  PATH="$mock_bin:$ROOT/bin:$PATH" "$ROOT/bin/omarchy-network-vpn" "$@"
+}
+
+logged_before() {
+  local first="$1" second="$2" first_line second_line
+  first_line=$(grep -Fxn -- "$first" "$call_log" | head -1 | cut -d: -f1)
+  second_line=$(grep -Fxn -- "$second" "$call_log" | head -1 | cut -d: -f1)
+  [[ -n $first_line && -n $second_line ]] || return 1
+  (( first_line < second_line ))
+}
+
+# list_vpn_connections: bare invocation prints name/active pairs, dropping type.
+CONN_LIST=$'pvpn-ch:wireguard:no\npvpn-fr:vpn:yes'
+list_output=$(vpn_run) || fail "omarchy-network-vpn lists connections cleanly"
+[[ $list_output == $'pvpn-ch\tno\npvpn-fr\tyes' ]] ||
+  fail "omarchy-network-vpn lists profiles as name/active pairs" "$list_output"
+pass "omarchy-network-vpn lists profiles as name/active pairs"
+
+# up: exclusivity deactivates the other active profile before activating the
+# requested one. Split-tunnel routes skip the traffic probe outright.
+CONN_LIST=$'pvpn-ch:wireguard:yes\npvpn-fr:wireguard:no'
+VPN_NAME=pvpn-fr VPN_DEVICE=wg1 VPN_STATE="100 (connected)" VPN_ROUTES="10.0.0.0/24 dev wg1 scope link"
+vpn_run up pvpn-fr || fail "omarchy-network-vpn activates a verified split-tunnel profile"
+pass "omarchy-network-vpn activates a verified split-tunnel profile"
+logged_before "nmcli connection down pvpn-ch" "nmcli connection up pvpn-fr" ||
+  fail "omarchy-network-vpn deactivates the other active profile before activating the requested one" "$(cat "$call_log")"
+pass "omarchy-network-vpn deactivates the other active profile before activating the requested one"
+
+# up: a full tunnel that fails the traffic probe reports the dedicated exit
+# code and warning, without touching exclusivity.
+CONN_LIST=$'pvpn-de:wireguard:no'
+VPN_NAME=pvpn-de VPN_DEVICE=wg2 VPN_STATE="100 (connected)" VPN_ROUTES="default via 10.0.0.1 dev wg2"
+PING_EXIT=1
+if err=$(vpn_run up pvpn-de 2>&1 >/dev/null); then status=0; else status=$?; fi
+(( status == 75 )) || fail "omarchy-network-vpn reports the no-traffic exit code" "exit status: $status"
+pass "omarchy-network-vpn reports the no-traffic exit code"
+[[ $err == *"Warning: pvpn-de connected but is not passing traffic."* ]] ||
+  fail "omarchy-network-vpn warns when a full tunnel carries no traffic" "$err"
+pass "omarchy-network-vpn warns when a full tunnel carries no traffic"
+
+# up: the same full tunnel succeeds outright once the probe passes.
+PING_EXIT=0
+vpn_run up pvpn-de || fail "omarchy-network-vpn accepts a full tunnel that passes traffic"
+pass "omarchy-network-vpn accepts a full tunnel that passes traffic"
+
+# up: a profile that fails to activate outright rolls back to whatever was
+# active before, instead of leaving nothing connected.
+CONN_LIST=$'pvpn-ch:wireguard:yes\npvpn-fr:wireguard:no'
+NMCLI_UP_FAIL=pvpn-fr
+if err=$(vpn_run up pvpn-fr 2>&1 >/dev/null); then status=0; else status=$?; fi
+(( status == 1 )) || fail "omarchy-network-vpn fails when activation is refused outright" "exit status: $status"
+pass "omarchy-network-vpn fails when activation is refused outright"
+[[ $err == *"Error: failed to activate pvpn-fr."* ]] ||
+  fail "omarchy-network-vpn reports the activation failure" "$err"
+pass "omarchy-network-vpn reports the activation failure"
+grep -Fxq "nmcli connection up pvpn-ch" "$call_log" ||
+  fail "omarchy-network-vpn rolls back to the previously active profile" "$(cat "$call_log")"
+pass "omarchy-network-vpn rolls back to the previously active profile"
+NMCLI_UP_FAIL=""
+
+# down: a refused deactivation is reported, not silently swallowed.
+NMCLI_DOWN_FAIL=pvpn-ch
+if err=$(vpn_run down pvpn-ch 2>&1 >/dev/null); then status=0; else status=$?; fi
+(( status == 1 )) || fail "omarchy-network-vpn fails when deactivation is refused" "exit status: $status"
+pass "omarchy-network-vpn fails when deactivation is refused"
+[[ $err == *"Error: failed to deactivate pvpn-ch."* ]] ||
+  fail "omarchy-network-vpn reports the deactivation failure" "$err"
+pass "omarchy-network-vpn reports the deactivation failure"
+NMCLI_DOWN_FAIL=""
+
+# up: deactivate_other_vpns compares the activating profile's name literally,
+# not as a glob pattern -- a name with a glob metacharacter must not make an
+# unrelated active profile with a matching prefix look like a self-match and
+# get skipped, breaking exclusivity.
+CONN_LIST=$'work*:wireguard:no\nworkstation:wireguard:yes'
+VPN_NAME='work*' VPN_DEVICE=wg3 VPN_STATE="100 (connected)" VPN_ROUTES="10.0.0.0/24 dev wg3"
+vpn_run up 'work*' || fail "omarchy-network-vpn activates a profile whose name contains a glob metacharacter"
+pass "omarchy-network-vpn activates a profile whose name contains a glob metacharacter"
+grep -Fxq "nmcli connection down workstation" "$call_log" ||
+  fail "omarchy-network-vpn deactivates an unrelated profile instead of glob-matching it against the activating name" "$(cat "$call_log")"
+pass "omarchy-network-vpn deactivates an unrelated profile instead of glob-matching it against the activating name"
