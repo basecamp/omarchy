@@ -226,6 +226,7 @@ const expectedAgents = {
   grok: { icon: '\ue904', iconFont: 'omarchy', label: 'Grok' },
   copilot: { icon: '', label: 'Copilot' },
   crush: { icon: '󰋑', label: 'Crush' },
+  hermes: { icon: '󰚩', label: 'Hermes' },
 }
 assert(
   Object.entries(expectedAgents).every(([agent, expected]) => {
@@ -238,13 +239,13 @@ assert(
       && !entry.when
       && entry.checked.includes(`== \"${agent}\"`)
   }),
-  'menu exposes every mise-installable coding agent with its own glyph under Defaults > Agent'
+  'menu exposes every coding agent with its own glyph under Defaults > Agent'
 )
 assertDeepEqual(
   defaultItems
     .filter(item => item.parent === 'setup.default.agent')
     .map(item => item.label),
-  ['Antigravity', 'Claude', 'Codex', 'Copilot', 'Crush', 'Grok', 'omp', 'OpenCode', 'Ori', 'Pi'],
+  ['Antigravity', 'Claude', 'Codex', 'Copilot', 'Crush', 'Grok', 'Hermes', 'omp', 'OpenCode', 'Ori', 'Pi'],
   'menu sorts coding agents alphabetically'
 )
 const expectedDefaults = {

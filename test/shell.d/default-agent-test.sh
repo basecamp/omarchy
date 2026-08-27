@@ -46,6 +46,17 @@ cat >"$mock_bin/opencode" <<'SH'
 printf '%s\0' opencode "$@" >"$OMARCHY_TEST_AGENT_INLINE_LOG"
 SH
 
+cat >"$mock_bin/hermes" <<'SH'
+#!/bin/bash
+printf '%s\0' hermes "$@" >"$OMARCHY_TEST_AGENT_INLINE_LOG"
+SH
+
+cat >"$mock_bin/omarchy-install-hermes" <<'SH'
+#!/bin/bash
+printf '%s\n' install-hermes >>"$OMARCHY_TEST_STUB_LOG"
+[[ ${OMARCHY_TEST_HERMES_INSTALL_FAIL:-false} != "true" ]]
+SH
+
 cat >"$mock_bin/omarchy-mise-install" <<'SH'
 #!/bin/bash
 printf '%s\n' "$*" >>"$OMARCHY_TEST_STUB_LOG"
@@ -307,6 +318,7 @@ declare -A expected_agents=(
   [gemini-cli]="agy"
   [copilot]="copilot"
   [github-copilot]="copilot"
+  [hermes]="hermes"
 )
 
 declare -A expected_packages=(
@@ -325,12 +337,17 @@ declare -A expected_packages=(
 for selection in "${!expected_agents[@]}"; do
   expected=${expected_agents[$selection]}
   : >"$agent_open_log"
+  : >"$mise_log"
   OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent "$selection"
   [[ $(omarchy-default-agent) == $expected ]] || fail "default agent canonicalizes $selection"
 
-  mapfile -d '' -t mise_args <"$mise_log"
-  [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == ${expected_packages[$expected]} ]] ||
-    fail "default agent installs $selection globally through mise"
+  if [[ $expected == hermes ]]; then
+    [[ ! -s $mise_log ]] || fail "hermes selection does not use mise"
+  else
+    mapfile -d '' -t mise_args <"$mise_log"
+    [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == ${expected_packages[$expected]} ]] ||
+      fail "default agent installs $selection globally through mise"
+  fi
 
   mapfile -d '' -t agent_open_args <"$agent_open_log"
   [[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||
@@ -365,6 +382,43 @@ mapfile -d '' -t agent_open_args <"$agent_open_log"
 [[ ${#agent_open_args[@]} == 2 && ${agent_open_args[0]} == "omarchy-agent" && ${agent_open_args[1]} == "--inline" ]] ||
   fail "newly installed agent opens in the installation terminal"
 pass "missing agents install visibly and open in the same terminal"
+
+OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent pi
+: >"$stub_log"
+: >"$agent_open_log"
+: >"$terminal_log"
+export OMARCHY_TEST_MISSING_COMMAND=hermes
+omarchy-default-agent hermes
+mapfile -d '' -t terminal_args <"$terminal_log"
+[[ ${terminal_args[0]} == "omarchy-default-agent" && ${terminal_args[1]} == "--install" && ${terminal_args[2]} == "hermes" ]] ||
+  fail "missing Hermes installation opens in a terminal"
+[[ $(omarchy-default-agent) == "pi" ]] || fail "missing Hermes installation waits to change the selection"
+[[ ! -s $stub_log ]] || fail "missing Hermes installation waits to run install.sh"
+
+: >"$stub_log"
+: >"$agent_open_log"
+omarchy-default-agent --install hermes >"$test_tmp/hermes-install-output"
+grep -Fx install-hermes "$stub_log" >/dev/null || fail "visible Hermes installation runs omarchy-install-hermes"
+[[ $(omarchy-default-agent) == "hermes" ]] || fail "visible Hermes installation changes the selection after install succeeds"
+mapfile -d '' -t agent_open_args <"$agent_open_log"
+[[ ${#agent_open_args[@]} == 2 && ${agent_open_args[0]} == "omarchy-agent" && ${agent_open_args[1]} == "--inline" ]] ||
+  fail "newly installed Hermes opens in the installation terminal"
+unset OMARCHY_TEST_MISSING_COMMAND
+pass "Hermes installs via install.sh rather than mise"
+
+OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent pi
+: >"$stub_log"
+: >"$agent_open_log"
+export OMARCHY_TEST_MISSING_COMMAND=hermes
+if OMARCHY_TEST_HERMES_INSTALL_FAIL=true omarchy-default-agent --install hermes >"$test_tmp/hermes-install-failure" 2>&1; then
+  fail "default agent rejects a failed Hermes installation"
+fi
+[[ $(omarchy-default-agent) == "pi" ]] || fail "failed Hermes installation preserves the current default agent"
+grep -F "Could not install Hermes" "$test_tmp/hermes-install-failure" >/dev/null ||
+  fail "default agent reports a failed Hermes installation"
+[[ ! -s $agent_open_log ]] || fail "failed Hermes installation does not open an agent"
+unset OMARCHY_TEST_MISSING_COMMAND
+pass "Hermes installation failures do not change the default agent"
 
 : >"$notification_history"
 : >"$agent_open_log"
@@ -464,6 +518,7 @@ assert_launch crush crush run "Review this project"
 assert_launch grok grok --permission-mode bypassPermissions -- "Review this project"
 assert_launch agy agy --dangerously-skip-permissions --prompt-interactive "Review this project"
 assert_launch copilot copilot --allow-all --interactive "Review this project"
+assert_launch hermes hermes chat --yolo -q "Review this project"
 pass "agent launcher adapts initial prompts for every supported agent"
 
 assert_bypass pi pi
@@ -476,6 +531,7 @@ assert_bypass crush crush --yolo
 assert_bypass grok grok --permission-mode bypassPermissions
 assert_bypass agy agy --dangerously-skip-permissions
 assert_bypass copilot copilot --allow-all
+assert_bypass hermes hermes --yolo
 pass "agent launcher skips permission prompts for every supported agent"
 
 printf '%s\n' "opencode" >"$agent_file"

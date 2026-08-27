@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # omarchy:summary=Set and launch the default coding agent
-# omarchy:args=[pi|omp|opencode|ori|claude|codex|grok|agy|copilot|crush]
-# omarchy:examples=omarchy default agent | omarchy default agent codex | omarchy default agent claude
+# omarchy:args=[pi|omp|opencode|ori|claude|codex|grok|agy|copilot|crush|hermes]
+# omarchy:examples=omarchy default agent | omarchy default agent codex | omarchy default agent hermes
 
 installing=false
 if [[ ${1:-} == "--install" ]]; then
@@ -34,13 +34,37 @@ crush) agent="crush"; name="Crush" ;;
 grok) agent="grok"; name="Grok"; agent_package="npm:@xai-official/grok" ;;
 agy | antigravity | antigravity-cli | gemini | gemini-cli) agent="agy"; name="Antigravity"; agent_package="antigravity-cli" ;;
 copilot | github-copilot) agent="copilot"; name="GitHub Copilot" ;;
+hermes) agent="hermes"; name="Hermes"; skip_mise=true ;;
 *)
-  echo "Usage: omarchy-default-agent <pi|omp|opencode|ori|claude|codex|grok|agy|copilot|crush>"
+  echo "Usage: omarchy-default-agent <pi|omp|opencode|ori|claude|codex|grok|agy|copilot|crush|hermes>"
   exit 1
   ;;
 esac
 
 agent_package=${agent_package:-$agent}
+
+if [[ ${skip_mise:-} == true ]]; then
+  if [[ $installing == "false" ]] && omarchy-cmd-missing hermes; then
+    exec omarchy-launch-floating-terminal-with-presentation omarchy-default-agent --install hermes
+  fi
+
+  if omarchy-cmd-missing hermes; then
+    if ! omarchy-install-hermes; then
+      echo "Could not install $name" >&2
+      exit 1
+    fi
+  fi
+
+  mkdir -p "$(dirname "$agent_file")"
+  printf '%s\n' "$agent" >"$agent_file"
+
+  if [[ $installing == "true" ]]; then
+    printf '\033[2J\033[3J\033[H'
+    exec omarchy-agent --inline
+  else
+    exec omarchy-agent
+  fi
+fi
 
 if [[ $installing == "false" ]] && ! mise where "$agent_package" &>/dev/null; then
   exec omarchy-launch-floating-terminal-with-presentation omarchy-default-agent --install "$agent"

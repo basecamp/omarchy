@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# omarchy:summary=Install Hermes Agent via the official installer
+# omarchy:hidden=true
+
+set -euo pipefail
+
+# Hermes is not a mise package. The supported install is install.sh
+# (see https://hermes-agent.nousresearch.com/docs/getting-started/installation).
+curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash

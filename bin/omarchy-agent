@@ -101,6 +101,15 @@ pi)
   command=(pi)
   [[ -n ${prompt:-} ]] && command+=("$prompt")
   ;;
+hermes)
+  # --yolo is Hermes's don't-stop-to-ask flag. A prompt is one unattended turn
+  # (`chat -q`); without one, an interactive session stays open.
+  if [[ -n ${prompt:-} ]]; then
+    command=(hermes chat --yolo -q "$prompt")
+  else
+    command=(hermes --yolo)
+  fi
+  ;;
 *)
   echo "Unsupported default agent: $agent" >&2
   exit 1
