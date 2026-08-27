@@ -8,7 +8,7 @@ echo "Install the generation-correct Intel VAAPI driver"
 
 driver=$(omarchy-hw-intel-vaapi-driver) || exit 0
 
-if [[ $driver == intel-media-driver ]]; then
+if [[ $driver == "intel-media-driver" ]]; then
   omarchy-pkg-add intel-media-driver libvpl vpl-gpu-rt
 else
   omarchy-pkg-add libva-intel-driver

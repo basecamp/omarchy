@@ -11,7 +11,7 @@
 
 driver=$(omarchy-hw-intel-vaapi-driver) || true
 if [[ -n $driver ]]; then
-  if [[ $driver == intel-media-driver ]]; then
+  if [[ $driver == "intel-media-driver" ]]; then
     omarchy-pkg-add intel-media-driver libvpl vpl-gpu-rt
   else
     omarchy-pkg-add libva-intel-driver

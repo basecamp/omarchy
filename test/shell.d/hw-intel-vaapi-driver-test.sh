@@ -37,7 +37,7 @@ assert_driver() {
 
   actual=$(vaapi_driver) || status=$?
 
-  if [[ $expected == none ]]; then
+  if [[ $expected == "none" ]]; then
     [[ $status -ne 0 && -z $actual ]] ||
       fail "$description" "expected no Intel VAAPI package, got status=$status output=${actual@Q}"
     pass "$description"
