@@ -94,6 +94,38 @@ grep -q -- '- /etc:/shared' "$COMPOSE_FILE" && fail "migration must not carry a 
 [[ ! -f $LEGACY_COMPOSE_FILE ]] || fail "migration removes the legacy compose"
 pass "migration reconstructs data paths from \$HOME and ignores tampered legacy volumes"
 
+# --- pre-4.0.1 usernames the writer now rejects still migrate ---
+# Install used to accept emails and other strings that fail valid_username.
+# USERNAME is inert after Windows setup; RDP uses the credentials file.
+rm -rf "$OMARCHY_WINDOWS_DIR"
+export HOME="$TMPDIR/home-email"
+mkdir -p "$HOME/.config/windows"
+LEGACY_COMPOSE_FILE="$HOME/.config/windows/docker-compose.yml"
+CREDENTIALS_FILE="$HOME/.config/windows/credentials"
+COMPOSE_FILE="$COMPOSE"
+cat >"$LEGACY_COMPOSE_FILE" <<'LEG'
+services:
+  windows:
+    environment:
+      RAM_SIZE: "8G"
+      CPU_CORES: "4"
+      DISK_SIZE: "64G"
+      USERNAME: "user@example.com"
+      PASSWORD: "legacypass"
+      TZ: "UTC"
+    volumes:
+      - /home/old/.windows:/storage
+      - /home/old/Windows:/shared
+LEG
+migrate_legacy_compose
+[[ -f $COMPOSE_FILE ]] || fail "migration wrote the root-owned compose for an email username"
+grep -q 'USERNAME: "docker"' "$COMPOSE_FILE" || fail "migration sanitizes an invalid legacy username to docker"
+grep -q 'USERNAME: "user@example.com"' "$COMPOSE_FILE" && fail "migration must not write an invalid username into the compose"
+[[ $(read_credential USERNAME) == "user@example.com" ]] || fail "RDP credentials keep the original Windows username"
+[[ $(read_credential PASSWORD) == "legacypass" ]] || fail "RDP credentials keep the original password"
+[[ ! -f $LEGACY_COMPOSE_FILE ]] || fail "migration removes the legacy compose after sanitizing username"
+pass "migration sanitizes invalid legacy usernames and keeps RDP credentials"
+
 # --- bring-up refuses a symlinked mount source (a symlink redirects the
 #     privileged bind mount the same way traversal would; the string check on
 #     the stored path cannot see it) ---
