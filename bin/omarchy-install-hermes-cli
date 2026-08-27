@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Install the Hermes CLI as a mise-backed wrapper in ~/.local/bin
-# omarchy:args=[--now]
+# omarchy:args=[--check|--now|--owns]
 # omarchy:examples=omarchy install hermes cli | omarchy install hermes cli --now
 
 # Hermes pins every one of its dependencies exactly and declares
@@ -87,6 +87,13 @@ hermes_runs() {
   [[ -f $HOME/.local/bin/hermes && -x $HOME/.local/bin/hermes ]] &&
     timeout 15 "$HOME/.local/bin/hermes" --version >/dev/null 2>&1
 }
+
+# --owns answers whether the wrapper on PATH is the one this command wrote, so
+# the migration and Remove Preinstalls do not each carry their own copy of the
+# marker and drift from it.
+if [[ $mode == "--owns" ]]; then
+  if ours; then exit 0; else exit 1; fi
+fi
 
 # --check lets callers tell a cold stub from a working one before they commit
 # to a path that assumes Hermes is ready.

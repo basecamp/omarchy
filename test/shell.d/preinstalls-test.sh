@@ -36,7 +36,10 @@ SH
 
 chmod +x "$mock_bin"/*
 
-export PATH="$mock_bin:$PATH"
+# $ROOT/bin after the mocks: Remove Preinstalls asks omarchy-install-hermes-cli
+# whether the wrapper is Omarchy's rather than matching the marker itself, and
+# that is the real command at runtime. The mocks still shadow what they name.
+export PATH="$mock_bin:$ROOT/bin:$PATH"
 export HOME="$test_home"
 export OMARCHY_TEST_PKG_LOG="$pkg_log"
 
