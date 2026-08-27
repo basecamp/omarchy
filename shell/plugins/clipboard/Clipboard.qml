@@ -436,6 +436,7 @@ Item {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             text: root.filterText || "Search clipboard…"
+            textFormat: Text.PlainText
             color: root.foreground
             opacity: root.filterText ? 1 : 0.58
             font.family: root.fontFamily
@@ -503,6 +504,7 @@ Item {
                       width: parent.width - (parent.parent.previewImage.length > 0 ? parent.height + parent.spacing : 0)
                       height: parent.height
                       text: parent.parent.previewText
+                      textFormat: Text.PlainText
                       color: parent.parent.hasCursor ? root.selectedText : root.foreground
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.title
@@ -553,6 +555,7 @@ Item {
                 anchors.topMargin: 0
                 anchors.bottomMargin: 0
                 text: parent.activeRow ? parent.activeRow.fullText : ""
+                textFormat: Text.PlainText
                 color: root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.title
