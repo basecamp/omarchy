@@ -11,7 +11,13 @@ BarWidget {
   id: root
   moduleName: "omarchy.tray"
 
-  property bool expanded: false
+  property bool drawerHovered: false
+  // Hover alone used to drive this: right-clicking a tray icon opens its
+  // context menu away from the drawer's hover area, so the pointer leaving
+  // to reach that popup made the chevron snap shut mid-interaction, before
+  // anything was chosen. Keep it forced open for as long as either popup is
+  // up, and let hover take back over once it closes.
+  readonly property bool expanded: drawerHovered || managePopupOpen || trayMenuOpen
   property bool managePopupOpen: false
   property bool trayMenuOpen: false
   property var activeTrayItem: null
@@ -32,6 +38,38 @@ BarWidget {
   readonly property int animationDuration: 600
   property real revealProgress: expanded ? 1 : 0
   readonly property real revealExtent: drawerExtent * revealProgress
+
+  // Bar.qml paints an accent-colored "open panel" underline for whichever
+  // module owns the currently-open popup, sized from this widget's
+  // openPanelIndicatorWidth/Height when present. Without that hint it falls
+  // back to 55% of the module's slot width, centered on the slot - a sane
+  // default for a single-icon widget, but the tray's slot spans the chevron
+  // plus every pinned/drawer icon, so that fallback drew a fixed-width bar
+  // centered on the *whole* row: often straddling the boundary between the
+  // chevron and an icon rather than running under the icons actually shown
+  // (see the manage/tray-menu popups, which both report this widget as their
+  // owner, so either one can trigger the mark).
+  //
+  // implicitWidth itself is the wrong source for the hint: it always reserves
+  // room for the drawer at full width (drawerBlockWidth adds root.drawerExtent
+  // unconditionally, not root.revealExtent) so the empty gap the collapsed
+  // drawer keeps for its slide-in doesn't reflow neighboring modules. Any open
+  // popup does force `expanded` true, which starts the drawer sliding open,
+  // but that slide is a 600ms Behavior on revealProgress - so right after a
+  // popup opens, implicitWidth already reports the fully-revealed width while
+  // the drawer icons are still animating into view, and the mark overshoots
+  // past the chevron into that not-yet-revealed space. Track revealExtent
+  // (the same value the icons themselves animate on) instead, so the mark's
+  // width tracks the drawer open/close exactly like the icons it's supposed
+  // to sit under, landing at the same full extent once the animation settles.
+  readonly property real visibleExtent: {
+  var content = trayContent.item
+  var pinnedExtent = content ? (root.vertical ? content.pinnedHeight : content.pinnedWidth) : 0
+  var chevronBlock = allItems.length > 0 ? trayItemExtent + revealExtent : 0
+  return chevronBlock + pinnedExtent
+}
+readonly property real openPanelIndicatorWidth: visibleExtent * 0.85
+readonly property real openPanelIndicatorHeight: visibleExtent * 0.85
 
   // Submenu drill-down state. QsMenuEntry.display() renders a *platform* menu,
   // which Quickshell refuses unless the shell root sets `//@ pragma
@@ -260,7 +298,7 @@ BarWidget {
         visible: root.allItems.length > 0
 
         HoverHandler {
-          onHoveredChanged: root.expanded = hovered
+          onHoveredChanged: root.drawerHovered = hovered
         }
 
         BarIconButton {
@@ -342,7 +380,7 @@ BarWidget {
         visible: root.allItems.length > 0
 
         HoverHandler {
-          onHoveredChanged: root.expanded = hovered
+          onHoveredChanged: root.drawerHovered = hovered
         }
 
         BarIconButton {
