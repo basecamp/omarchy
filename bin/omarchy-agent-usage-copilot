@@ -84,7 +84,10 @@ def get_oauth_token() -> str | None:
     if not token_path.exists():
       continue
     try:
-      data = json.loads(token_path.read_text())
+      content = token_path.read_text(encoding='utf-8')
+      if len(content) > 1_000_000:  # 1 MB limit
+        continue
+      data = json.loads(content)
       if isinstance(data, dict):
         for host_data in data.values():
           if isinstance(host_data, dict) and "oauth_token" in host_data:
@@ -102,7 +105,7 @@ def fetch_quota(token: str) -> dict[str, Any] | None:
       headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
     )
     with urllib.request.urlopen(req, timeout=5) as response:
-      data = json.loads(response.read())
+      data = json.loads(response.read(10_000_000))  # 10 MB limit
       if "quota_snapshots" in data and data["quota_snapshots"]:
         snapshots = data["quota_snapshots"]
         for quota_key in QUOTA_PRIORITY:
