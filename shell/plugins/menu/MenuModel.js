@@ -398,7 +398,7 @@ function hotkeyIndex(items, itemOrder, hotkeyRows) {
     }
     var key = commandKey(row.match)
     if (key && !byCommand[key]) byCommand[key] = row.chord
-    var route = String(row.match).trim().match(/^omarchy-menu\s+(?:toggle|summon)\s+([A-Za-z0-9._-]+)$/)
+    var route = key.match(/^omarchy-menu\s+(?:toggle|summon)\s+([A-Za-z0-9._-]+)$/)
     if (route) {
       var routeId = resolveRoute(items, itemOrder, route[1])
       if (routeId !== "root" && item(items, routeId) && !byRoute[routeId]) byRoute[routeId] = row.chord
