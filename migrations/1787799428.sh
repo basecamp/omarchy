@@ -5,6 +5,14 @@ echo "Install the generation-correct Intel VAAPI driver"
 # parts that need libva-intel-driver. Hybrid NVIDIA laptops still encode on
 # the iGPU; screen recording then fails vaInitialize until the Intel package
 # is present. Idempotent: omarchy-pkg-add is a no-op when the package is there.
+#
+# A missing helper must not count as "no Intel GPU" — that would write the
+# completion marker and never retry. Exit 1 so omarchy-migrate leaves it pending.
+
+if ! command -v omarchy-hw-intel-vaapi-driver >/dev/null; then
+  echo "omarchy-hw-intel-vaapi-driver is not on PATH" >&2
+  exit 1
+fi
 
 driver=$(omarchy-hw-intel-vaapi-driver) || exit 0
 

@@ -6,8 +6,9 @@
 # laptops still encode on the iGPU that owns the display, so the Intel driver
 # is required even when an NVIDIA VAAPI package is also present.
 #
-# Broadwell+ (device id >= 0x1600) uses intel-media-driver; older gens use
-# libva-intel-driver (i965). See omarchy-hw-intel-vaapi-driver.
+# Broadwell and later Core/Arc gens use intel-media-driver. GM45 through
+# Haswell, plus CherryView/Braswell, use libva-intel-driver (i965). Pre-GM45
+# chipset graphics have no package. See omarchy-hw-intel-vaapi-driver.
 
 driver=$(omarchy-hw-intel-vaapi-driver) || true
 if [[ -n $driver ]]; then

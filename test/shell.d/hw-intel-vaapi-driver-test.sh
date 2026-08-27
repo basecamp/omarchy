@@ -79,9 +79,57 @@ assert_driver "Skylake uses intel-media-driver" intel-media-driver
 write_pci_devices 0x8086:0x46a6:0x030000
 assert_driver "Iris Xe uses intel-media-driver" intel-media-driver
 
+# GM45 / Mobile 4 Series. ID sits above 0x1600; a bare cutoff would pick iHD.
+write_pci_devices 0x8086:0x2a42:0x030000
+assert_driver "GM45 uses libva-intel-driver" libva-intel-driver
+
+# Braswell / CherryView. Same trap: 0x22b1 > 0x1600 but iHD does not support it.
+write_pci_devices 0x8086:0x22b1:0x030000
+assert_driver "Braswell uses libva-intel-driver" libva-intel-driver
+
+# 4 Series desktop (G41). First gens in i965's PCI table, with GM45.
+write_pci_devices 0x8086:0x2e32:0x030000
+assert_driver "4 Series uses libva-intel-driver" libva-intel-driver
+
+# Pre-GM45 chipset graphics: neither package can initialize.
+write_pci_devices 0x8086:0x27a2:0x030000
+assert_driver "945GM has no VAAPI package" none
+
+write_pci_devices 0x8086:0x2a02:0x030000
+assert_driver "GM965 has no VAAPI package" none
+
+write_pci_devices 0x8086:0x29a2:0x030000
+assert_driver "G965 has no VAAPI package" none
+
+write_pci_devices 0x8086:0xa011:0x030000
+assert_driver "Pineview has no VAAPI package" none
+
+write_pci_devices 0x8086:0x4108:0x030000
+assert_driver "Atom E6xx has no VAAPI package" none
+
+write_pci_devices 0x8086:0x8108:0x030000
+assert_driver "Poulsbo has no VAAPI package" none
+
+# Haswell iGPU at the first BDF plus Meteor Lake [0x7d55]: iHD must win.
+write_pci_devices 0x8086:0x0416:0x030000 0x8086:0x7d55:0x030000
+assert_driver "Haswell plus a later Intel GPU prefers intel-media-driver" intel-media-driver
+
 # Intel HD Audio function is not a GPU.
 write_pci_devices 0x8086:0x0c0c:0x040300
 assert_driver "a non-display Intel function is not a GPU" none
 
 write_pci_devices
 assert_driver "a machine with no PCI devices prints nothing" none
+
+# Missing or unreadable device must skip, not silently select i965.
+write_pci_devices 0x8086:0x0416:0x030000
+rm -f "$tmp_dir/devices/0000:00:00.0/device"
+assert_driver "a missing sysfs device file is a skip" none
+
+write_pci_devices 0x8086:0x0416:0x030000
+: >"$tmp_dir/devices/0000:00:00.0/device"
+assert_driver "an empty sysfs device file is a skip" none
+
+write_pci_devices 0x8086:0x0416:0x030000
+printf '%s\n' "not-a-pci-id" >"$tmp_dir/devices/0000:00:00.0/device"
+assert_driver "a non-hex sysfs device file is a skip" none
