@@ -4,6 +4,7 @@ import Quickshell.Io
 import Quickshell.Services.Pam
 import Quickshell.Wayland
 import qs.Commons
+import "SleepFingerprintModel.js" as SleepFingerprintModel
 
 Item {
   id: root
@@ -36,6 +37,7 @@ Item {
   property bool fingerprintSleepPaused: false
   property bool fingerprintCheckAborted: false
   property int fingerprintResumeAttempts: 0
+  property double fingerprintResumeDeadlineAt: 0
   property bool awaitingSleepSignalValue: false
 
   readonly property bool locked: lockRequested || sessionLock.locked || sessionLock.secure
@@ -216,12 +218,7 @@ Item {
     if (fingerprintPam.active || fingerprintAuthenticating) return
 
     fingerprintAuthenticating = true
-    if (!fingerprintPam.start()) {
-      fingerprintAuthenticating = false
-      fingerprintRetryTimer.restart()
-    } else {
-      fingerprintResumeAttempts = 0
-    }
+    if (!fingerprintPam.start()) fingerprintAuthenticating = false
   }
 
   function handleFingerprintFinished(result) {
@@ -257,33 +254,27 @@ Item {
     logEvent("fingerprint-paused-for-sleep")
   }
 
-  // The reader can take a few seconds to recover after resume, so re-probe
-  // for a while instead of accepting the first (possibly still-stale) answer.
+  // The reader can take a moment to recover after resume, so re-probe on a
+  // small budget instead of accepting the first (possibly still-stale)
+  // answer -- bounded by wall-clock time as well as attempt count, so a run
+  // of genuinely hung probes can't stretch this past its advertised budget.
   function resumeFingerprintAfterSleep() {
     if (!fingerprintSleepPaused) return
     fingerprintSleepPaused = false
     fingerprintAuthenticating = false
     fingerprintRetryTimer.stop()
-    fingerprintResumeAttempts = 20
+    fingerprintResumeAttempts = SleepFingerprintModel.RESUME_ATTEMPT_BUDGET
+    fingerprintResumeDeadlineAt = Date.now() + SleepFingerprintModel.RESUME_BUDGET_MS
     abortFingerprintCheck()
     logEvent("fingerprint-resume-pending")
     fingerprintResumeTimer.restart()
   }
 
   function handleSleepMonitorLine(data) {
-    var line = String(data || "")
-    if (line.indexOf("member=PrepareForSleep") !== -1) {
-      awaitingSleepSignalValue = true
-      return
-    }
-    if (!awaitingSleepSignalValue) return
-    if (line.indexOf("boolean true") !== -1) {
-      awaitingSleepSignalValue = false
-      pauseFingerprintForSleep()
-    } else if (line.indexOf("boolean false") !== -1) {
-      awaitingSleepSignalValue = false
-      resumeFingerprintAfterSleep()
-    }
+    var result = SleepFingerprintModel.parseSleepSignalLine(awaitingSleepSignalValue, data)
+    awaitingSleepSignalValue = result.awaitingValue
+    if (result.event === "pause") pauseFingerprintForSleep()
+    else if (result.event === "resume") resumeFingerprintAfterSleep()
   }
 
   WlSessionLock {
@@ -446,7 +437,16 @@ Item {
     id: fingerprintSleepMonitorRestart
     interval: 2000
     repeat: false
-    onTriggered: if (!fingerprintSleepMonitor.running) fingerprintSleepMonitor.running = true
+    onTriggered: {
+      if (!fingerprintSleepMonitor.running) fingerprintSleepMonitor.running = true
+      // The monitor exiting is itself abnormal -- it may have missed a
+      // PrepareForSleep(false) while it was down. Erring toward resuming is
+      // safe even if that guess is wrong: a probe that is genuinely too
+      // early just falls through to the resume re-probe budget, whereas
+      // staying paused on a bad guess disables fingerprint for the rest of
+      // the awake session.
+      if (root.fingerprintSleepPaused) root.resumeFingerprintAfterSleep()
+    }
   }
 
   Process {
@@ -484,8 +484,8 @@ Item {
         root.fingerprintResumeAttempts = 0
         root.logEvent("fingerprint-configured=true")
         if (root.lockRequested) root.startFingerprint()
-      } else if (root.fingerprintResumeAttempts > 0) {
-        // Fresh out of sleep, the reader is still probably recovering. Keep
+      } else if (SleepFingerprintModel.shouldRetryResumeProbe(root.fingerprintResumeAttempts, root.fingerprintResumeDeadlineAt, Date.now())) {
+        // Fresh out of sleep, the reader may still be recovering. Keep
         // re-probing on the resume budget instead of taking "no" at face value.
         fingerprintResumeTimer.restart()
       } else {
