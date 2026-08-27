@@ -496,14 +496,19 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
   // panel's palette rationale). Passed in so callers own it; defaulted so
   // the pure builder is self-contained.
   palette = palette || ["blue", "cyan", "magenta"]
-  // The shade lattice assignment, resolved ONCE over the visible set (the
-  // table's rank order, extended with any RSS-only comms) and shared by the
-  // table accents and every bar — one function, one visible set, so
-  // cross-surface consistency stays structural. Bars lay comm segments out
-  // in LATTICE order: hue-major, shade-minor — fully rank-independent now
-  // that slots are unique below exhaustion, so segment order changes only
-  // with membership. Callers draw constant separators and scale fills
-  // against the fixed gap budget (SPLIT_MAX_SEGMENTS).
+  // The shade lattice assignment, resolved ONCE over the visible set — the
+  // TABLE's rank order (CPU busy-share) and nothing else — and shared by the
+  // table accents and every bar: one function, one visible set. Bars lay
+  // their process segments out IN THAT SAME TABLE RANK ORDER, left-to-right
+  // as the table reads top-to-bottom (the operator's correspondence
+  // decision): a rank swap moves exactly the swapped segments — discrete,
+  // meaningful motion, identity preserved by the stable lattice colors.
+  // Round 9's canonical hue-major order is superseded: it existed because
+  // round-8's rank-coupled GROUP order relocated whole hue blocks; with
+  // per-comm lattice-colored segments that disease no longer exists. The
+  // RAM bar previously ranked its own top-N by RSS — that divergence dies
+  // here: it shows the table's comms with their RSS widths, the rest
+  // segment absorbing any used memory the table set doesn't cover.
   var lattice = null
   function slotOf(comm) {
     if (lattice === null) lattice = resolveColorSlots(result.order, palette, SHADES)
@@ -511,16 +516,11 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
       ? lattice.assignment[comm]
       : { hue: palette[stableColorKey(comm, palette.length)], hueIdx: stableColorKey(comm, palette.length), shadeIdx: 2, shade: 1 }
   }
-  function latticeCommSegments(fracList) {
-    var withSlots = []
+  function rankCommSegments(fracList) {
+    var out = []
     for (var i = 0; i < fracList.length; i++)
-      withSlots.push({ key: fracList[i].key, share: fracList[i].share, kind: "comm", slot: slotOf(fracList[i].key) })
-    withSlots.sort(function(a, b) {
-      if (a.slot.hueIdx !== b.slot.hueIdx) return a.slot.hueIdx - b.slot.hueIdx
-      if (a.slot.shadeIdx !== b.slot.shadeIdx) return a.slot.shadeIdx - b.slot.shadeIdx
-      return a.key < b.key ? -1 : 1
-    })
-    return withSlots
+      out.push({ key: fracList[i].key, share: fracList[i].share, kind: "comm", slot: slotOf(fracList[i].key) })
+    return out
   }
   var n = limit || 5
   var result = { order: [], cpu: null, ram: null, watts: null, gpu: null }
@@ -546,7 +546,7 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
         var frac = agg.shares[i].share * busyDelta / totalDelta
         if (frac > 0) { commFracs.push({ key: agg.shares[i].label, share: frac }); used += frac }
       }
-      var segs = latticeCommSegments(commFracs)
+      var segs = rankCommSegments(commFracs)
       // thresholds would drop sub-pixel segments and break the exact sum;
       // a 0.4% segment renders sub-pixel, which is invisibility enough
       var rest = Math.max(0, busyDelta / totalDelta - used)
@@ -563,26 +563,28 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
   if (nextSnapshot.memTotalKb !== null && nextSnapshot.memAvailKb !== null && nextSnapshot.memTotalKb > 0) {
     var totalKb = nextSnapshot.memTotalKb
     var usedFrac = Math.max(0, Math.min(1, 1 - nextSnapshot.memAvailKb / totalKb))
-    var ramAll = []
-    var seen = {}
+    var ramAll = {}
     for (var pid in nextSnapshot.processes) {
       var p = nextSnapshot.processes[pid]
       if (!p.rssKb) continue
-      if (!(p.name in seen)) { seen[p.name] = 0; }
-      seen[p.name] += p.rssKb
+      if (!(p.name in ramAll)) ramAll[p.name] = 0
+      ramAll[p.name] += p.rssKb
     }
-    var ramList = []
-    for (var nm in seen) ramList.push({ label: nm, kb: seen[nm] })
-    ramList.sort(function(a, b) { return b.kb - a.kb })
-    ramList = ramList.slice(0, n)
+    // table-order RAM segments: the table's comms, in the table's rank,
+    // widths = each comm's RSS share of MemTotal
     var ramFracs = []
     var rused = 0
-    for (var j = 0; j < ramList.length; j++) {
-      var rf = ramList[j].kb / totalKb
-      if (rf > 0) { ramFracs.push({ key: ramList[j].label, share: rf }); rused += rf }
-      if (result.order.indexOf(ramList[j].label) === -1) result.order.push(ramList[j].label)
+    if (agg) {
+      for (var j = 0; j < agg.shares.length; j++) {
+        var nm2 = agg.shares[j].label
+        if (ramAll[nm2] !== undefined && ramAll[nm2] > 0) {
+          var rf = ramAll[nm2] / totalKb
+          ramFracs.push({ key: nm2, share: rf })
+          rused += rf
+        }
+      }
     }
-    var rsegs = latticeCommSegments(ramFracs)
+    var rsegs = rankCommSegments(ramFracs)
     var rrest = Math.max(0, usedFrac - rused)
     rsegs.push({ key: "rest", label: "rest", share: rrest, kind: "rest" })
     rsegs.push({ key: "avail", label: "available", share: Math.max(0, 1 - usedFrac), kind: "avail" })
@@ -607,7 +609,7 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
       var wf = variable * agg.shares[k].share / drawWatts
       if (wf > 0) { wFracs.push({ key: agg.shares[k].label, share: wf }); wused += wf }
     }
-    wsegs = wsegs.concat(latticeCommSegments(wFracs))
+    wsegs = wsegs.concat(rankCommSegments(wFracs))
     var welse = Math.max(0, 1 - wused)
     wsegs.push({ key: "else", label: "everything else", share: welse, kind: "else" })
     result.watts = wsegs
