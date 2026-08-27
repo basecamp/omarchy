@@ -8,6 +8,6 @@
 # Rather than chase the naming with a generation table, install both drivers;
 # libva probes them in order at runtime and uses whichever one initializes for
 # the GPU it finds, so this is correct on every generation without a table.
-if lspci | grep -iE 'vga|3d|display' | grep -qi 'intel'; then
+if lspci | grep -iE 'VGA compatible controller|3D controller|Display controller' | grep -qi 'intel'; then
   omarchy-pkg-add intel-media-driver libva-intel-driver libvpl vpl-gpu-rt
 fi

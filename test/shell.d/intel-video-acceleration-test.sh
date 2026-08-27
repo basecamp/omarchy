@@ -58,6 +58,15 @@ run_leaf "00:02.0 VGA compatible controller: NVIDIA Corporation GA104M"
 [[ -s $call_log ]] && fail "the leaf no-ops on non-Intel GPUs"
 pass "the leaf no-ops on non-Intel GPUs"
 
+# A PCI bus address like "3d:00.0" contains "3d" as plain text, and an
+# unrelated Intel device sitting at that address (not a GPU) also contains
+# "Intel" in its description. Detection has to key off the actual PCI class
+# name, not a bare substring, or a device like this triggers installing the
+# video-acceleration stack for no GPU at all.
+run_leaf "3d:00.0 Non-Volatile memory controller: Intel Corporation NVMe SSD Controller"
+[[ -s $call_log ]] && fail "the leaf no-ops on a non-GPU Intel device at a bus address containing 3d"
+pass "the leaf no-ops on a non-GPU Intel device at a bus address containing 3d"
+
 run_migration() {
   : >"$call_log"
   PATH="$test_tmp/bin:$PATH" \
@@ -74,3 +83,7 @@ pass "the migration brings existing Intel installs onto both VA-API drivers"
 run_migration "00:02.0 VGA compatible controller: NVIDIA Corporation GA104M"
 [[ -s $call_log ]] && fail "the migration no-ops on non-Intel GPUs"
 pass "the migration no-ops on non-Intel GPUs"
+
+run_migration "3d:00.0 Non-Volatile memory controller: Intel Corporation NVMe SSD Controller"
+[[ -s $call_log ]] && fail "the migration no-ops on a non-GPU Intel device at a bus address containing 3d"
+pass "the migration no-ops on a non-GPU Intel device at a bus address containing 3d"

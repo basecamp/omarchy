@@ -9,6 +9,6 @@ echo "Install libva-intel-driver alongside intel-media-driver for Intel GPU vide
 # that fails to initialize (or none), and this repair doesn't run itself, so
 # bring them in line with the new install-time behavior: install both
 # drivers and let libva pick the one that actually works for the GPU present.
-if lspci | grep -iE 'vga|3d|display' | grep -qi 'intel'; then
+if lspci | grep -iE 'VGA compatible controller|3D controller|Display controller' | grep -qi 'intel'; then
   omarchy-pkg-add intel-media-driver libva-intel-driver libvpl vpl-gpu-rt
 fi
