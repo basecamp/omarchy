@@ -57,9 +57,10 @@ const plugin: TuiPlugin = async (api) => {
   let watcher: fs.FSWatcher | undefined
   let pending: ReturnType<typeof setTimeout> | undefined
 
+  const generatedName = new RegExp(`^${THEME_NAME}-[0-9a-f]{8}$`)
   const owned = () => {
     const selected = api.theme.selected
-    return selected === THEME_NAME || selected.startsWith(`${THEME_NAME}-`)
+    return selected === THEME_NAME || generatedName.test(selected)
   }
 
   const apply = async () => {
@@ -110,11 +111,18 @@ const plugin: TuiPlugin = async (api) => {
     } catch {}
   }
 
+  // Serialize applies: theme.install() awaits, so a newer file event must not
+  // interleave with an apply still finishing -- otherwise a stale invocation
+  // could resume afterwards and set an older palette or prune the newer copy.
+  // Each apply re-reads the file when it starts, so the last one always wins.
+  let chain: Promise<void> = Promise.resolve()
+  const enqueueApply = () => (chain = chain.then(apply).catch(() => {}))
+
   const schedule = () => {
     if (pending) clearTimeout(pending)
     pending = setTimeout(() => {
       pending = undefined
-      void apply()
+      void enqueueApply()
     }, DEBOUNCE_MS)
   }
 
@@ -133,7 +141,7 @@ const plugin: TuiPlugin = async (api) => {
     watcher?.close()
   })
 
-  await apply()
+  await enqueueApply()
 }
 
 export default {

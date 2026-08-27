@@ -59,7 +59,9 @@ write_tui_config() {
 
   if [[ -f $OPENCODE_TUI_CONFIG ]]; then
     tmp=$(mktemp "$OPENCODE_TUI_CONFIG.XXXXXX")
-    jq --arg plugin "$OPENCODE_TUI_PLUGIN" '.theme = "omarchy" | .plugin = ((.plugin // []) + [$plugin] | unique)' \
+    # Append; plugin order affects initialization, so never rewrite the rest.
+    jq --arg plugin "$OPENCODE_TUI_PLUGIN" \
+      '.theme = "omarchy" | .plugin = (if ((.plugin // []) | index($plugin)) then .plugin else ((.plugin // []) + [$plugin]) end)' \
       "$OPENCODE_TUI_CONFIG" >"$tmp"
     mv "$tmp" "$OPENCODE_TUI_CONFIG"
   else

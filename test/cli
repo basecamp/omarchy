@@ -514,7 +514,7 @@ jq -e '.theme.primary == "#336699" and .theme.background == "#000000" and .theme
 pass "opencode theme template is generated from standard themed templates"
 cp "$NEXT_THEME/opencode.json" "$CURRENT_THEME/opencode.json"
 
-HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-opencode"
+HOME="$PI_TMPDIR" env -u XDG_CONFIG_HOME -u OPENCODE_CONFIG_DIR "$ROOT/bin/omarchy-theme-set-opencode"
 [[ ! -d $PI_TMPDIR/.config/opencode ]] || fail "opencode theme sync avoids the default directory when not activating"
 pass "opencode theme sync skips missing config when not activating"
 

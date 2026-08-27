@@ -32,7 +32,8 @@ tui_config="$OPENCODE_CONFIG/tui.json"
 if [[ -f $tui_config ]]; then
   if ! jq -e --arg plugin "$plugin_target" '.plugin | index($plugin)' "$tui_config" >/dev/null 2>&1; then
     tmp=$(mktemp "$tui_config.XXXXXX")
-    jq --arg plugin "$plugin_target" '.plugin = ((.plugin // []) + [$plugin] | unique)' "$tui_config" >"$tmp"
+    # Append; plugin order affects initialization, so never rewrite the rest.
+    jq --arg plugin "$plugin_target" '.plugin = ((.plugin // []) + [$plugin])' "$tui_config" >"$tmp"
     mv "$tmp" "$tui_config"
   fi
 elif [[ -f $plugin_target ]]; then

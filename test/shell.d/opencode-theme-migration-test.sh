@@ -63,6 +63,18 @@ pass "migration is idempotent"
   fail "migration syncs the current theme file"
 pass "migration syncs the current theme file"
 
+# ------------------------------------------------------------------ plugin order
+
+rm -rf "$test_dir/home"
+mkdir -p "$test_dir/home/.config/opencode"
+printf '{"theme":"tokyonight","plugin":["first.ts","second.ts"]}\n' >"$test_dir/home/.config/opencode/tui.json"
+run_migration
+
+jq -e --arg plugin "$plugin" '.plugin == ["first.ts", "second.ts", $plugin]' \
+  "$test_dir/home/.config/opencode/tui.json" >/dev/null ||
+  fail "migration appends the plugin without rewriting existing order"
+pass "migration appends the plugin without rewriting existing order"
+
 # ------------------------------------------------------------------ no tui.json
 
 rm -rf "$test_dir/home"
