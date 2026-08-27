@@ -92,8 +92,10 @@ omp)
   ;;
 ori)
   # Ori is a harness launcher, and `ori code` is the agent it runs itself.
+  # A prompt alone means one headless turn there, printed after the turn ends,
+  # so --interactive is what seeds the session with it and keeps the window.
   command=(ori code)
-  [[ -n ${prompt:-} ]] && command+=(--prompt "$prompt")
+  [[ -n ${prompt:-} ]] && command+=(--interactive --prompt "$prompt")
   ;;
 pi)
   command=(pi)
