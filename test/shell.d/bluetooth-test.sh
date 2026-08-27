@@ -4,9 +4,13 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
-grep -q '^ConditionPathIsDirectory=/sys/class/bluetooth$' "$ROOT/default/systemd/user/bt-agent.service" || \
-  fail "bt-agent is skipped on machines without Bluetooth hardware"
-pass "bt-agent is skipped on machines without Bluetooth hardware"
+# USB/Broadcom adapters often appear after graphical-session starts. A
+# ConditionPathIsDirectory skip is permanent (Restart= does not apply).
+grep -q '^ConditionPathIsDirectory=/sys/class/bluetooth$' "$ROOT/default/systemd/user/bt-agent.service" && \
+  fail "bt-agent must not skip forever when /sys/class/bluetooth is missing at login"
+grep -Fx 'ExecStart=/usr/bin/omarchy-bluetooth-agent-start' "$ROOT/default/systemd/user/bt-agent.service" >/dev/null || \
+  fail "bt-agent waits for a late adapter instead of starting bt-agent immediately"
+pass "bt-agent waits for a late adapter instead of skipping at login"
 
 run_node_test <<'JS'
 const fs = require('fs')
@@ -280,3 +284,43 @@ pass "bluetooth counts a secondary controller as on"
 grep -q 'AutoEnable=false' "$ROOT/install/hardware/bluetooth.sh" &&
   fail "bluetooth install leaves AutoEnable at its default"
 pass "bluetooth install leaves AutoEnable at its default"
+
+agent_mock="$device_tmp/agent"
+mkdir -p "$agent_mock/sys" "$agent_mock/bin"
+cat >"$agent_mock/bin/systemctl" <<'SH'
+#!/bin/bash
+[[ $1 == is-active && $3 == bluetooth.service ]] && exit 0
+exit 1
+SH
+cat >"$agent_mock/bin/bt-agent" <<'SH'
+#!/bin/bash
+printf 'bt-agent %s\n' "$*" >"$AGENT_RAN"
+exit 0
+SH
+chmod +x "$agent_mock/bin/systemctl" "$agent_mock/bin/bt-agent"
+
+# No adapter: give up with success so systemd does not restart-loop.
+: >"$device_tmp/agent-ran"
+if ! PATH="$agent_mock/bin:$PATH" \
+  OMARCHY_BT_AGENT_WAIT_SECONDS=0 \
+  OMARCHY_BT_SYSFS="$agent_mock/missing" \
+  OMARCHY_BT_AGENT="$agent_mock/bin/bt-agent" \
+  AGENT_RAN="$device_tmp/agent-ran" \
+  "$ROOT/bin/omarchy-bluetooth-agent-start"; then
+  fail "pairing agent start exits 0 when no adapter appears"
+fi
+[[ ! -s $device_tmp/agent-ran ]] || fail "pairing agent is not started without an adapter"
+pass "pairing agent start exits 0 when no adapter appears"
+
+# Adapter already present: exec bt-agent immediately.
+: >"$device_tmp/agent-ran"
+PATH="$agent_mock/bin:$PATH" \
+  OMARCHY_BT_AGENT_WAIT_SECONDS=0 \
+  OMARCHY_BT_SYSFS="$agent_mock/sys" \
+  OMARCHY_BT_AGENT="$agent_mock/bin/bt-agent" \
+  AGENT_RAN="$device_tmp/agent-ran" \
+  "$ROOT/bin/omarchy-bluetooth-agent-start" ||
+  fail "pairing agent start runs bt-agent when the adapter is already up"
+grep -qx "bt-agent -c NoInputNoOutput" "$device_tmp/agent-ran" ||
+  fail "pairing agent start execs NoInputNoOutput bt-agent" "$(cat "$device_tmp/agent-ran")"
+pass "pairing agent start execs bt-agent once the adapter exists"
