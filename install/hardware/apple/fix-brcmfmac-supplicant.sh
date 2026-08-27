@@ -13,6 +13,10 @@
 # BCM43602 and 2015 firmware fails exactly this way, and connects once the
 # offload is disabled.
 #
+# apple-bcm-firmware installs here too, for the same population: without it
+# brcmfmac has no NVRAM/CLM/TxCap calibration data and the radio never comes
+# up at all, which T2 Macs already got from fix-t2.sh but no other Mac did.
+#
 # The IDs are brcmfmac's own, from brcm_hw_ids.h: BCM43602 and its single-band
 # variants in 2015-2017 Macs, BCM4350, BCM4355 and BCM4364 in the 2018-2019
 # machines including the T2-less iMac19,1 and iMac19,2, and BCM4377/4378/4387
@@ -23,7 +27,9 @@ sys_vendor="$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null || true)"
 if lspci -nn | grep "106b:180[12]" >/dev/null ||
   { [[ $sys_vendor == Apple* ]] &&
     lspci -nn | grep -E "14e4:(43ba|43bb|43bc|43a3|43dc|4464|4488|4425|4433)" >/dev/null; }; then
-  echo "Detected a Mac with Broadcom Wi-Fi; running the WPA handshake in software"
+  echo "Detected a Mac with Broadcom Wi-Fi; installing firmware and running the WPA handshake in software"
+
+  omarchy-pkg-add apple-bcm-firmware
 
   mkdir -p /etc/modprobe.d
   cat > /etc/modprobe.d/brcmfmac.conf <<'EOF'
