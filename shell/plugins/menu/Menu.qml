@@ -787,8 +787,14 @@ Item {
       return true
     }
 
-    var active = root.item(root.activeMenu)
+    var childId = root.activeMenu
+    var active = root.item(childId)
     root.setActiveMenu((active && active.parent) ? active.parent : "root", false)
+    var parentRow = root.indexOfItemId(childId)
+    if (parentRow >= 0) {
+      root.selectedIndex = parentRow
+      root.settleCursor()
+    }
     return true
   }
 

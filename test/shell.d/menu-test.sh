@@ -515,6 +515,10 @@ assert(
   'menu reloads volatile search providers when a remembered filter is restored'
 )
 assert(
+  /var childId = root\.activeMenu[\s\S]*?root\.setActiveMenu\(\(active && active\.parent\) \? active\.parent : "root", false\)[\s\S]*?var parentRow = root\.indexOfItemId\(childId\)[\s\S]*?root\.selectedIndex = parentRow[\s\S]*?root\.settleCursor\(\)/.test(menuQml),
+  'menu restores the child row when backing out of a directly opened route'
+)
+assert(
   /\(event\.key === Qt\.Key_Backspace \|\| event\.key === Qt\.Key_Left\) && !root\.filterText[\s\S]*root\.goBack\(\)/.test(menuQml),
   'menu Left key follows empty-filter Backspace navigation'
 )
