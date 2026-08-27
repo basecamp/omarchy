@@ -30,13 +30,23 @@
   document.documentElement.appendChild(tip);
 
   function getName(cell) {
+    // The avatar image's title is the contact/group name. An unread row can
+    // instead surface an indicator image (muted/pinned/etc.), so only trust the
+    // title when it reads like a name rather than a count or status word.
     const img = cell.querySelector("img[title]");
-    const t = img && img.getAttribute("title");
-    if (t && t.trim()) return t.trim();
+    if (img) {
+      const t = img.getAttribute("title").trim();
+      if (t && !/^\d+$/.test(t) && !/unread|message|muted|pinned|archived/i.test(t)) {
+        return t;
+      }
+    }
+    // Fallback: first text span that isn't the unread badge or a bare count,
+    // either of which would otherwise masquerade as the name in the tooltip.
     const spans = cell.querySelectorAll("span");
     for (const s of spans) {
+      if (s.matches('[aria-label*="unread"]')) continue;
       const x = s.textContent.trim();
-      if (x) return x;
+      if (x && !/^\d+$/.test(x)) return x;
     }
     return "";
   }
