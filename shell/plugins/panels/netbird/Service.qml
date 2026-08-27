@@ -236,6 +236,11 @@ Item {
     _desired = -1
     backendState = "Unavailable"
     statusText = message
+    // Failure paths re-set the applicable flag right after; anything else
+    // arriving here must not keep a stale daemon/socket notice alive.
+    daemonInactive = false
+    permissionDenied = false
+    lastError = ""
     selfName = ""
     selfFqdn = ""
     selfIp = ""

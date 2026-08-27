@@ -63,8 +63,9 @@ as the reserved token.
 The admin console the panel opens with `a` is derived from the management URL
 reported by `netbird status --json`, not hardcoded: `api.netbird.io` maps to the
 hosted dashboard, and any other origin is taken to serve its own dashboard at
-`https://<host[:port]>/peers` — a non-default port is kept, only the https
-default is dropped. That covers a self-hosted deployment without extra
+`<scheme>://<host[:port]>/peers` — an explicit http scheme and a non-default
+port are kept; only https's default :443 is dropped. That covers a self-hosted
+deployment without extra
 configuration, because NetBird serves its management API and its dashboard from
 one origin, port included.
 

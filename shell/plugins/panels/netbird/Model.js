@@ -39,9 +39,10 @@ function normalizeDaemonState(text) {
   if (value.indexOf("needslogin") !== -1) return "NeedsLogin"
   if (value.indexOf("loginfailed") !== -1) return "LoginFailed"
   if (value.indexOf("failedtostart") !== -1) return "FailedToStart"
+  // "disconnected" contains "connected", so rule it out first.
+  if (value.indexOf("disconnect") !== -1) return "Disconnected"
   if (value.indexOf("connecting") !== -1) return "Connecting"
   if (value.indexOf("connected") !== -1) return "Connected"
-  if (value.indexOf("disconnected") !== -1) return "Disconnected"
   if (value.indexOf("idle") !== -1) return "Idle"
   return ""
 }
@@ -193,7 +194,10 @@ function collapsedSectionsFile(collapsed) {
 }
 
 function wireguardMode(usesKernelInterface) {
-  return usesKernelInterface === true ? "kernel" : "userspace"
+  if (usesKernelInterface === true) return "kernel"
+  if (usesKernelInterface === false) return "userspace"
+  // An absent field is unknown, not userspace; healthRows omits the row.
+  return ""
 }
 
 function connectionLabel(peer) {
@@ -648,17 +652,24 @@ function urlHost(url) {
 function urlHostPort(url) {
   var value = String(url || "").trim()
   if (value === "") return ""
+  return value.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split("/")[0]
+}
 
-  var hostport = value.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split("/")[0]
-  if (hostport.slice(-4) === ":443") hostport = hostport.slice(0, -4)
-  return hostport
+function urlScheme(url) {
+  var match = String(url || "").trim().match(/^([a-z][a-z0-9+.-]*):\/\//i)
+  return match ? match[1].toLowerCase() : "https"
 }
 
 function adminConsoleUrl(managementUrl) {
   var host = urlHost(managementUrl)
   if (host === "") return CLOUD_ADMIN_URL
   if (/(^|\.)netbird\.io$/i.test(host)) return CLOUD_ADMIN_URL
-  return "https://" + urlHostPort(managementUrl) + "/peers"
+
+  // Keep an explicit http; :443 is only noise under https.
+  var scheme = urlScheme(managementUrl)
+  var origin = urlHostPort(managementUrl)
+  if (scheme === "https" && origin.slice(-4) === ":443") origin = origin.slice(0, -4)
+  return scheme + "://" + origin + "/peers"
 }
 
 // Management, signal, and relays fail independently — "connected but nothing
@@ -740,6 +751,7 @@ if (typeof module !== "undefined") {
     peerActivity: peerActivity,
     urlHost: urlHost,
     urlHostPort: urlHostPort,
+    urlScheme: urlScheme,
     healthRows: healthRows,
     parseProfilesText: parseProfilesText,
     defaultCollapsedSections: defaultCollapsedSections,

@@ -101,6 +101,11 @@ assert(stopped.ok && !stopped.running && !stopped.needsLogin, 'netbird treats an
 assertEqual(netbird.normalizeDaemonState('needs login'), 'NeedsLogin', 'netbird normalizes a spaced daemon state')
 assertEqual(netbird.normalizeDaemonState('LOGIN_FAILED'), 'LoginFailed', 'netbird normalizes an underscored daemon state')
 assertEqual(netbird.normalizeDaemonState('banana'), '', 'netbird reports nothing for an unknown daemon state')
+// "disconnected" contains "connected"; an explicit Disconnected must never read as up.
+assertEqual(netbird.normalizeDaemonState('Disconnected'), 'Disconnected', 'netbird reads an explicit Disconnected as down')
+assertEqual(netbird.normalizeDaemonState('Disconnecting'), 'Disconnected', 'netbird reads Disconnecting as down')
+const explicitDown = netbird.parseStatus(JSON.stringify({ daemonStatus: 'Disconnected', management: { connected: true } }))
+assert(!explicitDown.running, 'netbird trusts an explicit Disconnected over a live management link')
 
 const routesText = netbird.parseRoutes(`Available Routes:
 
@@ -211,9 +216,13 @@ assertEqual(netbird.adminConsoleUrl('https://api.netbird.io:443'), 'https://app.
 assertEqual(netbird.adminConsoleUrl('https://netbird.example.com:443'), 'https://netbird.example.com/peers', 'netbird derives a self-hosted console from its management URL')
 assertEqual(netbird.adminConsoleUrl('https://nb.corp.net:33073'), 'https://nb.corp.net:33073/peers', 'netbird keeps a non-default management port on the console URL')
 assertEqual(netbird.adminConsoleUrl('https://[2001:db8::1]:8443'), 'https://[2001:db8::1]:8443/peers', 'netbird keeps a non-default port on an IPv6 console URL')
-assertEqual(netbird.urlHostPort('https://a.example:443/x'), 'a.example', 'netbird drops the https default port from an origin')
-assertEqual(netbird.urlHostPort('https://a.example:8443/x'), 'a.example:8443', 'netbird keeps a non-default port in an origin')
-assertEqual(netbird.adminConsoleUrl('http://nb.corp.net'), 'https://nb.corp.net/peers', 'netbird serves the console over https even when management is plain http')
+assertEqual(netbird.urlHostPort('https://a.example:8443/x'), 'a.example:8443', 'netbird keeps a port in an origin')
+assertEqual(netbird.urlScheme('http://a.example'), 'http', 'netbird reads an explicit scheme')
+assertEqual(netbird.urlScheme('a.example'), 'https', 'netbird defaults a scheme-less URL to https')
+// An explicit http deployment must not be sent to an https console.
+assertEqual(netbird.adminConsoleUrl('http://netbird.lan:8080'), 'http://netbird.lan:8080/peers', 'netbird keeps an explicit http scheme on the console URL')
+assertEqual(netbird.adminConsoleUrl('http://netbird.lan:443'), 'http://netbird.lan:443/peers', 'netbird keeps :443 under http, where it is not the default')
+assertEqual(netbird.adminConsoleUrl('http://nb.corp.net'), 'http://nb.corp.net/peers', 'netbird keeps a plain-http management scheme on the console URL')
 assertEqual(netbird.adminConsoleUrl('nb.corp.net:443'), 'https://nb.corp.net/peers', 'netbird reads a management URL that carries no scheme')
 assertEqual(netbird.adminConsoleUrl('https://[2001:db8::1]:443'), 'https://[2001:db8::1]/peers', 'netbird keeps an IPv6 literal bracketed')
 assertEqual(netbird.adminConsoleUrl(''), 'https://app.netbird.io/peers', 'netbird falls back to the cloud console with no management URL')
@@ -251,6 +260,7 @@ assertEqual(netbird.sessionExpiry('', NOW).text, '', 'netbird stays quiet with n
 
 assertEqual(netbird.wireguardMode(true), 'kernel', 'netbird names the kernel WireGuard interface')
 assertEqual(netbird.wireguardMode(false), 'userspace', 'netbird names the userspace WireGuard interface')
+assertEqual(netbird.wireguardMode(undefined), '', 'netbird does not invent a WireGuard mode from a missing field')
 
 assertEqual(
   netbird.peerActivity({ TransferReceived: 5033165, TransferSent: 1258291, LastHandshake: '2026-08-26T09:00:00Z' }, NOW),
@@ -386,6 +396,7 @@ assert(/function moveCursor[\s\S]*?scrollCursorIntoView\(\)/.test(panelSource), 
 assert(/visible: netbird\.installed && netbird\.active && !root\.sectionCollapsed\("peers"\) && netbird\.peers\.length === 0/.test(panelSource), 'netbird can actually show the empty-peers message')
 assert(/noteStatusFailure\(stderr\.trim\(\) !== "" \? stderr : stdout\)/.test(serviceSource), 'netbird classifies a status failure from whichever stream carried it')
 assert(/collapsedFile\.reload\(\)/.test(panelSource), 'netbird re-reads the fold state after the startup race window')
+assert(/function resetUnavailable\(message\) \{[\s\S]*?daemonInactive = false[\s\S]*?permissionDenied = false/.test(serviceSource), 'netbird clears stale daemon and socket notices on reset')
 assert(/profilesHeader/.test(panelSource) && /peersHeader/.test(panelSource), 'netbird keeps folded sections reachable from the keyboard via their headings')
 assert(/if \(dx < 0 && !folded\)/.test(panelSource), 'netbird folds the focused section with the left arrow')
 assert(/copyPeerIp\(root\.copyTargetPeer\(\)\)/.test(panelSource), 'netbird copy keys only act on the visible, focused peer list')

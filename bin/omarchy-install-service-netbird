@@ -90,8 +90,13 @@ fi
 # Keep in step with adminConsoleUrl() in the panel's Model.js: the dashboard
 # shares the management origin, dropping only the default :443.
 if [[ -n $admin_url ]]; then
+  admin_scheme="${admin_url%%://*}"
   admin_origin="${admin_url#*://}"
-  webapp_url="https://${admin_origin%:443}/peers"
+  # :443 is only a default under https; an explicit http scheme is kept.
+  if [[ $admin_scheme == "https" ]]; then
+    admin_origin="${admin_origin%:443}"
+  fi
+  webapp_url="$admin_scheme://$admin_origin/peers"
 else
   webapp_url="https://app.netbird.io/peers"
 fi
