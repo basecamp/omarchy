@@ -15,6 +15,27 @@
     "displayName": "Network",
     "description": "Wi-Fi list and connection state",
     "category": "Network",
-    "allowMultiple": false
+    "allowMultiple": false,
+    "defaults": {
+      "scanOnOpen": true,
+      "scanHoldSec": 0
+    },
+    "schema": [
+      {
+        "key": "scanOnOpen",
+        "type": "boolean",
+        "label": "Scan for networks when the panel opens",
+        "defaultValue": true
+      },
+      {
+        "key": "scanHoldSec",
+        "type": "integer",
+        "label": "Stop scanning this many seconds after a sweep starts (0 = keep scanning while open)",
+        "min": 0,
+        "max": 300,
+        "step": 5,
+        "defaultValue": 0
+      }
+    ]
   }
 }

@@ -54,14 +54,16 @@ assert(/Scanner\.acquire\(root,/.test(scannerHelper[0]), 'network claims the sca
 
 // Bind the helper's free variables explicitly rather than leaking a `root`
 // into this scope, so the panel under test is the stand-in and not the suite.
-function bindSetScannerEnabled(Scanner, panel, opened, wifiDevice) {
+function bindSetScannerEnabled(Scanner, panel, opened, wifiDevice, scanPulsed, scanPulseActive) {
   // A claim counts only while its owner reports itself open, so the stand-in
-  // has to carry the same state the helper is being handed.
+  // has to carry the same state the helper is being handed. scanPulsed defaults
+  // to false, which is the shipped default (scanHoldSec 0) and the behaviour
+  // every case below this one asserts.
   panel.opened = opened
   return new Function(
-    'Scanner', 'root', 'opened', 'wifiDevice',
+    'Scanner', 'root', 'opened', 'wifiDevice', 'scanPulsed', 'scanPulseActive',
     scannerHelper[0] + '\nreturn setScannerEnabled'
-  )(Scanner, panel, opened, wifiDevice)
+  )(Scanner, panel, opened, wifiDevice, !!scanPulsed, !!scanPulseActive)
 }
 
 // A closed panel must never claim the scanner, whatever it asks for.
@@ -418,4 +420,49 @@ assertDeepEqual(
 
 assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }), '', 'network keeps wifi band state out of the hero')
 assertEqual(network.headerDetail({ type: 'ethernet', speed: '100' }), '100mbit', 'network keeps ethernet speed in the hero')
+
+// scanHoldSec turns the claim into a pulse. The point of the setting is that a
+// panel can be open without the radio being off-channel, so an open panel with
+// no pulse running must not claim -- the case that is a plain bug when the
+// setting is off.
+Scanner = loadScanner()
+const heldDevice = { scannerEnabled: false }
+const heldPanel = { name: 'held' }
+bindSetScannerEnabled(Scanner, heldPanel, true, heldDevice, true, false)(true)
+assert(
+  heldDevice.scannerEnabled === false && Scanner.claimCount(heldDevice) === 0,
+  'network does not claim the scanner for an open panel once its pulse has expired'
+)
+
+Scanner = loadScanner()
+const pulsingDevice = { scannerEnabled: false }
+const pulsingPanel = { name: 'pulsing' }
+bindSetScannerEnabled(Scanner, pulsingPanel, true, pulsingDevice, true, true)(true)
+assert(
+  pulsingDevice.scannerEnabled === true && Scanner.claimCount(pulsingDevice) === 1,
+  'network claims the scanner while a pulse is live'
+)
+
+// A pulse cannot resurrect a closed panel's claim either.
+Scanner = loadScanner()
+const closedPulseDevice = { scannerEnabled: false }
+bindSetScannerEnabled(Scanner, { name: 'closed-pulse' }, false, closedPulseDevice, true, true)(true)
+assert(
+  closedPulseDevice.scannerEnabled === false && Scanner.claimCount(closedPulseDevice) === 0,
+  'network keeps a closed panel from claiming even with a pulse marked live'
+)
+
+// The defaults have to reproduce the old behaviour exactly, or this setting is
+// a silent regression for everyone who never sets it.
+const networkManifest = JSON.parse(fs.readFileSync(root + '/shell/plugins/panels/network/manifest.json', 'utf8'))
+assertEqual(networkManifest.barWidget.defaults.scanOnOpen, true, 'network still scans on open by default')
+assertEqual(networkManifest.barWidget.defaults.scanHoldSec, 0, 'network still holds the scanner while open by default')
+assert(
+  /settings\.scanOnOpen/.test(panelSource) && /settings\.scanHoldSec/.test(panelSource),
+  'network reads both scan settings from its widget config'
+)
+assert(
+  /refresh\(scanOnOpen\)/.test(panelSource),
+  'network routes the panel-open scan through the scanOnOpen setting'
+)
 JS
