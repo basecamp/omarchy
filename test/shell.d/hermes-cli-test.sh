@@ -282,3 +282,29 @@ HOME="$leak_home" PATH="$leak_bin:$mock_bin:$PATH" \
 [[ -z $(cat "$leak_log") ]] ||
   fail "the interpreter pin does not follow Hermes into the commands it runs"
 pass "the interpreter pin does not follow Hermes into the commands it runs"
+
+# The app's marker says its install once landed, not that it is still there. A
+# wrapper whose runtime has since gone answers for nothing, so readiness runs
+# the command, exactly as it does for a hermes the user installed themselves.
+ready_home="$test_tmp/ready-home"
+mkdir -p "$ready_home/.hermes/hermes-agent/venv/bin" "$ready_home/.local/bin"
+touch "$ready_home/.hermes/hermes-agent/.hermes-bootstrap-complete"
+printf '%s\n' "#!/bin/bash" "exec $ready_home/.hermes/hermes-agent/venv/bin/hermes \"\$@\"" \
+  >"$ready_home/.local/bin/hermes"
+chmod +x "$ready_home/.local/bin/hermes"
+
+run_ready_check() {
+  OMARCHY_TEST_DESKTOP_INSTALLED=1 \
+    OMARCHY_TEST_MISE_LOG="$mise_log" \
+    HOME="$ready_home" \
+    PATH="$mock_bin:$PATH" \
+    bash "$ROOT/bin/omarchy-install-hermes-cli" --check >/dev/null 2>&1
+}
+
+run_ready_check && fail "--check rejects the app's wrapper when its runtime is gone"
+
+printf '%s\n' "#!/bin/bash" 'echo "hermes-agent 0.0.0-test"' \
+  >"$ready_home/.hermes/hermes-agent/venv/bin/hermes"
+chmod +x "$ready_home/.hermes/hermes-agent/venv/bin/hermes"
+run_ready_check || fail "--check accepts the app's wrapper once it runs"
+pass "readiness runs the app's command rather than trusting its marker"
