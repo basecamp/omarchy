@@ -82,6 +82,8 @@ Panel {
   property string bandSelected: "auto"
   property var bandAvailable: []
   property string pendingBand: ""
+  property var vpnConnections: []
+  property string vpnActionUuid: ""
 
   // Per-row in-flight state. `actionSsid` flips on for the row whose action
   // is currently running so it can render "Connecting…" / "Disconnecting…" /
@@ -211,6 +213,29 @@ Panel {
     if (root.bar) root.bar.run("nm-connection-editor")
   }
 
+  function refreshVpn() {
+    if (!vpnProc.running) vpnProc.running = true
+  }
+
+  function updateVpn(raw) {
+    var rows = []
+    var lines = String(raw || "").trim().split("\n")
+    for (var i = 0; i < lines.length; i++) {
+      if (!lines[i]) continue
+      var fields = lines[i].split("\t")
+      if (fields.length < 3) continue
+      rows.push({ uuid: fields[0], active: fields[1] === "1", name: fields.slice(2).join("\t") })
+    }
+    vpnConnections = rows
+  }
+
+  function toggleVpn(connection) {
+    if (!connection || vpnActionUuid !== "") return
+    vpnActionUuid = connection.uuid
+    vpnActionProc.command = ["nmcli", "connection", connection.active ? "down" : "up", "uuid", connection.uuid]
+    vpnActionProc.running = true
+  }
+
   IpcHandler {
     target: "omarchy.network"
 
@@ -324,6 +349,7 @@ Panel {
   onOpenedChanged: {
     if (opened) {
       refresh(true)
+      refreshVpn()
       selectedIndex = wifiNetworks.length > 0 ? 0 : -1
       wifiActionFocused = false
       focusSection = wifiNetworks.length > 0 ? "wifi" : "dns"
@@ -808,7 +834,10 @@ Panel {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
-  Component.onCompleted: refresh()
+  Component.onCompleted: {
+    refresh()
+    refreshVpn()
+  }
 
   // Pulls everything we want about the active route's interface in one shot.
   Process {
@@ -900,6 +929,31 @@ Panel {
     repeat: true
     running: root.opened
     onTriggered: if (!detailsProc.running) detailsProc.running = true
+  }
+
+  Timer {
+    id: vpnPoll
+    interval: 2000
+    repeat: true
+    running: root.opened
+    onTriggered: root.refreshVpn()
+  }
+
+  Process {
+    id: vpnProc
+    command: ["bash", "-c", "active=$(nmcli -t --escape no -f UUID,TYPE connection show --active 2>/dev/null | awk -F: '$2 == \\\"vpn\\\" { print $1 }'); nmcli -t --escape no -f UUID,TYPE,NAME connection show 2>/dev/null | awk -F: -v active=\"$active\" '$2 == \\\"vpn\\\" { uuid=$1; name=$0; sub(/^[^:]*:[^:]*:/, \\\"\\\", name); state=index(\\\"\\n\\\" active \\\"\\n\\\", \\\"\\n\\\" uuid \\\"\\n\\\") ? 1 : 0; print uuid \\\"\\t\\\" state \\\"\\t\\\" name }'"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateVpn(text)
+    }
+  }
+
+  Process {
+    id: vpnActionProc
+    onExited: {
+      root.vpnActionUuid = ""
+      root.refreshVpn()
+    }
   }
 
   Timer {
@@ -1228,6 +1282,68 @@ Panel {
           }
         }
 
+      }
+
+      // Connection details: transfer metrics first, then IP/Gateway.
+      PanelSeparator {
+        visible: root.vpnConnections.length > 0
+        foreground: root.bar.foreground
+      }
+
+      Column {
+        visible: root.vpnConnections.length > 0
+        width: parent.width
+        spacing: Style.space(8)
+
+        PanelSectionHeader {
+          text: "VPN CONNECTIONS"
+          foreground: root.bar.foreground
+          fontFamily: root.bar.fontFamily
+        }
+
+        Repeater {
+          model: root.vpnConnections
+
+          delegate: Item {
+            required property var modelData
+            width: parent.width
+            implicitHeight: vpnRow.implicitHeight
+
+            RowLayout {
+              id: vpnRow
+              width: parent.width
+              spacing: Style.space(8)
+
+              Text {
+                text: modelData.active ? "󰌆" : "󰦜"
+                color: modelData.active ? Color.accent : root.bar.foreground
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.body
+              }
+
+              Text {
+                text: modelData.name
+                color: root.bar.foreground
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.body
+                elide: Text.ElideRight
+                Layout.fillWidth: true
+              }
+
+              Button {
+                text: modelData.active ? "Disconnect" : "Connect"
+                enabled: root.vpnActionUuid === "" || root.vpnActionUuid === modelData.uuid
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                fontSize: Style.font.bodySmall
+                horizontalPadding: Style.spacing.controlPaddingX
+                verticalPadding: Style.spacing.controlPaddingY
+                bordered: true
+                onClicked: root.toggleVpn(modelData)
+              }
+            }
+          }
+        }
       }
 
       // Connection details: transfer metrics first, then IP/Gateway.
