@@ -10,18 +10,16 @@ function copyUrl(url) {
   });
 }
 
-function copyMarkdownLink(tab) {
-  if (!tab || !tab.url) return;
-
-  copyUrl(`[${tab.title || tab.url}](<${tab.url}>)`);
-}
-
 chrome.commands.onCommand.addListener((command) => {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    const [tab] = tabs;
+    const url = tab?.url;
+    if (!url) return;
     if (command === 'copy-url') {
-      copyUrl(tabs[0] && tabs[0].url);
+      copyUrl(url);
     } else if (command === 'copy-markdown-link') {
-      copyMarkdownLink(tabs[0]);
+      const title = tab.title || url;
+      copyUrl(`[${title}](<${url}>)`);
     }
   });
 });
