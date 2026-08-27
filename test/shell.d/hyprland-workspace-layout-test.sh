@@ -116,22 +116,30 @@ grep -q "Workspace layout set to" "$notify_file" &&
   fail "workspace layout toggle does not claim success for a rule that matched nothing"
 pass "workspace layout toggle reports a rule that applied to nothing"
 
-# ── leftover id-keyed file is removed on upgrade ─────────────────────────────
-# require_all.files globs every *.lua, so a leftover <id>.lua from the old
-# scheme would load alongside the new name-based rule.
+# ── leftover id-keyed files are removed on upgrade ───────────────────────────
+# require_all.files globs every *.lua. The leftover for this workspace is named
+# after an id it no longer has; the file matching the current id usually
+# belongs to a different workspace. Sweep every bare negative-id file.
 : >"$log_file"
 : >"$notify_file"
-stale_id_file="$home_dir/.local/state/omarchy/workspace-layouts/-1340.lua"
-mkdir -p "$(dirname "$stale_id_file")"
-printf 'hl.workspace_rule({ workspace = "-1340", layout = "dwindle" })\n' >"$stale_id_file"
+layouts_dir="$home_dir/.local/state/omarchy/workspace-layouts"
+mkdir -p "$layouts_dir"
+printf 'hl.workspace_rule({ workspace = "-1337", layout = "dwindle" })\n' >"$layouts_dir/-1337.lua"
+printf 'hl.workspace_rule({ workspace = "-1340", layout = "dwindle" })\n' >"$layouts_dir/-1340.lua"
+printf 'hl.workspace_rule({ workspace = "4", layout = "dwindle" })\n' >"$layouts_dir/4.lua"
+rm -f "$named_file"
 run_toggle HYPRCTL_STATE="$tmpdir/s4" HYPRCTL_ID=-1340 HYPRCTL_NAME="DP-1 desk:1" \
   HYPRCTL_ACCEPTS="name:DP-1 desk:1" ||
   fail "workspace layout toggle succeeds when replacing an id-keyed state file"
-[[ -f $stale_id_file ]] &&
-  fail "workspace layout toggle removes the leftover id-keyed file"
+[[ -f $layouts_dir/-1337.lua ]] &&
+  fail "workspace layout toggle removes this workspace's leftover id-keyed file"
+[[ -f $layouts_dir/-1340.lua ]] &&
+  fail "workspace layout toggle removes leftover files even when they match the current id"
+[[ -f $layouts_dir/4.lua ]] ||
+  fail "workspace layout toggle leaves numeric workspace files alone"
 [[ -f $named_file ]] ||
   fail "workspace layout toggle still writes the name-based state file"
-pass "workspace layout toggle removes the leftover id-keyed state file"
+pass "workspace layout toggle removes leftover id-keyed state files"
 
 # ── readback uses the named workspace, not a later active workspace ──────────
 # If the user switches away between apply and readback, re-querying
@@ -160,7 +168,7 @@ fi
   fail "workspace layout toggle does not persist a rule without a workspace id"
 pass "workspace layout toggle ignores broken hyprctl output"
 
-HOME="$home_dir" OMARCHY_PATH="$ROOT" lua <<'LUA'
+HOME="$home_dir" XDG_STATE_HOME="$home_dir/.local/state" OMARCHY_PATH="$ROOT" lua <<'LUA'
 local rules = {}
 
 hl = {

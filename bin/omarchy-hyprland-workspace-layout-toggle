@@ -42,11 +42,11 @@ mkdir -p "$LAYOUTS_DIR"
 printf 'hl.workspace_rule({ workspace = "%s", layout = "%s" })\n' "$ESCAPED_SELECTOR" "$NEW_LAYOUT" >"$LAYOUT_FILE"
 
 # Named workspaces used to persist as <id>.lua. require_all.files globs every
-# *.lua at -maxdepth 1, so leaving that file behind loads both the new name
-# rule and a leftover keyed on an id Hyprland will reassign next session.
-if (( ACTIVE_WORKSPACE_ID < 0 )); then
-  rm -f "$LAYOUTS_DIR/${ACTIVE_WORKSPACE_ID}.lua"
-fi
+# *.lua at -maxdepth 1. Ids are reassigned each session, so a leftover is not
+# necessarily named after the id this workspace has now. Under the new scheme a
+# negative id always persists as name-<...>, so every bare negative filename
+# left in here is from the old scheme and safe to drop.
+rm -f "$LAYOUTS_DIR"/-[0-9]*.lua
 
 hyprctl eval "hl.workspace_rule({ workspace = \"$ESCAPED_SELECTOR\", layout = \"$NEW_LAYOUT\" })" >/dev/null 2>&1 ||
   hyprctl keyword workspace "$WORKSPACE_SELECTOR, layout:$NEW_LAYOUT"
