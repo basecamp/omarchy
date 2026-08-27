@@ -4,6 +4,7 @@ source "$(dirname "$0")/base-test.sh"
 
 require_command jq
 require_command python3
+require_command rg
 
 TEST_HOME=$(mktemp -d)
 trap 'rm -rf "$TEST_HOME"' EXIT
@@ -37,6 +38,7 @@ EOF
 chmod +x "$TEST_HOME/bin/codex"
 
 timestamp="$(date +%Y-%m-%d)T12:00:00Z"
+collision_timestamp="$(date +%Y-%m-%d)T12:00:01Z"
 session="$TEST_HOME/.codex/sessions/$(date +%Y/%m/%d)/rollout.jsonl"
 cat >"$session" <<EOF
 {"timestamp":"$timestamp","type":"turn_context","payload":{"model":"gpt-test"}}
@@ -74,8 +76,22 @@ PI_HOME=$(mktemp -d)
 trap 'rm -rf "$TEST_HOME" "$PI_HOME"' EXIT
 mkdir -p "$PI_HOME/bin" "$PI_HOME/.pi/agent/sessions/project" "$PI_HOME/.omp/agent/sessions/project"
 cp "$TEST_HOME/bin/codex" "$PI_HOME/bin/codex"
+real_rg=$(command -v rg)
+cat >"$PI_HOME/bin/rg" <<EOF
+#!/bin/bash
+exec "$real_rg" --sort path "\$@"
+EOF
+chmod +x "$PI_HOME/bin/rg"
 cat >"$PI_HOME/.pi/agent/sessions/project/pi.jsonl" <<EOF
-{"type":"message","id":"pi-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","api":"openai-codex-responses","model":"gpt-pi","usage":{"input":10,"output":4,"cacheRead":3,"cacheWrite":2,"totalTokens":19}}}
+{"type":"message","id":"deadbeef","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","api":"openai-codex-responses","model":"gpt-pi","usage":{"input":10,"output":4,"cacheRead":3,"cacheWrite":2,"totalTokens":19}}}
+EOF
+cat >"$PI_HOME/.pi/agent/sessions/project/pi-fork.jsonl" <<EOF
+{"type":"session","id":"pi-fork","parentSession":"$PI_HOME/.pi/agent/sessions/project/pi.jsonl"}
+{"type":"message","id":"deadbeef","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","api":"openai-codex-responses","model":"gpt-pi","usage":{"input":10,"output":4,"cacheRead":3,"cacheWrite":2,"totalTokens":19}}}
+{"type":"message","id":"cafebabe","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","api":"openai-codex-responses","model":"gpt-pi","usage":{"input":6,"output":1,"cacheRead":0,"cacheWrite":0,"totalTokens":7}}}
+EOF
+cat >"$PI_HOME/.pi/agent/sessions/project/pi-id-collision.jsonl" <<EOF
+{"type":"message","id":"deadbeef","timestamp":"$collision_timestamp","message":{"role":"assistant","provider":"openai-codex","api":"openai-codex-responses","model":"gpt-pi","usage":{"input":8,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":8}}}
 EOF
 cat >"$PI_HOME/.omp/agent/sessions/project/omp.jsonl" <<EOF
 { "type": "message", "id": "omp-1", "timestamp": "$timestamp", "message": { "role": "assistant", "provider": "openai-codex", "model": "gpt-omp", "usage": { "input": 20, "output": 5, "cacheRead": 4, "cacheWrite": 1, "totalTokens": 30 } } }
@@ -85,11 +101,15 @@ EOF
 result=$(HOME="$PI_HOME" CODEX_HOME="$PI_HOME/.codex" XDG_DATA_HOME="$PI_HOME/.local/share" \
   PATH="$PI_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
 
-[[ $(jq -r '.todayTotalTokens' <<<"$result") == "49" ]] ||
-  fail "Codex collector counts usage from pi and omp sessions" "$result"
-[[ $(jq -c '.modelUsage' <<<"$result") == '{"gpt-pi":{"inputTokens":10,"outputTokens":4,"cacheReadInputTokens":3,"cacheCreationInputTokens":2},"gpt-omp":{"inputTokens":20,"outputTokens":5,"cacheReadInputTokens":4,"cacheCreationInputTokens":1}}' ]] ||
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "64" ]] ||
+  fail "Codex collector counts Pi fork and OMP usage once" "$result"
+[[ $(jq -c '.modelUsage' <<<"$result") == '{"gpt-pi":{"inputTokens":24,"outputTokens":5,"cacheReadInputTokens":3,"cacheCreationInputTokens":2},"gpt-omp":{"inputTokens":20,"outputTokens":5,"cacheReadInputTokens":4,"cacheCreationInputTokens":1}}' ]] ||
   fail "Codex collector filters pi and omp sessions to Codex providers" "$result"
-pass "Codex collector counts pi and omp subscription usage"
+[[ $(jq -r '.todayPrompts' <<<"$result") == "4" ]] ||
+  fail "Codex collector keeps distinct Pi messages with colliding IDs" "$result"
+[[ $(jq -c '[.todaySessions,.totalSessions]' <<<"$result") == '[4,4]' ]] ||
+  fail "Codex collector attributes new fork usage to its own session" "$result"
+pass "Codex collector deduplicates Pi forks without collapsing ID collisions"
 
 # A subscription burned entirely through opencode has no native session files;
 # usage must come from opencode's message database, filtered to OpenAI.
