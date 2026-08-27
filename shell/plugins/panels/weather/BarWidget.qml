@@ -8,8 +8,10 @@ BarWidget {
 
   // "showTemperature" on the bar entry turns the icon-only pill into a padded
   // "<icon> <temp>°" label, laid out like the clock. Default is icon-only, so
-  // an existing bar is unchanged.
-  readonly property bool showTemperature: setting("showTemperature", false) === true
+  // an existing bar is unchanged. Vertical bars keep the compact icon-only
+  // slot regardless (as the clock and media widgets do) -- a text label would
+  // paint past the narrow edge.
+  readonly property bool showTemperature: !vertical && setting("showTemperature", false) === true
 
   readonly property string barLabel: {
     var p = panelLoader.item
