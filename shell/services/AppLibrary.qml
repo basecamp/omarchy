@@ -26,6 +26,7 @@ Item {
   property int launchSerial: 0
   property int launchToplevelCount: 0
   property var launchActiveToplevel: null
+  property var launchExistingToplevel: null
   // True while the launch OSD is on screen. It outlives the launch that opened
   // it: the OSD shows with duration 0, so only closeLaunchFeedback() takes it
   // down.
@@ -77,7 +78,7 @@ Item {
   function launch(desktopId, name) {
     var id = String(desktopId || "")
     if (!id) return
-    root.beginLaunchFeedback(name)
+    root.beginLaunchFeedback(id, name)
     // Start gtk-launch inside a scope under app-graphical.slice so apps do not
     // inherit wayland-wm@.service. Keeping gtk-launch as the desktop-entry
     // resolver supports IDs with spaces and entries that UWSM rejects.
@@ -157,10 +158,23 @@ Item {
     try { return ToplevelManager.toplevels.values.length } catch (e) { return 0 }
   }
 
-  function beginLaunchFeedback(name) {
+  function existingToplevelFor(desktopId) {
+    var entry = DesktopEntries.byId(desktopId)
+    var startupClass = String((entry && entry.startupClass) || "")
+    var toplevels = ToplevelManager.toplevels.values || []
+
+    for (var i = 0; i < toplevels.length; i++) {
+      if (AppSearch.appIdsMatch(desktopId, startupClass, toplevels[i] && toplevels[i].appId)) return toplevels[i]
+    }
+
+    return null
+  }
+
+  function beginLaunchFeedback(desktopId, name) {
     root.launchSerial++
     root.launchToplevelCount = root.toplevelCount()
     root.launchActiveToplevel = ToplevelManager.activeToplevel
+    root.launchExistingToplevel = root.existingToplevelFor(desktopId)
     root.launchOsdMessage = "Launching " + String(name || "application") + "…"
     launchDelay.restart()
     launchTimeout.restart()
@@ -241,6 +255,14 @@ Item {
     interval: 2000
     onTriggered: {
       if (root.toplevelCount() > root.launchToplevelCount || ToplevelManager.activeToplevel !== root.launchActiveToplevel) return
+      // A single-instance app may accept the second launch without mapping or
+      // activating a window. Focus the window that existed before the launch
+      // instead of showing launch feedback until the timeout.
+      if (root.launchExistingToplevel) {
+        root.launchExistingToplevel.activate()
+        root.closeLaunchFeedback(root.launchSerial)
+        return
+      }
       root.launchOsdOpen = true
       Quickshell.execDetached(["omarchy-shell", "osd", "show", JSON.stringify({ icon: "󱓞", message: root.launchOsdMessage, duration: 0 })])
     }
