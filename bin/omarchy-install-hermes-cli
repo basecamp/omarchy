@@ -73,11 +73,14 @@ foreign_hermes() {
   [[ -e $HOME/.local/bin/hermes || -L $HOME/.local/bin/hermes ]] && ! ours
 }
 
-# A foreign path is usable when it is a command: a regular file that runs.
-# A directory passes -x on search permission alone, and is no more a command
-# than a dangling link is.
+# A foreign path is usable when it is a command that runs: a regular executable
+# whose --version answers. The executable bit alone proves little -- a directory
+# passes -x on search permission, and a wrapper whose interpreter or target is
+# gone passes it too. The desktop app applies the same probe with the same 15
+# second budget, so what passes here is what it will use.
 foreign_hermes_runs() {
-  [[ -f $HOME/.local/bin/hermes && -x $HOME/.local/bin/hermes ]]
+  [[ -f $HOME/.local/bin/hermes && -x $HOME/.local/bin/hermes ]] &&
+    timeout 15 "$HOME/.local/bin/hermes" --version >/dev/null 2>&1
 }
 
 # --check lets callers tell a cold stub from a working one before they commit
