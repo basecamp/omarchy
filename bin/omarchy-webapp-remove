@@ -8,6 +8,7 @@ set -e
 ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
 OLD_ICON_DIR="$HOME/.local/share/applications/icons"
 DESKTOP_DIR="$HOME/.local/share/applications/"
+WEBAPP_DATA_DIR="$HOME/.local/share/omarchy/webapps"
 
 if (( $# == 0 )); then
   # Find all web apps
@@ -34,7 +35,14 @@ if [[ -z $APP_NAME ]]; then
 fi
 
 icon_name=$(printf '%s\n' "$APP_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//')
-rm -f "$DESKTOP_DIR/$APP_NAME.desktop"
+DESKTOP_FILE="$DESKTOP_DIR/$APP_NAME.desktop"
+if [[ -f $DESKTOP_FILE ]]; then
+  isolate_name=$(sed -n 's/.*--isolate=\([^ ]*\).*/\1/p' "$DESKTOP_FILE")
+  if [[ -n $isolate_name && -d $WEBAPP_DATA_DIR/$isolate_name ]]; then
+    rm -rf "$WEBAPP_DATA_DIR/$isolate_name"
+  fi
+fi
+rm -f "$DESKTOP_FILE"
 rm -f "$ICON_DIR/$icon_name.png" "$ICON_DIR/$APP_NAME.png" "$OLD_ICON_DIR/$APP_NAME.png"
 
 if [[ ${OMARCHY_REMOVE_NOTIFY:-true} != "false" ]]; then

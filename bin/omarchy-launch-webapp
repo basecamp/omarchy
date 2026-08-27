@@ -1,7 +1,35 @@
 #!/bin/bash
 
 # omarchy:summary=Launch a URL as a web app in the default supported browser
-# omarchy:args=<url>
+# omarchy:args=<url> [--isolate|--isolate=<name>] [browser-flags...]
+# omarchy:examples=omarchy launch-webapp https://example.com | omarchy launch-webapp https://mail.example.com --isolate=mail
+
+# --isolate / --isolate=<name> starts a separate browser process via
+# --user-data-dir, so a crash in the webapp cannot take down the main browser.
+
+URL="$1"
+shift
+
+ISOLATE=false
+ISOLATE_NAME=""
+EXTRA_ARGS=()
+while (($# > 0)); do
+  case "$1" in
+  --isolate)
+    ISOLATE=true
+    shift
+    ;;
+  --isolate=*)
+    ISOLATE=true
+    ISOLATE_NAME="${1#--isolate=}"
+    shift
+    ;;
+  *)
+    EXTRA_ARGS+=("$1")
+    shift
+    ;;
+  esac
+done
 
 browser=$(xdg-settings get default-web-browser)
 
@@ -10,4 +38,16 @@ google-chrome* | brave* | microsoft-edge* | opera* | vivaldi* | helium*) ;;
 *) browser="chromium.desktop" ;;
 esac
 
-exec setsid uwsm-app -- $(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1) --app="$1" "${@:2}"
+browser_bin=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1)
+
+isolation_args=()
+if [[ $ISOLATE == true ]]; then
+  if [[ -z $ISOLATE_NAME ]]; then
+    ISOLATE_NAME=$(sed -E 's|^https?://||; s|/.*||; s|^www\.||' <<<"$URL")
+  fi
+  data_dir="$HOME/.local/share/omarchy/webapps/$ISOLATE_NAME"
+  mkdir -p "$data_dir"
+  isolation_args=(--user-data-dir="$data_dir")
+fi
+
+exec setsid uwsm-app -- "$browser_bin" --app="$URL" "${isolation_args[@]}" "${EXTRA_ARGS[@]}"

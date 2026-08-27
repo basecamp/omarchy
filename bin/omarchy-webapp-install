@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Create a desktop launcher for a web app
-# omarchy:args=[name url icon-url-or-name [custom-exec] [mime-types]]
+# omarchy:args=[--isolate] [name url icon-url-or-name [custom-exec] [mime-types]]
 
 set -e
 
@@ -65,6 +65,17 @@ fetch_site_icon() {
     download_icon "https://www.google.com/s2/favicons?domain=${site_url}&sz=256" "$dest"
 }
 
+ISOLATE=false
+ARGS=()
+for arg in "$@"; do
+  if [[ $arg == "--isolate" ]]; then
+    ISOLATE=true
+  else
+    ARGS+=("$arg")
+  fi
+done
+set -- "${ARGS[@]}"
+
 if (( $# < 3 )); then
   echo -e "\e[32mLet's create a new web app you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
@@ -86,6 +97,12 @@ if (( $# < 3 )); then
   CUSTOM_EXEC=""
   MIME_TYPES=""
   INTERACTIVE_MODE=true
+
+  if [[ $ISOLATE != true ]]; then
+    if gum confirm "Isolate this webapp? (separate process, won't crash main browser, but requires separate login)"; then
+      ISOLATE=true
+    fi
+  fi
 else
   APP_NAME="$1"
   APP_URL="$2"
@@ -128,8 +145,17 @@ else
   ICON_VALUE=$(icon_name_from_ref "$ICON_REF")
 fi
 
+ISOLATE_FLAG=""
+if [[ $ISOLATE == true ]]; then
+  SANITIZED_NAME=$(safe_icon_name "$APP_NAME")
+  if [[ -z $SANITIZED_NAME ]]; then
+    SANITIZED_NAME="webapp"
+  fi
+  ISOLATE_FLAG=" --isolate=$SANITIZED_NAME"
+fi
+
 # Use custom exec if provided, otherwise default behavior
-EXEC_COMMAND="${CUSTOM_EXEC:-omarchy-launch-webapp $APP_URL}"
+EXEC_COMMAND="${CUSTOM_EXEC:-omarchy-launch-webapp $APP_URL$ISOLATE_FLAG}"
 
 # Create application .desktop file
 DESKTOP_FILE="$HOME/.local/share/applications/$APP_NAME.desktop"
@@ -155,5 +181,9 @@ fi
 chmod +x "$DESKTOP_FILE"
 
 if [[ $INTERACTIVE_MODE == "true" ]]; then
-  echo -e "You can now find $APP_NAME using the app launcher (SUPER + SPACE)\n"
+  if [[ $ISOLATE == true ]]; then
+    echo -e "You can now find $APP_NAME using the app launcher (SUPER + SPACE)\nThis webapp will run in an isolated process. You'll need to log in separately.\n"
+  else
+    echo -e "You can now find $APP_NAME using the app launcher (SUPER + SPACE)\n"
+  fi
 fi
