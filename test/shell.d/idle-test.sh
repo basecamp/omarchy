@@ -89,10 +89,29 @@ fi
 
 pass "Stay Awake toggle persists state without reentrant shell IPC"
 
-rg -q 'Quickshell.Services.UPower' "$ROOT/shell/plugins/services/idle/Service.qml" ||
-  fail "idle service reads the power source from UPower"
-rg -q 'IdleModel.effectiveTimeouts' "$ROOT/shell/plugins/services/idle/Service.qml" ||
-  fail "idle service resolves timeouts through IdleModel.effectiveTimeouts"
-rg -q 'monitorArmed' "$ROOT/shell/plugins/services/idle/Service.qml" ||
-  fail "idle service re-arms the idle monitor when timeouts change"
-pass "idle service selects timeouts by power source and re-arms on change"
+run_node_test <<'JS'
+const fs = require('fs')
+const serviceQml = fs.readFileSync(path.join(root, 'shell/plugins/services/idle/Service.qml'), 'utf8')
+
+assert(
+  /import Quickshell\.Services\.UPower/.test(serviceQml),
+  'idle service reads the power source from UPower'
+)
+assert(
+  /IdleModel\.effectiveTimeouts\(idleConfig, UPower\.onBattery/.test(serviceQml),
+  'idle service resolves timeouts through IdleModel.effectiveTimeouts'
+)
+assert(
+  /IdleMonitor \{[\s\S]*?enabled:\s*root\.idleEnabled && root\.monitorArmed/.test(serviceQml),
+  'IdleMonitor.enabled is gated on monitorArmed'
+)
+assert(
+  /onScreensaverTimeoutSecondsChanged:\s*root\.handleIdleTimeoutsChanged\(\)/.test(serviceQml) &&
+    /onLockTimeoutSecondsChanged:\s*root\.handleIdleTimeoutsChanged\(\)/.test(serviceQml),
+  'timeout changes invoke the idle-monitor re-arm'
+)
+assert(
+  /root\.monitorArmed = false[\s\S]*?Qt\.callLater\(function\(\) \{ root\.monitorArmed = true \}\)/.test(serviceQml),
+  're-arm disables the monitor and enables it again on the next tick'
+)
+JS

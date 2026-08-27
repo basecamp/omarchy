@@ -16,7 +16,7 @@ home="$test_dir/home"
 config="$home/.config/omarchy/shell.json"
 
 run_migration() {
-  HOME="$home" bash -euo pipefail "$migration" >/dev/null
+  HOME="$home" PATH="$ROOT/bin:$PATH" bash -euo pipefail "$migration" >/dev/null
 }
 
 write_config() {
