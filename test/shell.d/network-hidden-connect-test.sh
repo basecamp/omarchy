@@ -115,7 +115,7 @@ printf 'secret pass\n' | PATH="$tmp/bin:$PATH" \
   NM_CALL_LOG="$log" NM_EDIT_INPUT="$edit" \
   NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS" \
   bash -c "$psk_script" nmcli-hidden-psk "my ssid" wpa-psk || rc=$?
-[[ $rc -eq 0 ]] || fail "hidden PSK connect succeeds when activation and autoconnect arm both succeed" "exit code: $rc"
+(( rc == 0 )) || fail "hidden PSK connect succeeds when activation and autoconnect arm both succeed" "exit code: $rc"
 pass "hidden PSK connect succeeds when activation and autoconnect arm both succeed"
 
 add_line=$(grep -m1 -F "connection add" "$log")
@@ -159,7 +159,7 @@ printf 'secret pass\n' | PATH="$tmp/bin:$PATH" \
   NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS" \
   NM_UP_RC=1 \
   bash -c "$psk_script" nmcli-hidden-psk "my ssid" wpa-psk || rc=$?
-[[ $rc -ne 0 ]] || fail "hidden PSK connect fails when activation fails"
+(( rc != 0 )) || fail "hidden PSK connect fails when activation fails"
 pass "hidden PSK connect fails when activation fails"
 
 assert_contains "$log" "connection delete uuid new-uuid-0000" "hidden PSK activation failure lets the EXIT trap delete the unproven profile"
@@ -181,7 +181,7 @@ printf 'secret pass\n' | PATH="$tmp/bin:$PATH" \
 # Success is pinned to activation, not to the autoconnect arm -- the
 # connection really is up, so the overall attempt must report success even
 # though the arm step failed.
-[[ $rc -eq 0 ]] || fail "hidden PSK connect still succeeds when only the autoconnect arm fails" "exit code: $rc"
+(( rc == 0 )) || fail "hidden PSK connect still succeeds when only the autoconnect arm fails" "exit code: $rc"
 pass "hidden PSK connect still succeeds when only the autoconnect arm fails"
 
 assert_not_contains "$log" "delete uuid old-hidden" "hidden PSK arm failure keeps the old, still-autoconnecting profile"
@@ -213,7 +213,7 @@ kill -TERM "$pid"
 rc=0
 wait "$pid" || rc=$?
 
-[[ $rc -ne 0 ]] || fail "hidden PSK connect reports failure when killed mid-activation"
+(( rc != 0 )) || fail "hidden PSK connect reports failure when killed mid-activation"
 pass "hidden PSK connect reports failure when killed mid-activation"
 
 assert_contains "$log" "connection delete uuid new-uuid-0000" "hidden PSK termination lets the EXIT trap delete the unproven profile"
@@ -229,7 +229,7 @@ printf '\n' | PATH="$tmp/bin:$PATH" \
   NM_CALL_LOG="$log" NM_EDIT_INPUT="$tmp/edit_open_success" \
   NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS" \
   bash -c "$open_script" nmcli-hidden-open "my ssid" || rc=$?
-[[ $rc -eq 0 ]] || fail "hidden open connect succeeds when activation and autoconnect arm both succeed" "exit code: $rc"
+(( rc == 0 )) || fail "hidden open connect succeeds when activation and autoconnect arm both succeed" "exit code: $rc"
 pass "hidden open connect succeeds when activation and autoconnect arm both succeed"
 
 add_line=$(grep -m1 -F "connection add" "$log")
@@ -263,7 +263,7 @@ printf '\n' | PATH="$tmp/bin:$PATH" \
   NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS" \
   NM_UP_RC=1 \
   bash -c "$open_script" nmcli-hidden-open "my ssid" || rc=$?
-[[ $rc -ne 0 ]] || fail "hidden open connect fails when activation fails"
+(( rc != 0 )) || fail "hidden open connect fails when activation fails"
 pass "hidden open connect fails when activation fails"
 
 assert_contains "$log" "connection delete uuid new-uuid-0000" "hidden open activation failure lets the EXIT trap delete the unproven profile"
