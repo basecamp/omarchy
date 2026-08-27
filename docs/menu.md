@@ -42,7 +42,7 @@ submenu. The fields:
 | `aliases` | Alternate `omarchy menu summon <name>` routes; also searchable |
 | `description` | Subtitle shown while searching, and extra search text matched by whole word |
 | `when` / `checked` / `disabled` | Shell conditions (see Guards) |
-| `hotkey` | Chord chip on the row's right edge; normally derived from the live keybindings (see Hotkey chips), declared only to override |
+| `hotkey` | Chord chip on the row's right edge, written as `SUPER + K` and shortened for display; normally derived from the live keybindings (see Hotkey chips), declared only to override |
 
 Do not add `aliases` to new entries. They are reserved for established
 alternate names users already type (`power-menu`, `settings`), kept for
@@ -100,7 +100,9 @@ to remove. `menu-test.sh` enforces the Install side of this convention.
 
 ## Hotkey chips
 
-A row a keybinding also reaches shows that chord as a small chip on its right edge — Learn > Keybindings carries `SUPER + K`, the System submenu carries `SUPER + ESCAPE`, and the default terminal's row in Apps carries `SUPER + RETURN`. The chips teach the faster path to what the user just navigated to.
+A row a keybinding also reaches shows that chord as a small chip on its right edge — Learn > Keybindings carries `SUP+K`, the System submenu carries `SUP+ESC`, and the default terminal's row in Apps carries `SUP+RET`. The chips teach the faster path to what the user just navigated to.
+
+A chip annotates a label, so it is spelled to stay out of its way: modifiers shorten to three letters, long X11 key names read as what the key does (`XF86MonBrightnessDown` becomes `BRIDN`), and the chip renders a step under caption, capped at a third of the row so a long chord elides before the title does. The keybindings menu keeps the spelled-out `SUPER + K` — it has the width for it.
 
 The chords are derived, not declared: `omarchy-menu-hotkeys` reads the same records as the keybindings menu (`omarchy-menu-keybindings --records`, cached in `~/.cache/omarchy`) and reports one `cmd`/`app` row per exec chord. The shell runs it like the guard batch — once per (re)load and per open, never blocking the open path — and `MenuModel.hotkeyIndex` matches the rows on:
 

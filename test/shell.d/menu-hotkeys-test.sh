@@ -108,6 +108,23 @@ const rows = menu.parseHotkeyLines([
 
 assertEqual(rows.length, 6, 'hotkey lines parse rows and drop malformed ones')
 
+assertEqual(
+  menu.compactChord('SUPER SHIFT CTRL + SPACE'),
+  'SUP+SFT+CTL+SPC',
+  'chips spell modifiers short and join them without padding'
+)
+assertEqual(
+  menu.compactChord('SHIFT + XF86MonBrightnessDown'),
+  'SFT+BRIDN',
+  'chips name what a media key does rather than its X11 spelling'
+)
+assertEqual(
+  menu.compactChord('SUPER + XF86Sleep'),
+  'SUP+SLEEP',
+  'an unnamed media key still sheds the vendor prefix'
+)
+assertEqual(menu.compactChord(''), '', 'an absent chord stays absent')
+
 const sources = menu.mergeMenuSources(menu.parseMenuJsonc(`
 {
   "learn": {"label":"Learn"},
@@ -127,17 +144,17 @@ const withApps = menu.mergeAppRows(sources.items, sources.itemOrder, [
 
 const hotkeys = menu.hotkeyIndex(withApps.items, withApps.itemOrder, rows)
 
-assertEqual(hotkeys['learn.keybindings'], 'SUPER + K', 'hotkey index matches a row by its action')
-assertEqual(hotkeys['trigger.capture'], 'SUPER CTRL + C', 'hotkey index resolves menu routes through aliases')
-assertEqual(hotkeys['system'], 'SUPER + ESCAPE', 'hotkey index keeps the first chord that claims a route')
-assertEqual(hotkeys['system.lock'], 'SUPER + L', 'an explicit hotkey wins over anything derived')
-assertEqual(hotkeys['apps.Alacritty'], 'SUPER + RETURN', 'hotkey index matches app rows by desktop id')
-assertEqual(hotkeys['apps.YouTube'], 'SUPER SHIFT + Y', 'hotkey index matches app rows by what their desktop entry runs')
+assertEqual(hotkeys['learn.keybindings'], 'SUP+K', 'hotkey index matches a row by its action')
+assertEqual(hotkeys['trigger.capture'], 'SUP+CTL+C', 'hotkey index resolves menu routes through aliases')
+assertEqual(hotkeys['system'], 'SUP+ESC', 'hotkey index keeps the first chord that claims a route')
+assertEqual(hotkeys['system.lock'], 'SUP+L', 'an explicit hotkey wins over anything derived, in the chip spelling')
+assertEqual(hotkeys['apps.Alacritty'], 'SUP+RET', 'hotkey index matches app rows by desktop id')
+assertEqual(hotkeys['apps.YouTube'], 'SUP+SFT+Y', 'hotkey index matches app rows by what their desktop entry runs')
 assertEqual(hotkeys['trigger.capture.screenshot'], undefined, 'rows no chord reaches carry no chip')
 
 assertEqual(
   menu.displayRow(withApps.items, withApps.itemOrder, {}, {}, hotkeys, withApps.items['learn.keybindings'], '', 0).hotkey,
-  'SUPER + K',
+  'SUP+K',
   'display rows carry their hotkey chip'
 )
 

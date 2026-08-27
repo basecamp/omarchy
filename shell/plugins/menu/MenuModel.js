@@ -316,6 +316,49 @@ function commandKey(value) {
   return cmd
 }
 
+// A chip annotates a label; it must not out-shout it. On a 300px card a
+// spelled-out "SUPER SHIFT CTRL + SPACE" is wider than the title it sits
+// beside, so the chip renders a compact spelling: modifiers to three letters,
+// the long X11 key names to what the key does, joined by a bare `+`. The
+// keybindings menu keeps the spelled-out form — it has the width for it.
+var CHORD_SHORT = {
+  SUPER: "SUP", META: "SUP", SHIFT: "SFT", CTRL: "CTL", ALT: "ALT",
+  RETURN: "RET", ESCAPE: "ESC", SPACE: "SPC", BACKSPACE: "BKSP",
+  DELETE: "DEL", INSERT: "INS", PRINT: "PRT", TAB: "TAB",
+  PAGEUP: "PGUP", PAGEDOWN: "PGDN",
+  BRACKETLEFT: "[", BRACKETRIGHT: "]", COMMA: ",", PERIOD: ".", SLASH: "/",
+  MINUS: "-", EQUAL: "=", SEMICOLON: ";", APOSTROPHE: "'", GRAVE: "`",
+  XF86AUDIORAISEVOLUME: "VOLUP", XF86AUDIOLOWERVOLUME: "VOLDN",
+  XF86AUDIOMUTE: "MUTE", XF86AUDIOMICMUTE: "MICMUTE",
+  XF86AUDIONEXT: "NEXT", XF86AUDIOPREV: "PREV",
+  XF86AUDIOPLAY: "PLAY", XF86AUDIOPAUSE: "PAUSE",
+  XF86MONBRIGHTNESSUP: "BRIUP", XF86MONBRIGHTNESSDOWN: "BRIDN",
+  XF86KBDBRIGHTNESSUP: "KBDUP", XF86KBDBRIGHTNESSDOWN: "KBDDN",
+  XF86KBDLIGHTONOFF: "KBDLT",
+  XF86TOUCHPADTOGGLE: "TPAD", XF86TOUCHPADON: "TPADON", XF86TOUCHPADOFF: "TPADOFF",
+  XF86POWEROFF: "PWR", XF86EJECT: "EJECT"
+}
+
+function compactChordToken(token) {
+  var upper = String(token || "").trim().toUpperCase()
+  if (!upper) return ""
+  if (CHORD_SHORT[upper]) return CHORD_SHORT[upper]
+  // A media key we have no short name for still drops the vendor prefix,
+  // so an unknown XF86 bind reads as the key rather than as the vendor.
+  if (upper.indexOf("XF86") === 0 && upper.length > 4) return upper.slice(4)
+  return upper
+}
+
+function compactChord(chord) {
+  var tokens = String(chord || "").replace(/\+/g, " ").split(/\s+/)
+  var out = []
+  for (var i = 0; i < tokens.length; i++) {
+    var token = compactChordToken(tokens[i])
+    if (token) out.push(token)
+  }
+  return out.join("+")
+}
+
 // `omarchy-menu-hotkeys` reports one chord per line, tab-separated:
 // `cmd\t<command>\t<chord>` for what the chord runs verbatim, and
 // `app\t<desktop id>\t<chord>` where a launcher indirection resolves to an
@@ -373,7 +416,7 @@ function hotkeyIndex(items, itemOrder, hotkeyRows) {
     else if (entry.kind === "app" && byApp[entry.appId]) chord = byApp[entry.appId]
     else if (entry.kind === "app" && entry.exec) chord = byCommand[commandKey(entry.exec)] || ""
     else if (entry.action) chord = byCommand[commandKey(entry.action)] || ""
-    if (chord) byId[entry.id] = chord
+    if (chord) byId[entry.id] = compactChord(chord)
   }
 
   return byId
@@ -606,6 +649,7 @@ if (typeof module !== "undefined") {
     isDisabled: isDisabled,
     labelFor: labelFor,
     commandKey: commandKey,
+    compactChord: compactChord,
     parseHotkeyLines: parseHotkeyLines,
     hotkeyIndex: hotkeyIndex,
     searchableToken: searchableToken,

@@ -324,6 +324,7 @@ QtObject {
     readonly property string menuFamily: root.menuFontFamily
     readonly property int baseSize: root.fontBaseSize
 
+    readonly property int micro:        root.fontToken("micro",         root.fontPx(0.75))    // 9
     readonly property int caption:      root.fontToken("caption",       root.fontPx(0.833))   // 10
     readonly property int bodySmall:    root.fontToken("body-small",    root.fontPx(0.917))   // 11
     readonly property int body:         root.fontToken("body",          root.fontPx(1.0))     // 12

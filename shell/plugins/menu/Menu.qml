@@ -1409,13 +1409,19 @@ Item {
 
               // The chord that also reaches this row, kept on the label line —
               // an empty chip is zero-width, so rows without one lose nothing.
+              // The chip annotates the label and must never crowd it out: a
+              // step under caption, and capped at a third of the row so a long
+              // chord elides before the title it belongs to does.
               Text {
                 id: hotkeyChip
                 text: row.hotkey
                 color: row.hasCursor ? root.selectedText : root.foreground
                 opacity: 0.4
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
+                font.pixelSize: Style.font.micro
+                width: Math.min(implicitWidth, row.width / 3)
+                elide: Text.ElideRight
+                horizontalAlignment: Text.AlignRight
                 anchors.right: trail.left
                 y: contentColumn.y + labelText.y + (labelText.height - height) / 2
               }
