@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# omarchy:summary=List Zen Taskbar Tab web apps (shared backend)
+# omarchy:args=[--json]
+# omarchy:hidden=true
+
+set -e
+
+JSON=0
+if [[ ${1:-} == "--json" ]]; then
+  JSON=1
+fi
+
+WEBAPPS_ROOT="$HOME/.zen/webapps"
+
+python3 - "$WEBAPPS_ROOT" "$JSON" <<'PYEOF'
+import json, os, sys
+root, want_json = sys.argv[1:]
+want_json = want_json == "1"
+
+apps = []
+if os.path.isdir(root):
+    for entry in sorted(os.listdir(root)):
+        reg = os.path.join(root, entry, "taskbartabs", "taskbartabs.json")
+        if not os.path.isfile(reg):
+            continue
+        try:
+            with open(reg, encoding="utf-8") as f:
+                data = json.load(f)
+        except (ValueError, OSError):
+            continue
+        for tt in data.get("taskbarTabs", []):
+            apps.append({"id": tt.get("id"), "name": tt.get("name"), "startUrl": tt.get("startUrl")})
+
+if want_json:
+    json.dump(apps, sys.stdout, indent=2)
+    print()
+else:
+    if not apps:
+        print("No Zen web apps installed.")
+    else:
+        for a in apps:
+            print(f"{a.get('id','')}  {a.get('name','')}  {a.get('startUrl','')}")
+PYEOF

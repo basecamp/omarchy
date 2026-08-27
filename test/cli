@@ -807,3 +807,32 @@ assert_output_contains "a --help behind -- belongs to the command and still forw
 
 output=$("$TMPDIR/omarchy" parenthelp --helpme x--help)
 assert_output_contains "help lookalike tokens do not trigger help" "$output" "parenthelp-parent-ran args=[--helpme x--help]"
+
+# ── Web app (Zen Taskbar Tabs) command routes ──
+output=$("$CLI" webapp --help)
+assert_output_contains "webapp group includes launch" "$output" "omarchy webapp launch"
+assert_output_contains "webapp group includes list" "$output" "omarchy webapp list"
+assert_output_contains "webapp group keeps install" "$output" "omarchy webapp install"
+assert_output_contains "webapp group keeps remove" "$output" "omarchy webapp remove"
+
+# Zen backends stay hidden from the public group help but still route
+if [[ $output == *"omarchy webapp zen install"* ]]; then
+  fail "zen backend routes are hidden from public group help"
+fi
+pass "zen backend routes are hidden from public group help"
+
+output=$("$CLI" webapp list --help)
+assert_output_contains "webapp list renders help" "$output" "omarchy webapp list"
+
+output=$("$CLI" commands --all --json | jq -r '.commands[] | select(.binary == "omarchy-webapp-zen-install") | .route')
+[[ $output == "omarchy webapp zen install" ]] || fail "zen install canonical route"
+pass "zen install canonical route"
+
+output=$("$CLI" commands --all --json | jq -r '.commands[] | select(.binary == "omarchy-webapp-zen-profile") | .route')
+[[ $output == "omarchy webapp zen profile" ]] || fail "zen profile helper route"
+pass "zen profile helper route"
+
+# Hidden backends are excluded from default (non --all) listings
+output=$("$CLI" commands --json | jq -r '[.commands[] | select(.binary == "omarchy-webapp-zen-install")] | length')
+[[ $output == "0" ]] || fail "zen install hidden from default listing"
+pass "zen install hidden from default listing"

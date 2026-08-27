@@ -1,0 +1,64 @@
+#!/bin/bash
+
+# omarchy:summary=Launch a Zen Taskbar Tab web app by registry id or name (shared backend)
+# omarchy:args=<id-or-name>
+# omarchy:hidden=true
+
+set -e
+
+if (( $# < 1 )); then
+  echo "usage: omarchy webapp zen launch <id-or-name>" >&2
+  exit 1
+fi
+
+QUERY="$1"
+
+# Web app profiles live under ~/.zen/webapps/<uuid>/taskbartabs/taskbartabs.json
+WEBAPPS_ROOT="$HOME/.zen/webapps"
+
+# Resolve the query (id, name, or zen.webapp-<uuid> shortcut basename) to
+# (id, url, profile_dir). Search every web app profile registry.
+read -r ID URL APP_PROFILE < <(python3 - "$WEBAPPS_ROOT" "$QUERY" <<'PYEOF'
+import json, os, re, sys
+root, query = sys.argv[1:]
+if not os.path.isdir(root):
+    sys.exit(0)
+for entry in sorted(os.listdir(root)):
+    reg = os.path.join(root, entry, "taskbartabs", "taskbartabs.json")
+    if not os.path.isfile(reg):
+        continue
+    try:
+        with open(reg, encoding="utf-8") as f:
+            data = json.load(f)
+    except (ValueError, OSError):
+        continue
+    for tt in data.get("taskbarTabs", []):
+        if tt.get("id") == query or tt.get("name") == query:
+            print(tt.get("id", ""), "\t", tt.get("startUrl", ""), "\t", os.path.dirname(os.path.dirname(reg)))
+            sys.exit(0)
+# Fallback: query looks like "zen.webapp-<uuid>"
+m = re.match(r"zen\.webapp-([0-9a-fA-F-]+)$", query)
+if m:
+    uuid = m.group(1)
+    for entry in sorted(os.listdir(root)):
+        reg = os.path.join(root, entry, "taskbartabs", "taskbartabs.json")
+        if not os.path.isfile(reg):
+            continue
+        try:
+            with open(reg, encoding="utf-8") as f:
+                data = json.load(f)
+        except (ValueError, OSError):
+            continue
+        for tt in data.get("taskbarTabs", []):
+            if tt.get("id") == uuid:
+                print(uuid, "\t", tt.get("startUrl", ""), "\t", os.path.dirname(os.path.dirname(reg)))
+                sys.exit(0)
+sys.exit(0)
+PYEOF
+)
+
+[[ -n $ID && -n $URL && -n $APP_PROFILE ]] || { echo "Error: no web app matches '$QUERY'." >&2; exit 1; }
+
+ZEN_BIN=$(omarchy-webapp-zen-profile bin)
+
+exec setsid uwsm-app -- "$ZEN_BIN" "-taskbar-tab" "$ID" "-new-window" "$URL" "-profile" "$APP_PROFILE" "-container" "0"

@@ -1,0 +1,321 @@
+#!/bin/bash
+
+# omarchy:summary=Install a web app as a native Zen Taskbar Tab in its own profile (shared backend)
+# omarchy:args=<name> <url> [icon-url-or-name]
+# omarchy:hidden=true
+
+set -e
+
+if (( $# < 2 )); then
+  echo "usage: omarchy webapp zen install <name> <url> [icon-url-or-name]" >&2
+  exit 1
+fi
+
+APP_NAME="$1"
+APP_URL="$2"
+ICON_REF="${3:-}"
+
+if [[ ! $APP_URL =~ ^[a-zA-Z][a-zA-Z0-9+.-]*: ]]; then
+  APP_URL="https://$APP_URL"
+fi
+
+# Hostname + base domain. Zen matches scopes by base domain (eTLD+1), so the
+# dedupe key must be the registrable domain, not a heuristic. Uses the Public
+# Suffix List via publicsuffix2 when available; falls back to a conservative
+# last-two-labels guess otherwise.
+HOSTNAME=$(python3 - "$APP_URL" <<'PYEOF'
+import sys
+from urllib.parse import urlparse
+u = urlparse(sys.argv[1])
+print(u.hostname or "")
+PYEOF
+)
+
+[[ -n $HOSTNAME ]] || { echo "Error: invalid URL: $APP_URL" >&2; exit 1; }
+
+BASE_DOMAIN=$(python3 - "$HOSTNAME" <<'PYEOF'
+import sys
+host = sys.argv[1]
+try:
+    import publicsuffix2
+    print(publicsuffix2.get_sld(host, strict=False))
+    sys.exit(0)
+except ImportError:
+    pass
+parts = host.split(".")
+if len(parts) > 2 and parts[-1] in ("uk", "au", "jp", "br", "nz") and parts[-2] in ("co", "com", "org", "net", "gov", "ac"):
+    print(".".join(parts[-3:]))
+else:
+    print(".".join(parts[-2:]) if len(parts) >= 2 else host)
+PYEOF
+)
+
+# ── Web app profile: each web app gets its own Zen profile so the regular
+# browser (main profile) never collides with a Taskbar Tab process. ──
+WEBAPPS_ROOT="$HOME/.zen/webapps"
+mkdir -p "$WEBAPPS_ROOT"
+
+# ── Dedupe: reuse an existing web app profile for the same base domain ──
+UUID=""
+if compgen -G "$WEBAPPS_ROOT"/*/taskbartabs/taskbartabs.json >/dev/null 2>&1; then
+  UUID=$(python3 - "$WEBAPPS_ROOT" "$BASE_DOMAIN" <<'PYEOF'
+import json, os, sys
+root, base_domain = sys.argv[1:]
+for entry in sorted(os.listdir(root)):
+    reg = os.path.join(root, entry, "taskbartabs", "taskbartabs.json")
+    if not os.path.isfile(reg):
+        continue
+    try:
+        with open(reg, encoding="utf-8") as f:
+            data = json.load(f)
+    except (ValueError, OSError):
+        continue
+    for tt in data.get("taskbarTabs", []):
+        for scope in tt.get("scopes", []):
+            scope_host = scope.get("hostname", "")
+            if scope_host == base_domain or scope_host.endswith("." + base_domain):
+                print(tt.get("id", ""))
+                sys.exit(0)
+sys.exit(0)
+PYEOF
+)
+fi
+
+if [[ -n $UUID ]]; then
+  echo "Existing web app for $BASE_DOMAIN (id $UUID); reusing it."
+else
+  UUID=$(cat /proc/sys/kernel/random/uuid)
+fi
+
+APP_PROFILE="$WEBAPPS_ROOT/$UUID"
+TASKBAR_DIR="$APP_PROFILE/taskbartabs"
+ICONS_DIR="$TASKBAR_DIR/icons"
+REGISTRY="$TASKBAR_DIR/taskbartabs.json"
+mkdir -p "$ICONS_DIR"
+
+# ── Seed the app profile with sessions from the main Zen profile (cookies,
+# logins, encryption keys) and its preferences, so the new profile does not
+# go through the first-run setup wizard. Only done on first install; an
+# existing profile keeps its own state from then on. ──
+if [[ ! -f "$APP_PROFILE/cookies.sqlite" ]]; then
+  MAIN_PROFILE=$(omarchy-webapp-zen-profile profile) || true
+  if [[ -n $MAIN_PROFILE && -d $MAIN_PROFILE ]]; then
+    if omarchy-webapp-zen-profile running; then
+      echo "Note: Zen is running; sessions are copied from disk and may be stale." >&2
+    fi
+    for f in cookies.sqlite cookies.sqlite-wal cookies.sqlite-shm logins.json key4.db cert9.db; do
+      if [[ -f "$MAIN_PROFILE/$f" ]]; then
+        cp -f "$MAIN_PROFILE/$f" "$APP_PROFILE/$f" 2>/dev/null || true
+      fi
+    done
+    # Copy preferences too: without them the fresh profile shows the
+    # first-run setup wizard (welcome screen, default browser check, etc.).
+    if [[ -f "$MAIN_PROFILE/prefs.js" ]]; then
+      cp -f "$MAIN_PROFILE/prefs.js" "$APP_PROFILE/prefs.js" 2>/dev/null || true
+    fi
+    echo "Seeded $APP_NAME profile with sessions and preferences from the main Zen profile."
+  else
+    echo "Warning: could not find the main Zen profile; the web app starts logged out." >&2
+  fi
+fi
+
+# ── Taskbar Tabs must be enabled in the web app profile, or Zen opens the
+# taskbar-tab command as a normal browser window. Seed user.js with the pref
+# (and any user.js preferences from the main profile) BEFORE the first launch,
+# so prefs.js is generated with the feature on. ──
+if [[ ! -f "$APP_PROFILE/prefs.js" ]]; then
+  MAIN_PROFILE=$(omarchy-webapp-zen-profile profile) || true
+  if [[ -f "$MAIN_PROFILE/user.js" ]]; then
+    cp -f "$MAIN_PROFILE/user.js" "$APP_PROFILE/user.js"
+  else
+    printf '%s\n' '// Taskbar Tabs (web apps nativas)' 'user_pref("browser.taskbarTabs.enabled", true);' > "$APP_PROFILE/user.js"
+  fi
+  # Safety net: make sure the pref is present even if the main user.js lacks it.
+  if ! grep -q "browser.taskbarTabs.enabled" "$APP_PROFILE/user.js" 2>/dev/null; then
+    printf '%s\n' 'user_pref("browser.taskbarTabs.enabled", true);' >> "$APP_PROFILE/user.js"
+  fi
+  # Enable userChrome.css support for the app-style window.
+  if ! grep -q "toolkit.legacyUserProfileCustomizations.stylesheets" "$APP_PROFILE/user.js" 2>/dev/null; then
+    printf '%s\n' 'user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);' >> "$APP_PROFILE/user.js"
+  fi
+fi
+
+# ── App-style window: hide the tab bar and navigation bar permanently with a
+# dedicated userChrome.css. The web app profile is only used for this app, so
+# hiding the whole navigator toolbox is safe and gives the PWA-like look even
+# when Zen's own Taskbar Tab CSS does not kick in. ──
+mkdir -p "$APP_PROFILE/chrome"
+if [[ ! -f "$APP_PROFILE/chrome/userChrome.css" ]]; then
+  cat >"$APP_PROFILE/chrome/userChrome.css" <<'CSS'
+/* Auto-generated by omarchy-webapp-zen-install — app window chrome */
+:root:not([inDOMFullscreen]) #navigator-toolbox {
+  display: none !important;
+}
+CSS
+fi
+
+# ── Per-site tweaks: apply WhatsApp Slim's CSS (system theme + collapsed chat
+# list) via userContent.css. Firefox/Zen does not run content scripts of
+# sideloaded unsigned extensions, but userContent.css is honored with
+# toolkit.legacyUserProfileCustomizations.stylesheets, so this achieves the
+# same effect reliably. ──
+apply_whatsapp_slim_css() {
+  local css_src="$OMARCHY_PATH/default/firefox/extensions/whatsapp-slim/whatsapp.css"
+  local content_css="$APP_PROFILE/chrome/userContent.css"
+  [[ -f $css_src ]] || return 0
+  mkdir -p "$APP_PROFILE/chrome"
+  {
+    printf '%s\n' \
+      '/* Auto-generated by omarchy-webapp-zen-install — WhatsApp Slim (userContent) */' \
+      '@-moz-document url-prefix("https://web.whatsapp.com/") {'
+    cat "$css_src"
+    printf '%s\n' '}'
+  } >>"$content_css"
+}
+
+case "$BASE_DOMAIN" in
+whatsapp.com)
+  apply_whatsapp_slim_css
+  ;;
+esac
+
+SHORTCUT="zen.webapp-$UUID.desktop"
+
+# ── Icon: manifest icons (192/512) -> apple-touch-icon -> favicon service ──
+fetch_icon() {
+  local site_url="$1" dest="$2"
+  local origin page icon_url
+  origin=$(sed -E 's|^(https?://[^/]+).*|\1|' <<<"$site_url")
+
+  local manifest icon_src
+  manifest=$(curl -fsSL --max-time 5 "$site_url/manifest.json" 2>/dev/null || true)
+  icon_src=$(python3 - "$manifest" <<'PYEOF' 2>/dev/null || true
+import json, sys
+try:
+    m = json.loads(sys.argv[1])
+except Exception:
+    sys.exit(0)
+icons = m.get("icons", [])
+def size_of(i):
+    s = i.get("sizes", "")
+    if "x" not in s:
+        return 0
+    try:
+        return int(s.split("x")[0])
+    except ValueError:
+        return 0
+icons = sorted(icons, key=size_of, reverse=True)
+for i in icons:
+    src = i.get("src", "")
+    if src:
+        print(src)
+        break
+PYEOF
+)
+  if [[ -n $icon_src ]]; then
+    case $icon_src in
+    http://* | https://*) ;;
+    //*) icon_src="https:$icon_src" ;;
+    /*) icon_src="$origin$icon_src" ;;
+    ?*) icon_src="$origin/$icon_src" ;;
+    esac
+    curl -fsSL --max-time 10 -o "$dest" "$icon_src" 2>/dev/null && return 0
+  fi
+
+  page=$(curl -fsSL --max-time 5 "$site_url" 2>/dev/null | head -c 100000 | tr '\n' ' ')
+  icon_url=$(grep -oiE "<link[^>]*rel=[\"'][^\"']*apple-touch-icon[^\"']*[\"'][^>]*>" <<<"$page" |
+    grep -oiE "href=[\"'][^\"']+" | head -1 | sed -E "s/^href=[\"']//")
+
+  case $icon_url in
+  http://* | https://*) ;;
+  //*) icon_url="https:$icon_url" ;;
+  /*) icon_url="$origin$icon_url" ;;
+  ?*) icon_url="$origin/$icon_url" ;;
+  esac
+
+  { [[ -n $icon_url ]] && curl -fsSL --max-time 10 -o "$dest" "$icon_url" 2>/dev/null; } ||
+    curl -fsSL --max-time 10 -o "$dest" "$origin/apple-touch-icon.png" 2>/dev/null ||
+    curl -fsSL --max-time 10 -o "$dest" "https://www.google.com/s2/favicons?domain=$site_url&sz=256" 2>/dev/null
+
+  [[ -s $dest ]] && [[ $(file -b --mime-type "$dest" 2>/dev/null) == image/* ]]
+}
+
+ICON_PATH="$ICONS_DIR/$UUID.png"
+if [[ -n $ICON_REF && -f $ICON_REF ]]; then
+  cp "$ICON_REF" "$ICON_PATH"
+elif [[ $ICON_REF =~ ^https?:// ]]; then
+  curl -fsSL --max-time 10 -o "$ICON_PATH" "$ICON_REF" 2>/dev/null || true
+elif [[ ! -s $ICON_PATH ]] || [[ $(file -b --mime-type "$ICON_PATH" 2>/dev/null) != image/* ]]; then
+  if ! fetch_icon "$APP_URL" "$ICON_PATH"; then
+    rm -f "$ICON_PATH"
+    echo "Warning: could not fetch an icon; the generic one will be used." >&2
+  fi
+fi
+
+# ── Register the Taskbar Tab in the web app profile (atomic write, upsert) ──
+python3 - "$REGISTRY" "$UUID" "$BASE_DOMAIN" "$APP_URL" "$APP_NAME" "$SHORTCUT" <<'PYEOF'
+import json, os, sys, tempfile
+
+registry_path, uuid, base_domain, start_url, name, shortcut = sys.argv[1:]
+
+data = {"version": 1, "taskbarTabs": []}
+if os.path.exists(registry_path):
+    try:
+        with open(registry_path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (ValueError, OSError):
+        data = {"version": 1, "taskbarTabs": []}
+
+entry = {
+    "id": uuid,
+    "scopes": [{"hostname": base_domain}],
+    "userContextId": 0,
+    "startUrl": start_url,
+    "name": name,
+    "shortcutRelativePath": shortcut,
+}
+
+tabs = data.setdefault("taskbarTabs", [])
+for i, tt in enumerate(tabs):
+    if tt.get("id") == uuid:
+        tabs[i] = entry
+        break
+else:
+    tabs.append(entry)
+
+fd, tmp = tempfile.mkstemp(dir=os.path.dirname(registry_path), suffix=".tmp")
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(data, f, separators=(",", ":"))
+    os.replace(tmp, registry_path)
+except Exception:
+    os.unlink(tmp)
+    raise
+PYEOF
+
+# ── Create the .desktop launcher (same shape Zen generates itself) ──
+ZEN_BIN=$(omarchy-webapp-zen-profile bin)
+
+DESKTOP_FILE="$HOME/.local/share/applications/$SHORTCUT"
+mkdir -p "$(dirname "$DESKTOP_FILE")"
+
+# Sanitize user input for the Desktop Entry spec.
+SAFE_NAME=$(printf '%s' "$APP_NAME" | tr '\n' ' ' | sed 's/[=;]//g')
+SAFE_URL=$(printf '%s' "$APP_URL" | sed 's/&/\\&/g; s/\$/\\$/g; s/`/\\`/g')
+
+cat >"$DESKTOP_FILE" <<EOF
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=$SAFE_NAME
+Icon=$ICON_PATH
+Exec="$ZEN_BIN" "-taskbar-tab" "$UUID" "-new-window" "$SAFE_URL" "-profile" "$APP_PROFILE" "-container" "0"
+EOF
+
+chmod +x "$DESKTOP_FILE"
+update-desktop-database "$HOME/.local/share/applications" &>/dev/null || true
+
+echo "Web app installed: $APP_NAME"
+echo "  Profile: $APP_PROFILE"
+echo "  Launcher: $DESKTOP_FILE"
+echo "  Open it from the app launcher (SUPER + SPACE) or: omarchy webapp launch $APP_NAME"

@@ -1,0 +1,66 @@
+#!/bin/bash
+
+# omarchy:summary=Remove a Zen Taskbar Tab web app (profile, launcher, and icon) (shared backend)
+# omarchy:args=<id-or-name-or-shortcut-basename>
+# omarchy:hidden=true
+
+set -e
+
+if (( $# < 1 )); then
+  echo "usage: omarchy webapp zen remove <id-or-name>" >&2
+  exit 1
+fi
+
+QUERY="$1"
+
+WEBAPPS_ROOT="$HOME/.zen/webapps"
+
+# Resolve the query (id, name, or zen.webapp-<uuid> basename) to the app profile.
+APP_PROFILE=$(python3 - "$WEBAPPS_ROOT" "$QUERY" <<'PYEOF'
+import json, os, re, sys
+root, query = sys.argv[1:]
+if not os.path.isdir(root):
+    sys.exit(0)
+for entry in sorted(os.listdir(root)):
+    reg = os.path.join(root, entry, "taskbartabs", "taskbartabs.json")
+    if not os.path.isfile(reg):
+        continue
+    try:
+        with open(reg, encoding="utf-8") as f:
+            data = json.load(f)
+    except (ValueError, OSError):
+        continue
+    for tt in data.get("taskbarTabs", []):
+        if tt.get("id") == query or tt.get("name") == query:
+            print(os.path.dirname(os.path.dirname(reg)))
+            sys.exit(0)
+m = re.match(r"zen\.webapp-([0-9a-fA-F-]+)$", query)
+if m:
+    uuid = m.group(1)
+    for entry in sorted(os.listdir(root)):
+        reg = os.path.join(root, entry, "taskbartabs", "taskbartabs.json")
+        if not os.path.isfile(reg):
+            continue
+        try:
+            with open(reg, encoding="utf-8") as f:
+                data = json.load(f)
+        except (ValueError, OSError):
+            continue
+        for tt in data.get("taskbarTabs", []):
+            if tt.get("id") == uuid:
+                print(os.path.dirname(os.path.dirname(reg)))
+                sys.exit(0)
+sys.exit(0)
+PYEOF
+)
+
+[[ -n $APP_PROFILE ]] || { echo "Error: no web app matches '$QUERY'." >&2; exit 1; }
+
+UUID=$(basename "$APP_PROFILE")
+
+# Remove the launcher, then the whole web app profile (registry + icon + sessions)
+rm -f "$HOME/.local/share/applications/zen.webapp-$UUID.desktop"
+rm -rf "$APP_PROFILE"
+update-desktop-database "$HOME/.local/share/applications" &>/dev/null || true
+
+echo "Web app removed: $QUERY"
