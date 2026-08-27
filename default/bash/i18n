@@ -1,0 +1,130 @@
+# Translation lookup for interactive omarchy-* scripts.
+#
+#   source "$OMARCHY_PATH/default/bash/i18n"
+#   omarchy_t "Update now?"
+#   omarchy_t "Removing %1" "$pkg"
+#   omarchy_tn "$n" "%1 package" "%1 packages" "$n"
+#
+# Reads the cache the shell's I18n singleton maintains at
+# $XDG_CACHE_HOME/omarchy/i18n/<language>.json — one file, no plugin
+# enumeration, no knowledge of which language packs exist. Scripts run on a
+# tty, over ssh, or under sudo, where there is no shell process to ask.
+#
+# Every function falls back to its English source, so a script behaves
+# identically when the cache is absent, unreadable, or lacks a key. Safe under
+# `set -u` and `set -e`. Domain is omarchy.cli.
+
+OMARCHY_I18N_DOMAIN="omarchy.cli"
+
+# Primary language from the gettext variables, or empty for English / C.
+omarchy_i18n_language() {
+  local raw="${LANGUAGE:-${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}}"
+  raw="${raw%%:*}"      # LANGUAGE is a colon list; the first entry wins
+  raw="${raw%%.*}"      # ca_ES.UTF-8
+  raw="${raw%%@*}"      # es_ES@euro
+  raw="${raw%%_*}"      # ca_ES -> ca
+  raw="${raw%%-*}"      # ca-ES -> ca
+  raw="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')"
+  case "$raw" in
+    "" | c | posix | en) return 0 ;;
+  esac
+  printf '%s' "$raw"
+}
+
+omarchy_i18n_cache_path() {
+  local lang
+  lang="$(omarchy_i18n_language)"
+  [[ -n $lang ]] || return 0
+  printf '%s/omarchy/i18n/%s.json' "${XDG_CACHE_HOME:-$HOME/.cache}" "$lang"
+}
+
+# Usable at all? Cheap check so the English path never spawns jq.
+omarchy_i18n_available() {
+  local path
+  path="$(omarchy_i18n_cache_path)"
+  [[ -n $path && -r $path ]] && command -v jq >/dev/null 2>&1
+}
+
+# %1, %2 ... from the highest index down, so %10 is not %1 followed by 0 and
+# an argument containing "%2" is never re-expanded once inserted. The
+# replacement is quoted so `&` stays literal under patsub_replacement.
+omarchy_i18n_interpolate() {
+  local text="$1"
+  shift
+  local i
+  for (( i = $#; i >= 1; i-- )); do
+    text="${text//"%$i"/"${!i}"}"
+  done
+  printf '%s' "$text"
+}
+
+# Raw catalog value for a key: a string, a JSON array (plural), or nothing.
+omarchy_i18n_raw() {
+  local key="$1" path
+  path="$(omarchy_i18n_cache_path)"
+  jq -r --arg d "$OMARCHY_I18N_DOMAIN" --arg k "$key" \
+    '.catalogs[$d][$k] // empty | if type == "array" then tojson else . end' \
+    "$path" 2>/dev/null
+}
+
+# The catalog's plural rule as a bash arithmetic expression, validated to a
+# strict whitelist first: bash arithmetic on untrusted text is an injection
+# vector (`a[$(cmd)]`), so only n, digits, spaces and C operators pass.
+omarchy_i18n_plural_index() {
+  local n="$1" path header rule
+  [[ $n =~ ^[0-9]+$ ]] || n=0
+  path="$(omarchy_i18n_cache_path)"
+  header="$(jq -r --arg d "$OMARCHY_I18N_DOMAIN" \
+    '.catalogs[$d][""]["plural-forms"] // empty' "$path" 2>/dev/null)"
+  rule="${header#*plural=}"
+  rule="${rule%%;*}"
+  # Fail closed: evaluate only when the whole rule matches the whitelist.
+  local allowed='^[n0-9 ?:()<>=!&|%+*/-]+$'
+  local index
+  if [[ -n $rule && $rule =~ $allowed ]]; then
+    index=$(( rule )) 2>/dev/null || index=0
+  else
+    (( n == 1 )) && index=0 || index=1
+  fi
+  printf '%s' "$index"
+}
+
+# omarchy_t <source> [args...]
+omarchy_t() {
+  local source="$1"
+  shift
+  local text="$source"
+  if omarchy_i18n_available; then
+    local raw
+    raw="$(omarchy_i18n_raw "$source")"
+    if [[ -n $raw ]]; then
+      if [[ $raw == \[* ]]; then
+        text="$(printf '%s' "$raw" | jq -r '.[0]')"
+      else
+        text="$raw"
+      fi
+    fi
+  fi
+  omarchy_i18n_interpolate "$text" "$@"
+}
+
+# omarchy_tn <count> <singular> <plural> [args...]
+omarchy_tn() {
+  local count="$1" singular="$2" plural="$3"
+  shift 3
+  local text
+  if (( count == 1 )); then text="$singular"; else text="$plural"; fi
+  if omarchy_i18n_available; then
+    local raw
+    raw="$(omarchy_i18n_raw "$singular")"
+    if [[ $raw == \[* ]]; then
+      local index picked
+      index="$(omarchy_i18n_plural_index "$count")"
+      picked="$(printf '%s' "$raw" | jq -r --argjson i "$index" '.[$i] // .[-1]')"
+      [[ -n $picked ]] && text="$picked"
+    elif [[ -n $raw ]]; then
+      text="$raw"
+    fi
+  fi
+  omarchy_i18n_interpolate "$text" "$@"
+}
