@@ -39,7 +39,7 @@ const service = fs.readFileSync(root + '/shell/plugins/panels/dropbox/Service.qm
 
 assert(/function login\(\)[^}]*loginRetry\.restart\(\)/s.test(service), 'login starts the status-poll retry for the link URL')
 assert(/if \(loginRetry\.running\) openAuthUrlFrom\(statusText\)/.test(service), 'status poll feeds the pending login the link URL')
-assert(/Dropbox offered no login link/.test(service), 'an exhausted login retry surfaces an error instead of hanging')
+assert(/Dropbox offered no login link[\s\S]{0,200}root\.actionStatus = root\.lastError/.test(service), 'an exhausted login retry surfaces an error that survives the next status poll')
 JS
 
 # The account block in info.json marks a linked account; the sync folder only

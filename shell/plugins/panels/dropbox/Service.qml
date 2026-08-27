@@ -244,8 +244,11 @@ Item {
       ticks += 1
       if (ticks >= 15) {
         loginRetry.stop()
-        root.actionStatus = ""
+        // Set actionStatus too, the way controlProcess reports failures: a
+        // poll can still be in flight when this fires, and applyStatus
+        // clears lastError, which would wipe the advice within seconds.
         root.lastError = "Dropbox offered no login link. Pause and resume Dropbox, then try again."
+        root.actionStatus = root.lastError
         return
       }
       root.refresh()
