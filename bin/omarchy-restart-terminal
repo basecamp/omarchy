@@ -7,7 +7,25 @@ if [[ -f ~/.config/alacritty/alacritty.toml ]]; then
 fi
 
 if pgrep -x kitty >/dev/null; then
-  killall -SIGUSR1 kitty >/dev/null
+  theme_conf=~/.local/state/omarchy/current/theme/kitty.conf
+  declare -A recolored
+
+  # Repaint colors over kitty's remote-control sockets where possible: unlike a
+  # SIGUSR1 full-config reload, set-colors leaves runtime state such as the
+  # interactive font-size zoom intact.
+  if [[ -f $theme_conf ]]; then
+    for sock in "$XDG_RUNTIME_DIR"/omarchy-kitty-*; do
+      if [[ -S $sock ]] && kitten @ --to "unix:$sock" set-colors --all --configured "$theme_conf" 2>/dev/null; then
+        recolored[${sock##*-}]=1
+      fi
+    done
+  fi
+
+  for pid in $(pgrep -x kitty); do
+    if [[ -z ${recolored[$pid]} ]]; then
+      kill -SIGUSR1 "$pid" 2>/dev/null
+    fi
+  done
 fi
 
 if pgrep -x ghostty >/dev/null; then
