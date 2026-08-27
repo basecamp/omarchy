@@ -38,6 +38,20 @@ function parseProfiles(raw, previousIndex) {
   }
 }
 
+function limitDescription(state, policy) {
+  var active = state === "enabled"
+  if (policy === "firmware") return (active ? "Uses" : "Use") + " firmware optimized charging"
+  if (!policy || policy === "unknown") return (active ? "Uses" : "Use") + " the battery's health-preserving policy"
+
+  var thresholds = policy.split("-")
+  if (thresholds.length === 2) {
+    return (active ? "Starts charging at " : "Start charging at ") + thresholds[0] + "% and "
+      + (active ? "stops" : "stop") + " at " + thresholds[1] + "%"
+  }
+
+  return (active ? "Stops charging at " : "Limit charging to ") + policy + "%"
+}
+
 function profileIcon(name) {
   if (name === "power-saver") return "󰌪"
   if (name === "balanced") return "󰊚"
@@ -95,6 +109,7 @@ if (typeof module !== "undefined") {
     selectProfileIndex: selectProfileIndex,
     parseKeyValue: parseKeyValue,
     parseProfiles: parseProfiles,
+    limitDescription: limitDescription,
     profileIcon: profileIcon,
     batteryFraction: batteryFraction,
     chargeThresholdActive: chargeThresholdActive,
