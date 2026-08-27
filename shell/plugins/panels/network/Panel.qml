@@ -941,7 +941,7 @@ Panel {
 
   Process {
     id: vpnProc
-    command: ["bash", "-c", "active=$(nmcli -t --escape no -f UUID,TYPE connection show --active 2>/dev/null | awk -F: '$2 == \\\"vpn\\\" { print $1 }'); nmcli -t --escape no -f UUID,TYPE,NAME connection show 2>/dev/null | awk -F: -v active=\"$active\" '$2 == \\\"vpn\\\" { uuid=$1; name=$0; sub(/^[^:]*:[^:]*:/, \\\"\\\", name); state=index(\\\"\\n\\\" active \\\"\\n\\\", \\\"\\n\\\" uuid \\\"\\n\\\") ? 1 : 0; print uuid \\\"\\t\\\" state \\\"\\t\\\" name }'"]
+    command: ["bash", "-c", "active=$(nmcli -t --escape no -f UUID,TYPE connection show --active 2>/dev/null | awk -F: '$2 == \"vpn\" { print $1 }'); nmcli -t --escape no -f UUID,TYPE,NAME connection show 2>/dev/null | awk -F: -v active=\"$active\" '$2 == \"vpn\" { uuid=$1; name=$0; sub(/^[^:]*:[^:]*:/, \"\", name); state=index(\"\\n\" active \"\\n\", \"\\n\" uuid \"\\n\") ? 1 : 0; print uuid \"\\t\" state \"\\t\" name }'"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateVpn(text)
