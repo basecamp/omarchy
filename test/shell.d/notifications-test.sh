@@ -426,6 +426,15 @@ assert(!('exec' in legacyRestored), 'a restored legacy popup drops the old exec 
 assertEqual(notifications.parseExecArgv(legacyRestored.execArgv || ''), null, 'a restored legacy popup has no runnable click action')
 
 const serviceQml = fs.readFileSync(path.join(root, 'shell/plugins/notifications/Service.qml'), 'utf8')
+const notificationCardQml = fs.readFileSync(path.join(root, 'shell/plugins/notifications/components/NotificationCard.qml'), 'utf8')
+assert(
+  /Always-visible close[\s\S]{0,700}?text: "✕"[\s\S]{0,300}?onClicked: root\.closeRequested\(\)/.test(notificationCardQml),
+  'notifications show a close button that dismisses the popup'
+)
+assert(
+  !/opacity: root\.hovered/.test(notificationCardQml),
+  'notifications do not hide the close button until hover'
+)
 assert(
   /readonly property int historyLimit: 10/.test(serviceQml),
   'notifications service keeps the last ten notifications in history'

@@ -154,7 +154,7 @@ BorderSurface {
       ColumnLayout {
         Layout.fillWidth: true
         Layout.alignment: Qt.AlignVCenter
-        // Keep the first line clear of the hover-revealed close button.
+        // Keep the first line clear of the close button.
         Layout.rightMargin: Style.space(10)
         spacing: Style.space(2)
 
@@ -188,7 +188,7 @@ BorderSurface {
     }
   }
 
-  // Hover-revealed close. Stacked after mainColumn so its MouseArea sits
+  // Always-visible close. Stacked after mainColumn so its MouseArea sits
   // above the full-card one and the click never reaches cardClicked.
   Item {
     anchors.top: parent.top
@@ -197,11 +197,6 @@ BorderSurface {
     anchors.rightMargin: root.borderRight + Style.space(3)
     width: Style.space(18)
     height: Style.space(18)
-    visible: opacity > 0
-    opacity: root.hovered ? 1 : 0
-
-    Behavior on opacity { NumberAnimation { duration: 100 } }
-
     Text {
       anchors.centerIn: parent
       text: "✕"
