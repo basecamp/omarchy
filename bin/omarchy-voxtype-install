@@ -10,10 +10,17 @@ if gum confirm "Install Voxtype + AI model (~150MB) to enable dictation?"; then
 
   voxtype_pkg=voxtype-bin
   if ! omarchy-hw-x86-64-v3; then
-    gum style --foreground 3 \
-      "Your CPU is missing instructions (AVX2/x86-64-v3) that the prebuilt Voxtype binary requires."
+    if [[ $(uname -m) == "x86_64" ]]; then
+      gum style --foreground 3 \
+        "Your CPU is missing instructions (AVX2/x86-64-v3) that the prebuilt Voxtype binary requires."
+      build_prompt="Build Voxtype from source instead? This can take 20+ minutes and may result in noticeably slower dictation on this CPU."
+    else
+      gum style --foreground 3 \
+        "There's no prebuilt Voxtype binary for your CPU architecture."
+      build_prompt="Build Voxtype from source instead? This can take 20+ minutes."
+    fi
 
-    if gum confirm "Build Voxtype from source instead? This can take 20+ minutes and may result in noticeably slower dictation on this CPU."; then
+    if gum confirm "$build_prompt"; then
       if ! omarchy-pkg-aur-accessible; then
         gum style --foreground 1 "The AUR is unreachable right now, so Voxtype can't be built from source. Try again later."
         exit 1

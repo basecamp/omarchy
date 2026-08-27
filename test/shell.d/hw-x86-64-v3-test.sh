@@ -12,7 +12,7 @@ write_cpuinfo_flags() {
 }
 
 hw_x86_64_v3() {
-  OMARCHY_CPUINFO_PATH="$tmp_dir/cpuinfo" "$ROOT/bin/omarchy-hw-x86-64-v3"
+  OMARCHY_CPUINFO_PATH="$tmp_dir/cpuinfo" OMARCHY_UNAME_M="${OMARCHY_UNAME_M:-x86_64}" "$ROOT/bin/omarchy-hw-x86-64-v3"
 }
 
 assert_detects() {
@@ -44,3 +44,6 @@ assert_rejects "AVX2 alone without FMA/BMI1/BMI2/F16C/MOVBE does not satisfy x86
 
 : >"$tmp_dir/cpuinfo"
 assert_rejects "empty cpuinfo does not satisfy x86-64-v3"
+
+write_cpuinfo_flags "fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc pni pclmulqdq ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm abm avx2 bmi1 bmi2"
+OMARCHY_UNAME_M="aarch64" assert_rejects "aarch64 is rejected even with x86-64-v3 flags present"
