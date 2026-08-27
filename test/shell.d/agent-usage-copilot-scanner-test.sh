@@ -37,7 +37,8 @@ INSERT INTO turns VALUES ('session-2', 0);
 INSERT INTO assistant_usage_events VALUES
   ('session-1', 0, datetime('now'), 100, 50, 10, 5, 'gpt-4'),
   ('session-1', 1, datetime('now'), 80, 40, 8, 2, 'gpt-4'),
-  ('session-2', 0, datetime('now'), 120, 60, 15, 3, 'gpt-4o');
+  ('session-2', 0, datetime('now'), 120, 60, 15, 3, 'gpt-4o'),
+  ('session-1', 0, datetime('now', '-8 days'), 50, 25, 5, 2, 'gpt-4');
 EOF
 
 result=$(HOME="$TEST_HOME" COPILOT_HOME="$TEST_HOME/.copilot" "$ROOT/bin/omarchy-agent-usage-copilot")
@@ -49,32 +50,33 @@ pass "Copilot collector identifies as 'copilot'"
 
 # Test 2: Today's token counts are summed correctly
 today_tokens=$(jq -r '.todayTotalTokens' <<<"$result")
-[[ $today_tokens == "450" ]] ||
+[[ $today_tokens == "493" ]] ||
   fail "Copilot collector sums today's tokens" "$result"
 pass "Copilot collector sums today's tokens"
 
-# Test 3: Model usage is tracked
-[[ $(jq 'has("modelUsage")' <<<"$result") == "true" ]] ||
-  fail "Copilot collector tracks modelUsage" "$result"
-pass "Copilot collector tracks modelUsage"
+# Test 3: Model usage is tracked with correct schema
+model_usage=$(jq '.todayTokensByModel.["gpt-4"]' <<<"$result")
+[[ $(jq -r '.inputTokens' <<<"$model_usage") == "180" ]] ||
+  fail "Copilot collector tracks todayTokensByModel with per-model breakdown" "$result"
+pass "Copilot collector tracks todayTokensByModel with per-model breakdown"
 
 # Test 4: Today's sessions are counted
 today_sessions=$(jq -r '.todaySessions' <<<"$result")
-[[ "$today_sessions" -gt 0 ]] ||
+(( today_sessions > 0 )) ||
   fail "Copilot collector counts today's sessions" "$result"
 pass "Copilot collector counts today's sessions"
 
 # Test 5: Total sessions are counted
 total_sessions=$(jq -r '.totalSessions' <<<"$result")
-[[ "$total_sessions" == "2" ]] ||
+(( total_sessions == 2 )) ||
   fail "Copilot collector counts total sessions correctly" "$result"
 pass "Copilot collector counts total sessions correctly"
 
 # Test 6: activeDays reflects all dates in the database (not capped at 7)
 active_days=$(jq -r '.activeDays' <<<"$result")
-[[ "$active_days" -gt 0 ]] ||
-  fail "Copilot collector reports active days" "$result"
-pass "Copilot collector reports active days"
+(( active_days == 2 )) ||
+  fail "Copilot collector reports exactly 2 distinct active dates (today + 8 days ago)" "$result"
+pass "Copilot collector reports exactly 2 distinct active dates (today + 8 days ago)"
 
 # Test 7: Schema matches panel expectations
 [[ $(jq 'has("schemaVersion") and has("ready") and has("limits")' <<<"$result") == "true" ]] ||
@@ -116,9 +118,9 @@ def mock_urlopen(*args, **kwargs):
         "quota_snapshots": {
             "premium_interactions": {
                 "quota_type": "premium_interactions",
-                "credits_used": 0,
-                "entitlement": 0,
-                "has_quota": True  # Must be True to process, even if exhausted
+                "credits_used": 100,
+                "entitlement": 100,
+                "has_quota": False  # Exhausted: fully consumed with has_quota false
             }
         },
         "quota_reset_date_utc": "2026-09-01T00:00:00Z"
