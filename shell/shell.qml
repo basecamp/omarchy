@@ -254,8 +254,8 @@ ShellRoot {
     onStatusChanged: {
       if (status === Loader.Error) {
         // Loader has no errorString(); referencing the bare identifier throws a
-        // ReferenceError that aborted this handler, so the fallback ran without
-        // ever telling the user why. The engine already logs the underlying QML
+        // ReferenceError that aborted this handler before either diagnostics or
+        // the fallback could run. The engine already logs the underlying QML
         // errors, so point at those instead of inventing a detail string.
         console.warn("bar option " + shell.activeBarId + " failed to load, falling back to "
           + shell.defaultBarId + " (source: " + shell.activeBarSourceUrl + "); see the QML errors above")
