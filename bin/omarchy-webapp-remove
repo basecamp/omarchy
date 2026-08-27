@@ -51,7 +51,14 @@ if [[ -z $APP_NAME ]]; then
 fi
 
 icon_name=$(printf '%s\n' "$APP_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//')
-desktop_file=$(path_for_web_app "$APP_NAME")
+# An explicit name has always addressed the launcher of that name in the
+# applications directory, and omarchy-remove-launcher-entry hands one straight
+# back from the file it just found. Reach into the index only when no such file
+# exists -- the one case where a nested launcher can be named at all.
+desktop_file="$DESKTOP_DIR/$APP_NAME.desktop"
+if [[ ! -f $desktop_file ]]; then
+  desktop_file=$(path_for_web_app "$APP_NAME")
+fi
 rm -f "${desktop_file:-$DESKTOP_DIR/$APP_NAME.desktop}"
 rm -f "$ICON_DIR/$icon_name.png" "$ICON_DIR/$APP_NAME.png" "$OLD_ICON_DIR/$APP_NAME.png"
 

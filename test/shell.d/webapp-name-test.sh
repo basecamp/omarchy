@@ -124,3 +124,19 @@ noise=$(HOME="$tmp_dir/empty" PATH="$tmp_dir/bin:$PATH" OMARCHY_REMOVE_NOTIFY=fa
 [[ -n $noise ]] &&
   fail "webapp remove stays quiet with no applications directory" "$noise"
 pass "webapp remove stays quiet when there is no applications directory"
+
+# omarchy-remove-launcher-entry hands back the basename of a top-level launcher
+# it just found, so an explicit name has to keep meaning that file. The
+# top-level entry here is deliberately not a web app: that keeps it out of the
+# index, so the outcome does not depend on the order find walked the directory.
+rm -rf "$apps_dir"
+mkdir -p "$apps_dir/legacy"
+printf '[Desktop Entry]\nExec=foot\n' >"$apps_dir/Tailscale.desktop"
+cat >"$apps_dir/legacy/Tailscale.desktop" <<'DESKTOP'
+[Desktop Entry]
+Exec=omarchy-launch-webapp https://unrelated.example
+DESKTOP
+run_remove "Tailscale" >/dev/null
+[[ -f "$apps_dir/legacy/Tailscale.desktop" ]] ||
+  fail "webapp remove leaves a nested launcher alone when it was given a top-level name"
+pass "webapp remove addresses the top-level launcher an explicit name asks for"
