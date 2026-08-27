@@ -1,1 +1,4 @@
-%wheel ALL=(ALL) NOPASSWD: /usr/bin/asdcontrol
+# Brightness keys need passwordless asdcontrol. Only hiddev detect/get/set.
+%wheel ALL=(root) NOPASSWD: /usr/bin/asdcontrol ^--detect( /dev/(usb/)?hiddev[0-9]+)+$
+%wheel ALL=(root) NOPASSWD: /usr/bin/asdcontrol ^/dev/(usb/)?hiddev[0-9]+$
+%wheel ALL=(root) NOPASSWD: /usr/bin/asdcontrol ^/dev/(usb/)?hiddev[0-9]+ -- [+-]?[0-9]+%$

@@ -1,0 +1,10 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = asdcontrol
+
+[Action]
+Description = Removing asdcontrol's unconstrained sudoers (Omarchy ships a scoped rule)
+When = PostTransaction
+Exec = /usr/bin/rm -f /etc/sudoers.d/asdcontrol
