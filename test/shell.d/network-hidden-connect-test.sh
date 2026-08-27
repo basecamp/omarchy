@@ -1,0 +1,269 @@
+#!/bin/bash
+
+set -euo pipefail
+
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
+
+# network-test.sh only regex-matches the generated bash source of these two
+# scripts. This file actually runs them against stubbed nmcli/uuidgen so the
+# lifecycle (dedupe, EXIT trap, autoconnect arm order) is proven, not just
+# grepped for.
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+mkdir -p "$tmp/bin"
+
+psk_script=$(node -e 'process.stdout.write(require(process.argv[1]).hiddenPskConnectScript)' "$ROOT/shell/plugins/panels/network/Model.js")
+open_script=$(node -e 'process.stdout.write(require(process.argv[1]).hiddenOpenConnectScript)' "$ROOT/shell/plugins/panels/network/Model.js")
+
+cat >"$tmp/bin/uuidgen" <<'EOF'
+#!/bin/bash
+echo new-uuid-0000
+EOF
+chmod +x "$tmp/bin/uuidgen"
+
+# Logs the full argv of every nmcli call (one line per call) and dispatches on
+# argv substrings, so assertions can grep the log for what actually ran and in
+# what order, instead of trusting the script's own source text.
+cat >"$tmp/bin/nmcli" <<'EOF'
+#!/bin/bash
+printf '%s\n' "$*" >> "$NM_CALL_LOG"
+case "$*" in
+  *"connection add"*)
+    exit 0
+    ;;
+  *"connection edit"*)
+    cat >"$NM_EDIT_INPUT"
+    exit 0
+    ;;
+  *"connection up"*)
+    [[ -n ${NM_UP_SLEEP:-} ]] && sleep "$NM_UP_SLEEP"
+    exit "${NM_UP_RC:-0}"
+    ;;
+  *"connection modify"*)
+    exit "${NM_MODIFY_RC:-0}"
+    ;;
+  *"connection delete"*)
+    exit 0
+    ;;
+  *"-t -f UUID,TYPE connection show"*)
+    printf '%s' "$NM_CONNECTIONS"
+    ;;
+  *"--escape no -g"*)
+    printf '%s' "$NM_WIFI_FIELDS"
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+EOF
+chmod +x "$tmp/bin/nmcli"
+
+# Three saved connections: a prior hidden profile for the SSID under test (the
+# one dedupe should remove), a broadcast profile with the same SSID (dedupe
+# must leave it alone -- it is not hidden), and an unrelated ethernet profile
+# (dedupe must not even consider non-wifi types). The SSID carries a space to
+# prove the scripts stay space-safe end to end.
+NM_CONNECTIONS=$'old-hidden:802-11-wireless\nbroadcast:802-11-wireless\neth:802-3-ethernet\n'
+NM_WIFI_FIELDS=$'old-hidden\nmy ssid\nyes\n\nbroadcast\nmy ssid\nno\n\n'
+
+assert_contains() {
+  local file=$1 needle=$2 description=$3
+
+  grep -qF -- "$needle" "$file" || fail "$description" "expected '$file' to contain: $needle\nactual:\n$(cat "$file" 2>/dev/null)"
+  pass "$description"
+}
+
+assert_not_contains() {
+  local file=$1 needle=$2 description=$3
+
+  if [[ -f $file ]] && grep -qF -- "$needle" "$file"; then
+    fail "$description" "expected '$file' to NOT contain: $needle\nactual:\n$(cat "$file")"
+  fi
+  pass "$description"
+}
+
+assert_file_absent() {
+  local file=$1 description=$2
+
+  [[ ! -e $file ]] || fail "$description" "expected '$file' to not exist"
+  pass "$description"
+}
+
+# Proves ordering, not just presence -- a dedupe delete that ran before
+# connection up would delete the old profile before the new one is proven.
+assert_order() {
+  local file=$1 first=$2 second=$3 description=$4
+  local first_line second_line
+
+  first_line=$(grep -n -m1 -F -- "$first" "$file" | cut -d: -f1)
+  second_line=$(grep -n -m1 -F -- "$second" "$file" | cut -d: -f1)
+  [[ -n $first_line && -n $second_line && $first_line -lt $second_line ]] ||
+    fail "$description" "first='$first' at line ${first_line:-none}; second='$second' at line ${second_line:-none}\n$(cat -n "$file")"
+  pass "$description"
+}
+
+# --- Scenario 1: PSK success ---------------------------------------------
+
+log=$tmp/log_psk_success
+edit=$tmp/edit_psk_success
+: >"$log"
+
+rc=0
+printf 'secret pass\n' | PATH="$tmp/bin:$PATH" \
+  NM_CALL_LOG="$log" NM_EDIT_INPUT="$edit" \
+  NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS" \
+  bash -c "$psk_script" nmcli-hidden-psk "my ssid" wpa-psk || rc=$?
+[[ $rc -eq 0 ]] || fail "hidden PSK connect succeeds when activation and autoconnect arm both succeed" "exit code: $rc"
+pass "hidden PSK connect succeeds when activation and autoconnect arm both succeed"
+
+add_line=$(grep -m1 -F "connection add" "$log")
+[[ $add_line == *"connection.autoconnect no"* ]] || fail "hidden PSK success creates the profile inert (autoconnect no)" "$add_line"
+pass "hidden PSK success creates the profile inert (autoconnect no)"
+[[ $add_line == *"802-11-wireless.hidden yes"* ]] || fail "hidden PSK success marks the new profile hidden" "$add_line"
+pass "hidden PSK success marks the new profile hidden"
+[[ $add_line == *"wifi-sec.key-mgmt wpa-psk"* ]] || fail "hidden PSK success sets key-mgmt from the caller argument" "$add_line"
+pass "hidden PSK success sets key-mgmt from the caller argument"
+[[ $add_line == *"my ssid"* ]] || fail "hidden PSK success creates the profile with the requested ssid" "$add_line"
+pass "hidden PSK success creates the profile with the requested ssid"
+
+assert_contains "$edit" "set wifi-sec.psk secret pass" "hidden PSK success sets the passphrase through the connection editor's stdin"
+
+# The passphrase must never appear in any nmcli argv line -- argv is world
+# readable in /proc, so a leak here is a local secret-disclosure bug.
+assert_not_contains "$log" "secret pass" "hidden PSK success never puts the passphrase in nmcli argv"
+
+delete_line=$(grep -m1 -F "connection delete" "$log")
+[[ $delete_line == *"uuid old-hidden"* ]] || fail "hidden PSK success deletes the prior hidden profile for this ssid" "$delete_line"
+pass "hidden PSK success deletes the prior hidden profile for this ssid"
+[[ $delete_line != *"broadcast"* ]] || fail "hidden PSK success never deletes a same-ssid broadcast profile" "$delete_line"
+pass "hidden PSK success never deletes a same-ssid broadcast profile"
+[[ $delete_line != *"eth"* ]] || fail "hidden PSK success never deletes an unrelated ethernet profile" "$delete_line"
+pass "hidden PSK success never deletes an unrelated ethernet profile"
+[[ $delete_line != *"new-uuid-0000"* ]] || fail "hidden PSK success never deletes the profile it just proved" "$delete_line"
+pass "hidden PSK success never deletes the profile it just proved"
+
+assert_order "$log" "connection up" "connection modify" "hidden PSK success brings the profile up before arming autoconnect"
+assert_order "$log" "connection modify" "connection delete" "hidden PSK success arms autoconnect before deleting the old profile"
+
+# --- Scenario 2: PSK activation failure ----------------------------------
+
+log=$tmp/log_psk_up_fail
+edit=$tmp/edit_psk_up_fail
+: >"$log"
+
+rc=0
+printf 'secret pass\n' | PATH="$tmp/bin:$PATH" \
+  NM_CALL_LOG="$log" NM_EDIT_INPUT="$edit" \
+  NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS" \
+  NM_UP_RC=1 \
+  bash -c "$psk_script" nmcli-hidden-psk "my ssid" wpa-psk || rc=$?
+[[ $rc -ne 0 ]] || fail "hidden PSK connect fails when activation fails"
+pass "hidden PSK connect fails when activation fails"
+
+assert_contains "$log" "connection delete uuid new-uuid-0000" "hidden PSK activation failure lets the EXIT trap delete the unproven profile"
+assert_not_contains "$log" "delete uuid old-hidden" "hidden PSK activation failure leaves the old profile in place"
+assert_not_contains "$log" "autoconnect yes" "hidden PSK activation failure never arms autoconnect"
+
+# --- Scenario 3: PSK autoconnect-arm failure ------------------------------
+
+log=$tmp/log_psk_modify_fail
+edit=$tmp/edit_psk_modify_fail
+: >"$log"
+
+rc=0
+printf 'secret pass\n' | PATH="$tmp/bin:$PATH" \
+  NM_CALL_LOG="$log" NM_EDIT_INPUT="$edit" \
+  NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS" \
+  NM_MODIFY_RC=1 \
+  bash -c "$psk_script" nmcli-hidden-psk "my ssid" wpa-psk || rc=$?
+# Success is pinned to activation, not to the autoconnect arm -- the
+# connection really is up, so the overall attempt must report success even
+# though the arm step failed.
+[[ $rc -eq 0 ]] || fail "hidden PSK connect still succeeds when only the autoconnect arm fails" "exit code: $rc"
+pass "hidden PSK connect still succeeds when only the autoconnect arm fails"
+
+assert_not_contains "$log" "delete uuid old-hidden" "hidden PSK arm failure keeps the old, still-autoconnecting profile"
+assert_not_contains "$log" "delete uuid new-uuid-0000" "hidden PSK arm failure keeps the newly-activated profile"
+
+# --- Scenario 4: PSK termination ------------------------------------------
+
+log=$tmp/log_psk_term
+edit=$tmp/edit_psk_term
+input=$tmp/input_psk_term
+: >"$log"
+printf 'secret pass\n' >"$input"
+
+PATH="$tmp/bin:$PATH" \
+  NM_CALL_LOG="$log" NM_EDIT_INPUT="$edit" \
+  NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS" \
+  NM_UP_SLEEP=3 \
+  bash -c "$psk_script" nmcli-hidden-psk "my ssid" wpa-psk <"$input" &
+pid=$!
+
+waited=0
+while ! grep -qF "connection up" "$log" 2>/dev/null; do
+  sleep 0.1
+  waited=$((waited + 1))
+  (( waited < 50 )) || fail "hidden PSK termination test setup" "connection up never started within 5s"
+done
+
+kill -TERM "$pid"
+rc=0
+wait "$pid" || rc=$?
+
+[[ $rc -ne 0 ]] || fail "hidden PSK connect reports failure when killed mid-activation"
+pass "hidden PSK connect reports failure when killed mid-activation"
+
+assert_contains "$log" "connection delete uuid new-uuid-0000" "hidden PSK termination lets the EXIT trap delete the unproven profile"
+assert_not_contains "$log" "delete uuid old-hidden" "hidden PSK termination leaves the old profile in place"
+
+# --- Scenario 5: Open network success -------------------------------------
+
+log=$tmp/log_open_success
+: >"$log"
+
+rc=0
+printf '\n' | PATH="$tmp/bin:$PATH" \
+  NM_CALL_LOG="$log" NM_EDIT_INPUT="$tmp/edit_open_success" \
+  NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS" \
+  bash -c "$open_script" nmcli-hidden-open "my ssid" || rc=$?
+[[ $rc -eq 0 ]] || fail "hidden open connect succeeds when activation and autoconnect arm both succeed" "exit code: $rc"
+pass "hidden open connect succeeds when activation and autoconnect arm both succeed"
+
+add_line=$(grep -m1 -F "connection add" "$log")
+[[ $add_line == *"802-11-wireless.hidden yes"* ]] || fail "hidden open success marks the new profile hidden" "$add_line"
+pass "hidden open success marks the new profile hidden"
+[[ $add_line == *"connection.autoconnect no"* ]] || fail "hidden open success creates the profile inert (autoconnect no)" "$add_line"
+pass "hidden open success creates the profile inert (autoconnect no)"
+
+assert_not_contains "$log" "wifi-sec" "hidden open success sets no wifi security properties on an open profile"
+assert_not_contains "$log" "connection edit" "hidden open success never opens the connection editor, since there is no secret to set"
+
+delete_line=$(grep -m1 -F "connection delete" "$log")
+[[ $delete_line == *"uuid old-hidden"* ]] || fail "hidden open success deletes the prior hidden profile for this ssid" "$delete_line"
+pass "hidden open success deletes the prior hidden profile for this ssid"
+[[ $delete_line != *"broadcast"* ]] || fail "hidden open success never deletes a same-ssid broadcast profile" "$delete_line"
+pass "hidden open success never deletes a same-ssid broadcast profile"
+[[ $delete_line != *"eth"* ]] || fail "hidden open success never deletes an unrelated ethernet profile" "$delete_line"
+pass "hidden open success never deletes an unrelated ethernet profile"
+
+assert_order "$log" "connection up" "connection modify" "hidden open success brings the profile up before arming autoconnect"
+assert_order "$log" "connection modify" "connection delete" "hidden open success arms autoconnect before deleting the old profile"
+
+# --- Scenario 6: Open network activation failure --------------------------
+
+log=$tmp/log_open_up_fail
+: >"$log"
+
+rc=0
+printf '\n' | PATH="$tmp/bin:$PATH" \
+  NM_CALL_LOG="$log" NM_EDIT_INPUT="$tmp/edit_open_up_fail" \
+  NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS" \
+  NM_UP_RC=1 \
+  bash -c "$open_script" nmcli-hidden-open "my ssid" || rc=$?
+[[ $rc -ne 0 ]] || fail "hidden open connect fails when activation fails"
+pass "hidden open connect fails when activation fails"
+
+assert_contains "$log" "connection delete uuid new-uuid-0000" "hidden open activation failure lets the EXIT trap delete the unproven profile"
+assert_not_contains "$log" "delete uuid old-hidden" "hidden open activation failure leaves the old profile in place"
