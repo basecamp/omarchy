@@ -713,7 +713,7 @@ Panel {
                 // "MAY 2026" and a "SEPTEMBER 2026".
                 width: Style.space(130)
                 horizontalAlignment: Text.AlignHCenter
-                text: Qt.locale().toString(root.viewDate, "MMMM yyyy").toUpperCase()
+                text: Qt.locale().toString(root.viewDate, "MMMM yyyy").toLocaleUpperCase(Qt.locale())
                 color: Qt.darker(root.contentForeground, 1.4)
                 font.family: root.contentFontFamily
                 font.pixelSize: Style.font.body
