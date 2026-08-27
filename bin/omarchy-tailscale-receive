@@ -59,7 +59,7 @@ claim_path() {
 announce() {
   local path="$1"
   local name="${path##*/}"
-  local args=("Received $name" "Saved to ${dir/#$HOME/~}")
+  local args=("Received $name" "Saved to ${dir/#$HOME/~}" -u critical)
 
   case "${name,,}" in
   *.png | *.jpg | *.jpeg | *.gif | *.webp | *.avif | *.bmp | *.tif | *.tiff)
@@ -72,7 +72,7 @@ announce() {
 
   # Announcing is best-effort: the file is already delivered, and under `set -e`
   # a notification outage would otherwise kill the long-running receiver.
-  omarchy-notification-send "${args[@]}" --exec "$(printf 'xdg-open %q' "$path")" || true
+  omarchy-notification-send "${args[@]}" --exec xdg-open "$path" || true
 }
 
 deliver() {
