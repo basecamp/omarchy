@@ -167,7 +167,11 @@ if ! [[ -d "\$(mise where '$tool' 2>/dev/null)/hermes-agent/lib/python$python" ]
   mise use -g --quiet --force '$tool' || exit 1
 fi
 
-exec mise x '$tool' -- hermes "\$@"
+# The pin belongs to building Hermes, not to everything Hermes then runs.
+# Exported it would reach the agent and every command it shells out to, so a
+# uv in the user's own project would resolve 3.13 there too -- uv only warns
+# when that contradicts the project's requires-python, and builds it anyway.
+exec env -u UV_PYTHON mise x '$tool' -- hermes "\$@"
 EOF
 
 chmod +x "$HOME/.local/bin/hermes"

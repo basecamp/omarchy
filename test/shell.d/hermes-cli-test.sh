@@ -42,6 +42,7 @@ run_installer() {
 }
 
 stub_marker="# Written by omarchy-install-hermes-cli."
+python_pin="3.13"
 app_stub_body='#!/bin/bash
 exec /home/x/.hermes/hermes-agent/venv/bin/hermes "$@"'
 
@@ -207,7 +208,7 @@ chmod +x "$test_home/.local/bin/hermes"
 run_installer 0 || fail "reinstalling over our own stub succeeds"
 grep -qxF "$stub_marker" "$test_home/.local/bin/hermes" || fail "the refreshed stub still carries the marker"
 grep -q "stale template" "$test_home/.local/bin/hermes" && fail "reinstalling rewrites our own stub"
-grep -q "exec mise x" "$test_home/.local/bin/hermes" || fail "the refreshed stub is the current template"
+grep -q "exec env -u UV_PYTHON mise x" "$test_home/.local/bin/hermes" || fail "the refreshed stub is the current template"
 pass "reinstalling refreshes the Omarchy stub"
 
 # install/user/mise.sh is sourced by install/user/all.sh through run_logged,
@@ -244,3 +245,40 @@ OMARCHY_TEST_DESKTOP_INSTALLED=1 \
   bash -eE -c 'source "$1"' bash "$ROOT/install/user/mise.sh" >/dev/null 2>&1 ||
   fail "user setup survives a Hermes install that cannot finish"
 pass "user setup survives a Hermes install that cannot finish"
+
+# UV_PYTHON pins the interpreter Hermes is built against. Left in the
+# environment it reaches Hermes itself and every command the agent shells out
+# to, so a `uv` run in the user's own project resolves 3.13 there as well --
+# uv only warns that this contradicts the project's requires-python, then
+# builds the venv anyway. The stub drops it before handing over.
+leak_home="$test_tmp/leak-home"
+leak_bin="$test_tmp/leak-bin"
+leak_log="$test_tmp/leak-log"
+leak_prefix="$test_tmp/leak-prefix"
+mkdir -p "$leak_home/.local/bin" "$leak_bin" "$leak_prefix/hermes-agent/lib/python$python_pin"
+
+# A mise whose `where` satisfies the stub's probe, so the stub goes straight to
+# handing over, and whose `x` records the UV_PYTHON it was handed.
+cat >"$leak_bin/mise" <<SH
+#!/bin/bash
+case \$1 in
+  where) echo "$leak_prefix" ;;
+  x) printf '%s' "\${UV_PYTHON-}" >"$leak_log" ;;
+esac
+SH
+chmod +x "$leak_bin/mise"
+
+OMARCHY_TEST_DESKTOP_INSTALLED=0 \
+  OMARCHY_TEST_MISE_LOG="$mise_log" \
+  HOME="$leak_home" \
+  PATH="$mock_bin:$PATH" \
+  bash "$ROOT/bin/omarchy-install-hermes-cli" >/dev/null 2>&1 ||
+  fail "the installer writes a stub for the leak check"
+
+HOME="$leak_home" PATH="$leak_bin:$mock_bin:$PATH" \
+  "$leak_home/.local/bin/hermes" --version >/dev/null 2>&1
+
+[[ -f $leak_log ]] || fail "the stub reaches the command it wraps"
+[[ -z $(cat "$leak_log") ]] ||
+  fail "the interpreter pin does not follow Hermes into the commands it runs"
+pass "the interpreter pin does not follow Hermes into the commands it runs"
