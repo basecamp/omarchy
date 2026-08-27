@@ -7,7 +7,7 @@ function entrySubtext(entry) {
 }
 
 function normalizedAppId(id) {
-  return String(id || "").toLowerCase().replace(/\.desktop$/, "")
+  return String(id || "").toLowerCase()
 }
 
 function appIdsMatch(desktopId, startupClass, appId) {

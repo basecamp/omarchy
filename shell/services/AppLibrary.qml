@@ -162,6 +162,9 @@ Item {
     var entry = DesktopEntries.byId(desktopId)
     var startupClass = String((entry && entry.startupClass) || "")
     var toplevels = ToplevelManager.toplevels.values || []
+    var active = ToplevelManager.activeToplevel
+
+    if (active && AppSearch.appIdsMatch(desktopId, startupClass, active.appId)) return active
 
     for (var i = 0; i < toplevels.length; i++) {
       if (AppSearch.appIdsMatch(desktopId, startupClass, toplevels[i] && toplevels[i].appId)) return toplevels[i]
@@ -176,12 +179,15 @@ Item {
     root.launchActiveToplevel = ToplevelManager.activeToplevel
     root.launchExistingToplevel = root.existingToplevelFor(desktopId)
     root.launchOsdMessage = "Launching " + String(name || "application") + "…"
+    if (root.launchExistingToplevel) existingFocusDelay.restart()
+    else existingFocusDelay.stop()
     launchDelay.restart()
     launchTimeout.restart()
   }
 
   function closeLaunchFeedback(serial) {
     if (serial !== root.launchSerial) return
+    existingFocusDelay.stop()
     launchDelay.stop()
     launchTimeout.stop()
     if (root.launchOsdOpen) {
@@ -191,7 +197,7 @@ Item {
   }
 
   function maybeFinishLaunchFeedback() {
-    if (!launchDelay.running && !launchTimeout.running && !root.launchOsdOpen) return
+    if (!existingFocusDelay.running && !launchDelay.running && !launchTimeout.running && !root.launchOsdOpen) return
     if (root.toplevelCount() <= root.launchToplevelCount && ToplevelManager.activeToplevel === root.launchActiveToplevel) return
     root.closeLaunchFeedback(root.launchSerial)
   }
@@ -251,18 +257,22 @@ Item {
   }
 
   Timer {
+    id: existingFocusDelay
+    interval: 150
+    onTriggered: {
+      if (root.toplevelCount() > root.launchToplevelCount || ToplevelManager.activeToplevel !== root.launchActiveToplevel) return
+      // Give the app a brief chance to activate itself or map a new window.
+      // If its relaunch is a no-op, focus the window that was already open.
+      root.launchExistingToplevel.activate()
+      root.closeLaunchFeedback(root.launchSerial)
+    }
+  }
+
+  Timer {
     id: launchDelay
     interval: 2000
     onTriggered: {
       if (root.toplevelCount() > root.launchToplevelCount || ToplevelManager.activeToplevel !== root.launchActiveToplevel) return
-      // A single-instance app may accept the second launch without mapping or
-      // activating a window. Focus the window that existed before the launch
-      // instead of showing launch feedback until the timeout.
-      if (root.launchExistingToplevel) {
-        root.launchExistingToplevel.activate()
-        root.closeLaunchFeedback(root.launchSerial)
-        return
-      }
       root.launchOsdOpen = true
       Quickshell.execDetached(["omarchy-shell", "osd", "show", JSON.stringify({ icon: "󱓞", message: root.launchOsdMessage, duration: 0 })])
     }
