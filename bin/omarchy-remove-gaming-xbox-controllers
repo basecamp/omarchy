@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Remove the xpadneo Xbox controller driver and undo its module/blacklist config.
+# omarchy:summary=Remove the xpadneo Xbox controller driver and its module config.
 # omarchy:group=remove
 # omarchy:name=gaming xbox-controllers
 # omarchy:requires-sudo=true
@@ -9,7 +9,12 @@ set -e
 
 omarchy-pkg-drop xpadneo-dkms
 
-sudo rm -f /etc/modprobe.d/blacklist-xpad.conf /etc/modules-load.d/xpadneo.conf
+legacy_blacklist=/etc/modprobe.d/blacklist-xpad.conf
+if [[ -f $legacy_blacklist && $(<"$legacy_blacklist") == "blacklist xpad" ]]; then
+  sudo rm -f -- "$legacy_blacklist"
+fi
+
+sudo rm -f -- /etc/modules-load.d/xpadneo.conf
 
 echo ""
-echo "Xbox controller support removed. Reboot to fully unload xpadneo and restore xpad."
+echo "Xbox controller Bluetooth support removed. Reboot to fully unload xpadneo."
