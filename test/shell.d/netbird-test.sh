@@ -336,6 +336,43 @@ assert(/"deselect", id/.test(serviceSource), 'netbird deselects a single route b
 // The JSON spelling stays first in the list, with the table behind it as fallback.
 assert(/profileCommands\[profileCommandIndex\]/.test(serviceSource), 'netbird walks the profile listing spellings rather than pinning one')
 
+// Section headers carry their own summary, so a folded section still reports.
+assertEqual(netbird.sectionHeader('PEERS', '7/47 CONNECTED'), 'PEERS · 7/47 CONNECTED', 'netbird joins a section label to its summary')
+assertEqual(netbird.sectionHeader('PEERS', ''), 'PEERS', 'netbird leaves a section label alone with no summary')
+assertEqual(netbird.profilesSummary('homelab'), 'HOMELAB', 'netbird summarizes profiles with the active one')
+assertEqual(netbird.profilesSummary(''), '', 'netbird summarizes nothing without an active profile')
+assertEqual(
+  netbird.routesSummary([{ Selected: true }, { Selected: false }, { Selected: true }]),
+  '2/3 SELECTED',
+  'netbird summarizes routes as selected over total'
+)
+assertEqual(netbird.routesSummary([]), '', 'netbird summarizes nothing without routes')
+
+// Collapse state round-trips through the state file as a list of names.
+assertDeepEqual(
+  netbird.collapsedSectionsFile({ peers: true, routes: false, profiles: true }),
+  { version: 1, collapsed: ['peers', 'profiles'] },
+  'netbird stores only the folded sections, sorted'
+)
+assertDeepEqual(netbird.collapsedSectionsFile({}), { version: 1, collapsed: [] }, 'netbird stores an empty list when nothing is folded')
+assertEqual(netbird.parseCollapsedSections('{"version":1,"collapsed":["peers"]}').peers, true, 'netbird reads a folded section back')
+assertEqual(netbird.parseCollapsedSections('{"version":1,"collapsed":["peers"]}').routes, undefined, 'netbird leaves unlisted sections open')
+assertDeepEqual(netbird.defaultCollapsedSections(), { peers: true }, 'netbird folds peers away before anything is stored')
+assert(/onLoadFailed: root\.collapsedSections = Model\.defaultCollapsedSections\(\)/.test(panelSource), 'netbird applies the collapse defaults only when no state is stored')
+// Hover must not scroll: folding a section slides rows under a still pointer, and
+// the hover that follows would drag the view to whatever landed under it.
+assert(/function scrollCursorIntoView\(\)[^}]*if \(suppressCursorScroll\) return/.test(panelSource), 'netbird can suppress scrolling a cursor change into view')
+assert(!/function setPeerCursor[^}]*scrollCursorIntoView\(\)/.test(panelSource), 'netbird does not scroll when the pointer picks a peer')
+assert(!/function setRouteCursor[^}]*scrollCursorIntoView\(\)/.test(panelSource), 'netbird does not scroll when the pointer picks a route')
+assert(/function moveCursor[\s\S]*?scrollCursorIntoView\(\)/.test(panelSource), 'netbird still scrolls the cursor into view when the keyboard moves it')
+// The stored file is authoritative, so opening peers is not mistaken for a first
+// run on the next load and re-folded behind the user's back.
+assertDeepEqual(netbird.parseCollapsedSections('{"version":1,"collapsed":[]}'), {}, 'netbird keeps peers open once a file says so')
+assertDeepEqual(netbird.parseCollapsedSections(''), {}, 'netbird reads no folded sections out of an empty file')
+assertDeepEqual(netbird.parseCollapsedSections('not json'), {}, 'netbird opens every section when the state file is unreadable')
+// A round trip keeps a section this version does not render, rather than dropping it.
+assertEqual(netbird.parseCollapsedSections(JSON.stringify(netbird.collapsedSectionsFile({ future: true }))).future, true, 'netbird round-trips a section it does not know')
+
 assertDeepEqual(
   netbird.loginPlan(true, 'https://app.netbird.io/device?user_code=ABCD-EFGH'),
   { authUrl: 'https://app.netbird.io/device?user_code=ABCD-EFGH', command: [] },

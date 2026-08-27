@@ -5,6 +5,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import "Model.js" as Model
 
 Panel {
   id: root
@@ -18,6 +19,7 @@ Panel {
   property int routeIndex: 0
   property int peerIndex: 0
   property bool cursorActive: false
+  property bool suppressCursorScroll: false
   property bool copyMenuOpen: false
   property int phraseIndex: 0
   readonly property var activePhrases: [
@@ -71,10 +73,49 @@ Panel {
     return list
   }
 
+  // A real network is dozens of peers, so each list section folds away. The
+  // header stays put when its rows are hidden — the count on it is the reason to
+  // keep a section collapsed rather than the reason to reopen it.
+  property var collapsedSections: Model.defaultCollapsedSections()
+
+  function sectionCollapsed(name) {
+    return collapsedSections[name] === true
+  }
+
+  function toggleSectionCollapsed(name) {
+    var next = {}
+    for (var key in collapsedSections) next[key] = collapsedSections[key]
+    next[name] = !(next[name] === true)
+    collapsedSections = next
+
+    // Collapsing the section the cursor sits in would otherwise leave it
+    // steering rows nobody can see.
+    ensureCursor()
+    saveCollapsed()
+  }
+
+  function saveCollapsed() {
+    collapsedFile.setText(JSON.stringify(Model.collapsedSectionsFile(collapsedSections), null, 2) + "\n")
+  }
+
+  property FileView collapsedFile: FileView {
+    path: Quickshell.env("HOME") + "/.local/state/omarchy/settings/netbird.json"
+    watchChanges: false
+    atomicWrites: true
+    printErrors: false
+    onLoaded: root.collapsedSections = Model.parseCollapsedSections(text())
+    // First run: no file yet, which is not a failure worth logging. The
+    // defaults apply only here, so a stored choice always wins.
+    onLoadFailed: root.collapsedSections = Model.defaultCollapsedSections()
+  }
+
   readonly property bool showNotices: notices.length > 0
-  readonly property bool showProfiles: netbird.profiles.length > 1
-  readonly property bool showRoutes: netbird.active && netbird.routes.length > 0
-  readonly property bool showPeers: netbird.active && netbird.peers.length > 0
+  readonly property bool hasProfiles: netbird.profiles.length > 1
+  readonly property bool hasRoutes: netbird.active && netbird.routes.length > 0
+  readonly property bool hasPeers: netbird.active && netbird.peers.length > 0
+  readonly property bool showProfiles: hasProfiles && !sectionCollapsed("profiles")
+  readonly property bool showRoutes: hasRoutes && !sectionCollapsed("routes")
+  readonly property bool showPeers: hasPeers && !sectionCollapsed("peers")
 
   readonly property bool headerHasCursor: cursorActive && focusSection === "header" && netbird.installed
   readonly property color iconColor: netbird.active ? foreground : dim
@@ -216,22 +257,29 @@ Panel {
   }
 
   function scrollCursorIntoView() {
+    // A hovered row is already under the pointer, so scrolling to it is at best
+    // a no-op — and when a section folds or unfolds, the rows slide under a
+    // stationary pointer and the hover that follows would yank the view to
+    // whatever landed there. Only deliberate cursor movement scrolls.
+    if (suppressCursorScroll) return
     if (focusSection === "peers" && peerColumn && peerIndex >= 0 && peerIndex < peerColumn.children.length) scrollItemIntoView(peerColumn.children[peerIndex])
     else if (focusSection === "routes" && routeColumn && routeIndex >= 0 && routeIndex < routeColumn.children.length) scrollItemIntoView(routeColumn.children[routeIndex])
   }
 
   function setPeerCursor(index) {
     cursorActive = true
+    suppressCursorScroll = true
     focusSection = "peers"
     peerIndex = index
-    scrollCursorIntoView()
+    suppressCursorScroll = false
   }
 
   function setRouteCursor(index) {
     cursorActive = true
+    suppressCursorScroll = true
     focusSection = "routes"
     routeIndex = index
-    scrollCursorIntoView()
+    suppressCursorScroll = false
   }
 
   function setProfileCursor(index) {
@@ -361,11 +409,15 @@ Panel {
         boundsBehavior: Flickable.StopAtBounds
         flickableDirection: Flickable.VerticalFlick
         interactive: contentHeight > height
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        ScrollBar.vertical: ScrollBar { id: panelScrollBar; policy: ScrollBar.AsNeeded }
 
         Column {
           id: column
-          width: panelFlick.width
+          // Reserve the scrollbar's band instead of running underneath it. The bar
+          // is an overlay and takes the clicks in that strip, so anything a row or
+          // header puts at its right edge — a fold arrow, a copy button — would be
+          // unclickable, and the click would scroll the panel instead.
+          width: panelFlick.width - (panelScrollBar.visible ? panelScrollBar.width : 0)
           spacing: Style.space(12)
 
           Item {
@@ -482,23 +534,24 @@ Panel {
           }
 
           PanelSeparator {
-            visible: root.showProfiles
+            visible: root.hasProfiles
             foreground: root.foreground
           }
 
           Column {
-            visible: root.showProfiles
+            visible: root.hasProfiles
             width: parent.width
             spacing: Style.space(10)
 
-            PanelSectionHeader {
-              text: "PROFILES"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
+            CollapsibleHeader {
+              width: parent.width
+              section: "profiles"
+              label: "PROFILES"
+              summary: Model.profilesSummary(netbird.selectedProfileName)
             }
 
             Repeater {
-              model: netbird.profiles
+              model: root.showProfiles ? netbird.profiles : []
               ProfileRow {
                 required property var modelData
                 required property int index
@@ -510,19 +563,20 @@ Panel {
           }
 
           PanelSeparator {
-            visible: root.showRoutes
+            visible: root.hasRoutes
             foreground: root.foreground
           }
 
           Column {
-            visible: root.showRoutes
+            visible: root.hasRoutes
             width: parent.width
             spacing: Style.space(10)
 
-            PanelSectionHeader {
-              text: "ROUTES"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
+            CollapsibleHeader {
+              width: parent.width
+              section: "routes"
+              label: "ROUTES"
+              summary: Model.routesSummary(netbird.routes)
             }
 
             Column {
@@ -531,7 +585,7 @@ Panel {
               spacing: Style.space(6)
 
               Repeater {
-                model: netbird.routes
+                model: root.showRoutes ? netbird.routes : []
                 RouteRow {
                   required property var modelData
                   required property int index
@@ -553,16 +607,17 @@ Panel {
             width: parent.width
             spacing: Style.space(10)
 
-            PanelSectionHeader {
-              text: netbird.totalPeers > 0
-                ? "PEERS · " + netbird.connectedPeers + "/" + netbird.totalPeers + " CONNECTED"
-                : "PEERS"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
+            CollapsibleHeader {
+              width: parent.width
+              section: "peers"
+              label: "PEERS"
+              summary: netbird.totalPeers > 0
+                ? netbird.connectedPeers + "/" + netbird.totalPeers + " CONNECTED"
+                : ""
             }
 
             Text {
-              visible: netbird.installed && netbird.active && netbird.peers.length === 0
+              visible: root.showPeers && netbird.peers.length === 0
               width: parent.width
               text: "No peers found on this network."
               color: root.dim
@@ -578,7 +633,7 @@ Panel {
               spacing: Style.space(6)
 
               Repeater {
-                model: netbird.peers
+                model: root.showPeers ? netbird.peers : []
                 PeerRow {
                   required property var modelData
                   required property int index
@@ -883,6 +938,54 @@ Panel {
       visible: routeMouse.containsMouse
       text: routeRow.actionTooltip
       fontFamily: root.fontFamily
+    }
+  }
+
+  // A section header that folds its own rows away. The summary rides on the
+  // header so a folded section still answers the question it was opened for.
+  component CollapsibleHeader: Item {
+    id: headerRoot
+
+    required property string section
+    required property string label
+    property string summary: ""
+
+    readonly property bool folded: root.sectionCollapsed(section)
+
+    implicitHeight: headerRow.implicitHeight
+
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: root.toggleSectionCollapsed(headerRoot.section)
+    }
+
+    RowLayout {
+      id: headerRow
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: Style.space(6)
+
+      // Leads the label rather than trailing it: the panel's scrollbar is an
+      // overlay on the right edge and swallows clicks in that strip, so an
+      // affordance parked there is the one place a fold arrow must not go.
+      Text {
+        Layout.alignment: Qt.AlignVCenter
+        text: headerRoot.folded ? "󰅂" : "󰅀"
+        color: Qt.darker(root.foreground, 1.4)
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        font.bold: true
+      }
+
+      PanelSectionHeader {
+        Layout.fillWidth: true
+        text: Model.sectionHeader(headerRoot.label, headerRoot.summary)
+        foreground: root.foreground
+        fontFamily: root.fontFamily
+      }
     }
   }
 

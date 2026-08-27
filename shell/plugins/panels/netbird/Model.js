@@ -142,6 +142,68 @@ function sessionExpiry(value, nowMs) {
   return { text: "Session expires in " + left, expired: false, urgent: secs < 3600 }
 }
 
+// Peers start folded: a real network is dozens of rows, and the count on the
+// header ("7/47 CONNECTED") is usually the whole answer. This applies only when
+// there is no state file — once one exists it is authoritative, so a user who
+// opens peers keeps them open rather than having this default reassert itself.
+function defaultCollapsedSections() {
+  return { peers: true }
+}
+
+// Which sections the user folded away, kept as a list of names so the file stays
+// readable and a section this version has never heard of survives a round trip
+// instead of being dropped.
+function parseCollapsedSections(raw) {
+  var out = {}
+  var text = String(raw || "").trim()
+  if (text === "") return out
+
+  try {
+    var data = JSON.parse(text)
+    var list = data ? (data.collapsed || data.Collapsed) : null
+    if (!list || typeof list.length !== "number") return out
+    for (var i = 0; i < list.length; i++) {
+      var name = String(list[i] || "")
+      if (name !== "") out[name] = true
+    }
+  } catch (e) {
+    return {}
+  }
+  return out
+}
+
+// Section headers carry their own summary, the way the peer header carries
+// "7/47 CONNECTED" — that line is the whole value of a section left folded away.
+function routesSummary(routes) {
+  var source = routes && typeof routes.length === "number" ? routes : []
+  if (source.length === 0) return ""
+
+  var selected = 0
+  for (var i = 0; i < source.length; i++) {
+    if (source[i] && source[i].Selected === true) selected++
+  }
+  return selected + "/" + source.length + " SELECTED"
+}
+
+function profilesSummary(selectedProfileName) {
+  return String(selectedProfileName || "").toUpperCase()
+}
+
+function sectionHeader(label, summary) {
+  var detail = String(summary || "")
+  return detail === "" ? String(label) : String(label) + " · " + detail
+}
+
+function collapsedSectionsFile(collapsed) {
+  var names = []
+  var source = collapsed || {}
+  for (var key in source) {
+    if (source[key] === true) names.push(key)
+  }
+  names.sort()
+  return { version: 1, collapsed: names }
+}
+
 function wireguardMode(usesKernelInterface) {
   return usesKernelInterface === true ? "kernel" : "userspace"
 }
@@ -688,6 +750,13 @@ if (typeof module !== "undefined") {
     wireguardMode: wireguardMode,
     peerActivity: peerActivity,
     urlHost: urlHost,
-    healthRows: healthRows
+    healthRows: healthRows,
+    parseProfilesText: parseProfilesText,
+    defaultCollapsedSections: defaultCollapsedSections,
+    parseCollapsedSections: parseCollapsedSections,
+    collapsedSectionsFile: collapsedSectionsFile,
+    routesSummary: routesSummary,
+    profilesSummary: profilesSummary,
+    sectionHeader: sectionHeader
   }
 }

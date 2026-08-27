@@ -9,6 +9,7 @@ Native Omarchy bar widget for [NetBird](https://netbird.io/).
 - Right click connects or disconnects, middle click refreshes
 - Switch between NetBird profiles when the CLI supports them and more than one exists
 - Browse peers from `netbird status --json`, including idle ones, with traffic and last-seen
+- Fold any list section away; peers start folded and headers keep their counts
 - Counts the SSO session down, urgent in its last hour
 - Reports management, signal, and relay health, plus the WireGuard mode and port
 - Select and deselect network routes, with exit nodes listed first
