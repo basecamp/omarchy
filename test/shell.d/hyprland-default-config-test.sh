@@ -61,11 +61,18 @@ if prelude ~= "" then
 end
 
 hl = setmetatable({
-  dsp = proxy(),
+  dsp = setmetatable({
+    exec_cmd = function(command)
+      return { command = command }
+    end,
+  }, { __index = proxy() }),
   bind = function(keys, dispatcher, opts)
     opts = opts or {}
     if opts.description then
       print(keys .. "\t" .. opts.description)
+    end
+    if type(dispatcher) == "table" and dispatcher.command then
+      print("command\t" .. keys .. "\t" .. dispatcher.command)
     end
   end,
   config = function() end,
@@ -104,6 +111,11 @@ fresh_output=$(run_application_bindings "$fresh_home")
 grep -Fq $'SUPER + RETURN	Terminal' <<<"$fresh_output" || fail "default application bindings include essentials"
 grep -Fq $'SUPER + SHIFT + A	ChatGPT' <<<"$fresh_output" || fail "default application bindings include preinstalled web apps"
 pass "default application bindings load from package defaults"
+
+omarchy_output=$(run_omarchy_bindings "$fresh_home")
+grep -Fq $'command\tSUPER + CTRL + T\tomarchy-launch-or-focus-tui --current-workspace '\''btop'\''' <<<"$omarchy_output" ||
+  fail "activity binding focuses an existing btop window on the current workspace"
+pass "activity binding focuses an existing btop window on the current workspace"
 
 grep -F 'hl.dsp.send_key_state({ mods = mods, key = key, state = "down" })' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null ||
   fail "universal clipboard shortcuts send explicit mods to the focused surface"

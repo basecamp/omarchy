@@ -1,16 +1,29 @@
 #!/bin/bash
 
 # omarchy:summary=Launch an app or focus an existing window matching a pattern
-# omarchy:args=<window-pattern> <launch-command>
+# omarchy:args=[--current-workspace] <window-pattern> [launch-command]
+
+CURRENT_WORKSPACE_ONLY=0
+if [[ ${1:-} == "--current-workspace" ]]; then
+  CURRENT_WORKSPACE_ONLY=1
+  shift
+fi
 
 if (($# == 0)); then
-  echo "Usage: omarchy-launch-or-focus [window-pattern] [launch-command]"
+  echo "Usage: omarchy-launch-or-focus [--current-workspace] <window-pattern> [launch-command]"
   exit 1
 fi
 
 WINDOW_PATTERN="$1"
 LAUNCH_COMMAND="${2:-"uwsm-app -- $WINDOW_PATTERN"}"
-WINDOW_ADDRESS=$(hyprctl clients -j | jq -r --arg p "$WINDOW_PATTERN" '.[]|select((.class|test("\\b" + $p + "\\b";"i")) or (.title|test("\\b" + $p + "\\b";"i")))|.address' | head -n1)
+if (( CURRENT_WORKSPACE_ONLY )); then
+  CURRENT_WORKSPACE=$(hyprctl activeworkspace -j | jq -r '.id')
+  WINDOW_ADDRESS=$(hyprctl clients -j | jq -r --arg p "$WINDOW_PATTERN" --argjson workspace "$CURRENT_WORKSPACE" \
+    '.[]|select(.workspace.id == $workspace)|select((.class|test("\\b" + $p + "\\b";"i")) or (.title|test("\\b" + $p + "\\b";"i")))|.address' | head -n1)
+else
+  WINDOW_ADDRESS=$(hyprctl clients -j | jq -r --arg p "$WINDOW_PATTERN" \
+    '.[]|select((.class|test("\\b" + $p + "\\b";"i")) or (.title|test("\\b" + $p + "\\b";"i")))|.address' | head -n1)
+fi
 
 if [[ -n $WINDOW_ADDRESS ]]; then
   hyprctl dispatch "hl.dsp.focus({ window = \"address:$WINDOW_ADDRESS\" })" >/dev/null 2>&1 || hyprctl dispatch focuswindow "address:$WINDOW_ADDRESS"
