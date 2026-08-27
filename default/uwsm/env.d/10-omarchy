@@ -3,6 +3,15 @@
 # UWSM doesn't source /etc/profile.d, so pull the env bootstrap in directly.
 [ -r /usr/share/omarchy/default/bash/env-bootstrap ] && . /usr/share/omarchy/default/bash/env-bootstrap
 
+# UWSM likewise misses the profile.d/Flatpak hook: it is what prepends the
+# Flatpak export dirs to XDG_DATA_DIRS in login shells, and without them the
+# launcher (which scans XDG_DATA_DIRS for desktop entries) silently omits
+# Flatpak apps. Source the same script when Flatpak is installed; it skips
+# itself when it is not. OMARCHY_FLATPAK_PROFILE is a test seam.
+if [ -r "${OMARCHY_FLATPAK_PROFILE:-/etc/profile.d/flatpak.sh}" ]; then
+  . "${OMARCHY_FLATPAK_PROFILE:-/etc/profile.d/flatpak.sh}"
+fi
+
 # Omarchy session defaults. Users can override these in ~/.config/uwsm/default
 # or, preferably, ~/.config/uwsm/env.d/*.
 if [ -f "${OMARCHY_PATH%/}/default/uwsm/default" ]; then
