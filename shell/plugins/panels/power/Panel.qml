@@ -294,9 +294,15 @@ Panel {
       prevSnapshot = null
       return
     }
-    // Attribute watts only while discharging: on AC the battery flow is the
-    // charge rate, not the system draw.
-    var draw = root.discharging && snap.watts !== null ? snap.watts : -1
+    // Attribute watts whenever the BATTERY DEVICE is discharging — its own
+    // claim, not the plug's (UPower.onBattery). In the marginal-adapter
+    // wedge (adapter latched online, delivering nothing) the battery is the
+    // power source, its sampled rate is real system draw, and attribution
+    // is valid; while charging/full/pending the adapter input is unreadable
+    // and per-process watts stay hidden. The basis lives in Model.wattsBasis
+    // so the rule is one pure, tested function.
+    var device = UPower.displayDevice
+    var draw = Model.wattsBasis(device ? device.state : -1, UPowerDeviceState.Discharging, snap.watts)
     if (draw >= 0) {
       // Rolling idle floor: track the minimum draw, drifting up slowly so a
       // brightness change doesn't pin a stale base forever.

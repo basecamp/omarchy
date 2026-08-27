@@ -89,6 +89,16 @@ function modeLabel(device, onBattery, states) {
   return "Charging"
 }
 
+// The watts basis: the battery device's OWN state, not the plug's claim.
+// Attribution is valid whenever the battery is the power source — its
+// discharge rate then IS system draw — including the marginal-adapter
+// wedge where the adapter stays latched online (UPower.onBattery false)
+// while the battery drains. Charging/full/pending return -1: adapter input
+// is unreadable, so per-process watts are physically unattributable there.
+function wattsBasis(deviceState, dischargingState, watts) {
+  return deviceState === dischargingState && watts !== null && watts >= 0 ? watts : -1
+}
+
 // Kernel comm fields cap at 15 characters (TASK_COMM_LEN), so the panel's
 // comm column can be sized once for the realistic worst case and never per
 // sample.
@@ -110,6 +120,7 @@ if (typeof module !== "undefined") {
     buildTopProcesses: buildTopProcesses,
     buildSystemRows: buildSystemRows,
     buildRowImpact: buildRowImpact,
+    wattsBasis: wattsBasis,
     COMM_MAX_CHARS: COMM_MAX_CHARS,
     buildResourceSplits: buildResourceSplits,
     aggregateCommShares: aggregateCommShares,
