@@ -12,10 +12,9 @@ Item {
   property bool crossed: false
   property bool warning: false
 
-  // NetBird's own mark, in the 512 x 372.2 box its artwork is drawn in. The two
-  // wings are one path with both contours wound the same way: the logo overlaps
-  // them and shades the intersection, and a monochrome draw whose contours
-  // disagree punches that intersection out into a hole instead of filling it.
+  // NetBird's mark in its 512 x 372.2 art box, both contours wound the same
+  // way: the wings overlap, and disagreeing contours would punch the overlap
+  // out into a hole.
   readonly property real markWidth: 512.0
   readonly property real markHeight: 372.2
   readonly property string markPath: "M363.9 0.0 C302.1 5.7 271.4 41.3 259.8 59.3 L254.6 68.4 C254.2 69.2 254.0 69.7 254.0 69.7 L253.9 69.6 L79.1 372.2 L297.1 372.2 L512.0 0.0 Z M368.7 248.4 C336.0 -33.2 -0.0 57.0 -0.0 57.0 L297.1 372.2 Z"
@@ -42,9 +41,8 @@ Item {
       ShapePath {
         fillColor: root.color
         strokeWidth: 0
-        // The wings overlap, and the default odd-even rule would punch that
-        // overlap out into a hole. Winding fills it, which is why both contours
-        // are wound the same way above.
+        // Odd-even would punch the overlapping wings into a hole; winding
+        // fills it.
         fillRule: ShapePath.WindingFill
         PathSvg { path: root.markPath }
       }

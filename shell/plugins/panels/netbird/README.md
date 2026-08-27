@@ -9,7 +9,7 @@ Native Omarchy bar widget for [NetBird](https://netbird.io/).
 - Right click connects or disconnects, middle click refreshes
 - Switch between NetBird profiles when the CLI supports them and more than one exists
 - Browse peers from `netbird status --json`, including idle ones, with traffic and last-seen
-- Fold any list section away; peers start folded and headers keep their counts
+- Fold any list section away; peers and profiles start folded, headers keep their summaries
 - Counts the SSO session down, urgent in its last hour
 - Reports management, signal, and relay health, plus the WireGuard mode and port
 - Select and deselect network routes, with exit nodes listed first
@@ -21,7 +21,8 @@ Native Omarchy bar widget for [NetBird](https://netbird.io/).
 Inside the panel:
 
 - `j` / `k` or arrows: move cursor
-- `enter` / `space`: activate current row
+- `enter` / `space`: activate current row, or fold a section from its heading
+- `left` / `right`: fold or unfold the section under the cursor
 - `c`: copy selected peer IP
 - `n`: copy selected peer name
 - `d`: copy selected peer domain name
@@ -45,24 +46,27 @@ The widget shells out rather than speaking to the daemon directly:
 | Status and peers | `netbird status --json` |
 | Connect / disconnect | `netbird up` / `netbird down` |
 | Routes | `netbird routes list --json`, then `netbird routes list`, then `netbird networks list` |
-| Route selection | `netbird <routes\|networks> select\|deselect <id>` |
-| Profiles | `netbird profile list --json`, `netbird profile select <name>` |
+| Route selection | `netbird <routes\|networks> select --append <id>` / `deselect <id>` |
+| Profiles | `netbird profile list --json`, then `netbird profile list`; `netbird profile select <name>` |
 
 NetBird has renamed and extended this surface across releases, so the route
 lookup walks those three spellings once, latches onto whichever the installed
 CLI accepts, and stops asking if none of them do. Profiles work the same way: a
 CLI that has never heard of them simply shows no profile section rather than an
 error. `Model.js` holds every parser, and the shapes it accepts are pinned by
-`test/shell.d/netbird-test.sh`.
+`test/shell.d/netbird-test.sh`. One upstream quirk: the CLI reserves the id
+`all` in select and deselect, so a route literally named `all` would be read
+as the reserved token.
 
 ## Self-hosted instances
 
 The admin console the panel opens with `a` is derived from the management URL
 reported by `netbird status --json`, not hardcoded: `api.netbird.io` maps to the
-hosted dashboard, and any other host is taken to serve its own dashboard at
-`https://<host>/peers`. That covers a self-hosted deployment without extra
+hosted dashboard, and any other origin is taken to serve its own dashboard at
+`https://<host[:port]>/peers` — a non-default port is kept, only the https
+default is dropped. That covers a self-hosted deployment without extra
 configuration, because NetBird serves its management API and its dashboard from
-the same host.
+one origin, port included.
 
 The admin panel URL a peer was joined with is only kept in
 `/var/lib/netbird/<profile>.json`, which is root-only, so the panel cannot read

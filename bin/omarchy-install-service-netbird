@@ -3,44 +3,44 @@
 # omarchy:summary=Install the NetBird mesh VPN service and a web app for the NetBird admin console.
 # omarchy:requires-sudo=true
 
-echo -e "\nInstalling NetBird..."
-omarchy-pkg-aur-add netbird || exit 1
-
-echo -e "\nStarting NetBird..."
-# The package ships only a templated netbird@.service, and that template runs the
-# daemon on /var/run/netbird/%i.sock while the CLI talks to /var/run/netbird.sock.
-# Let NetBird register its own unit instead, so the daemon lands on the socket
-# every `netbird` command — and the bar panel — already reaches for. It refuses
-# outright when the unit is already there, so only ask on the first install.
-if [[ ! -e /etc/systemd/system/netbird.service ]]; then
-  sudo netbird service install
-fi
-sudo systemctl enable --now netbird.service
-
-# A self-hosted deployment serves its management API and its dashboard from the
-# same host, so one domain answers for both. Accept a bare domain or a full URL
-# and normalize; NetBird wants a scheme and a port on both flags.
+# One domain serves both the management API and the dashboard. Accept a bare
+# domain or a full URL, drop any path; NetBird wants a scheme and a port.
 normalize_netbird_url() {
   local value="${1#"${1%%[![:space:]]*}"}"
   value="${value%"${value##*[![:space:]]}"}"
-  value="${value%/}"
 
   [[ $value != *://* ]] && value="https://$value"
 
+  local scheme="${value%%://*}"
   local hostport="${value#*://}"
-  if [[ $hostport != *:* ]]; then
-    value="$value:443"
+  hostport="${hostport%%/*}"
+
+  # An IPv6 literal keeps its brackets; only a missing port gets the default.
+  if [[ $hostport == \[* ]]; then
+    [[ $hostport != *\]:* ]] && hostport="$hostport:443"
+  else
+    [[ $hostport != *:* ]] && hostport="$hostport:443"
   fi
 
-  printf '%s' "$value"
+  printf '%s://%s' "$scheme" "$hostport"
 }
 
+# Ask everything before changing anything, so cancelling leaves nothing behind.
 management_url=""
 admin_url=""
 
-if ! gum confirm "Use NetBird Cloud?"; then
+gum confirm "Use NetBird Cloud?"
+cloud_choice=$?
+if (( cloud_choice >= 2 )); then
+  # Ctrl-C exits 130. Esc exits 1 on gum 2.0.0 — indistinguishable from "No" —
+  # and lands on the domain prompt, where Esc cancels.
+  echo "Cancelled." >&2
+  exit 1
+fi
+
+if (( cloud_choice == 1 )); then
   # gum 2.0.0 panics laying out an input that has to size itself, so pin a width.
-  domain=$(gum input --width 50 --prompt "NetBird domain> " --placeholder "netbird.example.com") || exit 1
+  domain=$(gum input --width 50 --prompt "NetBird domain> " --placeholder "netbird.example.com") || { echo "Cancelled." >&2; exit 1; }
   if [[ -z ${domain//[[:space:]]/} ]]; then
     echo "No domain given; aborting." >&2
     exit 1
@@ -50,8 +50,22 @@ if ! gum confirm "Use NetBird Cloud?"; then
   admin_url=$management_url
 fi
 
+echo -e "\nInstalling NetBird..."
+omarchy-pkg-aur-add netbird || exit 1
+
+echo -e "\nStarting NetBird..."
+# The packaged netbird@.service template runs the daemon on /var/run/netbird/%i.sock
+# while the CLI talks to /var/run/netbird.sock, so let NetBird register its own
+# unit. It refuses when the unit already exists, so only ask the first time.
+if [[ ! -e /etc/systemd/system/netbird.service ]]; then
+  sudo netbird service install || { echo "Could not register netbird.service." >&2; exit 1; }
+fi
+sudo systemctl enable --now netbird.service || { echo "Could not start netbird.service." >&2; exit 1; }
+
 echo -e "\nConnecting to your NetBird network..."
 echo "A browser window opens for SSO; finish the login there to join the network."
+# Unguarded: `netbird up` exits non-zero while the SSO login is still pending
+# in the browser, and that is the normal path here.
 if [[ -n $management_url ]]; then
   echo "Using self-hosted NetBird at $management_url."
   sudo netbird up --management-url "$management_url" --admin-url "$admin_url"
@@ -62,10 +76,9 @@ fi
 echo -e "\nAdding NetBird to the bar..."
 omarchy-plugin-enable omarchy.netbird
 
-# `omarchy dns` pins DNS through a NetworkManager [global-dns-domain-*] block,
-# which NetworkManager applies ahead of every other source — including the
-# split DNS a VPN installs. NetBird stays green while its own domains stop
-# resolving, so say so here rather than leaving it to be discovered.
+# `omarchy dns` pins DNS through a NetworkManager global-dns block, which
+# overrides the split DNS NetBird installs — NetBird stays green while its own
+# domains stop resolving.
 dns_provider=$(omarchy-dns 2>/dev/null || echo "DHCP")
 if [[ $dns_provider != "DHCP" ]]; then
   echo ""
@@ -74,13 +87,11 @@ if [[ $dns_provider != "DHCP" ]]; then
   echo "Run 'omarchy dns DHCP' if NetBird names do not resolve."
 fi
 
-# Keep this in step with adminConsoleUrl() in the panel's Model.js, which derives
-# the same console from the management URL that `netbird status --json` reports.
+# Keep in step with adminConsoleUrl() in the panel's Model.js: the dashboard
+# shares the management origin, dropping only the default :443.
 if [[ -n $admin_url ]]; then
-  admin_host="${admin_url#*://}"
-  admin_host="${admin_host%%/*}"
-  admin_host="${admin_host%%:*}"
-  webapp_url="https://$admin_host/peers"
+  admin_origin="${admin_url#*://}"
+  webapp_url="https://${admin_origin%:443}/peers"
 else
   webapp_url="https://app.netbird.io/peers"
 fi

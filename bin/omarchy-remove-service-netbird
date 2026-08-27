@@ -5,21 +5,17 @@
 
 sudo netbird down 2>/dev/null || true
 
-# Stop the daemon while its unit still exists. `netbird service uninstall` takes
-# the unit file away without stopping the process, which leaves a daemon running
-# against a deleted binary — still holding the socket, and still answering
-# omarchy-installed-service-netbird, so the widget comes back on the next
-# `omarchy bar defaults`.
+# Stop the daemon while its unit still exists: `netbird service uninstall`
+# removes the unit without stopping the process.
 sudo systemctl disable --now netbird.service 2>/dev/null || true
 
-# NetBird wrote /etc/systemd/system/netbird.service itself, so the unit is not
-# package-owned and dropping the package would leave it behind.
+# The unit is NetBird's own, not package-owned; dropping the package would
+# leave it behind.
 sudo netbird service uninstall 2>/dev/null || true
 omarchy-plugin-disable omarchy.netbird
 omarchy-webapp-remove "NetBird" 2>/dev/null || true
-# Building netbird from source leaves a netbird-debug package behind, since Arch
-# ships makepkg with `debug` in OPTIONS. pkg-drop ignores what is not installed,
-# so naming it here is free on a machine that never had it.
+# The source build leaves a netbird-debug package behind (makepkg defaults
+# `debug` on); pkg-drop ignores it when absent.
 omarchy-pkg-drop netbird netbird-debug
 
 echo ""

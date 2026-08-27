@@ -1,5 +1,4 @@
-// NetBird's IP arrives with the network mask attached ("100.92.0.2/16"), which
-// is not what anybody wants to paste into an ssh command.
+// NetBird reports IPs with the mask attached ("100.92.0.2/16").
 function stripCidr(value) {
   var text = String(value || "").trim()
   var slash = text.indexOf("/")
@@ -23,8 +22,7 @@ function displayHostName(fqdn, fallback) {
   return String(fallback || "") || short || "Unknown"
 }
 
-// NetBird reports the Go platform pair ("linux/amd64"), so match the leading
-// segment rather than the whole string.
+// The platform arrives as the Go pair ("linux/amd64"); match its leading segment.
 function osIcon(os) {
   var value = String(os || "").toLowerCase().split("/")[0].trim()
   if (value === "linux") return "󰌽"
@@ -48,11 +46,10 @@ function normalizeDaemonState(text) {
   return ""
 }
 
-// NetBird has moved the daemon state around between releases and does not
-// always carry one in the JSON, so read whichever field is present and fall
-// back to what the management connection says. An explicit state always wins:
-// a daemon that is up but logged out reports NeedsLogin while management is
-// simply not connected, and those two mean very different things to the user.
+// The daemon state moves between releases and is sometimes absent, so read
+// whichever field is present and fall back to the management connection. An
+// explicit state wins: up-but-logged-out reports NeedsLogin, which is not the
+// same as management being down.
 function readDaemonState(data) {
   var source = data || {}
   var explicit = normalizeDaemonState(source.daemonStatus || source.status || source.daemonState || source.DaemonStatus)
@@ -67,8 +64,7 @@ function readDaemonState(data) {
   return "Disconnected"
 }
 
-// Go marshals a duration as an integer count of nanoseconds, but some NetBird
-// releases hand back the pre-formatted string instead. Take either.
+// Durations arrive as nanosecond integers, or pre-formatted on some releases.
 function formatLatency(value) {
   if (typeof value === "number" && isFinite(value) && value > 0) {
     var ms = value / 1000000
@@ -80,12 +76,9 @@ function formatLatency(value) {
   return text === "0s" ? "" : text
 }
 
-// Go marshals an unset time as its zero value, and NetBird hands that straight
-// through — as "0001-01-01T00:00:00Z" for a handshake that never happened, and
-// as the same instant in a local offset ("0000-12-31T16:07:02-07:52") for a
-// status that never updated. Read the year rather than trying to match either
-// spelling, so a peer that has never connected reads as never, not as 2000
-// years ago.
+// Go's zero time arrives verbatim, in two spellings: "0001-01-01T00:00:00Z"
+// and the same instant in a local offset ("0000-12-31T16:07:02-07:52"). Read
+// the year, so never-connected reads as never — not as 2000 years ago.
 function isNeverTimestamp(value) {
   var text = String(value || "").trim()
   if (text === "") return true
@@ -120,10 +113,8 @@ function relativeSince(value, nowMs) {
   return Math.round(secs / 86400) + "d ago"
 }
 
-// The SSO session is what actually lapses on a NetBird peer: the tunnel keeps
-// reporting itself healthy right up to the point the session goes and every name
-// stops resolving. Say how long is left, and call it urgent inside the last hour
-// so a re-login is a decision rather than a surprise.
+// The tunnel reports itself healthy right up until the SSO session lapses, so
+// count the session down and turn urgent inside the last hour.
 function sessionExpiry(value, nowMs) {
   var none = { text: "", expired: false, urgent: false }
   if (isNeverTimestamp(value)) return none
@@ -142,17 +133,15 @@ function sessionExpiry(value, nowMs) {
   return { text: "Session expires in " + left, expired: false, urgent: secs < 3600 }
 }
 
-// Peers start folded: a real network is dozens of rows, and the count on the
-// header ("7/47 CONNECTED") is usually the whole answer. This applies only when
-// there is no state file — once one exists it is authoritative, so a user who
-// opens peers keeps them open rather than having this default reassert itself.
+// Peers and profiles start folded — the header summary is usually the whole
+// answer (the profiles section only exists with more than one profile). Applies
+// only when no state file exists; once one does, it is authoritative.
 function defaultCollapsedSections() {
-  return { peers: true }
+  return { peers: true, profiles: true }
 }
 
-// Which sections the user folded away, kept as a list of names so the file stays
-// readable and a section this version has never heard of survives a round trip
-// instead of being dropped.
+// Folded sections, stored as a list of names so unknown sections survive a
+// round trip.
 function parseCollapsedSections(raw) {
   var out = {}
   var text = String(raw || "").trim()
@@ -172,8 +161,7 @@ function parseCollapsedSections(raw) {
   return out
 }
 
-// Section headers carry their own summary, the way the peer header carries
-// "7/47 CONNECTED" — that line is the whole value of a section left folded away.
+// Headers carry their own summary, so a folded section still reports.
 function routesSummary(routes) {
   var source = routes && typeof routes.length === "number" ? routes : []
   if (source.length === 0) return ""
@@ -242,9 +230,8 @@ function peerFromStatus(peer) {
   }
 }
 
-// A peer row's second line: what has flowed, and when it was last actually
-// reachable. An idle NetBird peer is the normal case rather than a fault, so
-// "never" is a real answer here and not an error to dress up.
+// The peer row's second line. Idle is the normal case, so "never" is an
+// answer, not an error.
 function peerActivity(peer, nowMs) {
   var source = peer || {}
   var sent = formatBytes(source.TransferSent)
@@ -260,9 +247,8 @@ function peerActivity(peer, nowMs) {
   return parts.join(" · ")
 }
 
-// NetBird hands DNS for its own domains to nameserver groups. They only work
-// if something on the box actually routes those domains at NetBird, which is
-// what the DNS warning in the panel is about.
+// NetBird serves DNS for its own domains through nameserver groups; the DNS
+// warning keys off them.
 function parseNameserverGroups(data) {
   var source = (data && (data.nsServerGroups || data.NSServerGroups || data.nameserverGroups)) || []
   if (!source || typeof source.length !== "number") return []
@@ -308,12 +294,9 @@ function hasManagedDns(groups) {
   return false
 }
 
-// `omarchy dns <provider>` writes NetworkManager a [global-dns-domain-*]
-// block, and NetworkManager documents that as overriding every other source of
-// DNS — including the split DNS a VPN installs. So a machine pinned to
-// Cloudflare or Google resolves nothing NetBird serves for its own domains,
-// while NetBird itself still reports a healthy connection. Warn rather than
-// quietly disagree with the user's DNS choice.
+// NetworkManager applies the [global-dns-domain-*] block `omarchy dns` writes
+// ahead of every other DNS source, including NetBird's split DNS — so a pinned
+// provider breaks NetBird's domains while NetBird reports healthy.
 function dnsOverrideWarning(managedDns, systemDnsProvider) {
   if (managedDns !== true) return ""
   var provider = String(systemDnsProvider || "").trim()
@@ -341,9 +324,8 @@ function parseStatus(raw) {
     var peers = []
     for (var i = 0; i < rawPeers.length; i++) peers.push(peerFromStatus(rawPeers[i]))
 
-    // Connected peers first, then alphabetically. Unlike a tailnet, a NetBird
-    // network routinely carries peers that are simply idle rather than gone,
-    // so hiding them would hide most of the network.
+    // Connected first, then by name. Idle peers are the norm on a NetBird
+    // network, so they stay listed.
     peers.sort(function(a, b) {
       if (a.Online !== b.Online) return a.Online ? -1 : 1
       return String(a.HostName).localeCompare(String(b.HostName))
@@ -362,7 +344,9 @@ function parseStatus(raw) {
       backendState: backendState,
       running: backendState === "Connected",
       needsLogin: backendState === "NeedsLogin" || backendState === "LoginFailed",
-      selfName: displayHostName(fqdn, selfIp),
+      // Logged out reports no fqdn and no IP; return "" so the hero can fall
+      // back to its own label.
+      selfName: fqdn === "" && selfIp === "" ? "" : displayHostName(fqdn, selfIp),
       selfFqdn: fqdn,
       selfIp: selfIp,
       managementUrl: String(management.url || management.URL || ""),
@@ -389,10 +373,8 @@ function parseStatus(raw) {
   }
 }
 
-// A dual-stack exit node arrives as one field carrying both default routes
-// ("0.0.0.0/0, ::/0"), so test the ranges rather than the whole string: matching
-// it whole leaves the exit node sorted in among the plain subnets, which is the
-// one row people open this section to find.
+// A dual-stack exit node carries both default routes in one field
+// ("0.0.0.0/0, ::/0"), so test the parts rather than the whole string.
 function isExitNodeNetwork(network) {
   var parts = String(network || "").split(",")
   for (var i = 0; i < parts.length; i++) {
@@ -440,9 +422,8 @@ function normalizeRoute(route) {
   }
 }
 
-// NetBird prints routes as indented "- ID: / Network: / Status:" blocks, and
-// newer releases print the same shape under "networks" with "Range" instead of
-// "Network". Read the keys rather than the headings so either one lands.
+// Routes print as indented "- ID: / Network: / Status:" blocks; newer releases
+// say "networks" and "Range". Match the keys, not the headings.
 function parseRoutesText(raw) {
   var lines = String(raw || "").split(/\r?\n/)
   var routes = []
@@ -517,8 +498,7 @@ function parseRoutes(raw) {
   return parseRoutesText(text)
 }
 
-// Exit nodes first, then everything else by name — the exit node is the choice
-// people come to this section to make.
+// Exit nodes first — the row people open this section for.
 function sortRoutes(routes) {
   var values = []
   var source = routes && typeof routes.length === "number" ? routes : []
@@ -545,9 +525,9 @@ function profileLabel(profile) {
   return "Unknown profile"
 }
 
-// No NetBird release ships `profile list --json` yet, so the padded table is the
-// only way to read profiles. It names its columns in a header, and marks the
-// active row with a glyph rather than a word.
+// No release ships `profile list --json`, so the padded table is the interface.
+// Names are free-form ("work laptop"), so slice rows at the header's column
+// offsets rather than splitting on whitespace.
 function parseProfilesText(raw) {
   var lines = String(raw || "").split(/\r?\n/)
   var columns = null
@@ -555,21 +535,26 @@ function parseProfilesText(raw) {
   var selected = null
 
   for (var i = 0; i < lines.length; i++) {
-    var line = String(lines[i] || "").trim()
-    if (line === "") continue
+    var line = String(lines[i] || "")
+    if (line.trim() === "") continue
 
-    var fields = line.split(/\s+/)
     if (columns === null) {
       // Read the columns off the header, and treat anything before it as noise.
-      if (/^NAME\b/i.test(line)) {
-        columns = []
-        for (var h = 0; h < fields.length; h++) columns.push(fields[h].toUpperCase())
+      if (!/^\s*NAME\b/i.test(line)) continue
+      columns = []
+      var header = /\S+/g
+      var match
+      while ((match = header.exec(line)) !== null) {
+        columns.push({ name: match[0].toUpperCase(), start: match.index })
       }
       continue
     }
 
     var row = {}
-    for (var c = 0; c < fields.length; c++) row[columns[c] || ("COL" + c)] = fields[c]
+    for (var c = 0; c < columns.length; c++) {
+      var end = c + 1 < columns.length ? columns[c + 1].start : line.length
+      row[columns[c].name] = line.slice(columns[c].start, end).trim()
+    }
 
     var name = String(row.NAME || "")
     if (name === "") continue
@@ -627,9 +612,8 @@ function parseProfiles(raw) {
   }
 }
 
-// Profiles and JSON route output landed in NetBird after the versions Omarchy
-// may find on a machine. Rather than surfacing an error for a subcommand the
-// installed CLI has never heard of, recognise the refusal and stop asking.
+// Profiles and JSON routes are newer than some installed CLIs; recognise the
+// refusal rather than surfacing it as an error.
 function isUnsupportedCommand(text) {
   var value = String(text || "")
   return /unknown command|unknown flag|unknown shorthand flag|flag provided but not defined|unknown subcommand/i.test(value)
@@ -642,12 +626,9 @@ function isPermissionError(text) {
 
 var CLOUD_ADMIN_URL = "https://app.netbird.io/peers"
 
-// The admin panel URL a peer was joined with is only kept in
-// /var/lib/netbird/<profile>.json, which is root-only, so the panel cannot read
-// it back. The management URL does come through `netbird status --json`, and a
-// self-hosted deployment serves its dashboard from the same host, so derive the
-// console from that and special-case the cloud, whose API and dashboard live on
-// different hostnames.
+// The admin URL a peer joined with lives in root-only daemon config, so derive
+// the console from the management URL that status reports. The cloud splits
+// api/app hostnames; self-hosted serves both from one origin.
 function urlHost(url) {
   var value = String(url || "").trim()
   if (value === "") return ""
@@ -663,32 +644,40 @@ function urlHost(url) {
   return host
 }
 
+// Host plus any non-default port; only the https default is dropped.
+function urlHostPort(url) {
+  var value = String(url || "").trim()
+  if (value === "") return ""
+
+  var hostport = value.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split("/")[0]
+  if (hostport.slice(-4) === ":443") hostport = hostport.slice(0, -4)
+  return hostport
+}
+
 function adminConsoleUrl(managementUrl) {
   var host = urlHost(managementUrl)
   if (host === "") return CLOUD_ADMIN_URL
   if (/(^|\.)netbird\.io$/i.test(host)) return CLOUD_ADMIN_URL
-  return "https://" + host + "/peers"
+  return "https://" + urlHostPort(managementUrl) + "/peers"
 }
 
-// Management being reachable is not the same as signal being reachable, and
-// neither says whether a relay is available — a peer that cannot reach one is
-// what "connected but nothing works" usually turns out to be. The daemon reports
-// all three plus how the tunnel is actually implemented, so lay them out
-// together and flag the parts that are down.
+// Management, signal, and relays fail independently — "connected but nothing
+// works" is usually a relay. Lay them out and flag what is down.
 function healthRows(state) {
   var s = state || {}
   var rows = []
 
+  // The daemon reports why a connection is down; that beats a bare "offline".
   rows.push({
     label: "Management",
     value: urlHost(s.managementUrl) || "unknown",
-    detail: s.managementConnected === true ? "connected" : "offline",
+    detail: s.managementConnected === true ? "connected" : (String(s.managementError || "") || "offline"),
     warn: s.managementConnected !== true
   })
   rows.push({
     label: "Signal",
     value: urlHost(s.signalUrl) || "unknown",
-    detail: s.signalConnected === true ? "connected" : "offline",
+    detail: s.signalConnected === true ? "connected" : (String(s.signalError || "") || "offline"),
     warn: s.signalConnected !== true
   })
 
@@ -750,6 +739,7 @@ if (typeof module !== "undefined") {
     wireguardMode: wireguardMode,
     peerActivity: peerActivity,
     urlHost: urlHost,
+    urlHostPort: urlHostPort,
     healthRows: healthRows,
     parseProfilesText: parseProfilesText,
     defaultCollapsedSections: defaultCollapsedSections,

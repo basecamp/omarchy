@@ -13,12 +13,10 @@ Item {
   property bool running: false
   property bool needsLogin: false
 
-  // Optimistic off state so the UI reacts the instant you click, rather than
-  // waiting for the next status refresh. _desired is -1 while we just follow
-  // the real state, or 0/1 while a toggle is still catching up.
+  // Optimistic toggle state: -1 follows the real state, 0/1 while a toggle is
+  // still catching up.
   property int _desired: -1
   readonly property bool active: _desired === -1 ? running : (_desired === 1)
-  property bool refreshing: false
   property string backendState: "Unknown"
   property string statusText: "Checking…"
   property string selfName: ""
@@ -26,8 +24,10 @@ Item {
   property string selfIp: ""
   property string managementUrl: ""
   property bool managementConnected: false
+  property string managementError: ""
   property string signalUrl: ""
   property bool signalConnected: false
+  property string signalError: ""
   property int relaysAvailable: 0
   property int relaysTotal: 0
   property string wireguardMode: ""
@@ -56,16 +56,18 @@ Item {
   // DNS provider overrides it; the value is the provider doing the overriding.
   readonly property string dnsOverride: Model.dnsOverrideWarning(managedDns, systemDnsProvider)
 
-  // "Last seen 3h ago" and "expires in 38m" are relative to now, so they have to
-  // be recomputed as time passes rather than only when the daemon is polled.
+  // Relative labels ("3h ago", "in 38m") need recomputing as time passes, not
+  // only on poll.
   property double nowMs: Date.now()
   readonly property var sessionExpiry: Model.sessionExpiry(sessionExpiresAt, nowMs)
 
   readonly property var healthRows: Model.healthRows({
     managementUrl: managementUrl,
     managementConnected: managementConnected,
+    managementError: managementError,
     signalUrl: signalUrl,
     signalConnected: signalConnected,
+    signalError: signalError,
     relaysAvailable: relaysAvailable,
     relaysTotal: relaysTotal,
     wireguardMode: wireguardMode,
@@ -74,12 +76,9 @@ Item {
 
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 30, 5, 3600)
   readonly property bool busy: whichProcess.running || statusProcess.running || routesProcess.running || profilesProcess.running || actionProcess.running || loginProcess.running || profileProcess.running || routeProcess.running || daemonProcess.running || dnsProcess.running || dnsFixProcess.running
-  readonly property string userName: Quickshell.env("USER") || Quickshell.env("LOGNAME")
 
-  // NetBird renamed this surface as it grew: older daemons answer `routes
-  // list` with no JSON flag, newer ones answer `networks list`. Walk the
-  // candidates once, latch onto whichever the installed CLI accepts, and stop
-  // asking entirely if none of them do.
+  // Older CLIs answer `routes list`, newer ones `networks list`. Walk the
+  // candidates once, latch onto whichever lands, stop asking if none do.
   readonly property var routeCommands: [
     ["netbird", "routes", "list", "--json"],
     ["netbird", "routes", "list"],
@@ -89,11 +88,9 @@ Item {
   property bool routesSupported: true
   readonly property string routeVerb: routeCommandIndex >= 2 ? "networks" : "routes"
 
-  // Profiles are newer than the oldest NetBird an Omarchy box might carry.
-  // A CLI that has never heard of them is not an error worth showing. The ones
-  // that do have them still take the table spelling: no release ships
-  // `profile list --json` yet, so ask for it and fall back the way routes do,
-  // rather than reading a rejected flag as "this CLI has no profiles".
+  // Profiles are newer than some installed CLIs, and no release ships
+  // `profile list --json` — walk to the table form before deciding the CLI has
+  // no profiles at all.
   readonly property var profileCommands: [
     ["netbird", "profile", "list", "--json"],
     ["netbird", "profile", "list"]
@@ -182,7 +179,6 @@ Item {
       return
     }
     if (!whichProcess.running) {
-      refreshing = true
       whichProcess.command = ["which", "netbird"]
       whichProcess.running = true
     }
@@ -194,7 +190,6 @@ Item {
     if (!statusProcess.running) {
       _statusOutput = ""
       _statusError = ""
-      refreshing = true
       statusProcess.command = ["netbird", "status", "--json"]
       statusProcess.running = true
       launched = true
@@ -206,9 +201,8 @@ Item {
       routesProcess.running = true
       launched = true
     }
-    // Read the provider once, then keep watching only while NetBird actually
-    // serves DNS — that is the only time the answer can produce a warning, and
-    // managedDns turning true re-arms this on its own.
+    // Read the provider once, then only while NetBird serves DNS — the only
+    // time it can warn; managedDns turning true re-arms this.
     if (!dnsProcess.running && (systemDnsProvider === "" || managedDns)) {
       _dnsOutput = ""
       _dnsError = ""
@@ -226,10 +220,8 @@ Item {
       profilesProcess.running = true
       launched = true
     }
-    // Arm on the launch that needs watching and leave it alone after that.
-    // Restarting it every refresh pushes the deadline out ahead of a hung
-    // process forever once the refresh interval is shorter than the timeout,
-    // and refreshIntervalSec goes down to five seconds.
+    // Arm once and leave it: restarting every refresh would push the deadline
+    // ahead of a hung process forever when the interval is under the timeout.
     if (launched && !pollWatchdog.running) pollWatchdog.start()
   }
 
@@ -249,8 +241,10 @@ Item {
     selfIp = ""
     managementUrl = ""
     managementConnected = false
+    managementError = ""
     signalUrl = ""
     signalConnected = false
+    signalError = ""
     relaysAvailable = 0
     relaysTotal = 0
     wireguardMode = ""
@@ -270,17 +264,19 @@ Item {
     settingRouteId = ""
   }
 
+  // Returns false only when the payload would not parse, so the caller can
+  // hand the raw output to the failure classifier instead.
   function parseStatus(raw) {
     var parsed = Model.parseStatus(raw)
     if (!parsed.ok) {
       resetUnavailable(parsed.message || "Status error")
       lastError = parsed.error || "Failed to parse netbird status"
       console.warn("netbird", lastError)
-      return
+      return false
     }
     if (parsed.unavailable) {
       resetUnavailable(parsed.message || "Disconnected")
-      return
+      return true
     }
 
     daemonInactive = false
@@ -295,8 +291,10 @@ Item {
     selfIp = parsed.selfIp
     managementUrl = parsed.managementUrl
     managementConnected = parsed.managementConnected
+    managementError = parsed.managementError
     signalUrl = parsed.signalUrl
     signalConnected = parsed.signalConnected
+    signalError = parsed.signalError
     relaysAvailable = parsed.relaysAvailable
     relaysTotal = parsed.relaysTotal
     wireguardMode = parsed.wireguardMode
@@ -322,6 +320,7 @@ Item {
       statusText = "Disconnected"
     }
     lastError = ""
+    return true
   }
 
   function parseRoutes(raw) {
@@ -342,8 +341,7 @@ Item {
   }
 
   function down() {
-    // No progress status here — the greyed icon and hero line already convey
-    // the optimistic off; only surface a message if the command fails.
+    // The greyed icon already conveys the optimistic off; only surface failures.
     _desired = 0
     runAction(["netbird", "down"])
   }
@@ -386,10 +384,8 @@ Item {
     _routeOutput = ""
     _routeError = ""
     settingRouteId = id
-    // `select` replaces the whole selection unless asked to append, so a bare
-    // select turns one route on by turning every other one off — and there is no
-    // way back to more than one from the panel. Toggling a row should only ever
-    // change that row.
+    // Bare `select` replaces the whole selection; toggling one row must not
+    // turn the others off.
     routeProcess.command = route.Selected === true
       ? ["netbird", routeVerb, "deselect", id]
       : ["netbird", routeVerb, "select", "--append", id]
@@ -405,8 +401,7 @@ Item {
     daemonProcess.running = true
   }
 
-  // omarchy-dns escalates on its own when it needs to, so this is just the
-  // plain command; the polkit prompt comes from there.
+  // omarchy-dns escalates on its own; the polkit prompt comes from there.
   function useDhcpDns() {
     if (dnsFixProcess.running) return
     _dnsFixOutput = ""
@@ -460,6 +455,13 @@ Item {
   // stop the panel dead, but only one of them has a button that fixes it.
   function noteStatusFailure(stderr) {
     var text = String(stderr || "")
+    if (text.trim() === "") {
+      // Nothing to classify, but an empty lastError would show nothing at all.
+      daemonInactive = false
+      permissionDenied = false
+      lastError = "NetBird status failed"
+      return
+    }
     if (/permission denied/i.test(text)) {
       permissionDenied = true
       daemonInactive = false
@@ -487,9 +489,8 @@ Item {
   }
 
   Timer {
-    // After a fresh boot the startup poll usually lands before the daemon has
-    // connected, which left the icon stale until the next periodic refresh.
-    // Poll quickly until the service shows up, or give up after ~30 seconds.
+    // The first poll after boot usually beats the daemon connecting; poll
+    // quickly until it shows up, give up after ~30 seconds.
     id: startupRamp
     property int ticks: 0
     interval: 2000
@@ -510,9 +511,8 @@ Item {
   }
 
   Timer {
-    // Retrying the next route command inline from onExited would restart a
-    // process from inside its own exit handler; step out through the event
-    // loop instead.
+    // A process cannot be restarted from its own exit handler; step out
+    // through the event loop.
     id: routesRetry
     interval: 50
     repeat: false
@@ -541,11 +541,8 @@ Item {
   }
 
   Timer {
-    // Every poll is skipped while its own process is still running, so one that
-    // never exits — netbird can hang on a network that is coming and going —
-    // silently stops the panel refreshing at all, and it stays stopped. Reap
-    // anything still running well inside the refresh interval so the next tick
-    // starts clean.
+    // Polls are skipped while their process still runs, so one that never
+    // exits stops refreshes for good. Reap stragglers inside the interval.
     id: pollWatchdog
     interval: 15000
     repeat: false
@@ -592,10 +589,7 @@ Item {
     onExited: function(exitCode) {
       root.installed = exitCode === 0
       if (root.installed) root.refreshStatusAndRoutes()
-      else {
-        root.refreshing = false
-        root.resetUnavailable("Not installed")
-      }
+      else root.resetUnavailable("Not installed")
     }
   }
 
@@ -606,19 +600,21 @@ Item {
     stdout: StdioCollector { id: statusStdout; waitForEnd: true; onStreamFinished: root._statusOutput = text }
     stderr: StdioCollector { id: statusStderr; waitForEnd: true; onStreamFinished: root._statusError = text }
     onExited: function(exitCode) {
-      root.refreshing = false
       var stdout = String(statusStdout.text || root._statusOutput || "")
       var stderr = String(statusStderr.text || root._statusError || "")
-      // A logged-out daemon answers with usable JSON and a non-zero exit, so
-      // read the payload first and only treat this as a failure without one.
+      // A logged-out daemon returns usable JSON with a non-zero exit, so read
+      // the payload first. gRPC retry noise can land on stdout — unparseable
+      // output still needs classifying, or the daemon notice never shows.
       if (stdout.trim() !== "") {
-        root.parseStatus(stdout)
+        if (!root.parseStatus(stdout) && exitCode !== 0) {
+          root.noteStatusFailure(stderr.trim() !== "" ? stderr : stdout)
+        }
         return
       }
       if (exitCode === 0) root.parseStatus(stdout)
       else {
         root.resetUnavailable("Disconnected")
-        root.noteStatusFailure(stderr)
+        root.noteStatusFailure(stderr.trim() !== "" ? stderr : stdout)
       }
     }
   }
@@ -636,8 +632,7 @@ Item {
         root.parseRoutes(stdout)
         return
       }
-      // Walk to the next spelling of this command, and give up quietly once
-      // the list runs out rather than nagging about a feature that is not there.
+      // Walk to the next spelling; go quiet once the list runs out.
       if (Model.isUnsupportedCommand(stderr) || Model.isUnsupportedCommand(stdout)) {
         if (root.routeCommandIndex + 1 < root.routeCommands.length) {
           root.routeCommandIndex += 1
@@ -719,10 +714,8 @@ Item {
         root.lastError = ""
         root.actionStatus = ""
       } else {
-        // The browser is carrying the login from here, and whether the user
-        // finishes it is not something `netbird up` exiting tells us. Hand the
-        // line over to a prompt that ages out, rather than leaving "Starting
-        // NetBird login…" pinned under the hero for the rest of the session.
+        // The exit of `netbird up` says nothing about whether the browser
+        // login finishes; hand off to a prompt that ages out.
         root.lastError = ""
         root.actionStatus = "Finish the NetBird login in your browser"
         actionStatusTimer.restart()
@@ -784,8 +777,7 @@ Item {
     stderr: StdioCollector { id: dnsStderr; waitForEnd: true; onStreamFinished: root._dnsError = text }
     onExited: function(exitCode) {
       var stdout = String(dnsStdout.text || root._dnsOutput || "")
-      // Only a clean read tells us anything; a failure here must not invent a
-      // DNS warning, so leave the last known provider alone.
+      // A failed read must not invent a DNS warning; keep the last known provider.
       if (exitCode === 0) root.systemDnsProvider = stdout.trim()
     }
   }

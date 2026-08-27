@@ -73,9 +73,7 @@ Panel {
     return list
   }
 
-  // A real network is dozens of peers, so each list section folds away. The
-  // header stays put when its rows are hidden — the count on it is the reason to
-  // keep a section collapsed rather than the reason to reopen it.
+  // Each list section folds away; its header stays, carrying the summary.
   property var collapsedSections: Model.defaultCollapsedSections()
 
   function sectionCollapsed(name) {
@@ -104,9 +102,16 @@ Panel {
     atomicWrites: true
     printErrors: false
     onLoaded: root.collapsedSections = Model.parseCollapsedSections(text())
-    // First run: no file yet, which is not a failure worth logging. The
-    // defaults apply only here, so a stored choice always wins.
+    // First run: no file yet. Defaults apply only here, so a stored choice wins.
     onLoadFailed: root.collapsedSections = Model.defaultCollapsedSections()
+  }
+
+  // The first read can race shell startup (see the weather panel); one delayed
+  // reload self-corrects.
+  Timer {
+    interval: 1500
+    running: true
+    onTriggered: root.collapsedFile.reload()
   }
 
   readonly property bool showNotices: notices.length > 0
@@ -124,21 +129,39 @@ Panel {
   readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
   readonly property color selectedFill: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "transparent"
 
-  // Cursor movement is driven off this list rather than a chain of
-  // conditionals, so a section that comes and goes with the daemon's mood
-  // cannot strand the cursor somewhere that is no longer on screen.
+  // Cursor movement runs off this list, so a section that disappears cannot
+  // strand the cursor.
   function sections() {
     var list = ["header"]
     if (showNotices) list.push("notices")
-    if (showProfiles) list.push("profiles")
-    if (showRoutes) list.push("routes")
-    if (showPeers) list.push("peers")
+    // Headings are cursor stops of their own — the keyboard's only way back
+    // into a folded section.
+    if (hasProfiles) {
+      list.push("profilesHeader")
+      if (showProfiles) list.push("profiles")
+    }
+    if (hasRoutes) {
+      list.push("routesHeader")
+      if (showRoutes) list.push("routes")
+    }
+    if (netbird.installed && netbird.active) {
+      list.push("peersHeader")
+      if (showPeers) list.push("peers")
+    }
     return list
+  }
+
+  // "profilesHeader" → "profiles"; a row section names itself.
+  function collapsibleSectionFor(name) {
+    if (name.length > 6 && name.indexOf("Header") === name.length - 6) return name.slice(0, -6)
+    if (name === "profiles" || name === "routes" || name === "peers") return name
+    return ""
   }
 
   function sectionLength(name) {
     if (name === "header") return 1
     if (name === "notices") return notices.length
+    if (name === "profilesHeader" || name === "routesHeader" || name === "peersHeader") return 1
     if (name === "profiles") return netbird.profiles.length
     if (name === "routes") return netbird.routes.length
     if (name === "peers") return netbird.peers.length
@@ -167,6 +190,12 @@ Panel {
     return netbird.peers[Math.max(0, Math.min(peerIndex, netbird.peers.length - 1))]
   }
 
+  // Copy keys act only while the peer list is the focused, visible section.
+  function copyTargetPeer() {
+    if (focusSection !== "peers" || !showPeers) return null
+    return selectedPeer()
+  }
+
   function selectedRoute() {
     if (netbird.routes.length === 0) return null
     return netbird.routes[Math.max(0, Math.min(routeIndex, netbird.routes.length - 1))]
@@ -184,14 +213,33 @@ Panel {
 
   function ensureCursor() {
     var available = sections()
-    if (available.indexOf(focusSection) === -1) focusSection = available[0]
+    if (available.indexOf(focusSection) === -1) {
+      // A folded section's heading is still on screen; land there, not the hero.
+      var fallback = collapsibleSectionFor(focusSection)
+      focusSection = fallback !== "" && available.indexOf(fallback + "Header") !== -1
+        ? fallback + "Header"
+        : available[0]
+    }
     for (var i = 0; i < available.length; i++) setSectionIndex(available[i], sectionIndex(available[i]))
   }
 
   function moveCursor(dx, dy) {
     cursorActive = true
     ensureCursor()
-    if (dy === 0) return
+    if (dy === 0) {
+      if (dx === 0) return
+      // Left folds, right unfolds, from the heading or anywhere in its rows.
+      var name = collapsibleSectionFor(focusSection)
+      if (name === "") return
+      var folded = sectionCollapsed(name)
+      if (dx < 0 && !folded) {
+        focusSection = name + "Header"
+        toggleSectionCollapsed(name)
+      } else if (dx > 0 && folded) {
+        toggleSectionCollapsed(name)
+      }
+      return
+    }
 
     var available = sections()
     var at = available.indexOf(focusSection)
@@ -218,10 +266,18 @@ Panel {
     scrollCursorIntoView()
   }
 
+  function setSectionHeaderCursor(name) {
+    cursorActive = true
+    focusSection = name + "Header"
+  }
+
   function activateCursor() {
     ensureCursor()
+    var collapsible = collapsibleSectionFor(focusSection)
     if (focusSection === "header") {
       netbird.toggleNetbird()
+    } else if (collapsible !== "" && focusSection === collapsible + "Header") {
+      toggleSectionCollapsed(collapsible)
     } else if (focusSection === "notices") {
       activateNotice(selectedNotice())
     } else if (focusSection === "profiles") {
@@ -257,10 +313,9 @@ Panel {
   }
 
   function scrollCursorIntoView() {
-    // A hovered row is already under the pointer, so scrolling to it is at best
-    // a no-op — and when a section folds or unfolds, the rows slide under a
-    // stationary pointer and the hover that follows would yank the view to
-    // whatever landed there. Only deliberate cursor movement scrolls.
+    // Hover must not scroll: a fold reflows rows under the stationary pointer,
+    // and the hover that follows would yank the view. Only deliberate movement
+    // scrolls.
     if (suppressCursorScroll) return
     if (focusSection === "peers" && peerColumn && peerIndex >= 0 && peerIndex < peerColumn.children.length) scrollItemIntoView(peerColumn.children[peerIndex])
     else if (focusSection === "routes" && routeColumn && routeIndex >= 0 && routeIndex < routeColumn.children.length) scrollItemIntoView(routeColumn.children[routeIndex])
@@ -393,9 +448,9 @@ Panel {
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
         if (t === "t" || t === "T") netbird.toggleNetbird()
-        else if (t === "c" || t === "C") netbird.copyPeerIp(root.selectedPeer())
-        else if (t === "n" || t === "N") netbird.copyPeerName(root.selectedPeer())
-        else if (t === "d" || t === "D") netbird.copyPeerFqdn(root.selectedPeer())
+        else if (t === "c" || t === "C") netbird.copyPeerIp(root.copyTargetPeer())
+        else if (t === "n" || t === "N") netbird.copyPeerName(root.copyTargetPeer())
+        else if (t === "d" || t === "D") netbird.copyPeerFqdn(root.copyTargetPeer())
         else if (t === "r" || t === "R") netbird.refresh(true)
         else if (t === "a" || t === "A") netbird.openAdminConsole()
       }
@@ -413,10 +468,8 @@ Panel {
 
         Column {
           id: column
-          // Reserve the scrollbar's band instead of running underneath it. The bar
-          // is an overlay and takes the clicks in that strip, so anything a row or
-          // header puts at its right edge — a fold arrow, a copy button — would be
-          // unclickable, and the click would scroll the panel instead.
+          // Reserve the scrollbar's band: it is an overlay that owns the
+          // clicks in that strip.
           width: panelFlick.width - (panelScrollBar.visible ? panelScrollBar.width : 0)
           spacing: Style.space(12)
 
@@ -479,8 +532,8 @@ Panel {
             wrapMode: Text.WordWrap
           }
 
-          // The tunnel keeps reporting itself healthy right up to the moment the
-          // SSO session lapses, so the countdown is worth its own line.
+          // The tunnel reports healthy right up until the session lapses; the
+          // countdown earns its line.
           Text {
             visible: netbird.installed && netbird.sessionExpiry.text !== ""
             width: parent.width
@@ -617,7 +670,8 @@ Panel {
             }
 
             Text {
-              visible: root.showPeers && netbird.peers.length === 0
+              // Not showPeers — that requires peers to exist.
+              visible: netbird.installed && netbird.active && !root.sectionCollapsed("peers") && netbird.peers.length === 0
               width: parent.width
               text: "No peers found on this network."
               color: root.dim
@@ -643,6 +697,11 @@ Panel {
                 }
               }
             }
+          }
+
+          PanelSeparator {
+            visible: netbird.installed && netbird.active && netbird.healthRows.length > 0
+            foreground: root.foreground
           }
 
           Column {
@@ -941,9 +1000,8 @@ Panel {
     }
   }
 
-  // A section header that folds its own rows away. The summary rides on the
-  // header so a folded section still answers the question it was opened for.
-  component CollapsibleHeader: Item {
+  // A section header that folds its own rows away, keeping its summary.
+  component CollapsibleHeader: CursorSurface {
     id: headerRoot
 
     required property string section
@@ -952,12 +1010,17 @@ Panel {
 
     readonly property bool folded: root.sectionCollapsed(section)
 
-    implicitHeight: headerRow.implicitHeight
+    hasCursor: root.cursorActive && root.focusSection === section + "Header"
+    foreground: root.foreground
+    fill: root.hoverFill
+
+    implicitHeight: headerRow.implicitHeight + Style.space(6)
 
     MouseArea {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
+      onEntered: root.setSectionHeaderCursor(headerRoot.section)
       onClicked: root.toggleSectionCollapsed(headerRoot.section)
     }
 
@@ -966,11 +1029,11 @@ Panel {
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
+      anchors.leftMargin: Style.space(6)
+      anchors.rightMargin: Style.space(6)
       spacing: Style.space(6)
 
-      // Leads the label rather than trailing it: the panel's scrollbar is an
-      // overlay on the right edge and swallows clicks in that strip, so an
-      // affordance parked there is the one place a fold arrow must not go.
+      // Leads the label: the scrollbar overlay owns clicks at the right edge.
       Text {
         Layout.alignment: Qt.AlignVCenter
         text: headerRoot.folded ? "󰅂" : "󰅀"
@@ -1058,8 +1121,7 @@ Panel {
       Text {
         text: netbird.osIcon(peerRow.peer ? peerRow.peer.OS : "")
         color: root.foreground
-        // An idle peer is still a real peer you can reach; dim it rather than
-        // hiding it, because on a NetBird network most peers are idle.
+        // Idle peers are the norm; dim them rather than hide them.
         opacity: peerRow.peerOnline ? 1.0 : 0.45
         font.family: root.fontFamily
         font.pixelSize: Style.font.icon

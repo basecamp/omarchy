@@ -80,16 +80,14 @@ assertDeepEqual(
   'netbird reads nameserver group servers given as strings'
 )
 
-// The whole point of the DNS notice: NetworkManager's global-dns block wins
-// over the split DNS NetBird installs, so a pinned provider silently breaks it.
+// NetworkManager's global-dns block wins over NetBird's split DNS.
 assertEqual(netbird.dnsOverrideWarning(true, 'Cloudflare'), 'Cloudflare', 'netbird warns when a pinned provider overrides its DNS')
 assertEqual(netbird.dnsOverrideWarning(true, 'Custom'), 'Custom', 'netbird warns about a custom provider too')
 assertEqual(netbird.dnsOverrideWarning(true, 'DHCP'), '', 'netbird stays quiet when DNS comes from DHCP')
 assertEqual(netbird.dnsOverrideWarning(false, 'Cloudflare'), '', 'netbird stays quiet when it serves no DNS of its own')
 assertEqual(netbird.dnsOverrideWarning(true, ''), '', 'netbird stays quiet until the provider is known')
 
-// A logged-out daemon still answers with usable JSON, and the panel has to
-// read it rather than treating the non-zero exit as an outage.
+// A logged-out daemon answers usable JSON with a non-zero exit.
 const loggedOut = netbird.parseStatus(JSON.stringify({ status: 'NeedsLogin', management: { connected: false } }))
 assert(loggedOut.needsLogin && !loggedOut.running, 'netbird parses an explicit NeedsLogin state')
 assert(/stdout\.trim\(\) !== ""/.test(serviceSource), 'netbird reads status output before treating an exit code as failure')
@@ -198,8 +196,7 @@ assertDeepEqual(
   'netbird handles invalid profile JSON'
 )
 
-// Older CLIs have never heard of these subcommands, and that is not an error
-// worth showing anybody.
+// Unknown subcommands on older CLIs are not errors.
 assert(netbird.isUnsupportedCommand('Error: unknown command "profile" for "netbird"'), 'netbird recognizes an unknown subcommand')
 assert(netbird.isUnsupportedCommand('unknown flag: --json'), 'netbird recognizes an unknown flag')
 assert(!netbird.isUnsupportedCommand('failed to connect to daemon'), 'netbird does not mistake an outage for a missing command')
@@ -208,15 +205,21 @@ assert(netbird.isPermissionError('dial unix /var/run/netbird.sock: connect: perm
 assert(netbird.isPermissionError('connection refused'), 'netbird recognizes a daemon that is not listening')
 assert(!netbird.isPermissionError('peer is not logged in'), 'netbird does not mistake a logged-out daemon for an unreachable one')
 
-// The admin panel URL is only in root-only daemon config, so the console is
-// derived from the management URL that `netbird status --json` does report.
+// The console derives from the management URL; the admin URL lives in
+// root-only daemon config.
 assertEqual(netbird.adminConsoleUrl('https://api.netbird.io:443'), 'https://app.netbird.io/peers', 'netbird sends the cloud management URL to the cloud console')
 assertEqual(netbird.adminConsoleUrl('https://netbird.example.com:443'), 'https://netbird.example.com/peers', 'netbird derives a self-hosted console from its management URL')
-assertEqual(netbird.adminConsoleUrl('https://nb.corp.net:33073'), 'https://nb.corp.net/peers', 'netbird drops a non-standard management port from the console URL')
+assertEqual(netbird.adminConsoleUrl('https://nb.corp.net:33073'), 'https://nb.corp.net:33073/peers', 'netbird keeps a non-default management port on the console URL')
+assertEqual(netbird.adminConsoleUrl('https://[2001:db8::1]:8443'), 'https://[2001:db8::1]:8443/peers', 'netbird keeps a non-default port on an IPv6 console URL')
+assertEqual(netbird.urlHostPort('https://a.example:443/x'), 'a.example', 'netbird drops the https default port from an origin')
+assertEqual(netbird.urlHostPort('https://a.example:8443/x'), 'a.example:8443', 'netbird keeps a non-default port in an origin')
 assertEqual(netbird.adminConsoleUrl('http://nb.corp.net'), 'https://nb.corp.net/peers', 'netbird serves the console over https even when management is plain http')
 assertEqual(netbird.adminConsoleUrl('nb.corp.net:443'), 'https://nb.corp.net/peers', 'netbird reads a management URL that carries no scheme')
 assertEqual(netbird.adminConsoleUrl('https://[2001:db8::1]:443'), 'https://[2001:db8::1]/peers', 'netbird keeps an IPv6 literal bracketed')
 assertEqual(netbird.adminConsoleUrl(''), 'https://app.netbird.io/peers', 'netbird falls back to the cloud console with no management URL')
+
+const loggedOutSelf = netbird.parseStatus(JSON.stringify({ daemonStatus: 'NeedsLogin', management: { url: 'https://api.netbird.io:443', connected: false } }))
+assertEqual(loggedOutSelf.selfName, '', 'netbird leaves the self name empty when logged out, for the hero to fall back')
 assertEqual(netbird.adminConsoleUrl('https://api.netbird.io:443/some/path'), 'https://app.netbird.io/peers', 'netbird ignores a path on the management URL')
 assert(/Model\.adminConsoleUrl\(managementUrl\)/.test(serviceSource), 'netbird opens the console it derived, not a hardcoded one')
 
@@ -307,6 +310,14 @@ assert(degraded[2].warn, 'netbird flags a network with no relay available')
 assert(!degraded[0].warn, 'netbird leaves reachable management unflagged while signal is down')
 assertEqual(degraded[3].detail, '', 'netbird omits the WireGuard port when the daemon reports none')
 
+const explained = netbird.healthRows({
+  managementUrl: 'https://fleetfold.com:443', managementConnected: true,
+  signalUrl: 'https://fleetfold.com:443', signalConnected: false, signalError: 'context deadline exceeded',
+  relaysAvailable: 2, relaysTotal: 2
+})
+assertEqual(explained[1].detail, 'context deadline exceeded', 'netbird reports the daemon\'s own reason when signal is down')
+assertEqual(explained[0].detail, 'connected', 'netbird keeps a healthy row\'s detail plain')
+
 // A relay-less deployment is a configuration, not a fault.
 const norelays = netbird.healthRows({ relaysAvailable: 0, relaysTotal: 0 })
 assert(!norelays[2].warn, 'netbird does not flag a deployment that configures no relays')
@@ -329,8 +340,15 @@ assertEqual(profileTableEmail.selectedProfileName, 'work', 'netbird finds the ac
 
 assertEqual(netbird.parseProfiles('No profiles found.\n').profiles.length, 0, 'netbird reads no profiles from output with no table')
 
-// `netbird <verb> select` replaces the entire selection unless told to append,
-// so selecting one route without --append silently turns every other one off.
+// Profile names are free-form, so rows are sliced at the header's column
+// offsets rather than split on whitespace.
+const spacedProfiles = netbird.parseProfiles('NAME         EMAIL            ACTIVE\nwork laptop  dev@example.com  \u2713\ndefault\n')
+assertEqual(spacedProfiles.profiles[0].name, 'work laptop', 'netbird reads a profile name that contains a space')
+assertEqual(spacedProfiles.profiles[0].email, 'dev@example.com', 'netbird keeps the email column aligned past a spaced name')
+assertEqual(spacedProfiles.selectedProfileName, 'work laptop', 'netbird reads the active mark past a spaced name')
+assert(!spacedProfiles.profiles[1].selected, 'netbird leaves a row with no active column unselected')
+
+// Bare `select` replaces the entire selection.
 assert(/"select", "--append", id/.test(serviceSource), 'netbird appends when selecting a route instead of replacing the selection')
 assert(/"deselect", id/.test(serviceSource), 'netbird deselects a single route by id')
 // The JSON spelling stays first in the list, with the table behind it as fallback.
@@ -357,16 +375,21 @@ assertDeepEqual(
 assertDeepEqual(netbird.collapsedSectionsFile({}), { version: 1, collapsed: [] }, 'netbird stores an empty list when nothing is folded')
 assertEqual(netbird.parseCollapsedSections('{"version":1,"collapsed":["peers"]}').peers, true, 'netbird reads a folded section back')
 assertEqual(netbird.parseCollapsedSections('{"version":1,"collapsed":["peers"]}').routes, undefined, 'netbird leaves unlisted sections open')
-assertDeepEqual(netbird.defaultCollapsedSections(), { peers: true }, 'netbird folds peers away before anything is stored')
+assertDeepEqual(netbird.defaultCollapsedSections(), { peers: true, profiles: true }, 'netbird folds peers and profiles away before anything is stored')
 assert(/onLoadFailed: root\.collapsedSections = Model\.defaultCollapsedSections\(\)/.test(panelSource), 'netbird applies the collapse defaults only when no state is stored')
-// Hover must not scroll: folding a section slides rows under a still pointer, and
-// the hover that follows would drag the view to whatever landed under it.
+// Hover must not scroll; only deliberate cursor movement does.
 assert(/function scrollCursorIntoView\(\)[^}]*if \(suppressCursorScroll\) return/.test(panelSource), 'netbird can suppress scrolling a cursor change into view')
 assert(!/function setPeerCursor[^}]*scrollCursorIntoView\(\)/.test(panelSource), 'netbird does not scroll when the pointer picks a peer')
 assert(!/function setRouteCursor[^}]*scrollCursorIntoView\(\)/.test(panelSource), 'netbird does not scroll when the pointer picks a route')
 assert(/function moveCursor[\s\S]*?scrollCursorIntoView\(\)/.test(panelSource), 'netbird still scrolls the cursor into view when the keyboard moves it')
-// The stored file is authoritative, so opening peers is not mistaken for a first
-// run on the next load and re-folded behind the user's back.
+
+assert(/visible: netbird\.installed && netbird\.active && !root\.sectionCollapsed\("peers"\) && netbird\.peers\.length === 0/.test(panelSource), 'netbird can actually show the empty-peers message')
+assert(/noteStatusFailure\(stderr\.trim\(\) !== "" \? stderr : stdout\)/.test(serviceSource), 'netbird classifies a status failure from whichever stream carried it')
+assert(/collapsedFile\.reload\(\)/.test(panelSource), 'netbird re-reads the fold state after the startup race window')
+assert(/profilesHeader/.test(panelSource) && /peersHeader/.test(panelSource), 'netbird keeps folded sections reachable from the keyboard via their headings')
+assert(/if \(dx < 0 && !folded\)/.test(panelSource), 'netbird folds the focused section with the left arrow')
+assert(/copyPeerIp\(root\.copyTargetPeer\(\)\)/.test(panelSource), 'netbird copy keys only act on the visible, focused peer list')
+// The stored file is authoritative; an empty list must not re-fold the defaults.
 assertDeepEqual(netbird.parseCollapsedSections('{"version":1,"collapsed":[]}'), {}, 'netbird keeps peers open once a file says so')
 assertDeepEqual(netbird.parseCollapsedSections(''), {}, 'netbird reads no folded sections out of an empty file')
 assertDeepEqual(netbird.parseCollapsedSections('not json'), {}, 'netbird opens every section when the state file is unreadable')

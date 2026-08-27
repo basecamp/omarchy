@@ -89,13 +89,28 @@ case "$name" in
   tailscaled)
     [[ ${OMARCHY_TEST_TAILSCALE_PROCESS:-0} == "1" ]]
     ;;
-  netbird)
+  # The NetBird check matches the daemon's command line, because a plain
+  # `netbird` process may just be the panel's own CLI poll.
+  "netbird service run")
     [[ ${OMARCHY_TEST_NETBIRD_PROCESS:-0} == "1" ]]
+    ;;
+  netbird)
+    echo "installed-service must not match bare netbird processes" >&2
+    exit 2
     ;;
   *)
     exit 1
     ;;
 esac
+SH
+
+# The check bounds its CLI probe with timeout(1), which macOS lacks; pass through.
+cat >"$mock_bin/timeout" <<'SH'
+#!/bin/bash
+set -euo pipefail
+
+shift
+exec "$@"
 SH
 
 chmod +x "$mock_bin"/*
