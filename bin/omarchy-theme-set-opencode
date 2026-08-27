@@ -9,7 +9,8 @@ set -euo pipefail
 OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
 
 OPENCODE_SOURCE_PATH="$HOME/.local/state/omarchy/current/theme/opencode.json"
-OPENCODE_CONFIG_DIR="${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}"
+# Mirror how opencode itself finds its config directory.
+OPENCODE_CONFIG_DIR="${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}"
 OPENCODE_THEMES_DIR="$OPENCODE_CONFIG_DIR/themes"
 OPENCODE_THEME_PATH="$OPENCODE_THEMES_DIR/omarchy.json"
 OPENCODE_TUI_CONFIG="$OPENCODE_CONFIG_DIR/tui.json"

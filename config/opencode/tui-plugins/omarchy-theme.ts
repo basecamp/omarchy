@@ -80,18 +80,26 @@ const plugin: TuiPlugin = async (api) => {
     const colors = (data as Record<string, unknown>).theme
     if (typeof colors !== "object" || colors === null) return
     if (REQUIRED_COLORS.some((key) => (colors as Record<string, unknown>)[key] === undefined)) return
+    // Unresolved theme-template tokens would crash resolveTheme(); skip the file.
+    if (JSON.stringify(colors).includes("{{")) return
 
     const name = `${THEME_NAME}-${contentHash(text)}`
     const stale = (candidate: string) =>
-      candidate.startsWith(`${THEME_NAME}-`) && candidate !== `${name}.json` && candidate.endsWith(".json")
+      candidate !== `${name}.json` && new RegExp(`^${THEME_NAME}-[0-9a-f]{8}\\.json$`).test(candidate)
 
     try {
       if (!api.theme.has(name)) {
-        const staged = path.join(os.tmpdir(), "omarchy-theme", `${name}.json`)
-        fs.mkdirSync(path.dirname(staged), { recursive: true })
-        fs.writeFileSync(staged, text)
-        await api.theme.install(staged)
-        fs.rmSync(staged, { force: true })
+        // A per-apply temp directory keeps concurrent opencode sessions from
+        // racing over one shared staged file; the file's basename must stay
+        // `${name}.json` because theme.install() derives the theme name from it.
+        const stagedDir = fs.mkdtempSync(path.join(os.tmpdir(), `${THEME_NAME}-theme-`))
+        try {
+          const staged = path.join(stagedDir, `${name}.json`)
+          fs.writeFileSync(staged, text)
+          await api.theme.install(staged)
+        } finally {
+          fs.rmSync(stagedDir, { recursive: true, force: true })
+        }
       }
       if (owned() && api.theme.selected !== name) api.theme.set(name)
       for (const candidate of pruned) {

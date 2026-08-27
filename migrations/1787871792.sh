@@ -11,19 +11,23 @@ echo "Retint opencode with the Omarchy theme instead of restarting it"
 # itself is not switched here: point tui.json at "omarchy" -- the theme picker
 # also lists it -- or run `omarchy-theme-set-opencode --activate` to opt in.
 
-OPENCODE_DIR="$HOME/.config/opencode"
+# Mirror how opencode itself finds its config directory.
+OPENCODE_CONFIG="${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}"
 
-[[ -d $OPENCODE_DIR ]] || exit 0
+[[ -d $OPENCODE_CONFIG ]] || exit 0
 
 plugin_source="$OMARCHY_PATH/config/opencode/tui-plugins/omarchy-theme.ts"
-plugin_target="$OPENCODE_DIR/tui-plugins/omarchy-theme.ts"
+plugin_target="$OPENCODE_CONFIG/tui-plugins/omarchy-theme.ts"
 
 if [[ -f $plugin_source ]]; then
   mkdir -p "$(dirname "$plugin_target")"
   ln -sfn "$plugin_source" "$plugin_target"
 fi
 
-tui_config="$OPENCODE_DIR/tui.json"
+# Most existing installs have no tui.json yet; create a plugin-only one so the
+# migration reaches them too. Omitting "theme" keeps the theme they already
+# had -- the plugin stays inert until Omarchy is picked.
+tui_config="$OPENCODE_CONFIG/tui.json"
 
 if [[ -f $tui_config ]]; then
   if ! jq -e --arg plugin "$plugin_target" '.plugin | index($plugin)' "$tui_config" >/dev/null 2>&1; then
@@ -31,6 +35,13 @@ if [[ -f $tui_config ]]; then
     jq --arg plugin "$plugin_target" '.plugin = ((.plugin // []) + [$plugin] | unique)' "$tui_config" >"$tmp"
     mv "$tmp" "$tui_config"
   fi
+elif [[ -f $plugin_target ]]; then
+  cat >"$tui_config" <<EOF
+{
+  "\$schema": "https://opencode.ai/tui.json",
+  "plugin": ["$plugin_target"]
+}
+EOF
 fi
 
 omarchy-theme-set-opencode
