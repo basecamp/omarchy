@@ -292,10 +292,11 @@ Panel {
     resourceSplits = Model.buildResourceSplits(prevSnapshot, snap, 5, draw, baseWatts)
     // Palette keys map to Color singleton properties: the three
     // non-threshold hues that are universal AND mutually distinct across the
-    // themes (reviewer finding: accent hex-collides with blue or magenta on
-    // 21/22 themes; bright_* variants equal their base hue on roughly half,
-    // so no six-key collision-free set exists — retro-82 collapses hues by
-    // design and remains the one residual collision). Same comm = same key =
+    // themes (reviewer finding, hex re-derived: accent equals blue on 17
+    // themes and magenta on lumon only, so it cannot serve as a fourth hue;
+    // bright_* variants equal their base hue on roughly half, so no six-key
+    // collision-free set exists — retro-82's residual defect is its own
+    // blue == magenta, a theme-level reduction). Same comm = same key =
     // same color in the CPU, RAM, and watts bars and its row meter.
     colorMap = Model.assignColorKeys(resourceSplits.order, ["blue", "cyan", "magenta"])
     // Vitals rows are rebuilt complete with their segments attached: a
