@@ -82,7 +82,19 @@ cache_file="$xdg_dir/omarchy-brightness-display-apple.device"
 regular_file="$TMPDIR/not-a-device"
 : >"$regular_file"
 
-for poison in "/dev/null" "$regular_file" "/tmp/omarchy-evil"; do
+poisons=("/dev/null" "$regular_file" "/tmp/omarchy-evil")
+
+# The cases above all fail on the pathname prefix, so none of them reaches the -c
+# test -- drop `&& -c $cached` from the wrapper and they all still pass. A path
+# that matches the hiddev glob but is not a character device is what -c is for,
+# and it is the realistic stale cache: the display replugs, the interface
+# renumbers, and the cached node is simply gone. Add it only when the host really
+# has no such node, so a machine with the display attached cannot fail here.
+if [[ ! -e /dev/hiddev999 ]]; then
+  poisons+=("/dev/hiddev999")
+fi
+
+for poison in "${poisons[@]}"; do
   printf '%s\n' "$poison" >"$cache_file"
   output=$(run_wrapper "$xdg_dir" "+5%")
   if grep -qF -- "$poison -- +5%" "$asd_log"; then
@@ -91,10 +103,10 @@ for poison in "/dev/null" "$regular_file" "/tmp/omarchy-evil"; do
 done
 pass "wrapper rejects a cached path that is not a hiddev character device"
 
-# NOTE: the complementary arm (a cache value that DOES match /dev/hiddev* but is
-# not a character device) cannot be built without root -- only real device nodes
-# live under /dev. It is covered by the -c test and exercised below only when a
-# real hiddev node happens to be present.
+# NOTE: the /dev/hiddev999 case above covers the -c test for a glob-matching path
+# that does not exist. The remaining arm -- a path under /dev that exists, matches
+# the glob, and is not a character device -- cannot be built without root, since
+# only real device nodes live there.
 
 # --- A legitimate cached hiddev node is trusted (only where HW is present) ----
 real_hiddev=""
@@ -115,20 +127,25 @@ else
 fi
 
 # --- With no XDG_RUNTIME_DIR, the predictable /tmp cache is not consulted ------
-# Create the decoy atomically with noclobber (O_EXCL) instead of check-then-create:
-# this refuses to overwrite an existing file or follow a symlink at the fixed path,
-# closing the TOCTOU/symlink race. The fixed path is required -- it is exactly the
-# path the old code would have formed, so a decoy anywhere else would prove nothing.
-# If the path is already taken, skip rather than touch it; the EXIT trap removes the
-# decoy only when this test created it.
-if ( set -C; printf '%s\n' "/dev/null" >"$tmp_cache" ) 2>/dev/null; then
+# Assert on the open, not on the contents. A decoy holding a rejectable path proves
+# nothing: the validation above refuses it whether or not the /tmp fallback is still
+# there, so that assertion passes against both wrappers. A FIFO with no writer blocks
+# whoever opens it, so a wrapper that consults the path hangs and one that ignores it
+# exits -- which separates the two. mkfifo is atomic and fails outright if the path is
+# taken, so it neither overwrites a file nor follows a symlink; the fixed path is
+# required, being exactly the path the old code would have formed. Clear the flag as
+# soon as the decoy is gone, so a concurrent run's decoy cannot be removed by this
+# run's EXIT trap.
+if mkfifo "$tmp_cache" 2>/dev/null; then
   created_tmp_cache=1
-  output=$(run_wrapper "" "+5%")
-  used=1
-  grep -qF -- "/dev/null -- +5%" "$asd_log" || used=0
+  status=0
+  env -u XDG_RUNTIME_DIR PATH="$stub_dir:$ROOT/bin:$PATH" \
+    timeout 5 omarchy-brightness-display-apple "+5%" >/dev/null 2>&1 || status=$?
   rm -f "$tmp_cache"
-  (( used == 0 )) ||
-    fail "wrapper consulted the world-writable /tmp cache with no XDG_RUNTIME_DIR" "$output"
+  created_tmp_cache=0
+  (( status != 124 )) ||
+    fail "wrapper consulted the world-writable /tmp cache with no XDG_RUNTIME_DIR" \
+      "it blocked reading the FIFO decoy at $tmp_cache"
   pass "wrapper ignores the /tmp cache path when XDG_RUNTIME_DIR is unset"
 else
   pass "$tmp_cache already present or not safely creatable; skipping the /tmp-fallback case"
