@@ -207,6 +207,10 @@ Panel {
     Qt.callLater(function() { root.refresh(true) })
   }
 
+  function openVpnEditor() {
+    if (root.bar) root.bar.run("omarchy-network-vpn editor")
+  }
+
   IpcHandler {
     target: "omarchy.network"
 
@@ -1137,6 +1141,20 @@ Panel {
             Layout.alignment: Qt.AlignVCenter
             onHovered: function(on) { if (on) root.setHeaderCursor(root.speedHeaderIndex) }
             onClicked: root.summonSpeedTest()
+          }
+
+          Button {
+            id: vpnAction
+            visible: root.networkManagerAvailable
+            iconText: "󰌆"
+            tooltipText: "Manage VPN connections"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            iconSize: Style.font.subtitle * 1.5
+            horizontalPadding: Style.space(5)
+            verticalPadding: Style.space(2)
+            Layout.alignment: Qt.AlignVCenter
+            onClicked: root.openVpnEditor()
           }
 
           ToggleSwitch {

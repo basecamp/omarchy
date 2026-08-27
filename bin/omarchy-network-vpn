@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# omarchy:summary=Manage NetworkManager VPN connections
+# omarchy:group=network
+# omarchy:args=[list|active|up <connection>|down <connection>|editor]
+
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: omarchy-network-vpn [list|active|up <connection>|down <connection>|editor]
+
+Manage VPN profiles through NetworkManager. Any installed NetworkManager VPN
+plugin can be used, including OpenVPN and OpenConnect.
+EOF
+}
+
+case "${1:-list}" in
+  list)
+    nmcli -t --escape no -f UUID,TYPE,NAME connection show \
+      | awk -F: '$2 == "vpn" { print }'
+    ;;
+  active)
+    nmcli -t --escape no -f TYPE,NAME connection show --active \
+      | awk -F: '$1 == "vpn" { print $2 }'
+    ;;
+  up|down)
+    [[ $# -eq 2 ]] || { usage; exit 2; }
+    nmcli connection "$1" "$2"
+    ;;
+  editor)
+    if omarchy-cmd-present nm-connection-editor; then
+      exec nm-connection-editor
+    fi
+    echo "nm-connection-editor is not installed; use 'nmtui' instead." >&2
+    exit 1
+    ;;
+  -h|--help)
+    usage >&2
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac
