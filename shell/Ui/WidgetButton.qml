@@ -8,7 +8,19 @@ Item {
   property string text: ""
   property string fontFamily: bar ? bar.fontFamily : Style.font.family
   property real fontSize: Style.font.body
-  property color foreground: bar ? bar.barForeground : Color.foreground
+  property string region: ""
+  readonly property string effectiveRegion: {
+    if (region !== "") return region
+    var p = root.parent
+    while (p) {
+      if (p.region !== undefined && p.region !== "") return p.region
+      p = p.parent
+    }
+    return ""
+  }
+  property color foreground: (bar && typeof bar.regionForeground === "function" && effectiveRegion !== "")
+    ? bar.regionForeground(effectiveRegion)
+    : (bar ? bar.barForeground : Color.foreground)
   property color activeColor: bar ? bar.urgent : Color.urgent
   property bool active: false
   property real horizontalMargin: 8.5
