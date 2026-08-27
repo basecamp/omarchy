@@ -1,13 +1,15 @@
 #!/bin/bash
 
 # omarchy:summary=Launch a floating terminal with the Omarchy presentation wrapper
-# omarchy:args=<command>
+# omarchy:args=<command> [args...]
 
 # Export the current theme's gum styling so gum widgets match the active theme
 # even after a theme switch (the inherited environment is captured at login).
 source omarchy-restart-gum
 
-cmd="$*"
-presentation_script="omarchy-show-logo; $cmd; if (( \$? != 130 )); then omarchy-show-done; fi"
+# Arguments are kept as argv end-to-end: the outer exec passes each argument
+# verbatim to xdg-terminal-exec, and bash's "$@" inside the wrapper expands
+# them as separate words when running the wrapped command.
+script='omarchy-show-logo; "$@"; if (( $? != 130 )); then omarchy-show-done; fi'
 
-exec setsid uwsm-app -- xdg-terminal-exec --app-id=org.omarchy.terminal --title=Omarchy -e bash -c "$presentation_script"
+exec setsid uwsm-app -- xdg-terminal-exec --app-id=org.omarchy.terminal --title=Omarchy -e bash -c "$script" bash "$@"

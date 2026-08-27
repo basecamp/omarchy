@@ -13,9 +13,8 @@ if [[ -z $name || -z $packages || -z $desktop_id ]]; then
   exit 1
 fi
 
-printf -v install_message '%q' "Installing ${name}..."
-printf -v desktop_id_arg '%q' "$desktop_id"
-
-# The subshell keeps & from backgrounding the package installation too.
+# Static code lives in single quotes; every dynamic value travels as an argv
+# word via "$@" and is never re-parsed as shell source.
 exec omarchy-launch-floating-terminal-with-presentation \
-  "echo ${install_message}; omarchy-pkg-add ${packages} && (setsid uwsm-app -- gtk-launch ${desktop_id_arg} >/dev/null 2>&1 &)"
+  bash -c 'echo "Installing $1..."; omarchy-pkg-add "${@:2:$#-2}" && (setsid uwsm-app -- gtk-launch "${@: -1}" >/dev/null 2>&1 &)' \
+  omarchy-install-and-launch "$name" ${packages} "$desktop_id"

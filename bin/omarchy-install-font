@@ -13,5 +13,7 @@ if [[ -z $name || -z $package || -z $family ]]; then
   exit 1
 fi
 
+# Static code in single quotes; dynamics travel as argv words via "$@".
 exec omarchy-launch-floating-terminal-with-presentation \
-  "echo 'Installing ${name}...'; omarchy-pkg-add ${package} && sleep 2 && omarchy-font-set '${family}'"
+  bash -c 'echo "Installing $1..."; omarchy-pkg-add "$2" && sleep 2 && omarchy-font-set "$3"' \
+  omarchy-install-font "$name" "$package" "$family"
