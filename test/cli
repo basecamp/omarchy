@@ -510,6 +510,39 @@ HOME="$PI_TMPDIR" CLAUDE_CONFIG_DIR="$CLAUDE_TEST_CONFIG" "$ROOT/bin/omarchy-the
 jq -e '.theme == "custom:omarchy" and .model == "keep-me"' "$CLAUDE_TEST_CONFIG/settings.json" >/dev/null
 pass "claude theme activation preserves configured settings"
 
+jq -e '.theme.primary == "#336699" and .theme.background == "#000000" and .theme.text == "#ffffff" and .theme.backgroundPanel == "#0d0d0d" and .theme.selectedListItemText == "#eeeeee"' "$NEXT_THEME/opencode.json" >/dev/null
+pass "opencode theme template is generated from standard themed templates"
+cp "$NEXT_THEME/opencode.json" "$CURRENT_THEME/opencode.json"
+
+HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-opencode"
+[[ ! -d $PI_TMPDIR/.config/opencode ]] || fail "opencode theme sync avoids the default directory when not activating"
+pass "opencode theme sync skips missing config when not activating"
+
+OPENCODE_TEST_CONFIG="$PI_TMPDIR/.opencode-work"
+mkdir -p "$OPENCODE_TEST_CONFIG"
+HOME="$PI_TMPDIR" OPENCODE_CONFIG_DIR="$OPENCODE_TEST_CONFIG" "$ROOT/bin/omarchy-theme-set-opencode"
+[[ -f $OPENCODE_TEST_CONFIG/themes/omarchy.json ]] || fail "opencode theme is synced to the configured directory"
+[[ ! -d $PI_TMPDIR/.config/opencode ]] || fail "opencode theme sync avoids the default directory when configured"
+pass "opencode theme sync respects OPENCODE_CONFIG_DIR"
+jq -e '.theme.background == "#000000" and .theme.textMuted == "#111111"' "$OPENCODE_TEST_CONFIG/themes/omarchy.json" >/dev/null
+pass "opencode synced theme JSON is valid"
+
+printf '{"theme":"tokyonight","keybinds":{"leader":"<c-b>"}}\n' >"$OPENCODE_TEST_CONFIG/tui.json"
+HOME="$PI_TMPDIR" OMARCHY_PATH="$ROOT" OPENCODE_CONFIG_DIR="$OPENCODE_TEST_CONFIG" "$ROOT/bin/omarchy-theme-set-opencode" --activate
+[[ -L $OPENCODE_TEST_CONFIG/tui-plugins/omarchy-theme.ts ]] || fail "opencode plugin is installed on activation"
+jq -e --arg plugin "$OPENCODE_TEST_CONFIG/tui-plugins/omarchy-theme.ts" \
+  '.theme == "omarchy" and .keybinds.leader == "<c-b>" and (.plugin | index($plugin))' \
+  "$OPENCODE_TEST_CONFIG/tui.json" >/dev/null
+pass "opencode theme activation wires the plugin and preserves settings"
+
+OPENCODE_FRESH_CONFIG="$PI_TMPDIR/.opencode-fresh"
+mkdir -p "$OPENCODE_FRESH_CONFIG"
+HOME="$PI_TMPDIR" OMARCHY_PATH="$ROOT" OPENCODE_CONFIG_DIR="$OPENCODE_FRESH_CONFIG" "$ROOT/bin/omarchy-theme-set-opencode" --activate
+jq -e --arg plugin "$OPENCODE_FRESH_CONFIG/tui-plugins/omarchy-theme.ts" \
+  '.theme == "omarchy" and .plugin == [$plugin]' \
+  "$OPENCODE_FRESH_CONFIG/tui.json" >/dev/null
+pass "opencode theme activation generates tui.json when missing"
+
 make_tmpdir THEME_TMPDIR
 OMARCHY_PATH="$ROOT" HOME="$THEME_TMPDIR" OMARCHY_THEME_HEADLESS=1 "$ROOT/bin/omarchy-theme-set" "Tokyo Night"
 background_path=$(readlink -f "$THEME_TMPDIR/.local/state/omarchy/current/background" 2>/dev/null || true)
