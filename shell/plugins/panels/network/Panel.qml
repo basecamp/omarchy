@@ -30,10 +30,10 @@ Panel {
   }
 
   function cancelHiddenForm() {
-    // Keep the form and its full state — passphrase included — while a
-    // connect is in flight so a reopened panel still shows "Connecting…"
-    // and a later failure can be retried without retyping; the disabled
-    // toggle prevents cancel/resubmit meanwhile.
+    // Keep the form and its state while a connect is in flight so a
+    // reopened panel still shows "Connecting…"; the disabled toggle
+    // prevents cancel/resubmit meanwhile. The in-flight passphrase is
+    // dropped by hiddenConnect.onExited, not here.
     if (hiddenBusy) return
     hiddenPasswordText = ""
     hiddenFormOpen = false
@@ -1007,6 +1007,11 @@ Panel {
     onExited: function(exitCode) {
       var wasTimeout = timedOut
       timedOut = false
+      // The secret has served its purpose once the process exits: drop it
+      // from shell memory now rather than letting it linger until the form
+      // is dismissed. A failed attempt keeps SSID and security for retry,
+      // but the passphrase must be retyped.
+      root.hiddenPasswordText = ""
       // A kill can race a genuine success: if the process still exited 0,
       // the connection is actually up -- report success, not a timeout.
       if (wasTimeout && exitCode !== 0) root.failHiddenAction("Timed out connecting")
@@ -1960,7 +1965,8 @@ Panel {
           }
 
           // Shows once hiddenBusy clears with a failure pending; fields
-          // stay populated so the user can fix and retry without retyping.
+          // stay populated so the user can fix and retry; the passphrase
+          // clears on process exit and must be retyped.
           Text {
             visible: root.hiddenFailed
             width: parent.width
