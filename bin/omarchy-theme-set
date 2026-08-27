@@ -326,6 +326,7 @@ post_theme_commands=(
   omarchy-theme-set-gnome
   omarchy-theme-set-pi
   omarchy-theme-set-claude
+  omarchy-theme-set-hermes
   omarchy-theme-set-browser
   omarchy-theme-set-vscode
   omarchy-theme-set-obsidian

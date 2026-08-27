@@ -1,0 +1,96 @@
+#!/bin/bash
+
+# omarchy:summary=Sync the generated Omarchy theme to Hermes Agent
+# omarchy:args=[--activate]
+# omarchy:hidden=true
+
+set -euo pipefail
+
+HERMES_SOURCE_PATH="$HOME/.local/state/omarchy/current/theme/hermes.yaml"
+HERMES_ACTIVATE=0
+
+usage() {
+  echo "Usage: omarchy-theme-set-hermes [--activate]"
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --activate)
+      HERMES_ACTIVATE=1
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ ! -f $HERMES_SOURCE_PATH ]]; then
+  if (( HERMES_ACTIVATE == 1 )); then
+    echo "Hermes theme source missing: $HERMES_SOURCE_PATH" >&2
+    echo "Run omarchy-theme-refresh after selecting an Omarchy theme." >&2
+    exit 1
+  fi
+
+  exit 0
+fi
+
+# Always retint local Hermes homes under $HOME. Do not honor HERMES_HOME as
+# the destination: theme-set runs from many sessions (including a Hermes
+# profile terminal) and must not skip ~/.hermes or other profiles. A desktop
+# logged into a remote gateway follows that backend's home, not this machine.
+hermes_homes() {
+  local profile
+
+  if [[ -d $HOME/.hermes ]]; then
+    printf '%s\n' "$HOME/.hermes"
+  fi
+
+  if [[ -d $HOME/.hermes/profiles ]]; then
+    for profile in "$HOME/.hermes/profiles"/*; do
+      [[ -d $profile ]] || continue
+      printf '%s\n' "$profile"
+    done
+  fi
+}
+
+if (( HERMES_ACTIVATE == 1 )); then
+  mkdir -p "$HOME/.hermes"
+fi
+
+mapfile -t homes < <(hermes_homes)
+if (( HERMES_ACTIVATE == 0 )) && (( ${#homes[@]} == 0 )); then
+  exit 0
+fi
+
+write_skin() {
+  local home="$1"
+  local dest="$home/skins/omarchy.yaml"
+  local tmp
+
+  mkdir -p "$home/skins"
+  tmp=$(mktemp "$dest.XXXXXX")
+  cp "$HERMES_SOURCE_PATH" "$tmp"
+  mv "$tmp" "$dest"
+}
+
+activate_skin() {
+  local home="$1"
+
+  # hermes config set is the only safe writer for config.yaml. If Hermes
+  # is not on PATH yet, the skin file is still in place for the next start.
+  if command -v hermes >/dev/null 2>&1; then
+    HERMES_HOME="$home" hermes config set display.skin omarchy >/dev/null
+  fi
+}
+
+for home in "${homes[@]}"; do
+  write_skin "$home"
+  if (( HERMES_ACTIVATE == 1 )); then
+    activate_skin "$home"
+  fi
+done

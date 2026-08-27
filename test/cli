@@ -510,6 +510,57 @@ HOME="$PI_TMPDIR" CLAUDE_CONFIG_DIR="$CLAUDE_TEST_CONFIG" "$ROOT/bin/omarchy-the
 jq -e '.theme == "custom:omarchy" and .model == "keep-me"' "$CLAUDE_TEST_CONFIG/settings.json" >/dev/null
 pass "claude theme activation preserves configured settings"
 
+grep -qx 'name: omarchy' "$NEXT_THEME/hermes.yaml" || fail "hermes theme template names the omarchy skin"
+grep -qx '  background: "#000000"' "$NEXT_THEME/hermes.yaml" || fail "hermes theme template maps background"
+grep -qx '  ui_accent: "#336699"' "$NEXT_THEME/hermes.yaml" || fail "hermes theme template maps accent"
+grep -qx '  diff_added: "#002600"' "$NEXT_THEME/hermes.yaml" || fail "hermes theme template mixes diff colours"
+if rg -q '\{\{[^}]+\}\}' "$NEXT_THEME/hermes.yaml"; then
+  fail "hermes theme template renders every placeholder"
+fi
+pass "hermes theme template is generated from standard themed templates"
+cp "$NEXT_THEME/hermes.yaml" "$CURRENT_THEME/hermes.yaml"
+
+echo 'name: custom-omarchy' >"$NEXT_THEME/hermes.yaml"
+OMARCHY_PATH="$ROOT" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-templates"
+grep -qx 'name: custom-omarchy' "$NEXT_THEME/hermes.yaml" || fail "theme-specific hermes.yaml overrides the default template"
+pass "theme-specific hermes.yaml overrides the default template"
+rm "$NEXT_THEME/hermes.yaml"
+OMARCHY_PATH="$ROOT" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-templates"
+cp "$NEXT_THEME/hermes.yaml" "$CURRENT_THEME/hermes.yaml"
+
+HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-hermes"
+[[ ! -d $PI_TMPDIR/.hermes ]] || fail "hermes theme sync skips missing Hermes home when not activating"
+pass "hermes theme sync skips missing Hermes home when not activating"
+
+mkdir -p "$PI_TMPDIR/.hermes/profiles/james"
+HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-hermes"
+[[ -f $PI_TMPDIR/.hermes/skins/omarchy.yaml ]] || fail "hermes theme is synced to the default home"
+[[ -f $PI_TMPDIR/.hermes/profiles/james/skins/omarchy.yaml ]] || fail "hermes theme is synced to existing profiles"
+grep -qx 'name: omarchy' "$PI_TMPDIR/.hermes/skins/omarchy.yaml" || fail "synced hermes skin YAML is valid"
+pass "hermes theme is synced to default and profile homes"
+
+hermes_mock="$PI_TMPDIR/bin"
+mkdir -p "$hermes_mock"
+cat >"$hermes_mock/hermes" <<'SH'
+#!/bin/bash
+printf '%s\0' "$HERMES_HOME" "$@" >>"${HERMES_TEST_LOG:?}"
+SH
+chmod +x "$hermes_mock/hermes"
+: >"$PI_TMPDIR/hermes-activate.log"
+HOME="$PI_TMPDIR" HERMES_TEST_LOG="$PI_TMPDIR/hermes-activate.log" \
+  PATH="$hermes_mock:$PATH" "$ROOT/bin/omarchy-theme-set-hermes" --activate
+mapfile -d '' -t hermes_args <"$PI_TMPDIR/hermes-activate.log"
+[[ ${hermes_args[0]} == "$PI_TMPDIR/.hermes" && ${hermes_args[1]} == "config" && ${hermes_args[2]} == "set" && ${hermes_args[3]} == "display.skin" && ${hermes_args[4]} == "omarchy" ]] ||
+  fail "hermes theme activation sets display.skin via hermes config set"
+printf '%s\0' "${hermes_args[@]}" | grep -Fz "$PI_TMPDIR/.hermes/profiles/james" >/dev/null ||
+  fail "hermes theme activation sets display.skin for existing profiles"
+pass "hermes generated theme is activated"
+
+if HOME="$PI_TMPDIR/no-theme" "$ROOT/bin/omarchy-theme-set-hermes" --activate; then
+  fail "hermes theme activation rejects a missing source"
+fi
+pass "hermes theme activation rejects a missing source"
+
 make_tmpdir THEME_TMPDIR
 OMARCHY_PATH="$ROOT" HOME="$THEME_TMPDIR" OMARCHY_THEME_HEADLESS=1 "$ROOT/bin/omarchy-theme-set" "Tokyo Night"
 background_path=$(readlink -f "$THEME_TMPDIR/.local/state/omarchy/current/background" 2>/dev/null || true)
