@@ -31,6 +31,7 @@ seed_install() {
   ln -sf "$test_home/.hermes/node/bin/npm" "$test_home/.local/bin/npm"
   ln -sf /usr/bin/npx "$test_home/.local/bin/npx"
   printf 'node\n' >"$test_home/.hermes/node/bin/node"
+  touch "$test_home/.hermes/hermes-agent/.hermes-bootstrap-complete"
 }
 
 remove() {
@@ -66,8 +67,8 @@ pass "removal keeps what belongs to the user"
 [[ ! -e $test_home/.local/bin/hermes ]] || fail "the app's own hermes command is removed"
 pass "removal takes the command the app installed"
 
-# Installed but never launched: the app never wrote these, so they are somebody
-# else's and must survive.
+# A hermes command the app did not write survives even when the app did install
+# a runtime of its own.
 seed_install
 printf '%s\n' "#!/bin/bash" "exec /usr/local/bin/my-own-hermes \"\$@\"" \
   >"$test_home/.local/bin/hermes"
@@ -75,3 +76,37 @@ remove || fail "remove succeeds with a foreign hermes present"
 [[ -f $test_home/.local/bin/hermes ]] ||
   fail "a hermes command the app did not write survives removal"
 pass "removal leaves a hermes it does not own"
+
+# Installed but never launched. The app provisions its runtime on first launch
+# and marks it complete when it lands, so without that marker everything under
+# ~/.hermes predates the app -- an official install, or one built by hand -- and
+# the paths are identical either way. Dropping the package is the whole job.
+seed_install
+rm -f "$test_home/.hermes/hermes-agent/.hermes-bootstrap-complete"
+printf 'my local edit\n' >"$test_home/.hermes/hermes-agent/PATCH"
+printf '%s\n' "#!/bin/bash" "exec $test_home/.hermes/hermes-agent/venv/bin/hermes \"\$@\"" \
+  >"$test_home/.local/bin/hermes"
+remove || fail "remove succeeds when the app never finished installing Hermes"
+[[ -d $test_home/.hermes/hermes-agent ]] ||
+  fail "a Hermes runtime the app never installed survives removal"
+[[ -f $test_home/.hermes/hermes-agent/PATCH ]] ||
+  fail "local changes to a runtime the app never installed survive removal"
+[[ -d $test_home/.hermes/bin && -d $test_home/.hermes/node ]] ||
+  fail "the rest of a runtime the app never installed survives removal"
+[[ -f $test_home/.local/bin/hermes ]] ||
+  fail "the command a runtime the app never installed put on PATH survives removal"
+[[ -L $test_home/.local/bin/node ]] ||
+  fail "node links belonging to a runtime the app never installed survive removal"
+pass "removal leaves a Hermes the app never installed"
+
+# ~/.hermes carries a dot, so a pattern rather than a plain string would also
+# claim a wrapper pointing at a sibling directory that merely looks like it.
+seed_install
+mkdir -p "$test_home/xhermes/bin"
+sibling_body="#!/bin/bash
+exec $test_home/xhermes/bin/hermes \"\$@\""
+printf '%s\n' "$sibling_body" >"$test_home/.local/bin/hermes"
+remove || fail "remove succeeds with a wrapper pointing at a sibling directory"
+[[ -f $test_home/.local/bin/hermes && $(cat "$test_home/.local/bin/hermes") == "$sibling_body" ]] ||
+  fail "a wrapper pointing at ~/xhermes is not mistaken for one pointing into ~/.hermes"
+pass "removal matches the runtime path as a plain string"
