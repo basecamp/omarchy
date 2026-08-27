@@ -2,19 +2,65 @@
 
 # omarchy:summary=Insert an emoji into the focused application
 # omarchy:group=menu
-# omarchy:args=<emoji>
+# omarchy:args=<emoji> [window-address]
 # omarchy:hidden=true
 
 emoji="${1:-}"
-copy_pid=""
+target="${2:-}"
 
-[[ -n $emoji ]] || exit
+[[ -n $emoji ]] || exit 0
 
-printf '%s' "$emoji" | wl-copy --type text/plain --sensitive --foreground &
-copy_pid=$!
+focus_window() {
+  hyprctl dispatch "hl.dsp.focus({ window = \"address:$1\" })" >/dev/null 2>&1 ||
+    hyprctl dispatch focuswindow "address:$1" >/dev/null 2>&1
+}
 
-sleep 0.15
-wtype -M shift -k Insert -m shift 2>/dev/null || true
-sleep 0.2
+active_address() {
+  hyprctl activewindow -j 2>/dev/null | jq -r '.address // ""'
+}
 
-kill "$copy_pid" 2>/dev/null || true
+if [[ -n $target ]]; then
+  [[ $target == 0x* ]] || target="0x$target"
+
+  # The picker is a fullscreen layer holding exclusive keyboard focus, so a
+  # focus request while it is still up does nothing. Once it closes,
+  # follow_mouse hands focus to whichever window sits under the (centred)
+  # cursor - so a mouse-picked emoji lands in the wrong window. Wait for the
+  # picker to go, then re-focus its origin window and confirm it stuck before
+  # typing.
+  sleep 0.15
+  for _ in {1..15}; do
+    [[ $(active_address) == "$target" ]] && break
+    focus_window "$target"
+    sleep 0.04
+  done
+else
+  # No origin window recorded: just let focus settle.
+  sleep 0.15
+fi
+
+# Terminals accept injected Unicode directly, and typing it leaves the
+# clipboard and primary selection untouched. Chromium- and Electron-based apps
+# (Chrome, VS Code, Slack, ...) ignore the transient keymap wtype uses to type
+# Unicode, so the character never arrives - they need a real clipboard paste,
+# which also works fine in Firefox, GTK and Qt. Terminal vs. not is decided
+# with the same "terminal" window tag omarchy's universal paste keybind uses
+# (default/hypr/bindings/clipboard.lua).
+is_terminal() {
+  hyprctl activewindow -j 2>/dev/null |
+    jq -e '[(.tags // [])[] | rtrimstr("*")] | index("terminal") != null' >/dev/null 2>&1
+}
+
+if is_terminal; then
+  wtype "$emoji"
+else
+  # Offer the emoji on the clipboard just long enough to paste it, marked
+  # --sensitive so clipboard managers don't archive it, then withdraw the
+  # offer. Ctrl+V is the paste shortcut everywhere outside a terminal.
+  printf '%s' "$emoji" | wl-copy --type text/plain --sensitive --foreground &
+  copy_pid=$!
+  sleep 0.15
+  wtype -M ctrl -P v -p v -m ctrl 2>/dev/null || true
+  sleep 0.2
+  kill "$copy_pid" 2>/dev/null || true
+fi
