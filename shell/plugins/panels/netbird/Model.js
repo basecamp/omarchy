@@ -38,6 +38,7 @@ function normalizeDaemonState(text) {
   if (value === "") return ""
   if (value.indexOf("needslogin") !== -1) return "NeedsLogin"
   if (value.indexOf("loginfailed") !== -1) return "LoginFailed"
+  if (value.indexOf("sessionexpired") !== -1) return "SessionExpired"
   if (value.indexOf("failedtostart") !== -1) return "FailedToStart"
   // "disconnected" contains "connected", so rule it out first.
   if (value.indexOf("disconnect") !== -1) return "Disconnected"
@@ -60,7 +61,7 @@ function readDaemonState(data) {
   if (management.connected === true) return "Connected"
 
   var error = String(management.error || management.Error || "")
-  if (/needs login|unauthor|not logged in|no peer login/i.test(error)) return "NeedsLogin"
+  if (/needs login|unauthor|not logged in|no peer login|session expired/i.test(error)) return "NeedsLogin"
 
   return "Disconnected"
 }
@@ -347,7 +348,7 @@ function parseStatus(raw) {
       unavailable: false,
       backendState: backendState,
       running: backendState === "Connected",
-      needsLogin: backendState === "NeedsLogin" || backendState === "LoginFailed",
+      needsLogin: backendState === "NeedsLogin" || backendState === "LoginFailed" || backendState === "SessionExpired",
       // Logged out reports no fqdn and no IP; return "" so the hero can fall
       // back to its own label.
       selfName: fqdn === "" && selfIp === "" ? "" : displayHostName(fqdn, selfIp),

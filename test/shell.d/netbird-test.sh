@@ -98,8 +98,13 @@ assert(derivedLogin.needsLogin, 'netbird infers NeedsLogin from a management err
 const stopped = netbird.parseStatus(JSON.stringify({ management: { connected: false } }))
 assert(stopped.ok && !stopped.running && !stopped.needsLogin, 'netbird treats an unexplained disconnect as disconnected')
 
+// A lapsed SSO session is terminal until the user logs back in.
+const expired = netbird.parseStatus(JSON.stringify({ daemonStatus: 'SessionExpired', management: { connected: false } }))
+assert(expired.needsLogin && !expired.running, 'netbird treats a SessionExpired state as login-required')
+
 assertEqual(netbird.normalizeDaemonState('needs login'), 'NeedsLogin', 'netbird normalizes a spaced daemon state')
 assertEqual(netbird.normalizeDaemonState('LOGIN_FAILED'), 'LoginFailed', 'netbird normalizes an underscored daemon state')
+assertEqual(netbird.normalizeDaemonState('Session Expired'), 'SessionExpired', 'netbird recognizes a session-expired daemon state')
 assertEqual(netbird.normalizeDaemonState('banana'), '', 'netbird reports nothing for an unknown daemon state')
 // "disconnected" contains "connected"; an explicit Disconnected must never read as up.
 assertEqual(netbird.normalizeDaemonState('Disconnected'), 'Disconnected', 'netbird reads an explicit Disconnected as down')

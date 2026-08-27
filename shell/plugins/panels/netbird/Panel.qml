@@ -329,6 +329,7 @@ Panel {
     if (suppressCursorScroll) return
     if (focusSection === "peers" && peerColumn && peerIndex >= 0 && peerIndex < peerColumn.children.length) scrollItemIntoView(peerColumn.children[peerIndex])
     else if (focusSection === "routes" && routeColumn && routeIndex >= 0 && routeIndex < routeColumn.children.length) scrollItemIntoView(routeColumn.children[routeIndex])
+    else if (focusSection === "profiles" && profileColumn && profileIndex >= 0 && profileIndex < profileColumn.children.length) scrollItemIntoView(profileColumn.children[profileIndex])
   }
 
   function setPeerCursor(index) {
@@ -349,8 +350,10 @@ Panel {
 
   function setProfileCursor(index) {
     cursorActive = true
+    suppressCursorScroll = true
     focusSection = "profiles"
     profileIndex = index
+    suppressCursorScroll = false
   }
 
   function setNoticeCursor(index) {
@@ -381,6 +384,7 @@ Panel {
   }
   onPeerIndexChanged: scrollCursorIntoView()
   onRouteIndexChanged: scrollCursorIntoView()
+  onProfileIndexChanged: scrollCursorIntoView()
   onShowNoticesChanged: ensureCursor()
   onShowProfilesChanged: ensureCursor()
   onShowRoutesChanged: ensureCursor()
@@ -613,14 +617,21 @@ Panel {
               summary: Model.profilesSummary(netbird.selectedProfileName)
             }
 
-            Repeater {
-              model: root.showProfiles ? netbird.profiles : []
-              ProfileRow {
-                required property var modelData
-                required property int index
-                width: parent.width
-                profile: modelData
-                rowIndex: index
+            Column {
+              id: profileColumn
+              visible: root.showProfiles
+              width: parent.width
+              spacing: Style.space(10)
+
+              Repeater {
+                model: root.showProfiles ? netbird.profiles : []
+                ProfileRow {
+                  required property var modelData
+                  required property int index
+                  width: profileColumn.width
+                  profile: modelData
+                  rowIndex: index
+                }
               }
             }
           }

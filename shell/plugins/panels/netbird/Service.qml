@@ -315,8 +315,11 @@ Item {
     managedDns = parsed.running && parsed.managedDns
     if (!parsed.running) routes = []
 
-    if (needsLogin) statusText = backendState === "LoginFailed" ? "Login failed" : "Needs login"
-    else if (running) {
+    if (needsLogin) {
+      if (backendState === "LoginFailed") statusText = "Login failed"
+      else if (backendState === "SessionExpired") statusText = "Session expired"
+      else statusText = "Needs login"
+    } else if (running) {
       statusText = "Connected"
       _loginInProgress = false
       _loginUrlOpened = false

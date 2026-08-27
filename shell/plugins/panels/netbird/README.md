@@ -47,9 +47,9 @@ The widget shells out rather than speaking to the daemon directly:
 | Connect / disconnect | `netbird up` / `netbird down` |
 | Routes | `netbird routes list --json`, then `netbird routes list`, then `netbird networks list` |
 | Route selection | `netbird <routes\|networks> select --append <id>` / `deselect <id>` |
-| Profiles | `netbird profile list --json`, then `netbird profile list`; `netbird profile select <name>` |
+| Profiles | `netbird profile list --json`, then `--show-id`, then the bare table; `netbird profile select <id\|name>` |
 
-NetBird has renamed and extended this surface across releases, so the route lookup walks those three spellings once, latches onto whichever the installed CLI accepts, and stops asking if none of them do. Profiles work the same way: a CLI that has never heard of them simply shows no profile section rather than an error. `Model.js` holds every parser, and the shapes it accepts are pinned by `test/shell.d/netbird-test.sh`. One upstream quirk: the CLI reserves the id `all` in select and deselect, so a route literally named `all` would be read as the reserved token.
+NetBird has renamed and extended this surface across releases, so the route lookup walks those three spellings once, latches onto whichever the installed CLI accepts, and stops asking if none of them do. Profiles work the same way: a CLI that has never heard of them simply shows no profile section rather than an error, and selection uses the profile's unique ID when the listing carries one, since NetBird allows duplicate names and refuses to select an ambiguous one. `Model.js` holds every parser, and the shapes it accepts are pinned by `test/shell.d/netbird-test.sh`. One upstream quirk: the CLI reserves the id `all` in select and deselect, so a route literally named `all` would be read as the reserved token.
 
 ## Self-hosted instances
 
