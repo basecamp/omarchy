@@ -21,6 +21,49 @@ local function read_vconsole()
   return values
 end
 
+-- systemd translates console keymaps through this table when it can. Some
+-- keymaps offered by Omarchy have no entry there, so keep their XKB spelling
+-- here for the same fallback path.
+local keymap_xkb_fallbacks = {
+  -- The installer labels this console keymap as Azerbaijani. The console
+  -- keymap itself is historically French AZERTY; keep installer intent here.
+  azerty = { "az", "" },
+  ["bg-cp1251"] = { "bg", "" },
+  colemak = { "us", "colemak" },
+  cz = { "cz", "" },
+  ["de_CH-latin1"] = { "ch", "" },
+  kyrgyz = { "kg", "" },
+  ["no-latin1"] = { "no", "" },
+  pl = { "pl", "" },
+  ua = { "ua", "" },
+}
+
+local function resolve_keymap(keymap)
+  if not keymap or keymap == "" then
+    return nil, nil
+  end
+
+  local file = io.open("/usr/share/systemd/kbd-model-map", "r")
+  if file then
+    for line in file:lines() do
+      local console_layout, xkb_layout, xkb_variant =
+        line:match("^%s*([^#%s]+)%s+(%S+)%s+%S+%s+(%S+)")
+      if console_layout == keymap then
+        file:close()
+        return xkb_layout, xkb_variant == "-" and "" or xkb_variant
+      end
+    end
+    file:close()
+  end
+
+  local fallback = keymap_xkb_fallbacks[keymap]
+  if fallback then
+    return fallback[1], fallback[2]
+  end
+
+  return nil, nil
+end
+
 -- Layouts that can't type Latin letters. Keep in sync with the list in
 -- etc/mkinitcpio.conf.d/omarchy_hooks.conf.
 local non_latin_layouts =
@@ -28,8 +71,15 @@ local non_latin_layouts =
 
 local vconsole = read_vconsole()
 
-local kb_layout = vconsole.XKBLAYOUT or "us"
-local kb_variant = vconsole.XKBVARIANT or ""
+local kb_layout, kb_variant
+if vconsole.XKBLAYOUT and vconsole.XKBLAYOUT ~= "" then
+  kb_layout = vconsole.XKBLAYOUT
+  kb_variant = vconsole.XKBVARIANT or ""
+else
+  kb_layout, kb_variant = resolve_keymap(vconsole.KEYMAP)
+  kb_layout = kb_layout or "us"
+  kb_variant = kb_variant or ""
+end
 -- CapsLock is the compose key, so Caps Lock itself has to live somewhere else.
 -- Both Shifts together is the usual home for it, but it's easy to hit by
 -- accident while typing. The _cancel variant sets Caps Lock the same way and
