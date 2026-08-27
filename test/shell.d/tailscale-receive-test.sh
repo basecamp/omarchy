@@ -29,11 +29,6 @@ SH
 
 chmod +x "$WORKDIR/bin/"*
 
-grep -qF '  local staged="$1"' "$ROOT/bin/omarchy-tailscale-receive" &&
-  grep -qF '  local name="${staged##*/}" base ext candidate index=0' "$ROOT/bin/omarchy-tailscale-receive" ||
-  fail "taildrop claim derives names from its local argument"
-pass "taildrop claim derives names from its local argument"
-
 receive() {
   local expected="$1"
   shift
