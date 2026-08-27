@@ -29,6 +29,11 @@ Panel {
   // The identity palette — three collision-free theme hues; see the
   // rationale at the colorMap assignment below.
   readonly property var paletteKeys: ["blue", "cyan", "magenta"]
+  // Composition-bar gap geometry: a constant separator width and a constant
+  // budget for the maximum segment count, so fills scale identically across
+  // refreshes and resources regardless of how many segments are visible.
+  readonly property real splitGap: Style.space(2)
+  readonly property real splitGapBudget: Model.SPLIT_MAX_SEGMENTS * root.splitGap
   property var profiles: []
   property string activeProfile: ""
   property int profileIndex: 0
@@ -660,13 +665,14 @@ Panel {
             Row {
               id: wattsSegmentRow
               anchors.fill: parent
+              spacing: root.splitGap
 
               Repeater {
                 model: root.resourceSplits !== null && root.resourceSplits.watts !== null ? root.resourceSplits.watts : []
 
                 Rectangle {
                   required property var modelData
-                  width: modelData.share * wattsSegmentRow.width
+                  width: modelData.share * Math.max(0, wattsSegmentRow.width - root.splitGapBudget)
                   height: parent.height
                   color: root.segmentColor(modelData)
                 }
@@ -871,22 +877,29 @@ Panel {
       color: metricRow.commColor
     }
 
-    Text {
-      id: rowBadge
-      visible: metricRow.badge >= 2
-      text: metricRow.badge >= 2 ? String(metricRow.badge) : ""
+    // Fixed badge micro-slot: reserved whether or not a badge shows, so a
+    // collision appearing or clearing mid-refresh cannot shift the line.
+    Item {
+      id: badgeSlot
       x: commMark.width + Style.space(2)
-      anchors.verticalCenter: parent.verticalCenter
-      color: metricRow.commColor
-      opacity: 0.9
-      font.family: root.bar.fontFamily
-      font.pixelSize: Style.font.caption
+      width: Style.space(7)
+      height: parent.height
+
+      Text {
+        visible: parent.parent.badge >= 2
+        text: parent.parent.badge >= 2 ? String(parent.parent.badge) : ""
+        anchors.centerIn: parent
+        color: parent.parent.commColor
+        opacity: 0.9
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.caption
+      }
     }
 
     Text {
       id: rowLabel
       text: metricRow.label
-      x: commMark.width + Style.space(5) + (metricRow.badge >= 2 ? rowBadge.implicitWidth + Style.space(2) : 0)
+      x: badgeSlot.x + badgeSlot.width + Style.space(2)
       width: commMetrics.advanceWidth
       anchors.verticalCenter: parent.verticalCenter
       color: root.bar ? root.bar.foreground : Color.foreground
@@ -1014,6 +1027,7 @@ Panel {
         width: splitTrack.width - x - splitValue.width - Style.space(10)
         height: parent.height - Style.space(4)
         y: Style.space(2)
+        spacing: root.splitGap
         opacity: splitBar.barIntensity
 
         Repeater {
@@ -1028,7 +1042,7 @@ Panel {
 
           Rectangle {
             required property var modelData
-            width: modelData.share * splitSegments.width
+            width: modelData.share * Math.max(0, splitSegments.width - root.splitGapBudget)
             height: splitSegments.height
             color: root.segmentColor(modelData)
 

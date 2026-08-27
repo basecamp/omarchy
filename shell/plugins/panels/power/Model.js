@@ -104,6 +104,13 @@ function wattsBasis(deviceState, dischargingState, watts) {
 // sample.
 var COMM_MAX_CHARS = 15
 
+// Gap budget basis for the composition bars: the most segments any bar can
+// show (top-N processes + rest + idle/available; the watts bar's base +
+// top-N + else fits the same count). Callers reserve this many constant
+// separators' worth of width so fills scale identically no matter how many
+// segments are visible.
+var SPLIT_MAX_SEGMENTS = 7
+
 if (typeof module !== "undefined") {
   module.exports = {
     clampIndex: clampIndex,
@@ -127,6 +134,7 @@ if (typeof module !== "undefined") {
     aggregateCommShares: aggregateCommShares,
     assignColorKeys: assignColorKeys,
     stableColorKey: stableColorKey,
+    SPLIT_MAX_SEGMENTS: SPLIT_MAX_SEGMENTS,
     collisionOrdinals: collisionOrdinals
   }
 }
@@ -477,19 +485,20 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
   // panel's palette rationale). Passed in so callers own it; defaulted so
   // the pure builder is self-contained.
   palette = palette || ["blue", "cyan", "magenta"]
-  // Composition bars group same-hue comms into one segment per hue: the bar
-  // honestly shows what color can distinguish, and the table below names
-  // members. Group share = sum of members; group order = first appearance
-  // by rank; rest/idle/avail/base/else segments are untouched.
-  function groupByHue(fracList) {
-    var sums = {}, orderKeys = []
-    for (var i = 0; i < fracList.length; i++) {
-      var entry = palette[stableColorKey(fracList[i].key, palette.length)]
-      if (!(entry in sums)) { sums[entry] = 0; orderKeys.push(entry) }
-      sums[entry] += fracList[i].share
-    }
+  // Composition bars keep PER-COMM segments (the round-8 merge chunked the
+  // geometry away), laid out in CANONICAL hue order: every blue-hue comm
+  // first, then cyan, then magenta — rank order only WITHIN a hue — then
+  // rest, then idle/available. Rank shuffles can reorder members inside
+  // their hue block and shares may breathe, but hue blocks never relocate:
+  // horizontal calm. Callers draw constant separators between segments and
+  // scale fills against a fixed gap budget (SPLIT_MAX_SEGMENTS) so the
+  // bar's geometry is comparable across refreshes and across resources.
+  function canonicalCommSegments(fracList) {
     var out = []
-    for (var g = 0; g < orderKeys.length; g++) out.push({ key: orderKeys[g], share: sums[orderKeys[g]], kind: "group" })
+    for (var p = 0; p < palette.length; p++)
+      for (var i = 0; i < fracList.length; i++)
+        if (stableColorKey(fracList[i].key, palette.length) === p)
+          out.push({ key: fracList[i].key, share: fracList[i].share, kind: "comm" })
     return out
   }
   var n = limit || 5
@@ -516,7 +525,7 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
         var frac = agg.shares[i].share * busyDelta / totalDelta
         if (frac > 0) { commFracs.push({ key: agg.shares[i].label, share: frac }); used += frac }
       }
-      var segs = groupByHue(commFracs)
+      var segs = canonicalCommSegments(commFracs)
       // thresholds would drop sub-pixel segments and break the exact sum;
       // a 0.4% segment renders sub-pixel, which is invisibility enough
       var rest = Math.max(0, busyDelta / totalDelta - used)
@@ -552,7 +561,7 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
       if (rf > 0) { ramFracs.push({ key: ramList[j].label, share: rf }); rused += rf }
       if (result.order.indexOf(ramList[j].label) === -1) result.order.push(ramList[j].label)
     }
-    var rsegs = groupByHue(ramFracs)
+    var rsegs = canonicalCommSegments(ramFracs)
     var rrest = Math.max(0, usedFrac - rused)
     rsegs.push({ key: "rest", label: "rest", share: rrest, kind: "rest" })
     rsegs.push({ key: "avail", label: "available", share: Math.max(0, 1 - usedFrac), kind: "avail" })
@@ -577,7 +586,7 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
       var wf = variable * agg.shares[k].share / drawWatts
       if (wf > 0) { wFracs.push({ key: agg.shares[k].label, share: wf }); wused += wf }
     }
-    wsegs = wsegs.concat(groupByHue(wFracs))
+    wsegs = wsegs.concat(canonicalCommSegments(wFracs))
     var welse = Math.max(0, 1 - wused)
     wsegs.push({ key: "else", label: "everything else", share: welse, kind: "else" })
     result.watts = wsegs
