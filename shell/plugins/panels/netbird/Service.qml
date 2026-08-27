@@ -41,7 +41,7 @@ Item {
   property var profiles: []
   property string selectedProfileName: ""
   property string selectedProfileLabel: ""
-  property string switchingProfileName: ""
+  property string switchingProfileKey: ""
   property string settingRouteId: ""
   property bool daemonInactive: false
   property bool permissionDenied: false
@@ -91,8 +91,11 @@ Item {
   // Profiles are newer than some installed CLIs, and no release ships
   // `profile list --json` — walk to the table form before deciding the CLI has
   // no profiles at all.
+  // --show-id before the bare table: names may be duplicated, and NetBird
+  // refuses to select an ambiguous name — only the ID is unique.
   readonly property var profileCommands: [
     ["netbird", "profile", "list", "--json"],
+    ["netbird", "profile", "list", "--show-id"],
     ["netbird", "profile", "list"]
   ]
   property int profileCommandIndex: 0
@@ -265,7 +268,7 @@ Item {
     profiles = []
     selectedProfileName = ""
     selectedProfileLabel = ""
-    switchingProfileName = ""
+    switchingProfileKey = ""
     settingRouteId = ""
   }
 
@@ -372,13 +375,18 @@ Item {
     if (needsLogin) loginTimeoutTimer.restart()
   }
 
-  function switchProfile(name) {
-    var profileName = String(name || "")
-    if (!installed || profileName === "" || profileName === selectedProfileName || profileProcess.running) return
+  function profileKey(profile) {
+    if (!profile) return ""
+    return String(profile.id || "") !== "" ? String(profile.id) : String(profile.name || "")
+  }
+
+  function switchProfile(profile) {
+    var key = profileKey(profile)
+    if (!installed || key === "" || (profile && profile.selected === true) || profileProcess.running) return
     _profileOutput = ""
     _profileError = ""
-    switchingProfileName = profileName
-    profileProcess.command = ["netbird", "profile", "select", profileName]
+    switchingProfileKey = key
+    profileProcess.command = ["netbird", "profile", "select", key]
     profileProcess.running = true
   }
 
@@ -747,7 +755,7 @@ Item {
         root.actionStatus = ""
         root._lastProfilesRefreshMs = 0
       }
-      root.switchingProfileName = ""
+      root.switchingProfileKey = ""
       delayedRefresh.restart()
     }
   }

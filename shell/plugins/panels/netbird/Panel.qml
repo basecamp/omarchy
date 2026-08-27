@@ -96,6 +96,16 @@ Panel {
     collapsedFile.setText(JSON.stringify(Model.collapsedSectionsFile(collapsedSections), null, 2) + "\n")
   }
 
+  // FileView.setText cannot create parent directories, and nothing else makes
+  // this one on a fresh profile (same pattern as the notifications service).
+  Process {
+    id: settingsDirProc
+    running: false
+    command: ["mkdir", "-p", Quickshell.env("HOME") + "/.local/state/omarchy/settings"]
+  }
+
+  Component.onCompleted: settingsDirProc.running = true
+
   property FileView collapsedFile: FileView {
     path: Quickshell.env("HOME") + "/.local/state/omarchy/settings/netbird.json"
     watchChanges: false
@@ -282,7 +292,7 @@ Panel {
       activateNotice(selectedNotice())
     } else if (focusSection === "profiles") {
       var profile = selectedProfile()
-      if (profile) netbird.switchProfile(profile.name)
+      if (profile) netbird.switchProfile(profile)
     } else if (focusSection === "routes") {
       netbird.toggleRoute(selectedRoute())
     } else if (focusSection === "peers") {
@@ -850,7 +860,7 @@ Panel {
     property var profile: null
     property int rowIndex: 0
     readonly property bool selectedProfile: profile && profile.selected === true
-    readonly property bool switchingProfile: profile && netbird.switchingProfileName === String(profile.name || "")
+    readonly property bool switchingProfile: profile && netbird.switchingProfileKey === netbird.profileKey(profile)
     readonly property string profileText: profile ? netbird.profileLabel(profile) : "Profile"
 
     hasCursor: root.cursorActive && root.focusSection === "profiles" && root.profileIndex === rowIndex
@@ -905,7 +915,7 @@ Panel {
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       onEntered: root.setProfileCursor(profileRow.rowIndex)
-      onClicked: if (profileRow.profile) netbird.switchProfile(profileRow.profile.name)
+      onClicked: if (profileRow.profile) netbird.switchProfile(profileRow.profile)
     }
   }
 

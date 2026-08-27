@@ -543,8 +543,9 @@ function parseProfilesText(raw) {
     if (line.trim() === "") continue
 
     if (columns === null) {
-      // Read the columns off the header, and treat anything before it as noise.
-      if (!/^\s*NAME\b/i.test(line)) continue
+      // Read the columns off the header, and treat anything before it as
+      // noise. --show-id puts an ID column ahead of NAME.
+      if (!/^\s*(ID|NAME)\b/i.test(line) || !/\bNAME\b/i.test(line)) continue
       columns = []
       var header = /\S+/g
       var match
@@ -565,6 +566,8 @@ function parseProfilesText(raw) {
 
     var active = String(row.ACTIVE || "")
     var profile = {
+      // Names may be duplicated; the ID (from --show-id) is what selects.
+      id: String(row.ID || ""),
       name: name,
       email: String(row.EMAIL || ""),
       selected: active !== "" && active !== "-" && !/^(false|no)$/i.test(active)
@@ -597,6 +600,7 @@ function parseProfiles(raw) {
     for (var i = 0; i < list.length; i++) {
       var raw_profile = list[i] || {}
       var profile = {
+        id: String(raw_profile.id || raw_profile.ID || raw_profile.Id || ""),
         name: String(raw_profile.name || raw_profile.Name || ""),
         email: String(raw_profile.email || raw_profile.Email || raw_profile.username || raw_profile.Username || ""),
         selected: raw_profile.selected === true || raw_profile.Selected === true || raw_profile.active === true || raw_profile.Active === true

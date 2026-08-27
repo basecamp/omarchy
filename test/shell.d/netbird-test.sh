@@ -350,11 +350,25 @@ assertEqual(profileTableEmail.selectedProfileName, 'work', 'netbird finds the ac
 
 assertEqual(netbird.parseProfiles('No profiles found.\n').profiles.length, 0, 'netbird reads no profiles from output with no table')
 
+// Real `profile list --show-id` output from 0.77.1: names may be duplicated,
+// and only the ID column distinguishes the rows NetBird will accept.
+const idTable = netbird.parseProfiles('ID        NAME     ACTIVE\ndefault   default  \n639f5de9  dup      \n8ad76490  dup      \n9f9d0e1d  homelab  \u2713\n')
+assertEqual(idTable.profiles.length, 4, 'netbird reads every row of the id table')
+assertEqual(idTable.profiles[1].id + '/' + idTable.profiles[2].id, '639f5de9/8ad76490', 'netbird tells duplicate names apart by id')
+assertEqual(idTable.profiles[1].name, idTable.profiles[2].name, 'netbird keeps duplicate display names as given')
+assertEqual(idTable.profiles[3].id, '9f9d0e1d', 'netbird carries the active profile id')
+assertEqual(netbird.parseProfiles('[{"id":"abc","name":"x","selected":true}]').profiles[0].id, 'abc', 'netbird reads a profile id from JSON')
+assert(/"profile", "list", "--show-id"/.test(serviceSource), 'netbird asks for profile ids before falling back to the bare table')
+assert(/"profile", "select", key\]/.test(serviceSource), 'netbird selects a profile by its unique key, not its name')
+assert(/switchProfile\(profileRow\.profile\)/.test(panelSource), 'netbird hands the whole profile to the switcher')
+assert(/mkdir", "-p", Quickshell\.env\("HOME"\) \+ "\/\.local\/state\/omarchy\/settings"/.test(panelSource), 'netbird creates the settings directory FileView cannot')
+
 // Profile names are free-form, so rows are sliced at the header's column
 // offsets rather than split on whitespace.
 const spacedProfiles = netbird.parseProfiles('NAME         EMAIL            ACTIVE\nwork laptop  dev@example.com  \u2713\ndefault\n')
 assertEqual(spacedProfiles.profiles[0].name, 'work laptop', 'netbird reads a profile name that contains a space')
 assertEqual(spacedProfiles.profiles[0].email, 'dev@example.com', 'netbird keeps the email column aligned past a spaced name')
+assertEqual(spacedProfiles.profiles[0].id, '', 'netbird leaves the id empty when the table has no ID column')
 assertEqual(spacedProfiles.selectedProfileName, 'work laptop', 'netbird reads the active mark past a spaced name')
 assert(!spacedProfiles.profiles[1].selected, 'netbird leaves a row with no active column unselected')
 
