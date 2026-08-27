@@ -159,16 +159,28 @@ function daysInYear(year) {
   return dayOfYear(year, 11, 31)
 }
 
-// Share of the year already behind you: whole days completed over days in
-// the year, so January 1 reads 0% and December 31 reads 100%.
-function yearProgress(year, month, day) {
-  var total = daysInYear(year)
-  if (total <= 0) return 0
-  return Math.max(0, Math.min(1, (dayOfYear(year, month, day) - 1) / total))
+// Share of the year already behind you, measured to the moment rather than to
+// the day: January 1 at midnight reads 0% and the last second of December
+// reads 100%. Counted in milliseconds between the two January firsts in local
+// time, so a year carrying a daylight-saving shift — 8759 or 8761 hours
+// rather than 8760 — still ends on exactly full.
+function yearProgressAt(date) {
+  var at = (date instanceof Date && isFinite(date.getTime())) ? date : new Date()
+  var start = new Date(at.getFullYear(), 0, 1).getTime()
+  var end = new Date(at.getFullYear() + 1, 0, 1).getTime()
+  if (!(end > start)) return 0
+  return Math.max(0, Math.min(1, (at.getTime() - start) / (end - start)))
 }
 
-function yearProgressPercent(year, month, day) {
-  return Math.round(yearProgress(year, month, day) * 100)
+// Two decimals, because that is the coarsest reading that still moves. One
+// hundredth of a percent of a year is about 53 minutes, so the figure differs
+// between any two visits to the panel while never ticking over under the eye;
+// a single decimal is 8 hours 46 minutes, the same number at breakfast as at
+// dinner, which is the one thing a progress read-out must not be. It is also
+// why the share above is taken to the moment: whole days move 0.27% in one
+// midnight step and would leave both decimals frozen in between.
+function yearProgressPercentText(date) {
+  return (yearProgressAt(date) * 100).toFixed(2)
 }
 
 // Memento mori. The default span is a round number rather than anything from
@@ -289,8 +301,8 @@ if (typeof module !== "undefined") {
     isoWeek: isoWeek,
     dayOfYear: dayOfYear,
     daysInYear: daysInYear,
-    yearProgress: yearProgress,
-    yearProgressPercent: yearProgressPercent,
+    yearProgressAt: yearProgressAt,
+    yearProgressPercentText: yearProgressPercentText,
     parseAge: parseAge,
     parseBirthYear: parseBirthYear,
     ageFromBirthYear: ageFromBirthYear,

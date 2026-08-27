@@ -39,10 +39,25 @@ assertEqual(calendar.isoWeek(2026, 6, 26), 30, 'calendar numbers a midsummer Sun
 
 // ---- day-of-year arithmetic behind the hero stats
 assertEqual(calendar.dayOfYear(2026, 6, 26), 207, 'calendar counts the day of the year')
-assertEqual(calendar.yearProgressPercent(2026, 0, 1), 0, 'calendar starts the year at zero percent done')
-assertEqual(calendar.yearProgressPercent(2026, 6, 26), 56, 'calendar reports the share of the year behind you')
-assertEqual(calendar.yearProgressPercent(2026, 11, 31), 100, 'calendar finishes the year at a hundred percent')
-assertEqual(calendar.yearProgressPercent(2024, 11, 31), 100, 'calendar finishes a leap year too')
+assertEqual(calendar.yearProgressPercentText(new Date(2026, 0, 1)), '0.00', 'calendar starts the year at zero percent done')
+assertEqual(calendar.yearProgressPercentText(new Date(2026, 6, 26)), '56.43', 'calendar reports the share of the year behind you')
+assertEqual(calendar.yearProgressPercentText(new Date(2026, 11, 31, 23, 59, 59)), '100.00', 'calendar finishes the year at a hundred percent')
+assertEqual(calendar.yearProgressPercentText(new Date(2024, 11, 31, 23, 59, 59)), '100.00', 'calendar finishes a leap year too')
+
+// The share is taken to the moment, not to the day: at two decimals one
+// hundredth of a percent is about 53 minutes, so a date-only source would hold
+// both decimals still from midnight to midnight.
+assert(calendar.yearProgressPercentText(new Date(2026, 6, 26, 0, 0, 0)) !== calendar.yearProgressPercentText(new Date(2026, 6, 26, 12, 0, 0)), 'calendar moves the year figure within a single day')
+assert(calendar.yearProgressAt(new Date(2026, 6, 26, 12)) > calendar.yearProgressAt(new Date(2026, 6, 26, 0)), 'calendar year progress rises with the clock')
+
+// February 29 falls before July, so by midsummer a leap year is fractionally
+// further along than a common one (182/366 against 181/365) despite being the
+// longer year.
+assert(calendar.yearProgressAt(new Date(2028, 6, 1)) > calendar.yearProgressAt(new Date(2026, 6, 1)), 'calendar counts the leap day into the share behind you')
+
+// Clamped at both ends, and never NaN when handed something that is not a date.
+assertEqual(calendar.yearProgressAt(new Date(2026, 0, 1)), 0, 'calendar year progress opens at zero')
+assert(calendar.yearProgressAt(new Date('nonsense')) >= 0, 'calendar year progress falls back to now on an unusable date')
 
 // ---- memento mori
 // A birth year rather than an age, so the bar keeps counting on its own.
@@ -206,7 +221,7 @@ assert(/function moveMonth\(delta\)/.test(panelSource), 'calendar panel steps be
 assert(!/property bool onToday/.test(panelSource) && !/root\.onToday/.test(panelSource), 'calendar panel avoids the on-prefixed property name QML reads as a signal handler')
 assert(/readonly property bool viewingCurrentMonth:/.test(panelSource), 'calendar panel tracks whether the current month is on screen')
 assert(!/MouseArea/.test(panelSource.slice(panelSource.indexOf('model: modelData.days'), panelSource.indexOf('// Hairline'))), 'calendar day cells are not selectable')
-assert(/yearDone: Model\.yearProgress\(today\./.test(panelSource), 'calendar year bar stays pinned to today while months are stepped')
+assert(/yearDone: Model\.yearProgressAt\(clock\.date\)/.test(panelSource) && !/yearDone:.*view(Year|Month|Date)/.test(panelSource), 'calendar year bar tracks the clock, not the month being browsed')
 assert(/Qt\.callLater\(function\(\) \{\s*\n\s*if \(root\.opened\) setCenterHoverRevealSuppressed\(true\)/.test(panelSource), 'calendar claims the shared hover-reveal flag after the popout handoff, so the panel taking over wins')
 assert(/function close\(\) \{\s*\n\s*setCenterHoverRevealSuppressed\(false\)/.test(panelSource), 'calendar always releases the shared hover-reveal flag on close')
 assert(/width: Math\.max\(calendarScroll\.width, gridColumn\.width\)/.test(panelSource), 'calendar scrolls rather than clipping the grid on a narrow popup')
@@ -214,6 +229,7 @@ assert(/enabled: !root\.viewingCurrentMonth/.test(panelSource) && /onClicked: ro
 assert(!/clampMonth/.test(panelSource), 'calendar steps freely into future months')
 assert(/Qt\.formatDate\(root\.today, "MMMM d"\)/.test(panelSource), 'calendar hero spells out today')
 assert(/id: yearLabel/.test(panelSource) && /root\.yearDone/.test(panelSource), 'calendar panel shows the year progress bar')
+assert(/root\.yearDoneText \+ "%"/.test(panelSource), 'calendar panel prints the year figure to two decimals')
 
 // The memento mori bar is opt-in: double-tapping the year bar asks for an age,
 // and nothing shows until one has been given.
