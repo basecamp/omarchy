@@ -19,7 +19,9 @@ chrome.commands.onCommand.addListener((command) => {
       copyUrl(url);
     } else if (command === 'copy-markdown-link') {
       const title = tab.title || url;
-      copyUrl(`[${title}](<${url}>)`);
+      // The title might contain brackets, which must be escaped inside the Markdown link.
+      const escaped = title.replace(/([\\[\]])/g, '\\$1');
+      copyUrl(`[${escaped}](<${url}>)`);
     }
   });
 });
