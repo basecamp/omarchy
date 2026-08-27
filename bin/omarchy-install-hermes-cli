@@ -30,6 +30,10 @@ mode=${1:-}
 tool='pipx:hermes-agent[extras=all]'
 python='3.13'
 
+# The line that identifies the stub as this installer's; matched whole, so a
+# wrapper that merely mentions the command is not mistaken for ours.
+marker='# Written by omarchy-install-hermes-cli.'
+
 # The package, not the runtime directory: it is installed before the app has
 # ever run, and that is exactly when we must not start building a second copy.
 desktop_owns_hermes() {
@@ -55,11 +59,40 @@ installed() {
   [[ -d "$(mise where "$tool" 2>/dev/null)/hermes-agent/lib/python$python" ]]
 }
 
+# The stub is the only thing this installer owns. Anything else at that path
+# -- Hermes' official installer, a hand-rolled wrapper, even a dangling link
+# -- was put there by the user and is never deleted or overwritten here.
+# Symlinks count as foreign even when they resolve to a marked file: the stub
+# is written as a regular file, so a link is someone else's arrangement.
+ours() {
+  [[ -f $HOME/.local/bin/hermes && ! -L $HOME/.local/bin/hermes ]] &&
+    grep -qxF "$marker" "$HOME/.local/bin/hermes"
+}
+
+foreign_hermes() {
+  [[ -e $HOME/.local/bin/hermes || -L $HOME/.local/bin/hermes ]] && ! ours
+}
+
+# A foreign path is usable when it is a command that runs: a regular executable
+# whose --version answers. The executable bit alone proves little -- a directory
+# passes -x on search permission, and a wrapper whose interpreter or target is
+# gone passes it too. The desktop app applies the same probe with the same 15
+# second budget, so what passes here is what it will use.
+foreign_hermes_runs() {
+  [[ -f $HOME/.local/bin/hermes && -x $HOME/.local/bin/hermes ]] &&
+    timeout 15 "$HOME/.local/bin/hermes" --version >/dev/null 2>&1
+}
+
 # --check lets callers tell a cold stub from a working one before they commit
 # to a path that assumes Hermes is ready.
 if [[ $mode == "--check" ]]; then
   if desktop_owns_hermes; then
     if desktop_hermes_ready; then exit 0; else exit 1; fi
+  fi
+  # A foreign command is ready when it runs; a broken one is not, and since it
+  # is not ours to replace, nothing this installer does will make it ready.
+  if foreign_hermes; then
+    if foreign_hermes_runs; then exit 0; else exit 1; fi
   fi
   if installed; then exit 0; else exit 1; fi
 fi
@@ -79,7 +112,7 @@ if desktop_owns_hermes; then
   # Our own stub has to go with it. Left in place it still answers `hermes`
   # until the app's bootstrap overwrites it, and answering means building the
   # second Hermes this whole arrangement exists to avoid.
-  if [[ -f $HOME/.local/bin/hermes ]] && grep -q omarchy-install-hermes-cli "$HOME/.local/bin/hermes"; then
+  if ours; then
     rm -f "$HOME/.local/bin/hermes"
   fi
 
@@ -92,13 +125,25 @@ if desktop_owns_hermes; then
   exit 1
 fi
 
+# The user already has a hermes of their own. Leave it be: a working one is
+# what the default agent will run, and a broken one is theirs to fix.
+if foreign_hermes; then
+  if foreign_hermes_runs; then
+    exit 0
+  fi
+
+  echo "~/.local/bin/hermes exists but is not runnable, and it was not installed by Omarchy." >&2
+  echo "Fix or remove it, then run omarchy-install-hermes-cli again." >&2
+  exit 1
+fi
+
 mkdir -p "$HOME/.local/bin"
 rm -f "$HOME/.local/bin/hermes"
 
 cat >"$HOME/.local/bin/hermes" <<EOF
 #!/bin/bash
 
-# Written by omarchy-install-hermes-cli.
+$marker
 
 export UV_PYTHON="$python"
 

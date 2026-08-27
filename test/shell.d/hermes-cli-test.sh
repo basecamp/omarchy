@@ -41,7 +41,7 @@ run_installer() {
     bash "$ROOT/bin/omarchy-install-hermes-cli" ${2:+"$2"} >/dev/null 2>&1
 }
 
-stub_marker="omarchy-install-hermes-cli"
+stub_marker="# Written by omarchy-install-hermes-cli."
 app_stub_body='#!/bin/bash
 exec /home/x/.hermes/hermes-agent/venv/bin/hermes "$@"'
 
@@ -51,14 +51,14 @@ exec /home/x/.hermes/hermes-agent/venv/bin/hermes "$@"'
 rm -f "$test_home/.local/bin/hermes"
 run_installer 0 || fail "installer failed with no desktop installed"
 [[ -x $test_home/.local/bin/hermes ]] || fail "installer writes a hermes stub when the desktop is absent"
-grep -q "$stub_marker" "$test_home/.local/bin/hermes" || fail "the stub records which command wrote it"
+grep -qxF "$stub_marker" "$test_home/.local/bin/hermes" || fail "the stub records which command wrote it"
 tr '\0' ' ' <"$mise_log" | grep -q "use -g --quiet uv" &&
   fail "writing the stub does not install uv"
 pass "writing the Hermes stub provisions nothing"
 
 # The desktop app owns Hermes, so our own stub must go rather than sit there
 # answering `hermes` until the app's bootstrap replaces it.
-printf '%s\n' "#!/bin/bash" "# $stub_marker" >"$test_home/.local/bin/hermes"
+printf '%s\n' "#!/bin/bash" "$stub_marker" >"$test_home/.local/bin/hermes"
 chmod +x "$test_home/.local/bin/hermes"
 run_installer 1 || true
 [[ ! -e $test_home/.local/bin/hermes ]] ||
@@ -74,7 +74,7 @@ run_installer 1 || true
 pass "the app's own hermes command is left alone"
 
 # A copy mise cannot vouch for is still a second Hermes.
-printf '%s\n' "#!/bin/bash" "# $stub_marker" >"$test_home/.local/bin/hermes"
+printf '%s\n' "#!/bin/bash" "$stub_marker" >"$test_home/.local/bin/hermes"
 chmod +x "$test_home/.local/bin/hermes"
 : >"$mise_log"
 OMARCHY_TEST_MISE_WHERE_OK=1 run_installer 1 || true
@@ -87,8 +87,10 @@ pass "takeover removes an unhealthy mise copy"
 rm -rf "$test_home/.hermes"
 rm -f "$test_home/.local/bin/hermes"
 run_installer 1 --check && fail "--check reports Hermes missing before the app installs it"
+# The venv command answers --version, as the real one does: foreign wrappers
+# below exec it, and the installer probes them by running exactly that.
 mkdir -p "$test_home/.hermes/hermes-agent/venv/bin"
-printf '%s\n' "#!/bin/bash" >"$test_home/.hermes/hermes-agent/venv/bin/hermes"
+printf '%s\n' "#!/bin/bash" 'echo "hermes-agent 0.0.0-test"' >"$test_home/.hermes/hermes-agent/venv/bin/hermes"
 chmod +x "$test_home/.hermes/hermes-agent/venv/bin/hermes"
 run_installer 1 --check && fail "--check waits for the install to finish, not just the venv"
 touch "$test_home/.hermes/hermes-agent/.hermes-bootstrap-complete"
@@ -103,3 +105,107 @@ printf '%s\n' "#!/bin/bash" "exec /usr/local/bin/somebody-elses-hermes \"\$@\"" 
 chmod +x "$test_home/.local/bin/hermes"
 run_installer 1 --check && fail "--check rejects a hermes command belonging to something else"
 pass "--check rejects a foreign hermes command"
+
+# A hermes the user installed themselves -- the official installer, a wrapper of
+# their own -- is not ours to replace. --check follows whether it runs, and
+# installing steps aside so the default agent uses it.
+official_body="#!/bin/bash
+unset PYTHONPATH
+unset PYTHONHOME
+exec $test_home/.hermes/hermes-agent/venv/bin/hermes \"\$@\""
+printf '%s\n' "$official_body" >"$test_home/.local/bin/hermes"
+chmod +x "$test_home/.local/bin/hermes"
+run_installer 0 --check || fail "--check accepts a working foreign hermes command"
+run_installer 0 || fail "installing over a foreign hermes command returns success"
+run_installer 0 --now || fail "--now over a foreign hermes command returns success"
+[[ $(cat "$test_home/.local/bin/hermes") == "$official_body" ]] ||
+  fail "a foreign hermes command is left untouched"
+pass "a foreign hermes command is preserved and satisfies --check"
+
+# Broken foreign paths are still foreign. They cannot be used, so --check says
+# so and the installer refuses rather than replacing them.
+printf '%s\n' "$official_body" >"$test_home/.local/bin/hermes"
+chmod -x "$test_home/.local/bin/hermes"
+run_installer 0 --check && fail "--check rejects a non-executable foreign hermes"
+run_installer 0 && fail "the installer does not succeed over a non-executable foreign hermes"
+[[ -f $test_home/.local/bin/hermes && ! -x $test_home/.local/bin/hermes ]] ||
+  fail "a non-executable foreign hermes is left untouched"
+pass "a non-executable foreign hermes is preserved"
+
+# The executable bit is not enough: a wrapper whose interpreter is gone passes
+# -x and still cannot run. The probe has to run it to find out, and finding
+# out never touches the file.
+broken_interp_body="#!$test_home/nowhere/python3
+print('hermes')"
+printf '%s\n' "$broken_interp_body" >"$test_home/.local/bin/hermes"
+chmod +x "$test_home/.local/bin/hermes"
+run_installer 0 --check && fail "--check rejects a foreign hermes whose interpreter is missing"
+run_installer 0 && fail "the installer does not succeed over a foreign hermes whose interpreter is missing"
+run_installer 0 --now && fail "--now does not succeed over a foreign hermes whose interpreter is missing"
+[[ -x $test_home/.local/bin/hermes && $(cat "$test_home/.local/bin/hermes") == "$broken_interp_body" ]] ||
+  fail "a foreign hermes whose interpreter is missing is left untouched"
+pass "a foreign hermes with a missing interpreter is preserved and rejected"
+
+# Likewise a wrapper that execs a target that is no longer there.
+broken_target_body="#!/bin/bash
+exec $test_home/nowhere/hermes \"\$@\""
+printf '%s\n' "$broken_target_body" >"$test_home/.local/bin/hermes"
+chmod +x "$test_home/.local/bin/hermes"
+run_installer 0 --check && fail "--check rejects a foreign hermes whose target is missing"
+run_installer 0 && fail "the installer does not succeed over a foreign hermes whose target is missing"
+run_installer 0 --now && fail "--now does not succeed over a foreign hermes whose target is missing"
+[[ -x $test_home/.local/bin/hermes && $(cat "$test_home/.local/bin/hermes") == "$broken_target_body" ]] ||
+  fail "a foreign hermes whose target is missing is left untouched"
+pass "a foreign hermes with a missing target is preserved and rejected"
+
+foreign_target="$test_home/foreign/hermes"
+mkdir -p "$(dirname "$foreign_target")"
+printf '%s\n' "$official_body" >"$foreign_target"
+chmod +x "$foreign_target"
+rm -f "$test_home/.local/bin/hermes"
+ln -s "$foreign_target" "$test_home/.local/bin/hermes"
+run_installer 0 --check || fail "--check accepts a foreign link to a working hermes command"
+run_installer 0 || fail "the installer succeeds over a foreign link to a working hermes command"
+run_installer 0 --now || fail "--now succeeds over a foreign link to a working hermes command"
+[[ -L $test_home/.local/bin/hermes && $(readlink "$test_home/.local/bin/hermes") == "$foreign_target" ]] ||
+  fail "a foreign link to a working hermes command is left untouched"
+pass "a foreign link to a working hermes command is preserved"
+
+rm -f "$test_home/.local/bin/hermes"
+ln -s "$test_home/nowhere/hermes" "$test_home/.local/bin/hermes"
+run_installer 0 --check && fail "--check rejects a dangling hermes link"
+run_installer 0 && fail "the installer does not succeed over a dangling hermes link"
+[[ -L $test_home/.local/bin/hermes && $(readlink "$test_home/.local/bin/hermes") == "$test_home/nowhere/hermes" ]] ||
+  fail "a dangling hermes link is left untouched"
+pass "a dangling hermes link is preserved"
+
+# A directory passes -x on search permission alone. It is still not a command.
+rm -f "$test_home/.local/bin/hermes"
+mkdir "$test_home/.local/bin/hermes"
+run_installer 0 --check && fail "--check rejects a directory at the hermes path"
+run_installer 0 && fail "the installer does not succeed over a directory at the hermes path"
+[[ -d $test_home/.local/bin/hermes ]] || fail "a directory at the hermes path is left untouched"
+pass "a directory at the hermes path is preserved and rejected"
+
+# Mentioning the installer is not the same as being written by it.
+rmdir "$test_home/.local/bin/hermes"
+mentions_body="#!/bin/bash
+# Replaces the stub omarchy-install-hermes-cli used to write.
+exec $test_home/.hermes/hermes-agent/venv/bin/hermes \"\$@\""
+printf '%s\n' "$mentions_body" >"$test_home/.local/bin/hermes"
+chmod +x "$test_home/.local/bin/hermes"
+run_installer 0 || fail "installing over a wrapper that mentions the installer returns success"
+[[ $(cat "$test_home/.local/bin/hermes") == "$mentions_body" ]] ||
+  fail "a wrapper that merely mentions the installer is left untouched"
+pass "ownership needs the exact marker line, not a mention"
+
+# Our own stub is ours to rewrite, so reinstalling refreshes it to the current
+# template.
+rm -f "$test_home/.local/bin/hermes"
+printf '%s\n' "#!/bin/bash" "$stub_marker" "# stale template" >"$test_home/.local/bin/hermes"
+chmod +x "$test_home/.local/bin/hermes"
+run_installer 0 || fail "reinstalling over our own stub succeeds"
+grep -qxF "$stub_marker" "$test_home/.local/bin/hermes" || fail "the refreshed stub still carries the marker"
+grep -q "stale template" "$test_home/.local/bin/hermes" && fail "reinstalling rewrites our own stub"
+grep -q "exec mise x" "$test_home/.local/bin/hermes" || fail "the refreshed stub is the current template"
+pass "reinstalling refreshes the Omarchy stub"
