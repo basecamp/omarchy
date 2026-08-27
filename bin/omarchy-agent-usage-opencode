@@ -493,7 +493,7 @@ def probe_limits() -> dict[str, Any]:
     if not isinstance(bucket, dict) or bucket.get("percent") is None:
       continue
     percent = float(bucket["percent"])
-    if percent > 1:
+    if percent >= 1:
       percent /= 100
     limits.append({
       "label": label,

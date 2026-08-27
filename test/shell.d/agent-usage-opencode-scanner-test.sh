@@ -96,6 +96,28 @@ def assert_eq(a,b,msg):
     print(f"FAIL {msg}: {a!r} != {b!r}", file=sys.stderr)
     sys.exit(1)
 
+class FakeResponse:
+  def __init__(self, payload):
+    self.payload = payload
+  def __enter__(self):
+    return self
+  def __exit__(self, *args):
+    pass
+  def read(self):
+    return json.dumps(self.payload).encode()
+
+with patch.dict(os.environ, {"OPENCODE_API_KEY": "test"}):
+  payload = {"usage": {
+    "rolling": {"percent": 1, "resetsAt": "2099-01-01T00:00:00Z"},
+    "weekly": {"percent": 77, "resetsAt": "2099-01-01T00:00:00Z"},
+    "monthly": {"percent": 45, "resetsAt": "2099-01-01T00:00:00Z"},
+  }}
+  with patch.object(mod.urllib.request, "urlopen", return_value=FakeResponse(payload)):
+    limits = mod.probe_limits()
+assert_eq(limits["limits"][0]["percent"], 0.01, "one percent rolling limit")
+assert_eq(limits["limits"][1]["percent"], 0.77, "seventy-seven percent weekly limit")
+print("ok API integer percentages normalize correctly")
+
 assert_eq(stats["totalPrompts"], 2, "totalPrompts v1+v2 Go only")
 assert_eq(stats["totalSessions"], 2, "totalSessions v1+v2")
 assert_eq(sum(b["inputTokens"] for b in stats["modelUsage"].values()), 30, "inputTokens 10+20")
