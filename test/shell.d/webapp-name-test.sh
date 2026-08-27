@@ -171,3 +171,47 @@ run_pick "Tailscale" >/dev/null
 [[ -f "$apps_dir/Tailscale.desktop" ]] ||
   fail "webapp remove leaves alone a launcher the picker never offered"
 pass "webapp remove deletes the file behind the name the picker showed"
+
+# The picker parses a tab in an option as its own separator, so a name it hands
+# back is not guaranteed to be one the scan indexed. Rebuilding a top-level path
+# from a name that cannot be placed deletes whatever happens to sit there.
+rm -rf "$apps_dir"
+mkdir -p "$apps_dir/legacy"
+printf '[Desktop Entry]\nExec=foot\n' >"$apps_dir/Victim.desktop"
+cat >"$apps_dir/legacy/Real.desktop" <<'DESKTOP'
+[Desktop Entry]
+Exec=omarchy-launch-webapp https://real.example
+DESKTOP
+run_pick "Victim" >/dev/null 2>&1 &&
+  fail "webapp remove refuses a picked name the scan never indexed"
+[[ -f "$apps_dir/Victim.desktop" ]] ||
+  fail "webapp remove deletes nothing when it cannot place the picked name"
+pass "webapp remove refuses a picked name the scan never indexed"
+
+# Reaching the picker at all is the menu's decision, and a launcher an older
+# install nested is exactly the one a non-recursive glob cannot see. Take the
+# guard from the menu definition rather than restating it, so the two cannot
+# drift apart.
+webapp_menu_guard=$(grep -o '"remove\.webapp":.*' "$ROOT/default/omarchy/omarchy-menu.jsonc" |
+  sed 's/.*"when":"//; s/","action".*//')
+[[ -n $webapp_menu_guard ]] ||
+  fail "the menu definition still has a when guard on Remove > Web App"
+
+rm -rf "$apps_dir"
+mkdir -p "$apps_dir/http:/127.0.0.1:4000"
+cat >"$apps_dir/http:/127.0.0.1:4000/.desktop" <<'DESKTOP'
+[Desktop Entry]
+Exec=omarchy-launch-webapp https://127.0.0.1:4000
+DESKTOP
+HOME="$tmp_dir/home" bash -c "$webapp_menu_guard" ||
+  fail "the Remove menu offers Web App when the only launcher is a nested one"
+pass "the Remove menu reaches a launcher an older install nested"
+
+# And still hides the row when there is nothing to remove, so the guard has not
+# simply been widened into always-true.
+rm -rf "$apps_dir"
+mkdir -p "$apps_dir"
+printf '[Desktop Entry]\nExec=foot\n' >"$apps_dir/foot.desktop"
+HOME="$tmp_dir/home" bash -c "$webapp_menu_guard" &&
+  fail "the Remove menu hides Web App when no launcher is a web app"
+pass "the Remove menu hides Web App when there is none"
