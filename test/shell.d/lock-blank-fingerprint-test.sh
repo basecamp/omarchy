@@ -30,4 +30,24 @@ assert(
   !/onAuthenticatingChanged:/.test(serviceQml),
   'the combined authenticating state no longer drives the blank timer'
 )
+
+assert(
+  /function runBlank\(\) \{\s*logEvent\("blanking-display"\)/.test(serviceQml),
+  'runBlank logs display blanking event'
+)
+
+assert(
+  /onScreensChanged\(\) \{[\s\S]*root\.screenChangeBlankCount \+= 1/.test(serviceQml),
+  'screen changes while locked increment the screen change count'
+)
+
+assert(
+  /onScreensChanged\(\) \{[\s\S]*root\.armBlankTimer\(delay\)/.test(serviceQml),
+  'screen changes while locked re-arm the blank timer with backoff'
+)
+
+assert(
+  /function runWake\(\) \{\s*screenChangeBlankCount = 0/.test(serviceQml),
+  'waking resets the screen change blank count'
+)
 JS
