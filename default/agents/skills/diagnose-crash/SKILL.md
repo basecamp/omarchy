@@ -98,39 +98,40 @@ dumps core every time it exits, a driver that misbehaves on this hardware. Finis
 by offering to silence crash notifications for **that one program**:
 
 ```bash
-omarchy-toggle 'crash-ignore/<program>' on
+omarchy-crash-mute '<program>'
 ```
 
-`<program>` is the `process:` name in the crash facts, verbatim. The watcher works
-that name out and then announces it, so what you were handed is already the exact
-string the mute is keyed on — do not re-derive it from `coredumpctl` when you were
-given it, because the two agree for ordinary names and not for strange ones.
+`<program>` is the `process:` name in the crash facts, or the `binary:` path —
+the command reduces a path to the same name the watcher keys on, so passing
+`/usr/lib/chromium/chromium-browser` and passing `chromium-browser` land on the
+same flag. Prefer the binary's path wherever the crash recorded one: the kernel
+truncates the process name to 15 characters and does not truncate a basename, and
+a mute on the truncated form matches nothing, forever, while looking like it
+worked.
 
-A diagnosis started by hand from `omarchy agent crash <pid>` is given no name, so
-there you do have to work it out the way the watcher does: the executable's
-basename when an absolute `Executable:` was recorded, otherwise the process name
-with everything up to the last `/` dropped, and `unknown` when that leaves
-nothing, `.` or `..`. Prefer the executable — the kernel truncates the process
-name to 15 characters and does not truncate the basename, so a mute on the
-truncated one matches nothing, forever, while looking like it worked.
+That is also the answer for a diagnosis started by hand from `omarchy agent crash
+<pid>`, which is handed no name at all: give the command the `Executable:` line
+from `coredumpctl info` and let it do the reducing. Some crashes record no
+executable — pass the process name then, and `unknown` where the crash has
+neither, which is the name such a crash is announced under.
 
-The name is whatever the crashed program's author chose to call a file, so handle
-it as hostile text rather than as a word. Single quotes hold a space or a `$(...)`,
-but a name containing a single quote closes them and the rest of it runs as your
-shell — escape it, or the program that just crashed chooses the command. Then
-check the flag actually arrived, which is also how you learn a name was too long
-for the filesystem to keep:
-
-```bash
-omarchy-toggle-enabled 'crash-ignore/<program>' && echo muted
-```
+The name is still whatever the crashed program's author chose to call a file, so
+handle it as hostile text rather than as a word. The command refuses a name that
+is not one — it cannot be talked into writing a flag outside its own directory —
+but that is no help if the name reaches a shell unescaped first: single quotes
+hold a space or a `$(...)`, and a name containing a single quote closes them and
+runs the rest as your shell. Escape it, or the program that just crashed picks
+the command.
 
 Offer it; never run it unprompted. The user may well want to keep being told.
 
-Say how to undo it in the same breath, so it is not a one-way door: the same
-command with `off` un-mutes, and each mute is one file in
-`~/.local/state/omarchy/toggles/crash-ignore/`, which `ls -A` lists — the
-directory appears with the first mute, so before that there is nothing to list.
+Say how to undo it in the same breath, so it is not a one-way door — and the
+command answers both halves itself:
+
+```bash
+omarchy-crash-mute '<program>' off    # un-mute this one
+omarchy-crash-mute                    # list what is muted
+```
 
 The key is a bare name, so programs sharing one share a mute, and anything run
 through an interpreter is keyed as the interpreter. Muting `python3.13` or `node`
