@@ -80,7 +80,12 @@ selected_band() {
 # the rest of its line, so an SSID containing ':' needs no special handling.
 read_link() {
   local link
-  link=$(iw dev "$1" link 2>/dev/null)
+  # iw can print a perfectly good link report and still exit non-zero: on a
+  # secondary adapter it fails the signal-strength ioctl with "Operation not
+  # permitted" after emitting SSID and freq. Under `set -e` that would abort
+  # the script even though the fields we want are present, so the exit status
+  # is deliberately ignored and the parsed values are what get validated.
+  link=$(iw dev "$1" link 2>/dev/null || true)
   ssid=$(awk '/SSID:/ { sub(/.*SSID: /, ""); print; exit }' <<<"$link")
   freq=$(awk '/freq:/ { print $2; exit }' <<<"$link")
 }
