@@ -135,6 +135,40 @@ grep -Fq "/themes/_private" "$git_calls" ||
 
 pass "a plus and a leading underscore are still usable theme names"
 
+# git reads a colon before any slash as the scp-style separator, so the path
+# after it does not have to hold one. Without that reading, the whole URL becomes
+# the theme name and the allowlist above refuses a repo that clones fine.
+install_theme "git@example.com:omarchy-blue-theme.git" ||
+  fail "omarchy-theme-install accepts a home-relative scp-style URL"
+grep -Fq "/themes/blue" "$git_calls" ||
+  fail "omarchy-theme-install names the theme after the repo, not the whole URL" "$(cat "$git_calls")"
+
+# A colon that is part of a local path, not an scp separator, keeps its prefix.
+install_theme "/srv/git:mirrors/omarchy-blue-theme.git" ||
+  fail "omarchy-theme-install accepts a local path holding a colon"
+grep -Fq "/themes/blue" "$git_calls" ||
+  fail "omarchy-theme-install reads a colon after a slash as part of the path" "$(cat "$git_calls")"
+
+pass "an scp-style URL with no slash after the colon still names the theme"
+
+# The allowlist is a bracket range, and a range follows the locale's collation
+# rather than ASCII: under en_US.UTF-8 an unpinned `[a-z]` takes in `é`, so the
+# same URL would install on one desktop and be refused on the next.
+if locale -a 2>/dev/null | grep -qix 'en_US.utf-\?8'; then
+  for locale_name in C en_US.UTF-8; do
+    if LC_ALL=$locale_name install_theme "https://github.com/example/omarchy-café-theme.git"; then
+      fail "omarchy-theme-install refuses a non-ASCII theme name under LC_ALL=$locale_name" "$(cat "$git_calls")"
+    fi
+
+    [[ ! -s $git_calls ]] ||
+      fail "omarchy-theme-install refuses a non-ASCII name before running git" "$(cat "$git_calls")"
+  done
+
+  pass "the accepted set does not move with the desktop's locale"
+else
+  pass "no en_US.UTF-8 locale; skipping the locale-pinning check"
+fi
+
 # basename reads a leading dash as an option once the scp-style prefix is gone.
 install_theme "host:-s/foo.git" || fail "omarchy-theme-install accepts a normal scp-style URL"
 grep -Fq -- "-- host:-s/foo.git" "$git_calls" || fail "omarchy-theme-install passes the URL after --" "$(cat "$git_calls")"
