@@ -45,12 +45,17 @@ desktop_owns_hermes() {
 # marker is written last, and the command is what the agent actually runs.
 desktop_hermes_ready() {
   [[ -f $HOME/.hermes/hermes-agent/.hermes-bootstrap-complete ]] || return 1
-  [[ -x $HOME/.local/bin/hermes ]] || return 1
 
   # An executable of that name proves nothing about whose it is; the app's own
   # points into ~/.hermes, and anything else is not the install we are asking
-  # about.
-  grep -q "$HOME/.hermes" "$HOME/.local/bin/hermes"
+  # about. Matched as a plain string, because the path carries a dot and an
+  # unanchored pattern would also claim a wrapper pointing at ~/xhermes.
+  [[ -f $HOME/.local/bin/hermes ]] || return 1
+  grep -qF "$HOME/.hermes" "$HOME/.local/bin/hermes" || return 1
+
+  # And a marker left behind by an install whose venv has since gone answers
+  # for nothing, so the command has to run, exactly as a foreign one must.
+  hermes_runs
 }
 
 # Whether Hermes is really installed, not merely whether the stub exists. A
@@ -73,12 +78,12 @@ foreign_hermes() {
   [[ -e $HOME/.local/bin/hermes || -L $HOME/.local/bin/hermes ]] && ! ours
 }
 
-# A foreign path is usable when it is a command that runs: a regular executable
-# whose --version answers. The executable bit alone proves little -- a directory
+# A hermes at that path is usable when it is a command that runs: a regular
+# executable whose --version answers. The executable bit alone proves little -- a directory
 # passes -x on search permission, and a wrapper whose interpreter or target is
 # gone passes it too. The desktop app applies the same probe with the same 15
 # second budget, so what passes here is what it will use.
-foreign_hermes_runs() {
+hermes_runs() {
   [[ -f $HOME/.local/bin/hermes && -x $HOME/.local/bin/hermes ]] &&
     timeout 15 "$HOME/.local/bin/hermes" --version >/dev/null 2>&1
 }
@@ -92,7 +97,7 @@ if [[ $mode == "--check" ]]; then
   # A foreign command is ready when it runs; a broken one is not, and since it
   # is not ours to replace, nothing this installer does will make it ready.
   if foreign_hermes; then
-    if foreign_hermes_runs; then exit 0; else exit 1; fi
+    if hermes_runs; then exit 0; else exit 1; fi
   fi
   if installed; then exit 0; else exit 1; fi
 fi
@@ -128,7 +133,7 @@ fi
 # The user already has a hermes of their own. Leave it be: a working one is
 # what the default agent will run, and a broken one is theirs to fix.
 if foreign_hermes; then
-  if foreign_hermes_runs; then
+  if hermes_runs; then
     exit 0
   fi
 
