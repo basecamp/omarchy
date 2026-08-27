@@ -35,7 +35,7 @@ ir_emitter_config="$HOME/.config/linux-enable-ir-emitter.toml"
 ir_emitter_configured() {
   # Both halves matter: a configuration left behind after the tool was removed
   # would otherwise build a PAM line with an empty command in it.
-  [[ -s $ir_emitter_config ]] && command -v linux-enable-ir-emitter >/dev/null
+  [[ -s $ir_emitter_config ]] && omarchy-cmd-present linux-enable-ir-emitter
 }
 
 enable_ir_emitter() {
@@ -48,11 +48,16 @@ enable_ir_emitter() {
 setup_ir_emitter_pam() {
   ir_emitter_configured || return 0
 
-  # PAM runs this as root, so the config path has to be spelled out; the tool
-  # would otherwise look in root's home and find nothing. pam_exec sends the
-  # command's stdout to /dev/null unless asked not to, which keeps the emitter
-  # from printing over the sudo prompt.
-  local line="auth      optional  pam_exec.so quiet $(command -v linux-enable-ir-emitter) run --config $ir_emitter_config"
+  # PAM resolves nothing from PATH and runs this as root, so the line spells out
+  # both halves: the tool by absolute path, and the config, which the tool would
+  # otherwise look for in root's home and not find. `ir_emitter_configured` has
+  # already established the tool is installed. pam_exec sends the command's
+  # stdout to /dev/null unless asked not to, which keeps the emitter from
+  # printing over the sudo prompt.
+  local emitter_command
+  emitter_command=$(type -P linux-enable-ir-emitter)
+
+  local line="auth      optional  pam_exec.so quiet $emitter_command run --config $ir_emitter_config"
   local pam line_number
 
   echo "Configuring the infrared emitter to light up for authentication..."
