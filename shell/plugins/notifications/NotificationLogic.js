@@ -77,6 +77,18 @@ function stripImageTags(text) {
   return out
 }
 
+// What the card renders, and the last thing to touch the string before Qt parses
+// it. The newline rewrite belongs here rather than in the card because it inserts
+// `<br/>` into text stripImageTags chose to KEEP, and a kept tag may hold a `<` of
+// its own: `<x`, newline, `<img src="http://…">` is one tag named `x` to both the
+// stripper and Qt, until the rewrite splits it into `<x<br/>` and a live image tag
+// the input never contained. Measured against Qt 6.11.2 — the rewritten form
+// fetches, the original does not. So strip again after, and what Qt parses is what
+// was checked last.
+function styledBody(body, app, appIcon) {
+  return stripImageTags(sanitizeBody(body, app, appIcon).replace(/\r\n|\r|\n/g, "<br/>"))
+}
+
 function sanitizeBody(body, app, appIcon) {
   var text = stripImageTags(String(body || ""))
   if (!isChromiumDerived(app, appIcon)) return text
@@ -438,6 +450,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     isChromiumDerived: isChromiumDerived,
     sanitizeBody: sanitizeBody,
+    styledBody: styledBody,
     summaryStartsWithGlyph: summaryStartsWithGlyph,
     shouldBypassDnd: shouldBypassDnd,
     isEphemeralApp: isEphemeralApp,

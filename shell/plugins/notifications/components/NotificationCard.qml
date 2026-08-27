@@ -44,7 +44,7 @@ BorderSurface {
   readonly property bool singleLineToast: sanitizedBody.length === 0
   readonly property bool collapseRedundantIcon: singleLineToast && !hasGlyph && summaryStartsWithGlyph
   readonly property string sanitizedBody: sanitizeBody(body)
-  readonly property string styledBody: sanitizedBody.replace(/\r\n|\r|\n/g, "<br/>")
+  readonly property string styledBody: NotificationLogic.styledBody(body, app, appIcon)
 
   readonly property color dimColor: Qt.darker(Color.notifications.text, 1.4)
   readonly property color bodyColor: Qt.darker(Color.notifications.text, 1.15)

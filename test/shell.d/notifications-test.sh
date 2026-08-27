@@ -44,8 +44,12 @@ function survivingTagNames(text) {
   return names
 }
 
+// Assert on styledBody, not sanitizeBody: styledBody is the string the card
+// binds to the StyledText, so it is the only one Qt ever parses. Checking the
+// sanitizer's output instead would pass a body whose surviving tag the newline
+// rewrite later splits open.
 function assertNoImageSurvives(body, description) {
-  const out = notifications.sanitizeBody(body, 'Slack', '')
+  const out = notifications.styledBody(body, 'Slack', '')
   const names = survivingTagNames(out)
   assert(
     !names.includes('img'),
@@ -97,6 +101,48 @@ assertEqual(
 assertNoImageSurvives(
   '<\u0085img src="http://host/nel2.png">',
   'notifications leave no image tag when U+0085 follows the angle bracket'
+)
+
+// The card rewrites newlines to <br/> for the StyledText, which puts tag syntax
+// inside a tag the stripper kept: `<x`, newline, `<img …>` is one tag named `x`
+// to both the stripper and Qt, and the rewrite splits it into `<x<br/>` and a
+// live image tag. Measured against Qt 6.11.2 — the rewritten form issues the GET
+// and the original does not — so the strip has to run after the rewrite, which
+// is what styledBody() does.
+assertNoImageSurvives(
+  '<x\n<img src="http://host/split.png">',
+  'notifications leave no image tag when a newline rewrite splits a kept tag'
+)
+
+assertNoImageSurvives(
+  '<x\r\n<img src="http://host/split-crlf.png">',
+  'notifications leave no image tag when a CRLF rewrite splits a kept tag'
+)
+
+assertEqual(
+  notifications.styledBody('<x\n<img src="http://host/split.png">', 'Slack', ''),
+  '<x<br/>',
+  'notifications drop the image half of a tag the newline rewrite splits'
+)
+
+// The rewrite itself still happens, and body markup other than images survives it.
+assertEqual(
+  notifications.styledBody('<b>bold</b>\nsecond line', 'Slack', ''),
+  '<b>bold</b><br/>second line',
+  'notifications keep body markup and the line break the card renders'
+)
+
+// The order above is only worth anything if the card actually renders it, and no
+// JavaScript assertion can see a QML binding. Pin the binding itself: the rewrite
+// belongs in the logic module, where the strip runs after it.
+const cardQml = fs.readFileSync(path.join(root, 'shell/plugins/notifications/components/NotificationCard.qml'), 'utf8')
+assert(
+  /readonly property string styledBody: NotificationLogic\.styledBody\(body, app, appIcon\)/.test(cardQml),
+  'the notification card renders the body that was stripped after the newline rewrite'
+)
+assert(
+  !/<br\/>/.test(cardQml),
+  'the notification card does not rewrite newlines itself, which would leave tag syntax unchecked'
 )
 
 assertEqual(
