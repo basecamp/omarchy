@@ -10,6 +10,42 @@ const idle = requireFromRoot('shell/plugins/services/idle/IdleModel.js')
 assertEqual(idle.secondsFromConfig('42.9', 10), 42, 'idle floors configured seconds')
 assertEqual(idle.secondsFromConfig('-1', 10), 10, 'idle rejects negative seconds')
 assertEqual(idle.secondsFromConfig('nope', 10), 10, 'idle rejects invalid seconds')
+assertEqual(idle.secondsFromConfig(null, 10), 10, 'idle rejects null seconds')
+
+const defaults = { screensaver: 150, lock: 300 }
+const stock = { screensaver: 150, lock: 300, ac: { screensaver: 300, lock: 1800 } }
+
+assertDeepEqual(
+  idle.effectiveTimeouts(stock, false, defaults),
+  { screensaver: 300, lock: 1800 },
+  'idle uses the ac profile while plugged in'
+)
+assertDeepEqual(
+  idle.effectiveTimeouts(stock, true, defaults),
+  { screensaver: 150, lock: 300 },
+  'idle keeps the top-level pair on battery when no battery profile is set'
+)
+assertDeepEqual(
+  idle.effectiveTimeouts({ screensaver: 150, lock: 300, battery: { screensaver: 60, lock: 90 } }, true, defaults),
+  { screensaver: 60, lock: 90 },
+  'idle uses the battery profile while on battery'
+)
+assertDeepEqual(
+  idle.effectiveTimeouts({ screensaver: 150, lock: 300, ac: { lock: 1800 } }, false, defaults),
+  { screensaver: 150, lock: 1800 },
+  'idle falls back per-key when an ac override omits screensaver'
+)
+assertDeepEqual(
+  idle.effectiveTimeouts({ screensaver: 150, lock: 300, ac: { screensaver: 'nope', lock: -1 } }, false, defaults),
+  { screensaver: 150, lock: 300 },
+  'idle rejects invalid ac overrides'
+)
+assertDeepEqual(
+  idle.effectiveTimeouts(null, false, defaults),
+  { screensaver: 150, lock: 300 },
+  'idle uses builtin defaults without an idle config'
+)
+assertEqual(idle.profileBlock({ ac: [300] }, 'ac'), null, 'idle ignores a non-object power profile')
 
 assertDeepEqual(idle.eventParts({ data: 'a,b,c' }, 2), ['a', 'b', 'c'], 'idle parses raw event data')
 assertDeepEqual(
@@ -52,3 +88,11 @@ if rg -q 'omarchy-shell' "$ROOT/bin/omarchy-toggle-idle"; then
 fi
 
 pass "Stay Awake toggle persists state without reentrant shell IPC"
+
+rg -q 'Quickshell.Services.UPower' "$ROOT/shell/plugins/services/idle/Service.qml" ||
+  fail "idle service reads the power source from UPower"
+rg -q 'IdleModel.effectiveTimeouts' "$ROOT/shell/plugins/services/idle/Service.qml" ||
+  fail "idle service resolves timeouts through IdleModel.effectiveTimeouts"
+rg -q 'monitorArmed' "$ROOT/shell/plugins/services/idle/Service.qml" ||
+  fail "idle service re-arms the idle monitor when timeouts change"
+pass "idle service selects timeouts by power source and re-arms on change"

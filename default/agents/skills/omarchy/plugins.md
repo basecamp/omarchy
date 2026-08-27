@@ -14,6 +14,8 @@ $OMARCHY_PATH/config/omarchy/shell.json  # Canonical defaults
 
 The shell hot-reloads `shell.json` on save — no restart needed for layout
 changes. `idle.screensaver` and `idle.lock` are seconds since user idle began.
+Optional `idle.ac` and `idle.battery` objects override those numbers while on
+AC or battery.
 
 **Commands:** `omarchy restart shell`, `omarchy refresh shell`
 
@@ -49,4 +51,5 @@ automatically. If a change somehow fails to apply, force a reload with
 
 Set `idle.screensaver` and `idle.lock` in `~/.config/omarchy/shell.json`,
 in seconds since user idle began. Example: "lock after ten minutes" means
-setting `idle.lock` to `600`.
+setting `idle.lock` to `600`. For a docked laptop, put the longer pair under
+`idle.ac` and leave the top-level values as the battery timings.
