@@ -40,8 +40,11 @@ STOP_RECORDING="false"
 # beside it, `mv` replaces it, and `rm -f` deletes its preview -- so a name in
 # world-writable /tmp is a name any other local account can create first and
 # then point wherever it likes. The debug log carries the recorder's stderr and
-# the picked geometry, which is nobody else's business either.
-RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}"
+# the picked geometry, which is nobody else's business either. Fall back to
+# the state directory when there is no session runtime dir -- :-/tmp would put
+# both files back at the fixed names this comment describes.
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/omarchy}"
+mkdir -p "$RUNTIME_DIR" || exit 1
 RECORDING_FILE="$RUNTIME_DIR/omarchy-screenrecord-filename"
 REGION_FILE="$RUNTIME_DIR/omarchy-screenrecord-region"
 LOG_FILE=$([[ ${OMARCHY_SCREENRECORD_DEBUG:-false} == "true" ]] && echo "$RUNTIME_DIR/omarchy-screenrecord.log" || echo "/dev/null")

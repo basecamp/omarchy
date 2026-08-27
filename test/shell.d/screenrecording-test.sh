@@ -358,3 +358,32 @@ pass "the recording state file lives in the per-user runtime directory"
   fail "the recording state file names the recording that was started" \
     "$(<"$XDG_RUNTIME_DIR/omarchy-screenrecord-filename")"
 pass "the recording state file names the recording that was started"
+
+# The :-/tmp fallback would reopen the hole this PR closes. A recording
+# started without a session runtime dir has to land under the state directory.
+state_home="$tmp_dir/state-home"
+mkdir -p "$state_home" "$tmp_dir/home-fallback"
+tmp_state_before=$(stat -c '%y %s' "$tmp_state" 2>/dev/null)
+
+env -u XDG_RUNTIME_DIR \
+  HOME="$tmp_dir/home-fallback" \
+  XDG_STATE_HOME="$state_home" \
+  OMARCHY_SCREENRECORD_DIR="$recording_dir" \
+  "$ROOT/bin/omarchy-capture-screenrecording" --fullscreen >/dev/null 2>&1
+
+pkill -f "$stub_bin/gpu-screen-recorder" 2>/dev/null || true
+
+[[ $(stat -c '%y %s' "$tmp_state" 2>/dev/null) == "$tmp_state_before" ]] ||
+  fail "without a runtime dir, screen recording still keeps no state under a fixed /tmp name"
+pass "without a runtime dir, screen recording still keeps no state under a fixed /tmp name"
+
+fallback_file="$state_home/omarchy/omarchy-screenrecord-filename"
+[[ -s $fallback_file ]] ||
+  fail "without a runtime dir the recording state file lives in the state directory" \
+    "$(ls -la "$state_home/omarchy" 2>/dev/null || true)"
+pass "without a runtime dir the recording state file lives in the state directory"
+
+[[ $(<"$fallback_file") == "$recording_dir"/* ]] ||
+  fail "the fallback state file names the recording that was started" \
+    "$(<"$fallback_file")"
+pass "the fallback state file names the recording that was started"
