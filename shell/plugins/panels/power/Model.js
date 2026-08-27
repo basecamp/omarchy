@@ -498,17 +498,16 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
   palette = palette || ["blue", "cyan", "magenta"]
   // The shade lattice assignment, resolved ONCE over the visible set — the
   // TABLE's rank order (CPU busy-share) and nothing else — and shared by the
-  // table accents and every bar: one function, one visible set. Bars lay
-  // their process segments out IN THAT SAME TABLE RANK ORDER, left-to-right
-  // as the table reads top-to-bottom (the operator's correspondence
-  // decision): a rank swap moves exactly the swapped segments — discrete,
-  // meaningful motion, identity preserved by the stable lattice colors.
-  // Round 9's canonical hue-major order is superseded: it existed because
-  // round-8's rank-coupled GROUP order relocated whole hue blocks; with
-  // per-comm lattice-colored segments that disease no longer exists. The
-  // RAM bar previously ranked its own top-N by RSS — that divergence dies
-  // here: it shows the table's comms with their RSS widths, the rest
-  // segment absorbing any used memory the table set doesn't cover.
+  // table accents and every bar: one function, one visible set. Bars are
+  // self-sorted visualizations (round 12, superseding round 11's
+  // bar-follows-table order by the operator's final choice): a SYSTEM
+  // block leads — the table's system-anchor concept made spatial, in
+  // foreground — then process blocks size-descending by the bar's own
+  // metric, then the idle/available frame. The TABLE keeps the single
+  // shared rank; per-bar order may differ from it and between bars by
+  // design. (Round 11's correspondence superseded round 9's canonical
+  // order; the lattice colors, gaps, budget, snap fills, and no-text
+  // rules carry through all three eras untouched.)
   var lattice = null
   function slotOf(comm) {
     if (lattice === null) lattice = resolveColorSlots(result.order, palette, SHADES)
@@ -546,12 +545,10 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
         var frac = agg.shares[i].share * busyDelta / totalDelta
         if (frac > 0) { commFracs.push({ key: agg.shares[i].label, share: frac }); used += frac }
       }
-      var segs = rankCommSegments(commFracs)
-      // thresholds would drop sub-pixel segments and break the exact sum;
-      // a 0.4% segment renders sub-pixel, which is invisibility enough
-      var rest = Math.max(0, busyDelta / totalDelta - used)
-      segs.push({ key: "rest", label: "rest", share: rest, kind: "rest" })
-      var idle = Math.max(0, 1 - used - Math.max(0, rest))
+      // SYSTEM block first: unattributed busy, the anchor made spatial
+      var segs = [{ key: "system", label: "system", share: Math.max(0, busyDelta / totalDelta - used), kind: "system" }]
+      segs = segs.concat(rankCommSegments(commFracs))
+      var idle = Math.max(0, 1 - used - Math.max(0, busyDelta / totalDelta - used))
       segs.push({ key: "idle", label: "idle", share: idle, kind: "idle" })
       result.cpu = segs
       result.intensity.cpu = 0.45 + 0.55 * Math.min(1, Math.max(0, busyDelta / totalDelta))
@@ -584,9 +581,11 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
         }
       }
     }
-    var rsegs = rankCommSegments(ramFracs)
-    var rrest = Math.max(0, usedFrac - rused)
-    rsegs.push({ key: "rest", label: "rest", share: rrest, kind: "rest" })
+    // per-bar size-descending: the RAM bar sorts by RSS even though the
+    // table ranks by CPU — bars are self-sorted visualizations
+    ramFracs.sort(function(a, b) { return b.share - a.share })
+    var rsegs = [{ key: "system", label: "system", share: Math.max(0, usedFrac - rused), kind: "system" }]
+    rsegs = rsegs.concat(rankCommSegments(ramFracs))
     rsegs.push({ key: "avail", label: "available", share: Math.max(0, 1 - usedFrac), kind: "avail" })
     result.ram = rsegs
     result.intensity.ram = 0.45 + 0.55 * usedFrac

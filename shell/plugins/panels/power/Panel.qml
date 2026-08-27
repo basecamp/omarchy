@@ -181,6 +181,7 @@ Panel {
   function segmentColor(seg) {
     if (seg.kind === "base") return Color.accent
     if (seg.kind === "rest" || seg.kind === "else") return Color.muted
+    if (seg.kind === "system") return root.bar ? root.bar.foreground : Color.foreground
     var k = seg.kind === "comm" && seg.slot !== undefined ? seg.slot.hue
       : (seg.kind === "comm" && colorMap[seg.key] !== undefined ? colorMap[seg.key].hue : "")
     if (k === "blue") return Color.blue
