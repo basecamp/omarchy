@@ -96,10 +96,11 @@ assert_order() {
   local file=$1 first=$2 second=$3 description=$4
   local first_line second_line
 
-  first_line=$(grep -n -m1 -F -- "$first" "$file" | cut -d: -f1)
-  second_line=$(grep -n -m1 -F -- "$second" "$file" | cut -d: -f1)
-  [[ -n $first_line && -n $second_line && $first_line -lt $second_line ]] ||
+  first_line=$(grep -n -m1 -F -- "$first" "$file" | cut -d: -f1 || true)
+  second_line=$(grep -n -m1 -F -- "$second" "$file" | cut -d: -f1 || true)
+  if [[ -z $first_line || -z $second_line ]] || (( first_line >= second_line )); then
     fail "$description" "first='$first' at line ${first_line:-none}; second='$second' at line ${second_line:-none}\n$(cat -n "$file")"
+  fi
   pass "$description"
 }
 
