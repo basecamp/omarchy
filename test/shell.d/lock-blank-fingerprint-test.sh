@@ -37,13 +37,8 @@ assert(
 )
 
 assert(
-  /onScreensChanged\(\) \{[\s\S]*root\.screenChangeBlankCount \+= 1/.test(serviceQml),
-  'screen changes while locked increment the screen change count'
-)
-
-assert(
-  /onScreensChanged\(\) \{[\s\S]*root\.armBlankTimer\(delay\)/.test(serviceQml),
-  'screen changes while locked re-arm the blank timer with backoff'
+  /onScreensChanged\(\) \{[\s\S]*if \(\(root\.locked \|\| root\.lockRequested\) && !root\.authenticatingPassword\) \{[\s\S]*root\.screenChangeBlankCount \+= 1\s*var delay = 5000\s*if \(root\.screenChangeBlankCount === 2\) delay = 15000\s*else if \(root\.screenChangeBlankCount >= 3\) delay = 30000\s*root\.armBlankTimer\(delay\)/.test(serviceQml),
+  'screen changes re-arm blanking at 5s, 15s, then cap at 30s only while locked and not authenticating'
 )
 
 assert(
