@@ -387,3 +387,21 @@ pass "without a runtime dir the recording state file lives in the state director
   fail "the fallback state file names the recording that was started" \
     "$(<"$fallback_file")"
 pass "the fallback state file names the recording that was started"
+
+# The overlay resizer reads the region file the recorder writes, so the two
+# have to resolve the same fallback as well as the same runtime dir.
+: >"$OMARCHY_TEST_HYPRCTL_ARGS"
+echo "800x600+100+100" >"$state_home/omarchy/omarchy-screenrecord-region"
+env -u XDG_RUNTIME_DIR \
+  HOME="$tmp_dir/home-fallback" \
+  XDG_STATE_HOME="$state_home" \
+  "$ROOT/bin/omarchy-capture-webcam-resize" reset
+
+printf '%s\n' \
+  'dispatch hl.dsp.window.resize({ window = "address:0xabc", x = 133, y = 150 })' \
+  'dispatch hl.dsp.window.move({ window = "address:0xabc", x = 727, y = 510 })' >"$expected_hyprctl_args"
+
+if ! cmp -s "$OMARCHY_TEST_HYPRCTL_ARGS" "$expected_hyprctl_args"; then
+  fail "without a runtime dir the webcam anchors to the recorded region" "$(diff -u "$expected_hyprctl_args" "$OMARCHY_TEST_HYPRCTL_ARGS")"
+fi
+pass "without a runtime dir the webcam anchors to the recorded region"
