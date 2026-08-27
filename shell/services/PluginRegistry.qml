@@ -29,7 +29,7 @@ QtObject {
   signal pluginsChanged()
   signal scanFinished()
   signal pluginLoadFailed(string id, string error)
-  signal localPluginChanged(string id)
+  signal localPluginChanged(string id, string path)
 
   // ---------------------------------------------------------------- helpers
 
@@ -648,7 +648,7 @@ QtObject {
     stdout: SplitParser {
       onRead: function(path) {
         var pluginId = registry.localPluginIdForPath(path)
-        if (pluginId) registry.localPluginChanged(pluginId)
+        if (pluginId) registry.localPluginChanged(pluginId, path)
       }
     }
     onExited: localPluginWatcherRestart.restart()
@@ -721,6 +721,21 @@ QtObject {
     // A newly created directory has not reached the registry yet. Queue it by
     // directory name so the rescan still discovers its manifest.
     return directoryName
+  }
+
+  function localPluginChangeNeedsGraphReload(pluginId, filePath) {
+    var manifest = installedPlugins[String(pluginId)]
+    if (!manifest || manifest.__isFirstParty === true) return false
+    var sourceDir = String(manifest.__sourceDir || "").replace(/\/$/, "")
+    var changedPath = String(filePath || "").trim()
+    if (!sourceDir || changedPath === sourceDir + "/manifest.json") return false
+    var entryPoints = manifest.entryPoints || {}
+    for (var kind in entryPoints) {
+      if (changedPath === sourceDir + "/" + String(entryPoints[kind])) return false
+    }
+    // Atomic saves also emit events for temporary siblings. Only files the
+    // QML engine can import should promote a targeted reload to a graph reload.
+    return /\.(qml|js|mjs)$/.test(changedPath) || changedPath.endsWith("/qmldir")
   }
 
   Component.onCompleted: ensureUserDir()

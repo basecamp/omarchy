@@ -58,11 +58,21 @@ ShellRoot {
   property bool pluginReloadPending: false
   property var pluginReloadRevisions: ({})
   property var pendingLocalPluginReloads: ({})
+  // Entry-point URL fragments do not invalidate QML or JavaScript files that
+  // the entry point imports. Those changes need Quickshell's native graph reload.
+  property bool localPluginGraphReloadPending: false
 
   Timer {
     id: localPluginReloadTimer
     interval: 150
-    onTriggered: shell.reloadLocalPlugins()
+    onTriggered: {
+      if (shell.localPluginGraphReloadPending) {
+        console.log("Reloading QML graph for imported local plugin changes:", Object.keys(shell.pendingLocalPluginReloads).join(","))
+        Quickshell.reload(false)
+      } else {
+        shell.reloadLocalPlugins()
+      }
+    }
   }
 
   onShellConfigChanged: {
@@ -768,13 +778,18 @@ ShellRoot {
     Qt.callLater(shell.finishPluginReload)
   }
 
-  function queueLocalPluginReload(pluginId) {
+  function queueLocalPluginReload(pluginId, path) {
     var key = String(pluginId)
     if (!key) return
     var next = ({})
     for (var id in shell.pendingLocalPluginReloads) next[id] = true
     next[key] = true
     shell.pendingLocalPluginReloads = next
+    if (shell.pluginRegistry.localPluginChangeNeedsGraphReload(key, path))
+      shell.localPluginGraphReloadPending = true
+    console.log("Queued local plugin reload:", key,
+      "mode=" + (shell.localPluginGraphReloadPending ? "graph" : "targeted"),
+      "path=" + String(path || ""))
     localPluginReloadTimer.restart()
   }
 
@@ -808,9 +823,8 @@ ShellRoot {
 
   Connections {
     target: shell.pluginRegistry
-    function onLocalPluginChanged(pluginId) {
-      console.log("Local plugin changed, reloading:", pluginId)
-      shell.queueLocalPluginReload(pluginId)
+    function onLocalPluginChanged(pluginId, path) {
+      shell.queueLocalPluginReload(pluginId, path)
     }
     function onScanFinished() {
       if (shell.pluginReloadPending) {

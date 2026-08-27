@@ -79,6 +79,7 @@ widget_reload_id="acme.widget-hot-reload"
 # checkouts commonly use their repository name rather than their plugin id.
 widget_reload_dir="$test_home/.config/omarchy/plugins/widget-source-directory"
 widget_reload_result="$TMPDIR/widget-hot-reload-result"
+widget_import_reload_result="$TMPDIR/widget-import-hot-reload-result"
 mkdir -p "$widget_reload_dir"
 cat >"$widget_reload_dir/manifest.json" <<JSON
 {
@@ -103,6 +104,23 @@ Item {
   FileView {
     id: resultFile
     path: Quickshell.env("OMARCHY_QML_HOT_RELOAD_RESULT")
+    atomicWrites: true
+  }
+
+  WidgetContent { }
+
+  Component.onCompleted: resultFile.setText("before")
+}
+QML
+cat >"$widget_reload_dir/WidgetContent.qml" <<'QML'
+import QtQuick
+import Quickshell
+import Quickshell.Io
+
+Item {
+  FileView {
+    id: resultFile
+    path: Quickshell.env("OMARCHY_QML_IMPORT_HOT_RELOAD_RESULT")
     atomicWrites: true
   }
 
@@ -140,6 +158,7 @@ chmod +x "$stub_bin/curl"
 
 OMARCHY_PATH="$test_root" \
 OMARCHY_QML_HOT_RELOAD_RESULT="$widget_reload_result" \
+OMARCHY_QML_IMPORT_HOT_RELOAD_RESULT="$widget_import_reload_result" \
 HOME="$test_home" \
 XDG_CONFIG_HOME="$test_home/.config" \
 XDG_CACHE_HOME="$test_home/.cache" \
@@ -209,6 +228,17 @@ done
   fail_with_log "local bar widget loads its initial QML source"
 pass "local bar widget loads its initial QML source"
 
+for _ in {1..80}; do
+  [[ -s $widget_import_reload_result ]] && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited before the imported local plugin QML loaded"
+  fi
+  sleep 0.1
+done
+[[ $(<"$widget_import_reload_result") == "before" ]] ||
+  fail_with_log "imported local plugin QML loads its initial source"
+pass "imported local plugin QML loads its initial source"
+
 sed -i 's/setText("before")/setText("after")/' "$widget_reload_dir/BarWidget.qml"
 
 widget_reload_value=""
@@ -221,15 +251,30 @@ for _ in {1..80}; do
   sleep 0.1
 done
 [[ $widget_reload_value == "after" ]] ||
-  fail_with_log "local bar widget QML changes replace the running component"
-pass "local bar widget QML changes replace the running component"
+  fail_with_log "local plugin entry-point changes replace the running component"
+pass "local plugin entry-point changes replace the running component"
 if rg -q "invalid context" "$log"; then
   fail_with_log "plugin reload preserves live QML contexts"
 fi
 idle_ready_count=$(rg -c "omarchy idle .* service-ready" "$log" || true)
 (( idle_ready_count == 1 )) ||
-  fail_with_log "local plugin reload leaves first-party services running"
-pass "local plugin reload leaves first-party services running"
+  fail_with_log "targeted plugin reload leaves first-party services running"
+pass "targeted plugin reload leaves first-party services running"
+
+sed -i 's/setText("before")/setText("after")/' "$widget_reload_dir/WidgetContent.qml"
+
+widget_import_reload_value=""
+for _ in {1..80}; do
+  widget_import_reload_value=$(<"$widget_import_reload_result")
+  [[ $widget_import_reload_value == "after" ]] && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited while reloading imported local plugin QML"
+  fi
+  sleep 0.1
+done
+[[ $widget_import_reload_value == "after" ]] ||
+  fail_with_log "imported local plugin QML changes reload the QML graph"
+pass "imported local plugin QML changes reload the QML graph"
 
 [[ $(shell_ipc shell setPluginEnabled "$hot_reload_id" true) == "ok" ]] ||
   fail_with_log "installed plugin could not be enabled"
