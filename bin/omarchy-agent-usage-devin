@@ -382,19 +382,20 @@ def parse_quota() -> dict[str, Any]:
         raw_name = _find_field(plan_info, 2)
         if isinstance(raw_name, (bytes, bytearray)):
           plan_name = raw_name.decode("utf-8", errors="replace")
-      daily_used_pct = _find_field(plan_status, 14)
+      daily_remaining_pct = _find_field(plan_status, 14)
       weekly_remaining_pct = _find_field(plan_status, 15)
       daily_reset = _find_field(plan_status, 17)
       weekly_reset = _find_field(plan_status, 18)
       limits: list[dict[str, Any]] = []
-      if isinstance(daily_used_pct, int) and daily_used_pct >= 0:
+      # Both fields are *remaining* percent from GetUserStatus; the panel
+      # expects *used*, so invert: 99% remaining -> 1% used.
+      if isinstance(daily_remaining_pct, int) and daily_remaining_pct >= 0:
         limits.append({
           "label": "Daily",
-          "percent": daily_used_pct / 100.0,
+          "percent": (100 - daily_remaining_pct) / 100.0,
           "resetsAt": _iso_from_unix(daily_reset if isinstance(daily_reset, int) else None),
         })
       if isinstance(weekly_remaining_pct, int) and weekly_remaining_pct >= 0:
-        # weekly field is *remaining*, convert to *used* for the panel
         limits.append({
           "label": "Weekly",
           "percent": (100 - weekly_remaining_pct) / 100.0,

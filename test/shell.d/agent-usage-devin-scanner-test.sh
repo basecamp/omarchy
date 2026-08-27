@@ -177,7 +177,7 @@ pass "Devin collector --force rescans past the cache"
 
 # Quota / limits from user-status cache
 # Build a minimal protobuf PlanStatus: field 1 (PlanInfo) with field 2 (plan name "Pro"),
-# field 14 (daily_used_pct=69), field 15 (weekly_remaining_pct=53),
+# field 14 (daily_remaining_pct=69), field 15 (weekly_remaining_pct=53),
 # field 17 (daily_reset_unix), field 18 (weekly_reset_unix)
 python3 - "$TEST_HOME/.cache/devin/cli" "$now" <<'PY'
 import base64, json, os, struct, sys
@@ -204,7 +204,7 @@ def field(fn, data):
 
 # PlanInfo: field 2 = "Pro"
 plan_info = field(2, b"Pro")
-# PlanStatus: field 1 = PlanInfo, field 14 = 69, field 15 = 53,
+# PlanStatus: field 1 = PlanInfo, field 14 = 69 (remaining), field 15 = 53 (remaining),
 #   field 17 = now+3600, field 18 = now+86400*4
 plan_status = field(1, plan_info) + field(14, 69) + field(15, 53) + field(17, now + 3600) + field(18, now + 86400 * 4)
 # Top-level: field 13 = PlanStatus
@@ -226,8 +226,8 @@ result=$(HOME="$TEST_HOME" DEVIN_DATA_DIR="$DEVIN_DATA_DIR" XDG_CACHE_HOME="$TES
   fail "Devin collector reads plan name from user-status cache" "$result"
 [[ $(jq -r '.limits[0].label' <<<"$result") == "Daily" ]] ||
   fail "Devin collector reports daily limit label" "$result"
-[[ $(jq -r '.limits[0].percent' <<<"$result") == "0.69" ]] ||
-  fail "Devin collector reports daily limit percent (69%)" "$result"
+[[ $(jq -r '.limits[0].percent' <<<"$result") == "0.31" ]] ||
+  fail "Devin collector reports daily limit percent (31% used = 69% remaining)" "$result"
 [[ $(jq -r '.limits[1].label' <<<"$result") == "Weekly" ]] ||
   fail "Devin collector reports weekly limit label" "$result"
 [[ $(jq -r '.limits[1].percent' <<<"$result") == "0.47" ]] ||
