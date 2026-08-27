@@ -92,56 +92,33 @@ diagnosis may make is the mute below, and only when the user asks for it.
 
 ## Offer to stop the notifications for this program
 
-A crash that is now understood keeps announcing itself, and understanding it
-rarely stops it happening: an upstream bug waiting on a release, a program that
-dumps core every time it exits, a driver that misbehaves on this hardware. Finish
-by offering to silence crash notifications for **that one program**:
+A crash you have explained often keeps happening anyway. Finish by offering to
+silence notifications for **that one program**, and never run it unprompted. Say
+how to lift it in the same breath, so it is not a one-way door.
 
 ```bash
-omarchy-crash-mute '<program>'
-```
-
-`<program>` is the `process:` name in the crash facts, or the `binary:` path —
-the command reduces a path to the same name the watcher keys on, so passing
-`/usr/lib/chromium/chromium-browser` and passing `chromium-browser` land on the
-same flag. Prefer the binary's path wherever the crash recorded one: the kernel
-truncates the process name to 15 characters and does not truncate a basename, and
-a mute on the truncated form matches nothing, forever, while looking like it
-worked.
-
-That is also the answer for a diagnosis started by hand from `omarchy agent crash
-<pid>`, which is handed no name at all: give the command the `Executable:` line
-from `coredumpctl info` and let it do the reducing. Some crashes record no
-executable — pass the process name then, and `unknown` where the crash has
-neither, which is the name such a crash is announced under.
-
-The name is still whatever the crashed program's author chose to call a file, so
-handle it as hostile text rather than as a word. The command refuses a name that
-is not one — it cannot be talked into writing a flag outside its own directory —
-but that is no help if the name reaches a shell unescaped first: single quotes
-hold a space or a `$(...)`, and a name containing a single quote closes them and
-runs the rest as your shell. Escape it, or the program that just crashed picks
-the command.
-
-Offer it; never run it unprompted. The user may well want to keep being told.
-
-Say how to undo it in the same breath, so it is not a one-way door — and the
-command answers both halves itself:
-
-```bash
-omarchy-crash-mute '<program>' off    # un-mute this one
+omarchy-crash-mute '<program>'        # silence it
+omarchy-crash-mute '<program>' off    # let it speak again
 omarchy-crash-mute                    # list what is muted
 ```
 
-The key is a bare name, so programs sharing one share a mute, and anything run
-through an interpreter is keyed as the interpreter. Muting `python3.13` or `node`
-silences every other Python or Node program on the machine, which is rarely what
-the user means: say so rather than quietly doing it.
+Pass the `binary:` path from the crash facts, or the `process:` name where no
+binary was recorded; the command reduces either to the name the watcher keys on.
+A diagnosis run by hand from `omarchy agent crash <pid>` has neither, so take
+them from `coredumpctl info`. Prefer the binary: a process name is truncated to
+15 characters and a basename is not, so muting the truncated form matches
+nothing, forever, while looking like it worked.
 
-This silences one program. Every other crash still notifies, and the muted
-program still crashes — nothing here fixes anything, and a mute offered instead
-of a fix that was within reach is the wrong answer. If the user wants crash
-notifications off altogether, that is _Trigger > Toggle > Crash Capture_ instead.
+Quote it. The name is whatever the crashed program's author called a file, and a
+single quote inside one closes yours and runs the rest as your shell.
+
+The key is a bare name, so anything run through an interpreter is keyed as the
+interpreter: muting `python3.13` silences every Python program on the machine.
+Say so rather than quietly doing it.
+
+None of this fixes anything, and a mute offered in place of a fix that was within
+reach is the wrong answer. For every program rather than one, the switch is
+_Trigger > Toggle > Crash Capture_.
 
 ## If it is an Omarchy bug
 
