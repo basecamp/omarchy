@@ -36,6 +36,13 @@ EOF
     cat > /etc/modprobe.d/nvidia-s0ix.conf <<'EOF'
 options nvidia NVreg_EnableS0ixPowerManagement=1
 EOF
+
+    # Record the machine-wide repair for migration 1787818004. Fresh installs
+    # bake the option into the boot image built later in finalization, but a
+    # user created after install starts with empty per-user migration state,
+    # and without the marker their first login would redo the initramfs
+    # rebuild for an option that is already in place.
+    install -Dm644 /dev/null /var/lib/omarchy/migrations/1787818004
   fi
 
   # Configure mkinitcpio for early loading

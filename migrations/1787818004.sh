@@ -10,22 +10,28 @@ echo "Enable NVIDIA S0ix power management on s2idle systems"
 # option.
 mem_sleep="${OMARCHY_MEM_SLEEP:-/sys/power/mem_sleep}"
 conf="${OMARCHY_NVIDIA_S0IX_CONF:-/etc/modprobe.d/nvidia-s0ix.conf}"
+marker="${OMARCHY_NVIDIA_S0IX_MARKER:-/var/lib/omarchy/migrations/1787818004}"
 
 omarchy-hw-nvidia || exit 0
 omarchy-cmd-present limine-mkinitcpio || exit 0
 grep -q '\[s2idle\]' "$mem_sleep" 2>/dev/null || exit 0
 
-# The conf is machine-wide, so it doubles as the completion marker: another
-# user's run (or a fresh install that already wrote it) no-ops here.
-[[ ! -f $conf ]] || exit 0
+# The repair is machine-wide, but migrations run once per user: the marker
+# records completion so another user's run does not repeat it, while a missing
+# marker still retries an interrupted rebuild. Fresh installs record it from
+# install/hardware/nvidia.sh, which bakes the option into the ISO's boot
+# image, so a user created later does not redo the rebuild.
+[[ ! -e $marker ]] || exit 0
 
 sudo install -Dm644 /dev/stdin "$conf" <<'EOF'
 options nvidia NVreg_EnableS0ixPowerManagement=1
 EOF
 
 # The nvidia modules are early-loaded, so the option only takes effect once
-# it is baked into the initramfs.
+# it is baked into the initramfs. The marker lands only after the rebuild
+# succeeds: a failure aborts the migration, leaving it pending to retry.
 echo "Rebuilding the initramfs so the new NVIDIA module option takes effect"
 sudo limine-mkinitcpio
+sudo install -Dm644 /dev/null "$marker"
 
 omarchy-state set reboot-required
