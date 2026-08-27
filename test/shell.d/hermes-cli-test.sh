@@ -209,3 +209,38 @@ grep -qxF "$stub_marker" "$test_home/.local/bin/hermes" || fail "the refreshed s
 grep -q "stale template" "$test_home/.local/bin/hermes" && fail "reinstalling rewrites our own stub"
 grep -q "exec mise x" "$test_home/.local/bin/hermes" || fail "the refreshed stub is the current template"
 pass "reinstalling refreshes the Omarchy stub"
+
+# install/user/mise.sh is sourced by install/user/all.sh through run_logged,
+# which runs it under `bash -eE` and hands its exit code back to
+# omarchy-provision-user's `set -euo pipefail`. Everything that finalizes a user
+# -- the default browser, the mailto handler, the first-install migration
+# markers, the finalize-user marker -- runs after that source, so this leaf
+# returning non-zero costs the user all of it. The Hermes installer is the only
+# line in it that can fail, and it does exactly that whenever hermes-desktop is
+# installed but the app has not been launched yet: the case a second user on a
+# shared machine hits on their first login.
+mise_sh_home="$test_tmp/mise-sh-home"
+mkdir -p "$mise_sh_home/.local/bin"
+
+cat >"$mock_bin/omarchy-mise-install" <<'SH'
+#!/bin/bash
+exit 0
+SH
+chmod +x "$mock_bin/omarchy-mise-install"
+
+# Desktop installed, nothing bootstrapped: omarchy-install-hermes-cli exits 1.
+OMARCHY_TEST_DESKTOP_INSTALLED=1 \
+  OMARCHY_TEST_MISE_LOG="$mise_log" \
+  HOME="$mise_sh_home" \
+  PATH="$mock_bin:$ROOT/bin:$PATH" \
+  bash "$ROOT/bin/omarchy-install-hermes-cli" >/dev/null 2>&1 &&
+  fail "the Hermes installer exits non-zero when the desktop app has not set Hermes up"
+
+# Sourced exactly as run_logged does it.
+OMARCHY_TEST_DESKTOP_INSTALLED=1 \
+  OMARCHY_TEST_MISE_LOG="$mise_log" \
+  HOME="$mise_sh_home" \
+  PATH="$mock_bin:$ROOT/bin:$PATH" \
+  bash -eE -c 'source "$1"' bash "$ROOT/install/user/mise.sh" >/dev/null 2>&1 ||
+  fail "user setup survives a Hermes install that cannot finish"
+pass "user setup survives a Hermes install that cannot finish"
