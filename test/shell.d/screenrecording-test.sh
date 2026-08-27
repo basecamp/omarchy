@@ -338,7 +338,7 @@ chmod +x "$stub_bin"/pgrep "$stub_bin"/omarchy-hyprland-monitor-focused \
 # whole point of the finding is that anyone can own it already, and a leftover
 # from a pre-fix recording would red-light the fixed script.
 tmp_state="/tmp/omarchy-screenrecord-filename"
-tmp_state_before=$(stat -c '%y %s' "$tmp_state" 2>/dev/null)
+tmp_state_before=$(stat -c '%y %s' "$tmp_state" 2>/dev/null || true)
 
 OMARCHY_SCREENRECORD_DIR="$recording_dir" \
   "$ROOT/bin/omarchy-capture-screenrecording" --fullscreen >/dev/null 2>&1
@@ -363,7 +363,7 @@ pass "the recording state file names the recording that was started"
 # started without a session runtime dir has to land under the state directory.
 state_home="$tmp_dir/state-home"
 mkdir -p "$state_home" "$tmp_dir/home-fallback"
-tmp_state_before=$(stat -c '%y %s' "$tmp_state" 2>/dev/null)
+tmp_state_before=$(stat -c '%y %s' "$tmp_state" 2>/dev/null || true)
 
 env -u XDG_RUNTIME_DIR \
   HOME="$tmp_dir/home-fallback" \
