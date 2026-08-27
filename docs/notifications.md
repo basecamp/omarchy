@@ -14,11 +14,7 @@ The end-user view (hotkey notices for time, battery, weather) is in
 
 ## Toast lifecycle
 
-A toast lives on screen for at least 5s (low), 8s (normal), or forever
-(critical), stretched up to 30s if the sender asked for a longer
-`expire_timeout`. Hovering pauses the countdown, and a content update restarts
-it — new text deserves a full look. Left-click invokes the default action,
-right-click or the hover-revealed close button dismisses.
+A toast lives on screen for at least 5s (low), 8s (normal), or forever (critical), stretched up to 30s if the sender asked for a longer `expire_timeout`. An explicit timeout of `0` also keeps a low or normal toast on screen until it is answered, independently of urgency. Hovering pauses the countdown, and a content update restarts it — new text deserves a full look. Left-click invokes the default action, right-click or the hover-revealed close button dismisses.
 
 Every on-screen popup is mirrored to its own file under
 `~/.local/state/omarchy/notifications/` (one JSON line per file, named
@@ -77,7 +73,7 @@ flags map onto that call:
 | `-i` / `--icon` | `app_icon` | themed icon name for the toast |
 | `--app-name` | `app_name` | defaults to `omarchy-action` |
 | `-u` / `--urgency` | hint `urgency` (byte) | `low`/`normal`/`critical`; defaults to `low` |
-| `-t` / `--expire-time` | `expire_timeout` | milliseconds on screen; server default otherwise |
+| `-t` / `--expire-time` | `expire_timeout` | milliseconds on screen; `0` means until dismissed; server default otherwise |
 
 Unknown flags are a hard error, not a silent pass-through: `--exec` is the only
 door to a click command, and there is no generic option pass-through to smuggle
