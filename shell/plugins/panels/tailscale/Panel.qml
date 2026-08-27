@@ -53,7 +53,7 @@ Panel {
   readonly property bool headerHasCursor: cursorActive && focusSection === "header" && tailscale.installed
   readonly property color iconColor: tailscale.active ? foreground : dim
   readonly property string toggleHint: tailscale.active ? "Turn Tailscale off" : (tailscale.needsLogin ? "Authorize this device" : "Turn Tailscale on")
-  readonly property color barIconColor: tailscale.active ? barForeground : Qt.darker(barForeground, 1.55)
+  readonly property color barIconColor: tailscale.active ? button.foreground : Qt.darker(button.foreground, 1.55)
   readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
   readonly property color selectedFill: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "transparent"
 

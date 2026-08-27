@@ -876,11 +876,12 @@ Item {
     stdout: SplitParser {
       onRead: function(line) {
         var parts = String(line || "").trim().split(/\s+/)
+        var wasTransparent = root.useTransparentForeground
         if (parts.length >= 3 &&
             /^#[0-9A-Fa-f]{6}$/.test(parts[0]) &&
             /^#[0-9A-Fa-f]{6}$/.test(parts[1]) &&
             /^#[0-9A-Fa-f]{6}$/.test(parts[2])) {
-          root.foregroundAnimationEnabled = false
+          if (!wasTransparent) root.foregroundAnimationEnabled = false
           root.transparentForegroundLeft = parts[0]
           root.transparentForegroundCenter = parts[1]
           root.transparentForegroundRight = parts[2]
@@ -889,9 +890,9 @@ Item {
             root.useTransparentForeground = true
             root.transparent = true
           }
-          root.restoreForegroundAnimation()
+          if (!wasTransparent) root.restoreForegroundAnimation()
         } else if (parts.length >= 1 && /^#[0-9A-Fa-f]{6}$/.test(parts[0])) {
-          root.foregroundAnimationEnabled = false
+          if (!wasTransparent) root.foregroundAnimationEnabled = false
           root.transparentForegroundLeft = parts[0]
           root.transparentForegroundCenter = parts[0]
           root.transparentForegroundRight = parts[0]
@@ -900,7 +901,7 @@ Item {
             root.useTransparentForeground = true
             root.transparent = true
           }
-          root.restoreForegroundAnimation()
+          if (!wasTransparent) root.restoreForegroundAnimation()
         }
       }
     }

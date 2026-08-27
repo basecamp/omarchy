@@ -18,9 +18,15 @@ Item {
     }
     return ""
   }
-  property color foreground: (bar && typeof bar.regionForeground === "function" && effectiveRegion !== "")
-    ? bar.regionForeground(effectiveRegion)
-    : (bar ? bar.barForeground : Color.foreground)
+  property color foreground: {
+    if (bar && typeof bar.regionForeground === "function" && effectiveRegion !== "") {
+      var rf = bar.regionForeground(effectiveRegion)
+      if (rf !== undefined) return rf
+    }
+    if (bar && bar.barForeground !== undefined) return bar.barForeground
+    if (bar && bar.foreground !== undefined) return bar.foreground
+    return Color.foreground
+  }
   property color activeColor: bar ? bar.urgent : Color.urgent
   property bool active: false
   property real horizontalMargin: 8.5

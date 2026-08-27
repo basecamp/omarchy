@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import qs.Commons
+import qs.Ui
 
 ShellRoot {
   id: root
@@ -131,9 +132,19 @@ ShellRoot {
     property string omarchyPath: root.rootPath
     property string fontFamily: "monospace"
     property color foreground: "white"
+    property color barForeground: "white"
+    property color barForegroundLeft: "#112233"
+    property color barForegroundCenter: "#445566"
+    property color barForegroundRight: "#778899"
     property color background: "black"
     property color urgent: "red"
     property var shell: mockShell
+    function regionForeground(region) {
+      if (region === "left") return barForegroundLeft
+      if (region === "center") return barForegroundCenter
+      if (region === "right") return barForegroundRight
+      return barForeground
+    }
     function run(command) {}
     function showTooltip(target, text) {}
     function hideTooltip(target) {}
@@ -143,11 +154,48 @@ ShellRoot {
     function unregisterClickTarget(target) {}
   }
 
+  function testRegionalResolution() {
+    var directBtn = widgetButtonComponent.createObject(host, { bar: fakeBar, region: "left" })
+    root.assertTrue(directBtn !== null, "direct WidgetButton instantiated")
+    root.assertEqual(directBtn.foreground, fakeBar.regionForeground("left"), "direct WidgetButton resolves explicit region foreground")
+    directBtn.region = "right"
+    root.assertEqual(directBtn.foreground, fakeBar.regionForeground("right"), "direct WidgetButton updates on region change")
+    directBtn.destroy()
+
+    var barWidget = barWidgetComponent.createObject(host, { bar: fakeBar, region: "center" })
+    root.assertTrue(barWidget !== null, "BarWidget container instantiated")
+    root.assertEqual(barWidget.effectiveForeground, fakeBar.regionForeground("center"), "BarWidget resolves effectiveForeground")
+
+    var nestedBtn = widgetButtonComponent.createObject(barWidget, { bar: fakeBar })
+    root.assertTrue(nestedBtn !== null, "nested WidgetButton instantiated")
+    root.assertEqual(nestedBtn.effectiveRegion, "center", "nested WidgetButton resolves ancestor region from BarWidget")
+    root.assertEqual(nestedBtn.foreground, fakeBar.regionForeground("center"), "nested WidgetButton inherits ancestor region foreground")
+
+    barWidget.region = "left"
+    root.assertEqual(nestedBtn.effectiveRegion, "left", "nested WidgetButton dynamically follows ancestor region changes")
+    root.assertEqual(nestedBtn.foreground, fakeBar.regionForeground("left"), "nested WidgetButton dynamically follows ancestor region foreground changes")
+
+    nestedBtn.destroy()
+    barWidget.destroy()
+  }
+
+  Component {
+    id: widgetButtonComponent
+    WidgetButton {}
+  }
+
+  Component {
+    id: barWidgetComponent
+    BarWidget {}
+  }
+
   Timer {
     interval: 1
     running: true
     repeat: false
     onTriggered: {
+      root.testRegionalResolution()
+
       var entries = widgets()
       root.assertTrue(entries.length > 0, "bar widget list is not empty")
       for (var i = 0; i < entries.length; i++) root.loadWidget(entries[i])
