@@ -4,5 +4,12 @@
 
 set -e
 
-omarchy-launch-floating-terminal-with-presentation "voxtype setup model"
-omarchy-restart-shell
+# Voxtype is optional, so the model picker can be reached before it is
+# installed. Route to the install flow rather than opening a terminal that
+# dies with "voxtype: command not found".
+if omarchy-cmd-missing voxtype; then
+  omarchy-launch-floating-terminal-with-presentation omarchy-voxtype-install
+else
+  omarchy-launch-floating-terminal-with-presentation "voxtype setup model"
+  omarchy-restart-shell
+fi
