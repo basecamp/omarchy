@@ -28,10 +28,14 @@ test)
   ;;
 sshd)
   printf 'sudo %s\n' "$*" >>"$TEST_LOG"
-  [[ ${OMARCHY_TEST_SSHD_T_FAILS:-false} == true ]] && exit 1
-  # The casing OpenSSH 10.5 actually prints, so the confirmation has to cope
-  # with it rather than with the lowercase older releases printed.
-  printf 'PasswordAuthentication no\n'
+  # The casing OpenSSH 10.5 actually prints, and both keywords, so a check that
+  # reads neither value cannot pass the assertions below.
+  if [[ ${OMARCHY_TEST_SSHD_T_FAILS:-false} == "true" ]]; then
+    exit 1
+  else
+    printf 'PasswordAuthentication %s\n' "${OMARCHY_TEST_SSHD_PASSWORD_AUTH:-no}"
+    printf 'KbdInteractiveAuthentication %s\n' "${OMARCHY_TEST_SSHD_KBD_AUTH:-no}"
+  fi
   ;;
 *)
   printf 'sudo %s\n' "$*" >>"$TEST_LOG"
@@ -167,3 +171,21 @@ if grep -q 'ufw limit 22/tcp' "$TEST_LOG"; then
   fail "the firewall stays closed when password authentication is not confirmed off" "$(cat "$TEST_LOG")"
 fi
 pass "the firewall stays closed when password authentication is not confirmed off"
+
+# The values sshd reports, not just that it answered: an override that leaves
+# either keyword on is a password prompt on the network, and keyboard-interactive
+# is one over PAM whatever PasswordAuthentication resolved to.
+for override in OMARCHY_TEST_SSHD_PASSWORD_AUTH OMARCHY_TEST_SSHD_KBD_AUTH; do
+  : >"$TEST_LOG"
+  rm -rf "$HOME/.ssh"
+
+  if env "$override=yes" "$ROOT/bin/omarchy-setup-security-sshd" \
+    --key="ssh-ed25519 AAAATEST tester@omarchy" >/dev/null 2>&1; then
+    fail "sshd setup fails when the daemon reports $override on"
+  fi
+
+  if grep -q 'ufw limit 22/tcp' "$TEST_LOG"; then
+    fail "the firewall stays closed when the daemon reports $override on" "$(cat "$TEST_LOG")"
+  fi
+  pass "the firewall stays closed when the daemon reports $override on"
+done

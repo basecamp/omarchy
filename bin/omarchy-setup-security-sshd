@@ -92,9 +92,15 @@ start_sshd() {
 # lower-numbered file can still set PasswordAuthentication yes and win. Ask
 # the daemon what it actually resolved to rather than trust the file we wrote.
 confirm_key_only() {
-  # Matched case-insensitively because sshd -T's keyword casing is not stable
-  # across releases: OpenSSH 10.5 prints `PasswordAuthentication no`.
-  sudo sshd -T 2>/dev/null | grep -qix 'passwordauthentication no'
+  local resolved
+  resolved=$(sudo sshd -T 2>/dev/null) || return 1
+
+  # Both keywords the drop-in writes: with UsePAM yes, a keyboard-interactive
+  # left on is a password prompt over the network however PasswordAuthentication
+  # resolved. Matched case-insensitively because sshd -T's keyword casing is not
+  # stable across releases -- OpenSSH 10.5 prints `PasswordAuthentication no`.
+  grep -qix 'passwordauthentication no' <<<"$resolved" || return 1
+  grep -qix 'kbdinteractiveauthentication no' <<<"$resolved"
 }
 
 open_firewall() {
@@ -209,7 +215,7 @@ start_sshd
 
 if ! confirm_key_only; then
   echo -e "\e[31mA drop-in with a lower number still allows password authentication; sshd was not confirmed key-only, so the firewall port was left closed.\e[0m" >&2
-  echo "Check: sudo sshd -T | grep -i passwordauthentication" >&2
+  echo "Check: sudo sshd -T | grep -iE 'passwordauthentication|kbdinteractiveauthentication'" >&2
   exit 1
 fi
 
