@@ -24,6 +24,7 @@ Panel {
   property var systemRows: []
   property var resourceSplits: null
   property var colorMap: ({})
+  property var processColumns: []
   property var profiles: []
   property string activeProfile: ""
   property int profileIndex: 0
@@ -139,6 +140,21 @@ Panel {
     if (fullyCharged) return "Fully charged"
     if (rotatingPhrases) return activePhrases[phraseIndex % activePhrases.length]
     return modeLabel()
+  }
+
+  // Metric-type colors for the per-process cells: the three collision-free
+  // hues, one per metric (CPU blue, RAM cyan, W magenta), so a column reads
+  // as one metric at a glance. W stays magenta here rather than categorical
+  // green/yellow/red: those thresholds grade SYSTEM draw (the Draw bar);
+  // per-process watts carry no honest absolute thresholds. GPU is reserved
+  // to accent for the future fdinfo cell (never emitted on this hardware;
+  // accent may sit near blue on some themes — a documented follow-up
+  // question for whoever adds GPU cells).
+  function metricColor(metric) {
+    if (metric === "CPU") return Color.blue
+    if (metric === "RAM") return Color.cyan
+    if (metric === "W") return Color.magenta
+    return Color.accent
   }
 
   // Legible text on an arbitrary theme fill: pick whichever of the theme's
@@ -289,6 +305,16 @@ Panel {
       else baseWatts += (draw - baseWatts) * 0.02
     }
     if (prevSnapshot) topProcesses = Model.buildTopProcesses(prevSnapshot, snap, 5, draw, baseWatts)
+    // column set = the first row's cell metrics, in the builder's fixed
+    // order (CPU, RAM, W discharging only, GPU when a source exists)
+    var cols = []
+    for (var ci = 0; ci < topProcesses.length; ci++) {
+      if (topProcesses[ci].cells !== undefined && topProcesses[ci].cells.length > 0) {
+        cols = topProcesses[ci].cells.map(function(c) { return c.metric })
+        break
+      }
+    }
+    processColumns = cols
     resourceSplits = Model.buildResourceSplits(prevSnapshot, snap, 5, draw, baseWatts)
     // Palette keys map to Color singleton properties: the three
     // non-threshold hues that are universal AND mutually distinct across the
@@ -631,20 +657,43 @@ Panel {
             }
           }
 
+          // Column headers, learned once: CPU / RAM / W (discharging only).
+          // The column set is derived in onSample from the rows' own cells,
+          // so the header can never drift from what renders beneath it.
+          Row {
+            id: processHeader
+            visible: root.processColumns.length > 0
+            width: column.width
+
+            Repeater {
+              model: root.processColumns
+
+              Item {
+                required property var modelData
+                width: processHeader.width / root.processColumns.length
+                height: Style.space(12)
+
+                Text {
+                  text: parent.modelData
+                  x: Style.space(6)
+                  color: root.metricColor(parent.modelData)
+                  opacity: 0.8
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: Style.font.caption
+                  font.bold: true
+                }
+              }
+            }
+          }
+
           Repeater {
             model: root.topProcesses
 
-            // The bar IS the row: comm-colored fill sized by impact, ramped
-            // by intensity, value text at the fill's end, and a thin RSS
-            // sub-bar beneath in the same comm color.
-            BarRow {
+            MetricRow {
               required property var modelData
               label: modelData.label
-              value: modelData.value
-              share: modelData.meter !== undefined ? modelData.meter : 0
-              intensity: modelData.intensity !== undefined ? modelData.intensity : 1
-              ramShare: modelData.ramShare !== undefined ? modelData.ramShare : 0
-              fillColor: modelData.key === "base" || modelData.key === "else"
+              cells: modelData.cells !== undefined ? modelData.cells : []
+              commColor: modelData.key === "base" || modelData.key === "else"
                 ? root.segmentColor({ kind: modelData.key, key: modelData.key })
                 : root.segmentColor({ kind: "comm", key: modelData.key })
             }
@@ -743,76 +792,92 @@ Panel {
     font.pixelSize: Style.font.bodySmall
   }
 
-  // A POWER HUNGRY row where the bar IS the row: a rounded track spans the
-  // width, the comm label sits in the left gutter, the comm-colored fill
-  // grows from the gutter sized by the row's impact and faded by its
-  // intensity ramp, the value text anchors just past the fill's end (always
-  // on the unfilled track, where the panel's own text color is legible in
-  // every theme), and a thin RSS sub-bar runs beneath in the same color.
-  component BarRow: Item {
-    id: barRow
+  // One graphic line per process: the comm label (with a small comm-colored
+  // accent mark preserving some identity cross-referencing to the SYSTEM
+  // composition bars) sits in the left gutter, and ONE track carries the
+  // metric cells — CPU, RAM, W (discharging only) — each a mini-meter in
+  // its own fixed column: metric-type color, fill normalized per metric,
+  // intensity ramped by the cell's magnitude within its column, value text
+  // at the fill's end on the unfilled track (the established legibility
+  // rule). The old two-line row (impact fill + RAM sub-bar) is gone.
+  component MetricRow: Item {
+    id: metricRow
     property string label: ""
-    property string value: ""
-    property real share: 0
-    property real intensity: 1
-    property real ramShare: 0
-    property color fillColor: root.bar ? root.bar.foreground : Color.foreground
+    property var cells: []
+    property color commColor: root.bar ? root.bar.foreground : Color.foreground
 
     width: column.width
-    implicitHeight: Style.space(16) + (ramShare > 0 ? Style.space(5) : 0)
+    implicitHeight: Style.space(16)
 
     Rectangle {
-      id: barTrack
-      width: parent.width
-      height: Style.space(16)
-      radius: height / 3
-      clip: true
-      color: Qt.rgba(barRow.fillColor.r, barRow.fillColor.g, barRow.fillColor.b, 0.08)
+      id: commMark
+      width: Style.space(3)
+      height: Style.space(10)
+      radius: width / 2
+      x: 0
+      anchors.verticalCenter: parent.verticalCenter
+      color: metricRow.commColor
+    }
 
-      Text {
-        id: barLabel
-        text: barRow.label
-        x: Style.space(6)
-        anchors.verticalCenter: parent.verticalCenter
-        color: root.bar ? root.bar.foreground : Color.foreground
-        opacity: 0.65
-        font.family: root.bar.fontFamily
-        font.pixelSize: Style.font.bodySmall
-      }
-
-      Rectangle {
-        id: barFill
-        x: barLabel.implicitWidth + Style.space(12)
-        width: Math.max(0, Math.min(share, 1) * (barTrack.width - x - valueText.width - Style.space(8)))
-        y: Style.space(2)
-        height: parent.height - Style.space(4)
-        radius: height / 3
-        color: barRow.fillColor
-        opacity: intensity
-      }
-
-      Text {
-        id: valueText
-        text: barRow.value
-        anchors.left: barFill.right
-        anchors.leftMargin: Style.space(6)
-        anchors.verticalCenter: parent.verticalCenter
-        color: root.bar ? root.bar.foreground : Color.foreground
-        font.family: root.bar.fontFamily
-        font.pixelSize: Style.font.bodySmall
-      }
+    Text {
+      id: rowLabel
+      text: metricRow.label
+      x: commMark.width + Style.space(5)
+      anchors.verticalCenter: parent.verticalCenter
+      color: root.bar ? root.bar.foreground : Color.foreground
+      opacity: 0.75
+      font.family: root.bar.fontFamily
+      font.pixelSize: Style.font.bodySmall
+      elide: Text.ElideRight
+      width: Math.min(implicitWidth + Style.space(6), parent.width * 0.32)
     }
 
     Rectangle {
-      id: ramBar
-      visible: ramShare > 0
-      x: barLabel.implicitWidth + Style.space(12)
-      width: Math.min(ramShare, 1) * (parent.width - x - Style.space(8))
-      y: barTrack.height + Style.space(1)
-      height: Style.space(3)
-      radius: height / 2
-      color: barRow.fillColor
-      opacity: 0.7
+      id: cellTrack
+      x: rowLabel.x + rowLabel.width + Style.space(6)
+      width: parent.width - x
+      height: parent.height
+      radius: height / 3
+      color: Qt.rgba((root.bar ? root.bar.foreground : Color.foreground).r,
+                     (root.bar ? root.bar.foreground : Color.foreground).g,
+                     (root.bar ? root.bar.foreground : Color.foreground).b, 0.08)
+
+      Row {
+        id: cellRow
+        anchors.fill: parent
+
+        Repeater {
+          model: metricRow.cells
+
+          Item {
+            required property var modelData
+            width: cellRow.width / Math.max(1, metricRow.cells.length)
+            height: cellRow.height
+
+            Rectangle {
+              id: cellFill
+              x: Style.space(2)
+              y: Style.space(2)
+              width: Math.max(0, Math.min(1, parent.modelData.normalized)) * (parent.width - Style.space(4))
+              height: parent.height - Style.space(4)
+              radius: height / 3
+              color: root.metricColor(parent.modelData.metric)
+              opacity: parent.modelData.intensity
+            }
+
+            Text {
+              text: parent.modelData.value
+              anchors.left: parent.left
+              anchors.leftMargin: cellFill.width + Style.space(6)
+              anchors.verticalCenter: parent.verticalCenter
+              color: root.bar ? root.bar.foreground : Color.foreground
+              opacity: 0.75
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.bodySmall
+            }
+          }
+        }
+      }
     }
   }
 

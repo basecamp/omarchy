@@ -261,26 +261,52 @@ function buildTopProcesses(prevSnapshot, nextSnapshot, limit, drawWatts, baseWat
     if (otherShare > 0.02 && variable * otherShare > 0.5)
       out.push({ label: "everything else", value: wtxt(variable * otherShare), key: "else" })
   }
-  // per-row impact, aligned to the rows above: fill fraction (meter), the
-  // intensity ramp, the raw share, and the RSS fraction for the sub-bar
-  var impact = buildRowImpact(shares, drawWatts, baseWatts, variable, otherShare)
+  // One graphic line per process: each row carries metric cells (CPU, RAM,
+  // W discharging only) rendered as mini-meters in fixed columns. Cells are
+  // built here so QML only draws them. Normalization, per metric: CPU cell =
+  // the process's CPU share clamped to the cell width (shares can exceed 1
+  // across cores — the clamp is display-only, the number tells the truth);
+  // RAM cell = comm RSS / MemTotal; W cell = attributed watts / measured
+  // draw. Each cell's intensity ramps with its own magnitude, normalized to
+  // its metric's top row (0.35 floor, 1.0 at the column's max) so the
+  // strongest signal in every column reads at full strength.
+  function ramp(value, top) { return top > 0 ? 0.35 + 0.65 * Math.max(0, Math.min(1, value / top)) : 0.35 }
+  function cell(metric, display, normalized, top) {
+    return { metric: metric, value: display, normalized: Math.max(0, Math.min(1, normalized)), intensity: ramp(normalized, top) }
+  }
+
+  var topShare = shares.length > 0 ? shares[0].share : 0
+  var topRamKb = 0
+  for (var rk in ramByName) if (ramByName[rk] > topRamKb) topRamKb = ramByName[rk]
+  var memTotal = nextSnapshot.memTotalKb
+  // the W column's ramp normalizes against its largest cell, whichever row
+  // owns it (usually the top process, sometimes the base floor)
+  var topW = 0
+  if (drawWatts >= 0) {
+    if (baseWatts > 0.5) topW = Math.max(topW, baseWatts / drawWatts)
+    if (shares.length > 0) topW = Math.max(topW, variable * topShare / drawWatts)
+  }
+
   var procIdx = 0
   for (var r = 0; r < out.length; r++) {
     if (out[r].key === "base") {
-      out[r].meter = impact.base
-      out[r].intensity = impact.baseIntensity
+      out[r].cells = drawWatts >= 0
+        ? [cell("W", wtxt(baseWatts), baseWatts / drawWatts, topW)]
+        : []
       continue
     }
     if (out[r].key === "else") {
-      out[r].meter = impact.elseMeter
-      out[r].intensity = impact.elseIntensity
+      out[r].cells = drawWatts >= 0
+        ? [cell("W", wtxt(variable * otherShare), variable * otherShare / drawWatts, topW)]
+        : []
       continue
     }
-    out[r].meter = impact.top[procIdx]
-    out[r].intensity = impact.intensity[procIdx]
-    out[r].share = shares[procIdx].share
-    out[r].ramShare = ramByName[shares[procIdx].label] !== undefined && nextSnapshot.memTotalKb
-      ? Math.min(1, ramByName[shares[procIdx].label] / nextSnapshot.memTotalKb) : 0
+    var share = shares[procIdx].share
+    var ramKb = ramByName[shares[procIdx].label] !== undefined ? ramByName[shares[procIdx].label] : 0
+    var cells = [cell("CPU", pct(share), share, topShare)]
+    if (memTotal !== null && ramKb > 0) cells.push(cell("RAM", ramTxt(ramKb), ramKb / memTotal, topRamKb / memTotal))
+    if (drawWatts >= 0) cells.push(cell("W", wtxt(variable * share), variable * share / drawWatts, topW))
+    out[r].cells = cells
     out[r].key = out[r].label
     procIdx++
   }
