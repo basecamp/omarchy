@@ -36,6 +36,7 @@ make_stub hyprctl 'case "$1" in
 esac'
 
 eval_log="$tmpdir/eval.log"
+HOME="$home_dir" PATH="$ROOT/bin:$PATH" omarchy-toggle monitor-management on
 
 run_monitor() {
   local command=$1

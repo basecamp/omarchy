@@ -129,6 +129,13 @@ if HOME="$test_tmp/home" PATH="$ROOT/bin:$PATH" omarchy-toggle-enabled monitor-m
   fail "monitor management reported enabled after it was turned off"
 fi
 
+HOME="$test_tmp/home" PATH="$stub_bin:$ROOT/bin:$PATH" \
+  "$ROOT/bin/omarchy-hyprland-monitor-internal" toggle || true
+HOME="$test_tmp/home" PATH="$stub_bin:$ROOT/bin:$PATH" \
+  "$ROOT/bin/omarchy-hyprland-monitor-internal-mirror" toggle || true
+[[ ! -e $command_log ]] || fail "laptop display keybindings ran while monitor management was disabled"
+pass "laptop display keybindings respect external monitor ownership"
+
 internal_toggle="$test_tmp/home/.local/state/omarchy/toggles/hypr/internal-monitor-disable.lua"
 mkdir -p "$(dirname "$internal_toggle")"
 touch "$internal_toggle"
