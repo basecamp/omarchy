@@ -187,7 +187,7 @@ assert(calendar.clockFormats(false).every(format => !calendar.formatHasSeconds(f
 
 // ---- widget wiring
 assert(/precision: Model\.formatHasSeconds\(root\.activeFormat\) \? SystemClock\.Seconds : SystemClock\.Minutes/.test(widgetSource), 'clock ticks per second only when the label shows seconds')
-assert(/precision: SystemClock\.Minutes/.test(panelSource), 'calendar panel keeps a minute tick, since it only watches for the day to roll over')
+assert(/precision\s*:\s*SystemClock\.Minutes/.test(panelSource), 'calendar panel keeps a minute tick, since it only watches for the day to roll over')
 assert(/moduleName: "omarchy\.clock"/.test(panelSource), 'calendar panel declares its module name')
 assert(/ipcTarget: "omarchy\.clock"/.test(panelSource), 'calendar panel registers its IPC target')
 assert(/manageIpc: false/.test(panelSource), 'calendar panel leaves the IPC target to the bar widget')
