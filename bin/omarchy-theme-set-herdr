@@ -38,7 +38,13 @@ patch_section() {
     !in_section { print }
 
     END {
-      if (!emitted) {
+      if (in_section) {
+        # Section exists but is the last one. The header was already
+        # printed when it was matched, so just emit the content.
+        while ((getline line < theme) > 0) print line
+        close(theme)
+      } else if (!emitted) {
+        # Section was not found in the file. Add header plus content.
         if (NR > 0) print ""
         print "[" section "]"
         while ((getline line < theme) > 0) print line
