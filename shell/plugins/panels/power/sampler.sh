@@ -7,7 +7,7 @@
 # Lines:
 #   watts\t<absolute battery flow in watts>
 #   cputotal\t<busy jiffies on the aggregate cpu line of /proc/stat>
-#   p\t<pid>\t<utime+stime jiffies>\t<comm>
+#   p\t<pid>\t<utime+stime jiffies>\t<comm>\t<rss kB>
 
 WATTS=""
 bat=""
@@ -56,11 +56,62 @@ fi
 # matches: utime in /proc/<pid>/stat likewise includes guest time.
 printf 'cputotal\t%s\n' "$(awk '/^cpu /{print $2+$3+$4+$7+$8+$9}' /proc/stat)"
 
+# System vitals. Two CPU denominators exist on purpose: cputotal above is
+# busy jiffies only (per-process shares must be shares of CPU activity), while
+# system CPU% needs busy over ALL ticks including idle and iowait — so the
+# vitals pair below carries its own all-ticks total. cpu_busy repeats
+# cputotal's value under a self-describing name; cputotal itself stays as the
+# attribution key so that consumer is untouched.
+awk '/^cpu /{
+  busy = $2+$3+$4+$7+$8+$9
+  printf "cpu_busy\t%d\ncpu_total\t%d\n", busy, busy+$5+$6
+}' /proc/stat
+
+# RAM: MemTotal/MemAvailable from /proc/meminfo, in kB. MemAvailable (not
+# MemFree) is what "how much can I still use" means, per proc(5).
+awk '
+  /^MemTotal:/ { total = $2 }
+  /^MemAvailable:/ { avail = $2 }
+  END {
+    if (total > 0) printf "mem_total_kb\t%d\n", total
+    if (avail > 0) printf "mem_avail_kb\t%d\n", avail
+  }' /proc/meminfo
+
+# GPU utilization: first user-readable source wins; when none exists the line
+# is simply omitted (echo silence, like watts) and the panel hides the row.
+# amdgpu exposes a busy percentage per card; nvidia-smi is probed only when
+# already on PATH and only behind a 50 ms timeout so a wedged driver can never
+# stall the 1 Hz sampling loop. debugfs nodes are root-only at runtime and
+# therefore disqualified as panel sources even where they exist.
+GPU=""
+for g in /sys/class/drm/card*/device/gpu_busy_percent; do
+  if [[ -r $g ]]; then
+    v=$(cat "$g" 2>/dev/null)
+    if [[ $v =~ ^[0-9]+$ ]]; then
+      GPU=$v
+      break
+    fi
+  fi
+done
+if [[ -z $GPU ]] && command -v nvidia-smi >/dev/null 2>&1; then
+  v=$(timeout 0.05 nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits 2>/dev/null | head -n1 | tr -d ' ')
+  [[ $v =~ ^[0-9]+$ ]] && GPU=$v
+fi
+if [[ -n $GPU ]]; then
+  printf 'gpu_pct\t%s\n' "$GPU"
+fi
+
 # comm sits between the first "(" and the last ")" of a stat line and may
 # contain spaces, slashes, and unbalanced parens, so anchor at the last ")":
 # everything after it splits cleanly, with utime at field 12 and stime at 13
 # (shifted by two because pid and comm are fields 1 and 2 of the raw line).
-cat /proc/[0-9]*/stat 2>/dev/null | awk '
+# rss comes from statm, read per pid inside the awk: a pid that exits
+# mid-scan makes getline return -1 (rss 0) instead of aborting — a plain
+# multi-file awk dies fatally on the first vanished /proc entry, which the
+# constant process churn on a busy box turns into intermittent empty or
+# truncated snapshots. rss is field 2 of statm in pages — pagesize varies
+# (16K on Asahi, 4K typical elsewhere), so multiply by getconf PAGESIZE.
+cat /proc/[0-9]*/stat 2>/dev/null | awk -v PG="$(getconf PAGESIZE)" '
 {
   tail = $0; sub(/.*\)/, "", tail)
   head = substr($0, 1, length($0) - length(tail) - 1)
@@ -68,5 +119,11 @@ cat /proc/[0-9]*/stat 2>/dev/null | awk '
   pid = substr(head, 1, op - 1); gsub(/^ +| +$/, "", pid)
   comm = substr(head, op + 1)
   split(tail, f, " ")
-  print "p\t" pid "\t" (f[12] + f[13]) "\t" comm
+  rss = 0
+  if ((getline mline < ("/proc/" pid "/statm")) > 0) {
+    split(mline, m, " ")
+    if ((m[2] + 0) > 0) rss = int(m[2] * PG / 1024)
+  }
+  close("/proc/" pid "/statm")
+  print "p\t" pid "\t" (f[12] + f[13]) "\t" comm "\t" rss
 }'

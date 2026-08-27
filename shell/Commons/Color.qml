@@ -21,6 +21,10 @@ QtObject {
   property color accent: "#cacccc"
   property color urgent: "#a55555"
   property color muted: "#707880"
+  // Status pair graded against urgent for positive/intermediate feedback;
+  // themes override via the same colorN key mapping in loadColors.
+  property color green: "#8fae8f"
+  property color yellow: "#b3a26b"
 
   // Flat dictionary of "section.key" -> raw string from shell.toml.
   // Reassigning this whole property is what makes surface bindings below
@@ -157,6 +161,8 @@ QtObject {
       else if (match[1] === "color7") color7Value = match[2]
       else if (match[1] === "color8") color8Value = match[2]
       else if (match[1] === "red" || match[1] === "color1") urgent = match[2]
+      else if (match[1] === "green" || match[1] === "color2") green = match[2]
+      else if (match[1] === "yellow" || match[1] === "color3") yellow = match[2]
     }
     if (!loadedBackground && color0Value.length > 0) background = color0Value
     if (!loadedForeground && color7Value.length > 0) foreground = color7Value

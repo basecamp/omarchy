@@ -21,6 +21,7 @@ Panel {
   property real baseWatts: -1
   property var prevSnapshot: null
   property var topProcesses: []
+  property var systemRows: []
   property var profiles: []
   property string activeProfile: ""
   property int profileIndex: 0
@@ -263,6 +264,7 @@ Panel {
       else baseWatts += (draw - baseWatts) * 0.02
     }
     if (prevSnapshot) topProcesses = Model.buildTopProcesses(prevSnapshot, snap, 5, draw, baseWatts)
+    systemRows = Model.buildSystemRows(prevSnapshot, snap, draw)
     prevSnapshot = snap
   }
 
@@ -496,6 +498,45 @@ Panel {
           }
         }
 
+        // ---------- System vitals ----------
+        // General system state, kin to the battery stats above; the
+        // attribution section below answers "who is eating it". Rows come
+        // from the same sampler snapshots as everything else, so vitals and
+        // attribution can never disagree, and the Draw row appears only
+        // while discharging (on AC the battery flow is charge rate, not
+        // system draw). Meters reuse the battery bar's own idiom — a
+        // rounded track at foreground alpha with a foreground fill — no new
+        // widget. The Draw meter grades green under 20 W, yellow under 40,
+        // red beyond, at 50%/100% of the bar.
+        PanelSeparator {
+          foreground: root.bar.foreground
+        }
+
+        Column {
+          width: parent.width
+          spacing: Style.space(8)
+
+          PanelSectionHeader {
+            text: "SYSTEM"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+          }
+
+          Repeater {
+            model: root.systemRows
+
+            VitalRow {
+              required property var modelData
+              label: modelData.label
+              value: modelData.value
+              meter: modelData.meter
+              fillColor: modelData.label === "Draw"
+                ? (modelData.meter < 0.5 ? Color.green : modelData.meter < 1 ? Color.yellow : Color.urgent)
+                : (root.bar ? root.bar.foreground : Color.foreground)
+            }
+          }
+        }
+
         // ---------- Power Hungry: top consumers ----------
         PanelSeparator {
           foreground: root.bar.foreground
@@ -614,5 +655,57 @@ Panel {
     color: root.bar.foreground
     font.family: root.bar.fontFamily
     font.pixelSize: Style.font.bodySmall
+  }
+
+  // A vitals row: stock InfoLabel left, stock InfoValue right, and between
+  // them the battery progress bar's track-and-fill idiom scaled down to a
+  // slim meter. meter < 0 hides the bar (dash rows, unknowns).
+  component VitalRow: Item {
+    property string label: ""
+    property string value: ""
+    property real meter: -1
+    property color fillColor: root.bar ? root.bar.foreground : Color.foreground
+
+    width: column.width
+    implicitHeight: Math.max(rowLabel.implicitHeight, Style.space(6))
+
+    InfoLabel {
+      id: rowLabel
+      text: parent.label
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+    }
+
+    InfoValue {
+      id: rowValue
+      text: parent.value
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+    }
+
+    Rectangle {
+      id: meterTrack
+      visible: meter >= 0
+      anchors.left: rowLabel.right
+      anchors.leftMargin: Style.space(8)
+      anchors.right: rowValue.left
+      anchors.rightMargin: Style.space(8)
+      anchors.verticalCenter: parent.verticalCenter
+      height: Style.space(4)
+      radius: height / 2
+      color: Qt.rgba(fillColor.r, fillColor.g, fillColor.b, 0.12)
+
+      Rectangle {
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        height: parent.height
+        radius: parent.radius
+        width: Math.max(0, Math.min(1, meter)) * parent.width
+        color: fillColor
+
+        Behavior on width { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+        Behavior on color { ColorAnimation { duration: 220 } }
+      }
+    }
   }
 }
