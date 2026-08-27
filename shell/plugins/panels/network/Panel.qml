@@ -963,10 +963,10 @@ Panel {
   }
 
   function submitHiddenNetwork() {
-    // Spaces are legal SSID bytes: trim only for the empty check, connect
-    // with the exact typed value.
+    // Spaces are legal SSID bytes -- even an all-space SSID -- so only the
+    // truly empty string is rejected; connect with the exact typed value.
     var ssid = hiddenSsidText
-    if (busy || ssid.trim().length === 0) return
+    if (busy || ssid.length === 0) return
     if (hiddenSecurity !== "none" && hiddenPasswordText.length === 0) return
     connectHidden(ssid, hiddenSecurity, hiddenPasswordText)
   }
@@ -1954,7 +1954,7 @@ Panel {
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
             horizontalPadding: Style.space(10)
-            enabled: !root.busy && !root.hiddenBusy && root.hiddenSsidText.trim().length > 0
+            enabled: !root.busy && !root.hiddenBusy && root.hiddenSsidText.length > 0
               && (root.hiddenSecurity === "none" || root.hiddenPasswordText.length > 0)
             onClicked: root.submitHiddenNetwork()
           }
