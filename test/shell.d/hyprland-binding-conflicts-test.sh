@@ -29,18 +29,30 @@ local function proxy()
 end
 
 local bindings = {}
+local drag_threshold
+local dsp = proxy()
+dsp.exec_cmd = function(command)
+  return { command = command }
+end
 
 hl = setmetatable({
-  dsp = proxy(),
+  dsp = dsp,
   bind = function(keys, dispatcher, opts)
     opts = opts or {}
     table.insert(bindings, {
       keys = keys,
       description = opts.description or "(no description)",
       release = opts.release == true,
+      click = opts.click == true,
+      drag = opts.drag == true,
+      command = type(dispatcher) == "table" and dispatcher.command or nil,
     })
   end,
-  config = function() end,
+  config = function(options)
+    if options.binds and options.binds.drag_threshold then
+      drag_threshold = options.binds.drag_threshold
+    end
+  end,
   env = function() end,
   monitor = function() end,
   window_rule = function() end,
@@ -102,12 +114,20 @@ local function signature(binding)
   table.sort(parts)
   table.insert(parts, key:upper())
 
-  return table.concat(parts, "+") .. (binding.release and " (release)" or "")
+  -- Release, click, and drag binds can share a chord with their complements,
+  -- so each flavor keeps its own signature the way release always has.
+  local flavor = (binding.release and " (release)")
+    or (binding.click and " (click)")
+    or (binding.drag and " (drag)")
+    or ""
+
+  return table.concat(parts, "+") .. flavor
 end
 
 for _, binding in ipairs(bindings) do
-  print(signature(binding) .. "\t" .. binding.keys .. "\t" .. binding.description)
+  print(signature(binding) .. "\t" .. binding.keys .. "\t" .. binding.description .. "\t" .. (binding.command or ""))
 end
+print("CONFIG\tbinds.drag_threshold\t" .. tostring(drag_threshold))
 LUA
 }
 
@@ -174,6 +194,24 @@ pass "allowed duplicate chords are still stacked on purpose"
 (( $(grep -c $'^F9 (release)\t' <<<"$bindings") == 1 )) ||
   fail "release bindings keep their own signature"
 pass "press and release bindings on one key do not read as a conflict"
+grep -Fqx $'CONFIG\tbinds.drag_threshold\t8' <<<"$bindings" ||
+  fail "Super+left uses the expected click-versus-drag threshold"
+pass "Super+left uses an eight-pixel drag threshold"
+
+# Super+left carries two complementary binds on one chord: dragging moves the
+# window, a plain click opens the link under the cursor. Exactly one of each
+# flavor, or the gesture stops being a gesture.
+(( $(grep -c $'^SUPER+MOUSE:272 (click)\t' <<<"$bindings") == 1 )) ||
+  fail "Super+left has exactly one click binding"
+(( $(grep -c $'^SUPER+MOUSE:272 (drag)\t' <<<"$bindings") == 1 )) ||
+  fail "Super+left has exactly one drag binding"
+(( $(grep -c $'^SUPER+MOUSE:272\t' <<<"$bindings") == 0 )) ||
+  fail "Super+left carries no unflavored mouse binding"
+grep -Fq $'SUPER+MOUSE:272 (drag)\tSUPER + mouse:272\tMove window' <<<"$bindings" ||
+  fail "the Super+left drag moves the window"
+grep -Fq $'SUPER+MOUSE:272 (click)\tSUPER + mouse:272\tOpen link in terminal\tomarchy-terminal-open-link' <<<"$bindings" ||
+  fail "the Super+left click runs the terminal link helper"
+pass "Super+left is one drag and one click binding"
 
 # Guard the guard: a keysym that lands on an already bound keycode has to be
 # caught, or the check above passes by simply not looking.
@@ -188,3 +226,11 @@ probe=$(PATH="$stub_bin:$PATH" list_bindings "$home" \
 grep -Fqx "ALT+SHIFT+SUPER+RIGHT" <<<"$probe" ||
   fail "the conflict check ignores modifier order"
 pass "the conflict check catches collisions across keycodes and modifier order"
+
+# The flavor suffixes must narrow the check, not blunt it: two binds of the
+# same flavor on one chord are still a collision.
+probe=$(PATH="$stub_bin:$PATH" list_bindings "$home" \
+  'o.bind("SUPER + mouse:272", "Conflict probe", "true", { mouse = true, click = true })' | duplicate_signatures)
+grep -Fqx "SUPER+MOUSE:272 (click)" <<<"$probe" ||
+  fail "the conflict check catches two same-flavor mouse bindings on one chord"
+pass "the conflict check catches two same-flavor mouse bindings on one chord"

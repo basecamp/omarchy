@@ -72,6 +72,12 @@ hl.config({
     key_press_enables_dpms = true,
     mouse_move_enables_dpms = true,
   },
+
+  -- A Super+left press that moves less than this counts as a click rather
+  -- than a drag, so links in the terminal stay clickable.
+  binds = {
+    drag_threshold = 8,
+  },
 })
 
 -- Scroll nicely in the terminal.
