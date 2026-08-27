@@ -465,4 +465,24 @@ assert(
   /refresh\(scanOnOpen\)/.test(panelSource),
   'network routes the panel-open scan through the scanOnOpen setting'
 )
+
+// A scan the panel no longer starts on its own needs something to press, and
+// the keyboard path alone leaves mouse users with no way to rescan at all.
+assert(/id: rescanAction/.test(panelSource), 'network offers a rescan button in the panel header')
+const rescanButton = panelSource.match(/Button \{\s*\n\s*id: rescanAction[\s\S]*?\n {10}\}/)
+assert(rescanButton, 'network rescan button is a complete header action')
+assert(/onClicked: root\.refresh\(true\)/.test(rescanButton[0]), 'network rescan button starts a real sweep')
+assert(/visible: root\.canRescanWifi/.test(rescanButton[0]), 'network shows the rescan button whenever there is a radio to scan with')
+assert(/tooltipText:[^\n]*\(r\)/.test(rescanButton[0]), 'network rescan button names its keyboard shortcut')
+
+const activateHeaderFn = panelSource.match(/function activateHeader\(\)[\s\S]*?\n {2}\}/)
+assert(activateHeaderFn, 'network has an activateHeader dispatcher')
+assert(
+  /headerIndex === rescanHeaderIndex\) refresh\(true\)/.test(activateHeaderFn[0]),
+  'network keyboard-activates the rescan header action'
+)
+assert(
+  /headerActionCount:[^\n]*canRescanWifi/.test(panelSource),
+  'network counts the rescan action so header navigation can reach it'
+)
 JS

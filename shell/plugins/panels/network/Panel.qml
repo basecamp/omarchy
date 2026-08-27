@@ -131,10 +131,18 @@ Panel {
   // radio to switch. On a wired box it would otherwise sit there reading
   // "off" beside a perfectly live Ethernet connection.
   readonly property bool canToggleWifi: networkManagerAvailable && wifiStationAvailable
-  readonly property int qrHeaderIndex: canShareWifi ? 0 : -1
-  readonly property int speedHeaderIndex: canRunSpeedTest ? (canShareWifi ? 1 : 0) : -1
-  readonly property int toggleHeaderIndex: canToggleWifi ? (canShareWifi ? 1 : 0) + (canRunSpeedTest ? 1 : 0) : -1
-  readonly property int headerActionCount: (canShareWifi ? 1 : 0) + (canRunSpeedTest ? 1 : 0) + (canToggleWifi ? 1 : 0)
+  // Rescanning has to be reachable without a keyboard, and `r` has to be
+  // discoverable at all: a scan the panel no longer starts on its own is only
+  // useful if there is something to press. The action exists whenever there is
+  // a radio to scan with, independently of the scan settings, so the mouse
+  // path does not disappear on the default configuration.
+  readonly property bool canRescanWifi: networkManagerAvailable && wifiStationAvailable
+  readonly property int rescanHeaderIndex: canRescanWifi ? 0 : -1
+  readonly property int qrHeaderIndex: canShareWifi ? (canRescanWifi ? 1 : 0) : -1
+  readonly property int speedHeaderIndex: canRunSpeedTest ? (canRescanWifi ? 1 : 0) + (canShareWifi ? 1 : 0) : -1
+  readonly property int toggleHeaderIndex: canToggleWifi ? (canRescanWifi ? 1 : 0) + (canShareWifi ? 1 : 0) + (canRunSpeedTest ? 1 : 0) : -1
+  readonly property int headerActionCount: (canRescanWifi ? 1 : 0) + (canShareWifi ? 1 : 0) + (canRunSpeedTest ? 1 : 0) + (canToggleWifi ? 1 : 0)
+  readonly property bool rescanHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === rescanHeaderIndex
   readonly property bool qrHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === qrHeaderIndex
   readonly property bool speedHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === speedHeaderIndex
   readonly property bool toggleHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === toggleHeaderIndex
@@ -224,7 +232,8 @@ Panel {
   }
 
   function activateHeader() {
-    if (headerIndex === qrHeaderIndex) summonWifiQr()
+    if (headerIndex === rescanHeaderIndex) refresh(true)
+    else if (headerIndex === qrHeaderIndex) summonWifiQr()
     else if (headerIndex === speedHeaderIndex) summonSpeedTest()
     else if (headerIndex === toggleHeaderIndex) toggleNetwork()
   }
@@ -1181,6 +1190,22 @@ Panel {
           anchors.verticalCenter: parent.verticalCenter
 
           Button {
+            id: rescanAction
+            visible: root.canRescanWifi
+            iconText: "󰑐"
+            tooltipText: root.scanning ? "Scanning…" : "Rescan Wi-Fi (r)"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            iconSize: Style.font.subtitle * 1.5
+            horizontalPadding: Style.space(5)
+            verticalPadding: Style.space(2)
+            hasCursor: root.rescanHeaderHasCursor
+            Layout.alignment: Qt.AlignVCenter
+            onHovered: function(on) { if (on) root.setHeaderCursor(root.rescanHeaderIndex) }
+            onClicked: root.refresh(true)
+          }
+
+          Button {
             id: qrAction
             visible: root.canShareWifi
             iconText: "󰐲"
@@ -1545,7 +1570,7 @@ Panel {
       // say so rather than letting stale results read as live ones.
       PanelSectionHeader {
         visible: root.wifiStationAvailable && root.scanPulsed && !root.scanning && !root.scanPulseActive
-        text: "NEARBY WI-FI (CACHED) · PRESS R TO RESCAN"
+        text: "NEARBY WI-FI (CACHED) · PRESS R OR 󰑐 TO RESCAN"
         foreground: root.bar.foreground
         fontFamily: root.bar.fontFamily
       }
