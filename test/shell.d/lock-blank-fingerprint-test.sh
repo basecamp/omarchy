@@ -30,4 +30,11 @@ assert(
   !/onAuthenticatingChanged:/.test(serviceQml),
   'the combined authenticating state no longer drives the blank timer'
 )
+
+// Five seconds is shorter than it takes to wake the machine and type a
+// password, so the panel used to go dark mid-entry. Pin the interval.
+assert(
+  /id: idleBlankTimer[\s\S]*?interval: 30000/.test(serviceQml),
+  'the blank timer waits thirty seconds before turning the display off'
+)
 JS
