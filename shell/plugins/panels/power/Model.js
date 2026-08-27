@@ -103,7 +103,11 @@ if (typeof module !== "undefined") {
     modeLabel: modeLabel,
     parseSnapshot: parseSnapshot,
     buildTopProcesses: buildTopProcesses,
-    buildSystemRows: buildSystemRows
+    buildSystemRows: buildSystemRows,
+    buildRowImpact: buildRowImpact,
+    buildResourceSplits: buildResourceSplits,
+    aggregateCommShares: aggregateCommShares,
+    assignColorKeys: assignColorKeys
   }
 }
 
@@ -188,7 +192,10 @@ function parseSnapshot(raw) {
 // and a variable slice attributed by share, so the returned rows are
 // [system base, top-N..., everything else] and sum to the measured draw.
 // A multi-threaded process can exceed 100% — jiffies sum across cores.
-function buildTopProcesses(prevSnapshot, nextSnapshot, limit, drawWatts, baseWatts) {
+// Jiffies attributed per comm over the window, share of busy activity —
+// shared by the top-process rows and the resource splits so both views are
+// computed from the same numbers and can never disagree.
+function aggregateCommShares(prevSnapshot, nextSnapshot, limit) {
   var nextP = nextSnapshot.processes
   var prevP = prevSnapshot ? prevSnapshot.processes : {}
   var totalDelta = Math.max(1,
@@ -206,7 +213,13 @@ function buildTopProcesses(prevSnapshot, nextSnapshot, limit, drawWatts, baseWat
   var shares = []
   for (var name in byName) shares.push({ label: name, share: byName[name] / totalDelta })
   shares.sort(function(a, b) { return b.share - a.share })
-  shares = shares.slice(0, limit || 5)
+  return { shares: shares.slice(0, limit || 5), all: shares, totalDelta: totalDelta }
+}
+
+function buildTopProcesses(prevSnapshot, nextSnapshot, limit, drawWatts, baseWatts) {
+  var nextP = nextSnapshot.processes
+  var agg = aggregateCommShares(prevSnapshot, nextSnapshot, limit)
+  var shares = agg.shares
 
   var variable = drawWatts >= 0 ? Math.max(0, drawWatts - (baseWatts > 0 ? baseWatts : 0)) : 0
   function pct(s) { return (s >= 1 ? Math.round(s * 100) : (s * 100).toFixed(1)) + "%" }
@@ -242,11 +255,22 @@ function buildTopProcesses(prevSnapshot, nextSnapshot, limit, drawWatts, baseWat
     if (drawWatts >= 0) cols.unshift(wtxt(variable * shares[i].share))
     out.push({ label: shares[i].label, value: cols.join(" · ") })
   }
+  var otherShare = drawWatts >= 0 ? Math.max(0, 1 - topShareSum) : 0
   if (drawWatts >= 0) {
-    if (baseWatts > 0.5) out.unshift({ label: "system base", value: wtxt(baseWatts) })
-    var otherShare = Math.max(0, 1 - topShareSum)
+    if (baseWatts > 0.5) out.unshift({ label: "system base", value: wtxt(baseWatts), key: "base" })
     if (otherShare > 0.02 && variable * otherShare > 0.5)
-      out.push({ label: "everything else", value: wtxt(variable * otherShare) })
+      out.push({ label: "everything else", value: wtxt(variable * otherShare), key: "else" })
+  }
+  // per-row impact meters, aligned to the rows above (process rows only; the
+  // base/else meters ride on their own rows below)
+  var impact = buildRowImpact(shares, drawWatts, baseWatts, variable, otherShare)
+  var procIdx = 0
+  for (var r = 0; r < out.length; r++) {
+    if (out[r].key === "base") { out[r].meter = impact.base; continue }
+    if (out[r].key === "else") { out[r].meter = impact.elseMeter; continue }
+    out[r].meter = impact.top[procIdx]
+    out[r].key = out[r].label
+    procIdx++
   }
   return out
 }
@@ -302,4 +326,135 @@ function buildSystemRows(prevSnapshot, nextSnapshot, drawWatts) {
   }
 
   return rows
+}
+
+// ---- Power Hungry: impact meters and resource splits -------------------------
+
+// Per-row impact fractions for the POWER HUNGRY rows. Process rows use the
+// share that ranks them — CPU share on external power, and while discharging
+// the attributed watts hold the same proportion (W_i = variable × share_i by
+// construction), so one fraction stays consistent with both the pct and the
+// watt number the row displays. The base and tail rows meter their slice of
+// the whole measured draw instead, matching the watts split bar. All values
+// clamp to 0..1; -1 means "no meter" (row absent).
+function buildRowImpact(topShares, drawWatts, baseWatts, variableWatts, elseShare) {
+  function clamp01(v) { return Math.max(0, Math.min(1, v)) }
+  var top = []
+  for (var i = 0; i < topShares.length; i++) top.push(clamp01(topShares[i].share))
+  var base = drawWatts > 0 && baseWatts > 0.5 ? clamp01(baseWatts / drawWatts) : -1
+  var elseMeter = drawWatts > 0 && variableWatts >= 0 ? clamp01(variableWatts * elseShare / drawWatts) : -1
+  return { top: top, base: base, elseMeter: elseMeter }
+}
+
+// Segment lists for the split bars, one per resource. Every list sums to 1.0
+// on physical data (fuzz-tested); the one honest exception is RAM when
+// per-process RSS sums exceed system used (shared pages counted per process)
+// — there the rest segment clamps to 0 and the list sums above 1, which is
+// the documented double-count disclosure rather than a hidden rescale.
+// Segment kinds: "comm" (top processes), "rest" (other busy / other used),
+// "idle" / "avail" (unused capacity — rendered as the unfilled track),
+// "base" and "else" (the attribution model's floor and tail). The same comm
+// carries the same key in every list so one color map serves all bars.
+function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseWatts) {
+  var n = limit || 5
+  var result = { order: [], cpu: null, ram: null, watts: null, gpu: null }
+
+  var agg = prevSnapshot ? aggregateCommShares(prevSnapshot, nextSnapshot, n) : null
+  if (agg) result.order = agg.shares.map(function(s) { return s.label })
+
+  // CPU: shares of ALL ticks this window (busy + idle) so the segments,
+  // including idle, sum to exactly 1.
+  if (agg && prevSnapshot && nextSnapshot.cpuBusy !== null && nextSnapshot.cpuTotal !== null
+    && prevSnapshot.cpuBusy !== null && prevSnapshot.cpuTotal !== null) {
+    var totalDelta = nextSnapshot.cpuTotal - prevSnapshot.cpuTotal
+    var busyDelta = nextSnapshot.cpuBusy - prevSnapshot.cpuBusy
+    if (totalDelta > 0) {
+      var segs = []
+      var used = 0
+      for (var i = 0; i < agg.shares.length; i++) {
+        // share_i is of busy activity; rescale to all ticks
+        var frac = agg.shares[i].share * busyDelta / totalDelta
+        if (frac > 0) { segs.push({ key: agg.shares[i].label, label: agg.shares[i].label, share: frac, kind: "comm" }); used += frac }
+      }
+      // thresholds would drop sub-pixel segments and break the exact sum;
+      // a 0.4% segment renders sub-pixel, which is invisibility enough
+      var rest = Math.max(0, busyDelta / totalDelta - used)
+      segs.push({ key: "rest", label: "rest", share: rest, kind: "rest" })
+      var idle = Math.max(0, 1 - used - Math.max(0, rest))
+      segs.push({ key: "idle", label: "idle", share: idle, kind: "idle" })
+      result.cpu = segs
+    }
+  }
+
+  // RAM: shares of MemTotal. RSS double-counting makes the sum exceed 1 only
+  // when shared pages outweigh the slack; see the doc note above.
+  if (nextSnapshot.memTotalKb !== null && nextSnapshot.memAvailKb !== null && nextSnapshot.memTotalKb > 0) {
+    var totalKb = nextSnapshot.memTotalKb
+    var usedFrac = Math.max(0, Math.min(1, 1 - nextSnapshot.memAvailKb / totalKb))
+    var ramAll = []
+    var seen = {}
+    for (var pid in nextSnapshot.processes) {
+      var p = nextSnapshot.processes[pid]
+      if (!p.rssKb) continue
+      if (!(p.name in seen)) { seen[p.name] = 0; }
+      seen[p.name] += p.rssKb
+    }
+    var ramList = []
+    for (var nm in seen) ramList.push({ label: nm, kb: seen[nm] })
+    ramList.sort(function(a, b) { return b.kb - a.kb })
+    ramList = ramList.slice(0, n)
+    var rsegs = []
+    var rused = 0
+    for (var j = 0; j < ramList.length; j++) {
+      var rf = ramList[j].kb / totalKb
+      if (rf > 0) { rsegs.push({ key: ramList[j].label, label: ramList[j].label, share: rf, kind: "comm" }); rused += rf }
+      if (result.order.indexOf(ramList[j].label) === -1) result.order.push(ramList[j].label)
+    }
+    var rrest = Math.max(0, usedFrac - rused)
+    rsegs.push({ key: "rest", label: "rest", share: rrest, kind: "rest" })
+    rsegs.push({ key: "avail", label: "available", share: Math.max(0, 1 - usedFrac), kind: "avail" })
+    result.ram = rsegs
+  }
+
+  // Watts: the attribution model as a bar — base floor, top processes, tail.
+  // Present only while discharging; on AC the battery flow is charge rate,
+  // not system draw, and the bar is omitted rather than faked.
+  if (drawWatts >= 0 && agg) {
+    var variable = Math.max(0, drawWatts - (baseWatts > 0 ? baseWatts : 0))
+    var wsegs = []
+    var wused = 0
+    if (baseWatts > 0.5) {
+      var bf = Math.min(1, baseWatts / drawWatts)
+      wsegs.push({ key: "base", label: "system base", share: bf, kind: "base" })
+      wused += bf
+    }
+    for (var k = 0; k < agg.shares.length; k++) {
+      var wf = variable * agg.shares[k].share / drawWatts
+      if (wf > 0) { wsegs.push({ key: agg.shares[k].label, label: agg.shares[k].label, share: wf, kind: "comm" }); wused += wf }
+    }
+    var welse = Math.max(0, 1 - wused)
+    wsegs.push({ key: "else", label: "everything else", share: welse, kind: "else" })
+    result.watts = wsegs
+  }
+
+  // GPU: a one-value split; absent sources stay null (absence by design).
+  if (nextSnapshot.gpuPct !== null) {
+    var g = Math.min(100, Math.max(0, nextSnapshot.gpuPct)) / 100
+    result.gpu = [
+      { key: "gpu", label: "GPU", share: g, kind: "comm" },
+      { key: "gpu-rest", label: "rest", share: 1 - g, kind: "rest" }
+    ]
+  }
+
+  return result
+}
+
+// Deterministic comm → palette-slot map so a comm keeps one color across the
+// CPU, RAM, and watts bars and its row meter. Palette cycles past its length;
+// beyond the palette the collision is accepted (row order disambiguates) and
+// documented — themes carry only so many distinguishable hues.
+function assignColorKeys(order, palette) {
+  var map = {}
+  for (var i = 0; i < order.length; i++) map[order[i]] = palette[i % palette.length]
+  return map
 }

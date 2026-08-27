@@ -22,6 +22,8 @@ Panel {
   property var prevSnapshot: null
   property var topProcesses: []
   property var systemRows: []
+  property var resourceSplits: null
+  property var colorMap: ({})
   property var profiles: []
   property string activeProfile: ""
   property int profileIndex: 0
@@ -137,6 +139,20 @@ Panel {
     if (fullyCharged) return "Fully charged"
     if (rotatingPhrases) return activePhrases[phraseIndex % activePhrases.length]
     return modeLabel()
+  }
+
+  // Segment/row colors, one resolver for every surface: comms take their
+  // assigned palette hue, the attribution floor takes accent, tails take
+  // muted, unknown keys fall back to the bar foreground.
+  function segmentColor(seg) {
+    if (seg.kind === "base") return Color.accent
+    if (seg.kind === "rest" || seg.kind === "else") return Color.muted
+    var k = seg.kind === "comm" ? colorMap[seg.key] : ""
+    if (k === "blue") return Color.blue
+    if (k === "cyan") return Color.cyan
+    if (k === "magenta") return Color.magenta
+    if (k === "accent") return Color.accent
+    return root.bar ? root.bar.foreground : Color.foreground
   }
 
   function refresh() {
@@ -264,7 +280,23 @@ Panel {
       else baseWatts += (draw - baseWatts) * 0.02
     }
     if (prevSnapshot) topProcesses = Model.buildTopProcesses(prevSnapshot, snap, 5, draw, baseWatts)
-    systemRows = Model.buildSystemRows(prevSnapshot, snap, draw)
+    resourceSplits = Model.buildResourceSplits(prevSnapshot, snap, 5, draw, baseWatts)
+    // Palette keys map to Color singleton properties; the four non-threshold
+    // hues every theme defines. Same comm = same key = same color in the CPU,
+    // RAM, and watts bars and its row meter.
+    colorMap = Model.assignColorKeys(resourceSplits.order, ["blue", "cyan", "magenta", "accent"])
+    // Vitals rows are rebuilt complete with their segments attached: a
+    // property added to a plain JS object after the fact carries no change
+    // signal, so a delegate that bound before the attach would stay null.
+    var rows = Model.buildSystemRows(prevSnapshot, snap, draw)
+    for (var si = 0; si < rows.length; si++) {
+      var segsFor = null
+      if (rows[si].label === "CPU") segsFor = resourceSplits.cpu
+      else if (rows[si].label === "RAM") segsFor = resourceSplits.ram
+      else if (rows[si].label === "GPU") segsFor = resourceSplits.gpu
+      rows[si] = { label: rows[si].label, value: rows[si].value, meter: rows[si].meter, segments: segsFor }
+    }
+    systemRows = rows
     prevSnapshot = snap
   }
 
@@ -530,6 +562,7 @@ Panel {
               label: modelData.label
               value: modelData.value
               meter: modelData.meter
+              segments: modelData.segments !== undefined ? modelData.segments : null
               fillColor: modelData.label === "Draw"
                 ? (modelData.meter < 0.5 ? Color.green : modelData.meter < 1 ? Color.yellow : Color.urgent)
                 : (root.bar ? root.bar.foreground : Color.foreground)
@@ -552,15 +585,49 @@ Panel {
             fontFamily: root.bar.fontFamily
           }
 
+          // The attribution model as one bar: system base (accent), the top
+          // processes in their assigned comm colors, and the tail (muted).
+          // Discharging only — on AC the battery flow is charge rate, not
+          // system draw, so there is no honest bar to draw.
+          Rectangle {
+            visible: root.resourceSplits !== null && root.resourceSplits.watts !== null
+            width: column.width
+            height: Style.space(6)
+            radius: height / 2
+            clip: true
+            color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+
+            Row {
+              id: wattsSegmentRow
+              anchors.fill: parent
+
+              Repeater {
+                model: root.resourceSplits !== null && root.resourceSplits.watts !== null ? root.resourceSplits.watts : []
+
+                Rectangle {
+                  required property var modelData
+                  width: modelData.share * wattsSegmentRow.width
+                  height: parent.height
+                  color: root.segmentColor(modelData)
+                }
+              }
+            }
+          }
+
           Repeater {
             model: root.topProcesses
 
-            // InfoPair is the panel's stock label/value row: value column
-            // right-aligned, matching the stats section above.
-            InfoPair {
+            // Same row shape as SYSTEM, with the row's impact meter in its
+            // comm color (attribution floor accent, tail muted) — the row is
+            // its own legend entry for the split bars above.
+            VitalRow {
               required property var modelData
               label: modelData.label
               value: modelData.value
+              meter: modelData.meter !== undefined ? modelData.meter : -1
+              fillColor: modelData.key === "base" || modelData.key === "else"
+                ? root.segmentColor({ kind: modelData.key, key: modelData.key })
+                : root.segmentColor({ kind: "comm", key: modelData.key })
             }
           }
 
@@ -664,6 +731,7 @@ Panel {
     property string label: ""
     property string value: ""
     property real meter: -1
+    property var segments: null
     property color fillColor: root.bar ? root.bar.foreground : Color.foreground
 
     width: column.width
@@ -685,7 +753,7 @@ Panel {
 
     Rectangle {
       id: meterTrack
-      visible: meter >= 0
+      visible: segments !== null || meter >= 0
       anchors.left: rowLabel.right
       anchors.leftMargin: Style.space(8)
       anchors.right: rowValue.left
@@ -693,9 +761,11 @@ Panel {
       anchors.verticalCenter: parent.verticalCenter
       height: Style.space(4)
       radius: height / 2
+      clip: true
       color: Qt.rgba(fillColor.r, fillColor.g, fillColor.b, 0.12)
 
       Rectangle {
+        visible: segments === null && meter >= 0
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
         height: parent.height
@@ -705,6 +775,30 @@ Panel {
 
         Behavior on width { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
         Behavior on color { ColorAnimation { duration: 220 } }
+      }
+
+      Row {
+        id: segmentRow
+        visible: segments !== null
+        anchors.fill: meterTrack
+
+        Repeater {
+          model: {
+            var segs = segments
+            if (!segs) return []
+            var drawn = []
+            for (var i = 0; i < segs.length; i++)
+              if (segs[i].kind !== "idle" && segs[i].kind !== "avail") drawn.push(segs[i])
+            return drawn
+          }
+
+          Rectangle {
+            required property var modelData
+            width: modelData.share * segmentRow.width
+            height: meterTrack.height
+            color: root.segmentColor(modelData)
+          }
+        }
       }
     }
   }
