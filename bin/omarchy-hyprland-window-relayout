@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# omarchy:summary=Nudge the focused window 1px and back to force a stuck web app or Electron window to recompute its layout
+
+set -euo pipefail
+
+# Chromium/Electron windows (including browser --app web apps) intermittently
+# fail to re-run their responsive layout after a Hyprland resize such as a
+# tiling split or fullscreen toggle, especially on HiDPI (scale 2) outputs. The
+# page keeps the wider desktop layout painted at the new narrow width, so the
+# content overflows (e.g. x.com shows the full labelled sidebar over the
+# timeline). This is an upstream Chromium/Electron-on-Wayland bug, not something
+# Hyprland or the compositor can fix from the outside.
+#
+# Resizing the window by a single pixel and back delivers a fresh configure that
+# the client processes as a real resize, so the web app recomputes its layout.
+# The net size change is zero. This works on any output regardless of scale.
+
+resize() {
+  hyprctl dispatch "hl.dsp.window.resize({ x = $1, y = 0, relative = true })" >/dev/null 2>&1 ||
+    hyprctl dispatch "resizeactive $1 0" >/dev/null
+}
+
+resize 1
+sleep 0.06
+resize -1
