@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# omarchy:summary=Print the VAAPI package for the Intel GPU, if any
+# omarchy:hidden=true
+
+# intel-media-driver (iHD) supports Broadwell (Gen 8) and newer. Device IDs
+# from 0x1600 up are Broadwell+; Haswell and older sit below that line and
+# need libva-intel-driver (i965).
+#
+# Read the cached sysfs IDs rather than lspci, which reads PCI config space
+# and resumes runtime-suspended GPUs.
+
+pci_devices_path="${OMARCHY_PCI_DEVICES_PATH:-/sys/bus/pci/devices}"
+
+shopt -s nullglob
+
+for device in "$pci_devices_path"/*; do
+  [[ $(< "$device/vendor") == "0x8086" ]] || continue
+  [[ $(< "$device/class") == 0x03* ]] || continue
+
+  if (( $(< "$device/device") >= 0x1600 )); then
+    echo intel-media-driver
+  else
+    echo libva-intel-driver
+  fi
+  exit 0
+done
+
+exit 1

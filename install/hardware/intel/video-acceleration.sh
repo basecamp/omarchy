@@ -1,11 +1,19 @@
-# This installs hardware video acceleration for Intel GPUs
+# This installs hardware video acceleration for Intel GPUs.
+#
+# Match by PCI ID, not the marketing name: Haswell often shows up as
+# "4th Gen Core Processor Integrated Graphics Controller" with no "HD Graphics"
+# in the string, so the old regex installed nothing. Hybrid Intel+NVIDIA
+# laptops still encode on the iGPU that owns the display, so the Intel driver
+# is required even when an NVIDIA VAAPI package is also present.
+#
+# Broadwell+ (device id >= 0x1600) uses intel-media-driver; older gens use
+# libva-intel-driver (i965). See omarchy-hw-intel-vaapi-driver.
 
-if INTEL_GPU=$(lspci | grep -iE 'vga|3d|display' | grep -i 'intel'); then
-  # HD Graphics / Iris / Xe / Arc / Non-Arc Panther Lake use intel-media-driver + VPL
-  if [[ ${INTEL_GPU,,} =~ (hd\ graphics|uhd\ graphics|xe|iris|arc|panther\ lake) ]]; then
+driver=$(omarchy-hw-intel-vaapi-driver) || true
+if [[ -n $driver ]]; then
+  if [[ $driver == intel-media-driver ]]; then
     omarchy-pkg-add intel-media-driver libvpl vpl-gpu-rt
-  elif [[ ${INTEL_GPU,,} =~ "gma" ]]; then
-    # Older generations from 2008 to ~2014-2017 use libva-intel-driver
+  else
     omarchy-pkg-add libva-intel-driver
   fi
 fi
