@@ -19,7 +19,7 @@ while IFS= read -r -d '' file; do
     WEB_APPS+=("$(basename "${file%.desktop}")")
     WEB_APP_PATHS+=("$file")
   fi
-done < <(find "$DESKTOP_DIR" -name '*.desktop' -print0)
+done < <(find "$DESKTOP_DIR" -name '*.desktop' -print0 2>/dev/null)
 
 # The launcher matching a chosen name, or empty when nothing was indexed under
 # it (an app removed between the scan and the pick, say).
