@@ -167,3 +167,58 @@ PATH="$mock_bin:$PATH" \
   fail "the machine-wide migration repeats privileged work"
 
 pass "the migration safely converts an active existing installation once"
+
+# An interrupted earlier run leaves cups-browsed stopped, so the retry that
+# follows finds it inactive. It must still be restarted: the retry records the
+# machine-wide marker either way, so a restart skipped here would leave printer
+# discovery off until the next reboot with nothing left to run.
+cat >"$mock_bin/systemctl" <<'SH'
+#!/bin/bash
+printf 'systemctl\t%s\n' "$*" >>"$OMARCHY_CUPS_TEST_LOG"
+[[ $1 == "is-active" ]] && exit 1
+exit 0
+SH
+chmod +x "$mock_bin/systemctl"
+
+retry_log="$test_tmp/retry.log"
+retry_marker="$test_tmp/var/lib/omarchy/migrations/1787815267-retry"
+
+OMARCHY_CUPS_TEST_LOG="$retry_log" \
+  PATH="$mock_bin:$PATH" \
+  OMARCHY_PATH="$ROOT" \
+  OMARCHY_CUPS_FILES_CONF="$authorization_conf" \
+  OMARCHY_CUPS_BROWSED_SYSUSERS_CONF="$sysusers_conf" \
+  OMARCHY_CUPS_MIGRATION_MARKER="$retry_marker" \
+  bash -euo pipefail "$ROOT/migrations/1787815267.sh"
+
+grep -qxF $'systemctl\trestart cups-browsed.service' "$retry_log" ||
+  fail "the retry resumes cups-browsed after an interrupted earlier run"
+
+pass "a run following an interrupted one still resumes printer discovery"
+
+# A unit the user masked or disabled reports not-enabled, and restarting it
+# would fail and abort the migration before it records completion.
+cat >"$mock_bin/systemctl" <<'SH'
+#!/bin/bash
+printf 'systemctl\t%s\n' "$*" >>"$OMARCHY_CUPS_TEST_LOG"
+[[ $1 == "is-active" || $1 == "is-enabled" ]] && exit 1
+exit 0
+SH
+chmod +x "$mock_bin/systemctl"
+
+masked_log="$test_tmp/masked.log"
+masked_marker="$test_tmp/var/lib/omarchy/migrations/1787815267-masked"
+
+OMARCHY_CUPS_TEST_LOG="$masked_log" \
+  PATH="$mock_bin:$PATH" \
+  OMARCHY_PATH="$ROOT" \
+  OMARCHY_CUPS_FILES_CONF="$authorization_conf" \
+  OMARCHY_CUPS_BROWSED_SYSUSERS_CONF="$sysusers_conf" \
+  OMARCHY_CUPS_MIGRATION_MARKER="$masked_marker" \
+  bash -euo pipefail "$ROOT/migrations/1787815267.sh"
+
+! grep -qxF $'systemctl\trestart cups-browsed.service' "$masked_log" ||
+  fail "the migration leaves a masked or disabled cups-browsed alone"
+[[ -f $masked_marker ]] || fail "the migration completes with cups-browsed masked"
+
+pass "a masked or disabled cups-browsed is left alone and does not fail the migration"

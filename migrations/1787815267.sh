@@ -14,9 +14,8 @@ if omarchy-pkg-present cups; then
   omarchy-pkg-add cups-pk-helper
 fi
 
-cups_browsed_was_active=0
+# Stop the root-running daemon before changing the authorization it relies on.
 if systemctl is-active --quiet cups-browsed.service 2>/dev/null; then
-  cups_browsed_was_active=1
   sudo systemctl stop cups-browsed.service
 fi
 
@@ -27,7 +26,11 @@ if omarchy-pkg-present cups; then
   sudo systemctl try-reload-or-restart cups.service
 fi
 
-if (( cups_browsed_was_active )) && omarchy-pkg-present cups-browsed; then
+# Resume on whether the unit is enabled, not on whether it was running when this
+# run started: an interrupted earlier run leaves it stopped, and a retry that
+# recomputed that would skip the restart and still write the marker below. A
+# masked or disabled unit reports not-enabled and is left alone.
+if systemctl is-enabled --quiet cups-browsed.service 2>/dev/null; then
   sudo systemctl restart cups-browsed.service
 fi
 
