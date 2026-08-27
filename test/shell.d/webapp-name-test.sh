@@ -23,6 +23,17 @@ run_remove() {
     "$ROOT/bin/omarchy-webapp-remove" "$@"
 }
 
+# The picker and a caller hand the remover the same kind of string and mean
+# different things by it, so the no-argument path has to be driven as itself
+# rather than imitated with an argument. The stub returns whatever was picked.
+printf '#!/bin/bash\nprintf "%%s\\n" "$PICK"\n' >"$tmp_dir/bin/omarchy-menu-select"
+chmod +x "$tmp_dir/bin/omarchy-menu-select"
+
+run_pick() {
+  HOME="$tmp_dir/home" PATH="$tmp_dir/bin:$PATH" OMARCHY_REMOVE_NOTIFY=false PICK="$1" \
+    "$ROOT/bin/omarchy-webapp-remove"
+}
+
 apps_dir="$tmp_dir/home/.local/share/applications"
 icons_dir="$tmp_dir/home/.local/share/icons/hicolor/256x256/apps"
 
@@ -112,7 +123,7 @@ DESKTOP
 
 # This is the name the picker shows for that file: the script strips .desktop
 # from the path and then takes the basename, which lands on the directory.
-run_remove "127.0.0.1:4000" >/dev/null
+run_pick "127.0.0.1:4000" >/dev/null
 [[ -f "$apps_dir/http:/127.0.0.1:4000/.desktop" ]] &&
   fail "webapp remove deletes a launcher left nested by an older install"
 pass "webapp remove reaches a nested legacy launcher"
@@ -139,4 +150,24 @@ DESKTOP
 run_remove "Tailscale" >/dev/null
 [[ -f "$apps_dir/legacy/Tailscale.desktop" ]] ||
   fail "webapp remove leaves a nested launcher alone when it was given a top-level name"
+[[ -f "$apps_dir/Tailscale.desktop" ]] &&
+  fail "webapp remove deletes the top-level launcher an explicit name asks for"
 pass "webapp remove addresses the top-level launcher an explicit name asks for"
+
+# The same two files, reached the other way. The picker only ever offered the
+# nested web app -- the top-level entry is not one and was never in the list --
+# so picking that name has to delete what was shown rather than what shares its
+# name in the applications directory.
+rm -rf "$apps_dir"
+mkdir -p "$apps_dir/legacy"
+printf '[Desktop Entry]\nExec=foot\n' >"$apps_dir/Tailscale.desktop"
+cat >"$apps_dir/legacy/Tailscale.desktop" <<'DESKTOP'
+[Desktop Entry]
+Exec=omarchy-launch-webapp https://unrelated.example
+DESKTOP
+run_pick "Tailscale" >/dev/null
+[[ -f "$apps_dir/legacy/Tailscale.desktop" ]] &&
+  fail "webapp remove deletes the launcher the picker offered"
+[[ -f "$apps_dir/Tailscale.desktop" ]] ||
+  fail "webapp remove leaves alone a launcher the picker never offered"
+pass "webapp remove deletes the file behind the name the picker showed"
