@@ -208,7 +208,7 @@ Panel {
   }
 
   function openVpnEditor() {
-    if (root.bar) root.bar.run("omarchy-network-vpn editor")
+    if (root.bar) root.bar.run("nm-connection-editor")
   }
 
   IpcHandler {
