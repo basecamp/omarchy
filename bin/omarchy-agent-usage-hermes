@@ -1,0 +1,351 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Hermes Agent usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Hermes Agent usage into one display-ready JSON record.
+
+Token and session stats come from local state.db files (default ~/.hermes
+and each ~/.hermes/profiles/*/state.db). There is no Hermes-wide 5-hour or
+weekly quota — mixed providers — so this record carries local stats and an
+empty limits list. The agents panel only ever reads the JSON this prints.
+
+state.db is internal and versioned; queries probe sqlite_master / PRAGMA
+table_info and skip missing columns rather than assuming a schema version.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import sqlite3
+import sys
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "hermes"
+AGENT_NAME = "Hermes Agent"
+
+
+def number(value: Any) -> int:
+  try:
+    n = float(value or 0)
+    return round(n) if n == n else 0
+  except (TypeError, ValueError):
+    return 0
+
+
+def empty_bucket() -> dict[str, int]:
+  return {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  }
+
+
+def empty_stats() -> dict[str, Any]:
+  return {
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTotalTokens": 0,
+    "todayTokensByModel": {},
+    "recentDays": [],
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "activeDays": 0,
+    "activeDates": [],
+    "modelUsage": {},
+  }
+
+
+def base_record(**overrides: Any) -> dict[str, Any]:
+  record: dict[str, Any] = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+    "ready": False,
+    "hasLocalStats": True,
+    "hasPromptStats": True,
+    "tierLabel": "Hermes",
+    "usageStatusText": "",
+    "authHelpText": "",
+    "limits": [],
+  }
+  record.update(empty_stats())
+  record.update(overrides)
+  return record
+
+
+def date_string(value: dt.date) -> str:
+  return value.strftime("%Y-%m-%d")
+
+
+def recent_date_strings() -> list[str]:
+  today = dt.datetime.now().date()
+  return [date_string(today - dt.timedelta(days=offset)) for offset in range(6, -1, -1)]
+
+
+def local_date_from_unix(value: Any) -> str | None:
+  if value is None or value == "":
+    return None
+  try:
+    seconds = float(value)
+  except (TypeError, ValueError):
+    return None
+  if seconds > 10_000_000_000:
+    seconds /= 1000.0
+  try:
+    return date_string(dt.datetime.fromtimestamp(seconds).date())
+  except (OverflowError, OSError, ValueError):
+    return None
+
+
+def hermes_homes(root: Path) -> list[Path]:
+  homes: list[Path] = []
+  default = root / ".hermes"
+  if default.is_dir():
+    homes.append(default)
+  profiles = default / "profiles"
+  if profiles.is_dir():
+    for profile in sorted(profiles.iterdir()):
+      if profile.is_dir():
+        homes.append(profile)
+  return homes
+
+
+def table_names(conn: sqlite3.Connection) -> set[str]:
+  return {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+
+
+def table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+  return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def open_db(path: Path) -> sqlite3.Connection | None:
+  if not path.is_file():
+    return None
+  try:
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    return conn
+  except sqlite3.Error:
+    return None
+
+
+def token_total(bucket: dict[str, int]) -> int:
+  return (
+    bucket["inputTokens"]
+    + bucket["outputTokens"]
+    + bucket["cacheReadInputTokens"]
+    + bucket["cacheCreationInputTokens"]
+  )
+
+
+def add_bucket(dest: dict[str, int], src: dict[str, int]) -> None:
+  for key in dest:
+    dest[key] += src[key]
+
+
+def scan_db(path: Path) -> dict[str, Any] | None:
+  conn = open_db(path)
+  if conn is None:
+    return None
+
+  try:
+    tables = table_names(conn)
+    if "session_model_usage" not in tables and "sessions" not in tables:
+      return None
+
+    today = date_string(dt.datetime.now().date())
+    recent_dates = recent_date_strings()
+    recent = {day: 0 for day in recent_dates}
+    today_by_model: dict[str, int] = {}
+    model_usage: dict[str, dict[str, int]] = {}
+    active_dates: set[str] = set()
+    session_days: dict[str, set[str]] = {}
+    providers: dict[str, int] = {}
+
+    if "session_model_usage" in tables:
+      usage_cols = table_columns(conn, "session_model_usage")
+      session_cols = table_columns(conn, "sessions") if "sessions" in tables else set()
+      select = ["u.session_id", "u.model"]
+      for col in (
+        "input_tokens",
+        "output_tokens",
+        "cache_read_tokens",
+        "cache_write_tokens",
+        "reasoning_tokens",
+        "billing_provider",
+        "last_seen",
+        "first_seen",
+      ):
+        if col in usage_cols:
+          select.append(f"u.{col}")
+      join = ""
+      if "sessions" in tables:
+        join = " LEFT JOIN sessions s ON s.id = u.session_id"
+        if "last_activity_at" in session_cols:
+          select.append("s.last_activity_at")
+        if "started_at" in session_cols:
+          select.append("s.started_at")
+      rows = conn.execute(f"SELECT {', '.join(select)} FROM session_model_usage u{join}")
+      for row in rows:
+        mapping = dict(row)
+        bucket = empty_bucket()
+        bucket["inputTokens"] = number(mapping.get("input_tokens"))
+        bucket["outputTokens"] = number(mapping.get("output_tokens")) + number(mapping.get("reasoning_tokens"))
+        bucket["cacheReadInputTokens"] = number(mapping.get("cache_read_tokens"))
+        bucket["cacheCreationInputTokens"] = number(mapping.get("cache_write_tokens"))
+        total = token_total(bucket)
+        if total <= 0:
+          continue
+        model = str(mapping.get("model") or "unknown").strip() or "unknown"
+        add_bucket(model_usage.setdefault(model, empty_bucket()), bucket)
+        provider = str(mapping.get("billing_provider") or "").strip()
+        if provider:
+          providers[provider] = providers.get(provider, 0) + total
+        day = (
+          local_date_from_unix(mapping.get("last_seen"))
+          or local_date_from_unix(mapping.get("last_activity_at"))
+          or local_date_from_unix(mapping.get("first_seen"))
+          or local_date_from_unix(mapping.get("started_at"))
+        )
+        session_id = str(mapping.get("session_id") or "")
+        if day:
+          active_dates.add(day)
+          if day in recent:
+            recent[day] += total
+          if session_id:
+            session_days.setdefault(session_id, set()).add(day)
+          if day == today:
+            today_by_model[model] = today_by_model.get(model, 0) + total
+
+    today_sessions = {sid for sid, days in session_days.items() if today in days}
+    total_sessions = set(session_days)
+
+    today_prompts = 0
+    total_prompts = 0
+    if "messages" in tables:
+      msg_cols = table_columns(conn, "messages")
+      if {"role", "timestamp"}.issubset(msg_cols):
+        active_filter = " AND COALESCE(active, 1) = 1" if "active" in msg_cols else ""
+        for role, timestamp in conn.execute(
+          f"SELECT role, timestamp FROM messages WHERE role = 'user'{active_filter}"
+        ):
+          total_prompts += 1
+          day = local_date_from_unix(timestamp)
+          if day == today:
+            today_prompts += 1
+
+    return {
+      "todayPrompts": today_prompts,
+      "todaySessions": len(today_sessions),
+      "todayTotalTokens": sum(today_by_model.values()),
+      "todayTokensByModel": today_by_model,
+      "recentDays": [{"date": day, "messageCount": recent[day]} for day in recent_dates],
+      "totalPrompts": total_prompts,
+      "totalSessions": len(total_sessions),
+      "activeDays": len(active_dates),
+      "activeDates": sorted(active_dates),
+      "modelUsage": model_usage,
+      "providers": providers,
+    }
+  except sqlite3.Error:
+    return None
+  finally:
+    conn.close()
+
+
+def merge_stats(parts: list[dict[str, Any]]) -> dict[str, Any]:
+  if not parts:
+    return empty_stats()
+
+  recent_dates = recent_date_strings()
+  recent = {day: 0 for day in recent_dates}
+  today_by_model: dict[str, int] = {}
+  model_usage: dict[str, dict[str, int]] = {}
+  active_dates: set[str] = set()
+  providers: dict[str, int] = {}
+  today_prompts = 0
+  today_sessions = 0
+  total_prompts = 0
+  total_sessions = 0
+
+  for part in parts:
+    today_prompts += number(part.get("todayPrompts"))
+    today_sessions += number(part.get("todaySessions"))
+    total_prompts += number(part.get("totalPrompts"))
+    total_sessions += number(part.get("totalSessions"))
+    for model, bucket in (part.get("modelUsage") or {}).items():
+      add_bucket(model_usage.setdefault(model, empty_bucket()), dict(empty_bucket(), **{
+        key: number(bucket.get(key)) for key in empty_bucket()
+      }))
+    for model, total in (part.get("todayTokensByModel") or {}).items():
+      today_by_model[model] = today_by_model.get(model, 0) + number(total)
+    for day in part.get("activeDates") or []:
+      active_dates.add(str(day))
+    for row in part.get("recentDays") or []:
+      day = str(row.get("date") or "")
+      if day in recent:
+        recent[day] += number(row.get("messageCount"))
+    for provider, total in (part.get("providers") or {}).items():
+      providers[provider] = providers.get(provider, 0) + number(total)
+
+  return {
+    "todayPrompts": today_prompts,
+    "todaySessions": today_sessions,
+    "todayTotalTokens": sum(today_by_model.values()),
+    "todayTokensByModel": today_by_model,
+    "recentDays": [{"date": day, "messageCount": recent[day]} for day in recent_dates],
+    "totalPrompts": total_prompts,
+    "totalSessions": total_sessions,
+    "activeDays": len(active_dates),
+    "activeDates": sorted(active_dates),
+    "modelUsage": model_usage,
+    "providers": providers,
+  }
+
+
+def tier_label(providers: dict[str, int]) -> str:
+  if not providers:
+    return "Hermes"
+  return max(providers.items(), key=lambda item: item[1])[0]
+
+
+def collect(home: Path) -> dict[str, Any]:
+  parts = []
+  for hermes_home in hermes_homes(home):
+    scanned = scan_db(hermes_home / "state.db")
+    if scanned is not None:
+      parts.append(scanned)
+
+  if not parts:
+    return base_record(ready=False, hasLocalStats=False)
+
+  stats = merge_stats(parts)
+  providers = stats.pop("providers", {})
+  ready = number(stats.get("todayTotalTokens")) > 0 or number(stats.get("totalSessions")) > 0
+  return base_record(ready=ready, tierLabel=tier_label(providers), **stats)
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser(description="Print the Hermes Agent usage record as JSON")
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  args = parser.parse_args()
+  _ = args  # same flags as every collector; no remote probe to skip
+
+  try:
+    record = collect(Path.home())
+  except Exception as error:
+    record = base_record(ready=False, hasLocalStats=False, usageStatusText="Hermes usage scan failed")
+    print(f"omarchy-agent-usage-hermes: {type(error).__name__}", file=sys.stderr)
+
+  print(json.dumps(record, separators=(",", ":"), sort_keys=True))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
