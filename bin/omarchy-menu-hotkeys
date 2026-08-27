@@ -1,0 +1,64 @@
+#!/bin/bash
+
+# omarchy:summary=Report the hotkey chips the Omarchy menu shows on rows a keybinding also reaches
+# omarchy:hidden=true
+
+# One row per exec chord, tab-separated:
+#
+#   cmd\t<command>\t<chord>     what the chord runs, verbatim
+#   app\t<desktop id>\t<chord>  the app a launcher indirection resolves to today
+#
+# The menu matches `cmd` rows against JSONC actions, `omarchy-menu toggle`
+# routes, and desktop Exec lines, and `app` rows against app ids — so the
+# default terminal's chord lands on that terminal's row in Apps even though
+# the bind runs `omarchy-launch-terminal`, not the terminal itself.
+
+set -euo pipefail
+
+records=$(omarchy-menu-keybindings --records)
+
+# A record's display column is "CHORD [/ ALT-CHORD] → action" padded for the
+# keybindings menu; the chip keeps only the chord that leads the row.
+rows=$(awk -F'\t' '
+  NF >= 3 && $2 == "exec" && $3 != "" {
+    chord = $1
+    sub(/ *→.*$/, "", chord)
+    sub(/ *\/.*$/, "", chord)
+    gsub(/[[:space:]]+/, " ", chord)
+    sub(/^ /, "", chord)
+    sub(/ $/, "", chord)
+    if (chord == "") next
+
+    arg = $3
+    for (i = 4; i <= NF; i++) arg = arg "\t" $i
+    printf "cmd\t%s\t%s\n", arg, chord
+  }
+' <<<"$records")
+
+if [[ -n $rows ]]; then
+  printf '%s\n' "$rows"
+fi
+
+chord_for() {
+  awk -F'\t' -v cmd="$1" '$1 == "cmd" && ($2 == cmd || index($2, cmd " ") == 1) { print $3; exit }' <<<"$rows"
+}
+
+emit_app() {
+  local desktop_id="$1" chord="$2"
+
+  if [[ -n $desktop_id && -n $chord ]]; then
+    printf 'app\t%s\t%s\n' "${desktop_id%.desktop}" "$chord"
+  fi
+}
+
+terminal_chord=$(chord_for "omarchy-launch-terminal")
+if [[ -n $terminal_chord ]]; then
+  terminal_id=$(xdg-terminal-exec --print-id 2>/dev/null || true)
+  emit_app "${terminal_id%%:*}" "$terminal_chord"
+fi
+
+browser_chord=$(chord_for "omarchy-launch-browser")
+if [[ -n $browser_chord ]]; then
+  browser_id=$(env -u BROWSER xdg-settings get default-web-browser 2>/dev/null || true)
+  emit_app "$browser_id" "$browser_chord"
+fi
