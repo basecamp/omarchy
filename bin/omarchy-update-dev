@@ -3,6 +3,7 @@
 # omarchy:summary=Update the active Omarchy dev checkout
 
 set -euo pipefail
+: "${OMARCHY_PATH:=/usr/share/omarchy}"
 
 [[ $OMARCHY_PATH != "/usr/share/omarchy" ]] || exit 0
 
