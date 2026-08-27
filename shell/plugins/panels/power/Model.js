@@ -125,7 +125,9 @@ if (typeof module !== "undefined") {
     COMM_MAX_CHARS: COMM_MAX_CHARS,
     buildResourceSplits: buildResourceSplits,
     aggregateCommShares: aggregateCommShares,
-    assignColorKeys: assignColorKeys
+    assignColorKeys: assignColorKeys,
+    stableColorKey: stableColorKey,
+    collisionOrdinals: collisionOrdinals
   }
 }
 
@@ -470,7 +472,26 @@ function buildRowImpact(topShares, drawWatts, baseWatts, variableWatts, elseShar
 // "idle" / "avail" (unused capacity — rendered as the unfilled track),
 // "base" and "else" (the attribution model's floor and tail). The same comm
 // carries the same key in every list so one color map serves all bars.
-function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseWatts) {
+function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseWatts, palette) {
+  // The identity palette: the three collision-free theme hues (see the
+  // panel's palette rationale). Passed in so callers own it; defaulted so
+  // the pure builder is self-contained.
+  palette = palette || ["blue", "cyan", "magenta"]
+  // Composition bars group same-hue comms into one segment per hue: the bar
+  // honestly shows what color can distinguish, and the table below names
+  // members. Group share = sum of members; group order = first appearance
+  // by rank; rest/idle/avail/base/else segments are untouched.
+  function groupByHue(fracList) {
+    var sums = {}, orderKeys = []
+    for (var i = 0; i < fracList.length; i++) {
+      var entry = palette[stableColorKey(fracList[i].key, palette.length)]
+      if (!(entry in sums)) { sums[entry] = 0; orderKeys.push(entry) }
+      sums[entry] += fracList[i].share
+    }
+    var out = []
+    for (var g = 0; g < orderKeys.length; g++) out.push({ key: orderKeys[g], share: sums[orderKeys[g]], kind: "group" })
+    return out
+  }
   var n = limit || 5
   var result = { order: [], cpu: null, ram: null, watts: null, gpu: null }
 
@@ -488,13 +509,14 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
     var totalDelta = nextSnapshot.cpuTotal - prevSnapshot.cpuTotal
     var busyDelta = nextSnapshot.cpuBusy - prevSnapshot.cpuBusy
     if (totalDelta > 0) {
-      var segs = []
+      var commFracs = []
       var used = 0
       for (var i = 0; i < agg.shares.length; i++) {
         // share_i is of busy activity; rescale to all ticks
         var frac = agg.shares[i].share * busyDelta / totalDelta
-        if (frac > 0) { segs.push({ key: agg.shares[i].label, label: agg.shares[i].label, share: frac, kind: "comm" }); used += frac }
+        if (frac > 0) { commFracs.push({ key: agg.shares[i].label, share: frac }); used += frac }
       }
+      var segs = groupByHue(commFracs)
       // thresholds would drop sub-pixel segments and break the exact sum;
       // a 0.4% segment renders sub-pixel, which is invisibility enough
       var rest = Math.max(0, busyDelta / totalDelta - used)
@@ -523,13 +545,14 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
     for (var nm in seen) ramList.push({ label: nm, kb: seen[nm] })
     ramList.sort(function(a, b) { return b.kb - a.kb })
     ramList = ramList.slice(0, n)
-    var rsegs = []
+    var ramFracs = []
     var rused = 0
     for (var j = 0; j < ramList.length; j++) {
       var rf = ramList[j].kb / totalKb
-      if (rf > 0) { rsegs.push({ key: ramList[j].label, label: ramList[j].label, share: rf, kind: "comm" }); rused += rf }
+      if (rf > 0) { ramFracs.push({ key: ramList[j].label, share: rf }); rused += rf }
       if (result.order.indexOf(ramList[j].label) === -1) result.order.push(ramList[j].label)
     }
+    var rsegs = groupByHue(ramFracs)
     var rrest = Math.max(0, usedFrac - rused)
     rsegs.push({ key: "rest", label: "rest", share: rrest, kind: "rest" })
     rsegs.push({ key: "avail", label: "available", share: Math.max(0, 1 - usedFrac), kind: "avail" })
@@ -546,13 +569,15 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
     var wused = 0
     if (baseWatts > 0.5) {
       var bf = Math.min(1, baseWatts / drawWatts)
-      wsegs.push({ key: "base", label: "system base", share: bf, kind: "base" })
+      wsegs.push({ key: "base", label: "base load", share: bf, kind: "base" })
       wused += bf
     }
+    var wFracs = []
     for (var k = 0; k < agg.shares.length; k++) {
       var wf = variable * agg.shares[k].share / drawWatts
-      if (wf > 0) { wsegs.push({ key: agg.shares[k].label, label: agg.shares[k].label, share: wf, kind: "comm" }); wused += wf }
+      if (wf > 0) { wFracs.push({ key: agg.shares[k].label, share: wf }); wused += wf }
     }
+    wsegs = wsegs.concat(groupByHue(wFracs))
     var welse = Math.max(0, 1 - wused)
     wsegs.push({ key: "else", label: "everything else", share: welse, kind: "else" })
     result.watts = wsegs
@@ -571,12 +596,42 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
   return result
 }
 
-// Deterministic comm → palette-slot map so a comm keeps one color across the
-// CPU, RAM, and watts bars and its row meter. Palette cycles past its length;
-// beyond the palette the collision is accepted (row order disambiguates) and
-// documented — themes carry only so many distinguishable hues.
-function assignColorKeys(order, palette) {
+// Stable identity colors: FNV-1a over the comm name, reduced into the
+// palette. Deterministic across calls, sessions, and machines — no
+// randomness, no seed state, no order dependence — so a process keeps its
+// hue everywhere and forever: table label accents, composition-bar groups,
+// any surface. The multiply stays under 2^53 and the >>>0 fold makes the
+// uint32 overflow explicit, so every QML JS engine agrees bit-for-bit.
+function stableColorKey(comm, paletteSize) {
+  var h = 2166136261
+  var s = String(comm)
+  for (var i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = (h * 16777619) >>> 0
+  }
+  return h % (paletteSize || 3)
+}
+
+// comm → palette-entry map, hash-derived (the old order-based assignment is
+// retired: rank shuffles used to swap colors, which taught nothing). Same
+// signature as before, so call sites are unchanged.
+function assignColorKeys(comms, palette) {
   var map = {}
-  for (var i = 0; i < order.length; i++) map[order[i]] = palette[i % palette.length]
+  for (var i = 0; i < comms.length; i++) map[comms[i]] = palette[stableColorKey(comms[i], palette.length)]
   return map
+}
+
+// Ordinal badges for simultaneous same-hue rows: within the visible set,
+// the first member of a hue stays clean and later members get 2, 3, ... by
+// rank order. The hue is identity; the badge only breaks simultaneous ties,
+// so a lone member of a hue never carries a badge.
+function collisionOrdinals(comms, palette) {
+  var seen = {}
+  var out = {}
+  for (var i = 0; i < comms.length; i++) {
+    var k = stableColorKey(comms[i], palette.length)
+    seen[k] = (seen[k] || 0) + 1
+    out[comms[i]] = seen[k] > 1 ? seen[k] : 0
+  }
+  return out
 }

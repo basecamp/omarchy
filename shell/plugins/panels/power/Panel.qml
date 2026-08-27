@@ -24,7 +24,11 @@ Panel {
   property var systemRows: []
   property var resourceSplits: null
   property var colorMap: ({})
+  property var rowOrdinals: ({})
   property var processColumns: []
+  // The identity palette — three collision-free theme hues; see the
+  // rationale at the colorMap assignment below.
+  readonly property var paletteKeys: ["blue", "cyan", "magenta"]
   property var profiles: []
   property string activeProfile: ""
   property int profileIndex: 0
@@ -172,7 +176,7 @@ Panel {
   function segmentColor(seg) {
     if (seg.kind === "base") return Color.accent
     if (seg.kind === "rest" || seg.kind === "else") return Color.muted
-    var k = seg.kind === "comm" ? colorMap[seg.key] : ""
+    var k = seg.kind === "group" ? seg.key : (seg.kind === "comm" ? colorMap[seg.key] : "")
     if (k === "blue") return Color.blue
     if (k === "cyan") return Color.cyan
     if (k === "magenta") return Color.magenta
@@ -325,7 +329,7 @@ Panel {
       }
     }
     processColumns = cols
-    resourceSplits = Model.buildResourceSplits(prevSnapshot, snap, 5, draw, baseWatts)
+    resourceSplits = Model.buildResourceSplits(prevSnapshot, snap, 5, draw, baseWatts, root.paletteKeys)
     // Palette keys map to Color singleton properties: the three
     // non-threshold hues that are universal AND mutually distinct across the
     // themes (reviewer finding, hex re-derived: accent equals blue on 17
@@ -334,7 +338,10 @@ Panel {
     // collision-free set exists — retro-82's residual defect is its own
     // blue == magenta, a theme-level reduction). Same comm = same key =
     // same color in the CPU, RAM, and watts bars and its row meter.
-    colorMap = Model.assignColorKeys(resourceSplits.order, ["blue", "cyan", "magenta"])
+    colorMap = Model.assignColorKeys(resourceSplits.order, root.paletteKeys)
+    // Ordinal badges for simultaneous same-hue rows: the hue is identity,
+    // the badge only breaks ties among what is visible right now.
+    rowOrdinals = Model.collisionOrdinals(resourceSplits.order, root.paletteKeys)
     // Vitals rows are rebuilt complete with their segments attached: a
     // property added to a plain JS object after the fact carries no change
     // signal, so a delegate that bound before the attach would stay null.
@@ -720,6 +727,7 @@ Panel {
               cells: modelData.cells !== undefined ? modelData.cells : []
               columns: root.processColumns
               anchor: modelData.key === "system"
+              badge: root.rowOrdinals[modelData.key] !== undefined ? root.rowOrdinals[modelData.key] : 0
               commColor: modelData.key === "system"
                 ? (root.bar ? root.bar.foreground : Color.foreground)
                 : (modelData.key === "base" || modelData.key === "else"
@@ -840,6 +848,7 @@ Panel {
     property var cells: []
     property var columns: []
     property bool anchor: false
+    property int badge: 0
     property color commColor: root.bar ? root.bar.foreground : Color.foreground
 
     width: column.width
@@ -863,9 +872,21 @@ Panel {
     }
 
     Text {
+      id: rowBadge
+      visible: metricRow.badge >= 2
+      text: metricRow.badge >= 2 ? String(metricRow.badge) : ""
+      x: commMark.width + Style.space(2)
+      anchors.verticalCenter: parent.verticalCenter
+      color: metricRow.commColor
+      opacity: 0.9
+      font.family: root.bar.fontFamily
+      font.pixelSize: Style.font.caption
+    }
+
+    Text {
       id: rowLabel
       text: metricRow.label
-      x: commMark.width + Style.space(5)
+      x: commMark.width + Style.space(5) + (metricRow.badge >= 2 ? rowBadge.implicitWidth + Style.space(2) : 0)
       width: commMetrics.advanceWidth
       anchors.verticalCenter: parent.verticalCenter
       color: root.bar ? root.bar.foreground : Color.foreground
