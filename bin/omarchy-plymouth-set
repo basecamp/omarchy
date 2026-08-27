@@ -5,75 +5,258 @@
 # omarchy:examples=omarchy plymouth set '#1d2021' '#ebdbb2' ~/.local/state/omarchy/current/theme/plymouth/logo.png
 # omarchy:requires-sudo=true
 
-# Configure the Plymouth boot theme with a custom background color, text color, and logo.
-# Stages the change in a temp dir, then commits the staged files to /usr/share and
-# rebuilds the initramfs. Also syncs the SDDM login screen (the post-logout
-# screen) with the same colors and logo so boot/login stay visually unified.
+set -euo pipefail
 
-if (( $# != 3 )); then
+# Configure the Plymouth boot theme with a custom background color, text color,
+# and logo. Assets are prepared without privileges, pinned to their recorded
+# hashes, then published one at a time through root-owned temporary files.
+
+refresh_default=false
+if (( $# == 1 )) && [[ $1 == --refresh-default ]]; then
+  refresh_default=true
+elif (( $# != 3 )); then
   echo "Usage: omarchy-plymouth-set <background-hex> <text-hex> <path-to-logo.png>" >&2
   exit 1
 fi
 
-bg_hex="${1#\#}"
-text_hex="${2#\#}"
-logo_path="$3"
+if ! $refresh_default; then
+  bg_hex="${1#\#}"
+  text_hex="${2#\#}"
+  logo_path="$3"
 
-if ! [[ $bg_hex =~ ^[0-9a-fA-F]{6}$ ]]; then
-  echo "Invalid background color: $1 (expected #RRGGBB)" >&2
-  exit 1
+  if ! [[ $bg_hex =~ ^[0-9a-fA-F]{6}$ ]]; then
+    echo "Invalid background color: $1 (expected #RRGGBB)" >&2
+    exit 1
+  fi
+
+  if ! [[ $text_hex =~ ^[0-9a-fA-F]{6}$ ]]; then
+    echo "Invalid text color: $2 (expected #RRGGBB)" >&2
+    exit 1
+  fi
+
+  if [[ ! -f $logo_path ]]; then
+    echo "Logo file not found: $logo_path" >&2
+    exit 1
+  fi
+
+  # omarchy-plymouth-set-by-theme passes a theme's unlock.png straight from
+  # ~/.config/omarchy/themes, where an installed theme can make it a symlink to
+  # anything. The copies below land in world-readable /usr/share, so following
+  # one would republish whatever it points at.
+  if [[ -L $logo_path ]]; then
+    echo "Logo file is a symlink, which is not accepted: $logo_path" >&2
+    exit 1
+  fi
 fi
-
-if ! [[ $text_hex =~ ^[0-9a-fA-F]{6}$ ]]; then
-  echo "Invalid text color: $2 (expected #RRGGBB)" >&2
-  exit 1
-fi
-
-if [[ ! -f $logo_path ]]; then
-  echo "Logo file not found: $logo_path" >&2
-  exit 1
-fi
-
-# omarchy-plymouth-set-by-theme passes a theme's unlock.png straight from
-# ~/.config/omarchy/themes, where an installed theme can make it a symlink to
-# anything. The copies below land in world-readable /usr/share, so following one
-# would republish whatever it points at.
-if [[ -L $logo_path ]]; then
-  echo "Logo file is a symlink, which is not accepted: $logo_path" >&2
-  exit 1
-fi
-
-bg_r=$(awk -v n=$((16#${bg_hex:0:2})) 'BEGIN{printf "%.3f", n/255}')
-bg_g=$(awk -v n=$((16#${bg_hex:2:2})) 'BEGIN{printf "%.3f", n/255}')
-bg_b=$(awk -v n=$((16#${bg_hex:4:2})) 'BEGIN{printf "%.3f", n/255}')
 
 theme_dir="/usr/share/plymouth/themes/omarchy"
-staging_dir=$(mktemp -d)
-trap 'rm -rf "$staging_dir"' EXIT
+sddm_dir="/usr/share/sddm/themes/omarchy"
+max_asset_size=$((64 * 1024 * 1024))
 
-# Publish a staged asset without ever asking a privileged process to resolve
-# its user-writable source path. The shell opens source before sudo starts, so
-# the inherited descriptor pins the bytes and a replacement symlink to a
-# root-only file either loses the race or fails under the caller's permissions.
-publish_asset() {
+plymouth_theme_assets=(
+  bullet.png
+  entry.png
+  lock.png
+  logo.png
+  omarchy.plymouth
+  omarchy.script
+  preview-unlock.png
+  progress_bar.png
+  progress_box.png
+)
+plymouth_default_assets=(
+  "${plymouth_theme_assets[@]}"
+  logos/oma.png
+)
+sddm_theme_assets=(
+  Main.qml
+  bullet.png
+  entry-failed.png
+  entry.png
+  lock-failed.png
+  lock.png
+  logo.png
+)
+
+staging_dir=$(mktemp -d)
+trap 'rm -rf -- "$staging_dir"' EXIT
+chmod 0700 "$staging_dir"
+plymouth_stage="$staging_dir/plymouth"
+sddm_stage="$staging_dir/sddm"
+mkdir -m 0700 -p "$plymouth_stage/logos" "$sddm_stage"
+
+copy_regular_file() {
   local source="$1" destination="$2"
-  sudo tee "$destination" <"$source" >/dev/null && sudo chmod 0644 "$destination"
+
+  if [[ ! -f $source || -L $source ]]; then
+    echo "Refusing non-regular or symlinked asset: $source" >&2
+    exit 1
+  fi
+
+  # -P ensures a source swapped to a symlink is copied as a symlink instead of
+  # followed; the post-copy check then rejects it.
+  cp -P --reflink=never -- "$source" "$destination"
+  if [[ ! -f $destination || -L $destination ]]; then
+    rm -f -- "$destination"
+    echo "Asset changed while it was being staged: $source" >&2
+    exit 1
+  fi
+  chmod 0600 "$destination"
 }
 
-find "$OMARCHY_PATH/default/plymouth" -maxdepth 1 -type f -exec cp -t "$staging_dir/" {} +
-cp "$logo_path" "$staging_dir/logo.png"
+if $refresh_default; then
+  assets_to_stage=("${plymouth_default_assets[@]}")
+else
+  assets_to_stage=("${plymouth_theme_assets[@]}")
+fi
 
-sed -i \
-  -e "s/^Window.SetBackgroundTopColor.*/Window.SetBackgroundTopColor($bg_r, $bg_g, $bg_b);/" \
-  -e "s/^Window.SetBackgroundBottomColor.*/Window.SetBackgroundBottomColor($bg_r, $bg_g, $bg_b);/" \
-  "$staging_dir/omarchy.script"
-
-for asset in bullet.png entry.png lock.png progress_bar.png; do
-  magick "$staging_dir/$asset" -channel RGB +level-colors "#$text_hex","#$text_hex" "$staging_dir/$asset"
+for asset in "${assets_to_stage[@]}"; do
+  copy_regular_file "$OMARCHY_PATH/default/plymouth/$asset" "$plymouth_stage/$asset"
 done
 
-for asset in bullet.png entry.png lock.png logo.png omarchy.plymouth omarchy.script preview-unlock.png progress_bar.png progress_box.png; do
-  publish_asset "$staging_dir/$asset" "$theme_dir/$asset" || exit 1
+if ! $refresh_default; then
+  for asset in "${sddm_theme_assets[@]}"; do
+    copy_regular_file "$OMARCHY_PATH/default/sddm/omarchy/$asset" "$sddm_stage/$asset"
+  done
+
+  copy_regular_file "$logo_path" "$plymouth_stage/logo.png"
+  copy_regular_file "$logo_path" "$sddm_stage/logo.png"
+
+  bg_r=$(awk -v n=$((16#${bg_hex:0:2})) 'BEGIN{printf "%.3f", n/255}')
+  bg_g=$(awk -v n=$((16#${bg_hex:2:2})) 'BEGIN{printf "%.3f", n/255}')
+  bg_b=$(awk -v n=$((16#${bg_hex:4:2})) 'BEGIN{printf "%.3f", n/255}')
+
+  sed -i \
+    -e "s/^Window.SetBackgroundTopColor.*/Window.SetBackgroundTopColor($bg_r, $bg_g, $bg_b);/" \
+    -e "s/^Window.SetBackgroundBottomColor.*/Window.SetBackgroundBottomColor($bg_r, $bg_g, $bg_b);/" \
+    "$plymouth_stage/omarchy.script"
+
+  for asset in bullet.png entry.png lock.png progress_bar.png; do
+    magick "$plymouth_stage/$asset" -channel RGB +level-colors "#$text_hex","#$text_hex" "$plymouth_stage/$asset"
+  done
+
+  sed -i \
+    -e "s/#1a1b26/#$bg_hex/g" \
+    -e "s/#ffffff/#$text_hex/g" \
+    "$sddm_stage/Main.qml"
+
+  for asset in bullet.png entry.png lock.png; do
+    cp --reflink=never -- "$plymouth_stage/$asset" "$sddm_stage/$asset"
+  done
+  for asset in entry lock; do
+    magick "$plymouth_stage/$asset.png" -channel RGB +level-colors "#f7768e","#f7768e" "$sddm_stage/$asset-failed.png"
+  done
+fi
+
+declare -A staged_hashes=()
+declare -A staged_sizes=()
+
+record_staged_asset() {
+  local source="$1" hash size
+
+  if [[ ! -f $source || -L $source ]]; then
+    echo "Refusing non-regular or symlinked staged asset: $source" >&2
+    exit 1
+  fi
+
+  size=$(stat -c %s -- "$source")
+  if (( size == 0 || size > max_asset_size )); then
+    echo "Staged asset is empty or exceeds the ${max_asset_size}-byte limit: $source" >&2
+    exit 1
+  fi
+  hash=$(sha256sum -- "$source")
+  staged_sizes["$source"]=$size
+  staged_hashes["$source"]=${hash%% *}
+}
+
+# Record every asset before the first sudo prompt. Root verifies both values
+# after consuming stdin, so an in-place rewrite after this point fails instead
+# of changing what is published. This pins the recorded result, not the trust
+# of an already-user-writable OMARCHY_PATH checkout.
+for asset in "${assets_to_stage[@]}"; do
+  record_staged_asset "$plymouth_stage/$asset"
+done
+if ! $refresh_default; then
+  for asset in "${sddm_theme_assets[@]}"; do
+    record_staged_asset "$sddm_stage/$asset"
+  done
+fi
+
+publish_asset() {
+  local source="$1" destination="$2"
+  local expected_hash="${staged_hashes[$source]}"
+  local expected_size="${staged_sizes[$source]}"
+
+  # The caller's shell opens source before sudo starts. Root reads only stdin,
+  # verifies the recorded bytes, and never opens or chmods the final pathname.
+  # Its temporary file is on the destination filesystem, so mv is atomic for
+  # this one asset and replaces a destination symlink instead of following it.
+  sudo /bin/bash -c '
+    set -euo pipefail
+    PATH=/usr/bin:/bin
+    export PATH
+
+    destination=$1
+    expected_hash=$2
+    expected_size=$3
+    max_size=$4
+
+    [[ $destination == /* && $destination != */ && $destination != *"/../"* ]]
+    [[ $expected_hash =~ ^[0-9a-f]{64}$ ]]
+    [[ $expected_size =~ ^[0-9]+$ && $max_size =~ ^[0-9]+$ ]]
+    (( expected_size > 0 && expected_size <= max_size ))
+
+    parent=${destination%/*}
+    filename=${destination##*/}
+    [[ -n $parent && -n $filename && $filename != . && $filename != .. ]]
+    [[ -d $parent && ! -L $parent ]]
+    canonical_parent=$(realpath -e -- "$parent")
+    [[ $canonical_parent == "$parent" ]]
+    [[ $(stat -c %u -- "$parent") == 0 ]]
+    parent_mode=$(stat -c %a -- "$parent")
+    (( (8#$parent_mode & 0022) == 0 ))
+
+    temporary=$(mktemp --tmpdir="$parent" ".$filename.omarchy-new.XXXXXXXX")
+    cleanup() { rm -f -- "$temporary"; }
+    trap cleanup EXIT HUP INT TERM
+
+    head -c "$((expected_size + 1))" >"$temporary"
+    actual_size=$(stat -c %s -- "$temporary")
+    (( actual_size == expected_size ))
+    actual_hash=$(sha256sum -- "$temporary")
+    [[ ${actual_hash%% *} == "$expected_hash" ]]
+
+    chown 0:0 -- "$temporary"
+    chmod 0644 -- "$temporary"
+    sync -f -- "$temporary"
+    mv --no-copy -fT -- "$temporary" "$destination"
+    trap - EXIT HUP INT TERM
+  ' bash "$destination" "$expected_hash" "$expected_size" "$max_asset_size" <"$source"
+}
+
+remove_legacy_asset() {
+  local destination="$1"
+
+  sudo /bin/bash -c '
+    set -euo pipefail
+    PATH=/usr/bin:/bin
+    export PATH
+
+    destination=$1
+    [[ $destination == /* && $destination != */ && $destination != *"/../"* ]]
+    parent=${destination%/*}
+    [[ -d $parent && ! -L $parent ]]
+    canonical_parent=$(realpath -e -- "$parent")
+    [[ $canonical_parent == "$parent" ]]
+    [[ $(stat -c %u -- "$parent") == 0 ]]
+    parent_mode=$(stat -c %a -- "$parent")
+    (( (8#$parent_mode & 0022) == 0 ))
+    rm -f -- "$destination"
+  ' bash "$destination"
+}
+
+for asset in "${assets_to_stage[@]}"; do
+  publish_asset "$plymouth_stage/$asset" "$theme_dir/$asset"
 done
 sudo plymouth-set-default-theme omarchy
 
@@ -83,21 +266,9 @@ else
   sudo mkinitcpio -P
 fi
 
-# Sync the SDDM login screen with the same colors and logo.
-sddm_dir="/usr/share/sddm/themes/omarchy"
-sddm_template="$OMARCHY_PATH/default/sddm/omarchy/Main.qml"
-
-sed \
-  -e "s/#1a1b26/#$bg_hex/g" \
-  -e "s/#ffffff/#$text_hex/g" \
-  "$sddm_template" | sudo tee "$sddm_dir/Main.qml" >/dev/null
-
-publish_asset "$staging_dir/logo.png" "$sddm_dir/logo.png" || exit 1
-for asset in bullet.png entry.png lock.png; do
-  publish_asset "$staging_dir/$asset" "$sddm_dir/$asset" || exit 1
-done
-for asset in entry lock; do
-  magick "$staging_dir/$asset.png" -channel RGB +level-colors "#f7768e","#f7768e" "$staging_dir/$asset-failed.png"
-  publish_asset "$staging_dir/$asset-failed.png" "$sddm_dir/$asset-failed.png" || exit 1
-done
-sudo rm -f "$sddm_dir/logo.svg"
+if ! $refresh_default; then
+  for asset in "${sddm_theme_assets[@]}"; do
+    publish_asset "$sddm_stage/$asset" "$sddm_dir/$asset"
+  done
+  remove_legacy_asset "$sddm_dir/logo.svg"
+fi
