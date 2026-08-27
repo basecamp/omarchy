@@ -54,13 +54,21 @@ normalize_webapp_url() {
   printf '%s' "$url"
 }
 
+# A space in the URL becomes a second desktop Exec argument, which
+# omarchy-launch-webapp hands to the browser as another URL to open. Schemes
+# are case-insensitive.
 require_http_url() {
   local url=$1
-  if [[ $url =~ ^https?:// ]]; then
-    return 0
+
+  if [[ $url =~ [[:space:]] ]]; then
+    echo "Error: web app URL must not contain whitespace." >&2
+    exit 1
   fi
-  echo "Error: web app URL must be http or https." >&2
-  exit 1
+
+  if [[ ! ${url,,} =~ ^https?:// ]]; then
+    echo "Error: web app URL must be http or https." >&2
+    exit 1
+  fi
 }
 
 fetch_site_icon() {
@@ -91,6 +99,7 @@ if (( $# < 3 )); then
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
   APP_URL=$(gum input --prompt "URL> " --placeholder "https://example.com")
   APP_URL=$(normalize_webapp_url "$APP_URL")
+  require_http_url "$APP_URL"
 
   # Try to fetch the site's icon automatically first.
   mkdir -p "$ICON_DIR"
@@ -108,6 +117,7 @@ if (( $# < 3 )); then
 else
   APP_NAME="$1"
   APP_URL=$(normalize_webapp_url "$2")
+  require_http_url "$APP_URL"
   ICON_REF="$3"
   CUSTOM_EXEC="$4" # Optional custom exec command
   MIME_TYPES="$5"  # Optional mime types
@@ -119,8 +129,6 @@ if [[ -z $APP_NAME || -z $APP_URL ]]; then
   echo "You must set app name and app URL!"
   exit 1
 fi
-
-require_http_url "$APP_URL"
 
 if [[ -z $ICON_REF ]]; then
   ICON_VALUE=$(safe_icon_name "$APP_NAME")

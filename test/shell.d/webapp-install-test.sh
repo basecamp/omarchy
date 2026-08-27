@@ -58,3 +58,63 @@ for url in "javascript:alert(1)" "file:///etc/passwd" "data:text/html,hi" "ftp:/
   [[ ! -e $(desktop_for Bad) ]] || fail "webapp install does not write a desktop file for '$url'"
 done
 pass "webapp install refuses non-http(s) URLs"
+
+# A leading space keeps the URL out of the scheme test, and the desktop Exec
+# field splits it back into two arguments the browser both opens.
+for url in " javascript:alert(1)" " file:///etc/passwd" "https://example.com data:text/html,hi"; do
+  if install_webapp "Sneak" "$url" "webapp" >"$tmpdir/out" 2>"$tmpdir/err"; then
+    fail "webapp install refuses whitespace in '$url'" "$(cat "$(desktop_for Sneak)")"
+  fi
+  grep -Fq 'must not contain whitespace' "$tmpdir/err" ||
+    fail "webapp install names the whitespace refusal for '$url'" "$(cat "$tmpdir/err")"
+  [[ ! -e $(desktop_for Sneak) ]] || fail "webapp install writes no desktop file for '$url'"
+done
+pass "webapp install refuses a URL carrying whitespace"
+
+# Schemes are case-insensitive, and HTTPS://example.com installed before the
+# scheme test existed.
+if install_webapp "Upper" "HTTPS://example.com" "webapp" >"$tmpdir/out" 2>"$tmpdir/err"; then
+  :
+else
+  fail "webapp install accepts an uppercase scheme" "$(cat "$tmpdir/err")"
+fi
+grep -Fxq 'Exec=omarchy-launch-webapp HTTPS://example.com' "$(desktop_for Upper)" ||
+  fail "webapp install keeps the uppercase scheme" "$(cat "$(desktop_for Upper)")"
+pass "webapp install accepts an uppercase http scheme"
+
+# The interactive prompt fetches the site's icon, so a refused URL must be
+# refused before anything dereferences it.
+stubs="$tmpdir/stubs"
+mkdir -p "$stubs"
+
+cat >"$stubs/gum" <<'GUM'
+#!/bin/bash
+count=$(cat "$GUM_COUNT" 2>/dev/null || echo 0)
+count=$((count + 1))
+printf '%s\n' "$count" >"$GUM_COUNT"
+sed -n "${count}p" "$GUM_ANSWERS"
+GUM
+
+cat >"$stubs/curl" <<'CURL'
+#!/bin/bash
+printf '%s\n' "$*" >>"$CURL_LOG"
+exit 1
+CURL
+
+chmod +x "$stubs/gum" "$stubs/curl"
+
+printf 'Evil\nfile:///etc/passwd\n' >"$tmpdir/answers"
+: >"$tmpdir/gum-count"
+: >"$tmpdir/curl-log"
+
+if GUM_ANSWERS="$tmpdir/answers" GUM_COUNT="$tmpdir/gum-count" CURL_LOG="$tmpdir/curl-log" \
+  PATH="$stubs:$PATH" HOME="$home" "$ROOT/bin/omarchy-webapp-install" \
+  >"$tmpdir/out" 2>"$tmpdir/err"; then
+  fail "interactive webapp install refuses a file: URL" "$(cat "$tmpdir/out")"
+fi
+grep -Fq 'must be http or https' "$tmpdir/err" ||
+  fail "interactive webapp install names the scheme refusal" "$(cat "$tmpdir/err")"
+[[ ! -s $tmpdir/curl-log ]] ||
+  fail "interactive webapp install refuses before fetching the URL" "$(cat "$tmpdir/curl-log")"
+[[ ! -e $(desktop_for Evil) ]] || fail "interactive webapp install writes no desktop file"
+pass "interactive webapp install refuses a bad URL before fetching it"
