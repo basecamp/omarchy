@@ -19,8 +19,9 @@ if gum confirm "Are you sure you want to remove all preinstalled web apps, TUI w
 
   # Only the wrapper omarchy-install-hermes-cli wrote is a preinstall. Hermes
   # Desktop's command, an official install, or anything else at that path is
-  # the user's, so it is the marker that decides, not which packages are around.
-  if [[ -f ~/.local/bin/hermes && ! -L ~/.local/bin/hermes ]] && grep -qxF '# Written by omarchy-install-hermes-cli.' ~/.local/bin/hermes; then
+  # the user's, so it is the installer that decides whether the wrapper is its
+  # own, rather than a copy of its marker kept here.
+  if omarchy-install-hermes-cli --owns; then
     rm -f ~/.local/bin/hermes
   fi
 

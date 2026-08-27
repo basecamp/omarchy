@@ -15,12 +15,11 @@ fi
 
 # Anything already answering to hermes that this installer did not write --
 # an official install, a hand-rolled wrapper, even a dangling link -- belongs to
-# the user and stays exactly as it is.
+# the user and stays exactly as it is. The installer is asked rather than
+# matched against here, so there is one answer to who owns that wrapper.
 wrapper="$HOME/.local/bin/hermes"
-if [[ -e $wrapper || -L $wrapper ]]; then
-  if [[ -L $wrapper || ! -f $wrapper ]] || ! grep -qxF '# Written by omarchy-install-hermes-cli.' "$wrapper"; then
-    exit 0
-  fi
+if [[ -e $wrapper || -L $wrapper ]] && ! omarchy-install-hermes-cli --owns; then
+  exit 0
 fi
 
 omarchy-install-hermes-cli

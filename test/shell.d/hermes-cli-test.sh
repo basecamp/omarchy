@@ -283,6 +283,52 @@ HOME="$leak_home" PATH="$leak_bin:$mock_bin:$PATH" \
   fail "the interpreter pin does not follow Hermes into the commands it runs"
 pass "the interpreter pin does not follow Hermes into the commands it runs"
 
+# --owns is the one answer to whether the wrapper on PATH is this installer's.
+# Remove Preinstalls and the migration both ask it rather than carrying their
+# own copy of the marker, so a change to what ownership means reaches them.
+owns_home="$test_tmp/owns-home"
+mkdir -p "$owns_home/.local/bin"
+
+run_owns() {
+  OMARCHY_TEST_DESKTOP_INSTALLED=0 \
+    OMARCHY_TEST_MISE_LOG="$mise_log" \
+    HOME="$owns_home" \
+    PATH="$mock_bin:$PATH" \
+    bash "$ROOT/bin/omarchy-install-hermes-cli" --owns
+}
+
+rm -f "$owns_home/.local/bin/hermes"
+run_owns && fail "--owns says no when there is no wrapper at all"
+
+printf '%s\n' "#!/bin/bash" "$stub_marker" >"$owns_home/.local/bin/hermes"
+chmod +x "$owns_home/.local/bin/hermes"
+run_owns || fail "--owns recognises the stub this installer wrote"
+
+printf '%s\n' "#!/bin/bash" "# Replaces the stub omarchy-install-hermes-cli used to write." \
+  >"$owns_home/.local/bin/hermes"
+run_owns && fail "--owns needs the exact marker line, not a mention"
+
+# Quoting the marker inside a longer line is not the same as carrying it: the
+# match is whole-line, so a wrapper describing what it replaced stays the
+# user's.
+printf '%s\n' "#!/bin/bash" "# Replaced '$stub_marker' with my own." \
+  >"$owns_home/.local/bin/hermes"
+run_owns && fail "--owns needs the marker to be the whole line, not part of one"
+
+rm -f "$owns_home/.local/bin/hermes"
+ln -s "$test_home/.local/bin/hermes" "$owns_home/.local/bin/hermes"
+run_owns && fail "--owns disclaims a symlink, whatever it resolves to"
+rm -f "$owns_home/.local/bin/hermes"
+pass "--owns answers for the wrapper this installer wrote and nothing else"
+
+# The marker lives in exactly one place. Every other caller asks --owns, so a
+# second copy is drift waiting to happen.
+marker_copies=$(grep -rl "Written by omarchy-install-hermes-cli" \
+  "$ROOT/bin" "$ROOT/install" "$ROOT/migrations" 2>/dev/null | wc -l)
+(( marker_copies == 1 )) ||
+  fail "only omarchy-install-hermes-cli spells out the ownership marker"
+pass "the ownership marker is written down once"
+
 # The app's marker says its install once landed, not that it is still there. A
 # wrapper whose runtime has since gone answers for nothing, so readiness runs
 # the command, exactly as it does for a hermes the user installed themselves.
