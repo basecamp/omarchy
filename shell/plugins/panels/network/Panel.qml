@@ -55,6 +55,14 @@ Panel {
     }
   }
 
+  // After a failure the passphrase is the likeliest thing to fix, so it gets
+  // focus when present; otherwise fall back to the SSID field.
+  function focusHiddenForm() {
+    if (!opened || !hiddenFormOpen) return
+    if (hiddenPasswordField.visible) hiddenPasswordField.forceActiveFocus()
+    else hiddenSsidField.forceActiveFocus()
+  }
+
   // Live connection details from `ip` / /sys / iw.
   property var info: ({})  // { iface, type, ip, prefix, gateway, speed, duplex, ssid, signal, freq, bitrate, rx_bytes, tx_bytes, router_ping_ms, internet_ping_ms }
 
@@ -400,6 +408,10 @@ Panel {
       dnsIndex = idx >= 0 ? idx : 0
       syncBandIndex()
       cursorActive = hasCaptivePortal
+      // A retained failed hidden attempt reopens with the form still showing;
+      // hand it focus after KeyboardPanel's default keyCatcher grab so a
+      // keyboard-only user can fix and resubmit without a click.
+      if (hiddenFormOpen && hiddenFailed) Qt.callLater(root.focusHiddenForm)
     } else {
       // Drop a restart armed by this open: without it a close/reopen inside
       // the 100ms window reuses the running timer and re-enables the scanner
@@ -973,6 +985,9 @@ Panel {
     actionKind = ""
     // hiddenConnecting stays true so hiddenFailed renders; it clears on
     // dismiss (cancelHiddenForm) or retry (runHiddenAction).
+    // actionKind clearing above re-enables the fields synchronously, but a
+    // disabled field can't take focus yet -- defer until they're live.
+    Qt.callLater(root.focusHiddenForm)
   }
 
   // Runs the hidden-network nmcli command; secret over stdin like
