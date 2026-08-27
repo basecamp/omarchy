@@ -8,7 +8,7 @@
 # caching (detect every run) rather than fall back to a predictable, world-writable
 # /tmp path another user could pre-create.
 device_cache=""
-if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
+if [[ -n ${XDG_RUNTIME_DIR:-} ]]; then
   device_cache="$XDG_RUNTIME_DIR/omarchy-brightness-display-apple.device"
 fi
 no_osd=0
@@ -34,7 +34,7 @@ find_apple_display_device() {
   local cached=""
   local device=""
 
-  if [[ -n "$device_cache" && -r $device_cache ]]; then
+  if [[ -n $device_cache && -r $device_cache ]]; then
     read -r cached <"$device_cache" || true
     # Trust a cached value only if it still names a hiddev character device. A
     # stale or unexpected cache (a regular file, a non-hiddev node) is ignored and
@@ -50,7 +50,7 @@ find_apple_display_device() {
   device="$(detect_apple_display_device)" || return 1
   [[ -n $device ]] || return 1
 
-  if [[ -n "$device_cache" ]]; then
+  if [[ -n $device_cache ]]; then
     printf '%s\n' "$device" >"$device_cache"
   fi
   printf '%s\n' "$device"
