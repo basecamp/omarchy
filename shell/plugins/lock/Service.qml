@@ -413,7 +413,10 @@ Item {
 
   Timer {
     id: idleBlankTimer
-    interval: 5000
+    // Long enough to wake the machine, read the field and type a password
+    // without the panel going dark mid-entry. Any activity re-arms it, so an
+    // untouched lock screen still blanks one interval after the last input.
+    interval: 30000
     repeat: false
     property double armedAt: 0
     onTriggered: {
