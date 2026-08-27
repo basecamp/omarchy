@@ -14,4 +14,6 @@ assert(/if \(buttonCode === Qt\.RightButton\) root\.launchAgent\(\)/.test(panelS
 assert(/else if \(buttonCode === Qt\.MiddleButton\) root\.selectProvider\(root\.providerIndex \+ 1\)/.test(panelSource), 'agents middle click still advances the subscription')
 assert(/else root\.toggle\(\)/.test(panelSource), 'agents left click still toggles the panel')
 assert(!/if \(buttonCode === Qt\.RightButton\) root\.refreshNow\(\)/.test(panelSource), 'agents right click no longer refreshes')
+assert(/Flow \{/.test(panelSource) && /id: providerSwitch/.test(panelSource), 'agents provider switch wraps instead of forcing equal-width cells')
+assert(!/cellWidth/.test(panelSource), 'agents provider pills size to their labels')
 JS
