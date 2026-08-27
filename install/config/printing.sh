@@ -16,7 +16,7 @@ elif [[ -f $cups_files_conf ]]; then
 
   if ! awk '
     NR == FNR {
-      if ($1 == "SystemGroup") {
+      if (tolower($1) == "systemgroup") {
         for (i = 2; i <= NF; i++) {
           if (substr($i, 1, 1) == "#")
             break
@@ -29,7 +29,7 @@ elif [[ -f $cups_files_conf ]]; then
       next
     }
 
-    $1 == "SystemGroup" {
+    tolower($1) == "systemgroup" {
       comment_start = index($0, "#")
       if (!wrote_system_group) {
         printf "SystemGroup"
@@ -47,7 +47,7 @@ elif [[ -f $cups_files_conf ]]; then
       next
     }
 
-    $1 == "PeerCred" {
+    tolower($1) == "peercred" {
       comment_start = index($0, "#")
       if (!saw_peer_cred) {
         printf "PeerCred on"

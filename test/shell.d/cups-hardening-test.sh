@@ -222,3 +222,31 @@ OMARCHY_CUPS_TEST_LOG="$masked_log" \
 [[ -f $masked_marker ]] || fail "the migration completes with cups-browsed masked"
 
 pass "a masked or disabled cups-browsed is left alone and does not fail the migration"
+
+# cupsd compares directive names case-insensitively, so a hand-edited lowercase
+# directive is live configuration. Matching it exactly would skip the line and
+# append a second one, and cupsd accumulates the groups of every SystemGroup
+# directive it reads -- leaving wheel with passwordless administration.
+lowercase_conf="$test_tmp/etc/cups/lowercase.conf"
+cat >"$lowercase_conf" <<'CONF'
+systemgroup sys root wheel
+peercred off
+CONF
+
+PATH="$mock_bin:$PATH" \
+  OMARCHY_CUPS_FILES_CONF="$lowercase_conf" \
+  OMARCHY_CUPS_BROWSED_SYSUSERS_CONF="$sysusers_conf" \
+  bash -euo pipefail "$ROOT/install/config/printing.sh"
+
+! grep -qiE '^[[:space:]]*systemgroup\b.*\bwheel\b' "$lowercase_conf" ||
+  fail "printing setup removes wheel from a lowercase SystemGroup directive" "$(cat "$lowercase_conf")"
+[[ $(grep -ciE '^[[:space:]]*systemgroup\b' "$lowercase_conf") == 1 ]] ||
+  fail "printing setup leaves one SystemGroup directive whatever case it was written in" "$(cat "$lowercase_conf")"
+grep -qxF 'SystemGroup sys root cups-browsed' "$lowercase_conf" ||
+  fail "printing setup reserves administration for the service account" "$(cat "$lowercase_conf")"
+[[ $(grep -ciE '^[[:space:]]*peercred\b' "$lowercase_conf") == 1 ]] ||
+  fail "printing setup leaves one PeerCred directive" "$(cat "$lowercase_conf")"
+grep -qxF 'PeerCred on' "$lowercase_conf" ||
+  fail "printing setup enables peer credentials whatever case they were written in" "$(cat "$lowercase_conf")"
+
+pass "printing setup rewrites directives cupsd reads case-insensitively"
