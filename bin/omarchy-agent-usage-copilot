@@ -34,7 +34,7 @@ COPILOT_TOKEN_FILES = ("apps.json", "hosts.json", "oauth.json")
 
 QUOTA_PRIORITY = ("premium_interactions", "premium_requests", "chat", "completions")
 QUOTA_DISPLAY_NAMES = {
-  "premium_interactions": "AI Credits",
+  "premium_interactions": "Premium Requests",
   "premium_requests": "Premium Requests",
   "chat": "Chat",
   "completions": "Completions",
@@ -268,7 +268,7 @@ def main() -> None:
     if "No more" in quota.get("displayName", ""):
       usage_label = quota["displayName"]
     else:
-      usage_label = f"AI Credits (Premium Requests {format_count(quota['used'])}/{format_count(quota['total'])} used)"
+      usage_label = f"Premium Requests {format_count(quota['used'])}/{format_count(quota['total'])} used"
     limit_entry = {
       "label": usage_label,
       "title": usage_label,
