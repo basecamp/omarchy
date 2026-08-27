@@ -8,7 +8,9 @@
 # ship fingerprint readers; multi-purpose vendors (e.g. Elan/STMicro, which
 # also make USB touchscreens) are left out to avoid nagging laptops with no
 # reader — those still match on the product string below when present.
-fingerprint_vendors=" 27c6 138a 06cb 08ff 1c7a 147e "
+# Broadcom (0a5c) readers report a bare model number as their product string
+# (e.g. "58200"), so they only match here, never on the product-name branch.
+fingerprint_vendors=" 27c6 138a 06cb 08ff 1c7a 147e 0a5c "
 usb_devices_path="${OMARCHY_USB_DEVICES_PATH:-/sys/bus/usb/devices}"
 
 # libfprint drives every reader it supports from userspace over libusb, so a
