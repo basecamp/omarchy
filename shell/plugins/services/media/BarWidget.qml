@@ -112,7 +112,11 @@ BarWidget {
         loops: Animation.Infinite
         from: 0
         to: -scrollClip.cycle
-        duration: Math.max(3000, scrollClip.cycle * 25)
+        // Hold the previous scroll rate. The old animation covered
+        // scrollClip.width + implicitWidth in max(6000, implicitWidth * 25) ms,
+        // so scale that pace to the cycle this one travels instead.
+        duration: scrollClip.cycle * Math.max(6000, labelText.implicitWidth * 25)
+          / Math.max(1, scrollClip.width + labelText.implicitWidth)
         easing.type: Easing.Linear
       }
     }
