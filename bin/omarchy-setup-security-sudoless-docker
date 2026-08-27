@@ -5,10 +5,12 @@
 
 set -e
 
+user=$(id -un)
+
 # Ask about the configured groups, not this session's: once enabled it stays
 # enabled for the account even before the reboot that lets this session use it.
 if ! omarchy-sudo-docker --configured; then
-  echo "Sudoless Docker is already enabled: $USER is in the docker group."
+  echo "Sudoless Docker is already enabled: $user is in the docker group."
   echo "To disable it again, run: omarchy-remove-security-sudoless-docker"
   exit 0
 fi
@@ -29,7 +31,7 @@ echo "Docker access goes through a polkit/sudo prompt."
 echo ""
 
 if gum confirm "Enable sudoless Docker? This gives anything running as you passwordless root."; then
-  sudo usermod -aG docker "$USER"
+  sudo usermod -aG docker "$user"
   # A new docker group membership is only picked up by a fresh session, and in
   # practice logging out or newgrp isn't enough — only a reboot reliably applies
   # it. Record it so a later `omarchy update` still prompts

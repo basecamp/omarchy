@@ -5,16 +5,18 @@
 
 set -e
 
+user=$(id -un)
+
 # Ask about the configured groups, not this session's: right after enabling,
 # sudoless Docker is on for the account even though the running session still
 # needs a prompt, and this command is what turns it back off.
 if omarchy-sudo-docker --configured; then
-  echo "Sudoless Docker is not enabled: $USER is not in the docker group."
+  echo "Sudoless Docker is not enabled: $user is not in the docker group."
   exit 0
 fi
 
-echo "Removing $USER from the docker group..."
-sudo gpasswd -d "$USER" docker >/dev/null
+echo "Removing $user from the docker group..."
+sudo gpasswd -d "$user" docker >/dev/null
 
 # Group membership is only re-read by a fresh session, and in practice logging
 # out or newgrp isn't enough — only a reboot reliably applies it. Record it so a

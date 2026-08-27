@@ -10,8 +10,9 @@ echo -e "\nStarting Tailscale..."
 sudo systemctl enable --now tailscaled.service
 sudo tailscale up --accept-routes
 
-echo -e "\nAllowing $USER to manage Tailscale..."
-sudo tailscale set --operator="$USER"
+user=$(id -un)
+echo -e "\nAllowing $user to manage Tailscale..."
+sudo tailscale set --operator="$user"
 
 echo -e "\nReceiving Taildrop files in $HOME/Downloads..."
 systemctl --user enable --now omarchy-tailscale-receive.service
