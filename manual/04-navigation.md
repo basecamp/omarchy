@@ -2,6 +2,8 @@
 
 Everything in Omarchy happens via the keyboard — _EVERYTHING!_ When the system first starts, you literally can't do a thing with the mouse alone. But you can hit `Super + Space` to reveal the Omarchy Menu and from here you to do just about everything.
 
+The menu search doubles as a calculator. Type an expression and the answer is the first row: `1024/16`, `(12+8)*3`, `sqrt(2)`, `1e6/4`. Percentages read the way a till does — `178000*20%` and `20% of 178000` both take the share, while `178000+20%` adds it on. Type a quantity and it converts: `20 km to mi`, `100 f to c`, `1 gb to mib`. A quantity on its own answers with the units its readers usually want, so `5km` offers both miles and metres. Enter copies the result. A single-letter unit needs a space to be read as one (`20 c`, not `20c`), so searches like `4k` and `3d` stay searches.
+
 But the Omarchy menu is not even intended to be the main way to operate the system most of the time. We can get faster than that! All the most important applications are bound directly to individual hotkeys. You start the terminal with `Super + Return` and a browser with `Super + Shift + Return`. Try doing one after the other, and you'll see the magic of Hyprland's tiling in action:
 
  ![navigation-browser-terminal](images/navigation-browser-terminal.webp)
