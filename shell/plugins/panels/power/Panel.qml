@@ -15,6 +15,12 @@ Panel {
   manageIpc: false
   property var batteryInfo: ({})
   property var systemInfo: ({})
+  // Power Hungry: top-consumer attribution, panel-only by design. The bar
+  // pill is untouched — this answers a question you ask with the panel open.
+  property real systemWatts: -1
+  property real baseWatts: -1
+  property var prevSnapshot: null
+  property var topProcesses: []
   property var profiles: []
   property string activeProfile: ""
   property int profileIndex: 0
@@ -138,6 +144,7 @@ Panel {
     if (!batteryProc.running) batteryProc.running = true
     if (!profilesProc.running) profilesProc.running = true
     if (!systemProc.running) systemProc.running = true
+    if (!samplerProc.running) samplerProc.running = true
   }
 
   function updateKeyValue(raw, targetName) {
@@ -223,12 +230,50 @@ Panel {
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.updateKeyValue(text, "system") }
   }
 
+  // Power Hungry: battery flow + per-process jiffies, in one snapshot.
+  Process {
+    id: samplerProc
+    command: [Qt.resolvedUrl("sampler.sh").toString().replace("file://", "")]
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.onSample(text) }
+  }
+
+  function onSample(raw) {
+    var snap = Model.parseSnapshot(raw)
+    if (!snap) return
+    if (snap.watts !== null) {
+      systemWatts = snap.watts
+      // Stock rate format ("0.6W", no space) so this row doesn't flicker
+      // against the batteryProc refresh at 1 Hz while the panel is open.
+      batteryInfo = Object.assign({}, batteryInfo, { rate: Math.round(snap.watts * 10) / 10 + "W" })
+    }
+    // A snapshot without a readable cputotal would diff nonsense percentages;
+    // drop it and wait for the next one instead of storing it as a baseline.
+    if (snap.cpuTotalJiffies === null) {
+      prevSnapshot = null
+      return
+    }
+    // Attribute watts only while discharging: on AC the battery flow is the
+    // charge rate, not the system draw.
+    var draw = root.discharging && snap.watts !== null ? snap.watts : -1
+    if (draw >= 0) {
+      // Rolling idle floor: track the minimum draw, drifting up slowly so a
+      // brightness change doesn't pin a stale base forever.
+      if (baseWatts < 0) baseWatts = draw
+      else if (draw < baseWatts) baseWatts = draw
+      else baseWatts += (draw - baseWatts) * 0.02
+    }
+    if (prevSnapshot) topProcesses = Model.buildTopProcesses(prevSnapshot, snap, 5, draw, baseWatts)
+    prevSnapshot = snap
+  }
+
   Process {
     id: actionProc
     onExited: root.refresh()
   }
 
-  Timer { interval: 5000; running: root.opened; repeat: true; onTriggered: root.refresh() }
+  // Power Hungry samples at panel cadence: 1 s while open, so the attribution
+  // tracks what the machine is doing right now rather than a 5 s average.
+  Timer { interval: 1000; running: root.opened; repeat: true; onTriggered: root.refresh() }
 
   // Rotate the status phrase while the panel is open and we're in a
   // rotating state (charging or on battery). The text swap is wrapped in a
@@ -448,6 +493,43 @@ Panel {
               label: root.chargeThresholdActive ? "Battery state" : (root.discharging ? "Discharging" : "Charging")
               value: root.chargeThresholdActive ? "Holding" : (root.batteryFull ? "-" : (root.batteryInfo.rate || ""))
             }
+          }
+        }
+
+        // ---------- Power Hungry: top consumers ----------
+        PanelSeparator {
+          foreground: root.bar.foreground
+        }
+
+        Column {
+          width: parent.width
+          spacing: Style.space(8)
+
+          PanelSectionHeader {
+            text: "POWER HUNGRY"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+          }
+
+          Repeater {
+            model: root.topProcesses
+
+            // InfoPair is the panel's stock label/value row: value column
+            // right-aligned, matching the stats section above.
+            InfoPair {
+              required property var modelData
+              label: modelData.label
+              value: modelData.value
+            }
+          }
+
+          Text {
+            visible: root.topProcesses.length === 0
+            text: "warming up…"
+            color: root.bar.foreground
+            opacity: 0.5
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.bodySmall
           }
         }
 

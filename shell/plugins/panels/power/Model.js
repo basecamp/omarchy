@@ -98,7 +98,96 @@ if (typeof module !== "undefined") {
     profileIcon: profileIcon,
     batteryFraction: batteryFraction,
     chargeThresholdActive: chargeThresholdActive,
+
     batteryIcon: batteryIcon,
-    modeLabel: modeLabel
+    modeLabel: modeLabel,
+    parseSnapshot: parseSnapshot,
+    buildTopProcesses: buildTopProcesses
   }
+}
+
+// ---- Power Hungry: top consumers ---------------------------------------------
+//
+// Panel-only companion to the stock battery panel: parse one sampler.sh
+// snapshot and attribute the measured battery draw across processes. The bar
+// pill is untouched by design — this feature answers a question you ask with
+// the panel open, and the bar stays calm (see the PR's design note).
+
+// Parses one sampler.sh snapshot into {watts, cpuTotalJiffies, processes}
+// where processes maps pid -> {name, jiffies}. watts is the absolute battery
+// flow; the sampler strips the driver's discharge sign so direction comes
+// from UPower, never from this value.
+function parseSnapshot(raw) {
+  var watts = null
+  var cpuTotalJiffies = null
+  var processes = {}
+  var lines = String(raw || "").split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    var parts = lines[i].split("\t")
+    if (parts[0] === "watts" && parts.length >= 2 && parts[1] !== "") {
+      var w = parseFloat(parts[1])
+      if (!isNaN(w)) watts = w
+    } else if (parts[0] === "cputotal" && parts.length >= 2 && parts[1] !== "") {
+      var t = parseInt(parts[1], 10)
+      if (!isNaN(t)) cpuTotalJiffies = t
+    } else if (parts[0] === "p" && parts.length >= 4) {
+      var pid = parseInt(parts[1], 10)
+      var j = parseInt(parts[2], 10)
+      if (!isNaN(pid) && !isNaN(j)) {
+        if (!(pid in processes)) processes[pid] = { name: parts[3], jiffies: j }
+        else if (j > processes[pid].jiffies) processes[pid].jiffies = j
+      }
+    }
+  }
+  return { watts: watts, cpuTotalJiffies: cpuTotalJiffies, processes: processes }
+}
+
+// Busiest processes by CPU share of the jiffies consumed in the window,
+// aggregated by name so an app's helper processes render as one row.
+//
+// When the battery draw is known (discharging only — on AC the battery flow
+// is charge rate, not system draw) it is split into a calibrated idle base
+// and a variable slice attributed by share, so the returned rows are
+// [system base, top-N..., everything else] and sum to the measured draw.
+// A multi-threaded process can exceed 100% — jiffies sum across cores.
+function buildTopProcesses(prevSnapshot, nextSnapshot, limit, drawWatts, baseWatts) {
+  var nextP = nextSnapshot.processes
+  var prevP = prevSnapshot ? prevSnapshot.processes : {}
+  var totalDelta = Math.max(1,
+    nextSnapshot.cpuTotalJiffies - (prevSnapshot ? prevSnapshot.cpuTotalJiffies : 0))
+
+  var byName = {}
+  for (var pid in nextP) {
+    var prev = prevP[pid]
+    if (prev === undefined) continue
+    var delta = nextP[pid].jiffies - prev.jiffies
+    if (delta <= 0) continue
+    if (!(nextP[pid].name in byName)) byName[nextP[pid].name] = 0
+    byName[nextP[pid].name] += delta
+  }
+  var shares = []
+  for (var name in byName) shares.push({ label: name, share: byName[name] / totalDelta })
+  shares.sort(function(a, b) { return b.share - a.share })
+  shares = shares.slice(0, limit || 5)
+
+  var variable = drawWatts >= 0 ? Math.max(0, drawWatts - (baseWatts > 0 ? baseWatts : 0)) : 0
+  function pct(s) { return (s >= 1 ? Math.round(s * 100) : (s * 100).toFixed(1)) + "%" }
+  function wtxt(w) { return (w < 10 ? w.toFixed(1) : Math.round(w)) + " W" }
+
+  var out = []
+  var topShareSum = 0
+  for (var i = 0; i < shares.length; i++) {
+    topShareSum += shares[i].share
+    out.push({
+      label: shares[i].label,
+      value: drawWatts >= 0 ? wtxt(variable * shares[i].share) + " (" + pct(shares[i].share) + ")" : pct(shares[i].share)
+    })
+  }
+  if (drawWatts >= 0) {
+    if (baseWatts > 0.5) out.unshift({ label: "system base", value: wtxt(baseWatts) })
+    var otherShare = Math.max(0, 1 - topShareSum)
+    if (otherShare > 0.02 && variable * otherShare > 0.5)
+      out.push({ label: "everything else", value: wtxt(variable * otherShare) })
+  }
+  return out
 }
