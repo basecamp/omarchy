@@ -29,7 +29,9 @@ test)
 sshd)
   printf 'sudo %s\n' "$*" >>"$TEST_LOG"
   [[ ${OMARCHY_TEST_SSHD_T_FAILS:-false} == true ]] && exit 1
-  printf 'passwordauthentication no\n'
+  # The casing OpenSSH 10.5 actually prints, so the confirmation has to cope
+  # with it rather than with the lowercase older releases printed.
+  printf 'PasswordAuthentication no\n'
   ;;
 *)
   printf 'sudo %s\n' "$*" >>"$TEST_LOG"

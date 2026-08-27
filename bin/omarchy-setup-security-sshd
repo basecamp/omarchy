@@ -92,7 +92,9 @@ start_sshd() {
 # lower-numbered file can still set PasswordAuthentication yes and win. Ask
 # the daemon what it actually resolved to rather than trust the file we wrote.
 confirm_key_only() {
-  sudo sshd -T 2>/dev/null | grep -qx 'passwordauthentication no'
+  # Matched case-insensitively because sshd -T's keyword casing is not stable
+  # across releases: OpenSSH 10.5 prints `PasswordAuthentication no`.
+  sudo sshd -T 2>/dev/null | grep -qix 'passwordauthentication no'
 }
 
 open_firewall() {
