@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# omarchy:summary=Install Simple Scan with the AirScan (eSCL/WSD) SANE backend, plus Canon PIXMA network detection
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+echo -e "\nInstalling scanning support..."
+omarchy-pkg-add sane sane-airscan simple-scan
+
+# Detect a Canon PIXMA network scanner and point the SANE pixma backend at it
+pixma_record=$(timeout 5 avahi-browse -tpr _canon-bjnp1._tcp 2>/dev/null | awk -F';' '$1 == "=" && $3 == "IPv4" && $0 ~ /"Scan=T"/ {print; exit}' || true)
+if [[ -n $pixma_record ]]; then
+  IFS=';' read -r _ _ _ pixma_name _ _ pixma_hostname _ _ _ <<<"$pixma_record"
+  pixma_name=${pixma_name//\\032/ }
+  echo "Found $pixma_name at $pixma_hostname"
+
+  PIXMA_CONF="/etc/sane.d/pixma.conf"
+  if grep -qE '^bjnp://' "$PIXMA_CONF"; then
+    sudo sed -i "s|^bjnp://.*|bjnp://$pixma_hostname|" "$PIXMA_CONF"
+  else
+    echo "bjnp://$pixma_hostname" | sudo tee -a "$PIXMA_CONF" >/dev/null
+  fi
+fi
+
+echo -e "\nScanning support is ready — open Simple Scan to scan a document."
