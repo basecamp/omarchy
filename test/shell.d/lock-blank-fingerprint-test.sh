@@ -12,8 +12,15 @@ const serviceQml = fs.readFileSync(path.join(root, 'shell/plugins/lock/Service.q
 // `authenticating` is true from lock until unlock on every machine with a
 // reader enrolled. Gating the blank on it leaves the panel lit all night.
 assert(
-  /if \(root\.lockRequested && !root\.authenticatingPassword\) root\.runBlank\(\)/.test(serviceQml),
+  /onTriggered: \{[\s\S]*?if \(!root\.lockRequested \|\| root\.authenticatingPassword\) return/.test(serviceQml),
   'only a password check in flight stops the blank timer from blanking'
+)
+
+const blankTimerBody = (serviceQml.match(/id: idleBlankTimer[\s\S]*?onTriggered: \{([\s\S]*?)\n    \}/) || [])[1] || ''
+
+assert(
+  blankTimerBody !== '' && !/fingerprintAuthenticating/.test(blankTimerBody),
+  'the blank timer never gates on a fingerprint read'
 )
 
 assert(

@@ -29,8 +29,29 @@ assert(
 // Face auth is an alternative to the password, not a replacement: the password
 // path has to stay reachable even when a camera is enrolled.
 assert(
-  /if \(root\.lockRequested && !root\.authenticatingPassword\) root\.runBlank\(\)/.test(serviceQml),
-  'the blank timer still gates only on password entry'
+  /onTriggered: \{[\s\S]*?if \(!root\.lockRequested \|\| root\.authenticatingPassword\) return/.test(serviceQml),
+  'password entry still holds the panel up on its own'
+)
+
+// A scan already in flight owns a bounded transaction the backend finishes by
+// itself. Blanking through it throws away a result that may already be a match,
+// which is what a backend slower than the 5s blank timer runs into.
+assert(
+  /if \(root\.faceAuthenticating\) \{[\s\S]*?root\.blankPending = true[\s\S]*?faceRetryTimer\.stop\(\)[\s\S]*?blankDeferTimer\.restart\(\)[\s\S]*?return/.test(serviceQml),
+  'the blank timer defers to a face scan in flight instead of aborting it'
+)
+
+// Deferring is not waiting forever: the loop stops immediately, only the one
+// attempt underway is waited on, and a backend that never reports back hits a
+// ceiling rather than holding the camera open all night.
+assert(
+  /function handleFaceFinished\([\s\S]*?if \(blankPending\) \{\s*runBlank\(\)/.test(serviceQml),
+  'a finished face scan runs the blank it deferred'
+)
+
+assert(
+  /id: blankDeferTimer[\s\S]*?onTriggered: \{\s*if \(root\.blankPending\) root\.runBlank\(\)/.test(serviceQml),
+  'a face scan that never reports back stops holding the panel up'
 )
 
 // Enrolled models live under /etc/howdy, which an unprivileged shell cannot
