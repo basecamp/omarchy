@@ -142,6 +142,34 @@ assertEqual(
   'Password:',
   'polkit uses the input prompt for response requests'
 )
+const passwordWithInstruction = polkit.authenticationState('Password:', 'Insert your security key', true)
+assertEqual(
+  passwordWithInstruction.method,
+  'password',
+  'polkit keeps response-required flows in password mode with supplementary instructions'
+)
+assertEqual(
+  passwordWithInstruction.prompt,
+  'Password:',
+  'polkit preserves the input prompt for response-required supplementary instructions'
+)
+
+assert(
+  /readonly property string supplementaryInstruction:\s*String\(currentSupplementary \|\| ""\)\.trim\(\)/.test(agentQml),
+  'polkit trims the supplementary instruction'
+)
+assert(
+  /supplementaryInstructionVisible:\s*responseRequired\s*&&\s*supplementaryInstruction\.length > 0/.test(agentQml),
+  'polkit shows supplementary instructions for response-required flows'
+)
+assert(
+  /supplementaryInstruction\s*!==\s*String\(authState\.prompt \|\| ""\)\.trim\(\)/.test(agentQml),
+  'polkit suppresses duplicate supplementary prompts'
+)
+assert(
+  /text:\s*root\.supplementaryInstructionVisible\s*\?\s*root\.supplementaryInstruction\s*:\s*root\.authState\.prompt/.test(agentQml),
+  'polkit cue text prefers a visible supplementary instruction'
+)
 
 assert(
   agentQml.includes('/sys/class/hidraw/hidraw*') && agentQml.includes('udevadm info --query=property --path'),

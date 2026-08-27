@@ -60,6 +60,8 @@ Item {
 
   readonly property bool dialogVisible: polkitAgent.isActive || closing
   readonly property var authState: PolkitModel.authenticationState(currentPrompt, currentSupplementary, responseRequired)
+  readonly property string supplementaryInstruction: String(currentSupplementary || "").trim()
+  readonly property bool supplementaryInstructionVisible: responseRequired && supplementaryInstruction.length > 0 && supplementaryInstruction !== String(authState.prompt || "").trim()
   readonly property bool compactMode: dialogVisible && (authState.method === "waiting" || authState.method === "physical") && !submitted && !errorFlash
   readonly property bool waitingDelayActive: !waitingDelayLatched && !submitted && !errorFlash && authState.method === "waiting" && waitingDelayTimer.running
   readonly property int cardHeight: panel.height > 0 ? Math.min(fieldHeight + contentMargin * 2, panel.height - Style.gapsOut * 2) : fieldHeight + contentMargin * 2
@@ -487,7 +489,7 @@ Item {
 
     Rectangle {
       id: cuePill
-      visible: root.compactMode && root.authState.method === "physical"
+      visible: (root.compactMode && root.authState.method === "physical") || root.supplementaryInstructionVisible
       width: Math.min(cueText.implicitWidth + Style.space(24), panel.width - Style.gapsOut * 2)
       height: Style.space(28)
       anchors.horizontalCenter: cardContainer.horizontalCenter
@@ -502,7 +504,7 @@ Item {
         anchors.fill: parent
         anchors.leftMargin: Style.space(12)
         anchors.rightMargin: Style.space(12)
-        text: root.authState.prompt
+        text: root.supplementaryInstructionVisible ? root.supplementaryInstruction : root.authState.prompt
         color: root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
