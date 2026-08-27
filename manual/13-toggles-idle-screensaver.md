@@ -92,6 +92,8 @@ You can start it on demand from _System > Screensaver_ (`Super + Esc`), which fo
 
 `omarchy toggle screensaver` is what turns the idle one off, if you'd rather go straight from working to locked. It needs a terminal it knows how to configure — Alacritty, Foot, Ghostty, or Kitty — and will tell you so if your default terminal is something else.
 
+The animation normally runs at 120 frames per second. On a constrained virtual or software-rendered display, set `OMARCHY_SCREENSAVER_FRAME_RATE` to a lower value such as `20` in a file under `~/.config/uwsm/env.d/`, then restart Omarchy. Values from 1 through 240 are accepted.
+
 The logo it draws is yours to change, under _Style > Screensaver_. Upload a png or svg and Omarchy converts it to ASCII. See [branding](41-branding.md).
 
 ### The lock screen
