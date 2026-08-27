@@ -13,6 +13,18 @@ safe_icon_name() {
     | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//'
 }
 
+require_plain_name() {
+  # The name becomes a filename. A slash would turn it into directory levels, so
+  # the launcher lands somewhere omarchy-webapp-remove cannot address and the app
+  # is stuck in the launcher; a leading ../ leaves the applications directory
+  # altogether. Refuse rather than silently renaming what the user typed -- most
+  # often it is a URL entered in the name field.
+  if [[ $1 == */* ]]; then
+    echo "App name cannot contain '/': $1"
+    exit 1
+  fi
+}
+
 icon_name_from_ref() {
   local ref="$1"
   local name
@@ -68,6 +80,7 @@ fetch_site_icon() {
 if (( $# < 3 )); then
   echo -e "\e[32mLet's create a new web app you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
+  require_plain_name "$APP_NAME"
   APP_URL=$(gum input --prompt "URL> " --placeholder "https://example.com")
   if [[ ! $APP_URL =~ ^[a-zA-Z][a-zA-Z0-9+.-]*: ]]; then
     APP_URL="https://$APP_URL"
@@ -104,6 +117,8 @@ if [[ -z $APP_NAME || -z $APP_URL ]]; then
   exit 1
 fi
 
+require_plain_name "$APP_NAME"
+
 if [[ -z $ICON_REF ]]; then
   ICON_VALUE=$(safe_icon_name "$APP_NAME")
   mkdir -p "$ICON_DIR"
@@ -132,8 +147,9 @@ fi
 EXEC_COMMAND="${CUSTOM_EXEC:-omarchy-launch-webapp $APP_URL}"
 
 # Create application .desktop file
-DESKTOP_FILE="$HOME/.local/share/applications/$APP_NAME.desktop"
-mkdir -p "$(dirname "$DESKTOP_FILE")"
+DESKTOP_DIR="$HOME/.local/share/applications"
+DESKTOP_FILE="$DESKTOP_DIR/$APP_NAME.desktop"
+mkdir -p "$DESKTOP_DIR"
 
 cat >"$DESKTOP_FILE" <<EOF
 [Desktop Entry]
