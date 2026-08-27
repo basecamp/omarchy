@@ -89,6 +89,11 @@ function modeLabel(device, onBattery, states) {
   return "Charging"
 }
 
+// Kernel comm fields cap at 15 characters (TASK_COMM_LEN), so the panel's
+// comm column can be sized once for the realistic worst case and never per
+// sample.
+var COMM_MAX_CHARS = 15
+
 if (typeof module !== "undefined") {
   module.exports = {
     clampIndex: clampIndex,
@@ -105,6 +110,7 @@ if (typeof module !== "undefined") {
     buildTopProcesses: buildTopProcesses,
     buildSystemRows: buildSystemRows,
     buildRowImpact: buildRowImpact,
+    COMM_MAX_CHARS: COMM_MAX_CHARS,
     buildResourceSplits: buildResourceSplits,
     aggregateCommShares: aggregateCommShares,
     assignColorKeys: assignColorKeys
@@ -112,6 +118,7 @@ if (typeof module !== "undefined") {
 }
 
 // ---- Power Hungry: top consumers ---------------------------------------------
+
 //
 // Panel-only companion to the stock battery panel: parse one sampler.sh
 // snapshot and attribute the measured battery draw across processes. The bar

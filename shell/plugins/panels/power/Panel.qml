@@ -660,22 +660,37 @@ Panel {
           // Column headers, learned once: CPU / RAM / W (discharging only).
           // The column set is derived in onSample from the rows' own cells,
           // so the header can never drift from what renders beneath it.
+          // Header on the same fixed grid as the rows: each label right-aligned
+          // inside its column slot, matching where the values render below.
           Row {
             id: processHeader
             visible: root.processColumns.length > 0
             width: column.width
+
+            TextMetrics {
+              id: headerCommMetrics
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.caption
+              text: "WWWWWWWWWWWWWWW"
+            }
+
+            Item {
+              width: headerCommMetrics.advanceWidth + Style.space(16)
+              height: Style.space(12)
+            }
 
             Repeater {
               model: root.processColumns
 
               Item {
                 required property var modelData
-                width: processHeader.width / root.processColumns.length
+                width: (processHeader.width - headerCommMetrics.advanceWidth - Style.space(16)) / Math.max(1, root.processColumns.length)
                 height: Style.space(12)
 
                 Text {
                   text: parent.modelData
-                  x: Style.space(6)
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.space(4)
                   color: root.metricColor(parent.modelData)
                   opacity: 0.8
                   font.family: root.bar.fontFamily
@@ -693,6 +708,7 @@ Panel {
               required property var modelData
               label: modelData.label
               cells: modelData.cells !== undefined ? modelData.cells : []
+              columns: root.processColumns
               commColor: modelData.key === "base" || modelData.key === "else"
                 ? root.segmentColor({ kind: modelData.key, key: modelData.key })
                 : root.segmentColor({ kind: "comm", key: modelData.key })
@@ -792,22 +808,35 @@ Panel {
     font.pixelSize: Style.font.bodySmall
   }
 
-  // One graphic line per process: the comm label (with a small comm-colored
-  // accent mark preserving some identity cross-referencing to the SYSTEM
-  // composition bars) sits in the left gutter, and ONE track carries the
-  // metric cells — CPU, RAM, W (discharging only) — each a mini-meter in
-  // its own fixed column: metric-type color, fill normalized per metric,
-  // intensity ramped by the cell's magnitude within its column, value text
-  // at the fill's end on the unfilled track (the established legibility
-  // rule). The old two-line row (impact fill + RAM sub-bar) is gone.
+  // One graphic line per process on a FIXED grid, recalculated only on
+  // basis change (column set) or panel width — never per sample. Comm
+  // column: the accent mark in its own slot plus a left-aligned label
+  // elided at the kernel's 15-char comm cap (Model.COMM_MAX_CHARS, sized
+  // once via TextMetrics). Metric cells: the remaining track split equally
+  // across the section's column set, so every row — including the base and
+  // tail rows' single W cell — lands in the same pixel columns as the
+  // header. Value text is right-aligned INSIDE its fixed cell: the same
+  // pixel column every refresh regardless of fill length, and fills are
+  // capped short of the text so type never sits on a fill. No width
+  // Behaviors anywhere — fills step at the 1 Hz cadence, geometry never
+  // moves. Fixed decimals (pct one place, watts one place, RAM auto-unit
+  // in the slot) keep digit-count changes absorbed by the right alignment.
   component MetricRow: Item {
     id: metricRow
     property string label: ""
     property var cells: []
+    property var columns: []
     property color commColor: root.bar ? root.bar.foreground : Color.foreground
 
     width: column.width
     implicitHeight: Style.space(16)
+
+    TextMetrics {
+      id: commMetrics
+      font.family: root.bar.fontFamily
+      font.pixelSize: Style.font.bodySmall
+      text: "WWWWWWWWWWWWWWW"
+    }
 
     Rectangle {
       id: commMark
@@ -823,18 +852,18 @@ Panel {
       id: rowLabel
       text: metricRow.label
       x: commMark.width + Style.space(5)
+      width: commMetrics.advanceWidth
       anchors.verticalCenter: parent.verticalCenter
       color: root.bar ? root.bar.foreground : Color.foreground
       opacity: 0.75
       font.family: root.bar.fontFamily
       font.pixelSize: Style.font.bodySmall
       elide: Text.ElideRight
-      width: Math.min(implicitWidth + Style.space(6), parent.width * 0.32)
     }
 
     Rectangle {
       id: cellTrack
-      x: rowLabel.x + rowLabel.width + Style.space(6)
+      x: rowLabel.x + rowLabel.width + Style.space(8)
       width: parent.width - x
       height: parent.height
       radius: height / 3
@@ -843,37 +872,49 @@ Panel {
                      (root.bar ? root.bar.foreground : Color.foreground).b, 0.08)
 
       Row {
-        id: cellRow
+        id: cellGrid
         anchors.fill: parent
 
         Repeater {
-          model: metricRow.cells
+          model: metricRow.columns
 
           Item {
+            id: cellSlot
             required property var modelData
-            width: cellRow.width / Math.max(1, metricRow.cells.length)
-            height: cellRow.height
+            width: metricRow.columns.length > 0 ? cellGrid.width / metricRow.columns.length : cellGrid.width
+            height: cellGrid.height
 
-            Rectangle {
-              id: cellFill
-              x: Style.space(2)
-              y: Style.space(2)
-              width: Math.max(0, Math.min(1, parent.modelData.normalized)) * (parent.width - Style.space(4))
-              height: parent.height - Style.space(4)
-              radius: height / 3
-              color: root.metricColor(parent.modelData.metric)
-              opacity: parent.modelData.intensity
+            // the cell for this column, when the row carries one
+            readonly property var cellData: {
+              for (var i = 0; i < metricRow.cells.length; i++)
+                if (metricRow.cells[i].metric === cellSlot.modelData) return metricRow.cells[i]
+              return null
             }
 
             Text {
-              text: parent.modelData.value
-              anchors.left: parent.left
-              anchors.leftMargin: cellFill.width + Style.space(6)
+              id: cellValue
+              visible: cellSlot.cellData !== null
+              text: cellSlot.cellData !== null ? cellSlot.cellData.value : ""
+              anchors.right: parent.right
+              anchors.rightMargin: Style.space(4)
               anchors.verticalCenter: parent.verticalCenter
               color: root.bar ? root.bar.foreground : Color.foreground
               opacity: 0.75
               font.family: root.bar.fontFamily
               font.pixelSize: Style.font.bodySmall
+            }
+
+            Rectangle {
+              visible: cellSlot.cellData !== null
+              x: Style.space(2)
+              y: Style.space(2)
+              width: cellSlot.cellData !== null
+                ? Math.max(0, Math.min(1, cellSlot.cellData.normalized)) * Math.max(0, parent.width - cellValue.implicitWidth - Style.space(10))
+                : 0
+              height: parent.height - Style.space(4)
+              radius: height / 3
+              color: root.metricColor(cellSlot.modelData)
+              opacity: cellSlot.cellData !== null ? cellSlot.cellData.intensity : 0
             }
           }
         }
@@ -954,15 +995,6 @@ Panel {
             height: splitSegments.height
             color: root.segmentColor(modelData)
 
-            Text {
-              visible: parent.width > Style.space(56)
-              text: parent.modelData.label
-              x: Style.space(5)
-              anchors.verticalCenter: parent.verticalCenter
-              color: root.textOn(parent.color)
-              font.family: root.bar.fontFamily
-              font.pixelSize: Style.font.bodySmall
-            }
           }
         }
       }
