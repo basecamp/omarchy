@@ -78,7 +78,7 @@ lua51
 luarocks
 man-db
 mariadb-libs
-mise
+mise-bin
 moonlight-qt
 mpv
 mpv-mpris
@@ -108,7 +108,8 @@ python-poetry-core
 ttfx
 qemu-user-static-binfmt
 qrencode
-quickshell-git
+qt6-imageformats
+quickshell
 ripgrep
 ruby
 tensaku

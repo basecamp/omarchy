@@ -57,14 +57,39 @@ function glyphFromHints(hints) {
   return stringHint(hints, "omarchy-glyph")
 }
 
-// Shell command to run when the card is clicked, sent by
-// omarchy-notification-send --exec. Carrying the action as data means it
-// travels with the popup through the persistence files, so a toast restored
-// after a shell restart clicks through exactly like a live one. A libnotify
-// action can't: its sender is still waiting on an id from a server generation
-// that no longer exists.
-function execFromHints(hints) {
-  return stringHint(hints, "omarchy-exec")
+// The click action: a JSON argv string from omarchy-notification-send
+// --exec. Carried as data so a toast restored after a shell restart stays
+// clickable (a libnotify action can't — its sender is gone). Run via
+// Util.execArgv as bash positional parameters, never a shell string, so
+// attacker-controlled values (a title, a filename) can't become commands.
+function execArgvFromHints(hints) {
+  return stringHint(hints, "omarchy-exec-argv")
+}
+
+// Validate a persisted omarchy-exec-argv into a runnable argv, or null. This is
+// a STRUCTURAL check only: it fails closed on a malformed hint (non-array, a
+// non-string or empty program, or a leading-dash program that argv would read as
+// an option). It does not judge intent — a well-formed ["bash","-c",…] is
+// accepted. WHICH senders may set this hint is a separate boundary: any
+// session-bus process can, by the freedesktop protocol's design (see
+// docs/notifications.md), which is equivalent to same-uid code execution.
+function parseExecArgv(value) {
+  var text = String(value || "")
+  if (!text) return null
+
+  var parsed
+  try {
+    parsed = JSON.parse(text)
+  } catch (e) {
+    return null
+  }
+
+  if (!Array.isArray(parsed) || parsed.length === 0) return null
+  for (var i = 0; i < parsed.length; i++) {
+    if (typeof parsed[i] !== "string") return null
+  }
+  if (!parsed[0] || parsed[0].charAt(0) === "-") return null
+  return parsed
 }
 
 function shouldRenderCompactGlyph(glyph, iconSource, singleLineToast) {
@@ -85,7 +110,7 @@ function snapshotOf(notification, timestamp) {
     body: n.body || "",
     image: n.image || "",
     glyph: glyphFromHints(n.hints),
-    exec: execFromHints(n.hints),
+    execArgv: execArgvFromHints(n.hints),
     urgency: n.urgency,
     expireTimeout: expireTimeout,
     timestamp: timestamp === undefined ? Date.now() : timestamp
@@ -94,7 +119,7 @@ function snapshotOf(notification, timestamp) {
 
 // Everything the popup card draws, and therefore everything an in-place
 // update has to write through to the row and its file.
-var POPUP_ROLES = ["app", "appIcon", "summary", "body", "image", "glyph", "exec", "urgency", "expireTimeout"]
+var POPUP_ROLES = ["app", "appIcon", "summary", "body", "image", "glyph", "execArgv", "urgency", "expireTimeout"]
 
 function popupRoles() {
   return POPUP_ROLES
@@ -136,7 +161,7 @@ function historyEntry(value, normalUrgency) {
     body: e.body || "",
     image: e.image || "",
     glyph: e.glyph || "",
-    exec: e.exec || "",
+    execArgv: e.execArgv || "",
     urgency: typeof e.urgency === "number" ? e.urgency : normalUrgency,
     expireTimeout: 0,
     timestamp: e.timestamp || 0
@@ -186,8 +211,59 @@ function popupEntry(value, normalUrgency) {
 }
 
 function popupFileName(entry) {
+  return imageStem(entry) + ".json"
+}
+
+// ---------------------------------------------------- persisted images
+//
+// A notification's images only exist while it is live: Chromium-family
+// senders (all Omarchy web apps) delete their scoped /tmp files on close,
+// and image-data hints surface as in-process image:// URLs that die with
+// the server object. Persisted entries therefore reference their own
+// copies, named by the entry's file stem so cleanup can find them from
+// the JSON file name alone.
+
+var PERSISTED_IMAGE_ROLES = ["appIcon", "image"]
+
+function imageStem(entry) {
   var e = entry || {}
-  return String(e.timestamp || 0) + "-" + String(e.originalId || 0) + ".json"
+  return String(e.timestamp || 0) + "-" + String(e.originalId || 0)
+}
+
+// The filesystem path behind a file-backed image value, or "" for anything
+// a copy can't capture: themed icon names, in-process image:// URLs, empty.
+function localImageFile(value) {
+  var s = String(value || "")
+  if (s.indexOf("file://") === 0) {
+    s = s.slice(7)
+    try { s = decodeURIComponent(s) } catch (e) {}
+  }
+  return s.charAt(0) === "/" ? s : ""
+}
+
+// The entry as it should hit the disk, plus the copies that make it true.
+// File-backed images redirect to their copy under imagesDir; dead image://
+// URLs drop to "" (the card falls back to the app icon). Already-redirected
+// values map onto themselves and produce no copy, keeping restores no-ops.
+function persistablePopup(entry, imagesDir) {
+  var e = entry || {}
+  var out = {}
+  for (var key in e) out[key] = e[key]
+  var copies = []
+  for (var i = 0; i < PERSISTED_IMAGE_ROLES.length; i++) {
+    var role = PERSISTED_IMAGE_ROLES[i]
+    var value = String(out[role] || "")
+    if (!value) continue
+    var source = localImageFile(value)
+    if (source) {
+      var copy = String(imagesDir || "") + imageStem(e) + "-" + role
+      if (source !== copy) copies.push({ from: source, to: copy })
+      out[role] = "file://" + copy
+    } else if (value.indexOf("image://") === 0) {
+      out[role] = ""
+    }
+  }
+  return { entry: out, copies: copies }
 }
 
 function serializePopup(entry, normalUrgency) {
@@ -295,7 +371,8 @@ if (typeof module !== "undefined") {
     isEphemeralApp: isEphemeralApp,
     stringHint: stringHint,
     glyphFromHints: glyphFromHints,
-    execFromHints: execFromHints,
+    execArgvFromHints: execArgvFromHints,
+    parseExecArgv: parseExecArgv,
     shouldRenderCompactGlyph: shouldRenderCompactGlyph,
     snapshotOf: snapshotOf,
     popupRoles: popupRoles,
@@ -306,6 +383,9 @@ if (typeof module !== "undefined") {
     historyRows: historyRows,
     popupEntry: popupEntry,
     popupFileName: popupFileName,
+    imageStem: imageStem,
+    localImageFile: localImageFile,
+    persistablePopup: persistablePopup,
     serializePopup: serializePopup,
     parsePopupFiles: parsePopupFiles,
     popupExpired: popupExpired,

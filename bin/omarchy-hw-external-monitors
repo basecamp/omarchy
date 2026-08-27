@@ -2,8 +2,11 @@
 
 # omarchy:summary=Returns true when an external monitor is physically connected.
 
-for status in /sys/class/drm/card*-*/status; do
-  [[ $status == *-eDP-*/status ]] && continue
+drm_path="${OMARCHY_DRM_PATH:-/sys/class/drm}"
+
+for status in "$drm_path"/card*-*/status; do
+  [[ -e $status ]] || continue
+  [[ $status =~ -(eDP|LVDS|DSI)-[^/]+/status$ ]] && continue
   [[ $(< $status) == "connected" ]] && exit 0
 done
 exit 1

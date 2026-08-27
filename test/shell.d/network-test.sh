@@ -21,6 +21,60 @@ assert(barPress, 'network bar button has an onPressed handler')
 const barPressCode = barPress[0].replace(/\/\/.*$/gm, '')
 assert(!/refresh\(/.test(barPressCode), 'network bar click opens the panel without a second refresh that would undo the deferred scan')
 
+// A closed panel has no nearby-network list to fill. Quickshell's scanner
+// re-arms RequestScan on its own timer, and every sweep takes the radio off
+// the operating channel, so a scanner left enabled behind a closed panel keeps
+// degrading the connection it is scanning from.
+const refreshFn = panelSource.match(/function refresh\(scanWifi\)[\s\S]*?\n {2}\}/)
+assert(refreshFn, 'network has a refresh() function')
+assert(/if \(opened && wifiDevice\)/.test(refreshFn[0]), 'network only touches the scanner from refresh() while its panel is open')
+
+// The 100ms deferral can outlive the panel: closing inside the window would
+// otherwise re-enable scanning from a timer nobody is watching.
+const scanRestart = panelSource.match(/id: scanRestart[\s\S]*?onTriggered: \{[\s\S]*?\n {4}\}/)
+assert(scanRestart, 'network has the deferred scan restart timer')
+assert(/root\.opened/.test(scanRestart[0]), 'network re-checks the panel before the deferred restart re-enables scanning')
+assert(/scanRestart\.stop\(\)/.test(panelSource), 'network cancels a pending scan restart when the panel closes')
+
+// scannerEnabled lives on a shared WifiDevice with no reference counting, so
+// the panel has to own what it enabled. Run the helper's own JavaScript against
+// stand-in devices: the two invariants it carries are that a closed panel never
+// takes a device, and that adopting a new one releases the previous.
+const scannerHelper = panelSource.match(/function setScannerEnabled\(enabled\) \{[\s\S]*?\n {2}\}/)
+assert(scannerHelper, 'network has a scanner ownership helper')
+
+var opened = false
+var wifiDevice = { scannerEnabled: false }
+var scannerDevice = null
+eval(scannerHelper[0])
+
+setScannerEnabled(true)
+assert(
+  scannerDevice === null && wifiDevice.scannerEnabled === false,
+  'network does not let a closed panel claim or enable a scanner device'
+)
+
+var previousScannerDevice = { scannerEnabled: true }
+var replacementScannerDevice = { scannerEnabled: false }
+opened = true
+scannerDevice = previousScannerDevice
+wifiDevice = replacementScannerDevice
+setScannerEnabled(true)
+assert(
+  previousScannerDevice.scannerEnabled === false &&
+    scannerDevice === replacementScannerDevice &&
+    replacementScannerDevice.scannerEnabled === true,
+  'network releases the previous scanner device before enabling its replacement'
+)
+
+// Destruction is the case a guard-only fix misses: the widget dies with the
+// panel still open, as a bar reload does, and nothing else would release it.
+assert(
+  /Component\.onDestruction[\s\S]{0,140}scannerDevice\.scannerEnabled = false/.test(panelSource),
+  'network releases the scanner it owns when the widget is destroyed'
+)
+assert(!/wifiDevice\.scannerEnabled\s*=/.test(panelSource), 'network writes scanner state through its owned device reference rather than the moving wifiDevice reference')
+
 // A row is a primitive snapshot that can outlive its WifiNetwork, and
 // disconnect() falls back to the live connection when handed null, so row
 // activation must go through the guarded disconnectRow().
@@ -135,13 +189,82 @@ assertDeepEqual(
   'network wifi rows project exactly the primitive fields, so each delegate stores no live QObject'
 )
 
-const reasons = { NoSecrets: 1, WifiAuthTimeout: 2, WifiNetworkLost: 3, WifiClientDisconnected: 4, WifiClientFailed: 5 }
-assertEqual(network.networkFailureReason(1, reasons), 'Passphrase required', 'network maps missing passphrase failures')
-assertEqual(network.networkFailureReason(2, reasons), 'Wrong password', 'network maps auth timeout failures')
-assertEqual(network.networkFailureReason(99, reasons), 'Failed to connect', 'network maps unknown failures')
+const security = {
+  Wpa3SuiteB192: 0,
+  Sae: 1,
+  Wpa2Eap: 2,
+  Wpa2Psk: 3,
+  WpaEap: 4,
+  WpaPsk: 5,
+  StaticWep: 6,
+  DynamicWep: 7,
+  Leap: 8,
+  Owe: 9,
+  Open: 10,
+  Unknown: 11
+}
+for (const name of ['Wpa3SuiteB192', 'Sae', 'Wpa2Eap', 'Wpa2Psk', 'WpaEap', 'WpaPsk', 'StaticWep', 'DynamicWep', 'Leap', 'Unknown']) {
+  assertEqual(network.requiresCredentials(security[name], security.Open, security.Owe), true, 'network asks for ' + name + ' credentials')
+}
+assertEqual(network.requiresCredentials(security.Owe, security.Open, security.Owe), false, 'network does not ask for OWE credentials')
+assertEqual(network.requiresCredentials(security.Open, security.Open, security.Owe), false, 'network does not ask for open-network credentials')
 
-assertEqual(network.shouldRepromptPassphrase(reasons.NoSecrets, false, reasons), true, 'network reprompts when secrets are missing')
-assertEqual(network.shouldRepromptPassphrase(reasons.WifiAuthTimeout, true, reasons), true, 'network reprompts a protected network after a wrong password')
+assert(
+  /Model\.requiresCredentials\(security, WifiSecurityType\.Open, WifiSecurityType\.Owe\)/.test(panelSource),
+  'network wires the Quickshell OWE enum into credential detection'
+)
+assert(
+  /if \(requiresCredentials\(net\.security\) && !net\.known\)/.test(panelSource),
+  'network keyboard activation gates unknown-network prompts on credential requirements'
+)
+assert(
+  /if \(row\.requiresCredentials && !row\.isKnown\)/.test(panelSource),
+  'network row clicks gate unknown-network prompts on credential requirements'
+)
+assert(
+  /shouldRepromptPassphrase\(reason, row\.requiresCredentials\)/.test(panelSource),
+  'network failure reprompts use the row credential requirement'
+)
+assert(
+  /networkFailureReason\(reason, requiresCredentials\(network\.security\)\)/.test(panelSource),
+  'network failure copy uses the live network credential requirement'
+)
+assert(
+  /readonly property bool canForget: root\.canForgetNetwork\(net\)/.test(panelSource),
+  'network rows derive forget eligibility from the tested model helper'
+)
+const rightAction = panelSource.match(/Item \{\s*id: rightAction\b[\s\S]*?\n {6}\}/)
+assert(rightAction, 'network has a right-edge action target')
+assert(
+  /visible: row\.requiresCredentials \|\| row\.canForget/.test(rightAction[0]),
+  'network keeps a forget target for known passwordless networks'
+)
+const lockIndicator = panelSource.match(/Text \{\s*id: lockIndicator\b[\s\S]*?\n {8}\}/)
+assert(lockIndicator, 'network has a lock/forget indicator')
+assert(
+  /visible: row\.requiresCredentials \|\| row\.forgetVisible/.test(lockIndicator[0]),
+  'network hides the lock on passwordless networks until showing their forget action'
+)
+assert(
+  /forgetVisible: canForget && \(!requiresCredentials \|\| forgetFocused \|\| rightMouse\.containsMouse\)/.test(panelSource),
+  'network shows the forget action directly for known passwordless networks'
+)
+
+const reasons = { NoSecrets: 1, WifiAuthTimeout: 2, WifiNetworkLost: 3, WifiClientDisconnected: 4, WifiClientFailed: 5 }
+assertEqual(network.networkFailureReason(reasons.NoSecrets, true, reasons), 'Passphrase required', 'network maps missing credential failures')
+assertEqual(network.networkFailureReason(reasons.WifiAuthTimeout, true, reasons), 'Wrong password', 'network maps credentialed auth timeouts')
+assertEqual(network.networkFailureReason(reasons.NoSecrets, false, reasons), 'Failed to connect', 'network gives passwordless missing-secret failures generic copy')
+assertEqual(network.networkFailureReason(reasons.WifiAuthTimeout, false, reasons), 'Failed to connect', 'network gives passwordless auth timeouts generic copy')
+assertEqual(network.networkFailureReason(99, true, reasons), 'Failed to connect', 'network maps unknown failures')
+
+assertEqual(network.canForgetNetwork({ known: true, connected: false, security: security.Owe }), true, 'network can forget known disconnected OWE networks')
+assertEqual(network.canForgetNetwork({ known: true, connected: false, security: security.Open }), true, 'network can forget known disconnected open networks')
+assertEqual(network.canForgetNetwork({ known: false, connected: false, security: security.Owe }), false, 'network cannot forget unknown networks')
+assertEqual(network.canForgetNetwork({ known: true, connected: true, security: security.Owe }), false, 'network cannot forget the connected network')
+
+assertEqual(network.shouldRepromptPassphrase(reasons.NoSecrets, true, reasons), true, 'network reprompts when required credentials are missing')
+assertEqual(network.shouldRepromptPassphrase(reasons.NoSecrets, false, reasons), false, 'network does not ask a passwordless network for missing secrets')
+assertEqual(network.shouldRepromptPassphrase(reasons.WifiAuthTimeout, true, reasons), true, 'network reprompts a credentialed network after a wrong password')
 assertEqual(network.shouldRepromptPassphrase(reasons.WifiAuthTimeout, false, reasons), false, 'network does not reprompt an open network on auth timeout')
 assertEqual(network.shouldRepromptPassphrase(reasons.WifiClientFailed, true, reasons), false, 'network does not reprompt on generic connection failures')
 

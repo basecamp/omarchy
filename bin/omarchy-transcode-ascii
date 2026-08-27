@@ -101,11 +101,6 @@ if [[ ! -f $image_path ]]; then
   exit 1
 fi
 
-if omarchy-cmd-missing magick; then
-  echo "ImageMagick is required to convert logo images" >&2
-  exit 1
-fi
-
 if [[ $mode == "braille" ]]; then
   pixel_width=$((width * 2))
   pixel_height=$((height * 4))
