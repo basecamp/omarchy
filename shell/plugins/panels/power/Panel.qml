@@ -181,7 +181,8 @@ Panel {
   function segmentColor(seg) {
     if (seg.kind === "base") return Color.accent
     if (seg.kind === "rest" || seg.kind === "else") return Color.muted
-    var k = seg.kind === "group" ? seg.key : (seg.kind === "comm" ? colorMap[seg.key] : "")
+    var k = seg.kind === "comm" && seg.slot !== undefined ? seg.slot.hue
+      : (seg.kind === "comm" && colorMap[seg.key] !== undefined ? colorMap[seg.key].hue : "")
     if (k === "blue") return Color.blue
     if (k === "cyan") return Color.cyan
     if (k === "magenta") return Color.magenta
@@ -343,10 +344,15 @@ Panel {
     // collision-free set exists — retro-82's residual defect is its own
     // blue == magenta, a theme-level reduction). Same comm = same key =
     // same color in the CPU, RAM, and watts bars and its row meter.
-    colorMap = Model.assignColorKeys(resourceSplits.order, root.paletteKeys)
-    // Ordinal badges for simultaneous same-hue rows: the hue is identity,
-    // the badge only breaks ties among what is visible right now.
-    rowOrdinals = Model.collisionOrdinals(resourceSplits.order, root.paletteKeys)
+    // The shade-lattice assignment (one function, one visible set): accents,
+    // cell fills, and every bar segment read from it. Badges are the
+    // exhaustion path only — a comm with no free slot among nine — which
+    // the table's top-N practically never reaches.
+    var lattice = resourceSplits.lattice
+    colorMap = lattice.assignment
+    rowOrdinals = {}
+    for (var ui = 0; ui < lattice.unassigned.length; ui++)
+      rowOrdinals[lattice.unassigned[ui]] = ui + 2
     // Vitals rows are rebuilt complete with their segments attached: a
     // property added to a plain JS object after the fact carries no change
     // signal, so a delegate that bound before the attach would stay null.
@@ -675,6 +681,7 @@ Panel {
                   width: modelData.share * Math.max(0, wattsSegmentRow.width - root.splitGapBudget)
                   height: parent.height
                   color: root.segmentColor(modelData)
+                  opacity: modelData.slot !== undefined ? modelData.slot.shade : 1
                 }
               }
             }
@@ -734,11 +741,15 @@ Panel {
               columns: root.processColumns
               anchor: modelData.key === "system"
               badge: root.rowOrdinals[modelData.key] !== undefined ? root.rowOrdinals[modelData.key] : 0
+              shade: root.colorMap[modelData.key] !== undefined && root.colorMap[modelData.key].shade !== undefined
+                ? root.colorMap[modelData.key].shade : 1
               commColor: modelData.key === "system"
                 ? (root.bar ? root.bar.foreground : Color.foreground)
                 : (modelData.key === "base" || modelData.key === "else"
                   ? root.segmentColor({ kind: modelData.key, key: modelData.key })
-                  : root.segmentColor({ kind: "comm", key: modelData.key }))
+                  : (root.colorMap[modelData.key] !== undefined
+                    ? Color[root.colorMap[modelData.key].hue]
+                    : root.segmentColor({ kind: "comm", key: modelData.key })))
             }
           }
 
@@ -855,6 +866,7 @@ Panel {
     property var columns: []
     property bool anchor: false
     property int badge: 0
+    property real shade: 1
     property color commColor: root.bar ? root.bar.foreground : Color.foreground
 
     width: column.width
@@ -875,6 +887,7 @@ Panel {
       x: 0
       anchors.verticalCenter: parent.verticalCenter
       color: metricRow.commColor
+      opacity: metricRow.shade
     }
 
     // Fixed badge micro-slot: reserved whether or not a badge shows, so a
@@ -964,7 +977,7 @@ Panel {
               color: metricRow.anchor
                 ? (root.bar ? root.bar.foreground : Color.foreground)
                 : root.metricColor(cellSlot.modelData)
-              opacity: cellSlot.cellData !== null ? cellSlot.cellData.intensity : 0
+              opacity: cellSlot.cellData !== null ? cellSlot.cellData.intensity * metricRow.shade : 0
             }
           }
         }
@@ -1045,6 +1058,7 @@ Panel {
             width: modelData.share * Math.max(0, splitSegments.width - root.splitGapBudget)
             height: splitSegments.height
             color: root.segmentColor(modelData)
+            opacity: modelData.slot !== undefined ? modelData.slot.shade : 1
 
           }
         }

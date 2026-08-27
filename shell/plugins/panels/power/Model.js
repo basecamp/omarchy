@@ -102,6 +102,13 @@ function wattsBasis(deviceState, dischargingState, watts) {
 // Kernel comm fields cap at 15 characters (TASK_COMM_LEN), so the panel's
 // comm column can be sized once for the realistic worst case and never per
 // sample.
+// The shade lattice: three fixed opacity steps over each identity hue,
+// multiplying the SAME theme color — nine distinguishable identity slots
+// from three collision-free keys, zero new RGB, the 22-theme guarantee
+// intact. Steps chosen against the panel's 0.12-alpha track: the lowest
+// shade stays clearly above the track at panel scale (verified live).
+var SHADES = [0.5, 0.75, 1.0]
+
 var COMM_MAX_CHARS = 15
 
 // Gap budget basis for the composition bars: the most segments any bar can
@@ -134,6 +141,10 @@ if (typeof module !== "undefined") {
     aggregateCommShares: aggregateCommShares,
     assignColorKeys: assignColorKeys,
     stableColorKey: stableColorKey,
+    stableColorHash: stableColorHash,
+    SHADES: SHADES,
+    slotPreferences: slotPreferences,
+    resolveColorSlots: resolveColorSlots,
     SPLIT_MAX_SEGMENTS: SPLIT_MAX_SEGMENTS,
     collisionOrdinals: collisionOrdinals
   }
@@ -485,21 +496,31 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
   // panel's palette rationale). Passed in so callers own it; defaulted so
   // the pure builder is self-contained.
   palette = palette || ["blue", "cyan", "magenta"]
-  // Composition bars keep PER-COMM segments (the round-8 merge chunked the
-  // geometry away), laid out in CANONICAL hue order: every blue-hue comm
-  // first, then cyan, then magenta — rank order only WITHIN a hue — then
-  // rest, then idle/available. Rank shuffles can reorder members inside
-  // their hue block and shares may breathe, but hue blocks never relocate:
-  // horizontal calm. Callers draw constant separators between segments and
-  // scale fills against a fixed gap budget (SPLIT_MAX_SEGMENTS) so the
-  // bar's geometry is comparable across refreshes and across resources.
-  function canonicalCommSegments(fracList) {
-    var out = []
-    for (var p = 0; p < palette.length; p++)
-      for (var i = 0; i < fracList.length; i++)
-        if (stableColorKey(fracList[i].key, palette.length) === p)
-          out.push({ key: fracList[i].key, share: fracList[i].share, kind: "comm" })
-    return out
+  // The shade lattice assignment, resolved ONCE over the visible set (the
+  // table's rank order, extended with any RSS-only comms) and shared by the
+  // table accents and every bar — one function, one visible set, so
+  // cross-surface consistency stays structural. Bars lay comm segments out
+  // in LATTICE order: hue-major, shade-minor — fully rank-independent now
+  // that slots are unique below exhaustion, so segment order changes only
+  // with membership. Callers draw constant separators and scale fills
+  // against the fixed gap budget (SPLIT_MAX_SEGMENTS).
+  var lattice = null
+  function slotOf(comm) {
+    if (lattice === null) lattice = resolveColorSlots(result.order, palette, SHADES)
+    return lattice.assignment[comm] !== undefined
+      ? lattice.assignment[comm]
+      : { hue: palette[stableColorKey(comm, palette.length)], hueIdx: stableColorKey(comm, palette.length), shadeIdx: 2, shade: 1 }
+  }
+  function latticeCommSegments(fracList) {
+    var withSlots = []
+    for (var i = 0; i < fracList.length; i++)
+      withSlots.push({ key: fracList[i].key, share: fracList[i].share, kind: "comm", slot: slotOf(fracList[i].key) })
+    withSlots.sort(function(a, b) {
+      if (a.slot.hueIdx !== b.slot.hueIdx) return a.slot.hueIdx - b.slot.hueIdx
+      if (a.slot.shadeIdx !== b.slot.shadeIdx) return a.slot.shadeIdx - b.slot.shadeIdx
+      return a.key < b.key ? -1 : 1
+    })
+    return withSlots
   }
   var n = limit || 5
   var result = { order: [], cpu: null, ram: null, watts: null, gpu: null }
@@ -525,7 +546,7 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
         var frac = agg.shares[i].share * busyDelta / totalDelta
         if (frac > 0) { commFracs.push({ key: agg.shares[i].label, share: frac }); used += frac }
       }
-      var segs = canonicalCommSegments(commFracs)
+      var segs = latticeCommSegments(commFracs)
       // thresholds would drop sub-pixel segments and break the exact sum;
       // a 0.4% segment renders sub-pixel, which is invisibility enough
       var rest = Math.max(0, busyDelta / totalDelta - used)
@@ -561,7 +582,7 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
       if (rf > 0) { ramFracs.push({ key: ramList[j].label, share: rf }); rused += rf }
       if (result.order.indexOf(ramList[j].label) === -1) result.order.push(ramList[j].label)
     }
-    var rsegs = canonicalCommSegments(ramFracs)
+    var rsegs = latticeCommSegments(ramFracs)
     var rrest = Math.max(0, usedFrac - rused)
     rsegs.push({ key: "rest", label: "rest", share: rrest, kind: "rest" })
     rsegs.push({ key: "avail", label: "available", share: Math.max(0, 1 - usedFrac), kind: "avail" })
@@ -586,7 +607,7 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
       var wf = variable * agg.shares[k].share / drawWatts
       if (wf > 0) { wFracs.push({ key: agg.shares[k].label, share: wf }); wused += wf }
     }
-    wsegs = wsegs.concat(canonicalCommSegments(wFracs))
+    wsegs = wsegs.concat(latticeCommSegments(wFracs))
     var welse = Math.max(0, 1 - wused)
     wsegs.push({ key: "else", label: "everything else", share: welse, kind: "else" })
     result.watts = wsegs
@@ -602,6 +623,8 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
     result.intensity.gpu = 0.45 + 0.55 * g
   }
 
+  if (lattice === null) lattice = resolveColorSlots(result.order, palette, SHADES)
+  result.lattice = lattice
   return result
 }
 
@@ -611,14 +634,80 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
 // hue everywhere and forever: table label accents, composition-bar groups,
 // any surface. The multiply stays under 2^53 and the >>>0 fold makes the
 // uint32 overflow explicit, so every QML JS engine agrees bit-for-bit.
-function stableColorKey(comm, paletteSize) {
+function stableColorHash(comm) {
   var h = 2166136261
   var s = String(comm)
   for (var i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i)
     h = (h * 16777619) >>> 0
   }
-  return h % (paletteSize || 3)
+  return h >>> 0
+}
+
+function stableColorKey(comm, paletteSize) {
+  return stableColorHash(comm) % (paletteSize || 3)
+}
+
+// Full 9-slot preference ordering, derived deterministically from ONE hash:
+// hue = h % 3 (low bits), shade = floor(h / 3) % 3 (the next bits —
+// decorrelated from the hue bits, tested). The preferred slot comes first;
+// then the SAME hue's other shades (cyclically from the preferred shade —
+// hue identity survives displacement, only the shade yields); then the
+// other hues in cyclic order from the preferred hue, each with shades
+// cyclically from the preferred shade. Same comm, same list, forever.
+function slotPreferences(comm, palette, shades) {
+  palette = palette || ["blue", "cyan", "magenta"]
+  shades = shades || SHADES
+  var h = stableColorHash(comm)
+  var hue = h % palette.length
+  var shade = Math.floor(h / palette.length) % shades.length
+  var prefs = [{ hue: hue, shade: shade }]
+  for (var s = 1; s < shades.length; s++) prefs.push({ hue: hue, shade: (shade + s) % shades.length })
+  for (var hu = 1; hu < palette.length; hu++) {
+    for (var s2 = 0; s2 < shades.length; s2++)
+      prefs.push({ hue: (hue + hu) % palette.length, shade: (shade + s2) % shades.length })
+  }
+  return prefs
+}
+
+// Claim resolution over the visible set: a pure function of the rank-ordered
+// comm list — same list, same assignment, always. Claims are processed in
+// claim-strength order (rank first, name lexicographic as the tiebreak), and
+// each comm takes the first slot on its preference list not already taken.
+// Greedy-by-strength IS the displacement fixed point in a single pass — a
+// stronger claim never moves after taking a slot, so cascades cannot arise
+// and termination is structural (one pass, at most nine slots). A comm with
+// no free slot on any of its nine preferences is UNASSIGNED — the table
+// falls back to the round-9 ordinal badge for exactly those.
+// Stability contract: an uncontested comm keeps its hash slot forever;
+// a contested comm's displacement is deterministic (top ranks most stable,
+// shade yields before hue).
+function resolveColorSlots(comms, palette, shades) {
+  palette = palette || ["blue", "cyan", "magenta"]
+  shades = shades || SHADES
+  var ranked = comms.slice().sort(function(a, b) {
+    var ia = comms.indexOf(a), ib = comms.indexOf(b)
+    if (ia !== ib) return ia - ib
+    return a < b ? -1 : (a > b ? 1 : 0)
+  })
+  var taken = {}
+  var assignment = {}
+  var unassigned = []
+  for (var i = 0; i < ranked.length; i++) {
+    var prefs = slotPreferences(ranked[i], palette, shades)
+    var placed = false
+    for (var p = 0; p < prefs.length; p++) {
+      var key = prefs[p].hue + "-" + prefs[p].shade
+      if (!taken[key]) {
+        taken[key] = ranked[i]
+        assignment[ranked[i]] = { hue: palette[prefs[p].hue], hueIdx: prefs[p].hue, shadeIdx: prefs[p].shade, shade: shades[prefs[p].shade] }
+        placed = true
+        break
+      }
+    }
+    if (!placed) unassigned.push(ranked[i])
+  }
+  return { assignment: assignment, unassigned: unassigned }
 }
 
 // comm → palette-entry map, hash-derived (the old order-based assignment is
