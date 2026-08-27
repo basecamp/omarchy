@@ -261,14 +261,26 @@ function buildTopProcesses(prevSnapshot, nextSnapshot, limit, drawWatts, baseWat
     if (otherShare > 0.02 && variable * otherShare > 0.5)
       out.push({ label: "everything else", value: wtxt(variable * otherShare), key: "else" })
   }
-  // per-row impact meters, aligned to the rows above (process rows only; the
-  // base/else meters ride on their own rows below)
+  // per-row impact, aligned to the rows above: fill fraction (meter), the
+  // intensity ramp, the raw share, and the RSS fraction for the sub-bar
   var impact = buildRowImpact(shares, drawWatts, baseWatts, variable, otherShare)
   var procIdx = 0
   for (var r = 0; r < out.length; r++) {
-    if (out[r].key === "base") { out[r].meter = impact.base; continue }
-    if (out[r].key === "else") { out[r].meter = impact.elseMeter; continue }
+    if (out[r].key === "base") {
+      out[r].meter = impact.base
+      out[r].intensity = impact.baseIntensity
+      continue
+    }
+    if (out[r].key === "else") {
+      out[r].meter = impact.elseMeter
+      out[r].intensity = impact.elseIntensity
+      continue
+    }
     out[r].meter = impact.top[procIdx]
+    out[r].intensity = impact.intensity[procIdx]
+    out[r].share = shares[procIdx].share
+    out[r].ramShare = ramByName[shares[procIdx].label] !== undefined && nextSnapshot.memTotalKb
+      ? Math.min(1, ramByName[shares[procIdx].label] / nextSnapshot.memTotalKb) : 0
     out[r].key = out[r].label
     procIdx++
   }
@@ -340,10 +352,17 @@ function buildSystemRows(prevSnapshot, nextSnapshot, drawWatts) {
 function buildRowImpact(topShares, drawWatts, baseWatts, variableWatts, elseShare) {
   function clamp01(v) { return Math.max(0, Math.min(1, v)) }
   var top = []
-  for (var i = 0; i < topShares.length; i++) top.push(clamp01(topShares[i].share))
+  var intensity = []
+  var topShare = topShares.length > 0 ? topShares[0].share : 0
+  for (var i = 0; i < topShares.length; i++) {
+    top.push(clamp01(topShares[i].share))
+    // intensity ramp: the top row at full opacity, tail rows fading toward a
+    // 0.35 floor — share-normalized so the ramp reads the same at any load
+    intensity.push(topShare > 0 ? 0.35 + 0.65 * clamp01(topShares[i].share / topShare) : 0.35)
+  }
   var base = drawWatts > 0 && baseWatts > 0.5 ? clamp01(baseWatts / drawWatts) : -1
   var elseMeter = drawWatts > 0 && variableWatts >= 0 ? clamp01(variableWatts * elseShare / drawWatts) : -1
-  return { top: top, base: base, elseMeter: elseMeter }
+  return { top: top, intensity: intensity, base: base, elseMeter: elseMeter, baseIntensity: 1, elseIntensity: 0.8 }
 }
 
 // Segment lists for the split bars, one per resource. Every list sums to 1.0
@@ -361,6 +380,10 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
 
   var agg = prevSnapshot ? aggregateCommShares(prevSnapshot, nextSnapshot, n) : null
   if (agg) result.order = agg.shares.map(function(s) { return s.label })
+  // intensity-as-criticality: utilization ramps each system bar's opacity
+  // from 0.45 at idle toward 1.0 at full; the watts bar is categorical
+  // (green/yellow/red) and stays at full intensity.
+  result.intensity = { cpu: 0.45, ram: 0.45, watts: 1, gpu: 0.45 }
 
   // CPU: shares of ALL ticks this window (busy + idle) so the segments,
   // including idle, sum to exactly 1.
@@ -383,6 +406,7 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
       var idle = Math.max(0, 1 - used - Math.max(0, rest))
       segs.push({ key: "idle", label: "idle", share: idle, kind: "idle" })
       result.cpu = segs
+      result.intensity.cpu = 0.45 + 0.55 * Math.min(1, Math.max(0, busyDelta / totalDelta))
     }
   }
 
@@ -414,6 +438,7 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
     rsegs.push({ key: "rest", label: "rest", share: rrest, kind: "rest" })
     rsegs.push({ key: "avail", label: "available", share: Math.max(0, 1 - usedFrac), kind: "avail" })
     result.ram = rsegs
+    result.intensity.ram = 0.45 + 0.55 * usedFrac
   }
 
   // Watts: the attribution model as a bar — base floor, top processes, tail.
@@ -444,6 +469,7 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
       { key: "gpu", label: "GPU", share: g, kind: "comm" },
       { key: "gpu-rest", label: "rest", share: 1 - g, kind: "rest" }
     ]
+    result.intensity.gpu = 0.45 + 0.55 * g
   }
 
   return result

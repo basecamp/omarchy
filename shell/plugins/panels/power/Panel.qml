@@ -141,6 +141,15 @@ Panel {
     return modeLabel()
   }
 
+  // Legible text on an arbitrary theme fill: pick whichever of the theme's
+  // own foreground/background contrasts more with the fill's luminance —
+  // no hardcoded RGB, adapts to light and dark themes alike.
+  function textOn(c) {
+    function lum(x) { return 0.299 * x.r + 0.587 * x.g + 0.114 * x.b }
+    var lc = lum(c), lf = lum(Color.foreground), lb = lum(Color.background)
+    return Math.abs(lc - lf) >= Math.abs(lc - lb) ? Color.foreground : Color.background
+  }
+
   // Segment/row colors, one resolver for every surface: comms take their
   // assigned palette hue, the attribution floor takes accent, tails take
   // muted, unknown keys fall back to the bar foreground.
@@ -291,10 +300,12 @@ Panel {
     var rows = Model.buildSystemRows(prevSnapshot, snap, draw)
     for (var si = 0; si < rows.length; si++) {
       var segsFor = null
-      if (rows[si].label === "CPU") segsFor = resourceSplits.cpu
-      else if (rows[si].label === "RAM") segsFor = resourceSplits.ram
-      else if (rows[si].label === "GPU") segsFor = resourceSplits.gpu
-      rows[si] = { label: rows[si].label, value: rows[si].value, meter: rows[si].meter, segments: segsFor }
+      var intensityFor = 0.45
+      if (rows[si].label === "CPU") { segsFor = resourceSplits.cpu; intensityFor = resourceSplits.intensity.cpu }
+      else if (rows[si].label === "RAM") { segsFor = resourceSplits.ram; intensityFor = resourceSplits.intensity.ram }
+      else if (rows[si].label === "GPU") { segsFor = resourceSplits.gpu; intensityFor = resourceSplits.intensity.gpu }
+      else if (rows[si].label === "Draw") intensityFor = 1
+      rows[si] = { label: rows[si].label, value: rows[si].value, meter: rows[si].meter, segments: segsFor, barIntensity: intensityFor }
     }
     systemRows = rows
     prevSnapshot = snap
@@ -557,12 +568,13 @@ Panel {
           Repeater {
             model: root.systemRows
 
-            VitalRow {
+            SplitBar {
               required property var modelData
               label: modelData.label
               value: modelData.value
-              meter: modelData.meter
               segments: modelData.segments !== undefined ? modelData.segments : null
+              meter: modelData.meter
+              barIntensity: modelData.barIntensity !== undefined ? modelData.barIntensity : 0.45
               fillColor: modelData.label === "Draw"
                 ? (modelData.meter < 0.5 ? Color.green : modelData.meter < 1 ? Color.yellow : Color.urgent)
                 : (root.bar ? root.bar.foreground : Color.foreground)
@@ -617,14 +629,16 @@ Panel {
           Repeater {
             model: root.topProcesses
 
-            // Same row shape as SYSTEM, with the row's impact meter in its
-            // comm color (attribution floor accent, tail muted) — the row is
-            // its own legend entry for the split bars above.
-            VitalRow {
+            // The bar IS the row: comm-colored fill sized by impact, ramped
+            // by intensity, value text at the fill's end, and a thin RSS
+            // sub-bar beneath in the same comm color.
+            BarRow {
               required property var modelData
               label: modelData.label
               value: modelData.value
-              meter: modelData.meter !== undefined ? modelData.meter : -1
+              share: modelData.meter !== undefined ? modelData.meter : 0
+              intensity: modelData.intensity !== undefined ? modelData.intensity : 1
+              ramShare: modelData.ramShare !== undefined ? modelData.ramShare : 0
               fillColor: modelData.key === "base" || modelData.key === "else"
                 ? root.segmentColor({ kind: modelData.key, key: modelData.key })
                 : root.segmentColor({ kind: "comm", key: modelData.key })
@@ -724,67 +738,139 @@ Panel {
     font.pixelSize: Style.font.bodySmall
   }
 
-  // A vitals row: stock InfoLabel left, stock InfoValue right, and between
-  // them the battery progress bar's track-and-fill idiom scaled down to a
-  // slim meter. meter < 0 hides the bar (dash rows, unknowns).
-  component VitalRow: Item {
+  // A POWER HUNGRY row where the bar IS the row: a rounded track spans the
+  // width, the comm label sits in the left gutter, the comm-colored fill
+  // grows from the gutter sized by the row's impact and faded by its
+  // intensity ramp, the value text anchors just past the fill's end (always
+  // on the unfilled track, where the panel's own text color is legible in
+  // every theme), and a thin RSS sub-bar runs beneath in the same color.
+  component BarRow: Item {
+    id: barRow
+    property string label: ""
+    property string value: ""
+    property real share: 0
+    property real intensity: 1
+    property real ramShare: 0
+    property color fillColor: root.bar ? root.bar.foreground : Color.foreground
+
+    width: column.width
+    implicitHeight: Style.space(16) + (ramShare > 0 ? Style.space(5) : 0)
+
+    Rectangle {
+      id: barTrack
+      width: parent.width
+      height: Style.space(16)
+      radius: height / 3
+      clip: true
+      color: Qt.rgba(barRow.fillColor.r, barRow.fillColor.g, barRow.fillColor.b, 0.08)
+
+      Text {
+        id: barLabel
+        text: barRow.label
+        x: Style.space(6)
+        anchors.verticalCenter: parent.verticalCenter
+        color: root.bar ? root.bar.foreground : Color.foreground
+        opacity: 0.65
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.bodySmall
+      }
+
+      Rectangle {
+        id: barFill
+        x: barLabel.implicitWidth + Style.space(12)
+        width: Math.max(0, Math.min(share, 1) * (barTrack.width - x - valueText.width - Style.space(8)))
+        y: Style.space(2)
+        height: parent.height - Style.space(4)
+        radius: height / 3
+        color: barRow.fillColor
+        opacity: intensity
+      }
+
+      Text {
+        id: valueText
+        text: barRow.value
+        anchors.left: barFill.right
+        anchors.leftMargin: Style.space(6)
+        anchors.verticalCenter: parent.verticalCenter
+        color: root.bar ? root.bar.foreground : Color.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.bodySmall
+      }
+    }
+
+    Rectangle {
+      id: ramBar
+      visible: ramShare > 0
+      x: barLabel.implicitWidth + Style.space(12)
+      width: Math.min(ramShare, 1) * (parent.width - x - Style.space(8))
+      y: barTrack.height + Style.space(1)
+      height: Style.space(3)
+      radius: height / 2
+      color: barRow.fillColor
+      opacity: 0.7
+    }
+  }
+
+  // A SYSTEM bar: one rounded track per resource with the label in the left
+  // gutter and the value at the right edge. With segments the fill is the
+  // composition (comm colors, idle/available left as track), ramped by the
+  // resource's utilization; without segments it is a single intensity-graded
+  // fill (the categorical Draw row colors itself). Wide segments carry their
+  // comm's name in whichever theme color contrasts with the fill.
+  component SplitBar: Item {
+    id: splitBar
     property string label: ""
     property string value: ""
     property real meter: -1
+    property real barIntensity: 0.45
     property var segments: null
     property color fillColor: root.bar ? root.bar.foreground : Color.foreground
 
     width: column.width
-    implicitHeight: Math.max(rowLabel.implicitHeight, Style.space(6))
-
-    InfoLabel {
-      id: rowLabel
-      text: parent.label
-      anchors.left: parent.left
-      anchors.verticalCenter: parent.verticalCenter
-    }
-
-    InfoValue {
-      id: rowValue
-      text: parent.value
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-    }
+    implicitHeight: Style.space(16)
 
     Rectangle {
-      id: meterTrack
-      visible: segments !== null || meter >= 0
-      anchors.left: rowLabel.right
-      anchors.leftMargin: Style.space(8)
-      anchors.right: rowValue.left
-      anchors.rightMargin: Style.space(8)
-      anchors.verticalCenter: parent.verticalCenter
-      height: Style.space(4)
-      radius: height / 2
+      id: splitTrack
+      width: parent.width
+      height: Style.space(16)
+      radius: height / 3
       clip: true
-      color: Qt.rgba(fillColor.r, fillColor.g, fillColor.b, 0.12)
+      color: Qt.rgba(splitBar.fillColor.r, splitBar.fillColor.g, splitBar.fillColor.b, 0.08)
+
+      Text {
+        id: splitLabel
+        text: splitBar.label
+        x: Style.space(6)
+        anchors.verticalCenter: parent.verticalCenter
+        color: root.bar ? root.bar.foreground : Color.foreground
+        opacity: 0.65
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.bodySmall
+      }
 
       Rectangle {
-        visible: segments === null && meter >= 0
-        anchors.left: parent.left
-        anchors.verticalCenter: parent.verticalCenter
-        height: parent.height
-        radius: parent.radius
-        width: Math.max(0, Math.min(1, meter)) * parent.width
-        color: fillColor
-
-        Behavior on width { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
-        Behavior on color { ColorAnimation { duration: 220 } }
+        visible: splitBar.segments === null && splitBar.meter >= 0
+        x: splitLabel.implicitWidth + Style.space(12)
+        width: Math.max(0, Math.min(1, splitBar.meter)) * (splitTrack.width - x - splitValue.width - Style.space(10))
+        y: Style.space(2)
+        height: parent.height - Style.space(4)
+        radius: height / 3
+        color: splitBar.fillColor
+        opacity: splitBar.barIntensity
       }
 
       Row {
-        id: segmentRow
-        visible: segments !== null
-        anchors.fill: meterTrack
+        id: splitSegments
+        visible: splitBar.segments !== null
+        x: splitLabel.implicitWidth + Style.space(12)
+        width: splitTrack.width - x - splitValue.width - Style.space(10)
+        height: parent.height - Style.space(4)
+        y: Style.space(2)
+        opacity: splitBar.barIntensity
 
         Repeater {
           model: {
-            var segs = segments
+            var segs = splitBar.segments
             if (!segs) return []
             var drawn = []
             for (var i = 0; i < segs.length; i++)
@@ -794,11 +880,32 @@ Panel {
 
           Rectangle {
             required property var modelData
-            width: modelData.share * segmentRow.width
-            height: meterTrack.height
+            width: modelData.share * splitSegments.width
+            height: splitSegments.height
             color: root.segmentColor(modelData)
+
+            Text {
+              visible: parent.width > Style.space(56)
+              text: parent.modelData.label
+              x: Style.space(5)
+              anchors.verticalCenter: parent.verticalCenter
+              color: root.textOn(parent.color)
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.bodySmall
+            }
           }
         }
+      }
+
+      Text {
+        id: splitValue
+        text: splitBar.value
+        anchors.right: parent.right
+        anchors.rightMargin: Style.space(6)
+        anchors.verticalCenter: parent.verticalCenter
+        color: root.bar ? root.bar.foreground : Color.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.bodySmall
       }
     }
   }
