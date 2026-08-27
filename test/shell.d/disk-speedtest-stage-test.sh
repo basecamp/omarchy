@@ -108,8 +108,6 @@ mapfile -t stage_lines < <(printf '%s\n' "$output" | grep '^stage ')
 (( ${#stage_lines[@]} >= 2 )) ||
   fail "disk speedtest emits more than one stage sample while writes are in flight" "$output"
 
-prev=-1
-prev=-1
 for line in "${stage_lines[@]}"; do
   [[ $line =~ ^stage[[:space:]]+[0-9.]+$ ]] ||
     fail "disk speedtest stage lines are 'stage <rate>'" "$line"
