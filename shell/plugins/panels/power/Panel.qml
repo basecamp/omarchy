@@ -290,10 +290,14 @@ Panel {
     }
     if (prevSnapshot) topProcesses = Model.buildTopProcesses(prevSnapshot, snap, 5, draw, baseWatts)
     resourceSplits = Model.buildResourceSplits(prevSnapshot, snap, 5, draw, baseWatts)
-    // Palette keys map to Color singleton properties; the four non-threshold
-    // hues every theme defines. Same comm = same key = same color in the CPU,
-    // RAM, and watts bars and its row meter.
-    colorMap = Model.assignColorKeys(resourceSplits.order, ["blue", "cyan", "magenta", "accent"])
+    // Palette keys map to Color singleton properties: the three
+    // non-threshold hues that are universal AND mutually distinct across the
+    // themes (reviewer finding: accent hex-collides with blue or magenta on
+    // 21/22 themes; bright_* variants equal their base hue on roughly half,
+    // so no six-key collision-free set exists — retro-82 collapses hues by
+    // design and remains the one residual collision). Same comm = same key =
+    // same color in the CPU, RAM, and watts bars and its row meter.
+    colorMap = Model.assignColorKeys(resourceSplits.order, ["blue", "cyan", "magenta"])
     // Vitals rows are rebuilt complete with their segments attached: a
     // property added to a plain JS object after the fact carries no change
     // signal, so a delegate that bound before the attach would stay null.
