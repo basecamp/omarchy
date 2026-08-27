@@ -247,6 +247,42 @@ pass "safe dispatch works for font list"
 "$CLI" font current >/dev/null
 pass "safe dispatch works for font current"
 
+# omarchy-font-set must swap only the family and leave the rest of alacritty's
+# font table alone. The shipped config/alacritty/alacritty.toml carries
+# style = "Regular"/"Bold"/"Italic", and a greedy `family = ".*"` match ran past
+# the closing quote to the end of the line, deleting all three.
+make_tmpdir FONT_STYLE_TMPDIR
+mkdir -p "$FONT_STYLE_TMPDIR/.config/alacritty"
+cat >"$FONT_STYLE_TMPDIR/.config/alacritty/alacritty.toml" <<'EOF'
+[font]
+normal = { family = "JetBrainsMono Nerd Font", style = "Regular" }
+bold = { family = "JetBrainsMono Nerd Font", style = "Bold" }
+italic = { family = "JetBrainsMono Nerd Font", style = "Italic" }
+size = 9
+EOF
+
+# The family must be one fontconfig actually knows; omarchy-font-set rejects
+# anything else before it edits a single file.
+FONT_STYLE_FAMILY=$(fc-match -f '%{family[0]}\n' monospace | head -1)
+if [[ -z $FONT_STYLE_FAMILY ]]; then
+  fail "fontconfig has no resolvable monospace family for the alacritty style test"
+fi
+
+HOME="$FONT_STYLE_TMPDIR" "$ROOT/bin/omarchy-font-set" "$FONT_STYLE_FAMILY" >/dev/null 2>&1 || true
+
+for style in Regular Bold Italic; do
+  if ! grep -q "style = \"$style\"" "$FONT_STYLE_TMPDIR/.config/alacritty/alacritty.toml"; then
+    printf 'Actual alacritty.toml:\n%s\n' "$(cat "$FONT_STYLE_TMPDIR/.config/alacritty/alacritty.toml")" >&2
+    fail "font set preserves alacritty style = \"$style\""
+  fi
+done
+pass "font set preserves alacritty font styles"
+
+if ! grep -q "family = \"$FONT_STYLE_FAMILY\"" "$FONT_STYLE_TMPDIR/.config/alacritty/alacritty.toml"; then
+  fail "font set still replaces the alacritty family"
+fi
+pass "font set still replaces the alacritty family"
+
 make_tmpdir PI_TMPDIR
 NEXT_THEME="$PI_TMPDIR/.local/state/omarchy/current/next-theme"
 CURRENT_THEME="$PI_TMPDIR/.local/state/omarchy/current/theme"
