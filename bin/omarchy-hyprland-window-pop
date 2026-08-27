@@ -3,14 +3,15 @@
 # omarchy:summary=Toggle to pop-out a tile to stay fixed on a display basis.
 # omarchy:args=[width height x y]
 
-width=${1:-1300}
-height=${2:-900}
+width=${1:-}
+height=${2:-}
 x=${3:-}
 y=${4:-}
 
 active=$(hyprctl activewindow -j)
 pinned=$(echo "$active" | jq ".pinned")
 addr=$(echo "$active" | jq -r ".address")
+monitor=$(echo "$active" | jq ".monitor")
 window="address:$addr"
 
 hypr_dispatch() {
@@ -25,6 +26,20 @@ if [[ $pinned == "true" ]]; then
   hypr_dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
   hypr_dispatch "hl.dsp.window.tag({ window = \"$window\", tag = \"-pop\" })" tagwindow -pop "$window"
 elif [[ -n $addr ]]; then
+  if [[ -z $width && -z $height ]]; then
+    # Size an unqualified pop-out to 80% of the monitor's usable logical area.
+    read -r width height < <(
+      hyprctl monitors -j | jq -r --argjson id "$monitor" '
+        first(.[] | select(.id == $id)) |
+        ((if (.transform // 0) % 2 == 1 then .height else .width end) / .scale - .reserved[0] - .reserved[2]) as $width |
+        ((if (.transform // 0) % 2 == 1 then .width else .height end) / .scale - .reserved[1] - .reserved[3]) as $height |
+        [($width * 0.8 | floor), ($height * 0.8 | floor)] | @tsv
+      '
+    )
+  fi
+  width=${width:-1300}
+  height=${height:-900}
+
   hypr_dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
   hypr_dispatch "hl.dsp.window.resize({ window = \"$window\", x = $width, y = $height })" resizeactive exact "$width" "$height" "$window"
 
