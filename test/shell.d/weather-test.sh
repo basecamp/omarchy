@@ -128,6 +128,24 @@ assert(
   widgetSource.includes('readonly property bool popoutSwitchClosing:') && widgetSource.includes('function closeForPopoutSwitch()'),
   'weather widget forwards the popout-switch handshake'
 )
+
+const weatherManifest = JSON.parse(fs.readFileSync(root + '/shell/plugins/panels/weather/manifest.json', 'utf8'))
+assert(
+  (weatherManifest.barWidget.schema || []).some(field => field.key === 'showTemperature' && field.type === 'boolean' && field.defaultValue === false),
+  'weather advertises an opt-in showTemperature boolean, defaulting off'
+)
+assert(
+  widgetSource.includes('setting("showTemperature", false)'),
+  'weather widget reads showTemperature from the bar entry'
+)
+assert(
+  /showTemperature[\s\S]*?p\.label \+ " " \+ p\.reportTempNum \+ p\.tempUnit/.test(widgetSource),
+  'weather widget appends the temperature to the icon only when showTemperature is set'
+)
+assert(
+  widgetSource.includes('sourceComponent: root.showTemperature ? temperatureLabel : iconOnly'),
+  'weather widget stays a plain BarIconButton until showTemperature turns it into a text label'
+)
 assert(
   /Qt\.callLater\(function\(\) \{\s*\n\s*if \(root\.opened\) setCenterHoverRevealSuppressed\(true\)/.test(panelSource),
   'weather claims the shared hover-reveal flag after the popout handoff, so the panel taking over wins'
