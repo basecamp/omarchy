@@ -597,6 +597,7 @@ Item {
 
             Text {
               text: root.history.length === 0 ? "Clipboard is empty" : "No matches for “" + root.filterText + "”"
+              textFormat: Text.PlainText
               color: root.foreground
               opacity: 0.7
               font.family: root.fontFamily
