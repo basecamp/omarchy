@@ -29,15 +29,12 @@ ln -s "$linked_source" "$plugins_dir/acme.linked"
 
 "$ROOT/shell/scripts/watch-local-plugins" "$plugins_dir" >"$events" 2>&1 &
 WATCHER_PID=$!
-sleep 0.1
-
-printf 'updated\n' >"$linked_source/Overlay.qml"
-
 for _ in {1..30}; do
-  grep -F "$plugins_dir/acme.linked/Overlay.qml" "$events" >/dev/null 2>&1 && break
+  printf 'updated %s\n' "$_" >"$linked_source/Overlay.qml"
   sleep 0.1
+  grep -Fx -- "$plugins_dir/acme.linked/Overlay.qml" "$events" >/dev/null 2>&1 && break
 done
-grep -F "$plugins_dir/acme.linked/Overlay.qml" "$events" >/dev/null ||
+grep -Fx -- "$plugins_dir/acme.linked/Overlay.qml" "$events" >/dev/null ||
   fail "linked plugin target writes reach the local plugin watcher"
 pass "linked plugin target writes reach the local plugin watcher"
 
@@ -46,9 +43,9 @@ ln -s "$TMPDIR/replacement-source" "$plugins_dir/.acme.linked-replacement"
 mv -T "$plugins_dir/.acme.linked-replacement" "$plugins_dir/acme.linked"
 
 for _ in {1..30}; do
-  grep -F "$plugins_dir/acme.linked" "$events" >/dev/null 2>&1 && break
+  grep -Fx -- "$plugins_dir/acme.linked" "$events" >/dev/null 2>&1 && break
   sleep 0.1
 done
-grep -F "$plugins_dir/acme.linked" "$events" >/dev/null ||
+grep -Fx -- "$plugins_dir/acme.linked" "$events" >/dev/null ||
   fail "linked plugin replacement reaches the local plugin watcher"
 pass "linked plugin replacement reaches the local plugin watcher"
