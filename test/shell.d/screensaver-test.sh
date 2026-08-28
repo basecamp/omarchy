@@ -68,9 +68,13 @@ HOME="$test_tmp/home" \
 grep -q -- '--frame-rate 120' "$call_log" || fail "screensaver keeps the 120 FPS default"
 
 for invalid in 0 241 twenty; do
-  if OMARCHY_SCREENSAVER_FRAME_RATE="$invalid" "$ROOT/bin/omarchy-screensaver" >/dev/null 2>&1; then
-    fail "screensaver rejects invalid frame rate" "accepted: $invalid"
-  fi
+  set +e
+  OMARCHY_SCREENSAVER_FRAME_RATE="$invalid" timeout 2s "$ROOT/bin/omarchy-screensaver" >/dev/null 2>&1
+  status=$?
+  set -e
+
+  (( status != 124 )) || fail "screensaver rejects invalid frame rate without hanging" "timed out: $invalid"
+  (( status == 1 )) || fail "screensaver rejects invalid frame rate" "value: $invalid, exit status: $status"
 done
 
 pass "screensaver validates and forwards its frame rate"
