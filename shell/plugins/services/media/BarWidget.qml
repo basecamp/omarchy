@@ -24,8 +24,13 @@ BarWidget {
   // previous hardcoded behaviour, so an entry without them is unchanged.
   readonly property bool scrollLabel: setting("scroll", true)
   readonly property string separator: setting("separator", "  ·  ")
-  readonly property real iconGap: setting("iconGap", 6)
-  property real maxLabelWidth: setting("maxLabelWidth", 180)
+  // A static label sits in the same horizontal run as the control, so it needs
+  // a wider gap to read as separate; a scrolling one is set apart by its motion.
+  readonly property real iconGap: setting("iconGap", scrollLabel ? 6 : 13)
+  // The scrolling label slides, so it stays readable at a narrow width; a
+  // static one has to fit what it can show, so it defaults wider. Setting
+  // maxLabelWidth explicitly overrides both.
+  property real maxLabelWidth: setting("maxLabelWidth", scrollLabel ? 180 : 360)
 
   visible: hasMedia
   implicitWidth: hasMedia ? row.implicitWidth + Style.space(14) : 0

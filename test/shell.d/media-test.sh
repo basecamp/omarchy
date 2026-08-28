@@ -49,8 +49,8 @@ const widgetSource = fs.readFileSync(root + '/shell/plugins/services/media/BarWi
 
 assert(/setting\("scroll",\s*true\)/.test(widgetSource), 'media widget reads scroll, defaulting to the previous scrolling behaviour')
 assert(/setting\("separator",\s*"  ·  "\)/.test(widgetSource), 'media widget reads separator, defaulting to the previous string')
-assert(/setting\("iconGap",\s*6\)/.test(widgetSource), 'media widget reads iconGap, defaulting to the previous spacing')
-assert(/setting\("maxLabelWidth",\s*180\)/.test(widgetSource), 'media widget reads maxLabelWidth, defaulting to the previous cap')
+assert(/setting\("iconGap",\s*scrollLabel \? 6 : 13\)/.test(widgetSource), 'media widget keeps the previous control gap while scrolling and widens it when static')
+assert(/setting\("maxLabelWidth",\s*scrollLabel \? 180 : 360\)/.test(widgetSource), 'media widget keeps the previous cap while scrolling and widens it when static')
 
 assert(/spacing:\s*Style\.space\(root\.iconGap\)/.test(widgetSource), 'media widget spaces the control from the label by iconGap')
 assert(/text:\s*root\.title \+ \(root\.artist \? root\.separator \+ root\.artist : ""\)/.test(widgetSource), 'media widget joins title and artist with the configured separator')

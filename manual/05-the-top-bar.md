@@ -127,7 +127,7 @@ All of it is stored in `~/.config/omarchy/shell.json`, under the `bar` key. Here
 
 Every widget is one entry in one of the three layout arrays, and its settings sit inline on that entry — there's no separate settings file and no `config` sub-object. The clock's `format`, `formatAlt` (what right-click cycles to), and `verticalFormat` all live right there on `{ "id": "omarchy.clock" }`.
 
-The media widget works the same way: `scroll` set to `false` stops the now-playing text from sliding and truncates it with an ellipsis instead, `separator` changes what sits between the track and the artist, `maxLabelWidth` is how wide the label may get before either of those kicks in, and `iconGap` is the space between the play/pause control and the text.
+The media widget works the same way: `scroll` set to `false` stops the now-playing text from sliding and truncates it with an ellipsis instead, `separator` changes what sits between the track and the artist, `maxLabelWidth` is how wide the label may get before either of those kicks in, and `iconGap` is the space between the play/pause control and the text. Turning scrolling off widens the label and the control gap on its own — a sliding label reads fine when it's narrow and its motion sets it apart from the play/pause button, while a static one has to fit what it can show and sits in the same horizontal run as the button — so reach for `maxLabelWidth` and `iconGap` only when you want something other than that.
 
 `centerAnchor` names the one center widget that gets pinned to the exact center of the screen, with the others flanking it. That's how the clock stays dead center even as the weather and update badge come and go. Set it to an empty string and the center list is just centered as a group instead.
 
