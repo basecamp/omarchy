@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# omarchy:summary=Sync the generated Omarchy theme to T3 Code
+# omarchy:hidden=true
+
+set -euo pipefail
+
+T3CODE_SOURCE_PATH="$HOME/.local/state/omarchy/current/theme/t3code.json"
+T3CODE_HOME="${T3CODE_HOME:-$HOME/.t3}"
+T3CODE_STATE_DIR="$T3CODE_HOME/userdata"
+# The filename is the theme id T3 Code shows and `t3 theme set` accepts, and
+# it stays stable while the colors change underneath on every theme switch.
+T3CODE_THEME_PATH="$T3CODE_STATE_DIR/themes/omarchy.json"
+
+[[ -f $T3CODE_SOURCE_PATH ]] || exit 0
+
+# A theme without an accent or a background leaves its placeholder unresolved.
+# Publishing that would only make T3 Code reject the file, so skip instead and
+# leave the previous palette in place.
+if grep -q '{{' "$T3CODE_SOURCE_PATH"; then
+  echo "Skipping T3 Code theme: $(basename "$T3CODE_SOURCE_PATH") has unresolved colors." >&2
+  exit 0
+fi
+
+# Only follow an install that already exists. Creating the directory here would
+# leave a stray T3 Code state dir on machines that do not run it.
+[[ -d $T3CODE_STATE_DIR ]] || exit 0
+
+# T3 Code watches this file and retints every connected client on change, so
+# the write has to be atomic: a half-written file would read as invalid.
+mkdir -p "$(dirname "$T3CODE_THEME_PATH")"
+tmp=$(mktemp "$T3CODE_THEME_PATH.XXXXXX")
+cp "$T3CODE_SOURCE_PATH" "$tmp"
+mv "$tmp" "$T3CODE_THEME_PATH"
