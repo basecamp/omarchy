@@ -58,8 +58,8 @@ This table is the durable execution ledger. Update it when a node is assigned, c
 | `F2` | complete | `wave0_trust_map` | Commits `7304cd9f` and `f0246905`; inspected DPR1/DPR2 pet and narrow/wide Pomodoro artifacts, bounded render/copy/input metrics, logical input scaling, focus, alpha, and host-owned monitor placement pass Debug/Release/sanitized proofs |
 | `G3` | complete | `wave0_trust_map`, `wave0_native_build` | Commits `17c4211b` and `c2ae1599`; hostile reviews closed input-device, QML-exposure, teardown, retained-broker, corrupt-grant restart, and reinstall-generation seams |
 | `F4` | complete | `wave0_native_build` | Commit `bf404f73`; whole-policy review, explicit per-capability decisions, fail-closed noninteractive behavior, human/JSON diffs, redacted audit inspection, and cancellation atomicity pass focused, CLI, pseudoterminal, and sanitized proofs |
-| `F5` | active | primary, `wave0_trust_map` | Commit `7304cd9f`; package archive verifier and graphical installed-module acceptance landed; real Arch archive builds after `067f117d`, while fresh-ISO execution and production-host completeness remain under review |
-| `F6` | active | `wave0_native_build` | Representative-plugin migration dry runs in progress |
+| `F5` | active | primary, `wave0_trust_map` | Commits `7304cd9f`, `5651dfc3`, `aeab6c82`, and `c32121f3`; the verified x86_64 package passes its full 41-test Release check after moving bounded grant storage off stack; exact clean-clone reproducibility, installed production bridge completeness, and fresh-ISO execution remain under review |
+| `F6` | complete | `wave0_native_build` | Commit `a40833d4`; 20 pinned real plugins map current behavior to sandboxed full-QML surfaces and explicit broker authority, with 14 deterministic scans, six fail-closed asset-limit results, known scanner blind spots, and Debug/Release/sanitized E1/E2/E3 proof |
 
 Nodes not listed here remain `pending` as represented by the graph. Add them to the live table when they become `ready`; completed rows remain as an audit trail rather than being removed.
 
