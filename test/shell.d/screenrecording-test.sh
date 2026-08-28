@@ -52,6 +52,11 @@ case "$1" in
     $'\tDevice Caps      : 0x04200001' \
     $'\t\t'"$device_capability"
   ;;
+--list-formats-ext)
+  if [[ -n ${OMARCHY_TEST_V4L2_FORMATS:-} ]]; then
+    cat "$OMARCHY_TEST_V4L2_FORMATS"
+  fi
+  ;;
 esac
 SH
 
@@ -299,3 +304,139 @@ grep -F 'move = { "(monitor_w-monitor_h*2/9-40)", "(monitor_h-monitor_h/4-40)" }
 grep -F 'move = { "(monitor_w-monitor_h*3/10-40)", "(monitor_h-monitor_h*27/80-40)" }' "$webcam_rules" >/dev/null || \
   fail "large webcam starts at its final corner position"
 pass "webcam size rules place the initial window in its final corner"
+
+cat >"$stub_bin/mpv" <<'SH'
+#!/bin/bash
+
+args_file="${OMARCHY_TEST_MPV_ARGS}.tmp.$$"
+printf '%s\n' "$@" >"$args_file"
+mv "$args_file" "$OMARCHY_TEST_MPV_ARGS"
+: >"$OMARCHY_TEST_MPV_DONE"
+SH
+
+cat >"$stub_bin/omarchy-capture-webcam-resize" <<'SH'
+#!/bin/bash
+
+exit 0
+SH
+
+chmod +x "$stub_bin/mpv" "$stub_bin/omarchy-capture-webcam-resize"
+
+export OMARCHY_TEST_V4L2_FORMATS="$tmp_dir/v4l2-formats"
+
+overlay_functions=$(awk '
+  /^webcam_mjpeg_supports_framerate\(\)/ { capture = 1 }
+  capture && /^cleanup_webcam\(\)/ { exit }
+  capture { print }
+' "$ROOT/bin/omarchy-capture-screenrecording")
+
+run_webcam_overlay() {
+  local output_dir
+  output_dir=$(mktemp -d "$tmp_dir/mpv.XXXXXX")
+  export OMARCHY_TEST_MPV_ARGS="$output_dir/args"
+  export OMARCHY_TEST_MPV_DONE="$output_dir/done"
+
+  (
+    eval "$overlay_functions"
+    cleanup_webcam() { :; }
+    sleep() { :; }
+
+    WEBCAM_DEVICE="/dev/video42"
+    WEBCAM_SIZE="medium"
+    start_webcam_overlay
+
+    local attempt=0
+    while [[ ! -e $OMARCHY_TEST_MPV_DONE ]] && ((attempt < 50)); do
+      command sleep 0.01
+      attempt=$((attempt + 1))
+    done
+
+    [[ -e $OMARCHY_TEST_MPV_DONE ]]
+  )
+}
+
+cat >"$OMARCHY_TEST_V4L2_FORMATS" <<'EOF'
+ioctl: VIDIOC_ENUM_FMT
+  Type: Video Capture
+
+  [0]: 'MJPG' (Motion-JPEG, compressed)
+    Size: Discrete 1280x720
+      Interval: Discrete 0.033s (30.000 fps)
+      Interval: Discrete 0.017s (60.000 fps)
+  [1]: 'YUYV' (YUYV 4:2:2)
+    Size: Discrete 1280x720
+      Interval: Discrete 0.200s (5.000 fps)
+EOF
+
+run_webcam_overlay
+grep -Fx -- '--demuxer-lavf-o=video_size=1280x720,framerate=30,input_format=mjpeg' "$OMARCHY_TEST_MPV_ARGS" >/dev/null || \
+  fail "webcam capture prefers MJPEG when it supports the target resolution and frame rate"
+pass "webcam capture prefers MJPEG for a supported 30 fps mode"
+
+cat >"$OMARCHY_TEST_V4L2_FORMATS" <<'EOF'
+ioctl: VIDIOC_ENUM_FMT
+  Type: Video Capture
+
+  [0]: 'MJPG' (Motion-JPEG, compressed)
+    Size: Discrete 1280x720
+      Interval: Discrete 0.067s (15.000 fps)
+  [1]: 'YUYV' (YUYV 4:2:2)
+    Size: Discrete 1280x720
+      Interval: Discrete 0.033s (30.000 fps)
+EOF
+
+run_webcam_overlay
+grep -Fx -- '--demuxer-lavf-o=video_size=1280x720,framerate=30' "$OMARCHY_TEST_MPV_ARGS" >/dev/null || \
+  fail "webcam capture does not force MJPEG when its frame rate is unsupported"
+pass "webcam capture keeps format autodetection when MJPEG misses the target frame rate"
+
+cat >"$OMARCHY_TEST_V4L2_FORMATS" <<'EOF'
+ioctl: VIDIOC_ENUM_FMT
+  Type: Video Capture
+
+  [0]: 'MJPG' (Motion-JPEG, compressed)
+    Size: Discrete 1640x360
+      Interval: Discrete 0.033s (30.000 fps)
+  [1]: 'YUYV' (YUYV 4:2:2, compatible with MJPG converters)
+    Size: Discrete 640x360
+      Interval: Discrete 0.033s (30.000 fps)
+EOF
+
+run_webcam_overlay
+grep -Fx -- '--demuxer-lavf-o=video_size=640x360,framerate=30' "$OMARCHY_TEST_MPV_ARGS" >/dev/null || \
+  fail "webcam capture does not confuse format descriptions or partial resolution matches with supported MJPEG"
+pass "webcam capture requires an exact MJPEG format and resolution tuple"
+
+cat >"$OMARCHY_TEST_V4L2_FORMATS" <<'EOF'
+ioctl: VIDIOC_ENUM_FMT
+  Type: Video Capture
+
+  [0]: 'YUYV' (YUYV 4:2:2)
+    Size: Discrete 640x360
+      Interval: Discrete 0.033s (30.000 fps)
+EOF
+
+run_webcam_overlay
+grep -Fx -- '--demuxer-lavf-o=video_size=640x360,framerate=30' "$OMARCHY_TEST_MPV_ARGS" >/dev/null || \
+  fail "webcam capture keeps format autodetection when MJPEG is unavailable"
+pass "webcam capture remains compatible with cameras that do not offer MJPEG"
+
+cat >"$OMARCHY_TEST_V4L2_FORMATS" <<'EOF'
+ioctl: VIDIOC_ENUM_FMT
+  Type: Video Capture
+
+  [0]: 'MJPG' (Motion-JPEG, compressed)
+    Size: Discrete 1280x720
+      Interval: Discrete 0.033s (29.970 fps)
+EOF
+
+run_webcam_overlay
+grep -Fx -- '--demuxer-lavf-o=video_size=1280x720,framerate=30,input_format=mjpeg' "$OMARCHY_TEST_MPV_ARGS" >/dev/null || \
+  fail "webcam capture accepts the standard 29.97 fps MJPEG interval for a 30 fps target"
+pass "webcam capture accepts a near-30 fps MJPEG interval"
+
+: >"$OMARCHY_TEST_V4L2_FORMATS"
+run_webcam_overlay
+grep -Fx -- '--demuxer-lavf-o=framerate=30' "$OMARCHY_TEST_MPV_ARGS" >/dev/null || \
+  fail "webcam capture preserves fallback options when capability probing returns no formats"
+pass "webcam capture preserves fallback options when capability probing fails"
