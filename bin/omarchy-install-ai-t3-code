@@ -14,7 +14,7 @@ T3CODE_SETTINGS_PATH="$T3CODE_STATE_DIR/settings.json"
 # is a separate npm distribution -- so fall back to the setting it writes.
 # Both run before the first launch, so neither races a running server.
 set_default_theme() {
-  if command -v t3 >/dev/null 2>&1; then
+  if omarchy-cmd-present t3; then
     t3 theme set omarchy --base-dir "$T3CODE_HOME" >/dev/null && return
   fi
 
