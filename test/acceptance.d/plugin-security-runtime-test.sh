@@ -57,8 +57,15 @@ pass "secure plugin host service remains disabled and inactive"
   >"$ARTIFACTS/plugin-host-module.log" 2>&1 &
 proof_pid=$!
 
+proof_window_mapped() {
+  hyprctl -j clients | jq -e '
+    [.[] | select(.mapped == true and .title == "Omarchy Plugin Security Proof")]
+    | length == 1
+  '
+}
+
 wait_until "secure plugin bridge appears in the graphical session" 20 \
-  screen_contains "SECURE PLUGIN BRIDGE"
+  proof_window_mapped
 wait_until "secure plugin bridge reports the reference runtime as feature-gated" 10 \
   screen_contains "ACTIVATION FEATURE-GATED"
 screenshot "success-secure-plugin-bridge-module"
