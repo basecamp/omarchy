@@ -27,61 +27,7 @@ fi
 # not a universal flaw in the model.
 echo "Move the lid through a few positions over the next 15 seconds (open flat, folded back into tablet position, back to laptop position)..."
 
-verdict=$(python3 - <<'PY'
-import fcntl, os, sys, time
-
-def ioc(direction, type_char, nr, size):
-    return (direction << 30) | (size << 16) | (ord(type_char) << 8) | nr
-
-# From asm-generic/ioctl.h and linux/input.h: EVIOCGSW(len) = _IOC(_IOC_READ, 'E', 0x1b, len)
-EVIOCGSW = ioc(2, "E", 0x1B, 8)
-SW_TABLET_MODE_BIT = 1  # linux/input-event-codes.h: SW_TABLET_MODE 0x01
-
-
-def find_device():
-    name = handler = None
-    for block in open("/proc/bus/input/devices").read().split("\n\n"):
-        name = handler = None
-        for line in block.splitlines():
-            if line.startswith("N: Name="):
-                name = line.split("=", 1)[1].strip('"')
-            elif line.startswith("H: Handlers="):
-                for tok in line.split("=", 1)[1].split():
-                    if tok.startswith("event"):
-                        handler = "/dev/input/" + tok
-        if name == "Intel HID switches" and handler:
-            return handler
-    return None
-
-
-device = find_device()
-if not device:
-    print("NOT_FOUND")
-    sys.exit(0)
-
-try:
-    fd = os.open(device, os.O_RDONLY)
-except PermissionError:
-    print("NO_PERMISSION")
-    sys.exit(0)
-
-
-def read_tablet_mode():
-    buf = bytearray(8)
-    fcntl.ioctl(fd, EVIOCGSW, buf, True)
-    return (buf[0] >> SW_TABLET_MODE_BIT) & 1
-
-
-seen = set()
-deadline = time.time() + 15
-while time.time() < deadline:
-    seen.add(read_tablet_mode())
-    time.sleep(0.5)
-os.close(fd)
-
-print("STUCK" if seen == {1} else "OK")
-PY
-)
+verdict=$(omarchy-hw-hp-spectre-x360-tablet-mode-probe)
 
 case "$verdict" in
 STUCK)

@@ -34,11 +34,12 @@ cat >"$stub_bin/omarchy-hw-hp-spectre-x360-2019" <<'STUB'
 [[ ${STUB_HW_MATCH:-1} == 1 ]]
 STUB
 
-# Stands in for the live EVIOCGSW poll. It reads and discards the heredoc the
-# real command feeds it on stdin and reports the canned verdict instead.
-cat >"$stub_bin/python3" <<'STUB'
+# Stands in for the live sensor probe with a canned verdict. The probe's own
+# logic (proc discovery, EVIOCGSW decode, stuck/OK classification) is covered
+# directly in hw-hp-spectre-x360-tablet-mode-probe-test.sh; here we only need
+# the setup command's branch on each verdict it can return.
+cat >"$stub_bin/omarchy-hw-hp-spectre-x360-tablet-mode-probe" <<'STUB'
 #!/bin/bash
-cat >/dev/null
 printf '%s\n' "${STUB_VERDICT:-OK}"
 STUB
 
