@@ -403,11 +403,11 @@ void test_poisoned_runtime_cannot_resolve_existing_handle() {
                                                configuration(backend), store);
   const auto write = storage_write_request("before-poison");
   require(broker_runtime
-                  .dispatch(request_packet(
-                                permissions::OperationId::storage_write, 81,
-                                write),
-                            100)
-                  .outcome == broker::DispatchOutcome::dispatched &&
+                      .dispatch(request_packet(
+                                    permissions::OperationId::storage_write, 81,
+                                    write),
+                                100)
+                      .outcome == broker::DispatchOutcome::dispatched &&
               broker_runtime
                       .issue_handle(handle('p'), 81,
                                     permissions::OperationId::storage_write,
@@ -420,11 +420,11 @@ void test_poisoned_runtime_cannot_resolve_existing_handle() {
                                    std::filesystem::perms::group_read,
                                std::filesystem::perm_options::replace);
   require(broker_runtime
-                  .dispatch(request_packet(
-                                permissions::OperationId::storage_write, 82,
-                                write),
-                            100)
-                  .outcome == broker::DispatchOutcome::core_failed &&
+                      .dispatch(request_packet(
+                                    permissions::OperationId::storage_write, 82,
+                                    write),
+                                100)
+                      .outcome == broker::DispatchOutcome::core_failed &&
               broker_runtime.failed(),
           "audit failure did not poison handle fixture");
   const auto resolved = broker_runtime.resolve_handle(
@@ -434,6 +434,103 @@ void test_poisoned_runtime_cannot_resolve_existing_handle() {
           "poisoned runtime continued resolving an existing authority handle");
 }
 
+void test_shutdown_poisons_retained_runtime_and_cancels_first() {
+  TemporaryDirectory temporary;
+  audit::AuditStore store(temporary.path() / "audit", {.maximum_records = 32});
+  Backend backend{.audit_store = &store};
+  const auto active = revision();
+  runtime::AuditedBrokerRuntime broker_runtime(active, configuration(backend),
+                                               store);
+  require(broker_runtime.add_fake_status(1, 7, "pending"),
+          "shutdown fixture could not add fake status");
+  permissions::GestureProof gesture{
+      .id = {},
+      .plugin = active.binding.plugin,
+      .generation = active.binding.generation,
+      .surface = 1,
+      .operation = permissions::OperationId::fake_status_list,
+      .expires_monotonic_ns = 1000,
+      .consumed = false};
+  gesture.id.bytes.fill(std::byte{'s'});
+  const auto fake = fake_list_request();
+  require(broker_runtime
+                  .dispatch(
+                      request_packet(permissions::OperationId::fake_status_list,
+                                     91, fake),
+                      100, {}, &gesture)
+                  .outcome == broker::DispatchOutcome::pending,
+          "shutdown fixture did not create in-flight work");
+  require(broker_runtime.shutdown() == runtime::RuntimeStatus::accepted &&
+              broker_runtime.shutdown() == runtime::RuntimeStatus::accepted &&
+              broker_runtime.failed(),
+          "runtime shutdown was not fail-closed and idempotent");
+  const auto write = storage_write_request("after-shutdown");
+  require(broker_runtime
+                      .dispatch(request_packet(
+                                    permissions::OperationId::storage_write, 92,
+                                    write),
+                                200)
+                      .outcome == broker::DispatchOutcome::core_failed &&
+              backend.writes == 0 &&
+              !broker_runtime.add_fake_status(1, 8, "stale"),
+          "retained shutdown runtime admitted a new effect");
+  std::array<std::byte, runtime::kMaximumFakeResultBytes> output{};
+  std::size_t written = 0;
+  require(broker_runtime.complete_fake_list(91, output, written) ==
+                  providers::CompletionResult::cancelled &&
+              written == 0,
+          "shutdown runtime completed stale asynchronous work");
+  const auto records = store.query({});
+  require(records.status.ok() &&
+              std::ranges::any_of(
+                  records.records,
+                  [](const auto &record) {
+                    return record.correlation == 91 &&
+                           record.event ==
+                               permissions::AuditEvent::operation_decided &&
+                           record.outcome ==
+                               permissions::AuditOutcome::cancelled;
+                  }),
+          "shutdown cancellation was not admitted to audit first");
+}
+
+void test_shutdown_audit_failure_stays_poisoned() {
+  TemporaryDirectory temporary;
+  const auto audit_path = temporary.path() / "audit";
+  audit::AuditStore store(audit_path, {.maximum_records = 16});
+  Backend backend{.audit_store = &store};
+  const auto active = revision();
+  runtime::AuditedBrokerRuntime broker_runtime(active, configuration(backend),
+                                               store);
+  permissions::GestureProof gesture{
+      .id = {},
+      .plugin = active.binding.plugin,
+      .generation = active.binding.generation,
+      .surface = 1,
+      .operation = permissions::OperationId::fake_status_list,
+      .expires_monotonic_ns = 1000,
+      .consumed = false};
+  gesture.id.bytes.fill(std::byte{'x'});
+  const auto fake = fake_list_request();
+  require(broker_runtime
+                  .dispatch(
+                      request_packet(permissions::OperationId::fake_status_list,
+                                     93, fake),
+                      100, {}, &gesture)
+                  .outcome == broker::DispatchOutcome::pending,
+          "shutdown audit-failure fixture did not create work");
+  std::filesystem::permissions(audit_path,
+                               std::filesystem::perms::owner_all |
+                                   std::filesystem::perms::group_read,
+                               std::filesystem::perm_options::replace);
+  require(broker_runtime.shutdown() == runtime::RuntimeStatus::audit_failed &&
+              broker_runtime.shutdown() ==
+                  runtime::RuntimeStatus::audit_failed &&
+              broker_runtime.failed() &&
+              !broker_runtime.add_fake_status(1, 1, "poisoned"),
+          "shutdown audit failure was replayable or left authority live");
+}
+
 } // namespace
 
 int main() {
@@ -441,6 +538,8 @@ int main() {
     test_authority_audit_handles_revocation_and_recovery();
     test_audit_failure_prevents_effect();
     test_poisoned_runtime_cannot_resolve_existing_handle();
+    test_shutdown_poisons_retained_runtime_and_cancels_first();
+    test_shutdown_audit_failure_stays_poisoned();
   } catch (const std::exception &error) {
     std::cerr << "FAIL: " << error.what() << '\n';
     return 1;

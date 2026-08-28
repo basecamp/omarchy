@@ -337,6 +337,39 @@ RevocationResult AuditedBrokerRuntime::apply_revocation(
   return result;
 }
 
+RuntimeStatus AuditedBrokerRuntime::shutdown() {
+  if (shutdown_)
+    return shutdown_audited_ ? RuntimeStatus::accepted
+                             : RuntimeStatus::audit_failed;
+  shutdown_ = true;
+  failed_ = true;
+
+  bool audited = true;
+  for (auto &request : requests_) {
+    if (!request.occupied || !request.authorized)
+      continue;
+    if (!audit_operation(permissions::AuditOutcome::cancelled,
+                         request.correlation, request.operation,
+                         permissions::GrantDecisionCode::activation_mismatch)) {
+      audited = false;
+      continue;
+    }
+    request.cancel_requested = true;
+  }
+  if (!audited)
+    shutdown_audited_ = false;
+  if (!audited)
+    return RuntimeStatus::audit_failed;
+
+  for (const auto &grant : revision_.grants.values()) {
+    if (grant.state != permissions::GrantState::granted ||
+        grant.epoch == std::numeric_limits<std::uint64_t>::max())
+      continue;
+    (void)providers_.revoke(grant.capability, grant.epoch + 1);
+  }
+  return RuntimeStatus::accepted;
+}
+
 HandleResult AuditedBrokerRuntime::issue_handle(
     const permissions::HandleId &id, std::uint64_t correlation,
     permissions::OperationId operation, const permissions::Scope &scope,
@@ -427,7 +460,9 @@ AuditedBrokerRuntime::complete_fake_list(std::uint64_t correlation,
                                          std::size_t &bytes_written) {
   bytes_written = 0;
   auto *tracked = find(correlation);
-  if (failed_ || tracked == nullptr || output.size() < kMaximumFakeResultBytes)
+  if (failed_)
+    return providers::CompletionResult::cancelled;
+  if (tracked == nullptr || output.size() < kMaximumFakeResultBytes)
     return providers::CompletionResult::output_too_small;
   std::array<std::byte, kMaximumFakeResultBytes> scratch{};
   std::size_t written = 0;

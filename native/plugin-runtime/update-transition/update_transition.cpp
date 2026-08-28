@@ -68,8 +68,11 @@ Result UpdateTransition::bind_active(
     std::unique_ptr<health::WorkerControl> worker,
     std::shared_ptr<runtime::AuditedBrokerRuntime> broker,
     std::uint64_t now_seconds) {
-  if (active_binding_ || !worker || !broker || broker->failed())
+  if (active_binding_ || !worker || !broker || broker->failed()) {
+    if (broker)
+      (void)broker->shutdown();
     return {Status::denied, "active session is absent or already bound"};
+  }
   try {
     const auto activation = lifecycle_.revisions().current();
     const auto state = lifecycle_.grants().read();
@@ -80,20 +83,24 @@ Result UpdateTransition::bind_active(
         !exact_grants(broker->revision(), *plugin->active) ||
         !exact_binding(activation->active, broker->binding())) {
       (void)worker->terminate();
+      (void)broker->shutdown();
       return {Status::stale,
               "active lifecycle, grant, and runtime bindings differ"};
     }
     const auto binding = broker->binding();
     if (health_.adopt(std::move(worker), binding, now_seconds) !=
             health::Status::accepted ||
-        health_.ready(binding, now_seconds) != health::Status::accepted)
+        health_.ready(binding, now_seconds) != health::Status::accepted) {
+      (void)broker->shutdown();
       return {Status::health_failed, "active worker failed health admission"};
+    }
     active_binding_ = binding;
     active_runtime_ = std::move(broker);
     return {Status::accepted, {}};
   } catch (const std::exception &error) {
     if (worker)
       (void)worker->terminate();
+    (void)broker->shutdown();
     return {Status::lifecycle_failed, error.what()};
   }
 }
@@ -159,6 +166,8 @@ Result UpdateTransition::prepare_candidate(
       !candidate_review_complete()) {
     if (worker)
       (void)worker->terminate();
+    if (broker)
+      (void)broker->shutdown();
     return {Status::denied,
             "candidate lacks an exact reviewed runtime and worker"};
   }
@@ -168,16 +177,20 @@ Result UpdateTransition::prepare_candidate(
     if (plugin == nullptr || !plugin->candidate ||
         !exact_grants(broker->revision(), *plugin->candidate)) {
       (void)worker->terminate();
+      (void)broker->shutdown();
       return {Status::stale, "candidate runtime grant epochs changed"};
     }
   } catch (const std::exception &error) {
     (void)worker->terminate();
+    (void)broker->shutdown();
     return {Status::lifecycle_failed, error.what()};
   }
   const auto adopted = health_.adopt_candidate(
       std::move(worker), *candidate_binding_, now_seconds);
-  if (adopted != health::Status::accepted)
+  if (adopted != health::Status::accepted) {
+    (void)broker->shutdown();
     return {Status::health_failed, "candidate worker admission failed"};
+  }
   candidate_runtime_ = std::move(broker);
   candidate_attached_ = true;
   return {Status::accepted, {}};
@@ -228,6 +241,19 @@ Result UpdateTransition::activate(revision::FaultPoint fault) {
                ? Result{Status::stale, error.what()}
                : Result{Status::rollback_failed, rolled_back.detail};
   }
+  if (active_runtime_->shutdown() != runtime::RuntimeStatus::accepted) {
+    const auto rolled_back = lifecycle_.rollback();
+    (void)health_.stop(*active_binding_);
+    (void)health_.stop(*candidate_binding_);
+    active_runtime_.reset();
+    active_binding_.reset();
+    clear_candidate();
+    return rolled_back.ok()
+               ? Result{Status::runtime_failed,
+                        "old runtime cancellation audit failed; activation "
+                        "rolled back without a live session"}
+               : Result{Status::rollback_failed, rolled_back.detail};
+  }
   const auto promoted = health_.promote_candidate(*candidate_binding_);
   if (promoted != health::Status::accepted) {
     const auto rolled_back = lifecycle_.rollback();
@@ -271,6 +297,12 @@ Result UpdateTransition::disable() {
   const auto disabled = lifecycle_.disable();
   if (!disabled.ok())
     return {Status::lifecycle_failed, disabled.detail};
+  bool runtime_stopped =
+      active_runtime_->shutdown() == runtime::RuntimeStatus::accepted;
+  if (candidate_runtime_)
+    runtime_stopped =
+        candidate_runtime_->shutdown() == runtime::RuntimeStatus::accepted &&
+        runtime_stopped;
   bool stopped = health_.stop(*active_binding_) == health::Status::accepted;
   if (candidate_binding_ && candidate_attached_)
     stopped = health_.stop(*candidate_binding_) == health::Status::accepted &&
@@ -287,6 +319,9 @@ Result UpdateTransition::disable() {
     active_runtime_.reset();
     clear_candidate();
   }
+  if (!runtime_stopped)
+    return {Status::runtime_failed,
+            "disable poisoned runtime after cancellation audit failure"};
   return stopped
              ? Result{Status::accepted, {}}
              : Result{
@@ -301,6 +336,12 @@ Result UpdateTransition::remove() {
   const auto disabled = lifecycle_.disable();
   if (!disabled.ok())
     return {Status::lifecycle_failed, disabled.detail};
+  bool runtime_stopped =
+      active_runtime_->shutdown() == runtime::RuntimeStatus::accepted;
+  if (candidate_runtime_)
+    runtime_stopped =
+        candidate_runtime_->shutdown() == runtime::RuntimeStatus::accepted &&
+        runtime_stopped;
   bool stopped = health_.stop(binding) == health::Status::accepted;
   if (candidate_binding_ && candidate_attached_)
     stopped = health_.stop(*candidate_binding_) == health::Status::accepted &&
@@ -311,6 +352,9 @@ Result UpdateTransition::remove() {
   const auto removed = lifecycle_.remove(plugin_);
   if (!removed.ok())
     return {Status::lifecycle_failed, removed.detail};
+  if (!runtime_stopped)
+    return {Status::runtime_failed,
+            "removal poisoned runtime after cancellation audit failure"};
   return stopped
              ? Result{Status::accepted, {}}
              : Result{
@@ -414,6 +458,8 @@ bool UpdateTransition::candidate_runtime_current() const {
 }
 
 void UpdateTransition::clear_candidate() {
+  if (candidate_runtime_)
+    (void)candidate_runtime_->shutdown();
   candidate_binding_.reset();
   candidate_delta_ = {};
   candidate_runtime_.reset();

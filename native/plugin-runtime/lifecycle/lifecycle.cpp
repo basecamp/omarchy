@@ -342,10 +342,11 @@ StageOutcome LifecycleManager::stage(const std::filesystem::path &source_root,
     if (const auto current = revisions_.current()) {
       if (current->active.plugin_id != plugin.manifest.id)
         throw std::runtime_error("revision store is bound to another plugin");
-      generation =
-          current->active.revision_sha256 == plugin.identity.tree_sha256
-              ? current->active.generation
-              : current->active.generation + 1;
+      const bool still_active =
+          current->enabled && !current->removed &&
+          current->active.revision_sha256 == plugin.identity.tree_sha256;
+      generation = still_active ? current->active.generation
+                                : current->active.generation + 1;
       if (generation == 0)
         throw std::runtime_error("activation generation is exhausted");
     }
@@ -428,9 +429,6 @@ Result LifecycleManager::rollback(revision::FaultPoint fault) {
 }
 
 Result LifecycleManager::disable(revision::FaultPoint fault) {
-  const auto recovered = recover();
-  if (!recovered.ok())
-    return recovered;
   const auto disabled = revisions_.disable(fault);
   const auto current = revisions_.current();
   if (current && !current->enabled)

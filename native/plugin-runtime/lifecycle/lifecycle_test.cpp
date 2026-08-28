@@ -151,9 +151,35 @@ void grant_required(lifecycle::LifecycleManager &manager,
           "trusted fixture decision did not grant storage");
 }
 
+void disable_survives_grant_store_corruption() {
+  TemporaryDirectory temporary;
+  const auto revisions = temporary.path() / "revisions";
+  const auto grants = temporary.path() / "grants";
+  lifecycle::LifecycleManager manager(revisions, grants);
+  const auto root = source(temporary.path(), "corrupt-disable", "initial");
+  const auto content = identity(root);
+  const auto staged = manager.stage(root, "plugin", content.tree_sha256);
+  require(staged.result.ok() && staged.binding,
+          "corrupt-disable fixture did not stage");
+  grant_required(manager, bundle(root, content, staged.binding->generation));
+  const permission::PluginId plugin("org.example.status");
+  require(manager.enable(plugin).ok(),
+          "corrupt-disable fixture did not enable");
+  require(::truncate((grants / "grants-v1.bin").c_str(), 4) == 0,
+          "grant corruption fixture truncate failed");
+  require(manager.disable().ok() && manager.revisions().current() &&
+              !manager.revisions().current()->enabled,
+          "grant corruption prevented durable disable");
+  lifecycle::LifecycleManager restarted(revisions, grants);
+  require(restarted.recover().ok() && restarted.revisions().current() &&
+              !restarted.revisions().current()->enabled,
+          "restart consulted corrupt grants for a disabled activation");
+}
+
 } // namespace
 
 int main() {
+  disable_survives_grant_store_corruption();
   manifest::ManifestV2 translation_fixture;
   translation_fixture.requests = {
       {.capability = "audio.play-cue",
@@ -313,8 +339,10 @@ int main() {
           "restart resurrected removed grant or launch authority");
 
   const auto reinstall_root =
-      source(temporary.path(), "source-reinstall", "reinstall");
+      source(temporary.path(), "source-reinstall", "first");
   const auto reinstall_identity = identity(reinstall_root);
+  require(reinstall_identity.tree_sha256 == first_identity.tree_sha256,
+          "same-content reinstall fixture changed identity");
   const auto reinstall = removed_restart.stage(reinstall_root, "plugin",
                                                reinstall_identity.tree_sha256);
   require(reinstall.result.ok() && reinstall.binding &&

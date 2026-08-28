@@ -298,6 +298,7 @@ void expanding_update_and_live_revocation() {
                            broker_runtime(initial, audit_store), 10)
               .ok(),
           "initial live session did not bind exactly");
+  auto retained_old_runtime = update.active_runtime();
   require(health.admit_request(initial.binding, 900, 10, 10) ==
                   health::Status::accepted &&
               health.open_surface(initial.binding, {77, 1}) ==
@@ -322,10 +323,12 @@ void expanding_update_and_live_revocation() {
   auto premature_probe = std::make_shared<Probe>();
   const auto premature_state = lifecycle.grants().read();
   const auto premature = *only_plugin(premature_state).candidate;
+  auto unreviewed_runtime = broker_runtime(premature, audit_store);
   require(update.prepare_candidate(worker(premature.binding, premature_probe),
-                                   broker_runtime(premature, audit_store), 11)
+                                   unreviewed_runtime, 11)
                       .status == transition::Status::denied &&
-              premature_probe->terminations == 1,
+              premature_probe->terminations == 1 &&
+              unreviewed_runtime->failed(),
           "unreviewed candidate crossed the health gate");
 
   require(update.decide_candidate(key("storage.private"), std::nullopt,
@@ -337,10 +340,12 @@ void expanding_update_and_live_revocation() {
                   .ok(),
           "trusted candidate decisions failed");
   auto stale_grant_probe = std::make_shared<Probe>();
+  auto stale_grant_runtime = broker_runtime(premature, audit_store);
   require(update.prepare_candidate(worker(premature.binding, stale_grant_probe),
-                                   broker_runtime(premature, audit_store), 12)
+                                   stale_grant_runtime, 12)
                       .status == transition::Status::stale &&
-              stale_grant_probe->terminations == 1,
+              stale_grant_probe->terminations == 1 &&
+              stale_grant_runtime->failed(),
           "candidate runtime with stale grant epochs was admitted");
   const auto reviewed = *only_plugin(lifecycle.grants().read()).candidate;
   auto candidate_probe = std::make_shared<Probe>();
@@ -364,6 +369,8 @@ void expanding_update_and_live_revocation() {
   require(update.activate().ok(),
           "healthy reviewed candidate did not activate");
   require(old_probe->terminations == 1 && candidate_probe->terminations == 0 &&
+              retained_old_runtime->failed() &&
+              !retained_old_runtime->add_fake_status(1, 1, "stale-old") &&
               lifecycle.revisions().current()->active.revision_sha256 ==
                   expanded_identity.tree_sha256 &&
               health.worker_count() == 1 && health.request_count() == 0 &&
@@ -499,8 +506,9 @@ void promotion_failure_rolls_back_without_authority() {
           "rollback candidate review failed");
   const auto candidate = *only_plugin(lifecycle.grants().read()).candidate;
   auto candidate_probe = std::make_shared<Probe>();
+  auto retained_candidate = broker_runtime(candidate, audit_store);
   require(update.prepare_candidate(worker(candidate.binding, candidate_probe),
-                                   broker_runtime(candidate, audit_store), 11)
+                                   retained_candidate, 11)
                   .ok() &&
               update.candidate_ready(11).ok(),
           "rollback candidate did not become healthy");
@@ -512,9 +520,10 @@ void promotion_failure_rolls_back_without_authority() {
           rolled_back->active.revision_sha256 == initial_identity.tree_sha256 &&
           rolled_back->active.generation > candidate.binding.generation &&
           !update.active_binding() && !update.active_runtime() &&
-          candidate_probe->terminations == 1 && old_probe->terminations == 1 &&
-          old_probe->alive && health.failed() && health.worker_count() == 0 &&
-          health.request_count() == 0 && health.surface_count() == 0 &&
+          retained_candidate->failed() && candidate_probe->terminations == 1 &&
+          old_probe->terminations == 1 && old_probe->alive && health.failed() &&
+          health.worker_count() == 0 && health.request_count() == 0 &&
+          health.surface_count() == 0 &&
           health.admit_request(initial.binding, 701, 1, 12) ==
               health::Status::stale_generation &&
           health.admit_request(candidate.binding, 702, 1, 12) ==
@@ -537,11 +546,12 @@ void disable_and_remove_survive_host_restart() {
     transition::UpdateTransition update(
         lifecycle, health, permissions::PluginId("org.example.status"));
     auto probe = std::make_shared<Probe>();
-    require(update
-                .bind_active(worker(installed.binding, probe),
-                             broker_runtime(installed, audit_store), 10)
-                .ok(),
-            "disable fixture could not bind active worker");
+    auto retained_active = broker_runtime(installed, audit_store);
+    require(
+        update
+            .bind_active(worker(installed.binding, probe), retained_active, 10)
+            .ok(),
+        "disable fixture could not bind active worker");
     const auto candidate_root =
         source(temporary.path(), "disable-candidate", true);
     const auto candidate_identity = identity(candidate_root);
@@ -559,11 +569,15 @@ void disable_and_remove_survive_host_restart() {
         "disable fixture could not review candidate");
     const auto candidate = *only_plugin(lifecycle.grants().read()).candidate;
     auto candidate_probe = std::make_shared<Probe>();
+    auto retained_candidate = broker_runtime(candidate, audit_store);
     require(update.prepare_candidate(worker(candidate.binding, candidate_probe),
-                                     broker_runtime(candidate, audit_store), 11)
+                                     retained_candidate, 11)
                     .ok() &&
                 update.disable().ok() && probe->terminations == 1 &&
-                candidate_probe->terminations == 1,
+                candidate_probe->terminations == 1 &&
+                retained_active->failed() && retained_candidate->failed() &&
+                !retained_active->add_fake_status(1, 1, "stale") &&
+                !retained_candidate->add_fake_status(1, 1, "stale"),
             "disable did not persist before active and candidate teardown");
     require(lifecycle.revisions().current() &&
                 !lifecycle.revisions().current()->enabled,
@@ -597,10 +611,13 @@ void disable_and_remove_survive_host_restart() {
     transition::UpdateTransition update(
         lifecycle, health, permissions::PluginId("org.example.status"));
     auto probe = std::make_shared<Probe>();
+    auto retained_runtime = broker_runtime(installed, audit_store);
     require(update.bind_active(worker(installed.binding, probe),
-                               broker_runtime(installed, audit_store), 10)
+                               retained_runtime, 10)
                     .ok() &&
-                update.remove().ok() && probe->terminations == 1,
+                update.remove().ok() && probe->terminations == 1 &&
+                retained_runtime->failed() &&
+                !retained_runtime->add_fake_status(1, 1, "removed"),
             "remove did not revoke live worker authority");
     require(lifecycle.revisions().current() &&
                 lifecycle.revisions().current()->removed &&

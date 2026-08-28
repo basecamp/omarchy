@@ -69,6 +69,7 @@ public:
 
   [[nodiscard]] RevocationResult
   apply_revocation(const grant::RevocationResult &revocation);
+  [[nodiscard]] RuntimeStatus shutdown();
 
   [[nodiscard]] HandleResult issue_handle(const permissions::HandleId &id,
                                           std::uint64_t correlation,
@@ -170,6 +171,8 @@ private:
       handle_ids_{};
   std::array<TrackedRequest, kMaximumRuntimeRequests> requests_{};
   bool failed_ = false;
+  bool shutdown_ = false;
+  bool shutdown_audited_ = true;
 };
 
 } // namespace omarchy::plugin_runtime::runtime
