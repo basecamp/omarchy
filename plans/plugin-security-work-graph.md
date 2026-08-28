@@ -19,6 +19,19 @@ This table is the durable execution ledger. Update it when a node is assigned, c
 | `A3` | complete | primary | [`plugin-security-a3-render-transport.md`](plugin-security-a3-render-transport.md), [`plugin-security-a3-host-module.md`](plugin-security-a3-host-module.md), no-display animation, dynamic Quickshell module, and bounded memfd copy proofs pass |
 | `A4` | complete | `wave0_channel` | [`plugin-security-a4-test-survey.md`](plugin-security-a4-test-survey.md); all graph nodes mapped to exact test layers |
 | `G0` | complete | primary | [`plugin-security-g0-seams.md`](plugin-security-g0-seams.md); complete Wave 0 harness passes and two rounds of hostile review found no remaining seam blocker |
+| `B0` | complete | `wave0_native_build` | Commit `96ebb07f`; inert host/worker/bridge skeleton, service/migration wiring, staged install, QML import, direct-worker denial, and focused tests pass |
+| `B1` | complete | `wave0_trust_map` | Commit `5c43562b`; strict manifest v2, canonical SHA-256 identities/goldens, opaque capability requests, and failure-safe activation/rollback contract pass strict and sanitized tests |
+| `B2` | complete | `wave0_trust_map` | Commit `d80637aa`; capability, grant, update-delta, live-revocation, handle, gesture, and authoritative audit contracts pass strict and sanitized tests |
+| `B3` | complete | `wave0_channel` | Commit `512f96a0`; Qt-free 40-byte wire, negotiation/readiness, fixed-capacity direction-scoped correlation, common goldens, and role registry pass strict and sanitized tests |
+| `B4` | complete | primary | Commit `b78157b4`; two-slot memfd publication, checked layout, exact two-phase render request pairing, reentrancy denial, surface/input, software-profile, and bridge contract pass strict, sanitized, and hostile review |
+| `B5` | complete | `wave0_native_build` | Commit `f424a3a8`; pure deny-by-default Bubblewrap/seccomp/resource plan and real synthetic authority-denial probe pass focused and sanitized tests |
+| `B6` | complete | `wave0_native_build` | Commit `ec2fbf20`; literal cross-contract fixtures, deterministic fakes, malicious peers, real credential/pidfd/FD tests, sanitizers, and bounded fuzz smoke pass |
+| `B7` | complete | `wave0_trust_map` | Commit `4fb33150`; bounded report-only scanner, deterministic taxonomy/worksheet, representative fixtures, and no-follow hostile tests pass |
+| `C0` | complete | `wave0_channel` | Commit `6acb0c43`; bounded non-executing discovery, trusted identity pins, v2 gate, v1 unsafe diagnostics, ambiguity denial, and hostile tests pass |
+| `C1` | active | `wave0_channel` | Immutable revision store, atomic activation, crash recovery, and rollback implementation in progress |
+| `C2` | active | `wave0_trust_map` | Durable grant authority and explicit permission CLI implementation in progress |
+| `C4` | review | primary | Closed broker schema, per-request B3+B2 authorization, fixed provider dispatch, terminal pairing, cancellation, revocation plans, and reentry denial pass strict and sanitized focused tests; hostile review pending |
+| `C7` | active | `wave0_native_build` | Production Bubblewrap launcher, pidfd supervisor, exact inherited channels, resource enforcement, and teardown in progress |
 
 Nodes not listed here remain `pending` as represented by the graph. Add them to the live table when they become `ready`; completed rows remain as an audit trail rather than being removed.
 
