@@ -251,6 +251,33 @@ void resize_dpr_and_peer_loss() {
           "peer loss retained pixels or an active bridge");
 }
 
+void graceful_close_releases_worker_mapping() {
+  Harness harness(37);
+  harness.negotiate();
+  static_cast<void>(harness.publish());
+  harness.host.close();
+  surface::SurfaceKey released{};
+  require(harness.sender.headers.size() == 3 &&
+              harness.sender.headers.back().message_type ==
+                  static_cast<std::uint16_t>(
+                      surface::RenderMessageType::surface_release) &&
+              surface::decode_surface_key(harness.sender.payloads.back(),
+                                          released) &&
+              released == harness.allocation->surface &&
+              static_cast<bool>(harness.runtime.release(released)) &&
+              !harness.runtime.allocated() && !harness.runtime.active() &&
+              !harness.item.connected() && !harness.item.ready(),
+          "graceful close retained the worker mapping or trusted pixels");
+
+  Harness failed(38);
+  failed.negotiate();
+  failed.sender.fail_send = true;
+  failed.host.close();
+  require(failed.host.phase() == session::Phase::failed &&
+              !failed.item.connected() && !failed.item.ready(),
+          "failed release transport did not close the surface fail-closed");
+}
+
 void malformed_and_oversized_fail_closed() {
   {
     Harness harness(33);
@@ -327,6 +354,7 @@ int main(int argc, char **argv) {
     QGuiApplication application(argc, argv);
     animated_alpha_and_throughput();
     resize_dpr_and_peer_loss();
+    graceful_close_releases_worker_mapping();
     malformed_and_oversized_fail_closed();
     std::cout << "plugin render session: ok\n";
     return 0;

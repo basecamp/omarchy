@@ -64,6 +64,13 @@ std::string read_text(const std::filesystem::path &path) {
           std::istreambuf_iterator<char>()};
 }
 
+void write_text(const std::filesystem::path &path, std::string_view value) {
+  std::ofstream output(path, std::ios::binary | std::ios::trunc);
+  require(output.good(), "hostile fixture file could not be opened");
+  output.write(value.data(), static_cast<std::streamsize>(value.size()));
+  require(output.good(), "hostile fixture file could not be written");
+}
+
 void put16(std::vector<std::byte> &bytes, std::size_t offset,
            std::uint16_t value) {
   bytes[offset] = static_cast<std::byte>(value >> 8U);
@@ -139,6 +146,24 @@ private:
 };
 
 struct Backend {
+  static bool latest_allowed(const Backend &self,
+                             permissions::OperationId operation) noexcept {
+    try {
+      const auto records = self.audit_store->query({});
+      if (!records.status.ok() || records.records.empty())
+        return false;
+      const auto &record = records.records.back();
+      return record.producer == permissions::AuditProducer::broker &&
+             record.event == permissions::AuditEvent::operation_decided &&
+             record.outcome == permissions::AuditOutcome::allowed &&
+             record.plugin.view() == "org.omarchy.fixture.pomodoro" &&
+             record.revision.view() == kRevision && record.generation == 71 &&
+             record.correlation != 0 && record.operation == operation;
+    } catch (...) {
+      return false;
+    }
+  }
+
   static bool read(std::string_view key, std::span<std::byte>,
                    std::size_t &bytes_written, bool &found,
                    void *context) noexcept {
@@ -147,10 +172,8 @@ struct Backend {
     self.last_key = std::string(key);
     bytes_written = 0;
     found = false;
-    const auto records = self.audit_store->query({});
     self.audit_before_effect =
-        records.status.ok() && !records.records.empty() &&
-        records.records.back().outcome == permissions::AuditOutcome::allowed;
+        latest_allowed(self, permissions::OperationId::storage_read);
     return true;
   }
   static bool write(std::string_view key, std::span<const std::byte> value,
@@ -160,11 +183,9 @@ struct Backend {
     self.last_key = std::string(key);
     self.last_value.assign(reinterpret_cast<const char *>(value.data()),
                            value.size());
-    const auto records = self.audit_store->query({});
     self.audit_before_effect =
-        self.audit_before_effect && records.status.ok() &&
-        !records.records.empty() &&
-        records.records.back().outcome == permissions::AuditOutcome::allowed;
+        self.audit_before_effect &&
+        latest_allowed(self, permissions::OperationId::storage_write);
     return true;
   }
   static bool notify(std::string_view, std::string_view, std::string_view,
@@ -379,6 +400,16 @@ private:
   std::uint64_t correlation_ = 0;
 };
 
+class AmbientApi final : public QObject {
+  Q_OBJECT
+
+public:
+  Q_INVOKABLE QVariant invoke(const QString &, const QVariantMap &) {
+    return false;
+  }
+  Q_INVOKABLE QString hostPath() const { return QStringLiteral("/home/user"); }
+};
+
 std::vector<std::byte> encode(const wire::EnvelopeHeader &header,
                               std::span<const std::byte> payload) {
   std::vector<std::byte> result(wire::kHeaderSize + payload.size());
@@ -495,6 +526,21 @@ surface::InputEvent pointer(surface::SurfaceKey key, std::uint64_t sequence,
           .active_touch_points = 0};
 }
 
+surface::InputEvent touch(surface::SurfaceKey key, std::uint64_t sequence,
+                          std::uint32_t state,
+                          std::uint32_t active_touch_points) {
+  return {.surface = key,
+          .sequence = sequence,
+          .kind = surface::InputKind::touch,
+          .x_q16 = 126U << surface::kQ16FractionBits,
+          .y_q16 = 24U << surface::kQ16FractionBits,
+          .delta_x_q16 = 0,
+          .delta_y_q16 = 0,
+          .code = 1,
+          .state = state,
+          .active_touch_points = active_touch_points};
+}
+
 void negotiate(host::HostSurface &hosted, RenderSender &sender,
                worker::WorkerRuntime &worker_runtime,
                std::uint64_t generation) {
@@ -563,9 +609,24 @@ void prove_ambient_denial_plan() {
       "E1 did not consume the ambient-authority-denying B5 launch plan");
 }
 
+void prove_relative_import_escape_denied(const std::filesystem::path &root) {
+  const auto plugin = root / "escape-plugin";
+  const auto outside = root / "outside";
+  std::filesystem::create_directories(plugin);
+  std::filesystem::create_directories(outside);
+  write_text(outside / "Secret.qml", "import QtQuick\nItem {}\n");
+  write_text(plugin / "Main.qml",
+             "import QtQuick\nimport \"../outside\"\nItem { Secret {} }\n");
+  worker::WorkerRuntime escaped(plugin);
+  const auto result = escaped.load_entry("Main.qml");
+  require(!result && result.failure == worker::RuntimeFailure::qml_load_failed,
+          "relative QML import escaped the immutable plugin root");
+}
+
 void embedded_bar_vertical_slice() {
   prove_ambient_denial_plan();
   TemporaryDirectory temporary;
+  prove_relative_import_escape_denied(temporary.path());
   audit::AuditStore audit_store(temporary.path() / "audit",
                                 {.maximum_records = 128});
   Backend backend;
@@ -580,11 +641,22 @@ void embedded_bar_vertical_slice() {
                .generation = active.binding.generation}) &&
               !dispatcher.accepts({.plugin_id = "org.omarchy.fixture.pet",
                                    .revision_sha256 = kRevision,
-                                   .generation = active.binding.generation}),
-          "D1 dispatcher accepted a crossed plugin launch identity");
+                                   .generation = active.binding.generation}) &&
+              !dispatcher.accepts(
+                  {.plugin_id = std::string(active.binding.plugin.view()),
+                   .revision_sha256 = std::string(64, 'b'),
+                   .generation = active.binding.generation}) &&
+              !dispatcher.accepts(
+                  {.plugin_id = std::string(active.binding.plugin.view()),
+                   .revision_sha256 = kRevision,
+                   .generation = active.binding.generation + 1}),
+          "D1 dispatcher accepted a crossed activation identity");
   BrokerApi api(dispatcher, active.binding.generation);
 
   worker::WorkerRuntime worker_runtime(kPomodoro);
+  AmbientApi ambient_api;
+  require(!worker_runtime.bind_runtime_api(ambient_api),
+          "worker exposed a runtime QObject with ambient methods");
   require(static_cast<bool>(worker_runtime.bind_runtime_api(api)),
           "trusted runtime API did not bind");
   const auto load_result = worker_runtime.load_manifest_entry();
@@ -629,6 +701,12 @@ void embedded_bar_vertical_slice() {
   publish(*hosted, worker_runtime, active.binding.generation);
   require(item.ownedImage() != before,
           "arbitrary Pomodoro QML did not react and repaint after input");
+  require(hosted->route_input(touch(key, 3, 1, 1), true) &&
+              worker_runtime.focused() &&
+              hosted->route_input(touch(key, 4, 2, 1), false) &&
+              hosted->route_input(touch(key, 5, 3, 0), false) &&
+              !worker_runtime.focused() && !hosted->inspection().focused,
+          "authenticated touch lifecycle lost its trusted synthetic device");
 
   QVariantMap write_payload;
   write_payload.insert(QStringLiteral("key"), QStringLiteral("timer-state"));
@@ -650,12 +728,14 @@ void embedded_bar_vertical_slice() {
   const QVariant denied_audio =
       api.invoke(QStringLiteral("audio_play_cue"),
                  {{QStringLiteral("cue"), QStringLiteral("timer-complete")}});
+  const auto calls_before_unknown = dispatcher.calls;
   const QVariant denied_unknown = api.invoke(
       QStringLiteral("open_uri"),
       {{QStringLiteral("url"), QStringLiteral("https://example.invalid")}});
   require(!denied_notification.toBool() && !denied_audio.toBool() &&
               !denied_unknown.toBool() && backend.notifications == 0 &&
               backend.audio_cues == 0 && api.unknown_denials == 1 &&
+              dispatcher.calls == calls_before_unknown &&
               !broker_runtime.failed(),
           "ungranted or unknown effects escaped the broker-only API");
 
@@ -666,8 +746,18 @@ void embedded_bar_vertical_slice() {
               dispatcher.calls == 4,
           "authoritative E1 audit leaked plugin payload or missed decisions");
   hosted->close();
-  require(!item.connected() && !item.ready(),
-          "bar teardown retained worker pixels or input authority");
+  auto release_packet = render_sender.take();
+  surface::SurfaceKey released{};
+  require(!item.connected() && !item.ready() &&
+              release_packet.header.message_type ==
+                  static_cast<std::uint16_t>(
+                      surface::RenderMessageType::surface_release) &&
+              surface::decode_surface_key(release_packet.payload, released) &&
+              released == key &&
+              static_cast<bool>(worker_runtime.release(released)) &&
+              !worker_runtime.allocated() && !worker_runtime.active() &&
+              !worker_runtime.focused() && !worker_runtime.render().has_value(),
+          "bar teardown retained worker pixels, mapping, or input authority");
 }
 
 } // namespace

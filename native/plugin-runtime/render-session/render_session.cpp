@@ -177,12 +177,21 @@ void HostRenderSession::close() {
   if (phase_ == Phase::idle || phase_ == Phase::failed ||
       phase_ == Phase::disconnected)
     return;
+  if (allocation_ &&
+      (phase_ == Phase::awaiting_allocation || phase_ == Phase::active)) {
+    const auto payload = surface::encode_surface_key(allocation_->surface);
+    static_cast<void>(send(
+        static_cast<std::uint16_t>(surface::RenderMessageType::surface_release),
+        payload, 0));
+  }
   sink_.disconnect();
   consumer_.reset();
   region_.reset();
   endpoint_.reset();
-  phase_ = Phase::disconnected;
-  failure_detail_ = "render session closed";
+  if (phase_ != Phase::failed) {
+    phase_ = Phase::disconnected;
+    failure_detail_ = "render session closed";
+  }
 }
 
 Phase HostRenderSession::phase() const { return phase_; }

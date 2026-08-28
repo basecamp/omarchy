@@ -10,7 +10,9 @@
 #include <QJsonObject>
 #include <QKeyEvent>
 #include <QLibraryInfo>
+#include <QMetaMethod>
 #include <QMouseEvent>
+#include <QPointingDevice>
 #include <QQmlAbstractUrlInterceptor>
 #include <QQmlComponent>
 #include <QQmlContext>
@@ -122,6 +124,32 @@ RuntimeResult validate_source_tree(const std::filesystem::path &root) {
     return failure(RuntimeFailure::invalid_source_root,
                    "plugin tree changed while validating");
   return {};
+}
+
+bool valid_runtime_api_surface(QObject &runtime_api) {
+  if (runtime_api.parent() != nullptr ||
+      !runtime_api.dynamicPropertyNames().empty())
+    return false;
+  const QMetaObject *meta = runtime_api.metaObject();
+  if (meta == nullptr ||
+      meta->propertyCount() != QObject::staticMetaObject.propertyCount())
+    return false;
+  std::size_t invoke_methods = 0;
+  for (int index = QObject::staticMetaObject.methodCount();
+       index < meta->methodCount(); ++index) {
+    const QMetaMethod method = meta->method(index);
+    if (method.methodSignature() !=
+            QByteArrayLiteral("invoke(QString,QVariantMap)") ||
+        method.access() != QMetaMethod::Public ||
+        method.methodType() != QMetaMethod::Method ||
+        method.returnMetaType().id() != QMetaType::QVariant ||
+        method.parameterCount() != 2 ||
+        method.parameterMetaType(0).id() != QMetaType::QString ||
+        method.parameterMetaType(1).id() != QMetaType::QVariantMap)
+      return false;
+    ++invoke_methods;
+  }
+  return invoke_methods == 1;
 }
 
 class ResourceInterceptor final : public QQmlAbstractUrlInterceptor {
@@ -268,6 +296,25 @@ struct WorkerRuntime::Impl {
   [[maybe_unused]] bool software_backend;
   QQuickRenderControl render_control;
   QQuickWindow window;
+  QPointingDevice mouse_device{QStringLiteral("omarchy-plugin-mouse"),
+                               -1001,
+                               QInputDevice::DeviceType::Mouse,
+                               QPointingDevice::PointerType::Generic,
+                               QInputDevice::Capability::Position |
+                                   QInputDevice::Capability::Hover |
+                                   QInputDevice::Capability::Scroll,
+                               1,
+                               16};
+  QPointingDevice touch_device{QStringLiteral("omarchy-plugin-touch"),
+                               -1002,
+                               QInputDevice::DeviceType::TouchScreen,
+                               QPointingDevice::PointerType::Finger,
+                               QInputDevice::Capability::Position |
+                                   QInputDevice::Capability::Area |
+                                   QInputDevice::Capability::MouseEmulation,
+                               static_cast<int>(surface::kMaximumTouchPoints),
+                               0};
+  Qt::MouseButtons mouse_buttons = Qt::NoButton;
   std::unique_ptr<QQmlComponent> component;
   QQuickItem *root_item = nullptr;
   bool profile_selected = false;
@@ -349,6 +396,9 @@ RuntimeResult WorkerRuntime::bind_runtime_api(QObject &runtime_api) {
         RuntimeFailure::invalid_runtime_api,
         "trusted runtime API must bind exactly once before QML load");
   }
+  if (!valid_runtime_api_surface(runtime_api))
+    return failure(RuntimeFailure::invalid_runtime_api,
+                   "runtime API must expose only invoke(QString,QVariantMap)");
   implementation_->engine.rootContext()->setContextProperty(
       QStringLiteral("runtime"), &runtime_api);
   implementation_->runtime_api_bound = true;
@@ -504,6 +554,7 @@ RuntimeResult WorkerRuntime::suspend(surface::SurfaceKey key) {
     return failure(RuntimeFailure::invalid_transition,
                    "surface cannot suspend in current phase");
   implementation_->focused = false;
+  implementation_->mouse_buttons = Qt::NoButton;
   return {};
 }
 
@@ -535,6 +586,7 @@ RuntimeResult WorkerRuntime::release(surface::SurfaceKey key) {
   implementation_->focus_gate.reset();
   implementation_->state.reset();
   implementation_->focused = false;
+  implementation_->mouse_buttons = Qt::NoButton;
   return {};
 }
 
@@ -550,8 +602,10 @@ RuntimeResult WorkerRuntime::focus(const surface::FocusEvent &event) {
   implementation_->focused = event.focused;
   if (event.focused)
     implementation_->root_item->forceActiveFocus(Qt::OtherFocusReason);
-  else
+  else {
     implementation_->root_item->setFocus(false, Qt::OtherFocusReason);
+    implementation_->mouse_buttons = Qt::NoButton;
+  }
   return {};
 }
 
@@ -568,22 +622,29 @@ RuntimeResult WorkerRuntime::input(const surface::InputEvent &event) {
   const QPointF point(static_cast<qreal>(event.x_q16) / 65536.0,
                       static_cast<qreal>(event.y_q16) / 65536.0);
   if (event.kind == surface::InputKind::pointer_motion) {
-    QMouseEvent translated(QEvent::MouseMove, point, point, Qt::NoButton,
-                           Qt::NoButton, Qt::NoModifier);
+    QMouseEvent translated(QEvent::MouseMove, point, point, point, Qt::NoButton,
+                           implementation_->mouse_buttons, Qt::NoModifier,
+                           &implementation_->mouse_device);
     QCoreApplication::sendEvent(&implementation_->window, &translated);
   } else if (event.kind == surface::InputKind::pointer_button) {
     const auto button = mouse_button(event.code);
     const bool pressed = event.state == static_cast<std::uint32_t>(
                                             surface::ButtonState::pressed);
-    QMouseEvent translated(
-        pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease, point,
-        point, button, pressed ? button : Qt::NoButton, Qt::NoModifier);
+    const auto buttons = pressed ? implementation_->mouse_buttons | button
+                                 : implementation_->mouse_buttons & ~button;
+    QMouseEvent translated(pressed ? QEvent::MouseButtonPress
+                                   : QEvent::MouseButtonRelease,
+                           point, point, point, button, buttons, Qt::NoModifier,
+                           &implementation_->mouse_device);
     QCoreApplication::sendEvent(&implementation_->window, &translated);
+    implementation_->mouse_buttons = buttons;
   } else if (event.kind == surface::InputKind::scroll) {
     const QPoint pixel_delta(event.delta_x_q16 / 65536,
                              event.delta_y_q16 / 65536);
     QWheelEvent translated(point, point, pixel_delta, {}, Qt::NoButton,
-                           Qt::NoModifier, Qt::ScrollUpdate, false);
+                           Qt::NoModifier, Qt::ScrollUpdate, false,
+                           Qt::MouseEventNotSynthesized,
+                           &implementation_->mouse_device);
     QCoreApplication::sendEvent(&implementation_->window, &translated);
   } else if (event.kind == surface::InputKind::key) {
     const bool pressed = event.state == static_cast<std::uint32_t>(
@@ -599,7 +660,7 @@ RuntimeResult WorkerRuntime::input(const surface::InputEvent &event) {
                       : event.state == 2 ? QEvent::TouchUpdate
                                          : QEvent::TouchEnd;
     QTouchEvent translated(
-        type, nullptr, Qt::NoModifier,
+        type, &implementation_->touch_device, Qt::NoModifier,
         {QEventPoint(static_cast<int>(event.code), state, point, point)});
     QCoreApplication::sendEvent(&implementation_->window, &translated);
   }

@@ -139,6 +139,38 @@ void render_and_input() {
           "focused pointer input failed");
   require(!static_cast<bool>(runtime.input(press)),
           "replayed input sequence was accepted");
+  auto release = press;
+  release.sequence = 2;
+  release.state = static_cast<std::uint32_t>(surface::ButtonState::released);
+  require(static_cast<bool>(runtime.input(release)),
+          "trusted pointer release failed");
+  surface::InputEvent touch{
+      .surface = allocation->surface,
+      .sequence = 3,
+      .kind = surface::InputKind::touch,
+      .x_q16 = 10U << 16,
+      .y_q16 = 10U << 16,
+      .delta_x_q16 = 0,
+      .delta_y_q16 = 0,
+      .code = 1,
+      .state = 1,
+      .active_touch_points = 1,
+  };
+  require(static_cast<bool>(runtime.input(touch)),
+          "trusted touch begin failed");
+  touch.sequence = 4;
+  touch.state = 2;
+  require(static_cast<bool>(runtime.input(touch)),
+          "trusted touch update failed");
+  touch.sequence = 5;
+  touch.state = 3;
+  touch.active_touch_points = 0;
+  require(static_cast<bool>(runtime.input(touch)), "trusted touch end failed");
+  require(
+      static_cast<bool>(runtime.focus(
+          {.surface = allocation->surface, .sequence = 2, .focused = false})) &&
+          !runtime.focused(),
+      "input lifecycle did not end unfocused");
   require(runtime.render_requested(), "input did not dirty the scene");
   require(runtime.render().has_value(), "input-driven frame did not publish");
 
