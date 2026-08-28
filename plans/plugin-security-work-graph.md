@@ -48,13 +48,16 @@ This table is the durable execution ledger. Update it when a node is assigned, c
 | `D6` | complete | primary | Commit `f0eaaeba`; bounded trusted scanner composition produces deterministic advisory today-to-tomorrow maps for Pomodoro, pet, and service fixtures with exact schema-v2 candidate identities, surfaces, and capability scopes |
 | `E0` | complete | primary | Commit `65289972`; exact activation and live-generation binding, authenticated no-authority dispatch, D5 request/resource accounting, synchronous limit and revocation teardown, redacted audit, and fake/real-Bubblewrap Debug/Release/sanitizer proofs |
 | `E1` | complete | `wave0_trust_map` | Commits `c2796785` and `d63678ed`; the representative Pomodoro renders arbitrary QML through D2/D3 in a host-owned bar envelope, with bounded input/focus, identity-bound D1/D4 effects, no URI packet, and strict/sanitized evidence |
-| `E2` | active | `wave0_channel` | Transparent pet/slide-out arbitrary-QML expressiveness slice in progress |
+| `E2` | complete | `wave0_channel` | Commit `d441eea3`; unchanged arbitrary-QML pet proves alpha, animation, click-through/irregular captured input, no retained keyboard focus, host-paced frames, and host-owned bounded surface placement across strict/sanitized suites |
 | `E3` | complete | `wave0_channel` | Commits `6dfe7dd5` and `5695e995`; immutable QML drives exact authenticated requests, while denied grants, missing gestures, expanded scopes, raw unknown operations, unsupported URLs, stale handles, and audit failure remain effect-free and fail closed |
 | `E4` | complete | `wave0_native_build` | Commit `2c5e5892`; exact staged review and candidate health preserve old authority until atomic promotion, promotion ambiguity rolls back fail-closed, and audit-first revocation cancels work, denies new operations, and stales handles |
 | `E5` | complete | `wave0_native_build` | Commit `debe83d3`; v1 has only an unsafe/unmigrated posture, while exact reinstall, upgrade, exact-digest downgrade/rebuild approval, identity denial, and fault recovery pass strict and sanitized proofs |
 | `F3` | complete | `wave0_native_build` | Commit `146c9e43`; durable disable/remove prevents restart resurrection, clears grant/decision authority, tears down active and candidate workers, rejects stale rollback/rebind, and requires a fresh generation on reinstall across strict/sanitized crash-recovery proofs |
 | `F0` | complete | primary | Commits `424882f9` and `efbd5cf1`; exact dispatcher identity closes a cross-plugin deputy seam, while real Bubblewrap denies home, D-Bus, Wayland, agent sockets, sibling state, network, descendants, revision writes, forged peers, and stale authority in Debug/Release/sanitized campaigns |
+| `F1` | active | `wave0_channel` | Malformed protocol and resource-exhaustion campaign in progress |
+| `F2` | active | `wave0_trust_map` | Rendering fidelity, latency, DPI, multi-monitor, focus, and visual proof campaign in progress |
 | `G3` | active | `wave0_trust_map`, `wave0_native_build` | Rolling hostile reviews of the arbitrary-QML and lifecycle/update slices in progress |
+| `F5` | active | primary | Disposable-VM packaging and graphical acceptance campaign in progress |
 
 Nodes not listed here remain `pending` as represented by the graph. Add them to the live table when they become `ready`; completed rows remain as an audit trail rather than being removed.
 
