@@ -1,8 +1,8 @@
 # Draft PR: add a feature-gated secure plugin reference runtime
 
-> Draft only. Do not open this PR until G4 closes. The limitations section is part of the proposed PR body and must not be removed to make the branch appear production-ready.
+> Draft only. Do not open this PR until G4 closes. The package-repository, fresh-ISO/VM, and production-host limitations are part of the proposed PR body and must not be removed to make the branch appear production-ready.
 
-Proposed base: the protected `jacob-vincent-mink/omarchy:quattro` branch. Proposed head: `jacob-vincent-mink/omarchy:plugin-security-model`.
+Proposed base: the protected `jacob-vincent-mink/omarchy:quattro` branch, whose current history is merged into this branch. Proposed head: `jacob-vincent-mink/omarchy:plugin-security-model`.
 
 ## Summary
 
@@ -30,7 +30,7 @@ The worker controls its scene graph and pixels. Omarchy controls identity, immut
 - Immutable content-addressed revisions, atomic activation/rollback/recovery, owner-only grant/audit stores, exact generation and policy binding, and staged permission-expanding updates.
 - A deny-by-default Bubblewrap launcher with isolated user/PID/mount/IPC/UTS/network namespaces, minimal read-only runtime, filtered environment, no capabilities, seccomp, resource scopes, pidfds, bounded teardown, and exact FD 3/4/5 channel setup.
 - A fixed 40-byte versioned wire envelope, role-specific `SOCK_SEQPACKET` channels, kernel credential and pidfd lifetime checks, negotiation/readiness, bounded correlations, descriptor policy, and malicious-peer fixtures.
-- A separate Qt Quick worker using `QQuickRenderControl`, strict imports/object bounds, software rendering, host-created two-slot shared memory, bounded frame/input schemas, and trusted-copy presentation.
+- A separate Qt Quick worker using `QQuickRenderControl`, strict imports/object bounds, a 64 MiB decoded-image allocation ceiling, software rendering, host-created two-slot shared memory, bounded frame/input schemas, and trusted-copy presentation.
 - Host-owned surface admission, placement, dimensions, monitor identity, DPR, pacing, focus, capture, input regions, lock-screen policy, inspection, and termination seams.
 - A closed broker with `storage.private@1`, `notifications.send@1`, `audio.play-cue@1`, and `service.fake-status@1`; exact request/result bounds; audit-before-effect; cancellation, revocation, handles, and poisoned-state behavior.
 - Whole-policy permission review with full identity and diff, explicit required/optional grant or denial, no unattended consent, plus a redacted human audit inspector.
@@ -48,11 +48,13 @@ The focused campaigns cover:
 - Frame/request/input/surface rates, memory/scratch/task policy, output/descriptor pressure, crash loops, restart storms, health failure, ambiguous teardown, and stale-resource cleanup.
 - Install, enable, staged update, approval/denial, activation and promotion faults, rollback, disable, revoke, remove, worker crash, broker restart, shell/supervisor recovery, reinstall, and downgrade/rebuild identity checks.
 
-The proof campaigns found and fixed real issues, including a cross-plugin dispatcher/grant confused-deputy seam, DPR2 rendering/input scaling, unbounded sequential request starts, retained lifecycle authority after corrupt recovery, partial permission-review cancellation, and stack exhaustion in a clean Release package build.
+The proof campaigns found and fixed real issues, including a cross-plugin dispatcher/grant confused-deputy seam, DPR2 rendering/input scaling, unbounded sequential request starts, retained lifecycle authority after corrupt recovery, partial permission-review cancellation, stack exhaustion in a clean Release package build, compressed-image decoded-allocation amplification, and a teardown race that treated pidfd exit readiness as proof that the direct child was already reapable. The repaired teardown path uses bounded `WNOHANG` retries and passed 100/100 fake-launch plus 100/100 real-Bubblewrap repetitions after fresh Debug and Release aggregates.
 
 ## Arbitrary-QML compatibility evidence
 
 The unchanged representative QML scenes prove custom layout, animation, alpha, clipping, irregular input regions, click-through behavior, bounded pointer/touch capture, and no retained keyboard focus. Host placement and pacing remain authoritative.
+
+The worker fixes Qt image decoding at 64 MiB, matching the largest permitted 4,096 by 4,096 RGBA surface. Its focused corpus proves an ordinary PNG still decodes, a compressed 4,097-square PNG smaller than 1 MiB cannot allocate its 67 MiB decoded output, and repeated truncated or unsupported inputs remain rejected.
 
 Checked-in visual artifacts cover a 320×180 transparent pet at DPR1, the same logical pet at 640×360 DPR2, and Pomodoro layouts at 180×48 and 280×64. One local sample measured software render p95 at 139 µs Debug, 319 µs Release, and 466 µs under ASan/UBSan; trusted-copy p95 was 15–31 µs; input-to-changed-frame was approximately 66–68 ms. These are regression observations, not end-to-end compositor latency or product guarantees.
 
@@ -81,6 +83,10 @@ See [`plugin-security-f6-representative-migrations.md`](https://github.com/jacob
 
 The branch contains focused Debug, Release, ASan/UBSan, adversarial, fault-injection, stress, real-kernel, package, CLI, offscreen visual, and graphical acceptance entry points. The work graph links each component and proof node to its evidence document.
 
+The final code candidate `7aaa9b4883d20f4c5d054e9ef281a7feb06d1655` was built from a clean detached clone by the companion Arch recipe with checks enabled. Its Release package check passed 54/54 aggregate CTests. The resulting `omarchy-dev-4.0.0.r1946.g7aaa9b4-1-x86_64.pkg.tar.zst` has SHA-256 `7f85d031571eb5d7a1cd8d1144abf06260a834a001b17f8f90a805e5bb6874a8`; the archive verifier and its negative mutation suite both passed. The installed `Omarchy.PluginHost` module dynamically loads both `PluginHostInfo` and `RemotePluginSurface` while preserving their unavailable/disconnected feature-gated state.
+
+After the current protected `quattro` merge, fresh outside-confinement Debug and Release builds each passed 54/54 native CTests. The Release brokered-action teardown boundary passed 100/100 fake-launch and 100/100 real-Bubblewrap repetitions. Five focused repository/plugin/QML tests and `./test/cli` passed. `./test/shell` reported seven failing files out of 212, none plugin-security-related; the G4 evidence classifies them as companion-repository version skew, managed-host/environment contamination, or tests that passed in isolation. They remain visible rather than being presented as an all-green shell suite.
+
 Representative commands:
 
 ```bash
@@ -105,9 +111,9 @@ Real Bubblewrap credential/namespace checks must run outside managed development
 ## Current limitations and non-claims
 
 - The installed `omarchy-plugin-host` is still an inert long-running skeleton and `PluginHostInfo.available` remains false.
-- Final G4 refresh required: the aggregate registration is being expanded and currently passes local Debug/Release integration tests, but that does not compose the production lifecycle/broker/render path into `host/main.cpp`; the installed service remains an inert skeleton unless a later G4 commit changes that executable.
+- Aggregate registration includes the production trusted bridge, render session, surface host, expressive surface, representative fixtures, and vertical proofs, but `host/main.cpp` does not compose them into live discovery, activation, broker, or render pumping.
 - Schema-v2 discovery/lifecycle is not switched into the current end-user install/enable/update commands.
-- The locally built Arch archive proves package shape and checks, but its package-repository recipe is not committed and the archive was built from a shared worktree rather than a clean commit.
+- The clean-source Arch archive proves package shape and checks, but its companion recipe patch is not committed in `omarchy-pkgs`.
 - No fresh `omarchy-iso` build/test has run in this workspace. There is no clean-install service log, live Quickshell import, compositor-owned plugin surface screenshot, or end-to-end installed activation proof.
 - The checked-in PNGs are real offscreen Qt Quick output, not screenshots of a live layer-shell surface.
 - Only four capability families are implemented. Network, general files, credentials, clipboard reads, capture, input injection, devices, media control, package management, compositor mutation, URL handlers, and real authenticated services remain denied/unimplemented.

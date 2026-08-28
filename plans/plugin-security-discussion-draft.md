@@ -1,6 +1,6 @@
 # Draft discussion: securing Omarchy plugins without giving up arbitrary QML
 
-> Draft only. Do not post until the G4 review gate closes and the package/VM limitations below are rechecked.
+> Draft only. Do not post until the G4 review gate closes. The package-repository, fresh-ISO/VM, and production-host limitations below remain release blockers.
 
 ## Summary
 
@@ -10,7 +10,7 @@ This proposal keeps the feature that makes the ecosystem distinctive: plugins ma
 
 The key distinction is pixels versus authority. A plugin controls its pixels inside a granted host-owned envelope. It does not receive the normal Wayland socket, create privileged layer-shell surfaces, run arbitrary host commands, mount the user's home, use the session bus, or select its own identity and permissions.
 
-This branch is a reference implementation and security proof, not a production-ready replacement for today's plugin path. The native contracts, sandbox, authenticated channels, offscreen QML worker, frame transport, broker, grants, lifecycle, recovery, representative fixtures, migration reports, and adversarial tests exist and have passed their focused gates. The installed host remains deliberately unavailable and feature-gated; the production host does not yet compose the full lifecycle/broker/render path, the package recipe is not committed in the package repository, and a clean fresh-ISO VM run has not happened.
+This branch includes the current protected `quattro` history and is a reference implementation and security proof, not a production-ready replacement for today's plugin path. The native contracts, sandbox, authenticated channels, offscreen QML worker, frame transport, broker, grants, lifecycle, recovery, representative fixtures, migration reports, and adversarial tests exist and have passed their focused gates. The package installs one `Omarchy.PluginHost` QML module containing both `PluginHostInfo` and `RemotePluginSurface`, but the host remains deliberately unavailable and feature-gated; the production executable does not yet compose the full lifecycle/broker/render path, the package recipe is not committed in the package repository, and a clean fresh-ISO VM run has not happened.
 
 ## Proposed boundary
 
@@ -36,12 +36,14 @@ The broker exposes a closed operation registry rather than ambient `network`, `f
 |---|---|
 | Implemented reference components | Strict schema-v2 manifests and identities; immutable revision/grant/audit stores; staged lifecycle and rollback; Bubblewrap launcher; authenticated three-role channels; arbitrary-QML worker; two-slot frame transport; trusted bridge/surface policy; broker and four provider families; permission/audit CLIs; health, crash, revocation, removal, and recovery logic |
 | Executable vertical slices | Pomodoro-style arbitrary QML in a bounded bar slot; transparent animated pet with alpha and irregular input in a desktop overlay; authenticated fake-service action with denial, auditing, handles, and revocation |
-| Security proof | Real Bubblewrap denial of home, sibling state, network, session bus, ordinary Wayland, agent sockets, descendants, revision writes, forged peers, stale generations, and confused-deputy routing; malformed protocol/frame and exhaustion campaigns; update, rollback, disable, remove, crash, and restart recovery campaigns |
+| Security proof | Real Bubblewrap denial of home, sibling state, network, session bus, ordinary Wayland, agent sockets, descendants, revision writes, forged peers, stale generations, and confused-deputy routing; malformed protocol/frame and exhaustion campaigns; update, rollback, disable, remove, crash, and restart recovery campaigns; a 64 MiB decoded-image allocation ceiling that rejects a sub-1 MiB compressed 4,097-square PNG; and bounded post-pidfd-readiness child reap |
 | Visual/performance proof | Offscreen DPR1/DPR2 pet and narrow/wide Pomodoro artifacts; local software-render p95 remained below 0.5 ms in Debug, Release, and ASan/UBSan samples; click-to-changed-frame was about 66–68 ms. These exclude channel scheduling, compositor upload, presentation, and display latency and are not release guarantees |
-| Packaging proof | A local Arch package archive built with checks enabled, contained the intended private worker/QML module/service layout, and passed 41 aggregate Release CTests plus archive inspection and offscreen module import |
-| Not yet proven | Clean-source package provenance, committed package-repository recipe, fresh ISO build/install, live Quickshell import, compositor presentation, fractional-DPR/live-hotplug behavior, production host composition, end-user activation, or a supported secure-plugin release |
+| Packaging proof | A clean detached clone at `7aaa9b4883d20f4c5d054e9ef281a7feb06d1655` produced `omarchy-dev-4.0.0.r1946.g7aaa9b4-1-x86_64.pkg.tar.zst` with SHA-256 `7f85d031571eb5d7a1cd8d1144abf06260a834a001b17f8f90a805e5bb6874a8`; its Release package check passed 54/54 aggregate CTests, and both the archive verifier and its negative mutation suite passed |
+| Not yet proven | Committed package-repository recipe, fresh ISO build/install, live Quickshell import, compositor presentation, fractional-DPR/live-hotplug behavior, production host composition, end-user activation, or a supported secure-plugin release |
 
-The strongest rule for reviewing this branch is that a passing component or fixture test is not the same claim as installed production integration. `PluginHostInfo.available` remains false, the graphical acceptance explicitly displays `ACTIVATION FEATURE-GATED`, and schema-v2 activation is not wired into the current end-user plugin commands.
+The strongest rule for reviewing this branch is that a passing component, package, or fixture test is not the same claim as installed production integration. The installed `RemotePluginSurface` proves the intended QML ABI and disconnected state, not a live plugin. `PluginHostInfo.available` remains false, the graphical acceptance explicitly displays `ACTIVATION FEATURE-GATED`, and schema-v2 activation is not wired into the current end-user plugin commands.
+
+After merging the current protected `quattro`, fresh outside-confinement Debug and Release builds each passed 54/54 native CTests. The repaired teardown boundary then passed 100/100 fake-launch and 100/100 real-Bubblewrap Release repetitions. Five focused repository/plugin/QML tests and `./test/cli` passed. The aggregate shell run reported seven failing files out of 212; none was a plugin-security test, and the recorded causes are companion-repository skew, managed-environment state, one isolated pass after removing `NO_COLOR`, and one transient isolated pass. These results strengthen the reference proof but do not substitute for the pending matching-recipe fresh-ISO VM gate.
 
 ## Existing plugins: what survives and what changes
 
