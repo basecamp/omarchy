@@ -88,13 +88,13 @@ hermes_runs() {
     timeout 15 "$HOME/.local/bin/hermes" --version >/dev/null 2>&1
 }
 
-# Prompted Omarchy sessions need Hermes' usage report to identify and validate
-# the exact one-shot session before reopening it interactively.
+# The chat subcommand's --oneshot opt-out arrived with native interactive -q,
+# so its presence is a stable capability check without relying on a version.
 hermes_prompt_ready() {
   local help
   hermes_runs &&
-    help=$(timeout 15 "$HOME/.local/bin/hermes" --help 2>/dev/null) &&
-    grep -qF -- '--usage-file' <<<"$help"
+    help=$(timeout 15 "$HOME/.local/bin/hermes" chat --help 2>/dev/null) &&
+    grep -qF -- '--oneshot' <<<"$help"
 }
 
 # --owns answers whether the wrapper on PATH is the one this command wrote, so
@@ -154,8 +154,8 @@ if foreign_hermes; then
   fi
 
   if hermes_runs; then
-    echo "~/.local/bin/hermes does not support the session report Omarchy needs for prompted launches." >&2
-    echo "Update it to Hermes Agent 0.18.1 or newer, then run omarchy-install-hermes-cli again." >&2
+    echo "~/.local/bin/hermes does not support the interactive seeded sessions Omarchy needs." >&2
+    echo "Update it to a Hermes Agent release with interactive chat queries, then run omarchy-install-hermes-cli again." >&2
     exit 1
   fi
 
@@ -164,12 +164,17 @@ if foreign_hermes; then
   exit 1
 fi
 
-# An older mise environment may predate the session report. It belongs to this
-# installer, so discard only that environment and let the current stub rebuild it.
+# Only the marked wrapper proves the matching mise environment is ours to replace.
 if installed && ! hermes_prompt_ready; then
-  echo "Updating Hermes for prompted sessions..." >&2
-  mise rm -g "$tool" >/dev/null 2>&1 || true
-  mise uninstall --all "$tool" >/dev/null 2>&1 || true
+  if ours; then
+    echo "Updating Hermes for prompted sessions..." >&2
+    mise rm -g "$tool" >/dev/null 2>&1 || true
+    mise uninstall --all "$tool" >/dev/null 2>&1 || true
+  else
+    echo "A Hermes mise environment exists without an Omarchy-owned wrapper." >&2
+    echo "Update or remove it explicitly, then run omarchy-install-hermes-cli again." >&2
+    exit 1
+  fi
 fi
 
 mkdir -p "$HOME/.local/bin"
@@ -218,7 +223,7 @@ chmod +x "$HOME/.local/bin/hermes"
 if [[ $mode == "--now" ]]; then
   "$HOME/.local/bin/hermes" --version
   if ! hermes_prompt_ready; then
-    echo "Hermes installed without the session report Omarchy needs for prompted launches." >&2
+    echo "Hermes installed without the interactive seeded sessions Omarchy needs." >&2
     exit 1
   fi
 fi

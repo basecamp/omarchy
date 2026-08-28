@@ -97,8 +97,8 @@ run_installer 1 --check && fail "--check reports Hermes missing before the app i
 mkdir -p "$test_home/.hermes/hermes-agent/venv/bin"
 cat >"$test_home/.hermes/hermes-agent/venv/bin/hermes" <<'SH'
 #!/bin/bash
-if [[ ${1:-} == "--help" ]]; then
-  [[ ${OMARCHY_TEST_HERMES_CAPABLE:-1} == 1 ]] && echo "--usage-file PATH"
+if [[ ${1:-} == "chat" && ${2:-} == "--help" ]]; then
+  [[ ${OMARCHY_TEST_HERMES_CAPABLE:-1} == 1 ]] && echo "--oneshot"
 else
   echo "hermes-agent 0.0.0-test"
 fi
@@ -135,12 +135,12 @@ run_installer 0 --now || fail "--now over a foreign hermes command returns succe
 pass "a foreign hermes command is preserved and satisfies --check"
 
 OMARCHY_TEST_HERMES_CAPABLE=0 run_installer 0 --check &&
-  fail "--check rejects a foreign Hermes without prompted-session reports"
+  fail "--check rejects a foreign Hermes without native prompted sessions"
 OMARCHY_TEST_HERMES_CAPABLE=0 run_installer 0 &&
-  fail "installing refuses a foreign Hermes without prompted-session reports"
+  fail "installing refuses a foreign Hermes without native prompted sessions"
 [[ $(cat "$test_home/.local/bin/hermes") == "$official_body" ]] ||
   fail "an older foreign Hermes command is left untouched"
-pass "a foreign Hermes must support prompted-session reports"
+pass "a foreign Hermes must support native prompted sessions"
 
 # Broken foreign paths are still foreign. They cannot be used, so --check says
 # so and the installer refuses rather than replacing them.
@@ -236,6 +236,16 @@ OMARCHY_TEST_MISE_WHERE_OK=1 run_installer 0 || fail "reinstalling replaces an o
 tr '\0' '\n' <"$mise_log" | grep -q '^rm$' || fail "an older owned Hermes environment is removed from mise config"
 tr '\0' '\n' <"$mise_log" | grep -q '^uninstall$' || fail "an older owned Hermes environment is uninstalled"
 pass "reinstalling replaces an older owned Hermes environment"
+
+rm -f "$test_home/.local/bin/hermes"
+: >"$mise_log"
+OMARCHY_TEST_MISE_WHERE_OK=1 run_installer 0 &&
+  fail "installing refuses to claim an unmarked Hermes mise environment"
+tr '\0' '\n' <"$mise_log" | grep -Eq '^(rm|uninstall)$' &&
+  fail "an unmarked Hermes mise environment is never removed"
+[[ ! -e $test_home/.local/bin/hermes ]] ||
+  fail "an unmarked Hermes mise environment is not given an Omarchy wrapper"
+pass "a Hermes mise environment needs wrapper ownership before replacement"
 
 # install/user/mise.sh is sourced by install/user/all.sh through run_logged,
 # which runs it under `bash -eE` and hands its exit code back to
@@ -377,8 +387,8 @@ run_ready_check && fail "--check rejects the app's wrapper when its runtime is g
 
 cat >"$ready_home/.hermes/hermes-agent/venv/bin/hermes" <<'SH'
 #!/bin/bash
-if [[ ${1:-} == "--help" ]]; then
-  echo "--usage-file PATH"
+if [[ ${1:-} == "chat" && ${2:-} == "--help" ]]; then
+  echo "--oneshot"
 else
   echo "hermes-agent 0.0.0-test"
 fi
