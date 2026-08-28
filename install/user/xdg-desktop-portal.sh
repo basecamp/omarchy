@@ -14,15 +14,22 @@ mkdir -p \
   "$(dirname "$nautilus_portal")" \
   "$(dirname "$nautilus_dbus_service")"
 
-if [[ ! -e $portal_config ]]; then
+# -s, not -e: sed's `1i` is a line address, so it inserts nothing into a
+# zero-line file. An empty portals.conf would otherwise be left untouched and
+# the preference silently never written.
+if [[ ! -s $portal_config ]]; then
   printf '%s\n' \
     '[preferred]' \
     'default=hyprland;gtk' \
     'org.freedesktop.impl.portal.FileChooser=nautilus' >"$portal_config"
-elif ! grep -q '^org\.freedesktop\.impl\.portal\.FileChooser=' "$portal_config"; then
-  # Tolerate surrounding whitespace on the section header: a miss here falls
-  # through to inserting a second [preferred], and GKeyFile treats a duplicate
-  # group as a parse error, which would take out portals.conf loading entirely.
+# GKeyFile allows whitespace around the separator, so the existing-preference
+# check has to as well. Matching only `key=` misses `key = kde`, and the
+# insertion below then adds a second FileChooser key; GKeyFile resolves a
+# duplicate key to the last occurrence, so the user's backend keeps winning and
+# this whole script becomes a silent no-op on exactly the installs it targets.
+elif ! grep -qE '^[[:space:]]*org\.freedesktop\.impl\.portal\.FileChooser[[:space:]]*=' "$portal_config"; then
+  # Same tolerance on the section header, so a padded [preferred] is amended
+  # rather than gaining a confusing second copy of itself.
   if grep -qE '^[[:space:]]*\[preferred\][[:space:]]*$' "$portal_config"; then
     sed -i -E '/^[[:space:]]*\[preferred\][[:space:]]*$/a org.freedesktop.impl.portal.FileChooser=nautilus' "$portal_config"
   else

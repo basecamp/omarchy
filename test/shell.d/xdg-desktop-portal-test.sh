@@ -88,6 +88,27 @@ grep -Fx 'org.freedesktop.impl.portal.FileChooser=nautilus' "$fresh_conf" >/dev/
   fail "A whitespace-padded [preferred] section still receives the file chooser line"
 pass "a whitespace-padded [preferred] section is amended, not duplicated"
 
+# 2c. GKeyFile allows whitespace around the separator, so a hand-written config
+# may well use it. Missing that form inserts a second FileChooser key; GKeyFile
+# resolves a duplicate key to the last occurrence, so the user's backend keeps
+# winning and the routing this script exists to apply silently never happens.
+printf '%s\n' '[preferred]' 'default = hyprland;gtk' \
+  'org.freedesktop.impl.portal.FileChooser = kde' >"$fresh_conf"
+run_in_home "$fresh" bash -euo pipefail "$setup_script"
+chooser_count=$(grep -cE '^[[:space:]]*org\.freedesktop\.impl\.portal\.FileChooser[[:space:]]*=' "$fresh_conf")
+((chooser_count == 1)) || fail "A spaced file chooser preference is not duplicated"
+grep -Fx 'org.freedesktop.impl.portal.FileChooser = kde' "$fresh_conf" >/dev/null ||
+  fail "A spaced file chooser preference is preserved"
+pass "a preference written with spaces around the separator is preserved"
+
+# 2d. An empty portals.conf. `sed 1i` is a line address and inserts nothing into
+# a zero-line file, so a plain -e existence check leaves the file untouched.
+: >"$fresh_conf"
+run_in_home "$fresh" bash -euo pipefail "$setup_script"
+grep -Fx 'org.freedesktop.impl.portal.FileChooser=nautilus' "$fresh_conf" >/dev/null ||
+  fail "An empty portal preference file is populated"
+pass "an empty portals.conf is populated rather than left untouched"
+
 # Unset XDG dirs: files must land in the $HOME defaults.
 HOME="$xdg_home" env -u XDG_CONFIG_HOME -u XDG_DATA_HOME bash -euo pipefail "$setup_script"
 [[ -e $xdg_home/.config/xdg-desktop-portal/hyprland-portals.conf ]] ||
