@@ -18,6 +18,10 @@ Panel {
   property int pendingBrightnessPercent: 0
   property bool brightnessSetQueued: false
   property bool brightnessAvailable: false
+  property int kbdBrightnessPercent: 0
+  property int pendingKbdBrightnessPercent: 0
+  property bool kbdBrightnessSetQueued: false
+  property bool kbdBrightnessAvailable: false
   property string internalMonitor: ""
   property string externalMonitor: ""
   property string focusedMonitor: ""
@@ -75,6 +79,7 @@ Panel {
   readonly property var visibleSections: {
     var list = []
     if (brightnessAvailable) list.push("brightness")
+    if (kbdBrightnessAvailable) list.push("keyboard")
     list.push("textsize")
     list.push("scale")
     if (displays.length > 1) list.push("monitors")
@@ -83,6 +88,7 @@ Panel {
 
   function sectionCount(section) {
     if (section === "brightness") return 0  // only the slider sentinel at -1
+    if (section === "keyboard") return 0    // slider sentinel at -1, like brightness
     if (section === "textsize") return 0    // slider sentinel at -1, like brightness
     if (section === "scale") return scaleValues.length
     if (section === "monitors") return displays.length
@@ -90,12 +96,12 @@ Panel {
   }
 
   function sectionIsSingleRow(section) {
-    // brightness and text size are lone sliders; scale presets sit horizontally.
-    return section === "brightness" || section === "textsize" || section === "scale"
+    // brightness, keyboard, and text size are lone sliders; scale presets sit horizontally.
+    return section === "brightness" || section === "keyboard" || section === "textsize" || section === "scale"
   }
 
   function sectionFirstIndex(section) {
-    if (section === "brightness" || section === "textsize") return -1
+    if (section === "brightness" || section === "keyboard" || section === "textsize") return -1
     return 0
   }
 
@@ -146,6 +152,12 @@ Panel {
     setBrightness(root.brightnessPercent + delta)
   }
 
+  function adjustKeyboardBrightness(delta) {
+    if (focusSection !== "keyboard") return
+    if (!kbdBrightnessAvailable) return
+    setKeyboardBrightness(root.kbdBrightnessPercent + delta)
+  }
+
   function activateCursor() {
     if (focusSection === "scale" && selectedIndex >= 0 && selectedIndex < scaleValues.length) {
       setScale(scaleValues[selectedIndex])
@@ -168,8 +180,8 @@ Panel {
     }
     var count = sectionCount(focusSection)
     if (sectionIsSingleRow(focusSection)) {
-      // brightness/text size use the -1 sentinel; scale clamps into the presets.
-      if (focusSection === "brightness" || focusSection === "textsize") selectedIndex = -1
+      // brightness/keyboard/text size use the -1 sentinel; scale clamps into the presets.
+      if (focusSection === "brightness" || focusSection === "keyboard" || focusSection === "textsize") selectedIndex = -1
       else if (selectedIndex < 0 || selectedIndex >= count) selectedIndex = 0
       return
     }
@@ -211,6 +223,8 @@ Panel {
     return JSON.stringify({
       brightness: root.brightnessPercent,
       brightnessAvailable: root.brightnessAvailable,
+      kbdBrightness: root.kbdBrightnessPercent,
+      kbdBrightnessAvailable: root.kbdBrightnessAvailable,
       focusedMonitor: root.focusedMonitor,
       scale: root.monitorScale,
       displays: root.displays
@@ -257,6 +271,35 @@ Panel {
     if (!bar || !bar.shell) return
     bar.shell.summon("omarchy.osd", JSON.stringify({
       icon: "brightness",
+      value: percent
+    }))
+  }
+
+  // ---- Keyboard backlight (mirrors display brightness above) ----
+  function setKeyboardBrightness(value) {
+    var percent = Model.clampKbdBrightness(value)
+    root.kbdBrightnessPercent = percent
+    root.pendingKbdBrightnessPercent = percent
+
+    if (kbdSetProc.running) {
+      root.kbdBrightnessSetQueued = true
+      return
+    }
+
+    root.kbdBrightnessSetQueued = false
+    kbdSetProc.command = ["omarchy-brightness-keyboard", "--no-osd", percent + "%"]
+    kbdSetProc.running = true
+  }
+
+  function previewKeyboardBrightness(value) {
+    root.kbdBrightnessPercent = Model.clampKbdBrightness(value)
+    kbdBrightnessDebounce.restart()
+  }
+
+  function showKeyboardOsd(percent) {
+    if (!bar || !bar.shell) return
+    bar.shell.summon("omarchy.osd", JSON.stringify({
+      icon: "keyboard",
       value: percent
     }))
   }
@@ -360,6 +403,9 @@ Panel {
       if (brightnessAvailable) {
         focusSection = "brightness"
         selectedIndex = -1
+      } else if (kbdBrightnessAvailable) {
+        focusSection = "keyboard"
+        selectedIndex = -1
       } else {
         focusSection = "scale"
         selectedIndex = 0
@@ -369,6 +415,7 @@ Panel {
   }
 
   onBrightnessAvailableChanged: clampCursor()
+  onKbdBrightnessAvailableChanged: clampCursor()
   onDisplaysChanged: clampCursor()
   onScaleValuesChanged: clampCursor()
   onVisibleSectionsChanged: clampCursor()
@@ -400,6 +447,9 @@ Panel {
         root.focusedMonitor = String(lines[5] || "").trim()
         root.monitorScale = root.normalizeScale(String(lines[6] || "").trim())
         root.updateDisplays(String(lines[7] || "[]").trim())
+        var kbdBrightness = String(lines[8] || "").trim()
+        root.kbdBrightnessAvailable = kbdBrightness !== "unavailable" && kbdBrightness !== ""
+        root.kbdBrightnessPercent = root.kbdBrightnessAvailable ? Math.max(0, Math.min(100, parseInt(kbdBrightness, 10))) : 0
       }
     }
   }
@@ -425,6 +475,26 @@ Panel {
       if (running) return
       if (root.brightnessSetQueued) {
         root.setBrightness(root.pendingBrightnessPercent)
+      }
+    }
+  }
+
+  Timer {
+    id: kbdBrightnessDebounce
+    interval: 180
+    repeat: false
+    onTriggered: root.setKeyboardBrightness(root.kbdBrightnessPercent)
+  }
+
+  Process {
+    id: kbdSetProc
+    // Like setBrightnessProc: do NOT refresh after a set, or the local value
+    // races the driver read-back and can appear to bounce to zero.
+    stdout: StdioCollector { waitForEnd: true }
+    onRunningChanged: {
+      if (running) return
+      if (root.kbdBrightnessSetQueued) {
+        root.setKeyboardBrightness(root.pendingKbdBrightnessPercent)
       }
     }
   }
@@ -499,6 +569,7 @@ Panel {
         if (dy !== 0) root.moveCursor(dy)
         else if (dx !== 0) {
           if (root.focusSection === "brightness") root.adjustBrightness(dx * 5)
+          else if (root.focusSection === "keyboard") root.adjustKeyboardBrightness(dx * 5)
           else if (root.focusSection === "textsize") root.adjustTextSize(dx)
           else if (root.focusSection === "scale") root.moveCursorH(dx)
         }
@@ -644,6 +715,80 @@ Panel {
                 onHoveredChanged: if (hovered && !root.reflowingText) {
                   root.cursorActive = true
                   root.focusSection = "brightness"
+                  root.selectedIndex = -1
+                }
+              }
+            }
+          }
+
+          // ---------- Keyboard backlight ----------
+          PanelSeparator {
+            visible: root.kbdBrightnessAvailable
+            foreground: root.bar.foreground
+          }
+
+          Column {
+            visible: root.kbdBrightnessAvailable
+            width: parent.width
+            spacing: Style.space(6)
+
+            Item {
+              width: parent.width
+              implicitHeight: Math.max(kbdHeader.implicitHeight, kbdPercent.implicitHeight)
+
+              PanelSectionHeader {
+                id: kbdHeader
+                text: "KEYBOARD"
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Text {
+                id: kbdPercent
+                text: Math.round(kbdSlider.dragging ? kbdSlider.liveValue : root.kbdBrightnessPercent) + "%"
+                color: Qt.darker(root.bar.foreground, 1.4)
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(6)
+                anchors.verticalCenter: parent.verticalCenter
+              }
+            }
+
+            CursorSurface {
+              id: kbdRow
+              width: parent.width
+              height: kbdSlider.implicitHeight + Style.spacing.controlGap
+              hasCursor: root.cursorActive && root.focusSection === "keyboard" && root.selectedIndex === -1
+              onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(kbdRow)
+              foreground: root.bar.foreground
+              outline: true
+
+              PanelSlider {
+                id: kbdSlider
+                bar: root.bar
+                anchors.fill: parent
+                anchors.leftMargin: Style.space(6)
+                anchors.rightMargin: Style.space(6)
+                minimum: 0
+                maximum: 100
+                step: 1
+                value: root.kbdBrightnessPercent
+                integer: true
+                onMoved: function(v) { root.previewKeyboardBrightness(v) }
+                onReleased: function(v) {
+                  kbdBrightnessDebounce.stop()
+                  root.setKeyboardBrightness(v)
+                }
+              }
+
+              HoverHandler {
+                onHoveredChanged: if (hovered && !root.reflowingText) {
+                  root.cursorActive = true
+                  root.focusSection = "keyboard"
                   root.selectedIndex = -1
                 }
               }

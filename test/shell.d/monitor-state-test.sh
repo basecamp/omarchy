@@ -22,6 +22,14 @@ cat >"$test_bin/omarchy-brightness-display" <<'EOF'
 echo 42
 EOF
 
+cat >"$test_bin/omarchy-brightness-keyboard" <<'EOF'
+#!/bin/bash
+[[ ${1:-} == "--no-osd" ]] && shift
+[[ ${1:-} == "get" ]] || exit 1
+[[ -n ${KBD_BRIGHTNESS+x} ]] || exit 1
+printf '%s\n' "$KBD_BRIGHTNESS"
+EOF
+
 cat >"$test_bin/omarchy-hyprland-monitor-scaling" <<'EOF'
 #!/bin/bash
 echo 1.5
@@ -37,7 +45,7 @@ monitor_state() {
   printf '%s\n' "$1" >"$monitors_file"
 
   mapfile -t state_lines < <(
-    FAKE_MONITORS="$monitors_file" PATH="$test_bin:$PATH" \
+    FAKE_MONITORS="$monitors_file" KBD_BRIGHTNESS="${KBD_BRIGHTNESS-7}" PATH="$test_bin:$PATH" \
       bash "$ROOT/bin/omarchy-monitor-state" 2>/dev/null
   )
 }
@@ -52,8 +60,8 @@ assert_line() {
 assert_line_count() {
   local description="$1"
 
-  (( ${#state_lines[@]} == 8 )) ||
-    fail "$description" "expected 8 lines, got ${#state_lines[@]}"
+  (( ${#state_lines[@]} == 9 )) ||
+    fail "$description" "expected 9 lines, got ${#state_lines[@]}"
 }
 
 extended='[
@@ -89,6 +97,13 @@ assert_line 4 "" "monitor state reports no mirror while extended"
 assert_line 5 DP-1 "monitor state reports the focused monitor"
 assert_line 6 1.5 "monitor state reports the scale"
 pass "monitor state keeps its lines aligned when nothing is mirrored"
+
+monitor_state "$extended"
+assert_line 8 7 "monitor state reports keyboard backlight brightness"
+KBD_BRIGHTNESS="" monitor_state "$extended"
+assert_line_count "monitor state answers every line without a keyboard backlight"
+assert_line 8 "" "monitor state prints an empty line when no keyboard backlight exists"
+pass "monitor state reports keyboard backlight brightness or an empty line"
 
 monitor_state "$mirrored"
 assert_line_count "monitor state answers every line while mirroring"

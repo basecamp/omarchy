@@ -21,3 +21,6 @@ omarchy-hyprland-monitor-scaling 2>/dev/null || echo
 
 printf '%s\n' "$monitors_json" | jq -c \
   '[.[] | {name, enabled:(.disabled != true), focused:(.focused == true), width, height}]'
+
+# Keyboard backlight percent, or an empty line when no kbd_backlight device exists.
+omarchy-brightness-keyboard get 2>/dev/null || echo

@@ -4,6 +4,12 @@ function clampBrightness(value) {
   return Math.max(1, Math.min(100, Math.round(n)))
 }
 
+function clampKbdBrightness(value) {
+  var n = Number(value)
+  if (!isFinite(n)) return 0
+  return Math.max(0, Math.min(100, Math.round(n)))
+}
+
 function normalizeScale(scale) {
   var n = parseFloat(String(scale || ""))
   if (!isFinite(n)) return ""
@@ -114,6 +120,7 @@ function parseDisplays(raw) {
 if (typeof module !== "undefined") {
   module.exports = {
     clampBrightness: clampBrightness,
+    clampKbdBrightness: clampKbdBrightness,
     normalizeScale: normalizeScale,
     cleanScale: cleanScale,
     matchingScaleIndex: matchingScaleIndex,
