@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 2,
+  "id": "org.example.escape",
+  "name": "Escape",
+  "version": "2.0.0",
+  "runtime": { "apiVersion": 1, "qml": "../Escape.qml" },
+  "surfaces": {},
+  "permissions": { "required": [], "optional": [] }
+}

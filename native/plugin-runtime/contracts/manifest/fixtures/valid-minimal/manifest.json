@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 2,
+  "id": "org.example.status",
+  "name": "Example Status",
+  "version": "2.0.0",
+  "runtime": {
+    "apiVersion": 1,
+    "qml": "ui/Status.qml"
+  },
+  "surfaces": {
+    "barWidget": {
+      "role": "bar-embedded",
+      "defaultSection": "right"
+    }
+  },
+  "permissions": {
+    "required": [
+      {
+        "capability": "storage.private",
+        "quotaBytes": 1048576,
+        "reason": "Save timer state"
+      }
+    ],
+    "optional": [
+      {
+        "capability": "notifications.send",
+        "categories": ["timer"],
+        "reason": "Notify when the timer finishes"
+      }
+    ]
+  }
+}
