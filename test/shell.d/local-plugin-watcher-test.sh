@@ -21,10 +21,12 @@ trap cleanup EXIT
 require_command inotifywait
 
 TMPDIR=$(mktemp -d)
+plugins_root="$TMPDIR/plugins-root"
 plugins_dir="$TMPDIR/plugins"
 linked_source="$TMPDIR/linked-source"
 events="$TMPDIR/events"
-mkdir -p "$plugins_dir" "$linked_source"
+mkdir -p "$plugins_root" "$linked_source"
+ln -s "$plugins_root" "$plugins_dir"
 ln -s "$linked_source" "$plugins_dir/acme.linked"
 
 "$ROOT/shell/scripts/watch-local-plugins" "$plugins_dir" >"$events" 2>&1 &

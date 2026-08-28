@@ -2,7 +2,8 @@
 
 set -euo pipefail
 
-plugins_dir=$(realpath -e -- "$1")
+plugins_dir=$1
+canonical_plugins_dir=$(realpath -e -- "$plugins_dir")
 watch_paths=("$plugins_dir")
 
 # inotifywait does not traverse a symlink it finds below a recursive watch.
@@ -11,7 +12,7 @@ watch_paths=("$plugins_dir")
 for plugin_dir in "$plugins_dir"/*; do
   [[ -L $plugin_dir && -d $plugin_dir ]] || continue
   target=$(realpath -e -- "$plugin_dir") || continue
-  [[ $target == "$plugins_dir" || $target == "$plugins_dir"/* ]] && continue
+  [[ $target == "$canonical_plugins_dir" || $target == "$canonical_plugins_dir"/* ]] && continue
   watch_paths+=("$plugin_dir")
 done
 

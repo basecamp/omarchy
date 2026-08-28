@@ -220,7 +220,8 @@ for _ in {1..80}; do
 done
 [[ $marker == "before" ]] || fail_with_log "installed plugin loads imported JavaScript"
 
-printf 'var marker = "after"\n' >"$hot_reload_dir/Simulation.js"
+exec 3>"$hot_reload_dir/Simulation.js"
+printf 'var marker = "after"\n' >&3
 shell_ipc_quiet shell rescanPlugins >/dev/null
 
 marker=""
