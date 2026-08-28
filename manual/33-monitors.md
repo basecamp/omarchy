@@ -30,6 +30,14 @@ omarchy display text size 14
 
 That takes a pixel size between 9 and 20, and moves the Omarchy shell, GTK applications, and your terminal together, so the whole desktop stays in proportion. Run it without an argument to see where you're at, and `omarchy display text size reset` to go back to the default. Foot is the one straggler: it has no way to reload its config, so running terminals keep their old size until you open a new one.
 
+### X11 apps that come out tiny on a scaled monitor
+
+On a scaled monitor, Omarchy hands X11 (XWayland) apps an unscaled surface, and the toolkit is expected to scale itself via `GDK_SCALE` and friends. GTK, Qt, and Electron apps do exactly that and stay perfectly crisp.
+
+Some X11 apps ignore those hints entirely and just render at 1x, so on a 2x monitor their text and buttons come out half size. RealVNC Viewer is the usual example, along with older Java/Motif/Tk apps and some installers.
+
+Toggle _Trigger > Toggle > X11 App Scaling_ in the Omarchy menu (or run `omarchy-hyprland-xwayland-scaling-toggle`) to have the compositor upscale those windows to the monitor scale instead. Each window is scaled by the scale of the monitor it's actually on, so a mixed 2x + 1x setup keeps both correct, and a window re-scales when you drag it across. The tradeoff is that X11 apps which were already scaling themselves properly will look slightly softer while this is on, so flip it back off if you don't need it. The menu row carries a ✓ while it's on, and toggling it notifies you to restart the affected app.
+
 ### Extending and mirroring laptop displays
 
 When you connect an external screen to your laptop, the display is automatically extended. But you can change that to mirroring instead using _Trigger > Hardware_ in the Omarchy menu or `Super + Ctrl + Alt + Delete`. This is especially helpful if that external screen is a projector, and you want to show something while working.
