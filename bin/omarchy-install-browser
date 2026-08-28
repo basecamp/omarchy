@@ -30,6 +30,23 @@ setup_firefox_preferences() {
   sudo cp -f "$OMARCHY_PATH/default/firefox/policies.json" "$distribution_dir/policies.json"
 }
 
+setup_zen_preferences() (
+  local distribution_dir="${1:-/opt/zen-browser-bin/distribution}"
+  local zen_policies="$distribution_dir/policies.json"
+  local merged_policies
+
+  if [[ ! -f $zen_policies ]]; then
+    setup_firefox_preferences "$distribution_dir"
+    return
+  fi
+
+  merged_policies=$(mktemp)
+  trap 'rm -f "$merged_policies"' EXIT
+
+  jq -s '.[0] * .[1]' "$OMARCHY_PATH/default/firefox/policies.json" "$zen_policies" >"$merged_policies"
+  sudo install -m644 "$merged_policies" "$zen_policies"
+)
+
 setup_firefox_wayland() {
   mkdir -p ~/.config/environment.d
   echo "MOZ_ENABLE_WAYLAND=1" > ~/.config/environment.d/omarchy-firefox-wayland.conf
@@ -93,7 +110,7 @@ zen)
   echo "Installing Zen..."
   omarchy-pkg-aur-add zen-browser-bin || exit 1
 
-  setup_firefox_preferences /opt/zen-browser/distribution
+  setup_zen_preferences
   setup_firefox_wayland
   announce_browser_installed "Zen"
   ;;
