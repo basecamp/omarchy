@@ -9,9 +9,12 @@
 #
 # - PackageOptional verifies any package that carries a signature the moment
 #   upstream starts signing, while still accepting the unsigned packages
-#   shipped today. A present-but-invalid signature is rejected, so a later
-#   compromise cannot rely on swapping signatures past an already-imported
-#   key.
+#   shipped today. A signature that is present but invalid is rejected, so an
+#   already-imported key cannot be walked past with a bad signature. It does
+#   NOT prevent signature stripping: an attacker who controls the repository
+#   can simply stop publishing signatures and pacman accepts the unsigned
+#   result. Stripping is only excluded once upstream signs consistently and
+#   this policy tightens to PackageRequired.
 # - DatabaseNever skips the stale database signature, which a plain Optional
 #   would find and reject.
 #
@@ -26,7 +29,17 @@ t2_pacman_conf=${OMARCHY_T2_PACMAN_CONF:-/etc/pacman.conf}
 t2_signing_key=8BE1FEE14302371DEF6F910A0E5877AC225D1980
 
 if lspci -nn | grep "106b:180[12]" >/dev/null; then
-  if ! grep -q '^\[arch-mact2\]' "$t2_pacman_conf"; then
+  # Fresh installs append the armed stanza; installs that predate this change
+  # already carry [arch-mact2] with SigLevel = Never and are reconciled in
+  # place instead of skipped.
+  if grep -q '^SigLevel = Never$' "$t2_pacman_conf"; then
+    if pacman-key --recv-keys "$t2_signing_key" --keyserver keyserver.ubuntu.com &&
+       pacman-key --lsign-key "$t2_signing_key"; then
+      sed -i 's/^SigLevel = Never$/SigLevel = PackageOptional DatabaseNever/' "$t2_pacman_conf"
+    else
+      echo "Could not import the pinned t2linux signing key ($t2_signing_key); the arch-mact2 repository stays unverified." >&2
+    fi
+  elif ! grep -q '^\[arch-mact2\]' "$t2_pacman_conf"; then
     if ! pacman-key --recv-keys "$t2_signing_key" --keyserver keyserver.ubuntu.com; then
       echo "Could not import the pinned t2linux signing key ($t2_signing_key); refusing to enable the arch-mact2 repository unverified." >&2
       exit 1

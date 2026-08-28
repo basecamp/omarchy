@@ -24,9 +24,24 @@ fail_guard() {
 }
 
 # No repository anywhere in the tree may switch verification off outright.
-if grep -rn 'SigLevel = Never' "$ROOT/install" "$ROOT/default" "$ROOT/bin" 2>/dev/null; then
+# install/hardware/pacman.sh is exempt from the text scan because it must
+# mention SigLevel = Never to reconcile pre-arming installs (comments, the
+# detection gate, and the sed that replaces the line); its appended stanza is
+# asserted separately below.
+if grep -rn 'SigLevel = Never' \
+     --exclude=pacman.sh "$ROOT/install" "$ROOT/default" "$ROOT/bin" 2>/dev/null; then
   fail_guard "no repository stanza disables signature verification outright"
 fi
+
+# The stanza pacman.sh appends must itself be the armed policy: check the
+# heredoc body rather than the whole file.
+if sed -n '/cat >> "\$t2_pacman_conf"/,/^EOF$/p' "$ROOT/install/hardware/pacman.sh" |
+     grep -q 'SigLevel = Never'; then
+  fail_guard "the appended T2 stanza never disables signature verification"
+fi
+sed -n '/cat >> "\$t2_pacman_conf"/,/^EOF$/p' "$ROOT/install/hardware/pacman.sh" |
+  grep -q 'SigLevel = PackageOptional DatabaseNever' ||
+  fail_guard "the appended T2 stanza arms verification"
 pass "no repository stanza disables signature verification outright"
 
 mock_bin="$test_tmp/bin"
@@ -101,6 +116,70 @@ grep -q '^\[arch-mact2\]' "$conf2" &&
   fail_guard "a failed key import leaves no repository stanza behind"
 pass "a failed key import refuses to enable the arch-mact2 repository"
 
+# Installs that predate signature arming already carry the stanza with
+# SigLevel = Never. The script must reconcile those in place -- import the
+# key and upgrade the policy -- rather than skipping them because the stanza
+# exists.
+cat >"$mock_bin/pacman-key" <<SH
+#!/bin/bash
+printf '%s\n' "\$*" >>"$test_tmp/pacman-key-calls"
+for arg in "\$@"; do
+  case "\$arg" in
+    [0-9A-F]*) [[ \$arg == 8BE1FEE14302371DEF6F910A0E5877AC225D1980 ]] ||
+      { echo "unexpected key: \$arg" >&2; exit 1; } ;;
+  esac
+done
+exit 0
+SH
+chmod +x "$mock_bin/pacman-key"
+
+conf3="$test_tmp/pacman-legacy.conf"
+cat >"$conf3" <<'EOF'
+[options]
+HoldPkg = pacman glibc
+
+[arch-mact2]
+Server = https://github.com/NoaHimesaka1873/arch-mact2-mirror/releases/download/release
+SigLevel = Never
+EOF
+: >"$test_tmp/pacman-key-calls"
+
+run_t2_repo_setup_with() { # $1 = conf path
+  PATH="$mock_bin:$PATH" OMARCHY_T2_PACMAN_CONF="$1" \
+    bash "$ROOT/install/hardware/pacman.sh"
+}
+
+run_t2_repo_setup_with "$conf3"
+
+grep -q '^SigLevel = PackageOptional DatabaseNever$' "$conf3" ||
+  fail_guard "a legacy Never stanza is upgraded in place" "$(cat "$conf3")"
+grep -q 'SigLevel = Never' "$conf3" &&
+  fail_guard "the legacy Never line is gone after reconciliation"
+[[ $(grep -c '^\[arch-mact2\]' "$conf3") == 1 ]] ||
+  fail_guard "reconciliation does not duplicate the stanza"
+grep -q -- '--lsign-key' "$test_tmp/pacman-key-calls" ||
+  fail_guard "reconciliation imports and signs the pinned key" "$(cat "$test_tmp/pacman-key-calls")"
+pass "a legacy Never stanza is reconciled in place"
+
+# A failed key import during reconciliation cannot fix the machine, but it
+# must also not break it: the stanza keeps working exactly as before and the
+# script exits zero so the hardware stage continues.
+cat >"$mock_bin/pacman-key" <<'SH'
+#!/bin/bash
+exit 1
+SH
+chmod +x "$mock_bin/pacman-key"
+cp "$conf3" "$test_tmp/pacman-legacy-fail.conf"
+sed -i 's/^SigLevel = PackageOptional DatabaseNever$/SigLevel = Never/' "$test_tmp/pacman-legacy-fail.conf"
+
+if ! PATH="$mock_bin:$PATH" OMARCHY_T2_PACMAN_CONF="$test_tmp/pacman-legacy-fail.conf" \
+    bash "$ROOT/install/hardware/pacman.sh" 2>/dev/null; then
+  fail_guard "a failed reconciliation import does not fail the hardware stage"
+fi
+grep -q '^SigLevel = Never$' "$test_tmp/pacman-legacy-fail.conf" ||
+  fail_guard "a failed reconciliation leaves the working stanza untouched"
+pass "a failed reconciliation import leaves the machine working as it was"
+
 # ------------------------------------------------------------ quattro override
 
 quattro="$ROOT/bin/omarchy-upgrade-to-quattro"
@@ -125,3 +204,32 @@ next_line=$((keyring_line + 1))
   fail_guard "the override removal runs immediately after install_keyrings" \
     "install_keyrings at $keyring_line, removal at $removal_line"
 pass "quattro drops the bootstrap override right after the keyring install"
+
+# ---------------------------------------------------------------- migration
+
+# Normal updates run migrations, not the hardware installer, so existing T2
+# machines are reconciled by a migration with the same fingerprint and the
+# same replacement line as the installer.
+migration="$ROOT/migrations/1787720000.sh"
+
+grep -q '8BE1FEE14302371DEF6F910A0E5877AC225D1980' "$migration" ||
+  fail_guard "the migration pins the same t2linux signing key"
+grep -q 'keyserver.ubuntu.com' "$migration" ||
+  fail_guard "the migration imports the key from the keyserver"
+grep -q -- '--lsign-key' "$migration" ||
+  fail_guard "the migration locally signs the imported key"
+grep -q 'SigLevel = PackageOptional DatabaseNever' "$migration" ||
+  fail_guard "the migration upgrades the stanza to the armed policy"
+grep -q "arch_mact2_never='SigLevel = Never'" "$migration" &&
+  grep -q '\${arch_mact2_never}' "$migration" &&
+  grep -q 'if .*pacman-key' "$migration" ||
+  fail_guard "the migration is gated on a legacy Never stanza and a successful import"
+
+# Self-detecting and idempotent by construction: the Never check gates the
+# sed, so a rerun after a successful upgrade (or on a machine without the
+# stanza) never touches pacman.conf again.
+never_line=$(grep -n 'arch_mact2_never}' "$migration" | cut -d: -f1 | head -1)
+sed_line=$(grep -n 'sed -i' "$migration" | cut -d: -f1 | head -1)
+[[ -n $never_line && -n $sed_line && $sed_line -gt $never_line ]] ||
+  fail_guard "the migration only mutates pacman.conf under the Never gate"
+pass "the migration reconciles legacy T2 installs with the same pinning"
