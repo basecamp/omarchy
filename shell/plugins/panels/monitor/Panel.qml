@@ -333,7 +333,10 @@ Panel {
   }
 
   function setTextSize(px) {
-    textScaleProc.command = ["omarchy-display-text-size", String(px)]
+    // --no-gtk: fixed-height GTK/Electron dialogs (e.g. the 1Password SSH
+    // approval prompt) clip once GTK text-scaling-factor grows past 1.0, and
+    // they never appear in hyprctl clients, so window rules can't fix it.
+    textScaleProc.command = ["omarchy-display-text-size", String(px), "--no-gtk"]
     if (!textScaleProc.running) textScaleProc.running = true
   }
 
