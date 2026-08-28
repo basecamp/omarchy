@@ -11,22 +11,23 @@ This is package-shape evidence, not a completed clean-install proof. The product
 The temporary package checkout is `/tmp/omarchy-pkgs-f5`; its modified recipe is `pkgbuilds/omarchy-dev/PKGBUILD`. The locally produced archive is:
 
 ```text
-/tmp/omarchy-pkgs-f5/pkgbuilds/omarchy-dev/omarchy-dev-4.0.0.r1835.g067f117-1-x86_64.pkg.tar.zst
+/tmp/omarchy-pkgs-f5/pkgbuilds/omarchy-dev/omarchy-dev-4.0.0.r1841.gb04ce25-1-x86_64.pkg.tar.zst
 ```
 
-The checked-in verifier passes against that archive:
+The package was rebuilt without `--nocheck`. Its Release `check()` run passed all 41 aggregate CTests, and the checked-in verifier passes against the resulting archive:
 
 ```bash
-native/plugin-runtime/packaging/verify-package.sh /tmp/omarchy-pkgs-f5/pkgbuilds/omarchy-dev/omarchy-dev-4.0.0.r1835.g067f117-1-x86_64.pkg.tar.zst
+native/plugin-runtime/packaging/verify-package.sh /tmp/omarchy-pkgs-f5/pkgbuilds/omarchy-dev/omarchy-dev-4.0.0.r1841.gb04ce25-1-x86_64.pkg.tar.zst
 ```
 
 The verifier now checks regular-file modes, the private worker's absence from `/usr/bin`, QML type metadata, x86-64 package identity, exact runtime dependencies, graphical-session service directives, protocol reporting, direct-worker fail-closed behavior, absence of RPATH/RUNPATH, and an offscreen dynamic import from the extracted QML tree.
 
+The first full Release check crashed from stack exhaustion in the permission contract. Core-dump analysis traced the failure to several fixed-capacity vectors allocating their backing arrays on the stack. Commit `c32121f3` preserves the same attacker-facing `FixedVector` capacity limits while moving backing storage off stack; the subsequent package build and all 41 checks passed. This is useful package-build evidence because the failure did not reproduce in the narrower development builds.
+
 ## Reproducibility blockers
 
 - The `omarchy-dev` PKGBUILD modifications are not committed in `omarchy-pkgs`; the real sibling checkout remains unchanged. A production package cannot be reproduced from this Omarchy commit until the recipe lands there or equivalent package ownership is selected.
-- The archive version reports source commit `067f117`, but `OMARCHY_SRC` copied a dirty shared worktree containing later F2/F4 files. The archive therefore does not correspond byte-for-byte to the named commit and must not be published as provenance evidence.
-- The build used `--nocheck`, so CMake compilation and the archive verifier passed, but the PKGBUILD `check()` suite did not run inside makepkg.
+- The archive version reports source commit `b04ce25`, but `OMARCHY_SRC` copied a shared worktree containing concurrent F5/F6 edits. The archive therefore does not correspond byte-for-byte to the named commit and must not be published as clean-source provenance evidence.
 - No sibling `omarchy-iso` checkout is available in this workspace. The required fresh ISO build and `omarchy-iso-test` run have not occurred, and there are no VM screenshots or collected service logs.
 - The current graphical acceptance opens a generic Qt Quick `Window` that imports the packaged ABI. It proves Wayland-visible dynamic QML loading and the explicit unavailable state, not import from the production Quickshell process or a compositor-owned plugin surface.
 - The aggregate `native/plugin-runtime/CMakeLists.txt` builds the skeleton `bridge` module but does not add the production `trusted-bridge`, `render-session`, `surface-host`, or `expressive-surface` directories. Those implementations are therefore absent from the installed host, and the host does not compose the broker/lifecycle/surface path. Packaging more static archives would not fix that; the production host must first link and own the integrated runtime.
