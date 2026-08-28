@@ -17,17 +17,25 @@ BarWidget {
     return null
   }
 
+  // 1-5 are always offered; any other workspace appears once Hyprland has
+  // created it, however high its id. Special workspaces carry negative ids
+  // and stay out.
   function workspaceIds() {
     var ids = [1, 2, 3, 4, 5]
     var values = Hyprland.workspaces.values
 
     for (var i = 0; i < values.length; i++) {
       var id = values[i].id
-      if (id > 0 && id <= 10 && ids.indexOf(id) === -1) ids.push(id)
+      if (id > 0 && ids.indexOf(id) === -1) ids.push(id)
     }
 
     ids.sort(function(left, right) { return left - right })
     return ids
+  }
+
+  readonly property int highestWorkspaceId: {
+    var ids = root.workspaceIds()
+    return ids[ids.length - 1]
   }
 
   function focusWorkspace(id) {
@@ -58,8 +66,17 @@ BarWidget {
         readonly property bool occupied: workspace !== null && workspace.toplevels.values.length > 0
         readonly property bool focused: Hyprland.focusedWorkspace !== null && Hyprland.focusedWorkspace.id === modelData
 
+        // 10 is written as "0" after its SUPER+0 key, but only while it ends
+        // the row: between 9 and 11 a literal "10" reads as the number it is.
+        readonly property string numeral: (modelData === 10 && root.highestWorkspaceId <= 10) ? "0" : String(modelData)
+        // The focus dot stands in for a numeral the keyboard already knows;
+        // past 10 there is no key, so the number is the only identification.
+        readonly property bool keyed: modelData <= 10
+
         bar: root.bar
-        text: focused ? "\uDB85\uDCFB" : (modelData === 10 ? "0" : String(modelData))
+        text: focused && keyed ? "\uDB85\uDCFB" : numeral
+        // A tile that keeps its number under focus marks the focus by colour.
+        active: focused && !keyed
         opacity: occupied || focused ? 1 : 0.5
         horizontalMargin: 6
         verticalPadding: 6
