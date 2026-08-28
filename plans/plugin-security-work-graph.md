@@ -41,11 +41,12 @@ This table is the durable execution ledger. Update it when a node is assigned, c
 | `C11` | complete | primary | Commits `927506af` and `44fc3b53`; real-request role/generation/size attacks, leak-free descriptor floods, descendant denial, bounded failure cleanup, and actual-home/bus/Wayland Bubblewrap proof pass debug, release, full trusted-path sanitizers, stress, and hostile review |
 | `D0` | complete | `wave0_native_build` | Commit `6b257bfb`; pinned lifecycle manager integrates discovery, immutable revisions, durable grants/rollback, staged permission expansion, exact recovery/rebind, v1 exclusion, CLI, aggregate, and sanitized proofs |
 | `D1` | active | `wave0_channel` | Supervisor, real sandbox, authenticated broker channels, and malicious peer integration in progress |
-| `D2` | active | `wave0_trust_map` | QML worker, bounded frame transport, and trusted bridge integration in progress |
-| `D3` | ready | unassigned | Surface envelope, input/focus routing, and host-owned inspection integration can begin |
-| `D4` | active | `wave0_native_build` | Broker, providers, live grants, handles, and authoritative audit integration in progress |
-| `D5` | ready | unassigned | Limits, health, crash recovery, and stale-channel cleanup can begin |
-| `D6` | active | primary | Inventory, compatibility corpus, and generated migration worksheet integration in progress |
+| `D2` | complete | `wave0_trust_map` | Commit `38ae3f0d`; bounded worker-to-host rendering preserves arbitrary QML pixels while enforcing profile/allocation order, exact descriptor transfer, stale and malformed frame rejection, resize/DPR handling, and fail-closed teardown |
+| `D3` | active | `wave0_trust_map` | Named surface envelope, input/focus gates, lock-screen denial, and host-owned inspection integration in progress |
+| `D4` | complete | `wave0_native_build` | Commits `044a2dd0` and `d54d1309`; provider effects are audit-gated, revocation and cancellation are exact-epoch audited transitions, handles are binding/scope/epoch constrained, poisoned runtimes cannot resolve prior handles, and recovery cannot resurrect authority |
+| `D5` | active | `wave0_native_build` | Limits, health, crash recovery, and stale-channel cleanup integration in progress |
+| `D6` | complete | primary | Commit `f0eaaeba`; bounded trusted scanner composition produces deterministic advisory today-to-tomorrow maps for Pomodoro, pet, and service fixtures with exact schema-v2 candidate identities, surfaces, and capability scopes |
+| `E5` | complete | `wave0_native_build` | Commit `debe83d3`; v1 has only an unsafe/unmigrated posture, while exact reinstall, upgrade, exact-digest downgrade/rebuild approval, identity denial, and fault recovery pass strict and sanitized proofs |
 
 Nodes not listed here remain `pending` as represented by the graph. Add them to the live table when they become `ready`; completed rows remain as an audit trail rather than being removed.
 
