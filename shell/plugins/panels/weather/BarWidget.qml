@@ -11,6 +11,10 @@ BarWidget {
     if (!target) return
     if ("bar" in target) target.bar = root.bar
     if ("settings" in target) target.settings = root.settings
+    // The slot renames cloned widgets (<user>.weather); panels persist
+    // settings under moduleName, so hand down the mounted id, not the
+    // hardcoded one.
+    if ("moduleName" in target) target.moduleName = root.moduleName
     if ("anchorItem" in target) target.anchorItem = button
     if ("hostWidget" in target) target.hostWidget = root
   }
