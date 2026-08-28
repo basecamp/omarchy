@@ -787,8 +787,19 @@ Item {
       return true
     }
 
-    var active = root.item(root.activeMenu)
+    // navStack is empty when the menu was opened directly at a route
+    // (`omarchy menu summon system`) rather than reached by drilling down,
+    // so there is no remembered row to pop. Restore the cursor onto the
+    // menu being left instead, the same way the navStack branch above
+    // restores onto the row that led into it.
+    var childId = root.activeMenu
+    var active = root.item(childId)
     root.setActiveMenu((active && active.parent) ? active.parent : "root", false)
+    var restored = root.indexOfItemId(childId)
+    if (restored >= 0) {
+      root.selectedIndex = restored
+      root.settleCursor()
+    }
     return true
   }
 
