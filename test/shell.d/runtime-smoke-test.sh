@@ -236,6 +236,22 @@ done
 [[ $marker == "after" ]] || fail_with_log "plugin rescan reloads imported JavaScript"
 pass "plugin rescan reloads imported JavaScript"
 
+# The rescan above writes through an open descriptor, avoiding its close_write
+# event. A normal edit must instead trigger the local plugin watcher itself.
+printf 'var marker = "watcher"\n' >"$hot_reload_dir/Simulation.js"
+
+marker=""
+for _ in {1..80}; do
+  marker=$(shell_ipc hot-reload marker 2>/dev/null || true)
+  [[ $marker == "watcher" ]] && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited while watcher-reloading imported JavaScript"
+  fi
+  sleep 0.1
+done
+[[ $marker == "watcher" ]] || fail_with_log "editing imported JavaScript reloads through the local plugin watcher"
+pass "editing imported JavaScript reloads through the local plugin watcher"
+
 [[ $(shell_ipc shell summon omarchy.emojis "{}") == "ok" ]] ||
   fail_with_log "calls to a cloned source id do not reach its enabled clone"
 shell_ipc_quiet shell hide omarchy.emojis >/dev/null
