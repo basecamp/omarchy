@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# A fingerprint verification that races suspend can leave fprintd alive with a
+# stale device claim. The lock screen then receives PAM_AUTHINFO_UNAVAIL on
+# every retry after resume even though the reader itself is healthy.
+#
+# Record the daemon before sleep, then stop it after resume only if that exact
+# process survived. The PID check leaves a daemon newly started by some other
+# system component alone. The lock screen's next D-Bus request starts a fresh
+# fprintd against the fully resumed reader, so the hook does not wait for USB
+# probing while user.slice is frozen.
+
+state_file="${OMARCHY_FPRINTD_SLEEP_STATE:-/run/omarchy-fprintd-sleep.pid}"
+
+log_recovery() {
+  logger -t omarchy-fprintd-resume -- "$*" 2>/dev/null || true
+}
+
+case "$1" in
+  pre)
+    fprintd_pid=$(systemctl show --property MainPID --value fprintd.service 2>/dev/null || true)
+    if [[ $fprintd_pid =~ ^[1-9][0-9]*$ ]]; then
+      printf '%s\n' "$fprintd_pid" >"$state_file"
+    else
+      rm -f "$state_file"
+    fi
+    ;;
+  post)
+    [[ -r $state_file ]] || exit 0
+    read -r sleeping_pid <"$state_file"
+    rm -f "$state_file"
+
+    current_pid=$(systemctl show --property MainPID --value fprintd.service 2>/dev/null || true)
+    if [[ $current_pid == "$sleeping_pid" ]]; then
+      # Omarchy bounds service stops at five seconds. Keep a separate outer
+      # bound so an unexpected systemd delay cannot freeze the desktop forever.
+      if timeout 6s systemctl stop fprintd.service 2>/dev/null; then
+        log_recovery "Stopped fprintd PID $sleeping_pid after $2 resume"
+      else
+        log_recovery "Failed to stop fprintd PID $sleeping_pid after $2 resume"
+      fi
+    fi
+    ;;
+esac
