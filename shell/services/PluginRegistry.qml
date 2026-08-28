@@ -69,6 +69,10 @@ QtObject {
       console.warn("PluginRegistry: entryPoints must be an object at " + sourcePath)
       return null
     }
+    if (manifest.hotReload !== undefined && !Util.isPlainObject(manifest.hotReload)) {
+      console.warn("PluginRegistry: hotReload must be an object at " + sourcePath)
+      return null
+    }
     if (manifest.barWidget !== undefined && Util.isPlainObject(manifest.barWidget)
         && manifest.barWidget.defaultSection !== undefined) {
       var defaultSection = String(manifest.barWidget.defaultSection)
@@ -84,6 +88,14 @@ QtObject {
       if (!isSafeEntryPoint(manifest.entryPoints[key])) {
         console.warn("PluginRegistry: unsafe entryPoint '" + key + "'='"
           + manifest.entryPoints[key] + "' at " + sourcePath)
+        return null
+      }
+    }
+    var hotReload = manifest.hotReload || {}
+    for (var reloadKey in hotReload) {
+      if (!isSafeEntryPoint(hotReload[reloadKey])) {
+        console.warn("PluginRegistry: unsafe hotReload path '" + reloadKey + "'='"
+          + hotReload[reloadKey] + "' at " + sourcePath)
         return null
       }
     }
@@ -733,9 +745,36 @@ QtObject {
     for (var kind in entryPoints) {
       if (changedPath === sourceDir + "/" + String(entryPoints[kind])) return false
     }
+    if (localPluginHotReloadKey(pluginId, filePath)) return false
     // Atomic saves also emit events for temporary siblings. Only files the
     // QML engine can import should promote a targeted reload to a graph reload.
     return /\.(qml|js|mjs)$/.test(changedPath) || changedPath.endsWith("/qmldir")
+  }
+
+  function localPluginChangeIgnored(pluginId, filePath) {
+    var manifest = installedPlugins[String(pluginId)]
+    if (!manifest || manifest.__isFirstParty === true) return false
+    var sourceDir = String(manifest.__sourceDir || "").replace(/\/$/, "")
+    var changedPath = String(filePath || "").trim()
+    var prefix = sourceDir + "/"
+    if (!sourceDir || changedPath.indexOf(prefix) !== 0) return false
+    var parts = changedPath.slice(prefix.length).split("/")
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i].charAt(0) === ".") return true
+    }
+    return false
+  }
+
+  function localPluginHotReloadKey(pluginId, filePath) {
+    var manifest = installedPlugins[String(pluginId)]
+    if (!manifest || manifest.__isFirstParty === true) return ""
+    var sourceDir = String(manifest.__sourceDir || "").replace(/\/$/, "")
+    var changedPath = String(filePath || "").trim()
+    var hotReload = manifest.hotReload || {}
+    for (var key in hotReload) {
+      if (changedPath === sourceDir + "/" + String(hotReload[key])) return String(key)
+    }
+    return ""
   }
 
   Component.onCompleted: ensureUserDir()

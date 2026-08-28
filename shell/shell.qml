@@ -781,6 +781,25 @@ ShellRoot {
   function queueLocalPluginReload(pluginId, path) {
     var key = String(pluginId)
     if (!key) return
+    if (shell.pluginRegistry.localPluginChangeIgnored(key, path)) return
+    var hotReloadKey = shell.pluginRegistry.localPluginHotReloadKey(key, path)
+    if (hotReloadKey && shell.reloadLocalPluginEntryPoint(key, hotReloadKey, path)) {
+      // Atomic saves emit temporary sibling events before the final path.
+      // Those siblings may already have queued a targeted plugin reload; drop
+      // this plugin from that queue once its declared boundary handled the
+      // real event, otherwise the parent widget is replaced after the debounce.
+      if (!shell.localPluginGraphReloadPending) {
+        var remaining = ({})
+        for (var pendingId in shell.pendingLocalPluginReloads) {
+          if (pendingId !== key) remaining[pendingId] = true
+        }
+        shell.pendingLocalPluginReloads = remaining
+        if (Object.keys(remaining).length === 0) localPluginReloadTimer.stop()
+      }
+      console.log("Reloaded local plugin entry point:", key,
+        "entry=" + hotReloadKey, "path=" + String(path || ""))
+      return
+    }
     var next = ({})
     for (var id in shell.pendingLocalPluginReloads) next[id] = true
     next[key] = true
@@ -791,6 +810,22 @@ ShellRoot {
       "mode=" + (shell.localPluginGraphReloadPending ? "graph" : "targeted"),
       "path=" + String(path || ""))
     localPluginReloadTimer.restart()
+  }
+
+  function reloadLocalPluginEntryPoint(pluginId, entryPoint, path) {
+    if (!shell.bar || typeof shell.bar.moduleWidgets !== "function") return false
+    var items = shell.bar.moduleWidgets(pluginId)
+    var handled = false
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i]
+      if (!item || typeof item.reloadEntryPoint !== "function") continue
+      try {
+        if (item.reloadEntryPoint(entryPoint, path) !== false) handled = true
+      } catch (error) {
+        console.warn("Plugin hot reload failed:", pluginId, entryPoint, error)
+      }
+    }
+    return handled
   }
 
   function reloadLocalPlugins() {

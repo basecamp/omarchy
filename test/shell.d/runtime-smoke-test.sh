@@ -80,6 +80,8 @@ widget_reload_id="acme.widget-hot-reload"
 widget_reload_dir="$test_home/.config/omarchy/plugins/widget-source-directory"
 widget_reload_result="$TMPDIR/widget-hot-reload-result"
 widget_import_reload_result="$TMPDIR/widget-import-hot-reload-result"
+widget_boundary_reload_result="$TMPDIR/widget-boundary-hot-reload-result"
+widget_boundary_token_result="$TMPDIR/widget-boundary-token-result"
 mkdir -p "$widget_reload_dir"
 cat >"$widget_reload_dir/manifest.json" <<JSON
 {
@@ -89,6 +91,7 @@ cat >"$widget_reload_dir/manifest.json" <<JSON
   "version": "1.0.0",
   "kinds": ["bar-widget"],
   "entryPoints": {"barWidget": "BarWidget.qml"},
+  "hotReload": {"content": "HotContent.qml"},
   "barWidget": {"defaultSection": "left"}
 }
 JSON
@@ -100,6 +103,14 @@ import Quickshell.Io
 Item {
   implicitWidth: 1
   implicitHeight: 1
+  property int contentRevision: 0
+
+  function reloadEntryPoint(kind, path) {
+    if (kind !== "content") return false
+    contentRevision++
+    hotContent.source = Qt.resolvedUrl("HotContent.qml") + "#reload=" + contentRevision
+    return true
+  }
 
   FileView {
     id: resultFile
@@ -109,7 +120,21 @@ Item {
 
   WidgetContent { }
 
-  Component.onCompleted: resultFile.setText("before")
+  Loader {
+    id: hotContent
+    source: Qt.resolvedUrl("HotContent.qml") + "#reload=" + contentRevision
+  }
+
+  Component.onCompleted: {
+    resultFile.setText("before")
+    tokenFile.setText(String(Math.random()))
+  }
+
+  FileView {
+    id: tokenFile
+    path: Quickshell.env("OMARCHY_QML_HOT_RELOAD_TOKEN_RESULT")
+    atomicWrites: true
+  }
 }
 QML
 cat >"$widget_reload_dir/WidgetContent.qml" <<'QML'
@@ -121,6 +146,21 @@ Item {
   FileView {
     id: resultFile
     path: Quickshell.env("OMARCHY_QML_IMPORT_HOT_RELOAD_RESULT")
+    atomicWrites: true
+  }
+
+  Component.onCompleted: resultFile.setText("before")
+}
+QML
+cat >"$widget_reload_dir/HotContent.qml" <<'QML'
+import QtQuick
+import Quickshell
+import Quickshell.Io
+
+Item {
+  FileView {
+    id: resultFile
+    path: Quickshell.env("OMARCHY_QML_BOUNDARY_HOT_RELOAD_RESULT")
     atomicWrites: true
   }
 
@@ -159,6 +199,8 @@ chmod +x "$stub_bin/curl"
 OMARCHY_PATH="$test_root" \
 OMARCHY_QML_HOT_RELOAD_RESULT="$widget_reload_result" \
 OMARCHY_QML_IMPORT_HOT_RELOAD_RESULT="$widget_import_reload_result" \
+OMARCHY_QML_BOUNDARY_HOT_RELOAD_RESULT="$widget_boundary_reload_result" \
+OMARCHY_QML_HOT_RELOAD_TOKEN_RESULT="$widget_boundary_token_result" \
 HOME="$test_home" \
 XDG_CONFIG_HOME="$test_home/.config" \
 XDG_CACHE_HOME="$test_home/.cache" \
@@ -239,6 +281,36 @@ done
   fail_with_log "imported local plugin QML loads its initial source"
 pass "imported local plugin QML loads its initial source"
 
+for _ in {1..80}; do
+  [[ -s $widget_boundary_reload_result && -s $widget_boundary_token_result ]] && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited before the hot-reload boundary loaded"
+  fi
+  sleep 0.1
+done
+[[ $(<"$widget_boundary_reload_result") == "before" ]] ||
+  fail_with_log "hot-reload boundary loads its initial source"
+boundary_token_before=$(<"$widget_boundary_token_result")
+pass "hot-reload boundary loads its initial source"
+
+sed -i 's/setText("before")/setText("after")/' "$widget_reload_dir/HotContent.qml"
+
+boundary_reload_value=""
+for _ in {1..80}; do
+  boundary_reload_value=$(<"$widget_boundary_reload_result")
+  [[ $boundary_reload_value == "after" ]] && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited while reloading a hot-reload boundary"
+  fi
+  sleep 0.1
+done
+[[ $boundary_reload_value == "after" ]] ||
+  fail_with_log "declared hot-reload boundary replaces its loaded content"
+sleep 0.3
+[[ $(<"$widget_boundary_token_result") == "$boundary_token_before" ]] ||
+  fail_with_log "declared hot-reload boundary keeps its widget instance alive"
+pass "declared hot-reload boundary keeps its widget instance alive"
+
 sed -i 's/setText("before")/setText("after")/' "$widget_reload_dir/BarWidget.qml"
 
 widget_reload_value=""
@@ -276,8 +348,26 @@ done
   fail_with_log "imported local plugin QML changes reload the QML graph"
 pass "imported local plugin QML changes reload the QML graph"
 
-[[ $(shell_ipc shell setPluginEnabled "$hot_reload_id" true) == "ok" ]] ||
-  fail_with_log "installed plugin could not be enabled"
+for _ in {1..80}; do
+  shell_ipc_quiet shell ping >/dev/null 2>&1 && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited before IPC returned after graph reload"
+  fi
+  sleep 0.1
+done
+shell_ipc_quiet shell ping >/dev/null 2>&1 ||
+  fail_with_log "shell IPC did not return after graph reload"
+
+enable_response=""
+for _ in {1..80}; do
+  enable_response=$(shell_ipc shell setPluginEnabled "$hot_reload_id" true 2>/dev/null || true)
+  [[ $enable_response == "ok" ]] && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited before plugin control returned after graph reload"
+  fi
+  sleep 0.1
+done
+[[ $enable_response == "ok" ]] || fail_with_log "installed plugin could not be enabled"
 [[ $(shell_ipc shell summon omarchy.emojis "{}") == "ok" ]] ||
   fail_with_log "calls to a cloned source id do not reach its enabled clone"
 shell_ipc_quiet shell hide omarchy.emojis >/dev/null
