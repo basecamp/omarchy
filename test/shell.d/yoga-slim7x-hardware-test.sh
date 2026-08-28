@@ -10,10 +10,53 @@ scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
 
 bash -n "$setup" "$starter" || fail "Yoga Slim 7x hardware scripts have valid syntax"
-grep -Fq 'MODULES+=(i2c-hid-of)' "$setup" ||
-  fail "Yoga Slim 7x setup keeps the internal keyboard in the initramfs"
-grep -Fq 'scmi-cpufreq' "$setup" ||
+
+matching="$scratch/matching"
+mkdir -p "$matching"
+printf 'qcom,x1e80100\0lenovo,yoga-slim7x\0' >"$matching/compatible"
+(
+  omarchy-hw-qualcomm-soc() { return 0; }
+  omarchy-hw-match() { return 1; }
+  systemctl() { printf '%s\n' "$*" >>"$matching/systemctl.log"; }
+
+  OMARCHY_YOGA_COMPATIBLE_PATH="$matching/compatible" \
+    OMARCHY_YOGA_MODULES_LOAD_DIR="$matching/modules-load.d" \
+    OMARCHY_YOGA_MKINITCPIO_DIR="$matching/mkinitcpio.conf.d" \
+    OMARCHY_YOGA_SYSTEMD_DIR="$matching/systemd" \
+    source "$setup"
+)
+
+grep -Fxq 'scmi-cpufreq' "$matching/modules-load.d/yoga-slim7x.conf" ||
   fail "Yoga Slim 7x setup loads its SCMI CPU-frequency driver"
+grep -Fxq 'MODULES+=(i2c-hid-of)' "$matching/mkinitcpio.conf.d/yoga-slim7x-initramfs.conf" ||
+  fail "Yoga Slim 7x setup keeps the internal keyboard in the initramfs"
+grep -Fq 'ConditionPathExists=!/etc/modprobe.d/qualcomm-adsp-nofw.conf' \
+  "$matching/systemd/yoga-slim7x-remoteprocs.service" ||
+  fail "Yoga Slim 7x skips DSP startup when the generic firmware leaf blacklists it"
+grep -Fxq 'enable yoga-slim7x-remoteprocs.service' "$matching/systemctl.log" ||
+  fail "Yoga Slim 7x enables its remote processor service"
+
+nonmatching="$scratch/nonmatching"
+mkdir -p "$nonmatching"
+printf 'qcom,x1e80100\0hp,elitebook-ultra-g1q\0' >"$nonmatching/compatible"
+(
+  omarchy-hw-qualcomm-soc() { return 0; }
+  omarchy-hw-match() { return 1; }
+  systemctl() { fail "nonmatching Qualcomm hardware does not enable Yoga services"; }
+
+  OMARCHY_YOGA_COMPATIBLE_PATH="$nonmatching/compatible" \
+    OMARCHY_YOGA_MODULES_LOAD_DIR="$nonmatching/modules-load.d" \
+    OMARCHY_YOGA_MKINITCPIO_DIR="$nonmatching/mkinitcpio.conf.d" \
+    OMARCHY_YOGA_SYSTEMD_DIR="$nonmatching/systemd" \
+    source "$setup"
+)
+
+[[ ! -e $nonmatching/modules-load.d/yoga-slim7x.conf ]] ||
+  fail "nonmatching Qualcomm hardware does not get Yoga CPU setup"
+[[ ! -e $nonmatching/mkinitcpio.conf.d/yoga-slim7x-initramfs.conf ]] ||
+  fail "nonmatching Qualcomm hardware does not get Yoga initramfs setup"
+[[ ! -e $nonmatching/systemd/yoga-slim7x-remoteprocs.service ]] ||
+  fail "nonmatching Qualcomm hardware does not get Yoga services"
 
 remoteprocs="$scratch/remoteproc"
 mkdir -p "$remoteprocs/remoteproc0" "$remoteprocs/remoteproc1" "$remoteprocs/remoteproc2"

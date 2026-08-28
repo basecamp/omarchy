@@ -1,8 +1,13 @@
 # Lenovo Yoga Slim 7x (14Q8X9 / 83ED) board-specific setup.
 
 yoga_slim7x_compatible=""
-if [[ -r /sys/firmware/devicetree/base/compatible ]]; then
-  yoga_slim7x_compatible=$(tr '\0' '\n' </sys/firmware/devicetree/base/compatible)
+compatible_path=${OMARCHY_YOGA_COMPATIBLE_PATH:-/sys/firmware/devicetree/base/compatible}
+modules_load_dir=${OMARCHY_YOGA_MODULES_LOAD_DIR:-/etc/modules-load.d}
+mkinitcpio_dir=${OMARCHY_YOGA_MKINITCPIO_DIR:-/etc/mkinitcpio.conf.d}
+systemd_dir=${OMARCHY_YOGA_SYSTEMD_DIR:-/etc/systemd/system}
+
+if [[ -r $compatible_path ]]; then
+  yoga_slim7x_compatible=$(tr '\0' '\n' <"$compatible_path")
 fi
 
 if omarchy-hw-qualcomm-soc &&
@@ -11,22 +16,24 @@ if omarchy-hw-qualcomm-soc &&
   echo "Detected Lenovo Yoga Slim 7x, applying board-specific support..."
 
   # The Yoga exposes its CPU performance domains through SCMI.
-  mkdir -p /etc/modules-load.d
-  echo "scmi-cpufreq" >/etc/modules-load.d/yoga-slim7x.conf
+  mkdir -p "$modules_load_dir"
+  echo "scmi-cpufreq" >"$modules_load_dir/yoga-slim7x.conf"
 
   # Its internal keyboard and touchpad are HID-over-I2C. Keep their OF
   # transport in the initramfs so encrypted installs can accept a passphrase.
-  mkdir -p /etc/mkinitcpio.conf.d
-  cat >/etc/mkinitcpio.conf.d/yoga-slim7x-initramfs.conf <<'CONF'
+  mkdir -p "$mkinitcpio_dir"
+  cat >"$mkinitcpio_dir/yoga-slim7x-initramfs.conf" <<'CONF'
 MODULES+=(i2c-hid-of)
 CONF
 
   # Start the board's DSP remote processors after udev exposes them.
-  cat >/etc/systemd/system/yoga-slim7x-remoteprocs.service <<'UNIT'
+  mkdir -p "$systemd_dir"
+  cat >"$systemd_dir/yoga-slim7x-remoteprocs.service" <<'UNIT'
 [Unit]
 Description=Start the Lenovo Yoga Slim 7x DSPs
 Wants=systemd-udev-settle.service
 After=systemd-udev-settle.service
+ConditionPathExists=!/etc/modprobe.d/qualcomm-adsp-nofw.conf
 
 [Service]
 Type=oneshot
