@@ -277,6 +277,15 @@ void state_test() {
                                  registry);
   const auto request =
       encode(selected_header(EndpointRole::broker, kRequestType, kCorrelation));
+  SelectedEndpointState<4> invalid_direction(
+      EndpointRole::broker, 1, kGeneration, payload_cap(EndpointRole::broker),
+      4, registry);
+  require(invalid_direction
+                      .accept(decode_selected(request),
+                              static_cast<Direction>(0xff))
+                      .error == FatalReason::invalid_direction &&
+              invalid_direction.failed(),
+          "unknown direction was mapped onto an authoritative channel");
   require(state.accept(decode_selected(request), Direction::worker_to_host)
                   .action == SessionAction::request_admitted,
           "request was not admitted");

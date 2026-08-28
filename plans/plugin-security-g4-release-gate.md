@@ -28,6 +28,16 @@ G4 is not complete. The F0-F4 implementation, F6 representative migration eviden
 - Resource and request limits are fixed-capacity or trusted-monotonic. Clock regression and sustained excess terminate and enter health backoff before downstream dispatch.
 - Disabled and removed activations are durably non-launchable before teardown; retained broker references are poisoned and reinstall receives a fresh generation.
 
+## Final production-code hostile scan
+
+The final scan excluded tests, fixtures, proofs, and experiments and inspected every production source under `native/plugin-runtime` for process escape, ambient desktop authority, unbounded input, unchecked size arithmetic, exception crossings, unknown enum handling, pre-audit provider effects, and unsafe filesystem traversal.
+
+Three fail-closed corrections resulted. Discovery now opens `manifest.json` with `O_NOFOLLOW | O_NONBLOCK`, verifies the opened descriptor is a bounded regular file, and reads in fixed chunks without ever appending beyond one MiB; a FIFO regression proves a substituted special file cannot block discovery. The selected-endpoint state machine now rejects an unknown direction before consulting either direction's correlation table. Surface creation and expressive placement now reject unknown role and keyboard-focus values before allocation or any placement-authority callback instead of mapping an unknown role to desktop overlay.
+
+Focused Debug, Release, and ASan/UBSan runs pass the discovery contract, wire contract, surface-host tree, and expressive-surface tree. LeakSanitizer itself is unavailable under the managed ptrace environment, so the sanitizer runs use `detect_leaks=0`; AddressSanitizer and UndefinedBehaviorSanitizer remain active.
+
+No production `system` or `popen` call exists. Process execution is limited to the pinned Bubblewrap launcher and the advisory, non-activated migration-report scanner; fork/exec peers elsewhere are test programs. Worker `HOME` and `XDG_RUNTIME_DIR` references validate the synthetic sandbox environment, while the native audit/grant inspectors use the trusted caller's state directory and are not routed as end-user commands. Provider effects remain behind broker authorization and durable audit admission. The remaining `QFile::readAll` uses consume files from the already bounded immutable worker revision; the migration reporter's scanner and target reads remain advisory-only and cannot grant or activate authority.
+
 ## Remaining product boundary
 
 The native components are a reviewable reference, not an enabled plugin service. `host/main.cpp` does not compose discovery, activation, supervisor, broker dispatch, render pumping, or shell registration. The user unit is guarded by the optional host executable and remains disabled; no migration, first-run script, or end-user router command activates the reference. Enabling schema v2 requires a later trusted product host and rollout decision after G4; setting the native permission inspector's environment variable alone cannot activate a plugin.

@@ -217,6 +217,10 @@ public:
     if (failed_) {
       return fail(FatalReason::invalid_message_order);
     }
+    if (direction != Direction::worker_to_host &&
+        direction != Direction::host_to_worker) {
+      return fail(FatalReason::invalid_direction);
+    }
     if (configuration_error_ != FatalReason::none) {
       return fail(configuration_error_);
     }

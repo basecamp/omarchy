@@ -378,6 +378,14 @@ void host_owned_bounds() {
   auto registry = expressive::Registry::create(pet.plugin_id, monitors);
   require(registry.has_value(), "trusted monitor registry was rejected");
   FixedPlacement authority;
+  auto invalid_role = pet;
+  invalid_role.role = static_cast<host::SurfaceRole>(0xff);
+  auto invalid_focus = pet;
+  invalid_focus.keyboard_focus = static_cast<host::KeyboardFocusPolicy>(0xff);
+  require(!registry->admit(invalid_role, 1, 320, 180, authority) &&
+              !registry->admit(invalid_focus, 1, 320, 180, authority) &&
+              authority.calls == 0,
+          "unknown surface policy enum reached placement authority");
   const auto admitted = registry->admit(pet, 1, 320, 180, authority);
   require(admitted && admitted->monitor_id == 7 && admitted->x == 100 &&
               admitted->y == 40 &&

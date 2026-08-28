@@ -125,6 +125,17 @@ int main() {
             count(report, discovery::DiagnosticCode::identity_pin_missing) == 1,
         "mixed unsafe discovery diagnostics changed");
 
+    TemporaryDirectory special_root;
+    const auto special_plugin = special_root.path() / "special";
+    std::filesystem::create_directory(special_plugin);
+    require(::mkfifo((special_plugin / "manifest.json").c_str(), 0600) == 0,
+            "manifest FIFO creation failed");
+    report = discovery::discover(special_root.path(), {},
+                                 {.schema_v2_enabled = true});
+    require(report.plugins.empty() &&
+                count(report, discovery::DiagnosticCode::manifest_missing) == 1,
+            "special manifest file did not fail closed without blocking");
+
     const std::vector duplicate_pins{pin("target", TREE_SHA256_GOLDEN),
                                      pin("target", TREE_SHA256_GOLDEN)};
     report = discovery::discover(mixed_root.path(), duplicate_pins,

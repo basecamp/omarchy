@@ -82,6 +82,16 @@ std::pair<std::uint32_t, std::uint32_t> role_limits(SurfaceRole role) {
   return {0, 0};
 }
 
+bool valid_policy_enums(const NamedSurfacePolicy &policy) {
+  const bool valid_role = policy.role == SurfaceRole::bar_embedded ||
+                          policy.role == SurfaceRole::desktop_overlay ||
+                          policy.role == SurfaceRole::panel;
+  const bool valid_focus =
+      policy.keyboard_focus == KeyboardFocusPolicy::none ||
+      policy.keyboard_focus == KeyboardFocusPolicy::after_gesture;
+  return valid_role && valid_focus;
+}
+
 bool region_fits(const InputRegion &region,
                  const surface::TrustedAllocation &allocation) {
   if (region.width == 0 || region.height == 0 ||
@@ -185,7 +195,7 @@ std::unique_ptr<HostSurface> HostSurface::create(
   const std::string_view bound_revision = binding.revision.view();
   const std::string_view bound_policy = binding.policy_fingerprint.view();
   if (policy.plugin_id.empty() || !bounded_name(policy.surface_name) ||
-      policy.plugin_id != bound_plugin ||
+      !valid_policy_enums(policy) || policy.plugin_id != bound_plugin ||
       !exact_revision_digest(bound_revision) ||
       !exact_revision_digest(bound_policy) || binding.generation == 0 ||
       surface_id == 0 || logical_width == 0 || logical_height == 0 ||

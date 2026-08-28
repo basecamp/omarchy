@@ -1,9 +1,13 @@
 #include "discovery.hpp"
 
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <algorithm>
+#include <array>
 #include <cctype>
-#include <fstream>
-#include <iterator>
+#include <cerrno>
 #include <map>
 #include <set>
 #include <stdexcept>
@@ -29,24 +33,43 @@ bool valid_directory_name(std::string_view value) {
 }
 
 std::optional<std::string> read_manifest(const std::filesystem::path &path) {
-  std::error_code error;
-  const auto status = std::filesystem::symlink_status(path, error);
-  if (error || status.type() != std::filesystem::file_type::regular) {
+  const int descriptor =
+      ::open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+  if (descriptor < 0) {
     return std::nullopt;
   }
-  const auto size = std::filesystem::file_size(path, error);
-  if (error || size > kMaximumManifestBytes) {
+  struct Descriptor {
+    int value;
+    ~Descriptor() { ::close(value); }
+  } owned{descriptor};
+  struct stat metadata{};
+  if (::fstat(owned.value, &metadata) < 0 || !S_ISREG(metadata.st_mode) ||
+      metadata.st_size < 0 ||
+      static_cast<std::uint64_t>(metadata.st_size) > kMaximumManifestBytes) {
     return std::nullopt;
   }
-  std::ifstream input(path, std::ios::binary);
-  if (!input) {
-    return std::nullopt;
-  }
+
   std::string bytes;
-  bytes.reserve(static_cast<std::size_t>(size));
-  bytes.assign(std::istreambuf_iterator<char>(input),
-               std::istreambuf_iterator<char>());
-  if (input.bad() || bytes.size() != size) {
+  bytes.reserve(static_cast<std::size_t>(metadata.st_size));
+  std::array<char, 8192> chunk{};
+  for (;;) {
+    const ssize_t count = ::read(owned.value, chunk.data(), chunk.size());
+    if (count < 0 && errno == EINTR) {
+      continue;
+    }
+    if (count < 0) {
+      return std::nullopt;
+    }
+    if (count == 0) {
+      break;
+    }
+    const auto amount = static_cast<std::size_t>(count);
+    if (amount > kMaximumManifestBytes - bytes.size()) {
+      return std::nullopt;
+    }
+    bytes.append(chunk.data(), amount);
+  }
+  if (bytes.size() != static_cast<std::size_t>(metadata.st_size)) {
     return std::nullopt;
   }
   return bytes;

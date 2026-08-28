@@ -6,7 +6,7 @@
 namespace omarchy::plugin_runtime::expressive_surface {
 namespace {
 
-HostLayer layer_for(host::SurfaceRole role) {
+std::optional<HostLayer> layer_for(host::SurfaceRole role) {
   switch (role) {
   case host::SurfaceRole::desktop_overlay:
     return HostLayer::desktop_overlay;
@@ -15,7 +15,12 @@ HostLayer layer_for(host::SurfaceRole role) {
   case host::SurfaceRole::bar_embedded:
     return HostLayer::bar;
   }
-  return HostLayer::desktop_overlay;
+  return std::nullopt;
+}
+
+bool valid_focus(host::KeyboardFocusPolicy focus) {
+  return focus == host::KeyboardFocusPolicy::none ||
+         focus == host::KeyboardFocusPolicy::after_gesture;
 }
 
 } // namespace
@@ -45,7 +50,9 @@ std::optional<Admission> Registry::admit(const host::NamedSurfacePolicy &policy,
                                          std::uint32_t logical_width,
                                          std::uint32_t logical_height,
                                          PlacementAuthority &authority) {
-  if (policy.plugin_id != plugin_id_ || surface_id == 0 || logical_width == 0 ||
+  const auto layer = layer_for(policy.role);
+  if (!layer || !valid_focus(policy.keyboard_focus) ||
+      policy.plugin_id != plugin_id_ || surface_id == 0 || logical_width == 0 ||
       logical_height == 0 || logical_width > policy.maximum_width ||
       logical_height > policy.maximum_height ||
       policy.maximum_frames_per_second == 0 ||
@@ -83,7 +90,7 @@ std::optional<Admission> Registry::admit(const host::NamedSurfacePolicy &policy,
                      .height = logical_height,
                      .maximum_frames_per_second =
                          policy.maximum_frames_per_second,
-                     .layer = layer_for(policy.role),
+                     .layer = *layer,
                      .keyboard_focus = policy.keyboard_focus};
   entries_[size_++] = admitted;
   return admitted;

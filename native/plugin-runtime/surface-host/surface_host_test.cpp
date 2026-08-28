@@ -618,6 +618,18 @@ void hostile_policy_and_identity_inputs() {
                                     clock) == nullptr,
           "surface accepted a crossed plugin activation binding");
 
+  auto invalid_role = valid;
+  invalid_role.role = static_cast<host::SurfaceRole>(0xff);
+  auto invalid_focus = valid;
+  invalid_focus.keyboard_focus = static_cast<host::KeyboardFocusPolicy>(0xff);
+  require(host::HostSurface::create(invalid_role, binding(valid.plugin_id, 1),
+                                    1, 252, 48, 1, 1, item, sender, input,
+                                    inspector, clock) == nullptr &&
+              host::HostSurface::create(
+                  invalid_focus, binding(valid.plugin_id, 1), 1, 252, 48, 1, 1,
+                  item, sender, input, inspector, clock) == nullptr,
+          "surface accepted an unknown policy enum");
+
   Harness generation(
       host::parse_named_surface_policy(fixture_manifest("pomodoro"), "timer"),
       47, 252, 48);
