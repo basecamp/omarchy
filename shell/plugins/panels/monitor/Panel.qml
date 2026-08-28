@@ -300,8 +300,17 @@ Panel {
     if (!name) return
     if (enabled && root.enabledDisplayCount <= 1) return
 
-    actionProc.command = ["hyprctl", "keyword", "monitor", name + (enabled ? ",disable" : ",preferred,auto,auto")]
-    if (!actionProc.running) actionProc.running = true
+    if (!Model.isValidMonitorName(name)) {
+      actionProc.command = ["omarchy-notification-send", "-g", "󰍹", "Refusing unsafe monitor name"]
+      if (!actionProc.running) actionProc.running = true
+      return
+    }
+
+    var cmd = Model.monitorToggleCommand(name, enabled, root.internalMonitor)
+    if (cmd) {
+      actionProc.command = cmd
+      if (!actionProc.running) actionProc.running = true
+    }
   }
 
   function setScale(scale) {
