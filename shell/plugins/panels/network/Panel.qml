@@ -71,6 +71,9 @@ Panel {
   readonly property var wifiNetworkObjects: wifiDevice && wifiDevice.networks ? wifiDevice.networks.values : []
   readonly property var connectedWifiNetwork: findConnectedWifiNetwork()
   property var wifiNetworks: []
+  property var autoConnectProfiles: ({})
+  property string pendingAutoConnectId: ""
+  property bool pendingAutoConnectEnabled: false
   property bool scanning: false
   property bool wifiStationAvailable: false
   property string dnsProvider: ""
@@ -468,6 +471,18 @@ Panel {
     bar.shell.summon("omarchy.wifiqr", JSON.stringify(payload))
   }
 
+  function refreshAutoConnectProfiles() {
+    if (!autoConnectProfilesProc.running) autoConnectProfilesProc.running = true
+  }
+
+  function setAutoConnect(uuid, enabled) {
+    if (!uuid || pendingAutoConnectId !== "") return
+    pendingAutoConnectId = uuid
+    pendingAutoConnectEnabled = enabled
+    autoConnectChangeProc.command = ["nmcli", "connection", "modify", "uuid", uuid, "connection.autoconnect", enabled ? "yes" : "no"]
+    autoConnectChangeProc.running = true
+  }
+
   function refresh(scanWifi) {
     if (scanWifi === undefined) scanWifi = false
     if (!detailsProc.running) detailsProc.running = true
@@ -491,6 +506,7 @@ Panel {
       }
     }
     syncWifiNetworks()
+    refreshAutoConnectProfiles()
   }
 
   function formatHeaderSpeed(mbps) {
@@ -807,6 +823,25 @@ Panel {
   Component.onCompleted: refresh()
 
   // Pulls everything we want about the active route's interface in one shot.
+  // One NetworkManager query supplies every visible row; row delegates never
+  // spawn their own nmcli processes while a scan adds or removes access points.
+  Process {
+    id: autoConnectProfilesProc
+    command: ["bash", "-c", Model.autoConnectProfilesScript]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.autoConnectProfiles = Model.parseAutoConnectProfiles(text)
+    }
+  }
+
+  Process {
+    id: autoConnectChangeProc
+    onExited: function(exitCode) {
+      pendingAutoConnectId = ""
+      refreshAutoConnectProfiles()
+    }
+  }
+
   Process {
     id: detailsProc
     command: ["omarchy-network-status", "--verbose"]
@@ -1603,6 +1638,7 @@ Panel {
       : false
     readonly property bool canForget: root.canForgetNetwork(net)
     readonly property bool isSelected: root.focusSection === "wifi" && root.selectedIndex === index
+    readonly property var autoConnectProfile: row.net ? root.autoConnectProfiles[row.net.ssid] : undefined
     readonly property bool forgetFocused: isSelected && root.wifiActionFocused && canForget
     readonly property bool forgetVisible: canForget && (!requiresCredentials || forgetFocused || rightMouse.containsMouse)
 
@@ -1719,53 +1755,72 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
       }
 
-      // The right edge shows a lock for networks that require credentials and
-      // reveals Forget on hover. Known passwordless networks show Forget
-      // directly rather than reserving an invisible or misleading target.
-      Item {
+      // Saved visible networks expose NetworkManager's auto-connect state.
+      // Turning it off changes only future automatic activation.
+      Row {
         id: rightAction
-        visible: row.requiresCredentials || row.canForget
-        width: Style.space(22)
-        implicitHeight: lockIndicator.implicitHeight
+        visible: row.isKnown || row.requiresCredentials
+        spacing: Style.space(4)
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
 
-        Text {
-          id: lockIndicator
-          visible: row.requiresCredentials || row.forgetVisible
-          width: parent.width
-          anchors.verticalCenter: parent.verticalCenter
-          horizontalAlignment: Text.AlignHCenter
-          text: row.forgetVisible ? "󰅙" : "󰌾"
-          color: row.forgetVisible ? root.bar.urgent : Qt.darker(root.bar.foreground, 1.4)
-          font.family: root.bar.fontFamily
-          font.pixelSize: Style.font.subtitle
+        ToggleSwitch {
+          visible: row.isKnown && row.autoConnectProfile !== undefined
+          checked: row.autoConnectProfile ? row.autoConnectProfile.enabled : false
+          busy: root.pendingAutoConnectId === (row.autoConnectProfile ? row.autoConnectProfile.uuid : "")
+          cursorRing: false
+          foreground: root.bar.foreground
+          onToggled: if (row.autoConnectProfile) root.setAutoConnect(row.autoConnectProfile.uuid, !row.autoConnectProfile.enabled)
+
+          PanelToolTip {
+            visible: parent.containsMouse
+            text: row.autoConnectProfile && row.autoConnectProfile.enabled ? "Auto-connect enabled" : "Auto-connect disabled"
+            fontFamily: root.bar.fontFamily
+          }
         }
 
-        BorderSurface {
-          anchors.fill: parent
-          visible: row.forgetFocused
-          color: Style.hoverFillFor(root.bar.urgent, root.bar.urgent)
-          borderSpec: Border.controlSpec("hover-cursor", root.bar.urgent, root.bar.urgent)
-          radius: Style.cornerRadius
-          z: -1
-        }
+        Item {
+          visible: row.requiresCredentials || row.canForget
+          width: Style.space(22)
+          height: lockIndicator.implicitHeight
 
-        MouseArea {
-          id: rightMouse
-          anchors.fill: parent
-          hoverEnabled: true
-          acceptedButtons: Qt.LeftButton
-          enabled: row.canForget && !root.busy
-          cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-          onContainsMouseChanged: if (containsMouse) { root.cursorActive = true; root.focusSection = "wifi"; root.selectedIndex = row.index; root.wifiActionFocused = true }
-          onClicked: if (row.net) root.forget(row.net)
-        }
+          Text {
+            id: lockIndicator
+            visible: row.requiresCredentials || row.forgetVisible
+            width: parent.width
+            anchors.verticalCenter: parent.verticalCenter
+            horizontalAlignment: Text.AlignHCenter
+            text: row.forgetVisible ? "󰅙" : "󰌾"
+            color: row.forgetVisible ? root.bar.urgent : Qt.darker(root.bar.foreground, 1.4)
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.subtitle
+          }
 
-        PanelToolTip {
-          visible: rightMouse.containsMouse || row.forgetFocused
-          text: "Forget network"
-          fontFamily: root.bar.fontFamily
+          BorderSurface {
+            anchors.fill: parent
+            visible: row.forgetFocused
+            color: Style.hoverFillFor(root.bar.urgent, root.bar.urgent)
+            borderSpec: Border.controlSpec("hover-cursor", root.bar.urgent, root.bar.urgent)
+            radius: Style.cornerRadius
+            z: -1
+          }
+
+          MouseArea {
+            id: rightMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.LeftButton
+            enabled: row.canForget && !root.busy
+            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+            onContainsMouseChanged: if (containsMouse) { root.cursorActive = true; root.focusSection = "wifi"; root.selectedIndex = row.index; root.wifiActionFocused = true }
+            onClicked: if (row.net) root.forget(row.net)
+          }
+
+          PanelToolTip {
+            visible: rightMouse.containsMouse || row.forgetFocused
+            text: "Forget network"
+            fontFamily: root.bar.fontFamily
+          }
         }
       }
 

@@ -233,11 +233,11 @@ assert(
   /readonly property bool canForget: root\.canForgetNetwork\(net\)/.test(panelSource),
   'network rows derive forget eligibility from the tested model helper'
 )
-const rightAction = panelSource.match(/Item \{\s*id: rightAction\b[\s\S]*?\n {6}\}/)
-assert(rightAction, 'network has a right-edge action target')
+const rightAction = panelSource.match(/Row \{\s*id: rightAction\b[\s\S]*?\n {6}\}/)
+assert(rightAction, 'network has a right-edge action row')
 assert(
-  /visible: row\.requiresCredentials \|\| row\.canForget/.test(rightAction[0]),
-  'network keeps a forget target for known passwordless networks'
+  /visible: row\.isKnown \|\| row\.requiresCredentials/.test(rightAction[0]),
+  'network keeps auto-connect and forget controls for known networks'
 )
 const lockIndicator = panelSource.match(/Text \{\s*id: lockIndicator\b[\s\S]*?\n {8}\}/)
 assert(lockIndicator, 'network has a lock/forget indicator')
@@ -293,4 +293,13 @@ assertDeepEqual(
 
 assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }), '', 'network keeps wifi band state out of the hero')
 assertEqual(network.headerDetail({ type: 'ethernet', speed: '100' }), '100mbit', 'network keeps ethernet speed in the hero')
+
+assertDeepEqual(
+  network.parseAutoConnectProfiles('uuid-home\tHome\tyes\nuuid-cafe\tCafe:Guest\tno\n'),
+  { Home: { uuid: 'uuid-home', enabled: true }, 'Cafe:Guest': { uuid: 'uuid-cafe', enabled: false } },
+  'network parses NetworkManager Wi-Fi profiles by SSID and UUID'
+)
+assert(/ToggleSwitch[\s\S]*?visible: row\.isKnown && row\.autoConnectProfile !== undefined/.test(panelSource), 'known visible networks show an auto-connect switch when a profile exists')
+assert(/id: autoConnectProfilesProc[\s\S]*?Model\.autoConnectProfilesScript/.test(panelSource), 'network loads auto-connect profiles in one panel-level query')
+assert(/function setAutoConnect\(uuid, enabled\)[\s\S]*?"uuid", uuid, "connection\.autoconnect"/.test(panelSource), 'network writes auto-connect by stable NetworkManager UUID')
 JS
