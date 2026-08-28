@@ -12,6 +12,7 @@
 #include <string_view>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace omarchy::plugins::permissions {
 
@@ -74,31 +75,32 @@ private:
 
 template <typename T, std::size_t Capacity> class FixedVector {
 public:
+  FixedVector() { values_.reserve(Capacity); }
+
   void push_back(T value) {
-    if (size_ == Capacity)
+    if (values_.size() == Capacity)
       throw std::runtime_error("fixed vector is full");
-    values_[size_++] = std::move(value);
+    values_.push_back(std::move(value));
   }
   [[nodiscard]] std::span<const T> values() const {
-    return {values_.data(), size_};
+    return values_;
   }
-  [[nodiscard]] std::span<T> values() { return {values_.data(), size_}; }
-  [[nodiscard]] std::size_t size() const { return size_; }
-  [[nodiscard]] bool empty() const { return size_ == 0; }
+  [[nodiscard]] std::span<T> values() { return values_; }
+  [[nodiscard]] std::size_t size() const { return values_.size(); }
+  [[nodiscard]] bool empty() const { return values_.empty(); }
   T &operator[](std::size_t index) {
-    if (index >= size_)
+    if (index >= values_.size())
       throw std::runtime_error("fixed vector index out of range");
     return values_[index];
   }
   const T &operator[](std::size_t index) const {
-    if (index >= size_)
+    if (index >= values_.size())
       throw std::runtime_error("fixed vector index out of range");
     return values_[index];
   }
 
 private:
-  std::array<T, Capacity> values_{};
-  std::size_t size_ = 0;
+  std::vector<T> values_;
 };
 
 using PluginId = BoundedString<128>;
