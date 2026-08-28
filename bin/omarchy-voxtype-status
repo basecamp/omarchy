@@ -7,7 +7,7 @@ if omarchy-cmd-missing voxtype; then
   exit 0
 fi
 
-# Keep the status follower as the direct child of the bar. Quickshell
-# clean up their direct child when they restart; a shell pipeline/coproc would
-# leave `voxtype status --follow` orphaned under the user systemd instance.
+# Keep the status follower as a direct child of Quickshell. The parent-death
+# signal stops it with the shell; a pipeline or coprocess in between could leave
+# `voxtype status --follow` orphaned under the user systemd instance.
 exec setpriv --pdeathsig TERM voxtype status --follow --extended --format json
