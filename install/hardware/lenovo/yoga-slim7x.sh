@@ -1,6 +1,4 @@
-# Lenovo Yoga Slim 7x (14Q8X9 / 83ED) details that are not common to every
-# Snapdragon laptop. Generic DTB, firmware, Vulkan and kernel-cmdline setup is
-# handled by install/hardware/qualcomm/.
+# Lenovo Yoga Slim 7x (14Q8X9 / 83ED) board-specific setup.
 
 yoga_slim7x_compatible=""
 if [[ -r /sys/firmware/devicetree/base/compatible ]]; then
@@ -23,9 +21,7 @@ if omarchy-hw-qualcomm-soc &&
 MODULES+=(i2c-hid-of)
 CONF
 
-  # On this board the ADSP remains offline after its firmware is installed.
-  # Starting it enables the speakers and microphone. The helper also starts
-  # the CDSP when present, but only the audio DSP is required for success.
+  # Start the board's DSP remote processors after udev exposes them.
   cat >/etc/systemd/system/yoga-slim7x-remoteprocs.service <<'UNIT'
 [Unit]
 Description=Start the Lenovo Yoga Slim 7x DSPs
