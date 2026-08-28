@@ -1,0 +1,25 @@
+{
+  // Per-plugin preferences for the live query plugins (Alfred/Raycast-style
+  // inline results in the menu). Drop at ~/.config/omarchy/extensions/
+  // query-plugins-prefs.jsonc (the shipped copy is comments-only).
+  //
+  // Keys are plugin ids; values override the built-in defaults:
+  //   enabled   true/false  show or hide the plugin
+  //   language  "en" | "es"  language of the result's detail text
+  //
+  // The calculator and web search ship enabled. To turn the web search off:
+  //
+  // {
+  //   "plugins": {
+  //     "omarchy.query.web": { "enabled": false }
+  //   }
+  // }
+  //
+  // To make the calculator report its copy hint in Spanish:
+  //
+  // {
+  //   "plugins": {
+  //     "omarchy.query.calc": { "language": "es" }
+  //   }
+  // }
+}

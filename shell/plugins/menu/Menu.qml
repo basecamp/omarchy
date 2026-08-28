@@ -11,6 +11,37 @@ Item {
 
   // Injected by omarchy-shell when this plugin is summoned.
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
+  // Bundled vector icons for query-plugin rows (calc / search). Rendered as
+  // SVG so they never depend on a font glyph or theme icon (which can render
+  // as a generic "file"/gear on some setups).
+  property string iconRoot: omarchyPath + "/shell/plugins/menu/assets"
+  // Keys that map to a bundled SVG under iconRoot.
+  property var bundledIcons: ({ "calc": "calc", "search": "search" })
+  // Resolve a query-plugin icon to an image source, or "" if it should be
+  // drawn as a font glyph instead. Accepts: a bundled key ("calc"/"search"),
+  // an absolute/relative path (expands ~), or a bare filename with an image
+  // extension (resolved under iconRoot). Anything else is treated as a glyph.
+  function queryIconSource(icon) {
+    if (!icon) return ""
+    if (root.bundledIcons[icon]) {
+      // Bundled icons ship two stroke variants: white (default, for dark
+      // themes) and -dark (for light themes). Pick by menu background
+      // luminance so the icon always contrasts the card. This is deliberately
+      // NOT a shader tint: QtQuick.Effects is unreliable (blackholed) on some
+      // Quickshell builds.
+      var c = Color.menu.background
+      var lum = 0.299 * c.r + 0.587 * c.g + 0.114 * c.b
+      var suffix = lum > 0.5 ? "-dark" : ""
+      return root.iconRoot + "/" + icon + suffix + ".svg"
+    }
+    if (icon.charAt(0) === "/" || icon.slice(0, 2) === "~/" || icon.slice(0, 2) === "./")
+      return icon.replace("~", Quickshell.env("HOME"))
+    if (/\.(svg|png|jpg|jpeg|ico)$/i.test(icon)) return root.iconRoot + "/" + icon
+    return ""  // glyph → drawn as Text
+  }
+  function queryIconIsImage(icon) {
+    return root.queryIconSource(icon) !== ""
+  }
   property var shell: null
   property var manifest: null
 
@@ -27,11 +58,13 @@ Item {
     if (payload.mode === "select" || payload.mode === "input") {
       root.openDmenu(payload)
     } else {
+      root.rebuildQueryPluginMap()
       root.openRoute(payload.initialMenu || payload.menu || "root")
     }
   }
 
   function close() {
+    root.cancelQueryPlugins()
     root.cancel()
   }
 
@@ -101,6 +134,10 @@ Item {
   property int contentSpacing: Style.spacing.md
   property int baseRowHeight: Math.max(Style.space(50), Style.font.body + Style.spacing.rowPaddingX * 2)
   property int detailRowHeight: Math.max(Style.space(58), Style.font.body + Style.font.caption + Style.spacing.rowPaddingX * 2)
+  // Rows with a two-line query result (heading label + bodySmall detail) need
+  // more vertical room than a normal detail row, whose height only budgets for
+  // body + caption. Otherwise the content overflows the card.
+  property int queryRowHeight: Math.max(Style.space(62), Style.font.heading + Style.font.bodySmall + Style.spacing.rowPaddingX * 2 + Style.space(2))
   // How much of the first hidden row stays visible at the fold — enough to
   // read as a cut-off row rather than a bottom border.
   property int rowPeek: Math.round(baseRowHeight * 0.55)
@@ -108,7 +145,27 @@ Item {
   property int dividerHeight: Style.space(17)
   property bool searchDivider: false
   property int layoutSerial: 0
-  property int cardWidth: Math.min(root.dmenuActive ? Style.space(root.dmenuWidth) : ((root.activeMenu === "trigger.capture.screenrecord" || root.activeMenu === "style.font") ? Style.space(520) : Style.space(300)), panel.width - Style.gapsOut * 2)
+  // The card grows with the typed query up to 80% of the screen width, then the
+  // text inside elides with "…". Static menus keep their fixed widths.
+  property int cardWidth: {
+    if (root.dmenuActive) return Style.space(root.dmenuWidth)
+    if (root.activeMenu === "trigger.capture.screenrecord" || root.activeMenu === "style.font") return Style.space(520)
+    if (root.filterText && root.filterText.length > 0) {
+      // Grow only when the typed query no longer fits the base width, so the
+      // card does NOT jump wider the instant you type the first character
+      // (base menu width is Style.space(300)). Past that it expands linearly up
+      // to 80% of the monitor width; the inner text then elides with "…". The
+      // cap uses the monitor width (panel.screen), not the layer width, so the
+      // card never resizes with its own result rows.
+      var minW = Style.space(300)
+      var est = root.filterText.length * Math.round(Style.font.heading * 0.8) + Style.space(80)
+      var monitorW = (panel.screen && panel.screen.width) ? panel.screen.width : panel.width
+      var cap = isNaN(monitorW) ? Style.space(1200) : Math.round(monitorW * 0.8)
+      var w = Math.min(cap, Math.max(minW, est))
+      return w
+    }
+    return Style.space(300)
+  }
   property int visibleRowsHeight: root.dmenuActive ? dmenuRowListHeight(layoutSerial, displayModel.count, filterText) : rowListHeight(layoutSerial, displayModel.count, filterText, searchDivider)
   property int cardHeight: root.dmenuActive
     ? Math.min(contentMargin * 2 + headerHeight + (mode === "input" ? 0 : contentSpacing + visibleRowsHeight), panel.height - Style.gapsOut * 2)
@@ -143,8 +200,9 @@ Item {
 
   // Menu rows only surface their detail while a search is narrowing them;
   // dmenu rows carry caller-supplied subtext that must always be visible.
-  function rowHeightForDetail(detail) {
-    return (root.filterText || root.dmenuActive) && detail ? root.detailRowHeight : root.baseRowHeight
+  function rowHeightForDetail(row) {
+    if (row.kind === "query") return root.queryRowHeight
+    return (root.filterText || root.dmenuActive) && row.detail ? root.detailRowHeight : root.baseRowHeight
   }
 
   // Height the card can devote to rows before running off the screen — or
@@ -189,7 +247,7 @@ Item {
       var row = displayModel.get(i)
       if (i > 0) total += root.rowSpacing
       if (row.section === "drilldown" && previousSection !== "drilldown") total += root.dividerHeight
-      total += root.rowHeightForDetail(row.detail)
+      total += root.rowHeightForDetail(row)
       previousSection = row.section
       totals.push(total)
     }
@@ -208,7 +266,7 @@ Item {
     var total = 0
     for (var i = 0; i < displayModel.count; i++) {
       if (i > 0) total += root.rowSpacing
-      total += root.rowHeightForDetail(displayModel.get(i).detail)
+      total += root.rowHeightForDetail(displayModel.get(i))
       totals.push(total)
     }
 
@@ -674,6 +732,20 @@ Item {
     for (var k = 0; k < rows.length; k++) displayModel.append(rows[k])
     layoutSerial += 1
 
+    // Live query plugins ride along every rebuild, not just setFilter: async
+    // provider merges (mergeProviderRows → rebuildDisplay) also land here. If a
+    // query is already in flight for the SAME text, don't cancel and restart it
+    // (that would wipe the in-flight result and flicker on every provider merge);
+    // the running process fills its row on exit. Only (re)start when the query is
+    // new or nothing is currently running. runQueryPlugins cancels the previous
+    // revision first, so a changed query never leaves stale runners behind.
+    if (root.filterText.trim()) {
+      var qt = root.filterText.trim()
+      if (qt !== root.queryPluginLastQuery || root.queryPluginsOutstanding === 0) {
+        root.runQueryPlugins(qt)
+      }
+    }
+
     root.settleCursor()
 
     Qt.callLater(function() {
@@ -722,8 +794,17 @@ Item {
     root.selectedIndex = 0
     root.cursorActive = root.mode !== "input"
     root.disarmPointer()
-    if (!root.dmenuActive && root.filterText.trim()) root.loadProvidersForSearch()
+    // Hide the empty-state up front (before the model is cleared) so a query that
+    // will yield a plugin row never flashes "No matches" for a frame.
+    if (!root.dmenuActive && root.filterText.trim() && root.queryPluginsForQuery(root.filterText).length > 0) {
+      root.queryPluginsPending = true
+    }
     root.rebuildDisplay()
+    if (!root.dmenuActive && root.filterText.trim()) {
+      root.loadProvidersForSearch()
+    } else {
+      root.cancelQueryPlugins()
+    }
   }
 
   function setActiveMenu(id, pushHistory, fromPointer) {
@@ -774,6 +855,10 @@ Item {
     var row = displayModel.get(index)
     if (row.kind === "menu" || row.kind === "link") {
       root.setActiveMenu(row.target || row.itemId, true, fromPointer)
+    } else if (row.kind === "query") {
+      // Live query-plugin result: copy or run per the plugin's action, then
+      // close the menu the same way a normal action does.
+      root.applySelected(row.itemId, row.action)
     } else if (row.kind === "app") {
       var appId = row.appId
       var label = row.label
@@ -832,6 +917,321 @@ Item {
     if (root.dmenuActive) root.finishRequest(null)
     opened = false
     filterText = ""
+  }
+
+  // ------------------------------------------------------------------
+  // Live query plugins (Alfred/Raycast-style inline results)
+  //
+  // While the user types a free-text query, registered plugins may run a
+  // command and surface rows that are inserted ABOVE the static search
+  // matches, in a "Results" section. Plugins are discovered at runtime from
+  // three sources, lowest precedence first:
+  //   1. built-in definitions shipped with the menu (see queryPlugins below)
+  //   2. user plugins in $HOME/.config/omarchy/query-plugins.json
+  //   3. the user's enabled/disabled + language preferences in
+  //      $HOME/.config/omarchy/extensions/query-plugins.jsonc
+  // Each plugin is { id, kind, label (or i18n), icon, language (es/en),
+  //   enabled, command, action (copy|run), args (query|url), keyword? }.
+  // kind is one of: math, web, copy, run, snippet.
+  // The pure decision/row logic lives in MenuModel.js so the test suite can
+  // exercise it under Node; this file owns process spawning and displayModel
+  // insertion, which cannot run headless.
+  // ------------------------------------------------------------------
+
+  readonly property string queryPluginsDir: Quickshell.env("HOME") + "/.config/omarchy/query-plugins.json"
+  readonly property string queryPluginPrefsPath: Quickshell.env("HOME") + "/.config/omarchy/extensions/query-plugins-prefs.jsonc"
+
+  // Built-in plugins: the calculator and web search that ship with Omarchy.
+  // `icon` is a bundled SVG key (see assets/) or a path/glyph per the schema.
+  // `builtin: true` resolves `command` under $OMARCHY_PATH/bin; user plugins
+  // leave it unset so their command runs as given (absolute path or on PATH).
+  readonly property var queryPlugins: ([
+    {
+      id: "omarchy.query.calc",
+      kind: "math",
+      icon: "calc",
+      language: "en",
+      enabled: true,
+      action: "copy",
+      command: "omarchy-query-calc",
+      builtin: true
+    },
+    {
+      id: "omarchy.query.web",
+      kind: "web",
+      icon: "search",
+      provider: "google",
+      language: "en",
+      enabled: true,
+      action: "run",
+      command: "omarchy-query-web",
+      args: "url",
+      builtin: true
+    }
+  ])
+
+  // id -> { enabled, language } from the user prefs file.
+  property var queryPluginPrefs: ({})
+  // id -> plugin definition merged from built-ins + user dir (after prefs).
+  property var queryPluginMap: ({})
+  property int queryPluginRevision: 0
+  // id -> QueryRunner instance currently active for an in-flight query.
+  property var queryRunners: ({})
+  property var userQueryPlugins: []
+  // id -> { plugin, result, lang } for completed runs, kept so we can rebuild
+  // the "results" section in a stable order (math above web) regardless of which
+  // Process finished first.
+  property var queryResults: ({})
+  // Ordered list of plugin ids that are active for the current query.
+  property var queryPluginOrder: []
+  // True while query-plugin Processes are in flight, so the empty-state
+  // ("No matches") stays hidden until results arrive (or are confirmed absent).
+  property bool queryPluginsPending: false
+  // How many query-plugin Processes for the current revision are still running.
+  // When it reaches zero the pending state settles even if every run failed.
+  property int queryPluginsOutstanding: 0
+  // The query the in-flight runners were started for. Used so that async
+  // provider merges (mergeProviderRows → rebuildDisplay) don't cancel and
+  // restart the live query runners on every keystroke/refresh — the rows are
+  // preserved until the running process exits (see rebuildDisplay).
+  property string queryPluginLastQuery: ""
+
+  function loadQueryPluginPrefs(raw) {
+    var prefs = ({})
+    try {
+      var parsed = JSON.parse(root.stripJsonc(raw))
+      var entries = parsed.plugins || parsed || {}
+      var keys = Object.keys(entries)
+      for (var i = 0; i < keys.length; i++) {
+        var key = keys[i]
+        var val = entries[key]
+        prefs[key] = {
+          enabled: val && typeof val.enabled === "boolean" ? val.enabled : true,
+          language: val && val.language ? val.language : ""
+        }
+      }
+    } catch (e) { }
+    root.queryPluginPrefs = prefs
+    root.rebuildQueryPluginMap()
+  }
+
+  function rebuildQueryPluginMap() {
+    var map = ({})
+    // Built-ins first, then user plugins override/extend by id.
+    for (var i = 0; i < root.queryPlugins.length; i++) {
+      var b = root.queryPlugins[i]
+      map[b.id] = JSON.parse(JSON.stringify(b))
+    }
+    // User-dir plugins (loaded from JSON files) take precedence.
+    for (var u = 0; u < root.userQueryPlugins.length; u++) {
+      var p = root.userQueryPlugins[u]
+      map[p.id] = JSON.parse(JSON.stringify(p))
+    }
+    // Apply prefs on top.
+    var ids = Object.keys(map)
+    for (var m = 0; m < ids.length; m++) {
+      var id = ids[m]
+      var pref = root.queryPluginPrefs[id]
+      if (!pref) continue
+      if (typeof pref.enabled === "boolean") map[id].enabled = pref.enabled
+      if (pref.language) map[id].language = pref.language
+    }
+    root.queryPluginMap = map
+  }
+
+  function loadUserQueryPlugins(raw) {
+    var list = []
+    try {
+      var arr = JSON.parse(root.stripJsonc(raw))
+      if (Array.isArray(arr)) {
+        for (var i = 0; i < arr.length; i++) {
+          var p = arr[i]
+          if (p && p.id && p.kind && p.command) list.push(p)
+        }
+      }
+    } catch (e) { }
+    root.userQueryPlugins = list
+    root.rebuildQueryPluginMap()
+  }
+
+  // Localized label for a plugin (delegates to MenuModel).
+  function queryPluginLabel(plugin, lang) {
+    return MenuModel.queryPluginLabel(plugin, lang)
+  }
+
+  // Decide which plugins fire for a given free-text query (delegates to MenuModel).
+  function queryPluginsForQuery(query) {
+    return MenuModel.queryPluginsForQuery(root.queryPluginMap, query)
+  }
+
+  // Run the active plugins for `query`. Each spawns its command via a
+  // QueryRunner; results are inserted into displayModel on exit in a stable
+  // order (math above web) regardless of which Process finishes first.
+  function runQueryPlugins(query) {
+    root.cancelQueryPlugins()
+    var plugins = root.queryPluginsForQuery(query)
+    if (plugins.length === 0) return
+    root.queryPluginsPending = true
+    var revision = root.queryPluginRevision + 1
+    root.queryPluginRevision = revision
+    root.queryResults = ({})
+    root.queryPluginOrder = plugins.map(function(p) { return p.id })
+    root.queryPluginLastQuery = query
+    var lang = root.queryPluginLanguage()
+    // Insert query rows ABOVE the normal search matches (not below) so the
+    // calculator result is the default (Enter) row and web search sits one
+    // arrow-down below it — matching the PR's stated "above the matches"
+    // behavior. Insert in REVERSE plugin order so the first plugin (rank 0,
+    // math) ends up at index 0 and web (rank 2) lands just beneath it.
+    for (var k = plugins.length - 1; k >= 0; k--) {
+      var ph = MenuModel.queryPluginRow(plugins[k], query, "", lang)
+      ph.pending = true
+      ph.disabled = true
+      displayModel.insert(0, ph)
+    }
+    var started = 0
+    for (var i = 0; i < plugins.length; i++) {
+      var p = plugins[i]
+      var runner = root.makeQueryRunner(p, query, revision, lang)
+      if (runner) {
+        root.queryRunners[p.id] = runner
+        started++
+      } else {
+        root.removeQueryPlaceholder(p.id)
+      }
+    }
+    root.queryPluginsOutstanding = started
+    if (started === 0) root.queryPluginsPending = false
+  }
+
+  function queryPluginLanguage() {
+    // Use the first plugin's explicit language, else "en".
+    var ids = Object.keys(root.queryPluginMap)
+    for (var i = 0; i < ids.length; i++) {
+      if (root.queryPluginMap[ids[i]].language) return root.queryPluginMap[ids[i]].language
+    }
+    return "en"
+  }
+
+  function makeQueryRunner(plugin, query, revision, lang) {
+    // The command always receives the raw query as its sole argument. Both the
+    // calculator (omarchy-query-calc) and the web launcher (omarchy-query-web)
+    // take the query verbatim.
+    //
+    // Built-in plugins resolve `command` under $OMARCHY_PATH/bin (mirrors every
+    // other plugin, e.g. root.omarchyPath + "/bin/omarchy-remove-launcher-entry").
+    // User plugins run their command as configured: an absolute path, or a name
+    // resolved through PATH by the Process exec.
+    //
+    // onExited is a Qt SIGNAL. We use the declarative `onExited:` form inside
+    // the inline QML (the only pattern Omarchy uses for Process) and forward to
+    // root.finishQueryRunner(), passing the per-runner state as QML properties
+    // (pluginId/queryText/rev) so the handler can recover it without a JS
+    // closure (closures can't cross the createQmlObject string boundary).
+    var proc = Qt.createQmlObject(
+      "import Quickshell.Io; import QtQuick; Process { " +
+      "property string collected: \"\"; " +
+      "property string pluginId: \"\"; " +
+      "property string queryText: \"\"; " +
+      "property int rev: 0; " +
+      "stdout: SplitParser { onRead: function(d){ collected += d } } " +
+      "onExited: root.finishQueryRunner(pluginId, queryText, collected, rev) }",
+      root, "queryRunner"
+    )
+    if (!proc) return null
+    proc.pluginId = plugin.id
+    proc.queryText = query
+    proc.rev = revision
+    var bin = plugin.builtin ? (root.omarchyPath + "/bin/" + plugin.command) : plugin.command
+    // The web plugin only computes the URL during filtering (--print). Opening
+    // the browser happens on Enter via the row's action, not while typing.
+    if (plugin.args === "url") {
+      proc.command = [bin, "--print", query]
+    } else {
+      proc.command = [bin, query]
+    }
+    proc.running = true
+    return proc
+  }
+
+  // Called from the Process onExited handler (declarative form). Recovers the
+  // runner state from QML properties and fills the pre-reserved result row in
+  // place (no append/remove → no layout jump). A run that produced nothing
+  // useful removes its placeholder instead of leaving a dead, unactionable row.
+  function finishQueryRunner(pluginId, query, out, rev) {
+    if (rev !== root.queryPluginRevision) return
+    root.queryPluginsOutstanding = Math.max(0, root.queryPluginsOutstanding - 1)
+    var plugin = root.queryPluginMap[pluginId]
+    var trimmed = String(out || "").trim()
+    if (!plugin || !trimmed || trimmed === "Error" || trimmed.indexOf("Error:") === 0) {
+      root.removeQueryPlaceholder(pluginId)
+    } else {
+      root.fillQueryResult(plugin, query, trimmed, plugin.language || "en")
+    }
+    if (root.queryPluginsOutstanding === 0) root.queryPluginsPending = false
+  }
+
+  // Remove the placeholder/result row for one plugin (failed or never-started
+  // run). Matches on the query kind, never on user-controlled id substrings.
+  function removeQueryPlaceholder(pluginId) {
+    for (var i = displayModel.count - 1; i >= 0; i--) {
+      var row = displayModel.get(i)
+      if (row.kind === "query" && row.itemId === pluginId + ".result") {
+        displayModel.remove(i)
+        root.layoutSerial += 1
+        return
+      }
+    }
+  }
+
+  // Update the pre-reserved placeholder row for `plugin` in place. If no row is
+  // found (e.g. it was cleared), fall back to nothing — the placeholder already
+  // holds the slot.
+  function fillQueryResult(plugin, query, result, lang) {
+    if (!root.opened) return
+    var value = String(result || "").trim()
+    var rowIndex = -1
+    for (var i = 0; i < displayModel.count; i++) {
+      if (displayModel.get(i).itemId === plugin.id + ".result") { rowIndex = i; break }
+    }
+    if (rowIndex < 0) return
+    var row = MenuModel.queryPluginRow(plugin, query, result, lang)
+    row.pending = false
+    row.disabled = false
+    if (plugin.action === "copy") {
+      row.action = "printf '%s' " + Util.shellQuote(value) + " | wl-copy"
+    } else if (plugin.action === "run") {
+      if (plugin.kind === "web") {
+        // URL-producing web plugins open through the web-app helper.
+        var url = plugin.args === "url" ? value : query
+        row.action = root.omarchyPath + "/bin/omarchy-launch-webapp " + Util.shellQuote(url)
+      } else {
+        // Generic run plugins execute their own configured command.
+        var runBin = plugin.builtin ? (root.omarchyPath + "/bin/" + plugin.command) : plugin.command
+        row.action = runBin + " " + Util.shellQuote(query)
+      }
+    }
+    displayModel.set(rowIndex, row)
+    root.layoutSerial += 1
+  }
+
+  function cancelQueryPlugins() {
+    root.queryPluginRevision += 1
+    var ids = Object.keys(root.queryRunners)
+    for (var i = 0; i < ids.length; i++) {
+      var r = root.queryRunners[ids[i]]
+      try { r.running = false; r.destroy() } catch (e) { }
+    }
+    root.queryRunners = ({})
+    root.queryResults = ({})
+    root.queryPluginOrder = []
+    root.queryPluginsPending = false
+    root.queryPluginsOutstanding = 0
+    root.queryPluginLastQuery = ""
+    // Drop any stale result rows (query rows only, by kind).
+    for (var j = displayModel.count - 1; j >= 0; j--) {
+      if (displayModel.get(j).kind === "query") displayModel.remove(j)
+    }
   }
 
   function openExistingMenu(initialMenu) {
@@ -978,6 +1378,28 @@ Item {
     printErrors: false
     onLoaded: { root.userMenuItems = root.parseMenuJsonc(text()); root.rebuildItemsFromSources() }
     onLoadFailed: { root.userMenuItems = []; root.rebuildItemsFromSources() }
+    onFileChanged: reload()
+  }
+
+  // Live query-plugin sources: a single user plugin file and a prefs file. Both
+  // are watched so edits take effect without restarting the shell.
+  FileView {
+    id: userQueryPluginsFile
+    path: root.queryPluginsDir
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.loadUserQueryPlugins(text())
+    onLoadFailed: { root.userQueryPlugins = []; root.rebuildQueryPluginMap() }
+    onFileChanged: reload()
+  }
+
+  FileView {
+    id: queryPluginPrefsFile
+    path: root.queryPluginPrefsPath
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.loadQueryPluginPrefs(text())
+    onLoadFailed: { root.queryPluginPrefs = ({}); root.rebuildQueryPluginMap() }
     onFileChanged: reload()
   }
 
@@ -1199,7 +1621,6 @@ Item {
           color: "transparent"
 
           Text {
-            textFormat: Text.PlainText
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
@@ -1231,8 +1652,8 @@ Item {
               required property string section
 
               width: ListView.view.width
-              height: section === "drilldown" ? root.dividerHeight : 0
-              visible: section === "drilldown"
+              height: section === "drilldown" || section === "results" ? root.dividerHeight : 0
+              visible: section === "drilldown" || section === "results"
 
               Rectangle {
                 anchors.left: parent.left
@@ -1263,11 +1684,13 @@ Item {
               required property bool disabled
 
               readonly property bool hasCursor: root.cursorActive && row.index === root.selectedIndex
-              readonly property bool isApp: row.kind === "app"
-              readonly property bool hasIcon: row.icon.length > 0 || row.isApp
+              // kind alone is the complete app-row test (native rows carry no
+              // isApp role; reading one would be an unknown-member access).
+              readonly property bool isAppRow: row.kind === "app"
+              readonly property bool hasIcon: row.icon.length > 0 || row.isAppRow
 
               width: ListView.view.width
-              height: root.rowHeightForDetail(row.detail)
+              height: root.rowHeightForDetail(row)
               // Faded: the row is here to say the software is already
               // installed, not to be picked.
               opacity: row.disabled ? 0.4 : 1
@@ -1288,8 +1711,7 @@ Item {
 
               Text {
                 id: iconText
-                textFormat: Text.PlainText
-                visible: row.hasIcon && !row.isApp
+                visible: row.hasIcon && !iconImage.visible
                 text: row.icon
                 color: row.hasCursor ? root.selectedText : root.foreground
                 font.family: row.iconFont.length > 0 ? row.iconFont : root.fontFamily
@@ -1302,17 +1724,23 @@ Item {
                 y: contentColumn.y + labelText.y + (labelText.height - height) / 2
               }
 
+              // Single image icon used for (a) bundled SVG icons on query-plugin
+              // rows (calc/search — queryIconSource picks the stroke variant
+              // that contrasts the current theme), (b) a user-supplied icon
+              // PATH on query rows, and (c) real theme/app icons on native rows.
               Image {
-                id: appIconImage
-                visible: row.isApp
+                id: iconImage
+                visible: row.hasIcon && (row.kind === "query" ? root.queryIconIsImage(row.icon) : row.isAppRow)
                 width: Style.font.iconLarge
                 height: Style.font.iconLarge
                 fillMode: Image.PreserveAspectFit
-                // Decode at physical pixels — a logical-size decode leaves
-                // PNG icons upscaled and blurry on HiDPI displays.
                 sourceSize.width: width * Screen.devicePixelRatio
                 sourceSize.height: height * Screen.devicePixelRatio
-                source: row.isApp && root.appLibrary ? root.appLibrary.iconSource(row.appIcon) : ""
+                source: {
+                  if (row.kind === "query" && row.icon) return root.queryIconSource(row.icon)
+                  if (row.isAppRow && root.appLibrary) return root.appLibrary.iconSource(row.appIcon)
+                  return ""
+                }
                 asynchronous: true
                 anchors.left: parent.left
                 anchors.leftMargin: root.rowReservedBorderLeft + Style.space(8) + (Style.space(36) - width) / 2
@@ -1321,16 +1749,15 @@ Item {
 
               Column {
                 id: contentColumn
-                anchors.left: row.hasIcon ? iconText.right : parent.left
+                anchors.left: row.hasIcon ? iconImage.right : parent.left
                 anchors.leftMargin: row.hasIcon ? Style.space(6) : root.rowReservedBorderLeft + Style.space(18)
                 anchors.right: trail.left
                 anchors.rightMargin: Style.space(6)
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: Style.space(3)
+                spacing: Style.space(1)
 
                 Text {
                   id: labelText
-                  textFormat: Text.PlainText
                   width: parent.width
                   text: row.label
                   color: row.hasCursor ? root.selectedText : root.foreground
@@ -1341,7 +1768,6 @@ Item {
                 }
 
                 Text {
-                  textFormat: Text.PlainText
                   width: parent.width
                   text: row.detail
                   visible: (root.filterText || row.kind === "dmenu") && row.detail.length > 0
@@ -1362,7 +1788,6 @@ Item {
                 spacing: 0
 
                 Text {
-                  textFormat: Text.PlainText
                   visible: false
                   text: row.childCount
                   color: root.foreground
@@ -1373,7 +1798,6 @@ Item {
                 }
 
                 Text {
-                  textFormat: Text.PlainText
                   text: row.kind === "menu" || row.kind === "link" ? "›" : ""
                   color: row.hasCursor ? root.selectedText : root.foreground
                   opacity: row.kind === "menu" || row.kind === "link" ? 0.36 : 0
@@ -1445,7 +1869,7 @@ Item {
           Column {
             anchors.centerIn: parent
             spacing: Style.space(8)
-            visible: displayModel.count === 0 && root.mode !== "input"
+            visible: displayModel.count === 0 && root.mode !== "input" && !(root.filterText.trim() && root.queryPluginsForQuery(root.filterText).length > 0) && !root.queryPluginsPending
 
             Text {
               text: "󰈉"
@@ -1458,7 +1882,6 @@ Item {
             }
 
             Text {
-              textFormat: Text.PlainText
               text: root.filterText ? "No matches for “" + root.filterText + "”" : "Nothing here yet"
               color: root.foreground
               opacity: 0.7

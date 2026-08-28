@@ -1,0 +1,97 @@
+#!/bin/bash
+# omarchy:summary=Evaluate a math expression safely and print the result
+# omarchy:group=query
+# omarchy:args=<expression>
+#
+# Reads the expression from $1 (or stdin if omitted). Evaluates it with a
+# Python AST sandbox that only permits arithmetic: literals, + - * / // % **,
+# unary minus, parentheses, and the math constants pi/e plus a small set of
+# math functions (sqrt, sin, cos, tan, log, log10, log2, exp, floor, ceil,
+# abs, pow, hypot, degrees, radians). Anything else (attribute access,
+# function calls to unknown names, comprehensions, lambdas, names beyond the
+# whitelist) is rejected. Output is the result on stdout, or "Error" on a
+# rejected/invalid expression so the caller can show a clean state.
+
+set -uo pipefail
+
+expr="${1:-}"
+if [[ -z "$expr" ]]; then
+  expr="$(cat)"
+fi
+
+# Empty input is not an error worth printing.
+[[ -z "${expr// }" ]] && exit 0
+
+# Users expect `^` to mean exponentiation (Alfred/Raycast style), not XOR.
+# Rewrite `^` to `**` before parsing via sed so the literal `**` never hits
+# the shell as a glob. The AST whitelist below still rejects every other
+# operator, so this only relaxes the one symbol people reach for.
+expr="$(printf '%s' "$expr" | sed 's/\^/**/g')"
+
+python3 - "$expr" <<'PY'
+import sys, ast, math
+
+ALLOWED_NAMES = {
+    "pi": math.pi, "e": math.e,
+    "sqrt": math.sqrt, "sin": math.sin, "cos": math.cos, "tan": math.tan,
+    "asin": math.asin, "acos": math.acos, "atan": math.atan,
+    "log": math.log, "log10": math.log10, "log2": math.log2,
+    "exp": math.exp, "floor": math.floor, "ceil": math.ceil,
+    "abs": abs, "pow": pow, "hypot": math.hypot,
+    "degrees": math.degrees, "radians": math.radians,
+}
+
+ALLOWED_UNARY = {ast.USub, ast.UAdd}
+ALLOWED_BINOP = {
+    ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow,
+}
+
+def ev(node):
+    if isinstance(node, ast.Expression):
+        return ev(node.body)
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, (int, float)) and not isinstance(node.value, bool):
+            return node.value
+        raise ValueError("only numeric constants allowed")
+    if isinstance(node, ast.Name):
+        if node.id in ALLOWED_NAMES:
+            return ALLOWED_NAMES[node.id]
+        raise ValueError("name not allowed: %s" % node.id)
+    if isinstance(node, ast.UnaryOp):
+        if type(node.op) not in ALLOWED_UNARY:
+            raise ValueError("unary op not allowed")
+        return ev(node.operand) * -1 if isinstance(node.op, ast.USub) else ev(node.operand)
+    if isinstance(node, ast.BinOp):
+        if type(node.op) not in ALLOWED_BINOP:
+            raise ValueError("binary op not allowed")
+        left = ev(node.left)
+        right = ev(node.right)
+        op = node.op
+        if isinstance(op, ast.Add): return left + right
+        if isinstance(op, ast.Sub): return left - right
+        if isinstance(op, ast.Mult): return left * right
+        if isinstance(op, ast.Div): return left / right
+        if isinstance(op, ast.FloorDiv): return left // right
+        if isinstance(op, ast.Mod): return left % right
+        if isinstance(op, ast.Pow): return left ** right
+    if isinstance(node, ast.Call):
+        if not isinstance(node.func, ast.Name) or node.func.id not in ALLOWED_NAMES:
+            raise ValueError("call not allowed")
+        if node.keywords:
+            raise ValueError("keyword args not allowed")
+        args = [ev(a) for a in node.args]
+        return ALLOWED_NAMES[node.func.id](*args)
+    raise ValueError("unsupported expression")
+
+try:
+    tree = ast.parse(sys.argv[1], mode="eval")
+    result = ev(tree)
+    if isinstance(result, float):
+        if result == int(result):
+            result = int(result)
+        else:
+            result = round(result, 10)
+    print(result)
+except Exception:
+    print("Error")
+PY
