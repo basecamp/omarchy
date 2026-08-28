@@ -26,7 +26,8 @@ run_fix() {
 }
 
 run_fix >/dev/null
-grep -F 'no_hardware_cursors = true' "$looknfeel" >/dev/null
+grep -F 'no_hardware_cursors = true' "$looknfeel" >/dev/null ||
+  fail "nouveau hardware setup enables software cursors" "$(cat "$looknfeel")"
 pass "nouveau hardware setup enables software cursors"
 
 run_fix >/dev/null

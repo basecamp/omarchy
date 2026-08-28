@@ -10,10 +10,10 @@ require_command jq
 require_command lua
 require_command python3
 
-jq empty "$ROOT/config/omarchy/shell.json"
+jq empty "$ROOT/config/omarchy/shell.json" || fail "default shell.json is valid JSON"
 pass "default shell.json is valid JSON"
 
-jq -e '.version == 1 and (.bar.layout.left | type == "array") and (.bar.layout.center | type == "array") and (.bar.layout.right | type == "array")' "$ROOT/config/omarchy/shell.json" >/dev/null
+jq -e '.version == 1 and (.bar.layout.left | type == "array") and (.bar.layout.center | type == "array") and (.bar.layout.right | type == "array")' "$ROOT/config/omarchy/shell.json" >/dev/null || fail "default shell.json has versioned bar layout"
 pass "default shell.json has versioned bar layout"
 
 # Pinning the whole row made this fail every time an unrelated widget moved,
@@ -24,18 +24,18 @@ jq -e '
   ($ids | index("omarchy.weather")) as $weather |
   ($ids | index("omarchy.system-update")) as $update |
   $weather != null and $update == $weather + 1
-' "$ROOT/config/omarchy/shell.json" >/dev/null
+' "$ROOT/config/omarchy/shell.json" >/dev/null || fail "default center layout keeps update next to weather"
 pass "default center layout keeps update next to weather"
 
 jq -e '
   (.bar.centerAnchor // "") as $anchor |
   any(.bar.layout.center[]; (.id // .) == $anchor)
-' "$ROOT/config/omarchy/shell.json" >/dev/null
+' "$ROOT/config/omarchy/shell.json" >/dev/null || fail "default center anchor exists in center layout"
 pass "default center anchor exists in center layout"
 
 jq -e '
   any(.bar.layout.center[]; (.id // .) == "omarchy.clock" and (.formatAlt // "") == "d MMMM \u0027W\u0027ww yyyy")
-' "$ROOT/config/omarchy/shell.json" >/dev/null
+' "$ROOT/config/omarchy/shell.json" >/dev/null || fail "default clock date format has no leading zero"
 pass "default clock date format has no leading zero"
 
 ROOT="$ROOT" python3 <<'PY'
@@ -183,10 +183,10 @@ if errors:
 PY
 pass "package-owned defaults live outside config"
 
-grep -F 'dofile((os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/default/hypr/bootstrap.lua")' "$ROOT/config/hypr/hyprland.lua" >/dev/null
-grep -F 'require("default.hypr.omarchy")' "$ROOT/config/hypr/hyprland.lua" >/dev/null
-grep -F 'package.path = home' "$ROOT/default/hypr/bootstrap.lua" >/dev/null
-grep -F '/.local/state/?.lua;' "$ROOT/default/hypr/bootstrap.lua" >/dev/null
+grep -F 'dofile((os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/default/hypr/bootstrap.lua")' "$ROOT/config/hypr/hyprland.lua" >/dev/null || fail "Hyprland user entrypoint loads the packaged bootstrap"
+grep -F 'require("default.hypr.omarchy")' "$ROOT/config/hypr/hyprland.lua" >/dev/null || fail "Hyprland user entrypoint requires the Omarchy defaults module"
+grep -F 'package.path = home' "$ROOT/default/hypr/bootstrap.lua" >/dev/null || fail "Hyprland bootstrap extends package.path with the user home"
+grep -F '/.local/state/?.lua;' "$ROOT/default/hypr/bootstrap.lua" >/dev/null || fail "Hyprland bootstrap resolves modules from the Omarchy state directory"
 pass "Hyprland user entrypoint keeps package and state path bootstrap in defaults"
 
 OMARCHY_PATH="$ROOT" lua <<'LUA'
@@ -257,21 +257,21 @@ fi
 pass "bar use rejects an unknown bar option"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar use local.demo-bar
-jq -e '.bar.id == "local.demo-bar"' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+jq -e '.bar.id == "local.demo-bar"' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null || fail "shell config selects a bar option"
 pass "shell config selects a bar option"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar reset
-jq -e '.bar.id == null' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+jq -e '.bar.id == null' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null || fail "shell config resets to built-in bar option"
 pass "shell config resets to built-in bar option"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar move omarchy.active-window right
 grep -Fqx 'shell moveBarWidget omarchy.active-window {"section":"right"}' \
-  "$TMPDIR/home/.local/state/omarchy/shell-ipc-calls"
+  "$TMPDIR/home/.local/state/omarchy/shell-ipc-calls" || fail "bar move accepts a positional target section"
 pass "bar move accepts a positional target section"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar move omarchy.active-window left
 grep -Fqx 'shell moveBarWidget omarchy.active-window {"section":"left"}' \
-  "$TMPDIR/home/.local/state/omarchy/shell-ipc-calls"
+  "$TMPDIR/home/.local/state/omarchy/shell-ipc-calls" || fail "bar move can restore a widget with positional syntax"
 pass "bar move can restore a widget with positional syntax"
 
 if HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar move omarchy.active-window left --section right 2>/dev/null; then
@@ -283,7 +283,7 @@ HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar position bottom
 jq -e '
   .bar.position == "bottom" and
   .plugins == []
-' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null || fail "shell config sets bar position"
 pass "shell config sets bar position"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar transparent true
@@ -291,21 +291,21 @@ jq -e '
   .bar.transparent == true and
   .bar.position == "bottom" and
   .plugins == []
-' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null || fail "shell config sets bar transparency"
 pass "shell config sets bar transparency"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar transparent toggle
-jq -e '.bar.transparent == false' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+jq -e '.bar.transparent == false' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null || fail "shell config toggles bar transparency"
 pass "shell config toggles bar transparency"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar set omarchy.bluetooth enabled false --json
 grep -Fqx 'shell setBarWidget omarchy.bluetooth enabled false {}' \
-  "$TMPDIR/home/.local/state/omarchy/shell-ipc-calls"
+  "$TMPDIR/home/.local/state/omarchy/shell-ipc-calls" || fail "bar set accepts false JSON values"
 pass "bar set accepts false JSON values"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar set omarchy.bluetooth optional null --json
 grep -Fqx 'shell setBarWidget omarchy.bluetooth optional null {}' \
-  "$TMPDIR/home/.local/state/omarchy/shell-ipc-calls"
+  "$TMPDIR/home/.local/state/omarchy/shell-ipc-calls" || fail "bar set accepts null JSON values"
 pass "bar set accepts null JSON values"
 
 if HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar set omarchy.bluetooth broken '{' --json 2>/dev/null; then
@@ -366,7 +366,7 @@ HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" OMARCHY_TEST_DROPBOX=
 jq -e --slurpfile defaults "$ROOT/config/omarchy/shell.json" '
   .bar == $defaults[0].bar and
   .plugins == []
-' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null || fail "bar defaults restores the stock bar"
 pass "bar defaults restores the stock bar"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" OMARCHY_TEST_DROPBOX=1 OMARCHY_TEST_TAILSCALE=1 omarchy-bar defaults
@@ -377,7 +377,7 @@ jq -e '
   ($right | index("omarchy.tailscale") == $tray + 1) and
   ($right | index("omarchy.dropbox") == $tray + 2) and
   (.bar.layout.center | ids | index("omarchy.tailscale") == null)
-' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null || fail "bar defaults places plugins for running optional services"
 pass "bar defaults places plugins for running optional services"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" \
@@ -390,7 +390,7 @@ jq -e '
   ($right | index("omarchy.tailscale") == $tray + 1) and
   ($right | index("omarchy.dropbox") == $tray + 2) and
   (.bar.layout.center | ids | index("omarchy.tailscale") == null)
-' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null || fail "bar defaults places service widgets without a running shell"
 pass "bar defaults places service widgets without a running shell"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" OMARCHY_TEST_DROPBOX=0 OMARCHY_TEST_TAILSCALE=0 omarchy-refresh-shell
@@ -399,7 +399,7 @@ jq -e '
   ([.bar.layout.left, .bar.layout.center, .bar.layout.right] | map(ids) | add) as $all |
   ($all | index("omarchy.dropbox") == null) and
   ($all | index("omarchy.tailscale") == null)
-' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null || fail "shell refresh keeps optional service widgets absent when services are unavailable"
 pass "shell refresh keeps optional service widgets absent when services are unavailable"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" OMARCHY_TEST_DROPBOX=1 OMARCHY_TEST_TAILSCALE=1 omarchy-refresh-shell
@@ -410,7 +410,7 @@ jq -e '
   ($right | index("omarchy.tailscale") == $tray + 1) and
   ($right | index("omarchy.dropbox") == $tray + 2) and
   (.bar.layout.center | ids | index("omarchy.tailscale") == null)
-' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null || fail "shell refresh places optional service widgets when services are available"
 [[ -f $TMPDIR/home/.local/state/omarchy/restart-shell-called ]] || fail "shell refresh restarts shell"
 pass "shell refresh places optional service widgets when services are available"
 
@@ -446,7 +446,7 @@ HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" bash "$clock_migration"
 jq -e '
   .bar.layout.center[0].formatAlt == "d MMMM \u0027W\u0027ww yyyy" and
   .bar.layout.right[0].formatAlt == "dd MMMM \u0027W\u0027ww yyyy"
-' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null || fail "clock date format migration removes leading zero from clock"
 pass "clock date format migration removes leading zero from clock"
 
 before=$(sha256sum "$TMPDIR/home/.config/omarchy/shell.json" | awk '{print $1}')
