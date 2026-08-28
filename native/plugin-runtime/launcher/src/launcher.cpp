@@ -482,6 +482,22 @@ parse_status_record(std::string_view line) {
   return output;
 }
 
+void write_child_error(int descriptor, int error) {
+  const auto *cursor = reinterpret_cast<const std::byte *>(&error);
+  std::size_t remaining = sizeof(error);
+  while (remaining > 0) {
+    const ssize_t written = write(descriptor, cursor, remaining);
+    if (written > 0) {
+      cursor += written;
+      remaining -= static_cast<std::size_t>(written);
+    } else if (written < 0 && errno == EINTR) {
+      continue;
+    } else {
+      break;
+    }
+  }
+}
+
 [[noreturn]] void child_exec(std::string bwrap_path, sandbox::SandboxPlan plan,
                              const std::array<int, 12> &sources) {
   std::array<Fd, 12> staged;
@@ -490,7 +506,7 @@ parse_status_record(std::string_view line) {
     const int duplicate = fcntl(sources.at(index), F_DUPFD_CLOEXEC, minimum);
     if (duplicate < 0) {
       const int saved = errno;
-      static_cast<void>(write(sources.at(kExecErrorFd), &saved, sizeof(saved)));
+      write_child_error(sources.at(kExecErrorFd), saved);
       _exit(126);
     }
     staged.at(index).reset(duplicate);
@@ -500,8 +516,7 @@ parse_status_record(std::string_view line) {
        ++destination) {
     if (dup2(staged.at(destination).get(), static_cast<int>(destination)) < 0) {
       const int saved = errno;
-      static_cast<void>(
-          write(staged.at(kExecErrorFd).get(), &saved, sizeof(saved)));
+      write_child_error(staged.at(kExecErrorFd).get(), saved);
       _exit(126);
     }
   }
@@ -511,7 +526,7 @@ parse_status_record(std::string_view line) {
   if (fcntl(kExecErrorFd, F_SETFD, FD_CLOEXEC) < 0 ||
       syscall(SYS_close_range, 12U, ~0U, 0U) < 0) {
     const int saved = errno;
-    static_cast<void>(write(kExecErrorFd, &saved, sizeof(saved)));
+    write_child_error(kExecErrorFd, saved);
     _exit(126);
   }
   const std::array limits = {
@@ -527,13 +542,13 @@ parse_status_record(std::string_view line) {
   for (const auto &[resource, limit] : limits) {
     if (setrlimit(resource, &limit) < 0) {
       const int saved = errno;
-      static_cast<void>(write(kExecErrorFd, &saved, sizeof(saved)));
+      write_child_error(kExecErrorFd, saved);
       _exit(126);
     }
   }
   if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0) {
     const int saved = errno;
-    static_cast<void>(write(kExecErrorFd, &saved, sizeof(saved)));
+    write_child_error(kExecErrorFd, saved);
     _exit(126);
   }
 
@@ -545,7 +560,7 @@ parse_status_record(std::string_view line) {
   execve(bwrap_path.c_str(), argument_pointers.data(),
          environment_pointers.data());
   const int saved = errno;
-  static_cast<void>(write(kExecErrorFd, &saved, sizeof(saved)));
+  write_child_error(kExecErrorFd, saved);
   _exit(126);
 }
 

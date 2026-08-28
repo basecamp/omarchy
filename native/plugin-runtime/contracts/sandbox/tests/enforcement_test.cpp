@@ -61,7 +61,8 @@ private:
   const std::string output =
       "sandbox enforcement child: " + std::string(message) + ": " +
       std::strerror(errno) + "\n";
-  static_cast<void>(write(STDERR_FILENO, output.data(), output.size()));
+  const ssize_t ignored = write(STDERR_FILENO, output.data(), output.size());
+  static_cast<void>(ignored);
   _exit(126);
 }
 
