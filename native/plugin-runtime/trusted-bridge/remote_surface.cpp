@@ -189,6 +189,24 @@ bool RemotePluginSurface::submitInput(const surface::InputEvent &event) {
   return true;
 }
 
+bool RemotePluginSurface::submitHostRoutedPointerInput(
+    const surface::InputEvent &event) {
+  if ((event.kind != surface::InputKind::pointer_button &&
+       event.kind != surface::InputKind::touch) ||
+      !state_ || !input_gate_ || transport_ == nullptr ||
+      input_gate_->accept(event,
+                          state_->phase() == surface::SurfacePhase::active,
+                          true) != surface::InputValidation::accepted) {
+    fail(InspectionFailure::input_rejected, false);
+    return false;
+  }
+  if (!transport_->submit(event)) {
+    fail(InspectionFailure::transport_failed, true);
+    return false;
+  }
+  return true;
+}
+
 bool RemotePluginSurface::submitFocus(const surface::FocusEvent &event) {
   if (!state_ || !focus_gate_ || transport_ == nullptr ||
       focus_gate_->accept(event,
