@@ -8,6 +8,7 @@ run_node_test <<'JS'
 const fs = require('fs')
 const tailscale = requireFromRoot('shell/plugins/panels/tailscale/Model.js')
 const panelSource = fs.readFileSync(root + '/shell/plugins/panels/tailscale/Panel.qml', 'utf8')
+const serviceSource = fs.readFileSync(root + '/shell/plugins/panels/tailscale/Service.qml', 'utf8')
 
 assert(/function toggleTailscale\(\): string \{ tailscale\.toggleTailscale\(\); return "ok" \}/.test(panelSource), 'tailscale exposes the connection toggle over IPC')
 
@@ -188,6 +189,118 @@ assertEqual(
   'tailnet.example',
   'tailscale labels connections by tailnet when nickname is missing'
 )
+// Tailscale names a profile after its login unless one is set explicitly, so
+// the nickname is never empty and would otherwise hide the display name the
+// admin console set.
+assertEqual(
+  tailscale.accountLabel({ nickname: 'user@example', tailnet: 'Acme Corp', account: 'user@example', id: 'abcd' }),
+  'Acme Corp',
+  'tailscale labels connections by tailnet display name when the profile only carries its login'
+)
+assertEqual(
+  tailscale.accountLabel({ nickname: 'Work', tailnet: 'Acme Corp', account: 'user@example', id: 'abcd' }),
+  'Work',
+  'tailscale prefers a deliberately set nickname over the tailnet display name'
+)
+assertEqual(
+  tailscale.accountLabel({ nickname: 'user@example', tailnet: '', account: 'user@example', id: 'abcd' }),
+  'user@example',
+  'tailscale falls back to the login when no display name is available'
+)
+assertEqual(
+  tailscale.accountLabel({ nickname: '', tailnet: '', account: '', id: 'abcd' }),
+  'abcd',
+  'tailscale falls back to the profile id'
+)
+
+assertDeepEqual(
+  tailscale.connectionRows(accounts.accounts, true).map(row => row.id),
+  ['db1b', '1785', 'account:add'],
+  'tailscale offers adding a tailnet after the existing connections'
+)
+assertDeepEqual(
+  tailscale.connectionRows([{ id: 'db1b', nickname: 'Home', selected: true }], true).map(row => row.id),
+  ['db1b', 'account:add'],
+  'tailscale offers adding a tailnet when only one connection exists'
+)
+assertDeepEqual(
+  tailscale.connectionRows(accounts.accounts, false).map(row => row.id),
+  ['db1b', '1785'],
+  'tailscale withholds the add row while disconnected'
+)
+assertDeepEqual(tailscale.connectionRows(null, true).map(row => row.id), ['account:add'], 'tailscale handles a missing connection list')
+
+assert(/addArmed = false\s*\n\s*tailscale\.addAccount\(\)/.test(panelSource), 'tailscale activates the add row as a login rather than a switch')
+assert(/var command = \["tailscale", "login", "--accept-routes"\]/.test(serviceSource), 'tailscale adds a connection the way the service install brings one up')
+// A fresh profile without an operator answers even `tailscale switch` with
+// access denied, so an abandoned login would lock the way back behind sudo.
+assert(/command\.push\("--operator=" \+ userName\)/.test(serviceSource), 'tailscale keeps operator access on the profile it creates')
+// tailscale login makes the new profile current before the browser half
+// finishes, so an abandoned login must not leave the machine stranded on it.
+assert(/_addAccountPreviousId = selectedAccountId/.test(serviceSource), 'tailscale remembers the connection it is leaving')
+assert(/root\.returnToPreviousAccount\(\)/.test(serviceSource), 'tailscale goes back when the login does not land')
+// The accounts list is only re-read once a minute, so at the moment the login
+// fails selectedAccountId still names the profile being returned to. Comparing
+// against it there skips the one switch that matters.
+assert(!/if \(previous === "" \|\| previous === selectedAccountId/.test(serviceSource), 'tailscale does not skip the return on a stale selected account')
+
+// The whole point of the recovery is what happens on each way this can end, so
+// the decision is a plain function rather than something only a real second
+// tailnet could exercise.
+assertDeepEqual(
+  tailscale.addAccountOutcome(0, true, 'db1b', ''),
+  { returnTo: '', status: '', error: '' },
+  'tailscale stays put when the login lands'
+)
+assertDeepEqual(
+  tailscale.addAccountOutcome(1, true, 'db1b', ''),
+  { returnTo: 'db1b', status: 'Login not completed — back on the previous connection', error: '' },
+  'tailscale returns to the previous connection when the login is abandoned'
+)
+assertDeepEqual(
+  tailscale.addAccountOutcome(1, false, 'db1b', 'access denied'),
+  { returnTo: 'db1b', status: 'access denied', error: 'access denied' },
+  'tailscale reports a login that failed before it reached the browser'
+)
+assertDeepEqual(
+  tailscale.addAccountOutcome(1, false, 'db1b', '   '),
+  { returnTo: 'db1b', status: 'tailscale login failed', error: 'tailscale login failed' },
+  'tailscale still says something when the login fails silently'
+)
+assertDeepEqual(
+  tailscale.addAccountOutcome(1, true, '', ''),
+  { returnTo: '', status: 'Login not completed — back on the previous connection', error: '' },
+  'tailscale has nowhere to return when there was no previous connection'
+)
+// A cancel kills the process, which exits non-zero like any other failure.
+assertDeepEqual(
+  tailscale.addAccountOutcome(143, true, 'db1b', ''),
+  { returnTo: 'db1b', status: 'Login not completed — back on the previous connection', error: '' },
+  'tailscale returns to the previous connection when the login is cancelled'
+)
+
+assert(/Back on your connection — sign in again to reconnect/.test(serviceSource), 'tailscale says the returned connection needs signing in again')
+assert(/function cancelAddAccount\(\) \{[\s\S]*?addAccountProcess\.running = false[\s\S]*?returnToPreviousAccount\(\)/.test(serviceSource), 'tailscale can bail out of a login in progress')
+assert(/if \(accountRow\.addingAccount\) tailscale\.cancelAddAccount\(\)/.test(panelSource), 'tailscale offers the bail-out on the row that is running')
+assert(/if \(!addArmed\) \{\s*\n\s*addArmed = true/.test(panelSource), 'tailscale asks before signing the machine out to add a tailnet')
+assert(/readonly property bool addingAccount: addAccountProcess\.running/.test(serviceSource), 'tailscale publishes that a connection is being added')
+assert(/running: accountRow\.working/.test(panelSource), 'tailscale animates the row while it is adding or switching')
+assert(/if \(addingAccount\) return "Opening browser…"/.test(panelSource), 'tailscale says what the add row is doing while it runs')
+assert(/"Signs out of " \+ current \+ " — confirm\?"/.test(panelSource), 'tailscale says which connection adding will sign out of')
+
+assert(/removeProcess\.command = \["tailscale", "switch", "remove", accountId\]/.test(serviceSource), 'tailscale removes a connection from this machine')
+// Removing the profile in use would strand the machine mid-session.
+assert(/if \(accountId === selectedAccountId\) return/.test(serviceSource), 'tailscale refuses to remove the connection in use')
+assert(/account\.selected !== true && String\(account\.id \|\| ""\) !== ""/.test(panelSource), 'tailscale offers removal only on connections that are not in use')
+// Two deliberate activations, so a stray click cannot drop a connection.
+assert(/if \(removeArmedId === String\(account\.id \|\| ""\)\) \{\s*\n\s*confirmRemoval\(account\)/.test(panelSource), 'tailscale takes a second activation to confirm a removal')
+assert(/armed \? "Remove " \+ label \+ "\?"/.test(panelSource) || /if \(armed\) return "Remove " \+ label \+ "\?"/.test(panelSource), 'tailscale asks before removing')
+assert(/onCloseRequested: \{\s*\n\s*if \(root\.removeArmedId !== "" \|\| root\.addArmed\) root\.disarmRemoval\(\)/.test(panelSource), 'tailscale backs out of the question before closing the panel')
+assert(/disarmRemoval\(\)\s*\n\s*ensureCursor\(\)/.test(panelSource), 'tailscale abandons the question when the cursor moves off the row')
+// The toggle's login hand-off keys off _loginInProgress, which a status poll
+// clears as soon as tailscaled is running — the state adding an account starts
+// from. Sharing that process would drop the auth URL.
+assert(/Process \{\s*\n\s*id: addAccountProcess/.test(serviceSource), 'tailscale adds a connection on its own process, not the toggle\'s')
 
 assertDeepEqual(
   tailscale.loginPlan(true, 'https://login.tailscale.com/a/existing'),
@@ -204,6 +317,124 @@ assertDeepEqual(
   { authUrl: '', command: ['tailscale', 'up'] },
   'tailscale ignores stale authorization URLs outside the login state'
 )
+
+// The login hand-off keys off _loginInProgress, so standing down on the first
+// missed interval left the panel holding a URL it would never open, behind a
+// message that never cleared.
+assert(/if \(attempts < 3\) \{/.test(serviceSource), 'tailscale waits more than one interval for the login link')
+assert(/attempts \+= 1/.test(serviceSource), 'tailscale counts its attempts at the login link')
+assert(/root\.actionStatus = "Tailscale login link not available yet"\s*\n(\s*\/\/[^\n]*\n)*\s*actionStatusTimer\.restart\(\)/.test(serviceSource), 'tailscale clears the login link message instead of freezing on it')
+assert(/loginTimeoutTimer\.attempts = 0/.test(serviceSource), 'tailscale starts each login with a fresh attempt count')
+// pkexec exits 126 when the dialog is dismissed, which is a decision rather
+// than a failure and should not be reported as one.
+assert(/if \(exitCode === 126\) \{[\s\S]{0,120}?root\.lastError = ""\s*\n\s*root\.actionStatus = ""/.test(serviceSource), 'tailscale leaves nothing behind when the operator prompt is dismissed')
+assert(/\} else if \(exitCode !== 0\) \{\s*\n\s*root\.lastError = elideStatus\(stderr \|\| stdout \|\| "Tailscale authorization failed"\)/.test(serviceSource), 'tailscale still reports a real authorization failure')
+// Exactly what the panel showed on a machine whose client and daemon differ:
+// the warning arrives on stderr ahead of the real refusal.
+assertEqual(
+  tailscale.commandMessage('Warning: client version "1.102.3" != tailscaled server version "1.102.2"\nAccess denied: checkprefs access denied\nUse \'sudo tailscale up\'.'),
+  "Access denied: checkprefs access denied Use 'sudo tailscale up'.",
+  'tailscale drops the version skew warning from what it shows'
+)
+assertEqual(
+  tailscale.commandMessage('Warning: client version "1.2" != tailscaled server version "1.1"'),
+  '',
+  'tailscale is left with nothing when the warning was the whole of it'
+)
+assertEqual(tailscale.commandMessage('  boom  \n\n  bang \n'), 'boom bang', 'tailscale joins what is left onto one line')
+assertEqual(tailscale.commandMessage(''), '', 'tailscale handles empty command output')
+assertEqual(tailscale.commandMessage(null), '', 'tailscale handles missing command output')
+
+assert(tailscale.isAccessDenied('Access denied: checkprefs access denied'), 'tailscale spots a refusal for want of the operator')
+// tailscale login --operator is refused by the very check it would fix, so the
+// add row can only dead-end while the panel already knows it lacks the operator.
+assertDeepEqual(tailscale.connectionRows([{ id: 'db1b' }], false).map(row => row.id), ['db1b'], 'tailscale withholds the add row when it cannot be used')
+assert(/tailscale\.active && !tailscale\.accountsAccessDenied/.test(panelSource), 'tailscale hides the add row while it lacks the operator')
+
+// Getting connected can take three things in order, and the panel runs them
+// rather than making someone rediscover the next step after each one.
+assertEqual(tailscale.nextConnectStep({ installed: false }), 'none', 'tailscale has no step without the CLI')
+assertEqual(tailscale.nextConnectStep({ installed: true, accessDenied: true, needsLogin: true }), 'authorize', 'tailscale authorizes before anything it would refuse')
+assertEqual(tailscale.nextConnectStep({ installed: true, needsLogin: true }), 'login', 'tailscale signs in once it is allowed to')
+assertEqual(tailscale.nextConnectStep({ installed: true, needsLogin: false, running: false }), 'up', 'tailscale comes up after signing in, without a second ask')
+assertEqual(tailscale.nextConnectStep({ installed: true, needsLogin: false, running: true }), 'done', 'tailscale stops once it is connected')
+assertEqual(tailscale.nextConnectStep(null), 'none', 'tailscale handles a missing state')
+
+assert(/root\.continueConnecting\(\)/.test(serviceSource), 'tailscale carries on after authorizing instead of stopping there')
+assert(/if \(exitCode === 126\) \{\s*\n\s*root\.stopConnecting\(\)/.test(serviceSource), 'tailscale stops the sequence when the prompt is dismissed')
+assert(/if \(_connectSteps >= 4\) \{ stopConnecting\(\); return \}/.test(serviceSource), 'tailscale will not loop on a step that keeps failing')
+assert(/function down\(\) \{[\s\S]*?stopConnecting\(\)/.test(serviceSource), 'tailscale abandons the sequence when told to disconnect')
+
+// Adding a tailnet is a login of its own and owns the daemon's pending
+// registration. Running the connect sequence beside it starts a second one and
+// the two race for the daemon, which is how a completed sign-in still landed
+// on a machine that was logged out.
+assert(/function startConnecting\(\) \{\s*\n\s*if \(addAccountProcess\.running\) return/.test(serviceSource), 'tailscale will not start the sequence beside a login that is adding')
+assert(/function continueConnecting\(\) \{[\s\S]{0,200}?if \(addAccountProcess\.running\) return/.test(serviceSource), 'tailscale will not continue the sequence beside a login that is adding')
+assert(/if \(!installed \|\| loginProcess\.running \|\| addAccountProcess\.running\) return/.test(serviceSource), 'tailscale will not connect over a login that is adding')
+assert(/stopConnecting\(\)\s*\n\s*actionStatus = "Opening Tailscale login…"/.test(serviceSource), 'tailscale drops the pending sequence when an add supersedes it')
+assert(/if \(addAccountProcess\.running\) \{\s*\n\s*root\._loginInProgress = false/.test(serviceSource), 'tailscale stops waiting on a link an add has superseded')
+
+// A profile's tailnet name arrives with the netmap, so a connection list read
+// while the machine was still coming up names a new one by whatever it had
+// then, and the throttle keeps that for a minute.
+assert(/if \(backendState === "Running" && _previousBackendState !== "Running"\) \{\s*\n\s*_lastAccountsRefreshMs = 0/.test(serviceSource), 'tailscale re-reads the connections once the machine comes up')
+assert(/_previousBackendState = backendState/.test(serviceSource), 'tailscale only re-reads on the transition, not every poll')
+
+// The action button is taller than the row's text, so showing it on hover grew
+// the row and re-elided the label under the pointer.
+assert(/opacity: shown \? 1 : 0\s*\n\s*enabled: shown/.test(panelSource), 'tailscale keeps the row action in the layout so hovering cannot resize the row')
+assert(!/visible: accountRow\.addingAccount \|\| accountRow\.addArmed/.test(panelSource), 'tailscale no longer toggles the row action with visible')
+
+// after it, so running-and-named is not on its own enough to call it empty.
+// before the peer list arrives, so the list says it is loading until it turns
+// up or has had long enough to be an answer.
+assert(/interval: 10000/.test(serviceSource), 'tailscale waits long enough to be sure')
+// polls never landed outside Running never looked like a transition at all.
+// The list emptying while the machine is up is the signal, whatever caused it.
+// The ordinary poll is half a minute away, so an empty list stayed empty for
+// the rest of the interval whatever the tailnet actually held.
+assert(/id: peersRamp/.test(serviceSource), 'tailscale asks again quickly while it has nothing to show')
+// The quick ramp is on top of the ordinary poll, not instead of it: without
+// the periodic timer the panel never refreshes once the list is populated, and
+// without the startup one it does not look until something opens the panel.
+assert(/id: refreshTimer\s*\n\s*interval: root\.refreshIntervalSec \* 1000\s*\n\s*repeat: true\s*\n\s*running: true\s*\n\s*triggeredOnStart: true/.test(serviceSource), 'tailscale keeps polling on its own interval')
+assert(/id: startupRamp/.test(serviceSource), 'tailscale still looks for the service at startup')
+
+// A step that failed ends the sequence, or the next poll picks it straight up.
+assert(/function reportCommandError\(text, fallback\) \{[\s\S]{0,260}?stopConnecting\(\)/.test(serviceSource), 'tailscale stops the sequence on a reported failure')
+// Removal was the one account command reporting for itself, so a refusal there
+// showed the CLI's sudo advice rather than the authorization the panel offers.
+assert(/root\.reportCommandError\(stderr \|\| stdout, "Could not remove the connection"\)/.test(serviceSource), 'tailscale reports a failed removal like every other refusal')
+// A login owns the daemon's pending registration until it finishes.
+assert(/if \(switchProcess\.running \|\| removeProcess\.running \|\| loginProcess\.running \|\| operatorProcess\.running\) return/.test(serviceSource), 'tailscale will not start a login beside another profile change')
+assert(/if \(!account\) return\s*\n(\s*\/\/[^\n]*\n)*\s*if \(tailscale\.addingAccount\) return/.test(panelSource), 'tailscale blocks every row while a login is running, not just the add row')
+// Either question left open would otherwise survive the panel closing.
+assert(/if \(root\.removeArmedId !== "" \|\| root\.addArmed\) root\.disarmRemoval\(\)/.test(panelSource), 'tailscale backs out of whichever confirmation is open')
+assert(/running: root\.running && root\.peers\.length === 0 && ticks < 8/.test(serviceSource), 'tailscale only hurries while the list is empty, and not forever')
+assert(/if \(peers\.length > 0\) peersRamp\.ticks = 0/.test(serviceSource), 'tailscale stops hurrying once the list arrives')
+
+// The real shape of a second tailnet: Tailscale names the profile after the
+// login it was made from, and the tailnet carries the name set in the admin
+// console.
+assertEqual(
+  tailscale.accountLabel({ id: '1785', nickname: 'you@example.com', tailnet: 'example.com', account: 'you@example.com' }),
+  'example.com',
+  'tailscale names a second connection by its tailnet rather than the login it was made from'
+)
+assertEqual(
+  tailscale.accountLabel({ id: 'db1b', nickname: 'a@example.com', tailnet: 'a@example.com', account: 'a@example.com' }),
+  'a@example.com',
+  'tailscale falls back to the login when the tailnet has no name of its own'
+)
+assert(/if \(Model\.isAccessDenied\(outcome\.error\)\) \{\s*\n\s*root\.reportCommandError/.test(serviceSource), 'tailscale offers the operator fix when the add is refused')
+assert(tailscale.isAccessDenied('profiles access denied'), 'tailscale spots the profiles refusal too')
+assert(!tailscale.isAccessDenied('tailscale up failed'), 'tailscale does not mistake an ordinary failure for a refusal')
+
+// A refusal has a fix the panel can offer, so it raises that instead of
+// repeating the CLI's advice to go and use sudo.
+assert(/accountsAccessDenied = true\s*\n\s*message = "Tailscale needs permission on this machine"/.test(serviceSource), 'tailscale offers the operator fix when a command is refused')
+assert(/root\.reportCommandError\(combined, "tailscale up failed"\)/.test(serviceSource), 'tailscale reports a failed connect through the same path')
 
 assertDeepEqual(tailscale.parseStatus('{'), { ok: false, unavailable: true, message: 'Status error', error: 'Failed to parse tailscale status' }, 'tailscale reports invalid status JSON')
 assertDeepEqual(tailscale.parseAccounts('{'), { accounts: [], selectedAccountId: '', selectedAccountLabel: '' }, 'tailscale handles invalid account JSON')

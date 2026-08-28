@@ -36,13 +36,15 @@ Item {
   property string selectedAccountId: ""
   property string selectedAccountLabel: ""
   property string switchingAccountId: ""
+  readonly property bool addingAccount: addAccountProcess.running
+  property string removingAccountId: ""
   property string settingExitNodeId: ""
   property bool accountsAccessDenied: false
   property string actionStatus: ""
   property string lastError: ""
 
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 30, 5, 3600)
-  readonly property bool busy: whichProcess.running || statusProcess.running || mullvadExitNodesProcess.running || accountsProcess.running || actionProcess.running || loginProcess.running || switchProcess.running || operatorProcess.running || exitNodeProcess.running
+  readonly property bool busy: whichProcess.running || statusProcess.running || mullvadExitNodesProcess.running || accountsProcess.running || actionProcess.running || loginProcess.running || switchProcess.running || addAccountProcess.running || removeProcess.running || operatorProcess.running || exitNodeProcess.running
   readonly property string userName: Quickshell.env("USER") || Quickshell.env("LOGNAME")
 
   property string _statusOutput: ""
@@ -59,6 +61,18 @@ Item {
   property bool _loginUrlOpened: false
   property string _preLoginAuthUrl: ""
   property double _lastAccountsRefreshMs: 0
+  property string _previousBackendState: ""
+  property string _removeOutput: ""
+  property string _removeError: ""
+  property string _addAccountPreviousId: ""
+  // Only ever set by someone asking to connect, so the panel never brings
+  // Tailscale up on its own.
+  property bool _connecting: false
+  property int _connectSteps: 0
+  property bool _returnedFromAddAccount: false
+  property string _addAccountOutput: ""
+  property string _addAccountError: ""
+  property bool _addAccountUrlOpened: false
   property string _switchOutput: ""
   property string _switchError: ""
   property string _exitNodeOutput: ""
@@ -193,8 +207,28 @@ Item {
   }
 
   function elideStatus(text) {
-    var value = String(text || "").replace(/\s+/g, " ").trim()
+    // Drop the version skew warning before measuring, or it eats the budget
+    // and elides away the part that says what went wrong.
+    var value = Model.commandMessage(text)
     return value.length > 140 ? value.substring(0, 137) + "…" : value
+  }
+
+  // A command refused for want of the operator has a fix the panel can offer,
+  // so raise that rather than repeating the CLI's advice to go and use sudo.
+  function reportCommandError(text, fallback) {
+    // A step that failed ends the sequence: it is the stop-on-first-failure
+    // the sequence promises, and without it the next status poll picks the
+    // same step straight back up.
+    stopConnecting()
+    var message = elideStatus(text)
+    if (message === "") message = String(fallback || "")
+    if (Model.isAccessDenied(message)) {
+      accountsAccessDenied = true
+      message = "Tailscale needs permission on this machine"
+    }
+    lastError = message
+    actionStatus = message
+    actionStatusTimer.restart()
   }
 
   function resetUnavailable(message) {
@@ -236,6 +270,15 @@ Item {
     }
 
     backendState = parsed.backendState
+    // A profile's tailnet name arrives with the netmap, so a connection list
+    // read while the machine was still coming up names a new profile by
+    // whatever it had then -- and the refresh throttle keeps that for a
+    // minute. Coming up is exactly when it is worth reading again.
+    if (backendState === "Running" && _previousBackendState !== "Running") {
+      _lastAccountsRefreshMs = 0
+      delayedRefresh.restart()
+    }
+    _previousBackendState = backendState
     running = parsed.running
     // Reality caught up to the pending toggle — stop overriding.
     if (_desired !== -1 && running === (_desired === 1)) _desired = -1
@@ -248,9 +291,25 @@ Item {
     selfUserId = parsed.selfUserId
     fileSharing = parsed.fileSharing
     peers = parsed.running ? parsed.peers : []
+    // Stop hurrying as soon as there is something to show.
+    if (peers.length > 0) peersRamp.ticks = 0
     tailnetExitNodes = parsed.running ? parsed.exitNodes : []
     exitNodes = parsed.running ? tailnetExitNodes.concat(mullvadRegions) : []
 
+    // Adding a tailnet re-registers the machine, which can supersede the node
+    // key the previous connection was using. Returning to it then lands on a
+    // profile that needs signing in again, and "disconnected" alone does not
+    // say that.
+    if (_returnedFromAddAccount && !switchProcess.running) {
+      _returnedFromAddAccount = false
+      if (needsLogin) {
+        actionStatus = "Back on your connection — sign in again to reconnect"
+        actionStatusTimer.restart()
+      }
+    }
+    if (_connecting && !needsLogin && !running && !loginProcess.running && !actionProcess.running && backendState !== "NoState") {
+      continueConnecting()
+    }
     if (needsLogin) statusText = "Needs login"
     else if (running) {
       statusText = "Connected"
@@ -283,18 +342,50 @@ Item {
   function toggleTailscale() {
     if (!installed) return
     if (active) down()
+    else startConnecting()
+  }
+
+  function connectState() {
+    return { installed: installed, accessDenied: accountsAccessDenied, needsLogin: needsLogin, running: running }
+  }
+
+  function startConnecting() {
+    if (addAccountProcess.running) return
+    _connecting = true
+    _connectSteps = 0
+    continueConnecting()
+  }
+
+  function stopConnecting() {
+    _connecting = false
+    _connectSteps = 0
+  }
+
+  // Runs the outstanding steps in order. Each one only continues on its own
+  // success, and the count is a backstop against a step that keeps failing in
+  // a way that leaves the state unchanged.
+  function continueConnecting() {
+    if (!_connecting) return
+    // A login is already under way and owns the daemon's pending registration.
+    if (addAccountProcess.running) return
+    if (_connectSteps >= 4) { stopConnecting(); return }
+    var step = Model.nextConnectStep(connectState())
+    if (step === "done" || step === "none") { stopConnecting(); return }
+    _connectSteps += 1
+    if (step === "authorize") authorizeTailscaleOperator()
     else loginOrUp()
   }
 
   function down() {
     // No progress status here — the greyed icon and hero line already convey
     // the optimistic off; only surface a message if the command fails.
+    stopConnecting()
     _desired = 0
     runAction(["tailscale", "down"])
   }
 
   function loginOrUp() {
-    if (!installed || loginProcess.running) return
+    if (!installed || loginProcess.running || addAccountProcess.running) return
     _desired = -1
     var plan = Model.loginPlan(needsLogin, authUrl)
     if (plan.authUrl !== "") {
@@ -311,7 +402,10 @@ Item {
     _preLoginAuthUrl = authUrl
     loginProcess.command = plan.command
     loginProcess.running = true
-    if (needsLogin) loginTimeoutTimer.restart()
+    if (needsLogin) {
+      loginTimeoutTimer.attempts = 0
+      loginTimeoutTimer.restart()
+    }
   }
 
   function switchAccount(id) {
@@ -322,6 +416,91 @@ Item {
     switchingAccountId = accountId
     switchProcess.command = ["tailscale", "switch", accountId]
     switchProcess.running = true
+  }
+
+  // Adding a tailnet runs its own login rather than borrowing the toggle's.
+  // The toggle keys its browser hand-off off _loginInProgress, and a status
+  // poll clears that as soon as it sees a running tailscaled — which is
+  // exactly the state we are in here, so a poll landing between launching
+  // the login and its first line of output would swallow the auth URL.
+  // Match how the service install brings the first profile up, so a tailnet
+  // added here does not quietly differ from the one already on the machine.
+  // The operator matters most: tailscale login starts a fresh profile, and
+  // without it that profile answers even `tailscale switch` with "access
+  // denied", so an abandoned login locks the way back behind sudo.
+  function addAccountCommand() {
+    var command = ["tailscale", "login", "--accept-routes"]
+    if (userName !== "") command.push("--operator=" + userName)
+    return command
+  }
+
+  function addAccount() {
+    if (!installed || addAccountProcess.running) return
+    // Every one of these is already moving daemon profile state, and the
+    // recovery switch is skipped while one is running, so a login started
+    // beside them can strand the machine on the half-made profile.
+    if (switchProcess.running || removeProcess.running || loginProcess.running || operatorProcess.running) return
+    _addAccountOutput = ""
+    _addAccountError = ""
+    _addAccountUrlOpened = false
+    // tailscale login makes the new profile current before the browser half
+    // finishes, so the machine leaves the tailnet it is on the moment this
+    // starts. Remember where to put it back if the login never lands.
+    _addAccountPreviousId = selectedAccountId
+    // Whatever the sequence was going to do next, this login supersedes it.
+    stopConnecting()
+    actionStatus = "Opening Tailscale login…"
+    addAccountProcess.command = addAccountCommand()
+    addAccountProcess.running = true
+  }
+
+  function cancelAddAccount() {
+    if (!addAccountProcess.running) return
+    actionStatus = "Returning to the previous connection…"
+    addAccountProcess.running = false
+    returnToPreviousAccount()
+  }
+
+  // Clears the record as it goes, so the exit handler and an explicit cancel
+  // can both call it and only the first one does anything.
+  function returnToPreviousAccount() {
+    var previous = _addAccountPreviousId
+    _addAccountPreviousId = ""
+    // Nothing is compared against selectedAccountId here: the accounts list is
+    // only re-read once a minute, so at this point it still names the profile
+    // being returned to and the comparison would skip the switch that matters.
+    // Switching to the profile already current is a harmless no-op anyway.
+    if (previous === "" || switchProcess.running) return
+    _switchOutput = ""
+    _switchError = ""
+    switchingAccountId = previous
+    _returnedFromAddAccount = true
+    switchProcess.command = ["tailscale", "switch", previous]
+    switchProcess.running = true
+  }
+
+  function openAddAccountUrl(text) {
+    if (_addAccountUrlOpened) return true
+    var match = String(text || "").match(/https?:\/\/\S+/)
+    if (!match || !match[0]) return false
+    _addAccountUrlOpened = true
+    actionStatus = "Finish signing in in your browser"
+    Quickshell.execDetached(["omarchy-launch-browser", match[0]])
+    return true
+  }
+
+  // Removing a connection only drops it from this machine -- the account
+  // itself is untouched, and logging in again brings it back.
+  function removeAccount(id) {
+    var accountId = String(id || "")
+    if (!installed || accountId === "" || removeProcess.running) return
+    // Removing the connection in use would strand the machine mid-session.
+    if (accountId === selectedAccountId) return
+    _removeOutput = ""
+    _removeError = ""
+    removingAccountId = accountId
+    removeProcess.command = ["tailscale", "switch", "remove", accountId]
+    removeProcess.running = true
   }
 
   function exitNodeTarget(peer) {
@@ -412,6 +591,22 @@ Item {
   }
 
   Timer {
+    // A tailnet answers within a second or two of coming up, but the ordinary
+    // poll is half a minute away, so an empty list sat there for the rest of
+    // the interval whatever it actually contained. Ask again quickly while
+    // there is nothing to show, and stop the moment there is.
+    id: peersRamp
+    property int ticks: 0
+    interval: 2000
+    repeat: true
+    running: root.running && root.peers.length === 0 && ticks < 8
+    onTriggered: {
+      ticks += 1
+      root.refreshStatusAndAccounts(false)
+    }
+  }
+
+  Timer {
     id: delayedRefresh
     interval: 600
     repeat: false
@@ -443,14 +638,34 @@ Item {
 
   Timer {
     id: loginTimeoutTimer
+    // tailscaled does not always have the URL ready within one interval, and
+    // standing down on the first miss stranded the login: the flag below is
+    // what lets a status poll open the URL when it does arrive, so clearing it
+    // early left the panel holding a link it would never open.
+    property int attempts: 0
     interval: 10000
     repeat: false
     onTriggered: {
       if (!root._loginInProgress || root._loginUrlOpened) return
-      if (!root.openAuthUrlFrom(root.authUrl, true)) {
+      // An add took over the daemon's pending registration, so this is no
+      // longer the login whose link is worth waiting on.
+      if (addAccountProcess.running) {
         root._loginInProgress = false
-        root.actionStatus = "Tailscale login link not available yet"
+        return
       }
+      if (root.openAuthUrlFrom(root.authUrl, true)) return
+      attempts += 1
+      if (attempts < 3) {
+        root.actionStatus = "Waiting for the Tailscale login link…"
+        actionStatusTimer.restart()
+        loginTimeoutTimer.restart()
+        return
+      }
+      root._loginInProgress = false
+      root.actionStatus = "Tailscale login link not available yet"
+      // Every other status message clears itself. This one used to sit there
+      // for good, which reads as a frozen panel rather than a failed attempt.
+      actionStatusTimer.restart()
     }
   }
 
@@ -532,9 +747,7 @@ Item {
       var stderr = String(actionStderr.text || root._actionError || "")
       if (exitCode !== 0) {
         root._desired = -1
-        root.lastError = elideStatus(stderr || stdout || "Tailscale command failed")
-        root.actionStatus = root.lastError
-        actionStatusTimer.restart()
+        root.reportCommandError(stderr || stdout, "Tailscale command failed")
       } else {
         root.lastError = ""
         root.actionStatus = ""
@@ -555,9 +768,7 @@ Item {
       if (exitCode !== 0 && !opened) {
         root._desired = -1
         root._loginInProgress = false
-        root.lastError = elideStatus(combined || "tailscale up failed")
-        root.actionStatus = root.lastError
-        actionStatusTimer.restart()
+        root.reportCommandError(combined, "tailscale up failed")
       } else if (!opened) {
         root.lastError = ""
         root.actionStatus = ""
@@ -576,15 +787,63 @@ Item {
       var stdout = String(switchStdout.text || root._switchOutput || "")
       var stderr = String(switchStderr.text || root._switchError || "")
       if (exitCode !== 0) {
-        root.lastError = elideStatus(stderr || stdout || "Account switch failed")
-        root.actionStatus = root.lastError
-        actionStatusTimer.restart()
+        root.reportCommandError(stderr || stdout, "Account switch failed")
       } else {
         root.lastError = ""
         root.actionStatus = ""
         root._lastAccountsRefreshMs = 0
       }
       root.switchingAccountId = ""
+      delayedRefresh.restart()
+    }
+  }
+
+  Process {
+    id: addAccountProcess
+    running: false
+    command: []
+    // The auth URL arrives on whichever stream tailscale feels like using, and
+    // it arrives while the process is still running: `tailscale login` blocks
+    // until the browser half finishes.
+    stdout: SplitParser { onRead: function(data) { root._addAccountOutput += data + "\n"; root.openAddAccountUrl(data) } }
+    stderr: SplitParser { onRead: function(data) { root._addAccountError += data + "\n"; root.openAddAccountUrl(data) } }
+    onExited: function(exitCode) {
+      var combined = String(root._addAccountOutput || "") + "\n" + String(root._addAccountError || "")
+      var opened = root.openAddAccountUrl(combined)
+      var outcome = Model.addAccountOutcome(exitCode, opened, root._addAccountPreviousId, root.elideStatus(combined))
+      if (outcome.returnTo !== "") root.returnToPreviousAccount()
+      else root._addAccountPreviousId = ""
+      if (Model.isAccessDenied(outcome.error)) {
+        root.reportCommandError(outcome.error, "")
+      } else {
+        root.lastError = outcome.error
+        root.actionStatus = outcome.status
+        if (outcome.status !== "") actionStatusTimer.restart()
+      }
+      // A fresh login lands on a new profile and makes it the active one, so
+      // don't sit behind the accounts throttle waiting to notice.
+      root._lastAccountsRefreshMs = 0
+      delayedRefresh.restart()
+    }
+  }
+
+  Process {
+    id: removeProcess
+    running: false
+    command: []
+    stdout: StdioCollector { id: removeStdout; waitForEnd: true; onStreamFinished: root._removeOutput = text }
+    stderr: StdioCollector { id: removeStderr; waitForEnd: true; onStreamFinished: root._removeError = text }
+    onExited: function(exitCode) {
+      var stdout = String(removeStdout.text || root._removeOutput || "")
+      var stderr = String(removeStderr.text || root._removeError || "")
+      if (exitCode !== 0) {
+        root.reportCommandError(stderr || stdout, "Could not remove the connection")
+      } else {
+        root.lastError = ""
+        root.actionStatus = ""
+        root._lastAccountsRefreshMs = 0
+      }
+      root.removingAccountId = ""
       delayedRefresh.restart()
     }
   }
@@ -599,9 +858,7 @@ Item {
       var stdout = String(exitNodeStdout.text || root._exitNodeOutput || "")
       var stderr = String(exitNodeStderr.text || root._exitNodeError || "")
       if (exitCode !== 0) {
-        root.lastError = elideStatus(stderr || stdout || "Exit node selection failed")
-        root.actionStatus = root.lastError
-        actionStatusTimer.restart()
+        root.reportCommandError(stderr || stdout, "Exit node selection failed")
       } else {
         root.lastError = ""
         root.actionStatus = ""
@@ -620,7 +877,14 @@ Item {
     onExited: function(exitCode) {
       var stdout = String(operatorStdout.text || root._operatorOutput || "")
       var stderr = String(operatorStderr.text || root._operatorError || "")
-      if (exitCode !== 0) {
+      // pkexec exits 126 when the dialog was dismissed. Declining to authorize
+      // is an answer rather than a failure, so it leaves nothing behind; 127
+      // and the rest are real errors and still get reported.
+      if (exitCode === 126) {
+        root.stopConnecting()
+        root.lastError = ""
+        root.actionStatus = ""
+      } else if (exitCode !== 0) {
         root.lastError = elideStatus(stderr || stdout || "Tailscale authorization failed")
         root.actionStatus = root.lastError
         actionStatusTimer.restart()
@@ -630,6 +894,7 @@ Item {
         root.actionStatus = "Tailscale operator authorized"
         actionStatusTimer.restart()
         root._lastAccountsRefreshMs = 0
+        root.continueConnecting()
       }
       delayedRefresh.restart()
     }

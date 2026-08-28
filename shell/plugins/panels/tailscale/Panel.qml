@@ -5,6 +5,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import "Model.js" as Model
 
 Panel {
   id: root
@@ -41,7 +42,10 @@ Panel {
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
-  readonly property bool showConnections: tailscale.accounts.length > 1 || tailscale.accountsAccessDenied
+  property string removeArmedId: ""
+  property bool addArmed: false
+  readonly property var connections: displayConnections()
+  readonly property bool showConnections: connections.length > 1 || tailscale.accountsAccessDenied
   readonly property bool showPeers: tailscale.active && tailscale.peers.length > 0
   readonly property var recentMullvadRegions: settings.recentMullvadRegions instanceof Array ? settings.recentMullvadRegions : (settings.recentMullvadCountries instanceof Array ? settings.recentMullvadCountries : [])
   readonly property var recentMullvadExitNodes: recentMullvadNodes()
@@ -78,6 +82,12 @@ Panel {
     for (var j = 0; j < recentMullvadExitNodes.length; j++) nodes.push(recentMullvadExitNodes[j])
     if (tailscale.mullvadRegions.length > 0) nodes.push({ id: "mullvad:add", AddMullvad: true, DisplayName: "Choose Mullvad region" })
     return nodes
+  }
+
+  // Switching tailnets is only reachable once a second profile exists, and the
+  // CLI was the only thing that could create one.
+  function displayConnections() {
+    return Model.connectionRows(tailscale.accounts, tailscale.installed && tailscale.active && !tailscale.accountsAccessDenied)
   }
 
   function recentMullvadNodes() {
@@ -173,37 +183,105 @@ Panel {
   }
 
   function selectedAccount() {
-    if (tailscale.accounts.length === 0) return null
-    return tailscale.accounts[Math.max(0, Math.min(accountIndex, tailscale.accounts.length - 1))]
+    if (connections.length === 0) return null
+    return connections[Math.max(0, Math.min(accountIndex, connections.length - 1))]
+  }
+
+  // Removing the connection in use would strand the machine, so the panel
+  // only offers it on the others; the CLI still covers the general case.
+  function canRemoveAccount(account) {
+    return !!account && account.AddAccount !== true && account.selected !== true && String(account.id || "") !== ""
+  }
+
+  function armRemoval(account) {
+    if (!canRemoveAccount(account)) return
+    removeArmedId = String(account.id || "")
+  }
+
+  function disarmRemoval() {
+    removeArmedId = ""
+    addArmed = false
+  }
+
+  function confirmRemoval(account) {
+    if (!canRemoveAccount(account)) return
+    tailscale.removeAccount(account.id)
+    removeArmedId = ""
+  }
+
+  function toggleRemoval() {
+    if (focusSection !== "accounts") return
+    var account = selectedAccount()
+    if (!canRemoveAccount(account)) return
+    if (removeArmedId === String(account.id || "")) confirmRemoval(account)
+    else armRemoval(account)
+  }
+
+  function chooseConnection(account) {
+    if (!account) return
+    // A login owns the daemon's pending registration until it finishes, so no
+    // row starts anything beside it. Cancelling goes straight to the service.
+    if (tailscale.addingAccount) return
+    if (account.AddAccount === true) {
+      removeArmedId = ""
+      // Adding signs this machine out of the tailnet it is on until the
+      // browser half finishes, so it asks before it does that.
+      if (!addArmed) {
+        addArmed = true
+        return
+      }
+      addArmed = false
+      tailscale.addAccount()
+      return
+    }
+    // A row waiting on its confirmation takes the activation, so the second
+    // press finishes what the first one asked for.
+    if (removeArmedId === String(account.id || "")) {
+      confirmRemoval(account)
+      return
+    }
+    disarmRemoval()
+    tailscale.switchAccount(account.id)
   }
 
   function ensureCursor() {
+    if (removeArmedId !== "") {
+      var stillOffered = false
+      for (var c = 0; c < connections.length; c++) {
+        if (canRemoveAccount(connections[c]) && String(connections[c].id || "") === removeArmedId) {
+          stillOffered = true
+          break
+        }
+      }
+      if (!stillOffered) removeArmedId = ""
+    }
     if (headerIndex < 0) headerIndex = 0
     if (headerIndex > 0) headerIndex = 0
-    if (accountIndex >= tailscale.accounts.length) accountIndex = Math.max(0, tailscale.accounts.length - 1)
+    if (accountIndex >= root.connections.length) accountIndex = Math.max(0, root.connections.length - 1)
     if (peerIndex >= tailscale.peers.length) peerIndex = Math.max(0, tailscale.peers.length - 1)
     if (exitNodeIndex >= exitNodes.length) exitNodeIndex = Math.max(0, exitNodes.length - 1)
     if (mullvadRegionIndex >= filteredMullvadRegions.length) mullvadRegionIndex = Math.max(0, filteredMullvadRegions.length - 1)
-    if (focusSection === "auth" && !tailscale.accountsAccessDenied) focusSection = tailscale.accounts.length > 1 ? "accounts" : (showExitNodes ? "exitNodes" : (showPeers ? "peers" : "header"))
-    if (focusSection === "accounts" && tailscale.accounts.length <= 1) focusSection = tailscale.accountsAccessDenied ? "auth" : (showExitNodes ? "exitNodes" : (showPeers ? "peers" : "header"))
-    if (focusSection === "peers" && !showPeers) focusSection = showExitNodes ? "exitNodes" : (tailscale.accountsAccessDenied ? "auth" : (tailscale.accounts.length > 1 ? "accounts" : "header"))
-    if (focusSection === "exitNodes" && !showExitNodes) focusSection = showPeers ? "peers" : (tailscale.accountsAccessDenied ? "auth" : (tailscale.accounts.length > 1 ? "accounts" : "header"))
+    if (focusSection === "auth" && !tailscale.accountsAccessDenied) focusSection = root.connections.length > 1 ? "accounts" : (showExitNodes ? "exitNodes" : (showPeers ? "peers" : "header"))
+    if (focusSection === "accounts" && root.connections.length <= 1) focusSection = tailscale.accountsAccessDenied ? "auth" : (showExitNodes ? "exitNodes" : (showPeers ? "peers" : "header"))
+    if (focusSection === "peers" && !showPeers) focusSection = showExitNodes ? "exitNodes" : (tailscale.accountsAccessDenied ? "auth" : (root.connections.length > 1 ? "accounts" : "header"))
+    if (focusSection === "exitNodes" && !showExitNodes) focusSection = showPeers ? "peers" : (tailscale.accountsAccessDenied ? "auth" : (root.connections.length > 1 ? "accounts" : "header"))
   }
 
   function moveCursor(dx, dy) {
     cursorActive = true
+    disarmRemoval()
     ensureCursor()
     if (dy !== 0) {
       if (focusSection === "header") {
         if (dy > 0) {
           if (tailscale.accountsAccessDenied) focusSection = "auth"
-          else if (tailscale.accounts.length > 1) focusSection = "accounts"
+          else if (root.connections.length > 1) focusSection = "accounts"
           else if (showExitNodes) focusSection = "exitNodes"
           else if (showPeers) focusSection = "peers"
         }
       } else if (focusSection === "auth") {
         if (dy < 0) focusSection = "header"
-        else if (tailscale.accounts.length > 1) focusSection = "accounts"
+        else if (root.connections.length > 1) focusSection = "accounts"
         else if (showExitNodes) focusSection = "exitNodes"
         else if (showPeers) focusSection = "peers"
       } else if (focusSection === "accounts") {
@@ -211,20 +289,20 @@ Panel {
           if (accountIndex <= 0) focusSection = tailscale.accountsAccessDenied ? "auth" : "header"
           else accountIndex--
         } else {
-          if (accountIndex < tailscale.accounts.length - 1) accountIndex++
+          if (accountIndex < root.connections.length - 1) accountIndex++
           else if (showExitNodes) focusSection = "exitNodes"
           else if (showPeers) focusSection = "peers"
         }
       } else if (focusSection === "peers") {
         if (dy < 0) {
-          if (peerIndex <= 0) focusSection = showExitNodes ? "exitNodes" : (tailscale.accounts.length > 1 ? "accounts" : (tailscale.accountsAccessDenied ? "auth" : "header"))
+          if (peerIndex <= 0) focusSection = showExitNodes ? "exitNodes" : (root.connections.length > 1 ? "accounts" : (tailscale.accountsAccessDenied ? "auth" : "header"))
           else peerIndex--
         } else if (peerIndex < tailscale.peers.length - 1) {
           peerIndex++
         }
       } else if (focusSection === "exitNodes") {
         if (dy < 0) {
-          if (exitNodeIndex <= 0) focusSection = tailscale.accounts.length > 1 ? "accounts" : (tailscale.accountsAccessDenied ? "auth" : "header")
+          if (exitNodeIndex <= 0) focusSection = root.connections.length > 1 ? "accounts" : (tailscale.accountsAccessDenied ? "auth" : "header")
           else exitNodeIndex--
         } else if (exitNodeIndex < exitNodes.length - 1) {
           exitNodeIndex++
@@ -242,10 +320,10 @@ Panel {
     if (focusSection === "header") {
       tailscale.toggleTailscale()
     } else if (focusSection === "auth") {
-      tailscale.authorizeTailscaleOperator()
+      tailscale.startConnecting()
     } else if (focusSection === "accounts") {
       var account = selectedAccount()
-      if (account) tailscale.switchAccount(account.id)
+      if (account) chooseConnection(account)
     } else if (focusSection === "peers") {
       openSelectedPeerCopyMenu()
     } else if (focusSection === "exitNodes") {
@@ -419,7 +497,10 @@ Panel {
         root.moveCursor(dx, dy)
       }
       onActivateRequested: if (root.cursorActive) root.activateCursor()
-      onCloseRequested: root.close()
+      onCloseRequested: {
+        if (root.removeArmedId !== "" || root.addArmed) root.disarmRemoval()
+        else root.close()
+      }
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
         if (t === "t" || t === "T") tailscale.toggleTailscale()
@@ -427,6 +508,7 @@ Panel {
         else if (t === "n" || t === "N") tailscale.copyPeerName(root.selectedPeer())
         else if (t === "d" || t === "D") tailscale.copyPeerDnsName(root.selectedPeer())
         else if (t === "s" || t === "S") root.sendPeerFile(root.selectedPeer())
+        else if (t === "x" || t === "X") root.toggleRemoval()
       }
 
       Flickable {
@@ -549,7 +631,7 @@ Panel {
             }
 
             Repeater {
-              model: tailscale.accounts
+              model: root.connections
               AccountRow {
                 required property var modelData
                 required property int index
@@ -680,16 +762,6 @@ Panel {
               fontFamily: root.fontFamily
             }
 
-            Text {
-              visible: tailscale.installed && tailscale.active && tailscale.peers.length === 0
-              width: parent.width
-              text: "No machines found on this tailnet."
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.body
-              horizontalAlignment: Text.AlignHCenter
-            }
-
             Column {
               id: peerColumn
               visible: root.showPeers
@@ -750,7 +822,7 @@ Panel {
       cursorShape: tailscale.busy ? Qt.ArrowCursor : Qt.PointingHandCursor
       enabled: !tailscale.busy
       onEntered: root.setAuthCursor()
-      onClicked: tailscale.authorizeTailscaleOperator()
+      onClicked: tailscale.startConnecting()
     }
 
     RowLayout {
@@ -800,19 +872,52 @@ Panel {
     id: accountRow
     property var account: null
     property int rowIndex: 0
-    readonly property bool selectedAccount: account && account.selected === true
-    readonly property bool switchingAccount: account && tailscale.switchingAccountId === String(account.id || "")
-    readonly property string accountText: account ? tailscale.accountLabel(account) : "Account"
+    readonly property string accountId: account ? String(account.id || "") : ""
+    readonly property bool addAccount: account && account.AddAccount === true
+    readonly property bool selectedAccount: !addAccount && account && account.selected === true
+    readonly property bool switchingAccount: !addAccount && accountId !== "" && tailscale.switchingAccountId === accountId
+    readonly property bool addingAccount: addAccount && tailscale.addingAccount
+    readonly property bool removingAccount: !addAccount && accountId !== "" && tailscale.removingAccountId === accountId
+    readonly property bool removable: root.canRemoveAccount(account)
+    readonly property bool armed: removable && root.removeArmedId === accountId
+    readonly property bool addArmed: addAccount && root.addArmed && !addingAccount
+    // The row is the thing being clicked, so it carries the progress rather
+    // than leaving it to the status line under the panel.
+    readonly property bool working: switchingAccount || addingAccount || removingAccount
+    readonly property string accountText: {
+      if (addAccount) {
+        if (addingAccount) return "Opening browser…"
+        if (addArmed) {
+          var current = tailscale.selectedAccountLabel
+          return current === "" ? "Signs this machine out — confirm?" : "Signs out of " + current + " — confirm?"
+        }
+        return "Add account…"
+      }
+      if (!account) return "Account"
+      var label = tailscale.accountLabel(account)
+      if (removingAccount) return "Removing " + label + "…"
+      if (armed) return "Remove " + label + "?"
+      return label
+    }
 
     hasCursor: root.cursorActive && root.focusSection === "accounts" && root.accountIndex === rowIndex
-    current: selectedAccount
+    current: selectedAccount || armed || addArmed
     foreground: root.foreground
     fill: root.hoverFill
     currentFill: root.selectedFill
 
     implicitHeight: accountInner.implicitHeight + Style.spacing.xl
 
-    Row {
+    MouseArea {
+      id: accountMouse
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onEntered: root.setAccountCursor(accountRow.rowIndex)
+      onClicked: root.chooseConnection(accountRow.account)
+    }
+
+    RowLayout {
       id: accountInner
       anchors.left: parent.left
       anchors.right: parent.right
@@ -823,17 +928,17 @@ Panel {
 
       Text {
         id: accountGlyph
-        text: ""
-        color: accountRow.selectedAccount || accountRow.switchingAccount ? root.foreground : root.dim
+        text: accountRow.addAccount ? "+" : ""
+        color: accountRow.selectedAccount || accountRow.working || accountRow.addAccount ? root.foreground : root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
-        width: Style.space(22)
         horizontalAlignment: Text.AlignHCenter
-        anchors.verticalCenter: parent.verticalCenter
-        opacity: accountRow.switchingAccount ? 0.45 : 1.0
+        Layout.preferredWidth: Style.space(22)
+        Layout.alignment: Qt.AlignVCenter
+        opacity: accountRow.working ? 0.45 : 1.0
 
         SequentialAnimation on opacity {
-          running: accountRow.switchingAccount
+          running: accountRow.working
           NumberAnimation { to: 1.0; duration: 420; easing.type: Easing.InOutQuad }
           NumberAnimation { to: 0.45; duration: 420; easing.type: Easing.InOutQuad }
           loops: Animation.Infinite
@@ -841,23 +946,43 @@ Panel {
       }
 
       Text {
+        Layout.fillWidth: true
+        Layout.alignment: Qt.AlignVCenter
         text: accountRow.accountText
-        color: root.foreground
+        color: accountRow.armed || accountRow.addArmed ? root.urgent : root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
         font.bold: accountRow.selectedAccount
         elide: Text.ElideRight
-        width: parent.width - Style.space(22) - Style.space(8)
-        anchors.verticalCenter: parent.verticalCenter
       }
-    }
 
-    MouseArea {
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onEntered: root.setAccountCursor(accountRow.rowIndex)
-      onClicked: if (accountRow.account) tailscale.switchAccount(accountRow.account.id)
+      PanelActionButton {
+        // Removing, confirming an add, and bailing out of one in progress all
+        // land on the same trailing control, which stays in the layout whether
+        // or not it shows: the button is taller than the row's text, so
+        // appearing on hover grew the row and re-elided the label under the
+        // pointer. Disabled, it passes hover and clicks through to the row.
+        readonly property bool shown: accountRow.addingAccount || accountRow.addArmed
+                 || (accountRow.removable && !accountRow.removingAccount
+                     && (accountRow.armed || accountRow.hasCursor || accountMouse.containsMouse))
+        opacity: shown ? 1 : 0
+        enabled: shown
+
+        Behavior on opacity { NumberAnimation { duration: 90; easing.type: Easing.OutQuad } }
+        iconText: accountRow.addingAccount ? "󰅙" : (accountRow.armed || accountRow.addArmed ? "󰄬" : "󰅙")
+        tooltipText: accountRow.addingAccount ? "Cancel and go back"
+                     : (accountRow.addArmed ? "Sign out and add a tailnet"
+                        : (accountRow.armed ? "Confirm removal" : "Remove from this machine"))
+        foreground: accountRow.armed || accountRow.addArmed || accountRow.addingAccount ? root.urgent : root.foreground
+        fontFamily: root.fontFamily
+        Layout.alignment: Qt.AlignVCenter
+        onClicked: {
+          if (accountRow.addingAccount) tailscale.cancelAddAccount()
+          else if (accountRow.addArmed) root.chooseConnection(accountRow.account)
+          else if (accountRow.armed) root.confirmRemoval(accountRow.account)
+          else root.armRemoval(accountRow.account)
+        }
+      }
     }
   }
 

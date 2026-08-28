@@ -8,6 +8,9 @@ Native Omarchy bar widget for Tailscale.
 - Left click opens a keyboard-friendly panel
 - Right click toggles Tailscale on/off
 - Switch between available Tailscale connections when multiple are available
+- Add another tailnet, so a machine with a single connection has one to switch to,
+  after confirming the sign-out it costs
+- Remove a tailnet you no longer use, with an inline confirmation
 - Browse machines from `tailscale status --json`
 - Copy a machine's Tailscale IP, host name, or DNS name
 - Send files to a machine with Taildrop, when the tailnet allows file sharing
@@ -22,9 +25,33 @@ Inside the panel:
 - `n`: copy selected peer name
 - `d`: copy selected peer DNS name
 - `s`: send files to selected peer
+- `x`: remove the selected connection, press again to confirm
 - `t`: toggle Tailscale
 - `r`: refresh status
 - `esc`: close
+
+The machines list carries only peers that are online, and shows nothing when
+there are none -- an empty section says that on its own, and a machine list is
+one of the things this panel is worst placed to be certain about. While it is
+empty and the machine is up, the panel polls quickly rather than waiting out
+the refresh interval, so the list appears about as fast as the tailnet answers.
+
+Adding a tailnet runs `tailscale login`, which makes the new profile current
+before the browser half finishes -- the machine leaves the tailnet it is on the
+moment it starts. The row asks before doing that, offers a cancel while it runs,
+and returns to the previous connection if the login never lands. The profile is
+created with the same operator as the install sets, so the way back never needs
+sudo.
+
+Removing a connection drops it from this machine only. The account itself is
+untouched, and logging in again brings it back. The connection in use is never
+offered for removal, so a removal cannot strand the machine mid-session.
+
+Connecting can take three things in order: authorizing the operator, signing
+in, and coming up. The panel runs whichever are outstanding rather than
+stopping after each, so connecting is one action however much of the sequence
+is left. It only ever starts from someone asking to connect, never on its own,
+and stops on the first step that fails or a dismissed prompt.
 
 ## Requirements
 

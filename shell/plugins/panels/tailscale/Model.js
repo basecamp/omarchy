@@ -59,9 +59,17 @@ function osIcon(os) {
 
 function accountLabel(account) {
   if (!account) return "Unknown account"
-  if (account.nickname) return String(account.nickname)
-  if (account.tailnet) return String(account.tailnet)
-  if (account.account) return String(account.account)
+  var nickname = String(account.nickname || "")
+  var tailnet = String(account.tailnet || "")
+  var login = String(account.account || "")
+  // Tailscale names a profile after the login it was created from unless one
+  // is set explicitly, so a nickname only carries intent once it differs from
+  // that login. Otherwise the tailnet's display name -- the one set in the
+  // admin console, and what `tailscale switch --list` prints -- says more
+  // about which tailnet this row is.
+  if (nickname !== "" && nickname !== login) return nickname
+  if (tailnet !== "") return tailnet
+  if (login !== "") return login
   return String(account.id || "Unknown account")
 }
 
@@ -270,6 +278,70 @@ function parseStatus(raw) {
   }
 }
 
+// The panel offers adding a tailnet as a row in the connection list, so a
+// machine with a single profile has something to switch from. The exit node
+// list carries its Mullvad picker the same way.
+function connectionRows(accounts, canAdd) {
+  var rows = []
+  var list = accounts instanceof Array ? accounts : []
+  for (var i = 0; i < list.length; i++) rows.push(list[i])
+  if (canAdd === true) rows.push({ id: "account:add", AddAccount: true })
+  return rows
+}
+
+// What to do once the login that adds a tailnet exits. tailscale login makes
+// the new profile current before the browser half finishes, so anything other
+// than a clean exit leaves the machine on a profile it never asked to be on
+// and the previous connection has to be put back.
+function addAccountOutcome(exitCode, urlOpened, previousId, output) {
+  if (exitCode === 0) return { returnTo: "", status: "", error: "" }
+
+  var previous = String(previousId || "")
+  // Having opened the browser says the login was reachable and simply was not
+  // finished, which is a plain outcome rather than a failure worth shouting.
+  if (urlOpened === true) {
+    return { returnTo: previous, status: "Login not completed — back on the previous connection", error: "" }
+  }
+
+  var message = String(output || "").trim()
+  if (message === "") message = "tailscale login failed"
+  return { returnTo: previous, status: message, error: message }
+}
+
+// tailscale prints a version skew warning on every invocation whenever the
+// client and the daemon differ, so it arrives in front of whatever actually
+// went wrong and crowds the real message out of the panel's one status line.
+function commandMessage(text) {
+  var lines = String(text || "").split("\n")
+  var kept = []
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].replace(/\s+/g, " ").trim()
+    if (line === "") continue
+    if (/^Warning: client version .*tailscaled server version/.test(line)) continue
+    kept.push(line)
+  }
+  return kept.join(" ")
+}
+
+// Being told to go and use sudo is not something to read out: the panel can
+// offer to grant the operator itself.
+function isAccessDenied(text) {
+  return /access denied/i.test(String(text || ""))
+}
+
+// Getting connected can take three things in order -- authorize the operator,
+// sign in, come up -- and the panel knows which are still outstanding. Naming
+// the next one lets it run the sequence instead of making someone rediscover
+// the next step after finishing each.
+function nextConnectStep(state) {
+  var s = state || {}
+  if (s.installed !== true) return "none"
+  if (s.accessDenied === true) return "authorize"
+  if (s.needsLogin === true) return "login"
+  if (s.running !== true) return "up"
+  return "done"
+}
+
 function parseAccounts(raw) {
   var text = String(raw || "").trim()
   if (text === "") return { accounts: [], selectedAccountId: "", selectedAccountLabel: "" }
@@ -320,6 +392,11 @@ if (typeof module !== "undefined") {
     mullvadRegionOptions: mullvadRegionOptions,
     mullvadCountryOptions: mullvadCountryOptions,
     parseStatus: parseStatus,
-    parseAccounts: parseAccounts
+    parseAccounts: parseAccounts,
+    connectionRows: connectionRows,
+    addAccountOutcome: addAccountOutcome,
+    commandMessage: commandMessage,
+    isAccessDenied: isAccessDenied,
+    nextConnectStep: nextConnectStep
   }
 }
