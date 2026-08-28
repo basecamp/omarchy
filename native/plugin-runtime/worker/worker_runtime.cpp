@@ -283,6 +283,8 @@ struct WorkerRuntime::Impl {
                               QLibraryInfo::path(QLibraryInfo::QmlImportsPath),
                               QStringLiteral("qrc:/qt/qml")});
     window.setColor(Qt::transparent);
+    render_root.setParentItem(window.contentItem());
+    render_root.setTransformOrigin(QQuickItem::TopLeft);
     QObject::connect(&render_control, &QQuickRenderControl::renderRequested,
                      [this] { dirty = true; });
     QObject::connect(&render_control, &QQuickRenderControl::sceneChanged,
@@ -296,6 +298,7 @@ struct WorkerRuntime::Impl {
   [[maybe_unused]] bool software_backend;
   QQuickRenderControl render_control;
   QQuickWindow window;
+  QQuickItem render_root;
   QPointingDevice mouse_device{QStringLiteral("omarchy-plugin-mouse"),
                                -1001,
                                QInputDevice::DeviceType::Mouse,
@@ -326,6 +329,7 @@ struct WorkerRuntime::Impl {
   std::optional<surface::FocusGate> focus_gate;
   Mapping mapping;
   QImage image;
+  qreal device_pixel_ratio = 1.0;
   std::array<std::uint64_t, surface::kSlotCount> slot_sequences{};
   std::uint64_t frame_sequence = 0;
   std::uint32_t next_slot = 0;
@@ -521,18 +525,20 @@ WorkerRuntime::allocate(const surface::TrustedAllocation &allocation,
     return failure(RuntimeFailure::allocation_invalid,
                    "QImage layout does not match trusted allocation");
   }
-  implementation_->image.setDevicePixelRatio(
+  implementation_->device_pixel_ratio =
       static_cast<qreal>(allocation.dpr_numerator) /
-      static_cast<qreal>(allocation.dpr_denominator));
+      static_cast<qreal>(allocation.dpr_denominator);
+  const auto device_pixel_ratio = implementation_->device_pixel_ratio;
   implementation_->window.setGeometry(
-      0, 0, static_cast<int>(allocation.logical_width),
-      static_cast<int>(allocation.logical_height));
-  implementation_->root_item->setParentItem(
-      implementation_->window.contentItem());
+      0, 0, static_cast<int>(allocation.pixel_width),
+      static_cast<int>(allocation.pixel_height));
+  implementation_->render_root.setSize(
+      QSizeF(allocation.logical_width, allocation.logical_height));
+  implementation_->render_root.setScale(device_pixel_ratio);
+  implementation_->root_item->setParentItem(&implementation_->render_root);
   implementation_->root_item->setSize(
       QSizeF(allocation.logical_width, allocation.logical_height));
   auto target = QQuickRenderTarget::fromPaintDevice(&implementation_->image);
-  target.setDevicePixelRatio(implementation_->image.devicePixelRatio());
   implementation_->window.setRenderTarget(target);
   if (!state->apply(surface::SurfaceTransition::activate)) {
     implementation_->mapping.reset();
@@ -582,6 +588,7 @@ RuntimeResult WorkerRuntime::release(surface::SurfaceKey key) {
   implementation_->root_item->setParentItem(nullptr);
   implementation_->mapping.reset();
   implementation_->image = {};
+  implementation_->device_pixel_ratio = 1.0;
   implementation_->input_gate.reset();
   implementation_->focus_gate.reset();
   implementation_->state.reset();
@@ -619,8 +626,10 @@ RuntimeResult WorkerRuntime::input(const surface::InputEvent &event) {
       surface::InputValidation::accepted)
     return failure(RuntimeFailure::invalid_input,
                    "input failed the monotonic surface/focus gate");
-  const QPointF point(static_cast<qreal>(event.x_q16) / 65536.0,
-                      static_cast<qreal>(event.y_q16) / 65536.0);
+  const auto device_pixel_ratio = implementation_->device_pixel_ratio;
+  const QPointF point(
+      static_cast<qreal>(event.x_q16) / 65536.0 * device_pixel_ratio,
+      static_cast<qreal>(event.y_q16) / 65536.0 * device_pixel_ratio);
   if (event.kind == surface::InputKind::pointer_motion) {
     QMouseEvent translated(QEvent::MouseMove, point, point, point, Qt::NoButton,
                            implementation_->mouse_buttons, Qt::NoModifier,

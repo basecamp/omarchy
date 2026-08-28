@@ -187,6 +187,46 @@ void render_and_input() {
   require(!runtime.allocated(), "released mapping remained allocated");
 }
 
+void device_pixel_ratio_scales_scene_pixels() {
+  worker::WorkerRuntime runtime(fixture("expressive"));
+  require(static_cast<bool>(runtime.load_manifest_entry()) &&
+              static_cast<bool>(runtime.select_software_profile(
+                  surface::software_profile_offer())),
+          "DPR scene did not load");
+  const auto page_size = sysconf(_SC_PAGESIZE);
+  require(page_size > 0, "page size unavailable for DPR scene");
+  const auto allocation =
+      surface::make_allocation({.id = 42, .generation = 10}, 64, 32, 128, 64, 2,
+                               1, static_cast<std::uint64_t>(page_size));
+  require(allocation.has_value(), "DPR allocation failed");
+  const int descriptor = static_cast<int>(
+      syscall(SYS_memfd_create, "worker-dpr-test", MFD_CLOEXEC));
+  require(descriptor >= 0 &&
+              ftruncate(descriptor,
+                        static_cast<off_t>(allocation->mapping_bytes)) == 0,
+          "DPR memfd failed");
+  Mapping mapping(descriptor,
+                  static_cast<std::size_t>(allocation->mapping_bytes));
+  const int worker_descriptor = fcntl(descriptor, F_DUPFD_CLOEXEC, 64);
+  close(descriptor);
+  require(worker_descriptor >= 0 && static_cast<bool>(runtime.allocate(
+                                        *allocation, worker_descriptor)),
+          "DPR allocation was rejected");
+  const auto published = runtime.render();
+  auto consumer = surface::FrameConsumer::create(*allocation);
+  require(published.has_value() && consumer.has_value() &&
+              consumer->consume(mapping.bytes(), published->ready) ==
+                  surface::ConsumeResult::accepted,
+          "DPR frame was not consumable");
+  const auto *frame = consumer->last_frame();
+  constexpr std::size_t sample_x = 100;
+  constexpr std::size_t sample_y = 50;
+  const auto alpha_offset = sample_y * allocation->stride + sample_x * 4 + 3;
+  require(frame != nullptr && alpha_offset < frame->pixels.size() &&
+              frame->pixels[alpha_offset] != std::byte{0},
+          "DPR 2 scene occupied only the logical-size corner of its buffer");
+}
+
 void hostile_loading() {
   require(!worker::safe_relative_qml_path("../Main.qml") &&
               !worker::safe_relative_qml_path("/plugin/Main.qml") &&
@@ -248,6 +288,7 @@ int main(int argc, char **argv) {
   try {
     QGuiApplication application(argc, argv);
     render_and_input();
+    device_pixel_ratio_scales_scene_pixels();
     hostile_loading();
     steady_state_denies_exec();
     std::cout << "plugin worker runtime: ok\n";
