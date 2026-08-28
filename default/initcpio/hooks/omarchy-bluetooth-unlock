@@ -5,7 +5,7 @@ run_hook() {
 
   mkdir -p /run/dbus /run/bluetooth
   dbus-daemon --system
-  /usr/lib/bluetooth/bluetoothd >/dev/null 2>&1 &
+/usr/lib/bluetooth/bluetoothd --nodetach >/dev/null 2>&1 &
   echo "$!" >/run/bluetooth/omarchy-bluetoothd.pid
 
   # Give udev and the adapter firmware a short head start. Do not block the
