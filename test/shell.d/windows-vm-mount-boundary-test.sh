@@ -119,6 +119,26 @@ if setpriv --reuid=1001 --regid=1001 --clear-groups cat "$EXPECTED_SHARED/shared
 fi
 pass "cross-filesystem symlink sources bind by identity and migrated 0700 leaves deny another account"
 
+# Existing production boundary components are never repaired in place when
+# their ownership or write permissions are unsafe. Both the preparation path
+# and the final pre-Docker guard must fail closed without disturbing the binds.
+chmod 0731 "$MOUNT_ROOT"
+with_vm_lock prepare_caller_mounts 2>/dev/null && fail "root repaired a group-writable mount boundary instead of rejecting it"
+mounts_ready 2>/dev/null && fail "final guard accepted a group-writable mount boundary"
+[[ $(command stat -Lc '%a' "$MOUNT_ROOT") == 731 ]] || fail "rejection unexpectedly changed the writable boundary"
+chmod 0711 "$MOUNT_ROOT"
+
+chown 1000:1000 "$USERS_DIR"
+with_vm_lock prepare_caller_mounts 2>/dev/null && fail "root repaired a caller-owned mount boundary instead of rejecting it"
+mounts_ready 2>/dev/null && fail "final guard accepted a caller-owned mount boundary"
+[[ $(command stat -Lc '%u' "$USERS_DIR") == 1000 ]] || fail "rejection unexpectedly changed the boundary owner"
+chown root:root "$USERS_DIR"
+
+[[ $(mount_layer_count "$EXPECTED_STORAGE") == 1 &&
+  $(mount_layer_count "$EXPECTED_SHARED") == 1 ]] || fail "boundary rejection changed the verified mount pair"
+mounts_ready || fail "restored production boundaries were rejected"
+pass "root rejects wrong-owned and group-writable production mount boundaries without mutation"
+
 expected_space=$(command df -P -- /home/storage-target | awk 'NR==2 {print int($4/1024/1024)}')
 actual_space=$(available_storage_gb)
 [[ $actual_space == "$expected_space" ]] || fail "disk-space helper did not measure the storage target filesystem"

@@ -183,6 +183,29 @@ resolve_caller
 [[ $(stat -Lc '%d:%i' "$EXPECTED_STORAGE") == $(stat -Lc '%d:%i' "$external_storage") ]] || fail "symlink target not pinned"
 pass "legitimate caller-owned symlinks remain in place"
 
+# Reproduce the original post-validation race at the last possible moment:
+# replace the familiar shared path with / only after the final guard returns,
+# inside the mocked Docker Compose invocation. Compose must still consume the
+# protected anchor bound to the inode that was validated earlier.
+raced_shared="$HOME/Windows.before-race"
+shared_id_before_race=$(stat -Lc '%d:%i' "$external_shared2")
+race_ran=0
+dc() {
+  [[ $1 == up && ${2:-} == -d ]] || return 1
+  mv -T -- "$HOME/Windows" "$raced_shared"
+  ln -s / "$HOME/Windows"
+  race_ran=1
+  [[ $(get_mount_source /shared) == "$EXPECTED_SHARED" ]] || return 1
+  [[ $(stat -Lc '%d:%i' "$EXPECTED_SHARED") == "$shared_id_before_race" ]] || return 1
+}
+__priv_up || fail "post-validation home-path swap changed the Docker mount source"
+(( race_ran == 1 )) || fail "post-validation race hook did not run"
+[[ -L $HOME/Windows && $(readlink "$HOME/Windows") == / ]] || fail "race did not replace the familiar shared path"
+rm "$HOME/Windows"
+mv -T -- "$raced_shared" "$HOME/Windows"
+unset -f dc
+pass "a post-validation path swap cannot redirect Docker away from the pinned shared inode"
+
 # Same-inode sources fail before mounting and close both descriptors.
 reset_case
 same="$TMPDIR/same-source"
