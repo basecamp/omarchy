@@ -40,6 +40,13 @@ public:
 
   void set_now(std::uint64_t now_seconds) { now_seconds_ = now_seconds; }
 
+  [[nodiscard]] bool
+  accepts(const launcher::LaunchIdentity &identity) const noexcept override {
+    return identity.plugin_id == binding_.plugin.view() &&
+           identity.revision_sha256 == binding_.revision.view() &&
+           identity.generation == binding_.generation;
+  }
+
   [[nodiscard]] bool dispatch(const omarchy::plugin::wire::PacketView &packet)
       override {
     if (dispatching_ || downstream_ == nullptr)

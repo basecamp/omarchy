@@ -181,6 +181,12 @@ public:
 class Dispatcher final : public action::BrokerDispatcher {
 public:
   explicit Dispatcher(runtime::AuditedBrokerRuntime &value) : runtime(value) {}
+  bool accepts(const launcher::LaunchIdentity &identity) const noexcept override {
+    const auto &binding = runtime.binding();
+    return identity.plugin_id == binding.plugin.view() &&
+           identity.revision_sha256 == binding.revision.view() &&
+           identity.generation == binding.generation;
+  }
   bool dispatch(const omarchy::plugin::wire::PacketView &packet) override {
     ++calls;
     result = runtime.dispatch(packet, 100);

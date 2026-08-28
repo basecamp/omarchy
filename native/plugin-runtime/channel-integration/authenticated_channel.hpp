@@ -38,6 +38,8 @@ enum class DispatchStatus : std::uint8_t {
 class BrokerDispatcher {
 public:
   virtual ~BrokerDispatcher() = default;
+  [[nodiscard]] virtual bool
+  accepts(const launcher::LaunchIdentity &identity) const noexcept = 0;
   [[nodiscard]] virtual bool dispatch(const wire::PacketView &packet) = 0;
 };
 

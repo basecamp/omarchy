@@ -108,6 +108,13 @@ OpenResult AuthenticatedBrokerChannel::open(
             .launch_failure = launcher::LaunchFailure::none,
             .detail = "launched process identity differs from trusted request"};
   }
+  if (!dispatcher->accepts(identity)) {
+    (void)launched.worker->terminate();
+    return {.channel = nullptr,
+            .failure = ChannelFailure::identity_mismatch,
+            .launch_failure = launcher::LaunchFailure::none,
+            .detail = "broker dispatcher rejects the launched identity"};
+  }
   if (!authority->is_current(identity)) {
     (void)launched.worker->terminate();
     return {.channel = nullptr,

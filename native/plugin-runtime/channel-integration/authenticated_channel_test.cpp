@@ -82,6 +82,11 @@ public:
 
 class Dispatcher final : public channel::BrokerDispatcher {
 public:
+  bool accepts(const launcher::LaunchIdentity &identity) const noexcept override {
+    return accept_identity && identity.plugin_id == "org.omarchy_d1" &&
+           identity.revision_sha256 == std::string(64, 'd') &&
+           identity.generation == 47;
+  }
   bool dispatch(const omarchy::plugin::wire::PacketView &packet) override {
     ++calls;
     last_generation = packet.header.launch_generation;
@@ -89,10 +94,16 @@ public:
   }
   unsigned calls = 0;
   std::uint64_t last_generation = 0;
+  bool accept_identity = true;
 };
 
 class ThrowingDispatcher final : public channel::BrokerDispatcher {
 public:
+  bool accepts(const launcher::LaunchIdentity &identity) const noexcept override {
+    return identity.plugin_id == "org.omarchy_d1" &&
+           identity.revision_sha256 == std::string(64, 'd') &&
+           identity.generation == 47;
+  }
   bool dispatch(const omarchy::plugin::wire::PacketView &) override {
     ++calls;
     throw 7;
@@ -267,6 +278,21 @@ struct Session {
 
 void fake_suite() {
   transport_suite();
+  {
+    Fixture fixture("valid");
+    auto scope = std::make_shared<Scope>();
+    auto dispatcher = std::make_shared<Dispatcher>();
+    dispatcher->accept_identity = false;
+    auto authority = std::make_shared<Authority>();
+    auto supervisor = launcher::Supervisor::forTestOnly(
+        FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, scope);
+    auto opened = channel::AuthenticatedBrokerChannel::open(
+        supervisor, fixture.request(), dispatcher, authority);
+    require(!opened &&
+                opened.failure == channel::ChannelFailure::identity_mismatch &&
+                dispatcher->calls == 0 && scope->removes == 1,
+            "mismatched broker dispatcher retained cross-plugin authority");
+  }
   {
     Session session("valid", FAKE_BWRAP_PATH);
     require(!session.opened.channel->negotiate(std::chrono::hours(24)) &&

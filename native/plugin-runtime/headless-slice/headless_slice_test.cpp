@@ -131,6 +131,9 @@ public:
 
 class NoAuthorityDispatcher final : public channel::BrokerDispatcher {
 public:
+  bool accepts(const launcher::LaunchIdentity &) const noexcept override {
+    return false;
+  }
   bool dispatch(const omarchy::plugin::wire::PacketView &packet) override {
     ++calls;
     generation = packet.header.launch_generation;
