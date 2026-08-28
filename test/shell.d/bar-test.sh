@@ -216,6 +216,26 @@ assert(
   'shell toggles a bar panel by its position over IPC'
 )
 
+// A required-property failure — or an engine where Loader.errorString isn't
+// callable — must not stop failedBarId from being recorded. That assignment
+// is what lets the bar fall back to omarchy.bar; losing it silently
+// recreates the blank-bar failure from a cloned/third-party bar plugin.
+const pluginBarLoaderBlock = shellSource.slice(shellSource.indexOf('id: pluginBarLoader'))
+const pluginBarLoaderBody = pluginBarLoaderBlock.slice(0, pluginBarLoaderBlock.indexOf('\n  }\n'))
+
+assert(
+  /typeof errorString !== ["']undefined["']/.test(pluginBarLoaderBody),
+  'the bar loader reads errorString through a typeof guard instead of a bare reference'
+)
+assert(
+  /shell\.failedBarId = shell\.activeBarId/.test(pluginBarLoaderBody),
+  'the bar loader records failedBarId on a Loader.Error status'
+)
+assert(
+  !/try\s*\{[\s\S]*shell\.failedBarId = shell\.activeBarId[\s\S]*?\}\s*catch/.test(pluginBarLoaderBody),
+  'failedBarId assignment sits outside the errorString try/catch, so it always runs even if reading errorString throws'
+)
+
 const clockSlot = { id: 'clock' }
 const traySlot = { id: 'tray' }
 const horizontalTargets = [
