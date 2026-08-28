@@ -19,7 +19,13 @@ BarWidget {
   property bool popupOpen: false
 
   function close() { popupOpen = false }
-  property real maxLabelWidth: 180
+
+  // Tunables from this widget's inline shell.json entry. Defaults reproduce the
+  // previous hardcoded behaviour, so an entry without them is unchanged.
+  readonly property bool scrollLabel: setting("scroll", true)
+  readonly property string separator: setting("separator", "  ·  ")
+  readonly property real iconGap: setting("iconGap", 6)
+  property real maxLabelWidth: setting("maxLabelWidth", 180)
 
   visible: hasMedia
   implicitWidth: hasMedia ? row.implicitWidth + Style.space(14) : 0
@@ -28,7 +34,7 @@ BarWidget {
   Row {
     id: row
     anchors.centerIn: parent
-    spacing: Style.space(6)
+    spacing: Style.space(root.iconGap)
 
     Text {
       id: glyph
@@ -45,15 +51,19 @@ BarWidget {
 
     Item {
       id: scrollClip
-      width: Math.min(root.maxLabelWidth, labelText.implicitWidth)
+      width: root.scrollLabel
+        ? Math.min(root.maxLabelWidth, labelText.implicitWidth)
+        : staticLabel.implicitWidth
       height: glyph.height
       clip: true
       anchors.verticalCenter: parent.verticalCenter
       visible: !root.bar.vertical && root.title !== ""
 
+      // Scrolling mode: title and artist as one string, slid horizontally.
       Text {
         id: labelText
-        text: root.title + (root.artist ? "  ·  " + root.artist : "")
+        visible: root.scrollLabel
+        text: root.title + (root.artist ? root.separator + root.artist : "")
         color: root.bar.barForeground
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.body
@@ -63,12 +73,66 @@ BarWidget {
 
         NumberAnimation on x {
           id: scrollAnim
-          running: labelText.needsScroll && !root.popupOpen && !root.bar.vertical
+          running: root.scrollLabel && labelText.needsScroll && !root.popupOpen && !root.bar.vertical
           loops: Animation.Infinite
           duration: Math.max(6000, labelText.implicitWidth * 25)
           from: scrollClip.width
           to: -labelText.implicitWidth
           easing.type: Easing.Linear
+        }
+      }
+
+      // Static mode: title and artist elide against their own share of the
+      // budget, so a long title truncates instead of pushing the artist out of
+      // the label entirely. The shares are constants rather than being derived
+      // from the text metrics, which keeps each label's width binding clear of
+      // its own implicitWidth.
+      Row {
+        id: staticLabel
+        visible: !root.scrollLabel
+        spacing: 0
+        anchors.verticalCenter: parent.verticalCenter
+
+        Item {
+          width: Math.min(root.maxLabelWidth * 0.65, titleText.implicitWidth)
+          height: titleText.implicitHeight
+          clip: true
+
+          Text {
+            id: titleText
+            text: root.title
+            width: parent.width
+            elide: Text.ElideRight
+            color: root.bar.barForeground
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.body
+          }
+        }
+
+        Text {
+          id: sepText
+          visible: root.artist !== ""
+          text: root.separator
+          color: root.bar.barForeground
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.body
+        }
+
+        Item {
+          visible: root.artist !== ""
+          width: Math.min(root.maxLabelWidth * 0.35, artistText.implicitWidth)
+          height: artistText.implicitHeight
+          clip: true
+
+          Text {
+            id: artistText
+            text: root.artist
+            width: parent.width
+            elide: Text.ElideRight
+            color: root.bar.barForeground
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.body
+          }
         }
       }
     }
