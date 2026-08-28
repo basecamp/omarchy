@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# omarchy:summary=Inspect and explicitly decide secure plugin permissions
+# omarchy:group=plugin
+# omarchy:args=<list|diff|grant|deny|revoke> [options]
+# omarchy:examples=omarchy plugin permission list | omarchy plugin permission diff --help
+
+set -euo pipefail
+
+exec omarchy-plugin-permission-store "$@"
