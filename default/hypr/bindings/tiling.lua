@@ -39,10 +39,104 @@ o.bind("SUPER + SHIFT + ALT + RIGHT", "Move workspace to right monitor", hl.dsp.
 o.bind("SUPER + SHIFT + ALT + UP", "Move workspace to up monitor", hl.dsp.workspace.move({ monitor = "u" }))
 o.bind("SUPER + SHIFT + ALT + DOWN", "Move workspace to down monitor", hl.dsp.workspace.move({ monitor = "d" }))
 
-o.bind("SUPER + SHIFT + LEFT", "Swap window to the left", hl.dsp.window.swap({ direction = "l" }))
-o.bind("SUPER + SHIFT + RIGHT", "Swap window to the right", hl.dsp.window.swap({ direction = "r" }))
-o.bind("SUPER + SHIFT + UP", "Swap window up", hl.dsp.window.swap({ direction = "u" }))
-o.bind("SUPER + SHIFT + DOWN", "Swap window down", hl.dsp.window.swap({ direction = "d" }))
+-- Super+Shift+arrows swap with a neighbor on this workspace. Hyprland's
+-- directional swap also targets the next monitor, which exchanges the two
+-- workspaces' windows; if nothing is in that direction here, throw the window
+-- onto the adjacent monitor instead. After a throw, walk it to the incoming
+-- edge so dwindle force_split=2 does not land a rightward throw on the far side.
+local opposite_direction = { l = "r", r = "l", u = "d", d = "u" }
+
+local function ranges_overlap(a, alen, b, blen)
+  return a < b + blen and b < a + alen
+end
+
+local function same_workspace_neighbor(win, direction)
+  local ws = win.workspace
+  local at, size = win.at, win.size
+  if not ws or not at or not size then
+    return nil
+  end
+
+  local ax, ay, aw, ah = at.x, at.y, size.x, size.y
+  local acx, acy = ax + aw / 2, ay + ah / 2
+  local best, best_dist = nil, nil
+
+  for _, other in ipairs(hl.get_windows({ workspace = ws, mapped = true })) do
+    if other ~= win and not other.hidden and other.floating == win.floating then
+      local oat, osize = other.at, other.size
+      if oat and osize then
+        local bx, by, bw, bh = oat.x, oat.y, osize.x, osize.y
+        local bcx, bcy = bx + bw / 2, by + bh / 2
+        local dx, dy = bcx - acx, bcy - acy
+        local in_direction = false
+        if direction == "l" then
+          in_direction = dx < 0 and ranges_overlap(ay, ah, by, bh)
+        elseif direction == "r" then
+          in_direction = dx > 0 and ranges_overlap(ay, ah, by, bh)
+        elseif direction == "u" then
+          in_direction = dy < 0 and ranges_overlap(ax, aw, bx, bw)
+        elseif direction == "d" then
+          in_direction = dy > 0 and ranges_overlap(ax, aw, bx, bw)
+        end
+        if in_direction then
+          local dist = dx * dx + dy * dy
+          if not best_dist or dist < best_dist then
+            best, best_dist = other, dist
+          end
+        end
+      end
+    end
+  end
+
+  return best
+end
+
+local function settle_on_incoming_edge(win, throw_direction)
+  local settle_dir = opposite_direction[throw_direction]
+  if not win or win.floating or not settle_dir then
+    return
+  end
+
+  for _ = 1, 16 do
+    local neighbor = same_workspace_neighbor(win, settle_dir)
+    if not neighbor then
+      return
+    end
+    local result = hl.dispatch(hl.dsp.window.swap({ window = win, target = neighbor }))
+    if not result or not result.ok then
+      return
+    end
+  end
+end
+
+local function swap_or_move_to_monitor(direction)
+  return function()
+    local win = hl.get_active_window()
+    if not win then
+      return
+    end
+
+    local neighbor = same_workspace_neighbor(win, direction)
+    if neighbor then
+      hl.dispatch(hl.dsp.window.swap({ target = neighbor }))
+      return
+    end
+
+    local target = hl.get_monitor(direction)
+    local current = win.monitor or hl.get_active_monitor()
+    if not target or (current and target.id == current.id) then
+      return
+    end
+
+    hl.dispatch(hl.dsp.window.move({ monitor = target, window = win }))
+    settle_on_incoming_edge(win, direction)
+  end
+end
+
+o.bind("SUPER + SHIFT + LEFT", "Swap or move window left", swap_or_move_to_monitor("l"))
+o.bind("SUPER + SHIFT + RIGHT", "Swap or move window right", swap_or_move_to_monitor("r"))
+o.bind("SUPER + SHIFT + UP", "Swap or move window up", swap_or_move_to_monitor("u"))
+o.bind("SUPER + SHIFT + DOWN", "Swap or move window down", swap_or_move_to_monitor("d"))
 
 o.bind("ALT + TAB", "Focus on next window", hl.dsp.window.cycle_next())
 o.bind("ALT + SHIFT + TAB", "Focus on previous window", hl.dsp.window.cycle_next({ next = false }))
