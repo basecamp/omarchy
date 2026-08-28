@@ -12,6 +12,12 @@ assertEqual(monitor.clampBrightness(101), 100, 'monitor clamps maximum brightnes
 assertEqual(monitor.clampBrightness(42.4), 42, 'monitor rounds brightness')
 assertEqual(monitor.clampBrightness('nope'), 1, 'monitor rejects invalid brightness')
 
+assertEqual(monitor.clampKbdBrightness(0), 0, 'monitor lets keyboard backlight turn fully off')
+assertEqual(monitor.clampKbdBrightness(-5), 0, 'monitor clamps keyboard backlight at zero')
+assertEqual(monitor.clampKbdBrightness(101), 100, 'monitor clamps maximum keyboard backlight')
+assertEqual(monitor.clampKbdBrightness(42.4), 42, 'monitor rounds keyboard backlight')
+assertEqual(monitor.clampKbdBrightness('nope'), 0, 'monitor rejects invalid keyboard backlight')
+
 assertEqual(monitor.normalizeScale('1.250'), '1.25', 'monitor normalizes fractional scale')
 assertEqual(monitor.normalizeScale('nope'), '', 'monitor rejects invalid scale')
 assertEqual(monitor.cleanScale(3, 1280, 800), '3.2', 'monitor matches clean VM scale')
