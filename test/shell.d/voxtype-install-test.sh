@@ -58,6 +58,18 @@ exit "${AUR_ACCESSIBLE:-0}"
 EOF
 chmod +x "$test_bin/omarchy-pkg-aur-accessible"
 
+# The installer branches its copy on the machine type, so both branches have to
+# be reachable from an x86_64 test host.
+cat >"$test_bin/uname" <<'EOF'
+#!/bin/bash
+if [[ $1 == "-m" ]]; then
+  echo "${TEST_UNAME_M:-x86_64}"
+else
+  exec /usr/bin/uname "$@"
+fi
+EOF
+chmod +x "$test_bin/uname"
+
 write_hw_x86_64_v3() {
   cat >"$test_bin/omarchy-hw-x86-64-v3" <<EOF
 #!/bin/bash
@@ -85,6 +97,7 @@ run_install() {
   printf '%s\n' $answers >"$confirm_queue"
   HOME="$test_home" OMARCHY_PATH="$test_omarchy_path" PATH="$test_bin:$ROOT/bin:$PATH" \
     TEST_LOG="$log_file" CONFIRM_QUEUE="$confirm_queue" AUR_ACCESSIBLE="${2:-0}" \
+    TEST_UNAME_M="${3:-x86_64}" \
     bash "$ROOT/bin/omarchy-voxtype-install"
 }
 
@@ -115,6 +128,17 @@ grep -q '^omarchy-pkg-add:voxtype-bin' "$log_file" && fail "accepting the source
 write_hw_x86_64_v3 1
 run_install "yes yes" 1
 grep -q '^omarchy-pkg-aur-add:' "$log_file" && fail "an unreachable AUR does not attempt the source install"
+
+# On a non-x86_64 machine nothing is missing and the source build is native, so
+# neither message may leak into the other architecture's branch.
+write_hw_x86_64_v3 1
+run_install "yes no" 0 x86_64
+grep -qxF 'confirm:Build Voxtype from source instead? This can take 20+ minutes and may result in noticeably slower dictation on this CPU.' "$log_file" ||
+  fail "an x86_64 CPU missing the baseline is warned the source build may be slower"
+
+run_install "yes no" 0 aarch64
+grep -qxF 'confirm:Build Voxtype from source instead? This can take 20+ minutes.' "$log_file" ||
+  fail "a non-x86_64 machine is not warned about a slowdown that would not happen"
 
 # A failure partway through setup rolls back via omarchy-voxtype-remove
 # instead of leaving a half-installed package behind.
