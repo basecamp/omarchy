@@ -89,6 +89,72 @@ function modeLabel(device, onBattery, states) {
   return "Charging"
 }
 
+// A device is a physical battery when UPower types it as one, it is a power
+// supply (rules out battery-powered peripherals — mice, headsets, controllers)
+// and it carries a native path. The display pseudo-device also types itself as
+// a battery, so it is excluded by identity and by its empty native path.
+function isPhysicalBattery(device, displayDevice, types) {
+  var d = device || {}
+  var t = types || {}
+  if (!d || d === displayDevice) return false
+  if (d.type !== t.Battery) return false
+  if (d.powerSupply === false) return false
+  return String(d.nativePath || "") !== ""
+}
+
+function physicalBatteries(devices, displayDevice, types) {
+  var list = []
+  var values = devices || []
+  for (var i = 0; i < values.length; i++) {
+    if (isPhysicalBattery(values[i], displayDevice, types))
+      list.push(values[i])
+  }
+  list.sort(function(a, b) {
+    return String(a.nativePath).localeCompare(String(b.nativePath))
+  })
+  return list
+}
+
+// Parses the plugin's bin/battery-details output: <native-path>\t<key>\t<value>
+// per line, into { BAT0: { cycles: "964", ... }, BAT1: {...} }.
+function parseBatteryDetails(raw) {
+  var out = {}
+  var lines = String(raw || "").split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    var parts = lines[i].split("\t")
+    if (parts.length < 3) continue
+    var name = parts[0].trim()
+    var key = parts[1].trim()
+    if (!name || !key) continue
+    if (!out[name]) out[name] = {}
+    out[name][key] = parts.slice(2).join("\t").trim()
+  }
+  return out
+}
+
+function deviceStateLabel(device, states) {
+  var d = device || {}
+  var s = states || {}
+  if (!d.isPresent) return "Absent"
+  if (d.state === s.Charging) return "Charging"
+  if (d.state === s.Discharging) return "Discharging"
+  if (d.state === s.Empty) return "Empty"
+  if (d.state === s.FullyCharged) return "Full"
+  if (d.state === s.PendingCharge) return "Holding"
+  if (d.state === s.PendingDischarge) return "Pending"
+  return "Idle"
+}
+
+// Watts flowing through one cell. UPower reports changeRate unsigned, so the
+// sign has to come from the state.
+function deviceRateLabel(device, states) {
+  var d = device || {}
+  var rate = Math.abs(Number(d.changeRate || 0))
+  if (!d.isPresent || rate < 0.05) return "—"
+  var sign = d.state === (states || {}).Discharging ? "-" : "+"
+  return sign + (rate < 10 ? rate.toFixed(1) : Math.round(rate)) + "W"
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     clampIndex: clampIndex,
@@ -99,6 +165,11 @@ if (typeof module !== "undefined") {
     batteryFraction: batteryFraction,
     chargeThresholdActive: chargeThresholdActive,
     batteryIcon: batteryIcon,
-    modeLabel: modeLabel
+    modeLabel: modeLabel,
+    isPhysicalBattery: isPhysicalBattery,
+    physicalBatteries: physicalBatteries,
+    parseBatteryDetails: parseBatteryDetails,
+    deviceStateLabel: deviceStateLabel,
+    deviceRateLabel: deviceRateLabel
   }
 }
