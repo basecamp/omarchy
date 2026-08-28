@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # omarchy:summary=Install a supported browser
-# omarchy:args=<chromium|chrome|brave|brave-origin|edge|firefox|zen>
-# omarchy:examples=omarchy install browser chromium | omarchy install browser firefox
+# omarchy:args=<chromium|ungoogled-chromium|helium|chrome|brave|brave-origin|edge|firefox|zen>
+# omarchy:examples=omarchy install browser chromium | omarchy install browser helium
 
 set -e
 
@@ -44,6 +44,29 @@ chromium)
   copy_chromium_flags ~/.config/chromium-flags.conf
   omarchy-theme-set-browser
   announce_browser_installed "Chromium"
+  ;;
+ungoogled-chromium)
+  echo "Installing Ungoogled Chromium..."
+  # The package provides Chromium and must replace the stock Chromium package.
+  yay -S --noconfirm --needed --ask 4 ungoogled-chromium-bin
+
+  setup_policy_directory /etc/chromium/policies/managed
+  copy_chromium_flags ~/.config/chromium-flags.conf
+  omarchy-theme-set-browser
+  announce_browser_installed "Ungoogled Chromium"
+  ;;
+helium)
+  echo "Installing Helium..."
+  helium_signing_key=BE677C1989D35EAB2C5F26C9351601AD01D6378E
+  if ! gpg --list-keys "$helium_signing_key" &>/dev/null; then
+    gpg --keyserver hkps://keyserver.ubuntu.com --recv-keys "$helium_signing_key"
+  fi
+  omarchy-pkg-aur-add helium-browser-bin
+
+  setup_policy_directory /etc/chromium/policies/managed
+  copy_chromium_flags ~/.config/helium-browser-flags.conf
+  omarchy-theme-set-browser
+  announce_browser_installed "Helium"
   ;;
 chrome)
   echo "Installing Chrome..."
@@ -98,7 +121,7 @@ zen)
   announce_browser_installed "Zen"
   ;;
 *)
-  echo "Usage: omarchy-install-browser <chromium|chrome|brave|brave-origin|edge|firefox|zen>"
+  echo "Usage: omarchy-install-browser <chromium|ungoogled-chromium|helium|chrome|brave|brave-origin|edge|firefox|zen>"
   exit 1
   ;;
 esac

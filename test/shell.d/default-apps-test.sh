@@ -22,6 +22,16 @@ cat >"$mock_bin/omarchy-cmd-missing" <<'SH'
 [[ ! -e $OMARCHY_TEST_INSTALLED_DIR/$1 ]]
 SH
 
+cat >"$mock_bin/omarchy-pkg-present" <<'SH'
+#!/bin/bash
+[[ -e $OMARCHY_TEST_INSTALLED_DIR/pkg-$1 ]]
+SH
+
+cat >"$mock_bin/omarchy-pkg-missing" <<'SH'
+#!/bin/bash
+[[ ! -e $OMARCHY_TEST_INSTALLED_DIR/pkg-$1 ]]
+SH
+
 cat >"$mock_bin/omarchy-launch-floating-terminal-with-presentation" <<'SH'
 #!/bin/bash
 printf '%s\0' "$@" >"$OMARCHY_TEST_TERMINAL_LOG"
@@ -64,6 +74,8 @@ case $installer in
 omarchy-pkg-add)
   package=$1
   printf 'pkg:%s\n' "$package" >>"$OMARCHY_TEST_INSTALL_LOG"
+  touch "$OMARCHY_TEST_INSTALLED_DIR/pkg-$package"
+  [[ $package == "chromium" ]] && rm -f "$OMARCHY_TEST_INSTALLED_DIR/pkg-ungoogled-chromium-bin"
   case $package in
   chromium) command=chromium ;;
   cursor-bin) command=cursor ;;
@@ -72,11 +84,19 @@ omarchy-pkg-add)
   neovim) command=nvim ;;
   esac
   ;;
+omarchy-pkg-aur-add)
+  package=$1
+  printf 'aur:%s\n' "$package" >>"$OMARCHY_TEST_INSTALL_LOG"
+  touch "$OMARCHY_TEST_INSTALLED_DIR/pkg-$package"
+  [[ $package == "helium-browser-bin" ]] && command=helium-browser
+  ;;
 omarchy-install-browser)
   selection=$1
   printf 'browser:%s\n' "$selection" >>"$OMARCHY_TEST_INSTALL_LOG"
   case $selection in
-  chromium) command=chromium ;;
+  chromium) command=chromium; package=chromium; replaced_package=ungoogled-chromium-bin ;;
+  ungoogled-chromium) command=chromium; package=ungoogled-chromium-bin; replaced_package=chromium ;;
+  helium) command=helium-browser ;;
   chrome) command=google-chrome-stable ;;
   brave) command=brave ;;
   brave-origin) command=brave-origin ;;
@@ -84,6 +104,8 @@ omarchy-install-browser)
   firefox) command=firefox ;;
   zen) command=zen-browser ;;
   esac
+  [[ -n ${package:-} ]] && touch "$OMARCHY_TEST_INSTALLED_DIR/pkg-$package"
+  [[ -n ${replaced_package:-} ]] && rm -f "$OMARCHY_TEST_INSTALLED_DIR/pkg-$replaced_package"
   ;;
 omarchy-install-terminal)
   command=$1
@@ -105,8 +127,27 @@ esac
 touch "$OMARCHY_TEST_INSTALLED_DIR/$command"
 SH
 
+cat >"$mock_bin/gpg" <<'SH'
+#!/bin/bash
+case $1 in
+--list-keys) [[ -e $OMARCHY_TEST_INSTALLED_DIR/helium-signing-key ]] ;;
+--keyserver)
+  printf 'gpg:%s\n' "$*" >>"$OMARCHY_TEST_SETUP_LOG"
+  touch "$OMARCHY_TEST_INSTALLED_DIR/helium-signing-key"
+  ;;
+esac
+SH
+
+cat >"$mock_bin/yay" <<'SH'
+#!/bin/bash
+printf 'yay:%s\n' "$*" >>"$OMARCHY_TEST_INSTALL_LOG"
+touch "$OMARCHY_TEST_INSTALLED_DIR/pkg-ungoogled-chromium-bin" "$OMARCHY_TEST_INSTALLED_DIR/chromium"
+rm -f "$OMARCHY_TEST_INSTALLED_DIR/pkg-chromium"
+SH
+
 for installer in \
   omarchy-pkg-add \
+  omarchy-pkg-aur-add \
   omarchy-install-browser \
   omarchy-install-terminal \
   omarchy-install-editor-vscode \
@@ -147,6 +188,8 @@ assert_missing_opens_installer() {
 
 browser_cases=(
   'chromium chromium browser:chromium'
+  'ungoogled-chromium chromium browser:ungoogled-chromium'
+  'helium helium-browser browser:helium'
   'chrome google-chrome-stable browser:chrome'
   'brave brave browser:brave'
   'brave-origin brave-origin browser:brave-origin'
@@ -216,6 +259,36 @@ grep -Fxq 'omarchy-install-chromium-ytdlp:' "$setup_log" ||
 grep -Fxq 'omarchy-theme-set-browser:' "$setup_log" ||
   fail "Chromium browser installer applies the current theme"
 pass "Chromium browser installer restores the complete Omarchy setup"
+
+: >"$install_log"
+: >"$setup_log"
+rm -f "$installed_dir/helium-browser" "$installed_dir/pkg-helium-browser-bin" "$installed_dir/helium-signing-key"
+OMARCHY_TEST_REAL_BROWSER_INSTALL=true omarchy-default-browser --install helium >/dev/null
+[[ $(<"$install_log") == "aur:helium-browser-bin" ]] || fail "Helium browser installer installs the AUR package"
+[[ $(omarchy-default-browser) == "helium" ]] || fail "Helium becomes the default after its full installer succeeds"
+cmp -s "$ROOT/config/chromium-flags.conf" "$test_home/.config/helium-browser-flags.conf" ||
+  fail "Helium browser installer copies the default flags"
+grep -Fq "gpg:--keyserver hkps://keyserver.ubuntu.com --recv-keys BE677C1989D35EAB2C5F26C9351601AD01D6378E" "$setup_log" ||
+  fail "Helium browser installer imports the upstream signing key"
+grep -Fxq 'sudo:mkdir -p /etc/chromium/policies/managed' "$setup_log" ||
+  fail "Helium browser installer creates its Chromium policy directory"
+grep -Fxq 'omarchy-theme-set-browser:' "$setup_log" ||
+  fail "Helium browser installer applies the current theme"
+pass "Helium browser installer restores the complete Omarchy setup"
+
+: >"$install_log"
+: >"$setup_log"
+touch "$installed_dir/pkg-chromium"
+rm -f "$installed_dir/pkg-ungoogled-chromium-bin"
+OMARCHY_TEST_REAL_BROWSER_INSTALL=true omarchy-default-browser --install ungoogled-chromium >/dev/null
+grep -Fxq 'yay:-S --noconfirm --needed --ask 4 ungoogled-chromium-bin' "$install_log" ||
+  fail "Ungoogled Chromium browser installer allows replacing stock Chromium"
+[[ ! -e $installed_dir/pkg-chromium ]] || fail "Ungoogled Chromium replaces the stock package"
+[[ $(omarchy-default-browser) == "ungoogled-chromium" ]] ||
+  fail "Ungoogled Chromium becomes the default after its full installer succeeds"
+cmp -s "$ROOT/config/chromium-flags.conf" "$test_home/.config/chromium-flags.conf" ||
+  fail "Ungoogled Chromium browser installer copies the default flags"
+pass "Ungoogled Chromium browser installer replaces stock Chromium with the complete Omarchy setup"
 
 omarchy-default-browser zen
 rm -f "$installed_dir/chromium"

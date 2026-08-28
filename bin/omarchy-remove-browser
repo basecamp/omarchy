@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # omarchy:summary=Remove a supported browser and clean up Omarchy browser defaults
-# omarchy:args=<chrome|brave|brave-origin|edge|firefox|zen>
-# omarchy:examples=omarchy remove browser firefox | omarchy remove browser brave
+# omarchy:args=<ungoogled-chromium|helium|chrome|brave|brave-origin|edge|firefox|zen>
+# omarchy:examples=omarchy remove browser helium | omarchy remove browser firefox
 # omarchy:requires-sudo=true
 
 set_fallback_default_browser() {
@@ -19,6 +19,18 @@ set_fallback_default_browser() {
 }
 
 case $1 in
+ungoogled-chromium)
+  echo "Removing Ungoogled Chromium..."
+  omarchy-pkg-drop ungoogled-chromium-bin
+  # Ungoogled Chromium replaces the stock package, so restore Omarchy's base browser.
+  omarchy-install-browser chromium
+  ;;
+helium)
+  echo "Removing Helium..."
+  set_fallback_default_browser helium.desktop
+  omarchy-pkg-drop helium-browser-bin
+  rm -f ~/.config/helium-browser-flags.conf
+  ;;
 chrome)
   echo "Removing Chrome..."
   set_fallback_default_browser google-chrome.desktop
@@ -64,7 +76,7 @@ zen)
   omarchy-pkg-drop zen-browser-bin
   ;;
 *)
-  echo "Usage: omarchy-remove-browser <chrome|brave|brave-origin|edge|firefox|zen>"
+  echo "Usage: omarchy-remove-browser <ungoogled-chromium|helium|chrome|brave|brave-origin|edge|firefox|zen>"
   exit 1
   ;;
 esac
