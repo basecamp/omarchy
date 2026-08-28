@@ -309,6 +309,13 @@ Panel {
     if (!actionProc.running) actionProc.running = true
   }
 
+  // Names no command: actionProc is shared, and either caller above may already
+  // have reassigned it. hyprctl quotes the spec it refused, which is the part
+  // worth having.
+  function warnRefusedAction() {
+    console.warn("monitor", "display action exited", actionProc.lastExitCode, String(actionStdout.text || "").trim())
+  }
+
   // ---- Text size (shell base font + GTK text-scaling, via one CLI) ----
   function nearestTextStop(px) {
     var best = 0
@@ -433,13 +440,34 @@ Panel {
     id: actionProc
     // hyprctl reports a refused monitor spec on stdout and exits 7, so without
     // this a rejected change looks exactly like an applied one in the journal.
-    stdout: StdioCollector { id: actionStdout; waitForEnd: true }
-    onExited: function(exitCode) {
-      // Not the command: it may already have been reassigned by a click that
-      // arrived while this one was running. hyprctl quotes the spec it refused.
-      if (exitCode !== 0) console.warn("monitor", "display action exited", exitCode, String(actionStdout.text || "").trim())
+    // Exit and stream-finished have no guaranteed order, so the code is held
+    // and whichever signal arrives second logs the pair, once.
+    property int lastExitCode: 0
+    property bool outputEnded: false
+
+    stdout: StdioCollector {
+      id: actionStdout
+      waitForEnd: true
+      onStreamFinished: {
+        actionProc.outputEnded = true
+        if (actionProc.lastExitCode !== 0) root.warnRefusedAction()
+      }
     }
-    onRunningChanged: if (!running) root.refresh()
+
+    onExited: function(exitCode) {
+      actionProc.lastExitCode = exitCode
+      if (exitCode !== 0 && actionProc.outputEnded) root.warnRefusedAction()
+    }
+
+    onRunningChanged: {
+      if (running) {
+        actionProc.lastExitCode = 0
+        actionProc.outputEnded = false
+        return
+      }
+
+      root.refresh()
+    }
   }
 
   // Applies text size via the CLI, which rewrites the shell override file;
