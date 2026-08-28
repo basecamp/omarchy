@@ -12,7 +12,7 @@ G4 is not complete. The F0-F4 implementation, F6 representative migration eviden
 | Production targets in aggregate build | Pass | Root CMake builds the worker, launcher, broker/lifecycle stack, render session, trusted bridge, surface host, headless slice, expressive surface, product fixtures, embedded-bar and brokered-action slices, C11 adversarial harness, and F2 render proof in dependency order. |
 | Package-shaped build | Pass | A fresh Release build with `BUILD_TESTING=OFF` built and installed the host, worker, permission/audit inspectors, and the single QML module. The installed import path resolves both exported QML types. |
 | Debug aggregate | Pass | Fresh expanded aggregate: 54 of 54 tests, including real Bubblewrap, authenticated channels, malicious peers, arbitrary-QML rendering, lifecycle, permission/audit, brokered action, migration, and render proof. |
-| Release aggregate | Blocked | This preflight's fresh expanded aggregate passed 54 of 54 tests, but an independent fresh Release run passed 53 of 54 and consistently failed `plugin-brokered-action-bwrap` during action-channel teardown. The divergent result is an open release blocker until the owning boundary lands a fix and repeated outside-confinement proof. An earlier mixed-layout crash run remains excluded because source commit `c32121f3` landed between library and test compilation; core and object timestamps proved that separate ABI mixture. |
+| Release aggregate | Pass | After the pidfd/reap correction in `bbf31c10`, fresh post-merge Debug and Release builds each passed all 54 tests outside managed confinement. The repaired Release `plugin-brokered-action` boundary then passed 100 of 100 fake-launch repetitions and 100 of 100 real-Bubblewrap repetitions. An earlier mixed-layout crash run remains excluded because source commit `c32121f3` landed between library and test compilation; core and object timestamps proved that separate ABI mixture. |
 | Sanitizers and default stack | Pass for completed F0-F4 scope | Uniform ASan/UBSan E5/lifecycle tree passes six of six selected tests at the ordinary 8 MiB stack. F0-F2 retain their focused sanitizer evidence and documented exact-environment LeakSanitizer exclusions. |
 | Feature-flag honesty | Pass | `omarchy-plugin-host` supports only version and launcher-prerequisite inspection and otherwise remains inert; `PluginHostInfo.available` is false. Discovery/revision defaults are disabled, the permission CLI requires `OMARCHY_PLUGIN_SCHEMA_V2_ENABLED=1`, and no product command routes schema v2 into execution. |
 | Legacy honesty | Pass | Existing schema-v1 commands remain the explicitly unsafe compatibility path and are not described as granularly sandboxed. |
@@ -32,6 +32,28 @@ G4 is not complete. The F0-F4 implementation, F6 representative migration eviden
 
 The installed native components are a reviewable reference, not an enabled plugin service. `host/main.cpp` does not compose discovery, activation, supervisor, broker dispatch, render pumping, or shell registration. Enabling schema v2 requires a later trusted product host and rollout decision after G4; setting the permission CLI environment variable alone cannot activate a plugin.
 
-The independent Release teardown failure must be resolved before interpreting the aggregate as stable. A single passing run does not outweigh a reproducible fresh-build failure in a security-sensitive worker teardown path.
+The former Release teardown blocker is resolved by `bbf31c10`. The accepted pidfd readiness set is deliberately limited to `POLLIN` and `POLLIN | POLLHUP`, and direct-child reap now uses a bounded `WNOHANG` retry after pidfd exit readiness. Fresh post-merge aggregate runs and the repeated real-Bubblewrap stress above exercise that boundary.
 
 The component-specific sanitizer options are not a safe aggregate switch: enabling only dependency options can instrument static libraries without linking the sanitizer runtime into every consumer. G4 used uniform compiler and executable-linker flags across the selected tree. A future CI convenience option should apply instrumentation uniformly while retaining the documented uninstrumented exact-environment sandbox helper.
+
+## Post-upstream-merge regression evidence
+
+The regression lane ran after merge commit `dcb7e7fd` on 2026-08-28 from newly configured build directories:
+
+- Debug `/tmp/omarchy-postmerge-debug-MgNy1F`: configured with `BUILD_TESTING=ON`, built all 391 Ninja edges, and passed 54 of 54 CTest cases outside managed confinement.
+- Release `/tmp/omarchy-postmerge-release-lfFFs2`: configured with `BUILD_TESTING=ON`, built all 391 Ninja edges, and passed 54 of 54 CTest cases outside managed confinement.
+- The Release brokered-action executable passed 100 of 100 fake-launch runs and 100 of 100 real `/usr/bin/bwrap` runs outside managed confinement.
+- Focused repository tests passed for git URL validation, plugin add, plugin-security inventory, plugin-security aggregate inventory, and QML text-format enforcement.
+- `./test/cli` passed completely with `OMARCHY_PKGS_PATH=/tmp/omarchy-pkgs-f5-clean-master` and `OMARCHY_ISO_PATH=/tmp/omarchy-iso-f5`. The runner emitted only the known managed-filesystem warning while probing the user runtime lock path.
+
+Both companion paths were clean Git checkouts for this run: `omarchy-pkgs` at `b1e3b4c2e4ce9e14e48c0528a73aa7a1bae1e844` and `omarchy-iso` at `268bac16d351a21d867e37565738f458b11cb06c`.
+
+The aggregate `./test/shell` run completed but reported seven failing files out of 212. None was a plugin-security test or a failure introduced by this branch:
+
+- `config-test.sh`, `snapper-test.sh`, and `unowned-system-paths-test.sh` require a companion `omarchy-pkgs` revision containing `pkgbuilds/omarchy-settings-dev/PKGBUILD`; the pinned clean companion revision does not contain that recipe. This is explicit cross-repository version skew, not accepted package evidence.
+- `launch-about-test.sh` inherited the agent environment's `NO_COLOR=1`; the isolated test passed after unsetting that variable.
+- `network-qr-test.sh` passed immediately in isolation, so its aggregate failure was transient and was not reproduced.
+- `theme-install-guards-test.sh` expects its missing-helper case to have no `omarchy-git-url-check` on `PATH`, but this installed system exposes `/usr/bin/omarchy-git-url-check` even under a minimal `/usr/bin` path.
+- `windows-vm-compose-test.sh` reached a managed-sandbox denial while trying to migrate the installed user's real credentials path. It was not rerun outside confinement because doing so could mutate real user state.
+
+These shell-suite limitations do not broaden the G4 claim: F5 still requires the matching package repository revision and disposable-VM/fresh-ISO acceptance before authorization.
