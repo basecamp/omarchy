@@ -24,8 +24,10 @@ hl = {
   },
   bind = function(keys, dispatcher, opts)
     opts = opts or {}
-    if opts.description then
-      print(keys .. "\t" .. opts.description)
+    local desc = opts.description or ""
+    local cmd = type(dispatcher) == "table" and (dispatcher.arg or "") or tostring(dispatcher or "")
+    if desc ~= "" then
+      print(keys .. "\t" .. desc .. "\t" .. cmd)
     end
   end,
 }
@@ -100,10 +102,25 @@ trap 'rm -rf "$tmpdir"' EXIT
 
 fresh_home="$tmpdir/fresh-home"
 mkdir -p "$fresh_home"
-fresh_output=$(run_application_bindings "$fresh_home")
-grep -Fq $'SUPER + RETURN	Terminal' <<<"$fresh_output" || fail "default application bindings include essentials"
-grep -Fq $'SUPER + SHIFT + A	ChatGPT' <<<"$fresh_output" || fail "default application bindings include preinstalled web apps"
-pass "default application bindings load from package defaults"
+
+fallback_bin="$tmpdir/fallback-bin"
+mkdir -p "$fallback_bin"
+ln -s "$(command -v lua)" "$fallback_bin/lua"
+fallback_output=$(PATH="$fallback_bin" run_application_bindings "$fresh_home")
+grep -Fq $'SUPER + RETURN\tTerminal' <<<"$fallback_output" || fail "default application bindings include essentials"
+grep -Fq $'SUPER + SHIFT + A\tChatGPT\tomarchy-launch-webapp '"'https://chatgpt.com'" <<<"$fallback_output" ||
+  fail "missing chatgpt binary falls back to webapp binding"
+pass "missing chatgpt binary falls back to webapp binding"
+
+desktop_bin="$tmpdir/desktop-bin"
+mkdir -p "$desktop_bin"
+ln -s "$(command -v lua)" "$desktop_bin/lua"
+touch "$desktop_bin/chatgpt"
+chmod +x "$desktop_bin/chatgpt"
+desktop_output=$(PATH="$desktop_bin" run_application_bindings "$fresh_home")
+grep -Fq $'SUPER + SHIFT + A\tChatGPT Desktop\tomarchy-launch-or-focus '"'chatgpt' 'uwsm-app -- chatgpt'" <<<"$desktop_output" ||
+  fail "installed chatgpt binary binds native desktop application"
+pass "installed chatgpt binary binds native desktop application"
 
 grep -F 'hl.dsp.send_key_state({ mods = mods, key = key, state = "down" })' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null ||
   fail "universal clipboard shortcuts send explicit mods to the focused surface"
