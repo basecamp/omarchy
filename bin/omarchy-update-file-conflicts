@@ -5,6 +5,7 @@
 # omarchy:requires-sudo=true
 
 set -euo pipefail
+umask 077
 
 if ((EUID != 0)); then
   echo "omarchy-update-file-conflicts must run as root" >&2
@@ -18,6 +19,8 @@ export LC_ALL=C
 
 readonly ROOT_UID=0
 readonly ROOT_GID=0
+readonly ARCHIVE_BOUNDARY=/var
+readonly ARCHIVE_PARENT=/var/lib/omarchy
 readonly ARCHIVE_ROOT=/var/lib/omarchy/replaced
 readonly PACKAGE_CACHE_ROOT=/var
 readonly PACKAGE_CACHE=/var/cache/pacman/pkg
@@ -27,7 +30,7 @@ allowed_packages=(omarchy omarchy-dev omarchy-settings omarchy-settings-dev)
 allowed_roots=(/etc /usr)
 
 declare -a conflict_packages=() conflict_paths=() moved_paths=() moved_slots=()
-declare -A stage_for_root=()
+declare -A archive_for_package=() stage_for_root=()
 report=""
 retry_succeeded=0
 
@@ -80,11 +83,16 @@ assert_safe_parent_chain() {
   done
 }
 
-package_archive_for() {
-  local package="$1" listed_package location filename candidate owner mode
+load_upgrade_archives() {
+  local plan listed_package location filename candidate owner mode previous
   assert_safe_parent_chain "$PACKAGE_CACHE/.archive-probe" "$PACKAGE_CACHE_ROOT" || return 1
+
+  # Ask pacman for the exact pending sysupgrade, not for an explicitly named
+  # package. `pacman -Sp package` also prints inactive and already-current
+  # packages, so a stale cached archive must not authorize a root move.
+  plan=$(pacman -Sup --print-format $'%n\t%l' 2>/dev/null) || return 1
   while IFS=$'\t' read -r listed_package location; do
-    [[ $listed_package == "$package" && -n $location ]] || continue
+    valid_package "$listed_package" && [[ -n $location ]] || continue
     location=${location%%\?*}
     filename=${location##*/}
     [[ -n $filename && $filename != "$location" ]] || continue
@@ -93,10 +101,16 @@ package_archive_for() {
     owner=$(stat -Lc '%u' "$candidate") || continue
     mode=$(stat -Lc '%a' "$candidate") || continue
     [[ $owner == "$ROOT_UID" ]] && ! ((8#$mode & 022)) || continue
-    printf '%s\n' "$candidate"
-    return 0
-  done < <(pacman -Sp --print-format $'%n\t%l' -- "$package" 2>/dev/null)
-  return 1
+    previous=${archive_for_package[$listed_package]:-}
+    [[ -z $previous || $previous == "$candidate" ]] || return 1
+    archive_for_package[$listed_package]=$candidate
+  done <<<"$plan"
+}
+
+package_archive_for() {
+  local package="$1" archive=${archive_for_package[$package]:-}
+  [[ -n $archive ]] || return 1
+  printf '%s\n' "$archive"
 }
 
 package_contains_path() {
@@ -172,16 +186,29 @@ validate_conflicts() {
 }
 
 stage_for() {
-  local root="$1" stage
+  local root="$1" stage manifest
   if [[ -n ${stage_for_root[$root]:-} ]]; then
     STAGE_RESULT=${stage_for_root[$root]}
     return 0
   fi
   stage=$(mktemp -d "$root/.omarchy-update-conflicts.XXXXXX")
+  stage_for_root[$root]=$stage
   chown "$ROOT_UID:$ROOT_GID" "$stage"
   chmod 0700 "$stage"
-  stage_for_root[$root]=$stage
+  manifest=$stage/manifest
+  : >"$manifest"
+  chown "$ROOT_UID:$ROOT_GID" "$manifest"
+  chmod 0600 "$manifest"
+  sync -f "$manifest"
   STAGE_RESULT=$stage
+}
+
+stage_has_items() {
+  local stage="$1" item
+  for item in "$stage"/item-*; do
+    [[ -e $item || -L $item ]] && return 0
+  done
+  return 1
 }
 
 move_conflicts() {
@@ -193,9 +220,15 @@ move_conflicts() {
     stage_for "$root"
     stage=$STAGE_RESULT
     slot="$stage/item-$index"
-    mv --no-copy -T -- "$path" "$slot"
+    # Persist the opaque-name mapping before the destructive rename. If the
+    # process or machine dies after mv(1), the original path remains recoverable
+    # from the root-only same-filesystem stage.
     moved_paths+=("$path")
     moved_slots+=("$slot")
+    printf 'item-%s\t%s\n' "$index" "$path" >>"$stage/manifest"
+    sync -f "$stage/manifest"
+    mv --no-copy -T -- "$path" "$slot"
+    sync -f "$stage"
     printf '  %s -> protected item %d\n' "$path" "$index"
   done
   echo
@@ -227,40 +260,64 @@ restore_moved() {
 }
 
 archive_remaining() {
-  local root stage archive transaction label has_items=0
+  local root stage transaction label locations archive_device stage_device has_items=0 retained_in_place=0
   for stage in "${stage_for_root[@]}"; do
     [[ -d $stage ]] || continue
-    if find "$stage" -mindepth 1 -print -quit | grep -q .; then has_items=1; break; fi
+    if stage_has_items "$stage"; then has_items=1; break; fi
   done
   ((has_items)) || {
-    for stage in "${stage_for_root[@]}"; do rmdir -- "$stage" 2>/dev/null || true; done
+    for stage in "${stage_for_root[@]}"; do
+      rm -f -- "$stage/manifest"
+      rmdir -- "$stage" 2>/dev/null || true
+    done
     return 0
   }
 
-  install -d -o "$ROOT_UID" -g "$ROOT_GID" -m 0700 "$ARCHIVE_ROOT"
+  if [[ ! -e $ARCHIVE_PARENT && ! -L $ARCHIVE_PARENT ]]; then
+    assert_safe_parent_chain "$ARCHIVE_PARENT" "$ARCHIVE_BOUNDARY"
+    install -d -o "$ROOT_UID" -g "$ROOT_GID" -m 0755 "$ARCHIVE_PARENT"
+  fi
+  assert_root_directory "$ARCHIVE_PARENT"
+  assert_safe_parent_chain "$ARCHIVE_ROOT" "$ARCHIVE_BOUNDARY"
+  if [[ -e $ARCHIVE_ROOT || -L $ARCHIVE_ROOT ]]; then
+    assert_root_directory "$ARCHIVE_ROOT"
+    chmod 0700 "$ARCHIVE_ROOT"
+  else
+    install -d -o "$ROOT_UID" -g "$ROOT_GID" -m 0700 "$ARCHIVE_ROOT"
+  fi
+  assert_root_directory "$ARCHIVE_ROOT"
   transaction=$(mktemp -d "$ARCHIVE_ROOT/transaction.XXXXXX")
   chown "$ROOT_UID:$ROOT_GID" "$transaction"
   chmod 0700 "$transaction"
+  locations=$transaction/locations
+  : >"$locations"
+  chmod 0600 "$locations"
+  archive_device=$(stat -Lc '%d' "$transaction")
 
   for root in "${!stage_for_root[@]}"; do
     stage=${stage_for_root[$root]}
     [[ -d $stage ]] || continue
     label=$(basename -- "$root")
-    if find "$stage" -mindepth 1 -print -quit | grep -q .; then
-      mv -T -- "$stage" "$transaction/$label"
+    if stage_has_items "$stage"; then
+      # Never let mv(1) fall back to recursively copying a directory that may
+      # still be mutable through a descriptor opened before quarantine. When
+      # /var is separate, retain the complete root-only stage in place.
+      stage_device=$(stat -Lc '%d' "$stage")
+      if [[ $stage_device == "$archive_device" ]] && mv --no-copy -T -- "$stage" "$transaction/$label"; then
+        printf '%s\t%s\n' "$label" "$transaction/$label" >>"$locations"
+      else
+        printf '%s\t%s\n' "$label" "$stage" >>"$locations"
+        retained_in_place=1
+      fi
     else
+      rm -f -- "$stage/manifest"
       rmdir -- "$stage"
     fi
   done
 
-  {
-    for root in "${!moved_paths[@]}"; do
-      printf 'item-%s\t%s\n' "$root" "${moved_paths[$root]}"
-    done
-  } >"$transaction/manifest"
-  chown "$ROOT_UID:$ROOT_GID" "$transaction/manifest"
-  chmod 0600 "$transaction/manifest"
+  sync -f "$locations"
   printf 'Replaced files retained in %s\n' "$transaction"
+  ((retained_in_place == 0)) || echo "Some replaced files remain in their root-only same-filesystem stages; see $locations" >&2
 }
 
 cleanup() {
@@ -281,6 +338,10 @@ report=$(head -c $((MAX_REPORT_BYTES + 1)))
 
 parse_report || {
   echo "Pacman report contains unsupported or incomplete file conflicts" >&2
+  exit 1
+}
+load_upgrade_archives || {
+  echo "Could not establish the pending package transaction" >&2
   exit 1
 }
 validate_conflicts

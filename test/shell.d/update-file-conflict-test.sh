@@ -12,6 +12,7 @@ system_root="$test_tmp/system"
 archive_root="$test_tmp/archive"
 helper_copy="$test_tmp/omarchy-update-file-conflicts"
 package_list="$test_tmp/package-files"
+upgrade_list="$test_tmp/upgrade-packages"
 owned_list="$test_tmp/owned-paths"
 retry_installs="$test_tmp/retry-installs"
 package_cache="$system_root/var/cache/pacman/pkg"
@@ -26,6 +27,8 @@ sed \
   -e 's|export PATH=/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin|export PATH=${OMARCHY_TEST_HELPER_PATH:?}|' \
   -e 's/readonly ROOT_UID=0/readonly ROOT_UID='"$test_uid"'/' \
   -e 's/readonly ROOT_GID=0/readonly ROOT_GID='"$test_gid"'/' \
+  -e "s|readonly ARCHIVE_BOUNDARY=/var|readonly ARCHIVE_BOUNDARY=$test_tmp|" \
+  -e "s|readonly ARCHIVE_PARENT=/var/lib/omarchy|readonly ARCHIVE_PARENT=$test_tmp|" \
   -e "s|readonly ARCHIVE_ROOT=/var/lib/omarchy/replaced|readonly ARCHIVE_ROOT=$archive_root|" \
   -e "s|readonly PACKAGE_CACHE_ROOT=/var|readonly PACKAGE_CACHE_ROOT=$system_root/var|" \
   -e "s|readonly PACKAGE_CACHE=/var/cache/pacman/pkg|readonly PACKAGE_CACHE=$package_cache|" \
@@ -51,9 +54,11 @@ case ${1:-} in
   path=${@: -1}
   grep -Fxq -- "$path" "$OWNED_LIST"
   ;;
--Sp)
-  package=${@: -1}
-  printf '%s\tfile://%s/%s.pkg.tar.zst\n' "$package" "$PACKAGE_CACHE" "$package"
+-Sup)
+  while IFS= read -r package; do
+    [[ -n $package ]] || continue
+    printf '%s\tfile://%s/%s.pkg.tar.zst\n' "$package" "$PACKAGE_CACHE" "$package"
+  done <"$UPGRADE_LIST"
   ;;
 -Qlp)
   while IFS=$'\t' read -r listed_package path; do
@@ -113,7 +118,7 @@ chmod +x "$stub_bin"/*
 run_update() {
   TEST_CONFLICT_HELPER="$helper_copy" \
     OMARCHY_TEST_HELPER_PATH="$stub_bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin" \
-    PACKAGE_LIST="$package_list" OWNED_LIST="$owned_list" RETRY_INSTALLS="$retry_installs" \
+    PACKAGE_LIST="$package_list" UPGRADE_LIST="$upgrade_list" OWNED_LIST="$owned_list" RETRY_INSTALLS="$retry_installs" \
     PACKAGE_CACHE="$package_cache" \
     PACMAN_ATTEMPTS="$test_tmp/attempts" CONFLICT_REPORT="$test_tmp/report" \
     RETRY_FAILS="${RETRY_FAILS:-0}" CLEAN_UPDATE="${CLEAN_UPDATE:-0}" \
@@ -129,6 +134,7 @@ reset_case() {
   chmod 0755 "$system_root/etc" "$system_root/usr" "$system_root/var" \
     "$system_root/var/cache" "$system_root/var/cache/pacman" "$package_cache"
   : >"$package_list"
+  : >"$upgrade_list"
   : >"$owned_list"
   : >"$retry_installs"
   : >"$test_tmp/report"
@@ -143,10 +149,19 @@ make_file() {
   printf '%s\n' "$content" >"$path"
 }
 
-ship_path() {
+cache_path() {
   printf '%s\t%s\n' "$1" "$2" >>"$package_list"
   : >"$package_cache/$1.pkg.tar.zst"
   chmod 0644 "$package_cache/$1.pkg.tar.zst"
+}
+
+plan_package() {
+  grep -Fxq -- "$1" "$upgrade_list" || printf '%s\n' "$1" >>"$upgrade_list"
+}
+
+ship_path() {
+  cache_path "$1" "$2"
+  plan_package "$1"
 }
 
 write_report() {
@@ -182,7 +197,7 @@ run_update >"$test_tmp/out" 2>"$test_tmp/err" ||
 grep -qx packaged "$stray" || fail "pacman does not install the replacement after quarantine"
 archived=$(find_archived_content "stray content")
 [[ -n $archived && $(basename -- "$archived") == item-0 ]] || fail "replaced bytes are not stored under an opaque item name"
-grep -Fq "$stray" "$archive_root"/transaction.*/manifest || fail "archive manifest records the original fixed path"
+grep -RFq "$stray" "$archive_root"/transaction.*/ || fail "archive manifest records the original fixed path"
 pass "verified file conflicts use an opaque root-owned quarantine"
 
 # Text attribution is never enough: both package ownership and the package's
@@ -208,6 +223,18 @@ printf '0\n' >"$test_tmp/attempts"
 if run_update >"$test_tmp/out" 2>"$test_tmp/err"; then fail "a package archive below a writable cache is trusted"; fi
 [[ -f $stray ]] || fail "an untrusted package-cache path authorizes a move"
 pass "live ownership and a trusted cached package archive both authorize cleanup"
+
+# An explicitly named package is not necessarily part of `pacman -Syu`: it may
+# be already current, ignored, or an inactive stable/dev variant. A cached
+# archive alone must not authorize moving anything from the live system.
+reset_case
+stray="$system_root/usr/lib/omarchy-test/inactive.conf"
+make_file "$stray"
+write_report omarchy-settings-dev "$stray"
+cache_path omarchy-settings-dev "$stray"
+if run_update >"$test_tmp/out" 2>"$test_tmp/err"; then fail "a cached package outside the sysupgrade transaction authorizes a move"; fi
+[[ -f $stray ]] || fail "a non-transaction package displaced a live path"
+pass "only packages in the pending sysupgrade transaction authorize cleanup"
 
 # A forged report cannot name a home/tmp path, an unrelated package, or mix one
 # healable line with one unsupported conflict.
