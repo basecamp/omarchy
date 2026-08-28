@@ -478,6 +478,110 @@ std::string optional_number(const auto &value) {
   return value ? std::to_string(static_cast<std::uint64_t>(*value)) : "-";
 }
 
+std::string_view producer_name(permissions::AuditProducer value) {
+  switch (value) {
+  case permissions::AuditProducer::lifecycle:
+    return "lifecycle";
+  case permissions::AuditProducer::supervisor:
+    return "supervisor";
+  case permissions::AuditProducer::broker:
+    return "broker";
+  case permissions::AuditProducer::surface_host:
+    return "surface-host";
+  }
+  return "unknown-producer";
+}
+
+std::string_view event_name(permissions::AuditEvent value) {
+  switch (value) {
+  case permissions::AuditEvent::grant_changed:
+    return "permission decision changed";
+  case permissions::AuditEvent::operation_decided:
+    return "plugin operation decided";
+  case permissions::AuditEvent::capability_revoked:
+    return "permission revoked";
+  case permissions::AuditEvent::handle_issued:
+    return "temporary authority issued";
+  case permissions::AuditEvent::handle_denied:
+    return "temporary authority denied";
+  case permissions::AuditEvent::worker_started:
+    return "plugin worker started";
+  case permissions::AuditEvent::worker_health:
+    return "plugin worker health";
+  case permissions::AuditEvent::worker_crashed:
+    return "plugin worker crashed";
+  case permissions::AuditEvent::worker_stopped:
+    return "plugin worker stopped";
+  case permissions::AuditEvent::worker_disabled:
+    return "plugin worker disabled";
+  }
+  return "unknown event";
+}
+
+std::string_view outcome_name(permissions::AuditOutcome value) {
+  switch (value) {
+  case permissions::AuditOutcome::allowed:
+    return "ALLOWED";
+  case permissions::AuditOutcome::denied:
+    return "DENIED";
+  case permissions::AuditOutcome::cancelled:
+    return "CANCELLED";
+  case permissions::AuditOutcome::failed:
+    return "FAILED";
+  }
+  return "UNKNOWN";
+}
+
+std::string_view decision_name(permissions::GrantDecisionCode value) {
+  switch (value) {
+  case permissions::GrantDecisionCode::allowed:
+    return "granted";
+  case permissions::GrantDecisionCode::unknown_operation:
+    return "unknown operation";
+  case permissions::GrantDecisionCode::capability_undeclared:
+    return "permission not declared";
+  case permissions::GrantDecisionCode::ungranted:
+    return "not granted";
+  case permissions::GrantDecisionCode::explicitly_denied:
+    return "explicitly denied";
+  case permissions::GrantDecisionCode::revoked:
+    return "revoked";
+  case permissions::GrantDecisionCode::activation_mismatch:
+    return "stale plugin generation";
+  case permissions::GrantDecisionCode::outside_scope:
+    return "outside granted scope";
+  case permissions::GrantDecisionCode::gesture_missing:
+    return "user gesture missing";
+  case permissions::GrantDecisionCode::gesture_expired:
+    return "user gesture expired";
+  case permissions::GrantDecisionCode::gesture_wrong_binding:
+    return "user gesture belongs to another surface";
+  case permissions::GrantDecisionCode::gesture_used:
+    return "user gesture already used";
+  }
+  return "unknown decision";
+}
+
+std::string_view operation_name(permissions::OperationId value) {
+  switch (value) {
+  case permissions::OperationId::storage_read:
+    return "read private storage";
+  case permissions::OperationId::storage_write:
+    return "write private storage";
+  case permissions::OperationId::storage_remove:
+    return "remove private storage";
+  case permissions::OperationId::notification_send:
+    return "send notification";
+  case permissions::OperationId::audio_play_cue:
+    return "play audio cue";
+  case permissions::OperationId::fake_status_list:
+    return "list test status";
+  case permissions::OperationId::fake_status_acknowledge:
+    return "acknowledge test status";
+  }
+  return "unknown operation";
+}
+
 } // namespace
 
 AuditStore::AuditStore(std::filesystem::path root, Options options)
@@ -616,6 +720,39 @@ Result AuditStore::export_tsv(const Query &query_value,
                 std::to_string(metric.value);
     }
     result += "\t" + permissions::audit_record_fingerprint(record) + "\n";
+  }
+  output = std::move(result);
+  return {};
+}
+
+Result AuditStore::export_human(const Query &query_value,
+                                std::string &output) const {
+  const auto selected = query(query_value);
+  if (!selected.status.ok())
+    return selected.status;
+  std::string result;
+  for (const auto &record : selected.records) {
+    result += "#" + std::to_string(record.sequence) + " " +
+              std::string(outcome_name(record.outcome)) + " — " +
+              std::string(event_name(record.event)) + "\n";
+    result += "  Plugin ID: " + std::string(record.plugin.view()) + "\n";
+    result += "  Revision: " + std::string(record.revision.view()) + "\n";
+    result += "  Generation: " + std::to_string(record.generation) + "\n";
+    result +=
+        "  Trusted source: " + std::string(producer_name(record.producer)) +
+        "\n";
+    if (record.capability)
+      result += "  Permission: " + std::string(record.capability->id.view()) +
+                "@" + std::to_string(record.capability->version) + "\n";
+    if (record.operation)
+      result +=
+          "  Operation: " + std::string(operation_name(*record.operation)) +
+          "\n";
+    result +=
+        "  Decision: " + std::string(decision_name(record.decision)) + "\n";
+    if (record.correlation != 0)
+      result += "  Request: " + std::to_string(record.correlation) + "\n";
+    result += "\n";
   }
   output = std::move(result);
   return {};

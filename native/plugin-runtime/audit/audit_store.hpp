@@ -73,6 +73,8 @@ public:
   [[nodiscard]] QueryResult query(const Query &query) const;
   [[nodiscard]] Result export_tsv(const Query &query,
                                   std::string &output) const;
+  [[nodiscard]] Result export_human(const Query &query,
+                                    std::string &output) const;
 
 private:
   std::filesystem::path root_;

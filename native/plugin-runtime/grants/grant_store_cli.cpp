@@ -1,5 +1,6 @@
 #include "grant_store.hpp"
 
+#include <algorithm>
 #include <charconv>
 #include <chrono>
 #include <cstdlib>
@@ -29,6 +30,7 @@ struct Options {
   std::string capability;
   std::optional<std::string> scope;
   std::optional<std::string> filter_plugin;
+  std::string format = "json";
 };
 
 [[noreturn]] void fail(std::string_view message) {
@@ -155,6 +157,7 @@ void usage(std::ostream &output) {
          << "  omarchy-plugin-permission list [--store DIR] [--plugin ID]\n"
          << "  omarchy-plugin-permission diff BINDING REQUESTS --capability "
             "ID@VERSION\n"
+         << "  omarchy-plugin-permission review BINDING REQUESTS\n"
          << "  omarchy-plugin-permission grant BINDING REQUESTS --capability "
             "ID@VERSION [--scope SCOPE]\n"
          << "  omarchy-plugin-permission deny BINDING REQUESTS --capability "
@@ -166,7 +169,9 @@ void usage(std::ostream &output) {
          << "REQUESTS: repeat --required CAPABILITY@VERSION=SCOPE or "
             "--optional ...\n"
          << "Scopes: quota:TOTAL:ITEM | tokens:NAME,NAME | "
-            "resources:ID,ID:OP,OP\n";
+            "resources:ID,ID:OP,OP\n"
+         << "Read-only list/diff accept --format json|human. Review requires "
+            "an interactive terminal only when authority changed.\n";
 }
 
 Options parse(int count, char **arguments) {
@@ -213,7 +218,11 @@ Options parse(int count, char **arguments) {
       options.capability = take_value(index, count, arguments, argument);
     else if (argument == "--scope")
       options.scope = take_value(index, count, arguments, argument);
-    else if (argument == "--yes" || argument == "-y")
+    else if (argument == "--format") {
+      options.format = take_value(index, count, arguments, argument);
+      if (options.format != "json" && options.format != "human")
+        fail("--format must be json or human");
+    } else if (argument == "--yes" || argument == "-y")
       fail("--yes never grants or denies plugin permissions");
     else if (argument == "--actor")
       fail("permission actors are derived from the trusted caller, not an "
@@ -279,6 +288,153 @@ void confirm(std::string_view action, const grant::Preview &preview,
     fail("permission decision cancelled");
 }
 
+std::string capability_title(const permission::CapabilityKey &capability) {
+  const auto id = capability.id.view();
+  if (id == "storage.private")
+    return "Private plugin storage";
+  if (id == "notifications.send")
+    return "Desktop notifications";
+  if (id == "audio.play-cue")
+    return "Named audio cues";
+  if (id == "service.fake-status")
+    return "Test status service";
+  return std::string(id);
+}
+
+std::string scope_text(const permission::Scope &scope) {
+  if (const auto *quota = std::get_if<permission::QuotaScope>(&scope))
+    return "up to " + std::to_string(quota->total_bytes) + " bytes total and " +
+           std::to_string(quota->item_bytes) + " bytes per item";
+  if (const auto *tokens = std::get_if<permission::TokenScope>(&scope)) {
+    std::string result = "only: ";
+    for (std::size_t index = 0; index < tokens->tokens.size(); ++index) {
+      if (index > 0)
+        result += ", ";
+      result += tokens->tokens.values()[index].view();
+    }
+    return result;
+  }
+  if (const auto *resources = std::get_if<permission::ResourceScope>(&scope)) {
+    return std::to_string(resources->resources.size()) +
+           " named resource(s), " +
+           std::to_string(resources->operations.size()) +
+           " allowed operation(s)";
+  }
+  return "no additional scope";
+}
+
+std::string change_text(permission::DeltaKind kind) {
+  switch (kind) {
+  case permission::DeltaKind::added:
+    return "NEW";
+  case permission::DeltaKind::expanded:
+    return "EXPANDED";
+  case permission::DeltaKind::narrowed:
+    return "NARROWED";
+  case permission::DeltaKind::removed:
+    return "REMOVED";
+  case permission::DeltaKind::requirement_changed:
+    return "REQUIRED/OPTIONAL CHANGED";
+  case permission::DeltaKind::incomparable:
+    return "CHANGED";
+  case permission::DeltaKind::unchanged:
+    return "UNCHANGED";
+  }
+  return "UNKNOWN";
+}
+
+const permission::CapabilityRequest *
+request_for(const grant::RequestBundle &bundle,
+            const permission::CapabilityKey &capability) {
+  const auto found = std::find_if(
+      bundle.requests.values().begin(), bundle.requests.values().end(),
+      [&](const auto &request) { return request.capability == capability; });
+  return found == bundle.requests.values().end() ? nullptr : &*found;
+}
+
+bool requires_decision(permission::DeltaKind kind) {
+  return kind == permission::DeltaKind::added ||
+         kind == permission::DeltaKind::expanded ||
+         kind == permission::DeltaKind::incomparable ||
+         kind == permission::DeltaKind::requirement_changed;
+}
+
+void print_review(std::ostream &output, const grant::Preview &preview,
+                  const grant::RequestBundle &bundle) {
+  output << "Plugin permission review\n"
+         << "  Plugin ID: " << preview.binding.plugin.view() << '\n'
+         << "  Revision: " << preview.binding.revision.view() << '\n'
+         << "  Policy: " << preview.binding.policy_fingerprint.view() << '\n'
+         << "  Generation: " << preview.binding.generation << '\n'
+         << "  Target: "
+         << (preview.target == grant::TargetRevision::active ? "active"
+                                                             : "candidate")
+         << "\n\n";
+  const auto deltas = preview.request_delta;
+  for (const auto &delta : deltas.values()) {
+    const auto *request = request_for(bundle, delta.capability);
+    output << "  [" << change_text(delta.kind) << "] "
+           << capability_title(delta.capability) << " ("
+           << delta.capability.id.view() << '@' << delta.capability.version
+           << ")\n"
+           << "    Choice: "
+           << (request == nullptr  ? "removed"
+               : request->required ? "required"
+                                   : "optional")
+           << '\n';
+    if (request != nullptr)
+      output << "    Scope: " << scope_text(request->scope) << '\n';
+    output << "    Prior grant inherited: "
+           << (delta.inherited_grant ? "yes" : "no") << '\n';
+  }
+}
+
+void review(grant::GrantStore &store, const grant::RequestBundle &bundle) {
+  if (bundle.requests.empty())
+    fail("review requires at least one declared permission request");
+  auto preview = store.preview(bundle, bundle.requests[0].capability);
+  print_review(std::cerr, preview, bundle);
+  const bool changed = std::ranges::any_of(
+      preview.request_delta.values(),
+      [](const auto &delta) { return requires_decision(delta.kind); });
+  if (!changed) {
+    std::cout << "No new or expanded authority requires a decision.\n";
+    return;
+  }
+  if (isatty(STDIN_FILENO) == 0 || isatty(STDERR_FILENO) == 0)
+    fail("permission review requires an interactive terminal; unattended "
+         "installs and updates cannot choose grants");
+  const auto deltas = preview.request_delta;
+  std::vector<std::pair<permission::CapabilityKey,
+                        permission::UserDecision>>
+      decisions;
+  for (const auto &delta : deltas.values()) {
+    if (!requires_decision(delta.kind))
+      continue;
+    const auto *request = request_for(bundle, delta.capability);
+    if (request == nullptr)
+      fail("decision-bearing permission is absent from the candidate");
+    std::cerr << "Type grant or deny for " << delta.capability.id.view() << '@'
+              << delta.capability.version << " ("
+              << (request->required ? "required" : "optional") << "): ";
+    std::string answer;
+    if (!std::getline(std::cin, answer) ||
+        (answer != "grant" && answer != "deny"))
+      fail("permission review cancelled; type exactly grant or deny");
+    decisions.emplace_back(
+        delta.capability, answer == "grant" ? permission::UserDecision::grant
+                                             : permission::UserDecision::deny);
+  }
+  for (const auto &[capability, decision] : decisions) {
+    preview = store.preview(bundle, capability);
+    (void)store.decide(bundle, capability, std::nullopt, decision,
+                       permission::DecisionActor::interactive_cli,
+                       wall_seconds(), preview.expected_mutation_sequence);
+  }
+  std::cout << "Permission review recorded for exact plugin revision and "
+               "policy.\n";
+}
+
 grant::StoreState filter_state(grant::StoreState state,
                                const std::optional<std::string> &filter) {
   if (!filter)
@@ -295,20 +451,37 @@ int run(const Options &options) {
   require_feature(options);
   grant::GrantStore store(options.store);
   if (options.command == "list") {
-    std::cout << grant::state_json(
-                     filter_state(store.read(), options.filter_plugin))
-              << '\n';
+    const auto state = filter_state(store.read(), options.filter_plugin);
+    if (options.format == "json")
+      std::cout << grant::state_json(state) << '\n';
+    else
+      std::cout << "Permission state: " << state.plugins.size()
+                << " plugin(s), " << state.decisions.size()
+                << " explicit decision(s). Use --format json for exact "
+                   "bindings.\n";
     return 0;
   }
   if (options.command != "diff" && options.command != "grant" &&
-      options.command != "deny" && options.command != "revoke")
-    fail("command must be list, diff, grant, deny, or revoke");
+      options.command != "deny" && options.command != "revoke" &&
+      options.command != "review")
+    fail("command must be list, diff, review, grant, deny, or revoke");
   const auto bundle = bundle_from(options);
+  if (options.command == "review") {
+    if (!options.capability.empty() || options.scope)
+      fail("review covers the complete request set and does not accept "
+           "--capability or --scope");
+    review(store, bundle);
+    return 0;
+  }
   if (options.capability.empty())
     fail("--capability ID@VERSION is required");
   const auto capability = capability_key(options.capability);
   if (options.command == "diff") {
-    std::cout << grant::preview_json(store.preview(bundle, capability)) << '\n';
+    const auto preview = store.preview(bundle, capability);
+    if (options.format == "json")
+      std::cout << grant::preview_json(preview) << '\n';
+    else
+      print_review(std::cout, preview, bundle);
     return 0;
   }
   if (options.command == "revoke") {

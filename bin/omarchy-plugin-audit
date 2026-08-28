@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# omarchy:summary=Inspect trusted, redacted plugin security events
+# omarchy:group=plugin
+# omarchy:args=[--plugin ID] [--format human|tsv]
+# omarchy:examples=omarchy plugin audit | omarchy plugin audit --plugin acme.weather
+
+set -euo pipefail
+
+exec omarchy-plugin-audit-store "$@"

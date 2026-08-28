@@ -138,6 +138,19 @@ void test_append_query_export_and_retention() {
               exported.find("storage.private:1") != std::string::npos &&
               exported.find("secret") == std::string::npos,
           "redacted deterministic export failed");
+  std::string human;
+  require(
+      store.export_human(filtered, human).ok() &&
+          human.find("ALLOWED — plugin operation decided") !=
+              std::string::npos &&
+          human.find("Plugin ID: org.example.timer") != std::string::npos &&
+          human.find("Revision: " + std::string(64, 'a')) !=
+              std::string::npos &&
+          human.find("Permission: storage.private@1") != std::string::npos &&
+          human.find("Operation: read private storage") != std::string::npos &&
+          human.find("Decision: granted") != std::string::npos &&
+          human.find("secret") == std::string::npos,
+      "human audit export is ambiguous or disclosed payload data");
 
   struct stat root_status{};
   struct stat file_status{};
