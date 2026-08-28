@@ -12,7 +12,7 @@ trap 'rm -f "$usage"' EXIT
 
 # TUI startup queries pass through Hermes' slash, shell, and interpolation
 # dispatcher. One-shot treats the prompt literally and records its session ID.
-HERMES_SESSION_SOURCE=tui hermes --yolo --usage-file "$usage" --oneshot "$prompt"
+hermes --yolo --usage-file "$usage" --oneshot "$prompt"
 session_id=$(jq -er '.session_id | strings | select(length > 0)' "$usage")
 
 rm -f "$usage"

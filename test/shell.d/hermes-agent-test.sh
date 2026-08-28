@@ -57,7 +57,7 @@ usage_file=${oneshot_args[2]}
   fail "Hermes literal seed remains one argument"
 [[ ! -e $usage_file ]] || fail "Hermes literal seed removes its session report"
 [[ ! -e $sentinel ]] || fail "Hermes literal seed never executes prompt interpolation"
-[[ $(<"$source_log") == "tui" ]] || fail "Hermes literal seed records an interactive session"
+[[ ! -s $source_log ]] || fail "Hermes literal seed preserves native CLI session metadata"
 
 mapfile -d '' -t resume_args <"$resume_log"
 [[ ${resume_args[*]} == "chat --yolo --tui --resume session-123" ]] ||
