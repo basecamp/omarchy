@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -445,20 +446,40 @@ public:
     host_home_ = home;
     bus_socket_path_ = std::filesystem::path(runtime) / "bus";
     wayland_socket_path_ = std::filesystem::path(runtime) / wayland;
+    agent_socket_path_ = root_ / "agent.sock";
+    other_plugin_state_path_ = root_ / "other-plugin-state" / "secret";
+    std::filesystem::create_directories(other_plugin_state_path_.parent_path());
+    std::ofstream(other_plugin_state_path_) << "other-plugin-private-state\n";
+    agent_socket_.reset(socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0));
+    require(agent_socket_.get() >= 0, "host agent socket creation failed");
+    sockaddr_un agent_address{};
+    agent_address.sun_family = AF_UNIX;
+    require(agent_socket_path_.string().size() < sizeof(agent_address.sun_path),
+            "host agent socket path is too long");
+    std::strcpy(agent_address.sun_path, agent_socket_path_.c_str());
+    require(bind(agent_socket_.get(),
+                 reinterpret_cast<const sockaddr *>(&agent_address),
+                 sizeof(agent_address)) == 0,
+            "host agent socket bind failed");
     struct stat home_status {};
     struct stat bus_status {};
     struct stat wayland_status {};
+    struct stat agent_status {};
     require(lstat(host_home_.c_str(), &home_status) == 0 &&
                 S_ISDIR(home_status.st_mode) &&
                 lstat(bus_socket_path_.c_str(), &bus_status) == 0 &&
                 S_ISSOCK(bus_status.st_mode) &&
                 lstat(wayland_socket_path_.c_str(), &wayland_status) == 0 &&
-                S_ISSOCK(wayland_status.st_mode),
-            "actual host home, session bus, or Wayland socket is unavailable");
+                S_ISSOCK(wayland_status.st_mode) &&
+                lstat(agent_socket_path_.c_str(), &agent_status) == 0 &&
+                S_ISSOCK(agent_status.st_mode),
+            "actual host home, session bus, Wayland, or agent socket is unavailable");
     std::ofstream(revision() / "fixture")
         << host_home_.string() << '\n'
         << bus_socket_path_.string() << '\n'
-        << wayland_socket_path_.string() << '\n';
+        << wayland_socket_path_.string() << '\n'
+        << agent_socket_path_.string() << '\n'
+        << other_plugin_state_path_.string() << '\n';
     const int host_write =
         open((revision() / "fixture").c_str(), O_WRONLY | O_CLOEXEC);
     require(host_write >= 0,
@@ -484,6 +505,9 @@ private:
   std::filesystem::path host_home_;
   std::filesystem::path bus_socket_path_;
   std::filesystem::path wayland_socket_path_;
+  std::filesystem::path agent_socket_path_;
+  std::filesystem::path other_plugin_state_path_;
+  UniqueFd agent_socket_;
 };
 
 struct SandboxProbe {
@@ -494,6 +518,8 @@ struct SandboxProbe {
   std::uint32_t host_home_absent = 0;
   std::uint32_t bus_socket_absent = 0;
   std::uint32_t wayland_socket_absent = 0;
+  std::uint32_t agent_socket_absent = 0;
+  std::uint32_t other_plugin_state_absent = 0;
   std::uint32_t network_denied = 0;
   std::uint32_t descendant_denied = 0;
   std::uint32_t revision_write_denied = 0;
@@ -536,6 +562,8 @@ void test_standalone_sandbox() {
               probe.host_home_absent == 1 &&
               probe.bus_socket_absent == 1 &&
               probe.wayland_socket_absent == 1 &&
+              probe.agent_socket_absent == 1 &&
+              probe.other_plugin_state_absent == 1 &&
               probe.network_denied == 1 && probe.descendant_denied == 1 &&
               probe.revision_write_denied == 1,
           "standalone sandbox did not deny an ambient authority");

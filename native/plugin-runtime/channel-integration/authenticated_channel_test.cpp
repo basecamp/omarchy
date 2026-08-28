@@ -83,9 +83,9 @@ public:
 class Dispatcher final : public channel::BrokerDispatcher {
 public:
   bool accepts(const launcher::LaunchIdentity &identity) const noexcept override {
-    return accept_identity && identity.plugin_id == "org.omarchy_d1" &&
-           identity.revision_sha256 == std::string(64, 'd') &&
-           identity.generation == 47;
+    return identity.plugin_id == accepted_plugin &&
+           identity.revision_sha256 == accepted_revision &&
+           identity.generation == accepted_generation;
   }
   bool dispatch(const omarchy::plugin::wire::PacketView &packet) override {
     ++calls;
@@ -94,7 +94,9 @@ public:
   }
   unsigned calls = 0;
   std::uint64_t last_generation = 0;
-  bool accept_identity = true;
+  std::string accepted_plugin = "org.omarchy_d1";
+  std::string accepted_revision = std::string(64, 'd');
+  std::uint64_t accepted_generation = 47;
 };
 
 class ThrowingDispatcher final : public channel::BrokerDispatcher {
@@ -282,7 +284,7 @@ void fake_suite() {
     Fixture fixture("valid");
     auto scope = std::make_shared<Scope>();
     auto dispatcher = std::make_shared<Dispatcher>();
-    dispatcher->accept_identity = false;
+    dispatcher->accepted_plugin = "org.other_plugin";
     auto authority = std::make_shared<Authority>();
     auto supervisor = launcher::Supervisor::forTestOnly(
         FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, scope);

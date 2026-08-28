@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -89,6 +90,8 @@ struct SandboxProbe {
   std::uint32_t host_home_absent = 0;
   std::uint32_t bus_socket_absent = 0;
   std::uint32_t wayland_socket_absent = 0;
+  std::uint32_t agent_socket_absent = 0;
+  std::uint32_t other_plugin_state_absent = 0;
   std::uint32_t network_denied = 0;
   std::uint32_t descendant_denied = 0;
   std::uint32_t revision_write_denied = 0;
@@ -136,9 +139,13 @@ int sandbox_probe() {
   std::string host_home;
   std::string bus_socket;
   std::string wayland_socket;
+  std::string agent_socket;
+  std::string other_plugin_state;
   std::getline(fixture, host_home);
   std::getline(fixture, bus_socket);
   std::getline(fixture, wayland_socket);
+  std::getline(fixture, agent_socket);
+  std::getline(fixture, other_plugin_state);
   errno = 0;
   probe.host_home_absent = !host_home.empty() &&
                            access(host_home.c_str(), F_OK) < 0 &&
@@ -151,6 +158,14 @@ int sandbox_probe() {
   probe.wayland_socket_absent = !wayland_socket.empty() &&
                                 access(wayland_socket.c_str(), F_OK) < 0 &&
                                 errno == ENOENT;
+  errno = 0;
+  probe.agent_socket_absent = !agent_socket.empty() &&
+                              access(agent_socket.c_str(), F_OK) < 0 &&
+                              errno == ENOENT;
+  errno = 0;
+  probe.other_plugin_state_absent =
+      !other_plugin_state.empty() &&
+      access(other_plugin_state.c_str(), F_OK) < 0 && errno == ENOENT;
 
   errno = 0;
   const int network = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
