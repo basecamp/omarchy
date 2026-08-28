@@ -298,9 +298,7 @@ if [[ $open_result != "ok" ]]; then
   exit 1
 fi
 
-while [[ ! -e $done_file ]]; do
-  sleep 0.01
-done
+omarchy-menu-await-done "$done_file"
 
 if [[ -s $selection_file ]]; then
   if [[ $print_name == true ]]; then

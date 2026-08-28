@@ -47,9 +47,7 @@ payload=$(perl -MEncode=decode -MJSON::PP=encode_json -e '
 
 omarchy-shell shell summon omarchy.menu "$payload" >/dev/null
 
-while [[ ! -e $done_file ]]; do
-  sleep 0.05
-done
+omarchy-menu-await-done "$done_file"
 
 if [[ -s $selection_file ]]; then
   cat "$selection_file"

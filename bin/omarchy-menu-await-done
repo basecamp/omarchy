@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# omarchy:summary=Block until the shell signals a menu request is complete
+# omarchy:group=menu
+# omarchy:hidden=true
+# omarchy:args=<done-file>
+
+set -euo pipefail
+
+done_file="${1:-}"
+
+if [[ -z $done_file ]]; then
+  echo "Usage: omarchy-menu-await-done <done-file>" >&2
+  exit 1
+fi
+
+# A menu stays open for as long as the reader takes to choose, so this wait has
+# no bound: a menu opened and left alone waits all day. Polling spends that
+# whole time waking the CPU several times a second out of its idle states, for
+# an answer that arrives exactly once. Block on the event instead.
+#
+# The watch is on the directory rather than the file because inotify cannot
+# watch a file that does not exist yet, and it starts before the first existence
+# test so a file created in the window between the two is caught by the watch
+# rather than missed by both.
+watch_dir=${done_file%/*}
+[[ $watch_dir == "$done_file" ]] && watch_dir="."
+done_name=${done_file##*/}
+
+exec {watch_fd}< <(inotifywait -q -m -e create,moved_to --format "%f" "$watch_dir")
+watch_pid=$!
+trap 'kill "$watch_pid" 2>/dev/null || true' EXIT
+
+# A watch that ends before the file appears leaves nothing else to wait for, so
+# give up rather than block forever. Return success either way: every caller
+# already reads an absent or empty selection as the cancellation it is, and
+# they run under `set -e`, where a failure here would exit before they could.
+while [[ ! -e $done_file ]]; do
+  if read -r -u "$watch_fd" created; then
+    [[ $created == "$done_name" ]] || continue
+  else
+    break
+  fi
+done
+
+exit 0
