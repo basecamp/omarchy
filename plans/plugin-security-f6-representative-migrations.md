@@ -1,0 +1,54 @@
+# F6 representative-plugin migration dry runs
+
+## Result
+
+F6 ran the bounded B7 inventory against all 20 pinned repositories in the capability-stratified marketplace sample, at the exact commits recorded in `plugin-security-examples.md`. Fourteen repositories produced deterministic advisory snapshots. Six failed closed because a preview image, documentation image, or font exceeded the scanner's 1 MiB per-file content bound. Those failures are migration blockers, not clean scans, and are retained verbatim in the machine-readable evidence.
+
+The dry run also compared scanner findings with the earlier manual source review. It exposed two concrete static-inventory blind spots in successful scans: the Docker monitor report did not identify its effective Docker CLI/socket authority, and the Textify report did not identify its Rust capture/OCR/clipboard authority. This confirms the planned rule that inventory output proposes work but never approves a candidate or derives a grant.
+
+Every target retains arbitrary QML for plugin-authored pixels. The migration changes the root surface and ambient effects, not the scene grammar. Host-owned bar, panel, popover, and overlay envelopes constrain placement, focus, input regions, rate, dimensions, and lifecycle; typed adapters or trusted portals own effects. No case receives a generic process, shell, filesystem, network, D-Bus, Wayland, compositor, Docker-socket, or plugin-management permission.
+
+## Exact today-to-tomorrow matrix
+
+| Pinned plugin | Today | Tomorrow | Conversion result |
+|---|---|---|---|
+| `syskey8.pomodoro` | Bar/panel timer with files, processes, notification, audio, IPC, and shell objects | Arbitrary QML in `bar-embedded`/`panel`; `storage.private@1`, `notifications.send@1`, and `audio.play-cue@1` | Implemented by E1 with the C10 fixture; direct effects and root surfaces change |
+| `io.github.mohuddle.myjournal` | Focusable layer panel with direct journal files and process helpers | Arbitrary panel QML; `storage.private@1` by default and future user-selected open/save handles | Blocked on author classification of private state versus user documents and on file portals |
+| `37signals.basecamp` | Rich status panel around an authenticated CLI, clipboard, notifications, IPC, and URLs | Arbitrary bar/panel QML; future Basecamp adapter, gesture-bound open URI, and clipboard-write operations | E3 proves the adapter shape with `service.fake-status@1`; real provider and legacy identity repair remain |
+| `y4gg.1password-popover` | Popover plus helper/desktop SDK and direct sensitive clipboard effect | Arbitrary popover QML; future opaque credential-list and broker-performed one-shot copy-field operations | Requires a separately trusted provider; secret values never return to QML |
+| `io.github.sasirulk.totp` | Panel using keyring commands, files, screen capture, QR tools, clipboard, typing, import/export | Arbitrary panel QML; opaque secret storage plus separate capture, QR, clipboard, input, and file portals | Portal set is unimplemented and every sensitive action needs its own fresh gesture |
+| `ahasdemir.ai-grammar` | Selection/clipboard read, `curl`, clipboard write, and `wtype` | Arbitrary panel QML; future selection-read, provider HTTP, clipboard-write, and focused-input operations | Blocked on portals and elevated composed-risk review for selection plus network |
+| `io.github.atif-1402.ai-panel` | Streaming network providers, credentials, attachments, clipboard history, files, and generated commands | Arbitrary panel QML; broker-held credentials, scoped provider/loopback HTTP, private storage, and file handles | Inventory itself is blocked by `preview.png`; provider scopes and file ownership remain undecided |
+| `io.github.thisisgm.omapods` | QML plus a daemon with Bluetooth, D-Bus, MPRIS, audio, pairing keys, and service control | Arbitrary bar/panel QML talking to a separately packaged hardware provider | Inventory is blocked by a bundled font; daemon packaging, bus/device policy, credentials, and updates require independent review |
+| `k53n0.browser-picker` | Focusable overlay that becomes a URL handler, scans profiles, stores rules, and launches browsers | Arbitrary focusable-overlay QML; trusted URL activation, profile enumeration, default-handler consent, constrained launch, and private state | Requires a trusted routing service and high-visibility default-handler portal |
+| `shokupan.dpms-guard` | Service reads injected lock/idle/monitor state and shells out to compositor/display commands | Event subscription plus one conditional `display.dpms-off-while-locked` operation | Requires a broker adapter that enforces locked and idle preconditions independently of plugin claims |
+| `djjeane.docker-monitor` | Panel runs Docker list/stats/log/control commands | Arbitrary panel QML; future separate observe, logs, and control grants scoped to exact resources | High-authority adapter required; Docker socket is never mounted; scanner missed this known authority |
+| `io.github.lijiawei0305-pixel.mihomo` | Panel discovers credentials/endpoints, uses controller API streams, and mutates desktop proxy state | Arbitrary panel QML; separate observe/control adapter and independently confirmed system-proxy operation | Requires credential pinning, scoped loopback networking, rollback, and confirmation |
+| `b.omashot` | Full-screen capture/recording overlay with global input, compositor state, clipboard, and files | Arbitrary desktop-overlay QML around a trusted capture portal and opaque media handles; separate clipboard/file/input actions | E2 proves transparent arbitrary-QML overlay mechanics; inventory is blocked by `preview.png` and capture portals remain unimplemented |
+| `omarchy-overview` | Workspace overlay with screencopy, compositor object access, and focus/move/close actions | Arbitrary focusable-overlay QML; sanitized topology, preview handles, and separate focus/move/close operations | Portal/adapter required; observation never implies mutation authority |
+| `b.peek` | Background compositor event/rule automation | Closed host-enforced compositor rule template and window predicate | Inventory is blocked by `preview.png`; arbitrary compositor evaluation remains unsupported |
+| `quickshell.spotify` | Media/network/OAuth/keyring UI plus Rust backend, sockets, services, packages, clipboard, and URLs | Arbitrary bar/panel QML; media adapter, Spotify provider, broker-held OAuth, and separately packaged playback backend | Inventory is blocked by `preview.png`; provider packaging and lifecycle remain separate from plugin activation |
+| `dizziee.system-updates` | Bar/panel counts plus terminal/package-manager commands, including direct privileged update | Arbitrary bar/panel QML; read-only update status and launch of an Omarchy-owned update workflow | Requires trusted workflow; no terminal command or package-manager grant exists |
+| `jltrench.textify` | Region capture, image preprocessing, OCR, private history, and clipboard | Arbitrary panel QML; trusted capture portal, bounded OCR worker, private storage, and clipboard write | Portal required; scanner missed the reviewed Rust capture/OCR/clipboard behavior |
+| `b.okomart` | Storefront fetches/clones repositories and installs, updates, removes, and coordinates plugins | Custom storefront QML may remain, but it calls the trusted lifecycle product | Different authority owner: no third-party `plugins.manage` grant is created |
+| `lacuna.shell-suite` | Complete shell replacement spanning bars, panels, overlays, settings, devices, media, network, power, recording, and installers | Trusted shell package, or decomposition into separately bounded arbitrary-QML plugins and typed providers | Different trust class; inventory is blocked by a documentation image and an ordinary grant cannot recreate host-code authority |
+
+## Three executable conversion lanes
+
+- The local-status lane uses the real Pomodoro behavior map and E1's executable arbitrary-QML bar slice. Its direct file/process calls become the current storage, notification, and audio providers.
+- The freeform-overlay lane uses the real capture/overview/shell-overlay requirements and E2's executable transparent animated pet. E2 proves alpha, animation, irregular input, pacing, and host placement without a component library; it does not claim that the capture portal already exists.
+- The authenticated-service lane uses the Basecamp behavior map and E3's executable fake-service adapter. The fixture proves identity-bound requests, grant enforcement, denial, audit-before-effect, bounds, handle revocation, and no generic URL or CLI fallback; a production Basecamp provider remains future work.
+
+## Machine-readable evidence and test contract
+
+`plans/evidence/plugin-security-f6/representative-migration-outcomes.json` freezes the marketplace commit, every inspected repository commit, scanner snapshot or exact failure, coverage categories, proposed surface roles, proposed authority names, conversion status, blockers, and the E1/E2/E3 proof relationship. Names ending in `@future` are design gaps, not registered B2 capabilities.
+
+`plugin-representative-migration-dry-runs` validates the evidence as an advisory schema-v1-unsafe report, requires all 20 unique pinned commits and the 14/6 pass/block split, checks the requested behavior and surface coverage, requires exact snapshot hashes for successful scans, freezes the two known scanner blind spots, rejects ambient authority names, requires arbitrary QML retention, and keeps plugin management and a complete shell in their distinct trusted classes.
+
+The executable D6 migration test continues to generate deterministic today-to-tomorrow reports for Pomodoro, the transparent pet, and the fake service against strict schema-v2 candidate manifests. E1, E2, and E3 remain the executable runtime proofs. F6 does not convert captured worksheet guidance into a request, user grant, install decision, or safety claim.
+
+## Blockers and next migration-tool changes
+
+The scanner should eventually separate bounded semantic reads from streaming advisory identity hashing so large inert assets can be identified without allocating or decoding them, while preserving descriptor identity/race checks and total work limits. That is a B7/C9 contract change and is not silently made in this proof node. Until reviewed, the six affected repositories remain inventory-blocked.
+
+Static inventory also needs language-aware/native provenance analysis or explicit author worksheets for wrapped CLI/service behavior. The Docker and Textify misses prove that a successful regex scan cannot be interpreted as complete. Provider-specific operations, portals, package boundaries, and composed-risk prompts must be designed and reviewed before their `@future` names can enter the closed B2 registry.

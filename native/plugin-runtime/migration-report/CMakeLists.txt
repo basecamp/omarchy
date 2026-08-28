@@ -85,4 +85,13 @@ if(BUILD_TESTING)
     LABELS "unit;integration;migration;adversarial"
     TIMEOUT 20
   )
+  add_test(NAME plugin-representative-migration-dry-runs
+    COMMAND bash
+            "${CMAKE_CURRENT_SOURCE_DIR}/representative_dry_run_test.sh"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../../plans/evidence/plugin-security-f6/representative-migration-outcomes.json"
+  )
+  set_tests_properties(plugin-representative-migration-dry-runs PROPERTIES
+    LABELS "integration;migration;adversarial;corpus"
+    TIMEOUT 20
+  )
 endif()

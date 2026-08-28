@@ -1,0 +1,175 @@
+{
+  "schemaVersion": 1,
+  "advisoryOnly": true,
+  "legacySchemaV1Safe": false,
+  "corpus": {
+    "marketplaceCommit": "b04f0252d0728fe681d944d065b0ae2881ee5c15",
+    "sources": 1575,
+    "catalogEntries": 1613,
+    "sampleSize": 20,
+    "scannerPassed": 14,
+    "scannerBlocked": 6
+  },
+  "cases": [
+    {
+      "id": "syskey8.pomodoro",
+      "commit": "9d1d7858aa1e258e244887cff8ff588d6efcc2fc",
+      "categories": ["bar-widget", "filesystem", "notification", "media", "exec"],
+      "scan": {"status": "passed", "snapshot": "ef066d35542fc62eaf1c2e166b75b8270655c84954734aa5b35452ea0ea5edad", "findings": 8, "findingIds": ["dynamic.expression", "ipc.handler", "manifest.entry-points", "media.audio", "process.qml", "shell.object", "system.mutation"]},
+      "tomorrow": {"arbitraryQml": "retained", "surfaces": ["bar-embedded", "panel"], "authorities": ["storage.private@1", "notifications.send@1", "audio.play-cue@1"], "status": "reference-implemented", "proof": "E1"},
+      "blockers": []
+    },
+    {
+      "id": "io.github.mohuddle.myjournal",
+      "commit": "f2f9453249772bce156db579ed9f9db42f413f48",
+      "categories": ["panel", "filesystem", "exec"],
+      "scan": {"status": "passed", "snapshot": "b11c81e96362269cfe6b4eb2e6e009d06cea08bb36216a1f98ad8ddfb9478a81", "findings": 10, "findingIds": ["environment.read", "filesystem.computed-path", "filesystem.fileview", "ipc.handler", "manifest.entry-points", "process.qml", "wayland.import"]},
+      "tomorrow": {"arbitraryQml": "retained", "surfaces": ["panel"], "authorities": ["storage.private@1", "file.open-handle@future", "file.save-handle@future"], "status": "portal-required"},
+      "blockers": ["Decide whether each document is plugin-private data or user-owned data before choosing storage authority."]
+    },
+    {
+      "id": "37signals.basecamp",
+      "commit": "9542960381517db9ab25cdb373b9eeb4f41315aa",
+      "categories": ["panel", "service", "network", "notification", "exec"],
+      "scan": {"status": "passed", "snapshot": "ae99793a5eef8cd6d4cf032ec50107cf658eac600aa00b3979784f447da0c36a", "findings": 25, "findingIds": ["clipboard.access", "environment.read", "executable.content", "filesystem.computed-path", "ipc.handler", "manifest.entry-points", "manifest.invalid-id", "notification.access", "process.detached", "process.qml", "process.shell", "shell.object", "url.computed", "url.open"], "observedPluginId": "unknown-plugin"},
+      "tomorrow": {"arbitraryQml": "retained", "surfaces": ["bar-embedded", "panel"], "authorities": ["service.basecamp@future", "open-uri@future", "clipboard.write@future"], "status": "adapter-required", "proofAnalogue": "E3 service.fake-status@1"},
+      "blockers": ["Repair the non-canonical legacy manifest identity before deriving grants.", "Build and review a Basecamp-specific adapter; no generic CLI grant exists."]
+    },
+    {
+      "id": "y4gg.1password-popover",
+      "commit": "02dd36c3d18d7ce28b22a030c8de0c5d8de638d5",
+      "categories": ["panel", "service", "credentials", "clipboard", "exec"],
+      "scan": {"status": "passed", "snapshot": "c339373d959408c8b0065f961b9d6e00321a1e77762e9584d9cff2c402e7ddbc", "findings": 17, "findingIds": ["clipboard.access", "executable.content", "filesystem.computed-path", "ipc.handler", "manifest.entry-points", "process.qml", "shell.object", "wayland.import"]},
+      "tomorrow": {"arbitraryQml": "retained", "surfaces": ["popover"], "authorities": ["credentials.list@future", "credentials.copy-field@future"], "status": "trusted-provider-required"},
+      "blockers": ["Secrets must remain opaque to the worker; the trusted provider performs the one-shot clipboard effect."]
+    },
+    {
+      "id": "io.github.sasirulk.totp",
+      "commit": "ce2e759e272b353e98d46977487d2671d8f55446",
+      "categories": ["panel", "filesystem", "credentials", "capture", "clipboard", "input", "exec"],
+      "scan": {"status": "passed", "snapshot": "0f463a98094c5daab9524b2a1ac4c63b9e956b7b57aadca7da27c27f83385d00", "findings": 28, "findingIds": ["capture.access", "clipboard.access", "environment.read", "executable.content", "filesystem.computed-path", "filesystem.fileview", "manifest.entry-points", "process.qml", "process.shell"]},
+      "tomorrow": {"arbitraryQml": "retained", "surfaces": ["panel"], "authorities": ["secrets.private@future", "capture.region@future", "qr.decode@future", "clipboard.write@future", "input.insert@future", "file.open-handle@future", "file.save-handle@future"], "status": "portal-required"},
+      "blockers": ["Capture, input insertion, import, and export each require separate trusted user gestures and portals."]
+    },
+    {
+      "id": "ahasdemir.ai-grammar",
+      "commit": "5fa625e6298a273a1fb09528756d4974fb8db050",
+      "categories": ["panel", "network", "clipboard", "input", "exec"],
+      "scan": {"status": "passed", "snapshot": "31100669c5a5522060cde91303244ea078507823f83946445d19746e020cc7d4", "findings": 28, "findingIds": ["clipboard.access", "executable.content", "filesystem.computed-path", "hyprland.access", "installer.content", "manifest.entry-points", "notification.access", "process.network-cli", "process.qml", "process.shell"]},
+      "tomorrow": {"arbitraryQml": "retained", "surfaces": ["panel"], "authorities": ["selection.read@future", "http.provider@future", "clipboard.write@future", "input.insert@future"], "status": "portal-required"},
+      "blockers": ["Selection read plus network is a composed exfiltration risk requiring elevated review."]
+    },
+    {
+      "id": "io.github.atif-1402.ai-panel",
+      "commit": "9af428b76a54a88b217334e8b9d03a999f827544",
+      "categories": ["panel", "network", "filesystem", "credentials", "clipboard", "exec", "hostile-ambiguous"],
+      "scan": {"status": "blocked", "error": "file exceeds 1048576-byte scan limit: preview.png"},
+      "tomorrow": {"arbitraryQml": "retained", "surfaces": ["panel"], "authorities": ["credentials.provider@future", "http.provider@future", "storage.private@1", "file.open-handle@future", "file.save-handle@future"], "status": "inventory-blocked"},
+      "blockers": ["The bounded inventory cannot currently hash a large inert preview without treating it as source.", "Provider hosts, loopback access, and attachment/export ownership need author review."]
+    },
+    {
+      "id": "io.github.thisisgm.omapods",
+      "commit": "fff7fec600a5b9a61cdb40e93eccbcceb4b8f824",
+      "categories": ["panel", "service", "device", "media", "exec", "hostile-ambiguous"],
+      "scan": {"status": "blocked", "error": "file exceeds 1048576-byte scan limit: daemon/assets/fonts/SF-Symbols-6.ttf"},
+      "tomorrow": {"arbitraryQml": "retained", "surfaces": ["bar-embedded", "panel"], "authorities": ["device.bluetooth@future", "media.control@future", "audio.route@future", "service.lifecycle@future"], "status": "separate-provider-package"},
+      "blockers": ["The daemon needs independent package, sandbox, bus/device policy, credential, and update review.", "The bounded inventory cannot currently hash the bundled font."]
+    },
+    {
+      "id": "k53n0.browser-picker",
+      "commit": "680ad11780f5ff7488ebaec6cccc5429f5e0e956",
+      "categories": ["overlay", "filesystem", "service", "exec"],
+      "scan": {"status": "passed", "snapshot": "8ee3e4a1580c68e633b0e4b990cb97a580bf9ee7c11be8137bb9f4e5efd98eb2", "findings": 26, "findingIds": ["environment.read", "executable.content", "filesystem.computed-path", "filesystem.fileview", "hyprland.access", "ipc.handler", "manifest.entry-points", "process.detached", "process.qml", "process.shell", "shell.object", "wayland.import"]},
+      "tomorrow": {"arbitraryQml": "retained", "surfaces": ["focusable-overlay"], "authorities": ["url.activation@future", "applications.browser-profiles@future", "default-handler.set@future", "applications.launch@future", "storage.private@1"], "status": "trusted-routing-service-required"},
+      "blockers": ["Default-handler registration is a high-visibility system integration, not a routine plugin grant."]
+    },
+    {
+      "id": "shokupan.dpms-guard",
+      "commit": "b2be42638d5bb7b0eebd780485f1c95bc3049c1d",
+      "categories": ["service", "compositor", "exec"],
+      "scan": {"status": "passed", "snapshot": "3fab208a453774ef0a3cd5e5199874339f77cff0314f66400f8e4f9bf561b048", "findings": 6, "findingIds": ["hyprland.access", "manifest.entry-points", "process.qml", "process.shell"]},
+      "tomorrow": {"arbitraryQml": "retained", "surfaces": [], "authorities": ["shell.state-events@future", "display.dpms-off-while-locked@future"], "status": "conditional-adapter-required"},
+      "blockers": ["The broker, not plugin code, must enforce locked and idle preconditions."]
+    },
+    {
+      "id": "djjeane.docker-monitor",
+      "commit": "81c95ec532b255d5d2bc98f6ff42c936608e9ead",
+      "categories": ["panel", "service", "exec", "hostile-ambiguous"],
+      "scan": {"status": "passed", "snapshot": "c485b15ec47749cf757c68e1e895213ea9a6ad9bf3f418f5c6587cb6f7176931", "findings": 8, "findingIds": ["executable.content", "manifest.entry-points", "notification.access", "process.qml"], "manualGap": "The scanner did not identify the reviewed Docker CLI/socket authority."},
+      "tomorrow": {"arbitraryQml": "retained", "surfaces": ["panel"], "authorities": ["docker.observe@future", "docker.logs@future", "docker.control@future"], "status": "high-authority-adapter-required"},
+      "blockers": ["Never mount the Docker socket into the worker; destructive operations require fresh gesture and confirmation."]
+    },
+    {
+      "id": "io.github.lijiawei0305-pixel.mihomo",
+      "commit": "ce13a59c74a9c5044f2a6e30df58fb0da300039e",
+      "categories": ["panel", "service", "network", "credentials", "exec"],
+      "scan": {"status": "passed", "snapshot": "6be8816f450a1d185c781e0df8a9b2c31ca2452d29f22110eae920e2038ae26f", "findings": 33, "findingIds": ["environment.read", "executable.content", "filesystem.computed-path", "ipc.handler", "manifest.entry-points", "process.qml", "system.mutation"]},
+      "tomorrow": {"arbitraryQml": "retained", "surfaces": ["panel"], "authorities": ["service.mihomo-observe@future", "service.mihomo-control@future", "network.proxy-system@future"], "status": "adapter-required"},
+      "blockers": ["Loopback API access remains scoped network authority; proxy mutation is an independent confirmed effect."]
+    },
+    {
+      "id": "b.omashot",
+      "commit": "09eddf466bbe00e917a3e6de0840166ff727dfff",
+      "categories": ["overlay", "capture", "filesystem", "clipboard", "input", "media", "hostile-ambiguous"],
+      "scan": {"status": "blocked", "error": "file exceeds 1048576-byte scan limit: preview.png"},
+      "tomorrow": {"arbitraryQml": "retained", "surfaces": ["desktop-overlay"], "authorities": ["capture.portal@future", "media.handle@future", "clipboard.write@future", "file.save-handle@future", "input.observe@future"], "status": "portal-required", "proofAnalogue": "E2 transparent pet"},
+      "blockers": ["Trusted capture UI owns authoritative selection and confirmation.", "The bounded inventory cannot currently hash the large preview image."]
+    },
+    {
+      "id": "omarchy-overview",
+      "commit": "b09c227ba43182bebf101e5882147029fdddf7f1",
+      "categories": ["overlay", "capture", "compositor", "exec"],
+      "scan": {"status": "passed", "snapshot": "464514a2393d6d209ed2d715630e7481942ca208aaef96c46737e571d2d9a266", "findings": 83, "findingIds": ["environment.read", "filesystem.computed-path", "hyprland.access", "ipc.handler", "manifest.entry-points", "process.qml", "process.shell", "wayland.import"]},
+      "tomorrow": {"arbitraryQml": "retained", "surfaces": ["focusable-overlay"], "authorities": ["compositor.observe@future", "window.preview-handle@future", "workspace.focus@future", "workspace.move@future", "window.close@future"], "status": "portal-and-adapter-required"},
+      "blockers": ["Observe, focus, move, and close authority must remain separate; previews never imply compositor access."]
+    },
+    {
+      "id": "b.peek",
+      "commit": "23850a56f0e6e83d0e761b50e4fbce41e7ded24a",
+      "categories": ["service", "compositor", "exec", "hostile-ambiguous"],
+      "scan": {"status": "blocked", "error": "file exceeds 1048576-byte scan limit: preview.png"},
+      "tomorrow": {"arbitraryQml": "retained", "surfaces": [], "authorities": ["compositor.rule-template@future"], "status": "trusted-automation-required"},
+      "blockers": ["Rule properties and affected-window predicates need a closed host-enforced schema.", "The bounded inventory cannot currently hash the large preview image."]
+    },
+    {
+      "id": "quickshell.spotify",
+      "commit": "f93b2f9333b7450b96a4c7843a11a2dd508235f8",
+      "categories": ["panel", "service", "network", "credentials", "media", "exec", "hostile-ambiguous"],
+      "scan": {"status": "blocked", "error": "file exceeds 1048576-byte scan limit: preview.png"},
+      "tomorrow": {"arbitraryQml": "retained", "surfaces": ["bar-embedded", "panel"], "authorities": ["media.observe@future", "media.control@future", "service.spotify@future", "credentials.oauth@future"], "status": "separate-provider-package"},
+      "blockers": ["Playback backend installation and lifecycle are separately reviewed package concerns.", "The bounded inventory cannot currently hash the large preview image."]
+    },
+    {
+      "id": "dizziee.system-updates",
+      "commit": "67c099f74834414324914d5d0550cb728973771f",
+      "categories": ["bar-widget", "service", "exec", "privileged"],
+      "scan": {"status": "passed", "snapshot": "35feee40831bd2be71c73cb74be221155711ef505183df2df5952de1f089b062", "findings": 20, "findingIds": ["executable.content", "filesystem.computed-path", "hyprland.access", "manifest.entry-points", "process.qml", "process.shell", "shell.object", "system.mutation"]},
+      "tomorrow": {"arbitraryQml": "retained", "surfaces": ["bar-embedded", "panel"], "authorities": ["updates.observe@future", "updates.launch-trusted-workflow@future"], "status": "trusted-workflow-required"},
+      "blockers": ["No arbitrary package-manager or terminal-command grant; only Omarchy-owned update workflows may run."]
+    },
+    {
+      "id": "jltrench.textify",
+      "commit": "1d6f66dc95d8b9c4d56c9fb2e5f30613fb8ac7f5",
+      "categories": ["panel", "capture", "filesystem", "clipboard", "exec", "hostile-ambiguous"],
+      "scan": {"status": "passed", "snapshot": "3747aa042cc83e07b5f71ed368aa87f7aa1d5ce81d641e55e289e12b8992ad97", "findings": 10, "findingIds": ["filesystem.computed-path", "manifest.entry-points", "process.qml"], "manualGap": "The scanner did not identify the reviewed Rust capture/OCR/clipboard authority."},
+      "tomorrow": {"arbitraryQml": "retained", "surfaces": ["panel"], "authorities": ["capture.region@future", "ocr.compute@future", "storage.private@1", "clipboard.write@future"], "status": "portal-required"},
+      "blockers": ["The OCR worker receives bounded image bytes or an opaque handle, never compositor authority."]
+    },
+    {
+      "id": "b.okomart",
+      "commit": "c8ff3b2f5377c72c8a854c6183617602f904ee62",
+      "categories": ["panel", "network", "filesystem", "plugin-management", "exec", "privileged"],
+      "scan": {"status": "passed", "snapshot": "d08d65e83c209ce2629c8ab723acb830e6497b54fc945ba9398165bc327f3629", "findings": 67, "findingIds": ["environment.read", "executable.content", "filesystem.computed-path", "hyprland.access", "manifest.entry-points", "process.detached", "process.qml", "url.computed", "url.open"]},
+      "tomorrow": {"arbitraryQml": "retained-as-storefront", "surfaces": ["panel"], "authorities": ["trusted-plugin-lifecycle-service"], "status": "trusted-host-product"},
+      "blockers": ["A third-party plugins.manage grant is forbidden; install, grants, activation, rollback, and recovery remain trusted lifecycle work."]
+    },
+    {
+      "id": "lacuna.shell-suite",
+      "commit": "ec309f8203097934ae409c9412e4eb3ba443bc3b",
+      "categories": ["bar", "panel", "overlay", "service", "network", "filesystem", "device", "media", "exec", "privileged", "hostile-ambiguous"],
+      "scan": {"status": "blocked", "error": "file exceeds 1048576-byte scan limit: docs/screenshots/reference/06-lacuna-shell-settings-panel.png"},
+      "tomorrow": {"arbitraryQml": "retained-per-decomposed-plugin", "surfaces": ["bar-replacement", "panel", "desktop-overlay"], "authorities": ["trusted-shell-package-or-decomposed-typed-providers"], "status": "different-trust-class"},
+      "blockers": ["A complete shell cannot become an ordinary untrusted plugin without recreating unsafe host code.", "The bounded inventory cannot currently hash a large documentation image."]
+    }
+  ]
+}
