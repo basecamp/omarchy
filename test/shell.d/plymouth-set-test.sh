@@ -22,6 +22,15 @@ plymouth_theme_assets=(
 plymouth_default_assets=("${plymouth_theme_assets[@]}" logos/oma.png)
 sddm_theme_assets=(Main.qml bullet.png entry-failed.png entry.png lock-failed.png lock.png logo.png)
 
+# Keep the refresh allowlist synchronized with every packaged Plymouth asset.
+# An added default file must make this test fail until its publication contract
+# is explicitly reviewed and included above.
+packaged_plymouth_assets=$(find "$ROOT/default/plymouth" -type f -printf '%P\n' | LC_ALL=C sort)
+allowlisted_plymouth_assets=$(printf '%s\n' "${plymouth_default_assets[@]}" | LC_ALL=C sort)
+[[ $packaged_plymouth_assets == "$allowlisted_plymouth_assets" ]] ||
+  fail "Plymouth refresh allowlist differs from the packaged asset set" "$packaged_plymouth_assets"
+pass "Plymouth refresh allowlist covers every packaged asset"
+
 # omarchy-plymouth-set-by-theme hands over a theme's unlock.png from
 # ~/.config/omarchy/themes. Both installed copies are world-readable, so a
 # symlink there must not republish whatever it points at.
@@ -179,9 +188,9 @@ setup_run() {
   ln -s "$legacy_victim" "$sddm/logo.svg"
 }
 
-run_set() {
-  local requested_umask="$1"
-  shift
+run_set_colors() {
+  local requested_umask="$1" background="$2" text="$3"
+  shift 3
   (
     umask "$requested_umask"
     PATH="$fake_bin:$ROOT/bin:$PATH" \
@@ -194,8 +203,14 @@ run_set() {
       TEST_LEAK_LOG="$leak_log" \
       TEST_MUTATE_LOG="$mutate_log" \
       "$@" \
-      /bin/bash "$ROOT/bin/omarchy-plymouth-set" '#1d2021' '#ebdbb2' "$test_tmp/logo.png"
+      /bin/bash "$ROOT/bin/omarchy-plymouth-set" "$background" "$text" "$test_tmp/logo.png"
   )
+}
+
+run_set() {
+  local requested_umask="$1"
+  shift
+  run_set_colors "$requested_umask" '#1d2021' '#ebdbb2' "$@"
 }
 
 assert_no_temporary_files() {
@@ -244,6 +259,19 @@ for requested_umask in 022 027 077; do
 done
 
 pass "every Plymouth and SDDM destination is atomically replaced with mode 0644 across restrictive umasks"
+
+# White uses #ffffff behind #000000 text. A direct two-expression sed first
+# writes the white background and then consumes it as if it were the template's
+# text placeholder, producing a black-on-black greeter.
+setup_run
+output=$(run_set_colors 022 '#ffffff' '#000000' env 2>&1)
+status=$?
+(( status == 0 )) || fail "White theme publishes through the safe asset pipeline" "$output"
+grep -Fq 'color: "#ffffff"' "$sddm/Main.qml" || fail "White theme preserves its SDDM background color"
+if grep -Fq '__OMARCHY_SDDM_' "$sddm/Main.qml"; then
+  fail "SDDM color substitution left an intermediate token behind"
+fi
+pass "White theme keeps a white SDDM background instead of becoming black-on-black"
 
 # Swap the first staged source to an unreadable file after all hashes have been
 # recorded but in the DEBUG hook immediately before Bash opens the redirection.
