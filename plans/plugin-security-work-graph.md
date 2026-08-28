@@ -28,10 +28,24 @@ This table is the durable execution ledger. Update it when a node is assigned, c
 | `B6` | complete | `wave0_native_build` | Commit `ec2fbf20`; literal cross-contract fixtures, deterministic fakes, malicious peers, real credential/pidfd/FD tests, sanitizers, and bounded fuzz smoke pass |
 | `B7` | complete | `wave0_trust_map` | Commit `4fb33150`; bounded report-only scanner, deterministic taxonomy/worksheet, representative fixtures, and no-follow hostile tests pass |
 | `C0` | complete | `wave0_channel` | Commit `6acb0c43`; bounded non-executing discovery, trusted identity pins, v2 gate, v1 unsafe diagnostics, ambiguity denial, and hostile tests pass |
-| `C1` | active | `wave0_channel` | Immutable revision store, atomic activation, crash recovery, and rollback implementation in progress |
-| `C2` | active | `wave0_trust_map` | Durable grant authority and explicit permission CLI implementation in progress |
-| `C4` | review | primary | Closed broker schema, per-request B3+B2 authorization, fixed provider dispatch, terminal pairing, cancellation, revocation plans, and reentry denial pass strict and sanitized focused tests; hostile review pending |
-| `C7` | active | `wave0_native_build` | Production Bubblewrap launcher, pidfd supervisor, exact inherited channels, resource enforcement, and teardown in progress |
+| `C1` | complete | `wave0_channel` | Commit `02bebcd2`; descriptor-relative immutable staging, re-verification, atomic activation/recovery, fresh-generation rollback, and protected retention pass strict, sanitized, and fault-injection tests |
+| `C2` | complete | `wave0_trust_map` | Commit `1af2dcd6`; owner-only no-follow grant store, atomic persistence, exact activation binding, update previews, monotonic decisions/epochs, v2 gate, and hostile CLI/filesystem tests pass |
+| `C3` | complete | `wave0_channel` | Commit `969d22b9`; owner-only no-follow audit store, contiguous durable sequence, crash-safe bounded retention, corruption recovery, fingerprints, and redacted typed queries pass strict and sanitized tests |
+| `C4` | complete | primary | Commit `c0edb6c3`; closed broker schema, per-request B3+B2 authorization, bounded providers, exact terminal/cancellation/revocation state, pre-side-effect provider validation, and reentry denial pass strict, sanitized, and hostile review |
+| `C5` | complete | `wave0_trust_map` | Commit `80a928c8`; arbitrary-QML offscreen worker, strict entry/import/object bounds, exact channels, B4 publication/input lifecycle, steady seccomp, and hostile expressive/object-bomb fixtures pass aggregate and sanitized suites |
+| `C6` | complete | `wave0_channel` | Commit `b96a85d5`; bounded trusted pixel/input transport, surface lifecycle, focus/inspection controls, rebind guard, and adversarial fake-producer tests pass debug, release, and sanitized suites |
+| `C7` | complete | `wave0_native_build` | Commit `d628c6be`; production Bubblewrap launcher, exact FD/identity validation, seccomp, pidfd/credential binding, transient user scope resource enforcement, bounded teardown, and aggregate/real-host proofs pass |
+| `C8` | complete | `wave0_native_build` | Commit `e1567df7`; closed seven-operation provider set, exact bounded schemas, binding/epoch rechecks, cancellable fake service, monotonic revocation, and fail-closed pre-bound effects pass focused, aggregate, and sanitized suites |
+| `C9` | complete | `wave0_trust_map` | Commit `9dbfc12a`; bounded no-follow installed/built-in aggregation, deterministic identities and worksheet, explicit failure states, advisory snapshots, and current-tree/focused/CLI proofs pass |
+| `C10` | complete | primary | Commit `e7af76e5`; custom Pomodoro, transparent pet, and fake-status QML scenes load through authority-free named-operation mocks in debug, release, and sanitized suites |
+| `C11` | complete | primary | Commits `927506af` and `44fc3b53`; real-request role/generation/size attacks, leak-free descriptor floods, descendant denial, bounded failure cleanup, and actual-home/bus/Wayland Bubblewrap proof pass debug, release, full trusted-path sanitizers, stress, and hostile review |
+| `D0` | complete | `wave0_native_build` | Commit `6b257bfb`; pinned lifecycle manager integrates discovery, immutable revisions, durable grants/rollback, staged permission expansion, exact recovery/rebind, v1 exclusion, CLI, aggregate, and sanitized proofs |
+| `D1` | active | `wave0_channel` | Supervisor, real sandbox, authenticated broker channels, and malicious peer integration in progress |
+| `D2` | active | `wave0_trust_map` | QML worker, bounded frame transport, and trusted bridge integration in progress |
+| `D3` | ready | unassigned | Surface envelope, input/focus routing, and host-owned inspection integration can begin |
+| `D4` | active | `wave0_native_build` | Broker, providers, live grants, handles, and authoritative audit integration in progress |
+| `D5` | ready | unassigned | Limits, health, crash recovery, and stale-channel cleanup can begin |
+| `D6` | active | primary | Inventory, compatibility corpus, and generated migration worksheet integration in progress |
 
 Nodes not listed here remain `pending` as represented by the graph. Add them to the live table when they become `ready`; completed rows remain as an audit trail rather than being removed.
 
