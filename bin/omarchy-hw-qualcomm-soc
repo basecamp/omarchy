@@ -1,10 +1,5 @@
 #!/bin/bash
 
-# omarchy:summary=Detect whether the computer runs on a Qualcomm SoC booted with its device tree (Snapdragon X and friends).
+# omarchy:summary=Detect a Qualcomm SoC from the boot device tree.
 
-# The Adreno GPU, the Wi-Fi and the rest of a Qualcomm SoC are platform devices,
-# so neither lspci nor DMI can tell a Snapdragon laptop apart. The device tree
-# can: every Qualcomm board's root node lists the SoC as a `qcom,<soc>`
-# compatible, and it is there whenever the machine was booted with a device
-# tree, which is how Omarchy boots Windows-on-ARM laptops.
 tr '\0' '\n' </sys/firmware/devicetree/base/compatible 2>/dev/null | grep -q '^qcom,'

@@ -1,6 +1,2 @@
-# Arch Linux ARM's geo-IP balanced mirror, as shipped by its own
-# pacman-mirrorlist. Note the layout: ALARM serves $arch/$repo, where Arch (and
-# so Omarchy's mirror of it) serves $repo/os/$arch, which is why the x86_64
-# mirrorlists cannot simply be repointed. HTTP is what ALARM publishes; package
-# and database signatures are what integrity rests on either way.
+# Arch Linux ARM publishes this endpoint with a $arch/$repo layout.
 Server = http://mirror.archlinuxarm.org/$arch/$repo
