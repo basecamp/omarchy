@@ -12,6 +12,23 @@ assert(notifications.isChromiumDerived('Brave Browser', ''), 'notifications dete
 assert(notifications.isChromiumDerived('', 'microsoft-edge'), 'notifications detect chromium-derived apps by icon')
 assert(!notifications.isChromiumDerived('Slack', ''), 'notifications do not treat unrelated apps as chromium-derived')
 
+assert(
+  !notifications.shouldPersistPopup('Brave Browser', '', 2, 2),
+  'critical chromium-derived notifications use a finite popup lifetime'
+)
+assert(
+  !notifications.shouldPersistPopup('', 'microsoft-edge', 2, 2),
+  'critical chromium-derived notifications are detected by icon'
+)
+assert(
+  notifications.shouldPersistPopup('Slack', '', 2, 2),
+  'critical non-browser notifications remain persistent'
+)
+assert(
+  !notifications.shouldPersistPopup('Slack', '', 1, 2),
+  'normal notifications are never treated as persistent'
+)
+
 assertEqual(
   notifications.sanitizeBody('<img src="x">Hello', 'Slack', ''),
   'Hello',

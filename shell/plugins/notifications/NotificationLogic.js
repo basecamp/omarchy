@@ -5,6 +5,10 @@ function isChromiumDerived(app, appIcon) {
          source.indexOf("opera") >= 0
 }
 
+function shouldPersistPopup(app, appIcon, urgency, criticalUrgency) {
+  return urgency === criticalUrgency && !isChromiumDerived(app, appIcon)
+}
+
 function sanitizeBody(body, app, appIcon) {
   var text = String(body || "").replace(/<img[^>]*>/gi, "")
   if (!isChromiumDerived(app, appIcon)) return text
@@ -365,6 +369,7 @@ function historyRows(raw, liveRows, normalUrgency, limit) {
 if (typeof module !== "undefined") {
   module.exports = {
     isChromiumDerived: isChromiumDerived,
+    shouldPersistPopup: shouldPersistPopup,
     sanitizeBody: sanitizeBody,
     summaryStartsWithGlyph: summaryStartsWithGlyph,
     shouldBypassDnd: shouldBypassDnd,
