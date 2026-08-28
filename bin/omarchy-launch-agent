@@ -1,0 +1,21 @@
+#!/bin/bash
+# omarchy:summary=Launch a coding agent in the active terminal directory or ~/Work fallback
+
+if (($# == 0)); then
+  echo "Usage: omarchy-launch-agent <command> [args...]" >&2
+  exit 1
+fi
+
+cwd=$(omarchy-cmd-terminal-cwd 2>/dev/null)
+if [[ -z "$cwd" || "$cwd" == "$HOME" ]]; then
+  if [[ -d "$HOME/Work" ]]; then
+    cwd="$HOME/Work"
+  elif [[ -d "$HOME/Projects" ]]; then
+    cwd="$HOME/Projects"
+  else
+    cwd="$HOME"
+  fi
+fi
+
+cd "$cwd" 2>/dev/null || cd "$HOME"
+exec omarchy-launch-tui --app-id=org.omarchy.agent "$@"
