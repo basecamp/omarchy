@@ -61,11 +61,46 @@ cat >"$hot_reload_dir/manifest.json" <<JSON
   "name": "Before Hot Reload",
   "version": "1.0.0",
   "kinds": ["overlay"],
+  "keepLoaded": true,
   "entryPoints": {"overlay": "Overlay.qml"},
   "omarchy": {"clonedFrom": "omarchy.emojis"}
 }
 JSON
 cat >"$hot_reload_dir/Overlay.qml" <<'QML'
+import QtQuick
+import Quickshell.Io
+import "Simulation.js" as Simulation
+
+Item {
+  function open(payloadJson) {}
+  function close() {}
+
+  IpcHandler {
+    target: "hot-reload"
+    function marker(): string { return Simulation.marker }
+  }
+}
+QML
+cat >"$hot_reload_dir/Simulation.js" <<'JS'
+var marker = "before"
+JS
+
+linked_plugin_id="acme.linked-reload"
+linked_plugin_source="$TMPDIR/linked-plugin"
+linked_plugin_dir="$test_home/.config/omarchy/plugins/$linked_plugin_id"
+mkdir -p "$linked_plugin_source"
+ln -s "$linked_plugin_source" "$linked_plugin_dir"
+cat >"$linked_plugin_source/manifest.json" <<JSON
+{
+  "schemaVersion": 1,
+  "id": "$linked_plugin_id",
+  "name": "Before Linked Reload",
+  "version": "1.0.0",
+  "kinds": ["overlay"],
+  "entryPoints": {"overlay": "Overlay.qml"}
+}
+JSON
+cat >"$linked_plugin_source/Overlay.qml" <<'QML'
 import QtQuick
 
 Item {
@@ -157,8 +192,49 @@ done
   fail_with_log "installed plugin changes reload without an explicit rescan"
 pass "installed plugin changes reload without an explicit rescan"
 
+jq '.name = "After Linked Reload"' "$linked_plugin_source/manifest.json" >"$linked_plugin_source/manifest.json.tmp"
+mv "$linked_plugin_source/manifest.json.tmp" "$linked_plugin_source/manifest.json"
+
+linked_reload_name=""
+for _ in {1..80}; do
+  linked_reload_name=$(shell_ipc shell listPlugins 2>/dev/null |
+    jq -r --arg id "$linked_plugin_id" '.[] | select(.id == $id) | .name' 2>/dev/null || true)
+  [[ $linked_reload_name == "After Linked Reload" ]] && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited while reloading a changed linked plugin"
+  fi
+  sleep 0.1
+done
+[[ $linked_reload_name == "After Linked Reload" ]] ||
+  fail_with_log "linked plugin changes reload without an explicit rescan"
+pass "linked plugin changes reload without an explicit rescan"
+
 [[ $(shell_ipc shell setPluginEnabled "$hot_reload_id" true) == "ok" ]] ||
   fail_with_log "installed plugin could not be enabled"
+
+marker=""
+for _ in {1..80}; do
+  marker=$(shell_ipc hot-reload marker 2>/dev/null || true)
+  [[ $marker == "before" ]] && break
+  sleep 0.1
+done
+[[ $marker == "before" ]] || fail_with_log "installed plugin loads imported JavaScript"
+
+printf 'var marker = "after"\n' >"$hot_reload_dir/Simulation.js"
+shell_ipc_quiet shell rescanPlugins >/dev/null
+
+marker=""
+for _ in {1..80}; do
+  marker=$(shell_ipc hot-reload marker 2>/dev/null || true)
+  [[ $marker == "after" ]] && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited while reloading imported JavaScript"
+  fi
+  sleep 0.1
+done
+[[ $marker == "after" ]] || fail_with_log "plugin rescan reloads imported JavaScript"
+pass "plugin rescan reloads imported JavaScript"
+
 [[ $(shell_ipc shell summon omarchy.emojis "{}") == "ok" ]] ||
   fail_with_log "calls to a cloned source id do not reach its enabled clone"
 shell_ipc_quiet shell hide omarchy.emojis >/dev/null

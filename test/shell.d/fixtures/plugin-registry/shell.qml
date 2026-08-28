@@ -441,6 +441,9 @@ ShellRoot {
     root.assertEqual(registry.localPluginIdForPath(registry.pluginsDir + "/acme.clock/BarWidget.qml"), "acme.clock", "installed plugin changes are watched")
     root.assertEqual(registry.localPluginIdForPath(cloneBase + "/.git/index"), "", "plugin git metadata is ignored")
     root.assertEqual(registry.localPluginIdForPath(registry.pluginsDir + "/.clone.abc123/manifest.json"), "", "hidden staging and backup dirs are ignored")
+    root.assertTrue(registry.localPluginRootChanged(registry.pluginsDir + "/acme.clock"), "plugin root changes rebuild the watcher")
+    root.assertTrue(!registry.localPluginRootChanged(registry.pluginsDir + "/acme.clock/BarWidget.qml"), "plugin file changes keep the watcher running")
+    root.assertTrue(!registry.localPluginRootChanged(registry.pluginsDir + "/.clone.abc123"), "hidden staging changes keep the watcher running")
 
     root.assertTrue(changeCount > 0, "registry emits change notifications")
     writeResult()
