@@ -1,0 +1,201 @@
+#!/bin/bash
+
+# omarchy:summary=Inspect coding-agent MCP configurations without exposing secrets
+# omarchy:args=<list|doctor> [--json]
+# omarchy:examples=omarchy agent mcp list --json | omarchy agent mcp doctor
+
+set -euo pipefail
+
+action=${1:-}
+[[ -n $action ]] && shift
+
+json=false
+while (($#)); do
+  case "$1" in
+  --json)
+    json=true
+    ;;
+  *)
+    echo "Unexpected argument: $1" >&2
+    exit 2
+    ;;
+  esac
+  shift
+done
+
+case "$action" in
+list | doctor) ;;
+*)
+  echo "Usage: omarchy agent mcp <list|doctor> [--json]" >&2
+  exit 2
+  ;;
+esac
+
+export OMARCHY_AGENT_MCP_ACTION="$action"
+export OMARCHY_AGENT_MCP_JSON="$json"
+
+python3 <<'PY'
+import json
+import os
+import pathlib
+import shutil
+import sys
+
+try:
+  import tomllib
+except ImportError:
+  tomllib = None
+
+home = pathlib.Path.home()
+cwd = pathlib.Path.cwd()
+
+# Omarchy can launch more agents than appear here. An omitted adapter is
+# reported honestly below instead of guessing at a vendor's private format.
+adapters = {
+  "agy": [(home / ".gemini/settings.json", "json", "mcpServers")],
+  "claude": [
+    (home / ".claude.json", "json", "mcpServers"),
+    (cwd / ".mcp.json", "json", "mcpServers"),
+  ],
+  "codex": [(home / ".codex/config.toml", "toml", "mcp_servers")],
+  "copilot": [(home / ".copilot/mcp-config.json", "json", "mcpServers")],
+  "crush": [(home / ".config/crush/crush.json", "json", "mcp")],
+  "opencode": [
+    (home / ".config/opencode/opencode.json", "json", "mcp"),
+    (home / ".config/opencode/opencode.jsonc", "jsonc", "mcp"),
+  ],
+}
+launchable = ("opencode", "agy", "copilot", "crush", "claude", "grok", "codex", "omp", "ori", "pi")
+
+def clean_jsonc(source):
+  output = []
+  index = 0
+  in_string = False
+  escaped = False
+  while index < len(source):
+    char = source[index]
+    following = source[index + 1] if index + 1 < len(source) else ""
+    if in_string:
+      output.append(char)
+      if escaped:
+        escaped = False
+      elif char == "\\":
+        escaped = True
+      elif char == '"':
+        in_string = False
+      index += 1
+      continue
+    if char == '"':
+      in_string = True
+      output.append(char)
+      index += 1
+    elif char == "/" and following == "/":
+      index += 2
+      while index < len(source) and source[index] not in "\r\n":
+        index += 1
+    elif char == "/" and following == "*":
+      index += 2
+      while index + 1 < len(source) and source[index:index + 2] != "*/":
+        index += 1
+      if index + 1 >= len(source):
+        raise ValueError("unterminated JSONC block comment")
+      index += 2
+    else:
+      output.append(char)
+      index += 1
+
+  # JSONC permits a comma before a closing object or array. At this point all
+  # comments are gone, so remove only commas whose next non-space byte closes.
+  cleaned = "".join(output)
+  output = []
+  in_string = False
+  escaped = False
+  for index, char in enumerate(cleaned):
+    if in_string:
+      output.append(char)
+      if escaped:
+        escaped = False
+      elif char == "\\":
+        escaped = True
+      elif char == '"':
+        in_string = False
+      continue
+    if char == '"':
+      in_string = True
+    if char == "," and cleaned[index + 1:].lstrip().startswith(("}", "]")):
+      continue
+    output.append(char)
+  return "".join(output)
+
+def read_config(path, kind):
+  with path.open("rb") as stream:
+    if kind == "toml":
+      if tomllib is None:
+        raise RuntimeError("Python TOML support is unavailable")
+      return tomllib.load(stream)
+    source = stream.read().decode("utf-8")
+    return json.loads(clean_jsonc(source) if kind == "jsonc" else source)
+
+agents = []
+servers = []
+issues = []
+for agent in launchable:
+  if shutil.which(agent) is None:
+    continue
+
+  specs = adapters.get(agent)
+  agent_result = {
+    "name": agent,
+    "adapter": "supported" if specs else "unsupported",
+    "configs": [],
+  }
+  agents.append(agent_result)
+  if specs is None:
+    continue
+
+  for path, kind, key in specs:
+    if not path.is_file():
+      continue
+    display_path = str(path)
+    agent_result["configs"].append(display_path)
+    try:
+      document = read_config(path, kind)
+      configured = document.get(key, {}) if isinstance(document, dict) else {}
+      if configured is None:
+        configured = {}
+      if not isinstance(configured, dict):
+        raise ValueError(f"{key} must be an object or table")
+      for name in sorted(configured):
+        servers.append({"agent": agent, "name": str(name), "config": display_path})
+    except (OSError, ValueError, RuntimeError) as error:
+      issues.append({"agent": agent, "config": display_path, "error": str(error)})
+
+result = {
+  "ok": not issues,
+  "agents": agents,
+  "servers": servers,
+  "issues": issues,
+}
+
+if os.environ["OMARCHY_AGENT_MCP_JSON"] == "true":
+  print(json.dumps(result, separators=(",", ":")))
+elif os.environ["OMARCHY_AGENT_MCP_ACTION"] == "list":
+  if servers:
+    for server in servers:
+      print(f'{server["agent"]}\t{server["name"]}\t{server["config"]}')
+  else:
+    print("No configured MCP servers found.")
+else:
+  supported = sum(agent["adapter"] == "supported" for agent in agents)
+  unsupported = [agent["name"] for agent in agents if agent["adapter"] == "unsupported"]
+  print(f"Installed agents: {len(agents)}")
+  print(f"Supported adapters: {supported}")
+  print(f"Configured MCP servers: {len(servers)}")
+  if unsupported:
+    print(f'Unsupported adapters: {", ".join(unsupported)}')
+  for issue in issues:
+    print(f'ERROR {issue["agent"]}: cannot inspect {issue["config"]}: {issue["error"]}')
+
+if os.environ["OMARCHY_AGENT_MCP_ACTION"] == "doctor" and issues:
+  sys.exit(1)
+PY

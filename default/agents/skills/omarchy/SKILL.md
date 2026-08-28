@@ -46,6 +46,7 @@ matching guide before starting:
 - [`theming.md`](theming.md) - themes, backgrounds, and fonts
 - [`hooks.md`](hooks.md) - automation hooks that run on system events
 - [`capture.md`](capture.md) - screenshots, screen recordings, OCR text capture, and file sharing
+- [`agents.md`](agents.md) - coding-agent instructions, launch safety, skills, and MCP diagnostics
 - [`contributing.md`](contributing.md) - reporting Omarchy bugs and submitting fixes upstream
 
 ## Critical Safety Rules
@@ -129,26 +130,7 @@ omarchy commands --json
 cat $(which omarchy-theme-set)
 ```
 
-### Command Groups
-
-Run `omarchy --help` for the full list. The most common groups:
-
-| Group | Purpose | Example |
-|-------|---------|---------|
-| `omarchy refresh` | Reset config to defaults (backs up first) | `omarchy refresh shell` |
-| `omarchy restart` | Restart a service/app | `omarchy restart shell` |
-| `omarchy toggle` | Toggle feature on/off | `omarchy toggle nightlight` |
-| `omarchy theme` | Theme management | `omarchy theme set <name>` |
-| `omarchy bar` | Bar layout and widgets | `omarchy bar move omarchy.clock --section right` |
-| `omarchy plugin` | Manage/clone shell plugins | `omarchy plugin clone omarchy.clock` |
-| `omarchy hook` | Install automation hooks | `omarchy hook install theme-set <script>` |
-| `omarchy install` | Install optional software / packages | `omarchy install docker dbs` |
-| `omarchy launch` | Launch apps | `omarchy launch browser` |
-| `omarchy capture` | Screenshots and recordings | `omarchy capture screenshot` |
-| `omarchy reminder` | Desktop notification reminders | `omarchy reminder 15 "Pickup Jack"` |
-| `omarchy pkg` | Package management | `omarchy pkg add <pkg>` |
-| `omarchy setup` | Interactive setup wizards | `omarchy setup security fingerprint` |
-| `omarchy update` | System updates | `omarchy update` |
+Do not copy the command catalog into instructions. Query `omarchy commands --json` when exact routes, arguments, aliases, or privilege requirements matter; it is the canonical machine-readable source and changes with the installed version.
 
 ## Configuration Locations
 
@@ -179,25 +161,30 @@ The Omarchy shell (bar, notifications, plugins, idle) is configured in
 
 ## Safe Customization Patterns
 
-### Edit User Config Directly
+### Edit User Config Transactionally
 
-For simple changes, edit files in `~/.config/`:
+Treat a config change as a small transaction, especially for Hyprland, terminal, shell JSON, and hooks:
 
 ```bash
 # 1. Read current config
 cat ~/.config/hypr/bindings.lua
 
-# 2. Backup before changes
+# 2. Record the resolved path and permissions; reject an unexpected symlink
+# 3. Backup before changes
 cp ~/.config/hypr/bindings.lua ~/.config/hypr/bindings.lua.bak.$(date +%s)
 
-# 3. Make changes with Edit tool
+# 4. Make the smallest user-owned change
 
-# 4. Apply changes
+# 5. Validate, apply/reload, and inspect runtime errors
 # - Hyprland: auto-reloads on save, but MUST validate with `hyprctl reload` and `hyprctl configerrors`
 # - Omarchy shell: shell.json and user plugin code under ~/.config/omarchy/plugins/ hot-reload on save
 # - Menus/launcher: ~/.config/omarchy/extensions/omarchy-menu.jsonc hot-reloads on save
 # - Terminals: apply with `omarchy restart terminal` (reloads running terminals; foot picks changes up in new windows)
+
+# 6. If validation fails, restore the backup, reload again, and report both the failure and backup path
 ```
+
+Preserve ownership and mode, prefer an atomic replacement over a partially written file, and never report success until the component-specific validation passes. Do not follow a symlink from a user config path into `/usr/share/omarchy/` or another package-owned location.
 
 ### Reset to Defaults -- ALWAYS SEEK USER CONFIRMATION BEFORE RUNNING
 
@@ -256,6 +243,7 @@ When user requests system changes:
 5. **Is it a package install?** Use `omarchy pkg add <pkgs...>` (or `omarchy pkg aur add <pkgs...>` for AUR-only packages)
 6. **Is it built-in shell/plugin code?** Follow [`plugins.md`](plugins.md); clone it with `omarchy plugin clone`, never edit the packaged copy
 7. **Unsure if command exists?** Run `omarchy commands` (or `omarchy <group> --help` for one group)
+8. **Is it agent, skill, or MCP setup?** Follow [`agents.md`](agents.md); distinguish packaged defaults from user-owned configuration and disclose the launch approval policy
 
 ### Reminder Requests
 

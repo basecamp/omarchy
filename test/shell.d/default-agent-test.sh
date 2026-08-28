@@ -478,6 +478,34 @@ assert_bypass agy agy --dangerously-skip-permissions
 assert_bypass copilot copilot --allow-all
 pass "agent launcher skips permission prompts for every supported agent"
 
+assert_safe() {
+  local agent=$1
+  shift
+
+  printf '%s\n' "$agent" >"$agent_file"
+  omarchy-agent --safe
+  assert_launched "$agent" "keeps permission prompts enabled in safe mode" "$@"
+}
+
+assert_safe pi pi
+assert_safe omp omp
+assert_safe opencode opencode
+assert_safe ori ori code
+assert_safe claude claude
+assert_safe codex codex
+assert_safe crush crush
+assert_safe grok grok
+assert_safe agy agy
+assert_safe copilot copilot
+pass "agent launcher offers a safe permission profile for every supported agent"
+
+printf '%s\n' "codex" >"$agent_file"
+omarchy-agent-prompt --safe "Review this project"
+mapfile -d '' -t safe_prompt_args <"$launch_log"
+[[ ${safe_prompt_args[*]} == "--app-id=org.omarchy.agent codex -- Review this project" ]] ||
+  fail "safe prompt route preserves approval-first mode"
+pass "safe prompt route preserves approval-first mode"
+
 printf '%s\n' "opencode" >"$agent_file"
 omarchy-agent
 mapfile -d '' -t launch_args <"$launch_log"
