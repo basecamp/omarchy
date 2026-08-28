@@ -56,7 +56,8 @@ This table is the durable execution ledger. Update it when a node is assigned, c
 | `F0` | complete | primary | Commits `424882f9` and `efbd5cf1`; exact dispatcher identity closes a cross-plugin deputy seam, while real Bubblewrap denies home, D-Bus, Wayland, agent sockets, sibling state, network, descendants, revision writes, forged peers, and stale authority in Debug/Release/sanitized campaigns |
 | `F1` | active | `wave0_channel` | Malformed protocol and resource-exhaustion campaign in progress |
 | `F2` | active | `wave0_trust_map` | Rendering fidelity, latency, DPI, multi-monitor, focus, and visual proof campaign in progress |
-| `G3` | active | `wave0_trust_map`, `wave0_native_build` | Rolling hostile reviews of the arbitrary-QML and lifecycle/update slices in progress |
+| `G3` | complete | `wave0_trust_map`, `wave0_native_build` | Commits `17c4211b` and `c2ae1599`; hostile reviews closed input-device, QML-exposure, teardown, retained-broker, corrupt-grant restart, and reinstall-generation seams |
+| `F4` | active | `wave0_native_build` | Permission UX and audit comprehensibility review in progress |
 | `F5` | active | primary | Disposable-VM packaging and graphical acceptance campaign in progress |
 
 Nodes not listed here remain `pending` as represented by the graph. Add them to the live table when they become `ready`; completed rows remain as an audit trail rather than being removed.
@@ -239,9 +240,6 @@ flowchart TD
   F1 --> G4
   F2 --> G4
   F3 --> G4
-  F4 --> G4
-  F5 --> G4
-  F6 --> G4
   F4 --> G4
   F5 --> G4
   F6 --> G4
