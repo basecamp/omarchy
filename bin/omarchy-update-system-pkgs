@@ -13,8 +13,8 @@ if [[ ${OMARCHY_UPDATE_CONFLICT:-} == 1 && ${OMARCHY_UPDATE_INTERACTIVE:-} == 1 
   exec sudo env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --overwrite '/usr/share/omarchy/*'
 fi
 
-echo -e "\e[32m\nUpdate system packages\e[0m"
-
+# Ensure mktemp uses a valid directory even if TMPDIR points to a missing path
+[[ -d "${TMPDIR:-}" ]] || unset TMPDIR
 errors=$(mktemp)
 trap 'rm -f "$errors"' EXIT
 
