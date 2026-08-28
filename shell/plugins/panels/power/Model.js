@@ -227,7 +227,7 @@ function parseSnapshot(raw) {
 // When the battery draw is known (discharging only — on AC the battery flow
 // is charge rate, not system draw) it is split into a calibrated idle base
 // and a variable slice attributed by share, so the returned rows are
-// [system base, top-N..., everything else] and sum to the measured draw.
+// [base load, top-N..., everything else] and sum to the measured draw.
 // A multi-threaded process can exceed 100% — jiffies sum across cores.
 // Jiffies attributed per comm over the window, share of busy activity —
 // shared by the top-process rows and the resource splits so both views are

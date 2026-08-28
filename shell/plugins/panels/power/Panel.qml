@@ -648,7 +648,7 @@ Panel {
             fontFamily: root.bar.fontFamily
           }
 
-          // The attribution model as one bar: system base (accent), the top
+          // The attribution model as one bar: base load (accent), the top
           // processes in their assigned comm colors, and the tail (muted).
           // Discharging only — on AC the battery flow is charge rate, not
           // system draw, so there is no honest bar to draw.
@@ -981,8 +981,7 @@ Panel {
   // gutter and the value at the right edge. With segments the fill is the
   // composition (comm colors, idle/available left as track), ramped by the
   // resource's utilization; without segments it is a single intensity-graded
-  // fill (the categorical Draw row colors itself). Wide segments carry their
-  // comm's name in whichever theme color contrasts with the fill.
+  // fill (the categorical Draw row colors itself).
   component SplitBar: Item {
     id: splitBar
     property string label: ""
