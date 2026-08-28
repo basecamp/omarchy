@@ -1,10 +1,10 @@
 # Draft PR: add a feature-gated secure plugin reference runtime
 
-> Draft reference PR only. It is safe to open for architecture and security-boundary review, but it must not be marked ready for review or merged until G4 closes. The package-repository, fresh-ISO/VM, and production-host limitations are part of the proposed PR body and must not be removed to make the branch appear production-ready.
+> Draft reference PR for architecture and security-boundary review. It is safe to open as a GitHub draft, but it must stay draft and must not merge while the package-repository, fresh-ISO/VM, and production-host gates remain open. Those limitations are part of the proposed PR body and must not be removed to make the branch appear production-ready.
 
 This is a deliberately broad reference branch: 355 files and about 51,000 added lines include production contracts, adversarial proofs, representative fixtures, historical spike evidence, and the execution ledger. Reviewers should use the review order below and may request stacked implementation PRs after the boundary is accepted; opening this draft is not a request for line-by-line merge approval of the whole branch.
 
-Proposed base: the protected `jacob-vincent-mink/omarchy:quattro` branch, whose current history is merged into this branch. Proposed head: `jacob-vincent-mink/omarchy:plugin-security-model`.
+Proposed base: `jacob-vincent-mink/omarchy:quattro`. This branch is synchronized through `468b511249b1a341311c46f5a7cf81aa5bc5af92`; `quattro` has since advanced by four commits confined to `default/hypr/apps/davinci-resolve.lua`, with no merge-tree conflict. That unrelated drift is intentionally not merged into this exact package-proof candidate. Proposed head: `jacob-vincent-mink/omarchy:plugin-security-model`.
 
 ## Summary
 
@@ -85,9 +85,9 @@ The directly tested `omarchy-plugin-audit-store` reference binary renders truste
 
 The branch contains focused Debug, Release, ASan/UBSan, adversarial, fault-injection, stress, real-kernel, package, CLI, offscreen visual, and graphical acceptance entry points. The work graph links each component and proof node to its evidence document.
 
-Final PR candidate `b28f655f74ba35651797c143bdd907013fab13a7` was built from a clean detached clone by the companion Arch recipe with checks enabled. Its Release package check passed 54/54 aggregate CTests. The resulting `omarchy-dev-4.0.0.r1953.gb28f655-1-x86_64.pkg.tar.zst` has SHA-256 `766166c6ba959a461eed199d12a62b4ce4b1f6c36bec11c8cb41023ba445fe77`; the archive verifier and its negative mutation suite both passed. The installed `Omarchy.PluginHost` module dynamically loaded both `PluginHostInfo` and `RemotePluginSurface` while preserving their unavailable/disconnected feature-gated state. The archive has no install script or enablement symlink, and focused shell tests confirm no first-run, migration, or end-user activation path.
+Final PR candidate `3efa25b9732f82884e530b08098ed6140b907602` was built from a clean detached clone by the companion Arch recipe with checks enabled. Its Release package check passed 55/55 aggregate CTests, including the deterministic 10,000-case envelope/resource-cap exhaustion proof. The resulting `omarchy-dev-4.0.0.r1955.g3efa25b-1-x86_64.pkg.tar.zst` has SHA-256 `b3f19cb18a3538432088149d01678b787364598a485a6622dc2abb9c9b9c9397`; the archive verifier and its negative mutation suite both passed. The installed `Omarchy.PluginHost` module dynamically loaded both `PluginHostInfo` and `RemotePluginSurface` while preserving their unavailable/disconnected feature-gated state. The archive has no install script or enablement symlink, and focused shell tests confirm no first-run, migration, or end-user activation path.
 
-After the current protected `quattro` merge, fresh outside-confinement Debug and Release builds each passed 54/54 native CTests. The Release brokered-action teardown boundary passed 100/100 fake-launch and 100/100 real-Bubblewrap repetitions. Five focused repository/plugin/QML tests and `./test/cli` passed. `./test/shell` reported seven failing files out of 212, none plugin-security-related; the G4 evidence classifies them as companion-repository version skew, managed-host/environment contamination, or tests that passed in isolation. They remain visible rather than being presented as an all-green shell suite.
+After synchronizing protected `quattro` through `468b5112`, fresh outside-confinement Debug and Release builds each passed 54/54 native CTests. The Release brokered-action teardown boundary passed 100/100 fake-launch and 100/100 real-Bubblewrap repetitions. Five focused repository/plugin/QML tests and `./test/cli` passed. `./test/shell` reported seven failing files out of 212, none plugin-security-related; the G4 evidence classifies them as companion-repository version skew, managed-host/environment contamination, or tests that passed in isolation. They remain visible rather than being presented as an all-green shell suite.
 
 The official ISO helper invokes `makepkg --nodeps`, so its builder image must explicitly provision the recipe's native `makedepends`; metadata alone does not make that hosted build reproducible. The privileged package container is also incompatible with the full nested-Bubblewrap, user-session, and display-dependent `check()` suite. The ephemeral ISO workflow may use `--nocheck`, but only alongside separately recorded complete Debug and Release native-suite results plus archive and negative-verifier results for the exact same candidate. The `--nocheck` package step is not counted as test evidence.
 
@@ -118,14 +118,14 @@ Real Bubblewrap credential/namespace checks must run outside managed development
 - Aggregate registration includes the production trusted bridge, render session, surface host, expressive surface, representative fixtures, and vertical proofs, but `host/main.cpp` does not compose them into live discovery, activation, broker, or render pumping.
 - Schema-v2 discovery/lifecycle is not switched into the current end-user install/enable/update commands.
 - The reference permission/audit inspectors have no end-user `omarchy` command route, and the reference user service remains disabled and inactive.
-- The final-tip clean-source Arch archive proves package shape, checks, and absence of an activation path, but its companion recipe patch is not committed in `omarchy-pkgs`.
+- The exact-candidate clean-source Arch archive proves package shape, checks, and absence of an activation path, but its companion recipe patch is not committed in `omarchy-pkgs`.
 - The official hosted helper uses `--nodeps`, its builder image does not yet guarantee the new native `makedepends`, and its privileged container cannot run the full nested-sandbox/session/display package checks. A hosted `--nocheck` archive therefore requires separate exact-candidate native-suite evidence.
 - No fresh `omarchy-iso` build/test has run in this workspace. There is no clean-install service log, live Quickshell import, compositor-owned plugin surface screenshot, or end-to-end installed activation proof.
 - The checked-in PNGs are real offscreen Qt Quick output, not screenshots of a live layer-shell surface.
 - Only four capability families are implemented. Network, general files, credentials, clipboard reads, capture, input injection, devices, media control, package management, compositor mutation, URL handlers, and real authenticated services remain denied/unimplemented.
 - Schema-v1 remains arbitrary trusted host code. This PR does not make an existing plugin safe by adding permissions to its current manifest.
 
-These limitations keep the PR in reference/proof status. Production activation should remain feature-gated until the host composition, clean package provenance, and fresh-ISO acceptance gates pass.
+These limitations keep the PR in reference/proof status. Production activation should remain feature-gated until host composition, committed package ownership, and fresh-ISO acceptance gates pass.
 
 ## Rollout and compatibility
 
