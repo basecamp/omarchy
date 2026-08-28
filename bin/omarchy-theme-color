@@ -173,6 +173,50 @@ parse_colors_file() {
   return 0
 }
 
+resolve_terminal_settings() {
+  local blur="${THEME_COLORS[terminal_blur]:-false}"
+  local opacity="${THEME_COLORS[terminal_opacity]:-1.0}"
+  local radius="${THEME_COLORS[terminal_blur_radius]:-20}"
+
+  # These settings are scalar, so anything after the value is a TOML comment.
+  opacity="${opacity%%#*}"
+  opacity="${opacity%% *}"
+  blur="${blur%%#*}"
+  blur="${blur%% *}"
+  radius="${radius%%#*}"
+  radius="${radius%% *}"
+
+  if [[ ! $opacity =~ ^(0([.][0-9]+)?|1([.]0+)?)$ ]]; then
+    printf 'omarchy-theme-color: invalid terminal_opacity %q; using 1.0\n' "$opacity" >&2
+    opacity="1.0"
+  fi
+
+  if [[ $blur != "true" && $blur != "false" ]]; then
+    printf 'omarchy-theme-color: invalid terminal_blur %q; using false\n' "$blur" >&2
+    blur="false"
+  fi
+
+  if [[ ! $radius =~ ^[0-9]{1,2}$ ]] || (( 10#$radius > 64 )); then
+    printf 'omarchy-theme-color: invalid terminal_blur_radius %q; using 20\n' "$radius" >&2
+    radius=20
+  else
+    radius=$((10#$radius))
+  fi
+
+  THEME_COLORS[terminal_opacity]="$opacity"
+  THEME_COLORS[terminal_blur]="$blur"
+
+  if [[ $blur == "true" ]]; then
+    THEME_COLORS[terminal_blur_radius]="$radius"
+    THEME_COLORS[terminal_blur_foot]="yes"
+    THEME_COLORS[terminal_blur_ghostty]="$radius"
+  else
+    THEME_COLORS[terminal_blur_radius]="0"
+    THEME_COLORS[terminal_blur_foot]="no"
+    THEME_COLORS[terminal_blur_ghostty]="false"
+  fi
+}
+
 resolve_theme_colors() {
   local key
 
@@ -277,6 +321,7 @@ resolve_theme_colors() {
   done
 
   resolve_theme_mode
+  resolve_terminal_settings
   THEME_COLORS[theme_type]="${THEME_COLORS[mode]}"
 }
 

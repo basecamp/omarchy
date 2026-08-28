@@ -1,3 +1,7 @@
+[window]
+opacity = {{ terminal_opacity }}
+blur = {{ terminal_blur }}
+
 [colors.primary]
 background = "{{ background }}"
 foreground = "{{ foreground }}"

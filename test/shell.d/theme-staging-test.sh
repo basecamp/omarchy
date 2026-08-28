@@ -70,6 +70,7 @@ mkdir -p "$hostile/backgrounds" "$hostile/.git"
 write_colors "$hostile/colors.toml"
 touch "$hostile/light.mode"
 printf 'os.execute("%s")\n' "$marker" >"$hostile/hyprland.lua"
+printf 'schema = 1\n[decoration]\nrounding = 13\n' >"$hostile/hyprland.toml"
 printf 'vim.cmd("%s")\n' "$marker" >"$hostile/neovim.lua"
 printf 'shell %s\n' "$marker" >"$hostile/kitty.conf"
 printf '[terminal.shell]\nprogram = "%s"\n' "$marker" >"$hostile/alacritty.toml"
@@ -109,6 +110,8 @@ for generated in hyprland.lua neovim.lua gum_env.lua kitty.conf alacritty.toml f
   assert_staged "$generated" "$generated is generated from Omarchy's template"
   assert_no_marker "$generated" "an installed theme cannot supply $generated"
 done
+assert_staged hyprland.toml "an installed theme keeps declarative Hyprland settings"
+grep -Fq 'rounding = 13' "$(staged hyprland.lua)" || fail "declarative Hyprland settings reach the generated Lua"
 
 # Colour is kept, including a file Omarchy would otherwise have generated.
 assert_staged shell.toml "shell.toml is staged"

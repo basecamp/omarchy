@@ -1,4 +1,6 @@
 [colors-dark]
+alpha={{ terminal_opacity }}
+blur={{ terminal_blur_foot }}
 foreground={{ foreground_strip }}
 background={{ background_strip }}
 selection-foreground={{ selection_foreground_strip }}
