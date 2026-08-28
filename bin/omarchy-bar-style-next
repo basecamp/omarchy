@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# omarchy:summary=Cycle to the next Waybar style
+# omarchy:group=bar
+# omarchy:args=none
+# omarchy:examples=omarchy bar style next
+
+set -euo pipefail
+
+SYS_STYLES_DIR="$OMARCHY_PATH/default/waybar/styles"
+USER_STYLES_DIR="$HOME/.config/waybar/styles"
+CURRENT_STYLE_LINK="$HOME/.config/omarchy/current/waybar.style"
+
+# Build array of available styles
+styles=()
+
+if [[ -d $SYS_STYLES_DIR ]]; then
+  for style in "$SYS_STYLES_DIR"/*/; do
+    [[ -d $style ]] || continue
+    styles+=("$(basename "$style")")
+  done
+fi
+
+if [[ -d $USER_STYLES_DIR ]]; then
+  for style in "$USER_STYLES_DIR"/*/; do
+    [[ -d $style ]] || continue
+    name=$(basename "$style")
+    # Avoid duplicates if user has same name
+    [[ " ${styles[*]} " =~  $name ]] || styles+=("$name")
+  done
+fi
+
+(( ${#styles[@]} > 0 )) || {
+  echo "No styles available"
+  exit 1
+}
+
+# Get current style
+current=""
+if [[ -L $CURRENT_STYLE_LINK ]]; then
+  current=$(basename "$(readlink -f "$CURRENT_STYLE_LINK")")
+fi
+
+# Find next
+next_index=0
+for i in "${!styles[@]}"; do
+  if [[ ${styles[$i]} == "$current" ]]; then
+    next_index=$(( (i + 1) % ${#styles[@]} ))
+    break
+  fi
+done
+
+next_style="${styles[$next_index]}"
+omarchy-bar-style-set "$next_style"

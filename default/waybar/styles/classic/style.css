@@ -1,0 +1,132 @@
+@import "../omarchy/current/theme/waybar.css";
+
+/* ==================== CLASSIC OMARCHY BAR ==================== */
+/* Flat, continuous bar - the original Omarchy default */
+
+* {
+  color: @foreground;
+  border: none;
+  border-radius: 0;
+  min-height: 0;
+  font-family: 'JetBrainsMono Nerd Font', 'Fira Sans';
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* BAR BACKGROUND - flat, no margin, no radius */
+window#waybar {
+  background: @background;
+  border: none;
+  box-shadow: none;
+}
+
+window#waybar > box {
+  background: @background;
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* OMARCHY START BUTTON */
+#custom-omarchy {
+  padding: 0 16px;
+  font-size: 16px;
+  background: transparent;
+}
+
+/* WORKSPACES */
+#workspaces {
+  padding: 0 8px;
+  background: transparent;
+}
+
+#workspaces button {
+  all: initial;
+  padding: 0 10px;
+  margin: 0 2px;
+  min-width: 10px;
+  color: @foreground;
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+#workspaces button.active {
+  opacity: 1;
+  font-weight: 700;
+}
+
+#workspaces button:hover {
+  opacity: 0.9;
+}
+
+/* CLOCK */
+#custom-clock {
+  padding: 0 16px;
+  background: transparent;
+  font-weight: 600;
+}
+
+/* MODULES - flat, no pills */
+#mpris,
+#idle_inhibitor,
+#custom-uptime,
+#custom-power-profile,
+#custom-weather,
+#custom-update,
+#cpu,
+#battery,
+#pulseaudio,
+#network,
+#custom-network-speed,
+#bluetooth,
+#tray {
+  padding: 0 12px;
+  background: transparent;
+}
+
+/* STATES */
+#idle_inhibitor.activated {
+  color: #4EC85A;
+}
+
+#custom-power-profile.performance { color: #4EC85A; }
+#custom-power-profile.power-saver { color: #35BCDE; }
+
+#custom-network-speed.disconnected { color: #C85A50; }
+
+#custom-update.has-update {
+  color: #4EC85A;
+}
+
+#battery.warning { color: #C8A830; }
+#battery.critical { color: #C85A50; }
+
+/* TOOLTIP */
+tooltip {
+  background: rgba(0, 0, 0, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+tooltip label { color: #D0ECE8; }
+
+/* INDICATORS */
+#custom-screenrecording-indicator,
+#custom-notification-silencing-indicator,
+#custom-voxtype,
+#custom-expand-icon {
+  padding: 0 10px;
+  background: transparent;
+}
+
+#custom-screenrecording-indicator.active,
+#custom-notification-silencing-indicator.active,
+#custom-voxtype.recording {
+  color: #C85A50;
+}
+
+/* VERTICAL MODE */
+.left .modules-left, .right .modules-left { margin: 8px 0 0 0; }
+.left .modules-right, .right .modules-right { margin: 0 0 8px 0; }

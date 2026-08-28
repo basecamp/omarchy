@@ -1,0 +1,518 @@
+@import "../omarchy/current/theme/waybar.css";
+
+/* ==================== PILLS STYLE ==================== */
+/* Floating modular pills with glassmorphism - Frutiger Aero signature */
+
+* {
+  color: @foreground;
+  border: none;
+  border-radius: 0;
+  min-height: 0;
+  font-family: 'JetBrainsMono Nerd Font', 'Fira Sans';
+  font-size: 13px;
+  font-weight: 600;
+  text-shadow: 0 1px 4px rgba(255, 255, 255, 0.15);
+  letter-spacing: 0.3px;
+}
+
+/* ==================== ANIMATIONS ==================== */
+
+@keyframes orb-pulse {
+  0% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      0 0 8px rgba(18, 153, 202, 0.12);
+  }
+  50% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      0 0 22px rgba(18, 153, 202, 0.28),
+      0 0 44px rgba(18, 153, 202, 0.08);
+  }
+  100% {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      0 0 8px rgba(18, 153, 202, 0.12);
+  }
+}
+
+/* ==================== BAR BACKGROUND ==================== */
+
+window#waybar {
+  background: @background;
+  border: none;
+  box-shadow: none;
+}
+
+window#waybar > box {
+  background: linear-gradient(
+                90deg,
+                rgba(138, 43, 226, 0.28) 0%,
+                rgba(53, 188, 222, 0.22) 25%,
+                rgba(78, 200, 90, 0.16) 50%,
+                rgba(100, 120, 220, 0.22) 75%,
+                rgba(138, 43, 226, 0.28) 100%
+              ),
+              @background;
+  margin: 4px 6px 0;
+  border-radius: 16px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -1px 0 rgba(18, 153, 202, 0.06),
+    0 3px 16px rgba(18, 153, 202, 0.08),
+    0 1px 4px rgba(0, 0, 0, 0.03);
+}
+
+/* Shared glass shine */
+@define-color pill-shine rgba(255, 255, 255, 0.18);
+
+/* ==================== OMARCHY START BUTTON ==================== */
+
+#custom-omarchy {
+  padding: 0 16px 0 18px;
+  margin: 4px 2px;
+  border-radius: 14px;
+  font-size: 17px;
+  background:
+    radial-gradient(
+      ellipse at 30% 20%,
+      rgba(255, 255, 255, 0.18) 0%,
+      rgba(18, 153, 202, 0.14) 40%,
+      rgba(18, 153, 202, 0.06) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 @pill-shine,
+    inset 0 -1px 0 rgba(18, 153, 202, 0.10),
+    0 0 8px rgba(18, 153, 202, 0.05);
+}
+
+#custom-omarchy:hover {
+  background:
+    radial-gradient(
+      ellipse at 30% 20%,
+      rgba(255, 255, 255, 0.25) 0%,
+      rgba(18, 153, 202, 0.22) 40%,
+      rgba(18, 153, 202, 0.10) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.30),
+    0 0 20px rgba(18, 153, 202, 0.20),
+    0 0 40px rgba(18, 153, 202, 0.08);
+}
+
+/* ==================== WORKSPACES ==================== */
+
+#workspaces {
+  margin: 4px 2px;
+  padding: 0 8px;
+  border-radius: 14px;
+  background: linear-gradient(
+    135deg,
+    rgba(18, 153, 202, 0.06) 0%,
+    rgba(90, 172, 160, 0.04) 100%
+  );
+  box-shadow: inset 0 1px 0 @pill-shine;
+}
+
+#workspaces button {
+  all: initial;
+  padding: 0 12px;
+  margin: 2px 3px;
+  min-width: 10px;
+  min-height: 22px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: @foreground;
+  font-size: 13px;
+}
+
+#workspaces button.active {
+  background: linear-gradient(
+    135deg,
+    rgba(18, 153, 202, 0.30) 0%,
+    rgba(53, 188, 222, 0.12) 100%
+  );
+  color: #35BCDE;
+  animation: orb-pulse 3s ease-in-out infinite;
+}
+
+#workspaces button.empty {
+  opacity: 0.25;
+}
+
+#workspaces button:hover {
+  background: rgba(18, 153, 202, 0.10);
+}
+
+/* ==================== CLOCK ==================== */
+
+#custom-clock {
+  margin: 4px 6px;
+  padding: 0 18px;
+  border-radius: 14px;
+  background: linear-gradient(
+    135deg,
+    rgba(18, 153, 202, 0.08) 0%,
+    rgba(90, 172, 160, 0.04) 100%
+  );
+  box-shadow: inset 0 1px 0 @pill-shine;
+  font-weight: 700;
+  font-size: 13.5px;
+  letter-spacing: 0.5px;
+}
+
+/* ==================== PILL MODULES ==================== */
+
+#mpris,
+#idle_inhibitor,
+#custom-uptime,
+#custom-power-profile,
+#custom-weather,
+#custom-update,
+#cpu,
+#battery,
+#pulseaudio,
+#network,
+#custom-network-speed,
+#bluetooth,
+#tray {
+  margin: 4px 3px;
+  padding: 0 14px;
+  border-radius: 14px;
+  background: linear-gradient(
+    135deg,
+    rgba(18, 153, 202, 0.06) 0%,
+    rgba(90, 172, 160, 0.04) 100%
+  );
+  box-shadow: inset 0 1px 0 @pill-shine;
+}
+
+/* MPRIS now-playing states */
+#mpris.playing {
+  background: linear-gradient(
+    135deg,
+    rgba(18, 153, 202, 0.14) 0%,
+    rgba(53, 188, 222, 0.08) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 @pill-shine,
+    0 0 12px rgba(18, 153, 202, 0.08);
+}
+
+#mpris.paused {
+  opacity: 0.7;
+}
+
+/* Idle-inhibitor states */
+#idle_inhibitor.activated {
+  background: linear-gradient(
+    135deg,
+    rgba(78, 200, 90, 0.18) 0%,
+    rgba(78, 200, 90, 0.06) 100%
+  );
+  color: #4EC85A;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.20),
+    0 0 12px rgba(78, 200, 90, 0.25),
+    0 0 24px rgba(78, 200, 90, 0.08);
+}
+
+/* Hover effects */
+#custom-uptime:hover,
+#custom-power-profile:hover,
+#custom-weather:hover,
+#custom-update:hover,
+#cpu:hover,
+#battery:hover,
+#pulseaudio:hover,
+#network:hover,
+#custom-network-speed:hover,
+#bluetooth:hover,
+#tray:hover,
+#custom-clock:hover,
+#custom-omarchy:hover,
+#mpris:hover,
+#idle_inhibitor:hover {
+  transition: all 0.15s ease;
+  background: linear-gradient(
+    135deg,
+    rgba(18, 153, 202, 0.14) 0%,
+    rgba(90, 172, 160, 0.08) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 @pill-shine,
+    0 0 14px rgba(18, 153, 202, 0.10);
+}
+
+#idle_inhibitor.activated:hover {
+  background: linear-gradient(
+    135deg,
+    rgba(78, 200, 90, 0.24) 0%,
+    rgba(78, 200, 90, 0.10) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 0 18px rgba(78, 200, 90, 0.30);
+}
+
+/* Power profile states */
+#custom-power-profile.performance {
+  color: #4EC85A;
+}
+
+#custom-power-profile.power-saver {
+  color: #35BCDE;
+}
+
+/* Network speed */
+#custom-network-speed {
+  font-size: 11.5px;
+  letter-spacing: -0.3px;
+}
+
+#custom-network-speed.disconnected {
+  color: #C85A50;
+}
+
+/* Uptime */
+#custom-uptime {
+  font-size: 11px;
+  color: @foreground;
+}
+
+#custom-weather.unavailable {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+#custom-update {
+  font-size: 12px;
+}
+
+#custom-update.has-update {
+  background: linear-gradient(
+    135deg,
+    rgba(78, 200, 90, 0.14) 0%,
+    rgba(78, 200, 90, 0.06) 100%
+  );
+  color: #4EC85A;
+}
+
+#cpu,
+#battery,
+#pulseaudio {
+  font-size: 13px;
+}
+
+#battery.warning {
+  background: linear-gradient(
+    135deg,
+    rgba(200, 168, 48, 0.14) 0%,
+    rgba(200, 168, 48, 0.06) 100%
+  );
+  color: #C8A830;
+}
+
+#battery.critical {
+  background: linear-gradient(
+    135deg,
+    rgba(200, 90, 80, 0.14) 0%,
+    rgba(200, 90, 80, 0.06) 100%
+  );
+  color: #C85A50;
+}
+
+/* ==================== MPRIS ==================== */
+
+#mpris {
+  font-size: 13px;
+  min-width: 80px;
+}
+
+#mpris.playing {
+  background: linear-gradient(
+    135deg,
+    rgba(18, 153, 202, 0.14) 0%,
+    rgba(90, 172, 160, 0.08) 100%
+  );
+  animation: orb-pulse 4s ease-in-out infinite;
+}
+
+#mpris.paused {
+  background: linear-gradient(
+    135deg,
+    rgba(18, 153, 202, 0.04) 0%,
+    rgba(90, 172, 160, 0.02) 100%
+  );
+  opacity: 0.7;
+}
+
+#mpris.stopped {
+  min-width: 0;
+  margin: 4px 0;
+  padding: 0;
+  opacity: 0;
+}
+
+/* TOOLTIP */
+tooltip {
+  background: rgba(10, 26, 46, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 8px 14px;
+  font-size: 12px;
+}
+
+tooltip label {
+  color: #D0ECE8;
+}
+
+/* INDICATORS */
+#custom-screenrecording-indicator,
+#custom-notification-silencing-indicator {
+  margin: 4px 2px;
+  padding: 0 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  background: linear-gradient(
+    135deg,
+    rgba(18, 153, 202, 0.06) 0%,
+    rgba(90, 172, 160, 0.04) 100%
+  );
+  box-shadow: inset 0 1px 0 @pill-shine;
+}
+
+#custom-screenrecording-indicator.active {
+  background: linear-gradient(
+    135deg,
+    rgba(200, 90, 80, 0.18) 0%,
+    rgba(200, 90, 80, 0.06) 100%
+  );
+  color: #C85A50;
+}
+
+#custom-notification-silencing-indicator.active {
+  background: linear-gradient(
+    135deg,
+    rgba(200, 90, 80, 0.18) 0%,
+    rgba(200, 90, 80, 0.06) 100%
+  );
+  color: #C85A50;
+}
+
+#custom-voxtype {
+  margin: 4px 2px;
+  padding: 0 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  background: linear-gradient(
+    135deg,
+    rgba(18, 153, 202, 0.06) 0%,
+    rgba(90, 172, 160, 0.04) 100%
+  );
+  box-shadow: inset 0 1px 0 @pill-shine;
+}
+
+#custom-voxtype.recording {
+  background: linear-gradient(
+    135deg,
+    rgba(200, 90, 80, 0.18) 0%,
+    rgba(200, 90, 80, 0.06) 100%
+  );
+  color: #C85A50;
+}
+
+#custom-expand-icon {
+  margin: 4px 2px;
+  padding: 0 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  background: linear-gradient(
+    135deg,
+    rgba(18, 153, 202, 0.06) 0%,
+    rgba(90, 172, 160, 0.04) 100%
+  );
+  box-shadow: inset 0 1px 0 @pill-shine;
+}
+
+#custom-weather.unavailable {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+/* VERTICAL MODE OVERRIDES */
+.left .modules-left, .right .modules-left { margin: 8px 0 0 0; }
+.left .modules-right, .right .modules-right { margin: 0 0 8px 0; }
+
+.left #workspaces button, .right #workspaces button {
+  padding: 8px 0;
+  margin: 1.5px 0;
+}
+
+.left #cpu, .right #cpu,
+.left #battery, .right #battery,
+.left #pulseaudio, .right #pulseaudio,
+.left #custom-omarchy, .right #custom-omarchy,
+.left #custom-update, .right #custom-update,
+.left #custom-uptime, .right #custom-uptime,
+.left #custom-power-profile, .right #custom-power-profile,
+.left #custom-network-speed, .right #custom-network-speed,
+.left #tray, .right #tray { margin: 0 0 16px 0; }
+.left #bluetooth, .right #bluetooth { margin: 1.5px 0; padding: 8px 0; min-height: 14px; }
+.left #network, .right #network { margin: 1.5px 0; padding: 8px 0; min-height: 14px; }
+.left #custom-expand-icon, .right #custom-expand-icon { margin: 1.5px 0; padding: 8px 0; min-height: 14px; }
+.left #mpris, .right #mpris { margin: 1.5px 0; padding: 8px 0; min-height: 14px; min-width: 80px; }
+.left #custom-clock, .right #custom-clock { margin: 8.75px 0 0 0; }
+.left #custom-weather, .right #custom-weather { margin: 1.5px 0; padding: 8px 0; min-height: 14px; min-width: 14px; margin-right: 4px; }
+
+.left #custom-screenrecording-indicator, .right #custom-screenrecording-indicator,
+.left #custom-notification-silencing-indicator, .right #custom-notification-silencing-indicator {
+  margin: 5px 0 0 0;
+  min-width: 0;
+  min-height: 14px;
+}
+
+.left #custom-voxtype, .right #custom-voxtype { margin: 7.5px 0 0 0; min-width: 0; min-height: 14px; }
+
+#custom-expand-icon.vertical,
+.left #custom-expand-icon.horizontal,
+.right #custom-expand-icon.horizontal {
+  opacity: 0;
+  font-size: 0;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.left #custom-expand-icon.vertical,
+.right #custom-expand-icon.vertical {
+  opacity: 1;
+  font-size: inherit;
+  min-width: 0;
+  min-height: 14px;
+  margin: 1.5px 0;
+  padding: 8px 0;
+}
+
+#custom-clock.vertical,
+.left #custom-clock.horizontal,
+.right #custom-clock.horizontal {
+  opacity: 0;
+  font-size: 0;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.left #custom-clock.vertical,
+.right #custom-clock.vertical {
+  opacity: 1;
+  font-size: inherit;
+  min-width: 0;
+  min-height: 14px;
+  margin: 8.75px 0 0 0;
+}

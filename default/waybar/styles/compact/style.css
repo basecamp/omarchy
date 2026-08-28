@@ -1,0 +1,154 @@
+@import "../omarchy/current/theme/waybar.css";
+
+/* ==================== COMPACT STYLE ==================== */
+/* Ultra-thin bar for small screens / vertical layouts - 24px height */
+
+* {
+  color: @foreground;
+  border: none;
+  border-radius: 0;
+  min-height: 0;
+  font-family: 'JetBrainsMono Nerd Font', 'Fira Sans';
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+/* BAR BACKGROUND - minimal height */
+window#waybar {
+  background: @background;
+  border: none;
+  box-shadow: none;
+}
+
+window#waybar > box {
+  background: @background;
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0 4px;
+}
+
+/* Reduce bar height globally */
+window#waybar,
+window#waybar > box {
+  min-height: 24px;
+}
+
+/* OMARCHY START BUTTON */
+#custom-omarchy {
+  padding: 0 10px;
+  margin: 2px;
+  border-radius: 4px;
+  font-size: 14px;
+  background: transparent;
+}
+
+/* WORKSPACES - minimal */
+#workspaces {
+  margin: 2px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: transparent;
+}
+
+#workspaces button {
+  all: initial;
+  padding: 0 6px;
+  margin: 0 1px;
+  min-width: 8px;
+  min-height: 18px;
+  border-radius: 3px;
+  color: @foreground;
+  font-size: 10px;
+  opacity: 0.5;
+}
+
+#workspaces button.active {
+  background: rgba(18, 153, 202, 0.3);
+  color: #35BCDE;
+  opacity: 1;
+}
+
+#workspaces button.empty { opacity: 0.2; }
+#workspaces button:hover { background: rgba(18, 153, 202, 0.1); }
+
+/* CLOCK */
+#custom-clock {
+  margin: 2px 6px;
+  padding: 0 10px;
+  border-radius: 4px;
+  background: transparent;
+  font-weight: 600;
+}
+
+/* MODULES - tiny pills */
+#mpris,
+#idle_inhibitor,
+#custom-uptime,
+#custom-power-profile,
+#custom-weather,
+#custom-update,
+#cpu,
+#battery,
+#pulseaudio,
+#network,
+#custom-network-speed,
+#bluetooth,
+#tray {
+  margin: 2px 2px;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: rgba(18, 153, 202, 0.08);
+}
+
+/* STATES */
+#idle_inhibitor.activated { color: #4EC85A; background: rgba(78, 200, 90, 0.15); }
+#custom-power-profile.performance { color: #4EC85A; }
+#custom-power-profile.power-saver { color: #35BCDE; }
+#custom-network-speed.disconnected { color: #C85A50; }
+#custom-update.has-update { color: #4EC85A; background: rgba(78, 200, 90, 0.15); }
+#battery.warning { color: #C8A830; }
+#battery.critical { color: #C85A50; }
+
+/* MPRIS */
+#mpris { min-width: 60px; font-size: 10px; }
+#mpris.playing { background: rgba(18, 153, 202, 0.15); }
+#mpris.paused { opacity: 0.6; }
+#mpris.stopped { opacity: 0; min-width: 0; padding: 0; }
+
+/* TOOLTIP */
+tooltip {
+  background: rgba(10, 10, 15, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 10px;
+}
+tooltip label { color: #D0D0D0; }
+
+/* INDICATORS */
+#custom-screenrecording-indicator,
+#custom-notification-silencing-indicator,
+#custom-voxtype,
+#custom-expand-icon {
+  margin: 2px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 9px;
+  background: rgba(18, 153, 202, 0.08);
+}
+
+#custom-screenrecording-indicator.active,
+#custom-notification-silencing-indicator.active,
+#custom-voxtype.recording { color: #C85A50; }
+
+/* VERTICAL MODE */
+.left .modules-left, .right .modules-left { margin: 4px 0 0 0; }
+.left .modules-right, .right .modules-right { margin: 0 0 4px 0; }
+
+.left #workspaces button, .right #workspaces button {
+  padding: 5px 0;
+  margin: 1px 0;
+  min-width: 18px;
+}

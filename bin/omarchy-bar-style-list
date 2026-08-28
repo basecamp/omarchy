@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# omarchy:summary=List available Waybar styles
+# omarchy:group=bar
+# omarchy:args=none
+# omarchy:examples=omarchy bar style list
+
+set -euo pipefail
+
+SYS_STYLES_DIR="$OMARCHY_PATH/default/waybar/styles"
+USER_STYLES_DIR="$HOME/.config/waybar/styles"
+CURRENT_STYLE_LINK="$HOME/.config/omarchy/current/waybar.style"
+
+CURRENT_STYLE=""
+if [[ -L $CURRENT_STYLE_LINK ]]; then
+  CURRENT_STYLE=$(basename "$(readlink -f "$CURRENT_STYLE_LINK")")
+fi
+
+echo "Available Waybar styles:"
+echo ""
+
+# System styles
+if [[ -d $SYS_STYLES_DIR ]]; then
+  for style in "$SYS_STYLES_DIR"/*/; do
+    [[ -d $style ]] || continue
+    name=$(basename "$style")
+    marker=""
+    [[ $name == "$CURRENT_STYLE" ]] && marker=" *"
+    echo "  $name (system)$marker"
+  done
+fi
+
+# User styles
+if [[ -d $USER_STYLES_DIR ]]; then
+  for style in "$USER_STYLES_DIR"/*/; do
+    [[ -d $style ]] || continue
+    name=$(basename "$style")
+    marker=""
+    [[ $name == "$CURRENT_STYLE" ]] && marker=" *"
+    echo "  $name (user)$marker"
+  done
+fi
+
+echo ""
+echo "* = currently active"

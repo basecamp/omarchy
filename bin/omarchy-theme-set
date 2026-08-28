@@ -147,6 +147,20 @@ mkdir -p "$NEXT_THEME_PATH"
 cp -r "$OMARCHY_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
 cp -r "$USER_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
 
+# Handle waybar style if specified by theme
+if [[ -f $NEXT_THEME_PATH/waybar.style ]]; then
+  THEME_WAYBAR_STYLE=$(cat "$NEXT_THEME_PATH/waybar.style" | tr -d '[:space:]')
+  STYLE_DIR="$OMARCHY_PATH/default/waybar/styles/$THEME_WAYBAR_STYLE"
+  USER_STYLE_DIR="$HOME/.config/waybar/styles/$THEME_WAYBAR_STYLE"
+  CURRENT_STYLE_LINK="$HOME/.config/omarchy/current/waybar.style"
+  SOURCE_DIR="$STYLE_DIR"
+  [[ -d $USER_STYLE_DIR ]] && SOURCE_DIR="$USER_STYLE_DIR"
+  if [[ -d $SOURCE_DIR ]]; then
+    mkdir -p "$(dirname "$CURRENT_STYLE_LINK")"
+    ln -nsf "$SOURCE_DIR" "$CURRENT_STYLE_LINK"
+  fi
+fi
+
 # Generate colors.toml from alacritty.toml if theme is missing colors.toml
 if [[ ! -f $NEXT_THEME_PATH/colors.toml && -f $NEXT_THEME_PATH/alacritty.toml ]]; then
   omarchy-theme-colors-from-alacritty "$NEXT_THEME_PATH"

@@ -1,0 +1,81 @@
+#!/bin/bash
+
+# omarchy:summary=Interactive Waybar style switcher
+# omarchy:group=bar
+# omarchy:args=none
+# omarchy:examples=omarchy bar style switcher
+
+set -euo pipefail
+
+SYS_STYLES_DIR="$OMARCHY_PATH/default/waybar/styles"
+USER_STYLES_DIR="$HOME/.config/waybar/styles"
+CURRENT_STYLE_LINK="$HOME/.config/omarchy/current/waybar.style"
+
+# Build list of styles
+styles=()
+style_sources=()
+
+if [[ -d $SYS_STYLES_DIR ]]; then
+  for style in "$SYS_STYLES_DIR"/*/; do
+    [[ -d $style ]] || continue
+    name=$(basename "$style")
+    styles+=("$name")
+    style_sources+=("system")
+  done
+fi
+
+if [[ -d $USER_STYLES_DIR ]]; then
+  for style in "$USER_STYLES_DIR"/*/; do
+    [[ -d $style ]] || continue
+    name=$(basename "$style")
+    [[ " ${styles[*]} " =~  $name ]] || {
+      styles+=("$name")
+      style_sources+=("user")
+    }
+  done
+fi
+
+(( ${#styles[@]} > 0 )) || {
+  echo "No styles available"
+  exit 1
+}
+
+# Get current style
+current=""
+if [[ -L $CURRENT_STYLE_LINK ]]; then
+  current=$(basename "$(readlink -f "$CURRENT_STYLE_LINK")")
+fi
+
+# Build walker/gum input
+input=""
+for i in "${!styles[@]}"; do
+  name="${styles[$i]}"
+  source="${style_sources[$i]}"
+  marker=""
+  [[ $name == "$current" ]] && marker=" ●"
+  input+="$name ($source)$marker"$'\n'
+done
+
+# Try walker first, fallback to gum, then select
+selected=""
+if command -v walker &>/dev/null; then
+  selected=$(printf "%s" "$input" | walker --dmenu -p "Waybar Style" 2>/dev/null || true)
+elif command -v gum &>/dev/null; then
+  selected=$(printf "%s" "$input" | gum choose --header "Select Waybar style" 2>/dev/null || true)
+else
+  echo "Select a Waybar style:"
+  PS3="Choice: "
+  select opt in "${styles[@]}"; do
+    [[ -n $opt ]] && selected="$opt (${style_sources[$REPLY-1]})" && break
+  done
+fi
+
+# Extract style name (remove source marker)
+selected_style="${selected%% (*}"
+
+if [[ -n $selected_style ]]; then
+  omarchy-bar-style-set "$selected_style"
+else
+  echo "No style selected"
+  exit 1
+fi

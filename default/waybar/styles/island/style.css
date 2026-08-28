@@ -1,0 +1,184 @@
+@import "../omarchy/current/theme/waybar.css";
+
+/* ==================== ISLAND STYLE ==================== */
+/* Centered floating dock with rounded ends - macOS/Plasma style */
+
+* {
+  color: @foreground;
+  border: none;
+  border-radius: 0;
+  min-height: 0;
+  font-family: 'JetBrainsMono Nerd Font', 'Fira Sans';
+  font-size: 13px;
+  font-weight: 500;
+}
+
+@keyframes island-glow {
+  0%, 100% { box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3), 0 0 0 rgba(18, 153, 202, 0); }
+  50% { box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3), 0 0 32px rgba(18, 153, 202, 0.15); }
+}
+
+/* BAR BACKGROUND - centered island */
+window#waybar {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+window#waybar > box {
+  background: @background;
+  margin: 8px 120px;
+  border-radius: 24px;
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+  animation: island-glow 4s ease-in-out infinite;
+}
+
+/* OMARCHY START BUTTON - pill within island */
+#custom-omarchy {
+  padding: 0 18px;
+  margin: 6px 8px 6px 12px;
+  border-radius: 16px;
+  font-size: 18px;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+#custom-omarchy:hover {
+  background: rgba(18, 153, 202, 0.2);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 0 20px rgba(18, 153, 202, 0.3);
+}
+
+/* WORKSPACES - seamless pill */
+#workspaces {
+  margin: 6px 4px;
+  padding: 0 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+#workspaces button {
+  all: initial;
+  padding: 0 14px;
+  margin: 0 2px;
+  min-width: 12px;
+  min-height: 28px;
+  border-radius: 14px;
+  color: @foreground;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.5;
+  transition: all 0.2s ease;
+}
+
+#workspaces button.active {
+  background: linear-gradient(135deg, rgba(18, 153, 202, 0.4), rgba(53, 188, 222, 0.2));
+  color: #35BCDE;
+  opacity: 1;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 0 16px rgba(18, 153, 202, 0.3);
+}
+
+#workspaces button.empty { opacity: 0.2; }
+#workspaces button:hover { background: rgba(18, 153, 202, 0.15); opacity: 0.8; }
+
+/* CLOCK */
+#custom-clock {
+  margin: 6px 12px;
+  padding: 0 20px;
+  border-radius: 16px;
+  background: rgba(18, 153, 202, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+/* MODULES - unified pill groups */
+.module-group {
+  margin: 6px 4px;
+  padding: 0 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+#mpris,
+#idle_inhibitor,
+#custom-uptime,
+#custom-power-profile,
+#custom-weather,
+#custom-update,
+#cpu,
+#battery,
+#pulseaudio,
+#network,
+#custom-network-speed,
+#bluetooth,
+#tray {
+  margin: 0;
+  padding: 0 12px;
+  background: transparent;
+  border-radius: 0;
+}
+
+/* Space between modules in same group */
+#mpris + #idle_inhibitor,
+#idle_inhibitor + #custom-uptime,
+#custom-uptime + #custom-power-profile,
+#custom-power-profile + #custom-weather,
+#custom-weather + #custom-update,
+#custom-update + #cpu,
+#cpu + #battery,
+#battery + #pulseaudio,
+#pulseaudio + #network,
+#network + #custom-network-speed,
+#custom-network-speed + #bluetooth,
+#bluetooth + #tray {
+  margin-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  padding-left: 20px;
+}
+
+/* STATES */
+#idle_inhibitor.activated { color: #4EC85A; }
+#custom-power-profile.performance { color: #4EC85A; }
+#custom-power-profile.power-saver { color: #35BCDE; }
+#custom-network-speed.disconnected { color: #C85A50; }
+#custom-update.has-update { color: #4EC85A; }
+#battery.warning { color: #C8A830; }
+#battery.critical { color: #C85A50; }
+
+/* MPRIS */
+#mpris { min-width: 100px; }
+#mpris.playing { color: #35BCDE; }
+#mpris.paused { opacity: 0.6; }
+#mpris.stopped { opacity: 0; min-width: 0; padding: 0; }
+
+/* TOOLTIP */
+tooltip {
+  background: rgba(20, 20, 30, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 12px;
+}
+tooltip label { color: #E0E0E0; }
+
+/* INDICATORS */
+#custom-screenrecording-indicator,
+#custom-notification-silencing-indicator,
+#custom-voxtype,
+#custom-expand-icon {
+  padding: 0 12px;
+  background: transparent;
+}
+#custom-screenrecording-indicator.active,
+#custom-notification-silencing-indicator.active,
+#custom-voxtype.recording { color: #C85A50; }
+
+/* VERTICAL - not applicable for island */

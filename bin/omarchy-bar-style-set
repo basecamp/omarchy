@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# omarchy:summary=Set the active Waybar style
+# omarchy:group=bar
+# omarchy:args=<style-name>
+# omarchy:examples=omarchy bar style set pills | omarchy bar style set classic
+
+set -euo pipefail
+
+if [[ -z ${1:-} ]]; then
+  echo "Usage: omarchy-waybar-style-set <style-name>"
+  echo "Run 'omarchy bar style list' to see available styles"
+  exit 1
+fi
+
+STYLE_NAME="$1"
+STYLE_DIR="$OMARCHY_PATH/default/waybar/styles/$STYLE_NAME"
+USER_STYLE_DIR="$HOME/.config/waybar/styles/$STYLE_NAME"
+CURRENT_STYLE_LINK="$HOME/.config/omarchy/current/waybar.style"
+
+# Check if style exists (system or user)
+if [[ ! -d $STYLE_DIR && ! -d $USER_STYLE_DIR ]]; then
+  echo "Style '$STYLE_NAME' not found"
+  echo "Run 'omarchy bar style list' to see available styles"
+  exit 1
+fi
+
+# Determine source directory
+SOURCE_DIR="$STYLE_DIR"
+[[ -d $USER_STYLE_DIR ]] && SOURCE_DIR="$USER_STYLE_DIR"
+
+# Create parent directory
+mkdir -p "$(dirname "$CURRENT_STYLE_LINK")"
+
+# Atomic symlink swap
+ln -nsf "$SOURCE_DIR" "$CURRENT_STYLE_LINK"
+
+# Restart Waybar to pick up new style
+omarchy-restart-waybar
+
+echo "Waybar style set to: $STYLE_NAME"
