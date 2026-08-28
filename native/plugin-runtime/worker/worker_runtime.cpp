@@ -648,8 +648,10 @@ RuntimeResult WorkerRuntime::input(const surface::InputEvent &event) {
     QCoreApplication::sendEvent(&implementation_->window, &translated);
     implementation_->mouse_buttons = buttons;
   } else if (event.kind == surface::InputKind::scroll) {
-    const QPoint pixel_delta(event.delta_x_q16 / 65536,
-                             event.delta_y_q16 / 65536);
+    const QPoint pixel_delta(qRound(static_cast<qreal>(event.delta_x_q16) /
+                                    65536.0 * device_pixel_ratio),
+                             qRound(static_cast<qreal>(event.delta_y_q16) /
+                                    65536.0 * device_pixel_ratio));
     QWheelEvent translated(point, point, pixel_delta, {}, Qt::NoButton,
                            Qt::NoModifier, Qt::ScrollUpdate, false,
                            Qt::MouseEventNotSynthesized,
