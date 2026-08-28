@@ -7,6 +7,7 @@
 inline=false
 pick=false
 approval=auto
+approval_explicit=false
 
 # Flags only. A bare prompt would shadow the subcommands under this group, so
 # prompts go through omarchy-agent-prompt, which passes one here as --prompt.
@@ -21,11 +22,21 @@ while (($#)); do
       shift
       ;;
     --safe)
+      if [[ $approval_explicit == "true" && $approval != "safe" ]]; then
+        echo "Cannot combine --safe and --auto" >&2
+        exit 1
+      fi
       approval=safe
+      approval_explicit=true
       shift
       ;;
     --auto)
+      if [[ $approval_explicit == "true" && $approval != "auto" ]]; then
+        echo "Cannot combine --safe and --auto" >&2
+        exit 1
+      fi
       approval=auto
+      approval_explicit=true
       shift
       ;;
     --prompt)
@@ -94,7 +105,7 @@ claude)
   ;;
 grok)
   command=(grok)
-  [[ $approval == "auto" ]] && command+=(--permission-mode bypassPermissions)
+  [[ $approval == "auto" ]] && command+=(--always-approve)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
   ;;
 codex)

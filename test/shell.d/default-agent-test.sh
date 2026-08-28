@@ -461,7 +461,7 @@ assert_launch ori ori code --interactive --prompt "Review this project"
 assert_launch claude claude --permission-mode auto -- "Review this project"
 assert_launch codex codex --approve-for-me -- "Review this project"
 assert_launch crush crush run "Review this project"
-assert_launch grok grok --permission-mode bypassPermissions -- "Review this project"
+assert_launch grok grok --always-approve -- "Review this project"
 assert_launch agy agy --dangerously-skip-permissions --prompt-interactive "Review this project"
 assert_launch copilot copilot --allow-all --interactive "Review this project"
 pass "agent launcher adapts initial prompts for every supported agent"
@@ -473,7 +473,7 @@ assert_bypass ori ori code
 assert_bypass claude claude --permission-mode auto
 assert_bypass codex codex --approve-for-me
 assert_bypass crush crush --yolo
-assert_bypass grok grok --permission-mode bypassPermissions
+assert_bypass grok grok --always-approve
 assert_bypass agy agy --dangerously-skip-permissions
 assert_bypass copilot copilot --allow-all
 pass "agent launcher skips permission prompts for every supported agent"
@@ -505,6 +505,13 @@ mapfile -d '' -t safe_prompt_args <"$launch_log"
 [[ ${safe_prompt_args[*]} == "--app-id=org.omarchy.agent codex -- Review this project" ]] ||
   fail "safe prompt route preserves approval-first mode"
 pass "safe prompt route preserves approval-first mode"
+
+for conflicting_flags in "--safe --auto" "--auto --safe"; do
+  if omarchy-agent $conflicting_flags >/dev/null 2>&1; then
+    fail "agent launcher rejects conflicting approval modes"
+  fi
+done
+pass "agent launcher rejects conflicting approval modes"
 
 printf '%s\n' "opencode" >"$agent_file"
 omarchy-agent
