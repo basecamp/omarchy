@@ -28,7 +28,13 @@ write_stale_preferences() {
 stub_bin="$test_dir/bin"
 mkdir -p "$stub_bin"
 
-REAL_PYTHON=$(command -v python3)
+# The stubs below shadow python3 on PATH and delegate to this interpreter, so
+# it has to be the interpreter itself rather than whatever `command -v` finds.
+# Where python3 is a version-manager shim (mise, asdf, pyenv), the shim resolves
+# python3 through PATH again, lands back on the stub, and recurses without
+# bound. sys.executable is always the real binary.
+REAL_PYTHON=$(python3 -c 'import sys; print(sys.executable)')
+[[ -x $REAL_PYTHON ]] || fail "python3 reports the interpreter behind any shim"
 export REAL_PYTHON
 
 run_migration() {
