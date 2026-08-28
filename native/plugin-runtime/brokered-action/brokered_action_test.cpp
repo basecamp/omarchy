@@ -94,6 +94,12 @@ permissions::TokenScope token() {
   require(value.tokens.insert(permissions::ScopeToken("timer")), "token");
   return value;
 }
+permissions::ResourceScope resource(permissions::OperationId operation) {
+  permissions::ResourceScope value;
+  require(value.resources.insert(1), "resource");
+  require(value.operations.insert(operation), "resource operation");
+  return value;
+}
 
 grant::RevisionGrants revision() {
   grant::RevisionGrants value;
@@ -103,10 +109,16 @@ grant::RevisionGrants revision() {
   value.source_request_fingerprint = digest('c');
   value.requests.push_back({key("storage.private"), quota(), true});
   value.requests.push_back({key("notifications.send"), token(), false});
+  value.requests.push_back(
+      {key("service.fake-status"),
+       resource(permissions::OperationId::fake_status_list), false});
   value.grants.push_back(
       {key("storage.private"), quota(), permissions::GrantState::granted, 4});
   value.grants.push_back(
       {key("notifications.send"), token(), permissions::GrantState::denied, 2});
+  value.grants.push_back({key("service.fake-status"),
+                          resource(permissions::OperationId::fake_status_list),
+                          permissions::GrantState::granted, 7});
   value.binding.policy_fingerprint = permissions::Digest(
       permissions::policy_request_fingerprint(value.requests));
   return value;
@@ -170,12 +182,14 @@ class Dispatcher final : public action::BrokerDispatcher {
 public:
   explicit Dispatcher(runtime::AuditedBrokerRuntime &value) : runtime(value) {}
   bool dispatch(const omarchy::plugin::wire::PacketView &packet) override {
+    ++calls;
     result = runtime.dispatch(packet, 100);
     return result.outcome == broker::DispatchOutcome::dispatched ||
            result.outcome == broker::DispatchOutcome::denied;
   }
   runtime::AuditedBrokerRuntime &runtime;
   broker::DispatchResult result;
+  unsigned calls = 0;
 };
 
 class Fixture {
@@ -187,8 +201,7 @@ public:
     std::ofstream(revision_ / "d1-mode") << mode << '\n';
     std::ofstream(revision_ / "Main.qml")
         << "import QtQml\nQtObject { readonly property string action: \""
-        << (mode == "denied" ? "notification.send" : "storage.write")
-        << "\"; readonly property string value: \"from-qml\" }\n";
+        << mode << "\"; readonly property string value: \"from-qml\" }\n";
     chmod((revision_ / "d1-mode").c_str(), 0444);
     chmod((revision_ / "Main.qml").c_str(), 0444);
     require(chmod(revision_.c_str(), 0555) == 0, "immutable revision failed");
@@ -239,8 +252,12 @@ void run_case(std::string_view mode, broker::DispatchOutcome expected,
       std::string(bwrap), QML_ACTION_PEER_PATH, scope);
   auto opened = action::AuthenticatedBrokerChannel::open(
       supervisor, fixture.request(), dispatcher, authority);
-  require(opened && opened.channel->negotiate(2s),
-          "authenticated QML peer failed negotiation");
+  require(static_cast<bool>(opened),
+          std::string("authenticated QML peer launch failed: ") +
+              std::string(mode) + ": " + opened.detail);
+  require(opened.channel->negotiate(2s),
+          std::string("authenticated QML peer negotiation failed: ") +
+              std::string(mode) + ": " + opened.channel->detail());
   if (poison_audit) {
     require(store.recover().ok(), "audit setup failed");
     std::filesystem::permissions(temp.path() / "audit",
@@ -249,7 +266,8 @@ void run_case(std::string_view mode, broker::DispatchOutcome expected,
                                  std::filesystem::perm_options::replace);
   }
   const auto status = opened.channel->dispatch_one(2s);
-  require(dispatcher->result.outcome == expected, "unexpected D4 outcome");
+  if (mode != "open-uri")
+    require(dispatcher->result.outcome == expected, "unexpected D4 outcome");
   if (poison_audit) {
     require(status == action::DispatchStatus::fatal && backend.writes == 0 &&
                 scope->removes == 1,
@@ -259,18 +277,42 @@ void run_case(std::string_view mode, broker::DispatchOutcome expected,
                                  std::filesystem::perm_options::replace);
     return;
   }
+  if (mode == "open-uri") {
+    require(status == action::DispatchStatus::fatal && dispatcher->calls == 0 &&
+                backend.notifications == 0 && backend.writes == 0 &&
+                store.query({}).records.empty() && scope->removes == 1,
+            "unsupported QML URL action emitted a packet, audit, or effect");
+    return;
+  }
+  if (mode == "undeclared") {
+    require(status == action::DispatchStatus::fatal && dispatcher->calls == 1 &&
+                backend.notifications == 0 && backend.writes == 0 &&
+                store.query({}).records.empty() && scope->removes == 1,
+            "undeclared raw operation did not fail closed before effects");
+    return;
+  }
   require(status == action::DispatchStatus::dispatched,
           "recoverable D4 outcome killed channel");
-  if (mode == "denied") {
+  if (mode == "denied" || mode == "gesture" || mode == "expanded") {
     require(backend.notifications == 0 && backend.writes == 0,
             "denied QML action had an effect");
     const auto records = store.query({});
     require(records.status.ok() && !records.records.empty() &&
                 records.records.back().outcome ==
                     permissions::AuditOutcome::denied &&
-                records.records.back().correlation == 42 &&
+                records.records.back().correlation == (mode == "denied" ? 42U
+                                                       : mode == "gesture"
+                                                           ? 43U
+                                                           : 44U) &&
                 records.records.back().generation == 11,
             "denied QML action was not bound to an exact audit denial");
+    const auto expected_decision =
+        mode == "gesture" ? permissions::GrantDecisionCode::gesture_missing
+        : mode == "expanded"
+            ? permissions::GrantDecisionCode::outside_scope
+            : permissions::GrantDecisionCode::explicitly_denied;
+    require(records.records.back().decision == expected_decision,
+            "denial audit lost its exact authority reason");
   } else {
     require(backend.writes == 1 && backend.audited_before_effect &&
                 backend.key == "k" && backend.value == "from-qml",
@@ -309,11 +351,25 @@ int main(int argc, char **argv) {
       run_case("allowed", broker::DispatchOutcome::dispatched, false,
                BWRAP_PATH);
       run_case("denied", broker::DispatchOutcome::denied, false, BWRAP_PATH);
+      run_case("gesture", broker::DispatchOutcome::denied, false, BWRAP_PATH);
+      run_case("expanded", broker::DispatchOutcome::denied, false, BWRAP_PATH);
+      run_case("undeclared", broker::DispatchOutcome::protocol_fatal, false,
+               BWRAP_PATH);
+      run_case("open-uri", broker::DispatchOutcome::protocol_fatal, false,
+               BWRAP_PATH);
     } else {
       require(std::string_view(argv[1]) == "fake", "invalid selector");
       run_case("allowed", broker::DispatchOutcome::dispatched, false,
                FAKE_BWRAP_PATH);
       run_case("denied", broker::DispatchOutcome::denied, false,
+               FAKE_BWRAP_PATH);
+      run_case("gesture", broker::DispatchOutcome::denied, false,
+               FAKE_BWRAP_PATH);
+      run_case("expanded", broker::DispatchOutcome::denied, false,
+               FAKE_BWRAP_PATH);
+      run_case("undeclared", broker::DispatchOutcome::protocol_fatal, false,
+               FAKE_BWRAP_PATH);
+      run_case("open-uri", broker::DispatchOutcome::protocol_fatal, false,
                FAKE_BWRAP_PATH);
       run_case("audit-fail", broker::DispatchOutcome::core_failed, true,
                FAKE_BWRAP_PATH);

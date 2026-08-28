@@ -79,20 +79,36 @@ void put64(std::span<std::byte> bytes, std::size_t offset,
     bytes[offset + i] = static_cast<std::byte>(value >> ((7U - i) * 8U));
 }
 
-std::vector<std::byte> storage(std::string_view value) {
+std::vector<std::byte> storage(std::string_view value,
+                               std::uint64_t total_bytes = 4096) {
   std::vector<std::byte> payload(31 + value.size());
   const auto operation = static_cast<std::uint16_t>(
       broker::permissions::OperationId::storage_write);
   put16(payload, 0, operation);
   put16(payload, 2, 16);
   put32(payload, 4, static_cast<std::uint32_t>(7 + value.size()));
-  put64(payload, 8, 4096);
+  put64(payload, 8, total_bytes);
   put64(payload, 16, 1024);
   put16(payload, 24, 1);
   put32(payload, 26, static_cast<std::uint32_t>(value.size()));
   payload[30] = std::byte{'k'};
   for (std::size_t i = 0; i < value.size(); ++i)
     payload[31 + i] = static_cast<std::byte>(value[i]);
+  return payload;
+}
+
+std::vector<std::byte> fake_list() {
+  std::vector<std::byte> payload(16);
+  put16(payload, 0,
+        static_cast<std::uint16_t>(
+            broker::permissions::OperationId::fake_status_list));
+  put16(payload, 2, 8);
+  put32(payload, 4, 0);
+  put32(payload, 8, 1);
+  put16(payload, 12,
+        static_cast<std::uint16_t>(
+            broker::permissions::OperationId::fake_status_list));
+  put16(payload, 14, 0);
   return payload;
 }
 
@@ -133,7 +149,7 @@ int main(int argc, char **argv) {
                                              mode);
     component.setData(R"(import QtQml
 QtObject {
-  readonly property string action: fixtureMode === "denied" ? "notification.send" : "storage.write"
+  readonly property string action: fixtureMode
   readonly property string value: "from-qml"
 })",
                       QUrl(QStringLiteral("qrc:/E3Action.qml")));
@@ -147,17 +163,35 @@ QtObject {
   negotiate(3, wire::EndpointRole::control);
   const auto generation = negotiate(4, wire::EndpointRole::broker);
   negotiate(5, wire::EndpointRole::render);
-  const bool denied = action == QStringLiteral("notification.send");
-  const auto payload = denied ? notification() : storage(value.toStdString());
+  if (action == QStringLiteral("open-uri"))
+    return 0;
+  const bool denied = action == QStringLiteral("denied");
+  const bool gesture = action == QStringLiteral("gesture");
+  const bool expanded = action == QStringLiteral("expanded");
+  const bool undeclared = action == QStringLiteral("undeclared");
+  const auto payload =
+      denied    ? notification()
+      : gesture ? fake_list()
+                : storage(value.toStdString(), expanded ? 8192U : 4096U);
+  const std::uint16_t operation =
+      denied       ? static_cast<std::uint16_t>(
+                         broker::permissions::OperationId::notification_send)
+      : gesture    ? static_cast<std::uint16_t>(
+                         broker::permissions::OperationId::fake_status_list)
+      : undeclared ? 0x04feU
+                   : static_cast<std::uint16_t>(
+                         broker::permissions::OperationId::storage_write);
   wire::EnvelopeHeader header{
       .endpoint_role = wire::EndpointRole::broker,
-      .message_type = static_cast<std::uint16_t>(
-          denied ? broker::permissions::OperationId::notification_send
-                 : broker::permissions::OperationId::storage_write),
+      .message_type = operation,
       .role_protocol_version = broker::kBrokerRoleVersion,
       .payload_length = static_cast<std::uint32_t>(payload.size()),
       .launch_generation = generation,
-      .correlation_id = denied ? 42U : 41U};
+      .correlation_id = denied       ? 42U
+                        : gesture    ? 43U
+                        : expanded   ? 44U
+                        : undeclared ? 45U
+                                     : 41U};
   std::vector<std::byte> packet(wire::kHeaderSize + payload.size());
   const auto encoded = wire::encode_packet(header, payload, packet);
   if (!encoded || send(4, packet.data(), encoded.bytes_written, MSG_NOSIGNAL) !=
