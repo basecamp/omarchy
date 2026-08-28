@@ -17,19 +17,6 @@ BarWidget {
     return null
   }
 
-  function workspaceIds() {
-    var ids = [1, 2, 3, 4, 5]
-    var values = Hyprland.workspaces.values
-
-    for (var i = 0; i < values.length; i++) {
-      var id = values[i].id
-      if (id > 0 && id <= 10 && ids.indexOf(id) === -1) ids.push(id)
-    }
-
-    ids.sort(function(left, right) { return left - right })
-    return ids
-  }
-
   function focusWorkspace(id) {
     if (!root.bar) return
     root.bar.run("hyprctl dispatch " + Util.shellQuote("hl.dsp.focus({ workspace = \"" + id + "\" })"))
@@ -44,19 +31,28 @@ BarWidget {
     id: grid
     anchors.fill: parent
     anchors.rightMargin: root.trailingGap
-    columns: root.vertical ? 1 : root.workspaceIds().length
+    columns: root.vertical ? 1 : 10
     columnSpacing: root.vertical ? 0 : Style.space(1)
     rowSpacing: root.vertical ? Style.space(2) : 0
 
     Repeater {
-      model: root.workspaceIds()
+      // Static model: delegates are created once and only toggle visibility/state
+      // afterwards. Rebuilding the model on every workspace create/destroy forces
+      // Quickshell to recreate WidgetButton objects on the main thread, which
+      // saturates the Hyprland event loop under rapid switching and makes the
+      // focus indicator lag (the "stuck workspace" backlog from #8788).
+      model: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
       WidgetButton {
         required property int modelData
 
         readonly property var workspace: root.workspaceById(modelData)
         readonly property bool occupied: workspace !== null && workspace.toplevels.values.length > 0
-        readonly property bool focused: Hyprland.focusedWorkspace !== null && Hyprland.focusedWorkspace.id === modelData
+        readonly property bool focused: Hyprland.focusedMonitor !== null && Hyprland.focusedMonitor.activeWorkspace !== null && Hyprland.focusedMonitor.activeWorkspace.id === modelData
+
+        // Base workspaces 1-5 are always shown; extras 6-10 only when they carry
+        // state, so empty non-persistent workspaces never linger in the bar (#8788).
+        visible: modelData <= 5 || occupied || focused
 
         bar: root.bar
         text: focused ? "\uDB85\uDCFB" : (modelData === 10 ? "0" : String(modelData))
