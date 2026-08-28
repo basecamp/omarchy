@@ -3,6 +3,7 @@
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QStringList>
+#include <QtQml/qqml.h>
 
 #include <iostream>
 #include <memory>
@@ -72,7 +73,10 @@ int main(int argc, char *argv[]) {
       return 1;
     }
     const auto version = omarchy::plugin_runtime::build_version();
-    return !object->property("available").toBool() &&
+    const auto remote_surface_type =
+        qmlTypeId("Omarchy.PluginHost", 1, 0, "RemotePluginSurface");
+    return remote_surface_type >= 0 &&
+                   !object->property("available").toBool() &&
                    object->property("runtimeVersion").toString() ==
                        QString::fromLatin1(version.data(), version.size())
                ? 0

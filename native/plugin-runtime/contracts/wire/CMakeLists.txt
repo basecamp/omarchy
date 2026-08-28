@@ -8,6 +8,7 @@ add_library(omarchy-plugin-wire STATIC
   src/common.cpp
   src/envelope.cpp
 )
+set_target_properties(omarchy-plugin-wire PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_compile_features(omarchy-plugin-wire PUBLIC cxx_std_20)
 target_compile_options(omarchy-plugin-wire PRIVATE -Wall -Wextra -Wpedantic -Werror)

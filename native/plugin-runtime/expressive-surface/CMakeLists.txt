@@ -26,14 +26,16 @@ target_include_directories(omarchy-plugin-expressive-surface PUBLIC
 target_link_libraries(omarchy-plugin-expressive-surface PUBLIC
   omarchy-plugin-surface-host)
 
-add_executable(omarchy-plugin-expressive-surface-test expressive_surface_test.cpp)
-expressive_defaults(omarchy-plugin-expressive-surface-test)
-target_compile_definitions(omarchy-plugin-expressive-surface-test PRIVATE
-  E2_PET_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/product/pet")
-target_link_libraries(omarchy-plugin-expressive-surface-test PRIVATE
-  omarchy-plugin-expressive-surface omarchy-plugin-d2-worker-render)
-add_test(NAME plugin-expressive-surface COMMAND omarchy-plugin-expressive-surface-test)
-set_tests_properties(plugin-expressive-surface PROPERTIES
-  TIMEOUT 30
-  LABELS "vertical;integration;adversarial;render;qml;input;security"
-  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QSG_RHI_BACKEND=software;QSG_SOFTWARE_RENDERER_FORCE_PARTIAL_UPDATES=0")
+if(BUILD_TESTING)
+  add_executable(omarchy-plugin-expressive-surface-test expressive_surface_test.cpp)
+  expressive_defaults(omarchy-plugin-expressive-surface-test)
+  target_compile_definitions(omarchy-plugin-expressive-surface-test PRIVATE
+    E2_PET_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/product/pet")
+  target_link_libraries(omarchy-plugin-expressive-surface-test PRIVATE
+    omarchy-plugin-expressive-surface omarchy-plugin-d2-worker-render)
+  add_test(NAME plugin-expressive-surface COMMAND omarchy-plugin-expressive-surface-test)
+  set_tests_properties(plugin-expressive-surface PROPERTIES
+    TIMEOUT 30
+    LABELS "vertical;integration;adversarial;render;qml;input;security"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QSG_RHI_BACKEND=software;QSG_SOFTWARE_RENDERER_FORCE_PARTIAL_UPDATES=0")
+endif()

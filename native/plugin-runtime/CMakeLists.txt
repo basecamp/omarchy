@@ -29,8 +29,6 @@ configure_file(cmake/PluginRuntimeVersion.h.in generated/omarchy/plugin_runtime/
 
 add_subdirectory(protocol-version)
 add_subdirectory(host)
-add_subdirectory(worker)
-add_subdirectory(bridge)
 
 # Contract owners add their directory without changing this shared root. A missing
 # directory means that security subsystem has not landed yet, not that it is optional
@@ -42,6 +40,26 @@ foreach(contract IN ITEMS manifest wire surface permissions sandbox)
     add_subdirectory("contracts/${contract}")
   endif()
 endforeach()
+
+if(TARGET omarchy-plugin-wire
+    AND TARGET omarchy-plugin-surface-contract
+    AND TARGET omarchy-plugin-sandbox-policy)
+  add_subdirectory(worker)
+endif()
+
+if(TARGET omarchy-plugin-wire
+    AND TARGET omarchy-plugin-surface-contract)
+  add_subdirectory(trusted-bridge)
+  add_subdirectory(render-session)
+  add_subdirectory(bridge)
+endif()
+
+if(TARGET omarchy-plugin-manifest-contract
+    AND TARGET omarchy-plugin-permission-contract
+    AND TARGET omarchy-plugin-render-session
+    AND TARGET omarchy-plugin-trusted-bridge)
+  add_subdirectory(surface-host)
+endif()
 
 if(TARGET omarchy-plugin-sandbox-policy
     AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/launcher/CMakeLists.txt")
@@ -96,6 +114,20 @@ if(TARGET omarchy-plugin-channel-integration
   add_subdirectory(update-transition)
 endif()
 
+if(TARGET omarchy-plugin-channel-integration
+    AND TARGET omarchy-plugin-supervisor-health)
+  add_subdirectory(headless-slice)
+endif()
+
+if(TARGET omarchy-plugin-surface-host)
+  add_subdirectory(expressive-surface)
+endif()
+
 if(BUILD_TESTING)
+  add_subdirectory(fixtures/product)
+  add_subdirectory(tests/adversarial)
+  add_subdirectory(brokered-action)
+  add_subdirectory(vertical-slices/embedded-bar)
+  add_subdirectory(render-proof)
   add_subdirectory(tests)
 endif()

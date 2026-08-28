@@ -5,23 +5,17 @@ project(omarchy_plugin_trusted_bridge LANGUAGES CXX)
 include(CTest)
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick)
 qt_standard_project_setup()
-qt_policy(SET QTP0001 NEW)
 
 if(NOT TARGET omarchy-plugin-surface-contract)
   add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../contracts/surface"
                    "${CMAKE_CURRENT_BINARY_DIR}/surface")
 endif()
 
-qt_add_library(omarchy-plugin-trusted-bridge STATIC)
-qt_add_qml_module(omarchy-plugin-trusted-bridge
-  URI Omarchy.PluginHost
-  VERSION 1.0
-  OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Omarchy/PluginHost"
-  SOURCES
-    remote_surface.cpp
-    remote_surface.hpp
-    render_input_transport.cpp
-    render_input_transport.hpp
+add_library(omarchy-plugin-trusted-bridge STATIC
+  remote_surface.cpp
+  remote_surface.hpp
+  render_input_transport.cpp
+  render_input_transport.hpp
 )
 target_compile_features(omarchy-plugin-trusted-bridge PUBLIC cxx_std_20)
 target_compile_options(omarchy-plugin-trusted-bridge PRIVATE -Wall -Wextra -Wpedantic -Werror)

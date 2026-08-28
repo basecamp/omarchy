@@ -18,6 +18,7 @@ add_library(omarchy-plugin-surface-contract STATIC
   src/shared_layout.cpp
   src/surface_state.cpp
 )
+set_target_properties(omarchy-plugin-surface-contract PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_features(omarchy-plugin-surface-contract PUBLIC cxx_std_20)
 target_compile_options(omarchy-plugin-surface-contract PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_include_directories(omarchy-plugin-surface-contract PUBLIC include)
