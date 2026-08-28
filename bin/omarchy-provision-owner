@@ -742,6 +742,12 @@ create_user() {
   # for specific commands), and a duplicate grant is harmless.
   echo "%wheel ALL=(ALL:ALL) ALL" >/etc/sudoers.d/00-omarchy-wheel
   chmod 440 /etc/sudoers.d/00-omarchy-wheel
+
+  source "$OMARCHY_PATH/install/helpers/browser-policy.sh"
+  for dir in "${BROWSER_POLICY_MANAGED_DIRS[@]}"; do
+    [[ -d $dir || -L $dir ]] || continue
+    browser_policy_setup_dir "$dir"
+  done
 }
 
 install_authorized_keys() {

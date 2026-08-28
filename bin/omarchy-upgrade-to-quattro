@@ -1312,7 +1312,21 @@ apply_system_transition() {
     /usr/share/icons/Yaru/scalable/actions/go-next-symbolic.svg
   as_root gtk-update-icon-cache /usr/share/icons/Yaru >/dev/null 2>&1 || true
 
-  as_root install -d -m 0777 /etc/chromium/policies/managed
+  local browser_policy_helper=/usr/share/omarchy/install/helpers/browser-policy.sh
+  if ! as_root test -f "$browser_policy_helper"; then
+    warn "$browser_policy_helper is unavailable; Chromium policy directories were not hardened."
+  else
+    as_root env OMARCHY_PATH=/usr/share/omarchy \
+      bash -euo pipefail -c '
+        source "$OMARCHY_PATH/install/helpers/browser-policy.sh"
+        browser_policy_setup_dir /etc/chromium/policies/managed
+        for dir in "${BROWSER_POLICY_MANAGED_DIRS[@]}"; do
+          [[ $dir == "/etc/chromium/policies/managed" ]] && continue
+          [[ -d $dir || -L $dir ]] || continue
+          browser_policy_setup_dir "$dir"
+        done
+      '
+  fi
   as_root install -d -m 0755 /usr/lib/chromium
   printf '%s\n' '{"browser":{"theme":{"color_scheme":0,"color_scheme2":0}}}' | \
     as_root tee /usr/lib/chromium/initial_preferences >/dev/null
@@ -2306,6 +2320,11 @@ refresh_current_theme_after_upgrade() {
   # hooks because one of them runs `hyprctl reload`. Still poke terminal
   # emulators so the active upgrade terminal picks up generated theme files.
   run_as_user_omarchy omarchy-restart-terminal >/dev/null 2>&1 || true
+
+  # apply_system_transition purged user-owned color.json. Headless theme-set
+  # skipped omarchy-theme-set-browser, so rewrite the colour here.
+  run_as_user_omarchy omarchy-theme-set-browser >/dev/null 2>&1 ||
+    warn "Could not apply browser theme colour. Run 'omarchy theme set \"$theme_name\"' after reboot if Chromium's theme looks stale."
 }
 
 # Everything below mutates the system, so a non-zero exit from here on leaves a
