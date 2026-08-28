@@ -20,11 +20,12 @@ cross-device aggregation); `Agent.qml` is the per-record file watcher.
   funded-versus-spent detail.
 - **Tokens by day** — one row per day for the last week: day, bar, tokens, with today
   bolded at the bottom. Hover today for its prompt and session count.
-- **Usage heatmap** — a GitHub-style calendar (up to 16 week columns) when the
-  record carries `usageByDay`: one `{date, tokens}` entry per day, quiet days
-  included. Cells shade in four steps against the window's busiest day; hover
-  for the date and token count. Records without the field simply don't get
-  the section.
+- **Activity** — a 7×24 dot punchcard (weekday rows × hour columns, all-time and
+  local-time) when the record carries `usageByHour`: sparse
+  `{weekday, hour, tokens}` entries, hours with no usage simply absent. Dot
+  diameter and shade scale with the cell's share of the busiest cell; hover a
+  lit dot for the weekday, hour, and token count. Records without the field
+  simply don't get the section.
 - **Tokens by model** — tokens per model with the bar behind each row scaled
   to the heaviest model,
   the same way the weekly chart scales to its busiest day. Hover for the

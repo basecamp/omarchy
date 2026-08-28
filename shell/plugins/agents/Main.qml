@@ -262,7 +262,7 @@ Item {
       todayTotalTokens: synced ? numberValue(stats.todayTotalTokens) : numberValue(record.todayTotalTokens),
       todayTokensByModel: synced ? (stats.todayTokensByModel || ({})) : (record.todayTokensByModel || ({})),
       recentDays: synced ? (stats.recentDays || []) : (record.recentDays || []),
-      usageByDay: synced ? (stats.usageByDay || []) : (record.usageByDay || []),
+      usageByHour: synced ? (stats.usageByHour || []) : (record.usageByHour || []),
       totalPrompts: synced ? numberValue(stats.totalPrompts) : numberValue(record.totalPrompts),
       totalSessions: synced ? numberValue(stats.totalSessions) : numberValue(record.totalSessions),
       activeDays: synced ? numberValue(stats.activeDays) : numberValue(record.activeDays),
@@ -568,7 +568,7 @@ Item {
         todayTotalTokens: 0,
         todayTokensByModel: ({}),
         recentByDay: recentByDay,
-        usageByDay: ({}),
+        usageByHour: ({}),
         totalPrompts: 0,
         totalSessions: 0,
         activeDays: 0,
@@ -616,16 +616,18 @@ Item {
             acc.recentByDay[date] = combineNumber(additive, acc.recentByDay[date], day.messageCount)
         }
 
-        // The calendar field merges with the same additive/widest rule but
-        // keeps whatever dates the records actually cover — there is no
-        // seven-day scaffold to land on, so a young synced record still
-        // renders its own short window.
-        var calendar = Array.isArray(stats.usageByDay) ? stats.usageByDay : []
-        for (var c = 0; c < calendar.length; c++) {
-          var calendarDay = calendar[c] || {}
-          var calendarDate = String(calendarDay.date || "")
-          if (calendarDate === "") continue
-          acc.usageByDay[calendarDate] = combineNumber(additive, acc.usageByDay[calendarDate], calendarDay.tokens)
+        // The punchcard field merges with the same additive/widest rule,
+        // keyed by weekday-hour cell — an hour's tokens are that device's
+        // own, whatever date they were burned on.
+        var hours = Array.isArray(stats.usageByHour) ? stats.usageByHour : []
+        for (var hc = 0; hc < hours.length; hc++) {
+          var hourCell = hours[hc] || {}
+          var weekday = Number(hourCell.weekday)
+          var hour = Number(hourCell.hour)
+          if (Math.floor(weekday) !== weekday || weekday < 0 || weekday > 6) continue
+          if (Math.floor(hour) !== hour || hour < 0 || hour > 23) continue
+          var cellKey = weekday + "-" + hour
+          acc.usageByHour[cellKey] = combineNumber(additive, acc.usageByHour[cellKey], hourCell.tokens)
         }
 
         var usage = stats.modelUsage || {}
@@ -654,8 +656,11 @@ Item {
         todayTotalTokens: acc.todayTotalTokens,
         todayTokensByModel: acc.todayTokensByModel,
         recentDays: recentDays,
-        usageByDay: Object.keys(acc.usageByDay).sort().map(function(calendarDate) {
-          return { date: calendarDate, tokens: acc.usageByDay[calendarDate] }
+        usageByHour: Object.keys(acc.usageByHour).map(function(cellKey) {
+          var parts = cellKey.split("-")
+          return { weekday: Number(parts[0]), hour: Number(parts[1]), tokens: acc.usageByHour[cellKey] }
+        }).sort(function(a, b) {
+          return a.weekday - b.weekday || a.hour - b.hour
         }),
         totalPrompts: acc.totalPrompts,
         totalSessions: acc.totalSessions,
@@ -691,7 +696,7 @@ Item {
       todayTotalTokens: numberValue(record.todayTotalTokens),
       todayTokensByModel: cloneValue(record.todayTokensByModel, ({})),
       recentDays: cloneValue(record.recentDays, []),
-      usageByDay: cloneValue(record.usageByDay, []),
+      usageByHour: cloneValue(record.usageByHour, []),
       totalPrompts: numberValue(record.totalPrompts),
       totalSessions: numberValue(record.totalSessions),
       activeDays: numberValue(record.activeDays),

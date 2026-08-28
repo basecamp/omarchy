@@ -4,7 +4,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
-import "HeatmapModel.js" as Heatmap
+import "PunchcardModel.js" as Punchcard
 
 Panel {
   id: root
@@ -196,10 +196,13 @@ Panel {
       + "-" + String(now.getDate()).padStart(2, "0")
   }
 
+  // Shared by the day rows' labels and the punchcard's weekday gutter.
+  readonly property var weekdayNames: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
   function dayName(date) {
     var parsed = new Date(String(date || "") + "T00:00:00")
     if (isNaN(parsed.getTime())) return String(date || "")
-    return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][parsed.getDay()]
+    return root.weekdayNames[parsed.getDay()]
   }
 
   function dayLabel(date, today) {
@@ -230,38 +233,36 @@ Panel {
     return peak
   }
 
-  // ---------------------------------------------------------------- heatmap
+  // ---------------------------------------------------------------- punchcard
   //
-  // A record that carries `usageByDay` (one {date, tokens} entry per day,
-  // quiet days included) also renders a GitHub-style calendar of the last
-  // few months. Providers whose collector never writes the field simply
-  // never see the section — an empty window hides it.
+  // A record that carries `usageByHour` — sparse all-time tokens bucketed
+  // into local-time weekday-hour cells — also renders a 7×24 activity
+  // punchcard under TOKENS BY DAY. Providers whose collector never writes
+  // the field simply never see the section: a null window hides it.
 
-  readonly property var usageHeatmap: Heatmap.heatmapWindow(
-    root.provider ? root.provider.usageByDay : null,
-    root.todayDate(),
-    Heatmap.MAX_WEEKS)
+  readonly property var usagePunchcard: Punchcard.punchcardWindow(
+    root.provider ? root.provider.usageByHour : null)
 
-  // Calendar ink rides the same foreground-alpha scale the day bars above
-  // shade with: level 0 is the track, level 4 full foreground. One hue at
-  // four steps reads calmly under every theme without a new color key.
-  readonly property var heatmapInk: [track,
-    alpha(foreground, 0.30), alpha(foreground, 0.50),
-    alpha(foreground, 0.70), foreground]
+  // The weekday gutter is sized to its labels; the 24 hour columns share
+  // whatever width is left, so the grid fits the panel at any spacing
+  // scale without a horizontal scrollbar.
+  readonly property real punchGutter: Style.space(30)
+  readonly property real punchPitch: Math.max(Style.space(8),
+    Math.floor((usageSection.width - punchGutter) / 24))
+  // An empty cell keeps a faint track dot, the same ink every track in
+  // this panel uses, so the punchcard reads as a grid even where the
+  // record has never burned a token.
+  readonly property real punchVoidDiameter: Math.max(2,
+    Math.round(punchPitch * Punchcard.VOID_SIZE01))
 
-  // Cell and gutter geometry; the month row and every Repeater share these
-  // so the labels land on the columns they name.
-  readonly property real heatmapCellSize: Style.space(10)
-  readonly property real heatmapGap: Style.space(2)
-  readonly property real heatmapWeekGutter: Style.space(18)
+  // Hour marks every three columns: 24 of them would collide.
+  readonly property var punchHourMarks: [0, 3, 6, 9, 12, 15, 18, 21]
 
-  function heatmapTooltip(cell) {
+  function punchcardTooltip(cell) {
     if (!cell) return ""
-    var parsed = new Date(String(cell.date) + "T00:00:00")
-    var label = isNaN(parsed.getTime())
-      ? String(cell.date)
-      : dayName(cell.date) + " " + (parsed.getMonth() + 1) + "/" + parsed.getDate()
-    return label + " · " + usage.formatTokenCount(Number(cell.tokens || 0)) + " tokens"
+    return root.weekdayNames[cell.weekday] + " "
+      + String(cell.hour).padStart(2, "0") + ":00 · "
+      + usage.formatTokenCount(Number(cell.tokens || 0)) + " tokens"
   }
 
   function modelRows(p) {
@@ -685,98 +686,67 @@ Panel {
             }
           }
 
-          // ---------- Usage heatmap ----------
+          // ---------- Activity punchcard ----------
           PanelSeparator {
-            visible: heatmapSection.visible
+            visible: activitySection.visible
             foreground: root.foreground
           }
 
           Column {
-            id: heatmapSection
-            visible: root.usageHeatmap.weeks.length > 0
+            id: activitySection
+            visible: !!root.usagePunchcard
             width: parent.width
             spacing: Style.spacing.md
 
             PanelSectionHeader {
               width: parent.width
-              text: "USAGE HEATMAP"
+              text: "ACTIVITY"
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
 
-            // Month names over the column their first covered 1st falls in,
-            // the weekday gutter M/W/F beside the rows, then the cells.
+            // Hour marks every three columns across the top, the weekday
+            // gutter beside the rows, then the dots. Everything is static:
+            // labels never move, and dots step with the data — values
+            // change, diameters do not animate.
             Item {
               width: parent.width
-              implicitHeight: monthRow.implicitHeight + Style.space(4) + gridRow.implicitHeight
+              implicitHeight: hourRow.implicitHeight + Style.space(4) + gridRows.implicitHeight
 
               Row {
-                id: monthRow
-                x: root.heatmapWeekGutter
+                id: hourRow
+                x: root.punchGutter
 
                 Repeater {
-                  model: root.usageHeatmap.monthLabels
+                  model: root.punchHourMarks
 
-                  Item {
+                  Text {
                     required property var modelData
 
-                    width: root.heatmapCellSize + root.heatmapGap
-                    implicitHeight: monthLabel.implicitHeight
-
-                    Text {
-                      id: monthLabel
-                      // Centered over the column: labels are at least four
-                      // columns apart, so the overflow into neighbors —
-                      // wider than one 12px column by design — hits nothing.
-                      anchors.horizontalCenter: parent.horizontalCenter
-                      text: modelData
-                      visible: modelData !== ""
-                      color: root.dim
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.caption
-                    }
+                    width: root.punchPitch * 3
+                    text: String(modelData).padStart(2, "0")
+                    color: root.dim
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    horizontalAlignment: Text.AlignHCenter
                   }
                 }
               }
 
               Column {
-                id: weekdayGutter
-                anchors.top: gridRow.top
-                spacing: root.heatmapGap
-
-                Repeater {
-                  // Monday-first rows, matching the grid: M, W, F.
-                  model: ["M", "", "W", "", "F", "", ""]
-
-                  Text {
-                    required property var modelData
-
-                    width: root.heatmapWeekGutter - root.heatmapGap
-                    height: root.heatmapCellSize
-                    text: modelData
-                    color: root.dim
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
-                    horizontalAlignment: Text.AlignRight
-                    verticalAlignment: Text.AlignVCenter
-                  }
-                }
-              }
-
-              Row {
-                id: gridRow
-                x: root.heatmapWeekGutter
-                anchors.top: monthRow.bottom
+                id: gridRows
+                anchors.top: hourRow.bottom
                 anchors.topMargin: Style.space(4)
-                spacing: root.heatmapGap
 
                 Repeater {
-                  model: root.usageHeatmap.weeks
+                  model: root.usagePunchcard ? root.usagePunchcard.rows : []
 
-                  HeatmapWeek {
+                  PunchcardRow {
                     required property var modelData
+                    required property int index
 
-                    days: modelData
+                    cells: modelData
+                    weekday: index
                   }
                 }
               }
@@ -1073,51 +1043,69 @@ Panel {
     }
   }
 
-  // One week column of the usage calendar: seven day cells, Monday first.
-  component HeatmapWeek: Column {
-    id: heatmapWeek
-    property var days: []
+  // One weekday of the punchcard: its label, then 24 hour cells, Sunday
+  // first — the record's own weekday numbering.
+  component PunchcardRow: Row {
+    id: punchcardRow
+    property var cells: []
+    property int weekday: 0
 
-    spacing: root.heatmapGap
+    Text {
+      width: root.punchGutter
+      height: root.punchPitch
+      text: root.weekdayNames[punchcardRow.weekday]
+      color: root.dim
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.caption
+      rightPadding: Style.space(6)
+      horizontalAlignment: Text.AlignRight
+      verticalAlignment: Text.AlignVCenter
+    }
 
     Repeater {
-      model: heatmapWeek.days
+      model: punchcardRow.cells
 
-      HeatmapCell {
+      PunchcardCell {
         required property var modelData
 
-        day: modelData
+        cell: modelData
       }
     }
   }
 
-  // One calendar cell. A day the record does not cover renders as plain
-  // space — missing is not the same as quiet, and only painted cells
-  // answer the hover.
-  component HeatmapCell: Item {
-    id: heatmapCell
-    property var day: null
+  // One weekday-hour cell. A lit cell is a foreground dot whose diameter
+  // and alpha carry its share of the busiest cell; an empty one keeps the
+  // faint track dot. Only lit cells answer the hover — an hour the record
+  // has never touched has nothing to say.
+  component PunchcardCell: Item {
+    id: punchcardCell
+    property var cell: null
 
-    width: root.heatmapCellSize
-    height: root.heatmapCellSize
+    width: root.punchPitch
+    height: root.punchPitch
 
     Rectangle {
-      visible: !!heatmapCell.day
-      anchors.fill: parent
-      radius: Math.max(1, Math.round(root.heatmapCellSize * 0.2))
-      color: heatmapCell.day ? root.heatmapInk[heatmapCell.day.level] : root.track
+      anchors.centerIn: parent
+      width: punchcardCell.cell
+        ? root.punchPitch * punchcardCell.cell.size01
+        : root.punchVoidDiameter
+      height: width
+      radius: width / 2
+      color: punchcardCell.cell
+        ? root.alpha(root.foreground, punchcardCell.cell.alpha)
+        : root.track
     }
 
     MouseArea {
       id: cellHover
       anchors.fill: parent
-      hoverEnabled: heatmapCell.day !== null
+      hoverEnabled: punchcardCell.cell !== null
       acceptedButtons: Qt.NoButton
     }
 
     PanelToolTip {
       visible: cellHover.containsMouse
-      text: root.heatmapTooltip(heatmapCell.day)
+      text: root.punchcardTooltip(punchcardCell.cell)
       fontFamily: root.fontFamily
     }
   }
