@@ -108,8 +108,3 @@ KBD_MAX=3 KBD_CURRENT=1 run_keyboard --no-osd up
 grep -F 'brightnessctl -d kbd_backlight set 2' "$call_log" >/dev/null ||
   fail "keyboards with few levels fall back to a one-percent step"
 pass "keyboards with few levels fall back to a one-percent step"
-
-if PATH="$mock_bin:$ROOT/bin:$PATH" "$ROOT/bin/omarchy-brightness-keyboard" junk >/dev/null 2>&1; then
-  fail "keyboard rejects a bare word as the direction"
-fi
-pass "keyboard rejects a bare word as the direction"

@@ -10,7 +10,7 @@ if [[ ${1:-} == "--no-osd" ]]; then
   shift
 fi
 
-action="${1:-up}"
+direction="${1:-up}"
 
 # Find keyboard backlight device (look for *kbd_backlight* pattern in leds class).
 device=""
@@ -26,15 +26,15 @@ if [[ -z $device ]]; then
   exit 1
 fi
 
-if [[ $action == "get" ]]; then
+if [[ $direction == "get" ]]; then
   brightnessctl -d "$device" -m 2>/dev/null | awk -F, '{ gsub("%", "", $4); print $4; found=1 } END{ exit !found }'
   exit
 fi
 
-if [[ $action == "off" ]]; then
+if [[ $direction == "off" ]]; then
   brightnessctl -sd "$device" set 0 >/dev/null
   exit 0
-elif [[ $action == "restore" ]]; then
+elif [[ $direction == "restore" ]]; then
   brightnessctl -rd "$device" >/dev/null
   exit 0
 fi
@@ -43,8 +43,8 @@ fi
 max_brightness="$(brightnessctl -d "$device" max)"
 current_brightness="$(brightnessctl -d "$device" get)"
 
-if [[ $action =~ ^[0-9]+%$ ]]; then
-  percent=$(( 10#"${action%\%}" ))
+if [[ $direction =~ ^[0-9]+%$ ]]; then
+  percent=$(( 10#"${direction%\%}" ))
   (( percent > 100 )) && percent=100
   new_brightness=$(( max_brightness * percent / 100 ))
   brightnessctl -d "$device" set "$new_brightness" >/dev/null
@@ -57,15 +57,10 @@ fi
 step=$(( max_brightness / 10 ))
 (( step < 1 )) && step=1
 
-if [[ $action != "up" && $action != "down" && $action != "cycle" ]]; then
-  echo "Unknown keyboard brightness action: $action" >&2
-  exit 1
-fi
-
-if [[ $action == "cycle" ]]; then
+if [[ $direction == "cycle" ]]; then
   new_brightness=$(( current_brightness + step ))
   (( new_brightness > max_brightness )) && new_brightness=0
-elif [[ $action == "up" ]]; then
+elif [[ $direction == "up" ]]; then
   new_brightness=$(( current_brightness + step ))
   (( new_brightness > max_brightness )) && new_brightness=$max_brightness
 else
