@@ -79,6 +79,28 @@ Item {
     runProcess(lockProcess, "lock", "omarchy-system-lock")
   }
 
+  // An open bar popout (battery, audio, network menu, ...) or summoned panel
+  // (menu, emojis, clipboard, ...) is a keyboard-focused overlay layer that
+  // keeps drawing on top of the fullscreen screensaver. Close them before the
+  // idle cycle takes over the screen.
+  function closeOpenPanels() {
+    if (!shell) return
+
+    if (shell.bar && shell.bar.activePopout) {
+      var popout = shell.bar.activePopout
+      if (typeof popout.close === "function") {
+        logEvent("close-open-panel", "bar popout")
+        popout.close()
+      }
+    }
+
+    var ids = IdleModel.openPanelIdsToClose(shell.openPanelIds)
+    for (var i = 0; i < ids.length; i++) {
+      logEvent("close-open-panel", ids[i])
+      shell.hide(ids[i])
+    }
+  }
+
   function startIdleCycle() {
     if (root.idledThisCycle) {
       logEvent("idle-cycle-already-running")
@@ -86,6 +108,7 @@ Item {
     }
 
     logEvent("idle-cycle-start", "screensaver=" + root.screensaverTimeoutSeconds + " lock=" + root.lockTimeoutSeconds)
+    closeOpenPanels()
     root.idledThisCycle = true
     root.screensaverStartedThisCycle = false
     resetScreensaverWindows()

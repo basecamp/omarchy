@@ -43,10 +43,19 @@ function screensaverWindowsAfter(windows, address, visible) {
   }
 }
 
+function openPanelIdsToClose(openPanelIds) {
+  var ids = []
+  for (var id in openPanelIds || {}) {
+    if (openPanelIds[id]) ids.push(id)
+  }
+  return ids
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     secondsFromConfig: secondsFromConfig,
     eventParts: eventParts,
-    screensaverWindowsAfter: screensaverWindowsAfter
+    screensaverWindowsAfter: screensaverWindowsAfter,
+    openPanelIdsToClose: openPanelIdsToClose
   }
 }

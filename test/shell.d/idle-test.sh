@@ -33,6 +33,14 @@ assertDeepEqual(
   { windows: { a: true }, count: 1 },
   'idle leaves screensaver windows unchanged without an address'
 )
+
+assertDeepEqual(
+  idle.openPanelIdsToClose({ 'omarchy.emojis': true, 'omarchy.menu': false, 'pablo.custom': true }),
+  ['omarchy.emojis', 'pablo.custom'],
+  'idle lists only open panels to close'
+)
+assertDeepEqual(idle.openPanelIdsToClose(null), [], 'idle closes nothing without open panels')
+assertDeepEqual(idle.openPanelIdsToClose({}), [], 'idle closes nothing with no open panels')
 JS
 
 test_tmp=$(mktemp -d)
