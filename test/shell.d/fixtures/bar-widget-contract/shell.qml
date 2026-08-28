@@ -127,9 +127,17 @@ ShellRoot {
         moduleName: "omarchy.weather",
         settings: { showTemperature: true }
       })
-      if (weatherTempWidget) weatherTempWidget.bar = fakeBar
+      // createObject() can return null on an instantiation-time error even
+      // after Ready; record it rather than letting the guarded checks below
+      // skip and the file still pass.
+      if (!weatherTempWidget) {
+        fail("omarchy.weather showTemperature variant failed to instantiate: " + component.errorString())
+        return
+      }
+      weatherTempWidget.bar = fakeBar
       return
     }
+    fail("omarchy.weather is missing from the bar widget list")
   }
 
   QtObject {
