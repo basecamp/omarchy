@@ -7,7 +7,7 @@ add_library(Omarchy::PluginLauncher ALIAS omarchy-plugin-launcher)
 omarchy_plugin_target_defaults(omarchy-plugin-launcher)
 target_include_directories(omarchy-plugin-launcher PUBLIC include)
 target_link_libraries(omarchy-plugin-launcher
-  PUBLIC Omarchy::PluginSandboxPolicy
+  PUBLIC Omarchy::PluginSandboxPolicy omarchy-plugin-wire
   PRIVATE Qt6::Core PkgConfig::SECCOMP PkgConfig::SYSTEMD
 )
 

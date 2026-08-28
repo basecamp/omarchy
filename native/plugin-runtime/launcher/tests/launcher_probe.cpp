@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <set>
 
 namespace {
@@ -69,6 +70,34 @@ void inject_descriptor() {
   }
   close(injected);
 }
+
+void inject_many_descriptors() {
+  std::array<int, 24> injected{};
+  for (int &descriptor : injected) {
+    descriptor = open("/dev/null", O_RDONLY | O_CLOEXEC);
+    if (descriptor < 0)
+      fail(107);
+  }
+  const std::byte payload{0x55};
+  iovec vector{.iov_base = const_cast<std::byte *>(&payload), .iov_len = 1};
+  alignas(cmsghdr)
+      std::array<std::byte, CMSG_SPACE(sizeof(int) * injected.size())>
+          control{};
+  msghdr message{};
+  message.msg_iov = &vector;
+  message.msg_iovlen = 1;
+  message.msg_control = control.data();
+  message.msg_controllen = control.size();
+  cmsghdr *header = CMSG_FIRSTHDR(&message);
+  header->cmsg_level = SOL_SOCKET;
+  header->cmsg_type = SCM_RIGHTS;
+  header->cmsg_len = CMSG_LEN(sizeof(int) * injected.size());
+  std::memcpy(CMSG_DATA(header), injected.data(), sizeof(injected));
+  if (sendmsg(5, &message, MSG_NOSIGNAL) != 1)
+    fail(108);
+  for (const int descriptor : injected)
+    close(descriptor);
+}
 } // namespace
 
 int main() {
@@ -99,6 +128,7 @@ int main() {
     fail(102);
   }
   inject_descriptor();
+  inject_many_descriptors();
   std::byte acknowledgement{};
   if (recv(3, &acknowledgement, sizeof(acknowledgement), 0) != 1) {
     fail(105);

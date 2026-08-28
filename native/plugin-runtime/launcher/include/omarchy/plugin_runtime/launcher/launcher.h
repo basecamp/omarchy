@@ -104,6 +104,9 @@ public:
                                         std::chrono::milliseconds timeout);
   [[nodiscard]] bool send(EndpointRole role,
                           std::span<const std::byte> payload);
+  [[nodiscard]] bool send_with_descriptors(EndpointRole role,
+                                           std::span<const std::byte> payload,
+                                           std::span<const int> descriptors);
   [[nodiscard]] bool alive() const;
   [[nodiscard]] bool terminate();
 

@@ -2,7 +2,7 @@ import QtQuick
 
 Rectangle {
     id: root
-    color: mouse.pressed ? "#ff3377" : "#3366ff"
+    color: mouse.pressed ? "#80ff3377" : "#803366ff"
 
     Rectangle {
         width: 12

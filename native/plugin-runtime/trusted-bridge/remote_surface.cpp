@@ -111,12 +111,14 @@ bool RemotePluginSurface::present(surface::SurfaceKey key,
                         static_cast<int>(allocation.pixel_height),
                         static_cast<qsizetype>(allocation.stride),
                         QImage::Format_RGBA8888_Premultiplied);
-  const QImage owned = borrowed.copy();
+  QImage owned = borrowed.copy();
   if (owned.isNull() ||
       owned.sizeInBytes() != static_cast<qsizetype>(allocation.frame_bytes)) {
     fail(InspectionFailure::invalid_pixels, false);
     return false;
   }
+  owned.setDevicePixelRatio(static_cast<qreal>(allocation.dpr_numerator) /
+                            static_cast<qreal>(allocation.dpr_denominator));
   image_ = owned;
   frame_sequence_ = frame_sequence;
   failure_ = InspectionFailure::none;

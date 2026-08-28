@@ -1,5 +1,7 @@
 #include "omarchy/plugin_runtime/launcher/launcher.h"
 
+#include "omarchy/plugin/wire/envelope.hpp"
+
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -620,8 +622,12 @@ const LaunchIdentity &Worker::identity() const {
 ReceivedMessage Worker::receive(EndpointRole role, std::size_t maximum_payload,
                                 std::chrono::milliseconds timeout) {
   ReceivedMessage output;
+  constexpr std::size_t maximum_datagram =
+      omarchy::plugin::wire::kHeaderSize +
+      omarchy::plugin::wire::payload_cap(
+          omarchy::plugin::wire::EndpointRole::broker);
   if (!implementation_->accepting || maximum_payload == 0 ||
-      maximum_payload > 65536 || timeout.count() < 0 ||
+      maximum_payload > maximum_datagram || timeout.count() < 0 ||
       timeout.count() > std::numeric_limits<int>::max()) {
     output.failure = ReceiveFailure::invalid_role;
     return output;
@@ -676,12 +682,6 @@ ReceivedMessage Worker::receive(EndpointRole role, std::size_t maximum_payload,
   }
   output.payload.resize(std::min<std::size_t>(
       static_cast<std::size_t>(received), maximum_payload));
-  if ((message.msg_flags & (MSG_TRUNC | MSG_CTRUNC)) != 0 ||
-      static_cast<std::size_t>(received) > maximum_payload) {
-    output.failure = ReceiveFailure::truncated;
-    return output;
-  }
-
   std::optional<ucred> credentials;
   bool injected_descriptor = false;
   bool malformed = false;
@@ -718,7 +718,10 @@ ReceivedMessage Worker::receive(EndpointRole role, std::size_t maximum_payload,
     }
     malformed = true;
   }
-  if (malformed || !credentials) {
+  if ((message.msg_flags & (MSG_TRUNC | MSG_CTRUNC)) != 0 ||
+      static_cast<std::size_t>(received) > maximum_payload) {
+    output.failure = ReceiveFailure::truncated;
+  } else if (malformed || !credentials) {
     output.failure = ReceiveFailure::malformed_ancillary;
   } else if (injected_descriptor) {
     output.failure = ReceiveFailure::descriptor_injection;
@@ -734,13 +737,39 @@ ReceivedMessage Worker::receive(EndpointRole role, std::size_t maximum_payload,
 }
 
 bool Worker::send(EndpointRole role, std::span<const std::byte> payload) {
+  return send_with_descriptors(role, payload, {});
+}
+
+bool Worker::send_with_descriptors(EndpointRole role,
+                                   std::span<const std::byte> payload,
+                                   std::span<const int> descriptors) {
   const int endpoint = implementation_->channel(role);
   if (!implementation_->accepting || payload.empty() || payload.size() > 4096 ||
-      endpoint < 0 ||
+      descriptors.size() > 1 || endpoint < 0 ||
       pidfd_state(implementation_->worker_pidfd.get()) != PidfdState::alive) {
     return false;
   }
-  return ::send(endpoint, payload.data(), payload.size(), MSG_NOSIGNAL) ==
+  for (const int descriptor : descriptors) {
+    if (descriptor < 0 || fcntl(descriptor, F_GETFD) < 0) {
+      return false;
+    }
+  }
+  iovec vector{.iov_base = const_cast<std::byte *>(payload.data()),
+               .iov_len = payload.size()};
+  alignas(cmsghdr) std::array<std::byte, CMSG_SPACE(sizeof(int))> control{};
+  msghdr message{};
+  message.msg_iov = &vector;
+  message.msg_iovlen = 1;
+  if (!descriptors.empty()) {
+    message.msg_control = control.data();
+    message.msg_controllen = control.size();
+    cmsghdr *header = CMSG_FIRSTHDR(&message);
+    header->cmsg_level = SOL_SOCKET;
+    header->cmsg_type = SCM_RIGHTS;
+    header->cmsg_len = CMSG_LEN(sizeof(int));
+    std::memcpy(CMSG_DATA(header), descriptors.data(), sizeof(int));
+  }
+  return sendmsg(endpoint, &message, MSG_NOSIGNAL) ==
          static_cast<ssize_t>(payload.size());
 }
 

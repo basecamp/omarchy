@@ -43,6 +43,11 @@ struct Claim {
   std::int32_t claimed_pid;
 };
 
+struct DescriptorReport {
+  std::uint32_t count;
+  std::uint32_t close_on_exec;
+};
+
 [[noreturn]] void fail(std::string_view message) {
   std::cerr << message << '\n';
   std::exit(1);
@@ -52,6 +57,16 @@ void require(bool condition, std::string_view message) {
   if (!condition) {
     fail(message);
   }
+}
+
+std::size_t open_descriptor_count() {
+  std::size_t count = 0;
+  for (const auto &entry :
+       std::filesystem::directory_iterator("/proc/self/fd")) {
+    (void)entry;
+    ++count;
+  }
+  return count;
 }
 
 template <typename Value> Value decode(std::span<const std::byte> bytes) {
@@ -243,15 +258,38 @@ void malicious_test() {
       launcher::EndpointRole::broker, sizeof(Claim), 2s);
   require(descendant.failure == launcher::ReceiveFailure::credential_mismatch,
           "forked inherited-endpoint holder passed kernel PID binding");
+  const auto maximum_broker =
+      launched.worker->receive(launcher::EndpointRole::broker, 40 + 65536, 2s);
+  require(static_cast<bool>(maximum_broker) &&
+              maximum_broker.payload.size() == 40 + 65536,
+          "legal maximum broker envelope was rejected by the raw channel");
   const auto render = launched.worker->receive(launcher::EndpointRole::render,
                                                sizeof(Claim), 2s);
   require(static_cast<bool>(render),
           "bound render message failed after descendant rejection");
   const std::array acknowledgement{std::byte{1}};
   require(
-      launched.worker->send(launcher::EndpointRole::control, acknowledgement) &&
-          launched.worker->terminate() && scope->remove_count == 1,
-      "bounded normal teardown failed");
+      launched.worker->send(launcher::EndpointRole::control, acknowledgement),
+      "descriptor-free launcher send failed");
+  support::UniqueFd passed(open("/dev/null", O_RDONLY | O_CLOEXEC));
+  const std::array one{passed.get()};
+  require(passed && launched.worker->send_with_descriptors(
+                        launcher::EndpointRole::control, acknowledgement, one),
+          "single descriptor launcher send failed");
+  const std::array excess{passed.get(), passed.get()};
+  require(!launched.worker->send_with_descriptors(
+              launcher::EndpointRole::control, acknowledgement, excess) &&
+              fcntl(passed.get(), F_GETFD) >= 0,
+          "excess descriptors were sent or caller ownership was consumed");
+  const auto descriptor_report = launched.worker->receive(
+      launcher::EndpointRole::render, sizeof(DescriptorReport), 2s);
+  require(static_cast<bool>(descriptor_report),
+          "worker descriptor report was not received");
+  const auto report = decode<DescriptorReport>(descriptor_report.payload);
+  require(report.count == 1 && report.close_on_exec == 1,
+          "worker did not receive exactly one close-on-exec descriptor");
+  require(launched.worker->terminate() && scope->remove_count == 1,
+          "bounded normal teardown failed");
 }
 
 void bwrap_test() {
@@ -277,6 +315,13 @@ void bwrap_test() {
       launched.worker->receive(launcher::EndpointRole::broker, 16, 2s);
   require(injection.failure == launcher::ReceiveFailure::descriptor_injection,
           "worker-originated descriptor was not quarantined and rejected");
+  const auto descriptors_before = open_descriptor_count();
+  const auto truncated_ancillary =
+      launched.worker->receive(launcher::EndpointRole::render, 16, 2s);
+  const auto descriptors_after = open_descriptor_count();
+  require(truncated_ancillary.failure == launcher::ReceiveFailure::truncated &&
+              descriptors_after == descriptors_before,
+          "MSG_CTRUNC leaked a delivered SCM_RIGHTS descriptor");
   const std::array acknowledgement{std::byte{1}};
   require(
       launched.worker->send(launcher::EndpointRole::control, acknowledgement) &&
