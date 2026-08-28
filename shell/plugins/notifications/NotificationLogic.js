@@ -6,7 +6,22 @@ function isChromiumDerived(app, appIcon) {
 }
 
 function sanitizeBody(body, app, appIcon) {
-  var text = String(body || "").replace(/<img[^>]*>/gi, "")
+  var text = String(body || "")
+
+  // Decode HTML entities first so we can catch encoded img tags
+  // e.g. &lt;img src="..."&gt; -> <img src="...">
+  text = text
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+
+  // Strip all img tags aggressively (handles multiline, malformed, etc.)
+  // This catches: <img ...>, <IMG ...>, <img/>, <img ... />, and any variation
+  // The \b word boundary ensures we match "img" but not "image" or other tags
+  text = text.replace(/<img\b[^>]*>/gi, "")
+
   if (!isChromiumDerived(app, appIcon)) return text
 
   return text

@@ -1,13 +1,38 @@
+// Strip HTML tags and decode common entities to prevent StyledText crashes.
+// Clipboard entries from browsers/messaging apps often contain raw HTML that
+// triggers Qt6 bugs in StyledText rendering. Converting to plain text avoids
+// the crash while keeping the content readable.
+function sanitizeText(text) {
+  var s = String(text || "")
+
+  // Decode HTML entities first
+  s = s
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&nbsp;/gi, " ")
+
+  // Strip HTML tags (including self-closing and malformed)
+  s = s.replace(/<[^>]+>/g, "")
+
+  // Collapse whitespace
+  s = s.replace(/\s+/g, " ").trim()
+
+  return s
+}
+
 function normalizeEntry(value) {
   if (typeof value === "string")
-    return value.trim().length > 0 ? { type: "text", text: value } : null
+    return value.trim().length > 0 ? { type: "text", text: sanitizeText(value) } : null
 
   if (!value || typeof value !== "object") return null
 
   var type = String(value.type || value.kind || "")
   if (type === "text") {
-    var text = String(value.text || "")
-    return text.trim().length > 0 ? { type: "text", text: text } : null
+    var text = sanitizeText(value.text)
+    return text.length > 0 ? { type: "text", text: text } : null
   }
 
   if (type === "image") {
