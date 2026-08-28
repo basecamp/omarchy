@@ -1,0 +1,43 @@
+pkgname=omarchy-plugin-native-build-probe
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Build and packaging probe for the Omarchy secure plugin runtime"
+arch=(x86_64)
+license=(MIT)
+depends=(
+  qt6-base
+  qt6-declarative
+)
+makedepends=(
+  cmake
+  ninja
+)
+source=(
+  CMakeLists.txt
+  main.cpp
+  Main.qml
+)
+sha256sums=(
+  SKIP
+  SKIP
+  SKIP
+)
+
+build() {
+  cmake \
+    -B build \
+    -S "$srcdir" \
+    -G Ninja \
+    -DCMAKE_BUILD_TYPE=None \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_SKIP_RPATH=ON
+  cmake --build build
+}
+
+check() {
+  ctest --test-dir build --output-on-failure
+}
+
+package() {
+  DESTDIR="$pkgdir" cmake --install build
+}

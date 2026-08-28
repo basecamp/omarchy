@@ -110,11 +110,13 @@ An enabled managed plugin is updated in its live directory. Git writes trigger t
 
 Secure plugins use arbitrary-QML remote views. A separate sandboxed QML process renders its scene into a host-consumable buffer or texture. Omarchy embeds that output in a bar slot or presents it through a host-owned panel, popover, slide-out, desktop canvas, or overlay surface, then forwards bounded input and lifecycle events.
 
-The security boundary separates pixels from authority. A remote QML view can use custom controls, layouts, animations, particles, canvases, shaders, and plugin-provided assets. Omarchy retains control of the surface role, monitor placement, dimensions, z-order, exclusive zone, focus policy, input region, frame budget, and relationship to trusted UI.
+The security boundary separates pixels from authority. The target remote-QML view can use custom controls, layouts, animations, particles, canvases, shaders, and plugin-provided assets. Omarchy retains control of the surface role, monitor placement, dimensions, z-order, exclusive zone, focus policy, input region, frame budget, and relationship to trusted UI.
 
 #### Arbitrary-QML remote views
 
 The QML UI runner should use a dedicated QML engine inside the plugin sandbox and render without creating a native host window. A prototype can use `QQuickRenderControl` with shared-memory frames; a later zero-copy path can use a shared graphics texture if the security and driver tradeoffs are acceptable.
+
+Software rendering is suitable for proving the first isolation and transport boundary, but it is not full visual compatibility. Qt's software adaptation does not render `ShaderEffect` or particle effects and differs for some transformed text. The schema and permission UI must report that runtime profile honestly, and the project must not claim full arbitrary-QML parity until a restricted GPU worker has passed its additional kernel, driver, transport, resource, and failure-containment review. Plugins that require unsupported visual features remain unmigrated rather than being silently degraded.
 
 The view protocol needs to carry:
 
@@ -161,8 +163,10 @@ Omarchy supervises one QML UI process per active visual plugin and any declared 
 - private `/tmp`, `/proc`, and runtime directories;
 - no host D-Bus socket, ordinary session Wayland socket, SSH agent, GPG agent, or credential sockets; an `ordinary-window` process may receive only its dedicated security-context Wayland socket;
 - a writable private state directory only when `storage.private` is granted, with quotas enforced above the filesystem layer;
-- one private broker channel supplied by Omarchy;
+- three private inherited `SOCK_SEQPACKET` channels supplied by Omarchy: lifecycle/control, broker RPC, and render/input;
 - systemd limits for memory, CPU, tasks, restart rate, runtime, and output.
+
+`omarchy-plugin-host` should run as a systemd user service wanted by and part of `graphical-session.target`, independent of the restartable Quickshell process. The supervisor creates all three worker channels as one launch tuple bound to the same plugin id, revision, role, generation, UID sanity check, and pidfd-backed process identity. Control never accepts descriptors; broker RPC denies descriptors by default; render/input accepts only exact schema-bound host-created buffer descriptors. Separate queues prevent render floods from delaying shutdown or broker responses and allow frames to be dropped or coalesced independently. A worker never connects directly to Quickshell; the daemon owns a separate authenticated session to the trusted native bridge.
 
 The worker does not gain raw network access when `network` is granted. Network requests remain brokered so host, scheme, method, redirects, response size, and rate can be enforced. The same rule applies to files and external commands: do not mount a broad resource when an operation or opaque handle can be brokered instead.
 
@@ -305,7 +309,7 @@ Permissions must be evaluated in combination. Clipboard or screencopy plus netwo
 
 Security design should preserve the product outcome of these current behaviors unless the discussion explicitly decides otherwise:
 
-- **Arbitrary visual composition:** custom QML controls, animations, shaders, transparent surfaces, slide-outs, pets, ambient effects, and unusual layouts remain possible through remote QML views.
+- **Arbitrary visual composition:** custom QML controls, animations, shaders, transparent surfaces, slide-outs, pets, ambient effects, and unusual layouts remain possible through remote QML views. A software-only worker is an explicitly incomplete runtime profile because it cannot render every Qt Quick effect; full compatibility requires the reviewed restricted-GPU profile.
 - **QML interaction fidelity:** nested components, loaders, local assets and fonts, popups, tooltips, cursor shapes, drag and drop, text selection, IME, accessibility, dynamic sizing, device-pixel-ratio changes, and multi-monitor behavior need explicit compatibility tests. Remote pixels alone preserve appearance but not all of these semantics.
 - **Surface variety:** bar widgets, panels, overlays, menus, full bars, desktop decorations, and ordinary windows need clear secure surface roles. A complete shell replacement may still become a host-extension trust class when it requires trusted prompts, lifecycle authority, or unrestricted cross-surface control.
 - **External invocation:** keybindings, shell commands, desktop entries, and other applications can summon a plugin through authenticated, plugin-scoped named commands without exposing arbitrary IPC registration.
@@ -470,7 +474,7 @@ Automated tests must demonstrate successful behavior and failed attacks:
 - a plugin can render arbitrary QML into an embedded bar slot, animate within its frame budget, receive forwarded input, and invoke a declared named action;
 - a transparent pet or slide-out remains confined to its granted surface role, dimensions, monitor, input region, focus policy, z-order, and frame rate;
 - a plugin cannot see the real home, plugin source is read-only, and unrelated plugin state is absent;
-- direct IPv4, IPv6, Unix sockets other than assigned render/broker channels, session D-Bus, the ordinary session Wayland socket, and inherited agent sockets are unavailable; an `ordinary-window` fixture sees only the globals exposed through its dedicated security-context connection;
+- direct IPv4, IPv6, Unix sockets other than the assigned control, broker, and render/input channels, session D-Bus, the ordinary session Wayland socket, and inherited agent sockets are unavailable; an `ordinary-window` fixture sees only the globals exposed through its dedicated security-context connection;
 - the broker denies an undeclared operation, an ungranted optional operation, an expanded resource scope, a forged plugin id, malformed messages, oversized messages, excessive rates, and stale handles;
 - `--yes` does not grant permissions;
 - an update requesting a new permission remains staged and the old revision keeps running;
@@ -491,10 +495,10 @@ Run focused CLI and shell suites plus a disposable-VM acceptance test that inter
 6. Deprecate new unsafe schema-v1 installation by default, then require an explicit developer switch after the ecosystem has a viable v2 SDK.
 7. Add signed registry metadata, revocations, and review attestations without weakening local origin and digest checks.
 
-## Decisions needed in the discussion
+## Decisions and questions for the discussion
 
-- Which remote-rendering transport should the first implementation use, and what evidence is required before moving from shared memory to a zero-copy graphics path?
-- Does the first QML runner use software rendering, restricted GPU render-node access, or both, and how is the additional driver/kernel attack surface represented?
+- The first transport is host-created, fixed-capacity, two-slot writable shared memory with bounded validation and copying into trusted host memory. What security, fidelity, latency, power, and failure-containment evidence must pass before a later zero-copy graphics path may replace it?
+- The first QML runner uses the software renderer as an explicitly incomplete reference profile. It does not support `ShaderEffect` or particle effects and differs for transformed text. What additional kernel, driver, transport, resource, fidelity, and failure-containment evidence must a later restricted-GPU profile pass?
 - Which surface roles belong in API version 1, and which focus, z-order, size, input, and lock-screen restrictions are fixed invariants rather than user-grantable permissions?
 - Which current Quickshell types receive compatibility shims, which remain available but confined inside the sandbox, and which fail explicitly because they imply compositor or host authority?
 - What side-channel protocol is sufficient for accessibility, IME, drag and drop, popups, cursor state, and other behavior that cannot be reconstructed from rendered frames alone?
@@ -503,7 +507,7 @@ Run focused CLI and shell suites plus a disposable-VM acceptance test that inter
 - Which real plugin should be the compatibility target for the first panel or overlay surface role?
 - At what point does a multi-surface plugin become a trusted shell extension rather than a secure plugin with many explicit grants?
 - Should every code update require confirmation, or may users opt into unattended updates when the permission fingerprint is unchanged?
-- Which implementation language and process owns the broker, and how is it packaged and supervised?
+- The C++ `omarchy-plugin-host` process owns the supervisor and broker and runs as a systemd user service wanted by and part of `graphical-session.target`; host, worker, protocol, and native bridge ship atomically in Omarchy. Which operation providers require additional process isolation, and what final package boundaries best preserve that isolation?
 - Which capability families are stable enough for API version 1, and which remain experimental?
 - What publisher identity and marketplace attestation model should follow the runtime boundary?
 

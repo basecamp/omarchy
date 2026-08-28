@@ -1,0 +1,10 @@
+#!/bin/bash
+
+set -euo pipefail
+
+PROBE_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+
+cmake -S "$PROBE_DIR" -B "$PROBE_DIR/build" -G Ninja
+cmake --build "$PROBE_DIR/build"
+QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software \
+  "$PROBE_DIR/build/omarchy-plugin-native-build-probe"

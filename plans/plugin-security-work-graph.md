@@ -6,6 +6,22 @@ This graph decomposes the secure plugin model into independently reviewable work
 
 The graph describes implementation order, not necessarily one pull request per node. Nodes that own disjoint files and have stable contracts can share a pull request; nodes that change a security boundary should remain independently reviewable even when they land in the same integration branch.
 
+## Live tracker
+
+This table is the durable execution ledger. Update it when a node is assigned, changes state, produces evidence, or discovers a blocker. `ready` means every direct prerequisite is complete; `active` means an owner is currently producing the node's exit artifact; `review` means the artifact exists but has not passed its checkpoint; `complete` means its checkpoint evidence passed; and `blocked` requires a named unmet dependency or failed experiment.
+
+| Node | State | Owner | Evidence or blocker |
+|------|-------|-------|---------------------|
+| `R0` | complete | primary | [`plugin-security.md`](plugin-security.md) and [`plugin-security-examples.md`](plugin-security-examples.md) |
+| `A0` | complete | `wave0_trust_map` | [`plugin-security-a0-trust-map.md`](plugin-security-a0-trust-map.md); exact current/proposed authority map reviewed |
+| `A1` | complete | `wave0_native_build` | [`plugin-security-a1-native-build.md`](plugin-security-a1-native-build.md); native probe and CTest pass |
+| `A2` | complete | `wave0_channel`, `wave0_native_build` | Base channel, hardened Bubblewrap FD 3/4/5 identity, pidfd lifetime, and 40-byte envelope/state/descriptor proofs pass focused, integrated, and hostile review; json-c remains a Bubblewrap-spike-only dependency |
+| `A3` | complete | primary | [`plugin-security-a3-render-transport.md`](plugin-security-a3-render-transport.md), [`plugin-security-a3-host-module.md`](plugin-security-a3-host-module.md), no-display animation, dynamic Quickshell module, and bounded memfd copy proofs pass |
+| `A4` | complete | `wave0_channel` | [`plugin-security-a4-test-survey.md`](plugin-security-a4-test-survey.md); all graph nodes mapped to exact test layers |
+| `G0` | complete | primary | [`plugin-security-g0-seams.md`](plugin-security-g0-seams.md); complete Wave 0 harness passes and two rounds of hostile review found no remaining seam blocker |
+
+Nodes not listed here remain `pending` as represented by the graph. Add them to the live table when they become `ready`; completed rows remain as an audit trail rather than being removed.
+
 ## Execution rules
 
 - Merge contracts and executable skeletons before competing implementations, but keep contract work narrow enough that it does not become a speculative API-design phase.
