@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # omarchy:summary=Scale text everywhere — omarchy shell, GTK apps, and terminals
-# omarchy:args=[size|reset]
-# omarchy:examples=omarchy display text size | omarchy display text size 16 | omarchy display text size reset
+# omarchy:args=[--no-gtk|--shell-terminal-only] [size|reset]
+# omarchy:examples=omarchy display text size | omarchy display text size 16 | omarchy display text size 16 --no-gtk | omarchy display text size reset
 
 # One knob for apparent text size across the desktop. It drives three settings
 # in lockstep, all anchored to the shell default of 12px:
@@ -24,12 +24,15 @@ TERM_DEFAULT_PT=9
 SHELL_DEFAULT_PX=12
 
 shell_config="$HOME/.config/omarchy/shell.toml"
+scale_gtk=1
 
 usage() {
-  echo "Usage: omarchy-display-text-size [size|reset]"
-  echo "  (no args)   print the current text size, GTK factor, and terminal size"
-  echo "  <size>      set text size in px ($MIN–$MAX); shell + GTK + terminals together"
-  echo "  reset       return all three to their defaults (12px / 1.0 / 9pt)"
+  echo "Usage: omarchy-display-text-size [--no-gtk|--shell-terminal-only] [size|reset]"
+  echo "  (no args)                print the current text size, GTK factor, and terminal size"
+  echo "  <size>                   set text size in px ($MIN–$MAX); shell + GTK + terminals together"
+  echo "  <size> --no-gtk          set shell + terminal size only; leave GTK text-scaling-factor unchanged"
+  echo "  reset                    return all three to their defaults (12px / 1.0 / 9pt)"
+  echo "  reset --no-gtk           reset shell + terminal only; leave GTK text-scaling-factor unchanged"
 }
 
 # ---- shell base-size: the rem root every shell type size derives from ----
@@ -183,11 +186,40 @@ term_current_pt() {
   fi
 }
 
-case "${1:-}" in
-  -h | --help)
-    usage
-    exit 0
-    ;;
+# ---- argument parsing ----
+
+# --no-gtk skips the GTK text-scaling-factor update. Some fixed-height
+# GTK/Electron dialogs (e.g. the 1Password SSH approval prompt) clip their
+# content when that factor grows past 1.0, and they don't show up in
+# `hyprctl clients` so window rules can't work around it.
+args=()
+for arg in "$@"; do
+  case "$arg" in
+    --no-gtk | --shell-terminal-only)
+      scale_gtk=0
+      ;;
+    --gtk)
+      scale_gtk=1
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      args+=("$arg")
+      ;;
+  esac
+done
+
+if ((${#args[@]} > 1)); then
+  echo "Too many arguments: ${args[*]}" >&2
+  usage >&2
+  exit 1
+fi
+
+command="${args[0]:-}"
+
+case "$command" in
   "")
     cur="$(current_base_size)"
     size="${cur:-12 (default)}"
@@ -199,13 +231,15 @@ case "${1:-}" in
     ;;
   reset | default)
     reset_base_size
-    gsettings reset "$GKEY_SCHEMA" "$GKEY_NAME" 2>/dev/null || true
+    if ((scale_gtk)); then
+      gsettings reset "$GKEY_SCHEMA" "$GKEY_NAME" 2>/dev/null || true
+    fi
     set_terminal_size "$TERM_DEFAULT_PT"
     exit 0
     ;;
 esac
 
-size="$1"
+size="$command"
 if [[ ! $size =~ ^[0-9]+$ ]] || ((size < MIN || size > MAX)); then
   echo "Size must be an integer between $MIN and $MAX (px)." >&2
   usage >&2
@@ -218,9 +252,11 @@ set_base_size "$size"
 # GTK side: multiplier anchored so 12px == 1.0, quantized so the interface
 # font renders at a whole point size. Raw ratios yield fractional point sizes,
 # which GTK4 menus clip at the ascenders on scale-1 monitors.
-factor="$(awk -v s="$size" -v b="$SHELL_DEFAULT_PX" -v f="$(gtk_font_pt)" \
-  'BEGIN { printf "%.4f", int(f * s / b + 0.5) / f }')"
-set_factor "$factor"
+if ((scale_gtk)); then
+  factor="$(awk -v s="$size" -v b="$SHELL_DEFAULT_PX" -v f="$(gtk_font_pt)" \
+    'BEGIN { printf "%.4f", int(f * s / b + 0.5) / f }')"
+  set_factor "$factor"
+fi
 
 # Terminal side: point size anchored so 12px == 9pt.
 set_terminal_size "$(term_pt_for "$size")"
