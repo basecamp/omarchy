@@ -68,7 +68,7 @@ export HERMES_TEST_SETUP_MARKER="$setup_marker"
 
 sentinel="$test_tmp/hermes-seed-must-stay-literal"
 prompt="--help !Crash /quit {!touch $sentinel}"$'\ntrailing\\'
-"$ROOT/bin/omarchy-agent-hermes" "$prompt" >/dev/null
+HERMES_SESSION_SOURCE=gateway "$ROOT/bin/omarchy-agent-hermes" "$prompt" >/dev/null
 
 mapfile -d '' -t oneshot_args <"$oneshot_log"
 (( ${#oneshot_args[@]} == 4 )) || fail "Hermes literal seed has four one-shot arguments"
