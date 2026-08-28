@@ -91,6 +91,11 @@ assert_driver "Braswell uses libva-intel-driver" libva-intel-driver
 write_pci_devices 0x8086:0x2e32:0x030000
 assert_driver "4 Series uses libva-intel-driver" libva-intel-driver
 
+# Broxton borrows Haswell's 0x0axx prefix but is Gen9. This pins the upper bound
+# of the Haswell block, which nothing else would catch if it widened to 0x0aff.
+write_pci_devices 0x8086:0x0a84:0x030000
+assert_driver "Broxton uses intel-media-driver" intel-media-driver
+
 # Pre-GM45 chipset graphics: neither package can initialize.
 write_pci_devices 0x8086:0x27a2:0x030000
 assert_driver "945GM has no VAAPI package" none
