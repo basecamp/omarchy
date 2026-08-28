@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# omarchy:summary=Match Dell Inspiron 16 Plus laptops (Alder Lake Iris Xe + NVIDIA hybrid, eDP panel).
+
+# The Inspiron 16 Plus family (7620 and siblings) pairs Alder Lake Intel Iris Xe
+# with a discrete NVIDIA GPU and drives the internal panel from the Intel i915
+# GPU. On these panels i915 PSR2 selective-fetch fails (kernel log: "Selective
+# fetch area calculation failed in pipe A"), which shows up as pixelation of
+# moving content while static content stays crisp. Matches the whole family.
+omarchy-hw-match "Inspiron 16 Plus"
