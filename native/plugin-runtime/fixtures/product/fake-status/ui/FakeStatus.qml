@@ -1,4 +1,5 @@
 import QtQuick
+import QtQml
 
 Item {
     id: root
