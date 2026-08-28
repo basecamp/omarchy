@@ -8,9 +8,10 @@ require_optional.module("omarchy.current.theme.gum_env")
 hl.env("XCURSOR_SIZE", "24")
 hl.env("HYPRCURSOR_SIZE", "24")
 
--- Force all apps to use Wayland.
+-- Prefer Wayland where each toolkit owns a backward-compatible fallback.
 hl.env("GDK_BACKEND", "wayland,x11,*")
-hl.env("QT_QPA_PLATFORM", "wayland;xcb")
+-- Do not force QT_QPA_PLATFORM globally: older bundled Qt releases treat
+-- fallback lists as one plugin name and abort before they can use XWayland.
 hl.env("QT_QPA_PLATFORMTHEME", "gtk3")
 hl.env("MOZ_ENABLE_WAYLAND", "1")
 hl.env("ELECTRON_OZONE_PLATFORM_HINT", "wayland")

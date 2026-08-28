@@ -28,8 +28,8 @@ cat >"$fake_bin/quickshell" <<'SH'
 #!/bin/bash
 
 printf '%s\n' "$*" >>"$OMARCHY_TEST_QS_LOG"
-printf 'watcher=%s popup=%s\n' \
-  "${QS_DISABLE_FILE_WATCHER:-unset}" "${QS_NO_RELOAD_POPUP:-unset}" >>"$OMARCHY_TEST_QS_ENV_LOG"
+printf 'qpa=%s watcher=%s popup=%s\n' \
+  "${QT_QPA_PLATFORM:-unset}" "${QS_DISABLE_FILE_WATCHER:-unset}" "${QS_NO_RELOAD_POPUP:-unset}" >>"$OMARCHY_TEST_QS_ENV_LOG"
 
 launches=$(wc -l <"$OMARCHY_TEST_QS_LOG")
 status=$(awk -v n="$launches" 'NR == n { print; found = 1 } END { if (!found) print "0" }' <<<"$OMARCHY_TEST_QS_STATUSES")
@@ -113,9 +113,14 @@ pass "a shell that exits cleanly is left alone"
 
 # A misspelled variable would leave Quickshell hot-reloading the tree pacman
 # rewrites underneath it, which is what crashes the restart that follows.
-[[ $(<"$qs_env_log") == "watcher=1 popup=1" ]] ||
+[[ $(<"$qs_env_log") == "qpa=wayland watcher=1 popup=1" ]] ||
   fail "the shell launches with Quickshell's own reloading off" "$(<"$qs_env_log")"
 pass "the shell launches with Quickshell's config watcher and reload popup off"
+
+if grep -F 'hl.env("QT_QPA_PLATFORM"' "$ROOT/default/hypr/envs.lua" >/dev/null; then
+  fail "Qt platform selection is not forced on third-party applications"
+fi
+pass "Qt platform selection is scoped to Omarchy's shell"
 
 # Qt leaves through _exit(), so Quickshell's crash handler never relaunches it.
 launch_shell $'255\n0' || fail "a shell that died on a Wayland error is relaunched"
