@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "org.example.inventory",
+  "name": "Inventory fixture",
+  "version": "1.0.0",
+  "kinds": ["bar-widget", "service"],
+  "entryPoints": {
+    "barWidget": "Widget.qml",
+    "service": "service.js"
+  }
+}

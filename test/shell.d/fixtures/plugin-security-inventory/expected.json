@@ -1,0 +1,33 @@
+{
+  "plugin": "org.example.inventory",
+  "summary": {
+    "critical": 9,
+    "high": 3,
+    "info": 1,
+    "medium": 3,
+    "review": 5
+  },
+  "findings": [
+    ["wayland.import", "critical", "Widget.qml", 4, "exact"],
+    ["process.shell", "critical", "Widget.qml", 10, "exact"],
+    ["shell.object", "critical", "Widget.qml", 19, "exact"],
+    ["executable.content", "critical", "install.sh", 1, "exact"],
+    ["installer.content", "critical", "install.sh", 1, "exact"],
+    ["system.mutation", "critical", "install.sh", 7, "exact"],
+    ["process.detached", "critical", "service.js", 2, "exact"],
+    ["hyprland.access", "critical", "service.js", 6, "exact"],
+    ["process.detached", "critical", "service.js", 6, "exact"],
+    ["process.qml", "high", "Widget.qml", 10, "exact"],
+    ["filesystem.fileview", "high", "Widget.qml", 11, "exact"],
+    ["process.network-cli", "high", "service.js", 2, "exact"],
+    ["ipc.handler", "medium", "Widget.qml", 12, "exact"],
+    ["notification.access", "medium", "Widget.qml", 13, "exact"],
+    ["url.open", "medium", "Widget.qml", 16, "exact"],
+    ["dynamic.expression", "review", "Widget.qml", 10, "heuristic"],
+    ["dynamic.expression", "review", "Widget.qml", 11, "heuristic"],
+    ["environment.read", "review", "Widget.qml", 11, "heuristic"],
+    ["filesystem.computed-path", "review", "Widget.qml", 11, "heuristic"],
+    ["url.computed", "review", "Widget.qml", 16, "heuristic"],
+    ["manifest.entry-points", "info", "plugin.json", 1, "exact"]
+  ]
+}

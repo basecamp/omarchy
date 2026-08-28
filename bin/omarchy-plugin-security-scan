@@ -1,0 +1,377 @@
+#!/usr/bin/python3
+# omarchy:summary=Inventory plugin behaviors for secure migration
+# omarchy:args=<plugin-directory> [--format markdown|json]
+# omarchy:examples=omarchy plugin security scan ~/.config/omarchy/plugins/my-plugin --format markdown
+"""Statically inventory a plugin without executing or modifying its content."""
+
+from __future__ import annotations
+
+import argparse
+import html
+import json
+import os
+import re
+import stat
+import sys
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
+from typing import Any, Iterator
+
+SCHEMA_VERSION = 1
+MAX_FILES = 4096
+MAX_FILE_BYTES = 1024 * 1024
+MAX_TOTAL_BYTES = 16 * 1024 * 1024
+MAX_FINDINGS = 4096
+TEXT_SUFFIXES = {
+  ".bash",
+  ".c",
+  ".cc",
+  ".cjs",
+  ".cpp",
+  ".desktop",
+  ".h",
+  ".hpp",
+  ".js",
+  ".json",
+  ".jsonc",
+  ".mjs",
+  ".py",
+  ".qml",
+  ".service",
+  ".sh",
+}
+TEXT_NAMES = {"PKGBUILD"}
+IGNORED_DIRECTORIES = {".git"}
+SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "review": 3, "info": 4}
+
+
+@dataclass(frozen=True)
+class Rule:
+  identifier: str
+  severity: str
+  pattern: re.Pattern[str]
+  behavior: str
+  mapping: str
+  confidence: str = "exact"
+
+
+RULES = (
+  Rule("process.qml", "high", re.compile(r"\bProcess\s*\{"), "Host process invocation", "Replace with a registered typed broker operation; do not grant a shell"),
+  Rule("process.detached", "critical", re.compile(r"\b(?:Quickshell\.)?execDetached\s*\("), "Detached host process invocation", "Replace with a registered typed broker operation and bounded result/event schema"),
+  Rule("process.shell", "critical", re.compile(r"(?:^|[\s\"'])(?:bash|sh)[\"']?\s*,?\s*[\"']-(?:c|lc)\b"), "Shell command evaluation", "Manual redesign into named broker operations; arbitrary shell text is unsupported"),
+  Rule("process.network-cli", "high", re.compile(r"(?:^|[\s\"'])(?:curl|wget)[\"'\s]"), "Network CLI invocation", "Use a reviewed host-scoped HTTP capability or purpose-built service adapter"),
+  Rule("filesystem.fileview", "high", re.compile(r"\bFileView\s*\{"), "Direct filesystem view", "Use private storage or a user-selected opaque file handle"),
+  Rule("filesystem.computed-path", "review", re.compile(r"\b(?:path|source)\s*:\s*(?![\"'])[^\s}]+"), "Computed filesystem or media path", "Identify the resource owner and select private storage, a media handle, or a file portal", "heuristic"),
+  Rule("network.socket", "critical", re.compile(r"\b(?:Socket|LocalSocket|TcpSocket|WebSocket)\s*\{"), "Direct socket access", "Use a reviewed service adapter; Unix sockets and ambient network access are unsupported"),
+  Rule("network.import", "high", re.compile(r"^\s*import\s+(?:Quickshell\.)?(?:Network|Bluetooth)\b"), "Network or device service import", "Use a bounded typed status or device adapter"),
+  Rule("dbus.import", "critical", re.compile(r"^\s*import\s+.*(?:DBus|D\.Bus)\b", re.IGNORECASE), "Direct D-Bus access", "Use a reviewed typed broker adapter; ambient session/system bus access is unsupported"),
+  Rule("wayland.import", "critical", re.compile(r"^\s*import\s+.*(?:Wayland|LayerShell|Screencopy)\b", re.IGNORECASE), "Privileged compositor or capture import", "Use a host-owned surface envelope or trusted capture portal"),
+  Rule("hyprland.access", "critical", re.compile(r"\b(?:Hyprland|hyprctl)\b"), "Direct compositor control or observation", "Use registered named compositor actions or sanitized shell events"),
+  Rule("capture.access", "critical", re.compile(r"\b(?:Screencopy|grim|slurp)\b", re.IGNORECASE), "Screen or region capture", "Use a gesture-bound trusted capture portal"),
+  Rule("clipboard.access", "high", re.compile(r"\b(?:Clipboard|wl-copy|wl-paste)\b"), "Clipboard access", "Separate clipboard write from gesture-bound read and show composed exfiltration risk"),
+  Rule("url.open", "medium", re.compile(r"\b(?:Qt\.)?openUrlExternally\s*\("), "External URL opening", "Use a gesture-bound open-URI broker operation with scheme and host scope"),
+  Rule("url.computed", "review", re.compile(r"\b(?:Qt\.)?openUrlExternally\s*\(\s*(?![\"'])"), "Computed external URL", "Manually inventory possible schemes and hosts before requesting open-URI", "heuristic"),
+  Rule("ipc.handler", "medium", re.compile(r"\bIpcHandler\s*\{"), "Plugin-defined IPC endpoint", "Use authenticated plugin-scoped named commands with bounded arguments"),
+  Rule("shell.object", "critical", re.compile(r"\b(?:bar\.shell|_services|PluginRegistry|installedPlugins)\b"), "Trusted shell object-graph access", "Replace with versioned settings, events, state, and named actions"),
+  Rule("environment.read", "review", re.compile(r"\bQuickshell\.env\s*\("), "Environment-variable read", "Declare the semantic setting or resource instead of inheriting the host environment", "heuristic"),
+  Rule("notification.access", "medium", re.compile(r"\b(?:Notification|notify\x2dsend)\b"), "Notification delivery", "Use notifications.send with registered categories and bounded text"),
+  Rule("media.audio", "medium", re.compile(r"\b(?:paplay|pw-play|Audio|Mpris)\b"), "Audio or media integration", "Use a registered named cue or reviewed media adapter"),
+  Rule("system.mutation", "critical", re.compile(r"\b(?:sudo|pkexec|pacman|systemctl|omarchy-(?:install|remove|setup)-)\b|(?:^|[\"'])/(?:etc|usr|var)/"), "Privileged or system-state mutation", "Move the product outcome to a separately confirmed trusted portal or omit it"),
+  Rule("dynamic.expression", "review", re.compile(r"\b(?:command|arguments|url|path)\s*:\s*[^\n]*(?:\+|\$\{|\.map\s*\(|,\s*[A-Za-z_]\w*\s*[\],])"), "Dynamically constructed authority-bearing value", "Manually enumerate every command, path, URL, and argument shape", "heuristic"),
+)
+
+
+@dataclass(frozen=True)
+class Finding:
+  identifier: str
+  severity: str
+  path: str
+  line: int
+  behavior: str
+  mapping: str
+  confidence: str
+
+  def as_dict(self) -> dict[str, Any]:
+    return {
+      "id": self.identifier,
+      "severity": self.severity,
+      "path": self.path,
+      "line": self.line,
+      "behavior": self.behavior,
+      "mapping": self.mapping,
+      "confidence": self.confidence,
+      "authorDecision": "review required",
+    }
+
+
+class ScanError(Exception):
+  pass
+
+
+def without_comments(source: str) -> str:
+  """Replace JS/QML/C comments with spaces while preserving strings and lines."""
+  output: list[str] = []
+  index = 0
+  state = "code"
+  quote = ""
+  while index < len(source):
+    current = source[index]
+    following = source[index + 1] if index + 1 < len(source) else ""
+    if state == "code":
+      if current in {'"', "'", "`"}:
+        state = "string"
+        quote = current
+        output.append(current)
+      elif current == "/" and following == "/":
+        state = "line-comment"
+        output.extend((" ", " "))
+        index += 1
+      elif current == "/" and following == "*":
+        state = "block-comment"
+        output.extend((" ", " "))
+        index += 1
+      else:
+        output.append(current)
+    elif state == "string":
+      output.append(current)
+      if current == "\\" and following:
+        output.append(following)
+        index += 1
+      elif current == quote:
+        state = "code"
+    elif state == "line-comment":
+      if current == "\n":
+        output.append("\n")
+        state = "code"
+      else:
+        output.append(" ")
+    else:
+      if current == "*" and following == "/":
+        output.extend((" ", " "))
+        index += 1
+        state = "code"
+      elif current == "\n":
+        output.append("\n")
+      else:
+        output.append(" ")
+    index += 1
+  return "".join(output)
+
+
+def strict_json(source: str) -> Any:
+  def unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+      if key in result:
+        raise ValueError(f"duplicate key: {key}")
+      result[key] = value
+    return result
+
+  return json.loads(source, object_pairs_hook=unique)
+
+
+def relative_path(parts: tuple[str, ...], name: str) -> str:
+  value = str(PurePosixPath(*parts, name))
+  return value.encode("utf-8", errors="backslashreplace").decode("utf-8")
+
+
+def canonical_plugin_id(value: str) -> bool:
+  return bool(len(value) <= 128 and re.fullmatch(r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*", value))
+
+
+def files(root: Path) -> Iterator[tuple[int, tuple[str, ...], str, os.stat_result]]:
+  flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
+  if hasattr(os, "O_NOFOLLOW"):
+    flags |= os.O_NOFOLLOW
+  root_fd = os.open(root, flags)
+  try:
+    for directory, directories, names, directory_fd in os.fwalk(".", follow_symlinks=False, dir_fd=root_fd):
+      traversable: list[str] = []
+      for name in sorted(directories):
+        try:
+          metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        except OSError as error:
+          raise ScanError(f"cannot inspect directory entry {name}: {error.strerror}") from error
+        if stat.S_ISDIR(metadata.st_mode) and name in IGNORED_DIRECTORIES:
+          continue
+        if stat.S_ISDIR(metadata.st_mode):
+          traversable.append(name)
+        else:
+          relative_directory = os.path.relpath(directory, ".")
+          parts = () if relative_directory == "." else tuple(PurePosixPath(relative_directory).parts)
+          yield directory_fd, parts, name, metadata
+      directories[:] = traversable
+      names.sort()
+      relative_directory = os.path.relpath(directory, ".")
+      parts = () if relative_directory == "." else tuple(PurePosixPath(relative_directory).parts)
+      for name in names:
+        try:
+          metadata = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        except OSError as error:
+          raise ScanError(f"cannot inspect {relative_path(parts, name)}: {error.strerror}") from error
+        yield directory_fd, parts, name, metadata
+  finally:
+    os.close(root_fd)
+
+
+def read_regular(directory_fd: int, name: str, expected: os.stat_result) -> bytes:
+  flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NONBLOCK
+  if hasattr(os, "O_NOFOLLOW"):
+    flags |= os.O_NOFOLLOW
+  descriptor = os.open(name, flags, dir_fd=directory_fd)
+  try:
+    actual = os.fstat(descriptor)
+    if not stat.S_ISREG(actual.st_mode) or (actual.st_dev, actual.st_ino) != (expected.st_dev, expected.st_ino):
+      raise ScanError(f"file changed type or identity while scanning: {name}")
+    if actual.st_size > MAX_FILE_BYTES:
+      raise ScanError(f"file exceeds {MAX_FILE_BYTES}-byte scan limit: {name}")
+    chunks: list[bytes] = []
+    remaining = MAX_FILE_BYTES + 1
+    while remaining > 0:
+      chunk = os.read(descriptor, min(65536, remaining))
+      if not chunk:
+        break
+      chunks.append(chunk)
+      remaining -= len(chunk)
+    data = b"".join(chunks)
+    if len(data) > MAX_FILE_BYTES:
+      raise ScanError(f"file grew beyond {MAX_FILE_BYTES}-byte scan limit: {name}")
+    return data
+  finally:
+    os.close(descriptor)
+
+
+def add(findings: list[Finding], finding: Finding) -> None:
+  if len(findings) >= MAX_FINDINGS:
+    raise ScanError(f"finding count exceeds {MAX_FINDINGS}")
+  findings.append(finding)
+
+
+def scan(root: Path) -> dict[str, Any]:
+  if root.is_symlink() or not root.is_dir():
+    raise ScanError("plugin path must be a real directory, not a symlink")
+
+  findings: list[Finding] = []
+  plugin_id = root.name if canonical_plugin_id(root.name) else "unknown-plugin"
+  file_count = 0
+  total_bytes = 0
+  for directory_fd, parts, name, metadata in files(root):
+    path = relative_path(parts, name)
+    file_count += 1
+    if file_count > MAX_FILES:
+      raise ScanError(f"file count exceeds {MAX_FILES}")
+    if stat.S_ISLNK(metadata.st_mode):
+      add(findings, Finding("filesystem.symlink", "review", path, 0, "Symbolic link in plugin tree", "Replace with an in-tree regular file or document why immutable staging permits it", "exact"))
+      continue
+    if not stat.S_ISREG(metadata.st_mode):
+      add(findings, Finding("filesystem.special", "critical", path, 0, "Special file in plugin tree", "Remove it; secure immutable revisions accept regular files and directories only", "exact"))
+      continue
+    if metadata.st_size > MAX_FILE_BYTES:
+      raise ScanError(f"file exceeds {MAX_FILE_BYTES}-byte scan limit: {path}")
+    total_bytes += metadata.st_size
+    if total_bytes > MAX_TOTAL_BYTES:
+      raise ScanError(f"scanned content exceeds {MAX_TOTAL_BYTES} bytes")
+
+    suffix = Path(name).suffix.lower()
+    text_candidate = suffix in TEXT_SUFFIXES or name in TEXT_NAMES
+    executable = bool(metadata.st_mode & 0o111)
+    installer = name == "PKGBUILD" or bool(re.match(r"^(?:install|setup|post-install)(?:\.|$)", name, re.IGNORECASE))
+    data = read_regular(directory_fd, name, metadata)
+    if data.startswith(b"\x7fELF") or data.startswith(b"MZ"):
+      add(findings, Finding("native.binary", "critical", path, 0, "Bundled native executable", "Record provenance and architecture, then run only as a bounded sandbox worker or reviewed adapter", "exact"))
+      continue
+    if executable:
+      add(findings, Finding("executable.content", "critical", path, 1, "Executable plugin content", "Classify it as a sandbox worker or replace it with registered broker operations; never run it during install", "exact"))
+    if installer:
+      add(findings, Finding("installer.content", "critical", path, 1, "Installer or package-build content", "Remove host install hooks; declare immutable assets and reviewed runtime dependencies", "exact"))
+    if not text_candidate or b"\x00" in data:
+      continue
+    source = data.decode("utf-8", errors="replace")
+    masked = without_comments(source)
+    for line_number, line in enumerate(masked.splitlines(), 1):
+      for rule in RULES:
+        if rule.pattern.search(line):
+          add(findings, Finding(rule.identifier, rule.severity, path, line_number, rule.behavior, rule.mapping, rule.confidence))
+
+    if name == "plugin.json":
+      try:
+        manifest = strict_json(source)
+        if not isinstance(manifest, dict):
+          raise ValueError("root is not an object")
+        identifier = manifest.get("id")
+        if isinstance(identifier, str) and canonical_plugin_id(identifier):
+          plugin_id = identifier
+        elif identifier is not None:
+          add(findings, Finding("manifest.invalid-id", "high", path, 1, "Manifest plugin id is not canonical", "Choose a lowercase canonical id before deriving identity or grants", "exact"))
+        kinds = manifest.get("kinds")
+        entry_points = manifest.get("entryPoints")
+        if isinstance(kinds, list) or isinstance(entry_points, dict):
+          add(findings, Finding("manifest.entry-points", "info", path, 1, "Declared plugin surfaces and entry points", "Map each entry point to a host-owned surface role while retaining arbitrary remote QML", "exact"))
+      except (json.JSONDecodeError, ValueError) as error:
+        add(findings, Finding("manifest.invalid", "high", path, 1, f"Manifest requires strict parsing ({str(error)[:80]})", "Repair and validate the manifest before deriving any migration permissions", "exact"))
+
+  unique = {(item.identifier, item.path, item.line): item for item in findings}
+  ordered = sorted(unique.values(), key=lambda item: (SEVERITY_ORDER[item.severity], item.path, item.line, item.identifier))
+  counts = {severity: 0 for severity in SEVERITY_ORDER}
+  for item in ordered:
+    counts[item.severity] += 1
+  return {
+    "schemaVersion": SCHEMA_VERSION,
+    "advisoryOnly": True,
+    "plugin": plugin_id,
+    "summary": counts,
+    "findings": [item.as_dict() for item in ordered],
+  }
+
+
+def markdown(report: dict[str, Any]) -> str:
+  output = [
+    f"# Plugin migration worksheet: {html.escape(report['plugin'])}",
+    "",
+    "> Advisory static inventory only. This report does not grant permissions, approve safety, or execute plugin content.",
+    "",
+    "| Detected behavior | Proposed broker/UI mapping | Author decision |",
+    "|-------------------|----------------------------|-----------------|",
+  ]
+  for finding in report["findings"]:
+    location = finding["path"] + (f":{finding['line']}" if finding["line"] else "")
+    safe_location = escape_untrusted(location)
+    behavior = f"**{finding['severity']}** `{finding['id']}` at `{safe_location}` — {finding['behavior']}"
+    output.append(f"| {behavior} | {escape_cell(finding['mapping'])} | Review: ☐ keep ☐ narrow ☐ replace ☐ remove |")
+  if not report["findings"]:
+    output.append("| No recognized behavior | Manually review unsupported and dynamic behavior | Review required |")
+  return "\n".join(output) + "\n"
+
+
+def escape_cell(value: str) -> str:
+  return html.escape(value, quote=False).replace("|", "\\|").replace("\n", " ")
+
+
+def escape_untrusted(value: str) -> str:
+  return escape_cell(value).replace("`", "&#96;")
+
+
+def parse_arguments(arguments: list[str]) -> argparse.Namespace:
+  parser = argparse.ArgumentParser(description="Inventory current plugin behavior for secure migration; never execute plugin content")
+  parser.add_argument("plugin_directory", type=Path)
+  parser.add_argument("--format", choices=("markdown", "json"), default="markdown")
+  return parser.parse_args(arguments)
+
+
+def main(arguments: list[str] | None = None) -> int:
+  options = parse_arguments(sys.argv[1:] if arguments is None else arguments)
+  try:
+    report = scan(options.plugin_directory)
+  except (OSError, ScanError) as error:
+    print(f"omarchy-plugin-security-scan: {error}", file=sys.stderr)
+    return 2
+  if options.format == "json":
+    json.dump(report, sys.stdout, indent=2, sort_keys=True)
+    sys.stdout.write("\n")
+  else:
+    sys.stdout.write(markdown(report))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
