@@ -8,6 +8,11 @@ if [[ ${1:-} != "" && ${1:-} != "--active-state" ]]; then
   exit 1
 fi
 
+# TLP masks power-profiles-daemon; calling powerprofilesctl then SIGABRTs.
+if ! systemctl is-active --quiet power-profiles-daemon.service; then
+  exit 0
+fi
+
 powerprofilesctl list 2>/dev/null |
   awk -v with_state="${1:+1}" '/^\s*[* ]\s*[a-zA-Z0-9-]+:$/ {
     active = ($1 == "*") ? 1 : 0

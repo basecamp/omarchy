@@ -32,6 +32,17 @@ fi
 EOF
 chmod +x "$tmp_dir/bin/busctl"
 
+cat >"$tmp_dir/bin/systemctl" <<'EOF'
+#!/bin/bash
+
+if [[ $1 == "is-active" ]]; then
+  [[ ${PPD_ACTIVE:-1} == "1" ]] || exit 1
+  exit 0
+fi
+exit 0
+EOF
+chmod +x "$tmp_dir/bin/systemctl"
+
 export PATH="$tmp_dir/bin:$ROOT/bin:$PATH"
 export POWERPROFILES_LOG="$tmp_dir/calls"
 export OMARCHY_POWERPROFILES_STATE_DIR="$tmp_dir/state"
@@ -80,3 +91,17 @@ pass "battery service applies profiles through Omarchy command"
 rg -F 'omarchy-powerprofiles-set autodetect' "$ROOT/shell/plugins/menu/Menu.qml" >/dev/null ||
   fail "power profile menu persists selections through Omarchy command"
 pass "power profile menu persists selections through Omarchy command"
+
+if rg -F 'powerprofilesctl' "$ROOT/shell/plugins/menu/Menu.qml" >/dev/null; then
+  fail "power profile menu still calls powerprofilesctl"
+fi
+pass "power profile menu lists profiles through Omarchy command"
+
+: >"$tmp_dir/calls"
+PPD_ACTIVE=0 "$ROOT/bin/omarchy-powerprofiles-set" ac performance
+[[ ! -s $tmp_dir/calls ]] || fail "power profile still calls powerprofilesctl when the daemon is inactive"
+[[ ! -f $tmp_dir/state/ac ]] || [[ $(<"$tmp_dir/state/ac") != "performance" ]] || fail "power profile persisted a selection while the daemon was inactive"
+pass "power profile skips set when the daemon is inactive"
+
+[[ -z $(PPD_ACTIVE=0 "$ROOT/bin/omarchy-powerprofiles-list") ]] || fail "power profile list is not empty when the daemon is inactive"
+pass "power profile list skips when the daemon is inactive"
