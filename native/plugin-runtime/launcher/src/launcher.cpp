@@ -744,8 +744,27 @@ bool Worker::send_with_descriptors(EndpointRole role,
                                    std::span<const std::byte> payload,
                                    std::span<const int> descriptors) {
   const int endpoint = implementation_->channel(role);
-  if (!implementation_->accepting || payload.empty() || payload.size() > 4096 ||
-      descriptors.size() > 1 || endpoint < 0 ||
+  std::size_t maximum_datagram = 0;
+  switch (role) {
+  case EndpointRole::control:
+    maximum_datagram = omarchy::plugin::wire::kHeaderSize +
+                       omarchy::plugin::wire::payload_cap(
+                           omarchy::plugin::wire::EndpointRole::control);
+    break;
+  case EndpointRole::broker:
+    maximum_datagram = omarchy::plugin::wire::kHeaderSize +
+                       omarchy::plugin::wire::payload_cap(
+                           omarchy::plugin::wire::EndpointRole::broker);
+    break;
+  case EndpointRole::render:
+    maximum_datagram = omarchy::plugin::wire::kHeaderSize +
+                       omarchy::plugin::wire::payload_cap(
+                           omarchy::plugin::wire::EndpointRole::render);
+    break;
+  }
+  if (!implementation_->accepting || payload.empty() ||
+      payload.size() > maximum_datagram || descriptors.size() > 1 ||
+      endpoint < 0 ||
       pidfd_state(implementation_->worker_pidfd.get()) != PidfdState::alive) {
     return false;
   }
@@ -769,7 +788,7 @@ bool Worker::send_with_descriptors(EndpointRole role,
     header->cmsg_len = CMSG_LEN(sizeof(int));
     std::memcpy(CMSG_DATA(header), descriptors.data(), sizeof(int));
   }
-  return sendmsg(endpoint, &message, MSG_NOSIGNAL) ==
+  return sendmsg(endpoint, &message, MSG_NOSIGNAL | MSG_DONTWAIT) ==
          static_cast<ssize_t>(payload.size());
 }
 
