@@ -446,6 +446,8 @@ These changes reduce current exposure but must not be marketed as a sandbox:
 
 The reference PR should prove that arbitrary QML can remain expressive across the process boundary while its system authority and surface role are enforced independently.
 
+The implementation is decomposed into a breadth-first dependency graph in [`plugin-security-work-graph.md`](plugin-security-work-graph.md). That graph defines parallel contract, component, boundary-integration, vertical-slice, and system-proof waves; gate evidence; the native rendering critical path; and ownership boundaries intended to keep parallel branches from competing over policy or shared files.
+
 ### Proposed vertical slice
 
 - Add a schema-v2 manifest validator for one remote-QML `bar-widget` surface and a QML entry point.
