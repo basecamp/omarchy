@@ -131,6 +131,31 @@ ShellRoot {
     return true
   }
 
+  function checkContained() {
+    // The overflow fixture paints far past its canvas, so the rules must say
+    // so. If the capture is ever narrowed back to the canvas itself, the
+    // overflow is clipped away before measurement and this goes quiet.
+    if (!overflowIcon.inkVerified) {
+      fail("the overflow fixture was never verified")
+      return false
+    }
+    var m = overflowIcon.inkCompass
+    if (!m) {
+      fail("the overflow fixture produced no measurement")
+      return false
+    }
+    if (Math.min(m.n, m.s, m.e, m.w) >= 0) {
+      fail("an icon painting past its canvas reported no negative margin: " + JSON.stringify(m))
+      return false
+    }
+    if (overflowIcon.inkViolations.indexOf("contained") === -1) {
+      fail("an icon painting past its canvas was not reported as uncontained: "
+        + overflowIcon.inkViolations.join(","))
+      return false
+    }
+    return true
+  }
+
   function checkWeight() {
     // Two icons the same size on a ruler are not the same size to a reader.
     // A densely inked mark is fitted a little smaller than a sparse one, so
@@ -250,6 +275,7 @@ ShellRoot {
     if (!checkRuleTable()) return
     if (!checkTwoTone()) return
     if (!checkWeight()) return
+    if (!checkContained()) return
     if (!checkSplit("󰂯", "󰂯", "", true)) return
     if (!checkSplit("󰄀 4", "󰄀", "4", true)) return
     if (!checkSplit("21% 󰁹", "󰁹", "21%", false)) return
@@ -425,6 +451,23 @@ ShellRoot {
       }
       // A logo genuinely drawn in two tones: half of it is the second tone,
       // so it is left as its author drew it.
+      // Deliberately drawn past its canvas. Verification used to capture the
+      // canvas exactly, so an overflow was cut off by the grab and `contained`
+      // could never report one; this fixture fails if that returns.
+      BarIconButton {
+        id: overflowIcon
+        bar: testBar
+        iconComponent: Component {
+          Item {
+            Rectangle {
+              anchors.centerIn: parent
+              width: parent.width * 4
+              height: parent.height / 3
+              color: "white"
+            }
+          }
+        }
+      }
       BarIconButton {
         id: twoTone
         bar: testBar
@@ -457,7 +500,7 @@ ShellRoot {
           }
         }
       }
-      BarIconButton { id: compactStatusIcon; bar: testBar; text: ""; slotSize: Style.bar.statusSlot }
+      BarIconButton { id: compactStatusIcon; bar: testBar; text: String.fromCodePoint(0xF00AF); slotSize: Style.bar.statusSlot }
       Row {
         id: horizontalIndicatorPair
         BarIndicator { id: horizontalIndicator; bar: testBar; active: true; activeText: "󰅶" }
@@ -477,8 +520,8 @@ ShellRoot {
 
     Column {
       y: 80
-      BarIconButton { id: verticalIcon; bar: verticalBar; text: "" }
-      BarIconButton { id: compactVerticalStatusIcon; bar: verticalBar; text: ""; slotSize: Style.bar.statusSlot }
+      BarIconButton { id: verticalIcon; bar: verticalBar; text: String.fromCodePoint(0xF0925) }
+      BarIconButton { id: compactVerticalStatusIcon; bar: verticalBar; text: String.fromCodePoint(0xF0085); slotSize: Style.bar.statusSlot }
       Column {
         id: verticalIndicatorPair
         BarIndicator { id: verticalIndicator; bar: verticalBar; active: true; activeText: "󰅶" }

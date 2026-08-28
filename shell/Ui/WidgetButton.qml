@@ -111,23 +111,13 @@ Item {
   readonly property real glyphBaselineY: glyph.visible ? glyph.baselineY : 0
   readonly property int glyphFontSize: glyph.visible ? glyph.renderedFontSize : 0
   readonly property real glyphScale: glyph.visible ? glyph.normalizedScale : 1
-  // How wide the mark is against its own height, held from the first
-  // measurement of the ink itself. The font's metrics are only the opening
-  // guess: they disagree with what actually rasterizes, and it is the
-  // rasterized ink the rules judge, so a glyph the font calls square can
-  // still render half the height of the row. Held, so widening the canvas
-  // below cannot feed back into it.
+  // How wide the mark is against its own height, from the ink itself rather
+  // than the font's metrics, which disagree with what actually rasterizes.
   readonly property real iconAspect: hasIconGlyph ? glyph.naturalAspect : 1
-  // How far the mark ended up condensed; 1 is untouched.
   // How far the fit was nudged for density; 1 is untouched.
   readonly property real iconSquash: iconComponent !== null
     ? IconRules.weightFit(iconFit.inkCoverage)
     : (hasIconGlyph ? IconRules.weightFit(glyph.inkCoverage) : 1)
-  // Every icon keeps one slot: a wide mark is condensed into its canvas
-  // rather than handed more of the bar.
-  // The room a wide mark needs to be condensed into belongs to a lone icon.
-  // A glyph beside a label gets the plain block, so a labelled button is
-  // exactly the width it has always been.
   // A lone icon's canvas is cut wider along the bar so the long axis of a wide
   // mark has somewhere to land. A glyph beside a label keeps the plain block,
   // so a labelled button is exactly the width it has always been — widening
@@ -161,8 +151,8 @@ Item {
   // The canvas is the one extent every icon shares, so the mark is the same
   // length wherever it appears, and still exactly as wide as the icon it sits
   // under.
-  readonly property real paintedX: iconOnly ? content.x + opticalCanvas.x : content.x
-  readonly property real paintedY: iconOnly ? content.y + opticalCanvas.y : content.y
+  readonly property real paintedX: iconOnly ? content.x + canvasSlot.x : content.x
+  readonly property real paintedY: iconOnly ? content.y + canvasSlot.y : content.y
   readonly property real paintedWidth: iconOnly ? opticalCanvas.width : content.width
   readonly property real paintedHeight: iconOnly ? opticalCanvas.height : content.height
 
@@ -171,6 +161,7 @@ Item {
   // Inspect at four times the display density so measured boxes are exact
   // well below the resolution anyone sees the icon at.
   readonly property real inspectScale: 4 * devicePixelRatio
+  readonly property real capturePad: IconRules.padFor(opticalWidth, opticalHeight)
   property bool destroying: false
 
   visible: hasVisualContent || keepSpace
@@ -201,11 +192,28 @@ Item {
     rotation: root.textRotation
 
     Item {
-      id: opticalCanvas
+      id: canvasSlot
       anchors.verticalCenter: parent.verticalCenter
       visible: root.iconComponent !== null || (root.hasIconGlyph && root.labelVisible)
       width: root.opticalWidth
       height: root.opticalHeight
+
+      // Paints nothing itself. A render is grabbed at the size of the item it
+      // comes from, so grabbing the canvas cuts off exactly the overflow the
+      // `contained` rule exists to catch; this reaches past it by the pad.
+      Item {
+        id: canvasFrame
+        x: -root.capturePad
+        y: -root.capturePad
+        width: parent.width + root.capturePad * 2
+        height: parent.height + root.capturePad * 2
+
+      Item {
+        id: opticalCanvas
+        x: root.capturePad
+        y: root.capturePad
+        width: root.opticalWidth
+        height: root.opticalHeight
 
       OpticalGlyph {
         id: glyph
@@ -215,6 +223,7 @@ Item {
         fontFamily: root.fontFamily
         fontSize: root.fontSize
         normalize: true
+        verticalBar: root.vertical
         color: root.contentColor
         debugBounds: root.debugOpticalBounds
 
@@ -407,7 +416,18 @@ Item {
               for (var direction in c) out[direction] = c[direction]
               continue
             }
-            for (var d in c) out[d] = d in out ? Math.min(out[d], c[d]) : c[d]
+              // Only the margins merge by minimum — how close any frame came to
+            // an edge. Running the same minimum over everything else turned
+            // `crossAxis` from a string into NaN, which quietly judged a
+            // vertical bar's animation on the horizontal axis. Balance keeps
+            // the frame that sat furthest out, since the worst frame is the
+            // one worth reporting, not the best.
+            for (var i = 0; i < IconRules.directions.length; i++) {
+              var d = IconRules.directions[i]
+              if (d in c) out[d] = d in out ? Math.min(out[d], c[d]) : c[d]
+            }
+            if (Math.abs(c.balanceX) > Math.abs(out.balanceX)) out.balanceX = c.balanceX
+            if (Math.abs(c.balanceY) > Math.abs(out.balanceY)) out.balanceY = c.balanceY
           }
           return out
         }
@@ -506,9 +526,11 @@ Item {
           if (root.destroying || !root.hostWindow || !measured || opticalCanvas.width <= 0) return
           var requested = verifyRevision
           var frame = signature()
-          var size = Qt.size(Math.max(1, Math.round(opticalCanvas.width * root.inspectScale)),
-            Math.max(1, Math.round(opticalCanvas.height * root.inspectScale)))
-          verifyInk.measure(opticalCanvas, size, function(result) {
+          var size = Qt.size(Math.max(1, Math.round(canvasFrame.width * root.inspectScale)),
+            Math.max(1, Math.round(canvasFrame.height * root.inspectScale)))
+          verifyInk.measure(canvasFrame, size, function(measured) {
+            var result = IconRules.rebase(measured, root.capturePad,
+              opticalCanvas.width, opticalCanvas.height)
             if (!root || root.destroying || requested !== iconFit.verifyRevision) return
             if (result) {
               var boxes = iconFit.shownBoxes
@@ -538,6 +560,8 @@ Item {
         color: "transparent"
         border.width: 1
         border.color: "#4488ff"
+      }
+      }
       }
     }
 

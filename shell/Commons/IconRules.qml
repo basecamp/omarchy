@@ -21,15 +21,8 @@ QtObject {
   readonly property real fringeAlpha: 0.06
 
   // Two different questions get two different measurements, and mixing them
-  // up is what made a row of icons look uneven.
-  //
-  // HOW BIG an icon is comes from the raw ink: scale it so its ink is exactly
-  // as tall as the block. That is the only rule that leaves every icon in the
-  // row the same height — measured across the bar's twelve glyphs it gives a
-  // spread of 0.0px, against 59.6px for fitting the longest side and 33.3px
-  // for fitting a blurred blob's height.
-  //
-  // WHERE it sits comes from a blurred blob: the shape is smeared until it
+  // up is what made a row of icons look uneven. HOW BIG a mark is comes from
+  // the raw ink it paints; WHERE it sits comes from a blurred blob: the shape is smeared until it
   // reads as one soft mass, that mass is levelled against its own peak, and
   // cut in half. Levelling against its own peak rather than a fixed level is
   // what lets the blur be strong — a thin glyph blurs to a faint mass, and a
@@ -38,6 +31,43 @@ QtObject {
   // otherwise drag the whole icon off centre.
   readonly property real opticalBlur: 0.25
   readonly property real opticalLevel: 0.5
+
+  // A render is grabbed at the size of the item it is taken from, so ink
+  // reaching past that item is cut off before anything measures it. Measuring
+  // the canvas directly therefore makes `contained` toothless: a margin
+  // clipped at the edge can never come back negative, and an icon spilling
+  // over its neighbour reads as perfectly contained. Measurements are taken
+  // through a frame padded around the canvas instead, and mapped back here —
+  // where a margin may now legitimately be negative, which is the whole point.
+  function padFor(canvasWidth, canvasHeight) {
+    return Math.max(2, Math.round(Math.min(canvasWidth, canvasHeight) * 0.35))
+  }
+
+  function rebase(measurement, pad, canvasWidth, canvasHeight) {
+    if (!measurement || !measurement.rect || !(pad > 0)) return measurement
+    var frameWidth = canvasWidth + pad * 2
+    var frameHeight = canvasHeight + pad * 2
+    var r = measurement.rect
+    var c = measurement.centroid
+    var out = {
+      rect: Qt.rect((r.x * frameWidth - pad) / canvasWidth, (r.y * frameHeight - pad) / canvasHeight,
+        r.width * frameWidth / canvasWidth, r.height * frameHeight / canvasHeight),
+      centroid: c ? Qt.point((c.x * frameWidth - pad) / canvasWidth, (c.y * frameHeight - pad) / canvasHeight)
+        : Qt.point(0.5, 0.5),
+      coverage: measurement.coverage,
+      // Scaled so a render pixel still reports as one render pixel of the
+      // canvas, not of the larger frame it was captured in.
+      width: measurement.width * canvasWidth / frameWidth,
+      height: measurement.height * canvasHeight / frameHeight,
+      diagonal: measurement.diagonal,
+      diagonalWidth: measurement.diagonalWidth,
+      diagonalHeight: measurement.diagonalHeight,
+      // The frame's corners sit this much further out along each diagonal than
+      // the canvas's own, so the turned measurement is pulled back by it.
+      diagonalInset: pad * Math.SQRT2
+    }
+    return out
+  }
 
   // Every rule allows this much, in logical pixels: one pixel of the theme's
   // coordinate space, which is what rasterization can take from any edge. A
@@ -53,15 +83,6 @@ QtObject {
   // pass seen is kept.
   readonly property int maxPasses: 5
 
-  // How many squares of the grid an icon takes along the bar. An icon is
-  // fitted inside that many squares by one square's height, so a mark that is
-  // genuinely wider than it is tall gets the room to stay full height instead
-  // of being shrunk until its width fits one square — which is what leaves a
-  // two-to-one badge reading half the height of everything beside it.
-  //
-  // Rounding to nearest is what keeps the extra squares to the marks that
-  // really are wide. Rounding up would hand a second square to a 1.1:1 icon
-  // and most of the row would be two squares wide, which is no grid at all.
   // A mark is fitted by the middle of its two dimensions, not by whichever
   // one reaches furthest. Fitting the long side alone halves a mark twice as
   // wide as it is tall — it renders at a fraction of the row's height and
@@ -149,10 +170,11 @@ QtObject {
     if (measurement.diagonal && measurement.width > 0) {
       var perPixel = canvasWidth / measurement.width
       var d = measurement.diagonal
-      out.nw = d.y * measurement.diagonalHeight * perPixel
-      out.ne = (1 - d.x - d.width) * measurement.diagonalWidth * perPixel
-      out.se = (1 - d.y - d.height) * measurement.diagonalHeight * perPixel
-      out.sw = d.x * measurement.diagonalWidth * perPixel
+      var inset = measurement.diagonalInset > 0 ? measurement.diagonalInset : 0
+      out.nw = d.y * measurement.diagonalHeight * perPixel - inset
+      out.ne = (1 - d.x - d.width) * measurement.diagonalWidth * perPixel - inset
+      out.se = (1 - d.y - d.height) * measurement.diagonalHeight * perPixel - inset
+      out.sw = d.x * measurement.diagonalWidth * perPixel - inset
     }
     return out
   }

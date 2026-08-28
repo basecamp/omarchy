@@ -16,6 +16,10 @@ Item {
   property real fontSize: Style.font.body
   property color color: Color.foreground
   property bool normalize: false
+  // Which way the bar runs. The rules judge a mark across the bar and along
+  // it, and those are different axes on a vertical bar; without this every
+  // glyph was judged as though the bar ran horizontally.
+  property bool verticalBar: false
   property bool debugBounds: false
 
   readonly property int renderedFontSize: Math.max(1, Math.round(fontSize))
@@ -44,10 +48,8 @@ Item {
   // Sized so the mark's ink fills the block across the bar.
   readonly property real inkWidthPixels: Math.max(0.0001, inkWidthRatio * renderedFontSize)
   readonly property real inkHeightPixels: Math.max(0.0001, inkHeightRatio * renderedFontSize)
-  // Scaled until the ink meets whichever edge comes first, then nudged by how
-  // densely it is inked so a solid mark does not loom over a hairline one.
-  // Fitted by the middle of the mark's two dimensions and nudged for density,
-  // then held so it can never outgrow the canvas that has to hold it.
+  // Fitted by the middle of the mark's two dimensions and nudged for how
+  // densely it is inked, then held so it can never outgrow its canvas.
   readonly property real block: Math.min(width, height)
   readonly property real rawMetricScale: normalize && width > 0 && height > 0
     ? Math.min(
@@ -63,9 +65,6 @@ Item {
   readonly property real metricScale: normalize
     ? Math.min(rawMetricScale, metricScaleCeiling)
     : 1
-  // A mark wider than the block is condensed toward square rather than shrunk,
-  // so it keeps the row's height instead of reading half of it.
-
   // Corrections the measured pixels asked for, on top of the metric estimate.
   property real pixelScale: 1
   property real pixelOffsetX: 0
@@ -93,12 +92,16 @@ Item {
   readonly property real verticalCorrection: normalize
     ? glyph.height / 2 - (glyph.baselineOffset + metrics.tightBoundingRect.y + inkHeight / 2)
     : 0
-  readonly property real baselineY: glyph.y + glyph.baselineOffset
+  readonly property real baselineY: glyph.y - capturePad + glyph.baselineOffset
 
   // Lit-pixel verification. The glyph is rendered, its pixels measured, and
   // size and position corrected until the rules hold or the passes run out.
   readonly property var hostWindow: Window.window
   readonly property real inspectScale: 4 * (Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1)
+  // Measured through a frame padded around the canvas: a render is grabbed at
+  // the size of the item it comes from, so measuring the canvas itself cuts
+  // off exactly the overflow `contained` exists to catch.
+  readonly property real capturePad: IconRules.padFor(width, height)
   property var inkMeasurement: null
   property var inkCompass: null
   property bool inkVerified: !normalize
@@ -192,8 +195,10 @@ Item {
     if (destroying || !normalize || !hostWindow || width <= 0 || height <= 0 || text === "" || debugBounds) return
     var requested = inkRevision
     var key = inkKey()
-    var size = Qt.size(Math.max(1, Math.round(width * inspectScale)), Math.max(1, Math.round(height * inspectScale)))
-    ink.measure(root, size, function(result) {
+    var size = Qt.size(Math.max(1, Math.round(frame.width * inspectScale)),
+      Math.max(1, Math.round(frame.height * inspectScale)))
+    ink.measure(frame, size, function(measured) {
+      var result = IconRules.rebase(measured, root.capturePad, root.width, root.height)
       if (!root || root.destroying || requested !== root.inkRevision) return
       root.inkPasses++
       if (!result) {
@@ -202,7 +207,7 @@ Item {
       }
 
 
-      var compass = IconRules.compass(result, root.width, root.height)
+      var compass = IconRules.compass(result, root.width, root.height, root.verticalBar)
       var pass = { pixelScale: root.pixelScale, pixelOffsetX: root.pixelOffsetX, pixelOffsetY: root.pixelOffsetY,
         measurement: result, compass: compass }
       root.inkMeasurement = result
@@ -239,7 +244,8 @@ Item {
       var filled = Math.max(r.width, r.height)
       if (filled > 0) root.pixelScale *= 1 / filled
       var shift = IconRules.balanceShift(r, result.centroid,
-        IconRules.balanceAllowance(Math.min(root.width, root.height)))
+        IconRules.balanceAllowance(Math.min(root.width, root.height)),
+        root.verticalBar ? "x" : "y")
       root.pixelOffsetX += shift.x * root.width
       root.pixelOffsetY += shift.y * root.height
       Qt.callLater(root.measureInk)
@@ -296,16 +302,26 @@ Item {
     text: root.text
   }
 
-  Text {
-    textFormat: Text.PlainText
-    id: glyph
-    x: (root.width - width) / 2 + root.horizontalCorrection + root.pixelOffsetX
-    y: (root.height - height) / 2 + root.verticalCorrection + root.pixelOffsetY
-    text: root.text
-    color: root.color
-    font: root.glyphFont
-    renderType: Text.NativeRendering
+  // Paints nothing itself: a capture surface sitting centred on the canvas and
+  // reaching past it by the pad on every side, so a grab of it includes any
+  // ink that spills over.
+  Item {
+    id: frame
+    x: -root.capturePad
+    y: -root.capturePad
+    width: root.width + root.capturePad * 2
+    height: root.height + root.capturePad * 2
 
+    Text {
+      id: glyph
+      textFormat: Text.PlainText
+      x: root.capturePad + (root.width - width) / 2 + root.horizontalCorrection + root.pixelOffsetX
+      y: root.capturePad + (root.height - height) / 2 + root.verticalCorrection + root.pixelOffsetY
+      text: root.text
+      color: root.color
+      font: root.glyphFont
+      renderType: Text.NativeRendering
+    }
   }
 
   Rectangle {
