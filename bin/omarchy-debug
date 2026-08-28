@@ -26,6 +26,84 @@ while (( $# > 0 )); do
   esac
 done
 
+# A button held down forever by faulty hardware is close to invisible. Wayland
+# merges every pointer into one seat, so a dongle that reports BTN_RIGHT stuck
+# means the seat's right button is *already* pressed and no later click produces
+# a press edge -- right-click silently stops working in every application, while
+# the kernel, libinput and the compositor all keep behaving correctly. Nothing in
+# a normal log shows it, because nothing is going wrong.
+#
+# EVIOCGKEY returns the current pressed-state bitmap for a device, so one ioctl
+# per device catches it. Devices we cannot read are skipped rather than reported
+# as clean, so an unreadable device is never mistaken for a healthy one.
+report_stuck_inputs() {
+  python3 - <<'PY' 2>/dev/null || echo "(python3 unavailable - skipped)"
+import fcntl, glob, os
+
+KEY_MAX = 0x2ff
+NBYTES = (KEY_MAX // 8) + 1
+EVIOCGKEY = (2 << 30) | (NBYTES << 16) | (0x45 << 8) | 0x18
+
+NAMES = {
+    0x110: "BTN_LEFT", 0x111: "BTN_RIGHT", 0x112: "BTN_MIDDLE",
+    0x113: "BTN_SIDE", 0x114: "BTN_EXTRA",
+    29: "LEFTCTRL", 97: "RIGHTCTRL", 42: "LEFTSHIFT", 54: "RIGHTSHIFT",
+    56: "LEFTALT", 100: "RIGHTALT", 125: "LEFTMETA", 126: "RIGHTMETA",
+}
+
+
+def device_name(path):
+    node = os.path.basename(path)
+    try:
+        with open("/sys/class/input/%s/device/name" % node) as fh:
+            return fh.read().strip()
+    except OSError:
+        return "unknown"
+
+
+stuck, unreadable = [], []
+for path in sorted(glob.glob("/dev/input/event*")):
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    except OSError:
+        unreadable.append(path)
+        continue
+    try:
+        buf = bytearray(NBYTES)
+        fcntl.ioctl(fd, EVIOCGKEY, buf)
+    except OSError:
+        unreadable.append(path)
+        continue
+    finally:
+        os.close(fd)
+
+    held = [
+        NAMES.get(byte * 8 + bit, "code_%d" % (byte * 8 + bit))
+        for byte in range(NBYTES)
+        for bit in range(8)
+        if buf[byte] >> bit & 1
+    ]
+    if held:
+        stuck.append((path, device_name(path), held))
+
+for path, name, held in stuck:
+    print("%s (%s) reports HELD: %s" % (path, name, ", ".join(held)))
+
+if not stuck:
+    print("No stuck buttons or keys detected.")
+else:
+    print("")
+    print("A button listed above is being reported as held down right now.")
+    print("If nothing is physically pressing it, that device is faulty and will")
+    print("suppress that button across the whole session. Unplug it to confirm.")
+
+if unreadable:
+    print("")
+    print("Not checked (permission denied): %s" % ", ".join(unreadable))
+    print("Add your user to the 'input' group for a complete report.")
+PY
+}
+
 LOG_FILE="/tmp/omarchy-debug.log"
 
 if [[ $NO_SUDO = "true" ]]; then
@@ -43,6 +121,11 @@ Omarchy Package: $(pacman -Q omarchy-dev 2>/dev/null || pacman -Q omarchy 2>/dev
 SYSTEM INFORMATION
 =========================================
 $(inxi -Farz)
+
+=========================================
+STUCK INPUT BUTTONS
+=========================================
+$(report_stuck_inputs)
 
 =========================================
 DMESG
