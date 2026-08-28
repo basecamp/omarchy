@@ -34,32 +34,74 @@ Item {
   property bool errorFlash: false
   // pam_fprintd appears in the polkit PAM stack (a sensor is enrolled).
   property bool fingerprintConfigured: false
+  // pam_u2f appears in the polkit PAM stack.
+  property bool fidoConfigured: false
+  // Raw ordered methods from the PAM configuration.
+  property var pamMethods: []
+  // Filtered and ordered active methods based on capabilities and hardware state.
+  readonly property var activeMethods: {
+    var list = []
+    for (var i = 0; i < pamMethods.length; i++) {
+      var m = pamMethods[i]
+      if (m === "fingerprint" && (!lidStateKnown || laptopClosed || !fingerprintConfigured)) continue
+      if (m === "fido" && (!fidoStateKnown || !fidoTokenConnected || !fidoConfigured)) continue
+      list.push(m)
+    }
+    return list
+  }
   // Lid shut right now — the reader is physically unreachable, so we fall back
   // to the password even when a sensor is enrolled. Refreshed per request.
   property bool laptopClosed: false
+  property bool lidStateKnown: false
+  property bool fidoTokenConnected: false
+  property bool fidoStateKnown: false
   property int shakeOffset: 0
+  property bool waitingDelayLatched: false
 
   readonly property bool dialogVisible: polkitAgent.isActive || closing
-  // We show one method at a time. Fingerprint owns the dialog while PAM is
-  // waiting on the reader (lid open, sensor enrolled); the moment PAM asks for
-  // a password — including immediately when the lid is shut and the clamshell
-  // gate skips pam_fprintd — we switch to the password field instead.
-  readonly property bool fingerprintMode: fingerprintConfigured && !laptopClosed && dialogVisible && !responseRequired && !submitted && !errorFlash
+  readonly property var authState: PolkitModel.authenticationState(currentPrompt, currentSupplementary, responseRequired)
+  readonly property string supplementaryInstruction: String(currentSupplementary || "").trim()
+  readonly property bool supplementaryInstructionVisible: responseRequired && supplementaryInstruction.length > 0 && supplementaryInstruction !== String(authState.prompt || "").trim()
+  readonly property bool compactMode: dialogVisible && (authState.method === "waiting" || authState.method === "physical") && !submitted && !errorFlash
+  readonly property bool waitingDelayActive: !waitingDelayLatched && !submitted && !errorFlash && authState.method === "waiting" && waitingDelayTimer.running
   readonly property int cardHeight: panel.height > 0 ? Math.min(fieldHeight + contentMargin * 2, panel.height - Style.gapsOut * 2) : fieldHeight + contentMargin * 2
-  // Password mode is a wide field; fingerprint mode collapses to a square that
+  // Password mode is a wide field; compact modes collapse to a square that
   // just frames the centered sensor icon.
-  readonly property int cardWidth: fingerprintMode ? cardHeight : Math.min(Style.space(312), Math.max(Style.space(260), panel.width - Style.gapsOut * 2))
+  readonly property int cardWidth: compactMode ? cardHeight : Math.min(Style.space(312), Math.max(Style.space(260), panel.width - Style.gapsOut * 2))
+
+  Timer {
+    id: waitingDelayTimer
+    interval: 1000
+    repeat: false
+    onTriggered: root.waitingDelayLatched = true
+  }
 
   function authorizationLabel(message) {
     return PolkitModel.authorizationLabel(message)
   }
 
   function loadPamConfig(raw) {
-    fingerprintConfigured = PolkitModel.fingerprintConfiguredFromPamConfig(raw)
+    var caps = PolkitModel.authCapabilitiesFromPamConfig(raw)
+    fingerprintConfigured = caps.fingerprint
+    fidoConfigured = caps.fido
+    pamMethods = caps.methods || []
   }
 
   function refreshLidState() {
-    if (!laptopClosedProc.running) laptopClosedProc.running = true
+    root.lidStateKnown = false
+    laptopClosedProc.running = false
+    laptopClosedProc.running = true
+  }
+
+  function refreshFidoState() {
+    root.fidoStateKnown = false
+    fidoProbeProc.running = false
+    fidoProbeProc.running = true
+  }
+
+  function finishWaitingDelay() {
+    waitingDelayLatched = true
+    waitingDelayTimer.stop()
   }
 
   function resetSnapshot() {
@@ -72,6 +114,12 @@ Item {
     errorFlash = false
     submitted = false
     passwordInput.text = ""
+    waitingDelayTimer.stop()
+    waitingDelayLatched = false
+    lidStateKnown = false
+    fidoStateKnown = false
+    fidoTokenConnected = false
+    fidoProbeProc.running = false
   }
 
   function syncFromFlow() {
@@ -86,29 +134,34 @@ Item {
     failed = !!flow.failed
 
     if (responseRequired) submitted = false
+    if (authState.method !== "waiting") finishWaitingDelay()
   }
 
   function beginFlow() {
     closeTimer.stop()
+    waitingDelayLatched = false
+    waitingDelayTimer.restart()
     closing = false
     submitted = false
     passwordInput.text = ""
     refreshLidState()
+    refreshFidoState()
     syncFromFlow()
     Qt.callLater(refocus)
   }
 
   function refocus() {
     if (!dialogVisible) return
-    // In fingerprint mode there is no field to type into — park focus on the
-    // key catcher so Escape still cancels; otherwise focus the password field.
-    if (fingerprintMode) keyCatcher.forceActiveFocus()
+    // While PAM is handling a non-interactive prompt, park focus on the key
+    // catcher so Escape still cancels without sending an empty response.
+    if (compactMode || !responseRequired) keyCatcher.forceActiveFocus()
     else passwordInput.forceActiveFocus()
   }
 
   function submitResponse() {
     var flow = polkitAgent.flow
     if (!flow || !flow.isResponseRequired) return
+    finishWaitingDelay()
     submitted = true
     errorFlash = false
     flow.submit(passwordInput.text)
@@ -126,6 +179,7 @@ Item {
   }
 
   function triggerFailureFeedback() {
+    finishWaitingDelay()
     submitted = false
     errorFlash = true
     passwordInput.text = ""
@@ -157,12 +211,16 @@ Item {
     NumberAnimation { target: root; property: "shakeOffset"; to: 8; duration: 50; easing.type: Easing.InOutQuad }
     NumberAnimation { target: root; property: "shakeOffset"; to: 0; duration: 55; easing.type: Easing.OutQuad }
   }
+
   FileView {
     path: "/etc/pam.d/polkit-1"
     watchChanges: true
     printErrors: false
     onLoaded: root.loadPamConfig(text())
-    onLoadFailed: root.fingerprintConfigured = false
+    onLoadFailed: {
+      root.fingerprintConfigured = false
+      root.fidoConfigured = false
+    }
     onFileChanged: reload()
   }
 
@@ -170,7 +228,21 @@ Item {
     id: laptopClosedProc
     command: ["bash", "-c", "omarchy-hw-laptop-closed && echo closed || echo open"]
     stdout: StdioCollector { id: laptopClosedOut; waitForEnd: true }
-    onExited: root.laptopClosed = String(laptopClosedOut.text || "").trim() === "closed"
+    onExited: {
+      root.laptopClosed = String(laptopClosedOut.text || "").trim() === "closed"
+      root.lidStateKnown = true
+    }
+  }
+
+  Process {
+    id: fidoProbeProc
+    command: ["bash", "-c", "for d in /sys/class/hidraw/hidraw*; do [ -e \"$d\" ] && udevadm info --query=property --path=\"$d\"; done"]
+    stdout: StdioCollector { id: fidoProbeOut; waitForEnd: true }
+    onExited: {
+      var out = String(fidoProbeOut.text || "")
+      root.fidoTokenConnected = out.indexOf("ID_SECURITY_TOKEN=1") !== -1 || out.indexOf("ID_FIDO_TOKEN=1") !== -1
+      root.fidoStateKnown = true
+    }
   }
 
   PolkitAgent {
@@ -238,16 +310,15 @@ Item {
       onClicked: root.refocus()
     }
 
-    BorderSurface {
-      id: card
-      width: root.cardWidth
+    Item {
+      id: cardContainer
+      width: (root.compactMode && root.activeMethods.length > 1)
+             ? (root.cardHeight * root.activeMethods.length + Style.space(12) * (root.activeMethods.length - 1))
+             : root.cardWidth
       height: root.cardHeight
-      radius: root.cornerRadius
       anchors.centerIn: parent
       anchors.horizontalCenterOffset: root.shakeOffset
-      color: root.background
-      borderSpec: root.borderSpec
-      padding: root.contentMargin
+      opacity: root.waitingDelayActive ? 0.0 : 1.0
 
       MouseArea { anchors.fill: parent; onClicked: root.refocus() }
 
@@ -268,109 +339,191 @@ Item {
         }
       }
 
-      // Fingerprint mode shows just the sensor icon, centered and alone \u2014 no
-      // padlock, no field, no prompt text.
-      OpticalGlyph {
-        anchors.centerIn: parent
-        width: Math.round(root.fieldHeight * 0.7)
-        height: width
-        visible: root.fingerprintMode
-        text: "\udb80\ude37"
-        fontFamily: root.fontFamily
-        fontSize: Math.round(root.fieldHeight * 0.7)
-        color: root.errorFlash ? Color.polkit.textError : root.accent
+      BorderSurface {
+        id: card
+        anchors.fill: parent
+        visible: !(root.compactMode && root.activeMethods.length > 1)
+        radius: root.cornerRadius
+        color: root.background
+        borderSpec: root.borderSpec
+        padding: root.contentMargin
+
+        MouseArea { anchors.fill: parent; onClicked: root.refocus() }
+
+        OpticalGlyph {
+          anchors.centerIn: parent
+          width: Math.round(root.fieldHeight * 0.7)
+          height: width
+          visible: root.compactMode && root.activeMethods.length === 1
+          text: root.activeMethods.length === 1 ? (root.activeMethods[0] === "fido" ? "\udb80\udf06" : "\udb80\ude37") : ""
+          fontFamily: root.fontFamily
+          fontSize: Math.round(root.fieldHeight * 0.7)
+          color: root.errorFlash ? Color.polkit.textError : Util.alpha(root.accent, 0.55)
+        }
+
+        OpticalGlyph {
+          anchors.centerIn: parent
+          width: Math.round(root.fieldHeight * 0.7)
+          height: width
+          visible: root.compactMode && root.activeMethods.length === 0
+          text: "\uf023"
+          fontFamily: root.fontFamily
+          fontSize: Style.font.iconLarge
+          color: root.errorFlash ? Color.polkit.textError : root.accent
+        }
+
+        Row {
+          id: cardRow
+          visible: !root.compactMode
+          anchors.fill: parent
+          anchors.topMargin: card.contentTopInset
+          anchors.rightMargin: card.contentRightInset
+          anchors.bottomMargin: card.contentBottomInset
+          anchors.leftMargin: card.contentLeftInset
+          spacing: Style.space(14)
+
+          Text {
+            text: "\uf023"
+            color: root.errorFlash ? Color.polkit.textError : root.accent
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.iconLarge
+            width: Style.space(26)
+            height: root.fieldHeight
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+          }
+
+          Item {
+            width: parent.width - Style.space(40)
+            height: root.fieldHeight
+
+            TextInput {
+              id: passwordInput
+              anchors.fill: parent
+              verticalAlignment: TextInput.AlignVCenter
+              activeFocusOnPress: true
+              clip: true
+              selectionColor: Util.alpha(root.accent, 0.45)
+              selectedTextColor: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.iconLarge
+              echoMode: root.responseVisible ? TextInput.Normal : TextInput.Password
+              passwordCharacter: "\u2022"
+              color: root.errorFlash ? Color.polkit.textError : root.foreground
+              cursorVisible: activeFocus && root.responseRequired && !root.submitted && !root.errorFlash
+              readOnly: !root.responseRequired || root.submitted || root.errorFlash
+              enabled: root.dialogVisible && root.responseRequired
+              onAccepted: root.submitResponse()
+              Keys.onPressed: function(event) {
+                if (event.key === Qt.Key_Escape) {
+                  root.cancelRequest()
+                  event.accepted = true
+                }
+              }
+            }
+
+            Text {
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              text: root.errorFlash ? "Wrong" : (root.submitted ? "Checking..." : root.authState.prompt)
+              color: root.errorFlash ? Color.polkit.textError : root.foreground
+              opacity: root.errorFlash ? 1 : 0.36
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.iconLarge
+              elide: Text.ElideRight
+              visible: passwordInput.text.length === 0
+            }
+
+            Rectangle {
+              width: Math.max(1, Style.space(2))
+              height: Style.space(24)
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              color: root.errorFlash ? Color.polkit.textError : root.foreground
+              visible: passwordInput.visible && passwordInput.activeFocus && root.responseRequired && passwordInput.text.length === 0 && !root.submitted && !root.errorFlash
+            }
+
+            MouseArea {
+              anchors.fill: parent
+              acceptedButtons: Qt.LeftButton
+              enabled: passwordInput.enabled
+              onClicked: passwordInput.forceActiveFocus()
+            }
+          }
+        }
       }
 
       Row {
-        id: cardRow
-        visible: !root.fingerprintMode
-        anchors.fill: parent
-        anchors.topMargin: card.contentTopInset
-        anchors.rightMargin: card.contentRightInset
-        anchors.bottomMargin: card.contentBottomInset
-        anchors.leftMargin: card.contentLeftInset
-        spacing: Style.space(14)
+        id: capabilityRow
+        anchors.centerIn: parent
+        spacing: Style.space(12)
+        visible: root.compactMode && root.activeMethods.length > 1
 
-        Text {
-          text: "\uf023"
-          color: root.errorFlash ? Color.polkit.textError : root.accent
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.iconLarge
-          width: Style.space(26)
-          height: root.fieldHeight
-          horizontalAlignment: Text.AlignHCenter
-          verticalAlignment: Text.AlignVCenter
-        }
+        Repeater {
+          model: root.activeMethods
 
-        Item {
-          width: parent.width - Style.space(40)
-          height: root.fieldHeight
+          BorderSurface {
+            width: root.cardHeight
+            height: root.cardHeight
+            radius: root.cornerRadius
+            color: root.background
+            borderSpec: root.borderSpec
+            padding: root.contentMargin
 
-          TextInput {
-            id: passwordInput
-            anchors.fill: parent
-            verticalAlignment: TextInput.AlignVCenter
-            activeFocusOnPress: true
-            clip: true
-            selectionColor: Util.alpha(root.accent, 0.45)
-            selectedTextColor: root.foreground
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.iconLarge
-            echoMode: root.responseVisible ? TextInput.Normal : TextInput.Password
-            passwordCharacter: "\u2022"
-            color: root.errorFlash ? Color.polkit.textError : root.foreground
-            cursorVisible: activeFocus && !root.submitted && !root.errorFlash
-            readOnly: root.submitted || root.errorFlash
-            enabled: root.dialogVisible
-            onAccepted: root.submitResponse()
-            Keys.onPressed: function(event) {
-              if (event.key === Qt.Key_Escape) {
-                root.cancelRequest()
-                event.accepted = true
-              }
+            OpticalGlyph {
+              anchors.centerIn: parent
+              width: Math.round(root.fieldHeight * 0.7)
+              height: width
+              text: modelData === "fido" ? "\udb80\udf06" : "\udb80\ude37"
+              fontFamily: root.fontFamily
+              fontSize: Math.round(root.fieldHeight * 0.7)
+              // First available method is primary (slightly stronger but still muted), others are secondary fallbacks
+              color: root.errorFlash ? Color.polkit.textError
+                     : (index === 0 ? Util.alpha(root.accent, 0.55) : Util.alpha(root.accent, 0.25))
             }
-          }
-
-          Text {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            text: root.errorFlash ? "Wrong" : (root.submitted ? "Checking..." : "Enter password")
-            color: root.errorFlash ? Color.polkit.textError : root.foreground
-            opacity: root.errorFlash ? 1 : 0.36
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.iconLarge
-            elide: Text.ElideRight
-            visible: passwordInput.text.length === 0
-          }
-
-          Rectangle {
-            width: Math.max(1, Style.space(2))
-            height: Style.space(24)
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            color: root.errorFlash ? Color.polkit.textError : root.foreground
-            visible: passwordInput.visible && passwordInput.activeFocus && passwordInput.text.length === 0 && !root.submitted && !root.errorFlash
-          }
-
-          MouseArea {
-            anchors.fill: parent
-            acceptedButtons: Qt.LeftButton
-            enabled: passwordInput.visible
-            onClicked: passwordInput.forceActiveFocus()
           }
         }
       }
     }
 
     Rectangle {
+      id: cuePill
+      visible: (root.compactMode && root.authState.method === "physical") || root.supplementaryInstructionVisible
+      width: Math.min(cueText.implicitWidth + Style.space(24), panel.width - Style.gapsOut * 2)
+      height: Style.space(28)
+      anchors.horizontalCenter: cardContainer.horizontalCenter
+      anchors.bottom: cardContainer.top
+      anchors.bottomMargin: Style.space(10)
+      opacity: root.waitingDelayActive ? 0.0 : 1.0
+      radius: root.cornerRadius
+      color: root.background
+
+      Text {
+        id: cueText
+        anchors.fill: parent
+        anchors.leftMargin: Style.space(12)
+        anchors.rightMargin: Style.space(12)
+        text: root.supplementaryInstructionVisible ? root.supplementaryInstruction : root.authState.prompt
+        color: root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.bodySmall
+        horizontalAlignment: Text.AlignHCenter
+        verticalAlignment: Text.AlignVCenter
+        elide: Text.ElideMiddle
+      }
+    }
+
+    Rectangle {
+      id: justificationPill
       width: Math.min(justificationText.implicitWidth + Style.space(24), panel.width - Style.gapsOut * 2)
       height: Style.space(28)
-      anchors.horizontalCenter: card.horizontalCenter
-      anchors.bottom: card.top
+      anchors.horizontalCenter: cardContainer.horizontalCenter
+      anchors.bottom: cuePill.visible ? cuePill.top : cardContainer.top
       anchors.bottomMargin: Style.space(10)
       radius: root.cornerRadius
       color: root.background
+      opacity: root.waitingDelayActive ? 0.0 : 1.0
 
       Text {
         id: justificationText
