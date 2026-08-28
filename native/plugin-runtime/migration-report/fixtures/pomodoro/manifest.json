@@ -1,0 +1,1 @@
+{"schemaVersion":1,"id":"syskey8.pomodoro","name":"Legacy Pomodoro","version":"1.0.0","kinds":["bar-widget"],"entryPoints":{"barWidget":"ui/Main.qml"}}

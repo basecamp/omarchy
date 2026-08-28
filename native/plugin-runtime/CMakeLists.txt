@@ -63,6 +63,7 @@ add_subdirectory(revision-store)
 add_subdirectory(grants)
 add_subdirectory(audit)
 add_subdirectory(lifecycle)
+add_subdirectory(migration-report)
 
 if(TARGET omarchy-plugin-broker-core
     AND TARGET omarchy-plugin-providers

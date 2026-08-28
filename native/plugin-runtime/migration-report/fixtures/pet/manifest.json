@@ -1,0 +1,1 @@
+{"schemaVersion":1,"id":"org.example.pet","name":"Legacy Pet","version":"1.0.0","kinds":["overlay"],"entryPoints":{"overlay":"ui/Main.qml"}}

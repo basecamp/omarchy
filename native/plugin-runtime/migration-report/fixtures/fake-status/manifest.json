@@ -1,0 +1,1 @@
+{"schemaVersion":1,"id":"37signals.basecamp","name":"Legacy Status","version":"1.0.0","kinds":["panel"],"entryPoints":{"panel":"ui/Main.qml"}}
