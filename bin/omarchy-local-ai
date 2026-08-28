@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# omarchy:summary=Run validated registry models on detected local hardware
+# omarchy:args=<scan|download|run|unload|open-agent|switch|snapshot>
+# omarchy:examples=omarchy local ai scan | omarchy local ai snapshot | omarchy local ai open-agent pi
+
+exec "${OMARCHY_PATH:-$(cd -- "$(dirname -- "$0")/.." && pwd)}/shell/plugins/panels/local-ai/bin/omarchy-local-ai" "$@"

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.local-ai",
+  "name": "Local AI",
+  "version": "2.2.0",
+  "author": "Omarchy",
+  "license": "MIT",
+  "description": "A compact Local AI widget and full registry lifecycle panel.",
+  "kinds": ["bar-widget", "panel"],
+  "entryPoints": {"barWidget": "Panel.qml", "panel": "Dashboard.qml"},
+  "barWidget": {
+    "displayName": "Local AI",
+    "description": "One minimal, theme-native model lifecycle panel.",
+    "category": "AI",
+    "aliases": ["local-ai", "models", "gpu"],
+    "defaultSection": "right",
+    "allowMultiple": false
+  }
+}
