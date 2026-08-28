@@ -57,6 +57,8 @@ Panel {
 
   property var sinkAvailability: ({})
   property bool sinkAvailabilityLoaded: false
+  property var outputTargetSnapshot: []
+  property bool outputTargetSnapshotLoaded: false
 
   // Identify true playback streams without reading node.properties here:
   // PwNode.properties is invalid until the node is bound, and reading it while
@@ -106,6 +108,7 @@ Panel {
   // in Quickshell's PipeWire service. The snapshot timer lets that mutation
   // settle first, and closed panels keep their repeaters detached entirely.
   property var displayAudioSinks: []
+  property var displayAudioTargets: []
   property var displayAudioSources: []
   property var displayAudioStreams: []
 
@@ -137,7 +140,10 @@ Panel {
 
   // Re-resolve whenever the selected output changes; the timer below is only a
   // safety net for the tuning being applied or removed underneath us.
-  onSinkChanged: resolveVolumeSink()
+  onSinkChanged: {
+    resolveVolumeSink()
+    refreshOutputTargets()
+  }
 
   function resolveVolumeSink() {
     if (!volumeSinkProc.running) volumeSinkProc.running = true
@@ -184,7 +190,7 @@ Panel {
     : "transparent"
 
   function sectionCount(section) {
-    if (section === "output") return displayAudioSinks.length
+    if (section === "output") return displayAudioTargets.length
     if (section === "input") return displayAudioSources.length
     if (section === "streams") return displayAudioStreams.length
     return 0
@@ -291,8 +297,8 @@ Panel {
     if (focusSection === "header") { toggleAllMuted(); return }
     if (focusSection === "output") {
       if (selectedIndex === -1) { toggleOutputMute(); return }
-      var sink = displayAudioSinks[selectedIndex]
-      if (sink) setDefaultSink(sink)
+      var target = displayAudioTargets[selectedIndex]
+      if (target) setDefaultOutput(target)
       return
     }
     if (focusSection === "input") {
@@ -309,6 +315,7 @@ Panel {
 
   onOpenedChanged: {
     if (opened) {
+      refreshOutputTargets()
       refreshDisplayAudioModels()
       focusSection = "output"
       selectedIndex = -1  // first keyboard cursor reveal starts on the output slider
@@ -320,7 +327,10 @@ Panel {
   }
 
   // Clamp / repair the cursor whenever any list refreshes underneath us.
-  onAudioSinksChanged: scheduleDisplayAudioModelRefresh()
+  onAudioSinksChanged: {
+    scheduleDisplayAudioModelRefresh()
+    refreshOutputTargets()
+  }
   onAudioSourcesChanged: scheduleDisplayAudioModelRefresh()
   onAudioStreamsChanged: scheduleDisplayAudioModelRefresh()
 
@@ -331,6 +341,9 @@ Panel {
   function refreshDisplayAudioModels() {
     if (!opened) return
     displayAudioSinks = listSnapshot(audioSinks)
+    displayAudioTargets = outputTargetSnapshotLoaded
+      ? Model.joinOutputTargets(outputTargetSnapshot, displayAudioSinks)
+      : Model.fallbackOutputTargets(displayAudioSinks, sink)
     displayAudioSources = listSnapshot(audioSources)
     displayAudioStreams = listSnapshot(audioStreams)
     clampCursor()
@@ -344,6 +357,7 @@ Panel {
   function clearDisplayAudioModels() {
     audioModelRefreshTimer.stop()
     displayAudioSinks = []
+    displayAudioTargets = []
     displayAudioSources = []
     displayAudioStreams = []
   }
@@ -460,16 +474,33 @@ Panel {
     if (hasInput) source.audio.muted = mute
   }
 
-  function setDefaultSink(node) {
-    if (!node) return
-    Pipewire.preferredDefaultAudioSink = node
-    if (node.id !== undefined && node.name) {
-      Quickshell.execDetached([
-        "omarchy-audio-output-set-default",
-        String(node.id),
-        String(node.name)
-      ])
+  function setDefaultOutput(target) {
+    if (!target || !target.node || outputSelectionProc.running) return
+    if (target.node.id === undefined || !target.sinkName) return
+
+    outputSelectionProc.command = [
+      "omarchy-audio-output-set-default",
+      String(target.node.id),
+      String(target.sinkName),
+      String(target.portName || "")
+    ]
+    outputSelectionProc.running = true
+  }
+
+  function refreshOutputTargets() {
+    if (opened && !outputTargetsProc.running) outputTargetsProc.running = true
+  }
+
+  function updateOutputTargets(raw) {
+    var parsed = Model.parseOutputTargets(raw)
+    if (parsed === null) {
+      console.warn("Audio output target helper returned invalid JSON")
+      return
     }
+
+    outputTargetSnapshot = parsed
+    outputTargetSnapshotLoaded = true
+    scheduleDisplayAudioModelRefresh()
   }
 
   function setDefaultSource(node) {
@@ -593,6 +624,31 @@ Panel {
   }
 
   Process {
+    id: outputTargetsProc
+    command: ["omarchy-audio-output-targets"]
+    stdout: StdioCollector { id: outputTargetsOutput; waitForEnd: true }
+    stderr: StdioCollector { id: outputTargetsError; waitForEnd: true }
+    onExited: function(exitCode) {
+      if (exitCode === 0) root.updateOutputTargets(outputTargetsOutput.text)
+      else console.warn("Unable to refresh audio output targets: " + String(outputTargetsError.text).trim())
+    }
+  }
+
+  Process {
+    id: outputSelectionProc
+    command: []
+    stderr: StdioCollector { id: outputSelectionError; waitForEnd: true }
+    onExited: function(exitCode) {
+      if (exitCode !== 0)
+        console.warn("Unable to select audio output: " + String(outputSelectionError.text).trim())
+      outputSelectionRefreshTimer.ticks = 0
+      outputSelectionRefreshTimer.restart()
+      root.refreshOutputTargets()
+      root.resolveVolumeSink()
+    }
+  }
+
+  Process {
     id: volumeSinkProc
     command: ["omarchy-audio-output-sink"]
     stdout: StdioCollector {
@@ -606,7 +662,22 @@ Panel {
     running: root.opened
     repeat: true
     triggeredOnStart: true
-    onTriggered: if (!sinkAvailabilityProc.running) sinkAvailabilityProc.running = true
+    onTriggered: {
+      if (!sinkAvailabilityProc.running) sinkAvailabilityProc.running = true
+      root.refreshOutputTargets()
+    }
+  }
+
+  Timer {
+    id: outputSelectionRefreshTimer
+    property int ticks: 0
+    interval: 250
+    repeat: true
+    onTriggered: {
+      ticks += 1
+      root.refreshOutputTargets()
+      if (ticks >= 4) stop()
+    }
   }
 
   // Runs whether or not the panel is open: the bar shows and scrolls the output
@@ -848,13 +919,13 @@ Panel {
             }
 
             Repeater {
-              model: root.displayAudioSinks
+              model: root.displayAudioTargets
 
-              SinkRow {
+              OutputTargetRow {
                 required property var modelData
                 required property int index
                 width: panelColumn.width
-                node: modelData
+                target: modelData
                 rowIndex: index
               }
             }
@@ -1006,14 +1077,14 @@ Panel {
   // Output device row — cursor target inside the "output" section. Mouse
   // hover updates the panel cursor at the root; visuals come entirely
   // from hasCursor/current via CursorSurface, never from containsMouse.
-  component SinkRow: CursorSurface {
-    id: sinkRow
-    required property var node
+  component OutputTargetRow: CursorSurface {
+    id: outputTargetRow
+    required property var target
     required property int rowIndex
 
-    readonly property bool isActive: root.sink && node && root.sink.id === node.id
+    readonly property bool isActive: target && target.active
     hasCursor: root.cursorActive && root.focusSection === "output" && root.selectedIndex === rowIndex
-    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(sinkRow)
+    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(outputTargetRow)
     current: isActive
     foreground: root.bar.foreground
     fill: root.hoverFill
@@ -1030,7 +1101,7 @@ Panel {
       spacing: Style.space(8)
 
       Text {
-        text: root.sinkGlyph(sinkRow.node)
+        text: Model.outputTargetGlyph(outputTargetRow.target)
         color: root.bar.foreground
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.title
@@ -1040,11 +1111,11 @@ Panel {
       }
 
       Text {
-        text: root.nodeLabel(sinkRow.node)
+        text: outputTargetRow.target ? outputTargetRow.target.label : "Unknown"
         color: root.bar.foreground
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.body
-        font.bold: sinkRow.isActive
+        font.bold: outputTargetRow.isActive
         elide: Text.ElideRight
         width: parent.width - Style.space(22) - Style.space(8)
         anchors.verticalCenter: parent.verticalCenter
@@ -1058,9 +1129,9 @@ Panel {
       onContainsMouseChanged: if (containsMouse) {
         root.cursorActive = true
         root.focusSection = "output"
-        root.selectedIndex = sinkRow.rowIndex
+        root.selectedIndex = outputTargetRow.rowIndex
       }
-      onClicked: root.setDefaultSink(sinkRow.node)
+      onClicked: root.setDefaultOutput(outputTargetRow.target)
     }
   }
 
