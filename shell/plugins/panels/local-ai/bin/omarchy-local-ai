@@ -101,7 +101,8 @@ resolve() {
     || { fail "recipe $id failed the safety gate"; return; }
   while IFS= read -r src; do
     case $src in
-      \~/.cache/*|/dev/dri/by-path) ;;
+      \~/.cache/*) [[ $src != *..* ]] || { fail "recipe $id mounts unsafe host path $src"; return; } ;;
+      /dev/dri/by-path) ;;
       /*) fail "recipe $id mounts unsafe host path $src"; return ;;
       *) src=$(cd "$root" && realpath "$src" 2>/dev/null) || { fail "recipe $id asset missing"; return; }
          [[ $src == "$root/"* ]] || { fail "recipe $id asset escapes the registry"; return; } ;;
@@ -204,7 +205,7 @@ build_argv() {
   v=$(jq -r '.launch.shm//empty' <<<"$r"); [[ -n $v ]] && a+=(--shm-size "$v")
   while IFS=$'\t' read -r src tgt mode; do
     [[ -n $src && -n $tgt ]] || continue
-    if [[ $src == \~/* ]]; then src=$HOME_DIR/${src#\~/}; mkdir -p "$src"
+    if [[ $src == \~/* ]]; then [[ $src != *..* ]] || { fail "mount outside boundary: $src"; return; }; src=$HOME_DIR/${src#\~/}; mkdir -p "$src"
     elif [[ $src != /* ]]; then src=$(cd "$root_real" && realpath "$src") || { fail "mount missing"; return; }; fi
     [[ $src == "$HOME_DIR/.cache/"* || $src == /dev/dri/by-path || $src == "$root_real/"* ]] || { fail "mount outside boundary: $src"; return; }
     a+=(--volume "$src:$tgt$mode")
@@ -250,9 +251,9 @@ wire() {
     mkdir -p "$d"
     cur='{}'; [[ -f $d/models.json ]] && cur=$(<"$d/models.json")
     jq -e 'type=="object"' >/dev/null <<<"$cur" || { fail "invalid $d/models.json"; return; }
-    tmp=$(mktemp "$d/.m.XXXXXX"); jq --argjson p "$p" '.providers["omarchy-local"]=$p' <<<"$cur" >"$tmp"; mv "$tmp" "$d/models.json"
+    tmp=$(mktemp "$d/.m.XXXXXX") && jq --argjson p "$p" '.providers["omarchy-local"]=$p' <<<"$cur" >"$tmp" && mv "$tmp" "$d/models.json"
     cur='{}'; [[ -f $d/settings.json ]] && cur=$(<"$d/settings.json")
-    tmp=$(mktemp "$d/.s.XXXXXX"); jq --arg m "$model" 'if (.defaultProvider//"omarchy-local")=="omarchy-local" then .defaultProvider="omarchy-local"|.defaultModel=$m else . end' <<<"$cur" >"$tmp"; mv "$tmp" "$d/settings.json"
+    tmp=$(mktemp "$d/.s.XXXXXX") && jq --arg m "$model" 'if .defaultProvider=="omarchy-local" then .defaultModel=$m else . end' <<<"$cur" >"$tmp" && mv "$tmp" "$d/settings.json"
   done
 }
 unwire() {
@@ -279,8 +280,8 @@ open_agent() {
     pi|omp) bin=$(bin_of "$name") || fail "$name is not installed" ;;
     *) fail "choose pi or omp" ;;
   esac
-  [[ $name == omp ]] && launch_tui "$bin" --auto-approve --provider omarchy-local --model "$served" --session-id "$sid" \
-    || launch_tui "$bin" --provider omarchy-local --model "$served" --session-id "$sid"
+  if [[ $name == omp ]]; then launch_tui "$bin" --auto-approve --provider omarchy-local --model "$served" --session-id "$sid"
+  else launch_tui "$bin" --provider omarchy-local --model "$served" --session-id "$sid"; fi
 }
 spawn() {
   if [[ ${OMARCHY_AI_FOREGROUND:-0} == 1 ]]; then "$SELF" "$@" >/dev/null 2>&1 || true; return; fi
@@ -324,10 +325,10 @@ w_download() {
     [[ $kind == dir && $file == *.gguf ]] && extra=("${file##*/}")
     if [[ $kind == hf ]]; then
       if [[ -n $hf ]]; then "$hf" download "$repo" --revision "$rev" >/dev/null 2>&1 & pid=$!
-      else docker run --rm --label "$LABEL.download=1" --entrypoint hf --volume "$base:/root/.cache/huggingface" "$img" download "$repo" --revision "$rev" >/dev/null 2>&1 & pid=$!; fi
+      else docker run --rm --user "$(id -u):$(id -g)" --label "$LABEL.download=1" --entrypoint hf --volume "$base:/root/.cache/huggingface" "$img" download "$repo" --revision "$rev" >/dev/null 2>&1 & pid=$!; fi
     else
       if [[ -n $hf ]]; then "$hf" download "$repo" "${extra[@]}" --revision "$rev" --local-dir "$base" >/dev/null 2>&1 & pid=$!
-      else docker run --rm --label "$LABEL.download=1" --entrypoint hf --volume "$base:$base" "$img" download "$repo" "${extra[@]}" --revision "$rev" --local-dir "$base" >/dev/null 2>&1 & pid=$!; fi
+      else docker run --rm --user "$(id -u):$(id -g)" --label "$LABEL.download=1" --entrypoint hf --volume "$base:$base" "$img" download "$repo" "${extra[@]}" --revision "$rev" --local-dir "$base" >/dev/null 2>&1 & pid=$!; fi
     fi
     while kill -0 "$pid" 2>/dev/null; do
       bytes=$(progress_bytes "$r")
@@ -424,7 +425,6 @@ adopt() {
   r=$(resolve "$rid" 2>/dev/null) || return 0; served=$(api models 2 2>/dev/null | jq -r '.data[0].id//empty') || return 0; [[ -n $served ]] || return 0
   ids=$(docker inspect -f '{{json .HostConfig.DeviceRequests}}' "$CTR" 2>/dev/null | jq -c '[.[]?.DeviceIDs[]?|tonumber]' 2>/dev/null || printf '[]'); [[ -n $ids ]] || ids='[]'
   sw '.active={recipeId:$r.id,modelId:$r.model.id,name:$r.model.name,servedModel:$s,container:$c,endpoint:("http://127.0.0.1:"+($p|tostring)+"/v1"),port:$p,gpuIndices:$ids,apiReady:true,toolCallReady:false,tools:($r.capabilities.tools//false)}|.models|=map(.active=(.recipeId==$r.id))|.state="ready"|.error=""' --argjson r "$r" --arg s "$served" --arg c "$CTR" --argjson p "$PORT" --argjson ids "$ids"
-  wire "$r" "$served" || true
 }
 usage() {
   echo 'Usage: omarchy-local-ai <command>

@@ -2,7 +2,7 @@
 
 One bar icon and one full panel for running validated registry models on
 local GPUs. The bar widget and dashboard render only from
-`omarchy local-ai snapshot`. They never embed model names, launch flags, or
+`omarchy local ai snapshot`. They never embed model names, launch flags, or
 fixed colors.
 
 `Panel.qml` is the bar icon and compact popup. `Dashboard.qml` is the
@@ -53,8 +53,10 @@ any -> error
 `open-agent` launches Pi or Oh My Pi through `omarchy-launch-tui` with
 `--provider omarchy-local --model <served>` and a fresh session id. On
 run, the controller writes an `omarchy-local` provider into
-`~/.pi/agent` and `~/.omp/agent` without clobbering some other default
-provider. Unload removes that provider.
+`~/.pi/agent` and `~/.omp/agent`. It updates `defaultModel` only when
+`defaultProvider` is already `omarchy-local`. A missing default is left
+alone. `snapshot` never writes agent config. Unload removes that
+provider.
 
 ## Registry
 
@@ -67,7 +69,7 @@ the tree with `OMARCHY_AI_REGISTRY`.
 
 The OpenAI-compatible endpoint binds to `127.0.0.1`. Only containers
 labeled `io.omarchy.local-ai=1` are adopted, started, stopped, or
-removed.
+removed. A `~/.cache` mount source that contains `..` is refused.
 
 ## Tests
 

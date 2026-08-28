@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 CLI="$ROOT/bin/omarchy-local-ai"
@@ -94,6 +94,7 @@ snap() { "$CLI" snapshot; }
 assert jq -e '.state=="uninitialized"' >/dev/null <<<"$(snap)"; ok 'fresh state is uninitialized before any scan'
 c_write omarchy-local-ai 1 1
 assert jq -e '.state=="ready" and .active.recipeId=="small-3090" and .active.apiReady and (.active.toolCallReady|not)' >/dev/null <<<"$(snap)"
+assert [ ! -e "$OMARCHY_AI_USER_HOME/.omp/agent/models.json" ]
 "$CLI" unload >/dev/null; ok 'snapshot adopts an owned live runtime after controller state is lost'
 "$CLI" scan >/dev/null
 assert jq -e '.state=="idle" and .registry.matching==3 and .registry.total==3 and (.gpus|length)==2
@@ -109,6 +110,7 @@ ok 'a registry recipe mounted at /models downloads via --local-dir with the exac
 assert jq -e '.state=="ready" and .active.recipeId=="small-3090" and .active.servedModel=="org/small"
   and .active.apiReady==true and .active.toolCallReady==false and .active.container=="omarchy-local-ai"' >/dev/null <<<"$(snap)"
 assert jq -e '.providers["omarchy-local"].models[0].id=="org/small"' >/dev/null "$OMARCHY_AI_USER_HOME/.pi/agent/models.json"
+assert jq -e '(.defaultProvider // "") == ""' >/dev/null "$OMARCHY_AI_USER_HOME/.pi/agent/settings.json"
 ok 'run transitions to ready, confirms API identity, and wires the collision-safe omarchy-local provider'; jq '.state="unloading"' "$OMARCHY_AI_STATE/snapshot.json" >"$TMP/s" && mv "$TMP/s" "$OMARCHY_AI_STATE/snapshot.json"; docker stop omarchy-local-ai >/dev/null; assert jq -e '.state=="unloading" and .active.apiReady' >/dev/null <<<"$(snap)"; jq '.state="ready"' "$OMARCHY_AI_STATE/snapshot.json" >"$TMP/s" && mv "$TMP/s" "$OMARCHY_AI_STATE/snapshot.json"; assert jq -e '.state=="error" and .active.apiReady==false and .active.container!=""' >/dev/null <<<"$(snap)"; docker start omarchy-local-ai >/dev/null; assert jq -e '.state=="ready" and .active.apiReady==true' >/dev/null <<<"$(snap)"; ok 'busy snapshots stay stable; accepted idle runtime loss is exposed without hiding unload'
 ( export XDG_RUNTIME_DIR="$TMP/xdg" HYPRLAND_INSTANCE_SIGNATURE=sig
   mkdir -p "$XDG_RUNTIME_DIR/hypr/sig" "$OMARCHY_AI_USER_HOME/.local/bin"
