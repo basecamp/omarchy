@@ -54,6 +54,10 @@ grep -F 'omarchy-crash-watch.service' "$ROOT/install/user/first-run/enable-user-
   fail "crash capture is no longer on by default for new installs"
 pass "crash capture is on by default"
 
+grep -F 'try-restart omarchy-crash-watch.service' "$ROOT/bin/omarchy-update-restart" >/dev/null ||
+  fail "updates leave the running watcher on the unlinked inode after pacman replaces it"
+pass "updates restart the crash watcher"
+
 require_command jq
 
 # The per-program mute, driven through the real watcher with a stubbed journal:
