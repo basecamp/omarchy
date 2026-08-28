@@ -46,10 +46,11 @@ Suggested issue title: `Package the native plugin runtime from a clean pinned Om
 
 - Class: activation blocker
 - Depends on: Z2-A1 and the final aggregate CMake/install layout; sibling `omarchy-pkgs` ownership decision
-- Scope: land the reviewed package recipe or select an equivalent package boundary, build without `--nocheck` from an exact clean source commit, and keep the private worker outside `PATH`. Higher-risk providers may be split into separate packages/services when that improves isolation, but package boundaries must not create version-skewed protocol modules.
+- Scope: land the reviewed package recipe or select an equivalent package boundary, build without `--nocheck` from an exact clean source commit in a compatible native test environment, and keep the private worker outside `PATH`. The official ISO helper currently invokes `makepkg --nodeps`, so its builder image must explicitly provision the recipe's native `makedepends` or the helper contract must change. Higher-risk providers may be split into separate packages/services when that improves isolation, but package boundaries must not create version-skewed protocol modules.
 - Acceptance criteria:
   - The committed recipe identifies the exact Omarchy source revision and produces a reproducible archive from a clean checkout.
   - Package checks run the complete intended Release aggregate rather than only the skeleton targets.
+  - Any privileged image-builder path that must use `--nocheck` is paired with separately recorded complete Debug and Release native-suite results for the exact source/package candidate; nested Bubblewrap, session-manager, or display failures in that container are not silently treated as product failures or omitted evidence.
   - The archive contains one ABI-compatible `Omarchy.PluginHost` module, the trusted host, private worker, permission/audit CLIs, systemd user unit, and required metadata with correct modes and no duplicate URI.
   - The worker is absent from `/usr/bin`, rejects direct execution, and the host/module have no unexpected RPATH/RUNPATH or undeclared runtime dependency.
   - The package verifier and an extracted-tree dynamic import pass against the exact archive digest recorded in evidence.
@@ -60,14 +61,14 @@ Suggested issue title: `Prove secure plugin installation and activation in a fre
 
 - Class: activation blocker
 - Depends on: Z2-A2, Z2-A3, available `omarchy-iso` checkout and acceptance harness
-- Scope: build a fresh ISO using the committed Omarchy and package sources, install without reusing a base image, and exercise the actual graphical session, systemd user service, Quickshell module, worker sandbox, permission review, surfaces, broker effects, update/revocation, and recovery. Do not run destructive graphical acceptance in the active development session.
+- Scope: build a fresh ISO using the committed Omarchy and package sources, install without reusing a base image, and inspect the actual graphical session, dormant systemd user unit, Quickshell module, and private worker boundary. Production activation, permission review, surfaces, broker effects, update/revocation, and recovery remain deferred until the inert host is composed and intentionally enabled. Do not run destructive graphical acceptance in the active development session.
 - Acceptance criteria:
   - Logs record the exact ISO, package archive digest, Omarchy commit, package commit, kernel, Qt, Bubblewrap, systemd, compositor, and GPU/software-render profile.
-  - The graphical-session service enables and starts correctly, Quickshell imports the installed module, and the production host—not a generic Qt probe—owns the plugin surface.
-  - The installed Pomodoro, pet, and fake-service examples pass their positive flows and the expected denial flows.
-  - VM evidence covers actual network namespace, home/bus/Wayland/agent denial, cgroup limits, crash/daemon/shell restart recovery, permission-expanding update, revocation, and direct-worker rejection.
-  - Screenshots and logs clearly identify trusted versus plugin pixels and show no permission prompt inside plugin-controlled content.
-  - The run closes the live compositor, fractional-DPR, monitor change, presentation latency, and clean-install gaps or records an explicit release blocker.
+  - The graphical-session unit is installed but remains disabled and inactive, Quickshell imports the installed module, and both exported types preserve their explicitly unavailable/disconnected state.
+  - The worker remains outside `PATH` and rejects direct execution; no reference CLI route, first-run step, migration, preset, package script, or wants symlink activates the runtime.
+  - VM evidence covers installed ownership/modes, exact package provenance, direct-worker rejection, QML ABI import, and dormant unit state. Network namespace, cgroup, recovery, update, revocation, and live surface proof remain separate production-host gates.
+  - Screenshots and logs clearly label the reference runtime as unavailable and do not imply that plugin pixels, permission prompts, or activation were exercised.
+  - The run closes the clean-install/package/QML-import/dormant-service gaps or records an explicit infrastructure blocker; live compositor surfaces, fractional DPR, monitor changes, and presentation latency remain deferred while the host is inert.
 
 ### Z2-A5: Freeze the schema-v1 transition and developer-mode policy
 
