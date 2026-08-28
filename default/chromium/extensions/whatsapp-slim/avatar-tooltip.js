@@ -61,7 +61,7 @@
   }
 
   function show(cell) {
-    const name = cell.dataset.waName || getName(cell);
+    const name = getName(cell);
     if (!name) return;
     tip.textContent = name;
     const r = cell.getBoundingClientRect();
