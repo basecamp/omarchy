@@ -4,7 +4,7 @@
 
 Commit `c19174a7` passes the standalone CMake install-surface audit. A source archive of that exact commit was configured as Release with `BUILD_TESTING=OFF`, `CMAKE_INSTALL_PREFIX=/usr`, and `CMAKE_SKIP_RPATH=ON`, then built and installed into a fresh `DESTDIR`. The install manifest and filesystem agree on exactly seven regular files. No service unit is installed by CMake; the Arch packaging patch owns the user unit and the package verifier checks it separately.
 
-This result does not close G4. Package provenance and graphical acceptance remain in F5, and the independently reproducible brokered-action teardown failure remains a release blocker.
+This point-in-time result did not close G4. Package provenance and graphical acceptance remain in F5. The later `bbf31c10` pidfd/reap correction resolved the independently reproducible brokered-action teardown failure; fresh Debug and Release aggregates and repeated real-Bubblewrap evidence are recorded in [`plugin-security-g4-release-gate.md`](plugin-security-g4-release-gate.md).
 
 ## Installed inventory
 

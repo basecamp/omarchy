@@ -2,13 +2,13 @@
 
 ## Current result
 
-The native runtime builds and installs into the intended package layout, and the archive verifier successfully loads both `PluginHostInfo` and the production `RemotePluginSurface` from the installed `Omarchy.PluginHost` QML ABI in an isolated staging tree. The archive contains the trusted host in `/usr/bin`, the worker outside `PATH` in `/usr/lib/omarchy/plugin-runtime`, the QML module in `/usr/lib/qt6/qml/Omarchy/PluginHost`, both permission/audit store CLIs, and the graphical-session-scoped systemd user unit. The host's dynamic dependencies include Qt Core, libseccomp, and libsystemd with no RPATH/RUNPATH; launcher linkage is applied by `launcher/CMakeLists.txt` after the host target is created.
+The native runtime builds and installs into the intended package layout, and the archive verifier successfully loaded both `PluginHostInfo` and the production `RemotePluginSurface` from the installed `Omarchy.PluginHost` QML ABI in an isolated staging tree. The prior archive contains the trusted host in `/usr/bin`, the worker outside `PATH` in `/usr/lib/omarchy/plugin-runtime`, the QML module in `/usr/lib/qt6/qml/Omarchy/PluginHost`, both permission/audit store CLIs, and the graphical-session-scoped systemd user unit. The host's dynamic dependencies include Qt Core, libseccomp, and libsystemd with no RPATH/RUNPATH; launcher linkage is applied by `launcher/CMakeLists.txt` after the host target is created.
 
 This is package-shape evidence, not a completed clean-install proof. The production host executable intentionally remains a long-running skeleton and `PluginHostInfo.available` remains false. The acceptance surface now fails if that property becomes true and labels the screenshot `ACTIVATION FEATURE-GATED`, so it cannot be cited as evidence that plugin activation, worker launch, broker traffic, or frame presentation is wired into the installed shell.
 
 ## Reproduced archive evidence
 
-The companion patch [`omarchy-dev-plugin-runtime.patch`](../native/plugin-runtime/packaging/omarchy-dev-plugin-runtime.patch) applies cleanly to a clean clone of the packaging master used for this proof and deliberately omits makepkg-generated `pkgver` drift. A clean, detached Omarchy source clone at final code candidate `7aaa9b4883d20f4c5d054e9ef281a7feb06d1655` produced this archive:
+The companion patch [`omarchy-dev-plugin-runtime.patch`](../native/plugin-runtime/packaging/omarchy-dev-plugin-runtime.patch) applies cleanly to a clean clone of the packaging master used for this proof and deliberately omits makepkg-generated `pkgver` drift. A clean, detached Omarchy source clone at package-proof candidate `7aaa9b4883d20f4c5d054e9ef281a7feb06d1655` produced this archive:
 
 ```text
 /tmp/omarchy-pkgs-f5-final-7aaa9b48/pkgbuilds/omarchy-dev/omarchy-dev-4.0.0.r1946.g7aaa9b4-1-x86_64.pkg.tar.zst
@@ -22,7 +22,7 @@ native/plugin-runtime/packaging/verify-package.sh /tmp/omarchy-pkgs-f5-final-7aa
 native/plugin-runtime/packaging/verify-package-test.sh /tmp/omarchy-pkgs-f5-final-7aaa9b48/pkgbuilds/omarchy-dev/omarchy-dev-4.0.0.r1946.g7aaa9b4-1-x86_64.pkg.tar.zst
 ```
 
-The documentation-only evidence commit after `7aaa9b48` does not change package inputs. The earlier archive from `c19174a77427404ccdcc2be9fc31287b14c25f95` remains historical pre-upstream-merge evidence only; the archive and digest above supersede it for the final code candidate.
+The archive and digest above supersede the earlier historical pre-upstream-merge archive from `c19174a77427404ccdcc2be9fc31287b14c25f95`. A subsequent install-surface correction made the reference unit conditional on the optional host binary and removed every automatic enable/start and end-user wrapper. Because that changes a packaged unit, the `7aaa9b48` archive is now prior package-shape evidence rather than proof of the final branch tip; F5 requires a fresh matching archive.
 
 The verifier now checks exact allowlists for the private runtime and QML module directories; regular-file, directory, ownership, and unsafe permission boundaries; the private worker's absence from `/usr/bin`; QML type metadata; x86-64 package identity; exact declared runtime dependencies; graphical-session service directives; protocol reporting; direct-worker fail-closed behavior; and an offscreen dynamic import from the extracted QML tree. All five installed ELF files are checked for their expected PIE/shared-object type, non-executable GNU stack, GNU RELRO, absence of RPATH/RUNPATH, bounded `DT_NEEDED` set, required direct dependencies, and successful `ldd -r` resolution.
 
@@ -47,4 +47,4 @@ cd ../omarchy-iso
 ./bin/omarchy-iso-test release/<generated-iso>.iso --no-preview
 ```
 
-F5 closes only when that run shows the exact installed archive, an enabled and active graphical-session host skeleton, the worker absent from `PATH` and rejecting direct execution, an ABI-matched QML import under Wayland, and collected acceptance logs/screenshots. Functional plugin activation remains a separate production-host integration requirement and must not be inferred from this checkpoint.
+F5 closes only when that run shows the exact installed archive, a disabled and inactive graphical-session host skeleton, the worker absent from `PATH` and rejecting direct execution, an ABI-matched QML import under Wayland, and collected acceptance logs/screenshots. Functional plugin activation remains a separate production-host integration requirement and must not be inferred from this checkpoint.

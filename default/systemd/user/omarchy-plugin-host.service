@@ -4,6 +4,7 @@ After=graphical-session.target
 PartOf=graphical-session.target
 ConditionEnvironment=OMARCHY_PATH
 ConditionEnvironment=WAYLAND_DISPLAY
+ConditionPathExists=/usr/bin/omarchy-plugin-host
 StartLimitIntervalSec=60
 StartLimitBurst=5
 

@@ -45,11 +45,13 @@ set -e
   fail "direct secure plugin worker launch is denied" "exit status was $worker_status"
 pass "direct secure plugin worker launch is denied"
 
-systemctl --user is-enabled --quiet omarchy-plugin-host.service ||
-  fail "secure plugin host service is enabled"
-systemctl --user is-active --quiet omarchy-plugin-host.service ||
-  fail "secure plugin host service is active"
-pass "secure plugin host service is enabled and active"
+if systemctl --user is-enabled --quiet omarchy-plugin-host.service; then
+  fail "feature-gated plugin host service is enabled"
+fi
+if systemctl --user is-active --quiet omarchy-plugin-host.service; then
+  fail "feature-gated plugin host service is active"
+fi
+pass "secure plugin host service remains disabled and inactive"
 
 /usr/lib/qt6/bin/qml "$ROOT/test/acceptance.d/fixtures/plugin-host-module.qml" \
   >"$ARTIFACTS/plugin-host-module.log" 2>&1 &

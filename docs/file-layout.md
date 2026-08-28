@@ -128,7 +128,7 @@ default/**                     ──►  omarchy-settings    /usr/share/omarchy
   ├─ xdg-terminal-exec/*.list                           /usr/share/xdg-terminal-exec/
   ├─ applications/mimeapps.list                         /usr/share/applications/mimeapps.list
   ├─ systemd/user/*.service                             /usr/lib/systemd/user/
-  │  └─ omarchy-plugin-host.service                    (enabled at first run; existing users get a migration)
+  │  └─ omarchy-plugin-host.service                    (feature-gated reference unit; installed dormant)
   ├─ systemd/user/app.slice.d/10-oomd.conf              /usr/lib/systemd/user/app.slice.d/
   ├─ systemd/system-sleep/{force-igpu,
   │    keyboard-backlight,unmount-fuse}                 /usr/lib/systemd/system-sleep/

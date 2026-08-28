@@ -69,11 +69,13 @@ grep -Fx 'ConditionEnvironment=OMARCHY_PATH' "$plugin_host_service" >/dev/null |
   fail "plugin host can start without the Omarchy runtime path"
 grep -Fx 'ConditionEnvironment=WAYLAND_DISPLAY' "$plugin_host_service" >/dev/null ||
   fail "plugin host can start without a Wayland display"
+grep -Fx 'ConditionPathExists=/usr/bin/omarchy-plugin-host' "$plugin_host_service" >/dev/null ||
+  fail "plugin host unit assumes the optional native executable exists"
 grep -Fx 'Restart=on-failure' "$plugin_host_service" >/dev/null ||
   fail "plugin host is not supervised after runtime failures"
-grep -F 'omarchy-plugin-host.service' "$first_run_units" >/dev/null ||
-  fail "first-run does not enable the plugin host"
-pass "plugin host follows the initialized graphical session"
+grep -F 'omarchy-plugin-host.service' "$first_run_units" >/dev/null &&
+  fail "first-run enables the feature-gated plugin host"
+pass "plugin host unit is guarded and dormant until product activation"
 
 fcitx_service="$ROOT/default/systemd/user/omarchy-fcitx5.service"
 grep -Fx 'ExecStart=/usr/bin/fcitx5 --disable notificationitem' "$fcitx_service" >/dev/null

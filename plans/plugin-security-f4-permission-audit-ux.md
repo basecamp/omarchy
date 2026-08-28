@@ -2,7 +2,7 @@
 
 ## Result
 
-The secure schema-v2 reference path now has an explicit whole-policy review command rather than requiring users to infer an install or update from one capability's JSON preview. `omarchy plugin permission review` displays the canonical plugin ID, complete immutable revision digest, complete policy fingerprint, generation, active/candidate target, and every permission delta. It labels each request as required or optional, uses stable capability wording, renders the bounded scope in plain language, and says whether an earlier grant was inherited.
+The secure schema-v2 reference path now has an explicit whole-policy review implementation rather than requiring users to infer an install or update from one capability's JSON preview. The directly tested `omarchy-plugin-permission-store review` binary displays the canonical plugin ID, complete immutable revision digest, complete policy fingerprint, generation, active/candidate target, and every permission delta. It labels each request as required or optional, uses stable capability wording, renders the bounded scope in plain language, and says whether an earlier grant was inherited. It is deliberately not routed as an end-user `omarchy` command until package ownership and product activation land together.
 
 New, expanded, incomparable, and required/optional-changed requests require typing exactly `grant` or `deny` for each capability. A denial is valid for either an optional or required request; a required denial deliberately leaves the candidate unable to activate. Narrowed, removed, and unchanged authority is shown but does not manufacture a new consent decision. The existing single-capability `grant`, `deny`, and `revoke` commands remain available for inspection and administration, and `diff --format human` renders the same full review without mutation.
 
@@ -16,7 +16,7 @@ The current permission CLI is a trusted host-side administration tool. It does n
 
 ## Audit inspection
 
-`omarchy plugin audit` invokes the installed native audit inspector. Human output spells closed audit enums as outcomes and actions such as `DENIED — plugin operation decided`, `permission revoked`, `stale plugin generation`, and `user gesture already used`. Every record shows the canonical plugin ID, full revision, generation, trusted producer, capability/version, named operation, decision, and correlation when applicable. It contains no plugin message, manifest reason, path, URL, payload, notification text, storage key/value, token, or response body. TSV remains available for exact machine processing with `--format tsv`.
+The directly tested `omarchy-plugin-audit-store` native inspector spells closed audit enums as outcomes and actions such as `DENIED — plugin operation decided`, `permission revoked`, `stale plugin generation`, and `user gesture already used`. Every record shows the canonical plugin ID, full revision, generation, trusted producer, capability/version, named operation, decision, and correlation when applicable. It contains no plugin message, manifest reason, path, URL, payload, notification text, storage key/value, token, or response body. TSV remains available for exact machine processing with `--format tsv`; no end-user router command advertises the inspector in the dormant reference release.
 
 The human formatter reads only C3-validated records and does not reinterpret worker-controlled logs. Filtering by plugin uses the canonical bounded plugin identifier. Failed or corrupt audit stores remain errors rather than an empty reassuring history.
 

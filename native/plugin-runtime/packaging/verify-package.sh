@@ -179,6 +179,7 @@ for directive in \
   'PartOf=graphical-session.target' \
   'ConditionEnvironment=OMARCHY_PATH' \
   'ConditionEnvironment=WAYLAND_DISPLAY' \
+  'ConditionPathExists=/usr/bin/omarchy-plugin-host' \
   'ExecStart=/usr/bin/omarchy-plugin-host' \
   'Restart=on-failure' \
   'WantedBy=graphical-session.target'; do

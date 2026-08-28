@@ -296,7 +296,7 @@ Deferred behavior is unsupported and denied in the first slice. It does not just
 - Host/worker/protocol/bridge version reporting and atomic package upgrade.
 - Worker outside ordinary PATH and unusable without inherited launch context.
 - Authoritative native source at `native/plugin-runtime`, build output at `build/plugin-runtime`, CTest labels `unit`, `protocol`, `adversarial`, `property`, and `integration`, and an installed-artifact smoke in the fresh-ISO package path.
-- A graphical-session-scoped `omarchy-plugin-host.service` and separate bridge client lifecycle; unit installation and enablement are package/VM-tested.
+- A graphical-session-scoped `omarchy-plugin-host.service` and separate bridge client lifecycle; the reference unit is installed only for package-shape review and remains disabled until product activation is package/VM-tested.
 
 ### `B1` manifest and lifecycle contract
 

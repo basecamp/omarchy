@@ -32,7 +32,7 @@ std::filesystem::path default_store() {
 }
 
 void usage() {
-  std::cout << "Usage: omarchy plugin audit [--plugin ID] "
+  std::cout << "Usage: omarchy-plugin-audit-store [--plugin ID] "
                "[--format human|tsv] [--store DIR]\n"
                "\nShows trusted, redacted plugin security events. Plugin ID "
                "and revision are never abbreviated.\n";

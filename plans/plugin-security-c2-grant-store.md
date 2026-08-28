@@ -30,7 +30,7 @@ Decisions for a candidate never replace active grants. Lifecycle code may promot
 
 ## CLI
 
-`omarchy-plugin-permission` forwards to the native `omarchy-plugin-permission-store` implementation and declares command metadata for the existing router. It provides deterministic JSON for `list`, `diff`, `grant`, `deny`, and `revoke`.
+The native `omarchy-plugin-permission-store` implementation provides deterministic JSON for `list`, `diff`, `grant`, `deny`, and `revoke`. It remains a directly tested reference binary and is not exposed through the end-user command router until the native package and product activation path land together.
 
 All operations remain behind `OMARCHY_PLUGIN_SCHEMA_V2_ENABLED=1` during rollout. Mutation bindings require `--schema-version 2`, plugin ID, revision digest, source request fingerprint, generation, the complete repeated required/optional request set, and a capability. The CLI parses only the closed B2 quota, token, and resource scope forms used by the current registry; it has no command, path, URL, socket, or arbitrary payload escape hatch.
 
