@@ -11,6 +11,8 @@ Item {
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
 
   readonly property int batteryThreshold: 10
+  // Must match the headline omarchy-battery-low gives the notification.
+  readonly property string lowBatterySummary: "Time to recharge!"
   property string pendingPowerSource: ""
 
   PersistentProperties {
@@ -31,6 +33,16 @@ Item {
     var state = BatteryModel.shouldWarnLowBattery(UPower.displayDevice, UPower.onBattery, UPowerDeviceState.Discharging, batteryThreshold, persisted.notifiedLowBattery)
     persisted.notifiedLowBattery = state.notifiedLowBattery
     if (state.notify) sendLowBatteryWarning(state.level)
+    else if (state.dismiss) dismissLowBatteryWarning()
+  }
+
+  // The warning is critical urgency, so the shell gives it no expiry and it
+  // stays on screen until it is clicked. Take it down once the battery is no
+  // longer low, which is normally the moment the charger goes in.
+  function dismissLowBatteryWarning() {
+    if (dismissProcess.running) return
+    dismissProcess.command = ["omarchy-notification-dismiss", lowBatterySummary]
+    dismissProcess.running = true
   }
 
   function sendLowBatteryWarning(level) {
@@ -54,6 +66,8 @@ Item {
   }
 
   Process { id: warningProcess }
+
+  Process { id: dismissProcess }
 
   Process {
     id: powerProfileProcess
