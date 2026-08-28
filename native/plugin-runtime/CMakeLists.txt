@@ -44,6 +44,7 @@ foreach(contract IN ITEMS manifest wire surface permissions sandbox)
 endforeach()
 
 add_subdirectory(discovery)
+add_subdirectory(revision-store)
 
 if(BUILD_TESTING)
   add_subdirectory(tests)
