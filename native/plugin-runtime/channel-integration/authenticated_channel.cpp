@@ -145,9 +145,9 @@ bool AuthenticatedBrokerChannel::negotiate(std::chrono::milliseconds timeout) {
       return false;
   }
   bool aggregate_ready = false;
-  if (!authority_->is_current(identity_))
+  if (!authority_->is_current(identity_) || !dispatcher_->accepts(identity_))
     return fail(ChannelFailure::stale_generation,
-                "launch generation changed during endpoint negotiation");
+                "launch generation or dispatcher binding changed during endpoint negotiation");
   if (readiness_.ready(aggregate_ready) != wire::FatalReason::none ||
       !aggregate_ready || !worker_->alive())
     return fail(ChannelFailure::readiness_failed,
@@ -216,9 +216,9 @@ AuthenticatedBrokerChannel::dispatch_one(std::chrono::milliseconds timeout) {
          "pidfd reports worker exit before broker dispatch");
     return DispatchStatus::fatal;
   }
-  if (!authority_->is_current(identity_)) {
+  if (!authority_->is_current(identity_) || !dispatcher_->accepts(identity_)) {
     fail(ChannelFailure::stale_generation,
-         "launch generation changed before broker receive");
+         "launch generation or dispatcher binding changed before broker receive");
     return DispatchStatus::fatal;
   }
   auto message = worker_->receive(
@@ -255,9 +255,9 @@ AuthenticatedBrokerChannel::dispatch_one(std::chrono::milliseconds timeout) {
          "pidfd reports worker exit before trusted dispatch");
     return DispatchStatus::fatal;
   }
-  if (!authority_->is_current(identity_)) {
+  if (!authority_->is_current(identity_) || !dispatcher_->accepts(identity_)) {
     fail(ChannelFailure::stale_generation,
-         "launch generation changed before trusted dispatch");
+         "launch generation or dispatcher binding changed before trusted dispatch");
     return DispatchStatus::fatal;
   }
   bool dispatched = false;

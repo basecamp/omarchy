@@ -334,6 +334,18 @@ void fake_suite() {
   }
   {
     Session session("valid", FAKE_BWRAP_PATH);
+    require(session.opened.channel->negotiate(2s),
+            "dispatcher-transition fixture did not become ready");
+    session.dispatcher->accepted_plugin = "org.other_plugin";
+    require(session.opened.channel->dispatch_one(2s) ==
+                    channel::DispatchStatus::fatal &&
+                session.opened.channel->failure() ==
+                    channel::ChannelFailure::stale_generation &&
+                session.dispatcher->calls == 0 && session.scope->removes == 1,
+            "changed dispatcher binding reached authenticated dispatch");
+  }
+  {
+    Session session("valid", FAKE_BWRAP_PATH);
     require(session.opened.channel->dispatch_one(0ms) ==
                     channel::DispatchStatus::not_ready &&
                 session.opened.channel->failed() &&
