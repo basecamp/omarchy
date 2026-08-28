@@ -1,0 +1,3 @@
+#!/bin/bash
+
+echo "libQt6Core.so.6 => not found"

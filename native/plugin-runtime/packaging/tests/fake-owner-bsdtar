@@ -1,0 +1,9 @@
+#!/bin/bash
+
+set -euo pipefail
+
+if [[ ${1:-} == "-tvf" ]]; then
+  echo "-rwxr-xr-x 0 attacker root 1 Jan 01 00:00 ${3:-member}"
+else
+  exec "${REAL_BSDTAR:?}" "$@"
+fi
