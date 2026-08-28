@@ -2,6 +2,7 @@
 
 # omarchy:summary=Set the mic-mute indicator LED on laptops that expose a platform::micmute LED node.
 # omarchy:args=<on|off>
+# omarchy:examples=omarchy brightness keyboard mute on | omarchy brightness keyboard mute off
 
 if [[ -e /sys/class/leds/platform::micmute/brightness ]]; then
   case "$1" in
