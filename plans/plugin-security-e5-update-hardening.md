@@ -40,4 +40,4 @@ cmake --build /tmp/omarchy-plugin-e5
 ctest --test-dir /tmp/omarchy-plugin-e5 --output-on-failure
 ```
 
-For the bounded sanitizer pass, add `-DPLUGIN_SECURITY_UPDATE_SANITIZERS=ON`; C0-C2 retain their own isolated sanitizer suites. The current C2 reference store deliberately places a bounded but large fixed state object on the stack, so the instrumented vertical-slice binary needs a 32 MiB test stack (`ulimit -s 32768`) while that implementation remains in use. Leak detection may be disabled only when the managed ptrace environment prevents LeakSanitizer operation.
+For the bounded sanitizer pass, use uniform AddressSanitizer and UndefinedBehaviorSanitizer compiler and executable-linker flags across the standalone tree; C0-C2 also retain isolated sanitizer suites. Commit `c32121f3` moved the bounded permission collection storage off stack, and the E5, lifecycle, manifest, discovery, revision, and grant tests now pass with the ordinary 8 MiB stack. Leak detection may be disabled only when the managed ptrace environment prevents LeakSanitizer operation.

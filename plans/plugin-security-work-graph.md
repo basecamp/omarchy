@@ -60,6 +60,7 @@ This table is the durable execution ledger. Update it when a node is assigned, c
 | `F4` | complete | `wave0_native_build` | Commit `bf404f73`; whole-policy review, explicit per-capability decisions, fail-closed noninteractive behavior, human/JSON diffs, redacted audit inspection, and cancellation atomicity pass focused, CLI, pseudoterminal, and sanitized proofs |
 | `F5` | active | primary, `wave0_trust_map` | Commits `7304cd9f`, `5651dfc3`, `aeab6c82`, and `c32121f3`; the verified x86_64 package passes its full 41-test Release check after moving bounded grant storage off stack; exact clean-clone reproducibility, installed production bridge completeness, and fresh-ISO execution remain under review |
 | `F6` | complete | `wave0_native_build` | Commit `a40833d4`; 20 pinned real plugins map current behavior to sandboxed full-QML surfaces and explicit broker authority, with 14 deterministic scans, six fail-closed asset-limit results, known scanner blind spots, and Debug/Release/sanitized E1/E2/E3 proof |
+| `G4` | active | `wave0_channel` | Commit `c19174a7`; production targets and the single installed QML module are aggregate-integrated, Debug/Release pass 54/54, and the lifecycle/E5 uniform sanitizer set passes at the default 8 MiB stack; final gate awaits accepted F5 clean-install and VM evidence |
 
 Nodes not listed here remain `pending` as represented by the graph. Add them to the live table when they become `ready`; completed rows remain as an audit trail rather than being removed.
 

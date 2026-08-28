@@ -19,7 +19,7 @@ This checkpoint independently reviewed the E4 update transition and F3 durable l
 - `plugin-update-transition` retains old active, rejected/candidate, disabled, removed, and promotion-failed broker pointers and proves each is poisoned. Disable with an attached candidate tears down and poisons both generations.
 - Existing revision-store, supervisor-health, and transition tests continue to cover atomic activation faults, monotonic rollback, pidfd-backed crash cleanup, ambiguous teardown quarantine, and restart rejection.
 
-Debug, Release, and AddressSanitizer plus UndefinedBehaviorSanitizer run the six lifecycle-critical tests: `plugin-revision-store`, `plugin-grant-store`, `plugin-lifecycle`, `plugin-broker-runtime`, `plugin-supervisor-health`, and `plugin-update-transition`. Sanitizer execution requires a 64 MiB test stack because the pre-existing fixed-capacity permission objects exceed the default ASan stack after instrumentation; LeakSanitizer remains disabled under ptrace.
+Debug, Release, and AddressSanitizer plus UndefinedBehaviorSanitizer run the six lifecycle-critical tests: `plugin-revision-store`, `plugin-grant-store`, `plugin-lifecycle`, `plugin-broker-runtime`, `plugin-supervisor-health`, and `plugin-update-transition`. Commit `c32121f3` moved the bounded permission collection storage off stack; a uniform sanitizer build now passes the E5/lifecycle dependency set with the ordinary 8 MiB stack. LeakSanitizer remains disabled only where ptrace or an exact sandbox environment prevents it from operating.
 
 ## Remaining boundary
 
