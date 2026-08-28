@@ -87,10 +87,9 @@ codex)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
   ;;
 hermes)
-  # Hermes has no "start interactive, seeded with this prompt" mode. --oneshot
-  # answers the prompt and exits, which is the closest it offers.
   if [[ -n ${prompt:-} ]]; then
-    command=(hermes --yolo --oneshot "$prompt")
+    # Keep inherited flags after chat so older Hermes subparsers do not clear them.
+    command=(hermes chat --yolo --tui "--query=$prompt")
   else
     command=(hermes --yolo)
   fi
