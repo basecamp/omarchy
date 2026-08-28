@@ -1,0 +1,205 @@
+#!/bin/bash
+
+# omarchy:summary=Use a paired Bluetooth keyboard for encrypted disk unlock
+# omarchy:args=[enable|disable|status] [--device <address>] [--controller <address>] [--yes] [--no-rebuild]
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+action=${1:-enable}
+[[ $# -gt 0 ]] && shift
+
+device=""
+controller=""
+assume_yes=false
+no_rebuild=false
+
+while (( $# )); do
+  case "$1" in
+    --device)
+      device=${2:-}
+      shift 2
+      ;;
+    --controller)
+      controller=${2:-}
+      shift 2
+      ;;
+    --yes)
+      assume_yes=true
+      shift
+      ;;
+    --no-rebuild)
+      no_rebuild=true
+      shift
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 1
+      ;;
+  esac
+done
+
+case "$action" in
+  enable | disable | status) ;;
+  *)
+    echo "Usage: omarchy setup security bluetooth-unlock [enable|disable|status] [--device <address>] [--controller <address>] [--yes] [--no-rebuild]" >&2
+    exit 1
+    ;;
+esac
+
+config_dir=${OMARCHY_BLUETOOTH_UNLOCK_CONFIG_DIR:-/etc/omarchy}
+config_file="$config_dir/bluetooth-unlock.conf"
+mkinitcpio_dir=${OMARCHY_BLUETOOTH_UNLOCK_MKINITCPIO_DIR:-/etc/mkinitcpio.conf.d}
+hook_dropin="$mkinitcpio_dir/zz-omarchy-bluetooth-unlock.conf"
+initcpio_dir=${OMARCHY_BLUETOOTH_UNLOCK_INITCPIO_DIR:-/usr/lib/initcpio}
+install_hook="$initcpio_dir/install/omarchy-bluetooth-unlock"
+runtime_hook="$initcpio_dir/hooks/omarchy-bluetooth-unlock"
+state_dir=${OMARCHY_BLUETOOTH_UNLOCK_STATE_DIR:-/var/lib/bluetooth}
+
+valid_address() {
+  [[ $1 =~ ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$ ]]
+}
+
+normalize_address() {
+  printf '%s\n' "${1^^}"
+}
+
+configured() {
+  [[ -f $config_file && -f $hook_dropin && -f $install_hook && -f $runtime_hook ]]
+}
+
+rebuild() {
+  $no_rebuild && return 0
+  if omarchy-cmd-missing limine-mkinitcpio; then
+    echo "Bluetooth disk unlock requires the Limine boot setup." >&2
+    exit 1
+  fi
+  echo "Regenerating the boot image..."
+  sudo limine-mkinitcpio
+}
+
+if [[ $action == "status" ]]; then
+  if configured; then
+    name=$(sudo sed -n 's/^NAME=//p' "$config_file" 2>/dev/null || true)
+    echo "Bluetooth disk unlock is enabled${name:+ for $name}."
+    exit 0
+  fi
+  echo "Bluetooth disk unlock is disabled."
+  exit 1
+fi
+
+if [[ $action == "disable" ]]; then
+  if ! configured; then
+    echo "Bluetooth disk unlock is already disabled."
+    exit 0
+  fi
+
+  if ! $assume_yes && ! gum confirm "Disable Bluetooth keyboard disk unlock?"; then
+    exit 0
+  fi
+
+  sudo rm -f -- "$config_file" "$hook_dropin" "$install_hook" "$runtime_hook"
+  rebuild
+  echo "Bluetooth disk unlock is disabled. Keep a wired or 2.4 GHz keyboard available for the next boot."
+  exit 0
+fi
+
+if [[ ! -e /sys/class/bluetooth && -z $controller ]]; then
+  echo "No Bluetooth adapter is available." >&2
+  exit 1
+fi
+
+if ! grep -RqsE '^[[:space:]]*HOOKS=.*(^|[[:space:](])encrypt([[:space:])]|$)' "$mkinitcpio_dir"; then
+  echo "Bluetooth disk unlock currently requires Omarchy's encrypt initramfs hook." >&2
+  exit 1
+fi
+
+declare -a candidates=()
+if [[ -z $device ]]; then
+  while read -r candidate; do
+    valid_address "$candidate" || continue
+    info=$(timeout 3s bluetoothctl info "$candidate" 2>/dev/null || true)
+    [[ $info == *"Paired: yes"* && $info == *"Trusted: yes"* ]] || continue
+    [[ $info == *"00001812-0000-1000-8000-00805f9b34fb"* || $info == *"00001124-0000-1000-8000-00805f9b34fb"* ]] || continue
+    name=$(sed -n 's/^[[:space:]]*Name: //p' <<<"$info" | head -1 | tr '\t\r\n' '   ' | sed 's/[[:space:]]*$//')
+    candidates+=("$candidate" "${name:-Bluetooth keyboard}")
+  done < <(bluetoothctl devices Paired 2>/dev/null | awk '{print $2}')
+
+  if (( ${#candidates[@]} == 0 )); then
+    echo "No paired and trusted Bluetooth keyboard was found." >&2
+    echo "Pair and trust the keyboard first, then run this setup again." >&2
+    exit 1
+  fi
+
+  if (( ${#candidates[@]} == 2 )); then
+    device=${candidates[0]}
+    name=${candidates[1]}
+  else
+    choices=()
+    for ((i = 0; i < ${#candidates[@]}; i += 2)); do
+      choices+=("${candidates[i + 1]}  ${candidates[i]}")
+    done
+    selection=$(printf '%s\n' "${choices[@]}" | gum choose --header "Select Bluetooth keyboard") || exit 0
+    device=${selection##*  }
+    name=${selection%  *}
+  fi
+else
+  valid_address "$device" || { echo "Invalid Bluetooth device address." >&2; exit 1; }
+  info=$(timeout 3s bluetoothctl info "$device" 2>/dev/null || true)
+  if [[ -n $info ]]; then
+    [[ $info == *"Paired: yes"* && $info == *"Trusted: yes"* ]] || {
+      echo "The selected Bluetooth device is not paired and trusted." >&2
+      exit 1
+    }
+    [[ $info == *"00001812-0000-1000-8000-00805f9b34fb"* || $info == *"00001124-0000-1000-8000-00805f9b34fb"* ]] || {
+      echo "The selected Bluetooth device is not a keyboard." >&2
+      exit 1
+    }
+    name=$(sed -n 's/^[[:space:]]*Name: //p' <<<"$info" | head -1 | tr '\t\r\n' '   ' | sed 's/[[:space:]]*$//')
+  else
+    name="Bluetooth keyboard"
+  fi
+fi
+
+device=$(normalize_address "$device")
+if [[ -z $controller ]]; then
+  controller=$(timeout 3s bluetoothctl show 2>/dev/null | awk '/^Controller / {print $2; exit}')
+fi
+valid_address "$controller" || { echo "Could not determine the Bluetooth controller address." >&2; exit 1; }
+controller=$(normalize_address "$controller")
+
+if ! sudo test -d "$state_dir/$controller/$device"; then
+  echo "The bond for $name is missing from BlueZ system storage." >&2
+  exit 1
+fi
+if sudo test -L "$state_dir/$controller" || sudo test -L "$state_dir/$controller/$device"; then
+  echo "Refusing unsafe symlinks in BlueZ system storage." >&2
+  exit 1
+fi
+
+if ! $assume_yes; then
+  echo
+  echo "This adds $name to the boot image so it can connect before LUKS asks for your disk password."
+  echo "Its Bluetooth bond key will be stored on the unencrypted EFI System Partition."
+  echo "Bluetooth can fail because of radio interference, firmware, batteries, or hardware changes."
+  echo "Keep a wired or 2.4 GHz keyboard available as a recovery method."
+  echo
+  gum confirm "Enable Bluetooth keyboard disk unlock?" || exit 0
+fi
+
+stage=$(mktemp -d)
+trap 'rm -rf "$stage"' EXIT
+install -Dm755 "$OMARCHY_PATH/default/initcpio/install/omarchy-bluetooth-unlock" "$stage/install/omarchy-bluetooth-unlock"
+install -Dm755 "$OMARCHY_PATH/default/initcpio/hooks/omarchy-bluetooth-unlock" "$stage/hooks/omarchy-bluetooth-unlock"
+install -Dm644 "$OMARCHY_PATH/default/initcpio/omarchy-bluetooth-unlock.conf" "$stage/zz-omarchy-bluetooth-unlock.conf"
+printf 'CONTROLLER=%s\nDEVICE=%s\nNAME=%s\n' "$controller" "$device" "$name" >"$stage/bluetooth-unlock.conf"
+
+sudo install -d -m 0755 "$config_dir" "$mkinitcpio_dir" "$initcpio_dir/install" "$initcpio_dir/hooks"
+sudo install -m 0755 "$stage/install/omarchy-bluetooth-unlock" "$install_hook"
+sudo install -m 0755 "$stage/hooks/omarchy-bluetooth-unlock" "$runtime_hook"
+sudo install -m 0644 "$stage/zz-omarchy-bluetooth-unlock.conf" "$hook_dropin"
+sudo install -m 0600 "$stage/bluetooth-unlock.conf" "$config_file"
+
+rebuild
+echo "Bluetooth disk unlock is enabled for $name."
+echo "Test it on the next reboot, with a wired or 2.4 GHz keyboard nearby for recovery."

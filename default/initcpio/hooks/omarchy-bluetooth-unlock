@@ -1,0 +1,28 @@
+#!/usr/bin/ash
+
+run_hook() {
+  local waited=0
+
+  mkdir -p /run/dbus /run/bluetooth
+  dbus-daemon --system
+  /usr/lib/bluetooth/bluetoothd >/dev/null 2>&1 &
+  echo "$!" >/run/bluetooth/omarchy-bluetoothd.pid
+
+  # Give udev and the adapter firmware a short head start. Do not block the
+  # recovery path indefinitely: a wired keyboard must always reach cryptsetup.
+  set -- /sys/class/bluetooth/hci*
+  while [ ! -e "$1" ] && [ "$waited" -lt 30 ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+    set -- /sys/class/bluetooth/hci*
+  done
+}
+
+run_cleanuphook() {
+  if [ -s /run/bluetooth/omarchy-bluetoothd.pid ]; then
+    kill "$(cat /run/bluetooth/omarchy-bluetoothd.pid)" 2>/dev/null || true
+  fi
+  if [ -s /run/dbus/pid ]; then
+    kill "$(cat /run/dbus/pid)" 2>/dev/null || true
+  fi
+}
