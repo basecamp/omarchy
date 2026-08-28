@@ -188,6 +188,8 @@ ShellRoot {
           var id = root.createdIds[j]
           root.assertTrue(root.finiteDimension(item.implicitWidth), id + " has a finite implicitWidth")
           root.assertTrue(root.finiteDimension(item.implicitHeight), id + " has a finite implicitHeight")
+          if (id === "omarchy.weather")
+            root.assertEqual(item.openPanelIndicatorWidth, 0, "omarchy.weather leaves the open-panel mark on the slot fallback when icon-only")
         }
 
         if (root.weatherTempWidget) {
@@ -195,6 +197,8 @@ ShellRoot {
             "omarchy.weather composes the temperature label on a horizontal bar when showTemperature is set")
           root.assertTrue(root.finiteDimension(root.weatherTempWidget.implicitWidth),
             "omarchy.weather showTemperature variant has a finite implicitWidth")
+          root.assertTrue(root.finiteDimension(root.weatherTempWidget.openPanelIndicatorWidth),
+            "omarchy.weather temperature variant exposes a finite open-panel indicator width tied to the label")
         }
 
         fakeBar.vertical = true

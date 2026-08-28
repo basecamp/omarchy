@@ -20,6 +20,14 @@ BarWidget {
     return p.label + " " + p.reportTempNum + p.tempUnit
   }
 
+  // With the padded text label showing, the open-panel marker should span the
+  // painted "<icon> <temp>°" text rather than 55% of the whole padded slot
+  // (Bar.qml's fallback), the same hint the clock exposes. Icon-only keeps the
+  // fallback, unchanged from the stock widget.
+  readonly property real openPanelIndicatorWidth: root.showTemperature && button.item
+    ? (button.item.labelWidth || 0)
+    : 0
+
   function handlePress(b) {
     if (!root.bar) return
     if (b === Qt.RightButton) root.bar.run("omarchy-notification-send \"$(omarchy-weather-status)\"")
