@@ -7,9 +7,10 @@ import type { TuiPlugin } from "@opencode-ai/plugin/tui"
 // themes/omarchy.json on every theme change; this watches the file and swaps
 // the live theme, so running agents are never interrupted.
 //
-// Live retint is the default: "omarchy", "system" (follow-the-desktop, which
-// used to depend on SIGUSR2), and generated omarchy-<hash> names all opt in.
-// Picking any other theme in the picker opts out.
+// Live retint is the default for "omarchy" and generated omarchy-<hash>
+// names. OpenCode's built-in "system" theme is terminal-adaptive (ANSI /
+// "none") and does not read omarchy.json -- picking it opts out of live
+// retint. Any other picker choice opts out too.
 //
 // theme.install() re-upserts content only while the theme is unknown to the
 // registry, so each new palette is installed under a content-hashed name and
@@ -66,7 +67,7 @@ const plugin: TuiPlugin = async (api) => {
   const generatedName = new RegExp(`^${THEME_NAME}-[0-9a-f]{8}$`)
   const owned = () => {
     const selected = api.theme.selected
-    return selected === THEME_NAME || selected === "system" || generatedName.test(selected)
+    return selected === THEME_NAME || generatedName.test(selected)
   }
 
   const apply = async () => {

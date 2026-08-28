@@ -9,7 +9,7 @@ echo "Retint opencode with the Omarchy theme instead of restarting it"
 # Existing installs get the plugin wired into tui.json and are pointed at the
 # Omarchy theme so desktop theme changes live-retint OpenCode, the same way
 # every other themed app follows Omarchy. Pick a different theme in OpenCode
-# to opt out.
+# (including "system", which is terminal-adaptive and will not follow) to opt out.
 
 # Mirror how opencode itself finds its config directory.
 OPENCODE_CONFIG="${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}"
