@@ -234,6 +234,18 @@ ShellRoot {
     }
   }
 
+  Component {
+    id: customBarComponent
+
+    Bar {
+      omarchyPath: shell.omarchyPath
+      barWidgetRegistry: shell.barWidgetRegistry
+      barConfig: shell.barConfig
+      shell: shell
+      manifest: shell.barManifestFor((shell.activeBarId) ? shell.activeBarId : shell.defaultBarId)
+    }
+  }
+
   Loader {
     id: defaultBarLoader
 
@@ -247,7 +259,7 @@ ShellRoot {
     id: pluginBarLoader
 
     active: !shell.pluginReloading && shell.activeBarId !== shell.defaultBarId && shell.activeBarSourceUrl !== ""
-    source: shell.activeBarId !== shell.defaultBarId ? shell.activeBarSourceUrl : ""
+    sourceComponent: customBarComponent 
     asynchronous: true
     onLoaded: shell.configureBar(item, shell.activeBarManifest)
     onActiveChanged: if (!active) shell.bar = null
