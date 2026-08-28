@@ -1,6 +1,8 @@
 # Draft PR: add a feature-gated secure plugin reference runtime
 
-> Draft only. Do not open this PR until G4 closes. The package-repository, fresh-ISO/VM, and production-host limitations are part of the proposed PR body and must not be removed to make the branch appear production-ready.
+> Draft reference PR only. It is safe to open for architecture and security-boundary review, but it must not be marked ready for review or merged until G4 closes. The package-repository, fresh-ISO/VM, and production-host limitations are part of the proposed PR body and must not be removed to make the branch appear production-ready.
+
+This is a deliberately broad reference branch: 355 files and about 51,000 added lines include production contracts, adversarial proofs, representative fixtures, historical spike evidence, and the execution ledger. Reviewers should use the review order below and may request stacked implementation PRs after the boundary is accepted; opening this draft is not a request for line-by-line merge approval of the whole branch.
 
 Proposed base: the protected `jacob-vincent-mink/omarchy:quattro` branch, whose current history is merged into this branch. Proposed head: `jacob-vincent-mink/omarchy:plugin-security-model`.
 
@@ -8,7 +10,7 @@ Proposed base: the protected `jacob-vincent-mink/omarchy:quattro` branch, whose 
 
 This PR adds a feature-gated reference implementation for running third-party arbitrary QML outside `omarchy-shell`, rendering it through host-owned surfaces, and brokering every system effect through authenticated, explicitly granted operations.
 
-It does not replace the current schema-v1 plugin path. Legacy QML remains explicitly unsafe/unmigrated, and the installed native host deliberately reports unavailable until production composition and fresh-ISO acceptance are complete.
+It does not replace the current schema-v1 plugin path. Legacy QML remains explicitly unsafe/unmigrated, and the reference native host deliberately reports unavailable until production composition and fresh-ISO acceptance are complete.
 
 ## Why
 
@@ -33,7 +35,7 @@ The worker controls its scene graph and pixels. Omarchy controls identity, immut
 - A separate Qt Quick worker using `QQuickRenderControl`, strict imports/object bounds, a 64 MiB decoded-image allocation ceiling, software rendering, host-created two-slot shared memory, bounded frame/input schemas, and trusted-copy presentation.
 - Host-owned surface admission, placement, dimensions, monitor identity, DPR, pacing, focus, capture, input regions, lock-screen policy, inspection, and termination seams.
 - A closed broker with `storage.private@1`, `notifications.send@1`, `audio.play-cue@1`, and `service.fake-status@1`; exact request/result bounds; audit-before-effect; cancellation, revocation, handles, and poisoned-state behavior.
-- Whole-policy permission review with full identity and diff, explicit required/optional grant or denial, no unattended consent, plus a redacted human audit inspector.
+- A directly tested whole-policy permission-review implementation with full identity and diff, explicit required/optional grant or denial, no unattended consent, plus a redacted human audit inspector; neither inspector is exposed through the end-user router.
 - Health, resource limits, request/surface accounting, crash backoff, disable/remove/reinstall behavior, stale-channel cleanup, and restart recovery.
 - Pomodoro, transparent pet, and fake authenticated-service fixtures proving arbitrary-QML bar, overlay, and brokered-action paths.
 - Report-only migration inventory and a pinned 20-plugin today-to-tomorrow matrix.
@@ -114,7 +116,7 @@ Real Bubblewrap credential/namespace checks must run outside managed development
 - Aggregate registration includes the production trusted bridge, render session, surface host, expressive surface, representative fixtures, and vertical proofs, but `host/main.cpp` does not compose them into live discovery, activation, broker, or render pumping.
 - Schema-v2 discovery/lifecycle is not switched into the current end-user install/enable/update commands.
 - The reference permission/audit inspectors have no end-user `omarchy` command route, and the reference user service remains disabled and inactive.
-- The clean-source Arch archive proves package shape and checks, but its companion recipe patch is not committed in `omarchy-pkgs`.
+- The prior clean-source Arch archive proves the pre-deactivation package shape and checks. The dormant-unit change still needs a fresh matching archive, and its companion recipe patch is not committed in `omarchy-pkgs`.
 - No fresh `omarchy-iso` build/test has run in this workspace. There is no clean-install service log, live Quickshell import, compositor-owned plugin surface screenshot, or end-to-end installed activation proof.
 - The checked-in PNGs are real offscreen Qt Quick output, not screenshots of a live layer-shell surface.
 - Only four capability families are implemented. Network, general files, credentials, clipboard reads, capture, input injection, devices, media control, package management, compositor mutation, URL handlers, and real authenticated services remain denied/unimplemented.
