@@ -2,6 +2,7 @@
 
 # omarchy:summary=Adjust keyboard backlight brightness using available steps.
 # omarchy:args=<up|down|cycle|off|restore>
+# omarchy:examples=omarchy brightness keyboard up | omarchy brightness keyboard down | omarchy brightness keyboard off | omarchy brightness keyboard restore
 
 direction="${1:-up}"
 
