@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # omarchy:summary=Set the default browser for Omarchy and XDG handlers
-# omarchy:args=[chromium|chrome|brave|brave-origin|edge|firefox|zen]
-# omarchy:examples=omarchy default browser firefox | omarchy default browser brave
+# omarchy:args=[chromium|ungoogled-chromium|helium|chrome|brave|brave-origin|edge|firefox|zen]
+# omarchy:examples=omarchy default browser helium | omarchy default browser firefox
 
 installing=false
 if [[ ${1:-} == "--install" ]]; then
@@ -12,7 +12,14 @@ fi
 
 if (($# == 0)); then
   case "$(env -u BROWSER xdg-settings get default-web-browser)" in
-  chromium.desktop) echo "chromium" ;;
+  chromium.desktop)
+    if omarchy-pkg-present ungoogled-chromium-bin; then
+      echo "ungoogled-chromium"
+    else
+      echo "chromium"
+    fi
+    ;;
+  helium.desktop) echo "helium" ;;
   google-chrome.desktop) echo "chrome" ;;
   brave-browser.desktop) echo "brave" ;;
   brave-origin.desktop) echo "brave-origin" ;;
@@ -26,6 +33,8 @@ fi
 
 case "$1" in
 chromium) browser="chromium"; command="chromium"; desktop_id="chromium.desktop"; name="Chromium"; glyph= ;;
+ungoogled-chromium) browser="ungoogled-chromium"; command="chromium"; desktop_id="chromium.desktop"; name="Ungoogled Chromium"; glyph= ;;
+helium) browser="helium"; command="helium-browser"; desktop_id="helium.desktop"; name="Helium"; glyph= ;;
 chrome) browser="chrome"; command="google-chrome-stable"; desktop_id="google-chrome.desktop"; name="Chrome"; glyph=󰊯 ;;
 brave) browser="brave"; command="brave"; desktop_id="brave-browser.desktop"; name="Brave"; glyph=󰖟 ;;
 brave-origin) browser="brave-origin"; command="brave-origin"; desktop_id="brave-origin.desktop"; name="Brave Origin"; glyph=󰖟 ;;
@@ -33,12 +42,14 @@ edge) browser="edge"; command="microsoft-edge-stable"; desktop_id="microsoft-edg
 firefox) browser="firefox"; command="firefox"; desktop_id="firefox.desktop"; name="Firefox"; glyph=󰈹 ;;
 zen) browser="zen"; command="zen-browser"; desktop_id="zen.desktop"; name="Zen"; glyph=󰖟 ;;
 *)
-  echo "Usage: omarchy-default-browser <chromium|chrome|brave|brave-origin|edge|firefox|zen>"
+  echo "Usage: omarchy-default-browser <chromium|ungoogled-chromium|helium|chrome|brave|brave-origin|edge|firefox|zen>"
   exit 1
   ;;
 esac
 
-if omarchy-cmd-missing "$command"; then
+if omarchy-cmd-missing "$command" ||
+  { [[ $browser == "chromium" ]] && omarchy-pkg-missing chromium; } ||
+  { [[ $browser == "ungoogled-chromium" ]] && omarchy-pkg-missing ungoogled-chromium-bin; }; then
   if [[ $installing == "false" ]]; then
     exec omarchy-launch-floating-terminal-with-presentation omarchy-default-browser --install "$browser"
   else
