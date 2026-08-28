@@ -33,7 +33,19 @@ echo -e "\e[32mRemoving fingerprint scanner from authentication.\n\e[0m"
 remove_pam_config
 remove_lock_fingerprint_pam
 
-echo "Removing fingerprint packages..."
-omarchy-pkg-drop fprintd libfprint libfprint-git
+# Only drop what this machine's fingerprint setup actually installed. A stack
+# the user brought themselves -- open-fprintd, or anything else answering the
+# fprintd interfaces -- is not ours to uninstall, and libfprint under it is a
+# dependency of that stack's own client package, so pacman refuses the removal
+# and this script would exit nonzero having half-finished. pacman's database
+# is already the record of who installed what; nothing needs to be written
+# down separately.
+if omarchy-pkg-present fprintd; then
+  echo "Removing fingerprint packages..."
+  omarchy-pkg-drop fprintd libfprint libfprint-git
+else
+  echo "Leaving the installed fingerprint packages alone; Omarchy didn't install them."
+  echo "Your enrolled fingerprints are untouched. Remove them with: fprintd-delete \$USER"
+fi
 
-echo -e "\e[32mFingerprint authentication has been completely removed.\e[0m"
+echo -e "\e[32mFingerprint authentication has been removed.\e[0m"
