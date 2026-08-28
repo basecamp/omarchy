@@ -132,3 +132,15 @@ Every widget is one entry in one of the three layout arrays, and its settings si
 One rule worth internalizing: **once you have your own `shell.json`, it's canonical**. Until you customize anything, the shell reads Omarchy's default file. The moment you drag a widget, run `omarchy bar`, or edit the file yourself, you own it — there's no deep merge, so new default widgets in future Omarchy releases won't appear on your bar automatically. `omarchy bar defaults` puts the shipped layout back whenever you want a clean slate.
 
 The same file also holds your idle timings at the top level, outside the `bar` key: `idle.screensaver` and `idle.lock`, both in seconds since you went idle. So the default screensaver kicks in at 150 seconds and the lock at 300.
+
+## Workspaces
+
+The numbers on the left are your Hyprland workspaces. Five of them stay on the bar at all times — dimmed while empty, lit once something is running there — and any workspace past those five joins them as soon as it has a window. Click one to focus it.
+
+If you'd rather have the whole set in front of you, `workspaceCount` on the widget's entry says how many stay put:
+
+```json
+{ "id": "omarchy.workspaces", "workspaceCount": 10 }
+```
+
+That keeps 1 through 9 and 0 on the bar whether or not anything is running on them. Anything from 1 to 10 works.
