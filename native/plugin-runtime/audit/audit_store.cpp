@@ -465,9 +465,9 @@ void validate_query(const Query &query) {
        query.sequence_at_least > query.sequence_at_most) ||
       (query.plugin && !canonical_id(query.plugin->view())) ||
       (query.producer && !permissions::valid_audit_producer(*query.producer)) ||
-      (query.event &&
-       static_cast<std::uint8_t>(*query.event) >
-           static_cast<std::uint8_t>(permissions::AuditEvent::handle_denied)) ||
+      (query.event && static_cast<std::uint8_t>(*query.event) >
+                          static_cast<std::uint8_t>(
+                              permissions::AuditEvent::worker_disabled)) ||
       (query.outcome &&
        static_cast<std::uint8_t>(*query.outcome) >
            static_cast<std::uint8_t>(permissions::AuditOutcome::failed)))

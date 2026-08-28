@@ -438,6 +438,11 @@ enum class AuditEvent : std::uint8_t {
   capability_revoked,
   handle_issued,
   handle_denied,
+  worker_started,
+  worker_health,
+  worker_crashed,
+  worker_stopped,
+  worker_disabled,
 };
 enum class AuditOutcome : std::uint8_t { allowed, denied, cancelled, failed };
 enum class AuditMetric : std::uint8_t {

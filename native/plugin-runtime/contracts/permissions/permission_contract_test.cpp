@@ -542,6 +542,27 @@ void audit_contract() {
         invalid_log.append(static_cast<AuditProducer>(255), draft, 1, 1);
       },
       "audit accepted an unknown producer");
+  AuditDraft worker{.event = AuditEvent::worker_crashed,
+                    .outcome = AuditOutcome::failed,
+                    .plugin = PluginId("org.example.timer"),
+                    .revision = digest('a'),
+                    .generation = 9,
+                    .correlation = 0,
+                    .operation = std::nullopt,
+                    .capability = std::nullopt,
+                    .decision = GrantDecisionCode::ungranted,
+                    .metadata = {}};
+  worker.metadata.push_back(
+      {.metric = AuditMetric::retry_after_seconds, .value = 2});
+  validate_audit_draft(worker);
+  auto invalid_worker = worker;
+  invalid_worker.correlation = 1;
+  reject([&] { validate_audit_draft(invalid_worker); },
+         "worker audit accepted a broker correlation");
+  invalid_worker = worker;
+  invalid_worker.operation = OperationId::storage_read;
+  reject([&] { validate_audit_draft(invalid_worker); },
+         "worker audit accepted an operation authority field");
   AuditLog<2> log;
   const auto &first = log.append(AuditProducer::broker, draft, 1000, 2000);
   const auto fingerprint = audit_record_fingerprint(first);

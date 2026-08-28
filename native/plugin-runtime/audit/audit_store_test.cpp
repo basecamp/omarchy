@@ -82,6 +82,24 @@ permissions::AuditDraft revocation_draft() {
   };
 }
 
+permissions::AuditDraft worker_draft() {
+  permissions::AuditDraft draft{
+      .event = permissions::AuditEvent::worker_crashed,
+      .outcome = permissions::AuditOutcome::failed,
+      .plugin = permissions::PluginId("org.example.timer"),
+      .revision = digest('a'),
+      .generation = 9,
+      .correlation = 0,
+      .operation = std::nullopt,
+      .capability = std::nullopt,
+      .decision = permissions::GrantDecisionCode::ungranted,
+      .metadata = {},
+  };
+  draft.metadata.push_back(
+      {.metric = permissions::AuditMetric::retry_after_seconds, .value = 2});
+  return draft;
+}
+
 void test_append_query_export_and_retention() {
   TemporaryDirectory temporary;
   audit::AuditStore store(temporary.path() / "audit", {.maximum_records = 2});
@@ -148,6 +166,18 @@ void test_validation_and_authoritative_time() {
   require(store.append(permissions::AuditProducer::broker, operation_draft())
               .status.ok(),
           "authoritative time fixture append failed");
+  require(store.append(permissions::AuditProducer::supervisor, worker_draft())
+              .status.ok(),
+          "supervisor worker event append failed");
+  audit::Query worker_query;
+  worker_query.event = permissions::AuditEvent::worker_crashed;
+  const auto workers = store.query(worker_query);
+  require(workers.status.ok() && workers.records.size() == 1 &&
+              workers.records.front().producer ==
+                  permissions::AuditProducer::supervisor &&
+              !workers.records.front().operation &&
+              !workers.records.front().capability,
+          "supervisor worker event did not round-trip redacted");
   audit::Query unbounded;
   unbounded.maximum_results = 0;
   require(store.query(unbounded).status.code ==

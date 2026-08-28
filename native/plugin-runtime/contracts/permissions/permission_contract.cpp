@@ -613,7 +613,7 @@ void validate_audit_draft(const AuditDraft &draft) {
               canonical_digest(draft.revision) && draft.generation > 0,
           "invalid audit identity");
   require(static_cast<std::uint8_t>(draft.event) <=
-                  static_cast<std::uint8_t>(AuditEvent::handle_denied) &&
+                  static_cast<std::uint8_t>(AuditEvent::worker_disabled) &&
               static_cast<std::uint8_t>(draft.outcome) <=
                   static_cast<std::uint8_t>(AuditOutcome::failed) &&
               static_cast<std::uint8_t>(draft.decision) <=
@@ -644,6 +644,15 @@ void validate_audit_draft(const AuditDraft &draft) {
     require(draft.operation.has_value() && draft.capability.has_value() &&
                 draft.correlation > 0,
             "operation audit event has invalid fields");
+    break;
+  case AuditEvent::worker_started:
+  case AuditEvent::worker_health:
+  case AuditEvent::worker_crashed:
+  case AuditEvent::worker_stopped:
+  case AuditEvent::worker_disabled:
+    require(!draft.operation.has_value() && !draft.capability.has_value() &&
+                draft.correlation == 0,
+            "worker audit event has invalid fields");
     break;
   }
   FixedSet<AuditMetric, 8> metrics;

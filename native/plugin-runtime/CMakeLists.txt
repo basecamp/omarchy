@@ -66,6 +66,13 @@ add_subdirectory(lifecycle)
 add_subdirectory(update-hardening)
 add_subdirectory(migration-report)
 
+if(TARGET omarchy-plugin-launcher
+    AND TARGET omarchy-plugin-audit-store
+    AND TARGET omarchy-plugin-surface-contract
+    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/supervisor-health/CMakeLists.txt")
+  add_subdirectory(supervisor-health)
+endif()
+
 if(TARGET omarchy-plugin-broker-core
     AND TARGET omarchy-plugin-providers
     AND TARGET omarchy-plugin-grant-store
