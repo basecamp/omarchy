@@ -1,0 +1,60 @@
+# Resolve PCI by-path entries in AQ_DRM_DEVICES to real DRM nodes.
+# Aquamarine splits this variable on ':' (hyprwm/aquamarine#167), so a path
+# like /dev/dri/by-path/pci-0000:13:00.0-card is truncated, Hyprland dies,
+# and SDDM autologin loops with no compositor error.
+#
+# Sourced from ~/.config/uwsm/env-hyprland.d after the wiki-documented
+# env-hyprland export. Colon-free pins (cardN, udev names) are left alone.
+
+omarchy_sanitize_aq_drm_devices() {
+  [ -n "${AQ_DRM_DEVICES:-}" ] || return 0
+
+  _omarchy_aq_rest=$AQ_DRM_DEVICES
+  _omarchy_aq_out=
+
+  while [ -n "$_omarchy_aq_rest" ]; do
+    case "$_omarchy_aq_rest" in
+      *:/*)
+        _omarchy_aq_path=${_omarchy_aq_rest%%:/*}
+        _omarchy_aq_rest=/${_omarchy_aq_rest#*:/}
+        ;;
+      *)
+        _omarchy_aq_path=$_omarchy_aq_rest
+        _omarchy_aq_rest=
+        ;;
+    esac
+
+    [ -n "$_omarchy_aq_path" ] || continue
+
+    case "$_omarchy_aq_path" in
+      *:*)
+        _omarchy_aq_real=
+        if [ -e "$_omarchy_aq_path" ] || [ -L "$_omarchy_aq_path" ]; then
+          _omarchy_aq_real=$(readlink -f "$_omarchy_aq_path" 2>/dev/null || true)
+        fi
+        case "${_omarchy_aq_real:-}" in
+          ""|*:* ) continue ;;
+        esac
+        _omarchy_aq_path=$_omarchy_aq_real
+        ;;
+    esac
+
+    if [ -n "$_omarchy_aq_out" ]; then
+      _omarchy_aq_out=$_omarchy_aq_out:$_omarchy_aq_path
+    else
+      _omarchy_aq_out=$_omarchy_aq_path
+    fi
+  done
+
+  if [ -n "$_omarchy_aq_out" ]; then
+    AQ_DRM_DEVICES=$_omarchy_aq_out
+    export AQ_DRM_DEVICES
+  else
+    unset AQ_DRM_DEVICES
+  fi
+
+  unset _omarchy_aq_rest _omarchy_aq_out _omarchy_aq_path _omarchy_aq_real
+}
+
+omarchy_sanitize_aq_drm_devices
+unset -f omarchy_sanitize_aq_drm_devices
