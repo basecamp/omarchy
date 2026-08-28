@@ -67,3 +67,7 @@ if(PLUGIN_SECURITY_BUILD_FUZZERS)
   endforeach()
   add_custom_target(plugin-security-fuzzers DEPENDS ${plugin_security_fuzzers})
 endif()
+
+if(TARGET omarchy-plugin-launcher AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../launcher/tests/CMakeLists.txt")
+  add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../launcher/tests" launcher-tests)
+endif()

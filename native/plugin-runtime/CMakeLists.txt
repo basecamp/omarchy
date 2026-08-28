@@ -43,6 +43,11 @@ foreach(contract IN ITEMS manifest wire surface permissions sandbox)
   endif()
 endforeach()
 
+if(TARGET omarchy-plugin-sandbox-policy
+    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/launcher/CMakeLists.txt")
+  add_subdirectory(launcher)
+endif()
+
 add_subdirectory(discovery)
 add_subdirectory(revision-store)
 

@@ -4,6 +4,7 @@
 #include <QTextStream>
 
 #include "omarchy/plugin_runtime/Version.h"
+#include "omarchy/plugin_runtime/launcher/launcher.h"
 
 namespace {
 int usage_error(const QString &argument) {
@@ -24,6 +25,20 @@ int main(int argc, char *argv[]) {
                         << QString::fromLatin1(version.data(), version.size())
                         << " envelope="
                         << omarchy::plugin_runtime::envelope_version() << '\n';
+    return 0;
+  }
+  if (arguments.size() == 2 &&
+      arguments.at(1) == QStringLiteral("--check-launch-prerequisites")) {
+    auto supervisor =
+        omarchy::plugin_runtime::launcher::Supervisor::production();
+    std::string error;
+    if (!supervisor.prerequisites(error)) {
+      qCritical().noquote()
+          << "omarchy-plugin-host: launcher prerequisites unavailable:"
+          << QString::fromStdString(error);
+      return 1;
+    }
+    qInfo() << "omarchy-plugin-host: launcher prerequisites available";
     return 0;
   }
   if (arguments.size() > 1) {
