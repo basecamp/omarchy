@@ -81,6 +81,11 @@ shell/**                       ──►  omarchy             /usr/share/omarchy
 version                        ──►  omarchy             /usr/share/omarchy/version
                                                         + /etc/skel/.local/state/omarchy/migrations/*
 
+native/plugin-runtime/         ──►  future native       /usr/bin/omarchy-plugin-host
+                                      package             /usr/lib/omarchy/plugin-runtime/omarchy-plugin-qml-worker
+                                                          /usr/lib/qt6/qml/Omarchy/PluginHost/
+                                                        (source/install skeleton only; packaging is not wired yet)
+
 config/**                      ──►  omarchy-settings    /etc/skel/.config/**         (seeds new users)
                                                         /usr/share/omarchy/config/** (resync source)
 etc/fastfetch/config.jsonc     ──►  omarchy-settings    /etc/fastfetch/config.jsonc
@@ -123,6 +128,7 @@ default/**                     ──►  omarchy-settings    /usr/share/omarchy
   ├─ xdg-terminal-exec/*.list                           /usr/share/xdg-terminal-exec/
   ├─ applications/mimeapps.list                         /usr/share/applications/mimeapps.list
   ├─ systemd/user/*.service                             /usr/lib/systemd/user/
+  │  └─ omarchy-plugin-host.service                    (enabled at first run; existing users get a migration)
   ├─ systemd/user/app.slice.d/10-oomd.conf              /usr/lib/systemd/user/app.slice.d/
   ├─ systemd/system-sleep/{force-igpu,
   │    keyboard-backlight,unmount-fuse}                 /usr/lib/systemd/system-sleep/

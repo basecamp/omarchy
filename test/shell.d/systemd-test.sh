@@ -58,6 +58,23 @@ grep -F 'omarchy-update-user-notify' "$first_run_units" >/dev/null &&
   fail "first-run still enables the retired notifier units"
 pass "first-run enables the login-only migration notifier"
 
+plugin_host_service="$ROOT/default/systemd/user/omarchy-plugin-host.service"
+grep -Fx 'ExecStart=/usr/bin/omarchy-plugin-host' "$plugin_host_service" >/dev/null ||
+  fail "plugin host service does not use its package-backed executable"
+grep -Fx 'After=graphical-session.target' "$plugin_host_service" >/dev/null ||
+  fail "plugin host starts before the graphical environment is imported"
+grep -Fx 'PartOf=graphical-session.target' "$plugin_host_service" >/dev/null ||
+  fail "plugin host can outlive the graphical session"
+grep -Fx 'ConditionEnvironment=OMARCHY_PATH' "$plugin_host_service" >/dev/null ||
+  fail "plugin host can start without the Omarchy runtime path"
+grep -Fx 'ConditionEnvironment=WAYLAND_DISPLAY' "$plugin_host_service" >/dev/null ||
+  fail "plugin host can start without a Wayland display"
+grep -Fx 'Restart=on-failure' "$plugin_host_service" >/dev/null ||
+  fail "plugin host is not supervised after runtime failures"
+grep -F 'omarchy-plugin-host.service' "$first_run_units" >/dev/null ||
+  fail "first-run does not enable the plugin host"
+pass "plugin host follows the initialized graphical session"
+
 fcitx_service="$ROOT/default/systemd/user/omarchy-fcitx5.service"
 grep -Fx 'ExecStart=/usr/bin/fcitx5 --disable notificationitem' "$fcitx_service" >/dev/null
 grep -Fx 'Restart=always' "$fcitx_service" >/dev/null ||

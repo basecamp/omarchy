@@ -1,0 +1,14 @@
+[Unit]
+Description=Omarchy plugin host
+After=graphical-session.target
+PartOf=graphical-session.target
+ConditionEnvironment=OMARCHY_PATH
+ConditionEnvironment=WAYLAND_DISPLAY
+
+[Service]
+ExecStart=/usr/bin/omarchy-plugin-host
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target
