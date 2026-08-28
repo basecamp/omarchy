@@ -55,10 +55,11 @@ This table is the durable execution ledger. Update it when a node is assigned, c
 | `F3` | complete | `wave0_native_build` | Commit `146c9e43`; durable disable/remove prevents restart resurrection, clears grant/decision authority, tears down active and candidate workers, rejects stale rollback/rebind, and requires a fresh generation on reinstall across strict/sanitized crash-recovery proofs |
 | `F0` | complete | primary | Commits `424882f9` and `efbd5cf1`; exact dispatcher identity closes a cross-plugin deputy seam, while real Bubblewrap denies home, D-Bus, Wayland, agent sockets, sibling state, network, descendants, revision writes, forged peers, and stale authority in Debug/Release/sanitized campaigns |
 | `F1` | active | `wave0_channel` | Malformed protocol and resource-exhaustion campaign in progress |
-| `F2` | active | `wave0_trust_map` | Rendering fidelity, latency, DPI, multi-monitor, focus, and visual proof campaign in progress |
+| `F2` | complete | `wave0_trust_map` | Commits `7304cd9f` and `f0246905`; inspected DPR1/DPR2 pet and narrow/wide Pomodoro artifacts, bounded render/copy/input metrics, logical input scaling, focus, alpha, and host-owned monitor placement pass Debug/Release/sanitized proofs |
 | `G3` | complete | `wave0_trust_map`, `wave0_native_build` | Commits `17c4211b` and `c2ae1599`; hostile reviews closed input-device, QML-exposure, teardown, retained-broker, corrupt-grant restart, and reinstall-generation seams |
-| `F4` | active | `wave0_native_build` | Permission UX and audit comprehensibility review in progress |
-| `F5` | active | primary | Disposable-VM packaging and graphical acceptance campaign in progress |
+| `F4` | complete | `wave0_native_build` | Commit `bf404f73`; whole-policy review, explicit per-capability decisions, fail-closed noninteractive behavior, human/JSON diffs, redacted audit inspection, and cancellation atomicity pass focused, CLI, pseudoterminal, and sanitized proofs |
+| `F5` | active | primary, `wave0_trust_map` | Commit `7304cd9f`; package archive verifier and graphical installed-module acceptance landed; real Arch archive builds after `067f117d`, while fresh-ISO execution and production-host completeness remain under review |
+| `F6` | active | `wave0_native_build` | Representative-plugin migration dry runs in progress |
 
 Nodes not listed here remain `pending` as represented by the graph. Add them to the live table when they become `ready`; completed rows remain as an audit trail rather than being removed.
 
