@@ -7,11 +7,13 @@ if systemctl is-enabled docker.service >/dev/null 2>&1; then
 fi
 
 # docker info talks to the socket, which is enough to start dockerd so inspect works.
-sudo docker info >/dev/null 2>&1 || exit 0
+# Let a cancelled sudo or a down dockerd fail the script so omarchy-migrate
+# leaves this pending instead of marking it complete.
+sudo docker info >/dev/null
 
 found=0
 for name in mysql8 postgres18 mariadb11 redis mongodb mssql; do
-  if sudo docker inspect "$name" >/dev/null 2>&1; then
+  if sudo docker inspect --type container "$name" >/dev/null 2>&1; then
     found=1
     break
   fi

@@ -34,7 +34,7 @@ printf '%s\n' "$*" >>"$DOCKER_LOG"
 if [[ $1 == "info" ]]; then
   exit 0
 fi
-if [[ $1 == "inspect" && $2 == "postgres18" ]]; then
+if [[ $1 == "inspect" && $2 == "--type" && $3 == "container" && $4 == "postgres18" ]]; then
   exit 0
 fi
 exit 1
@@ -59,6 +59,8 @@ DOCKER_LOG="$DOCKER_LOG" \
 
 grep -Fqx -- "enable --now docker.service" "$SYSTEMCTL_LOG" ||
   fail "migration does not enable docker.service when a Docker DB container exists"
+grep -Fqx -- "inspect --type container postgres18" "$DOCKER_LOG" ||
+  fail "migration does not inspect containers by type"
 pass "migration enables docker.service when a Docker DB container exists"
 
 : >"$SYSTEMCTL_LOG"
@@ -83,3 +85,27 @@ if grep -Fqx -- "enable --now docker.service" "$SYSTEMCTL_LOG"; then
   fail "migration enables docker.service when no Docker DB container exists"
 fi
 pass "migration leaves docker.service alone when no Docker DB container exists"
+
+: >"$SYSTEMCTL_LOG"
+: >"$DOCKER_LOG"
+
+cat >"$tmp_dir/bin/docker" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >>"$DOCKER_LOG"
+if [[ $1 == "info" ]]; then
+  exit 1
+fi
+exit 0
+SH
+chmod +x "$tmp_dir/bin/docker"
+
+if PATH="$tmp_dir/bin:$PATH" \
+SYSTEMCTL_LOG="$SYSTEMCTL_LOG" \
+DOCKER_LOG="$DOCKER_LOG" \
+  bash -euo pipefail "$migration" >/dev/null 2>&1; then
+  fail "migration treats docker info failure as success"
+fi
+if grep -Fqx -- "enable --now docker.service" "$SYSTEMCTL_LOG"; then
+  fail "migration enables docker.service after docker info failure"
+fi
+pass "migration stays pending when docker info fails"
