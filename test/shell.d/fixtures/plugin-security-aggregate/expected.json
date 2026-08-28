@@ -1,0 +1,21 @@
+{
+  "roots": [
+    ["installed", "available", 4, 1],
+    ["builtin", "available", 2, 0]
+  ],
+  "summary": {
+    "blocked": 1,
+    "discovered": 6,
+    "findings": 9,
+    "scanned": 5,
+    "severity": {"critical": 1, "high": 3, "info": 3, "medium": 1, "review": 1}
+  },
+  "plugins": [
+    ["builtin", "bar/widgets/Clock.manifest.json", "scanned", "omarchy.clock", "00136ee84d43d421004e375a86f42ed47d7d418a30f38a8586ed03c4aac1b998", ["notification.access", "manifest.entry-points"]],
+    ["builtin", "panels/weather/manifest.json", "scanned", "omarchy.weather", "4c3cef93cf7336e7a4b5c6efce0c60dc433ccb140aff1f47014359773a2ae8fd", ["environment.read", "manifest.entry-points"]],
+    ["installed", "alpha", "scanned", "example.alpha", "941750cc069718ef243898fbc91f30e80c502cb1b4ba6a26ab4154b255717cf3", ["process.shell", "process.qml", "manifest.entry-points"]],
+    ["installed", "linked", "blocked", null, null, []],
+    ["installed", "malformed", "scanned", "malformed", "71de23ab87f6db2bd2045fb313e667fc79352f548bf5986e5c2299b48db70011", ["manifest.invalid"]],
+    ["installed", "no-manifest", "scanned", "no-manifest", "0d159375fa7b483023ee5117a8adce11feade72de6af97081861e3380eab02d6", ["manifest.missing"]]
+  ]
+}

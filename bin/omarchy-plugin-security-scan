@@ -1,12 +1,13 @@
 #!/usr/bin/python3
 # omarchy:summary=Inventory plugin behaviors for secure migration
-# omarchy:args=<plugin-directory> [--format markdown|json]
-# omarchy:examples=omarchy plugin security scan ~/.config/omarchy/plugins/my-plugin --format markdown
+# omarchy:args=<plugin-directory>|--all [--format markdown|json]
+# omarchy:examples=omarchy plugin security scan ~/.config/omarchy/plugins/my-plugin --format markdown | omarchy plugin security scan --all --format json
 """Statically inventory a plugin without executing or modifying its content."""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import html
 import json
 import os
@@ -22,6 +23,8 @@ MAX_FILES = 4096
 MAX_FILE_BYTES = 1024 * 1024
 MAX_TOTAL_BYTES = 16 * 1024 * 1024
 MAX_FINDINGS = 4096
+MAX_INVENTORY_PLUGINS = 512
+MAX_INVENTORY_FINDINGS = 16384
 TEXT_SUFFIXES = {
   ".bash",
   ".c",
@@ -184,8 +187,12 @@ def files(root: Path) -> Iterator[tuple[int, tuple[str, ...], str, os.stat_resul
   if hasattr(os, "O_NOFOLLOW"):
     flags |= os.O_NOFOLLOW
   root_fd = os.open(root, flags)
+  entry_count = 0
   try:
     for directory, directories, names, directory_fd in os.fwalk(".", follow_symlinks=False, dir_fd=root_fd):
+      entry_count += len(directories) + len(names)
+      if entry_count > MAX_FILES:
+        raise ScanError(f"filesystem entry count exceeds {MAX_FILES}")
       traversable: list[str] = []
       for name in sorted(directories):
         try:
@@ -247,36 +254,52 @@ def add(findings: list[Finding], finding: Finding) -> None:
   findings.append(finding)
 
 
-def scan(root: Path) -> dict[str, Any]:
+def scan(root: Path, identity_manifest: str | None = None) -> dict[str, Any]:
   if root.is_symlink() or not root.is_dir():
     raise ScanError("plugin path must be a real directory, not a symlink")
 
   findings: list[Finding] = []
   plugin_id = root.name if canonical_plugin_id(root.name) else "unknown-plugin"
+  manifest_schema: int | None = None
+  manifest_version: str | None = None
+  identity_manifest_seen = False
+  snapshot = hashlib.sha256()
+  snapshot.update(b"OMARCHY-INVENTORY-SNAPSHOT-V1\0")
   file_count = 0
   total_bytes = 0
   for directory_fd, parts, name, metadata in files(root):
     path = relative_path(parts, name)
+    path_bytes = path.encode("utf-8", errors="surrogateescape")
+    snapshot.update(len(path_bytes).to_bytes(8, "big"))
+    snapshot.update(path_bytes)
+    snapshot.update(stat.S_IMODE(metadata.st_mode).to_bytes(4, "big"))
     file_count += 1
     if file_count > MAX_FILES:
       raise ScanError(f"file count exceeds {MAX_FILES}")
     if stat.S_ISLNK(metadata.st_mode):
+      target = os.readlink(name, dir_fd=directory_fd).encode("utf-8", errors="surrogateescape")
+      snapshot.update(b"L")
+      snapshot.update(len(target).to_bytes(8, "big"))
+      snapshot.update(target)
       add(findings, Finding("filesystem.symlink", "review", path, 0, "Symbolic link in plugin tree", "Replace with an in-tree regular file or document why immutable staging permits it", "exact"))
       continue
     if not stat.S_ISREG(metadata.st_mode):
+      snapshot.update(b"S")
       add(findings, Finding("filesystem.special", "critical", path, 0, "Special file in plugin tree", "Remove it; secure immutable revisions accept regular files and directories only", "exact"))
       continue
     if metadata.st_size > MAX_FILE_BYTES:
       raise ScanError(f"file exceeds {MAX_FILE_BYTES}-byte scan limit: {path}")
-    total_bytes += metadata.st_size
-    if total_bytes > MAX_TOTAL_BYTES:
-      raise ScanError(f"scanned content exceeds {MAX_TOTAL_BYTES} bytes")
-
     suffix = Path(name).suffix.lower()
     text_candidate = suffix in TEXT_SUFFIXES or name in TEXT_NAMES
     executable = bool(metadata.st_mode & 0o111)
     installer = name == "PKGBUILD" or bool(re.match(r"^(?:install|setup|post-install)(?:\.|$)", name, re.IGNORECASE))
     data = read_regular(directory_fd, name, metadata)
+    total_bytes += len(data)
+    if total_bytes > MAX_TOTAL_BYTES:
+      raise ScanError(f"scanned content exceeds {MAX_TOTAL_BYTES} bytes")
+    snapshot.update(b"R")
+    snapshot.update(len(data).to_bytes(8, "big"))
+    snapshot.update(data)
     if data.startswith(b"\x7fELF") or data.startswith(b"MZ"):
       add(findings, Finding("native.binary", "critical", path, 0, "Bundled native executable", "Record provenance and architecture, then run only as a bounded sandbox worker or reviewed adapter", "exact"))
       continue
@@ -293,23 +316,33 @@ def scan(root: Path) -> dict[str, Any]:
         if rule.pattern.search(line):
           add(findings, Finding(rule.identifier, rule.severity, path, line_number, rule.behavior, rule.mapping, rule.confidence))
 
-    if name == "plugin.json":
+    if name in {"plugin.json", "manifest.json"} or name.endswith(".manifest.json"):
+      identity_candidate = path == identity_manifest if identity_manifest is not None else not parts and name in {"plugin.json", "manifest.json"}
+      if identity_candidate:
+        identity_manifest_seen = True
       try:
         manifest = strict_json(source)
         if not isinstance(manifest, dict):
           raise ValueError("root is not an object")
         identifier = manifest.get("id")
-        if isinstance(identifier, str) and canonical_plugin_id(identifier):
+        if identity_candidate and isinstance(identifier, str) and canonical_plugin_id(identifier):
           plugin_id = identifier
-        elif identifier is not None:
+        elif identity_candidate and identifier is not None:
           add(findings, Finding("manifest.invalid-id", "high", path, 1, "Manifest plugin id is not canonical", "Choose a lowercase canonical id before deriving identity or grants", "exact"))
         kinds = manifest.get("kinds")
         entry_points = manifest.get("entryPoints")
+        schema = manifest.get("schemaVersion")
+        version = manifest.get("version")
+        if identity_candidate:
+          manifest_schema = schema if isinstance(schema, int) and not isinstance(schema, bool) else None
+          manifest_version = version if isinstance(version, str) and len(version) <= 128 else None
         if isinstance(kinds, list) or isinstance(entry_points, dict):
           add(findings, Finding("manifest.entry-points", "info", path, 1, "Declared plugin surfaces and entry points", "Map each entry point to a host-owned surface role while retaining arbitrary remote QML", "exact"))
       except (json.JSONDecodeError, ValueError) as error:
         add(findings, Finding("manifest.invalid", "high", path, 1, f"Manifest requires strict parsing ({str(error)[:80]})", "Repair and validate the manifest before deriving any migration permissions", "exact"))
 
+  if not identity_manifest_seen:
+    add(findings, Finding("manifest.missing", "high", identity_manifest or "manifest.json", 0, "Plugin identity manifest is absent", "Add and validate a manifest before deriving revision identity or migration permissions", "exact"))
   unique = {(item.identifier, item.path, item.line): item for item in findings}
   ordered = sorted(unique.values(), key=lambda item: (SEVERITY_ORDER[item.severity], item.path, item.line, item.identifier))
   counts = {severity: 0 for severity in SEVERITY_ORDER}
@@ -318,9 +351,174 @@ def scan(root: Path) -> dict[str, Any]:
   return {
     "schemaVersion": SCHEMA_VERSION,
     "advisoryOnly": True,
+    "legacySchemaV1Safe": False,
     "plugin": plugin_id,
+    "identity": {
+      "kind": "advisory-content-snapshot-v1",
+      "sha256": snapshot.hexdigest(),
+      "manifestSchemaVersion": manifest_schema,
+      "manifestVersion": manifest_version,
+    },
     "summary": counts,
     "findings": [item.as_dict() for item in ordered],
+  }
+
+
+@dataclass(frozen=True)
+class InventoryCandidate:
+  source_kind: str
+  source_path: str
+  directory: Path
+  manifest_path: str | None
+  blocked_reason: str | None = None
+
+
+def root_kind(path: Path | None) -> str:
+  if path is None:
+    return "absent"
+  try:
+    metadata = path.lstat()
+  except FileNotFoundError:
+    return "absent"
+  except OSError:
+    return "blocked"
+  if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+    return "blocked"
+  return "available"
+
+
+def installed_candidates(root: Path) -> tuple[list[InventoryCandidate], int]:
+  candidates: list[InventoryCandidate] = []
+  ignored_hidden = 0
+  flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
+  if hasattr(os, "O_NOFOLLOW"):
+    flags |= os.O_NOFOLLOW
+  root_fd = os.open(root, flags)
+  try:
+    with os.scandir(root_fd) as entries:
+      ordered = sorted(entries, key=lambda entry: entry.name)
+      if len(ordered) > MAX_INVENTORY_PLUGINS:
+        raise ScanError(f"installed root exceeds {MAX_INVENTORY_PLUGINS} entries")
+      inspected: list[tuple[str, os.stat_result | None]] = []
+      for entry in ordered:
+        try:
+          metadata = entry.stat(follow_symlinks=False)
+        except OSError:
+          metadata = None
+        inspected.append((entry.name, metadata))
+  finally:
+    os.close(root_fd)
+  for name, metadata in inspected:
+    if name.startswith("."):
+      ignored_hidden += 1
+      continue
+    relative = name.encode("utf-8", errors="backslashreplace").decode("utf-8")
+    if metadata is None:
+      candidates.append(InventoryCandidate("installed", relative, root / name, None, "unreadable-entry"))
+      continue
+    if stat.S_ISLNK(metadata.st_mode):
+      candidates.append(InventoryCandidate("installed", relative, root / name, None, "symlink-plugin-root"))
+    elif stat.S_ISDIR(metadata.st_mode):
+      candidates.append(InventoryCandidate("installed", relative, root / name, "manifest.json"))
+    else:
+      candidates.append(InventoryCandidate("installed", relative, root / name, None, "non-directory-entry"))
+  return candidates, ignored_hidden
+
+
+def builtin_candidates(root: Path) -> list[InventoryCandidate]:
+  candidates: list[InventoryCandidate] = []
+  discovery_entries = 0
+  for _directory_fd, parts, name, metadata in files(root):
+    discovery_entries += 1
+    if discovery_entries > MAX_FILES:
+      raise ScanError(f"built-in discovery exceeds {MAX_FILES} entries")
+    if name != "manifest.json" and not name.endswith(".manifest.json"):
+      continue
+    manifest_path = relative_path(parts, name)
+    directory = root.joinpath(*parts)
+    reason = None if stat.S_ISREG(metadata.st_mode) else "non-regular-manifest"
+    candidates.append(InventoryCandidate("builtin", manifest_path, directory, name, reason))
+    if len(candidates) > MAX_INVENTORY_PLUGINS:
+      raise ScanError(f"built-in root exceeds {MAX_INVENTORY_PLUGINS} plugins")
+  return candidates
+
+
+def inventory(installed_root: Path | None, builtin_root: Path | None) -> dict[str, Any]:
+  root_reports: list[dict[str, Any]] = []
+  candidates: list[InventoryCandidate] = []
+  for kind, root in (("installed", installed_root), ("builtin", builtin_root)):
+    status = root_kind(root)
+    root_report: dict[str, Any] = {"kind": kind, "status": status}
+    if status == "available" and root is not None:
+      try:
+        if kind == "installed":
+          discovered, ignored = installed_candidates(root)
+          root_report["ignoredHiddenEntries"] = ignored
+        else:
+          discovered = builtin_candidates(root)
+        candidates.extend(discovered)
+        root_report["discoveredPlugins"] = len(discovered)
+      except (OSError, ScanError) as error:
+        root_report["status"] = "blocked"
+        root_report["reason"] = "bounded-discovery-failed"
+        root_report["detail"] = str(error).replace(str(root), "<root>")[:256]
+    elif status == "blocked":
+      root_report["reason"] = "root-is-symlink-unreadable-or-not-directory"
+    root_reports.append(root_report)
+
+  if len(candidates) > MAX_INVENTORY_PLUGINS:
+    raise ScanError(f"aggregate inventory exceeds {MAX_INVENTORY_PLUGINS} plugins")
+  reports: list[dict[str, Any]] = []
+  severity_totals = {severity: 0 for severity in SEVERITY_ORDER}
+  finding_total = 0
+  scanned = 0
+  blocked = 0
+  for candidate in sorted(candidates, key=lambda item: (item.source_kind, item.source_path)):
+    entry: dict[str, Any] = {
+      "sourceKind": candidate.source_kind,
+      "sourcePath": candidate.source_path,
+      "sourceIdentity": f"{candidate.source_kind}:{candidate.source_path}",
+    }
+    if candidate.blocked_reason is not None:
+      entry.update({"status": "blocked", "reason": candidate.blocked_reason})
+      blocked += 1
+    else:
+      try:
+        report = scan(candidate.directory, candidate.manifest_path)
+        if finding_total + len(report["findings"]) > MAX_INVENTORY_FINDINGS:
+          raise ScanError(f"aggregate findings exceed {MAX_INVENTORY_FINDINGS}")
+        finding_total += len(report["findings"])
+        for severity in SEVERITY_ORDER:
+          severity_totals[severity] += report["summary"][severity]
+        entry.update({
+          "status": "scanned",
+          "plugin": report["plugin"],
+          "revisionIdentity": report["identity"],
+          "report": report,
+        })
+        scanned += 1
+      except (OSError, ScanError) as error:
+        entry.update({
+          "status": "blocked",
+          "reason": "scan-incomplete",
+          "detail": str(error).replace(str(candidate.directory), "<plugin>")[:256],
+        })
+        blocked += 1
+    reports.append(entry)
+  return {
+    "schemaVersion": 1,
+    "reportType": "installed-plugin-migration-inventory",
+    "advisoryOnly": True,
+    "legacySchemaV1Safe": False,
+    "roots": root_reports,
+    "summary": {
+      "discovered": len(candidates),
+      "scanned": scanned,
+      "blocked": blocked,
+      "findings": finding_total,
+      "severity": severity_totals,
+    },
+    "plugins": reports,
   }
 
 
@@ -343,6 +541,40 @@ def markdown(report: dict[str, Any]) -> str:
   return "\n".join(output) + "\n"
 
 
+def inventory_markdown(report: dict[str, Any]) -> str:
+  output = [
+    "# Installed plugin migration inventory",
+    "",
+    "> Advisory static inventory only. Schema v1 plugins remain unsafe host code. This worksheet does not grant, enable, approve, install, update, or execute anything.",
+    "",
+    f"Scanned: {report['summary']['scanned']}; blocked/incomplete: {report['summary']['blocked']}; findings: {report['summary']['findings']}.",
+    "",
+  ]
+  for plugin in report["plugins"]:
+    source = escape_untrusted(f"{plugin['sourceKind']}:{plugin['sourcePath']}")
+    output.extend((f"## {source}", ""))
+    if plugin["status"] != "scanned":
+      output.extend((f"Scan blocked: `{escape_untrusted(plugin['reason'])}`. Treat this plugin as unreviewed and unsafe.", ""))
+      continue
+    identity = plugin["revisionIdentity"]
+    output.extend((
+      f"Plugin: `{escape_untrusted(plugin['plugin'])}`; advisory content snapshot: `{identity['sha256']}`.",
+      "",
+      "| Detected behavior | Proposed broker/UI mapping | Author decision |",
+      "|-------------------|----------------------------|-----------------|",
+    ))
+    for finding in plugin["report"]["findings"]:
+      location = finding["path"] + (f":{finding['line']}" if finding["line"] else "")
+      behavior = f"**{finding['severity']}** `{finding['id']}` at `{escape_untrusted(location)}` — {finding['behavior']}"
+      output.append(f"| {behavior} | {escape_cell(finding['mapping'])} | Review: ☐ keep ☐ narrow ☐ replace ☐ remove |")
+    if not plugin["report"]["findings"]:
+      output.append("| No recognized behavior | Manually review unsupported and dynamic behavior | Review required |")
+    output.append("")
+  if not report["plugins"]:
+    output.extend(("No current plugin directories were discovered. Missing roots are reported in the JSON form and do not imply a safe system.", ""))
+  return "\n".join(output)
+
+
 def escape_cell(value: str) -> str:
   return html.escape(value, quote=False).replace("|", "\\|").replace("\n", " ")
 
@@ -353,15 +585,34 @@ def escape_untrusted(value: str) -> str:
 
 def parse_arguments(arguments: list[str]) -> argparse.Namespace:
   parser = argparse.ArgumentParser(description="Inventory current plugin behavior for secure migration; never execute plugin content")
-  parser.add_argument("plugin_directory", type=Path)
+  parser.add_argument("plugin_directory", type=Path, nargs="?")
+  parser.add_argument("--all", action="store_true", help="scan installed and built-in current plugin roots without changing them")
+  parser.add_argument("--installed-root", type=Path, help=argparse.SUPPRESS)
+  parser.add_argument("--builtin-root", type=Path, help=argparse.SUPPRESS)
   parser.add_argument("--format", choices=("markdown", "json"), default="markdown")
-  return parser.parse_args(arguments)
+  options = parser.parse_args(arguments)
+  if options.all and options.plugin_directory is not None:
+    parser.error("plugin_directory and --all are mutually exclusive")
+  if not options.all and options.plugin_directory is None:
+    parser.error("plugin_directory is required unless --all is used")
+  if not options.all and (options.installed_root is not None or options.builtin_root is not None):
+    parser.error("root overrides require --all")
+  return options
 
 
 def main(arguments: list[str] | None = None) -> int:
   options = parse_arguments(sys.argv[1:] if arguments is None else arguments)
   try:
-    report = scan(options.plugin_directory)
+    if options.all:
+      installed = options.installed_root
+      if installed is None and (home := os.environ.get("HOME")):
+        installed = Path(home) / ".config/omarchy/plugins"
+      builtin = options.builtin_root
+      if builtin is None and (omarchy_path := os.environ.get("OMARCHY_PATH")):
+        builtin = Path(omarchy_path) / "shell/plugins"
+      report = inventory(installed, builtin)
+    else:
+      report = scan(options.plugin_directory)
   except (OSError, ScanError) as error:
     print(f"omarchy-plugin-security-scan: {error}", file=sys.stderr)
     return 2
@@ -369,7 +620,7 @@ def main(arguments: list[str] | None = None) -> int:
     json.dump(report, sys.stdout, indent=2, sort_keys=True)
     sys.stdout.write("\n")
   else:
-    sys.stdout.write(markdown(report))
+    sys.stdout.write(inventory_markdown(report) if options.all else markdown(report))
   return 0
 
 

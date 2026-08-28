@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.weather",
+  "name": "Weather",
+  "version": "1.0.0",
+  "kinds": ["panel"],
+  "entryPoints": {"panel": "Weather.qml"}
+}
