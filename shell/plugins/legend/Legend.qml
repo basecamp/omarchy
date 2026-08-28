@@ -29,11 +29,42 @@ Item {
     if (c === "bottom-left") return "bottom-right"
     return c
   }
-  // Hovering the card (see the HoverHandler below) flips it to the
-  // opposite horizontal corner while the pointer is over it, and back the
-  // moment it isn't — entirely self-contained, so no caller needs to know
-  // where the card actually sits on screen.
-  readonly property string effectiveCorner: card.hovered ? flippedCorner(corner) : corner
+  // The card gets out of the cursor's way: it slides to the opposite
+  // horizontal corner when the cursor is over its slot and the other slot
+  // is clear, and slides back once the cursor leaves. Deciding from the two
+  // fixed slot rectangles rather than the card's current spot is what keeps
+  // it from flip-flopping once it has moved.
+  //
+  // Two things feed the cursor position. The HoverHandler on the card is
+  // instant but only fires when nothing is layered on top of this surface.
+  // Any tool can park its own fullscreen overlay above the legend (omaruler
+  // does), and then the pointer never reaches the card — so the compositor's
+  // real cursor position is also polled (see cursorProc) whenever the legend
+  // is open.
+  property real cursorX: 0
+  property real cursorY: 0
+  property bool hasCursor: false
+
+  readonly property int edgeMargin: Style.space(14)
+  readonly property int avoidPad: Style.space(20)
+
+  function cornerRect(c) {
+    var x = c.indexOf("left") !== -1 ? edgeMargin : (panel.width - card.width - edgeMargin)
+    var y = c.indexOf("top") === 0 ? edgeMargin : (panel.height - card.height - edgeMargin)
+    return Qt.rect(x - avoidPad, y - avoidPad, card.width + 2 * avoidPad, card.height + 2 * avoidPad)
+  }
+  function cursorOver(c) {
+    if (!hasCursor)
+      return false
+    var r = cornerRect(c)
+    return cursorX >= r.x && cursorX <= r.x + r.width && cursorY >= r.y && cursorY <= r.y + r.height
+  }
+
+  readonly property bool homeBlocked: card.hovered || cursorOver(corner)
+  readonly property bool flipBlocked: cursorOver(flippedCorner(corner))
+  readonly property string effectiveCorner: homeBlocked && !flipBlocked ? flippedCorner(corner) : corner
+
+  onOpenedChanged: if (!opened) hasCursor = false
 
   FontMetrics {
     id: fm
@@ -75,6 +106,37 @@ Item {
     function close(): string { root.close(); return "ok" }
     function state(): string { return root.opened ? "open" : "closed" }
     function ping(): string { return "ok" }
+  }
+
+  // Hyprland reports the cursor in global layout coordinates; subtract the
+  // panel's screen origin to get the panel-local position the corner rects
+  // are expressed in.
+  Process {
+    id: cursorProc
+    command: ["hyprctl", "cursorpos", "-j"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        try {
+          var p = JSON.parse(text)
+          if (typeof p.x === "number" && typeof p.y === "number") {
+            var sx = panel.screen ? panel.screen.x : 0
+            var sy = panel.screen ? panel.screen.y : 0
+            root.cursorX = p.x - sx
+            root.cursorY = p.y - sy
+            root.hasCursor = true
+          }
+        } catch (e) {}
+      }
+    }
+  }
+
+  Timer {
+    interval: 100
+    repeat: true
+    running: root.opened
+    triggeredOnStart: true
+    onTriggered: if (!cursorProc.running) cursorProc.running = true
   }
 
   PanelWindow {

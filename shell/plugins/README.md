@@ -88,10 +88,17 @@ colors, blurred wallpaper, placeholder, and Hyprland-driven corners.
 ## Legend
 
 Themed keyboard-shortcut hint card, for any process — not just Omarchy's own
-shell code — to show. Same shape as the OSD plugin (payload-driven IPC, no
-polling), but persistent rather than auto-hiding: it stays up until the
-caller explicitly hides it, since a legend is meant to accompany an
-in-progress interaction rather than flash on a single state change.
+shell code — to show. Same shape as the OSD plugin (payload-driven IPC), but
+persistent rather than auto-hiding: it stays up until the caller explicitly
+hides it, since a legend is meant to accompany an in-progress interaction
+rather than flash on a single state change.
+
+The card keeps out of the cursor's way: it slides to the opposite horizontal
+corner while the pointer is over its slot and slides back once it leaves. It
+picks this up both from hovering the card directly and, since a caller can
+layer its own fullscreen overlay on top (omaruler does) and swallow the
+pointer before it reaches the card, from polling the compositor's cursor
+position while the legend is open.
 
 Two ways to drive it, mirroring OSD's own CLI wrapper:
 
