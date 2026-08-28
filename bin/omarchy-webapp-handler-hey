@@ -8,8 +8,30 @@ web_url="https://app.hey.com"
 
 # Handle mailto: URLs
 if [[ $url =~ ^mailto: ]]; then
-  email=$(echo "$url" | sed 's/mailto://')
-  web_url="https://app.hey.com/messages/new?to=$email"
+  # A mailto: URL is "mailto:addresses?subject=…&body=…". The addresses run up
+  # to the first "?", and the parameters after it are already percent-encoded,
+  # so HEY can take them as they are. Folding the whole remainder into "to="
+  # leaves a second "?" inside the query, which HEY reads as part of the
+  # address: the compose window opens with no recipient and no subject.
+  rest="${url#mailto:}"
+  if [[ $rest == *\?* ]]; then
+    email="${rest%%\?*}"
+    params="${rest#*\?}"
+  else
+    email="$rest"
+    params=""
+  fi
+
+  web_url="https://app.hey.com/messages/new"
+  if [[ -n $email ]]; then
+    web_url="$web_url?to=$email"
+    if [[ -n $params ]]; then
+      web_url="$web_url&$params"
+    fi
+  elif [[ -n $params ]]; then
+    # "mailto:?to=someone@example.com" carries the address as a parameter.
+    web_url="$web_url?$params"
+  fi
 fi
 
 exec omarchy-launch-webapp "$web_url"
