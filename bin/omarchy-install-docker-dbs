@@ -12,6 +12,10 @@ else
 fi
 
 if [[ -n $choices ]]; then
+  # Socket activation does not start dockerd for published container ports, so
+  # --restart unless-stopped never fires after reboot unless docker.service is on.
+  sudo systemctl enable --now docker.service
+
   for db in $choices; do
     echo "Installing $db..."
     case $db in
