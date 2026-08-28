@@ -21,3 +21,7 @@ add_test(NAME plugin-runtime-bridge-import
   COMMAND omarchy-plugin-runtime-contract-test bridge "${QT_QML_OUTPUT_DIRECTORY}"
 )
 set_tests_properties(plugin-runtime-bridge-import PROPERTIES LABELS "integration;qml" TIMEOUT 10)
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/support/CMakeLists.txt")
+  add_subdirectory(support)
+endif()
