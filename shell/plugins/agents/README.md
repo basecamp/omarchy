@@ -107,6 +107,7 @@ top-level keys can be set with
 
 | Key | Default | What it does |
 |---|---|---|
+| `limitDisplayMode` | `"Used"` | Show each subscription limit as `"Used"` or `"Available"` |
 | `refreshIntervalSec` | `900` | How often the usage records regenerate |
 | `syncMode` | `"Off"` | `"On"` writes this machine's snapshot and merges the others |
 | `syncDir` | `""` | A folder synced by Syncthing, Dropbox, rsync, … |
@@ -116,6 +117,7 @@ top-level keys can be set with
 Numbers need `--json`, or they land in `shell.json` as strings:
 
 ```bash
+omarchy bar set omarchy.agents limitDisplayMode Available
 omarchy bar set omarchy.agents refreshIntervalSec 300 --json
 omarchy bar set omarchy.agents syncDir '~/Sync/agent-usage'
 ```
