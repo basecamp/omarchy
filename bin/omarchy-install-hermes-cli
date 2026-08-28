@@ -55,7 +55,7 @@ desktop_hermes_ready() {
 
   # And a marker left behind by an install whose venv has since gone answers
   # for nothing, so the command has to run, exactly as a foreign one must.
-  hermes_runs
+  hermes_prompt_ready
 }
 
 # Whether Hermes is really installed, not merely whether the stub exists. A
@@ -88,6 +88,15 @@ hermes_runs() {
     timeout 15 "$HOME/.local/bin/hermes" --version >/dev/null 2>&1
 }
 
+# Prompted Omarchy sessions need Hermes' usage report to identify and validate
+# the exact one-shot session before reopening it interactively.
+hermes_prompt_ready() {
+  local help
+  hermes_runs &&
+    help=$(timeout 15 "$HOME/.local/bin/hermes" --help 2>/dev/null) &&
+    grep -qF -- '--usage-file' <<<"$help"
+}
+
 # --owns answers whether the wrapper on PATH is the one this command wrote, so
 # the migration and Remove Preinstalls do not each carry their own copy of the
 # marker and drift from it.
@@ -101,12 +110,12 @@ if [[ $mode == "--check" ]]; then
   if desktop_owns_hermes; then
     if desktop_hermes_ready; then exit 0; else exit 1; fi
   fi
-  # A foreign command is ready when it runs; a broken one is not, and since it
-  # is not ours to replace, nothing this installer does will make it ready.
+  # A foreign command is ready only when it also supports prompted sessions;
+  # since it is not ours to replace, nothing this installer does will update it.
   if foreign_hermes; then
-    if hermes_runs; then exit 0; else exit 1; fi
+    if hermes_prompt_ready; then exit 0; else exit 1; fi
   fi
-  if installed; then exit 0; else exit 1; fi
+  if installed && hermes_prompt_ready; then exit 0; else exit 1; fi
 fi
 
 # Hand Hermes over to the app rather than keeping a second copy beside it.
@@ -140,13 +149,27 @@ fi
 # The user already has a hermes of their own. Leave it be: a working one is
 # what the default agent will run, and a broken one is theirs to fix.
 if foreign_hermes; then
-  if hermes_runs; then
+  if hermes_prompt_ready; then
     exit 0
+  fi
+
+  if hermes_runs; then
+    echo "~/.local/bin/hermes does not support the session report Omarchy needs for prompted launches." >&2
+    echo "Update it to Hermes Agent 0.18.1 or newer, then run omarchy-install-hermes-cli again." >&2
+    exit 1
   fi
 
   echo "~/.local/bin/hermes exists but is not runnable, and it was not installed by Omarchy." >&2
   echo "Fix or remove it, then run omarchy-install-hermes-cli again." >&2
   exit 1
+fi
+
+# An older mise environment may predate the session report. It belongs to this
+# installer, so discard only that environment and let the current stub rebuild it.
+if installed && ! hermes_prompt_ready; then
+  echo "Updating Hermes for prompted sessions..." >&2
+  mise rm -g "$tool" >/dev/null 2>&1 || true
+  mise uninstall --all "$tool" >/dev/null 2>&1 || true
 fi
 
 mkdir -p "$HOME/.local/bin"
@@ -194,4 +217,8 @@ chmod +x "$HOME/.local/bin/hermes"
 # hands Hermes to the GUI has to install it here rather than leave it stubbed.
 if [[ $mode == "--now" ]]; then
   "$HOME/.local/bin/hermes" --version
+  if ! hermes_prompt_ready; then
+    echo "Hermes installed without the session report Omarchy needs for prompted launches." >&2
+    exit 1
+  fi
 fi

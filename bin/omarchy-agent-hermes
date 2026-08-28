@@ -12,8 +12,20 @@ trap 'rm -f "$usage"' EXIT
 
 # TUI startup queries pass through Hermes' slash, shell, and interpolation
 # dispatcher. One-shot treats the prompt literally and records its session ID.
-hermes --yolo --usage-file "$usage" --oneshot "$prompt"
-session_id=$(jq -er '.session_id | strings | select(length > 0)' "$usage")
+seed_session() {
+  hermes --yolo --usage-file "$usage" --oneshot="$prompt"
+}
+
+if ! seed_session; then
+  if jq -e '.failed == true and (.failure | strings | startswith("No inference provider configured."))' "$usage" >/dev/null 2>&1; then
+    hermes setup
+    seed_session
+  else
+    exit 1
+  fi
+fi
+
+session_id=$(jq -er 'select(.completed == true and .failed != true) | .session_id | strings | select(length > 0)' "$usage")
 
 rm -f "$usage"
 trap - EXIT
