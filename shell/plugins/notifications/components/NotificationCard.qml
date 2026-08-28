@@ -44,7 +44,23 @@ BorderSurface {
   readonly property bool singleLineToast: sanitizedBody.length === 0
   readonly property bool collapseRedundantIcon: singleLineToast && !hasGlyph && summaryStartsWithGlyph
   readonly property string sanitizedBody: sanitizeBody(body)
-  readonly property string styledBody: sanitizedBody.replace(/\r\n|\r|\n/g, "<br/>")
+  readonly property string styledBody: {
+    var raw = String(sanitizedBody || "")
+    // Defensive: normalize any remaining <br> variants (encoded or raw) that
+    // slipped through sanitizeBody (e.g. direct body updates). sanitizeBody
+    // already does this via NotificationLogic.normalizeBrTags, so this is
+    // idempotent.
+    if (NotificationLogic.normalizeBrTags) raw = NotificationLogic.normalizeBrTags(raw)
+    // Normalize Windows/Mac newlines to \n
+    raw = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+    // Use placeholder so escaping doesn't touch our line-break markers
+    var placeholder = "___BR___"
+    raw = raw.replace(/\n/g, placeholder)
+    // Escape for Text.StyledText - plain &/</> would break HTML parsing and
+    // cause the entire body (including our <br/>) to render literally.
+    raw = raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    return raw.split(placeholder).join("<br/>")
+  }
 
   readonly property color dimColor: Qt.darker(Color.notifications.text, 1.4)
   readonly property color bodyColor: Qt.darker(Color.notifications.text, 1.15)
