@@ -35,7 +35,7 @@ add_subdirectory(bridge)
 # Contract owners add their directory without changing this shared root. A missing
 # directory means that security subsystem has not landed yet, not that it is optional
 # at runtime.
-foreach(contract IN ITEMS manifest wire surface)
+foreach(contract IN ITEMS manifest wire surface permissions sandbox)
   string(TOUPPER "${contract}" contract_upper)
   option("OMARCHY_BUILD_${contract_upper}_CONTRACT" "Build the ${contract} contract when present" ON)
   if(OMARCHY_BUILD_${contract_upper}_CONTRACT AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/contracts/${contract}/CMakeLists.txt")
