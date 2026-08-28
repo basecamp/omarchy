@@ -114,7 +114,7 @@ pass "the probe prints NOT_FOUND when the switch device is absent"
 unreadable="$tmp_dir/unreadable-switch"
 : >"$unreadable"
 chmod 000 "$unreadable"
-if [[ $(id -u) -eq 0 ]]; then
+if (( EUID == 0 )); then
   pass "skipping NO_PERMISSION check as root (mode bits do not apply)"
 else
   [[ $("$probe" --device "$unreadable") == "NO_PERMISSION" ]] ||
