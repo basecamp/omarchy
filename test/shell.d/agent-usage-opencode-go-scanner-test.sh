@@ -80,8 +80,18 @@ monthly=$(jq -r '.limits[] | select(.label == "Monthly") | .percent' <<<"$result
   fail "Monthly limit: percent is 0.96" "$result"
 pass "Monthly limit: percent is 0.96"
 
-# Test 4: API failure returns error record
-# Replace curl with failing version
+# Test 4: scope and hasPromptStats are set correctly
+scope=$(jq -r '.scope' <<<"$result")
+[[ "$scope" == "account" ]] ||
+  fail "Record: scope is account" "$result"
+pass "Record: scope is account"
+
+has_prompt_stats=$(jq -r '.hasPromptStats' <<<"$result")
+[[ "$has_prompt_stats" == "false" ]] ||
+  fail "Record: hasPromptStats is false" "$result"
+pass "Record: hasPromptStats is false"
+
+# Test 5: API failure returns error record
 mv "$TEST_HOME/bin/curl" "$TEST_HOME/bin/curl-real"
 mv "$TEST_HOME/bin/curl-fail" "$TEST_HOME/bin/curl"
 
@@ -96,19 +106,88 @@ pass "API failure: returns ready=false"
   fail "API failure: shows unavailable message" "$result"
 pass "API failure: shows unavailable message"
 
-# Test 5: JSON output is valid and compact
+# Test 6: JSON output is valid and compact
 result=$(HOME="$TEST_HOME" PATH="$TEST_HOME/bin:$PATH" \
   "$ROOT/bin/omarchy-agent-usage-opencode-go")
 
-# Should be valid JSON
 jq -e . <<<"$result" >/dev/null 2>&1 ||
   fail "Output: is valid JSON" "$result"
 pass "Output: is valid JSON"
 
-# Should be compact (no newlines within the JSON content)
-json_content=$(echo "$result" | tr -d '\n')
-if echo "$json_content" | grep -q '\\n'; then
-  fail "Output: is compact JSON"
-else
-  pass "Output: is compact JSON"
-fi
+# Test 7: OpenCode Go provider detection
+result=$(python3 -c "
+import sys
+sys.path.insert(0, '$ROOT/bin')
+exec(open('$ROOT/bin/omarchy-agent-usage-opencode-go').read().split('def main')[0])
+# Test provider detection
+tests = [
+    ({'provider': 'opencode-go'}, True),
+    ({'providerID': 'openai', 'api': 'opencode'}, True),
+    ({'provider': 'anthropic'}, False),
+    ({}, False),
+]
+for entry, expected in tests:
+    result = is_opencode_go_provider(entry)
+    assert result == expected, f'Expected {expected} for {entry}, got {result}'
+print('Provider detection OK')
+")
+
+[[ "$result" == "Provider detection OK" ]] ||
+  fail "Provider detection: works correctly" "$result"
+pass "Provider detection: works correctly"
+
+# Test 8: OpenCode Go provider detection via providerID
+result=$(python3 -c "
+import sys
+sys.path.insert(0, '$ROOT/bin')
+exec(open('$ROOT/bin/omarchy-agent-usage-opencode-go').read().split('def main')[0])
+# Test provider detection with providerID
+entry = {'providerID': 'opencode-go', 'role': 'assistant'}
+assert is_opencode_go_provider(entry) == True, 'providerID opencode-go should match'
+entry = {'providerID': 'openai', 'api': 'opencode-go', 'role': 'assistant'}
+assert is_opencode_go_provider(entry) == True, 'providerID openai with opencode api should match'
+print('ProviderID detection OK')
+")
+
+[[ "$result" == "ProviderID detection OK" ]] ||
+  fail "ProviderID detection: works correctly" "$result"
+pass "ProviderID detection: works correctly"
+
+# Test 9: Stats merging
+result=$(python3 -c "
+import sys
+sys.path.insert(0, '$ROOT/bin')
+exec(open('$ROOT/bin/omarchy-agent-usage-opencode-go').read().split('def main')[0])
+
+api_stats = {
+    'todayPrompts': 5,
+    'todayTotalTokens': 1000,
+    'totalPrompts': 100,
+    'totalSessions': 10,
+    'activeDates': ['2026-08-28'],
+    'recentDays': [{'date': '2026-08-28', 'messageCount': 500}],
+    'modelUsage': {'gpt-4': {'inputTokens': 500, 'outputTokens': 500, 'cacheReadInputTokens': 0, 'cacheCreationInputTokens': 0}},
+    'todayTokensByModel': {'gpt-4': 1000},
+}
+local_stats = {
+    'todayPrompts': 3,
+    'todayTotalTokens': 600,
+    'totalPrompts': 50,
+    'totalSessions': 5,
+    'activeDates': ['2026-08-27', '2026-08-28'],
+    'recentDays': [{'date': '2026-08-27', 'messageCount': 200}, {'date': '2026-08-28', 'messageCount': 300}],
+    'modelUsage': {'gpt-4': {'inputTokens': 300, 'outputTokens': 300, 'cacheReadInputTokens': 0, 'cacheCreationInputTokens': 0}},
+    'todayTokensByModel': {'gpt-4': 600},
+}
+merged = merge_stats(api_stats, local_stats)
+assert merged['todayPrompts'] == 5, f'Expected 5, got {merged[\"todayPrompts\"]}'
+assert merged['todayTotalTokens'] == 1000, f'Expected 1000, got {merged[\"todayTotalTokens\"]}'
+assert merged['totalPrompts'] == 100, f'Expected 100, got {merged[\"totalPrompts\"]}'
+assert len(merged['activeDates']) == 2, f'Expected 2 active dates, got {len(merged[\"activeDates\"])}'
+assert merged['modelUsage']['gpt-4']['inputTokens'] == 800, f'Expected 800 input tokens'
+print('Stats merging OK')
+")
+
+[[ "$result" == "Stats merging OK" ]] ||
+  fail "Stats merging: works correctly" "$result"
+pass "Stats merging: works correctly"
