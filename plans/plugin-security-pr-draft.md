@@ -2,6 +2,8 @@
 
 > Draft only. Do not open this PR until G4 closes. The limitations section is part of the proposed PR body and must not be removed to make the branch appear production-ready.
 
+Proposed base: the protected `jacob-vincent-mink/omarchy:quattro` branch. Proposed head: `jacob-vincent-mink/omarchy:plugin-security-model`.
+
 ## Summary
 
 This PR adds a feature-gated reference implementation for running third-party arbitrary QML outside `omarchy-shell`, rendering it through host-owned surfaces, and brokering every system effect through authenticated, explicitly granted operations.
@@ -67,7 +69,7 @@ The pinned study covers 20 real repositories selected from a 1,575-source market
 - Sensitive behavior maps to future reviewed providers or portals; `@future` names are design placeholders and are not registered capabilities.
 - Plugin management remains an Omarchy-owned lifecycle product, and a complete shell suite remains a separate trusted-host class or decomposition project.
 
-See [`plugin-security-f6-representative-migrations.md`](plugin-security-f6-representative-migrations.md) and the machine-readable [`representative-migration-outcomes.json`](evidence/plugin-security-f6/representative-migration-outcomes.json).
+See [`plugin-security-f6-representative-migrations.md`](https://github.com/jacob-vincent-mink/omarchy/blob/plugin-security-model/plans/plugin-security-f6-representative-migrations.md) and the machine-readable [`representative-migration-outcomes.json`](https://github.com/jacob-vincent-mink/omarchy/blob/plugin-security-model/plans/evidence/plugin-security-f6/representative-migration-outcomes.json).
 
 ## Permission and update UX
 
@@ -103,7 +105,7 @@ Real Bubblewrap credential/namespace checks must run outside managed development
 ## Current limitations and non-claims
 
 - The installed `omarchy-plugin-host` is still an inert long-running skeleton and `PluginHostInfo.available` remains false.
-- The aggregate build does not yet compose every production lifecycle, broker, render-session, trusted-bridge, and surface-host component into that executable.
+- Final G4 refresh required: the aggregate registration is being expanded and currently passes local Debug/Release integration tests, but that does not compose the production lifecycle/broker/render path into `host/main.cpp`; the installed service remains an inert skeleton unless a later G4 commit changes that executable.
 - Schema-v2 discovery/lifecycle is not switched into the current end-user install/enable/update commands.
 - The locally built Arch archive proves package shape and checks, but its package-repository recipe is not committed and the archive was built from a shared worktree rather than a clean commit.
 - No fresh `omarchy-iso` build/test has run in this workspace. There is no clean-install service log, live Quickshell import, compositor-owned plugin surface screenshot, or end-to-end installed activation proof.
@@ -131,4 +133,4 @@ Suggested review order:
 6. E1/E2/E3 vertical slices and F0–F4 adversarial campaigns.
 7. Packaging/VM limitations and the 20-plugin migration outcomes.
 
-Questions requiring maintainer decisions are collected in [`plugin-security-discussion-draft.md`](plugin-security-discussion-draft.md). Deferred capabilities should not be added to this PR merely to make a representative plugin pass; each should retain deny-by-default behavior until its provider or portal has its own reviewed contract and UX.
+Questions requiring maintainer decisions are collected in [`plugin-security-discussion-draft.md`](https://github.com/jacob-vincent-mink/omarchy/blob/plugin-security-model/plans/plugin-security-discussion-draft.md). Deferred capabilities should not be added to this PR merely to make a representative plugin pass; each should retain deny-by-default behavior until its provider or portal has its own reviewed contract and UX.

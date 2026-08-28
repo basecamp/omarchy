@@ -45,7 +45,7 @@ The strongest rule for reviewing this branch is that a passing component or fixt
 
 ## Existing plugins: what survives and what changes
 
-We inspected a capability-stratified sample of 20 repositories from a marketplace snapshot containing 1,575 sources and 1,613 expanded catalog entries. The complete pinned study is in [`plugin-security-examples.md`](plugin-security-examples.md), and the executable dry-run evidence is in [`plugin-security-f6-representative-migrations.md`](plugin-security-f6-representative-migrations.md).
+We inspected a capability-stratified sample of 20 repositories from a marketplace snapshot containing 1,575 sources and 1,613 expanded catalog entries. The complete pinned study is in [`plugin-security-examples.md`](https://github.com/jacob-vincent-mink/omarchy/blob/plugin-security-model/plans/plugin-security-examples.md), and the executable dry-run evidence is in [`plugin-security-f6-representative-migrations.md`](https://github.com/jacob-vincent-mink/omarchy/blob/plugin-security-model/plans/plugin-security-f6-representative-migrations.md).
 
 Fourteen of the 20 pinned trees produced deterministic bounded inventory snapshots. Six failed closed because a preview image, documentation image, or font exceeded the scanner's current 1 MiB per-file bound. Those are explicit migration-tool blockers, not clean results. Manual comparison also found that successful static scans missed the Docker monitor's effective Docker authority and Textify's Rust capture/OCR/clipboard authority. The inventory is therefore advisory and cannot create a request, grant, install decision, or safety claim.
 
