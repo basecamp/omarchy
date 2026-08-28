@@ -13,8 +13,14 @@ Window {
     id: pluginHost
   }
 
+  RemotePluginSurface {
+    id: remoteSurface
+    visible: false
+  }
+
   Component.onCompleted: {
-    if (!pluginHost.runtimeVersion || pluginHost.available)
+    if (!pluginHost.runtimeVersion || pluginHost.available ||
+        remoteSurface.connected || remoteSurface.ready)
       Qt.exit(2)
   }
 

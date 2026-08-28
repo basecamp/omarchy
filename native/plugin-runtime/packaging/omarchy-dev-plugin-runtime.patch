@@ -1,0 +1,58 @@
+diff --git a/pkgbuilds/omarchy-dev/PKGBUILD b/pkgbuilds/omarchy-dev/PKGBUILD
+--- a/pkgbuilds/omarchy-dev/PKGBUILD
++++ b/pkgbuilds/omarchy-dev/PKGBUILD
+@@ -7,3 +7,3 @@ _pkgver_base_tag=v3.8.2
+ pkgdesc='Beautiful, modern, and opinionated Arch Linux by DHH (quattro branch tip)'
+-arch=('any')
++arch=('x86_64')
+ url='https://github.com/basecamp/omarchy'
+@@ -54,3 +54,9 @@ depends=(
+   # System font (UI assumes it)
+   'ttf-jetbrains-mono-nerd-basic'
++
++  # Secure plugin runtime
++  'bubblewrap'
++  'libseccomp'
++  'qt6-base'
++  'qt6-declarative'
+ )
+@@ -58,3 +64,5 @@ makedepends=(
+ makedepends=(
++  'cmake'
+   'git'
++  'ninja'
+ )
+@@ -86,9 +94,24 @@ prepare() {
+ prepare() {
+   if [[ -n "${OMARCHY_SRC:-}" ]]; then
+     rm -rf "$srcdir/omarchy"
+     mkdir -p "$srcdir/omarchy"
+     cp -a "${OMARCHY_SRC}/." "$srcdir/omarchy/"
+   fi
+ }
+-
++
++build() {
++  cmake \
++    -B "$srcdir/plugin-runtime-build" \
++    -S "$srcdir/omarchy/native/plugin-runtime" \
++    -G Ninja \
++    -DCMAKE_BUILD_TYPE=Release \
++    -DCMAKE_INSTALL_PREFIX=/usr \
++    -DCMAKE_SKIP_RPATH=ON
++  cmake --build "$srcdir/plugin-runtime-build"
++}
++
++check() {
++  ctest --test-dir "$srcdir/plugin-runtime-build" --output-on-failure
++}
++
+ package() {
+@@ -146,3 +169,7 @@ package() {
+   # Runtime version file.
+   install -Dm644 version "$pkgdir/usr/share/omarchy/version"
++
++  DESTDIR="$pkgdir" cmake --install "$srcdir/plugin-runtime-build"
++  install -Dm644 default/systemd/user/omarchy-plugin-host.service \
++    "$pkgdir/usr/lib/systemd/user/omarchy-plugin-host.service"
+ }
