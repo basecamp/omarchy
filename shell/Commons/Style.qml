@@ -301,6 +301,31 @@ QtObject {
     return Math.max(1, Math.round(base))
   }
 
+  // The size a bar icon is drawn at, before any of it is normalized. Icon
+  // glyphs in a Nerd Font are designed inside one box and fill it to
+  // differing degrees, so measuring glyphs that do fill it gives the height a
+  // normalized icon should come out at. Fitting to that box makes an uneven
+  // row even without making it bigger: icons that already filled the box keep
+  // the size they have always had, and only the ones drawn small grow to join
+  // them. A canvas picked as a bare number instead has no relation to the
+  // font, and every icon in the row is resized to meet it.
+  readonly property int barIconFontSize: barToken("icon-font", 13)
+  readonly property string barIconDesignGlyphs: String.fromCodePoint(0xF00AF, 0xF0085, 0xF0925)
+  property TextMetrics barIconDesignMetrics: TextMetrics {
+    font.family: root.fontFamily
+    font.pixelSize: root.barIconFontSize
+    text: root.barIconDesignGlyphs
+  }
+
+  // A theme that pins `icon-canvas` gets exactly that; otherwise the canvas
+  // follows the font that is actually set.
+  function barIconCanvasToken(measured) {
+    var v = barOverrides["icon-canvas"]
+    var n = Number(v)
+    if (isFinite(n) && n > 0) return Math.max(1, Math.round(barScaleWithFont ? n * fontScale : n))
+    return Math.max(1, Math.round(measured))
+  }
+
   function boolToken(value, fallback) {
     if (value === undefined || value === null) return fallback
     var s = String(value).replace(/^\s+|\s+$/g, "").toLowerCase()
@@ -342,8 +367,8 @@ QtObject {
     readonly property int sizeHorizontal: root.barToken("size-horizontal", 26)
     readonly property int sizeVertical:   root.barToken("size-vertical",   28)
     readonly property int iconSlot:       root.barToken("icon-slot",       27)
-    readonly property int iconCanvas:     root.barToken("icon-canvas",     16)
-    readonly property int iconFont:       root.barToken("icon-font",       13)
+    readonly property int iconCanvas:     root.barIconCanvasToken(root.barIconDesignMetrics.tightBoundingRect.height)
+    readonly property int iconFont:       root.barIconFontSize
     readonly property int statusSlot:     root.barToken("status-slot",     21)
   }
 

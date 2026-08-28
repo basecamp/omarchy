@@ -7,6 +7,51 @@ import QtQuick
 QtObject {
   id: root
 
+  // One code point from an icon range: the Private Use Areas that Nerd Fonts
+  // and Omarchy's own font live in, the BMP symbol blocks, and emoji
+  // pictographs. A trailing variation selector is allowed.
+  function isIconGlyph(text) {
+    var points = codePoints(String(text || "").trim())
+    if (points.length === 2 && points[1] === 0xFE0F) points.pop()
+    if (points.length !== 1) return false
+    var cp = points[0]
+    return (cp >= 0xE000 && cp <= 0xF8FF) || (cp >= 0xF0000 && cp <= 0xFFFFD)
+      || (cp >= 0x2190 && cp <= 0x2BFF) || (cp >= 0x1F300 && cp <= 0x1FAFF)
+  }
+
+  // Unicode code points of a string, joining UTF-16 surrogate pairs. The
+  // engine's string iterator yields code units, which splits every glyph
+  // above the basic plane in two.
+  function codePoints(text) {
+    var points = []
+    for (var i = 0; i < text.length; i++) {
+      var code = text.charCodeAt(i)
+      if (code >= 0xD800 && code <= 0xDBFF && i + 1 < text.length) {
+        var low = text.charCodeAt(i + 1)
+        if (low >= 0xDC00 && low <= 0xDFFF) {
+          points.push(((code - 0xD800) << 10) + (low - 0xDC00) + 0x10000)
+          i++
+          continue
+        }
+      }
+      points.push(code)
+    }
+    return points
+  }
+
+  // Splits bar text into an icon glyph and its label: "icon", "icon label"
+  // or "label icon", with whitespace between the two. Null for plain text.
+  function splitIconLabel(text) {
+    var trimmed = String(text || "").trim()
+    if (trimmed === "") return null
+    if (isIconGlyph(trimmed)) return { icon: trimmed, label: "", iconFirst: true }
+    var match = /^(\S+)\s+(.+)$/.exec(trimmed)
+    if (match && isIconGlyph(match[1])) return { icon: match[1], label: match[2], iconFirst: true }
+    match = /^(.+?)\s+(\S+)$/.exec(trimmed)
+    if (match && isIconGlyph(match[2])) return { icon: match[2], label: match[1], iconFirst: false }
+    return null
+  }
+
   function clamp(value, min, max) {
     var n = Number(value)
     if (!isFinite(n)) return min

@@ -1,0 +1,58 @@
+#!/bin/bash
+
+# omarchy:summary=Scan the live bar's icons against the shared icon geometry rules
+# omarchy:group=dev
+# omarchy:args=[--json]
+# omarchy:examples=omarchy dev bar-icon-audit | omarchy-dev-bar-icon-audit --json
+
+set -euo pipefail
+
+json_only=0
+if [[ ${1:-} == "--json" ]]; then
+  json_only=1
+fi
+
+if ! report=$(OMARCHY_SHELL_IPC_TIMEOUT=5s omarchy-shell shell auditIcons); then
+  echo "The Omarchy shell did not answer; is it running?" >&2
+  exit 1
+fi
+
+if (( json_only )); then
+  jq . <<<"$report"
+  exit 0
+fi
+
+# Margins are logical pixels from the canvas edge (N S E W) and from its
+# corners along the diagonals (NW NE SE SW) to the nearest inked pixel. BX and
+# BY are how far the icon's weight sits from the center of its canvas, which
+# is what decides whether it reads level with the rest of the row. The rules
+# themselves live in shell/Commons/IconRules.qml.
+printf '%-44s %-9s %-6s %5s %5s %5s %5s %6s %6s %5s %5s %5s %5s  %s\n' \
+  MODULE KIND LABEL N S E W BX BY NW NE SE SW RESULT
+jq -r '
+  def cell: if . == null then "-" else ((. * 10 | round) / 10 | tostring) end;
+  .[] | select(.shown) |
+  [ .module, .kind, .label,
+    (.compass.n | cell), (.compass.s | cell), (.compass.e | cell), (.compass.w | cell),
+    (.compass.balanceX | cell), (.compass.balanceY | cell),
+    (.compass.nw | cell), (.compass.ne | cell), (.compass.se | cell), (.compass.sw | cell),
+    (if .kind == "text" then "text, no rules"
+     elif (.verified | not) then "still measuring"
+     elif (.violations | length) == 0 then "ok"
+     else "FAIL " + (.violations | join(",")) end) ] | @tsv' <<<"$report" |
+  while IFS=$'\t' read -r module kind label n s e w bx by nw ne se sw result; do
+    printf '%-44s %-9s %-6s %5s %5s %5s %5s %6s %6s %5s %5s %5s %5s  %s\n' \
+      "$module" "$kind" "$label" "$n" "$s" "$e" "$w" "$bx" "$by" "$nw" "$ne" "$se" "$sw" "$result"
+  done
+
+failing=$(jq '[ .[] | select(.shown and .kind != "text" and ((.verified | not) or (.violations | length) > 0)) ] | length' <<<"$report")
+total=$(jq '[ .[] | select(.shown and .kind != "text") ] | length' <<<"$report")
+
+if (( failing > 0 )); then
+  echo
+  echo "$failing of $total icons break the rules or are still measuring." >&2
+  exit 1
+fi
+
+echo
+echo "All $total icons meet the rules."

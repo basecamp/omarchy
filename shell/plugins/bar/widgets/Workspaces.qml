@@ -60,6 +60,9 @@ BarWidget {
 
         bar: root.bar
         text: focused ? "\uDB85\uDCFB" : (modelData === 10 ? "0" : String(modelData))
+        // The dot stands in for a digit in a run of text, so it keeps the
+        // numbers' type metrics rather than filling the icon canvas.
+        normalizeIcon: false
         opacity: occupied || focused ? 1 : 0.5
         horizontalMargin: 6
         verticalPadding: 6

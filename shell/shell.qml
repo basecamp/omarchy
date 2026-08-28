@@ -876,6 +876,12 @@ ShellRoot {
       return "ok"
     }
 
+    // Every bar icon's measured compass margins and rule violations, as JSON.
+    function auditIcons(): string {
+      if (!shell.bar || typeof shell.bar.auditIcons !== "function") return "[]"
+      return JSON.stringify(shell.bar.auditIcons())
+    }
+
     function applyTheme(colorsB64: string, shellB64: string): string {
       var colorsRaw = ""
       var shellRaw = ""
