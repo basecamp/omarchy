@@ -93,8 +93,17 @@ BarWidget {
         spacing: 0
         anchors.verticalCenter: parent.verticalCenter
 
+        // The artist claims its share first and the title takes whatever is
+        // left over, so a short artist hands its slack back to the title.
+        // artistWidth never depends on titleWidth, which keeps the pair clear
+        // of a binding cycle.
+        readonly property real separatorWidth: root.artist !== "" ? sepText.implicitWidth : 0
+        readonly property real artistWidth: Math.min(root.maxLabelWidth * 0.35, artistText.implicitWidth)
+        readonly property real titleWidth: Math.min(
+          Math.max(0, root.maxLabelWidth - separatorWidth - artistWidth), titleText.implicitWidth)
+
         Item {
-          width: Math.min(root.maxLabelWidth * 0.65, titleText.implicitWidth)
+          width: staticLabel.titleWidth
           height: titleText.implicitHeight
           clip: true
 
@@ -120,7 +129,7 @@ BarWidget {
 
         Item {
           visible: root.artist !== ""
-          width: Math.min(root.maxLabelWidth * 0.35, artistText.implicitWidth)
+          width: staticLabel.artistWidth
           height: artistText.implicitHeight
           clip: true
 
