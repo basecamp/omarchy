@@ -45,17 +45,28 @@ omarchy_i18n_available() {
   [[ -n $path && -r $path ]] && command -v jq >/dev/null 2>&1
 }
 
-# %1, %2 ... from the highest index down, so %10 is not %1 followed by 0 and
-# an argument containing "%2" is never re-expanded once inserted. The
-# replacement is quoted so `&` stays literal under patsub_replacement.
+# %1, %2 ... Scans the template once and appends each piece to a separate
+# buffer, so an inserted argument is never re-scanned: "%2 %1" with $2 being
+# "say %1" yields "say %1 a". An index with no argument stays as written.
 omarchy_i18n_interpolate() {
   local text="$1"
   shift
-  local i
-  for (( i = $#; i >= 1; i-- )); do
-    text="${text//"%$i"/"${!i}"}"
+  local out="" prefix rest index
+  while :; do
+    prefix="${text%%%[1-9]*}"
+    [[ $prefix != "$text" ]] || break
+    out+="$prefix"
+    rest="${text:${#prefix}}"
+    [[ $rest =~ ^%([1-9][0-9]*) ]]
+    index="${BASH_REMATCH[1]}"
+    if (( index <= $# )); then
+      out+="${!index}"
+    else
+      out+="${BASH_REMATCH[0]}"
+    fi
+    text="${rest:${#BASH_REMATCH[0]}}"
   done
-  printf '%s' "$text"
+  printf '%s' "$out$text"
 }
 
 # Raw catalog value for a key: a string, a JSON array (plural), or nothing.
@@ -78,12 +89,17 @@ omarchy_i18n_plural_index() {
     '.catalogs[$d][""]["plural-forms"] // empty' "$path" 2>/dev/null)"
   rule="${header#*plural=}"
   rule="${rule%%;*}"
-  # Fail closed: evaluate only when the whole rule matches the whitelist.
+  # Fail closed: evaluate only when the whole rule matches the whitelist,
+  # and only in a subshell — the whitelist admits malformed expressions such
+  # as "(n ? )", and an arithmetic syntax error in the caller's shell exits
+  # a `set -e` script before any `||` can catch it. Anything but a number
+  # coming back means English behaviour.
   local allowed='^[n0-9 ?:()<>=!&|%+*/-]+$'
-  local index
+  local index=""
   if [[ -n $rule && $rule =~ $allowed ]]; then
-    index=$(( rule )) 2>/dev/null || index=0
-  else
+    index="$( ( n="$n"; printf '%s' "$(( rule ))" ) 2>/dev/null )" || index=""
+  fi
+  if [[ ! $index =~ ^[0-9]+$ ]]; then
     (( n == 1 )) && index=0 || index=1
   fi
   printf '%s' "$index"
@@ -112,6 +128,9 @@ omarchy_t() {
 omarchy_tn() {
   local count="$1" singular="$2" plural="$3"
   shift 3
+  # Arithmetic on an unvalidated value is the same injection vector as the
+  # plural rule; the count is normalized before the first (( )).
+  [[ $count =~ ^[0-9]+$ ]] || count=0
   local text
   if (( count == 1 )); then text="$singular"; else text="$plural"; fi
   if omarchy_i18n_available; then

@@ -216,6 +216,15 @@ function sanitizeCatalog(raw) {
   return out
 }
 
+// The plural rule a catalog declares, normalized for comparison. A catalog
+// without a header is taken to use the English rule.
+var ENGLISH_PLURAL_TEXT = "nplurals=2; plural=(n != 1);"
+function pluralRuleText(catalog) {
+  var header = catalog && catalog[""]
+  var text = header && (header["plural-forms"] || header["Plural-Forms"])
+  return String(text || ENGLISH_PLURAL_TEXT).replace(/\s+/g, "")
+}
+
 function headerPluralForms(catalog) {
   var header = catalog && catalog[""]
   if (!header) return null
@@ -255,12 +264,28 @@ function createRegistry() {
     var merged = {}
     var parents = {}
     var domainOrder = []
+    // A domain's plural rule is the winning owner's header. Owners fold in
+    // ascending order of preference, so the last header written wins.
+    var rules = {}
+    for (var h = 0; h < list.length; h++) {
+      for (var hd in list[h].catalogs) rules[hd] = pluralRuleText(list[h].catalogs[hd])
+    }
     for (var i = 0; i < list.length; i++) {
       var owner = list[i]
       for (var domain in owner.catalogs) {
         if (!merged[domain]) { merged[domain] = {}; domainOrder.push(domain) }
         var cat = owner.catalogs[domain]
-        for (var key in cat) merged[domain][key] = cat[key]
+        // A lower-preference owner may supply keys the winner lacks, but a
+        // plural entry is only meaningful under the rule its forms were
+        // written for. With LANGUAGE=ca:pl a Polish three-form entry indexed
+        // by the Catalan rule would show the wrong form, so such entries are
+        // left out and fall back to English instead. The snapshot Bash reads
+        // stays consistent with its one header per domain for the same reason.
+        var compatible = pluralRuleText(cat) === rules[domain]
+        for (var key in cat) {
+          if (Array.isArray(cat[key]) && !compatible) continue
+          merged[domain][key] = cat[key]
+        }
       }
       for (var child in owner.links) parents[child] = owner.links[child]
     }

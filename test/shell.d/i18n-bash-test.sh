@@ -42,6 +42,21 @@ cat >"$tmp/omarchy/i18n/pl.json" <<'JSON'
 }
 JSON
 
+# A rule the whitelist admits but bash cannot parse. Evaluated in the
+# caller's shell it would exit a set -e script before || could catch it.
+cat >"$tmp/omarchy/i18n/yy.json" <<'JSON'
+{
+  "version": 1,
+  "catalogs": {
+    "omarchy.cli": {
+      "": { "plural-forms": "nplurals=2; plural=(n ? );" },
+      "%1 item": ["one", "many"]
+    }
+  },
+  "links": {}
+}
+JSON
+
 # A plural rule is evaluated with bash arithmetic, which will run a command
 # substitution hidden in an array subscript. The helper must refuse it.
 cat >"$tmp/omarchy/i18n/xx.json" <<JSON
@@ -84,6 +99,11 @@ check "plural form other" "5 paquets" "$(omarchy_tn 5 "%1 package" "%1 packages"
 check "an ampersand in a translation is literal" "A & B" "$(omarchy_t "Ampersand")"
 check "%10 is not %1 followed by 0" "j a" "$(omarchy_i18n_interpolate "%10 %1" a b c d e f g h i j)"
 check "an argument containing a placeholder is not re-expanded" "say %2 in 5 min" "$(omarchy_i18n_interpolate "%1 in %2 min" "say %2" 5)"
+check "an inserted argument is never re-scanned, whatever the order" "say %1 a" "$(omarchy_i18n_interpolate "%2 %1" a "say %1")"
+check "a bare percent and %0 are literal" "100% %0 a" "$(omarchy_i18n_interpolate "100% %0 %1" a)"
+check "a non-numeric count is treated as zero" "many" "$(omarchy_tn "a[\$(touch $tmp/pwned2)]" "one" "many")"
+[[ -e $tmp/pwned2 ]] && fail "a hostile count must not run commands"
+pass "a hostile count does not run commands"
 
 LANG=pl_PL.UTF-8
 check "a three-form plural rule is evaluated" "5 plików" "$(omarchy_tn 5 "%1 file" "%1 files" 5)"
@@ -93,6 +113,10 @@ LANG=xx_XX.UTF-8
 check "a hostile plural rule falls back to English behaviour" "many" "$(omarchy_tn 3 "%1 item" "%1 items")"
 [[ -e $tmp/pwned ]] && fail "a hostile plural rule must not run commands"
 pass "a hostile plural rule does not run commands"
+
+LANG=yy_YY.UTF-8
+out=$(set -e; source "$helper"; omarchy_tn 3 "%1 item" "%1 items"; echo "|ok")
+check "a malformed plural rule does not exit a set -e caller" "many|ok" "$out"
 
 LANG=de_DE.UTF-8
 check "a locale with no cache returns the source" "Update now?" "$(omarchy_t "Update now?")"

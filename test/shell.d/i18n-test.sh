@@ -57,6 +57,15 @@ assertEqual(reg.translate('Play', { domain: 'omarchy.menu', context: 'verb' }), 
 assertEqual(reg.translate('Play', { domain: 'omarchy.menu' }), 'Play', 'a context-free lookup does not see the contextual entry')
 assertEqual(reg.translatePlural(4, '%1 city', '%1 cities', { domain: 'omarchy.menu', args: [4] }), '4 ciutats', 'plurals use the rule from the catalog the key was found in')
 
+// A fallback locale with a different plural rule cannot lend plural entries
+const mixed = I18n.createRegistry()
+mixed.setCatalogs('lang.pl', { d: { '': { 'plural-forms': 'nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);' },
+  '%1 file': ['%1 plik', '%1 pliki', '%1 plików'], Save: 'Zapisz' } }, { precedence: 1 })
+mixed.setCatalogs('lang.ca', { d: Object.assign({}, en, { Open: 'Obre' }) }, { precedence: 0 })
+assertEqual(mixed.translate('Save', { domain: 'd' }), 'Zapisz', 'a fallback locale lends singular entries the preferred one lacks')
+assertEqual(mixed.translatePlural(5, '%1 file', '%1 files', { domain: 'd', args: [5] }), '5 files', 'a fallback locale with another plural rule does not lend plural entries')
+assertEqual(mixed.snapshot().catalogs.d['%1 file'], undefined, 'the snapshot Bash reads stays consistent with its one header per domain')
+
 // Clone chain: own domain, then clonedFrom, then global
 const clone = I18n.createRegistry()
 clone.setCatalogs('lang.ca', {
