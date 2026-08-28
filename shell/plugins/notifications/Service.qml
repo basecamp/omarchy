@@ -99,10 +99,11 @@ Item {
   readonly property int normalPopupDuration: 8000
   readonly property int maxPopupDuration: 30000
 
-  function durationFor(urgency, expireTimeout) {
-    switch (urgency) {
-    case NotificationUrgency.Critical:
+  function durationFor(chromiumDerived, urgency, expireTimeout) {
+    if (NotificationLogic.shouldPersistPopup(chromiumDerived, urgency, NotificationUrgency.Critical))
       return 0
+
+    switch (urgency) {
     case NotificationUrgency.Low:
       return Math.min(maxPopupDuration, Math.max(lowPopupDuration, requestedDuration(expireTimeout)))
     default:
@@ -724,7 +725,7 @@ Item {
     var live = []
     for (var i = 0; i < entries.length; i++) {
       var entry = entries[i]
-      var duration = durationFor(entry.urgency, entry.expireTimeout)
+      var duration = durationFor(entry.chromiumDerived, entry.urgency, entry.expireTimeout)
       if (NotificationLogic.popupExpired(entry, duration, now)) {
         // It would have expired on screen had the shell kept running, so it
         // gets archived exactly like an expiry that happened while it did.
@@ -1010,7 +1011,7 @@ Item {
             Layout.alignment: Qt.AlignRight
             implicitHeight: card.implicitHeight
 
-            readonly property real lifetime: service.durationFor(cardSlot.urgency, cardSlot.expireTimeout)
+            readonly property real lifetime: service.durationFor(cardSlot.chromiumDerived, cardSlot.urgency, cardSlot.expireTimeout)
             property real remainingLifetime: 1.0
             readonly property bool ticking: cardSlot.lifetime > 0 && !card.hovered
 
