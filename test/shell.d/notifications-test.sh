@@ -13,19 +13,15 @@ assert(notifications.isChromiumDerived('', 'microsoft-edge'), 'notifications det
 assert(!notifications.isChromiumDerived('Slack', ''), 'notifications do not treat unrelated apps as chromium-derived')
 
 assert(
-  !notifications.shouldPersistPopup('Brave Browser', '', 2, 2),
+  !notifications.shouldPersistPopup(true, 2, 2),
   'critical chromium-derived notifications use a finite popup lifetime'
 )
 assert(
-  !notifications.shouldPersistPopup('', 'microsoft-edge', 2, 2),
-  'critical chromium-derived notifications are detected by icon'
-)
-assert(
-  notifications.shouldPersistPopup('Slack', '', 2, 2),
+  notifications.shouldPersistPopup(false, 2, 2),
   'critical non-browser notifications remain persistent'
 )
 assert(
-  !notifications.shouldPersistPopup('Slack', '', 1, 2),
+  !notifications.shouldPersistPopup(false, 1, 2),
   'normal notifications are never treated as persistent'
 )
 
@@ -218,6 +214,52 @@ assertEqual(
   notifications.popupFileName(replacement),
   '12345-12.json',
   'notifications keep the persisted file name across an in-place update'
+)
+
+
+// Browser classification is captured while the live sender identity is still
+// available. Persisting a file-backed icon rewrites its path, so restoration
+// must use the stored classification rather than trying to detect the browser
+// again from the rewritten icon.
+const iconOnlyChromium = notifications.snapshotOf({
+  id: 21,
+  appName: 'Web App',
+  appIcon: '/tmp/microsoft-edge-icon.png',
+  summary: 'Browser notification',
+  urgency: 2,
+  expireTimeout: 0
+}, 20000)
+
+assertEqual(
+  iconOnlyChromium.chromiumDerived,
+  true,
+  'notifications classify chromium-derived popups before persistence rewrites their icon'
+)
+
+const persistedChromium = notifications.persistablePopup(
+  iconOnlyChromium,
+  '/tmp/omarchy-notification-images/'
+)
+
+assert(
+  persistedChromium.entry.appIcon.indexOf('microsoft-edge') < 0,
+  'notifications persistence may replace the browser-identifying app icon'
+)
+
+const restoredChromium = notifications.parsePopupFiles(
+  notifications.serializePopup(persistedChromium.entry, 1),
+  1
+)[0]
+
+assertEqual(
+  restoredChromium.chromiumDerived,
+  true,
+  'notifications preserve chromium classification across popup serialization'
+)
+
+assert(
+  !notifications.shouldPersistPopup(restoredChromium.chromiumDerived, restoredChromium.urgency, 2),
+  'restored critical chromium-derived notifications keep a finite lifetime'
 )
 assert(
   !notifications.popupRowChanged(replacement, replacement),

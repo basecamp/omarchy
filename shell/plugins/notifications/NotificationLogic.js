@@ -5,8 +5,8 @@ function isChromiumDerived(app, appIcon) {
          source.indexOf("opera") >= 0
 }
 
-function shouldPersistPopup(app, appIcon, urgency, criticalUrgency) {
-  return urgency === criticalUrgency && !isChromiumDerived(app, appIcon)
+function shouldPersistPopup(chromiumDerived, urgency, criticalUrgency) {
+  return urgency === criticalUrgency && !chromiumDerived
 }
 
 function sanitizeBody(body, app, appIcon) {
@@ -110,6 +110,7 @@ function snapshotOf(notification, timestamp) {
     originalId: id,
     app: n.appName || "",
     appIcon: n.appIcon || "",
+    chromiumDerived: isChromiumDerived(n.appName, n.appIcon),
     summary: String(n.summary || ""),
     body: n.body || "",
     image: n.image || "",
@@ -121,9 +122,9 @@ function snapshotOf(notification, timestamp) {
   }
 }
 
-// Everything the popup card draws, and therefore everything an in-place
-// update has to write through to the row and its file.
-var POPUP_ROLES = ["app", "appIcon", "summary", "body", "image", "glyph", "execArgv", "urgency", "expireTimeout"]
+// Everything the popup card or its lifetime policy depends on, and therefore
+// everything an in-place update has to write through to the row and its file.
+var POPUP_ROLES = ["app", "appIcon", "chromiumDerived", "summary", "body", "image", "glyph", "execArgv", "urgency", "expireTimeout"]
 
 function popupRoles() {
   return POPUP_ROLES
@@ -161,6 +162,9 @@ function historyEntry(value, normalUrgency) {
     originalId: e.originalId || e.id || 0,
     app: e.app || "",
     appIcon: e.appIcon || "",
+    chromiumDerived: typeof e.chromiumDerived === "boolean"
+      ? e.chromiumDerived
+      : isChromiumDerived(e.app, e.appIcon),
     summary: e.summary || "",
     body: e.body || "",
     image: e.image || "",
