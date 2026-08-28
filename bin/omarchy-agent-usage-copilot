@@ -77,7 +77,9 @@ def get_oauth_token() -> str | None:
   (~/.copilot by default), which is separate from the editor plugin auth store.
   """
   max_size = 1_000_000  # 1 MB limit
-  flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+  if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_NONBLOCK"):
+    return None
+  flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
 
   for token_file in COPILOT_TOKEN_FILES:
     token_path = COPILOT_EDITOR_CONFIG_DIR / token_file
