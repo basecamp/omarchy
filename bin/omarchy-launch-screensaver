@@ -49,7 +49,13 @@ wait_for_screensaver_window() {
   done
 }
 
-for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
+# Spawn on every monitor, saving the focused one for last: the last window to
+# map keeps focus, and omarchy-screensaver exits whenever it is not the active
+# window, so focus has to end on a screensaver terminal. Restoring focus to
+# the previously focused window instead kills the freshly launched screensaver
+# about a second after it opens, leaving a windowed flash instead of a
+# screensaver.
+for m in $(hyprctl monitors -j | jq -r --arg focused "$focused" 'sort_by(.name == $focused) | .[].name'); do
   hypr_focus_monitor "$m"
 
   case $terminal in
@@ -69,5 +75,3 @@ for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
 
   wait_for_screensaver_window
 done
-
-hypr_focus_monitor "$focused"
