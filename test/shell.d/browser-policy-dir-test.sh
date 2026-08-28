@@ -294,6 +294,10 @@ cleanup || fail "omarchy-theme-set-browser-policy's EXIT trap succeeds with a st
 unset -f cleanup
 pass "omarchy-theme-set-browser-policy's EXIT trap never leaks a failure status"
 
+grep -F 'omarchy-theme-set-browser || true' "$ROOT/migrations/1787515927.sh" >/dev/null ||
+  fail "the policy-directory migration hardens Firefox even when the theme refresh fails"
+pass "the policy-directory migration does not abort on a failed theme refresh"
+
 policy_files=(
   "$ROOT/bin/omarchy-install-browser"
   "$ROOT/bin/omarchy-provision-owner"
