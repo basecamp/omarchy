@@ -440,7 +440,15 @@ Panel {
 
   Process {
     id: actionProc
-    stdout: StdioCollector { waitForEnd: true }
+    stdout: StdioCollector {
+      id: actionStdout
+      waitForEnd: true
+    }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) {
+        console.warn("monitor", "display action exited", exitCode, String(actionStdout.text || "").trim())
+      }
+    }
     onRunningChanged: if (!running) root.refresh()
   }
 
