@@ -42,6 +42,15 @@ assertEqual(
   'power shows battery icon when unplugged before battery state refreshes'
 )
 
+const idleOnAc = { isPresent: true, percentage: 0.4, state: states.PendingCharge }
+const dischargingIcon = power.batteryIcon({ isPresent: true, percentage: 0.4, state: states.Discharging }, true, states)
+const chargingIcon = power.batteryIcon({ isPresent: true, percentage: 0.4, state: states.Charging, changeRate: 1.0, timeToFull: 120 }, false, states)
+
+assert(power.batteryIcon(idleOnAc, false, states) !== dischargingIcon, 'power distinguishes plugged in but idle from running on battery')
+assert(power.batteryIcon(idleOnAc, false, states) !== chargingIcon, 'power distinguishes plugged in but idle from active charging')
+assert(power.batteryIcon(idleOnAc, false, states).startsWith(dischargingIcon), 'power keeps the charge level readable while plugged in but idle')
+assertEqual(Array.from(power.batteryIcon(idleOnAc, false, states)).length, 2, 'power pairs the level glyph with a plug while plugged in but idle')
+
 assert(/if \(b === Qt\.RightButton\) root\.togglePercentage\(\)/.test(panelSource), 'power right click toggles the bar percentage')
 assert(/Object\.assign\([^\n]+showPercentage: !root\.showPercentage[^\n]+\)[\s\S]*updateEntryInline/.test(panelSource), 'power persists the bar percentage setting')
 assert(/Math\.round\(root\.batteryFraction \* 100\) \+ "% " \+ root\.batteryIcon\(\)/.test(panelSource), 'power places the percentage before the battery icon')
