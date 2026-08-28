@@ -4,6 +4,7 @@
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
 
 #include <fcntl.h>
+#include <signal.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -192,6 +193,14 @@ void send_broker_request(std::uint64_t generation, std::string_view current) {
 
 int main() {
   const std::string current = mode();
+  sigset_t ready_loss_signal{};
+  if (current == "ready-loss") {
+    if (sigemptyset(&ready_loss_signal) != 0 ||
+        sigaddset(&ready_loss_signal, SIGUSR1) != 0 ||
+        sigprocmask(SIG_BLOCK, &ready_loss_signal, nullptr) != 0) {
+      fail();
+    }
+  }
   if (current == "transport-max") {
     std::vector<std::byte> received(
         wire::kHeaderSize + wire::payload_cap(wire::EndpointRole::broker));
@@ -223,6 +232,11 @@ int main() {
       negotiate(4, wire::EndpointRole::broker, current);
   static_cast<void>(negotiate(5, wire::EndpointRole::render, current));
   if (current == "ready-loss") {
+    int received_signal = 0;
+    if (sigwait(&ready_loss_signal, &received_signal) != 0 ||
+        received_signal != SIGUSR1) {
+      fail();
+    }
     return 0;
   }
   send_broker_request(broker_generation, current);

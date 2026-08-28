@@ -2,7 +2,7 @@
 
 ## Outcome
 
-F1 assembles E0, E1, E2, E3, the C11 malicious peer, D5 health policy, and their real transitive contracts in one standalone CTest tree under `native/plugin-runtime/proof-exhaustion/`. The campaign does not replace owner tests with mocks: it runs the existing authenticated channel, render, QML, broker, provider, sandbox, health, descriptor-quarantine, and vertical-slice executables together, then repeats the deterministic high-pressure subset until failure.
+F1 assembles E0, E1, E2, E3, the C11 malicious peer, D5 health policy, and their real transitive contracts in one standalone CTest tree under `native/plugin-runtime/proof-exhaustion/`. Its deterministic exhaustion executable is also registered by the root native aggregate so the release suite cannot omit the 10,000-envelope and resource-cap corpus. The campaign does not replace owner tests with mocks: it runs the existing authenticated channel, render, QML, broker, provider, sandbox, health, descriptor-quarantine, and vertical-slice executables together, then repeats the deterministic high-pressure subset until failure.
 
 The campaign found one production gap: D5 bounded concurrent requests but allowed an unlimited sequence of immediately completed requests. Commit `c773eeda` adds a fixed per-binding trusted-monotonic request-start window. Exceeding it or regressing the trusted clock tears down the worker before dispatch, records the failure, and enters the existing restart/backoff policy.
 

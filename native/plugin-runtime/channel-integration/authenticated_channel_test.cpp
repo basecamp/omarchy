@@ -1,6 +1,7 @@
 #include "authenticated_channel.hpp"
 
 #include <fcntl.h>
+#include <signal.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -389,8 +390,7 @@ void fake_suite() {
             "descriptor quarantine leaked broker-side descriptors");
   }
 
-  for (const std::string_view mode :
-       {"stale", "bad-role-version", "ready-loss"}) {
+  for (const std::string_view mode : {"stale", "bad-role-version"}) {
     Session session(mode, FAKE_BWRAP_PATH);
     require(session.opened.channel->negotiate(2s),
             "post-readiness attack did not negotiate first");
@@ -405,15 +405,23 @@ void fake_suite() {
     Session session("ready-loss", FAKE_BWRAP_PATH);
     require(session.opened.channel->negotiate(2s),
             "silent-exit liveness fixture did not negotiate");
+    require(
+        kill(session.opened.channel->identity().outer_worker_pid, SIGUSR1) == 0,
+        "host could not release the post-readiness exit barrier");
     const auto deadline = std::chrono::steady_clock::now() + 2s;
     while (session.opened.channel->alive() &&
            std::chrono::steady_clock::now() < deadline) {
       usleep(1000);
     }
     require(
-        !session.opened.channel->alive() && session.dispatcher->calls == 0 &&
+        !session.opened.channel->alive() &&
+            session.opened.channel->dispatch_one(2s) ==
+                channel::DispatchStatus::fatal &&
+            session.opened.channel->failure() ==
+                channel::ChannelFailure::peer_failure &&
+            session.dispatcher->calls == 0 &&
             session.opened.channel->terminate() && session.scope->removes == 1,
-        "silent peer exit remained live or reached broker dispatch");
+        "post-readiness peer exit remained live or reached broker dispatch");
   }
 }
 
