@@ -88,8 +88,7 @@ codex)
   ;;
 hermes)
   if [[ -n ${prompt:-} ]]; then
-    # Keep inherited flags after chat so older Hermes subparsers do not clear them.
-    command=(hermes chat --yolo --tui "--query=$prompt")
+    command=(omarchy-agent-hermes "$prompt")
   else
     command=(hermes --yolo)
   fi
