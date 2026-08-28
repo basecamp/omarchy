@@ -17,5 +17,5 @@ for pid in $(pgrep -x opencode 2>/dev/null || true); do
   [[ ${seen_ttys[$tty]:-} ]] && continue
   seen_ttys[$tty]=1
 
-  printf '%b\033[?996n' "$theme_osc" >"$tty" 2>/dev/null || true
+  printf '%b\033[?996n' "$theme_osc" 2>/dev/null >"$tty" || true
 done
