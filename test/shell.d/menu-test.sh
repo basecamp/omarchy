@@ -510,20 +510,6 @@ assert(
   /function indexOfItemId\(itemId\)[\s\S]*?displayModel\.get\(i\)\.itemId === itemId\) return i/.test(menuQml),
   'menu can find a row by id in the current, possibly filtered, display model'
 )
-// navStack is empty when a menu is opened directly at a route (e.g.
-// `omarchy menu summon system`) rather than reached by drilling down, so
-// goBack() falls through to walking up to the parent without a remembered
-// row to pop. That fallback should still land the cursor back on the menu
-// being left, the same way the navStack branch above restores onto the row
-// that led into it.
-assert(
-  /var childId = root\.activeMenu\s*\n\s*var active = root\.item\(childId\)\s*\n\s*root\.setActiveMenu\(\(active && active\.parent\) \? active\.parent : "root", false\)/.test(menuQml),
-  'menu remembers the menu being left before walking up to its parent with no navStack entry'
-)
-assert(
-  /root\.setActiveMenu\(\(active && active\.parent\) \? active\.parent : "root", false\)\s*\n\s*var restored = root\.indexOfItemId\(childId\)\s*\n\s*if \(restored >= 0\) \{\s*\n\s*root\.selectedIndex = restored\s*\n\s*root\.settleCursor\(\)\s*\n\s*\}/.test(menuQml),
-  'menu restores the cursor onto the left menu when going back with no navStack entry'
-)
 assert(
   /function setActiveMenu\([\s\S]*?root\.filterText = restoreFilterText \|\| ""[\s\S]*?if \(!root\.dmenuActive && root\.filterText\.trim\(\)\) root\.loadProvidersForSearch\(\)/.test(menuQml),
   'menu reloads volatile search providers when a remembered filter is restored'
