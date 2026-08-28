@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 2,
+  "id": "org.omarchy.fixture.pet",
+  "name": "Secure Desktop Pet Fixture",
+  "version": "2.0.0",
+  "runtime": {
+    "apiVersion": 1,
+    "qml": "ui/Pet.qml"
+  },
+  "surfaces": {
+    "pet": {
+      "role": "desktop-overlay",
+      "maximumWidth": 360,
+      "maximumHeight": 220,
+      "maximumFramesPerSecond": 30,
+      "keyboardFocus": false,
+      "lockScreenVisible": false,
+      "inputRegions": "dynamic-bounded"
+    }
+  },
+  "permissions": {
+    "required": [],
+    "optional": []
+  }
+}

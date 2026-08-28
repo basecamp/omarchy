@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 2,
+  "id": "org.omarchy.fixture.pomodoro",
+  "name": "Secure Pomodoro Fixture",
+  "version": "2.0.0",
+  "runtime": {
+    "apiVersion": 1,
+    "qml": "ui/Pomodoro.qml"
+  },
+  "surfaces": {
+    "timer": {
+      "role": "bar-embedded",
+      "maximumWidth": 280,
+      "maximumHeight": 64,
+      "maximumFramesPerSecond": 30
+    }
+  },
+  "permissions": {
+    "required": [
+      {
+        "capability": "storage.private",
+        "quotaBytes": 65536,
+        "itemBytes": 4096,
+        "reason": "Save the current timer and completed-session count"
+      }
+    ],
+    "optional": [
+      {
+        "capability": "notifications.send",
+        "categories": ["timer"],
+        "reason": "Notify when a focus interval completes"
+      },
+      {
+        "capability": "audio.play-cue",
+        "cues": ["timer-complete"],
+        "reason": "Play a named sound when a focus interval completes"
+      }
+    ]
+  }
+}

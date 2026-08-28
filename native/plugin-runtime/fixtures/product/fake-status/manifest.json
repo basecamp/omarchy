@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 2,
+  "id": "org.omarchy.fixture.fake-status",
+  "name": "Secure Fake Status Fixture",
+  "version": "2.0.0",
+  "runtime": {
+    "apiVersion": 1,
+    "qml": "ui/FakeStatus.qml"
+  },
+  "surfaces": {
+    "statusPanel": {
+      "role": "panel",
+      "maximumWidth": 480,
+      "maximumHeight": 640,
+      "maximumFramesPerSecond": 30,
+      "keyboardFocus": "after-gesture"
+    }
+  },
+  "permissions": {
+    "required": [
+      {
+        "capability": "service.fake-status",
+        "resources": [1],
+        "operations": ["list", "acknowledge"],
+        "reason": "Show and acknowledge items from the registered fake service"
+      }
+    ],
+    "optional": []
+  }
+}
