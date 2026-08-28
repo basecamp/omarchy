@@ -282,12 +282,49 @@ void identity_audit_and_teardown_fail_closed() {
           "audit failure admitted or retained a worker");
 }
 
+void candidate_is_health_checked_without_early_authority() {
+  TemporaryDirectory temporary;
+  audit::AuditStore store(temporary.path() / "audit", {.maximum_records = 32});
+  health::HealthSupervisor supervisor(test_policy(), store);
+  const auto active = binding("org.example.transition", 1, 'a');
+  const auto candidate = binding("org.example.transition", 2, 'b');
+  auto active_probe = std::make_shared<Probe>();
+  auto candidate_probe = std::make_shared<Probe>();
+  require(supervisor.adopt(worker(active, active_probe), active, 1) ==
+                  health::Status::accepted &&
+              supervisor.ready(active, 1) == health::Status::accepted &&
+              supervisor.open_surface(active, {1, 1}) ==
+                  health::Status::accepted &&
+              supervisor.admit_request(active, 7, 1, 1) ==
+                  health::Status::accepted &&
+              supervisor.adopt_candidate(worker(candidate, candidate_probe),
+                                         candidate,
+                                         1) == health::Status::accepted &&
+              supervisor.ready(candidate, 1) == health::Status::accepted &&
+              supervisor.open_surface(candidate, {2, 2}) ==
+                  health::Status::not_ready &&
+              supervisor.admit_request(candidate, 8, 1, 1) ==
+                  health::Status::not_ready,
+          "healthy candidate received authority before promotion");
+  require(supervisor.promote_candidate(candidate) == health::Status::accepted &&
+              active_probe->terminations == 1 &&
+              candidate_probe->terminations == 0 &&
+              supervisor.request_count() == 0 &&
+              supervisor.surface_count() == 0 &&
+              supervisor.admit_request(active, 9, 1, 2) ==
+                  health::Status::stale_generation &&
+              supervisor.admit_request(candidate, 9, 1, 2) ==
+                  health::Status::accepted,
+          "candidate promotion retained old-generation authority");
+}
+
 } // namespace
 
 int main() {
   try {
     limits_timeout_cleanup_and_crash_loop();
     identity_audit_and_teardown_fail_closed();
+    candidate_is_health_checked_without_early_authority();
   } catch (const std::exception &error) {
     std::cerr << "FAIL: " << error.what() << '\n';
     return 1;

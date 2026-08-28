@@ -89,6 +89,12 @@ public:
                      std::size_t &bytes_written);
 
   [[nodiscard]] bool failed() const { return failed_ || core_.failed(); }
+  [[nodiscard]] const permissions::ActivationBinding &binding() const {
+    return binding_;
+  }
+  [[nodiscard]] const grant::RevisionGrants &revision() const {
+    return revision_;
+  }
 
 private:
   struct TrackedRequest {

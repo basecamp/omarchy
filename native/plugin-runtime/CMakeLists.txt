@@ -81,6 +81,21 @@ if(TARGET omarchy-plugin-broker-core
   add_subdirectory(broker-runtime)
 endif()
 
+if(TARGET omarchy-plugin-launcher
+    AND TARGET omarchy-plugin-broker-core
+    AND TARGET omarchy-plugin-surface-contract
+    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/channel-integration/CMakeLists.txt")
+  add_subdirectory(channel-integration)
+endif()
+
+if(TARGET omarchy-plugin-channel-integration
+    AND TARGET omarchy-plugin-lifecycle
+    AND TARGET omarchy-plugin-broker-runtime
+    AND TARGET omarchy-plugin-supervisor-health
+    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/update-transition/CMakeLists.txt")
+  add_subdirectory(update-transition)
+endif()
+
 if(BUILD_TESTING)
   add_subdirectory(tests)
 endif()

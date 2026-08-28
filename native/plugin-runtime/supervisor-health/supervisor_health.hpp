@@ -91,6 +91,10 @@ public:
   [[nodiscard]] Status adopt(std::unique_ptr<WorkerControl> worker,
                              const permissions::ActivationBinding &binding,
                              std::uint64_t now_seconds);
+  [[nodiscard]] Status
+  adopt_candidate(std::unique_ptr<WorkerControl> worker,
+                  const permissions::ActivationBinding &binding,
+                  std::uint64_t now_seconds);
   [[nodiscard]] Status ready(const permissions::ActivationBinding &binding,
                              std::uint64_t now_seconds);
   [[nodiscard]] Status
@@ -114,6 +118,8 @@ public:
   worker_exited(const permissions::ActivationBinding &binding,
                 std::uint64_t now_seconds);
   [[nodiscard]] Status stop(const permissions::ActivationBinding &binding);
+  [[nodiscard]] Status
+  promote_candidate(const permissions::ActivationBinding &binding);
   [[nodiscard]] RestartDecision
   restart_decision(const permissions::PluginId &plugin,
                    const permissions::Digest &revision,
@@ -136,6 +142,9 @@ private:
                                         const permissions::Digest &revision,
                                         bool create);
   [[nodiscard]] bool recover_unresolved_workers();
+  [[nodiscard]] Status adopt_impl(std::unique_ptr<WorkerControl> worker,
+                                  const permissions::ActivationBinding &binding,
+                                  std::uint64_t now_seconds, bool candidate);
   [[nodiscard]] bool append(permissions::AuditEvent event,
                             permissions::AuditOutcome outcome,
                             const permissions::ActivationBinding &binding,

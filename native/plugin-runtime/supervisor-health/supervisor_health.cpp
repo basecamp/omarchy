@@ -25,6 +25,7 @@ struct HealthSupervisor::Slot {
   std::uint64_t healthy_since = 0;
   bool ready = false;
   bool active = false;
+  bool candidate = false;
 };
 
 struct HealthSupervisor::CrashState {
@@ -113,6 +114,20 @@ HealthSupervisor::~HealthSupervisor() {
 Status HealthSupervisor::adopt(std::unique_ptr<WorkerControl> worker,
                                const permissions::ActivationBinding &binding,
                                std::uint64_t now_seconds) {
+  return adopt_impl(std::move(worker), binding, now_seconds, false);
+}
+
+Status
+HealthSupervisor::adopt_candidate(std::unique_ptr<WorkerControl> worker,
+                                  const permissions::ActivationBinding &binding,
+                                  std::uint64_t now_seconds) {
+  return adopt_impl(std::move(worker), binding, now_seconds, true);
+}
+
+Status
+HealthSupervisor::adopt_impl(std::unique_ptr<WorkerControl> worker,
+                             const permissions::ActivationBinding &binding,
+                             std::uint64_t now_seconds, bool candidate) {
   if (failed_) {
     if (worker)
       (void)worker->terminate();
@@ -131,7 +146,9 @@ Status HealthSupervisor::adopt(std::unique_ptr<WorkerControl> worker,
     return restart.status;
   }
   for (const auto &slot : slots_) {
-    if (slot && slot->active && slot->binding.plugin == binding.plugin) {
+    if (slot && slot->active &&
+        (slot->binding == binding || (slot->binding.plugin == binding.plugin &&
+                                      slot->candidate == candidate))) {
       (void)worker->terminate();
       return Status::duplicate;
     }
@@ -153,6 +170,7 @@ Status HealthSupervisor::adopt(std::unique_ptr<WorkerControl> worker,
   slot->worker = std::move(worker);
   slot->startup_deadline = deadline;
   slot->active = true;
+  slot->candidate = candidate;
   *target = std::move(slot);
   ++workers_;
   if (!append(permissions::AuditEvent::worker_started,
@@ -195,6 +213,8 @@ Status HealthSupervisor::admit_request(
   if (slot == nullptr)
     return Status::stale_generation;
   if (!slot->ready)
+    return Status::not_ready;
+  if (slot->candidate)
     return Status::not_ready;
   if (correlation == 0 || request_bytes > policy_.maximum_request_bytes)
     return Status::denied;
@@ -246,6 +266,8 @@ HealthSupervisor::open_surface(const permissions::ActivationBinding &binding,
   if (slot == nullptr)
     return Status::stale_generation;
   if (!slot->ready)
+    return Status::not_ready;
+  if (slot->candidate)
     return Status::not_ready;
   if (key.generation != binding.generation)
     return Status::stale_generation;
@@ -378,6 +400,39 @@ Status HealthSupervisor::stop(const permissions::ActivationBinding &binding) {
   if (!audited)
     return Status::audit_failed;
   return terminated ? Status::accepted : Status::teardown_failed;
+}
+
+Status HealthSupervisor::promote_candidate(
+    const permissions::ActivationBinding &binding) {
+  auto *candidate = find(binding);
+  if (candidate == nullptr || !candidate->candidate)
+    return Status::stale_generation;
+  if (!candidate->ready || !candidate->worker->alive())
+    return Status::not_ready;
+  std::optional<permissions::ActivationBinding> prior;
+  for (const auto &slot : slots_) {
+    if (slot && slot->active && !slot->candidate &&
+        slot->binding.plugin == binding.plugin) {
+      prior = slot->binding;
+      break;
+    }
+  }
+  if (prior) {
+    const auto stopped = stop(*prior);
+    if (stopped != Status::accepted) {
+      auto *still_candidate = find(binding);
+      if (still_candidate != nullptr) {
+        clear_slot(*still_candidate);
+        (void)still_candidate->worker->terminate();
+      }
+      return stopped;
+    }
+  }
+  candidate = find(binding);
+  if (candidate == nullptr || failed_)
+    return failed_ ? Status::audit_failed : Status::stale_generation;
+  candidate->candidate = false;
+  return Status::accepted;
 }
 
 RestartDecision
@@ -576,6 +631,7 @@ void HealthSupervisor::clear_slot(Slot &slot) {
   --workers_;
   slot.active = false;
   slot.ready = false;
+  slot.candidate = false;
   slot.request_count = 0;
   slot.surface_count = 0;
   slot.surface_occupied.fill(false);
