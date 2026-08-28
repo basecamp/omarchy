@@ -49,9 +49,10 @@ This table is the durable execution ledger. Update it when a node is assigned, c
 | `E0` | complete | primary | Commit `65289972`; exact activation and live-generation binding, authenticated no-authority dispatch, D5 request/resource accounting, synchronous limit and revocation teardown, redacted audit, and fake/real-Bubblewrap Debug/Release/sanitizer proofs |
 | `E1` | active | `wave0_trust_map` | Arbitrary-QML embedded-bar vertical slice in progress |
 | `E2` | active | `wave0_channel` | Transparent pet/slide-out arbitrary-QML expressiveness slice in progress |
-| `E3` | complete | `wave0_channel` | Commit `6dfe7dd5`; immutable QML drives exact authenticated D1 requests through D4, with audit-before-effect, denied grant, stale handle after revocation, poisoned-audit teardown, and fake/real-Bubblewrap/sanitizer proofs |
-| `E4` | active | `wave0_native_build` | Permission-expanding update and live-revocation vertical slice in progress |
+| `E3` | active | `wave0_channel` | Commit `6dfe7dd5` proves the authenticated allowed/denied path, stale-handle revocation, and poisoned-audit teardown; hostile review is adding the graph-required undeclared-operation, gesture-less URL, and expanded-scope denials |
+| `E4` | complete | `wave0_native_build` | Commit `2c5e5892`; exact staged review and candidate health preserve old authority until atomic promotion, promotion ambiguity rolls back fail-closed, and audit-first revocation cancels work, denies new operations, and stales handles |
 | `E5` | complete | `wave0_native_build` | Commit `debe83d3`; v1 has only an unsafe/unmigrated posture, while exact reinstall, upgrade, exact-digest downgrade/rebuild approval, identity denial, and fault recovery pass strict and sanitized proofs |
+| `F3` | active | `wave0_native_build` | Lifecycle, rollback, revocation, crash, and restart adversarial campaign in progress |
 
 Nodes not listed here remain `pending` as represented by the graph. Add them to the live table when they become `ready`; completed rows remain as an audit trail rather than being removed.
 
@@ -233,6 +234,9 @@ flowchart TD
   F1 --> G4
   F2 --> G4
   F3 --> G4
+  F4 --> G4
+  F5 --> G4
+  F6 --> G4
   F4 --> G4
   F5 --> G4
   F6 --> G4
