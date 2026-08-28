@@ -61,7 +61,16 @@ endif()
 add_subdirectory(discovery)
 add_subdirectory(revision-store)
 add_subdirectory(grants)
+add_subdirectory(audit)
 add_subdirectory(lifecycle)
+
+if(TARGET omarchy-plugin-broker-core
+    AND TARGET omarchy-plugin-providers
+    AND TARGET omarchy-plugin-grant-store
+    AND TARGET omarchy-plugin-audit-store
+    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/broker-runtime/CMakeLists.txt")
+  add_subdirectory(broker-runtime)
+endif()
 
 if(BUILD_TESTING)
   add_subdirectory(tests)
