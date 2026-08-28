@@ -208,8 +208,16 @@ void test_activation_crash_and_exact_binding() {
   wrong.source_request_sha256 = digest('c');
   require(store.activate(wrong).code == ErrorCode::binding_mismatch,
           "request substitution must fail");
-  const auto first_binding = binding(first, 'a', 'b', 1);
+  auto first_binding = binding(first, 'a', 'b', 1);
   require(store.activate(first_binding).ok(), "activate first");
+  auto wrong_rebind = first_binding;
+  wrong_rebind.generation = 2;
+  require(store.rebind_active(wrong_rebind).code == ErrorCode::binding_mismatch,
+          "grant rebind changed activation generation");
+  first_binding.grant_sha256 = digest('e');
+  require(store.rebind_active(first_binding).ok() &&
+              store.current()->active == first_binding,
+          "grant-only active rebind did not commit atomically");
 
   const auto second_binding = binding(second, 'c', 'd', 2);
   require(

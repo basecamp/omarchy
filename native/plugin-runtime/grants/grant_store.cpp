@@ -74,6 +74,12 @@ bool same_binding(const permission::ActivationBinding &left,
   return left == right;
 }
 
+bool same_binding_revision(const permission::ActivationBinding &left,
+                           const permission::ActivationBinding &right) {
+  return left.plugin == right.plugin && left.revision == right.revision &&
+         left.policy_fingerprint == right.policy_fingerprint;
+}
+
 bool same_revision(const RevisionGrants &persisted,
                    const RevisionGrants &prospective) {
   return same_binding(persisted.binding, prospective.binding) &&
@@ -208,6 +214,8 @@ void validate_state(const StoreState &state) {
       validate_revision(*plugin.active, plugin.plugin);
     if (plugin.candidate)
       validate_revision(*plugin.candidate, plugin.plugin);
+    if (plugin.rollback)
+      validate_revision(*plugin.rollback, plugin.plugin);
     require(plugin.epochs.size() <= 64,
             "persisted capability epoch count exceeds bound");
     for (std::size_t epoch_index = 0; epoch_index < plugin.epochs.size();
@@ -234,6 +242,7 @@ void validate_state(const StoreState &state) {
     };
     validate_epoch_floor(plugin.active);
     validate_epoch_floor(plugin.candidate);
+    validate_epoch_floor(plugin.rollback);
   }
   std::uint64_t previous = 0;
   for (const auto &decision : state.decisions) {
@@ -554,6 +563,9 @@ std::vector<std::byte> serialize(const StoreState &state) {
     writer.u8(plugin.candidate.has_value() ? 1 : 0);
     if (plugin.candidate)
       write_revision(writer, *plugin.candidate);
+    writer.u8(plugin.rollback.has_value() ? 1 : 0);
+    if (plugin.rollback)
+      write_revision(writer, *plugin.rollback);
     writer.u16(static_cast<std::uint16_t>(plugin.epochs.size()));
     for (const auto &epoch : plugin.epochs) {
       write_key(writer, epoch.capability);
@@ -572,7 +584,11 @@ StoreState deserialize(std::span<const std::byte> bytes) {
   require(std::ranges::equal(reader.take(kMagic.size()), kMagic),
           "invalid grant store magic");
   StoreState state;
-  state.schema_version = reader.u16();
+  const auto persisted_schema_version = reader.u16();
+  require(persisted_schema_version == 1 ||
+              persisted_schema_version == kStoreSchemaVersion,
+          "unsupported grant store schema");
+  state.schema_version = kStoreSchemaVersion;
   state.mutation_sequence = reader.u64();
   state.next_decision_sequence = reader.u64();
   const auto plugin_count = reader.u16();
@@ -590,6 +606,12 @@ StoreState deserialize(std::span<const std::byte> bytes) {
     require(candidate <= 1, "invalid persisted candidate flag");
     if (candidate == 1)
       plugin.candidate = read_revision(reader, plugin.plugin);
+    if (persisted_schema_version >= 2) {
+      const auto rollback = reader.u8();
+      require(rollback <= 1, "invalid persisted rollback flag");
+      if (rollback == 1)
+        plugin.rollback = read_revision(reader, plugin.plugin);
+    }
     const auto epoch_count = reader.u16();
     require(epoch_count <= 64,
             "persisted capability epoch count exceeds bound");
@@ -802,6 +824,7 @@ Preview preview_in(const StoreState &state, const RequestBundle &bundle,
     return result;
   reject_source_alias(plugin->active, prospective);
   reject_source_alias(plugin->candidate, prospective);
+  reject_source_alias(plugin->rollback, prospective);
   const RevisionGrants *target = nullptr;
   if (plugin->active && same_revision(*plugin->active, prospective)) {
     result.target = TargetRevision::active;
@@ -827,6 +850,7 @@ RevisionGrants &ensure_target(PluginGrants &plugin, const RequestBundle &bundle,
   const auto prospective = revision_from(bundle);
   reject_source_alias(plugin.active, prospective);
   reject_source_alias(plugin.candidate, prospective);
+  reject_source_alias(plugin.rollback, prospective);
   if (plugin.active && same_revision(*plugin.active, prospective)) {
     target_kind = TargetRevision::active;
     return *plugin.active;
@@ -1077,6 +1101,7 @@ MutationResult GrantStore::decide(
       state.plugins.push_back({.plugin = bundle.plugin,
                                .active = std::nullopt,
                                .candidate = std::nullopt,
+                               .rollback = std::nullopt,
                                .epochs = {}});
       std::ranges::sort(state.plugins, [](const auto &left, const auto &right) {
         return left.plugin < right.plugin;
@@ -1147,6 +1172,7 @@ GrantStore::revoke(const RequestBundle &bundle,
     const auto prospective = revision_from(bundle);
     reject_source_alias(plugin->active, prospective);
     reject_source_alias(plugin->candidate, prospective);
+    reject_source_alias(plugin->rollback, prospective);
     RevisionGrants *target = nullptr;
     TargetRevision target_kind = TargetRevision::candidate;
     if (plugin->active && same_revision(*plugin->active, prospective)) {
@@ -1183,6 +1209,36 @@ GrantStore::revoke(const RequestBundle &bundle,
   });
 }
 
+StageResult GrantStore::stage_candidate(const RequestBundle &bundle) {
+  validate_bundle(bundle);
+  return update_store(directory_, [&](StoreState &state) {
+    require(state.mutation_sequence < std::numeric_limits<std::uint64_t>::max(),
+            "grant store mutation sequence exhausted");
+    auto *plugin = plugin_for(state, bundle.plugin);
+    if (plugin == nullptr) {
+      require(state.plugins.size() < kMaximumPlugins,
+              "grant store plugin limit reached");
+      state.plugins.push_back({.plugin = bundle.plugin,
+                               .active = std::nullopt,
+                               .candidate = std::nullopt,
+                               .rollback = std::nullopt,
+                               .epochs = {}});
+      std::ranges::sort(state.plugins, [](const auto &left, const auto &right) {
+        return left.plugin < right.plugin;
+      });
+      plugin = plugin_for(state, bundle.plugin);
+    }
+    const auto delta = delta_from(plugin, bundle);
+    TargetRevision target = TargetRevision::candidate;
+    auto &revision = ensure_target(*plugin, bundle, delta, target);
+    ++state.mutation_sequence;
+    return StageResult{.mutation_sequence = state.mutation_sequence,
+                       .target = target,
+                       .request_delta = delta,
+                       .revision = revision};
+  });
+}
+
 void GrantStore::activate_candidate(
     const permission::ActivationBinding &binding) {
   update_store(directory_, [&](StoreState &state) {
@@ -1202,8 +1258,29 @@ void GrantStore::activate_candidate(
                   grant->state == permission::GrantState::granted,
               "required capability is not granted");
     }
+    plugin->rollback = std::move(plugin->active);
     plugin->active = std::move(plugin->candidate);
     plugin->candidate.reset();
+    ++state.mutation_sequence;
+    return 0;
+  });
+}
+
+void GrantStore::rollback_to(const permission::ActivationBinding &binding) {
+  update_store(directory_, [&](StoreState &state) {
+    require(state.mutation_sequence < std::numeric_limits<std::uint64_t>::max(),
+            "grant store mutation sequence exhausted");
+    auto *plugin = plugin_for(state, binding.plugin);
+    require(plugin != nullptr && plugin->active.has_value() &&
+                plugin->rollback.has_value(),
+            "rollback grant revision does not exist");
+    require(same_binding_revision(plugin->rollback->binding, binding) &&
+                binding.generation > plugin->active->binding.generation,
+            "rollback grant binding mismatch");
+    auto former_active = std::move(plugin->active);
+    plugin->active = std::move(plugin->rollback);
+    plugin->active->binding = binding;
+    plugin->rollback = std::move(former_active);
     ++state.mutation_sequence;
     return 0;
   });
@@ -1263,6 +1340,8 @@ std::string state_json(const StoreState &state) {
                (plugin.active ? revision_json(*plugin.active) : "null") +
                ",\"candidate\":" +
                (plugin.candidate ? revision_json(*plugin.candidate) : "null") +
+               ",\"rollback\":" +
+               (plugin.rollback ? revision_json(*plugin.rollback) : "null") +
                ",\"epochs\":" + epochs + "}";
   }
   plugins += ']';
@@ -1296,8 +1375,8 @@ std::string state_json(const StoreState &state) {
         std::to_string(decision.decided_wall_seconds) + "}";
   }
   decisions += ']';
-  return "{\"schemaVersion\":" + std::to_string(state.schema_version) +
-         ",\"securePluginSchemaVersion\":2,\"legacySchemaV1Safe\":false," +
+  return std::string("{\"schemaVersion\":1,\"securePluginSchemaVersion\":2,"
+                     "\"legacySchemaV1Safe\":false,") +
          "\"mutationSequence\":" + std::to_string(state.mutation_sequence) +
          ",\"nextDecisionSequence\":" +
          std::to_string(state.next_decision_sequence) +

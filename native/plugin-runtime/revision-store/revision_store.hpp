@@ -79,6 +79,8 @@ public:
                              FaultPoint fault = FaultPoint::none);
   [[nodiscard]] Result activate(const PolicyBinding &binding,
                                 FaultPoint fault = FaultPoint::none);
+  [[nodiscard]] Result rebind_active(const PolicyBinding &binding,
+                                     FaultPoint fault = FaultPoint::none);
   [[nodiscard]] Result rollback(FaultPoint fault = FaultPoint::none);
   [[nodiscard]] Result prune(std::size_t maximum_revisions);
   [[nodiscard]] std::optional<Activation>

@@ -60,6 +60,8 @@ endif()
 
 add_subdirectory(discovery)
 add_subdirectory(revision-store)
+add_subdirectory(grants)
+add_subdirectory(lifecycle)
 
 if(BUILD_TESTING)
   add_subdirectory(tests)

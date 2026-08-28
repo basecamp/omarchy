@@ -14,7 +14,7 @@ namespace omarchy::plugins::grants {
 
 namespace permission = omarchy::plugins::permissions;
 
-inline constexpr std::uint16_t kStoreSchemaVersion = 1;
+inline constexpr std::uint16_t kStoreSchemaVersion = 2;
 inline constexpr std::uint16_t kSecurePluginSchemaVersion = 2;
 inline constexpr std::size_t kMaximumPlugins = 1024;
 inline constexpr std::size_t kMaximumDecisions = 4096;
@@ -45,6 +45,7 @@ struct PluginGrants {
   permission::PluginId plugin;
   std::optional<RevisionGrants> active;
   std::optional<RevisionGrants> candidate;
+  std::optional<RevisionGrants> rollback;
   std::vector<CapabilityEpoch> epochs;
 };
 
@@ -83,6 +84,13 @@ struct RevocationResult {
   std::string grant_fingerprint;
 };
 
+struct StageResult {
+  std::uint64_t mutation_sequence = 0;
+  TargetRevision target = TargetRevision::candidate;
+  permission::DeltaSet request_delta;
+  RevisionGrants revision;
+};
+
 class GrantStore {
 public:
   explicit GrantStore(std::filesystem::path directory);
@@ -102,9 +110,12 @@ public:
   revoke(const RequestBundle &bundle,
          const permission::CapabilityKey &capability);
 
+  [[nodiscard]] StageResult stage_candidate(const RequestBundle &bundle);
+
   // Lifecycle integration only. The user-facing permission CLI does not expose
   // activation or candidate discard.
   void activate_candidate(const permission::ActivationBinding &binding);
+  void rollback_to(const permission::ActivationBinding &binding);
   void discard_candidate(const permission::PluginId &plugin);
 
   [[nodiscard]] const std::filesystem::path &directory() const {

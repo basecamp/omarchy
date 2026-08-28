@@ -673,6 +673,45 @@ Result RevisionStore::activate(const PolicyBinding &binding, FaultPoint fault) {
   });
 }
 
+Result RevisionStore::rebind_active(const PolicyBinding &binding,
+                                    FaultPoint fault) {
+  return capture([&] {
+    if (!options_.schema_v2_enabled)
+      throw Failure(ErrorCode::feature_disabled,
+                    "schema v2 activation is disabled");
+    validate_binding_shape(binding);
+    auto root = open_store(root_, false);
+    auto revisions = open_directory_at(root.get(), "revisions");
+    auto metadata = open_directory_at(root.get(), "metadata");
+    auto state = open_directory_at(root.get(), "state");
+    const std::string existing =
+        read_small_at(state.get(), "activation", 4096, true);
+    if (existing.empty())
+      throw Failure(ErrorCode::binding_mismatch,
+                    "cannot rebind without an active revision");
+    const Activation old = parse_activation(existing);
+    const bool exact_revision =
+        binding.plugin_id == old.active.plugin_id &&
+        binding.revision_sha256 == old.active.revision_sha256 &&
+        binding.manifest_sha256 == old.active.manifest_sha256 &&
+        binding.source_request_sha256 == old.active.source_request_sha256 &&
+        binding.policy_sha256 == old.active.policy_sha256 &&
+        binding.generation == old.active.generation;
+    if (!exact_revision)
+      throw Failure(ErrorCode::binding_mismatch,
+                    "active rebind may change only the grant fingerprint");
+    verify_metadata(metadata.get(), binding);
+    verify_revision(revisions.get(), binding);
+    const Activation next{binding, old.rollback};
+    const std::string temporary = ".activation-" + std::to_string(::getpid());
+    atomic_record(state.get(), temporary.c_str(), "activation",
+                  activation_record(next), fault,
+                  FaultPoint::activate_after_write,
+                  FaultPoint::activate_after_file_sync,
+                  FaultPoint::activate_after_rename);
+  });
+}
+
 Result RevisionStore::rollback(FaultPoint fault) {
   return capture([&] {
     if (!options_.schema_v2_enabled)

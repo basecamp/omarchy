@@ -383,12 +383,48 @@ void hostile_filesystem() {
   require(original_size > 4, "test store unexpectedly small");
 }
 
+void reads_previous_schema_for_upgrade() {
+  TemporaryDirectory temporary;
+  const auto directory = temporary.path() / "legacy";
+  std::filesystem::create_directory(directory);
+  std::filesystem::permissions(directory, std::filesystem::perms::owner_all);
+  std::array<std::byte, 32> bytes{};
+  const std::array magic{std::byte{'O'}, std::byte{'M'}, std::byte{'G'},
+                         std::byte{'R'}, std::byte{'A'}, std::byte{'N'},
+                         std::byte{'T'}, std::byte{0}};
+  std::copy(magic.begin(), magic.end(), bytes.begin());
+  bytes[9] = std::byte{1};
+  bytes[25] = std::byte{1};
+  {
+    std::ofstream output(directory / "grants-v1.bin", std::ios::binary);
+    output.write(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+  }
+  require(chmod((directory / "grants-v1.bin").c_str(), 0600) == 0,
+          "chmod legacy grant store failed");
+  grant::GrantStore store(directory);
+  const auto state = store.read();
+  require(state.schema_version == grant::kStoreSchemaVersion &&
+              state.plugins.empty() && state.mutation_sequence == 0,
+          "schema-v1 grant store did not load into the rollback-aware model");
+  const auto request =
+      bundle('a', 'b', 1, {.total_bytes = 1024, .item_bytes = 256},
+             tokens({"normal"}));
+  (void)store.stage_candidate(request);
+  std::ifstream upgraded(directory / "grants-v1.bin", std::ios::binary);
+  std::array<unsigned char, 10> header{};
+  upgraded.read(reinterpret_cast<char *>(header.data()), header.size());
+  require(upgraded.gcount() == static_cast<std::streamsize>(header.size()) &&
+              header[8] == 0 && header[9] == grant::kStoreSchemaVersion,
+          "first mutation did not atomically upgrade the grant store schema");
+}
+
 } // namespace
 
 int main() {
   try {
     lifecycle_and_monotonicity();
     hostile_filesystem();
+    reads_previous_schema_for_upgrade();
     std::cout << "grant store contract: ok\n";
     return 0;
   } catch (const std::exception &error) {
