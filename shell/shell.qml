@@ -361,7 +361,10 @@ ShellRoot {
 
   onActiveBarSourceUrlChanged: shell.loadPluginBar()
   onActiveBarIdChanged: shell.loadPluginBar()
-  onPluginReloadingChanged: shell.loadPluginBar()
+onPluginReloadingChanged: {
+    if (!shell.pluginReloading && shell.failedBarId !== "") shell.failedBarId = ""
+    shell.loadPluginBar()
+  }
 
   // ------------------------------------------------------------- services
   //
