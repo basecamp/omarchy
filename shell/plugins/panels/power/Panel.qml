@@ -166,15 +166,6 @@ Panel {
     return Color.accent
   }
 
-  // Legible text on an arbitrary theme fill: pick whichever of the theme's
-  // own foreground/background contrasts more with the fill's luminance —
-  // no hardcoded RGB, adapts to light and dark themes alike.
-  function textOn(c) {
-    function lum(x) { return 0.299 * x.r + 0.587 * x.g + 0.114 * x.b }
-    var lc = lum(c), lf = lum(Color.foreground), lb = lum(Color.background)
-    return Math.abs(lc - lf) >= Math.abs(lc - lb) ? Color.foreground : Color.background
-  }
-
   // Segment/row colors, one resolver for every surface: comms take their
   // assigned palette hue, the attribution floor takes accent, tails take
   // muted, unknown keys fall back to the bar foreground.

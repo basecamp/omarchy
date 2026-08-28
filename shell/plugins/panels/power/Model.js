@@ -134,19 +134,16 @@ if (typeof module !== "undefined") {
     buildTopProcesses: buildTopProcesses,
     buildSystemRows: buildSystemRows,
     buildSystemAnchorRow: buildSystemAnchorRow,
-    buildRowImpact: buildRowImpact,
     wattsBasis: wattsBasis,
     COMM_MAX_CHARS: COMM_MAX_CHARS,
     buildResourceSplits: buildResourceSplits,
     aggregateCommShares: aggregateCommShares,
-    assignColorKeys: assignColorKeys,
     stableColorKey: stableColorKey,
     stableColorHash: stableColorHash,
     SHADES: SHADES,
     slotPreferences: slotPreferences,
     resolveColorSlots: resolveColorSlots,
-    SPLIT_MAX_SEGMENTS: SPLIT_MAX_SEGMENTS,
-    collisionOrdinals: collisionOrdinals
+    SPLIT_MAX_SEGMENTS: SPLIT_MAX_SEGMENTS
   }
 }
 
@@ -277,10 +274,8 @@ function buildTopProcesses(prevSnapshot, nextSnapshot, limit, drawWatts, baseWat
   // limitation of per-process memory accounting; the row is a size hint, not
   // an addition that should sum to RAM used.
   var ramByName = {}
-  var anyRam = false
   for (var rpid in nextP) {
     var r = nextP[rpid].rssKb || 0
-    if (r > 0) anyRam = true
     var rname = nextP[rpid].name
     if (!(rname in ramByName)) ramByName[rname] = 0
     ramByName[rname] += r
@@ -290,10 +285,7 @@ function buildTopProcesses(prevSnapshot, nextSnapshot, limit, drawWatts, baseWat
   var topShareSum = 0
   for (var i = 0; i < shares.length; i++) {
     topShareSum += shares[i].share
-    var cols = [pct(shares[i].share)]
-    if (anyRam && ramByName[shares[i].label] > 0) cols.push(ramTxt(ramByName[shares[i].label]))
-    if (drawWatts >= 0) cols.unshift(wtxt(variable * shares[i].share))
-    out.push({ label: shares[i].label, value: cols.join(" · ") })
+    out.push({ label: shares[i].label })
   }
   var otherShare = drawWatts >= 0 ? Math.max(0, 1 - topShareSum) : 0
   // One graphic line per process: each row carries metric cells (CPU, RAM,
@@ -457,30 +449,7 @@ function buildSystemRows(prevSnapshot, nextSnapshot, drawWatts) {
   return rows
 }
 
-// ---- Power Hungry: impact meters and resource splits -------------------------
-
-// Per-row impact fractions for the POWER HUNGRY rows. Process rows use the
-// share that ranks them — CPU share on external power, and while discharging
-// the attributed watts hold the same proportion (W_i = variable × share_i by
-// construction), so one fraction stays consistent with both the pct and the
-// watt number the row displays. The base and tail rows meter their slice of
-// the whole measured draw instead, matching the watts split bar. All values
-// clamp to 0..1; -1 means "no meter" (row absent).
-function buildRowImpact(topShares, drawWatts, baseWatts, variableWatts, elseShare) {
-  function clamp01(v) { return Math.max(0, Math.min(1, v)) }
-  var top = []
-  var intensity = []
-  var topShare = topShares.length > 0 ? topShares[0].share : 0
-  for (var i = 0; i < topShares.length; i++) {
-    top.push(clamp01(topShares[i].share))
-    // intensity ramp: the top row at full opacity, tail rows fading toward a
-    // 0.35 floor — share-normalized so the ramp reads the same at any load
-    intensity.push(topShare > 0 ? 0.35 + 0.65 * clamp01(topShares[i].share / topShare) : 0.35)
-  }
-  var base = drawWatts > 0 && baseWatts > 0.5 ? clamp01(baseWatts / drawWatts) : -1
-  var elseMeter = drawWatts > 0 && variableWatts >= 0 ? clamp01(variableWatts * elseShare / drawWatts) : -1
-  return { top: top, intensity: intensity, base: base, elseMeter: elseMeter, baseIntensity: 1, elseIntensity: 0.8 }
-}
+// ---- Power Hungry: resource splits --------------------------------------------
 
 // Segment lists for the split bars, one per resource. Every list sums to 1.0
 // on physical data (fuzz-tested); the one honest exception is RAM when
@@ -709,28 +678,4 @@ function resolveColorSlots(comms, palette, shades) {
     if (!placed) unassigned.push(ranked[i])
   }
   return { assignment: assignment, unassigned: unassigned }
-}
-
-// comm → palette-entry map, hash-derived (the old order-based assignment is
-// retired: rank shuffles used to swap colors, which taught nothing). Same
-// signature as before, so call sites are unchanged.
-function assignColorKeys(comms, palette) {
-  var map = {}
-  for (var i = 0; i < comms.length; i++) map[comms[i]] = palette[stableColorKey(comms[i], palette.length)]
-  return map
-}
-
-// Ordinal badges for simultaneous same-hue rows: within the visible set,
-// the first member of a hue stays clean and later members get 2, 3, ... by
-// rank order. The hue is identity; the badge only breaks simultaneous ties,
-// so a lone member of a hue never carries a badge.
-function collisionOrdinals(comms, palette) {
-  var seen = {}
-  var out = {}
-  for (var i = 0; i < comms.length; i++) {
-    var k = stableColorKey(comms[i], palette.length)
-    seen[k] = (seen[k] || 0) + 1
-    out[comms[i]] = seen[k] > 1 ? seen[k] : 0
-  }
-  return out
 }
