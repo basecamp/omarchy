@@ -209,6 +209,52 @@ done
   fail_with_log "linked plugin changes reload without an explicit rescan"
 pass "linked plugin changes reload without an explicit rescan"
 
+replacement_linked_plugin_source="$TMPDIR/replacement-linked-plugin"
+mkdir -p "$replacement_linked_plugin_source"
+cat >"$replacement_linked_plugin_source/manifest.json" <<JSON
+{
+  "schemaVersion": 1,
+  "id": "$linked_plugin_id",
+  "name": "After Linked Replacement",
+  "version": "1.0.0",
+  "kinds": ["overlay"],
+  "entryPoints": {"overlay": "Overlay.qml"}
+}
+JSON
+cp "$linked_plugin_source/Overlay.qml" "$replacement_linked_plugin_source/Overlay.qml"
+ln -s "$replacement_linked_plugin_source" "$test_home/.config/omarchy/plugins/.replacement-linked-plugin"
+mv -T "$test_home/.config/omarchy/plugins/.replacement-linked-plugin" "$linked_plugin_dir"
+
+linked_reload_name=""
+for _ in {1..80}; do
+  linked_reload_name=$(shell_ipc shell listPlugins 2>/dev/null |
+    jq -r --arg id "$linked_plugin_id" '.[] | select(.id == $id) | .name' 2>/dev/null || true)
+  [[ $linked_reload_name == "After Linked Replacement" ]] && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited while reloading a replaced linked plugin"
+  fi
+  sleep 0.1
+done
+[[ $linked_reload_name == "After Linked Replacement" ]] ||
+  fail_with_log "replacing a linked plugin reloads its replacement"
+
+jq '.name = "After Replacement Target Write"' "$replacement_linked_plugin_source/manifest.json" >"$replacement_linked_plugin_source/manifest.json.tmp"
+mv "$replacement_linked_plugin_source/manifest.json.tmp" "$replacement_linked_plugin_source/manifest.json"
+
+linked_reload_name=""
+for _ in {1..80}; do
+  linked_reload_name=$(shell_ipc shell listPlugins 2>/dev/null |
+    jq -r --arg id "$linked_plugin_id" '.[] | select(.id == $id) | .name' 2>/dev/null || true)
+  [[ $linked_reload_name == "After Replacement Target Write" ]] && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited while reloading a replacement linked plugin"
+  fi
+  sleep 0.1
+done
+[[ $linked_reload_name == "After Replacement Target Write" ]] ||
+  fail_with_log "replacement linked plugin changes reload without an explicit rescan"
+pass "replacing a linked plugin rebuilds its watcher"
+
 [[ $(shell_ipc shell setPluginEnabled "$hot_reload_id" true) == "ok" ]] ||
   fail_with_log "installed plugin could not be enabled"
 
