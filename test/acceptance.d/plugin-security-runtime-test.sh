@@ -18,8 +18,13 @@ worker=/usr/lib/omarchy/plugin-runtime/omarchy-plugin-qml-worker
 module=/usr/lib/qt6/qml/Omarchy/PluginHost
 
 [[ -x $host ]] || fail "secure plugin host is installed"
-[[ -x $worker ]] || fail "secure plugin worker is installed privately"
-[[ ! -e /usr/bin/omarchy-plugin-qml-worker ]] || fail "secure plugin worker is absent from PATH"
+[[ -x $worker ]] || fail "secure plugin worker is installed outside PATH"
+[[ ! -e /usr/bin/omarchy-plugin-qml-worker ]] ||
+  fail "secure plugin worker is absent from PATH"
+[[ -x /usr/bin/omarchy-plugin-permission-store ]] ||
+  fail "secure plugin permission store is installed"
+[[ -x /usr/bin/omarchy-plugin-audit-store ]] ||
+  fail "secure plugin audit store is installed"
 [[ -r $module/qmldir && -r $module/libomarchy-plugin-host-bridge.so ]] ||
   fail "secure plugin bridge module is installed"
 [[ -r /usr/lib/systemd/user/omarchy-plugin-host.service ]] ||
@@ -52,9 +57,11 @@ proof_pid=$!
 
 wait_until "secure plugin bridge appears in the graphical session" 20 \
   screen_contains "SECURE PLUGIN BRIDGE"
+wait_until "secure plugin bridge reports the reference runtime as feature-gated" 10 \
+  screen_contains "ACTIVATION FEATURE-GATED"
 screenshot "success-secure-plugin-bridge-module"
 
 kill "$proof_pid" 2>/dev/null || true
 wait "$proof_pid" 2>/dev/null || true
 proof_pid=""
-pass "secure plugin bridge module loads with packaged Qt under Wayland"
+pass "secure plugin bridge module loads with packaged Qt under Wayland and remains feature-gated"

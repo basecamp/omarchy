@@ -13,6 +13,11 @@ Window {
     id: pluginHost
   }
 
+  Component.onCompleted: {
+    if (!pluginHost.runtimeVersion || pluginHost.available)
+      Qt.exit(2)
+  }
+
   Column {
     anchors.centerIn: parent
     spacing: 16
@@ -36,9 +41,7 @@ Window {
       anchors.horizontalCenter: parent.horizontalCenter
       color: "#a9b1d6"
       font.pixelSize: 15
-      text: pluginHost.available
-        ? "Runtime connected"
-        : "Reference module installed; activation remains feature-gated"
+      text: "Reference module installed; ACTIVATION FEATURE-GATED"
     }
   }
 }
