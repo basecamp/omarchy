@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
+#include <QImageReader>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
@@ -278,6 +279,7 @@ struct WorkerRuntime::Impl {
           return true;
         }()),
         render_control(), window(&render_control) {
+    QImageReader::setAllocationLimit(kMaximumDecodedImageMiB);
     engine.addUrlInterceptor(&interceptor);
     engine.setImportPathList({QString::fromStdString(source_root.string()),
                               QLibraryInfo::path(QLibraryInfo::QmlImportsPath),

@@ -1,7 +1,10 @@
 #include "worker_runtime.hpp"
 
+#include <QBuffer>
 #include <QEventLoop>
 #include <QGuiApplication>
+#include <QImage>
+#include <QImageReader>
 #include <QTimer>
 
 #include <fcntl.h>
@@ -262,6 +265,60 @@ void hostile_loading() {
           "symlinked plugin resource was followed");
 }
 
+void bounded_image_decoding() {
+  QByteArray encoded;
+  {
+    QImage source(4097, 4097, QImage::Format_RGBA8888);
+    require(!source.isNull(), "compressed image fixture allocation failed");
+    source.fill(Qt::transparent);
+    QBuffer output(&encoded);
+    require(output.open(QIODevice::WriteOnly) && source.save(&output, "PNG"),
+            "compressed image fixture encoding failed");
+  }
+  require(encoded.size() < 1024 * 1024,
+          "compressed image fixture is not a bounded bomb");
+
+  worker::WorkerRuntime runtime(fixture("expressive"));
+  require(QImageReader::allocationLimit() == worker::kMaximumDecodedImageMiB,
+          "worker did not install the decoded-image allocation ceiling");
+
+  QBuffer oversized_input(&encoded);
+  require(oversized_input.open(QIODevice::ReadOnly),
+          "oversized image buffer did not open");
+  QImageReader oversized(&oversized_input, "PNG");
+  require(oversized.size() == QSize(4097, 4097) && oversized.read().isNull(),
+          "compressed image exceeded the worker allocation ceiling");
+
+  QImage small_source(32, 32, QImage::Format_RGBA8888);
+  small_source.fill(Qt::green);
+  QByteArray small_encoded;
+  QBuffer small_output(&small_encoded);
+  require(small_output.open(QIODevice::WriteOnly) &&
+              small_source.save(&small_output, "PNG"),
+          "small image fixture encoding failed");
+  QBuffer small_input(&small_encoded);
+  require(small_input.open(QIODevice::ReadOnly),
+          "small image buffer did not open");
+  QImageReader small(&small_input, "PNG");
+  const auto decoded = small.read();
+  require(!decoded.isNull() && decoded.size() == QSize(32, 32),
+          "decoded-image ceiling disabled ordinary plugin images");
+
+  const QByteArray truncated = small_encoded.first(small_encoded.size() / 3);
+  const QByteArray malformed("not-an-image\0\xff", 14);
+  for (int attempt = 0; attempt < 32; ++attempt) {
+    for (const auto &bytes : {truncated, malformed}) {
+      QBuffer input;
+      input.setData(bytes);
+      require(input.open(QIODevice::ReadOnly),
+              "hostile image buffer did not open");
+      QImageReader reader(&input);
+      require(reader.read().isNull(),
+              "malformed or unsupported image decoded successfully");
+    }
+  }
+}
+
 void steady_state_denies_exec() {
   const pid_t child = fork();
   require(child >= 0, "seccomp test fork failed");
@@ -290,6 +347,7 @@ int main(int argc, char **argv) {
     render_and_input();
     device_pixel_ratio_scales_scene_pixels();
     hostile_loading();
+    bounded_image_decoding();
     steady_state_denies_exec();
     std::cout << "plugin worker runtime: ok\n";
     return 0;

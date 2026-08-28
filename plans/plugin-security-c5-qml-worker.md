@@ -24,6 +24,7 @@ The worker accepts only schema-v2 `runtime.qml` entries that are normalized rela
 - URL imports cannot be absolute, remote, `file:`, or `qrc:` references;
 - the QML engine import path contains only the plugin root, the installed Qt module root, and Qt's built-in QML resource root;
 - intercepted filesystem module/resource loads are confined to the plugin tree or the `Qt`, `QtQml`, and `QtQuick` portions of the Qt module root;
+- Qt image decoding is capped at 64 MiB per decoded image, matching the maximum 4,096 by 4,096 RGBA software surface. The focused corpus proves an ordinary PNG still decodes, a sub-1 MiB compressed 4,097-square PNG cannot allocate its 67 MiB output, and repeated truncated or unsupported inputs remain rejected. Qt's optional image-format plugins expand the parsers available inside the worker, but not the worker's filesystem, network, process, surface, cgroup, or restart authority. This does not claim parser correctness for every optional codec: a decoder fault still becomes an isolated worker exit, and D5's existing revision-bound crash budget supplies teardown, backoff, and disablement;
 - component construction must finish synchronously, the root must be a `QQuickItem`, and the combined QObject/visual-item graph is capped at 4,096 objects both after construction and before each frame.
 
 The source checks are safe from post-check substitution only because B5 mounts the selected content-addressed revision read-only. They are not a replacement for B1 identity validation or B5 mount immutability.
@@ -40,7 +41,7 @@ Malformed envelopes, ambiguous one-way lifecycle failures, endpoint generation d
 
 ## Evidence
 
-`plugin-worker-runtime` performs a real headless Qt software render of animated arbitrary QML, passes the B4 frame through the trusted consumer, routes focused input, rejects replay, and exercises suspend/resume/release. Adversarial fixtures reject traversal, a plugin-created `Window`, a remote import, a symlink escape, and a 5,000-item visual-object bomb. The seccomp fork proof requires `execve` to fail with `EPERM`.
+`plugin-worker-runtime` performs a real headless Qt software render of animated arbitrary QML, passes the B4 frame through the trusted consumer, routes focused input, rejects replay, and exercises suspend/resume/release. Adversarial fixtures reject traversal, a plugin-created `Window`, a remote import, a symlink escape, a 5,000-item visual-object bomb, an oversized compressed image, and repeated malformed images. The seccomp fork proof requires `execve` to fail with `EPERM`.
 
 `plugin-worker-channel` covers three-endpoint negotiation primitives, valid descriptor-free and one-descriptor render messages, descriptor injection cleanup, endpoint-role substitution, descendant credential substitution, and an above-cap sequence-packet datagram that must fail as truncated before parsing. The test needs a normal Linux Unix-socket environment; the managed development sandbox itself blocks `SO_PEERCRED` with `EPERM`, so that test is run outside that wrapper.
 

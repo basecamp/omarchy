@@ -21,6 +21,7 @@ namespace surface = omarchy::plugin_runtime::surface;
 inline constexpr std::size_t kMaximumManifestBytes = 1024 * 1024;
 inline constexpr std::size_t kMaximumQmlObjects = 4096;
 inline constexpr std::size_t kMaximumEntryPathBytes = 512;
+inline constexpr int kMaximumDecodedImageMiB = 64;
 
 enum class RuntimeFailure {
   none,

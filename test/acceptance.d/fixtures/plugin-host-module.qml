@@ -33,6 +33,7 @@ Window {
       color: "#9ece6a"
       font.pixelSize: 28
       font.bold: true
+      textFormat: Text.PlainText
       text: "SECURE PLUGIN BRIDGE"
     }
 
@@ -40,6 +41,7 @@ Window {
       anchors.horizontalCenter: parent.horizontalCenter
       color: "#c0caf5"
       font.pixelSize: 18
+      textFormat: Text.PlainText
       text: "Native QML module " + pluginHost.runtimeVersion
     }
 
@@ -47,6 +49,7 @@ Window {
       anchors.horizontalCenter: parent.horizontalCenter
       color: "#a9b1d6"
       font.pixelSize: 15
+      textFormat: Text.PlainText
       text: "Reference module installed; ACTIVATION FEATURE-GATED"
     }
   }
