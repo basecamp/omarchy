@@ -8,13 +8,15 @@ The implementation lives in `native/plugin-runtime/channel-integration/`. It is 
 
 ## Trust and state sequence
 
-1. The trusted caller supplies a C7 `TrustedLaunchRequest` and a dispatcher owned by the trusted host.
+1. The trusted caller supplies a C7 `TrustedLaunchRequest`, a dispatcher owned by the trusted host, and a trusted `GenerationAuthority` tied to the serialized lifecycle activation domain.
 2. C7 verifies the immutable revision/state directory descriptors, creates three private `SOCK_SEQPACKET` endpoints, starts Bubblewrap behind a barrier, obtains the authoritative outer child PID from Bubblewrap status, opens its pidfd, attaches the resource scope, and only then releases the worker.
 3. D1 copies the C7 `LaunchIdentity` and requires exact plugin ID, revision digest, generation, outer UID/GID, positive outer PID, and live pidfd state before retaining the worker.
 4. Each endpoint must send a valid B3 envelope-v1 HELLO on its inherited role FD. C7 validates `SCM_CREDENTIALS` against the outer launch identity and quarantines every delivered descriptor before D1 parses bytes. D1 independently negotiates control-v1, broker-v1, and render-v1 within a trusted wait bounded to 30 seconds before any deadline arithmetic.
 5. D1 sends each endpoint's WELCOME or negotiation failure and marks the channel ready only after `RequiredEndpointReadiness` proves all three roles selected the same nonzero authoritative generation.
-6. Broker dispatch is refused before aggregate readiness. After readiness, every incoming broker datagram again passes C7 credential, pidfd, descriptor, and size checks, then B3 envelope/endpoint parsing, exact negotiated broker version, and exact launch generation before the C4 dispatcher can run.
+6. Broker dispatch is refused before aggregate readiness. After readiness, every incoming broker datagram again passes C7 credential, pidfd, descriptor, and size checks, then B3 envelope/endpoint parsing, exact negotiated broker version, exact launch generation, and the current trusted lifecycle-generation check before the C4 dispatcher can run.
 7. A malformed HELLO/envelope, role substitution, unsupported or changed role version, stale generation, descendant credential, descriptor injection/truncation, peer exit, dispatch rejection, or exception from the trusted dispatcher is fatal. D1 contains every dispatcher exception at this boundary, closes endpoints, and delegates bounded pidfd/scope teardown to C7. A receive timeout alone is recoverable and has no dispatcher effect.
+
+The channel's read-only `alive()` is pidfd-backed through C7 and is false after any channel failure or termination attempt. It is the narrow liveness seam for D5 health ownership; it does not expose the worker process or endpoint descriptors.
 
 ## Adversarial evidence
 

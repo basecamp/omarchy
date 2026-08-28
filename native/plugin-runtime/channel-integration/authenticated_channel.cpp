@@ -57,9 +57,10 @@ remaining(std::chrono::steady_clock::time_point deadline) {
 
 AuthenticatedBrokerChannel::AuthenticatedBrokerChannel(
     std::unique_ptr<launcher::Worker> worker, launcher::LaunchIdentity identity,
-    std::shared_ptr<BrokerDispatcher> dispatcher)
+    std::shared_ptr<BrokerDispatcher> dispatcher,
+    std::shared_ptr<const GenerationAuthority> authority)
     : worker_(std::move(worker)), identity_(std::move(identity)),
-      dispatcher_(std::move(dispatcher)),
+      dispatcher_(std::move(dispatcher)), authority_(std::move(authority)),
       control_(wire::EndpointRole::control,
                {kControlRoleVersion, kControlRoleVersion}, identity_.generation,
                wire::payload_cap(wire::EndpointRole::control),
@@ -75,19 +76,20 @@ AuthenticatedBrokerChannel::AuthenticatedBrokerChannel(
 }
 
 AuthenticatedBrokerChannel::~AuthenticatedBrokerChannel() {
-  if (worker_ != nullptr && !terminated_)
+  if (worker_ != nullptr && !termination_.attempted())
     (void)worker_->terminate();
 }
 
-OpenResult
-AuthenticatedBrokerChannel::open(launcher::Supervisor &supervisor,
-                                 const launcher::TrustedLaunchRequest &request,
-                                 std::shared_ptr<BrokerDispatcher> dispatcher) {
-  if (dispatcher == nullptr)
+OpenResult AuthenticatedBrokerChannel::open(
+    launcher::Supervisor &supervisor,
+    const launcher::TrustedLaunchRequest &request,
+    std::shared_ptr<BrokerDispatcher> dispatcher,
+    std::shared_ptr<const GenerationAuthority> authority) {
+  if (dispatcher == nullptr || authority == nullptr)
     return {.channel = nullptr,
             .failure = ChannelFailure::identity_mismatch,
             .launch_failure = launcher::LaunchFailure::none,
-            .detail = "broker dispatcher is absent"};
+            .detail = "broker dispatcher or generation authority is absent"};
   auto launched = supervisor.launch(request);
   if (!launched)
     return {.channel = nullptr,
@@ -106,9 +108,17 @@ AuthenticatedBrokerChannel::open(launcher::Supervisor &supervisor,
             .launch_failure = launcher::LaunchFailure::none,
             .detail = "launched process identity differs from trusted request"};
   }
+  if (!authority->is_current(identity)) {
+    (void)launched.worker->terminate();
+    return {.channel = nullptr,
+            .failure = ChannelFailure::stale_generation,
+            .launch_failure = launcher::LaunchFailure::none,
+            .detail = "launched generation is no longer authoritative"};
+  }
   auto channel = std::unique_ptr<AuthenticatedBrokerChannel>(
       new AuthenticatedBrokerChannel(std::move(launched.worker), identity,
-                                     std::move(dispatcher)));
+                                     std::move(dispatcher),
+                                     std::move(authority)));
   return {.channel = std::move(channel),
           .failure = ChannelFailure::none,
           .launch_failure = launcher::LaunchFailure::none,
@@ -128,6 +138,9 @@ bool AuthenticatedBrokerChannel::negotiate(std::chrono::milliseconds timeout) {
       return false;
   }
   bool aggregate_ready = false;
+  if (!authority_->is_current(identity_))
+    return fail(ChannelFailure::stale_generation,
+                "launch generation changed during endpoint negotiation");
   if (readiness_.ready(aggregate_ready) != wire::FatalReason::none ||
       !aggregate_ready || !worker_->alive())
     return fail(ChannelFailure::readiness_failed,
@@ -185,8 +198,8 @@ bool AuthenticatedBrokerChannel::negotiate_role(
 
 DispatchStatus
 AuthenticatedBrokerChannel::dispatch_one(std::chrono::milliseconds timeout) {
-  if (!ready_ || failed() || terminated_) {
-    if (!failed() && !terminated_)
+  if (!ready_ || failed() || termination_.attempted()) {
+    if (!failed() && !termination_.attempted())
       fail(ChannelFailure::not_ready,
            "broker dispatch attempted before aggregate readiness");
     return DispatchStatus::not_ready;
@@ -194,6 +207,11 @@ AuthenticatedBrokerChannel::dispatch_one(std::chrono::milliseconds timeout) {
   if (!worker_->alive()) {
     fail(ChannelFailure::peer_failure,
          "pidfd reports worker exit before broker dispatch");
+    return DispatchStatus::fatal;
+  }
+  if (!authority_->is_current(identity_)) {
+    fail(ChannelFailure::stale_generation,
+         "launch generation changed before broker receive");
     return DispatchStatus::fatal;
   }
   auto message = worker_->receive(
@@ -230,6 +248,11 @@ AuthenticatedBrokerChannel::dispatch_one(std::chrono::milliseconds timeout) {
          "pidfd reports worker exit before trusted dispatch");
     return DispatchStatus::fatal;
   }
+  if (!authority_->is_current(identity_)) {
+    fail(ChannelFailure::stale_generation,
+         "launch generation changed before trusted dispatch");
+    return DispatchStatus::fatal;
+  }
   bool dispatched = false;
   try {
     dispatched = dispatcher_->dispatch(decoded.packet);
@@ -247,6 +270,10 @@ AuthenticatedBrokerChannel::dispatch_one(std::chrono::milliseconds timeout) {
 }
 
 bool AuthenticatedBrokerChannel::ready() const { return ready_ && !failed(); }
+bool AuthenticatedBrokerChannel::alive() const {
+  return worker_ != nullptr && !failed() && !termination_.attempted() &&
+         worker_->alive();
+}
 bool AuthenticatedBrokerChannel::failed() const {
   return failure_ != ChannelFailure::none;
 }
@@ -259,11 +286,11 @@ const launcher::LaunchIdentity &AuthenticatedBrokerChannel::identity() const {
 }
 
 bool AuthenticatedBrokerChannel::terminate() {
-  if (terminated_)
-    return true;
+  if (!termination_.begin())
+    return termination_.succeeded();
   ready_ = false;
-  terminated_ = true;
-  return worker_ == nullptr || worker_->terminate();
+  termination_.complete(worker_ == nullptr || worker_->terminate());
+  return termination_.succeeded();
 }
 
 bool AuthenticatedBrokerChannel::fail(ChannelFailure failure,

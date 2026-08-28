@@ -2,6 +2,7 @@
 
 #include "omarchy/plugin/wire/state.hpp"
 #include "omarchy/plugin_runtime/launcher/launcher.h"
+#include "omarchy/plugin_runtime/launcher/termination_state.h"
 
 #include <chrono>
 #include <cstdint>
@@ -40,6 +41,13 @@ public:
   [[nodiscard]] virtual bool dispatch(const wire::PacketView &packet) = 0;
 };
 
+class GenerationAuthority {
+public:
+  virtual ~GenerationAuthority() = default;
+  [[nodiscard]] virtual bool
+  is_current(const launcher::LaunchIdentity &identity) const noexcept = 0;
+};
+
 class AuthenticatedBrokerChannel;
 
 struct OpenResult {
@@ -56,7 +64,8 @@ public:
   [[nodiscard]] static OpenResult
   open(launcher::Supervisor &supervisor,
        const launcher::TrustedLaunchRequest &request,
-       std::shared_ptr<BrokerDispatcher> dispatcher);
+       std::shared_ptr<BrokerDispatcher> dispatcher,
+       std::shared_ptr<const GenerationAuthority> authority);
 
   AuthenticatedBrokerChannel(const AuthenticatedBrokerChannel &) = delete;
   AuthenticatedBrokerChannel &
@@ -66,6 +75,7 @@ public:
   [[nodiscard]] bool negotiate(std::chrono::milliseconds timeout);
   [[nodiscard]] DispatchStatus dispatch_one(std::chrono::milliseconds timeout);
   [[nodiscard]] bool ready() const;
+  [[nodiscard]] bool alive() const;
   [[nodiscard]] bool failed() const;
   [[nodiscard]] ChannelFailure failure() const;
   [[nodiscard]] const std::string &detail() const;
@@ -73,9 +83,11 @@ public:
   [[nodiscard]] bool terminate();
 
 private:
-  AuthenticatedBrokerChannel(std::unique_ptr<launcher::Worker> worker,
-                             launcher::LaunchIdentity identity,
-                             std::shared_ptr<BrokerDispatcher> dispatcher);
+  AuthenticatedBrokerChannel(
+      std::unique_ptr<launcher::Worker> worker,
+      launcher::LaunchIdentity identity,
+      std::shared_ptr<BrokerDispatcher> dispatcher,
+      std::shared_ptr<const GenerationAuthority> authority);
 
   [[nodiscard]] bool negotiate_role(wire::EndpointRole role,
                                     std::chrono::milliseconds timeout);
@@ -84,6 +96,7 @@ private:
   std::unique_ptr<launcher::Worker> worker_;
   launcher::LaunchIdentity identity_;
   std::shared_ptr<BrokerDispatcher> dispatcher_;
+  std::shared_ptr<const GenerationAuthority> authority_;
   wire::TrustedNegotiator control_;
   wire::TrustedNegotiator broker_;
   wire::TrustedNegotiator render_;
@@ -91,7 +104,7 @@ private:
   ChannelFailure failure_ = ChannelFailure::none;
   std::string detail_;
   bool ready_ = false;
-  bool terminated_ = false;
+  launcher::TerminationState termination_;
 };
 
 } // namespace omarchy::plugin_runtime::channel

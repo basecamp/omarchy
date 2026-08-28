@@ -1,4 +1,5 @@
 #include "omarchy/plugin_runtime/launcher/launcher.h"
+#include "omarchy/plugin_runtime/launcher/termination_state.h"
 
 #include "omarchy/plugin/wire/envelope.hpp"
 
@@ -562,7 +563,7 @@ struct Worker::Impl {
   std::shared_ptr<ResourceScopeController> resource_scope;
   sandbox::TimeoutPolicy timeouts;
   bool accepting = true;
-  bool terminated = false;
+  TerminationState termination;
 
   [[nodiscard]] int channel(EndpointRole role) const {
     switch (role) {
@@ -577,9 +578,8 @@ struct Worker::Impl {
   }
 
   [[nodiscard]] bool terminate() {
-    if (terminated) {
-      return true;
-    }
+    if (!termination.begin())
+      return termination.succeeded();
     accepting = false;
     for (Fd &channel_descriptor : channels) {
       channel_descriptor.reset();
@@ -599,8 +599,8 @@ struct Worker::Impl {
         monitor_pid, monitor_pidfd.get(),
         std::chrono::seconds(timeouts.forced_teardown_seconds));
     resource_scope->remove(scope);
-    terminated = true;
-    return worker_exited && monitor_reaped;
+    termination.complete(worker_exited && monitor_reaped);
+    return termination.succeeded();
   }
 };
 
@@ -702,18 +702,24 @@ ReceivedMessage Worker::receive(EndpointRole role, std::size_t maximum_payload,
       continue;
     }
     if (header->cmsg_type == SCM_RIGHTS) {
-      if (header->cmsg_len < CMSG_LEN(0) ||
-          (header->cmsg_len - CMSG_LEN(0)) % sizeof(int) != 0) {
+      if (header->cmsg_len < CMSG_LEN(0)) {
         malformed = true;
         continue;
       }
-      const auto count = (header->cmsg_len - CMSG_LEN(0)) / sizeof(int);
-      const auto *descriptors =
-          reinterpret_cast<const int *>(CMSG_DATA(header));
+      const auto descriptor_bytes = header->cmsg_len - CMSG_LEN(0);
+      const auto count = descriptor_bytes / sizeof(int);
       for (std::size_t index = 0; index < count; ++index) {
-        close(descriptors[index]);
+        int descriptor = -1;
+        std::memcpy(&descriptor,
+                    reinterpret_cast<const std::byte *>(CMSG_DATA(header)) +
+                        index * sizeof(int),
+                    sizeof(descriptor));
+        if (descriptor >= 0)
+          close(descriptor);
       }
       injected_descriptor = count != 0;
+      if (descriptor_bytes % sizeof(int) != 0)
+        malformed = true;
       continue;
     }
     malformed = true;

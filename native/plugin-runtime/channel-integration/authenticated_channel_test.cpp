@@ -100,6 +100,17 @@ public:
   unsigned calls = 0;
 };
 
+class Authority final : public channel::GenerationAuthority {
+public:
+  bool
+  is_current(const launcher::LaunchIdentity &identity) const noexcept override {
+    return current && identity.generation == generation;
+  }
+
+  bool current = true;
+  std::uint64_t generation = 47;
+};
+
 class Fixture {
 public:
   explicit Fixture(std::string_view mode) {
@@ -156,6 +167,16 @@ launch_transport(Fixture &fixture, std::shared_ptr<Scope> scope) {
 }
 
 void transport_suite() {
+  {
+    launcher::TerminationState termination;
+    require(termination.begin(), "fresh teardown state did not start");
+    termination.complete(false);
+    require(!termination.succeeded() && !termination.begin(),
+            "failed teardown was retried or reported as successful");
+    termination.complete(true);
+    require(!termination.succeeded(),
+            "completed teardown failure was overwritten by later success");
+  }
   {
     Fixture fixture("transport-max");
     auto worker = launch_transport(fixture, std::make_shared<Scope>());
@@ -219,6 +240,7 @@ struct Session {
   Fixture fixture;
   std::shared_ptr<Scope> scope = std::make_shared<Scope>();
   std::shared_ptr<Dispatcher> dispatcher = std::make_shared<Dispatcher>();
+  std::shared_ptr<Authority> authority = std::make_shared<Authority>();
   launcher::Supervisor supervisor;
   channel::OpenResult opened;
 
@@ -226,7 +248,7 @@ struct Session {
       : fixture(mode), supervisor(launcher::Supervisor::forTestOnly(
                            std::move(bwrap), CHANNEL_PEER_PATH, scope)),
         opened(channel::AuthenticatedBrokerChannel::open(
-            supervisor, fixture.request(), dispatcher)) {
+            supervisor, fixture.request(), dispatcher, authority)) {
     if (!opened) {
       std::cerr << "launch failure=" << static_cast<int>(opened.launch_failure)
                 << " detail=" << opened.detail << '\n';
@@ -257,10 +279,11 @@ void fake_suite() {
     Fixture fixture("valid");
     auto scope = std::make_shared<Scope>();
     auto dispatcher = std::make_shared<ThrowingDispatcher>();
+    auto authority = std::make_shared<Authority>();
     auto supervisor = launcher::Supervisor::forTestOnly(
         FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, scope);
     auto opened = channel::AuthenticatedBrokerChannel::open(
-        supervisor, fixture.request(), dispatcher);
+        supervisor, fixture.request(), dispatcher, authority);
     require(opened && opened.channel->negotiate(2s) &&
                 opened.channel->dispatch_one(2s) ==
                     channel::DispatchStatus::fatal &&
@@ -268,6 +291,18 @@ void fake_suite() {
                     channel::ChannelFailure::dispatch_failed &&
                 dispatcher->calls == 1 && scope->removes == 1,
             "throwing dispatcher escaped the authenticated channel boundary");
+  }
+  {
+    Session session("valid", FAKE_BWRAP_PATH);
+    require(session.opened.channel->negotiate(2s),
+            "lifecycle-transition fixture did not become ready");
+    session.authority->generation = 48;
+    require(session.opened.channel->dispatch_one(2s) ==
+                    channel::DispatchStatus::fatal &&
+                session.opened.channel->failure() ==
+                    channel::ChannelFailure::stale_generation &&
+                session.dispatcher->calls == 0 && session.scope->removes == 1,
+            "superseded lifecycle generation reached broker dispatch");
   }
   {
     Session session("valid", FAKE_BWRAP_PATH);
@@ -324,6 +359,21 @@ void fake_suite() {
                 session.opened.channel->failed() &&
                 session.dispatcher->calls == 0 && session.scope->removes == 1,
             "post-readiness authentication failure reached broker dispatch");
+  }
+
+  {
+    Session session("ready-loss", FAKE_BWRAP_PATH);
+    require(session.opened.channel->negotiate(2s),
+            "silent-exit liveness fixture did not negotiate");
+    const auto deadline = std::chrono::steady_clock::now() + 2s;
+    while (session.opened.channel->alive() &&
+           std::chrono::steady_clock::now() < deadline) {
+      usleep(1000);
+    }
+    require(
+        !session.opened.channel->alive() && session.dispatcher->calls == 0 &&
+            session.opened.channel->terminate() && session.scope->removes == 1,
+        "silent peer exit remained live or reached broker dispatch");
   }
 }
 
