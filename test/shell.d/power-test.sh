@@ -19,6 +19,11 @@ assertDeepEqual(
   { profiles: ['power-saver', 'balanced', 'performance'], activeProfile: 'balanced', profileIndex: 2 },
   'power parses profile output and clamps selection'
 )
+assertDeepEqual(
+  power.parseProfiles('power-saver\t0\nbalanced\t1\n', 0),
+  { profiles: ['power-saver', 'balanced'], activeProfile: 'balanced', profileIndex: 0 },
+  'power accepts fallback platforms without a performance profile'
+)
 
 assert(power.profileIcon('performance').length > 0, 'power maps profile icons')
 assertEqual(power.batteryFraction({ isPresent: true, percentage: 1.5 }), 1, 'power clamps battery fraction')
@@ -42,10 +47,21 @@ assertEqual(
   'power shows battery icon when unplugged before battery state refreshes'
 )
 
-assert(/if \(b === Qt\.RightButton\) root\.togglePercentage\(\)/.test(panelSource), 'power right click toggles the bar percentage')
+assert(/if \(root\.batteryPresent\) root\.togglePercentage\(\)/.test(panelSource), 'power limits the percentage toggle to battery hardware')
 assert(/Object\.assign\([^\n]+showPercentage: !root\.showPercentage[^\n]+\)[\s\S]*updateEntryInline/.test(panelSource), 'power persists the bar percentage setting')
-assert(/Math\.round\(root\.batteryFraction \* 100\) \+ "% " \+ root\.batteryIcon\(\)/.test(panelSource), 'power places the percentage before the battery icon')
-assert(/openPanelIndicatorWidth:.*showPercentage.*button\.glyphPaintedWidth : 0/.test(panelSource), 'power spans the open-panel mark across the painted percentage block')
+assert(/percentageVisible: batteryPresent && showPercentage && !button\.vertical/.test(panelSource), 'power suppresses percentage text without battery hardware')
+assert(/return batteryPresent \? batteryIcon\(\) : ""/.test(panelSource), 'power uses an AC plug icon without battery hardware')
+assert(/Math\.round\(root\.batteryFraction \* 100\) \+ "% " \+ root\.barIcon\(\)/.test(panelSource), 'power places the percentage before the battery icon')
+assert(/openPanelIndicatorWidth: percentageVisible \? button\.glyphPaintedWidth : 0/.test(panelSource), 'power spans the open-panel mark across the painted percentage block')
+assert(/open: root\.opened\n/.test(panelSource), 'power panel opens without requiring battery hardware')
+assert(!/if \(!batteryPresent\) \{\s*close\(\)/.test(panelSource), 'power does not self-close without battery hardware')
+assert(/idleService: bar\?\.shell\?\.firstPartyServiceFor\("omarchy\.idle"\)/.test(panelSource), 'power reads the shared screensaver state')
+assert(/function open\(\) \{\s*if \(screensaverActive\) return\s*controller\.show\(\)\s*\}/.test(panelSource), 'power refuses to open over the screensaver')
+assert(/onScreensaverActiveChanged: if \(screensaverActive && opened\) close\(\)/.test(panelSource), 'power closes if the screensaver starts while it is open')
+assert(/if \(batteryPresent && !systemProc\.running\) systemProc\.running = true/.test(panelSource), 'power keeps unused system-stat polling off battery-less hardware')
+assert(/visible: root\.batteryPresent[\s\S]*text: "Battery"/.test(panelSource), 'power keeps the battery hero hardware-scoped')
+assert(/PanelSeparator \{\s*visible: root\.batteryPresent/.test(panelSource), 'power hides the battery separator without battery hardware')
+assert(/text: "AVAILABLE POWER PROFILES"/.test(panelSource), 'power presents daemon-advertised profiles as the complete available set')
 assert(/IpcHandler[\s\S]*?function togglePercentage\(\) \{ root\.togglePercentage\(\) \}/.test(panelSource), 'power exposes togglePercentage over IPC')
 assert(/manageIpc: false/.test(panelSource), 'power owns its IPC handler so it can extend the target methods')
 JS
