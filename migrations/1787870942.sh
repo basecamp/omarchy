@@ -1,12 +1,32 @@
-echo "Retire the Super + Shift + S screenshot example now that it is a default binding"
+echo "Let a personal Super + Shift + S binding win now that it is a default"
 
-# The bindings.lua template used to offer this line, commented out, as the
-# Logitech MX Keys example. Super + Shift + S is now bound to the same command
-# by default, and Hyprland stacks duplicate binds, so an uncommented copy runs
-# two screenshot instances that race each other's picker. Comment the copy back
-# out; the chord rebound to any other command is the user's own and stays.
+# Super + Shift + S is now bound to a screenshot by default. Hyprland stacks
+# duplicate binds rather than replacing them, so any chord the user has already
+# bound themselves would fire alongside the new default: two screenshot pickers
+# racing each other, or their own command running with a screenshot on top.
+#
+# The fix is the one this repo documents everywhere else -- unbind the chord
+# before rebinding it. Inserting that line above the user's own bind leaves
+# their binding exactly as they wrote it and simply makes it the only one that
+# runs. It is deliberately not conditional on which command they bound: a chord
+# rebound to something else stacks just as badly as a duplicate screenshot, and
+# a user with `omarchy_default_bindings = false` keeps the only screenshot
+# shortcut they have either way.
 bindings_file="$HOME/.config/hypr/bindings.lua"
+chord='SUPER + SHIFT + S'
 
-if [[ -f $bindings_file ]] && grep -Eq '^[[:space:]]*o\.bind\("SUPER \+ SHIFT \+ S",[^)]*"omarchy-capture-screenshot"\)' "$bindings_file"; then
-  sed -i -E 's|^([[:space:]]*)(o\.bind\("SUPER \+ SHIFT \+ S",[^)]*"omarchy-capture-screenshot"\))|\1-- Super + Shift + S takes a screenshot by default now, so this duplicate is retired:\n\1-- \2|' "$bindings_file"
-fi
+[[ -f $bindings_file ]] || return 0
+
+# An active bind of the chord, ignoring commented-out template lines.
+grep -Eq '^[[:space:]]*o\.bind\("SUPER \+ SHIFT \+ S"' "$bindings_file" || return 0
+
+# Already unbound before being rebound: nothing to do, and inserting a second
+# unbind would be noise in a file the user reads.
+grep -Eq '^[[:space:]]*hl\.unbind\("SUPER \+ SHIFT \+ S"\)' "$bindings_file" && return 0
+
+# --follow-symlinks matters: dotfile-managed configs are usually symlinks into
+# a repo, and without it sed replaces the link with a regular file and silently
+# detaches the config from the source the user actually edits.
+sed -i --follow-symlinks -E \
+  '0,/^[[:space:]]*o\.bind\("SUPER \+ SHIFT \+ S"/s||-- Super + Shift + S takes a screenshot by default now; this unbind keeps yours the only one that runs.\nhl.unbind("'"$chord"'")\n&|' \
+  "$bindings_file"
