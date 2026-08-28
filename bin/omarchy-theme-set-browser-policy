@@ -76,8 +76,13 @@ require_root "$color"
 
 failed=0
 staged=""
+# Bash 5.3 makes the EXIT trap's last command decide the script's exit status,
+# so this handler must not end on a false test. Every successful run clears
+# staged, and a trailing `[[ -n $staged ]] && ...` would report that as failure.
 cleanup() {
-  [[ -n $staged ]] && rm -f "$staged"
+  if [[ -n $staged ]]; then
+    rm -f "$staged"
+  fi
 }
 trap cleanup EXIT
 
