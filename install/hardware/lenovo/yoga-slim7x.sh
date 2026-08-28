@@ -4,6 +4,7 @@ yoga_slim7x_compatible=""
 compatible_path=${OMARCHY_YOGA_COMPATIBLE_PATH:-/sys/firmware/devicetree/base/compatible}
 modules_load_dir=${OMARCHY_YOGA_MODULES_LOAD_DIR:-/etc/modules-load.d}
 mkinitcpio_dir=${OMARCHY_YOGA_MKINITCPIO_DIR:-/etc/mkinitcpio.conf.d}
+limine_config_dir=${OMARCHY_YOGA_LIMINE_CONFIG_DIR:-/etc/limine-entry-tool.d}
 systemd_dir=${OMARCHY_YOGA_SYSTEMD_DIR:-/etc/systemd/system}
 
 if [[ -r $compatible_path ]]; then
@@ -19,20 +20,30 @@ if omarchy-hw-qualcomm-soc &&
   mkdir -p "$modules_load_dir"
   echo "scmi-cpufreq" >"$modules_load_dir/yoga-slim7x.conf"
 
-  # Its internal keyboard and touchpad are HID-over-I2C. Keep their OF
-  # transport in the initramfs so encrypted installs can accept a passphrase.
+  # Initialize the internal keyboard and display before disk unlock.
   mkdir -p "$mkinitcpio_dir"
   cat >"$mkinitcpio_dir/yoga-slim7x-initramfs.conf" <<'CONF'
-MODULES+=(i2c-hid-of)
+MODULES+=(i2c-hid-of qrtr ps883x pmic_glink_altmode)
+
+for firmware in \
+  /usr/lib/firmware/qcom/gen70500_sqe.fw \
+  /usr/lib/firmware/qcom/gen70500_gmu.bin \
+  /usr/lib/firmware/qcom/x1e80100/LENOVO/83ED/qcdxkmsuc8380.mbn; do
+  [[ -f $firmware ]] && FILES+=("$firmware")
+done
+unset firmware
 CONF
 
-  # Start the board's DSP remote processors after udev exposes them.
+  mkdir -p "$limine_config_dir"
+  cat >"$limine_config_dir/yoga-slim7x.conf" <<'CONF'
+KERNEL_CMDLINE[default]+=" initcall_blacklist=simpledrm_platform_driver_init"
+CONF
+
+  # Start the board's DSP remote processors.
   mkdir -p "$systemd_dir"
   cat >"$systemd_dir/yoga-slim7x-remoteprocs.service" <<'UNIT'
 [Unit]
 Description=Start the Lenovo Yoga Slim 7x DSPs
-Wants=systemd-udev-settle.service
-After=systemd-udev-settle.service
 ConditionPathExists=!/etc/modprobe.d/qualcomm-adsp-nofw.conf
 
 [Service]

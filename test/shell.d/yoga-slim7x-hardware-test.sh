@@ -22,17 +22,28 @@ printf 'qcom,x1e80100\0lenovo,yoga-slim7x\0' >"$matching/compatible"
   OMARCHY_YOGA_COMPATIBLE_PATH="$matching/compatible" \
     OMARCHY_YOGA_MODULES_LOAD_DIR="$matching/modules-load.d" \
     OMARCHY_YOGA_MKINITCPIO_DIR="$matching/mkinitcpio.conf.d" \
+    OMARCHY_YOGA_LIMINE_CONFIG_DIR="$matching/limine-entry-tool.d" \
     OMARCHY_YOGA_SYSTEMD_DIR="$matching/systemd" \
     source "$setup"
 )
 
 grep -Fxq 'scmi-cpufreq' "$matching/modules-load.d/yoga-slim7x.conf" ||
   fail "Yoga Slim 7x setup loads its SCMI CPU-frequency driver"
-grep -Fxq 'MODULES+=(i2c-hid-of)' "$matching/mkinitcpio.conf.d/yoga-slim7x-initramfs.conf" ||
-  fail "Yoga Slim 7x setup keeps the internal keyboard in the initramfs"
+grep -Fxq 'MODULES+=(i2c-hid-of qrtr ps883x pmic_glink_altmode)' \
+  "$matching/mkinitcpio.conf.d/yoga-slim7x-initramfs.conf" ||
+  fail "Yoga Slim 7x setup initializes the keyboard and display in the initramfs"
+grep -Fq '/usr/lib/firmware/qcom/gen70500_sqe.fw' \
+  "$matching/mkinitcpio.conf.d/yoga-slim7x-initramfs.conf" ||
+  fail "Yoga Slim 7x setup includes its display firmware in the initramfs"
+grep -Fxq 'KERNEL_CMDLINE[default]+=" initcall_blacklist=simpledrm_platform_driver_init"' \
+  "$matching/limine-entry-tool.d/yoga-slim7x.conf" ||
+  fail "Yoga Slim 7x setup defers display ownership to the native driver"
 grep -Fq 'ConditionPathExists=!/etc/modprobe.d/qualcomm-adsp-nofw.conf' \
   "$matching/systemd/yoga-slim7x-remoteprocs.service" ||
   fail "Yoga Slim 7x skips DSP startup when the generic firmware leaf blacklists it"
+if grep -Fq 'systemd-udev-settle.service' "$matching/systemd/yoga-slim7x-remoteprocs.service"; then
+  fail "Yoga Slim 7x DSP startup does not wait for all udev devices"
+fi
 grep -Fxq 'enable yoga-slim7x-remoteprocs.service' "$matching/systemctl.log" ||
   fail "Yoga Slim 7x enables its remote processor service"
 
@@ -47,6 +58,7 @@ printf 'qcom,x1e80100\0hp,elitebook-ultra-g1q\0' >"$nonmatching/compatible"
   OMARCHY_YOGA_COMPATIBLE_PATH="$nonmatching/compatible" \
     OMARCHY_YOGA_MODULES_LOAD_DIR="$nonmatching/modules-load.d" \
     OMARCHY_YOGA_MKINITCPIO_DIR="$nonmatching/mkinitcpio.conf.d" \
+    OMARCHY_YOGA_LIMINE_CONFIG_DIR="$nonmatching/limine-entry-tool.d" \
     OMARCHY_YOGA_SYSTEMD_DIR="$nonmatching/systemd" \
     source "$setup"
 )
@@ -55,6 +67,8 @@ printf 'qcom,x1e80100\0hp,elitebook-ultra-g1q\0' >"$nonmatching/compatible"
   fail "nonmatching Qualcomm hardware does not get Yoga CPU setup"
 [[ ! -e $nonmatching/mkinitcpio.conf.d/yoga-slim7x-initramfs.conf ]] ||
   fail "nonmatching Qualcomm hardware does not get Yoga initramfs setup"
+[[ ! -e $nonmatching/limine-entry-tool.d/yoga-slim7x.conf ]] ||
+  fail "nonmatching Qualcomm hardware does not get Yoga boot parameters"
 [[ ! -e $nonmatching/systemd/yoga-slim7x-remoteprocs.service ]] ||
   fail "nonmatching Qualcomm hardware does not get Yoga services"
 
@@ -79,4 +93,4 @@ OMARCHY_YOGA_REMOTEPROC_ROOT="$remoteprocs" \
 [[ $(<"$remoteprocs/remoteproc2/state") == offline ]] ||
   fail "Yoga Slim 7x helper leaves unrelated remote processors alone"
 
-pass "Yoga Slim 7x adds only its board-specific keyboard, CPU and DSP setup"
+pass "Yoga Slim 7x adds only its board-specific keyboard, display, CPU and DSP setup"
