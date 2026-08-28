@@ -14,6 +14,7 @@ Item {
   // Must match the headline omarchy-battery-low gives the notification.
   readonly property string lowBatterySummary: "Time to recharge!"
   property string pendingPowerSource: ""
+  property bool pendingDismiss: false
 
   PersistentProperties {
     id: persisted
@@ -40,12 +41,23 @@ Item {
   // stays on screen until it is clicked. Take it down once the battery is no
   // longer low, which is normally the moment the charger goes in.
   function dismissLowBatteryWarning() {
+    // A warning still in flight has not posted its toast yet, so dismissing now
+    // would match nothing and strand the popup that lands a moment later. Let
+    // the warning finish and dismiss on its way out.
+    if (warningProcess.running) {
+      pendingDismiss = true
+      return
+    }
+    pendingDismiss = false
     if (dismissProcess.running) return
     dismissProcess.command = ["omarchy-notification-dismiss", lowBatterySummary]
     dismissProcess.running = true
   }
 
   function sendLowBatteryWarning(level) {
+    // Unplugged again before the last warning finished: its toast is the
+    // current one, so the dismiss that was waiting on it no longer applies.
+    pendingDismiss = false
     if (warningProcess.running) return
     warningProcess.command = [
       "omarchy-battery-low",
@@ -65,7 +77,10 @@ Item {
     powerProfileProcess.running = true
   }
 
-  Process { id: warningProcess }
+  Process {
+    id: warningProcess
+    onExited: if (root.pendingDismiss) root.dismissLowBatteryWarning()
+  }
 
   Process { id: dismissProcess }
 

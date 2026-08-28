@@ -4,6 +4,33 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
+battery_service="$ROOT/shell/plugins/services/battery/Service.qml"
+
+# The model decides whether to dismiss; these cover the service acting on that
+# decision, which the model tests below cannot reach.
+grep -F 'else if (state.dismiss) dismissLowBatteryWarning()' "$battery_service" >/dev/null
+grep -F 'dismissProcess.command = ["omarchy-notification-dismiss", lowBatterySummary]' "$battery_service" >/dev/null
+grep -F 'readonly property string lowBatterySummary: "Time to recharge!"' "$battery_service" >/dev/null
+pass "battery service dismisses the warning by its own summary"
+
+# omarchy-battery-low posts the toast from a spawned process, so a dismiss sent
+# while that is still in flight matches nothing and strands the popup that lands
+# just after it.
+grep -F 'if (warningProcess.running) {' "$battery_service" >/dev/null
+grep -F 'pendingDismiss = true' "$battery_service" >/dev/null
+grep -F 'onExited: if (root.pendingDismiss) root.dismissLowBatteryWarning()' "$battery_service" >/dev/null
+pass "battery service holds a dismiss until the in-flight warning has posted"
+
+# Unplugged again before that warning finished: its toast is the current one,
+# so the queued dismiss must not fire on the way out.
+grep -F 'pendingDismiss = false' "$battery_service" >/dev/null
+grep -B2 -F 'if (warningProcess.running) return' "$battery_service" | grep -F 'pendingDismiss = false' >/dev/null
+pass "battery service drops a queued dismiss when a fresh warning supersedes it"
+
+# The summary the service dismisses has to be the headline the command sends.
+grep -F '"Time to recharge!"' "$ROOT/bin/omarchy-battery-low" >/dev/null
+pass "battery warning headline matches the summary the service dismisses"
+
 run_node_test <<'JS'
 const battery = requireFromRoot('shell/plugins/services/battery/BatteryModel.js')
 const discharging = 1
