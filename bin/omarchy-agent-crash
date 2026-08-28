@@ -49,4 +49,4 @@ mechanism, read the skill files directly and follow them instead:
 PROMPT
 )
 
-exec omarchy-agent --prompt "$prompt"
+FAM_OMARCHY_SOURCE=omarchy-crash-diagnosis exec omarchy-agent --prompt "$prompt"

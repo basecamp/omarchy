@@ -89,8 +89,11 @@ codex)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
   ;;
 fam)
-  command=(omarchy-fam)
-  [[ -n ${prompt:-} ]] && command+=("$prompt")
+  if [[ -n ${prompt:-} ]]; then
+    command=(omarchy-fam --prompt "$prompt")
+  else
+    command=(omarchy-fam --interactive)
+  fi
   ;;
 omp)
   command=(omp --auto-approve)

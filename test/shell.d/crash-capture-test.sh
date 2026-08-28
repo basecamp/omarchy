@@ -378,6 +378,27 @@ grep -Fq 'omarchy-crash-mute' "$skill" ||
   fail "the diagnosis no longer names the command that mutes, so the offer it makes cannot be carried out"
 pass "the diagnosis names the command that mutes"
 
+CRASH_AGENT_LOG="$TMPDIR/crash-agent-log"
+cat >"$watch_bin/coredumpctl" <<'SH'
+#!/bin/bash
+echo 'Wed 2026-08-28 12:34:56 UTC 4242 1000 1000 SIGSEGV present app'
+SH
+cat >"$watch_bin/omarchy-agent" <<'SH'
+#!/bin/bash
+printf '%s\0' "${FAM_OMARCHY_SOURCE-}" "$@" >"$CRASH_AGENT_LOG"
+SH
+chmod +x "$watch_bin/coredumpctl" "$watch_bin/omarchy-agent"
+
+PATH="$watch_bin:$ROOT/bin:$PATH" \
+  OMARCHY_PATH="$ROOT" CRASH_AGENT_LOG="$CRASH_AGENT_LOG" \
+  "$ROOT/bin/omarchy-agent-crash" 4242 app /usr/bin/app SIGSEGV
+mapfile -d '' -t crash_agent_args <"$CRASH_AGENT_LOG"
+[[ ${crash_agent_args[0]} == "omarchy-crash-diagnosis" ]] ||
+  fail "crash diagnosis does not identify its invocation source to FAM"
+[[ ${crash_agent_args[1]} == "--prompt" && ${crash_agent_args[2]} == *"A process crashed"* ]] ||
+  fail "crash diagnosis no longer forwards the diagnostic prompt"
+pass "crash diagnosis preserves source context for FAM without changing other agents"
+
 grep -Fq 'GROUP_DESCRIPTIONS[crash]' "$ROOT/bin/omarchy" ||
   fail "the crash group has no description, so the router lists a group it cannot describe"
 pass "the crash group is described in the router"
