@@ -6,10 +6,10 @@ echo "Retint opencode with the Omarchy theme instead of restarting it"
 # which watches the synced theme file and retints running sessions live
 # without touching sessions.
 #
-# Existing installs get the plugin wired into tui.json so a plain
-# `omarchy-theme-set-opencode` reaches their running sessions too. The theme
-# itself is not switched here: point tui.json at "omarchy" -- the theme picker
-# also lists it -- or run `omarchy-theme-set-opencode --activate` to opt in.
+# Existing installs get the plugin wired into tui.json and are pointed at the
+# Omarchy theme so desktop theme changes live-retint OpenCode, the same way
+# every other themed app follows Omarchy. Pick a different theme in OpenCode
+# to opt out.
 
 # Mirror how opencode itself finds its config directory.
 OPENCODE_CONFIG="${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}"
@@ -24,22 +24,25 @@ if [[ -f $plugin_source ]]; then
   ln -sfn "$plugin_source" "$plugin_target"
 fi
 
-# Most existing installs have no tui.json yet; create a plugin-only one so the
-# migration reaches them too. Omitting "theme" keeps the theme they already
-# had -- the plugin stays inert until Omarchy is picked.
+# Most existing installs have no tui.json yet. Create one that selects Omarchy
+# so live retint is on from the next OpenCode start.
 tui_config="$OPENCODE_CONFIG/tui.json"
 
 if [[ -f $tui_config ]]; then
   if ! jq -e --arg plugin "$plugin_target" '.plugin | index($plugin)' "$tui_config" >/dev/null 2>&1; then
     tmp=$(mktemp "$tui_config.XXXXXX")
-    # Append; plugin order affects initialization, so never rewrite the rest.
-    jq --arg plugin "$plugin_target" '.plugin = ((.plugin // []) + [$plugin])' "$tui_config" >"$tmp"
+    # Append the plugin; set theme so this install follows the desktop.
+    # Plugin order affects initialization, so never rewrite the rest of .plugin.
+    jq --arg plugin "$plugin_target" \
+      '.theme = "omarchy" | .plugin = ((.plugin // []) + [$plugin])' \
+      "$tui_config" >"$tmp"
     mv "$tmp" "$tui_config"
   fi
 elif [[ -f $plugin_target ]]; then
   cat >"$tui_config" <<EOF
 {
   "\$schema": "https://opencode.ai/tui.json",
+  "theme": "omarchy",
   "plugin": ["$plugin_target"]
 }
 EOF

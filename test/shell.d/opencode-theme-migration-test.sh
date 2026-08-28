@@ -47,12 +47,10 @@ pass "migration links the omarchy-theme plugin"
 pass "plugin link points at the shipped plugin"
 
 jq -e --arg plugin "$plugin" \
-  '.keybinds.leader == "<c-b>" and (.theme // "omarchy") and (.plugin | index($plugin))' \
+  '.theme == "omarchy" and .keybinds.leader == "<c-b>" and (.plugin | index($plugin))' \
   "$test_dir/home/.config/opencode/tui.json" >/dev/null ||
-  fail "migration registers the plugin and preserves tui.json settings"
-[[ $(jq -r '.theme' "$test_dir/home/.config/opencode/tui.json") == "tokyonight" ]] ||
-  fail "migration does not switch the user's theme"
-pass "migration registers the plugin and preserves tui.json settings"
+  fail "migration registers the plugin, selects Omarchy, and preserves other tui.json settings"
+pass "migration registers the plugin, selects Omarchy, and preserves other tui.json settings"
 
 run_migration
 [[ $(jq '.plugin | length' "$test_dir/home/.config/opencode/tui.json") == "1" ]] ||
@@ -83,10 +81,10 @@ stage_theme "$test_dir/home"
 run_migration
 
 jq -e --arg plugin "$test_dir/home/.config/opencode/tui-plugins/omarchy-theme.ts" \
-  '(.plugin == [$plugin]) and (has("theme") | not)' \
+  '.theme == "omarchy" and .plugin == [$plugin]' \
   "$test_dir/home/.config/opencode/tui.json" >/dev/null ||
-  fail "migration creates a plugin-only tui.json without a theme"
-pass "migration creates a plugin-only tui.json when absent"
+  fail "migration creates a tui.json that selects Omarchy when absent"
+pass "migration creates a tui.json that selects Omarchy when absent"
 
 # ------------------------------------------------------------------ XDG_CONFIG_HOME
 
