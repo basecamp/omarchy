@@ -394,12 +394,53 @@ void test_audit_failure_prevents_effect() {
           "audit admission failure did not poison before effect");
 }
 
+void test_poisoned_runtime_cannot_resolve_existing_handle() {
+  TemporaryDirectory temporary;
+  const auto audit_path = temporary.path() / "audit";
+  audit::AuditStore store(audit_path, {.maximum_records = 16});
+  Backend backend{.audit_store = &store};
+  runtime::AuditedBrokerRuntime broker_runtime(revision(),
+                                               configuration(backend), store);
+  const auto write = storage_write_request("before-poison");
+  require(broker_runtime
+                  .dispatch(request_packet(
+                                permissions::OperationId::storage_write, 81,
+                                write),
+                            100)
+                  .outcome == broker::DispatchOutcome::dispatched &&
+              broker_runtime
+                      .issue_handle(handle('p'), 81,
+                                    permissions::OperationId::storage_write,
+                                    quota(), 1000)
+                      .status == runtime::RuntimeStatus::accepted,
+          "poison fixture could not issue an initially valid handle");
+
+  std::filesystem::permissions(audit_path,
+                               std::filesystem::perms::owner_all |
+                                   std::filesystem::perms::group_read,
+                               std::filesystem::perm_options::replace);
+  require(broker_runtime
+                  .dispatch(request_packet(
+                                permissions::OperationId::storage_write, 82,
+                                write),
+                            100)
+                  .outcome == broker::DispatchOutcome::core_failed &&
+              broker_runtime.failed(),
+          "audit failure did not poison handle fixture");
+  const auto resolved = broker_runtime.resolve_handle(
+      handle('p'), 83, permissions::OperationId::storage_write, quota(), 200);
+  require(resolved.status == runtime::RuntimeStatus::audit_failed &&
+              resolved.decision == permissions::HandleDecision::invalid,
+          "poisoned runtime continued resolving an existing authority handle");
+}
+
 } // namespace
 
 int main() {
   try {
     test_authority_audit_handles_revocation_and_recovery();
     test_audit_failure_prevents_effect();
+    test_poisoned_runtime_cannot_resolve_existing_handle();
   } catch (const std::exception &error) {
     std::cerr << "FAIL: " << error.what() << '\n';
     return 1;

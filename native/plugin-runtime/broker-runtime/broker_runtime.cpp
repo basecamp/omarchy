@@ -397,6 +397,8 @@ HandleResult AuditedBrokerRuntime::resolve_handle(
     const permissions::HandleId &id, std::uint64_t audit_correlation,
     permissions::OperationId operation, const permissions::Scope &scope,
     std::uint64_t now_monotonic_ns) {
+  if (failed_ || core_.failed())
+    return {RuntimeStatus::audit_failed, permissions::HandleDecision::invalid};
   const auto *definition = permissions::find_operation(operation);
   const auto *grant =
       definition == nullptr ? nullptr : grant_for(definition->key);
