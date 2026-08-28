@@ -10,7 +10,8 @@ migration="$ROOT/migrations/1787508122.sh"
 fresh=$(mktemp -d)
 legacy=$(mktemp -d)
 busless=$(mktemp -d)
-trap 'rm -rf "$fresh" "$legacy" "$busless"' EXIT
+xdg_home=$(mktemp -d)
+trap 'rm -rf "$fresh" "$legacy" "$busless" "$xdg_home"' EXIT
 
 # Keep each case isolated and use non-default XDG paths so the test proves the
 # setup script honours the base-directory variables instead of hard-coding HOME.
@@ -83,7 +84,19 @@ printf '%s\n' '  [preferred]  ' 'default=hyprland;gtk' >"$fresh_conf"
 run_in_home "$fresh" bash -euo pipefail "$setup_script"
 section_count=$(grep -cE '^[[:space:]]*\[preferred\]' "$fresh_conf")
 ((section_count == 1)) || fail "A whitespace-padded [preferred] header is not duplicated"
+grep -Fx 'org.freedesktop.impl.portal.FileChooser=nautilus' "$fresh_conf" >/dev/null ||
+  fail "A whitespace-padded [preferred] section still receives the file chooser line"
 pass "a whitespace-padded [preferred] section is amended, not duplicated"
+
+# Unset XDG dirs: files must land in the $HOME defaults.
+HOME="$xdg_home" env -u XDG_CONFIG_HOME -u XDG_DATA_HOME bash -euo pipefail "$setup_script"
+[[ -e $xdg_home/.config/xdg-desktop-portal/hyprland-portals.conf ]] ||
+  fail "without XDG overrides, portal preference is written under ~/.config"
+[[ -e $xdg_home/.local/share/xdg-desktop-portal/portals/nautilus.portal ]] ||
+  fail "without XDG overrides, portal descriptor is written under ~/.local/share"
+[[ -e $xdg_home/.local/share/dbus-1/services/org.gnome.Nautilus.service ]] ||
+  fail "without XDG overrides, Nautilus D-Bus override is written under ~/.local/share"
+pass "XDG defaults are used when XDG_CONFIG_HOME and XDG_DATA_HOME are unset"
 
 # 3. The migration repairs a separate empty home and restarts the portal.
 legacy_stub=$(install_recording_systemctl "$legacy")

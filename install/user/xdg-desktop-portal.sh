@@ -2,6 +2,10 @@ config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
 data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
 
 portal_config="$config_home/xdg-desktop-portal/hyprland-portals.conf"
+# portals.conf is read from $XDG_CONFIG_HOME. .portal descriptors are not:
+# xdg-desktop-portal (>= 1.21.0) loads them from $XDG_DATA_HOME, then
+# $XDG_DATA_DIRS, then /usr/share. A file under
+# ~/.config/xdg-desktop-portal/portals/ is ignored.
 nautilus_portal="$data_home/xdg-desktop-portal/portals/nautilus.portal"
 nautilus_dbus_service="$data_home/dbus-1/services/org.gnome.Nautilus.service"
 
