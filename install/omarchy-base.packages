@@ -104,6 +104,7 @@ plymouth
 postgresql-libs
 power-profiles-daemon
 python-gobject
+python-pyfiglet
 python-poetry-core
 ttfx
 qemu-user-static-binfmt

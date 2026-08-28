@@ -118,6 +118,7 @@
   "style.about.text": {"icon":"","label":"Edit Text","action":"omarchy-branding-about text"},
   "style.about.image": {"icon":"","label":"Set From Image","action":"omarchy-branding-about image"},
   "style.about.default": {"icon":"","label":"Restore Default","action":"omarchy-branding-about reset"},
+  "style.screensaver.figlet": {"icon":"","label":"ASCII Text","action":"omarchy-branding-screensaver figlet"},
   "style.screensaver.text": {"icon":"","label":"Edit Text","action":"omarchy-branding-screensaver text"},
   "style.screensaver.image": {"icon":"","label":"Set From Image","action":"omarchy-branding-screensaver image"},
   "style.screensaver.default": {"icon":"","label":"Restore Default","action":"omarchy-branding-screensaver reset"},

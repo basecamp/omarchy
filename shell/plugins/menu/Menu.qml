@@ -60,6 +60,7 @@ Item {
   property string doneFile: ""
   property int dmenuWidth: 300
   property int dmenuMaxHeight: 0
+  property bool dmenuMultiline: false
   property bool requestActive: false
   property bool rowsLoaded: false
   property string activeMenu: "root"
@@ -97,7 +98,11 @@ Item {
   readonly property real rowReservedBorderRight: Border.right(selectedBorderSpec)
   readonly property int cornerRadius: Style.cornerRadius
   property int contentMargin: Style.spacing.panelPadding
-  property int headerHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
+  property int singleLineHeaderHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
+  readonly property int inputLineCount: root.mode === "input" ? Math.max(1, root.filterText.split("\n").length) : 1
+  property int headerHeight: root.dmenuMultiline && root.mode === "input"
+    ? Math.max(singleLineHeaderHeight, Math.min(inputLineCount, 6) * Math.ceil(Style.font.heading * 1.35) + Style.spacing.controlPaddingY * 2)
+    : singleLineHeaderHeight
   property int contentSpacing: Style.spacing.md
   property int baseRowHeight: Math.max(Style.space(50), Style.font.body + Style.spacing.rowPaddingX * 2)
   property int detailRowHeight: Math.max(Style.space(58), Style.font.body + Style.font.caption + Style.spacing.rowPaddingX * 2)
@@ -868,6 +873,7 @@ Item {
     requestActive = !!doneFile
     dmenuWidth = Math.max(1, Number(payload.width || 300))
     dmenuMaxHeight = Math.max(0, Number(payload.maxHeight || 0))
+    dmenuMultiline = payload.multiline === true || payload.multiline === "true"
     activeMenu = "root"
     navStack = []
     filterText = ""
@@ -1151,6 +1157,11 @@ Item {
           } else if (event.key === Qt.Key_PageDown) {
             root.select(6)
             event.accepted = true
+          } else if (root.mode === "input" && root.dmenuMultiline &&
+                     (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) &&
+                     event.modifiers === Qt.ShiftModifier) {
+            root.setFilter(root.filterText + "\n")
+            event.accepted = true
           } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Right) {
             if (root.dmenuActive) {
               if (root.mode === "input") root.applyDmenuSelection(root.filterText)
@@ -1197,17 +1208,18 @@ Item {
           height: root.headerHeight
           radius: root.cornerRadius
           color: "transparent"
+          clip: root.dmenuMultiline && root.mode === "input"
 
           Text {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
+            anchors.fill: parent
             text: root.filterText || (root.dmenuActive ? (root.dmenuPrompt + "…") : ((root.item(root.activeMenu) ? (root.item(root.activeMenu).title || root.item(root.activeMenu).label) : "Go") + "…"))
             color: root.foreground
             opacity: root.filterText ? 1 : 0.58
             font.family: root.fontFamily
             font.pixelSize: Style.font.heading
-            elide: Text.ElideRight
+            lineHeight: 1.35
+            verticalAlignment: root.dmenuMultiline && root.mode === "input" ? Text.AlignBottom : Text.AlignVCenter
+            elide: root.dmenuMultiline && root.mode === "input" ? Text.ElideNone : Text.ElideRight
           }
 
         }

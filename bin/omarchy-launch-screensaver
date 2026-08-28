@@ -12,6 +12,33 @@ fi
 
 focused=$(omarchy-hyprland-monitor-focused)
 terminal=$(xdg-terminal-exec --print-id)
+screensaver_path="$HOME/.config/omarchy/branding/screensaver.txt"
+screensaver_width=$(awk 'length > width { width = length } END { print width + 0 }' "$screensaver_path")
+screensaver_height=$(awk 'END { print NR + 0 }' "$screensaver_path")
+
+screensaver_font_size() {
+  local viewport_width="$1"
+  local viewport_height="$2"
+
+  awk \
+    -v viewport_width="$viewport_width" \
+    -v viewport_height="$viewport_height" \
+    -v text_width="$screensaver_width" \
+    -v text_height="$screensaver_height" '
+      BEGIN {
+        if (text_width < 1) text_width = 1
+        if (text_height < 1) text_height = 1
+
+        width_size = int(viewport_width * 0.90 / (text_width * 0.78))
+        height_size = int(viewport_height * 0.85 / (text_height * 1.90))
+        size = width_size < height_size ? width_size : height_size
+
+        if (size > 18) size = 18
+        if (size < 4) size = 4
+        print size
+      }
+    '
+}
 
 case $terminal in
 *Alacritty* | *ghostty* | *foot* | *kitty*) ;;
@@ -49,25 +76,31 @@ wait_for_screensaver_window() {
   done
 }
 
-for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
+while IFS=$'\t' read -r m viewport_width viewport_height; do
   hypr_focus_monitor "$m"
+  font_size=$(screensaver_font_size "$viewport_width" "$viewport_height")
 
   case $terminal in
   *Alacritty*)
-    hypr_exec alacritty --class=org.omarchy.screensaver --config-file "$OMARCHY_PATH/default/alacritty/screensaver.toml" -e omarchy-screensaver
+    hypr_exec alacritty --class=org.omarchy.screensaver --config-file "$OMARCHY_PATH/default/alacritty/screensaver.toml" --option "font.size=$font_size" -e omarchy-screensaver
     ;;
   *ghostty*)
-    hypr_exec ghostty --class=org.omarchy.screensaver --config-file="$OMARCHY_PATH/default/ghostty/screensaver" --font-size=18 -e omarchy-screensaver
+    hypr_exec ghostty --class=org.omarchy.screensaver --config-file="$OMARCHY_PATH/default/ghostty/screensaver" --font-size="$font_size" -e omarchy-screensaver
     ;;
   *foot*)
-    hypr_exec foot --app-id=org.omarchy.screensaver --config="$OMARCHY_PATH/default/foot/screensaver.ini" -e omarchy-screensaver
+    hypr_exec foot --app-id=org.omarchy.screensaver --config="$OMARCHY_PATH/default/foot/screensaver.ini" --font="JetBrainsMono Nerd Font:size=$font_size" -e omarchy-screensaver
     ;;
   *kitty*)
-    hypr_exec kitty --class=org.omarchy.screensaver --override font_size=18 --override window_padding_width=0 -e omarchy-screensaver
+    hypr_exec kitty --class=org.omarchy.screensaver --override "font_size=$font_size" --override window_padding_width=0 -e omarchy-screensaver
     ;;
   esac
 
   wait_for_screensaver_window
-done
+done < <(hyprctl monitors -j | jq -r '
+  .[] | . as $m
+  | (if (($m.transform // 0) % 2 == 1) then $m.height else $m.width end) / $m.scale | floor as $width
+  | (if (($m.transform // 0) % 2 == 1) then $m.width else $m.height end) / $m.scale | floor as $height
+  | [$m.name, $width, $height] | @tsv
+')
 
 hypr_focus_monitor "$focused"

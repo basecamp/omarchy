@@ -3,8 +3,8 @@
 # omarchy:summary=Prompt for text input from a menu
 # omarchy:group=menu
 # omarchy:name=input
-# omarchy:args=prompt [menu args...]
-# omarchy:examples=omarchy menu input Reminder|omarchy-menu-input "Reminder in minutes" --width 400
+# omarchy:args=prompt [--width <pixels>] [--multiline]
+# omarchy:examples=omarchy menu input Reminder | omarchy-menu-input "Screensaver text" --width 520 --multiline
 
 set -euo pipefail
 
@@ -14,6 +14,7 @@ if (( $# > 0 )); then
 fi
 
 menu_width=""
+multiline=false
 
 while (( $# > 0 )); do
   case "$1" in
@@ -24,6 +25,9 @@ while (( $# > 0 )); do
         exit 1
       fi
       menu_width="$1"
+      ;;
+    --multiline)
+      multiline=true
       ;;
   esac
   shift
@@ -42,8 +46,9 @@ payload=$(perl -MEncode=decode -MJSON::PP=encode_json -e '
     doneFile => decode("UTF-8", $ARGV[2])
   };
   $payload->{width} = int($ARGV[3]) if length($ARGV[3] // "");
+  $payload->{multiline} = JSON::PP::true if ($ARGV[4] // "") eq "true";
   print encode_json($payload)
-' "$prompt" "$selection_file" "$done_file" "$menu_width")
+' "$prompt" "$selection_file" "$done_file" "$menu_width" "$multiline")
 
 omarchy-shell shell summon omarchy.menu "$payload" >/dev/null
 

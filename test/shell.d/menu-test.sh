@@ -10,6 +10,19 @@ const menu = requireFromRoot('shell/plugins/menu/MenuModel.js')
 const menuQml = fs.readFileSync(path.join(root, 'shell/plugins/menu/Menu.qml'), 'utf8')
 const defaultMenuJsonc = fs.readFileSync(path.join(root, 'default/omarchy/omarchy-menu.jsonc'), 'utf8')
 
+assert(
+  /property bool dmenuMultiline: false[\s\S]*inputLineCount[\s\S]*Math\.min\(inputLineCount, 6\)/.test(menuQml),
+  'multiline menu input grows with explicit lines up to a bounded height'
+)
+assert(
+  /root\.mode === "input" && root\.dmenuMultiline[\s\S]*event\.modifiers === Qt\.ShiftModifier[\s\S]*root\.setFilter\(root\.filterText \+ "\\n"\)/.test(menuQml),
+  'multiline menu input inserts a line break with Shift+Enter'
+)
+assert(
+  /verticalAlignment: root\.dmenuMultiline && root\.mode === "input" \? Text\.AlignBottom : Text\.AlignVCenter/.test(menuQml),
+  'multiline menu input keeps the latest lines visible'
+)
+
 const parsed = menu.parseMenuJsonc(`
 {
   // comment
@@ -335,6 +348,16 @@ assertEqual(
   defaultById['style.bar.transparency'].action,
   'omarchy-bar transparent toggle',
   'menu exposes Menu Bar transparency as a toggle'
+)
+assertEqual(
+  defaultById['style.screensaver.figlet'].action,
+  'omarchy-branding-screensaver figlet',
+  'menu exposes Figlet text generation under Screensaver'
+)
+assertEqual(
+  defaultById['style.screensaver.figlet'].label,
+  'ASCII Text',
+  'menu names ASCII text generation consistently with other Screensaver actions'
 )
 assertDeepEqual(
   defaultItems.filter(item => item.parent === 'setup.plugin').map(item => item.label),
