@@ -1,7 +1,7 @@
 [Desktop Entry]
 Version=1.0
 Name=Zoom
-Exec=omarchy-webapp-handler-zoom %u
+Exec=env OMARCHY_WEBAPP_ORIGIN=https://app.zoom.us omarchy-webapp-handler-zoom %u
 Terminal=false
 Type=Application
 Icon=zoom

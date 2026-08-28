@@ -34,6 +34,11 @@ shell_ipc_quiet() {
   OMARCHY_PATH="$test_root" "$ROOT/bin/omarchy-shell" -q "$@"
 }
 
+layer_present() {
+  hyprctl -j layers 2>/dev/null |
+    jq -e --arg namespace "$1" '.. | objects | select(.namespace? == $namespace)' >/dev/null
+}
+
 fail_with_log() {
   local description="$1"
   sed -n '1,240p' "$log" >&2
@@ -102,6 +107,7 @@ OMARCHY_PATH="$test_root" \
 HOME="$test_home" \
 XDG_CONFIG_HOME="$test_home/.config" \
 XDG_CACHE_HOME="$test_home/.cache" \
+XDG_DATA_HOME="$test_home/.local/share" \
 XDG_STATE_HOME="$test_home/.local/state" \
 PATH="$stub_bin:$ROOT/bin:$PATH" \
   quickshell -p "$test_root/shell" --no-color >"$log" 2>&1 &
@@ -184,6 +190,42 @@ pass "shell IPC summon and hide contract works"
 
 [[ $(shell_ipc notifications ping) == "ok" ]] || fail_with_log "notifications IPC responds"
 [[ $(shell_ipc notifications setDnd false) == "off" ]] || fail_with_log "notifications IPC toggles DND"
+
+notification_apps=""
+for _ in {1..80}; do
+  notification_apps=$(shell_ipc notifications listApplications 2>/dev/null || true)
+  jq -e 'length > 0' <<<"$notification_apps" >/dev/null 2>&1 && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited before notification applications settled"
+  fi
+  sleep 0.1
+done
+notification_key=$(jq -r '.[0].key // empty' <<<"$notification_apps")
+[[ -n $notification_key ]] || fail_with_log "notifications IPC lists applications"
+[[ $(shell_ipc notifications setApplicationMode "$notification_key" history) == "ok" ]] ||
+  fail_with_log "notifications IPC sets an application mode"
+notification_settings="$test_home/.local/state/omarchy/notifications.json"
+for _ in {1..80}; do
+  jq -e --arg key "$notification_key" '.modes[$key] == "history"' "$notification_settings" >/dev/null 2>&1 && break
+  sleep 0.1
+done
+jq -e --arg key "$notification_key" '.modes[$key] == "history"' "$notification_settings" >/dev/null ||
+  fail_with_log "notifications persist application modes"
+
+[[ $(shell_ipc shell summon omarchy.notifications) == "ok" ]] || fail_with_log "notification controls panel opens"
+for _ in {1..80}; do
+  layer_present "omarchy-notification-controls" && break
+  sleep 0.1
+done
+layer_present "omarchy-notification-controls" || fail_with_log "notification controls panel creates its layer"
+shell_ipc_quiet shell hide omarchy.notifications >/dev/null
+for _ in {1..80}; do
+  ! layer_present "omarchy-notification-controls" && break
+  sleep 0.1
+done
+! layer_present "omarchy-notification-controls" || fail_with_log "notification controls panel closes"
+pass "notification application controls load, persist, and open"
+
 [[ $(shell_ipc media ping) == "ok" ]] || fail_with_log "media IPC responds"
 jq -e '.hasPlayer | type == "boolean"' <<<"$(shell_ipc media status)" >/dev/null || fail_with_log "media IPC returns status JSON"
 jq -e '.enabled | type == "boolean"' <<<"$(shell_ipc idle status)" >/dev/null || fail_with_log "idle IPC returns status JSON"

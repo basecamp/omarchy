@@ -129,6 +129,11 @@ assertDeepEqual(
 
 const defaultItems = menu.parseMenuJsonc(defaultMenuJsonc)
 const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item]))
+assertEqual(
+  defaultById['setup.notifications'].action,
+  'omarchy-shell shell summon omarchy.notifications',
+  'menu opens per-application notification settings from Setup'
+)
 
 // Needs the real menu: app rows sort after all menu items, and only at that
 // item count does the order tiebreak alone bury an installed app.

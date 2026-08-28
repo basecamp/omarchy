@@ -37,6 +37,24 @@ icon_name_from_ref() {
   fi
 }
 
+canonical_http_origin() {
+  local url="$1"
+  local scheme authority
+
+  [[ $url =~ ^([Hh][Tt][Tt][Pp][Ss]?)://([^/?#]+) ]] || return 1
+  scheme=${BASH_REMATCH[1],,}
+  authority=${BASH_REMATCH[2]##*@}
+  authority=${authority,,}
+
+  if [[ $scheme == "http" && $authority == *:80 ]]; then
+    authority=${authority%:80}
+  elif [[ $scheme == "https" && $authority == *:443 ]]; then
+    authority=${authority%:443}
+  fi
+
+  printf '%s://%s\n' "$scheme" "$authority"
+}
+
 install_user_icon() {
   local source="$1"
   local name="$2"
@@ -144,7 +162,15 @@ else
 fi
 
 # Use custom exec if provided, otherwise default behavior
-EXEC_COMMAND="${CUSTOM_EXEC:-omarchy-launch-webapp $APP_URL}"
+if [[ -n $CUSTOM_EXEC ]]; then
+  if APP_ORIGIN=$(canonical_http_origin "$APP_URL"); then
+    EXEC_COMMAND="env OMARCHY_WEBAPP_ORIGIN=$APP_ORIGIN $CUSTOM_EXEC"
+  else
+    EXEC_COMMAND="$CUSTOM_EXEC"
+  fi
+else
+  EXEC_COMMAND="omarchy-launch-webapp $APP_URL"
+fi
 
 # Create application .desktop file
 DESKTOP_DIR="$HOME/.local/share/applications"

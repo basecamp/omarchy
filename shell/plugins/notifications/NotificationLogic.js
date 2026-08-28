@@ -2,7 +2,213 @@ function isChromiumDerived(app, appIcon) {
   var source = (String(app || "") + "\n" + String(appIcon || "")).toLowerCase()
   return source.indexOf("chrom") >= 0 || source.indexOf("brave") >= 0 ||
          source.indexOf("vivaldi") >= 0 || source.indexOf("microsoft-edge") >= 0 ||
-         source.indexOf("opera") >= 0
+         source.indexOf("opera") >= 0 || source.indexOf("helium") >= 0
+}
+
+function normalizedIdentity(value) {
+  var text = String(value || "").trim().toLowerCase()
+  if (text.slice(-8) === ".desktop") text = text.slice(0, -8)
+  return text
+}
+
+function identityKey(prefix, value) {
+  var normalized = normalizedIdentity(value)
+  return normalized ? String(prefix || "") + ":" + encodeURIComponent(normalized) : ""
+}
+
+function applicationKey(desktopEntry) {
+  return identityKey("desktop", desktopEntry)
+}
+
+function normalizedOrigin(value) {
+  var match = String(value || "").trim().match(/^(https?):\/\/([^\/?#\s]+)/i)
+  if (!match) return ""
+
+  var scheme = match[1].toLowerCase()
+  var authority = match[2].toLowerCase()
+  authority = authority.slice(authority.lastIndexOf("@") + 1)
+  if (scheme === "https" && authority.slice(-4) === ":443") authority = authority.slice(0, -4)
+  if (scheme === "http" && authority.slice(-3) === ":80") authority = authority.slice(0, -3)
+  return scheme + "://" + authority
+}
+
+function originKey(origin) {
+  var value = normalizedOrigin(origin)
+  return value ? "origin:" + encodeURIComponent(value) : ""
+}
+
+function webAppOrigin(command) {
+  var parts = []
+  if (command && typeof command !== "string" && typeof command.length === "number") {
+    for (var p = 0; p < command.length; p++) parts.push(String(command[p] || ""))
+  }
+  for (var i = 0; i < parts.length; i++) {
+    var part = String(parts[i] || "")
+    if (part.indexOf("OMARCHY_WEBAPP_ORIGIN=") === 0)
+      return normalizedOrigin(part.slice("OMARCHY_WEBAPP_ORIGIN=".length))
+    if (/(^|\/)omarchy-launch-webapp$/.test(part) && i + 1 < parts.length)
+      return normalizedOrigin(parts[i + 1])
+  }
+
+  var text = String(command || "")
+  var metadata = text.match(/\bOMARCHY_WEBAPP_ORIGIN=(["']?)(https?:\/\/[^\s"']+)\1/i)
+  if (metadata) return normalizedOrigin(metadata[2])
+  var direct = text.match(/\bomarchy-launch-webapp\s+(["']?)(https?:\/\/[^\s"']+)\1/i)
+  return direct ? normalizedOrigin(direct[2]) : ""
+}
+
+function browserOriginFromBody(body) {
+  var text = String(body || "")
+  var linked = text.match(/^\s*<a\b[^>]*href=["'](https?:\/\/[^\/"'#?]+)[^"']*["'][^>]*>/i)
+  if (linked) return normalizedOrigin(linked[1])
+  var plain = text.match(/^\s*(https?:\/\/[^\/\s]+)(?:\/\S*)?\s+/i)
+  if (plain) return normalizedOrigin(plain[1])
+  var www = text.match(/^\s*(www\.(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?)(?:\/\S*)?\s+/i)
+  return www ? normalizedOrigin("https://" + www[1]) : ""
+}
+
+function notificationOriginHint(value) {
+  var text = String(value || "").trim()
+  if (!text) return ""
+  return normalizedOrigin(/^https?:\/\//i.test(text) ? text : "https://" + text)
+}
+
+function notificationSource(notification) {
+  var n = notification || {}
+  var app = String(n.appName || "")
+  var appIcon = String(n.appIcon || "")
+  var desktopEntry = String(n.desktopEntry || stringHint(n.hints, "desktop-entry") || "")
+    .replace(/\.desktop$/i, "")
+  var browser = isChromiumDerived(app, appIcon + "\n" + desktopEntry)
+  var source = browser ? browserOriginFromBody(n.body) || notificationOriginHint(stringHint(n.hints, "x-kde-origin-name")) : ""
+  var baseKey = identityKey("desktop", desktopEntry) || identityKey("name", app)
+  var key = baseKey
+  if (key && source) key += "/" + identityKey("source", source)
+
+  return {
+    key: key,
+    desktopEntry: desktopEntry,
+    source: source
+  }
+}
+
+function aliasKey(value) {
+  var normalized = normalizedIdentity(value)
+  return normalized ? "alias:" + normalized : ""
+}
+
+function claimAlias(aliases, value, key) {
+  var alias = aliasKey(value)
+  if (!alias) return
+  if (aliases[alias] === undefined) aliases[alias] = key
+  else if (aliases[alias] !== key) aliases[alias] = ""
+}
+
+function applicationAlias(aliases, value) {
+  return aliases[aliasKey(value)] || ""
+}
+
+function buildApplicationCatalog(entries) {
+  var input = Array.isArray(entries) ? entries : []
+  var slots = []
+  var groups = {}
+  var keys = {}
+  var aliases = {}
+  var origins = {}
+
+  for (var i = 0; i < input.length; i++) {
+    var entry = input[i] || {}
+    var desktopEntry = String(entry.id || "")
+    var desktopKey = applicationKey(desktopEntry)
+    if (!desktopKey) continue
+
+    var label = String(entry.label || desktopEntry)
+    var origin = webAppOrigin(entry.command || entry.execString)
+    var source
+    if (origin) {
+      var groupKey = originKey(origin)
+      source = groups[groupKey]
+      if (!source) {
+        source = { key: groupKey, origin: origin, members: [] }
+        groups[groupKey] = source
+        slots.push(source)
+      }
+      source.members.push({
+        label: label,
+        appIcon: String(entry.appIcon || ""),
+        desktopEntry: desktopEntry,
+        startupClass: String(entry.startupClass || "")
+      })
+      origins[origin] = groupKey
+    } else {
+      source = {
+        key: desktopKey,
+        origin: "",
+        members: [{
+          label: label,
+          appIcon: String(entry.appIcon || ""),
+          desktopEntry: desktopEntry,
+          startupClass: String(entry.startupClass || "")
+        }]
+      }
+      slots.push(source)
+    }
+  }
+
+  var applications = []
+  for (var s = 0; s < slots.length; s++) {
+    var slot = slots[s]
+    var first = slot.members[0]
+    var labels = []
+    var search = [slot.origin]
+    for (var m = 0; m < slot.members.length; m++) {
+      var member = slot.members[m]
+      labels.push(member.label)
+      search.push(member.label, member.desktopEntry, member.startupClass)
+      claimAlias(aliases, member.desktopEntry, slot.key)
+      claimAlias(aliases, member.label, slot.key)
+      claimAlias(aliases, member.startupClass, slot.key)
+    }
+    var application = {
+      key: slot.key,
+      label: labels.join(" + "),
+      app: first.label,
+      appIcon: first.appIcon,
+      desktopEntry: first.desktopEntry,
+      source: slot.origin,
+      searchText: search.join(" "),
+      memberCount: slot.members.length
+    }
+    applications.push(application)
+    keys[slot.key] = application
+  }
+
+  return { applications: applications, keys: keys, aliases: aliases, origins: origins }
+}
+
+function validApplicationMode(value) {
+  var mode = String(value || "").toLowerCase()
+  return mode === "normal" || mode === "history" || mode === "off" ? mode : "normal"
+}
+
+function normalizedApplicationModes(value) {
+  var input = value && typeof value === "object" && !Array.isArray(value) ? value : {}
+  var out = {}
+  for (var key in input) {
+    var normalizedKey = String(key || "")
+    if (!normalizedKey) continue
+    var mode = validApplicationMode(input[key])
+    if (mode !== "normal") out[normalizedKey] = mode
+  }
+  return out
+}
+
+function deliveryTarget(mode, doNotDisturb, bypassDnd, ephemeral) {
+  var applicationMode = validApplicationMode(mode)
+  if (applicationMode === "off") return "drop"
+  if (applicationMode === "history" || (!!doNotDisturb && !bypassDnd))
+    return ephemeral ? "drop" : "history"
+  return "popup"
 }
 
 function sanitizeBody(body, app, appIcon) {
@@ -98,6 +304,7 @@ function shouldRenderCompactGlyph(glyph, iconSource, singleLineToast) {
 
 function snapshotOf(notification, timestamp) {
   var n = notification || {}
+  var source = notificationSource(n)
   var id = n.id || 0
   var expireTimeout = Number(n.expireTimeout || 0)
   if (!isFinite(expireTimeout) || expireTimeout < 0) expireTimeout = 0
@@ -106,6 +313,9 @@ function snapshotOf(notification, timestamp) {
     originalId: id,
     app: n.appName || "",
     appIcon: n.appIcon || "",
+    sourceKey: source.key,
+    source: source.source,
+    desktopEntry: source.desktopEntry,
     summary: String(n.summary || ""),
     body: n.body || "",
     image: n.image || "",
@@ -143,10 +353,15 @@ function popupRowChanged(row, updated) {
 // the popup it took over: the file name is the timestamp and id the popup was
 // first persisted under, and the restore, replace and archive paths all key
 // off that name. Only what the card draws comes from the updated object.
-function replacementSnapshot(notification, originalId, timestamp) {
+function replacementSnapshot(notification, originalId, timestamp, identity) {
   var updated = snapshotOf(notification, timestamp)
   updated.id = originalId
   updated.originalId = originalId
+  if (identity) {
+    updated.sourceKey = String(identity.sourceKey || "")
+    updated.source = String(identity.source || "")
+    updated.desktopEntry = String(identity.desktopEntry || "")
+  }
   return updated
 }
 
@@ -157,6 +372,9 @@ function historyEntry(value, normalUrgency) {
     originalId: e.originalId || e.id || 0,
     app: e.app || "",
     appIcon: e.appIcon || "",
+    sourceKey: e.sourceKey || "",
+    source: e.source || "",
+    desktopEntry: e.desktopEntry || "",
     summary: e.summary || "",
     body: e.body || "",
     image: e.image || "",
@@ -168,23 +386,27 @@ function historyEntry(value, normalUrgency) {
   }
 }
 
-// notifications.json holds nothing but the last-set DND preference now that
+// notifications.json keeps DND and per-application delivery modes now that
 // history is a directory of files. Older versions kept `pending`/`past`
 // (and, older still, `entries`) arrays in there; their presence is reported
 // so the service can rewrite the file without the dead payload.
 function parseSettings(raw) {
   var text = String(raw || "").trim()
-  if (!text) return { error: false, dnd: null, legacy: false }
+  if (!text) return { error: false, dnd: null, modes: {}, legacy: false, future: false }
 
   try {
     var parsed = JSON.parse(text)
+    var version = Number(parsed && parsed.version)
+    var future = isFinite(version) && version > 4
     return {
       error: false,
       dnd: parsed && typeof parsed.dnd === "boolean" ? parsed.dnd : null,
-      legacy: !!(parsed && (parsed.pending || parsed.past || parsed.entries))
+      modes: normalizedApplicationModes(parsed && parsed.modes),
+      legacy: !!(parsed && !future && (parsed.version !== 4 || parsed.pending || parsed.past || parsed.entries)),
+      future: future
     }
   } catch (e) {
-    return { error: true, errorMessage: String(e), dnd: null, legacy: false }
+    return { error: true, errorMessage: String(e), dnd: null, modes: {}, legacy: false, future: false }
   }
 }
 
@@ -365,6 +587,18 @@ function historyRows(raw, liveRows, normalUrgency, limit) {
 if (typeof module !== "undefined") {
   module.exports = {
     isChromiumDerived: isChromiumDerived,
+    normalizedIdentity: normalizedIdentity,
+    applicationKey: applicationKey,
+    normalizedOrigin: normalizedOrigin,
+    originKey: originKey,
+    webAppOrigin: webAppOrigin,
+    browserOriginFromBody: browserOriginFromBody,
+    notificationSource: notificationSource,
+    applicationAlias: applicationAlias,
+    buildApplicationCatalog: buildApplicationCatalog,
+    validApplicationMode: validApplicationMode,
+    normalizedApplicationModes: normalizedApplicationModes,
+    deliveryTarget: deliveryTarget,
     sanitizeBody: sanitizeBody,
     summaryStartsWithGlyph: summaryStartsWithGlyph,
     shouldBypassDnd: shouldBypassDnd,

@@ -57,6 +57,14 @@ Item {
   // and the next read of that role segfaults in QQmlListModel::data. A JS
   // map only holds a wrapper, which degrades to a catchable error instead.
   property var liveRefs: ({})
+  property var applicationModes: ({})
+  property var applicationCatalog: []
+  property var applicationKeys: ({})
+  property var applicationAliases: ({})
+  property var webAppKeysByOrigin: ({})
+  property var pendingNotifications: []
+  property bool catalogLoaded: false
+  readonly property bool routingReady: settingsLoaded && catalogLoaded
 
   // PersistentProperties handles in-process QML reloads. The on-disk
   // notifications.json file is the cross-restart backstop — its `dnd` key
@@ -80,7 +88,96 @@ Item {
   readonly property alias doNotDisturb: persisted.doNotDisturb
 
   function setDoNotDisturb(value) {
+    if (!service.settingsLoaded || !service.settingsWritable) return false
     persisted.doNotDisturb = !!value
+    return true
+  }
+
+  function applicationsList() {
+    var sources = []
+    for (var i = 0; i < applicationCatalog.length; i++) {
+      var application = applicationCatalog[i]
+      sources.push({
+        key: application.key,
+        label: application.label,
+        app: application.app,
+        appIcon: application.appIcon,
+        desktopEntry: application.desktopEntry,
+        source: application.source,
+        searchText: application.searchText,
+        memberCount: application.memberCount,
+        mode: service.applicationMode(application.key)
+      })
+    }
+    return sources
+  }
+
+  function rebuildApplicationCatalog() {
+    var library = service.shell ? service.shell.appLibrary : null
+    if (!library) return
+
+    var entries = library.sortedEntries("")
+    var catalogEntries = []
+    for (var i = 0; i < entries.length; i++) {
+      var entry = entries[i].entry
+      catalogEntries.push({
+        id: String(entry.id || ""),
+        label: library.entryName(entry),
+        appIcon: String(entry.icon || ""),
+        startupClass: String(entry.startupClass || ""),
+        command: entry.command || entry.execString
+      })
+    }
+
+    var catalog = NotificationLogic.buildApplicationCatalog(catalogEntries)
+    applicationCatalog = catalog.applications
+    applicationKeys = catalog.keys
+    applicationAliases = catalog.aliases
+    webAppKeysByOrigin = catalog.origins
+    catalogLoaded = true
+    drainPendingNotifications()
+  }
+
+  function applicationMode(key) {
+    var id = String(key || "")
+    if (!applicationForKey(id)) return "normal"
+    return NotificationLogic.validApplicationMode(applicationModes[id])
+  }
+
+  function applicationForKey(key) {
+    return applicationKeys[String(key || "")] || null
+  }
+
+  function applicationKeyFor(snapshot) {
+    var origin = NotificationLogic.normalizedOrigin(snapshot.source)
+    if (origin && webAppKeysByOrigin[origin]) return webAppKeysByOrigin[origin]
+
+    var desktopKey = NotificationLogic.applicationKey(snapshot.desktopEntry)
+    if (desktopKey && applicationKeys[desktopKey]) return desktopKey
+    var alias = NotificationLogic.applicationAlias(applicationAliases, snapshot.desktopEntry || snapshot.app)
+    return alias || desktopKey || snapshot.sourceKey
+  }
+
+  onShellChanged: Qt.callLater(service.rebuildApplicationCatalog)
+
+  Connections {
+    target: service.shell ? service.shell.appLibrary : null
+    function onAppsChanged() { service.rebuildApplicationCatalog() }
+  }
+
+  function setApplicationMode(key, mode) {
+    if (!service.settingsLoaded || !service.settingsWritable) return false
+    var id = String(key || "")
+    var requested = String(mode || "").toLowerCase()
+    if (!applicationForKey(id) || (requested !== "normal" && requested !== "history" && requested !== "off")) return false
+    if (applicationMode(id) === requested) return true
+    var modes = {}
+    for (var applicationKey in applicationModes)
+      if (applicationKey !== id) modes[applicationKey] = applicationModes[applicationKey]
+    if (requested !== "normal") modes[id] = requested
+    applicationModes = modes
+    scheduleSettingsSave()
+    return true
   }
 
   // popupModel feeds the on-screen toast stack — the only model the service
@@ -158,7 +255,28 @@ Item {
     // as this signal handler returns, which would null out the `ref` we just
     // captured for the popup card.
     notification.tracked = true
+    if (!service.routingReady) {
+      var pending = { notification: notification, closed: false }
+      notification.closed.connect(function() { pending.closed = true })
+      service.pendingNotifications.push(pending)
+      return
+    }
+    processNotification(notification)
+  }
+
+  function drainPendingNotifications() {
+    if (!service.routingReady || service.pendingNotifications.length === 0) return
+    var queued = service.pendingNotifications
+    service.pendingNotifications = []
+    Qt.callLater(function() {
+      for (var i = 0; i < queued.length; i++)
+        if (!queued[i].closed) service.processNotification(queued[i].notification)
+    })
+  }
+
+  function processNotification(notification) {
     var snapshot = snapshotOf(notification)
+    snapshot.sourceKey = applicationKeyFor(snapshot)
     liveRefs[snapshot.originalId] = notification
     // Guard the delete: a newer notification may have reused this originalId
     // (freedesktop replaces_id) and taken over the map slot.
@@ -167,19 +285,19 @@ Item {
         delete service.liveRefs[snapshot.originalId]
     })
 
-    // DND bypass rules: chat apps abuse urgency=critical to force
-    // visibility, so critical alone isn't enough — we also require the
-    // sender to be CLI-style. See shouldBypassDnd().
-    if (service.doNotDisturb && !shouldBypassDnd(notification)) {
-      // The toast never shows, so the only record a silenced notification
-      // can leave is a history entry. Write it straight into history —
-      // "what did I miss while silenced" is exactly what history is for.
-      if (!isEphemeral(notification)) {
-        writeSilenced(notification, snapshot)
-        return
-      }
+    var delivery = NotificationLogic.deliveryTarget(
+      applicationMode(snapshot.sourceKey),
+      service.doNotDisturb,
+      shouldBypassDnd(notification),
+      isEphemeral(notification))
+    if (delivery === "drop") {
       delete liveRefs[snapshot.originalId]
       notification.tracked = false
+      return
+    }
+
+    if (delivery === "history") {
+      writeSilenced(notification, snapshot)
       return
     }
 
@@ -206,7 +324,7 @@ Item {
     writeHistoryFile(written, function() {
       var updated = null
       try {
-        updated = NotificationLogic.replacementSnapshot(notification, written.originalId, written.timestamp)
+        updated = NotificationLogic.replacementSnapshot(notification, written.originalId, written.timestamp, written)
       } catch (e) {
         // Torn down by the server while the write was queued.
       }
@@ -270,6 +388,9 @@ Item {
     for (var i = 0; i < popupModel.count; i++) {
       var row = popupModel.get(i)
       if (!row || row.originalId !== originalId || row.timestamp !== timestamp) continue
+      updated.sourceKey = String(row.sourceKey || "")
+      updated.source = String(row.source || "")
+      updated.desktopEntry = String(row.desktopEntry || "")
       if (!NotificationLogic.popupRowChanged(row, updated)) return
       for (var r = 0; r < roles.length; r++) popupModel.setProperty(i, roles[r], updated[roles[r]])
       // The file name is the timestamp and id this popup was persisted under,
@@ -662,6 +783,9 @@ Item {
         originalId: row.originalId,
         app: row.app,
         appIcon: row.appIcon,
+        sourceKey: row.sourceKey || "",
+        source: row.source || "",
+        desktopEntry: row.desktopEntry || "",
         summary: row.summary,
         body: row.body,
         image: row.image,
@@ -686,6 +810,9 @@ Item {
         originalId: -1,
         app: "omarchy-action",
         appIcon: "",
+        sourceKey: "",
+        source: "",
+        desktopEntry: "",
         summary: "No recent notifications",
         body: "",
         image: "",
@@ -800,11 +927,12 @@ Item {
   }
 
   function scheduleSettingsSave() {
-    if (!service.settingsLoaded) return
+    if (!service.settingsLoaded || !service.settingsWritable) return
     settingsSaveTimer.restart()
   }
 
   property bool settingsLoaded: false
+  property bool settingsWritable: true
 
   function loadSettings(raw) {
     // FileView can fire onLoaded more than once during startup — the implicit
@@ -821,18 +949,28 @@ Item {
       service._hydrating = false
     }
 
+    service.applicationModes = parsed.modes || {}
+
+    service.settingsWritable = !parsed.future
     service.settingsLoaded = true
     // Versions before the history moved into its own directory kept every
     // notification in here. Rewrite once so that dead payload doesn't sit in
     // the file until the next DND toggle happens to clear it.
     if (parsed.legacy) service.scheduleSettingsSave()
+    service.drainPendingNotifications()
   }
 
   function flushSettings() {
-    settingsFile.setText(JSON.stringify({ version: 3, dnd: persisted.doNotDisturb }, null, 2) + "\n")
+    if (!service.settingsWritable) return
+    settingsFile.setText(JSON.stringify({
+      version: 4,
+      dnd: persisted.doNotDisturb,
+      modes: service.applicationModes
+    }, null, 2) + "\n")
   }
 
   Component.onCompleted: {
+    service.rebuildApplicationCatalog()
     ensureDirsProc.running = true
     // Once mkdir has had a tick, load the existing settings file. FileView
     // surfaces an empty string when the file doesn't exist; loadSettings
@@ -862,11 +1000,15 @@ Item {
     }
 
     function toggleDnd(): string {
+      if (!service.settingsLoaded) return "not-ready"
+      if (!service.settingsWritable) return "read-only"
       service.setDoNotDisturb(!service.doNotDisturb)
       return dndState()
     }
 
     function setDnd(value: string): string {
+      if (!service.settingsLoaded) return "not-ready"
+      if (!service.settingsWritable) return "read-only"
       var v = String(value || "").toLowerCase()
       var on = v === "true" || v === "1" || v === "on" || v === "yes"
       service.setDoNotDisturb(on)
@@ -875,6 +1017,16 @@ Item {
 
     function isDnd(): string {
       return dndState()
+    }
+
+    function listApplications(): string {
+      return JSON.stringify(service.applicationsList())
+    }
+
+    function setApplicationMode(key: string, mode: string): string {
+      if (!service.settingsLoaded) return "not-ready"
+      if (!service.settingsWritable) return "read-only"
+      return service.setApplicationMode(key, mode) ? "ok" : "invalid"
     }
 
     // Replay the notifications that have been moved into the history dir.

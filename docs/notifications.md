@@ -60,6 +60,34 @@ into history — "what did I miss while silenced" is what history is for.
 Ephemeral ones (the freedesktop `transient` hint, or an `app_name` of
 `notify-send`/`omarchy-action`) are dropped entirely.
 
+## Per-application delivery
+
+`Setup > Notifications` summons `shell/plugins/notifications/Panel.qml`, an on-demand management surface backed by the same notification service. It uses the shell's application library, so launcher applications appear with their existing names and icons. Launchers sharing one web origin are grouped because Chromium notifications identify their origin, not which launcher opened it. Each application or origin group has one of three delivery modes:
+
+- `normal` shows the popup and archives it when it leaves the screen.
+- `history` skips the popup and writes non-ephemeral notifications straight into history, using the same safe tracked-object path as DND.
+- `off` drops the notification completely.
+
+Global DND is an overlay on that policy: an application set to `normal` behaves like `history` while DND is active, while explicit `history` and `off` choices stay put. The trusted `omarchy-action` and bare `notify-send` channels preserve their existing system-feedback and emergency-alert semantics.
+
+Native applications are keyed by the standard `desktop-entry` hint. For senders that omit it, an exact application-name or `StartupWMClass` match is used only when it identifies one catalog entry; unknown or ambiguous senders keep normal delivery rather than risking the wrong application's blocking policy.
+
+Omarchy web apps carry their launch origin in their desktop command. Normal launchers expose it through `omarchy-launch-webapp`; custom handlers preserve it as `OMARCHY_WEBAPP_ORIGIN`. The service builds an in-memory origin map whenever the application library changes, and Chromium-family notifications, including Helium, use the full origin from their leading body link to reach that policy. Unknown website origins and browser extensions that expose no origin follow the browser's policy instead.
+
+The settings file is version 4 and keeps only DND plus non-default application modes. Names, icons, and web-app origins remain owned by the application library. A shell reading settings from a newer schema treats the known values as read-only instead of rewriting and potentially discarding fields it does not understand:
+
+```json
+{
+  "version": 4,
+  "dnd": false,
+  "modes": {
+    "desktop:slack": "off"
+  }
+}
+```
+
+The notification IPC target exposes `listApplications` and `setApplicationMode <key> <normal|history|off>` for scripting. Settings and the application-origin catalog must both be ready before queued startup notifications are routed, so an existing `off` policy cannot leak one popup during shell startup. Mutations return `not-ready` during hydration and `read-only` for a newer settings schema.
+
 ## The sender contract
 
 `bin/omarchy-notification-send` is the one way Omarchy code sends

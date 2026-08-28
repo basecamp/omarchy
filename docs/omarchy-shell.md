@@ -41,10 +41,7 @@ Panels, overlays, and menus are loaded when summoned. Plugins can set the
 top-level manifest key `keepLoaded: true` to survive between summons.
 First-party services are loaded at startup.
 
-Entry points are QML `Item`s. Panel, overlay, and menu entry points expose
-`open(payloadJson)` and `close()` for summon/hide; on load the host injects
-`omarchyPath`, `shell`, `manifest`, and the registries (`pluginRegistry` /
-`barWidgetRegistry`) as properties.
+Entry points are QML `Item`s. Panel, overlay, and menu entry points expose `open(payloadJson)` and `close()` for summon/hide; on load the host injects `omarchyPath`, `shell`, `manifest`, and the registries (`pluginRegistry` / `barWidgetRegistry`) as properties. When one manifest declares both a panel and a service, the panel may also declare a `service` property; the host injects the matching service singleton.
 
 Full schema: [`shell/services/PluginRegistry.qml`](../shell/services/PluginRegistry.qml).
 

@@ -1,7 +1,7 @@
 [Desktop Entry]
 Version=1.0
 Name=HEY
-Exec=omarchy-webapp-handler-hey %u
+Exec=env OMARCHY_WEBAPP_ORIGIN=https://app.hey.com omarchy-webapp-handler-hey %u
 Terminal=false
 Type=Application
 Icon=hey
