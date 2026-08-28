@@ -11,6 +11,14 @@ MONITOR_LUA="$HOME/.config/hypr/monitors.lua"
 
 INTERNAL=$(omarchy-hyprland-monitor-laptop)
 
+# INTERNAL is written into generated Lua and hyprctl eval/dispatch below, so a
+# name that is not a plain connector string could execute on the next reload.
+# Names come from hyprctl; a user-created headless output can carry anything.
+if [[ -n $INTERNAL && ! $INTERNAL =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "Refusing unsafe internal monitor name" >&2
+  exit 1
+fi
+
 valid_scale() {
   [[ $1 =~ ^[0-9]+([.][0-9]+)?$ ]]
 }
@@ -118,9 +126,17 @@ remember_internal_scale() {
   store_internal_scale "$scale"
 }
 
+# $1 is the configured scale when the caller has already read it, so one sync
+# does not parse the config twice.
 read_monitor_scale() {
   local scale
-  scale=$(configured_monitor_scale)
+
+  if (( $# )); then
+    scale="$1"
+  else
+    scale=$(configured_monitor_scale)
+  fi
+
   if valid_scale "$scale"; then
     echo "$scale"
     return
@@ -159,11 +175,25 @@ enable_internal_output() {
 
 sync_internal_scale() {
   [[ -n $INTERNAL ]] || return 0
+  local configured_scale
   local desired_scale
   local active_scale
 
-  desired_scale=$(read_monitor_scale)
+  configured_scale=$(configured_monitor_scale)
   active_scale=$(current_internal_scale)
+
+  # A config without a usable number -- the default "auto", or an expression
+  # only Hyprland's Lua can evaluate -- delegates the scale to the compositor,
+  # so whatever it resolved for the enabled panel IS the configured scale.
+  # There is no number to correct it toward: substituting one makes the scale
+  # flap between that number and the compositor's own value on every idle-wake.
+  # Only a panel that is off altogether still gets a hand below, from the
+  # remembered scale.
+  if ! valid_scale "$configured_scale" && valid_scale "$active_scale"; then
+    return 0
+  fi
+
+  desired_scale=$(read_monitor_scale "$configured_scale")
   scales_match "$active_scale" "$desired_scale" && return 0
 
   enable_internal_output "$desired_scale"

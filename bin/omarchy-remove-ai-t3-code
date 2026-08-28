@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# omarchy:summary=Remove T3 Code along with its configuration and workspaces.
+# omarchy:requires-sudo=true
+
+set -e
+
+omarchy-pkg-drop t3code-bin
+
+# T3 Code drives agents that keep their own state -- ~/.claude.json, ~/.grok,
+# ~/.local/share/opencode -- and those outlive it, so only its own goes.
+rm -rf \
+  "$HOME/.config/t3code" \
+  "$HOME/.t3"
+rm -f "$HOME/.config/t3code-flags.conf"
+
+echo ""
+echo "T3 Code has been removed."
