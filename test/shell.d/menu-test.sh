@@ -515,7 +515,7 @@ assert(
   'menu reloads volatile search providers when a remembered filter is restored'
 )
 assert(
-  /var childId = root\.activeMenu[\s\S]*?root\.setActiveMenu\(\(active && active\.parent\) \? active\.parent : "root", false\)[\s\S]*?var parentRow = root\.indexOfItemId\(childId\)[\s\S]*?root\.selectedIndex = parentRow[\s\S]*?root\.settleCursor\(\)/.test(menuQml),
+  /var childId = root\.activeMenu[\s\S]*?root\.setActiveMenu\(\(active && active\.parent\) \? active\.parent : "root", false\)[\s\S]*?var parentRow = root\.indexOfItemId\(childId\)\s*\n\s*if \(parentRow >= 0\) \{\s*\n\s*root\.selectedIndex = parentRow\s*\n\s*root\.settleCursor\(\)\s*\n\s*\}/.test(menuQml),
   'menu restores the child row when backing out of a directly opened route'
 )
 assert(
