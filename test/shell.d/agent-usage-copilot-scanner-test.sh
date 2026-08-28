@@ -1,6 +1,8 @@
 #!/bin/bash
 
-source "$(dirname "$0")/base-test.sh"
+set -euo pipefail
+
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 require_command jq
 require_command python3
@@ -109,8 +111,10 @@ result_empty=$(HOME="$TEST_HOME/empty-home" COPILOT_HOME="$TEST_HOME/empty-copil
 pass "Copilot collector returns empty stats when DB missing"
 
 # Test 9: Exhausted quota end-to-end through real collector
-# Mock the API to return exhausted quota, then verify the collector's JSON output
-python3 << PYTEST
+# Mock the API to return exhausted quota, then verify the collector's JSON
+# output. Under strict mode the interpreter runs inside the `if` so a failing
+# probe reports through fail() instead of aborting the file on its exit status.
+if python3 << PYTEST
 import sys
 import json
 import os
@@ -192,8 +196,7 @@ with patch('urllib.request.urlopen', side_effect=mock_urlopen):
     finally:
         sys.stdout = old_stdout
 PYTEST
-
-if (( $? == 0 )); then
+then
   pass "Exhausted quota displays 'No more' message"
 else
   fail "Exhausted quota message formatting"
