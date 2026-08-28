@@ -233,7 +233,16 @@ build_fixture() {
 
 resolve() {
   FONTCONFIG_FILE="$fixture/fonts.conf" XDG_CONFIG_HOME="$home/.config" XDG_CACHE_HOME="$fixture/cache" \
-    fc-match "$1" family | cut -d, -f1
+    fc-match "$1" family
+}
+
+# fc-match answers with every name the matched font carries, and a family can be
+# a font's alternate name: "JetBrainsMono NF" answers "JetBrainsMono Nerd
+# Font,JetBrainsMono NF". Reading only the head calls that a capture.
+resolved_to() {
+  local answer=$1 family=$2
+
+  [[ ,$answer, == *",$family,"* ]]
 }
 
 resolvable=1
@@ -260,18 +269,21 @@ if ((resolvable)); then
   rm -rf "$home"
   mkdir -p "$home/.config"
 
-  [[ $(resolve monospace) == "$packaged_family" ]] ||
-    fail "with no font chosen, monospace resolves to the packaged family" "$(resolve monospace)"
+  answer=$(resolve monospace)
+  resolved_to "$answer" "$packaged_family" ||
+    fail "with no font chosen, monospace resolves to the packaged family" "monospace -> $answer"
   pass "with no font chosen, monospace resolves to the packaged family"
 
   set_font "$chosen"
 
-  [[ $(resolve monospace) == "$chosen" ]] ||
-    fail "the chosen family follows the monospace generic" "monospace -> $(resolve monospace), wanted $chosen"
+  answer=$(resolve monospace)
+  resolved_to "$answer" "$chosen" ||
+    fail "the chosen family follows the monospace generic" "monospace -> $answer, wanted $chosen"
   pass "the chosen family follows the monospace generic"
 
-  [[ $(resolve "$named") == "$named" ]] ||
-    fail "a named mono family still resolves to itself" "$named -> $(resolve "$named"), chosen was $chosen"
+  answer=$(resolve "$named")
+  resolved_to "$answer" "$named" ||
+    fail "a named mono family still resolves to itself" "$named -> $answer, chosen was $chosen"
   pass "a named mono family still resolves to itself"
 else
   pass "no fontconfig fixture on this machine; skipping resolution checks"
