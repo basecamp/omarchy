@@ -13,8 +13,10 @@ fi
 direction="${1:-up}"
 
 # Find keyboard backlight device (look for *kbd_backlight* pattern in leds class).
+# OMARCHY_LEDS_PATH lets tests point discovery at a stubbed sysfs tree.
+leds_path="${OMARCHY_LEDS_PATH:-/sys/class/leds}"
 device=""
-for candidate in /sys/class/leds/*kbd_backlight*; do
+for candidate in "$leds_path"/*kbd_backlight*; do
   if [[ -e $candidate ]]; then
     device="$(basename "$candidate")"
     break
