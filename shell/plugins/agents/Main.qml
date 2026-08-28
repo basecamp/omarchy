@@ -262,6 +262,7 @@ Item {
       todayTotalTokens: synced ? numberValue(stats.todayTotalTokens) : numberValue(record.todayTotalTokens),
       todayTokensByModel: synced ? (stats.todayTokensByModel || ({})) : (record.todayTokensByModel || ({})),
       recentDays: synced ? (stats.recentDays || []) : (record.recentDays || []),
+      usageByDay: synced ? (stats.usageByDay || []) : (record.usageByDay || []),
       totalPrompts: synced ? numberValue(stats.totalPrompts) : numberValue(record.totalPrompts),
       totalSessions: synced ? numberValue(stats.totalSessions) : numberValue(record.totalSessions),
       activeDays: synced ? numberValue(stats.activeDays) : numberValue(record.activeDays),
@@ -567,6 +568,7 @@ Item {
         todayTotalTokens: 0,
         todayTokensByModel: ({}),
         recentByDay: recentByDay,
+        usageByDay: ({}),
         totalPrompts: 0,
         totalSessions: 0,
         activeDays: 0,
@@ -614,6 +616,18 @@ Item {
             acc.recentByDay[date] = combineNumber(additive, acc.recentByDay[date], day.messageCount)
         }
 
+        // The calendar field merges with the same additive/widest rule but
+        // keeps whatever dates the records actually cover — there is no
+        // seven-day scaffold to land on, so a young synced record still
+        // renders its own short window.
+        var calendar = Array.isArray(stats.usageByDay) ? stats.usageByDay : []
+        for (var c = 0; c < calendar.length; c++) {
+          var calendarDay = calendar[c] || {}
+          var calendarDate = String(calendarDay.date || "")
+          if (calendarDate === "") continue
+          acc.usageByDay[calendarDate] = combineNumber(additive, acc.usageByDay[calendarDate], calendarDay.tokens)
+        }
+
         var usage = stats.modelUsage || {}
         for (var modelId in usage) {
           var bucket = acc.modelUsage[modelId]
@@ -640,6 +654,9 @@ Item {
         todayTotalTokens: acc.todayTotalTokens,
         todayTokensByModel: acc.todayTokensByModel,
         recentDays: recentDays,
+        usageByDay: Object.keys(acc.usageByDay).sort().map(function(calendarDate) {
+          return { date: calendarDate, tokens: acc.usageByDay[calendarDate] }
+        }),
         totalPrompts: acc.totalPrompts,
         totalSessions: acc.totalSessions,
         activeDays: Math.max(acc.activeDays, Object.keys(acc.activeDates).length),
@@ -674,6 +691,7 @@ Item {
       todayTotalTokens: numberValue(record.todayTotalTokens),
       todayTokensByModel: cloneValue(record.todayTokensByModel, ({})),
       recentDays: cloneValue(record.recentDays, []),
+      usageByDay: cloneValue(record.usageByDay, []),
       totalPrompts: numberValue(record.totalPrompts),
       totalSessions: numberValue(record.totalSessions),
       activeDays: numberValue(record.activeDays),

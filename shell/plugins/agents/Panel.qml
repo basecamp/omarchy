@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import "HeatmapModel.js" as Heatmap
 
 Panel {
   id: root
@@ -227,6 +228,40 @@ Panel {
     var peak = 0
     for (var i = 0; i < days.length; i++) peak = Math.max(peak, Number(days[i].messageCount || 0))
     return peak
+  }
+
+  // ---------------------------------------------------------------- heatmap
+  //
+  // A record that carries `usageByDay` (one {date, tokens} entry per day,
+  // quiet days included) also renders a GitHub-style calendar of the last
+  // few months. Providers whose collector never writes the field simply
+  // never see the section — an empty window hides it.
+
+  readonly property var usageHeatmap: Heatmap.heatmapWindow(
+    root.provider ? root.provider.usageByDay : null,
+    root.todayDate(),
+    Heatmap.MAX_WEEKS)
+
+  // Calendar ink rides the same foreground-alpha scale the day bars above
+  // shade with: level 0 is the track, level 4 full foreground. One hue at
+  // four steps reads calmly under every theme without a new color key.
+  readonly property var heatmapInk: [track,
+    alpha(foreground, 0.30), alpha(foreground, 0.50),
+    alpha(foreground, 0.70), foreground]
+
+  // Cell and gutter geometry; the month row and every Repeater share these
+  // so the labels land on the columns they name.
+  readonly property real heatmapCellSize: Style.space(10)
+  readonly property real heatmapGap: Style.space(2)
+  readonly property real heatmapWeekGutter: Style.space(18)
+
+  function heatmapTooltip(cell) {
+    if (!cell) return ""
+    var parsed = new Date(String(cell.date) + "T00:00:00")
+    var label = isNaN(parsed.getTime())
+      ? String(cell.date)
+      : dayName(cell.date) + " " + (parsed.getMonth() + 1) + "/" + parsed.getDate()
+    return label + " · " + usage.formatTokenCount(Number(cell.tokens || 0)) + " tokens"
   }
 
   function modelRows(p) {
@@ -650,6 +685,104 @@ Panel {
             }
           }
 
+          // ---------- Usage heatmap ----------
+          PanelSeparator {
+            visible: heatmapSection.visible
+            foreground: root.foreground
+          }
+
+          Column {
+            id: heatmapSection
+            visible: root.usageHeatmap.weeks.length > 0
+            width: parent.width
+            spacing: Style.spacing.md
+
+            PanelSectionHeader {
+              width: parent.width
+              text: "USAGE HEATMAP"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+            }
+
+            // Month names over the column their first covered 1st falls in,
+            // the weekday gutter M/W/F beside the rows, then the cells.
+            Item {
+              width: parent.width
+              implicitHeight: monthRow.implicitHeight + Style.space(4) + gridRow.implicitHeight
+
+              Row {
+                id: monthRow
+                x: root.heatmapWeekGutter
+
+                Repeater {
+                  model: root.usageHeatmap.monthLabels
+
+                  Item {
+                    required property var modelData
+
+                    width: root.heatmapCellSize + root.heatmapGap
+                    implicitHeight: monthLabel.implicitHeight
+
+                    Text {
+                      id: monthLabel
+                      // Centered over the column: labels are at least four
+                      // columns apart, so the overflow into neighbors —
+                      // wider than one 12px column by design — hits nothing.
+                      anchors.horizontalCenter: parent.horizontalCenter
+                      text: modelData
+                      visible: modelData !== ""
+                      color: root.dim
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                    }
+                  }
+                }
+              }
+
+              Column {
+                id: weekdayGutter
+                anchors.top: gridRow.top
+                spacing: root.heatmapGap
+
+                Repeater {
+                  // Monday-first rows, matching the grid: M, W, F.
+                  model: ["M", "", "W", "", "F", "", ""]
+
+                  Text {
+                    required property var modelData
+
+                    width: root.heatmapWeekGutter - root.heatmapGap
+                    height: root.heatmapCellSize
+                    text: modelData
+                    color: root.dim
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    horizontalAlignment: Text.AlignRight
+                    verticalAlignment: Text.AlignVCenter
+                  }
+                }
+              }
+
+              Row {
+                id: gridRow
+                x: root.heatmapWeekGutter
+                anchors.top: monthRow.bottom
+                anchors.topMargin: Style.space(4)
+                spacing: root.heatmapGap
+
+                Repeater {
+                  model: root.usageHeatmap.weeks
+
+                  HeatmapWeek {
+                    required property var modelData
+
+                    days: modelData
+                  }
+                }
+              }
+            }
+          }
+
           // ---------- Models ----------
           PanelSeparator {
             visible: modelSection.visible
@@ -936,6 +1069,55 @@ Panel {
     PanelToolTip {
       visible: modelHover.containsMouse
       text: root.modelTooltip(modelRow.row)
+      fontFamily: root.fontFamily
+    }
+  }
+
+  // One week column of the usage calendar: seven day cells, Monday first.
+  component HeatmapWeek: Column {
+    id: heatmapWeek
+    property var days: []
+
+    spacing: root.heatmapGap
+
+    Repeater {
+      model: heatmapWeek.days
+
+      HeatmapCell {
+        required property var modelData
+
+        day: modelData
+      }
+    }
+  }
+
+  // One calendar cell. A day the record does not cover renders as plain
+  // space — missing is not the same as quiet, and only painted cells
+  // answer the hover.
+  component HeatmapCell: Item {
+    id: heatmapCell
+    property var day: null
+
+    width: root.heatmapCellSize
+    height: root.heatmapCellSize
+
+    Rectangle {
+      visible: !!heatmapCell.day
+      anchors.fill: parent
+      radius: Math.max(1, Math.round(root.heatmapCellSize * 0.2))
+      color: heatmapCell.day ? root.heatmapInk[heatmapCell.day.level] : root.track
+    }
+
+    MouseArea {
+      id: cellHover
+      anchors.fill: parent
+      hoverEnabled: heatmapCell.day !== null
+      acceptedButtons: Qt.NoButton
+    }
+
+    PanelToolTip {
+      visible: cellHover.containsMouse
+      text: root.heatmapTooltip(heatmapCell.day)
       fontFamily: root.fontFamily
     }
   }
