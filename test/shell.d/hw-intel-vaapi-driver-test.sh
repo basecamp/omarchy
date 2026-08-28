@@ -115,9 +115,23 @@ assert_driver "Atom E6xx has no VAAPI package" none
 write_pci_devices 0x8086:0x8108:0x030000
 assert_driver "Poulsbo has no VAAPI package" none
 
-# Haswell iGPU at the first BDF plus Meteor Lake [0x7d55]: iHD must win.
+# Haswell iGPU plus a later Intel GPU: both packages. The display node is
+# still the i965 iGPU; iHD-only would recreate #2706 on a Haswell+Arc box.
+write_pci_devices 0x8086:0x0416:0x030000 0x8086:0x56a5:0x030000
+assert_driver "Haswell plus Arc installs both Intel VAAPI packages" $'intel-media-driver\nlibva-intel-driver'
+
+write_pci_devices 0x8086:0x56a5:0x030000 0x8086:0x0416:0x030000
+assert_driver "Arc listed before Haswell still installs both packages" $'intel-media-driver\nlibva-intel-driver'
+
 write_pci_devices 0x8086:0x0416:0x030000 0x8086:0x7d55:0x030000
-assert_driver "Haswell plus a later Intel GPU prefers intel-media-driver" intel-media-driver
+assert_driver "Haswell plus Meteor Lake installs both Intel VAAPI packages" $'intel-media-driver\nlibva-intel-driver'
+
+# Two devices in the same bucket stay a single package.
+write_pci_devices 0x8086:0x1616:0x030000 0x8086:0x56a5:0x030000
+assert_driver "two iHD GPUs print intel-media-driver once" intel-media-driver
+
+write_pci_devices 0x8086:0x0416:0x030000 0x8086:0x0166:0x030000
+assert_driver "two i965 GPUs print libva-intel-driver once" libva-intel-driver
 
 # Intel HD Audio function is not a GPU.
 write_pci_devices 0x8086:0x0c0c:0x040300

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Print the VAAPI package for the Intel GPU, if any
+# omarchy:summary=Print the VAAPI package for each needed Intel GPU driver, if any
 # omarchy:hidden=true
 
 # intel-media-driver (iHD) supports Broadwell (Gen 8) and newer, except
@@ -15,8 +15,9 @@
 #
 # Read the cached sysfs IDs rather than lspci, which reads PCI config space
 # and resumes runtime-suspended GPUs. A missing or non-hex device file is
-# a skip, not a silent i965 default. Two Intel GPUs: iHD wins if any
-# device needs it (Haswell iGPU + a later Intel GPU).
+# a skip, not a silent i965 default. Two Intel GPUs that need different
+# packages (Haswell iGPU + Arc) print both, one per line: gpu-screen-recorder
+# binds VAAPI to the display node, which on that machine is still i965.
 
 pci_devices_path="${OMARCHY_PCI_DEVICES_PATH:-/sys/bus/pci/devices}"
 
@@ -110,8 +111,10 @@ done
 
 if (( need_ihd )); then
   echo intel-media-driver
-elif (( need_i965 )); then
+fi
+if (( need_i965 )); then
   echo libva-intel-driver
-else
+fi
+if (( !need_ihd && !need_i965 )); then
   exit 1
 fi

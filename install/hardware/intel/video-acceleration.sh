@@ -8,13 +8,14 @@
 #
 # Broadwell and later Core/Arc gens use intel-media-driver. GM45 through
 # Haswell, plus CherryView/Braswell, use libva-intel-driver (i965). Pre-GM45
-# chipset graphics have no package. See omarchy-hw-intel-vaapi-driver.
+# chipset graphics have no package. A machine that needs both (Haswell iGPU
+# plus a later Intel GPU) gets both packages. See omarchy-hw-intel-vaapi-driver.
 
-driver=$(omarchy-hw-intel-vaapi-driver) || true
-if [[ -n $driver ]]; then
+while IFS= read -r driver; do
+  [[ -n $driver ]] || continue
   if [[ $driver == "intel-media-driver" ]]; then
     omarchy-pkg-add intel-media-driver libvpl vpl-gpu-rt
-  else
+  elif [[ $driver == "libva-intel-driver" ]]; then
     omarchy-pkg-add libva-intel-driver
   fi
-fi
+done < <(omarchy-hw-intel-vaapi-driver || true)
