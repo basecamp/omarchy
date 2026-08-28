@@ -135,9 +135,14 @@ if ! $refresh_default; then
     magick "$plymouth_stage/$asset" -channel RGB +level-colors "#$text_hex","#$text_hex" "$plymouth_stage/$asset"
   done
 
+  # Substitute through unique tokens. Otherwise White's #ffffff background is
+  # immediately mistaken for the template's text placeholder by the next sed
+  # expression and rewritten to black.
   sed -i \
-    -e "s/#1a1b26/#$bg_hex/g" \
-    -e "s/#ffffff/#$text_hex/g" \
+    -e 's/#1a1b26/#__OMARCHY_SDDM_BG__/g' \
+    -e 's/#ffffff/#__OMARCHY_SDDM_TEXT__/g' \
+    -e "s/#__OMARCHY_SDDM_BG__/#$bg_hex/g" \
+    -e "s/#__OMARCHY_SDDM_TEXT__/#$text_hex/g" \
     "$sddm_stage/Main.qml"
 
   for asset in bullet.png entry.png lock.png; do
