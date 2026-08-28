@@ -384,7 +384,13 @@ Panel {
   onPasswordSsidChanged: {
     if (passwordSsid === "" && opened) {
       passwordText = ""
-      Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
+      // A prompt reached through the filter hands focus back to the still-
+      // visible search field, not the key catcher — otherwise typing would
+      // silently turn into j/k navigation under an open editor.
+      Qt.callLater(function() {
+        if (filterOpen && filterField.visible) filterField.forceActiveFocus()
+        else if (keyCatcher) keyCatcher.forceActiveFocus()
+      })
     }
   }
 

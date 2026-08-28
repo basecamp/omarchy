@@ -73,6 +73,14 @@ assert(closeReq, 'network has a close-request handler')
 assert(/cancelFilter\(\)/.test(closeReq[0]) && /else root\.close\(\)/.test(closeReq[0]),
   'Esc clears an active filter before it closes the panel')
 
+// A passphrase prompt reached through the filter must hand focus back to the
+// still-visible search field on close, or typing turns into j/k navigation
+// under an open editor.
+const passwordClose = panelSource.match(/onPasswordSsidChanged: \{[\s\S]*?\n {2}\}/)
+assert(passwordClose, 'network has a password-close focus handler')
+assert(/filterOpen && filterField\.visible[\s\S]*?filterField\.forceActiveFocus\(\)/.test(passwordClose[0]),
+  'closing the passphrase prompt restores focus to an open filter field')
+
 // Outside-click closes skip close(), so reopen must not inherit a stale query.
 const openedHandler = panelSource.match(/onOpenedChanged: \{[\s\S]*?refresh\(true\)/)
 assert(openedHandler && /cancelFilter\(\)/.test(openedHandler[0]),
