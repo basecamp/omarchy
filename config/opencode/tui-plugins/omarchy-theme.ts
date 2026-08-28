@@ -11,7 +11,8 @@ import type { TuiPlugin } from "@opencode-ai/plugin/tui"
 //
 // theme.install() re-upserts content only while the theme is unknown to the
 // registry, so each new palette is installed under a content-hashed name and
-// older copies are pruned again.
+// older copies are pruned again. Install and prune only run while this session
+// has Omarchy selected -- otherwise the plugin stays off the registry.
 
 const THEME_NAME = "omarchy"
 const DEBOUNCE_MS = 250
@@ -67,6 +68,8 @@ const plugin: TuiPlugin = async (api) => {
   }
 
   const apply = async () => {
+    if (!owned()) return
+
     let text: string
     try {
       text = fs.readFileSync(file, "utf8")
@@ -105,7 +108,7 @@ const plugin: TuiPlugin = async (api) => {
           fs.rmSync(stagedDir, { recursive: true, force: true })
         }
       }
-      if (owned() && api.theme.selected !== name) api.theme.set(name)
+      if (api.theme.selected !== name) api.theme.set(name)
       for (const candidate of pruned) {
         for (const entry of fs.existsSync(candidate) ? fs.readdirSync(candidate) : []) {
           if (stale(entry)) fs.rmSync(path.join(candidate, entry), { force: true })

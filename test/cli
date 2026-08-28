@@ -527,6 +527,11 @@ pass "opencode theme sync respects OPENCODE_CONFIG_DIR"
 jq -e '.theme.background == "#000000" and .theme.textMuted == "#111111"' "$OPENCODE_TEST_CONFIG/themes/omarchy.json" >/dev/null
 pass "opencode synced theme JSON is valid"
 
+mkdir -p "$PI_TMPDIR/.config/opencode"
+HOME="$PI_TMPDIR" OPENCODE_CONFIG_DIR="" XDG_CONFIG_HOME="" "$ROOT/bin/omarchy-theme-set-opencode"
+[[ -f $PI_TMPDIR/.config/opencode/themes/omarchy.json ]] || fail "empty OPENCODE_CONFIG_DIR falls back to ~/.config/opencode"
+pass "opencode theme sync treats empty OPENCODE_CONFIG_DIR as unset"
+
 printf '{"theme":"tokyonight","keybinds":{"leader":"<c-b>"}}\n' >"$OPENCODE_TEST_CONFIG/tui.json"
 HOME="$PI_TMPDIR" OMARCHY_PATH="$ROOT" OPENCODE_CONFIG_DIR="$OPENCODE_TEST_CONFIG" "$ROOT/bin/omarchy-theme-set-opencode" --activate
 [[ -L $OPENCODE_TEST_CONFIG/tui-plugins/omarchy-theme.ts ]] || fail "opencode plugin is installed on activation"
