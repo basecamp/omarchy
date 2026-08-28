@@ -308,21 +308,33 @@ void signal_pidfd(int descriptor) noexcept {
     return false;
   }
   pollfd polled{.fd = descriptor, .events = POLLIN, .revents = 0};
-  return poll(&polled, 1, static_cast<int>(timeout.count())) == 1 &&
-         polled.revents == POLLIN;
+  const int result = poll(&polled, 1, static_cast<int>(timeout.count()));
+  return result == 1 && pidfd_has_exited(polled.revents);
 }
 
 [[nodiscard]] bool reap_direct_child(pid_t process, int pidfd,
                                      std::chrono::milliseconds timeout) {
+  if (process <= 0 || timeout.count() < 0) {
+    return false;
+  }
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
   if (!wait_pidfd(pidfd, timeout)) {
     return false;
   }
-  int status = 0;
-  pid_t waited = -1;
-  do {
-    waited = waitpid(process, &status, WNOHANG);
-  } while (waited < 0 && errno == EINTR);
-  return waited == process;
+  while (true) {
+    int status = 0;
+    const pid_t waited = waitpid(process, &status, WNOHANG);
+    if (waited == process || (waited < 0 && errno == ECHILD)) {
+      return true;
+    }
+    if (waited < 0 && errno != EINTR) {
+      return false;
+    }
+    if (std::chrono::steady_clock::now() >= deadline) {
+      return false;
+    }
+    sched_yield();
+  }
 }
 
 [[nodiscard]] bool

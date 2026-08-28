@@ -1,8 +1,12 @@
 #include "omarchy/plugin_runtime/launcher/launcher.h"
+#include "omarchy/plugin_runtime/launcher/termination_state.h"
 #include "omarchy/plugin_runtime/test_support/test_support.h"
 
 #include <fcntl.h>
+#include <poll.h>
+#include <sys/syscall.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <array>
@@ -169,7 +173,36 @@ void validate_probe(launcher::Worker &worker) {
           "worker identity, exact FD set, NNP, or rlimit contract changed");
 }
 
+void pidfd_reap_state_test() {
+  const pid_t child = fork();
+  require(child >= 0, "cannot fork pidfd reap-state fixture");
+  if (child == 0) {
+    _exit(0);
+  }
+  support::UniqueFd pidfd(
+      static_cast<int>(syscall(SYS_pidfd_open, child, 0)));
+  require(static_cast<bool>(pidfd),
+          "cannot open pidfd reap-state fixture");
+  pollfd before{.fd = pidfd.get(), .events = POLLIN, .revents = 0};
+  require(poll(&before, 1, 2000) == 1 &&
+              launcher::pidfd_has_exited(before.revents),
+          "pidfd did not report child exit before reap");
+  int status = 0;
+  require(waitpid(child, &status, 0) == child,
+          "cannot reap pidfd state fixture");
+  pollfd after{.fd = pidfd.get(), .events = POLLIN, .revents = 0};
+  require(poll(&after, 1, 0) == 1 &&
+              after.revents == (POLLIN | POLLHUP) &&
+              launcher::pidfd_has_exited(after.revents),
+          "reaped pidfd POLLIN|POLLHUP was not accepted as exited");
+  require(!launcher::pidfd_has_exited(POLLHUP) &&
+              !launcher::pidfd_has_exited(POLLIN | POLLERR) &&
+              !launcher::pidfd_has_exited(POLLIN | POLLNVAL),
+          "unexpected pidfd events were accepted as an exit certificate");
+}
+
 void contract_test() {
+  pidfd_reap_state_test();
   auto scope = std::make_shared<FakeScope>();
   auto supervisor =
       launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH, PROBE_PATH, scope);
