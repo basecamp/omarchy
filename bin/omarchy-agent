@@ -88,7 +88,7 @@ codex)
   ;;
 hermes)
   if [[ -n ${prompt:-} ]]; then
-    command=(omarchy-agent-hermes "$prompt")
+    command=(env -u HERMES_SESSION_SOURCE hermes chat --yolo --tui "--query=$prompt")
   else
     command=(hermes --yolo)
   fi
