@@ -7,6 +7,7 @@
 set -euo pipefail
 
 prompt=${1:?usage: omarchy-agent-hermes <prompt>}
+unset HERMES_SESSION_SOURCE
 usage=$(mktemp)
 trap 'rm -f "$usage"' EXIT
 
