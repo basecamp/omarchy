@@ -35,9 +35,12 @@ const REQUIRED_COLORS = [
 ]
 
 function themesDir() {
+  // Truthy fallbacks on purpose: an empty-but-set OPENCODE_CONFIG_DIR or
+  // XDG_CONFIG_HOME must resolve the same way omarchy-theme-set-opencode's
+  // "${VAR:-...}" defaults do, or the watcher and the sync command diverge.
   const config =
-    process.env.OPENCODE_CONFIG_DIR ??
-    path.join(process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), ".config"), "opencode")
+    process.env.OPENCODE_CONFIG_DIR ||
+    path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "opencode")
   return path.join(config, "themes")
 }
 
