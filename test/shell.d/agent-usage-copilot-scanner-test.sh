@@ -34,6 +34,8 @@ INSERT INTO turns VALUES ('session-1', 0);
 INSERT INTO turns VALUES ('session-1', 1);
 INSERT INTO turns VALUES ('session-2', 0);
 
+# Timestamps are stored in UTC (as the real CLI does); the collector converts
+# them to local dates, so all 'now' rows land on today's local date.
 INSERT INTO assistant_usage_events VALUES
   ('session-1', 0, datetime('now'), 100, 50, 10, 5, 'gpt-4'),
   ('session-1', 1, datetime('now'), 80, 40, 8, 2, 'gpt-4'),
@@ -49,8 +51,11 @@ result=$(HOME="$TEST_HOME" COPILOT_HOME="$TEST_HOME/.copilot" "$ROOT/bin/omarchy
 pass "Copilot collector identifies as 'copilot'"
 
 # Test 2: Today's token counts are summed correctly
+# input_tokens in the session store already includes cache read/write tokens,
+# so the expected total is input + output only: (100+80+120) + (50+40+60) = 450.
+# Adding the cache columns on top would double-count them.
 today_tokens=$(jq -r '.todayTotalTokens' <<<"$result")
-[[ $today_tokens == "493" ]] ||
+[[ $today_tokens == "450" ]] ||
   fail "Copilot collector sums today's tokens" "$result"
 pass "Copilot collector sums today's tokens"
 
@@ -112,7 +117,9 @@ with open("$TEST_HOME/.config/github-copilot/oauth.json", "w") as f:
     }, f)
 
 # Mock the urlopen to return exhausted quota response
-# The API returns quota_snapshots as a dict keyed by quota type
+# The API returns quota_snapshots as a dict keyed by quota type. Exhaustion is
+# a fully consumed positive entitlement with has_quota false, matching the
+# endpoint's real semantics.
 def mock_urlopen(*args, **kwargs):
     quota_response = {
         "quota_snapshots": {
@@ -120,7 +127,7 @@ def mock_urlopen(*args, **kwargs):
                 "quota_type": "premium_interactions",
                 "credits_used": 100,
                 "entitlement": 100,
-                "has_quota": False  # Exhausted: fully consumed with has_quota false
+                "has_quota": False
             }
         },
         "quota_reset_date_utc": "2026-09-01T00:00:00Z"

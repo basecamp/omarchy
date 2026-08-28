@@ -14,10 +14,11 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import http.client
 import json
 import os
 import sqlite3
-import urllib.error
+import stat
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -62,10 +63,6 @@ def recent_date_strings() -> list[str]:
   return [date_string(today - dt.timedelta(days=offset)) for offset in range(6, -1, -1)]
 
 
-def local_date_string() -> str:
-  return date_string(dt.datetime.now().date())
-
-
 def format_count(value: Any) -> str:
   try:
     return f"{int(round(float(value))):,}"
@@ -79,21 +76,36 @@ def get_oauth_token() -> str | None:
   The standalone Copilot CLI stores its local session history under COPILOT_HOME
   (~/.copilot by default), which is separate from the editor plugin auth store.
   """
+  max_size = 1_000_000  # 1 MB limit
+  flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+
   for token_file in COPILOT_TOKEN_FILES:
     token_path = COPILOT_EDITOR_CONFIG_DIR / token_file
-    if not token_path.exists():
-      continue
     try:
-      content = token_path.read_text(encoding='utf-8')
-      if len(content) > 1_000_000:  # 1 MB limit
+      fd = os.open(str(token_path), flags)
+    except OSError:
+      continue
+
+    try:
+      st = os.fstat(fd)
+      if not stat.S_ISREG(st.st_mode) or st.st_uid not in (os.geteuid(), 0):
         continue
+
+      raw_bytes = os.read(fd, max_size + 1)
+      if len(raw_bytes) > max_size:
+        continue
+
+      content = raw_bytes.decode("utf-8")
       data = json.loads(content)
       if isinstance(data, dict):
         for host_data in data.values():
           if isinstance(host_data, dict) and "oauth_token" in host_data:
             return host_data["oauth_token"]
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
       continue
+    finally:
+      os.close(fd)
+
   return None
 
 
@@ -105,36 +117,49 @@ def fetch_quota(token: str) -> dict[str, Any] | None:
       headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
     )
     with urllib.request.urlopen(req, timeout=5) as response:
-      data = json.loads(response.read(10_000_000))  # 10 MB limit
-      if "quota_snapshots" in data and data["quota_snapshots"]:
-        snapshots = data["quota_snapshots"]
-        for quota_key in QUOTA_PRIORITY:
-          if quota_key in snapshots:
-            snapshot = snapshots[quota_key]
-            if snapshot.get("has_quota"):
-              used = snapshot.get("credits_used", 0)
-              total = snapshot.get("entitlement", 0)
-              display_name = QUOTA_DISPLAY_NAMES.get(quota_key, quota_key)
-              result = {
-                "displayName": display_name,
-                "used": used,
-                "total": total,
-              }
-              if total == 0 and used == 0:
-                result["displayName"] = f"No more {display_name} available"
-              if "quota_reset_date_utc" in data:
-                result["resetsAt"] = data["quota_reset_date_utc"]
-              return result
+      raw_bytes = response.read(10_000_001)  # 10 MB limit + 1 byte to detect overflow
+    if len(raw_bytes) > 10_000_000:
       return None
-  except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, TimeoutError):
+    data = json.loads(raw_bytes)
+  except (OSError, ValueError, http.client.HTTPException):
+    # OSError covers URLError/timeouts/socket errors, ValueError covers JSON
+    # and unicode decode failures, HTTPException covers IncompleteRead.
     return None
 
+  if not isinstance(data, dict):
+    return None
+  snapshots = data.get("quota_snapshots")
+  if not isinstance(snapshots, dict):
+    return None
 
-def read_copilot_stats() -> dict[str, Any]:
-  """Read usage statistics from Copilot session store."""
-  db_path = copilot_dir() / "session-store.db"
+  for quota_key in QUOTA_PRIORITY:
+    snapshot = snapshots.get(quota_key)
+    if not isinstance(snapshot, dict):
+      continue
+    used = snapshot.get("credits_used", 0)
+    total = snapshot.get("entitlement", 0)
+    if not isinstance(used, (int, float)) or not isinstance(total, (int, float)):
+      continue
+    # Unmetered buckets (e.g. "chat" reporting 0/0 with has_quota true) carry
+    # no displayable numbers; skip them so a metered bucket can win instead.
+    if total <= 0 and used <= 0:
+      continue
+    result = {
+      "displayName": QUOTA_DISPLAY_NAMES.get(quota_key, quota_key),
+      "used": used,
+      "total": total,
+      # has_quota false on a metered bucket means the allowance is used up.
+      "exhausted": not snapshot.get("has_quota", False),
+    }
+    if "quota_reset_date_utc" in data:
+      result["resetsAt"] = data["quota_reset_date_utc"]
+    return result
+  return None
 
-  empty_stats = {
+
+def empty_usage_stats() -> dict[str, Any]:
+  """Fresh usage-stats record; a new dict each call so callers can mutate freely."""
+  return {
     "todayPrompts": 0,
     "todaySessions": 0,
     "todayTokensByModel": {},
@@ -147,72 +172,75 @@ def read_copilot_stats() -> dict[str, Any]:
     "modelUsage": {},
   }
 
-  if not db_path.exists():
-    return empty_stats
 
+def add_model_tokens(bucket: dict[str, dict[str, int]], model: str,
+                     input_tokens: int, output_tokens: int,
+                     cache_read: int, cache_write: int) -> None:
+  entry = bucket.setdefault(model, {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  })
+  entry["inputTokens"] += input_tokens
+  entry["outputTokens"] += output_tokens
+  entry["cacheReadInputTokens"] += cache_read
+  entry["cacheCreationInputTokens"] += cache_write
+
+
+def read_copilot_stats() -> dict[str, Any]:
+  """Read usage statistics from Copilot session store."""
+  db_path = copilot_dir() / "session-store.db"
+  stats = empty_usage_stats()
+
+  if not db_path.exists():
+    return stats
+
+  conn = None
   try:
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(f"{db_path.as_uri()}?mode=ro", uri=True)
     cursor = conn.cursor()
 
     cursor.execute("SELECT COUNT(DISTINCT session_id) FROM turns")
-    total_sessions = cursor.fetchone()[0] or 0
+    stats["totalSessions"] = cursor.fetchone()[0] or 0
 
+    # created_at is stored in UTC (ISO 8601 with Z suffix); convert to the
+    # local calendar day so buckets line up with the local "today" below.
     cursor.execute("""
-      SELECT DATE(created_at), COUNT(*),
+      SELECT DATE(created_at, 'localtime'), COUNT(*),
              SUM(input_tokens), SUM(output_tokens),
              SUM(cache_read_tokens), SUM(cache_write_tokens),
              model
       FROM assistant_usage_events
       WHERE created_at IS NOT NULL
-      GROUP BY DATE(created_at), model
-      ORDER BY DATE(created_at) DESC
+      GROUP BY DATE(created_at, 'localtime'), model
     """)
 
-    date_stats = {}
-    model_stats = {}
-    today_model_stats = {}
-    today = local_date_string()
+    date_stats: dict[str, dict[str, int]] = {}
+    model_stats: dict[str, dict[str, int]] = {}
+    today_model_stats: dict[str, dict[str, int]] = {}
+    # recentDays already ends at today; reuse it so the whole record is
+    # consistent on one clock sample even if midnight passes mid-run.
+    today = stats["recentDays"][-1]["date"]
 
     for date_str, event_count, input_tokens, output_tokens, cache_read, cache_write, model in cursor.fetchall():
       if not date_str:
         continue
 
+      # input_tokens already includes cache reads/writes; adding the cache
+      # columns on top would double-count them (see modelUsage for details).
       tokens = (input_tokens or 0) + (output_tokens or 0)
 
-      if date_str not in date_stats:
-        date_stats[date_str] = {"count": 0, "tokens": 0}
-
-      date_stats[date_str]["count"] += event_count
-      date_stats[date_str]["tokens"] += tokens
+      day = date_stats.setdefault(date_str, {"count": 0, "tokens": 0})
+      day["count"] += event_count
+      day["tokens"] += tokens
 
       if model:
-        if model not in model_stats:
-          model_stats[model] = {
-            "inputTokens": 0,
-            "outputTokens": 0,
-            "cacheReadInputTokens": 0,
-            "cacheCreationInputTokens": 0
-          }
-        model_stats[model]["inputTokens"] += input_tokens or 0
-        model_stats[model]["outputTokens"] += output_tokens or 0
-        model_stats[model]["cacheReadInputTokens"] += cache_read or 0
-        model_stats[model]["cacheCreationInputTokens"] += cache_write or 0
-
+        add_model_tokens(model_stats, model, input_tokens or 0, output_tokens or 0,
+                         cache_read or 0, cache_write or 0)
         if date_str == today:
-          if model not in today_model_stats:
-            today_model_stats[model] = {
-              "inputTokens": 0,
-              "outputTokens": 0,
-              "cacheReadInputTokens": 0,
-              "cacheCreationInputTokens": 0
-            }
-          today_model_stats[model]["inputTokens"] += input_tokens or 0
-          today_model_stats[model]["outputTokens"] += output_tokens or 0
-          today_model_stats[model]["cacheReadInputTokens"] += cache_read or 0
-          today_model_stats[model]["cacheCreationInputTokens"] += cache_write or 0
-
-    stats = empty_stats.copy()
-    stats["totalSessions"] = total_sessions
+          add_model_tokens(today_model_stats, model, input_tokens or 0, output_tokens or 0,
+                           cache_read or 0, cache_write or 0)
 
     if today in date_stats:
       stats["todayPrompts"] = date_stats[today]["count"]
@@ -221,11 +249,11 @@ def read_copilot_stats() -> dict[str, Any]:
 
     stats["modelUsage"] = model_stats
 
-    for i, date_str in enumerate(recent_date_strings()):
-      if date_str in date_stats:
-        stats["recentDays"][i]["messageCount"] = date_stats[date_str]["tokens"]
+    for entry in stats["recentDays"]:
+      if entry["date"] in date_stats:
+        entry["messageCount"] = date_stats[entry["date"]]["tokens"]
 
-    stats["activeDates"] = sorted(date_stats.keys())
+    stats["activeDates"] = sorted(date_stats)
     stats["activeDays"] = len(stats["activeDates"])
 
     cursor.execute("SELECT COUNT(*) FROM assistant_usage_events")
@@ -235,19 +263,26 @@ def read_copilot_stats() -> dict[str, Any]:
       cursor.execute("""
         SELECT COUNT(DISTINCT session_id)
         FROM assistant_usage_events
-        WHERE DATE(created_at) = ?
+        WHERE DATE(created_at, 'localtime') = ?
       """, (today,))
       stats["todaySessions"] = cursor.fetchone()[0] or 0
-
-    conn.close()
-  except Exception:
-    return empty_stats
+  except (OSError, sqlite3.Error):
+    # A display collector must never crash the panel; fall back to a fresh
+    # empty record rather than returning partially populated stats.
+    return empty_usage_stats()
+  finally:
+    if conn is not None:
+      conn.close()
 
   return stats
 
 
 def main() -> None:
   parser = argparse.ArgumentParser(description=__doc__)
+  # This collector has no cache to invalidate or reuse: the sqlite scan takes
+  # milliseconds and the quota probe always goes to the wire. --force and
+  # --limits-only are accepted for panel-contract compatibility; every run
+  # already satisfies both (fresh scan, fresh limits).
   parser.add_argument("--force", action="store_true")
   parser.add_argument("--limits-only", action="store_true")
   args = parser.parse_args()
@@ -261,21 +296,22 @@ def main() -> None:
 
   limits = []
   if quota:
-    pct = 0
-    if quota["total"] > 0:
-      pct = quota["used"] / quota["total"]
-    # Use "No more" message if quota is exhausted, otherwise format the label
-    if "No more" in quota.get("displayName", ""):
-      usage_label = quota["displayName"]
+    display_name = quota["displayName"]
+    used = quota["used"]
+    total = quota["total"]
+    if quota["exhausted"]:
+      usage_label = f"No more {display_name} available"
+      pct = 1.0
     else:
-      usage_label = f"Premium Requests {format_count(quota['used'])}/{format_count(quota['total'])} used"
+      usage_label = f"{display_name} {format_count(used)}/{format_count(total)} used"
+      pct = min(used / total, 1.0) if total > 0 else 0.0
     limit_entry = {
       "label": usage_label,
       "title": usage_label,
       "percent": pct,
-      "used": quota["used"],
-      "total": quota["total"],
-      "unit": "premium requests",
+      "used": used,
+      "total": total,
+      "unit": display_name.lower(),
     }
     if "resetsAt" in quota:
       limit_entry["resetsAt"] = quota["resetsAt"]
