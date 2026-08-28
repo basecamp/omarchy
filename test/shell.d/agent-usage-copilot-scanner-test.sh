@@ -60,10 +60,22 @@ today_tokens=$(jq -r '.todayTotalTokens' <<<"$result")
 pass "Copilot collector sums today's tokens"
 
 # Test 3: Model usage is tracked with correct schema
-model_usage=$(jq '.todayTokensByModel.["gpt-4"]' <<<"$result")
-[[ $(jq -r '.inputTokens' <<<"$model_usage") == "180" ]] ||
-  fail "Copilot collector tracks todayTokensByModel with per-model breakdown" "$result"
-pass "Copilot collector tracks todayTokensByModel with per-model breakdown"
+# todayTokensByModel is a flat model → numeric-total map (the panel merges it
+# with numeric addition, so nested buckets would collapse to zero):
+# gpt-4 today = (100+50) + (80+40) = 270.
+[[ $(jq -r '.todayTokensByModel.["gpt-4"]' <<<"$result") == "270" ]] ||
+  fail "Copilot collector tracks todayTokensByModel as flat numeric totals" "$result"
+pass "Copilot collector tracks todayTokensByModel as flat numeric totals"
+
+# modelUsage buckets carry uncached input, since the panel adds the cache
+# columns back for its per-model total. gpt-4 all-time:
+# input (100-10-5) + (80-8-2) + (50-5-2) = 198, cache read 10+8+5 = 23.
+model_usage=$(jq '.modelUsage.["gpt-4"]' <<<"$result")
+[[ $(jq -r '.inputTokens' <<<"$model_usage") == "198" ]] ||
+  fail "Copilot collector reports uncached inputTokens in modelUsage" "$result"
+[[ $(jq -r '.cacheReadInputTokens' <<<"$model_usage") == "23" ]] ||
+  fail "Copilot collector reports cacheReadInputTokens in modelUsage" "$result"
+pass "Copilot collector tracks modelUsage with uncached per-model breakdown"
 
 # Test 4: Today's sessions are counted
 today_sessions=$(jq -r '.todaySessions' <<<"$result")
@@ -89,7 +101,9 @@ pass "Copilot collector reports exactly 2 distinct active dates (today + 8 days 
 pass "Copilot collector emits correct schema"
 
 # Test 8: Without database, returns empty stats
-result_empty=$(HOME="$(mktemp -d)" COPILOT_HOME="$(mktemp -d)" "$ROOT/bin/omarchy-agent-usage-copilot")
+# Fresh dirs live under TEST_HOME so the EXIT trap cleans them up too.
+mkdir -p "$TEST_HOME/empty-home" "$TEST_HOME/empty-copilot"
+result_empty=$(HOME="$TEST_HOME/empty-home" COPILOT_HOME="$TEST_HOME/empty-copilot" "$ROOT/bin/omarchy-agent-usage-copilot")
 [[ $(jq -r '.todayTotalTokens' <<<"$result_empty") == "0" ]] ||
   fail "Copilot collector returns empty stats when DB missing" "$result_empty"
 pass "Copilot collector returns empty stats when DB missing"

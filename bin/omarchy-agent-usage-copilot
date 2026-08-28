@@ -220,7 +220,7 @@ def read_copilot_stats() -> dict[str, Any]:
 
     date_stats: dict[str, dict[str, int]] = {}
     model_stats: dict[str, dict[str, int]] = {}
-    today_model_stats: dict[str, dict[str, int]] = {}
+    today_tokens: dict[str, int] = {}
     # recentDays already ends at today; reuse it so the whole record is
     # consistent on one clock sample even if midnight passes mid-run.
     today = stats["recentDays"][-1]["date"]
@@ -229,25 +229,34 @@ def read_copilot_stats() -> dict[str, Any]:
       if not date_str:
         continue
 
-      # input_tokens already includes cache reads/writes; adding the cache
-      # columns on top would double-count them (see modelUsage for details).
-      tokens = (input_tokens or 0) + (output_tokens or 0)
+      input_tokens = input_tokens or 0
+      output_tokens = output_tokens or 0
+      cache_read = cache_read or 0
+      cache_write = cache_write or 0
+
+      # input_tokens already includes cache reads/writes, so the day total is
+      # input + output; adding the cache columns would double-count them.
+      tokens = input_tokens + output_tokens
 
       day = date_stats.setdefault(date_str, {"count": 0, "tokens": 0})
       day["count"] += event_count
       day["tokens"] += tokens
 
       if model:
-        add_model_tokens(model_stats, model, input_tokens or 0, output_tokens or 0,
-                         cache_read or 0, cache_write or 0)
+        # The panel sums inputTokens with the cache columns for its per-model
+        # total, so the bucket must carry uncached input only.
+        uncached_input = max(input_tokens - cache_read - cache_write, 0)
+        add_model_tokens(model_stats, model, uncached_input, output_tokens,
+                         cache_read, cache_write)
         if date_str == today:
-          add_model_tokens(today_model_stats, model, input_tokens or 0, output_tokens or 0,
-                           cache_read or 0, cache_write or 0)
+          # todayTokensByModel is a flat model → token-total map; the panel
+          # merges it numerically, so nested buckets would collapse to zero.
+          today_tokens[model] = today_tokens.get(model, 0) + tokens
 
     if today in date_stats:
       stats["todayPrompts"] = date_stats[today]["count"]
       stats["todayTotalTokens"] = date_stats[today]["tokens"]
-      stats["todayTokensByModel"] = today_model_stats
+      stats["todayTokensByModel"] = today_tokens
 
     stats["modelUsage"] = model_stats
 
