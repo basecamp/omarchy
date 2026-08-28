@@ -4,11 +4,371 @@
 # omarchy:args=<install|remove|launch|stop|status> [options]
 # omarchy:requires-sudo=true
 
-COMPOSE_FILE="$HOME/.config/windows/docker-compose.yml"
+# The Windows VM runs a privileged container (KVM, /dev/net/tun, NET_ADMIN), so
+# it needs the root-owned Docker daemon. By default the user is NOT in the docker
+# group (that group is root-equivalent), so Docker access is gated behind a
+# single polkit prompt. If the user opted into sudoless Docker
+# (omarchy-setup-security-sudoless-docker), the socket is reachable directly and
+# no prompt appears.
+#
+# The compose file lives in a root-owned directory and is only ever written by
+# the elevated, input-validated write_compose action below. That is the whole
+# point: a root-invoked `docker compose up` must never consume a file that a
+# process running as the user could have rewritten to bind-mount / into the
+# container. Earlier versions kept it under ~/.config/windows, which a rogue
+# process could edit and then trigger a privileged bring-up of — a file-swap
+# path to root. Do not move it back under $HOME.
+
+RUNTIME_DIR="${OMARCHY_WINDOWS_DIR:-/var/lib/omarchy/windows}"
+COMPOSE_FILE="$RUNTIME_DIR/docker-compose.yml"
+LEGACY_COMPOSE_FILE="$HOME/.config/windows/docker-compose.yml"
+# The guest password lives in the root-owned compose (readable by root and the
+# docker group), but RDP needs it as the user. Keep a private copy here, 0600 in
+# the user's own config, so the plaintext password is never world-readable.
+CREDENTIALS_FILE="$HOME/.config/windows/credentials"
+IMAGE="dockurr/windows"
+CONTAINER="omarchy-windows"
+
+# --- privilege helpers -------------------------------------------------------
+
+# True when this session can reach the Docker socket directly (sudoless Docker
+# on and in effect). Asking about the socket rather than the configured groups
+# keeps the prompt in place through the window where sudoless Docker is enabled
+# but the reboot that grants the group has not happened yet.
+docker_needs_sudo() { omarchy-sudo-docker; }
+
+# The command to hand pkexec for the privileged re-exec. pkexec runs whatever
+# executable it is given (after authorization) and only shows the path in the
+# prompt — it does NOT require the target to be root-owned. So resolve to the
+# packaged command and refuse to elevate anything a non-root user could have
+# written: a PATH-injected shim, or a user-owned dev checkout. Without this, a
+# prompt the user grants for the trusted helper could run an attacker's binary
+# as root. Fails closed (empty output) when no trustworthy target is found.
+priv_target() {
+  local candidate owner mode
+  for candidate in /usr/bin/omarchy-windows-vm "$(type -P omarchy-windows-vm 2>/dev/null)"; do
+    [[ -n $candidate && -x $candidate ]] || continue
+    owner=$(stat -Lc '%u' "$candidate" 2>/dev/null) || continue
+    mode=$(stat -Lc '%a' "$candidate" 2>/dev/null) || continue
+    [[ $owner == "0" ]] || continue
+    ((8#$mode & 022)) && continue # writable by group or other -> reject
+    printf '%s\n' "$candidate"
+    return 0
+  done
+  return 1
+}
+
+# Run a privileged VM action. write_compose always elevates (the compose is
+# root-owned); the daemon operations run directly when sudoless Docker is on and
+# otherwise behind a polkit prompt. The stock org.freedesktop.policykit.exec
+# policy is auth_admin (not auth_admin_keep), so each elevated action prompts:
+# a launch asks once to start and, unless authorization is still cached by the
+# agent, again to stop.
+priv() {
+  local action="$1"
+  shift
+  if [[ $action != write_compose ]] && ! docker_needs_sudo; then
+    "__priv_$action" "$@"
+    return
+  fi
+  local target
+  target=$(priv_target) || {
+    echo "omarchy-windows-vm: refusing to run a non-root-owned command as root" >&2
+    return 1
+  }
+  pkexec "$target" __priv "$action" "$@"
+}
+
+dc() { docker-compose -f "$COMPOSE_FILE" "$@"; }
+
+# --- validation (shared by the user-side prompts and the root-side writer) ----
+
+valid_ram() { [[ $1 =~ ^[0-9]{1,3}G$ ]]; }
+valid_cores() { [[ $1 =~ ^[0-9]{1,2}$ ]] && ((10#$1 >= 1)); }
+valid_disk() { [[ $1 =~ ^[0-9]{1,4}G$ ]]; }
+valid_username() { [[ $1 =~ ^[A-Za-z0-9_-]{1,20}$ ]]; }
+valid_tz() { [[ $1 =~ ^[A-Za-z0-9_/.+-]{1,64}$ ]]; }
+valid_path() {
+  [[ $1 =~ ^/[A-Za-z0-9._/-]+$ ]] || return 1
+  # Reject non-normalized paths: a . or .. component canonicalizes at mount time
+  # (e.g. /./ or /a/../ -> /), which would bind-mount a sensitive directory —
+  # host / included — into the guest. Volumes must be given already-normalized.
+  case "$1" in
+  *//* | */./* | */../* | */. | */..) return 1 ;;
+  esac
+  return 0
+}
+valid_password() { [[ $1 =~ ^[[:print:]]{1,64}$ ]]; }
+
+# The only privileged sub-actions __priv may dispatch. A bash command name
+# containing a slash is executed as a path, so validating the action here — not
+# just interpolating it into "__priv_${action}" — is what stops an action like
+# ../tmp/evil from running an arbitrary file as root.
+valid_priv_action() {
+  case "$1" in
+  write_compose | up | up_wait | down | status | remove) return 0 ;;
+  *) return 1 ;;
+  esac
+}
+
+# --- privileged actions (run as root via pkexec, or directly when sudoless) ---
+
+# Reads KEY=VALUE lines on stdin, re-validates every field, and writes the
+# compose atomically as root. Re-validation here is the security boundary: the
+# writer refuses rather than emit a compose an attacker could have influenced.
+# Only these fixed keys are honored; image, container name, devices, caps, and
+# port bindings are hard-coded and never taken from input.
+__priv_write_compose() {
+  local ram cores disk username password tz storage shared key value
+
+  while IFS='=' read -r key value; do
+    case "$key" in
+    RAM) ram="$value" ;;
+    CORES) cores="$value" ;;
+    DISK) disk="$value" ;;
+    USERNAME) username="$value" ;;
+    PASSWORD) password="$value" ;;
+    TZ) tz="$value" ;;
+    STORAGE) storage="$value" ;;
+    SHARED) shared="$value" ;;
+    esac
+  done
+
+  valid_ram "$ram" || { echo "invalid RAM: $ram" >&2; exit 2; }
+  valid_cores "$cores" || { echo "invalid CPU cores: $cores" >&2; exit 2; }
+  valid_disk "$disk" || { echo "invalid disk size: $disk" >&2; exit 2; }
+  valid_username "$username" || { echo "invalid username: $username" >&2; exit 2; }
+  valid_password "$password" || { echo "invalid password" >&2; exit 2; }
+  valid_tz "$tz" || tz="UTC"
+  valid_path "$storage" || { echo "invalid storage path: $storage" >&2; exit 2; }
+  valid_path "$shared" || { echo "invalid shared path: $shared" >&2; exit 2; }
+
+  # Neutralize anything in the password that could be misread when the compose
+  # is parsed. Two layers apply, in this order at parse time: docker compose
+  # variable interpolation over the raw text ($VAR / $$), then YAML parsing of
+  # the double-quoted scalar. Encode for the inner layer first (backslash, then
+  # double-quote) and the interpolation layer last ($ -> $$), so a password
+  # containing " \ or $ reaches the guest verbatim. unescape() reverses this in
+  # the opposite order for the RDP credentials.
+  local esc_password=${password//\\/\\\\}
+  esc_password=${esc_password//\"/\\\"}
+  esc_password=${esc_password//\$/\$\$}
+
+  mkdir -p "$RUNTIME_DIR"
+  chmod 0755 "$RUNTIME_DIR" 2>/dev/null || true
+  chown root:root "$RUNTIME_DIR" 2>/dev/null || true
+
+  local tmp
+  tmp=$(mktemp "$RUNTIME_DIR/.compose.XXXXXX")
+  cat >"$tmp" <<EOF
+services:
+  windows:
+    image: $IMAGE
+    container_name: $CONTAINER
+    environment:
+      VERSION: "11"
+      RAM_SIZE: "$ram"
+      CPU_CORES: "$cores"
+      DISK_SIZE: "$disk"
+      USERNAME: "$username"
+      PASSWORD: "$esc_password"
+      TZ: "$tz"
+      ARGUMENTS: "-rtc base=localtime,clock=host,driftfix=slew"
+    devices:
+      - /dev/kvm
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - 127.0.0.1:8006:8006
+      - 127.0.0.1:3389:3389/tcp
+      - 127.0.0.1:3389:3389/udp
+    volumes:
+      - $storage:/storage
+      - $shared:/shared
+    restart: "no"
+    stop_grace_period: 2m
+EOF
+  # Readable by root and the docker group only. In sudoless mode the user is in
+  # the docker group and runs docker-compose against this file directly; in the
+  # default mode the elevated helper (root) reads it, and other local users
+  # cannot read the guest password. chown falls back to root:root if the docker
+  # group somehow does not exist (sudoless mode could not be enabled anyway).
+  chmod 0640 "$tmp" 2>/dev/null || true
+  chown root:docker "$tmp" 2>/dev/null || chown root:root "$tmp" 2>/dev/null || true
+  mv -f "$tmp" "$COMPOSE_FILE"
+}
+
+# Read the host source of a bind mount out of the compose (e.g. /storage).
+# valid_path kept a ':' out of the stored path, so splitting on it is safe.
+get_mount_source() {
+  sed -n "s|^[[:space:]]*-[[:space:]]*\(/[^:]*\):$1\$|\1|p" "$COMPOSE_FILE" | head -n1
+}
+
+# Refuse to bring the VM up if a bind-mount source is a symlink, or reached
+# through one. valid_path keeps a traversal string like /./ out of the compose,
+# but a symlink planted at ~/.windows or ~/Windows would redirect the privileged
+# mount just the same — docker follows it — and a string check cannot see that.
+# So verify the real directories here, as root, immediately before the mount. A
+# source that does not exist is fine: docker creates it as a plain directory.
+assert_mounts_safe() {
+  local mnt src real
+  for mnt in /storage /shared; do
+    src=$(get_mount_source "$mnt")
+    [[ -n $src ]] || {
+      echo "omarchy-windows-vm: missing $mnt mount source in the compose" >&2
+      return 1
+    }
+    if [[ -L $src ]]; then
+      echo "omarchy-windows-vm: refusing to start — $src is a symlink; the VM mount source must be a real directory" >&2
+      return 1
+    fi
+    if [[ -e $src ]]; then
+      [[ -d $src ]] || {
+        echo "omarchy-windows-vm: refusing to start — $src is not a directory" >&2
+        return 1
+      }
+      real=$(realpath "$src" 2>/dev/null)
+      [[ $real == "$src" ]] || {
+        echo "omarchy-windows-vm: refusing to start — $src resolves through a symlink to $real" >&2
+        return 1
+      }
+    fi
+  done
+}
+
+__priv_up() { assert_mounts_safe && dc up -d; }
+
+__priv_down() { dc down; }
+
+# Bring the VM up and wait until the guest reports it is ready, all under a
+# single elevation so the readiness poll does not prompt on every iteration.
+__priv_up_wait() {
+  assert_mounts_safe || return 1
+  local status
+  status=$(docker inspect --format='{{.State.Status}}' "$CONTAINER" 2>/dev/null)
+  if [[ $status != "running" ]]; then
+    dc up -d || return 1
+  fi
+
+  # docker logs persists across restarts, so anchor the scan to the current
+  # start time; an empty --since would match a stale "started successfully".
+  local started_at count=0
+  while true; do
+    started_at=$(docker inspect --format='{{.State.StartedAt}}' "$CONTAINER" 2>/dev/null)
+    if [[ -n $started_at ]] && docker logs --since "$started_at" "$CONTAINER" 2>&1 | grep -qi "windows started successfully"; then
+      return 0
+    fi
+    sleep 2
+    ((++count > 60)) && {
+      echo "Timeout: Windows VM did not report ready within 2 minutes" >&2
+      return 1
+    }
+  done
+}
+
+# Print the status (empty if the container does not exist) and always succeed,
+# so a non-zero exit from priv status means the elevation itself failed
+# (authorization declined) rather than "no such container".
+__priv_status() { docker inspect --format='{{.State.Status}}' "$CONTAINER" 2>/dev/null || true; }
+
+__priv_remove() {
+  dc down 2>/dev/null || true
+  docker rmi "$IMAGE" 2>/dev/null || true
+  rm -f "$COMPOSE_FILE"
+  rmdir "$RUNTIME_DIR" 2>/dev/null || true
+}
+
+# --- config helpers ----------------------------------------------------------
+
+# Feed the collected settings to the elevated writer.
+write_compose() {
+  local ram="$1" cores="$2" disk="$3" username="$4" password="$5" tz="$6" storage="$7" shared="$8"
+  printf 'RAM=%s\nCORES=%s\nDISK=%s\nUSERNAME=%s\nPASSWORD=%s\nTZ=%s\nSTORAGE=%s\nSHARED=%s\n' \
+    "$ram" "$cores" "$disk" "$username" "$password" "$tz" "$storage" "$shared" |
+    priv write_compose
+}
+
+# Reverse, in the opposite order, the escaping __priv_write_compose applied to
+# the password: undo the interpolation layer ($$ -> $) first, then the YAML
+# layer (\" -> ", then \\ -> \).
+unescape() {
+  local v=$1
+  v=${v//\$\$/\$}
+  v=${v//\\\"/\"}
+  v=${v//\\\\/\\}
+  printf '%s' "$v"
+}
+
+# Store the RDP credentials privately for the user (0600) so the plaintext
+# password is not world-readable. The password is one validated printable line
+# (no newline), so plain KEY=VALUE is safe.
+write_credentials() {
+  local username="$1" password="$2" old_umask
+  mkdir -p "$(dirname "$CREDENTIALS_FILE")"
+  old_umask=$(umask)
+  umask 077
+  printf 'USERNAME=%s\nPASSWORD=%s\n' "$username" "$password" >"$CREDENTIALS_FILE"
+  chmod 600 "$CREDENTIALS_FILE" 2>/dev/null || true
+  umask "$old_umask"
+}
+
+# Read one field from the private credentials file; IFS on the first = keeps a
+# password that itself contains =.
+read_credential() {
+  local want="$1" key value
+  [[ -f $CREDENTIALS_FILE ]] || return 1
+  while IFS='=' read -r key value; do
+    [[ $key == "$want" ]] && {
+      printf '%s' "$value"
+      return 0
+    }
+  done <"$CREDENTIALS_FILE"
+  return 1
+}
+
+read_compose_value() {
+  local key="$1" file="$2"
+  sed -n "s/.*${key}: \"\(.*\)\"/\1/p" "$file" | head -n1
+}
+
+# Older installs kept the compose under ~/.config/windows. Carry those settings
+# into the root-owned location (preserving the VM's data via the same volume
+# paths) so an upgrade does not strand or re-download an existing VM.
+migrate_legacy_compose() {
+  [[ -f $COMPOSE_FILE ]] && return 0
+  [[ -f $LEGACY_COMPOSE_FILE ]] || return 1
+
+  echo "Migrating Windows VM configuration to $COMPOSE_FILE ..."
+  local ram cores disk username password tz storage shared
+  ram=$(read_compose_value RAM_SIZE "$LEGACY_COMPOSE_FILE")
+  cores=$(read_compose_value CPU_CORES "$LEGACY_COMPOSE_FILE")
+  disk=$(read_compose_value DISK_SIZE "$LEGACY_COMPOSE_FILE")
+  username=$(read_compose_value USERNAME "$LEGACY_COMPOSE_FILE")
+  password=$(read_compose_value PASSWORD "$LEGACY_COMPOSE_FILE")
+  tz=$(read_compose_value TZ "$LEGACY_COMPOSE_FILE")
+  # The VM's data always lived in the user's own ~/.windows and ~/Windows; the
+  # old compose only ever recorded those. Reconstruct them from $HOME (trusted —
+  # this runs as the user) rather than reading host paths back from a file a
+  # rogue process could have rewritten to bind-mount, say, / into the guest.
+  storage="$HOME/.windows"
+  shared="$HOME/Windows"
+
+  [[ -z $tz ]] && tz="UTC"
+  if ! write_compose "$ram" "$cores" "$disk" "$username" "$password" "$tz" "$storage" "$shared"; then
+    echo "Could not migrate the existing configuration automatically." >&2
+    echo "Re-run: omarchy-windows-vm install" >&2
+    return 1
+  fi
+  write_credentials "$username" "$password"
+  rm -f "$LEGACY_COMPOSE_FILE"
+}
+
+# --- prerequisites -----------------------------------------------------------
 
 check_prerequisites() {
   local DISK_SIZE_GB=${1:-64}
-  local REQUIRED_SPACE=$((DISK_SIZE_GB + 10))  # Add 10GB for Windows ISO and overhead
+  local REQUIRED_SPACE=$((DISK_SIZE_GB + 10)) # Add 10GB for Windows ISO and overhead
 
   # Check for KVM support
   if [[ ! -e /dev/kvm ]]; then
@@ -26,13 +386,15 @@ check_prerequisites() {
 
   # Check disk space
   AVAILABLE_SPACE=$(df "$HOME" | awk 'NR==2 {print int($4/1024/1024)}')
-  if (( AVAILABLE_SPACE < REQUIRED_SPACE )); then
+  if ((AVAILABLE_SPACE < REQUIRED_SPACE)); then
     echo "❌ Insufficient disk space!"
     echo "   Available: ${AVAILABLE_SPACE}GB"
     echo "   Required: ${REQUIRED_SPACE}GB (${DISK_SIZE_GB}GB disk + 10GB for Windows image)"
     exit 1
   fi
 }
+
+# --- commands ----------------------------------------------------------------
 
 install_windows() {
   # Set up trap to handle Ctrl+C
@@ -43,10 +405,9 @@ install_windows() {
   omarchy-pkg-add freerdp openbsd-netcat gum
 
   mkdir -p "$HOME/.windows"
-  mkdir -p "$HOME/.config/windows"
   mkdir -p "$HOME/.local/share/applications"
 
-  cat << EOF | tee "$HOME/.local/share/applications/windows-vm.desktop" > /dev/null
+  cat <<EOF | tee "$HOME/.local/share/applications/windows-vm.desktop" >/dev/null
 [Desktop Entry]
 Name=Windows
 Comment=Start Windows VM via Docker and connect with RDP
@@ -70,7 +431,7 @@ EOF
 
   RAM_OPTIONS=""
   for size in 2 4 8 16 32 64; do
-    if (( size <= TOTAL_RAM_GB )); then
+    if ((size <= TOTAL_RAM_GB)); then
       RAM_OPTIONS="$RAM_OPTIONS ${size}G"
     fi
   done
@@ -91,16 +452,16 @@ EOF
     exit 1
   fi
 
-  if ! [[ $SELECTED_CORES =~ ^[0-9]+$ ]] || (( SELECTED_CORES < 1 )) || (( SELECTED_CORES > TOTAL_CORES )); then
+  if ! valid_cores "$SELECTED_CORES" || ((SELECTED_CORES > TOTAL_CORES)); then
     echo "Invalid input. Using default: 2 cores"
     SELECTED_CORES=2
   fi
 
   AVAILABLE_SPACE=$(df "$HOME" | awk 'NR==2 {print int($4/1024/1024)}')
-  MAX_DISK_GB=$((AVAILABLE_SPACE - 10))  # Leave 10GB for Windows image
+  MAX_DISK_GB=$((AVAILABLE_SPACE - 10)) # Leave 10GB for Windows image
 
   # Check if we have enough space for minimum
-  if (( MAX_DISK_GB < 32 )); then
+  if ((MAX_DISK_GB < 32)); then
     echo "❌ Insufficient disk space for Windows VM!"
     echo "   Available: ${AVAILABLE_SPACE}GB"
     echo "   Minimum required: 42GB (32GB disk + 10GB for Windows image)"
@@ -109,7 +470,7 @@ EOF
 
   DISK_OPTIONS=""
   for size in 32 64 128 256 512; do
-    if (( size <= MAX_DISK_GB )); then
+    if ((size <= MAX_DISK_GB)); then
       DISK_OPTIONS="$DISK_OPTIONS ${size}G"
     fi
   done
@@ -139,6 +500,10 @@ EOF
   if [[ -z $USERNAME ]]; then
     USERNAME="docker"
   fi
+  if ! valid_username "$USERNAME"; then
+    echo "Invalid username (use letters, digits, - or _, up to 20 chars). Using default: docker"
+    USERNAME="docker"
+  fi
 
   PASSWORD=$(gum input --placeholder="Password (Press enter to use default: admin)" --password --header="Enter Windows password:")
   if [[ -z $PASSWORD ]]; then
@@ -146,6 +511,11 @@ EOF
     PASSWORD_DISPLAY="(default)"
   else
     PASSWORD_DISPLAY="(user-defined)"
+  fi
+  if ! valid_password "$PASSWORD"; then
+    echo "Invalid password (printable characters, up to 64). Using default: admin"
+    PASSWORD="admin"
+    PASSWORD_DISPLAY="(default)"
   fi
 
   # Display configuration summary
@@ -170,38 +540,19 @@ EOF
     exit 1
   fi
 
-  mkdir -p $HOME/Windows
+  mkdir -p "$HOME/Windows"
 
-  # Create docker-compose.yml in user config directory
-  cat << EOF | tee "$COMPOSE_FILE" > /dev/null
-services:
-  windows:
-    image: dockurr/windows
-    container_name: omarchy-windows
-    environment:
-      VERSION: "11"
-      RAM_SIZE: "$SELECTED_RAM"
-      CPU_CORES: "$SELECTED_CORES"
-      DISK_SIZE: "$SELECTED_DISK"
-      USERNAME: "$USERNAME"
-      PASSWORD: "$PASSWORD"
-      TZ: "$(timedatectl show -p Timezone --value 2>/dev/null || echo UTC)"
-      ARGUMENTS: "-rtc base=localtime,clock=host,driftfix=slew"
-    devices:
-      - /dev/kvm
-      - /dev/net/tun
-    cap_add:
-      - NET_ADMIN
-    ports:
-      - 127.0.0.1:8006:8006
-      - 127.0.0.1:3389:3389/tcp
-      - 127.0.0.1:3389:3389/udp
-    volumes:
-      - $HOME/.windows:/storage
-      - $HOME/Windows:/shared
-    restart: "no"
-    stop_grace_period: 2m
-EOF
+  local tz
+  tz=$(timedatectl show -p Timezone --value 2>/dev/null || echo UTC)
+
+  # Write the root-owned compose from the validated settings (one prompt if
+  # sudoless Docker is off), then bring the stack up.
+  write_compose "$SELECTED_RAM" "$SELECTED_CORES" "$SELECTED_DISK" \
+    "$USERNAME" "$PASSWORD" "$tz" "$HOME/.windows" "$HOME/Windows" || {
+    echo "❌ Failed to write the Windows VM configuration."
+    exit 1
+  }
+  write_credentials "$USERNAME" "$PASSWORD"
 
   echo ""
   echo "Starting Windows VM installation..."
@@ -210,14 +561,12 @@ EOF
   echo "Monitor installation progress at: http://127.0.0.1:8006"
   echo ""
 
-  # Start docker-compose with user's config
   echo "Starting Windows VM with docker-compose..."
-  if ! docker-compose -f "$COMPOSE_FILE" up -d 2>&1; then
+  if ! priv up; then
     echo "❌ Failed to start Windows VM!"
     echo "   Common issues:"
     echo "   - Docker daemon not running: sudo systemctl start docker"
     echo "   - Port already in use: check if another VM is running"
-    echo "   - Permission issues: make sure you're in the docker group"
     exit 1
   fi
 
@@ -237,7 +586,6 @@ EOF
   echo "Once finished, launch 'Windows' via Super + Space"
   echo ""
   echo "To stop the VM: omarchy-windows-vm stop"
-  echo "To change resources: ~/.config/windows/docker-compose.yml"
   echo ""
 }
 
@@ -249,11 +597,12 @@ remove_windows() {
 
   echo "Removing Windows VM..."
 
-  docker-compose -f "$COMPOSE_FILE" down 2>/dev/null || true
+  migrate_legacy_compose 2>/dev/null || true
+  if [[ -f $COMPOSE_FILE ]]; then
+    priv remove || true
+  fi
 
-  docker rmi dockurr/windows 2>/dev/null || echo "Image already removed or not found"
-
-  rm "$HOME/.local/share/applications/windows-vm.desktop"
+  rm -f "$HOME/.local/share/applications/windows-vm.desktop"
   rm -rf "$HOME/.config/windows"
   rm -rf "$HOME/.windows"
 
@@ -267,60 +616,31 @@ launch_windows() {
     KEEP_ALIVE=true
   fi
 
-  # Check if config exists
-  if [[ ! -f $COMPOSE_FILE ]]; then
-    echo "Windows VM not configured. Please run: omarchy-windows-vm install"
-    exit 1
+  if ! migrate_legacy_compose; then
+    if [[ ! -f $COMPOSE_FILE ]]; then
+      echo "Windows VM not configured. Please run: omarchy-windows-vm install"
+      exit 1
+    fi
   fi
 
-  # Extract credentials from compose file
-  WIN_USER=$(grep "USERNAME:" "$COMPOSE_FILE" | sed 's/.*USERNAME: "\(.*\)"/\1/')
-  WIN_PASS=$(grep "PASSWORD:" "$COMPOSE_FILE" | sed 's/.*PASSWORD: "\(.*\)"/\1/')
-
-  # Use defaults if not found
+  # RDP credentials come from the private per-user file. Fall back to the compose
+  # only when it is readable (sudoless mode), reversing the writer's escaping.
+  WIN_USER=$(read_credential USERNAME) || WIN_USER=""
+  WIN_PASS=$(read_credential PASSWORD) || WIN_PASS=""
+  if [[ -z $WIN_USER || -z $WIN_PASS ]] && [[ -r $COMPOSE_FILE ]]; then
+    [[ -z $WIN_USER ]] && WIN_USER=$(unescape "$(read_compose_value USERNAME "$COMPOSE_FILE")")
+    [[ -z $WIN_PASS ]] && WIN_PASS=$(unescape "$(read_compose_value PASSWORD "$COMPOSE_FILE")")
+  fi
   [[ -z $WIN_USER ]] && WIN_USER="docker"
   [[ -z $WIN_PASS ]] && WIN_PASS="admin"
 
-  # Check if container is already running
-  CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' omarchy-windows 2>/dev/null)
-
-  if [[ $CONTAINER_STATUS != "running" ]]; then
-    echo "Starting Windows VM..."
-
-    if ! docker-compose -f "$COMPOSE_FILE" up -d 2>&1; then
-      echo "❌ Failed to start Windows VM!"
-      echo "   Try checking: omarchy-windows-vm status"
-      echo "   View logs: docker logs omarchy-windows"
-      omarchy-notification-send -u critical "Windows VM" "Failed to start Windows VM"
-      exit 1
-    fi
+  echo "Starting Windows VM (this may prompt for authorization)..."
+  if ! priv up_wait; then
+    echo "❌ Failed to start Windows VM!"
+    echo "   Try checking: omarchy-windows-vm status"
+    omarchy-notification-send -u critical "Windows VM" "Failed to start Windows VM"
+    exit 1
   fi
-
-  # docker logs keeps output across stop/start and is only cleared when the
-  # container is removed, so an unanchored grep matches "started successfully"
-  # from an earlier boot and returns immediately. Anchor the scan to the current
-  # container start, and run it even when the container was already up: the
-  # image restarts the guest in place whenever Windows reboots.
-  windows_started() {
-    local started_at
-    started_at=$(docker inspect --format='{{.State.StartedAt}}' omarchy-windows 2>/dev/null)
-    # An empty --since would drop the filter and match a stale boot again
-    [[ -n $started_at ]] || return 1
-    docker logs --since "$started_at" omarchy-windows 2>&1 | grep -qi "windows started successfully"
-  }
-
-  echo "Waiting for Windows VM to start..."
-  WAIT_COUNT=0
-  until windows_started; do
-    sleep 2
-    WAIT_COUNT=$((WAIT_COUNT + 1))
-    if (( WAIT_COUNT > 60 )); then  # 2 minutes timeout
-      echo ""
-      echo "❌ Timeout: Windows VM failed to start within 2 minutes"
-      echo "   Check logs: docker logs omarchy-windows"
-      exit 1
-    fi
-  done
 
   # Build the connection info
   if [[ $KEEP_ALIVE = "true" ]]; then
@@ -345,7 +665,8 @@ To stop: omarchy-windows-vm stop"
   # network each attempt blocks ~23s and no RDP window is ever drawn. The VM
   # authenticates against a local Windows account, so point FreeRDP at a
   # realm-less config and let it fall straight through to NTLM.
-  KRB5_CONF="$(dirname "$COMPOSE_FILE")/krb5.conf"
+  KRB5_CONF="$HOME/.config/windows/krb5.conf"
+  mkdir -p "$(dirname "$KRB5_CONF")"
   if [[ ! -f $KRB5_CONF ]]; then
     printf '[libdefaults]\n  dns_lookup_kdc = false\n  dns_lookup_realm = false\n' >"$KRB5_CONF"
   fi
@@ -356,9 +677,9 @@ To stop: omarchy-windows-vm stop"
   SCALE_PERCENT=$(echo "$HYPR_SCALE" | awk '{print int($1 * 100)}')
 
   RDP_SCALE=""
-  if (( SCALE_PERCENT >= 170 )); then
+  if ((SCALE_PERCENT >= 170)); then
     RDP_SCALE="/scale:180"
-  elif (( SCALE_PERCENT >= 130 )); then
+  elif ((SCALE_PERCENT >= 130)); then
     RDP_SCALE="/scale:140"
   fi
   # If scale is less than 130%, don't set any scale (use default 100)
@@ -370,8 +691,12 @@ To stop: omarchy-windows-vm stop"
   if [[ $KEEP_ALIVE = "false" ]]; then
     echo ""
     echo "RDP session closed. Stopping Windows VM..."
-    docker-compose -f "$COMPOSE_FILE" down
-    echo "Windows VM stopped."
+    if priv down; then
+      echo "Windows VM stopped."
+    else
+      echo "⚠️  Could not stop the Windows VM (authorization declined?)."
+      echo "   It may still be running. Stop it with: omarchy-windows-vm stop"
+    fi
   else
     echo ""
     echo "RDP session closed. Windows VM is still running."
@@ -380,24 +705,34 @@ To stop: omarchy-windows-vm stop"
 }
 
 stop_windows() {
+  migrate_legacy_compose 2>/dev/null || true
   if [[ ! -f $COMPOSE_FILE ]]; then
     echo "Windows VM not configured."
     exit 1
   fi
 
   echo "Stopping Windows VM..."
-  docker-compose -f "$COMPOSE_FILE" down
-  echo "Windows VM stopped."
+  if priv down; then
+    echo "Windows VM stopped."
+  else
+    echo "⚠️  Could not stop the Windows VM (authorization declined?). It may still be running."
+    exit 1
+  fi
 }
 
 status_windows() {
+  migrate_legacy_compose 2>/dev/null || true
   if [[ ! -f $COMPOSE_FILE ]]; then
     echo "Windows VM not configured."
     echo "To set up: omarchy-windows-vm install"
     exit 1
   fi
 
-  CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' omarchy-windows 2>/dev/null)
+  if ! CONTAINER_STATUS=$(priv status); then
+    echo "Could not query the Windows VM (authorization declined?)."
+    echo "To try again: omarchy-windows-vm status"
+    exit 1
+  fi
 
   if [[ -z $CONTAINER_STATUS ]]; then
     echo "Windows VM container not found."
@@ -443,28 +778,41 @@ show_usage() {
 
 # Main command dispatcher
 case "$1" in
-  install)
-    install_windows
-    ;;
-  remove)
-    remove_windows
-    ;;
-  launch|start)
-    launch_windows "$2"
-    ;;
-  stop|down)
-    stop_windows
-    ;;
-  status)
-    status_windows
-    ;;
-  help|--help|-h|"")
-    show_usage
-    ;;
-  *)
-    echo "Unknown command: $1" >&2
-    echo "" >&2
-    show_usage >&2
+__priv)
+  ((EUID == 0)) || {
+    echo "omarchy-windows-vm __priv must run as root" >&2
     exit 1
-    ;;
+  }
+  action="$2"
+  shift 2
+  valid_priv_action "$action" || {
+    echo "omarchy-windows-vm: unknown privileged action" >&2
+    exit 1
+  }
+  "__priv_${action}" "$@"
+  ;;
+install)
+  install_windows
+  ;;
+remove)
+  remove_windows
+  ;;
+launch | start)
+  launch_windows "$2"
+  ;;
+stop | down)
+  stop_windows
+  ;;
+status)
+  status_windows
+  ;;
+help | --help | -h | "")
+  show_usage
+  ;;
+*)
+  echo "Unknown command: $1" >&2
+  echo "" >&2
+  show_usage >&2
+  exit 1
+  ;;
 esac

@@ -1,0 +1,73 @@
+#!/bin/bash
+
+# omarchy:summary=Silence crash notifications for one program, or list what is silenced
+# omarchy:args=[--] [<program>] [on|off|toggle]
+# omarchy:examples=omarchy crash mute | omarchy crash mute hyprland | omarchy crash mute /usr/bin/hyprland | omarchy crash mute hyprland off
+
+# The flag omarchy-crash-watch reads before announcing a crash. Muting is per
+# program; Trigger > Toggle > Crash Capture is the switch for all of them.
+
+set -uo pipefail
+
+readonly MUTES="$HOME/.local/state/omarchy/toggles/crash-ignore"
+
+usage() {
+  echo "Usage: omarchy crash mute [--] [<program>] [on|off|toggle]" >&2
+}
+
+# Only regular files, because that is all the watcher honours: anything else in
+# there would be reported as muted while the crashes kept arriving. The dotted
+# glob is for a program legitimately called .hidden, and `.` and `..` fail the
+# same -f test that keeps them out.
+list() {
+  local entry found=0
+
+  for entry in "$MUTES"/* "$MUTES"/.*; do
+    [[ -f $entry ]] || continue
+    printf '%s\n' "${entry##*/}"
+    found=1
+  done
+
+  ((found)) || echo "No programs muted. Crashes all notify."
+}
+
+# A program may be named -h, and the router answers that with its own help
+# before this ever runs. `omarchy crash mute -- -h` is the way through.
+[[ ${1:-} == "--" ]] && shift
+
+if (($# == 0)); then
+  list
+  exit 0
+fi
+
+program=$1
+action=${2:-on}
+
+# The watcher keys the mute on the executable's basename, so accept the path it
+# reports as readily as the name, and reduce either the same way it does.
+program=${program##*/}
+
+if [[ -z $program || $program == "." || $program == ".." ]]; then
+  echo "Not a program name: $1" >&2
+  usage
+  exit 1
+fi
+
+case "$action" in
+  on|off|toggle) ;;
+  *)
+    echo "Not an action: $action" >&2
+    usage
+    exit 1
+    ;;
+esac
+
+omarchy-toggle "crash-ignore/$program" "$action" || exit 1
+
+# Report what is now true rather than what was asked for: the flag is what the
+# watcher reads, and a toggle does not say which way it went.
+if omarchy-toggle-enabled "crash-ignore/$program"; then
+  echo "Muted crash notifications for $program."
+else
+  echo "Crash notifications for $program are back on."
+fi
