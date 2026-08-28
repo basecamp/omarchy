@@ -1,0 +1,284 @@
+#!/bin/bash
+
+# omarchy:summary=Privileged setup and preference helper for responsive app launches
+# omarchy:hidden=true
+# omarchy:requires-sudo=true
+
+set -Eeuo pipefail
+
+source_dir=/usr/share/omarchy/default/app-launch-responsive
+core=/usr/bin/omarchy-app-launch-responsive-core
+config=/etc/omarchy-app-launch-responsive.json
+unit=/etc/systemd/system/omarchy-app-launch-responsive.service
+policy=/etc/polkit-1/actions/org.omarchy.app-launch-responsive.policy
+wants=/etc/systemd/system/multi-user.target.wants/omarchy-app-launch-responsive.service
+state_dir=/var/lib/omarchy-app-launch-responsive
+state_file="$state_dir/state.json"
+runtime_dir=/run/omarchy-app-launch-responsive
+service=omarchy-app-launch-responsive.service
+
+owned_files=("$config" "$unit" "$policy")
+owned_paths=("${owned_files[@]}" "$wants" "$state_dir" "$runtime_dir")
+
+service_active() {
+  systemctl is-active --quiet "$service"
+}
+
+service_enabled() {
+  systemctl is-enabled --quiet "$service"
+}
+
+any_artifact_exists() {
+  local path
+  for path in "${owned_paths[@]}"; do
+    [[ -e $path || -L $path ]] && return 0
+  done
+  return 1
+}
+
+assert_root_file() {
+  local path=$1 attributes
+  [[ -f $path && ! -L $path ]] || {
+    echo "Refusing unsafe artifact type: $path" >&2
+    return 1
+  }
+  attributes=$(stat -c '%u:%g:%a' "$path")
+  [[ $attributes == "0:0:644" ]] || {
+    echo "Refusing artifact with unexpected owner/mode: $path ($attributes)" >&2
+    return 1
+  }
+}
+
+assert_root_directory() {
+  local path=$1 attributes
+  [[ -d $path && ! -L $path ]] || {
+    echo "Refusing unsafe artifact type: $path" >&2
+    return 1
+  }
+  attributes=$(stat -c '%u:%g:%a' "$path")
+  [[ $attributes == "0:0:755" ]] || {
+    echo "Refusing artifact with unexpected owner/mode: $path ($attributes)" >&2
+    return 1
+  }
+}
+
+assert_wants_if_present() {
+  local ownership
+  [[ -e $wants || -L $wants ]] || return 0
+  [[ -L $wants && $(readlink -f "$wants") == "$unit" ]] || {
+    echo "Refusing unexpected service enablement link: $wants" >&2
+    return 1
+  }
+  ownership=$(stat -c '%u:%g' "$wants")
+  [[ $ownership == "0:0" ]] || {
+    echo "Refusing enablement link with unexpected ownership: $wants ($ownership)" >&2
+    return 1
+  }
+}
+
+assert_installed_shape() {
+  local path
+  for path in "${owned_files[@]}"; do assert_root_file "$path"; done
+  assert_root_directory "$state_dir"
+  assert_root_file "$state_file"
+  if [[ -e $runtime_dir || -L $runtime_dir ]]; then
+    assert_root_directory "$runtime_dir"
+  fi
+  assert_wants_if_present
+  "$core" status --json >/dev/null
+}
+
+assert_templates_current() {
+  cmp -s "$source_dir/config.json" "$config" || {
+    echo "Installed app-launch policy differs from this Omarchy version; leave it off until an updated migration is available." >&2
+    return 1
+  }
+  cmp -s "$source_dir/omarchy-app-launch-responsive.service" "$unit" || {
+    echo "Installed app-launch service differs from this Omarchy version; leave it off until an updated migration is available." >&2
+    return 1
+  }
+  cmp -s "$source_dir/org.omarchy.app-launch-responsive.policy" "$policy" || {
+    echo "Installed app-launch authorization differs from this Omarchy version; leave it off until an updated migration is available." >&2
+    return 1
+  }
+}
+
+status_field() {
+  local field=$1 document value
+  document=$("$core" status --json)
+  value=$(jq -r --arg field "$field" '
+    .[$field] | if type == "boolean" then tostring else error("not boolean") end
+  ' <<<"$document")
+  [[ $value == "true" || $value == "false" ]] || return 1
+  printf '%s\n' "$value"
+}
+
+install_templates() {
+  install -D -o root -g root -m 0644 "$source_dir/config.json" "$config"
+  install -D -o root -g root -m 0644 \
+    "$source_dir/omarchy-app-launch-responsive.service" "$unit"
+  install -D -o root -g root -m 0644 \
+    "$source_dir/org.omarchy.app-launch-responsive.policy" "$policy"
+}
+
+reload_managers() {
+  systemctl daemon-reload
+  systemctl reload polkit.service
+}
+
+rollback_incomplete_setup() {
+  local recovery_failed=false pending=false
+
+  if [[ -r $config && -e $state_file ]]; then
+    # A journal may describe live sysfs ownership. Ask the core to restore it
+    # before inspecting the resulting ownership bit; never infer that pending
+    # ownership is a reason to skip restoration.
+    "$core" set off >/dev/null 2>&1 || recovery_failed=true
+    pending=$(status_field ownership_pending 2>/dev/null) || pending=true
+  fi
+  if [[ $pending == true || $recovery_failed == true ]]; then
+    echo "CRITICAL: setup failed with unresolved rollback ownership; existing recovery files were retained" >&2
+    return 1
+  fi
+
+  systemctl disable --now "$service" >/dev/null 2>&1 || true
+  if service_active; then
+    echo "CRITICAL: setup rollback could not stop the service; no files were removed" >&2
+    return 1
+  fi
+  if [[ -r $config && -e $state_file ]]; then
+    "$core" verify-removable --json >/dev/null 2>&1 || recovery_failed=true
+  fi
+  if [[ $recovery_failed == true ]]; then
+    echo "CRITICAL: setup rollback could not prove clean ownership; no files were removed" >&2
+    return 1
+  fi
+
+  # systemctl disable owns removal of the wants link. Check it rather than
+  # deleting an unexpected symlink after the unit has stopped.
+  [[ ! -e $wants && ! -L $wants ]] || {
+    echo "CRITICAL: setup rollback left an unexpected enablement link; no files were removed" >&2
+    return 1
+  }
+  rm -f -- "$policy" "$unit" "$config"
+  rm -rf -- "$state_dir" "$runtime_dir"
+  reload_managers >/dev/null 2>&1 || {
+    echo "CRITICAL: setup files were removed but manager reload failed" >&2
+    return 1
+  }
+}
+
+fresh_enable() {
+  local setup_complete=false transaction_active=true
+
+  any_artifact_exists && {
+    echo "Refusing fresh setup because app-launch policy artifacts already exist" >&2
+    return 1
+  }
+  service_active && {
+    echo "Refusing fresh setup because the service is already active" >&2
+    return 1
+  }
+  service_enabled && {
+    echo "Refusing fresh setup because the service is already enabled" >&2
+    return 1
+  }
+
+  # This exact live-stock preflight is the final read-only operation before the
+  # first mutation. Setup is intentionally available only on battery Balanced.
+  "$core" audit-config --json "$source_dir/config.json" --require-stock
+
+  rollback_setup() {
+    local original_rc=$? pending=false
+    trap - ERR EXIT
+    [[ $transaction_active == true ]] || exit "$original_rc"
+
+    if [[ $setup_complete == true ]]; then
+      # A failed first apply is allowed to leave the fully installed backend
+      # OFF. The core transaction already attempted exact stock restoration.
+      # Retry OFF even when the first status reports pending ownership; a
+      # transient apply/rollback failure may already have cleared.
+      "$core" set off >/dev/null 2>&1 || true
+      pending=$(status_field ownership_pending 2>/dev/null) || pending=true
+      if [[ $pending == true ]]; then
+        echo "CRITICAL: first apply failed with rollback ownership pending; the complete enabled recovery backend was retained" >&2
+        exit 125
+      fi
+      echo "First apply failed; the complete backend was retained OFF at verified stock values" >&2
+      exit "$original_rc"
+    fi
+
+    if ! rollback_incomplete_setup; then
+      exit 125
+    fi
+    exit "$original_rc"
+  }
+  trap rollback_setup ERR EXIT
+
+  install_templates
+  reload_managers
+  systemctl enable --now "$service"
+  "$core" activate >/dev/null
+  assert_installed_shape
+  assert_templates_current
+  setup_complete=true
+
+  "$core" set on
+  transaction_active=false
+  trap - ERR EXIT
+}
+
+enable_existing() {
+  assert_installed_shape
+  assert_templates_current
+  systemctl enable --now "$service"
+  "$core" activate >/dev/null
+  "$core" set on
+}
+
+disable_existing() {
+  # OFF is the recovery path. Do not gate it on unit, policy, mode, service, or
+  # packaged-template drift: the root core can restore its journal directly.
+  [[ -r $config ]] || {
+    echo "Cannot restore app-launch policy because its root config is missing" >&2
+    return 1
+  }
+  "$core" set off
+}
+
+main() {
+  [[ $EUID == 0 ]] || {
+    echo "omarchy-app-launch-responsive-control must run as root" >&2
+    exit 77
+  }
+
+  # The core serializes individual reconciliations. This separate root-owned
+  # lock serializes the larger setup/start/set transaction across callers.
+  exec 9>/run/lock/omarchy-app-launch-responsive.lock
+  flock -x 9
+
+  case "$#:${1:-}:${2:-}" in
+    2:set:on)
+      if any_artifact_exists; then
+        enable_existing
+      else
+        fresh_enable
+      fi
+      ;;
+    2:set:off)
+      if any_artifact_exists; then
+        disable_existing
+      else
+        "$core" probe --json "$source_dir/config.json"
+      fi
+      ;;
+    *)
+      echo "Usage: omarchy-app-launch-responsive-control set on|off" >&2
+      exit 2
+      ;;
+  esac
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi

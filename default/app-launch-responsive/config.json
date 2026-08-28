@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "hardware": {
+    "sys_vendor": "Dell Inc.",
+    "product_name": "XPS 16 DA16260",
+    "product_sku": "0DBA",
+    "cpu_family": 6,
+    "cpu_model": 204,
+    "preserve": {
+      "hwp_dynamic_boost": "0",
+      "no_turbo": "0",
+      "min_perf_pct": "9",
+      "max_perf_pct": "100"
+    },
+    "epp_paths": [
+      "/sys/devices/system/cpu/cpufreq/policy0/energy_performance_preference",
+      "/sys/devices/system/cpu/cpufreq/policy1/energy_performance_preference",
+      "/sys/devices/system/cpu/cpufreq/policy2/energy_performance_preference",
+      "/sys/devices/system/cpu/cpufreq/policy3/energy_performance_preference",
+      "/sys/devices/system/cpu/cpufreq/policy4/energy_performance_preference",
+      "/sys/devices/system/cpu/cpufreq/policy5/energy_performance_preference",
+      "/sys/devices/system/cpu/cpufreq/policy6/energy_performance_preference",
+      "/sys/devices/system/cpu/cpufreq/policy7/energy_performance_preference",
+      "/sys/devices/system/cpu/cpufreq/policy8/energy_performance_preference",
+      "/sys/devices/system/cpu/cpufreq/policy9/energy_performance_preference",
+      "/sys/devices/system/cpu/cpufreq/policy10/energy_performance_preference",
+      "/sys/devices/system/cpu/cpufreq/policy11/energy_performance_preference",
+      "/sys/devices/system/cpu/cpufreq/policy12/energy_performance_preference",
+      "/sys/devices/system/cpu/cpufreq/policy13/energy_performance_preference",
+      "/sys/devices/system/cpu/cpufreq/policy14/energy_performance_preference",
+      "/sys/devices/system/cpu/cpufreq/policy15/energy_performance_preference"
+    ],
+    "platform_profile_realpaths": {
+      "SoC Power Slider": "/sys/devices/pci0000:00/0000:00:04.0/platform-profile/platform-profile-0/profile",
+      "dell-pc": "/sys/devices/faux/dell-pc/platform-profile/platform-profile-1/profile"
+    }
+  },
+  "providers": {
+    "intel_lpmd_config": "/etc/intel_lpmd/intel_lpmd_config_F6_M204.xml",
+    "balanced_slider_dc": "3",
+    "slider_offset_dc": "3",
+    "require_battery_aware": true
+  },
+  "stock_battery_balanced": {
+    "slider_balance": "03",
+    "slider_offset": "03",
+    "epp": "balance_power"
+  },
+  "responsive_battery_balanced": {
+    "slider_balance": "01",
+    "slider_offset": "00",
+    "epp": "balance_performance"
+  },
+  "timing": {
+    "event_debounce_ms": 1000,
+    "post_write_verify_ms": 500,
+    "periodic_reconcile_seconds": 60
+  }
+}

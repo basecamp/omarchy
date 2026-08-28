@@ -19,6 +19,25 @@ Panel {
   property string activeProfile: ""
   property int profileIndex: 0
   property bool cursorActive: false
+  property string cursorSection: "profiles"
+  property bool responsiveSupported: false
+  property bool responsiveInstalled: false
+  property bool responsiveAvailable: false
+  property bool responsiveEnabled: false
+  property bool responsiveBusy: false
+  property string responsiveHealth: "blocked"
+  property string responsiveReason: "unavailable"
+  property string _responsiveStatusOutput: ""
+  readonly property bool responsiveVisible: responsiveSupported || responsiveEnabled
+  readonly property bool responsiveCanToggle: responsiveAvailable || responsiveEnabled
+  readonly property bool responsiveNeedsReview: (
+    responsiveInstalled && responsiveHealth === "blocked"
+  ) || (
+    responsiveEnabled && (
+      responsiveReason === "provider_drift"
+        || responsiveReason === "state_stale"
+    )
+  )
   readonly property bool showPercentage: setting("showPercentage", false) === true
   // With the percentage shown the button paints a text block wider than an
   // icon, so the open-panel mark takes the painted width instead of the
@@ -45,6 +64,11 @@ Panel {
   function activateSelectedProfile() {
     if (profileIndex < 0 || profileIndex >= profiles.length) return
     setProfile(profiles[profileIndex])
+  }
+
+  function activateCurrentControl() {
+    if (cursorSection === "responsive" && responsiveVisible) toggleResponsive()
+    else if (cursorSection === "profiles") activateSelectedProfile()
   }
 
   function batteryIcon() {
@@ -138,6 +162,61 @@ Panel {
     if (!batteryProc.running) batteryProc.running = true
     if (!profilesProc.running) profilesProc.running = true
     if (!systemProc.running) systemProc.running = true
+    refreshResponsive()
+  }
+
+  function refreshResponsive() {
+    if (responsiveStatusProc.running || responsiveActionProc.running) return
+    _responsiveStatusOutput = ""
+    responsiveStatusProc.running = true
+  }
+
+  function normalizeResponsiveCursor() {
+    if (!responsiveVisible && cursorSection === "responsive") {
+      cursorSection = "profiles"
+    }
+  }
+
+  function applyResponsiveStatus(raw, exitCode) {
+    if (exitCode !== 0) {
+      responsiveSupported = false
+      responsiveAvailable = false
+      responsiveHealth = "blocked"
+      responsiveReason = "status_error"
+      normalizeResponsiveCursor()
+      return
+    }
+
+    var status = Model.parseResponsiveStatus(raw)
+    if (!status.valid) {
+      responsiveSupported = false
+      responsiveAvailable = false
+      responsiveHealth = "blocked"
+      responsiveReason = "status_invalid"
+      normalizeResponsiveCursor()
+      return
+    }
+
+    responsiveSupported = status.supported
+    responsiveInstalled = status.installed
+    responsiveAvailable = status.available
+    responsiveEnabled = status.enabled
+    responsiveHealth = status.health
+    responsiveReason = status.reason
+    normalizeResponsiveCursor()
+  }
+
+  function toggleResponsive() {
+    if (!responsiveCanToggle || responsiveBusy
+        || responsiveStatusProc.running || responsiveActionProc.running) return
+
+    responsiveBusy = true
+    responsiveActionProc.command = [
+      "omarchy-app-launch-responsive",
+      "set",
+      responsiveEnabled ? "off" : "on"
+    ]
+    responsiveActionProc.running = true
   }
 
   function updateKeyValue(raw, targetName) {
@@ -196,6 +275,7 @@ Panel {
       var idx = profiles.indexOf(activeProfile)
       profileIndex = idx >= 0 ? idx : 0
       cursorActive = false
+      cursorSection = "profiles"
     }
   }
 
@@ -226,6 +306,28 @@ Panel {
   Process {
     id: actionProc
     onExited: root.refresh()
+  }
+
+  Process {
+    id: responsiveStatusProc
+    command: ["omarchy-app-launch-responsive", "status", "--json"]
+    stdout: StdioCollector {
+      id: responsiveStatusStdout
+      waitForEnd: true
+      onStreamFinished: root._responsiveStatusOutput = text
+    }
+    onExited: function(exitCode) {
+      var output = String(responsiveStatusStdout.text || root._responsiveStatusOutput || "")
+      root.applyResponsiveStatus(output, exitCode)
+    }
+  }
+
+  Process {
+    id: responsiveActionProc
+    onExited: function() {
+      root.responsiveBusy = false
+      root.refreshResponsive()
+    }
   }
 
   Timer { interval: 5000; running: root.opened; repeat: true; onTriggered: root.refresh() }
@@ -303,11 +405,23 @@ Panel {
       id: keyCatcher
       anchors.fill: parent
       onMoveRequested: function(dx, dy) {
-        if (!root.cursorActive) { root.cursorActive = true; return }
-        if (dx !== 0) root.selectProfileByDelta(dx)
-        else if (dy !== 0) root.selectProfileByDelta(dy)
+        if (!root.cursorActive) {
+          root.cursorActive = true
+          root.cursorSection = root.responsiveVisible && dy < 0 ? "responsive" : "profiles"
+          return
+        }
+        if (!root.responsiveVisible) {
+          if (dx !== 0) root.selectProfileByDelta(dx)
+          else if (dy !== 0) root.selectProfileByDelta(dy)
+        } else if (dy < 0) {
+          root.cursorSection = "responsive"
+        } else if (dy > 0) {
+          root.cursorSection = "profiles"
+        } else if (dx !== 0 && root.cursorSection === "profiles") {
+          root.selectProfileByDelta(dx)
+        }
       }
-      onActivateRequested: if (root.cursorActive) root.activateSelectedProfile()
+      onActivateRequested: if (root.cursorActive) root.activateCurrentControl()
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
 
@@ -448,6 +562,44 @@ Panel {
           }
         }
 
+        // ---------- Faster app launches ----------
+        Column {
+          visible: root.responsiveVisible
+          width: parent.width
+          spacing: Style.space(14)
+
+          PanelSeparator {
+            width: parent.width
+            foreground: root.bar.foreground
+          }
+
+          Toggle {
+            id: responsiveToggle
+            width: parent.width
+            label: "Faster app launches"
+            description: root.responsiveNeedsReview
+              ? "Needs review"
+              : (root.responsiveAvailable || root.responsiveEnabled
+                ? "On battery in Balanced mode"
+                : (root.responsiveInstalled
+                  ? "Unplug and select Balanced to enable"
+                  : "Unplug and select Balanced to set up"))
+            checked: root.responsiveEnabled
+            enabled: root.responsiveCanToggle && !root.responsiveBusy
+            opacity: responsiveToggle.enabled ? 1.0 : 0.45
+            hasCursor: root.cursorActive && root.cursorSection === "responsive"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            onHovered: function(h) {
+              if (h) {
+                root.cursorActive = true
+                root.cursorSection = "responsive"
+              }
+            }
+            onClicked: root.toggleResponsive()
+          }
+        }
+
         // ---------- Power profile picker ----------
         PanelSeparator {
           foreground: root.bar.foreground
@@ -488,11 +640,12 @@ Panel {
                 verticalPadding: Style.spacing.controlPaddingY + Style.space(2)
                 bordered: true
                 active: root.activeProfile === modelData
-                hasCursor: root.cursorActive && root.profileIndex === index
+                hasCursor: root.cursorActive && root.cursorSection === "profiles" && root.profileIndex === index
                 onClicked: root.setProfile(modelData)
                 onHovered: function(h) {
                   if (h) {
                     root.cursorActive = true
+                    root.cursorSection = "profiles"
                     root.profileIndex = index
                   }
                 }
