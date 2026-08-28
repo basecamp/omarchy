@@ -1,0 +1,223 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the OpenCode Go usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect OpenCode Go usage into one display-ready JSON record.
+
+Limits come from OpenCode's official Go usage API (/zen/go/v1/usage),
+authenticated with the subscription API key. The key is the same regardless
+of which harness (Pi, OpenCode CLI, etc.) connects to the subscription.
+The agents panel only ever reads the JSON this prints.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "opencode-go"
+AGENT_NAME = "OpenCode Go"
+AUTH_HELP = "Run `opencode` and use /connect to set up OpenCode Go, or set OPENCODE_GO_API_KEY."
+USAGE_API_URL = "https://opencode.ai/zen/go/v1/usage"
+
+
+def number(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def local_day(value: Any) -> str:
+    if value is None:
+        return datetime.now().strftime("%Y-%m-%d")
+    if isinstance(value, (int, float)):
+        if value > 10_000_000_000:
+            value = value / 1000
+        return datetime.fromtimestamp(value).strftime("%Y-%m-%d")
+    text = str(value)
+    try:
+        if text.endswith("Z"):
+            dt = datetime.fromisoformat(text[:-1] + "+00:00")
+        else:
+            dt = datetime.fromisoformat(text)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone()
+        return dt.strftime("%Y-%m-%d")
+    except Exception:
+        return datetime.now().strftime("%Y-%m-%d")
+
+
+
+
+def api_key() -> str:
+    """Find the OpenCode Go API key from any harness's auth storage.
+
+    The OpenCode Go subscription uses the same API key regardless of which
+    harness (Pi, OpenCode CLI, Claude Code with OpenCode provider, etc.)
+    connects to it. Each harness stores auth differently, so we check
+    multiple locations:
+      1. OPENCODE_GO_API_KEY env var (highest priority)
+      2. ~/.pi/agent/auth.json (Pi harness)
+      3. ~/.local/share/opencode/auth.json (OpenCode CLI)
+      4. Any harness using XDG_DATA_HOME
+
+    Adding a new harness: append another path to the `auth_paths` list
+    in the `api_key()` function below.
+    """
+    env_key = os.environ.get("OPENCODE_GO_API_KEY", "").strip()
+    if env_key:
+        return env_key
+
+    data_home = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share"))
+    auth_paths = [
+        Path.home() / ".pi" / "agent" / "auth.json",
+        data_home / "opencode" / "auth.json",
+    ]
+
+    for auth_path in auth_paths:
+        if not auth_path.is_file():
+            continue
+        try:
+            data = json.loads(auth_path.read_text())
+            if not isinstance(data, dict):
+                continue
+            for key_name in ("opencode-go", "opencode", "openai"):
+                entry = data.get(key_name)
+                if isinstance(entry, dict) and entry.get("key"):
+                    return str(entry["key"]).strip()
+        except (json.JSONDecodeError, OSError):
+            continue
+
+    return ""
+
+
+def fetch_usage_api(key: str) -> dict[str, Any]:
+    """Fetch usage data from OpenCode's official Go API.
+
+    NOTE: Other collectors (claude, fireworks) use urllib.request directly,
+    but opencode.ai is behind Cloudflare which blocks requests based on
+    TLS fingerprinting (JA3/JA4). Python's ssl module produces a
+    fingerprint Cloudflare flags as non-browser traffic, returning 403.
+    Curl has a browser-like fingerprint and passes through. This deviation
+    from the established convention is intentional and specific to
+    Cloudflare-protected endpoints.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "curl", "-s", "-f",
+                "-H", f"Authorization: Bearer {key}",
+                "-H", "Accept: application/json",
+                "-H", "Origin: https://opencode.ai",
+                "-H", "Referer: https://opencode.ai/",
+                USAGE_API_URL,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"OpenCode Go API request failed (exit {result.returncode})")
+        data = json.loads(result.stdout)
+        return data if isinstance(data, dict) else {}
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("OpenCode Go API request timed out")
+    except json.JSONDecodeError:
+        raise RuntimeError("OpenCode Go returned an invalid response")
+
+
+def parse_limits(api_data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Parse the API response into limits format for the panel."""
+    limits = []
+    usage = api_data.get("usage", {})
+
+    rolling = usage.get("rolling", {})
+    if isinstance(rolling, dict) and rolling.get("percent") is not None:
+        limits.append({
+            "label": "Rolling (5h)",
+            "percent": float(rolling["percent"]) / 100.0,
+            "resetsAt": rolling.get("resetsAt", ""),
+        })
+
+    weekly = usage.get("weekly", {})
+    if isinstance(weekly, dict) and weekly.get("percent") is not None:
+        limits.append({
+            "label": "Weekly (7-day)",
+            "percent": float(weekly["percent"]) / 100.0,
+            "resetsAt": weekly.get("resetsAt", ""),
+        })
+
+    monthly = usage.get("monthly", {})
+    if isinstance(monthly, dict) and monthly.get("percent") is not None:
+        limits.append({
+            "label": "Monthly",
+            "percent": float(monthly["percent"]) / 100.0,
+            "resetsAt": monthly.get("resetsAt", ""),
+        })
+
+    return limits
+
+
+def base_record(**overrides: Any) -> dict[str, Any]:
+    record: dict[str, Any] = {
+        "schemaVersion": 1,
+        "id": AGENT_ID,
+        "name": AGENT_NAME,
+        "updatedAt": datetime.now(timezone.utc).isoformat(),
+        "ready": False,
+        "hasLocalStats": False,
+        "tierLabel": "Go",
+        "usageStatusText": "",
+        "authHelpText": "",
+        "limits": [],
+        "todayPrompts": 0,
+        "todaySessions": 0,
+        "todayTotalTokens": 0,
+        "todayTokensByModel": {},
+        "recentDays": [],
+        "totalPrompts": 0,
+        "totalSessions": 0,
+        "activeDays": 0,
+        "activeDates": [],
+        "modelUsage": {},
+    }
+    record.update(overrides)
+    return record
+
+
+def main() -> int:
+    # --force and --limits-only are accepted for CLI compatibility with
+    # omarchy-agent-usage-update but ignored: this collector has no local
+    # scan cache, so every run makes the same API call.
+    parser = argparse.ArgumentParser(description="Print the OpenCode Go usage record as JSON")
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--limits-only", action="store_true")
+    args = parser.parse_args()
+
+    key = api_key()
+    if not key:
+        record = base_record(usageStatusText="OpenCode Go unavailable", authHelpText=AUTH_HELP)
+        print(json.dumps(record, separators=(",", ":")))
+        return 0
+
+    try:
+        api_data = fetch_usage_api(key)
+        limits = parse_limits(api_data)
+        record = base_record(ready=True, hasLocalStats=True, limits=limits)
+    except RuntimeError as error:
+        record = base_record(usageStatusText="OpenCode Go unavailable", authHelpText=str(error))
+        print(json.dumps(record, separators=(",", ":")))
+        return 0
+
+    print(json.dumps(record, separators=(",", ":")))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
