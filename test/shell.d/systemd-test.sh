@@ -6,8 +6,13 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 service="$ROOT/default/systemd/user/bt-agent.service"
 
-grep -Fx 'ExecCondition=/usr/bin/systemctl is-active --quiet bluetooth.service' "$service" >/dev/null
-pass "bt-agent skips when bluetooth.service is inactive"
+grep -Fx 'ExecStart=/usr/bin/omarchy-bluetooth-agent-start' "$service" >/dev/null ||
+  fail "bt-agent still launches bt-agent immediately, which races USB adapters"
+pass "bt-agent waits for bluetoothd and sysfs before registering"
+
+grep -q '^ExecCondition=' "$service" &&
+  fail "ExecCondition skips the unit with no Restart= when bluetoothd is not up yet"
+pass "bt-agent does not skip permanently when bluetoothd is still starting"
 
 grep -Fx 'Restart=on-failure' "$service" >/dev/null
 pass "bt-agent still restarts after runtime failures"

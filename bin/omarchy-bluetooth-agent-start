@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# omarchy:summary=Start the BlueZ pairing agent once the adapter exists
+# omarchy:group=bluetooth
+# omarchy:hidden=true
+
+# bt-agent must be the session's default pairing agent or bluetoothctl pair
+# (used by the Omarchy Bluetooth panel) fails with "No agent available".
+# The user unit used to skip forever when /sys/class/bluetooth was missing at
+# graphical-session start. USB adapters (Broadcom on Intel MacBooks, dongles)
+# often appear a few seconds later, so wait for them, then exec bt-agent.
+# If nothing shows up, exit 0 so systemd does not restart-loop on machines
+# without Bluetooth.
+
+set -euo pipefail
+
+wait_seconds=${OMARCHY_BT_AGENT_WAIT_SECONDS:-60}
+sysfs=${OMARCHY_BT_SYSFS:-/sys/class/bluetooth}
+agent=${OMARCHY_BT_AGENT:-/usr/bin/bt-agent}
+
+deadline=$((SECONDS + wait_seconds))
+while (( SECONDS <= deadline )); do
+  if [[ -d $sysfs ]] && systemctl is-active --quiet bluetooth.service; then
+    exec "$agent" -c NoInputNoOutput
+  fi
+  if (( wait_seconds == 0 )); then
+    break
+  fi
+  sleep 1
+done
+
+echo "No Bluetooth adapter after ${wait_seconds}s; pairing agent not started" >&2
+exit 0
