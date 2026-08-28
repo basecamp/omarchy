@@ -413,8 +413,10 @@ void validate_binding_shape(const PolicyBinding &binding) {
 }
 
 std::string activation_record(const Activation &activation) {
-  std::string result = "OMARCHY-ACTIVATION-V1\n";
+  std::string result = "OMARCHY-ACTIVATION-V2\n";
   result += serialize_binding("active.", activation.active);
+  result += std::string("enabled=") + (activation.enabled ? "1\n" : "0\n");
+  result += std::string("removed=") + (activation.removed ? "1\n" : "0\n");
   result += std::string("rollback=") + (activation.rollback ? "1\n" : "0\n");
   if (activation.rollback)
     result += serialize_binding("rollback.", *activation.rollback);
@@ -423,17 +425,35 @@ std::string activation_record(const Activation &activation) {
 
 Activation parse_activation(std::string_view bytes) {
   const auto record = lines(bytes);
-  if (record.size() != 9 && record.size() != 16)
+  const bool version_one =
+      !record.empty() && record[0] == "OMARCHY-ACTIVATION-V1";
+  const bool version_two =
+      !record.empty() && record[0] == "OMARCHY-ACTIVATION-V2";
+  if ((!version_one && !version_two) ||
+      (version_one && record.size() != 9 && record.size() != 16) ||
+      (version_two && record.size() != 11 && record.size() != 18))
     throw Failure(ErrorCode::corrupt_revision,
                   "activation field count is invalid");
-  if (record[0] != "OMARCHY-ACTIVATION-V1")
-    throw Failure(ErrorCode::corrupt_revision, "activation version is invalid");
   Activation result{parse_binding(record, 1, "active."), std::nullopt};
-  if (record[8] == "rollback=1") {
-    if (record.size() != 16)
+  std::size_t rollback_offset = 8;
+  if (version_two) {
+    if (record[8] != "enabled=0" && record[8] != "enabled=1")
+      throw Failure(ErrorCode::corrupt_revision, "enabled marker is invalid");
+    if (record[9] != "removed=0" && record[9] != "removed=1")
+      throw Failure(ErrorCode::corrupt_revision, "removed marker is invalid");
+    result.enabled = record[8] == "enabled=1";
+    result.removed = record[9] == "removed=1";
+    if (result.removed && result.enabled)
+      throw Failure(ErrorCode::corrupt_revision,
+                    "removed activation cannot be enabled");
+    rollback_offset = 10;
+  }
+  if (record[rollback_offset] == "rollback=1") {
+    if (record.size() != rollback_offset + 8)
       throw Failure(ErrorCode::corrupt_revision, "rollback binding is absent");
-    result.rollback = parse_binding(record, 9, "rollback.");
-  } else if (record[8] != "rollback=0" || record.size() != 9) {
+    result.rollback = parse_binding(record, rollback_offset + 1, "rollback.");
+  } else if (record[rollback_offset] != "rollback=0" ||
+             record.size() != rollback_offset + 1) {
     throw Failure(ErrorCode::corrupt_revision, "rollback marker is invalid");
   }
   validate_binding_shape(result.active);
@@ -662,7 +682,9 @@ Result RevisionStore::activate(const PolicyBinding &binding, FaultPoint fault) {
       if (binding.generation <= old.active.generation)
         throw Failure(ErrorCode::binding_mismatch,
                       "activation generation must increase monotonically");
-      next.rollback = old.active;
+      if (old.enabled && !old.removed &&
+          old.active.plugin_id == binding.plugin_id)
+        next.rollback = old.active;
     }
     const std::string temporary = ".activation-" + std::to_string(::getpid());
     atomic_record(state.get(), temporary.c_str(), "activation",
@@ -690,6 +712,9 @@ Result RevisionStore::rebind_active(const PolicyBinding &binding,
       throw Failure(ErrorCode::binding_mismatch,
                     "cannot rebind without an active revision");
     const Activation old = parse_activation(existing);
+    if (!old.enabled || old.removed)
+      throw Failure(ErrorCode::binding_mismatch,
+                    "disabled or removed activation cannot be rebound");
     const bool exact_revision =
         binding.plugin_id == old.active.plugin_id &&
         binding.revision_sha256 == old.active.revision_sha256 &&
@@ -726,6 +751,9 @@ Result RevisionStore::rollback(FaultPoint fault) {
     if (existing.empty())
       throw Failure(ErrorCode::no_rollback, "no activation exists");
     const Activation old = parse_activation(existing);
+    if (!old.enabled || old.removed)
+      throw Failure(ErrorCode::binding_mismatch,
+                    "disabled or removed activation cannot roll back");
     if (!old.rollback)
       throw Failure(ErrorCode::no_rollback, "no rollback target exists");
     verify_metadata(metadata.get(), *old.rollback);
@@ -735,7 +763,55 @@ Result RevisionStore::rollback(FaultPoint fault) {
                     "activation generation cannot advance");
     PolicyBinding target_binding = *old.rollback;
     target_binding.generation = old.active.generation + 1;
-    const Activation next{target_binding, old.active};
+    const Activation next{target_binding, old.active, true, false};
+    const std::string temporary = ".activation-" + std::to_string(::getpid());
+    atomic_record(state.get(), temporary.c_str(), "activation",
+                  activation_record(next), fault,
+                  FaultPoint::activate_after_write,
+                  FaultPoint::activate_after_file_sync,
+                  FaultPoint::activate_after_rename);
+  });
+}
+
+Result RevisionStore::disable(FaultPoint fault) {
+  return capture([&] {
+    if (!options_.schema_v2_enabled)
+      throw Failure(ErrorCode::feature_disabled,
+                    "schema v2 disable is disabled");
+    auto root = open_store(root_, false);
+    auto state = open_directory_at(root.get(), "state");
+    const std::string existing =
+        read_small_at(state.get(), "activation", 4096, true);
+    if (existing.empty())
+      throw Failure(ErrorCode::binding_mismatch,
+                    "cannot disable without an activation");
+    auto next = parse_activation(existing);
+    next.enabled = false;
+    const std::string temporary = ".activation-" + std::to_string(::getpid());
+    atomic_record(state.get(), temporary.c_str(), "activation",
+                  activation_record(next), fault,
+                  FaultPoint::activate_after_write,
+                  FaultPoint::activate_after_file_sync,
+                  FaultPoint::activate_after_rename);
+  });
+}
+
+Result RevisionStore::mark_removed(FaultPoint fault) {
+  return capture([&] {
+    if (!options_.schema_v2_enabled)
+      throw Failure(ErrorCode::feature_disabled,
+                    "schema v2 removal is disabled");
+    auto root = open_store(root_, false);
+    auto state = open_directory_at(root.get(), "state");
+    const std::string existing =
+        read_small_at(state.get(), "activation", 4096, true);
+    if (existing.empty())
+      throw Failure(ErrorCode::binding_mismatch,
+                    "cannot remove without an activation");
+    auto next = parse_activation(existing);
+    next.enabled = false;
+    next.removed = true;
+    next.rollback.reset();
     const std::string temporary = ".activation-" + std::to_string(::getpid());
     atomic_record(state.get(), temporary.c_str(), "activation",
                   activation_record(next), fault,

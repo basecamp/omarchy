@@ -74,7 +74,8 @@ Result UpdateTransition::bind_active(
     const auto activation = lifecycle_.revisions().current();
     const auto state = lifecycle_.grants().read();
     const auto *plugin = plugin_state(state);
-    if (!activation || plugin == nullptr || !plugin->active ||
+    if (!activation || !activation->enabled || activation->removed ||
+        plugin == nullptr || !plugin->active ||
         broker->binding() != plugin->active->binding ||
         !exact_grants(broker->revision(), *plugin->active) ||
         !exact_binding(activation->active, broker->binding())) {
@@ -262,6 +263,59 @@ Result UpdateTransition::abort_candidate() {
   clear_candidate();
   return discarded.ok() ? Result{Status::accepted, {}}
                         : Result{Status::lifecycle_failed, discarded.detail};
+}
+
+Result UpdateTransition::disable() {
+  if (!active_binding_)
+    return {Status::stale, "active session is absent"};
+  const auto disabled = lifecycle_.disable();
+  if (!disabled.ok())
+    return {Status::lifecycle_failed, disabled.detail};
+  bool stopped = health_.stop(*active_binding_) == health::Status::accepted;
+  if (candidate_binding_ && candidate_attached_)
+    stopped = health_.stop(*candidate_binding_) == health::Status::accepted &&
+              stopped;
+  if (candidate_binding_) {
+    const auto discarded = lifecycle_.discard(plugin_);
+    active_binding_.reset();
+    active_runtime_.reset();
+    clear_candidate();
+    if (!discarded.ok())
+      return {Status::lifecycle_failed, discarded.detail};
+  } else {
+    active_binding_.reset();
+    active_runtime_.reset();
+    clear_candidate();
+  }
+  return stopped
+             ? Result{Status::accepted, {}}
+             : Result{
+                   Status::health_failed,
+                   "disable persisted but worker teardown was not confirmed"};
+}
+
+Result UpdateTransition::remove() {
+  if (!active_binding_)
+    return {Status::stale, "active session is absent"};
+  const auto binding = *active_binding_;
+  const auto disabled = lifecycle_.disable();
+  if (!disabled.ok())
+    return {Status::lifecycle_failed, disabled.detail};
+  bool stopped = health_.stop(binding) == health::Status::accepted;
+  if (candidate_binding_ && candidate_attached_)
+    stopped = health_.stop(*candidate_binding_) == health::Status::accepted &&
+              stopped;
+  active_binding_.reset();
+  active_runtime_.reset();
+  clear_candidate();
+  const auto removed = lifecycle_.remove(plugin_);
+  if (!removed.ok())
+    return {Status::lifecycle_failed, removed.detail};
+  return stopped
+             ? Result{Status::accepted, {}}
+             : Result{
+                   Status::health_failed,
+                   "removal persisted but worker teardown was not confirmed"};
 }
 
 runtime::RevocationResult

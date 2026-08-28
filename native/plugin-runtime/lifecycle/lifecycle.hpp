@@ -62,6 +62,11 @@ public:
          revision::FaultPoint fault = revision::FaultPoint::none);
   [[nodiscard]] Result
   rollback(revision::FaultPoint fault = revision::FaultPoint::none);
+  [[nodiscard]] Result
+  disable(revision::FaultPoint fault = revision::FaultPoint::none);
+  [[nodiscard]] Result
+  remove(const permission::PluginId &plugin,
+         revision::FaultPoint fault = revision::FaultPoint::none);
   [[nodiscard]] RevocationOutcome
   revoke(const permission::PluginId &plugin,
          const permission::CapabilityKey &capability,

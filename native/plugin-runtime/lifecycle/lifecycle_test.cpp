@@ -283,13 +283,52 @@ int main() {
               !only_plugin(recovered_manager.grants().read()).candidate,
           "failed candidate discard changed active state");
 
+  require(recovered_manager.disable(revision::FaultPoint::activate_after_write)
+                      .code == lifecycle::ErrorCode::store_failed &&
+              recovered_manager.revisions().current()->enabled,
+          "pre-commit disable fault changed durable launch intent");
+  require(recovered_manager.remove(permission::PluginId("org.example.other"))
+                      .code == lifecycle::ErrorCode::binding_mismatch &&
+              recovered_manager.revisions().current()->enabled,
+          "mismatched removal disabled another plugin");
+  require(recovered_manager.disable().ok(), "durable disable failed");
+  require(recovered_manager.rollback().code ==
+              lifecycle::ErrorCode::store_failed,
+          "rollback silently re-enabled a disabled activation");
+  lifecycle::LifecycleManager disabled_restart(revisions, grants);
+  require(disabled_restart.recover().ok() &&
+              disabled_restart.revisions().current() &&
+              !disabled_restart.revisions().current()->enabled &&
+              !disabled_restart.revisions().current()->removed,
+          "restart recovered a disabled plugin as launchable");
+  require(disabled_restart.remove(plugin).ok(),
+          "disabled plugin removal failed");
+  lifecycle::LifecycleManager removed_restart(revisions, grants);
+  const auto removed_activation = removed_restart.revisions().current();
+  const auto removed_grants = removed_restart.grants().read();
+  require(removed_restart.recover().ok() && removed_activation &&
+              !removed_activation->enabled && removed_activation->removed &&
+              removed_grants.plugins.empty() &&
+              removed_grants.decisions.empty(),
+          "restart resurrected removed grant or launch authority");
+
+  const auto reinstall_root =
+      source(temporary.path(), "source-reinstall", "reinstall");
+  const auto reinstall_identity = identity(reinstall_root);
+  const auto reinstall = removed_restart.stage(reinstall_root, "plugin",
+                                               reinstall_identity.tree_sha256);
+  require(reinstall.result.ok() && reinstall.binding &&
+              reinstall.binding->generation >
+                  removed_activation->active.generation,
+          "reinstall did not require a fresh post-removal generation");
+
   const auto legacy_root = temporary.path() / "legacy-root";
   std::filesystem::create_directories(legacy_root / "legacy");
   write_file(
       legacy_root / "legacy/manifest.json",
       R"({"schemaVersion":1,"id":"legacy.clock","name":"Legacy clock","version":"1.0.0","kinds":["barWidget"],"entryPoints":{"barWidget":"Clock.qml"}})");
   const auto legacy =
-      recovered_manager.stage(legacy_root, "legacy", std::string(64, '0'));
+      removed_restart.stage(legacy_root, "legacy", std::string(64, '0'));
   require(legacy.result.code == lifecycle::ErrorCode::unsafe_legacy_schema,
           "legacy schema lost its explicit unsafe classification");
 

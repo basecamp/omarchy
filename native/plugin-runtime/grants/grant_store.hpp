@@ -117,6 +117,7 @@ public:
   void activate_candidate(const permission::ActivationBinding &binding);
   void rollback_to(const permission::ActivationBinding &binding);
   void discard_candidate(const permission::PluginId &plugin);
+  void remove_plugin(const permission::PluginId &plugin);
 
   [[nodiscard]] const std::filesystem::path &directory() const {
     return directory_;

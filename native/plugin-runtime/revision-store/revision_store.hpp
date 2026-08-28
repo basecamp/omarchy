@@ -49,6 +49,8 @@ struct PolicyBinding {
 struct Activation {
   PolicyBinding active;
   std::optional<PolicyBinding> rollback;
+  bool enabled = true;
+  bool removed = false;
 
   bool operator==(const Activation &) const = default;
 };
@@ -82,6 +84,8 @@ public:
   [[nodiscard]] Result rebind_active(const PolicyBinding &binding,
                                      FaultPoint fault = FaultPoint::none);
   [[nodiscard]] Result rollback(FaultPoint fault = FaultPoint::none);
+  [[nodiscard]] Result disable(FaultPoint fault = FaultPoint::none);
+  [[nodiscard]] Result mark_removed(FaultPoint fault = FaultPoint::none);
   [[nodiscard]] Result prune(std::size_t maximum_revisions);
   [[nodiscard]] std::optional<Activation>
   current(Result *status = nullptr) const;

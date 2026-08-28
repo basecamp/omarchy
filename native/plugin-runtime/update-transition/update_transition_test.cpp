@@ -523,12 +523,106 @@ void promotion_failure_rolls_back_without_authority() {
       "rollback");
 }
 
+void disable_and_remove_survive_host_restart() {
+  {
+    TemporaryDirectory temporary;
+    const auto revision_path = temporary.path() / "revisions";
+    const auto grant_path = temporary.path() / "grants";
+    const auto audit_path = temporary.path() / "audit";
+    lifecycle::LifecycleManager lifecycle(revision_path, grant_path);
+    audit::AuditStore audit_store(audit_path, {.maximum_records = 128});
+    health::HealthSupervisor health({}, audit_store);
+    const auto root = source(temporary.path(), "disable", false);
+    const auto installed = install_initial(lifecycle, root, identity(root));
+    transition::UpdateTransition update(
+        lifecycle, health, permissions::PluginId("org.example.status"));
+    auto probe = std::make_shared<Probe>();
+    require(update
+                .bind_active(worker(installed.binding, probe),
+                             broker_runtime(installed, audit_store), 10)
+                .ok(),
+            "disable fixture could not bind active worker");
+    const auto candidate_root =
+        source(temporary.path(), "disable-candidate", true);
+    const auto candidate_identity = identity(candidate_root);
+    require(
+        update.stage(candidate_root, "plugin", candidate_identity.tree_sha256)
+                .result.ok() &&
+            update
+                .decide_candidate(key("storage.private"), std::nullopt,
+                                  permissions::UserDecision::grant, 2)
+                .ok() &&
+            update
+                .decide_candidate(key("service.fake-status"), std::nullopt,
+                                  permissions::UserDecision::grant, 3)
+                .ok(),
+        "disable fixture could not review candidate");
+    const auto candidate = *only_plugin(lifecycle.grants().read()).candidate;
+    auto candidate_probe = std::make_shared<Probe>();
+    require(update.prepare_candidate(worker(candidate.binding, candidate_probe),
+                                     broker_runtime(candidate, audit_store), 11)
+                    .ok() &&
+                update.disable().ok() && probe->terminations == 1 &&
+                candidate_probe->terminations == 1,
+            "disable did not persist before active and candidate teardown");
+    require(lifecycle.revisions().current() &&
+                !lifecycle.revisions().current()->enabled,
+            "disable left a launchable activation");
+
+    lifecycle::LifecycleManager restarted_lifecycle(revision_path, grant_path);
+    audit::AuditStore restarted_audit(audit_path, {.maximum_records = 128});
+    health::HealthSupervisor restarted_health({}, restarted_audit);
+    transition::UpdateTransition restarted(
+        restarted_lifecycle, restarted_health,
+        permissions::PluginId("org.example.status"));
+    auto stale_probe = std::make_shared<Probe>();
+    require(restarted.bind_active(worker(installed.binding, stale_probe),
+                                  broker_runtime(installed, restarted_audit),
+                                  20)
+                        .status == transition::Status::stale &&
+                stale_probe->terminations == 1,
+            "host restart rebound disabled authority");
+  }
+
+  {
+    TemporaryDirectory temporary;
+    const auto revision_path = temporary.path() / "revisions";
+    const auto grant_path = temporary.path() / "grants";
+    const auto audit_path = temporary.path() / "audit";
+    lifecycle::LifecycleManager lifecycle(revision_path, grant_path);
+    audit::AuditStore audit_store(audit_path, {.maximum_records = 128});
+    health::HealthSupervisor health({}, audit_store);
+    const auto root = source(temporary.path(), "remove", false);
+    const auto installed = install_initial(lifecycle, root, identity(root));
+    transition::UpdateTransition update(
+        lifecycle, health, permissions::PluginId("org.example.status"));
+    auto probe = std::make_shared<Probe>();
+    require(update.bind_active(worker(installed.binding, probe),
+                               broker_runtime(installed, audit_store), 10)
+                    .ok() &&
+                update.remove().ok() && probe->terminations == 1,
+            "remove did not revoke live worker authority");
+    require(lifecycle.revisions().current() &&
+                lifecycle.revisions().current()->removed &&
+                !lifecycle.revisions().current()->enabled &&
+                lifecycle.grants().read().plugins.empty(),
+            "remove retained launch or grant authority");
+
+    lifecycle::LifecycleManager restarted_lifecycle(revision_path, grant_path);
+    require(restarted_lifecycle.recover().ok() &&
+                restarted_lifecycle.revisions().current()->removed &&
+                restarted_lifecycle.grants().read().plugins.empty(),
+            "restart resurrected removed authority");
+  }
+}
+
 } // namespace
 
 int main() {
   try {
     expanding_update_and_live_revocation();
     promotion_failure_rolls_back_without_authority();
+    disable_and_remove_survive_host_restart();
   } catch (const std::exception &error) {
     std::cerr << "update transition test failed: " << error.what() << '\n';
     return EXIT_FAILURE;

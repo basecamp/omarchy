@@ -263,6 +263,8 @@ Result LifecycleManager::recover() {
     return failure(ErrorCode::recovery_failed, current_status.detail);
   if (!current)
     return {};
+  if (!current->enabled)
+    return {};
   try {
     const auto state = grants_.read();
     const permission::PluginId plugin(current->active.plugin_id);
@@ -423,6 +425,38 @@ Result LifecycleManager::rollback(revision::FaultPoint fault) {
              : failure(ErrorCode::store_failed, rolled_back.detail.empty()
                                                     ? reconciled.detail
                                                     : rolled_back.detail);
+}
+
+Result LifecycleManager::disable(revision::FaultPoint fault) {
+  const auto recovered = recover();
+  if (!recovered.ok())
+    return recovered;
+  const auto disabled = revisions_.disable(fault);
+  const auto current = revisions_.current();
+  if (current && !current->enabled)
+    return {};
+  return failure(ErrorCode::store_failed, disabled.detail);
+}
+
+Result LifecycleManager::remove(const permission::PluginId &plugin,
+                                revision::FaultPoint fault) {
+  const auto current = revisions_.current();
+  if (!current || current->active.plugin_id != plugin.view())
+    return failure(ErrorCode::binding_mismatch,
+                   "removal plugin does not match the activation");
+  const auto disabled = disable(fault);
+  if (!disabled.ok())
+    return disabled;
+  const auto marked = revisions_.mark_removed();
+  const auto marked_current = revisions_.current();
+  if (!marked_current || !marked_current->removed)
+    return failure(ErrorCode::store_failed, marked.detail);
+  try {
+    grants_.remove_plugin(plugin);
+    return {};
+  } catch (const std::exception &error) {
+    return failure(ErrorCode::store_failed, error.what());
+  }
 }
 
 RevocationOutcome

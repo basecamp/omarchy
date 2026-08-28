@@ -251,6 +251,18 @@ void test_activation_crash_and_exact_binding() {
   require(store.current()->active == rolled_back_first &&
               store.current()->rollback == second_binding,
           "rollback must preserve policy identity with a fresh generation");
+  require(store.disable().ok() && store.current() &&
+              !store.current()->enabled && !store.current()->removed,
+          "disable marker did not persist");
+  RevisionStore disabled_restart(temporary.path() / "store",
+                                 {.schema_v2_enabled = true});
+  require(disabled_restart.recover().ok() && disabled_restart.current() &&
+              !disabled_restart.current()->enabled,
+          "disabled activation became enabled after recovery");
+  require(disabled_restart.mark_removed().ok() &&
+              disabled_restart.current()->removed &&
+              !disabled_restart.current()->rollback,
+          "removal marker retained launch or rollback authority");
 }
 
 void test_retention_protects_active_and_rollback() {

@@ -78,6 +78,8 @@ public:
   [[nodiscard]] Result activate(omarchy::plugins::store::FaultPoint fault =
                                     omarchy::plugins::store::FaultPoint::none);
   [[nodiscard]] Result abort_candidate();
+  [[nodiscard]] Result disable();
+  [[nodiscard]] Result remove();
   [[nodiscard]] runtime::RevocationResult
   revoke(const permissions::CapabilityKey &capability);
 

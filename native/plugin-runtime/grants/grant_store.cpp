@@ -1299,6 +1299,24 @@ void GrantStore::discard_candidate(const permission::PluginId &plugin_id) {
   });
 }
 
+void GrantStore::remove_plugin(const permission::PluginId &plugin_id) {
+  update_store(directory_, [&](StoreState &state) {
+    require(state.mutation_sequence < std::numeric_limits<std::uint64_t>::max(),
+            "grant store mutation sequence exhausted");
+    const auto old_size = state.plugins.size();
+    std::erase_if(state.plugins, [&](const auto &plugin) {
+      return plugin.plugin == plugin_id;
+    });
+    require(state.plugins.size() + 1 == old_size,
+            "plugin grant state does not exist");
+    std::erase_if(state.decisions, [&](const auto &decision) {
+      return decision.plugin == plugin_id;
+    });
+    ++state.mutation_sequence;
+    return 0;
+  });
+}
+
 RequestBundle make_bundle(std::uint16_t plugin_schema_version,
                           permission::PluginId plugin,
                           permission::Digest revision,
