@@ -80,7 +80,7 @@ If you'd rather they were always visible, set `alwaysShow` to `true` on the widg
 
 The bar configures itself. You don't have to open a config file to move things.
 
-Grab an empty patch of the bar around the center and drag it toward another screen edge, and the bar moves there — left, right, top, or bottom all work, and every widget adapts (vertical bars fall back to compact icon-only forms). A click-and-hold starts the same drag. Double-left-click that same empty space to toggle transparency. And drag any widget to reorder it or throw it into another section.
+Grab an empty patch of the bar around the center and drag it toward another screen edge, and the bar moves there — left, right, top, or bottom all work, and every widget adapts (vertical bars fall back to compact icon-only forms). A click-and-hold starts the same drag. Double-left-click that same empty space to toggle transparency. And drag any widget to reorder it or throw it into another section. The system tray is a drop target too: release a widget over it and it moves inside the tray's slide-out drawer, where it keeps working exactly as before — drag it back out whenever you want it on the bar full-time. To move the tray itself, drag its expander arrow.
 
 If you'd rather pick from a menu, **Style → Menu Bar** has both position and transparency.
 
