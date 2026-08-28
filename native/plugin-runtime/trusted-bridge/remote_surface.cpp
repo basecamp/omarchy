@@ -207,6 +207,22 @@ bool RemotePluginSurface::submitHostRoutedPointerInput(
   return true;
 }
 
+bool RemotePluginSurface::submitTransientFocus(
+    const surface::FocusEvent &event) {
+  if (!state_ || !focus_gate_ || transport_ == nullptr ||
+      focus_gate_->accept(event,
+                          state_->phase() == surface::SurfacePhase::active) !=
+          surface::InputValidation::accepted) {
+    fail(InspectionFailure::input_rejected, false);
+    return false;
+  }
+  if (!transport_->submit_focus(event)) {
+    fail(InspectionFailure::transport_failed, true);
+    return false;
+  }
+  return true;
+}
+
 bool RemotePluginSurface::submitFocus(const surface::FocusEvent &event) {
   if (!state_ || !focus_gate_ || transport_ == nullptr ||
       focus_gate_->accept(event,

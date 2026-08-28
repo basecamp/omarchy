@@ -12,6 +12,8 @@
 #include <string>
 #include <string_view>
 
+class QObject;
+
 namespace omarchy::plugin_runtime::worker {
 
 namespace surface = omarchy::plugin_runtime::surface;
@@ -39,6 +41,7 @@ enum class RuntimeFailure {
   stale_surface,
   invalid_transition,
   invalid_input,
+  invalid_runtime_api,
 };
 
 struct RuntimeResult {
@@ -64,6 +67,7 @@ public:
 
   [[nodiscard]] RuntimeResult load_manifest_entry();
   [[nodiscard]] RuntimeResult load_entry(std::string entry_path);
+  [[nodiscard]] RuntimeResult bind_runtime_api(QObject &runtime_api);
   [[nodiscard]] RuntimeResult
   select_software_profile(const surface::ProfileOffer &offer);
   [[nodiscard]] RuntimeResult

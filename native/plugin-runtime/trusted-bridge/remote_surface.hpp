@@ -56,6 +56,7 @@ public:
   bool beginDestroy();
   bool submitInput(const surface::InputEvent &event);
   bool submitHostRoutedPointerInput(const surface::InputEvent &event);
+  bool submitTransientFocus(const surface::FocusEvent &event);
   bool submitFocus(const surface::FocusEvent &event);
 
   void paint(QPainter *painter) override;

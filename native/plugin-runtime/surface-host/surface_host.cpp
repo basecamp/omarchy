@@ -354,33 +354,89 @@ bool HostSurface::route_input(const surface::InputEvent &event,
       event.kind == surface::InputKind::pointer_button) {
     if (event.state == pressed) {
       if (!trusted_gesture || captured_pointer_button_ != 0 ||
-          !bridge_item_.submitHostRoutedPointerInput(event))
+          focus_sequence_ == std::numeric_limits<std::uint64_t>::max())
         return false;
+      ++focus_sequence_;
+      if (!bridge_item_.submitTransientFocus({.surface = allocation_.surface,
+                                              .sequence = focus_sequence_,
+                                              .focused = true})) {
+        close();
+        return false;
+      }
+      transient_focus_active_ = true;
+      if (!bridge_item_.submitHostRoutedPointerInput(event)) {
+        close();
+        return false;
+      }
       captured_pointer_button_ = event.code;
       return true;
     }
     if (event.state != released || trusted_gesture ||
-        captured_pointer_button_ != event.code ||
-        !bridge_item_.submitHostRoutedPointerInput(event))
+        captured_pointer_button_ != event.code)
       return false;
+    if (!bridge_item_.submitHostRoutedPointerInput(event)) {
+      close();
+      return false;
+    }
     captured_pointer_button_ = 0;
+    if (focus_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
+      close();
+      return false;
+    }
+    ++focus_sequence_;
+    if (!bridge_item_.submitTransientFocus({.surface = allocation_.surface,
+                                            .sequence = focus_sequence_,
+                                            .focused = false})) {
+      close();
+      return false;
+    }
+    transient_focus_active_ = false;
     return true;
   }
   if (policy_.keyboard_focus == KeyboardFocusPolicy::none &&
       event.kind == surface::InputKind::touch) {
     if (event.state == 1) {
       if (!trusted_gesture || touch_active_ || event.active_touch_points == 0 ||
-          !bridge_item_.submitHostRoutedPointerInput(event))
+          focus_sequence_ == std::numeric_limits<std::uint64_t>::max())
         return false;
+      ++focus_sequence_;
+      if (!bridge_item_.submitTransientFocus({.surface = allocation_.surface,
+                                              .sequence = focus_sequence_,
+                                              .focused = true})) {
+        close();
+        return false;
+      }
+      transient_focus_active_ = true;
+      if (!bridge_item_.submitHostRoutedPointerInput(event)) {
+        close();
+        return false;
+      }
       touch_active_ = event.active_touch_points != 0;
       return true;
     }
     if (trusted_gesture || !touch_active_ ||
-        (event.state == 2 && event.active_touch_points == 0) ||
-        !bridge_item_.submitHostRoutedPointerInput(event))
+        (event.state == 2 && event.active_touch_points == 0))
       return false;
+    if (!bridge_item_.submitHostRoutedPointerInput(event)) {
+      close();
+      return false;
+    }
     if (event.state == 3 || event.active_touch_points == 0)
       touch_active_ = false;
+    if (!touch_active_) {
+      if (focus_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
+        close();
+        return false;
+      }
+      ++focus_sequence_;
+      if (!bridge_item_.submitTransientFocus({.surface = allocation_.surface,
+                                              .sequence = focus_sequence_,
+                                              .focused = false})) {
+        close();
+        return false;
+      }
+      transient_focus_active_ = false;
+    }
     return true;
   }
   if (trusted_gesture) {
@@ -432,6 +488,18 @@ bool HostSurface::set_locked(bool locked) {
     touch_active_ = false;
     if (render_session_.phase() == render_session::Phase::active) {
       bool focus_cleared = true;
+      if (transient_focus_active_) {
+        if (focus_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
+          focus_cleared = false;
+        } else {
+          ++focus_sequence_;
+          focus_cleared =
+              bridge_item_.submitTransientFocus({.surface = allocation_.surface,
+                                                 .sequence = focus_sequence_,
+                                                 .focused = false});
+          transient_focus_active_ = false;
+        }
+      }
       if (bridge_item_.surfaceFocused()) {
         if (focus_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
           focus_cleared = false;
@@ -479,6 +547,7 @@ void HostSurface::peer_lost() {
   render_session_.peer_lost();
   captured_pointer_button_ = 0;
   touch_active_ = false;
+  transient_focus_active_ = false;
   terminated_ = true;
 }
 
@@ -488,6 +557,7 @@ void HostSurface::close() {
   render_session_.close();
   captured_pointer_button_ = 0;
   touch_active_ = false;
+  transient_focus_active_ = false;
   terminated_ = true;
 }
 

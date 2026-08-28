@@ -147,6 +147,7 @@ private:
   std::uint64_t pace_drops_ = 0;
   std::uint32_t captured_pointer_button_ = 0;
   bool touch_active_ = false;
+  bool transient_focus_active_ = false;
   bool locked_ = false;
   bool terminated_ = false;
 };

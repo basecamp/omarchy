@@ -313,11 +313,15 @@ void pomodoro_full_region_and_host_inspector() {
           "input reached a surface before D2 allocation acknowledgement");
   harness.negotiate();
   const auto surface_key = harness.hosted->allocation().surface;
-  require(harness.hosted->route_input(pointer(surface_key, 1, 10, 10), true) &&
-              harness.input_sink->headers.size() == 1 &&
-              !harness.hosted->inspection().focused &&
-              !harness.hosted->route_input(key(surface_key, 2), false),
-          "bar gesture routing or keyboard denial failed");
+  require(
+      harness.hosted->route_input(pointer(surface_key, 1, 10, 10), true) &&
+          harness.hosted->route_input(
+              pointer(surface_key, 2, 10, 10, surface::ButtonState::released),
+              false) &&
+          harness.input_sink->headers.size() == 4 &&
+          !harness.hosted->inspection().focused &&
+          !harness.hosted->route_input(key(surface_key, 3), false),
+      "bar gesture routing or keyboard denial failed");
   const auto snapshot = harness.hosted->inspection();
   require(snapshot.plugin_id == "org.omarchy.fixture.pomodoro" &&
               snapshot.revision_digest == kRevision &&
@@ -368,7 +372,19 @@ void pet_dynamic_regions_and_lock_denial() {
           harness.hosted->route_input(touch(surface_key, 4, 2, 1), false) &&
           harness.hosted->route_input(touch(surface_key, 5, 3, 0), false) &&
           !harness.hosted->route_input(key(surface_key, 6), false) &&
-          harness.input_sink->headers.size() == 5 &&
+          harness.input_sink->headers.size() == 9 &&
+          harness.input_sink->headers[0].message_type ==
+              static_cast<std::uint16_t>(surface::RenderMessageType::focus) &&
+          harness.input_sink->headers[1].message_type ==
+              static_cast<std::uint16_t>(surface::RenderMessageType::input) &&
+          harness.input_sink->headers[2].message_type ==
+              static_cast<std::uint16_t>(surface::RenderMessageType::input) &&
+          harness.input_sink->headers[3].message_type ==
+              static_cast<std::uint16_t>(surface::RenderMessageType::focus) &&
+          harness.input_sink->headers[4].message_type ==
+              static_cast<std::uint16_t>(surface::RenderMessageType::focus) &&
+          harness.input_sink->headers[8].message_type ==
+              static_cast<std::uint16_t>(surface::RenderMessageType::focus) &&
           !harness.hosted->inspection().focused,
       "pet input escaped or failed its host-clipped dynamic region");
   std::vector<host::InputRegion> excessive(host::kMaximumInputRegions + 1,
@@ -391,6 +407,28 @@ void pet_dynamic_regions_and_lock_denial() {
               harness.hosted->set_locked(false) &&
               harness.hosted->inspection().visible,
           "lock screen did not suspend visibility, focus, and input");
+}
+
+void transient_pointer_transport_failure_closes_surface() {
+  Harness harness(
+      host::parse_named_surface_policy(fixture_manifest("pet"), "pet"), 52, 320,
+      180);
+  harness.negotiate();
+  const auto surface_key = harness.hosted->allocation().surface;
+  const std::array pet_region{
+      host::InputRegion{.x = 20, .y = 104, .width = 76, .height = 58}};
+  require(
+      harness.hosted->set_input_regions(pet_region) &&
+          harness.hosted->route_input(pointer(surface_key, 1, 30, 120), true),
+      "transient pointer capture did not start");
+  harness.input_sink->accept = false;
+  require(!harness.hosted->route_input(
+              pointer(surface_key, 2, 30, 120, surface::ButtonState::released),
+              false) &&
+              harness.hosted->inspection().terminated &&
+              !harness.hosted->inspection().visible &&
+              !harness.item.connected(),
+          "failed transient release retained pixels or input authority");
 }
 
 void panel_gesture_focus_and_failure_distinction() {
@@ -600,6 +638,7 @@ int main(int argc, char **argv) {
     product_policy_mapping();
     pomodoro_full_region_and_host_inspector();
     pet_dynamic_regions_and_lock_denial();
+    transient_pointer_transport_failure_closes_surface();
     panel_gesture_focus_and_failure_distinction();
     pacing_budget_and_clock_failure();
     lock_negotiation_races_and_atomic_failure();

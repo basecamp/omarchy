@@ -145,7 +145,7 @@ public:
       const auto relative = normalized.lexically_relative(qt_root_);
       if (!relative.empty()) {
         const auto first = relative.begin()->string();
-        if (first == "Qt" || first == "QtQuick")
+        if (first == "Qt" || first == "QtQml" || first == "QtQuick")
           return url;
       }
     }
@@ -283,6 +283,7 @@ struct WorkerRuntime::Impl {
   std::uint64_t frame_sequence = 0;
   std::uint32_t next_slot = 0;
   bool dirty = true;
+  bool runtime_api_bound = false;
   std::string last_error;
 };
 
@@ -338,6 +339,20 @@ RuntimeResult WorkerRuntime::load_manifest_entry() {
   if (!entry.isString())
     return failure(RuntimeFailure::manifest_invalid, "runtime.qml is required");
   return load_entry(entry.toString().toStdString());
+}
+
+RuntimeResult WorkerRuntime::bind_runtime_api(QObject &runtime_api) {
+  if (implementation_->runtime_api_bound ||
+      implementation_->root_item != nullptr ||
+      implementation_->component != nullptr) {
+    return failure(
+        RuntimeFailure::invalid_runtime_api,
+        "trusted runtime API must bind exactly once before QML load");
+  }
+  implementation_->engine.rootContext()->setContextProperty(
+      QStringLiteral("runtime"), &runtime_api);
+  implementation_->runtime_api_bound = true;
+  return {};
 }
 
 RuntimeResult WorkerRuntime::load_entry(std::string entry_path) {

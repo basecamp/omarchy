@@ -23,7 +23,7 @@ The worker accepts only schema-v2 `runtime.qml` entries that are normalized rela
 - regular files and directories only, with symlinks and special files rejected;
 - URL imports cannot be absolute, remote, `file:`, or `qrc:` references;
 - the QML engine import path contains only the plugin root, the installed Qt module root, and Qt's built-in QML resource root;
-- intercepted filesystem module/resource loads are confined to the plugin tree or the `Qt` and `QtQuick` portions of the Qt module root;
+- intercepted filesystem module/resource loads are confined to the plugin tree or the `Qt`, `QtQml`, and `QtQuick` portions of the Qt module root;
 - component construction must finish synchronously, the root must be a `QQuickItem`, and the combined QObject/visual-item graph is capped at 4,096 objects both after construction and before each frame.
 
 The source checks are safe from post-check substitution only because B5 mounts the selected content-addressed revision read-only. They are not a replacement for B1 identity validation or B5 mount immutability.
