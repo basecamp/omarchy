@@ -12,7 +12,7 @@ The production `LauncherWorkerControl` owns the C7 worker object. Its liveness q
 
 The default policy permits at most 64 workers, 32 in-flight requests per worker and 256 globally, four surfaces per worker and 64 globally, 65,576 bytes per admitted request, 512 MiB memory, 64 MiB scratch, and 16 tasks. Policy construction rejects zero or representationally unsafe limits and cannot exceed the component's fixed arrays.
 
-Request admission requires a ready worker, exact activation identity, a nonzero unique correlation, a bounded payload, and an overflow-safe deadline. Completion must name the exact live correlation. Surface admission stores the exact nonzero B4 surface ID and requires `SurfaceKey.generation == ActivationBinding.generation`; duplicate opens, wrong-generation opens/closes, and unknown closes cannot alter quota. Teardown clears every exact request and surface entry before authority can be replaced.
+Request admission requires a ready worker, exact activation identity, a nonzero unique correlation, a bounded payload, an overflow-safe deadline, and capacity in a fixed trusted-monotonic request-start window for that exact worker binding. Sequential completion cannot evade the rate budget. Crossing the configured rate or moving the trusted clock backward tears down the worker, enters the existing audited restart/backoff policy, and occurs before downstream dispatch. Completion must name the exact live correlation. Surface admission stores the exact nonzero B4 surface ID and requires `SurfaceKey.generation == ActivationBinding.generation`; duplicate opens, wrong-generation opens/closes, and unknown closes cannot alter quota. Teardown clears every exact request and surface entry before authority can be replaced.
 
 C7 and B5 remain the kernel enforcement owners for cgroup memory/tasks/CPU/IO ceilings, rlimits, namespace isolation, and bounded output pipes. D5 accepts trusted cgroup/scratch samples and tears down on excess. C7's pipe backpressure is the current output-memory bound; a rate-limited log drain requires a host event-loop sink and is intentionally not fabricated in this isolated component.
 
@@ -28,7 +28,7 @@ If C7 cannot confirm teardown, the supervisor clears all live counters but retai
 
 ## Evidence
 
-`plugin-supervisor-health` covers the readiness gate, exact identity, per-worker and global request/surface bounds, duplicate and stale surface keys, oversized requests, request timeout cleanup, stale correlations, pidfd-reported worker exit, exponential restart backoff, revision-scoped disable, resource excess, clean stop recovery, unresolved-worker recovery, redacted lifecycle audit, audit failure, and uncertain teardown quarantine. The latter proves counters reach zero while replacement admission remains impossible and the retained worker is not silently forgotten.
+`plugin-supervisor-health` covers the readiness gate, exact identity, per-worker and global request/surface bounds, sequential request-rate exhaustion, trusted-clock regression, duplicate and stale surface keys, oversized requests, request timeout cleanup, stale correlations, pidfd-reported worker exit, exponential restart backoff, revision-scoped disable, resource excess, clean stop recovery, unresolved-worker recovery, redacted lifecycle audit, audit failure, and uncertain teardown quarantine. The latter proves counters reach zero while replacement admission remains impossible and the retained worker is not silently forgotten.
 
 Run the isolated strict gate:
 

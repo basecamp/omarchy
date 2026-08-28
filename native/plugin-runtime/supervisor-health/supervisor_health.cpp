@@ -23,6 +23,8 @@ struct HealthSupervisor::Slot {
   std::size_t surface_count = 0;
   std::uint64_t startup_deadline = 0;
   std::uint64_t healthy_since = 0;
+  std::uint64_t request_window_started = 0;
+  std::size_t request_starts = 0;
   bool ready = false;
   bool active = false;
   bool candidate = false;
@@ -84,9 +86,11 @@ HealthSupervisor::HealthSupervisor(HealthPolicy policy,
       policy_.maximum_surfaces_per_worker > 16 ||
       policy_.maximum_surfaces_global == 0 ||
       policy_.maximum_surfaces_global > kMaximumManagedWorkers * 16 ||
-      policy_.maximum_request_bytes == 0 || policy_.memory_max_bytes == 0 ||
-      policy_.scratch_max_bytes == 0 || policy_.tasks_max == 0 ||
-      policy_.hello_timeout_seconds == 0 ||
+      policy_.maximum_request_bytes == 0 ||
+      policy_.maximum_request_starts_per_window == 0 ||
+      policy_.request_rate_window_seconds == 0 ||
+      policy_.memory_max_bytes == 0 || policy_.scratch_max_bytes == 0 ||
+      policy_.tasks_max == 0 || policy_.hello_timeout_seconds == 0 ||
       policy_.request_timeout_seconds == 0 ||
       policy_.restart_window_seconds == 0 || policy_.restart_burst == 0 ||
       policy_.restart_burst > 16 ||
@@ -203,6 +207,8 @@ Status HealthSupervisor::ready(const permissions::ActivationBinding &binding,
                      permissions::AuditEvent::worker_health);
   slot->ready = true;
   slot->healthy_since = now_seconds;
+  slot->request_window_started = now_seconds;
+  slot->request_starts = 0;
   return Status::accepted;
 }
 
@@ -218,6 +224,17 @@ Status HealthSupervisor::admit_request(
     return Status::not_ready;
   if (correlation == 0 || request_bytes > policy_.maximum_request_bytes)
     return Status::denied;
+  if (now_seconds < slot->request_window_started)
+    return fail_slot(*slot, now_seconds,
+                     permissions::AuditEvent::worker_health);
+  if (now_seconds - slot->request_window_started >=
+      policy_.request_rate_window_seconds) {
+    slot->request_window_started = now_seconds;
+    slot->request_starts = 0;
+  }
+  if (slot->request_starts >= policy_.maximum_request_starts_per_window)
+    return fail_slot(*slot, now_seconds,
+                     permissions::AuditEvent::worker_health);
   if (std::any_of(slot->requests.begin(), slot->requests.end(),
                   [correlation](const auto &request) {
                     return request.occupied &&
@@ -238,6 +255,7 @@ Status HealthSupervisor::admit_request(
       .correlation = correlation, .deadline = deadline, .occupied = true};
   ++slot->request_count;
   ++requests_;
+  ++slot->request_starts;
   return Status::accepted;
 }
 

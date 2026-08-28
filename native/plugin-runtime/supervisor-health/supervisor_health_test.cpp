@@ -100,6 +100,8 @@ health::HealthPolicy test_policy() {
   policy.maximum_surfaces_per_worker = 1;
   policy.maximum_surfaces_global = 1;
   policy.maximum_request_bytes = 128;
+  policy.maximum_request_starts_per_window = 3;
+  policy.request_rate_window_seconds = 5;
   policy.memory_max_bytes = 1024;
   policy.scratch_max_bytes = 256;
   policy.tasks_max = 2;
@@ -318,6 +320,50 @@ void candidate_is_health_checked_without_early_authority() {
           "candidate promotion retained old-generation authority");
 }
 
+void sequential_rate_flood_and_clock_regression() {
+  TemporaryDirectory temporary;
+  audit::AuditStore store(temporary.path() / "audit", {.maximum_records = 64});
+  health::HealthSupervisor supervisor(test_policy(), store);
+  const auto active = binding("org.example.rate", 1);
+  auto probe = std::make_shared<Probe>();
+  require(supervisor.adopt(worker(active, probe), active, 10) ==
+                  health::Status::accepted &&
+              supervisor.ready(active, 10) == health::Status::accepted,
+          "rate fixture did not become ready");
+  for (std::uint64_t correlation = 1; correlation <= 3; ++correlation) {
+    require(supervisor.admit_request(active, correlation, 1, 10) ==
+                    health::Status::accepted &&
+                supervisor.complete_request(active, correlation) ==
+                    health::Status::accepted,
+            "in-budget sequential request was denied");
+  }
+  require(supervisor.request_count() == 0 &&
+              supervisor.admit_request(active, 4, 1, 10) ==
+                  health::Status::backoff &&
+              probe->terminations == 1 && supervisor.worker_count() == 0,
+          "sequential request flood bypassed the per-binding rate window");
+
+  const auto regressed = binding("org.example.clock", 1, 'd');
+  auto clock_probe = std::make_shared<Probe>();
+  require(supervisor.adopt(worker(regressed, clock_probe), regressed, 20) ==
+                  health::Status::accepted &&
+              supervisor.ready(regressed, 20) == health::Status::accepted &&
+              supervisor.admit_request(regressed, 1, 1, 19) ==
+                  health::Status::backoff &&
+              clock_probe->terminations == 1,
+          "request-rate clock regression did not fail closed");
+
+  const auto records = store.query({});
+  std::size_t failed_health = 0;
+  for (const auto &record : records.records) {
+    if (record.event == permissions::AuditEvent::worker_health &&
+        record.outcome == permissions::AuditOutcome::failed)
+      ++failed_health;
+  }
+  require(records.status.ok() && failed_health >= 2,
+          "rate and clock teardowns were not authoritatively audited");
+}
+
 } // namespace
 
 int main() {
@@ -325,6 +371,7 @@ int main() {
     limits_timeout_cleanup_and_crash_loop();
     identity_audit_and_teardown_fail_closed();
     candidate_is_health_checked_without_early_authority();
+    sequential_rate_flood_and_clock_regression();
   } catch (const std::exception &error) {
     std::cerr << "FAIL: " << error.what() << '\n';
     return 1;

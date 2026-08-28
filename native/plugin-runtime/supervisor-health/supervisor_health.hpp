@@ -26,6 +26,8 @@ struct HealthPolicy {
   std::size_t maximum_surfaces_per_worker = 4;
   std::size_t maximum_surfaces_global = 64;
   std::size_t maximum_request_bytes = 65576;
+  std::size_t maximum_request_starts_per_window = 120;
+  std::uint64_t request_rate_window_seconds = 1;
   std::uint64_t memory_max_bytes = 512ULL * 1024ULL * 1024ULL;
   std::uint64_t scratch_max_bytes = 64ULL * 1024ULL * 1024ULL;
   std::uint32_t tasks_max = 16;
