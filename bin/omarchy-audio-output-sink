@@ -50,6 +50,19 @@ if [[ -n $downstream ]]; then
   fi
 fi
 
+# EasyEffects can forward to its output device through direct PipeWire node
+# links, which never appear as PulseAudio sink-inputs at all -- and those links
+# only exist while audio flows. Its configured output device is persisted in
+# easyeffectsrc, so read the physical sink from there.
+if [[ $sink == easyeffects_sink ]]; then
+  ee_rc="${XDG_CONFIG_HOME:-$HOME/.config}/easyeffects/db/easyeffectsrc"
+  ee_device="$(awk -F= '/^outputDevice=/ {print $2; exit}' "$ee_rc" 2>/dev/null)"
+  if [[ -n $ee_device ]] && pactl list sinks short 2>/dev/null | awk '{print $2}' | grep -qxF "$ee_device"; then
+    printf '%s\n' "$ee_device"
+    exit 0
+  fi
+fi
+
 # Nothing resolvable downstream -- the DSP sink may simply be idle and unlinked.
 # Fall back to the sink itself so callers still have something to act on.
 printf '%s\n' "$sink"
