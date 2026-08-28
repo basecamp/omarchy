@@ -53,7 +53,10 @@ function matchingScaleIndex(scales, currentScale, width, height) {
 }
 
 function availableScales(scales, width, height) {
-  if (!Array.isArray(scales) || Number(width) <= 0 || Number(height) <= 0) return scales || []
+  // isFinite as well as the range check: NaN fails every comparison, so a
+  // non-numeric mode would slip through and collapse every preset onto one key.
+  if (!Array.isArray(scales) || !isFinite(Number(width)) || !isFinite(Number(height))
+      || Number(width) <= 0 || Number(height) <= 0) return scales || []
 
   var byEffectiveScale = {}
   for (var i = 0; i < scales.length; i++) {
@@ -91,6 +94,76 @@ function brightnessName(percent) {
   return "Night owl"
 }
 
+// Hyprland's `transform` is 0-7: 0-3 are the plain rotations, 4-7 repeat them
+// mirrored. The panel offers degrees and hands them to the rotate command,
+// which owns the mapping back to a transform and the mirrored half with it.
+// Declared under the name QML uses. A .js module only exposes its top-level
+// declarations, so an alias that exists solely in module.exports would read as
+// undefined from QML while still passing the Node tests.
+var rotationDegrees = [0, 90, 180, 270]
+
+function transformDegrees(transform) {
+  var value = Number(transform)
+  if (!isFinite(value) || value < 0) return 0
+  return (Math.floor(value) % 4) * 90
+}
+
+// The usable range for SDR white inside the HDR volume. The top is the
+// display's sustained full-field luminance rather than its peak: peak applies
+// to small highlights, and mapping SDR white there makes a full white window
+// dim as the panel's automatic brightness limiter pulls power back.
+function sdrLuminanceRange(maxAvgLuminance) {
+  var ceiling = Math.round(Number(maxAvgLuminance))
+  if (!isFinite(ceiling) || ceiling <= 0) ceiling = 400
+  // At least 100 nits wide: a narrower range cannot survive a round trip
+  // through whole percentages, and the slider would jump a notch on its own.
+  return { minimum: 40, maximum: Math.max(140, ceiling) }
+}
+
+function clampSdrLuminance(value, maxAvgLuminance) {
+  var range = sdrLuminanceRange(maxAvgLuminance)
+  var nits = Math.round(Number(value))
+  if (!isFinite(nits)) return range.minimum
+  return Math.max(range.minimum, Math.min(range.maximum, nits))
+}
+
+// The panel shows one percentage whichever knob the brightness slider is on, so
+// an SDR luminance is expressed as its position within the range the display
+// can hold, and back again.
+function sdrLuminanceToPercent(nits, maxAvgLuminance) {
+  var range = sdrLuminanceRange(maxAvgLuminance)
+  var span = Math.max(1, range.maximum - range.minimum)
+  var value = Number(nits)
+  if (!isFinite(value)) return 0
+  return Math.max(0, Math.min(100, Math.round(((value - range.minimum) / span) * 100)))
+}
+
+function sdrPercentToLuminance(percent, maxAvgLuminance) {
+  var range = sdrLuminanceRange(maxAvgLuminance)
+  var span = range.maximum - range.minimum
+  var value = Number(percent)
+  if (!isFinite(value)) return range.minimum
+  var clamped = Math.max(0, Math.min(100, value))
+  return Math.round(range.minimum + (clamped / 100) * span)
+}
+
+function parseCapabilities(raw) {
+  var parsed = {}
+  try {
+    parsed = raw ? JSON.parse(String(raw)) : {}
+  } catch (e) {
+    parsed = {}
+  }
+  if (!parsed || typeof parsed !== "object") parsed = {}
+  return {
+    name: parsed.name || "",
+    hdr: parsed.hdr === true,
+    maxLuminance: Number(parsed.max_luminance) || 0,
+    maxAvgLuminance: Number(parsed.max_avg_luminance) || 0,
+    minLuminance: Number(parsed.min_luminance) || 0
+  }
+}
+
 function parseDisplays(raw) {
   var displays = []
   try {
@@ -119,6 +192,13 @@ if (typeof module !== "undefined") {
     matchingScaleIndex: matchingScaleIndex,
     availableScales: availableScales,
     brightnessName: brightnessName,
-    parseDisplays: parseDisplays
+    parseDisplays: parseDisplays,
+    rotationDegrees: rotationDegrees,
+    transformDegrees: transformDegrees,
+    sdrLuminanceRange: sdrLuminanceRange,
+    clampSdrLuminance: clampSdrLuminance,
+    sdrLuminanceToPercent: sdrLuminanceToPercent,
+    sdrPercentToLuminance: sdrPercentToLuminance,
+    parseCapabilities: parseCapabilities
   }
 }

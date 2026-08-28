@@ -1,0 +1,497 @@
+#!/bin/bash
+
+# omarchy:summary=Read and write per-display fields in monitors.lua
+# omarchy:group=hyprland
+# omarchy:hidden=true
+# omarchy:args=get <output> <field> | set <output> <field=value>... | unset <output> <field>... | path
+# omarchy:examples=omarchy hyprland monitor rule get DP-1 transform | omarchy hyprland monitor rule set DP-1 cm=hdr bitdepth=10
+
+# Every per-display setting in the Display panel has to survive a reboot, which
+# means editing the user's own ~/.config/hypr/monitors.lua rather than only
+# calling `hyprctl eval`. Doing that with sed is what produced #6673: the scale
+# writer matched the catch-all `omarchy_monitor_scale` line and so persisted one
+# display's choice to every display. This command exists so each caller can name
+# the display it means and touch nothing else.
+#
+# Rules are matched by `output`, against both the connector name (DP-1) and a
+# `desc:` string the user may have written instead, so a hand-written config
+# keeps the identifier its author chose. The catch-all rule (`output = ""`) is
+# never matched for a specific display -- it speaks for all of them, and editing
+# it is precisely the bug above.
+
+set -euo pipefail
+
+MONITOR_LUA="${OMARCHY_MONITOR_LUA:-$HOME/.config/hypr/monitors.lua}"
+
+usage() {
+  cat <<'USAGE'
+Usage: omarchy-hyprland-monitor-rule get <output> <field>
+       omarchy-hyprland-monitor-rule set <output> <field=value>...
+       omarchy-hyprland-monitor-rule unset <output> <field>...
+       omarchy-hyprland-monitor-rule path
+
+Values are typed the way Lua expects them: numbers and true/false are written
+bare, anything else is quoted. Prefix a value with `raw:` to write it verbatim.
+
+`set` creates a rule for the display if none exists, seeding it with the live
+mode, position, and scale so the new rule does not silently drop the geometry
+the display is already using.
+USAGE
+}
+
+# The Lua editing is real parsing, not pattern matching: rules are written both
+# inline and spread over many lines, and a rule can contain comments and nested
+# tables. python3 is already a dependency of several bin/ commands.
+edit_rule() {
+  python3 - "$MONITOR_LUA" "$@" <<'PYTHON'
+import json
+import os
+import re
+import shutil
+import sys
+import time
+
+path, action, output = sys.argv[1], sys.argv[2], sys.argv[3]
+args = sys.argv[4:]
+
+
+def read(path):
+    if not os.path.exists(path):
+        return ""
+    # newline="" so CRLF files are not silently rewritten as LF.
+    with open(path, encoding="utf-8", newline="") as handle:
+        return handle.read()
+
+
+def long_bracket_level(text, index):
+    """Level of a Lua long bracket opening at index, or None."""
+    if index >= len(text) or text[index] != "[":
+        return None
+    cursor = index + 1
+    while cursor < len(text) and text[cursor] == "=":
+        cursor += 1
+    if cursor < len(text) and text[cursor] == "[":
+        return cursor - index - 1
+    return None
+
+
+def long_bracket_end(text, index, level):
+    closing = "]" + "=" * level + "]"
+    found = text.find(closing, index)
+    return len(text) if found == -1 else found + len(closing)
+
+
+def code_mask(text):
+    """True for each character that is real code, False inside comments and
+    strings.
+
+    Everything structural is decided through this: which braces count, where a
+    value ends, and whether an hl.monitor call is live or commented out. Without
+    it a --[[ ]] block comment reads as a line comment, so a commented-out
+    example gets edited as though it were the real rule.
+    """
+    mask = [True] * len(text)
+    index = 0
+    while index < len(text):
+        if text.startswith("--", index):
+            level = long_bracket_level(text, index + 2)
+            if level is None:
+                newline = text.find("\n", index)
+                end = len(text) if newline == -1 else newline
+            else:
+                end = long_bracket_end(text, index + 2 + level + 2, level)
+            for position in range(index, end):
+                mask[position] = False
+            index = end
+            continue
+
+        if text[index] in "\"'":
+            quote = text[index]
+            cursor = index + 1
+            while cursor < len(text) and text[cursor] != quote:
+                cursor += 2 if text[cursor] == "\\" else 1
+            end = min(cursor + 1, len(text))
+            for position in range(index, end):
+                mask[position] = False
+            index = end
+            continue
+
+        level = long_bracket_level(text, index)
+        if level is not None:
+            end = long_bracket_end(text, index + level + 2, level)
+            for position in range(index, end):
+                mask[position] = False
+            index = end
+            continue
+
+        index += 1
+    return mask
+
+
+def find_calls(text, mask):
+    """Yield (start, body_start, body_end, end) for each live hl.monitor call."""
+    for match in re.finditer(r"hl\.monitor\s*\(\s*\{", text):
+        if not mask[match.start()]:
+            continue
+        index = match.end()
+        depth = 1
+        body_start = index
+        while index < len(text) and depth:
+            if mask[index]:
+                if text[index] == "{":
+                    depth += 1
+                elif text[index] == "}":
+                    depth -= 1
+                    if not depth:
+                        break
+            index += 1
+        if depth:
+            continue
+        body_end = index
+        close = text.find(")", body_end)
+        yield match.start(), body_start, body_end, (close + 1 if close != -1 else body_end + 1)
+
+
+def field_span(text, mask, start, end, field):
+    """Absolute (name_start, value_start, value_end) for a top-level field."""
+    depth = 0
+    index = start
+    while index < end:
+        if not mask[index]:
+            index += 1
+            continue
+        char = text[index]
+        if char in "{(":
+            depth += 1
+        elif char in "})":
+            depth -= 1
+        elif depth == 0:
+            match = re.match(r"([A-Za-z_][A-Za-z0-9_]*)\s*=", text[index:end])
+            if match:
+                if match.group(1) == field:
+                    value_start = index + match.end()
+                    cursor = value_start
+                    value_depth = 0
+                    while cursor < end:
+                        if not mask[cursor]:
+                            cursor += 1
+                            continue
+                        inner = text[cursor]
+                        if inner in "{(":
+                            value_depth += 1
+                        elif inner in "})":
+                            if value_depth == 0:
+                                break
+                            value_depth -= 1
+                        elif inner == "," and value_depth == 0:
+                            break
+                        cursor += 1
+                    return index, value_start, cursor
+                index += match.end()
+                continue
+        index += 1
+    return None
+
+
+def field_value(text, mask, start, end, field):
+    span = field_span(text, mask, start, end, field)
+    if not span:
+        return None
+    return text[span[1]:span[2]].strip()
+
+
+def last_field_end(text, mask, start, end):
+    """End of the final top-level field, which is where a new one is inserted.
+
+    Not the end of the body: a rule commonly ends `vrr = 0, -- why`, and
+    appending past that puts the separating comma inside the comment where Lua
+    cannot see it.
+    """
+    last = None
+    depth = 0
+    index = start
+    while index < end:
+        if not mask[index]:
+            index += 1
+            continue
+        char = text[index]
+        if char in "{(":
+            depth += 1
+        elif char in "})":
+            depth -= 1
+        elif depth == 0:
+            match = re.match(r"([A-Za-z_][A-Za-z0-9_]*)\s*=", text[index:end])
+            if match:
+                span = field_span(text, mask, index, end, match.group(1))
+                if span:
+                    last = span[2] if last is None else max(last, span[2])
+                index += match.end()
+                continue
+        index += 1
+    return last
+
+
+def unquote(value):
+    if value and value[0] in "\"'" and value[-1] == value[0]:
+        return value[1:-1]
+    return value
+
+
+def lua_value(raw):
+    if raw.startswith("raw:"):
+        return raw[4:]
+    if re.fullmatch(r"-?\d+(\.\d+)?", raw) or raw in ("true", "false", "nil"):
+        return raw
+    return "\"%s\"" % raw.replace("\\", "\\\\").replace("\"", "\\\"")
+
+
+def aliases_for(output):
+    names = set()
+    raw = os.environ.get("OMARCHY_MONITOR_DESCRIPTIONS", "")
+    try:
+        for entry in json.loads(raw) if raw else []:
+            if entry.get("name") == output:
+                description = entry.get("description", "")
+                if description:
+                    names.add("desc:" + description)
+    except (ValueError, AttributeError):
+        pass
+    return names
+
+
+text = read(path)
+mask = code_mask(text)
+aliases = aliases_for(output)
+
+
+def rule_matches(body_start, body_end):
+    value = field_value(text, mask, body_start, body_end, "output")
+    if value is None:
+        return False
+    name = unquote(value)
+    # The catch-all speaks for every display; a per-display edit must never land
+    # on it. That conflation is bug #6673.
+    if name == "":
+        return False
+    return name == output or name in aliases
+
+
+target = None
+for start, body_start, body_end, end in find_calls(text, mask):
+    if rule_matches(body_start, body_end):
+        target = (start, body_start, body_end, end)
+
+if action == "get":
+    if target is not None:
+        value = field_value(text, mask, target[1], target[2], args[0])
+        if value is not None:
+            print(unquote(value))
+    sys.exit(0)
+
+if target is None and action == "unset":
+    sys.exit(0)
+
+if target is None:
+    # No rule for this display yet. Seed one from the live geometry: a rule that
+    # omits position does not inherit the catch-all one, so a bare rule here
+    # would move the display to 0x0 on the next reload.
+    seed = os.environ.get("OMARCHY_MONITOR_SEED", "")
+    fields = ["output = \"%s\"" % output]
+    try:
+        live = json.loads(seed) if seed else {}
+    except ValueError:
+        live = {}
+    for key in ("mode", "position", "scale"):
+        if live.get(key) not in (None, ""):
+            fields.append("%s = %s" % (key, lua_value(str(live[key]))))
+    rule = "hl.monitor({ %s })" % ", ".join(fields)
+    text = text.rstrip("\n") + "\n\n" + rule + "\n"
+    mask = code_mask(text)
+    for start, body_start, body_end, end in find_calls(text, mask):
+        if rule_matches(body_start, body_end):
+            target = (start, body_start, body_end, end)
+
+start, body_start, body_end, end = target
+
+for argument in args:
+    if action == "unset":
+        field, value = argument, None
+    else:
+        field, _, raw = argument.partition("=")
+        field, value = field.strip(), lua_value(raw)
+
+    span = field_span(text, mask, body_start, body_end, field)
+    body = text[body_start:body_end]
+    multiline = "\n" in body.strip()
+    indent = "  "
+    if multiline:
+        for line in body.splitlines():
+            if line.strip() and re.match(r"\s", line):
+                indent = re.match(r"\s*", line).group(0)
+                break
+
+    if action == "unset":
+        if not span:
+            continue
+        head, _, tail = span
+        remainder = text[tail:body_end]
+        trailing = re.match(r"\s*,[ \t]*(\r?\n)?", remainder)
+        if trailing:
+            cut = tail + trailing.end()
+            if trailing.group(1) and text[:head].rstrip(" \t").endswith("\n"):
+                head = len(text[:head].rstrip(" \t"))
+        else:
+            # Nothing follows, so the separator that mattered was in front;
+            # leaving it behind would strand a comma before the brace.
+            preceding = re.search(r",[ \t]*$", text[body_start:head])
+            if preceding:
+                head = body_start + preceding.start()
+            cut = tail
+        replacement = ""
+        if not multiline and not text[cut:body_end].strip():
+            replacement = " "
+        text = text[:head] + replacement + text[cut:]
+        removed = (cut - head) - len(replacement)
+        body_end -= removed
+        mask = code_mask(text)
+        continue
+
+    if span:
+        # Keep the spacing the author used, so replacing a value does not reflow
+        # the line around it.
+        original = text[span[1]:span[2]]
+        lead = re.match(r"\s*", original).group(0) or " "
+        tail_space = re.search(r"\s*$", original).group(0)
+        text = text[:span[1]] + lead + value + tail_space + text[span[2]:]
+        body_end += len(lead + value + tail_space) - len(original)
+        mask = code_mask(text)
+        continue
+
+    insert_at = last_field_end(text, mask, body_start, body_end)
+    if insert_at is None:
+        addition = ("\n" + indent if multiline else " ") + field + " = " + value + ("," if multiline else " ")
+        text = text[:body_start] + addition + text[body_start:]
+        body_end += len(addition)
+        mask = code_mask(text)
+        continue
+
+    # The separator and the new field belong in two different places. The comma
+    # goes straight after the previous value, while the field goes on its own
+    # line after anything already trailing that line.
+    following = re.match(r"[ \t]*,", text[insert_at:body_end])
+    separator = "" if following else ","
+    after_separator = insert_at + (following.end() if following else 0)
+
+    if multiline:
+        newline = text.find("\n", after_separator)
+        line_end = body_end if newline == -1 or newline > body_end else newline
+        addition = separator
+        text = (text[:insert_at] + separator + text[insert_at:line_end]
+                + "\n" + indent + field + " = " + value + "," + text[line_end:])
+        body_end += len(separator) + len("\n" + indent + field + " = " + value + ",")
+    else:
+        # A one-line rule keeps its single space before the closing brace.
+        head = text[:insert_at].rstrip()
+        trimmed = len(text[:insert_at]) - len(head)
+        tail_text = text[after_separator:body_end]
+        closing = tail_text if tail_text.strip() else " "
+        addition = separator + " " + field + " = " + value + closing
+        text = head + addition + text[body_end:]
+        body_end = len(head) + len(addition)
+    mask = code_mask(text)
+
+original_text = read(path)
+if text != original_text:
+    if os.path.exists(path) and not os.path.isfile(path):
+        sys.stderr.write("Error: %s is not a regular file.\n" % path)
+        sys.exit(1)
+
+    # Write through a symlink rather than replacing it, so a monitors.lua linked
+    # from a dotfiles repo keeps pointing at its source.
+    resolved = os.path.realpath(path)
+    try:
+        if os.path.exists(resolved):
+            shutil.copy2(resolved, "%s.bak.%d" % (resolved, int(time.time())))
+        directory = os.path.dirname(resolved) or "."
+        os.makedirs(directory, exist_ok=True)
+        temporary = "%s.tmp.%d" % (resolved, os.getpid())
+        with open(temporary, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+        os.replace(temporary, resolved)
+
+        # Keep the backups from growing without bound in the config directory.
+        backups = sorted(
+            name for name in os.listdir(directory)
+            if name.startswith(os.path.basename(resolved) + ".bak.")
+        )
+        for stale in backups[:-5]:
+            try:
+                os.remove(os.path.join(directory, stale))
+            except OSError:
+                pass
+    except OSError as error:
+        sys.stderr.write("Error: could not update %s: %s\n" % (path, error))
+        sys.exit(1)
+PYTHON
+}
+
+# Live geometry for a display the config does not mention yet, plus the
+# descriptions needed to recognise a `desc:` rule as the same display.
+export_live_state() {
+  local output="$1"
+  local monitors
+
+  # Pre-set values win, so tests and offline callers can describe a display
+  # without a compositor to ask.
+  if [[ -n ${OMARCHY_MONITOR_DESCRIPTIONS:-} && -n ${OMARCHY_MONITOR_SEED:-} ]]; then
+    export OMARCHY_MONITOR_DESCRIPTIONS OMARCHY_MONITOR_SEED
+    return 0
+  fi
+
+  monitors=$(hyprctl monitors all -j 2>/dev/null) || monitors="[]"
+
+  OMARCHY_MONITOR_DESCRIPTIONS=$(printf '%s' "$monitors" |
+    jq -c '[.[] | {name, description}]' 2>/dev/null || echo "[]")
+  OMARCHY_MONITOR_SEED=$(printf '%s' "$monitors" |
+    jq -c --arg name "$output" '
+      [.[] | select(.name == $name)][0] // {} |
+      if . == {} then {} else {
+        mode: "\(.width)x\(.height)@\(.refreshRate | . * 100 | round / 100)",
+        position: "\(.x)x\(.y)",
+        scale: (.scale | tostring)
+      } end' 2>/dev/null || echo "{}")
+
+  export OMARCHY_MONITOR_DESCRIPTIONS OMARCHY_MONITOR_SEED
+}
+
+case "${1:-}" in
+get)
+  (($# == 3)) || {
+    usage >&2
+    exit 1
+  }
+  export_live_state "$2"
+  edit_rule get "$2" "$3"
+  ;;
+set | unset)
+  (($# >= 3)) || {
+    usage >&2
+    exit 1
+  }
+  action="$1"
+  output="$2"
+  shift 2
+  export_live_state "$output"
+  edit_rule "$action" "$output" "$@"
+  ;;
+path)
+  printf '%s\n' "$MONITOR_LUA"
+  ;;
+-h | --help)
+  usage
+  ;;
+*)
+  usage >&2
+  exit 1
+  ;;
+esac

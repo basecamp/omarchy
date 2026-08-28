@@ -42,6 +42,58 @@ Hyprland works great with multiple screens. Read more about how to lay them out 
 
 You can also checkout [Hyprmon](https://github.com/erans/hyprmon/), if you'd like a TUI to help you with the positioning of multiple screens.
 
+### Rotating a screen
+
+Portrait screens, and screens on an arm that swivels, need a rotation. Open the Display panel and pick one of `0°`, `90°`, `180°`, `270°` under _Rotation_; it applies to the screen you're focused on and is saved to that screen's rule in `~/.config/hypr/monitors.lua`, so it comes back after a reboot.
+
+From the terminal:
+
+```bash
+omarchy hyprland monitor rotate 90
+omarchy hyprland monitor rotate 0 --monitor DP-3
+```
+
+Run it without a rotation to print the current one. A mirrored screen stays mirrored when you rotate it; `--no-flipped` stops the mirroring.
+
+### When screens overlap
+
+Changing a screen's scale or rotation changes how much room it takes up, but screens pinned to explicit positions in `monitors.lua` don't move to make space. They end up overlapping, which is what Hyprland's _"Your monitor layout is set up incorrectly"_ warning means.
+
+Rotating from the Display panel moves the other screens clear first, so they never overlap even briefly. If a layout does end up overlapping — after a scale change, or a screen coming back on a different port — you can settle it yourself:
+
+```bash
+omarchy hyprland monitor tidy check
+omarchy hyprland monitor tidy
+```
+
+Add `--dry-run` to see what it would move first. Screens are only ever moved clear of something they overlap, along the axis they're already arranged on; gaps are left alone, since a gap isn't an error and closing one would shove screens you positioned deliberately. If you'd rather place screens entirely by hand, `omarchy hyprland monitor rotate --no-tidy` leaves the positions alone.
+
+### HDR
+
+If a screen's EDID says it can do HDR, the Display panel shows an _HDR_ switch for it at the top right, and hovering it tells you the peak brightness that screen reports. Screens that can't do HDR don't get the switch at all.
+
+Turning it on puts the screen into 10-bit wide-colour HDR using the luminance values the screen itself advertises, so there's usually nothing to tune. If you've already set luminances by hand in `monitors.lua`, they're kept.
+
+```bash
+omarchy hyprland monitor hdr           # what's the current state?
+omarchy hyprland monitor hdr on
+omarchy hyprland monitor hdr off --monitor DP-1
+```
+
+#### HDR and brightness
+
+Most screens lock their own brightness control while they're in HDR, and drive the panel from the HDR tone curve instead. They'll still accept a brightness change and report the new number back afterwards, so nothing can tell you it didn't take — the picture simply doesn't change.
+
+So with HDR on, the Display panel's Brightness slider moves the knob that does work: how bright ordinary, non-HDR content is within the HDR range. It reads as a percentage like it always did, labelled _Adjusts SDR brightness_. Turn it down if HDR video looks right but your terminal and web pages look washed out; turn it up if they look dim next to it. The brightness keys still drive the backlight for the screens where that does something.
+
+From the terminal, the same control in nits:
+
+```bash
+omarchy hyprland monitor hdr --sdr-brightness 250
+```
+
+100% on the slider is the brightness your screen can hold across the whole panel, not its peak, because peak brightness only applies to small highlights — push plain white past that and the screen dims itself as its brightness limiter kicks in.
+
 ### Controlling brightness
 
 Monitor brightness is controlled by the dedicated function keys for brightness up/down. If you hold down shift while pressing these, you'll go to maximum or minimum brightness. The keys control the display you're focused on, so external monitors that speak DDC/CI are adjusted the same way as the laptop screen.

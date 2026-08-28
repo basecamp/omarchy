@@ -17,6 +17,9 @@ Panel {
   property int brightnessPercent: 0
   property int pendingBrightnessPercent: 0
   property bool brightnessSetQueued: false
+  property int pendingSdrLuminance: 0
+  property bool sdrLuminanceSetQueued: false
+  property string capabilitiesRequestedMonitor: ""
   property bool brightnessAvailable: false
   property string internalMonitor: ""
   property string externalMonitor: ""
@@ -27,16 +30,61 @@ Panel {
   property var displays: []
   property int enabledDisplayCount: 0
 
+  // HDR capability comes from the display's EDID, which is a slower read than
+  // the rest of the state and only changes when displays are plugged in, so it
+  // is fetched separately rather than on the 5s poll.
+  property var focusedCapabilities: Model.parseCapabilities("")
+
+  readonly property var focusedDisplay: {
+    for (var i = 0; i < displays.length; i++)
+      if (displays[i] && displays[i].focused) return displays[i]
+    return null
+  }
+
+  readonly property int focusedTransform: focusedDisplay ? Number(focusedDisplay.transform) || 0 : 0
+  readonly property bool hdrEnabled: !!(focusedDisplay && focusedDisplay.hdr)
+  readonly property bool hdrCapable: focusedCapabilities.hdr && focusedCapabilities.name === focusedMonitor
+
+  // Where SDR white sits inside the HDR volume. Only meaningful while HDR is on.
+  property int sdrLuminance: 0
+  readonly property var sdrRange: Model.sdrLuminanceRange(focusedCapabilities.maxAvgLuminance)
+
+  // With HDR on, the backlight stops being the control that matters. Displays
+  // typically lock their brightness to the HDR tone curve, and they still
+  // acknowledge a DDC/CI write and read the new value back afterwards, so
+  // nothing here can detect that the change did nothing. A slider that silently
+  // does nothing is worse than one that moves, so the brightness slider drives
+  // sdr_max_luminance instead while HDR is on: the knob that actually changes
+  // how bright the desktop looks. It stays a percentage of what this display can
+  // hold, so the control reads the same either way, with a caption naming which
+  // knob it is on. The brightness keys still drive the backlight.
+  readonly property bool brightnessControlsSdr: hdrEnabled
+  // The slider is a percentage either way. Under HDR that percentage spans the
+  // luminance range this display can actually hold, so the control reads the
+  // same whichever knob is behind it.
+  // root-qualified: an `id` elsewhere in this file can otherwise shadow a plain
+  // property name here, and the binding then silently fails to assign.
+  readonly property int brightnessValue: root.brightnessControlsSdr
+    ? Model.sdrLuminanceToPercent(root.sdrLuminance, root.focusedCapabilities.maxAvgLuminance)
+    : root.brightnessPercent
+  // SDR luminance is always adjustable under HDR, even where no backlight was
+  // found, so the section can be useful on a display with no controllable one.
+  readonly property bool brightnessSectionVisible: brightnessAvailable || brightnessControlsSdr
+
   // Carry sub-notch touchpad deltas between wheel events.
   property real wheelAccumulator: 0
 
   // Cursor model shared by keyboard and mouse. Sections:
   //   "brightness" - single slider row, selectedIndex = -1 sentinel
-  //                  (mirrors Audio's slider rows). Only present if a
-  //                  controllable backlight was detected.
+  //                  (mirrors Audio's slider rows). Drives the backlight, or
+  //                  sdr_max_luminance while HDR is on.
   //   "scale"      - 6 Button scale presets; treated as a single
   //                  horizontal row from j/k's perspective. h/l moves
   //                  between presets, identical to bluetooth's header.
+  //   "rotation"   - 4 Button rotation presets, same horizontal treatment as
+  //                  scale.
+  //   "hdr"        - the hero's toggle, selectedIndex = -1 sentinel. Only
+  //                  present when the focused display's EDID advertises HDR.
   //   "monitors"   - vertical display row list for enabling/disabling displays;
   //                  j/k walks each row.
   // Mouse hover on a target updates root state via the components' `hovered`
@@ -50,6 +98,7 @@ Panel {
     }
     return scalePresets
   }
+  readonly property var rotationValues: Model.rotationDegrees
   property string focusSection: "scale"
   property int selectedIndex: 0
   property bool cursorActive: false
@@ -74,28 +123,40 @@ Panel {
 
   readonly property var visibleSections: {
     var list = []
-    if (brightnessAvailable) list.push("brightness")
+    // HDR sits in the hero, above everything else, so j/k reaches it first.
+    // Offering the switch on a display that cannot do HDR only invites a
+    // failure, so it is absent rather than disabled.
+    if (hdrCapable) list.push("hdr")
+    if (brightnessSectionVisible) list.push("brightness")
     list.push("textsize")
     list.push("scale")
+    list.push("rotation")
     if (displays.length > 1) list.push("monitors")
     return list
   }
 
+  // Sections whose only navigable target is the slider/toggle itself, addressed
+  // with the -1 sentinel rather than an index.
+  function sectionIsSentinel(section) {
+    return section === "brightness" || section === "textsize" || section === "hdr"
+  }
+
   function sectionCount(section) {
-    if (section === "brightness") return 0  // only the slider sentinel at -1
-    if (section === "textsize") return 0    // slider sentinel at -1, like brightness
+    if (sectionIsSentinel(section)) return 0
     if (section === "scale") return scaleValues.length
+    if (section === "rotation") return rotationValues.length
     if (section === "monitors") return displays.length
     return 0
   }
 
   function sectionIsSingleRow(section) {
-    // brightness and text size are lone sliders; scale presets sit horizontally.
-    return section === "brightness" || section === "textsize" || section === "scale"
+    // Sliders and the HDR toggle are lone rows; scale and rotation are chips
+    // sitting horizontally, which j/k also treats as one row.
+    return sectionIsSentinel(section) || section === "scale" || section === "rotation"
   }
 
   function sectionFirstIndex(section) {
-    if (section === "brightness" || section === "textsize") return -1
+    if (sectionIsSentinel(section)) return -1
     return 0
   }
 
@@ -129,26 +190,34 @@ Panel {
     }
   }
 
-  // h/l: in scale section, walks the preset row; everywhere else, no-op
-  // because adjustBrightness handles horizontal motion on the brightness
-  // slider.
+  // h/l: in the chip sections, walks the row; everywhere else, no-op because
+  // adjustBrightness handles horizontal motion on the sliders.
   function moveCursorH(delta) {
-    if (focusSection !== "scale") return
+    if (focusSection !== "scale" && focusSection !== "rotation") return
+    var count = sectionCount(focusSection)
     var next = selectedIndex + delta
     if (next < 0) next = 0
-    if (next > scaleValues.length - 1) next = scaleValues.length - 1
+    if (next > count - 1) next = count - 1
     selectedIndex = next
   }
 
   function adjustBrightness(delta) {
     if (focusSection !== "brightness") return
-    if (!brightnessAvailable) return
-    setBrightness(root.brightnessPercent + delta)
+    if (!brightnessSectionVisible) return
+    root.applyBrightness(root.brightnessValue + delta)
   }
 
   function activateCursor() {
     if (focusSection === "scale" && selectedIndex >= 0 && selectedIndex < scaleValues.length) {
       setScale(scaleValues[selectedIndex])
+      return
+    }
+    if (focusSection === "rotation" && selectedIndex >= 0 && selectedIndex < rotationValues.length) {
+      setRotation(rotationValues[selectedIndex])
+      return
+    }
+    if (focusSection === "hdr") {
+      toggleHdr()
       return
     }
     if (focusSection === "monitors" && selectedIndex >= 0 && selectedIndex < displays.length) {
@@ -168,8 +237,8 @@ Panel {
     }
     var count = sectionCount(focusSection)
     if (sectionIsSingleRow(focusSection)) {
-      // brightness/text size use the -1 sentinel; scale clamps into the presets.
-      if (focusSection === "brightness" || focusSection === "textsize") selectedIndex = -1
+      // Sliders and toggles use the -1 sentinel; chip rows clamp into the row.
+      if (sectionIsSentinel(focusSection)) selectedIndex = -1
       else if (selectedIndex < 0 || selectedIndex >= count) selectedIndex = 0
       return
     }
@@ -253,6 +322,25 @@ Panel {
     brightnessDebounce.restart()
   }
 
+  // The brightness slider drives whichever control is the live one for this
+  // display: SDR white mapping under HDR, the backlight otherwise.
+  function applyBrightness(percent) {
+    if (root.brightnessControlsSdr)
+      root.setSdrLuminance(Model.sdrPercentToLuminance(percent, root.focusedCapabilities.maxAvgLuminance))
+    else root.setBrightness(percent)
+  }
+
+  function previewBrightnessValue(percent) {
+    if (root.brightnessControlsSdr)
+      root.previewSdrLuminance(Model.sdrPercentToLuminance(percent, root.focusedCapabilities.maxAvgLuminance))
+    else root.previewBrightness(percent)
+  }
+
+  function stopBrightnessDebounce() {
+    if (root.brightnessControlsSdr) sdrLuminanceDebounce.stop()
+    else brightnessDebounce.stop()
+  }
+
   function showBrightnessOsd(percent) {
     if (!bar || !bar.shell) return
     bar.shell.summon("omarchy.osd", JSON.stringify({
@@ -309,6 +397,60 @@ Panel {
     if (!actionProc.running) actionProc.running = true
   }
 
+  // ---- Rotation and HDR (both per display, both aimed at the focused one) ----
+  function setRotation(degrees) {
+    if (!root.focusedMonitor) return
+    if (Model.transformDegrees(root.focusedTransform) === degrees) return
+
+    actionProc.command = ["omarchy-hyprland-monitor-rotate", String(degrees), "--monitor", root.focusedMonitor]
+    if (!actionProc.running) actionProc.running = true
+  }
+
+  function toggleHdr() {
+    if (!root.focusedMonitor || !root.hdrCapable) return
+
+    actionProc.command = ["omarchy-hyprland-monitor-hdr", root.hdrEnabled ? "off" : "on", "--monitor", root.focusedMonitor]
+    if (!actionProc.running) actionProc.running = true
+  }
+
+  function setSdrLuminance(value) {
+    if (!root.focusedMonitor) return
+    var nits = Model.clampSdrLuminance(value, root.focusedCapabilities.maxAvgLuminance)
+    root.sdrLuminance = nits
+    root.pendingSdrLuminance = nits
+
+    // Assigning command to a Process that is already running does not start it
+    // again, so without a queue the write issued mid-flight is simply dropped --
+    // and during a drag that is the final value, the one that matters.
+    if (sdrLuminanceProc.running) {
+      root.sdrLuminanceSetQueued = true
+      return
+    }
+
+    root.sdrLuminanceSetQueued = false
+    sdrLuminanceProc.command = ["omarchy-hyprland-monitor-hdr", "--sdr-brightness", String(nits), "--monitor", root.focusedMonitor]
+    sdrLuminanceProc.running = true
+  }
+
+  function previewSdrLuminance(value) {
+    root.sdrLuminance = Model.clampSdrLuminance(value, root.focusedCapabilities.maxAvgLuminance)
+    sdrLuminanceDebounce.restart()
+  }
+
+  function refreshCapabilities() {
+    if (!root.focusedMonitor) return
+
+    // Focus can move again before this EDID read finishes. Dropping the newer
+    // request would leave the panel showing the previous display's capability
+    // with nothing to ask again, so the display this run was launched for is
+    // recorded and compared against the focused one when it exits.
+    if (capabilitiesProc.running) return
+
+    root.capabilitiesRequestedMonitor = root.focusedMonitor
+    capabilitiesProc.command = ["omarchy-hyprland-monitor-capabilities", root.focusedMonitor]
+    capabilitiesProc.running = true
+  }
+
   // ---- Text size (shell base font + GTK text-scaling, via one CLI) ----
   function nearestTextStop(px) {
     var best = 0
@@ -349,7 +491,10 @@ Panel {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
-  Component.onCompleted: refresh()
+  Component.onCompleted: {
+    refresh()
+    refreshCapabilities()
+  }
 
   // KeyboardPanel primes focus at open-time, so SUPER-bound IPC summons land
   // with j/k ready to navigate. Keep a default landing point, but don't paint
@@ -357,7 +502,8 @@ Panel {
   onOpenedChanged: {
     if (opened) {
       refresh()
-      if (brightnessAvailable) {
+      refreshCapabilities()
+      if (brightnessSectionVisible) {
         focusSection = "brightness"
         selectedIndex = -1
       } else {
@@ -370,6 +516,11 @@ Panel {
 
   onBrightnessAvailableChanged: clampCursor()
   onDisplaysChanged: clampCursor()
+  onHdrCapableChanged: clampCursor()
+  onHdrEnabledChanged: clampCursor()
+  // EDID capability belongs to a specific display, so it is re-read whenever
+  // the focus moves to another one.
+  onFocusedMonitorChanged: refreshCapabilities()
   onScaleValuesChanged: clampCursor()
   onVisibleSectionsChanged: clampCursor()
 
@@ -400,6 +551,11 @@ Panel {
         root.focusedMonitor = String(lines[5] || "").trim()
         root.monitorScale = root.normalizeScale(String(lines[6] || "").trim())
         root.updateDisplays(String(lines[7] || "[]").trim())
+
+        // Track the compositor's value unless a change of ours is still in
+        // flight, which would otherwise snap the slider back mid-drag.
+        if (!sdrLuminanceDebounce.running && !sdrLuminanceProc.running && root.focusedDisplay)
+          root.sdrLuminance = Number(root.focusedDisplay.sdrMaxLuminance) || 0
       }
     }
   }
@@ -433,6 +589,44 @@ Panel {
     id: actionProc
     stdout: StdioCollector { waitForEnd: true }
     onRunningChanged: if (!running) root.refresh()
+  }
+
+  Process {
+    id: capabilitiesProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.focusedCapabilities = Model.parseCapabilities(text)
+    }
+    // Re-issue only when focus has moved on since this run was launched.
+    // Comparing against the parsed output instead would respawn forever
+    // whenever the read returns nothing to parse.
+    onRunningChanged: {
+      if (running) return
+      if (root.focusedMonitor && root.focusedMonitor !== root.capabilitiesRequestedMonitor) {
+        root.refreshCapabilities()
+      }
+    }
+  }
+
+  Timer {
+    id: sdrLuminanceDebounce
+    interval: 180
+    repeat: false
+    onTriggered: root.setSdrLuminance(root.sdrLuminance)
+  }
+
+  Process {
+    id: sdrLuminanceProc
+    stdout: StdioCollector { waitForEnd: true }
+    // As with brightness, the value just written is authoritative; re-reading
+    // immediately races the compositor's own update.
+    stderr: StdioCollector { waitForEnd: true }
+    onRunningChanged: {
+      if (running) return
+      if (root.sdrLuminanceSetQueued) {
+        root.setSdrLuminance(root.pendingSdrLuminance)
+      }
+    }
   }
 
   // Applies text size via the CLI, which rewrites the shell override file;
@@ -472,12 +666,14 @@ Panel {
     text: Quickshell.screens.length > 1 ? "󰍺" : "󰍹"
     onPressed: function(b) { root.toggle() }
     onWheelMoved: function(delta) {
-      if (!root.brightnessAvailable) return
+      if (!root.brightnessSectionVisible) return
       var wheel = Util.wheelSteps(root.wheelAccumulator, delta)
       root.wheelAccumulator = wheel.remainder
       if (wheel.steps === 0) return
-      root.setBrightness(root.brightnessPercent + wheel.steps * 5)
-      root.showBrightnessOsd(root.brightnessPercent)
+      // Scrolling the bar icon moves the same knob the panel's slider does, so
+      // the two never disagree about what "brighter" means on this display.
+      root.applyBrightness(root.brightnessValue + wheel.steps * 5)
+      root.showBrightnessOsd(root.brightnessValue)
     }
   }
 
@@ -527,7 +723,7 @@ Panel {
           // ---------- Hero: display icon · title/status ----------
           Item {
             width: parent.width
-            implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight)
+            implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight, hdrControl.implicitHeight)
 
             Text {
               id: heroIcon
@@ -539,11 +735,58 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
             }
 
+            // HDR lives on the hero's trailing edge rather than in a section of
+            // its own, the way the Bluetooth panel carries its power switch.
+            // A whole row for one toggle was what pushed the panel past the
+            // height it can show without scrolling.
+            Row {
+              id: hdrControl
+              visible: root.hdrCapable
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: Style.space(8)
+
+              Text {
+                text: "HDR"
+                color: Qt.darker(root.bar.foreground, root.hdrEnabled ? 1.0 : 1.4)
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                font.letterSpacing: 1.2
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              ToggleSwitch {
+                id: hdrSwitch
+                checked: root.hdrEnabled
+                hasCursor: root.cursorActive && root.focusSection === "hdr" && root.selectedIndex === -1
+                foreground: root.bar.foreground
+                anchors.verticalCenter: parent.verticalCenter
+                onHovered: function(on) {
+                  if (!on || root.reflowingText) return
+                  root.cursorActive = true
+                  root.focusSection = "hdr"
+                  root.selectedIndex = -1
+                }
+                onToggled: root.toggleHdr()
+
+                // The peak is this display's own, read from its EDID.
+                PanelToolTip {
+                  visible: hdrSwitch.containsMouse
+                  text: root.focusedCapabilities.maxLuminance > 0
+                    ? "High dynamic range, up to " + root.focusedCapabilities.maxLuminance + " nits"
+                    : "High dynamic range"
+                  fontFamily: root.bar.fontFamily
+                }
+              }
+            }
+
             Column {
               id: heroLabels
               anchors.left: heroIcon.right
               anchors.leftMargin: Style.space(14)
               anchors.right: parent.right
+              anchors.rightMargin: hdrControl.visible ? hdrControl.width + Style.space(12) : 0
               anchors.verticalCenter: parent.verticalCenter
               spacing: Style.space(2)
 
@@ -560,8 +803,9 @@ Panel {
               Text {
                 id: heroLabel
                 text: {
-                  if (root.brightnessAvailable) {
-                    return root.brightnessName(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent).toUpperCase()
+                  if (root.brightnessSectionVisible) {
+                    var live = brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessValue
+                    return root.brightnessName(live).toUpperCase()
                   }
                   return "FIXED BRIGHTNESS"
                 }
@@ -578,18 +822,18 @@ Panel {
 
           // ---------- Brightness ----------
           PanelSeparator {
-            visible: root.brightnessAvailable
+            visible: root.brightnessSectionVisible
             foreground: root.bar.foreground
           }
 
           Column {
-            visible: root.brightnessAvailable
+            visible: root.brightnessSectionVisible
             width: parent.width
             spacing: Style.space(6)
 
             Item {
               width: parent.width
-              implicitHeight: Math.max(brightnessHeader.implicitHeight, brightnessPercent.implicitHeight)
+              implicitHeight: Math.max(brightnessHeader.implicitHeight, brightnessReadout.implicitHeight)
 
               PanelSectionHeader {
                 id: brightnessHeader
@@ -600,9 +844,12 @@ Panel {
                 anchors.verticalCenter: parent.verticalCenter
               }
 
+              // Always a percentage, whichever knob the slider is on: under HDR
+              // it is the position within the SDR luminance range this display
+              // can hold, so the control reads the same either way.
               Text {
-                id: brightnessPercent
-                text: Math.round(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent) + "%"
+                id: brightnessReadout
+                text: Math.round(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessValue) + "%"
                 color: Qt.darker(root.bar.foreground, 1.4)
                 font.family: root.bar.fontFamily
                 font.pixelSize: Style.font.caption
@@ -631,12 +878,12 @@ Panel {
                 minimum: 1
                 maximum: 100
                 step: 1
-                value: root.brightnessPercent
+                value: root.brightnessValue
                 integer: true
-                onMoved: function(v) { root.previewBrightness(v) }
+                onMoved: function(v) { root.previewBrightnessValue(v) }
                 onReleased: function(v) {
-                  brightnessDebounce.stop()
-                  root.setBrightness(v)
+                  root.stopBrightnessDebounce()
+                  root.applyBrightness(v)
                 }
               }
 
@@ -647,6 +894,16 @@ Panel {
                   root.selectedIndex = -1
                 }
               }
+            }
+
+            // Names the knob, since it changes with HDR.
+            Text {
+              visible: root.brightnessControlsSdr
+              text: "Adjusts SDR brightness"
+              color: Qt.darker(root.bar.foreground, 1.5)
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.caption
+              x: Style.space(6)
             }
           }
 
@@ -785,6 +1042,67 @@ Panel {
             }
           }
 
+          // ---------- Rotation ----------
+          PanelSeparator {
+            foreground: root.bar.foreground
+          }
+
+          Column {
+            width: parent.width
+            spacing: Style.space(10)
+
+            Item {
+              width: parent.width
+              implicitHeight: Math.max(rotationHeader.implicitHeight, rotationMonitor.implicitHeight)
+
+              PanelSectionHeader {
+                id: rotationHeader
+                text: "ROTATION"
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              // Like SCALE, rotation applies to the focused display, so name it
+              // once there is more than one to confuse it with.
+              Text {
+                id: rotationMonitor
+                text: root.focusedMonitor
+                visible: root.focusedMonitor !== "" && root.enabledDisplayCount > 1
+                color: Qt.darker(root.bar.foreground, 1.4)
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(6)
+                anchors.verticalCenter: parent.verticalCenter
+              }
+            }
+
+            Grid {
+              id: rotationRow
+              width: parent.width
+              columns: root.rotationValues.length
+              spacing: Style.spacing.xs
+
+              readonly property real cellWidth: (width - spacing * (columns - 1)) / columns
+
+              Repeater {
+                model: root.rotationValues
+
+                RotationPill {
+                  required property int modelData
+                  required property int index
+
+                  degrees: modelData
+                  rotationIndex: index
+                  width: rotationRow.cellWidth
+                }
+              }
+            }
+          }
+
           // ---------- Monitors ----------
           PanelSeparator {
             visible: root.displays.length > 1
@@ -847,6 +1165,31 @@ Panel {
       root.cursorActive = true
       root.focusSection = "scale"
       root.selectedIndex = pill.scaleIndex
+    }
+  }
+
+  component RotationPill: Button {
+    id: rotationPill
+    required property int degrees
+    required property int rotationIndex
+
+    text: rotationPill.degrees + "°"
+    fontSize: Style.font.caption
+    foreground: root.bar.foreground
+    fontFamily: root.bar.fontFamily
+    horizontalPadding: Style.spacing.sm
+    verticalPadding: Style.spacing.controlPaddingY
+    bordered: true
+
+    active: Model.transformDegrees(root.focusedTransform) === rotationPill.degrees
+    hasCursor: root.cursorActive && root.focusSection === "rotation" && root.selectedIndex === rotationIndex
+
+    onClicked: root.setRotation(rotationPill.degrees)
+    onHovered: function(isHovered) {
+      if (!isHovered || root.reflowingText) return
+      root.cursorActive = true
+      root.focusSection = "rotation"
+      root.selectedIndex = rotationPill.rotationIndex
     }
   }
 

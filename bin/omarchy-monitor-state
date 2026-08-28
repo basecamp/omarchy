@@ -19,5 +19,19 @@ printf '%s\n' "$monitors_json" | jq -r '
 printf '%s\n' "$focused_monitor"
 omarchy-hyprland-monitor-scaling 2>/dev/null || echo
 
+# transform, colour preset, and SDR luminance all come straight out of the same
+# hyprctl payload, so the panel gets them without another process. Whether a
+# display *can* do HDR is a separate, slower EDID read
+# (omarchy-hyprland-monitor-capabilities) that the panel makes on its own
+# schedule, since it only changes when displays are plugged or unplugged.
 printf '%s\n' "$monitors_json" | jq -c \
-  '[.[] | {name, enabled:(.disabled != true), focused:(.focused == true), width, height}]'
+  '[.[] | {
+    name,
+    enabled: (.disabled != true),
+    focused: (.focused == true),
+    width,
+    height,
+    transform: (.transform // 0),
+    hdr: (.colorManagementPreset == "hdr"),
+    sdrMaxLuminance: (.sdrMaxLuminance // 0)
+  }]'
