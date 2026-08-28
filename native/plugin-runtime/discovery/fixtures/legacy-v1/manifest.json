@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "id": "legacy.clock",
+  "name": "Legacy clock",
+  "version": "1.0.0",
+  "kinds": ["barWidget"],
+  "entryPoints": {"barWidget": "Clock.qml"}
+}
