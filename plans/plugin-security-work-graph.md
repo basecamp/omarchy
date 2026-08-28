@@ -48,7 +48,8 @@ This table is the durable execution ledger. Update it when a node is assigned, c
 | `D6` | complete | primary | Commit `f0eaaeba`; bounded trusted scanner composition produces deterministic advisory today-to-tomorrow maps for Pomodoro, pet, and service fixtures with exact schema-v2 candidate identities, surfaces, and capability scopes |
 | `E0` | complete | primary | Commit `65289972`; exact activation and live-generation binding, authenticated no-authority dispatch, D5 request/resource accounting, synchronous limit and revocation teardown, redacted audit, and fake/real-Bubblewrap Debug/Release/sanitizer proofs |
 | `E1` | active | `wave0_trust_map` | Arbitrary-QML embedded-bar vertical slice in progress |
-| `E3` | active | `wave0_channel` | Authenticated brokered-action vertical slice in progress |
+| `E2` | active | `wave0_channel` | Transparent pet/slide-out arbitrary-QML expressiveness slice in progress |
+| `E3` | complete | `wave0_channel` | Commit `6dfe7dd5`; immutable QML drives exact authenticated D1 requests through D4, with audit-before-effect, denied grant, stale handle after revocation, poisoned-audit teardown, and fake/real-Bubblewrap/sanitizer proofs |
 | `E4` | active | `wave0_native_build` | Permission-expanding update and live-revocation vertical slice in progress |
 | `E5` | complete | `wave0_native_build` | Commit `debe83d3`; v1 has only an unsafe/unmigrated posture, while exact reinstall, upgrade, exact-digest downgrade/rebuild approval, identity denial, and fault recovery pass strict and sanitized proofs |
 
