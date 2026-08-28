@@ -43,6 +43,28 @@ BarWidget {
     root.bar.run("hyprctl dispatch " + Util.shellQuote("hl.dsp.focus({ workspace = \"" + id + "\" })"))
   }
 
+  // Names come from this widget's shell.json entry, keyed by workspace id:
+  //   { "id": "omarchy.workspaces", "names": { "1": "term", "2": "web" } }
+  // omarchy-hyprland-workspace-name writes them; the bar patches settings in
+  // place, so a rename lands without a restart. A hand-edited name longer
+  // than the command allows is cut rather than left to widen the bar.
+  readonly property int maxNameLength: 16
+  readonly property var names: root.setting("names", {})
+
+  function nameFor(id) {
+    var value = names && typeof names === "object" ? names[String(id)] : undefined
+    if (typeof value !== "string") return ""
+    var characters = Array.from(value)
+    return characters.length > maxNameLength ? characters.slice(0, maxNameLength - 1).join("") + "\u2026" : value
+  }
+
+  // The widget id is the layout entry the names sit on, so a cloned widget
+  // edits its own entry rather than the built-in one.
+  function runNameCommand(args) {
+    if (!root.bar) return
+    root.bar.run("omarchy-hyprland-workspace-name " + args + " --widget " + Util.shellQuote(root.moduleName))
+  }
+
   readonly property real trailingGap: root.vertical ? 0 : Style.spaceReal(1.5)
 
   implicitWidth: grid.implicitWidth + trailingGap
@@ -72,11 +94,14 @@ BarWidget {
         // The focus dot stands in for a numeral the keyboard already knows;
         // past 10 there is no key, so the number is the only identification.
         readonly property bool keyed: modelData <= 10
+        // A vertical bar is too narrow for words, so it keeps the numbers.
+        readonly property string wsName: root.vertical ? "" : root.nameFor(modelData)
 
         bar: root.bar
-        text: focused && keyed ? "\uDB85\uDCFB" : numeral
-        // A tile that keeps its number under focus marks the focus by colour.
-        active: focused && !keyed
+        // A name is never hidden behind the focus dot.
+        text: wsName !== "" ? wsName : (focused && keyed ? "\uDB85\uDCFB" : numeral)
+        // A tile that keeps its text under focus marks the focus by colour.
+        active: focused && (wsName !== "" || !keyed)
         opacity: occupied || focused ? 1 : 0.5
         horizontalMargin: 6
         verticalPadding: 6
@@ -86,8 +111,14 @@ BarWidget {
         fixedWidth: root.vertical ? root.barSize : Math.max(Style.space(20), labelWidth + scaledHorizontalMargin * 2)
         fixedHeight: root.barSize
         clip: root.vertical
-        tooltipText: root.vertical && numeral.length > 2 ? numeral : ""
-        onPressed: function() { root.focusWorkspace(modelData) }
+        // A name's tooltip identifies its workspace. In a vertical bar the
+        // tooltip also preserves a long number that cannot fit the slot.
+        tooltipText: wsName !== "" ? numeral : (root.vertical && numeral.length > 2 ? numeral : "")
+        onPressed: function(button) {
+          if (button === Qt.RightButton) root.runNameCommand("--prompt " + modelData)
+          else if (button === Qt.MiddleButton) root.runNameCommand("--clear " + modelData)
+          else root.focusWorkspace(modelData)
+        }
       }
     }
   }
