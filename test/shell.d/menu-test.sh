@@ -633,6 +633,61 @@ assert(
     && /onClicked:[\s\S]*root\.activateIndex\(row\.index, true\)/.test(menuQml),
   'mouse activation carries pointer intent into subordinate menus'
 )
+
+// Alt+N addresses the Nth selectable row: disabled rows are skipped in the
+// numbering, the same way the cursor skips them via nextSelectable.
+const quickSelectRows = [
+  { disabled: false },
+  { disabled: true },
+  { disabled: false },
+  { disabled: false },
+  { disabled: true }
+]
+assertEqual(menu.quickSelectIndexForOrdinal(quickSelectRows, 1), 0, 'quick-select ordinal 1 maps to the first selectable row')
+assertEqual(menu.quickSelectIndexForOrdinal(quickSelectRows, 2), 2, 'quick-select ordinal 2 skips a disabled row')
+assertEqual(menu.quickSelectIndexForOrdinal(quickSelectRows, 3), 3, 'quick-select ordinal 3 maps to the correct index')
+assertEqual(menu.quickSelectIndexForOrdinal(quickSelectRows, 4), -1, 'quick-select has no fourth selectable row here')
+assertEqual(menu.quickSelectOrdinalForIndex(quickSelectRows, 0), 1, 'quick-select labels the first selectable row 1')
+assertEqual(menu.quickSelectOrdinalForIndex(quickSelectRows, 1), -1, 'quick-select gives a disabled row no ordinal')
+assertEqual(menu.quickSelectOrdinalForIndex(quickSelectRows, 3), 3, 'quick-select labels indexes past a disabled row correctly')
+
+const manySelectableRows = Array.from({ length: 12 }, () => ({ disabled: false }))
+assertEqual(menu.quickSelectIndexForOrdinal(manySelectableRows, 9), 8, 'quick-select labels up through the ninth selectable row')
+assertEqual(menu.quickSelectIndexForOrdinal(manySelectableRows, 10), -1, 'quick-select stops labeling past the ninth selectable row')
+assertEqual(menu.quickSelectOrdinalForIndex(manySelectableRows, 9), -1, 'quick-select gives the tenth selectable row no ordinal')
+
+assert(
+  /property bool quickSelectHeld: false/.test(menuQml),
+  'menu tracks whether Alt is held for quick-select'
+)
+assert(
+  /onOpenedChanged: if \(!opened\) \{[\s\S]*quickSelectHeld = false \}/.test(menuQml),
+  'menu clears quick-select state when it closes'
+)
+assert(
+  /if \(event\.key === Qt\.Key_Alt\) \{\s*\n\s*root\.quickSelectHeld = true/.test(menuQml),
+  'menu arms quick-select while Alt is held'
+)
+assert(
+  /Keys\.onReleased: function\(event\) \{\s*\n\s*if \(event\.key === Qt\.Key_Alt\) root\.quickSelectHeld = false/.test(menuQml),
+  'menu disarms quick-select when Alt is released'
+)
+assert(
+  /onActiveFocusChanged: if \(!activeFocus\) root\.quickSelectHeld = false/.test(menuQml),
+  'menu disarms quick-select when focus leaves, since the Alt release never arrives'
+)
+assert(
+  /!root\.dmenuActive && \(event\.modifiers & Qt\.AltModifier\)\s*\n\s*&& event\.key >= Qt\.Key_1 && event\.key <= Qt\.Key_9/.test(menuQml),
+  'menu reads Alt+digit off the event modifier, so a menu summoned with Alt held still quick-selects'
+)
+assert(
+  /root\.quickSelectIndexForOrdinal\(event\.key - Qt\.Key_1 \+ 1\)/.test(menuQml),
+  'menu activates a row by its quick-select ordinal, not its raw digit'
+)
+assert(
+  /if \(!event\.isAutoRepeat\) \{\s*\n\s*var target = root\.quickSelectIndexForOrdinal/.test(menuQml),
+  'menu ignores auto-repeat digits, so a held Alt+N cannot drill into a submenu'
+)
 JS
 
 font_charset=$(fc-query --format='%{charset}' "$ROOT/default/fonts/omarchy/omarchy.ttf")

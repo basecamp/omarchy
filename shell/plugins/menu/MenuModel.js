@@ -362,6 +362,35 @@ function searchScore(items, entry, query) {
   return score * 1000 + depthFor(items, entry.id) * 25 + entry.order
 }
 
+// Alt+N addresses the Nth selectable row, so its numbering skips disabled
+// rows the same way the cursor does via rowSelectable/nextSelectable.
+function quickSelectIndexForOrdinal(rows, ordinal) {
+  var list = Array.isArray(rows) ? rows : []
+  if (ordinal < 1 || ordinal > 9) return -1
+
+  var seen = 0
+  for (var i = 0; i < list.length; i++) {
+    if (list[i] && list[i].disabled) continue
+    seen += 1
+    if (seen === ordinal) return i
+  }
+
+  return -1
+}
+
+function quickSelectOrdinalForIndex(rows, index) {
+  var list = Array.isArray(rows) ? rows : []
+  if (index < 0 || index >= list.length) return -1
+  if (list[index] && list[index].disabled) return -1
+
+  var seen = 0
+  for (var i = 0; i <= index; i++) {
+    if (!(list[i] && list[i].disabled)) seen += 1
+  }
+
+  return seen <= 9 ? seen : -1
+}
+
 function displayRow(items, itemOrder, checkedResults, disabledResults, entry, detail, score, section) {
   var target = entry.kind === "link" ? entry.target : entry.id
   return {
@@ -519,6 +548,8 @@ if (typeof module !== "undefined") {
     descriptionTextMatches: descriptionTextMatches,
     matchesQuery: matchesQuery,
     searchScore: searchScore,
-    displayRow: displayRow
+    displayRow: displayRow,
+    quickSelectIndexForOrdinal: quickSelectIndexForOrdinal,
+    quickSelectOrdinalForIndex: quickSelectOrdinalForIndex
   }
 }
