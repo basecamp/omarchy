@@ -44,8 +44,10 @@ This table is the durable execution ledger. Update it when a node is assigned, c
 | `D2` | complete | `wave0_trust_map` | Commit `38ae3f0d`; bounded worker-to-host rendering preserves arbitrary QML pixels while enforcing profile/allocation order, exact descriptor transfer, stale and malformed frame rejection, resize/DPR handling, and fail-closed teardown |
 | `D3` | active | `wave0_trust_map` | Named surface envelope, input/focus gates, lock-screen denial, and host-owned inspection integration in progress |
 | `D4` | complete | `wave0_native_build` | Commits `044a2dd0` and `d54d1309`; provider effects are audit-gated, revocation and cancellation are exact-epoch audited transitions, handles are binding/scope/epoch constrained, poisoned runtimes cannot resolve prior handles, and recovery cannot resurrect authority |
-| `D5` | active | `wave0_native_build` | Limits, health, crash recovery, and stale-channel cleanup integration in progress |
+| `D5` | complete | `wave0_native_build` | Commit `05edd5b0`; exact bounded requests/surfaces, readiness and pidfd health, crash backoff/disable, unresolved-worker recovery, redacted supervisor audit, and ambiguous-teardown quarantine pass strict, aggregate, sanitized, and adversarial tests |
 | `D6` | complete | primary | Commit `f0eaaeba`; bounded trusted scanner composition produces deterministic advisory today-to-tomorrow maps for Pomodoro, pet, and service fixtures with exact schema-v2 candidate identities, surfaces, and capability scopes |
+| `E0` | active | primary | Headless no-ambient-authority worker, authenticated channel, health limits, and clean termination vertical slice in progress |
+| `E4` | active | `wave0_native_build` | Permission-expanding update and live-revocation vertical slice in progress |
 | `E5` | complete | `wave0_native_build` | Commit `debe83d3`; v1 has only an unsafe/unmigrated posture, while exact reinstall, upgrade, exact-digest downgrade/rebuild approval, identity denial, and fault recovery pass strict and sanitized proofs |
 
 Nodes not listed here remain `pending` as represented by the graph. Add them to the live table when they become `ready`; completed rows remain as an audit trail rather than being removed.
