@@ -31,6 +31,11 @@ if omarchy-hw-match "EliteBook X G2i"; then
   # declares three sensors it does not have, so match on ACPI _STA rather than
   # on the HID appearing at all.
   if omarchy-hw-acpi-present OVTI05C1; then
+    # Machines set up before ipu7-camera.sh checked _STA got intel-ipu7-camera
+    # for a declared-but-absent sensor. The two packages conflict, and pacman
+    # --noconfirm answers a conflict prompt with no, so the add below would
+    # fail on every rerun until the wrong package is retired.
+    omarchy-pkg-drop intel-ipu7-camera
     omarchy-pkg-add hp-elitebook-x-g2i-camera
   fi
 fi
