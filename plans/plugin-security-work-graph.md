@@ -53,7 +53,7 @@ This table is the durable execution ledger. Update it when a node is assigned, c
 | `E4` | complete | `wave0_native_build` | Commit `2c5e5892`; exact staged review and candidate health preserve old authority until atomic promotion, promotion ambiguity rolls back fail-closed, and audit-first revocation cancels work, denies new operations, and stales handles |
 | `E5` | complete | `wave0_native_build` | Commit `debe83d3`; v1 has only an unsafe/unmigrated posture, while exact reinstall, upgrade, exact-digest downgrade/rebuild approval, identity denial, and fault recovery pass strict and sanitized proofs |
 | `F3` | complete | `wave0_native_build` | Commit `146c9e43`; durable disable/remove prevents restart resurrection, clears grant/decision authority, tears down active and candidate workers, rejects stale rollback/rebind, and requires a fresh generation on reinstall across strict/sanitized crash-recovery proofs |
-| `F0` | active | primary | Sandbox-escape and confused-deputy campaign in progress across E0, E3, and E4 |
+| `F0` | complete | primary | Commits `424882f9` and `efbd5cf1`; exact dispatcher identity closes a cross-plugin deputy seam, while real Bubblewrap denies home, D-Bus, Wayland, agent sockets, sibling state, network, descendants, revision writes, forged peers, and stale authority in Debug/Release/sanitized campaigns |
 | `G3` | active | `wave0_trust_map`, `wave0_native_build` | Rolling hostile reviews of the arbitrary-QML and lifecycle/update slices in progress |
 
 Nodes not listed here remain `pending` as represented by the graph. Add them to the live table when they become `ready`; completed rows remain as an audit trail rather than being removed.
