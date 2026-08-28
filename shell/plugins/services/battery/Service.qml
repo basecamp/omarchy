@@ -40,16 +40,19 @@ Item {
   // The warning is critical urgency, so the shell gives it no expiry and it
   // stays on screen until it is clicked. Take it down once the battery is no
   // longer low, which is normally the moment the charger goes in.
+  //
+  // checkBattery clears notifiedLowBattery before this runs, and `dismiss` is
+  // only ever computed from that latch, so a request dropped here is never
+  // recomputed by a later poll and the toast that never expires stays up for
+  // good. Every path therefore either issues the dismiss or holds it: a
+  // warning still in flight has not posted its toast for us to match, and a
+  // dismiss already running cannot carry a second request.
   function dismissLowBatteryWarning() {
-    // A warning still in flight has not posted its toast yet, so dismissing now
-    // would match nothing and strand the popup that lands a moment later. Let
-    // the warning finish and dismiss on its way out.
-    if (warningProcess.running) {
+    if (warningProcess.running || dismissProcess.running) {
       pendingDismiss = true
       return
     }
     pendingDismiss = false
-    if (dismissProcess.running) return
     dismissProcess.command = ["omarchy-notification-dismiss", lowBatterySummary]
     dismissProcess.running = true
   }
@@ -82,7 +85,10 @@ Item {
     onExited: if (root.pendingDismiss) root.dismissLowBatteryWarning()
   }
 
-  Process { id: dismissProcess }
+  Process {
+    id: dismissProcess
+    onExited: if (root.pendingDismiss) root.dismissLowBatteryWarning()
+  }
 
   Process {
     id: powerProfileProcess

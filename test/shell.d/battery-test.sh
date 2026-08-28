@@ -15,11 +15,20 @@ pass "battery service dismisses the warning by its own summary"
 
 # omarchy-battery-low posts the toast from a spawned process, so a dismiss sent
 # while that is still in flight matches nothing and strands the popup that lands
-# just after it.
-grep -F 'if (warningProcess.running) {' "$battery_service" >/dev/null
+# just after it. A dismiss already running cannot carry a second request either.
+grep -F 'if (warningProcess.running || dismissProcess.running) {' "$battery_service" >/dev/null
 grep -F 'pendingDismiss = true' "$battery_service" >/dev/null
-grep -F 'onExited: if (root.pendingDismiss) root.dismissLowBatteryWarning()' "$battery_service" >/dev/null
-pass "battery service holds a dismiss until the in-flight warning has posted"
+pass "battery service holds a dismiss while either process is in flight"
+
+# checkBattery clears the latch before dismissing and `dismiss` is only computed
+# from that latch, so a request dropped here is never recomputed and the toast
+# that never expires stays up for good. Both processes must replay it, and the
+# pending flag may only clear on the path that actually issues the command.
+(( $(grep -c 'onExited: if (root.pendingDismiss) root.dismissLowBatteryWarning()' "$battery_service") == 2 )) ||
+  fail "both the warning and the dismiss replay a held dismiss when they exit"
+pass "both the warning and the dismiss replay a held dismiss when they exit"
+grep -A6 -F 'function dismissLowBatteryWarning() {' "$battery_service" | grep -A1 -F 'pendingDismiss = false' | grep -F 'dismissProcess.command' >/dev/null
+pass "battery service clears the pending dismiss only when it issues one"
 
 # Unplugged again before that warning finished: its toast is the current one,
 # so the queued dismiss must not fire on the way out.
