@@ -396,15 +396,11 @@ check_prerequisites() {
 
 # --- commands ----------------------------------------------------------------
 
-install_windows() {
-  # Set up trap to handle Ctrl+C
-  trap "echo ''; echo 'Installation cancelled by user'; exit 1" INT
-
-  check_prerequisites
-
-  omarchy-pkg-add freerdp openbsd-netcat gum
-
-  mkdir -p "$HOME/.windows"
+# The launcher treats this file as the installed-state marker: while it exists
+# the menu offers Launch/Remove instead of Install. Write it only once the VM
+# is actually up, or cancelling anywhere in the setup leaves the menu claiming
+# a VM that was never created.
+create_launcher_entry() {
   mkdir -p "$HOME/.local/share/applications"
 
   cat <<EOF | tee "$HOME/.local/share/applications/windows-vm.desktop" >/dev/null
@@ -417,6 +413,17 @@ Terminal=false
 Type=Application
 Categories=System;Virtualization;
 EOF
+}
+
+install_windows() {
+  # Set up trap to handle Ctrl+C
+  trap "echo ''; echo 'Installation cancelled by user'; exit 1" INT
+
+  check_prerequisites
+
+  omarchy-pkg-add freerdp openbsd-netcat gum
+
+  mkdir -p "$HOME/.windows"
 
   # Get system resources
   TOTAL_RAM=$(free -h | awk 'NR==2 {print $2}')
@@ -569,6 +576,8 @@ EOF
     echo "   - Port already in use: check if another VM is running"
     exit 1
   fi
+
+  create_launcher_entry
 
   echo ""
   echo "Windows VM is starting up!"
