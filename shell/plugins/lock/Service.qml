@@ -437,9 +437,18 @@ Item {
   // Omarchy does not set and cannot read: Howdy defaults to 4s, other backends
   // run longer. This is the ceiling on that wait, so a backend that never
   // reports back cannot hold the panel lit and the camera open indefinitely.
+  //
+  // It only ever binds a backend that keeps one transaction open across several
+  // of its own attempts. Howdy exits at its timeout and `faceRetryTimer` starts
+  // the next attempt, but a pending blank has already stopped that timer, so the
+  // wait there is one 4s attempt whatever this is set to. Measured against a
+  // backend that does own its retry window: 5.1s per round here, and one
+  // reported attempt of 13.5s on other hardware. 15s cut three rounds short on
+  // the slower of the two, so the ceiling is the wait plus the 5s that precedes
+  // it, sized to clear three rounds there rather than to be tight anywhere.
   Timer {
     id: blankDeferTimer
-    interval: 15000
+    interval: 20000
     repeat: false
     onTriggered: {
       if (root.blankPending) root.runBlank()
