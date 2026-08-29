@@ -25,7 +25,6 @@ Item {
   property bool fingerprintConfigured: false
   property int fingerprintUnreachedStreak: 0
   property bool fingerprintAttemptReachedDevice: false
-  property bool fingerprintAttemptSettled: false
   property double fingerprintLastNudgeMs: 0
   property bool previewVisible: false
   property string enteredPassword: ""
@@ -244,9 +243,7 @@ Item {
 
     fingerprintAuthenticating = true
     fingerprintAttemptReachedDevice = false
-    fingerprintAttemptSettled = false
     if (!fingerprintPam.start()) {
-      fingerprintAuthenticating = false
       settleFingerprintAttempt()
       return
     }
@@ -270,17 +267,16 @@ Item {
   // advances the streak (and so the notice) and retries against a daemon that
   // may now be fresh, instead of hanging silently behind a normal icon.
   function timeoutFingerprintReach() {
-    if (fingerprintAttemptReachedDevice || fingerprintAttemptSettled) return
     if (fingerprintPam.active) fingerprintPam.abort()
     settleFingerprintAttempt()
   }
 
   // One PAM attempt can raise both onError and onCompleted, so fold each
-  // attempt into the streak exactly once. Reached attempts clear the streak;
-  // unreached ones advance it and stretch the next retry.
+  // attempt into the streak exactly once: fingerprintAuthenticating is the
+  // attempt being open, and the first settle closes it. Reached attempts clear
+  // the streak; unreached ones advance it and stretch the next retry.
   function settleFingerprintAttempt() {
-    if (fingerprintAttemptSettled) return
-    fingerprintAttemptSettled = true
+    if (!fingerprintAuthenticating) return
     fingerprintAuthenticating = false
     fingerprintReachTimer.stop()
     if (!lockRequested || !fingerprintConfigured) return
@@ -291,13 +287,8 @@ Item {
   }
 
   function handleFingerprintFinished(result) {
-    if (result === PamResult.Success) {
-      fingerprintAuthenticating = false
-      if (lockRequested) finishUnlock()
-      return
-    }
-
-    settleFingerprintAttempt()
+    if (result === PamResult.Success && lockRequested) finishUnlock()
+    else settleFingerprintAttempt()
   }
 
   WlSessionLock {
