@@ -27,22 +27,61 @@ if ! $NO_REBUILD && omarchy-cmd-missing limine-mkinitcpio; then
 fi
 
 MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
+RESUME_HOOK_MARKER="# omarchy:resume-hook"
 SWAP_FILE="/swap/swapfile"
 RESUME_DROP_IN="/etc/limine-entry-tool.d/resume.conf"
 
+write_resume_hook_config() {
+  sudo tee "$MKINITCPIO_CONF" >/dev/null <<'EOF'
+# omarchy:resume-hook
+_omarchy_resume_hooks=()
+_omarchy_resume_inserted=false
+
+for _omarchy_hook in "${HOOKS[@]}"; do
+  [[ $_omarchy_hook == "resume" ]] && continue
+
+  if [[ $_omarchy_hook == "filesystems" && $_omarchy_resume_inserted == false ]]; then
+    _omarchy_resume_hooks+=(resume)
+    _omarchy_resume_inserted=true
+  fi
+
+  _omarchy_resume_hooks+=("$_omarchy_hook")
+done
+
+if [[ $_omarchy_resume_inserted == false ]]; then
+  _omarchy_resume_hooks+=(resume)
+fi
+
+HOOKS=("${_omarchy_resume_hooks[@]}")
+unset _omarchy_resume_hooks _omarchy_resume_inserted _omarchy_hook
+EOF
+}
+
 # Check if hibernation is already configured
-if [[ -f $MKINITCPIO_CONF ]] && grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
+if [[ -f $MKINITCPIO_CONF ]] &&
+  { grep -qFx "$RESUME_HOOK_MARKER" "$MKINITCPIO_CONF" || grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; }; then
+  needs_rebuild=false
+
+  if ! grep -qFx "$RESUME_HOOK_MARKER" "$MKINITCPIO_CONF"; then
+    echo "Moving the resume hook before filesystems"
+    write_resume_hook_config
+    needs_rebuild=true
+  fi
+
   # Fix empty resume_offset if btrfs map-swapfile failed during initial setup
   if [[ -f $RESUME_DROP_IN ]] && grep -q 'resume_offset="$' "$RESUME_DROP_IN" && [[ -f $SWAP_FILE ]]; then
     RESUME_OFFSET=$(sudo btrfs inspect-internal map-swapfile -r "$SWAP_FILE" 2>/dev/null)
     if [[ -n $RESUME_OFFSET ]]; then
       echo "Fixing empty resume_offset ($RESUME_OFFSET)"
       sudo sed -i "s/resume_offset=\"$/resume_offset=$RESUME_OFFSET\"/" "$RESUME_DROP_IN"
-      if ! $NO_REBUILD; then
-        sudo limine-mkinitcpio
-      fi
+      needs_rebuild=true
     fi
   fi
+
+  if $needs_rebuild && ! $NO_REBUILD; then
+    sudo limine-mkinitcpio
+  fi
+
   echo "Hibernation is already set up"
   exit 0
 fi
@@ -86,7 +125,7 @@ fi
 # Add resume hook to mkinitcpio
 sudo mkdir -p /etc/mkinitcpio.conf.d
 echo "Adding resume hook to $MKINITCPIO_CONF"
-echo "HOOKS+=(resume)" | sudo tee "$MKINITCPIO_CONF" >/dev/null
+write_resume_hook_config
 
 # Ensure keyboard backlight doesn't prevent sleep
 sudo cp -p "$OMARCHY_PATH/default/systemd/system-sleep/keyboard-backlight" /usr/lib/systemd/system-sleep/

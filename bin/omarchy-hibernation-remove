@@ -4,9 +4,11 @@
 # omarchy:requires-sudo=true
 
 MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
+RESUME_HOOK_MARKER="# omarchy:resume-hook"
 
 # Check if hibernation is configured
-if [[ ! -f $MKINITCPIO_CONF ]] || ! grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
+if [[ ! -f $MKINITCPIO_CONF ]] ||
+  ! { grep -qFx "$RESUME_HOOK_MARKER" "$MKINITCPIO_CONF" || grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; }; then
   echo "Hibernation is not set up"
   exit 0
 fi
