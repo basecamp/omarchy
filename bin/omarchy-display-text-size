@@ -170,17 +170,26 @@ set_terminal_size() {
   fi
 }
 
-# Report the current terminal point size from whichever config we find first.
+# Report the current point size from the terminal xdg-terminal-exec selects.
 term_current_pt() {
-  if [[ -f ~/.config/ghostty/config ]]; then
+  case "$(omarchy-default-terminal)" in
+  ghostty)
+    [[ -f ~/.config/ghostty/config ]] || return 0
     grep -oP '^font-size = \K[0-9.]+' ~/.config/ghostty/config | head -1
-  elif [[ -f ~/.config/alacritty/alacritty.toml ]]; then
+    ;;
+  alacritty)
+    [[ -f ~/.config/alacritty/alacritty.toml ]] || return 0
     grep -oP '^size[[:space:]]*=[[:space:]]*\K[0-9.]+' ~/.config/alacritty/alacritty.toml | head -1
-  elif [[ -f ~/.config/kitty/kitty.conf ]]; then
+    ;;
+  kitty)
+    [[ -f ~/.config/kitty/kitty.conf ]] || return 0
     grep -oP '^font_size[[:space:]]+\K[0-9.]+' ~/.config/kitty/kitty.conf | head -1
-  elif [[ -f ~/.config/foot/foot.ini ]]; then
+    ;;
+  foot)
+    [[ -f ~/.config/foot/foot.ini ]] || return 0
     grep -oP ':size=\K[0-9.]+' ~/.config/foot/foot.ini | head -1
-  fi
+    ;;
+  esac
 }
 
 case "${1:-}" in
