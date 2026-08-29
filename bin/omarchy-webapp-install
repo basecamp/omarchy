@@ -77,6 +77,37 @@ fetch_site_icon() {
     download_icon "https://www.google.com/s2/favicons?domain=${site_url}&sz=256" "$dest"
 }
 
+desktop_string_escape() {
+  # Desktop Entry "string" value (freedesktop Desktop Entry Spec, "Value types"):
+  # a raw newline would start a new key line and let a value inject a second
+  # Exec=. Escape backslash first, then tab/CR/LF and a leading space. Every value
+  # written into the .desktop file passes through here.
+  #
+  # Parameter expansion rather than sed: GNU sed's N auto-prints the pattern space
+  # and exits at end of input, so a `:a;N;$!ba` slurp skips every following s///
+  # for a value with no newline in it - which is every value except the injection
+  # attempt this exists to stop.
+  local value="$1"
+
+  value=${value//\\/\\\\}
+  value=${value//$'\t'/\\t}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\n'/\\n}
+  [[ $value == " "* ]] && value="\\s${value# }"
+
+  printf '%s' "$value"
+}
+
+desktop_exec_arg() {
+  # One Exec argument, double-quoted per the freedesktop Exec spec: inside quotes
+  # " ` $ \ take a backslash and a literal % becomes %%. Only the default Exec's
+  # URL needs this; $CUSTOM_EXEC stays a whole command line (file-syntax only).
+  local escaped
+  escaped=$(printf '%s' "$1" \
+    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/`/\\`/g' -e 's/\$/\\$/g' -e 's/%/%%/g')
+  printf '"%s"' "$escaped"
+}
+
 if (( $# < 3 )); then
   echo -e "\e[32mLet's create a new web app you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
@@ -143,29 +174,39 @@ else
   ICON_VALUE=$(icon_name_from_ref "$ICON_REF")
 fi
 
-# Use custom exec if provided, otherwise default behavior
-EXEC_COMMAND="${CUSTOM_EXEC:-omarchy-launch-webapp $APP_URL}"
+# Default Exec quotes the URL as one Exec-spec argument; the whole line then gets
+# the file-syntax escaping below (unescaped first at read time per spec, so the
+# layers compose). $CUSTOM_EXEC is a full command line, so it gets file-syntax only.
+if [[ -n $CUSTOM_EXEC ]]; then
+  EXEC_COMMAND=$CUSTOM_EXEC
+else
+  EXEC_COMMAND="omarchy-launch-webapp $(desktop_exec_arg "$APP_URL")"
+fi
 
 # Create application .desktop file
 DESKTOP_DIR="$HOME/.local/share/applications"
 DESKTOP_FILE="$DESKTOP_DIR/$APP_NAME.desktop"
 mkdir -p "$DESKTOP_DIR"
 
+name_field=$(desktop_string_escape "$APP_NAME")
+exec_field=$(desktop_string_escape "$EXEC_COMMAND")
+icon_field=$(desktop_string_escape "$ICON_VALUE")
+
 cat >"$DESKTOP_FILE" <<EOF
 [Desktop Entry]
 Version=1.0
-Name=$APP_NAME
-Comment=$APP_NAME
-Exec=$EXEC_COMMAND
+Name=$name_field
+Comment=$name_field
+Exec=$exec_field
 Terminal=false
 Type=Application
-Icon=$ICON_VALUE
+Icon=$icon_field
 StartupNotify=true
 EOF
 
 # Add mime types if provided
 if [[ -n $MIME_TYPES ]]; then
-  echo "MimeType=$MIME_TYPES" >>"$DESKTOP_FILE"
+  printf 'MimeType=%s\n' "$(desktop_string_escape "$MIME_TYPES")" >>"$DESKTOP_FILE"
 fi
 
 chmod +x "$DESKTOP_FILE"
