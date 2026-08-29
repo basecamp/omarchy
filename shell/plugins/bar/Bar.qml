@@ -1562,6 +1562,25 @@ Item {
       if (hint !== undefined && hint !== null && hint > 0) return Math.round(hint)
       return Math.max(Style.space(10), Math.round((root.vertical ? slot.height : slot.width) * 0.55))
     }
+    // Optional hint for modules whose slot reserves invisible space (e.g. a
+    // collapsed drawer's slide-in room) alongside the content the mark should
+    // actually track. Defaults to 0, which reproduces the plain centered
+    // behavior below exactly - so modules that don't define this hint are
+    // unaffected.
+    readonly property real panelIndicatorOffset: {
+      var hint = activeItem && "openPanelIndicatorOffset" in activeItem ? activeItem.openPanelIndicatorOffset : undefined
+      return (hint !== undefined && hint !== null && hint > 0) ? Math.round(hint) : 0
+    }
+    // Optional hint pinning the mark's leading edge (past panelIndicatorOffset)
+    // at a fixed distance, independent of panelIndicatorExtent. Without it the
+    // mark is centered using its own width, so growing the width moves both
+    // edges outward; with it, growing the width only pushes the trailing edge
+    // further out while the leading edge stays put. -1 means "not provided".
+    readonly property real panelIndicatorLeadInset: {
+      var key = root.vertical ? "openPanelIndicatorLeadInsetV" : "openPanelIndicatorLeadInset"
+      var hint = activeItem && key in activeItem ? activeItem[key] : undefined
+      return (hint !== undefined && hint !== null && hint >= 0) ? Math.round(hint) : -1
+    }
     implicitWidth: activeItem && activeItem.visible ? (root.vertical ? root.barSize : activeItem.implicitWidth) : 0
     implicitHeight: activeItem && activeItem.visible ? activeItem.implicitHeight : 0
     width: implicitWidth
@@ -1639,9 +1658,13 @@ Item {
       // panel that opens on that side.
       x: root.vertical
         ? (root.position === "left" ? parent.width - width - inset : inset)
-        : Math.round((parent.width - width) / 2)
+        : (slot.panelIndicatorLeadInset >= 0
+            ? slot.panelIndicatorOffset + slot.panelIndicatorLeadInset
+            : slot.panelIndicatorOffset + Math.round(((parent.width - slot.panelIndicatorOffset) - width) / 2))
       y: root.vertical
-        ? Math.round((parent.height - height) / 2)
+        ? (slot.panelIndicatorLeadInset >= 0
+            ? slot.panelIndicatorOffset + slot.panelIndicatorLeadInset
+            : slot.panelIndicatorOffset + Math.round(((parent.height - slot.panelIndicatorOffset) - height) / 2))
         : (root.position === "top" ? parent.height - height - inset : inset)
       z: 50
 

@@ -68,8 +68,20 @@ BarWidget {
   var chevronBlock = allItems.length > 0 ? trayItemExtent + revealExtent : 0
   return chevronBlock + pinnedExtent
 }
-readonly property real openPanelIndicatorWidth: visibleExtent * 0.85
-readonly property real openPanelIndicatorHeight: visibleExtent * 0.85
+readonly property real openPanelIndicatorWidth: visibleExtent * 0.75
+readonly property real openPanelIndicatorHeight: visibleExtent * 0.75
+  // The collapsed drawer keeps drawerExtent worth of invisible room ahead of
+  // the chevron for its slide-in (see drawerBlockWidth/Height above) - room
+  // that Bar.qml's slot otherwise counts as part of this widget when it
+  // centers the mark. Report it so the mark centers on the chevron+pinned
+  // icons actually on screen instead of drifting toward that empty space.
+  readonly property real openPanelIndicatorOffset: allItems.length > 0 ? (drawerExtent - revealExtent) : 0
+  // Pins the mark's leading edge at a fixed distance past the offset above,
+  // independent of openPanelIndicatorWidth/Height - so widening those to
+  // reach further along the tray only pushes the trailing edge out and
+  // never moves the leading edge away from the chevron.
+  readonly property real openPanelIndicatorLeadInset: visibleExtent * 0.2
+  readonly property real openPanelIndicatorLeadInsetV: visibleExtent * 0.2
 
   // Submenu drill-down state. QsMenuEntry.display() renders a *platform* menu,
   // which Quickshell refuses unless the shell root sets `//@ pragma
