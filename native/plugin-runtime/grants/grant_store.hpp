@@ -147,6 +147,8 @@ make_bundle(std::uint16_t plugin_schema_version, permission::PluginId plugin,
             std::vector<definition::DynamicRevisionGrant> dynamic_grants = {});
 
 [[nodiscard]] std::string state_json(const StoreState &state);
+[[nodiscard]] std::string revision_grant_fingerprint(
+    const RevisionGrants &revision);
 [[nodiscard]] std::string preview_json(const Preview &preview);
 [[nodiscard]] std::string mutation_json(const MutationResult &result);
 [[nodiscard]] std::string revocation_json(const RevocationResult &result);

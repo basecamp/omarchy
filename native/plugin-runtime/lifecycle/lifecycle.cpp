@@ -167,9 +167,7 @@ const grant::PluginGrants *plugin_for(const grant::StoreState &state,
 }
 
 std::string grant_fingerprint(const grant::RevisionGrants &revision) {
-  return permission::grant_fingerprint(
-      revision.binding.plugin, revision.binding.revision,
-      revision.binding.policy_fingerprint, revision.grants);
+  return grant::revision_grant_fingerprint(revision);
 }
 
 bool same_revision_binding(const revision::PolicyBinding &persisted,
@@ -200,7 +198,8 @@ grant::RequestBundle bundle_from(const grant::RevisionGrants &revision) {
   return grant::make_bundle(grant::kSecurePluginSchemaVersion,
                             revision.binding.plugin, revision.binding.revision,
                             revision.source_request_fingerprint,
-                            revision.binding.generation, revision.requests);
+                            revision.binding.generation, revision.requests,
+                            revision.dynamic_grants);
 }
 
 bool required_grants_present(const grant::RevisionGrants &revision) {
@@ -223,8 +222,11 @@ bool required_grants_present(const grant::RevisionGrants &revision) {
 permission::RequestSet
 translate_requests(const manifest::ManifestV2 &manifest) {
   permission::RequestSet result;
-  for (const auto &request : manifest.requests)
+  for (const auto &request : manifest.requests) {
+    if (request.definition_generation > 0 && !request.definition_digest.empty())
+      continue;
     result.push_back(translate_request(request));
+  }
   permission::validate_requests(result);
   return result;
 }
@@ -311,6 +313,28 @@ StageOutcome LifecycleManager::stage(const std::filesystem::path &source_root,
                                      std::string_view directory,
                                      std::string_view pinned_tree_sha256,
                                      revision::FaultPoint fault) {
+  return stage_impl(source_root, directory, pinned_tree_sha256, {}, nullptr,
+                    nullptr, fault);
+}
+
+StageOutcome LifecycleManager::stage_reviewed_dynamic(
+    const std::filesystem::path &source_root, std::string_view directory,
+    std::string_view pinned_tree_sha256,
+    std::vector<grant::definition::DynamicRevisionGrant> reviewed,
+    const grant::definition::TrustedDefinitionRegistry &registry,
+    const grant::definition::DynamicScopeValidator &validator,
+    revision::FaultPoint fault) {
+  return stage_impl(source_root, directory, pinned_tree_sha256,
+                    std::move(reviewed), &registry, &validator, fault);
+}
+
+StageOutcome LifecycleManager::stage_impl(
+    const std::filesystem::path &source_root, std::string_view directory,
+    std::string_view pinned_tree_sha256,
+    std::vector<grant::definition::DynamicRevisionGrant> reviewed,
+    const grant::definition::TrustedDefinitionRegistry *registry,
+    const grant::definition::DynamicScopeValidator *validator,
+    revision::FaultPoint fault) {
   StageOutcome outcome;
   const auto recovered = recover();
   if (!recovered.ok()) {
@@ -350,12 +374,52 @@ StageOutcome LifecycleManager::stage(const std::filesystem::path &source_root,
       if (generation == 0)
         throw std::runtime_error("activation generation is exhausted");
     }
+    std::vector<grant::definition::DynamicRequest> declared_dynamic;
+    for (const auto &request : plugin.manifest.requests) {
+      if (request.definition_generation == 0 || request.definition_digest.empty())
+        continue;
+      if (registry == nullptr || validator == nullptr)
+        throw std::runtime_error(
+            "dynamic capabilities require an explicit trusted registry review");
+      const auto translated =
+          grant::definition::dynamic_request_from_manifest(request, *registry);
+      if (!translated)
+        throw std::runtime_error("dynamic manifest request failed trusted review");
+      declared_dynamic.push_back(*translated);
+    }
+    if (declared_dynamic.size() != reviewed.size())
+      throw std::runtime_error(
+          "reviewed dynamic grants do not exactly match manifest requests");
+    for (auto &dynamic : reviewed) {
+      const auto found = std::ranges::find_if(
+          declared_dynamic, [&](const auto &request) {
+            return request.definition.canonical_name ==
+                   dynamic.request.definition.canonical_name;
+          });
+      if (found == declared_dynamic.end() ||
+          found->definition.definition_generation !=
+              dynamic.request.definition.definition_generation ||
+          found->definition.definition_digest !=
+              dynamic.request.definition.definition_digest ||
+          found->operations != dynamic.request.operations ||
+          found->scope != dynamic.request.scope ||
+          found->required != dynamic.request.required ||
+          dynamic.binding.plugin != permission::PluginId(plugin.manifest.id) ||
+          dynamic.binding.revision !=
+              permission::Digest(plugin.identity.tree_sha256) ||
+          dynamic.binding.generation != generation ||
+          !grant::definition::review_dynamic_grant(*registry, dynamic,
+                                                    *validator))
+        throw std::runtime_error(
+            "reviewed dynamic grant is stale, broadened, or misbound");
+    }
     auto bundle =
         grant::make_bundle(grant::kSecurePluginSchemaVersion,
                            permission::PluginId(plugin.manifest.id),
                            permission::Digest(plugin.identity.tree_sha256),
                            permission::Digest(plugin.identity.request_sha256),
-                           generation, translate_requests(plugin.manifest));
+                           generation, translate_requests(plugin.manifest),
+                           std::move(reviewed));
     const auto candidate = grants_.stage_candidate(bundle);
     outcome.binding = candidate.revision.binding;
     outcome.delta = candidate.request_delta;

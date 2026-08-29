@@ -1500,6 +1500,27 @@ RequestBundle make_bundle(std::uint16_t plugin_schema_version,
   return bundle;
 }
 
+std::string revision_grant_fingerprint(const RevisionGrants &revision) {
+  if (revision.dynamic_grants.empty())
+    return permission::grant_fingerprint(
+        revision.binding.plugin, revision.binding.revision,
+        revision.binding.policy_fingerprint, revision.grants);
+  std::string canonical("OMARCHY-COMBINED-GRANTS-V1\0", 27);
+  append_fingerprint_field(
+      canonical,
+      permission::grant_fingerprint(
+          revision.binding.plugin, revision.binding.revision,
+          revision.binding.policy_fingerprint, revision.grants));
+  for (const auto &dynamic : revision.dynamic_grants) {
+    std::array<std::byte, 16384> encoded{};
+    std::size_t written = 0;
+    require(definition::encode_dynamic_grant(dynamic, encoded, written),
+            "dynamic grant exceeds fingerprint bound");
+    canonical.append(reinterpret_cast<const char *>(encoded.data()), written);
+  }
+  return manifest::sha256_hex(canonical);
+}
+
 std::string state_json(const StoreState &state) {
   validate_state(state);
   std::string plugins = "[";

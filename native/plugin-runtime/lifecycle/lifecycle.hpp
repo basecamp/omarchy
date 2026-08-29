@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace omarchy::plugins::lifecycle {
 
@@ -57,6 +58,13 @@ public:
   stage(const std::filesystem::path &source_root, std::string_view directory,
         std::string_view pinned_tree_sha256,
         revision::FaultPoint fault = revision::FaultPoint::none);
+  [[nodiscard]] StageOutcome stage_reviewed_dynamic(
+      const std::filesystem::path &source_root, std::string_view directory,
+      std::string_view pinned_tree_sha256,
+      std::vector<grant::definition::DynamicRevisionGrant> reviewed,
+      const grant::definition::TrustedDefinitionRegistry &registry,
+      const grant::definition::DynamicScopeValidator &validator,
+      revision::FaultPoint fault = revision::FaultPoint::none);
   [[nodiscard]] Result
   enable(const permission::PluginId &plugin,
          revision::FaultPoint fault = revision::FaultPoint::none);
@@ -77,6 +85,11 @@ public:
   [[nodiscard]] grant::GrantStore &grants() { return grants_; }
 
 private:
+  [[nodiscard]] StageOutcome stage_impl(
+      const std::filesystem::path &, std::string_view, std::string_view,
+      std::vector<grant::definition::DynamicRevisionGrant>,
+      const grant::definition::TrustedDefinitionRegistry *,
+      const grant::definition::DynamicScopeValidator *, revision::FaultPoint);
   [[nodiscard]] std::optional<omarchy::plugins::discovery::VerifiedPlugin>
   stored_plugin(const grant::RevisionGrants &revision, Result &result) const;
 
