@@ -5,12 +5,14 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 namespace discovery = omarchy::plugins::discovery;
@@ -61,6 +63,16 @@ std::size_t count(const discovery::DiscoveryReport &report,
       }));
 }
 
+template <typename Function>
+void expect_rejected(Function &&function, std::string_view message) {
+  try {
+    function();
+  } catch (const std::exception &) {
+    return;
+  }
+  throw std::runtime_error(std::string(message));
+}
+
 discovery::IdentityPin pin(std::string directory, std::string digest) {
   return {.directory = std::move(directory), .tree_sha256 = std::move(digest)};
 }
@@ -78,6 +90,30 @@ int main() {
                 report.plugins.front().identity.tree_sha256 ==
                     TREE_SHA256_GOLDEN,
             "pinned schema-v2 plugin was not discovered");
+
+    const int stable_fd =
+        ::open((verified_root.path() / "secure").c_str(),
+               O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    require(stable_fd >= 0, "could not open stable plugin descriptor");
+    const auto descriptor_result = discovery::discover_open_revision(stable_fd);
+    require(descriptor_result.manifest == report.plugins.front().manifest &&
+                descriptor_result.identity == report.plugins.front().identity,
+            "descriptor discovery identity differs from stable path discovery");
+    require(discovery::discover_open_revision(stable_fd).identity ==
+                descriptor_result.identity,
+            "descriptor discovery changed the caller's directory position");
+
+    const auto original_path = verified_root.path() / "secure";
+    const auto displaced_path = verified_root.path() / "displaced";
+    std::filesystem::rename(original_path, displaced_path);
+    copy_tree(MANIFEST_DUPLICATE_FIXTURE_ROOT, original_path);
+    const auto after_replacement = discovery::discover_open_revision(stable_fd);
+    require(after_replacement.identity == descriptor_result.identity &&
+                after_replacement.manifest == descriptor_result.manifest,
+            "pathname replacement retargeted descriptor discovery");
+    ::close(stable_fd);
+    std::filesystem::remove_all(original_path);
+    std::filesystem::rename(displaced_path, original_path);
 
     report = discovery::discover(verified_root.path(), correct_pin,
                                  {.schema_v2_enabled = false});
@@ -135,6 +171,88 @@ int main() {
     require(report.plugins.empty() &&
                 count(report, discovery::DiagnosticCode::manifest_missing) == 1,
             "special manifest file did not fail closed without blocking");
+
+    const int special_fd =
+        ::open(special_plugin.c_str(),
+               O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    require(special_fd >= 0, "could not open special plugin descriptor");
+    expect_rejected(
+        [&] { (void)discovery::discover_open_revision(special_fd); },
+        "descriptor discovery admitted a special file");
+    ::close(special_fd);
+
+    TemporaryDirectory symlink_root;
+    copy_tree(MANIFEST_V2_FIXTURE_ROOT, symlink_root.path() / "linked");
+    std::filesystem::create_symlink("ui/Status.qml",
+                                    symlink_root.path() / "linked" / "escape");
+    const int symlink_fd =
+        ::open((symlink_root.path() / "linked").c_str(),
+               O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    require(symlink_fd >= 0, "could not open symlink plugin descriptor");
+    expect_rejected(
+        [&] { (void)discovery::discover_open_revision(symlink_fd); },
+        "descriptor discovery admitted a symlink");
+    ::close(symlink_fd);
+
+    TemporaryDirectory git_root;
+    copy_tree(MANIFEST_V2_FIXTURE_ROOT, git_root.path() / "checkout");
+    std::filesystem::create_directories(git_root.path() / "checkout" / ".git");
+    std::ofstream(git_root.path() / "checkout" / ".git/config")
+        << "untrusted metadata\n";
+    const int git_fd = ::open((git_root.path() / "checkout").c_str(),
+                              O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    require(git_fd >= 0, "could not open .git plugin descriptor");
+    expect_rejected(
+        [&] { (void)discovery::discover_open_revision(git_fd); },
+        "descriptor discovery excluded sandbox-visible .git content");
+    ::close(git_fd);
+
+    TemporaryDirectory oversized_manifest_root;
+    copy_tree(MANIFEST_V2_FIXTURE_ROOT,
+              oversized_manifest_root.path() / "oversized");
+    {
+      std::ofstream manifest_file(oversized_manifest_root.path() /
+                                  "oversized/manifest.json");
+      manifest_file << std::string(1024 * 1024 + 1, ' ');
+    }
+    const int oversized_manifest_fd =
+        ::open((oversized_manifest_root.path() / "oversized").c_str(),
+               O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    require(oversized_manifest_fd >= 0,
+            "could not open oversized-manifest plugin descriptor");
+    expect_rejected(
+        [&] { (void)discovery::discover_open_revision(oversized_manifest_fd); },
+        "descriptor discovery admitted an oversized manifest");
+    ::close(oversized_manifest_fd);
+
+    TemporaryDirectory changing_root;
+    copy_tree(MANIFEST_V2_FIXTURE_ROOT, changing_root.path() / "changing");
+    {
+      std::ofstream padding(changing_root.path() / "changing" / "padding");
+      padding << std::string(8 * 1024 * 1024, 'x');
+    }
+    const int changing_fd =
+        ::open((changing_root.path() / "changing").c_str(),
+               O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    require(changing_fd >= 0, "could not open changing plugin descriptor");
+    std::atomic_bool mutate{true};
+    std::atomic_bool first_mutation{false};
+    std::jthread mutator([&] {
+      const auto marker = changing_root.path() / "changing" / "mutation";
+      while (mutate.load(std::memory_order_relaxed)) {
+        std::ofstream(marker) << "changed";
+        std::filesystem::remove(marker);
+        first_mutation.store(true, std::memory_order_release);
+      }
+    });
+    while (!first_mutation.load(std::memory_order_acquire))
+      std::this_thread::yield();
+    expect_rejected(
+        [&] { (void)discovery::discover_open_revision(changing_fd); },
+        "descriptor discovery admitted a concurrently changing tree");
+    mutate.store(false, std::memory_order_relaxed);
+    mutator.join();
+    ::close(changing_fd);
 
     const std::vector duplicate_pins{pin("target", TREE_SHA256_GOLDEN),
                                      pin("target", TREE_SHA256_GOLDEN)};

@@ -67,7 +67,32 @@ struct ContentIdentity {
   bool operator==(const ContentIdentity &) const = default;
 };
 
+struct TreeEntry {
+  std::string relative;
+  std::string bytes;
+  bool executable = false;
+};
+
+// Bounded, owned input to the canonical content-identity algorithm. Filesystem
+// front ends add entries here so size, count, and relative-path rules have one
+// implementation regardless of how the tree was opened.
+class TreeContents {
+public:
+  void add(TreeEntry entry);
+  [[nodiscard]] std::uint64_t remaining_bytes() const noexcept;
+  [[nodiscard]] const TreeEntry *find(std::string_view relative) const noexcept;
+
+private:
+  std::vector<TreeEntry> entries_;
+  std::uint64_t total_bytes_ = 0;
+
+  friend ContentIdentity identify_tree_contents(TreeContents,
+                                                const ManifestV2 &);
+};
+
 ManifestV2 parse_manifest_v2(std::string_view bytes);
+ContentIdentity identify_tree_contents(TreeContents contents,
+                                       const ManifestV2 &manifest);
 ContentIdentity identify_tree(const std::filesystem::path &root,
                               const ManifestV2 &manifest);
 std::string requested_capability_fingerprint(

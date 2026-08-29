@@ -849,18 +849,78 @@ ManifestV2 parse_manifest_v2(std::string_view bytes) {
   return result;
 }
 
+void TreeContents::add(TreeEntry entry) {
+  require(safe_relative_path(entry.relative), "unsafe plugin tree path");
+  const std::filesystem::path relative(entry.relative);
+  require(*relative.begin() != ".git", ".git entry in plugin tree contents");
+  require(entries_.size() < kMaximumFiles, "plugin tree has too many files");
+  require(entry.bytes.size() <= kMaximumTreeBytes - total_bytes_,
+          "plugin tree is too large");
+  total_bytes_ += entry.bytes.size();
+  entries_.push_back(std::move(entry));
+}
+
+std::uint64_t TreeContents::remaining_bytes() const noexcept {
+  return kMaximumTreeBytes - total_bytes_;
+}
+
+const TreeEntry *TreeContents::find(std::string_view relative) const noexcept {
+  const auto found =
+      std::ranges::find(entries_, relative, &TreeEntry::relative);
+  return found == entries_.end() ? nullptr : &*found;
+}
+
+ContentIdentity identify_tree_contents(TreeContents contents,
+                                       const ManifestV2 &manifest) {
+  auto &files = contents.entries_;
+  std::ranges::sort(files, {}, &TreeEntry::relative);
+  require(!files.empty(), "plugin tree is empty");
+  require(std::adjacent_find(files.begin(), files.end(),
+                             [](const TreeEntry &left, const TreeEntry &right) {
+                               return left.relative == right.relative;
+                             }) == files.end(),
+          "duplicate plugin tree path");
+
+  const auto *manifest_file = contents.find("manifest.json");
+  require(manifest_file != nullptr, "plugin tree has no manifest.json");
+  require(contents.find(manifest.runtime.qml) != nullptr,
+          "runtime.qml does not exist");
+  for (const auto &entry : manifest.runtime.surface_qml)
+    require(contents.find(entry.qml) != nullptr,
+            "runtime.surfaceQml entry does not exist");
+  if (!manifest.runtime.worker.empty()) {
+    const auto *worker = contents.find(manifest.runtime.worker.front());
+    require(worker != nullptr && worker->executable,
+            "runtime.worker executable is missing or not executable");
+  }
+  for (const auto &sidecar : manifest.runtime.sidecars) {
+    const auto *executable = contents.find(sidecar.command.front());
+    require(executable != nullptr && executable->executable,
+            "runtime.sidecar executable is missing or not executable");
+  }
+
+  Sha256 tree;
+  tree.update("OMARCHY-PLUGIN-TREE-V1\0"sv);
+  hash_u64(tree, files.size());
+  for (const auto &[relative, bytes, executable] : files) {
+    hash_field(tree, relative);
+    const std::byte mode{executable ? std::uint8_t{1} : std::uint8_t{0}};
+    tree.update(std::span(&mode, 1));
+    hash_field(tree, bytes);
+  }
+  require(parse_manifest_v2(manifest_file->bytes) == manifest,
+          "manifest model does not match the hashed manifest.json");
+  return {.tree_sha256 = hex(tree.finish()),
+          .manifest_sha256 = sha256_hex(manifest_file->bytes),
+          .request_sha256 = fingerprint_requests(manifest.requests)};
+}
+
 ContentIdentity identify_tree(const std::filesystem::path &root,
                               const ManifestV2 &manifest) {
-  struct FileEntry {
-    std::string relative;
-    std::filesystem::path path;
-    bool executable = false;
-  };
   std::error_code error;
   require(std::filesystem::is_directory(root, error) && !error,
           "plugin root is not a directory");
-  std::vector<FileEntry> files;
-  std::uint64_t total_size = 0;
+  TreeContents contents;
   for (std::filesystem::recursive_directory_iterator
            iterator(root, std::filesystem::directory_options::none, error),
        end;
@@ -869,12 +929,7 @@ ContentIdentity identify_tree(const std::filesystem::path &root,
     const auto relative =
         std::filesystem::relative(iterator->path(), root, error);
     require(!error, "cannot resolve plugin path");
-    if (*relative.begin() == ".git") {
-      if (iterator->is_directory(error))
-        iterator.disable_recursion_pending();
-      require(!error, "cannot inspect .git entry");
-      continue;
-    }
+    require(*relative.begin() != ".git", ".git entry in plugin tree");
     const auto status = iterator->symlink_status(error);
     require(!error, "cannot inspect plugin tree entry");
     require(!std::filesystem::is_symlink(status), "symlink in plugin tree");
@@ -882,79 +937,16 @@ ContentIdentity identify_tree(const std::filesystem::path &root,
       continue;
     require(std::filesystem::is_regular_file(status),
             "special file in plugin tree");
-    const auto size = iterator->file_size(error);
-    require(!error && size <= kMaximumTreeBytes - total_size,
-            "plugin tree is too large");
-    total_size += size;
     const auto permissions = status.permissions();
-    const bool executable =
-        (permissions & (std::filesystem::perms::owner_exec |
-                        std::filesystem::perms::group_exec |
-                        std::filesystem::perms::others_exec)) !=
-        std::filesystem::perms::none;
-    files.push_back({.relative = relative.generic_string(),
-                     .path = iterator->path(),
-                     .executable = executable});
-    require(files.size() <= kMaximumFiles, "plugin tree has too many files");
+    contents.add(
+        {.relative = relative.generic_string(),
+         .bytes = read_file(iterator->path(), contents.remaining_bytes()),
+         .executable = (permissions & (std::filesystem::perms::owner_exec |
+                                       std::filesystem::perms::group_exec |
+                                       std::filesystem::perms::others_exec)) !=
+                       std::filesystem::perms::none});
   }
-  std::sort(files.begin(), files.end(),
-            [](const auto &left, const auto &right) {
-              return left.relative < right.relative;
-            });
-  require(!files.empty(), "plugin tree is empty");
-
-  const auto has_file = [&files](std::string_view path) {
-    const auto found =
-        std::lower_bound(files.begin(), files.end(), path,
-                         [](const auto &entry, std::string_view wanted) {
-                           return entry.relative < wanted;
-                         });
-    return found != files.end() && found->relative == path;
-  };
-  const auto is_executable_file = [&files](std::string_view path) {
-    const auto found =
-        std::lower_bound(files.begin(), files.end(), path,
-                         [](const auto &entry, std::string_view wanted) {
-                           return entry.relative < wanted;
-                         });
-    return found != files.end() && found->relative == path && found->executable;
-  };
-  require(has_file("manifest.json"), "plugin tree has no manifest.json");
-  require(has_file(manifest.runtime.qml), "runtime.qml does not exist");
-  for (const auto &entry : manifest.runtime.surface_qml) {
-    require(has_file(entry.qml), "runtime.surfaceQml entry does not exist");
-  }
-  if (!manifest.runtime.worker.empty()) {
-    require(is_executable_file(manifest.runtime.worker.front()),
-            "runtime.worker executable is missing or not executable");
-  }
-  for (const auto &sidecar : manifest.runtime.sidecars) {
-    require(is_executable_file(sidecar.command.front()),
-            "runtime.sidecar executable is missing or not executable");
-  }
-
-  Sha256 tree;
-  tree.update("OMARCHY-PLUGIN-TREE-V1\0"sv);
-  hash_u64(tree, files.size());
-  std::string manifest_bytes;
-  std::uint64_t actual_total = 0;
-  for (const auto &[relative, path, executable] : files) {
-    const auto bytes = read_file(path, kMaximumTreeBytes);
-    require(bytes.size() <= kMaximumTreeBytes - actual_total,
-            "plugin tree changed beyond its size limit while hashing");
-    actual_total += bytes.size();
-    hash_field(tree, relative);
-    const std::byte mode{executable ? std::uint8_t{1} : std::uint8_t{0}};
-    tree.update(std::span(&mode, 1));
-    hash_field(tree, bytes);
-    if (relative == "manifest.json")
-      manifest_bytes = bytes;
-  }
-  require(parse_manifest_v2(manifest_bytes) == manifest,
-          "manifest model does not match the hashed manifest.json");
-  return {.tree_sha256 = hex(tree.finish()),
-          .manifest_sha256 = sha256_hex(manifest_bytes),
-          .request_sha256 = fingerprint_requests(manifest.requests)};
+  return identify_tree_contents(std::move(contents), manifest);
 }
 
 std::string requested_capability_fingerprint(

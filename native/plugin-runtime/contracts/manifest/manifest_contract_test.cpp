@@ -205,6 +205,11 @@ void digest_contract(const std::filesystem::path &fixtures) {
       parse_manifest_v2(read(temporary / "manifest.json"));
   const auto copied_identity = identify_tree(temporary, copied_manifest);
   require(copied_identity == identity, "copied tree identity changed");
+  std::filesystem::create_directories(temporary / ".git");
+  std::ofstream(temporary / ".git/config") << "untrusted metadata\n";
+  expect_rejected([&] { (void)identify_tree(temporary, copied_manifest); },
+                  ".git content was excluded from path identity");
+  std::filesystem::remove_all(temporary / ".git");
   const auto qml = temporary / "ui/Status.qml";
   std::filesystem::permissions(qml, std::filesystem::perms::owner_exec,
                                std::filesystem::perm_options::add);
