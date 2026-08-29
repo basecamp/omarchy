@@ -485,9 +485,11 @@ int preview(const QStringList &arguments, QGuiApplication &application,
             return;
           }
           observed_grant_mutation = latest.mutation_sequence;
+#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
           std::cerr << "PRODUCT_E2E grant_mutation "
                     << observed_grant_mutation << " render_packets "
                     << render_packets << '\n';
+#endif
         }
       } catch (const std::exception &error) {
         qCritical().noquote() << "omarchy-plugin-host: live grant reload failed:"
