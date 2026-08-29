@@ -41,6 +41,9 @@ if(BUILD_TESTING)
   configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/winners/definitions/external-open-uri.capability"
     "${CMAKE_CURRENT_BINARY_DIR}/dynamic-definitions/external-open-uri.capability" COPYONLY)
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/winners/definitions/system-observe.capability"
+    "${CMAKE_CURRENT_BINARY_DIR}/dynamic-definitions/system-observe.capability" COPYONLY)
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/network-definition")
   configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/winners/definitions/network-fetch.capability"
