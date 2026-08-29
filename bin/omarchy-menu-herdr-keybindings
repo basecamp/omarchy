@@ -199,8 +199,10 @@ FNR == NR {
 }
 
 END {
+  # Prefix is a mode, not an action, but the chord that enters it belongs at
+  # the top of the listing in the same "combo → name" shape as every command.
   if ("prefix" in combos) {
-    printf "%-32s → %s\n", "PREFIX", combos["prefix"]
+    printf "%-32s → %s\n", combos["prefix"], "PREFIX"
   }
 
   for (i = 1; i <= count; i++) {
