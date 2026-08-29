@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dynamic_activation.hpp"
+#include "audit_store.hpp"
 #include "omarchy/plugin_runtime/broker/broker_schema.hpp"
 
 #include <cstddef>
@@ -29,7 +30,8 @@ struct DynamicBrokerResult {
 class DynamicBrokerRuntime {
 public:
   DynamicBrokerRuntime(const definitions::TrustedDefinitionRegistry &registry,
-                       std::vector<DynamicRoute> reconstructed_routes);
+                       std::vector<DynamicRoute> reconstructed_routes,
+                       omarchy::plugins::audit::AuditStore &audit_store);
 
   [[nodiscard]] DynamicBrokerResult dispatch(
       const wire::PacketView &packet,
@@ -46,6 +48,9 @@ public:
 private:
   const definitions::TrustedDefinitionRegistry &registry_;
   std::vector<DynamicRoute> routes_;
+  omarchy::plugins::audit::AuditStore &audit_;
+  std::uint64_t last_correlation_ = 0;
+  bool failed_ = false;
 };
 
 } // namespace omarchy::plugin_runtime::runtime

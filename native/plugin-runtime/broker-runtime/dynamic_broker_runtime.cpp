@@ -8,8 +8,10 @@ namespace omarchy::plugin_runtime::runtime {
 
 DynamicBrokerRuntime::DynamicBrokerRuntime(
     const definitions::TrustedDefinitionRegistry &registry,
-    std::vector<DynamicRoute> reconstructed_routes)
-    : registry_(registry), routes_(std::move(reconstructed_routes)) {
+    std::vector<DynamicRoute> reconstructed_routes,
+    omarchy::plugins::audit::AuditStore &audit_store)
+    : registry_(registry), routes_(std::move(reconstructed_routes)),
+      audit_(audit_store) {
   for (const auto &route : routes_) {
     if (!definitions::review_dynamic_grant(registry_, route.grant,
                                             route.scope_validator) ||
@@ -23,8 +25,9 @@ DynamicBrokerResult DynamicBrokerRuntime::dispatch(
     const omarchy::plugins::permissions::ActivationBinding &channel_binding,
     std::span<std::byte> response,
     bool fresh_gesture) {
-  if (packet.header.message_type != broker::kDynamicInvokeMessage ||
-      packet.header.correlation_id == 0)
+  if (failed_ || packet.header.message_type != broker::kDynamicInvokeMessage ||
+      packet.header.correlation_id == 0 ||
+      packet.header.correlation_id <= last_correlation_)
     return {.outcome = definitions::DynamicDispatchResult::malformed};
   definitions::DynamicInvocation invocation;
   if (!definitions::decode_dynamic_invocation(packet.payload, invocation))
@@ -39,12 +42,93 @@ DynamicBrokerResult DynamicBrokerRuntime::dispatch(
   });
   if (route == routes_.end())
     return {};
-  std::size_t written = 0;
   definitions::DynamicDecision decision = definitions::DynamicDecision::denied;
-  const auto outcome = definitions::dispatch_dynamic_invocation(
-      registry_, route->grant, channel_binding, packet.payload,
-      route->adapter, route->scope_validator, fresh_gesture, response, written,
-      decision);
+  bool authorized = false;
+  if (channel_binding != route->grant.binding) {
+    decision = definitions::DynamicDecision::denied;
+  } else {
+    const auto authorization = definitions::authorize_dynamic_operation(
+        registry_, route->grant.request, route->grant.grant,
+        invocation.operation.view(), invocation.demand_scope.view(),
+        route->adapter.binding, route->scope_validator, fresh_gesture);
+    decision = authorization.decision;
+    authorized = authorization.allowed();
+  }
+  const auto code = [&] {
+    if (decision == definitions::DynamicDecision::allowed)
+      return omarchy::plugins::permissions::GrantDecisionCode::allowed;
+    if (decision == definitions::DynamicDecision::revoked)
+      return omarchy::plugins::permissions::GrantDecisionCode::revoked;
+    if (decision == definitions::DynamicDecision::scope_expanded)
+      return omarchy::plugins::permissions::GrantDecisionCode::outside_scope;
+    return omarchy::plugins::permissions::GrantDecisionCode::ungranted;
+  }();
+  const auto identity = omarchy::plugins::permissions::DynamicAuditIdentity{
+      .capability = omarchy::plugins::permissions::CapabilityId(
+          invocation.definition.canonical_name.view()),
+      .definition_generation = invocation.definition.definition_generation,
+      .definition_digest = invocation.definition.definition_digest,
+      .operation = omarchy::plugins::permissions::BoundedString<128>(
+          invocation.operation.view()),
+      .grant_epoch = route->grant.grant.epoch};
+  const auto append = [&](omarchy::plugins::permissions::AuditEvent event,
+                          omarchy::plugins::permissions::AuditOutcome audit_outcome,
+                          std::size_t response_bytes) {
+    omarchy::plugins::permissions::AuditDraft draft{
+        .event = event, .outcome = audit_outcome,
+        .plugin = route->grant.binding.plugin,
+        .revision = route->grant.binding.revision,
+        .generation = route->grant.binding.generation,
+        .correlation = packet.header.correlation_id,
+        .dynamic_operation = identity, .operation = std::nullopt,
+        .capability = std::nullopt, .decision = code, .metadata = {}};
+    draft.metadata.push_back(
+        {omarchy::plugins::permissions::AuditMetric::request_bytes,
+         static_cast<std::int64_t>(packet.payload.size())});
+    if (response_bytes > 0)
+      draft.metadata.push_back(
+          {omarchy::plugins::permissions::AuditMetric::response_bytes,
+           static_cast<std::int64_t>(response_bytes)});
+    return audit_.append(omarchy::plugins::permissions::AuditProducer::broker,
+                         std::move(draft)).status.ok();
+  };
+  if (!append(omarchy::plugins::permissions::AuditEvent::operation_decided,
+              authorized ? omarchy::plugins::permissions::AuditOutcome::allowed
+                         : omarchy::plugins::permissions::AuditOutcome::denied,
+              0)) {
+    failed_ = true;
+    return {.outcome = definitions::DynamicDispatchResult::adapter_failed,
+            .decision = decision};
+  }
+  last_correlation_ = packet.header.correlation_id;
+  std::size_t written = 0;
+  definitions::DynamicDispatchResult outcome =
+      definitions::DynamicDispatchResult::denied;
+  if (authorized) {
+    const definitions::AuthorizedDynamicRequest request{
+        .authorization = {.binding = channel_binding,
+                          .definition = route->grant.grant.definition,
+                          .grant_epoch = route->grant.grant.epoch},
+        .operation = invocation.operation.view(),
+        .demand_scope = invocation.demand_scope.view(),
+        .payload = invocation.payload};
+    outcome = route->adapter.dispatch(request, response, written,
+                                      route->adapter.context) &&
+                      written <= response.size()
+                  ? definitions::DynamicDispatchResult::dispatched
+                  : definitions::DynamicDispatchResult::adapter_failed;
+  }
+  const auto terminal_outcome = outcome == definitions::DynamicDispatchResult::dispatched
+                                    ? omarchy::plugins::permissions::AuditOutcome::allowed
+                                    : (authorized
+                                           ? omarchy::plugins::permissions::AuditOutcome::failed
+                                           : omarchy::plugins::permissions::AuditOutcome::denied);
+  if (!append(omarchy::plugins::permissions::AuditEvent::operation_completed,
+              terminal_outcome, written)) {
+    failed_ = true;
+    return {.outcome = definitions::DynamicDispatchResult::adapter_failed,
+            .decision = decision};
+  }
   return {.outcome = outcome, .decision = decision, .response_bytes = written};
 }
 
