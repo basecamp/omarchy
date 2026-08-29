@@ -23,7 +23,7 @@ Item {
         }
     }
 
-    Component.onCompleted: {
+    function beginAttempt() {
         deniedCall = runtime.invoke("notification_send", {
             category: "spoofed",
             title: "This must not appear",
@@ -31,6 +31,13 @@ Item {
         })
         if (deniedCall && deniedCall.finished)
             finishAttempt()
+    }
+
+    Timer {
+        interval: 1
+        running: true
+        repeat: false
+        onTriggered: root.beginAttempt()
     }
 
     Connections {

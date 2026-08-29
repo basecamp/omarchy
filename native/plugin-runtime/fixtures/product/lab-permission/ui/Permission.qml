@@ -17,8 +17,6 @@ Item {
         permissionState = runtime.permissionState("notifications.send", "send").toUpperCase()
     }
 
-    Component.onCompleted: permissionState = runtime.permissionState("notifications.send", "send").toUpperCase()
-
     Connections {
         target: runtime
         function onPermissionsChanged() { root.refreshPermission() }

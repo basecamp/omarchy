@@ -54,7 +54,12 @@ Item {
         detail = "write + read completed; encoded result bytes: " + readCall.value.length
     }
 
-    Component.onCompleted: begin()
+    Timer {
+        interval: 1
+        running: true
+        repeat: false
+        onTriggered: root.begin()
+    }
 
     Connections {
         target: root.writeCall
