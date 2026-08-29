@@ -87,7 +87,7 @@ valid_ram() { [[ $1 =~ ^[0-9]{1,3}G$ ]]; }
 valid_cores() { [[ $1 =~ ^[0-9]{1,2}$ ]] && ((10#$1 >= 1)); }
 valid_disk() { [[ $1 =~ ^[0-9]{1,4}G$ ]]; }
 valid_username() { [[ $1 =~ ^[A-Za-z0-9_-]{1,20}$ ]]; }
-valid_tz() { [[ $1 =~ ^[A-Za-z0-9_/.+-]{1,64}$ ]]; }
+valid_region() { [[ $1 =~ ^[a-z]{2}-[A-Z]{2}$ ]]; }
 valid_path() {
   [[ $1 =~ ^/[A-Za-z0-9._/-]+$ ]] || return 1
   # Reject non-normalized paths: a . or .. component canonicalizes at mount time
@@ -119,7 +119,7 @@ valid_priv_action() {
 # Only these fixed keys are honored; image, container name, devices, caps, and
 # port bindings are hard-coded and never taken from input.
 __priv_write_compose() {
-  local ram cores disk username password tz storage shared key value
+  local ram cores disk username password region storage shared key value
 
   while IFS='=' read -r key value; do
     case "$key" in
@@ -128,7 +128,7 @@ __priv_write_compose() {
     DISK) disk="$value" ;;
     USERNAME) username="$value" ;;
     PASSWORD) password="$value" ;;
-    TZ) tz="$value" ;;
+    REGION) region="$value" ;;
     STORAGE) storage="$value" ;;
     SHARED) shared="$value" ;;
     esac
@@ -139,7 +139,7 @@ __priv_write_compose() {
   valid_disk "$disk" || { echo "invalid disk size: $disk" >&2; exit 2; }
   valid_username "$username" || { echo "invalid username: $username" >&2; exit 2; }
   valid_password "$password" || { echo "invalid password" >&2; exit 2; }
-  valid_tz "$tz" || tz="UTC"
+  valid_region "$region" || region="en-US"
   valid_path "$storage" || { echo "invalid storage path: $storage" >&2; exit 2; }
   valid_path "$shared" || { echo "invalid shared path: $shared" >&2; exit 2; }
 
@@ -172,7 +172,8 @@ services:
       DISK_SIZE: "$disk"
       USERNAME: "$username"
       PASSWORD: "$esc_password"
-      TZ: "$tz"
+      LANGUAGE: "$region"
+      REGION: "$region"
       ARGUMENTS: "-rtc base=localtime,clock=host,driftfix=slew"
     devices:
       - /dev/kvm
@@ -283,9 +284,9 @@ __priv_remove() {
 
 # Feed the collected settings to the elevated writer.
 write_compose() {
-  local ram="$1" cores="$2" disk="$3" username="$4" password="$5" tz="$6" storage="$7" shared="$8"
-  printf 'RAM=%s\nCORES=%s\nDISK=%s\nUSERNAME=%s\nPASSWORD=%s\nTZ=%s\nSTORAGE=%s\nSHARED=%s\n' \
-    "$ram" "$cores" "$disk" "$username" "$password" "$tz" "$storage" "$shared" |
+  local ram="$1" cores="$2" disk="$3" username="$4" password="$5" region="$6" storage="$7" shared="$8"
+  printf 'RAM=%s\nCORES=%s\nDISK=%s\nUSERNAME=%s\nPASSWORD=%s\nREGION=%s\nSTORAGE=%s\nSHARED=%s\n' \
+    "$ram" "$cores" "$disk" "$username" "$password" "$region" "$storage" "$shared" |
     priv write_compose
 }
 
@@ -340,13 +341,13 @@ migrate_legacy_compose() {
   [[ -f $LEGACY_COMPOSE_FILE ]] || return 1
 
   echo "Migrating Windows VM configuration to $COMPOSE_FILE ..."
-  local ram cores disk username password tz storage shared
+  local ram cores disk username password region storage shared
   ram=$(read_compose_value RAM_SIZE "$LEGACY_COMPOSE_FILE")
   cores=$(read_compose_value CPU_CORES "$LEGACY_COMPOSE_FILE")
   disk=$(read_compose_value DISK_SIZE "$LEGACY_COMPOSE_FILE")
   username=$(read_compose_value USERNAME "$LEGACY_COMPOSE_FILE")
   password=$(read_compose_value PASSWORD "$LEGACY_COMPOSE_FILE")
-  tz=$(read_compose_value TZ "$LEGACY_COMPOSE_FILE")
+  region=$(read_compose_value REGION "$LEGACY_COMPOSE_FILE")
   # The VM's data always lived in the user's own ~/.windows and ~/Windows; the
   # old compose only ever recorded those. Reconstruct them from $HOME (trusted —
   # this runs as the user) rather than reading host paths back from a file a
@@ -354,8 +355,8 @@ migrate_legacy_compose() {
   storage="$HOME/.windows"
   shared="$HOME/Windows"
 
-  [[ -z $tz ]] && tz="UTC"
-  if ! write_compose "$ram" "$cores" "$disk" "$username" "$password" "$tz" "$storage" "$shared"; then
+  [[ -z $region ]] && region="en-US"
+  if ! write_compose "$ram" "$cores" "$disk" "$username" "$password" "$region" "$storage" "$shared"; then
     echo "Could not migrate the existing configuration automatically." >&2
     echo "Re-run: omarchy-windows-vm install" >&2
     return 1
@@ -542,13 +543,18 @@ EOF
 
   mkdir -p "$HOME/Windows"
 
-  local tz
-  tz=$(timedatectl show -p Timezone --value 2>/dev/null || echo UTC)
+  # Derive Windows locale from the system LANG (e.g. en_US.UTF-8 -> en-US).
+  local lang_val="${LANG:-en_US.UTF-8}"
+  local region
+  region=$(echo "$lang_val" | sed 's/_/-/;s/\.UTF-8//')
+  if [[ ! "$region" =~ ^[a-z]{2}-[A-Z]{2}$ ]]; then
+    region="en-US"
+  fi
 
   # Write the root-owned compose from the validated settings (one prompt if
   # sudoless Docker is off), then bring the stack up.
   write_compose "$SELECTED_RAM" "$SELECTED_CORES" "$SELECTED_DISK" \
-    "$USERNAME" "$PASSWORD" "$tz" "$HOME/.windows" "$HOME/Windows" || {
+    "$USERNAME" "$PASSWORD" "$region" "$HOME/.windows" "$HOME/Windows" || {
     echo "❌ Failed to write the Windows VM configuration."
     exit 1
   }
