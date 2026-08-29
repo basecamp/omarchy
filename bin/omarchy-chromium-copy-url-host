@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Native messaging host: copy a Chromium tab URL to the clipboard
+# omarchy:summary=Native messaging host for Omarchy Chromium page actions
 # omarchy:hidden=true
 
 set -euo pipefail
@@ -13,12 +13,23 @@ parse_url() {
   jq -r '.url // empty' 2>/dev/null <<<"$1" || true
 }
 
+parse_action() {
+  jq -r '.action // "copy-url"' 2>/dev/null <<<"$1" || true
+}
+
 copy_url() {
   local url="$1"
 
   [[ -n $url ]] || return 1
   printf '%s' "$url" | wl-copy --type text/plain
   omarchy-notification-send -g 󰅍 "URL copied to clipboard"
+}
+
+subscribe_url() {
+  local url="$1"
+
+  [[ $url =~ ^https?:// ]] || return 1
+  omarchy-newsboat-subscribe "$url" >/dev/null
 }
 
 reply_copied() {
@@ -29,20 +40,41 @@ reply_copied() {
   fi
 }
 
+reply_subscribed() {
+  if [[ $1 == "true" ]]; then
+    printf '\x13\x00\x00\x00{"subscribed":true}'
+  else
+    printf '\x14\x00\x00\x00{"subscribed":false}'
+  fi
+}
+
 main() {
-  local length payload url
+  local length payload action url
 
   length=$(head -c4 | od -An -v -tu4 --endian=little | tr -d ' ')
   [[ -n ${length:-} ]] && (( length > 0 )) || exit 0
 
   payload=$(head -c "$length")
+  action=$(parse_action "$payload")
   url=$(parse_url "$payload")
 
-  if copy_url "$url"; then
-    reply_copied true
-  else
-    reply_copied false
-  fi
+  case $action in
+  copy-url)
+    if copy_url "$url"; then
+      reply_copied true
+    else
+      reply_copied false
+    fi
+    ;;
+  subscribe-feed)
+    if subscribe_url "$url"; then
+      reply_subscribed true
+    else
+      reply_subscribed false
+    fi
+    ;;
+  *) reply_copied false ;;
+  esac
 }
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then

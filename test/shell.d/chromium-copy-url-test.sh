@@ -4,11 +4,11 @@ source "$(dirname "${BASH_SOURCE[0]}")/base-test.sh"
 
 export PATH="$ROOT/bin:$PATH"
 
-TMPDIR=""
+test_tmp=""
 
 cleanup() {
-  if [[ -n $TMPDIR && -d $TMPDIR ]]; then
-    rm -rf "$TMPDIR"
+  if [[ -n $test_tmp && -d $test_tmp ]]; then
+    rm -rf "$test_tmp"
   fi
 }
 trap cleanup EXIT
@@ -44,21 +44,25 @@ jq -e '
   (.permissions | index("notifications") | not) and
   (.permissions | index("clipboardWrite") | not) and
   (.permissions | index("offscreen") | not) and
-  .background.service_worker == "background-4.js"
+  .background.service_worker == "background-5.js" and
+  .commands["subscribe-feed"].suggested_key.default == "Alt+Shift+R"
 ' "$ROOT/default/chromium/extensions/copy-url/manifest.json" >/dev/null ||
-  fail "copy-url extension uses its native messaging host"
+  fail "browser actions extension exposes copy and feed commands through its native host"
 grep -q "sendNativeMessage('com.omarchy.copy_url'" \
-  "$ROOT/default/chromium/extensions/copy-url/background-4.js" ||
-  fail "copy-url extension sends URLs to its native messaging host"
-pass "copy-url extension uses its native messaging host"
+  "$ROOT/default/chromium/extensions/copy-url/background-5.js" ||
+  fail "browser actions extension sends URLs to its native messaging host"
+grep -q "command !== 'copy-url' && command !== 'subscribe-feed'" \
+  "$ROOT/default/chromium/extensions/copy-url/background-5.js" ||
+  fail "browser actions extension accepts the feed subscription command"
+pass "browser actions extension routes copy and feed commands"
 
 jq -e '.action != null' "$ROOT/default/chromium/extensions/copy-url/manifest.json" >/dev/null &&
   grep -q 'action.onClicked' "$ROOT/default/chromium/extensions/copy-url/"background-*.js ||
   fail "copy-url extension is clickable from the toolbar"
 pass "copy-url extension is clickable from the toolbar"
 
-TMPDIR=$(mktemp -d)
-test_home="$TMPDIR/home"
+test_tmp=$(mktemp -d)
+test_home="$test_tmp/home"
 native_manifest="$test_home/.config/chromium/NativeMessagingHosts/com.omarchy.copy_url.json"
 
 HOME="$test_home" OMARCHY_PATH="$ROOT" omarchy-install-chromium-copy-url
@@ -77,7 +81,7 @@ pass "copy-url native host installer registers the stable extension id"
 grep -q 'user/chromium.sh' "$ROOT/install/user/all.sh" ||
   fail "user install runs the Chromium native messaging host setup"
 
-fresh_home="$TMPDIR/fresh-install"
+fresh_home="$test_tmp/fresh-install"
 HOME="$fresh_home" OMARCHY_PATH="$ROOT" PATH="$ROOT/bin:$PATH" \
   bash -euo pipefail -c 'source "$ROOT/install/user/chromium.sh"'
 
@@ -95,6 +99,27 @@ copied_url=$(bash -c '
 [[ $copied_url == "https://example.test/path?q=one&name=two" ]] ||
   fail "copy-url native host writes the complete URL" "$copied_url"
 pass "copy-url native host writes the complete URL"
+
+subscribe_log="$test_tmp/subscribed-url"
+export SUBSCRIBE_LOG="$subscribe_log"
+bash -c '
+  source "$1"
+  omarchy-newsboat-subscribe() { printf "%s" "$1" >"$SUBSCRIBE_LOG"; }
+  subscribe_url "$2"
+' bash "$ROOT/bin/omarchy-chromium-copy-url-host" 'https://example.test/articles/latest'
+
+[[ $(<"$subscribe_log") == "https://example.test/articles/latest" ]] ||
+  fail "browser native host passes the complete page URL to feed discovery" "$(<"$subscribe_log")"
+pass "browser native host dispatches feed subscriptions"
+
+if bash -c '
+  source "$1"
+  omarchy-newsboat-subscribe() { return 0; }
+  subscribe_url "$2"
+' bash "$ROOT/bin/omarchy-chromium-copy-url-host" 'chrome://settings'; then
+  fail "browser native host rejects non-web subscription pages"
+fi
+pass "browser native host limits subscription discovery to web pages"
 
 native_reply=$(bash -c '
   source "$1"

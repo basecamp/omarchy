@@ -1,0 +1,217 @@
+#!/bin/bash
+
+# omarchy:summary=Resolve and validate the feed advertised by a web page
+# omarchy:args=<page-or-feed-url>
+# omarchy:hidden=true
+
+set -euo pipefail
+
+if (( $# != 1 )) || [[ ! $1 =~ ^https?://[^[:space:]]+$ ]]; then
+  echo "Usage: omarchy-newsboat-resolve <http-or-https-page-or-feed-url>" >&2
+  exit 1
+fi
+
+page_url=$1
+runtime_dir="${NEWSBOAT_SCOUT_RUNTIME_DIR:-/tmp}"
+work_dir=$(mktemp -d "$runtime_dir/omarchy-feed-resolution.XXXXXX")
+page_document="$work_dir/page"
+feed_document="$work_dir/feed"
+discovery="$work_dir/discovery.json"
+
+cleanup() {
+  rm -f -- "$page_document" "$feed_document" "$discovery"
+  rmdir "$work_dir" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+fetch_document() {
+  local url=$1
+  local destination=$2
+
+  curl --silent --show-error --fail --location --compressed \
+    --proto '=http,https' --proto-redir '=http,https' \
+    --connect-timeout 5 --max-time 15 --max-redirs 5 --max-filesize 4194304 \
+    --user-agent 'Mozilla/5.0 (X11; Linux x86_64) Omarchy-Feeds/1.0' \
+    --output "$destination" --write-out $'%{url_effective}\n%{content_type}' "$url"
+}
+
+if ! page_metadata=$(fetch_document "$page_url" "$page_document"); then
+  echo "Could not inspect: $page_url" >&2
+  exit 2
+fi
+
+effective_page_url=${page_metadata%%$'\n'*}
+page_content_type=${page_metadata#*$'\n'}
+
+python3 - "$effective_page_url" "$page_content_type" "$page_document" >"$discovery" <<'PY'
+import json
+import re
+import sys
+from html.parser import HTMLParser
+from pathlib import Path
+from urllib.parse import urljoin, urlparse
+
+base_url, content_type, document = sys.argv[1:]
+data = Path(document).read_bytes()
+text = data.decode("utf-8", "replace")
+head = text.lstrip("\ufeff \t\r\n")[:500].lower()
+
+
+def clean(value):
+    return re.sub(r"\s+", " ", value or "").strip()
+
+
+def valid_web_url(value):
+    parsed = urlparse(value)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc) and not re.search(r"\s", value)
+
+
+class DiscoveryParser(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.candidates = []
+        self.in_title = False
+        self.title_parts = []
+
+    def handle_starttag(self, tag, attrs):
+        values = {key.lower(): value for key, value in attrs if key}
+        if tag.lower() == "title":
+            self.in_title = True
+        if tag.lower() != "link":
+            return
+        rel = {part.lower() for part in clean(values.get("rel")).split()}
+        media_type = clean(values.get("type")).lower().split(";", 1)[0]
+        href = clean(values.get("href"))
+        if "alternate" not in rel or media_type not in {"application/rss+xml", "application/atom+xml"} or not href:
+            return
+        url = urljoin(base_url, href)
+        if not valid_web_url(url):
+            return
+        label = clean(values.get("title"))
+        combined = f"{label} {url}".lower()
+        score = 0
+        if urlparse(url).netloc == urlparse(base_url).netloc:
+            score += 4
+        if media_type == "application/atom+xml":
+            score += 1
+        if any(word in combined for word in ("comment", "reply", "replies")):
+            score -= 10
+        self.candidates.append((score, url, label))
+
+    def handle_endtag(self, tag):
+        if tag.lower() == "title":
+            self.in_title = False
+
+    def handle_data(self, value):
+        if self.in_title:
+            self.title_parts.append(value)
+
+
+is_feed = (
+    "application/rss+xml" in content_type.lower()
+    or "application/atom+xml" in content_type.lower()
+    or re.match(r"(?:<\?xml[^>]*>\s*)?<(?:rss|feed|rdf:rdf)\b", head, re.I)
+)
+
+if is_feed and valid_web_url(base_url):
+    print(json.dumps({"direct": True, "feed_url": base_url, "page_title": urlparse(base_url).netloc}))
+else:
+    parser = DiscoveryParser()
+    parser.feed(text)
+    page_title = clean("".join(parser.title_parts)) or urlparse(base_url).netloc
+    seen = set()
+    candidates = []
+    for score, url, label in sorted(parser.candidates, key=lambda item: -item[0]):
+        if url in seen:
+            continue
+        seen.add(url)
+        candidates.append({"score": score, "url": url, "label": label})
+    if candidates:
+        print(json.dumps({"direct": False, "feed_url": candidates[0]["url"], "page_title": page_title}))
+PY
+
+if [[ ! -s $discovery ]]; then
+  echo "No RSS or Atom feed found at: $effective_page_url" >&2
+  exit 3
+fi
+
+feed_url=$(jq -er '.feed_url | select(type == "string" and test("^https?://[^[:space:]]+$"))' "$discovery")
+if [[ $(jq -r '.direct' "$discovery") == "true" ]]; then
+  cp -- "$page_document" "$feed_document"
+  effective_feed_url=$effective_page_url
+else
+  if ! feed_metadata=$(fetch_document "$feed_url" "$feed_document"); then
+    echo "Could not fetch the advertised feed: $feed_url" >&2
+    exit 4
+  fi
+  effective_feed_url=${feed_metadata%%$'\n'*}
+fi
+
+python3 - "$effective_page_url" "$effective_feed_url" "$(jq -r '.page_title' "$discovery")" "$feed_document" <<'PY'
+import json
+import re
+import sys
+import xml.etree.ElementTree as ET
+from pathlib import Path
+from urllib.parse import urlparse
+
+page_url, feed_url, page_title, document = sys.argv[1:]
+
+
+def local_name(tag):
+    return tag.rsplit("}", 1)[-1].split(":", 1)[-1].lower()
+
+
+def clean(value):
+    return re.sub(r"\s+", " ", value or "").strip()
+
+
+def text_of(element):
+    return clean("".join(element.itertext())) if element is not None else ""
+
+
+try:
+    root = ET.fromstring(Path(document).read_bytes())
+except (ET.ParseError, OSError) as error:
+    print(f"Advertised feed is not valid XML: {error}", file=sys.stderr)
+    raise SystemExit(4)
+
+root_name = local_name(root.tag)
+if root_name not in {"rss", "feed", "rdf"}:
+    print(f"Advertised document is not RSS or Atom: {feed_url}", file=sys.stderr)
+    raise SystemExit(4)
+
+container = root
+if root_name in {"rss", "rdf"}:
+    channel = next((item for item in root if local_name(item.tag) == "channel"), None)
+    if channel is not None:
+        container = channel
+
+title = ""
+for child in container:
+    if local_name(child.tag) == "title":
+        title = text_of(child)
+        break
+title = title or clean(page_title) or urlparse(feed_url).netloc
+
+recent_titles = []
+for item in root.iter():
+    if local_name(item.tag) not in {"item", "entry"}:
+        continue
+    item_title = next((text_of(child) for child in item if local_name(child.tag) == "title"), "")
+    if item_title and item_title not in recent_titles:
+        recent_titles.append(item_title)
+    if len(recent_titles) == 3:
+        break
+
+print(
+    json.dumps(
+        {
+            "source_url": page_url,
+            "feed_url": feed_url,
+            "name": title,
+            "recent_titles": recent_titles,
+        }
+    )
+)
+PY
