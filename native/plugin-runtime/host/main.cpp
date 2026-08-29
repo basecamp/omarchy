@@ -18,6 +18,7 @@
 #include "capability_definition_loader.hpp"
 #include "omarchy/plugin_runtime/broker/broker_schema.hpp"
 #include "omarchy/plugin_runtime/providers/private_storage_backend.hpp"
+#include "omarchy/plugin_runtime/providers/audio_device_provider.hpp"
 #include "omarchy/plugin_runtime/providers/radio_live_backend.hpp"
 #include "omarchy/plugin_runtime/providers/radio_provider.hpp"
 #include "omarchy/plugin_runtime/sandbox/policy.h"
@@ -211,21 +212,25 @@ definitions::DynamicScopeRelation exact_dynamic_scope(
                                : definitions::DynamicScopeRelation::incomparable;
 }
 
-struct RadioAdapters {
+struct DynamicAdapters {
   definitions::DynamicAdapter fetch;
   definitions::DynamicAdapter media;
+  definitions::DynamicAdapter device_observe;
+  definitions::DynamicAdapter device_control;
 };
 
-bool radio_adapter_available(std::string_view adapter_class,
-                             const definitions::Digest &digest,
-                             std::uint32_t abi, void *opaque) noexcept {
-  const auto &adapters = *static_cast<const RadioAdapters *>(opaque);
-  return (adapters.fetch.binding.adapter_class.view() == adapter_class &&
-          adapters.fetch.binding.implementation_digest == digest &&
-          adapters.fetch.binding.abi_version == abi) ||
-         (adapters.media.binding.adapter_class.view() == adapter_class &&
-          adapters.media.binding.implementation_digest == digest &&
-          adapters.media.binding.abi_version == abi);
+bool dynamic_adapter_available(std::string_view adapter_class,
+                               const definitions::Digest &digest,
+                               std::uint32_t abi, void *opaque) noexcept {
+  const auto &adapters = *static_cast<const DynamicAdapters *>(opaque);
+  for (const auto *adapter : {&adapters.fetch, &adapters.media,
+                              &adapters.device_observe,
+                              &adapters.device_control})
+    if (adapter->binding.adapter_class.view() == adapter_class &&
+        adapter->binding.implementation_digest == digest &&
+        adapter->binding.abi_version == abi)
+      return true;
+  return false;
 }
 
 #if defined(OMARCHY_PLUGIN_PRODUCT_E2E) && !defined(OMARCHY_PLUGIN_REAL_RADIO_E2E)
@@ -251,6 +256,19 @@ bool fixture_radio_control(std::string_view control, std::uint32_t,
                            void *) noexcept {
   return control == "pause" || control == "stop" || control == "mute" ||
          control == "volume" || control == "status";
+}
+
+bool fixture_audio_observe(providers::AudioDeviceStatus &status,
+                           void *) noexcept {
+  status = {.display_name = "AirPods Pro", .connected = true, .left = 71,
+            .right = 84, .case_level = 93, .listening_mode = "adaptive",
+            .adaptive_level = 42};
+  return true;
+}
+
+bool fixture_audio_control(std::string_view operation, std::string_view value,
+                           void *) noexcept {
+  return operation == "set-adaptive-level" && value == "54";
 }
 #endif
 
@@ -354,6 +372,7 @@ bool apply_lab_revocation_update(
     runtime::AuditedBrokerRuntime &broker_runtime,
     runtime::DynamicBrokerRuntime *dynamic_runtime,
     providers::RadioProvider *radio_provider,
+    providers::AudioDeviceProvider *audio_device_provider,
     host::PreparedPlugin &prepared,
     headless::Session &session) {
   if (updated.binding != broker_runtime.binding() ||
@@ -402,7 +421,7 @@ bool apply_lab_revocation_update(
     if (found->grant.state == current.grant.state &&
         found->grant.epoch == current.grant.epoch)
       continue;
-    if (dynamic_runtime == nullptr || radio_provider == nullptr ||
+    if (dynamic_runtime == nullptr ||
         current.request.definition.definition_generation !=
             found->request.definition.definition_generation ||
         current.request.definition.definition_digest !=
@@ -413,12 +432,26 @@ bool apply_lab_revocation_update(
         found->grant.state != permissions::GrantState::revoked ||
         found->grant.epoch != current.grant.epoch + 1)
       return false;
-    if (found->request.definition.canonical_name.view() == "network.fetch")
+    if (found->request.definition.canonical_name.view() == "network.fetch") {
+      if (radio_provider == nullptr) return false;
       (void)radio_provider->revoke_fetch(found->grant.epoch);
-    else if (found->request.definition.canonical_name.view() == "media.play-stream")
+    } else if (found->request.definition.canonical_name.view() ==
+               "media.play-stream") {
+      if (radio_provider == nullptr) return false;
       (void)radio_provider->revoke_media(found->grant.epoch);
-    else
+    } else if (found->request.definition.canonical_name.view() ==
+               "device.observe") {
+      if (audio_device_provider == nullptr ||
+          !audio_device_provider->revoke_observe(found->grant.epoch))
+        return false;
+    } else if (found->request.definition.canonical_name.view() ==
+               "device.control") {
+      if (audio_device_provider == nullptr ||
+          !audio_device_provider->revoke_control(found->grant.epoch))
+        return false;
+    } else {
       return false;
+    }
     if (!dynamic_runtime->apply_reconstructed_update(*found)) return false;
     for (auto &availability : prepared.permission_availability)
       if (availability.capability ==
@@ -495,6 +528,7 @@ int preview(const QStringList &arguments, QGuiApplication &application,
   std::unique_ptr<runtime::AuditedBrokerRuntime> broker_runtime;
   std::unique_ptr<definitions::TrustedDefinitionRegistry> dynamic_registry;
   std::unique_ptr<providers::RadioProvider> radio_provider;
+  std::unique_ptr<providers::AudioDeviceProvider> audio_device_provider;
   std::unique_ptr<providers::RadioLiveBackend> radio_live_backend;
   std::unique_ptr<runtime::DynamicBrokerRuntime> dynamic_runtime;
   std::shared_ptr<LabBroker> lab_broker;
@@ -524,11 +558,17 @@ int preview(const QStringList &arguments, QGuiApplication &application,
     if (!active->dynamic_grants.empty()) {
       std::uint64_t fetch_epoch = 0;
       std::uint64_t media_epoch = 0;
+      std::uint64_t observe_epoch = 0;
+      std::uint64_t control_epoch = 0;
       for (const auto &dynamic : active->dynamic_grants) {
         if (dynamic.grant.definition.canonical_name.view() == "network.fetch")
           fetch_epoch = dynamic.grant.epoch;
         else if (dynamic.grant.definition.canonical_name.view() == "media.play-stream")
           media_epoch = dynamic.grant.epoch;
+        else if (dynamic.grant.definition.canonical_name.view() == "device.observe")
+          observe_epoch = dynamic.grant.epoch;
+        else if (dynamic.grant.definition.canonical_name.view() == "device.control")
+          control_epoch = dynamic.grant.epoch;
       }
       providers::RadioProviderConfiguration radio_configuration{
           .binding = active->binding, .fetch_epoch = fetch_epoch,
@@ -543,28 +583,39 @@ int preview(const QStringList &arguments, QGuiApplication &application,
       radio_configuration.media = radio_live_backend->media_configuration();
 #endif
       radio_provider = std::make_unique<providers::RadioProvider>(radio_configuration);
-      RadioAdapters adapters{.fetch = radio_provider->fetch_adapter(),
-                             .media = radio_provider->media_adapter()};
+      providers::AudioDeviceProviderConfiguration audio_configuration{
+          .binding = active->binding, .observe_epoch = observe_epoch,
+          .control_epoch = control_epoch, .backend = {}};
+#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+      audio_configuration.backend = {.observe = fixture_audio_observe,
+                                     .control = fixture_audio_control};
+#endif
+      audio_device_provider = std::make_unique<providers::AudioDeviceProvider>(
+          audio_configuration);
+      DynamicAdapters adapters{.fetch = radio_provider->fetch_adapter(),
+          .media = radio_provider->media_adapter(),
+          .device_observe = audio_device_provider->observe_adapter(),
+          .device_control = audio_device_provider->control_adapter()};
       dynamic_registry = std::make_unique<definitions::TrustedDefinitionRegistry>();
       std::size_t loaded = 0;
 #ifdef OMARCHY_PLUGIN_PRODUCT_E2E
       const std::filesystem::path definition_root(
-          OMARCHY_PLUGIN_RADIO_DEFINITION_ROOT);
+          OMARCHY_PLUGIN_DYNAMIC_DEFINITION_ROOT);
       const std::uint32_t definition_owner = static_cast<std::uint32_t>(getuid());
 #else
       const auto executable = std::filesystem::canonical("/proc/self/exe");
       const auto definition_root = executable.parent_path().parent_path() /
-                                   "lib/omarchy/plugin-radio-capabilities.d";
+                                   "lib/omarchy/plugin-capabilities.d";
       constexpr std::uint32_t definition_owner = 0;
 #endif
       const definitions::AdapterVerifier verifier{
-          .available = radio_adapter_available,
+          .available = dynamic_adapter_available,
           .context = &adapters};
       if (definitions::load_definition_directory(
               definition_root.string(), definitions::DefinitionSource::omarchy_package,
               definition_owner, verifier, *dynamic_registry, loaded) !=
-              definitions::LoadResult::loaded || loaded != 2) {
-        qCritical() << "omarchy-plugin-host: trusted Radio definitions unavailable";
+              definitions::LoadResult::loaded || loaded < 2) {
+        qCritical() << "omarchy-plugin-host: trusted dynamic definitions unavailable";
         return 78;
       }
       std::vector<runtime::DynamicRoute> routes;
@@ -576,6 +627,10 @@ int preview(const QStringList &arguments, QGuiApplication &application,
           adapter = adapters.fetch;
         else if (resolved->definition->adapter == adapters.media.binding)
           adapter = adapters.media;
+        else if (resolved->definition->adapter == adapters.device_observe.binding)
+          adapter = adapters.device_observe;
+        else if (resolved->definition->adapter == adapters.device_control.binding)
+          adapter = adapters.device_control;
         else if (dynamic.request.required)
           return 78;
         else
@@ -683,6 +738,7 @@ int preview(const QStringList &arguments, QGuiApplication &application,
           if (updated == nullptr ||
               !apply_lab_revocation_update(*updated, *broker_runtime,
                                            dynamic_runtime.get(), radio_provider.get(),
+                                           audio_device_provider.get(),
                                            *prepared.prepared, *started.session)) {
             qCritical() << "omarchy-plugin-host: live grant update was not an exact revocation";
             application.exit(79);

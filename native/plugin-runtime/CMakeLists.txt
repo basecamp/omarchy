@@ -137,7 +137,9 @@ if(TARGET omarchy-plugin-product-host)
   install(FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/network-fetch.capability"
     "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/media-play-stream.capability"
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/omarchy/plugin-radio-capabilities.d")
+    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/device-observe.capability"
+    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/device-control.capability"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/omarchy/plugin-capabilities.d")
 endif()
 
 if(TARGET omarchy-plugin-surface-host)

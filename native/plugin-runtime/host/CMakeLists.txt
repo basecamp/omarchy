@@ -17,14 +17,20 @@ if(BUILD_TESTING)
   omarchy_plugin_target_defaults(omarchy-plugin-product-e2e-host)
   target_compile_definitions(omarchy-plugin-product-e2e-host PRIVATE
     OMARCHY_PLUGIN_PRODUCT_E2E=1
-    OMARCHY_PLUGIN_RADIO_DEFINITION_ROOT="${CMAKE_CURRENT_BINARY_DIR}/radio-definitions")
-  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/radio-definitions")
+    OMARCHY_PLUGIN_DYNAMIC_DEFINITION_ROOT="${CMAKE_CURRENT_BINARY_DIR}/dynamic-definitions")
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/dynamic-definitions")
   configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/winners/definitions/network-fetch.capability"
-    "${CMAKE_CURRENT_BINARY_DIR}/radio-definitions/network-fetch.capability" COPYONLY)
+    "${CMAKE_CURRENT_BINARY_DIR}/dynamic-definitions/network-fetch.capability" COPYONLY)
   configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/winners/definitions/media-play-stream.capability"
-    "${CMAKE_CURRENT_BINARY_DIR}/radio-definitions/media-play-stream.capability" COPYONLY)
+    "${CMAKE_CURRENT_BINARY_DIR}/dynamic-definitions/media-play-stream.capability" COPYONLY)
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/winners/definitions/device-observe.capability"
+    "${CMAKE_CURRENT_BINARY_DIR}/dynamic-definitions/device-observe.capability" COPYONLY)
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/winners/definitions/device-control.capability"
+    "${CMAKE_CURRENT_BINARY_DIR}/dynamic-definitions/device-control.capability" COPYONLY)
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/network-definition")
   configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/winners/definitions/network-fetch.capability"
@@ -50,7 +56,7 @@ if(BUILD_TESTING)
   target_compile_definitions(omarchy-plugin-radio-live-e2e-host PRIVATE
     OMARCHY_PLUGIN_PRODUCT_E2E=1
     OMARCHY_PLUGIN_REAL_RADIO_E2E=1
-    OMARCHY_PLUGIN_RADIO_DEFINITION_ROOT="${CMAKE_CURRENT_BINARY_DIR}/radio-definitions")
+    OMARCHY_PLUGIN_DYNAMIC_DEFINITION_ROOT="${CMAKE_CURRENT_BINARY_DIR}/dynamic-definitions")
   target_link_libraries(omarchy-plugin-radio-live-e2e-host PRIVATE
     Qt6::Core Qt6::Gui Qt6::Quick
     Omarchy::PluginRuntimeVersion

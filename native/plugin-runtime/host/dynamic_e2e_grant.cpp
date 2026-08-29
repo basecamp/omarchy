@@ -1,10 +1,12 @@
 #include "capability_definition_loader.hpp"
 #include "grant_store.hpp"
 #include "manifest_contract.hpp"
+#include "omarchy/plugin_runtime/providers/audio_device_provider.hpp"
 #include "omarchy/plugin_runtime/providers/radio_provider.hpp"
 
 #include <fstream>
 #include <array>
+#include <iostream>
 #include <iterator>
 #include <ranges>
 #include <stdexcept>
@@ -19,10 +21,14 @@ namespace permissions = omarchy::plugins::permissions;
 namespace providers = omarchy::plugin_runtime::providers;
 
 namespace {
+struct Adapters {
+  std::array<definitions::DynamicAdapter, 4> values;
+};
+
 bool available(std::string_view name, const definitions::Digest &digest,
                std::uint32_t abi, void *opaque) noexcept {
-  const auto &adapters = *static_cast<const std::array<definitions::DynamicAdapter, 2> *>(opaque);
-  return std::ranges::any_of(adapters, [&](const auto &adapter) {
+  const auto &adapters = *static_cast<const Adapters *>(opaque);
+  return std::ranges::any_of(adapters.values, [&](const auto &adapter) {
     return adapter.binding.adapter_class.view() == name &&
            adapter.binding.implementation_digest == digest &&
            adapter.binding.abi_version == abi;
@@ -58,7 +64,11 @@ int main(int argc, char **argv) try {
   const auto parsed = manifest::parse_manifest_v2(document);
   providers::RadioProvider provider({.binding = {}, .fetch_epoch = 0,
                                      .media_epoch = 0, .https = {}, .media = {}});
-  std::array adapters{provider.fetch_adapter(), provider.media_adapter()};
+  providers::AudioDeviceProvider audio_provider(
+      {.binding = {}, .observe_epoch = 0, .control_epoch = 0, .backend = {}});
+  Adapters adapters{{provider.fetch_adapter(), provider.media_adapter(),
+                     audio_provider.observe_adapter(),
+                     audio_provider.control_adapter()}};
   definitions::TrustedDefinitionRegistry registry;
   std::size_t loaded = 0;
   const definitions::AdapterVerifier verifier{.available = available,
@@ -66,7 +76,8 @@ int main(int argc, char **argv) try {
   if (definitions::load_definition_directory(
           argv[6], definitions::DefinitionSource::omarchy_package,
           static_cast<std::uint32_t>(getuid()), verifier, registry, loaded) !=
-          definitions::LoadResult::loaded || loaded == 0 || loaded > adapters.size())
+          definitions::LoadResult::loaded || loaded == 0 ||
+      loaded > adapters.values.size())
     return 65;
   std::vector<definitions::DynamicRevisionGrant> dynamic;
   for (const auto &item : parsed.requests) {
@@ -97,4 +108,7 @@ int main(int argc, char **argv) try {
   const auto staged = store.stage_candidate(bundle);
   store.activate_candidate(staged.revision.binding);
   return 0;
-} catch (const std::exception &) { return 68; }
+} catch (const std::exception &error) {
+  std::cerr << "dynamic grant failed: " << error.what() << '\n';
+  return 68;
+}
