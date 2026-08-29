@@ -353,6 +353,10 @@ const launcher::LaunchIdentity &AuthenticatedBrokerChannel::identity() const {
   return identity_;
 }
 
+std::string AuthenticatedBrokerChannel::take_worker_standard_error() {
+  return worker_->take_standard_error();
+}
+
 bool AuthenticatedBrokerChannel::terminate() {
   if (!termination_.begin())
     return termination_.succeeded();

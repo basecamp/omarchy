@@ -876,6 +876,25 @@ bool Worker::alive() const {
          pidfd_state(implementation_->worker_pidfd.get()) == PidfdState::alive;
 }
 
+std::string Worker::take_standard_error() {
+  std::string result;
+  if (!implementation_ || !implementation_->standard_error)
+    return result;
+  const int descriptor = implementation_->standard_error.get();
+  const int flags = fcntl(descriptor, F_GETFL);
+  if (flags < 0 || fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) < 0)
+    return result;
+  std::array<char, 1024> buffer{};
+  while (result.size() < 8192) {
+    const auto count = read(descriptor, buffer.data(),
+                            std::min(buffer.size(), 8192 - result.size()));
+    if (count > 0) result.append(buffer.data(), static_cast<std::size_t>(count));
+    else if (count < 0 && errno == EINTR) continue;
+    else break;
+  }
+  return result;
+}
+
 bool Worker::terminate() { return implementation_->terminate(); }
 
 namespace {

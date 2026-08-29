@@ -202,6 +202,10 @@ bool Session::active() const {
   return active_ && channel_->ready() && channel_->alive();
 }
 
+std::string Session::take_worker_standard_error() {
+  return channel_->take_worker_standard_error();
+}
+
 const permissions::ActivationBinding &Session::binding() const {
   return binding_;
 }

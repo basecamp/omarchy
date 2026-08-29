@@ -108,6 +108,7 @@ public:
                                            std::span<const std::byte> payload,
                                            std::span<const int> descriptors);
   [[nodiscard]] bool alive() const;
+  [[nodiscard]] std::string take_standard_error();
   [[nodiscard]] bool terminate();
 
 private:

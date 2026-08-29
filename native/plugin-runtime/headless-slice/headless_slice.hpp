@@ -63,6 +63,7 @@ public:
                                                  std::uint64_t now_seconds);
   [[nodiscard]] health::Status stop();
   [[nodiscard]] bool active() const;
+  [[nodiscard]] std::string take_worker_standard_error();
   [[nodiscard]] const permissions::ActivationBinding &binding() const;
 
 private:

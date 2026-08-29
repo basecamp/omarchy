@@ -318,6 +318,9 @@ int preview(const QStringList &arguments, QGuiApplication &application,
     if (message) {
       if (!hosted->receive_render(message.payload)) application.exit(79);
     } else if (message.failure != launcher::ReceiveFailure::timeout) {
+      const auto diagnostic = started.session->take_worker_standard_error();
+      if (!diagnostic.empty())
+        qCritical().noquote() << QString::fromStdString(diagnostic);
       application.exit(79);
     }
   });
