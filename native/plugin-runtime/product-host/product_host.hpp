@@ -34,9 +34,15 @@ enum class PrepareFailure {
 };
 
 struct PreparedPlugin {
+  struct PermissionAvailability {
+    std::string capability;
+    std::string operation;
+    bool granted = false;
+  };
   PreparedPlugin(discovery::VerifiedPlugin verified,
                  permissions::ActivationBinding activation,
                  std::vector<surface_host::NamedSurfacePolicy> policies,
+                 std::vector<PermissionAvailability> permission_availability,
                  int revision_fd);
   ~PreparedPlugin();
   PreparedPlugin(const PreparedPlugin &) = delete;
@@ -47,6 +53,7 @@ struct PreparedPlugin {
   discovery::VerifiedPlugin plugin;
   permissions::ActivationBinding binding;
   std::vector<surface_host::NamedSurfacePolicy> surfaces;
+  std::vector<PermissionAvailability> permission_availability;
   int revision_directory_fd = -1;
 };
 
@@ -104,5 +111,10 @@ private:
     std::shared_ptr<const channel::GenerationAuthority> authority,
     std::uint64_t now_seconds,
     std::chrono::milliseconds negotiation_timeout);
+
+// Sends a complete replacement snapshot over the authenticated control
+// channel. Revocation/update callers rebuild it from the current grant store.
+[[nodiscard]] bool update_permission_availability(
+    headless::Session &session, const PreparedPlugin &prepared);
 
 } // namespace omarchy::plugin_runtime::product_host

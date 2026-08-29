@@ -116,6 +116,8 @@ public:
   [[nodiscard]] bool applyHostPermissionSnapshot(
       std::uint64_t activation_generation,
       std::span<const HostPermission> permissions);
+  [[nodiscard]] bool applyHostPermissionSnapshotPayload(
+      std::uint64_t envelope_generation, std::span<const std::byte> payload);
   [[nodiscard]] bool receive(ReceivedPacket packet);
   [[nodiscard]] QString status() const;
   void disconnect(QString reason);

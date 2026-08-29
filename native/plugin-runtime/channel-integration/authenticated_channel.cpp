@@ -203,6 +203,26 @@ bool AuthenticatedBrokerChannel::negotiate_role(
   return true;
 }
 
+bool AuthenticatedBrokerChannel::send_control(
+    std::uint16_t message_type, std::span<const std::byte> payload) {
+  if (!ready_ || failed() || termination_.attempted() || message_type == 0 ||
+      payload.size() > wire::payload_cap(wire::EndpointRole::control) ||
+      !authority_->is_current(identity_))
+    return false;
+  std::vector<std::byte> packet(wire::kHeaderSize + payload.size());
+  const auto encoded = wire::encode_packet(
+      {.endpoint_role = wire::EndpointRole::control,
+       .message_type = message_type,
+       .role_protocol_version = kControlRoleVersion,
+       .payload_length = static_cast<std::uint32_t>(payload.size()),
+       .launch_generation = identity_.generation,
+       .correlation_id = 0},
+      payload, packet);
+  return encoded && worker_->send(
+                        launcher::EndpointRole::control,
+                        std::span(packet).first(encoded.bytes_written));
+}
+
 DispatchStatus
 AuthenticatedBrokerChannel::dispatch_one(std::chrono::milliseconds timeout) {
   if (!ready_ || failed() || termination_.attempted()) {

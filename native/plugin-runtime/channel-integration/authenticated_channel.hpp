@@ -1,6 +1,7 @@
 #pragma once
 
 #include "omarchy/plugin/wire/state.hpp"
+#include "omarchy/plugin/wire/control.hpp"
 #include "omarchy/plugin_runtime/launcher/launcher.h"
 #include "omarchy/plugin_runtime/launcher/termination_state.h"
 
@@ -94,6 +95,8 @@ public:
   receive_render(std::chrono::milliseconds timeout);
   [[nodiscard]] bool send_render(std::span<const std::byte> packet,
                                  std::span<const int> descriptors = {});
+  [[nodiscard]] bool send_control(std::uint16_t message_type,
+                                  std::span<const std::byte> payload);
   [[nodiscard]] bool ready() const;
   [[nodiscard]] bool alive() const;
   [[nodiscard]] bool failed() const;

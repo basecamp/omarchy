@@ -59,6 +59,8 @@ public:
   receive_render(std::chrono::milliseconds timeout);
   [[nodiscard]] bool send_render(std::span<const std::byte> packet,
                                  std::span<const int> descriptors = {});
+  [[nodiscard]] bool send_control(std::uint16_t message_type,
+                                  std::span<const std::byte> payload);
   [[nodiscard]] health::Status observe_resources(health::ResourceSample sample,
                                                  std::uint64_t now_seconds);
   [[nodiscard]] health::Status stop();

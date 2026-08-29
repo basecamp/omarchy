@@ -5,6 +5,8 @@
 
 #include <QByteArray>
 #include <QJsonDocument>
+#include <QJsonArray>
+#include <QJsonObject>
 
 #include <algorithm>
 #include <limits>
@@ -340,6 +342,50 @@ bool QmlBrokerApi::applyHostPermissionSnapshot(
   if (changed)
     emit permissionsChanged();
   return true;
+}
+
+bool QmlBrokerApi::applyHostPermissionSnapshotPayload(
+    std::uint64_t envelope_generation, std::span<const std::byte> payload) {
+  if (payload.empty() || payload.size() > 32 * 1024)
+    return false;
+  QJsonParseError error{};
+  const auto document = QJsonDocument::fromJson(
+      QByteArray(reinterpret_cast<const char *>(payload.data()),
+                 static_cast<qsizetype>(payload.size())),
+      &error);
+  if (error.error != QJsonParseError::NoError || !document.isObject())
+    return false;
+  const auto object = document.object();
+  if (object.size() != 2 || !object.value(QStringLiteral("generation")).isDouble() ||
+      !object.value(QStringLiteral("permissions")).isArray())
+    return false;
+  const auto generation_value = object.value(QStringLiteral("generation")).toDouble();
+  if (generation_value < 1 || generation_value > 9007199254740991.0 ||
+      generation_value != static_cast<double>(envelope_generation))
+    return false;
+  const auto entries = object.value(QStringLiteral("permissions")).toArray();
+  if (entries.size() > 64)
+    return false;
+  std::vector<HostPermission> decoded;
+  decoded.reserve(static_cast<std::size_t>(entries.size()));
+  for (const auto &value : entries) {
+    if (!value.isObject()) return false;
+    const auto item = value.toObject();
+    if (item.size() != 3 ||
+        !item.value(QStringLiteral("capability")).isString() ||
+        !item.value(QStringLiteral("operation")).isString() ||
+        !item.value(QStringLiteral("granted")).isBool())
+      return false;
+    const auto capability = item.value(QStringLiteral("capability")).toString();
+    const auto operation = item.value(QStringLiteral("operation")).toString();
+    if (capability.isEmpty() || capability.size() > 128 || operation.isEmpty() ||
+        operation.size() > 128 || capability.contains(QChar::Null) ||
+        operation.contains(QChar::Null))
+      return false;
+    decoded.push_back({capability.toStdString(), operation.toStdString(),
+                       item.value(QStringLiteral("granted")).toBool()});
+  }
+  return applyHostPermissionSnapshot(envelope_generation, decoded);
 }
 
 QVariant QmlBrokerApi::rejected(QString reason) {

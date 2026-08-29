@@ -5,6 +5,10 @@
 #include "omarchy/plugin_runtime/broker/broker_schema.hpp"
 
 #include <fcntl.h>
+#include <QCoreApplication>
+#include <QQmlComponent>
+#include <QQmlContext>
+#include <QQmlEngine>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -181,7 +185,7 @@ void dynamic_qml_to_adapter() {
               calls == 1 && written == 1,
           "QML dynamic envelope did not pass broker authorization and adapter verification");
 }
-void permission_awareness(worker::WorkerEndpoint &endpoint) {
+void permission_awareness(worker::WorkerEndpoint &endpoint, int host) {
   const std::string document =
       R"({"schemaVersion":2,"id":"org.example.pet","name":"Pet","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{},"permissions":{"required":[{"capability":"storage.private","reason":"save","quotaBytes":1024}],"optional":[{"capability":"notifications.send","reason":"alerts","categories":["care"]}]}})";
   const auto parsed = manifest::parse_manifest_v2(document);
@@ -221,13 +225,47 @@ void permission_awareness(worker::WorkerEndpoint &endpoint) {
   require(api.applyHostPermissionSnapshot(77, activated) && changes == 2 &&
               api.hasPermission("notifications.send", "send"),
           "optional permission activation was not surfaced");
+
+  QQmlEngine engine;
+  engine.rootContext()->setContextProperty(QStringLiteral("runtime"), &api);
+  QQmlComponent component(&engine);
+  component.setData(R"(
+    import QtQml
+    QtObject {
+      id: root
+      property int permissionRevision: 0
+      readonly property bool notificationsAvailable:
+        permissionRevision >= 0 && runtime.hasPermission("notifications.send", "send")
+      property Connections permissionConnection: Connections {
+        target: runtime
+        function onPermissionsChanged() { root.permissionRevision += 1 }
+      }
+    })", QUrl());
+  std::unique_ptr<QObject> qml(component.create());
+  require(qml != nullptr && qml->property("notificationsAvailable").toBool(),
+          "representative QML did not enable its granted optional feature");
+  auto *still_checked = qobject_cast<worker::BrokerCall *>(
+      api.invoke(QStringLiteral("storage_read"),
+                 {{QStringLiteral("key"), QStringLiteral("pet-state")}})
+          .value<QObject *>());
+  static_cast<void>(receive_packet(host));
+  const auto broker_denial = broker::encode_broker_error({
+      .failed_operation = permissions::OperationId::storage_read,
+      .reason = broker::BrokerErrorReason::denied,
+      .decision = permissions::GrantDecisionCode::explicitly_denied});
+  finish(api, endpoint, host, still_checked->correlation(),
+         static_cast<std::uint16_t>(wire::CommonMessageType::typed_error),
+         broker_denial);
+  require(still_checked->finished() && !still_checked->ok(),
+          "QML-visible availability bypassed authoritative broker denial");
   const std::array revoked{
       worker::QmlBrokerApi::HostPermission{"storage.private", "read", true},
       worker::QmlBrokerApi::HostPermission{"storage.private", "write", true},
       worker::QmlBrokerApi::HostPermission{"notifications.send", "send", false}};
   require(api.applyHostPermissionSnapshot(77, revoked) && changes == 3 &&
-              !api.hasPermission("notifications.send", "send"),
-          "revocation did not notify QML and remove availability");
+              !api.hasPermission("notifications.send", "send") &&
+              !qml->property("notificationsAvailable").toBool(),
+          "revocation did not notify representative QML and hide its feature");
 }
 void run() {
   Pair pair;
@@ -293,11 +331,12 @@ void run() {
               (errno == EAGAIN || errno == EWOULDBLOCK),
           "undeclared operation gained an ambient fallback or broker packet");
   dynamic_qml_to_adapter();
-  permission_awareness(endpoint);
+  permission_awareness(endpoint, pair.descriptors[1]);
 }
 } // namespace
 
-int main() {
+int main(int argc, char **argv) {
+  QCoreApplication application(argc, argv);
   try { run(); std::cout << "QML broker API: PASS\n"; return 0; }
   catch (const std::exception &error) {
     std::cerr << "QML broker API: " << error.what() << '\n'; return 1;

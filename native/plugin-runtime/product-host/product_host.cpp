@@ -1,6 +1,7 @@
 #include "product_host.hpp"
 
 #include <QJsonDocument>
+#include <QJsonArray>
 #include <QJsonObject>
 
 #include <fcntl.h>
@@ -30,14 +31,46 @@ const permissions::GrantRecord *find_grant(
   return found == values.end() ? nullptr : &*found;
 }
 
+const permissions::GrantRecord *find_grant_by_id(
+    const grants::RevisionGrants &revision, std::string_view capability) {
+  const auto values = revision.grants.values();
+  const auto found = std::ranges::find_if(values, [&](const auto &grant) {
+    return grant.capability.id.view() == capability;
+  });
+  return found == values.end() ? nullptr : &*found;
+}
+
+std::vector<std::byte> permission_snapshot_payload(
+    const PreparedPlugin &prepared) {
+  QJsonArray entries;
+  for (const auto &item : prepared.permission_availability) {
+    entries.append(QJsonObject{
+        {QStringLiteral("capability"), QString::fromStdString(item.capability)},
+        {QStringLiteral("operation"), QString::fromStdString(item.operation)},
+        {QStringLiteral("granted"), item.granted}});
+  }
+  const auto json = QJsonDocument(QJsonObject{
+      {QStringLiteral("generation"),
+       static_cast<qint64>(prepared.binding.generation)},
+      {QStringLiteral("permissions"), entries}})
+                        .toJson(QJsonDocument::Compact);
+  const auto bytes = std::as_bytes(
+      std::span(json.constData(), static_cast<std::size_t>(json.size())));
+  return {bytes.begin(), bytes.end()};
+}
+
 } // namespace
 
 PreparedPlugin::PreparedPlugin(
     discovery::VerifiedPlugin verified,
     permissions::ActivationBinding activation,
-    std::vector<surface_host::NamedSurfacePolicy> policies, int revision_fd)
+    std::vector<surface_host::NamedSurfacePolicy> policies,
+    std::vector<PermissionAvailability> permission_availability_value,
+    int revision_fd)
     : plugin(std::move(verified)), binding(std::move(activation)),
-      surfaces(std::move(policies)), revision_directory_fd(revision_fd) {}
+      surfaces(std::move(policies)),
+      permission_availability(std::move(permission_availability_value)),
+      revision_directory_fd(revision_fd) {}
 
 PreparedPlugin::~PreparedPlugin() {
   if (revision_directory_fd >= 0)
@@ -47,6 +80,7 @@ PreparedPlugin::~PreparedPlugin() {
 PreparedPlugin::PreparedPlugin(PreparedPlugin &&other) noexcept
     : plugin(std::move(other.plugin)), binding(std::move(other.binding)),
       surfaces(std::move(other.surfaces)),
+      permission_availability(std::move(other.permission_availability)),
       revision_directory_fd(std::exchange(other.revision_directory_fd, -1)) {}
 
 PreparedPlugin &PreparedPlugin::operator=(PreparedPlugin &&other) noexcept {
@@ -56,6 +90,7 @@ PreparedPlugin &PreparedPlugin::operator=(PreparedPlugin &&other) noexcept {
     plugin = std::move(other.plugin);
     binding = std::move(other.binding);
     surfaces = std::move(other.surfaces);
+    permission_availability = std::move(other.permission_availability);
     revision_directory_fd = std::exchange(other.revision_directory_fd, -1);
   }
   return *this;
@@ -114,6 +149,29 @@ PrepareResult prepare(const std::filesystem::path &plugin_root,
   }
 
   std::vector<surface_host::NamedSurfacePolicy> surfaces;
+  std::vector<PreparedPlugin::PermissionAvailability> availability;
+  for (const auto &request : found->manifest.requests) {
+    std::vector<std::string> operations = request.operations;
+    if (operations.empty() && request.capability == "storage.private")
+      operations = {"read", "write", "remove"};
+    else if (operations.empty() && request.capability == "notifications.send")
+      operations = {"send"};
+    else if (operations.empty() && request.capability == "audio.play-cue")
+      operations = {"play"};
+    else if (operations.empty() && request.capability == "service.fake-status")
+      operations = {"list", "acknowledge"};
+    const auto *grant = find_grant_by_id(active_grants, request.capability);
+    const bool granted = grant != nullptr &&
+                         grant->state == permissions::GrantState::granted;
+    for (const auto &operation : operations) {
+      const bool operation_granted =
+          granted && (request.operations.empty() ||
+                      std::ranges::find(request.operations, operation) !=
+                          request.operations.end());
+      availability.push_back({request.capability, operation,
+                              operation_granted});
+    }
+  }
   const auto document = QJsonDocument::fromJson(
       QByteArray::fromStdString(found->manifest.canonical_json));
   const auto surface_object = document.object().value("surfaces").toObject();
@@ -141,7 +199,8 @@ PrepareResult prepare(const std::filesystem::path &plugin_root,
             .detail = "verified revision directory could not be pinned"};
   }
   return {.prepared = std::make_unique<PreparedPlugin>(
-              *found, active_grants.binding, std::move(surfaces), revision_fd),
+              *found, active_grants.binding, std::move(surfaces),
+              std::move(availability), revision_fd),
           .failure = PrepareFailure::none,
           .detail = {}};
 }
@@ -204,9 +263,29 @@ headless::StartResult launch_with_broker_for_lab(
       .generation = prepared.binding.generation,
       .revision_directory_fd = revision_fd,
       .private_state_directory_fd = private_state_directory_fd};
-  return headless::Session::start(
+  auto started = headless::Session::start(
       supervisor, request, prepared.binding, health, std::move(dispatcher),
       std::move(authority), now_seconds, negotiation_timeout);
+  if (started && !update_permission_availability(*started.session, prepared)) {
+    (void)started.session->stop();
+    return {.session = nullptr,
+            .failure = headless::StartFailure::readiness,
+            .detail = "initial permission snapshot delivery failed"};
+  }
+  return started;
+}
+
+bool update_permission_availability(headless::Session &session,
+                                    const PreparedPlugin &prepared) {
+  if (session.binding().plugin != prepared.binding.plugin ||
+      session.binding().revision != prepared.binding.revision ||
+      session.binding().policy_fingerprint !=
+          prepared.binding.policy_fingerprint ||
+      session.binding().generation != prepared.binding.generation)
+    return false;
+  const auto payload = permission_snapshot_payload(prepared);
+  return session.send_control(
+      omarchy::plugin::wire::kPermissionSnapshotMessage, payload);
 }
 
 } // namespace omarchy::plugin_runtime::product_host

@@ -181,6 +181,16 @@ bool Session::send_render(std::span<const std::byte> packet,
   return true;
 }
 
+bool Session::send_control(std::uint16_t message_type,
+                           std::span<const std::byte> payload) {
+  if (!active_ || !channel_->send_control(message_type, payload)) {
+    active_ = false;
+    (void)health_.stop(binding_);
+    return false;
+  }
+  return true;
+}
+
 health::Status Session::observe_resources(health::ResourceSample sample,
                                           std::uint64_t now_seconds) {
   if (!active_)

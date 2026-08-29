@@ -2,6 +2,7 @@
 #include "qml_broker_api.hpp"
 #include "sidecar_supervisor.hpp"
 #include "worker_runtime.hpp"
+#include "omarchy/plugin/wire/control.hpp"
 
 #include "manifest_contract.hpp"
 
@@ -150,6 +151,24 @@ private:
         fatal("broker response failed runtime validation");
       return;
     }
+    if (endpoint.role() == wire::EndpointRole::control && broker_api_) {
+      if (packet.header.message_type != wire::kPermissionSnapshotMessage ||
+          packet.header.correlation_id != 0 || !packet.descriptors.empty() ||
+          !broker_api_->applyHostPermissionSnapshotPayload(
+              packet.header.launch_generation, packet.payload)) {
+        fatal("permission snapshot failed runtime validation");
+        return;
+      }
+      if (!runtime_loaded_) {
+        const auto loaded = runtime_.load_manifest_entry();
+        if (!loaded) {
+          fatal(loaded.detail);
+          return;
+        }
+        runtime_loaded_ = true;
+      }
+      return;
+    }
     if (endpoint.role() != wire::EndpointRole::render || !render_state_) {
       fatal("unexpected post-negotiation control traffic");
       return;
@@ -181,9 +200,8 @@ private:
       fatal(bound.detail);
       return;
     }
-    const auto loaded = runtime_.load_manifest_entry();
-    if (!loaded)
-      fatal(loaded.detail);
+    // QML is loaded only after the authenticated host supplies the initial
+    // permission snapshot, so feature decisions never observe guessed grants.
   }
 
   bool validate_outgoing(std::uint16_t type, std::span<const std::byte> payload,
@@ -342,6 +360,7 @@ private:
   wire::RoleSchemaRegistryView registry_;
   std::unique_ptr<wire::SelectedEndpointState<32>> render_state_;
   std::unique_ptr<worker::QmlBrokerApi> broker_api_;
+  bool runtime_loaded_ = false;
   QSocketNotifier control_notifier_;
   QSocketNotifier broker_notifier_;
   QSocketNotifier render_notifier_;
