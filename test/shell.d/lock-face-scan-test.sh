@@ -102,4 +102,19 @@ assert(
   /config: "omarchy-lock-face"/.test(serviceQml),
   'face auth runs through its own PAM service, separate from the password stack'
 )
+
+// Running on its own service is what makes the terminator necessary. A face
+// module that cannot reach its backend returns PAM_IGNORE instead of failing,
+// which is safe on sudo or a greeter because the password sits behind it in the
+// same stack. Here nothing sits behind it, and a stack that reaches its end with
+// no verdict authenticates. Measured against a stopped backend: the stack let
+// pamtester in, in 0.1s, until pam_deny closed it, and a non-matching face got
+// in the same way. The module has to be sufficient rather than required, or
+// pam_deny would overrule a genuine match and refuse everyone.
+const setupFace = fs.readFileSync(path.join(root, 'bin/omarchy-setup-security-face'), 'utf8')
+
+assert(
+  /\/etc\/pam\.d\/omarchy-lock-face[\s\S]*?auth\s+sufficient\s+pam_howdy\.so[\s\S]*?auth\s+required\s+pam_deny\.so[\s\S]*?EOF/.test(setupFace),
+  'the face PAM stack ends in pam_deny, with the module sufficient so a match still passes'
+)
 JS

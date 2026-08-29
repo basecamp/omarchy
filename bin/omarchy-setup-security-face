@@ -109,9 +109,19 @@ EOF
 
 setup_lock_face_pam() {
   echo "Configuring lock screen for face authentication..."
+  # pam_deny closes the stack, and the face module is sufficient so that a match
+  # returns before reaching it. A face module that cannot reach its backend
+  # answers PAM_IGNORE rather than failing, which is safe on sudo or a greeter
+  # because the password sits behind it in the same stack and answers instead.
+  # This service has nothing behind it: the password is a separate service on
+  # its own lane, so an ignored module would leave the stack with no verdict at
+  # all, and PAM reads that as success. Measured against a stopped backend:
+  # without pam_deny the stack authenticated anyone in 0.1s, and a face that
+  # simply did not match got in the same way.
   sudo tee /etc/pam.d/omarchy-lock-face >/dev/null <<'EOF'
 #%PAM-1.0
-auth       required                    pam_howdy.so
+auth       sufficient                  pam_howdy.so
+auth       required                    pam_deny.so
 account    include                     system-local-login
 EOF
 }
