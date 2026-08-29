@@ -1,6 +1,7 @@
 #pragma once
 #include "audit_store.hpp"
 #include "dynamic_activation.hpp"
+#include "omarchy/plugin_runtime/launcher/launcher.h"
 #include <array>
 #include <chrono>
 #include <filesystem>
@@ -17,6 +18,7 @@ struct Registration {
   Digest executable_digest;
   std::uint32_t expected_uid = 0;
   std::uint32_t protocol_version = 0;
+  plugin_runtime::launcher::Supervisor *launcher = nullptr;
 };
 struct RequestFrame {
   definitions::Name service_id;

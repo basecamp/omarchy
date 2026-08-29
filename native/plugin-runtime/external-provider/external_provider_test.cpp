@@ -28,6 +28,17 @@ struct AuthorizationProbe {
   unsigned calls = 0;
   unsigned deny_after = UINT_MAX;
 };
+struct Scope final
+    : omarchy::plugin_runtime::launcher::ResourceScopeController {
+  bool probe(std::string &) override { return true; }
+  bool attach(std::string_view, pid_t, pid_t,
+              const omarchy::plugin_runtime::sandbox::SandboxPlan &,
+              std::chrono::milliseconds, std::string &) override {
+    return true;
+  }
+  void kill(std::string_view) noexcept override {}
+  void remove(std::string_view) noexcept override {}
+};
 bool authorized(const definitions::DynamicAuthorizationContext &,
                 void *context) noexcept {
   auto &probe = *static_cast<AuthorizationProbe *>(context);
@@ -66,6 +77,8 @@ int main(int argc, char **) {
   const auto self = std::filesystem::canonical("/proc/self/exe");
   std::ifstream stream(self, std::ios::binary);
   const std::string bytes((std::istreambuf_iterator<char>(stream)), {});
+  auto launcher = omarchy::plugin_runtime::launcher::Supervisor::forTestOnly(
+      "/usr/bin/bwrap", self.string(), std::make_shared<Scope>());
   external_provider::Registration r{
       .service_id = definitions::Name("local.fake-provider"),
       .adapter = {.adapter_class = definitions::Name("fake-bounded-harness"),
@@ -74,7 +87,8 @@ int main(int argc, char **) {
       .executable = self,
       .executable_digest = definitions::Digest(manifest::sha256_hex(bytes)),
       .expected_uid = static_cast<std::uint32_t>(getuid()),
-      .protocol_version = 2};
+      .protocol_version = 2,
+      .launcher = &launcher};
   permissions::ActivationBinding binding{
       .plugin = permissions::PluginId("org.example.plugin"),
       .revision = digest('b'),

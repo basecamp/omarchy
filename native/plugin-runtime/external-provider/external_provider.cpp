@@ -107,16 +107,6 @@ bool ident(W &w, const Registration &r) {
          w.text(r.adapter.implementation_digest.view()) &&
          w.u32(r.adapter.abi_version);
 }
-bool tx(int fd, std::span<const std::byte> x) {
-  return write(fd, x.data(), x.size()) == static_cast<ssize_t>(x.size());
-}
-bool rx(int fd, std::span<std::byte> s, std::span<const std::byte> &x) {
-  auto n = recv(fd, s.data(), s.size(), 0);
-  if (n <= 0)
-    return false;
-  x = std::span<const std::byte>(s).first(n);
-  return true;
-}
 bool nonce(std::span<std::byte, kNonceBytes> x) {
   size_t n = 0;
   while (n < x.size()) {
@@ -129,28 +119,49 @@ bool nonce(std::span<std::byte, kNonceBytes> x) {
   }
   return std::ranges::any_of(x, [](auto b) { return b != std::byte{}; });
 }
-} // namespace
-bool valid_registration(const Registration &v) {
+int open_verified(const Registration &v) {
   if (v.service_id.view().empty() || v.adapter.abi_version == 0 ||
       v.protocol_version != 2 || !v.executable.is_absolute() ||
       v.executable.filename() == "sh" || v.executable.filename() == "bash" ||
       v.executable_digest.size() != 64)
-    return false;
+    return -1;
   int fd = open(v.executable.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
-  struct stat s{};
+  struct stat s {};
   if (fd < 0 || fstat(fd, &s) || !S_ISREG(s.st_mode) ||
       uint32_t(s.st_uid) != v.expected_uid ||
-      (s.st_mode & (S_IWGRP | S_IWOTH)) || s.st_size <= 0 ||
+      (s.st_mode & (S_IWGRP | S_IWOTH | S_ISUID | S_ISGID)) ||
+      (s.st_mode & 0111) == 0 || s.st_size <= 0 ||
       s.st_size > 64 * 1024 * 1024) {
     if (fd >= 0)
       close(fd);
-    return false;
+    return -1;
   }
-  std::string b(s.st_size, '\0');
-  auto n = read(fd, b.data(), b.size());
+  std::string b(static_cast<std::size_t>(s.st_size), '\0');
+  std::size_t offset = 0;
+  while (offset < b.size()) {
+    const ssize_t count = read(fd, b.data() + offset, b.size() - offset);
+    if (count < 0 && errno == EINTR)
+      continue;
+    if (count <= 0) {
+      close(fd);
+      return -1;
+    }
+    offset += static_cast<std::size_t>(count);
+  }
+  if (Digest(manifest::sha256_hex(b)) != v.executable_digest ||
+      lseek(fd, 0, SEEK_SET) < 0) {
+    close(fd);
+    return -1;
+  }
+  return fd;
+}
+} // namespace
+bool valid_registration(const Registration &v) {
+  const int fd = open_verified(v);
+  if (fd < 0)
+    return false;
   close(fd);
-  return n == s.st_size &&
-         Digest(manifest::sha256_hex(b)) == v.executable_digest;
+  return true;
 }
 bool encode_handshake(const Registration &r,
                       std::span<const std::byte, kNonceBytes> n,
@@ -261,34 +272,33 @@ Result invoke(const Registration &r,
   w = 0;
   if (correlation == 0)
     return Result::malformed;
-  if (!valid_registration(r))
+  const int executable_fd = open_verified(r);
+  if (executable_fd < 0)
     return Result::invalid_registration;
+  struct DescriptorGuard {
+    int value;
+    ~DescriptorGuard() { close(value); }
+  } executable{executable_fd};
   if (!epoch || epoch != q.authorization.grant_epoch)
     return Result::revoked;
-  int f[2];
-  if (socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, f))
-    return Result::crashed;
-  auto pid = fork();
-  if (pid < 0) {
-    close(f[0]);
-    close(f[1]);
-    return Result::crashed;
-  }
-  if (!pid) {
-    close(f[0]);
-    if (f[1] != 3) {
-      dup2(f[1], 3);
-      close(f[1]);
-    }
-    execl(r.executable.c_str(), r.executable.c_str(), "--omarchy-provider-fd=3",
-          nullptr);
-    _exit(127);
-  }
-  close(f[1]);
+  auto production_launcher =
+      r.launcher == nullptr
+          ? std::optional<plugin_runtime::launcher::Supervisor>(
+                plugin_runtime::launcher::Supervisor::production())
+          : std::nullopt;
+  auto &launcher = r.launcher == nullptr ? *production_launcher : *r.launcher;
+  auto launched = launcher.launchProvider(
+      {.service_id = std::string(r.service_id.view()),
+       .executable_sha256 = std::string(r.executable_digest.view()),
+       .generation = epoch,
+       .executable_fd = executable_fd});
+  if (!launched)
+    return launched.failure == plugin_runtime::launcher::LaunchFailure::startup_timeout
+               ? Result::timeout
+               : Result::crashed;
+  auto &provider = *launched.worker;
   auto fail = [&](Result x) {
-    kill(pid, SIGKILL);
-    close(f[0]);
-    waitpid(pid, nullptr, 0);
+    static_cast<void>(provider.terminate());
     return x;
   };
   std::array<std::byte, kNonceBytes> n{};
@@ -296,13 +306,16 @@ Result invoke(const Registration &r,
   size_t z;
   std::span<const std::byte> got;
   if (!nonce(n) || !encode_handshake(r, n, b, z) ||
-      !tx(f[0], std::span(b).first(z))) {
+      !provider.send(plugin_runtime::launcher::EndpointRole::control,
+                     std::span(b).first(z))) {
     return fail(Result::crashed);
   }
-  pollfd p{f[0], POLLIN, 0};
-  if (poll(&p, 1, timeout.count()) <= 0)
+  auto received = provider.receive(plugin_runtime::launcher::EndpointRole::control,
+                                   kMaximumFrameBytes, timeout);
+  if (!received)
     return fail(Result::timeout);
-  if (!rx(f[0], b, got) || !verify_handshake_echo(r, n, got))
+  got = received.payload;
+  if (!verify_handshake_echo(r, n, got))
     return fail(Result::identity_mismatch);
   RequestFrame req{r.service_id,
                    r.adapter,
@@ -312,24 +325,23 @@ Result invoke(const Registration &r,
                    q.payload,
                    correlation,
                    n};
-  if (!encode_request(req, b, z) || !tx(f[0], std::span(b).first(z))) {
+  if (!encode_request(req, b, z) ||
+      !provider.send(plugin_runtime::launcher::EndpointRole::control,
+                     std::span(b).first(z))) {
     return fail(Result::crashed);
   }
-  if (poll(&p, 1, timeout.count()) <= 0)
+  received = provider.receive(plugin_runtime::launcher::EndpointRole::control,
+                              kMaximumFrameBytes, timeout);
+  if (!received)
     return fail(Result::timeout);
-  if (!rx(f[0], b, got))
-    return fail(Result::malformed);
+  got = received.payload;
   ReplyFrame reply;
   if (!decode_reply(got, reply) || reply.correlation != correlation ||
       reply.host_nonce != n || reply.payload.size() > out.size())
     return fail(Result::malformed);
   std::ranges::copy(reply.payload, out.begin());
   w = reply.payload.size();
-  close(f[0]);
-  int status;
-  waitpid(pid, &status, 0);
-  return WIFEXITED(status) && !WEXITSTATUS(status) ? Result::completed
-                                                   : Result::crashed;
+  return provider.terminate() ? Result::completed : Result::crashed;
 }
 
 Result invoke_audited(const Registration &registration,

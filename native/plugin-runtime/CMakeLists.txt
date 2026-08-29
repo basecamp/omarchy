@@ -87,7 +87,8 @@ add_subdirectory(revision-store)
 add_subdirectory(grants)
 add_subdirectory(audit)
 if(TARGET omarchy-plugin-capability-definitions
-    AND TARGET omarchy-plugin-audit-store)
+    AND TARGET omarchy-plugin-audit-store
+    AND TARGET omarchy-plugin-launcher)
   add_subdirectory(external-provider)
 endif()
 add_subdirectory(lifecycle)
