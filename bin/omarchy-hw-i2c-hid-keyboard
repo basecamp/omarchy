@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# omarchy:summary=Detect an internal keyboard on the I2C-HID bus instead of the PS/2 controller.
+
+devices="${OMARCHY_INPUT_DEVICES_PATH:-/proc/bus/input/devices}"
+
+[[ -r $devices ]] || exit 1
+
+# Blocks are separated by blank lines and list Phys before Handlers, so a
+# block's bus is known by the time its handlers are read. The keyboard is the
+# device claiming the kbd handler: a touchpad or touchscreen on the same I2C
+# controller claims mouse handlers instead, and the PS/2 stub some of these
+# laptops still expose is not on the i2c bus.
+awk '
+  /^P: Phys=i2c-/ { i2c = 1 }
+  /^H: Handlers=/ { if (i2c && $0 ~ /[= ]kbd([ ]|$)/) found = 1 }
+  /^[[:space:]]*$/ { i2c = 0 }
+  END { exit !found }
+' "$devices"
