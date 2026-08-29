@@ -328,6 +328,11 @@ Item {
 
   readonly property bool vertical: position === "left" || position === "right"
   readonly property int barSize: vertical ? Style.bar.sizeVertical : Style.bar.sizeHorizontal
+  // A detached bar floats barMargin away from every screen edge it touches and
+  // rounds its corners by barRadius. Both are 0 by default, which anchors the
+  // bar flush against its edge with square corners.
+  readonly property int barMargin: Style.bar.margin
+  readonly property int barRadius: Style.bar.radius
 
   function normalizePosition(value) {
     return BarModel.normalizePosition(value)
@@ -1017,11 +1022,16 @@ Item {
       window: barWindow
     }
 
+    // Parking a detached bar has to clear its margin as well as its own size,
+    // or the gap leaves a sliver of it on screen.
+    readonly property int parkedMargin: -(root.barSize + root.barMargin)
+    readonly property int edgeMargin: root.barHidden ? parkedMargin : root.barMargin
+
     margins {
-      top: root.barHidden && root.position === "top" ? -root.barSize : 0
-      bottom: root.barHidden && root.position === "bottom" ? -root.barSize : 0
-      left: root.barHidden && root.position === "left" ? -root.barSize : 0
-      right: root.barHidden && root.position === "right" ? -root.barSize : 0
+      top: root.position === "top" ? edgeMargin : (root.vertical ? root.barMargin : 0)
+      bottom: root.position === "bottom" ? edgeMargin : (root.vertical ? root.barMargin : 0)
+      left: root.position === "left" ? edgeMargin : (root.vertical ? 0 : root.barMargin)
+      right: root.position === "right" ? edgeMargin : (root.vertical ? 0 : root.barMargin)
     }
 
     anchors {
@@ -1033,10 +1043,21 @@ Item {
 
     implicitWidth: root.vertical ? root.barSize : 0
     implicitHeight: root.vertical ? 0 : root.barSize
-    color: root.transparent ? "transparent" : root.background
+    // The surface itself stays transparent so the rounded background below can
+    // paint the corners; a window color would square them off again.
+    color: "transparent"
     surfaceFormat.opaque: false
     WlrLayershell.namespace: "omarchy-bar"
     WlrLayershell.layer: WlrLayer.Top
+
+    // Declared before the loader so it paints behind the widgets. Carries the
+    // bar's background instead of the window, which is what lets barRadius
+    // round the corners.
+    Rectangle {
+      anchors.fill: parent
+      color: root.transparent ? "transparent" : root.background
+      radius: root.barRadius
+    }
 
     Loader {
       anchors.fill: parent
