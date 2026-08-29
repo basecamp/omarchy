@@ -504,6 +504,13 @@ status=$?
 
 (( status != 0 )) || fail "a stale dev-link authorization is rejected"
 [[ $(cat "$theme/bullet.png") == 'old plymouth bullet.png' ]] || fail "a stale dev-link authorization leaves the live theme unchanged"
+# The refusal has to name the authorization. Validating /etc/omarchy.conf walks
+# its parents and leaves that walk's subject in failure_context, so without
+# restoring ours this refuses with "directory / must be root-owned and not
+# group- or world-writable" -- accusing a directory that passed and pointing the
+# reader at a filesystem problem that does not exist.
+[[ $output == *"$omarchy_conf"* ]] || fail "a stale dev-link refusal names the authorization it rejected" "$output"
+[[ $output != *"directory / "* ]] || fail "a stale dev-link refusal does not blame the root directory" "$output"
 assert_no_temporary_files "$fake_root"
 
 setup_run

@@ -146,6 +146,14 @@ run_root_transaction() {
       failure_hint="$source_root is user-owned; run omarchy dev link to authorize this development checkout, or omarchy dev unlink to use the packaged tree"
       validate_trusted_configuration_file "$omarchy_conf"
 
+      # validate_trusted_configuration_file walks /etc up to / and leaves its own
+      # subject behind in failure_context. Without restoring ours, a checkout
+      # that simply is not the authorized one refuses with "directory / must be
+      # root-owned and not group- or world-writable" -- naming a directory that
+      # passed, and sending the reader after a filesystem problem that is not
+      # there.
+      failure_context="the dev-link authorization in $omarchy_conf, which must name $source_root"
+
       quoted_source_root=$source_root
       quoted_source_root=${quoted_source_root//\\/\\\\}
       quoted_source_root=${quoted_source_root//\"/\\\"}
