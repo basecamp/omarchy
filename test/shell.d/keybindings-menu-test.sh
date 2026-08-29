@@ -14,6 +14,11 @@ stub_bin="$tmpdir/bin"
 mkdir -p "$home/.config" "$stub_bin"
 cp -r "$ROOT/config/hypr" "$home/.config/hypr"
 
+# User configs may iterate values returned by Hyprland APIs the scanner does
+# not model. The fallback must look like an empty sequence instead of yielding
+# a value forever for every numeric index.
+echo 'for _, monitor in ipairs(hl.get_monitors()) do end' >>"$home/.config/hypr/hyprland.lua"
+
 # The menu reads binds from Hyprland, which is not running here, so stand in for
 # it. A Lua bind reports dispatcher __lua and no arg, and the menu recovers both
 # from the Lua source; an exec bind carries its own command. Both shapes matter:
@@ -43,7 +48,7 @@ stub_hyprctl() {
 keybindings() {
   env -i PATH="$stub_bin:$ROOT/bin:$PATH" HOME="$home" \
     XDG_CACHE_HOME="$tmpdir/cache" OMARCHY_PATH="$ROOT" \
-    bash "$ROOT/bin/omarchy-menu-keybindings" --print
+    timeout 5 bash "$ROOT/bin/omarchy-menu-keybindings" --print
 }
 
 # Closing a window and toggling the scratchpad are two of the actions Omarchy

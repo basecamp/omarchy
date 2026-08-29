@@ -186,7 +186,11 @@ end
 
 local noop
 noop = setmetatable({}, {
-  __index = function()
+  __index = function(_, key)
+    if type(key) == "number" then
+      return nil
+    end
+
     return noop
   end,
   __call = function()
