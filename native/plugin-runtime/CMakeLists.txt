@@ -109,6 +109,32 @@ if(TARGET omarchy-plugin-launcher
   add_subdirectory(channel-integration)
 endif()
 
+# The Quickshell host is a shared QML module which embeds the native runtime.
+# Keep that linkage requirement owned here, where the complete production
+# target graph is visible, instead of relying on a global compiler setting.
+set(plugin_host_embedded_targets
+  omarchy-plugin-manifest-contract
+  omarchy-plugin-wire
+  omarchy-plugin-surface-contract
+  omarchy-plugin-permission-contract
+  omarchy-plugin-sandbox-policy
+  omarchy-plugin-capability-definitions
+  omarchy-plugin-broker-core
+  omarchy-plugin-trusted-bridge
+  omarchy-plugin-render-session
+  omarchy-plugin-surface-host
+  omarchy-plugin-launcher
+  omarchy-plugin-providers
+  omarchy-plugin-discovery
+  omarchy-plugin-broker-runtime
+  omarchy-plugin-channel-integration
+)
+foreach(target IN LISTS plugin_host_embedded_targets)
+  if(TARGET "${target}")
+    set_target_properties("${target}" PROPERTIES POSITION_INDEPENDENT_CODE ON)
+  endif()
+endforeach()
+
 if(BUILD_TESTING)
   add_subdirectory(fixtures/product)
   add_subdirectory(tests/adversarial)
