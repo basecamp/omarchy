@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# omarchy:summary=Launch the default agent inside the scratchpad Herdr session
+# omarchy:hidden=true
+
+# Herdr restores the agent by starting the configured shell and then sending
+# its resume command. Leave a restored pane as a shell so that command is not
+# consumed as a prompt by a newly started agent.
+if [[ -n ${HERDR_PANE_ID:-} ]] &&
+  herdr pane get "$HERDR_PANE_ID" 2>/dev/null |
+    jq -e '.result.pane.agent_session != null' >/dev/null 2>&1
+then
+  exec "${SHELL:-/bin/sh}"
+else
+  exec omarchy-agent --inline
+fi
