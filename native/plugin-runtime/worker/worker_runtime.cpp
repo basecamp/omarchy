@@ -547,6 +547,8 @@ bool WorkerRuntime::invoke_test_function(std::string_view function) {
                                    method.constData(), Qt::DirectConnection);
 }
 
+void WorkerRuntime::request_render() { implementation_->dirty = true; }
+
 RuntimeResult
 WorkerRuntime::select_software_profile(const surface::ProfileOffer &offer) {
   const std::array versions{offer.version};

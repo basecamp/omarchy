@@ -73,6 +73,10 @@ public:
            dispatched;
   }
 
+  [[nodiscard]] std::optional<channel::BrokerReply> take_reply() override {
+    return downstream_ == nullptr ? std::nullopt : downstream_->take_reply();
+  }
+
 private:
   health::HealthSupervisor &health_;
   permissions::ActivationBinding binding_;

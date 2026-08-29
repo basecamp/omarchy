@@ -1,5 +1,6 @@
 #include <QDebug>
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QFile>
 #include <QGuiApplication>
 #include <QQuickWindow>
@@ -15,6 +16,7 @@
 #include "broker_runtime.hpp"
 #include "omarchy/plugin_runtime/broker/broker_schema.hpp"
 #include "omarchy/plugin_runtime/providers/private_storage_backend.hpp"
+#include "omarchy/plugin_runtime/sandbox/policy.h"
 #include "lifecycle.hpp"
 
 #include <fcntl.h>
@@ -27,6 +29,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <memory>
+#include <iostream>
 #include <stdexcept>
 #include <vector>
 
@@ -49,6 +52,20 @@ namespace broker = omarchy::plugin_runtime::broker;
 namespace runtime = omarchy::plugin_runtime::runtime;
 namespace providers = omarchy::plugin_runtime::providers;
 namespace lifecycle = omarchy::plugins::lifecycle;
+
+#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+class TestScope final : public launcher::ResourceScopeController {
+public:
+  bool probe(std::string &) override { return true; }
+  bool attach(std::string_view, pid_t, pid_t,
+              const omarchy::plugin_runtime::sandbox::SandboxPlan &,
+              std::chrono::milliseconds, std::string &) override {
+    return true;
+  }
+  void kill(std::string_view) noexcept override {}
+  void remove(std::string_view) noexcept override {}
+};
+#endif
 
 int usage_error(const QString &argument) {
   qCritical().noquote() << "omarchy-plugin-host: unsupported argument:" << argument;
@@ -193,6 +210,7 @@ public:
            identity.generation == binding.generation;
   }
   bool dispatch(const wire::PacketView &packet) override {
+    ++dispatch_count_;
     std::array<std::byte, 8192> output{};
     const auto result = runtime_.dispatch(packet, ++now_, output);
     std::vector<std::byte> payload;
@@ -230,10 +248,14 @@ public:
   }
   std::optional<omarchy::plugin_runtime::channel::BrokerReply>
   take_reply() override { return std::exchange(reply_, {}); }
+#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+  [[nodiscard]] std::uint64_t dispatch_count() const { return dispatch_count_; }
+#endif
 private:
   runtime::AuditedBrokerRuntime &runtime_;
   std::uint64_t generation_ = 0;
   std::uint64_t now_ = 100;
+  std::uint64_t dispatch_count_ = 0;
   std::optional<omarchy::plugin_runtime::channel::BrokerReply> reply_;
 };
 
@@ -311,20 +333,34 @@ int preview(const QStringList &arguments, QGuiApplication &application,
                     .tree_sha256 = arguments.at(3).toStdString()},
       *active, {.schema_v2_enabled = true});
   if (!prepared) {
+#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+    std::cerr << "PRODUCT_E2E prepare failed: " << prepared.detail << '\n';
+#endif
     qCritical().noquote() << "omarchy-plugin-host: preview rejected:"
                           << QString::fromStdString(prepared.detail);
     return 78;
   }
   const int state_fd = open(arguments.at(5).toLocal8Bit().constData(),
                             O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-  if (state_fd < 0) return 78;
+  if (state_fd < 0) {
+#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+    qCritical() << "PRODUCT_E2E state open failed" << errno;
+#endif
+    return 78;
+  }
   struct Fd { int value; ~Fd() { close(value); } } owned_state{state_fd};
   audit::AuditStore audit_store(arguments.at(6).toStdString(), {});
   health::HealthSupervisor health_supervisor({}, audit_store);
   auto supervisor = live_lab
+#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+      ? launcher::Supervisor::forTestOnly(
+            "/usr/bin/bwrap", arguments.at(7).toStdString(),
+            std::make_shared<TestScope>())
+#else
       ? launcher::Supervisor::forRootOwnedLiveLabOnly(
             arguments.at(7).toStdString(), arguments.at(8).toStdString(),
             arguments.at(9).toStdString())
+#endif
       : launcher::Supervisor::production();
   std::unique_ptr<providers::PrivateStorageBackend> storage;
   std::unique_ptr<DesktopEffects> effects;
@@ -366,6 +402,11 @@ int preview(const QStringList &arguments, QGuiApplication &application,
         static_cast<std::uint64_t>(std::time(nullptr)), std::chrono::seconds(5));
   }
   if (!started) {
+#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+    std::cerr << "PRODUCT_E2E launch failed "
+              << static_cast<int>(started.failure) << ": " << started.detail
+              << '\n';
+#endif
     qCritical().noquote() << "omarchy-plugin-host: preview launch failed:"
                           << QString::fromStdString(started.detail);
     return 78;
@@ -385,11 +426,42 @@ int preview(const QStringList &arguments, QGuiApplication &application,
   auto hosted = surface_host::HostSurface::create(
       policy, prepared.prepared->binding, 1, width, height, 1, 1, surface,
       *transport, transport, inspection, clock);
-  if (!hosted) return 78;
+  if (!hosted) {
+#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+    std::cerr << "PRODUCT_E2E host surface creation failed\n";
+    qCritical() << "PRODUCT_E2E host surface creation failed";
+#endif
+    return 78;
+  }
   PreviewPointerBridge pointer_bridge(*hosted);
   surface.bindHostPointerRouter(pointer_bridge);
   QTimer pump;
   std::uint64_t observed_grant_mutation = state.mutation_sequence;
+#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+  const int expected_calls = qEnvironmentVariableIntValue("OMARCHY_PLUGIN_E2E_EXPECT_CALLS");
+  const bool expected_calls_set = qEnvironmentVariableIsSet("OMARCHY_PLUGIN_E2E_EXPECT_CALLS");
+  const int expected_frames = qEnvironmentVariableIntValue("OMARCHY_PLUGIN_E2E_EXPECT_FRAMES");
+  const int expected_render_packets =
+      qEnvironmentVariableIntValue("OMARCHY_PLUGIN_E2E_EXPECT_RENDER_PACKETS");
+  const int expected_mutation =
+      qEnvironmentVariableIntValue("OMARCHY_PLUGIN_E2E_EXPECT_MUTATION");
+  std::vector<QByteArray> frame_hashes;
+  std::uint64_t render_packets = 0;
+  QTimer deadline;
+  deadline.setSingleShot(true);
+  QObject::connect(&deadline, &QTimer::timeout, [&] {
+    const auto worker_error = started.session->take_worker_standard_error();
+    std::cerr << "PRODUCT_E2E timeout calls " << lab_broker->dispatch_count()
+              << " frames " << frame_hashes.size() << " render_packets "
+              << render_packets << " worker_stderr "
+              << worker_error << " grant_mutation " << observed_grant_mutation
+              << '\n';
+    qCritical() << "PRODUCT_E2E timeout calls" << lab_broker->dispatch_count()
+                << "frames" << frame_hashes.size();
+    application.exit(80);
+  });
+  deadline.start(8000);
+#endif
   QObject::connect(&pump, &QTimer::timeout, [&] {
     if (live_lab) {
       try {
@@ -437,6 +509,36 @@ int preview(const QStringList &arguments, QGuiApplication &application,
           qCritical() << "omarchy-plugin-host: host surface rejected malformed render packet";
         application.exit(79);
       }
+#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+      const auto &image = surface.ownedImage();
+      if (!image.isNull()) {
+        ++render_packets;
+        const auto bytes = QByteArrayView(
+            reinterpret_cast<const char *>(image.constBits()), image.sizeInBytes());
+        const auto hash = QCryptographicHash::hash(bytes, QCryptographicHash::Sha256);
+        if (std::ranges::find(frame_hashes, hash) == frame_hashes.end()) {
+          frame_hashes.push_back(hash);
+          std::cerr << "PRODUCT_E2E frame " << frame_hashes.size() << ' '
+                    << hash.toHex().constData() << '\n';
+          qInfo().noquote() << "PRODUCT_E2E frame" << frame_hashes.size()
+                            << hash.toHex();
+        }
+      }
+      if (expected_calls_set && expected_frames > 0 &&
+          lab_broker->dispatch_count() >= static_cast<std::uint64_t>(expected_calls) &&
+          frame_hashes.size() >= static_cast<std::size_t>(expected_frames) &&
+          render_packets >= static_cast<std::uint64_t>(expected_render_packets) &&
+          observed_grant_mutation >= static_cast<std::uint64_t>(expected_mutation)) {
+        qInfo() << "PRODUCT_E2E complete calls" << lab_broker->dispatch_count()
+                << "frames" << frame_hashes.size()
+                << "grant_mutation" << observed_grant_mutation;
+        std::cerr << "PRODUCT_E2E complete calls " << lab_broker->dispatch_count()
+                  << " frames " << frame_hashes.size()
+                  << " render_packets " << render_packets
+                  << " grant_mutation " << observed_grant_mutation << '\n';
+        application.exit(0);
+      }
+#endif
     } else if (message.failure != launcher::ReceiveFailure::timeout) {
       qCritical() << "omarchy-plugin-host: render receive failed"
                   << static_cast<int>(message.failure);
@@ -483,6 +585,10 @@ int main(int argc, char *argv[]) {
       store.activate_candidate(record->candidate->binding);
       return 0;
     } catch (const std::exception &error) {
+#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+      std::cerr << "PRODUCT_E2E stage activation failed: " << error.what()
+                << '\n';
+#endif
       qCritical().noquote() << error.what();
       return 78;
     }
@@ -516,6 +622,10 @@ int main(int argc, char *argv[]) {
       store.activate_candidate(staged.revision.binding);
       return 0;
     } catch (const std::exception &error) {
+#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+      std::cerr << "PRODUCT_E2E empty activation failed: " << error.what()
+                << '\n';
+#endif
       qCritical().noquote() << error.what();
       return 78;
     }

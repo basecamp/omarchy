@@ -86,6 +86,7 @@ public:
   // deliberately limited to zero-argument methods ending in `ForTest` and is
   // never reachable through the worker wire protocol.
   [[nodiscard]] bool invoke_test_function(std::string_view function);
+  void request_render();
   [[nodiscard]] std::optional<PublishedFrame> render();
 
   [[nodiscard]] bool loaded() const;

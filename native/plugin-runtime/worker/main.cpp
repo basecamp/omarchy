@@ -203,6 +203,7 @@ private:
         fatal("permission snapshot failed runtime validation");
         return;
       }
+      runtime_.request_render();
       if (!runtime_loaded_ && !runtime_load_pending_) {
         runtime_load_pending_ = true;
         QTimer::singleShot(0, [&] {
