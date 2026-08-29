@@ -265,7 +265,9 @@ bool fixture_radio_control(std::string_view control, std::uint32_t,
   return control == "pause" || control == "stop" || control == "mute" ||
          control == "volume" || control == "status";
 }
+#endif
 
+#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
 bool fixture_audio_observe(providers::AudioDeviceStatus &status,
                            void *) noexcept {
   status = {.display_name = "AirPods Pro", .connected = true, .left = 71,
