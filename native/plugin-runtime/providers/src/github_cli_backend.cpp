@@ -47,7 +47,7 @@ bool GitHubCliBackend::invoke(std::string_view operation,
     process.setArguments({QString::fromUtf8(operation),
                           QString::fromUtf8(argument)});
     process.start(QIODevice::ReadOnly);
-    if (!process.waitForStarted(2000) || !process.waitForFinished(30000) ||
+    if (!process.waitForStarted(2000) || !process.waitForFinished(60000) ||
         process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
       return false;
     const auto output = process.readAllStandardOutput().trimmed();
