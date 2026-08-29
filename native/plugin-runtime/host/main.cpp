@@ -237,6 +237,48 @@ private:
   std::optional<omarchy::plugin_runtime::channel::BrokerReply> reply_;
 };
 
+bool apply_lab_revocation_update(
+    const grants::RevisionGrants &updated,
+    runtime::AuditedBrokerRuntime &broker_runtime,
+    host::PreparedPlugin &prepared,
+    headless::Session &session) {
+  if (updated.binding != broker_runtime.binding() ||
+      updated.grants.size() != broker_runtime.revision().grants.size())
+    return false;
+  std::size_t changes = 0;
+  for (const auto &current : broker_runtime.revision().grants.values()) {
+    const auto found = std::ranges::find_if(
+        updated.grants.values(), [&](const auto &candidate) {
+          return candidate.capability == current.capability;
+        });
+    if (found == updated.grants.values().end())
+      return false;
+    if (*found == current)
+      continue;
+    const auto *definition = permissions::find_capability(current.capability);
+    if (definition == nullptr ||
+        current.state != permissions::GrantState::granted ||
+        found->state != permissions::GrantState::revoked ||
+        found->scope != current.scope || found->epoch != current.epoch + 1)
+      return false;
+    grants::RevocationResult revocation{
+        .target = grants::TargetRevision::active,
+        .grant = *found,
+        .action = definition->revocation,
+        .grant_fingerprint = {}};
+    const auto applied = broker_runtime.apply_revocation(revocation);
+    if (applied.status != runtime::RuntimeStatus::accepted ||
+        applied.restart_worker)
+      return false;
+    for (auto &availability : prepared.permission_availability) {
+      if (availability.capability == current.capability.id.view())
+        availability.granted = false;
+    }
+    ++changes;
+  }
+  return changes == 1 && host::update_permission_availability(session, prepared);
+}
+
 int preview(const QStringList &arguments, QGuiApplication &application,
             bool live_lab) {
   if (!preview_enabled()) {
@@ -347,8 +389,32 @@ int preview(const QStringList &arguments, QGuiApplication &application,
   PreviewPointerBridge pointer_bridge(*hosted);
   surface.bindHostPointerRouter(pointer_bridge);
   QTimer pump;
+  std::uint64_t observed_grant_mutation = state.mutation_sequence;
   QObject::connect(&pump, &QTimer::timeout, [&] {
     if (live_lab) {
+      try {
+        const auto latest = grant_store.read();
+        if (latest.mutation_sequence != observed_grant_mutation) {
+          const grants::RevisionGrants *updated = nullptr;
+          for (const auto &plugin : latest.plugins) {
+            if (plugin.plugin == prepared.prepared->binding.plugin && plugin.active)
+              updated = &*plugin.active;
+          }
+          if (updated == nullptr ||
+              !apply_lab_revocation_update(*updated, *broker_runtime,
+                                           *prepared.prepared, *started.session)) {
+            qCritical() << "omarchy-plugin-host: live grant update was not an exact revocation";
+            application.exit(79);
+            return;
+          }
+          observed_grant_mutation = latest.mutation_sequence;
+        }
+      } catch (const std::exception &error) {
+        qCritical().noquote() << "omarchy-plugin-host: live grant reload failed:"
+                              << error.what();
+        application.exit(79);
+        return;
+      }
       const auto dispatched = started.session->dispatch_one(
           static_cast<std::uint64_t>(std::time(nullptr)),
           std::chrono::milliseconds(0));
