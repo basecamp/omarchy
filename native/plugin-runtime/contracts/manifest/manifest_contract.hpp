@@ -23,9 +23,17 @@ struct CapabilityRequest {
 };
 
 struct Runtime {
+  struct Sidecar {
+    std::string name;
+    std::vector<std::string> command;
+
+    bool operator==(const Sidecar &) const = default;
+  };
+
   std::uint32_t api_version = 0;
   std::string qml;
   std::vector<std::string> worker;
+  std::vector<Sidecar> sidecars;
 
   bool operator==(const Runtime &) const = default;
 };

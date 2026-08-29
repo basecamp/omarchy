@@ -27,6 +27,7 @@ enum class PrepareFailure {
   none,
   feature_disabled,
   discovery_rejected,
+  sidecars_not_supported,
   grant_binding_missing,
   grant_binding_mismatch,
   required_grant_missing,

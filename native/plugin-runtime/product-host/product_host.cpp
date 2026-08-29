@@ -56,6 +56,11 @@ PrepareResult prepare(const std::filesystem::path &plugin_root,
                           ? "verified plugin was not discovered"
                           : report.diagnostics.front().detail};
   }
+  if (!found->manifest.runtime.sidecars.empty()) {
+    return {.prepared = nullptr,
+            .failure = PrepareFailure::sidecars_not_supported,
+            .detail = "declared sidecars require the trusted sandbox init"};
+  }
 
   permissions::ActivationBinding expected{
       .plugin = permissions::PluginId(found->manifest.id),

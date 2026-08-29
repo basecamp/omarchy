@@ -3,6 +3,7 @@
 #include "lifecycle.hpp"
 #include "manifest_contract.hpp"
 
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -93,6 +94,51 @@ void run() {
               prepared.prepared->surfaces.front().role ==
                   omarchy::plugin_runtime::surface_host::SurfaceRole::desktop_overlay,
           "verified arbitrary-QML plugin lost its host-owned surface policy");
+
+  const auto sidecar_root =
+      std::filesystem::temp_directory_path() /
+      ("omarchy-product-host-sidecar-" +
+       std::to_string(
+           std::chrono::steady_clock::now().time_since_epoch().count()));
+  struct RemoveTree {
+    std::filesystem::path path;
+    ~RemoveTree() {
+      std::error_code ignored;
+      std::filesystem::remove_all(path, ignored);
+    }
+  } cleanup{sidecar_root};
+  std::filesystem::copy(root, sidecar_root,
+                        std::filesystem::copy_options::recursive);
+  std::filesystem::permissions(sidecar_root / "ui/Pet.qml",
+                               std::filesystem::perms::owner_exec,
+                               std::filesystem::perm_options::add);
+  auto sidecar_bytes = read(sidecar_root / "manifest.json");
+  constexpr std::string_view qml_field = "\"qml\": \"ui/Pet.qml\"";
+  const auto qml_position = sidecar_bytes.find(qml_field);
+  require(qml_position != std::string::npos,
+          "sidecar fixture insertion failed");
+  const auto qml_end = qml_position + qml_field.size();
+  sidecar_bytes.insert(
+      qml_end,
+      ",\n    \"sidecars\": [{\"name\": \"helper\", \"command\": [\"ui/Pet.qml\"]}]");
+  {
+    std::ofstream output(sidecar_root / "manifest.json",
+                         std::ios::binary | std::ios::trunc);
+    output << sidecar_bytes;
+  }
+  const auto sidecar_parsed = manifest::parse_manifest_v2(sidecar_bytes);
+  const auto sidecar_identity =
+      manifest::identify_tree(sidecar_root, sidecar_parsed);
+  const omarchy::plugins::discovery::IdentityPin sidecar_pin{
+      .directory = sidecar_root.filename(),
+      .tree_sha256 = sidecar_identity.tree_sha256};
+  const auto sidecar_revision = active(sidecar_parsed, sidecar_identity);
+  auto sidecar_prepared = host::prepare(
+      sidecar_root, sidecar_pin, sidecar_revision,
+      {.schema_v2_enabled = true});
+  require(!sidecar_prepared && sidecar_prepared.failure ==
+                                   host::PrepareFailure::sidecars_not_supported,
+          "sidecar plugin activated without the trusted sandbox init");
 
   host::DenyAllBroker broker(revision.binding);
   const launcher::LaunchIdentity exact{

@@ -712,7 +712,8 @@ ManifestV2 parse_manifest_v2(std::string_view bytes) {
   }
 
   const Object &runtime = as_object(required(root, "runtime"), "runtime");
-  known_keys(runtime, {"apiVersion", "qml", "worker"}, "runtime");
+  known_keys(runtime, {"apiVersion", "qml", "worker", "sidecars"},
+             "runtime");
   const auto api_version =
       as_integer(required(runtime, "apiVersion"), "runtime.apiVersion");
   require(api_version == 1, "unsupported runtime.apiVersion");
@@ -731,6 +732,36 @@ ManifestV2 parse_manifest_v2(std::string_view bytes) {
     }
     require(safe_relative_path(result.runtime.worker.front()),
             "unsafe runtime.worker executable path");
+  }
+  if (const auto found = runtime.find("sidecars"); found != runtime.end()) {
+    const Array &sidecars = as_array(found->second, "runtime.sidecars");
+    require(!sidecars.empty() && sidecars.size() <= 8,
+            "runtime.sidecars has invalid length");
+    std::set<std::string, std::less<>> names;
+    for (const auto &entry : sidecars) {
+      const Object &sidecar = as_object(entry, "runtime.sidecar");
+      known_keys(sidecar, {"name", "command"}, "runtime.sidecar");
+      Runtime::Sidecar parsed;
+      parsed.name = as_string(required(sidecar, "name"),
+                              "runtime.sidecar.name");
+      require(valid_identifier(parsed.name), "invalid runtime.sidecar name");
+      require(names.insert(parsed.name).second,
+              "duplicate runtime.sidecar name");
+      const Array &command = as_array(required(sidecar, "command"),
+                                      "runtime.sidecar.command");
+      require(!command.empty() && command.size() <= 64,
+              "runtime.sidecar.command has invalid length");
+      for (const auto &argument : command) {
+        auto value = as_string(argument, "runtime.sidecar.command argument");
+        require(value.size() <= 4096 &&
+                    value.find('\0') == std::string::npos,
+                "invalid runtime.sidecar.command argument");
+        parsed.command.push_back(std::move(value));
+      }
+      require(safe_relative_path(parsed.command.front()),
+              "unsafe runtime.sidecar executable path");
+      result.runtime.sidecars.push_back(std::move(parsed));
+    }
   }
 
   const Json &surfaces = required(root, "surfaces");
@@ -882,6 +913,10 @@ ContentIdentity identify_tree(const std::filesystem::path &root,
   if (!manifest.runtime.worker.empty()) {
     require(is_executable_file(manifest.runtime.worker.front()),
             "runtime.worker executable is missing or not executable");
+  }
+  for (const auto &sidecar : manifest.runtime.sidecars) {
+    require(is_executable_file(sidecar.command.front()),
+            "runtime.sidecar executable is missing or not executable");
   }
 
   Sha256 tree;

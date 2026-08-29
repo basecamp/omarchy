@@ -60,6 +60,27 @@ void parser_contract(const std::filesystem::path &fixtures) {
               dynamic.requests[0].operations ==
                   std::vector<std::string>{"status.read"},
           "dynamic definition reference was not preserved");
+
+  const auto with_sidecars = omarchy::plugins::manifest::parse_manifest_v2(
+      R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml","sidecars":[{"name":"indexer","command":["bin/indexer","--socket","/run/plugin/indexer.sock"]},{"name":"pet-state","command":["bin/pet-state"]}]} ,"surfaces":{},"permissions":{"required":[],"optional":[]}})");
+  require(with_sidecars.runtime.sidecars.size() == 2 &&
+              with_sidecars.runtime.sidecars[0].name == "indexer" &&
+              with_sidecars.runtime.sidecars[0].command ==
+                  std::vector<std::string>{"bin/indexer", "--socket",
+                                           "/run/plugin/indexer.sock"},
+          "declared sidecars were not preserved exactly");
+  expect_rejected(
+      [] {
+        (void)omarchy::plugins::manifest::parse_manifest_v2(
+            R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml","sidecars":[{"name":"escape","command":["../host-tool"]}]},"surfaces":{},"permissions":{"required":[],"optional":[]}})");
+      },
+      "escaping sidecar executable was accepted");
+  expect_rejected(
+      [] {
+        (void)omarchy::plugins::manifest::parse_manifest_v2(
+            R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml","sidecars":[{"name":"same","command":["bin/one"]},{"name":"same","command":["bin/two"]}]},"surfaces":{},"permissions":{"required":[],"optional":[]}})");
+      },
+      "duplicate sidecar identity was accepted");
   expect_rejected(
       [] {
         (void)omarchy::plugins::manifest::parse_manifest_v2(
@@ -177,6 +198,30 @@ void digest_contract(const std::filesystem::path &fixtures) {
   std::filesystem::create_symlink("ui/Status.qml", temporary / "alias.qml");
   expect_rejected([&] { (void)identify_tree(temporary, copied_manifest); },
                   "symlink in content tree was accepted");
+
+  std::filesystem::remove(temporary / "alias.qml");
+  std::filesystem::create_directories(temporary / "bin");
+  {
+    std::ofstream sidecar(temporary / "bin/helper", std::ios::binary);
+    sidecar << "sidecar fixture\n";
+  }
+  std::filesystem::permissions(temporary / "bin/helper",
+                               std::filesystem::perms::owner_exec,
+                               std::filesystem::perm_options::add);
+  const std::string sidecar_manifest_bytes =
+      R"({"schemaVersion":2,"id":"org.example.status","name":"Example Status","version":"2.0.0","runtime":{"apiVersion":1,"qml":"ui/Status.qml","sidecars":[{"name":"helper","command":["bin/helper","--serve"]}]},"surfaces":{},"permissions":{"required":[],"optional":[]}})";
+  {
+    std::ofstream manifest_output(temporary / "manifest.json",
+                                  std::ios::binary | std::ios::trunc);
+    manifest_output << sidecar_manifest_bytes;
+  }
+  const auto sidecar_manifest = parse_manifest_v2(sidecar_manifest_bytes);
+  (void)identify_tree(temporary, sidecar_manifest);
+  std::filesystem::permissions(temporary / "bin/helper",
+                               std::filesystem::perms::owner_exec,
+                               std::filesystem::perm_options::remove);
+  expect_rejected([&] { (void)identify_tree(temporary, sidecar_manifest); },
+                  "non-executable declared sidecar was accepted");
 }
 
 void lifecycle_contract() {
