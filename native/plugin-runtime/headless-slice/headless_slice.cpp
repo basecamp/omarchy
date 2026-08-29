@@ -159,6 +159,28 @@ Session::dispatch_one(std::uint64_t now_seconds,
   return status;
 }
 
+launcher::ReceivedMessage
+Session::receive_render(std::chrono::milliseconds timeout) {
+  if (!active_)
+    return {.payload = {}, .failure = launcher::ReceiveFailure::io_error};
+  auto message = channel_->receive_render(timeout);
+  if (!message && message.failure != launcher::ReceiveFailure::timeout) {
+    active_ = false;
+    (void)health_.stop(binding_);
+  }
+  return message;
+}
+
+bool Session::send_render(std::span<const std::byte> packet,
+                          std::span<const int> descriptors) {
+  if (!active_ || !channel_->send_render(packet, descriptors)) {
+    active_ = false;
+    (void)health_.stop(binding_);
+    return false;
+  }
+  return true;
+}
+
 health::Status Session::observe_resources(health::ResourceSample sample,
                                           std::uint64_t now_seconds) {
   if (!active_)

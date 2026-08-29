@@ -28,7 +28,6 @@ endfunction()
 configure_file(cmake/PluginRuntimeVersion.h.in generated/omarchy/plugin_runtime/PluginRuntimeVersion.h @ONLY)
 
 add_subdirectory(protocol-version)
-add_subdirectory(host)
 
 # Contract owners add their directory without changing this shared root. A missing
 # directory means that security subsystem has not landed yet, not that it is optional
@@ -124,6 +123,10 @@ if(TARGET omarchy-plugin-headless-slice
     AND TARGET omarchy-plugin-grant-store
     AND TARGET omarchy-plugin-surface-host)
   add_subdirectory(product-host)
+endif()
+
+if(TARGET omarchy-plugin-product-host)
+  add_subdirectory(host)
 endif()
 
 if(TARGET omarchy-plugin-surface-host)

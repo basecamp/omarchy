@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 
 namespace omarchy::plugin_runtime::headless {
@@ -54,6 +55,10 @@ public:
 
   [[nodiscard]] channel::DispatchStatus
   dispatch_one(std::uint64_t now_seconds, std::chrono::milliseconds timeout);
+  [[nodiscard]] launcher::ReceivedMessage
+  receive_render(std::chrono::milliseconds timeout);
+  [[nodiscard]] bool send_render(std::span<const std::byte> packet,
+                                 std::span<const int> descriptors = {});
   [[nodiscard]] health::Status observe_resources(health::ResourceSample sample,
                                                  std::uint64_t now_seconds);
   [[nodiscard]] health::Status stop();

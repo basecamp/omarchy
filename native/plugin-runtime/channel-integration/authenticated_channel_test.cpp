@@ -1,4 +1,5 @@
 #include "authenticated_channel.hpp"
+#include "omarchy/plugin_runtime/surface/render_messages.hpp"
 
 #include <fcntl.h>
 #include <signal.h>
@@ -18,6 +19,8 @@
 namespace channel = omarchy::plugin_runtime::channel;
 namespace launcher = omarchy::plugin_runtime::launcher;
 namespace sandbox = omarchy::plugin_runtime::sandbox;
+namespace surface = omarchy::plugin_runtime::surface;
+namespace wire = omarchy::plugin::wire;
 
 namespace {
 using namespace std::chrono_literals;
@@ -367,6 +370,34 @@ void fake_suite() {
             "authenticated broker message was not dispatched exactly once");
     require(session.opened.channel->terminate() && session.scope->removes == 1,
             "valid channel teardown was not bounded");
+  }
+  {
+    Session session("valid", FAKE_BWRAP_PATH);
+    require(session.opened.channel->negotiate(2s),
+            "render-transport fixture did not become ready");
+    const auto payload =
+        surface::encode_profile_offer(surface::software_profile_offer());
+    wire::EnvelopeHeader header{
+        .endpoint_role = wire::EndpointRole::render,
+        .message_type = static_cast<std::uint16_t>(
+            surface::RenderMessageType::profile_offer),
+        .role_protocol_version = surface::kRenderRoleVersion,
+        .payload_length = static_cast<std::uint32_t>(payload.size()),
+        .launch_generation = 47,
+        .correlation_id = 1};
+    std::vector<std::byte> encoded(wire::kHeaderSize + payload.size());
+    const auto encoded_result = wire::encode_packet(header, payload, encoded);
+    require(encoded_result && session.opened.channel->send_render(
+                                  std::span(encoded).first(
+                                      encoded_result.bytes_written)),
+            "bound trusted render packet was not sent");
+    session.authority->generation = 48;
+    require(!session.opened.channel->send_render(
+                std::span(encoded).first(encoded_result.bytes_written)) &&
+                session.opened.channel->failure() ==
+                    channel::ChannelFailure::stale_generation &&
+                session.scope->removes == 1,
+            "stale generation retained trusted render authority");
   }
 
   for (const std::string_view mode :

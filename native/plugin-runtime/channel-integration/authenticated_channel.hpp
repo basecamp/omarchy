@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 
 namespace omarchy::plugin_runtime::channel {
@@ -76,6 +77,10 @@ public:
 
   [[nodiscard]] bool negotiate(std::chrono::milliseconds timeout);
   [[nodiscard]] DispatchStatus dispatch_one(std::chrono::milliseconds timeout);
+  [[nodiscard]] launcher::ReceivedMessage
+  receive_render(std::chrono::milliseconds timeout);
+  [[nodiscard]] bool send_render(std::span<const std::byte> packet,
+                                 std::span<const int> descriptors = {});
   [[nodiscard]] bool ready() const;
   [[nodiscard]] bool alive() const;
   [[nodiscard]] bool failed() const;

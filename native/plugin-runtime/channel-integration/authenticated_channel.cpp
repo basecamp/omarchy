@@ -276,6 +276,41 @@ AuthenticatedBrokerChannel::dispatch_one(std::chrono::milliseconds timeout) {
   return DispatchStatus::dispatched;
 }
 
+launcher::ReceivedMessage AuthenticatedBrokerChannel::receive_render(
+    std::chrono::milliseconds timeout) {
+  if (!ready_ || failed() || termination_.attempted() ||
+      !authority_->is_current(identity_) || !dispatcher_->accepts(identity_)) {
+    fail(ChannelFailure::stale_generation,
+         "render receive attempted without a current ready binding");
+    return {.payload = {}, .failure = launcher::ReceiveFailure::io_error};
+  }
+  return worker_->receive(
+      launcher::EndpointRole::render,
+      wire::kHeaderSize + wire::payload_cap(wire::EndpointRole::render),
+      timeout);
+}
+
+bool AuthenticatedBrokerChannel::send_render(
+    std::span<const std::byte> packet, std::span<const int> descriptors) {
+  if (!ready_ || failed() || termination_.attempted() ||
+      !authority_->is_current(identity_) || !dispatcher_->accepts(identity_))
+    return fail(ChannelFailure::stale_generation,
+                "render send attempted without a current ready binding");
+  const auto decoded = wire::decode_packet(packet, wire::EndpointRole::render);
+  if (!decoded || decoded.packet.header.role_protocol_version !=
+                      surface::kRenderRoleVersion ||
+      decoded.packet.header.launch_generation != identity_.generation)
+    return fail(ChannelFailure::malformed_envelope,
+                "trusted render packet failed binding validation");
+  const bool sent = descriptors.empty()
+                        ? worker_->send(launcher::EndpointRole::render, packet)
+                        : worker_->send_with_descriptors(
+                              launcher::EndpointRole::render, packet,
+                              descriptors);
+  return sent || fail(ChannelFailure::peer_failure,
+                      "authenticated render send failed");
+}
+
 bool AuthenticatedBrokerChannel::ready() const { return ready_ && !failed(); }
 bool AuthenticatedBrokerChannel::alive() const {
   return worker_ != nullptr && !failed() && !termination_.attempted() &&
