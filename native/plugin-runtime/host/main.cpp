@@ -18,6 +18,7 @@
 #include "capability_definition_loader.hpp"
 #include "omarchy/plugin_runtime/broker/broker_schema.hpp"
 #include "omarchy/plugin_runtime/providers/private_storage_backend.hpp"
+#include "omarchy/plugin_runtime/providers/radio_live_backend.hpp"
 #include "omarchy/plugin_runtime/providers/radio_provider.hpp"
 #include "omarchy/plugin_runtime/sandbox/policy.h"
 #include "lifecycle.hpp"
@@ -494,6 +495,7 @@ int preview(const QStringList &arguments, QGuiApplication &application,
   std::unique_ptr<runtime::AuditedBrokerRuntime> broker_runtime;
   std::unique_ptr<definitions::TrustedDefinitionRegistry> dynamic_registry;
   std::unique_ptr<providers::RadioProvider> radio_provider;
+  std::unique_ptr<providers::RadioLiveBackend> radio_live_backend;
   std::unique_ptr<runtime::DynamicBrokerRuntime> dynamic_runtime;
   std::shared_ptr<LabBroker> lab_broker;
   headless::StartResult started;
@@ -535,6 +537,10 @@ int preview(const QStringList &arguments, QGuiApplication &application,
       radio_configuration.https = {.get = fixture_radio_get};
       radio_configuration.media = {.play = fixture_radio_play,
                                    .control = fixture_radio_control};
+#else
+      radio_live_backend = std::make_unique<providers::RadioLiveBackend>();
+      radio_configuration.https = radio_live_backend->https_configuration();
+      radio_configuration.media = radio_live_backend->media_configuration();
 #endif
       radio_provider = std::make_unique<providers::RadioProvider>(radio_configuration);
       RadioAdapters adapters{.fetch = radio_provider->fetch_adapter(),

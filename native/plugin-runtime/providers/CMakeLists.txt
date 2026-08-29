@@ -5,6 +5,7 @@ project(omarchy_plugin_providers LANGUAGES CXX)
 include(CTest)
 
 find_package(Qt6 REQUIRED COMPONENTS Core)
+find_package(CURL REQUIRED)
 
 if(NOT TARGET omarchy-plugin-broker-core)
   add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../broker"
@@ -18,6 +19,7 @@ endif()
 
 add_library(omarchy-plugin-providers STATIC
   src/private_storage_backend.cpp
+  src/radio_live_backend.cpp
   src/radio_provider.cpp
   src/provider_set.cpp
   src/provider_schemas.cpp
@@ -30,6 +32,7 @@ target_include_directories(omarchy-plugin-providers PUBLIC include)
 target_link_libraries(omarchy-plugin-providers PUBLIC
   omarchy-plugin-broker-core
   omarchy-plugin-capability-definitions
+  CURL::libcurl
   Qt6::Core
 )
 
