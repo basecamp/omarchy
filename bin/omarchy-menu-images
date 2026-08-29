@@ -3,6 +3,8 @@
 # omarchy:summary=Open a generic image selector menu
 # omarchy:args=[--selected <image>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--preload] [--cache-only] <image-dir>...
 
+source omarchy-menu-handshake
+
 selected_image=""
 print_name=false
 show_labels=false
@@ -281,6 +283,11 @@ if [[ $preload == true ]]; then
   exit 0
 fi
 
+if ! shell_pid=$(menu_shell_pid); then
+  echo "Image selector failed to accept request" >&2
+  exit 1
+fi
+
 if ! open_result=$(omarchy-shell image-selector open \
      "" \
      "$rows_b64" \
@@ -298,9 +305,9 @@ if [[ $open_result != "ok" ]]; then
   exit 1
 fi
 
-while [[ ! -e $done_file ]]; do
-  sleep 0.01
-done
+if ! wait_for_menu_done "$done_file" "$shell_pid" 0.01; then
+  exit 1
+fi
 
 if [[ -s $selection_file ]]; then
   if [[ $print_name == true ]]; then
