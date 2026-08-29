@@ -19,6 +19,8 @@
 #include "omarchy/plugin_runtime/broker/broker_schema.hpp"
 #include "omarchy/plugin_runtime/providers/private_storage_backend.hpp"
 #include "omarchy/plugin_runtime/providers/audio_device_provider.hpp"
+#include "omarchy/plugin_runtime/providers/github_cli_backend.hpp"
+#include "omarchy/plugin_runtime/providers/github_provider.hpp"
 #include "omarchy/plugin_runtime/providers/radio_live_backend.hpp"
 #include "omarchy/plugin_runtime/providers/radio_provider.hpp"
 #include "omarchy/plugin_runtime/sandbox/policy.h"
@@ -217,6 +219,9 @@ struct DynamicAdapters {
   definitions::DynamicAdapter media;
   definitions::DynamicAdapter device_observe;
   definitions::DynamicAdapter device_control;
+  definitions::DynamicAdapter account_read;
+  definitions::DynamicAdapter account_write;
+  definitions::DynamicAdapter open_uri;
 };
 
 bool dynamic_adapter_available(std::string_view adapter_class,
@@ -225,7 +230,10 @@ bool dynamic_adapter_available(std::string_view adapter_class,
   const auto &adapters = *static_cast<const DynamicAdapters *>(opaque);
   for (const auto *adapter : {&adapters.fetch, &adapters.media,
                               &adapters.device_observe,
-                              &adapters.device_control})
+                              &adapters.device_control,
+                              &adapters.account_read,
+                              &adapters.account_write,
+                              &adapters.open_uri})
     if (adapter->binding.adapter_class.view() == adapter_class &&
         adapter->binding.implementation_digest == digest &&
         adapter->binding.abi_version == abi)
@@ -373,6 +381,7 @@ bool apply_lab_revocation_update(
     runtime::DynamicBrokerRuntime *dynamic_runtime,
     providers::RadioProvider *radio_provider,
     providers::AudioDeviceProvider *audio_device_provider,
+    providers::GitHubProvider *github_provider,
     host::PreparedPlugin &prepared,
     headless::Session &session) {
   if (updated.binding != broker_runtime.binding() ||
@@ -449,6 +458,21 @@ bool apply_lab_revocation_update(
       if (audio_device_provider == nullptr ||
           !audio_device_provider->revoke_control(found->grant.epoch))
         return false;
+    } else if (found->request.definition.canonical_name.view() ==
+               "remote-account.read") {
+      if (github_provider == nullptr)
+        return false;
+      (void)github_provider->revoke_read(found->grant.epoch);
+    } else if (found->request.definition.canonical_name.view() ==
+               "remote-account.write") {
+      if (github_provider == nullptr)
+        return false;
+      (void)github_provider->revoke_write(found->grant.epoch);
+    } else if (found->request.definition.canonical_name.view() ==
+               "external.open-uri.https") {
+      if (github_provider == nullptr)
+        return false;
+      (void)github_provider->revoke_open(found->grant.epoch);
     } else {
       return false;
     }
@@ -529,6 +553,8 @@ int preview(const QStringList &arguments, QGuiApplication &application,
   std::unique_ptr<definitions::TrustedDefinitionRegistry> dynamic_registry;
   std::unique_ptr<providers::RadioProvider> radio_provider;
   std::unique_ptr<providers::AudioDeviceProvider> audio_device_provider;
+  std::unique_ptr<providers::GitHubCliBackend> github_cli_backend;
+  std::unique_ptr<providers::GitHubProvider> github_provider;
   std::unique_ptr<providers::RadioLiveBackend> radio_live_backend;
   std::unique_ptr<runtime::DynamicBrokerRuntime> dynamic_runtime;
   std::shared_ptr<LabBroker> lab_broker;
@@ -560,6 +586,9 @@ int preview(const QStringList &arguments, QGuiApplication &application,
       std::uint64_t media_epoch = 0;
       std::uint64_t observe_epoch = 0;
       std::uint64_t control_epoch = 0;
+      std::uint64_t account_read_epoch = 0;
+      std::uint64_t account_write_epoch = 0;
+      std::uint64_t open_uri_epoch = 0;
       for (const auto &dynamic : active->dynamic_grants) {
         if (dynamic.grant.definition.canonical_name.view() == "network.fetch")
           fetch_epoch = dynamic.grant.epoch;
@@ -569,6 +598,12 @@ int preview(const QStringList &arguments, QGuiApplication &application,
           observe_epoch = dynamic.grant.epoch;
         else if (dynamic.grant.definition.canonical_name.view() == "device.control")
           control_epoch = dynamic.grant.epoch;
+        else if (dynamic.grant.definition.canonical_name.view() == "remote-account.read")
+          account_read_epoch = dynamic.grant.epoch;
+        else if (dynamic.grant.definition.canonical_name.view() == "remote-account.write")
+          account_write_epoch = dynamic.grant.epoch;
+        else if (dynamic.grant.definition.canonical_name.view() == "external.open-uri.https")
+          open_uri_epoch = dynamic.grant.epoch;
       }
       providers::RadioProviderConfiguration radio_configuration{
           .binding = active->binding, .fetch_epoch = fetch_epoch,
@@ -592,10 +627,32 @@ int preview(const QStringList &arguments, QGuiApplication &application,
 #endif
       audio_device_provider = std::make_unique<providers::AudioDeviceProvider>(
           audio_configuration);
+      std::filesystem::path github_program;
+#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+      github_program = qEnvironmentVariable("OMARCHY_PLUGIN_GITHUB_PROVIDER").toStdString();
+      const std::uint32_t github_provider_owner = static_cast<std::uint32_t>(getuid());
+#else
+      github_program = "/usr/lib/omarchy/plugin-providers/omarchy-github-provider";
+      constexpr std::uint32_t github_provider_owner = 0;
+#endif
+      github_cli_backend = std::make_unique<providers::GitHubCliBackend>(
+          github_program, std::filesystem::path(arguments.at(5).toStdString()) /
+                              "github-provider",
+          github_provider_owner);
+      github_provider = std::make_unique<providers::GitHubProvider>(
+          providers::GitHubProviderConfiguration{
+              .binding = active->binding,
+              .read_epoch = account_read_epoch,
+              .write_epoch = account_write_epoch,
+              .open_epoch = open_uri_epoch,
+              .backend = github_cli_backend->configuration()});
       DynamicAdapters adapters{.fetch = radio_provider->fetch_adapter(),
           .media = radio_provider->media_adapter(),
           .device_observe = audio_device_provider->observe_adapter(),
-          .device_control = audio_device_provider->control_adapter()};
+          .device_control = audio_device_provider->control_adapter(),
+          .account_read = github_provider->read_adapter(),
+          .account_write = github_provider->write_adapter(),
+          .open_uri = github_provider->open_adapter()};
       dynamic_registry = std::make_unique<definitions::TrustedDefinitionRegistry>();
       std::size_t loaded = 0;
 #ifdef OMARCHY_PLUGIN_PRODUCT_E2E
@@ -631,6 +688,12 @@ int preview(const QStringList &arguments, QGuiApplication &application,
           adapter = adapters.device_observe;
         else if (resolved->definition->adapter == adapters.device_control.binding)
           adapter = adapters.device_control;
+        else if (resolved->definition->adapter == adapters.account_read.binding)
+          adapter = adapters.account_read;
+        else if (resolved->definition->adapter == adapters.account_write.binding)
+          adapter = adapters.account_write;
+        else if (resolved->definition->adapter == adapters.open_uri.binding)
+          adapter = adapters.open_uri;
         else if (dynamic.request.required)
           return 78;
         else
@@ -739,6 +802,7 @@ int preview(const QStringList &arguments, QGuiApplication &application,
               !apply_lab_revocation_update(*updated, *broker_runtime,
                                            dynamic_runtime.get(), radio_provider.get(),
                                            audio_device_provider.get(),
+                                           github_provider.get(),
                                            *prepared.prepared, *started.session)) {
             qCritical() << "omarchy-plugin-host: live grant update was not an exact revocation";
             application.exit(79);

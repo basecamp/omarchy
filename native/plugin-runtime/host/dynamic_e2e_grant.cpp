@@ -2,6 +2,7 @@
 #include "grant_store.hpp"
 #include "manifest_contract.hpp"
 #include "omarchy/plugin_runtime/providers/audio_device_provider.hpp"
+#include "omarchy/plugin_runtime/providers/github_provider.hpp"
 #include "omarchy/plugin_runtime/providers/radio_provider.hpp"
 
 #include <fstream>
@@ -22,7 +23,7 @@ namespace providers = omarchy::plugin_runtime::providers;
 
 namespace {
 struct Adapters {
-  std::array<definitions::DynamicAdapter, 4> values;
+  std::array<definitions::DynamicAdapter, 7> values;
 };
 
 bool available(std::string_view name, const definitions::Digest &digest,
@@ -66,9 +67,15 @@ int main(int argc, char **argv) try {
                                      .media_epoch = 0, .https = {}, .media = {}});
   providers::AudioDeviceProvider audio_provider(
       {.binding = {}, .observe_epoch = 0, .control_epoch = 0, .backend = {}});
+  providers::GitHubProvider github_provider(
+      {.binding = {}, .read_epoch = 0, .write_epoch = 0,
+       .open_epoch = 0, .backend = {}});
   Adapters adapters{{provider.fetch_adapter(), provider.media_adapter(),
                      audio_provider.observe_adapter(),
-                     audio_provider.control_adapter()}};
+                     audio_provider.control_adapter(),
+                     github_provider.read_adapter(),
+                     github_provider.write_adapter(),
+                     github_provider.open_adapter()}};
   definitions::TrustedDefinitionRegistry registry;
   std::size_t loaded = 0;
   const definitions::AdapterVerifier verifier{.available = available,

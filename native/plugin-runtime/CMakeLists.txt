@@ -139,6 +139,9 @@ if(TARGET omarchy-plugin-product-host)
     "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/media-play-stream.capability"
     "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/device-observe.capability"
     "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/device-control.capability"
+    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/remote-account-read.capability"
+    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/remote-account-write.capability"
+    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/external-open-uri.capability"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/omarchy/plugin-capabilities.d")
 endif()
 

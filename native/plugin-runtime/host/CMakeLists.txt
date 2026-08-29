@@ -31,6 +31,15 @@ if(BUILD_TESTING)
   configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/winners/definitions/device-control.capability"
     "${CMAKE_CURRENT_BINARY_DIR}/dynamic-definitions/device-control.capability" COPYONLY)
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/winners/definitions/remote-account-read.capability"
+    "${CMAKE_CURRENT_BINARY_DIR}/dynamic-definitions/remote-account-read.capability" COPYONLY)
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/winners/definitions/remote-account-write.capability"
+    "${CMAKE_CURRENT_BINARY_DIR}/dynamic-definitions/remote-account-write.capability" COPYONLY)
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/winners/definitions/external-open-uri.capability"
+    "${CMAKE_CURRENT_BINARY_DIR}/dynamic-definitions/external-open-uri.capability" COPYONLY)
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/network-definition")
   configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/winners/definitions/network-fetch.capability"
