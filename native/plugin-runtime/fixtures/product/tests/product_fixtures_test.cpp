@@ -292,15 +292,14 @@ void test_live_evidence_fixtures() {
 
   FakeRuntime permission({QStringLiteral("notification_send")});
   auto permission_fixture = load("lab-permission", permission);
-  require(QMetaObject::invokeMethod(permission_fixture->object.get(),
-                                    "refreshPermission") &&
-              permission_fixture->object->property("permissionState").toString() ==
-              QStringLiteral("GRANTED"),
+  require(permission_fixture->object->property("permissionState").toString() ==
+                  QStringLiteral("GRANTED") &&
+              permission_fixture->object->property("observedChanges").toInt() == 0,
           "permission fixture did not render its initial availability");
   permission.setNotificationGranted(false);
   require(permission_fixture->object->property("permissionState").toString() ==
               QStringLiteral("DENIED") &&
-              permission_fixture->object->property("observedChanges").toInt() == 2,
+              permission_fixture->object->property("observedChanges").toInt() == 1,
           "permission fixture did not react visibly to permissionsChanged");
 }
 
