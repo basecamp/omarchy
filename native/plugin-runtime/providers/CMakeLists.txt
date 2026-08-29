@@ -22,9 +22,11 @@ add_library(omarchy-plugin-providers STATIC
   src/bluez_audio_backend.cpp
   src/github_cli_backend.cpp
   src/github_provider.cpp
+  src/hyprland_window_backend.cpp
   src/private_storage_backend.cpp
   src/radio_live_backend.cpp
   src/radio_provider.cpp
+  src/system_observe_provider.cpp
   src/provider_set.cpp
   src/provider_schemas.cpp
 )
@@ -121,6 +123,22 @@ if(BUILD_TESTING)
   add_executable(omarchy-plugin-radio-live-compat
     tests/radio_live_compat.cpp
   )
+
+  add_executable(omarchy-plugin-system-observe-provider-test
+    tests/system_observe_provider_test.cpp
+  )
+  target_compile_features(omarchy-plugin-system-observe-provider-test PRIVATE cxx_std_20)
+  target_compile_options(omarchy-plugin-system-observe-provider-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_link_libraries(omarchy-plugin-system-observe-provider-test PRIVATE omarchy-plugin-providers Qt6::Core)
+  add_test(NAME plugin-system-observe-provider COMMAND omarchy-plugin-system-observe-provider-test)
+
+  add_executable(omarchy-plugin-hyprland-window-backend-test
+    tests/hyprland_window_backend_test.cpp
+  )
+  target_compile_features(omarchy-plugin-hyprland-window-backend-test PRIVATE cxx_std_20)
+  target_compile_options(omarchy-plugin-hyprland-window-backend-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_link_libraries(omarchy-plugin-hyprland-window-backend-test PRIVATE omarchy-plugin-providers Qt6::Core)
+  add_test(NAME plugin-hyprland-window-backend COMMAND omarchy-plugin-hyprland-window-backend-test)
   target_compile_features(omarchy-plugin-radio-live-compat PRIVATE cxx_std_20)
   target_compile_options(omarchy-plugin-radio-live-compat PRIVATE
     -Wall -Wextra -Wpedantic -Werror
