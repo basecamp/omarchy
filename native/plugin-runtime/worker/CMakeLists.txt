@@ -45,7 +45,9 @@ qt_add_resources(omarchy-plugin-worker-runtime presentation_qml
 set(OMARCHY_PLUGIN_PRESENTATION_EXTRA_QML
   "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml/PanelActionButton.qml"
   "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml/ConfirmDialog.qml"
-  "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml/Button.qml")
+  "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml/Button.qml"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml/BarWidget.qml"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml/WidgetButton.qml")
 qt_add_resources(omarchy-plugin-worker-runtime presentation_extra_qml
   PREFIX "/qt/qml/Omarchy/PluginPresentation"
   BASE "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml"

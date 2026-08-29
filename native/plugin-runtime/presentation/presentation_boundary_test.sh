@@ -8,6 +8,6 @@ for forbidden in Quickshell FileView Process IpcHandler ScriptAction runtime inv
     exit 1
   fi
 done
-expected='BarIconButton Button Color ConfirmDialog CursorSurface KeyboardPanel Panel PanelActionButton PanelHero PanelKeyCatcher PanelSectionHeader PanelSeparator PanelSlider Style ToggleSwitch'
+expected='BarIconButton BarWidget Button Color ConfirmDialog CursorSurface KeyboardPanel Panel PanelActionButton PanelHero PanelKeyCatcher PanelSectionHeader PanelSeparator PanelSlider Style ToggleSwitch WidgetButton'
 actual=$(find "$root" -maxdepth 1 -name '*.qml' -printf '%f\n' | sed 's/\.qml$//' | sort | tr '\n' ' ' | sed 's/ $//')
 [[ $actual == "$expected" ]]

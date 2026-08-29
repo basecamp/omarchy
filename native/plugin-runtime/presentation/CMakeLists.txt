@@ -7,6 +7,7 @@ install(FILES
   qml/PanelSlider.qml qml/ToggleSwitch.qml
   qml/CursorSurface.qml
   qml/PanelActionButton.qml qml/ConfirmDialog.qml qml/Button.qml
+  qml/BarWidget.qml qml/WidgetButton.qml
   DESTINATION "${OMARCHY_PLUGIN_PRESENTATION_DIR}")
 
 if(BUILD_TESTING)
