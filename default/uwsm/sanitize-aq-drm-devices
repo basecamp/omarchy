@@ -5,9 +5,14 @@
 #
 # Sourced from ~/.config/uwsm/env-hyprland.d after the wiki-documented
 # env-hyprland export. Colon-free pins (cardN, udev names) are left alone.
+# A set-but-empty value is unset: getenv non-null takes the explicit path,
+# and CVarList on "" yields no GPUs.
 
 omarchy_sanitize_aq_drm_devices() {
-  [ -n "${AQ_DRM_DEVICES:-}" ] || return 0
+  if [ -z "${AQ_DRM_DEVICES:-}" ]; then
+    unset AQ_DRM_DEVICES
+    return 0
+  fi
 
   _omarchy_aq_rest=$AQ_DRM_DEVICES
   _omarchy_aq_out=
@@ -24,14 +29,15 @@ omarchy_sanitize_aq_drm_devices() {
         ;;
     esac
 
+    # Aquamarine splits on ':' with removeEmpty=true. The :/ split leaves a
+    # trailing colon on the previous token (card1::/other → card1:), which
+    # would otherwise look like an unresolvable by-path and drop a working GPU.
+    _omarchy_aq_path=${_omarchy_aq_path%:}
     [ -n "$_omarchy_aq_path" ] || continue
 
     case "$_omarchy_aq_path" in
       *:*)
-        _omarchy_aq_real=
-        if [ -e "$_omarchy_aq_path" ] || [ -L "$_omarchy_aq_path" ]; then
-          _omarchy_aq_real=$(readlink -f "$_omarchy_aq_path" 2>/dev/null || true)
-        fi
+        _omarchy_aq_real=$(readlink -e "$_omarchy_aq_path" 2>/dev/null || true)
         case "${_omarchy_aq_real:-}" in
           ""|*:* ) continue ;;
         esac
