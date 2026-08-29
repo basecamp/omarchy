@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-This document is the Wave 0 `A0` artifact from [`plugin-security-work-graph.md`](plugin-security-work-graph.md). It maps the current plugin lifecycle to exact repository paths, then assigns one proposed owner to every trusted component, cross-boundary channel, credential, filesystem object, policy decision, startup transition, and teardown transition in the secure schema-v2 model.
+This document maps the current plugin lifecycle to exact repository paths, then assigns one proposed owner to every trusted component, cross-boundary channel, credential, filesystem object, policy decision, startup transition, and teardown transition in the secure schema-v2 model.
 
 The proposed component names and logical stores below are architectural labels, not frozen executable names or install paths. Subsequent `G0` work selected a graphical-session-scoped `omarchy-plugin-host` systemd user service, three role-specific worker endpoints, and a public-API native bridge inside Quickshell. Later contract nodes still own the domain schemas, concrete filesystem layout, live shared-memory publication algorithm, and daemon-to-bridge protocol.
 

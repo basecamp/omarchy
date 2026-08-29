@@ -450,7 +450,7 @@ These changes reduce current exposure but must not be marketed as a sandbox:
 
 The reference PR should prove that arbitrary QML can remain expressive across the process boundary while its system authority and surface role are enforced independently.
 
-The implementation is decomposed into a breadth-first dependency graph in [`plugin-security-work-graph.md`](plugin-security-work-graph.md). That graph defines parallel contract, component, boundary-integration, vertical-slice, and system-proof waves; gate evidence; the native rendering critical path; and ownership boundaries intended to keep parallel branches from competing over policy or shared files.
+The implementation is organized as independently testable contracts, components, boundary integrations, vertical slices, and system proofs. Reviewers can start with the [trust map](plugin-security-a0-trust-map.md), then follow the manifest, permission, sandbox, wire, rendering, broker, lifecycle, hostile-test, migration, packaging, and release evidence linked from the relevant sections below.
 
 ### Proposed vertical slice
 
