@@ -284,7 +284,7 @@ Item {
         onPasswordTextEdited: function(password) { root.enteredPassword = password }
         onSubmitPassword: function(password) { root.submitPassword(password) }
         onClearFailureRequested: root.failureMessage = ""
-        onWakeRequested: root.runWake(true)
+        onWakeRequested: function(force) { root.runWake(force) }
       }
 
     }
