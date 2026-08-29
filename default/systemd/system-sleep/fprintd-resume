@@ -11,19 +11,20 @@
 # Restarting fprintd on resume drops the claim so the reader answers on the
 # first touch instead. Omarchy locks before every suspend and the lock screen
 # opens a verify at once, so fprintd is running and claimed at nearly every
-# resume: the restart is real, not a no-op. It is cheap, though — a wedged
-# fprintd is idle and exits on SIGTERM in milliseconds.
+# resume: the restart is real, not a no-op. A claim-wedged fprintd is idle and
+# exits on SIGTERM in milliseconds; one wedged on a stale device handle does
+# not, and rides out the stop timeout the sibling drop-in bounds.
 #
 # Installed next to /etc/pam.d/omarchy-lock-fingerprint by omarchy-apply-lock
 # and omarchy-setup-security-fingerprint, so its presence already means a
 # fingerprint reader is configured.
 
 if [[ $1 == "post" ]]; then
-  # Run it synchronously: user sessions stay frozen until the hook returns, so
-  # the lock screen's first attempt after thaw lands on the fresh daemon rather
-  # than the wedged one. systemctl waits out the whole stop/start job, so bound
-  # it — a daemon that never reaches its bus name would otherwise hold the thaw
-  # for as long as systemd-sleep allows. Killing the client leaves the restart
-  # job enqueued; systemd finishes it regardless.
-  timeout 10s systemctl try-restart fprintd.service 2>/dev/null || true
+  # User sessions stay frozen until this hook returns, so do not wait for the
+  # restart: enqueue the job and let systemd run it as the desktop thaws. A
+  # wedged fprintd can ignore SIGTERM, and a synchronous restart would hold
+  # the thaw for its whole stop timeout precisely in the case the hook exists
+  # for. The lock screen tolerates the restart landing under its first attempt:
+  # that attempt fails and the next, a second later, claims the fresh daemon.
+  systemctl --no-block try-restart fprintd.service 2>/dev/null || true
 fi

@@ -32,6 +32,12 @@ remove_resume_hook() {
     echo "Removing fingerprint resume hook..."
     sudo rm -f /usr/lib/systemd/system-sleep/fprintd-resume
   fi
+  if [[ -f /etc/systemd/system/fprintd.service.d/stop-timeout.conf ]]; then
+    echo "Removing fprintd stop timeout bound..."
+    sudo rm -f /etc/systemd/system/fprintd.service.d/stop-timeout.conf
+    sudo rmdir --ignore-fail-on-non-empty /etc/systemd/system/fprintd.service.d
+    sudo systemctl daemon-reload
+  fi
 }
 
 
