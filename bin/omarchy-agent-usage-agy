@@ -1,0 +1,298 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Antigravity usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Antigravity usage into one display-ready JSON record.
+
+Local stats come from Antigravity CLI history and transcript files under
+~/.gemini/antigravity-cli/. The Omarchy agents panel watches the JSON this prints.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import fcntl
+import json
+import os
+import sys
+import tempfile
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "agy"
+AGENT_NAME = "Antigravity"
+
+SCAN_REUSE_SECONDS = 20
+LIMITS_ONLY_REUSE_SECONDS = 900
+
+
+def safe_float(val: Any, default: float = 0.0) -> float:
+  try:
+    if val is None:
+      return default
+    return float(val)
+  except (ValueError, TypeError):
+    return default
+
+
+def local_day(timestamp_ms: Any) -> str:
+  if timestamp_ms is None:
+    return datetime.now().strftime("%Y-%m-%d")
+  try:
+    val = float(timestamp_ms)
+    if val <= 0:
+      return datetime.now().strftime("%Y-%m-%d")
+    return datetime.fromtimestamp(val / 1000.0).strftime("%Y-%m-%d")
+  except Exception:
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def cache_root() -> Path:
+  cache_env = os.environ.get("XDG_CACHE_HOME")
+  base = Path(cache_env) if cache_env else (Path.home() / ".cache")
+  root = base / "omarchy" / "agent-usage"
+  try:
+    root.mkdir(parents=True, exist_ok=True)
+  except OSError:
+    pass
+  return root
+
+
+def read_cached_stats(cache_file: Path, max_age_seconds: int | float, today_str: str) -> dict[str, Any] | None:
+  if max_age_seconds <= 0 or not cache_file.exists():
+    return None
+  try:
+    age = time.time() - cache_file.stat().st_mtime
+    if 0 <= age <= max_age_seconds:
+      data = json.loads(cache_file.read_text(encoding="utf-8"))
+      if isinstance(data, dict) and data.get("schemaVersion") == 1:
+        if data.get("scanDate") == today_str:
+          stats = data.get("stats")
+          if isinstance(stats, dict) and all(
+              k in stats for k in ("todayPrompts", "todayTotalTokens", "recentDays", "activeDates", "modelUsage")
+          ):
+            return stats
+  except Exception:
+    return None
+  return None
+
+
+def write_cached_stats(cache_file: Path, stats: dict[str, Any], today_str: str) -> None:
+  tmp: Path | None = None
+  try:
+    handle_fd, tmp_name = tempfile.mkstemp(dir=cache_file.parent, prefix=cache_file.name + ".", suffix=".tmp")
+    tmp = Path(tmp_name)
+    with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+      payload = {"schemaVersion": 1, "scanDate": today_str, "stats": stats}
+      handle.write(json.dumps(payload, separators=(",", ":")) + "\n")
+    tmp.chmod(0o644)
+    tmp.replace(cache_file)
+  except Exception as exc:
+    if tmp is not None:
+      tmp.unlink(missing_ok=True)
+    print(f"omarchy-agent-usage-agy: could not write usage cache ({exc})", file=sys.stderr)
+
+
+def detect_tier_label() -> str:
+  config_env = os.environ.get("XDG_CONFIG_HOME")
+  config_base = Path(config_env) if config_env else (Path.home() / ".config")
+  config_file = config_base / "omarchy" / "agents" / "agy.json"
+  if config_file.is_file():
+    try:
+      cfg = json.loads(config_file.read_text(encoding="utf-8"))
+      if isinstance(cfg, dict) and cfg.get("tier"):
+        return str(cfg["tier"])
+    except Exception:
+      pass
+
+  onboarding_file = Path.home() / ".gemini" / "antigravity-cli" / "cache" / "onboarding.json"
+  if onboarding_file.is_file():
+    try:
+      onboarding = json.loads(onboarding_file.read_text(encoding="utf-8"))
+      if onboarding.get("enterpriseOnboardingComplete") is True:
+        return "Vertex AI Enterprise"
+      elif onboarding.get("consumerOnboardingComplete") is True:
+        return "Google AI Pro"
+    except Exception:
+      pass
+
+  return "Google AI Pro"
+
+
+def collect_usage(today_str: str) -> dict[str, Any]:
+  home = Path.home()
+  agy_dir = home / ".gemini" / "antigravity-cli"
+  history_file = agy_dir / "history.jsonl"
+
+  prompts: list[dict[str, Any]] = []
+  if history_file.exists():
+    try:
+      with history_file.open("r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+          line_str = line.strip()
+          if line_str:
+            try:
+              prompts.append(json.loads(line_str))
+            except Exception:
+              pass
+    except Exception:
+      pass
+
+  now = datetime.now()
+  recent_dates = [(now - timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(6, -1, -1)]
+  recent_days = {d: {"date": d, "messageCount": 0} for d in recent_dates}
+
+  transcripts = list((agy_dir / "brain").glob("*/.system_generated/logs/transcript.jsonl")) if (agy_dir / "brain").exists() else []
+  tokens_by_day: dict[str, int] = {}
+  today_tokens = 0
+
+  for t in transcripts:
+    try:
+      with t.open("r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+          try:
+            data = json.loads(line)
+            created_at = data.get("created_at")
+            if not created_at:
+              continue
+            day = created_at.split("T")[0]
+            content_len = (
+                len(str(data.get("content") or ""))
+                + len(str(data.get("tool_calls") or ""))
+                + len(str(data.get("thinking") or ""))
+            )
+            toks = max(1, content_len // 4)
+            tokens_by_day[day] = tokens_by_day.get(day, 0) + toks
+            if day in recent_days:
+              recent_days[day]["messageCount"] += toks
+            if day == today_str:
+              today_tokens += toks
+          except Exception:
+            pass
+    except Exception:
+      pass
+
+  if today_tokens == 0 and len(prompts) > 0:
+    for p in prompts:
+      day = local_day(p.get("timestamp"))
+      est_tokens = max(500, len(str(p.get("display") or "")) * 4)
+      tokens_by_day[day] = tokens_by_day.get(day, 0) + est_tokens
+      if day in recent_days:
+        recent_days[day]["messageCount"] += est_tokens
+      if day == today_str:
+        today_tokens += est_tokens
+
+  now_ms = time.time() * 1000.0
+  three_hours_ms = 3.0 * 3600.0 * 1000.0
+  window_prompts = [p for p in prompts if safe_float(p.get("timestamp")) >= (now_ms - three_hours_ms)]
+  session_percent = min(1.0, len(window_prompts) / 50.0) if prompts else 0.0
+  if window_prompts:
+    oldest_session = min(safe_float(p.get("timestamp"), now_ms) for p in window_prompts)
+    session_resets_at = datetime.fromtimestamp((oldest_session + three_hours_ms) / 1000.0, timezone.utc).isoformat()
+  else:
+    session_resets_at = ""
+
+  seven_days_ms = 7.0 * 24.0 * 3600.0 * 1000.0
+  weekly_prompts = [p for p in prompts if safe_float(p.get("timestamp")) >= (now_ms - seven_days_ms)]
+  weekly_percent = min(1.0, len(weekly_prompts) / 500.0) if prompts else 0.0
+  if weekly_prompts:
+    oldest_weekly = min(safe_float(p.get("timestamp"), now_ms) for p in weekly_prompts)
+    weekly_resets_at = datetime.fromtimestamp((oldest_weekly + seven_days_ms) / 1000.0, timezone.utc).isoformat()
+  else:
+    weekly_resets_at = ""
+
+  today_prompts_count = sum(1 for p in prompts if local_day(p.get("timestamp")) == today_str)
+  today_session_ids = set(
+      p.get("conversationId") for p in prompts if local_day(p.get("timestamp")) == today_str and p.get("conversationId")
+  )
+  today_sessions_count = len(today_session_ids)
+
+  total_session_ids = set(p.get("conversationId") for p in prompts if p.get("conversationId"))
+  total_sessions_count = len(total_session_ids)
+
+  input_split = int(today_tokens * 0.75)
+  output_split = today_tokens - input_split
+
+  model_usage_data = (
+      {
+          "gemini-3.7-flash": {
+              "inputTokens": input_split,
+              "outputTokens": output_split,
+              "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 0,
+          }
+      }
+      if (today_tokens > 0 or len(prompts) > 0)
+      else {}
+  )
+
+  today_tokens_by_model = {"gemini-3.7-flash": today_tokens} if today_tokens > 0 else {}
+
+  limits = [
+      {"label": "Session (3-hour)", "percent": round(session_percent, 4), "resetsAt": session_resets_at},
+      {"label": "Weekly (7-day)", "percent": round(weekly_percent, 4), "resetsAt": weekly_resets_at},
+  ]
+
+  return {
+      "todayPrompts": today_prompts_count,
+      "todaySessions": today_sessions_count,
+      "todayTotalTokens": today_tokens,
+      "todayTokensByModel": today_tokens_by_model,
+      "recentDays": [recent_days[d] for d in recent_dates],
+      "totalPrompts": len(prompts),
+      "totalSessions": total_sessions_count,
+      "activeDays": len(tokens_by_day),
+      "activeDates": sorted(tokens_by_day.keys()),
+      "modelUsage": model_usage_data,
+      "limits": limits,
+      "tierLabel": detect_tier_label(),
+      "usageStatusText": "",
+      "authHelpText": "",
+  }
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  args = parser.parse_args()
+
+  today_str = datetime.now().strftime("%Y-%m-%d")
+  cache_dir = cache_root()
+  cache_file = cache_dir / "agy-scan.json"
+  lock_file = cache_dir / "agy-scan.lock"
+  max_age = 0 if args.force else (LIMITS_ONLY_REUSE_SECONDS if args.limits_only else SCAN_REUSE_SECONDS)
+
+  stats = read_cached_stats(cache_file, max_age, today_str)
+  if stats is None:
+    try:
+      with open(lock_file, "w") as lock_fd:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        stats = read_cached_stats(cache_file, max_age, today_str)
+        if stats is None:
+          stats = collect_usage(today_str)
+          write_cached_stats(cache_file, stats, today_str)
+    except Exception:
+      stats = collect_usage(today_str)
+
+  has_data = stats.get("totalPrompts", 0) > 0 or stats.get("todayTotalTokens", 0) > 0
+
+  record = {
+      "schemaVersion": 1,
+      "id": AGENT_ID,
+      "name": AGENT_NAME,
+      "updatedAt": datetime.now(timezone.utc).isoformat(),
+      "ready": True,
+      "hasLocalStats": has_data,
+      "hasPromptStats": has_data,
+  }
+  record.update(stats)
+  print(json.dumps(record, separators=(",", ":")))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
