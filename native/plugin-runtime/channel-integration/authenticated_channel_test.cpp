@@ -1,4 +1,6 @@
 #include "authenticated_channel.hpp"
+#include "omarchy/plugin_runtime/broker/broker_codec.hpp"
+#include "omarchy/plugin_runtime/broker/broker_schema.hpp"
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
 
 #include <fcntl.h>
@@ -15,8 +17,11 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <utility>
 
 namespace channel = omarchy::plugin_runtime::channel;
+namespace broker = omarchy::plugin_runtime::broker;
+namespace permissions = omarchy::plugins::permissions;
 namespace launcher = omarchy::plugin_runtime::launcher;
 namespace sandbox = omarchy::plugin_runtime::sandbox;
 namespace surface = omarchy::plugin_runtime::surface;
@@ -94,13 +99,24 @@ public:
   bool dispatch(const omarchy::plugin::wire::PacketView &packet) override {
     ++calls;
     last_generation = packet.header.launch_generation;
+    if (reply_type != 0)
+      reply = channel::BrokerReply{.message_type = reply_type,
+                                   .correlation_id =
+                                       packet.header.correlation_id,
+                                   .payload = reply_payload};
     return true;
+  }
+  std::optional<channel::BrokerReply> take_reply() override {
+    return std::exchange(reply, {});
   }
   unsigned calls = 0;
   std::uint64_t last_generation = 0;
   std::string accepted_plugin = "org.omarchy_d1";
   std::string accepted_revision = std::string(64, 'd');
   std::uint64_t accepted_generation = 47;
+  std::uint16_t reply_type = 0;
+  std::vector<std::byte> reply_payload;
+  std::optional<channel::BrokerReply> reply;
 };
 
 class ThrowingDispatcher final : public channel::BrokerDispatcher {
@@ -284,6 +300,30 @@ struct Session {
 
 void fake_suite() {
   transport_suite();
+  {
+    Session allowed("reply-allowed", FAKE_BWRAP_PATH);
+    allowed.dispatcher->reply_type = broker::kBrokerResultMessage;
+    require(allowed.opened.channel->negotiate(2s) &&
+                allowed.opened.channel->dispatch_one(2s) ==
+                    channel::DispatchStatus::dispatched &&
+                allowed.dispatcher->calls == 1,
+            "allowed authenticated broker reply did not reach the worker correlation");
+  }
+  {
+    Session denied("reply-denied", FAKE_BWRAP_PATH);
+    denied.dispatcher->reply_type = static_cast<std::uint16_t>(
+        wire::CommonMessageType::typed_error);
+    const auto error = broker::encode_broker_error(
+        {.failed_operation = permissions::OperationId::storage_read,
+         .reason = broker::BrokerErrorReason::denied,
+         .decision = permissions::GrantDecisionCode::explicitly_denied});
+    denied.dispatcher->reply_payload.assign(error.begin(), error.end());
+    require(denied.opened.channel->negotiate(2s) &&
+                denied.opened.channel->dispatch_one(2s) ==
+                    channel::DispatchStatus::dispatched &&
+                denied.dispatcher->calls == 1,
+            "denied authenticated broker reply did not reach the worker correlation");
+  }
   {
     Fixture fixture("valid");
     auto scope = std::make_shared<Scope>();
@@ -471,6 +511,14 @@ int bwrap_suite() {
             "real Bubblewrap authenticated dispatch failed");
     require(valid.opened.channel->terminate(),
             "real Bubblewrap teardown failed");
+
+    Session replied("reply-allowed", BWRAP_PATH);
+    replied.dispatcher->reply_type = broker::kBrokerResultMessage;
+    require(replied.opened.channel->negotiate(4s) &&
+                replied.opened.channel->dispatch_one(4s) ==
+                    channel::DispatchStatus::dispatched &&
+                replied.dispatcher->calls == 1,
+            "real Bubblewrap broker reply did not complete worker correlation");
 
     Session stale("stale", BWRAP_PATH);
     require(stale.opened.channel->negotiate(4s) &&

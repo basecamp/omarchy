@@ -322,6 +322,65 @@ void run() {
   require(allowed->finished() && allowed->ok(),
           "successful terminal response did not resolve QML call");
 
+  QQmlEngine completion_engine;
+  completion_engine.rootContext()->setContextProperty(
+      QStringLiteral("runtime"), &api);
+  QQmlComponent completion_component(&completion_engine);
+  completion_component.setData(R"(
+    import QtQml
+    QtObject {
+      id: root
+      property var call: null
+      property string phase: "idle"
+      function start() {
+        call = runtime.invoke("storage_write", {
+          key: "qml-completion", value: "saved",
+          quotaBytes: 65536, itemBytes: 4096
+        })
+        phase = "waiting"
+      }
+      property Connections completion: Connections {
+        target: root.call
+        function onFinishedChanged() {
+          if (root.call.finished)
+            root.phase = root.call.ok ? "allowed" : "denied"
+        }
+      }
+    })", QUrl());
+  std::unique_ptr<QObject> completion(completion_component.create());
+  require(completion != nullptr &&
+              QMetaObject::invokeMethod(completion.get(), "start"),
+          "representative QML completion fixture failed to start");
+  const auto qml_request = receive_packet(pair.descriptors[1]);
+  const auto qml_decoded =
+      wire::decode_packet(qml_request, wire::EndpointRole::broker);
+  require(static_cast<bool>(qml_decoded),
+          "representative QML request was malformed");
+  finish(api, endpoint, pair.descriptors[1],
+         qml_decoded.packet.header.correlation_id,
+         broker::kBrokerResultMessage, {});
+  QCoreApplication::processEvents();
+  require(completion->property("phase") == QStringLiteral("allowed"),
+          "authenticated reply did not update representative QML behavior");
+  require(QMetaObject::invokeMethod(completion.get(), "start"),
+          "representative denied QML completion fixture failed to restart");
+  const auto qml_denied_request = receive_packet(pair.descriptors[1]);
+  const auto qml_denied_decoded =
+      wire::decode_packet(qml_denied_request, wire::EndpointRole::broker);
+  require(static_cast<bool>(qml_denied_decoded),
+          "representative denied QML request was malformed");
+  const auto qml_denial = broker::encode_broker_error({
+      .failed_operation = permissions::OperationId::storage_write,
+      .reason = broker::BrokerErrorReason::denied,
+      .decision = permissions::GrantDecisionCode::explicitly_denied});
+  finish(api, endpoint, pair.descriptors[1],
+         qml_denied_decoded.packet.header.correlation_id,
+         static_cast<std::uint16_t>(wire::CommonMessageType::typed_error),
+         qml_denial);
+  QCoreApplication::processEvents();
+  require(completion->property("phase") == QStringLiteral("denied"),
+          "authenticated denial did not update representative QML behavior");
+
   auto *denied = qobject_cast<worker::BrokerCall *>(
       api.invoke(QStringLiteral("storage_write"), arguments).value<QObject *>());
   static_cast<void>(receive_packet(pair.descriptors[1]));

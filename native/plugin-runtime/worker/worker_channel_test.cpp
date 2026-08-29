@@ -261,6 +261,27 @@ void oversized_datagram_rejection() {
           "oversized datagram did not fail before parsing or allocation");
 }
 
+void pending_input_probe() {
+  Pair pair;
+  worker::WorkerEndpoint endpoint(pair.worker, wire::EndpointRole::broker, 1);
+  handshake(endpoint, pair.host);
+  require(!endpoint.has_pending_input(),
+          "empty broker endpoint reported pending input");
+  wire::EnvelopeHeader header{
+      .endpoint_role = wire::EndpointRole::broker,
+      .message_type = 0x5000,
+      .role_protocol_version = 1,
+      .payload_length = 0,
+      .launch_generation = 77,
+      .correlation_id = 9};
+  require(send_packet(pair.host, header, {}) && endpoint.has_pending_input(),
+          "host broker reply was not observable by the fallback readiness probe");
+  const auto received = endpoint.receive();
+  require(received && received.header.correlation_id == 9 &&
+              !endpoint.has_pending_input(),
+          "fallback readiness probe consumed or retained the broker reply");
+}
+
 } // namespace
 
 int main() {
@@ -269,6 +290,7 @@ int main() {
     injected_descriptor_cleanup();
     role_and_credential_rejection();
     oversized_datagram_rejection();
+    pending_input_probe();
     std::cout << "plugin worker channel: ok\n";
     return 0;
   } catch (const std::exception &error) {

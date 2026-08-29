@@ -65,6 +65,7 @@ public:
   [[nodiscard]] std::uint32_t maximum_payload() const;
   [[nodiscard]] std::uint32_t maximum_in_flight() const;
   [[nodiscard]] bool selected() const;
+  [[nodiscard]] bool has_pending_input() const;
   [[nodiscard]] const std::string &last_error() const;
 
   [[nodiscard]] bool send_hello();

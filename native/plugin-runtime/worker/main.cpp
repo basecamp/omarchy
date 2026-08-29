@@ -92,9 +92,12 @@ public:
     QObject::connect(&control_notifier_, &QSocketNotifier::activated,
                      [&] { receive(control_); });
     QObject::connect(&broker_notifier_, &QSocketNotifier::activated,
-                     [&] { receive(broker_); });
+                     [&] { receive_broker_if_ready(); });
     QObject::connect(&render_notifier_, &QSocketNotifier::activated,
                      [&] { receive(render_); });
+    broker_poll_timer_.setInterval(5);
+    QObject::connect(&broker_poll_timer_, &QTimer::timeout,
+                     [&] { receive_broker_if_ready(); });
     frame_timer_.setInterval(16);
     QObject::connect(&frame_timer_, &QTimer::timeout, [&] { publish_frame(); });
   }
@@ -109,6 +112,15 @@ public:
   }
 
 private:
+  void receive_broker_if_ready() {
+    // A socket-notifier activation and the level-triggered fallback may both
+    // already be queued for one datagram. Recheck readiness in the callback so
+    // the second delivery cannot enter a blocking recvmsg after the first one
+    // consumed it.
+    if (broker_.has_pending_input())
+      receive(broker_);
+  }
+
   bool fatal(std::string_view detail) {
     const std::string diagnostic = "omarchy-plugin-qml-worker: " +
                                    std::string(detail) + "\n";
@@ -243,6 +255,7 @@ private:
     control_notifier_.setEnabled(true);
     broker_notifier_.setEnabled(true);
     render_notifier_.setEnabled(true);
+    broker_poll_timer_.start();
     if (pending_permission_snapshot_) {
       auto pending = std::move(*pending_permission_snapshot_);
       pending_permission_snapshot_.reset();
@@ -415,6 +428,7 @@ private:
   QSocketNotifier broker_notifier_;
   QSocketNotifier render_notifier_;
   QTimer frame_timer_;
+  QTimer broker_poll_timer_;
   omarchy::plugins::manifest::ManifestV2 manifest_;
 };
 

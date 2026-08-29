@@ -3,6 +3,7 @@
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
 
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -124,6 +125,16 @@ std::uint32_t WorkerEndpoint::maximum_in_flight() const {
 }
 bool WorkerEndpoint::selected() const {
   return implementation_->negotiator.selected();
+}
+bool WorkerEndpoint::has_pending_input() const {
+  if (!valid())
+    return false;
+  pollfd descriptor{.fd = implementation_->descriptor,
+                    .events = POLLIN,
+                    .revents = 0};
+  const int result = poll(&descriptor, 1, 0);
+  return result == 1 &&
+         (descriptor.revents & (POLLIN | POLLERR | POLLHUP)) != 0;
 }
 const std::string &WorkerEndpoint::last_error() const {
   return implementation_->error;
