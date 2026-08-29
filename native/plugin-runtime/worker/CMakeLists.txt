@@ -6,6 +6,10 @@ option(PLUGIN_SECURITY_WORKER_SANITIZERS
 
 set(OMARCHY_PLUGIN_EXTERNAL_FIXTURES "" CACHE STRING
   "Semicolon-separated schema-v2 plugin checkout paths for functional compatibility tests")
+set(OMARCHY_PLUGIN_EXTERNAL_DEFINITIONS "" CACHE PATH
+  "Independent trusted capability-definition directory for external fixtures")
+set(OMARCHY_PLUGIN_EXTERNAL_ADAPTERS "" CACHE STRING
+  "Semicolon-separated adapter-class:digest:abi registrations for external fixtures")
 
 function(omarchy_plugin_worker_sanitize target)
   if(PLUGIN_SECURITY_WORKER_SANITIZERS)
@@ -15,6 +19,7 @@ function(omarchy_plugin_worker_sanitize target)
 endfunction()
 
 add_library(omarchy-plugin-worker-runtime STATIC
+  qml_broker_api.cpp
   worker_channel.cpp
   worker_runtime.cpp
   steady_seccomp.cpp
@@ -30,6 +35,7 @@ target_include_directories(omarchy-plugin-worker-runtime PUBLIC
 target_link_libraries(omarchy-plugin-worker-runtime
   PUBLIC Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick
          omarchy-plugin-wire omarchy-plugin-surface-contract
+         omarchy-plugin-broker-core
   PRIVATE omarchy-plugin-sandbox-policy PkgConfig::WORKER_SECCOMP
 )
 
@@ -56,9 +62,15 @@ if(BUILD_TESTING)
   omarchy_plugin_target_defaults(omarchy-plugin-external-fixture-test)
   omarchy_plugin_worker_sanitize(omarchy-plugin-external-fixture-test)
   target_link_libraries(omarchy-plugin-external-fixture-test PRIVATE
-    omarchy-plugin-worker-runtime
+    omarchy-plugin-worker-runtime omarchy-plugin-capability-definitions
   )
 
+  if(OMARCHY_PLUGIN_EXTERNAL_FIXTURES AND
+     (NOT IS_ABSOLUTE "${OMARCHY_PLUGIN_EXTERNAL_DEFINITIONS}" OR
+      NOT OMARCHY_PLUGIN_EXTERNAL_ADAPTERS))
+    message(FATAL_ERROR
+      "External fixtures require an absolute independent definition directory and explicit adapter registrations")
+  endif()
   foreach(external_fixture IN LISTS OMARCHY_PLUGIN_EXTERNAL_FIXTURES)
     if(NOT IS_ABSOLUTE "${external_fixture}")
       message(FATAL_ERROR "External plugin fixture must be an absolute path: ${external_fixture}")
@@ -67,7 +79,9 @@ if(BUILD_TESTING)
     string(SUBSTRING "${external_fixture_hash}" 0 12 external_fixture_id)
     add_test(NAME "plugin-external-fixture-${external_fixture_id}"
       COMMAND omarchy-plugin-external-fixture-test
-        --root "${external_fixture}" --function stepForTest)
+        --root "${external_fixture}" --function stepForTest
+        --definitions "${OMARCHY_PLUGIN_EXTERNAL_DEFINITIONS}"
+        --adapters "${OMARCHY_PLUGIN_EXTERNAL_ADAPTERS}")
     set_tests_properties("plugin-external-fixture-${external_fixture_id}" PROPERTIES
       LABELS "integration;render;external-fixture"
       TIMEOUT 30
@@ -102,4 +116,14 @@ if(BUILD_TESTING)
     LABELS "unit;protocol;adversarial"
     TIMEOUT 20
   )
+
+  add_executable(omarchy-plugin-qml-broker-api-test qml_broker_api_test.cpp)
+  omarchy_plugin_target_defaults(omarchy-plugin-qml-broker-api-test)
+  omarchy_plugin_worker_sanitize(omarchy-plugin-qml-broker-api-test)
+  target_link_libraries(omarchy-plugin-qml-broker-api-test PRIVATE
+    omarchy-plugin-worker-runtime)
+  add_test(NAME plugin-qml-broker-api COMMAND omarchy-plugin-qml-broker-api-test)
+  set_tests_properties(plugin-qml-broker-api PROPERTIES
+    LABELS "unit;integration;protocol;broker;qml;security"
+    TIMEOUT 20)
 endif()
