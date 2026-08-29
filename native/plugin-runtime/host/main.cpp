@@ -136,7 +136,10 @@ protected:
             pressed ? surface::ButtonState::pressed
                     : surface::ButtonState::released),
         .active_touch_points = 0};
-    return surface_.route_input(input, pressed && mouse->spontaneous());
+    // Only events delivered to this trusted host-owned window reach this
+    // bridge. Qt's spontaneous bit is not an input-authenticity signal: input
+    // returned by a Wayland portal/libei path may legitimately clear it.
+    return surface_.route_input(input, pressed);
   }
 
 private:
