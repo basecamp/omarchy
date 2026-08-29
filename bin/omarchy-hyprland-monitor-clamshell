@@ -11,6 +11,14 @@ MONITOR_LUA="$HOME/.config/hypr/monitors.lua"
 
 INTERNAL=$(omarchy-hyprland-monitor-laptop)
 
+# INTERNAL is written into generated Lua and hyprctl eval/dispatch below, so a
+# name that is not a plain connector string could execute on the next reload.
+# Names come from hyprctl; a user-created headless output can carry anything.
+if [[ -n $INTERNAL && ! $INTERNAL =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "Refusing unsafe internal monitor name" >&2
+  exit 1
+fi
+
 valid_scale() {
   [[ $1 =~ ^[0-9]+([.][0-9]+)?$ ]]
 }

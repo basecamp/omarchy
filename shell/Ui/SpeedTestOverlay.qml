@@ -130,6 +130,7 @@ PanelWindow {
         spacing: Style.space(16)
 
         Text {
+          textFormat: Text.PlainText
           visible: root.title !== ""
           text: root.title.toUpperCase()
           color: root.onScrimDim
@@ -182,6 +183,7 @@ PanelWindow {
         }
 
         Text {
+          textFormat: Text.PlainText
           visible: root.failed
           text: root.error
           color: root.onScrimUrgent
@@ -368,6 +370,7 @@ PanelWindow {
       spacing: 0
 
       Text {
+        textFormat: Text.PlainText
         anchors.horizontalCenter: parent.horizontalCenter
         // Both branches go through the locale: a reading is a measurement, so
         // its separators follow the system's number conventions rather than the
@@ -383,6 +386,7 @@ PanelWindow {
       }
 
       Text {
+        textFormat: Text.PlainText
         anchors.horizontalCenter: parent.horizontalCenter
         text: root.unit
         color: root.onScrimDim
@@ -394,6 +398,7 @@ PanelWindow {
     // The 90° gap at the bottom of the scale is where a cluster prints its
     // unit; here it names the direction.
     Text {
+      textFormat: Text.PlainText
       anchors.horizontalCenter: parent.horizontalCenter
       anchors.bottom: parent.bottom
       text: dial.label

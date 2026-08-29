@@ -13,6 +13,18 @@ safe_icon_name() {
     | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//'
 }
 
+require_plain_name() {
+  # The name becomes a filename. A slash would turn it into directory levels, so
+  # the launcher lands somewhere omarchy-webapp-remove cannot address and the app
+  # is stuck in the launcher; a leading ../ leaves the applications directory
+  # altogether. Refuse rather than silently renaming what the user typed -- most
+  # often it is a URL entered in the name field.
+  if [[ $1 == */* ]]; then
+    echo "App name cannot contain '/': $1"
+    exit 1
+  fi
+}
+
 icon_name_from_ref() {
   local ref="$1"
   local name
@@ -42,6 +54,34 @@ download_icon() {
     [[ -s $2 && $(file -b --mime-type "$2") == image/* ]]
 }
 
+# Chromium --app= treats javascript:, file:, and data: as a document to
+# run. Prefix schemeless input with https as before, then refuse anything
+# that is not http(s).
+normalize_webapp_url() {
+  local url=$1
+  if [[ ! $url =~ ^[a-zA-Z][a-zA-Z0-9+.-]*: ]]; then
+    url="https://$url"
+  fi
+  printf '%s' "$url"
+}
+
+# Raw whitespace must be percent-encoded in a URL. Refuse it before serializing
+# the desktop entry; before Exec argument quoting, it also split browser flags
+# and additional URLs into separate arguments. Schemes are case-insensitive.
+require_http_url() {
+  local url=$1
+
+  if [[ $url =~ [[:space:]] ]]; then
+    echo "Error: web app URL must not contain whitespace." >&2
+    exit 1
+  fi
+
+  if [[ ! ${url,,} =~ ^https?:// ]]; then
+    echo "Error: web app URL must be http or https." >&2
+    exit 1
+  fi
+}
+
 fetch_site_icon() {
   local site_url="$1" dest="$2"
   local origin page icon_url
@@ -65,13 +105,44 @@ fetch_site_icon() {
     download_icon "https://www.google.com/s2/favicons?domain=${site_url}&sz=256" "$dest"
 }
 
+desktop_string_escape() {
+  # Desktop Entry "string" value (freedesktop Desktop Entry Spec, "Value types"):
+  # a raw newline would start a new key line and let a value inject a second
+  # Exec=. Escape backslash first, then tab/CR/LF and a leading space. Every value
+  # written into the .desktop file passes through here.
+  #
+  # Parameter expansion rather than sed: GNU sed's N auto-prints the pattern space
+  # and exits at end of input, so a `:a;N;$!ba` slurp skips every following s///
+  # for a value with no newline in it - which is every value except the injection
+  # attempt this exists to stop.
+  local value="$1"
+
+  value=${value//\\/\\\\}
+  value=${value//$'\t'/\\t}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\n'/\\n}
+  [[ $value == " "* ]] && value="\\s${value# }"
+
+  printf '%s' "$value"
+}
+
+desktop_exec_arg() {
+  # One Exec argument, double-quoted per the freedesktop Exec spec: inside quotes
+  # " ` $ \ take a backslash and a literal % becomes %%. Only the default Exec's
+  # URL needs this; $CUSTOM_EXEC stays a whole command line (file-syntax only).
+  local escaped
+  escaped=$(printf '%s' "$1" \
+    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/`/\\`/g' -e 's/\$/\\$/g' -e 's/%/%%/g')
+  printf '"%s"' "$escaped"
+}
+
 if (( $# < 3 )); then
   echo -e "\e[32mLet's create a new web app you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
+  require_plain_name "$APP_NAME"
   APP_URL=$(gum input --prompt "URL> " --placeholder "https://example.com")
-  if [[ ! $APP_URL =~ ^[a-zA-Z][a-zA-Z0-9+.-]*: ]]; then
-    APP_URL="https://$APP_URL"
-  fi
+  APP_URL=$(normalize_webapp_url "$APP_URL")
+  require_http_url "$APP_URL"
 
   # Try to fetch the site's icon automatically first.
   mkdir -p "$ICON_DIR"
@@ -88,10 +159,8 @@ if (( $# < 3 )); then
   INTERACTIVE_MODE=true
 else
   APP_NAME="$1"
-  APP_URL="$2"
-  if [[ ! $APP_URL =~ ^[a-zA-Z][a-zA-Z0-9+.-]*: ]]; then
-    APP_URL="https://$APP_URL"
-  fi
+  APP_URL=$(normalize_webapp_url "$2")
+  require_http_url "$APP_URL"
   ICON_REF="$3"
   CUSTOM_EXEC="$4" # Optional custom exec command
   MIME_TYPES="$5"  # Optional mime types
@@ -103,6 +172,8 @@ if [[ -z $APP_NAME || -z $APP_URL ]]; then
   echo "You must set app name and app URL!"
   exit 1
 fi
+
+require_plain_name "$APP_NAME"
 
 if [[ -z $ICON_REF ]]; then
   ICON_VALUE=$(safe_icon_name "$APP_NAME")
@@ -128,28 +199,39 @@ else
   ICON_VALUE=$(icon_name_from_ref "$ICON_REF")
 fi
 
-# Use custom exec if provided, otherwise default behavior
-EXEC_COMMAND="${CUSTOM_EXEC:-omarchy-launch-webapp $APP_URL}"
+# Default Exec quotes the URL as one Exec-spec argument; the whole line then gets
+# the file-syntax escaping below (unescaped first at read time per spec, so the
+# layers compose). $CUSTOM_EXEC is a full command line, so it gets file-syntax only.
+if [[ -n $CUSTOM_EXEC ]]; then
+  EXEC_COMMAND=$CUSTOM_EXEC
+else
+  EXEC_COMMAND="omarchy-launch-webapp $(desktop_exec_arg "$APP_URL")"
+fi
 
 # Create application .desktop file
-DESKTOP_FILE="$HOME/.local/share/applications/$APP_NAME.desktop"
-mkdir -p "$(dirname "$DESKTOP_FILE")"
+DESKTOP_DIR="$HOME/.local/share/applications"
+DESKTOP_FILE="$DESKTOP_DIR/$APP_NAME.desktop"
+mkdir -p "$DESKTOP_DIR"
+
+name_field=$(desktop_string_escape "$APP_NAME")
+exec_field=$(desktop_string_escape "$EXEC_COMMAND")
+icon_field=$(desktop_string_escape "$ICON_VALUE")
 
 cat >"$DESKTOP_FILE" <<EOF
 [Desktop Entry]
 Version=1.0
-Name=$APP_NAME
-Comment=$APP_NAME
-Exec=$EXEC_COMMAND
+Name=$name_field
+Comment=$name_field
+Exec=$exec_field
 Terminal=false
 Type=Application
-Icon=$ICON_VALUE
+Icon=$icon_field
 StartupNotify=true
 EOF
 
 # Add mime types if provided
 if [[ -n $MIME_TYPES ]]; then
-  echo "MimeType=$MIME_TYPES" >>"$DESKTOP_FILE"
+  printf 'MimeType=%s\n' "$(desktop_string_escape "$MIME_TYPES")" >>"$DESKTOP_FILE"
 fi
 
 chmod +x "$DESKTOP_FILE"
