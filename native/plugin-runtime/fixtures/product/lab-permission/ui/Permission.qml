@@ -1,5 +1,5 @@
 import QtQuick
-import QtQml
+import QtQml as Qml
 
 Item {
     id: root
@@ -17,11 +17,11 @@ Item {
         permissionState = runtime.permissionState("notifications.send", "send").toUpperCase()
     }
 
-    Component.onCompleted: {
+    Qml.Component.onCompleted: {
         permissionState = runtime.permissionState("notifications.send", "send").toUpperCase()
     }
 
-    Connections {
+    Qml.Connections {
         target: runtime
         function onPermissionsChanged() { root.refreshPermission() }
     }
