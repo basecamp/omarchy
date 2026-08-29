@@ -197,6 +197,14 @@ int main() {
   require(parsed_request && parsed_request->definition.definition_generation == 4 &&
               parsed_request->operations.contains(Name("notifications.list")),
           "schema-v2 dynamic reference did not resolve into activation request");
+  auto untrusted_operation = parsed_manifest.requests.front();
+  untrusted_operation.operations.push_back("admin");
+  require(!dynamic_request_from_manifest(untrusted_operation, registry),
+          "manifest requested an operation absent from its pinned definition");
+  auto stale_manifest_reference = parsed_manifest.requests.front();
+  ++stale_manifest_reference.definition_generation;
+  require(!dynamic_request_from_manifest(stale_manifest_reference, registry),
+          "manifest update retained a stale definition generation");
 
   auto alias = fetch_definition;
   alias.canonical_name = Name("internet.read-safe");

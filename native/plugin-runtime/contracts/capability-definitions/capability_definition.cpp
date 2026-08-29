@@ -314,10 +314,16 @@ dynamic_request_from_manifest(const manifest::CapabilityRequest &request,
         .scope = CanonicalScope(request.canonical_scope),
         .required = request.required,
     };
-    if (!registry.resolve(result.definition))
+    const auto resolved = registry.resolve(result.definition);
+    if (!resolved)
       return std::nullopt;
     for (const auto &operation : request.operations) {
-      if (!result.operations.insert(Name(operation)))
+      const Name name(operation);
+      if (!std::ranges::any_of(resolved->definition->operations.values(),
+                               [&](const auto &defined) {
+                                 return defined.name == name;
+                               }) ||
+          !result.operations.insert(name))
         return std::nullopt;
     }
     return result;
