@@ -41,10 +41,22 @@ struct DynamicInvocation {
 [[nodiscard]] bool decode_dynamic_invocation(
     std::span<const std::byte> input, DynamicInvocation &output);
 
+struct DynamicAuthorizationContext {
+  permissions::ActivationBinding binding;
+  CapabilityReference definition;
+  std::uint64_t grant_epoch = 0;
+};
+
+struct AuthorizedDynamicRequest {
+  DynamicAuthorizationContext authorization;
+  std::string_view operation;
+  std::string_view demand_scope;
+  std::span<const std::byte> payload;
+};
+
 struct DynamicAdapter {
   AdapterBinding binding;
-  bool (*dispatch)(std::string_view operation, std::string_view demand_scope,
-                   std::span<const std::byte> payload,
+  bool (*dispatch)(const AuthorizedDynamicRequest &request,
                    std::span<std::byte> response, std::size_t &written,
                    void *context) noexcept = nullptr;
   void *context = nullptr;

@@ -20,8 +20,8 @@ DynamicScopeRelation scope_compare(const CapabilityDefinition &,
     return DynamicScopeRelation::expanded;
   return DynamicScopeRelation::incomparable;
 }
-bool adapter_dispatch(std::string_view operation,std::string_view scope,std::span<const std::byte> payload,std::span<std::byte> response,std::size_t &written,void *context) noexcept {
- auto &calls=*static_cast<int*>(context);if(operation!="read"||scope!="narrow"||payload.size()!=1||response.empty())return false;++calls;response[0]=payload[0];written=1;return true;}
+bool adapter_dispatch(const AuthorizedDynamicRequest &request,std::span<std::byte> response,std::size_t &written,void *context) noexcept {
+ auto &calls=*static_cast<int*>(context);if(request.operation!="read"||request.demand_scope!="narrow"||request.payload.size()!=1||response.empty()||request.authorization.binding.plugin.view()!="org.example.dynamic"||request.authorization.binding.generation!=5||request.authorization.definition.canonical_name.view()!="local.status"||request.authorization.grant_epoch!=8)return false;++calls;response[0]=request.payload[0];written=1;return true;}
 CapabilityDefinition definition(){CapabilityDefinition d{.canonical_name=Name("local.status"),.authority_identity=Name("local.status-v1"),.enforcement_family=EnforcementFamily::network_fetch,.display_category_id=Name("local.services"),.display_category_label=Label("Local services"),.scope_schema=ScopeSchema::https_origins_and_methods,.title=Label("Read selected status"),.risk_text=Label("Sends a bounded request to a selected service"),.risk=RiskLevel::moderate,.revocation=RevocationPolicy::cancel_inflight,.audit={},.adapter={.adapter_class=Name("status-adapter"),.implementation_digest=digest('a'),.abi_version=1},.operations={}};d.operations.insert({.name=Name("read"),.label=Label("Read status")});return d;}
 permissions::ActivationBinding binding(std::uint64_t generation=5){return {.plugin=permissions::PluginId("org.example.dynamic"),.revision=digest('b'),.policy_fingerprint=digest('c'),.generation=generation};}
 }

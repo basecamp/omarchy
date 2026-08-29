@@ -112,13 +112,17 @@ definitions::DynamicScopeRelation exact_scope(
   return candidate == baseline ? definitions::DynamicScopeRelation::equal
                                : definitions::DynamicScopeRelation::incomparable;
 }
-bool fake_dynamic_dispatch(std::string_view operation, std::string_view scope,
-                           std::span<const std::byte> payload,
+bool fake_dynamic_dispatch(const definitions::AuthorizedDynamicRequest &request,
                            std::span<std::byte> response,
                            std::size_t &written, void *context) noexcept {
   auto &calls = *static_cast<int *>(context);
-  if (operation != "read" || scope != "{\"dataset\":\"status\"}" ||
-      payload.empty() || response.empty())
+  if (request.operation != "read" ||
+      request.demand_scope != "{\"dataset\":\"status\"}" ||
+      request.payload.empty() || response.empty() ||
+      request.authorization.binding.plugin.view() != "org.example.dynamic" ||
+      request.authorization.definition.canonical_name.view() !=
+          "service.status" ||
+      request.authorization.grant_epoch != 1)
     return false;
   ++calls;
   response[0] = std::byte{0x2a};

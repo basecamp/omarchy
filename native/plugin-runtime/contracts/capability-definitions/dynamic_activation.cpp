@@ -152,7 +152,14 @@ DynamicDispatchResult dispatch_dynamic_invocation(const TrustedDefinitionRegistr
   if(invocation.definition.canonical_name!=revision.request.definition.canonical_name||invocation.definition.definition_generation!=revision.request.definition.definition_generation||invocation.definition.definition_digest!=revision.request.definition.definition_digest)return DynamicDispatchResult::denied;
   const auto auth=authorize_dynamic_operation(registry,revision.request,revision.grant,invocation.operation.view(),invocation.demand_scope.view(),adapter.binding,validator,fresh_gesture);decision=auth.decision;
   if(!auth.allowed()||adapter.dispatch==nullptr)return DynamicDispatchResult::denied;
-  if(!adapter.dispatch(invocation.operation.view(),invocation.demand_scope.view(),invocation.payload,response,written,adapter.context)||written>response.size())return DynamicDispatchResult::adapter_failed;
+  const AuthorizedDynamicRequest request{
+      .authorization = {.binding = channel_binding,
+                        .definition = revision.grant.definition,
+                        .grant_epoch = revision.grant.epoch},
+      .operation = invocation.operation.view(),
+      .demand_scope = invocation.demand_scope.view(),
+      .payload = invocation.payload};
+  if(!adapter.dispatch(request,response,written,adapter.context)||written>response.size())return DynamicDispatchResult::adapter_failed;
   return DynamicDispatchResult::dispatched;
 }
 } // namespace omarchy::plugins::definitions
