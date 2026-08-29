@@ -243,7 +243,7 @@ int preview(const QStringList &arguments, QGuiApplication &application,
     qCritical() << "omarchy-plugin-host: schema-v2 preview feature is disabled";
     return 77;
   }
-  const qsizetype expected_arguments = live_lab ? 9 : 7;
+  const qsizetype expected_arguments = live_lab ? 10 : 7;
   if (arguments.size() != expected_arguments)
     return usage_error(arguments.value(1));
   const std::filesystem::path plugin_root(arguments.at(2).toStdString());
@@ -281,7 +281,8 @@ int preview(const QStringList &arguments, QGuiApplication &application,
   health::HealthSupervisor health_supervisor({}, audit_store);
   auto supervisor = live_lab
       ? launcher::Supervisor::forRootOwnedLiveLabOnly(
-            arguments.at(7).toStdString(), arguments.at(8).toStdString())
+            arguments.at(7).toStdString(), arguments.at(8).toStdString(),
+            arguments.at(9).toStdString())
       : launcher::Supervisor::production();
   std::unique_ptr<providers::PrivateStorageBackend> storage;
   std::unique_ptr<DesktopEffects> effects;

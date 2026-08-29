@@ -16,13 +16,14 @@ ctest --test-dir /tmp/omarchy-plugin-runtime-live-lab --output-on-failure -R '^p
 native/plugin-runtime/lab/omarchy-plugin-security-lab prepare /tmp/omarchy-plugin-runtime-live-lab /tmp/omarchy-plugin-security-stage
 ```
 
-`prepare` never writes `/opt`. It installs into a new user-owned staging directory named by the worker SHA-256 and writes `PROVENANCE` containing the source commit, dirty-tree fingerprint, worker and host digests, CMake cache digest, and host Omarchy version. A dirty-tree fingerprint is evidence, not a substitute for a clean commit.
+`prepare` never writes `/opt`. It installs into a new user-owned staging directory named by the SHA-256 of `ARTIFACTS.sha256`, a deterministic manifest containing the mode, content digest, and relative path of every installed runtime artifact, including `PROVENANCE`. `PROVENANCE` records the source commit, dirty-tree fingerprint, independently pinned worker and host digests, CMake cache digest, and host Omarchy version. A host-only, worker-only, bridge, library, tool, or provenance change therefore creates a different bundle root. A dirty-tree fingerprint is evidence, not a substitute for a clean commit.
 
 Review the complete staged file list and provenance before copying it:
 
 ```bash
-stage=/tmp/omarchy-plugin-security-stage/<worker-sha256>
+stage=/tmp/omarchy-plugin-security-stage/<bundle-sha256>
 find "$stage" -printf '%M %u:%g %p\n' | sort
+cat "$stage/ARTIFACTS.sha256"
 cat "$stage/PROVENANCE"
 native/plugin-runtime/lab/omarchy-plugin-security-lab verify "$stage"
 ```
@@ -41,7 +42,7 @@ sudo chmod 0755 "$lab_root"
 native/plugin-runtime/lab/omarchy-plugin-security-lab verify "$lab_root"
 ```
 
-The live-lab launcher independently requires the worker at `/opt/omarchy-plugin-security-lab/<worker-sha256>/usr/lib/omarchy/plugin-runtime/omarchy-plugin-qml-worker`. It rejects symlinks, non-root ownership, group/world-writable path components, unsafe executable metadata, a noncanonical location, and a digest mismatch. Production launch continues to pin `/usr/lib/omarchy/plugin-runtime/omarchy-plugin-qml-worker`; normal preview cannot select the lab worker.
+The helper verifies the manifest identity and regenerates it from the staged tree before every launch, rejecting added, removed, renamed, mode-changed, or content-changed artifacts. The live-lab launcher independently requires the worker at `/opt/omarchy-plugin-security-lab/<bundle-sha256>/usr/lib/omarchy/plugin-runtime/omarchy-plugin-qml-worker` and receives both the bundle digest and the worker digest. It rejects symlinks, non-root ownership, group/world-writable path components, unsafe executable metadata, a noncanonical bundle location, and a worker digest mismatch. Production launch continues to pin `/usr/lib/omarchy/plugin-runtime/omarchy-plugin-qml-worker`; normal preview cannot select the lab worker.
 
 ## Isolated test state
 

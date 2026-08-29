@@ -152,20 +152,21 @@ milliseconds_remaining(std::chrono::steady_clock::time_point deadline) {
 
 [[nodiscard]] bool trusted_live_lab_worker(std::string_view path,
                                            std::string_view expected_sha256,
+                                           std::string_view bundle_sha256,
                                            std::string &error) {
-  if (!canonical_digest(expected_sha256)) {
-    error = "live-lab worker digest is not canonical";
+  if (!canonical_digest(expected_sha256) || !canonical_digest(bundle_sha256)) {
+    error = "live-lab worker or bundle digest is not canonical";
     return false;
   }
   const std::filesystem::path candidate(path);
   const std::filesystem::path lab_root("/opt/omarchy-plugin-security-lab");
   const auto relative = candidate.lexically_relative(lab_root);
-  const auto expected = std::filesystem::path(expected_sha256) /
+  const auto expected = std::filesystem::path(bundle_sha256) /
       "usr/lib/omarchy/plugin-runtime/omarchy-plugin-qml-worker";
   if (!candidate.is_absolute() || candidate.lexically_normal() != candidate ||
       relative.empty() || relative.native().starts_with("..") ||
       relative != expected) {
-    error = "live-lab worker is outside its digest-named /opt root";
+    error = "live-lab worker is outside its bundle-digest-named /opt root";
     return false;
   }
   std::filesystem::path component("/");
@@ -1136,6 +1137,7 @@ struct Supervisor::Impl {
   bool production = true;
   bool root_owned_live_lab = false;
   std::string worker_sha256;
+  std::string bundle_sha256;
 };
 
 Supervisor::Supervisor(std::unique_ptr<Impl> implementation)
@@ -1151,12 +1153,14 @@ Supervisor Supervisor::production() {
 }
 
 Supervisor Supervisor::forRootOwnedLiveLabOnly(std::string worker_path,
-                                               std::string worker_sha256) {
+                                               std::string worker_sha256,
+                                               std::string bundle_sha256) {
   auto implementation = std::make_unique<Impl>(
       std::string(kProductionBwrap), std::move(worker_path),
       make_systemd_resource_scope_controller(), false);
   implementation->root_owned_live_lab = true;
   implementation->worker_sha256 = std::move(worker_sha256);
+  implementation->bundle_sha256 = std::move(bundle_sha256);
   return Supervisor(std::move(implementation));
 }
 
@@ -1185,7 +1189,8 @@ bool Supervisor::prerequisites(std::string &error) const {
           error) ||
       (implementation_->root_owned_live_lab
            ? !trusted_live_lab_worker(implementation_->worker_path,
-                                      implementation_->worker_sha256, error)
+                                      implementation_->worker_sha256,
+                                      implementation_->bundle_sha256, error)
            : !trusted_executable(implementation_->worker_path,
                                  implementation_->production, error)) ||
       !kernel_prerequisites(error) ||

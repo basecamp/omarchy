@@ -133,7 +133,8 @@ public:
   [[nodiscard]] static Supervisor production();
   [[nodiscard]] static Supervisor
   forRootOwnedLiveLabOnly(std::string worker_path,
-                          std::string worker_sha256);
+                          std::string worker_sha256,
+                          std::string bundle_sha256);
   [[nodiscard]] static Supervisor
   forTestOnly(std::string bwrap_path, std::string worker_path,
               std::shared_ptr<ResourceScopeController> resource_scope);

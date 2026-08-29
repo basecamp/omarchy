@@ -18,6 +18,11 @@ if(BUILD_TESTING)
     COMMAND "${CMAKE_COMMAND}"
       -DHOST=$<TARGET_FILE:omarchy-plugin-host>
       -P "${CMAKE_CURRENT_SOURCE_DIR}/preview_disabled_test.cmake")
+  add_test(NAME plugin-live-lab-provenance
+    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/../lab/provenance_test.sh"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../lab/omarchy-plugin-security-lab"
+      "${CMAKE_BINARY_DIR}")
   set_tests_properties(plugin-host-version plugin-host-preview-disabled
+    plugin-live-lab-provenance
     PROPERTIES TIMEOUT 10 LABELS "host;security;feature-gate")
 endif()
