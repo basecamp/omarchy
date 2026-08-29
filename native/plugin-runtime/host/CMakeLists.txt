@@ -9,6 +9,7 @@ target_link_libraries(omarchy-plugin-host PRIVATE
   omarchy-plugin-providers
   omarchy-plugin-lifecycle
   omarchy-plugin-audit-store)
+target_link_libraries(omarchy-plugin-host PRIVATE omarchy-plugin-external-provider)
 
 install(TARGETS omarchy-plugin-host RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 
@@ -57,6 +58,8 @@ if(BUILD_TESTING)
     omarchy-plugin-providers
     omarchy-plugin-lifecycle
     omarchy-plugin-audit-store)
+  target_link_libraries(omarchy-plugin-product-e2e-host PRIVATE
+    omarchy-plugin-external-provider)
   add_dependencies(omarchy-plugin-product-e2e-host
     omarchy-plugin-product-e2e-worker omarchy-plugin-permission-store)
 
@@ -74,6 +77,8 @@ if(BUILD_TESTING)
     omarchy-plugin-providers
     omarchy-plugin-lifecycle
     omarchy-plugin-audit-store)
+  target_link_libraries(omarchy-plugin-radio-live-e2e-host PRIVATE
+    omarchy-plugin-external-provider)
   add_dependencies(omarchy-plugin-radio-live-e2e-host
     omarchy-plugin-product-e2e-worker omarchy-plugin-permission-store)
   add_test(NAME plugin-product-e2e-bwrap

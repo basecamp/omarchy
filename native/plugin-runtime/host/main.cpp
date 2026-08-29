@@ -16,6 +16,7 @@
 #include "broker_runtime.hpp"
 #include "dynamic_broker_runtime.hpp"
 #include "capability_definition_loader.hpp"
+#include "provider_registration.hpp"
 #include "omarchy/plugin_runtime/broker/broker_schema.hpp"
 #include "omarchy/plugin_runtime/providers/private_storage_backend.hpp"
 #include "omarchy/plugin_runtime/providers/audio_device_provider.hpp"
@@ -58,6 +59,7 @@ namespace surface_host = omarchy::plugin_runtime::surface_host;
 namespace wire = omarchy::plugin::wire;
 namespace broker = omarchy::plugin_runtime::broker;
 namespace runtime = omarchy::plugin_runtime::runtime;
+namespace external_provider = omarchy::plugins::external_provider;
 namespace providers = omarchy::plugin_runtime::providers;
 namespace lifecycle = omarchy::plugins::lifecycle;
 namespace definitions = omarchy::plugins::definitions;
@@ -246,6 +248,7 @@ struct DynamicAdapters {
   definitions::DynamicAdapter account_read;
   definitions::DynamicAdapter account_write;
   definitions::DynamicAdapter open_uri;
+  std::vector<definitions::DynamicAdapter> external;
 };
 
 bool dynamic_adapter_available(std::string_view adapter_class,
@@ -261,6 +264,11 @@ bool dynamic_adapter_available(std::string_view adapter_class,
     if (adapter->binding.adapter_class.view() == adapter_class &&
         adapter->binding.implementation_digest == digest &&
         adapter->binding.abi_version == abi)
+      return true;
+  for (const auto &adapter : adapters.external)
+    if (adapter.binding.adapter_class.view() == adapter_class &&
+        adapter.binding.implementation_digest == digest &&
+        adapter.binding.abi_version == abi)
       return true;
   return false;
 }
@@ -590,6 +598,7 @@ int preview(const QStringList &arguments, QGuiApplication &application,
   std::unique_ptr<providers::GitHubProvider> github_provider;
   std::unique_ptr<providers::RadioLiveBackend> radio_live_backend;
   std::unique_ptr<runtime::DynamicBrokerRuntime> dynamic_runtime;
+  std::vector<external_provider::Registration> external_registrations;
   std::shared_ptr<LabBroker> lab_broker;
   headless::StartResult started;
   if (live_lab) {
@@ -697,7 +706,25 @@ int preview(const QStringList &arguments, QGuiApplication &application,
           .device_control = audio_device_provider->control_adapter(),
           .account_read = github_provider->read_adapter(),
           .account_write = github_provider->write_adapter(),
-          .open_uri = github_provider->open_adapter()};
+          .open_uri = github_provider->open_adapter(),
+          .external = {}};
+#ifndef OMARCHY_PLUGIN_PRODUCT_E2E
+      const std::filesystem::path provider_registration_root(
+          "/etc/omarchy/plugin-providers.d");
+      if (std::filesystem::exists(provider_registration_root)) {
+        if (external_provider::load_registration_directory(
+                provider_registration_root.string(), 0,
+                external_registrations) !=
+            external_provider::RegistrationLoadResult::loaded) {
+          qCritical() << "omarchy-plugin-host: administrator provider registrations are invalid";
+          return 78;
+        }
+        adapters.external.reserve(external_registrations.size());
+        for (auto &registration : external_registrations)
+          adapters.external.push_back(
+              external_provider::compose_dynamic_adapter(registration));
+      }
+#endif
       dynamic_registry = std::make_unique<definitions::TrustedDefinitionRegistry>();
       std::size_t loaded = 0;
 #ifdef OMARCHY_PLUGIN_PRODUCT_E2E
@@ -754,10 +781,18 @@ int preview(const QStringList &arguments, QGuiApplication &application,
           adapter = adapters.account_write;
         else if (resolved->definition->adapter == adapters.open_uri.binding)
           adapter = adapters.open_uri;
-        else if (dynamic.request.required)
-          return 78;
-        else
-          continue;
+        else {
+          const auto external = std::ranges::find_if(
+              adapters.external, [&](const auto &candidate) {
+                return resolved->definition->adapter == candidate.binding;
+              });
+          if (external != adapters.external.end())
+            adapter = *external;
+          else if (dynamic.request.required)
+            return 78;
+          else
+            continue;
+        }
         routes.push_back({.grant = dynamic, .adapter = adapter,
                           .scope_validator = {.compare = exact_dynamic_scope}});
       }
