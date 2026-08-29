@@ -42,11 +42,11 @@ One surface-host test exits without a diagnostic in the existing build and remai
 
 Add an end-to-end test that launches the installed worker in Bubblewrap, invokes from real QML, observes one effect in a fake-but-production-shaped adapter, revokes the grant, and proves a second invocation and any outstanding handle fail. Repeat with a stale revision, definition generation, adapter digest, expanded scope, replayed correlation, and forged payload reference.
 
-### P1: Prepared content is reopened by pathname at launch
+### Closed: Prepared content was reopened by pathname at launch
 
-Preparation hashes and verifies `plugin_root`, but launch later calls `open(prepared.plugin.root, O_DIRECTORY)`. The launcher checks directory ownership and write mode, but the binding does not itself prove that this newly opened directory is the directory that was hashed. The revision store normally copies and seals a tree, which reduces exposure, but a same-user process can chmod, rename, or replace owner-controlled paths.
+Preparation previously hashed and verified `plugin_root`, then reopened that pathname at launch. Preparation now pins the verified directory with `O_NOFOLLOW`, transfers ownership of that descriptor with the prepared activation, and launch duplicates the pinned descriptor. An adversarial prepare-then-rename-and-replace test proves that activation retains the original directory.
 
-Carry an already opened revision directory descriptor from trusted staging through preparation and launch, bind it to recorded device/inode metadata, and avoid reopening by pathname. Prefer a content-addressed revision-store activation API over accepting an arbitrary discovery path. Before passing the descriptor to Bubblewrap, verify its store record and content identity or use a sealed filesystem/image primitive. Add a prepare-then-replace adversarial test.
+Same-user mutation of files inside an owner-controlled pinned directory remains a residual risk. Production activation should accept only content-addressed revision-store trees and should verify their store record before passing the descriptor to Bubblewrap.
 
 ### P1: Provider confused-deputy constraints need a production contract
 
@@ -62,7 +62,13 @@ Compiled broker operations have cancellation, terminal-state, epoch, and update-
 
 Sidecars correctly do not inherit broker, control, or render descriptors, and remain inside the worker Bubblewrap and cgroup. They intentionally retain the launch seccomp filter, including `execve` and process creation, so they can supervise their own bounded subprocesses. This is compatible with the same-sandbox model but makes the declared sidecar executable and all parsers it exposes part of the untrusted workload.
 
-Add a real Bubblewrap sidecar probe that attempts `/proc/1/fd/{3,4,5}`, `pidfd_getfd`, Unix credential spoofing, host filesystem reads, network egress, D-Bus/Wayland access, mount/user namespace creation, and fork/exec exhaustion. Continue to treat private loopback, files, and sockets inside the sandbox as intentionally shared and therefore unsuitable for secrets between QML and its sidecars.
+A real Bubblewrap sidecar probe now verifies direct role descriptors are closed, parent role sockets cannot be reopened through `/proc/1/fd/{3,4,5}`, host and home canaries are absent, D-Bus and Wayland session authority is absent, and nested namespace creation is denied. This test also found and corrected a test-only policy mismatch: the sidecar Bubblewrap fixture had omitted production's `--disable-userns --assert-userns-disabled` flags.
+
+Coverage still needs `pidfd_getfd`, Unix credential spoofing, explicit network-egress canaries, and bounded fork/exec exhaustion. Continue to treat private loopback, files, and sockets inside the sandbox as intentionally shared and therefore unsuitable for secrets between QML and its sidecars.
+
+## Reusable campaign
+
+`native/plugin-runtime/security-campaign/run_campaign.sh BUILD_DIRECTORY` runs the acceptance security set. It currently comprises 25 tests covering install validation, deterministic manifest mutations, wire and permission contracts, real Bubblewrap enforcement, sidecars, broker and QML APIs, render transport, providers, revision/grant/audit stores, authenticated channels, malicious peers, and bounded exhaustion. The first local production-kernel run passed 25 of 25 tests.
 
 ### P2: Render and input abuse requires sustained fuzzing
 
