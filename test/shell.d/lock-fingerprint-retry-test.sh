@@ -54,6 +54,7 @@ assert(!model.shouldNudge(10000, 0, model.MATCH_RETRY_MS), 'no nudge when the wa
 assert(model.shouldNudge(10000, 0, backedOff), 'a keypress collapses a backed-off wait')
 assert(!model.shouldNudge(10000, 9000, backedOff), 'a second nudge inside the cooldown is refused')
 assert(model.shouldNudge(10000, 10000 - model.NUDGE_COOLDOWN_MS, backedOff), 'a nudge one cooldown later is allowed')
+assert(model.shouldNudge(10000, 11500, backedOff), 'a clock stepped backwards does not refuse the nudge')
 
 // A cursor moving at 125 Hz raises a wake every 8 ms; over 10 s the floor caps
 // the collapses at one per cooldown instead of one per event.

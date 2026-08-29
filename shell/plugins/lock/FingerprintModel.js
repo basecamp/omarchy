@@ -33,7 +33,11 @@ function retryDelayMs(streak) {
 // the loop back up to the storm the backoff exists to prevent.
 function shouldNudge(nowMs, lastNudgeMs, currentIntervalMs) {
   if (currentIntervalMs <= MATCH_RETRY_MS) return false
-  return (nowMs - lastNudgeMs) >= NUDGE_COOLDOWN_MS
+  var elapsed = nowMs - lastNudgeMs
+  // Wall-clock time can step backwards (timesyncd corrects RTC drift right
+  // after resume); a negative gap is stale, not a fresh nudge, so allow it.
+  if (elapsed < 0) return true
+  return elapsed >= NUDGE_COOLDOWN_MS
 }
 
 // The streak after an attempt: a reached attempt clears it, an unreached one
