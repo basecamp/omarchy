@@ -613,7 +613,7 @@ void validate_audit_draft(const AuditDraft &draft) {
               canonical_digest(draft.revision) && draft.generation > 0,
           "invalid audit identity");
   require(static_cast<std::uint8_t>(draft.event) <=
-                  static_cast<std::uint8_t>(AuditEvent::worker_disabled) &&
+                  static_cast<std::uint8_t>(AuditEvent::operation_completed) &&
               static_cast<std::uint8_t>(draft.outcome) <=
                   static_cast<std::uint8_t>(AuditOutcome::failed) &&
               static_cast<std::uint8_t>(draft.decision) <=
@@ -632,17 +632,29 @@ void validate_audit_draft(const AuditDraft &draft) {
     require(operation_definition->key == *draft.capability,
             "audit operation and capability disagree");
   }
+  if (draft.dynamic_operation.has_value()) {
+    const auto &dynamic = *draft.dynamic_operation;
+    require(!draft.operation.has_value() && !draft.capability.has_value() &&
+                canonical_id(dynamic.capability.view()) &&
+                dynamic.definition_generation > 0 &&
+                canonical_digest(dynamic.definition_digest) &&
+                canonical_id(dynamic.operation.view()) &&
+                dynamic.grant_epoch > 0,
+            "invalid dynamic audit identity");
+  }
   switch (draft.event) {
   case AuditEvent::grant_changed:
   case AuditEvent::capability_revoked:
-    require(draft.capability.has_value() && !draft.operation.has_value(),
+    require(draft.capability.has_value() && !draft.operation.has_value() &&
+                !draft.dynamic_operation.has_value(),
             "grant audit event has invalid fields");
     break;
   case AuditEvent::operation_decided:
+  case AuditEvent::operation_completed:
   case AuditEvent::handle_issued:
   case AuditEvent::handle_denied:
-    require(draft.operation.has_value() && draft.capability.has_value() &&
-                draft.correlation > 0,
+    require(((draft.operation.has_value() && draft.capability.has_value()) !=
+             draft.dynamic_operation.has_value()) && draft.correlation > 0,
             "operation audit event has invalid fields");
     break;
   case AuditEvent::worker_started:
@@ -651,6 +663,7 @@ void validate_audit_draft(const AuditDraft &draft) {
   case AuditEvent::worker_stopped:
   case AuditEvent::worker_disabled:
     require(!draft.operation.has_value() && !draft.capability.has_value() &&
+                !draft.dynamic_operation.has_value() &&
                 draft.correlation == 0,
             "worker audit event has invalid fields");
     break;
@@ -692,6 +705,13 @@ std::string audit_record_fingerprint(const AuditRecord &record) {
   } else {
     append_text(bytes, "-");
     append_u16(bytes, 0);
+  }
+  if (record.dynamic_operation.has_value()) {
+    append_text(bytes, record.dynamic_operation->capability.view());
+    append_u32(bytes, record.dynamic_operation->definition_generation);
+    append_text(bytes, record.dynamic_operation->definition_digest.view());
+    append_text(bytes, record.dynamic_operation->operation.view());
+    append_u64(bytes, record.dynamic_operation->grant_epoch);
   }
   append_u8(bytes, static_cast<std::uint8_t>(record.decision));
   append_u8(bytes, static_cast<std::uint8_t>(record.metadata.size()));

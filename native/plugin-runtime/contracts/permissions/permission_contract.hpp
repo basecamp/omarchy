@@ -445,6 +445,7 @@ enum class AuditEvent : std::uint8_t {
   worker_crashed,
   worker_stopped,
   worker_disabled,
+  operation_completed,
 };
 enum class AuditOutcome : std::uint8_t { allowed, denied, cancelled, failed };
 enum class AuditMetric : std::uint8_t {
@@ -461,6 +462,15 @@ struct AuditMetadata {
   bool operator==(const AuditMetadata &) const = default;
 };
 
+struct DynamicAuditIdentity {
+  CapabilityId capability;
+  std::uint32_t definition_generation = 0;
+  Digest definition_digest;
+  BoundedString<128> operation;
+  std::uint64_t grant_epoch = 0;
+  bool operator==(const DynamicAuditIdentity &) const = default;
+};
+
 struct AuditDraft {
   AuditEvent event{};
   AuditOutcome outcome{};
@@ -468,6 +478,7 @@ struct AuditDraft {
   Digest revision;
   std::uint64_t generation = 0;
   std::uint64_t correlation = 0;
+  std::optional<DynamicAuditIdentity> dynamic_operation;
   std::optional<OperationId> operation;
   std::optional<CapabilityKey> capability;
   GrantDecisionCode decision = GrantDecisionCode::ungranted;

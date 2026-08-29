@@ -1,14 +1,17 @@
 #include "audit_store.hpp"
 
+#include <array>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <vector>
 
 namespace {
 
@@ -55,6 +58,7 @@ permissions::AuditDraft operation_draft(std::uint64_t correlation = 7) {
       .revision = digest('a'),
       .generation = 9,
       .correlation = correlation,
+      .dynamic_operation = std::nullopt,
       .operation = permissions::OperationId::storage_read,
       .capability = storage_key(),
       .decision = permissions::GrantDecisionCode::allowed,
@@ -75,11 +79,83 @@ permissions::AuditDraft revocation_draft() {
       .revision = digest('a'),
       .generation = 9,
       .correlation = 0,
+      .dynamic_operation = std::nullopt,
       .operation = std::nullopt,
       .capability = storage_key(),
       .decision = permissions::GrantDecisionCode::revoked,
       .metadata = {},
   };
+}
+
+permissions::AuditDraft dynamic_draft() {
+  return {.event = permissions::AuditEvent::operation_decided,
+          .outcome = permissions::AuditOutcome::allowed,
+          .plugin = permissions::PluginId("org.example.radio"),
+          .revision = digest('b'),
+          .generation = 3,
+          .correlation = 19,
+          .dynamic_operation = permissions::DynamicAuditIdentity{
+              .capability = permissions::CapabilityId("network.fetch"),
+              .definition_generation = 1,
+              .definition_digest = digest('c'),
+              .operation = permissions::BoundedString<128>("fetch"),
+              .grant_epoch = 7},
+          .operation = std::nullopt,
+          .capability = std::nullopt,
+          .decision = permissions::GrantDecisionCode::allowed,
+          .metadata = {}};
+}
+
+void put8(std::vector<unsigned char> &out, std::uint8_t value) { out.push_back(value); }
+void put16(std::vector<unsigned char> &out, std::uint16_t value) {
+  put8(out, static_cast<std::uint8_t>(value >> 8)); put8(out, static_cast<std::uint8_t>(value));
+}
+void put32(std::vector<unsigned char> &out, std::uint32_t value) {
+  for (int shift = 24; shift >= 0; shift -= 8) put8(out, static_cast<std::uint8_t>(value >> shift));
+}
+void put64(std::vector<unsigned char> &out, std::uint64_t value) {
+  for (int shift = 56; shift >= 0; shift -= 8) put8(out, static_cast<std::uint8_t>(value >> shift));
+}
+void put_text(std::vector<unsigned char> &out, std::string_view value) {
+  put16(out, static_cast<std::uint16_t>(value.size())); out.insert(out.end(), value.begin(), value.end());
+}
+
+std::vector<unsigned char> legacy_v1_snapshot() {
+  permissions::AuditRecord record;
+  static_cast<permissions::AuditDraft &>(record) = operation_draft();
+  record.sequence = 1; record.wall_seconds = 1; record.monotonic_ns = 1;
+  record.producer = permissions::AuditProducer::broker;
+  std::vector<unsigned char> body;
+  put64(body, 1); put64(body, 1); put64(body, 1);
+  put8(body, static_cast<std::uint8_t>(record.producer));
+  put8(body, static_cast<std::uint8_t>(record.event));
+  put8(body, static_cast<std::uint8_t>(record.outcome));
+  put8(body, static_cast<std::uint8_t>(record.decision));
+  put_text(body, record.plugin.view()); put_text(body, record.revision.view());
+  put64(body, record.generation); put64(body, record.correlation);
+  put8(body, 1); put16(body, static_cast<std::uint16_t>(*record.operation));
+  put8(body, 1); put_text(body, record.capability->id.view()); put16(body, record.capability->version);
+  put8(body, static_cast<std::uint8_t>(record.metadata.size()));
+  for (const auto &metric : record.metadata.values()) {
+    put8(body, static_cast<std::uint8_t>(metric.metric)); put64(body, static_cast<std::uint64_t>(metric.value));
+  }
+  put_text(body, permissions::audit_record_fingerprint(record));
+  std::vector<unsigned char> snapshot;
+  const std::string_view magic = "OMARCHY-AUDIT-V1";
+  snapshot.insert(snapshot.end(), magic.begin(), magic.end());
+  put32(snapshot, 1); put64(snapshot, 1); put32(snapshot, 1);
+  put32(snapshot, static_cast<std::uint32_t>(body.size()));
+  snapshot.insert(snapshot.end(), body.begin(), body.end());
+  return snapshot;
+}
+
+void write_bytes(const std::filesystem::path &path,
+                 const std::vector<unsigned char> &bytes) {
+  std::ofstream output(path, std::ios::binary | std::ios::trunc);
+  output.write(reinterpret_cast<const char *>(bytes.data()),
+               static_cast<std::streamsize>(bytes.size()));
+  output.close();
+  ::chmod(path.c_str(), 0600);
 }
 
 permissions::AuditDraft worker_draft() {
@@ -90,6 +166,7 @@ permissions::AuditDraft worker_draft() {
       .revision = digest('a'),
       .generation = 9,
       .correlation = 0,
+      .dynamic_operation = std::nullopt,
       .operation = std::nullopt,
       .capability = std::nullopt,
       .decision = permissions::GrantDecisionCode::ungranted,
@@ -198,6 +275,59 @@ void test_validation_and_authoritative_time() {
           "unbounded query shape was accepted");
 }
 
+void test_dynamic_identity_round_trip() {
+  TemporaryDirectory temporary;
+  audit::AuditStore store(temporary.path() / "audit", {.maximum_records = 4});
+  require(store.recover().ok(), "create dynamic audit store");
+  const auto appended =
+      store.append(permissions::AuditProducer::broker, dynamic_draft());
+  require(appended.status.ok() && appended.record &&
+              appended.record->dynamic_operation.has_value(),
+          "append dynamic audit identity");
+  audit::AuditStore reopened(temporary.path() / "audit", {.maximum_records = 4});
+  require(reopened.recover().ok(), "recover dynamic audit store");
+  const auto records = reopened.query({});
+  require(records.status.ok() && records.records.size() == 1 &&
+              records.records[0].dynamic_operation ==
+                  dynamic_draft().dynamic_operation,
+          "dynamic audit identity did not survive durable round trip");
+}
+
+void test_audit_format_migration_and_malformed_dynamic() {
+  TemporaryDirectory legacy;
+  const auto legacy_root = legacy.path() / "audit";
+  std::filesystem::create_directory(legacy_root);
+  std::filesystem::permissions(legacy_root, std::filesystem::perms::owner_all);
+  write_bytes(legacy_root / "audit.snapshot", legacy_v1_snapshot());
+  audit::AuditStore old_store(legacy_root, {.maximum_records = 4});
+  require(old_store.recover().ok(), "format-v1 audit snapshot did not recover");
+  const auto old_records = old_store.query({});
+  require(old_records.status.ok() && old_records.records.size() == 1 &&
+              !old_records.records[0].dynamic_operation.has_value(),
+          "format-v1 audit record acquired a dynamic identity");
+
+  TemporaryDirectory malformed;
+  const auto malformed_root = malformed.path() / "audit";
+  audit::AuditStore new_store(malformed_root, {.maximum_records = 4});
+  require(new_store.recover().ok() &&
+              new_store.append(permissions::AuditProducer::broker,
+                               dynamic_draft()).status.ok(),
+          "malformed-v2 fixture setup failed");
+  const auto snapshot = malformed_root / "audit.snapshot";
+  std::ifstream input(snapshot, std::ios::binary);
+  std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(input)), {});
+  input.close();
+  const std::array<unsigned char, 8> epoch{0, 0, 0, 0, 0, 0, 0, 7};
+  auto found = bytes.end();
+  for (auto iterator = bytes.begin(); iterator + 8 <= bytes.end(); ++iterator)
+    if (std::equal(epoch.begin(), epoch.end(), iterator)) found = iterator;
+  require(found != bytes.end(), "dynamic epoch was not encoded");
+  std::fill(found, found + 8, 0);
+  write_bytes(snapshot, bytes);
+  require(new_store.recover().code == audit::ErrorCode::corrupt_store,
+          "format-v2 zero dynamic epoch was accepted");
+}
+
 void test_crash_boundaries() {
   TemporaryDirectory temporary;
   audit::AuditStore store(temporary.path() / "audit", {.maximum_records = 4});
@@ -293,6 +423,8 @@ int main() {
   try {
     test_append_query_export_and_retention();
     test_validation_and_authoritative_time();
+    test_dynamic_identity_round_trip();
+    test_audit_format_migration_and_malformed_dynamic();
     test_crash_boundaries();
     test_corruption_torn_and_symlink_fail_closed();
     std::cout << "audit store tests passed\n";

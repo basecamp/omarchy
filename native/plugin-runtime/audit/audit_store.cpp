@@ -20,7 +20,7 @@ namespace omarchy::plugins::audit {
 namespace {
 
 constexpr std::string_view kMagic = "OMARCHY-AUDIT-V1";
-constexpr std::uint32_t kFormatVersion = 1;
+constexpr std::uint32_t kFormatVersion = 2;
 constexpr std::size_t kHeaderBytes = 32;
 constexpr std::size_t kMaximumRecordBytes = 512;
 constexpr std::size_t kMaximumSnapshotBytes =
@@ -197,6 +197,22 @@ std::vector<std::byte> encode_record(const permissions::AuditRecord &record) {
   put8(output, record.capability ? 1 : 0);
   put_text(output, record.capability ? record.capability->id.view() : "");
   put16(output, record.capability ? record.capability->version : 0);
+  put8(output, record.dynamic_operation ? 1 : 0);
+  put_text(output, record.dynamic_operation
+                       ? record.dynamic_operation->capability.view()
+                       : "");
+  put32(output, record.dynamic_operation
+                    ? record.dynamic_operation->definition_generation
+                    : 0);
+  put_text(output, record.dynamic_operation
+                       ? record.dynamic_operation->definition_digest.view()
+                       : "");
+  put_text(output, record.dynamic_operation
+                       ? record.dynamic_operation->operation.view()
+                       : "");
+  put64(output, record.dynamic_operation
+                    ? record.dynamic_operation->grant_epoch
+                    : 0);
   put8(output, static_cast<std::uint8_t>(record.metadata.size()));
   for (std::uint8_t metric = 0;
        metric <=
@@ -219,7 +235,8 @@ std::vector<std::byte> encode_record(const permissions::AuditRecord &record) {
   return output;
 }
 
-permissions::AuditRecord decode_record(std::span<const std::byte> bytes) {
+permissions::AuditRecord decode_record(std::span<const std::byte> bytes,
+                                       std::uint32_t format_version) {
   Reader reader(bytes);
   permissions::AuditRecord record;
   record.sequence = reader.get64();
@@ -250,6 +267,28 @@ permissions::AuditRecord decode_record(std::span<const std::byte> bytes) {
   if (capability_present)
     record.capability = permissions::CapabilityKey{
         permissions::CapabilityId(capability_id), capability_version};
+  if (format_version >= 2) {
+    const auto dynamic_present = reader.get8();
+    const auto dynamic_capability = reader.get_text(128);
+    const auto dynamic_generation = reader.get32();
+    const auto dynamic_digest = reader.get_text(64);
+    const auto dynamic_operation = reader.get_text(128);
+    const auto dynamic_epoch = reader.get64();
+    if (dynamic_present > 1 ||
+        (!dynamic_present && (!dynamic_capability.empty() ||
+                              dynamic_generation != 0 ||
+                              !dynamic_digest.empty() ||
+                              !dynamic_operation.empty() || dynamic_epoch != 0)))
+      throw Failure(ErrorCode::corrupt_store,
+                    "invalid dynamic audit presence field");
+    if (dynamic_present)
+      record.dynamic_operation = permissions::DynamicAuditIdentity{
+          .capability = permissions::CapabilityId(dynamic_capability),
+          .definition_generation = dynamic_generation,
+          .definition_digest = permissions::Digest(dynamic_digest),
+          .operation = permissions::BoundedString<128>(dynamic_operation),
+          .grant_epoch = dynamic_epoch};
+  }
   const auto metric_count = reader.get8();
   if (metric_count > 8)
     throw Failure(ErrorCode::corrupt_store, "audit metric count exceeded");
@@ -316,7 +355,8 @@ Snapshot decode_snapshot(std::span<const std::byte> bytes) {
   if (!std::equal(magic.begin(), magic.end(),
                   reinterpret_cast<const std::byte *>(kMagic.data())))
     throw Failure(ErrorCode::corrupt_store, "audit snapshot magic is invalid");
-  if (reader.get32() != kFormatVersion)
+  const auto format_version = reader.get32();
+  if (format_version == 0 || format_version > kFormatVersion)
     throw Failure(ErrorCode::corrupt_store,
                   "audit snapshot version is invalid");
   Snapshot snapshot;
@@ -329,7 +369,7 @@ Snapshot decode_snapshot(std::span<const std::byte> bytes) {
     const auto length = reader.get32();
     if (length == 0 || length > kMaximumRecordBytes)
       throw Failure(ErrorCode::corrupt_store, "audit frame length is invalid");
-    auto record = decode_record(reader.take(length));
+    auto record = decode_record(reader.take(length), format_version);
     if (!snapshot.records.empty() &&
         record.sequence != snapshot.records.back().sequence + 1)
       throw Failure(ErrorCode::corrupt_store,
@@ -467,7 +507,7 @@ void validate_query(const Query &query) {
       (query.producer && !permissions::valid_audit_producer(*query.producer)) ||
       (query.event && static_cast<std::uint8_t>(*query.event) >
                           static_cast<std::uint8_t>(
-                              permissions::AuditEvent::worker_disabled)) ||
+                              permissions::AuditEvent::operation_completed)) ||
       (query.outcome &&
        static_cast<std::uint8_t>(*query.outcome) >
            static_cast<std::uint8_t>(permissions::AuditOutcome::failed)))
@@ -514,6 +554,8 @@ std::string_view event_name(permissions::AuditEvent value) {
     return "plugin worker stopped";
   case permissions::AuditEvent::worker_disabled:
     return "plugin worker disabled";
+  case permissions::AuditEvent::operation_completed:
+    return "plugin operation completed";
   }
   return "unknown event";
 }
@@ -692,7 +734,7 @@ Result AuditStore::export_tsv(const Query &query_value,
   std::string result =
       "sequence\twall_seconds\tmonotonic_"
       "ns\tproducer\tevent\toutcome\tplugin\trevision\tgeneration\tcorrelation"
-      "\toperation\tcapability\tdecision\tmetrics\tfingerprint\n";
+      "\toperation\tcapability\tdynamic_identity\tdecision\tmetrics\tfingerprint\n";
   for (const auto &record : selected.records) {
     result +=
         std::to_string(record.sequence) + "\t" +
@@ -709,6 +751,14 @@ Result AuditStore::export_tsv(const Query &query_value,
         (record.capability ? std::string(record.capability->id.view()) + ":" +
                                  std::to_string(record.capability->version)
                            : "-") +
+        "\t" +
+        (record.dynamic_operation
+             ? std::string(record.dynamic_operation->capability.view()) + "@" +
+                   std::to_string(record.dynamic_operation->definition_generation) +
+                   ":" + std::string(record.dynamic_operation->definition_digest.view()) +
+                   ":" + std::string(record.dynamic_operation->operation.view()) +
+                   ":epoch=" + std::to_string(record.dynamic_operation->grant_epoch)
+             : "-") +
         "\t" + std::to_string(static_cast<std::uint8_t>(record.decision)) +
         "\t";
     bool first = true;
@@ -748,6 +798,20 @@ Result AuditStore::export_human(const Query &query_value,
       result +=
           "  Operation: " + std::string(operation_name(*record.operation)) +
           "\n";
+    if (record.dynamic_operation) {
+      result += "  Dynamic permission: " +
+                std::string(record.dynamic_operation->capability.view()) +
+                " generation " +
+                std::to_string(record.dynamic_operation->definition_generation) +
+                " digest " +
+                std::string(record.dynamic_operation->definition_digest.view()) +
+                "\n";
+      result += "  Dynamic operation: " +
+                std::string(record.dynamic_operation->operation.view()) +
+                "\n";
+      result += "  Grant epoch: " +
+                std::to_string(record.dynamic_operation->grant_epoch) + "\n";
+    }
     result +=
         "  Decision: " + std::string(decision_name(record.decision)) + "\n";
     if (record.correlation != 0)

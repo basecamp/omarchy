@@ -517,6 +517,7 @@ void audit_contract() {
                    .revision = digest('a'),
                    .generation = 9,
                    .correlation = 42,
+                   .dynamic_operation = std::nullopt,
                    .operation = OperationId::storage_write,
                    .capability = key("storage.private"),
                    .decision = GrantDecisionCode::outside_scope,
@@ -548,6 +549,7 @@ void audit_contract() {
                     .revision = digest('a'),
                     .generation = 9,
                     .correlation = 0,
+                    .dynamic_operation = std::nullopt,
                     .operation = std::nullopt,
                     .capability = std::nullopt,
                     .decision = GrantDecisionCode::ungranted,
@@ -555,6 +557,58 @@ void audit_contract() {
   worker.metadata.push_back(
       {.metric = AuditMetric::retry_after_seconds, .value = 2});
   validate_audit_draft(worker);
+  AuditDraft dynamic{.event = AuditEvent::operation_decided,
+                     .outcome = AuditOutcome::allowed,
+                     .plugin = PluginId("org.example.radio"),
+                     .revision = digest('a'),
+                     .generation = 9,
+                     .correlation = 43,
+                     .dynamic_operation = DynamicAuditIdentity{
+                         .capability = CapabilityId("network.fetch"),
+                         .definition_generation = 1,
+                         .definition_digest = digest('b'),
+                         .operation = BoundedString<128>("fetch"),
+                         .grant_epoch = 4},
+                     .operation = std::nullopt,
+                     .capability = std::nullopt,
+                     .decision = GrantDecisionCode::allowed,
+                     .metadata = {}};
+  validate_audit_draft(dynamic);
+  auto zero_epoch = dynamic;
+  zero_epoch.dynamic_operation->grant_epoch = 0;
+  reject([&] { validate_audit_draft(zero_epoch); },
+         "dynamic audit accepted a zero grant epoch");
+  auto changed_epoch = dynamic;
+  changed_epoch.dynamic_operation->grant_epoch = 5;
+  const auto dynamic_fingerprint = [](AuditDraft value) {
+    AuditLog<1> log;
+    return audit_record_fingerprint(
+        log.append(AuditProducer::broker, std::move(value), 1, 1));
+  };
+  const auto original_dynamic_fingerprint = dynamic_fingerprint(dynamic);
+  const auto changed = [&](AuditDraft value, const char *message) {
+    require(dynamic_fingerprint(std::move(value)) != original_dynamic_fingerprint,
+            message);
+  };
+  changed(changed_epoch, "dynamic grant epoch did not affect audit fingerprint");
+  auto changed_capability = dynamic;
+  changed_capability.dynamic_operation->capability = CapabilityId("media.play-stream");
+  changed(changed_capability, "dynamic capability did not affect audit fingerprint");
+  auto changed_generation = dynamic;
+  ++changed_generation.dynamic_operation->definition_generation;
+  changed(changed_generation, "definition generation did not affect audit fingerprint");
+  auto changed_digest = dynamic;
+  changed_digest.dynamic_operation->definition_digest = digest('c');
+  changed(changed_digest, "definition digest did not affect audit fingerprint");
+  auto changed_operation = dynamic;
+  changed_operation.dynamic_operation->operation = BoundedString<128>("other");
+  changed(changed_operation, "dynamic operation did not affect audit fingerprint");
+  auto changed_activation = dynamic;
+  ++changed_activation.generation;
+  changed(changed_activation, "activation generation did not affect audit fingerprint");
+  auto changed_revision = dynamic;
+  changed_revision.revision = digest('d');
+  changed(changed_revision, "activation revision did not affect audit fingerprint");
   auto invalid_worker = worker;
   invalid_worker.correlation = 1;
   reject([&] { validate_audit_draft(invalid_worker); },
