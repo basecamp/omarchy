@@ -293,4 +293,45 @@ assertDeepEqual(
 
 assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }), '', 'network keeps wifi band state out of the hero')
 assertEqual(network.headerDetail({ type: 'ethernet', speed: '100' }), '100mbit', 'network keeps ethernet speed in the hero')
+
+// Hotspot status parsing and helpers (omarchy-hotspot status output).
+assertDeepEqual(
+  network.parseHotspotStatus('ap_capable\t1\nap_bands\t2.4,5\nactive\t1\nssid\tMy Net\nclients\t[{"mac":"aa:bb:cc","signal":-42}]\n'),
+  { ap_capable: '1', ap_bands: '2.4,5', active: '1', ssid: 'My Net', clients: '[{"mac":"aa:bb:cc","signal":-42}]' },
+  'network parses hotspot status key/values'
+)
+assertDeepEqual(network.parseHotspotStatus(''), {}, 'network parses empty hotspot status')
+assertDeepEqual(network.hotspotBands({ ap_bands: '2.4,5' }), ['2.4', '5'], 'network lists hotspot ap bands')
+assertDeepEqual(network.hotspotBands({ ap_bands: '2.4' }), ['2.4'], 'network keeps a single hotspot band')
+assertDeepEqual(network.hotspotBands({}), [], 'network reports no hotspot bands when unknown')
+assertEqual(network.hotspotDefaultBand({ ap_bands: '2.4,5', band: '5' }), '5', 'network prefers the profile band when supported')
+assertEqual(network.hotspotDefaultBand({ ap_bands: '2.4,5', band: '6' }), '2.4', 'network falls back to 2.4 when the profile band is unsupported')
+assertEqual(network.hotspotDefaultBand({ ap_bands: '5' }), '5', 'network uses the only available hotspot band')
+assertEqual(network.hotspotDefaultBand({}), '', 'network returns no hotspot band when none exist')
+assertDeepEqual(
+  network.hotspotClients({ clients: '[{"mac":"aa:bb:cc","signal":-42}]' }),
+  [{ mac: 'aa:bb:cc', signal: -42 }],
+  'network parses hotspot clients'
+)
+assertDeepEqual(network.hotspotClients({ clients: 'garbage' }), [], 'network ignores malformed hotspot clients')
+assertEqual(network.hotspotClientLabel({ mac: 'aa:bb:cc', signal: -42 }), 'AA:BB:CC · -42 dBm', 'network labels a hotspot client with signal')
+assertEqual(network.hotspotClientLabel({ mac: 'aa:bb:cc' }), 'AA:BB:CC', 'network labels a hotspot client without signal')
+assertEqual(network.hotspotClientLabel({}), '', 'network labels an empty hotspot client')
+assert(/hotspotPasswordProc\.command = \[hotspotCommand, "generate-password"\]/.test(panelSource), 'network generates the hotspot password through the first-party command')
+assert(!/Model\.generateHotspotPassword/.test(panelSource), 'network does not generate the hotspot password with a JS Math.random')
+
+// The hotspot section in the panel: dynamic AP bands drive the selector, the
+// whole wifi list hides while the AP owns the radio, and the command runs by
+// its first-party name so the script can be exercised from the CLI too.
+assert(/readonly property string hotspotCommand: "omarchy-hotspot"/.test(panelSource), 'network runs the first-party hotspot command')
+assert(/var bands = Model\.hotspotBands\(next\)/.test(panelSource), 'network refreshes the hotspot ap bands from status')
+assert(/hotspotBand = Model\.hotspotDefaultBand\(next\)/.test(panelSource), 'network prefills the hotspot band from status')
+assert(/hotspotActive\) wifiNetworks = \[\]/.test(panelSource), 'network drops the wifi list while the hotspot owns the radio')
+assert(/visible: root\.wifiStationAvailable && !root\.hotspotActive/.test(panelSource), 'network hides the wifi separator while the hotspot is active')
+assert(/function toggleHotspot\(\) \{ root\.toggleHotspot\(\) \}/.test(panelSource), 'network exposes the hotspot toggle over IPC')
+assert(/function openHotspotSetup\(\) \{ root\.openHotspotSetup\(\) \}/.test(panelSource), 'network exposes an IPC opener for the hotspot setup')
+assert(/if \(\(next\.active === "1"\) !== wasActive\) syncWifiNetworks\(\)/.test(panelSource), 'network re-syncs the wifi list when the hotspot active state changes')
+assert(/focusSection === "hotspot"/.test(panelSource), 'network has a keyboard cursor zone for the hotspot section')
+assert(/stderr: StdioCollector \{ id: hotspotErr; waitForEnd: true \}/.test(panelSource), 'network surfaces the hotspot command stderr')
+assert(/omarchy hotspot diagnose` for details/.test(panelSource), 'network points hotspot failures at the diagnose command')
 JS

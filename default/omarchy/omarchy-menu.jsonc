@@ -97,6 +97,7 @@
   "trigger.toggle.workspace-layout": {"icon":"󱂬","label":"Workspace Layout","action":"omarchy-hyprland-workspace-layout-toggle"},
   "trigger.toggle.window-gaps": {"icon":"","label":"Window Gaps","action":"omarchy-hyprland-window-gaps-toggle"},
   "trigger.toggle.one-window-ratio": {"icon":"","label":"1-Window Ratio","action":"omarchy-hyprland-window-single-square-aspect-toggle"},
+  "trigger.toggle.wifi-hotspot": {"icon":"󰯍","label":"Wi-Fi Hotspot","action":"omarchy hotspot toggle"},
   "trigger.tests.network-speedtest": {"icon":"󰓅","label":"Network Speed Test","action":"omarchy-shell shell summon omarchy.speedtest"},
   "trigger.tests.disk-speedtest": {"icon":"󰋊","label":"Disk Speed Test","action":"omarchy-shell shell summon omarchy.disk-speedtest"},
 
@@ -133,6 +134,7 @@
   "setup.network.dns.google": {"icon":"󰊭","label":"Google","checked":"[[ \"$(omarchy-dns)\" == \"Google\" ]]","action":"omarchy-dns Google"},
   "setup.network.dns.custom": {"icon":"","label":"Custom","checked":"[[ \"$(omarchy-dns)\" == \"Custom\" ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-dns Custom'"},
   "setup.network.qr": {"icon":"󰐲","label":"QR Code","aliases":["wifi-qr"],"when":"[[ $(omarchy-network-status) == wifi* ]]","action":"omarchy-shell shell summon omarchy.wifiqr"},
+  "setup.network.hotspot": {"icon":"󰯍","label":"Hotspot","action":"omarchy-shell shell call omarchy.network openHotspotSetup \"{}\""},
   "setup.default": {"icon":"","label":"Defaults","aliases":["default","defaults"]},
   "setup.default.agent": {"icon":"󰚩","label":"Agent","title":"Default Agent"},
   "setup.default.agent.agy": {"icon":"󰫢","label":"Antigravity","checked":"[[ \"$(omarchy-default-agent)\" == \"agy\" ]]","action":"omarchy-default-agent agy"},

@@ -105,6 +105,15 @@ pass "GeForce NOW remover keeps hyphenated canonical route"
 "$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-install-gaming-gpu-lib32" and .route == "omarchy install gaming gpu-lib32" and .filename_route == "omarchy install gaming gpu lib32" and (.routes | index("omarchy install gaming gpu lib32")))' >/dev/null
 pass "GPU lib32 installer keeps hyphenated canonical route"
 
+"$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-hotspot" and .group == "network" and .filename_route == "omarchy hotspot" and (.routes | index("omarchy hotspot")) and (.routes | index("omarchy network")))' >/dev/null
+pass "hotspot routes under its own group and is listed with the network group"
+
+[[ $("$CLI" hotspot status | awk -F'\t' '$1 == "ap_capable" { print $2 }') =~ ^[01]$ ]]
+pass "hotspot status reports a boolean AP capability"
+
+[[ $("$CLI" hotspot generate-password) =~ ^[A-HJ-NP-Za-km-z2-9]{10}$ ]]
+pass "hotspot generate-password emits an unambiguous 10-char secret"
+
 "$CLI" commands --json | jq -e '.commands[] | select(.binary == "omarchy-refresh-pacman" and .requires_sudo == true)' >/dev/null
 pass "sudo metadata marks sudo commands"
 

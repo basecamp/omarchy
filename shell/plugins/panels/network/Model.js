@@ -347,6 +347,63 @@ function shouldRepromptPassphrase(reason, needsCredentials, reasons) {
   return reason === r.NoSecrets || reason === r.WifiAuthTimeout
 }
 
+// --- Hotspot (AP-mode internet sharing) helpers ---
+
+// Parses `omarchy-hotspot status` output: "key\tvalue" lines. Values that may
+// contain tabs (ssid) are preserved; clients arrives as a JSON array string.
+function parseHotspotStatus(raw) {
+  var next = {}
+  var lines = String(raw || "").split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i]
+    if (!line) continue
+    var idx = line.indexOf("\t")
+    if (idx === -1) continue
+    next[line.substring(0, idx)] = line.substring(idx + 1)
+  }
+  return next
+}
+
+// AP bands the adapter reports, e.g. ["2.4"] or ["2.4", "5"]. Derived from
+// `iw phy` band presence, which over-approximates AP support, so this is a
+// best-effort hint; a card that cannot actually serve a reported band just
+// surfaces the real NetworkManager reason when the AP fails.
+function hotspotBands(status) {
+  var raw = (status && status.ap_bands) || ""
+  var bands = String(raw).split(",").map(function(b) { return b.trim() })
+  return bands.filter(function(b) { return b !== "" })
+}
+
+// The band the panel should select: the profile's current band when the card
+// still supports it, else the first supported band (2.4 preferred).
+function hotspotDefaultBand(status) {
+  var bands = hotspotBands(status)
+  if (bands.length === 0) return ""
+  var current = (status && status.band) || ""
+  if (current !== "" && bands.indexOf(current) !== -1) return current
+  if (bands.indexOf("2.4") !== -1) return "2.4"
+  return bands[0]
+}
+
+function hotspotClients(status) {
+  var value = (status && status.clients) || "[]"
+  try {
+    var parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed : []
+  } catch (e) {
+    return []
+  }
+}
+
+function hotspotClientLabel(client) {
+  var c = client || {}
+  var mac = String(c.mac || "").toUpperCase()
+  var signal = parseInt(c.signal, 10)
+  if (!mac) return ""
+  if (isFinite(signal)) return mac + " \u00b7 " + signal + " dBm"
+  return mac
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     parseNetworkStatus: parseNetworkStatus,
@@ -375,6 +432,11 @@ if (typeof module !== "undefined") {
     canForgetNetwork: canForgetNetwork,
     enterpriseConnectScript: enterpriseConnectScript,
     networkFailureReason: networkFailureReason,
-    shouldRepromptPassphrase: shouldRepromptPassphrase
+    shouldRepromptPassphrase: shouldRepromptPassphrase,
+    parseHotspotStatus: parseHotspotStatus,
+    hotspotBands: hotspotBands,
+    hotspotDefaultBand: hotspotDefaultBand,
+    hotspotClients: hotspotClients,
+    hotspotClientLabel: hotspotClientLabel
   }
 }

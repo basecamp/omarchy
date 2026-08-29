@@ -38,6 +38,13 @@ const shellSource = fs.readFileSync(root + '/shell/shell.qml', 'utf8')
 
 assert(/function toggleBarTransparency\(\): string \{[\s\S]*?shell\.bar\.toggleTransparency\(\)/.test(shellSource), 'shell exposes the bar transparency toggle over IPC')
 
+// The shell call verb must reach bar-widget panels (network, etc.), which live
+// in the bar's module slots rather than a panel Loader.
+assert(
+  /isBarWidgetPanelPlugin\(id\)[\s\S]*?shell\.bar\.findPanelWidget\(id\)/.test(shellSource),
+  'shell call reaches bar-widget panels through the bar widget lookup'
+)
+
 // put tolerates a placement target the bar does not carry, so the IPC call
 // must reach the registry's put rather than route back through enable.
 assert(

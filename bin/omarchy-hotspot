@@ -1,0 +1,566 @@
+#!/bin/bash
+
+# omarchy:summary=Share this machine's internet as a Wi-Fi access point (hotspot)
+# omarchy:group=network
+# omarchy:args=<status|start|stop|toggle|qr|apply|setup|teardown|diagnose|generate-password> [ssid] [band]
+# omarchy:examples=omarchy hotspot status | omarchy hotspot toggle | omarchy hotspot apply MyWifi 2.4 | omarchy hotspot diagnose
+
+# Drives NetworkManager's shared-mode AP profile so other devices can join
+# this machine and route through its upstream connection. The NM profile is
+# the single source of truth for the credentials (SSID, band, passphrase);
+# nothing is stored in a sidecar config file, so there is no plaintext secret
+# outside the root-owned profile. `apply` writes the profile without starting
+# the AP; `start` writes it and brings the AP up. `setup` installs the
+# firewall rules a shared connection needs and runs lazily on first start
+# (privileged via sudo/pkexec); `teardown` reverses it.
+
+set -euo pipefail
+
+PROFILE="omarchy-hotspot"
+
+fail() {
+  echo "hotspot: $*" >&2
+  exit 1
+}
+
+self_path() {
+  if [[ -n ${OMARCHY_PATH:-} ]]; then
+    readlink -f "$OMARCHY_PATH/bin/${BASH_SOURCE[0]##*/}"
+  else
+    readlink -f "$0"
+  fi
+}
+
+require_root() {
+  (( EUID == 0 )) && return
+  if [[ -t 0 ]]; then
+    exec sudo "$(self_path)" "$@"
+  else
+    exec pkexec "$(self_path)" "$@"
+  fi
+}
+
+nm_get() {
+  LC_ALL=C nmcli -e no -g "$@" 2>/dev/null || true
+}
+
+nm_band_for() {
+  case "$1" in
+    2.4) echo "bg" ;;
+    5) echo "a" ;;
+    6) echo "6GHz" ;;
+    *) return 1 ;;
+  esac
+}
+
+band_from_nm() {
+  case "$1" in
+    bg) echo "2.4" ;;
+    a) echo "5" ;;
+    6GHz) echo "6" ;;
+    *) echo "2.4" ;;
+  esac
+}
+
+# NetworkManager auto-picks the AP channel and tends to land on 12/13 for
+# 2.4 GHz, which many phones refuse to join - they only support channels
+# 1-11. Pin a safe low channel per band.
+nm_channel_for() {
+  case "$1" in
+    2.4) echo "6" ;;
+    5) echo "36" ;;
+    6) echo "" ;;
+  esac
+}
+
+# Any wireless PHY that can run AP mode at all?
+ap_capable() {
+  iw phy 2>/dev/null | grep -Eq '^[[:space:]]*\*[[:space:]]*AP[[:space:]]*$'
+}
+
+# Bands the radios report, comma-separated ("2.4,5"). `iw phy` only exposes
+# band *presence* (Band 1 = 2.4 GHz, Band 2 = 5 GHz, Band 3 = 6 GHz), not
+# per-band AP support, so this over-approximates; an AP that fails on a
+# reported band surfaces the real NetworkManager reason instead of a silent
+# fallback.
+ap_bands() {
+  iw phy 2>/dev/null | awk '
+    /^[[:space:]]*Band 1:[[:space:]]*$/ { out = emit(out, "2.4") }
+    /^[[:space:]]*Band 2:[[:space:]]*$/ { out = emit(out, "5") }
+    /^[[:space:]]*Band 3:[[:space:]]*$/ { out = emit(out, "6") }
+    function emit(acc, band) {
+      if (seen[band]) return acc
+      seen[band] = 1
+      return acc == "" ? band : acc "," band
+    }
+    END { print out }
+  ' || true
+}
+
+band_supported() {
+  local requested=$1 supported
+  supported=$(ap_bands)
+  [[ -z $supported ]] && return 0
+  case ",$supported," in
+    *",$requested,"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+first_wifi_device() {
+  LC_ALL=C nmcli -t -f DEVICE,TYPE device status 2>/dev/null |
+    awk -F: '$2 == "wifi" && $1 != "p2p-dev-" { print $1; exit }'
+}
+
+profile_configured() {
+  [[ -n $(nm_get NAME connection show 2>/dev/null | grep -x "$PROFILE") ]]
+}
+
+profile_active() {
+  [[ -n $(LC_ALL=C nmcli -t -f NAME connection show --active 2>/dev/null | grep -x "$PROFILE") ]]
+}
+
+# The device the profile runs on when active, else the first wifi device.
+ap_iface() {
+  local dev
+  dev=$(nm_get GENERAL.DEVICE connection show "$PROFILE" 2>/dev/null | head -n 1)
+  if [[ -n $dev && $dev != "--" ]]; then
+    echo "$dev"
+  else
+    first_wifi_device
+  fi
+}
+
+profile_ssid() {
+  nm_get 802-11-wireless.ssid connection show "$PROFILE"
+}
+
+profile_band() {
+  band_from_nm "$(nm_get 802-11-wireless.band connection show "$PROFILE")"
+}
+
+profile_secret() {
+  nmcli --show-secrets --escape no --get-values 802-11-wireless-security.psk \
+    connection show "$PROFILE" 2>/dev/null | head -n 1 || true
+}
+
+upstream_type() {
+  local dev
+  dev=$(ip route get 1.1.1.1 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
+  [[ -n $dev ]] || { echo "none"; return; }
+  if [[ -d /sys/class/net/$dev/wireless ]]; then echo "wifi"
+  elif [[ -d /sys/class/net/$dev/bridge ]]; then echo "bridge"
+  else echo "ethernet"; fi
+}
+
+station_list() {
+  local iface=$1 mac signal
+  local dump block
+  dump=$(iw dev "$iface" station dump 2>/dev/null) || return 0
+  [[ -n $dump ]] || return 0
+  block=$(printf '%s\n' "$dump" | awk '/^Station / { if (seen) print ""; seen=1 } { printf "%s ", $0 }')
+  [[ -n $block ]] || return 0
+  local line first=1
+  while IFS= read -r line; do
+    [[ -n $line ]] || continue
+    mac=$(awk '{ for (i = 1; i <= NF; i++) if ($i == "Station") { print $(i + 1); break } }' <<<"$line")
+    signal=$(awk '{ for (i = 1; i <= NF; i++) if ($i == "signal:") { gsub(/[^0-9-]/, "", $(i + 1)); print $(i + 1); break } }' <<<"$line")
+    [[ -n $mac ]] || continue
+    [[ $first == 1 ]] || printf '\n'
+    first=0
+    printf '%s\t%s' "$mac" "${signal:-0}"
+  done <<<"$block"
+}
+
+status() {
+  local capable=0 active=0 configured=0 iface ssid band password freq ip clients upstream
+  local client_list client_count bands
+
+  if ap_capable; then capable=1; fi
+  if profile_active; then active=1; fi
+  if profile_configured; then configured=1; fi
+
+  iface=""
+  ssid=""
+  band=""
+  password=""
+  freq=""
+  ip=""
+  clients="[]"
+  client_count=0
+  upstream="none"
+  bands=""
+
+  if ((capable)); then
+    iface=$(ap_iface)
+    upstream=$(upstream_type)
+    bands=$(ap_bands)
+    # The profile is the single source of truth; these ride along so the
+    # panel can repopulate its editable fields after a restart.
+    ssid=$(profile_ssid)
+    band=$(profile_band)
+    password=$(profile_secret)
+
+    if ((active)); then
+      freq=$(iw dev "$iface" link 2>/dev/null | awk '/freq:/ { print $2; exit }' || true)
+      ip=$(ip -j addr show dev "$iface" 2>/dev/null |
+        jq -r '.[0].addr_info[]? | select(.family == "inet") | .local' 2>/dev/null | head -n 1 || true)
+      client_list=$(station_list "$iface")
+      if [[ -n $client_list ]]; then
+        client_count=$(printf '%s\n' "$client_list" | grep -c . || true)
+        clients=$(printf '%s\n' "$client_list" |
+          jq -R 'split("\t") as $f | { mac: $f[0], signal: ($f[1] | tonumber? // 0) }' 2>/dev/null |
+          jq -s . 2>/dev/null || echo "[]")
+      fi
+    fi
+  fi
+
+  printf 'ap_capable\t%d\n' "$capable"
+  printf 'ap_bands\t%s\n' "$bands"
+  printf 'active\t%d\n' "$active"
+  printf 'configured\t%d\n' "$configured"
+  printf 'iface\t%s\n' "$iface"
+  printf 'ssid\t%s\n' "$ssid"
+  printf 'band\t%s\n' "$band"
+  printf 'password\t%s\n' "$password"
+  printf 'freq\t%s\n' "$freq"
+  printf 'ip\t%s\n' "$ip"
+  printf 'client_count\t%d\n' "$client_count"
+  printf 'clients\t%s\n' "$clients"
+  printf 'upstream\t%s\n' "$upstream"
+}
+
+firewall_backend() {
+  if omarchy-cmd-present ufw &&
+    { systemctl is-active ufw >/dev/null 2>&1 || [[ -s /etc/ufw/user.rules ]]; }; then
+    echo ufw
+  elif omarchy-cmd-present firewalld && systemctl is-active firewalld >/dev/null 2>&1; then
+    echo firewalld
+  elif omarchy-cmd-present nft && nft list ruleset 2>/dev/null | grep -q '^table'; then
+    echo nftables
+  else
+    echo none
+  fi
+}
+
+# The rules a shared connection needs through ufw: DHCP (udp 67) and the
+# 10.42.0.0/24 subnet for inbound traffic and forwarding. /etc/ufw/user.rules
+# is world-readable, so this works without privileges; an unreadable or absent
+# file means we cannot tell, and we do not nag about it. Returns 0 when all
+# three rules are present.
+firewall_rules_present() {
+  local iface=$1
+  local rules=/etc/ufw/user.rules
+  [[ -r $rules ]] || return 0
+  local present=1
+  grep -q -- "-A ufw-user-input -i $iface -p udp --dport 67 -j ACCEPT" "$rules" || present=0
+  grep -q -- "-A ufw-user-input -i $iface -s 10.42.0.0/24 -j ACCEPT" "$rules" || present=0
+  grep -q -- "-A ufw-user-forward -i $iface -s 10.42.0.0/24 -j ACCEPT" "$rules" || present=0
+  return $((!present))
+}
+
+# Idempotent: adds only the rules that are not already present.
+firewall_apply() {
+  local iface=$1
+  (( EUID == 0 )) || fail "firewall rules need root"
+  [[ -n $iface ]] || fail "no Wi-Fi interface to scope firewall rules to"
+  local rules=/etc/ufw/user.rules
+  local added=0
+  if [[ ! -r $rules ]] || ! grep -q -- "-A ufw-user-input -i $iface -p udp --dport 67 -j ACCEPT" "$rules"; then
+    ufw allow in on "$iface" proto udp to any port 67 >/dev/null
+    added=1
+  fi
+  if [[ ! -r $rules ]] || ! grep -q -- "-A ufw-user-input -i $iface -s 10.42.0.0/24 -j ACCEPT" "$rules"; then
+    ufw allow in on "$iface" from 10.42.0.0/24 >/dev/null
+    added=1
+  fi
+  if [[ ! -r $rules ]] || ! grep -q -- "-A ufw-user-forward -i $iface -s 10.42.0.0/24 -j ACCEPT" "$rules"; then
+    ufw route allow in on "$iface" from 10.42.0.0/24 >/dev/null
+    added=1
+  fi
+  if (( !added )); then
+    echo "hotspot: firewall rules already present for $iface"
+  fi
+}
+
+firewall_remove() {
+  local iface=$1
+  (( EUID == 0 )) || fail "firewall rules need root"
+  [[ -n $iface ]] || fail "no Wi-Fi interface to scope firewall rules to"
+  ufw delete allow in on "$iface" proto udp to any port 67 >/dev/null 2>&1 || true
+  ufw delete allow in on "$iface" from 10.42.0.0/24 >/dev/null 2>&1 || true
+  ufw delete route allow in on "$iface" from 10.42.0.0/24 >/dev/null 2>&1 || true
+}
+
+# One-time plumbing for the shared connection, run lazily from `start` and
+# re-runnable (idempotent). Privileged: prefers sudo in a terminal, pkexec
+# from a graphical caller with no terminal to type into.
+firewall_ensure() {
+  [[ $(firewall_backend) == "ufw" ]] || return 0
+  local iface
+  iface=$(ap_iface)
+  [[ -n $iface ]] || return 0
+  if ! firewall_rules_present "$iface"; then
+    if (( EUID == 0 )); then
+      firewall_apply "$iface"
+    elif [[ -t 0 ]]; then
+      sudo "$(self_path)" firewall-apply "$iface"
+    else
+      pkexec "$(self_path)" firewall-apply "$iface"
+    fi
+  fi
+}
+
+# A freshly-generated hotspot passphrase: unambiguously typable (no O/0, I/l,
+# 1) and drawn from /dev/urandom, since a WPA2 pre-shared key is the hotspot's
+# only gate and Math.random() would be predictable.
+generate_password() {
+  tr -dc 'A-HJ-NP-Za-km-z2-9' </dev/urandom | head -c 10 || true
+  echo
+}
+
+# Password arrives on stdin (never argv). band is optional, default 2.4.
+start() {
+  local ssid=$1 band=${2:-2.4} password
+  local device nm_band nm_channel
+
+  ap_capable || fail "no Wi-Fi adapter supports AP mode"
+  band_supported "$band" || fail "band '$band' is not available on this adapter"
+  device=$(first_wifi_device)
+  [[ -n $device ]] || fail "no Wi-Fi device found"
+
+  IFS= read -r password || true
+  [[ -n $ssid ]] || fail "SSID required"
+  [[ ${#password} -ge 8 && ${#password} -le 63 ]] ||
+    fail "password must be 8-63 characters"
+  nm_band=$(nm_band_for "$band") || fail "unknown band '$band' (use 2.4, 5 or 6)"
+  nm_channel=$(nm_channel_for "$band")
+  if omarchy-cmd-missing dnsmasq; then
+    fail "dnsmasq is missing; run 'omarchy migrate' to install the hotspot dependency"
+  fi
+
+  firewall_ensure
+
+  if profile_configured; then
+    nmcli connection modify "$PROFILE" ssid "$ssid" 802-11-wireless.band "$nm_band" \
+      wifi-sec.psk "$password" >/dev/null 2>&1 || {
+      printf 'set wifi-sec.psk %s\nsave\nquit\n' "$password" |
+        nmcli connection edit "$PROFILE" >/dev/null 2>&1 ||
+        fail "could not update hotspot profile"
+    }
+  else
+    # Create the profile without a secret, then write the passphrase through
+    # the scriptable editor so it never shows up in /proc.
+    nmcli connection add type wifi ifname "$device" con-name "$PROFILE" ssid "$ssid" \
+      mode ap 802-11-wireless.band "$nm_band" wifi-sec.key-mgmt wpa-psk \
+      ipv4.method shared autoconnect no >/dev/null ||
+      fail "could not create hotspot profile"
+    printf 'set wifi-sec.psk %s\nsave\nquit\n' "$password" |
+      nmcli connection edit "$PROFILE" >/dev/null 2>&1 ||
+      fail "could not set hotspot password"
+  fi
+
+  if [[ -n $nm_channel ]]; then
+    nmcli connection modify "$PROFILE" 802-11-wireless.channel "$nm_channel" >/dev/null 2>&1
+  fi
+
+  if ! nmcli connection up "$PROFILE" >/dev/null 2>&1; then
+    fail "could not start hotspot (does this adapter allow AP mode on band '$band'?)"
+  fi
+}
+
+stop() {
+  if profile_active; then
+    nmcli connection down "$PROFILE" >/dev/null 2>&1 || true
+  fi
+}
+
+# Flip the current state. When nothing has been configured yet, hand over to
+# the network panel instead of inventing credentials.
+toggle() {
+  if profile_active; then
+    stop
+  elif profile_configured; then
+    local ssid band password
+    ssid=$(profile_ssid)
+    band=$(profile_band)
+    password=$(profile_secret)
+    [[ -n $ssid ]] || fail "no hotspot SSID configured"
+    [[ -n $password ]] || fail "no saved hotspot password"
+    printf '%s\n' "$password" | start "$ssid" "$band"
+  else
+    omarchy-shell shell summon omarchy.network 2>/dev/null || true
+  fi
+}
+
+qr() {
+  local ssid password iface security payload ascii
+  iface=$(ap_iface)
+  ssid=$(profile_ssid)
+  password=$(profile_secret)
+  [[ -n $ssid ]] || fail "no hotspot configured"
+  [[ -n $password ]] || fail "no hotspot password"
+
+  escape() {
+    local value=$1
+    value=${value//\\/\\\\}
+    value=${value//;/\\;}
+    value=${value//,/\\,}
+    value=${value//:/\\:}
+    printf '%s' "$value"
+  }
+
+  security=WPA
+  payload="WIFI:T:$security;S:$(escape "$ssid");P:$(escape "$password");;"
+
+  printf 'meta\t%s\t%s\t%s\n' "$iface" "$security" "$ssid"
+  ascii=$(printf '%s' "$payload" | qrencode --type ASCII --margin 4 --output -)
+  while IFS= read -r line; do
+    row=
+    for ((column = 0; column < ${#line}; column += 2)); do
+      [[ ${line:column:2} == *#* ]] && row+=1 || row+=0
+    done
+    printf '%s\n' "$row"
+  done <<<"$ascii"
+}
+
+# Persist credentials to the NetworkManager profile without starting the AP.
+# Password arrives on stdin, exactly like start(). Edits survive shell
+# restarts even when the user never turns the hotspot on. `apply` is
+# idempotent: it creates the profile on first use, then updates it.
+apply() {
+  local ssid=$1 band=${2:-2.4} password device nm_band nm_channel
+
+  ap_capable || fail "no Wi-Fi adapter supports AP mode"
+  band_supported "$band" || fail "band '$band' is not available on this adapter"
+  device=$(first_wifi_device)
+  [[ -n $device ]] || fail "no Wi-Fi device found"
+
+  IFS= read -r password || true
+  [[ -n $ssid ]] || fail "SSID required"
+  [[ ${#password} -ge 8 && ${#password} -le 63 ]] ||
+    fail "password must be 8-63 characters"
+  nm_band=$(nm_band_for "$band") || fail "unknown band '$band' (use 2.4, 5 or 6)"
+  nm_channel=$(nm_channel_for "$band")
+
+  if profile_configured; then
+    # SSID/band ride argv (not secret); the passphrase goes through the
+    # scriptable editor so it never shows up in /proc.
+    nmcli connection modify "$PROFILE" ssid "$ssid" 802-11-wireless.band "$nm_band" \
+      >/dev/null 2>&1 ||
+      fail "could not apply hotspot settings"
+    printf 'set wifi-sec.psk %s\nsave\nquit\n' "$password" |
+      nmcli connection edit "$PROFILE" >/dev/null 2>&1 ||
+      fail "could not apply hotspot password"
+  else
+    nmcli connection add type wifi ifname "$device" con-name "$PROFILE" ssid "$ssid" \
+      mode ap 802-11-wireless.band "$nm_band" wifi-sec.key-mgmt wpa-psk \
+      ipv4.method shared autoconnect no >/dev/null ||
+      fail "could not create hotspot profile"
+    printf 'set wifi-sec.psk %s\nsave\nquit\n' "$password" |
+      nmcli connection edit "$PROFILE" >/dev/null 2>&1 ||
+      fail "could not set hotspot password"
+  fi
+
+  if [[ -n $nm_channel ]]; then
+    nmcli connection modify "$PROFILE" 802-11-wireless.channel "$nm_channel" >/dev/null 2>&1
+  fi
+}
+
+# Reversible counterpart to setup: drop the firewall rules (and the AP if it
+# is up). Privileged via sudo/pkexec.
+teardown() {
+  require_root teardown
+  stop
+  local backend iface
+  backend=$(firewall_backend)
+  iface=$(ap_iface)
+  case $backend in
+    ufw) firewall_remove "$iface" ;;
+    firewalld | nftables)
+      echo "hotspot: $backend detected; remove the forwarding/DHCP rules for $iface manually" >&2
+      ;;
+    none) echo "hotspot: no active firewall found; nothing to remove" >&2 ;;
+  esac
+}
+
+# One-time setup: ensure the firewall rules a shared connection needs and
+# report dependency readiness. Privileged via sudo/pkexec.
+setup() {
+  require_root setup
+  local backend iface
+  backend=$(firewall_backend)
+  iface=$(ap_iface)
+  case $backend in
+    ufw)
+      firewall_apply "$iface"
+      echo "hotspot: firewall rules installed for $iface"
+      ;;
+    firewalld | nftables)
+      echo "hotspot: $backend detected; add rules to allow DHCP (udp 67) and forward 10.42.0.0/24 on $iface manually" >&2
+      ;;
+    none)
+      echo "hotspot: no active firewall found; nothing to configure"
+      ;;
+  esac
+  if omarchy-cmd-present dnsmasq; then
+    echo "hotspot: dnsmasq present (NetworkManager shared connections)"
+  else
+    echo "hotspot: dnsmasq missing - run 'omarchy migrate' to install the hotspot dependency" >&2
+  fi
+}
+
+diagnose() {
+  echo "== hotspot diagnose =="
+  echo "kernel: $(uname -r)"
+  echo "nmcli: $(nmcli --version 2>/dev/null || echo missing)"
+  printf 'iw: %s\n' "$(iw --version 2>/dev/null || echo missing)"
+  printf 'jq: %s\n' "$(jq --version 2>/dev/null || echo missing)"
+  printf 'qrencode: %s\n' "$(qrencode --version 2>/dev/null || echo missing)"
+  if omarchy-cmd-present dnsmasq; then
+    echo "dnsmasq: present"
+  else
+    echo "dnsmasq: missing"
+  fi
+  echo "firewall: $(firewall_backend)"
+  if ap_capable; then
+    echo "ap capable: yes"
+  else
+    echo "ap capable: no"
+  fi
+  echo "ap bands: $(ap_bands)"
+  echo "wifi devices: $(first_wifi_device)"
+  if profile_configured; then
+    echo "profile: configured / $(profile_active && echo active || echo inactive)"
+    echo "profile iface: $(ap_iface)"
+    echo "profile ssid: $(profile_ssid)"
+    echo "profile band: $(profile_band)"
+  else
+    echo "profile: absent"
+  fi
+  if profile_active; then
+    echo "ap freq: $(iw dev "$(ap_iface)" link 2>/dev/null | awk '/freq:/ { print $2; exit }')"
+  fi
+  echo "upstream: $(upstream_type)"
+  echo "valid interface combinations:"
+  iw phy 2>/dev/null | awk '/valid interface combinations/ { in_block = 1 } in_block && /^[[:space:]]*\*/ { print } in_block && !/^[[:space:]]*\*/ && !/valid interface combinations/ { exit }'
+}
+
+usage() {
+  echo "Usage: omarchy-hotspot <status|start|stop|toggle|qr|apply|setup|teardown|diagnose|generate-password> [ssid] [band]" >&2
+}
+
+case "${1:-}" in
+  status) status ;;
+  start) shift; start "$@" ;;
+  stop) stop ;;
+  toggle) toggle ;;
+  qr) qr ;;
+  apply) shift; apply "$@" ;;
+  setup) setup ;;
+  teardown) teardown ;;
+  firewall-apply) shift; firewall_apply "$1" ;;
+  diagnose) diagnose ;;
+  generate-password) generate_password ;;
+  *) usage; exit 2 ;;
+esac
