@@ -652,6 +652,7 @@ Panel {
                   width: modelData.share * Math.max(0, wattsSegmentRow.width - root.splitGapBudget)
                   height: parent.height
                   color: root.segmentColor(modelData)
+                  opacity: root.segmentInk(modelData)
                 }
               }
             }
