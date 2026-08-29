@@ -45,6 +45,10 @@ if [[ ${1:-} == "-y" ]] || omarchy-update-confirm; then
   # them, so everything below waits on this finishing. An upgrade that stopped
   # takes the update with it rather than migrating against what is still on disk.
   omarchy-update-system-pkgs
+
+  # omarchy-settings owns the generated Plymouth and SDDM files, so restore a
+  # remembered unlock theme after pacman may have replaced them.
+  omarchy-plymouth-restore
   omarchy-migrate
   omarchy-hook post-update
   omarchy-update-aur-pkgs
