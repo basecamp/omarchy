@@ -613,7 +613,11 @@ scan_file() {
       1. quote the delimiter (<<'$delim') so nothing expands at install time;
       2. hardcode an absolute root-owned path instead of expanding one;
       3. if the expansion is genuinely required, declare it above the heredoc:
-         # omarchy:heredoc-expands paths=$shown_paths -- <why this is safe>")
+           # omarchy:heredoc-expands paths=<expansions used as paths, or none> -- <why this is safe>
+         Decide that list yourself. The scan's own reading of it is above, and
+         where the scan is most likely wrong is exactly here -- a path it could
+         not follow reads as an ordinary value -- so pasting its verdict back
+         signs off on the case worth checking by hand.")
         continue
       fi
 
@@ -623,9 +627,9 @@ scan_file() {
     Every expansion used as a path outside a root-owned prefix has to be named,
     so adding one to an already-annotated heredoc trips this check again instead
     of inheriting the old exemption.
-    Fix: drop the path expansion (hardcode an absolute root-owned path), or
-    correct the declaration:
-      # omarchy:heredoc-expands paths=$shown_paths -- <why root using this path is safe>")
+    Fix: drop the path expansion (hardcode an absolute root-owned path), or name
+    every path-shaped expansion in the declaration and say why root using it is
+    safe.")
       fi
     done
   done
