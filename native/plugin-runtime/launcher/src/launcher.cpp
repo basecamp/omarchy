@@ -3,6 +3,8 @@
 
 #include "omarchy/plugin/wire/envelope.hpp"
 
+#include <QCryptographicHash>
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -143,6 +145,50 @@ milliseconds_remaining(std::chrono::steady_clock::time_point deadline) {
       (metadata.st_mode & (S_IWGRP | S_IWOTH | S_ISUID | S_ISGID)) != 0 ||
       (require_root_owner && metadata.st_uid != 0)) {
     error = "trusted executable metadata is unsafe";
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] bool trusted_live_lab_worker(std::string_view path,
+                                           std::string_view expected_sha256,
+                                           std::string &error) {
+  if (!canonical_digest(expected_sha256)) {
+    error = "live-lab worker digest is not canonical";
+    return false;
+  }
+  const std::filesystem::path candidate(path);
+  const std::filesystem::path lab_root("/opt/omarchy-plugin-security-lab");
+  const auto relative = candidate.lexically_relative(lab_root);
+  const auto expected = std::filesystem::path(expected_sha256) /
+      "usr/lib/omarchy/plugin-runtime/omarchy-plugin-qml-worker";
+  if (!candidate.is_absolute() || candidate.lexically_normal() != candidate ||
+      relative.empty() || relative.native().starts_with("..") ||
+      relative != expected) {
+    error = "live-lab worker is outside its digest-named /opt root";
+    return false;
+  }
+  std::filesystem::path component("/");
+  for (const auto &part : candidate.relative_path()) {
+    component /= part;
+    struct stat metadata {};
+    if (lstat(component.c_str(), &metadata) < 0 || S_ISLNK(metadata.st_mode) ||
+        metadata.st_uid != 0 ||
+        (metadata.st_mode & (S_IWGRP | S_IWOTH)) != 0) {
+      error = "live-lab worker path metadata is unsafe";
+      return false;
+    }
+  }
+  if (!trusted_executable(path, true, error)) return false;
+  QFile file(QString::fromStdString(candidate.string()));
+  if (!file.open(QIODevice::ReadOnly)) {
+    error = "live-lab worker cannot be hashed";
+    return false;
+  }
+  QCryptographicHash hash(QCryptographicHash::Sha256);
+  if (!hash.addData(&file) ||
+      hash.result().toHex().toStdString() != expected_sha256) {
+    error = "live-lab worker digest mismatch";
     return false;
   }
   return true;
@@ -1069,6 +1115,8 @@ struct Supervisor::Impl {
   std::string worker_path;
   std::shared_ptr<ResourceScopeController> resource_scope;
   bool production = true;
+  bool root_owned_live_lab = false;
+  std::string worker_sha256;
 };
 
 Supervisor::Supervisor(std::unique_ptr<Impl> implementation)
@@ -1081,6 +1129,16 @@ Supervisor Supervisor::production() {
   return Supervisor(std::make_unique<Impl>(
       std::string(kProductionBwrap), std::string(kProductionWorker),
       make_systemd_resource_scope_controller(), true));
+}
+
+Supervisor Supervisor::forRootOwnedLiveLabOnly(std::string worker_path,
+                                               std::string worker_sha256) {
+  auto implementation = std::make_unique<Impl>(
+      std::string(kProductionBwrap), std::move(worker_path),
+      make_systemd_resource_scope_controller(), false);
+  implementation->root_owned_live_lab = true;
+  implementation->worker_sha256 = std::move(worker_sha256);
+  return Supervisor(std::move(implementation));
 }
 
 Supervisor Supervisor::forTestOnly(
@@ -1102,10 +1160,15 @@ bool Supervisor::prerequisites(std::string &error) const {
     error = "production executable selection changed";
     return false;
   }
-  if (!trusted_executable(implementation_->bwrap_path,
-                          implementation_->production, error) ||
-      !trusted_executable(implementation_->worker_path,
-                          implementation_->production, error) ||
+  if (!trusted_executable(
+          implementation_->bwrap_path,
+          implementation_->production || implementation_->root_owned_live_lab,
+          error) ||
+      (implementation_->root_owned_live_lab
+           ? !trusted_live_lab_worker(implementation_->worker_path,
+                                      implementation_->worker_sha256, error)
+           : !trusted_executable(implementation_->worker_path,
+                                 implementation_->production, error)) ||
       !kernel_prerequisites(error) ||
       !implementation_->resource_scope->probe(error)) {
     return false;

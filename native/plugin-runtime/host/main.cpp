@@ -201,7 +201,8 @@ int preview(const QStringList &arguments, QGuiApplication &application,
     qCritical() << "omarchy-plugin-host: schema-v2 preview feature is disabled";
     return 77;
   }
-  if (arguments.size() != 7)
+  const qsizetype expected_arguments = live_lab ? 9 : 7;
+  if (arguments.size() != expected_arguments)
     return usage_error(arguments.value(1));
   const std::filesystem::path plugin_root(arguments.at(2).toStdString());
   QFile manifest_file(QString::fromStdString((plugin_root / "manifest.json").string()));
@@ -236,7 +237,10 @@ int preview(const QStringList &arguments, QGuiApplication &application,
   struct Fd { int value; ~Fd() { close(value); } } owned_state{state_fd};
   audit::AuditStore audit_store(arguments.at(6).toStdString(), {});
   health::HealthSupervisor health_supervisor({}, audit_store);
-  auto supervisor = launcher::Supervisor::production();
+  auto supervisor = live_lab
+      ? launcher::Supervisor::forRootOwnedLiveLabOnly(
+            arguments.at(7).toStdString(), arguments.at(8).toStdString())
+      : launcher::Supervisor::production();
   std::unique_ptr<providers::PrivateStorageBackend> storage;
   std::unique_ptr<DesktopEffects> effects;
   std::unique_ptr<runtime::AuditedBrokerRuntime> broker_runtime;
