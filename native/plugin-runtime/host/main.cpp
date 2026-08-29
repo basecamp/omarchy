@@ -868,6 +868,7 @@ int preview(const QStringList &arguments, QGuiApplication &application,
     QByteArray hash;
   };
   std::vector<FrameEvidence> frame_hashes;
+  std::vector<std::uint64_t> post_mutation_surface_frames;
   std::uint64_t render_packets = 0;
   std::uint64_t post_mutation_frames = 0;
   std::uint64_t post_call_frames = 0;
@@ -990,6 +991,15 @@ int preview(const QStringList &arguments, QGuiApplication &application,
         const auto bytes = QByteArrayView(
             reinterpret_cast<const char *>(image.constBits()), image.sizeInBytes());
         const auto hash = QCryptographicHash::hash(bytes, QCryptographicHash::Sha256);
+        if (observed_grant_mutation > startup_grant_mutation &&
+            std::ranges::find(post_mutation_surface_frames,
+                              target_surface_id) ==
+                post_mutation_surface_frames.end()) {
+          post_mutation_surface_frames.push_back(target_surface_id);
+          std::cerr << "PRODUCT_E2E post_mutation_surface " << target->name
+                    << ' ' << target_surface_id << " hash "
+                    << hash.toHex().constData() << '\n';
+        }
         const auto evidence = std::ranges::find_if(
             frame_hashes, [&](const auto &frame) {
               return frame.surface_id == target_surface_id &&

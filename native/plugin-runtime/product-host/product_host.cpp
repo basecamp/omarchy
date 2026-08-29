@@ -16,6 +16,8 @@
 namespace omarchy::plugin_runtime::product_host {
 namespace {
 
+namespace definitions = omarchy::plugins::definitions;
+
 bool same_binding(const permissions::ActivationBinding &left,
                   const permissions::ActivationBinding &right) {
   return left.plugin == right.plugin && left.revision == right.revision &&
@@ -168,13 +170,24 @@ PrepareResult prepare(const std::filesystem::path &plugin_root,
     else if (operations.empty() && request.capability == "service.fake-status")
       operations = {"list", "acknowledge"};
     const auto *grant = find_grant_by_id(active_grants, request.capability);
-    const bool granted = grant != nullptr &&
-                         grant->state == permissions::GrantState::granted;
+    const auto dynamic = std::ranges::find_if(
+        active_grants.dynamic_grants, [&](const auto &candidate) {
+          return candidate.request.definition.canonical_name.view() ==
+                 request.capability;
+        });
+    const bool dynamic_request = request.definition_generation != 0;
+    const bool granted = dynamic_request
+        ? dynamic != active_grants.dynamic_grants.end() &&
+              dynamic->grant.state == permissions::GrantState::granted
+        : grant != nullptr &&
+              grant->state == permissions::GrantState::granted;
     for (const auto &operation : operations) {
-      const bool operation_granted =
-          granted && (request.operations.empty() ||
-                      std::ranges::find(request.operations, operation) !=
-                          request.operations.end());
+      const bool operation_granted = granted &&
+          (dynamic_request
+               ? dynamic->grant.operations.contains(definitions::Name(operation))
+               : request.operations.empty() ||
+                     std::ranges::find(request.operations, operation) !=
+                         request.operations.end());
       availability.push_back({request.capability, operation,
                               operation_granted});
     }
