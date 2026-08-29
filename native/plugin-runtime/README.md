@@ -6,6 +6,8 @@ The installed host remains dormant unless an operator invokes its explicit `--pr
 
 Schema v2 is therefore off for ordinary users even though its reference implementation and explicit preview are built and tested. Discovery and revision APIs default their feature state to disabled, the native permission inspector and preview additionally require trusted rollout state through `OMARCHY_PLUGIN_SCHEMA_V2_ENABLED=1`, and the existing schema-v1 commands remain explicitly unsafe compatibility behavior. The reference inspector and preview are not exposed through the end-user `omarchy` command router, and the packaged user unit remains disabled until a later product rollout.
 
+An additional `--preview-plugin-live-lab` command has the same arguments and also requires `OMARCHY_PLUGIN_LIVE_LAB_ENABLED=I_ACCEPT_LAB_RISK`. It is intended only for a disposable validation account or VM with a separately created grant, state, and audit root. Unlike the ordinary preview, it runs an audited broker for compiled private-storage, desktop-notification, and packaged-audio operations. It executes the fixed Omarchy notification helper and `pw-play` without a shell; notification text is passed only as argv data and audio assets resolve only below the verified plugin revision's `sounds/` directory. The ordinary preview continues to instantiate `DenyAllBroker`, and neither command is automatic installation or activation.
+
 Each contract has an `OMARCHY_BUILD_<NAME>_CONTRACT` CMake option that defaults on. Turning one off is for isolated contract development; dependent production targets are then omitted rather than treated as a secure partial runtime.
 
 Build and test locally:
