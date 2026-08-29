@@ -4,6 +4,7 @@
 #include "omarchy/plugin_runtime/providers/radio_provider.hpp"
 
 #include <fstream>
+#include <array>
 #include <iterator>
 #include <ranges>
 #include <stdexcept>
@@ -20,10 +21,12 @@ namespace providers = omarchy::plugin_runtime::providers;
 namespace {
 bool available(std::string_view name, const definitions::Digest &digest,
                std::uint32_t abi, void *opaque) noexcept {
-  const auto &adapter = *static_cast<const definitions::DynamicAdapter *>(opaque);
-  return adapter.binding.adapter_class.view() == name &&
-         adapter.binding.implementation_digest == digest &&
-         adapter.binding.abi_version == abi;
+  const auto &adapters = *static_cast<const std::array<definitions::DynamicAdapter, 2> *>(opaque);
+  return std::ranges::any_of(adapters, [&](const auto &adapter) {
+    return adapter.binding.adapter_class.view() == name &&
+           adapter.binding.implementation_digest == digest &&
+           adapter.binding.abi_version == abi;
+  });
 }
 definitions::DynamicScopeRelation exact(const definitions::CapabilityDefinition &,
                                         std::string_view left,
@@ -55,18 +58,19 @@ int main(int argc, char **argv) try {
   const auto parsed = manifest::parse_manifest_v2(document);
   providers::RadioProvider provider({.binding = {}, .fetch_epoch = 0,
                                      .media_epoch = 0, .https = {}, .media = {}});
-  auto adapter = provider.fetch_adapter();
+  std::array adapters{provider.fetch_adapter(), provider.media_adapter()};
   definitions::TrustedDefinitionRegistry registry;
   std::size_t loaded = 0;
   const definitions::AdapterVerifier verifier{.available = available,
-                                                .context = &adapter};
+                                                .context = &adapters};
   if (definitions::load_definition_directory(
           argv[6], definitions::DefinitionSource::omarchy_package,
           static_cast<std::uint32_t>(getuid()), verifier, registry, loaded) !=
-          definitions::LoadResult::loaded || loaded != 1)
+          definitions::LoadResult::loaded || loaded == 0 || loaded > adapters.size())
     return 65;
   std::vector<definitions::DynamicRevisionGrant> dynamic;
   for (const auto &item : parsed.requests) {
+    if (item.definition_generation == 0) continue;
     const auto request = definitions::dynamic_request_from_manifest(item, registry);
     if (!request) return 66;
     definitions::DynamicRevisionGrant record{
@@ -84,6 +88,7 @@ int main(int argc, char **argv) try {
             registry, record, {.compare = exact})) return 67;
     dynamic.push_back(std::move(record));
   }
+  if (dynamic.empty()) return 66;
   permissions::RequestSet compiled;
   auto bundle = grants::make_bundle(2, permissions::PluginId(argv[2]),
       permissions::Digest(argv[3]), permissions::Digest(argv[4]), 1,
