@@ -434,16 +434,20 @@ Panel {
 
   // Bar pill state, derived from the native NetworkManager service so the
   // icon reflects connection changes without polling. Wired is preferred
-  // when both are up, matching the default-route device.
+  // when both are up, matching the default-route device. Some NetworkManager
+  // backends report the Wi-Fi device as connected before exposing the current
+  // access point in the scan list, so keep the bar online from device state.
   readonly property var wiredDevice: findDevice(DeviceType.Wired)
-  readonly property string kind: {
-    if (wiredDevice && wiredDevice.connected) return "ethernet"
-    if (connectedWifiNetwork) return "wifi"
-    return "disconnected"
-  }
-  readonly property int signalStrength: connectedWifiNetwork
-    ? Math.round((connectedWifiNetwork.signalStrength || 0) * 100)
-    : -1
+  readonly property bool wifiConnected: !!connectedWifiNetwork || !!(wifiDevice && wifiDevice.connected)
+  readonly property string kind: Model.connectionKind(
+    !!(wiredDevice && wiredDevice.connected),
+    !!connectedWifiNetwork,
+    !!(wifiDevice && wifiDevice.connected)
+  )
+  readonly property int signalStrength: Model.connectionSignalStrength(
+    connectedWifiNetwork ? connectedWifiNetwork.signalStrength : null,
+    wifiConnected
+  )
 
   function copyToClipboard(value) {
     if (!value || !root.bar) return
