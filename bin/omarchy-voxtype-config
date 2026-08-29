@@ -4,5 +4,5 @@
 
 set -e
 
-omarchy-launch-floating-terminal-with-presentation "voxtype configure"
+omarchy-launch-floating-terminal-with-presentation voxtype configure
 omarchy-restart-shell
