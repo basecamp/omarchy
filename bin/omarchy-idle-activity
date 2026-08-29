@@ -1,0 +1,235 @@
+#!/usr/bin/python3
+
+# omarchy:summary=Report activity the compositor cannot see, for the idle service
+# omarchy:args=[--no-gamepad] [--no-audio] [--gamepad-grace <seconds>] [--once]
+# omarchy:hidden=true
+
+"""Report the activity Hyprland's idle timer cannot observe for itself.
+
+The idle service asks the compositor when the user went idle, which covers
+keyboards, mice, and touchpads. Two things it cannot cover:
+
+  * Gamepads. libinput classifies joystick devices as unhandled and never
+    reports them as seats' pointer or keyboard input, so ext-idle-notify keeps
+    counting up through an entire play session on a controller. Reading the
+    evdev nodes directly is the only way to see that input.
+
+  * Media playback. Staying awake through a film relies on the player holding
+    a Wayland idle inhibitor. Players that do are fine; XWayland clients cannot
+    hold one at all, and the org.freedesktop.ScreenSaver D-Bus API that many
+    reach for instead has no owner on an Omarchy session, so those requests
+    fail silently. An uncorked sink input is the reliable evidence that sound
+    is actually being produced.
+
+Python rather than bash because both signals need work bash cannot do: evdev
+delivers fixed-width binary structs on several descriptors at once, which needs
+struct unpacking behind select().
+
+Prints ACTIVE or IDLE on every state change, plus a periodic heartbeat so a
+reader that missed a line resynchronises without restarting the probe.
+"""
+
+import argparse
+import os
+import select
+import struct
+import subprocess
+import sys
+import time
+
+# struct input_event: struct timeval, __u16 type, __u16 code, __s32 value
+EVENT = struct.Struct("llHHi")
+EV_KEY = 0x01
+EV_ABS = 0x03
+
+# Analogue sticks rest a few hundred units off centre and wander there, so only
+# a deliberate push counts. Hats report -1/0/1 and need every change.
+STICK_DEADZONE = 3000
+ABS_HAT_FIRST = 0x10
+ABS_HAT_LAST = 0x17
+
+DEVICE_SCAN_INTERVAL = 5.0
+AUDIO_POLL_INTERVAL = 5.0
+HEARTBEAT_INTERVAL = 15.0
+DEFAULT_GAMEPAD_GRACE = 120.0
+
+
+def parse_gamepad_nodes(devices):
+    """Event nodes whose device also carries a js* handler, marking a joystick.
+
+    A pad presents several nodes -- the Xbox pads also expose a keyboard, a
+    mouse, and a consumer-control node, and libinput does handle those. Only the
+    node sharing a line with js* is the stick-and-button device it ignores.
+    """
+    nodes = set()
+
+    for line in devices.splitlines():
+        if not line.startswith("H: Handlers="):
+            continue
+
+        handlers = line.split("=", 1)[1].split()
+        if not any(handler.startswith("js") for handler in handlers):
+            continue
+
+        for handler in handlers:
+            if handler.startswith("event"):
+                nodes.add("/dev/input/" + handler)
+
+    return nodes
+
+
+def gamepad_event_nodes():
+    try:
+        with open("/proc/bus/input/devices") as devices:
+            return parse_gamepad_nodes(devices.read())
+    except OSError:
+        return set()
+
+
+class Gamepads:
+    """Open evdev nodes for every attached pad, and report deliberate input."""
+
+    def __init__(self):
+        self.descriptors = {}
+        self.axes = {}
+
+    def rescan(self):
+        wanted = gamepad_event_nodes()
+
+        for path in list(self.descriptors):
+            if path not in wanted:
+                self.forget(path)
+
+        for path in wanted - set(self.descriptors):
+            try:
+                self.descriptors[path] = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+            except OSError:
+                pass  # unplugged mid-scan, or the user is not in the input group
+
+    def forget(self, path):
+        descriptor = self.descriptors.pop(path, None)
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+        for key in [key for key in self.axes if key[0] == path]:
+            del self.axes[key]
+
+    def moved(self, path, code, value):
+        key = (path, code)
+        previous = self.axes.get(key)
+        self.axes[key] = value
+
+        # The first sample only establishes where this axis rests.
+        if previous is None:
+            return False
+        if ABS_HAT_FIRST <= code <= ABS_HAT_LAST:
+            return value != previous
+        return abs(value - previous) > STICK_DEADZONE
+
+    def poll(self, timeout):
+        if not self.descriptors:
+            time.sleep(timeout)
+            return False
+
+        paths = {descriptor: path for path, descriptor in self.descriptors.items()}
+        try:
+            readable, _, _ = select.select(list(paths), [], [], timeout)
+        except (OSError, ValueError):
+            return False
+
+        active = False
+        for descriptor in readable:
+            path = paths[descriptor]
+            try:
+                data = os.read(descriptor, EVENT.size * 64)
+            except OSError:
+                self.forget(path)
+                continue
+
+            for offset in range(0, len(data) - EVENT.size + 1, EVENT.size):
+                _, _, kind, code, value = EVENT.unpack_from(data, offset)
+                if kind == EV_KEY:
+                    active = True
+                elif kind == EV_ABS and self.moved(path, code, value):
+                    active = True
+
+        return active
+
+
+def audio_playing():
+    """True while any sink input is uncorked, meaning sound is being produced."""
+    try:
+        listing = subprocess.run(
+            ["pactl", "list", "sink-inputs"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env=dict(os.environ, LC_ALL="C"),
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+    return any(line.strip() == "Corked: no" for line in listing.splitlines())
+
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(add_help=True)
+    parser.add_argument("--no-gamepad", action="store_true")
+    parser.add_argument("--no-audio", action="store_true")
+    parser.add_argument("--gamepad-grace", type=float, default=DEFAULT_GAMEPAD_GRACE)
+    parser.add_argument("--once", action="store_true")
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    options = parse_args(argv)
+    watch_gamepad = not options.no_gamepad
+    watch_audio = not options.no_audio
+    grace = max(0.0, options.gamepad_grace)
+
+    if options.once:
+        playing = watch_audio and audio_playing()
+        print("ACTIVE" if playing else "IDLE", flush=True)
+        return 0
+
+    gamepads = Gamepads()
+    last_scan = last_audio_poll = last_report = 0.0
+    last_gamepad_input = None
+    playing = False
+    reported = None
+
+    while True:
+        now = time.monotonic()
+
+        if watch_gamepad and now - last_scan >= DEVICE_SCAN_INTERVAL:
+            gamepads.rescan()
+            last_scan = now
+
+        if watch_audio and now - last_audio_poll >= AUDIO_POLL_INTERVAL:
+            playing = audio_playing()
+            last_audio_poll = now
+
+        if watch_gamepad:
+            if gamepads.poll(1.0):
+                last_gamepad_input = time.monotonic()
+        else:
+            time.sleep(1.0)
+
+        now = time.monotonic()
+        in_play = last_gamepad_input is not None and now - last_gamepad_input < grace
+        active = bool(in_play or (watch_audio and playing))
+
+        if active != reported or now - last_report >= HEARTBEAT_INTERVAL:
+            reported = active
+            last_report = now
+            print("ACTIVE" if active else "IDLE", flush=True)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(0)
