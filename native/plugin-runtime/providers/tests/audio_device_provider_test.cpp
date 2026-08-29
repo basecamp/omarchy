@@ -46,7 +46,7 @@ int main() {
       .control_epoch = 4, .backend = {.observe = observe, .control = control,
                                      .context = &available}});
   auto observer = provider.observe_adapter();
-  auto observation = request("device.observe", "0813f3e80f26e2c2eed9254c325bca8a6be4980cee94056608cc243590de6c37", 3, "observe", "{\"fields\":[\"identity\",\"connection\",\"battery\",\"supported-controls\",\"listening-mode\",\"adaptive-level\",\"conversation-awareness\",\"one-bud-anc\",\"ear-detection\"],\"resourceClass\":\"paired-audio-device\",\"selection\":\"user-selected\"}", "{\"fields\":[]}");
+  auto observation = request("device.observe", "0813f3e80f26e2c2eed9254c325bca8a6be4980cee94056608cc243590de6c37", 3, "observe", "{\"fields\":[\"identity\",\"connection\",\"battery\",\"supported-controls\",\"listening-mode\",\"adaptive-level\",\"conversation-awareness\",\"one-bud-anc\",\"ear-detection\",\"volume\"],\"resourceClass\":\"paired-audio-device\",\"selection\":\"user-selected\"}", "{\"fields\":[]}");
   std::array<std::byte, 4096> output{}; std::size_t written = 0;
   require(observer.dispatch(observation, output, written, observer.context), "observe failed");
   const std::string result(reinterpret_cast<const char *>(output.data()), written);
@@ -59,7 +59,7 @@ int main() {
               std::string(reinterpret_cast<const char *>(output.data()), written).find("unavailable") != std::string::npos,
           "no-device state was not typed");
   auto controller = provider.control_adapter();
-  auto mutation = request("device.control", "c8449dbd2bfc12dc4f8b18aed658b85e6d461f2efe867f1dca90a63db2541e45", 4, "control", "{\"controls\":[\"set-listening-mode\",\"set-adaptive-level\",\"set-conversation-awareness\",\"set-one-bud-anc\",\"set-ear-detection\"],\"resourceClass\":\"paired-audio-device\",\"selection\":\"same-as:device.observe\"}", "{\"operation\":\"set-adaptive-level\",\"value\":54}");
+  auto mutation = request("device.control", "c8449dbd2bfc12dc4f8b18aed658b85e6d461f2efe867f1dca90a63db2541e45", 4, "control", "{\"controls\":[\"set-listening-mode\",\"set-adaptive-level\",\"set-conversation-awareness\",\"set-one-bud-anc\",\"set-ear-detection\",\"set-volume\"],\"resourceClass\":\"paired-audio-device\",\"selection\":\"same-as:device.observe\"}", "{\"operation\":\"set-adaptive-level\",\"value\":54}");
   require(controller.dispatch(mutation, output, written, controller.context), "bounded control failed");
   auto spoofed = mutation; const std::string payload = "{\"operation\":\"connect\",\"value\":true}"; spoofed.payload = std::as_bytes(std::span(payload.data(), payload.size()));
   require(!controller.dispatch(spoofed, output, written, controller.context), "unlisted device control reached backend");

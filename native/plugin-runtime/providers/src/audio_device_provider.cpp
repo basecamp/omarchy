@@ -13,8 +13,8 @@ constexpr std::string_view kObserveDefinition = "0813f3e80f26e2c2eed9254c325bca8
 constexpr std::string_view kControlDefinition = "c8449dbd2bfc12dc4f8b18aed658b85e6d461f2efe867f1dca90a63db2541e45";
 constexpr std::string_view kObserveAdapter = "7976b6ac3e50b864e4ce8272a37053d7a6a5c5a35bae791a1b1235043cd72b2c";
 constexpr std::string_view kControlAdapter = "d9865a5292df03c21e43ac977c2b4b5425627b4108a3321d154da0b991e54900";
-constexpr std::string_view kObserveScope = "{\"fields\":[\"identity\",\"connection\",\"battery\",\"supported-controls\",\"listening-mode\",\"adaptive-level\",\"conversation-awareness\",\"one-bud-anc\",\"ear-detection\"],\"resourceClass\":\"paired-audio-device\",\"selection\":\"user-selected\"}";
-constexpr std::string_view kControlScope = "{\"controls\":[\"set-listening-mode\",\"set-adaptive-level\",\"set-conversation-awareness\",\"set-one-bud-anc\",\"set-ear-detection\"],\"resourceClass\":\"paired-audio-device\",\"selection\":\"same-as:device.observe\"}";
+constexpr std::string_view kObserveScope = "{\"fields\":[\"identity\",\"connection\",\"battery\",\"supported-controls\",\"listening-mode\",\"adaptive-level\",\"conversation-awareness\",\"one-bud-anc\",\"ear-detection\",\"volume\"],\"resourceClass\":\"paired-audio-device\",\"selection\":\"user-selected\"}";
+constexpr std::string_view kControlScope = "{\"controls\":[\"set-listening-mode\",\"set-adaptive-level\",\"set-conversation-awareness\",\"set-one-bud-anc\",\"set-ear-detection\",\"set-volume\"],\"resourceClass\":\"paired-audio-device\",\"selection\":\"same-as:device.observe\"}";
 
 bool copy(const QByteArray &bytes, std::span<std::byte> output,
           std::size_t &written) noexcept {
@@ -75,11 +75,13 @@ bool AudioDeviceProvider::dispatch_observe(
            std::pair{kConversationAwarenessControl,
                      "set-conversation-awareness"},
            std::pair{kOneBudAncControl, "set-one-bud-anc"},
-           std::pair{kEarDetectionControl, "set-ear-detection"}})
+           std::pair{kEarDetectionControl, "set-ear-detection"},
+           std::pair{kVolumeControl, "set-volume"}})
     if ((status.supported_controls & flag) != 0) supported_controls.append(name);
   const QJsonObject result{{"ok", true}, {"deviceName", QString::fromUtf8(status.display_name)},
                            {"connected", status.connected}, {"left", status.left},
                            {"right", status.right}, {"caseLevel", status.case_level},
+                           {"volume", status.volume_percent},
                            {"mode", QString::fromUtf8(status.listening_mode)},
                            {"adaptiveLevel", status.adaptive_level},
                            {"conversationAwareness", status.conversation_awareness},
@@ -108,9 +110,10 @@ bool AudioDeviceProvider::dispatch_control(
   const bool valid_operation =
       operation == "set-listening-mode" || operation == "set-adaptive-level" ||
       operation == "set-conversation-awareness" ||
-      operation == "set-one-bud-anc" || operation == "set-ear-detection";
+      operation == "set-one-bud-anc" || operation == "set-ear-detection" ||
+      operation == "set-volume";
   bool valid_value = !value.empty();
-  if (operation == "set-adaptive-level") {
+  if (operation == "set-adaptive-level" || operation == "set-volume") {
     bool converted = false;
     const auto level = QString::fromStdString(value).toInt(&converted);
     valid_value = converted && level >= 0 && level <= 100;

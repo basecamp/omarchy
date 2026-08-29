@@ -17,6 +17,7 @@ struct AudioDeviceStatus {
   int left = -1;
   int right = -1;
   int case_level = -1;
+  int volume_percent = -1;
   std::string_view listening_mode;
   int adaptive_level = 0;
   bool conversation_awareness = false;
@@ -30,6 +31,7 @@ inline constexpr std::uint32_t kAdaptiveLevelControl = 1U << 1;
 inline constexpr std::uint32_t kConversationAwarenessControl = 1U << 2;
 inline constexpr std::uint32_t kOneBudAncControl = 1U << 3;
 inline constexpr std::uint32_t kEarDetectionControl = 1U << 4;
+inline constexpr std::uint32_t kVolumeControl = 1U << 5;
 
 struct AudioDeviceBackend {
   bool (*observe)(AudioDeviceStatus &, void *) noexcept = nullptr;

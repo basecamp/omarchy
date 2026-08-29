@@ -6,7 +6,7 @@ int main() {
   providers::BluezAudioBackend valid("00:11:22:AA:BB:CC");
   if (!valid.valid_selection()) return 1;
   const auto configuration = valid.configuration();
-  if (configuration.observe == nullptr || configuration.control != nullptr)
+  if (configuration.observe == nullptr || configuration.control == nullptr)
     return 2;
 
   providers::BluezAudioBackend malformed("../../org/bluez/hci0");

@@ -16,6 +16,7 @@ public:
 
 private:
   static bool observe(AudioDeviceStatus &, void *) noexcept;
+  static bool control(std::string_view, std::string_view, void *) noexcept;
   std::string selected_address_;
   std::string display_name_;
 };
