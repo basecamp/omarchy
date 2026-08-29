@@ -136,9 +136,8 @@ void run() {
   auto sidecar_prepared = host::prepare(
       sidecar_root, sidecar_pin, sidecar_revision,
       {.schema_v2_enabled = true});
-  require(!sidecar_prepared && sidecar_prepared.failure ==
-                                   host::PrepareFailure::sidecars_not_supported,
-          "sidecar plugin activated without the trusted sandbox init");
+  require(static_cast<bool>(sidecar_prepared),
+          "validated sidecar plugin did not reach trusted preparation");
 
   host::DenyAllBroker broker(revision.binding);
   const launcher::LaunchIdentity exact{

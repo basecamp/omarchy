@@ -143,6 +143,8 @@ SeccompPolicy seccomp_policy() {
   launch.emplace_back("execve");
   launch.emplace_back("execveat");
   launch.emplace_back("clone");
+  launch.emplace_back("fork");
+  launch.emplace_back("vfork");
 
   auto steady = common_syscalls();
   steady.emplace_back("clone");

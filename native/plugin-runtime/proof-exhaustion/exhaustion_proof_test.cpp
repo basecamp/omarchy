@@ -139,7 +139,7 @@ void kernel_resource_contract() {
               plan.resources.output_bytes_per_second == 4096 &&
               plan.process.standard_output_is_bounded_pipe &&
               plan.process.standard_error_is_bounded_pipe &&
-              !plan.process.descendants_permitted,
+              plan.process.descendants_permitted,
           "kernel resource or output-flood policy was weakened");
 }
 

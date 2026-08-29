@@ -51,7 +51,7 @@ struct TimeoutPolicy {
 
 struct ProcessPolicy {
   bool worker_is_pid_one = true;
-  bool descendants_permitted = false;
+  bool descendants_permitted = true;
   bool require_no_new_privileges = true;
   bool bind_reported_pidfd_before_barrier_release = true;
   bool poll_pidfd_with_every_receive = true;

@@ -156,8 +156,8 @@ void verify_resources(const SandboxPlan &plan) {
 }
 
 void verify_lifecycle(const SandboxPlan &plan) {
-  require(plan.process.worker_is_pid_one && !plan.process.descendants_permitted,
-          "initial worker process model permits unsupervised descendants");
+  require(plan.process.worker_is_pid_one && plan.process.descendants_permitted,
+          "sandbox PID 1 cannot supervise declared sidecars");
   require(plan.process.require_no_new_privileges &&
               plan.process.role_descriptors_are_close_on_exec,
           "privilege or descriptor inheritance can survive exec");

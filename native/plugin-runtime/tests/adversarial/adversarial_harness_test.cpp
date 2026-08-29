@@ -399,7 +399,7 @@ public:
     require(unit.starts_with("app-omarchy-plugin-worker-") &&
                 monitor_pid > 0 && worker_pid > 0 &&
                 plan.worker_descriptors == std::vector<int>({3, 4, 5}) &&
-                plan.process.descendants_permitted == false &&
+                plan.process.descendants_permitted &&
                 timeout == std::chrono::seconds(5),
             "sandbox launch did not consume the frozen B5 plan");
     unit_ = unit;
