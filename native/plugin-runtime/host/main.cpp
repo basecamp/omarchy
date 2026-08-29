@@ -133,7 +133,9 @@ struct DesktopEffects {
       const auto asset = self.plugin_root / "sounds" /
                          (std::string(cue) + extension);
       std::error_code error;
-      if (std::filesystem::is_regular_file(asset, error) && !error)
+      if (std::filesystem::symlink_status(asset, error).type() ==
+              std::filesystem::file_type::regular &&
+          !error)
         return run_exact({"/usr/bin/pw-play", "--", asset.string()});
     }
     return false;
