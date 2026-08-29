@@ -241,7 +241,7 @@ rm -f "$agent_file"
 pass "agent migrations install working wrappers without overriding the preinstall opt-out"
 
 touch "$test_home/.local/bin/agy" "$test_home/.local/bin/ori"
-omarchy-remove-preinstalls >/dev/null
+omarchy-remove-preinstalls --all >/dev/null
 for command in agy omp ori grok crush; do
   [[ ! -e $test_home/.local/bin/$command ]] || fail "Remove Preinstalls deletes the $command lazy stub"
 done

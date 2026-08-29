@@ -1,34 +1,8 @@
 #!/bin/bash
 
-# omarchy:summary=Remove preinstalled Omarchy applications (web apps, TUIs, and selected packages).
+# omarchy:summary=Remove selected preinstalled Omarchy applications (web apps, TUIs, and selected packages).
+# omarchy:args=[--all|name...]
+# omarchy:examples=omarchy remove preinstalls | omarchy remove preinstalls --all | omarchy remove preinstalls LibreOffice
 
-if gum confirm "Are you sure you want to remove all preinstalled web apps, TUI wrappers, and desktop applications?"; then
-  echo -e "Removing preinstalled Omarchy applications...\n"
-
-  omarchy-webapp-remove-all
-  omarchy-tui-remove-all
-
-  mkdir -p ~/.local/state/omarchy
-  touch ~/.local/state/omarchy/preinstalls-removed
-  hyprctl reload
-
-  # Remove mise stubs
-  rm -f ~/.local/bin/codex ~/.local/bin/claude ~/.local/bin/agy ~/.local/bin/copilot \
-       ~/.local/bin/gh ~/.local/bin/opencode ~/.local/bin/playwright ~/.local/bin/playwright-cli ~/.local/bin/pi \
-       ~/.local/bin/omp ~/.local/bin/ori ~/.local/bin/grok ~/.local/bin/crush ~/.local/bin/ghui ~/.local/bin/hunk
-
-  omarchy-pkg-drop \
-    aether \
-    cliamp \
-    libreoffice-fresh \
-    xournalpp \
-    pinta \
-    obsidian \
-    obs-studio \
-    kdenlive \
-    moonlight-qt \
-    lazydocker \
-    omacut \
-    omacalc \
-    omawrite
-fi
+source "$OMARCHY_PATH/default/omarchy/preinstalls.sh"
+preinstalls_run_remove "$@"

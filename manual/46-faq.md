@@ -72,7 +72,7 @@ Run _Remove > Package_ to see every package that's installed. Then you can selec
 
 And you can use _Remove > Web App_ from the Omarchy menu to remove any of the preinstalled web apps you don't want.
 
-Or run _Remove > Preinstalls_ to sweep out all the preinstalled extras — web apps, TUIs, and optional applications — in one go. The hotkeys that launched them go away with them, so you're left with a clean slate of bindings to fill with your own in `~/.config/hypr/bindings.lua`.
+Or run _Remove > Preinstalls_ and pick the extras you don't want — web apps, TUIs, optional applications, and agent stubs. Space toggles, return confirms. Select everything to sweep the whole set; the hotkeys that launched them go away with that full opt-out, so you're left with a clean slate of bindings to fill with your own in `~/.config/hypr/bindings.lua`. _Install > Preinstalls_ puts individual items back the same way.
 
 ---
 
