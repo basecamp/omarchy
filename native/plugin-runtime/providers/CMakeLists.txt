@@ -19,6 +19,7 @@ endif()
 
 add_library(omarchy-plugin-providers STATIC
   src/audio_device_provider.cpp
+  src/github_provider.cpp
   src/private_storage_backend.cpp
   src/radio_live_backend.cpp
   src/radio_provider.cpp
@@ -45,6 +46,14 @@ if(BUILD_TESTING)
   target_compile_options(omarchy-plugin-audio-device-provider-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
   target_link_libraries(omarchy-plugin-audio-device-provider-test PRIVATE omarchy-plugin-providers Qt6::Core)
   add_test(NAME plugin-audio-device-provider COMMAND omarchy-plugin-audio-device-provider-test)
+
+  add_executable(omarchy-plugin-github-provider-test
+    tests/github_provider_test.cpp
+  )
+  target_compile_features(omarchy-plugin-github-provider-test PRIVATE cxx_std_20)
+  target_compile_options(omarchy-plugin-github-provider-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_link_libraries(omarchy-plugin-github-provider-test PRIVATE omarchy-plugin-providers Qt6::Core)
+  add_test(NAME plugin-github-provider COMMAND omarchy-plugin-github-provider-test)
 
   add_executable(omarchy-plugin-providers-test tests/provider_set_test.cpp)
   target_compile_features(omarchy-plugin-providers-test PRIVATE cxx_std_20)
