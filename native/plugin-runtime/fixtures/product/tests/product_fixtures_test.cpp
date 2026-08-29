@@ -1,6 +1,7 @@
 #include "manifest_contract.hpp"
 
 #include <QFile>
+#include <QEventLoop>
 #include <QGuiApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -10,6 +11,7 @@
 #include <QQmlEngine>
 #include <QSet>
 #include <QStringList>
+#include <QTimer>
 #include <QVariant>
 
 #include <filesystem>
@@ -19,6 +21,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -39,12 +42,46 @@ std::string read_text(const std::filesystem::path &path) {
           std::istreambuf_iterator<char>()};
 }
 
+class FakeCall final : public QObject {
+  Q_OBJECT
+  Q_PROPERTY(bool finished READ finished NOTIFY finishedChanged)
+  Q_PROPERTY(bool ok READ ok NOTIFY finishedChanged)
+  Q_PROPERTY(QString error READ error NOTIFY finishedChanged)
+  Q_PROPERTY(QVariant value READ value NOTIFY finishedChanged)
+
+public:
+  FakeCall(bool ok, QString error, QVariant value, QObject *parent)
+      : QObject(parent), ok_(ok), error_(std::move(error)),
+        value_(std::move(value)) {}
+
+  [[nodiscard]] bool finished() const { return finished_; }
+  [[nodiscard]] bool ok() const { return ok_; }
+  [[nodiscard]] QString error() const { return error_; }
+  [[nodiscard]] QVariant value() const { return value_; }
+
+  void complete() {
+    finished_ = true;
+    emit finishedChanged();
+  }
+
+signals:
+  void finishedChanged();
+
+private:
+  bool finished_ = false;
+  bool ok_;
+  QString error_;
+  QVariant value_;
+};
+
 class FakeRuntime final : public QObject {
   Q_OBJECT
 
 public:
-  explicit FakeRuntime(QSet<QString> allowed, QObject *parent = nullptr)
-      : QObject(parent), allowed_(std::move(allowed)) {}
+  explicit FakeRuntime(QSet<QString> allowed, bool asynchronous = false,
+                       QObject *parent = nullptr)
+      : QObject(parent), allowed_(std::move(allowed)),
+        asynchronous_(asynchronous) {}
 
   void setStatuses(QVariantList statuses) { statuses_ = std::move(statuses); }
 
@@ -52,10 +89,18 @@ public:
                               const QVariantMap &payload) {
     if (!allowed_.contains(operation)) {
       denied_.push_back(operation);
+      if (asynchronous_)
+        return asynchronousCall(false, QStringLiteral("permission denied"), {});
       return false;
     }
     operations_.push_back(operation);
     payloads_.push_back(payload);
+    if (asynchronous_) {
+      const QVariant value = operation == QStringLiteral("storage_read")
+                                 ? QVariant(QStringLiteral("encoded-result"))
+                                 : QVariant();
+      return asynchronousCall(true, {}, value);
+    }
     if (operation == QStringLiteral("fake_status_list")) {
       return statuses_;
     }
@@ -95,11 +140,22 @@ signals:
   void permissionsChanged();
 
 private:
+  QVariant asynchronousCall(bool ok, QString error, QVariant value) {
+    auto call = std::make_unique<FakeCall>(ok, std::move(error),
+                                          std::move(value), this);
+    auto *pointer = call.get();
+    calls_.push_back(std::move(call));
+    QTimer::singleShot(0, pointer, [pointer] { pointer->complete(); });
+    return QVariant::fromValue(static_cast<QObject *>(pointer));
+  }
+
   QSet<QString> allowed_;
+  bool asynchronous_ = false;
   QStringList operations_;
   QStringList denied_;
   QList<QVariantMap> payloads_;
   QVariantList statuses_;
+  std::vector<std::unique_ptr<FakeCall>> calls_;
 };
 
 struct LoadedFixture {
@@ -212,30 +268,39 @@ void test_fake_status() {
 
 void test_live_evidence_fixtures() {
   FakeRuntime authorized({QStringLiteral("storage_read"),
-                          QStringLiteral("storage_write")});
+                          QStringLiteral("storage_write")}, true);
   auto authorized_fixture = load("lab-authorized", authorized);
+  QEventLoop authorized_loop;
+  QTimer::singleShot(50, &authorized_loop, &QEventLoop::quit);
+  authorized_loop.exec();
   require(authorized_fixture->object->property("phase").toString() ==
-              QStringLiteral("WRITING") &&
-              authorized.count(QStringLiteral("storage_write")) == 1,
-          "authorized live fixture did not start its brokered storage proof");
+                  QStringLiteral("AUTHORIZED") &&
+              authorized.count(QStringLiteral("storage_write")) == 1 &&
+              authorized.count(QStringLiteral("storage_read")) == 1,
+          "authorized live fixture did not follow async broker completions");
 
   FakeRuntime denied({QStringLiteral("storage_read"),
-                      QStringLiteral("storage_write")});
+                      QStringLiteral("storage_write")}, true);
   auto denied_fixture = load("lab-denied", denied);
+  QEventLoop denied_loop;
+  QTimer::singleShot(50, &denied_loop, &QEventLoop::quit);
+  denied_loop.exec();
   require(denied_fixture->object->property("phase").toString() ==
-              QStringLiteral("ATTEMPTING") &&
+                  QStringLiteral("DENIED") &&
               denied.denied(QStringLiteral("notification_send")),
-          "denial live fixture did not attempt its unrequested operation");
+          "denial live fixture did not follow async broker denial");
 
   FakeRuntime permission({QStringLiteral("notification_send")});
   auto permission_fixture = load("lab-permission", permission);
-  require(permission_fixture->object->property("permissionState").toString() ==
+  require(QMetaObject::invokeMethod(permission_fixture->object.get(),
+                                    "refreshPermission") &&
+              permission_fixture->object->property("permissionState").toString() ==
               QStringLiteral("GRANTED"),
           "permission fixture did not render its initial availability");
   permission.setNotificationGranted(false);
   require(permission_fixture->object->property("permissionState").toString() ==
               QStringLiteral("DENIED") &&
-              permission_fixture->object->property("observedChanges").toInt() == 1,
+              permission_fixture->object->property("observedChanges").toInt() == 2,
           "permission fixture did not react visibly to permissionsChanged");
 }
 

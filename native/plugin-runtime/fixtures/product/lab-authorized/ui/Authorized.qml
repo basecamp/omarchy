@@ -61,22 +61,18 @@ Item {
         onTriggered: root.begin()
     }
 
-    Timer {
-        interval: 25
-        running: root.writeCall !== null && root.phase === "WRITING"
-        repeat: true
-        onTriggered: {
-            if (root.writeCall.finished)
+    Connections {
+        target: root.writeCall
+        function onFinishedChanged() {
+            if (root.writeCall && root.writeCall.finished)
                 root.finishWrite()
         }
     }
 
-    Timer {
-        interval: 25
-        running: root.readCall !== null && root.phase === "READING"
-        repeat: true
-        onTriggered: {
-            if (root.readCall.finished)
+    Connections {
+        target: root.readCall
+        function onFinishedChanged() {
+            if (root.readCall && root.readCall.finished)
                 root.finishRead()
         }
     }

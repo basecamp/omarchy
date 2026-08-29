@@ -40,12 +40,10 @@ Item {
         onTriggered: root.beginAttempt()
     }
 
-    Timer {
-        interval: 25
-        running: root.deniedCall !== null && root.phase === "ATTEMPTING"
-        repeat: true
-        onTriggered: {
-            if (root.deniedCall.finished)
+    Connections {
+        target: root.deniedCall
+        function onFinishedChanged() {
+            if (root.deniedCall && root.deniedCall.finished)
                 root.finishAttempt()
         }
     }
