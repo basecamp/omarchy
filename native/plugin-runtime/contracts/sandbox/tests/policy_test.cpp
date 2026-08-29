@@ -15,6 +15,7 @@ using omarchy::plugin_runtime::sandbox::build_plan;
 using omarchy::plugin_runtime::sandbox::build_provider_plan;
 using omarchy::plugin_runtime::sandbox::build_test_plan_for_worker;
 using omarchy::plugin_runtime::sandbox::contains_argument_pair;
+using omarchy::plugin_runtime::sandbox::ProviderDescriptorPolicy;
 using omarchy::plugin_runtime::sandbox::SandboxPlan;
 
 namespace {
@@ -227,15 +228,22 @@ int main() {
 
   constexpr std::string_view provider = "/usr/lib/omarchy/providers/status";
   const SandboxPlan provider_plan = build_provider_plan(std::string(provider));
+  const ProviderDescriptorPolicy provider_fds;
   require(provider_plan.argv.back() == "--omarchy-provider-fd=3" &&
               provider_plan.argv.at(provider_plan.argv.size() - 2) ==
                   "/runtime/provider",
           "provider executable or fixed protocol descriptor changed");
-  require(provider_plan.worker_descriptors == std::vector<int>{3} &&
+  require(provider_plan.worker_descriptors ==
+                  std::vector<int>{provider_fds.protocol} &&
               provider_plan.launcher_descriptors ==
-                  std::vector<int>({3, 4, 5, 6}),
+                  std::vector<int>({provider_fds.protocol, provider_fds.status,
+                                    provider_fds.barrier, provider_fds.seccomp,
+                                    provider_fds.executable}),
           "provider inherited an ambient descriptor");
-  require(contains_argument_pair(provider_plan, "--ro-bind", provider) &&
+  require(contains_argument_pair(provider_plan, "--ro-bind",
+                                 "/proc/self/fd/" +
+                                     std::to_string(provider_fds.executable)) &&
+              !contains_argument_pair(provider_plan, "--ro-bind", provider) &&
               contains_argument_pair(provider_plan, "--tmpfs", "/home") &&
               contains_argument_pair(provider_plan, "--tmpfs", "/tmp") &&
               contains_argument_pair(provider_plan, "--tmpfs", "/run"),
