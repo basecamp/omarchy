@@ -97,9 +97,22 @@ set_scale() {
   hyprctl eval "hl.monitor({ output = \"$active_monitor\", mode = \"${width}x${height}@${refresh_rate}\", position = \"auto\", scale = $new_scale })" >/dev/null
   audit_scale_change "$requested" "$active_monitor" "$current_scale" "$new_scale"
 
-  # Persist to monitors.lua if the user still has Omarchy's generic catch-all
-  # defaults, so the scale survives reboots.
-  if [[ -f $monitor_lua ]] && grep -q '^local omarchy_monitor_scale = ' "$monitor_lua"; then
+  # Persist to monitors.lua, so the scale survives reboots and reconciliation
+  # (e.g. the clamshell/scale-recovery watcher) doesn't fight the new value.
+  #
+  # Priority 1: a single-line rule naming this specific output -- the format
+  # Omarchy's own manual recommends for pinning a monitor, e.g.
+  # hl.monitor({ output = "eDP-1", mode = "preferred", position = "0x0", scale = 1.6 }).
+  # Checked first because a leftover/unused `omarchy_monitor_scale` local (kept
+  # around after a user switches to named per-output rules) would otherwise
+  # match Priority 2 below and silently "succeed" while never touching the
+  # line that actually governs this monitor's scale.
+  if [[ -f $monitor_lua ]] && grep -Eq "^hl\.monitor\(\{[^}]*output[[:space:]]*=[[:space:]]*\"${active_monitor}\"[^}]*scale[[:space:]]*=[[:space:]]*[0-9.]+[^}]*\}\)" "$monitor_lua"; then
+    sed -i -E \
+      "/^hl\.monitor\(\{[^}]*output[[:space:]]*=[[:space:]]*\"${active_monitor}\"/ s/(scale[[:space:]]*=[[:space:]]*)[0-9.]+/\1${new_scale}/" \
+      "$monitor_lua"
+  # Priority 2: Omarchy's generic catch-all defaults (the fresh-install template).
+  elif [[ -f $monitor_lua ]] && grep -q '^local omarchy_monitor_scale = ' "$monitor_lua"; then
     sed -i -E \
       -e "s|^local omarchy_monitor_scale = .*|local omarchy_monitor_scale = ${new_scale}|" \
       -e "s|^local omarchy_gdk_scale = .*|local omarchy_gdk_scale = ${new_gdk_scale}|" \
