@@ -162,40 +162,20 @@ done
 
 case "$1" in
 /bin/bash)
-  [[ ${2:-} == -c && $# -ge 5 ]] || exit 90
+  [[ ${2:-} == -c && $# == 9 ]] || exit 90
   code=$3
   shell_name=$4
-  original_destination=$5
-  printf 'transaction %s\n' "$original_destination" >>"$TEST_SUDO_LOG"
-
-  if [[ ${TEST_MUTATE_DEST:-} == "$original_destination" ]]; then
-    expected_size=${7:-0}
-    case "$original_destination" in
-    /usr/share/plymouth/themes/omarchy/*)
-      relative=${original_destination#/usr/share/plymouth/themes/omarchy/}
-      stage_kind=plymouth
-      ;;
-    /usr/share/sddm/themes/omarchy/*)
-      relative=${original_destination#/usr/share/sddm/themes/omarchy/}
-      stage_kind=sddm
-      ;;
-    *) exit 91 ;;
-    esac
-    stage_root=$(find "$TEST_STAGES" -mindepth 1 -maxdepth 1 -type d -print -quit)
-    source="$stage_root/$stage_kind/$relative"
-    /usr/bin/head -c "$expected_size" /dev/zero | /usr/bin/tr '\0' X >"$source"
-    printf '%s\n' "$source" >>"$TEST_MUTATE_LOG"
-  fi
-
-  mapped_destination="$TEST_FAKE_ROOT$original_destination"
-  shift 5
+  shift 4
+  printf 'root transaction\n' >>"$TEST_SUDO_LOG"
 
   # The production helper intentionally resets PATH. For this unprivileged
-  # simulation only, substitute stat/chown shims so a uid-1000 test directory
-  # behaves like the root-owned /usr/share directory used in production.
+  # simulation only, substitute trusted tools and map fixed system destinations
+  # under the disposable fake root.
   code=${code/PATH=\/usr\/bin:\/bin/PATH=$TEST_ROOT_TOOLS:\/usr\/bin:\/bin}
+  code=${code/theme_dir=\/usr\/share\/plymouth\/themes\/omarchy/theme_dir=$TEST_FAKE_ROOT\/usr\/share\/plymouth\/themes\/omarchy}
+  code=${code/sddm_dir=\/usr\/share\/sddm\/themes\/omarchy/sddm_dir=$TEST_FAKE_ROOT\/usr\/share\/sddm\/themes\/omarchy}
   PATH="$TEST_ROOT_TOOLS:/usr/bin:/bin" \
-    /bin/bash -c "$code" "$shell_name" "$mapped_destination" "$@"
+    /bin/bash -c "$code" "$shell_name" "$@"
   ;;
 plymouth-set-default-theme | limine-mkinitcpio | mkinitcpio)
   printf 'command %s\n' "$*" >>"$TEST_SUDO_LOG"
@@ -211,8 +191,16 @@ SH
 cat >"$root_tools/stat" <<'SH'
 #!/bin/bash
 last=${!#}
-if [[ ${1:-} == -c && ${2:-} == %u && $last == "$TEST_FAKE_ROOT"* ]]; then
+if [[ ${1:-} == -c && ${2:-} == %u ]]; then
+  if [[ -n ${TEST_UNTRUSTED_SOURCE:-} && $last == "$TEST_UNTRUSTED_SOURCE"* ]]; then
+    printf '1000\n'
+    exit 0
+  fi
   printf '0\n'
+  exit 0
+fi
+if [[ ${1:-} == -c && ${2:-} == %a && $last == /tmp ]]; then
+  printf '755\n'
   exit 0
 fi
 exec /usr/bin/stat "$@"
@@ -221,11 +209,11 @@ SH
 cat >"$root_tools/chown" <<'SH'
 #!/bin/bash
 last=${!#}
-[[ $last == "$TEST_FAKE_ROOT"* ]] || exit 93
+[[ $last == "$TEST_FAKE_ROOT"* || $last == /tmp/omarchy-plymouth.* ]] || exit 93
 exit 0
 SH
 
-cat >"$fake_bin/magick" <<'SH'
+cat >"$root_tools/magick" <<'SH'
 #!/bin/bash
 source=$1
 destination=${@: -1}
@@ -246,7 +234,6 @@ setup_run() {
   fake_root="$run_dir/root"
   sudo_log="$run_dir/sudo.log"
   leak_log="$run_dir/leaked-stage-path.log"
-  mutate_log="$run_dir/mutated.log"
   theme="$fake_root/usr/share/plymouth/themes/omarchy"
   sddm="$fake_root/usr/share/sddm/themes/omarchy"
 
@@ -301,7 +288,6 @@ run_set_colors() {
       TEST_ROOT_TOOLS="$root_tools" \
       TEST_SUDO_LOG="$sudo_log" \
       TEST_LEAK_LOG="$leak_log" \
-      TEST_MUTATE_LOG="$mutate_log" \
       "$@" \
       /bin/bash "$ROOT/bin/omarchy-plymouth-set" "$background" "$text" "$test_tmp/logo.png"
   )
@@ -330,14 +316,12 @@ for requested_umask in 022 027 077; do
     [[ -f $destination && ! -L $destination ]] || fail "Plymouth $asset is a regular file under umask $requested_umask"
     [[ $(stat -c %a "$destination") == 644 ]] || fail "Plymouth $asset is mode 0644 under umask $requested_umask"
     [[ -s $destination ]] || fail "Plymouth $asset is nonempty under umask $requested_umask"
-    [[ $(grep -Fc "transaction /usr/share/plymouth/themes/omarchy/$asset" "$sudo_log") == 1 ]] || fail "Plymouth $asset is published exactly once"
   done
   for asset in "${sddm_theme_assets[@]}"; do
     destination="$sddm/$asset"
     [[ -f $destination && ! -L $destination ]] || fail "SDDM $asset is a regular file under umask $requested_umask"
     [[ $(stat -c %a "$destination") == 644 ]] || fail "SDDM $asset is mode 0644 under umask $requested_umask"
     [[ -s $destination ]] || fail "SDDM $asset is nonempty under umask $requested_umask"
-    [[ $(grep -Fc "transaction /usr/share/sddm/themes/omarchy/$asset" "$sudo_log") == 1 ]] || fail "SDDM $asset is published exactly once"
   done
 
   cmp -s "$test_tmp/logo.png" "$theme/logo.png" || fail "Plymouth receives the selected logo under umask $requested_umask"
@@ -373,9 +357,9 @@ if grep -Fq '__OMARCHY_SDDM_' "$sddm/Main.qml"; then
 fi
 pass "White theme keeps a white SDDM background instead of becoming black-on-black"
 
-# Swap the first staged source to an unreadable file after all hashes have been
-# recorded but in the DEBUG hook immediately before Bash opens the redirection.
-# The caller-side open must fail, so sudo never starts and nothing is published.
+# Swap the selected logo to an unreadable file in the DEBUG hook immediately
+# before Bash opens its descriptor. The caller-side open must fail, so sudo
+# never starts and nothing is published.
 setup_run
 preopen_hook="$run_dir/preopen-hook"
 preopen_marker="$run_dir/preopen-marker"
@@ -385,11 +369,10 @@ cat >"$preopen_hook" <<'SH'
 if [[ $0 == */bin/omarchy-plymouth-set ]]; then
   set -T
   trap '
-    if [[ ${destination:-} == /usr/share/plymouth/themes/omarchy/bullet.png &&
-          $BASH_COMMAND == sudo\ /bin/bash\ -c* &&
+    if [[ $BASH_COMMAND == exec* && $BASH_COMMAND == *logo_fd* &&
           ! -e $TEST_PREOPEN_MARKER ]]; then
-      mv -T -- "$source" "$source.before-preopen-swap"
-      ln -s -- "$TEST_SECRET" "$source"
+      mv -T -- "$logo_path" "$logo_path.before-preopen-swap"
+      ln -s -- "$TEST_SECRET" "$logo_path"
       printf "swapped\n" >"$TEST_PREOPEN_MARKER"
     fi
   ' DEBUG
@@ -399,32 +382,55 @@ SH
 output=$(TEST_PREOPEN_MARKER="$preopen_marker" TEST_SECRET="$secret" BASH_ENV="$preopen_hook" run_set 077 env 2>&1)
 status=$?
 chmod 0600 "$secret"
+rm -f "$test_tmp/logo.png"
+mv "$test_tmp/logo.png.before-preopen-swap" "$test_tmp/logo.png"
 
 (( status != 0 )) || fail "an unreadable pre-open source swap aborts publication"
 [[ -s $preopen_marker ]] || fail "the pre-open source swap ran deterministically" "$output"
 [[ $(cat "$theme/bullet.png") == 'old plymouth bullet.png' && $(stat -c %a "$theme/bullet.png") == 600 ]] || fail "pre-open failure leaves the live destination unchanged"
 [[ $(cat "$plymouth_victim") == 'PLYMOUTH VICTIM' ]] || fail "pre-open failure leaves destination-link victims unchanged"
-if [[ -e $sudo_log ]] && grep -Fq 'transaction /usr/share/plymouth/themes/omarchy/bullet.png' "$sudo_log"; then
+if [[ -e $sudo_log ]] && grep -Fq 'root transaction' "$sudo_log"; then
   fail "sudo started despite the caller-side open failure"
 fi
 assert_no_temporary_files "$fake_root"
 
 pass "an unreadable source swap before open fails without publication"
 
-# Rewrite a staged file in place after Bash has opened it but before root reads
-# stdin. Size is preserved, so only the recorded SHA-256 can reject this race.
+# Plant both a malicious script and a root-file symlink where the old
+# caller-owned stage lived. The privileged transaction must ignore that tree:
+# executable/config assets come only from its root-trusted source and are built
+# in its own root-owned stage.
 setup_run
-mutate_destination='/usr/share/plymouth/themes/omarchy/omarchy.script'
-output=$(run_set 022 env TEST_MUTATE_DEST="$mutate_destination" 2>&1)
+attacker_stage="$stages/tmp.attacker"
+mkdir -p "$attacker_stage/plymouth"
+printf 'MALICIOUS BOOT SCRIPT\n' >"$attacker_stage/plymouth/omarchy.script"
+ln -s "$secret" "$attacker_stage/plymouth/logo.png"
+
+output=$(run_set 022 env 2>&1)
 status=$?
 
-(( status != 0 )) || fail "an in-place rewrite after open aborts publication"
-[[ -s $mutate_log ]] || fail "the post-open in-place rewrite ran"
-[[ -L $theme/omarchy.script ]] || fail "failed hash verification leaves the old destination symlink in place"
-[[ $(cat "$plymouth_victim") == 'PLYMOUTH VICTIM' && $(stat -c %a "$plymouth_victim") == 600 ]] || fail "failed hash verification leaves the destination-link victim unchanged"
+(( status == 0 )) || fail "a planted caller-owned stage cannot disrupt publication" "$output"
+! grep -Rqs 'MALICIOUS BOOT SCRIPT' "$fake_root" || fail "caller-owned staged content reached the boot theme"
+[[ -f $theme/omarchy.script && ! -L $theme/omarchy.script ]] || fail "the trusted Plymouth script replaces the planted destination symlink"
+grep -Fq 'Window.SetBackgroundTopColor(0.114, 0.125, 0.129);' "$theme/omarchy.script" || fail "the installed script was derived from the trusted packaged source"
+unexpected_stages=$(find "$stages" -mindepth 1 -maxdepth 1 ! -name tmp.attacker -print)
+[[ -z $unexpected_stages ]] || fail "the caller created an authoritative staging directory" "$unexpected_stages"
 assert_no_temporary_files "$fake_root"
 
-pass "recorded size and SHA-256 reject a same-inode rewrite after open"
+pass "caller-owned content cannot enter the root-owned boot-image stage"
+
+# A user-owned source checkout would put the same pre-hash race on the input
+# side of the root stage. Refuse it before any fixed destination is replaced.
+setup_run
+output=$(run_set 022 env TEST_UNTRUSTED_SOURCE="$ROOT/default/plymouth" 2>&1)
+status=$?
+
+(( status != 0 )) || fail "a user-owned packaged source tree is rejected"
+[[ $(cat "$theme/bullet.png") == 'old plymouth bullet.png' ]] || fail "an untrusted packaged source leaves the live theme unchanged"
+[[ -L $theme/omarchy.script && $(cat "$plymouth_victim") == 'PLYMOUTH VICTIM' ]] || fail "an untrusted source cannot replace executable Plymouth content"
+assert_no_temporary_files "$fake_root"
+
+pass "root rejects packaged assets that a desktop process could rewrite"
 
 # Root rejects both a symlinked parent and a group/world-writable parent before
 # it creates a temporary file or touches the live destination.
@@ -459,7 +465,6 @@ output=$(
     TEST_ROOT_TOOLS="$root_tools" \
     TEST_SUDO_LOG="$sudo_log" \
     TEST_LEAK_LOG="$leak_log" \
-    TEST_MUTATE_LOG="$mutate_log" \
     /bin/bash "$ROOT/bin/omarchy-refresh-plymouth" 2>&1
 )
 status=$?
@@ -469,7 +474,6 @@ for asset in "${plymouth_default_assets[@]}"; do
   destination="$theme/$asset"
   cmp -s "$ROOT/default/plymouth/$asset" "$destination" || fail "refresh publishes the packaged $asset bytes"
   [[ -f $destination && ! -L $destination && $(stat -c %a "$destination") == 644 ]] || fail "refresh publishes $asset as a regular mode-0644 file"
-  [[ $(grep -Fc "transaction /usr/share/plymouth/themes/omarchy/$asset" "$sudo_log") == 1 ]] || fail "refresh publishes $asset exactly once"
 done
 [[ -L $sddm/Main.qml && $(cat "$sddm_victim") == 'SDDM VICTIM' ]] || fail "Plymouth refresh leaves SDDM unchanged"
 ! grep -Fq 'transaction /usr/share/sddm/' "$sudo_log" || fail "Plymouth refresh does not publish SDDM assets"
