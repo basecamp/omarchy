@@ -22,7 +22,7 @@ assert(
 )
 
 assert(
-  /function startFace\(\) \{[\s\S]*?if \(displayBlanked\) return/.test(serviceQml),
+  /function startFace\(\) \{[\s\S]*?if \(displayBlanked \|\| !sessionForeground\) return/.test(serviceQml),
   'a face scan never starts while the panel is blanked'
 )
 
@@ -52,6 +52,43 @@ assert(
 assert(
   /id: blankDeferTimer[\s\S]*?onTriggered: \{\s*if \(root\.blankPending\) root\.runBlank\(\)/.test(serviceQml),
   'a face scan that never reports back stops holding the panel up'
+)
+
+// Switching VT hides the lock without blanking the panel. A fingerprint lane can
+// stay armed through that, because a finger is placed deliberately; a passive
+// face scan cannot, or it unlocks a session nobody is looking at while the
+// display shows another console.
+assert(
+  /function startFace\(\) \{[\s\S]*?if \(displayBlanked \|\| !sessionForeground\) return/.test(serviceQml),
+  'a face scan never starts while another VT is in the foreground'
+)
+
+assert(
+  /onSessionForegroundChanged: \{[\s\S]*?\} else \{[\s\S]*?faceRetryTimer\.stop\(\)[\s\S]*?facePam\.abort\(\)/.test(serviceQml),
+  'switching away from this session stops a face scan already in flight'
+)
+
+assert(
+  /onSessionForegroundChanged: \{\s*if \(sessionForeground\) \{\s*startFace\(\)/.test(serviceQml),
+  'switching back to this session picks the face scan up again'
+)
+
+// sysfs delivers no inotify events, so the active VT is polled rather than
+// watched, and only while a lock that could be scanning is up.
+assert(
+  /id: activeVtView[\s\S]*?path: "\/sys\/class\/tty\/tty0\/active"[\s\S]*?onLoaded: root\.sessionForeground = text\(\)\.trim\(\) === root\.sessionVt/.test(serviceQml),
+  'the console\'s active VT decides whether this session is in the foreground'
+)
+
+assert(
+  /id: activeVtTimer[\s\S]*?running: root\.lockRequested && root\.faceConfigured/.test(serviceQml),
+  'the active-VT poll only runs while a lock with face auth is up'
+)
+
+// An unreadable /sys path must not take face auth away entirely.
+assert(
+  /id: activeVtView[\s\S]*?onLoadFailed: root\.sessionForeground = true/.test(serviceQml),
+  'a VT that cannot be read leaves face auth working'
 )
 
 // Enrolled models live under /etc/howdy, which an unprivileged shell cannot

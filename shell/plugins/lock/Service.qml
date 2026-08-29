@@ -15,6 +15,8 @@ Item {
   readonly property string stateHome: home + "/.local/state"
   readonly property string userName: Quickshell.env("USER") || Quickshell.env("LOGNAME")
   readonly property string currentBackgroundLink: stateHome + "/omarchy/current/background"
+  // The VT this session owns, to compare against the one the console is showing.
+  readonly property string sessionVt: "tty" + Quickshell.env("XDG_VTNR")
 
   property bool lockRequested: false
   property bool pendingSessionLock: false
@@ -26,6 +28,7 @@ Item {
   property bool faceConfigured: false
   property bool displayBlanked: false
   property bool blankPending: false
+  property bool sessionForeground: true
   property bool previewVisible: false
   property string enteredPassword: ""
   property string pendingPassword: ""
@@ -251,7 +254,7 @@ Item {
 
   function startFace() {
     if (!lockRequested || !sessionLock.secure || !faceConfigured) return
-    if (displayBlanked) return
+    if (displayBlanked || !sessionForeground) return
     if (facePam.active || faceAuthenticating) return
 
     faceAuthenticating = true
@@ -455,6 +458,25 @@ Item {
     }
   }
 
+  // `/sys/class/tty/tty0/active` names the VT the console is showing. sysfs does
+  // not deliver inotify events, so this is reloaded on a timer rather than
+  // watched, and only while a lock is up and a face could be scanning.
+  FileView {
+    id: activeVtView
+    path: "/sys/class/tty/tty0/active"
+    printErrors: false
+    onLoaded: root.sessionForeground = text().trim() === root.sessionVt
+    onLoadFailed: root.sessionForeground = true
+  }
+
+  Timer {
+    id: activeVtTimer
+    interval: 1000
+    repeat: true
+    running: root.lockRequested && root.faceConfigured
+    onTriggered: activeVtView.reload()
+  }
+
   // A failed scan has already spent the timeout Howdy is configured for, so this
   // only has to space the retries out rather than pace them.
   Timer {
@@ -474,6 +496,22 @@ Item {
     onLoaded: root.faceConfigured = true
     onLoadFailed: root.faceConfigured = false
     onFileChanged: reload()
+  }
+
+  // Switching away from this session's VT hides the lock screen without blanking
+  // the panel, so nothing else here notices. A fingerprint lane can idle through
+  // that safely because a finger has to be placed deliberately; a face scan is
+  // passive, and its owner sitting at the console on another VT is exactly the
+  // input it is waiting for. Left armed it unlocks a session nobody is looking
+  // at, on a display showing something else, with no way to tell it happened.
+  onSessionForegroundChanged: {
+    if (sessionForeground) {
+      startFace()
+    } else {
+      faceRetryTimer.stop()
+      faceAuthenticating = false
+      if (facePam.active) facePam.abort()
+    }
   }
 
   onFaceConfiguredChanged: {
