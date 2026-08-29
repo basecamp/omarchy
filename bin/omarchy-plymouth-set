@@ -11,21 +11,39 @@ set -euo pipefail
 # fixed destination atomically. The caller opens the selected logo before sudo,
 # so the privileged process never resolves a user-controlled input path.
 
-refresh_default=false
-if (( $# == 1 )) && [[ $1 == "--refresh-default" ]]; then
-  refresh_default=true
-elif (( $# != 3 )); then
+usage() {
   echo "Usage: omarchy-plymouth-set <background-hex> <text-hex> <path-to-logo.png>" >&2
+  exit 1
+}
+
+if (( $# == 3 )); then
+  mode=set
+elif (( $# == 1 )); then
+  case "$1" in
+  --refresh-default)
+    mode=refresh-plymouth
+    ;;
+  --refresh-sddm-default)
+    mode=refresh-sddm
+    ;;
+  *)
+    usage
+    ;;
+  esac
+else
+  usage
+fi
+
+if (( EUID == 0 )); then
+  echo "Error: run omarchy-plymouth-set as your user, not under sudo." >&2
   exit 1
 fi
 
 logo_fd=
-if $refresh_default; then
-  mode=refresh
+if [[ $mode != "set" ]]; then
   bg_hex=
   text_hex=
 else
-  mode=set
   bg_hex="${1#\#}"
   text_hex="${2#\#}"
   logo_path="$3"
@@ -67,6 +85,7 @@ run_root_transaction() {
     set -eEuo pipefail
     PATH=/usr/bin:/bin
     export PATH
+    umask 077
 
     # Every check below is a bare assertion that aborts under set -e. Name the
     # subject of each one so a refusal reaches the user instead of exiting mute.
@@ -89,7 +108,7 @@ run_root_transaction() {
     max_asset_size=$5
 
     failure_context="the arguments of the privileged transaction"
-    [[ $mode == "set" || $mode == "refresh" ]]
+    [[ $mode == "set" || $mode == "refresh-plymouth" || $mode == "refresh-sddm" ]]
     [[ $source_root == /* ]]
     [[ $max_asset_size =~ ^[0-9]+$ ]]
     (( max_asset_size > 0 ))
@@ -187,6 +206,22 @@ run_root_transaction() {
     )
     plymouth_default_assets=("${plymouth_theme_assets[@]}" logos/oma.png)
     sddm_theme_assets=(Main.qml bullet.png entry-failed.png entry.png lock-failed.png lock.png logo.png)
+    sddm_default_assets=("${sddm_theme_assets[@]}" metadata.desktop theme.conf)
+
+    plymouth_assets=()
+    sddm_assets=()
+    case "$mode" in
+    set)
+      plymouth_assets=("${plymouth_theme_assets[@]}")
+      sddm_assets=("${sddm_theme_assets[@]}")
+      ;;
+    refresh-plymouth)
+      plymouth_assets=("${plymouth_default_assets[@]}")
+      ;;
+    refresh-sddm)
+      sddm_assets=("${sddm_default_assets[@]}")
+      ;;
+    esac
 
     validate_trusted_file() {
       local source=$1 canonical uid file_mode size
@@ -211,9 +246,7 @@ run_root_transaction() {
       local source=$1 destination=$2
 
       validate_trusted_file "$source"
-      cp --reflink=never -- "$source" "$destination"
-      chown 0:0 -- "$destination"
-      chmod 0600 -- "$destination"
+      install -o 0 -g 0 -m 0600 -- "$source" "$destination"
     }
 
     staging_dir=$(mktemp -d /tmp/omarchy-plymouth.XXXXXXXX)
@@ -230,13 +263,7 @@ run_root_transaction() {
     sddm_stage=$staging_dir/sddm
     mkdir -m 0700 -p -- "$plymouth_stage/logos" "$sddm_stage"
 
-    if [[ $mode == "refresh" ]]; then
-      assets_to_stage=("${plymouth_default_assets[@]}")
-    else
-      assets_to_stage=("${plymouth_theme_assets[@]}")
-    fi
-
-    for asset in "${assets_to_stage[@]}"; do
+    for asset in "${plymouth_assets[@]}"; do
       copy_trusted_file "$source_root/default/plymouth/$asset" "$plymouth_stage/$asset"
     done
 
@@ -280,6 +307,20 @@ run_root_transaction() {
       done
       chown -R 0:0 -- "$staging_dir"
       find "$staging_dir" -type f -exec chmod 0600 -- {} +
+    elif (( ${#sddm_assets[@]} )); then
+      for asset in "${sddm_assets[@]}"; do
+        copy_trusted_file "$source_root/default/sddm/omarchy/$asset" "$sddm_stage/$asset"
+      done
+    fi
+
+    if (( ${#plymouth_assets[@]} )); then
+      validate_trusted_directory "$theme_dir"
+      if [[ $mode == "refresh-plymouth" ]]; then
+        validate_trusted_directory "$theme_dir/logos"
+      fi
+    fi
+    if (( ${#sddm_assets[@]} )); then
+      validate_trusted_directory "$sddm_dir"
     fi
 
     publish_asset() {
@@ -298,23 +339,23 @@ run_root_transaction() {
       validate_trusted_directory "$parent"
 
       temporary=$(mktemp --tmpdir="$parent" ".$filename.omarchy-new.XXXXXXXX")
-      cp --reflink=never -- "$source" "$temporary"
+      install -o 0 -g 0 -m 0644 -- "$source" "$temporary"
       copied_size=$(stat -c %s -- "$temporary")
       (( copied_size == source_size ))
       cmp -s -- "$source" "$temporary"
-      chown 0:0 -- "$temporary"
-      chmod 0644 -- "$temporary"
       sync -f -- "$temporary"
       mv --no-copy -fT -- "$temporary" "$destination"
       temporary=
     }
 
-    for asset in "${assets_to_stage[@]}"; do
-      publish_asset "$plymouth_stage/$asset" "$theme_dir/$asset"
-    done
+    if (( ${#plymouth_assets[@]} )); then
+      for asset in "${plymouth_assets[@]}"; do
+        publish_asset "$plymouth_stage/$asset" "$theme_dir/$asset"
+      done
+    fi
 
-    if [[ $mode == "set" ]]; then
-      for asset in "${sddm_theme_assets[@]}"; do
+    if (( ${#sddm_assets[@]} )); then
+      for asset in "${sddm_assets[@]}"; do
         publish_asset "$sddm_stage/$asset" "$sddm_dir/$asset"
       done
       validate_trusted_directory "$sddm_dir"
@@ -323,16 +364,18 @@ run_root_transaction() {
   ' bash "$mode" "$OMARCHY_PATH" "$bg_hex" "$text_hex" "$((64 * 1024 * 1024))"
 }
 
-if $refresh_default; then
-  run_root_transaction </dev/null
-else
+if [[ $mode == "set" ]]; then
   run_root_transaction <&"$logo_fd"
+else
+  run_root_transaction </dev/null
 fi
 
-sudo plymouth-set-default-theme omarchy
+if [[ $mode != "refresh-sddm" ]]; then
+  sudo plymouth-set-default-theme omarchy
 
-if omarchy-cmd-present limine-mkinitcpio; then
-  sudo limine-mkinitcpio
-else
-  sudo mkinitcpio -P
+  if omarchy-cmd-present limine-mkinitcpio; then
+    sudo limine-mkinitcpio
+  else
+    sudo mkinitcpio -P
+  fi
 fi
