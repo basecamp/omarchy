@@ -11,6 +11,7 @@
 
 #include <array>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
@@ -105,6 +106,9 @@ public:
                                  const QString &operation) const;
   Q_INVOKABLE QString permissionState(const QString &capability,
                                       const QString &operation) const;
+  Q_INVOKABLE QString readPackagedText(const QString &relativePath,
+                                       int maximumBytes) const;
+  void setPackagedAssetRoot(std::filesystem::path root);
   [[nodiscard]] QVariantMap permissions() const;
   [[nodiscard]] qulonglong permissionGeneration() const;
 
@@ -156,6 +160,7 @@ private:
   };
   std::vector<RequestedPermission> requested_permissions_;
   std::uint64_t activation_generation_ = 0;
+  std::filesystem::path packaged_asset_root_;
   bool host_snapshot_received_ = false;
   std::optional<omarchy::plugins::definitions::DynamicInvocation::GestureClaim>
       trusted_gesture_;

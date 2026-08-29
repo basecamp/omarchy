@@ -8,10 +8,12 @@
 #include <fcntl.h>
 #include <QGuiApplication>
 #include <QEventLoop>
+#include <QFile>
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QTimer>
+#include <QTemporaryDir>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -220,6 +222,20 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host) {
   worker::QmlBrokerApi api(
       endpoint, std::make_unique<worker::ManifestInvokeEncoder>(parsed),
       parsed, 77);
+  QTemporaryDir packaged_assets;
+  require(packaged_assets.isValid(), "packaged asset fixture failed");
+  QFile asset(packaged_assets.filePath("countries.json"));
+  require(asset.open(QIODevice::WriteOnly) &&
+              asset.write("{\"country\":\"Japan\"}") == 19,
+          "packaged asset fixture write failed");
+  asset.close();
+  api.setPackagedAssetRoot(packaged_assets.path().toStdString());
+  require(api.readPackagedText("countries.json", 128) ==
+              QStringLiteral("{\"country\":\"Japan\"}") &&
+              api.readPackagedText("../countries.json", 128).isEmpty() &&
+              api.readPackagedText("countries.json", 8).isEmpty() &&
+              api.readPackagedText("/etc/passwd", 512 * 1024).isEmpty(),
+          "packaged text projection escaped its bounded read-only contract");
   worker::WorkerRuntime production_binding_probe("/not-loaded-in-this-test");
   require(static_cast<bool>(production_binding_probe.bind_runtime_api(api)),
           "production permission-aware runtime API failed the exact trusted-surface validator");

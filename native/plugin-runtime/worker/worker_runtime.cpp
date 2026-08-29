@@ -156,6 +156,7 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
   std::size_t permission_state = 0;
   std::size_t call_finished = 0;
   std::size_t permission_changed = 0;
+  std::size_t read_packaged_text = 0;
   for (int index = QObject::staticMetaObject.methodCount();
        index < meta->methodCount(); ++index) {
     const QMetaMethod method = meta->method(index);
@@ -169,6 +170,15 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
         method.parameterMetaType(0).id() == QMetaType::QString &&
         method.parameterMetaType(1).id() == QMetaType::QVariantMap) {
       ++invoke;
+    } else if (own_properties == 2 &&
+               method.methodSignature() ==
+                   QByteArrayLiteral("readPackagedText(QString,int)") &&
+               method.methodType() == QMetaMethod::Method &&
+               method.returnMetaType().id() == QMetaType::QString &&
+               method.parameterCount() == 2 &&
+               method.parameterMetaType(0).id() == QMetaType::QString &&
+               method.parameterMetaType(1).id() == QMetaType::Int) {
+      ++read_packaged_text;
     } else if (own_properties == 2 &&
                method.methodSignature() ==
                    QByteArrayLiteral("callFinished(QObject*)") &&
@@ -208,7 +218,8 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
   }
   return invoke == 1 &&
          (own_properties == 0 ||
-          (has_permission == 1 && permission_state == 1 && call_finished == 1 &&
+          (has_permission == 1 && permission_state == 1 &&
+           read_packaged_text == 1 && call_finished == 1 &&
            permission_changed == 1));
 }
 

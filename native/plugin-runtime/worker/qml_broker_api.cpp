@@ -10,6 +10,7 @@
 #include <QStringDecoder>
 
 #include <algorithm>
+#include <fstream>
 #include <limits>
 
 namespace omarchy::plugin_runtime::worker {
@@ -304,6 +305,45 @@ QString QmlBrokerApi::permissionState(const QString &capability,
   if (!host_snapshot_received_)
     return QStringLiteral("unavailable");
   return found->granted ? QStringLiteral("granted") : QStringLiteral("denied");
+}
+
+void QmlBrokerApi::setPackagedAssetRoot(std::filesystem::path root) {
+  packaged_asset_root_ = std::filesystem::absolute(std::move(root)).lexically_normal();
+}
+
+QString QmlBrokerApi::readPackagedText(const QString &relativePath,
+                                       int maximumBytes) const {
+  if (packaged_asset_root_.empty() || maximumBytes < 1 ||
+      maximumBytes > 512 * 1024 || relativePath.isEmpty() ||
+      relativePath.size() > 240 || relativePath.contains(QChar::Null))
+    return {};
+  const auto relative = std::filesystem::path(relativePath.toStdString());
+  if (relative.is_absolute() || relative.empty()) return {};
+  for (const auto &component : relative) {
+    const auto value = component.string();
+    if (value.empty() || value == "." || value == "..") return {};
+  }
+  const auto candidate = (packaged_asset_root_ / relative).lexically_normal();
+  auto current = packaged_asset_root_;
+  std::error_code error;
+  for (const auto &component : relative) {
+    current /= component;
+    if (std::filesystem::is_symlink(std::filesystem::symlink_status(current, error)) ||
+        error)
+      return {};
+  }
+  if (!std::filesystem::is_regular_file(candidate, error) || error) return {};
+  const auto size = std::filesystem::file_size(candidate, error);
+  if (error || size == 0 || size > static_cast<std::uintmax_t>(maximumBytes))
+    return {};
+  std::ifstream input(candidate, std::ios::binary);
+  std::string bytes(size, '\0');
+  input.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+  if (!input || input.peek() != std::ifstream::traits_type::eof()) return {};
+  const QByteArray encoded(bytes.data(), static_cast<qsizetype>(bytes.size()));
+  QStringDecoder decoder(QStringDecoder::Utf8);
+  const auto decoded = decoder.decode(encoded);
+  return decoder.hasError() ? QString{} : decoded;
 }
 
 QVariantMap QmlBrokerApi::permissions() const {

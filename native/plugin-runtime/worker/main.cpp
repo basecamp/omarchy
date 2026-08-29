@@ -362,6 +362,7 @@ private:
     broker_api_ = std::make_unique<worker::QmlBrokerApi>(
         broker_, std::make_unique<worker::ManifestInvokeEncoder>(manifest_),
         manifest_, broker_.generation());
+    broker_api_->setPackagedAssetRoot("/plugin");
     QObject::connect(broker_api_.get(), &worker::QmlBrokerApi::callFinished,
                      broker_api_.get(),
                      [&] {
