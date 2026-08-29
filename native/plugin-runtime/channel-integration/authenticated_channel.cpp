@@ -273,6 +273,32 @@ AuthenticatedBrokerChannel::dispatch_one(std::chrono::milliseconds timeout) {
          "C4 broker dispatcher rejected the authenticated packet");
     return DispatchStatus::fatal;
   }
+  if (auto reply = dispatcher_->take_reply()) {
+    if (reply->message_type == 0 || reply->correlation_id == 0 ||
+        reply->correlation_id != decoded.packet.header.correlation_id ||
+        reply->payload.size() >
+            wire::payload_cap(wire::EndpointRole::broker)) {
+      fail(ChannelFailure::dispatch_failed,
+           "C4 broker dispatcher returned an invalid response");
+      return DispatchStatus::fatal;
+    }
+    std::vector<std::byte> encoded(wire::kHeaderSize + reply->payload.size());
+    const wire::EnvelopeHeader header{
+        .endpoint_role = wire::EndpointRole::broker,
+        .message_type = reply->message_type,
+        .role_protocol_version = broker::kBrokerRoleVersion,
+        .payload_length = static_cast<std::uint32_t>(reply->payload.size()),
+        .launch_generation = identity_.generation,
+        .correlation_id = reply->correlation_id};
+    const auto result = wire::encode_packet(header, reply->payload, encoded);
+    if (!result || !worker_->send(launcher::EndpointRole::broker,
+                                  std::span(encoded).first(
+                                      result.bytes_written))) {
+      fail(ChannelFailure::peer_failure,
+           "authenticated broker response send failed");
+      return DispatchStatus::fatal;
+    }
+  }
   return DispatchStatus::dispatched;
 }
 

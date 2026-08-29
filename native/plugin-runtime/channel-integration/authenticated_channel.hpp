@@ -7,8 +7,10 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
+#include <vector>
 
 namespace omarchy::plugin_runtime::channel {
 
@@ -36,12 +38,23 @@ enum class DispatchStatus : std::uint8_t {
   not_ready,
 };
 
+struct BrokerReply {
+  std::uint16_t message_type = 0;
+  std::uint64_t correlation_id = 0;
+  std::vector<std::byte> payload;
+};
+
 class BrokerDispatcher {
 public:
   virtual ~BrokerDispatcher() = default;
   [[nodiscard]] virtual bool
   accepts(const launcher::LaunchIdentity &identity) const noexcept = 0;
   [[nodiscard]] virtual bool dispatch(const wire::PacketView &packet) = 0;
+  // A dispatcher that completes a synchronous request may return its exact
+  // response after dispatch. Existing observation-only and deny-all
+  // dispatchers return no response. Ownership transfers to the authenticated
+  // channel, which is the only component allowed to write to the worker fd.
+  [[nodiscard]] virtual std::optional<BrokerReply> take_reply() { return {}; }
 };
 
 class GenerationAuthority {
