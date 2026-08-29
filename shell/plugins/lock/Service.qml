@@ -15,6 +15,7 @@ Item {
   readonly property string stateHome: home + "/.local/state"
   readonly property string userName: Quickshell.env("USER") || Quickshell.env("LOGNAME")
   readonly property string currentBackgroundLink: stateHome + "/omarchy/current/background"
+  readonly property string lockOwnerPath: Quickshell.env("XDG_RUNTIME_DIR") + "/omarchy-lock-owner-" + Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE")
 
   property bool lockRequested: false
   property bool pendingSessionLock: false
@@ -33,8 +34,15 @@ Item {
   property string lastEventAt: ""
   property bool strandedLock: false
   property bool strandedLockResolved: false
+  property bool lockOwnerReady: false
+  property string lockOwnerInstance: ""
+  property bool strandedRestartAttempted: false
 
   readonly property bool locked: lockRequested || sessionLock.locked || sessionLock.secure
+  // This is the deterministic ownership signal used by the shell reload guard.
+  // `secure` is deliberately excluded: after an in-process lock teardown it
+  // reads through Quickshell's stale process-global session-lock pointer.
+  readonly property bool sessionLockOwned: lockRequested || sessionLock.locked
   readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating
 
   function realScreenCount() {
@@ -74,6 +82,7 @@ Item {
     pendingSessionLock = false
     pendingSessionLockTimer.stop()
     sessionLock.locked = true
+    if (sessionLock.locked) markSessionLockOwner()
   }
 
   // ext-session-lock outlives its client, and a restart carries no lock over, so
@@ -83,7 +92,7 @@ Item {
     if (strandedLockResolved || strandedLockCheckProc.running) return
 
     // A lock this shell took is nobody's orphan.
-    if (locked || lockRequested) {
+    if (sessionLockOwned) {
       strandedLockResolved = true
       return
     }
@@ -92,11 +101,42 @@ Item {
   }
 
   function recoverStrandedLock() {
-    if (!strandedLock || locked || !passwordPamConfigured) return
+    if (!strandedLock || sessionLockOwned || !passwordPamConfigured || !lockOwnerReady) return
+
+    // A replacement service in the same Quickshell process cannot retake the
+    // lock: destroying its predecessor leaves the process-global lock manager
+    // poisoned. A detached restart gives recovery a clean manager and survives
+    // the shell it is replacing. A genuinely fresh shell has a different
+    // instance id and can safely take over the compositor's stranded lock.
+    if (lockOwnerInstance === String(Quickshell.instanceId)) {
+      restartForStrandedLock()
+      return
+    }
 
     strandedLock = false
     logEvent("lock-stranded: recovering")
     beginLock()
+  }
+
+  function restartForStrandedLock() {
+    if (strandedRestartAttempted || sessionLockOwned) return
+
+    strandedRestartAttempted = true
+    strandedLock = false
+    sessionLockStabilizeTimer.stop()
+    pendingSessionLockTimer.stop()
+    logEvent("lock-stranded: restarting-poisoned-shell")
+    Quickshell.execDetached(["omarchy-restart-shell"])
+  }
+
+  function markSessionLockOwner() {
+    lockOwnerInstance = String(Quickshell.instanceId)
+    lockOwnerFile.setText(lockOwnerInstance + "\n")
+  }
+
+  function clearSessionLockOwner() {
+    lockOwnerInstance = ""
+    lockOwnerFile.setText("")
   }
 
   function refreshBackground() {
@@ -155,6 +195,7 @@ Item {
     resetAuthenticationState()
     idleBlankTimer.stop()
     sessionLock.locked = false
+    clearSessionLockOwner()
     logEvent("unlocked")
     runWake()
   }
@@ -246,6 +287,7 @@ Item {
       root.logEvent("session-locked=" + locked)
 
       if (locked) {
+        root.markSessionLockOwner()
         root.pendingSessionLock = false
         sessionLockStabilizeTimer.stop()
         pendingSessionLockTimer.stop()
@@ -396,7 +438,7 @@ Item {
       root.strandedLockResolved = true
 
       // A lock taken while this was in flight is this shell's own.
-      root.strandedLock = exitCode === 0 && !root.locked && !root.lockRequested
+      root.strandedLock = exitCode === 0 && !root.sessionLockOwned
       root.recoverStrandedLock()
     }
   }
@@ -479,6 +521,24 @@ Item {
     if (!lockRequested) return
     if (authenticatingPassword) idleBlankTimer.stop()
     else armBlankTimer()
+  }
+
+  FileView {
+    id: lockOwnerFile
+    path: root.lockOwnerPath
+    atomicWrites: true
+    blockWrites: true
+    printErrors: false
+    onLoaded: {
+      root.lockOwnerInstance = String(text() || "").trim()
+      root.lockOwnerReady = true
+      root.recoverStrandedLock()
+    }
+    onLoadFailed: {
+      root.lockOwnerInstance = ""
+      root.lockOwnerReady = true
+      root.recoverStrandedLock()
+    }
   }
 
   FileView {

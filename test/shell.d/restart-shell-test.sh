@@ -94,14 +94,17 @@ case "$*" in
       printf 'ok\n'
     ;;
   *'lock lock')
+    rm -f "$OMARCHY_TEST_QS_STATE.stranded"
     touch "$OMARCHY_TEST_QS_STATE.locked"
     printf 'ok\n'
     ;;
   *'lock status')
     if [[ -f $OMARCHY_TEST_QS_STATE.locked ]]; then
-      printf '{"secure": true, "requested": true}\n'
+      printf '{"sessionLocked": true, "secure": true, "requested": true}\n'
+    elif [[ -f $OMARCHY_TEST_QS_STATE.stranded ]]; then
+      printf '{"sessionLocked": false, "secure": true, "requested": true}\n'
     else
-      printf '{"secure": false, "requested": false}\n'
+      printf '{"sessionLocked": false, "secure": false, "requested": false}\n'
     fi
     ;;
 esac
@@ -241,6 +244,7 @@ sleep 30 &
 restart_pid_one=$!
 printf '%s\n' "$restart_pid_one" >"$restart_state"
 rm -f "$restart_state.locked"
+touch "$restart_state.stranded"
 : >"$restart_log"
 : >"$ipc_log"
 
@@ -264,4 +268,4 @@ restart_pid_one=""
 [[ $(<"$restart_state") == 303 ]] || fail "dead-lock recovery leaves one fresh shell instance"
 grep -F "ipc -n -p $restart_root/shell call -- lock lock" "$ipc_log" >/dev/null || fail "dead-lock recovery re-acquires the session lock"
 grep -F "ipc -n -p $restart_root/shell call -- lock status" "$ipc_log" >/dev/null || fail "dead-lock recovery waits for the lock to become secure"
-pass "restart recovers a locked session whose lock client died"
+pass "restart recovers a locked session whose stale service no longer owns a lock surface"
