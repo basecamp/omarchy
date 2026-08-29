@@ -756,11 +756,50 @@ ManifestV2 parse_manifest_v2(std::string_view bytes) {
       const std::string reason =
           as_string(required(request, "reason"), "reason");
       bounded_text(reason, 1024, "reason");
+      std::uint32_t definition_generation = 0;
+      std::string definition_digest;
+      std::vector<std::string> operations;
+      const auto generation_field = request.find("definitionGeneration");
+      const auto digest_field = request.find("definitionDigest");
+      const auto operations_field = request.find("operations");
+      const bool has_dynamic_reference = generation_field != request.end() ||
+                                         digest_field != request.end() ||
+                                         operations_field != request.end();
+      if (has_dynamic_reference) {
+        require(generation_field != request.end() &&
+                    digest_field != request.end() &&
+                    operations_field != request.end(),
+                "dynamic capability reference is incomplete");
+        const auto generation =
+            as_integer(generation_field->second, "definitionGeneration");
+        require(generation > 0 && generation <= UINT32_MAX,
+                "definitionGeneration is out of range");
+        definition_generation = static_cast<std::uint32_t>(generation);
+        definition_digest =
+            as_string(digest_field->second, "definitionDigest");
+        require(valid_digest(definition_digest), "definitionDigest is invalid");
+        const auto &operation_values =
+            as_array(operations_field->second, "operations");
+        require(!operation_values.empty() && operation_values.size() <= 16,
+                "operations count is invalid");
+        for (const auto &operation : operation_values) {
+          auto name = as_string(operation, "operation");
+          bounded_text(name, 128, "operation");
+          require(std::find(operations.begin(), operations.end(), name) ==
+                      operations.end(),
+                  "duplicate operation");
+          operations.push_back(std::move(name));
+        }
+        std::sort(operations.begin(), operations.end());
+      }
       request.erase("capability");
       request.erase("reason");
       result.requests.push_back({.capability = capability,
                                  .reason = reason,
                                  .canonical_scope = canonical(Json{request}),
+                                 .definition_generation = definition_generation,
+                                 .definition_digest = definition_digest,
+                                 .operations = std::move(operations),
                                  .required = is_required});
     }
   }

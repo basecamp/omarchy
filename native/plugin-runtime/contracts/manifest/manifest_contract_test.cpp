@@ -52,6 +52,21 @@ void parser_contract(const std::filesystem::path &fixtures) {
   require(manifest.requests[0].canonical_scope == "{\"quotaBytes\":1048576}",
           "scope did not canonicalize");
 
+  const auto dynamic = omarchy::plugins::manifest::parse_manifest_v2(
+      R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{},"permissions":{"required":[{"capability":"local.status","definitionGeneration":7,"definitionDigest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","operations":["status.read"],"resource":4,"reason":"status"}],"optional":[]}})");
+  require(dynamic.requests.size() == 1 &&
+              dynamic.requests[0].definition_generation == 7 &&
+              dynamic.requests[0].definition_digest == std::string(64, 'a') &&
+              dynamic.requests[0].operations ==
+                  std::vector<std::string>{"status.read"},
+          "dynamic definition reference was not preserved");
+  expect_rejected(
+      [] {
+        (void)omarchy::plugins::manifest::parse_manifest_v2(
+            R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{},"permissions":{"required":[{"capability":"local.status","definitionGeneration":7,"operations":["status.read"],"reason":"status"}],"optional":[]}})");
+      },
+      "incomplete dynamic definition reference was accepted");
+
   expect_rejected(
       [&] {
         (void)omarchy::plugins::manifest::parse_manifest_v2(

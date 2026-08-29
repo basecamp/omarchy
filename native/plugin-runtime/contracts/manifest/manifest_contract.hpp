@@ -14,6 +14,9 @@ struct CapabilityRequest {
   std::string capability;
   std::string reason;
   std::string canonical_scope;
+  std::uint32_t definition_generation = 0;
+  std::string definition_digest;
+  std::vector<std::string> operations;
   bool required = false;
 
   bool operator==(const CapabilityRequest &) const = default;

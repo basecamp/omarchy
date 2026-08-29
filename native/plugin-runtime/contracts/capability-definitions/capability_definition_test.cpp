@@ -15,6 +15,17 @@ void require(bool condition, std::string_view message) {
 
 Digest digest(char value) { return Digest(std::string(64, value)); }
 
+DynamicScopeRelation compare_scope(const CapabilityDefinition &,
+                                   std::string_view candidate,
+                                   std::string_view baseline, void *) noexcept {
+  if (candidate == baseline) return DynamicScopeRelation::equal;
+  if (candidate == "narrow" && baseline == "wide")
+    return DynamicScopeRelation::narrower;
+  if (candidate == "wide" && baseline == "narrow")
+    return DynamicScopeRelation::expanded;
+  return DynamicScopeRelation::incomparable;
+}
+
 CapabilityDefinition network_fetch() {
   CapabilityDefinition definition{
       .canonical_name = Name("network.fetch"),
@@ -92,6 +103,7 @@ CliHarnessProfile github_cli() {
 } // namespace
 
 void capability_definition_loader_tests();
+void dynamic_activation_tests();
 
 int main() {
   TrustedDefinitionRegistry registry;
@@ -126,35 +138,65 @@ int main() {
                      .definition_generation = 4,
                      .definition_digest = installed->digest},
       .operations = {},
+      .scope = CanonicalScope("wide"),
+      .required = true,
   };
   request.operations.insert(Name("notifications.list"));
   DynamicGrant grant{.definition = request.definition,
                      .operations = {},
+                     .scope = CanonicalScope("narrow"),
                      .state = permissions::GrantState::granted,
                      .epoch = 9};
   grant.operations.insert(Name("notifications.list"));
   require(authorize_dynamic_operation(
               registry, request, grant, "notifications.list",
-              installed->definition->adapter, false).allowed(),
+              "narrow", installed->definition->adapter,
+              {.compare = compare_scope}, false).allowed(),
           "manifest reference did not reach its exact granted adapter operation");
   require(authorize_dynamic_operation(
               registry, request, grant, "notifications.mark-read",
-              installed->definition->adapter, false).decision ==
+              "narrow", installed->definition->adapter,
+              {.compare = compare_scope}, false).decision ==
               DynamicDecision::operation_undeclared,
           "manifest gained an unrequested dynamic operation");
   auto revoked = grant;
   revoked.state = permissions::GrantState::revoked;
   require(authorize_dynamic_operation(
               registry, request, revoked, "notifications.list",
-              installed->definition->adapter, false).decision ==
+              "narrow", installed->definition->adapter,
+              {.compare = compare_scope}, false).decision ==
               DynamicDecision::revoked,
           "revoked dynamic grant reached its adapter");
   auto substituted = installed->definition->adapter;
   substituted.implementation_digest = digest('e');
   require(authorize_dynamic_operation(
-              registry, request, grant, "notifications.list", substituted,
-              false).decision == DynamicDecision::adapter_mismatch,
+              registry, request, grant, "notifications.list", "narrow",
+              substituted, {.compare = compare_scope}, false).decision ==
+              DynamicDecision::adapter_mismatch,
           "adapter substitution retained dynamic authority");
+  require(authorize_dynamic_operation(
+              registry, request, grant, "notifications.list", "wide",
+              installed->definition->adapter, {.compare = compare_scope},
+              false).decision == DynamicDecision::scope_expanded,
+          "dynamic demand expanded its granted scope");
+
+  const std::string dynamic_manifest =
+      "{\"schemaVersion\":2,\"id\":\"org.example.dynamic\","
+      "\"name\":\"Dynamic\",\"version\":\"1\","
+      "\"runtime\":{\"apiVersion\":1,\"qml\":\"Main.qml\"},"
+      "\"surfaces\":{},\"permissions\":{\"required\":[{"
+      "\"capability\":\"network.fetch\",\"definitionGeneration\":4,"
+      "\"definitionDigest\":\"" + std::string(installed->digest.view()) +
+      "\",\"operations\":[\"notifications.list\"],"
+      "\"origins\":[\"https://api.github.com\"],\"reason\":\"status\"}],"
+      "\"optional\":[]}}";
+  const auto parsed_manifest =
+      omarchy::plugins::manifest::parse_manifest_v2(dynamic_manifest);
+  const auto parsed_request =
+      dynamic_request_from_manifest(parsed_manifest.requests.front(), registry);
+  require(parsed_request && parsed_request->definition.definition_generation == 4 &&
+              parsed_request->operations.contains(Name("notifications.list")),
+          "schema-v2 dynamic reference did not resolve into activation request");
 
   auto alias = fetch_definition;
   alias.canonical_name = Name("internet.read-safe");
@@ -196,5 +238,6 @@ int main() {
   profile.executable = permissions::BoundedString<256>("/usr/bin/bash");
   require(!valid_cli_profile(profile), "shell executable became a harness profile");
   capability_definition_loader_tests();
+  dynamic_activation_tests();
   return 0;
 }

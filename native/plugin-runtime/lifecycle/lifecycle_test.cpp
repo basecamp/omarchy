@@ -185,11 +185,17 @@ int main() {
       {.capability = "audio.play-cue",
        .reason = "cue",
        .canonical_scope = "{\"cues\":[\"complete\"]}",
+       .definition_generation = 0,
+       .definition_digest = {},
+       .operations = {},
        .required = false},
       {.capability = "service.fake-status",
        .reason = "status",
        .canonical_scope =
            "{\"operations\":[\"acknowledge\",\"list\"],\"resourceIds\":[17]}",
+       .definition_generation = 0,
+       .definition_digest = {},
+       .operations = {},
        .required = false},
   };
   const auto translated = lifecycle::translate_requests(translation_fixture);

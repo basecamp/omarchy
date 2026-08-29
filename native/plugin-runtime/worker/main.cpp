@@ -1,4 +1,5 @@
 #include "worker_channel.hpp"
+#include "qml_broker_api.hpp"
 #include "worker_runtime.hpp"
 
 #include "omarchy/plugin_runtime/Version.h"
@@ -130,8 +131,13 @@ private:
         ready_runtime();
       return;
     }
+    if (endpoint.role() == wire::EndpointRole::broker && broker_api_) {
+      if (!broker_api_->receive(std::move(packet)))
+        fatal("broker response failed runtime validation");
+      return;
+    }
     if (endpoint.role() != wire::EndpointRole::render || !render_state_) {
-      fatal("unexpected post-negotiation control or broker traffic");
+      fatal("unexpected post-negotiation control traffic");
       return;
     }
     const wire::PacketView view{.header = packet.header,
@@ -151,6 +157,13 @@ private:
     std::string seccomp_error;
     if (!worker::install_steady_state_seccomp(seccomp_error)) {
       fatal(seccomp_error);
+      return;
+    }
+    broker_api_ = std::make_unique<worker::QmlBrokerApi>(
+        broker_, std::make_unique<worker::BootstrapInvokeEncoder>());
+    const auto bound = runtime_.bind_runtime_api(*broker_api_);
+    if (!bound) {
+      fatal(bound.detail);
       return;
     }
     const auto loaded = runtime_.load_manifest_entry();
@@ -313,6 +326,7 @@ private:
   std::array<wire::RoleSchemaView, 1> schemas_;
   wire::RoleSchemaRegistryView registry_;
   std::unique_ptr<wire::SelectedEndpointState<32>> render_state_;
+  std::unique_ptr<worker::QmlBrokerApi> broker_api_;
   QSocketNotifier control_notifier_;
   QSocketNotifier broker_notifier_;
   QSocketNotifier render_notifier_;

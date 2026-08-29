@@ -235,7 +235,8 @@ bool authorize_cli_invocation(const CliHarnessProfile &profile,
 DynamicAuthorization authorize_dynamic_operation(
     const TrustedDefinitionRegistry &registry, const DynamicRequest &request,
     const DynamicGrant &grant, std::string_view operation,
-    const AdapterBinding &running_adapter, bool fresh_gesture) {
+    std::string_view demand_scope, const AdapterBinding &running_adapter,
+    const DynamicScopeValidator &scope_validator, bool fresh_gesture) {
   const auto by_name = registry.find(request.definition.canonical_name.view());
   if (!by_name)
     return {.decision = DynamicDecision::unknown_definition};
@@ -270,6 +271,22 @@ DynamicAuthorization authorize_dynamic_operation(
                    }))
     return {.decision = DynamicDecision::operation_ungranted,
             .definition = resolved->definition, .operation = &*found};
+  if (scope_validator.compare == nullptr)
+    return {.decision = DynamicDecision::scope_expanded,
+            .definition = resolved->definition, .operation = &*found};
+  const auto grant_to_request = scope_validator.compare(
+      *resolved->definition, grant.scope.view(), request.scope.view(),
+      scope_validator.context);
+  const auto demand_to_grant = scope_validator.compare(
+      *resolved->definition, demand_scope, grant.scope.view(),
+      scope_validator.context);
+  const auto allowed_relation = [](DynamicScopeRelation relation) {
+    return relation == DynamicScopeRelation::equal ||
+           relation == DynamicScopeRelation::narrower;
+  };
+  if (!allowed_relation(grant_to_request) || !allowed_relation(demand_to_grant))
+    return {.decision = DynamicDecision::scope_expanded,
+            .definition = resolved->definition, .operation = &*found};
   if (running_adapter != resolved->definition->adapter)
     return {.decision = DynamicDecision::adapter_mismatch,
             .definition = resolved->definition, .operation = &*found};
@@ -280,6 +297,33 @@ DynamicAuthorization authorize_dynamic_operation(
           .definition = resolved->definition,
           .operation = &*found,
           .grant_epoch = grant.epoch};
+}
+
+std::optional<DynamicRequest>
+dynamic_request_from_manifest(const manifest::CapabilityRequest &request,
+                              const TrustedDefinitionRegistry &registry) {
+  try {
+    if (request.definition_generation == 0 || request.definition_digest.empty() ||
+        request.operations.empty())
+      return std::nullopt;
+    DynamicRequest result{
+        .definition = {.canonical_name = Name(request.capability),
+                       .definition_generation = request.definition_generation,
+                       .definition_digest = Digest(request.definition_digest)},
+        .operations = {},
+        .scope = CanonicalScope(request.canonical_scope),
+        .required = request.required,
+    };
+    if (!registry.resolve(result.definition))
+      return std::nullopt;
+    for (const auto &operation : request.operations) {
+      if (!result.operations.insert(Name(operation)))
+        return std::nullopt;
+    }
+    return result;
+  } catch (const std::runtime_error &) {
+    return std::nullopt;
+  }
 }
 
 } // namespace omarchy::plugins::definitions

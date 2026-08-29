@@ -46,6 +46,12 @@ if(TARGET omarchy-plugin-permission-contract
 endif()
 
 if(TARGET omarchy-plugin-wire
+    AND TARGET omarchy-plugin-permission-contract
+    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/broker/CMakeLists.txt")
+  add_subdirectory(broker)
+endif()
+
+if(TARGET omarchy-plugin-wire
     AND TARGET omarchy-plugin-surface-contract
     AND TARGET omarchy-plugin-sandbox-policy)
   add_subdirectory(worker)
@@ -70,11 +76,6 @@ if(TARGET omarchy-plugin-sandbox-policy
   add_subdirectory(launcher)
 endif()
 
-if(TARGET omarchy-plugin-wire
-    AND TARGET omarchy-plugin-permission-contract
-    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/broker/CMakeLists.txt")
-  add_subdirectory(broker)
-endif()
 if(TARGET omarchy-plugin-broker-core
     AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/providers/CMakeLists.txt")
   add_subdirectory(providers)

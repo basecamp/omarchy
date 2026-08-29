@@ -1,6 +1,7 @@
 #pragma once
 
 #include "permission_contract.hpp"
+#include "manifest_contract.hpp"
 
 #include <array>
 #include <cstddef>
@@ -15,6 +16,7 @@ using Name = permissions::BoundedString<128>;
 using Label = permissions::BoundedString<160>;
 using Digest = permissions::Digest;
 using Token = permissions::ScopeToken;
+using CanonicalScope = permissions::BoundedString<4096>;
 
 enum class DefinitionSource : std::uint8_t { omarchy_package, local_admin };
 enum class EnforcementFamily : std::uint8_t {
@@ -165,11 +167,14 @@ struct CliInvocation {
 struct DynamicRequest {
   CapabilityReference definition;
   permissions::FixedSet<Name, 16> operations;
+  CanonicalScope scope;
+  bool required = false;
 };
 
 struct DynamicGrant {
   CapabilityReference definition;
   permissions::FixedSet<Name, 16> operations;
+  CanonicalScope scope;
   permissions::GrantState state = permissions::GrantState::denied;
   std::uint64_t epoch = 0;
 };
@@ -183,7 +188,24 @@ enum class DynamicDecision : std::uint8_t {
   denied,
   revoked,
   adapter_mismatch,
+  scope_expanded,
   gesture_missing,
+};
+
+enum class DynamicScopeRelation : std::uint8_t {
+  equal,
+  narrower,
+  expanded,
+  incomparable,
+  invalid,
+};
+
+struct DynamicScopeValidator {
+  DynamicScopeRelation (*compare)(const CapabilityDefinition &definition,
+                                  std::string_view candidate,
+                                  std::string_view baseline,
+                                  void *context) noexcept = nullptr;
+  void *context = nullptr;
 };
 
 struct DynamicAuthorization {
@@ -199,6 +221,11 @@ struct DynamicAuthorization {
 [[nodiscard]] DynamicAuthorization authorize_dynamic_operation(
     const TrustedDefinitionRegistry &registry, const DynamicRequest &request,
     const DynamicGrant &grant, std::string_view operation,
-    const AdapterBinding &running_adapter, bool fresh_gesture);
+    std::string_view demand_scope, const AdapterBinding &running_adapter,
+    const DynamicScopeValidator &scope_validator, bool fresh_gesture);
+
+[[nodiscard]] std::optional<DynamicRequest>
+dynamic_request_from_manifest(const manifest::CapabilityRequest &request,
+                              const TrustedDefinitionRegistry &registry);
 
 } // namespace omarchy::plugins::definitions
