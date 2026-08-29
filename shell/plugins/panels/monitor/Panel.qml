@@ -765,26 +765,32 @@ Panel {
               }
             }
 
-            Grid {
-              id: scaleRow
+            Item {
               width: parent.width
-              columns: root.scaleValues.length
-              spacing: Style.spacing.xs
+              height: scaleRow.implicitHeight
 
-              readonly property real cellWidth: root.scaleValues.length > 0
-                ? (width - spacing * (columns - 1)) / columns
-                : 0
+              Grid {
+                id: scaleRow
+                width: parent.width - 2 * Style.spacing.xxs
+                x: Style.spacing.xxs
+                columns: root.scaleValues.length
+                spacing: Style.spacing.xs
 
-              Repeater {
-                model: root.scaleValues
+                readonly property real cellWidth: root.scaleValues.length > 0
+                  ? (width - spacing * (columns - 1)) / columns
+                  : 0
 
-                ScalePill {
-                  required property string modelData
-                  required property int index
+                Repeater {
+                  model: root.scaleValues
 
-                  scaleValue: modelData
-                  scaleIndex: index
-                  width: scaleRow.cellWidth
+                  ScalePill {
+                    required property string modelData
+                    required property int index
+
+                    scaleValue: modelData
+                    scaleIndex: index
+                    width: scaleRow.cellWidth
+                  }
                 }
               }
             }
