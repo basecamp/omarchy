@@ -30,6 +30,14 @@ iso2sd() {
 }
 
 # Format an entire drive for a single partition using exFAT
+# First partition path for a block device (nvme/mmcblk/loop/md use a `p` separator).
+format-drive-partition() {
+  case "$1" in
+  *nvme* | *mmcblk* | *loop* | *md*) printf '%s\n' "${1}p1" ;;
+  *) printf '%s\n' "${1}1" ;;
+  esac
+}
+
 format-drive() {
   if (( $# != 2 )); then
     echo "Usage: format-drive <device> <name>"
@@ -47,7 +55,7 @@ format-drive() {
       sudo parted -s "$1" mkpart primary 1MiB 100%
       sudo parted -s "$1" set 1 msftdata on
 
-      partition="$([[ $1 == *"nvme"* ]] && echo "${1}p1" || echo "${1}1")"
+      partition="$(format-drive-partition "$1")"
       sudo partprobe "$1" || true
       sudo udevadm settle || true
 
