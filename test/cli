@@ -253,11 +253,13 @@ pass "safe dispatch works for font current"
 # the closing quote to the end of the line, deleting all three.
 make_tmpdir FONT_STYLE_TMPDIR
 mkdir -p "$FONT_STYLE_TMPDIR/.config/alacritty"
+# The starting family is a sentinel no fontconfig can resolve, so the family
+# assertion below can only pass if the file was actually rewritten.
 cat >"$FONT_STYLE_TMPDIR/.config/alacritty/alacritty.toml" <<'EOF'
 [font]
-normal = { family = "JetBrainsMono Nerd Font", style = "Regular" }
-bold = { family = "JetBrainsMono Nerd Font", style = "Bold" }
-italic = { family = "JetBrainsMono Nerd Font", style = "Italic" }
+normal = { family = "Sentinel Mono Unset", style = "Regular" }
+bold = { family = "Sentinel Mono Unset", style = "Bold" }
+italic = { family = "Sentinel Mono Unset", style = "Italic" }
 size = 9
 EOF
 
@@ -268,7 +270,20 @@ if [[ -z $FONT_STYLE_FAMILY ]]; then
   fail "fontconfig has no resolvable monospace family for the alacritty style test"
 fi
 
-HOME="$FONT_STYLE_TMPDIR" "$ROOT/bin/omarchy-font-set" "$FONT_STYLE_FAMILY" >/dev/null 2>&1 || true
+# omarchy-font-set ends by restarting the shell, notifying, and firing the
+# font-set hook. Stub those so the test never touches the live desktop, and so
+# the command's own exit status can be checked.
+FONT_STYLE_BIN="$FONT_STYLE_TMPDIR/fake-bin"
+mkdir -p "$FONT_STYLE_BIN"
+for cmd in omarchy-restart-shell omarchy-notification-send omarchy-hook; do
+  printf '#!/bin/bash\nexit 0\n' >"$FONT_STYLE_BIN/$cmd"
+  chmod +x "$FONT_STYLE_BIN/$cmd"
+done
+printf '#!/bin/bash\nexit 1\n' >"$FONT_STYLE_BIN/pgrep"
+chmod +x "$FONT_STYLE_BIN/pgrep"
+
+PATH="$FONT_STYLE_BIN:$ROOT/bin:$PATH" HOME="$FONT_STYLE_TMPDIR" "$ROOT/bin/omarchy-font-set" "$FONT_STYLE_FAMILY" >/dev/null
+pass "font set exits cleanly with stubbed downstream commands"
 
 for style in Regular Bold Italic; do
   if ! grep -q "style = \"$style\"" "$FONT_STYLE_TMPDIR/.config/alacritty/alacritty.toml"; then
@@ -278,10 +293,14 @@ for style in Regular Bold Italic; do
 done
 pass "font set preserves alacritty font styles"
 
-if ! grep -q "family = \"$FONT_STYLE_FAMILY\"" "$FONT_STYLE_TMPDIR/.config/alacritty/alacritty.toml"; then
-  fail "font set still replaces the alacritty family"
+# All three entries (normal, bold, italic) must carry the new family; a
+# regression that rewrote only the first line would otherwise pass.
+FONT_STYLE_COUNT=$(grep -cF "family = \"$FONT_STYLE_FAMILY\"" "$FONT_STYLE_TMPDIR/.config/alacritty/alacritty.toml")
+if (( FONT_STYLE_COUNT != 3 )); then
+  printf 'Actual alacritty.toml:\n%s\n' "$(cat "$FONT_STYLE_TMPDIR/.config/alacritty/alacritty.toml")" >&2
+  fail "font set replaces all three alacritty family entries (found $FONT_STYLE_COUNT)"
 fi
-pass "font set still replaces the alacritty family"
+pass "font set replaces all three alacritty family entries"
 
 make_tmpdir PI_TMPDIR
 NEXT_THEME="$PI_TMPDIR/.local/state/omarchy/current/next-theme"
