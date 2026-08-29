@@ -16,7 +16,24 @@ if(BUILD_TESTING)
   qt_add_executable(omarchy-plugin-product-e2e-host main.cpp)
   omarchy_plugin_target_defaults(omarchy-plugin-product-e2e-host)
   target_compile_definitions(omarchy-plugin-product-e2e-host PRIVATE
-    OMARCHY_PLUGIN_PRODUCT_E2E=1)
+    OMARCHY_PLUGIN_PRODUCT_E2E=1
+    OMARCHY_PLUGIN_RADIO_DEFINITION_ROOT="${CMAKE_CURRENT_BINARY_DIR}/radio-definitions")
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/radio-definitions")
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/winners/definitions/network-fetch.capability"
+    "${CMAKE_CURRENT_BINARY_DIR}/radio-definitions/network-fetch.capability" COPYONLY)
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/winners/definitions/media-play-stream.capability"
+    "${CMAKE_CURRENT_BINARY_DIR}/radio-definitions/media-play-stream.capability" COPYONLY)
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/network-definition")
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/winners/definitions/network-fetch.capability"
+    "${CMAKE_CURRENT_BINARY_DIR}/network-definition/network-fetch.capability" COPYONLY)
+  add_executable(omarchy-plugin-dynamic-e2e-grant dynamic_e2e_grant.cpp)
+  omarchy_plugin_target_defaults(omarchy-plugin-dynamic-e2e-grant)
+  target_link_libraries(omarchy-plugin-dynamic-e2e-grant PRIVATE
+    omarchy-plugin-grant-store omarchy-plugin-capability-definitions
+    omarchy-plugin-providers)
   target_link_libraries(omarchy-plugin-product-e2e-host PRIVATE
     Qt6::Core Qt6::Gui Qt6::Quick
     Omarchy::PluginRuntimeVersion
@@ -32,7 +49,9 @@ if(BUILD_TESTING)
       $<TARGET_FILE:omarchy-plugin-product-e2e-host>
       $<TARGET_FILE:omarchy-plugin-product-e2e-worker>
       $<TARGET_FILE:omarchy-plugin-permission-store>
-      "${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/product")
+      "${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/product"
+      $<TARGET_FILE:omarchy-plugin-dynamic-e2e-grant>
+      "${CMAKE_CURRENT_BINARY_DIR}/network-definition")
   set_tests_properties(plugin-product-e2e-bwrap PROPERTIES
     TIMEOUT 45 SKIP_RETURN_CODE 77
     LABELS "integration;product;e2e;security;real-bwrap;qml;broker;render"

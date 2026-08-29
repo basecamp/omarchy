@@ -46,7 +46,8 @@ grants::RevisionGrants active(const manifest::ManifestV2 &parsed,
       .source_request_fingerprint =
           permissions::Digest(identity.request_sha256),
       .requests = std::move(requests),
-      .grants = {}};
+      .grants = {},
+      .dynamic_grants = {}};
 }
 
 void run() {

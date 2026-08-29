@@ -794,8 +794,7 @@ ManifestV2 parse_manifest_v2(std::string_view bytes) {
       const auto digest_field = request.find("definitionDigest");
       const auto operations_field = request.find("operations");
       const bool has_dynamic_reference = generation_field != request.end() ||
-                                         digest_field != request.end() ||
-                                         operations_field != request.end();
+                                         digest_field != request.end();
       if (has_dynamic_reference) {
         require(generation_field != request.end() &&
                     digest_field != request.end() &&

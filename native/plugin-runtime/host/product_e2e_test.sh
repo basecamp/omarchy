@@ -6,6 +6,8 @@ host=$1
 worker=$2
 permission_store=$3
 fixture_root=$4
+dynamic_grant=$5
+network_definition=$6
 
 [[ -x /usr/bin/bwrap ]] || exit 77
 
@@ -98,6 +100,32 @@ find "$test_root/lab-authorized/state" -type f -size +0c -print -quit | grep -q 
   fail "authorized provider state missing"
 find "$test_root/lab-authorized/audit" -type f -size +0c -print -quit | grep -q . || \
   fail "authorized audit missing"
+
+prepare lab-dynamic-radio
+dynamic_run=$test_root/lab-dynamic-radio
+dynamic_plugin=$(sed -n 's/^plugin=//p' "$dynamic_run/identity")
+dynamic_tree=$(sed -n 's/^tree=//p' "$dynamic_run/identity")
+dynamic_request=$(sed -n 's/^request=//p' "$dynamic_run/identity")
+"$dynamic_grant" "$dynamic_run/plugins/lab-dynamic-radio/manifest.json" \
+  "$dynamic_plugin" "$dynamic_tree" "$dynamic_request" \
+  "$dynamic_run/grants" "$network_definition" || fail "dynamic grant review failed"
+launch lab-dynamic-radio 1 2 2 3 1 1 >"$dynamic_run/host.log" 2>&1 &
+dynamic_pid=$!
+for ((attempt = 0; attempt < 100; attempt++)); do
+  grep -q 'PRODUCT_E2E frame 1' "$dynamic_run/host.log" && break
+  sleep 0.05
+done
+grep -q 'PRODUCT_E2E frame 1' "$dynamic_run/host.log" || fail "dynamic Radio startup frame missing"
+"$dynamic_grant" revoke "$dynamic_run/grants" "$dynamic_plugin" network.fetch || \
+  fail "dynamic Radio revoke failed"
+wait "$dynamic_pid" || {
+  cat "$dynamic_run/host.log" >&2
+  fail "dynamic Radio host failed"
+}
+grep -q 'PRODUCT_E2E complete calls 1 frames 2' "$dynamic_run/host.log" || \
+  fail "dynamic Radio broker/frame terminal evidence missing"
+find "$dynamic_run/audit" -type f -size +0c -print -quit | grep -q . || \
+  fail "dynamic Radio audit missing"
 
 prepare lab-denied
 grant_capability lab-denied --required storage.private@1=quota:65536:4096

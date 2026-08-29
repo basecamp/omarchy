@@ -309,8 +309,11 @@ struct GrantDecision {
 
 class PermissionAuthority {
 public:
+  struct ValidatedCombinedPolicy {};
   PermissionAuthority(ActivationBinding binding, RequestSet requests,
                       GrantSet grants);
+  PermissionAuthority(ActivationBinding binding, RequestSet requests,
+                      GrantSet grants, ValidatedCombinedPolicy);
   GrantDecision authorize(OperationId operation, const Scope &demand,
                           const ActivationBinding &channel,
                           std::uint64_t now_monotonic_ns,

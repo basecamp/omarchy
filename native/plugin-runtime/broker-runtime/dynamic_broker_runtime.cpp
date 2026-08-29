@@ -153,6 +153,29 @@ bool DynamicBrokerRuntime::apply_reconstructed_update(
       !definitions::review_dynamic_grant(registry_, updated,
                                           route->scope_validator))
     return false;
+  for (const auto &operation : updated.grant.operations.values()) {
+    omarchy::plugins::permissions::AuditDraft draft{
+        .event = omarchy::plugins::permissions::AuditEvent::capability_revoked,
+        .outcome = omarchy::plugins::permissions::AuditOutcome::denied,
+        .plugin = updated.binding.plugin, .revision = updated.binding.revision,
+        .generation = updated.binding.generation, .correlation = 0,
+        .dynamic_operation = omarchy::plugins::permissions::DynamicAuditIdentity{
+            .capability = omarchy::plugins::permissions::CapabilityId(
+                updated.grant.definition.canonical_name.view()),
+            .definition_generation = updated.grant.definition.definition_generation,
+            .definition_digest = updated.grant.definition.definition_digest,
+            .operation = omarchy::plugins::permissions::BoundedString<128>(
+                operation.view()),
+            .grant_epoch = updated.grant.epoch},
+        .operation = std::nullopt, .capability = std::nullopt,
+        .decision = omarchy::plugins::permissions::GrantDecisionCode::revoked,
+        .metadata = {}};
+    if (!audit_.append(omarchy::plugins::permissions::AuditProducer::broker,
+                       std::move(draft)).status.ok()) {
+      failed_ = true;
+      return false;
+    }
+  }
   route->grant = updated;
   return true;
 }

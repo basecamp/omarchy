@@ -106,6 +106,12 @@ int main() {
           "unauthenticated activation reached adapter");
   auto revoked = grant; revoked.grant.state = permissions::GrantState::revoked; revoked.grant.epoch = 5;
   require(runtime.apply_reconstructed_update(revoked), "revoke update");
+  const auto revoke_audit = audit.query({});
+  require(!revoke_audit.records.empty() &&
+              revoke_audit.records.back().event ==
+                  permissions::AuditEvent::capability_revoked &&
+              revoke_audit.records.back().dynamic_operation->grant_epoch == 5,
+          "dynamic revocation was not durable before publication");
   packet.header.correlation_id = 11;
   result = runtime.dispatch(packet, grant.binding, output);
   require(result.outcome == definitions::DynamicDispatchResult::denied &&

@@ -515,6 +515,20 @@ PermissionAuthority::PermissionAuthority(ActivationBinding binding,
           "activation policy fingerprint mismatch");
 }
 
+PermissionAuthority::PermissionAuthority(ActivationBinding binding,
+                                         RequestSet requests, GrantSet grants,
+                                         ValidatedCombinedPolicy)
+    : binding_(std::move(binding)), requests_(std::move(requests)),
+      grants_(std::move(grants)) {
+  require(canonical_id(binding_.plugin.view()) &&
+              canonical_digest(binding_.revision) &&
+              canonical_digest(binding_.policy_fingerprint) &&
+              binding_.generation > 0,
+          "invalid activation binding");
+  validate_requests(requests_);
+  validate_grants(grants_, &requests_);
+}
+
 GrantDecision PermissionAuthority::authorize(OperationId operation,
                                              const Scope &demand,
                                              const ActivationBinding &channel,
@@ -644,10 +658,14 @@ void validate_audit_draft(const AuditDraft &draft) {
   }
   switch (draft.event) {
   case AuditEvent::grant_changed:
-  case AuditEvent::capability_revoked:
     require(draft.capability.has_value() && !draft.operation.has_value() &&
                 !draft.dynamic_operation.has_value(),
             "grant audit event has invalid fields");
+    break;
+  case AuditEvent::capability_revoked:
+    require((((draft.capability.has_value() && !draft.operation.has_value()) !=
+              draft.dynamic_operation.has_value())) && draft.correlation == 0,
+            "revocation audit event has invalid fields");
     break;
   case AuditEvent::operation_decided:
   case AuditEvent::operation_completed:

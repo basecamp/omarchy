@@ -133,6 +133,11 @@ endif()
 
 if(TARGET omarchy-plugin-product-host)
   add_subdirectory(host)
+
+  install(FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/network-fetch.capability"
+    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/media-play-stream.capability"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/omarchy/plugin-radio-capabilities.d")
 endif()
 
 if(TARGET omarchy-plugin-surface-host)

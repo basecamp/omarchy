@@ -14,8 +14,11 @@
 #include "omarchy/plugin_runtime/Version.h"
 #include "product_host.hpp"
 #include "broker_runtime.hpp"
+#include "dynamic_broker_runtime.hpp"
+#include "capability_definition_loader.hpp"
 #include "omarchy/plugin_runtime/broker/broker_schema.hpp"
 #include "omarchy/plugin_runtime/providers/private_storage_backend.hpp"
+#include "omarchy/plugin_runtime/providers/radio_provider.hpp"
 #include "omarchy/plugin_runtime/sandbox/policy.h"
 #include "lifecycle.hpp"
 
@@ -52,6 +55,7 @@ namespace broker = omarchy::plugin_runtime::broker;
 namespace runtime = omarchy::plugin_runtime::runtime;
 namespace providers = omarchy::plugin_runtime::providers;
 namespace lifecycle = omarchy::plugins::lifecycle;
+namespace definitions = omarchy::plugins::definitions;
 
 #ifdef OMARCHY_PLUGIN_PRODUCT_E2E
 class TestScope final : public launcher::ResourceScopeController {
@@ -199,10 +203,62 @@ struct DesktopEffects {
   }
 };
 
+definitions::DynamicScopeRelation exact_dynamic_scope(
+    const definitions::CapabilityDefinition &, std::string_view candidate,
+    std::string_view baseline, void *) noexcept {
+  return candidate == baseline ? definitions::DynamicScopeRelation::equal
+                               : definitions::DynamicScopeRelation::incomparable;
+}
+
+struct RadioAdapters {
+  definitions::DynamicAdapter fetch;
+  definitions::DynamicAdapter media;
+};
+
+bool radio_adapter_available(std::string_view adapter_class,
+                             const definitions::Digest &digest,
+                             std::uint32_t abi, void *opaque) noexcept {
+  const auto &adapters = *static_cast<const RadioAdapters *>(opaque);
+  return (adapters.fetch.binding.adapter_class.view() == adapter_class &&
+          adapters.fetch.binding.implementation_digest == digest &&
+          adapters.fetch.binding.abi_version == abi) ||
+         (adapters.media.binding.adapter_class.view() == adapter_class &&
+          adapters.media.binding.implementation_digest == digest &&
+          adapters.media.binding.abi_version == abi);
+}
+
+#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+bool fixture_radio_get(std::string_view origin, std::string_view,
+                       std::span<std::byte> output, std::size_t &written,
+                       void *) noexcept {
+  if (origin != "https://all.api.radio-browser.info") return false;
+  constexpr std::string_view body =
+      "[{\"stationuuid\":\"fixture-radio\",\"name\":\"Fixture Radio\","
+      "\"country\":\"Test\",\"countrycode\":\"TS\",\"geo_lat\":1,"
+      "\"geo_long\":2,\"votes\":9,"
+      "\"url_resolved\":\"https://stream.example.invalid/radio\"}]";
+  if (output.size() < body.size()) return false;
+  std::ranges::copy(std::as_bytes(std::span(body.data(), body.size())),
+                    output.begin());
+  written = body.size();
+  return true;
+}
+bool fixture_radio_play(std::string_view url, void *) noexcept {
+  return url == "https://stream.example.invalid/radio";
+}
+bool fixture_radio_control(std::string_view control, std::uint32_t,
+                           void *) noexcept {
+  return control == "pause" || control == "stop" || control == "mute" ||
+         control == "volume" || control == "status";
+}
+#endif
+
 class LabBroker final : public omarchy::plugin_runtime::channel::BrokerDispatcher {
 public:
-  LabBroker(runtime::AuditedBrokerRuntime &runtime, std::uint64_t generation)
-      : runtime_(runtime), generation_(generation) {}
+  LabBroker(runtime::AuditedBrokerRuntime &runtime,
+            runtime::DynamicBrokerRuntime *dynamic,
+            std::uint64_t generation)
+      : runtime_(runtime), dynamic_(dynamic), generation_(generation) {}
   bool accepts(const launcher::LaunchIdentity &identity) const noexcept override {
     const auto &binding = runtime_.binding();
     return identity.plugin_id == binding.plugin.view() &&
@@ -211,7 +267,39 @@ public:
   }
   bool dispatch(const wire::PacketView &packet) override {
     ++dispatch_count_;
-    std::array<std::byte, 8192> output{};
+    std::vector<std::byte> output(providers::kMaximumRadioDirectoryBytes);
+    if (packet.header.message_type == broker::kDynamicInvokeMessage) {
+      if (dynamic_ == nullptr) return false;
+      const auto result = dynamic_->dispatch(packet, runtime_.binding(), output);
+      if (dynamic_->failed()) return false;
+      std::vector<std::byte> payload;
+      std::uint16_t type = 0;
+      if (result.outcome == definitions::DynamicDispatchResult::dispatched) {
+        type = broker::kBrokerResultMessage;
+        payload.assign(output.begin(), output.begin() +
+                                        static_cast<std::ptrdiff_t>(result.response_bytes));
+      } else if (result.outcome == definitions::DynamicDispatchResult::denied ||
+                 result.outcome == definitions::DynamicDispatchResult::adapter_failed) {
+        type = static_cast<std::uint16_t>(wire::CommonMessageType::typed_error);
+        const auto error = broker::encode_broker_error(
+            {.failed_operation = static_cast<permissions::OperationId>(broker::kDynamicInvokeMessage),
+             .reason = result.outcome == definitions::DynamicDispatchResult::denied
+                           ? broker::BrokerErrorReason::denied
+                           : broker::BrokerErrorReason::provider_failed,
+             .decision = result.outcome == definitions::DynamicDispatchResult::adapter_failed
+                             ? permissions::GrantDecisionCode::allowed
+                             : (result.decision == definitions::DynamicDecision::revoked
+                                    ? permissions::GrantDecisionCode::revoked
+                                    : permissions::GrantDecisionCode::ungranted)});
+        payload.assign(error.begin(), error.end());
+      } else {
+        return false;
+      }
+      reply_ = omarchy::plugin_runtime::channel::BrokerReply{
+          .message_type = type, .correlation_id = packet.header.correlation_id,
+          .payload = std::move(payload)};
+      return true;
+    }
     const auto result = runtime_.dispatch(packet, ++now_, output);
     std::vector<std::byte> payload;
     std::uint16_t type = 0;
@@ -253,6 +341,7 @@ public:
 #endif
 private:
   runtime::AuditedBrokerRuntime &runtime_;
+  runtime::DynamicBrokerRuntime *dynamic_ = nullptr;
   std::uint64_t generation_ = 0;
   std::uint64_t now_ = 100;
   std::uint64_t dispatch_count_ = 0;
@@ -262,10 +351,14 @@ private:
 bool apply_lab_revocation_update(
     const grants::RevisionGrants &updated,
     runtime::AuditedBrokerRuntime &broker_runtime,
+    runtime::DynamicBrokerRuntime *dynamic_runtime,
+    providers::RadioProvider *radio_provider,
     host::PreparedPlugin &prepared,
     headless::Session &session) {
   if (updated.binding != broker_runtime.binding() ||
-      updated.grants.size() != broker_runtime.revision().grants.size())
+      updated.grants.size() != broker_runtime.revision().grants.size() ||
+      updated.dynamic_grants.size() !=
+          broker_runtime.revision().dynamic_grants.size())
     return false;
   std::size_t changes = 0;
   for (const auto &current : broker_runtime.revision().grants.values()) {
@@ -296,6 +389,40 @@ bool apply_lab_revocation_update(
       if (availability.capability == current.capability.id.view())
         availability.granted = false;
     }
+    ++changes;
+  }
+  for (const auto &current : broker_runtime.revision().dynamic_grants) {
+    const auto found = std::ranges::find_if(
+        updated.dynamic_grants, [&](const auto &candidate) {
+          return candidate.request.definition.canonical_name ==
+                 current.request.definition.canonical_name;
+        });
+    if (found == updated.dynamic_grants.end()) return false;
+    if (found->grant.state == current.grant.state &&
+        found->grant.epoch == current.grant.epoch)
+      continue;
+    if (dynamic_runtime == nullptr || radio_provider == nullptr ||
+        current.request.definition.definition_generation !=
+            found->request.definition.definition_generation ||
+        current.request.definition.definition_digest !=
+            found->request.definition.definition_digest ||
+        current.request.operations != found->request.operations ||
+        current.request.scope != found->request.scope ||
+        current.grant.state != permissions::GrantState::granted ||
+        found->grant.state != permissions::GrantState::revoked ||
+        found->grant.epoch != current.grant.epoch + 1)
+      return false;
+    if (found->request.definition.canonical_name.view() == "network.fetch")
+      (void)radio_provider->revoke_fetch(found->grant.epoch);
+    else if (found->request.definition.canonical_name.view() == "media.play-stream")
+      (void)radio_provider->revoke_media(found->grant.epoch);
+    else
+      return false;
+    if (!dynamic_runtime->apply_reconstructed_update(*found)) return false;
+    for (auto &availability : prepared.permission_availability)
+      if (availability.capability ==
+          found->request.definition.canonical_name.view())
+        availability.granted = false;
     ++changes;
   }
   return changes == 1 && host::update_permission_availability(session, prepared);
@@ -365,6 +492,9 @@ int preview(const QStringList &arguments, QGuiApplication &application,
   std::unique_ptr<providers::PrivateStorageBackend> storage;
   std::unique_ptr<DesktopEffects> effects;
   std::unique_ptr<runtime::AuditedBrokerRuntime> broker_runtime;
+  std::unique_ptr<definitions::TrustedDefinitionRegistry> dynamic_registry;
+  std::unique_ptr<providers::RadioProvider> radio_provider;
+  std::unique_ptr<runtime::DynamicBrokerRuntime> dynamic_runtime;
   std::shared_ptr<LabBroker> lab_broker;
   headless::StartResult started;
   if (live_lab) {
@@ -389,7 +519,70 @@ int preview(const QStringList &arguments, QGuiApplication &application,
         .audio = {.play = DesktopEffects::audio, .context = effects.get()}};
     broker_runtime = std::make_unique<runtime::AuditedBrokerRuntime>(
         *active, provider_configuration, audit_store);
+    if (!active->dynamic_grants.empty()) {
+      std::uint64_t fetch_epoch = 0;
+      std::uint64_t media_epoch = 0;
+      for (const auto &dynamic : active->dynamic_grants) {
+        if (dynamic.grant.definition.canonical_name.view() == "network.fetch")
+          fetch_epoch = dynamic.grant.epoch;
+        else if (dynamic.grant.definition.canonical_name.view() == "media.play-stream")
+          media_epoch = dynamic.grant.epoch;
+      }
+      providers::RadioProviderConfiguration radio_configuration{
+          .binding = active->binding, .fetch_epoch = fetch_epoch,
+          .media_epoch = media_epoch, .https = {}, .media = {}};
+#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+      radio_configuration.https = {.get = fixture_radio_get};
+      radio_configuration.media = {.play = fixture_radio_play,
+                                   .control = fixture_radio_control};
+#endif
+      radio_provider = std::make_unique<providers::RadioProvider>(radio_configuration);
+      RadioAdapters adapters{.fetch = radio_provider->fetch_adapter(),
+                             .media = radio_provider->media_adapter()};
+      dynamic_registry = std::make_unique<definitions::TrustedDefinitionRegistry>();
+      std::size_t loaded = 0;
+#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+      const std::filesystem::path definition_root(
+          OMARCHY_PLUGIN_RADIO_DEFINITION_ROOT);
+      const std::uint32_t definition_owner = static_cast<std::uint32_t>(getuid());
+#else
+      const auto executable = std::filesystem::canonical("/proc/self/exe");
+      const auto definition_root = executable.parent_path().parent_path() /
+                                   "lib/omarchy/plugin-radio-capabilities.d";
+      constexpr std::uint32_t definition_owner = 0;
+#endif
+      const definitions::AdapterVerifier verifier{
+          .available = radio_adapter_available,
+          .context = &adapters};
+      if (definitions::load_definition_directory(
+              definition_root.string(), definitions::DefinitionSource::omarchy_package,
+              definition_owner, verifier, *dynamic_registry, loaded) !=
+              definitions::LoadResult::loaded || loaded != 2) {
+        qCritical() << "omarchy-plugin-host: trusted Radio definitions unavailable";
+        return 78;
+      }
+      std::vector<runtime::DynamicRoute> routes;
+      for (const auto &dynamic : active->dynamic_grants) {
+        const auto resolved = dynamic_registry->resolve(dynamic.request.definition);
+        if (!resolved) return 78;
+        definitions::DynamicAdapter adapter;
+        if (resolved->definition->adapter == adapters.fetch.binding)
+          adapter = adapters.fetch;
+        else if (resolved->definition->adapter == adapters.media.binding)
+          adapter = adapters.media;
+        else if (dynamic.request.required)
+          return 78;
+        else
+          continue;
+        routes.push_back({.grant = dynamic, .adapter = adapter,
+                          .scope_validator = {.compare = exact_dynamic_scope}});
+      }
+      if (!routes.empty())
+        dynamic_runtime = std::make_unique<runtime::DynamicBrokerRuntime>(
+            *dynamic_registry, std::move(routes), audit_store);
+    }
     lab_broker = std::make_shared<LabBroker>(*broker_runtime,
+                                             dynamic_runtime.get(),
                                              prepared.prepared->binding.generation);
     started = host::launch_with_broker_for_lab(
         supervisor, *prepared.prepared, state_fd, health_supervisor, lab_broker,
@@ -483,6 +676,7 @@ int preview(const QStringList &arguments, QGuiApplication &application,
           }
           if (updated == nullptr ||
               !apply_lab_revocation_update(*updated, *broker_runtime,
+                                           dynamic_runtime.get(), radio_provider.get(),
                                            *prepared.prepared, *started.session)) {
             qCritical() << "omarchy-plugin-host: live grant update was not an exact revocation";
             application.exit(79);

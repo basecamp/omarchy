@@ -44,6 +44,7 @@ public:
   // provider before publishing the permission snapshot.
   [[nodiscard]] bool apply_reconstructed_update(
       const definitions::DynamicRevisionGrant &updated);
+  [[nodiscard]] bool failed() const noexcept { return failed_; }
 
 private:
   const definitions::TrustedDefinitionRegistry &registry_;

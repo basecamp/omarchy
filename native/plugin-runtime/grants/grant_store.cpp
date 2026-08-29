@@ -1524,6 +1524,12 @@ std::string revision_grant_fingerprint(const RevisionGrants &revision) {
   return manifest::sha256_hex(canonical);
 }
 
+std::string request_policy_fingerprint(
+    const permission::RequestSet &requests,
+    const std::vector<definition::DynamicRevisionGrant> &dynamic_grants) {
+  return std::string(policy_fingerprint(requests, dynamic_grants).view());
+}
+
 std::string state_json(const StoreState &state) {
   validate_state(state);
   std::string plugins = "[";

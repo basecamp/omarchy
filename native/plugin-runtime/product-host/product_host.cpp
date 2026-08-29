@@ -123,8 +123,8 @@ PrepareResult prepare(const std::filesystem::path &plugin_root,
   permissions::ActivationBinding expected{
       .plugin = permissions::PluginId(found->manifest.id),
       .revision = permissions::Digest(found->identity.tree_sha256),
-      .policy_fingerprint = permissions::Digest(
-          permissions::policy_request_fingerprint(active_grants.requests)),
+      .policy_fingerprint = permissions::Digest(grants::request_policy_fingerprint(
+          active_grants.requests, active_grants.dynamic_grants)),
       .generation = active_grants.binding.generation};
   if (!same_binding(expected, active_grants.binding) ||
       active_grants.source_request_fingerprint.view() !=

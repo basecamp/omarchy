@@ -86,7 +86,12 @@ AuditedBrokerRuntime::AuditedBrokerRuntime(
     providers::ProviderConfiguration configuration,
     audit::AuditStore &audit_store)
     : revision_(std::move(revision)), binding_(revision_.binding),
-      authority_(binding_, revision_.requests, revision_.grants),
+      authority_(revision_.dynamic_grants.empty()
+                     ? permissions::PermissionAuthority(
+                           binding_, revision_.requests, revision_.grants)
+                     : permissions::PermissionAuthority(
+                           binding_, revision_.requests, revision_.grants,
+                           permissions::PermissionAuthority::ValidatedCombinedPolicy{})),
       audit_(audit_store),
       providers_(normalize_configuration(revision_, std::move(configuration))),
       provider_registry_(providers_.registry()), gate_(provider_registry_),

@@ -22,7 +22,7 @@ namespace {
 constexpr std::string_view kMagic = "OMARCHY-AUDIT-V1";
 constexpr std::uint32_t kFormatVersion = 2;
 constexpr std::size_t kHeaderBytes = 32;
-constexpr std::size_t kMaximumRecordBytes = 512;
+constexpr std::size_t kMaximumRecordBytes = 1024;
 constexpr std::size_t kMaximumSnapshotBytes =
     kHeaderBytes + kHardMaximumRecords * (4 + kMaximumRecordBytes);
 
