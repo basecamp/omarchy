@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dynamic_activation.hpp"
 #include "permission_contract.hpp"
 
 #include <cstdint>
@@ -13,8 +14,9 @@
 namespace omarchy::plugins::grants {
 
 namespace permission = omarchy::plugins::permissions;
+namespace definition = omarchy::plugins::definitions;
 
-inline constexpr std::uint16_t kStoreSchemaVersion = 2;
+inline constexpr std::uint16_t kStoreSchemaVersion = 3;
 inline constexpr std::uint16_t kSecurePluginSchemaVersion = 2;
 inline constexpr std::size_t kMaximumPlugins = 1024;
 inline constexpr std::size_t kMaximumDecisions = 4096;
@@ -27,6 +29,7 @@ struct RequestBundle {
   permission::Digest source_request_fingerprint;
   std::uint64_t generation = 0;
   permission::RequestSet requests;
+  std::vector<definition::DynamicRevisionGrant> dynamic_grants;
 };
 
 struct RevisionGrants {
@@ -34,6 +37,7 @@ struct RevisionGrants {
   permission::Digest source_request_fingerprint;
   permission::RequestSet requests;
   permission::GrantSet grants;
+  std::vector<definition::DynamicRevisionGrant> dynamic_grants;
 };
 
 struct CapabilityEpoch {
@@ -84,6 +88,12 @@ struct RevocationResult {
   std::string grant_fingerprint;
 };
 
+struct DynamicRevocationResult {
+  std::uint64_t mutation_sequence = 0;
+  TargetRevision target = TargetRevision::candidate;
+  definition::DynamicRevisionGrant grant;
+};
+
 struct StageResult {
   std::uint64_t mutation_sequence = 0;
   TargetRevision target = TargetRevision::candidate;
@@ -109,6 +119,8 @@ public:
   [[nodiscard]] RevocationResult
   revoke(const RequestBundle &bundle,
          const permission::CapabilityKey &capability);
+  [[nodiscard]] DynamicRevocationResult
+  revoke_dynamic(const RequestBundle &bundle, std::string_view capability);
 
   [[nodiscard]] StageResult stage_candidate(const RequestBundle &bundle);
 
@@ -131,7 +143,8 @@ private:
 make_bundle(std::uint16_t plugin_schema_version, permission::PluginId plugin,
             permission::Digest revision,
             permission::Digest source_request_fingerprint,
-            std::uint64_t generation, permission::RequestSet requests);
+            std::uint64_t generation, permission::RequestSet requests,
+            std::vector<definition::DynamicRevisionGrant> dynamic_grants = {});
 
 [[nodiscard]] std::string state_json(const StoreState &state);
 [[nodiscard]] std::string preview_json(const Preview &preview);

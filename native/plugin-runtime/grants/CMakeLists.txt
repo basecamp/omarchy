@@ -10,6 +10,10 @@ if(NOT TARGET omarchy-plugin-permission-contract)
   add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../contracts/permissions"
                    "${CMAKE_CURRENT_BINARY_DIR}/permission-contract")
 endif()
+if(NOT TARGET omarchy-plugin-capability-definitions)
+  add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../contracts/capability-definitions"
+                   "${CMAKE_CURRENT_BINARY_DIR}/capability-definitions")
+endif()
 
 option(PLUGIN_SECURITY_GRANT_STORE_SANITIZERS
        "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
@@ -24,6 +28,7 @@ target_compile_options(omarchy-plugin-grant-store PRIVATE
 )
 target_link_libraries(omarchy-plugin-grant-store PUBLIC
   omarchy-plugin-permission-contract
+  omarchy-plugin-capability-definitions
 )
 
 add_executable(omarchy-plugin-permission-store grant_store_cli.cpp)

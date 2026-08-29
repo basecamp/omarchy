@@ -14,6 +14,7 @@ namespace {
 
 namespace grant = omarchy::plugins::grants;
 namespace permission = omarchy::plugins::permissions;
+namespace definition = omarchy::plugins::definitions;
 
 void require(bool condition, std::string_view message) {
   if (!condition)
@@ -418,6 +419,71 @@ void reads_previous_schema_for_upgrade() {
           "first mutation did not atomically upgrade the grant store schema");
 }
 
+definition::DynamicRevisionGrant dynamic_grant(std::uint64_t epoch,
+                                                permission::GrantState state) {
+  definition::DynamicRevisionGrant result{
+      .binding = {},
+      .request = {.definition = {.canonical_name = definition::Name("device.observe"),
+                                 .definition_generation = 1,
+                                 .definition_digest = definition::Digest(std::string(64, 'd'))},
+                  .operations = {},
+                  .scope = definition::CanonicalScope("narrow"),
+                  .required = true},
+      .grant = {.definition = {.canonical_name = definition::Name("device.observe"),
+                               .definition_generation = 1,
+                               .definition_digest = definition::Digest(std::string(64, 'd'))},
+                .operations = {},
+                .scope = definition::CanonicalScope("narrow"),
+                .state = state,
+                .epoch = epoch}};
+  require(result.request.operations.insert(definition::Name("observe")) &&
+              result.grant.operations.insert(definition::Name("observe")),
+          "dynamic operation fixture failed");
+  return result;
+}
+
+void dynamic_persistence_and_revocation() {
+  TemporaryDirectory temporary;
+  grant::GrantStore store(temporary.path() / "dynamic");
+  auto request = bundle('a', 'b', 1,
+                        {.total_bytes = 4096, .item_bytes = 1024},
+                        tokens({"normal"}));
+  request.dynamic_grants.push_back(
+      dynamic_grant(7, permission::GrantState::granted));
+  const auto staged = store.stage_candidate(request);
+  require(staged.revision.dynamic_grants.size() == 1 &&
+              staged.revision.dynamic_grants.front().binding ==
+                  staged.revision.binding &&
+              staged.revision.dynamic_grants.front().grant.epoch == 7,
+          "dynamic grant was not bound into candidate revision");
+  const auto storage = key("storage.private");
+  const auto preview = store.preview(request, storage);
+  (void)store.decide(request, storage, std::nullopt,
+                     permission::UserDecision::grant,
+                     permission::DecisionActor::trusted_ui, 1,
+                     preview.expected_mutation_sequence);
+  store.activate_candidate(staged.revision.binding);
+
+  grant::GrantStore restarted(temporary.path() / "dynamic");
+  const auto persisted = only_plugin(restarted.read());
+  require(persisted.active && persisted.active->dynamic_grants.size() == 1 &&
+              persisted.active->dynamic_grants.front().grant.epoch == 7,
+          "restart did not reconstruct the exact dynamic grant");
+  const auto revoked = restarted.revoke_dynamic(request, "device.observe");
+  require(revoked.target == grant::TargetRevision::active &&
+              revoked.grant.grant.state == permission::GrantState::revoked &&
+              revoked.grant.grant.epoch == 8,
+          "dynamic revocation did not persist a new epoch");
+
+  auto update = bundle('c', 'e', 2,
+                       {.total_bytes = 4096, .item_bytes = 1024},
+                       tokens({"normal"}));
+  update.dynamic_grants.push_back(
+      dynamic_grant(7, permission::GrantState::granted));
+  rejects([&] { (void)restarted.stage_candidate(update); },
+          "dynamic grant epoch rolled back");
+}
+
 } // namespace
 
 int main() {
@@ -425,6 +491,7 @@ int main() {
     lifecycle_and_monotonicity();
     hostile_filesystem();
     reads_previous_schema_for_upgrade();
+    dynamic_persistence_and_revocation();
     std::cout << "grant store contract: ok\n";
     return 0;
   } catch (const std::exception &error) {

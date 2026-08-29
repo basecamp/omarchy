@@ -1,4 +1,5 @@
 #include "grant_store.hpp"
+#include "manifest_contract.hpp"
 
 #include <algorithm>
 #include <array>
@@ -69,6 +70,52 @@ bool valid_digest(std::string_view value) {
          });
 }
 
+void append_fingerprint_field(std::string &output, std::string_view value) {
+  output.append(std::to_string(value.size()));
+  output.push_back(':');
+  output.append(value);
+}
+
+permission::Digest policy_fingerprint(
+    const permission::RequestSet &requests,
+    const std::vector<definition::DynamicRevisionGrant> &dynamic_grants) {
+  if (dynamic_grants.empty())
+    return permission::Digest(permission::policy_request_fingerprint(requests));
+  std::string canonical("OMARCHY-COMBINED-POLICY-V1\0", 27);
+  append_fingerprint_field(canonical,
+                           permission::policy_request_fingerprint(requests));
+  std::vector<const definition::DynamicRevisionGrant *> ordered;
+  ordered.reserve(dynamic_grants.size());
+  for (const auto &dynamic : dynamic_grants)
+    ordered.push_back(&dynamic);
+  std::ranges::sort(ordered, {}, [](const auto *item) {
+    return item->request.definition.canonical_name.view();
+  });
+  for (const auto *dynamic : ordered) {
+    append_fingerprint_field(canonical,
+                             dynamic->request.definition.canonical_name.view());
+    append_fingerprint_field(
+        canonical, std::to_string(
+                       dynamic->request.definition.definition_generation));
+    append_fingerprint_field(canonical,
+                             dynamic->request.definition.definition_digest.view());
+    append_fingerprint_field(canonical, dynamic->request.scope.view());
+    canonical.push_back(dynamic->request.required ? 1 : 0);
+    for (const auto &operation : dynamic->request.operations.values())
+      append_fingerprint_field(canonical, operation.view());
+  }
+  return permission::Digest(manifest::sha256_hex(canonical));
+}
+
+permission::ActivationBinding builtin_binding(
+    const permission::ActivationBinding &binding,
+    const permission::RequestSet &requests) {
+  auto result = binding;
+  result.policy_fingerprint = permission::Digest(
+      permission::policy_request_fingerprint(requests));
+  return result;
+}
+
 bool same_binding(const permission::ActivationBinding &left,
                   const permission::ActivationBinding &right) {
   return left == right;
@@ -126,6 +173,15 @@ grant_for(const permission::GrantSet &grants,
   return found == grants.values().end() ? nullptr : &*found;
 }
 
+definition::DynamicRevisionGrant *dynamic_grant_for(
+    std::vector<definition::DynamicRevisionGrant> &grants,
+    std::string_view capability) {
+  const auto found = std::ranges::find_if(grants, [&](const auto &item) {
+    return item.request.definition.canonical_name.view() == capability;
+  });
+  return found == grants.end() ? nullptr : &*found;
+}
+
 PluginGrants *plugin_for(StoreState &state,
                          const permission::PluginId &plugin) {
   const auto found = std::ranges::find_if(
@@ -151,7 +207,7 @@ void validate_bundle(const RequestBundle &bundle) {
           "invalid source request fingerprint");
   permission::validate_requests(bundle.requests);
   const permission::Digest policy(
-      permission::policy_request_fingerprint(bundle.requests));
+      policy_fingerprint(bundle.requests, bundle.dynamic_grants));
   const permission::ActivationBinding binding{
       .plugin = bundle.plugin,
       .revision = bundle.revision,
@@ -165,16 +221,20 @@ void validate_bundle(const RequestBundle &bundle) {
 
 RevisionGrants revision_from(const RequestBundle &bundle) {
   validate_bundle(bundle);
-  return {
+  RevisionGrants revision{
       .binding = {.plugin = bundle.plugin,
                   .revision = bundle.revision,
-                  .policy_fingerprint = permission::Digest(
-                      permission::policy_request_fingerprint(bundle.requests)),
+                  .policy_fingerprint =
+                      policy_fingerprint(bundle.requests, bundle.dynamic_grants),
                   .generation = bundle.generation},
       .source_request_fingerprint = bundle.source_request_fingerprint,
       .requests = bundle.requests,
       .grants = {},
+      .dynamic_grants = bundle.dynamic_grants,
   };
+  for (auto &dynamic : revision.dynamic_grants)
+    dynamic.binding = revision.binding;
+  return revision;
 }
 
 void validate_revision(const RevisionGrants &revision,
@@ -185,11 +245,31 @@ void validate_revision(const RevisionGrants &revision,
           "invalid persisted source request fingerprint");
   permission::validate_requests(revision.requests);
   require(revision.binding.policy_fingerprint ==
-              permission::Digest(
-                  permission::policy_request_fingerprint(revision.requests)),
+              policy_fingerprint(revision.requests, revision.dynamic_grants),
           "persisted policy fingerprint mismatch");
-  permission::PermissionAuthority authority(revision.binding, revision.requests,
-                                            revision.grants);
+  for (const auto &dynamic : revision.dynamic_grants)
+    require(dynamic.binding == revision.binding && dynamic.grant.epoch > 0 &&
+                dynamic.grant.definition.canonical_name ==
+                    dynamic.request.definition.canonical_name &&
+                dynamic.grant.definition.definition_generation ==
+                    dynamic.request.definition.definition_generation &&
+                dynamic.grant.definition.definition_digest ==
+                    dynamic.request.definition.definition_digest &&
+                std::ranges::all_of(
+                    dynamic.grant.operations.values(), [&](const auto &op) {
+                      return dynamic.request.operations.contains(op);
+                    }),
+            "invalid persisted dynamic grant binding or authority");
+  for (std::size_t index = 0; index < revision.dynamic_grants.size(); ++index)
+    for (std::size_t other = index + 1;
+         other < revision.dynamic_grants.size(); ++other)
+      require(revision.dynamic_grants[index].request.definition.canonical_name !=
+                  revision.dynamic_grants[other]
+                      .request.definition.canonical_name,
+              "duplicate persisted dynamic capability");
+  permission::PermissionAuthority authority(
+      builtin_binding(revision.binding, revision.requests), revision.requests,
+      revision.grants);
   (void)authority;
 }
 
@@ -501,10 +581,20 @@ void write_revision(Writer &writer, const RevisionGrants &revision) {
   writer.u64(revision.binding.generation);
   write_requests(writer, revision.requests);
   write_grants(writer, revision.grants);
+  writer.u16(static_cast<std::uint16_t>(revision.dynamic_grants.size()));
+  for (const auto &dynamic : revision.dynamic_grants) {
+    std::array<std::byte, 16384> encoded{};
+    std::size_t written = 0;
+    require(definition::encode_dynamic_grant(dynamic, encoded, written),
+            "dynamic grant exceeds persistence bound");
+    writer.u32(static_cast<std::uint32_t>(written));
+    writer.bytes(std::span(encoded).first(written));
+  }
 }
 
 RevisionGrants read_revision(Reader &reader,
-                             const permission::PluginId &plugin) {
+                             const permission::PluginId &plugin,
+                             std::uint16_t schema_version) {
   RevisionGrants revision;
   revision.binding.plugin = plugin;
   revision.binding.revision = permission::Digest(reader.text());
@@ -513,6 +603,20 @@ RevisionGrants read_revision(Reader &reader,
   revision.binding.generation = reader.u64();
   revision.requests = read_requests(reader);
   revision.grants = read_grants(reader);
+  if (schema_version >= 3) {
+    const auto count = reader.u16();
+    require(count <= 16, "persisted dynamic grant count exceeds bound");
+    revision.dynamic_grants.reserve(count);
+    for (std::uint16_t index = 0; index < count; ++index) {
+      const auto size = reader.u32();
+      require(size > 0 && size <= 16384,
+              "persisted dynamic grant size exceeds bound");
+      definition::DynamicRevisionGrant dynamic;
+      require(definition::decode_dynamic_grant(reader.take(size), dynamic),
+              "invalid persisted dynamic grant");
+      revision.dynamic_grants.push_back(std::move(dynamic));
+    }
+  }
   return revision;
 }
 
@@ -585,8 +689,8 @@ StoreState deserialize(std::span<const std::byte> bytes) {
           "invalid grant store magic");
   StoreState state;
   const auto persisted_schema_version = reader.u16();
-  require(persisted_schema_version == 1 ||
-              persisted_schema_version == kStoreSchemaVersion,
+  require(persisted_schema_version >= 1 &&
+              persisted_schema_version <= kStoreSchemaVersion,
           "unsupported grant store schema");
   state.schema_version = kStoreSchemaVersion;
   state.mutation_sequence = reader.u64();
@@ -601,16 +705,19 @@ StoreState deserialize(std::span<const std::byte> bytes) {
     const auto active = reader.u8();
     require(active <= 1, "invalid persisted active flag");
     if (active == 1)
-      plugin.active = read_revision(reader, plugin.plugin);
+      plugin.active =
+          read_revision(reader, plugin.plugin, persisted_schema_version);
     const auto candidate = reader.u8();
     require(candidate <= 1, "invalid persisted candidate flag");
     if (candidate == 1)
-      plugin.candidate = read_revision(reader, plugin.plugin);
+      plugin.candidate =
+          read_revision(reader, plugin.plugin, persisted_schema_version);
     if (persisted_schema_version >= 2) {
       const auto rollback = reader.u8();
       require(rollback <= 1, "invalid persisted rollback flag");
       if (rollback == 1)
-        plugin.rollback = read_revision(reader, plugin.plugin);
+        plugin.rollback =
+            read_revision(reader, plugin.plugin, persisted_schema_version);
     }
     const auto epoch_count = reader.u16();
     require(epoch_count <= 64,
@@ -862,6 +969,20 @@ RevisionGrants &ensure_target(PluginGrants &plugin, const RequestBundle &bundle,
     return *plugin.candidate;
   }
   RevisionGrants candidate = prospective;
+  if (plugin.active) {
+    for (const auto &dynamic : candidate.dynamic_grants) {
+      const auto *previous = dynamic_grant_for(
+          plugin.active->dynamic_grants,
+          dynamic.request.definition.canonical_name.view());
+      if (previous == nullptr)
+        continue;
+      require(dynamic.grant.epoch >= previous->grant.epoch,
+              "dynamic grant epoch rolled back during update");
+      require(dynamic.grant.epoch != previous->grant.epoch ||
+                  dynamic.grant.state == previous->grant.state,
+              "dynamic grant state changed without a new epoch");
+    }
+  }
   for (const auto &entry : delta.values()) {
     if (entry.inherited_grant)
       candidate.grants.push_back(*entry.inherited_grant);
@@ -1186,8 +1307,9 @@ GrantStore::revoke(const RequestBundle &bundle,
             "revocation binding does not match active or candidate revision");
     require(grant_for(target->grants, capability) != nullptr,
             "cannot revoke a capability without a grant record");
-    permission::PermissionAuthority authority(target->binding, target->requests,
-                                              target->grants);
+    permission::PermissionAuthority authority(
+        builtin_binding(target->binding, target->requests), target->requests,
+        target->grants);
     (void)authority.revoke(capability);
     target->grants = authority.grants();
     auto *grant = grant_for(target->grants, capability);
@@ -1206,6 +1328,40 @@ GrantStore::revoke(const RequestBundle &bundle,
             target->binding.plugin, target->binding.revision,
             target->binding.policy_fingerprint, target->grants),
     };
+  });
+}
+
+DynamicRevocationResult
+GrantStore::revoke_dynamic(const RequestBundle &bundle,
+                           std::string_view capability) {
+  validate_bundle(bundle);
+  return update_store(directory_, [&](StoreState &state) {
+    require(state.mutation_sequence < std::numeric_limits<std::uint64_t>::max(),
+            "grant store mutation sequence exhausted");
+    auto *plugin = plugin_for(state, bundle.plugin);
+    require(plugin != nullptr, "plugin has no persisted grants");
+    const auto prospective = revision_from(bundle);
+    RevisionGrants *target = nullptr;
+    TargetRevision target_kind = TargetRevision::candidate;
+    if (plugin->active && same_revision(*plugin->active, prospective)) {
+      target = &*plugin->active;
+      target_kind = TargetRevision::active;
+    } else if (plugin->candidate &&
+               same_revision(*plugin->candidate, prospective)) {
+      target = &*plugin->candidate;
+    }
+    require(target != nullptr,
+            "dynamic revocation binding does not match persisted revision");
+    auto *dynamic = dynamic_grant_for(target->dynamic_grants, capability);
+    require(dynamic != nullptr, "dynamic capability is not persisted");
+    require(dynamic->grant.epoch < std::numeric_limits<std::uint64_t>::max(),
+            "dynamic grant epoch exhausted");
+    dynamic->grant.state = permission::GrantState::revoked;
+    ++dynamic->grant.epoch;
+    ++state.mutation_sequence;
+    return DynamicRevocationResult{.mutation_sequence = state.mutation_sequence,
+                                   .target = target_kind,
+                                   .grant = *dynamic};
   });
 }
 
@@ -1258,6 +1414,10 @@ void GrantStore::activate_candidate(
                   grant->state == permission::GrantState::granted,
               "required capability is not granted");
     }
+    for (const auto &dynamic : plugin->candidate->dynamic_grants)
+      require(!dynamic.request.required ||
+                  dynamic.grant.state == permission::GrantState::granted,
+              "required dynamic capability is not granted");
     plugin->rollback = std::move(plugin->active);
     plugin->active = std::move(plugin->candidate);
     plugin->candidate.reset();
@@ -1280,6 +1440,8 @@ void GrantStore::rollback_to(const permission::ActivationBinding &binding) {
     auto former_active = std::move(plugin->active);
     plugin->active = std::move(plugin->rollback);
     plugin->active->binding = binding;
+    for (auto &dynamic : plugin->active->dynamic_grants)
+      dynamic.binding = binding;
     plugin->rollback = std::move(former_active);
     ++state.mutation_sequence;
     return 0;
@@ -1322,7 +1484,9 @@ RequestBundle make_bundle(std::uint16_t plugin_schema_version,
                           permission::Digest revision,
                           permission::Digest source_request_fingerprint,
                           std::uint64_t generation,
-                          permission::RequestSet requests) {
+                          permission::RequestSet requests,
+                          std::vector<definition::DynamicRevisionGrant>
+                              dynamic_grants) {
   RequestBundle bundle{
       .plugin_schema_version = plugin_schema_version,
       .plugin = std::move(plugin),
@@ -1330,6 +1494,7 @@ RequestBundle make_bundle(std::uint16_t plugin_schema_version,
       .source_request_fingerprint = std::move(source_request_fingerprint),
       .generation = generation,
       .requests = std::move(requests),
+      .dynamic_grants = std::move(dynamic_grants),
   };
   validate_bundle(bundle);
   return bundle;
