@@ -23,7 +23,7 @@ Panel {
   readonly property color dim: Util.alpha(foreground, 0.55)
   function refresh() { if (!poll.running) poll.running = true }
   function openDashboard() { close(); Quickshell.execDetached(["omarchy-shell", "shell", "summon", "omarchy.local-ai", "{}"]) }
-  function act(args, closeAfter) { if (action.running) return; action.command = [cli].concat(args); action.closeAfter = closeAfter; action.running = true }
+  function act(args, closeAfter) { if (busy || action.running) return; action.command = [cli].concat(args); action.closeAfter = closeAfter; action.running = true }
   function line() {
     if (snap.error) return "error · " + snap.error
     if (busy) return (operation.name || state) + (operation.indeterminate ? " · " + (operation.detail || "working") : " · " + (operation.percent || 0) + "%")
