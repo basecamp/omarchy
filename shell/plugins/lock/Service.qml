@@ -460,9 +460,14 @@ Item {
     }
   }
 
+  // Configured means a print is actually enrolled: fprintd-list prints one
+  // " - #N: finger" line per print, while a user without any gets "has no
+  // fingers enrolled" or a ListEnrolledFingers failure, both of which a looser
+  // match would take as yes and then chase with a reader the account cannot
+  // use.
   Process {
     id: fingerprintCheckProc
-    command: ["bash", "-c", "if [[ -f /etc/pam.d/omarchy-lock-fingerprint ]] && command -v fprintd-list >/dev/null 2>&1 && fprintd-list \"$USER\" 2>/dev/null | grep -qi finger; then echo yes; else echo no; fi"]
+    command: ["bash", "-c", "if [[ -f /etc/pam.d/omarchy-lock-fingerprint ]] && command -v fprintd-list >/dev/null 2>&1 && fprintd-list \"$USER\" 2>/dev/null | grep -q ' - #'; then echo yes; else echo no; fi"]
     stdout: StdioCollector { id: fingerprintCheckStdout; waitForEnd: true }
     onExited: {
       root.fingerprintConfigured = String(fingerprintCheckStdout.text || "").trim() === "yes"
