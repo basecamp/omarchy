@@ -1,0 +1,34 @@
+# Dedicated Herdr profile for the Omarchy scratchpad agent.
+onboarding = false
+
+[theme]
+name = "terminal"
+
+[terminal]
+new_cwd = "follow"
+default_shell = "omarchy-scratchpad-agent"
+shell_mode = "non_login"
+
+[keys]
+prefix = "ctrl+space"
+
+[ui]
+sidebar_start_collapsed = true
+sidebar_collapsed_mode = "hidden"
+hide_tab_bar_when_single_tab = true
+pane_borders = false
+pane_outer_borders = false
+pane_gaps = false
+pane_scrollbars = false
+tab_bar_right = []
+window_title = ""
+
+[ui.toast]
+delivery = "system"
+delay_seconds = 1
+
+[ui.sound]
+enabled = true
+
+[session]
+resume_agents_on_restore = true
