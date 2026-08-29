@@ -29,6 +29,18 @@ STUB
 
 chmod +x "$test_dir/bin/"*
 
+# A second stub directory where sudo cannot elevate, standing in for a run with
+# no terminal to read a password from.
+mkdir -p "$test_dir/failing-bin"
+cat >"$test_dir/failing-bin/sudo" <<'STUB'
+#!/bin/bash
+
+echo "sudo: a terminal is required to read the password" >&2
+exit 1
+STUB
+cp "$test_dir/bin/systemctl" "$test_dir/failing-bin/systemctl"
+chmod +x "$test_dir/failing-bin/"*
+
 export CALLS="$test_dir/calls"
 
 sudoers_dir="$test_dir/sudoers.d"
@@ -504,3 +516,31 @@ run_migration
 [[ ! -e $plymouth_unit ]] ||
   fail "migration removes a unit whose last line ends mid-continuation"
 pass "migration removes a unit whose last line ends mid-continuation"
+
+# sudo cannot prompt without a terminal, and omarchy-migrate runs from places that
+# have none. bin/omarchy-migrate writes the completion marker on a zero exit, so
+# reporting success after failing to look would mark this migration done for good.
+# Observed on a real machine before this guard existed: the run printed sudo's
+# "a terminal is required" and still exited 0.
+reset_machine
+unreadable="$test_dir/unreadable-sudoers"
+rm -rf "$unreadable"
+mkdir -p "$unreadable"
+chmod 000 "$unreadable"
+
+: >"$CALLS"
+set +e
+HOME="$home_dir" \
+  OMARCHY_SUDOERS_DIR="$unreadable" \
+  OMARCHY_SYSTEMD_SYSTEM_DIR="$systemd_dir" \
+  PATH="$test_dir/failing-bin:$PATH" \
+  bash -euo pipefail "$migration" >"$test_dir/gate.out" 2>&1
+gate_status=$?
+set -e
+chmod 755 "$unreadable"
+
+(( gate_status != 0 )) ||
+  fail "migration fails when it cannot elevate to inspect the sudoers directory" "$(cat "$test_dir/gate.out")"
+grep -q 'without elevation' "$test_dir/gate.out" ||
+  fail "migration says why it could not inspect the directory" "$(cat "$test_dir/gate.out")"
+pass "migration fails when it cannot elevate to inspect the sudoers directory"
