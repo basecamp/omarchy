@@ -19,7 +19,7 @@ utilities="$ROOT/default/hypr/bindings/utilities.lua"
 grep -F 'sleep "$delay"' "$monitor_watch" >/dev/null
 grep -F 'for delay in 1 3 7; do' "$monitor_watch" >/dev/null
 grep -F 'poll_clamshell_state &' "$monitor_watch" >/dev/null
-grep -F 'flock -n 9' "$monitor_watch" >/dev/null
+! grep -F 'omarchy-monitor-clamshell.lock' "$monitor_watch" >/dev/null
 grep -F 'omarchy-hyprland-monitor-clamshell' "$monitor_watch" >/dev/null
 pass "monitor watcher retries internal monitor recovery after removal"
 
@@ -70,20 +70,17 @@ grep -F 'select(.name | test("^(eDP|LVDS|DSI)-") | not)' "$monitor_external_acti
 grep -F 'select(.disabled == false)' "$monitor_external_active" >/dev/null
 pass "active external monitor helper sees mirrors and ignores monitors disabled on purpose"
 
-grep -F 'omarchy-hyprland-monitor-internal recover >/dev/null 2>&1 || true' "$clamshell" >/dev/null
-grep -F 'omarchy-hyprland-monitor-internal-mirror recover >/dev/null 2>&1 || true' "$clamshell" >/dev/null
+grep -F 'omarchy-hyprland-monitor-internal recover >/dev/null 2>&1 || exit 0' "$clamshell" >/dev/null
+grep -F 'omarchy-hyprland-monitor-internal-mirror recover >/dev/null 2>&1 || exit 0' "$clamshell" >/dev/null
 grep -F 'internal-monitor-clamshell.lua' "$clamshell" >/dev/null
 grep -F 'disabled = true' "$clamshell" >/dev/null
 grep -F 'MANUAL_DISABLE_FLAG' "$clamshell" >/dev/null
 ! grep -F 'rm -f "$MANUAL_DISABLE_FLAG"' "$clamshell" >/dev/null
 ! grep -F '>"$MANUAL_DISABLE_FLAG"' "$clamshell" >/dev/null
-grep -F 'read_monitor_scale' "$clamshell" >/dev/null
-grep -F 'scale = $scale' "$clamshell" >/dev/null
-grep -F 'hyprctl dispatch "hl.dsp.dpms({ action = \"$action\", monitor = \"$INTERNAL\" })"' "$clamshell" >/dev/null
-grep -F 'hyprctl monitors all -j' "$clamshell" >/dev/null
+grep -F 'hyprctl dispatch "hl.dsp.dpms({ action = \"enable\", monitor = \"$INTERNAL\" })"' "$clamshell" >/dev/null
 grep -F 'omarchy-hyprland-monitor-external-active' "$clamshell" >/dev/null
 grep -F 'omarchy-hw-clamshell' "$clamshell" >/dev/null
-pass "clamshell monitor sync disables laptop output and force-recovers it"
+pass "clamshell monitor sync disables laptop output and lets a reload recover it"
 
 grep -F "hyprctl dispatch 'hl.dsp.dpms({ action = \"enable\" })' >/dev/null 2>&1 || true" "$monitor_internal" >/dev/null
 grep -F 'omarchy-hyprland-monitor-laptop' "$monitor_internal" >/dev/null
