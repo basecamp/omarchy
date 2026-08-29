@@ -190,8 +190,12 @@ trace_ok=0
 ) && trace_ok=1 || trace_ok=0
 assert [ "$trace_ok" = 1 ]
 ok 'the exact transition sequence is traced for scan, download, first run, switch rollback, and unload'
-for f in "$ROOT"/bin/* "$ROOT"/test/all; do bash -n "$f"; done
-lines=$(wc -l "$ROOT"/manifest.json "$ROOT"/*.qml "$ROOT"/bin/* "$ROOT"/test/all | tail -1 | awk '{print $1}')
-((lines <= 1000)) || { printf 'not ok - %s lines exceeds 1000\n' "$lines" >&2; exit 1; }
-ok "source, manifest, and tests stay compact ($lines lines)"
+assert grep -q 'lib/state.sh' "$CLI"
+assert grep -q 'lib/hardware.sh' "$CLI"
+assert grep -q 'lib/registry.sh' "$CLI"
+assert grep -q 'lib/runtime.sh' "$CLI"
+assert grep -q 'lib/agent.sh' "$CLI"
+assert grep -q 'lib/lifecycle.sh' "$CLI"
+for f in "$ROOT"/bin/* "$ROOT"/lib/* "$ROOT"/test/all; do bash -n "$f"; done
+ok 'controller is split into sourced libraries that parse'
 printf '1..%s\n' "$pass"

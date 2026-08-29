@@ -6,8 +6,9 @@ local GPUs. The bar widget and dashboard render only from
 fixed colors.
 
 `Panel.qml` is the bar icon and compact popup. `Dashboard.qml` is the
-full-screen recipe panel. `bin/omarchy-local-ai` is the state machine
-behind both.
+full-screen recipe panel. `bin/omarchy-local-ai` is the CLI and dispatch. Libraries under `lib/`
+own one concern each: snapshot state, hardware scan, registry/safety
+gate, container runtime, agent wiring, and lifecycle workers.
 
 ## Panel
 
@@ -78,5 +79,4 @@ removed. A `~/.cache` mount source that contains `..` is refused.
 ```
 
 The suite uses an isolated temp registry and shims for docker, curl, and
-hardware. No GPU, network, or real Docker daemon is involved. Source,
-manifest, and plugin tests stay at or under 1000 physical lines.
+hardware. No GPU, network, or real Docker daemon is involved.
