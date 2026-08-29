@@ -163,6 +163,18 @@ private:
     std::uint64_t now_seconds,
     std::chrono::milliseconds negotiation_timeout);
 
+// Starts one declared entry under the same verified activation/broker snapshot.
+// The selected name is sent only over the authenticated control channel; the
+// worker resolves it against the content-identified manifest.
+[[nodiscard]] headless::StartResult launch_surface_with_broker_for_lab(
+    launcher::Supervisor &supervisor, const PreparedPlugin &prepared,
+    std::string_view surface, int private_state_directory_fd,
+    health::HealthSupervisor &health,
+    std::shared_ptr<channel::BrokerDispatcher> dispatcher,
+    std::shared_ptr<const channel::GenerationAuthority> authority,
+    std::uint64_t now_seconds,
+    std::chrono::milliseconds negotiation_timeout);
+
 // Sends a complete replacement snapshot over the authenticated control
 // channel. Revocation/update callers rebuild it from the current grant store.
 [[nodiscard]] bool update_permission_availability(

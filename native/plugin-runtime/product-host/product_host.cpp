@@ -4,6 +4,8 @@
 #include <QJsonArray>
 #include <QJsonObject>
 
+#include "omarchy/plugin/wire/control.hpp"
+
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -306,6 +308,25 @@ headless::StartResult launch_with_broker_for_lab(
     std::shared_ptr<const channel::GenerationAuthority> authority,
     std::uint64_t now_seconds,
     std::chrono::milliseconds negotiation_timeout) {
+  return launch_surface_with_broker_for_lab(
+      supervisor, prepared, {}, private_state_directory_fd, health,
+      std::move(dispatcher), std::move(authority), now_seconds,
+      negotiation_timeout);
+}
+
+headless::StartResult launch_surface_with_broker_for_lab(
+    launcher::Supervisor &supervisor, const PreparedPlugin &prepared,
+    std::string_view surface, int private_state_directory_fd,
+    health::HealthSupervisor &health,
+    std::shared_ptr<channel::BrokerDispatcher> dispatcher,
+    std::shared_ptr<const channel::GenerationAuthority> authority,
+    std::uint64_t now_seconds,
+    std::chrono::milliseconds negotiation_timeout) {
+  MultiSurfaceActivation activation(prepared);
+  if (!surface.empty() && !activation.qml_entry(surface))
+    return {.session = nullptr,
+            .failure = headless::StartFailure::invalid_binding,
+            .detail = "surface entry is not declared by the activation"};
   if (dispatcher == nullptr ||
       !dispatcher->accepts({.plugin_id = std::string(prepared.binding.plugin.view()),
                             .revision_sha256 = std::string(prepared.binding.revision.view()),
@@ -334,6 +355,23 @@ headless::StartResult launch_with_broker_for_lab(
   auto started = headless::Session::start(
       supervisor, request, prepared.binding, health, std::move(dispatcher),
       std::move(authority), now_seconds, negotiation_timeout);
+  if (started && !surface.empty()) {
+    const auto bytes =
+        std::as_bytes(std::span(surface.data(), surface.size()));
+    if (!started.session->send_control(
+            omarchy::plugin::wire::kSurfaceSelectionMessage, bytes) ||
+        !started.session->receive_control_ack(
+            omarchy::plugin::wire::kSurfaceSelectionAcceptedMessage,
+            std::chrono::seconds(5))) {
+      const auto diagnostic = started.session->take_worker_standard_error();
+      (void)started.session->stop();
+      return {.session = nullptr,
+              .failure = headless::StartFailure::readiness,
+              .detail = diagnostic.empty() ? "surface selection failed"
+                                           : "surface selection failed: " +
+                                                 diagnostic};
+    }
+  }
   if (started && !update_permission_availability(*started.session, prepared)) {
     const auto diagnostic = started.session->take_worker_standard_error();
     (void)started.session->stop();
