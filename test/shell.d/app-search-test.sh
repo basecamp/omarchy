@@ -99,13 +99,17 @@ assert(
 )
 
 assert(
-  /function launch\(desktopId, name\) \{[\s\S]*?uwsm-app[\s\S]*?\n  \}/.test(appLibraryQml) &&
-    appLibraryQml.includes('Util.execDetached("uwsm-app -- gtk-launch "'),
-  'app library launches desktop entries through gtk-launch in their own scope'
+  /function launch\(desktopId, name\) \{[\s\S]*?launchProcess\.command = \["uwsm-app", "--", "gtk-launch"[\s\S]*?launchProcess\.running = true[\s\S]*?\n  \}/.test(appLibraryQml),
+  'app library launches desktop entries through a monitored gtk-launch process'
 )
 
 assert(
-  appLibraryQml.includes('Util.shellQuote(id + ".desktop")'),
+  /id: launchProcess[\s\S]*?onExited: function\(exitCode\)[\s\S]*?exitCode !== 0[\s\S]*?omarchy-notification-send/.test(appLibraryQml),
+  'app library reports failed desktop entry launches'
+)
+
+assert(
+  appLibraryQml.includes('id + ".desktop"'),
   'app library launches by full file name so ids ending in .desktop (org.telegram.desktop) resolve'
 )
 
