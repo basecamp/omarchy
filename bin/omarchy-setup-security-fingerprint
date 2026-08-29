@@ -82,6 +82,15 @@ ExecStart=/usr/bin/systemctl try-restart fprintd.service
 [Install]
 WantedBy=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
 EOF
+  # A wedged fprintd does not answer SIGTERM: clearing one takes the full stop
+  # timeout and then SIGKILL. At the default 90s that lands squarely on the
+  # wake path, so the restart above would make resume slower than the bug.
+  sudo mkdir -p /etc/systemd/system/fprintd.service.d
+  sudo tee /etc/systemd/system/fprintd.service.d/stop-timeout.conf >/dev/null <<'EOF'
+[Service]
+TimeoutStopSec=3s
+EOF
+
   sudo systemctl daemon-reload
   sudo systemctl enable fprintd-resume.service >/dev/null
 }
