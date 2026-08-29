@@ -33,8 +33,8 @@ Recordings land in the configured Videos directory (override with
 `omarchy capture webcam resize <smaller|larger|reset|small|medium|large>`.
 
 If recording fails to start, rerun with `OMARCHY_SCREENRECORD_DEBUG=true` to
-collect a log at `/tmp/omarchy-screenrecord.log` worth attaching to a bug
-report.
+collect a log at `${XDG_RUNTIME_DIR:-/tmp}/omarchy-screenrecord.log` worth
+attaching to a bug report.
 
 ## Text Capture (OCR)
 
