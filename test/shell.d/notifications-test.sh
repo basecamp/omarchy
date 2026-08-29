@@ -7,6 +7,10 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 run_node_test <<'JS'
 const fs = require('fs')
 const notifications = requireFromRoot('shell/plugins/notifications/NotificationLogic.js')
+const notificationCard = fs.readFileSync(path.join(root, 'shell/plugins/notifications/components/NotificationCard.qml'), 'utf8')
+
+assert(notificationCard.includes('visible: true') && notificationCard.includes('opacity: 1'), 'notification close button is always visible')
+assert(notificationCard.includes('color: Color.notifications.text'), 'notification close button uses notification text color')
 
 assert(notifications.isChromiumDerived('Brave Browser', ''), 'notifications detect chromium-derived apps by name')
 assert(notifications.isChromiumDerived('', 'microsoft-edge'), 'notifications detect chromium-derived apps by icon')
