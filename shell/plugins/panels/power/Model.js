@@ -102,20 +102,20 @@ function wattsBasis(deviceState, dischargingState, watts) {
 // Kernel comm fields cap at 15 characters (TASK_COMM_LEN), so the panel's
 // comm column can be sized once for the realistic worst case and never per
 // sample.
-// The shade lattice: three fixed opacity steps over each identity hue,
-// multiplying the SAME theme color — nine distinguishable identity slots
-// from three collision-free keys, zero new RGB, the 22-theme guarantee
-// intact. Steps chosen against the panel's 0.12-alpha track: the lowest
-// shade stays clearly above the track at panel scale (verified live).
-var SHADES = [0.5, 0.75, 1.0]
-
+// Identity colors are name→hue only: stableColorKey hashes the comm into
+// the three collision-free theme hues, the SAME key on every surface — the
+// table row's mark, every composition bar's segment — so a process is one
+// color wherever it appears (the operator review's single-color-authority
+// rule: the table). Two comms may share a hue (three hues, five rows); the
+// row label and the bar's segment gaps keep them distinct, and the hue
+// never depends on which other comms are visible.
 var COMM_MAX_CHARS = 15
 
 // Gap budget basis for the composition bars: the most segments any bar can
-// show (top-N processes + rest + idle/available; the watts bar's base +
-// top-N + else fits the same count). Callers reserve this many constant
-// separators' worth of width so fills scale identically no matter how many
-// segments are visible.
+// show (top-N processes + the idle/available frame; the watts bar's system
+// block + top-N fits under the same count). Callers reserve this many
+// constant separators' worth of width so fills scale identically no matter
+// how many segments are visible.
 var SPLIT_MAX_SEGMENTS = 7
 
 if (typeof module !== "undefined") {
@@ -133,16 +133,12 @@ if (typeof module !== "undefined") {
     parseSnapshot: parseSnapshot,
     buildTopProcesses: buildTopProcesses,
     buildSystemRows: buildSystemRows,
-    buildSystemAnchorRow: buildSystemAnchorRow,
     wattsBasis: wattsBasis,
     COMM_MAX_CHARS: COMM_MAX_CHARS,
     buildResourceSplits: buildResourceSplits,
     aggregateCommShares: aggregateCommShares,
     stableColorKey: stableColorKey,
     stableColorHash: stableColorHash,
-    SHADES: SHADES,
-    slotPreferences: slotPreferences,
-    resolveColorSlots: resolveColorSlots,
     SPLIT_MAX_SEGMENTS: SPLIT_MAX_SEGMENTS
   }
 }
@@ -227,11 +223,10 @@ function parseSnapshot(raw) {
 // When the battery draw is known (discharging only — on AC the battery flow
 // is charge rate, not system draw) it is split into a calibrated idle base
 // and a variable slice attributed by share, so the returned rows are
-// [base load, top-N..., everything else] and sum to the measured draw.
-// A multi-threaded process can exceed 100% — jiffies sum across cores.
-// Jiffies attributed per comm over the window, share of busy activity —
-// shared by the top-process rows and the resource splits so both views are
-// computed from the same numbers and can never disagree.
+// [system, top-N...] and sum to the measured draw. Jiffies attributed per
+// comm over the window, share of busy activity — shared by the top-process
+// rows and the resource splits so both views are computed from the same
+// numbers and can never disagree.
 function aggregateCommShares(prevSnapshot, nextSnapshot, limit) {
   var nextP = nextSnapshot.processes
   var prevP = prevSnapshot ? prevSnapshot.processes : {}
@@ -317,13 +312,10 @@ function buildTopProcesses(prevSnapshot, nextSnapshot, limit, drawWatts, baseWat
   var totalAllDelta = prevSnapshot && nextSnapshot.cpuTotal !== null && prevSnapshot.cpuTotal !== null
     ? Math.max(0, nextSnapshot.cpuTotal - prevSnapshot.cpuTotal) : 0
   var busyFrac = totalAllDelta > 0 ? agg.totalDelta / totalAllDelta : 0
-  // the W column's ramp normalizes against its largest cell, whichever row
-  // owns it (usually the top process, sometimes the base floor)
+  // the W column's ramp normalizes against the top process's cell; the
+  // system row below anchors at full intensity and does not contend
   var topW = 0
-  if (drawWatts >= 0) {
-    if (baseWatts > 0.5) topW = Math.max(topW, baseWatts / drawWatts)
-    if (shares.length > 0) topW = Math.max(topW, variable * topShare / drawWatts)
-  }
+  if (drawWatts >= 0 && shares.length > 0) topW = variable * topShare / drawWatts
 
   var procIdx = 0
   var cpuUsedByRows = 0
@@ -342,78 +334,49 @@ function buildTopProcesses(prevSnapshot, nextSnapshot, limit, drawWatts, baseWat
     procIdx++
   }
 
-  // The everything-else row is a whole-machine remainder row: the CPU left
-  // over after the listed processes (closing the sum to global CPU%), the
-  // used RAM beyond the listed processes' RSS (clamped at zero — shared
-  // pages double-counted per process can push it negative, the standing
-  // disclosure), and the watts tail. It exists when ANY metric has a
-  // meaningful remainder — its old existence gate was watts-only, which
-  // starved the CPU/RAM closure whenever the watts tail was display noise.
+  // The system row: everything not attributed to a listed process — one row,
+  // first in the table (the operator review folded the old "base load" and
+  // "everything else" rows into it; a separate floor row read as a mystery
+  // second "system"). Its cells are the remainders on the same grid and
+  // scale as the processes: the CPU left over after the listed processes
+  // (closing the sum to global CPU%), the used RAM beyond the listed
+  // processes' RSS (clamped at zero — shared pages double-counted per
+  // process can push it negative, the standing disclosure), and the watts
+  // the model does not attribute (the calibrated idle floor PLUS the
+  // variable tail). System + top processes = the whole on every metric,
+  // exactly — that sum is the one-reality invariant. Cells anchor at full
+  // intensity; the panel renders the row in theme foreground so it reads as
+  // the neutral machine against metric-colored processes.
   var usedFracAll = memTotal !== null && nextSnapshot.memAvailKb !== null
     ? Math.max(0, Math.min(1, 1 - nextSnapshot.memAvailKb / memTotal)) : 0
-  var elseCpuRem = totalAllDelta > 0 ? Math.max(0, busyFrac - cpuUsedByRows) : 0
-  var elseRamRem = memTotal !== null ? Math.max(0, usedFracAll - ramUsedByRows) : 0
-  var wTail = drawWatts >= 0 ? variable * otherShare / drawWatts : 0
-  if (elseCpuRem > 0.005 || elseRamRem > 0.005 || (drawWatts >= 0 && otherShare > 0.02 && variable * otherShare > 0.5)) {
-    var eCells = []
-    if (totalAllDelta > 0) eCells.push(cellAtIntensity("CPU", pct(elseCpuRem), elseCpuRem, 0.8))
-    if (memTotal !== null) eCells.push(cellAtIntensity("RAM", ramTxt(Math.round(elseRamRem * memTotal)), elseRamRem, 0.8))
-    if (drawWatts >= 0) eCells.push(cellAtIntensity("W", wtxt(variable * otherShare), wTail, 0.8))
-    out.push({ label: "everything else", value: drawWatts >= 0 ? wtxt(variable * otherShare) : "", key: "else", cells: eCells })
-  }
-
-  if (drawWatts >= 0 && baseWatts > 0.5) {
-    out.unshift({ label: "base load", value: wtxt(baseWatts), key: "base",
-      cells: [cell("W", wtxt(baseWatts), baseWatts / drawWatts, topW)] })
-  }
-  return out
-}
-
-// The anchor row: the machine itself, rendered first in the process table
-// with global values on the same grid and scale — CPU global%, RAM used%,
-// and total draw while the watts basis is active (its W cell fills the whole
-// column because the draw IS the whole the rows below decompose). The panel
-// renders it in theme foreground (never literal white) so it reads as the
-// neutral machine against metric-colored processes.
-function buildSystemAnchorRow(prevSnapshot, nextSnapshot, drawWatts) {
-  var cells = []
-  if (prevSnapshot && nextSnapshot.cpuTotal !== null && prevSnapshot.cpuTotal !== null
-    && nextSnapshot.cpuBusy !== null && prevSnapshot.cpuBusy !== null) {
-    var totalDelta = nextSnapshot.cpuTotal - prevSnapshot.cpuTotal
-    if (totalDelta > 0) {
-      var g = Math.min(1, Math.max(0, (nextSnapshot.cpuBusy - prevSnapshot.cpuBusy) / totalDelta))
-      cells.push({ metric: "CPU", value: Math.round(g * 100) + "%", normalized: g, intensity: 1 })
-    }
-  }
-  if (nextSnapshot.memTotalKb !== null && nextSnapshot.memAvailKb !== null && nextSnapshot.memTotalKb > 0) {
-    var used = Math.max(0, Math.min(1, 1 - nextSnapshot.memAvailKb / nextSnapshot.memTotalKb))
-    cells.push({ metric: "RAM", value: Math.round(used * 100) + "%", normalized: used, intensity: 1 })
-  }
+  var sysCpuRem = totalAllDelta > 0 ? Math.max(0, busyFrac - cpuUsedByRows) : 0
+  var sysRamRem = memTotal !== null ? Math.max(0, usedFracAll - ramUsedByRows) : 0
+  var sysCells = []
+  if (totalAllDelta > 0) sysCells.push(cellAtIntensity("CPU", pct(sysCpuRem), sysCpuRem, 1))
+  if (memTotal !== null) sysCells.push(cellAtIntensity("RAM", ramTxt(Math.round(sysRamRem * memTotal)), sysRamRem, 1))
   if (drawWatts >= 0) {
-    cells.push({ metric: "W", value: (drawWatts < 10 ? drawWatts.toFixed(1) : Math.round(drawWatts)) + " W", normalized: 1, intensity: 1 })
+    var sysW = (baseWatts > 0 ? baseWatts : 0) + variable * otherShare
+    sysCells.push(cellAtIntensity("W", wtxt(sysW), sysW / drawWatts, 1))
   }
-  if (cells.length === 0) return null
-  return { label: "system", key: "system", value: "", cells: cells }
+  if (sysCells.length > 0) out.unshift({ label: "system", key: "system", cells: sysCells })
+  return out
 }
 
 // ---- Power Hungry: system vitals rows ----------------------------------------
 
-// One row per vital as {label, value, meter}, in fixed order: CPU, RAM, GPU,
-// Draw. meter is 0..1 for the panel's progress-bar idiom, or -1 when the row
+// One row per vital as {label, value, meter}, in fixed order: CPU, RAM, GPU.
+// meter is 0..1 for the panel's progress-bar idiom, or -1 when the row
 // has no meter to draw (a dash, or a value that is not a fraction). CPU%
 // needs two snapshots (busy-delta over all-ticks-delta, idle included);
 // before a second snapshot exists it shows the stock "—" placeholder rather
 // than a number, matching how the stats section renders unknowns. RAM% comes
 // from MemAvailable/MemTotal. GPU% appears only when the sampler found a
 // user-readable utilization source — absence is the honest state on GPUs that
-// expose none (e.g. Asahi), so no row is invented. Draw appears only while
-// discharging with known watts, mirroring the attribution's watts rule: on
-// AC the battery flow is charge rate, not system draw, and the row is omitted
-// entirely instead of showing a bogus number. Draw's meter is draw/40 capped
-// at 1 so the panel's green (<20 W) / yellow (<40 W) / red (beyond)
-// thresholds land at 0.5 and 1.0 of the bar.
-function buildSystemRows(prevSnapshot, nextSnapshot, drawWatts) {
-  function wtxt(w) { return (w < 10 ? w.toFixed(1) : Math.round(w)) + " W" }
+// expose none (e.g. Asahi), so no row is invented. There is deliberately no
+// Draw row: total system draw is the stock pill's own number and the stats
+// section's rate row (same sampler telemetry), and the attribution below
+// decomposes it — a third copy was duplication, removed in operator review.
+function buildSystemRows(prevSnapshot, nextSnapshot) {
   var rows = []
 
   var cpuText = "—"
@@ -442,10 +405,6 @@ function buildSystemRows(prevSnapshot, nextSnapshot, drawWatts) {
     rows.push({ label: "GPU", value: gpu + "%", meter: gpu / 100 })
   }
 
-  if (drawWatts >= 0) {
-    rows.push({ label: "Draw", value: wtxt(drawWatts), meter: Math.min(1, drawWatts / 40) })
-  }
-
   return rows
 }
 
@@ -456,33 +415,29 @@ function buildSystemRows(prevSnapshot, nextSnapshot, drawWatts) {
 // per-process RSS sums exceed system used (shared pages counted per process)
 // — there the rest segment clamps to 0 and the list sums above 1, which is
 // the documented double-count disclosure rather than a hidden rescale.
-// Segment kinds: "comm" (top processes), "rest" (other busy / other used),
-// "idle" / "avail" (unused capacity — rendered as the unfilled track),
-// "base" and "else" (the attribution model's floor and tail). The same comm
-// carries the same key in every list so one color map serves all bars.
+// Segment kinds: "comm" (top processes), "system" (everything unattributed
+// — leads every bar, mirroring the table's system row), "rest" (the GPU
+// bar's non-GPU remainder), "idle" / "avail" (unused capacity — rendered as
+// the unfilled track). The same comm carries the same key in every list so
+// one color map serves all bars.
 function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseWatts, palette) {
   // The identity palette: the three collision-free theme hues (see the
   // panel's palette rationale). Passed in so callers own it; defaulted so
   // the pure builder is self-contained.
   palette = palette || ["blue", "cyan", "magenta"]
-  // The shade lattice assignment, resolved ONCE over the visible set — the
-  // TABLE's rank order (CPU busy-share) and nothing else — and shared by the
-  // table accents and every bar: one function, one visible set. Bars are
+  // Segment colors are the TABLE's colors — the operator review made the
+  // table the single color authority: every comm segment (and the table
+  // row's mark beside it) carries its name-hashed palette hue at full
+  // strength, the same key everywhere, no per-bar shading. Bars are
   // self-sorted visualizations (round 12, superseding round 11's
   // bar-follows-table order by the operator's final choice): a SYSTEM
-  // block leads — the table's system-anchor concept made spatial, in
-  // foreground — then process blocks size-descending by the bar's own
-  // metric, then the idle/available frame. The TABLE keeps the single
-  // shared rank; per-bar order may differ from it and between bars by
-  // design. (Round 11's correspondence superseded round 9's canonical
-  // order; the lattice colors, gaps, budget, snap fills, and no-text
-  // rules carry through all three eras untouched.)
-  var lattice = null
+  // block leads — the table's system row made spatial, in foreground —
+  // then process blocks size-descending by the bar's own metric, then the
+  // idle/available frame. The TABLE keeps the single shared rank; per-bar
+  // order may differ from it and between bars by design.
   function slotOf(comm) {
-    if (lattice === null) lattice = resolveColorSlots(result.order, palette, SHADES)
-    return lattice.assignment[comm] !== undefined
-      ? lattice.assignment[comm]
-      : { hue: palette[stableColorKey(comm, palette.length)], hueIdx: stableColorKey(comm, palette.length), shadeIdx: 2, shade: 1 }
+    var idx = stableColorKey(comm, palette.length)
+    return { hue: palette[idx], hueIdx: idx }
   }
   function rankCommSegments(fracList) {
     var out = []
@@ -496,8 +451,8 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
   var agg = prevSnapshot ? aggregateCommShares(prevSnapshot, nextSnapshot, n) : null
   if (agg) result.order = agg.shares.map(function(s) { return s.label })
   // intensity-as-criticality: utilization ramps each system bar's opacity
-  // from 0.45 at idle toward 1.0 at full; the watts bar is categorical
-  // (green/yellow/red) and stays at full intensity.
+  // from 0.45 at idle toward 1.0 at full; the watts bar has no utilization
+  // ramp (draw is not a fraction of a capacity) and stays at full intensity.
   result.intensity = { cpu: 0.45, ram: 0.45, watts: 1, gpu: 0.45 }
 
   // CPU: shares of ALL ticks this window (busy + idle) so the segments,
@@ -536,8 +491,9 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
       if (!(p.name in ramAll)) ramAll[p.name] = 0
       ramAll[p.name] += p.rssKb
     }
-    // table-order RAM segments: the table's comms, in the table's rank,
-    // widths = each comm's RSS share of MemTotal
+    // the table's comms with their RSS widths, self-sorted size-descending
+    // (the RAM bar sorts by RSS even though the table ranks by CPU — bars
+    // are self-sorted visualizations)
     var ramFracs = []
     var rused = 0
     if (agg) {
@@ -550,8 +506,6 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
         }
       }
     }
-    // per-bar size-descending: the RAM bar sorts by RSS even though the
-    // table ranks by CPU — bars are self-sorted visualizations
     ramFracs.sort(function(a, b) { return b.share - a.share })
     var rsegs = [{ key: "system", label: "system", share: Math.max(0, usedFrac - rused), kind: "system" }]
     rsegs = rsegs.concat(rankCommSegments(ramFracs))
@@ -560,26 +514,21 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
     result.intensity.ram = 0.45 + 0.55 * usedFrac
   }
 
-  // Watts: the attribution model as a bar — base floor, top processes, tail.
+  // Watts: the attribution model as a bar — the system block (everything
+  // unattributed: the calibrated idle floor plus the variable tail) first,
+  // then the top processes in their table colors, biggest to lightest.
   // Present only while discharging; on AC the battery flow is charge rate,
   // not system draw, and the bar is omitted rather than faked.
   if (drawWatts >= 0 && agg) {
     var variable = Math.max(0, drawWatts - (baseWatts > 0 ? baseWatts : 0))
-    var wsegs = []
     var wused = 0
-    if (baseWatts > 0.5) {
-      var bf = Math.min(1, baseWatts / drawWatts)
-      wsegs.push({ key: "base", label: "base load", share: bf, kind: "base" })
-      wused += bf
-    }
     var wFracs = []
     for (var k = 0; k < agg.shares.length; k++) {
       var wf = variable * agg.shares[k].share / drawWatts
       if (wf > 0) { wFracs.push({ key: agg.shares[k].label, share: wf }); wused += wf }
     }
+    var wsegs = [{ key: "system", label: "system", share: Math.max(0, 1 - wused), kind: "system" }]
     wsegs = wsegs.concat(rankCommSegments(wFracs))
-    var welse = Math.max(0, 1 - wused)
-    wsegs.push({ key: "else", label: "everything else", share: welse, kind: "else" })
     result.watts = wsegs
   }
 
@@ -593,17 +542,19 @@ function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseW
     result.intensity.gpu = 0.45 + 0.55 * g
   }
 
-  if (lattice === null) lattice = resolveColorSlots(result.order, palette, SHADES)
-  result.lattice = lattice
   return result
 }
 
 // Stable identity colors: FNV-1a over the comm name, reduced into the
 // palette. Deterministic across calls, sessions, and machines — no
 // randomness, no seed state, no order dependence — so a process keeps its
-// hue everywhere and forever: table label accents, composition-bar groups,
-// any surface. The multiply stays under 2^53 and the >>>0 fold makes the
-// uint32 overflow explicit, so every QML JS engine agrees bit-for-bit.
+// hue everywhere and forever: the table row's mark, composition-bar
+// segments, any surface. (Hues can collide — three palette keys, five rows —
+// and that is accepted by the operator-review color rule: the table is the
+// single color authority, identity is name→hue, and a displaced hue would
+// break the table↔bar correspondence the lattice was retired for.) The
+// multiply stays under 2^53 and the >>>0 fold makes the uint32 overflow
+// explicit, so every QML JS engine agrees bit-for-bit.
 function stableColorHash(comm) {
   var h = 2166136261
   var s = String(comm)
@@ -616,66 +567,4 @@ function stableColorHash(comm) {
 
 function stableColorKey(comm, paletteSize) {
   return stableColorHash(comm) % (paletteSize || 3)
-}
-
-// Full 9-slot preference ordering, derived deterministically from ONE hash:
-// hue = h % 3 (low bits), shade = floor(h / 3) % 3 (the next bits —
-// decorrelated from the hue bits, tested). The preferred slot comes first;
-// then the SAME hue's other shades (cyclically from the preferred shade —
-// hue identity survives displacement, only the shade yields); then the
-// other hues in cyclic order from the preferred hue, each with shades
-// cyclically from the preferred shade. Same comm, same list, forever.
-function slotPreferences(comm, palette, shades) {
-  palette = palette || ["blue", "cyan", "magenta"]
-  shades = shades || SHADES
-  var h = stableColorHash(comm)
-  var hue = h % palette.length
-  var shade = Math.floor(h / palette.length) % shades.length
-  var prefs = [{ hue: hue, shade: shade }]
-  for (var s = 1; s < shades.length; s++) prefs.push({ hue: hue, shade: (shade + s) % shades.length })
-  for (var hu = 1; hu < palette.length; hu++) {
-    for (var s2 = 0; s2 < shades.length; s2++)
-      prefs.push({ hue: (hue + hu) % palette.length, shade: (shade + s2) % shades.length })
-  }
-  return prefs
-}
-
-// Claim resolution over the visible set: a pure function of the rank-ordered
-// comm list — same list, same assignment, always. Claims are processed in
-// claim-strength order (rank first, name lexicographic as the tiebreak), and
-// each comm takes the first slot on its preference list not already taken.
-// Greedy-by-strength IS the displacement fixed point in a single pass — a
-// stronger claim never moves after taking a slot, so cascades cannot arise
-// and termination is structural (one pass, at most nine slots). A comm with
-// no free slot on any of its nine preferences is UNASSIGNED — the table
-// falls back to the round-9 ordinal badge for exactly those.
-// Stability contract: an uncontested comm keeps its hash slot forever;
-// a contested comm's displacement is deterministic (top ranks most stable,
-// shade yields before hue).
-function resolveColorSlots(comms, palette, shades) {
-  palette = palette || ["blue", "cyan", "magenta"]
-  shades = shades || SHADES
-  var ranked = comms.slice().sort(function(a, b) {
-    var ia = comms.indexOf(a), ib = comms.indexOf(b)
-    if (ia !== ib) return ia - ib
-    return a < b ? -1 : (a > b ? 1 : 0)
-  })
-  var taken = {}
-  var assignment = {}
-  var unassigned = []
-  for (var i = 0; i < ranked.length; i++) {
-    var prefs = slotPreferences(ranked[i], palette, shades)
-    var placed = false
-    for (var p = 0; p < prefs.length; p++) {
-      var key = prefs[p].hue + "-" + prefs[p].shade
-      if (!taken[key]) {
-        taken[key] = ranked[i]
-        assignment[ranked[i]] = { hue: palette[prefs[p].hue], hueIdx: prefs[p].hue, shadeIdx: prefs[p].shade, shade: shades[prefs[p].shade] }
-        placed = true
-        break
-      }
-    }
-    if (!placed) unassigned.push(ranked[i])
-  }
-  return { assignment: assignment, unassigned: unassigned }
 }

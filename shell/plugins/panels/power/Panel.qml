@@ -24,7 +24,6 @@ Panel {
   property var systemRows: []
   property var resourceSplits: null
   property var colorMap: ({})
-  property var rowOrdinals: ({})
   property var processColumns: []
   // The identity palette — three collision-free theme hues; see the
   // rationale at the colorMap assignment below.
@@ -153,9 +152,10 @@ Panel {
 
   // Metric-type colors for the per-process cells: the three collision-free
   // hues, one per metric (CPU blue, RAM cyan, W magenta), so a column reads
-  // as one metric at a glance. W stays magenta here rather than categorical
-  // green/yellow/red: those thresholds grade SYSTEM draw (the Draw bar);
-  // per-process watts carry no honest absolute thresholds. GPU is reserved
+  // as one metric at a glance. W stays magenta rather than categorical
+  // green/yellow/red: per-process watts carry no honest absolute thresholds
+  // (the old system-level Draw meter that used them was removed in operator
+  // review — the stock pill already shows total draw). GPU is reserved
   // to accent for the future fdinfo cell (never emitted on this hardware;
   // accent may sit near blue on some themes — a documented follow-up
   // question for whoever adds GPU cells).
@@ -167,14 +167,15 @@ Panel {
   }
 
   // Segment/row colors, one resolver for every surface: comms take their
-  // assigned palette hue, the attribution floor takes accent, tails take
-  // muted, unknown keys fall back to the bar foreground.
+  // name-hashed palette hue — the table row's mark is the single color
+  // authority, and bars render the same hue at the same full strength —
+  // the system block takes foreground (the neutral machine), the GPU bar's
+  // rest takes muted, unknown keys fall back to the bar foreground.
   function segmentColor(seg) {
-    if (seg.kind === "base") return Color.accent
-    if (seg.kind === "rest" || seg.kind === "else") return Color.muted
+    if (seg.kind === "rest") return Color.muted
     if (seg.kind === "system") return root.bar ? root.bar.foreground : Color.foreground
     var k = seg.kind === "comm" && seg.slot !== undefined ? seg.slot.hue
-      : (seg.kind === "comm" && colorMap[seg.key] !== undefined ? colorMap[seg.key].hue : "")
+      : (seg.kind === "comm" && colorMap[seg.key] !== undefined ? colorMap[seg.key] : "")
     if (k === "blue") return Color.blue
     if (k === "cyan") return Color.cyan
     if (k === "magenta") return Color.magenta
@@ -313,9 +314,10 @@ Panel {
       else baseWatts += (draw - baseWatts) * 0.02
     }
     if (prevSnapshot) {
-      var procRows = Model.buildTopProcesses(prevSnapshot, snap, 5, draw, baseWatts)
-      var anchorRow = Model.buildSystemAnchorRow(prevSnapshot, snap, draw)
-      topProcesses = anchorRow !== null ? [anchorRow].concat(procRows) : procRows
+      // The system row (everything unattributed: idle floor + tail) comes
+      // first from the builder itself — folded there in operator review so
+      // table, bars, and model exports share ONE system concept.
+      topProcesses = Model.buildTopProcesses(prevSnapshot, snap, 5, draw, baseWatts)
     }
     // column set = the first row's cell metrics, in the builder's fixed
     // order (CPU, RAM, W discharging only, GPU when a source exists)
@@ -334,28 +336,28 @@ Panel {
     // themes and magenta on lumon only, so it cannot serve as a fourth hue;
     // bright_* variants equal their base hue on roughly half, so no six-key
     // collision-free set exists — retro-82's residual defect is its own
-    // blue == magenta, a theme-level reduction). Same comm = same key =
-    // same color in the CPU, RAM, and watts bars and its row meter.
-    // The shade-lattice assignment (one function, one visible set): accents,
-    // cell fills, and every bar segment read from it. Badges are the
-    // exhaustion path only — a comm with no free slot among nine — which
-    // the table's top-N practically never reaches.
-    var lattice = resourceSplits.lattice
-    colorMap = lattice.assignment
-    rowOrdinals = {}
-    for (var ui = 0; ui < lattice.unassigned.length; ui++)
-      rowOrdinals[lattice.unassigned[ui]] = ui + 2
+    // blue == magenta, a theme-level reduction). Identity is name→hue and
+    // nothing else: same comm = same key = same color on its table row's
+    // mark and in every bar segment, at full strength, per the operator
+    // review's table-is-the-color-authority rule. Hue collisions between
+    // comms are accepted (three hues, five rows) — labels disambiguate the
+    // table, gaps disambiguate the bars.
+    var cmap = {}
+    for (var ci2 = 0; ci2 < resourceSplits.order.length; ci2++) {
+      var comm = resourceSplits.order[ci2]
+      cmap[comm] = root.paletteKeys[Model.stableColorKey(comm, root.paletteKeys.length)]
+    }
+    colorMap = cmap
     // Vitals rows are rebuilt complete with their segments attached: a
     // property added to a plain JS object after the fact carries no change
     // signal, so a delegate that bound before the attach would stay null.
-    var rows = Model.buildSystemRows(prevSnapshot, snap, draw)
+    var rows = Model.buildSystemRows(prevSnapshot, snap)
     for (var si = 0; si < rows.length; si++) {
       var segsFor = null
       var intensityFor = 0.45
       if (rows[si].label === "CPU") { segsFor = resourceSplits.cpu; intensityFor = resourceSplits.intensity.cpu }
       else if (rows[si].label === "RAM") { segsFor = resourceSplits.ram; intensityFor = resourceSplits.intensity.ram }
       else if (rows[si].label === "GPU") { segsFor = resourceSplits.gpu; intensityFor = resourceSplits.intensity.gpu }
-      else if (rows[si].label === "Draw") intensityFor = 1
       rows[si] = { label: rows[si].label, value: rows[si].value, meter: rows[si].meter, segments: segsFor, barIntensity: intensityFor }
     }
     systemRows = rows
@@ -596,12 +598,11 @@ Panel {
         // General system state, kin to the battery stats above; the
         // attribution section below answers "who is eating it". Rows come
         // from the same sampler snapshots as everything else, so vitals and
-        // attribution can never disagree, and the Draw row appears only
-        // while discharging (on AC the battery flow is charge rate, not
-        // system draw). Meters reuse the battery bar's own idiom — a
-        // rounded track at foreground alpha with a foreground fill — no new
-        // widget. The Draw meter grades green under 20 W, yellow under 40,
-        // red beyond, at 50%/100% of the bar.
+        // attribution can never disagree. Meters reuse the battery bar's
+        // own idiom — a rounded track at foreground alpha with a foreground
+        // fill — no new widget. There is deliberately no Draw row: total
+        // draw is the stock pill's number (same sampler telemetry), and a
+        // second copy of it here was removed in operator review.
         PanelSeparator {
           foreground: root.bar.foreground
         }
@@ -626,9 +627,7 @@ Panel {
               segments: modelData.segments !== undefined ? modelData.segments : null
               meter: modelData.meter
               barIntensity: modelData.barIntensity !== undefined ? modelData.barIntensity : 0.45
-              fillColor: modelData.label === "Draw"
-                ? (modelData.meter < 0.5 ? Color.green : modelData.meter < 1 ? Color.yellow : Color.urgent)
-                : (root.bar ? root.bar.foreground : Color.foreground)
+              fillColor: root.bar ? root.bar.foreground : Color.foreground
             }
           }
         }
@@ -648,10 +647,12 @@ Panel {
             fontFamily: root.bar.fontFamily
           }
 
-          // The attribution model as one bar: base load (accent), the top
-          // processes in their assigned comm colors, and the tail (muted).
-          // Discharging only — on AC the battery flow is charge rate, not
-          // system draw, so there is no honest bar to draw.
+          // The attribution model as one bar, mirroring the table below:
+          // the system block first (everything unattributed, in foreground —
+          // the leading neutral segment the table's system row also wears),
+          // then the top processes biggest-to-lightest in their table-row
+          // colors. Discharging only — on AC the battery flow is charge
+          // rate, not system draw, so there is no honest bar to draw.
           Rectangle {
             visible: root.resourceSplits !== null && root.resourceSplits.watts !== null
             width: column.width
@@ -673,7 +674,6 @@ Panel {
                   width: modelData.share * Math.max(0, wattsSegmentRow.width - root.splitGapBudget)
                   height: parent.height
                   color: root.segmentColor(modelData)
-                  opacity: modelData.slot !== undefined ? modelData.slot.shade : 1
                 }
               }
             }
@@ -732,16 +732,11 @@ Panel {
               cells: modelData.cells !== undefined ? modelData.cells : []
               columns: root.processColumns
               anchor: modelData.key === "system"
-              badge: root.rowOrdinals[modelData.key] !== undefined ? root.rowOrdinals[modelData.key] : 0
-              shade: root.colorMap[modelData.key] !== undefined && root.colorMap[modelData.key].shade !== undefined
-                ? root.colorMap[modelData.key].shade : 1
               commColor: modelData.key === "system"
                 ? (root.bar ? root.bar.foreground : Color.foreground)
-                : (modelData.key === "base" || modelData.key === "else"
-                  ? root.segmentColor({ kind: modelData.key, key: modelData.key })
-                  : (root.colorMap[modelData.key] !== undefined
-                    ? Color[root.colorMap[modelData.key].hue]
-                    : root.segmentColor({ kind: "comm", key: modelData.key })))
+                : (root.colorMap[modelData.key] !== undefined
+                  ? Color[root.colorMap[modelData.key]]
+                  : root.segmentColor({ kind: "comm", key: modelData.key }))
             }
           }
 
@@ -840,14 +835,14 @@ Panel {
 
   // One graphic line per process on a FIXED grid, recalculated only on
   // basis change (column set) or panel width — never per sample. Comm
-  // column: the accent mark in its own slot plus a left-aligned label
-  // elided at the kernel's 15-char comm cap (Model.COMM_MAX_CHARS, sized
-  // once via TextMetrics). Metric cells: the remaining track split equally
-  // across the section's column set, so every row — including the base and
-  // tail rows' single W cell — lands in the same pixel columns as the
-  // header. Value text is right-aligned INSIDE its fixed cell: the same
-  // pixel column every refresh regardless of fill length, and fills are
-  // capped short of the text so type never sits on a fill. No width
+  // column: the identity mark in its own slot (the row's color — the single
+  // color authority the bars mirror) plus a left-aligned label elided at
+  // the kernel's 15-char comm cap (Model.COMM_MAX_CHARS, sized once via
+  // TextMetrics). Metric cells: the remaining track split equally across
+  // the section's column set, so every row lands in the same pixel columns
+  // as the header. Value text is right-aligned INSIDE its fixed cell: the
+  // same pixel column every refresh regardless of fill length, and fills
+  // are capped short of the text so type never sits on a fill. No width
   // Behaviors anywhere — fills step at the 1 Hz cadence, geometry never
   // moves. Fixed decimals (pct one place, watts one place, RAM auto-unit
   // in the slot) keep digit-count changes absorbed by the right alignment.
@@ -857,8 +852,6 @@ Panel {
     property var cells: []
     property var columns: []
     property bool anchor: false
-    property int badge: 0
-    property real shade: 1
     property color commColor: root.bar ? root.bar.foreground : Color.foreground
 
     width: column.width
@@ -879,32 +872,14 @@ Panel {
       x: 0
       anchors.verticalCenter: parent.verticalCenter
       color: metricRow.commColor
-      opacity: metricRow.shade
-    }
-
-    // Fixed badge micro-slot: reserved whether or not a badge shows, so a
-    // collision appearing or clearing mid-refresh cannot shift the line.
-    Item {
-      id: badgeSlot
-      x: commMark.width + Style.space(2)
-      width: Style.space(7)
-      height: parent.height
-
-      Text {
-        visible: parent.parent.badge >= 2
-        text: parent.parent.badge >= 2 ? String(parent.parent.badge) : ""
-        anchors.centerIn: parent
-        color: parent.parent.commColor
-        opacity: 0.9
-        font.family: root.bar.fontFamily
-        font.pixelSize: Style.font.caption
-      }
     }
 
     Text {
       id: rowLabel
       text: metricRow.label
-      x: badgeSlot.x + badgeSlot.width + Style.space(2)
+      // mark(3) + 5 + label + 8 = the header's 16-unit comm gutter, so the
+      // metric columns line up exactly beneath their headers
+      x: commMark.width + Style.space(5)
       width: commMetrics.advanceWidth
       anchors.verticalCenter: parent.verticalCenter
       color: root.bar ? root.bar.foreground : Color.foreground
@@ -969,7 +944,7 @@ Panel {
               color: metricRow.anchor
                 ? (root.bar ? root.bar.foreground : Color.foreground)
                 : root.metricColor(cellSlot.modelData)
-              opacity: cellSlot.cellData !== null ? cellSlot.cellData.intensity * metricRow.shade : 0
+              opacity: cellSlot.cellData !== null ? cellSlot.cellData.intensity : 0
             }
           }
         }
@@ -979,9 +954,9 @@ Panel {
 
   // A SYSTEM bar: one rounded track per resource with the label in the left
   // gutter and the value at the right edge. With segments the fill is the
-  // composition (comm colors, idle/available left as track), ramped by the
-  // resource's utilization; without segments it is a single intensity-graded
-  // fill (the categorical Draw row colors itself).
+  // composition (the table's colors: foreground system block first, then
+  // comm hues; idle/available left as track), ramped by the resource's
+  // utilization; without segments it is a single intensity-graded fill.
   component SplitBar: Item {
     id: splitBar
     property string label: ""
@@ -1049,8 +1024,6 @@ Panel {
             width: modelData.share * Math.max(0, splitSegments.width - root.splitGapBudget)
             height: splitSegments.height
             color: root.segmentColor(modelData)
-            opacity: modelData.slot !== undefined ? modelData.slot.shade : 1
-
           }
         }
       }

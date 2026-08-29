@@ -21,12 +21,10 @@ QtObject {
   property color accent: "#cacccc"
   property color urgent: "#a55555"
   property color muted: "#707880"
-  // Status pair graded against urgent for positive/intermediate feedback;
-  // plus the distinguishable non-threshold hues used to key chart segments
-  // (red/yellow/green stay reserved for threshold grading). Themes override
+  // The distinguishable non-threshold hues used to key chart segments and
+  // metric columns (red stays reserved for threshold grading as urgent;
+  // green/yellow remain unexposed — no current consumer). Themes override
   // via the same colorN key mapping in loadColors.
-  property color green: "#8fae8f"
-  property color yellow: "#b3a26b"
   property color blue: "#6f8fae"
   property color cyan: "#7faeae"
   property color magenta: "#a68fae"
@@ -166,8 +164,6 @@ QtObject {
       else if (match[1] === "color7") color7Value = match[2]
       else if (match[1] === "color8") color8Value = match[2]
       else if (match[1] === "red" || match[1] === "color1") urgent = match[2]
-      else if (match[1] === "green" || match[1] === "color2") green = match[2]
-      else if (match[1] === "yellow" || match[1] === "color3") yellow = match[2]
       else if (match[1] === "blue" || match[1] === "color4") blue = match[2]
       else if (match[1] === "magenta" || match[1] === "color5") magenta = match[2]
       else if (match[1] === "cyan" || match[1] === "color6") cyan = match[2]
