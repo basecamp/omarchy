@@ -5,6 +5,7 @@
 # omarchy:examples=omarchy audio output volume raise | omarchy audio output volume lower | omarchy audio output volume mute-toggle | omarchy audio output volume +1
 
 action="${1:-}"
+max_volume=125
 
 if [[ -z $action ]]; then
   echo "Usage: omarchy-audio-output-volume <raise|lower|mute-toggle|+N|-N>"
@@ -63,7 +64,7 @@ elif [[ $action =~ ^([+-])([0-9]+)$ ]]; then
 
   if [[ $direction == "+" ]]; then
     next=$((current + step))
-    ((next <= 100)) || next=100
+    ((next <= max_volume)) || next=$max_volume
   else
     next=$((current - step))
     ((next >= 0)) || next=0
