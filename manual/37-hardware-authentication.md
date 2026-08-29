@@ -16,7 +16,7 @@ If your webcam has an infrared sensor — the kind sold for Windows Hello — yo
 
 That'll install Howdy, capture your face, and set you up to unlock from the lock screen (`Super + Ctrl + L`), enter sudo mode, and authorize system prompts. On the lock screen the scan runs on its own while the screen is awake, so you just look at it; the screen going dark stops the camera, and moving the mouse starts it again.
 
-Omarchy insists on an infrared camera rather than an ordinary webcam. IR sees in the dark, and a face lit by an infrared emitter looks nothing like a photo or a phone screen held up to the lens.
+Omarchy insists on an infrared camera rather than an ordinary webcam. IR sees in the dark, and a phone or a laptop screen held up to the lens doesn't render on an infrared sensor at all, so the cheapest way to fool an ordinary webcam doesn't work here.
 
 Some of those cameras ship with their emitter switched off, and only turn it on when a vendor-specific control tells them to. Enrollment then fails with an empty frame, because nothing is lighting you. Setup will say so and point you at `linux-enable-ir-emitter`, which hunts down that control once; after that Omarchy switches the emitter on by itself whenever it needs the camera. It is worth facing away from windows while you set this up — daylight carries plenty of infrared, and a bright window behind you washes out the very frames the camera is trying to read.
 
@@ -24,7 +24,7 @@ Face authentication is skipped over SSH, where there's nobody in front of the ca
 
 On OpenCV 5 you may notice a couple of lines like `[ WARN:0@0.004] global net_impl_backend.cpp:345 setPreferableTarget Targets are not supported by the new graph engine for now` every time face authentication runs. Nothing is wrong. OpenCV's new inference engine already runs on the CPU, so the request it is grumbling about was a no-op, and recognition is unaffected. The fix is already merged upstream in OpenCV and arrives with 5.1. There is nothing to configure in the meantime, and no environment variable will silence it, because the comparison runs in a process whose environment is deliberately scrubbed.
 
-Bear in mind that a face is weaker proof than a password: someone who looks a lot like you may get in. Don't rely on it alone if that matters to you.
+Bear in mind that a face is weaker proof than a password. Someone who looks a lot like you may get in, and so may a printed photograph of you: a print reflects the emitter's infrared much the way skin does, and Howdy doesn't check for liveness, so nothing tells the two apart. Requiring an infrared camera raises the cost of getting in; it doesn't turn your face into a second factor. Treat face unlock as a convenience, and don't set it up on a machine where someone else getting in would be a real problem.
 
 You can remove the face authentication under _Remove > Security > Face_ in the Omarchy menu.
 
