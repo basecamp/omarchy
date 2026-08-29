@@ -53,6 +53,39 @@ EOF
   fi
 }
 
+# libfprint enumerates USB once, at startup, and ships no hotplug support:
+#
+#   $ strings /usr/lib/libfprint-2.so* | grep -ci hotplug
+#   0
+#
+# So a long-lived fprintd never re-probes the bus. When a reader is
+# re-enumerated across suspend the daemon keeps a handle nothing answers to and
+# reports "No devices available" — with a healthy sleep inhibitor and nothing
+# at all in `journalctl -u fprintd`, which is what makes it hard to recognise.
+# Restarting it clears the stale state; doing so on every resume means the
+# state cannot outlive a single wake.
+#
+# try-restart, not restart: when fprintd is not running there is nothing stale
+# to clear, and starting it here would put its activation inside a sleep
+# transition, where logind refuses it its own delay inhibitor (see #7229).
+setup_fprintd_resume_unit() {
+  echo "Configuring fprintd to re-probe the reader after resume..."
+  sudo tee /etc/systemd/system/fprintd-resume.service >/dev/null <<'EOF'
+[Unit]
+Description=Restart fprintd after resume so it re-enumerates the reader
+After=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl try-restart fprintd.service
+
+[Install]
+WantedBy=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
+EOF
+  sudo systemctl daemon-reload
+  sudo systemctl enable fprintd-resume.service >/dev/null
+}
+
 setup_lock_fingerprint_pam() {
   echo "Configuring lock screen for fingerprint authentication..."
   sudo tee /etc/pam.d/omarchy-lock-fingerprint >/dev/null <<'EOF'
@@ -100,6 +133,7 @@ if sudo fprintd-enroll "$USER"; then
     # pam_fprintd with nothing to match.
     setup_pam_config
     setup_lock_fingerprint_pam
+    setup_fprintd_resume_unit
     echo -e "\e[32m\nPerfect! Fingerprint authentication is now configured.\e[0m"
     echo "You can use your fingerprint for sudo, polkit, and lock screen (Super + Ctrl + L)."
   else
