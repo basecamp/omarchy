@@ -1,6 +1,9 @@
 #include "sidecar_supervisor.hpp"
 
+#include <array>
+#include <fcntl.h>
 #include <signal.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
 #include <cerrno>
@@ -71,6 +74,23 @@ void run() {
 void run_inside_bwrap() {
   require(getpid() == 1 && getuid() == 0 && getgid() == 0,
           "supervisor is not sandbox PID 1");
+  std::array<int, 3> role_peers{};
+  for (int role = 3; role <= 5; ++role) {
+    std::array<int, 2> pair{};
+    require(socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0,
+                       pair.data()) == 0,
+            "cannot create role descriptor probe");
+    const int staged = fcntl(pair[0], F_DUPFD_CLOEXEC, 64);
+    role_peers[static_cast<std::size_t>(role - 3)] =
+        fcntl(pair[1], F_DUPFD_CLOEXEC, 64);
+    close(pair[0]);
+    close(pair[1]);
+    require(staged >= 0 &&
+                role_peers[static_cast<std::size_t>(role - 3)] >= 0 &&
+                dup2(staged, role) == role,
+            "cannot stage role descriptor probe");
+    close(staged);
+  }
   const std::filesystem::path report = "/tmp/sidecar-report";
   omarchy::plugins::manifest::Runtime::Sidecar declaration{
       .name = "probe",
@@ -87,13 +107,21 @@ void run_inside_bwrap() {
            std::chrono::steady_clock::now() < deadline)
       std::this_thread::yield();
     std::ifstream input(report);
-    std::string state;
-    input >> child >> state;
-    require(child > 1 && state == "closed",
-            "sandbox sidecar inherited a role descriptor");
+    std::string state, role_fds, host_paths, session, namespaces;
+    input >> child >> state >> role_fds >> host_paths >> session >> namespaces;
+    require(child > 1 && state == "closed" && role_fds == "fds-denied" &&
+                host_paths == "host-denied" && session == "session-denied" &&
+                namespaces == "namespace-denied",
+            "sandbox sidecar reached worker or host authority: " + state +
+                " " + role_fds + " " + host_paths + " " + session + " " +
+                namespaces);
   }
   require(kill(child, 0) < 0 && errno == ESRCH,
           "sandbox sidecar survived PID 1 teardown");
+  for (const int descriptor : role_peers)
+    close(descriptor);
+  for (const int descriptor : {3, 4, 5})
+    close(descriptor);
 }
 
 } // namespace

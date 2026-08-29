@@ -78,6 +78,7 @@ if(BUILD_TESTING)
   add_test(NAME plugin-sidecar-real-bwrap
     COMMAND /usr/bin/bwrap
       --unshare-user --unshare-pid --unshare-ipc --unshare-uts --unshare-net
+      --disable-userns --assert-userns-disabled
       --uid 0 --gid 0 --as-pid-1 --cap-drop ALL --clearenv
       --setenv PATH /runtime --setenv HOME /home/plugin --setenv PWD /plugin
       --proc /proc --dev /dev --dir /usr
