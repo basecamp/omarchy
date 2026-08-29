@@ -2,6 +2,7 @@
 #include <QCoreApplication>
 #include <QFile>
 #include <QGuiApplication>
+#include <QMouseEvent>
 #include <QQuickWindow>
 #include <QStringList>
 #include <QTextStream>
@@ -42,6 +43,7 @@ namespace host = omarchy::plugin_runtime::product_host;
 namespace headless = omarchy::plugin_runtime::headless;
 namespace launcher = omarchy::plugin_runtime::launcher;
 namespace render = omarchy::plugin_runtime::render_session;
+namespace surface = omarchy::plugin_runtime::surface;
 namespace surface_host = omarchy::plugin_runtime::surface_host;
 namespace wire = omarchy::plugin::wire;
 namespace broker = omarchy::plugin_runtime::broker;
@@ -97,6 +99,49 @@ public:
     return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count());
   }
+};
+
+class PreviewPointerBridge final : public QObject {
+public:
+  PreviewPointerBridge(surface_host::HostSurface &surface, QObject *parent)
+      : QObject(parent), surface_(surface) {}
+
+protected:
+  bool eventFilter(QObject *, QEvent *event) override {
+    if (event->type() != QEvent::MouseButtonPress &&
+        event->type() != QEvent::MouseButtonRelease)
+      return false;
+    const auto *mouse = static_cast<QMouseEvent *>(event);
+    if (mouse->button() != Qt::LeftButton || sequence_ == UINT64_MAX)
+      return false;
+    const auto position = mouse->position();
+    if (position.x() < 0 || position.y() < 0)
+      return false;
+    const auto x = static_cast<std::uint64_t>(position.x());
+    const auto y = static_cast<std::uint64_t>(position.y());
+    if (x > (UINT32_MAX >> surface::kQ16FractionBits) ||
+        y > (UINT32_MAX >> surface::kQ16FractionBits))
+      return false;
+    const bool pressed = event->type() == QEvent::MouseButtonPress;
+    const surface::InputEvent input{
+        .surface = surface_.allocation().surface,
+        .sequence = ++sequence_,
+        .kind = surface::InputKind::pointer_button,
+        .x_q16 = static_cast<std::uint32_t>(x) << surface::kQ16FractionBits,
+        .y_q16 = static_cast<std::uint32_t>(y) << surface::kQ16FractionBits,
+        .delta_x_q16 = 0,
+        .delta_y_q16 = 0,
+        .code = 1,
+        .state = static_cast<std::uint32_t>(
+            pressed ? surface::ButtonState::pressed
+                    : surface::ButtonState::released),
+        .active_touch_points = 0};
+    return surface_.route_input(input, pressed && mouse->spontaneous());
+  }
+
+private:
+  surface_host::HostSurface &surface_;
+  std::uint64_t sequence_ = 0;
 };
 
 bool run_exact(const std::vector<std::string> &arguments) noexcept {
@@ -305,6 +350,8 @@ int preview(const QStringList &arguments, QGuiApplication &application,
       policy, prepared.prepared->binding, 1, width, height, 1, 1, surface,
       *transport, transport, inspection, clock);
   if (!hosted) return 78;
+  PreviewPointerBridge pointer_bridge(*hosted, &window);
+  window.installEventFilter(&pointer_bridge);
   QTimer pump;
   QObject::connect(&pump, &QTimer::timeout, [&] {
     if (live_lab) {
