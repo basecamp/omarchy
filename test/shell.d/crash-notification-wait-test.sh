@@ -57,7 +57,6 @@ cat >"$watch_bin/omarchy-notification-wait" <<'SH'
 exit 1
 SH
 
-chmod +x "$watch_bin/watch-bin" 2>/dev/null || true
 chmod +x "$watch_bin/journalctl" "$watch_bin/omarchy-default-agent" "$watch_bin/omarchy-notification-wait"
 
 require_command jq
