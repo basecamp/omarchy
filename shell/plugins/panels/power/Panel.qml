@@ -326,11 +326,15 @@ Panel {
     var heatMap = {}
     var maxHeat = 0
     var cpuBar = resourceSplits.cpu
-    for (var hi = 0; hi < cpuBar.length; hi++)
-      if (cpuBar[hi].kind === "comm" && cpuBar[hi].share > maxHeat) maxHeat = cpuBar[hi].share
-    for (var hj = 0; hj < cpuBar.length; hj++)
-      if (cpuBar[hj].kind === "comm")
-        heatMap[cpuBar[hj].key] = 0.35 + 0.65 * (maxHeat > 0 ? cpuBar[hj].share / maxHeat : 0)
+    // The cpu split is NULL until two samples exist (and stays null on AC
+    // restarts) — a null bar means "no heat yet", not an error.
+    if (cpuBar !== null && cpuBar !== undefined) {
+      for (var hi = 0; hi < cpuBar.length; hi++)
+        if (cpuBar[hi].kind === "comm" && cpuBar[hi].share > maxHeat) maxHeat = cpuBar[hi].share
+      for (var hj = 0; hj < cpuBar.length; hj++)
+        if (cpuBar[hj].kind === "comm")
+          heatMap[cpuBar[hj].key] = 0.35 + 0.65 * (maxHeat > 0 ? cpuBar[hj].share / maxHeat : 0)
+    }
     var allBars = [resourceSplits.cpu, resourceSplits.ram, resourceSplits.watts, resourceSplits.gpu]
     for (var bi = 0; bi < allBars.length; bi++) {
       var bar = allBars[bi]
