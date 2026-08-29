@@ -7,8 +7,8 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 hook="$ROOT/default/systemd/system-sleep/fprintd-resume"
 
 # systemd execs the files in system-sleep/ directly, so a hook without the
-# executable bit silently never runs. The setup command installs this with
-# `cp -p`, which preserves the repo's mode, so the bit has to be set here.
+# executable bit silently never runs. The installers set the mode explicitly,
+# but the checkout should not ship a hook that cannot run as-is either.
 [[ -x $hook ]] ||
   fail "the resume hook is executable" "mode: $(stat -c '%A' "$hook")"
 pass "the resume hook is executable"
