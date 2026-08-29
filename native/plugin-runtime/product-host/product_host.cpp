@@ -132,6 +132,27 @@ headless::StartResult launch(
     std::shared_ptr<const channel::GenerationAuthority> authority,
     std::uint64_t now_seconds,
     std::chrono::milliseconds negotiation_timeout) {
+  return launch_with_broker_for_lab(
+      supervisor, prepared, private_state_directory_fd, health,
+      std::make_shared<DenyAllBroker>(prepared.binding), std::move(authority),
+      now_seconds, negotiation_timeout);
+}
+
+headless::StartResult launch_with_broker_for_lab(
+    launcher::Supervisor &supervisor, const PreparedPlugin &prepared,
+    int private_state_directory_fd, health::HealthSupervisor &health,
+    std::shared_ptr<channel::BrokerDispatcher> dispatcher,
+    std::shared_ptr<const channel::GenerationAuthority> authority,
+    std::uint64_t now_seconds,
+    std::chrono::milliseconds negotiation_timeout) {
+  if (dispatcher == nullptr ||
+      !dispatcher->accepts({.plugin_id = std::string(prepared.binding.plugin.view()),
+                            .revision_sha256 = std::string(prepared.binding.revision.view()),
+                            .generation = prepared.binding.generation})) {
+    return {.session = nullptr,
+            .failure = headless::StartFailure::invalid_binding,
+            .detail = "lab broker does not accept the prepared activation"};
+  }
   const int revision_fd = open(prepared.plugin.root.c_str(),
                                O_RDONLY | O_DIRECTORY | O_CLOEXEC);
   if (revision_fd < 0) {
@@ -150,9 +171,8 @@ headless::StartResult launch(
       .revision_directory_fd = revision_fd,
       .private_state_directory_fd = private_state_directory_fd};
   return headless::Session::start(
-      supervisor, request, prepared.binding, health,
-      std::make_shared<DenyAllBroker>(prepared.binding), std::move(authority),
-      now_seconds, negotiation_timeout);
+      supervisor, request, prepared.binding, health, std::move(dispatcher),
+      std::move(authority), now_seconds, negotiation_timeout);
 }
 
 } // namespace omarchy::plugin_runtime::product_host

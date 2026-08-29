@@ -82,4 +82,16 @@ private:
     std::uint64_t now_seconds,
     std::chrono::milliseconds negotiation_timeout);
 
+// Lab-only composition point. The caller must construct the dispatcher from
+// the exact PreparedPlugin grants and trusted provider registry. Product code
+// intentionally uses the deny-all overload above unless an explicit lab mode
+// selects this function.
+[[nodiscard]] headless::StartResult launch_with_broker_for_lab(
+    launcher::Supervisor &supervisor, const PreparedPlugin &prepared,
+    int private_state_directory_fd, health::HealthSupervisor &health,
+    std::shared_ptr<channel::BrokerDispatcher> dispatcher,
+    std::shared_ptr<const channel::GenerationAuthority> authority,
+    std::uint64_t now_seconds,
+    std::chrono::milliseconds negotiation_timeout);
+
 } // namespace omarchy::plugin_runtime::product_host
