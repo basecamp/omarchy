@@ -29,8 +29,12 @@ Item {
 
   function checkBattery() {
     var state = BatteryModel.shouldWarnLowBattery(UPower.displayDevice, UPower.onBattery, UPowerDeviceState.Discharging, batteryThreshold, persisted.notifiedLowBattery)
+    var wasNotified = persisted.notifiedLowBattery
     persisted.notifiedLowBattery = state.notifiedLowBattery
     if (state.notify) sendLowBatteryWarning(state.level)
+    // Critical toasts ignore the -t timeout; clear the stuck "Time to recharge!"
+    // card as soon as we are no longer in the low-discharging state.
+    else if (wasNotified && !state.notifiedLowBattery) clearLowBatteryWarning()
   }
 
   function sendLowBatteryWarning(level) {
@@ -40,6 +44,15 @@ Item {
       String(level)
     ]
     warningProcess.running = true
+  }
+
+  function clearLowBatteryWarning() {
+    if (clearWarningProcess.running) return
+    clearWarningProcess.command = [
+      "omarchy-notification-dismiss",
+      "Time to recharge!"
+    ]
+    clearWarningProcess.running = true
   }
 
   function applyPowerProfile() {
@@ -54,6 +67,7 @@ Item {
   }
 
   Process { id: warningProcess }
+  Process { id: clearWarningProcess }
 
   Process {
     id: powerProfileProcess
