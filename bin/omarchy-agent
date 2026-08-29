@@ -33,7 +33,9 @@ done
 
 # Agents refuse to remember trust for $HOME, so launches from the keybinding or
 # menu start in the work directory instead of re-asking on every session.
-[[ $PWD == "$HOME" && -d $HOME/Work ]] && cd "$HOME/Work"
+if [[ $PWD == "$HOME" && -d $HOME/Work ]]; then
+  cd "$HOME/Work" || exit
+fi
 
 agent=$(omarchy-default-agent)
 
