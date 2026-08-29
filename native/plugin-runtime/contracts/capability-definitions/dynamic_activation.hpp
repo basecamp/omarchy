@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <span>
+#include <utility>
 
 namespace omarchy::plugins::definitions {
 
@@ -47,6 +48,121 @@ struct DynamicAdapter {
                    std::span<std::byte> response, std::size_t &written,
                    void *context) noexcept = nullptr;
   void *context = nullptr;
+};
+
+enum class DynamicPendingDecision : std::uint8_t {
+  accepted,
+  duplicate,
+  table_full,
+  unknown,
+  stale_activation,
+  stale_definition,
+  stale_epoch,
+  cancelled,
+};
+
+template <std::size_t Capacity> class DynamicPendingTable {
+public:
+  [[nodiscard]] DynamicPendingDecision begin(
+      std::uint64_t correlation,
+      const permissions::ActivationBinding &binding,
+      const CapabilityReference &definition, std::uint64_t grant_epoch) {
+    if (correlation == 0 || grant_epoch == 0)
+      return DynamicPendingDecision::stale_epoch;
+    for (const auto &entry : entries_) {
+      if (entry.occupied && entry.correlation == correlation)
+        return DynamicPendingDecision::duplicate;
+    }
+    for (auto &entry : entries_) {
+      if (!entry.occupied) {
+        entry = {.binding = binding,
+                 .definition = definition,
+                 .correlation = correlation,
+                 .grant_epoch = grant_epoch,
+                 .cancelled = false,
+                 .occupied = true};
+        return DynamicPendingDecision::accepted;
+      }
+    }
+    return DynamicPendingDecision::table_full;
+  }
+
+  [[nodiscard]] DynamicPendingDecision complete(
+      std::uint64_t correlation,
+      const permissions::ActivationBinding &binding,
+      const CapabilityReference &definition, std::uint64_t grant_epoch) {
+    auto *entry = find(correlation);
+    if (entry == nullptr)
+      return DynamicPendingDecision::unknown;
+    if (entry->binding != binding)
+      return DynamicPendingDecision::stale_activation;
+    if (entry->definition.canonical_name != definition.canonical_name ||
+        entry->definition.definition_generation !=
+            definition.definition_generation ||
+        entry->definition.definition_digest != definition.definition_digest)
+      return DynamicPendingDecision::stale_definition;
+    if (entry->grant_epoch != grant_epoch)
+      return DynamicPendingDecision::stale_epoch;
+    if (entry->cancelled)
+      return DynamicPendingDecision::cancelled;
+    *entry = {};
+    return DynamicPendingDecision::accepted;
+  }
+
+  [[nodiscard]] std::size_t revoke(
+      const CapabilityReference &definition, std::uint64_t old_epoch,
+      std::span<std::uint64_t> cancelled_correlations) {
+    std::size_t cancelled = 0;
+    for (auto &entry : entries_) {
+      if (!entry.occupied || entry.cancelled ||
+          entry.definition.canonical_name != definition.canonical_name ||
+          entry.definition.definition_generation !=
+              definition.definition_generation ||
+          entry.definition.definition_digest != definition.definition_digest ||
+          entry.grant_epoch != old_epoch)
+        continue;
+      entry.cancelled = true;
+      if (cancelled < cancelled_correlations.size())
+        cancelled_correlations[cancelled] = entry.correlation;
+      ++cancelled;
+    }
+    return cancelled;
+  }
+
+  [[nodiscard]] std::size_t invalidate_activation(
+      const permissions::ActivationBinding &binding,
+      std::span<std::uint64_t> cancelled_correlations) {
+    std::size_t cancelled = 0;
+    for (auto &entry : entries_) {
+      if (!entry.occupied || entry.cancelled || entry.binding == binding)
+        continue;
+      entry.cancelled = true;
+      if (cancelled < cancelled_correlations.size())
+        cancelled_correlations[cancelled] = entry.correlation;
+      ++cancelled;
+    }
+    return cancelled;
+  }
+
+private:
+  struct Entry {
+    permissions::ActivationBinding binding;
+    CapabilityReference definition;
+    std::uint64_t correlation = 0;
+    std::uint64_t grant_epoch = 0;
+    bool cancelled = false;
+    bool occupied = false;
+  };
+
+  [[nodiscard]] Entry *find(std::uint64_t correlation) {
+    for (auto &entry : entries_) {
+      if (entry.occupied && entry.correlation == correlation)
+        return &entry;
+    }
+    return nullptr;
+  }
+
+  std::array<Entry, Capacity> entries_{};
 };
 
 enum class DynamicDispatchResult : std::uint8_t {

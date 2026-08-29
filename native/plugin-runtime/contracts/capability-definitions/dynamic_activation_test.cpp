@@ -44,4 +44,38 @@ void dynamic_activation_tests(){
  require(run(restored,binding(6),adapter,std::span(envelope).first(valid_envelope_size))==DynamicDispatchResult::stale_activation,"stale plugin generation dispatched");auto stale_revision=binding();stale_revision.revision=digest('d');require(run(restored,stale_revision,adapter,std::span(envelope).first(valid_envelope_size))==DynamicDispatchResult::stale_activation,"stale plugin revision dispatched");
  TrustedDefinitionRegistry empty;require(dispatch_dynamic_invocation(empty,restored,binding(),std::span(envelope).first(valid_envelope_size),adapter,validator,false,response,written,decision)==DynamicDispatchResult::denied&&decision==DynamicDecision::unknown_definition,"unknown definition dispatched");
  auto broader=restored;broader.grant.scope=CanonicalScope("wide");broader.request.scope=CanonicalScope("narrow");require(!review_dynamic_grant(registry,broader,validator),"expanded persisted grant passed review");
+
+ DynamicPendingTable<2> pending;
+ require(pending.begin(71, restored.binding, restored.grant.definition,
+                       restored.grant.epoch) ==
+             DynamicPendingDecision::accepted,
+         "dynamic pending operation was not tracked");
+ require(pending.begin(71, restored.binding, restored.grant.definition,
+                       restored.grant.epoch) ==
+             DynamicPendingDecision::duplicate,
+         "dynamic correlation replay was accepted");
+ std::array<std::uint64_t, 2> cancelled{};
+ require(pending.revoke(restored.grant.definition, restored.grant.epoch,
+                        cancelled) == 1 &&
+             cancelled[0] == 71,
+         "dynamic revocation did not select pending work for cancellation");
+ require(pending.complete(71, restored.binding, restored.grant.definition,
+                          restored.grant.epoch) ==
+             DynamicPendingDecision::cancelled,
+         "revoked dynamic work completed under its old epoch");
+
+ require(pending.begin(72, restored.binding, restored.grant.definition,
+                       restored.grant.epoch) ==
+             DynamicPendingDecision::accepted,
+         "dynamic update fixture was not tracked");
+ auto next_binding = restored.binding;
+ ++next_binding.generation;
+ cancelled = {};
+ require(pending.invalidate_activation(next_binding, cancelled) == 1 &&
+             cancelled[0] == 72,
+         "activation update did not cancel stale dynamic work");
+ require(pending.complete(72, next_binding, restored.grant.definition,
+                          restored.grant.epoch + 1) ==
+             DynamicPendingDecision::stale_activation,
+         "pending dynamic work crossed an activation update");
 }
