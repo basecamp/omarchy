@@ -57,7 +57,9 @@ light surfaces — and the bar glyph stands in when there is none.
 | `copilot` | Not available | numeric usage events in `$COPILOT_HOME/session-store.db` (default `~/.copilot/session-store.db`) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
 
-The Copilot collector reads only numeric usage metadata: model, timestamp, token counts, and session id. It does not read prompts, responses, repository names, or tool output.
+The Copilot provider covers GitHub Copilot CLI activity retained on this machine, not Copilot usage from IDEs, cloud agents, or other surfaces. It reads only numeric usage metadata: model, timestamps, token counts, session id, and turn index. It does not select prompts, responses, repository names, or tool output. Tokens include every primary-agent and subagent model call; prompt counts represent completed user turns with retained turn metadata. Its all-time token totals cover everything still retained in Copilot CLI's database.
+
+Copilot account limits are not available through a stable local interface, so this collector reports local token history without a subscription meter. The exact AI-credit consumption recorded by Copilot CLI is intentionally not displayed: the Agents panel currently presents token history consistently across providers.
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
 falls back to local stats only. A non-default Claude directory is honored via

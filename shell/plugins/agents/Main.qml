@@ -247,6 +247,7 @@ Item {
     return {
       providerId: String(record.id),
       providerName: String(record.name || record.id),
+      providerTabLabel: String((synced && stats.providerTabLabel) || record.tabLabel || record.name || record.id),
       ready: record.ready === true || synced,
       usageStatusText: String(record.usageStatusText || ""),
       authHelpText: String(record.authHelpText || ""),
@@ -559,6 +560,7 @@ Item {
       providers[id] = {
         providerId: id,
         providerName: "",
+        providerTabLabel: "",
         ready: false,
         hasLocalStats: false,
         hasPromptStats: false,
@@ -587,6 +589,7 @@ Item {
         var acc = providerAcc(String(providerId))
         acc.devices[device] = true
         if (stats.providerName && acc.providerName === "") acc.providerName = String(stats.providerName)
+        if (stats.providerTabLabel && acc.providerTabLabel === "") acc.providerTabLabel = String(stats.providerTabLabel)
         acc.ready = acc.ready || stats.ready === true
         acc.hasLocalStats = acc.hasLocalStats || stats.hasLocalStats !== false
         // Snapshots from before the field existed only came from agents that
@@ -632,6 +635,7 @@ Item {
       outProviders[id] = {
         providerId: acc.providerId,
         providerName: acc.providerName,
+        providerTabLabel: acc.providerTabLabel || acc.providerName,
         ready: acc.ready || providerDevices.length > 0,
         hasLocalStats: acc.hasLocalStats,
         hasPromptStats: acc.hasPromptStats,
@@ -665,6 +669,7 @@ Item {
     return {
       providerId: String(record.id),
       providerName: String(record.name || record.id),
+      providerTabLabel: String(record.tabLabel || record.name || record.id),
       ready: record.ready === true,
       hasLocalStats: record.hasLocalStats !== false,
       hasPromptStats: record.hasPromptStats !== false,
