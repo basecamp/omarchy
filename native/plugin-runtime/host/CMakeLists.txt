@@ -49,7 +49,7 @@ if(BUILD_TESTING)
   omarchy_plugin_target_defaults(omarchy-plugin-dynamic-e2e-grant)
   target_link_libraries(omarchy-plugin-dynamic-e2e-grant PRIVATE
     omarchy-plugin-grant-store omarchy-plugin-capability-definitions
-    omarchy-plugin-providers)
+    omarchy-plugin-providers omarchy-plugin-lifecycle)
   target_link_libraries(omarchy-plugin-product-e2e-host PRIVATE
     Qt6::Core Qt6::Gui Qt6::Quick
     Omarchy::PluginRuntimeVersion

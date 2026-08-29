@@ -1,5 +1,6 @@
 #include "capability_definition_loader.hpp"
 #include "grant_store.hpp"
+#include "lifecycle.hpp"
 #include "manifest_contract.hpp"
 #include "omarchy/plugin_runtime/providers/audio_device_provider.hpp"
 #include "omarchy/plugin_runtime/providers/github_provider.hpp"
@@ -18,6 +19,7 @@
 namespace definitions = omarchy::plugins::definitions;
 namespace grants = omarchy::plugins::grants;
 namespace manifest = omarchy::plugins::manifest;
+namespace lifecycle = omarchy::plugins::lifecycle;
 namespace permissions = omarchy::plugins::permissions;
 namespace providers = omarchy::plugin_runtime::providers;
 
@@ -89,6 +91,7 @@ int main(int argc, char **argv) try {
   std::vector<definitions::DynamicRevisionGrant> dynamic;
   for (const auto &item : parsed.requests) {
     if (item.definition_generation == 0) continue;
+    if (!item.required) continue;
     const auto request = definitions::dynamic_request_from_manifest(item, registry);
     if (!request) return 66;
     definitions::DynamicRevisionGrant record{
@@ -107,12 +110,20 @@ int main(int argc, char **argv) try {
     dynamic.push_back(std::move(record));
   }
   if (dynamic.empty()) return 66;
-  permissions::RequestSet compiled;
+  auto compiled = lifecycle::translate_requests(parsed);
   auto bundle = grants::make_bundle(2, permissions::PluginId(argv[2]),
       permissions::Digest(argv[3]), permissions::Digest(argv[4]), 1,
       std::move(compiled), std::move(dynamic));
   grants::GrantStore store(argv[5]);
   const auto staged = store.stage_candidate(bundle);
+  for (const auto &request : bundle.requests.values()) {
+    if (!request.required) continue;
+    const auto preview = store.preview(bundle, request.capability);
+    (void)store.decide(bundle, request.capability, std::nullopt,
+                       permissions::UserDecision::grant,
+                       permissions::DecisionActor::trusted_ui, 1,
+                       preview.expected_mutation_sequence);
+  }
   store.activate_candidate(staged.revision.binding);
   return 0;
 } catch (const std::exception &error) {

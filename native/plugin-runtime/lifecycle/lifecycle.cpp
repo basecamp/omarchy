@@ -127,16 +127,34 @@ translate_request(const manifest::CapabilityRequest &request) {
   if (request.capability == "storage.private") {
     constexpr std::string_view prefix = "{\"quotaBytes\":";
     constexpr std::string_view suffix = "}";
-    if (!request.canonical_scope.starts_with(prefix) ||
-        !request.canonical_scope.ends_with(suffix))
-      throw std::runtime_error("storage scope has an unregistered shape");
+    constexpr std::string_view bounded_prefix = "{\"itemBytes\":";
+    constexpr std::string_view quota_separator = ",\"quotaBytes\":";
     auto value = std::string_view(request.canonical_scope);
-    value.remove_prefix(prefix.size());
-    value.remove_suffix(suffix.size());
-    const auto total = unsigned_value(value);
+    std::uint64_t total = 0;
+    std::uint64_t item = 0;
+    if (value.starts_with(prefix) && value.ends_with(suffix)) {
+      value.remove_prefix(prefix.size());
+      value.remove_suffix(suffix.size());
+      total = unsigned_value(value);
+      item = std::min<std::uint64_t>(total, 4096);
+    } else if (value.starts_with(bounded_prefix) &&
+               value.ends_with(suffix)) {
+      value.remove_prefix(bounded_prefix.size());
+      value.remove_suffix(suffix.size());
+      const auto separator = value.find(quota_separator);
+      if (separator == std::string_view::npos)
+        throw std::runtime_error("storage scope has an unregistered shape");
+      item = unsigned_value(value.substr(0, separator));
+      value.remove_prefix(separator + quota_separator.size());
+      total = unsigned_value(value);
+    } else {
+      throw std::runtime_error("storage scope has an unregistered shape");
+    }
+    if (item == 0 || total == 0 || item > total)
+      throw std::runtime_error("storage scope has invalid bounds");
     result.scope = permission::QuotaScope{
         .total_bytes = total,
-        .item_bytes = std::min<std::uint64_t>(total, 4096),
+        .item_bytes = item,
     };
   } else if (request.capability == "notifications.send") {
     const auto values =

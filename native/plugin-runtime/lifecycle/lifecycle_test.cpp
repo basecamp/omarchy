@@ -197,14 +197,25 @@ int main() {
        .definition_digest = {},
        .operations = {},
        .required = false},
+      {.capability = "storage.private",
+       .reason = "bounded state",
+       .canonical_scope =
+           "{\"itemBytes\":262144,\"quotaBytes\":1048576}",
+       .definition_generation = 0,
+       .definition_digest = {},
+       .operations = {},
+       .required = true},
   };
   const auto translated = lifecycle::translate_requests(translation_fixture);
   require(
-      translated.size() == 2 &&
+      translated.size() == 3 &&
           std::holds_alternative<permission::TokenScope>(translated[0].scope) &&
           std::holds_alternative<permission::ResourceScope>(
-              translated[1].scope),
-      "closed audio/fake manifest scopes did not translate");
+              translated[1].scope) &&
+          std::get<permission::QuotaScope>(translated[2].scope) ==
+              permission::QuotaScope{.total_bytes = 1048576,
+                                     .item_bytes = 262144},
+      "closed audio/fake/storage manifest scopes did not translate");
 
   TemporaryDirectory temporary;
   const auto revisions = temporary.path() / "revisions";
