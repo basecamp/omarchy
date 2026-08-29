@@ -10,6 +10,7 @@ trap 'rm -rf "$TMPDIR"' EXIT
 mkdir -p "$TMPDIR/bin"
 
 # Create a stub qs that sleeps to simulate an unresponsive IPC call.
+# The real omarchy-shell will invoke `timeout ... "$OMARCHY_SHELL_IPC_TIMEOUT" qs ...`
 cat >"$TMPDIR/bin/qs" <<'SH'
 #!/bin/bash
 exec sleep 10
