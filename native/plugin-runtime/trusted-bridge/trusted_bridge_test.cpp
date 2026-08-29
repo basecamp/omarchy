@@ -88,7 +88,8 @@ void test_quick_item_pointer_delivery() {
               QCoreApplication::sendEvent(&item, &release) &&
               router.events.size() == 2 && router.events[0].pressed &&
               !router.events[1].pressed && router.events[0].x == 12 &&
-              router.events[0].y == 34 && !router.events[0].synthesized,
+              router.events[0].y == 34 &&
+              !router.events[0].application_synthesized,
           "QQuick item did not route host pointer press and release");
 
   QMouseEvent synthesized(QEvent::MouseButtonPress, QPointF(1, 2),
@@ -96,8 +97,18 @@ void test_quick_item_pointer_delivery() {
                           Qt::NoModifier,
                           Qt::MouseEventSynthesizedByApplication);
   require(QCoreApplication::sendEvent(&item, &synthesized) &&
-              router.events.size() == 3 && router.events.back().synthesized,
+              router.events.size() == 3 &&
+              router.events.back().application_synthesized,
           "QQuick item lost the synthetic-input classification");
+
+  QMouseEvent system_synthesized(
+      QEvent::MouseButtonPress, QPointF(3, 4), QPointF(3, 4), QPointF(3, 4),
+      Qt::LeftButton, Qt::LeftButton, Qt::NoModifier,
+      Qt::MouseEventSynthesizedBySystem);
+  require(QCoreApplication::sendEvent(&item, &system_synthesized) &&
+              router.events.size() == 4 &&
+              !router.events.back().application_synthesized,
+          "QQuick item confused compositor and application synthesis");
 }
 
 surface::InputEvent pointer(surface::SurfaceKey key, std::uint64_t sequence) {

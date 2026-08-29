@@ -21,7 +21,7 @@ struct HostPointerEvent {
   qreal y = 0;
   Qt::MouseButton button = Qt::NoButton;
   bool pressed = false;
-  bool synthesized = true;
+  bool application_synthesized = true;
 };
 
 class HostPointerRouter {

@@ -106,7 +106,7 @@ public:
       : surface_(surface) {}
 
   bool route(const bridge::HostPointerEvent &event) override {
-    if (event.button != Qt::LeftButton || event.synthesized ||
+    if (event.button != Qt::LeftButton || event.application_synthesized ||
         sequence_ == UINT64_MAX)
       return false;
     if (event.x < 0 || event.y < 0)

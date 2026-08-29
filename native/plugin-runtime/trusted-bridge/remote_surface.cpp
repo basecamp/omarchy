@@ -56,15 +56,15 @@ void RemotePluginSurface::mouseReleaseEvent(QMouseEvent *event) {
 
 void RemotePluginSurface::routeHostPointerEvent(QMouseEvent &event,
                                                 bool pressed) {
-  const bool synthesized =
-      event.source() != Qt::MouseEventNotSynthesized;
+  const bool application_synthesized =
+      event.source() == Qt::MouseEventSynthesizedByApplication;
   event.setAccepted(host_pointer_router_ != nullptr &&
                     host_pointer_router_->route(
                         {.x = event.position().x(),
                          .y = event.position().y(),
                          .button = event.button(),
                          .pressed = pressed,
-                         .synthesized = synthesized}));
+                         .application_synthesized = application_synthesized}));
 }
 
 void RemotePluginSurface::bindTransport(
