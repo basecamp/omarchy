@@ -22,6 +22,13 @@
 RUNTIME_DIR="${OMARCHY_WINDOWS_DIR:-/var/lib/omarchy/windows}"
 COMPOSE_FILE="$RUNTIME_DIR/docker-compose.yml"
 LEGACY_COMPOSE_FILE="$HOME/.config/windows/docker-compose.yml"
+# Host OEM firmware dumps (MSDM/SLIC ACPI tables and SMBIOS type blobs). Kept
+# next to the compose, root-owned, never under $HOME: QEMU reads them from a
+# bind mount and a user-writable file could be swapped for a forged table.
+OEM_FIRMWARE_DIR="$RUNTIME_DIR/oem-firmware"
+OEM_SETUP_DIR="$RUNTIME_DIR/oem-setup"
+OEM_OVERRIDE="$RUNTIME_DIR/docker-compose.oem.yml"
+OEM_GUEST_FIRMWARE="/oem-firmware"
 # The guest password lives in the root-owned compose (readable by root and the
 # docker group), but RDP needs it as the user. Keep a private copy here, 0600 in
 # the user's own config, so the plaintext password is never world-readable.
@@ -79,7 +86,13 @@ priv() {
   pkexec "$target" __priv "$action" "$@"
 }
 
-dc() { docker-compose -f "$COMPOSE_FILE" "$@"; }
+dc() {
+  if [[ -f $OEM_OVERRIDE ]]; then
+    docker-compose -f "$COMPOSE_FILE" -f "$OEM_OVERRIDE" "$@"
+  else
+    docker-compose -f "$COMPOSE_FILE" "$@"
+  fi
+}
 
 # --- validation (shared by the user-side prompts and the root-side writer) ----
 
@@ -112,6 +125,198 @@ valid_priv_action() {
 }
 
 # --- privileged actions (run as root via pkexec, or directly when sudoless) ---
+
+# ACPI OEM tables are 0400 root; a missing table is normal on machines that
+# did not ship with Windows.
+dump_acpi_table() {
+  local name="$1"
+  local src="/sys/firmware/acpi/tables/$name"
+  local dest="$OEM_FIRMWARE_DIR/${name,,}.bin"
+  [[ -r $src ]] || return 1
+  cat "$src" >"$dest" || return 1
+  [[ -s $dest ]] || { rm -f "$dest"; return 1; }
+  chmod 0640 "$dest" 2>/dev/null || true
+  chown root:docker "$dest" 2>/dev/null || chown root:root "$dest" 2>/dev/null || true
+}
+
+# Copy SMBIOS types 0/1/2/3/11 as binary blobs for QEMU `-smbios file=`.
+# dockurr word-splits ARGUMENTS, so values with spaces cannot go on the
+# command line. Prefer sysfs per-type raw nodes; fall back to the packed DMI
+# table when the kernel omits dmi/entries.
+dump_host_smbios() {
+  local out="$OEM_FIRMWARE_DIR/smbios" t raw copied=0
+  mkdir -p "$out"
+
+  for t in 0 1 2 3 11; do
+    raw="/sys/firmware/dmi/entries/${t}-0/raw"
+    [[ -r $raw ]] || continue
+    cat "$raw" >"$out/type${t}.bin" || continue
+    if [[ ! -s $out/type${t}.bin ]]; then
+      rm -f "$out/type${t}.bin"
+      continue
+    fi
+    copied=1
+  done
+
+  if ((copied == 0)); then
+    local dmi="/sys/firmware/dmi/tables/DMI"
+    [[ -r $dmi ]] || return 1
+    command -v python3 >/dev/null 2>&1 || return 1
+    python3 -c '
+import os, sys
+src, dst = sys.argv[1], sys.argv[2]
+os.makedirs(dst, exist_ok=True)
+data = open(src, "rb").read()
+wanted, seen = {0, 1, 2, 3, 11}, set()
+i, n = 0, len(data)
+while i + 4 <= n:
+    typ, length = data[i], data[i + 1]
+    if length < 4:
+        break
+    j = i + length
+    while j < n - 1 and not (data[j] == 0 and data[j + 1] == 0):
+        j += 1
+    j += 2
+    if typ in wanted and typ not in seen:
+        open(os.path.join(dst, "type%d.bin" % typ), "wb").write(data[i:j])
+        seen.add(typ)
+    if typ == 127:
+        break
+    i = j
+' "$dmi" "$out" || return 1
+  fi
+
+  chmod 0750 "$out" 2>/dev/null || true
+  chmod 0640 "$out"/type*.bin 2>/dev/null || true
+  chown -R root:docker "$out" 2>/dev/null || chown -R root:root "$out" 2>/dev/null || true
+}
+
+# dockurr copies /oem to C:\OEM and runs install.bat at the end of unattended
+# setup. Applies the OA3 key from MSDM when present.
+write_oem_setup() {
+  mkdir -p "$OEM_SETUP_DIR"
+  cat >"$OEM_SETUP_DIR/install.bat" <<'BAT'
+@echo off
+setlocal EnableExtensions
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$ErrorActionPreference='SilentlyContinue'; $k=(Get-CimInstance SoftwareLicensingService).OA3xOriginalProductKey; if (-not $k) { exit 0 }; $slmgr = Join-Path $env:SystemRoot 'System32\slmgr.vbs'; & cscript.exe //nologo $slmgr /ipk $k; & cscript.exe //nologo $slmgr /ato"
+BAT
+  chmod 0640 "$OEM_SETUP_DIR/install.bat" 2>/dev/null || true
+  chmod 0750 "$OEM_SETUP_DIR" 2>/dev/null || true
+  chown -R root:docker "$OEM_SETUP_DIR" 2>/dev/null || chown -R root:root "$OEM_SETUP_DIR" 2>/dev/null || true
+}
+
+# Snapshot host OEM firmware into the root-owned runtime dir.
+prepare_oem_firmware() {
+  mkdir -p "$OEM_FIRMWARE_DIR"
+  chmod 0750 "$OEM_FIRMWARE_DIR" 2>/dev/null || true
+  chown root:docker "$OEM_FIRMWARE_DIR" 2>/dev/null || chown root:root "$OEM_FIRMWARE_DIR" 2>/dev/null || true
+
+  dump_acpi_table MSDM || true
+  dump_acpi_table SLIC || true
+  dump_host_smbios || true
+
+  if [[ -f $OEM_FIRMWARE_DIR/msdm.bin ]]; then
+    write_oem_setup
+  else
+    rm -f "$OEM_SETUP_DIR/install.bat"
+  fi
+}
+
+host_system_uuid() {
+  local uuid_file="/sys/class/dmi/id/product_uuid" uuid
+  [[ -r $uuid_file ]] || return 1
+  uuid=$(tr -d '[:space:]' <"$uuid_file")
+  [[ $uuid =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] || return 1
+  printf '%s' "$uuid"
+}
+
+# Container-side paths; tokens are space-free for dockurr's unquoted ARGUMENTS.
+oem_acpi_arguments() {
+  local args=""
+  [[ -f $OEM_FIRMWARE_DIR/msdm.bin ]] && args+=" -acpitable file=$OEM_GUEST_FIRMWARE/msdm.bin"
+  [[ -f $OEM_FIRMWARE_DIR/slic.bin ]] && args+=" -acpitable file=$OEM_GUEST_FIRMWARE/slic.bin"
+  printf '%s' "$args"
+}
+
+# SM_BIOS rather than ARGUMENTS: QEMU rejects mixing `-smbios file=` with
+# `-smbios type=` for the same structure.
+oem_smbios_arguments() {
+  local args="" t
+  for t in 0 1 2 3 11; do
+    [[ -f $OEM_FIRMWARE_DIR/smbios/type$t.bin ]] && args+=" -smbios file=$OEM_GUEST_FIRMWARE/smbios/type$t.bin"
+  done
+  printf '%s' "${args# }"
+}
+
+extract_msdm_key() {
+  local f="$OEM_FIRMWARE_DIR/msdm.bin" key
+  [[ -f $f ]] || return 1
+  key=$(tr -cd 'A-Z0-9-' <"$f" | grep -oE '[A-Z0-9]{5}(-[A-Z0-9]{5}){4}' | head -n1)
+  [[ $key =~ ^[A-Z0-9]{5}(-[A-Z0-9]{5}){4}$ ]] || return 1
+  printf '%s' "$key"
+}
+
+# Preserve ARGUMENTS from the main compose, stripping any previously injected
+# OEM tokens so a rewrite does not stack duplicates.
+existing_qemu_arguments() {
+  local args=""
+  if [[ -f $COMPOSE_FILE ]]; then
+    args=$(read_compose_value ARGUMENTS "$COMPOSE_FILE")
+    args=$(printf '%s' "$args" | sed -E 's/[[:space:]]+-acpitable[[:space:]]+file=[^[:space:]]+//g; s/[[:space:]]+-smbios[[:space:]]+file=[^[:space:]]+//g')
+    args=$(printf '%s' "$args" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+  fi
+  [[ -n $args ]] || args="-rtc base=localtime,clock=host,driftfix=slew"
+  printf '%s' "$args"
+}
+
+# Compose overlay applied on bring-up so existing installs pick up OEM firmware
+# without rewriting the password-bearing compose file.
+write_oem_override() {
+  prepare_oem_firmware
+
+  local qemu_args smbios_args acpi_args host_uuid oem_key env_lines vol_lines
+  acpi_args=$(oem_acpi_arguments)
+  smbios_args=$(oem_smbios_arguments)
+  qemu_args=$(existing_qemu_arguments)
+  qemu_args+="$acpi_args"
+
+  if [[ -z $acpi_args && -z $smbios_args ]]; then
+    rm -f "$OEM_OVERRIDE"
+    return 0
+  fi
+
+  env_lines=""
+  vol_lines=""
+  env_lines+=$'\n      ARGUMENTS: "'"$qemu_args"'"'
+  [[ -n $smbios_args ]] && env_lines+=$'\n      SM_BIOS: "'"$smbios_args"'"'
+  if host_uuid=$(host_system_uuid); then
+    env_lines+=$'\n      UUID: "'"$host_uuid"'"'
+  fi
+  # kvm=off hides the KVM CPUID signature; KVM acceleration stays on.
+  env_lines+=$'\n      VM: "N"'
+  env_lines+=$'\n      CPU_FLAGS: "kvm=off,-hypervisor"'
+  if oem_key=$(extract_msdm_key); then
+    env_lines+=$'\n      KEY: "'"$oem_key"'"'
+  fi
+
+  vol_lines+=$'\n      - '"$OEM_FIRMWARE_DIR:$OEM_GUEST_FIRMWARE:ro"
+  if [[ -f $OEM_SETUP_DIR/install.bat ]]; then
+    vol_lines+=$'\n      - '"$OEM_SETUP_DIR:/oem:ro"
+  fi
+
+  local tmp
+  tmp=$(mktemp "$RUNTIME_DIR/.oem-compose.XXXXXX")
+  cat >"$tmp" <<EOF
+services:
+  windows:
+    environment:$env_lines
+    volumes:$vol_lines
+EOF
+  chmod 0640 "$tmp" 2>/dev/null || true
+  chown root:docker "$tmp" 2>/dev/null || chown root:root "$tmp" 2>/dev/null || true
+  mv -f "$tmp" "$OEM_OVERRIDE"
+}
 
 # Reads KEY=VALUE lines on stdin, re-validates every field, and writes the
 # compose atomically as root. Re-validation here is the security boundary: the
@@ -197,6 +402,7 @@ EOF
   chmod 0640 "$tmp" 2>/dev/null || true
   chown root:docker "$tmp" 2>/dev/null || chown root:root "$tmp" 2>/dev/null || true
   mv -f "$tmp" "$COMPOSE_FILE"
+  write_oem_override
 }
 
 # Read the host source of a bind mount out of the compose (e.g. /storage).
@@ -237,7 +443,7 @@ assert_mounts_safe() {
   done
 }
 
-__priv_up() { assert_mounts_safe && dc up -d; }
+__priv_up() { assert_mounts_safe && write_oem_override && dc up -d; }
 
 __priv_down() { dc down; }
 
@@ -245,11 +451,8 @@ __priv_down() { dc down; }
 # single elevation so the readiness poll does not prompt on every iteration.
 __priv_up_wait() {
   assert_mounts_safe || return 1
-  local status
-  status=$(docker inspect --format='{{.State.Status}}' "$CONTAINER" 2>/dev/null)
-  if [[ $status != "running" ]]; then
-    dc up -d || return 1
-  fi
+  write_oem_override
+  dc up -d || return 1
 
   # docker logs persists across restarts, so anchor the scan to the current
   # start time; an empty --since would match a stale "started successfully".
@@ -275,7 +478,8 @@ __priv_status() { docker inspect --format='{{.State.Status}}' "$CONTAINER" 2>/de
 __priv_remove() {
   dc down 2>/dev/null || true
   docker rmi "$IMAGE" 2>/dev/null || true
-  rm -f "$COMPOSE_FILE"
+  rm -f "$COMPOSE_FILE" "$OEM_OVERRIDE"
+  rm -rf "$OEM_FIRMWARE_DIR" "$OEM_SETUP_DIR"
   rmdir "$RUNTIME_DIR" 2>/dev/null || true
 }
 
