@@ -19,6 +19,7 @@
 #include "omarchy/plugin_runtime/broker/broker_schema.hpp"
 #include "omarchy/plugin_runtime/providers/private_storage_backend.hpp"
 #include "omarchy/plugin_runtime/providers/audio_device_provider.hpp"
+#include "omarchy/plugin_runtime/providers/bluez_audio_backend.hpp"
 #include "omarchy/plugin_runtime/providers/github_cli_backend.hpp"
 #include "omarchy/plugin_runtime/providers/github_provider.hpp"
 #include "omarchy/plugin_runtime/providers/radio_live_backend.hpp"
@@ -584,6 +585,7 @@ int preview(const QStringList &arguments, QGuiApplication &application,
   std::unique_ptr<definitions::TrustedDefinitionRegistry> dynamic_registry;
   std::unique_ptr<providers::RadioProvider> radio_provider;
   std::unique_ptr<providers::AudioDeviceProvider> audio_device_provider;
+  std::unique_ptr<providers::BluezAudioBackend> bluez_audio_backend;
   std::unique_ptr<providers::GitHubCliBackend> github_cli_backend;
   std::unique_ptr<providers::GitHubProvider> github_provider;
   std::unique_ptr<providers::RadioLiveBackend> radio_live_backend;
@@ -653,8 +655,20 @@ int preview(const QStringList &arguments, QGuiApplication &application,
           .binding = active->binding, .observe_epoch = observe_epoch,
           .control_epoch = control_epoch, .backend = {}};
 #ifdef OMARCHY_PLUGIN_PRODUCT_E2E
-      audio_configuration.backend = {.observe = fixture_audio_observe,
-                                     .control = fixture_audio_control};
+      const auto selected_audio_address =
+          qEnvironmentVariable("OMARCHY_PLUGIN_E2E_SELECTED_AUDIO_ADDRESS");
+      if (!selected_audio_address.isEmpty()) {
+        bluez_audio_backend = std::make_unique<providers::BluezAudioBackend>(
+            selected_audio_address.toStdString());
+        if (!bluez_audio_backend->valid_selection()) {
+          qCritical() << "PRODUCT_E2E selected audio device is invalid";
+          return 78;
+        }
+        audio_configuration.backend = bluez_audio_backend->configuration();
+      } else {
+        audio_configuration.backend = {.observe = fixture_audio_observe,
+                                       .control = fixture_audio_control};
+      }
 #endif
       audio_device_provider = std::make_unique<providers::AudioDeviceProvider>(
           audio_configuration);
