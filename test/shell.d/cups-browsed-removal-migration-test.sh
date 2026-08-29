@@ -68,6 +68,11 @@ case $1 in
       printf '%s\n' "$BROWSED_QUEUES" | sed 's|^device for |Gerät für |'
     fi
     ;;
+  -p)
+    # A destination that no longer exists is unknown to lpstat.
+    [[ " $BROWSED_GONE_QUEUES " != *" $2 "* ]]
+    exit $?
+    ;;
   -o)
     [[ -z $BROWSED_LPSTAT_O_FAILS ]] || exit 1
     # Jobs are listed per queue: "<queue>-<id> <user> <size>".
@@ -81,6 +86,12 @@ cat >"$mock_bin/lpadmin" <<'SH'
 #!/bin/bash
 printf 'lpadmin\t%s\n' "$*" >>"$BROWSED_LOG"
 [[ -z $BROWSED_LPADMIN_FAILS ]]
+SH
+
+cat >"$mock_bin/cupsreject" <<'SH'
+#!/bin/bash
+printf 'cupsreject\t%s\n' "$*" >>"$BROWSED_LOG"
+[[ -z $BROWSED_REJECT_FAILS ]]
 SH
 
 chmod +x "$mock_bin"/*
@@ -107,6 +118,8 @@ run_migration() {
     BROWSED_LPSTAT_FAILS="${lpstat_fails:-}" \
     BROWSED_LPADMIN_FAILS="${lpadmin_fails:-}" \
     BROWSED_LPSTAT_O_FAILS="${lpstat_o_fails:-}" \
+    BROWSED_REJECT_FAILS="${reject_fails:-}" \
+    BROWSED_GONE_QUEUES="${gone_queues:-}" \
     PATH="$mock_bin:$PATH" \
     OMARCHY_PATH="$ROOT" \
     OMARCHY_CUPS_BROWSED_REMOVAL_MARKER="${use_marker:-$marker}" \
@@ -262,6 +275,19 @@ if grep -q 'lpadmin -x Office' "$log"; then
 fi
 grep -qxF $'sudo\tlpadmin -x Spare' "$log" ||
   fail "an idle generated queue is still removed" "$(cat "$log")"
+
+# A job submitted between the check and the deletion -- the sudo in between can
+# sit at a password prompt -- would be cancelled by a deletion that had decided
+# the queue was empty.
+reject_line=$(grep -n 'cupsreject.*Spare' "$log" | head -1 | cut -d: -f1 || true)
+probe_line=$(grep -n $'^lpstat\t-o Spare' "$log" | head -1 | cut -d: -f1 || true)
+delete_line=$(grep -n 'lpadmin -x Spare' "$log" | head -1 | cut -d: -f1 || true)
+[[ -n $reject_line && -n $probe_line && -n $delete_line ]] ||
+  fail "a queue is closed, inspected and removed in that order" "$(cat "$log")"
+(( reject_line < probe_line && probe_line < delete_line )) ||
+  fail "a queue stops taking new jobs before it is inspected or removed" "$(cat "$log")"
+pass "a queue stops taking new jobs before it is inspected or removed"
+
 grep -q 'Office still has jobs' "$output" ||
   fail "a queue left alone is named so it can be removed later" "$(cat "$output")"
 # One printer's job must not keep discovery on the machine.
@@ -340,6 +366,52 @@ grep -q 'Could not remove the queue Office' "$output" ||
 pass "a queue that will not go keeps the package and the marker back"
 
 lpadmin_fails=""
+
+# --------------------------------------------- a queue removed by someone else
+
+# Another administrator deleting the queue mid-run is the outcome wanted, not a
+# failure worth keeping the package installed for.
+installed="cups-browsed"
+enabled="cups-browsed.service"
+active="cups-browsed.service cups.service"
+blocked=""
+queues=$'device for Office: implicitclass://Office/'
+busy=""
+lpstat_fails=""
+lpstat_o_fails=""
+lpadmin_fails="1"
+gone_queues="Office"
+use_marker="$test_tmp/var/lib/omarchy/migrations/vanished"
+run_migration
+
+grep -qxF $'sudo\tpacman -R --noconfirm cups-browsed' "$log" ||
+  fail "a queue that is already gone does not hold up the removal" "$(cat "$log")"
+[[ -f $use_marker ]] || fail "a queue that is already gone still finishes the migration"
+pass "a queue someone else removed counts as removed"
+
+lpadmin_fails=""
+gone_queues=""
+
+# ------------------------------------------- a queue that will not stop taking jobs
+
+# Deleting a queue that is still accepting work races whatever arrives next.
+installed="cups-browsed"
+enabled="cups-browsed.service"
+active="cups-browsed.service cups.service"
+reject_fails="1"
+use_marker="$test_tmp/var/lib/omarchy/migrations/openqueue"
+run_migration
+
+if grep -q 'lpadmin -x' "$log"; then
+  fail "a queue still accepting jobs is not deleted" "$(cat "$log")"
+fi
+if grep -q $'^pacman\t-R --noconfirm' "$log"; then
+  fail "the package waits while a queue is still accepting jobs" "$(cat "$log")"
+fi
+[[ ! -e $use_marker ]] || fail "a queue still taking jobs is not recorded as done"
+pass "a queue that will not stop taking jobs is neither inspected nor deleted"
+
+reject_fails=""
 
 # -------------------------------------------------- a masked but running daemon
 

@@ -81,15 +81,28 @@ while IFS= read -r queue; do
     continue
   fi
 
-  # Removing a queue aborts what is printing on it. The implicitclass backend
-  # only needs cups-browsed to pick a destination, so a job already past that
-  # point finishes on its own even though the daemon has stopped -- and a job
-  # that has not is one this cannot route anyway. Either way the queue is left
-  # for the person whose job it is, and named so they know to remove it.
+  # Close the queue to new jobs before looking at what is on it. Otherwise a job
+  # submitted between the check and the removal -- the sudo below can sit at a
+  # password prompt for as long as someone takes to type it -- is cancelled by a
+  # deletion that decided the queue was empty. It also stops more jobs piling
+  # onto a queue that is being left behind and can no longer route them.
+  if ! sudo cupsreject -r "Printer discovery has been removed from Omarchy" "$queue"; then
+    echo "  Could not stop $queue accepting new jobs, so it is being left alone."
+    unremoved=1
+    continue
+  fi
+
+  # Removing a queue cancels the jobs on it. implicitclass needs cups-browsed
+  # only to pick a destination, so a job already past that point finishes on its
+  # own; one still waiting cannot, because the daemon that would route it has
+  # stopped. Neither is this migration's to throw away, so the queue is left for
+  # whoever owns them, and what will and will not happen is said rather than
+  # implied.
   if job_report=$(LC_ALL=C lpstat -o "$queue" 2>/dev/null); then
     if [[ -n $job_report ]]; then
-      echo "  $queue still has jobs, so it is being left alone."
-      echo "  Once they finish or are cancelled, remove it in Print Settings; it cannot print again."
+      echo "  $queue still has jobs and is no longer taking new ones, so it is being left alone."
+      echo "  Anything already sent to the printer finishes; anything still waiting cannot be routed now."
+      echo "  Cancel what is left and remove the queue in Print Settings."
       continue
     fi
   else
@@ -97,9 +110,14 @@ while IFS= read -r queue; do
     continue
   fi
 
+  # A queue another administrator removed while this was running is a queue that
+  # is gone, which is the outcome wanted -- not a failure worth keeping the
+  # package for.
   if ! sudo lpadmin -x "$queue"; then
-    echo "  Could not remove the queue $queue."
-    unremoved=1
+    if LC_ALL=C lpstat -p "$queue" >/dev/null 2>&1; then
+      echo "  Could not remove the queue $queue."
+      unremoved=1
+    fi
   fi
 done <<<"$generated_queues"
 
