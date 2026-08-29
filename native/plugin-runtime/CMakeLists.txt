@@ -68,6 +68,8 @@ endif()
 if(TARGET omarchy-plugin-wire
     AND TARGET omarchy-plugin-surface-contract)
   add_subdirectory(trusted-bridge)
+  add_subdirectory(render-session)
+  add_subdirectory(surface-host)
   add_subdirectory(bridge)
 endif()
 
