@@ -78,6 +78,8 @@ The Omarchy shell owns idle behavior, and the timings are a top-level `idle` blo
 
 Both numbers are seconds counted from the moment you went idle — not from each other. So with the defaults, the screensaver comes up after two and a half minutes and the lock screen takes over at five minutes, whether or not the screensaver ran. Save the file and the shell picks up the new timings right away.
 
+Playing a video in Firefox, Zen, or LibreWolf also holds idle off for the duration of playback — windowed or fullscreen — and lets the screensaver run again once you pause. Chromium-based browsers already do this themselves. You don't need Stay Awake just to watch YouTube.
+
 If you dismiss the screensaver before the lock deadline, that counts as activity and the pending lock is cancelled. You don't get locked out for glancing at your machine.
 
 To stop locking on idle entirely, `Super + Ctrl + I` — or `omarchy toggle idle` — flips stay awake on, and the coffee cup indicator appears in the bar. That's the one to hit before a long presentation or a build you want to watch. Hit it again to go back to normal. `omarchy toggle idle status` prints the current state as JSON if you need it from a script.
