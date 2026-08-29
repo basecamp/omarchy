@@ -20,7 +20,7 @@ if(NOT TARGET omarchy-plugin-audit-store)
                    "${CMAKE_CURRENT_BINARY_DIR}/audit")
 endif()
 
-add_library(omarchy-plugin-broker-runtime STATIC broker_runtime.cpp)
+add_library(omarchy-plugin-broker-runtime STATIC broker_runtime.cpp dynamic_broker_runtime.cpp)
 target_include_directories(omarchy-plugin-broker-runtime PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}"
 )
@@ -64,4 +64,13 @@ if(BUILD_TESTING)
     TIMEOUT 30
     LABELS "unit;integration;adversarial;broker;audit"
   )
+  add_executable(omarchy-plugin-dynamic-broker-runtime-test
+    dynamic_broker_runtime_test.cpp)
+  target_compile_features(omarchy-plugin-dynamic-broker-runtime-test PRIVATE cxx_std_20)
+  target_compile_options(omarchy-plugin-dynamic-broker-runtime-test PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+  target_link_libraries(omarchy-plugin-dynamic-broker-runtime-test PRIVATE
+    omarchy-plugin-broker-runtime)
+  add_test(NAME plugin-dynamic-broker-runtime
+    COMMAND omarchy-plugin-dynamic-broker-runtime-test)
 endif()
