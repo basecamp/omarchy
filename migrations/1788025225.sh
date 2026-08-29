@@ -239,11 +239,21 @@ plymouth_unit_runs_from_home() {
 # logged-in user, so an unelevated [[ -f ]] on a file in there is false whether or
 # not the file exists and an unelevated read returns nothing. Both tests and both
 # reads have to be elevated or this migration reports success having done nothing.
-# One combined probe first, so the common case of neither file being present costs
-# a single sudo call rather than one per file.
 first_run_sudoers="$sudoers_dir/first-run"
 tsui_sudoers="$sudoers_dir/tsui"
 
+# Sudo cannot prompt without a terminal, and omarchy-migrate runs from places that
+# have none. Failing the elevation probe there is indistinguishable from finding
+# no files, and since bin/omarchy-migrate writes the completion marker on a zero
+# exit, a silent skip would mark this migration done forever. Exit non-zero
+# instead so the marker stays unwritten and the next run tries again.
+if [[ ! -r $sudoers_dir ]] && ! as_root true 2>/dev/null; then
+  echo "Cannot inspect $sudoers_dir without elevation; leaving it for the next run." >&2
+  exit 1
+fi
+
+# One combined probe, so the common case of neither file being present costs a
+# single elevated call rather than one per file.
 if as_root test -e "$first_run_sudoers" -o -e "$tsui_sudoers"; then
   if as_root test -f "$first_run_sudoers" &&
     as_root cat "$first_run_sudoers" | first_run_sudoers_is_generated; then
