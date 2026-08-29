@@ -41,7 +41,7 @@ Every target retains arbitrary QML for plugin-authored pixels. The migration cha
 
 ## Machine-readable evidence and test contract
 
-`plans/evidence/plugin-security-f6/representative-migration-outcomes.json` freezes the marketplace commit, every inspected repository commit, scanner snapshot or exact failure, coverage categories, proposed surface roles, proposed authority names, conversion status, blockers, and the E1/E2/E3 proof relationship. Names ending in `@future` are design gaps, not registered B2 capabilities.
+[`evidence/plugin-security-f6/representative-migration-outcomes.json`](evidence/plugin-security-f6/representative-migration-outcomes.json) freezes the marketplace commit, every inspected repository commit, scanner snapshot or exact failure, coverage categories, proposed surface roles, proposed authority names, conversion status, blockers, and the E1/E2/E3 proof relationship. Names ending in `@future` are design gaps, not registered B2 capabilities.
 
 `plugin-representative-migration-dry-runs` validates the evidence as an advisory schema-v1-unsafe report, requires all 20 unique pinned commits and the 14/6 pass/block split, checks the requested behavior and surface coverage, requires exact snapshot hashes for successful scans, freezes the two known scanner blind spots, rejects ambient authority names, requires arbitrary QML retention, and keeps plugin management and a complete shell in their distinct trusted classes.
 
