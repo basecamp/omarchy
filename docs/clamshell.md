@@ -48,9 +48,9 @@ Before the clamshell branch the command runs `omarchy-hyprland-monitor-internal 
 
 - **A1.** `hyprctl reload` rebuilds the monitor rules from the config; rules do not accumulate across reloads.
 - **A2.** After a reload whose rules no longer disable a monitor, Hyprland enables it and applies the rule that governs it.
-- **A3.** A reload of an unchanged config leaves the panel where it was: scale, position, mode, refresh rate and transform identical, `auto` resolved the same way.
+- **A3.** A reload of an unchanged config leaves every output where it was. After the overlay's removal the fields the config determines — scale, mode, refresh rate, transform, and an explicit position — come back identical. An `auto` position is not a stored slot: Hyprland lays the enabled outputs out afresh on each reload, so a panel disabled out of the middle of an auto row comes back at its end — deterministically, and identically under the previous command and after a physical replug (measured on Hyprland 0.56.2).
 - **A4.** The overlay takes part in the config through `toggles.lua`.
-- **A5.** `hyprctl reload` exits non-zero when the reload did not take: no instance, or a config Hyprland rejects.
+- **A5.** `hyprctl reload` exits non-zero when there is no compositor to reach, and the command's timeout bounds a hang; those are the failures rollback answers. A config Lua rejects still reloads with exit 0 — the error surfaces only in `hyprctl configerrors`, and the toggles directory loads independently of `monitors.lua`, so the overlay transition takes effect beside a broken user config (measured on Hyprland 0.56.2).
 - **A6.** A headless output can be created under a chosen name, so the internal-panel predicate — the first `eDP|LVDS|DSI` output in `hyprctl monitors all -j` — can be satisfied in a VM without such hardware.
 
 A real Hyprland bringing the panel back in a state that differs from the one it had before the disable is a finding against A2 or A3, and it reopens this document; it does not authorize writing a monitor value.
@@ -58,6 +58,6 @@ A real Hyprland bringing the panel back in a state that differs from the one it 
 ## Tests
 
 - `test/shell.d/monitor-clamshell-test.sh` (`./test/shell`): T1 reads the command's text — no `hyprctl eval` or `keyword`, no `awk` or `lua`, no `monitors.lua`, a lock; T2 makes both transitions under configs any reader would answer differently and requires the same calls; T3 walks the table above from both starting states with every collaborator stubbed, including the 3×3 predicate matrix, byte-exact rollback, a read-only toggles directory, idempotent runs against a read-only directory, the lock, and every call class hung in turn.
-- `test/acceptance.d/clamshell-test.sh` (the disposable VM, run with `--sync-all`, see `agents/skills/acceptance-tests.md`): T4 checks A1–A6 against a real Hyprland with headless outputs standing in for the panel and the external monitor, the hardware predicates stubbed, and a corpus of `monitors.lua` shapes: each transition round-trips and the panel comes back field for field as it was.
+- `test/acceptance.d/clamshell-test.sh` (the disposable VM, run with `--sync-all`, see `agents/skills/acceptance-tests.md`): T4 checks A1–A6 against a real Hyprland with headless outputs standing in for the panel and the external monitor, the hardware predicates stubbed, and a corpus of `monitors.lua` shapes: each transition round-trips and the panel comes back as it was — every config-determined field exactly, an explicit position in place, an auto position as the deterministic fresh layout A3 describes.
 
 A finding that violates I1–I4 or A1–A6 is a defect. A finding about how Lua should be read is, by design, out of scope: the command reads no Lua.

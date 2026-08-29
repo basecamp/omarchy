@@ -8,7 +8,9 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 # checked against a real one. Two headless outputs stand in for the panel and
 # the external monitor; the two hardware predicates are stubbed, since a VM has
 # no lid; everything that reaches Hyprland is real. Each transition is made by
-# the real command, and the panel must come back field for field as it was.
+# the real command, and the panel must come back as it was: every field the
+# config determines exactly, and an auto position as Hyprland's fresh, but
+# deterministic, layout of the enabled outputs.
 
 internal="eDP-1"
 external="HDMI-A-1"
@@ -43,6 +45,16 @@ panel_upright() { [[ $(panel | jq -r '.transform') == "0" ]]; }
 
 snapshot() {
   panel | jq -c '{scale, x, y, width, height, refreshRate, transform, disabled}'
+}
+
+# An auto position is not a stored slot: Hyprland lays the enabled outputs out
+# afresh on every reload, so a panel disabled out of the middle of an auto row
+# comes back at its end — identically under the previous command, and after a
+# physical replug. For auto shapes the fields the config determines must come
+# back exactly and the arrangement must be deterministic; only an explicit
+# position must come back in place.
+snapshot_sans_position() {
+  panel | jq -c '{scale, width, height, refreshRate, transform, disabled}'
 }
 
 # Reload applies asynchronously: poll for the expected state, bounded.
@@ -123,9 +135,10 @@ catch_all='hl.monitor({ output = "", mode = "preferred", position = "auto", scal
 # the command, enable it through the command, and compare the panel field for
 # field with what it was. These test Hyprland's reading of each shape, not ours.
 round_trip() {
-  local case="$1" before after
+  local case="$1" positions="${2:-auto}" before after second
   apply_config
   await panel_enabled || fail "A2 ($case): the panel is enabled under the config" "$(panel)"
+  sleep 1
   before=$(snapshot)
   screenshot "success-clamshell-$case-baseline"
 
@@ -139,9 +152,25 @@ round_trip() {
   run_command || fail "A2 ($case): the command runs out of clamshell"
   await panel_enabled || fail "A2 ($case): a reload without the overlay enables the panel" "$(panel)"
   [[ ! -e $overlay ]] || fail "I2 ($case): the overlay is gone out of clamshell"
+  sleep 1
   after=$(snapshot)
-  [[ $after == "$before" ]] || fail "A3 ($case): the panel comes back as it was" "before: $before
+  if [[ $positions == exact ]]; then
+    [[ $after == "$before" ]] || fail "A3 ($case): the panel comes back as it was" "before: $before
 after:  $after"
+  else
+    [[ $(jq -c 'del(.x, .y)' <<<"$after") == $(jq -c 'del(.x, .y)' <<<"$before") ]] || fail "A3 ($case): scale, mode, refresh and transform come back as they were" "before: $before
+after:  $after"
+    set_lid closed
+    run_command || fail "A3 ($case): a second cycle enters clamshell"
+    await panel_disabled || fail "A3 ($case): a second cycle disables the panel" "$(panel)"
+    set_lid open
+    run_command || fail "A3 ($case): a second cycle leaves clamshell"
+    await panel_enabled || fail "A3 ($case): a second cycle enables the panel" "$(panel)"
+    sleep 1
+    second=$(snapshot)
+    [[ $second == "$after" ]] || fail "A3 ($case): a second cycle reproduces the same arrangement" "first:  $after
+second: $second"
+  fi
   screenshot "success-clamshell-$case-restored"
   pass "A2, A3 ($case): the panel round-trips and comes back as it was: $after"
 }
@@ -172,7 +201,7 @@ hl.monitor({ output = panel, mode = "preferred", position = "auto", scale = pane
 $catch_all
 LUA
 
-round_trip position <<LUA
+round_trip position exact <<LUA
 hl.monitor({ output = "$internal", mode = "preferred", position = "100x50", scale = 1 })
 hl.monitor({ output = "$external", mode = "preferred", position = "2100x0", scale = 1 })
 LUA
@@ -236,10 +265,16 @@ after:  $(snapshot)"
 screenshot "success-clamshell-user-disabled"
 pass "B: a panel the user disabled stays disabled through clamshell and out of it"
 
-# A5: a config Hyprland rejects makes the reload fail, so a transition rolls back.
+# A5, as measured: hyprctl reload exits 0 even when Lua rejects monitors.lua —
+# the error surfaces only in configerrors, and the toggles directory still
+# loads, so the overlay transition takes effect beside the broken config.
+# Rollback under I3 therefore fires on an unreachable or hung reload, not on a
+# Lua error in the user's config. Asserted so a Hyprland that starts failing
+# the reload instead shows up here.
 printf 'local x = (\n' >"$monitor_lua"
 status=0
 hyprctl reload >/dev/null 2>&1 || status=$?
-printf 'A5: hyprctl reload on a rejected config exited %s\n' "$status"
-(( status != 0 )) || fail "A5: hyprctl reload reports a rejected config"
-pass "A5: hyprctl reload exits $status on a config Hyprland rejects"
+errors=$(hyprctl configerrors 2>/dev/null || true)
+(( status == 0 )) || fail "A5: hyprctl reload exits 0 on a config Hyprland rejects" "exit $status"
+[[ $errors == *monitors.lua* ]] || fail "A5: configerrors names the rejected config" "$errors"
+pass "A5: a rejected config reloads 'ok'; the error surfaces in configerrors"
