@@ -23,6 +23,9 @@ Item {
   // Injected by the host shell. Used for shell-wide actions such as opening
   // settings and persisting inline widget state.
   property var shell: null
+  // Optional schema-v2 host. Its entries are transient and never mutate the
+  // legacy shell configuration.
+  property var securePluginHost: null
   // Manifest for the active bar option. Present for custom bars and useful for
   // diagnostics; the built-in bar does not otherwise need it.
   property var manifest: null
@@ -392,7 +395,13 @@ Item {
   function layoutEntries(region) {
     var serial = barConfigSerial
     var entries = layoutConfig ? layoutConfig[region] : null
-    return Array.isArray(entries) ? entries : []
+    var result = Array.isArray(entries) ? entries.slice() : []
+    var secureEntries = securePluginHost ? securePluginHost.barEntries : null
+    if (!Array.isArray(secureEntries)) return result
+    for (var i = 0; i < secureEntries.length; i++) {
+      if (secureEntries[i].section === region) result.push({ id: secureEntries[i].id })
+    }
+    return result
   }
 
   // Tab order for the panels in one bar region. Scoped to a single bar surface

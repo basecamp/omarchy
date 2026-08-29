@@ -18,6 +18,7 @@ ShellRoot {
   property PluginRegistry pluginRegistry: PluginRegistry { }
   property BarWidgetRegistry barWidgetRegistry: BarWidgetRegistry { }
   property AppLibrary appLibrary: AppLibrary { }
+  property var securePluginHost: securePluginHostLoader.item
 
   property string home: Quickshell.env("HOME")
 
@@ -29,6 +30,8 @@ ShellRoot {
   readonly property string firstPartyPluginsDir: shellPath + "/plugins"
   readonly property string defaultsPath: omarchyPath + "/config/omarchy/shell.json"
   readonly property string userConfigPath: home + "/.config/omarchy/shell.json"
+  readonly property bool securePluginV2Enabled: Quickshell.env("OMARCHY_PLUGIN_V2_ENABLED") === "1"
+  readonly property string securePluginV2ShellEntry: Quickshell.env("OMARCHY_PLUGIN_V2_SHELL_ENTRY")
 
   // Bundled fallback so the shell can start even when the default shell.json is
   // missing or unreadable. The bar config here mirrors the on-disk defaults
@@ -219,7 +222,23 @@ ShellRoot {
     if ("barWidgetRegistry" in target) target.barWidgetRegistry = shell.barWidgetRegistry
     if ("pluginRegistry" in target) target.pluginRegistry = shell.pluginRegistry
     if ("barConfig" in target) target.barConfig = shell.barConfig
+    if ("securePluginHost" in target)
+      target.securePluginHost = Qt.binding(function() { return shell.securePluginHost })
     shell.bar = target
+  }
+
+  Loader {
+    id: securePluginHostLoader
+
+    active: shell.securePluginV2Enabled && shell.securePluginV2ShellEntry !== ""
+    source: active ? Util.fileUrl(shell.securePluginV2ShellEntry) : ""
+    asynchronous: false
+    onLoaded: {
+      if ("shell" in item) item.shell = shell
+      if ("barWidgetRegistry" in item) item.barWidgetRegistry = shell.barWidgetRegistry
+    }
+    onStatusChanged: if (status === Loader.Error)
+      console.warn("secure schema-v2 plugin host failed closed:", errorString())
   }
 
   Component {
@@ -974,7 +993,8 @@ ShellRoot {
           // work it out again.
           canDisable: !isBarOption,
           firstParty: !!plugins[id].__isFirstParty,
-          clonedFrom: clonedFrom
+          clonedFrom: clonedFrom,
+          security: shell.pluginRegistry.securityStatusFor(id)
         })
       }
       // Consumers should not each invent their own presentation order.
