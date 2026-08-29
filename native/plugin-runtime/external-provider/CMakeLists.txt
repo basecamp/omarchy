@@ -17,6 +17,13 @@ target_link_libraries(omarchy-plugin-provider-admin PRIVATE
 omarchy_plugin_target_defaults(omarchy-plugin-provider-admin)
 install(TARGETS omarchy-plugin-provider-admin
   RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(DIRECTORY DESTINATION
+  "${CMAKE_INSTALL_SYSCONFDIR}/omarchy/plugin-providers.d"
+  DIRECTORY_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
+                        GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+install(DIRECTORY DESTINATION
+  "${CMAKE_INSTALL_LOCALSTATEDIR}/lib/omarchy/plugin-security"
+  DIRECTORY_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE)
 
 if(BUILD_TESTING)
   add_executable(omarchy-plugin-provider-admin-test provider_admin_cli.cpp)
