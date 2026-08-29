@@ -10,6 +10,7 @@
 # panel picks up any record that appears here.
 
 USAGE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/agents/usage"
+USER_BIN_DIR="${XDG_BIN_HOME:-$HOME/.local/bin}"
 mkdir -p "$USAGE_DIR"
 
 flags=()
@@ -56,6 +57,19 @@ for collector in "$OMARCHY_PATH"/bin/omarchy-agent-usage-*; do
   [[ -x $collector ]] || continue
   agent="${collector##*/omarchy-agent-usage-}"
   [[ $agent == "update" ]] && continue
+  user_collector="$USER_BIN_DIR/omarchy-agent-usage-$agent"
+  [[ -x $user_collector ]] && collector="$user_collector"
+  wanted "$agent" || continue
+  collect "$collector" "$agent" &
+  pids+=($!)
+done
+
+# User collectors can add providers without modifying the Omarchy install.
+for collector in "$USER_BIN_DIR"/omarchy-agent-usage-*; do
+  [[ -x $collector ]] || continue
+  agent="${collector##*/omarchy-agent-usage-}"
+  [[ $agent == "update" ]] && continue
+  [[ -e $OMARCHY_PATH/bin/omarchy-agent-usage-$agent ]] && continue
   wanted "$agent" || continue
   collect "$collector" "$agent" &
   pids+=($!)
