@@ -33,6 +33,30 @@ common=(--providers "$root/providers" \
 "$admin" install "$root/candidate.provider" "${common[@]}"
 [[ -f "$root/providers/local.admin-test.provider" ]]
 "$admin" inspect "${common[@]}" | grep -q '^service=local.admin-test '
+
+cp "$admin" "$root/provider-v2"
+printf '\0' >>"$root/provider-v2"
+chmod 700 "$root/provider-v2"
+digest_v2=$(sha256sum "$root/provider-v2" | cut -d' ' -f1)
+sed -e "s|^executable=.*|executable=$root/provider-v2|" \
+  -e "s|^executable-digest=.*|executable-digest=$digest_v2|" \
+  "$root/candidate.provider" >"$root/candidate-v2.provider"
+if "$admin" upgrade "$root/candidate-v2.provider" --dry-run \
+    "${common[@]}"; then
+  echo "unreviewed provider upgrade unexpectedly succeeded" >&2
+  exit 1
+else
+  [[ $? == 4 ]]
+fi
+"$admin" upgrade "$root/candidate-v2.provider" --reviewed --dry-run \
+  "${common[@]}" | grep -q '^decision=requires-plugin-review$'
+grep -q "^executable=$admin$" \
+  "$root/providers/local.admin-test.provider"
+"$admin" upgrade "$root/candidate-v2.provider" --reviewed \
+  "${common[@]}"
+grep -q "^executable=$root/provider-v2$" \
+  "$root/providers/local.admin-test.provider"
+
 "$admin" remove local.admin-test --dry-run "${common[@]}"
 [[ -f "$root/providers/local.admin-test.provider" ]]
 "$admin" remove local.admin-test "${common[@]}"

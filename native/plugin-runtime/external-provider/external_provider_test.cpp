@@ -283,7 +283,7 @@ int main(int argc, char **) {
   const char *registration_root = mkdtemp(registration_template.data());
   require(registration_root != nullptr, "registration root creation failed");
   const auto registration_path =
-      std::filesystem::path(registration_root) / "fake.provider";
+      std::filesystem::path(registration_root) / "local.fake-provider.provider";
   {
     std::ofstream output(registration_path);
     output << registration_document;

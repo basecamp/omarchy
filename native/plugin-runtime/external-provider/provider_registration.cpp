@@ -223,6 +223,10 @@ RegistrationLoadResult load_registration_directory(
     result = parse_registration_document(document, expected_uid, registration);
     if (result != RegistrationLoadResult::loaded)
       break;
+    if (name != std::string(registration.service_id.view()) + ".provider") {
+      result = RegistrationLoadResult::invalid_document;
+      break;
+    }
     if (std::ranges::any_of(registrations, [&](const auto &installed) {
           return installed.service_id == registration.service_id ||
                  installed.adapter == registration.adapter;
