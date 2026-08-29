@@ -17,44 +17,52 @@ class OmarchyThemeExtension(GObject.GObject, Nautilus.MenuProvider):
         super().__init__()
         self._provider = None
         self._display = None
+        self._display_manager = Gdk.DisplayManager.get()
+        self._display_opened_handler = 0
         self._settings = None
-        self._monitor = None
-        self._reload_source = 0
+        self._bus = None
         self._css_path = os.path.join(GLib.get_user_config_dir(), "gtk-4.0", "gtk.css")
-        GLib.timeout_add(100, self._initialize)
+        display = self._display_manager.get_default_display()
+        if display is None:
+            self._display_opened_handler = self._display_manager.connect(
+                "display-opened", self._on_display_opened
+            )
+        else:
+            self._initialize(display)
 
-    def _initialize(self):
-        self._display = Gdk.Display.get_default()
-        if self._display is None:
-            return GLib.SOURCE_CONTINUE
+    def _on_display_opened(self, manager, display):
+        manager.disconnect(self._display_opened_handler)
+        self._display_opened_handler = 0
+        self._initialize(display)
 
+    def _initialize(self, display):
+        self._display = display
         self._settings = Gtk.Settings.get_for_display(self._display)
         self._settings.connect(
             "notify::gtk-interface-color-scheme", self._on_color_scheme_changed
         )
+
+        try:
+            self._bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+            self._bus.signal_subscribe(
+                None,
+                "org.omarchy.Theme",
+                "Changed",
+                "/org/omarchy/Theme",
+                None,
+                Gio.DBusSignalFlags.NONE,
+                self._on_theme_changed,
+            )
+        except GLib.Error as error:
+            print(
+                f"Omarchy GTK theme signal setup failed: {error.message}",
+                file=sys.stderr,
+            )
+
         self._reload_css()
 
-        css_dir = Gio.File.new_for_path(os.path.dirname(self._css_path))
-        try:
-            self._monitor = css_dir.monitor_directory(Gio.FileMonitorFlags.NONE, None)
-            self._monitor.connect("changed", self._on_css_changed)
-        except GLib.Error as error:
-            print(f"Omarchy GTK theme monitor failed: {error.message}", file=sys.stderr)
-
-        return GLib.SOURCE_REMOVE
-
-    def _on_css_changed(self, _monitor, file, other_file, _event_type):
-        changed_names = {
-            candidate.get_basename()
-            for candidate in (file, other_file)
-            if candidate is not None
-        }
-        if not changed_names.intersection({"gtk.css", "omarchy.css"}):
-            return
-
-        if self._reload_source:
-            GLib.source_remove(self._reload_source)
-        self._reload_source = GLib.timeout_add(100, self._reload_css)
+    def _on_theme_changed(self, *_args):
+        self._reload_css()
 
     def _on_color_scheme_changed(self, settings, _property):
         if self._provider is not None:
@@ -63,7 +71,14 @@ class OmarchyThemeExtension(GObject.GObject, Nautilus.MenuProvider):
             )
 
     def _reload_css(self):
-        self._reload_source = 0
+        if not os.path.exists(self._css_path):
+            if self._provider is not None:
+                Gtk.StyleContext.remove_provider_for_display(
+                    self._display, self._provider
+                )
+                self._provider = None
+            return
+
         provider = Gtk.CssProvider()
         provider.props.prefers_color_scheme = (
             self._settings.props.gtk_interface_color_scheme
@@ -78,12 +93,12 @@ class OmarchyThemeExtension(GObject.GObject, Nautilus.MenuProvider):
             provider.load_from_path(self._css_path)
         except GLib.Error as error:
             print(f"Omarchy GTK theme reload failed: {error.message}", file=sys.stderr)
-            return GLib.SOURCE_REMOVE
+            return
 
         if parsing_errors:
             for message in parsing_errors:
                 print(f"Omarchy GTK theme parse error: {message}", file=sys.stderr)
-            return GLib.SOURCE_REMOVE
+            return
 
         if self._provider is not None:
             Gtk.StyleContext.remove_provider_for_display(self._display, self._provider)
@@ -94,7 +109,6 @@ class OmarchyThemeExtension(GObject.GObject, Nautilus.MenuProvider):
             Gtk.STYLE_PROVIDER_PRIORITY_USER,
         )
         self._provider = provider
-        return GLib.SOURCE_REMOVE
 
     def get_file_items(self, _files):
         return []

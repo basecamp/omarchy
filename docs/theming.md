@@ -45,13 +45,6 @@ Making a new app follow theme changes means adding its restart/retint command
 to that list. Runs serialize on a `flock`, so scripted theme changes queue
 instead of racing.
 
-GTK4 and libadwaita colors are generated as `gtk.css` from the same palette.
-`omarchy-theme-set-gtk` exposes that file through an import in
-`~/.config/gtk-4.0/gtk.css`, preserving any CSS already there so later user
-rules can override Omarchy. GTK applications read it when they start. Nautilus
-also ships an Omarchy extension that watches the file and reloads the provider
-in place, so the default file manager follows theme changes while it is open.
-
 ## What an installed theme may not ship
 
 `themes/<name>/` in this repo is Omarchy's own code and is trusted. So is a theme the user wrote by hand in `~/.config/omarchy/themes/<name>/`: it is their machine and their file, and both stage in full.

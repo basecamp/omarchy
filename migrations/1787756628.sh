@@ -8,7 +8,7 @@ if [[ -f $extension_target ]] && cmp -s "$extension_source" "$extension_target";
   exit 0
 fi
 
-if [[ -e $extension_target ]]; then
+if [[ -e $extension_target || -L $extension_target ]]; then
   echo "Keeping existing Nautilus extension at $extension_target"
   exit 0
 fi

@@ -344,4 +344,7 @@ if [[ $THEME_HEADLESS != "1" ]]; then
   # rows/selection to avoid first-open carousel settling after a theme change.
   omarchy-theme-switcher --preload >/dev/null 2>&1
   omarchy-theme-bg-cache >/dev/null 2>&1 &
+else
+  # Persistent GTK config is also needed by apps on the first real login.
+  omarchy-theme-set-gtk
 fi

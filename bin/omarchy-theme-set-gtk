@@ -8,13 +8,19 @@ GTK_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/gtk-4.0"
 GTK_CSS="$GTK_CONFIG_DIR/gtk.css"
 OMARCHY_CSS="$GTK_CONFIG_DIR/omarchy.css"
 OMARCHY_IMPORT='@import url("omarchy.css");'
-EMPTY_CSS='/* Omarchy GTK theme unavailable. */'
+MISSING_THEME_SENTINEL='/* Omarchy GTK theme unavailable. */'
+
+notify_nautilus() {
+  if [[ ${OMARCHY_THEME_HEADLESS:-} != "1" && ${OMARCHY_THEME_OFFLINE:-} != "1" && -n ${DBUS_SESSION_BUS_ADDRESS:-} ]]; then
+    gdbus emit --session \
+      --object-path /org/omarchy/Theme \
+      --signal org.omarchy.Theme.Changed >/dev/null 2>&1 || true
+  fi
+}
 
 mkdir -p "$GTK_CONFIG_DIR"
 
-# Replace this link on every theme change so directory monitors receive an
-# event even though the stable target path remains the same.
-if [[ -L $OMARCHY_CSS ]] || [[ -f $OMARCHY_CSS && $(<"$OMARCHY_CSS") == "$EMPTY_CSS" ]]; then
+if [[ -L $OMARCHY_CSS ]] || [[ -f $OMARCHY_CSS && $(<"$OMARCHY_CSS") == $MISSING_THEME_SENTINEL ]]; then
   rm -f "$OMARCHY_CSS"
 elif [[ -e $OMARCHY_CSS ]]; then
   exit 0
@@ -26,12 +32,13 @@ if [[ -f $GENERATED_CSS ]]; then
   ln -s "$GENERATED_CSS" "$link_tmp"
   mv -T "$link_tmp" "$OMARCHY_CSS"
 else
-  printf '%s\n' "$EMPTY_CSS" >"$OMARCHY_CSS"
+  printf '%s\n' "$MISSING_THEME_SENTINEL" >"$OMARCHY_CSS"
 fi
 
 if [[ ! -e $GTK_CSS && ! -L $GTK_CSS ]]; then
   printf '%s\n' "$OMARCHY_IMPORT" >"$GTK_CSS"
 elif [[ -L $GTK_CSS ]]; then
+  notify_nautilus
   exit 0
 elif [[ -f $GTK_CSS ]] && ! grep -Fxq "$OMARCHY_IMPORT" "$GTK_CSS"; then
   css_tmp=$(mktemp --tmpdir="$GTK_CONFIG_DIR" .gtk.css.XXXXXX)
@@ -41,3 +48,5 @@ elif [[ -f $GTK_CSS ]] && ! grep -Fxq "$OMARCHY_IMPORT" "$GTK_CSS"; then
   } >"$css_tmp"
   mv -T "$css_tmp" "$GTK_CSS"
 fi
+
+notify_nautilus

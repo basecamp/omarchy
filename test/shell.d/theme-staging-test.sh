@@ -22,7 +22,7 @@ marker="omarchy-theme-staging-marker"
 set_theme() {
   HOME="$home" OMARCHY_PATH="$ROOT" PATH="$ROOT/bin:$PATH" \
     OMARCHY_THEME_HEADLESS=1 OMARCHY_THEME_SKIP_BACKGROUND=1 \
-    XDG_RUNTIME_DIR="$test_tmp" \
+    XDG_CONFIG_HOME="$home/.config" XDG_RUNTIME_DIR="$test_tmp" \
     bash "$ROOT/bin/omarchy-theme-set" "$1" 2>"$test_tmp/stderr" || return $?
 }
 
@@ -93,6 +93,7 @@ grep -q '#7aa2f7' "$(staged colors.toml)" || fail "the staged colors.toml is the
 assert_staged light.mode "the light mode marker is staged"
 assert_staged preview.png "the theme's preview image is staged"
 assert_staged backgrounds/1-real.png "an image in backgrounds/ is staged"
+[[ -f $home/.config/gtk-4.0/gtk.css ]] || fail "headless theme setup installs the GTK entrypoint"
 
 assert_not_staged unlock.png "a symlink is not followed out of the theme"
 assert_not_staged vscode.json "vscode.json names an extension to install and is not staged"
@@ -118,6 +119,7 @@ grep -q 'hyprland.lua' "$test_tmp/stderr" || fail "omarchy-theme-set names the f
 ! grep -q 'README.md' "$test_tmp/stderr" || fail "omarchy-theme-set does not report a theme's documentation"
 
 pass "an installed theme keeps its colour and loses everything that runs code"
+pass "headless theme setup installs persistent GTK config"
 
 # icons.theme is staged verbatim and handed to gsettings, so a symlinked one
 # would stage a copy of whatever it points at.
