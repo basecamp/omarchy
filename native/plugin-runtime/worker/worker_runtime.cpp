@@ -365,7 +365,7 @@ struct WorkerRuntime::Impl {
   explicit Impl(std::filesystem::path requested_root)
       : source_root(std::filesystem::absolute(std::move(requested_root))
                         .lexically_normal()),
-        qt_root(QLibraryInfo::path(QLibraryInfo::QmlImportsPath).toStdString()),
+        qt_root("/usr/lib/qt6/qml"),
         interceptor(source_root, qt_root), software_backend([] {
           QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
           return true;
@@ -374,7 +374,7 @@ struct WorkerRuntime::Impl {
     QImageReader::setAllocationLimit(kMaximumDecodedImageMiB);
     engine.addUrlInterceptor(&interceptor);
     engine.setImportPathList({QString::fromStdString(source_root.string()),
-                              QLibraryInfo::path(QLibraryInfo::QmlImportsPath),
+                              QString::fromStdString(qt_root.string()),
                               QStringLiteral("qrc:/qt/qml")});
     window.setColor(Qt::transparent);
     render_root.setParentItem(window.contentItem());

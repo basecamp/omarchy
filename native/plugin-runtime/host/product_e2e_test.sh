@@ -101,6 +101,10 @@ find "$test_root/lab-authorized/state" -type f -size +0c -print -quit | grep -q 
 find "$test_root/lab-authorized/audit" -type f -size +0c -print -quit | grep -q . || \
   fail "authorized audit missing"
 
+if [[ ${OMARCHY_PLUGIN_E2E_ONLY_AUTHORIZED:-0} == 1 ]]; then
+  exit 0
+fi
+
 prepare lab-dynamic-radio
 dynamic_run=$test_root/lab-dynamic-radio
 dynamic_plugin=$(sed -n 's/^plugin=//p' "$dynamic_run/identity")

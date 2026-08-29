@@ -962,7 +962,11 @@ int preview(const QStringList &arguments, QGuiApplication &application,
   }
   if (composition_failed || previews.empty()) {
 #ifdef OMARCHY_PLUGIN_PRODUCT_E2E
-    std::cerr << "PRODUCT_E2E host surface creation failed\n";
+    std::cerr << "PRODUCT_E2E host surface creation failed worker_stderr "
+              << started.session->take_worker_standard_error()
+              << " channel_failure "
+              << static_cast<int>(started.session->channel_failure())
+              << " detail " << started.session->channel_detail() << '\n';
     qCritical() << "PRODUCT_E2E host surface creation failed";
 #endif
     return 78;

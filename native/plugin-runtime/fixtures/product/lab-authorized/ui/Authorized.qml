@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQml
 
 Item {
@@ -15,6 +16,8 @@ Item {
     property double readCorrelation: 0
     property string phase: "STARTING"
     property string detail: "Waiting for authenticated broker"
+
+    function open() {}
 
     function begin() {
         phase = "WRITING"

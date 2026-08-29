@@ -97,6 +97,21 @@ if(BUILD_TESTING)
     LABELS "integration;product;e2e;security;real-bwrap;qml;broker;render"
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QSG_RHI_BACKEND=software;QSG_SOFTWARE_RENDERER_FORCE_PARTIAL_UPDATES=0")
 
+  add_test(NAME plugin-production-worker-e2e-bwrap
+    COMMAND "${CMAKE_COMMAND}" -E env
+      OMARCHY_PLUGIN_E2E_ONLY_AUTHORIZED=1
+      "${CMAKE_CURRENT_SOURCE_DIR}/product_e2e_test.sh"
+      $<TARGET_FILE:omarchy-plugin-product-e2e-host>
+      $<TARGET_FILE:omarchy-plugin-qml-worker>
+      $<TARGET_FILE:omarchy-plugin-permission-store>
+      "${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/product"
+      $<TARGET_FILE:omarchy-plugin-dynamic-e2e-grant>
+      "${CMAKE_CURRENT_BINARY_DIR}/network-definition")
+  set_tests_properties(plugin-production-worker-e2e-bwrap PROPERTIES
+    TIMEOUT 20 SKIP_RETURN_CODE 77
+    LABELS "integration;product;security;real-bwrap;qml;installed-style"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QSG_RHI_BACKEND=software;QSG_SOFTWARE_RENDERER_FORCE_PARTIAL_UPDATES=0")
+
   add_test(NAME plugin-host-version COMMAND omarchy-plugin-host --version)
   add_test(NAME plugin-host-preview-disabled
     COMMAND "${CMAKE_COMMAND}"
