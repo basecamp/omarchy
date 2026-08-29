@@ -350,8 +350,14 @@ Item {
   }
 
   function handleFingerprintFinished(result) {
-    if (result === PamResult.Success && lockRequested) finishUnlock()
-    else settleFingerprintAttempt()
+    if (result === PamResult.Success && lockRequested) {
+      // A match after a run of misses is the recovery too; the unlock resets
+      // the streak without settling, so log it here or it leaves no trace.
+      if (fingerprintUnreachedStreak > 0) logEvent("fingerprint-recovered: streak=" + fingerprintUnreachedStreak)
+      finishUnlock()
+    } else {
+      settleFingerprintAttempt()
+    }
   }
 
   WlSessionLock {
