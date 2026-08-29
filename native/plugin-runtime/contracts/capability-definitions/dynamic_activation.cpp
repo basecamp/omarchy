@@ -141,12 +141,18 @@ bool encode_dynamic_invocation(const DynamicInvocation &invocation,
                                std::span<std::byte> output,std::size_t &written){
   written=0;if(invocation.payload.size()>kMaximumDynamicPayloadBytes)return false;Writer w{output};
   if(!w.raw(kInvokeMagic)||!write_reference(w,invocation.definition)||!w.text(invocation.operation.view())||
-     !w.text(invocation.demand_scope.view())||!w.u32(static_cast<std::uint32_t>(invocation.payload.size()))||!w.raw(invocation.payload))return false;
+     !w.text(invocation.demand_scope.view())||!w.u8(invocation.gesture ? 1 : 0))return false;
+  if(invocation.gesture&&(!w.u64(invocation.gesture->surface_id)||
+     !w.u64(invocation.gesture->surface_generation)||
+     !w.u64(invocation.gesture->input_sequence)))return false;
+  if(!w.u32(static_cast<std::uint32_t>(invocation.payload.size()))||!w.raw(invocation.payload))return false;
   written=w.offset;return true;
 }
 bool decode_dynamic_invocation(std::span<const std::byte> input,DynamicInvocation &output){
-  output={};if(input.size()>kMaximumDynamicEnvelopeBytes)return false;Reader r{input};std::span<const std::byte> magic,payload;std::string_view op,scope;std::uint32_t size=0;
-  try{if(!r.raw(8,magic)||!std::equal(magic.begin(),magic.end(),kInvokeMagic.begin())||!read_reference(r,output.definition)||!r.text(op)||!r.text(scope)||!r.u32(size)||size>kMaximumDynamicPayloadBytes||!r.raw(size,payload)||r.offset!=input.size())return false;
+  output={};if(input.size()>kMaximumDynamicEnvelopeBytes)return false;Reader r{input};std::span<const std::byte> magic,payload;std::string_view op,scope;std::uint32_t size=0;std::uint8_t gesture=0;
+  try{if(!r.raw(8,magic)||!std::equal(magic.begin(),magic.end(),kInvokeMagic.begin())||!read_reference(r,output.definition)||!r.text(op)||!r.text(scope)||!r.u8(gesture)||gesture>1)return false;
+  if(gesture){DynamicInvocation::GestureClaim claim;if(!r.u64(claim.surface_id)||!r.u64(claim.surface_generation)||!r.u64(claim.input_sequence)||claim.surface_id==0||claim.surface_generation==0||claim.input_sequence==0)return false;output.gesture=claim;}
+  if(!r.u32(size)||size>kMaximumDynamicPayloadBytes||!r.raw(size,payload)||r.offset!=input.size())return false;
   output.operation=Name(op);output.demand_scope=CanonicalScope(scope);output.payload=payload;}catch(...){return false;}return true;
 }
 

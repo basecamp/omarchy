@@ -171,6 +171,7 @@ std::optional<EncodedInvoke> ManifestInvokeEncoder::encode(
       .operation = omarchy::plugins::definitions::Name(operation),
       .demand_scope = omarchy::plugins::definitions::CanonicalScope(
           scope.toStdString()),
+      .gesture = {},
       .payload = payload_bytes};
   if (!omarchy::plugins::definitions::encode_dynamic_invocation(
           invocation, envelope, written))
@@ -421,6 +422,22 @@ QVariant QmlBrokerApi::invoke(const QString &operation,
   auto encoded = encoder_->encode(operation.toUtf8().toStdString(), arguments);
   if (!encoded)
     return rejected(QStringLiteral("operation-undeclared"));
+  if (encoded->message_type == broker::kDynamicInvokeMessage &&
+      trusted_gesture_) {
+    omarchy::plugins::definitions::DynamicInvocation invocation;
+    if (!omarchy::plugins::definitions::decode_dynamic_invocation(
+            encoded->payload, invocation))
+      return rejected(QStringLiteral("operation-undeclared"));
+    invocation.gesture = trusted_gesture_;
+    std::array<std::byte,
+               omarchy::plugins::definitions::kMaximumDynamicEnvelopeBytes>
+        envelope{};
+    std::size_t written = 0;
+    if (!omarchy::plugins::definitions::encode_dynamic_invocation(
+            invocation, envelope, written))
+      return rejected(QStringLiteral("operation-undeclared"));
+    encoded->payload.assign(envelope.begin(), envelope.begin() + written);
+  }
   auto slot = std::ranges::find_if(pending_, [](const Pending &item) {
     return item.call == nullptr;
   });
@@ -439,6 +456,22 @@ QVariant QmlBrokerApi::invoke(const QString &operation,
   }
   return QVariant::fromValue(static_cast<QObject *>(call));
 }
+
+void QmlBrokerApi::beginTrustedPointerGesture(
+    std::uint64_t surface_id, std::uint64_t surface_generation,
+    std::uint64_t input_sequence) {
+  if (surface_id == 0 || surface_generation == 0 || input_sequence == 0) {
+    trusted_gesture_.reset();
+    return;
+  }
+  trusted_gesture_ =
+      omarchy::plugins::definitions::DynamicInvocation::GestureClaim{
+          .surface_id = surface_id,
+          .surface_generation = surface_generation,
+          .input_sequence = input_sequence};
+}
+
+void QmlBrokerApi::endTrustedPointerGesture() { trusted_gesture_.reset(); }
 
 QmlBrokerApi::Pending *QmlBrokerApi::find(std::uint64_t correlation) {
   const auto found = std::ranges::find_if(pending_, [&](const Pending &item) {

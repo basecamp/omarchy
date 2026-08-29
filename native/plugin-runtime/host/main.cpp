@@ -120,7 +120,8 @@ public:
   bool perform(surface_host::InspectionAction, std::string_view,
                std::string_view, std::string_view) override { return false; }
 };
-class Clock final : public surface_host::MonotonicClock {
+class Clock final : public surface_host::MonotonicClock,
+                    public runtime::DynamicGestureClock {
 public:
   std::uint64_t now_nanoseconds() const override {
     return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -130,8 +131,10 @@ public:
 
 class PreviewPointerBridge final : public bridge::HostPointerRouter {
 public:
-  explicit PreviewPointerBridge(surface_host::HostSurface &surface)
-      : surface_(surface) {}
+  PreviewPointerBridge(surface_host::HostSurface &surface,
+                       runtime::DynamicGestureLatch &gestures,
+                       const permissions::ActivationBinding &binding)
+      : surface_(surface), gestures_(gestures), binding_(binding) {}
 
   bool route(const bridge::HostPointerEvent &event) override {
     if (event.button != Qt::LeftButton || event.application_synthesized ||
@@ -157,11 +160,19 @@ public:
             event.pressed ? surface::ButtonState::pressed
                           : surface::ButtonState::released),
         .active_touch_points = 0};
-    return surface_.route_input(input, event.pressed);
+    const bool accepted = surface_.route_input(input, event.pressed);
+    if (accepted && event.pressed)
+      (void)gestures_.arm(
+          binding_, {.surface_id = input.surface.id,
+                     .surface_generation = input.surface.generation,
+                     .input_sequence = input.sequence});
+    return accepted;
   }
 
 private:
   surface_host::HostSurface &surface_;
+  runtime::DynamicGestureLatch &gestures_;
+  permissions::ActivationBinding binding_;
   std::uint64_t sequence_ = 0;
 };
 
@@ -324,8 +335,9 @@ class LabBroker final : public omarchy::plugin_runtime::channel::BrokerDispatche
 public:
   LabBroker(runtime::AuditedBrokerRuntime &runtime,
             runtime::DynamicBrokerRuntime *dynamic,
-            std::uint64_t generation)
-      : runtime_(runtime), dynamic_(dynamic), generation_(generation) {}
+            std::uint64_t generation, runtime::DynamicGestureLatch &gestures)
+      : runtime_(runtime), dynamic_(dynamic), gestures_(gestures),
+        generation_(generation) {}
   bool accepts(const launcher::LaunchIdentity &identity) const noexcept override {
     const auto &binding = runtime_.binding();
     return identity.plugin_id == binding.plugin.view() &&
@@ -337,7 +349,8 @@ public:
     std::vector<std::byte> output(providers::kMaximumRadioDirectoryBytes);
     if (packet.header.message_type == broker::kDynamicInvokeMessage) {
       if (dynamic_ == nullptr) return false;
-      const auto result = dynamic_->dispatch(packet, runtime_.binding(), output);
+      const auto result = dynamic_->dispatch(packet, runtime_.binding(), output,
+                                             &gestures_);
       if (dynamic_->failed()) return false;
       std::vector<std::byte> payload;
       std::uint16_t type = 0;
@@ -409,6 +422,7 @@ public:
 private:
   runtime::AuditedBrokerRuntime &runtime_;
   runtime::DynamicBrokerRuntime *dynamic_ = nullptr;
+  runtime::DynamicGestureLatch &gestures_;
   std::uint64_t generation_ = 0;
   std::uint64_t now_ = 100;
   std::uint64_t dispatch_count_ = 0;
@@ -599,6 +613,8 @@ int preview(const QStringList &arguments, QGuiApplication &application,
   std::unique_ptr<providers::RadioLiveBackend> radio_live_backend;
   std::unique_ptr<runtime::DynamicBrokerRuntime> dynamic_runtime;
   std::vector<external_provider::Registration> external_registrations;
+  Clock clock;
+  runtime::DynamicGestureLatch gesture_latch(clock);
   std::shared_ptr<LabBroker> lab_broker;
   headless::StartResult started;
   if (live_lab) {
@@ -802,7 +818,8 @@ int preview(const QStringList &arguments, QGuiApplication &application,
     }
     lab_broker = std::make_shared<LabBroker>(*broker_runtime,
                                              dynamic_runtime.get(),
-                                             prepared.prepared->binding.generation);
+                                             prepared.prepared->binding.generation,
+                                             gesture_latch);
     started = host::launch_with_broker_for_lab(
         supervisor, *prepared.prepared, state_fd, health_supervisor, lab_broker,
         std::make_shared<Authority>(prepared.prepared->binding),
@@ -825,7 +842,6 @@ int preview(const QStringList &arguments, QGuiApplication &application,
   }
   auto transport = std::make_shared<Transport>(*started.session);
   Inspection inspection;
-  Clock clock;
   struct PreviewSurface {
     std::string name;
     std::unique_ptr<QQuickWindow> window;
@@ -868,8 +884,8 @@ int preview(const QStringList &arguments, QGuiApplication &application,
       composition_failed = true;
       break;
     }
-    preview.pointer =
-        std::make_unique<PreviewPointerBridge>(*preview.hosted);
+    preview.pointer = std::make_unique<PreviewPointerBridge>(
+        *preview.hosted, gesture_latch, prepared.prepared->binding);
     preview.input_regions =
         std::make_unique<PreviewInputRegionBridge>(*preview.hosted);
     preview.bridge->bindHostPointerRouter(*preview.pointer);
@@ -932,6 +948,7 @@ int preview(const QStringList &arguments, QGuiApplication &application,
       try {
         const auto latest = grant_store.read();
         if (latest.mutation_sequence != observed_grant_mutation) {
+          gesture_latch.clear();
           const grants::RevisionGrants *updated = nullptr;
           for (const auto &plugin : latest.plugins) {
             if (plugin.plugin == prepared.prepared->binding.plugin && plugin.active)

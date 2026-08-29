@@ -27,6 +27,39 @@ struct DynamicBrokerResult {
   std::size_t response_bytes = 0;
 };
 
+class DynamicGestureAuthority {
+public:
+  virtual ~DynamicGestureAuthority() = default;
+  [[nodiscard]] virtual bool consume(
+      const omarchy::plugins::permissions::ActivationBinding &binding,
+      const definitions::DynamicInvocation::GestureClaim &claim) = 0;
+};
+
+class DynamicGestureClock {
+public:
+  virtual ~DynamicGestureClock() = default;
+  [[nodiscard]] virtual std::uint64_t now_nanoseconds() const = 0;
+};
+
+class DynamicGestureLatch final : public DynamicGestureAuthority {
+public:
+  explicit DynamicGestureLatch(DynamicGestureClock &clock) : clock_(clock) {}
+  [[nodiscard]] bool arm(
+      const omarchy::plugins::permissions::ActivationBinding &binding,
+      const definitions::DynamicInvocation::GestureClaim &claim);
+  [[nodiscard]] bool consume(
+      const omarchy::plugins::permissions::ActivationBinding &binding,
+      const definitions::DynamicInvocation::GestureClaim &claim) override;
+  void clear() noexcept;
+
+private:
+  DynamicGestureClock &clock_;
+  omarchy::plugins::permissions::ActivationBinding binding_{};
+  definitions::DynamicInvocation::GestureClaim claim_{};
+  std::uint64_t deadline_nanoseconds_ = 0;
+  bool armed_ = false;
+};
+
 class DynamicBrokerRuntime {
 public:
   DynamicBrokerRuntime(const definitions::TrustedDefinitionRegistry &registry,
@@ -37,7 +70,7 @@ public:
       const wire::PacketView &packet,
       const omarchy::plugins::permissions::ActivationBinding &channel_binding,
       std::span<std::byte> response,
-      bool fresh_gesture = false);
+      DynamicGestureAuthority *gesture_authority = nullptr);
 
   // Accepts only the next persisted epoch for the exact same request and
   // definition. The caller remains responsible for cancelling an asynchronous

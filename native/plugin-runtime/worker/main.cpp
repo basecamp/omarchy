@@ -525,9 +525,25 @@ private:
     }
     if (type == surface::RenderMessageType::input) {
       surface::InputEvent event{};
-      if (!surface::decode_input_event(packet.payload, event) ||
-          !runtime_.input(event))
+      if (!surface::decode_input_event(packet.payload, event)) {
         fatal("input event failed validation");
+        return;
+      }
+      const bool pointer = event.kind == surface::InputKind::pointer_button;
+      const bool pressed = pointer &&
+          event.state == static_cast<std::uint32_t>(surface::ButtonState::pressed);
+      const bool released = pointer &&
+          event.state == static_cast<std::uint32_t>(surface::ButtonState::released);
+      if (pressed)
+        broker_api_->beginTrustedPointerGesture(
+            event.surface.id, event.surface.generation, event.sequence);
+      if (!runtime_.input(event)) {
+        broker_api_->endTrustedPointerGesture();
+        fatal("input event failed validation");
+        return;
+      }
+      if (released)
+        broker_api_->endTrustedPointerGesture();
       return;
     }
     fatal("unexpected render message type");

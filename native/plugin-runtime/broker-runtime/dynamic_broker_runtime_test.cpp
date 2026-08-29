@@ -13,6 +13,10 @@ namespace broker = omarchy::plugin_runtime::broker;
 namespace wire = omarchy::plugin::wire;
 
 namespace {
+struct FakeGestureClock final : runtime::DynamicGestureClock {
+  std::uint64_t now = 100;
+  std::uint64_t now_nanoseconds() const override { return now; }
+};
 struct EffectContext { const char *make_audit_unsafe = nullptr; };
 void require(bool value, const char *message) { if (!value) throw std::runtime_error(message); }
 permissions::Digest digest(char value) { return permissions::Digest(std::string(64, value)); }
@@ -34,6 +38,38 @@ bool echo(const definitions::AuthorizedDynamicRequest &request,
 }
 
 int main() {
+  FakeGestureClock gesture_clock;
+  runtime::DynamicGestureLatch gesture_latch(gesture_clock);
+  const permissions::ActivationBinding gesture_binding{
+      .plugin = permissions::PluginId("fixture.gesture"),
+      .revision = digest('1'), .policy_fingerprint = digest('2'),
+      .generation = 7};
+  const definitions::DynamicInvocation::GestureClaim gesture_claim{
+      .surface_id = 3, .surface_generation = 7, .input_sequence = 11};
+  require(gesture_latch.arm(gesture_binding, gesture_claim), "gesture arm");
+  auto other_plugin = gesture_binding;
+  other_plugin.plugin = permissions::PluginId("fixture.other");
+  require(!gesture_latch.consume(other_plugin, gesture_claim),
+          "cross-plugin gesture accepted");
+  auto other_surface = gesture_claim;
+  ++other_surface.surface_id;
+  require(!gesture_latch.consume(gesture_binding, other_surface),
+          "cross-surface gesture accepted");
+  require(gesture_latch.consume(gesture_binding, gesture_claim),
+          "exact gesture rejected after spoof attempts");
+  require(!gesture_latch.consume(gesture_binding, gesture_claim),
+          "gesture replay accepted");
+  require(gesture_latch.arm(gesture_binding, gesture_claim), "gesture rearm");
+  gesture_clock.now += 5'000'000'001ULL;
+  require(!gesture_latch.consume(gesture_binding, gesture_claim),
+          "expired gesture accepted");
+  auto stale_sequence = gesture_claim;
+  --stale_sequence.input_sequence;
+  gesture_clock.now = 200;
+  require(gesture_latch.arm(gesture_binding, gesture_claim) &&
+              !gesture_latch.arm(gesture_binding, stale_sequence),
+          "non-monotonic gesture sequence accepted");
+  gesture_latch.clear();
   std::array<char, 64> audit_template{};
   const auto prefix = std::string("/tmp/omarchy-dynamic-audit.XXXXXX");
   std::ranges::copy(prefix, audit_template.begin());
@@ -81,7 +117,7 @@ int main() {
   const std::array payload{std::byte{7}};
   definitions::DynamicInvocation invocation{.definition = grant.request.definition,
       .operation = definitions::Name("echo"), .demand_scope = definitions::CanonicalScope("exact"),
-      .payload = payload};
+                                            .gesture = {}, .payload = payload};
   std::array<std::byte, definitions::kMaximumDynamicEnvelopeBytes> encoded{};
   std::size_t size = 0; require(definitions::encode_dynamic_invocation(invocation, encoded, size), "encode");
   wire::PacketView packet{.header = {.endpoint_role = wire::EndpointRole::broker,

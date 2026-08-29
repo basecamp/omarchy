@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstddef>
+#include <optional>
 #include <span>
 #include <utility>
 
@@ -29,9 +30,16 @@ struct DynamicRevisionGrant {
                                         DynamicRevisionGrant &output);
 
 struct DynamicInvocation {
+  struct GestureClaim {
+    std::uint64_t surface_id = 0;
+    std::uint64_t surface_generation = 0;
+    std::uint64_t input_sequence = 0;
+    bool operator==(const GestureClaim &) const = default;
+  };
   CapabilityReference definition;
   Name operation;
   CanonicalScope demand_scope;
+  std::optional<GestureClaim> gesture;
   std::span<const std::byte> payload;
 };
 

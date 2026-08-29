@@ -122,6 +122,10 @@ public:
       std::uint64_t envelope_generation, std::span<const std::byte> payload);
   [[nodiscard]] bool receive(ReceivedPacket packet);
   [[nodiscard]] QString status() const;
+  void beginTrustedPointerGesture(std::uint64_t surface_id,
+                                  std::uint64_t surface_generation,
+                                  std::uint64_t input_sequence);
+  void endTrustedPointerGesture();
   void disconnect(QString reason);
 
 signals:
@@ -153,6 +157,8 @@ private:
   std::vector<RequestedPermission> requested_permissions_;
   std::uint64_t activation_generation_ = 0;
   bool host_snapshot_received_ = false;
+  std::optional<omarchy::plugins::definitions::DynamicInvocation::GestureClaim>
+      trusted_gesture_;
 };
 
 } // namespace omarchy::plugin_runtime::worker
