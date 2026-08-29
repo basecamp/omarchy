@@ -24,6 +24,7 @@ local bindings = {}
 local dispatched = {}
 local workspace = { tiled_layout = "scrolling" }
 local special_workspace
+local configured_direction
 
 local window_dispatchers = proxy()
 window_dispatchers.resize = function(args)
@@ -47,6 +48,11 @@ hl = {
   end,
   get_active_special_workspace = function()
     return special_workspace
+  end,
+  get_config = function(key)
+    if key == "scrolling.direction" then
+      return configured_direction
+    end
   end,
 }
 
@@ -92,6 +98,24 @@ end
 workspace.tiled_layout = "scrolling"
 special_workspace = { tiled_layout = "dwindle" }
 assert(run_binding("SUPER + code:21").kind == "window", "active special workspace layout takes precedence")
+
+special_workspace = nil
+configured_direction = "left"
+assert(run_binding("SUPER + code:21").kind == "layout", "leftward scrolling still uses colresize")
+
+configured_direction = "up"
+assert(run_binding("SUPER + code:21").kind == "window", "upward scrolling keeps window.resize")
+
+configured_direction = "down"
+assert(run_binding("SUPER + code:21").kind == "window", "downward scrolling keeps window.resize")
+
+configured_direction = "right"
+workspace.layout_opts = { direction = "down" }
+assert(run_binding("SUPER + code:21").kind == "window", "workspace direction override takes precedence")
+
+workspace.layout_opts = { direction = "left" }
+configured_direction = "up"
+assert(run_binding("SUPER + code:21").kind == "layout", "horizontal workspace override uses colresize")
 
 workspace = nil
 special_workspace = nil

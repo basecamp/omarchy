@@ -1,3 +1,13 @@
+local function scrolling_direction(workspace)
+  local opts = workspace.layout_opts
+  local direction = type(opts) == "table" and opts.direction or hl.get_config("scrolling.direction")
+  if direction == "left" or direction == "right" or direction == "up" or direction == "down" then
+    return direction
+  end
+
+  return "right"
+end
+
 local function horizontal_resize(pixel_delta, scrolling_delta)
   local window_resize = hl.dsp.window.resize({ x = pixel_delta, y = 0, relative = true })
   local column_resize = hl.dsp.layout("colresize " .. scrolling_delta)
@@ -8,12 +18,17 @@ local function horizontal_resize(pixel_delta, scrolling_delta)
       return
     end
 
+    -- colresize follows the tape axis, so only use it for horizontal scrolling.
+    -- A column at the workspace edge has no neighboring split to resize.
     if workspace.tiled_layout == "scrolling" then
-      -- A column at the workspace edge has no neighboring split to resize.
-      hl.dispatch(column_resize)
-    else
-      hl.dispatch(window_resize)
+      local direction = scrolling_direction(workspace)
+      if direction == "left" or direction == "right" then
+        hl.dispatch(column_resize)
+        return
+      end
     end
+
+    hl.dispatch(window_resize)
   end
 end
 
