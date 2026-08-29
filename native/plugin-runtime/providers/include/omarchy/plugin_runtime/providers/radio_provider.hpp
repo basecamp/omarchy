@@ -53,7 +53,9 @@ private:
     std::uint64_t fetch_epoch = 0;
     std::array<char, 33> token{};
     std::array<char, kMaximumRadioStreamUrlBytes> url{};
+    std::array<char, 161> name{};
     std::size_t url_size = 0;
+    std::size_t name_size = 0;
     bool occupied = false;
   };
 
@@ -66,12 +68,17 @@ private:
   [[nodiscard]] bool authorized(
       const definitions::AuthorizedDynamicRequest &, std::string_view,
       std::string_view, std::uint64_t) const noexcept;
-  [[nodiscard]] StreamHandle *issue_handle(std::string_view) noexcept;
+  [[nodiscard]] StreamHandle *issue_handle(std::string_view, std::string_view) noexcept;
   [[nodiscard]] const StreamHandle *find_handle(std::string_view) const noexcept;
 
   RadioProviderConfiguration configuration_;
   std::array<StreamHandle, kMaximumRadioStations> handles_{};
   std::uint64_t next_handle_ = 1;
+  const StreamHandle *current_ = nullptr;
+  std::uint32_t volume_ = 70;
+  bool running_ = false;
+  bool paused_ = false;
+  bool muted_ = false;
 };
 
 } // namespace omarchy::plugin_runtime::providers

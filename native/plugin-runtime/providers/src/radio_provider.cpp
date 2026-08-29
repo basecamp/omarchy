@@ -65,8 +65,10 @@ bool RadioProvider::authorized(const definitions::AuthorizedDynamicRequest &requ
          request.authorization.definition.definition_digest.view() == digest;
 }
 
-RadioProvider::StreamHandle *RadioProvider::issue_handle(std::string_view url) noexcept {
-  if (url.size() >= kMaximumRadioStreamUrlBytes) return nullptr;
+RadioProvider::StreamHandle *RadioProvider::issue_handle(std::string_view url,
+                                                         std::string_view name) noexcept {
+  if (url.size() >= kMaximumRadioStreamUrlBytes || name.empty() || name.size() > 160)
+    return nullptr;
   auto found = std::ranges::find_if(handles_, [](const auto &entry) { return !entry.occupied; });
   if (found == handles_.end()) return nullptr;
   const auto converted = std::to_chars(found->token.data(), found->token.data() + 32,
@@ -76,7 +78,9 @@ RadioProvider::StreamHandle *RadioProvider::issue_handle(std::string_view url) n
   found->binding = configuration_.binding;
   found->fetch_epoch = configuration_.fetch_epoch;
   std::copy(url.begin(), url.end(), found->url.begin());
+  std::copy(name.begin(), name.end(), found->name.begin());
   found->url_size = url.size();
+  found->name_size = name.size();
   found->occupied = true;
   return &*found;
 }
@@ -125,7 +129,7 @@ bool RadioProvider::dispatch_fetch(const definitions::AuthorizedDynamicRequest &
     const auto stream = station.value("url_resolved").toString();
     if (!text(uuid, 64) || !text(name, 160) || !stream.startsWith("https://") ||
         stream.size() >= static_cast<int>(kMaximumRadioStreamUrlBytes)) continue;
-    const auto *handle = self.issue_handle(stream.toStdString());
+    const auto *handle = self.issue_handle(stream.toStdString(), name.toStdString());
     if (handle == nullptr) break;
     stations.append(QJsonObject{{"uuid", uuid}, {"name", name},
                                 {"country", station.value("country").toString().left(96)},
@@ -159,6 +163,11 @@ bool RadioProvider::dispatch_media(const definitions::AuthorizedDynamicRequest &
                self.configuration_.media.play(
                    std::string_view(handle->url.data(), handle->url_size),
                    self.configuration_.media.context);
+    if (accepted) {
+      self.current_ = handle;
+      self.running_ = true;
+      self.paused_ = false;
+    }
   } else if (request.operation == "control" &&
              (object.size() == 1 || object.size() == 2)) {
     const auto control = object.value("control").toString().toStdString();
@@ -170,9 +179,22 @@ bool RadioProvider::dispatch_media(const definitions::AuthorizedDynamicRequest &
                self.configuration_.media.control(
                    control, static_cast<std::uint32_t>(std::max(value, 0)),
                    self.configuration_.media.context);
+    if (accepted && control == "pause") self.paused_ = !self.paused_;
+    else if (accepted && control == "stop") {
+      self.running_ = false;
+      self.paused_ = false;
+    } else if (accepted && control == "mute") self.muted_ = !self.muted_;
+    else if (accepted && control == "volume") self.volume_ = static_cast<std::uint32_t>(value);
   }
   if (!accepted) return false;
-  return copy(QJsonDocument(QJsonObject{{"accepted", true}})
+  const QString title = self.current_ == nullptr ? QString{} : QString::fromUtf8(
+      self.current_->name.data(), static_cast<qsizetype>(self.current_->name_size));
+  return copy(QJsonDocument(QJsonObject{{"accepted", true},
+                                        {"running", self.running_},
+                                        {"paused", self.paused_},
+                                        {"muted", self.muted_},
+                                        {"volume", static_cast<int>(self.volume_)},
+                                        {"title", title}})
                   .toJson(QJsonDocument::Compact), response, written);
 }
 
@@ -181,6 +203,7 @@ std::size_t RadioProvider::revoke_fetch(std::uint64_t new_epoch) noexcept {
   configuration_.fetch_epoch = new_epoch;
   std::size_t invalidated = 0;
   for (auto &handle : handles_) if (handle.occupied) { handle = {}; ++invalidated; }
+  current_ = nullptr;
   return invalidated;
 }
 
