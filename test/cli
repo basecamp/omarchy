@@ -408,6 +408,16 @@ bright_foreground #ffffff
 EOF
 pass "legacy short palette resolves every canonical neutral color"
 
+# foot rejects anything outside light/dark, so the mode must be normalized.
+MODE_COLORS_FILE="$PI_TMPDIR/mode-colors.toml"
+printf 'mode = "Light"\nbackground = "#101010"\n' >"$MODE_COLORS_FILE"
+[[ $("$ROOT/bin/omarchy-theme-color" --file "$MODE_COLORS_FILE" mode) == "light" ]] || fail "a capitalized mode is lowercased"
+printf 'mode = "sepia"\nbackground = "#fffcf0"\n' >"$MODE_COLORS_FILE"
+[[ $("$ROOT/bin/omarchy-theme-color" --file "$MODE_COLORS_FILE" mode) == "light" ]] || fail "an unknown mode falls back to background luminance"
+printf 'theme_type = "DARK"\nbackground = "#fffcf0"\n' >"$MODE_COLORS_FILE"
+[[ $("$ROOT/bin/omarchy-theme-color" --file "$MODE_COLORS_FILE" mode) == "dark" ]] || fail "a legacy theme_type is lowercased"
+pass "theme mode is normalized to light or dark"
+
 LEGACY_THEME_HOME="$PI_TMPDIR/legacy-theme-home"
 LEGACY_NEXT_THEME="$LEGACY_THEME_HOME/.local/state/omarchy/current/next-theme"
 mkdir -p "$LEGACY_NEXT_THEME"
