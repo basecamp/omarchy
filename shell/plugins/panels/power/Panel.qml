@@ -146,12 +146,12 @@ Panel {
     return modeLabel()
   }
 
-  // Ink, not hue: one heat per process — foreground at 0.35..1.0 mapped
-  // from its CPU share against the busiest process, and that value follows
-  // the process everywhere (row mark, every bar segment). The system
-  // block/row is WHITE (the machine itself); ink fades monotonically down
-  // the table's rank. Identity is positional and by label; brightness is
-  // the process's heat (operator decisions, 2026-08-29).
+  // Ink, not hue: RANK-NORMALIZED heat — foreground at even steps from
+  // 1.0 (rank 1) down to 0.35 (last rank), and that value follows the
+  // process everywhere (row mark, every bar segment). The system block/row
+  // is WHITE (the machine itself). Magnitude lives in segment SIZE and the
+  // numeric cells; ink's only job is ORDER. Identity is positional and by
+  // label (operator decisions, 2026-08-29).
   function segmentInk(seg) {
     if (seg.kind === "system") return 1
     if (seg.ink !== undefined) return seg.ink
@@ -323,17 +323,22 @@ Panel {
     // rank. Segment SIZE still encodes each bar's own metric share; INK
     // encodes who the process is and how hot it runs. One writer: computed
     // here, once per refresh, onto plain numbers.
+    // RANK-NORMALIZED (operator decision, 2026-08-29): ink steps EVENLY by
+    // rank — rank 1 is white, the last rank sits at the 0.35 floor — not by
+    // share ratio. How much hotter one process runs than another is already
+    // encoded by segment SIZE; ink's only job is order.
     var heatMap = {}
-    var maxHeat = 0
     var cpuBar = resourceSplits.cpu
     // The cpu split is NULL until two samples exist (and stays null on AC
     // restarts) — a null bar means "no heat yet", not an error.
     if (cpuBar !== null && cpuBar !== undefined) {
+      var comms = []
       for (var hi = 0; hi < cpuBar.length; hi++)
-        if (cpuBar[hi].kind === "comm" && cpuBar[hi].share > maxHeat) maxHeat = cpuBar[hi].share
-      for (var hj = 0; hj < cpuBar.length; hj++)
-        if (cpuBar[hj].kind === "comm")
-          heatMap[cpuBar[hj].key] = 0.35 + 0.65 * (maxHeat > 0 ? cpuBar[hj].share / maxHeat : 0)
+        if (cpuBar[hi].kind === "comm") comms.push(cpuBar[hi])
+      for (var hj = 0; hj < comms.length; hj++) {
+        var step = comms.length > 1 ? 0.65 / (comms.length - 1) : 0
+        heatMap[comms[hj].key] = 1 - hj * step
+      }
     }
     var allBars = [resourceSplits.cpu, resourceSplits.ram, resourceSplits.watts, resourceSplits.gpu]
     for (var bi = 0; bi < allBars.length; bi++) {
