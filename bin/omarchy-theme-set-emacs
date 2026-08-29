@@ -15,19 +15,15 @@ if [[ -f $CURRENT_COLORS ]]; then
   done
 fi
 
-# The generated doom-theme.el / emacs-theme.el define `omarchy/apply-theme-to-frame`,
-# which re-applies the frame faces and calls `doom/reload-theme` so Doom switches
-# theme live, without a restart. Reload that definition, apply the user's full
-# custom theme if Omarchy's elisp is installed, then push the new faces to every
-# graphic frame so the reload always runs.
+# Reload generated theme files and apply the active theme to running frames.
 if pgrep -x emacs >/dev/null || pgrep -f emacsclient >/dev/null; then
   emacsclient --eval "(progn
-    (when (file-exists-p \"$HOME/.local/state/omarchy/current/theme/doom-theme.el\")
-      (load \"$HOME/.local/state/omarchy/current/theme/doom-theme.el\" nil t))
-    (when (file-exists-p \"$HOME/.local/state/omarchy/current/theme/emacs-theme.el\")
-      (load \"$HOME/.local/state/omarchy/current/theme/emacs-theme.el\" nil t))
-    (when (fboundp 'omarchy-apply-theme)
-      (omarchy-apply-theme))
-    (when (fboundp 'omarchy/apply-theme-to-frame)
-      (mapc 'omarchy/apply-theme-to-frame (frame-list))))" >/dev/null 2>&1 || true
+    (if (file-exists-p \"$HOME/.local/state/omarchy/current/theme/doom-theme.el\")
+        (load \"$HOME/.local/state/omarchy/current/theme/doom-theme.el\" nil t)
+      (when (file-exists-p \"$HOME/.local/state/omarchy/current/theme/emacs-theme.el\")
+        (load \"$HOME/.local/state/omarchy/current/theme/emacs-theme.el\" nil t)))
+    (if (fboundp 'omarchy-apply-theme)
+        (omarchy-apply-theme)
+      (when (fboundp 'omarchy/apply-theme-to-frame)
+        (mapc #'omarchy/apply-theme-to-frame (frame-list)))))" >/dev/null 2>&1 || true
 fi

@@ -32,8 +32,7 @@ This PR adds first-class **Doom Emacs** support to Omarchy, including automated 
 5. **Automated Truecolor Theming (`default/themed/doom-theme.el.tpl`, `default/themed/omarchy-colors.el.tpl` & `bin/omarchy-theme-set-emacs`)**:
    - Generates `~/.local/state/omarchy/current/theme/doom-theme.el` and `omarchy-colors.el` on theme changes natively without requiring external hook scripts or hook managers.
    - Automatically syncs `omarchy-colors.el` to `~/.config/doom/` and `~/.config/emacs/`.
-   - Includes `(display-graphic-p frame)` evaluation to prevent 8-color daemon fallback (fixes turquoise background issue on `emacsclient` frames).
-   - Hot-reloads all active frames across theme changes: runs the user's `omarchy-apply-theme` (full custom theme + modeline) **and** then calls `omarchy/apply-theme-to-frame` on every frame, which invokes `doom/reload-theme` so Doom re-themes live without a restart.
+   - Hot-reloads all active frames across theme changes smoothly without white frame flicker.
 
 ---
 

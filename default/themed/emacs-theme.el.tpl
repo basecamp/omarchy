@@ -15,11 +15,7 @@
   "Ensure graphic emacsclient frames evaluate full 24-bit GUI theme colors."
   (with-selected-frame frame
     (when (display-graphic-p frame)
-      (set-face-attribute 'default frame :background "{{ bg }}" :foreground "{{ fg }}")
-      (if (fboundp 'omarchy-apply-theme)
-          (omarchy-apply-theme)
-        (when (fboundp 'doom/reload-theme)
-          (doom/reload-theme))))))
+      (set-face-attribute 'default frame :background "{{ bg }}" :foreground "{{ fg }}"))))
 
 ;; Handle daemon client frames & standalone GUI instances
 (if (daemonp)
