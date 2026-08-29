@@ -42,6 +42,14 @@ qt_add_resources(omarchy-plugin-worker-runtime presentation_qml
     ../presentation/qml/PanelSlider.qml
     ../presentation/qml/ToggleSwitch.qml
     ../presentation/qml/CursorSurface.qml)
+set(OMARCHY_PLUGIN_PRESENTATION_EXTRA_QML
+  "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml/PanelActionButton.qml"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml/ConfirmDialog.qml"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml/Button.qml")
+qt_add_resources(omarchy-plugin-worker-runtime presentation_extra_qml
+  PREFIX "/qt/qml/Omarchy/PluginPresentation"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml"
+  FILES ${OMARCHY_PLUGIN_PRESENTATION_EXTRA_QML})
 omarchy_plugin_target_defaults(omarchy-plugin-worker-runtime)
 omarchy_plugin_worker_sanitize(omarchy-plugin-worker-runtime)
 target_include_directories(omarchy-plugin-worker-runtime PUBLIC

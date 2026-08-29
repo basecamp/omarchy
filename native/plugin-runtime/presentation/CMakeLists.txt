@@ -6,6 +6,7 @@ install(FILES
   qml/PanelHero.qml qml/PanelSectionHeader.qml qml/PanelSeparator.qml
   qml/PanelSlider.qml qml/ToggleSwitch.qml
   qml/CursorSurface.qml
+  qml/PanelActionButton.qml qml/ConfirmDialog.qml qml/Button.qml
   DESTINATION "${OMARCHY_PLUGIN_PRESENTATION_DIR}")
 
 if(BUILD_TESTING)
