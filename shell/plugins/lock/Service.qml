@@ -244,7 +244,12 @@ Item {
     fingerprintAuthenticating = true
     fingerprintAttemptReachedDevice = false
     if (!fingerprintPam.start()) {
+      // A start that fails before PAM even runs is a configuration problem
+      // (the PAM file removed under the lock), not a reader miss. Settle for
+      // pacing, then re-check: an unconfigured result hides the icon and stops
+      // the retries rather than counting toward "reader unavailable".
       settleFingerprintAttempt()
+      refreshFingerprintStatus()
       return
     }
     // Bound the wait for the first prompt: a claim that never lands (a daemon
@@ -463,7 +468,8 @@ Item {
     onExited: {
       root.fingerprintConfigured = String(fingerprintCheckStdout.text || "").trim() === "yes"
       if (root.lockRequested && root.fingerprintConfigured) {
-        root.startFingerprint()
+        // A pending retry already owns the next attempt.
+        if (!fingerprintRetryTimer.running) root.startFingerprint()
       } else if (!root.fingerprintConfigured) {
         // abort() delivers no completion signal, so close the attempt here
         // too; settle returns before arming a retry while unconfigured.
