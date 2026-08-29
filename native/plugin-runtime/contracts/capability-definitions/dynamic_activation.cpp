@@ -75,17 +75,24 @@ bool read_reference(Reader &reader, CapabilityReference &reference) {
 bool review_dynamic_grant(const TrustedDefinitionRegistry &registry,
                           const DynamicRevisionGrant &revision,
                           const DynamicScopeValidator &validator) {
-  if (!registry.resolve(revision.request.definition) ||
+  const auto resolved = registry.resolve(revision.request.definition);
+  if (!resolved ||
       revision.grant.definition.canonical_name != revision.request.definition.canonical_name ||
       revision.grant.definition.definition_generation != revision.request.definition.definition_generation ||
       revision.grant.definition.definition_digest != revision.request.definition.definition_digest ||
       revision.grant.epoch == 0 || validator.compare == nullptr)
     return false;
+  if (!std::all_of(revision.request.operations.values().begin(),
+                   revision.request.operations.values().end(), [&](const auto &op) {
+                     return std::ranges::any_of(
+                         resolved->definition->operations.values(),
+                         [&](const auto &defined) { return defined.name == op; });
+                   })) return false;
   if (!std::all_of(revision.grant.operations.values().begin(),
                    revision.grant.operations.values().end(), [&](const auto &op) {
                      return revision.request.operations.contains(op);
                    })) return false;
-  const auto relation=validator.compare(*registry.resolve(revision.request.definition)->definition,
+  const auto relation=validator.compare(*resolved->definition,
                                         revision.grant.scope.view(),revision.request.scope.view(),validator.context);
   return relation==DynamicScopeRelation::equal || relation==DynamicScopeRelation::narrower;
 }
