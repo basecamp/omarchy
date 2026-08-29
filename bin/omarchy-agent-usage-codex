@@ -474,25 +474,40 @@ def _cached_local_stats(max_age):
     return stats
 
 
+def rpc_send(proc, payload, operation):
+  """Write one JSON-RPC frame. Raise immediately if the app-server is gone."""
+  try:
+    proc.stdin.write(json.dumps(payload) + "\n")
+    proc.stdin.flush()
+  except OSError as exc:
+    try:
+      proc.stdin.close()
+    except OSError:
+      pass
+    raise RuntimeError(f"Codex app-server exited before {operation}") from exc
+
+
 def rpc_request(proc, request_id, method, params=None, timeout=8):
   payload = {"id": request_id, "method": method, "params": params or {}}
-  proc.stdin.write(json.dumps(payload) + "\n")
-  proc.stdin.flush()
+  rpc_send(proc, payload, method)
   deadline = time.time() + timeout
   while time.time() < deadline:
     ready, _, _ = select.select([proc.stdout], [], [], 0.25)
     if not ready:
+      if proc.poll() is not None:
+        raise RuntimeError(f"Codex app-server exited before {method}")
       continue
     line = proc.stdout.readline()
     if not line:
-      break
+      raise RuntimeError(f"Codex app-server exited before {method}")
     try:
       message = json.loads(line)
     except Exception:
       continue
     if message.get("id") == request_id:
       return message
-  raise TimeoutError(method)
+  # Process still up but silent: keep the method name searchable, but name the stall.
+  raise TimeoutError(f"Codex app-server did not answer {method}")
 
 
 def limit_window(window):
@@ -518,6 +533,40 @@ def limit_window(window):
   }
 
 
+def codex_rpc_help(proc, stderr_file, exc):
+  """Explain an app-server RPC failure without leaking bare method names.
+
+  rpc_request used to raise TimeoutError(method), so a dead CLI left the panel
+  showing just "initialize". Prefer, in order:
+
+  1. The CLI's own stderr (names a dropped/renamed flag).
+  2. Exception text when the process is still running (stall / parse error).
+  3. The login hint when the process exited with nothing useful to say.
+  """
+  try:
+    proc.wait(timeout=1)
+  except Exception:
+    pass
+
+  detail = ""
+  if stderr_file is not None:
+    try:
+      stderr_file.seek(0)
+      detail = stderr_file.read()
+    except Exception:
+      detail = ""
+  lines = [line.strip() for line in detail.splitlines() if line.strip()]
+  if lines:
+    return f"codex app-server exited: {' '.join(lines)}"[:300]
+
+  text = str(exc).strip()
+  if proc.poll() is None:
+    # Still up: stall or unparseable payload. Not an auth problem.
+    return text[:300] or AUTH_HELP
+  # Exited cleanly with empty stderr — typical "not logged in" shape.
+  return AUTH_HELP
+
+
 def fetch_codex_rpc():
   result = {"limits": [], "tierLabel": "", "usageStatusText": "", "authHelpText": AUTH_HELP}
   codex = find_command("codex")
@@ -526,24 +575,30 @@ def fetch_codex_rpc():
     result["authHelpText"] = "codex not found in PATH"
     return result
 
+  # Regular file, not a PIPE: an unread stderr pipe can fill and deadlock a
+  # chatty app-server. Only read on failure after the process has exited.
+  stderr_file = tempfile.TemporaryFile("w+", errors="replace")
   try:
+    # -a never: non-interactive probe; never prompts. on-request is also valid
+    # on codex-cli >= 0.149, but never matches the old untrusted "do not ask"
+    # intent and is what the collector needs (it never starts a turn).
     proc = subprocess.Popen(
-      [codex, "-s", "read-only", "-a", "on-request", "app-server"],
+      [codex, "-s", "read-only", "-a", "never", "app-server"],
       stdin=subprocess.PIPE,
       stdout=subprocess.PIPE,
-      stderr=subprocess.DEVNULL,
+      stderr=stderr_file,
       text=True,
       env=ENV,
     )
   except Exception as exc:
+    stderr_file.close()
     result["usageStatusText"] = "Codex unavailable"
     result["authHelpText"] = str(exc)
     return result
 
   try:
     rpc_request(proc, 1, "initialize", {"clientInfo": {"name": "omarchy-agent-usage", "version": "1"}}, timeout=8)
-    proc.stdin.write(json.dumps({"method": "initialized", "params": {}}) + "\n")
-    proc.stdin.flush()
+    rpc_send(proc, {"method": "initialized", "params": {}}, "initialized")
     account_msg = rpc_request(proc, 2, "account/read", timeout=4)
     limits_msg = rpc_request(proc, 3, "account/rateLimits/read", timeout=4)
 
@@ -558,7 +613,7 @@ def fetch_codex_rpc():
         result["limits"].append(entry)
   except Exception as exc:
     result["usageStatusText"] = "Codex limits unavailable"
-    result["authHelpText"] = str(exc)
+    result["authHelpText"] = codex_rpc_help(proc, stderr_file, exc)
   finally:
     try:
       proc.terminate()
@@ -568,6 +623,7 @@ def fetch_codex_rpc():
         proc.kill()
       except Exception:
         pass
+    stderr_file.close()
   return result
 
 
