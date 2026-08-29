@@ -23,6 +23,7 @@ enum class RenderMessageType : std::uint16_t {
   surface_suspend = 0x2013,
   surface_resume = 0x2014,
   frame_ready = 0x2020,
+  input_regions = 0x2021,
   input = 0x2030,
   focus = 0x2031,
 };
@@ -44,6 +45,21 @@ struct FrameReady {
   std::uint32_t slot;
   std::uint64_t slot_sequence;
   std::uint64_t frame_sequence;
+};
+
+inline constexpr std::size_t kMaximumTransportedInputRegions = 16;
+struct TransportedInputRegion {
+  std::int32_t x = 0;
+  std::int32_t y = 0;
+  std::uint32_t width = 0;
+  std::uint32_t height = 0;
+  constexpr bool operator==(const TransportedInputRegion &) const = default;
+};
+struct InputRegionUpdate {
+  SurfaceKey surface;
+  std::uint64_t generation = 0;
+  std::array<TransportedInputRegion, kMaximumTransportedInputRegions> regions{};
+  std::uint32_t count = 0;
 };
 
 struct RenderTypedError {
@@ -80,6 +96,10 @@ encode_surface_allocation(const TrustedAllocation &allocation);
 encode_frame_ready(const FrameReady &payload);
 [[nodiscard]] bool decode_frame_ready(std::span<const std::byte> bytes,
                                       FrameReady &output);
+[[nodiscard]] std::array<std::byte, 288>
+encode_input_region_update(const InputRegionUpdate &payload);
+[[nodiscard]] bool decode_input_region_update(std::span<const std::byte> bytes,
+                                              InputRegionUpdate &output);
 [[nodiscard]] std::array<std::byte, 56>
 encode_input_event(const InputEvent &payload);
 [[nodiscard]] bool decode_input_event(std::span<const std::byte> bytes,

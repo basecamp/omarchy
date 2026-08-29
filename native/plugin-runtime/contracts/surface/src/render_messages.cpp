@@ -14,7 +14,7 @@ constexpr std::uint32_t kSoftwareSceneGraph = 1U << 1U;
 constexpr std::uint32_t kRequiredProfileFlags =
     kFullFrameOnly | kSoftwareSceneGraph;
 
-constexpr std::array<wire::MessageRule, 10> kWireRules{{
+constexpr std::array<wire::MessageRule, 11> kWireRules{{
     {static_cast<std::uint16_t>(RenderMessageType::profile_offer),
      wire::DirectionMask::host_to_worker, wire::CorrelationRule::nonzero,
      wire::MessageSemantic::request, 24, 24},
@@ -39,6 +39,9 @@ constexpr std::array<wire::MessageRule, 10> kWireRules{{
     {static_cast<std::uint16_t>(RenderMessageType::frame_ready),
      wire::DirectionMask::worker_to_host, wire::CorrelationRule::zero,
      wire::MessageSemantic::event, 40, 40},
+    {static_cast<std::uint16_t>(RenderMessageType::input_regions),
+     wire::DirectionMask::worker_to_host, wire::CorrelationRule::zero,
+     wire::MessageSemantic::event, 288, 288},
     {static_cast<std::uint16_t>(RenderMessageType::input),
      wire::DirectionMask::host_to_worker, wire::CorrelationRule::zero,
      wire::MessageSemantic::one_way, 56, 56},
@@ -47,7 +50,7 @@ constexpr std::array<wire::MessageRule, 10> kWireRules{{
      wire::MessageSemantic::one_way, 32, 32},
 }};
 
-constexpr std::array<DescriptorRule, 10> kDescriptorRules{{
+constexpr std::array<DescriptorRule, 11> kDescriptorRules{{
     {static_cast<std::uint16_t>(RenderMessageType::profile_offer), 0},
     {static_cast<std::uint16_t>(RenderMessageType::profile_select), 0},
     {static_cast<std::uint16_t>(RenderMessageType::surface_allocate), 1},
@@ -56,6 +59,7 @@ constexpr std::array<DescriptorRule, 10> kDescriptorRules{{
     {static_cast<std::uint16_t>(RenderMessageType::surface_suspend), 0},
     {static_cast<std::uint16_t>(RenderMessageType::surface_resume), 0},
     {static_cast<std::uint16_t>(RenderMessageType::frame_ready), 0},
+    {static_cast<std::uint16_t>(RenderMessageType::input_regions), 0},
     {static_cast<std::uint16_t>(RenderMessageType::input), 0},
     {static_cast<std::uint16_t>(RenderMessageType::focus), 0},
 }};
@@ -282,6 +286,55 @@ bool decode_frame_ready(std::span<const std::byte> bytes, FrameReady &output) {
   return output.surface.id != 0 && output.surface.generation != 0 &&
          output.slot < kSlotCount && output.slot_sequence >= 2 &&
          (output.slot_sequence & 1U) == 0 && output.frame_sequence != 0;
+}
+
+std::array<std::byte, 288>
+encode_input_region_update(const InputRegionUpdate &payload) {
+  std::array<std::byte, 288> output{};
+  put<std::uint64_t>(output, 0, payload.surface.id);
+  put<std::uint64_t>(output, 8, payload.surface.generation);
+  put<std::uint64_t>(output, 16, payload.generation);
+  put<std::uint32_t>(output, 24, payload.count);
+  for (std::size_t index = 0;
+       index < std::min<std::size_t>(payload.count, payload.regions.size());
+       ++index) {
+    const auto offset = 32 + index * 16;
+    put<std::int32_t>(output, offset, payload.regions[index].x);
+    put<std::int32_t>(output, offset + 4, payload.regions[index].y);
+    put<std::uint32_t>(output, offset + 8, payload.regions[index].width);
+    put<std::uint32_t>(output, offset + 12, payload.regions[index].height);
+  }
+  return output;
+}
+
+bool decode_input_region_update(std::span<const std::byte> bytes,
+                                InputRegionUpdate &output) {
+  if (bytes.size() != 288 || get<std::uint32_t>(bytes, 28) != 0)
+    return false;
+  InputRegionUpdate decoded{
+      .surface = {.id = get<std::uint64_t>(bytes, 0),
+                  .generation = get<std::uint64_t>(bytes, 8)},
+      .generation = get<std::uint64_t>(bytes, 16),
+      .count = get<std::uint32_t>(bytes, 24)};
+  if (decoded.surface.id == 0 || decoded.surface.generation == 0 ||
+      decoded.generation == 0 || decoded.count > decoded.regions.size())
+    return false;
+  for (std::size_t index = 0; index < decoded.regions.size(); ++index) {
+    const auto offset = 32 + index * 16;
+    const TransportedInputRegion region{
+        .x = get<std::int32_t>(bytes, offset),
+        .y = get<std::int32_t>(bytes, offset + 4),
+        .width = get<std::uint32_t>(bytes, offset + 8),
+        .height = get<std::uint32_t>(bytes, offset + 12)};
+    if (index < decoded.count) {
+      if (region.width == 0 || region.height == 0) return false;
+      decoded.regions[index] = region;
+    } else if (region != TransportedInputRegion{}) {
+      return false;
+    }
+  }
+  output = decoded;
+  return true;
 }
 
 std::array<std::byte, 56> encode_input_event(const InputEvent &payload) {

@@ -84,6 +84,28 @@ int main() {
               decoded_frame.frame_sequence == frame.frame_sequence,
           "frame-ready round trip failed");
 
+  InputRegionUpdate regions{.surface = allocation->surface,
+                            .generation = 3,
+                            .regions = {{{.x = 20, .y = 30,
+                                          .width = 80, .height = 40}}},
+                            .count = 1};
+  const auto region_bytes = encode_input_region_update(regions);
+  InputRegionUpdate decoded_regions{};
+  require(decode_input_region_update(region_bytes, decoded_regions) &&
+              decoded_regions.surface == regions.surface &&
+              decoded_regions.generation == 3 &&
+              decoded_regions.count == 1 &&
+              decoded_regions.regions[0] == regions.regions[0],
+          "input-region update round trip failed");
+  auto malformed_regions = region_bytes;
+  malformed_regions[31] = std::byte{1};
+  require(!decode_input_region_update(malformed_regions, decoded_regions),
+          "input-region reserved field accepted");
+  regions.count = kMaximumTransportedInputRegions + 1;
+  require(!decode_input_region_update(encode_input_region_update(regions),
+                                      decoded_regions),
+          "excessive input-region count accepted");
+
   const InputEvent input{.surface = allocation->surface,
                          .sequence = 10,
                          .kind = InputKind::pointer_motion,
