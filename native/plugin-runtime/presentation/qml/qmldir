@@ -10,3 +10,4 @@ PanelSectionHeader 1.0 PanelSectionHeader.qml
 PanelSeparator 1.0 PanelSeparator.qml
 PanelSlider 1.0 PanelSlider.qml
 ToggleSwitch 1.0 ToggleSwitch.qml
+CursorSurface 1.0 CursorSurface.qml

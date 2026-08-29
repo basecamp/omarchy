@@ -5,6 +5,7 @@ install(FILES
   qml/BarIconButton.qml qml/KeyboardPanel.qml qml/PanelKeyCatcher.qml
   qml/PanelHero.qml qml/PanelSectionHeader.qml qml/PanelSeparator.qml
   qml/PanelSlider.qml qml/ToggleSwitch.qml
+  qml/CursorSurface.qml
   DESTINATION "${OMARCHY_PLUGIN_PRESENTATION_DIR}")
 
 if(BUILD_TESTING)

@@ -40,7 +40,8 @@ qt_add_resources(omarchy-plugin-worker-runtime presentation_qml
     ../presentation/qml/PanelSectionHeader.qml
     ../presentation/qml/PanelSeparator.qml
     ../presentation/qml/PanelSlider.qml
-    ../presentation/qml/ToggleSwitch.qml)
+    ../presentation/qml/ToggleSwitch.qml
+    ../presentation/qml/CursorSurface.qml)
 omarchy_plugin_target_defaults(omarchy-plugin-worker-runtime)
 omarchy_plugin_worker_sanitize(omarchy-plugin-worker-runtime)
 target_include_directories(omarchy-plugin-worker-runtime PUBLIC

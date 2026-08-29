@@ -1,2 +1,7 @@
 import QtQuick
-Item { property var bar: null; property real value: 0; property real from: 0; property real to: 100; signal moved(real value); Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width; height: 4; color: "#354052" }; MouseArea { anchors.fill: parent; onPositionChanged: if (pressed) parent.moved(parent.from + mouse.x / width * (parent.to - parent.from)) } }
+Item {
+  property var bar: null; property real value: 0; property real minimum: 0; property real maximum: 100; property real step: 1; property bool integer: false; property int tickCount: 0
+  signal released(real value)
+  Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width; height: 4; color: "#354052" }
+  MouseArea { anchors.fill: parent; onReleased: parent.released(parent.minimum + mouse.x / width * (parent.maximum - parent.minimum)) }
+}

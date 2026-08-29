@@ -1,2 +1,2 @@
 import QtQuick
-Text { property string label: ""; text: label; color: Color.foreground; font.bold: true }
+Text { property color foreground: Color.foreground; property string fontFamily: Style.font.family; color: foreground; font.family: fontFamily; font.bold: true }
