@@ -100,6 +100,8 @@ Install-time violations are rejected before activation. Runtime violations are d
 
 The final live proofs ran side-by-side on Omarchy 4.0.1 without replacing system files, changing the schema-v1 plugin directory, modifying `~/.config/omarchy/plugins`, or activating a production service. The root-owned bundle was installed only below `/opt/omarchy-plugin-security-lab/36b06e268e6d8bd51c8f64cfff34ca52a08790bb0cb6c3b710e3034a9f94000c`.
 
+That bundle was built from the clean candidate immediately before the final rebase. After rebasing the complete series onto current `upstream/quattro`, a fresh clean Release build again passed the 25-test security campaign and 20 product E2E repetitions. The rebased binary was not installed over the recorded bundle, so the desktop evidence below remains attributed to `36b06e268e...` rather than being presented as evidence for an unrecorded replacement.
+
 Bundle identity covers the relative path, mode, and digest of every installed host, worker, bridge, QML metadata, permission tool, audit tool, and provenance file. Launch separately pins worker SHA-256 `38ea7641b749e083a09f92d958752d6dcc80d9f747bcd74436f75bcc1923fd49`, rehashes it, and rejects symlinks, non-root ownership, writable path components, or a noncanonical bundle root.
 
 Each scenario used a fresh immutable plugin copy and separate mode-0700 grant, private-state, audit, and evidence roots. CUA Driver captured exact-window JSON and PNGs; broker state and redacted audit records were exported independently; the live host, worker, and Bubblewrap process tree was recorded; and every file was hashed. No video is claimed.
