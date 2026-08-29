@@ -3,7 +3,6 @@
 #include "manifest_contract.hpp"
 
 #include <algorithm>
-#include <charconv>
 #include <string>
 
 namespace omarchy::plugins::definitions {
@@ -37,23 +36,6 @@ void append(std::string &bytes, std::string_view value) {
   bytes.append(std::to_string(value.size()));
   bytes.push_back(':');
   bytes.append(value);
-}
-
-bool absolute_normal_path(std::string_view path) {
-  return path.starts_with('/') && path.find("//") == std::string_view::npos &&
-         path.find("/../") == std::string_view::npos &&
-         !path.ends_with("/..") && path.find("/./") == std::string_view::npos &&
-         !path.ends_with("/.");
-}
-
-bool safe_token(std::string_view value) {
-  return !value.empty() && value.size() <= 96 &&
-         std::all_of(value.begin(), value.end(), [](unsigned char item) {
-           return (item >= 'a' && item <= 'z') ||
-                  (item >= 'A' && item <= 'Z') ||
-                  (item >= '0' && item <= '9') || item == '.' || item == '-' ||
-                  item == '_' || item == ':' || item == '/';
-         });
 }
 
 } // namespace
@@ -161,76 +143,6 @@ TrustedDefinitionRegistry::resolve(const CapabilityReference &reference) const {
   return found;
 }
 
-bool valid_cli_profile(const CliHarnessProfile &profile) {
-  if (!canonical_name(profile.profile_name.view()) ||
-      !absolute_normal_path(profile.executable.view()) ||
-      !absolute_normal_path(profile.working_directory.view()) ||
-      !hex_digest(profile.executable_digest) || profile.subcommands.empty() ||
-      profile.maximum_stdout_bytes == 0 || profile.maximum_stdout_bytes > 1048576 ||
-      profile.maximum_stderr_bytes > 65536 ||
-      profile.maximum_stdin_bytes > 1048576 ||
-      profile.timeout_milliseconds == 0 || profile.timeout_milliseconds > 30000)
-    return false;
-  const auto executable = profile.executable.view();
-  const auto basename = executable.substr(executable.find_last_of('/') + 1);
-  if (basename == "bash" || basename == "sh" || basename == "env")
-    return false;
-  for (const auto &environment : profile.fixed_environment.values()) {
-    const auto value = environment.view();
-    const auto equal = value.find('=');
-    if (equal == std::string_view::npos || equal == 0 ||
-        !safe_token(value.substr(0, equal)) || !safe_token(value.substr(equal + 1)))
-      return false;
-  }
-  for (const auto &subcommand : profile.subcommands.values()) {
-    if (!canonical_name(subcommand.name.view()))
-      return false;
-    for (const auto &rule : subcommand.arguments.values()) {
-      if (rule.kind == ArgumentKind::literal && !safe_token(rule.value.view()))
-        return false;
-      if (rule.kind != ArgumentKind::literal &&
-          (rule.maximum == 0 || rule.maximum > 4096))
-        return false;
-    }
-  }
-  return true;
-}
-
-bool authorize_cli_invocation(const CliHarnessProfile &profile,
-                              const Digest &actual_executable,
-                              std::span<const std::string_view> argv,
-                              CliInvocation &output) {
-  output = {};
-  if (!valid_cli_profile(profile) || actual_executable != profile.executable_digest ||
-      argv.empty() || argv.size() > output.argv.size())
-    return false;
-  const auto found = std::find_if(
-      profile.subcommands.values().begin(), profile.subcommands.values().end(),
-      [&argv](const auto &command) { return command.name.view() == argv[0]; });
-  if (found == profile.subcommands.values().end() ||
-      argv.size() != found->arguments.size() + 1)
-    return false;
-  for (std::size_t index = 0; index < found->arguments.size(); ++index) {
-    const auto argument = argv[index + 1];
-    const auto &rule = found->arguments[index];
-    if (argument.empty() || argument.size() > 4096 ||
-        (rule.kind == ArgumentKind::literal && argument != rule.value.view()) ||
-        (rule.kind == ArgumentKind::bounded_token &&
-         (argument.size() > rule.maximum || !safe_token(argument))))
-      return false;
-    if (rule.kind == ArgumentKind::bounded_unsigned) {
-      std::uint32_t value = 0;
-      const auto [end, error] =
-          std::from_chars(argument.data(), argument.data() + argument.size(), value);
-      if (error != std::errc{} || end != argument.data() + argument.size() ||
-          value > rule.maximum)
-        return false;
-    }
-  }
-  std::copy(argv.begin(), argv.end(), output.argv.begin());
-  output.argc = argv.size();
-  return true;
-}
 
 DynamicAuthorization authorize_dynamic_operation(
     const TrustedDefinitionRegistry &registry, const DynamicRequest &request,

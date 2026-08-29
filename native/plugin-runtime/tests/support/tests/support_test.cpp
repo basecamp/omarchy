@@ -220,25 +220,6 @@ void wire_corpus_test() {
 }
 #endif
 
-#if OMARCHY_TEST_HAS_MANIFEST
-void manifest_fake_test() {
-  namespace manifest = omarchy::plugins::manifest;
-  support::DeterministicIdSource ids(0x2000);
-  manifest::Lifecycle lifecycle;
-  lifecycle.stage(manifest::sha256_hex(std::to_string(ids.next())));
-  lifecycle.validation_succeeded(true);
-  lifecycle.candidate_health_succeeded();
-  require(lifecycle.active().has_value() && !lifecycle.pending().has_value(),
-          "deterministic lifecycle fake did not activate");
-  lifecycle.stage(manifest::sha256_hex(std::to_string(ids.next())));
-  lifecycle.validation_succeeded(false);
-  require(lifecycle.pending().has_value() &&
-              lifecycle.pending()->state ==
-                  manifest::RevisionState::awaiting_grants,
-          "deterministic lifecycle fake did not wait for grants");
-}
-#endif
-
 #if OMARCHY_TEST_HAS_SURFACE
 void render_fake_test() {
   namespace surface = omarchy::plugin_runtime::surface;
@@ -271,9 +252,6 @@ int main() {
   descriptor_support_test();
 #if OMARCHY_TEST_HAS_WIRE
   wire_corpus_test();
-#endif
-#if OMARCHY_TEST_HAS_MANIFEST
-  manifest_fake_test();
 #endif
 #if OMARCHY_TEST_HAS_SURFACE
   render_fake_test();

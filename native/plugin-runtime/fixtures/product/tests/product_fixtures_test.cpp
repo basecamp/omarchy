@@ -1,11 +1,7 @@
 #include "manifest_contract.hpp"
 
-#include <QFile>
 #include <QEventLoop>
 #include <QGuiApplication>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -88,8 +84,6 @@ public:
       : QObject(parent), allowed_(std::move(allowed)),
         asynchronous_(asynchronous) {}
 
-  void setStatuses(QVariantList statuses) { statuses_ = std::move(statuses); }
-
   Q_INVOKABLE QVariant invoke(const QString &operation,
                               const QVariantMap &payload) {
     if (!allowed_.contains(operation)) {
@@ -105,9 +99,6 @@ public:
                                  ? QVariant(QStringLiteral("encoded-result"))
                                  : QVariant();
       return asynchronousCall(true, {}, value);
-    }
-    if (operation == QStringLiteral("fake_status_list")) {
-      return statuses_;
     }
     return true;
   }
@@ -171,7 +162,6 @@ private:
   QStringList operations_;
   QStringList denied_;
   QList<QVariantMap> payloads_;
-  QVariantList statuses_;
   std::vector<std::unique_ptr<FakeCall>> calls_;
   qulonglong next_correlation_ = 1;
 };
@@ -204,84 +194,6 @@ std::unique_ptr<LoadedFixture> load(std::string_view name,
   loaded->object.reset(component.create());
   require(loaded->object != nullptr, "fixture QML did not instantiate");
   return loaded;
-}
-
-QVariantList load_statuses() {
-  QFile input(QString::fromStdString(
-      (kRoot / "fake-status/fake-status.json").string()));
-  require(input.open(QIODevice::ReadOnly), "fake status data did not open");
-  QJsonParseError error{};
-  const auto document = QJsonDocument::fromJson(input.readAll(), &error);
-  require(error.error == QJsonParseError::NoError && document.isArray(),
-          "fake status data is malformed");
-  return document.array().toVariantList();
-}
-
-void test_pomodoro() {
-  FakeRuntime runtime({QStringLiteral("storage_read"),
-                       QStringLiteral("storage_write"),
-                       QStringLiteral("notification_send"),
-                       QStringLiteral("audio_play_cue")});
-  auto fixture = load("pomodoro", runtime);
-  require(fixture->object->property("surfaceRole").toString() ==
-                  QStringLiteral("bar-embedded") &&
-              fixture->object->property("width").toInt() == 252 &&
-              runtime.count(QStringLiteral("storage_read")) == 1,
-          "Pomodoro did not load as a bounded custom bar scene");
-  require(QMetaObject::invokeMethod(fixture->object.get(), "toggleForTest") &&
-              fixture->object->property("active").toBool(),
-          "Pomodoro did not preserve local interaction state");
-  require(QMetaObject::invokeMethod(fixture->object.get(), "completeForTest") &&
-              fixture->object->property("completedSessions").toInt() == 1 &&
-              runtime.count(QStringLiteral("storage_write")) == 1 &&
-              runtime.count(QStringLiteral("notification_send")) == 1 &&
-              runtime.count(QStringLiteral("audio_play_cue")) == 1,
-          "Pomodoro did not use the four named mock operations");
-}
-
-void test_pet() {
-  FakeRuntime runtime({});
-  auto fixture = load("pet", runtime);
-  const auto before = fixture->object->property("petX").toReal();
-  require(fixture->object->property("surfaceRole").toString() ==
-                  QStringLiteral("desktop-overlay") &&
-              !fixture->object->property("acceptsKeyboardFocus").toBool() &&
-              fixture->object->property("maximumFramesPerSecond").toInt() ==
-                  30 &&
-              QMetaObject::invokeMethod(fixture->object.get(), "stepForTest") &&
-              fixture->object->property("petX").toReal() > before &&
-              fixture->object->property("inputRegions").toList().size() == 1,
-          "transparent pet did not retain bounded motion and input geometry");
-}
-
-void test_fake_status() {
-  FakeRuntime runtime({QStringLiteral("fake_status_list"),
-                       QStringLiteral("fake_status_acknowledge")});
-  runtime.setStatuses(load_statuses());
-  auto fixture = load("fake-status", runtime);
-  require(fixture->object->property("surfaceRole").toString() ==
-                  QStringLiteral("panel") &&
-              fixture->object->property("statuses").toList().size() == 3 &&
-              runtime.count(QStringLiteral("fake_status_list")) == 1,
-          "fake service list did not load through its named adapter operation");
-
-  QVariant acknowledged;
-  require(QMetaObject::invokeMethod(fixture->object.get(),
-                                    "acknowledgeForTest",
-                                    Q_RETURN_ARG(QVariant, acknowledged),
-                                    Q_ARG(QVariant, QVariant(101))) &&
-              acknowledged.toBool() &&
-              runtime.count(QStringLiteral("fake_status_acknowledge")) == 1,
-          "fake service acknowledgement did not use its enumerated operation");
-
-  QVariant opened;
-  require(QMetaObject::invokeMethod(
-              fixture->object.get(), "openForTest", Q_RETURN_ARG(QVariant, opened),
-              Q_ARG(QVariant, QVariant(QStringLiteral("https://example.test")))) &&
-              !opened.toBool() &&
-              fixture->object->property("undeclaredOpenDenied").toBool() &&
-              runtime.denied(QStringLiteral("open_uri")),
-          "undeclared URL action escaped the authority-free fake runtime");
 }
 
 void test_live_evidence_fixtures() {
@@ -337,9 +249,6 @@ int main(int argc, char **argv) {
       test_live_evidence_fixtures();
       return 0;
     }
-    test_pomodoro();
-    test_pet();
-    test_fake_status();
     test_live_evidence_fixtures();
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';

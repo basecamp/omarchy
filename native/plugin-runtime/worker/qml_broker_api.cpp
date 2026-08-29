@@ -98,18 +98,6 @@ std::optional<EncodedInvoke> token_request(
   return EncodedInvoke{type, std::move(output)};
 }
 
-std::optional<EncodedInvoke> resource_request(
-    permissions::OperationId operation, std::uint32_t resource,
-    std::span<const std::byte> provider) {
-  if (resource == 0 || provider.size() > 60 * 1024) return std::nullopt;
-  const auto type = static_cast<std::uint16_t>(operation);
-  std::vector<std::byte> output(16 + provider.size());
-  put16(output, 0, type); put16(output, 2, 8);
-  put32(output, 4, static_cast<std::uint32_t>(provider.size()));
-  put32(output, 8, resource); put16(output, 12, type); put16(output, 14, 0);
-  std::copy(provider.begin(), provider.end(), output.begin() + 16);
-  return EncodedInvoke{type, std::move(output)};
-}
 } // namespace
 
 ManifestInvokeEncoder::ManifestInvokeEncoder(
@@ -209,20 +197,6 @@ std::optional<EncodedInvoke> BootstrapInvokeEncoder::encode(
     const auto cue = arguments.value(QStringLiteral("cue")).toString().toUtf8();
     return token_request(permissions::OperationId::audio_play_cue, cue, {});
   }
-  if (operation == "fake_status_list") {
-    const auto resource = arguments.value(QStringLiteral("resource")).toUInt();
-    return resource_request(permissions::OperationId::fake_status_list,
-                            resource, {});
-  }
-  if (operation == "fake_status_acknowledge") {
-    const auto resource = arguments.value(QStringLiteral("resource")).toUInt();
-    const auto status = arguments.value(QStringLiteral("id")).toUInt();
-    if (status == 0) return std::nullopt;
-    std::array<std::byte, 4> provider{};
-    put32(provider, 0, status);
-    return resource_request(
-        permissions::OperationId::fake_status_acknowledge, resource, provider);
-  }
   return std::nullopt;
 }
 
@@ -272,8 +246,6 @@ QmlBrokerApi::QmlBrokerApi(
       operations = {"send"};
     else if (operations.empty() && request.capability == "audio.play-cue")
       operations = {"play"};
-    else if (operations.empty() && request.capability == "service.fake-status")
-      operations = {"list", "acknowledge"};
     for (const auto &operation : operations) {
       requested_permissions_.push_back(
           {.capability = QString::fromStdString(request.capability),

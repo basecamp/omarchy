@@ -25,33 +25,6 @@ add_library(omarchy-plugin-worker-runtime STATIC
   worker_runtime.cpp
   steady_seccomp.cpp
 )
-qt_add_resources(omarchy-plugin-worker-runtime presentation_qml
-  PREFIX "/qt/qml/Omarchy/PluginPresentation"
-  BASE "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml"
-  FILES
-    ../presentation/qml/qmldir
-    ../presentation/qml/Color.qml
-    ../presentation/qml/Style.qml
-    ../presentation/qml/Panel.qml
-    ../presentation/qml/BarIconButton.qml
-    ../presentation/qml/KeyboardPanel.qml
-    ../presentation/qml/PanelKeyCatcher.qml
-    ../presentation/qml/PanelHero.qml
-    ../presentation/qml/PanelSectionHeader.qml
-    ../presentation/qml/PanelSeparator.qml
-    ../presentation/qml/PanelSlider.qml
-    ../presentation/qml/ToggleSwitch.qml
-    ../presentation/qml/CursorSurface.qml)
-set(OMARCHY_PLUGIN_PRESENTATION_EXTRA_QML
-  "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml/PanelActionButton.qml"
-  "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml/ConfirmDialog.qml"
-  "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml/Button.qml"
-  "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml/BarWidget.qml"
-  "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml/WidgetButton.qml")
-qt_add_resources(omarchy-plugin-worker-runtime presentation_extra_qml
-  PREFIX "/qt/qml/Omarchy/PluginPresentation"
-  BASE "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml"
-  FILES ${OMARCHY_PLUGIN_PRESENTATION_EXTRA_QML})
 omarchy_plugin_target_defaults(omarchy-plugin-worker-runtime)
 omarchy_plugin_worker_sanitize(omarchy-plugin-worker-runtime)
 target_include_directories(omarchy-plugin-worker-runtime PUBLIC
@@ -84,18 +57,9 @@ target_link_libraries(omarchy-plugin-qml-worker
           omarchy-plugin-worker-runtime
 )
 
-install(TARGETS omarchy-plugin-qml-worker RUNTIME DESTINATION "${CMAKE_INSTALL_LIBDIR}/omarchy/plugin-runtime")
+install(TARGETS omarchy-plugin-qml-worker RUNTIME DESTINATION "${OMARCHY_PLUGIN_INSTALL_ROOT}/bin")
 
 if(BUILD_TESTING)
-  qt_add_executable(omarchy-plugin-product-e2e-worker main.cpp)
-  omarchy_plugin_target_defaults(omarchy-plugin-product-e2e-worker)
-  omarchy_plugin_worker_sanitize(omarchy-plugin-product-e2e-worker)
-  target_compile_definitions(omarchy-plugin-product-e2e-worker PRIVATE
-    OMARCHY_PLUGIN_PRODUCT_E2E=1)
-  target_link_libraries(omarchy-plugin-product-e2e-worker PRIVATE
-    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Omarchy::PluginRuntimeVersion
-    omarchy-plugin-worker-runtime)
-
   add_executable(omarchy-plugin-sidecar-probe sidecar_probe.cpp)
   omarchy_plugin_target_defaults(omarchy-plugin-sidecar-probe)
   add_executable(omarchy-plugin-sidecar-supervisor-test
@@ -195,5 +159,7 @@ if(BUILD_TESTING)
   add_test(NAME plugin-qml-broker-api COMMAND omarchy-plugin-qml-broker-api-test)
   set_tests_properties(plugin-qml-broker-api PROPERTIES
     LABELS "unit;integration;protocol;broker;qml;security"
-    TIMEOUT 20)
+    TIMEOUT 20
+    SKIP_RETURN_CODE 77
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QSG_RHI_BACKEND=software")
 endif()

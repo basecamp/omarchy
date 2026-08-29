@@ -33,13 +33,6 @@ struct TrustedLaunchRequest {
   int private_state_directory_fd = -1;
 };
 
-struct TrustedProviderLaunchRequest {
-  std::string service_id;
-  std::string executable_sha256;
-  std::uint64_t generation = 0;
-  int executable_fd = -1;
-};
-
 enum class LaunchFailure {
   none,
   invalid_trusted_record,
@@ -139,10 +132,6 @@ class Supervisor {
 public:
   [[nodiscard]] static Supervisor production();
   [[nodiscard]] static Supervisor
-  forRootOwnedLiveLabOnly(std::string worker_path,
-                          std::string worker_sha256,
-                          std::string bundle_sha256);
-  [[nodiscard]] static Supervisor
   forTestOnly(std::string bwrap_path, std::string worker_path,
               std::shared_ptr<ResourceScopeController> resource_scope);
 
@@ -154,9 +143,6 @@ public:
 
   [[nodiscard]] bool prerequisites(std::string &error) const;
   [[nodiscard]] LaunchResult launch(const TrustedLaunchRequest &request) const;
-  [[nodiscard]] LaunchResult
-  launchProvider(const TrustedProviderLaunchRequest &request) const;
-
 private:
   struct Impl;
   explicit Supervisor(std::unique_ptr<Impl> implementation);

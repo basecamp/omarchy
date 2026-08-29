@@ -16,8 +16,6 @@ constexpr std::array kOperations{
     permissions::OperationId::storage_remove,
     permissions::OperationId::notification_send,
     permissions::OperationId::audio_play_cue,
-    permissions::OperationId::fake_status_list,
-    permissions::OperationId::fake_status_acknowledge,
 };
 
 std::uint64_t epoch_for(const policy::GrantSnapshot &revision,
@@ -57,12 +55,11 @@ providers::ProviderConfiguration AuditedBrokerRuntime::normalize_configuration(
   configuration.storage_epoch = epoch_for(revision, "storage.private");
   configuration.notification_epoch = epoch_for(revision, "notifications.send");
   configuration.audio_epoch = epoch_for(revision, "audio.play-cue");
-  configuration.fake_service_epoch = epoch_for(revision, "service.fake-status");
   return configuration;
 }
 
 AuditedBrokerRuntime::GateRegistry::GateRegistry(
-    const broker::ProviderRegistry<7> &providers) {
+    const broker::ProviderRegistry<5> &providers) {
   for (std::size_t index = 0; index < kOperations.size(); ++index) {
     const auto *provider = providers.find(kOperations[index]);
     if (provider == nullptr)
@@ -450,37 +447,6 @@ HandleResult AuditedBrokerRuntime::resolve_handle(
                     operation, handle_denial(decision)))
     return {RuntimeStatus::audit_failed, decision};
   return {RuntimeStatus::denied, decision};
-}
-
-bool AuditedBrokerRuntime::add_fake_status(std::uint32_t resource,
-                                           std::uint32_t status,
-                                           std::string_view text) noexcept {
-  return !failed_ && providers_.add_fake_status(resource, status, text);
-}
-
-providers::CompletionResult
-AuditedBrokerRuntime::complete_fake_list(std::uint64_t correlation,
-                                         std::span<std::byte> output,
-                                         std::size_t &bytes_written) {
-  bytes_written = 0;
-  auto *tracked = find(correlation);
-  if (failed_)
-    return providers::CompletionResult::cancelled;
-  if (tracked == nullptr || output.size() < kMaximumFakeResultBytes)
-    return providers::CompletionResult::output_too_small;
-  std::array<std::byte, kMaximumFakeResultBytes> scratch{};
-  std::size_t written = 0;
-  const auto completion =
-      providers_.complete_fake_list(correlation, scratch, written);
-  if (completion == providers::CompletionResult::completed) {
-    if (!audit_operation(permissions::AuditOutcome::allowed, correlation,
-                         tracked->operation,
-                         permissions::GrantDecisionCode::allowed, 0, written))
-      return providers::CompletionResult::cancelled;
-    std::copy_n(scratch.begin(), written, output.begin());
-    bytes_written = written;
-  }
-  return completion;
 }
 
 bool AuditedBrokerRuntime::audit_operation(

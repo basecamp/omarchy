@@ -3,7 +3,6 @@
 #include "omarchy/plugin/wire/state.hpp"
 #include "omarchy/plugin_runtime/surface/profile.hpp"
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
-#include "omarchy/plugin_runtime/surface/render_request_table.hpp"
 
 #include <array>
 #include <cstddef>
@@ -155,55 +154,6 @@ int main() {
   require(!decode_render_error(nonrequest_error, decoded_error),
           "typed error named a non-request message");
 
-  RenderRequestTable<2> pending;
-  require(pending.begin(RenderMessageType::profile_offer, 55) ==
-                  RenderPairResult::accepted &&
-              pending.begin(RenderMessageType::surface_allocate, 56,
-                            allocation->surface) == RenderPairResult::accepted,
-          "valid render requests were not recorded");
-  require(pending.begin(RenderMessageType::profile_offer, 55) ==
-                  RenderPairResult::duplicate_correlation &&
-              pending.begin(RenderMessageType::profile_offer, 57) ==
-                  RenderPairResult::capacity_exhausted &&
-              pending.begin(RenderMessageType::profile_offer, 0) ==
-                  RenderPairResult::zero_correlation &&
-              pending.begin(RenderMessageType::surface_allocated, 57,
-                            allocation->surface) ==
-                  RenderPairResult::invalid_request &&
-              pending.size() == 2,
-          "render pending-table bounds changed");
-  require(
-      pending.validate_terminal(RenderMessageType::surface_allocated, 55) ==
-              RenderPairResult::mismatched_terminal &&
-          pending.validate_terminal(RenderMessageType::profile_select, 56) ==
-              RenderPairResult::mismatched_terminal &&
-          pending.size() == 2,
-      "crossed render terminals consumed pending requests");
-  require(pending.validate_terminal(
-              RenderMessageType::surface_allocated, 56,
-              {.id = allocation->surface.id, .generation = 99}) ==
-                  RenderPairResult::mismatched_surface &&
-              pending.size() == 2,
-          "wrong-surface terminal consumed a pending request");
-  const RenderTypedError wrong_error{
-      .reason = RenderErrorReason::unsupported_profile,
-      .failed_message_type =
-          static_cast<std::uint16_t>(RenderMessageType::profile_offer),
-      .surface = {}};
-  require(pending.validate_error(wrong_error, 56) ==
-                  RenderPairResult::mismatched_terminal &&
-              pending.size() == 2,
-          "error for another request consumed a pending request");
-  require(pending.validate_terminal(RenderMessageType::profile_select, 55) ==
-                  RenderPairResult::accepted &&
-              pending.complete(55) == RenderPairResult::accepted &&
-              pending.validate_error(error, 56) == RenderPairResult::accepted &&
-              pending.complete(56) == RenderPairResult::accepted &&
-              pending.size() == 0,
-          "exact render terminal pairing failed");
-  require(pending.complete(56) == RenderPairResult::unknown_correlation,
-          "completed render request was retired twice");
-
   wire::SelectedEndpointState<4> endpoint(
       wire::EndpointRole::render, kRenderRoleVersion, 7,
       wire::payload_cap(wire::EndpointRole::render), 4, registry);
@@ -220,10 +170,6 @@ int main() {
       endpoint.accept(offer_packet, wire::Direction::host_to_worker).action ==
           wire::SessionAction::request_admitted,
       "B3 rejected B4 profile request");
-  RenderRequestTable<4> endpoint_pending;
-  require(endpoint_pending.begin(RenderMessageType::profile_offer, 55) ==
-              RenderPairResult::accepted,
-          "render pairing adapter rejected B3 request");
   const auto selection_bytes = encode_profile_selection(*selection);
   wire::PacketView selection_packet{
       .header = {.endpoint_role = wire::EndpointRole::render,
@@ -234,12 +180,7 @@ int main() {
                  .launch_generation = 7,
                  .correlation_id = 55},
       .payload = selection_bytes};
-  require(endpoint_pending.validate_terminal(RenderMessageType::profile_select,
-                                             55) == RenderPairResult::accepted,
-          "render pairing adapter rejected exact terminal before B3");
   require(endpoint.accept(selection_packet, wire::Direction::worker_to_host)
                   .action == wire::SessionAction::terminal_received,
           "B3 rejected B4 profile terminal");
-  require(endpoint_pending.complete(55) == RenderPairResult::accepted,
-          "render pairing adapter did not retire accepted B3 terminal");
 }

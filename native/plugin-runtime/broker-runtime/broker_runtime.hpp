@@ -23,9 +23,6 @@ namespace wire = omarchy::plugin::wire;
 
 inline constexpr std::size_t kMaximumRuntimeRequests = 32;
 inline constexpr std::size_t kMaximumRuntimeHandles = 32;
-inline constexpr std::size_t kMaximumFakeResultBytes =
-    4 + providers::kMaximumFakeStatuses *
-            (10 + providers::kMaximumFakeStatusTextBytes);
 enum class RuntimeStatus : std::uint8_t {
   accepted,
   denied,
@@ -81,13 +78,6 @@ public:
                                             const permissions::Scope &scope,
                                             std::uint64_t now_monotonic_ns);
 
-  [[nodiscard]] bool add_fake_status(std::uint32_t resource,
-                                     std::uint32_t status,
-                                     std::string_view text) noexcept;
-  [[nodiscard]] providers::CompletionResult
-  complete_fake_list(std::uint64_t correlation, std::span<std::byte> output,
-                     std::size_t &bytes_written);
-
   [[nodiscard]] bool failed() const { return failed_ || core_.failed(); }
   [[nodiscard]] const permissions::ActivationBinding &binding() const {
     return binding_;
@@ -117,9 +107,9 @@ private:
   };
 
   struct GateRegistry {
-    explicit GateRegistry(const broker::ProviderRegistry<7> &providers);
+    explicit GateRegistry(const broker::ProviderRegistry<5> &providers);
     std::array<GateContext, 7> contexts{};
-    broker::ProviderRegistry<7> registry;
+    broker::ProviderRegistry<5> registry;
   };
 
   [[nodiscard]] static providers::ProviderConfiguration
@@ -162,9 +152,9 @@ private:
   permissions::PermissionAuthority authority_;
   audit::AuditSink &audit_;
   providers::ProviderSet providers_;
-  broker::ProviderRegistry<7> provider_registry_;
+  broker::ProviderRegistry<5> provider_registry_;
   GateRegistry gate_;
-  broker::BrokerCore<kMaximumRuntimeRequests, 7> core_;
+  broker::BrokerCore<kMaximumRuntimeRequests, 5> core_;
   permissions::HandleTable<kMaximumRuntimeHandles> handles_;
   std::array<std::optional<permissions::HandleId>, kMaximumRuntimeHandles>
       handle_ids_{};

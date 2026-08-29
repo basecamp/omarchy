@@ -14,6 +14,10 @@
 #include <variant>
 #include <vector>
 
+namespace omarchy::plugins::manifest {
+struct ManifestV2;
+}
+
 namespace omarchy::plugins::permissions {
 
 template <std::size_t Maximum> class BoundedString {
@@ -114,8 +118,6 @@ enum class OperationId : std::uint16_t {
   storage_remove = 0x0103,
   notification_send = 0x0201,
   audio_play_cue = 0x0301,
-  fake_status_list = 0x0401,
-  fake_status_acknowledge = 0x0402,
 };
 
 struct CapabilityKey {
@@ -200,6 +202,7 @@ struct CapabilityRequest {
 using RequestSet = FixedVector<CapabilityRequest, 64>;
 std::string policy_request_fingerprint(const RequestSet &requests);
 void validate_requests(const RequestSet &requests);
+RequestSet requests_from_manifest(const manifest::ManifestV2 &manifest);
 
 enum class UserDecision : std::uint8_t { grant, deny };
 enum class DecisionActor : std::uint8_t {

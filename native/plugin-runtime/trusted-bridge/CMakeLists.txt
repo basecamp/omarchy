@@ -17,6 +17,8 @@ add_library(omarchy-plugin-trusted-bridge STATIC
   render_input_transport.cpp
   render_input_transport.hpp
 )
+set_target_properties(omarchy-plugin-trusted-bridge PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
 target_compile_features(omarchy-plugin-trusted-bridge PUBLIC cxx_std_20)
 target_compile_options(omarchy-plugin-trusted-bridge PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_include_directories(omarchy-plugin-trusted-bridge PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")

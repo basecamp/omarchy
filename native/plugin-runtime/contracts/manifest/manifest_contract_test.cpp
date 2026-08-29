@@ -12,10 +12,6 @@
 
 namespace {
 
-using omarchy::plugins::manifest::FailureReason;
-using omarchy::plugins::manifest::Lifecycle;
-using omarchy::plugins::manifest::RevisionState;
-
 void require(bool condition, std::string_view message) {
   if (!condition)
     throw std::runtime_error(std::string(message));
@@ -64,7 +60,7 @@ void parser_contract(const std::filesystem::path &fixtures) {
           "dynamic definition reference was not preserved");
 
   const auto with_sidecars = omarchy::plugins::manifest::parse_manifest_v2(
-      R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml","sidecars":[{"name":"indexer","command":["bin/indexer","--socket","/run/plugin/indexer.sock"]},{"name":"pet-state","command":["bin/pet-state"]}]} ,"surfaces":{},"permissions":{"required":[],"optional":[]}})");
+      R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml","sidecars":[{"name":"indexer","command":["bin/indexer","--socket","/run/plugin/indexer.sock"]},{"name":"state-helper","command":["bin/state-helper"]}]} ,"surfaces":{},"permissions":{"required":[],"optional":[]}})");
   require(with_sidecars.runtime.sidecars.size() == 2 &&
               with_sidecars.runtime.sidecars[0].name == "indexer" &&
               with_sidecars.runtime.sidecars[0].command ==
@@ -284,81 +280,6 @@ void digest_contract(const std::filesystem::path &fixtures) {
                   "non-executable declared sidecar was accepted");
 }
 
-void lifecycle_contract() {
-  const std::string revision_a(64, 'a');
-  const std::string revision_b(64, 'b');
-  const std::string failed_revision(64, 'c');
-  Lifecycle lifecycle;
-  expect_rejected([&] { lifecycle.validation_succeeded(true); },
-                  "validation without staging succeeded");
-  lifecycle.stage(revision_a);
-  expect_rejected([&] { lifecycle.stage(revision_b); },
-                  "second pending revision was staged");
-  lifecycle.validation_succeeded(true);
-  lifecycle.candidate_health_succeeded();
-  require(lifecycle.active()->digest == revision_a &&
-              lifecycle.active()->state == RevisionState::active,
-          "first candidate did not activate");
-
-  lifecycle.stage(revision_b);
-  lifecycle.validation_succeeded(false);
-  require(lifecycle.pending()->state == RevisionState::awaiting_grants,
-          "missing grants did not block candidate");
-  lifecycle.grants_changed(true);
-  lifecycle.grants_changed(false);
-  require(lifecycle.pending()->state == RevisionState::awaiting_grants &&
-              lifecycle.pending()->failure == FailureReason::missing_grants,
-          "grant revocation did not return candidate to awaiting-grants");
-  lifecycle.grants_changed(true);
-  lifecycle.candidate_health_failed();
-  require(lifecycle.active()->digest == revision_a,
-          "failed health replaced active revision");
-  require(lifecycle.pending()->state == RevisionState::failed &&
-              lifecycle.pending()->failure == FailureReason::health,
-          "candidate health failure was not retained");
-  lifecycle.discard_failed();
-
-  lifecycle.stage(revision_b);
-  lifecycle.validation_succeeded(true);
-  lifecycle.candidate_health_succeeded();
-  require(lifecycle.active()->digest == revision_b &&
-              !lifecycle.history().empty(),
-          "healthy update did not activate atomically");
-  lifecycle.begin_rollback(revision_a, true);
-  lifecycle.rollback_health_failed();
-  require(lifecycle.active()->digest == revision_b,
-          "failed rollback replaced active revision");
-  lifecycle.discard_failed();
-  lifecycle.begin_rollback(revision_a, true);
-  lifecycle.rollback_health_succeeded();
-  require(lifecycle.active()->digest == revision_a,
-          "healthy rollback did not activate target");
-
-  Lifecycle invalid;
-  expect_rejected([&] { invalid.stage("not-a-sha256"); },
-                  "noncanonical revision digest was staged");
-  invalid.stage(failed_revision);
-  invalid.validation_failed();
-  require(invalid.pending()->failure == FailureReason::validation,
-          "validation failure reason missing");
-  expect_rejected([&] { invalid.candidate_health_succeeded(); },
-                  "failed revision passed health");
-  invalid.discard_failed();
-  expect_rejected([&] { invalid.begin_rollback(failed_revision, true); },
-                  "rollback without active revision succeeded");
-
-  Lifecycle failed_history;
-  failed_history.stage(revision_a);
-  failed_history.validation_succeeded(true);
-  failed_history.candidate_health_succeeded();
-  failed_history.stage(failed_revision);
-  failed_history.validation_succeeded(true);
-  failed_history.candidate_health_failed();
-  failed_history.discard_failed();
-  expect_rejected([&] { failed_history.begin_rollback(failed_revision, true); },
-                  "failed candidate became an eligible rollback target");
-}
-
 void mutation_contract(const std::filesystem::path &fixtures) {
   const auto seed = read(fixtures / "valid-minimal/manifest.json");
   std::size_t accepted = 0;
@@ -393,9 +314,8 @@ int main() {
     const std::filesystem::path fixtures = MANIFEST_FIXTURE_ROOT;
     parser_contract(fixtures);
     digest_contract(fixtures);
-    lifecycle_contract();
     mutation_contract(fixtures);
-    std::cout << "manifest v2 and lifecycle contract: PASS\n";
+    std::cout << "manifest v2 contract: PASS\n";
     return 0;
   } catch (const std::exception &error) {
     std::cerr << "manifest-contract-test: " << error.what() << '\n';

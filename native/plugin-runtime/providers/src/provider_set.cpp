@@ -19,23 +19,19 @@ bool capability_is(const permissions::CapabilityKey &capability,
 ProviderSet::ProviderSet(ProviderConfiguration configuration)
     : configuration_(std::move(configuration)) {}
 
-broker::ProviderRegistry<7> ProviderSet::registry() noexcept {
-  broker::ProviderRegistry<7> result;
+broker::ProviderRegistry<5> ProviderSet::registry() noexcept {
+  broker::ProviderRegistry<5> result;
   const std::array entries{
       broker::ProviderEntry{OperationId::storage_read, dispatch_storage_read,
-                            cancel, this},
+                            cancel_synchronous, this},
       broker::ProviderEntry{OperationId::storage_write, dispatch_storage_write,
-                            cancel, this},
+                            cancel_synchronous, this},
       broker::ProviderEntry{OperationId::storage_remove,
-                            dispatch_storage_remove, cancel, this},
+                            dispatch_storage_remove, cancel_synchronous, this},
       broker::ProviderEntry{OperationId::notification_send,
                             dispatch_notification, nullptr, this},
       broker::ProviderEntry{OperationId::audio_play_cue, dispatch_audio,
                             nullptr, this},
-      broker::ProviderEntry{OperationId::fake_status_list, dispatch_fake_list,
-                            cancel, this},
-      broker::ProviderEntry{OperationId::fake_status_acknowledge,
-                            dispatch_fake_acknowledge, cancel, this},
   };
   for (const auto &entry : entries) {
     if (!result.add(entry))
@@ -44,64 +40,8 @@ broker::ProviderRegistry<7> ProviderSet::registry() noexcept {
   return result;
 }
 
-bool ProviderSet::add_fake_status(std::uint32_t resource, std::uint32_t status,
-                                  std::string_view text) noexcept {
-  if (resource == 0 || status == 0 || status_count_ == statuses_.size() ||
-      text.size() > kMaximumFakeStatusTextBytes ||
-      !valid_utf8_text(text, false))
-    return false;
-  if (std::any_of(statuses_.begin(), statuses_.begin() + status_count_,
-                  [resource, status](const auto &existing) {
-                    return existing.resource == resource &&
-                           existing.id == status;
-                  }))
-    return false;
-  auto &entry = statuses_[status_count_++];
-  entry.resource = resource;
-  entry.id = status;
-  entry.text_size = text.size();
-  std::copy(text.begin(), text.end(), entry.text.begin());
-  return true;
-}
-
-CompletionResult
-ProviderSet::complete_fake_list(std::uint64_t correlation,
-                                std::span<std::byte> output,
-                                std::size_t &bytes_written) noexcept {
-  bytes_written = 0;
-  const auto found = std::find_if(
-      pending_.begin(), pending_.end(), [correlation](const auto &entry) {
-        return entry.occupied && entry.correlation == correlation;
-      });
-  if (found == pending_.end())
-    return CompletionResult::unknown;
-  if (found->cancelled ||
-      found->grant_epoch != configuration_.fake_service_epoch) {
-    *found = {};
-    return CompletionResult::cancelled;
-  }
-  std::array<FakeStatusView, kMaximumFakeStatuses> views{};
-  std::size_t count = 0;
-  for (const auto &status : statuses_) {
-    if (status.id == 0 || status.resource != found->resource)
-      continue;
-    views[count++] = {
-        .id = status.id,
-        .acknowledged = status.acknowledged,
-        .text = std::string_view(status.text.data(), status.text_size),
-    };
-  }
-  if (!encode_fake_status_result(
-          std::span<const FakeStatusView>(views.data(), count), output,
-          bytes_written))
-    return CompletionResult::output_too_small;
-  *found = {};
-  return CompletionResult::completed;
-}
-
 std::size_t ProviderSet::revoke(const permissions::CapabilityKey &capability,
                                 std::uint64_t new_epoch) noexcept {
-  std::size_t cancelled = 0;
   if (capability_is(capability, "storage.private")) {
     if (new_epoch <= configuration_.storage_epoch)
       return 0;
@@ -114,18 +54,8 @@ std::size_t ProviderSet::revoke(const permissions::CapabilityKey &capability,
     if (new_epoch <= configuration_.audio_epoch)
       return 0;
     configuration_.audio_epoch = new_epoch;
-  } else if (capability_is(capability, "service.fake-status")) {
-    if (new_epoch <= configuration_.fake_service_epoch)
-      return 0;
-    configuration_.fake_service_epoch = new_epoch;
-    for (auto &pending : pending_) {
-      if (pending.occupied && !pending.cancelled) {
-        pending.cancelled = true;
-        ++cancelled;
-      }
-    }
   }
-  return cancelled;
+  return 0;
 }
 
 bool ProviderSet::authorized(const broker::AuthorizedRequest &request,
@@ -144,18 +74,6 @@ std::string_view ProviderSet::exact_token(
   if (tokens == nullptr || tokens->tokens.size() != 1)
     return {};
   return tokens->tokens.values().front().view();
-}
-
-bool ProviderSet::exact_resource(const permissions::Scope &scope,
-                                 permissions::OperationId operation,
-                                 std::uint32_t &resource) noexcept {
-  const auto *resources = std::get_if<permissions::ResourceScope>(&scope);
-  if (resources == nullptr || resources->resources.size() != 1 ||
-      resources->operations.size() != 1 ||
-      !resources->operations.contains(operation))
-    return false;
-  resource = resources->resources.values().front();
-  return resource != 0;
 }
 
 broker::ProviderResult
@@ -266,70 +184,8 @@ ProviderSet::dispatch_audio(const broker::AuthorizedRequest &request,
   return {.status = broker::ProviderStatus::completed, .bytes_written = 0};
 }
 
-broker::ProviderResult
-ProviderSet::dispatch_fake_list(const broker::AuthorizedRequest &request,
-                                std::span<std::byte>, void *context) noexcept {
-  auto &self = *static_cast<ProviderSet *>(context);
-  std::uint32_t resource = 0;
-  if (request.operation != OperationId::fake_status_list ||
-      !self.authorized(request, self.configuration_.fake_service_epoch) ||
-      !request.payload.empty() ||
-      !exact_resource(request.demand, request.operation, resource) ||
-      request.correlation == 0)
-    return {};
-  if (std::any_of(self.pending_.begin(), self.pending_.end(),
-                  [&request](const auto &pending) {
-                    return pending.occupied &&
-                           pending.correlation == request.correlation;
-                  }))
-    return {};
-  const auto free =
-      std::find_if(self.pending_.begin(), self.pending_.end(),
-                   [](const auto &pending) { return !pending.occupied; });
-  if (free == self.pending_.end())
-    return {};
-  *free = {.correlation = request.correlation,
-           .grant_epoch = request.authorization.grant_epoch,
-           .resource = resource,
-           .cancelled = false,
-           .occupied = true};
-  return {.status = broker::ProviderStatus::pending, .bytes_written = 0};
-}
-
-broker::ProviderResult
-ProviderSet::dispatch_fake_acknowledge(const broker::AuthorizedRequest &request,
-                                       std::span<std::byte>,
-                                       void *context) noexcept {
-  auto &self = *static_cast<ProviderSet *>(context);
-  std::uint32_t resource = 0;
-  FakeAcknowledgeRequest decoded{};
-  if (request.operation != OperationId::fake_status_acknowledge ||
-      !self.authorized(request, self.configuration_.fake_service_epoch) ||
-      !exact_resource(request.demand, request.operation, resource) ||
-      !decode_fake_acknowledge(request.payload, decoded))
-    return {};
-  const auto status = std::find_if(
-      self.statuses_.begin(), self.statuses_.begin() + self.status_count_,
-      [resource, &decoded](const auto &entry) {
-        return entry.resource == resource && entry.id == decoded.status;
-      });
-  if (status == self.statuses_.begin() + self.status_count_)
-    return {};
-  status->acknowledged = true;
-  return {.status = broker::ProviderStatus::completed, .bytes_written = 0};
-}
-
-bool ProviderSet::cancel(std::uint64_t correlation, void *context) noexcept {
-  auto &self = *static_cast<ProviderSet *>(context);
-  const auto pending =
-      std::find_if(self.pending_.begin(), self.pending_.end(),
-                   [correlation](const auto &entry) {
-                     return entry.occupied && entry.correlation == correlation;
-                   });
-  if (pending == self.pending_.end())
-    return false;
-  pending->cancelled = true;
-  return true;
+bool ProviderSet::cancel_synchronous(std::uint64_t, void *) noexcept {
+  return false;
 }
 
 } // namespace omarchy::plugin_runtime::providers

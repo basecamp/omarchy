@@ -33,16 +33,6 @@ TokenScope tokens(std::initializer_list<std::string_view> values) {
   return result;
 }
 
-ResourceScope resources(std::initializer_list<std::uint32_t> values,
-                        std::initializer_list<OperationId> operations) {
-  ResourceScope result;
-  for (auto value : values)
-    require(result.resources.insert(value), "duplicate resource");
-  for (auto operation : operations)
-    require(result.operations.insert(operation), "duplicate operation");
-  return result;
-}
-
 CapabilityKey key(std::string_view id) { return {CapabilityId(id), 1}; }
 
 void bounded_collection_contract() {
@@ -60,10 +50,9 @@ void bounded_collection_contract() {
 
 void registry_and_scope_contract() {
   const auto registry = capability_registry();
-  require(registry.size() == 4, "unexpected registry size");
+  require(registry.size() == 3, "unexpected registry size");
   require(static_cast<std::uint16_t>(OperationId::storage_read) == 0x0101 &&
-              static_cast<std::uint16_t>(
-                  OperationId::fake_status_acknowledge) == 0x0402,
+              static_cast<std::uint16_t>(OperationId::audio_play_cue) == 0x0301,
           "operation identifier golden changed");
   for (const auto &definition : registry) {
     require(definition.key.id.view().find("command") ==
@@ -105,10 +94,6 @@ void registry_and_scope_contract() {
   require(!valid_scope(*find_capability(key("notifications.send")),
                        Scope(empty_token)),
           "default-constructed empty token was accepted");
-  require(!valid_scope(*find_capability(key("service.fake-status")),
-                       Scope(resources({0}, {OperationId::fake_status_list}))),
-          "zero resource identifier was accepted");
-
   HttpScope internet;
   internet.schemes.insert(ScopeToken("https"));
   internet.hosts.insert(ScopeToken("status.example.com"));
@@ -217,11 +202,8 @@ void delta_contract() {
   next.push_back({.capability = key("audio.play-cue"),
                   .scope = tokens({"complete"}),
                   .required = true});
-  next.push_back({.capability = key("service.fake-status"),
-                  .scope = resources({1}, {OperationId::fake_status_list}),
-                  .required = false});
   const auto delta = compute_update_delta(old_requests, old_grants, next);
-  require(delta.size() == 4, "delta count mismatch");
+  require(delta.size() == 3, "delta count mismatch");
   require(delta[0].kind == DeltaKind::narrowed &&
               delta[0].inherited_grant.has_value() &&
               delta[0].inherited_grant->scope == next[0].scope,
@@ -232,10 +214,6 @@ void delta_contract() {
   require(delta[2].kind == DeltaKind::requirement_changed &&
               !delta[2].inherited_grant.has_value(),
           "requiredness change was inherited");
-  require(delta[3].kind == DeltaKind::added &&
-              !delta[3].inherited_grant.has_value(),
-          "new capability was inherited");
-
   const auto identical =
       compute_update_delta(old_requests, old_grants, old_requests);
   require(identical.size() == 3 && identical[0].kind == DeltaKind::unchanged &&
@@ -299,11 +277,6 @@ void authority_and_handle_contract() {
   requests.push_back({.capability = key("storage.private"),
                       .scope = QuotaScope{4096, 1024},
                       .required = true});
-  requests.push_back(
-      {.capability = key("service.fake-status"),
-       .scope = resources({1, 2}, {OperationId::fake_status_list,
-                                   OperationId::fake_status_acknowledge}),
-       .required = false});
   requests.push_back({.capability = key("notifications.send"),
                       .scope = tokens({"timer"}),
                       .required = false});
@@ -315,10 +288,6 @@ void authority_and_handle_contract() {
                     .scope = QuotaScope{2048, 512},
                     .state = GrantState::granted,
                     .epoch = 4});
-  grants.push_back({.capability = key("service.fake-status"),
-                    .scope = resources({1}, {OperationId::fake_status_list}),
-                    .state = GrantState::granted,
-                    .epoch = 5});
   grants.push_back({.capability = key("notifications.send"),
                     .scope = tokens({"timer"}),
                     .state = GrantState::denied,
@@ -369,60 +338,6 @@ void authority_and_handle_contract() {
                              binding_for(requests, 10), 10)
                   .code == GrantDecisionCode::activation_mismatch,
           "wrong generation was allowed");
-
-  const Scope fake_demand = resources({1}, {OperationId::fake_status_list});
-  require(
-      authority
-              .authorize(OperationId::fake_status_list, fake_demand, active, 10)
-              .code == GrantDecisionCode::gesture_missing,
-      "gesture capability ran without proof");
-  const Scope confused_demand =
-      resources({1}, {OperationId::fake_status_acknowledge});
-  require(authority
-                  .authorize(OperationId::fake_status_list, confused_demand,
-                             active, 10)
-                  .code == GrantDecisionCode::outside_scope,
-          "resource demand crossed its operation binding");
-  GestureProof gesture{.id = {},
-                       .plugin = PluginId("org.example.timer"),
-                       .generation = 9,
-                       .surface = 1,
-                       .operation = OperationId::fake_status_list,
-                       .expires_monotonic_ns = 20,
-                       .consumed = false};
-  gesture.id.bytes[0] = std::byte{1};
-  auto null_gesture = gesture;
-  null_gesture.id = {};
-  require(authority
-                  .authorize(OperationId::fake_status_list, fake_demand, active,
-                             10, &null_gesture)
-                  .code == GrantDecisionCode::gesture_wrong_binding,
-          "null gesture identifier was accepted");
-  auto expired_gesture = gesture;
-  expired_gesture.expires_monotonic_ns = 10;
-  require(authority
-                  .authorize(OperationId::fake_status_list, fake_demand, active,
-                             10, &expired_gesture)
-                  .code == GrantDecisionCode::gesture_expired,
-          "expired gesture was accepted");
-  auto wrong_gesture = gesture;
-  wrong_gesture.surface = 0;
-  require(authority
-                  .authorize(OperationId::fake_status_list, fake_demand, active,
-                             10, &wrong_gesture)
-                  .code == GrantDecisionCode::gesture_wrong_binding,
-          "wrongly bound gesture was accepted");
-  require(authority
-                  .authorize(OperationId::fake_status_list, fake_demand, active,
-                             10, &gesture)
-                  .allowed() &&
-              gesture.consumed,
-          "valid gesture proof was denied or not consumed");
-  require(authority
-                  .authorize(OperationId::fake_status_list, fake_demand, active,
-                             10, &gesture)
-                  .code == GrantDecisionCode::gesture_used,
-          "gesture proof replay was accepted");
 
   HandleTable<2> handles;
   HandleId first{};

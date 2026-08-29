@@ -44,14 +44,6 @@ permissions::TokenScope token(std::string_view value) {
   return scope;
 }
 
-permissions::ResourceScope resource(std::uint32_t value,
-                                    permissions::OperationId operation) {
-  permissions::ResourceScope scope;
-  require(scope.resources.insert(value), "duplicate resource fixture");
-  require(scope.operations.insert(operation), "duplicate operation fixture");
-  return scope;
-}
-
 void put16(std::vector<std::byte> &bytes, std::size_t offset,
            std::uint16_t value) {
   bytes[offset] = static_cast<std::byte>(value >> 8U);
@@ -160,7 +152,7 @@ struct BackendProbe {
 };
 
 broker::ProviderResult
-dispatch(const broker::ProviderRegistry<7> &registry,
+dispatch(const broker::ProviderRegistry<5> &registry,
          permissions::OperationId operation,
          const permissions::ActivationBinding &activation,
          const permissions::Scope &demand, std::span<const std::byte> payload,
@@ -193,7 +185,6 @@ int main() {
       .storage_epoch = 4,
       .notification_epoch = 5,
       .audio_epoch = 6,
-      .fake_service_epoch = 7,
       .storage = {.read = BackendProbe::read,
                   .write = BackendProbe::write,
                   .remove = BackendProbe::remove,
@@ -207,8 +198,7 @@ int main() {
   for (const auto operation :
        {OperationId::storage_read, OperationId::storage_write,
         OperationId::storage_remove, OperationId::notification_send,
-        OperationId::audio_play_cue, OperationId::fake_status_list,
-        OperationId::fake_status_acknowledge})
+        OperationId::audio_play_cue})
     require(registry.find(operation) != nullptr,
             "closed provider set incomplete");
 
@@ -317,70 +307,6 @@ int main() {
                       .status == broker::ProviderStatus::completed &&
               backend.audio_plays == 2 && backend.last == "evolve",
           "grant-authorized packaged cue was not forwarded");
-
-  require(set.add_fake_status(17, 100, "Deploy waiting"),
-          "fake status setup failed");
-  require(!set.add_fake_status(17, 100, "duplicate"),
-          "duplicate fake status was accepted");
-  const auto list_scope = resource(17, OperationId::fake_status_list);
-  require(dispatch(registry, OperationId::fake_status_list, activation,
-                   list_scope, {}, 7, 20)
-                  .status == broker::ProviderStatus::pending,
-          "fake list did not become cancellable work");
-  std::size_t completed_bytes = 0;
-  require(set.complete_fake_list(20, response, completed_bytes) ==
-                  providers::CompletionResult::completed &&
-              completed_bytes == 28 && response[1] == std::byte{1},
-          "fake list result was not bounded and encoded");
-  require(set.complete_fake_list(20, response, completed_bytes) ==
-              providers::CompletionResult::unknown,
-          "fake completion was reusable");
-  require(dispatch(registry, OperationId::fake_status_list, activation,
-                   list_scope, {}, 7, 30)
-                  .status == broker::ProviderStatus::pending,
-          "fake output retry fixture did not start");
-  require(set.complete_fake_list(30, std::span<std::byte>(response).first(4),
-                                 completed_bytes) ==
-                  providers::CompletionResult::output_too_small &&
-              set.complete_fake_list(30, response, completed_bytes) ==
-                  providers::CompletionResult::completed,
-          "bounded output retry lost or duplicated provider state");
-  require(dispatch(registry, OperationId::fake_status_list, activation,
-                   list_scope, {}, 7, 21)
-                  .status == broker::ProviderStatus::pending,
-          "second fake list did not start");
-  const auto *list_provider = registry.find(OperationId::fake_status_list);
-  require(list_provider != nullptr &&
-              list_provider->cancel(21, list_provider->context) &&
-              set.complete_fake_list(21, response, completed_bytes) ==
-                  providers::CompletionResult::cancelled,
-          "explicit cancellation did not suppress completion");
-  require(dispatch(registry, OperationId::fake_status_list, activation,
-                   list_scope, {}, 7, 22)
-                  .status == broker::ProviderStatus::pending,
-          "revocation fixture did not start");
-  require(set.revoke({permissions::CapabilityId("service.fake-status"), 1},
-                     8) == 1 &&
-              set.complete_fake_list(22, response, completed_bytes) ==
-                  providers::CompletionResult::cancelled,
-          "revocation did not invalidate pending fake result");
-  require(dispatch(registry, OperationId::fake_status_list, activation,
-                   list_scope, {}, 7, 23)
-                  .status == broker::ProviderStatus::failed,
-          "revoked epoch started provider work");
-
-  std::vector<std::byte> ack(4);
-  put32(ack, 0, 100);
-  const auto ack_scope = resource(17, OperationId::fake_status_acknowledge);
-  require(dispatch(registry, OperationId::fake_status_acknowledge, activation,
-                   ack_scope, ack, 8, 24)
-                  .status == broker::ProviderStatus::completed,
-          "fake acknowledgement failed after trusted epoch advance");
-  put32(ack, 0, 999);
-  require(dispatch(registry, OperationId::fake_status_acknowledge, activation,
-                   ack_scope, ack, 8, 25)
-                  .status == broker::ProviderStatus::failed,
-          "unknown fake status was acknowledged");
 
   require(set.revoke({permissions::CapabilityId("storage.private"), 1}, 5) == 0,
           "synchronous storage invented cancellation");

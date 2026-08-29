@@ -29,13 +29,6 @@ constexpr std::array kRules{
     MessageRule{static_cast<std::uint16_t>(OperationId::audio_play_cue),
                 DirectionMask::worker_to_host, CorrelationRule::nonzero,
                 MessageSemantic::request, 11, 65536},
-    MessageRule{static_cast<std::uint16_t>(OperationId::fake_status_list),
-                DirectionMask::worker_to_host, CorrelationRule::nonzero,
-                MessageSemantic::request, 16, 65536},
-    MessageRule{
-        static_cast<std::uint16_t>(OperationId::fake_status_acknowledge),
-        DirectionMask::worker_to_host, CorrelationRule::nonzero,
-                MessageSemantic::request, 16, 65536},
     MessageRule{kDynamicInvokeMessage, DirectionMask::worker_to_host,
                 CorrelationRule::nonzero, MessageSemantic::request, 80, 49152},
     MessageRule{kBrokerResultMessage, DirectionMask::host_to_worker,

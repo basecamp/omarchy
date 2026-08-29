@@ -10,7 +10,3 @@ target_link_libraries(omarchy-plugin-launcher
   PUBLIC Omarchy::PluginSandboxPolicy omarchy-plugin-wire
   PRIVATE Qt6::Core PkgConfig::SECCOMP PkgConfig::SYSTEMD
 )
-
-if(TARGET omarchy-plugin-host)
-  target_link_libraries(omarchy-plugin-host PRIVATE Omarchy::PluginLauncher)
-endif()

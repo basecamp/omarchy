@@ -260,7 +260,7 @@ void run(const std::filesystem::path &root, std::string_view function,
       mutated_digest.definition_digest = definitions::Digest(wrong_digest);
     require(!registry.resolve(mutated_digest),
             "mismatched definition digest resolved");
-    require(!registry.find("winner.plugin-freeform"),
+    require(!registry.find("untrusted.plugin-freeform"),
             "plugin-only freeform definition entered trusted registry");
 
     auto wrong_adapter = bindings.front().adapter;
@@ -280,11 +280,11 @@ void run(const std::filesystem::path &root, std::string_view function,
 
   StrictRuntime provider(registry, std::move(bindings), std::move(compiled));
   const auto unknown =
-      provider.invoke(QStringLiteral("winner.magic"), {}).toMap();
+      provider.invoke(QStringLiteral("untrusted.magic"), {}).toMap();
   require(!unknown.value(QStringLiteral("ok")).toBool() &&
               unknown.value(QStringLiteral("error")).toString() ==
                   QStringLiteral("unknown-operation"),
-          "unregistered winner operation acquired authority");
+          "unregistered external operation acquired authority");
 
   worker::WorkerRuntime runtime(root);
   require(static_cast<bool>(runtime.bind_runtime_api(provider)),

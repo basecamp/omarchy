@@ -7,12 +7,16 @@ include(CTest)
 add_library(omarchy-plugin-wire STATIC
   src/common.cpp
   src/envelope.cpp
+  src/version.cpp
 )
+add_library(Omarchy::PluginRuntimeVersion ALIAS omarchy-plugin-wire)
 set_target_properties(omarchy-plugin-wire PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_compile_features(omarchy-plugin-wire PUBLIC cxx_std_20)
 target_compile_options(omarchy-plugin-wire PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_include_directories(omarchy-plugin-wire PUBLIC include)
+target_compile_definitions(omarchy-plugin-wire PRIVATE
+  OMARCHY_PLUGIN_BUILD_VERSION="${PROJECT_VERSION}")
 
 if(BUILD_TESTING)
   add_executable(omarchy-plugin-wire-contract-test

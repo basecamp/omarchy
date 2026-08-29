@@ -671,13 +671,6 @@ std::string read_file(const std::filesystem::path &path, std::uint64_t limit) {
   return output;
 }
 
-void require_pending(const std::optional<RevisionStatus> &pending,
-                     RevisionState expected, std::string_view operation) {
-  require(pending.has_value() && pending->state == expected,
-          std::string("invalid lifecycle transition: ") +
-              std::string(operation));
-}
-
 bool valid_digest(std::string_view digest) {
   return digest.size() == 64 &&
          std::all_of(digest.begin(), digest.end(),
@@ -977,110 +970,6 @@ std::string sha256_hex(std::span<const std::byte> bytes) {
 
 std::string sha256_hex(std::string_view bytes) {
   return sha256_hex(std::as_bytes(std::span(bytes.data(), bytes.size())));
-}
-
-void Lifecycle::stage(std::string digest) {
-  require(valid_digest(digest), "cannot stage a noncanonical digest");
-  require(!pending_.has_value(), "a revision is already pending");
-  require(!active_.has_value() || active_->digest != digest,
-          "active revision cannot be restaged");
-  pending_ = RevisionStatus{.digest = std::move(digest),
-                            .state = RevisionState::staged,
-                            .failure = std::nullopt};
-}
-
-void Lifecycle::validation_succeeded(bool required_grants_present) {
-  require_pending(pending_, RevisionState::staged, "validation success");
-  pending_->state = required_grants_present ? RevisionState::candidate
-                                            : RevisionState::awaiting_grants;
-  pending_->failure = required_grants_present
-                          ? std::nullopt
-                          : std::optional(FailureReason::missing_grants);
-}
-
-void Lifecycle::validation_failed() {
-  require_pending(pending_, RevisionState::staged, "validation failure");
-  pending_->state = RevisionState::failed;
-  pending_->failure = FailureReason::validation;
-}
-
-void Lifecycle::grants_changed(bool required_grants_present) {
-  require(pending_.has_value() &&
-              (pending_->state == RevisionState::awaiting_grants ||
-               pending_->state == RevisionState::candidate),
-          "invalid lifecycle transition: grant change");
-  pending_->state = required_grants_present ? RevisionState::candidate
-                                            : RevisionState::awaiting_grants;
-  pending_->failure = required_grants_present
-                          ? std::nullopt
-                          : std::optional(FailureReason::missing_grants);
-}
-
-void Lifecycle::candidate_health_succeeded() {
-  require_pending(pending_, RevisionState::candidate,
-                  "candidate health success");
-  if (active_.has_value())
-    history_.push_back(*active_);
-  pending_->state = RevisionState::active;
-  pending_->failure.reset();
-  active_ = std::move(pending_);
-  pending_.reset();
-}
-
-void Lifecycle::candidate_health_failed() {
-  require_pending(pending_, RevisionState::candidate,
-                  "candidate health failure");
-  pending_->state = RevisionState::failed;
-  pending_->failure = FailureReason::health;
-}
-
-void Lifecycle::begin_rollback(std::string digest,
-                               bool required_grants_present) {
-  require(active_.has_value(), "rollback requires an active revision");
-  require(!pending_.has_value(), "rollback requires no pending revision");
-  require(valid_digest(digest), "rollback digest is not canonical");
-  require(required_grants_present, "rollback target lacks required grants");
-  const auto found = std::find_if(
-      history_.begin(), history_.end(), [&digest](const auto &item) {
-        return item.digest == digest && item.state == RevisionState::active &&
-               !item.failure.has_value();
-      });
-  require(found != history_.end(), "rollback target is not retained");
-  pending_ = RevisionStatus{.digest = std::move(digest),
-                            .state = RevisionState::rollback_candidate,
-                            .failure = std::nullopt};
-}
-
-void Lifecycle::rollback_health_succeeded() {
-  require_pending(pending_, RevisionState::rollback_candidate,
-                  "rollback health success");
-  history_.push_back(*active_);
-  pending_->state = RevisionState::active;
-  active_ = std::move(pending_);
-  pending_.reset();
-}
-
-void Lifecycle::rollback_health_failed() {
-  require_pending(pending_, RevisionState::rollback_candidate,
-                  "rollback health failure");
-  pending_->state = RevisionState::failed;
-  pending_->failure = FailureReason::rollback_health;
-}
-
-void Lifecycle::discard_failed() {
-  require_pending(pending_, RevisionState::failed, "discard failed revision");
-  history_.push_back(*pending_);
-  pending_.reset();
-}
-
-const std::optional<RevisionStatus> &Lifecycle::active() const {
-  return active_;
-}
-const std::optional<RevisionStatus> &Lifecycle::pending() const {
-  return pending_;
-}
-const std::vector<RevisionStatus> &Lifecycle::history() const {
-  return history_;
 }
 
 } // namespace omarchy::plugins::manifest

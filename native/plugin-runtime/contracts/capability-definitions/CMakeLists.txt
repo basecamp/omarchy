@@ -8,7 +8,7 @@ endif()
 
 add_library(omarchy-plugin-capability-definitions STATIC
   capability_definition.cpp capability_definition_loader.cpp
-  capability_lifecycle.cpp dynamic_activation.cpp)
+  dynamic_activation.cpp)
 target_include_directories(omarchy-plugin-capability-definitions PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(omarchy-plugin-capability-definitions PUBLIC
@@ -19,7 +19,7 @@ target_compile_options(omarchy-plugin-capability-definitions PRIVATE
 
 add_executable(omarchy-plugin-capability-definition-test
   capability_definition_test.cpp capability_definition_loader_test.cpp
-  capability_lifecycle_test.cpp dynamic_activation_test.cpp
+  dynamic_activation_test.cpp
   permissions_extensibility_demo_test.cpp)
 target_link_libraries(omarchy-plugin-capability-definition-test PRIVATE
   omarchy-plugin-capability-definitions)

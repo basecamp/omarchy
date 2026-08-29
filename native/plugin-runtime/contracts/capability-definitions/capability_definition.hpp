@@ -7,7 +7,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <span>
 #include <string_view>
 
 namespace omarchy::plugins::definitions {
@@ -121,48 +120,6 @@ private:
 [[nodiscard]] bool valid_definition(const CapabilityDefinition &definition);
 [[nodiscard]] Digest
 definition_digest(const CapabilityDefinition &definition);
-
-enum class ArgumentKind : std::uint8_t {
-  literal,
-  bounded_token,
-  bounded_unsigned,
-};
-
-struct ArgumentRule {
-  ArgumentKind kind = ArgumentKind::literal;
-  Token value;
-  std::uint32_t maximum = 0;
-  bool operator==(const ArgumentRule &) const = default;
-};
-
-struct CliSubcommand {
-  Name name;
-  permissions::FixedVector<ArgumentRule, 12> arguments;
-};
-
-struct CliHarnessProfile {
-  Name profile_name;
-  permissions::BoundedString<256> executable;
-  Digest executable_digest;
-  permissions::BoundedString<256> working_directory;
-  permissions::FixedSet<Token, 16> fixed_environment;
-  permissions::FixedVector<CliSubcommand, 16> subcommands;
-  std::uint32_t maximum_stdin_bytes = 0;
-  std::uint32_t maximum_stdout_bytes = 0;
-  std::uint32_t maximum_stderr_bytes = 0;
-  std::uint32_t timeout_milliseconds = 0;
-};
-
-struct CliInvocation {
-  std::array<std::string_view, 13> argv{};
-  std::size_t argc = 0;
-};
-
-[[nodiscard]] bool valid_cli_profile(const CliHarnessProfile &profile);
-[[nodiscard]] bool authorize_cli_invocation(const CliHarnessProfile &profile,
-                                            const Digest &actual_executable,
-                                            std::span<const std::string_view> argv,
-                                            CliInvocation &output);
 
 struct DynamicRequest {
   CapabilityReference definition;

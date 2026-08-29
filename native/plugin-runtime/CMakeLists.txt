@@ -6,6 +6,9 @@ include(CTest)
 include(GNUInstallDirs)
 
 set(OMARCHY_PLUGIN_QT_MIN_VERSION "" CACHE STRING "Optional minimum Qt 6 version required by the package build")
+set(OMARCHY_PLUGIN_INSTALL_ROOT
+  "${CMAKE_INSTALL_LIBDIR}/omarchy/plugin-security/${PROJECT_VERSION}"
+  CACHE STRING "Versioned side-by-side secure plugin runtime root")
 
 if(OMARCHY_PLUGIN_QT_MIN_VERSION)
   find_package(Qt6 ${OMARCHY_PLUGIN_QT_MIN_VERSION} REQUIRED COMPONENTS Core Gui Qml Quick)
@@ -19,16 +22,20 @@ qt_policy(SET QTP0001 NEW)
 qt_policy(SET QTP0004 NEW)
 
 set(QT_QML_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/qml")
-add_subdirectory(presentation)
 
 function(omarchy_plugin_target_defaults target)
   target_compile_features(${target} PUBLIC cxx_std_20)
   target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endfunction()
 
-configure_file(cmake/PluginRuntimeVersion.h.in generated/omarchy/plugin_runtime/PluginRuntimeVersion.h @ONLY)
+add_subdirectory(policy)
 
-add_subdirectory(protocol-version)
+install(FILES
+  shell/SecurePluginHost.qml
+  shell/SecureBarSurface.qml
+  shell/SecurePanelSurface.qml
+  shell/SecureOverlaySurface.qml
+  DESTINATION "${OMARCHY_PLUGIN_INSTALL_ROOT}/shell")
 
 # Contract owners add their directory without changing this shared root. A missing
 # directory means that security subsystem has not landed yet, not that it is optional

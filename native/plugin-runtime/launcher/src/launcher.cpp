@@ -3,8 +3,6 @@
 
 #include "omarchy/plugin/wire/envelope.hpp"
 
-#include <QCryptographicHash>
-#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -150,51 +148,6 @@ milliseconds_remaining(std::chrono::steady_clock::time_point deadline) {
   return true;
 }
 
-[[nodiscard]] bool trusted_live_lab_worker(std::string_view path,
-                                           std::string_view expected_sha256,
-                                           std::string_view bundle_sha256,
-                                           std::string &error) {
-  if (!canonical_digest(expected_sha256) || !canonical_digest(bundle_sha256)) {
-    error = "live-lab worker or bundle digest is not canonical";
-    return false;
-  }
-  const std::filesystem::path candidate(path);
-  const std::filesystem::path lab_root("/opt/omarchy-plugin-security-lab");
-  const auto relative = candidate.lexically_relative(lab_root);
-  const auto expected = std::filesystem::path(bundle_sha256) /
-      "usr/lib/omarchy/plugin-runtime/omarchy-plugin-qml-worker";
-  if (!candidate.is_absolute() || candidate.lexically_normal() != candidate ||
-      relative.empty() || relative.native().starts_with("..") ||
-      relative != expected) {
-    error = "live-lab worker is outside its bundle-digest-named /opt root";
-    return false;
-  }
-  std::filesystem::path component("/");
-  for (const auto &part : candidate.relative_path()) {
-    component /= part;
-    struct stat metadata {};
-    if (lstat(component.c_str(), &metadata) < 0 || S_ISLNK(metadata.st_mode) ||
-        metadata.st_uid != 0 ||
-        (metadata.st_mode & (S_IWGRP | S_IWOTH)) != 0) {
-      error = "live-lab worker path metadata is unsafe";
-      return false;
-    }
-  }
-  if (!trusted_executable(path, true, error)) return false;
-  QFile file(QString::fromStdString(candidate.string()));
-  if (!file.open(QIODevice::ReadOnly)) {
-    error = "live-lab worker cannot be hashed";
-    return false;
-  }
-  QCryptographicHash hash(QCryptographicHash::Sha256);
-  if (!hash.addData(&file) ||
-      hash.result().toHex().toStdString() != expected_sha256) {
-    error = "live-lab worker digest mismatch";
-    return false;
-  }
-  return true;
-}
-
 [[nodiscard]] bool normalize_standard_descriptors(std::string &error) {
   for (int descriptor = 0; descriptor <= 2; ++descriptor) {
     errno = 0;
@@ -249,51 +202,6 @@ milliseconds_remaining(std::chrono::steady_clock::time_point deadline) {
       (immutable && (metadata.st_mode & 0222) != 0)) {
     error = immutable ? "revision descriptor is not immutable and private"
                       : "state descriptor is not private and owned";
-    return {};
-  }
-  return duplicate;
-}
-
-[[maybe_unused, nodiscard]] Fd duplicate_verified_executable(int descriptor,
-                                               std::string_view digest,
-                                               bool require_root_owner,
-                                               std::string &error) {
-  Fd duplicate(fcntl(descriptor, F_DUPFD_CLOEXEC, 64));
-  struct stat metadata {};
-  if (!duplicate || fstat(duplicate.get(), &metadata) < 0 ||
-      !S_ISREG(metadata.st_mode) || (metadata.st_mode & 0111) == 0 ||
-      (metadata.st_mode & (S_IWGRP | S_IWOTH | S_ISUID | S_ISGID)) != 0 ||
-      (require_root_owner && metadata.st_uid != 0) || metadata.st_size <= 0 ||
-      metadata.st_size > 64 * 1024 * 1024 || !canonical_digest(digest)) {
-    error = "provider executable descriptor metadata is unsafe";
-    return {};
-  }
-  if (lseek(duplicate.get(), 0, SEEK_SET) < 0) {
-    error = "provider executable descriptor is not seekable";
-    return {};
-  }
-  QCryptographicHash hash(QCryptographicHash::Sha256);
-  std::array<char, 16384> chunk{};
-  while (true) {
-    const ssize_t count = read(duplicate.get(), chunk.data(), chunk.size());
-    if (count > 0) {
-      hash.addData(QByteArrayView(chunk.data(), count));
-      continue;
-    }
-    if (count < 0 && errno == EINTR)
-      continue;
-    if (count < 0) {
-      error = "provider executable descriptor cannot be hashed";
-      return {};
-    }
-    break;
-  }
-  if (hash.result().toHex().toStdString() != digest) {
-    error = "provider executable digest mismatch";
-    return {};
-  }
-  if (lseek(duplicate.get(), 0, SEEK_SET) < 0) {
-    error = "provider executable descriptor cannot be rewound";
     return {};
   }
   return duplicate;
@@ -1187,9 +1095,6 @@ struct Supervisor::Impl {
   std::string worker_path;
   std::shared_ptr<ResourceScopeController> resource_scope;
   bool production = true;
-  bool root_owned_live_lab = false;
-  std::string worker_sha256;
-  std::string bundle_sha256;
 };
 
 Supervisor::Supervisor(std::unique_ptr<Impl> implementation)
@@ -1202,18 +1107,6 @@ Supervisor Supervisor::production() {
   return Supervisor(std::make_unique<Impl>(
       std::string(kProductionBwrap), std::string(kProductionWorker),
       make_systemd_resource_scope_controller(), true));
-}
-
-Supervisor Supervisor::forRootOwnedLiveLabOnly(std::string worker_path,
-                                               std::string worker_sha256,
-                                               std::string bundle_sha256) {
-  auto implementation = std::make_unique<Impl>(
-      std::string(kProductionBwrap), std::move(worker_path),
-      make_systemd_resource_scope_controller(), false);
-  implementation->root_owned_live_lab = true;
-  implementation->worker_sha256 = std::move(worker_sha256);
-  implementation->bundle_sha256 = std::move(bundle_sha256);
-  return Supervisor(std::move(implementation));
 }
 
 Supervisor Supervisor::forTestOnly(
@@ -1236,15 +1129,10 @@ bool Supervisor::prerequisites(std::string &error) const {
     return false;
   }
   if (!trusted_executable(
-          implementation_->bwrap_path,
-          implementation_->production || implementation_->root_owned_live_lab,
+          implementation_->bwrap_path, implementation_->production,
           error) ||
-      (implementation_->root_owned_live_lab
-           ? !trusted_live_lab_worker(implementation_->worker_path,
-                                      implementation_->worker_sha256,
-                                      implementation_->bundle_sha256, error)
-           : !trusted_executable(implementation_->worker_path,
-                                 implementation_->production, error)) ||
+      !trusted_executable(implementation_->worker_path,
+                          implementation_->production, error) ||
       !kernel_prerequisites(error) ||
       !implementation_->resource_scope->probe(error)) {
     return false;
@@ -1543,232 +1431,5 @@ LaunchResult Supervisor::launch(const TrustedLaunchRequest &request) const {
   }
 }
 
-LaunchResult Supervisor::launchProvider(
-    const TrustedProviderLaunchRequest &request) const {
-  LaunchResult result;
-  if (!canonical_plugin_id(request.service_id) ||
-      !canonical_digest(request.executable_sha256) || request.generation == 0) {
-    result.failure = LaunchFailure::invalid_trusted_record;
-    result.detail = "provider launch identity is not canonical";
-    return result;
-  }
-  if (!implementation_->resource_scope ||
-      !trusted_executable(implementation_->bwrap_path,
-                          implementation_->production, result.detail) ||
-      !kernel_prerequisites(result.detail) ||
-      !implementation_->resource_scope->probe(result.detail)) {
-    result.failure = LaunchFailure::missing_kernel_prerequisite;
-    return result;
-  }
-  if (!normalize_standard_descriptors(result.detail)) {
-    result.failure = LaunchFailure::descriptor_setup_failed;
-    return result;
-  }
-  Fd executable = duplicate_verified_executable(
-      request.executable_fd, request.executable_sha256,
-      implementation_->production, result.detail);
-  if (!executable) {
-    result.failure = LaunchFailure::invalid_trusted_record;
-    return result;
-  }
-  sandbox::SandboxPlan plan =
-      sandbox::build_provider_plan("/proc/self/fd/7");
-  Fd seccomp = compile_seccomp(plan.seccomp, result.detail);
-  if (!seccomp) {
-    result.failure = LaunchFailure::seccomp_compile_failed;
-    return result;
-  }
-
-  try {
-    Fd standard_input(open("/dev/null", O_RDONLY | O_CLOEXEC));
-    Pipe standard_output = make_pipe();
-    Pipe standard_error = make_pipe();
-    Channel protocol = make_channel();
-    Pipe status = make_pipe();
-    Pipe barrier = make_pipe();
-    Pipe exec_error = make_pipe();
-    if (!standard_input)
-      throw std::runtime_error("cannot open provider standard input");
-    const std::array sources = {
-        standard_input.get(),       standard_output.write.get(),
-        standard_error.write.get(), protocol.worker.get(),
-        status.write.get(),         barrier.read.get(),
-        seccomp.get(),              executable.get(),
-        exec_error.write.get()};
-    const pid_t monitor_pid = fork();
-    if (monitor_pid < 0) {
-      result.failure = LaunchFailure::fork_failed;
-      result.detail = "provider Bubblewrap fork failed";
-      return result;
-    }
-    if (monitor_pid == 0)
-      child_exec(implementation_->bwrap_path, std::move(plan), sources, 8);
-
-    LaunchCleanup cleanup;
-    cleanup.monitor_pid = monitor_pid;
-    cleanup.resource_scope = implementation_->resource_scope;
-    cleanup.scope = plan.process.transient_scope_prefix +
-                    request.service_id.substr(0, 48) + "-" +
-                    request.executable_sha256.substr(0, 12) + "-" +
-                    std::to_string(request.generation) + "-m" +
-                    std::to_string(monitor_pid) + ".scope";
-    cleanup.monitor_pidfd = open_pidfd(monitor_pid);
-    protocol.worker.reset();
-    standard_output.write.reset();
-    standard_error.write.reset();
-    status.write.reset();
-    barrier.read.reset();
-    exec_error.write.reset();
-    seccomp.reset();
-    executable.reset();
-    standard_input.reset();
-    if (!cleanup.monitor_pidfd) {
-      result.failure = LaunchFailure::pidfd_failed;
-      result.detail = "cannot bind provider Bubblewrap monitor pidfd";
-      return result;
-    }
-    const int status_flags = fcntl(status.read.get(), F_GETFL);
-    const int exec_flags = fcntl(exec_error.read.get(), F_GETFL);
-    if (status_flags < 0 || exec_flags < 0 ||
-        fcntl(status.read.get(), F_SETFL, status_flags | O_NONBLOCK) < 0 ||
-        fcntl(exec_error.read.get(), F_SETFL, exec_flags | O_NONBLOCK) < 0) {
-      result.failure = LaunchFailure::descriptor_setup_failed;
-      result.detail = "cannot make provider launch handshakes nonblocking";
-      return result;
-    }
-    const auto deadline = std::chrono::steady_clock::now() +
-                          std::chrono::seconds(plan.timeouts.launch_seconds);
-    std::string status_buffer;
-    unsigned records = 0;
-    std::optional<pid_t> worker_pid;
-    std::optional<int> observed_exit;
-    bool exec_succeeded = false;
-    while (!worker_pid) {
-      const int remaining = milliseconds_remaining(deadline);
-      if (remaining == 0) {
-        result.failure = LaunchFailure::startup_timeout;
-        result.detail = "provider Bubblewrap status deadline expired";
-        return result;
-      }
-      std::array<pollfd, 3> polled = {
-          pollfd{.fd = status.read.get(), .events = POLLIN, .revents = 0},
-          pollfd{.fd = exec_error.read.get(), .events = POLLIN, .revents = 0},
-          pollfd{.fd = cleanup.monitor_pidfd.get(),
-                 .events = POLLIN,
-                 .revents = 0}};
-      if (poll(polled.data(), polled.size(), remaining) <= 0)
-        continue;
-      if (polled.at(2).revents != 0) {
-        result.failure = LaunchFailure::worker_exited_early;
-        result.detail = "provider monitor exited before identity binding";
-        return result;
-      }
-      if ((polled.at(1).revents & POLLIN) != 0) {
-        int child_errno = 0;
-        if (read(exec_error.read.get(), &child_errno, sizeof(child_errno)) ==
-            sizeof(child_errno)) {
-          result.failure = LaunchFailure::exec_failed;
-          result.detail = "provider bwrap exec failed: " +
-                          std::string(std::strerror(child_errno));
-          return result;
-        }
-      }
-      if ((polled.at(1).revents & POLLHUP) != 0)
-        exec_succeeded = true;
-      if ((polled.at(0).revents & (POLLIN | POLLHUP)) == 0)
-        continue;
-      std::array<char, 1024> chunk{};
-      while (true) {
-        const ssize_t count =
-            read(status.read.get(), chunk.data(), chunk.size());
-        if (count > 0) {
-          exec_succeeded = true;
-          status_buffer.append(chunk.data(), static_cast<std::size_t>(count));
-          continue;
-        }
-        if (count < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-          result.failure = LaunchFailure::status_protocol_failed;
-          result.detail = "provider Bubblewrap status read failed";
-          return result;
-        }
-        break;
-      }
-      std::size_t newline;
-      while ((newline = status_buffer.find('\n')) != std::string::npos) {
-        if (newline > kMaximumStatusLine || ++records > kMaximumStatusRecords) {
-          result.failure = LaunchFailure::status_protocol_failed;
-          result.detail = "provider Bubblewrap status exceeded bounds";
-          return result;
-        }
-        const auto record = parse_status_record(status_buffer.substr(0, newline));
-        status_buffer.erase(0, newline + 1);
-        if (!record || (record->child_pid && worker_pid) ||
-            (record->exit_code && observed_exit)) {
-          result.failure = LaunchFailure::status_protocol_failed;
-          result.detail = "provider Bubblewrap status was malformed";
-          return result;
-        }
-        if (record->child_pid)
-          worker_pid = record->child_pid;
-        if (record->exit_code)
-          observed_exit = record->exit_code;
-      }
-      if (status_buffer.size() > kMaximumStatusLine) {
-        result.failure = LaunchFailure::status_protocol_failed;
-        result.detail = "provider Bubblewrap partial status exceeded bounds";
-        return result;
-      }
-    }
-    if (!exec_succeeded || observed_exit) {
-      result.failure = LaunchFailure::worker_exited_early;
-      result.detail = "provider exited during identity binding";
-      return result;
-    }
-    cleanup.worker_pidfd = open_pidfd(*worker_pid);
-    if (!cleanup.worker_pidfd ||
-        pidfd_state(cleanup.worker_pidfd.get()) != PidfdState::alive) {
-      result.failure = LaunchFailure::pidfd_failed;
-      result.detail = "reported provider PID was not live and bindable";
-      return result;
-    }
-    if (!implementation_->resource_scope->attach(
-            cleanup.scope, monitor_pid, *worker_pid, plan,
-            std::chrono::seconds(plan.timeouts.launch_seconds),
-            result.detail)) {
-      result.failure = LaunchFailure::resource_scope_failed;
-      return result;
-    }
-    cleanup.scope_attached = true;
-    if (pidfd_state(cleanup.worker_pidfd.get()) != PidfdState::alive) {
-      result.failure = LaunchFailure::worker_exited_early;
-      result.detail = "provider exited before startup barrier release";
-      return result;
-    }
-    barrier.write.reset();
-    auto worker = std::make_unique<Worker::Impl>();
-    worker->identity = {.plugin_id = request.service_id,
-                        .revision_sha256 = request.executable_sha256,
-                        .generation = request.generation,
-                        .outer_worker_pid = *worker_pid,
-                        .outer_uid = getuid(),
-                        .outer_gid = getgid()};
-    worker->channels.at(0) = std::move(protocol.trusted);
-    worker->worker_pidfd = std::move(cleanup.worker_pidfd);
-    worker->monitor_pidfd = std::move(cleanup.monitor_pidfd);
-    worker->standard_output = std::move(standard_output.read);
-    worker->standard_error = std::move(standard_error.read);
-    worker->monitor_pid = monitor_pid;
-    worker->scope = cleanup.scope;
-    worker->resource_scope = implementation_->resource_scope;
-    worker->timeouts = plan.timeouts;
-    cleanup.armed = false;
-    result.worker = std::unique_ptr<Worker>(new Worker(std::move(worker)));
-    return result;
-  } catch (const std::exception &error) {
-    result.failure = LaunchFailure::descriptor_setup_failed;
-    result.detail = error.what();
-    return result;
-  }
-}
 
 } // namespace omarchy::plugin_runtime::launcher

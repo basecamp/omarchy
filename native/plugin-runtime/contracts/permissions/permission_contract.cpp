@@ -3,6 +3,7 @@
 #include "manifest_contract.hpp"
 
 #include <bit>
+#include <charconv>
 #include <limits>
 #include <stdexcept>
 #include <tuple>
@@ -114,7 +115,7 @@ void append_tokens(std::string &output,
     append_text(output, token.view());
 }
 
-const std::array<CapabilityDefinition, 4> kRegistry{{
+const std::array<CapabilityDefinition, 3> kRegistry{{
     {.key = {CapabilityId("storage.private"), 1},
      .scope_kind = ScopeKind::quota,
      .operations = {OperationId::storage_read, OperationId::storage_write,
@@ -134,13 +135,6 @@ const std::array<CapabilityDefinition, 4> kRegistry{{
      .operation_count = 1,
      .gesture = GestureRule::none,
      .revocation = RevocationMode::deny_new},
-    {.key = {CapabilityId("service.fake-status"), 1},
-     .scope_kind = ScopeKind::resources,
-     .operations = {OperationId::fake_status_list,
-                    OperationId::fake_status_acknowledge},
-     .operation_count = 2,
-     .gesture = GestureRule::fresh_single_use,
-     .revocation = RevocationMode::cancel_inflight},
 }};
 
 bool operation_in(const CapabilityDefinition &definition,
@@ -207,6 +201,107 @@ std::string fingerprint(std::string bytes) {
 
 template <std::size_t Size> std::string domain(const char (&value)[Size]) {
   return std::string(value, Size - 1);
+}
+
+bool valid_scope_token(char value) {
+  return (value >= 'a' && value <= 'z') ||
+         (value >= 'A' && value <= 'Z') ||
+         (value >= '0' && value <= '9') || value == '.' || value == '_' ||
+         value == '-';
+}
+
+std::uint64_t parse_unsigned(std::string_view value) {
+  std::uint64_t result = 0;
+  const auto [end, error] =
+      std::from_chars(value.data(), value.data() + value.size(), result);
+  require(!value.empty() && error == std::errc{} &&
+              end == value.data() + value.size(),
+          "manifest scope contains an invalid integer");
+  return result;
+}
+
+std::vector<std::string_view> parse_token_array(
+    std::string_view value, std::string_view prefix) {
+  constexpr std::string_view suffix = "]}";
+  require(value.starts_with(prefix) && value.ends_with(suffix),
+          "manifest scope has an unregistered shape");
+  value.remove_prefix(prefix.size());
+  value.remove_suffix(suffix.size());
+  require(!value.empty(), "manifest scope token list is empty");
+  std::vector<std::string_view> result;
+  while (!value.empty()) {
+    require(value.front() == '"', "manifest scope token is not a string");
+    value.remove_prefix(1);
+    const auto end = value.find('"');
+    require(end != std::string_view::npos,
+            "manifest scope token is unterminated");
+    const auto token = value.substr(0, end);
+    require(!token.empty() && std::ranges::all_of(token, valid_scope_token),
+            "manifest scope token is not registered text");
+    result.push_back(token);
+    value.remove_prefix(end + 1);
+    if (value.empty())
+      break;
+    require(value.starts_with(","),
+            "manifest scope token separator is invalid");
+    value.remove_prefix(1);
+  }
+  return result;
+}
+
+TokenScope token_scope(std::span<const std::string_view> values) {
+  TokenScope result;
+  for (const auto value : values)
+    require(result.tokens.insert(ScopeToken(value)),
+            "manifest scope contains a duplicate token");
+  return result;
+}
+
+CapabilityRequest translate_manifest_request(
+    const manifest::CapabilityRequest &request) {
+  CapabilityRequest result{
+      .capability = {CapabilityId(request.capability), 1},
+      .scope = NoScope{},
+      .required = request.required,
+  };
+  auto scope = std::string_view(request.canonical_scope);
+  if (request.capability == "storage.private") {
+    constexpr std::string_view simple_prefix = "{\"quotaBytes\":";
+    constexpr std::string_view bounded_prefix = "{\"itemBytes\":";
+    constexpr std::string_view separator = ",\"quotaBytes\":";
+    require(scope.ends_with("}"),
+            "storage scope has an unregistered shape");
+    scope.remove_suffix(1);
+    std::uint64_t item = 0;
+    std::uint64_t total = 0;
+    if (scope.starts_with(simple_prefix)) {
+      scope.remove_prefix(simple_prefix.size());
+      total = parse_unsigned(scope);
+      item = std::min<std::uint64_t>(total, 4096);
+    } else {
+      require(scope.starts_with(bounded_prefix),
+              "storage scope has an unregistered shape");
+      scope.remove_prefix(bounded_prefix.size());
+      const auto split = scope.find(separator);
+      require(split != std::string_view::npos,
+              "storage scope has an unregistered shape");
+      item = parse_unsigned(scope.substr(0, split));
+      total = parse_unsigned(scope.substr(split + separator.size()));
+    }
+    require(item > 0 && total >= item, "storage scope has invalid bounds");
+    result.scope = QuotaScope{.total_bytes = total, .item_bytes = item};
+  } else if (request.capability == "notifications.send") {
+    result.scope = token_scope(parse_token_array(scope, "{\"categories\":["));
+  } else if (request.capability == "audio.play-cue") {
+    result.scope = token_scope(parse_token_array(scope, "{\"cues\":["));
+  } else {
+    throw std::runtime_error(
+        "manifest requests an unregistered built-in capability");
+  }
+  const auto *definition = find_capability(result.capability);
+  require(definition != nullptr && valid_scope(*definition, result.scope),
+          "manifest scope does not match capability version");
+  return result;
 }
 
 } // namespace
@@ -363,6 +458,17 @@ void validate_requests(const RequestSet &requests) {
     require(valid_scope(*definition, request.scope),
             "invalid capability scope");
   }
+}
+
+RequestSet requests_from_manifest(const manifest::ManifestV2 &manifest) {
+  RequestSet result;
+  for (const auto &request : manifest.requests) {
+    if (request.definition_generation > 0 && !request.definition_digest.empty())
+      continue;
+    result.push_back(translate_manifest_request(request));
+  }
+  validate_requests(result);
+  return result;
 }
 
 std::string policy_request_fingerprint(const RequestSet &input) {
