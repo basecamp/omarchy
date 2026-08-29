@@ -231,6 +231,14 @@ bool Session::active() const {
   return active_ && channel_->ready() && channel_->alive();
 }
 
+channel::ChannelFailure Session::channel_failure() const {
+  return channel_->failure();
+}
+
+const std::string &Session::channel_detail() const {
+  return channel_->detail();
+}
+
 std::string Session::take_worker_standard_error() {
   return channel_->take_worker_standard_error();
 }

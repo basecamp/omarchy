@@ -373,6 +373,13 @@ public:
                                     : permissions::GrantDecisionCode::ungranted)});
         payload.assign(error.begin(), error.end());
       } else {
+#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+        std::cerr << "PRODUCT_E2E dynamic-dispatch-rejected outcome "
+                  << static_cast<int>(result.outcome) << " decision "
+                  << static_cast<int>(result.decision) << " type "
+                  << packet.header.message_type << " correlation "
+                  << packet.header.correlation_id << '\n';
+#endif
         return false;
       }
       reply_ = omarchy::plugin_runtime::channel::BrokerReply{
@@ -387,15 +394,26 @@ public:
       type = broker::kBrokerResultMessage;
       payload.assign(output.begin(), output.begin() +
                                       static_cast<std::ptrdiff_t>(result.response_bytes));
-    } else if (result.outcome == broker::DispatchOutcome::denied) {
+    } else if (result.outcome == broker::DispatchOutcome::denied ||
+               result.outcome == broker::DispatchOutcome::provider_failed ||
+               result.outcome == broker::DispatchOutcome::provider_unavailable) {
       type = static_cast<std::uint16_t>(wire::CommonMessageType::typed_error);
       const auto error = broker::encode_broker_error(
           {.failed_operation = static_cast<permissions::OperationId>(
                packet.header.message_type),
-           .reason = broker::BrokerErrorReason::denied,
+           .reason = result.outcome == broker::DispatchOutcome::denied
+                         ? broker::BrokerErrorReason::denied
+                         : broker::BrokerErrorReason::provider_failed,
            .decision = result.decision.code});
       payload.assign(error.begin(), error.end());
     } else {
+#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+      std::cerr << "PRODUCT_E2E compiled-dispatch-rejected outcome "
+                << static_cast<int>(result.outcome) << " decision "
+                << static_cast<int>(result.decision.code) << " type "
+                << packet.header.message_type << " correlation "
+                << packet.header.correlation_id << '\n';
+#endif
       return false;
     }
     const wire::PacketView terminal{
@@ -960,6 +978,8 @@ int preview(const QStringList &arguments, QGuiApplication &application,
                                            audio_device_provider.get(),
                                            github_provider.get(),
                                            *prepared.prepared, *started.session)) {
+            std::cerr << "PRODUCT_E2E fatal grant-update-not-exact mutation "
+                      << latest.mutation_sequence << '\n';
             qCritical() << "omarchy-plugin-host: live grant update was not an exact revocation";
             application.exit(79);
             return;
@@ -972,6 +992,7 @@ int preview(const QStringList &arguments, QGuiApplication &application,
 #endif
         }
       } catch (const std::exception &error) {
+        std::cerr << "PRODUCT_E2E fatal grant-reload " << error.what() << '\n';
         qCritical().noquote() << "omarchy-plugin-host: live grant reload failed:"
                               << error.what();
         application.exit(79);
@@ -981,6 +1002,11 @@ int preview(const QStringList &arguments, QGuiApplication &application,
           static_cast<std::uint64_t>(std::time(nullptr)),
           std::chrono::milliseconds(0));
       if (dispatched == omarchy::plugin_runtime::channel::DispatchStatus::fatal) {
+        std::cerr << "PRODUCT_E2E fatal broker-dispatch worker_stderr "
+                  << started.session->take_worker_standard_error()
+                  << " channel_failure "
+                  << static_cast<int>(started.session->channel_failure())
+                  << " detail " << started.session->channel_detail() << '\n';
         qCritical() << "omarchy-plugin-host: live broker dispatch became fatal";
         application.exit(79);
       }
@@ -1069,6 +1095,9 @@ int preview(const QStringList &arguments, QGuiApplication &application,
         }
         if (!injected_pointer &&
             qEnvironmentVariableIsSet("OMARCHY_PLUGIN_E2E_CLICK_X") &&
+            frame_hashes.size() >= static_cast<std::size_t>(
+                qEnvironmentVariableIntValue(
+                    "OMARCHY_PLUGIN_E2E_CLICK_AFTER_FRAMES")) &&
             lab_broker->dispatch_count() >= static_cast<std::uint64_t>(
                 qEnvironmentVariableIntValue(
                     "OMARCHY_PLUGIN_E2E_CLICK_AFTER_CALLS")) &&
@@ -1088,6 +1117,7 @@ int preview(const QStringList &arguments, QGuiApplication &application,
                 });
           }
           if (click_target == previews.end()) {
+            std::cerr << "PRODUCT_E2E fatal click-surface-undeclared\n";
             qCritical() << "PRODUCT_E2E click surface is not declared";
             application.exit(79);
             return;
@@ -1101,6 +1131,8 @@ int preview(const QStringList &arguments, QGuiApplication &application,
                    .button = Qt::LeftButton, .pressed = false,
                    .application_synthesized = false});
           if (!injected_pointer) {
+            std::cerr << "PRODUCT_E2E fatal pointer-route-rejected surface "
+                      << click_target->name << ' ' << x << ' ' << y << '\n';
             qCritical() << "PRODUCT_E2E bounded pointer route rejected";
             application.exit(79);
             return;
@@ -1136,6 +1168,11 @@ int preview(const QStringList &arguments, QGuiApplication &application,
       const auto diagnostic = started.session->take_worker_standard_error();
       if (!diagnostic.empty())
         qCritical().noquote() << QString::fromStdString(diagnostic);
+#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+      std::cerr << "PRODUCT_E2E fatal render-receive "
+                << static_cast<int>(message.failure) << " worker_stderr "
+                << diagnostic << '\n';
+#endif
       application.exit(79);
     }
   });
