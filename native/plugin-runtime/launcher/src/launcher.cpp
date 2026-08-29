@@ -558,14 +558,19 @@ void write_child_error(int descriptor, int error) {
 }
 
 [[noreturn]] void child_exec(std::string bwrap_path, sandbox::SandboxPlan plan,
-                             const std::array<int, 12> &sources) {
-  std::array<Fd, 12> staged;
+                             std::span<const int> sources,
+                             int exec_error_fd = kExecErrorFd) {
+  if (exec_error_fd < 0 ||
+      static_cast<std::size_t>(exec_error_fd) >= sources.size()) {
+    _exit(126);
+  }
+  std::vector<Fd> staged(sources.size());
   int minimum = 64;
   for (std::size_t index = 0; index < sources.size(); ++index) {
-    const int duplicate = fcntl(sources.at(index), F_DUPFD_CLOEXEC, minimum);
+    const int duplicate = fcntl(sources[index], F_DUPFD_CLOEXEC, minimum);
     if (duplicate < 0) {
       const int saved = errno;
-      write_child_error(sources.at(kExecErrorFd), saved);
+      write_child_error(sources[static_cast<std::size_t>(exec_error_fd)], saved);
       _exit(126);
     }
     staged.at(index).reset(duplicate);
@@ -575,17 +580,19 @@ void write_child_error(int descriptor, int error) {
        ++destination) {
     if (dup2(staged.at(destination).get(), static_cast<int>(destination)) < 0) {
       const int saved = errno;
-      write_child_error(staged.at(kExecErrorFd).get(), saved);
+      write_child_error(staged[static_cast<std::size_t>(exec_error_fd)].get(),
+                        saved);
       _exit(126);
     }
   }
   for (Fd &descriptor : staged) {
     descriptor.reset();
   }
-  if (fcntl(kExecErrorFd, F_SETFD, FD_CLOEXEC) < 0 ||
-      syscall(SYS_close_range, 12U, ~0U, 0U) < 0) {
+  if (fcntl(exec_error_fd, F_SETFD, FD_CLOEXEC) < 0 ||
+      syscall(SYS_close_range, static_cast<unsigned>(sources.size()), ~0U,
+              0U) < 0) {
     const int saved = errno;
-    write_child_error(kExecErrorFd, saved);
+    write_child_error(exec_error_fd, saved);
     _exit(126);
   }
   const std::array limits = {
@@ -601,13 +608,13 @@ void write_child_error(int descriptor, int error) {
   for (const auto &[resource, limit] : limits) {
     if (setrlimit(resource, &limit) < 0) {
       const int saved = errno;
-      write_child_error(kExecErrorFd, saved);
+      write_child_error(exec_error_fd, saved);
       _exit(126);
     }
   }
   if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0) {
     const int saved = errno;
-    write_child_error(kExecErrorFd, saved);
+    write_child_error(exec_error_fd, saved);
     _exit(126);
   }
 
@@ -619,7 +626,7 @@ void write_child_error(int descriptor, int error) {
   execve(bwrap_path.c_str(), argument_pointers.data(),
          environment_pointers.data());
   const int saved = errno;
-  write_child_error(kExecErrorFd, saved);
+  write_child_error(exec_error_fd, saved);
   _exit(126);
 }
 

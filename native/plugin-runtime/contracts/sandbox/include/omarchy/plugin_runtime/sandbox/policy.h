@@ -23,6 +23,7 @@ struct ProviderDescriptorPolicy {
   int status = 4;
   int barrier = 5;
   int seccomp = 6;
+  int executable = 7;
 };
 
 struct ResourcePolicy {

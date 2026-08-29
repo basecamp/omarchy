@@ -33,6 +33,13 @@ struct TrustedLaunchRequest {
   int private_state_directory_fd = -1;
 };
 
+struct TrustedProviderLaunchRequest {
+  std::string service_id;
+  std::string executable_sha256;
+  std::uint64_t generation = 0;
+  int executable_fd = -1;
+};
+
 enum class LaunchFailure {
   none,
   invalid_trusted_record,
@@ -147,6 +154,8 @@ public:
 
   [[nodiscard]] bool prerequisites(std::string &error) const;
   [[nodiscard]] LaunchResult launch(const TrustedLaunchRequest &request) const;
+  [[nodiscard]] LaunchResult
+  launchProvider(const TrustedProviderLaunchRequest &request) const;
 
 private:
   struct Impl;

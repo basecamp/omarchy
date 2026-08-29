@@ -296,7 +296,8 @@ SandboxPlan build_provider_plan(std::string trusted_executable_path) {
                              "XDG_DATA_HOME=/tmp/data",
                              "XDG_RUNTIME_DIR=/run/provider"};
   plan.worker_descriptors = {fd.protocol};
-  plan.launcher_descriptors = {fd.protocol, fd.status, fd.barrier, fd.seccomp};
+  plan.launcher_descriptors = {fd.protocol, fd.status, fd.barrier, fd.seccomp,
+                               fd.executable};
   plan.seccomp = seccomp_policy();
   plan.process.transient_scope_prefix = "app-omarchy-plugin-provider-";
   plan.process.descendants_permitted = false;
@@ -355,7 +356,7 @@ SandboxPlan build_provider_plan(std::string trusted_executable_path) {
   append(plan.argv, "--ro-bind-try", "/etc/ld.so.cache");
   plan.argv.push_back("/etc/ld.so.cache");
   append(plan.argv, "--dir", "/runtime");
-  append(plan.argv, "--ro-bind", std::move(trusted_executable_path));
+  append(plan.argv, "--ro-bind", "/proc/self/fd/7");
   plan.argv.push_back("/runtime/provider");
   append(plan.argv, "--size", std::to_string(resources.scratch_max_bytes));
   append(plan.argv, "--tmpfs", "/tmp");
