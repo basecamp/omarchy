@@ -19,8 +19,8 @@ grep -qxF cups-pk-helper "$packages" || fail "Polkit printer administration is i
 ! grep -qxF cups-pdf "$packages" || fail "the root CUPS-PDF backend is removed"
 
 # Automatic discovery is temporarily out of the default install while it is
-# reworked. The hardened configuration below still ships: it is what a
-# hand-installed cups-browsed gets, and what discovery comes back onto.
+# reworked. The hardened configuration below stays as the baseline discovery
+# comes back onto.
 ! grep -qxF cups-browsed "$packages" || fail "automatic printer discovery is out of the base package set"
 ! grep -q 'cups-browsed' "$ROOT/install/config/enable-services.sh" ||
   fail "a fresh install does not enable a discovery service it no longer installs"
@@ -29,19 +29,17 @@ grep -qxF cups-pk-helper "$packages" || fail "Polkit printer administration is i
 
 pass "the base install keeps CUPS and Polkit administration, without automatic discovery"
 
-# The install-time override for a file has to wait for the package that owns
-# it. CUPS still ships /etc/cups/cups-files.conf, so a guard on that file no
-# longer says anything about cups-browsed: writing its override on a machine
-# without the package leaves a configuration file for a package nothing
-# installed, and pacman lands its own copy beside it as a .pacnew later.
+# CUPS still ships /etc/cups/cups-files.conf, so its authorization override is
+# applied after the ISO installs that package. cups-browsed is absent, so the
+# installer must not write any of its package-owned configuration.
 post_install_pacman="$ROOT/install/post-install/pacman.sh"
 
-grep -q 'cups-cups-browsed.conf && -f /etc/cups/cups-browsed.conf' "$post_install_pacman" ||
-  fail "the discovery override waits for the package that owns the file it replaces"
+! grep -q 'cups-cups-browsed.conf' "$post_install_pacman" ||
+  fail "a fresh install does not write configuration for absent printer discovery"
 grep -q 'cups-cups-files.conf && -f /etc/cups/cups-files.conf' "$post_install_pacman" ||
   fail "the CUPS authorization override waits for the file it replaces"
 
-pass "install-time overrides wait for the packages that own their files"
+pass "the fresh install applies CUPS hardening without writing discovery configuration"
 
 grep -qxF 'CacheDir /var/cache/cups-browsed' "$cups_browsed_conf" ||
   fail "cups-browsed keeps state outside the print-filter cache"

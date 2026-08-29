@@ -65,7 +65,7 @@ verify_services() {
 }
 
 verify_printing_security() {
-  local lpinfo_output
+  local lpinfo_output path
 
   ! pacman -Q cups-pdf >/dev/null 2>&1 || fail "CUPS-PDF is absent"
   pass "the root CUPS-PDF backend is not installed"
@@ -80,6 +80,16 @@ verify_printing_security() {
     fail "no discovery service is enabled"
   ! systemctl is-active --quiet cups-browsed.service 2>/dev/null ||
     fail "no discovery service is running"
+
+  for path in \
+    /etc/cups/cups-browsed.conf \
+    /usr/bin/cups-browsed \
+    /usr/lib/cups/backend/implicitclass \
+    /usr/lib/systemd/system/cups-browsed.service \
+    /etc/systemd/system/multi-user.target.wants/cups-browsed.service; do
+    [[ ! -e $path && ! -L $path ]] ||
+      fail "automatic printer discovery leaves no installed package files" "$path still exists"
+  done
   pass "automatic printer discovery is absent from a stock install"
 
   systemctl is-active --quiet cups.service || fail "CUPS is running"
