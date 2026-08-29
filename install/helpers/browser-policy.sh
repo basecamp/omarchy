@@ -166,3 +166,43 @@ browser_policy_setup_firefox_distribution() {
   browser_policy_purge_dir "$distribution_dir"
   browser_policy_install_firefox_policies "$distribution_dir" "$policies"
 }
+
+browser_policy_ensure_firefox_omafox_policy() {
+  local distribution_dir=$1
+  local policy_file=$distribution_dir/policies.json
+  local tmp
+
+  browser_policy_setup_parent "$distribution_dir"
+  browser_policy_purge_dir "$distribution_dir"
+
+  if ! browser_policy_firefox_policy_file_ok "$policy_file"; then
+    browser_policy_install_firefox_policies "$distribution_dir"
+    return
+  fi
+
+  tmp=$(mktemp) || return 1
+  if ! as_root jq '
+    if type == "object" and
+      (.policies | type == "object") and
+      ((.policies.ExtensionSettings == null) or (.policies.ExtensionSettings | type == "object"))
+    then
+      .policies.ExtensionSettings["@omafox"] = {
+        "installation_mode": "normal_installed",
+        "install_url": "https://addons.mozilla.org/firefox/downloads/latest/omafox/latest.xpi"
+      }
+    else
+      error("policies.json does not contain a valid policies object")
+    end
+  ' "$policy_file" >"$tmp"; then
+    rm -f "$tmp"
+    printf 'Skipping invalid Firefox enterprise policy: %s\n' "$policy_file" >&2
+    return 0
+  fi
+
+  if as_root install -m 644 -o root -g root -T "$tmp" "$policy_file"; then
+    rm -f "$tmp"
+  else
+    rm -f "$tmp"
+    return 1
+  fi
+}

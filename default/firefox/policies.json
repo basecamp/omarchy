@@ -1,5 +1,11 @@
 {
   "policies": {
+    "ExtensionSettings": {
+      "@omafox": {
+        "installation_mode": "normal_installed",
+        "install_url": "https://addons.mozilla.org/firefox/downloads/latest/omafox/latest.xpi"
+      }
+    },
     "Preferences": {
       "apz.overscroll.enabled": {
         "Value": true,
