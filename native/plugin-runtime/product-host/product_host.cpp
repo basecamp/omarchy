@@ -65,10 +65,12 @@ PreparedPlugin::PreparedPlugin(
     discovery::VerifiedPlugin verified,
     permissions::ActivationBinding activation,
     std::vector<surface_host::NamedSurfacePolicy> policies,
+    std::vector<SurfaceEntrypoint> surface_entrypoints_value,
     std::vector<PermissionAvailability> permission_availability_value,
     int revision_fd)
     : plugin(std::move(verified)), binding(std::move(activation)),
       surfaces(std::move(policies)),
+      surface_entrypoints(std::move(surface_entrypoints_value)),
       permission_availability(std::move(permission_availability_value)),
       revision_directory_fd(revision_fd) {}
 
@@ -80,6 +82,7 @@ PreparedPlugin::~PreparedPlugin() {
 PreparedPlugin::PreparedPlugin(PreparedPlugin &&other) noexcept
     : plugin(std::move(other.plugin)), binding(std::move(other.binding)),
       surfaces(std::move(other.surfaces)),
+      surface_entrypoints(std::move(other.surface_entrypoints)),
       permission_availability(std::move(other.permission_availability)),
       revision_directory_fd(std::exchange(other.revision_directory_fd, -1)) {}
 
@@ -90,6 +93,7 @@ PreparedPlugin &PreparedPlugin::operator=(PreparedPlugin &&other) noexcept {
     plugin = std::move(other.plugin);
     binding = std::move(other.binding);
     surfaces = std::move(other.surfaces);
+    surface_entrypoints = std::move(other.surface_entrypoints);
     permission_availability = std::move(other.permission_availability);
     revision_directory_fd = std::exchange(other.revision_directory_fd, -1);
   }
@@ -149,6 +153,7 @@ PrepareResult prepare(const std::filesystem::path &plugin_root,
   }
 
   std::vector<surface_host::NamedSurfacePolicy> surfaces;
+  std::vector<PreparedPlugin::SurfaceEntrypoint> surface_entrypoints;
   std::vector<PreparedPlugin::PermissionAvailability> availability;
   for (const auto &request : found->manifest.requests) {
     std::vector<std::string> operations = request.operations;
@@ -180,6 +185,15 @@ PrepareResult prepare(const std::filesystem::path &plugin_root,
          ++iterator) {
       surfaces.push_back(surface_host::parse_named_surface_policy(
           found->manifest, iterator.key().toStdString()));
+      auto qml = found->manifest.runtime.qml;
+      const auto entry = std::ranges::find_if(
+          found->manifest.runtime.surface_qml, [&](const auto &candidate) {
+            return candidate.surface == iterator.key().toStdString();
+          });
+      if (entry != found->manifest.runtime.surface_qml.end())
+        qml = entry->qml;
+      surface_entrypoints.push_back(
+          {iterator.key().toStdString(), std::move(qml)});
     }
   } catch (const std::exception &error) {
     return {.prepared = nullptr,
@@ -200,9 +214,63 @@ PrepareResult prepare(const std::filesystem::path &plugin_root,
   }
   return {.prepared = std::make_unique<PreparedPlugin>(
               *found, active_grants.binding, std::move(surfaces),
+              std::move(surface_entrypoints),
               std::move(availability), revision_fd),
           .failure = PrepareFailure::none,
           .detail = {}};
+}
+
+MultiSurfaceActivation::MultiSurfaceActivation(const PreparedPlugin &prepared)
+    : prepared_(prepared) {}
+
+std::optional<std::string_view>
+MultiSurfaceActivation::qml_entry(std::string_view surface) const {
+  const auto found = std::ranges::find_if(
+      prepared_.surface_entrypoints,
+      [&](const auto &entry) { return entry.surface == surface; });
+  if (found == prepared_.surface_entrypoints.end())
+    return std::nullopt;
+  return found->qml;
+}
+
+bool MultiSurfaceActivation::register_surface(
+    std::string_view surface, std::uint64_t authenticated_session_nonce,
+    const permissions::ActivationBinding &binding) {
+  if (authenticated_session_nonce == 0 ||
+      !same_binding(binding, prepared_.binding) || !qml_entry(surface))
+    return false;
+  const auto duplicate = std::ranges::find_if(
+      registered_, [&](const auto &entry) {
+        return entry.surface == surface ||
+               entry.nonce == authenticated_session_nonce;
+      });
+  if (duplicate != registered_.end())
+    return false;
+  registered_.push_back(
+      {std::string(surface), authenticated_session_nonce});
+  return true;
+}
+
+std::optional<SurfaceCommand> MultiSurfaceActivation::route_intent(
+    std::string_view source_surface,
+    std::uint64_t authenticated_session_nonce,
+    const permissions::ActivationBinding &binding,
+    std::string_view target_surface, SurfaceIntentAction action,
+    bool trusted_user_gesture) const {
+  if (!same_binding(binding, prepared_.binding) || !qml_entry(target_surface))
+    return std::nullopt;
+  const auto source = std::ranges::find_if(
+      registered_, [&](const auto &entry) {
+        return entry.surface == source_surface &&
+               entry.nonce == authenticated_session_nonce;
+      });
+  if (source == registered_.end())
+    return std::nullopt;
+  if ((action == SurfaceIntentAction::toggle ||
+       action == SurfaceIntentAction::focus) &&
+      !trusted_user_gesture)
+    return std::nullopt;
+  return SurfaceCommand{std::string(target_surface), action};
 }
 
 DenyAllBroker::DenyAllBroker(permissions::ActivationBinding binding)

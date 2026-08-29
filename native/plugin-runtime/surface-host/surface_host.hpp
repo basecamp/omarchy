@@ -24,6 +24,7 @@ inline constexpr std::size_t kMaximumInputRegions = 16;
 
 enum class SurfaceRole { bar_embedded, desktop_overlay, panel };
 enum class KeyboardFocusPolicy { none, after_gesture };
+enum class BarSection { unspecified, left, center, right };
 
 struct InputRegion {
   std::uint32_t x;
@@ -43,6 +44,7 @@ struct NamedSurfacePolicy {
   std::uint32_t maximum_frames_per_second;
   KeyboardFocusPolicy keyboard_focus;
   bool dynamic_input_regions;
+  BarSection default_bar_section = BarSection::unspecified;
 
   bool operator==(const NamedSurfacePolicy &) const = default;
 };

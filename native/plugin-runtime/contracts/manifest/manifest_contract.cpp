@@ -712,7 +712,7 @@ ManifestV2 parse_manifest_v2(std::string_view bytes) {
   }
 
   const Object &runtime = as_object(required(root, "runtime"), "runtime");
-  known_keys(runtime, {"apiVersion", "qml", "worker", "sidecars"},
+  known_keys(runtime, {"apiVersion", "qml", "surfaceQml", "worker", "sidecars"},
              "runtime");
   const auto api_version =
       as_integer(required(runtime, "apiVersion"), "runtime.apiVersion");
@@ -720,6 +720,18 @@ ManifestV2 parse_manifest_v2(std::string_view bytes) {
   result.runtime.api_version = static_cast<std::uint32_t>(api_version);
   result.runtime.qml = as_string(required(runtime, "qml"), "runtime.qml");
   require(safe_relative_path(result.runtime.qml), "unsafe runtime.qml path");
+  if (const auto found = runtime.find("surfaceQml"); found != runtime.end()) {
+    const Object &entries = as_object(found->second, "runtime.surfaceQml");
+    require(!entries.empty() && entries.size() <= 8,
+            "runtime.surfaceQml has invalid length");
+    for (const auto &[surface, entry] : entries) {
+      bounded_text(surface, 128, "runtime.surfaceQml surface");
+      auto qml = as_string(entry, "runtime.surfaceQml entry");
+      require(safe_relative_path(qml),
+              "unsafe runtime.surfaceQml entry path");
+      result.runtime.surface_qml.push_back({surface, std::move(qml)});
+    }
+  }
   if (const auto found = runtime.find("worker"); found != runtime.end()) {
     const Array &worker = as_array(found->second, "runtime.worker");
     require(!worker.empty() && worker.size() <= 64,
@@ -765,7 +777,11 @@ ManifestV2 parse_manifest_v2(std::string_view bytes) {
   }
 
   const Json &surfaces = required(root, "surfaces");
-  (void)as_object(surfaces, "surfaces");
+  const Object &surface_entries = as_object(surfaces, "surfaces");
+  for (const auto &entry : result.runtime.surface_qml) {
+    require(surface_entries.contains(entry.surface),
+            "runtime.surfaceQml names an undeclared surface");
+  }
   result.canonical_surfaces = canonical(surfaces);
 
   const Object &permissions =
@@ -912,6 +928,9 @@ ContentIdentity identify_tree(const std::filesystem::path &root,
   };
   require(has_file("manifest.json"), "plugin tree has no manifest.json");
   require(has_file(manifest.runtime.qml), "runtime.qml does not exist");
+  for (const auto &entry : manifest.runtime.surface_qml) {
+    require(has_file(entry.qml), "runtime.surfaceQml entry does not exist");
+  }
   if (!manifest.runtime.worker.empty()) {
     require(is_executable_file(manifest.runtime.worker.front()),
             "runtime.worker executable is missing or not executable");

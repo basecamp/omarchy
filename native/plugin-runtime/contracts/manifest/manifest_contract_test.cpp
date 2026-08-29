@@ -71,6 +71,26 @@ void parser_contract(const std::filesystem::path &fixtures) {
                   std::vector<std::string>{"bin/indexer", "--socket",
                                            "/run/plugin/indexer.sock"},
           "declared sidecars were not preserved exactly");
+  const auto multi_surface = omarchy::plugins::manifest::parse_manifest_v2(
+      R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml","surfaceQml":{"atlas":"Atlas.qml","barWidget":"BarWidget.qml"}},"surfaces":{"atlas":{},"barWidget":{}},"permissions":{"required":[],"optional":[]}})");
+  require(multi_surface.runtime.surface_qml.size() == 2 &&
+              multi_surface.runtime.surface_qml[0].surface == "atlas" &&
+              multi_surface.runtime.surface_qml[0].qml == "Atlas.qml" &&
+              multi_surface.runtime.surface_qml[1].surface == "barWidget" &&
+              multi_surface.runtime.surface_qml[1].qml == "BarWidget.qml",
+          "per-surface QML entries were not preserved exactly");
+  expect_rejected(
+      [] {
+        (void)omarchy::plugins::manifest::parse_manifest_v2(
+            R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml","surfaceQml":{"missing":"Other.qml"}},"surfaces":{"atlas":{}},"permissions":{"required":[],"optional":[]}})");
+      },
+      "QML entry for an undeclared surface was accepted");
+  expect_rejected(
+      [] {
+        (void)omarchy::plugins::manifest::parse_manifest_v2(
+            R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml","surfaceQml":{"atlas":"../Other.qml"}},"surfaces":{"atlas":{}},"permissions":{"required":[],"optional":[]}})");
+      },
+      "escaping per-surface QML entry was accepted");
   expect_rejected(
       [] {
         (void)omarchy::plugins::manifest::parse_manifest_v2(
@@ -207,6 +227,30 @@ void digest_contract(const std::filesystem::path &fixtures) {
   expect_rejected([&] { (void)identify_tree(temporary, copied_manifest); },
                   "special file in content tree was accepted");
   std::filesystem::remove(temporary / "host-channel");
+  {
+    std::ofstream surface(temporary / "ui/BarWidget.qml",
+                          std::ios::binary | std::ios::trunc);
+    surface << "import QtQuick\nItem {}\n";
+  }
+  const std::string multi_surface_manifest_bytes =
+      R"({"schemaVersion":2,"id":"org.example.status","name":"Example Status","version":"2.0.0","runtime":{"apiVersion":1,"qml":"ui/Status.qml","surfaceQml":{"barWidget":"ui/BarWidget.qml"}},"surfaces":{"barWidget":{"role":"bar-embedded"}},"permissions":{"required":[],"optional":[]}})";
+  {
+    std::ofstream manifest_output(temporary / "manifest.json",
+                                  std::ios::binary | std::ios::trunc);
+    manifest_output << multi_surface_manifest_bytes;
+  }
+  const auto multi_surface_manifest =
+      parse_manifest_v2(multi_surface_manifest_bytes);
+  (void)identify_tree(temporary, multi_surface_manifest);
+  std::filesystem::remove(temporary / "ui/BarWidget.qml");
+  expect_rejected(
+      [&] { (void)identify_tree(temporary, multi_surface_manifest); },
+      "missing per-surface QML entry was accepted");
+  {
+    std::ofstream manifest_output(temporary / "manifest.json",
+                                  std::ios::binary | std::ios::trunc);
+    manifest_output << bytes;
+  }
   {
     std::ofstream oversized(temporary / "oversized.bin",
                             std::ios::binary | std::ios::trunc);

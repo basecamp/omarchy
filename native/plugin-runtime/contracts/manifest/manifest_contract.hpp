@@ -23,6 +23,13 @@ struct CapabilityRequest {
 };
 
 struct Runtime {
+  struct SurfaceEntry {
+    std::string surface;
+    std::string qml;
+
+    bool operator==(const SurfaceEntry &) const = default;
+  };
+
   struct Sidecar {
     std::string name;
     std::vector<std::string> command;
@@ -32,6 +39,7 @@ struct Runtime {
 
   std::uint32_t api_version = 0;
   std::string qml;
+  std::vector<SurfaceEntry> surface_qml;
   std::vector<std::string> worker;
   std::vector<Sidecar> sidecars;
 

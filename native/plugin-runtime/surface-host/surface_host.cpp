@@ -132,7 +132,7 @@ NamedSurfacePolicy parse_named_surface_policy(
       QStringLiteral("role"),          QStringLiteral("maximumWidth"),
       QStringLiteral("maximumHeight"), QStringLiteral("maximumFramesPerSecond"),
       QStringLiteral("keyboardFocus"), QStringLiteral("lockScreenVisible"),
-      QStringLiteral("inputRegions"),
+      QStringLiteral("inputRegions"),  QStringLiteral("defaultSection"),
   };
   for (auto iterator = object.begin(); iterator != object.end(); ++iterator) {
     require(std::ranges::find(known, iterator.key()) != known.end(),
@@ -173,6 +173,20 @@ NamedSurfacePolicy parse_named_surface_policy(
             "unsupported input-region policy");
     dynamic_input_regions = true;
   }
+  BarSection default_bar_section = BarSection::unspecified;
+  const auto section = object.value(QStringLiteral("defaultSection"));
+  if (!section.isUndefined()) {
+    require(role == SurfaceRole::bar_embedded && section.isString(),
+            "defaultSection is only valid for bar surfaces");
+    if (section.toString() == QStringLiteral("left"))
+      default_bar_section = BarSection::left;
+    else if (section.toString() == QStringLiteral("center"))
+      default_bar_section = BarSection::center;
+    else if (section.toString() == QStringLiteral("right"))
+      default_bar_section = BarSection::right;
+    else
+      fail("unsupported defaultSection");
+  }
   return {.plugin_id = manifest.id,
           .surface_name = std::string(surface_name),
           .role = role,
@@ -180,7 +194,8 @@ NamedSurfacePolicy parse_named_surface_policy(
           .maximum_height = maximum_height,
           .maximum_frames_per_second = maximum_fps,
           .keyboard_focus = keyboard_focus,
-          .dynamic_input_regions = dynamic_input_regions};
+          .dynamic_input_regions = dynamic_input_regions,
+          .default_bar_section = default_bar_section};
 }
 
 std::unique_ptr<HostSurface> HostSurface::create(

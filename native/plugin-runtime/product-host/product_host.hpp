@@ -9,7 +9,9 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace omarchy::plugin_runtime::product_host {
@@ -34,6 +36,13 @@ enum class PrepareFailure {
 };
 
 struct PreparedPlugin {
+  struct SurfaceEntrypoint {
+    std::string surface;
+    std::string qml;
+
+    bool operator==(const SurfaceEntrypoint &) const = default;
+  };
+
   struct PermissionAvailability {
     std::string capability;
     std::string operation;
@@ -42,6 +51,7 @@ struct PreparedPlugin {
   PreparedPlugin(discovery::VerifiedPlugin verified,
                  permissions::ActivationBinding activation,
                  std::vector<surface_host::NamedSurfacePolicy> policies,
+                 std::vector<SurfaceEntrypoint> surface_entrypoints,
                  std::vector<PermissionAvailability> permission_availability,
                  int revision_fd);
   ~PreparedPlugin();
@@ -53,8 +63,49 @@ struct PreparedPlugin {
   discovery::VerifiedPlugin plugin;
   permissions::ActivationBinding binding;
   std::vector<surface_host::NamedSurfacePolicy> surfaces;
+  std::vector<SurfaceEntrypoint> surface_entrypoints;
   std::vector<PermissionAvailability> permission_availability;
   int revision_directory_fd = -1;
+};
+
+enum class SurfaceIntentAction { toggle, focus, dismiss };
+
+struct SurfaceCommand {
+  std::string target_surface;
+  SurfaceIntentAction action = SurfaceIntentAction::toggle;
+
+  bool operator==(const SurfaceCommand &) const = default;
+};
+
+// One trusted activation owns every declared surface. A shell adapter registers
+// each authenticated worker/session with an unguessable host nonce and routes
+// only these bounded commands; plugin-provided shell text never crosses the
+// boundary. All registrations share the PreparedPlugin binding and permission
+// snapshot, so update/revocation generation changes invalidate the whole set.
+class MultiSurfaceActivation final {
+public:
+  explicit MultiSurfaceActivation(const PreparedPlugin &prepared);
+
+  [[nodiscard]] bool register_surface(
+      std::string_view surface, std::uint64_t authenticated_session_nonce,
+      const permissions::ActivationBinding &binding);
+  [[nodiscard]] std::optional<SurfaceCommand> route_intent(
+      std::string_view source_surface,
+      std::uint64_t authenticated_session_nonce,
+      const permissions::ActivationBinding &binding,
+      std::string_view target_surface, SurfaceIntentAction action,
+      bool trusted_user_gesture) const;
+  [[nodiscard]] std::optional<std::string_view>
+  qml_entry(std::string_view surface) const;
+
+private:
+  struct RegisteredSurface {
+    std::string surface;
+    std::uint64_t nonce = 0;
+  };
+
+  const PreparedPlugin &prepared_;
+  std::vector<RegisteredSurface> registered_;
 };
 
 struct PrepareResult {
