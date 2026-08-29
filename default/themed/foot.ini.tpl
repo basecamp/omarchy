@@ -1,4 +1,6 @@
-[colors-dark]
+initial-color-theme={{ mode }}
+
+[colors-{{ mode }}]
 foreground={{ foreground_strip }}
 background={{ background_strip }}
 selection-foreground={{ selection_foreground_strip }}
