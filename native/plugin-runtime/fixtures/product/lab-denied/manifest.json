@@ -14,8 +14,7 @@
       "maximumHeight": 260,
       "maximumFramesPerSecond": 15,
       "keyboardFocus": false,
-      "lockScreenVisible": false,
-      "inputRegions": "none"
+      "lockScreenVisible": false
     }
   },
   "permissions": {

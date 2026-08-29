@@ -9,7 +9,6 @@ Item {
     readonly property string surfaceRole: "panel"
     readonly property bool acceptsKeyboardFocus: false
     readonly property int maximumFramesPerSecond: 15
-    property var inputRegions: []
     property var writeCall: null
     property var readCall: null
     property string phase: "STARTING"
