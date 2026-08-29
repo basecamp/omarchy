@@ -23,8 +23,10 @@
 #include "omarchy/plugin_runtime/providers/bluez_audio_backend.hpp"
 #include "omarchy/plugin_runtime/providers/github_cli_backend.hpp"
 #include "omarchy/plugin_runtime/providers/github_provider.hpp"
+#include "omarchy/plugin_runtime/providers/hyprland_window_backend.hpp"
 #include "omarchy/plugin_runtime/providers/radio_live_backend.hpp"
 #include "omarchy/plugin_runtime/providers/radio_provider.hpp"
+#include "omarchy/plugin_runtime/providers/system_observe_provider.hpp"
 #include "omarchy/plugin_runtime/sandbox/policy.h"
 #include "lifecycle.hpp"
 
@@ -259,6 +261,7 @@ struct DynamicAdapters {
   definitions::DynamicAdapter account_read;
   definitions::DynamicAdapter account_write;
   definitions::DynamicAdapter open_uri;
+  definitions::DynamicAdapter system_observe;
   std::vector<definitions::DynamicAdapter> external;
 };
 
@@ -271,7 +274,8 @@ bool dynamic_adapter_available(std::string_view adapter_class,
                               &adapters.device_control,
                               &adapters.account_read,
                               &adapters.account_write,
-                              &adapters.open_uri})
+                              &adapters.open_uri,
+                              &adapters.system_observe})
     if (adapter->binding.adapter_class.view() == adapter_class &&
         adapter->binding.implementation_digest == digest &&
         adapter->binding.abi_version == abi)
@@ -629,6 +633,8 @@ int preview(const QStringList &arguments, QGuiApplication &application,
   std::unique_ptr<providers::GitHubCliBackend> github_cli_backend;
   std::unique_ptr<providers::GitHubProvider> github_provider;
   std::unique_ptr<providers::RadioLiveBackend> radio_live_backend;
+  std::unique_ptr<providers::SystemObserveProvider> system_observe_provider;
+  std::unique_ptr<providers::HyprlandWindowBackend> hyprland_window_backend;
   std::unique_ptr<runtime::DynamicBrokerRuntime> dynamic_runtime;
   std::vector<external_provider::Registration> external_registrations;
   Clock clock;
@@ -665,6 +671,7 @@ int preview(const QStringList &arguments, QGuiApplication &application,
       std::uint64_t account_read_epoch = 0;
       std::uint64_t account_write_epoch = 0;
       std::uint64_t open_uri_epoch = 0;
+      std::uint64_t system_observe_epoch = 0;
       for (const auto &dynamic : active->dynamic_grants) {
         if (dynamic.grant.definition.canonical_name.view() == "network.fetch")
           fetch_epoch = dynamic.grant.epoch;
@@ -680,6 +687,8 @@ int preview(const QStringList &arguments, QGuiApplication &application,
           account_write_epoch = dynamic.grant.epoch;
         else if (dynamic.grant.definition.canonical_name.view() == "external.open-uri.https")
           open_uri_epoch = dynamic.grant.epoch;
+        else if (dynamic.grant.definition.canonical_name.view() == "system.observe")
+          system_observe_epoch = dynamic.grant.epoch;
       }
       providers::RadioProviderConfiguration radio_configuration{
           .binding = active->binding, .fetch_epoch = fetch_epoch,
@@ -734,6 +743,18 @@ int preview(const QStringList &arguments, QGuiApplication &application,
               .write_epoch = account_write_epoch,
               .open_epoch = open_uri_epoch,
               .backend = github_cli_backend->configuration()});
+      providers::SystemObserveBackend system_backend;
+      if (system_observe_epoch > 0) {
+        hyprland_window_backend =
+            std::make_unique<providers::HyprlandWindowBackend>();
+        system_backend = hyprland_window_backend->configuration();
+      }
+      system_observe_provider =
+          std::make_unique<providers::SystemObserveProvider>(
+              providers::SystemObserveProviderConfiguration{
+                  .binding = active->binding,
+                  .epoch = system_observe_epoch,
+                  .backend = system_backend});
       DynamicAdapters adapters{.fetch = radio_provider->fetch_adapter(),
           .media = radio_provider->media_adapter(),
           .device_observe = audio_device_provider->observe_adapter(),
@@ -741,6 +762,7 @@ int preview(const QStringList &arguments, QGuiApplication &application,
           .account_read = github_provider->read_adapter(),
           .account_write = github_provider->write_adapter(),
           .open_uri = github_provider->open_adapter(),
+          .system_observe = system_observe_provider->adapter(),
           .external = {}};
 #ifndef OMARCHY_PLUGIN_PRODUCT_E2E
       const std::filesystem::path provider_registration_root(
@@ -815,6 +837,8 @@ int preview(const QStringList &arguments, QGuiApplication &application,
           adapter = adapters.account_write;
         else if (resolved->definition->adapter == adapters.open_uri.binding)
           adapter = adapters.open_uri;
+        else if (resolved->definition->adapter == adapters.system_observe.binding)
+          adapter = adapters.system_observe;
         else {
           const auto external = std::ranges::find_if(
               adapters.external, [&](const auto &candidate) {
