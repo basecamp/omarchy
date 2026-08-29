@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# omarchy:summary=Add other installed operating systems to the boot menu
+# omarchy:requires-sudo=true
+
+if [[ ! -d /sys/firmware/efi ]]; then
+  echo "Error: System is not booted in UEFI mode" >&2
+  exit 1
+fi
+
+if omarchy-cmd-missing limine-scan; then
+  echo "Error: limine-scan is not available; this system does not boot with Limine" >&2
+  exit 1
+fi
+
+echo "Scanning for other installed operating systems."
+echo "Anything you add appears in the boot menu alongside Omarchy."
+echo
+
+sudo limine-scan
