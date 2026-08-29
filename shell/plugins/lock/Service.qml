@@ -462,8 +462,15 @@ Item {
     stdout: StdioCollector { id: fingerprintCheckStdout; waitForEnd: true }
     onExited: {
       root.fingerprintConfigured = String(fingerprintCheckStdout.text || "").trim() === "yes"
-      if (root.lockRequested && root.fingerprintConfigured) root.startFingerprint()
-      else if (!root.fingerprintConfigured && fingerprintPam.active) fingerprintPam.abort()
+      if (root.lockRequested && root.fingerprintConfigured) {
+        root.startFingerprint()
+      } else if (!root.fingerprintConfigured) {
+        // abort() delivers no completion signal, so close the attempt here
+        // too; settle returns before arming a retry while unconfigured.
+        if (fingerprintPam.active) fingerprintPam.abort()
+        root.settleFingerprintAttempt()
+        fingerprintRetryTimer.stop()
+      }
     }
   }
 
