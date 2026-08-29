@@ -25,7 +25,9 @@ for cmd in \
   "$ROOT/bin/omarchy-setup-security-sudoless-docker" \
   "$ROOT/bin/omarchy-remove-security-sudoless-docker" \
   "$ROOT/bin/omarchy-dev-install-ydoo" \
-  "$ROOT/bin/omarchy-install-service-tailscale"
+  "$ROOT/bin/omarchy-install-service-tailscale" \
+  "$ROOT/bin/omarchy-install-gaming-xbox-controllers" \
+  "$ROOT/bin/omarchy-install-service-nordvpn"
 do
   grep -Fq 'user=$(id -un)' "$cmd" ||
     fail "$(basename "$cmd") takes the username from id -un"

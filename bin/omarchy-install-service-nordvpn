@@ -9,8 +9,9 @@ omarchy-pkg-add nordvpn-bin
 echo "Enabling NordVPN daemon..."
 sudo systemctl enable --now nordvpnd
 
+user=$(id -un)
 echo "Adding user to nordvpn group..."
-sudo usermod -aG nordvpn "$USER"
+sudo usermod -aG nordvpn "$user"
 
 echo -e "\nNordVPN installed! After reboot, run 'nordvpn login' to authenticate."
 
