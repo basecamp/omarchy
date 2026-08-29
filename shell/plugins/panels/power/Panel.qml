@@ -517,7 +517,7 @@ Panel {
             id: barTrack
             anchors.fill: parent
             radius: height / 2
-            color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+            color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.08)
           }
 
           Rectangle {
@@ -640,7 +640,7 @@ Panel {
             height: Style.space(6)
             radius: height / 2
             clip: true
-            color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+            color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.08)
 
             Row {
               id: wattsSegmentRow
