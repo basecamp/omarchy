@@ -86,7 +86,7 @@ verify_printing_security() {
 
   [[ $(stat -c '%a %U:%G' /var/cache/cups-browsed) == "750 cups-browsed:cups-browsed" ]] ||
     fail "cups-browsed has an isolated cache" "$(stat -c '%a %U:%G' /var/cache/cups-browsed)"
-  ! id -nG cups-browsed | grep -qw cups ||
+  [[ " $(id -nG cups-browsed) " != *" cups "* ]] ||
     fail "cups-browsed is separate from the print-filter group"
 
   if lpinfo_output=$(LC_ALL=C timeout 10 lpinfo -v </dev/null 2>&1); then

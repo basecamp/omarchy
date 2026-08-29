@@ -6,6 +6,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 packages="$ROOT/install/omarchy-base.packages"
 cups_browsed_conf="$ROOT/etc/cups/cups-browsed.conf"
+cups_files_conf="$ROOT/etc/cups/cups-files.conf"
 sysusers_conf="$ROOT/etc/sysusers.d/omarchy-cups-browsed.conf"
 service_dropin="$ROOT/etc/systemd/system/cups-browsed.service.d/10-omarchy.conf"
 
@@ -25,6 +26,21 @@ grep -qxF 'CreateRemoteCUPSPrinterQueues No' "$cups_browsed_conf" ||
   fail "the unsupported CreateRemotePrinters directive is gone"
 
 pass "cups-browsed uses explicit supported discovery policy and an isolated cache"
+
+grep -qxF 'SystemGroup cups-browsed sys root' "$cups_files_conf" ||
+  fail "only the printer discovery account receives passwordless CUPS administration"
+grep -qxF 'PeerCred on' "$cups_files_conf" ||
+  fail "the packaged CUPS policy enables peer credentials"
+[[ $(grep -ciE '^[[:space:]]*SystemGroup[[:space:]]' "$cups_files_conf") == 1 ]] ||
+  fail "the packaged CUPS policy has one SystemGroup directive"
+[[ $(grep -ciE '^[[:space:]]*PeerCred[[:space:]]' "$cups_files_conf") == 1 ]] ||
+  fail "the packaged CUPS policy has one PeerCred directive"
+[[ ! -e $ROOT/install/config/printing.sh ]] ||
+  fail "printing policy is not rewritten by an install script"
+! grep -q 'config/printing.sh' "$ROOT/install/config/all.sh" "$ROOT/migrations/1787815267.sh" ||
+  fail "neither install nor update invokes a printing rewrite script"
+
+pass "CUPS authorization ships as a canonical package override"
 
 grep -qxF 'u cups-browsed - "CUPS printer discovery" / -' "$sysusers_conf" ||
   fail "a locked cups-browsed system account is declared"
@@ -53,15 +69,25 @@ test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
 
 mock_bin="$test_tmp/bin"
-mkdir -p "$mock_bin" "$test_tmp/etc/cups" "$test_tmp/var/lib/omarchy/migrations"
+mkdir -p "$mock_bin" "$test_tmp/var/lib/omarchy/migrations"
 
-cat >"$mock_bin/systemd-sysusers" <<'SH'
+passwd_db="$test_tmp/passwd"
+group_db="$test_tmp/group"
+touch "$passwd_db" "$group_db"
+
+cat >"$mock_bin/getent" <<'SH'
 #!/bin/bash
-printf 'sysusers\t%s\n' "$*" >>"$OMARCHY_CUPS_TEST_LOG"
-SH
-cat >"$mock_bin/chown" <<'SH'
-#!/bin/bash
-printf 'chown\t%s\n' "$*" >>"$OMARCHY_CUPS_TEST_LOG"
+case "$1" in
+  passwd) database="$OMARCHY_CUPS_TEST_PASSWD" ;;
+  group) database="$OMARCHY_CUPS_TEST_GROUP" ;;
+  *) exit 2 ;;
+esac
+
+if (($# == 1)); then
+  cat "$database"
+else
+  awk -F: -v name="$2" '$1 == name { print; found = 1 } END { exit !found }' "$database"
+fi
 SH
 cat >"$mock_bin/omarchy-pkg-present" <<'SH'
 #!/bin/bash
@@ -85,62 +111,40 @@ exec "$@"
 SH
 chmod +x "$mock_bin"/*
 
-authorization_conf="$test_tmp/etc/cups/cups-files.conf"
-cat >"$authorization_conf" <<'CONF'
-# Keep this custom preamble.
-SystemGroup sys root wheel custom-admin wheel # Keep this inline comment.
-SystemGroup wheel print-operators # Keep this second inline comment.
-PeerCred off # Keep this PeerCred comment.
-PeerCred off # Keep this second PeerCred comment.
-CONF
-
 log="$test_tmp/actions.log"
+touch "$log"
 export OMARCHY_CUPS_TEST_LOG="$log"
+export OMARCHY_CUPS_TEST_PASSWD="$passwd_db"
+export OMARCHY_CUPS_TEST_GROUP="$group_db"
 
-run_printing_setup() {
-  PATH="$mock_bin:$PATH" \
-    OMARCHY_CUPS_FILES_CONF="$authorization_conf" \
-    OMARCHY_CUPS_BROWSED_SYSUSERS_CONF="$sysusers_conf" \
-    bash -euo pipefail "$ROOT/install/config/printing.sh"
-}
-
-run_printing_setup
-
-grep -qxF 'SystemGroup sys root custom-admin print-operators cups-browsed # Keep this inline comment.' "$authorization_conf" ||
-  fail "printing setup reserves CUPS administration for the service account"
-grep -qxF '# Keep this second inline comment.' "$authorization_conf" ||
-  fail "printing setup preserves comments from consolidated SystemGroup directives"
-grep -qxF 'PeerCred on # Keep this PeerCred comment.' "$authorization_conf" ||
-  fail "printing setup enables peer credentials for the service account"
-grep -qxF '# Keep this second PeerCred comment.' "$authorization_conf" ||
-  fail "printing setup preserves comments from duplicate PeerCred directives"
-grep -qxF '# Keep this custom preamble.' "$authorization_conf" ||
-  fail "printing setup preserves unrelated CUPS configuration"
-[[ $(grep -c '^SystemGroup ' "$authorization_conf") == 1 ]] ||
-  fail "printing setup emits one SystemGroup directive"
-
-cp "$authorization_conf" "$test_tmp/first-run.conf"
-run_printing_setup
-cmp -s "$authorization_conf" "$test_tmp/first-run.conf" ||
-  fail "printing setup is idempotent"
-
-pass "printing setup narrows CUPS authorization without clobbering other configuration"
-
-ln -s "$authorization_conf" "$test_tmp/etc/cups/symlinked.conf"
+printf 'cups-browsed:x:1000:1000:Desktop user:/home/cups-browsed:/usr/bin/bash\n' >"$passwd_db"
+printf 'cups-browsed:x:1000:\n' >"$group_db"
 if PATH="$mock_bin:$PATH" \
-  OMARCHY_CUPS_FILES_CONF="$test_tmp/etc/cups/symlinked.conf" \
-  OMARCHY_CUPS_BROWSED_SYSUSERS_CONF="$sysusers_conf" \
-  bash -euo pipefail "$ROOT/install/config/printing.sh" 2>/dev/null; then
-  fail "printing setup refuses a symlinked authorization file"
+  OMARCHY_PATH="$ROOT" \
+  OMARCHY_CUPS_MIGRATION_MARKER="$test_tmp/desktop-collision-marker" \
+  bash -euo pipefail "$ROOT/migrations/1787815267.sh" 2>/dev/null; then
+  fail "the migration accepts an existing desktop user named cups-browsed"
 fi
+[[ ! -s $log ]] || fail "an account collision stops the migration before changing the system"
 
-pass "printing setup refuses to rewrite a symlinked privileged configuration"
+printf 'alice:x:1000:947:Desktop user:/home/alice:/usr/bin/bash\n' >"$passwd_db"
+printf 'cups-browsed:x:947:alice\n' >"$group_db"
+if PATH="$mock_bin:$PATH" \
+  OMARCHY_PATH="$ROOT" \
+  OMARCHY_CUPS_MIGRATION_MARKER="$test_tmp/group-collision-marker" \
+  bash -euo pipefail "$ROOT/migrations/1787815267.sh" 2>/dev/null; then
+  fail "the migration accepts an existing cups-browsed group with members"
+fi
+[[ ! -s $log ]] || fail "a group collision stops the migration before changing the system"
+
+printf 'cups-browsed:x:947:947:CUPS printer discovery:/:/usr/bin/nologin\n' >"$passwd_db"
+printf 'cups-browsed:x:947:\n' >"$group_db"
+
+pass "the migration rejects account and group collisions before changing printing"
 
 marker="$test_tmp/var/lib/omarchy/migrations/1787815267"
 PATH="$mock_bin:$PATH" \
   OMARCHY_PATH="$ROOT" \
-  OMARCHY_CUPS_FILES_CONF="$authorization_conf" \
-  OMARCHY_CUPS_BROWSED_SYSUSERS_CONF="$sysusers_conf" \
   OMARCHY_CUPS_MIGRATION_MARKER="$marker" \
   bash -euo pipefail "$ROOT/migrations/1787815267.sh"
 
@@ -153,7 +157,7 @@ grep -qxF $'systemctl\tstop cups-browsed.service' "$log" ||
 grep -qxF $'systemctl\tdaemon-reload' "$log" ||
   fail "the migration reloads the hardened service"
 grep -qxF $'systemctl\ttry-reload-or-restart cups.service' "$log" ||
-  fail "the migration applies narrowed CUPS authorization"
+  fail "the migration reloads the packaged CUPS authorization"
 grep -qxF $'systemctl\trestart cups-browsed.service' "$log" ||
   fail "the migration resumes an active cups-browsed service"
 [[ -f $marker ]] || fail "the migration records machine-wide completion"
@@ -168,10 +172,8 @@ PATH="$mock_bin:$PATH" \
 
 pass "the migration safely converts an active existing installation once"
 
-# An interrupted earlier run leaves cups-browsed stopped, so the retry that
-# follows finds it inactive. It must still be restarted: the retry records the
-# machine-wide marker either way, so a restart skipped here would leave printer
-# discovery off until the next reboot with nothing left to run.
+# An interrupted earlier run leaves cups-browsed stopped. A retry still needs
+# to resume an enabled service before recording completion.
 cat >"$mock_bin/systemctl" <<'SH'
 #!/bin/bash
 printf 'systemctl\t%s\n' "$*" >>"$OMARCHY_CUPS_TEST_LOG"
@@ -186,8 +188,6 @@ retry_marker="$test_tmp/var/lib/omarchy/migrations/1787815267-retry"
 OMARCHY_CUPS_TEST_LOG="$retry_log" \
   PATH="$mock_bin:$PATH" \
   OMARCHY_PATH="$ROOT" \
-  OMARCHY_CUPS_FILES_CONF="$authorization_conf" \
-  OMARCHY_CUPS_BROWSED_SYSUSERS_CONF="$sysusers_conf" \
   OMARCHY_CUPS_MIGRATION_MARKER="$retry_marker" \
   bash -euo pipefail "$ROOT/migrations/1787815267.sh"
 
@@ -196,8 +196,7 @@ grep -qxF $'systemctl\trestart cups-browsed.service' "$retry_log" ||
 
 pass "a run following an interrupted one still resumes printer discovery"
 
-# A unit the user masked or disabled reports not-enabled, and restarting it
-# would fail and abort the migration before it records completion.
+# A masked or disabled unit is deliberately left alone.
 cat >"$mock_bin/systemctl" <<'SH'
 #!/bin/bash
 printf 'systemctl\t%s\n' "$*" >>"$OMARCHY_CUPS_TEST_LOG"
@@ -212,8 +211,6 @@ masked_marker="$test_tmp/var/lib/omarchy/migrations/1787815267-masked"
 OMARCHY_CUPS_TEST_LOG="$masked_log" \
   PATH="$mock_bin:$PATH" \
   OMARCHY_PATH="$ROOT" \
-  OMARCHY_CUPS_FILES_CONF="$authorization_conf" \
-  OMARCHY_CUPS_BROWSED_SYSUSERS_CONF="$sysusers_conf" \
   OMARCHY_CUPS_MIGRATION_MARKER="$masked_marker" \
   bash -euo pipefail "$ROOT/migrations/1787815267.sh"
 
@@ -222,31 +219,3 @@ OMARCHY_CUPS_TEST_LOG="$masked_log" \
 [[ -f $masked_marker ]] || fail "the migration completes with cups-browsed masked"
 
 pass "a masked or disabled cups-browsed is left alone and does not fail the migration"
-
-# cupsd compares directive names case-insensitively, so a hand-edited lowercase
-# directive is live configuration. Matching it exactly would skip the line and
-# append a second one, and cupsd accumulates the groups of every SystemGroup
-# directive it reads -- leaving wheel with passwordless administration.
-lowercase_conf="$test_tmp/etc/cups/lowercase.conf"
-cat >"$lowercase_conf" <<'CONF'
-systemgroup sys root wheel
-peercred off
-CONF
-
-PATH="$mock_bin:$PATH" \
-  OMARCHY_CUPS_FILES_CONF="$lowercase_conf" \
-  OMARCHY_CUPS_BROWSED_SYSUSERS_CONF="$sysusers_conf" \
-  bash -euo pipefail "$ROOT/install/config/printing.sh"
-
-! grep -qiE '^[[:space:]]*systemgroup\b.*\bwheel\b' "$lowercase_conf" ||
-  fail "printing setup removes wheel from a lowercase SystemGroup directive" "$(cat "$lowercase_conf")"
-[[ $(grep -ciE '^[[:space:]]*systemgroup\b' "$lowercase_conf") == 1 ]] ||
-  fail "printing setup leaves one SystemGroup directive whatever case it was written in" "$(cat "$lowercase_conf")"
-grep -qxF 'SystemGroup sys root cups-browsed' "$lowercase_conf" ||
-  fail "printing setup reserves administration for the service account" "$(cat "$lowercase_conf")"
-[[ $(grep -ciE '^[[:space:]]*peercred\b' "$lowercase_conf") == 1 ]] ||
-  fail "printing setup leaves one PeerCred directive" "$(cat "$lowercase_conf")"
-grep -qxF 'PeerCred on' "$lowercase_conf" ||
-  fail "printing setup enables peer credentials whatever case they were written in" "$(cat "$lowercase_conf")"
-
-pass "printing setup rewrites directives cupsd reads case-insensitively"
