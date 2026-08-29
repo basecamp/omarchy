@@ -28,6 +28,12 @@ assertEqual(
 const headphones = { ready: true, name: 'bluez_output.airpods', properties: { 'device.product.name': 'AirPods Headphones' } }
 assert(audio.isHeadphones(headphones), 'audio detects headphone devices')
 assertEqual(audio.sinkGlyph(headphones), '󰋋', 'audio uses headphone sink glyph')
+
+assertEqual(audio.outputBarIcon(headphones, 0.4, true), '', 'audio shows muted glyph for muted headphones')
+assertEqual(audio.outputBarIcon(headphones, 0.4, false), '󰋋', 'audio shows headphones glyph when unmuted')
+const unbound = { ready: true, name: 'bluez_output.airpods', properties: { 'device.product.name': 'AirPods Headphones' } }
+assertEqual(audio.outputBarIcon(unbound, 0, false), '󰋋', 'audio uses device glyph when sink.audio is unbound')
+assertEqual(audio.outputBarIcon(null, 0, false), '', 'audio shows muted glyph with no sink')
 assert(audio.sourceGlyph({ ready: true, properties: { 'device.icon-name': 'camera-webcam' } }).length > 0, 'audio maps webcam source glyph')
 
 assertEqual(audio.friendlyStreamLabel('spotify'), 'Spotify', 'audio normalizes known stream labels')
@@ -47,3 +53,8 @@ assertEqual(audio.unmatchedMprisStreamLabel('audio-src', players, streams), 'Spo
 assertEqual(audio.streamLabel(streams[1], players, streams), 'Spotify', 'audio labels generic streams from MPRIS')
 assert(audio.streamRepresentsPlayer(streams[1], players[0], players, streams), 'audio links generic streams to active player')
 JS
+
+panel_qml="$ROOT/shell/plugins/panels/audio/Panel.qml"
+grep -q 'Model.outputBarIcon(sink' "$panel_qml" || fail "audio panel delegates bar icon to Model.outputBarIcon"
+grep -q 'trackedSinkObjects' "$panel_qml" || fail "audio panel tracks the default sink for mid-session devices"
+pass "audio panel mute icon and sink tracking"
