@@ -4,6 +4,7 @@
 #include "permission_contract.hpp"
 
 #include <QByteArray>
+#include <QJsonDocument>
 
 #include <algorithm>
 #include <limits>
@@ -106,6 +107,75 @@ std::optional<EncodedInvoke> resource_request(
   return EncodedInvoke{type, std::move(output)};
 }
 } // namespace
+
+ManifestInvokeEncoder::ManifestInvokeEncoder(
+    const omarchy::plugins::manifest::ManifestV2 &manifest) {
+  for (const auto &request : manifest.requests) {
+    if (request.definition_generation == 0)
+      continue;
+    DynamicBinding binding{
+        .definition = {
+            .canonical_name = omarchy::plugins::definitions::Name(
+                request.capability),
+            .definition_generation = request.definition_generation,
+            .definition_digest = omarchy::plugins::definitions::Digest(
+                request.definition_digest)},
+        .operations = request.operations};
+    for (const auto &operation : binding.operations) {
+      if (std::ranges::any_of(dynamic_, [&](const DynamicBinding &existing) {
+            return std::ranges::find(existing.operations, operation) !=
+                   existing.operations.end();
+          }))
+        ambiguous_ = true;
+    }
+    dynamic_.push_back(std::move(binding));
+  }
+}
+
+std::optional<EncodedInvoke> ManifestInvokeEncoder::encode(
+    std::string_view operation, const QVariantMap &arguments) const {
+  if (const auto compiled = bootstrap_.encode(operation, arguments))
+    return compiled;
+  if (ambiguous_)
+    return std::nullopt;
+  const auto binding = std::ranges::find_if(
+      dynamic_, [&](const DynamicBinding &candidate) {
+        return std::ranges::find(candidate.operations, operation) !=
+               candidate.operations.end();
+      });
+  if (binding == dynamic_.end())
+    return std::nullopt;
+  const auto scope =
+      arguments.value(QStringLiteral("demandScope")).toString().toUtf8();
+  if (!bounded_text(scope, 4096, false))
+    return std::nullopt;
+  const auto payload = QJsonDocument::fromVariant(
+                           arguments.value(QStringLiteral("payload")))
+                           .toJson(QJsonDocument::Compact);
+  if (payload.isEmpty() ||
+      payload.size() > static_cast<qsizetype>(
+                           omarchy::plugins::definitions::
+                               kMaximumDynamicPayloadBytes))
+    return std::nullopt;
+  std::array<std::byte,
+             omarchy::plugins::definitions::kMaximumDynamicEnvelopeBytes>
+      envelope{};
+  std::size_t written = 0;
+  const auto payload_bytes = std::as_bytes(std::span(
+      payload.constData(), static_cast<std::size_t>(payload.size())));
+  const omarchy::plugins::definitions::DynamicInvocation invocation{
+      .definition = binding->definition,
+      .operation = omarchy::plugins::definitions::Name(operation),
+      .demand_scope = omarchy::plugins::definitions::CanonicalScope(
+          scope.toStdString()),
+      .payload = payload_bytes};
+  if (!omarchy::plugins::definitions::encode_dynamic_invocation(
+          invocation, envelope, written))
+    return std::nullopt;
+  return EncodedInvoke{
+      broker::kDynamicInvokeMessage,
+      std::vector<std::byte>(envelope.begin(), envelope.begin() + written)};
+}
 
 std::optional<EncodedInvoke> BootstrapInvokeEncoder::encode(
     std::string_view operation, const QVariantMap &arguments) const {

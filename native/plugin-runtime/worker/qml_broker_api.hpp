@@ -1,6 +1,8 @@
 #pragma once
 
 #include "worker_channel.hpp"
+#include "dynamic_activation.hpp"
+#include "manifest_contract.hpp"
 
 #include <QObject>
 #include <QVariant>
@@ -31,6 +33,23 @@ class BootstrapInvokeEncoder final : public InvokeEncoder {
 public:
   [[nodiscard]] std::optional<EncodedInvoke>
   encode(std::string_view operation, const QVariantMap &arguments) const override;
+};
+
+class ManifestInvokeEncoder final : public InvokeEncoder {
+public:
+  explicit ManifestInvokeEncoder(
+      const omarchy::plugins::manifest::ManifestV2 &manifest);
+  [[nodiscard]] std::optional<EncodedInvoke>
+  encode(std::string_view operation, const QVariantMap &arguments) const override;
+
+private:
+  struct DynamicBinding {
+    omarchy::plugins::definitions::CapabilityReference definition;
+    std::vector<std::string> operations;
+  };
+  BootstrapInvokeEncoder bootstrap_;
+  std::vector<DynamicBinding> dynamic_;
+  bool ambiguous_ = false;
 };
 
 class BrokerCall final : public QObject {

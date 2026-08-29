@@ -17,6 +17,8 @@
 
 namespace {
 namespace broker = omarchy::plugin_runtime::broker;
+namespace definitions = omarchy::plugins::definitions;
+namespace manifest = omarchy::plugins::manifest;
 namespace permissions = omarchy::plugins::permissions;
 namespace worker = omarchy::plugin_runtime::worker;
 namespace wire = omarchy::plugin::wire;
@@ -72,6 +74,112 @@ void finish(worker::QmlBrokerApi &api, worker::WorkerEndpoint &endpoint,
        .launch_generation = 77,
        .correlation_id = correlation}, payload), "terminal send failed");
   require(api.receive(endpoint.receive()), "terminal response rejected");
+}
+definitions::Digest repeated(char value) {
+  return definitions::Digest(std::string(64, value));
+}
+definitions::DynamicScopeRelation exact_scope(
+    const definitions::CapabilityDefinition &, std::string_view candidate,
+    std::string_view baseline, void *) noexcept {
+  return candidate == baseline ? definitions::DynamicScopeRelation::equal
+                               : definitions::DynamicScopeRelation::incomparable;
+}
+bool fake_dynamic_dispatch(std::string_view operation, std::string_view scope,
+                           std::span<const std::byte> payload,
+                           std::span<std::byte> response,
+                           std::size_t &written, void *context) noexcept {
+  auto &calls = *static_cast<int *>(context);
+  if (operation != "read" || scope != "{\"dataset\":\"status\"}" ||
+      payload.empty() || response.empty())
+    return false;
+  ++calls;
+  response[0] = std::byte{0x2a};
+  written = 1;
+  return true;
+}
+void dynamic_qml_to_adapter() {
+  definitions::CapabilityDefinition definition{
+      .canonical_name = definitions::Name("service.status"),
+      .authority_identity = definitions::Name("service.status-v1"),
+      .enforcement_family = definitions::EnforcementFamily::network_fetch,
+      .display_category_id = definitions::Name("services"),
+      .display_category_label = definitions::Label("Services"),
+      .scope_schema = definitions::ScopeSchema::https_origins_and_methods,
+      .title = definitions::Label("Read selected status"),
+      .risk_text = definitions::Label("Reads one selected bounded dataset"),
+      .risk = definitions::RiskLevel::moderate,
+      .revocation = definitions::RevocationPolicy::cancel_inflight,
+      .audit = {},
+      .adapter = {.adapter_class = definitions::Name("status-adapter"),
+                  .implementation_digest = repeated('a'),
+                  .abi_version = 1},
+      .operations = {}};
+  definition.operations.insert(
+      {.name = definitions::Name("read"),
+       .label = definitions::Label("Read status")});
+  definitions::TrustedDefinitionRegistry registry;
+  require(registry.install(definition,
+                           definitions::DefinitionSource::local_admin, 3),
+          "dynamic definition install failed");
+  const auto resolved = registry.find("service.status");
+  require(resolved.has_value(), "dynamic definition resolution failed");
+  const std::string document =
+      "{\"schemaVersion\":2,\"id\":\"org.example.dynamic\",\"name\":\"Dynamic\","
+      "\"version\":\"1\",\"runtime\":{\"apiVersion\":1,\"qml\":\"Main.qml\"},"
+      "\"surfaces\":{},\"permissions\":{\"required\":[{\"capability\":"
+      "\"service.status\",\"definitionGeneration\":3,\"definitionDigest\":\"" +
+      std::string(resolved->digest.view()) +
+      "\",\"operations\":[\"read\"],\"dataset\":\"status\",\"reason\":\"test\"}],"
+      "\"optional\":[]}}";
+  const auto parsed = manifest::parse_manifest_v2(document);
+  worker::ManifestInvokeEncoder encoder(parsed);
+  const auto encoded = encoder.encode(
+      "read", {{QStringLiteral("demandScope"),
+                 QStringLiteral("{\"dataset\":\"status\"}")},
+                {QStringLiteral("payload"),
+                 QVariantMap{{QStringLiteral("resource"), 7}}}});
+  require(encoded && encoded->message_type == broker::kDynamicInvokeMessage,
+          "QML dynamic call did not become a bounded broker envelope");
+
+  definitions::DynamicRevisionGrant revision{
+      .binding = {.plugin = permissions::PluginId("org.example.dynamic"),
+                  .revision = repeated('b'),
+                  .policy_fingerprint = repeated('c'),
+                  .generation = 5},
+      .request = {.definition = {.canonical_name =
+                                      definitions::Name("service.status"),
+                                  .definition_generation = 3,
+                                  .definition_digest = resolved->digest},
+                  .operations = {},
+                  .scope = definitions::CanonicalScope(
+                      "{\"dataset\":\"status\"}"),
+                  .required = true},
+      .grant = {.definition = {.canonical_name =
+                                    definitions::Name("service.status"),
+                                .definition_generation = 3,
+                                .definition_digest = resolved->digest},
+                .operations = {},
+                .scope = definitions::CanonicalScope(
+                    "{\"dataset\":\"status\"}"),
+                .state = permissions::GrantState::granted,
+                .epoch = 1}};
+  revision.request.operations.insert(definitions::Name("read"));
+  revision.grant.operations.insert(definitions::Name("read"));
+  int calls = 0;
+  definitions::DynamicAdapter adapter{
+      .binding = definition.adapter,
+      .dispatch = fake_dynamic_dispatch,
+      .context = &calls};
+  const definitions::DynamicScopeValidator scopes{.compare = exact_scope};
+  std::array<std::byte, 8> response{};
+  std::size_t written = 0;
+  definitions::DynamicDecision decision{};
+  require(definitions::dispatch_dynamic_invocation(
+              registry, revision, revision.binding, encoded->payload, adapter,
+              scopes, false, response, written, decision) ==
+              definitions::DynamicDispatchResult::dispatched &&
+              calls == 1 && written == 1,
+          "QML dynamic envelope did not pass broker authorization and adapter verification");
 }
 void run() {
   Pair pair;
@@ -136,6 +244,7 @@ void run() {
               recv(pair.descriptors[1], &byte, 1, 0) < 0 &&
               (errno == EAGAIN || errno == EWOULDBLOCK),
           "undeclared operation gained an ambient fallback or broker packet");
+  dynamic_qml_to_adapter();
 }
 } // namespace
 

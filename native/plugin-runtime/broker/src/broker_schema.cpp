@@ -35,7 +35,9 @@ constexpr std::array kRules{
     MessageRule{
         static_cast<std::uint16_t>(OperationId::fake_status_acknowledge),
         DirectionMask::worker_to_host, CorrelationRule::nonzero,
-        MessageSemantic::request, 16, 65536},
+                MessageSemantic::request, 16, 65536},
+    MessageRule{kDynamicInvokeMessage, DirectionMask::worker_to_host,
+                CorrelationRule::nonzero, MessageSemantic::request, 80, 49152},
     MessageRule{kBrokerResultMessage, DirectionMask::host_to_worker,
                 CorrelationRule::nonzero, MessageSemantic::terminal, 0, 65536},
 };
@@ -69,6 +71,8 @@ const wire::RoleSchemaRegistryView &broker_schema_registry() {
 }
 
 bool registered_operation(std::uint16_t message_type) {
+  if (message_type == kDynamicInvokeMessage)
+    return true;
   const auto operation = static_cast<OperationId>(message_type);
   return permissions::find_operation(operation) != nullptr;
 }

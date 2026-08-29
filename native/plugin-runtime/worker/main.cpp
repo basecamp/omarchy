@@ -1,6 +1,9 @@
 #include "worker_channel.hpp"
 #include "qml_broker_api.hpp"
+#include "sidecar_supervisor.hpp"
 #include "worker_runtime.hpp"
+
+#include "manifest_contract.hpp"
 
 #include "omarchy/plugin_runtime/Version.h"
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
@@ -17,6 +20,7 @@
 
 #include <array>
 #include <cstdlib>
+#include <fstream>
 #include <memory>
 #include <span>
 #include <string>
@@ -59,9 +63,18 @@ bool trusted_launch_environment() {
          exact_environment("XDG_RUNTIME_DIR", "/run/plugin");
 }
 
+std::string read_manifest() {
+  std::ifstream input("/plugin/manifest.json", std::ios::binary);
+  if (!input.good())
+    return {};
+  return {std::istreambuf_iterator<char>(input),
+          std::istreambuf_iterator<char>()};
+}
+
 class WorkerApplication {
 public:
-  WorkerApplication()
+  explicit WorkerApplication(
+      const omarchy::plugins::manifest::ManifestV2 &manifest)
       : runtime_("/plugin"),
         control_(kControlDescriptor, wire::EndpointRole::control,
                  kControlRoleVersion),
@@ -72,7 +85,8 @@ public:
         schemas_{surface::render_role_schema()}, registry_(schemas_),
         control_notifier_(kControlDescriptor, QSocketNotifier::Read),
         broker_notifier_(kBrokerDescriptor, QSocketNotifier::Read),
-        render_notifier_(kRenderDescriptor, QSocketNotifier::Read) {
+        render_notifier_(kRenderDescriptor, QSocketNotifier::Read),
+        manifest_(manifest) {
     QObject::connect(&control_notifier_, &QSocketNotifier::activated,
                      [&] { receive(control_); });
     QObject::connect(&broker_notifier_, &QSocketNotifier::activated,
@@ -160,7 +174,7 @@ private:
       return;
     }
     broker_api_ = std::make_unique<worker::QmlBrokerApi>(
-        broker_, std::make_unique<worker::BootstrapInvokeEncoder>());
+        broker_, std::make_unique<worker::ManifestInvokeEncoder>(manifest_));
     const auto bound = runtime_.bind_runtime_api(*broker_api_);
     if (!bound) {
       fatal(bound.detail);
@@ -331,6 +345,7 @@ private:
   QSocketNotifier broker_notifier_;
   QSocketNotifier render_notifier_;
   QTimer frame_timer_;
+  omarchy::plugins::manifest::ManifestV2 manifest_;
 };
 
 } // namespace
@@ -352,10 +367,37 @@ int main(int argc, char *argv[]) {
   }
   qputenv("QT_QPA_PLATFORMTHEME", "none");
   qputenv("QSG_SOFTWARE_RENDERER_FORCE_PARTIAL_UPDATES", "0");
+  worker::SidecarSupervisor sidecars;
+  omarchy::plugins::manifest::ManifestV2 manifest;
+  try {
+    manifest = omarchy::plugins::manifest::parse_manifest_v2(
+        read_manifest());
+    std::string sidecar_error;
+    if (!sidecars.start(manifest.runtime.sidecars, sidecar_error)) {
+      QTextStream(stderr) << "omarchy-plugin-qml-worker: "
+                          << QString::fromStdString(sidecar_error) << '\n';
+      return 70;
+    }
+  } catch (const std::exception &error) {
+    QTextStream(stderr) << "omarchy-plugin-qml-worker: manifest rejected: "
+                        << error.what() << '\n';
+    return 70;
+  }
   QGuiApplication application(argc, argv);
   application.setApplicationName(QStringLiteral("omarchy-plugin-qml-worker"));
-  WorkerApplication worker;
+  WorkerApplication worker(manifest);
   if (!worker.start())
     return 70;
+  QTimer sidecar_health;
+  sidecar_health.setInterval(100);
+  QObject::connect(&sidecar_health, &QTimer::timeout, [&] {
+    std::string error;
+    if (!sidecars.healthy(error)) {
+      qCritical().noquote() << "omarchy-plugin-qml-worker:"
+                            << QString::fromStdString(error);
+      application.exit(70);
+    }
+  });
+  sidecar_health.start();
   return application.exec();
 }

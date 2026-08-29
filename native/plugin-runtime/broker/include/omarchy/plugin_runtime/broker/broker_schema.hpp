@@ -13,6 +13,7 @@ namespace omarchy::plugin_runtime::broker {
 namespace permissions = omarchy::plugins::permissions;
 
 inline constexpr std::uint16_t kBrokerRoleVersion = 1;
+inline constexpr std::uint16_t kDynamicInvokeMessage = 0x4f00;
 inline constexpr std::uint16_t kBrokerResultMessage = 0x5000;
 inline constexpr std::size_t kBrokerErrorBytes = 8;
 

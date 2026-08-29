@@ -20,6 +20,7 @@ endfunction()
 
 add_library(omarchy-plugin-worker-runtime STATIC
   qml_broker_api.cpp
+  sidecar_supervisor.cpp
   worker_channel.cpp
   worker_runtime.cpp
   steady_seccomp.cpp
@@ -35,8 +36,9 @@ target_include_directories(omarchy-plugin-worker-runtime PUBLIC
 target_link_libraries(omarchy-plugin-worker-runtime
   PUBLIC Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick
          omarchy-plugin-wire omarchy-plugin-surface-contract
-         omarchy-plugin-broker-core
-  PRIVATE omarchy-plugin-sandbox-policy PkgConfig::WORKER_SECCOMP
+         omarchy-plugin-broker-core omarchy-plugin-capability-definitions
+  PRIVATE omarchy-plugin-sandbox-policy omarchy-plugin-manifest-contract
+          PkgConfig::WORKER_SECCOMP
 )
 
 qt_add_executable(omarchy-plugin-qml-worker main.cpp)
@@ -58,6 +60,37 @@ target_link_libraries(omarchy-plugin-qml-worker
 install(TARGETS omarchy-plugin-qml-worker RUNTIME DESTINATION "${CMAKE_INSTALL_LIBDIR}/omarchy/plugin-runtime")
 
 if(BUILD_TESTING)
+  add_executable(omarchy-plugin-sidecar-probe sidecar_probe.cpp)
+  omarchy_plugin_target_defaults(omarchy-plugin-sidecar-probe)
+  add_executable(omarchy-plugin-sidecar-supervisor-test
+    sidecar_supervisor_test.cpp)
+  omarchy_plugin_target_defaults(omarchy-plugin-sidecar-supervisor-test)
+  target_link_libraries(omarchy-plugin-sidecar-supervisor-test PRIVATE
+    omarchy-plugin-worker-runtime)
+  target_compile_definitions(omarchy-plugin-sidecar-supervisor-test PRIVATE
+    SIDECAR_PROBE_PATH="$<TARGET_FILE:omarchy-plugin-sidecar-probe>")
+  add_dependencies(omarchy-plugin-sidecar-supervisor-test
+    omarchy-plugin-sidecar-probe)
+  add_test(NAME plugin-sidecar-supervisor
+    COMMAND omarchy-plugin-sidecar-supervisor-test)
+  set_tests_properties(plugin-sidecar-supervisor PROPERTIES
+    LABELS "unit;integration;sandbox;security" TIMEOUT 10)
+  add_test(NAME plugin-sidecar-real-bwrap
+    COMMAND /usr/bin/bwrap
+      --unshare-user --unshare-pid --unshare-ipc --unshare-uts --unshare-net
+      --uid 0 --gid 0 --as-pid-1 --cap-drop ALL --clearenv
+      --setenv PATH /runtime --setenv HOME /home/plugin --setenv PWD /plugin
+      --proc /proc --dev /dev --dir /usr
+      --ro-bind /usr/lib /usr/lib --symlink usr/lib /lib --symlink usr/lib /lib64
+      --dir /runtime
+      --ro-bind $<TARGET_FILE:omarchy-plugin-sidecar-supervisor-test> /runtime/test
+      --dir /plugin --dir /plugin/bin
+      --ro-bind $<TARGET_FILE:omarchy-plugin-sidecar-probe> /plugin/bin/probe
+      --tmpfs /tmp --tmpfs /run --dir /home --dir /home/plugin
+      --chdir /plugin -- /runtime/test --inside-bwrap)
+  set_tests_properties(plugin-sidecar-real-bwrap PROPERTIES
+    LABELS "integration;sandbox;security;real-bwrap" TIMEOUT 10)
+
   add_executable(omarchy-plugin-external-fixture-test external_fixture_test.cpp)
   omarchy_plugin_target_defaults(omarchy-plugin-external-fixture-test)
   omarchy_plugin_worker_sanitize(omarchy-plugin-external-fixture-test)
