@@ -44,6 +44,23 @@ if(BUILD_TESTING)
     omarchy-plugin-audit-store)
   add_dependencies(omarchy-plugin-product-e2e-host
     omarchy-plugin-product-e2e-worker omarchy-plugin-permission-store)
+
+  qt_add_executable(omarchy-plugin-radio-live-e2e-host main.cpp)
+  omarchy_plugin_target_defaults(omarchy-plugin-radio-live-e2e-host)
+  target_compile_definitions(omarchy-plugin-radio-live-e2e-host PRIVATE
+    OMARCHY_PLUGIN_PRODUCT_E2E=1
+    OMARCHY_PLUGIN_REAL_RADIO_E2E=1
+    OMARCHY_PLUGIN_RADIO_DEFINITION_ROOT="${CMAKE_CURRENT_BINARY_DIR}/radio-definitions")
+  target_link_libraries(omarchy-plugin-radio-live-e2e-host PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Quick
+    Omarchy::PluginRuntimeVersion
+    omarchy-plugin-product-host
+    omarchy-plugin-broker-runtime
+    omarchy-plugin-providers
+    omarchy-plugin-lifecycle
+    omarchy-plugin-audit-store)
+  add_dependencies(omarchy-plugin-radio-live-e2e-host
+    omarchy-plugin-product-e2e-worker omarchy-plugin-permission-store)
   add_test(NAME plugin-product-e2e-bwrap
     COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/product_e2e_test.sh"
       $<TARGET_FILE:omarchy-plugin-product-e2e-host>

@@ -228,7 +228,7 @@ bool radio_adapter_available(std::string_view adapter_class,
           adapters.media.binding.abi_version == abi);
 }
 
-#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+#if defined(OMARCHY_PLUGIN_PRODUCT_E2E) && !defined(OMARCHY_PLUGIN_REAL_RADIO_E2E)
 bool fixture_radio_get(std::string_view origin, std::string_view,
                        std::span<std::byte> output, std::size_t &written,
                        void *) noexcept {
@@ -533,7 +533,7 @@ int preview(const QStringList &arguments, QGuiApplication &application,
       providers::RadioProviderConfiguration radio_configuration{
           .binding = active->binding, .fetch_epoch = fetch_epoch,
           .media_epoch = media_epoch, .https = {}, .media = {}};
-#ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+#if defined(OMARCHY_PLUGIN_PRODUCT_E2E) && !defined(OMARCHY_PLUGIN_REAL_RADIO_E2E)
       radio_configuration.https = {.get = fixture_radio_get};
       radio_configuration.media = {.play = fixture_radio_play,
                                    .control = fixture_radio_control};
