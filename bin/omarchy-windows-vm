@@ -340,7 +340,7 @@ migrate_legacy_compose() {
   [[ -f $LEGACY_COMPOSE_FILE ]] || return 1
 
   echo "Migrating Windows VM configuration to $COMPOSE_FILE ..."
-  local ram cores disk username password tz storage shared
+  local ram cores disk username password tz storage shared rdp_username
   ram=$(read_compose_value RAM_SIZE "$LEGACY_COMPOSE_FILE")
   cores=$(read_compose_value CPU_CORES "$LEGACY_COMPOSE_FILE")
   disk=$(read_compose_value DISK_SIZE "$LEGACY_COMPOSE_FILE")
@@ -355,12 +355,24 @@ migrate_legacy_compose() {
   shared="$HOME/Windows"
 
   [[ -z $tz ]] && tz="UTC"
+
+  # Pre-4.0.1 installers accepted any username (including emails). The elevated
+  # writer now rejects those. USERNAME is only used during first-run unattend,
+  # so fall back to docker like install does; keep the original for RDP so the
+  # existing Windows account still logs in.
+  rdp_username=$username
+  if ! valid_username "$username"; then
+    echo "Legacy username is not valid for the compose writer; using docker. The Windows account itself is unchanged."
+    username="docker"
+    [[ -n $rdp_username ]] || rdp_username="docker"
+  fi
+
   if ! write_compose "$ram" "$cores" "$disk" "$username" "$password" "$tz" "$storage" "$shared"; then
     echo "Could not migrate the existing configuration automatically." >&2
     echo "Re-run: omarchy-windows-vm install" >&2
     return 1
   fi
-  write_credentials "$username" "$password"
+  write_credentials "$rdp_username" "$password"
   rm -f "$LEGACY_COMPOSE_FILE"
 }
 
