@@ -57,18 +57,32 @@ Suggested issue title: `Package the native plugin runtime from a clean pinned Om
 
 ### Z2-A4: Close the disposable-VM and fresh-ISO release gate
 
-Suggested issue title: `Prove secure plugin installation and activation in a fresh Omarchy VM`
+Suggested issue title: `Prove live secure-plugin activation in a fresh Omarchy VM`
 
-- Class: activation blocker
+- Class: production activation blocker
 - Depends on: Z2-A2, Z2-A3, available `omarchy-iso` checkout and acceptance harness
-- Scope: build a fresh ISO using the committed Omarchy and package sources, install without reusing a base image, and inspect the actual graphical session, dormant systemd user unit, Quickshell module, and private worker boundary. Production activation, permission review, surfaces, broker effects, update/revocation, and recovery remain deferred until the inert host is composed and intentionally enabled. Do not run destructive graphical acceptance in the active development session.
+- Completed reference gate: hosted run [`33221534246`](https://github.com/jacob-vincent-mink/omarchy/actions/runs/33221534246) installed the exact `0dac331a` package into a fresh VM and passed all seven dormant/reference plugin assertions: exact payload identity, private-worker denial, disabled/inactive service, graphical bridge presence, and feature-gated QML import. The overall suite retained five exact known non-plugin baseline failures, so this is not a generally green release result.
+- Scope: after the production host is composed and intentionally enabled, build a fresh ISO from committed Omarchy and package sources and prove live discovery, activation, permission review, surfaces, broker effects, update/revocation, and recovery. Do not run destructive graphical acceptance in the active development session.
+- Hosted-evidence note: ephemeral attempts that fail in workflow orchestration, runner capacity, pinned-image preparation, or other infrastructure before installed assertions are not acceptance results. Retain their logs to improve the official builder seam, but cite only a completed exact-pin run and its artifact as fresh-ISO evidence.
 - Acceptance criteria:
   - Logs record the exact ISO, package archive digest, Omarchy commit, package commit, kernel, Qt, Bubblewrap, systemd, compositor, and GPU/software-render profile.
-  - The graphical-session unit is installed but remains disabled and inactive, Quickshell imports the installed module, and both exported types preserve their explicitly unavailable/disconnected state.
-  - The worker remains outside `PATH` and rejects direct execution; no reference CLI route, first-run step, migration, preset, package script, or wants symlink activates the runtime.
-  - VM evidence covers installed ownership/modes, exact package provenance, direct-worker rejection, QML ABI import, and dormant unit state. Network namespace, cgroup, recovery, update, revocation, and live surface proof remain separate production-host gates.
-  - Screenshots and logs clearly label the reference runtime as unavailable and do not imply that plugin pixels, permission prompts, or activation were exercised.
-  - The run closes the clean-install/package/QML-import/dormant-service gaps or records an explicit infrastructure blocker; live compositor surfaces, fractional DPR, monitor changes, and presentation latency remain deferred while the host is inert.
+  - The intentionally enabled graphical-session host composes the reviewed discovery, lifecycle, broker, render, and shell-registration paths and owns the live plugin surface.
+  - VM evidence covers actual sandbox namespaces, cgroup policy, broker effects, crash/restart recovery, permission-expanding update, revocation, and direct-worker rejection against the exact installed package.
+  - Installed Pomodoro, pet, and brokered-service examples pass positive and expected denial flows with trusted permission/audit UX outside plugin pixels.
+  - Screenshots and logs close live compositor presentation, fractional-DPR, monitor-change, focus/input, and measured presentation-latency gaps.
+  - The full fresh-ISO acceptance baseline is green or every remaining non-plugin failure is independently owned and explicitly blocks general release readiness.
+
+### Z2-A4a: Upstream robust OCR for the ISO acceptance harness
+
+Suggested issue title: `Make installer acceptance OCR robust to selected green text`
+
+- Class: test-infrastructure follow-up
+- Depends on: retained exact screenshots and preprocessing logs from the hosted F5 proof
+- Scope: update the official `omarchy-iso-test` OCR path so selected green installer text is detected without an ephemeral workflow patch. The hosted proof reproduced a PSM 6 false negative for visibly selected `Yes, install without encryption`; combining PSM 6 and PSM 3 recognized it.
+- Acceptance criteria:
+  - A checked-in fixture reproduces the PSM 6 miss and proves the selected option is detected by the revised bounded preprocessing/OCR path.
+  - The harness records the OCR modes and normalized text used for each wait without logging credentials or other installer secrets.
+  - Existing installer-screen fixtures still pass, and a false positive cannot advance the harness without the expected visible phrase.
 
 ### Z2-A5: Freeze the schema-v1 transition and developer-mode policy
 

@@ -4,7 +4,7 @@
 
 Commit `c19174a7` passes the standalone CMake install-surface audit. A source archive of that exact commit was configured as Release with `BUILD_TESTING=OFF`, `CMAKE_INSTALL_PREFIX=/usr`, and `CMAKE_SKIP_RPATH=ON`, then built and installed into a fresh `DESTDIR`. The install manifest and filesystem agree on exactly seven regular files. No service unit is installed by CMake; the Arch packaging patch owns the user unit and the package verifier checks it separately.
 
-This point-in-time result did not close G4. Package provenance and graphical acceptance remain in F5. The later `bbf31c10` pidfd/reap correction resolved the independently reproducible brokered-action teardown failure; fresh Debug and Release aggregates and repeated real-Bubblewrap evidence are recorded in [`plugin-security-g4-release-gate.md`](plugin-security-g4-release-gate.md).
+This section preserves the point-in-time `c19174a7` audit. The later `bbf31c10` pidfd/reap correction resolved the independently reproducible brokered-action teardown failure, and final candidate `0dac331a` closes the exact package and dormant/reference graphical acceptance gaps through F5. Fresh aggregates, repeated real-Bubblewrap evidence, and the final hosted hashes are recorded in [`plugin-security-g4-release-gate.md`](plugin-security-g4-release-gate.md).
 
 ## Installed inventory
 
@@ -32,7 +32,7 @@ All five installed ELF files are x86-64 position-independent executables or a sh
 
 `native/plugin-runtime/packaging/verify-package.sh` already verifies the expected host, private worker, storage CLIs, user service, QML files, modes, package architecture and declared dependencies, service directives, host version, worker direct-execution denial, absence of RPATH/RUNPATH on the host/worker/bridge, and a real offscreen QML import.
 
-The install audit identified verifier coverage gaps that F5 should either close or explicitly accept:
+The install audit originally identified these verifier coverage gaps:
 
 - RPATH/RUNPATH inspection omits the permission and audit CLIs.
 - The verifier does not reject unexpected files under the private runtime or QML module directories, test/helper artifacts, symlinks outside the individually required paths, setuid/setgid files, or group/world-writable entries.
@@ -40,7 +40,7 @@ The install audit identified verifier coverage gaps that F5 should either close 
 - Non-executable GNU stack, PIE/shared-object type, GNU RELRO, and package ownership are not asserted.
 - The package intentionally contains the wider Omarchy tree, so any unexpected-file rule must be scoped to the plugin runtime install paths rather than implemented as a package-wide exact allowlist.
 
-These are verifier-strength gaps, not violations observed in the exact-commit CMake install. F5 owns the packaging script and archive proof, so this audit records the findings without racing its active patch.
+These were verifier-strength gaps, not violations observed in the exact-commit CMake install. Final candidate `0dac331a` closes them: the verifier now applies scoped exact allowlists, unsafe-file/mode/ownership rejection, all-five-ELF RPATH/RUNPATH and hardening inspection, bounded dependency checks with `ldd -r`, and negative mutation coverage. The clean local archive and hosted fresh-ISO archive both pass the verifier and negative suite.
 
 ## Reproduction
 

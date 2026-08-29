@@ -2,7 +2,7 @@
 
 ## Current decision
 
-G4 is not complete. The F0-F4 implementation, F6 representative migration evidence, and aggregate native build pass this preflight, but final authorization still requires accepted F5 fresh-install and graphical evidence. Building or installing the reference artifacts does not enable schema v2.
+G4 is complete for opening the architecture discussion and draft reference PR for review. Final candidate `0dac331a8611c669801924394a2f28d94430e957` passes the F0-F6 reference gates, including exact package provenance and the dormant fresh-VM boundary. G4 does not authorize production activation or merge: the host remains inert, package ownership is not landed, and the broader VM aggregate retains five known non-plugin baseline failures.
 
 ## Release checklist
 
@@ -10,14 +10,22 @@ G4 is not complete. The F0-F4 implementation, F6 representative migration eviden
 | --- | --- | --- |
 | One production QML module | Pass | `Omarchy.PluginHost` is registered once. Its installed module contains `PluginHostInfo` and `RemotePluginSurface`; the plain trusted-bridge library exists only for native tests and consumers. |
 | Production targets in aggregate build | Pass | Root CMake builds the worker, launcher, broker/lifecycle stack, render session, trusted bridge, surface host, headless slice, expressive surface, product fixtures, embedded-bar and brokered-action slices, C11 adversarial harness, and F2 render proof in dependency order. |
-| Package-shaped build | Refresh required | A prior fresh Release build with `BUILD_TESTING=OFF` built and installed the host, worker, permission/audit inspectors, and the single QML module, and its installed import path resolved both exported QML types. The later dormant-unit correction changed a packaged input, so F5 must reproduce this evidence from the final branch tip. |
+| Package-shaped build | Pass for exact reference candidate | A clean detached `0dac331a` package build passed all 55 Release checks, the archive verifier, and its negative mutation suite. The hosted pinned build produced package `4.0.0.r1.g0dac331-1`, and the VM identity overlay matched the exact installed host, worker, and QML bridge hashes. |
 | Debug aggregate | Pass | Fresh final-candidate aggregate: 55 of 55 tests, including the F1 10,000-envelope exhaustion corpus, real Bubblewrap, authenticated channels, malicious peers, arbitrary-QML rendering, lifecycle, permission/audit, brokered action, migration, and render proof. |
 | Release aggregate | Pass | Fresh final-candidate Debug and Release builds each passed all 55 tests outside managed confinement. The Release `plugin-brokered-action` boundary then passed 25 of 25 fake-launch repetitions and 25 of 25 real-Bubblewrap repetitions after the final hardening. Earlier post-merge evidence also includes 100 of 100 fake and 100 of 100 real repetitions after the pidfd/reap correction in `bbf31c10`. An earlier mixed-layout crash run remains excluded because source commit `c32121f3` landed between library and test compilation; core and object timestamps proved that separate ABI mixture. |
 | Sanitizers and default stack | Pass for completed F0-F4 scope | Uniform ASan/UBSan E5/lifecycle tree passes six of six selected tests at the ordinary 8 MiB stack. F0-F2 retain their focused sanitizer evidence and documented exact-environment LeakSanitizer exclusions. |
 | Feature-flag honesty | Pass | `omarchy-plugin-host` supports only version and launcher-prerequisite inspection and otherwise remains inert; `PluginHostInfo.available` is false. Discovery/revision defaults are disabled, the native permission inspector requires `OMARCHY_PLUGIN_SCHEMA_V2_ENABLED=1`, no end-user command routes to the native inspectors, and no first-run or migration path enables or starts the reference service. |
 | Legacy honesty | Pass | Existing schema-v1 commands remain the explicitly unsafe compatibility path and are not described as granularly sandboxed. |
-| F5 disposable-VM install and graphical acceptance | Pending | Accept the final package/archive provenance, clean install, real installed QML module, shell presentation, and fresh-ISO evidence. |
+| F5 disposable-VM install and graphical acceptance | Pass for dormant/reference scope | Hosted run `33221534246` built a fresh ISO and passed all seven plugin-specific assertions: exact installed identity, prerequisites, direct-worker denial, disabled/inactive host service, graphical bridge presence, feature-gated label, and packaged QML import under Wayland. The aggregate suite still exited 1 on five exact known non-plugin baseline failures, so general release readiness remains open. |
 | F6 representative migrations | Pass | Twenty pinned real plugins produce deterministic migration results: 14 bounded scans and six fail-closed asset-limit outcomes. The E1/E2/E3 proof paths pass Debug, Release, and sanitizer validation, while unsupported capabilities and scanner blind spots remain explicit. |
+
+## Final hosted reference evidence
+
+Successful hosted run [`33221534246`](https://github.com/jacob-vincent-mink/omarchy/actions/runs/33221534246), orchestration commit `38ee76418e82b101d924e806f125a754d6955b4e`, pinned candidate `0dac331a8611c669801924394a2f28d94430e957`, `omarchy-iso` `268bac16d351a21d867e37565738f458b11cb06c`, `omarchy-pkgs` `a8c9e2982e965d140adcbe3138fa44c2d538d60b`, and exact Arch build/test image digests. The retained artifact is `f5-fresh-iso-0dac331a8611c669801924394a2f28d94430e957`. ISO SHA-256 is `05b0a0bc7ed2e948c7f331a60ff01b17755edc61ce4b503336d794c63172696f`; package `4.0.0.r1.g0dac331-1` SHA-256 is `98d8ca0b000292f61d6b51a4011513b97efc43d42d244c7c3ef113e4fcbbdfb9`.
+
+The official package-builder container used an exact logged `--nocheck` adaptation because its privileged environment cannot run the nested-sandbox/session/display checks. This is not counted as test evidence: the candidate separately passed fresh Debug and Release 55/55 native suites, and both package verifiers passed before VM boot. The acceptance harness also used an exact logged observation-only PSM 6 plus PSM 3 OCR patch after pinned PSM 6 reproducibly omitted selected green installer text.
+
+The VM installed host SHA-256 `83bcf8f6b2dc6011075133ee1b8616a4fac1b4878ae6702a84fecbc216ea1c8f`, worker SHA-256 `cf99a09e187d5a3e10f3249b5aa83f86e542edbd4aa6c9aec307e760b0dde3b9`, and bridge SHA-256 `7b75d877e372518d304fcaf084a2adf86a335187deeb3f0012c48d016e93162c`. Provenance records `plugin_acceptance=pass` and `aggregate_acceptance=failed_known_baseline`: launcher shortcut, menu shortcut, universal-clipboard Chromium launch, browser window launch, and style submenu visibility were the exact five non-plugin failures. G4 therefore authorizes review of the dormant reference boundary while keeping production activation and general release readiness open.
 
 ## Security invariants rechecked
 
@@ -68,4 +76,4 @@ The aggregate `./test/shell` run completed but reported seven failing files out 
 - `theme-install-guards-test.sh` expects its missing-helper case to have no `omarchy-git-url-check` on `PATH`, but this installed system exposes `/usr/bin/omarchy-git-url-check` even under a minimal `/usr/bin` path.
 - `windows-vm-compose-test.sh` reached a managed-sandbox denial while trying to migrate the installed user's real credentials path. It was not rerun outside confinement because doing so could mutate real user state.
 
-These shell-suite limitations do not broaden the G4 claim: F5 still requires the matching package repository revision and disposable-VM/fresh-ISO acceptance before authorization.
+These shell-suite limitations do not broaden the G4 claim. The final F5 hosted run closes the exact dormant/reference install boundary, while committed package ownership, production host composition and activation, and a generally green fresh-ISO baseline remain required for release readiness.
