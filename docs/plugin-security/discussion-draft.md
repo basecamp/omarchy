@@ -51,6 +51,33 @@ Availability is a host-derived UX snapshot, not an authorization token. It expos
 
 The broker owns effects. Compiled capability families cover common operations such as quota-bound private storage, packaged audio cues, and desktop notifications. Extensible capabilities use independently installed definition documents. A dynamic request pins the canonical definition name, generation, digest, requested operation subset, and canonical scope; QML cannot substitute those fields. Activation additionally binds a reviewed adapter class, ABI, and implementation digest. Unknown, stale, ambiguous, unavailable, or scope-invalid definitions cannot be granted.
 
+### Who defines permissions, and how extension works
+
+A plugin may request a permission name, but it cannot create a permission or give that name meaning. Authority exists only when the host already has an independently trusted capability definition and provider adapter matching the exact name, generation, definition digest, operations, scope grammar, ABI, and implementation digest. An unknown name is an unavailable request, not a new namespace that the plugin controls. Two plugins requesting `service.gh` and `cli.gh` therefore do not receive two independently meaningful ways to run `gh`; both names remain inert unless trusted definitions were separately installed for them.
+
+Omarchy should ship a small built-in registry for common stable effects. Each built-in definition maps a human-facing permission to a closed operation set and enforcement policy. For example, private storage maps `read` and `write` to one plugin-owned quota; notifications map `send` to reviewed categories; packaged audio maps `play-cue` to immutable files in the verified revision. These are not string labels around a generic executor. The mapping is the permission.
+
+Users and system integrators may extend the registry, but extension is a trusted administrative action separate from plugin installation. A custom definition such as `bash.my-harness` can name one resolved executable, enumerate allowed subcommands, define a typed argument grammar, cap input/output/runtime, select whether a fresh gesture is required, and bind a separately reviewed adapter implementation. It must not degrade to shell text, arbitrary argv, ambient `PATH` lookup, or a plugin-selected executable. Definitions need collision-resistant ownership or namespaces, explicit versions and generations, content digests, upgrade and removal rules, and a command that shows which installed plugins currently depend on them.
+
+A plugin package may include a proposed definition as documentation or an installation suggestion, but that proposal is inert. Installing or updating the plugin must not install the definition, provider, package dependency, system service, or grant. The user must obtain and review the trusted definition/provider through a distinct Omarchy or system-administration path. This prevents a plugin from shipping both the request and the code that decides what the request authorizes.
+
+The manifest is also the ceiling for runtime behavior. QML can inspect only the requested optional and required permissions, adapt its UI to the current snapshot, and invoke only operations in the reviewed subset. It cannot discover unrelated definitions, add a request at runtime, widen scope, change adapters, or mint handles. A new request or broader scope requires a new immutable plugin revision and permission review. A definition or provider upgrade with a new digest or generation similarly invalidates the old binding until it is reviewed.
+
+Runtime grant changes are reductions or explicit reviewed transitions, never plugin decisions. Granting an optional permission makes its declared operations available; revocation increments its epoch, cancels or invalidates outstanding work and opaque handles, updates the broker before the QML availability snapshot, and may hide or disable the associated feature. Revoking a required permission disables that exact activation unless the manifest defines a safe degraded profile. A plugin may ask the host to open the permission UI for one of its declared requests, but it cannot approve the prompt or distinguish policy denial from unavailable provider details beyond the bounded status needed for honest UX.
+
+The review UI should make this chain visible rather than presenting a bag of arbitrary strings:
+
+```text
+plugin manifest request
+  → trusted definition (name + generation + digest)
+    → requested operation subset + canonical scope
+      → user grant (state + epoch)
+        → reviewed adapter (class + ABI + implementation digest)
+          → broker recheck immediately before each effect
+```
+
+This separation is what makes permission extensibility compatible with confinement: names remain ergonomic, while independently installed definitions, grants, adapters, and per-call broker checks supply their enforceable meaning.
+
 This is extensibility without a generic escape hatch. A future GitHub account reader can define bounded datasets and opaque account handles. A device controller can enumerate supported controls and require a fresh gesture for mutations. A network provider can constrain scheme, host, method, redirects, body size, response size, and rate. A command adapter, when unavoidable, names one installed executable and enumerated operations with validated arguments; it never accepts shell text or arbitrary argv.
 
 Providers should receive a broker-created authorization context containing the immutable activation binding, canonical capability reference, grant epoch, operation, and validated demand. They must derive account, device, and resource selection from that context and opaque handles rather than plugin-supplied paths or credential identifiers. High-risk providers should be separate processes so a network parser or hardware stack is not folded into the main host's trusted computing base.
