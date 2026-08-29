@@ -67,6 +67,8 @@ native/plugin-runtime/lab/omarchy-plugin-security-lab launch "$lab_root" "$plugi
 
 Run Radio Atlas with live network and media providers, Omagotchi with private storage, notifications and packaged audio, GitHub with a disposable test account, and AirPods only with test hardware whose pairing can be reset. Capture the initial surface, each granted operation, each denied operation, revocation during an in-flight request, provider loss, plugin crash, worker restart, and post-revocation behavior. Record `hyprctl` state and use compositor-native capture for video; export the redacted audit store and hash every evidence file.
 
+For a deterministic first proof that does not modify a winner port, use the purpose-built fixtures under `native/plugin-runtime/fixtures/product/`. `lab-authorized` invokes `storage.private/write` and then `storage.private/read` on startup and renders the completed broker round trip. `lab-denied` invokes `notifications.send/send` without requesting it and renders the broker denial. `lab-permission` requests notification authority only as optional UI state and updates its visible status from the host-authenticated `permissionsChanged` snapshot; it never treats that snapshot as authorization. Run each fixture from an immutable copy with a fresh mode-0700 state, grant, audit, and evidence directory. Correlate the visible terminal state with the private-state bytes and audit decisions rather than treating a screenshot alone as proof.
+
 ## Security and penetration matrix
 
 Keep known-good and malicious revisions separate. At minimum attempt:

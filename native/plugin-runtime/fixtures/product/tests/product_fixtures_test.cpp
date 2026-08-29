@@ -14,6 +14,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -68,6 +69,30 @@ public:
   [[nodiscard]] bool denied(const QString &operation) const {
     return denied_.contains(operation);
   }
+
+  Q_INVOKABLE bool hasPermission(const QString &capability,
+                                 const QString &operation) const {
+    return capability == QStringLiteral("notifications.send") &&
+           operation == QStringLiteral("send") &&
+           allowed_.contains(QStringLiteral("notification_send"));
+  }
+
+  Q_INVOKABLE QString permissionState(const QString &capability,
+                                      const QString &operation) const {
+    return hasPermission(capability, operation) ? QStringLiteral("granted")
+                                                : QStringLiteral("denied");
+  }
+
+  void setNotificationGranted(bool granted) {
+    if (granted)
+      allowed_.insert(QStringLiteral("notification_send"));
+    else
+      allowed_.remove(QStringLiteral("notification_send"));
+    emit permissionsChanged();
+  }
+
+signals:
+  void permissionsChanged();
 
 private:
   QSet<QString> allowed_;
@@ -185,16 +210,50 @@ void test_fake_status() {
           "undeclared URL action escaped the authority-free fake runtime");
 }
 
+void test_live_evidence_fixtures() {
+  FakeRuntime authorized({QStringLiteral("storage_read"),
+                          QStringLiteral("storage_write")});
+  auto authorized_fixture = load("lab-authorized", authorized);
+  require(authorized_fixture->object->property("phase").toString() ==
+              QStringLiteral("WRITING") &&
+              authorized.count(QStringLiteral("storage_write")) == 1,
+          "authorized live fixture did not start its brokered storage proof");
+
+  FakeRuntime denied({QStringLiteral("storage_read"),
+                      QStringLiteral("storage_write")});
+  auto denied_fixture = load("lab-denied", denied);
+  require(denied_fixture->object->property("phase").toString() ==
+              QStringLiteral("ATTEMPTING") &&
+              denied.denied(QStringLiteral("notification_send")),
+          "denial live fixture did not attempt its unrequested operation");
+
+  FakeRuntime permission({QStringLiteral("notification_send")});
+  auto permission_fixture = load("lab-permission", permission);
+  require(permission_fixture->object->property("permissionState").toString() ==
+              QStringLiteral("GRANTED"),
+          "permission fixture did not render its initial availability");
+  permission.setNotificationGranted(false);
+  require(permission_fixture->object->property("permissionState").toString() ==
+              QStringLiteral("DENIED") &&
+              permission_fixture->object->property("observedChanges").toInt() == 1,
+          "permission fixture did not react visibly to permissionsChanged");
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
   QGuiApplication application(argc, argv);
   try {
+    if (application.arguments().contains(QStringLiteral("--live-evidence-only"))) {
+      test_live_evidence_fixtures();
+      return 0;
+    }
     test_pomodoro();
     test_pet();
     test_fake_status();
+    test_live_evidence_fixtures();
   } catch (const std::exception &error) {
-    qCritical("%s", error.what());
+    std::cerr << error.what() << '\n';
     return 1;
   }
   return 0;

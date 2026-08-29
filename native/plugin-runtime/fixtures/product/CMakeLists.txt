@@ -43,7 +43,10 @@ target_link_libraries(omarchy-plugin-product-fixtures-test PRIVATE
 add_test(NAME plugin-product-fixtures
   COMMAND omarchy-plugin-product-fixtures-test
 )
-set_tests_properties(plugin-product-fixtures PROPERTIES
+add_test(NAME plugin-live-evidence-fixtures
+  COMMAND omarchy-plugin-product-fixtures-test --live-evidence-only
+)
+set_tests_properties(plugin-product-fixtures plugin-live-evidence-fixtures PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QSG_RHI_BACKEND=software;QSG_SOFTWARE_RENDERER_FORCE_PARTIAL_UPDATES=0"
   LABELS "unit;qml;fixtures;security"
 )
