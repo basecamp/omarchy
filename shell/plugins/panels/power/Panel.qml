@@ -22,11 +22,8 @@ Panel {
   property var topProcesses: []
   property var systemRows: []
   property var resourceSplits: null
-  property var colorMap: ({})
+  property var heat: ({})
   property var processColumns: []
-  // The identity palette — three collision-free theme hues; see the
-  // rationale at the colorMap assignment below.
-  readonly property var paletteKeys: ["blue", "cyan", "magenta"]
   // Composition-bar gap geometry: a constant separator width and a constant
   // budget for the maximum segment count, so fills scale identically across
   // refreshes and resources regardless of how many segments are visible.
@@ -149,36 +146,20 @@ Panel {
     return modeLabel()
   }
 
-  // Metric-type colors for the per-process cells: the three collision-free
-  // hues, one per metric (CPU blue, RAM cyan, W magenta), so a column reads
-  // as one metric at a glance. W stays magenta rather than categorical
-  // green/yellow/red: per-process watts carry no honest absolute thresholds
-  // (the old system-level Draw meter that used them was removed in operator
-  // review — the stock pill already shows total draw). GPU is reserved
-  // to accent for the future fdinfo cell (never emitted on this hardware;
-  // accent may sit near blue on some themes — a documented follow-up
-  // question for whoever adds GPU cells).
-  function metricColor(metric) {
-    if (metric === "CPU") return Color.blue
-    if (metric === "RAM") return Color.cyan
-    if (metric === "W") return Color.magenta
-    return Color.accent
+  // Ink, not hue: RANK-NORMALIZED heat — foreground at even steps from
+  // 1.0 (rank 1) down to 0.35 (last rank), and that value follows the
+  // process everywhere (row mark, every bar segment). The system block/row
+  // is WHITE (the machine itself). Magnitude lives in segment SIZE and the
+  // numeric cells; ink's only job is ORDER. Identity is positional and by
+  // label (operator decisions, 2026-08-29).
+  function segmentInk(seg) {
+    if (seg.kind === "system") return 1
+    if (seg.ink !== undefined) return seg.ink
+    return 0.35
   }
 
-  // Segment/row colors, one resolver for every surface: comms take their
-  // name-hashed palette hue — the table row's mark is the single color
-  // authority, and bars render the same hue at the same full strength —
-  // the system block takes foreground (the neutral machine), the GPU bar's
-  // rest takes muted, unknown keys fall back to the bar foreground.
   function segmentColor(seg) {
     if (seg.kind === "rest") return Color.muted
-    if (seg.kind === "system") return root.bar ? root.bar.foreground : Color.foreground
-    var k = seg.kind === "comm" && seg.slot !== undefined ? seg.slot.hue
-      : (seg.kind === "comm" && colorMap[seg.key] !== undefined ? colorMap[seg.key] : "")
-    if (k === "blue") return Color.blue
-    if (k === "cyan") return Color.cyan
-    if (k === "magenta") return Color.magenta
-    if (k === "accent") return Color.accent
     return root.bar ? root.bar.foreground : Color.foreground
   }
 
@@ -289,11 +270,11 @@ Panel {
   function onSample(raw) {
     var snap = Model.parseSnapshot(raw)
     if (!snap) return
-    // The sampler's watts feed the ATTRIBUTION — the displayed rate comes
-    // only from batteryProc (the stock smoothed source), written in exactly
-    // one place. A second writer here (tried in v1) made the row flip sign
-    // and value at 1 Hz: two reads of the same telemetry with different
-    // conventions. Never two writers on one field.
+    // NOTE: the sampler's watts feed the ATTRIBUTION here — the displayed
+    // rate comes only from batteryProc (the stock smoothed source), written
+    // in exactly one place. A second writer here (tried in v1) made the row
+    // flip sign and value at 1 Hz — two reads of the same telemetry with
+    // different conventions. Never two writers on one field.
     // A snapshot without a readable cputotal would diff nonsense percentages;
     // drop it and wait for the next one instead of storing it as a baseline.
     if (snap.cpuTotalJiffies === null) {
@@ -332,25 +313,41 @@ Panel {
       }
     }
     processColumns = cols
-    resourceSplits = Model.buildResourceSplits(prevSnapshot, snap, 5, draw, baseWatts, root.paletteKeys)
-    // Palette keys map to Color singleton properties: the three
-    // non-threshold hues that are universal AND mutually distinct across the
-    // themes (reviewer finding, hex re-derived: accent equals blue on 17
-    // themes and magenta on lumon only, so it cannot serve as a fourth hue;
-    // bright_* variants equal their base hue on roughly half, so no six-key
-    // collision-free set exists — retro-82's residual defect is its own
-    // blue == magenta, a theme-level reduction). Identity is name→hue and
-    // nothing else: same comm = same key = same color on its table row's
-    // mark and in every bar segment, at full strength, per the operator
-    // review's table-is-the-color-authority rule. Hue collisions between
-    // comms are accepted (three hues, five rows) — labels disambiguate the
-    // table, gaps disambiguate the bars.
-    var cmap = {}
-    for (var ci2 = 0; ci2 < resourceSplits.order.length; ci2++) {
-      var comm = resourceSplits.order[ci2]
-      cmap[comm] = root.paletteKeys[Model.stableColorKey(comm, root.paletteKeys.length)]
+    resourceSplits = Model.buildResourceSplits(prevSnapshot, snap, 5, draw, baseWatts)
+    // ONE HEAT PER PROCESS (operator decision, 2026-08-29): a process's ink
+    // is a single value — its share of the busiest process's CPU load,
+    // 0.35..1.0 — and that value follows it EVERYWHERE: the table row's
+    // mark, its segment in every composition bar. Like a heatmap of
+    // processes: the system leads in white (the machine itself), the top
+    // process glows brightest, and ink fades monotonically down the table's
+    // rank. Segment SIZE still encodes each bar's own metric share; INK
+    // encodes who the process is and how hot it runs. One writer: computed
+    // here, once per refresh, onto plain numbers.
+    // RANK-NORMALIZED (operator decision, 2026-08-29): ink steps EVENLY by
+    // rank — rank 1 is white, the last rank sits at the 0.35 floor — not by
+    // share ratio. How much hotter one process runs than another is already
+    // encoded by segment SIZE; ink's only job is order.
+    var heatMap = {}
+    var cpuBar = resourceSplits.cpu
+    // The cpu split is NULL until two samples exist (and stays null on AC
+    // restarts) — a null bar means "no heat yet", not an error.
+    if (cpuBar !== null && cpuBar !== undefined) {
+      var comms = []
+      for (var hi = 0; hi < cpuBar.length; hi++)
+        if (cpuBar[hi].kind === "comm") comms.push(cpuBar[hi])
+      for (var hj = 0; hj < comms.length; hj++) {
+        var step = comms.length > 1 ? 0.65 / (comms.length - 1) : 0
+        heatMap[comms[hj].key] = 1 - hj * step
+      }
     }
-    colorMap = cmap
+    var allBars = [resourceSplits.cpu, resourceSplits.ram, resourceSplits.watts, resourceSplits.gpu]
+    for (var bi = 0; bi < allBars.length; bi++) {
+      var bar = allBars[bi]
+      if (!bar) continue
+      for (var si3 = 0; si3 < bar.length; si3++)
+        if (bar[si3].kind === "comm") bar[si3].ink = heatMap[bar[si3].key] !== undefined ? heatMap[bar[si3].key] : 0.35
+    }
+    heat = heatMap
     // Vitals rows are rebuilt complete with their segments attached: a
     // property added to a plain JS object after the fact carries no change
     // signal, so a delegate that bound before the attach would stay null.
@@ -539,7 +536,7 @@ Panel {
             id: barTrack
             anchors.fill: parent
             radius: height / 2
-            color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+            color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.08)
           }
 
           Rectangle {
@@ -662,7 +659,7 @@ Panel {
             height: Style.space(6)
             radius: height / 2
             clip: true
-            color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+            color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.08)
 
             Row {
               id: wattsSegmentRow
@@ -677,6 +674,7 @@ Panel {
                   width: modelData.share * Math.max(0, wattsSegmentRow.width - root.splitGapBudget)
                   height: parent.height
                   color: root.segmentColor(modelData)
+                  opacity: root.segmentInk(modelData)
                 }
               }
             }
@@ -716,7 +714,7 @@ Panel {
                   text: parent.modelData
                   anchors.right: parent.right
                   anchors.rightMargin: Style.space(4)
-                  color: root.metricColor(parent.modelData)
+                  color: root.bar ? root.bar.foreground : Color.foreground
                   opacity: 0.8
                   font.family: root.bar.fontFamily
                   font.pixelSize: Style.font.caption
@@ -735,11 +733,12 @@ Panel {
               cells: modelData.cells !== undefined ? modelData.cells : []
               columns: root.processColumns
               anchor: modelData.key === "system"
-              commColor: modelData.key === "system"
-                ? (root.bar ? root.bar.foreground : Color.foreground)
-                : (root.colorMap[modelData.key] !== undefined
-                  ? Color[root.colorMap[modelData.key]]
-                  : root.segmentColor({ kind: "comm", key: modelData.key }))
+              commColor: root.bar ? root.bar.foreground : Color.foreground
+              // The mark IS the process's heat — the same one-writer value
+              // its bar segments use (root.heat), so mark and bars can
+              // never disagree about a process.
+              commInk: modelData.key === "system" ? 1
+                : (root.heat[modelData.key] !== undefined ? root.heat[modelData.key] : 0.35)
             }
           }
 
@@ -838,8 +837,9 @@ Panel {
 
   // One graphic line per process on a FIXED grid, recalculated only on
   // basis change (column set) or panel width — never per sample. Comm
-  // column: the identity mark in its own slot (the row's color — the single
-  // color authority the bars mirror) plus a left-aligned label elided at
+  // column: the identity mark in its own slot — foreground ink, since
+  // identity is carried by the label and by row order (system leads;
+  // processes descend by load) — plus a left-aligned label elided at
   // the kernel's 15-char comm cap (Model.COMM_MAX_CHARS, sized once via
   // TextMetrics). Metric cells: the remaining track split equally across
   // the section's column set, so every row lands in the same pixel columns
@@ -856,6 +856,7 @@ Panel {
     property var columns: []
     property bool anchor: false
     property color commColor: root.bar ? root.bar.foreground : Color.foreground
+    property real commInk: 1
 
     width: column.width
     implicitHeight: Style.space(16)
@@ -875,6 +876,7 @@ Panel {
       x: 0
       anchors.verticalCenter: parent.verticalCenter
       color: metricRow.commColor
+      opacity: metricRow.commInk
     }
 
     Text {
@@ -944,9 +946,7 @@ Panel {
                 : 0
               height: parent.height - Style.space(4)
               radius: height / 3
-              color: metricRow.anchor
-                ? (root.bar ? root.bar.foreground : Color.foreground)
-                : root.metricColor(cellSlot.modelData)
+              color: root.bar ? root.bar.foreground : Color.foreground
               opacity: cellSlot.cellData !== null ? cellSlot.cellData.intensity : 0
             }
           }
@@ -1027,6 +1027,7 @@ Panel {
             width: modelData.share * Math.max(0, splitSegments.width - root.splitGapBudget)
             height: splitSegments.height
             color: root.segmentColor(modelData)
+            opacity: root.segmentInk(modelData)
           }
         }
       }
