@@ -46,14 +46,6 @@ if ! (LC_ALL=C; [[ $THEME_NAME =~ ^[a-z0-9_][a-z0-9._+-]*$ ]]); then
   echo "Error: '$REPO_URL' does not give a usable theme name."
   exit 1
 fi
-# The name is echoed by plymouth tooling, shown in menus, and interpolated into
-# commands elsewhere, so only letters, digits, dots, underscores, and hyphens
-# are allowed. Arbitrary repo URLs still install; only their derived name must
-# be filesystem- and shell-safe.
-if [[ ! $THEME_NAME =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
-  echo "Error: '$REPO_URL' derives an unsafe theme name ('$THEME_NAME'); use letters, digits, dots, underscores, or hyphens only."
-  exit 1
-fi
 
 # Remove existing theme if present
 if [[ -d $THEME_PATH ]]; then
