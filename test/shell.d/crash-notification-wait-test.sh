@@ -9,11 +9,10 @@ trap 'rm -rf "$TMPDIR"' EXIT
 
 mkdir -p "$TMPDIR/bin"
 
-# Create a stub omarchy-shell that sleeps to simulate an unresponsive IPC call.
-cat >"$TMPDIR/bin/omarchy-shell" <<'SH'
+# Create a stub qs that sleeps to simulate an unresponsive IPC call.
+cat >"$TMPDIR/bin/qs" <<'SH'
 #!/bin/bash
-sleep 10
-exit 1
+exec sleep 10
 SH
 
 cat >"$TMPDIR/bin/busctl" <<'SH'
@@ -21,13 +20,13 @@ cat >"$TMPDIR/bin/busctl" <<'SH'
 exit 1
 SH
 
-chmod +x "$TMPDIR/bin/omarchy-shell" "$TMPDIR/bin/busctl"
+chmod +x "$TMPDIR/bin/qs" "$TMPDIR/bin/busctl"
 
 # Test omarchy-notification-wait timeout with wall-clock deadline.
 # A requested 1s timeout must complete in ~1-2 seconds even when omarchy-shell stalls.
 start_time=$SECONDS
 status=0
-PATH="$TMPDIR/bin:$ROOT/bin:$PATH" "$ROOT/bin/omarchy-notification-wait" 1 >/dev/null 2>&1 || status=$?
+OMARCHY_PATH="$ROOT" PATH="$TMPDIR/bin:$ROOT/bin:$PATH" "$ROOT/bin/omarchy-notification-wait" 1 >/dev/null 2>&1 || status=$?
 elapsed=$((SECONDS - start_time))
 
 (( status != 0 )) || fail "omarchy-notification-wait returns non-zero on timeout"
