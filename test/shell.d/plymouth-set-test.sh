@@ -5,6 +5,8 @@ set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/base-test.sh"
 
 test_tmp=$(mktemp -d)
+[[ -n $test_tmp && -d $test_tmp ]] ||
+  fail "the test creates its own scratch directory before touching anything"
 secret="$test_tmp/secret"
 trap 'chmod 0600 "$secret" 2>/dev/null || true; rm -rf -- "$test_tmp"' EXIT
 
@@ -174,6 +176,13 @@ case "$1" in
   code=${code/PATH=\/usr\/bin:\/bin/PATH=$TEST_ROOT_TOOLS:\/usr\/bin:\/bin}
   code=${code/theme_dir=\/usr\/share\/plymouth\/themes\/omarchy/theme_dir=$TEST_FAKE_ROOT\/usr\/share\/plymouth\/themes\/omarchy}
   code=${code/sddm_dir=\/usr\/share\/sddm\/themes\/omarchy/sddm_dir=$TEST_FAKE_ROOT\/usr\/share\/sddm\/themes\/omarchy}
+
+  # Each rewrite above silently no-ops if the production text drifts, which
+  # would point this simulation at the real /usr/share. Refuse instead.
+  [[ $code == *"PATH=$TEST_ROOT_TOOLS:/usr/bin:/bin"* ]] || exit 94
+  [[ $code == *"theme_dir=$TEST_FAKE_ROOT/usr/share/plymouth/themes/omarchy"* ]] || exit 94
+  [[ $code == *"sddm_dir=$TEST_FAKE_ROOT/usr/share/sddm/themes/omarchy"* ]] || exit 94
+
   PATH="$TEST_ROOT_TOOLS:/usr/bin:/bin" \
     /bin/bash -c "$code" "$shell_name" "$@"
   ;;
@@ -471,6 +480,24 @@ status=$?
 assert_no_temporary_files "$fake_root"
 
 pass "publication rejects symlinked and non-root-writable destination parents"
+
+# Walking the whole chain, not just the immediate parent, is what closes the
+# rename race: a writable ancestor lets an attacker swap an entire validated
+# directory out from under the leaf. Leave the destination itself pristine so
+# only the ancestor can be at fault.
+setup_run
+chmod 0777 "$fake_root/usr/share/plymouth"
+output=$(run_set 022 env 2>&1)
+status=$?
+chmod 0755 "$fake_root/usr/share/plymouth"
+
+(( status != 0 )) || fail "a writable destination ancestor is rejected" "$output"
+[[ $(stat -c %a "$theme") == 755 ]] || fail "only the ancestor, not the destination, was untrustworthy"
+[[ $(cat "$theme/bullet.png") == 'old plymouth bullet.png' ]] || fail "a writable ancestor leaves the live destination unchanged"
+[[ $output == *"refusing to publish"* ]] || fail "a rejected ancestor says why it refused" "$output"
+assert_no_temporary_files "$fake_root"
+
+pass "publication walks the whole parent chain, not only the immediate parent"
 
 # Refresh uses the same publisher but its explicit contract includes the
 # packaged nested logos/oma.png asset. It must not touch the SDDM theme.
