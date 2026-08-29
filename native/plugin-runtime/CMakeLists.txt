@@ -119,6 +119,13 @@ if(TARGET omarchy-plugin-channel-integration
   add_subdirectory(headless-slice)
 endif()
 
+if(TARGET omarchy-plugin-headless-slice
+    AND TARGET omarchy-plugin-discovery
+    AND TARGET omarchy-plugin-grant-store
+    AND TARGET omarchy-plugin-surface-host)
+  add_subdirectory(product-host)
+endif()
+
 if(TARGET omarchy-plugin-surface-host)
   add_subdirectory(expressive-surface)
 endif()
