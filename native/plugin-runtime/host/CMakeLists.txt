@@ -7,6 +7,7 @@ target_link_libraries(omarchy-plugin-host PRIVATE
   omarchy-plugin-product-host
   omarchy-plugin-broker-runtime
   omarchy-plugin-providers
+  omarchy-plugin-lifecycle
   omarchy-plugin-audit-store)
 
 install(TARGETS omarchy-plugin-host RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")

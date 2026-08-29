@@ -15,6 +15,7 @@
 #include "broker_runtime.hpp"
 #include "omarchy/plugin_runtime/broker/broker_schema.hpp"
 #include "omarchy/plugin_runtime/providers/private_storage_backend.hpp"
+#include "lifecycle.hpp"
 
 #include <fcntl.h>
 #include <spawn.h>
@@ -46,6 +47,7 @@ namespace wire = omarchy::plugin::wire;
 namespace broker = omarchy::plugin_runtime::broker;
 namespace runtime = omarchy::plugin_runtime::runtime;
 namespace providers = omarchy::plugin_runtime::providers;
+namespace lifecycle = omarchy::plugins::lifecycle;
 
 int usage_error(const QString &argument) {
   qCritical().noquote() << "omarchy-plugin-host: unsupported argument:" << argument;
@@ -354,6 +356,39 @@ int main(int argc, char *argv[]) {
           state.plugins, [&](const auto &item) { return item.plugin == plugin; });
       if (record == state.plugins.end() || !record->candidate) return 78;
       store.activate_candidate(record->candidate->binding);
+      return 0;
+    } catch (const std::exception &error) {
+      qCritical().noquote() << error.what();
+      return 78;
+    }
+  }
+  if (arguments.size() == 5 && arguments.at(1) ==
+                                  QStringLiteral("--stage-activate-plugin-live-lab")) {
+    const char *schema_gate = std::getenv("OMARCHY_PLUGIN_SCHEMA_V2_ENABLED");
+    const char *lab_gate = std::getenv("OMARCHY_PLUGIN_LIVE_LAB_ENABLED");
+    if (schema_gate == nullptr || std::string_view(schema_gate) != "1" ||
+        lab_gate == nullptr ||
+        std::string_view(lab_gate) != "I_ACCEPT_LAB_RISK")
+      return 77;
+    try {
+      const std::filesystem::path root(arguments.at(3).toStdString());
+      bool generation_ok = false;
+      const auto generation = arguments.at(4).toULongLong(&generation_ok);
+      if (!generation_ok || generation == 0) return 78;
+      QFile file(QString::fromStdString((root / "manifest.json").string()));
+      if (!file.open(QIODevice::ReadOnly)) return 78;
+      const auto manifest = omarchy::plugins::manifest::parse_manifest_v2(
+          file.readAll().toStdString());
+      const auto identity = omarchy::plugins::manifest::identify_tree(root, manifest);
+      grants::GrantStore store(arguments.at(2).toStdString());
+      const auto bundle = grants::make_bundle(
+          grants::kSecurePluginSchemaVersion,
+          permissions::PluginId(manifest.id),
+          permissions::Digest(identity.tree_sha256),
+          permissions::Digest(identity.request_sha256), generation,
+          lifecycle::translate_requests(manifest));
+      const auto staged = store.stage_candidate(bundle);
+      store.activate_candidate(staged.revision.binding);
       return 0;
     } catch (const std::exception &error) {
       qCritical().noquote() << error.what();
