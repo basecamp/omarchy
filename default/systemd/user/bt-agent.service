@@ -16,10 +16,15 @@ ExecCondition=/usr/bin/systemctl is-active --quiet bluetooth.service
 # "Authorize this device pairing (yes/no)?" on stdin no matter which -c it was
 # given. Under systemd stdin is /dev/null, so the prompt is never answered and
 # every pairing times out. Piping `yes` is what actually makes it auto-accept.
-# Safe because the adapter is only `pairable: true` when the user explicitly
-# opens the omarchy bluetoothPanel and starts scanning; outside that window
-# bluez refuses inbound pair attempts at a lower layer.
+#
+# Auto-accepting is only safe while the adapter is not pairable outside a pair
+# the user actually asked for. That guard did NOT previously exist: nothing in
+# the tree ever set `Pairable` and bluez defaults it on, so the adapter sat open
+# permanently (#7889). omarchy-bluetooth-device now opens the window only around
+# `pair` and closes it on every exit path; ExecStartPost clears it once more at
+# login, covering a session where that script has not run yet.
 ExecStart=/bin/sh -c 'yes | /usr/bin/bt-agent -c NoInputNoOutput'
+ExecStartPost=-/usr/bin/timeout 5 /usr/bin/bluetoothctl pairable off
 Restart=on-failure
 RestartSec=2
 

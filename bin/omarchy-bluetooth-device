@@ -29,9 +29,22 @@ trust_device() {
   bluetoothctl trust "$address" >/dev/null 2>&1 || true
 }
 
+# bt-agent.service auto-accepts JustWorks pairing authorization, so the adapter
+# must not sit pairable outside a pair the user actually asked for. Nothing else
+# in Omarchy touches this property and BlueZ defaults it on, which leaves the
+# adapter permanently open to unsolicited pair attempts. Closing it on EXIT means
+# every invocation of this script converges the adapter to non-pairable, whatever
+# the action and whichever way it ends - normal return, `timeout` expiry, or a
+# signal - and only the pair window below opens it.
+pairable_off() {
+  timeout 5s bluetoothctl pairable off >/dev/null 2>&1 || true
+}
+trap pairable_off EXIT
+
 case "$action" in
   pair)
     power_on
+    timeout 5s bluetoothctl pairable on >/dev/null 2>&1 || true
     timeout 20s bluetoothctl pair "$address" >/dev/null 2>&1 || true
     trust_device
     timeout 20s bluetoothctl connect "$address" >/dev/null 2>&1 || true

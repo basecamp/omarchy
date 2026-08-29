@@ -263,6 +263,43 @@ grep -qx "connect AA:BB:CC:DD:EE:FF" "$unpowered_log" ||
   fail "bluetooth connects once the adapter is up" "$(cat "$unpowered_log")"
 pass "bluetooth connects once the adapter is up"
 
+# bt-agent answers RequestAuthorization with an unconditional yes, so a
+# permanently pairable adapter would accept unsolicited pair attempts with no
+# user action at all. The window must open only for a pair the user asked for,
+# and must close again however the script ends.
+# One shared log file is truncated per run, so each assertion block re-runs the
+# action it is about rather than reusing an earlier path.
+pair_log=$(bluetooth_run yes "$ROOT/bin/omarchy-bluetooth-device" pair AA:BB:CC:DD:EE:FF)
+
+grep -qx "pairable on" "$pair_log" ||
+  fail "bluetooth opens the pairing window for an explicit pair" "$(cat "$pair_log")"
+pass "bluetooth opens the pairing window for an explicit pair"
+
+# Ordering matters: opening it after the attempt would be useless.
+# Decide in END only - an `exit` inside a rule still runs END, so an END that
+# exits too would clobber the status the rule just set.
+awk '/^pairable on$/ { seen = 1 }
+     /^pair AA:BB:CC:DD:EE:FF$/ && !done { ok = seen; done = 1 }
+     END { exit ok ? 0 : 1 }' "$pair_log" ||
+  fail "bluetooth opens the window before attempting to pair" "$(cat "$pair_log")"
+pass "bluetooth opens the window before attempting to pair"
+
+[[ $(tail -n1 "$pair_log") == "pairable off" ]] ||
+  fail "bluetooth closes the pairing window when the pair finishes" "$(cat "$pair_log")"
+pass "bluetooth closes the pairing window when the pair finishes"
+
+# An already-bonded device needs no pairability, so connect must never widen it,
+# and still has to leave the adapter closed on the way out.
+connect_window_log=$(bluetooth_device_log yes)
+
+grep -q "pairable on" "$connect_window_log" &&
+  fail "bluetooth does not open the pairing window to connect" "$(cat "$connect_window_log")"
+pass "bluetooth does not open the pairing window to connect"
+
+[[ $(tail -n1 "$connect_window_log") == "pairable off" ]] ||
+  fail "bluetooth closes the pairing window even when it never opened it" "$(cat "$connect_window_log")"
+pass "bluetooth closes the pairing window even when it never opened it"
+
 # Blocking hits every radio at once, so the read has to span them too. A bare
 # bluetoothctl show reports the default controller and misses a powered dongle.
 echo yes >"$POWERED_FILE.11:22:33:44:55:66"
