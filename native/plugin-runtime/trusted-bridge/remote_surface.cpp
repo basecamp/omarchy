@@ -46,8 +46,19 @@ void RemotePluginSurface::bindHostPointerRouter(HostPointerRouter &router) {
   host_pointer_router_ = &router;
 }
 
+void RemotePluginSurface::unbindHostPointerRouter(HostPointerRouter &router) {
+  if (host_pointer_router_ == &router)
+    host_pointer_router_ = nullptr;
+}
+
 void RemotePluginSurface::bindHostInputRegionRouter(HostInputRegionRouter &router) {
   host_input_region_router_ = &router;
+}
+
+void RemotePluginSurface::unbindHostInputRegionRouter(
+    HostInputRegionRouter &router) {
+  if (host_input_region_router_ == &router)
+    host_input_region_router_ = nullptr;
 }
 
 bool RemotePluginSurface::updateInputRegions(

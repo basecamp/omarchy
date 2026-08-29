@@ -66,7 +66,9 @@ public:
 
   void bindTransport(std::shared_ptr<AuthenticatedInputTransport> transport);
   void bindHostPointerRouter(HostPointerRouter &router);
+  void unbindHostPointerRouter(HostPointerRouter &router);
   void bindHostInputRegionRouter(HostInputRegionRouter &router);
+  void unbindHostInputRegionRouter(HostInputRegionRouter &router);
   bool configure(const surface::TrustedAllocation &allocation) override;
   bool present(surface::SurfaceKey surface, std::uint64_t frame_sequence,
                std::span<const std::byte> trusted_pixels) override;

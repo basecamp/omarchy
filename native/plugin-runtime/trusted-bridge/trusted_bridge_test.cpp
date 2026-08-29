@@ -74,6 +74,18 @@ public:
   bool accept = true;
 };
 
+class RecordingRegionRouter final : public bridge::HostInputRegionRouter {
+public:
+  bool apply(const surface::InputRegionUpdate &update) override {
+    ++calls;
+    last_generation = update.generation;
+    return accept;
+  }
+  std::size_t calls = 0;
+  std::uint64_t last_generation = 0;
+  bool accept = true;
+};
+
 void test_quick_item_pointer_delivery() {
   bridge::RemotePluginSurface item;
   RecordingPointerRouter router;
@@ -109,6 +121,83 @@ void test_quick_item_pointer_delivery() {
               router.events.size() == 4 &&
               !router.events.back().application_synthesized,
           "QQuick item confused compositor and application synthesis");
+}
+
+void test_router_unbind_is_idempotent_and_identity_checked() {
+  bridge::RemotePluginSurface item;
+  RecordingPointerRouter first;
+  RecordingPointerRouter unrelated;
+  item.bindHostPointerRouter(first);
+
+  item.unbindHostPointerRouter(unrelated);
+  QMouseEvent routed(QEvent::MouseButtonPress, QPointF(5, 6), QPointF(5, 6),
+                     QPointF(5, 6), Qt::LeftButton, Qt::LeftButton,
+                     Qt::NoModifier, Qt::MouseEventNotSynthesized);
+  require(QCoreApplication::sendEvent(&item, &routed) &&
+              first.events.size() == 1,
+          "an unrelated router detached the active pointer route");
+
+  item.unbindHostPointerRouter(first);
+  item.unbindHostPointerRouter(first);
+  QMouseEvent detached(QEvent::MouseButtonPress, QPointF(7, 8),
+                       QPointF(7, 8), QPointF(7, 8), Qt::LeftButton,
+                       Qt::LeftButton, Qt::NoModifier,
+                       Qt::MouseEventNotSynthesized);
+  require(!QCoreApplication::sendEvent(&item, &detached) &&
+              first.events.size() == 1,
+          "a detached pointer router remained callable");
+}
+
+void test_router_destruction_orders() {
+  bridge::RemotePluginSurface item;
+  {
+    RecordingPointerRouter router;
+    item.bindHostPointerRouter(router);
+    item.unbindHostPointerRouter(router);
+  }
+  QMouseEvent after_router(QEvent::MouseButtonPress, QPointF(1, 1),
+                           QPointF(1, 1), QPointF(1, 1), Qt::LeftButton,
+                           Qt::LeftButton, Qt::NoModifier,
+                           Qt::MouseEventNotSynthesized);
+  require(!QCoreApplication::sendEvent(&item, &after_router),
+          "pointer routing survived router teardown");
+
+  auto sink = std::make_shared<RecordingSink>();
+  auto transport =
+      std::make_shared<bridge::AuthenticatedInputTransport>(16, sink);
+  item.bindTransport(transport);
+  const auto allocation = surface::make_allocation({.id = 10, .generation = 4},
+                                                   2, 2, 2, 2, 1, 1, 4096);
+  require(allocation && item.configure(*allocation),
+          "input-region teardown fixture configure");
+  const surface::InputRegionUpdate update{
+      .surface = allocation->surface,
+      .generation = 1,
+      .count = 0,
+  };
+  {
+    RecordingRegionRouter router;
+    RecordingRegionRouter unrelated;
+    item.bindHostInputRegionRouter(router);
+    item.unbindHostInputRegionRouter(unrelated);
+    require(item.updateInputRegions(update) && router.calls == 1 &&
+                router.last_generation == 1,
+            "an unrelated router detached the active input-region route");
+    item.unbindHostInputRegionRouter(router);
+    item.unbindHostInputRegionRouter(router);
+  }
+  auto newer_update = update;
+  newer_update.generation = 2;
+  require(!item.updateInputRegions(newer_update),
+          "input-region routing survived router teardown");
+
+  RecordingPointerRouter surviving_router;
+  {
+    auto short_lived_item = std::make_unique<bridge::RemotePluginSurface>();
+    short_lived_item->bindHostPointerRouter(surviving_router);
+  }
+  require(surviving_router.events.empty(),
+          "surface teardown unexpectedly called its surviving router");
 }
 
 surface::InputEvent pointer(surface::SurfaceKey key, std::uint64_t sequence) {
@@ -284,6 +373,8 @@ int main(int argc, char **argv) {
   (void)application;
   try {
     test_quick_item_pointer_delivery();
+    test_router_unbind_is_idempotent_and_identity_checked();
+    test_router_destruction_orders();
     test_owned_pixels_and_lifecycle();
     test_authenticated_focus_and_input();
     test_invalid_transport_and_allocation();
