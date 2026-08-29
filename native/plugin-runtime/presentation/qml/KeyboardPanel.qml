@@ -7,6 +7,7 @@ Rectangle {
   property Item focusTarget
   property real contentWidth: 0
   property real contentHeight: 0
+  property real padding: 0
   visible: open
   width: contentWidth
   height: contentHeight
