@@ -5,6 +5,8 @@ target_link_libraries(omarchy-plugin-host PRIVATE
   Qt6::Core Qt6::Gui Qt6::Quick
   Omarchy::PluginRuntimeVersion
   omarchy-plugin-product-host
+  omarchy-plugin-broker-runtime
+  omarchy-plugin-providers
   omarchy-plugin-audit-store)
 
 install(TARGETS omarchy-plugin-host RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")

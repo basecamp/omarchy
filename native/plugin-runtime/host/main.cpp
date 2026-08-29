@@ -12,8 +12,13 @@
 #include "omarchy/plugin/wire/envelope.hpp"
 #include "omarchy/plugin_runtime/Version.h"
 #include "product_host.hpp"
+#include "broker_runtime.hpp"
+#include "omarchy/plugin_runtime/broker/broker_schema.hpp"
+#include "omarchy/plugin_runtime/providers/private_storage_backend.hpp"
 
 #include <fcntl.h>
+#include <spawn.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -24,6 +29,8 @@
 #include <stdexcept>
 #include <vector>
 
+extern char **environ;
+
 namespace {
 namespace audit = omarchy::plugins::audit;
 namespace grants = omarchy::plugins::grants;
@@ -31,10 +38,14 @@ namespace permissions = omarchy::plugins::permissions;
 namespace bridge = omarchy::plugin_runtime::bridge;
 namespace health = omarchy::plugin_runtime::health;
 namespace host = omarchy::plugin_runtime::product_host;
+namespace headless = omarchy::plugin_runtime::headless;
 namespace launcher = omarchy::plugin_runtime::launcher;
 namespace render = omarchy::plugin_runtime::render_session;
 namespace surface_host = omarchy::plugin_runtime::surface_host;
 namespace wire = omarchy::plugin::wire;
+namespace broker = omarchy::plugin_runtime::broker;
+namespace runtime = omarchy::plugin_runtime::runtime;
+namespace providers = omarchy::plugin_runtime::providers;
 
 int usage_error(const QString &argument) {
   qCritical().noquote() << "omarchy-plugin-host: unsupported argument:" << argument;
@@ -86,7 +97,106 @@ public:
   }
 };
 
-int preview(const QStringList &arguments, QGuiApplication &application) {
+bool run_exact(const std::vector<std::string> &arguments) noexcept {
+  if (arguments.empty() || arguments.front().empty()) return false;
+  try {
+    std::vector<char *> pointers;
+    pointers.reserve(arguments.size() + 1);
+    for (const auto &argument : arguments)
+      pointers.push_back(const_cast<char *>(argument.c_str()));
+    pointers.push_back(nullptr);
+    pid_t child = -1;
+    if (posix_spawn(&child, arguments.front().c_str(), nullptr, nullptr,
+                    pointers.data(), ::environ) != 0)
+      return false;
+    int status = 0;
+    while (waitpid(child, &status, 0) < 0) {
+      if (errno != EINTR) return false;
+    }
+    return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+  } catch (...) {
+    return false;
+  }
+}
+
+struct DesktopEffects {
+  std::filesystem::path plugin_root;
+  static bool notification(std::string_view, std::string_view title,
+                           std::string_view body, void *) noexcept {
+    return run_exact({"/usr/share/omarchy/bin/omarchy-notification-send",
+                      "--app-name", "omarchy-plugin-lab",
+                      std::string(title), std::string(body)});
+  }
+  static bool audio(std::string_view cue, void *context) noexcept {
+    auto &self = *static_cast<DesktopEffects *>(context);
+    for (const auto extension : {".wav", ".mp3", ".ogg"}) {
+      const auto asset = self.plugin_root / "sounds" /
+                         (std::string(cue) + extension);
+      std::error_code error;
+      if (std::filesystem::is_regular_file(asset, error) && !error)
+        return run_exact({"/usr/bin/pw-play", "--", asset.string()});
+    }
+    return false;
+  }
+};
+
+class LabBroker final : public omarchy::plugin_runtime::channel::BrokerDispatcher {
+public:
+  LabBroker(runtime::AuditedBrokerRuntime &runtime, std::uint64_t generation)
+      : runtime_(runtime), generation_(generation) {}
+  bool accepts(const launcher::LaunchIdentity &identity) const noexcept override {
+    const auto &binding = runtime_.binding();
+    return identity.plugin_id == binding.plugin.view() &&
+           identity.revision_sha256 == binding.revision.view() &&
+           identity.generation == binding.generation;
+  }
+  bool dispatch(const wire::PacketView &packet) override {
+    std::array<std::byte, 8192> output{};
+    const auto result = runtime_.dispatch(packet, ++now_, output);
+    std::vector<std::byte> payload;
+    std::uint16_t type = 0;
+    if (result.outcome == broker::DispatchOutcome::dispatched) {
+      type = broker::kBrokerResultMessage;
+      payload.assign(output.begin(), output.begin() +
+                                      static_cast<std::ptrdiff_t>(result.response_bytes));
+    } else if (result.outcome == broker::DispatchOutcome::denied) {
+      type = static_cast<std::uint16_t>(wire::CommonMessageType::typed_error);
+      const auto error = broker::encode_broker_error(
+          {.failed_operation = static_cast<permissions::OperationId>(
+               packet.header.message_type),
+           .reason = broker::BrokerErrorReason::denied,
+           .decision = result.decision.code});
+      payload.assign(error.begin(), error.end());
+    } else {
+      return false;
+    }
+    const wire::PacketView terminal{
+        .header = {.endpoint_role = wire::EndpointRole::broker,
+                   .message_type = type,
+                   .role_protocol_version = broker::kBrokerRoleVersion,
+                   .payload_length = static_cast<std::uint32_t>(payload.size()),
+                   .launch_generation = generation_,
+                   .correlation_id = packet.header.correlation_id},
+        .payload = payload};
+    if (runtime_.accept_terminal(terminal) != broker::TerminalResult::accepted)
+      return false;
+    reply_ = omarchy::plugin_runtime::channel::BrokerReply{
+        .message_type = type,
+        .correlation_id = packet.header.correlation_id,
+        .payload = std::move(payload)};
+    return true;
+  }
+  std::optional<omarchy::plugin_runtime::channel::BrokerReply>
+  take_reply() override { return std::exchange(reply_, {}); }
+private:
+  runtime::AuditedBrokerRuntime &runtime_;
+  std::uint64_t generation_ = 0;
+  std::uint64_t now_ = 100;
+  std::optional<omarchy::plugin_runtime::channel::BrokerReply> reply_;
+};
+
+int preview(const QStringList &arguments, QGuiApplication &application,
+            bool live_lab) {
   if (!preview_enabled()) {
     qCritical() << "omarchy-plugin-host: schema-v2 preview feature is disabled";
     return 77;
@@ -127,10 +237,45 @@ int preview(const QStringList &arguments, QGuiApplication &application) {
   audit::AuditStore audit_store(arguments.at(6).toStdString(), {});
   health::HealthSupervisor health_supervisor({}, audit_store);
   auto supervisor = launcher::Supervisor::production();
-  auto started = host::launch(
-      supervisor, *prepared.prepared, state_fd, health_supervisor,
-      std::make_shared<Authority>(prepared.prepared->binding),
-      static_cast<std::uint64_t>(std::time(nullptr)), std::chrono::seconds(5));
+  std::unique_ptr<providers::PrivateStorageBackend> storage;
+  std::unique_ptr<DesktopEffects> effects;
+  std::unique_ptr<runtime::AuditedBrokerRuntime> broker_runtime;
+  std::shared_ptr<LabBroker> lab_broker;
+  headless::StartResult started;
+  if (live_lab) {
+    const char *gate = std::getenv("OMARCHY_PLUGIN_LIVE_LAB_ENABLED");
+    if (gate == nullptr || std::string_view(gate) != "I_ACCEPT_LAB_RISK") {
+      qCritical() << "omarchy-plugin-host: live lab requires explicit risk gate";
+      return 77;
+    }
+    storage = std::make_unique<providers::PrivateStorageBackend>(
+        state_fd, 1024 * 1024, providers::kMaximumStorageValueBytes);
+    effects = std::make_unique<DesktopEffects>();
+    effects->plugin_root = plugin_root;
+    providers::ProviderConfiguration provider_configuration{
+        .binding = {},
+        .storage_epoch = 0,
+        .notification_epoch = 0,
+        .audio_epoch = 0,
+        .fake_service_epoch = 0,
+        .storage = storage->configuration(),
+        .notification = {.send = DesktopEffects::notification,
+                         .context = effects.get()},
+        .audio = {.play = DesktopEffects::audio, .context = effects.get()}};
+    broker_runtime = std::make_unique<runtime::AuditedBrokerRuntime>(
+        *active, provider_configuration, audit_store);
+    lab_broker = std::make_shared<LabBroker>(*broker_runtime,
+                                             prepared.prepared->binding.generation);
+    started = host::launch_with_broker_for_lab(
+        supervisor, *prepared.prepared, state_fd, health_supervisor, lab_broker,
+        std::make_shared<Authority>(prepared.prepared->binding),
+        static_cast<std::uint64_t>(std::time(nullptr)), std::chrono::seconds(5));
+  } else {
+    started = host::launch(
+        supervisor, *prepared.prepared, state_fd, health_supervisor,
+        std::make_shared<Authority>(prepared.prepared->binding),
+        static_cast<std::uint64_t>(std::time(nullptr)), std::chrono::seconds(5));
+  }
   if (!started) {
     qCritical().noquote() << "omarchy-plugin-host: preview launch failed:"
                           << QString::fromStdString(started.detail);
@@ -154,6 +299,13 @@ int preview(const QStringList &arguments, QGuiApplication &application) {
   if (!hosted) return 78;
   QTimer pump;
   QObject::connect(&pump, &QTimer::timeout, [&] {
+    if (live_lab) {
+      const auto dispatched = started.session->dispatch_one(
+          static_cast<std::uint64_t>(std::time(nullptr)),
+          std::chrono::milliseconds(0));
+      if (dispatched == omarchy::plugin_runtime::channel::DispatchStatus::fatal)
+        application.exit(79);
+    }
     auto message = started.session->receive_render(std::chrono::milliseconds(1));
     if (message) {
       if (!hosted->receive_render(message.payload)) application.exit(79);
@@ -168,12 +320,14 @@ int preview(const QStringList &arguments, QGuiApplication &application) {
 } // namespace
 
 int main(int argc, char *argv[]) {
-  const bool preview_requested = argc > 1 &&
-      QString::fromLocal8Bit(argv[1]) == QStringLiteral("--preview-plugin");
+  const bool live_lab = argc > 1 && QString::fromLocal8Bit(argv[1]) ==
+                                        QStringLiteral("--preview-plugin-live-lab");
+  const bool preview_requested = live_lab || (argc > 1 &&
+      QString::fromLocal8Bit(argv[1]) == QStringLiteral("--preview-plugin"));
   if (preview_requested) {
     QGuiApplication application(argc, argv);
     application.setApplicationName(QStringLiteral("omarchy-plugin-host"));
-    return preview(application.arguments(), application);
+    return preview(application.arguments(), application, live_lab);
   }
   QCoreApplication application(argc, argv);
   application.setApplicationName(QStringLiteral("omarchy-plugin-host"));
