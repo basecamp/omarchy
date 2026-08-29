@@ -71,7 +71,13 @@ enable_hyprland_autostart() {
 
 echo "Installing Sunshine..."
 omarchy-pkg-add sunshine
-systemctl --user enable --now sunshine
+# The sunshine package ships its unit as app-dev.lizardbyte.app.Sunshine.service.
+# It declares Alias=sunshine.service, but systemd only honors that alias once the
+# unit has been enabled by its real name at least once, so "enable --now sunshine"
+# fails cold ("Unit sunshine.service does not exist") and — combined with `set -e`
+# above — silently skips every step after it (firewall rules, admin webapp,
+# Hyprland autostart).
+systemctl --user enable --now app-dev.lizardbyte.app.Sunshine.service
 
 echo "Opening Sunshine firewall ports..."
 open_ufw_ports
