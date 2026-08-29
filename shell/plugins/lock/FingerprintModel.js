@@ -30,14 +30,17 @@ function retryDelayMs(streak) {
 // retry: only when a wait longer than the fast interval is pending, and at most
 // once per cooldown. The cooldown is what stops a moving cursor -- which raises
 // one wake per motion event -- from re-collapsing every fresh wait and spinning
-// the loop back up to the storm the backoff exists to prevent.
+// the loop back up to the storm the backoff exists to prevent. It grows with
+// the pending wait: presence collapses each backed-off wait once, but a user
+// who keeps typing at a reader that keeps failing is still paced by the tier,
+// so the cap's rate holds and fprintd gets the idle stretch it needs to exit.
 function shouldNudge(nowMs, lastNudgeMs, currentIntervalMs) {
   if (currentIntervalMs <= MATCH_RETRY_MS) return false
   var elapsed = nowMs - lastNudgeMs
   // Wall-clock time can step backwards (timesyncd corrects RTC drift right
   // after resume); a negative gap is stale, not a fresh nudge, so allow it.
   if (elapsed < 0) return true
-  return elapsed >= NUDGE_COOLDOWN_MS
+  return elapsed >= Math.max(NUDGE_COOLDOWN_MS, currentIntervalMs)
 }
 
 // The streak after an attempt: a reached attempt clears it, an unreached one

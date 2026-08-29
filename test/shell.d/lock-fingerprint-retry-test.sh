@@ -66,6 +66,19 @@ for (let t = 0; t <= 10000; t += 8) {
 assert(collapses <= 10000 / model.NUDGE_COOLDOWN_MS + 1,
   'a moving cursor is capped at one collapse per cooldown, got ' + collapses)
 
+// Once the wait has backed off past the cooldown, the tier paces the nudges:
+// presence collapses each wait once, but typing at a reader that keeps failing
+// cannot pull the loop under the tier's rate.
+const capped = model.retryDelayMs(50)
+assert(model.shouldNudge(capped, 0, capped), 'a nudge one tier later is allowed')
+assert(!model.shouldNudge(capped - 1, 0, capped), 'a nudge inside the tier is refused')
+last = -capped
+collapses = 0
+for (let t = 0; t <= 4 * capped; t += 8) {
+  if (model.shouldNudge(t, last, capped)) { collapses++; last = t }
+}
+assertEqual(collapses, 5, 'continuous input at the cap collapses once per tier')
+
 assert(model.REACH_TIMEOUT_MS < model.ERROR_RETRY_CAP_MS,
   'the reach bound is shorter than the backoff cap, so a stuck attempt is caught well before the cap')
 JS

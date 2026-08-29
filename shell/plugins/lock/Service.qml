@@ -188,7 +188,8 @@ Item {
   // trying now, so collapse a backed-off wait to a prompt retry rather than
   // ride out the cap. Rate-limited (see shouldNudge): a moving cursor raises a
   // wake per motion event, and without the floor each fresh backoff wait would
-  // be re-collapsed straight back into the storm the backoff exists to prevent.
+  // be re-collapsed straight back into the storm the backoff exists to prevent;
+  // past the floor, the current tier paces repeat nudges.
   function nudgeFingerprint() {
     if (!lockRequested || !fingerprintConfigured) return
     if (fingerprintPam.active || fingerprintAuthenticating) return
