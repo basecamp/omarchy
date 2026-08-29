@@ -173,11 +173,27 @@ preinstalls_picker_row() {
   printf '%s (%s)|%s:%s\n' "$label" "$kind_label" "$kind" "$id"
 }
 
+preinstalls_catalog_has_spec() {
+  local spec=$1 kind id label
+  local -a rows=()
+
+  mapfile -t rows < <(preinstalls_catalog)
+  for row in "${rows[@]}"; do
+    IFS=$'\t' read -r kind id label <<<"$row"
+    if [[ $kind:$id == "$spec" ]]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 preinstalls_resolve_token() {
   local token=$1 kind id label
   local -a rows=()
 
   if [[ $token == pkg:* || $token == webapp:* || $token == tui:* || $token == agent:* ]]; then
+    preinstalls_catalog_has_spec "$token" || return 1
     printf '%s\n' "$token"
     return 0
   fi
@@ -189,7 +205,10 @@ preinstalls_resolve_token() {
       printf '%s:%s\n' "$kind" "$id"
       return 0
     fi
+  done
 
+  for row in "${rows[@]}"; do
+    IFS=$'\t' read -r kind id label <<<"$row"
     if [[ ${id,,} == "${token,,}" || ${label,,} == "${token,,}" ]]; then
       printf '%s:%s\n' "$kind" "$id"
       return 0
@@ -264,7 +283,7 @@ preinstalls_install_desktop() {
   local name=$1
   local source="$OMARCHY_PATH/applications/$name.desktop"
 
-  mkdir -p "$HOME/.local/share/applications"
+  mkdir -p "$HOME/.local/share/applications" || return 1
   cp "$source" "$HOME/.local/share/applications/"
 }
 
@@ -310,12 +329,16 @@ preinstalls_apply_install() {
       ;;
     webapp | tui)
       echo "Restoring $id..."
-      preinstalls_install_desktop "$id"
+      preinstalls_install_desktop "$id" || return 1
       desktop_changed=1
       ;;
     agent)
       echo "Restoring $id..."
-      preinstalls_install_agent "$id"
+      preinstalls_install_agent "$id" || return 1
+      ;;
+    *)
+      echo "Unknown preinstall: $spec" >&2
+      return 1
       ;;
     esac
   done
@@ -348,7 +371,11 @@ preinstalls_apply_remove() {
       ;;
     agent)
       echo "Removing $id..."
-      preinstalls_remove_agent "$id"
+      preinstalls_remove_agent "$id" || return 1
+      ;;
+    *)
+      echo "Unknown preinstall: $spec" >&2
+      return 1
       ;;
     esac
   done
@@ -358,7 +385,7 @@ preinstalls_apply_remove() {
   fi
 
   if (( ${#packages[@]} > 0 )); then
-    omarchy-pkg-drop "${packages[@]}"
+    omarchy-pkg-drop "${packages[@]}" || return 1
   fi
 }
 
@@ -475,7 +502,7 @@ preinstalls_run_remove() {
   fi
 
   echo -e "Removing selected preinstalls...\n"
-  preinstalls_apply_remove "${ids[@]}"
+  preinstalls_apply_remove "${ids[@]}" || return 1
 
   mkdir -p "$HOME/.local/state/omarchy"
   if (( PREINSTALL_ALL )) || printf '%s\n' "${offered[@]}" | preinstalls_selection_covers "${ids[@]}"; then

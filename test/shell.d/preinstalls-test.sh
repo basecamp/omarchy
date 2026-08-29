@@ -40,11 +40,13 @@ SH
 cat >"$mock_bin/omarchy-pkg-drop" <<'SH'
 #!/bin/bash
 printf '%s\n' "$@" >"$OMARCHY_TEST_PKG_LOG"
+exit "${OMARCHY_TEST_PKG_DROP_STATUS:-0}"
 SH
 
 cat >"$mock_bin/omarchy-mise-install" <<'SH'
 #!/bin/bash
 printf '%s\n' "$*" >>"$OMARCHY_TEST_MISE_LOG"
+exit "${OMARCHY_TEST_MISE_STATUS:-0}"
 SH
 
 chmod +x "$mock_bin"/*
@@ -188,3 +190,35 @@ fi
 grep -q "Unknown preinstall: not-a-real-app" "$test_tmp/unknown.err" ||
   fail "unknown preinstall names are named in the error" "$(<"$test_tmp/unknown.err")"
 pass "unknown preinstall names are rejected"
+
+if "$ROOT/bin/omarchy-remove-preinstalls" pkg:vim >/dev/null 2>"$test_tmp/prefix.err"; then
+  fail "prefixed names outside the catalog are rejected"
+fi
+grep -q "Unknown preinstall: pkg:vim" "$test_tmp/prefix.err" ||
+  fail "prefixed names outside the catalog are named in the error" "$(<"$test_tmp/prefix.err")"
+pass "prefixed names outside the catalog are rejected"
+
+[[ $(preinstalls_resolve_token hey) == "agent:hey" ]] ||
+  fail "hey resolves to the HEY CLI agent, not the HEY web app" "$(preinstalls_resolve_token hey)"
+[[ $(preinstalls_resolve_token HEY) == "webapp:HEY" ]] ||
+  fail "HEY still resolves to the HEY web app" "$(preinstalls_resolve_token HEY)"
+pass "exact name matches beat later case-insensitive hits"
+
+rm -f "$marker"
+OMARCHY_TEST_PKG_DROP_STATUS=1 "$ROOT/bin/omarchy-remove-preinstalls" --all >/dev/null && status=0 || status=$?
+(( status == 1 )) || fail "remove reports a failed package transaction" "exit status was $status"
+[[ ! -e $marker ]] || fail "remove keeps the opt-out unset when packages fail to drop"
+pass "remove keeps the opt-out unset when packages fail to drop"
+unset OMARCHY_TEST_PKG_DROP_STATUS
+
+touch "$marker"
+: >"$mise_log"
+OMARCHY_TEST_MISE_STATUS=1 "$ROOT/bin/omarchy-install-preinstalls" claude >/dev/null && status=0 || status=$?
+(( status == 1 )) || fail "restore reports a failed agent stub" "exit status was $status"
+[[ -f $marker ]] || fail "restore keeps the opt-out marker when an agent stub fails"
+pass "restore keeps the opt-out marker when an agent stub fails"
+unset OMARCHY_TEST_MISE_STATUS
+
+preinstalls_install_desktop "Missing App" >/dev/null 2>&1 && status=0 || status=$?
+(( status == 1 )) || fail "a missing launcher copy fails the restore" "exit status was $status"
+pass "a missing launcher copy fails the restore"
