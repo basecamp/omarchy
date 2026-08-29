@@ -603,3 +603,112 @@ result=$(HOME="$INTERRUPTED_HOME" CODEX_HOME="$INTERRUPTED_HOME/.codex" XDG_CACH
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "9" ]] ||
   fail "Codex collector does not reuse a snapshot from an interrupted scan" "$result"
 pass "Codex collector does not cache an interrupted opencode scan"
+
+# A codex-cli that rejects the app-server invocation (a flag dropped or renamed
+# in a later release) exits before answering the RPC. The panel must show the
+# CLI's own complaint, not the bare RPC method name the TimeoutError carries.
+RPCERR_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$PI_HOME" "$OPENCODE_HOME" "$CACHE_HOME" "$FRESH_HOME" "$MALFORMED_HOME" "$UNWRITABLE_HOME" "$INTERRUPTED_HOME" "$RPCERR_HOME"' EXIT
+mkdir -p "$RPCERR_HOME/bin"
+cat >"$RPCERR_HOME/bin/codex" <<'EOF'
+#!/bin/bash
+echo "error: invalid value 'untrusted' for '--ask-for-approval <APPROVAL_POLICY>'" >&2
+echo "  [possible values: on-request, never]" >&2
+exit 2
+EOF
+chmod +x "$RPCERR_HOME/bin/codex"
+
+result=$(HOME="$RPCERR_HOME" CODEX_HOME="$RPCERR_HOME/.codex" XDG_CACHE_HOME="$RPCERR_HOME/.cache" XDG_DATA_HOME="$RPCERR_HOME/.local/share" \
+  PATH="$RPCERR_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
+
+[[ $(jq -r '.limits | length' <<<"$result") == "0" && $(jq -r '.usageStatusText' <<<"$result") == "Codex limits unavailable" ]] ||
+  fail "Codex collector reports limits unavailable when the app-server call is rejected" "$result"
+help=$(jq -r '.authHelpText' <<<"$result")
+[[ $help == *"invalid value 'untrusted'"* ]] ||
+  fail "Codex collector surfaces the CLI's own error in the auth-help text" "$result"
+[[ $help == *"possible values: on-request, never"* ]] ||
+  fail "Codex collector keeps the stderr line that names the accepted values" "$result"
+[[ $help != "initialize" ]] ||
+  fail "Codex collector must not leak the raw RPC method name" "$result"
+pass "Codex collector surfaces a rejected app-server call instead of the RPC method name"
+
+# A codex-cli that exits cleanly without speaking the protocol (not logged in,
+# say) leaves no stderr to quote; the panel falls back to the login hint.
+RPCSILENT_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$PI_HOME" "$OPENCODE_HOME" "$CACHE_HOME" "$FRESH_HOME" "$MALFORMED_HOME" "$UNWRITABLE_HOME" "$INTERRUPTED_HOME" "$RPCERR_HOME" "$RPCSILENT_HOME"' EXIT
+mkdir -p "$RPCSILENT_HOME/bin"
+cat >"$RPCSILENT_HOME/bin/codex" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+chmod +x "$RPCSILENT_HOME/bin/codex"
+
+result=$(HOME="$RPCSILENT_HOME" CODEX_HOME="$RPCSILENT_HOME/.codex" XDG_CACHE_HOME="$RPCSILENT_HOME/.cache" XDG_DATA_HOME="$RPCSILENT_HOME/.local/share" \
+  PATH="$RPCSILENT_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
+
+help=$(jq -r '.authHelpText' <<<"$result")
+[[ $(jq -r '.usageStatusText' <<<"$result") == "Codex limits unavailable" ]] ||
+  fail "Codex collector reports limits unavailable when the CLI is silent" "$result"
+[[ $help == "Run \`codex login\` to authenticate." ]] ||
+  fail "Codex collector falls back to the login hint when the CLI is silent" "$result"
+pass "Codex collector falls back to the login hint when the app-server says nothing"
+
+# A live app-server that answers initialize and then stalls is up and may well
+# be authenticated: the failure is not an auth problem, so the panel must keep
+# the (searchable) stalled-method text rather than send the user to codex login.
+RPCHANG_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$PI_HOME" "$OPENCODE_HOME" "$CACHE_HOME" "$FRESH_HOME" "$MALFORMED_HOME" "$UNWRITABLE_HOME" "$INTERRUPTED_HOME" "$RPCERR_HOME" "$RPCSILENT_HOME" "$RPCHANG_HOME"' EXIT
+mkdir -p "$RPCHANG_HOME/bin"
+cat >"$RPCHANG_HOME/bin/codex" <<'EOF'
+#!/bin/bash
+while read -r request; do
+  id=$(jq -r '.id // empty' <<<"$request")
+  method=$(jq -r '.method // empty' <<<"$request")
+  case "$method" in
+    initialize) jq -cn --argjson id "$id" '{id: $id, result: {}}' ;;
+    account/read) : ;; # up, but never answers, so the collector times this out
+  esac
+done
+EOF
+chmod +x "$RPCHANG_HOME/bin/codex"
+
+result=$(HOME="$RPCHANG_HOME" CODEX_HOME="$RPCHANG_HOME/.codex" XDG_CACHE_HOME="$RPCHANG_HOME/.cache" XDG_DATA_HOME="$RPCHANG_HOME/.local/share" \
+  PATH="$RPCHANG_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
+
+help=$(jq -r '.authHelpText' <<<"$result")
+[[ $help != "Run \`codex login\` to authenticate." ]] ||
+  fail "Codex collector must not blame auth when the app-server is merely stalled" "$result"
+[[ $help == "account/read" ]] ||
+  fail "Codex collector keeps the stalled-method text for a live app-server" "$result"
+pass "Codex collector does not send a stalled but live app-server to codex login"
+
+# A live, authenticated app-server whose rate-limit payload this collector can't
+# parse: still not an auth problem. Keep the parse error, don't say "log in".
+RPCBADLIM_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$PI_HOME" "$OPENCODE_HOME" "$CACHE_HOME" "$FRESH_HOME" "$MALFORMED_HOME" "$UNWRITABLE_HOME" "$INTERRUPTED_HOME" "$RPCERR_HOME" "$RPCSILENT_HOME" "$RPCHANG_HOME" "$RPCBADLIM_HOME"' EXIT
+mkdir -p "$RPCBADLIM_HOME/bin"
+cat >"$RPCBADLIM_HOME/bin/codex" <<'EOF'
+#!/bin/bash
+while read -r request; do
+  id=$(jq -r '.id // empty' <<<"$request")
+  method=$(jq -r '.method // empty' <<<"$request")
+  case "$method" in
+    initialize) jq -cn --argjson id "$id" '{id: $id, result: {}}' ;;
+    account/read) jq -cn --argjson id "$id" '{id: $id, result: {account: {planType: "plus"}}}' ;;
+    account/rateLimits/read)
+      jq -cn --argjson id "$id" '{id: $id, result: {rateLimits: {primary: {usedPercent: "not-a-number", windowDurationMins: 300}}}}'
+      ;;
+  esac
+done
+EOF
+chmod +x "$RPCBADLIM_HOME/bin/codex"
+
+result=$(HOME="$RPCBADLIM_HOME" CODEX_HOME="$RPCBADLIM_HOME/.codex" XDG_CACHE_HOME="$RPCBADLIM_HOME/.cache" XDG_DATA_HOME="$RPCBADLIM_HOME/.local/share" \
+  PATH="$RPCBADLIM_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
+
+help=$(jq -r '.authHelpText' <<<"$result")
+[[ $help != "Run \`codex login\` to authenticate." ]] ||
+  fail "Codex collector must not blame auth for an unparseable rate-limit payload" "$result"
+[[ $help == *"could not convert"* ]] ||
+  fail "Codex collector keeps the parse error for a live app-server" "$result"
+pass "Codex collector keeps the parse error instead of a login hint for a live app-server"
