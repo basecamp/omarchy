@@ -15,7 +15,7 @@ for kernel in /usr/lib/modules/*/vmlinuz; do
   if [[ -f $kernel ]] && pacman -Qo "$kernel" &>/dev/null; then
     installed_kernel=$(basename "$(dirname "$kernel")")
 
-    if [[ $installed_kernel == $running_kernel ]]; then
+    if [[ $installed_kernel == "$running_kernel" ]]; then
       kernel_updated=false
       break
     fi

@@ -52,7 +52,7 @@ else
   icon_state="high"
 fi
 
-if [[ $next_sink_name != $current_sink_name ]]; then
+if [[ $next_sink_name != "$current_sink_name" ]]; then
   omarchy-audio-output-set-default "$(jq -r '.index' <<<"$next_sink")" "$next_sink_name"
 fi
 

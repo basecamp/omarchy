@@ -57,7 +57,7 @@ is_user_desktop_file() {
 
   desktop_dir="${desktop_file%/*}"
   for dir in "${user_desktop_dirs[@]}"; do
-    [[ $desktop_dir == $dir ]] && return 0
+    [[ $desktop_dir == "$dir" ]] && return 0
   done
 
   return 1
