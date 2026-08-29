@@ -332,6 +332,31 @@ int main(int argc, char *argv[]) {
   QCoreApplication application(argc, argv);
   application.setApplicationName(QStringLiteral("omarchy-plugin-host"));
   const auto arguments = application.arguments();
+  if (arguments.size() == 3 &&
+      arguments.at(1) == QStringLiteral("--identify-plugin-live-lab")) {
+    const char *schema_gate = std::getenv("OMARCHY_PLUGIN_SCHEMA_V2_ENABLED");
+    const char *lab_gate = std::getenv("OMARCHY_PLUGIN_LIVE_LAB_ENABLED");
+    if (schema_gate == nullptr || std::string_view(schema_gate) != "1" ||
+        lab_gate == nullptr ||
+        std::string_view(lab_gate) != "I_ACCEPT_LAB_RISK")
+      return 77;
+    const std::filesystem::path root(arguments.at(2).toStdString());
+    QFile file(QString::fromStdString((root / "manifest.json").string()));
+    if (!file.open(QIODevice::ReadOnly)) return 78;
+    try {
+      const auto manifest = omarchy::plugins::manifest::parse_manifest_v2(
+          file.readAll().toStdString());
+      const auto identity = omarchy::plugins::manifest::identify_tree(root, manifest);
+      QTextStream(stdout) << "plugin=" << QString::fromStdString(manifest.id)
+                          << "\ntree=" << QString::fromStdString(identity.tree_sha256)
+                          << "\nrequest=" << QString::fromStdString(identity.request_sha256)
+                          << '\n';
+      return 0;
+    } catch (const std::exception &error) {
+      qCritical().noquote() << error.what();
+      return 78;
+    }
+  }
   if (arguments.size() == 2 && arguments.at(1) == QStringLiteral("--version")) {
     const auto version = omarchy::plugin_runtime::build_version();
     QTextStream(stdout) << "omarchy-plugin-host " << QString::fromLatin1(version.data(), version.size())
