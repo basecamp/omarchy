@@ -711,6 +711,11 @@ Panel {
               columns: root.processColumns
               anchor: modelData.key === "system"
               commColor: root.bar ? root.bar.foreground : Color.foreground
+              // The mark rides the same load ladder as its bar segment:
+              // the row's CPU-cell intensity IS share/busiest-share, so
+              // mark, cells, and bar all dim together.
+              commInk: modelData.key === "system" || modelData.cells === undefined
+                || modelData.cells.length === 0 ? 1 : modelData.cells[0].intensity
             }
           }
 
@@ -828,6 +833,7 @@ Panel {
     property var columns: []
     property bool anchor: false
     property color commColor: root.bar ? root.bar.foreground : Color.foreground
+    property real commInk: 1
 
     width: column.width
     implicitHeight: Style.space(16)
@@ -847,6 +853,7 @@ Panel {
       x: 0
       anchors.verticalCenter: parent.verticalCenter
       color: metricRow.commColor
+      opacity: metricRow.commInk
     }
 
     Text {
