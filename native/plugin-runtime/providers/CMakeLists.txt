@@ -101,6 +101,17 @@ if(BUILD_TESTING)
     LABELS "unit;protocol;adversarial;providers;network;media"
   )
 
+  add_executable(omarchy-plugin-radio-live-compat
+    tests/radio_live_compat.cpp
+  )
+  target_compile_features(omarchy-plugin-radio-live-compat PRIVATE cxx_std_20)
+  target_compile_options(omarchy-plugin-radio-live-compat PRIVATE
+    -Wall -Wextra -Wpedantic -Werror
+  )
+  target_link_libraries(omarchy-plugin-radio-live-compat PRIVATE
+    omarchy-plugin-providers Qt6::Core
+  )
+
   add_executable(omarchy-plugin-private-storage-test
     tests/private_storage_backend_test.cpp
   )
