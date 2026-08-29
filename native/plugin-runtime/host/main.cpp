@@ -140,7 +140,10 @@ public:
       : surface_(surface), gestures_(gestures), binding_(binding) {}
 
   bool route(const bridge::HostPointerEvent &event) override {
-    if (event.button != Qt::LeftButton || event.application_synthesized ||
+    const auto button_code = event.button == Qt::LeftButton ? 1U
+        : event.button == Qt::RightButton ? 2U
+        : event.button == Qt::MiddleButton ? 3U : 0U;
+    if (button_code == 0 || event.application_synthesized ||
         sequence_ == UINT64_MAX)
       return false;
     if (event.x < 0 || event.y < 0)
@@ -158,7 +161,7 @@ public:
         .y_q16 = static_cast<std::uint32_t>(y) << surface::kQ16FractionBits,
         .delta_x_q16 = 0,
         .delta_y_q16 = 0,
-        .code = 1,
+        .code = button_code,
         .state = static_cast<std::uint32_t>(
             event.pressed ? surface::ButtonState::pressed
                           : surface::ButtonState::released),
@@ -1170,13 +1173,18 @@ int preview(const QStringList &arguments, QGuiApplication &application,
             application.exit(79);
             return;
           }
+          const auto click_button =
+              qEnvironmentVariable("OMARCHY_PLUGIN_E2E_CLICK_BUTTON") ==
+                      QStringLiteral("right")
+                  ? Qt::RightButton
+                  : Qt::LeftButton;
           injected_pointer = click_target->pointer->route(
               {.x = static_cast<qreal>(x), .y = static_cast<qreal>(y),
-               .button = Qt::LeftButton, .pressed = true,
+               .button = click_button, .pressed = true,
                .application_synthesized = false}) &&
               click_target->pointer->route(
                   {.x = static_cast<qreal>(x), .y = static_cast<qreal>(y),
-                   .button = Qt::LeftButton, .pressed = false,
+                   .button = click_button, .pressed = false,
                    .application_synthesized = false});
           if (!injected_pointer) {
             std::cerr << "PRODUCT_E2E fatal pointer-route-rejected surface "
