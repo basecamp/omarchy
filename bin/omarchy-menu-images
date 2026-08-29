@@ -177,16 +177,39 @@ generate_thumbnail() {
   fi
 }
 
+declare -A thumbnail_index=()
+thumbnail_index_loaded=false
+
+# index.tsv keeps every image this cache has seen, so it grows without limit
+# while a directory stays small. One read of the file costs less than one scan
+# per image, which was O(images x index) and controlled the whole cold path.
+load_thumbnail_index() {
+  [[ $thumbnail_index_loaded == true ]] && return
+  thumbnail_index_loaded=true
+
+  [[ -f $index_file ]] || return
+
+  local indexed_path indexed_signature indexed_hash key
+  while IFS=$'\t' read -r indexed_path indexed_signature indexed_hash; do
+    [[ -n $indexed_path && -n $indexed_hash ]] || continue
+    key="$indexed_path"$'\t'"$indexed_signature"
+    # The first entry wins, as it did in the awk scan this replaced.
+    [[ -n ${thumbnail_index[$key]-} ]] || thumbnail_index["$key"]="$indexed_hash"
+  done <"$index_file"
+}
+
 thumbnail_for() {
   local image="$1"
-  local signature hash thumbnail
+  local signature hash thumbnail key
 
   signature=$(stat -Lc '%s:%Y' "$image") || return
-  hash=$(awk -F '\t' -v path="$image" -v sig="$signature" '$1 == path && $2 == sig { print $3; exit }' "$index_file" 2>/dev/null)
+  key="$image"$'\t'"$signature"
+  hash="${thumbnail_index[$key]-}"
 
   if [[ -z $hash ]]; then
     hash=$(printf '%s\t%s' "$image" "$signature" | md5sum | cut -d ' ' -f 1)
     printf '%s\t%s\t%s\n' "$image" "$signature" "$hash" >>"$index_file"
+    thumbnail_index["$key"]="$hash"
   fi
 
   thumbnail="$cache_dir/$hash.jpg"
@@ -233,6 +256,10 @@ if [[ $rows_cache_hit != true && -f $rows_cache_file && -f $rows_signature_file 
   rows=$(<"$rows_cache_file")
   printf '%s' "$rows_fast_signature" >"$rows_fast_signature_file"
 elif [[ $rows_cache_hit != true ]]; then
+  # thumbnail_for runs in a command substitution. It inherits this map, but it
+  # cannot fill it. Load the index here, once, before the loop calls out.
+  load_thumbnail_index
+
   for image in "${image_files[@]}"; do
     thumbnail=$(thumbnail_for "$image")
     thumbnail_status=$?
