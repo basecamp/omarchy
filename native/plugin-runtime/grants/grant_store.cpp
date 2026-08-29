@@ -234,6 +234,9 @@ RevisionGrants revision_from(const RequestBundle &bundle) {
   };
   for (auto &dynamic : revision.dynamic_grants)
     dynamic.binding = revision.binding;
+  std::ranges::sort(revision.dynamic_grants, {}, [](const auto &dynamic) {
+    return dynamic.request.definition.canonical_name.view();
+  });
   return revision;
 }
 
