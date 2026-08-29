@@ -1,9 +1,11 @@
 #include "external_provider.hpp"
+#include "provider_registration.hpp"
 #include <array>
 #include <climits>
 #include <fstream>
 #include <stdexcept>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
 using namespace omarchy::plugins;
 namespace {
@@ -204,6 +206,54 @@ int main(int argc, char **) {
   require(!external_provider::verify_handshake_echo(r, wrong,
                                                     std::span(b).first(n)),
           "wrong nonce verified");
+  const auto registration_document =
+      external_provider::canonical_registration_document(r);
+  external_provider::Registration parsed;
+  require(!registration_document.empty() &&
+              external_provider::parse_registration_document(
+                  registration_document, getuid(), parsed) ==
+                  external_provider::RegistrationLoadResult::loaded &&
+              parsed.service_id == r.service_id && parsed.adapter == r.adapter,
+          "provider registration document did not round trip");
+  std::array registration_template{'/', 't', 'm', 'p', '/', 'o', 'm', 'a', 'r',
+                                    'c', 'h', 'y', '-', 'p', 'r', 'o', 'v', '-',
+                                    'X', 'X', 'X', 'X', 'X', 'X', '\0'};
+  const char *registration_root = mkdtemp(registration_template.data());
+  require(registration_root != nullptr, "registration root creation failed");
+  const auto registration_path =
+      std::filesystem::path(registration_root) / "fake.provider";
+  {
+    std::ofstream output(registration_path);
+    output << registration_document;
+  }
+  chmod(registration_path.c_str(), 0600);
+  std::vector<external_provider::Registration> loaded;
+  require(external_provider::load_registration_directory(
+              registration_root, getuid(), loaded) ==
+                  external_provider::RegistrationLoadResult::loaded &&
+              loaded.size() == 1,
+          "trusted provider registration root did not load");
+  require(external_provider::assess_registration_install(loaded, r, {}).decision ==
+              external_provider::RegistrationChangeDecision::unchanged,
+          "identical provider registration was not unchanged");
+  const std::array dependencies{external_provider::ProviderDependency{
+      .plugin = permissions::PluginId("org.example.plugin"),
+      .revision = digest('b'),
+      .adapter = r.adapter}};
+  require(external_provider::assess_registration_removal(
+              loaded, r.service_id.view(), dependencies)
+                  .decision == external_provider::
+                                   RegistrationChangeDecision::blocked_by_dependents,
+          "provider removal ignored an exact plugin dependency");
+  auto replacement = r;
+  replacement.executable_digest = digest('f');
+  require(external_provider::assess_registration_install(
+              loaded, replacement, dependencies)
+                  .decision == external_provider::
+                                   RegistrationChangeDecision::identity_conflict,
+          "invalid replacement was accepted");
+  unlink(registration_path.c_str());
+  rmdir(registration_root);
   r.executable = "/bin/sh";
   require(!external_provider::valid_registration(r), "shell registered");
   return 0;
