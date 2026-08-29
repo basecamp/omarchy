@@ -162,6 +162,8 @@ wait "$permission_pid" || {
   cat "$test_root/lab-permission/host.log" >&2
   fail "permission revoke host failed"
 }
+grep -q 'PRODUCT_E2E pointer 100 100' "$test_root/lab-permission/host.log" || \
+  fail "authenticated input regions did not admit the physical-equivalent click"
 permission_completion=$(awk '/PRODUCT_E2E complete calls 0/ { print; exit }' \
   "$test_root/lab-permission/host.log")
 [[ $permission_completion =~ post_mutation_frames\ ([1-9][0-9]*) &&
