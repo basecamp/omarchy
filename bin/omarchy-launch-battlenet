@@ -8,6 +8,7 @@ set -e
 
 PREFIX="$HOME/Games/battlenet"
 LAUNCHER="$PREFIX/drive_c/Program Files (x86)/Battle.net/Battle.net Launcher.exe"
+WINDOW_CLASS="steam_app_battlenet"
 
 with_mangohud=0
 for arg in "$@"; do
@@ -36,6 +37,77 @@ if [[ ! -f $LAUNCHER ]]; then
   echo "Battle.net is not installed. Run omarchy-install-gaming-battlenet first." >&2
   exit 1
 fi
+
+battlenet_clients_json() {
+  hyprctl clients -j 2>/dev/null || echo '[]'
+}
+
+battlenet_window_address() {
+  battlenet_clients_json | jq -r --arg c "$WINDOW_CLASS" '
+    .[] | select(.class == $c and (.title | test("^Battle\\.net"))) | .address
+  ' | head -n1
+}
+
+# Bring an already-mapped Battle.net window onto the focused workspace and
+# center it. A second umu-run just makes the client log "another instance is
+# running" and exit, which looks like a failed launch.
+focus_battlenet_window() {
+  local address=$1
+  [[ -n $address ]] || return 1
+
+  hyprctl dispatch "hl.dsp.focus({ window = \"address:$address\" })" >/dev/null 2>&1 ||
+    hyprctl dispatch focuswindow "address:$address" >/dev/null 2>&1 || true
+
+  local workspace
+  workspace=$(hyprctl activeworkspace -j 2>/dev/null | jq -r '.id // empty')
+  if [[ -n $workspace ]]; then
+    hyprctl dispatch "hl.dsp.window.move({ workspace = \"$workspace\" })" >/dev/null 2>&1 || true
+  fi
+
+  # Tiled windows are placed by the layout. Only floating leftovers (login,
+  # setup, or a pre-fix 1280x800 dialog) need an explicit on-screen center.
+  local floating
+  floating=$(battlenet_clients_json | jq -r --arg a "$address" '.[] | select(.address == $a) | .floating')
+  if [[ $floating == "true" ]]; then
+    local pos
+    pos=$(battlenet_clients_json | jq -r --arg a "$address" --argjson mons "$(hyprctl monitors -j 2>/dev/null || echo '[]')" '
+      .[] | select(.address == $a) as $w |
+      ($mons | map(select(.id == $w.monitor)) | .[0]) as $m |
+      if $m == null then
+        empty
+      else
+        "\((($m.x + ($m.width - $w.size[0]) / 2) | floor)) \((($m.y + ($m.height - $w.size[1]) / 2) | floor))"
+      end
+    ')
+    if [[ -n $pos ]]; then
+      local x y
+      read -r x y <<<"$pos"
+      hyprctl eval "hl.dispatch(hl.dsp.window.move({ x = $x, y = $y }))" >/dev/null 2>&1 || true
+    fi
+  fi
+}
+
+existing=$(battlenet_window_address)
+if [[ -n $existing ]]; then
+  focus_battlenet_window "$existing"
+  exit 0
+fi
+
+wait_for_battlenet_window() {
+  local i address
+  for ((i = 0; i < 30; i++)); do
+    sleep 1
+    address=$(battlenet_window_address)
+    if [[ -n $address ]]; then
+      focus_battlenet_window "$address"
+      return 0
+    fi
+  done
+}
+
+wait_for_battlenet_window &
+waiter=$!
+trap 'kill $waiter 2>/dev/null || true' EXIT
 
 env_args=(
   WINEPREFIX="$PREFIX"
