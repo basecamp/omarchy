@@ -18,7 +18,14 @@ var ERROR_RETRY_BASE_MS = 1000
 var ERROR_RETRY_CAP_MS = 40000
 var UNAVAILABLE_AFTER = 3
 var NUDGE_COOLDOWN_MS = 2000
-var REACH_TIMEOUT_MS = 5000
+// How long an attempt may go without prompting before it is aborted as stuck.
+// Bounded above by pam_fprintd: its 30s verify timeout ends the attempt with a
+// non-error "Verification timed out" message that would read as reached, and
+// GDBus fails a Claim that never returns at 25s. Bounded below by the reader:
+// aborting kills the PAM child mid-Claim, which fprintd keeps tearing down
+// until the device open completes, so the bound must outlast a slow open --
+// out-of-tree drivers take several seconds, more right after resume.
+var REACH_TIMEOUT_MS = 20000
 
 function retryDelayMs(streak) {
   if (streak <= 0) return MATCH_RETRY_MS

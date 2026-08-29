@@ -81,4 +81,8 @@ assertEqual(collapses, 5, 'continuous input at the cap collapses once per tier')
 
 assert(model.REACH_TIMEOUT_MS < model.ERROR_RETRY_CAP_MS,
   'the reach bound is shorter than the backoff cap, so a stuck attempt is caught well before the cap')
+assert(model.REACH_TIMEOUT_MS < 25000,
+  "the reach bound lands before GDBus fails a stuck Claim at 25s and pam_fprintd's 30s verify timeout reports as a non-error message")
+assert(model.REACH_TIMEOUT_MS >= 10000,
+  'the reach bound outlasts a slow device open, so a reader that takes seconds to claim is not killed mid-Claim on every attempt')
 JS

@@ -253,9 +253,11 @@ Item {
       refreshFingerprintStatus()
       return
     }
-    // Bound the wait for the first prompt: a claim that never lands (a daemon
-    // restarted under the verify, e.g. by the resume hook) otherwise hangs
-    // here without ever erroring, and nothing downstream re-arms.
+    // Bound the wait for the first prompt: a claim fprintd accepts but never
+    // completes (a device open stuck behind a wedged claim) otherwise sits here
+    // for GDBus's full call timeout without erroring, and nothing downstream
+    // re-arms. A daemon restarted under the verify is not that case; it fails
+    // the attempt promptly. See REACH_TIMEOUT_MS for the bound's limits.
     fingerprintReachTimer.restart()
   }
 
