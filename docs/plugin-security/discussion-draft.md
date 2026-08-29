@@ -78,6 +78,19 @@ plugin manifest request
 
 This separation is what makes permission extensibility compatible with confinement: names remain ergonomic, while independently installed definitions, grants, adapters, and per-call broker checks supply their enforceable meaning.
 
+A concrete permission matrix makes the ownership boundary easier to review:
+
+| Case | What the plugin may declare | What gives the request meaning | Result |
+| --- | --- | --- | --- |
+| Built-in `storage.private` | Operations and a quota within the built-in schema | Omarchy's compiled definition and private-storage provider | The user may grant a narrower quota; every read/write/remove is broker-checked |
+| Administrator extension `bash.my-harness` | An exact definition generation and digest, selected operations such as `status`, and the named profile scope | A separately installed trusted definition plus a reviewed adapter for one digest-pinned executable and closed argument grammar | The request remains unavailable until the administrator installs that integration; it never means arbitrary Bash or argv |
+| Unknown `plugin.whatever` | The inert request and publisher rationale | Nothing | It cannot be granted or invoked, even if the plugin bundles a `.capability` proposal |
+| Plugin update adds `drive` or widens the profile | A new immutable manifest revision | A new explicit permission review | The old grant cannot authorize the added operation or expanded scope |
+| Optional grant is revoked | The plugin may observe that its declared feature is unavailable | The broker changes the grant epoch before publishing a reduced availability snapshot | QML can hide or disable the feature; pending and subsequent effects are denied |
+| Required grant is revoked | Nothing beyond the already declared request | Host lifecycle policy | The activation is disabled or fails closed; QML cannot keep using the old epoch |
+
+The reference test uses `bash.my-harness` only as a deliberately provocative naming example. Its adapter is fake and bounded. The contract rejects shell executables, shell strings, arbitrary argv, executable replacement, undeclared subcommands, malformed arguments, unbounded output, and overlong execution. A safer production name would describe the actual integration rather than its implementation, but the authority comes from this binding—not from how reassuring the name sounds.
+
 This is extensibility without a generic escape hatch. A future GitHub account reader can define bounded datasets and opaque account handles. A device controller can enumerate supported controls and require a fresh gesture for mutations. A network provider can constrain scheme, host, method, redirects, body size, response size, and rate. A command adapter, when unavoidable, names one installed executable and enumerated operations with validated arguments; it never accepts shell text or arbitrary argv.
 
 Providers should receive a broker-created authorization context containing the immutable activation binding, canonical capability reference, grant epoch, operation, and validated demand. They must derive account, device, and resource selection from that context and opaque handles rather than plugin-supplied paths or credential identifiers. High-risk providers should be separate processes so a network parser or hardware stack is not folded into the main host's trusted computing base.

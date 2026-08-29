@@ -19,7 +19,7 @@ target_compile_options(omarchy-plugin-capability-definitions PRIVATE
 
 add_executable(omarchy-plugin-capability-definition-test
   capability_definition_test.cpp capability_definition_loader_test.cpp
-  dynamic_activation_test.cpp)
+  dynamic_activation_test.cpp permissions_extensibility_demo_test.cpp)
 target_link_libraries(omarchy-plugin-capability-definition-test PRIVATE
   omarchy-plugin-capability-definitions)
 target_compile_features(omarchy-plugin-capability-definition-test PRIVATE cxx_std_20)

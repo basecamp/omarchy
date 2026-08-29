@@ -104,6 +104,7 @@ CliHarnessProfile github_cli() {
 
 void capability_definition_loader_tests();
 void dynamic_activation_tests();
+void permissions_extensibility_demo_tests();
 
 int main() {
   TrustedDefinitionRegistry registry;
@@ -247,5 +248,6 @@ int main() {
   require(!valid_cli_profile(profile), "shell executable became a harness profile");
   capability_definition_loader_tests();
   dynamic_activation_tests();
+  permissions_extensibility_demo_tests();
   return 0;
 }
