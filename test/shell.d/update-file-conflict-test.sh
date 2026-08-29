@@ -13,6 +13,7 @@ archive_root="$test_tmp/archive"
 helper_copy="$test_tmp/omarchy-update-file-conflicts"
 package_list="$test_tmp/package-files"
 upgrade_list="$test_tmp/upgrade-packages"
+cache_dirs="$test_tmp/cache-dirs"
 owned_list="$test_tmp/owned-paths"
 retry_installs="$test_tmp/retry-installs"
 package_cache="$system_root/var/cache/pacman/pkg"
@@ -30,8 +31,8 @@ sed \
   -e "s|readonly ARCHIVE_BOUNDARY=/var|readonly ARCHIVE_BOUNDARY=$test_tmp|" \
   -e "s|readonly ARCHIVE_PARENT=/var/lib/omarchy|readonly ARCHIVE_PARENT=$test_tmp|" \
   -e "s|readonly ARCHIVE_ROOT=/var/lib/omarchy/replaced|readonly ARCHIVE_ROOT=$archive_root|" \
-  -e "s|readonly PACKAGE_CACHE_ROOT=/var|readonly PACKAGE_CACHE_ROOT=$system_root/var|" \
-  -e "s|readonly PACKAGE_CACHE=/var/cache/pacman/pkg|readonly PACKAGE_CACHE=$package_cache|" \
+  -e "s|readonly PACKAGE_CACHE_BOUNDARY=/|readonly PACKAGE_CACHE_BOUNDARY=$system_root/var|" \
+  -e "s|readonly REPORT_PARENT=/run|readonly REPORT_PARENT=$test_tmp|" \
   -e "s|allowed_roots=(/etc /usr)|allowed_roots=($system_root/etc $system_root/usr)|" \
   "$ROOT/bin/omarchy-update-file-conflicts" >"$helper_copy"
 chmod +x "$helper_copy"
@@ -40,7 +41,7 @@ cat >"$stub_bin/sudo" <<'SH'
 #!/bin/bash
 if [[ ${1:-} == /usr/bin/omarchy-update-file-conflicts ]]; then
   shift
-  exec "$TEST_CONFLICT_HELPER" "$@"
+  exec env OMARCHY_TEST_ROOT_HELPER=1 "$TEST_CONFLICT_HELPER" "$@"
 fi
 exec "$@"
 SH
@@ -66,6 +67,10 @@ case ${1:-} in
   done <"$PACKAGE_LIST"
   ;;
 -Syu)
+  [[ ${OMARCHY_TEST_ROOT_HELPER:-} == 1 ]] || {
+    echo "package transaction escaped the root helper" >&2
+    exit 98
+  }
   attempt=$(($(<"$PACMAN_ATTEMPTS") + 1))
   printf '%s\n' "$attempt" >"$PACMAN_ATTEMPTS"
   if ((attempt == 1)) && [[ ${CLEAN_UPDATE:-0} != 1 ]]; then
@@ -97,6 +102,12 @@ case ${1:-} in
 esac
 SH
 
+cat >"$stub_bin/pacman-conf" <<'SH'
+#!/bin/bash
+[[ ${1:-} == CacheDir ]] || exit 97
+cat "$CACHE_DIRS"
+SH
+
 # Deterministically insert a symlink into the first moved directory before the
 # second forward move. A mirrored quarantine would let that link redirect the
 # later root destination; opaque sibling slots must make it irrelevant.
@@ -118,8 +129,9 @@ chmod +x "$stub_bin"/*
 run_update() {
   TEST_CONFLICT_HELPER="$helper_copy" \
     OMARCHY_TEST_HELPER_PATH="$stub_bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin" \
-    PACKAGE_LIST="$package_list" UPGRADE_LIST="$upgrade_list" OWNED_LIST="$owned_list" RETRY_INSTALLS="$retry_installs" \
-    PACKAGE_CACHE="$package_cache" \
+    PACKAGE_LIST="$package_list" UPGRADE_LIST="$upgrade_list" CACHE_DIRS="$cache_dirs" \
+    OWNED_LIST="$owned_list" RETRY_INSTALLS="$retry_installs" \
+    PACKAGE_CACHE="${PACKAGE_CACHE_OVERRIDE:-$package_cache}" \
     PACMAN_ATTEMPTS="$test_tmp/attempts" CONFLICT_REPORT="$test_tmp/report" \
     RETRY_FAILS="${RETRY_FAILS:-0}" CLEAN_UPDATE="${CLEAN_UPDATE:-0}" \
     PIVOT_PARENT="${PIVOT_PARENT:-}" PIVOT_TARGET="${PIVOT_TARGET:-}" \
@@ -135,6 +147,7 @@ reset_case() {
     "$system_root/var/cache" "$system_root/var/cache/pacman" "$package_cache"
   : >"$package_list"
   : >"$upgrade_list"
+  printf '%s\n' "$package_cache" >"$cache_dirs"
   : >"$owned_list"
   : >"$retry_installs"
   : >"$test_tmp/report"
@@ -224,6 +237,26 @@ if run_update >"$test_tmp/out" 2>"$test_tmp/err"; then fail "a package archive b
 [[ -f $stray ]] || fail "an untrusted package-cache path authorizes a move"
 pass "live ownership and a trusted cached package archive both authorize cleanup"
 
+# Pacman's configured cache directories, including non-default paths, are the
+# source of the archive that will actually participate in the retry.
+reset_case
+custom_cache="$system_root/var/custom-pacman-cache"
+mkdir -p "$custom_cache"
+chmod 0755 "$custom_cache"
+stray="$system_root/usr/lib/omarchy-test/custom-cache.conf"
+make_file "$stray"
+write_report omarchy-settings-dev "$stray"
+printf '%s\t%s\n' omarchy-settings-dev "$stray" >"$package_list"
+plan_package omarchy-settings-dev
+: >"$custom_cache/omarchy-settings-dev.pkg.tar.zst"
+chmod 0644 "$custom_cache/omarchy-settings-dev.pkg.tar.zst"
+printf '%s/\n' "$custom_cache" >"$cache_dirs"
+printf '%s\n' "$stray" >"$retry_installs"
+PACKAGE_CACHE_OVERRIDE="$custom_cache" run_update >/dev/null 2>&1 ||
+  fail "a trusted custom pacman cache is ignored"
+grep -qx packaged "$stray" || fail "the custom-cache transaction does not install its conflict path"
+pass "configured pacman cache directories authorize their pending archives"
+
 # An explicitly named package is not necessarily part of `pacman -Syu`: it may
 # be already current, ignored, or an inactive stable/dev variant. A cached
 # archive alone must not authorize moving anything from the live system.
@@ -235,6 +268,26 @@ cache_path omarchy-settings-dev "$stray"
 if run_update >"$test_tmp/out" 2>"$test_tmp/err"; then fail "a cached package outside the sysupgrade transaction authorizes a move"; fi
 [[ -f $stray ]] || fail "a non-transaction package displaced a live path"
 pass "only packages in the pending sysupgrade transaction authorize cleanup"
+
+# The caller's stdin used to become the privileged helper's authority through a
+# user-owned temporary report. It is now irrelevant: only stderr captured by
+# the helper's own root transaction can name paths to quarantine.
+reset_case
+real_conflict="$system_root/usr/lib/omarchy-test/real.conf"
+injected_path="$system_root/usr/lib/omarchy-test/injected.conf"
+make_file "$real_conflict" real
+make_file "$injected_path" injected
+write_report omarchy-settings-dev "$real_conflict"
+ship_path omarchy-settings-dev "$real_conflict"
+ship_path omarchy-settings-dev "$injected_path"
+printf '%s\n' "$real_conflict" >"$retry_installs"
+printf 'omarchy-settings-dev: %s exists in filesystem\n' "$injected_path" |
+  run_update >"$test_tmp/out" 2>"$test_tmp/err" ||
+  fail "a genuine conflict fails when the caller also supplies forged text"
+grep -qx packaged "$real_conflict" || fail "the genuine root-captured conflict is not resolved"
+grep -qx injected "$injected_path" || fail "caller-supplied conflict text authorizes a root move"
+[[ -z $(find_archived_content injected) ]] || fail "caller-supplied text reaches the quarantine archive"
+pass "only the privileged pacman attempt can authorize conflict quarantine"
 
 # A forged report cannot name a home/tmp path, an unrelated package, or mix one
 # healable line with one unsupported conflict.

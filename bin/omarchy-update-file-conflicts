@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Safely retry an Omarchy package update after file conflicts
+# omarchy:summary=Safely update packages and recover Omarchy file conflicts
 # omarchy:hidden=true
 # omarchy:requires-sudo=true
 
@@ -22,16 +22,19 @@ readonly ROOT_GID=0
 readonly ARCHIVE_BOUNDARY=/var
 readonly ARCHIVE_PARENT=/var/lib/omarchy
 readonly ARCHIVE_ROOT=/var/lib/omarchy/replaced
-readonly PACKAGE_CACHE_ROOT=/var
-readonly PACKAGE_CACHE=/var/cache/pacman/pkg
+readonly PACKAGE_CACHE_BOUNDARY=/
 readonly MAX_REPORT_BYTES=1048576
+readonly PACKAGE_CONFLICT_STATUS=75
+readonly REPORT_PARENT=/run
 
 allowed_packages=(omarchy omarchy-dev omarchy-settings omarchy-settings-dev)
 allowed_roots=(/etc /usr)
 
-declare -a conflict_packages=() conflict_paths=() moved_paths=() moved_slots=()
+declare -a conflict_packages=() conflict_paths=() moved_paths=() moved_slots=() package_caches=()
 declare -A archive_for_package=() stage_for_root=()
 report=""
+report_dir=""
+report_file=""
 retry_succeeded=0
 
 valid_package() {
@@ -50,12 +53,17 @@ root_for_path() {
   return 1
 }
 
-valid_canonical_path() {
+valid_absolute_path_syntax() {
   local path="$1"
   [[ $path == /* && $path != / && $path != *$'\n'* && $path != *$'\r'* && $path != *$'\t'* ]] || return 1
   case "$path" in
   *//* | */./* | */../* | */. | */..) return 1 ;;
   esac
+}
+
+valid_canonical_path() {
+  local path="$1"
+  valid_absolute_path_syntax "$path" || return 1
   root_for_path "$path" >/dev/null
 }
 
@@ -69,23 +77,61 @@ assert_root_directory() {
   [[ $owner == "$ROOT_UID" ]] && ! ((8#$mode & 022))
 }
 
+path_within_root() {
+  local path="$1" root="$2"
+  if [[ $root == / ]]; then
+    [[ $path == /* ]]
+  else
+    [[ $path == "$root" || $path == "$root/"* ]]
+  fi
+}
+
 assert_safe_parent_chain() {
   local path="$1" root="$2" directory next
   directory=$(dirname -- "$path")
-  [[ $directory == "$root" || $directory == "$root/"* ]] || return 1
+  path_within_root "$directory" "$root" || return 1
 
   while :; do
+    # The process root has no parent component that pathname traversal can
+    # replace. Every directory below it, including the configured cache itself,
+    # still has to be root-owned and non-writable.
+    [[ $directory == / && $root == / ]] && return 0
     assert_root_directory "$directory" || return 1
     [[ $directory == "$root" ]] && return 0
     next=$(dirname -- "$directory")
-    [[ $next == "$root" || $next == "$root/"* ]] || return 1
+    path_within_root "$next" "$root" || return 1
     directory=$next
   done
 }
 
+load_package_caches() {
+  local configured cache canonical existing duplicate
+  configured=$(pacman-conf CacheDir 2>/dev/null) || return 1
+
+  while IFS= read -r cache; do
+    [[ -n $cache ]] || continue
+    [[ $cache != / ]] || return 1
+    cache=${cache%/}
+    valid_absolute_path_syntax "$cache" || return 1
+    canonical=$(realpath -e -- "$cache" 2>/dev/null) || return 1
+    [[ $canonical == "$cache" ]] || return 1
+    assert_safe_parent_chain "$cache/.cache-probe" "$PACKAGE_CACHE_BOUNDARY" || return 1
+
+    duplicate=0
+    for existing in "${package_caches[@]}"; do
+      if [[ $existing == "$cache" ]]; then
+        duplicate=1
+      fi
+    done
+    ((duplicate)) || package_caches+=("$cache")
+  done <<<"$configured"
+
+  ((${#package_caches[@]} > 0))
+}
+
 load_upgrade_archives() {
-  local plan listed_package location filename candidate owner mode previous
-  assert_safe_parent_chain "$PACKAGE_CACHE/.archive-probe" "$PACKAGE_CACHE_ROOT" || return 1
+  local plan listed_package location filename cache candidate owner mode previous
+  load_package_caches || return 1
 
   # Ask pacman for the exact pending sysupgrade, not for an explicitly named
   # package. `pacman -Sp package` also prints inactive and already-current
@@ -96,11 +142,19 @@ load_upgrade_archives() {
     location=${location%%\?*}
     filename=${location##*/}
     [[ -n $filename && $filename != "$location" ]] || continue
-    candidate=$PACKAGE_CACHE/$filename
-    [[ -f $candidate && ! -L $candidate ]] || continue
-    owner=$(stat -Lc '%u' "$candidate") || continue
-    mode=$(stat -Lc '%a' "$candidate") || continue
-    [[ $owner == "$ROOT_UID" ]] && ! ((8#$mode & 022)) || continue
+    candidate=""
+    for cache in "${package_caches[@]}"; do
+      if [[ ! -e $cache/$filename && ! -L $cache/$filename ]]; then
+        continue
+      fi
+      candidate=$cache/$filename
+      [[ -f $candidate && ! -L $candidate ]] || return 1
+      owner=$(stat -Lc '%u' "$candidate") || return 1
+      mode=$(stat -Lc '%a' "$candidate") || return 1
+      [[ $owner == "$ROOT_UID" ]] && ! ((8#$mode & 022)) || return 1
+      break
+    done
+    [[ -n $candidate ]] || continue
     previous=${archive_for_package[$listed_package]:-}
     [[ -z $previous || $previous == "$candidate" ]] || return 1
     archive_for_package[$listed_package]=$candidate
@@ -320,21 +374,54 @@ archive_remaining() {
   ((retained_in_place == 0)) || echo "Some replaced files remain in their root-only same-filesystem stages; see $locations" >&2
 }
 
+cleanup_report() {
+  [[ -n $report_file ]] && rm -f -- "$report_file"
+  [[ -n $report_dir ]] && rmdir -- "$report_dir" 2>/dev/null || true
+}
+
 cleanup() {
   local status=$?
   trap - EXIT INT TERM
   ((retry_succeeded)) || restore_moved
   archive_remaining || echo "Warning: protected conflict staging could not be archived." >&2
+  cleanup_report
   exit "$status"
 }
 trap cleanup EXIT
 trap 'exit 1' INT TERM
 
-report=$(head -c $((MAX_REPORT_BYTES + 1)))
-((${#report} <= MAX_REPORT_BYTES)) || {
+# Capture the transaction that can authorize root moves inside this privileged
+# process. A same-UID caller can rewrite any report created by the public
+# wrapper, even when the path and archive membership look otherwise valid.
+assert_root_directory "$REPORT_PARENT" || {
+  echo "Could not establish a trusted pacman report directory" >&2
+  exit 1
+}
+report_dir=$(mktemp -d "$REPORT_PARENT/omarchy-update-pacman.XXXXXX")
+report_file=$report_dir/errors
+: >"$report_file"
+
+if env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --noconfirm \
+  --overwrite '/usr/share/omarchy/*' 2>"$report_file"; then
+  cat "$report_file" >&2
+  cleanup_report
+  trap - EXIT INT TERM
+  exit 0
+fi
+cat "$report_file" >&2
+
+if grep -q 'unresolvable package conflicts detected' "$report_file"; then
+  exit "$PACKAGE_CONFLICT_STATUS"
+fi
+
+grep -q 'failed to commit transaction (conflicting files)' "$report_file" || exit 1
+
+report_size=$(stat -Lc '%s' "$report_file") || exit 1
+((report_size <= MAX_REPORT_BYTES)) || {
   echo "Refusing an oversized pacman error report" >&2
   exit 1
 }
+report=$(<"$report_file")
 
 parse_report || {
   echo "Pacman report contains unsupported or incomplete file conflicts" >&2

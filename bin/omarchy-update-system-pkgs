@@ -5,6 +5,8 @@
 
 set -e
 
+readonly PACKAGE_CONFLICT_STATUS=75
+
 # The conflict handler's last resort: pacman puts its questions to the person
 # running the update instead of answering them itself. Nothing here may capture
 # a stream, because an upgrade without --noconfirm prompts on stderr. The
@@ -15,37 +17,23 @@ fi
 
 echo -e "\e[32m\nUpdate system packages\e[0m"
 
-errors=$(mktemp)
-trap 'rm -f "$errors"' EXIT
-
 # /usr/share/omarchy is wholly Omarchy's; files can land there unowned and would
 # otherwise abort the upgrade. Packaged content wins there.
 #
-# Progress bars stay on stdout. Errors are on stderr, kept for the conflict
-# handler below; LC_ALL=C is what keeps them parseable in any locale.
-if sudo env LC_ALL=C OMARCHY_UPDATE_PACMAN=1 pacman -Syu --noconfirm \
-  --overwrite '/usr/share/omarchy/*' 2>"$errors"; then
-  cat "$errors" >&2
+# The privileged helper owns the first transaction and its error report. That
+# report is the authority for any file quarantine, so it must never be writable
+# by the user running this wrapper.
+if sudo /usr/bin/omarchy-update-file-conflicts; then
   exit 0
+else
+  update_status=$?
 fi
-cat "$errors" >&2
 
 # Package conflicts need the person at the terminal to answer pacman. This
 # handler never mutates files; it only decides whether an interactive retry is
 # possible.
-if grep -q 'unresolvable package conflicts detected' "$errors"; then
-  # exec, so the EXIT trap above does not fire and the handler can still read
-  # the report. It takes over deleting it.
-  exec env OMARCHY_UPDATE_CONFLICT=1 omarchy-update-system-pkgs-when-conflicted "$errors"
+if ((update_status == PACKAGE_CONFLICT_STATUS)); then
+  exec env OMARCHY_UPDATE_CONFLICT=1 omarchy-update-system-pkgs-when-conflicted
 fi
 
-# File conflicts cross into a packaged root helper over stdin. The report is
-# explicitly untrusted: the helper accepts paths only after checking the exact
-# cached package archive and every fixed root-owned parent, and it performs the
-# retry and any rollback inside that same privileged process.
-if grep -q 'failed to commit transaction (conflicting files)' "$errors"; then
-  sudo /usr/bin/omarchy-update-file-conflicts <"$errors"
-  exit $?
-fi
-
-exit 1
+exit "$update_status"

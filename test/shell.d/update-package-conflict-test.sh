@@ -10,10 +10,24 @@ test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
 
 stub_bin="$test_tmp/bin"
+helper_copy="$test_tmp/omarchy-update-file-conflicts"
 mkdir -p "$stub_bin"
+
+test_uid=$(id -u)
+sed \
+  -e 's/if ((EUID != 0)); then/if false; then/' \
+  -e 's|export PATH=/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin|export PATH=${OMARCHY_TEST_HELPER_PATH:?}|' \
+  -e 's/readonly ROOT_UID=0/readonly ROOT_UID='"$test_uid"'/' \
+  -e "s|readonly REPORT_PARENT=/run|readonly REPORT_PARENT=$test_tmp|" \
+  "$ROOT/bin/omarchy-update-file-conflicts" >"$helper_copy"
+chmod +x "$helper_copy"
 
 cat >"$stub_bin/sudo" <<'STUB'
 #!/bin/bash
+if [[ ${1:-} == /usr/bin/omarchy-update-file-conflicts ]]; then
+  shift
+  exec env OMARCHY_TEST_ROOT_HELPER=1 "$TEST_CONFLICT_HELPER" "$@"
+fi
 exec "$@"
 STUB
 
@@ -27,6 +41,11 @@ attempt=$(($(cat "$PACMAN_ATTEMPTS") + 1))
 echo "$attempt" >"$PACMAN_ATTEMPTS"
 {
   printf 'args %s\n' "$*"
+  if [[ ${OMARCHY_TEST_ROOT_HELPER:-} == 1 ]]; then
+    printf 'root-helper yes\n'
+  else
+    printf 'root-helper no\n'
+  fi
   for fd in 0 1 2; do
     if [[ -t $fd ]]; then printf 'tty%s yes\n' "$fd"; else printf 'tty%s no\n' "$fd"; fi
   done
@@ -60,6 +79,8 @@ update_env() {
     "PACMAN_ATTEMPTS=$test_tmp/attempts" \
     "PACMAN_CALLS=$test_tmp/calls" \
     "CONFLICT_REPORT=$test_tmp/report" \
+    "TEST_CONFLICT_HELPER=$helper_copy" \
+    "OMARCHY_TEST_HELPER_PATH=$stub_bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin" \
     "OWNED_PATHS=" \
     "OMARCHY_UPDATE_UNATTENDED=${OMARCHY_UPDATE_UNATTENDED:-}" \
     "OMARCHY_UPDATE_INTERACTIVE=${OMARCHY_UPDATE_INTERACTIVE:-}" \
@@ -98,6 +119,10 @@ run_on_terminal || fail "a package conflict is not resolved on a terminal"
   fail "the interactive retry still answers pacman's questions itself"
 [[ $(call_line 2 args) != *"--ask"* ]] ||
   fail "the interactive retry answers pacman's questions from a bitmask instead"
+[[ $(call_line 1 root-helper) == yes ]] ||
+  fail "the report-authorizing transaction is not owned by the root helper"
+[[ $(call_line 2 root-helper) == no ]] ||
+  fail "the interactive package retry unexpectedly enters the file-mutation helper"
 pass "a package conflict is put back to the person running the update"
 
 [[ $(call_line 2 tty0) == "yes" && $(call_line 2 tty2) == "yes" ]] ||

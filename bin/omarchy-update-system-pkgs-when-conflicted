@@ -14,11 +14,6 @@ set -e
   exit 1
 }
 
-errors=${1:?usage: omarchy-update-system-pkgs-when-conflicted <pacman-error-report>}
-trap 'rm -f "$errors"' EXIT
-
-grep -q 'unresolvable package conflicts detected' "$errors" || exit 1
-
 # -y promised not to ask anything, and without a terminal there is nowhere to
 # ask; either way pacman would sit on a prompt nobody answers. An upgrade that
 # is not running --noconfirm puts its questions on stderr and reads answers
