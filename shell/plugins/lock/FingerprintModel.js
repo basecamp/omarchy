@@ -15,7 +15,14 @@
 
 var MATCH_RETRY_MS = 250
 var ERROR_RETRY_BASE_MS = 1000
+// fprintd exits this long after its last client leaves; a claim wedged by a
+// verify killed under suspend dies with it. The cap sits above it so that,
+// with no hook to restart the daemon, a wait at the cap still clears it.
+var FPRINTD_IDLE_EXIT_MS = 30000
 var ERROR_RETRY_CAP_MS = 40000
+// The idle stretch a nudge must leave fprintd at the cap: its exit plus a
+// margin, so the daemon is gone before the nudged attempt claims.
+var IDLE_CLEAR_MS = FPRINTD_IDLE_EXIT_MS + 2000
 var UNAVAILABLE_AFTER = 3
 var NUDGE_COOLDOWN_MS = 2000
 // How long an attempt may go without prompting before it is aborted as stuck.
@@ -39,15 +46,23 @@ function retryDelayMs(streak) {
 // one wake per motion event -- from re-collapsing every fresh wait and spinning
 // the loop back up to the storm the backoff exists to prevent. It grows with
 // the pending wait: presence collapses each backed-off wait once, but a user
-// who keeps typing at a reader that keeps failing is still paced by the tier,
-// so the cap's rate holds and fprintd gets the idle stretch it needs to exit.
-function shouldNudge(nowMs, lastNudgeMs, currentIntervalMs) {
+// who keeps typing at a reader that keeps failing is still paced by the tier.
+//
+// At the cap the wait itself is the cure -- it is what lets fprintd idle out
+// and drop a wedged claim -- so there the idle stretch is measured from the
+// last settle, not the last nudge: a nudged attempt that hung until the reach
+// timeout would otherwise eat most of the window, and under continuous input
+// fprintd would never be left alone long enough to exit.
+function shouldNudge(nowMs, lastNudgeMs, lastSettleMs, currentIntervalMs) {
   if (currentIntervalMs <= MATCH_RETRY_MS) return false
-  var elapsed = nowMs - lastNudgeMs
+  var sinceNudge = nowMs - lastNudgeMs
+  var sinceSettle = nowMs - lastSettleMs
   // Wall-clock time can step backwards (timesyncd corrects RTC drift right
   // after resume); a negative gap is stale, not a fresh nudge, so allow it.
-  if (elapsed < 0) return true
-  return elapsed >= Math.max(NUDGE_COOLDOWN_MS, currentIntervalMs)
+  if (sinceNudge < 0 || sinceSettle < 0) return true
+  if (sinceNudge < Math.max(NUDGE_COOLDOWN_MS, currentIntervalMs)) return false
+  if (currentIntervalMs >= ERROR_RETRY_CAP_MS && sinceSettle < IDLE_CLEAR_MS) return false
+  return true
 }
 
 // The streak after an attempt: a reached attempt clears it, an unreached one
@@ -68,6 +83,8 @@ if (typeof module !== "undefined") {
     MATCH_RETRY_MS: MATCH_RETRY_MS,
     ERROR_RETRY_BASE_MS: ERROR_RETRY_BASE_MS,
     ERROR_RETRY_CAP_MS: ERROR_RETRY_CAP_MS,
+    FPRINTD_IDLE_EXIT_MS: FPRINTD_IDLE_EXIT_MS,
+    IDLE_CLEAR_MS: IDLE_CLEAR_MS,
     UNAVAILABLE_AFTER: UNAVAILABLE_AFTER,
     NUDGE_COOLDOWN_MS: NUDGE_COOLDOWN_MS,
     REACH_TIMEOUT_MS: REACH_TIMEOUT_MS,

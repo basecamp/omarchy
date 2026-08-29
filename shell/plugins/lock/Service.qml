@@ -26,6 +26,7 @@ Item {
   property int fingerprintUnreachedStreak: 0
   property bool fingerprintAttemptReachedDevice: false
   property double fingerprintLastNudgeMs: 0
+  property double fingerprintLastSettleMs: 0
   property bool previewVisible: false
   property string enteredPassword: ""
   property string pendingPassword: ""
@@ -133,6 +134,7 @@ Item {
     fingerprintAuthenticating = false
     fingerprintUnreachedStreak = 0
     fingerprintLastNudgeMs = 0
+    fingerprintLastSettleMs = 0
     fingerprintRetryTimer.stop()
     fingerprintReachTimer.stop()
     if (passwordPam.active) passwordPam.abort()
@@ -195,7 +197,7 @@ Item {
     if (fingerprintPam.active || fingerprintAuthenticating) return
     if (!fingerprintRetryTimer.running) return
     var now = Date.now()
-    if (!FingerprintModel.shouldNudge(now, fingerprintLastNudgeMs, fingerprintRetryTimer.interval)) return
+    if (!FingerprintModel.shouldNudge(now, fingerprintLastNudgeMs, fingerprintLastSettleMs, fingerprintRetryTimer.interval)) return
     fingerprintLastNudgeMs = now
     armFingerprintRetry(FingerprintModel.MATCH_RETRY_MS)
   }
@@ -320,6 +322,7 @@ Item {
     } else if (previousStreak > 0) {
       logEvent("fingerprint-recovered: streak=" + previousStreak)
     }
+    fingerprintLastSettleMs = Date.now()
     armFingerprintRetry(FingerprintModel.retryDelayMs(fingerprintUnreachedStreak))
   }
 
