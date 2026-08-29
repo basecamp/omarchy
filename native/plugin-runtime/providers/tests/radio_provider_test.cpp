@@ -127,6 +127,14 @@ int main() {
                                    media_adapter.context) &&
                 effects.played == "https://radio.example/stream",
             "media adapter did not resolve the activation-bound opaque handle");
+    const std::string spoofed_handle_payload = R"({"handle":"attacker-resource"})";
+    auto spoofed_handle = play_request;
+    spoofed_handle.payload = bytes(spoofed_handle_payload);
+    effects.played.clear();
+    require(!media_adapter.dispatch(spoofed_handle, output, written,
+                                    media_adapter.context) &&
+                effects.played.empty(),
+            "plugin-selected resource escaped the opaque handle table");
     const std::string volume_payload = R"({"control":"volume","value":55})";
     auto volume = request(
         "media.play-stream",
