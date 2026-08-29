@@ -1074,11 +1074,26 @@ int preview(const QStringList &arguments, QGuiApplication &application,
                     "OMARCHY_PLUGIN_E2E_CLICK_AFTER_MUTATION"))) {
           const auto x = qEnvironmentVariableIntValue("OMARCHY_PLUGIN_E2E_CLICK_X");
           const auto y = qEnvironmentVariableIntValue("OMARCHY_PLUGIN_E2E_CLICK_Y");
-          injected_pointer = previews.front().pointer->route(
+          auto click_target = previews.begin();
+          if (qEnvironmentVariableIsSet("OMARCHY_PLUGIN_E2E_CLICK_SURFACE")) {
+            const auto selected =
+                qEnvironmentVariable("OMARCHY_PLUGIN_E2E_CLICK_SURFACE")
+                    .toStdString();
+            click_target = std::ranges::find_if(
+                previews, [&](const auto &preview) {
+                  return preview.name == selected;
+                });
+          }
+          if (click_target == previews.end()) {
+            qCritical() << "PRODUCT_E2E click surface is not declared";
+            application.exit(79);
+            return;
+          }
+          injected_pointer = click_target->pointer->route(
               {.x = static_cast<qreal>(x), .y = static_cast<qreal>(y),
                .button = Qt::LeftButton, .pressed = true,
                .application_synthesized = false}) &&
-              previews.front().pointer->route(
+              click_target->pointer->route(
                   {.x = static_cast<qreal>(x), .y = static_cast<qreal>(y),
                    .button = Qt::LeftButton, .pressed = false,
                    .application_synthesized = false});
@@ -1087,7 +1102,8 @@ int preview(const QStringList &arguments, QGuiApplication &application,
             application.exit(79);
             return;
           }
-          std::cerr << "PRODUCT_E2E pointer " << x << ' ' << y << '\n';
+          std::cerr << "PRODUCT_E2E pointer " << click_target->name << ' '
+                    << x << ' ' << y << '\n';
         }
       }
       if (expected_calls_set && expected_frames > 0 &&
