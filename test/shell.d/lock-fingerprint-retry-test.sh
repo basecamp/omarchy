@@ -118,6 +118,44 @@ assert(minIdle >= model.FPRINTD_IDLE_EXIT_MS,
 assert(minIdle < capped,
   'the nudge still shortens the wait at the cap rather than being dead there, got ' + minIdle + 'ms')
 
+// Resume grace: right after a wake the hook is restarting fprintd under the
+// loop, so a miss there holds the streak at the first tier instead of
+// climbing toward the notice; a reached attempt still clears it.
+assertEqual(model.nextStreak(0, false, true), 1, 'a miss inside the resume grace holds the streak at the first tier')
+assertEqual(model.nextStreak(5, false, true), 1, 'the grace pins any accumulated streak to the first tier')
+assertEqual(model.nextStreak(5, true, true), 0, 'a reached attempt inside the grace clears the streak')
+assertEqual(model.nextStreak(1, false, false), 2, 'outside the grace misses accumulate')
+assert(model.RESUME_GRACE_MS >= 3000 + 1000, "the grace outlasts fprintd's 3s stop cap plus its start")
+assert(model.RESUME_GRACE_MS < model.ERROR_RETRY_CAP_MS, 'the grace is shorter than the cap, so it cannot mask a reader that is really gone')
+assert(!model.inResumeGrace(5000, 0), 'no resume noted means no grace')
+assert(model.inResumeGrace(1000 + model.RESUME_GRACE_MS - 1, 1000), 'an attempt settling inside the window is in grace')
+assert(!model.inResumeGrace(1000 + model.RESUME_GRACE_MS, 1000), 'an attempt settling at the window edge is not')
+assert(!model.inResumeGrace(500, 1000), 'a clock stepped back past the resume is not grace')
+
+// Sleep detection: an unreached attempt cannot outlive the reach bound on the
+// monotonic clock, so one that did on the wall clock spanned a suspend.
+assert(!model.spannedSleep(model.REACH_TIMEOUT_MS + model.SLEEP_GAP_MS, model.REACH_TIMEOUT_MS), 'the bound plus slack is not a sleep')
+assert(model.spannedSleep(model.REACH_TIMEOUT_MS + model.SLEEP_GAP_MS + 1, model.REACH_TIMEOUT_MS), 'longer than the bound plus slack is a sleep')
+assert(model.spannedSleep(1000 + 8 * 3600 * 1000, 1000), 'an eight-hour wait on a one-second timer is a sleep')
+
+// End to end: the async resume hook lands a fresh daemon ~3.3s after wake in
+// the worst case (SIGTERM-ignoring fprintd, 3s stop cap). Every attempt until
+// then misses; none may show the notice, and the loop must still be retrying
+// at the first tier when the daemon comes back.
+const resumedAt = 1000
+let graceStreak = 0
+let attemptAt = resumedAt + model.MATCH_RETRY_MS
+let attempts = 0
+while (attemptAt < resumedAt + 3300) {
+  graceStreak = model.nextStreak(graceStreak, false, model.inResumeGrace(attemptAt, resumedAt))
+  assert(!model.isUnavailable(graceStreak), 'a miss ' + (attemptAt - resumedAt) + 'ms after resume must not show the notice')
+  attemptAt += model.retryDelayMs(graceStreak)
+  attempts++
+}
+assert(attempts >= 3, 'the loop keeps retrying through the restart window, got ' + attempts)
+assert(attemptAt - resumedAt < 3300 + model.ERROR_RETRY_BASE_MS + model.MATCH_RETRY_MS,
+  'the first attempt after the daemon is back comes within a tier, at ' + (attemptAt - resumedAt) + 'ms')
+
 assert(model.REACH_TIMEOUT_MS < model.ERROR_RETRY_CAP_MS,
   'the reach bound is shorter than the backoff cap, so a stuck attempt is caught well before the cap')
 assert(model.REACH_TIMEOUT_MS < 25000,

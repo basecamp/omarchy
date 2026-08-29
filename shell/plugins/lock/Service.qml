@@ -27,6 +27,8 @@ Item {
   property bool fingerprintAttemptReachedDevice: false
   property double fingerprintLastNudgeMs: 0
   property double fingerprintLastSettleMs: 0
+  property double fingerprintAttemptStartedMs: 0
+  property double fingerprintResumedAtMs: 0
   property bool previewVisible: false
   property string enteredPassword: ""
   property string pendingPassword: ""
@@ -135,6 +137,8 @@ Item {
     fingerprintUnreachedStreak = 0
     fingerprintLastNudgeMs = 0
     fingerprintLastSettleMs = 0
+    fingerprintAttemptStartedMs = 0
+    fingerprintResumedAtMs = 0
     fingerprintRetryTimer.stop()
     fingerprintReachTimer.stop()
     if (passwordPam.active) passwordPam.abort()
@@ -208,16 +212,25 @@ Item {
     fingerprintRetryTimer.restart()
   }
 
-  // The retry timer counts monotonic time, which suspend pauses, so a wait
-  // armed before the sleep picks up mid-count afterwards -- and the streak it
-  // was pacing was built against the reader as it stood before the sleep. The
-  // resume hook has restarted fprintd since, so that streak is stale: start
-  // over against the fresh reader now, instead of after the remaining wait or
-  // the next keypress, and without the pre-suspend misses counting toward the
-  // notice.
-  function restartFingerprintAfterSleep() {
+  // Monotonic timers pause across suspend, so a wait armed before the sleep
+  // picks up mid-count afterwards -- and the streak it was pacing was built
+  // against the reader as it stood before the sleep. The resume hook is
+  // restarting fprintd, so that streak is stale: drop it, and open the grace
+  // window in which the restart landing under an attempt does not count as a
+  // miss either (see RESUME_GRACE_MS). Idempotent within the window, since a
+  // resume can be noticed by more than one timer.
+  function noteFingerprintResumed() {
+    var now = Date.now()
+    if (FingerprintModel.inResumeGrace(now, fingerprintResumedAtMs)) return
     logEvent("fingerprint-resume: streak=" + fingerprintUnreachedStreak)
+    fingerprintResumedAtMs = now
     fingerprintUnreachedStreak = 0
+  }
+
+  // A resume noticed while a backed-off wait is pending: retry the fresh
+  // reader now, instead of after the remaining wait or the next keypress.
+  function restartFingerprintAfterSleep() {
+    noteFingerprintResumed()
     if (fingerprintAuthenticating || fingerprintPam.active) return
     if (!fingerprintRetryTimer.running) return
     armFingerprintRetry(FingerprintModel.MATCH_RETRY_MS)
@@ -266,6 +279,7 @@ Item {
 
     fingerprintAuthenticating = true
     fingerprintAttemptReachedDevice = false
+    fingerprintAttemptStartedMs = Date.now()
     if (!fingerprintPam.start()) {
       // A start that fails before PAM even runs is a configuration problem
       // (the PAM file removed under the lock), not a reader miss. Settle for
@@ -312,17 +326,26 @@ Item {
     fingerprintReachTimer.stop()
     if (!lockRequested || !fingerprintConfigured) return
 
+    // An unreached attempt cannot outlive the reach bound on the monotonic
+    // clock; one that did on the wall clock was in flight across a suspend
+    // and was ended by the restart, not by the reader.
+    var now = Date.now()
+    if (!fingerprintAttemptReachedDevice && FingerprintModel.spannedSleep(now - fingerprintAttemptStartedMs, FingerprintModel.REACH_TIMEOUT_MS)) {
+      noteFingerprintResumed()
+    }
+
     // Reached attempts are the steady state (one per swipe window), so only
     // the misses and the recovery from them leave a trace.
     var previousStreak = fingerprintUnreachedStreak
-    fingerprintUnreachedStreak = FingerprintModel.nextStreak(previousStreak, fingerprintAttemptReachedDevice)
+    var inGrace = FingerprintModel.inResumeGrace(now, fingerprintResumedAtMs)
+    fingerprintUnreachedStreak = FingerprintModel.nextStreak(previousStreak, fingerprintAttemptReachedDevice, inGrace)
     if (!fingerprintAttemptReachedDevice) {
       var crossed = !FingerprintModel.isUnavailable(previousStreak) && FingerprintModel.isUnavailable(fingerprintUnreachedStreak)
       logEvent((crossed ? "fingerprint-unavailable" : "fingerprint-unreached") + ": streak=" + fingerprintUnreachedStreak)
     } else if (previousStreak > 0) {
       logEvent("fingerprint-recovered: streak=" + previousStreak)
     }
-    fingerprintLastSettleMs = Date.now()
+    fingerprintLastSettleMs = now
     armFingerprintRetry(FingerprintModel.retryDelayMs(fingerprintUnreachedStreak))
   }
 
@@ -469,24 +492,25 @@ Item {
     property double armedAt: 0
     onTriggered: {
       // A wait that took far longer on the wall clock than its interval
-      // spanned a suspend; see restartFingerprintAfterSleep.
-      if (Date.now() - armedAt > interval + 2000) root.fingerprintUnreachedStreak = 0
+      // spanned a suspend; see noteFingerprintResumed.
+      if (FingerprintModel.spannedSleep(Date.now() - armedAt, interval)) root.noteFingerprintResumed()
       root.startFingerprint()
     }
   }
 
-  // Watches the wall clock while a backed-off wait is pending, so a resume is
-  // noticed within a tick rather than when the paused wait finally runs out.
+  // Watches the wall clock for the whole lock, so a resume is noticed within
+  // a tick whatever the loop was doing -- mid-wait, or with an attempt in
+  // flight that the restart is about to end.
   Timer {
     id: fingerprintSleepWatch
     interval: 1000
     repeat: true
-    running: fingerprintRetryTimer.running && fingerprintRetryTimer.interval > FingerprintModel.MATCH_RETRY_MS
+    running: root.lockRequested && root.fingerprintConfigured
     property double lastTickMs: 0
     onRunningChanged: lastTickMs = Date.now()
     onTriggered: {
       var now = Date.now()
-      var slept = now - lastTickMs > interval + 2000
+      var slept = FingerprintModel.spannedSleep(now - lastTickMs, interval)
       lastTickMs = now
       if (slept) root.restartFingerprintAfterSleep()
     }

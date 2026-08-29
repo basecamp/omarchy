@@ -33,6 +33,14 @@ var NUDGE_COOLDOWN_MS = 2000
 // until the device open completes, so the bound must outlast a slow open --
 // out-of-tree drivers take several seconds, more right after resume.
 var REACH_TIMEOUT_MS = 20000
+// Monotonic timers pause across suspend, so a wait or an attempt that took
+// this much longer on the wall clock than it should have spanned a sleep.
+var SLEEP_GAP_MS = 2000
+// For this long after a resume the hook is restarting fprintd underneath the
+// loop (a 3s stop cap plus the start), so a miss says nothing about the
+// reader; misses inside it keep retrying at the first tier and never count
+// toward the notice.
+var RESUME_GRACE_MS = 5000
 
 function retryDelayMs(streak) {
   if (streak <= 0) return MATCH_RETRY_MS
@@ -66,9 +74,26 @@ function shouldNudge(nowMs, lastNudgeMs, lastSettleMs, currentIntervalMs) {
 }
 
 // The streak after an attempt: a reached attempt clears it, an unreached one
-// advances it.
-function nextStreak(streak, reachedDevice) {
-  return reachedDevice ? 0 : streak + 1
+// advances it -- unless the machine just woke, in which case the miss is
+// most likely the resume restart landing under the attempt and the streak
+// holds at the first tier instead.
+function nextStreak(streak, reachedDevice, inResumeGrace) {
+  if (reachedDevice) return 0
+  if (inResumeGrace) return 1
+  return streak + 1
+}
+
+// Whether something that should have taken expectedMs of monotonic time took
+// so much longer on the wall clock that the machine must have slept meanwhile.
+function spannedSleep(elapsedMs, expectedMs) {
+  return elapsedMs > expectedMs + SLEEP_GAP_MS
+}
+
+// Whether a resume noted at resumedAtMs still covers an attempt settling now.
+function inResumeGrace(nowMs, resumedAtMs) {
+  if (resumedAtMs <= 0) return false
+  var elapsed = nowMs - resumedAtMs
+  return elapsed >= 0 && elapsed < RESUME_GRACE_MS
 }
 
 // The reader is reported unavailable once enough consecutive attempts have
@@ -88,6 +113,10 @@ if (typeof module !== "undefined") {
     UNAVAILABLE_AFTER: UNAVAILABLE_AFTER,
     NUDGE_COOLDOWN_MS: NUDGE_COOLDOWN_MS,
     REACH_TIMEOUT_MS: REACH_TIMEOUT_MS,
+    SLEEP_GAP_MS: SLEEP_GAP_MS,
+    RESUME_GRACE_MS: RESUME_GRACE_MS,
+    spannedSleep: spannedSleep,
+    inResumeGrace: inResumeGrace,
     retryDelayMs: retryDelayMs,
     nextStreak: nextStreak,
     isUnavailable: isUnavailable,
