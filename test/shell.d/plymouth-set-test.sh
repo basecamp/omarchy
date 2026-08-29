@@ -428,9 +428,26 @@ status=$?
 (( status != 0 )) || fail "a user-owned packaged source tree is rejected"
 [[ $(cat "$theme/bullet.png") == 'old plymouth bullet.png' ]] || fail "an untrusted packaged source leaves the live theme unchanged"
 [[ -L $theme/omarchy.script && $(cat "$plymouth_victim") == 'PLYMOUTH VICTIM' ]] || fail "an untrusted source cannot replace executable Plymouth content"
+[[ $output == *"refusing to publish"* ]] || fail "a rejected packaged source says why it refused" "$output"
 assert_no_temporary_files "$fake_root"
 
 pass "root rejects packaged assets that a desktop process could rewrite"
+
+# omarchy dev link points OMARCHY_PATH at a checkout the desktop user owns, so
+# this refusal fires on a working machine, not only under attack. Every check in
+# the privileged transaction is a bare assertion that aborts under set -e, so
+# without a diagnostic the whole Plymouth menu would just close in silence.
+setup_run
+output=$(run_set 022 env TEST_UNTRUSTED_SOURCE="$ROOT" 2>&1)
+status=$?
+
+(( status != 0 )) || fail "a user-owned OMARCHY_PATH is rejected"
+[[ $output == *"is not root-owned"* ]] || fail "the refusal names the untrusted source tree" "$output"
+[[ $output == *"omarchy dev unlink"* ]] || fail "the refusal names the way back to a trusted tree" "$output"
+[[ $(cat "$theme/bullet.png") == 'old plymouth bullet.png' ]] || fail "a user-owned OMARCHY_PATH leaves the live theme unchanged"
+assert_no_temporary_files "$fake_root"
+
+pass "a development checkout is refused with an explanation instead of in silence"
 
 # Root rejects both a symlinked parent and a group/world-writable parent before
 # it creates a temporary file or touches the live destination.
@@ -441,6 +458,7 @@ output=$(run_set 022 env 2>&1)
 status=$?
 (( status != 0 )) || fail "a symlinked destination parent is rejected"
 [[ $(cat "$theme.real/bullet.png") == 'old plymouth bullet.png' ]] || fail "a symlinked parent leaves its target unchanged"
+[[ $output == *"refusing to publish"* ]] || fail "a rejected symlinked parent says why it refused" "$output"
 assert_no_temporary_files "$fake_root"
 
 setup_run
@@ -449,6 +467,7 @@ output=$(run_set 022 env 2>&1)
 status=$?
 (( status != 0 )) || fail "a writable destination parent is rejected"
 [[ $(cat "$theme/bullet.png") == 'old plymouth bullet.png' ]] || fail "a writable parent leaves its live destination unchanged"
+[[ $output == *"refusing to publish"* ]] || fail "a rejected writable parent says why it refused" "$output"
 assert_no_temporary_files "$fake_root"
 
 pass "publication rejects symlinked and non-root-writable destination parents"

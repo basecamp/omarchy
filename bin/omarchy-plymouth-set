@@ -64,9 +64,20 @@ fi
 
 run_root_transaction() {
   sudo /bin/bash -c '
-    set -euo pipefail
+    set -eEuo pipefail
     PATH=/usr/bin:/bin
     export PATH
+
+    # Every check below is a bare assertion that aborts under set -e. Name the
+    # subject of each one so a refusal reaches the user instead of exiting mute.
+    failure_context="the privileged Plymouth transaction"
+    failure_reported=
+    report_failure() {
+      [[ -z $failure_reported ]] || return 0
+      failure_reported=1
+      printf "omarchy-plymouth-set: refusing to publish: %s failed validation\n" "$failure_context" >&2
+    }
+    trap report_failure ERR
 
     mode=$1
     source_root=$2
@@ -74,12 +85,25 @@ run_root_transaction() {
     text_hex=$4
     max_asset_size=$5
 
+    failure_context="the arguments of the privileged transaction"
     [[ $mode == "set" || $mode == "refresh" ]]
     [[ $source_root == /* ]]
-    canonical_source_root=$(realpath -e -- "$source_root")
-    [[ $canonical_source_root == "$source_root" ]]
     [[ $max_asset_size =~ ^[0-9]+$ ]]
     (( max_asset_size > 0 ))
+
+    failure_context="the Omarchy source tree $source_root"
+    canonical_source_root=$(realpath -e -- "$source_root")
+    [[ $canonical_source_root == "$source_root" ]]
+
+    # The one refusal a healthy machine can hit: omarchy dev link points
+    # OMARCHY_PATH at a checkout the desktop user can rewrite, and executable
+    # boot assets cannot come from there. Say so rather than failing mute.
+    source_root_uid=$(stat -c %u -- "$source_root")
+    if (( source_root_uid != 0 )); then
+      printf "omarchy-plymouth-set: %s is not root-owned, so it cannot supply executable boot assets.\n" "$source_root" >&2
+      printf "omarchy-plymouth-set: this is expected on a development checkout; run omarchy dev unlink to publish from /usr/share/omarchy.\n" >&2
+      exit 1
+    fi
 
     if [[ $mode == "set" ]]; then
       [[ $bg_hex =~ ^[0-9a-fA-F]{6}$ ]]
@@ -105,10 +129,12 @@ run_root_transaction() {
     validate_trusted_directory() {
       local directory=$1 canonical uid directory_mode
 
+      failure_context="directory $directory"
       canonical=$(realpath -e -- "$directory")
       [[ $canonical == "$directory" && -d $directory && ! -L $directory ]]
 
       while :; do
+        failure_context="directory $directory (must be root-owned and not group- or world-writable)"
         uid=$(stat -c %u -- "$directory")
         directory_mode=$(stat -c %a -- "$directory")
         (( uid == 0 ))
@@ -122,6 +148,7 @@ run_root_transaction() {
     validate_trusted_file() {
       local source=$1 canonical uid file_mode size
 
+      failure_context="packaged source file $source"
       [[ -f $source && ! -L $source ]]
       canonical=$(realpath -e -- "$source")
       [[ $canonical == "$source" ]]
@@ -170,6 +197,7 @@ run_root_transaction() {
     if [[ $mode == "set" ]]; then
       # stdin was opened by the unprivileged caller. Read no more than the
       # documented limit into the root-owned stage before doing other work.
+      failure_context="the selected logo (expected 1 to $max_asset_size bytes)"
       head -c "$((max_asset_size + 1))" >"$plymouth_stage/logo.png"
       logo_size=$(stat -c %s -- "$plymouth_stage/logo.png")
       (( logo_size > 0 && logo_size <= max_asset_size ))
@@ -211,6 +239,7 @@ run_root_transaction() {
     publish_asset() {
       local source=$1 destination=$2 parent filename source_size copied_size
 
+      failure_context="destination $destination"
       [[ -f $source && ! -L $source ]]
       (( $(stat -c %u -- "$source") == 0 ))
       source_size=$(stat -c %s -- "$source")
