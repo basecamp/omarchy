@@ -1,7 +1,18 @@
 echo "Order the hibernation resume hook before filesystems"
 
-resume_config="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
-[[ -f $resume_config ]] && grep -q '^HOOKS+=(resume)$' "$resume_config" || exit 0
+resume_config="${OMARCHY_RESUME_CONFIG:-/etc/mkinitcpio.conf.d/omarchy_resume.conf}"
+rebuild_marker="${OMARCHY_RESUME_REBUILD_MARKER:-/var/lib/omarchy/migrations/1787968459}"
+
+[[ -f $resume_config ]] || exit 0
+[[ ! -e $rebuild_marker ]] || exit 0
+
+if grep -q '^HOOKS+=(resume)$' "$resume_config"; then
+  needs_config_update=true
+elif grep -q '^# omarchy:resume-hook$' "$resume_config"; then
+  needs_config_update=false
+else
+  exit 0
+fi
 
 tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
@@ -30,5 +41,9 @@ HOOKS=("${_omarchy_resume_hooks[@]}")
 unset _omarchy_resume_hooks _omarchy_resume_inserted _omarchy_hook
 EOF
 
-sudo install -m 644 "$tmp" "$resume_config"
+if [[ $needs_config_update == true ]]; then
+  sudo install -m 644 "$tmp" "$resume_config"
+fi
+
 sudo limine-mkinitcpio
+sudo install -Dm644 /dev/null "$rebuild_marker"
