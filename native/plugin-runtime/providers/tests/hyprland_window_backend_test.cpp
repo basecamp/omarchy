@@ -9,7 +9,7 @@ namespace {
 void require(bool value, const char *message) { if (!value) throw std::runtime_error(message); }
 bool read_json(std::string_view argument, std::span<char> output,
                std::size_t &written, void *) noexcept {
-  const std::string_view monitors = R"([{"id":2,"focused":true,"x":100,"y":50,"width":1000,"height":700,"reserved":[0,0,0,42],"activeWorkspace":{"id":7}}])";
+  const std::string_view monitors = R"([{"id":2,"focused":true,"x":100,"y":50,"width":2000,"height":1400,"scale":2,"reserved":[0,0,0,42],"activeWorkspace":{"id":7}}])";
   const std::string_view clients = R"([{"address":"0xsecret","title":"Private document","class":"secret-app","pid":4242,"mapped":true,"hidden":false,"fullscreen":0,"monitor":2,"workspace":{"id":7},"at":[150,100],"size":[400,300]},{"address":"0xother","mapped":true,"hidden":false,"fullscreen":0,"monitor":2,"workspace":{"id":8},"at":[200,200],"size":[200,200]},{"address":"0xfull","mapped":true,"hidden":false,"fullscreen":1,"monitor":2,"workspace":{"id":7},"at":[100,50],"size":[1000,700]}])";
   const auto source = argument == "monitors" ? monitors : argument == "clients" ? clients : std::string_view{};
   if (source.empty() || source.size() > output.size()) return false;

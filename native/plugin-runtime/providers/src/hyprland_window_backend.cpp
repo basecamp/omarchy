@@ -8,6 +8,7 @@
 #include <QRandomGenerator>
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 namespace omarchy::plugin_runtime::providers {
@@ -86,9 +87,13 @@ bool HyprlandWindowBackend::observe(SanitizedWindowSnapshot &snapshot,
   const int workspace_id = monitor.value("activeWorkspace").toObject().value("id").toInt(-1);
   const int monitor_x = monitor.value("x").toInt();
   const int monitor_y = monitor.value("y").toInt();
-  const int monitor_width = monitor.value("width").toInt();
-  const int monitor_height = monitor.value("height").toInt();
-  if (monitor_id < 0 || workspace_id < 0 || monitor_width <= 0 || monitor_height <= 0)
+  const double scale = monitor.value("scale").toDouble(1.0);
+  const int monitor_width = static_cast<int>(
+      std::lround(monitor.value("width").toDouble() / scale));
+  const int monitor_height = static_cast<int>(
+      std::lround(monitor.value("height").toDouble() / scale));
+  if (monitor_id < 0 || workspace_id < 0 || !std::isfinite(scale) ||
+      scale < 0.5 || scale > 4.0 || monitor_width <= 0 || monitor_height <= 0)
     return false;
   snapshot = {.width = static_cast<std::uint32_t>(monitor_width),
               .height = static_cast<std::uint32_t>(monitor_height)};
