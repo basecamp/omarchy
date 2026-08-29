@@ -17,7 +17,6 @@ Panel {
   property var systemInfo: ({})
   // Power Hungry: top-consumer attribution, panel-only by design. The bar
   // pill is untouched — this answers a question you ask with the panel open.
-  property real systemWatts: -1
   property real baseWatts: -1
   property var prevSnapshot: null
   property var topProcesses: []
@@ -177,8 +176,13 @@ Panel {
     // Keep last known good data if a refresh briefly returns nothing — happens
     // around AC plug/unplug events. Avoids the section collapsing mid-transition.
     if (Object.keys(next).length === 0) return
-    if (targetName === "battery") batteryInfo = next
-    else systemInfo = next
+    if (targetName === "battery") {
+      // The rate is SIGNED by the source (negative while discharging); the
+      // panel shows magnitude — direction lives in the state row. Strip the
+      // sign here, the single write point, so the value never flickers.
+      if (typeof next.rate === "string") next.rate = next.rate.replace(/^-/, "")
+      batteryInfo = next
+    } else systemInfo = next
   }
 
   function updateProfiles(raw) {
@@ -265,12 +269,11 @@ Panel {
   function onSample(raw) {
     var snap = Model.parseSnapshot(raw)
     if (!snap) return
-    if (snap.watts !== null) {
-      systemWatts = snap.watts
-      // Stock rate format ("0.6W", no space) so this row doesn't flicker
-      // against the batteryProc refresh at 1 Hz while the panel is open.
-      batteryInfo = Object.assign({}, batteryInfo, { rate: Math.round(snap.watts * 10) / 10 + "W" })
-    }
+    // NOTE: the sampler's watts feed the ATTRIBUTION here — the displayed
+    // rate comes only from batteryProc (the stock smoothed source), written
+    // in exactly one place. A second writer here (tried in v1) made the row
+    // flip sign and value at 1 Hz — two reads of the same telemetry with
+    // different conventions. Never two writers on one field.
     // A snapshot without a readable cputotal would diff nonsense percentages;
     // drop it and wait for the next one instead of storing it as a baseline.
     if (snap.cpuTotalJiffies === null) {
