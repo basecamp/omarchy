@@ -156,12 +156,22 @@ pass "root writer and final pre-Docker guard revalidate the pinned production mo
 # moving or replacing either familiar home symlink.
 sed -i "s|$EXPECTED_STORAGE:/storage|$OLD_EXPECTED_STORAGE:/storage|" "$COMPOSE_FILE"
 sed -i "s|$EXPECTED_SHARED:/shared|$OLD_EXPECTED_SHARED:/shared|" "$COMPOSE_FILE"
-compose_needs_mount_migration || fail "previous protected anchor pair was not recognized for upgrade"
+sed -i '/PROTECT: "Y"/d' "$COMPOSE_FILE"
+compose_needs_security_migration || fail "previous protected compose was not recognized for upgrade"
 with_vm_lock assert_mounts_safe || fail "root could not upgrade previous protected anchors"
 grep -q -- "- $EXPECTED_STORAGE:/storage" "$COMPOSE_FILE" || fail "upgrade did not rewrite storage anchor"
 grep -q -- "- $EXPECTED_SHARED:/shared" "$COMPOSE_FILE" || fail "upgrade did not rewrite shared anchor"
+grep -q 'PROTECT: "Y"' "$COMPOSE_FILE" || fail "upgrade did not protect the web console"
 [[ $(readlink /home/alice/.windows) == /home/storage-target ]] || fail "protected-anchor upgrade replaced home storage link"
 pass "previous sibling-anchor installs upgrade in place to the fixed /var/lib boundary"
+
+# A compose that already uses the fixed anchors still needs an authorized
+# upgrade when it predates web-console authentication.
+sed -i '/PROTECT: "Y"/d' "$COMPOSE_FILE"
+compose_needs_security_migration || fail "unprotected fixed-anchor compose was not recognized for upgrade"
+with_vm_lock assert_mounts_safe || fail "root could not protect an existing fixed-anchor compose"
+grep -q 'PROTECT: "Y"' "$COMPOSE_FILE" || fail "fixed-anchor upgrade did not protect the web console"
+pass "existing fixed-anchor compose gains web-console authentication"
 
 # Preflight both sources before either bind on a clean anchor pair.
 umount "$EXPECTED_SHARED"

@@ -92,7 +92,7 @@ priv() {
     # still needs one privileged invocation.
     if [[ -d $VM_LOCK_DIR && ! -L $VM_LOCK_DIR && -r $VM_LOCK_DIR && -x $VM_LOCK_DIR ]] && {
       [[ $action != up && $action != up_wait ]] || {
-        ! compose_needs_mount_migration && mounts_ready >/dev/null 2>&1
+        ! compose_needs_security_migration && mounts_ready >/dev/null 2>&1
       }
     }; then
       with_vm_lock "__priv_$action" "$@"
@@ -703,6 +703,7 @@ services:
       DISK_SIZE: "$disk"
       USERNAME: "$username"
       PASSWORD: "$esc_password"
+      PROTECT: "Y"
       TZ: "$tz"
       ARGUMENTS: "-rtc base=localtime,clock=host,driftfix=slew"
     devices:
@@ -765,14 +766,20 @@ get_mount_source() {
   sed -n "s|^[[:space:]]*-[[:space:]]*\(/[^:]*\):$1\$|\1|p" "$COMPOSE_FILE" | head -n1
 }
 
-# True only for the exact pair emitted by older Omarchy releases. The result is
-# used by priv() to force a one-time elevated migration for sudoless-Docker
-# users; arbitrary or mixed bind sources are never classified as migratable.
-compose_needs_mount_migration() {
+# True only when a trusted compose has an exact security upgrade path. The
+# result forces a one-time elevated migration for sudoless-Docker users. An
+# arbitrary or mixed bind pair is never classified as migratable.
+compose_needs_security_migration() {
+  local storage shared
   [[ -f $COMPOSE_FILE ]] || return 1
   resolve_caller || return 1
   [[ $(mount_source_count /storage) == 1 && $(mount_source_count /shared) == 1 ]] || return 1
-  compose_mount_pair_is_migratable "$(get_mount_source /storage)" "$(get_mount_source /shared)"
+  storage=$(get_mount_source /storage)
+  shared=$(get_mount_source /shared)
+  if compose_mount_pair_is_migratable "$storage" "$shared"; then
+    return 0
+  fi
+  [[ $storage == "$EXPECTED_STORAGE" && $shared == "$EXPECTED_SHARED" ]] && ! compose_web_protected
 }
 
 compose_mount_pair_is_migratable() {
@@ -786,14 +793,26 @@ mount_source_count() {
   sed -n "s|^[[:space:]]*-[[:space:]]*\(/[^:]*\):$destination\$|x|p" "$COMPOSE_FILE" | wc -l
 }
 
-rewrite_compose_mounts() {
+compose_web_protected() {
+  [[ $(sed -n 's/^[[:space:]]*PROTECT:.*$/x/p' "$COMPOSE_FILE" | wc -l) == 1 &&
+    $(sed -n 's/^[[:space:]]*PROTECT:[[:space:]]*"Y"[[:space:]]*$/x/p' "$COMPOSE_FILE" | wc -l) == 1 ]]
+}
+
+rewrite_compose_security() {
   local tmp
   tmp=$(mktemp "$RUNTIME_DIR/.compose.XXXXXX") || return 1
   awk -v storage="$EXPECTED_STORAGE" -v shared="$EXPECTED_SHARED" '
+    /^    environment:$/ { print; print "      PROTECT: \"Y\""; next }
+    /^[[:space:]]+PROTECT:/ { next }
     /^[[:space:]]*-[[:space:]]*\/[^:]*:\/storage$/ { print "      - " storage ":/storage"; next }
     /^[[:space:]]*-[[:space:]]*\/[^:]*:\/shared$/  { print "      - " shared ":/shared"; next }
     { print }
   ' "$COMPOSE_FILE" >"$tmp" || { rm -f "$tmp"; return 1; }
+  [[ $(sed -n 's/^[[:space:]]*PROTECT:.*$/x/p' "$tmp" | wc -l) == 1 &&
+    $(sed -n 's/^[[:space:]]*PROTECT:[[:space:]]*"Y"[[:space:]]*$/x/p' "$tmp" | wc -l) == 1 ]] || {
+    rm -f "$tmp"
+    return 1
+  }
   chmod 0640 "$tmp" || { rm -f "$tmp"; return 1; }
   if ((EUID == 0)); then
     chown root:docker "$tmp" 2>/dev/null || chown root:root "$tmp" || {
@@ -814,7 +833,7 @@ assert_compose_trusted() {
 }
 
 assert_mounts_safe() {
-  local storage shared
+  local storage shared needs_rewrite=0 mounts_prepared=0
   resolve_caller || return 1
   assert_compose_trusted || {
     echo "omarchy-windows-vm: refusing an untrusted compose file" >&2
@@ -834,10 +853,8 @@ assert_mounts_safe() {
       return 1
     }
     prepare_caller_mounts || return 1
-    if ! rewrite_compose_mounts; then
-      rollback_new_caller_mounts || true
-      return 1
-    fi
+    mounts_prepared=1
+    needs_rewrite=1
     storage=$EXPECTED_STORAGE
     shared=$EXPECTED_SHARED
   fi
@@ -846,6 +863,19 @@ assert_mounts_safe() {
     echo "omarchy-windows-vm: refusing unexpected host paths in the compose" >&2
     return 1
   }
+
+  if ! compose_web_protected; then
+    ((EUID == 0)) || {
+      echo "omarchy-windows-vm: web-console protection needs an authorized migration" >&2
+      return 1
+    }
+    needs_rewrite=1
+  fi
+
+  if ((needs_rewrite)) && ! rewrite_compose_security; then
+    if ((mounts_prepared)); then rollback_new_caller_mounts || true; fi
+    return 1
+  fi
 
   # Mounts disappear at reboot. Root recreates them from the already-opened,
   # caller-owned sources; a docker-group invocation may proceed directly only
