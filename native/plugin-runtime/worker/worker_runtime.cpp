@@ -33,6 +33,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cerrno>
 #include <cstring>
 #include <limits>
@@ -455,6 +456,20 @@ RuntimeResult WorkerRuntime::load_entry(std::string entry_path) {
   implementation_->root_item = item;
   item->setParent(&implementation_->engine);
   return {};
+}
+
+bool WorkerRuntime::invoke_test_function(std::string_view function) {
+  constexpr std::string_view suffix = "ForTest";
+  if (implementation_->root_item == nullptr || function.empty() ||
+      function.size() > 96 || !function.ends_with(suffix) ||
+      !std::ranges::all_of(function, [](unsigned char character) {
+        return std::isalnum(character) != 0 || character == '_';
+      }))
+    return false;
+  const QByteArray method(function.data(),
+                          static_cast<qsizetype>(function.size()));
+  return QMetaObject::invokeMethod(implementation_->root_item,
+                                   method.constData(), Qt::DirectConnection);
 }
 
 RuntimeResult
