@@ -17,7 +17,7 @@ For each fixture the harness:
 
 1. binds a runtime object exposing only `invoke(operation, arguments)` before QML loads;
 2. loads capability definitions from an independently supplied trusted directory with the production no-symlink, ownership, mode, digest, and adapter-availability checks;
-3. requires every manifest request to resolve the exact installed canonical name, definition generation, definition digest, and declared operation subset;
+3. requires every dynamic manifest request to resolve the exact installed canonical name, definition generation, definition digest, and declared operation subset, while recognizing only the three compiled bootstrap capabilities by their closed registry identities;
 4. registers concrete fake adapters separately by class, implementation digest, and ABI;
 5. proves a stale definition reference, plugin-only freeform name, adapter mismatch, undeclared operation, and ungranted operation all fail closed;
 6. loads the real checkout through `WorkerRuntime` source-tree and QML restrictions;

@@ -104,6 +104,13 @@ resolve_requests(const manifest::ManifestV2 &plugin,
                  const std::vector<RegisteredAdapter> &adapters) {
   std::vector<Binding> result;
   for (const auto &request : plugin.requests) {
+    if (request.definition_generation == 0) {
+      require(request.capability == "storage.private" ||
+                  request.capability == "notifications.send" ||
+                  request.capability == "audio.play-cue",
+              "manifest capability is neither compiled nor exactly defined");
+      continue;
+    }
     require(request.definition_generation > 0 &&
                 request.definition_digest.size() == 64 &&
                 !request.operations.empty(),
@@ -141,17 +148,38 @@ resolve_requests(const manifest::ManifestV2 &plugin,
   return result;
 }
 
+std::vector<std::string>
+compiled_operations(const manifest::ManifestV2 &plugin) {
+  std::vector<std::string> result;
+  for (const auto &request : plugin.requests) {
+    if (request.definition_generation != 0)
+      continue;
+    if (request.capability == "storage.private")
+      result.insert(result.end(), {"storage_read", "storage_write",
+                                   "storage_remove"});
+    else if (request.capability == "notifications.send")
+      result.push_back("notification_send");
+    else if (request.capability == "audio.play-cue")
+      result.push_back("audio_play_cue");
+  }
+  return result;
+}
+
 class StrictRuntime final : public QObject {
   Q_OBJECT
 public:
   StrictRuntime(const definitions::TrustedDefinitionRegistry &registry,
-                std::vector<Binding> bindings)
-      : registry_(registry), bindings_(std::move(bindings)) {}
+                std::vector<Binding> bindings,
+                std::vector<std::string> compiled)
+      : registry_(registry), bindings_(std::move(bindings)),
+        compiled_(std::move(compiled)) {}
 
   Q_INVOKABLE QVariant invoke(const QString &operation,
                               const QVariantMap &arguments) {
     (void)arguments;
     const auto name = operation.toStdString();
+    if (std::ranges::find(compiled_, name) != compiled_.end())
+      return QVariantMap{{QStringLiteral("ok"), true}};
     bool registered = false;
     for (const auto &binding : bindings_) {
       const auto resolved = registry_.resolve(binding.request.definition);
@@ -176,6 +204,7 @@ public:
 private:
   const definitions::TrustedDefinitionRegistry &registry_;
   std::vector<Binding> bindings_;
+  std::vector<std::string> compiled_;
 };
 
 class Mapping {
@@ -214,39 +243,42 @@ void run(const std::filesystem::path &root, std::string_view function,
   const auto plugin =
       manifest::parse_manifest_v2(read_file(root / "manifest.json"));
   auto bindings = resolve_requests(plugin, registry, adapters);
-  require(!bindings.empty(),
-          "external fixture requests no trusted definitions");
+  auto compiled = compiled_operations(plugin);
+  require(!bindings.empty() || !compiled.empty(),
+          "external fixture requests no brokered capabilities");
 
-  auto stale = bindings.front().request.definition;
-  ++stale.definition_generation;
-  require(!registry.resolve(stale), "stale definition generation resolved");
-  auto mutated_digest = bindings.front().request.definition;
-  const std::string wrong_digest(64, 'f');
-  if (mutated_digest.definition_digest.view() == wrong_digest)
-    mutated_digest.definition_digest =
-        definitions::Digest(std::string(64, 'e'));
-  else
-    mutated_digest.definition_digest = definitions::Digest(wrong_digest);
-  require(!registry.resolve(mutated_digest),
-          "mismatched definition digest resolved");
-  require(!registry.find("winner.plugin-freeform"),
-          "plugin-only freeform definition entered trusted registry");
+  if (!bindings.empty()) {
+    auto stale = bindings.front().request.definition;
+    ++stale.definition_generation;
+    require(!registry.resolve(stale), "stale definition generation resolved");
+    auto mutated_digest = bindings.front().request.definition;
+    const std::string wrong_digest(64, 'f');
+    if (mutated_digest.definition_digest.view() == wrong_digest)
+      mutated_digest.definition_digest =
+          definitions::Digest(std::string(64, 'e'));
+    else
+      mutated_digest.definition_digest = definitions::Digest(wrong_digest);
+    require(!registry.resolve(mutated_digest),
+            "mismatched definition digest resolved");
+    require(!registry.find("winner.plugin-freeform"),
+            "plugin-only freeform definition entered trusted registry");
 
-  auto wrong_adapter = bindings.front().adapter;
-  wrong_adapter.implementation_digest = definitions::Digest(
-      wrong_adapter.implementation_digest.view() == wrong_digest
-          ? std::string(64, 'e')
-          : wrong_digest);
-  const definitions::DynamicScopeValidator scopes{.compare = exact_scope};
-  const auto adapter_denial = definitions::authorize_dynamic_operation(
-      registry, bindings.front().request, bindings.front().grant,
-      bindings.front().request.operations.values().front().view(),
-      bindings.front().request.scope.view(), wrong_adapter, scopes, false);
-  require(adapter_denial.decision ==
-              definitions::DynamicDecision::adapter_mismatch,
-          "adapter implementation digest mismatch was authorized");
+    auto wrong_adapter = bindings.front().adapter;
+    wrong_adapter.implementation_digest = definitions::Digest(
+        wrong_adapter.implementation_digest.view() == wrong_digest
+            ? std::string(64, 'e')
+            : wrong_digest);
+    const definitions::DynamicScopeValidator scopes{.compare = exact_scope};
+    const auto adapter_denial = definitions::authorize_dynamic_operation(
+        registry, bindings.front().request, bindings.front().grant,
+        bindings.front().request.operations.values().front().view(),
+        bindings.front().request.scope.view(), wrong_adapter, scopes, false);
+    require(adapter_denial.decision ==
+                definitions::DynamicDecision::adapter_mismatch,
+            "adapter implementation digest mismatch was authorized");
+  }
 
-  StrictRuntime provider(registry, std::move(bindings));
+  StrictRuntime provider(registry, std::move(bindings), std::move(compiled));
   const auto unknown =
       provider.invoke(QStringLiteral("winner.magic"), {}).toMap();
   require(!unknown.value(QStringLiteral("ok")).toBool() &&
