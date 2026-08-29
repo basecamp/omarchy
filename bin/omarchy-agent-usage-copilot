@@ -160,12 +160,26 @@ def fetch_quota(token: str) -> dict[str, Any] | None:
     # no displayable numbers; skip them so a metered bucket can win instead.
     if total <= 0 and used <= 0:
       continue
+
+    # has_quota stays true for finite quotas even when fully consumed (live
+    # verified against premium_interactions at 19.7% remaining, has_quota
+    # true); the authoritative exhaustion signal is remaining/percent_remaining
+    # hitting zero on a non-unlimited bucket. Fall back to has_quota only if
+    # neither field is present, for compatibility with older API shapes.
+    remaining = snapshot.get("remaining")
+    percent_remaining = snapshot.get("percent_remaining")
+    if isinstance(remaining, (int, float)) and math.isfinite(remaining):
+      exhausted = remaining <= 0
+    elif isinstance(percent_remaining, (int, float)) and math.isfinite(percent_remaining):
+      exhausted = percent_remaining <= 0
+    else:
+      exhausted = not snapshot.get("has_quota", False)
+
     result = {
       "displayName": QUOTA_DISPLAY_NAMES.get(quota_key, quota_key),
       "used": used,
       "total": total,
-      # has_quota false on a metered bucket means the allowance is used up.
-      "exhausted": not snapshot.get("has_quota", False),
+      "exhausted": exhausted,
     }
     reset_date = data.get("quota_reset_date_utc")
     if isinstance(reset_date, str) and len(reset_date) <= 64:

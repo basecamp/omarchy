@@ -135,17 +135,22 @@ with open("$TEST_HOME/.config/github-copilot/oauth.json", "w") as f:
     }, f)
 
 # Mock the urlopen to return exhausted quota response
-# The API returns quota_snapshots as a dict keyed by quota type. Exhaustion is
-# a fully consumed positive entitlement with has_quota false, matching the
-# endpoint's real semantics.
+# The API returns quota_snapshots as a dict keyed by quota type. Verified live
+# against the real endpoint: has_quota stays true for finite quotas even when
+# fully consumed (it only reports whether the mechanism applies, not whether
+# the allowance is used up); the real exhaustion signal is remaining /
+# percent_remaining hitting zero on a non-unlimited bucket.
 def mock_urlopen(*args, **kwargs):
     quota_response = {
         "quota_snapshots": {
             "premium_interactions": {
                 "quota_type": "premium_interactions",
-                "credits_used": 100,
-                "entitlement": 100,
-                "has_quota": False
+                "credits_used": 7000,
+                "entitlement": 7000,
+                "remaining": 0,
+                "percent_remaining": 0.0,
+                "unlimited": False,
+                "has_quota": True
             }
         },
         "quota_reset_date_utc": "2026-09-01T00:00:00Z"
@@ -191,7 +196,14 @@ with patch('urllib.request.urlopen', side_effect=mock_urlopen):
         if "No more" not in label:
             print(f"FAIL: Expected 'No more' in exhausted quota label, got: {label}")
             sys.exit(1)
-        
+
+        # Verify usage is still derived correctly (7000/7000) even though
+        # exhaustion came from remaining/percent_remaining, not has_quota.
+        limit = result["limits"][0]
+        if limit.get("used") != 7000 or limit.get("total") != 7000:
+            print(f"FAIL: Expected used=7000 total=7000, got: {limit}")
+            sys.exit(1)
+
         print("PASS")
     finally:
         sys.stdout = old_stdout
