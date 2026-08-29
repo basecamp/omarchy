@@ -279,6 +279,25 @@ grep -F 'exit "$failed"' "$ROOT/bin/omarchy-theme-set-browser" >/dev/null ||
   fail "omarchy-theme-set-browser exits non-zero when a policy write fails"
 pass "omarchy-theme-set-browser exits non-zero when a policy write fails"
 
+# Bash 5.3 adopts the EXIT trap's last status as the script's exit status, so a
+# handler ending on a false test turns a clean run into a failure and aborts the
+# migration that calls this through omarchy-theme-set-browser.
+policy_cleanup=$(sed -n '/^cleanup() {/,/^}/p' "$ROOT/bin/omarchy-theme-set-browser-policy")
+[[ -n $policy_cleanup ]] || fail "omarchy-theme-set-browser-policy defines an EXIT cleanup handler"
+eval "$policy_cleanup"
+staged=""
+cleanup || fail "omarchy-theme-set-browser-policy's EXIT trap succeeds with nothing staged"
+staged=$test_tmp/staged-policy
+: >"$staged"
+cleanup || fail "omarchy-theme-set-browser-policy's EXIT trap succeeds with a staged file"
+[[ ! -e $staged ]] || fail "omarchy-theme-set-browser-policy's EXIT trap removes the staged file"
+unset -f cleanup
+pass "omarchy-theme-set-browser-policy's EXIT trap never leaks a failure status"
+
+grep -F 'omarchy-theme-set-browser || true' "$ROOT/migrations/1787515927.sh" >/dev/null ||
+  fail "the policy-directory migration hardens Firefox even when the theme refresh fails"
+pass "the policy-directory migration does not abort on a failed theme refresh"
+
 policy_files=(
   "$ROOT/bin/omarchy-install-browser"
   "$ROOT/bin/omarchy-provision-owner"
