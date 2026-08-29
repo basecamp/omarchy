@@ -29,5 +29,5 @@ if(BUILD_TESTING)
     COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/provider_admin_cli_test.sh"
       $<TARGET_FILE:omarchy-plugin-provider-admin-test>)
   set_tests_properties(external-provider-admin-cli PROPERTIES
-    TIMEOUT 15 LABELS "integration;security;provider;lifecycle")
+    TIMEOUT 15 LABELS "integration;product;e2e;security;provider;lifecycle")
 endif()

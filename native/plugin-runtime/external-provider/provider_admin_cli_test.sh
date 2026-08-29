@@ -4,7 +4,8 @@ set -euo pipefail
 admin="$1"
 root=$(mktemp -d)
 trap 'rm -rf "$root"' EXIT
-mkdir -m 700 "$root/providers" "$root/definitions" "$root/index"
+mkdir -m 700 "$root/providers" "$root/package-definitions" \
+  "$root/definitions" "$root/index"
 
 digest=$(sha256sum "$admin" | cut -d' ' -f1)
 cat >"$root/candidate.provider" <<EOF
@@ -19,7 +20,9 @@ expected-uid=$(id -u)
 protocol=2
 EOF
 
-common=(--providers "$root/providers" --definitions "$root/definitions" \
+common=(--providers "$root/providers" \
+  --package-definitions "$root/package-definitions" \
+  --definitions "$root/definitions" \
   --grants "$root/grants" --revisions "$root/revisions" \
   --index "$root/index" --owner "$(id -u)")
 

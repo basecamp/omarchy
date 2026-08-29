@@ -25,6 +25,8 @@ struct Options {
   bool dry_run = false;
   bool reviewed = false;
   std::filesystem::path providers = "/etc/omarchy/plugin-providers.d";
+  std::filesystem::path package_definitions =
+      "/usr/lib/omarchy/plugin-capabilities.d";
   std::filesystem::path definitions = "/etc/omarchy/plugin-capabilities.d";
   std::filesystem::path grants;
   std::filesystem::path revisions;
@@ -71,6 +73,8 @@ Options parse(int argc, char **argv) {
       options.providers = argv[++index];
     else if (value == "--definitions" && index + 1 < argc)
       options.definitions = argv[++index];
+    else if (value == "--package-definitions" && index + 1 < argc)
+      options.package_definitions = argv[++index];
     else if (value == "--grants" && index + 1 < argc)
       options.grants = argv[++index];
     else if (value == "--revisions" && index + 1 < argc)
@@ -172,6 +176,13 @@ int main(int argc, char **argv) try {
     fail("installed provider registration root is invalid");
   definitions::TrustedDefinitionRegistry registry;
   std::size_t loaded = 0;
+  if (!std::filesystem::exists(options.package_definitions) ||
+      definitions::load_definition_directory(
+          options.package_definitions.string(),
+          definitions::DefinitionSource::omarchy_package, geteuid(),
+          {.available = any_adapter}, registry, loaded) !=
+          definitions::LoadResult::loaded)
+    fail("packaged capability definitions are invalid or unavailable");
   if (std::filesystem::exists(options.definitions) &&
       definitions::load_definition_directory(
           options.definitions.string(), definitions::DefinitionSource::local_admin,
