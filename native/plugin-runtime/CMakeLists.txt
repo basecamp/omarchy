@@ -46,10 +46,6 @@ if(TARGET omarchy-plugin-permission-contract
   add_subdirectory(contracts/capability-definitions)
 endif()
 
-if(TARGET omarchy-plugin-capability-definitions)
-  add_subdirectory(external-provider)
-endif()
-
 if(TARGET omarchy-plugin-wire
     AND TARGET omarchy-plugin-permission-contract
     AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/broker/CMakeLists.txt")
@@ -90,6 +86,10 @@ add_subdirectory(discovery)
 add_subdirectory(revision-store)
 add_subdirectory(grants)
 add_subdirectory(audit)
+if(TARGET omarchy-plugin-capability-definitions
+    AND TARGET omarchy-plugin-audit-store)
+  add_subdirectory(external-provider)
+endif()
 add_subdirectory(lifecycle)
 add_subdirectory(update-hardening)
 add_subdirectory(migration-report)

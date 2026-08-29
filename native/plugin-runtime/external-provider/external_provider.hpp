@@ -1,4 +1,5 @@
 #pragma once
+#include "audit_store.hpp"
 #include "dynamic_activation.hpp"
 #include <array>
 #include <chrono>
@@ -39,7 +40,15 @@ enum class Result : std::uint8_t {
   timeout,
   crashed,
   malformed,
-  revoked
+  revoked,
+  audit_failed
+};
+struct InvocationGuard {
+  audit::AuditStore *audit = nullptr;
+  std::uint64_t correlation = 0;
+  bool (*still_authorized)(const definitions::DynamicAuthorizationContext &,
+                           void *) noexcept = nullptr;
+  void *authorization_context = nullptr;
 };
 [[nodiscard]] bool valid_registration(const Registration &);
 [[nodiscard]] bool encode_handshake(const Registration &,
@@ -58,5 +67,11 @@ verify_handshake_echo(const Registration &,
 [[nodiscard]] Result invoke(const Registration &,
                             const definitions::AuthorizedDynamicRequest &,
                             std::span<std::byte>, std::size_t &,
-                            std::chrono::milliseconds, std::uint64_t);
+                            std::chrono::milliseconds, std::uint64_t,
+                            std::uint64_t correlation = 1);
+[[nodiscard]] Result
+invoke_audited(const Registration &,
+               const definitions::AuthorizedDynamicRequest &,
+               std::span<std::byte>, std::size_t &, std::chrono::milliseconds,
+               std::uint64_t, const InvocationGuard &);
 } // namespace omarchy::plugins::external_provider

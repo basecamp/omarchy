@@ -1,5 +1,6 @@
 #include "external_provider.hpp"
 #include <array>
+#include <climits>
 #include <fstream>
 #include <stdexcept>
 #include <sys/socket.h>
@@ -21,8 +22,16 @@ bool rx(int fd, std::span<std::byte> s, std::span<const std::byte> &f) {
   return true;
 }
 bool tx(int fd, std::span<const std::byte> f) {
-  return write(fd, f.data(), f.size()) ==
-         static_cast<ssize_t>(f.size());
+  return write(fd, f.data(), f.size()) == static_cast<ssize_t>(f.size());
+}
+struct AuthorizationProbe {
+  unsigned calls = 0;
+  unsigned deny_after = UINT_MAX;
+};
+bool authorized(const definitions::DynamicAuthorizationContext &,
+                void *context) noexcept {
+  auto &probe = *static_cast<AuthorizationProbe *>(context);
+  return probe.calls++ < probe.deny_after;
 }
 } // namespace
 int main(int argc, char **) {
@@ -106,6 +115,46 @@ int main(int argc, char **) {
   require(external_provider::invoke(r, q, out, n, std::chrono::seconds(1), 5) ==
               external_provider::Result::revoked,
           "stale epoch reached provider");
+  std::array audit_template{'/', 't', 'm', 'p', '/', 'o', 'm', 'a', 'r', 'c',
+                            'h', 'y', '-', 'e', 'x', 't', '-', 'a', 'u', 'd',
+                            'i', 't', '-', 'X', 'X', 'X', 'X', 'X', 'X', '\0'};
+  const auto *audit_root = mkdtemp(audit_template.data());
+  require(audit_root != nullptr, "audit fixture creation failed");
+  audit::AuditStore audit_store(audit_root, {});
+  require(audit_store.recover().ok(), "audit fixture recovery failed");
+  AuthorizationProbe authorization{};
+  external_provider::InvocationGuard guard{.audit = &audit_store,
+                                           .correlation = 41,
+                                           .still_authorized = authorized,
+                                           .authorization_context =
+                                               &authorization};
+  require(external_provider::invoke_audited(
+              r, q, out, n, std::chrono::seconds(1), 4, guard) ==
+              external_provider::Result::completed,
+          "audited provider invocation failed");
+  audit::Query audit_query{};
+  audit_query.maximum_results = 8;
+  const auto records = audit_store.query(audit_query);
+  require(records.status.ok() && records.records.size() == 2 &&
+              records.records[0].event ==
+                  permissions::AuditEvent::operation_decided &&
+              records.records[1].event ==
+                  permissions::AuditEvent::operation_completed &&
+              records.records[0].correlation == 41 &&
+              records.records[1].correlation == 41,
+          "decision and terminal audit records were not durable");
+  authorization = {.deny_after = 1};
+  guard.correlation = 42;
+  require(external_provider::invoke_audited(
+              r, q, out, n, std::chrono::seconds(1), 4, guard) ==
+                  external_provider::Result::revoked &&
+              n == 0,
+          "post-reply revocation released provider bytes");
+  const auto revoked_records = audit_store.query(audit_query);
+  require(revoked_records.status.ok() && revoked_records.records.size() == 4 &&
+              revoked_records.records[3].outcome ==
+                  permissions::AuditOutcome::cancelled,
+          "post-reply revocation was not terminally audited");
   std::array<std::byte, external_provider::kMaximumFrameBytes> b{};
   std::array<std::byte, external_provider::kNonceBytes> nonce{};
   nonce[0] = std::byte{1};

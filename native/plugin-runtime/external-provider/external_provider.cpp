@@ -108,8 +108,7 @@ bool ident(W &w, const Registration &r) {
          w.u32(r.adapter.abi_version);
 }
 bool tx(int fd, std::span<const std::byte> x) {
-  return write(fd, x.data(), x.size()) ==
-         static_cast<ssize_t>(x.size());
+  return write(fd, x.data(), x.size()) == static_cast<ssize_t>(x.size());
 }
 bool rx(int fd, std::span<std::byte> s, std::span<const std::byte> &x) {
   auto n = recv(fd, s.data(), s.size(), 0);
@@ -257,8 +256,11 @@ bool decode_reply(std::span<const std::byte> i, ReplyFrame &q) {
 Result invoke(const Registration &r,
               const definitions::AuthorizedDynamicRequest &q,
               std::span<std::byte> out, size_t &w,
-              std::chrono::milliseconds timeout, uint64_t epoch) {
+              std::chrono::milliseconds timeout, uint64_t epoch,
+              uint64_t correlation) {
   w = 0;
+  if (correlation == 0)
+    return Result::malformed;
   if (!valid_registration(r))
     return Result::invalid_registration;
   if (!epoch || epoch != q.authorization.grant_epoch)
@@ -308,7 +310,7 @@ Result invoke(const Registration &r,
                    definitions::Name(q.operation),
                    definitions::CanonicalScope(q.demand_scope),
                    q.payload,
-                   1,
+                   correlation,
                    n};
   if (!encode_request(req, b, z) || !tx(f[0], std::span(b).first(z))) {
     return fail(Result::crashed);
@@ -318,7 +320,7 @@ Result invoke(const Registration &r,
   if (!rx(f[0], b, got))
     return fail(Result::malformed);
   ReplyFrame reply;
-  if (!decode_reply(got, reply) || reply.correlation != 1 ||
+  if (!decode_reply(got, reply) || reply.correlation != correlation ||
       reply.host_nonce != n || reply.payload.size() > out.size())
     return fail(Result::malformed);
   std::ranges::copy(reply.payload, out.begin());
@@ -328,5 +330,79 @@ Result invoke(const Registration &r,
   waitpid(pid, &status, 0);
   return WIFEXITED(status) && !WEXITSTATUS(status) ? Result::completed
                                                    : Result::crashed;
+}
+
+Result invoke_audited(const Registration &registration,
+                      const definitions::AuthorizedDynamicRequest &request,
+                      std::span<std::byte> output, std::size_t &written,
+                      std::chrono::milliseconds timeout,
+                      std::uint64_t current_epoch,
+                      const InvocationGuard &guard) {
+  written = 0;
+  if (guard.audit == nullptr || guard.correlation == 0 ||
+      guard.still_authorized == nullptr)
+    return Result::audit_failed;
+  const auto draft = [&](permissions::AuditEvent event,
+                         permissions::AuditOutcome outcome) {
+    permissions::AuditDraft value{
+        .event = event,
+        .outcome = outcome,
+        .plugin = request.authorization.binding.plugin,
+        .revision = request.authorization.binding.revision,
+        .generation = request.authorization.binding.generation,
+        .correlation = guard.correlation,
+        .dynamic_operation =
+            permissions::DynamicAuditIdentity{
+                .capability = permissions::CapabilityId(
+                    request.authorization.definition.canonical_name.view()),
+                .definition_generation =
+                    request.authorization.definition.definition_generation,
+                .definition_digest =
+                    request.authorization.definition.definition_digest,
+                .operation = permissions::BoundedString<128>(request.operation),
+                .grant_epoch = request.authorization.grant_epoch},
+        .operation = std::nullopt,
+        .capability = std::nullopt,
+        .decision = outcome == permissions::AuditOutcome::allowed
+                        ? permissions::GrantDecisionCode::allowed
+                        : permissions::GrantDecisionCode::revoked,
+        .metadata = {}};
+    return value;
+  };
+  if (!guard.still_authorized(request.authorization,
+                              guard.authorization_context))
+    return Result::revoked;
+  if (!guard.audit
+           ->append(permissions::AuditProducer::broker,
+                    draft(permissions::AuditEvent::operation_decided,
+                          permissions::AuditOutcome::allowed))
+           .status.ok())
+    return Result::audit_failed;
+  const auto result = invoke(registration, request, output, written, timeout,
+                             current_epoch, guard.correlation);
+  if (result == Result::completed &&
+      !guard.still_authorized(request.authorization,
+                              guard.authorization_context)) {
+    written = 0;
+    if (!guard.audit
+             ->append(permissions::AuditProducer::broker,
+                      draft(permissions::AuditEvent::operation_completed,
+                            permissions::AuditOutcome::cancelled))
+             .status.ok())
+      return Result::audit_failed;
+    return Result::revoked;
+  }
+  const auto outcome = result == Result::completed
+                           ? permissions::AuditOutcome::allowed
+                           : permissions::AuditOutcome::failed;
+  if (!guard.audit
+           ->append(
+               permissions::AuditProducer::broker,
+               draft(permissions::AuditEvent::operation_completed, outcome))
+           .status.ok()) {
+    written = 0;
+    return Result::audit_failed;
+  }
+  return result;
 }
 } // namespace omarchy::plugins::external_provider
