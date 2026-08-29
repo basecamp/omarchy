@@ -15,6 +15,21 @@
 namespace omarchy::plugin_runtime::worker {
 namespace {
 
+[[nodiscard]] bool write_exec_error(int descriptor, int error) noexcept {
+  const auto *bytes = reinterpret_cast<const std::byte *>(&error);
+  std::size_t written = 0;
+  while (written < sizeof(error)) {
+    const ssize_t count =
+        write(descriptor, bytes + written, sizeof(error) - written);
+    if (count < 0 && errno == EINTR)
+      continue;
+    if (count <= 0)
+      return false;
+    written += static_cast<std::size_t>(count);
+  }
+  return true;
+}
+
 [[noreturn]] void run_sidecar(
     const plugins::manifest::Runtime::Sidecar &sidecar,
     const std::filesystem::path &plugin_root, int error_fd) {
@@ -23,7 +38,8 @@ namespace {
       syscall(SYS_close_range, static_cast<unsigned>(error_fd + 1), ~0U,
               0U) < 0) {
     const int saved = errno;
-    static_cast<void>(write(error_fd, &saved, sizeof(saved)));
+    if (!write_exec_error(error_fd, saved))
+      _exit(127);
     _exit(126);
   }
   const std::string executable =
@@ -37,7 +53,8 @@ namespace {
   pointers.push_back(nullptr);
   execve(executable.c_str(), pointers.data(), ::environ);
   const int saved = errno;
-  static_cast<void>(write(error_fd, &saved, sizeof(saved)));
+  if (!write_exec_error(error_fd, saved))
+    _exit(127);
   _exit(126);
 }
 
