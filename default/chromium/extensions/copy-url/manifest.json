@@ -17,7 +17,7 @@
       "description": "Copy URL"
     },
     "subscribe-feed": {
-      "suggested_key": {"default": "Alt+Shift+R"},
+      "suggested_key": {"default": "Alt+Shift+F"},
       "description": "Subscribe to this page's feed"
     }
   },

@@ -45,7 +45,7 @@ jq -e '
   (.permissions | index("clipboardWrite") | not) and
   (.permissions | index("offscreen") | not) and
   .background.service_worker == "background-5.js" and
-  .commands["subscribe-feed"].suggested_key.default == "Alt+Shift+R"
+  .commands["subscribe-feed"].suggested_key.default == "Alt+Shift+F"
 ' "$ROOT/default/chromium/extensions/copy-url/manifest.json" >/dev/null ||
   fail "browser actions extension exposes copy and feed commands through its native host"
 grep -q "sendNativeMessage('com.omarchy.copy_url'" \

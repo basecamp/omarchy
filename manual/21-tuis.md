@@ -48,7 +48,7 @@ Feeds is Omarchy's finite, algorithm-free reading inbox, powered by [Newsboat](h
 
 Opening Feeds collects one fresh edition before showing it. Nothing else arrives until you explicitly refresh with `r`, so the unread Inbox is something you can finish rather than an endless stream. Reach zero and Omarchy sends one quiet confirmation: you're all caught up; go make something.
 
-The easiest way to subscribe is to visit a page in a Chromium-family browser and press `Alt + Shift + R`. Omarchy discovers the RSS or Atom address advertised by that page and confirms the subscription. You can also copy a page URL and choose _Trigger > Feeds > Subscribe URL_, or discover it from the terminal:
+The easiest way to subscribe is to visit a page in a Chromium-family browser and press `Alt + Shift + F`. Omarchy discovers the RSS or Atom address advertised by that page and confirms the subscription. You can also copy a page URL and choose _Trigger > Feeds > Subscribe URL_, or discover it from the terminal:
 
 ```bash
 omarchy newsboat subscribe https://world.hey.com/dhh
