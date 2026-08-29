@@ -242,6 +242,106 @@ QmlBrokerApi::QmlBrokerApi(WorkerEndpoint &endpoint,
                            QObject *parent)
     : QObject(parent), endpoint_(endpoint), encoder_(std::move(encoder)) {}
 
+QmlBrokerApi::QmlBrokerApi(
+    WorkerEndpoint &endpoint, std::unique_ptr<InvokeEncoder> encoder,
+    const omarchy::plugins::manifest::ManifestV2 &manifest,
+    std::uint64_t activation_generation, QObject *parent)
+    : QObject(parent), endpoint_(endpoint), encoder_(std::move(encoder)),
+      activation_generation_(activation_generation) {
+  for (const auto &request : manifest.requests) {
+    std::vector<std::string> operations = request.operations;
+    if (operations.empty() && request.capability == "storage.private")
+      operations = {"read", "write", "remove"};
+    else if (operations.empty() && request.capability == "notifications.send")
+      operations = {"send"};
+    else if (operations.empty() && request.capability == "audio.play-cue")
+      operations = {"play"};
+    else if (operations.empty() && request.capability == "service.fake-status")
+      operations = {"list", "acknowledge"};
+    for (const auto &operation : operations) {
+      requested_permissions_.push_back(
+          {.capability = QString::fromStdString(request.capability),
+           .operation = QString::fromStdString(operation),
+           .required = request.required,
+           .granted = false});
+    }
+  }
+}
+
+bool QmlBrokerApi::hasPermission(const QString &capability,
+                                 const QString &operation) const {
+  const auto found = std::ranges::find_if(
+      requested_permissions_, [&](const RequestedPermission &item) {
+        return item.capability == capability && item.operation == operation;
+      });
+  return host_snapshot_received_ && found != requested_permissions_.end() &&
+         found->granted;
+}
+
+QString QmlBrokerApi::permissionState(const QString &capability,
+                                      const QString &operation) const {
+  const auto found = std::ranges::find_if(
+      requested_permissions_, [&](const RequestedPermission &item) {
+        return item.capability == capability && item.operation == operation;
+      });
+  if (found == requested_permissions_.end())
+    return QStringLiteral("unrequested");
+  if (!host_snapshot_received_)
+    return QStringLiteral("unavailable");
+  return found->granted ? QStringLiteral("granted") : QStringLiteral("denied");
+}
+
+QVariantMap QmlBrokerApi::permissions() const {
+  QVariantMap result;
+  for (const auto &item : requested_permissions_) {
+    QVariantMap capability = result.value(item.capability).toMap();
+    capability.insert(item.operation,
+                      host_snapshot_received_ && item.granted);
+    capability.insert(QStringLiteral("required"), item.required);
+    result.insert(item.capability, capability);
+  }
+  return result;
+}
+
+qulonglong QmlBrokerApi::permissionGeneration() const {
+  return activation_generation_;
+}
+
+bool QmlBrokerApi::applyHostPermissionSnapshot(
+    std::uint64_t activation_generation,
+    std::span<const HostPermission> permissions) {
+  if (activation_generation_ == 0 ||
+      activation_generation != activation_generation_)
+    return false;
+  std::vector<bool> next(requested_permissions_.size(), false);
+  std::vector<bool> seen(requested_permissions_.size(), false);
+  for (const auto &permission : permissions) {
+    const QString capability = QString::fromStdString(permission.capability);
+    const QString operation = QString::fromStdString(permission.operation);
+    const auto found = std::ranges::find_if(
+        requested_permissions_, [&](const RequestedPermission &item) {
+          return item.capability == capability && item.operation == operation;
+        });
+    if (found == requested_permissions_.end())
+      return false;
+    const auto index = static_cast<std::size_t>(
+        std::distance(requested_permissions_.begin(), found));
+    if (seen[index])
+      return false;
+    seen[index] = true;
+    next[index] = permission.granted;
+  }
+  bool changed = !host_snapshot_received_;
+  for (std::size_t index = 0; index < requested_permissions_.size(); ++index) {
+    changed = changed || requested_permissions_[index].granted != next[index];
+    requested_permissions_[index].granted = next[index];
+  }
+  host_snapshot_received_ = true;
+  if (changed)
+    emit permissionsChanged();
+  return true;
+}
+
 QVariant QmlBrokerApi::rejected(QString reason) {
   auto *call = new BrokerCall(0, this);
   call->reject(std::move(reason));

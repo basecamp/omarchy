@@ -174,7 +174,8 @@ private:
       return;
     }
     broker_api_ = std::make_unique<worker::QmlBrokerApi>(
-        broker_, std::make_unique<worker::ManifestInvokeEncoder>(manifest_));
+        broker_, std::make_unique<worker::ManifestInvokeEncoder>(manifest_),
+        manifest_, broker_.generation());
     const auto bound = runtime_.bind_runtime_api(*broker_api_);
     if (!bound) {
       fatal(bound.detail);

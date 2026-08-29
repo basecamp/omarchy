@@ -7,6 +7,7 @@
 #include <QObject>
 #include <QVariant>
 #include <QVariantMap>
+#include <QStringList>
 
 #include <array>
 #include <cstdint>
@@ -83,16 +84,44 @@ private:
 
 class QmlBrokerApi final : public QObject {
   Q_OBJECT
+  Q_PROPERTY(QVariantMap permissions READ permissions NOTIFY permissionsChanged)
+  Q_PROPERTY(qulonglong permissionGeneration READ permissionGeneration
+             NOTIFY permissionsChanged)
 
 public:
   QmlBrokerApi(WorkerEndpoint &endpoint,
                std::unique_ptr<InvokeEncoder> encoder,
                QObject *parent = nullptr);
+  QmlBrokerApi(WorkerEndpoint &endpoint,
+               std::unique_ptr<InvokeEncoder> encoder,
+               const omarchy::plugins::manifest::ManifestV2 &manifest,
+               std::uint64_t activation_generation,
+               QObject *parent = nullptr);
   Q_INVOKABLE QVariant invoke(const QString &operation,
                               const QVariantMap &arguments);
+  Q_INVOKABLE bool hasPermission(const QString &capability,
+                                 const QString &operation) const;
+  Q_INVOKABLE QString permissionState(const QString &capability,
+                                      const QString &operation) const;
+  [[nodiscard]] QVariantMap permissions() const;
+  [[nodiscard]] qulonglong permissionGeneration() const;
+
+  struct HostPermission {
+    std::string capability;
+    std::string operation;
+    bool granted = false;
+  };
+  // This is accepted only from the authenticated host control path. It is a
+  // UI hint; invoke() and the broker remain authoritative for every effect.
+  [[nodiscard]] bool applyHostPermissionSnapshot(
+      std::uint64_t activation_generation,
+      std::span<const HostPermission> permissions);
   [[nodiscard]] bool receive(ReceivedPacket packet);
   [[nodiscard]] QString status() const;
   void disconnect(QString reason);
+
+signals:
+  void permissionsChanged();
 
 private:
   static constexpr std::size_t kMaximumPending = 32;
@@ -109,6 +138,15 @@ private:
   std::array<Pending, kMaximumPending> pending_{};
   std::uint64_t next_correlation_ = 1;
   QString status_ = QStringLiteral("ready");
+  struct RequestedPermission {
+    QString capability;
+    QString operation;
+    bool required = false;
+    bool granted = false;
+  };
+  std::vector<RequestedPermission> requested_permissions_;
+  std::uint64_t activation_generation_ = 0;
+  bool host_snapshot_received_ = false;
 };
 
 } // namespace omarchy::plugin_runtime::worker

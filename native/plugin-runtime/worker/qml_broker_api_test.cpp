@@ -181,6 +181,54 @@ void dynamic_qml_to_adapter() {
               calls == 1 && written == 1,
           "QML dynamic envelope did not pass broker authorization and adapter verification");
 }
+void permission_awareness(worker::WorkerEndpoint &endpoint) {
+  const std::string document =
+      R"({"schemaVersion":2,"id":"org.example.pet","name":"Pet","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{},"permissions":{"required":[{"capability":"storage.private","reason":"save","quotaBytes":1024}],"optional":[{"capability":"notifications.send","reason":"alerts","categories":["care"]}]}})";
+  const auto parsed = manifest::parse_manifest_v2(document);
+  worker::QmlBrokerApi api(
+      endpoint, std::make_unique<worker::ManifestInvokeEncoder>(parsed),
+      parsed, 77);
+  int changes = 0;
+  QObject::connect(&api, &worker::QmlBrokerApi::permissionsChanged,
+                   [&] { ++changes; });
+  require(api.permissionState("storage.private", "read") == "unavailable" &&
+              !api.hasPermission("notifications.send", "send"),
+          "permissions became available before a host snapshot");
+  const std::array initial{
+      worker::QmlBrokerApi::HostPermission{"storage.private", "read", true},
+      worker::QmlBrokerApi::HostPermission{"storage.private", "write", true},
+      worker::QmlBrokerApi::HostPermission{"notifications.send", "send", false}};
+  require(api.applyHostPermissionSnapshot(77, initial) && changes == 1 &&
+              api.hasPermission("storage.private", "read") &&
+              !api.hasPermission("notifications.send", "send") &&
+              api.permissionState("notifications.send", "send") == "denied",
+          "required and denied optional permissions were not represented");
+  const auto before = api.permissions();
+  const std::array spoof{
+      worker::QmlBrokerApi::HostPermission{"shell.execute", "run", true}};
+  require(!api.applyHostPermissionSnapshot(77, spoof) &&
+              api.permissions() == before && changes == 1,
+          "an unrequested host entry spoofed QML-visible authority");
+  const std::array stale{
+      worker::QmlBrokerApi::HostPermission{"notifications.send", "send", true}};
+  require(!api.applyHostPermissionSnapshot(78, stale) &&
+              !api.hasPermission("notifications.send", "send") && changes == 1,
+          "a stale activation generation changed permission UX state");
+  const std::array activated{
+      worker::QmlBrokerApi::HostPermission{"storage.private", "read", true},
+      worker::QmlBrokerApi::HostPermission{"storage.private", "write", true},
+      worker::QmlBrokerApi::HostPermission{"notifications.send", "send", true}};
+  require(api.applyHostPermissionSnapshot(77, activated) && changes == 2 &&
+              api.hasPermission("notifications.send", "send"),
+          "optional permission activation was not surfaced");
+  const std::array revoked{
+      worker::QmlBrokerApi::HostPermission{"storage.private", "read", true},
+      worker::QmlBrokerApi::HostPermission{"storage.private", "write", true},
+      worker::QmlBrokerApi::HostPermission{"notifications.send", "send", false}};
+  require(api.applyHostPermissionSnapshot(77, revoked) && changes == 3 &&
+              !api.hasPermission("notifications.send", "send"),
+          "revocation did not notify QML and remove availability");
+}
 void run() {
   Pair pair;
   worker::WorkerEndpoint endpoint(pair.descriptors[0], wire::EndpointRole::broker,
@@ -245,6 +293,7 @@ void run() {
               (errno == EAGAIN || errno == EWOULDBLOCK),
           "undeclared operation gained an ambient fallback or broker packet");
   dynamic_qml_to_adapter();
+  permission_awareness(endpoint);
 }
 } // namespace
 
