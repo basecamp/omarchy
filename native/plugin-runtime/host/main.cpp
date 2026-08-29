@@ -706,6 +706,21 @@ int preview(const QStringList &arguments, QGuiApplication &application,
         qCritical() << "omarchy-plugin-host: trusted dynamic definitions unavailable";
         return 78;
       }
+#ifndef OMARCHY_PLUGIN_PRODUCT_E2E
+      const std::filesystem::path admin_definition_root(
+          "/etc/omarchy/plugin-capabilities.d");
+      if (std::filesystem::exists(admin_definition_root)) {
+        std::size_t admin_loaded = 0;
+        if (definitions::load_definition_directory(
+                admin_definition_root.string(),
+                definitions::DefinitionSource::local_admin, 0, verifier,
+                *dynamic_registry, admin_loaded) !=
+            definitions::LoadResult::loaded) {
+          qCritical() << "omarchy-plugin-host: administrator capability definitions are invalid";
+          return 78;
+        }
+      }
+#endif
       std::vector<runtime::DynamicRoute> routes;
       for (const auto &dynamic : active->dynamic_grants) {
         const auto resolved = dynamic_registry->resolve(dynamic.request.definition);
