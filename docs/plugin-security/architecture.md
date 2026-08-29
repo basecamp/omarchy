@@ -156,6 +156,8 @@ Do not give the worker the normal session Wayland socket. The security-context i
 
 Omarchy supervises one QML UI process per active visual plugin and any declared helper workers, with short-lived workers permitted for event-only plugins. All processes for one plugin share a plugin-scoped cgroup and security identity while remaining outside the trusted shell. Each process runs in a Bubblewrap sandbox with:
 
+QML and declared bundled sidecars may share a plugin sandbox so they can communicate through private files, Unix sockets, standard streams, or loopback without broker calls. Installation must validate every sidecar as an executable regular file in the immutable revision. An Omarchy-owned sandbox init starts only those declared entrypoints, supervises and reaps the complete process tree, and tears it down on disable, update, revocation, or failure. Sidecars receive no ambient host executable lookup or broker authority merely by sharing the sandbox; external effects still use the structured runtime API or a separately authenticated, explicitly designed sidecar endpoint.
+
 - a new user, PID, mount, IPC, UTS, and network namespace;
 - no Linux capabilities and `no_new_privs`;
 - a minimal read-only runtime and read-only bind of exactly one activated plugin revision;
@@ -173,8 +175,6 @@ The worker does not gain raw network access when `network` is granted. Network r
 ### Capability broker
 
 The broker is an Omarchy-owned process outside the sandbox, separate from the QML object graph. It owns a distinct authenticated channel for each worker and exposes versioned structured operations. It validates types and bounds before dispatch, checks the active grant on every call, applies rate and concurrency limits, and returns typed results.
-
-The QML worker and plugin-bundled sidecars may share one Bubblewrap sandbox and communicate freely through private files, Unix sockets, standard streams, or loopback. They share one plugin identity and one resource budget. Bubblewrap denies ambient exits; it does not translate arbitrary syscalls into permission requests. Omarchy exposes authenticated broker sockets for deliberate exits and may also place compatibility shims in the sandbox `PATH`. A shim such as sandbox-local `gh` can translate a closed, validated argv grammar into structured account operations without exposing the host `gh`, its credentials, or its unrestricted command set. HTTP, D-Bus, portal, and file proxies can provide similar protocol-specific compatibility, but unknown programs, subcommands, syscalls, and protocols remain denied rather than receiving a generic pass-through.
 
 The broker should expose domain operations rather than a generic `exec` escape hatch wherever Omarchy can own the integration. Candidate operation families are:
 
