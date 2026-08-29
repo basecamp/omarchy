@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Launch the default coding agent with a prompt
-# omarchy:args=[--inline] <prompt...>
+# omarchy:args=[--inline] [--conversation] <prompt...>
 # omarchy:examples=omarchy agent prompt "Review this project"
 
 # Prompts live here rather than on `omarchy agent`, where a bare prompt would
@@ -9,15 +9,15 @@
 
 set -euo pipefail
 
-inline=()
-if [[ ${1:-} == "--inline" ]]; then
-  inline=(--inline)
+options=()
+while [[ ${1:-} == "--inline" || ${1:-} == "--conversation" ]]; do
+  options+=("$1")
   shift
-fi
+done
 
 if (($# == 0)); then
-  echo "Usage: omarchy agent prompt [--inline] <prompt...>" >&2
+  echo "Usage: omarchy agent prompt [--inline] [--conversation] <prompt...>" >&2
   exit 1
 fi
 
-exec omarchy-agent "${inline[@]}" --prompt "$*"
+exec omarchy-agent "${options[@]}" --prompt "$*"

@@ -1,11 +1,12 @@
 #!/bin/bash
 
 # omarchy:summary=Launch the default coding agent in a terminal
-# omarchy:args=[--inline] [--pick]
+# omarchy:args=[--inline] [--pick] [--conversation]
 # omarchy:examples=omarchy agent | omarchy agent --inline
 
 inline=false
 pick=false
+conversation=false
 
 # Flags only. A bare prompt would shadow the subcommands under this group, so
 # prompts go through omarchy-agent-prompt, which passes one here as --prompt.
@@ -17,6 +18,10 @@ while (($#)); do
       ;;
     --pick)
       pick=true
+      shift
+      ;;
+    --conversation)
+      conversation=true
       shift
       ;;
     --prompt)
@@ -69,7 +74,11 @@ copilot)
 crush)
   # --yolo belongs to the interactive command only; `crush run` never prompts.
   if [[ -n ${prompt:-} ]]; then
-    command=(crush run "$prompt")
+    if [[ $conversation == "true" ]]; then
+      command=(omarchy-agent-crush-conversation "$prompt")
+    else
+      command=(crush run "$prompt")
+    fi
   else
     command=(crush --yolo)
   fi

@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# omarchy:summary=Seed an interactive Crush conversation
+# omarchy:args=<prompt>
+# omarchy:hidden=true
+
+set -euo pipefail
+
+prompt=${1:?Usage: omarchy-agent-crush-conversation <prompt>}
+
+# Crush cannot currently seed its interactive TUI directly. Its documented
+# `run` command creates a session for the prompt, and --continue then reopens
+# that same conversation so the user can answer follow-up questions.
+crush run "$prompt"
+exec crush --yolo --continue
