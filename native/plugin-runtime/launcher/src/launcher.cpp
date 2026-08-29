@@ -1136,6 +1136,28 @@ public:
         name.c_str(), "replace"));
     sd_bus_error_free(&error);
     sd_bus_message_unref(reply);
+
+    error = SD_BUS_ERROR_NULL;
+    reply = nullptr;
+    if (sd_bus_call_method(bus_, "org.freedesktop.systemd1",
+                           "/org/freedesktop/systemd1",
+                           "org.freedesktop.systemd1.Manager", "GetUnit",
+                           &error, &reply, "s", name.c_str()) >= 0) {
+      const char *object_path = nullptr;
+      if (sd_bus_message_read(reply, "o", &object_path) >= 0 &&
+          object_path != nullptr) {
+        sd_bus_error abandon_error = SD_BUS_ERROR_NULL;
+        sd_bus_message *abandon_reply = nullptr;
+        static_cast<void>(sd_bus_call_method(
+            bus_, "org.freedesktop.systemd1", object_path,
+            "org.freedesktop.systemd1.Scope", "Abandon", &abandon_error,
+            &abandon_reply, ""));
+        sd_bus_error_free(&abandon_error);
+        sd_bus_message_unref(abandon_reply);
+      }
+    }
+    sd_bus_error_free(&error);
+    sd_bus_message_unref(reply);
   }
 
 private:
