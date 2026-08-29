@@ -43,8 +43,9 @@ run_hook post hibernate
   fail "resume from hibernate also restarts fprintd" "calls: $(<"$call_log")"
 pass "resume from hibernate also restarts fprintd"
 
-# There is nothing to clear before sleep, and try-restart would needlessly
-# re-activate a fprintd that idle-exited, so "pre" must do nothing.
+# The claim only wedges once the verify dies under suspend, so there is
+# nothing to clear before sleep; a restart there would just take the reader
+# away from the verify the lock screen still has open. "pre" must do nothing.
 run_hook pre suspend
 [[ -z $(<"$call_log") ]] ||
   fail "pre-suspend leaves fprintd alone" "calls: $(<"$call_log")"

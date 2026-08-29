@@ -4,19 +4,26 @@
 # unable to hand the reader back: the verify dies with "Cannot run while
 # suspended" and the follow-up ReleaseDevice fails on the still-busy device.
 # The wedged claim then rejects every lock-screen attempt after resume until
-# fprintd exits on its own 30-second idle timer — so the reader looks dead for
-# up to half a minute while retries keep it from ever reaching that timer.
+# fprintd exits on its own 30-second idle timer, and each attempt re-arms that
+# timer — so without this hook the reader only recovers once the lock screen's
+# backoff leaves fprintd alone for long enough, about a minute at best.
 #
 # Restarting fprintd on resume drops the claim so the reader answers on the
-# first touch instead. try-restart is a no-op when fprintd is not running,
-# which is the common case (nothing held the reader across the suspend), so a
-# healthy resume pays nothing.
+# first touch instead. Omarchy locks before every suspend and the lock screen
+# opens a verify at once, so fprintd is running and claimed at nearly every
+# resume: the restart is real, not a no-op. It is cheap, though — a wedged
+# fprintd is idle and exits on SIGTERM in milliseconds.
 #
-# Installed by omarchy-setup-security-fingerprint, so its presence already
-# means a fingerprint reader is configured.
+# Installed next to /etc/pam.d/omarchy-lock-fingerprint by omarchy-apply-lock
+# and omarchy-setup-security-fingerprint, so its presence already means a
+# fingerprint reader is configured.
 
 if [[ $1 == "post" ]]; then
-  # user.slice stays frozen until this returns and systemctl waits out the whole
-  # job, so bound it — killing the client leaves systemd to finish the restart.
+  # Run it synchronously: user sessions stay frozen until the hook returns, so
+  # the lock screen's first attempt after thaw lands on the fresh daemon rather
+  # than the wedged one. systemctl waits out the whole stop/start job, so bound
+  # it — a daemon that never reaches its bus name would otherwise hold the thaw
+  # for as long as systemd-sleep allows. Killing the client leaves the restart
+  # job enqueued; systemd finishes it regardless.
   timeout 10s systemctl try-restart fprintd.service 2>/dev/null || true
 fi
