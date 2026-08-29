@@ -13,6 +13,7 @@
       "maximumWidth": 520,
       "maximumHeight": 260,
       "maximumFramesPerSecond": 15,
+      "inputRegions": "dynamic-bounded",
       "keyboardFocus": false,
       "lockScreenVisible": false
     }

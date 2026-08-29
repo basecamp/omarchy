@@ -829,6 +829,34 @@ std::optional<PublishedFrame> WorkerRuntime::render() {
       .rendered_objects = count};
 }
 
+std::optional<surface::InputRegionUpdate>
+WorkerRuntime::input_region_update(std::uint64_t generation) const {
+  if (!active() || implementation_->root_item == nullptr || generation == 0)
+    return std::nullopt;
+  const auto property = implementation_->root_item->property("inputRegions");
+  if (!property.isValid()) return std::nullopt;
+  const auto values = property.toList();
+  if (values.size() > static_cast<qsizetype>(surface::kMaximumTransportedInputRegions))
+    return std::nullopt;
+  surface::InputRegionUpdate update{.surface = implementation_->state->allocation().surface,
+                                    .generation = generation,
+                                    .count = static_cast<std::uint32_t>(values.size())};
+  for (qsizetype index = 0; index < values.size(); ++index) {
+    const auto map = values[index].toMap();
+    if (map.size() != 4) return std::nullopt;
+    bool x_ok = false, y_ok = false, width_ok = false, height_ok = false;
+    const auto x = map.value(QStringLiteral("x")).toInt(&x_ok);
+    const auto y = map.value(QStringLiteral("y")).toInt(&y_ok);
+    const auto width = map.value(QStringLiteral("width")).toUInt(&width_ok);
+    const auto height = map.value(QStringLiteral("height")).toUInt(&height_ok);
+    if (!x_ok || !y_ok || !width_ok || !height_ok || width == 0 || height == 0)
+      return std::nullopt;
+    update.regions[static_cast<std::size_t>(index)] = {
+        .x = x, .y = y, .width = width, .height = height};
+  }
+  return update;
+}
+
 bool WorkerRuntime::loaded() const {
   return implementation_->root_item != nullptr;
 }

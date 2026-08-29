@@ -1,6 +1,7 @@
 #pragma once
 
 #include "omarchy/plugin_runtime/surface/input.hpp"
+#include "omarchy/plugin_runtime/surface/render_messages.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -14,6 +15,7 @@ public:
   virtual bool configure(const TrustedAllocation &allocation) = 0;
   virtual bool present(SurfaceKey surface, std::uint64_t frame_sequence,
                        std::span<const std::byte> trusted_pixels) = 0;
+  virtual bool updateInputRegions(const InputRegionUpdate &) { return false; }
   virtual void clear(SurfaceKey surface) = 0;
   virtual void disconnect() = 0;
 };

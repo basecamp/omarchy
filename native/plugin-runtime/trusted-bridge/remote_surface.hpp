@@ -29,6 +29,11 @@ public:
   virtual ~HostPointerRouter() = default;
   virtual bool route(const HostPointerEvent &event) = 0;
 };
+class HostInputRegionRouter {
+public:
+  virtual ~HostInputRegionRouter() = default;
+  virtual bool apply(const surface::InputRegionUpdate &) = 0;
+};
 
 class RemotePluginSurface : public QQuickPaintedItem,
                             public surface::TrustedFrameSink {
@@ -61,9 +66,11 @@ public:
 
   void bindTransport(std::shared_ptr<AuthenticatedInputTransport> transport);
   void bindHostPointerRouter(HostPointerRouter &router);
+  void bindHostInputRegionRouter(HostInputRegionRouter &router);
   bool configure(const surface::TrustedAllocation &allocation) override;
   bool present(surface::SurfaceKey surface, std::uint64_t frame_sequence,
                std::span<const std::byte> trusted_pixels) override;
+  bool updateInputRegions(const surface::InputRegionUpdate &update) override;
   void clear(surface::SurfaceKey surface) override;
   void disconnect() override;
 
@@ -103,6 +110,8 @@ private:
 
   std::shared_ptr<AuthenticatedInputTransport> transport_;
   HostPointerRouter *host_pointer_router_ = nullptr;
+  HostInputRegionRouter *host_input_region_router_ = nullptr;
+  std::uint64_t input_region_generation_ = 0;
   std::optional<surface::SurfaceState> state_;
   std::optional<surface::InputGate> input_gate_;
   std::optional<surface::FocusGate> focus_gate_;

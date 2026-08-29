@@ -12,6 +12,8 @@ Item {
     property int observedChanges: 0
     property bool startupReady: false
     property bool countChanges: false
+    property bool pointerProof: false
+    property var inputRegions: [{x: 0, y: 0, width: 520, height: 260}]
     property string permissionState: {
         if (!startupReady)
             return "WAITING"
@@ -50,6 +52,10 @@ Item {
         border.color: root.permissionState === "GRANTED" ? "#65d7a1" : "#f0b35b"
         border.width: 3
         radius: 18
+        MouseArea {
+            anchors.fill: parent
+            onClicked: root.pointerProof = true
+        }
 
         Column {
             anchors.centerIn: parent
@@ -63,6 +69,13 @@ Item {
                 font.pixelSize: 14
                 font.bold: true
                 font.letterSpacing: 2
+                horizontalAlignment: Text.AlignHCenter
+            }
+            Text {
+                width: parent.width
+                text: root.pointerProof ? "POINTER ROUTED" : "POINTER WAITING"
+                color: root.pointerProof ? "#65d7a1" : "#9ca7c2"
+                font.pixelSize: 13
                 horizontalAlignment: Text.AlignHCenter
             }
 

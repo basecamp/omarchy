@@ -46,6 +46,21 @@ void RemotePluginSurface::bindHostPointerRouter(HostPointerRouter &router) {
   host_pointer_router_ = &router;
 }
 
+void RemotePluginSurface::bindHostInputRegionRouter(HostInputRegionRouter &router) {
+  host_input_region_router_ = &router;
+}
+
+bool RemotePluginSurface::updateInputRegions(
+    const surface::InputRegionUpdate &update) {
+  if (!state_ || update.surface != state_->allocation().surface ||
+      update.generation <= input_region_generation_ ||
+      host_input_region_router_ == nullptr ||
+      !host_input_region_router_->apply(update))
+    return false;
+  input_region_generation_ = update.generation;
+  return true;
+}
+
 void RemotePluginSurface::mousePressEvent(QMouseEvent *event) {
   routeHostPointerEvent(*event, true);
 }

@@ -162,6 +162,29 @@ private:
   std::uint64_t sequence_ = 0;
 };
 
+class PreviewInputRegionBridge final : public bridge::HostInputRegionRouter {
+public:
+  explicit PreviewInputRegionBridge(surface_host::HostSurface &surface)
+      : surface_(surface) {}
+  bool apply(const surface::InputRegionUpdate &update) override {
+    std::array<surface_host::InputRegion,
+               surface::kMaximumTransportedInputRegions> converted{};
+    for (std::size_t index = 0; index < update.count; ++index) {
+      if (update.regions[index].x < 0 || update.regions[index].y < 0)
+        return false;
+      converted[index] = {
+          .x = static_cast<std::uint32_t>(update.regions[index].x),
+          .y = static_cast<std::uint32_t>(update.regions[index].y),
+                          .width = update.regions[index].width,
+                          .height = update.regions[index].height};
+    }
+    return surface_.set_input_regions(
+        std::span(converted).first(update.count));
+  }
+private:
+  surface_host::HostSurface &surface_;
+};
+
 bool run_exact(const std::vector<std::string> &arguments) noexcept {
   if (arguments.empty() || arguments.front().empty()) return false;
   try {
@@ -759,7 +782,9 @@ int preview(const QStringList &arguments, QGuiApplication &application,
     return 78;
   }
   PreviewPointerBridge pointer_bridge(*hosted);
+  PreviewInputRegionBridge input_region_bridge(*hosted);
   surface.bindHostPointerRouter(pointer_bridge);
+  surface.bindHostInputRegionRouter(input_region_bridge);
   QTimer pump;
   std::uint64_t observed_grant_mutation = state.mutation_sequence;
 #ifdef OMARCHY_PLUGIN_PRODUCT_E2E
@@ -779,6 +804,7 @@ int preview(const QStringList &arguments, QGuiApplication &application,
   std::uint64_t render_packets = 0;
   std::uint64_t post_mutation_frames = 0;
   std::uint64_t post_call_frames = 0;
+  bool injected_pointer = false;
   QTimer deadline;
   deadline.setSingleShot(true);
   QObject::connect(&deadline, &QTimer::timeout, [&] {
@@ -871,6 +897,28 @@ int preview(const QStringList &arguments, QGuiApplication &application,
                     << hash.toHex().constData() << '\n';
           qInfo().noquote() << "PRODUCT_E2E frame" << frame_hashes.size()
                             << hash.toHex();
+        }
+        if (!injected_pointer &&
+            qEnvironmentVariableIsSet("OMARCHY_PLUGIN_E2E_CLICK_X") &&
+            observed_grant_mutation >= static_cast<std::uint64_t>(
+                qEnvironmentVariableIntValue(
+                    "OMARCHY_PLUGIN_E2E_CLICK_AFTER_MUTATION"))) {
+          const auto x = qEnvironmentVariableIntValue("OMARCHY_PLUGIN_E2E_CLICK_X");
+          const auto y = qEnvironmentVariableIntValue("OMARCHY_PLUGIN_E2E_CLICK_Y");
+          injected_pointer = pointer_bridge.route(
+              {.x = static_cast<qreal>(x), .y = static_cast<qreal>(y),
+               .button = Qt::LeftButton, .pressed = true,
+               .application_synthesized = false}) &&
+              pointer_bridge.route(
+                  {.x = static_cast<qreal>(x), .y = static_cast<qreal>(y),
+                   .button = Qt::LeftButton, .pressed = false,
+                   .application_synthesized = false});
+          if (!injected_pointer) {
+            qCritical() << "PRODUCT_E2E bounded pointer route rejected";
+            application.exit(79);
+            return;
+          }
+          std::cerr << "PRODUCT_E2E pointer " << x << ' ' << y << '\n';
         }
       }
       if (expected_calls_set && expected_frames > 0 &&

@@ -144,7 +144,9 @@ find "$test_root/lab-denied/audit" -type f -size +0c -print -quit | grep -q . ||
 
 prepare lab-permission
 grant_capability lab-permission --optional notifications.send@1=tokens:proof
-launch lab-permission 0 2 2 3 1 0 >"$test_root/lab-permission/host.log" 2>&1 &
+OMARCHY_PLUGIN_E2E_CLICK_X=100 OMARCHY_PLUGIN_E2E_CLICK_Y=100 \
+  OMARCHY_PLUGIN_E2E_CLICK_AFTER_MUTATION=3 \
+  launch lab-permission 0 2 3 3 1 0 >"$test_root/lab-permission/host.log" 2>&1 &
 permission_pid=$!
 for ((attempt = 0; attempt < 100; attempt++)); do
   grep -q 'PRODUCT_E2E frame 1' "$test_root/lab-permission/host.log" && break

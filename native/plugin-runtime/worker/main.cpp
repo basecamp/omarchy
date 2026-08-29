@@ -447,6 +447,13 @@ private:
         fatal(runtime_.last_error());
       return;
     }
+    const auto regions = runtime_.input_region_update(frame->ready.frame_sequence);
+    if (regions) {
+      const auto region_payload = surface::encode_input_region_update(*regions);
+      send_render(static_cast<std::uint16_t>(
+                      surface::RenderMessageType::input_regions),
+                  region_payload, 0);
+    }
     const auto payload = surface::encode_frame_ready(frame->ready);
     send_render(
         static_cast<std::uint16_t>(surface::RenderMessageType::frame_ready),

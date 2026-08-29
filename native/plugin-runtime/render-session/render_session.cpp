@@ -124,6 +124,16 @@ bool HostRenderSession::handle(const wire::PacketView &packet) {
     return true;
   }
   if (phase_ == Phase::active &&
+      type == surface::RenderMessageType::input_regions) {
+    surface::InputRegionUpdate update{};
+    if (!allocation_ ||
+        !surface::decode_input_region_update(packet.payload, update) ||
+        update.surface != allocation_->surface ||
+        !sink_.updateInputRegions(update))
+      return fail("worker sent invalid input regions");
+    return true;
+  }
+  if (phase_ == Phase::active &&
       type == surface::RenderMessageType::frame_ready) {
     surface::FrameReady ready{};
     if (!allocation_ || !region_ || !consumer_ ||

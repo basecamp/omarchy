@@ -11,6 +11,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 class QObject;
 
@@ -88,6 +89,8 @@ public:
   [[nodiscard]] bool invoke_test_function(std::string_view function);
   void request_render();
   [[nodiscard]] std::optional<PublishedFrame> render();
+  [[nodiscard]] std::optional<surface::InputRegionUpdate>
+  input_region_update(std::uint64_t generation) const;
 
   [[nodiscard]] bool loaded() const;
   [[nodiscard]] bool allocated() const;
