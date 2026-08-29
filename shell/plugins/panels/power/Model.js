@@ -102,13 +102,10 @@ function wattsBasis(deviceState, dischargingState, watts) {
 // Kernel comm fields cap at 15 characters (TASK_COMM_LEN), so the panel's
 // comm column can be sized once for the realistic worst case and never per
 // sample.
-// Identity colors are name→hue only: stableColorKey hashes the comm into
-// the three collision-free theme hues, the SAME key on every surface — the
-// table row's mark, every composition bar's segment — so a process is one
-// color wherever it appears (the operator review's single-color-authority
-// rule: the table). Two comms may share a hue (three hues, five rows); the
-// row label and the bar's segment gaps keep them distinct, and the hue
-// never depends on which other comms are visible.
+// Identity is POSITIONAL, not chromatic (grayscale-by-load, operator
+// decision 2026-08-29): the system block leads in white, process blocks
+// follow biggest-to-lightest, and ink brightness carries magnitude. The
+// hash below remains exported for potential non-color reuse.
 var COMM_MAX_CHARS = 15
 
 // Gap budget basis for the composition bars: the most segments any bar can
@@ -420,29 +417,22 @@ function buildSystemRows(prevSnapshot, nextSnapshot) {
 // bar's non-GPU remainder), "idle" / "avail" (unused capacity — rendered as
 // the unfilled track). The same comm carries the same key in every list so
 // one color map serves all bars.
-function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseWatts, palette) {
-  // The identity palette: the three collision-free theme hues (see the
-  // panel's palette rationale). Passed in so callers own it; defaulted so
-  // the pure builder is self-contained.
-  palette = palette || ["blue", "cyan", "magenta"]
-  // Segment colors are the TABLE's colors — the operator review made the
-  // table the single color authority: every comm segment (and the table
-  // row's mark beside it) carries its name-hashed palette hue at full
-  // strength, the same key everywhere, no per-bar shading. Bars are
-  // self-sorted visualizations (round 12, superseding round 11's
-  // bar-follows-table order by the operator's final choice): a SYSTEM
-  // block leads — the table's system row made spatial, in foreground —
-  // then process blocks size-descending by the bar's own metric, then the
-  // idle/available frame. The TABLE keeps the single shared rank; per-bar
+function buildResourceSplits(prevSnapshot, nextSnapshot, limit, drawWatts, baseWatts) {
+  // Segment ink is the PANEL's concern (foreground at load-scaled opacity);
+  // this builder owns membership and order: a SYSTEM block leads — the
+  // table's system row made spatial — then process blocks size-descending
+  // by the bar's own metric, then the idle/available frame.
+  // Ink follows load (operator decision 2026-08-29): segments carry no
+  // color — the panel paints every comm in foreground at a load-scaled
+  // opacity. Bars are self-sorted visualizations: a SYSTEM block leads —
+  // the table's system row made spatial, in full ink — then process
+  // blocks size-descending by the bar's own metric, then the idle/
+  // available frame. The TABLE keeps the single shared rank; per-bar
   // order may differ from it and between bars by design.
-  function slotOf(comm) {
-    var idx = stableColorKey(comm, palette.length)
-    return { hue: palette[idx], hueIdx: idx }
-  }
   function rankCommSegments(fracList) {
     var out = []
     for (var i = 0; i < fracList.length; i++)
-      out.push({ key: fracList[i].key, share: fracList[i].share, kind: "comm", slot: slotOf(fracList[i].key) })
+      out.push({ key: fracList[i].key, share: fracList[i].share, kind: "comm" })
     return out
   }
   var n = limit || 5

@@ -23,11 +23,7 @@ Panel {
   property var topProcesses: []
   property var systemRows: []
   property var resourceSplits: null
-  property var colorMap: ({})
   property var processColumns: []
-  // The identity palette — three collision-free theme hues; see the
-  // rationale at the colorMap assignment below.
-  readonly property var paletteKeys: ["blue", "cyan", "magenta"]
   // Composition-bar gap geometry: a constant separator width and a constant
   // budget for the maximum segment count, so fills scale identically across
   // refreshes and resources regardless of how many segments are visible.
@@ -150,36 +146,20 @@ Panel {
     return modeLabel()
   }
 
-  // Metric-type colors for the per-process cells: the three collision-free
-  // hues, one per metric (CPU blue, RAM cyan, W magenta), so a column reads
-  // as one metric at a glance. W stays magenta rather than categorical
-  // green/yellow/red: per-process watts carry no honest absolute thresholds
-  // (the old system-level Draw meter that used them was removed in operator
-  // review — the stock pill already shows total draw). GPU is reserved
-  // to accent for the future fdinfo cell (never emitted on this hardware;
-  // accent may sit near blue on some themes — a documented follow-up
-  // question for whoever adds GPU cells).
-  function metricColor(metric) {
-    if (metric === "CPU") return Color.blue
-    if (metric === "RAM") return Color.cyan
-    if (metric === "W") return Color.magenta
-    return Color.accent
+  // Ink, not hue: every surface speaks foreground-at-load. The system
+  // block/row is WHITE (the machine itself); a process's ink dims with its
+  // load — opacity 0.35..1.0 mapped from its share of the bar's busiest
+  // process. Identity is carried by ORDER (biggest to lightest, mirroring
+  // the table) and by label; brightness carries magnitude. This matches
+  // the shell's native monochrome language (operator decision, 2026-08-29).
+  function segmentInk(seg) {
+    if (seg.kind === "system") return 1
+    if (seg.ink !== undefined) return seg.ink
+    return 1
   }
 
-  // Segment/row colors, one resolver for every surface: comms take their
-  // name-hashed palette hue — the table row's mark is the single color
-  // authority, and bars render the same hue at the same full strength —
-  // the system block takes foreground (the neutral machine), the GPU bar's
-  // rest takes muted, unknown keys fall back to the bar foreground.
   function segmentColor(seg) {
     if (seg.kind === "rest") return Color.muted
-    if (seg.kind === "system") return root.bar ? root.bar.foreground : Color.foreground
-    var k = seg.kind === "comm" && seg.slot !== undefined ? seg.slot.hue
-      : (seg.kind === "comm" && colorMap[seg.key] !== undefined ? colorMap[seg.key] : "")
-    if (k === "blue") return Color.blue
-    if (k === "cyan") return Color.cyan
-    if (k === "magenta") return Color.magenta
-    if (k === "accent") return Color.accent
     return root.bar ? root.bar.foreground : Color.foreground
   }
 
@@ -329,25 +309,23 @@ Panel {
       }
     }
     processColumns = cols
-    resourceSplits = Model.buildResourceSplits(prevSnapshot, snap, 5, draw, baseWatts, root.paletteKeys)
-    // Palette keys map to Color singleton properties: the three
-    // non-threshold hues that are universal AND mutually distinct across the
-    // themes (reviewer finding, hex re-derived: accent equals blue on 17
-    // themes and magenta on lumon only, so it cannot serve as a fourth hue;
-    // bright_* variants equal their base hue on roughly half, so no six-key
-    // collision-free set exists — retro-82's residual defect is its own
-    // blue == magenta, a theme-level reduction). Identity is name→hue and
-    // nothing else: same comm = same key = same color on its table row's
-    // mark and in every bar segment, at full strength, per the operator
-    // review's table-is-the-color-authority rule. Hue collisions between
-    // comms are accepted (three hues, five rows) — labels disambiguate the
-    // table, gaps disambiguate the bars.
-    var cmap = {}
-    for (var ci2 = 0; ci2 < resourceSplits.order.length; ci2++) {
-      var comm = resourceSplits.order[ci2]
-      cmap[comm] = root.paletteKeys[Model.stableColorKey(comm, root.paletteKeys.length)]
+    resourceSplits = Model.buildResourceSplits(prevSnapshot, snap, 5, draw, baseWatts)
+    // Ink follows load (operator decision, 2026-08-29): every comm segment
+    // carries its own opacity — 0.35..1.0 mapped from its share of that
+    // bar's busiest process. System leads at full ink (white: the machine
+    // itself); brightness IS magnitude, order IS identity. The muted frame
+    // (rest) stays muted. Computed here, once per refresh, so delegates
+    // bind a plain number.
+    var allBars = [resourceSplits.cpu, resourceSplits.ram, resourceSplits.watts, resourceSplits.gpu]
+    for (var bi = 0; bi < allBars.length; bi++) {
+      var bar = allBars[bi]
+      if (!bar) continue
+      var maxComm = 0
+      for (var si2 = 0; si2 < bar.length; si2++)
+        if (bar[si2].kind === "comm" && bar[si2].share > maxComm) maxComm = bar[si2].share
+      for (var si3 = 0; si3 < bar.length; si3++)
+        if (bar[si3].kind === "comm") bar[si3].ink = 0.35 + 0.65 * (maxComm > 0 ? bar[si3].share / maxComm : 0)
     }
-    colorMap = cmap
     // Vitals rows are rebuilt complete with their segments attached: a
     // property added to a plain JS object after the fact carries no change
     // signal, so a delegate that bound before the attach would stay null.
@@ -713,7 +691,7 @@ Panel {
                   text: parent.modelData
                   anchors.right: parent.right
                   anchors.rightMargin: Style.space(4)
-                  color: root.metricColor(parent.modelData)
+                  color: root.bar ? root.bar.foreground : Color.foreground
                   opacity: 0.8
                   font.family: root.bar.fontFamily
                   font.pixelSize: Style.font.caption
@@ -732,11 +710,7 @@ Panel {
               cells: modelData.cells !== undefined ? modelData.cells : []
               columns: root.processColumns
               anchor: modelData.key === "system"
-              commColor: modelData.key === "system"
-                ? (root.bar ? root.bar.foreground : Color.foreground)
-                : (root.colorMap[modelData.key] !== undefined
-                  ? Color[root.colorMap[modelData.key]]
-                  : root.segmentColor({ kind: "comm", key: modelData.key }))
+              commColor: root.bar ? root.bar.foreground : Color.foreground
             }
           }
 
@@ -835,8 +809,9 @@ Panel {
 
   // One graphic line per process on a FIXED grid, recalculated only on
   // basis change (column set) or panel width — never per sample. Comm
-  // column: the identity mark in its own slot (the row's color — the single
-  // color authority the bars mirror) plus a left-aligned label elided at
+  // column: the identity mark in its own slot — foreground ink, since
+  // identity is carried by the label and by row order (system leads;
+  // processes descend by load) — plus a left-aligned label elided at
   // the kernel's 15-char comm cap (Model.COMM_MAX_CHARS, sized once via
   // TextMetrics). Metric cells: the remaining track split equally across
   // the section's column set, so every row lands in the same pixel columns
@@ -941,9 +916,7 @@ Panel {
                 : 0
               height: parent.height - Style.space(4)
               radius: height / 3
-              color: metricRow.anchor
-                ? (root.bar ? root.bar.foreground : Color.foreground)
-                : root.metricColor(cellSlot.modelData)
+              color: root.bar ? root.bar.foreground : Color.foreground
               opacity: cellSlot.cellData !== null ? cellSlot.cellData.intensity : 0
             }
           }
@@ -1024,6 +997,7 @@ Panel {
             width: modelData.share * Math.max(0, splitSegments.width - root.splitGapBudget)
             height: splitSegments.height
             color: root.segmentColor(modelData)
+            opacity: root.segmentInk(modelData)
           }
         }
       }
