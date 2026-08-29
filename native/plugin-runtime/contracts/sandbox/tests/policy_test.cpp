@@ -11,6 +11,7 @@
 #include <linux/sched.h>
 
 using omarchy::plugin_runtime::sandbox::build_plan;
+using omarchy::plugin_runtime::sandbox::build_provider_plan;
 using omarchy::plugin_runtime::sandbox::build_test_plan_for_worker;
 using omarchy::plugin_runtime::sandbox::contains_argument_pair;
 using omarchy::plugin_runtime::sandbox::SandboxPlan;
@@ -222,6 +223,37 @@ int main() {
   verify_resources(plan);
   verify_lifecycle(plan);
   verify_seccomp(plan);
+
+  constexpr std::string_view provider = "/usr/lib/omarchy/providers/status";
+  const SandboxPlan provider_plan = build_provider_plan(std::string(provider));
+  require(provider_plan.argv.back() == "--omarchy-provider-fd=3" &&
+              provider_plan.argv.at(provider_plan.argv.size() - 2) ==
+                  "/runtime/provider",
+          "provider executable or fixed protocol descriptor changed");
+  require(provider_plan.worker_descriptors == std::vector<int>{3} &&
+              provider_plan.launcher_descriptors ==
+                  std::vector<int>({3, 4, 5, 6}),
+          "provider inherited an ambient descriptor");
+  require(contains_argument_pair(provider_plan, "--ro-bind", provider) &&
+              contains_argument_pair(provider_plan, "--tmpfs", "/home") &&
+              contains_argument_pair(provider_plan, "--tmpfs", "/tmp") &&
+              contains_argument_pair(provider_plan, "--tmpfs", "/run"),
+          "provider mounts or executable binding changed");
+  require(contains(provider_plan.argv, "--unshare-net") &&
+              contains(provider_plan.argv, "--clearenv") &&
+              !contains(provider_plan.argv, "/home/jacob") &&
+              !contains(provider_plan.argv, "WAYLAND_DISPLAY") &&
+              !contains(provider_plan.argv, "DBUS_SESSION_BUS_ADDRESS"),
+          "provider retained host network, home, Wayland, or session bus "
+          "authority");
+  require(contains_argument_pair(
+              provider_plan, "--size",
+              std::to_string(provider_plan.resources.scratch_max_bytes)) &&
+              provider_plan.resources.tasks_max == 4 &&
+              !provider_plan.process.descendants_permitted &&
+              provider_plan.process.kill_complete_generation_cgroup,
+          "provider scratch or process-tree limits changed");
+  verify_seccomp(provider_plan);
 
   bool rejected_relative = false;
   try {
