@@ -19,6 +19,7 @@ endif()
 
 add_library(omarchy-plugin-providers STATIC
   src/audio_device_provider.cpp
+  src/github_cli_backend.cpp
   src/github_provider.cpp
   src/private_storage_backend.cpp
   src/radio_live_backend.cpp
