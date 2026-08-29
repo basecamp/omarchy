@@ -314,6 +314,9 @@ restore_moved() {
 }
 
 archive_remaining() {
+  # cleanup() invokes this function as the left side of `||`, which suppresses
+  # Bash's errexit behavior throughout the call. Every operation that protects
+  # or publishes archive state must therefore propagate failure explicitly.
   local root stage transaction label locations archive_device stage_device has_items=0 retained_in_place=0
   for stage in "${stage_for_root[@]}"; do
     [[ -d $stage ]] || continue
@@ -321,57 +324,60 @@ archive_remaining() {
   done
   ((has_items)) || {
     for stage in "${stage_for_root[@]}"; do
-      rm -f -- "$stage/manifest"
-      rmdir -- "$stage" 2>/dev/null || true
+      rm -f -- "$stage/manifest" || return 1
+      rmdir -- "$stage" 2>/dev/null || return 1
     done
     return 0
   }
 
   if [[ ! -e $ARCHIVE_PARENT && ! -L $ARCHIVE_PARENT ]]; then
-    assert_safe_parent_chain "$ARCHIVE_PARENT" "$ARCHIVE_BOUNDARY"
-    install -d -o "$ROOT_UID" -g "$ROOT_GID" -m 0755 "$ARCHIVE_PARENT"
+    assert_safe_parent_chain "$ARCHIVE_PARENT" "$ARCHIVE_BOUNDARY" || return 1
+    install -d -o "$ROOT_UID" -g "$ROOT_GID" -m 0755 "$ARCHIVE_PARENT" || return 1
   fi
-  assert_root_directory "$ARCHIVE_PARENT"
-  assert_safe_parent_chain "$ARCHIVE_ROOT" "$ARCHIVE_BOUNDARY"
+  assert_root_directory "$ARCHIVE_PARENT" || return 1
+  assert_safe_parent_chain "$ARCHIVE_ROOT" "$ARCHIVE_BOUNDARY" || return 1
   if [[ -e $ARCHIVE_ROOT || -L $ARCHIVE_ROOT ]]; then
-    assert_root_directory "$ARCHIVE_ROOT"
-    chmod 0700 "$ARCHIVE_ROOT"
+    assert_root_directory "$ARCHIVE_ROOT" || return 1
+    chmod 0700 "$ARCHIVE_ROOT" || return 1
   else
-    install -d -o "$ROOT_UID" -g "$ROOT_GID" -m 0700 "$ARCHIVE_ROOT"
+    install -d -o "$ROOT_UID" -g "$ROOT_GID" -m 0700 "$ARCHIVE_ROOT" || return 1
   fi
-  assert_root_directory "$ARCHIVE_ROOT"
-  transaction=$(mktemp -d "$ARCHIVE_ROOT/transaction.XXXXXX")
-  chown "$ROOT_UID:$ROOT_GID" "$transaction"
-  chmod 0700 "$transaction"
+  assert_root_directory "$ARCHIVE_ROOT" || return 1
+  transaction=$(mktemp -d "$ARCHIVE_ROOT/transaction.XXXXXX") || return 1
+  chown "$ROOT_UID:$ROOT_GID" "$transaction" || return 1
+  chmod 0700 "$transaction" || return 1
+  assert_root_directory "$transaction" || return 1
   locations=$transaction/locations
-  : >"$locations"
-  chmod 0600 "$locations"
-  archive_device=$(stat -Lc '%d' "$transaction")
+  : >"$locations" || return 1
+  chmod 0600 "$locations" || return 1
+  archive_device=$(stat -Lc '%d' "$transaction") || return 1
 
   for root in "${!stage_for_root[@]}"; do
     stage=${stage_for_root[$root]}
     [[ -d $stage ]] || continue
-    label=$(basename -- "$root")
+    label=$(basename -- "$root") || return 1
     if stage_has_items "$stage"; then
       # Never let mv(1) fall back to recursively copying a directory that may
       # still be mutable through a descriptor opened before quarantine. When
       # /var is separate, retain the complete root-only stage in place.
-      stage_device=$(stat -Lc '%d' "$stage")
+      stage_device=$(stat -Lc '%d' "$stage") || return 1
       if [[ $stage_device == "$archive_device" ]] && mv --no-copy -T -- "$stage" "$transaction/$label"; then
-        printf '%s\t%s\n' "$label" "$transaction/$label" >>"$locations"
+        printf '%s\t%s\n' "$label" "$transaction/$label" >>"$locations" || return 1
       else
-        printf '%s\t%s\n' "$label" "$stage" >>"$locations"
+        printf '%s\t%s\n' "$label" "$stage" >>"$locations" || return 1
         retained_in_place=1
       fi
     else
-      rm -f -- "$stage/manifest"
-      rmdir -- "$stage"
+      rm -f -- "$stage/manifest" || return 1
+      rmdir -- "$stage" || return 1
     fi
   done
 
-  sync -f "$locations"
-  printf 'Replaced files retained in %s\n' "$transaction"
-  ((retained_in_place == 0)) || echo "Some replaced files remain in their root-only same-filesystem stages; see $locations" >&2
+  sync -f "$locations" || return 1
+  printf 'Replaced files retained in %s\n' "$transaction" || return 1
+  if ((retained_in_place)); then
+    echo "Some replaced files remain in their root-only same-filesystem stages; see $locations" >&2 || return 1
+  fi
 }
 
 cleanup_report() {

@@ -213,6 +213,30 @@ archived=$(find_archived_content "stray content")
 grep -RFq "$stray" "$archive_root"/transaction.*/ || fail "archive manifest records the original fixed path"
 pass "verified file conflicts use an opaque root-owned quarantine"
 
+# A failed archive-boundary check must stop before chmod(1), mktemp(1), or mv(1)
+# can follow a planted archive symlink. cleanup() calls archive_remaining on the
+# left of `||`, where Bash suppresses errexit inside the entire function.
+reset_case
+unsafe_archive_target="$test_tmp/unsafe-archive-target"
+mkdir -p "$unsafe_archive_target"
+chmod 0755 "$unsafe_archive_target"
+ln -s "$unsafe_archive_target" "$archive_root"
+stray="$system_root/usr/lib/omarchy-test/unsafe-archive.conf"
+make_file "$stray" "unsafe archive payload"
+write_report omarchy-settings-dev "$stray"
+ship_path omarchy-settings-dev "$stray"
+printf '%s\n' "$stray" >"$retry_installs"
+if run_update >"$test_tmp/out" 2>"$test_tmp/err"; then
+  fail "an unsafe archive symlink passes for completed conflict recovery"
+fi
+[[ -L $archive_root ]] || fail "the unsafe archive fixture no longer points at its target"
+[[ $(stat -Lc '%a' "$unsafe_archive_target") == 755 ]] || fail "archive cleanup chmod follows an unsafe symlink"
+[[ -z $(find "$unsafe_archive_target" -mindepth 1 -maxdepth 1 -name 'transaction.*' -print -quit) ]] ||
+  fail "archive cleanup creates a transaction through an unsafe symlink"
+retained=$(find "$system_root/usr" -type f -path '*/.omarchy-update-conflicts.*/item-*' -exec grep -lx 'unsafe archive payload' {} + 2>/dev/null | head -n1) || true
+[[ -n $retained ]] || fail "an unsafe archive boundary loses the protected same-filesystem stage"
+pass "unsafe archive boundaries retain staging without following symlinks"
+
 # Text attribution is never enough: both package ownership and the package's
 # sync file list are authoritative gates.
 reset_case
