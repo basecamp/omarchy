@@ -134,11 +134,12 @@ bool ProviderSet::authorized(const broker::AuthorizedRequest &request,
          request.grant_epoch == expected_epoch;
 }
 
-bool ProviderSet::exact_token(const permissions::Scope &scope,
-                              std::string_view token) noexcept {
+std::string_view ProviderSet::exact_token(
+    const permissions::Scope &scope) noexcept {
   const auto *tokens = std::get_if<permissions::TokenScope>(&scope);
-  return tokens != nullptr && tokens->tokens.size() == 1 &&
-         tokens->tokens.values().front().view() == token;
+  if (tokens == nullptr || tokens->tokens.size() != 1)
+    return {};
+  return tokens->tokens.values().front().view();
 }
 
 bool ProviderSet::exact_resource(const permissions::Scope &scope,
@@ -234,13 +235,14 @@ ProviderSet::dispatch_notification(const broker::AuthorizedRequest &request,
                                    void *context) noexcept {
   auto &self = *static_cast<ProviderSet *>(context);
   NotificationRequest decoded{};
+  const auto category = exact_token(request.demand);
   if (request.operation != OperationId::notification_send ||
       !self.authorized(request, self.configuration_.notification_epoch) ||
-      !exact_token(request.demand, "timer") ||
+      category.empty() ||
       self.configuration_.notification.send == nullptr ||
       !decode_notification(request.payload, decoded) ||
       !self.configuration_.notification.send(
-          "timer", decoded.title, decoded.body,
+          category, decoded.title, decoded.body,
           self.configuration_.notification.context))
     return {};
   return {.status = broker::ProviderStatus::completed, .bytes_written = 0};
@@ -250,12 +252,12 @@ broker::ProviderResult
 ProviderSet::dispatch_audio(const broker::AuthorizedRequest &request,
                             std::span<std::byte>, void *context) noexcept {
   auto &self = *static_cast<ProviderSet *>(context);
+  const auto cue = exact_token(request.demand);
   if (request.operation != OperationId::audio_play_cue ||
       !self.authorized(request, self.configuration_.audio_epoch) ||
-      !exact_token(request.demand, "complete") || !request.payload.empty() ||
+      cue.empty() || !request.payload.empty() ||
       self.configuration_.audio.play == nullptr ||
-      !self.configuration_.audio.play("complete",
-                                      self.configuration_.audio.context))
+      !self.configuration_.audio.play(cue, self.configuration_.audio.context))
     return {};
   return {.status = broker::ProviderStatus::completed, .bytes_written = 0};
 }

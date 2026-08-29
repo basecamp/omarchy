@@ -275,9 +275,10 @@ int main() {
           "invalid UTF-8 reached notification backend");
   require(dispatch(registry, OperationId::notification_send, activation,
                    token("other"), notification, 5, 12)
-                      .status == broker::ProviderStatus::failed &&
-              backend.notifications == 1,
-          "unregistered notification category reached backend");
+                      .status == broker::ProviderStatus::completed &&
+              backend.notifications == 2 &&
+              backend.last == "other:Timer:Done\nNow",
+          "grant-authorized notification category was not forwarded");
 
   require(dispatch(registry, OperationId::audio_play_cue, activation,
                    token("complete"), {}, 6, 13)
@@ -289,6 +290,11 @@ int main() {
                       .status == broker::ProviderStatus::failed &&
               backend.audio_plays == 1,
           "audio payload smuggled authority");
+  require(dispatch(registry, OperationId::audio_play_cue, activation,
+                   token("evolve"), {}, 6, 15)
+                      .status == broker::ProviderStatus::completed &&
+              backend.audio_plays == 2 && backend.last == "evolve",
+          "grant-authorized packaged cue was not forwarded");
 
   require(set.add_fake_status(17, 100, "Deploy waiting"),
           "fake status setup failed");

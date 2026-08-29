@@ -114,8 +114,8 @@ private:
 
   [[nodiscard]] bool authorized(const broker::AuthorizedRequest &request,
                                 std::uint64_t expected_epoch) const noexcept;
-  [[nodiscard]] static bool exact_token(const permissions::Scope &scope,
-                                        std::string_view token) noexcept;
+  [[nodiscard]] static std::string_view
+  exact_token(const permissions::Scope &scope) noexcept;
   [[nodiscard]] static bool exact_resource(const permissions::Scope &scope,
                                            permissions::OperationId operation,
                                            std::uint32_t &resource) noexcept;
