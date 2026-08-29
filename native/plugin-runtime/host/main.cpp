@@ -311,13 +311,28 @@ int preview(const QStringList &arguments, QGuiApplication &application,
       const auto dispatched = started.session->dispatch_one(
           static_cast<std::uint64_t>(std::time(nullptr)),
           std::chrono::milliseconds(0));
-      if (dispatched == omarchy::plugin_runtime::channel::DispatchStatus::fatal)
+      if (dispatched == omarchy::plugin_runtime::channel::DispatchStatus::fatal) {
+        qCritical() << "omarchy-plugin-host: live broker dispatch became fatal";
         application.exit(79);
+      }
     }
     auto message = started.session->receive_render(std::chrono::milliseconds(1));
     if (message) {
-      if (!hosted->receive_render(message.payload)) application.exit(79);
+      if (!hosted->receive_render(message.payload) &&
+          !hosted->inspection().render_active) {
+        const auto decoded = wire::decode_packet(
+            message.payload, wire::EndpointRole::render);
+        if (decoded)
+          qCritical() << "omarchy-plugin-host: host surface rejected render packet"
+                      << decoded.packet.header.message_type
+                      << decoded.packet.header.correlation_id;
+        else
+          qCritical() << "omarchy-plugin-host: host surface rejected malformed render packet";
+        application.exit(79);
+      }
     } else if (message.failure != launcher::ReceiveFailure::timeout) {
+      qCritical() << "omarchy-plugin-host: render receive failed"
+                  << static_cast<int>(message.failure);
       const auto diagnostic = started.session->take_worker_standard_error();
       if (!diagnostic.empty())
         qCritical().noquote() << QString::fromStdString(diagnostic);
