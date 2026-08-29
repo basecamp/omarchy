@@ -338,6 +338,10 @@ Item {
               width: parent.width
             }
           }
+
+          WheelScrollArea {
+            flickable: resultGrid
+          }
         }
       }
     }

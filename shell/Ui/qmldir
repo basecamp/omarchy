@@ -31,4 +31,5 @@ SpeedTestOverlay 1.0 SpeedTestOverlay.qml
 TextField 1.0 TextField.qml
 Toggle 1.0 Toggle.qml
 ToggleSwitch 1.0 ToggleSwitch.qml
+WheelScrollArea 1.0 WheelScrollArea.qml
 WidgetButton 1.0 WidgetButton.qml
