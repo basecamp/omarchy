@@ -50,9 +50,9 @@ void DynamicGestureLatch::clear() noexcept {
 DynamicBrokerRuntime::DynamicBrokerRuntime(
     const definitions::TrustedDefinitionRegistry &registry,
     std::vector<DynamicRoute> reconstructed_routes,
-    omarchy::plugins::audit::AuditStore &audit_store)
+    omarchy::plugins::audit::AuditSink &audit_sink)
     : registry_(registry), routes_(std::move(reconstructed_routes)),
-      audit_(audit_store) {
+      audit_(audit_sink) {
   for (const auto &route : routes_) {
     if (!definitions::review_dynamic_grant(registry_, route.grant,
                                             route.scope_validator) ||

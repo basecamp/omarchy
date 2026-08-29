@@ -4,7 +4,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -15,46 +14,12 @@ namespace permissions = omarchy::plugins::permissions;
 
 inline constexpr std::size_t kHardMaximumRecords = 4096;
 
-enum class ErrorCode {
-  ok,
-  invalid_argument,
-  unsafe_store,
-  corrupt_store,
-  sequence_exhausted,
-  injected_failure,
-  io_error,
-};
+enum class ErrorCode { ok, invalid_argument, sequence_exhausted };
 
 struct Result {
   ErrorCode code = ErrorCode::ok;
   std::string detail;
-  [[nodiscard]] bool ok() const { return code == ErrorCode::ok; }
-};
-
-enum class FaultPoint {
-  none,
-  append_after_write,
-  append_after_file_sync,
-  append_after_rename,
-};
-
-struct Options {
-  std::size_t maximum_records = 1024;
-};
-
-struct Query {
-  std::uint64_t sequence_at_least = 0;
-  std::uint64_t sequence_at_most = 0;
-  std::optional<permissions::PluginId> plugin;
-  std::optional<permissions::AuditProducer> producer;
-  std::optional<permissions::AuditEvent> event;
-  std::optional<permissions::AuditOutcome> outcome;
-  std::size_t maximum_results = 1024;
-};
-
-struct QueryResult {
-  Result status;
-  std::vector<permissions::AuditRecord> records;
+  [[nodiscard]] bool ok() const noexcept { return code == ErrorCode::ok; }
 };
 
 struct AppendResult {
@@ -62,23 +27,41 @@ struct AppendResult {
   std::optional<permissions::AuditRecord> record;
 };
 
-class AuditStore {
+class AuditSink {
 public:
-  AuditStore(std::filesystem::path root, Options options);
+  virtual ~AuditSink() = default;
+  [[nodiscard]] virtual AppendResult
+  append(permissions::AuditProducer producer,
+         permissions::AuditDraft draft) = 0;
+};
 
-  [[nodiscard]] Result recover();
-  [[nodiscard]] AppendResult append(permissions::AuditProducer producer,
-                                    permissions::AuditDraft draft,
-                                    FaultPoint fault = FaultPoint::none);
-  [[nodiscard]] QueryResult query(const Query &query) const;
-  [[nodiscard]] Result export_tsv(const Query &query,
-                                  std::string &output) const;
-  [[nodiscard]] Result export_human(const Query &query,
-                                    std::string &output) const;
+struct Query {
+  std::optional<permissions::PluginId> plugin;
+  std::optional<permissions::AuditEvent> event;
+  std::size_t maximum_results = kHardMaximumRecords;
+};
+
+struct QueryResult {
+  Result status;
+  std::vector<permissions::AuditRecord> records;
+};
+
+// Runtime audit is deliberately bounded and non-administrative. Durable storage,
+// export, migration, and inspection can implement AuditSink outside the core.
+class BoundedAuditLog final : public AuditSink {
+public:
+  explicit BoundedAuditLog(std::size_t maximum_records = 1024);
+
+  [[nodiscard]] AppendResult
+  append(permissions::AuditProducer producer,
+         permissions::AuditDraft draft) override;
+  [[nodiscard]] QueryResult query(const Query &query = {}) const;
 
 private:
-  std::filesystem::path root_;
-  Options options_;
+  std::size_t maximum_records_;
+  std::uint64_t next_sequence_ = 1;
+  std::uint64_t last_monotonic_ns_ = 0;
+  std::vector<permissions::AuditRecord> records_;
 };
 
 } // namespace omarchy::plugins::audit

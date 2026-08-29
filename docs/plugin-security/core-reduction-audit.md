@@ -1,44 +1,50 @@
-# Secure plugin runtime reduction audit — batch A
+# Secure plugin runtime reduction audit — Batch B
 
-This checkpoint is derived from `c2bf25cf` and contains only removal/defer cleanup. It does not introduce the policy extraction, native bridge additions, Quickshell integration, packaging, activation, or installed-system proof.
+Base commit: `91f11037cdb3e7650481fd7014f9081998284ec3`.
 
-## Disposition
+Batch B consolidates policy/grant ownership without changing provider inventory, wire protocol, native bridge, shell integration, packaging, or activation.
 
-- Delete uninstalled experiments, proof campaigns, vertical slices, obsolete architecture/evidence notes, and redundant presentation/orchestration implementations that are not required by the retained build graph.
-- Delete trusted external-provider administration, update/rollback orchestration, migration reporting, extended evidence tooling, and the standalone product host. Their later extension seams remain in subsequent batches; none are installed by this checkpoint.
-- Delete all in-tree winner source, fixtures, capability definitions, screenshots, and references. Generic built-in definitions are not created in this batch and will be reviewed separately with the provider implementation that earns them.
-- Retain the worker, bubblewrap/seccomp sandbox, authenticated channel, broker authorization, grant/revision/audit stores, provider registry, offscreen surface transport, and existing native QML module unchanged except for removing the deleted standalone host from version-reporting tests.
+## Ownership change
 
-## Exact boundary
-
-The 187 fully included paths and two partial paths are listed in `/tmp/omarchy-plugin-security-batch-a-paths.txt`. All other dirty paths are excluded and partitioned by `/tmp/omarchy-plugin-security-batch-{b,c,d,e}-paths.txt`.
-
-The root CMake partial change removes only references to deleted batch-A targets. It retains `presentation`, `revision-store`, `grants`, `audit`, `broker-runtime`, providers, worker, trusted bridge, and channel integration. `native/plugin-runtime/tests/CMakeLists.txt` and `runtime_contract_test.cpp` drop only the deleted standalone-host version probe while retaining worker version, direct-launch denial, bridge import, and protocol tests.
+- Replace the persistent revision/grant stores and permission administration CLI with the immutable 33-line `policy::GrantSnapshot` and `policy::Revocation` handoff.
+- Keep manifest declaration ceilings, current grants, exact operation/scope checks, immutable plugin/revision/policy/generation binding, grant epochs, and runtime revocation in the broker.
+- Replace the persistent filesystem audit database and CLI with an `AuditSink` interface and bounded in-memory implementation. The broker remains fail-stop when the sink rejects a decision.
+- Compile the bounded audit implementation into the broker-runtime owner instead of retaining a separate audit production library.
+- Defer grant decision persistence, candidate/update state, rollback state, durable audit storage/export/migration, and administrator tooling beyond the retained interfaces.
+- Preserve all seven provider operations present at HEAD, including the existing fake-status test provider. Provider and permission-registry reduction belongs to Batch C and is absent here.
 
 ## Exact budgets
 
-| Measure | Baseline | Batch A | Delta |
+| Measure | HEAD 91f11037 | Batch B | Delta |
 |---|---:|---:|---:|
-| Production C++ | 31,172 | 23,075 | -8,097 |
-| Test/support C++ | 20,335 | 14,161 | -6,174 |
-| Total native C++ | 51,507 | 37,236 | -14,271 |
-| Production libraries/QML modules plus private worker | 31 | 20 | -11 |
+| Production C++ | 23,075 | 18,896 | -4,179 |
+| Test/support C++ | 14,161 | 12,507 | -1,654 |
+| Total native C++ | 37,236 | 31,403 | -5,833 |
+| Native C++ files | 165 | 157 | -8 |
+| Production libraries/QML modules plus private worker | 20 | 17 | -3 |
+| Explicit non-operation wire message types | 28 | 28 | 0 |
+| Built-in operation IDs | 7 | 7 | 0 |
 
-Counts use the audit classifier: physical `*.cpp`, `*.h`, and `*.hpp` lines under `native/plugin-runtime`; test directories, fixtures, test/compatibility executables, fake/probe programs, `channel_peer.cpp`, and proof/vertical-slice code are support. The target count comes from CMake File API codemodel v2, counting production static/shared/module libraries plus `omarchy-plugin-qml-worker`, excluding test-only support/proof libraries.
+The target reduction removes the separate revision-store, grant-store, and audit-store libraries. Audit implementation ownership moves into the existing broker-runtime target, so no replacement wrapper target is added.
 
-These reproducible baseline classifications correct the existing working audit's 59-line production/support allocation mismatch; total baseline LOC is unchanged.
+LOC uses physical `*.cpp`, `*.h`, and `*.hpp` lines under `native/plugin-runtime`. Test directories, fixtures, test/compatibility executables, fake/probe programs, `channel_peer.cpp`, and proof/vertical-slice code are classified as support.
+
+## Exact boundary
+
+The 21 complete paths and four partial paths are listed in `/tmp/omarchy-plugin-security-batch-b-paths.txt`. The exact tested content for every partial path is in `/tmp/omarchy-plugin-security-batch-b-native.2Dejgc`. The other 147 dirty paths are listed in `/tmp/omarchy-plugin-security-batch-b-excluded-paths.txt` and remain outside this batch.
+
+The four partial paths are the working audit, root CMake graph, and the broker runtime implementation/header. Their tested Batch-B forms deliberately restore the later provider-removal hunks so the seven-operation HEAD provider registry remains unchanged.
 
 ## Verification
 
-Tested exact source: `/tmp/omarchy-plugin-security-batch-a-native.0SeHtU`.
-
-- Configure: `cmake -S native/plugin-runtime -B /tmp/omarchy-plugin-security-batch-a-native.0SeHtU-build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON` — pass.
-- Full build: `cmake --build /tmp/omarchy-plugin-security-batch-a-native.0SeHtU-build -j2` — pass, 381/381 build steps.
-- Environment-independent suite: `ctest --test-dir /tmp/omarchy-plugin-security-batch-a-native.0SeHtU-build --output-on-failure -E 'plugin-(sandbox-policy|sandbox-enforcement|sidecar-real-bwrap|worker-channel|qml-broker-api|channel-integration-fake|channel-integration-bwrap|adversarial-harness|malicious-peer|launcher-contract|launcher-malicious-peer|launcher-bwrap|launcher-systemd-scope)'` — 40/40 pass.
-- Full CTest discovery/run: 53 tests; 40 ordinary passes, two expected launcher skips, and 11 restricted-environment failures. Every failure is attributable to denied network namespace or peer-credential setup, or the unavailable display; no source/build failure occurred. Those tests remain mandatory for later real-session validation.
+- Configure: `cmake -S native/plugin-runtime -B /tmp/omarchy-plugin-security-batch-b-native.2Dejgc-build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON` — pass.
+- Complete native build: `cmake --build /tmp/omarchy-plugin-security-batch-b-native.2Dejgc-build -j2` — pass, 350/350 steps.
+- Focused policy/security tests: `ctest --test-dir /tmp/omarchy-plugin-security-batch-b-native.2Dejgc-build --output-on-failure -R '^(plugin-permission-contract|capability-definition-contract|plugin-broker-core|plugin-audit-store|plugin-dynamic-broker-runtime)$'` — 5/5 pass.
+- The consolidated dynamic broker test directly verifies active `GrantSnapshot` revocation, epoch replacement, replay rejection, audit-before-publication, dynamic revocation, and fail-stop behavior from an independently rejecting `AuditSink`.
+- A broader name-based run also selected `plugin-qml-broker-api`; its five native policy/broker tests passed and only that display-dependent QML test failed because this restricted namespace has no display.
 
 ## Proposed commit
 
-`Remove superseded plugin security layers`
+`Consolidate plugin grant and audit policy`
 
-This checkpoint is not product-ready. It performs no live installation or activation and makes no claim that the standalone bridge is the product host.
+This checkpoint performs no installation or live activation and does not modify bridge, shell, packaging, provider, capability registry, or wire-message behavior.

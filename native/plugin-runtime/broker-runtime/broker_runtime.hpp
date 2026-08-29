@@ -1,7 +1,7 @@
 #pragma once
 
 #include "audit_store.hpp"
-#include "grant_store.hpp"
+#include "grant_snapshot.hpp"
 #include "omarchy/plugin_runtime/broker/broker_core.hpp"
 #include "omarchy/plugin_runtime/providers/provider_set.hpp"
 
@@ -16,7 +16,7 @@ namespace omarchy::plugin_runtime::runtime {
 
 namespace audit = omarchy::plugins::audit;
 namespace broker = omarchy::plugin_runtime::broker;
-namespace grant = omarchy::plugins::grants;
+namespace policy = omarchy::plugin_runtime::policy;
 namespace permissions = omarchy::plugins::permissions;
 namespace providers = omarchy::plugin_runtime::providers;
 namespace wire = omarchy::plugin::wire;
@@ -26,7 +26,6 @@ inline constexpr std::size_t kMaximumRuntimeHandles = 32;
 inline constexpr std::size_t kMaximumFakeResultBytes =
     4 + providers::kMaximumFakeStatuses *
             (10 + providers::kMaximumFakeStatusTextBytes);
-
 enum class RuntimeStatus : std::uint8_t {
   accepted,
   denied,
@@ -50,9 +49,9 @@ struct RevocationResult {
 
 class AuditedBrokerRuntime {
 public:
-  AuditedBrokerRuntime(grant::RevisionGrants revision,
+  AuditedBrokerRuntime(policy::GrantSnapshot revision,
                        providers::ProviderConfiguration providers,
-                       audit::AuditStore &audit_store);
+                       audit::AuditSink &audit_sink);
   AuditedBrokerRuntime(const AuditedBrokerRuntime &) = delete;
   AuditedBrokerRuntime &operator=(const AuditedBrokerRuntime &) = delete;
 
@@ -68,7 +67,7 @@ public:
   accept_terminal(const wire::PacketView &packet);
 
   [[nodiscard]] RevocationResult
-  apply_revocation(const grant::RevocationResult &revocation);
+  apply_revocation(const policy::Revocation &revocation);
   [[nodiscard]] RuntimeStatus shutdown();
 
   [[nodiscard]] HandleResult issue_handle(const permissions::HandleId &id,
@@ -93,7 +92,7 @@ public:
   [[nodiscard]] const permissions::ActivationBinding &binding() const {
     return binding_;
   }
-  [[nodiscard]] const grant::RevisionGrants &revision() const {
+  [[nodiscard]] const policy::GrantSnapshot &revision() const {
     return revision_;
   }
 
@@ -124,7 +123,7 @@ private:
   };
 
   [[nodiscard]] static providers::ProviderConfiguration
-  normalize_configuration(const grant::RevisionGrants &revision,
+  normalize_configuration(const policy::GrantSnapshot &revision,
                           providers::ProviderConfiguration configuration);
 
   static broker::ProviderResult gate_dispatch(const broker::AuthorizedRequest &,
@@ -158,10 +157,10 @@ private:
   [[nodiscard]] const permissions::GrantRecord *
   grant_for(const permissions::CapabilityKey &capability) const;
 
-  grant::RevisionGrants revision_;
+  policy::GrantSnapshot revision_;
   permissions::ActivationBinding binding_;
   permissions::PermissionAuthority authority_;
-  audit::AuditStore &audit_;
+  audit::AuditSink &audit_;
   providers::ProviderSet providers_;
   broker::ProviderRegistry<7> provider_registry_;
   GateRegistry gate_;

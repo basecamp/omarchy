@@ -1,15 +1,15 @@
 #include "dynamic_broker_runtime.hpp"
+#include "broker_runtime.hpp"
 
 #include <array>
-#include <filesystem>
 #include <stdexcept>
-#include <sys/stat.h>
-#include <unistd.h>
 
 using namespace omarchy::plugin_runtime;
 namespace definitions = omarchy::plugins::definitions;
 namespace permissions = omarchy::plugins::permissions;
 namespace broker = omarchy::plugin_runtime::broker;
+namespace policy = omarchy::plugin_runtime::policy;
+namespace providers = omarchy::plugin_runtime::providers;
 namespace wire = omarchy::plugin::wire;
 
 namespace {
@@ -17,7 +17,14 @@ struct FakeGestureClock final : runtime::DynamicGestureClock {
   std::uint64_t now = 100;
   std::uint64_t now_nanoseconds() const override { return now; }
 };
-struct EffectContext { const char *make_audit_unsafe = nullptr; };
+struct RejectingAuditSink final : omarchy::plugins::audit::AuditSink {
+  omarchy::plugins::audit::AppendResult
+  append(permissions::AuditProducer, permissions::AuditDraft) override {
+    return {{omarchy::plugins::audit::ErrorCode::invalid_argument,
+             "injected audit rejection"},
+            std::nullopt};
+  }
+};
 void require(bool value, const char *message) { if (!value) throw std::runtime_error(message); }
 permissions::Digest digest(char value) { return permissions::Digest(std::string(64, value)); }
 definitions::DynamicScopeRelation exact(const definitions::CapabilityDefinition &,
@@ -28,11 +35,8 @@ definitions::DynamicScopeRelation exact(const definitions::CapabilityDefinition 
 }
 bool echo(const definitions::AuthorizedDynamicRequest &request,
           std::span<std::byte> response, std::size_t &written,
-          void *opaque) noexcept {
+          void *) noexcept {
   if (request.authorization.grant_epoch == 0 || response.size() < request.payload.size()) return false;
-  const auto *context = static_cast<EffectContext *>(opaque);
-  if (context != nullptr && context->make_audit_unsafe != nullptr)
-    (void)chmod(context->make_audit_unsafe, 0750);
   std::ranges::copy(request.payload, response.begin()); written = request.payload.size(); return true;
 }
 }
@@ -70,15 +74,53 @@ int main() {
               !gesture_latch.arm(gesture_binding, stale_sequence),
           "non-monotonic gesture sequence accepted");
   gesture_latch.clear();
-  std::array<char, 64> audit_template{};
-  const auto prefix = std::string("/tmp/omarchy-dynamic-audit.XXXXXX");
-  std::ranges::copy(prefix, audit_template.begin());
-  const auto *audit_root = mkdtemp(audit_template.data());
-  require(audit_root != nullptr, "audit temporary directory");
-  struct Cleanup { std::filesystem::path path; ~Cleanup() { std::filesystem::remove_all(path); } } cleanup{audit_root};
-  omarchy::plugins::audit::AuditStore audit(
-      std::filesystem::path(audit_root) / "store", {});
-  require(audit.recover().ok(), "audit recover");
+  omarchy::plugins::audit::BoundedAuditLog audit;
+  omarchy::plugins::audit::BoundedAuditLog builtin_audit;
+  policy::GrantSnapshot snapshot;
+  snapshot.binding = {
+      .plugin = permissions::PluginId("fixture.builtin"),
+      .revision = digest('3'),
+      .policy_fingerprint = digest('4'),
+      .generation = 9};
+  const permissions::CapabilityKey storage{
+      permissions::CapabilityId("storage.private"), 1};
+  const permissions::QuotaScope storage_scope{4096, 1024};
+  snapshot.requests.push_back(
+      {.capability = storage, .scope = storage_scope, .required = true});
+  snapshot.binding.policy_fingerprint = permissions::Digest(
+      permissions::policy_request_fingerprint(snapshot.requests));
+  snapshot.grants.push_back(
+      {.capability = storage,
+       .scope = storage_scope,
+       .state = permissions::GrantState::granted,
+       .epoch = 4});
+  runtime::AuditedBrokerRuntime builtin_runtime(
+      snapshot, providers::ProviderConfiguration{}, builtin_audit);
+  const policy::Revocation revoke{
+      .sequence = 1,
+      .slot = policy::RevisionSlot::active,
+      .grant = {.capability = storage,
+                .scope = storage_scope,
+                .state = permissions::GrantState::revoked,
+                .epoch = 5},
+      .action = permissions::RevocationMode::cancel_inflight,
+      .fingerprint = "fixture"};
+  require(builtin_runtime.apply_revocation(revoke).status ==
+              runtime::RuntimeStatus::accepted,
+          "active snapshot revocation rejected");
+  require(builtin_runtime.revision().grants[0].state ==
+                  permissions::GrantState::revoked &&
+              builtin_runtime.revision().grants[0].epoch == 5,
+          "revocation did not replace the immutable activation snapshot");
+  require(builtin_runtime.apply_revocation(revoke).status ==
+              runtime::RuntimeStatus::binding_mismatch,
+          "replayed revocation accepted");
+  const auto builtin_records = builtin_audit.query({});
+  require(!builtin_records.records.empty() &&
+              builtin_records.records.back().event ==
+                  permissions::AuditEvent::capability_revoked,
+          "built-in revocation was not audited before publication");
+
   definitions::CapabilityDefinition definition{
       .canonical_name = definitions::Name("fixture.echo"),
       .authority_identity = definitions::Name("fixture.echo-v1"),
@@ -110,9 +152,8 @@ int main() {
                 .state = permissions::GrantState::granted, .epoch = 4}};
   grant.request.operations.insert(definitions::Name("echo"));
   grant.grant.operations.insert(definitions::Name("echo"));
-  EffectContext effect;
   runtime::DynamicBrokerRuntime runtime(registry, {{.grant = grant,
-      .adapter = {.binding = definition.adapter, .dispatch = echo, .context = &effect},
+      .adapter = {.binding = definition.adapter, .dispatch = echo, .context = nullptr},
       .scope_validator = {.compare = exact}}}, audit);
   const std::array payload{std::byte{7}};
   definitions::DynamicInvocation invocation{.definition = grant.request.definition,
@@ -158,13 +199,10 @@ int main() {
                 definitions::DynamicDispatchResult::denied,
             "monotonic dynamic dispatcher exhausted after a fixed call count");
   }
-  const auto failure_root = std::filesystem::path(audit_root) / "failure-store";
-  omarchy::plugins::audit::AuditStore failure_audit(failure_root, {});
-  require(failure_audit.recover().ok(), "failure audit recover");
-  EffectContext failing_effect{.make_audit_unsafe = failure_root.c_str()};
+  RejectingAuditSink failure_audit;
   runtime::DynamicBrokerRuntime failing_runtime(registry, {{.grant = grant,
       .adapter = {.binding = definition.adapter, .dispatch = echo,
-                  .context = &failing_effect},
+                  .context = nullptr},
       .scope_validator = {.compare = exact}}}, failure_audit);
   packet.header.correlation_id = 100;
   result = failing_runtime.dispatch(packet, grant.binding, output);
@@ -174,5 +212,4 @@ int main() {
   require(failing_runtime.dispatch(packet, grant.binding, output).outcome ==
               definitions::DynamicDispatchResult::malformed,
           "runtime continued after terminal audit failure");
-  (void)chmod(failure_root.c_str(), 0700);
 }

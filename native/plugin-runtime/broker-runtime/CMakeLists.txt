@@ -11,18 +11,15 @@ if(NOT TARGET omarchy-plugin-providers)
   add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../providers"
                    "${CMAKE_CURRENT_BINARY_DIR}/providers")
 endif()
-if(NOT TARGET omarchy-plugin-grant-store)
-  add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../grants"
-                   "${CMAKE_CURRENT_BINARY_DIR}/grants")
-endif()
-if(NOT TARGET omarchy-plugin-audit-store)
-  add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../audit"
-                   "${CMAKE_CURRENT_BINARY_DIR}/audit")
-endif()
-
-add_library(omarchy-plugin-broker-runtime STATIC broker_runtime.cpp dynamic_broker_runtime.cpp)
+add_library(omarchy-plugin-broker-runtime STATIC
+  broker_runtime.cpp
+  dynamic_broker_runtime.cpp
+  ../audit/audit_store.cpp
+)
 target_include_directories(omarchy-plugin-broker-runtime PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../audit"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../policy"
 )
 target_compile_features(omarchy-plugin-broker-runtime PUBLIC cxx_std_20)
 target_compile_options(omarchy-plugin-broker-runtime PRIVATE
@@ -30,8 +27,7 @@ target_compile_options(omarchy-plugin-broker-runtime PRIVATE
 )
 target_link_libraries(omarchy-plugin-broker-runtime PUBLIC
   omarchy-plugin-providers
-  omarchy-plugin-grant-store
-  omarchy-plugin-audit-store
+  omarchy-plugin-permission-contract
 )
 if(PLUGIN_SECURITY_BROKER_RUNTIME_SANITIZERS)
   target_compile_options(omarchy-plugin-broker-runtime PRIVATE
@@ -43,27 +39,17 @@ if(PLUGIN_SECURITY_BROKER_RUNTIME_SANITIZERS)
 endif()
 
 if(BUILD_TESTING)
-  add_executable(omarchy-plugin-broker-runtime-test broker_runtime_test.cpp)
-  target_compile_features(omarchy-plugin-broker-runtime-test PRIVATE cxx_std_20)
-  target_compile_options(omarchy-plugin-broker-runtime-test PRIVATE
-    -Wall -Wextra -Wpedantic -Werror
-  )
-  target_link_libraries(omarchy-plugin-broker-runtime-test PRIVATE
-    omarchy-plugin-broker-runtime
-  )
-  if(PLUGIN_SECURITY_BROKER_RUNTIME_SANITIZERS)
-    target_compile_options(omarchy-plugin-broker-runtime-test PRIVATE
-      -fsanitize=address,undefined -fno-omit-frame-pointer
-    )
-    target_link_options(omarchy-plugin-broker-runtime-test PRIVATE
-      -fsanitize=address,undefined
-    )
-  endif()
-  add_test(NAME plugin-broker-runtime COMMAND omarchy-plugin-broker-runtime-test)
-  set_tests_properties(plugin-broker-runtime PROPERTIES
-    TIMEOUT 30
-    LABELS "unit;integration;adversarial;broker;audit"
-  )
+  add_executable(omarchy-plugin-audit-store-test
+    ../audit/audit_store_test.cpp)
+  target_compile_features(omarchy-plugin-audit-store-test PRIVATE cxx_std_20)
+  target_compile_options(omarchy-plugin-audit-store-test PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+  target_link_libraries(omarchy-plugin-audit-store-test PRIVATE
+    omarchy-plugin-broker-runtime)
+  add_test(NAME plugin-audit-store COMMAND omarchy-plugin-audit-store-test)
+  set_tests_properties(plugin-audit-store PROPERTIES
+    TIMEOUT 30 LABELS "unit;integration;adversarial;audit")
+
   add_executable(omarchy-plugin-dynamic-broker-runtime-test
     dynamic_broker_runtime_test.cpp)
   target_compile_features(omarchy-plugin-dynamic-broker-runtime-test PRIVATE cxx_std_20)

@@ -20,7 +20,7 @@ constexpr std::array kOperations{
     permissions::OperationId::fake_status_acknowledge,
 };
 
-std::uint64_t epoch_for(const grant::RevisionGrants &revision,
+std::uint64_t epoch_for(const policy::GrantSnapshot &revision,
                         std::string_view capability) {
   for (const auto &record : revision.grants.values()) {
     if (record.capability.version == 1 &&
@@ -51,7 +51,7 @@ handle_denial(permissions::HandleDecision value) {
 } // namespace
 
 providers::ProviderConfiguration AuditedBrokerRuntime::normalize_configuration(
-    const grant::RevisionGrants &revision,
+    const policy::GrantSnapshot &revision,
     providers::ProviderConfiguration configuration) {
   configuration.binding = revision.binding;
   configuration.storage_epoch = epoch_for(revision, "storage.private");
@@ -82,9 +82,9 @@ AuditedBrokerRuntime::GateRegistry::GateRegistry(
 }
 
 AuditedBrokerRuntime::AuditedBrokerRuntime(
-    grant::RevisionGrants revision,
+    policy::GrantSnapshot revision,
     providers::ProviderConfiguration configuration,
-    audit::AuditStore &audit_store)
+    audit::AuditSink &audit_sink)
     : revision_(std::move(revision)), binding_(revision_.binding),
       authority_(revision_.dynamic_grants.empty()
                      ? permissions::PermissionAuthority(
@@ -92,14 +92,12 @@ AuditedBrokerRuntime::AuditedBrokerRuntime(
                      : permissions::PermissionAuthority(
                            binding_, revision_.requests, revision_.grants,
                            permissions::PermissionAuthority::ValidatedCombinedPolicy{})),
-      audit_(audit_store),
+      audit_(audit_sink),
       providers_(normalize_configuration(revision_, std::move(configuration))),
       provider_registry_(providers_.registry()), gate_(provider_registry_),
       core_(binding_, authority_, gate_.registry, kMaximumRuntimeRequests) {
   for (auto &context : gate_.contexts)
     context.owner = this;
-  if (!audit_.recover().ok())
-    failed_ = true;
 }
 
 broker::ProviderResult
@@ -282,12 +280,12 @@ AuditedBrokerRuntime::accept_terminal(const wire::PacketView &packet) {
 }
 
 RevocationResult AuditedBrokerRuntime::apply_revocation(
-    const grant::RevocationResult &revocation) {
+    const policy::Revocation &revocation) {
   RevocationResult result;
   const auto *definition =
       permissions::find_capability(revocation.grant.capability);
   const auto *current = grant_for(revocation.grant.capability);
-  if (failed_ || revocation.target != grant::TargetRevision::active ||
+  if (failed_ || revocation.slot != policy::RevisionSlot::active ||
       definition == nullptr || current == nullptr ||
       revocation.grant.state != permissions::GrantState::revoked ||
       current->epoch == std::numeric_limits<std::uint64_t>::max() ||

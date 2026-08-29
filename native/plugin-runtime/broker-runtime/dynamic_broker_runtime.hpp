@@ -64,7 +64,7 @@ class DynamicBrokerRuntime {
 public:
   DynamicBrokerRuntime(const definitions::TrustedDefinitionRegistry &registry,
                        std::vector<DynamicRoute> reconstructed_routes,
-                       omarchy::plugins::audit::AuditStore &audit_store);
+                       omarchy::plugins::audit::AuditSink &audit_sink);
 
   [[nodiscard]] DynamicBrokerResult dispatch(
       const wire::PacketView &packet,
@@ -82,7 +82,7 @@ public:
 private:
   const definitions::TrustedDefinitionRegistry &registry_;
   std::vector<DynamicRoute> routes_;
-  omarchy::plugins::audit::AuditStore &audit_;
+  omarchy::plugins::audit::AuditSink &audit_;
   std::uint64_t last_correlation_ = 0;
   bool failed_ = false;
 };
