@@ -332,11 +332,13 @@ WEBCAM_SIZE=medium
 REGION_FILE="$tmp_dir/webcam-region"
 
 OMARCHY_TEST_ASAHI_DRIVER=true start_webcam_overlay
+wait
 grep -qFx -- '--vo=gpu' "$OMARCHY_TEST_MPV_ARGS" ||
   fail "Apple Silicon webcam overlay uses mpv's gpu renderer" "$(cat "$OMARCHY_TEST_MPV_ARGS")"
 pass "Apple Silicon webcam overlay uses mpv's gpu renderer"
 
 OMARCHY_TEST_ASAHI_DRIVER=false start_webcam_overlay
+wait
 if grep -qFx -- '--vo=gpu' "$OMARCHY_TEST_MPV_ARGS"; then
   fail "other webcam overlays keep mpv's default renderer" "$(cat "$OMARCHY_TEST_MPV_ARGS")"
 fi
