@@ -22,7 +22,9 @@ Panel {
   property var topProcesses: []
   property var systemRows: []
   property var resourceSplits: null
-  property var heat: ({})
+  // The legend ink: ONE constant for every process surface — the same
+  // value the table mark and every bar block render at, never modulated.
+  readonly property real processInk: 0.85
   property var processColumns: []
   // Composition-bar gap geometry: a constant separator width and a constant
   // budget for the maximum segment count, so fills scale identically across
@@ -146,16 +148,15 @@ Panel {
     return modeLabel()
   }
 
-  // Ink, not hue: RANK-NORMALIZED heat — foreground at even steps from
-  // 1.0 (rank 1) down to 0.35 (last rank), and that value follows the
-  // process everywhere (row mark, every bar segment). The system block/row
-  // is WHITE (the machine itself). Magnitude lives in segment SIZE and the
-  // numeric cells; ink's only job is ORDER. Identity is positional and by
-  // label (operator decisions, 2026-08-29).
+  // Ink is the LEGEND: one constant ink for every process surface — the
+  // table mark and its bar blocks are the exact same color, always, with
+  // no modulation by resource usage. The system block/row is WHITE (the
+  // machine itself). Magnitude lives in segment SIZE and the numeric
+  // cells; identity lives in order and label (operator decision,
+  // 2026-08-29).
   function segmentInk(seg) {
     if (seg.kind === "system") return 1
-    if (seg.ink !== undefined) return seg.ink
-    return 0.35
+    return root.processInk
   }
 
   function segmentColor(seg) {
@@ -315,39 +316,11 @@ Panel {
     processColumns = cols
     resourceSplits = Model.buildResourceSplits(prevSnapshot, snap, 5, draw, baseWatts)
     // ONE HEAT PER PROCESS (operator decision, 2026-08-29): a process's ink
-    // is a single value — its share of the busiest process's CPU load,
-    // 0.35..1.0 — and that value follows it EVERYWHERE: the table row's
-    // mark, its segment in every composition bar. Like a heatmap of
-    // processes: the system leads in white (the machine itself), the top
-    // process glows brightest, and ink fades monotonically down the table's
-    // rank. Segment SIZE still encodes each bar's own metric share; INK
-    // encodes who the process is and how hot it runs. One writer: computed
-    // here, once per refresh, onto plain numbers.
-    // RANK-NORMALIZED (operator decision, 2026-08-29): ink steps EVENLY by
-    // rank — rank 1 is white, the last rank sits at the 0.35 floor — not by
-    // share ratio. How much hotter one process runs than another is already
-    // encoded by segment SIZE; ink's only job is order.
-    var heatMap = {}
-    var cpuBar = resourceSplits.cpu
-    // The cpu split is NULL until two samples exist (and stays null on AC
-    // restarts) — a null bar means "no heat yet", not an error.
-    if (cpuBar !== null && cpuBar !== undefined) {
-      var comms = []
-      for (var hi = 0; hi < cpuBar.length; hi++)
-        if (cpuBar[hi].kind === "comm") comms.push(cpuBar[hi])
-      for (var hj = 0; hj < comms.length; hj++) {
-        var step = comms.length > 1 ? 0.65 / (comms.length - 1) : 0
-        heatMap[comms[hj].key] = 1 - hj * step
-      }
-    }
-    var allBars = [resourceSplits.cpu, resourceSplits.ram, resourceSplits.watts, resourceSplits.gpu]
-    for (var bi = 0; bi < allBars.length; bi++) {
-      var bar = allBars[bi]
-      if (!bar) continue
-      for (var si3 = 0; si3 < bar.length; si3++)
-        if (bar[si3].kind === "comm") bar[si3].ink = heatMap[bar[si3].key] !== undefined ? heatMap[bar[si3].key] : 0.35
-    }
-    heat = heatMap
+    // LEGEND-CONSTANT ink (operator decision, 2026-08-29): the table mark
+    // and every bar segment for a process wear the SAME constant ink — no
+    // heat modulation by resource usage. What a process consumes is already
+    // encoded by segment SIZE and the numeric cells; order is shared by
+    // table and bars alike. The legend never changes under the reader.
     // Vitals rows are rebuilt complete with their segments attached: a
     // property added to a plain JS object after the fact carries no change
     // signal, so a delegate that bound before the attach would stay null.
@@ -734,11 +707,9 @@ Panel {
               columns: root.processColumns
               anchor: modelData.key === "system"
               commColor: root.bar ? root.bar.foreground : Color.foreground
-              // The mark IS the process's heat — the same one-writer value
-              // its bar segments use (root.heat), so mark and bars can
-              // never disagree about a process.
-              commInk: modelData.key === "system" ? 1
-                : (root.heat[modelData.key] !== undefined ? root.heat[modelData.key] : 0.35)
+              // The mark is the legend swatch: the exact ink its bar
+              // blocks render at, constant, never modulated.
+              commInk: modelData.key === "system" ? 1 : root.processInk
             }
           }
 
