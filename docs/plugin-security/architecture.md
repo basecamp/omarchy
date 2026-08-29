@@ -174,6 +174,8 @@ The worker does not gain raw network access when `network` is granted. Network r
 
 The broker is an Omarchy-owned process outside the sandbox, separate from the QML object graph. It owns a distinct authenticated channel for each worker and exposes versioned structured operations. It validates types and bounds before dispatch, checks the active grant on every call, applies rate and concurrency limits, and returns typed results.
 
+The QML worker and plugin-bundled sidecars may share one Bubblewrap sandbox and communicate freely through private files, Unix sockets, standard streams, or loopback. They share one plugin identity and one resource budget. Bubblewrap denies ambient exits; it does not translate arbitrary syscalls into permission requests. Omarchy exposes authenticated broker sockets for deliberate exits and may also place compatibility shims in the sandbox `PATH`. A shim such as sandbox-local `gh` can translate a closed, validated argv grammar into structured account operations without exposing the host `gh`, its credentials, or its unrestricted command set. HTTP, D-Bus, portal, and file proxies can provide similar protocol-specific compatibility, but unknown programs, subcommands, syscalls, and protocols remain denied rather than receiving a generic pass-through.
+
 The broker should expose domain operations rather than a generic `exec` escape hatch wherever Omarchy can own the integration. Candidate operation families are:
 
 - `storage.private`: quota-bound private key/value or files, never a host path;
@@ -191,17 +193,18 @@ The broker should expose domain operations rather than a generic `exec` escape h
 
 ### Permission store
 
-Grants live in Omarchy-owned state outside plugin source and outside `shell.json`. A grant is bound to:
+Grants live in Omarchy-owned state outside plugin source and outside `shell.json`. A manifest request is not authority: Omarchy must first resolve its exact id, version, definition digest, registry generation, requested operations, and scope against a trusted capability definition installed independently of the plugin. Unknown, stale, unavailable, or scope-invalid requests cannot be reviewed or granted. A grant is bound to:
 
 - canonical plugin id;
 - recorded source or publisher identity;
-- capability name and API version;
+- canonical capability-definition id, definition digest, and registry generation;
+- trusted enforcement family, adapter identity and implementation digest, and allowed operation set;
 - exact resource scope selected by the user;
 - whether the grant is persistent, one-shot, or valid only during a user gesture;
 - the revision and requested-capability fingerprint that introduced it;
 - grant, denial, and revocation timestamps.
 
-The plugin can inspect whether a requested optional capability is available, but it cannot edit grants. Permission state should be viewable and revocable through both CLI and the Setup menu.
+The plugin can inspect whether a requested optional capability is available, but it cannot edit grants. Every broker packet names a host-defined operation, not a plugin-authored permission label. The authenticated channel supplies plugin identity, and the broker checks the operation's resolved definition, exact grant, resource scope, revision, policy generation, adapter binding, gesture requirement, and revocation epoch before dispatch. Permission state should be viewable and revocable through both CLI and the Setup menu.
 
 ## What changes when an existing plugin becomes secure
 
@@ -364,7 +367,7 @@ Permissions should be structured requests with a human explanation, not broad st
 }
 ```
 
-The final schema should use a registry of capability definitions maintained by Omarchy. Each definition owns validation, risk text, whether its scope can be narrowed by the user, whether it requires a user gesture, and which broker operation implements it.
+The schema uses a trusted, extensible registry of capability definitions. Each definition owns its display category and risk text, selects a closed Omarchy enforcement family and scope schema, enumerates its broker operations, declares gesture and audit policy, and pins a trusted adapter implementation. Omarchy ships its known definitions. Administrators may add named definitions—including constrained command-harness profiles with pinned executable digests and closed argv grammars—by composing those trusted primitives. Plugins may request definitions, but cannot supply, shadow, or redefine what a request means.
 
 Do not add a generic `network`, `filesystem`, `session-bus`, `wayland`, or `process` permission to secure mode. Those restore ambient authority and make per-action broker checks impossible.
 
