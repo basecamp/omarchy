@@ -23,6 +23,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 
@@ -151,7 +152,38 @@ private:
         fatal("broker response failed runtime validation");
       return;
     }
+    if (endpoint.role() == wire::EndpointRole::control && !broker_api_) {
+      if (pending_permission_snapshot_ ||
+          packet.header.message_type != wire::kPermissionSnapshotMessage ||
+          packet.header.correlation_id != 0 || !packet.descriptors.empty()) {
+        fatal("unexpected pre-readiness control traffic");
+        return;
+      }
+      pending_permission_snapshot_ = std::move(packet);
+      return;
+    }
     if (endpoint.role() == wire::EndpointRole::control && broker_api_) {
+      apply_permission_snapshot(std::move(packet));
+      return;
+    }
+    if (endpoint.role() != wire::EndpointRole::render || !render_state_) {
+      fatal("unexpected post-negotiation control traffic");
+      return;
+    }
+    const wire::PacketView view{.header = packet.header,
+                                .payload = packet.payload};
+    if (!render_state_->accept(view, wire::Direction::host_to_worker)) {
+      fatal("render endpoint state rejected host packet");
+      return;
+    }
+    handle_render(packet);
+  }
+
+  void apply_permission_snapshot(worker::ReceivedPacket packet) {
+    if (!broker_api_) {
+      fatal("permission snapshot arrived before runtime readiness");
+      return;
+    }
       if (packet.header.message_type != wire::kPermissionSnapshotMessage ||
           packet.header.correlation_id != 0 || !packet.descriptors.empty() ||
           !broker_api_->applyHostPermissionSnapshotPayload(
@@ -177,19 +209,6 @@ private:
                                 0)) {
         fatal("permission snapshot acknowledgement failed");
       }
-      return;
-    }
-    if (endpoint.role() != wire::EndpointRole::render || !render_state_) {
-      fatal("unexpected post-negotiation control traffic");
-      return;
-    }
-    const wire::PacketView view{.header = packet.header,
-                                .payload = packet.payload};
-    if (!render_state_->accept(view, wire::Direction::host_to_worker)) {
-      fatal("render endpoint state rejected host packet");
-      return;
-    }
-    handle_render(packet);
   }
 
   void ready_runtime() {
@@ -224,6 +243,11 @@ private:
     control_notifier_.setEnabled(true);
     broker_notifier_.setEnabled(true);
     render_notifier_.setEnabled(true);
+    if (pending_permission_snapshot_) {
+      auto pending = std::move(*pending_permission_snapshot_);
+      pending_permission_snapshot_.reset();
+      apply_permission_snapshot(std::move(pending));
+    }
     // QML is loaded only after the authenticated host supplies the initial
     // permission snapshot, so feature decisions never observe guessed grants.
   }
@@ -386,6 +410,7 @@ private:
   std::unique_ptr<worker::QmlBrokerApi> broker_api_;
   bool runtime_loaded_ = false;
   bool runtime_load_pending_ = false;
+  std::optional<worker::ReceivedPacket> pending_permission_snapshot_;
   QSocketNotifier control_notifier_;
   QSocketNotifier broker_notifier_;
   QSocketNotifier render_notifier_;
