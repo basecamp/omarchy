@@ -212,6 +212,10 @@ private:
         apply_surface_binding(std::move(packet));
         return;
       }
+      if (packet.header.message_type == wire::kSurfaceOpenMessage) {
+        apply_surface_open(std::move(packet));
+        return;
+      }
       apply_permission_snapshot(std::move(packet));
       return;
     }
@@ -277,6 +281,21 @@ private:
     }
     if (!control_.send(wire::kSurfaceBindingAcceptedMessage, {}, 0))
       fatal("surface binding acknowledgement failed");
+  }
+
+  void apply_surface_open(worker::ReceivedPacket packet) {
+    wire::SurfaceBinding binding;
+    if (!runtime_loaded_ || packet.header.correlation_id != 0 ||
+        !packet.descriptors.empty() ||
+        !wire::decode_surface_binding(packet.payload, binding) ||
+        !runtime_.open_surface(
+            binding.surface,
+            {.id = binding.id, .generation = binding.generation})) {
+      fatal("surface open failed runtime validation");
+      return;
+    }
+    if (!control_.send(wire::kSurfaceOpenAcceptedMessage, {}, 0))
+      fatal("surface open acknowledgement failed");
   }
 
   void apply_permission_snapshot(worker::ReceivedPacket packet) {

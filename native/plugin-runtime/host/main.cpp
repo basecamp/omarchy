@@ -907,6 +907,13 @@ int preview(const QStringList &arguments, QGuiApplication &application,
       composition_failed = true;
       break;
     }
+    if (policy.role == surface_host::SurfaceRole::panel &&
+        !host::open_surface_session(
+            *started.session, *prepared.prepared, policy.surface_name,
+            surface_id, prepared.prepared->binding.generation)) {
+      composition_failed = true;
+      break;
+    }
     PreviewSurface preview;
     preview.name = policy.surface_name;
     preview.window = std::make_unique<QQuickWindow>();

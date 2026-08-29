@@ -183,5 +183,9 @@ private:
     headless::Session &session, const PreparedPlugin &prepared,
     std::string_view surface, std::uint64_t surface_id,
     std::uint64_t surface_generation);
+[[nodiscard]] bool open_surface_session(
+    headless::Session &session, const PreparedPlugin &prepared,
+    std::string_view surface, std::uint64_t surface_id,
+    std::uint64_t surface_generation);
 
 } // namespace omarchy::plugin_runtime::product_host
