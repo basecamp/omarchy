@@ -214,6 +214,7 @@ Item {
   // the next keypress, and without the pre-suspend misses counting toward the
   // notice.
   function restartFingerprintAfterSleep() {
+    logEvent("fingerprint-resume: streak=" + fingerprintUnreachedStreak)
     fingerprintUnreachedStreak = 0
     if (fingerprintAuthenticating || fingerprintPam.active) return
     if (!fingerprintRetryTimer.running) return
@@ -294,6 +295,7 @@ Item {
   // advances the streak (and so the notice) and retries against a daemon that
   // may now be fresh, instead of hanging silently behind a normal icon.
   function timeoutFingerprintReach() {
+    logEvent("fingerprint-reach-timeout")
     if (fingerprintPam.active) fingerprintPam.abort()
     settleFingerprintAttempt()
   }
@@ -308,7 +310,16 @@ Item {
     fingerprintReachTimer.stop()
     if (!lockRequested || !fingerprintConfigured) return
 
-    fingerprintUnreachedStreak = FingerprintModel.nextStreak(fingerprintUnreachedStreak, fingerprintAttemptReachedDevice)
+    // Reached attempts are the steady state (one per swipe window), so only
+    // the misses and the recovery from them leave a trace.
+    var previousStreak = fingerprintUnreachedStreak
+    fingerprintUnreachedStreak = FingerprintModel.nextStreak(previousStreak, fingerprintAttemptReachedDevice)
+    if (!fingerprintAttemptReachedDevice) {
+      var crossed = !FingerprintModel.isUnavailable(previousStreak) && FingerprintModel.isUnavailable(fingerprintUnreachedStreak)
+      logEvent((crossed ? "fingerprint-unavailable" : "fingerprint-unreached") + ": streak=" + fingerprintUnreachedStreak)
+    } else if (previousStreak > 0) {
+      logEvent("fingerprint-recovered: streak=" + previousStreak)
+    }
     armFingerprintRetry(FingerprintModel.retryDelayMs(fingerprintUnreachedStreak))
   }
 
