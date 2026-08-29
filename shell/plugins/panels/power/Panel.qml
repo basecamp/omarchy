@@ -328,6 +328,7 @@ Panel {
     // share ratio. How much hotter one process runs than another is already
     // encoded by segment SIZE; ink's only job is order.
     var heatMap = {}
+    var rankMap = {}
     var cpuBar = resourceSplits.cpu
     // The cpu split is NULL until two samples exist (and stays null on AC
     // restarts) — a null bar means "no heat yet", not an error.
@@ -338,6 +339,7 @@ Panel {
       for (var hj = 0; hj < comms.length; hj++) {
         var step = comms.length > 1 ? 0.65 / (comms.length - 1) : 0
         heatMap[comms[hj].key] = 1 - hj * step
+        rankMap[comms[hj].key] = hj + 1
       }
     }
     var allBars = [resourceSplits.cpu, resourceSplits.ram, resourceSplits.watts, resourceSplits.gpu]
@@ -345,7 +347,10 @@ Panel {
       var bar = allBars[bi]
       if (!bar) continue
       for (var si3 = 0; si3 < bar.length; si3++)
-        if (bar[si3].kind === "comm") bar[si3].ink = heatMap[bar[si3].key] !== undefined ? heatMap[bar[si3].key] : 0.35
+        if (bar[si3].kind === "comm") {
+          bar[si3].ink = heatMap[bar[si3].key] !== undefined ? heatMap[bar[si3].key] : 0.35
+          bar[si3].rank = rankMap[bar[si3].key] !== undefined ? rankMap[bar[si3].key] : 0
+        }
     }
     heat = heatMap
     // Vitals rows are rebuilt complete with their segments attached: a
@@ -1023,11 +1028,24 @@ Panel {
           }
 
           Rectangle {
+            id: splitSeg
             required property var modelData
             width: modelData.share * Math.max(0, splitSegments.width - root.splitGapBudget)
             height: splitSegments.height
             color: root.segmentColor(modelData)
             opacity: root.segmentInk(modelData)
+
+            // Rank numeral, rendered only where the segment is wide enough
+            // to hold it without crowding — the table is the legend, and
+            // this is its index echoed at the point of use.
+            Text {
+              visible: splitSeg.width >= Style.space(7) && modelData.rank !== undefined && modelData.rank > 0
+              text: modelData.rank !== undefined ? String(modelData.rank) : ""
+              anchors.centerIn: parent
+              color: root.bar ? root.bar.background : Color.background
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.caption
+            }
           }
         }
       }
