@@ -34,7 +34,11 @@ the terminal configs `alacritty.toml`, `foot.ini`, `ghostty.conf` and
 through `$OMARCHY_PATH/default/themed/*.tpl`, and named on stderr.
 
 Everything else a cloned theme ships is kept, including `btop.theme`,
-`chromium.theme`, `helix.toml`, `icons.theme`, `keyboard.rgb` and `shell.toml`.
+`chromium.theme`, `helix.toml`, `icons.theme`, `keyboard.rgb`, `shell.toml` and
+a `startup.<ext>` sound (`wav`, `flac`, `ogg`, `oga`, `opus` or `mp3`), which
+`omarchy-theme-startup-sound` plays at login through `pw-play` after checking it
+really is audio, is under 10 MiB, and cutting it off at 15 seconds.
+`omarchy toggle startup sound` turns startup sounds off for every theme.
 Omarchy tells a cloned theme from the user's own by the `.git` directory a clone
 leaves behind.
 

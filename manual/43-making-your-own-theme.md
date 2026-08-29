@@ -12,7 +12,7 @@ A theme you write yourself in `~/.config/omarchy/themes` can contain whatever yo
 
 A theme you install from someone else's repo with `omarchy theme install` keeps everything that's colour, and loses the handful of files that would run code on your machine: any `.lua` file, the terminal configs (`alacritty.toml`, `foot.ini`, `ghostty.conf`, `kitty.conf`), and `vscode.json`. A theme's `hyprland.lua` is Lua your compositor runs at login, a terminal config names the program your terminal starts, and `vscode.json` names a VSCode extension to install. Installing someone's theme should change what your desktop looks like, never what it runs.
 
-Everything else still works exactly as the theme author wrote it — `btop.theme`, `chromium.theme`, `helix.toml`, `icons.theme`, `shell.toml`, the backgrounds and the previews are all kept. Only what was dropped gets regenerated from `colors.toml` on your machine.
+Everything else still works exactly as the theme author wrote it — `btop.theme`, `chromium.theme`, `helix.toml`, `icons.theme`, `shell.toml`, the backgrounds, the previews and the startup sound are all kept. Only what was dropped gets regenerated from `colors.toml` on your machine.
 
 Omarchy tells the two apart by whether the theme has its own git repo inside it, which is what `omarchy theme install` leaves behind when it clones. So a theme you wrote stays yours, and one you pulled off the internet stays colours.
 
@@ -27,6 +27,12 @@ If you'd like to color-match the file manager icons to your theme, add a file ca
 ### Unlock image
 
 Themes supplied with `unlock.png` and `preview-unlock.png` images will be listed under _Style > Unlock_. Your `unlock.png` should preferably be a transparent png. And you can create the preview image using `omarchy plymouth preview`.
+
+### Startup sound
+
+A theme can play a short sound when you log in. Add a file called `startup.wav`, `startup.flac`, `startup.ogg`, `startup.oga`, `startup.opus` or `startup.mp3` to the root of your theme and it plays once the audio system is up. Keep it short and small: playback stops after 15 seconds and files over 10 MB are ignored. You can try it out without logging in again with `omarchy theme startup sound`.
+
+If you'd rather log in quietly whatever the theme says, turn startup sounds off under _Toggle > Startup Sound_ in the Omarchy menu, or with `omarchy toggle startup sound`.
 
 ### Theming apps Omarchy doesn't cover
 

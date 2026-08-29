@@ -11,7 +11,7 @@ ship `backgrounds/` (users overlay their own via
 `~/.config/omarchy/backgrounds/<name>/`; the active image is the
 `~/.local/state/omarchy/current/background` symlink), `preview.png` and
 `preview-unlock.png` for the theme switcher, `icons.theme`, `keyboard.rgb`,
-`unlock.png`, and a `light.mode` marker file.
+`unlock.png`, a `light.mode` marker file, and a [startup sound](#startup-sound).
 
 A theme installed from a git repo is held to a much shorter list; see [What an installed theme may not ship](#what-an-installed-theme-may-not-ship).
 
@@ -64,6 +64,18 @@ A theme predating `colors.toml` is not left without a palette: its `alacritty.to
 The restriction lives in `omarchy-theme-set` rather than in `omarchy-theme-install` on purpose. Filtering at staging also covers themes installed before the rule existed and files a theme gains later through `omarchy theme update`.
 
 What this does not cover: a theme distributed as an archive rather than a git repo, extracted into `~/.config/omarchy/themes/` by hand, is indistinguishable from one the user wrote and stages in full. `omarchy theme install` only takes git URLs, so the supported path is always filtered, but the check is a statement about where a theme came from and not a sandbox.
+
+## Startup sound
+
+A theme can ship one sound that plays when the session starts, named `startup.<ext>` with `<ext>` one of `wav`, `flac`, `ogg`, `oga`, `opus` or `mp3`. `default/hypr/autostart.lua` runs `omarchy-theme-startup-sound` on `hyprland.start`; it reads the sound from the staged theme at `~/.local/state/omarchy/current/theme/`, waits up to ten seconds for WirePlumber to expose a default sink, and plays it. `omarchy toggle startup sound` sets the `startup-sound-off` toggle flag, which the command honours before it looks for a file.
+
+The sound is the one theme file a stranger's repo can ship that is neither colour nor code, and it is handled as data throughout:
+
+- It is staged like any other file — a cloned theme's `startup.ogg` is kept, a symlinked one is dropped by `stage_installed_theme` — and `omarchy-theme-startup-sound` refuses a symlink again at play time, since the staged directory is user-writable state.
+- It is played with `pw-play`, which decodes through libsndfile and understands nothing but audio. `mpv` is deliberately not used: it reads `~/.config/mpv/scripts`, follows playlists, and fetches URLs, all of which an untrusted file could steer.
+- Before playback the file must carry one of the listed extensions, be identified as `audio/*` (or `application/ogg`) by `file --mime-type`, and be no larger than 10 MiB. Playback runs under `timeout` and is cut off after 15 seconds.
+
+`test/shell.d/theme-startup-sound-test.sh` covers each refusal against a stub `pw-play`.
 
 ## `colors.toml`
 

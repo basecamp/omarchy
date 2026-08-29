@@ -1,0 +1,80 @@
+#!/bin/bash
+
+# omarchy:summary=Play the current theme's startup sound, if it ships one
+# omarchy:examples=omarchy theme startup sound
+
+# A theme names its startup sound startup.<ext> and Hyprland runs this at login.
+# The file may come from a stranger's repo through `omarchy theme install`, so it
+# is treated as data and nothing more: it is handed to pw-play, which decodes
+# through libsndfile and has no scripting, playlist or network support, rather
+# than to mpv. Before that the file has to be a regular file under the staged
+# theme, carry an audio extension, be identified as audio by its contents and fit
+# under the size cap. Playback is cut off at a fixed number of seconds, so a
+# theme cannot turn a login into an hour of noise.
+
+THEME_PATH="$HOME/.local/state/omarchy/current/theme"
+SOUND_EXTENSIONS=(wav flac ogg oga opus mp3)
+MAX_SOUND_BYTES=$((10 * 1024 * 1024))
+MAX_SOUND_SECONDS=15
+SINK_WAIT_SECONDS=10
+
+find_startup_sound() {
+  local extension candidate
+
+  for extension in "${SOUND_EXTENSIONS[@]}"; do
+    candidate="$THEME_PATH/startup.$extension"
+
+    if [[ -L $candidate ]]; then
+      echo "Refusing $candidate: a startup sound cannot be a symlink" >&2
+      return 1
+    fi
+
+    if [[ -f $candidate ]]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+sound_is_playable() {
+  local sound="$1"
+  local size mime
+
+  size=$(stat -c %s -- "$sound")
+  if (( size > MAX_SOUND_BYTES )); then
+    echo "Refusing $sound: larger than $MAX_SOUND_BYTES bytes" >&2
+    return 1
+  fi
+
+  mime=$(file -b --mime-type -- "$sound")
+  case "$mime" in
+    audio/* | application/ogg) ;;
+    *)
+      echo "Refusing $sound: identified as $mime, not audio" >&2
+      return 1
+      ;;
+  esac
+}
+
+# Hyprland starts this before WirePlumber has necessarily brought a sink up.
+wait_for_audio_sink() {
+  local waited=0
+
+  while ! wpctl inspect @DEFAULT_AUDIO_SINK@ >/dev/null 2>&1; do
+    (( waited < SINK_WAIT_SECONDS * 2 )) || return 1
+    sleep 0.5
+    waited=$((waited + 1))
+  done
+}
+
+if omarchy-toggle-enabled startup-sound-off; then
+  exit 0
+fi
+
+sound=$(find_startup_sound) || exit 0
+sound_is_playable "$sound" || exit 1
+wait_for_audio_sink || exit 0
+
+timeout "$MAX_SOUND_SECONDS" pw-play "$sound" >/dev/null 2>&1
