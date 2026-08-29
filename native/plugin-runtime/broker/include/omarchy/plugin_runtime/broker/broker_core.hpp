@@ -23,13 +23,21 @@ struct ProviderResult {
   std::size_t bytes_written = 0;
 };
 
-struct AuthorizedRequest {
+// Constructed only after PermissionAuthority accepts the authenticated
+// activation, operation, and demanded scope. Providers must use this context,
+// rather than plugin payload fields, to select per-plugin resources.
+struct ProviderAuthorizationContext {
   const permissions::ActivationBinding &binding;
+  permissions::CapabilityKey capability;
+  std::uint64_t grant_epoch = 0;
+};
+
+struct AuthorizedRequest {
+  const ProviderAuthorizationContext &authorization;
   std::uint64_t correlation = 0;
   permissions::OperationId operation{};
   const permissions::Scope &demand;
   std::span<const std::byte> payload;
-  std::uint64_t grant_epoch = 0;
 };
 
 using ProviderDispatch = ProviderResult (*)(const AuthorizedRequest &request,
@@ -188,13 +196,17 @@ public:
       return {.outcome = DispatchOutcome::provider_unavailable,
               .decision = decision};
     }
-    const AuthorizedRequest authorized{
+    const ProviderAuthorizationContext authorization{
         .binding = binding_,
+        .capability = decision.capability,
+        .grant_epoch = decision.grant_epoch,
+    };
+    const AuthorizedRequest authorized{
+        .authorization = authorization,
         .correlation = packet.header.correlation_id,
         .operation = request.operation,
         .demand = request.demand,
         .payload = request.provider_payload,
-        .grant_epoch = decision.grant_epoch,
     };
     const auto bounded_response = response.first(std::min<std::size_t>(
         response.size(), wire::payload_cap(wire::EndpointRole::broker)));

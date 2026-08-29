@@ -211,9 +211,10 @@ struct ProviderProbe {
     ++probe.calls;
     probe.correlation = request.correlation;
     probe.operation = request.operation;
-    probe.plugin = std::string(request.binding.plugin.view());
+    probe.plugin =
+        std::string(request.authorization.binding.plugin.view());
     probe.payload_size = request.payload.size();
-    probe.grant_epoch = request.grant_epoch;
+    probe.grant_epoch = request.authorization.grant_epoch;
     return {.status = probe.result, .bytes_written = probe.response_bytes};
   }
 

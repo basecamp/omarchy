@@ -130,8 +130,12 @@ std::size_t ProviderSet::revoke(const permissions::CapabilityKey &capability,
 
 bool ProviderSet::authorized(const broker::AuthorizedRequest &request,
                              std::uint64_t expected_epoch) const noexcept {
-  return request.binding == configuration_.binding && expected_epoch > 0 &&
-         request.grant_epoch == expected_epoch;
+  const auto *definition = permissions::find_operation(request.operation);
+  return definition != nullptr &&
+         request.authorization.capability == definition->key &&
+         request.authorization.binding == configuration_.binding &&
+         expected_epoch > 0 &&
+         request.authorization.grant_epoch == expected_epoch;
 }
 
 std::string_view ProviderSet::exact_token(
@@ -285,7 +289,7 @@ ProviderSet::dispatch_fake_list(const broker::AuthorizedRequest &request,
   if (free == self.pending_.end())
     return {};
   *free = {.correlation = request.correlation,
-           .grant_epoch = request.grant_epoch,
+           .grant_epoch = request.authorization.grant_epoch,
            .resource = resource,
            .cancelled = false,
            .occupied = true};

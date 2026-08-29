@@ -168,12 +168,17 @@ dispatch(const broker::ProviderRegistry<7> &registry,
          std::span<std::byte> response = {}) {
   const auto *entry = registry.find(operation);
   require(entry != nullptr, "provider missing from registry");
-  return entry->dispatch({.binding = activation,
+  const auto *definition = permissions::find_operation(operation);
+  require(definition != nullptr, "operation definition missing");
+  const broker::ProviderAuthorizationContext authorization{
+      .binding = activation,
+      .capability = definition->key,
+      .grant_epoch = epoch};
+  return entry->dispatch({.authorization = authorization,
                           .correlation = correlation,
                           .operation = operation,
                           .demand = demand,
-                          .payload = payload,
-                          .grant_epoch = epoch},
+                          .payload = payload},
                          response, entry->context);
 }
 
@@ -243,6 +248,23 @@ int main() {
                       .status == broker::ProviderStatus::failed &&
               backend.writes == 1,
           "foreign activation reached storage");
+  const auto *write_provider = registry.find(OperationId::storage_write);
+  require(write_provider != nullptr, "storage write provider missing");
+  const broker::ProviderAuthorizationContext substituted_capability{
+      .binding = activation,
+      .capability = permissions::CapabilityKey{
+          .id = permissions::CapabilityId("notifications.send"), .version = 1},
+      .grant_epoch = 4};
+  require(write_provider
+                  ->dispatch({.authorization = substituted_capability,
+                              .correlation = 61,
+                              .operation = OperationId::storage_write,
+                              .demand = quota(),
+                              .payload = write},
+                             {}, write_provider->context)
+                  .status == broker::ProviderStatus::failed &&
+              backend.writes == 1,
+          "foreign capability context reached storage");
   require(dispatch(registry, OperationId::storage_write, activation, quota(),
                    write, 3, 7)
                       .status == broker::ProviderStatus::failed &&

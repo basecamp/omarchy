@@ -112,7 +112,8 @@ AuditedBrokerRuntime::gate_dispatch(const broker::AuthorizedRequest &request,
       return {};
     auto *tracked = self.track(
         request.correlation, request.operation, definition->key, request.demand,
-        request.grant_epoch, true, permissions::GrantDecisionCode::allowed);
+        request.authorization.grant_epoch, true,
+        permissions::GrantDecisionCode::allowed);
     if (tracked == nullptr ||
         !self.audit_operation(permissions::AuditOutcome::allowed,
                               request.correlation, request.operation,
