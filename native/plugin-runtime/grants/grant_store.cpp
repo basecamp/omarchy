@@ -744,16 +744,18 @@ StoreState deserialize(std::span<const std::byte> bytes) {
 }
 
 void validate_owner_file(const struct stat &metadata, mode_t expected_type,
-                         std::string_view label) {
+                         std::string_view label,
+                         uid_t expected_owner = geteuid()) {
   require((metadata.st_mode & S_IFMT) == expected_type,
           std::string(label) + " has wrong file type");
-  require(metadata.st_uid == geteuid(),
+  require(metadata.st_uid == expected_owner,
           std::string(label) + " is not owned by current user");
   require((metadata.st_mode & 0077) == 0,
           std::string(label) + " permits group or other access");
 }
 
-FileDescriptor open_directory(const std::filesystem::path &path, bool create) {
+FileDescriptor open_directory(const std::filesystem::path &path, bool create,
+                              uid_t expected_owner = geteuid()) {
   require(!path.empty(), "grant store directory is empty");
   for (const auto &component : path)
     require(component != "..",
@@ -794,13 +796,15 @@ FileDescriptor open_directory(const std::filesystem::path &path, bool create) {
       struct stat metadata{};
       if (fstat(current.get(), &metadata) != 0)
         fail(system_error("cannot inspect grant store directory"));
-      validate_owner_file(metadata, S_IFDIR, "grant store directory");
+      validate_owner_file(metadata, S_IFDIR, "grant store directory",
+                          expected_owner);
     }
   }
   return current;
 }
 
-std::optional<std::vector<std::byte>> read_file(int directory) {
+std::optional<std::vector<std::byte>> read_file(
+    int directory, uid_t expected_owner = geteuid()) {
   FileDescriptor file(
       openat(directory, kStoreFile.data(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW));
   if (!file) {
@@ -811,7 +815,7 @@ std::optional<std::vector<std::byte>> read_file(int directory) {
   struct stat metadata{};
   if (fstat(file.get(), &metadata) != 0)
     fail(system_error("cannot inspect grant store file"));
-  validate_owner_file(metadata, S_IFREG, "grant store file");
+  validate_owner_file(metadata, S_IFREG, "grant store file", expected_owner);
   require(metadata.st_size >= 0 && static_cast<std::uint64_t>(
                                        metadata.st_size) <= kMaximumStoreBytes,
           "grant store file exceeds byte limit");
@@ -829,8 +833,8 @@ std::optional<std::vector<std::byte>> read_file(int directory) {
   return data;
 }
 
-StoreState load(int directory) {
-  const auto data = read_file(directory);
+StoreState load(int directory, uid_t expected_owner = geteuid()) {
+  const auto data = read_file(directory, expected_owner);
   return data ? deserialize(*data) : StoreState{};
 }
 
@@ -1187,6 +1191,11 @@ GrantStore::GrantStore(std::filesystem::path directory)
 StoreState GrantStore::read() const {
   auto directory = open_directory(directory_, false);
   return directory ? load(directory.get()) : StoreState{};
+}
+
+StoreState GrantStore::read_as_owner(std::uint32_t owner) const {
+  auto directory = open_directory(directory_, false, owner);
+  return directory ? load(directory.get(), owner) : StoreState{};
 }
 
 Preview GrantStore::preview(const RequestBundle &bundle,

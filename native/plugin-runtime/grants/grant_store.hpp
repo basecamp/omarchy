@@ -106,6 +106,9 @@ public:
   explicit GrantStore(std::filesystem::path directory);
 
   [[nodiscard]] StoreState read() const;
+  // Privileged system integration only: parse the same authenticated store
+  // while requiring its final directory and record to belong to `owner`.
+  [[nodiscard]] StoreState read_as_owner(std::uint32_t owner) const;
   [[nodiscard]] Preview
   preview(const RequestBundle &bundle,
           const permission::CapabilityKey &capability) const;

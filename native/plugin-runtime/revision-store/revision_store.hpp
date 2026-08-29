@@ -89,6 +89,11 @@ public:
   [[nodiscard]] Result prune(std::size_t maximum_revisions);
   [[nodiscard]] std::optional<Activation>
   current(Result *status = nullptr) const;
+  // Privileged dependency auditing only. This never mutates or recovers the
+  // store and requires every trusted store component to belong to `owner`.
+  [[nodiscard]] std::optional<Activation>
+  verified_current_as_owner(std::uint32_t owner,
+                            Result *status = nullptr) const;
 
   [[nodiscard]] std::filesystem::path
   revision_path(std::string_view digest) const;

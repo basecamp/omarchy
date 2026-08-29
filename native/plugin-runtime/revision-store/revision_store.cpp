@@ -662,6 +662,54 @@ std::optional<Activation> RevisionStore::current(Result *status) const {
   return result;
 }
 
+std::optional<Activation>
+RevisionStore::verified_current_as_owner(std::uint32_t owner,
+                                         Result *status) const {
+  std::optional<Activation> result;
+  const Result captured = capture([&] {
+    const int raw = ::open(root_.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC |
+                                             O_NOFOLLOW);
+    if (raw < 0)
+      fail_errno("open revision store for dependency audit");
+    Fd root(raw);
+    struct stat root_status {};
+    check(::fstat(root.get(), &root_status) == 0,
+          "inspect audited revision store");
+    if (root_status.st_uid != owner || (root_status.st_mode & 0077) != 0)
+      throw Failure(ErrorCode::unsafe_store,
+                    "audited revision store owner or mode is unsafe");
+    check(::flock(root.get(), LOCK_SH) == 0, "lock audited revision store");
+    auto state = open_directory_at(root.get(), "state");
+    auto metadata = open_directory_at(root.get(), "metadata");
+    auto revisions = open_directory_at(root.get(), "revisions");
+    for (const int descriptor : {state.get(), metadata.get(), revisions.get()}) {
+      struct stat directory_status {};
+      check(::fstat(descriptor, &directory_status) == 0,
+            "inspect audited revision component");
+      if (directory_status.st_uid != owner ||
+          (directory_status.st_mode & 0077) != 0)
+        throw Failure(ErrorCode::unsafe_store,
+                      "audited revision component owner or mode is unsafe");
+    }
+    const std::string bytes =
+        read_small_at(state.get(), "activation", 4096, true);
+    if (bytes.empty())
+      return;
+    result = parse_activation(bytes);
+    verify_metadata(metadata.get(), result->active);
+    verify_revision(revisions.get(), result->active);
+    if (result->rollback) {
+      verify_metadata(metadata.get(), *result->rollback);
+      verify_revision(revisions.get(), *result->rollback);
+    }
+  });
+  if (status != nullptr)
+    *status = captured;
+  if (!captured.ok())
+    return std::nullopt;
+  return result;
+}
+
 Result RevisionStore::activate(const PolicyBinding &binding, FaultPoint fault) {
   return capture([&] {
     if (!options_.schema_v2_enabled)

@@ -4,7 +4,9 @@
 #include <charconv>
 #include <dirent.h>
 #include <fcntl.h>
+#include <fstream>
 #include <sys/stat.h>
+#include <tuple>
 #include <unistd.h>
 
 namespace omarchy::plugins::external_provider {
@@ -38,6 +40,41 @@ bool same(const Registration &left, const Registration &right) {
          left.executable_digest == right.executable_digest &&
          left.expected_uid == right.expected_uid &&
          left.protocol_version == right.protocol_version;
+}
+bool verify_revision(const std::filesystem::path &path,
+                     const grants::RevisionGrants &revision) {
+  try {
+    std::ifstream input(path / "manifest.json", std::ios::binary);
+    if (!input)
+      return false;
+    const std::string bytes((std::istreambuf_iterator<char>(input)), {});
+    const auto parsed = manifest::parse_manifest_v2(bytes);
+    const auto identity = manifest::identify_tree(path, parsed);
+    return parsed.id == revision.binding.plugin.view() &&
+           identity.tree_sha256 == revision.binding.revision.view() &&
+           identity.request_sha256 ==
+               revision.source_request_fingerprint.view();
+  } catch (...) {
+    return false;
+  }
+}
+std::string dependency_document(const DependencyIndex &index) {
+  std::string output = "OMARCHY-PROVIDER-DEPENDENCIES-V1\nmutation=" +
+                       std::to_string(index.grant_mutation_sequence) + "\n";
+  for (const auto &dependency : index.dependencies) {
+    output.append("dependency=")
+        .append(dependency.plugin.view())
+        .append("|")
+        .append(dependency.revision.view())
+        .append("|")
+        .append(dependency.adapter.adapter_class.view())
+        .append("|")
+        .append(dependency.adapter.implementation_digest.view())
+        .append("|")
+        .append(std::to_string(dependency.adapter.abi_version))
+        .append("\n");
+  }
+  return output;
 }
 void collect(RegistrationChangeAssessment &result,
              const definitions::AdapterBinding &adapter,
@@ -255,5 +292,121 @@ definitions::DynamicAdapter compose_dynamic_adapter(
   return {.binding = registration.adapter,
           .dispatch = dispatch_external,
           .context = &registration};
+}
+
+DependencyIndexResult rebuild_dependency_index(
+    grants::GrantStore &grant_store,
+    const std::filesystem::path &revision_stores_root,
+    const definitions::TrustedDefinitionRegistry &definitions,
+    const std::filesystem::path &index_root, std::uint32_t expected_uid,
+    DependencyIndex &output) {
+  output = {};
+  grants::StoreState state;
+  try {
+    state = grant_store.read_as_owner(expected_uid);
+  } catch (...) {
+    return DependencyIndexResult::untrusted_store;
+  }
+  output.grant_mutation_sequence = state.mutation_sequence;
+  for (const auto &plugin : state.plugins) {
+    store::RevisionStore revisions(
+        revision_stores_root / std::string(plugin.plugin.view()),
+        {.schema_v2_enabled = true});
+    store::Result revision_status;
+    const auto activation =
+        revisions.verified_current_as_owner(expected_uid, &revision_status);
+    if ((plugin.active || plugin.rollback) &&
+        (!revision_status.ok() || !activation))
+      return DependencyIndexResult::revision_mismatch;
+    const auto check_slot = [&](const std::optional<grants::RevisionGrants> &slot,
+                                const std::optional<store::PolicyBinding> &bound) {
+      if (!slot)
+        return true;
+      if (!verify_revision(revisions.revision_path(
+                               slot->binding.revision.view()),
+                           *slot))
+        return false;
+      if (bound &&
+          (bound->plugin_id != slot->binding.plugin.view() ||
+           bound->revision_sha256 != slot->binding.revision.view() ||
+           bound->source_request_sha256 !=
+               slot->source_request_fingerprint.view() ||
+           bound->generation != slot->binding.generation))
+        return false;
+      for (const auto &dynamic : slot->dynamic_grants) {
+        const auto resolved = definitions.resolve(dynamic.request.definition);
+        if (!resolved)
+          return false;
+        output.dependencies.push_back(
+            {.plugin = slot->binding.plugin,
+             .revision = slot->binding.revision,
+             .adapter = resolved->definition->adapter});
+      }
+      return true;
+    };
+    if (!check_slot(plugin.active,
+                    activation ? std::optional(activation->active)
+                               : std::nullopt) ||
+        !check_slot(plugin.rollback,
+                    activation ? activation->rollback : std::nullopt) ||
+        !check_slot(plugin.candidate, std::nullopt))
+      return DependencyIndexResult::revision_mismatch;
+  }
+  std::ranges::sort(output.dependencies, {}, [](const auto &item) {
+    return std::tuple(item.adapter.adapter_class.view(),
+                      item.adapter.implementation_digest.view(),
+                      item.adapter.abi_version, item.plugin.view(),
+                      item.revision.view());
+  });
+  output.dependencies.erase(
+      std::unique(output.dependencies.begin(), output.dependencies.end(),
+                  [](const auto &left, const auto &right) {
+                    return left.plugin == right.plugin &&
+                           left.revision == right.revision &&
+                           left.adapter == right.adapter;
+                  }),
+      output.dependencies.end());
+  auto document = dependency_document(output);
+  output.content_digest = Digest(manifest::sha256_hex(document));
+  document.append("digest=").append(output.content_digest.view()).append("\n");
+  const int directory = open(index_root.c_str(),
+                             O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+  struct stat status {};
+  if (directory < 0 || fstat(directory, &status) < 0 ||
+      status.st_uid != geteuid() || (status.st_mode & 0077) != 0) {
+    if (directory >= 0)
+      close(directory);
+    return DependencyIndexResult::unsafe_index;
+  }
+  const std::string temporary =
+      ".provider-dependencies-" + std::to_string(getpid());
+  const int record = openat(directory, temporary.c_str(),
+                            O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC |
+                                O_NOFOLLOW,
+                            0600);
+  if (record < 0) {
+    close(directory);
+    return DependencyIndexResult::unsafe_index;
+  }
+  std::size_t offset = 0;
+  while (offset < document.size()) {
+    const ssize_t count =
+        write(record, document.data() + offset, document.size() - offset);
+    if (count < 0 && errno == EINTR)
+      continue;
+    if (count <= 0)
+      break;
+    offset += static_cast<std::size_t>(count);
+  }
+  const bool published = offset == document.size() && fsync(record) == 0 &&
+                         renameat(directory, temporary.c_str(), directory,
+                                  "provider-dependencies-v1") == 0 &&
+                         fsync(directory) == 0;
+  close(record);
+  if (!published)
+    unlinkat(directory, temporary.c_str(), 0);
+  close(directory);
+  return published ? DependencyIndexResult::rebuilt
+                   : DependencyIndexResult::unsafe_index;
 }
 } // namespace omarchy::plugins::external_provider

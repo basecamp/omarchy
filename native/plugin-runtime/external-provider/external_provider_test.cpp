@@ -1,5 +1,6 @@
 #include "external_provider.hpp"
 #include "provider_registration.hpp"
+#include "capability_definition_loader.hpp"
 #include <array>
 #include <climits>
 #include <fstream>
@@ -49,6 +50,16 @@ bool authorized(const definitions::DynamicAuthorizationContext &,
                 void *context) noexcept {
   auto &probe = *static_cast<AuthorizationProbe *>(context);
   return probe.calls++ < probe.deny_after;
+}
+bool adapter_available(std::string_view, const definitions::Digest &,
+                       std::uint32_t, void *) noexcept {
+  return true;
+}
+definitions::DynamicScopeRelation exact_scope(
+    const definitions::CapabilityDefinition &, std::string_view left,
+    std::string_view right, void *) noexcept {
+  return left == right ? definitions::DynamicScopeRelation::equal
+                       : definitions::DynamicScopeRelation::incomparable;
 }
 } // namespace
 int main(int argc, char **) {
@@ -296,6 +307,123 @@ int main(int argc, char **) {
                   .decision == external_provider::
                                    RegistrationChangeDecision::blocked_by_dependents,
           "provider removal ignored an exact plugin dependency");
+
+  const auto dependency_fixture = std::filesystem::path(DYNAMIC_RADIO_FIXTURE);
+  std::ifstream manifest_input(dependency_fixture / "manifest.json");
+  const std::string manifest_bytes(
+      (std::istreambuf_iterator<char>(manifest_input)), {});
+  const auto dependency_manifest = manifest::parse_manifest_v2(manifest_bytes);
+  const auto dependency_identity =
+      manifest::identify_tree(dependency_fixture, dependency_manifest);
+  std::array dependency_template{'/', 't', 'm', 'p', '/', 'o', 'm', 'a', 'r',
+                                 'c', 'h', 'y', '-', 'd', 'e', 'p', '-', 'X',
+                                 'X', 'X', 'X', 'X', 'X', '\0'};
+  const auto *dependency_root = mkdtemp(dependency_template.data());
+  require(dependency_root != nullptr, "dependency fixture root failed");
+  const auto dependency_base = std::filesystem::path(dependency_root);
+  const auto definition_root = dependency_base / "definitions";
+  const auto revision_stores = dependency_base / "revisions";
+  const auto revision_store = revision_stores / dependency_manifest.id;
+  const auto grant_root = dependency_base / "grants";
+  const auto index_root = dependency_base / "index";
+  std::filesystem::create_directories(definition_root);
+  std::filesystem::create_directories(revision_stores);
+  std::filesystem::create_directories(index_root);
+  chmod(definition_root.c_str(), 0700);
+  chmod(revision_stores.c_str(), 0700);
+  chmod(index_root.c_str(), 0700);
+  const auto definition_path = definition_root / "network-fetch.capability";
+  std::filesystem::copy_file(NETWORK_DEFINITION_FIXTURE, definition_path);
+  chmod(definition_path.c_str(), 0600);
+  definitions::TrustedDefinitionRegistry dependency_registry;
+  std::size_t definition_count = 0;
+  require(definitions::load_definition_directory(
+              definition_root.string(),
+              definitions::DefinitionSource::omarchy_package, getuid(),
+              {.available = adapter_available}, dependency_registry,
+              definition_count) == definitions::LoadResult::loaded &&
+              definition_count == 1,
+          "dependency definition fixture did not load");
+  const auto dynamic_request = definitions::dynamic_request_from_manifest(
+      dependency_manifest.requests.front(), dependency_registry);
+  require(dynamic_request.has_value(), "dynamic fixture request did not resolve");
+  definitions::DynamicRevisionGrant dynamic_grant{
+      .binding = {.plugin = permissions::PluginId(dependency_manifest.id),
+                  .revision = permissions::Digest(
+                      dependency_identity.tree_sha256),
+                  .policy_fingerprint = digest('0'),
+                  .generation = 1},
+      .request = *dynamic_request,
+      .grant = {.definition = dynamic_request->definition,
+                .operations = {},
+                .scope = dynamic_request->scope,
+                .state = permissions::GrantState::granted,
+                .epoch = 1}};
+  for (const auto &operation : dynamic_request->operations.values())
+    dynamic_grant.grant.operations.insert(operation);
+  require(definitions::review_dynamic_grant(
+              dependency_registry, dynamic_grant,
+              {.compare = exact_scope}),
+          "dynamic dependency fixture was not reviewable");
+  permissions::RequestSet no_compiled_requests;
+  auto dependency_bundle = grants::make_bundle(
+      2, permissions::PluginId(dependency_manifest.id),
+      permissions::Digest(dependency_identity.tree_sha256),
+      permissions::Digest(dependency_identity.request_sha256), 1,
+      no_compiled_requests, {dynamic_grant});
+  grants::GrantStore dependency_grants(grant_root);
+  const auto staged_grants =
+      dependency_grants.stage_candidate(dependency_bundle);
+  dependency_grants.activate_candidate(staged_grants.revision.binding);
+  store::RevisionStore dependency_revisions(
+      revision_store, {.schema_v2_enabled = true});
+  require(dependency_revisions
+              .stage({.root = dependency_fixture,
+                      .manifest = dependency_manifest,
+                      .identity = dependency_identity})
+              .ok(),
+          "dependency revision did not stage");
+  require(dependency_revisions
+              .activate({.plugin_id = dependency_manifest.id,
+                         .revision_sha256 = dependency_identity.tree_sha256,
+                         .manifest_sha256 = dependency_identity.manifest_sha256,
+                         .source_request_sha256 =
+                             dependency_identity.request_sha256,
+                         .policy_sha256 = std::string(
+                             staged_grants.revision.binding.policy_fingerprint
+                                 .view()),
+                         .grant_sha256 = grants::revision_grant_fingerprint(
+                             staged_grants.revision),
+                         .generation = 1})
+              .ok(),
+          "dependency revision did not activate");
+  external_provider::DependencyIndex dependency_index;
+  require(external_provider::rebuild_dependency_index(
+              dependency_grants, revision_stores, dependency_registry,
+              index_root, getuid(), dependency_index) ==
+                  external_provider::DependencyIndexResult::rebuilt &&
+              dependency_index.dependencies.size() == 1 &&
+              dependency_index.dependencies.front().plugin.view() ==
+                  dependency_manifest.id,
+          "authoritative provider dependency index was not rebuilt");
+  const auto indexed_removal = external_provider::assess_registration_removal(
+      loaded, r.service_id.view(), dependency_index.dependencies);
+  require(indexed_removal.decision ==
+              external_provider::RegistrationChangeDecision::installable,
+          "unrelated indexed adapter blocked provider removal");
+  auto depended_provider = r;
+  depended_provider.service_id = definitions::Name("local.radio-provider");
+  depended_provider.adapter = dependency_index.dependencies.front().adapter;
+  const std::array depended_installed{depended_provider};
+  const auto blocked_indexed_removal =
+      external_provider::assess_registration_removal(
+          depended_installed, depended_provider.service_id.view(),
+          dependency_index.dependencies);
+  require(blocked_indexed_removal.decision ==
+              external_provider::
+                  RegistrationChangeDecision::blocked_by_dependents &&
+              blocked_indexed_removal.dependents.size() == 1,
+          "authoritative indexed dependent did not block provider removal");
   auto replacement = r;
   replacement.executable_digest = digest('f');
   require(external_provider::assess_registration_install(

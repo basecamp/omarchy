@@ -1,6 +1,8 @@
 #pragma once
 
 #include "external_provider.hpp"
+#include "grant_store.hpp"
+#include "revision_store.hpp"
 
 #include <span>
 #include <vector>
@@ -36,6 +38,20 @@ struct RegistrationChangeAssessment {
   std::vector<ProviderDependency> dependents;
 };
 
+struct DependencyIndex {
+  std::uint64_t grant_mutation_sequence = 0;
+  std::vector<ProviderDependency> dependencies;
+  Digest content_digest;
+};
+
+enum class DependencyIndexResult : std::uint8_t {
+  rebuilt,
+  untrusted_store,
+  revision_mismatch,
+  unresolved_definition,
+  unsafe_index,
+};
+
 [[nodiscard]] std::string canonical_registration_document(
     const Registration &registration);
 [[nodiscard]] RegistrationLoadResult parse_registration_document(
@@ -52,5 +68,11 @@ struct RegistrationChangeAssessment {
     std::span<const ProviderDependency> dependencies);
 [[nodiscard]] definitions::DynamicAdapter
 compose_dynamic_adapter(Registration &registration);
+[[nodiscard]] DependencyIndexResult rebuild_dependency_index(
+    grants::GrantStore &grant_store,
+    const std::filesystem::path &revision_stores_root,
+    const definitions::TrustedDefinitionRegistry &definitions,
+    const std::filesystem::path &index_root, std::uint32_t expected_uid,
+    DependencyIndex &output);
 
 } // namespace omarchy::plugins::external_provider
