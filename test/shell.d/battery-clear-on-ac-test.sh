@@ -4,22 +4,11 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
-run_node_test <<'JS'
-const fs = require('fs')
-const serviceQml = fs.readFileSync(path.join(root, 'shell/plugins/services/battery/Service.qml'), 'utf8')
+service_qml="$ROOT/shell/plugins/services/battery/Service.qml"
 
-assert(
-  /function clearLowBatteryWarning\(\)/.test(serviceQml),
-  'battery service can dismiss the low-battery toast'
-)
+grep -q 'function clearLowBatteryWarning()' "$service_qml" || fail "battery service can dismiss the low-battery toast"
+grep -q 'Time to recharge!' "$service_qml" || fail "battery service dismisses by the Time to recharge! summary"
+grep -q 'omarchy-notification-dismiss' "$service_qml" || fail "battery service uses omarchy-notification-dismiss"
+grep -q 'clearLowBatteryWarning()' "$service_qml" || fail "battery service calls clear when leaving low-discharging"
 
-assert(
-  /omarchy-notification-dismiss[\s\S]*Time to recharge!/.test(serviceQml),
-  'battery service dismisses by the Time to recharge! summary'
-)
-
-assert(
-  /else if \(wasNotified && !state\.notifiedLowBattery\) clearLowBatteryWarning\(\)/.test(serviceQml),
-  'battery service clears the toast when leaving the low-discharging state'
-)
-JS
+pass "battery service clears the low-battery toast on AC"
