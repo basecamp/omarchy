@@ -115,6 +115,12 @@ function batteryPercentLabel(device) {
   return String(Math.round(pct * 100))
 }
 
+function batteryChargeLabel(device, states) {
+  var charge = batteryPercentLabel(device) + "%"
+  var state = batteryStateLabel(device, states)
+  return state ? charge + " · " + state : charge
+}
+
 function batteryCapacityLabel(device) {
   var cap = Number(device && device.energyCapacity)
   if (!isFinite(cap) || cap <= 0) return "—"
@@ -135,6 +141,7 @@ if (typeof module !== "undefined") {
     batteryName: batteryName,
     batteryStateLabel: batteryStateLabel,
     batteryPercentLabel: batteryPercentLabel,
+    batteryChargeLabel: batteryChargeLabel,
     batteryCapacityLabel: batteryCapacityLabel
   }
 }

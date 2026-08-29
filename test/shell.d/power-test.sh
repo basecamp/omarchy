@@ -59,6 +59,8 @@ assertEqual(power.batteryStateLabel({}, states), '', 'power leaves unknown batte
 assertEqual(power.batteryPercentLabel({ percentage: 0.423 }), '42', 'power formats battery percentage')
 assertEqual(power.batteryPercentLabel({ percentage: 0.999 }), '100', 'power rounds battery percentage up')
 assertEqual(power.batteryPercentLabel({}), '—', 'power reports missing battery percentage')
+assertEqual(power.batteryChargeLabel({ percentage: 0.42, state: states.Charging }, states), '42% · Charging', 'power formats charge and state')
+assertEqual(power.batteryChargeLabel({ percentage: 0.42 }, states), '42%', 'power omits the separator without a known state')
 
 assertEqual(power.batteryCapacityLabel({ energyCapacity: 19.02 }), '19.0 Wh', 'power formats battery capacity')
 assertEqual(power.batteryCapacityLabel({ energyCapacity: 0 }), '—', 'power reports zero battery capacity')
@@ -67,11 +69,13 @@ assertEqual(power.batteryCapacityLabel({}), '—', 'power reports missing batter
 assert(/UPowerDeviceState\.Empty/.test(panelSource), 'power maps empty battery state')
 assert(/UPowerDeviceState\.PendingDischarge/.test(panelSource), 'power maps pending-discharge battery state')
 assert(/UPowerDeviceType\.Battery/.test(panelSource), 'power filters physical batteries from the UPower device list')
+assert(/!device\.isPresent/.test(panelSource), 'power excludes absent physical batteries')
 assert(/UPower\.devices\.values/.test(panelSource), 'power enumerates the Quickshell UPower object model')
 assert(/root\.batteries\.length > 1/.test(panelSource), 'power only shows the per-battery breakdown on multi-battery systems')
 assert(/PanelSectionHeader[\s\S]*?text: "BATTERIES"/.test(panelSource), 'power heads the per-battery breakdown')
 assert(/Model\.batteryIcon\(device, root\.discharging, upowerStates\(\)\)/.test(panelSource), 'power lists each battery in the bar button')
 assert(/batteries\.length > 1 && !vertical/.test(panelSource), 'power keeps vertical bars on the compact aggregate battery')
+assert(/showPercentage && !vertical \? 2 : 1/.test(panelSource), 'power keeps percentage sizing compact on vertical bars')
 assert(/batteries\.length \* 2/.test(panelSource), 'power widens the bar button for multiple batteries')
 assert(/readonly property var batteries: collectBatteries\(\)/.test(panelSource), 'power reacts to changes in the UPower battery list')
 

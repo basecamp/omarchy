@@ -54,7 +54,7 @@ Panel {
   // doubled slot the single-battery percentage view uses, scaled per battery.
   readonly property int buttonSlotScale: batteries.length > 1 && !vertical
     ? batteries.length * 2
-    : (showPercentage ? 2 : 1)
+    : (showPercentage && !vertical ? 2 : 1)
 
   function upowerStates() {
     return {
@@ -76,7 +76,7 @@ Panel {
     for (var i = 0; i < devices.length; i++) {
       var device = devices[i]
       if (!device || device.type !== UPowerDeviceType.Battery) continue
-      if (!device.powerSupply || !device.nativePath) continue
+      if (!device.isPresent || !device.powerSupply || !device.nativePath) continue
       list.push(device)
     }
     return list
@@ -508,7 +508,7 @@ Panel {
 
                 InfoPair {
                   label: "Charge"
-                  value: Model.batteryPercentLabel(modelData) + "% · " + Model.batteryStateLabel(modelData, root.upowerStates())
+                  value: Model.batteryChargeLabel(modelData, root.upowerStates())
                 }
 
                 InfoPair {
