@@ -96,13 +96,14 @@ else
   # absolute target percentage to avoid raw backlight rounding causing uneven OSD steps.
   if [[ $step == "+5%" ]]; then
     if (( current < 5 )); then
-      (( target = current + 1 ))
+      # A one-percent target can still round to raw zero on low-range devices.
+      # Move one hardware step instead so a black display can always recover.
+      step="+1"
     else
       (( target = current + 5 ))
+      (( target > 100 )) && target=100
+      step="$target%"
     fi
-
-    (( target > 100 )) && target=100
-    step="$target%"
   elif [[ $step == "5%-" ]]; then
     if (( current <= 5 )); then
       (( target = current - 1 ))
