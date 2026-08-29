@@ -25,6 +25,22 @@ add_library(omarchy-plugin-worker-runtime STATIC
   worker_runtime.cpp
   steady_seccomp.cpp
 )
+qt_add_resources(omarchy-plugin-worker-runtime presentation_qml
+  PREFIX "/qt/qml/Omarchy/PluginPresentation"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml"
+  FILES
+    ../presentation/qml/qmldir
+    ../presentation/qml/Color.qml
+    ../presentation/qml/Style.qml
+    ../presentation/qml/Panel.qml
+    ../presentation/qml/BarIconButton.qml
+    ../presentation/qml/KeyboardPanel.qml
+    ../presentation/qml/PanelKeyCatcher.qml
+    ../presentation/qml/PanelHero.qml
+    ../presentation/qml/PanelSectionHeader.qml
+    ../presentation/qml/PanelSeparator.qml
+    ../presentation/qml/PanelSlider.qml
+    ../presentation/qml/ToggleSwitch.qml)
 omarchy_plugin_target_defaults(omarchy-plugin-worker-runtime)
 omarchy_plugin_worker_sanitize(omarchy-plugin-worker-runtime)
 target_include_directories(omarchy-plugin-worker-runtime PUBLIC
