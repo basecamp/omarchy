@@ -424,6 +424,14 @@ if rg -q '\{\{[^}]+\}\}' "$LEGACY_NEXT_THEME"; then
 fi
 pass "legacy short palette renders the complete generated theme"
 
+# foot answers the CSI ?996n color-scheme query from whichever section
+# initial-color-theme names, so both have to follow the theme's own mode.
+grep -qFx 'initial-color-theme=light' "$NEXT_THEME/foot.ini" || fail "a light theme selects foot's light color theme"
+grep -qFx '[colors-light]' "$NEXT_THEME/foot.ini" || fail "a light theme renders its palette into foot's light section"
+grep -qFx 'initial-color-theme=dark' "$LEGACY_NEXT_THEME/foot.ini" || fail "a dark theme selects foot's dark color theme"
+grep -qFx '[colors-dark]' "$LEGACY_NEXT_THEME/foot.ini" || fail "a dark theme renders its palette into foot's dark section"
+pass "foot's generated config follows the theme's mode"
+
 osc_summary=$("$ROOT/bin/omarchy-theme-osc" "$NEXT_THEME/colors.toml" | python -c 'import sys; data = sys.stdin.buffer.read(); print(data.count(b"]4;"), b"]4;1;#ff0000" in data, b"]4;7;#ffffff" in data, b"]4;15;#eeeeee" in data, b"]12;#eeeeee" in data, b"]17;#808080" in data, b"]19;#eeeeee" in data)')
 [[ $osc_summary == "16 True True True True True True" ]] || fail "theme OSC aliases semantic colors to ANSI palette"
 pass "theme OSC aliases semantic colors to ANSI palette"
