@@ -38,12 +38,21 @@ printf 'thumbnail' >"$output"
 EOF
 chmod +x "$stub_bin/vipsthumbnail"
 
+cat >"$stub_bin/awk" <<'EOF'
+#!/bin/bash
+printf 'awk\n' >>"$AWK_CALLS_FILE"
+exec /usr/bin/awk "$@"
+EOF
+chmod +x "$stub_bin/awk"
+
 for name in one two three; do
   printf 'image-%s' "$name" >"$images/$name.png"
 done
 
 cache_dir="$cache_home/omarchy/image-selector"
 mkdir -p "$cache_dir"
+awk_calls="$tmp/awk-calls"
+: >"$awk_calls"
 
 stale_tmp=""
 live_lock=""
@@ -62,8 +71,12 @@ printf '%s\t%s' "$images/one.png" "$cache_dir/missing.jpg" >"$cache_dir/$cache_k
 printf 'v2\n%s:%s\n' "$images" "$(stat -Lc '%Y' "$images")" >"$cache_dir/$cache_key.signature"
 printf 'v1\n%s:%s\n' "$images" "$(stat -Lc '%Y' "$images")" >"$cache_dir/$cache_key.fast-signature"
 
-PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" \
+PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" AWK_CALLS_FILE="$awk_calls" \
   "$ROOT/bin/omarchy-menu-images" --cache-only "$images"
+
+[[ ! -s $awk_calls ]] ||
+  fail "image menu reads the thumbnail index without one awk scan per image" "$(cat "$awk_calls")"
+pass "image menu loads the thumbnail index once"
 
 (( $(find "$cache_dir" -maxdepth 1 -name '*.jpg' -type f | wc -l) == 3 )) ||
   fail "image menu recovers thumbnails from stranded locks"
