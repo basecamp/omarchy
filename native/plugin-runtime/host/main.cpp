@@ -1069,6 +1069,9 @@ int preview(const QStringList &arguments, QGuiApplication &application,
         }
         if (!injected_pointer &&
             qEnvironmentVariableIsSet("OMARCHY_PLUGIN_E2E_CLICK_X") &&
+            lab_broker->dispatch_count() >= static_cast<std::uint64_t>(
+                qEnvironmentVariableIntValue(
+                    "OMARCHY_PLUGIN_E2E_CLICK_AFTER_CALLS")) &&
             observed_grant_mutation >= static_cast<std::uint64_t>(
                 qEnvironmentVariableIntValue(
                     "OMARCHY_PLUGIN_E2E_CLICK_AFTER_MUTATION"))) {
