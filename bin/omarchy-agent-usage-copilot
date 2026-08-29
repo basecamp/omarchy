@@ -1,0 +1,185 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the GitHub Copilot CLI usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect GitHub Copilot CLI usage into one display-ready JSON record.
+
+Local token stats come from the numeric assistant usage events in
+~/.copilot/session-store.db. The collector does not read session messages,
+responses, repository names, or tool output.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sqlite3
+import sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "copilot"
+AGENT_NAME = "GitHub Copilot"
+
+
+def number(value: Any) -> int:
+  try:
+    return max(0, round(float(value or 0)))
+  except (TypeError, ValueError):
+    return 0
+
+
+def empty_bucket() -> dict[str, int]:
+  return {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  }
+
+
+def base_record(**overrides: Any) -> dict[str, Any]:
+  record = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "ready": False,
+    "hasLocalStats": False,
+    "hasPromptStats": False,
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTotalTokens": 0,
+    "todayTokensByModel": {},
+    "recentDays": [],
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "activeDays": 0,
+    "activeDates": [],
+    "modelUsage": {},
+    "limits": [],
+  }
+  record.update(overrides)
+  return record
+
+
+def local_day(raw: Any) -> str:
+  text = str(raw or "")
+  if not text:
+    return ""
+  try:
+    parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+  except ValueError:
+    return ""
+  if parsed.tzinfo is None:
+    parsed = parsed.replace(tzinfo=timezone.utc)
+  return parsed.astimezone().date().isoformat()
+
+
+def scan(database: Path, now: datetime | None = None) -> dict[str, Any]:
+  current = now.astimezone() if now else datetime.now().astimezone()
+  today = current.date().isoformat()
+  recent_dates = [(current.date() - timedelta(days=offset)).isoformat() for offset in range(6, -1, -1)]
+  recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
+  today_tokens_by_model: dict[str, int] = {}
+  model_usage: dict[str, dict[str, int]] = {}
+  today_sessions: set[str] = set()
+  total_sessions: set[str] = set()
+  active_dates: set[str] = set()
+  today_prompts = 0
+  today_total_tokens = 0
+  total_prompts = 0
+
+  connection = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)
+  try:
+    rows = connection.execute(
+      """
+      SELECT session_id, model, input_tokens, output_tokens,
+             cache_read_tokens, cache_write_tokens, created_at
+      FROM assistant_usage_events
+      """
+    )
+    for session_id, model, raw_input, raw_output, raw_cache_read, raw_cache_write, created_at in rows:
+      day = local_day(created_at)
+      if not day:
+        continue
+
+      cache_read = number(raw_cache_read)
+      cache_write = number(raw_cache_write)
+      input_tokens = max(0, number(raw_input) - cache_read - cache_write)
+      output_tokens = number(raw_output)
+      total_tokens = input_tokens + output_tokens + cache_read + cache_write
+      if total_tokens == 0:
+        continue
+
+      session = str(session_id or "")
+      model_id = str(model or "unknown")
+      total_prompts += 1
+      total_sessions.add(session)
+      active_dates.add(day)
+
+      bucket = model_usage.setdefault(model_id, empty_bucket())
+      bucket["inputTokens"] += input_tokens
+      bucket["outputTokens"] += output_tokens
+      bucket["cacheReadInputTokens"] += cache_read
+      bucket["cacheCreationInputTokens"] += cache_write
+
+      if day in recent:
+        recent[day]["messageCount"] += total_tokens
+      if day == today:
+        today_prompts += 1
+        today_sessions.add(session)
+        today_total_tokens += total_tokens
+        today_tokens_by_model[model_id] = today_tokens_by_model.get(model_id, 0) + total_tokens
+  finally:
+    connection.close()
+
+  return base_record(
+    ready=True,
+    hasLocalStats=True,
+    hasPromptStats=True,
+    todayPrompts=today_prompts,
+    todaySessions=len(today_sessions),
+    todayTotalTokens=today_total_tokens,
+    todayTokensByModel=today_tokens_by_model,
+    recentDays=[recent[day] for day in recent_dates],
+    totalPrompts=total_prompts,
+    totalSessions=len(total_sessions),
+    activeDays=len(active_dates),
+    activeDates=sorted(active_dates),
+    modelUsage=model_usage,
+  )
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser(description="Print the GitHub Copilot CLI usage record as JSON")
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  copilot_home = Path(os.environ.get("COPILOT_HOME") or (Path.home() / ".copilot"))
+  parser.add_argument("--database", default=str(copilot_home / "session-store.db"))
+  args = parser.parse_args()
+
+  database = Path(args.database).expanduser()
+  if not database.is_file():
+    record = base_record(
+      usageStatusText="GitHub Copilot unavailable",
+      authHelpText="Use GitHub Copilot CLI once to create local usage data.",
+    )
+  else:
+    try:
+      record = scan(database)
+    except sqlite3.Error as error:
+      record = base_record(
+        usageStatusText="GitHub Copilot usage unavailable",
+        authHelpText="Could not read GitHub Copilot CLI's local usage database.",
+      )
+      print(f"omarchy-agent-usage-copilot: {error}", file=sys.stderr)
+
+  print(json.dumps(record, separators=(",", ":")))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
