@@ -69,6 +69,22 @@ Run Radio Atlas with live network and media providers, Omagotchi with private st
 
 For a deterministic first proof that does not modify a winner port, use the purpose-built fixtures under `native/plugin-runtime/fixtures/product/`. `lab-authorized` invokes `storage.private/write` and then `storage.private/read` on startup and renders the completed broker round trip. `lab-denied` invokes `notifications.send/send` without requesting it and renders the broker denial. `lab-permission` requests notification authority only as optional UI state and updates its visible status from the host-authenticated `permissionsChanged` snapshot; it never treats that snapshot as authorization. The live-lab host polls its isolated grant store and accepts only one exact active grant transition from granted to revoked at the next epoch; it applies the broker/provider revocation before sending the reduced availability snapshot and exits fail-closed for expansion, replacement, replay, restart-required revocation, or binding drift. Run each fixture from an immutable copy with a fresh mode-0700 state, grant, audit, and evidence directory. Correlate the visible terminal state with the private-state bytes and audit decisions rather than treating a screenshot alone as proof.
 
+## Omagotchi persistence proof
+
+The live private-storage backend does not add an on-disk envelope. A storage key is the exact regular-file name below the plugin's mode-0700 private-state directory, and a write atomically replaces that file with the exact value bytes supplied by the authorized request. For Omagotchi, seed `pet-state` as a mode-0600 regular file containing compact UTF-8 JSON that fits the granted 4096-byte item limit. Do not add a newline, symlink, hard link, temporary `.omarchy-tmp-*` name, or handcrafted broker response. Record the seed bytes and SHA-256 before launch.
+
+The broker result returned to QML is distinct from that raw file representation: `storage.private/read` returns one found byte, three reserved zero bytes, a big-endian 32-bit value length, then the exact stored bytes. A persistence-capable Omagotchi port or purpose-built QML fixture must decode that result, reject malformed length or reserved fields and invalid JSON, apply bounded typed fields, and visibly render a deterministic marker from the restored state. The current reviewed Omagotchi port only records whether the read call was allowed and does not consume `call.value`, so a screenshot of that revision cannot prove restoration even when the audit records a successful read. Correct that port or use a reviewed persistence fixture before claiming winner parity.
+
+Run the next persistence campaign as one immutable sequence:
+
+1. Create a fresh mode-0700 state root and atomically install a reviewed `pet-state` seed with distinctive bounded values, such as generation 7 and hunger 61. Hash the file, immutable plugin tree, grant store and runtime bundle.
+2. Launch through the root-pinned live lab. Require a successful audited `storage.private/read` and a visible `RESTORED 7 / 61` marker derived from decoded bytes, not fixture constants.
+3. Invoke a fixture-owned startup hook that performs one deterministic model transition and calls the ordinary `runtime.invoke("storage_write", ...)` path. This hook may be timer-driven or selected by immutable fixture content; it must not write the state directory directly and must not require a GUI actuator. Require the authorized write request and terminal audit records before inspecting the file.
+4. Stop the host, verify complete worker and Bubblewrap teardown, then independently read the raw `pet-state` file. Require exact compact JSON, expected transitioned values, mode 0600, link count one, and a changed SHA-256.
+5. Restart the same reviewed revision with the same state root and a fresh audit root. Require a second successful read and a visible marker matching the independently observed post-write bytes. A second screenshot without a second read audit is not persistence proof.
+
+Keep the seeding step outside the sandbox only as test setup and label it as such. It proves backend compatibility, not plugin authority. The write leg proves that only an exact granted broker operation can mutate the private state; the restart leg proves durability and restoration.
+
 ## Security and penetration matrix
 
 Keep known-good and malicious revisions separate. At minimum attempt:
