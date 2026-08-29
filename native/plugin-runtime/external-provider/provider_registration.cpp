@@ -46,6 +46,22 @@ void collect(RegistrationChangeAssessment &result,
     if (dependency.adapter == adapter)
       result.dependents.push_back(dependency);
 }
+bool dispatch_external(const definitions::AuthorizedDynamicRequest &request,
+                       std::span<std::byte> response, std::size_t &written,
+                       void *context) noexcept {
+  written = 0;
+  if (context == nullptr)
+    return false;
+  try {
+    auto &registration = *static_cast<Registration *>(context);
+    return invoke(registration, request, response, written,
+                  std::chrono::seconds(30),
+                  request.authorization.grant_epoch) == Result::completed;
+  } catch (...) {
+    written = 0;
+    return false;
+  }
+}
 } // namespace
 
 std::string canonical_registration_document(const Registration &registration) {
@@ -230,5 +246,14 @@ RegistrationChangeAssessment assess_registration_removal(
                         ? RegistrationChangeDecision::installable
                         : RegistrationChangeDecision::blocked_by_dependents;
   return result;
+}
+
+definitions::DynamicAdapter compose_dynamic_adapter(
+    Registration &registration) {
+  if (!valid_registration(registration))
+    return {};
+  return {.binding = registration.adapter,
+          .dispatch = dispatch_external,
+          .context = &registration};
 }
 } // namespace omarchy::plugins::external_provider

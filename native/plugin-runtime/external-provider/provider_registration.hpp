@@ -50,5 +50,7 @@ struct RegistrationChangeAssessment {
 [[nodiscard]] RegistrationChangeAssessment assess_registration_removal(
     std::span<const Registration> installed, std::string_view service_id,
     std::span<const ProviderDependency> dependencies);
+[[nodiscard]] definitions::DynamicAdapter
+compose_dynamic_adapter(Registration &registration);
 
 } // namespace omarchy::plugins::external_provider

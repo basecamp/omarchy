@@ -131,6 +131,13 @@ int main(int argc, char **) {
   require(external_provider::invoke(r, q, out, n, std::chrono::seconds(1), 5) ==
               external_provider::Result::revoked,
           "stale epoch reached provider");
+  const auto dynamic_adapter = external_provider::compose_dynamic_adapter(r);
+  n = 0;
+  require(dynamic_adapter.binding == r.adapter &&
+              dynamic_adapter.dispatch != nullptr &&
+              dynamic_adapter.dispatch(q, out, n, dynamic_adapter.context) &&
+              n == payload.size(),
+          "trusted registration did not compose into a live dynamic adapter");
   std::array audit_template{'/', 't', 'm', 'p', '/', 'o', 'm', 'a', 'r', 'c',
                             'h', 'y', '-', 'e', 'x', 't', '-', 'a', 'u', 'd',
                             'i', 't', '-', 'X', 'X', 'X', 'X', 'X', 'X', '\0'};
