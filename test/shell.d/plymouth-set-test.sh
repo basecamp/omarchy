@@ -531,6 +531,69 @@ assert_no_temporary_files "$fake_root"
 
 pass "publication walks the whole parent chain, not only the immediate parent"
 
+# Mode is not the only thing that decides a destination directory. One that is
+# merely user-owned still lets its owner put the file back after we publish, so
+# ownership has to refuse it even when 0755 looks harmless.
+setup_run
+output=$(run_set 022 env TEST_UNTRUSTED_SOURCE="$theme" 2>&1)
+status=$?
+
+(( status != 0 )) || fail "a user-owned destination directory is rejected" "$output"
+[[ $(cat "$theme/bullet.png") == 'old plymouth bullet.png' ]] || fail "a user-owned destination directory keeps its live file"
+[[ $output == *"refusing to publish"* ]] || fail "a rejected destination directory says why it refused" "$output"
+assert_no_temporary_files "$fake_root"
+
+pass "publication refuses a destination directory root does not own"
+
+# The packaged tree is validated file by file, not only directory by directory.
+# A single user-owned asset inside an otherwise root-owned directory is still
+# content a desktop process can rewrite, and the directory check cannot see it.
+setup_run
+output=$(run_set 022 env TEST_UNTRUSTED_SOURCE="$ROOT/default/plymouth/bullet.png" 2>&1)
+status=$?
+
+(( status != 0 )) || fail "a single user-owned packaged asset is rejected" "$output"
+[[ $(cat "$theme/bullet.png") == 'old plymouth bullet.png' ]] || fail "one untrusted asset leaves the live theme unchanged"
+[[ $output == *"refusing to publish"* ]] || fail "a rejected packaged asset says why it refused" "$output"
+assert_no_temporary_files "$fake_root"
+
+pass "root checks every packaged asset, not only its directory"
+
+# Ownership is not the only way a packaged asset stays rewritable: a group- or
+# world-writable mode does it too. Stage a tree the shim reports as root-owned
+# so only the real mode can decide, then loosen one asset.
+setup_run
+writable_root=$(mktemp -d "$test_tmp/writable-source.XXXXXXXX")
+writable_root=$(realpath -e -- "$writable_root")
+mkdir -p "$writable_root/default"
+cp -a "$ROOT/default/plymouth" "$ROOT/default/sddm" "$writable_root/default/"
+chmod 0666 "$writable_root/default/plymouth/bullet.png"
+output=$(run_set 022 env OMARCHY_PATH="$writable_root" 2>&1)
+status=$?
+
+(( status != 0 )) || fail "a world-writable packaged asset is rejected" "$output"
+[[ $(cat "$theme/bullet.png") == 'old plymouth bullet.png' ]] || fail "a writable packaged asset leaves the live theme unchanged"
+[[ $output == *"refusing to publish"* ]] || fail "a rejected writable asset says why it refused" "$output"
+assert_no_temporary_files "$fake_root"
+
+pass "root refuses a packaged asset its own mode leaves rewritable"
+
+# The caller streams the logo to root over a descriptor, so root is the only
+# place its length can be judged. An empty selection must not become an empty
+# published logo.
+setup_run
+cp -- "$test_tmp/logo.png" "$test_tmp/logo.png.keep"
+: >"$test_tmp/logo.png"
+output=$(run_set 022 env 2>&1)
+status=$?
+mv -f -- "$test_tmp/logo.png.keep" "$test_tmp/logo.png"
+
+(( status != 0 )) || fail "an empty logo is rejected" "$output"
+[[ $(cat "$theme/logo.png") == 'old plymouth logo.png' ]] || fail "an empty logo leaves the live logo unchanged"
+assert_no_temporary_files "$fake_root"
+
+pass "an empty logo cannot be published"
+
 # Refresh uses the same publisher but its explicit contract includes the
 # packaged nested logos/oma.png asset. It must not touch the SDDM theme.
 setup_run
