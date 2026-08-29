@@ -176,16 +176,17 @@ declare -A VARS_TAINTED=()
 # isolation would miss in whichever direction it picked.
 collect_vars() {
   local -n source_lines="$1"
-  local line name value
+  local line name value append
 
   VARS=()
   VARS_TAINTED=()
   for line in "${source_lines[@]}"; do
     [[ $line =~ ^[[:space:]]*# ]] && continue
-    [[ $line =~ ^[[:space:]]*(local|declare|export|readonly|typeset)?[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
+    [[ $line =~ ^[[:space:]]*(local|declare|export|readonly|typeset)?[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)(\+?)=(.*)$ ]] || continue
 
     name=${BASH_REMATCH[2]}
-    value=${BASH_REMATCH[3]}
+    append=${BASH_REMATCH[3]}
+    value=${BASH_REMATCH[4]}
     value=${value%%[[:space:]]#*}
     value=${value%[[:space:]]}
     if [[ $value == \"*\" || $value == \'*\' ]]; then
@@ -193,6 +194,11 @@ collect_vars() {
     fi
 
     mentions_user_writable_root "$value" && VARS_TAINTED["$name"]=1
+
+    # An append never wins the value -- an array grown across a file resolves to
+    # nothing useful -- but it does carry the taint, or a name could reach a user
+    # root through += and never be judged on it.
+    [[ -n $append ]] && continue
     [[ -v VARS[$name] ]] || VARS["$name"]=$value
   done
 }
@@ -457,9 +463,8 @@ privileged_destination() {
     fi
   done < <(command_destinations "$line")
 
-  # An elevated write whose destination cannot be resolved counts as
-  # privileged: sudo tee is not aimed at a user's own dotfile, and assuming
-  # otherwise is how this bug class survived six reviews.
+  # An elevated write whose destination cannot be resolved counts as privileged:
+  # sudo tee is not aimed at a user's own dotfile.
   if ((elevated == 0)) && ((${#unresolved[@]} > 0)); then
     printf '%s' "${unresolved[0]} (unresolved destination of an elevated write)"
     return 0

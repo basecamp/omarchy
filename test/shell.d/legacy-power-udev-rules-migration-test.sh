@@ -213,14 +213,16 @@ run_migration
   fail "migration matches the binary the filename promises, not any home path"
 pass "migration matches the binary the filename promises, not any home path"
 
-# udev resumes a continuation across a comment: `udevadm verify` on
-# 'SUBSYSTEM=="power_supply" \' + "# c" + ', RUN+="..."' reports its style warning
-# on line 1, so those three lines are one rule and the rule is live.
+# udev resumes a continuation across a comment: `udevadm verify` reports its
+# complaint on line 1 for a rule split this way, so the three lines are one live
+# rule. The split falls inside the RUN+= value on purpose -- with the whole
+# RUN+= below the comment the assertion passes even against an implementation
+# that throws the pending half away, which is the shape this guards against.
 reset_machine
 cat >"$power_rule" <<'RULE'
-SUBSYSTEM=="power_supply", ATTR{type}=="Mains" \
+SUBSYSTEM=="power_supply", ATTR{type}=="Mains", RUN+="/usr/bin/systemd-run --no-block --unit=omarchy-power-profile \
 # split for readability
-, RUN+="/home/someuser/.local/share/omarchy/bin/omarchy-powerprofiles-set"
+/home/someuser/.local/share/omarchy/bin/omarchy-powerprofiles-set"
 RULE
 run_migration
 

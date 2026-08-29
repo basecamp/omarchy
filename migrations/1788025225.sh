@@ -67,6 +67,12 @@ active_lines() {
     emit_logical "$logical$line"
     logical=""
   done
+
+  # A file whose last line ends in a backslash still carries a live directive for
+  # systemd: `systemd-analyze verify` resolves an ExecStop= written that way.
+  # udev ignores the dangling line and sudo rejects the file outright, so emitting
+  # it costs those two nothing.
+  emit_logical "$logical"
 }
 
 # One logical line, whitespace collapsed so a reformatted copy still compares
@@ -195,6 +201,7 @@ plymouth_unit_runs_from_home() {
   local home_pattern="^(/home/[^/]+|/root)/\\.local/share/omarchy/bin/$binary\$"
   local line word
   local -a words
+  local matched=1
 
   while IFS= read -r line; do
     if [[ ! $line =~ $exec_stop_pattern ]]; then
@@ -203,6 +210,11 @@ plymouth_unit_runs_from_home() {
 
     read -ra words <<<"${BASH_REMATCH[1]}"
     if (( ! ${#words[@]} )); then
+      # An empty assignment resets the list, so nothing named before it still
+      # runs. `systemd-analyze verify` reports the missing command for a unit
+      # with one ExecStop=, and reports nothing once a bare ExecStop= follows it.
+      # An administrator who neutralised the unit this way is left alone.
+      matched=1
       continue
     fi
 
@@ -214,11 +226,13 @@ plymouth_unit_runs_from_home() {
     done
 
     if [[ $word =~ $home_pattern || $word == "$HOME/.local/share/omarchy/bin/$binary" ]]; then
-      return 0
+      matched=0
+    else
+      matched=1
     fi
   done < <(active_lines systemd)
 
-  return 1
+  return $matched
 }
 
 # /etc/sudoers.d is 0750 root:root as shipped, and omarchy-migrate runs as the

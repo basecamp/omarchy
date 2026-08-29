@@ -197,21 +197,25 @@ run_migration
   fail "migration keeps a same-named file that never cleaned itself up"
 pass "migration keeps a same-named file that never cleaned itself up"
 
-# A rule continued onto the next line is one logical line, and a comment that is
-# continued stays a comment for the whole of it.
+# A spec continued onto the next line is one logical line, and a comment's own
+# trailing backslash swallows nothing: `visudo -cf` on "# note \" plus a bogus
+# token reports the error on line 2, so the spec below a commented line is live.
+# The hand-written spec sits under the comment on purpose -- above it, the file
+# is kept under either reading and the assertion cannot fail.
 reset_machine
 cat >"$first_run" <<'EOF'
 # Retired, keeping the old grant here for reference: \
-installer ALL=(ALL) NOPASSWD: /usr/bin/systemctl
+installer ALL=(ALL) NOPASSWD: /usr/local/bin/our-own-deploy-script
 Cmnd_Alias FIRST_RUN_CLEANUP = /bin/rm -f /etc/sudoers.d/first-run
 installer ALL=(ALL) NOPASSWD: \
-    /usr/local/bin/our-own-deploy-script
+    /usr/bin/systemctl
+installer ALL=(ALL) NOPASSWD: FIRST_RUN_CLEANUP
 EOF
 run_migration
 
 [[ -e $first_run ]] ||
-  fail "migration reads a continued line as one rule and a continued comment as comment"
-pass "migration reads a continued line as one rule and a continued comment as comment"
+  fail "migration keeps a spec left live under a commented continuation"
+pass "migration keeps a spec left live under a commented continuation"
 
 reset_machine
 printf 'installer ALL=(ALL) NOPASSWD: %s/.local/bin/tsui\n' "$home_dir" >"$tsui"
@@ -454,3 +458,49 @@ run_migration
 [[ ! -e $plymouth_unit ]] ||
   fail "migration removes a unit whose ExecStop continues across a comment" "$(cat "$plymouth_unit")"
 pass "migration removes a unit whose ExecStop continues across a comment"
+
+# An empty ExecStop= resets the list: `systemd-analyze verify` reports the missing
+# command for a unit with one ExecStop=, and reports nothing once a bare
+# ExecStop= follows it. An administrator who neutralised the unit that way runs
+# nothing at shutdown and keeps their file.
+reset_machine
+cat >"$plymouth_unit" <<'EOF'
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/true
+ExecStop=/home/installer/.local/share/omarchy/bin/omarchy-plymouth-shutdown-sync
+ExecStop=
+EOF
+before=$(cat "$plymouth_unit")
+run_migration
+
+[[ -e $plymouth_unit ]] ||
+  fail "migration keeps a unit whose ExecStop list was reset to empty"
+[[ $(cat "$plymouth_unit") == "$before" ]] ||
+  fail "migration leaves that unit byte for byte"
+pass "migration keeps a unit whose ExecStop list was reset to empty"
+
+# A reset followed by a fresh home ExecStop= is live again.
+reset_machine
+cat >"$plymouth_unit" <<'EOF'
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/true
+ExecStop=
+ExecStop=/home/installer/.local/share/omarchy/bin/omarchy-plymouth-shutdown-sync
+EOF
+run_migration
+
+[[ ! -e $plymouth_unit ]] ||
+  fail "migration removes a unit whose ExecStop is set again after a reset"
+pass "migration removes a unit whose ExecStop is set again after a reset"
+
+# systemd honours a directive whose line ends the file mid-continuation:
+# `systemd-analyze verify` resolves an ExecStop= written that way.
+reset_machine
+printf '[Service]\nType=oneshot\nExecStart=/usr/bin/true\nExecStop=/home/installer/.local/share/omarchy/bin/omarchy-plymouth-shutdown-sync \\\n' >"$plymouth_unit"
+run_migration
+
+[[ ! -e $plymouth_unit ]] ||
+  fail "migration removes a unit whose last line ends mid-continuation"
+pass "migration removes a unit whose last line ends mid-continuation"
