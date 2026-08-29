@@ -46,6 +46,10 @@ if(TARGET omarchy-plugin-permission-contract
   add_subdirectory(contracts/capability-definitions)
 endif()
 
+if(TARGET omarchy-plugin-capability-definitions)
+  add_subdirectory(external-provider)
+endif()
+
 if(TARGET omarchy-plugin-wire
     AND TARGET omarchy-plugin-permission-contract
     AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/broker/CMakeLists.txt")
