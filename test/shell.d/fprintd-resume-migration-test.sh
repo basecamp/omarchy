@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -euo pipefail
+
 source "$(dirname "${BASH_SOURCE[0]}")/base-test.sh"
 
 migration=$(grep -rl 'Install the fingerprint resume hook on existing fingerprint setups' "$ROOT/migrations" | head -n 1 || true)
@@ -33,6 +35,21 @@ run_migration() {
     bash -euo pipefail "$migration" >/dev/null ||
     fail "migration exits clean"
 }
+
+# The migration exits clean when its source is missing, so a hook moved
+# without updating it would silently install nothing and mark itself done.
+# Run once against the real default source under the repo to pin that path.
+rm -rf "$TMPDIR/system-sleep"
+: >"$lock_pam"
+PATH="$stub_bin:$PATH" \
+  OMARCHY_PATH="$ROOT" \
+  OMARCHY_FPRINTD_RESUME_DST="$dst" \
+  OMARCHY_LOCK_FINGERPRINT_PAM="$lock_pam" \
+  bash -euo pipefail "$migration" >/dev/null ||
+  fail "migration exits clean from its default source"
+[[ -x $dst ]] || fail "migration finds the hook at its default source path" "dst: $(stat -c '%A' "$dst" 2>/dev/null || echo missing)"
+cmp -s "$dst" "$ROOT/default/systemd/system-sleep/fprintd-resume" || fail "migration installs the shipped hook from its default source"
+pass "migration installs the shipped hook from its default source"
 
 # A machine with fingerprint configured but no hook yet gets it, executable.
 : >"$lock_pam"
