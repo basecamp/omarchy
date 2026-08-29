@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle window split on dwindle; notify instead of erroring on other layouts
+
+CURRENT_LAYOUT=$(hyprctl activeworkspace -j | jq -r '.tiledLayout')
+
+if [[ "$CURRENT_LAYOUT" == "dwindle" ]]; then
+  hyprctl dispatch 'hl.dsp.layout("togglesplit")'
+else
+  omarchy-notification-send -g 󱂬 "Split toggle unavailable on scrolling"
+fi
