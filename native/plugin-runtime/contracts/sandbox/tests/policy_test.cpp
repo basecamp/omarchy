@@ -1,4 +1,5 @@
 #include "omarchy/plugin_runtime/sandbox/policy.h"
+#include "omarchy/plugin_runtime/runtime_paths.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -211,7 +212,7 @@ void verify_seccomp(const SandboxPlan &plan) {
 
 int main() {
   constexpr std::string_view worker =
-      "/usr/lib/omarchy/plugin-runtime/omarchy-plugin-qml-worker";
+      omarchy::plugin_runtime::kProductionWorkerPath;
   const SandboxPlan plan = build_plan();
   require(plan.argv.front() == "/usr/bin/bwrap" &&
               plan.argv.back() == "/runtime/worker",

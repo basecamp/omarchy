@@ -1,5 +1,6 @@
 #include "omarchy/plugin_runtime/launcher/launcher.h"
 #include "omarchy/plugin_runtime/launcher/termination_state.h"
+#include "omarchy/plugin_runtime/runtime_paths.hpp"
 
 #include "omarchy/plugin/wire/envelope.hpp"
 
@@ -41,8 +42,6 @@
 namespace omarchy::plugin_runtime::launcher {
 namespace {
 constexpr std::string_view kProductionBwrap = "/usr/bin/bwrap";
-constexpr std::string_view kProductionWorker =
-    "/usr/lib/omarchy/plugin-runtime/omarchy-plugin-qml-worker";
 constexpr std::size_t kMaximumStatusLine = 4096;
 constexpr unsigned kMaximumStatusRecords = 32;
 constexpr int kExecErrorFd = 11;
@@ -1105,7 +1104,7 @@ Supervisor::~Supervisor() = default;
 
 Supervisor Supervisor::production() {
   return Supervisor(std::make_unique<Impl>(
-      std::string(kProductionBwrap), std::string(kProductionWorker),
+      std::string(kProductionBwrap), std::string(kProductionWorkerPath),
       make_systemd_resource_scope_controller(), true));
 }
 
@@ -1124,7 +1123,7 @@ bool Supervisor::prerequisites(std::string &error) const {
   }
   if (implementation_->production &&
       (implementation_->bwrap_path != kProductionBwrap ||
-       implementation_->worker_path != kProductionWorker)) {
+       implementation_->worker_path != kProductionWorkerPath)) {
     error = "production executable selection changed";
     return false;
   }

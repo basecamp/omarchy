@@ -1,4 +1,5 @@
 #include "omarchy/plugin_runtime/sandbox/policy.h"
+#include "omarchy/plugin_runtime/runtime_paths.hpp"
 
 #include <cerrno>
 #include <filesystem>
@@ -277,8 +278,7 @@ SandboxPlan build_test_plan_for_worker(std::string worker_path) {
 }
 
 SandboxPlan build_plan() {
-  return build_test_plan_for_worker(
-      "/usr/lib/omarchy/plugin-runtime/omarchy-plugin-qml-worker");
+  return build_test_plan_for_worker(std::string(kProductionWorkerPath));
 }
 
 SandboxPlan build_provider_plan(std::string trusted_executable_path) {

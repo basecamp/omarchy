@@ -3,6 +3,8 @@ add_library(Omarchy::PluginSandboxPolicy ALIAS omarchy-plugin-sandbox-policy)
 
 omarchy_plugin_target_defaults(omarchy-plugin-sandbox-policy)
 target_include_directories(omarchy-plugin-sandbox-policy PUBLIC include)
+target_link_libraries(omarchy-plugin-sandbox-policy PUBLIC
+  Omarchy::PluginRuntimePaths)
 
 if(BUILD_TESTING)
   find_package(PkgConfig REQUIRED)

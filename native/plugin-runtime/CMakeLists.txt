@@ -10,6 +10,17 @@ set(OMARCHY_PLUGIN_INSTALL_ROOT
   "${CMAKE_INSTALL_LIBDIR}/omarchy/plugin-security/${PROJECT_VERSION}"
   CACHE STRING "Versioned side-by-side secure plugin runtime root")
 
+set(OMARCHY_PLUGIN_PRODUCTION_WORKER
+  "${CMAKE_INSTALL_PREFIX}/${OMARCHY_PLUGIN_INSTALL_ROOT}/bin/omarchy-plugin-qml-worker")
+cmake_path(NORMAL_PATH OMARCHY_PLUGIN_PRODUCTION_WORKER)
+configure_file(cmake/runtime_paths.hpp.in
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/omarchy/plugin_runtime/runtime_paths.hpp"
+  @ONLY)
+add_library(omarchy-plugin-runtime-paths INTERFACE)
+add_library(Omarchy::PluginRuntimePaths ALIAS omarchy-plugin-runtime-paths)
+target_include_directories(omarchy-plugin-runtime-paths INTERFACE
+  "${CMAKE_CURRENT_BINARY_DIR}/generated")
+
 if(OMARCHY_PLUGIN_QT_MIN_VERSION)
   find_package(Qt6 ${OMARCHY_PLUGIN_QT_MIN_VERSION} REQUIRED COMPONENTS Core Gui Qml Quick)
   qt_standard_project_setup(REQUIRES ${OMARCHY_PLUGIN_QT_MIN_VERSION})
