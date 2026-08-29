@@ -32,6 +32,35 @@ const permissions::GrantRecord *find_grant(
 
 } // namespace
 
+PreparedPlugin::PreparedPlugin(
+    discovery::VerifiedPlugin verified,
+    permissions::ActivationBinding activation,
+    std::vector<surface_host::NamedSurfacePolicy> policies, int revision_fd)
+    : plugin(std::move(verified)), binding(std::move(activation)),
+      surfaces(std::move(policies)), revision_directory_fd(revision_fd) {}
+
+PreparedPlugin::~PreparedPlugin() {
+  if (revision_directory_fd >= 0)
+    close(revision_directory_fd);
+}
+
+PreparedPlugin::PreparedPlugin(PreparedPlugin &&other) noexcept
+    : plugin(std::move(other.plugin)), binding(std::move(other.binding)),
+      surfaces(std::move(other.surfaces)),
+      revision_directory_fd(std::exchange(other.revision_directory_fd, -1)) {}
+
+PreparedPlugin &PreparedPlugin::operator=(PreparedPlugin &&other) noexcept {
+  if (this != &other) {
+    if (revision_directory_fd >= 0)
+      close(revision_directory_fd);
+    plugin = std::move(other.plugin);
+    binding = std::move(other.binding);
+    surfaces = std::move(other.surfaces);
+    revision_directory_fd = std::exchange(other.revision_directory_fd, -1);
+  }
+  return *this;
+}
+
 PrepareResult prepare(const std::filesystem::path &plugin_root,
                       const discovery::IdentityPin &identity_pin,
                       const grants::RevisionGrants &active_grants,
@@ -104,10 +133,15 @@ PrepareResult prepare(const std::filesystem::path &plugin_root,
             .failure = PrepareFailure::surface_invalid,
             .detail = "plugin declares no host-owned surface"};
   }
-  return {.prepared = std::make_unique<PreparedPlugin>(PreparedPlugin{
-              .plugin = *found,
-              .binding = active_grants.binding,
-              .surfaces = std::move(surfaces)}),
+  const int revision_fd =
+      open(found->root.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+  if (revision_fd < 0) {
+    return {.prepared = nullptr,
+            .failure = PrepareFailure::discovery_rejected,
+            .detail = "verified revision directory could not be pinned"};
+  }
+  return {.prepared = std::make_unique<PreparedPlugin>(
+              *found, active_grants.binding, std::move(surfaces), revision_fd),
           .failure = PrepareFailure::none,
           .detail = {}};
 }
@@ -153,8 +187,8 @@ headless::StartResult launch_with_broker_for_lab(
             .failure = headless::StartFailure::invalid_binding,
             .detail = "lab broker does not accept the prepared activation"};
   }
-  const int revision_fd = open(prepared.plugin.root.c_str(),
-                               O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+  const int revision_fd =
+      fcntl(prepared.revision_directory_fd, F_DUPFD_CLOEXEC, 64);
   if (revision_fd < 0) {
     return {.session = nullptr,
             .failure = headless::StartFailure::invalid_binding,

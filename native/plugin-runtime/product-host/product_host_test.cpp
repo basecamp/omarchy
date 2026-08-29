@@ -4,6 +4,8 @@
 #include "manifest_contract.hpp"
 
 #include <chrono>
+#include <fcntl.h>
+#include <unistd.h>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -94,6 +96,53 @@ void run() {
               prepared.prepared->surfaces.front().role ==
                   omarchy::plugin_runtime::surface_host::SurfaceRole::desktop_overlay,
           "verified arbitrary-QML plugin lost its host-owned surface policy");
+
+  const auto swap_parent =
+      std::filesystem::temp_directory_path() /
+      ("omarchy-product-host-swap-" +
+       std::to_string(
+           std::chrono::steady_clock::now().time_since_epoch().count()));
+  struct SwapCleanup {
+    std::filesystem::path path;
+    ~SwapCleanup() {
+      std::error_code ignored;
+      std::filesystem::remove_all(path, ignored);
+    }
+  } swap_cleanup{swap_parent};
+  const auto swap_root = swap_parent / "pet";
+  std::filesystem::create_directories(swap_parent);
+  std::filesystem::copy(root, swap_root,
+                        std::filesystem::copy_options::recursive);
+  const auto swap_parsed =
+      manifest::parse_manifest_v2(read(swap_root / "manifest.json"));
+  const auto swap_identity = manifest::identify_tree(swap_root, swap_parsed);
+  const omarchy::plugins::discovery::IdentityPin swap_pin{
+      .directory = swap_root.filename(),
+      .tree_sha256 = swap_identity.tree_sha256};
+  auto swap_prepared = host::prepare(
+      swap_root, swap_pin, active(swap_parsed, swap_identity),
+      {.schema_v2_enabled = true});
+  require(static_cast<bool>(swap_prepared),
+          "swap fixture did not reach preparation");
+  std::filesystem::rename(swap_root, swap_parent / "verified");
+  std::filesystem::create_directories(swap_root);
+  {
+    std::ofstream replacement(swap_root / "manifest.json");
+    replacement << "attacker replacement";
+  }
+  const int pinned_manifest =
+      openat(swap_prepared.prepared->revision_directory_fd, "manifest.json",
+             O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+  require(pinned_manifest >= 0,
+          "prepared revision descriptor was invalidated by path swap");
+  std::array<char, 32> prefix{};
+  const auto prefix_size = ::read(pinned_manifest, prefix.data(), prefix.size());
+  close(pinned_manifest);
+  require(prefix_size > 0 &&
+              std::string_view(prefix.data(),
+                               static_cast<std::size_t>(prefix_size))
+                  .starts_with("{"),
+          "launch revision descriptor followed a substituted path");
 
   const auto sidecar_root =
       std::filesystem::temp_directory_path() /

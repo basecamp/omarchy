@@ -34,9 +34,20 @@ enum class PrepareFailure {
 };
 
 struct PreparedPlugin {
+  PreparedPlugin(discovery::VerifiedPlugin verified,
+                 permissions::ActivationBinding activation,
+                 std::vector<surface_host::NamedSurfacePolicy> policies,
+                 int revision_fd);
+  ~PreparedPlugin();
+  PreparedPlugin(const PreparedPlugin &) = delete;
+  PreparedPlugin &operator=(const PreparedPlugin &) = delete;
+  PreparedPlugin(PreparedPlugin &&other) noexcept;
+  PreparedPlugin &operator=(PreparedPlugin &&other) noexcept;
+
   discovery::VerifiedPlugin plugin;
   permissions::ActivationBinding binding;
   std::vector<surface_host::NamedSurfacePolicy> surfaces;
+  int revision_directory_fd = -1;
 };
 
 struct PrepareResult {
