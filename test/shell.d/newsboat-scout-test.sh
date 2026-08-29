@@ -46,6 +46,7 @@ write_mock omarchy-default-agent 'printf "%s\n" "${SCOUT_TEST_AGENT:-}"'
 write_mock omarchy-notification-send 'printf "%s\n" "$*" >>"$SCOUT_TEST_NOTIFICATION_LOG"; exit "${SCOUT_TEST_NOTIFICATION_STATUS:-0}"'
 write_mock omarchy-agent-prompt '
 [[ ${1:-} == "--conversation" ]] || exit 64
+[[ ${OMARCHY_AGENT_NETWORK_ACCESS:-false} == "true" ]] || exit 65
 printf "%s" "$2" >"$SCOUT_TEST_AGENT_LOG"
 '
 write_mock flock 'exit 0'
@@ -118,7 +119,7 @@ grep -Fq 'omarchy-newsboat-scout-propose URL' "$agent_log" || fail "Feed Scout r
 grep -Fq 'Do not run omarchy-newsboat-add' "$agent_log" || fail "Feed Scout forbids direct subscription mutations"
 grep -Fq 'Add <COUNT> feeds? (yes/no)' "$agent_log" || fail "Feed Scout requires an exact confirmation"
 [[ $(grep -c '^https://' "$urls_file") == 1 ]] || fail "Feed Scout changes subscriptions before confirmation"
-pass "Feed Scout gives the configured agent a bounded confirmation-only discovery task"
+pass "Feed Scout gives the configured agent a bounded network-research task with confirmation-only writes"
 
 rm -f "$agent_log"
 "$ROOT/bin/omarchy-newsboat-scout" --from-newsboat https://articles.example/story "A useful story" https://existing.example/feed

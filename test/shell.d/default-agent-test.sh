@@ -500,6 +500,12 @@ assert_conversation_launch agy agy --dangerously-skip-permissions --prompt-inter
 assert_conversation_launch copilot copilot --allow-all --interactive "Review this project"
 pass "agent launcher keeps confirmation conversations open for every supported agent"
 
+printf '%s\n' codex >"$agent_file"
+OMARCHY_AGENT_NETWORK_ACCESS=true omarchy-agent-prompt --conversation "Review this" project
+assert_launched codex "allows network only when the caller requests it" \
+  codex --approve-for-me -c sandbox_workspace_write.network_access=true -- "Review this project"
+pass "agent launcher can grant a scoped Codex network session"
+
 cat >"$mock_bin/crush" <<'SH'
 #!/bin/bash
 printf '%s\0' "$@" >>"$OMARCHY_TEST_CRUSH_LOG"

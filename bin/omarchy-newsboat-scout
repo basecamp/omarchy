@@ -86,4 +86,8 @@ prompt=$(printf '%s\n' \
   "" \
   "Only after I explicitly confirm, run the exact omarchy-newsboat-scout-apply command returned by the validator. If I request a subset, ask a new exact confirmation naming that subset before running the helper with only its IDs. If I decline or answer ambiguously, change nothing. Report the helper's result after it finishes.")
 
+# Feed Scout is intentionally a network-research session. Agents that sandbox
+# their shell can opt into outbound access for the read-only feed validator;
+# agents without a matching launch option simply ignore this internal hint.
+export OMARCHY_AGENT_NETWORK_ACCESS=true
 exec omarchy-agent-prompt --conversation "$prompt"

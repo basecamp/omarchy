@@ -93,6 +93,9 @@ grok)
   ;;
 codex)
   command=(codex --approve-for-me)
+  if [[ ${OMARCHY_AGENT_NETWORK_ACCESS:-false} == "true" ]]; then
+    command+=(-c sandbox_workspace_write.network_access=true)
+  fi
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
   ;;
 hermes)
