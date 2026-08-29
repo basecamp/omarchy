@@ -22,7 +22,7 @@ esac
 print_status() {
   local device nm state ssid signal freq
 
-  device=$(ip route get "$internet_probe" 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
+  device=$(ip -j route show table main default 2>/dev/null | jq -r 'sort_by(.metric // 0) | .[0].dev // ""')
 
   if [[ -z $device ]]; then
     printf 'disconnected\t\t\t\n'
@@ -85,7 +85,7 @@ print_ping_samples() {
 print_verbose() {
   local route_json iface gw src prefix link
 
-  route_json=$(ip -j route get "$internet_probe" 2>/dev/null)
+  route_json=$(ip -j route show table main default 2>/dev/null | jq -c 'sort_by(.metric // 0)')
   [[ -z $route_json ]] && return
 
   iface=$(jq -r '.[0].dev // ""' <<<"$route_json" 2>/dev/null)
