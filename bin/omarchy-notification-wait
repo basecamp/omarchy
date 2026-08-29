@@ -9,7 +9,7 @@ set -uo pipefail
 timeout=${1:-10}
 
 notification_server_ready() {
-  busctl --user call \
+  busctl --user --timeout=1 call \
     org.freedesktop.Notifications \
     /org/freedesktop/Notifications \
     org.freedesktop.Notifications \
