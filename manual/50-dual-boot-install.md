@@ -37,6 +37,18 @@ When you finish your Omarchy install, you'll notice that the Limine bootloader i
 
 In order to do that, run `limine-scan` and follow the prompts to add whichever items you'd like to your limine config. Then when you boot, you'll see your normal options for Omarchy, as well as Windows Boot Manager or others.
 
+## Booting Into Windows
+
+Once Windows is in the bootloader, you can reach it from Omarchy without waiting for the menu:
+
+```bash
+omarchy reboot-windows
+```
+
+This sets the one-shot UEFI `BootNext` variable to the Windows Boot Manager entry and reboots, so the firmware goes straight there. `BootNext` is consumed and cleared by the firmware on that boot, so your normal boot order is untouched and the next restart lands back in Omarchy as usual.
+
+This is handy when the Limine menu is awkward to use on your hardware — on some machines the menu draws to a display that isn't lit yet during POST, which makes selecting an entry a guess.
+
 ## Bitlocker
 
 It's important to note that this install method is not compatible with Bitlocker as it encrypts the entire drive, not just the partition. If you encounter an error stating that Bitlocker is enabled, boot to Windows, go to **Settings -> Privacy & Security -> Device encryption** and toggle Bitlocker off. It may take some time to decrypt the drive.

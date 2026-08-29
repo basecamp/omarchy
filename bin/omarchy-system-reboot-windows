@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# omarchy:summary=Reboot straight into Windows without using the boot menu
+# omarchy:aliases=omarchy reboot-windows
+# omarchy:requires-sudo=true
+
+if [[ ! -d /sys/firmware/efi ]]; then
+  echo "Error: System is not booted in UEFI mode" >&2
+  exit 1
+fi
+
+if ! efibootmgr &>/dev/null; then
+  echo "Error: efibootmgr is not available or not functional" >&2
+  exit 1
+fi
+
+entry=$(efibootmgr | grep -m1 -E "^Boot[0-9A-Fa-f]+\*?[[:space:]]+Windows Boot Manager")
+
+if [[ -z $entry ]]; then
+  echo "Error: No 'Windows Boot Manager' EFI entry found" >&2
+  echo "Run 'limine-scan' to add other installs to the bootloader, then try again" >&2
+  exit 1
+fi
+
+boot_num=$(sed -n 's/^Boot\([0-9A-Fa-f]\+\).*/\1/p' <<<"$entry")
+
+if gum confirm "Reboot into Windows?"; then
+  # BootNext is a one-shot: the firmware consumes and clears it on the next
+  # boot, so this changes where you land exactly once and leaves BootOrder alone.
+  sudo efibootmgr --bootnext "$boot_num" >/dev/null || exit 1
+
+  # Schedule the reboot in the user manager so closing the terminal's systemd
+  # scope cannot terminate it before it runs.
+  systemd-run --user --collect --quiet --on-active="2s" --timer-property=AccuracySec=100ms systemctl reboot --no-wall || exit 1
+
+  omarchy-osd -i reboot -m "Rebooting to Windows" -d 5000
+
+  omarchy-state clear re*-required
+
+  # Now close all windows
+  omarchy-hyprland-window-close-all
+  sleep 1 # Allow apps like Chrome to shutdown correctly
+fi
