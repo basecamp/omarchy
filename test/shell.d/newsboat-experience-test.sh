@@ -225,6 +225,18 @@ with sqlite3.connect(sys.argv[1]) as database:
 PY
 
 export FEEDS_TEST_AGENT=codex
+cp -- "$HOME/.config/newsboat/urls" "$test_tmp/valid-urls"
+printf 'https://one.example/feed "unfinished label\n' >"$HOME/.config/newsboat/urls"
+rm -f "$agent_log"
+if "$ROOT/bin/omarchy-newsboat-brief" >"$test_tmp/malformed-brief-output" 2>"$test_tmp/malformed-brief-error"; then
+  fail "Feeds briefs from a malformed subscriptions file"
+fi
+[[ ! -e $agent_log ]] || fail "a malformed subscriptions file reaches the configured agent"
+[[ -z $(find "$NEWSBOAT_BRIEF_STATE_DIR" -type f -name 'brief.*' -print -quit) ]] || fail "a malformed subscriptions file leaves a briefing snapshot"
+grep -Fq 'Could not read the current Newsboat edition' "$test_tmp/malformed-brief-error" || fail "a malformed subscriptions file has no clear briefing error"
+mv -- "$test_tmp/valid-urls" "$HOME/.config/newsboat/urls"
+pass "Feeds fails closed before briefing malformed subscriptions"
+
 rm -f "$agent_log"
 rm -f "$import_log"
 "$ROOT/bin/omarchy-newsboat-brief"

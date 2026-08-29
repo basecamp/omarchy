@@ -59,6 +59,7 @@
   "trigger.feeds.open": {"icon":"","label":"Read","action":"omarchy-feeds"},
   "trigger.feeds.subscribe": {"icon":"󰐕","label":"Subscribe URL","description":"Discover a feed from the URL in your clipboard","action":"omarchy-newsboat-subscribe"},
   "trigger.feeds.brief": {"icon":"󰚩","label":"Brief Unread","action":"omarchy-newsboat-brief"},
+  "trigger.feeds.scout": {"icon":"󰚩","label":"Feed Scout","description":"Find a few exceptional feeds that fill gaps in your inbox","action":"omarchy-newsboat-scout"},
   "trigger.feeds.edit": {"icon":"","label":"Edit Subscriptions","action":"omarchy-newsboat-edit"},
   "trigger.capture": {"icon":"","label":"Capture","aliases":["capture","screenshot","screenrecord","screen-record","screenrecording"]},
   "trigger.capture.screenshot": {"icon":"","label":"Screenshot","action":"omarchy-capture-screenshot"},

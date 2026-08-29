@@ -1,0 +1,97 @@
+#!/bin/bash
+
+# omarchy:summary=Validate a proposed set of Newsboat feeds
+# omarchy:args=<page-or-feed-url...>
+# omarchy:hidden=true
+
+set -euo pipefail
+
+if (( $# == 0 || $# > 5 )); then
+  echo "Usage: omarchy-newsboat-scout-propose <one-to-five-page-or-feed-urls>" >&2
+  exit 1
+fi
+for url in "$@"; do
+  if [[ ! $url =~ ^https?://[^[:space:]]+$ ]]; then
+    echo "Invalid Feed Scout URL: $url" >&2
+    exit 1
+  fi
+done
+
+if omarchy-pkg-missing newsboat; then
+  echo "Install Feeds first with: omarchy install newsboat" >&2
+  exit 1
+fi
+
+urls_file="${NEWSBOAT_URLS_FILE:-$HOME/.config/newsboat/urls}"
+state_dir="${NEWSBOAT_SCOUT_STATE_DIR:-/tmp/omarchy-newsboat-$UID/scouts}"
+if [[ ! -f $urls_file ]]; then
+  echo "No Newsboat subscriptions file is available." >&2
+  exit 1
+fi
+
+read_subscriptions() {
+  python3 "$OMARCHY_PATH/bin/omarchy-newsboat-internal.py" subscriptions "$urls_file" | jq -c '[.[].url]'
+}
+
+subscriptions=$(read_subscriptions)
+candidates=()
+candidate_count=0
+seen_feeds=""
+for source_url in "$@"; do
+  resolve_status=0
+  resolution=$(omarchy-newsboat-resolve "$source_url") || resolve_status=$?
+  if (( resolve_status != 0 )); then
+    printf 'Skipped unvalidated candidate: %s\n' "$source_url" >&2
+    continue
+  fi
+
+  feed_url=$(jq -r '.feed_url' <<<"$resolution")
+  if jq -e --arg url "$feed_url" 'index($url) != null' <<<"$subscriptions" >/dev/null; then
+    printf 'Skipped existing subscription: %s\n' "$feed_url" >&2
+    continue
+  fi
+  duplicate=false
+  if grep -Fxq "$feed_url" <<<"$seen_feeds"; then
+    duplicate=true
+  fi
+  if [[ $duplicate == "true" ]]; then
+    printf 'Skipped duplicate candidate: %s\n' "$feed_url" >&2
+    continue
+  fi
+
+  ((candidate_count += 1))
+  candidate_id=$(printf 'F%03d' "$candidate_count")
+  candidates+=("$(jq -c --arg id "$candidate_id" '. + {id: $id}' <<<"$resolution")")
+  seen_feeds+="${seen_feeds:+$'\n'}$feed_url"
+done
+
+if (( candidate_count == 0 )); then
+  echo "None of those candidates resolved to a new, valid RSS or Atom feed." >&2
+  exit 1
+fi
+
+current_subscriptions=$(read_subscriptions)
+if [[ $current_subscriptions != "$subscriptions" ]]; then
+  echo "Subscriptions changed during discovery. Run Feed Scout again." >&2
+  exit 1
+fi
+
+candidates_json=$(printf '%s\n' "${candidates[@]}" | jq -s '.')
+umask 077
+install -d -m 700 "$state_dir"
+snapshot_file=$(mktemp "$state_dir/scout.XXXXXXXX")
+proposal_id=${snapshot_file##*/scout.}
+trap 'rm -f "$snapshot_file"' EXIT
+jq -n \
+  --argjson created_at "$(date +%s)" \
+  --argjson subscriptions "$subscriptions" \
+  --argjson candidates "$candidates_json" \
+  '{version: 1, created_at: $created_at, subscriptions: $subscriptions, candidates: $candidates}' >"$snapshot_file"
+trap - EXIT
+
+printf 'Validated Feed Scout proposal %s:\n' "$proposal_id"
+jq -r '.[] | "\(.id) — \(.name)\n  Feed: \(.feed_url)\n  Recent: \(if (.recent_titles | length) == 0 then "No titles exposed" else (.recent_titles | join(" · ")) end)"' <<<"$candidates_json"
+printf '\nAsk: Add %s feeds? (yes/no)\n' "$candidate_count"
+printf 'After explicit confirmation: omarchy-newsboat-scout-apply %s %s' "$proposal_id" "$candidate_count"
+printf ' %s' "$(jq -r 'map(.id) | join(" ")' <<<"$candidates_json")"
+printf '\n'

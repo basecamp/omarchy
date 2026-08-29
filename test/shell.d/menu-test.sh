@@ -130,6 +130,22 @@ assertDeepEqual(
 const defaultItems = menu.parseMenuJsonc(defaultMenuJsonc)
 const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item]))
 
+assertEqual(
+  defaultById['install.feeds'].disabled,
+  '[[ -f $HOME/.local/share/applications/Feeds.desktop ]]',
+  'menu keeps Feeds selectable until its Omarchy launcher exists'
+)
+assertEqual(
+  defaultById['install.feeds'].action,
+  'omarchy-launch-floating-terminal-with-presentation omarchy-install-newsboat',
+  'menu routes Feeds through its Newsboat installer'
+)
+assertEqual(defaultById['trigger.feeds'].when, '[[ -f $HOME/.local/share/applications/Feeds.desktop ]]', 'menu reveals feed actions after installation')
+assertEqual(defaultById['trigger.feeds.open'].action, 'omarchy-feeds', 'menu opens the finite feed edition')
+assertEqual(defaultById['trigger.feeds.subscribe'].action, 'omarchy-newsboat-subscribe', 'menu subscribes from a copied page URL')
+assertEqual(defaultById['trigger.feeds.brief'].action, 'omarchy-newsboat-brief', 'menu briefs unread feeds with the default agent')
+assertEqual(defaultById['trigger.feeds.scout'].action, 'omarchy-newsboat-scout', 'menu discovers feeds with the default agent')
+
 // Needs the real menu: app rows sort after all menu items, and only at that
 // item count does the order tiebreak alone bury an installed app.
 const rankBase = menu.mergeMenuSources(defaultItems, [])

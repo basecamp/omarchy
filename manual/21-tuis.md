@@ -42,6 +42,54 @@ When the drive fills up and you have no idea what's eating it, launch _Disk Usag
 
 [Cliamp](https://www.cliamp.stream/) is a retro terminal music player inspired by Winamp 2.x, complete with built-in radio stations for lo-fi beats. Launch it with `Super + Shift + Alt + M`, or from the Omarchy menu under _Apps_. Press `?` for the full keybinding list.
 
+## Feeds
+
+Feeds is Omarchy's finite, algorithm-free reading inbox, powered by [Newsboat](https://newsboat.org/). Install it from _Install > Feeds_ in the Omarchy menu, or run `omarchy install newsboat`. Launch it later from the app menu or with `omarchy feeds`. It follows the active terminal theme and starts with useful Omarchy and Arch Linux sources.
+
+Opening Feeds collects one fresh edition before showing it. Nothing else arrives until you explicitly refresh with `r`, so the unread Inbox is something you can finish rather than an endless stream. Reach zero and Omarchy sends one quiet confirmation: you're all caught up; go make something.
+
+The easiest way to subscribe is to visit a page in a Chromium-family browser and press `Alt + Shift + R`. Omarchy discovers the RSS or Atom address advertised by that page and confirms the subscription. You can also copy a page URL and choose _Trigger > Feeds > Subscribe URL_, or discover it from the terminal:
+
+```bash
+omarchy newsboat subscribe https://world.hey.com/dhh
+```
+
+Use `j` and `k` to move, `l` or `Return` to open a feed or article, `h` to go back, `r` to collect another edition, `o` to open an article in your browser, and `q` to quit. Press `?` for Newsboat's complete keybinding list.
+
+When an article is selected, press `,a` to send that article to your configured default Omarchy agent. Press `,b` to brief the whole unread edition: the agent groups duplicate coverage, recommends at most three worthwhile reads, and says what can safely be skipped. It then asks whether it should mark the skipped articles as read and leave its recommendations waiting for you. Nothing changes unless you explicitly confirm, and the confirmation states the exact number that will be marked read and left unread.
+
+Press `,d` on an interesting article to open Feed Scout, or choose _Trigger > Feeds > Feed Scout_ to look for gaps across all your subscriptions. The configured agent researches a maximum of five high-signal sources, resolves and validates their real RSS or Atom documents, explains why each belongs, and asks exactly how many to add. It cannot silently subscribe: only the opaque feed IDs from that one-use proposal are accepted after your explicit confirmation. You can also give Scout a subject from the terminal:
+
+```bash
+omarchy newsboat scout "independent Ruby writing"
+```
+
+All agent actions use whichever Omarchy agent you chose; if no default is configured, Omarchy opens the agent picker instead.
+
+Subscriptions can be managed from the terminal:
+
+```bash
+omarchy newsboat add https://example.com/feed.xml
+omarchy newsboat remove https://example.com/feed.xml
+omarchy newsboat edit
+```
+
+`add` and `remove` expect an exact RSS or Atom address, while `subscribe` accepts an ordinary webpage and discovers its feed. `edit` opens `~/.config/newsboat/urls` in your configured editor, which is also where you can add Newsboat tags after an address.
+
+To migrate subscriptions from another reader, export an OPML file there and import it into Newsboat. Import merges those subscriptions with the feeds you already have:
+
+```bash
+omarchy newsboat import ~/Downloads/subscriptions.opml
+```
+
+You can create an OPML backup or move to another reader without overwriting an existing file:
+
+```bash
+omarchy newsboat export ~/Downloads/newsboat-subscriptions.opml
+```
+
+Personal Newsboat settings belong in `~/.config/newsboat/config`, below the Omarchy include. Omarchy maintains `~/.config/newsboat/omarchy.conf`; keeping the two layers separate lets integration improvements arrive with normal Omarchy updates without replacing personal settings.
+
 ## What about Wi-Fi and Bluetooth?
 
 You won't find TUIs for Wi-Fi and Bluetooth — those jobs belong to the Omarchy shell. Click the Wi-Fi icon in the top bar (or hit `Super + Ctrl + W`) to see networks and connect, and click the Bluetooth icon (or hit `Super + Ctrl + B`) to pair and connect devices. See [networking](35-networking.md) for the full story.
