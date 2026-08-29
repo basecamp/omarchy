@@ -147,6 +147,24 @@ Panel {
   readonly property string reportWind:      current ? (useImperial ? (current.windspeedMiles + " mph") : (current.windspeedKmph + " km/h")) : ""
   readonly property string reportHumidity:  current ? (current.humidity + "%") : ""
 
+
+  function persistSettings(values) {
+    var entry = { id: root.moduleName }
+    for (var existing in root.settings) if (existing !== "id") entry[existing] = root.settings[existing]
+    for (var key in values) entry[key] = values[key]
+    root.settings = entry
+    if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
+    if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+      root.bar.shell.updateEntryInline(root.moduleName, entry)
+  }
+
+  // Click the °C/°F label to pin metric or imperial (or return to auto). Timezone
+  // / reported-country changes otherwise flip the unit with no UI escape hatch.
+  function cycleTempUnit() {
+    var next = Model.nextTempUnitOverride(setting("unit", ""))
+    persistSettings({ unit: next })
+  }
+
   function refresh() {
     // Each full refresh cycle gets a fresh retry budget, so an earlier
     // exhausted round (e.g. waking with the network still down) doesn't
@@ -558,6 +576,7 @@ Panel {
               font.bold: true
             }
             Text {
+              id: tempUnitLabel
               textFormat: Text.PlainText
               text: root.current ? root.tempUnit : ""
               color: root.bar.foreground
@@ -565,6 +584,14 @@ Panel {
               font.pixelSize: Style.font.display
               anchors.top: tempBig.top
               anchors.topMargin: Style.space(10)
+
+              MouseArea {
+                anchors.fill: parent
+                anchors.margins: -Style.space(4)
+                cursorShape: Qt.PointingHandCursor
+                enabled: !!root.current
+                onClicked: root.cycleTempUnit()
+              }
             }
           }
         }
