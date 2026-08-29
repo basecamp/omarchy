@@ -15,7 +15,10 @@ bool observe(providers::AudioDeviceStatus &status, void *context) noexcept {
   if (!*static_cast<bool *>(context)) return false;
   status = {.display_name = "AirPods Pro", .connected = true, .left = 71,
             .right = 84, .case_level = 93, .listening_mode = "adaptive",
-            .adaptive_level = 42};
+            .adaptive_level = 42, .conversation_awareness = true,
+            .one_bud_anc = true, .ear_detection = "pause-one-out",
+            .supported_controls = providers::kListeningModeControl |
+                providers::kAdaptiveLevelControl};
   return true;
 }
 bool control(std::string_view operation, std::string_view value, void *) noexcept {
@@ -48,6 +51,7 @@ int main() {
   require(observer.dispatch(observation, output, written, observer.context), "observe failed");
   const std::string result(reinterpret_cast<const char *>(output.data()), written);
   require(result.find("AirPods Pro") != std::string::npos &&
+              result.find("set-adaptive-level") != std::string::npos &&
               result.find("D4:94") == std::string::npos,
           "observe leaked backend identity or lost bounded status");
   available = false;

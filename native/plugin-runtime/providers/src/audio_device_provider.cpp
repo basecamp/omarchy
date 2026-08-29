@@ -2,6 +2,7 @@
 
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonArray>
 
 #include <cstring>
 #include <utility>
@@ -67,11 +68,24 @@ bool AudioDeviceProvider::dispatch_observe(
                                             self.configuration_.backend.context))
     return copy(QByteArrayLiteral("{\"ok\":false,\"error\":\"unavailable\"}"),
                 response, written);
+  QJsonArray supported_controls;
+  for (const auto [flag, name] : {
+           std::pair{kListeningModeControl, "set-listening-mode"},
+           std::pair{kAdaptiveLevelControl, "set-adaptive-level"},
+           std::pair{kConversationAwarenessControl,
+                     "set-conversation-awareness"},
+           std::pair{kOneBudAncControl, "set-one-bud-anc"},
+           std::pair{kEarDetectionControl, "set-ear-detection"}})
+    if ((status.supported_controls & flag) != 0) supported_controls.append(name);
   const QJsonObject result{{"ok", true}, {"deviceName", QString::fromUtf8(status.display_name)},
                            {"connected", status.connected}, {"left", status.left},
                            {"right", status.right}, {"caseLevel", status.case_level},
                            {"mode", QString::fromUtf8(status.listening_mode)},
-                           {"adaptiveLevel", status.adaptive_level}};
+                           {"adaptiveLevel", status.adaptive_level},
+                           {"conversationAwareness", status.conversation_awareness},
+                           {"oneBudAnc", status.one_bud_anc},
+                           {"earDetection", QString::fromUtf8(status.ear_detection)},
+                           {"supportedControls", supported_controls}};
   return copy(QJsonDocument(result).toJson(QJsonDocument::Compact), response, written);
 }
 

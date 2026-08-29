@@ -270,7 +270,13 @@ bool fixture_audio_observe(providers::AudioDeviceStatus &status,
                            void *) noexcept {
   status = {.display_name = "AirPods Pro", .connected = true, .left = 71,
             .right = 84, .case_level = 93, .listening_mode = "adaptive",
-            .adaptive_level = 42};
+            .adaptive_level = 42, .conversation_awareness = true,
+            .one_bud_anc = true, .ear_detection = "pause-one-out",
+            .supported_controls = providers::kListeningModeControl |
+                providers::kAdaptiveLevelControl |
+                providers::kConversationAwarenessControl |
+                providers::kOneBudAncControl |
+                providers::kEarDetectionControl};
   return true;
 }
 
@@ -786,7 +792,9 @@ int preview(const QStringList &arguments, QGuiApplication &application,
                 << "frames" << frame_hashes.size();
     application.exit(80);
   });
-  deadline.start(8000);
+  const int deadline_milliseconds =
+      qEnvironmentVariableIntValue("OMARCHY_PLUGIN_E2E_DEADLINE_MS");
+  deadline.start(deadline_milliseconds > 0 ? deadline_milliseconds : 8000);
 #endif
   QObject::connect(&pump, &QTimer::timeout, [&] {
     if (live_lab) {
