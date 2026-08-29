@@ -174,12 +174,14 @@ case "$1" in
   # simulation only, substitute trusted tools and map fixed system destinations
   # under the disposable fake root.
   code=${code/PATH=\/usr\/bin:\/bin/PATH=$TEST_ROOT_TOOLS:\/usr\/bin:\/bin}
+  code=${code/omarchy_conf=\/etc\/omarchy.conf/omarchy_conf=$TEST_OMARCHY_CONF}
   code=${code/theme_dir=\/usr\/share\/plymouth\/themes\/omarchy/theme_dir=$TEST_FAKE_ROOT\/usr\/share\/plymouth\/themes\/omarchy}
   code=${code/sddm_dir=\/usr\/share\/sddm\/themes\/omarchy/sddm_dir=$TEST_FAKE_ROOT\/usr\/share\/sddm\/themes\/omarchy}
 
   # Each rewrite above silently no-ops if the production text drifts, which
   # would point this simulation at the real /usr/share. Refuse instead.
   [[ $code == *"PATH=$TEST_ROOT_TOOLS:/usr/bin:/bin"* ]] || exit 94
+  [[ $code == *"omarchy_conf=$TEST_OMARCHY_CONF"* ]] || exit 94
   [[ $code == *"theme_dir=$TEST_FAKE_ROOT/usr/share/plymouth/themes/omarchy"* ]] || exit 94
   [[ $code == *"sddm_dir=$TEST_FAKE_ROOT/usr/share/sddm/themes/omarchy"* ]] || exit 94
 
@@ -243,6 +245,7 @@ setup_run() {
   fake_root="$run_dir/root"
   sudo_log="$run_dir/sudo.log"
   leak_log="$run_dir/leaked-stage-path.log"
+  omarchy_conf="$run_dir/omarchy.conf"
   theme="$fake_root/usr/share/plymouth/themes/omarchy"
   sddm="$fake_root/usr/share/sddm/themes/omarchy"
 
@@ -295,6 +298,7 @@ run_set_colors() {
       TEST_FAKE_ROOT="$fake_root" \
       TEST_STAGES="$stages" \
       TEST_ROOT_TOOLS="$root_tools" \
+      TEST_OMARCHY_CONF="$omarchy_conf" \
       TEST_SUDO_LOG="$sudo_log" \
       TEST_LEAK_LOG="$leak_log" \
       "$@" \
@@ -442,21 +446,49 @@ assert_no_temporary_files "$fake_root"
 
 pass "root rejects packaged assets that a desktop process could rewrite"
 
-# omarchy dev link points OMARCHY_PATH at a checkout the desktop user owns, so
-# this refusal fires on a working machine, not only under attack. Every check in
-# the privileged transaction is a bare assertion that aborts under set -e, so
-# without a diagnostic the whole Plymouth menu would just close in silence.
+# A random user-owned OMARCHY_PATH remains untrusted. Only the exact canonical
+# checkout recorded by root in /etc/omarchy.conf is the supported dev-link
+# exception; an unrelated or stale authorization must not weaken the check.
 setup_run
 output=$(run_set 022 env TEST_UNTRUSTED_SOURCE="$ROOT" 2>&1)
 status=$?
 
 (( status != 0 )) || fail "a user-owned OMARCHY_PATH is rejected"
-[[ $output == *"is not root-owned"* ]] || fail "the refusal names the untrusted source tree" "$output"
-[[ $output == *"omarchy dev unlink"* ]] || fail "the refusal names the way back to a trusted tree" "$output"
+[[ $output == *"user-owned"* ]] || fail "the refusal names the untrusted source tree" "$output"
+[[ $output == *"omarchy dev link"* ]] || fail "the refusal names how to authorize a development checkout" "$output"
 [[ $(cat "$theme/bullet.png") == 'old plymouth bullet.png' ]] || fail "a user-owned OMARCHY_PATH leaves the live theme unchanged"
 assert_no_temporary_files "$fake_root"
 
-pass "a development checkout is refused with an explanation instead of in silence"
+setup_run
+printf 'export OMARCHY_PATH="/some/other/checkout"\n' >"$omarchy_conf"
+chmod 0644 "$omarchy_conf"
+output=$(run_set 022 env TEST_UNTRUSTED_SOURCE="$ROOT" 2>&1)
+status=$?
+
+(( status != 0 )) || fail "a stale dev-link authorization is rejected"
+[[ $(cat "$theme/bullet.png") == 'old plymouth bullet.png' ]] || fail "a stale dev-link authorization leaves the live theme unchanged"
+assert_no_temporary_files "$fake_root"
+
+setup_run
+printf 'export OMARCHY_PATH="%s"\n' "$ROOT" >"$omarchy_conf"
+chmod 0666 "$omarchy_conf"
+output=$(run_set 022 env TEST_UNTRUSTED_SOURCE="$ROOT" 2>&1)
+status=$?
+
+(( status != 0 )) || fail "a writable dev-link authorization is rejected"
+[[ $(cat "$theme/bullet.png") == 'old plymouth bullet.png' ]] || fail "a writable dev-link authorization leaves the live theme unchanged"
+assert_no_temporary_files "$fake_root"
+
+setup_run
+printf 'export OMARCHY_PATH="%s"\n' "$ROOT" >"$omarchy_conf"
+chmod 0644 "$omarchy_conf"
+output=$(run_set 022 env TEST_UNTRUSTED_SOURCE="$ROOT" 2>&1)
+status=$?
+
+(( status == 0 )) || fail "the root-authorized development checkout can publish Plymouth assets" "$output"
+cmp -s "$ROOT/default/plymouth/bullet.png" "$theme/bullet.png" || fail "the authorized development checkout supplies the packaged assets"
+
+pass "only the checkout explicitly authorized by omarchy dev link may be user-owned"
 
 # Root rejects both a symlinked parent and a group/world-writable parent before
 # it creates a temporary file or touches the live destination.
@@ -509,6 +541,7 @@ output=$(
     TEST_FAKE_ROOT="$fake_root" \
     TEST_STAGES="$stages" \
     TEST_ROOT_TOOLS="$root_tools" \
+    TEST_OMARCHY_CONF="$omarchy_conf" \
     TEST_SUDO_LOG="$sudo_log" \
     TEST_LEAK_LOG="$leak_log" \
     /bin/bash "$ROOT/bin/omarchy-refresh-plymouth" 2>&1
