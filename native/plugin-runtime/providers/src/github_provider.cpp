@@ -109,13 +109,28 @@ bool GitHubProvider::dispatch_write(
       self.configuration_.backend.invoke == nullptr)
     return false;
   const auto object = payload(request);
-  const auto handle = object.value("id").toString();
   if (object.size() != 3 || object.value("resource").toString() != "selected" ||
-      object.value("operation").toString() != "mark-notification-read" ||
-      !bounded_text(handle, 64))
+      object.value("operation").toString() != "mark-notification-read")
     return false;
+  QStringList handles;
+  if (object.contains("id")) {
+    const auto handle = object.value("id").toString();
+    if (!bounded_text(handle, 64)) return false;
+    handles.push_back(handle);
+  } else if (object.contains("ids")) {
+    const auto values = object.value("ids").toArray();
+    if (values.empty() || values.size() > 25) return false;
+    for (const auto &value : values) {
+      const auto handle = value.toString();
+      if (!bounded_text(handle, 64) || handles.contains(handle)) return false;
+      handles.push_back(handle);
+    }
+  } else {
+    return false;
+  }
   return self.configuration_.backend.invoke(
-      "mark-read", handle.toStdString(), response, written,
+      handles.size() == 1 ? "mark-read" : "mark-read-batch",
+      handles.join(',').toStdString(), response, written,
       self.configuration_.backend.context);
 }
 
