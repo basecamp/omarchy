@@ -1,0 +1,99 @@
+# Plugin security live-testing lab
+
+This lab runs schema-v2 beside an existing Omarchy 4.x installation. It does not replace `/usr/share/omarchy`, alter `~/.config/omarchy`, discover schema-v1 plugins, enable `omarchy-plugin-host.service`, or install an `omarchy-dev` package. The only system path is one new digest-named directory below `/opt/omarchy-plugin-security-lab/`. Use a disposable account or VM even with that separation: the live-lab broker deliberately performs real granted effects.
+
+## Build and stage
+
+Record a clean source identity, configure a Release build, and run its focused tests outside development sandboxes that block user namespaces or `SO_PASSCRED`:
+
+```bash
+git status --short --branch
+git rev-parse HEAD
+cmake -S native/plugin-runtime -B /tmp/omarchy-plugin-runtime-live-lab -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build /tmp/omarchy-plugin-runtime-live-lab
+ctest --test-dir /tmp/omarchy-plugin-runtime-live-lab --output-on-failure -L security
+ctest --test-dir /tmp/omarchy-plugin-runtime-live-lab --output-on-failure -R '^plugin-sidecar-(supervisor|real-bwrap)$'
+native/plugin-runtime/lab/omarchy-plugin-security-lab prepare /tmp/omarchy-plugin-runtime-live-lab /tmp/omarchy-plugin-security-stage
+```
+
+`prepare` never writes `/opt`. It installs into a new user-owned staging directory named by the worker SHA-256 and writes `PROVENANCE` containing the source commit, dirty-tree fingerprint, worker and host digests, CMake cache digest, and host Omarchy version. A dirty-tree fingerprint is evidence, not a substitute for a clean commit.
+
+Review the complete staged file list and provenance before copying it:
+
+```bash
+stage=/tmp/omarchy-plugin-security-stage/<worker-sha256>
+find "$stage" -printf '%M %u:%g %p\n' | sort
+cat "$stage/PROVENANCE"
+native/plugin-runtime/lab/omarchy-plugin-security-lab verify "$stage"
+```
+
+Then create a new root-owned path without overwriting an existing candidate:
+
+```bash
+digest=$(basename "$stage")
+lab_root=/opt/omarchy-plugin-security-lab/$digest
+sudo test ! -e "$lab_root"
+sudo install -d -o root -g root -m 0755 /opt/omarchy-plugin-security-lab
+sudo cp -a --no-preserve=ownership "$stage" "$lab_root"
+sudo chown -R root:root "$lab_root"
+sudo chmod -R go-w "$lab_root"
+native/plugin-runtime/lab/omarchy-plugin-security-lab verify "$lab_root"
+```
+
+The live-lab launcher independently requires the worker at `/opt/omarchy-plugin-security-lab/<worker-sha256>/usr/lib/omarchy/plugin-runtime/omarchy-plugin-qml-worker`. It rejects symlinks, non-root ownership, group/world-writable path components, unsafe executable metadata, a noncanonical location, and a digest mismatch. Production launch continues to pin `/usr/lib/omarchy/plugin-runtime/omarchy-plugin-qml-worker`; normal preview cannot select the lab worker.
+
+## Isolated test state
+
+Use copies of the schema-v2 ports, never their schema-v1 installed directories. Keep each revision immutable during a run and keep all mutable authority outside it:
+
+```text
+/tmp/omarchy-plugin-lab-run/<run-id>/
+  plugins/<plugin-id>/       immutable reviewed source copy
+  grants/                    permission store
+  state/<plugin-id>/         plugin-private state
+  audit/                     broker audit store
+  evidence/                  screenshots, video, logs, hashes
+```
+
+Use `omarchy-plugin-host --identify-plugin-live-lab` to record the plugin tree and request digests. Review grants interactively with `omarchy-plugin-permission-store`; do not construct granted store bytes by hand. Activate only the exact reviewed candidate using `--activate-plugin-live-lab`. The feature flags enable these explicit commands only; they do not discover or start plugins automatically.
+
+Launch one reviewed plugin with:
+
+```bash
+native/plugin-runtime/lab/omarchy-plugin-security-lab launch "$lab_root" "$plugin_root" "$tree_sha256" "$grant_store" "$private_state" "$audit_store"
+```
+
+Run Radio Atlas with live network and media providers, Omagotchi with private storage, notifications and packaged audio, GitHub with a disposable test account, and AirPods only with test hardware whose pairing can be reset. Capture the initial surface, each granted operation, each denied operation, revocation during an in-flight request, provider loss, plugin crash, worker restart, and post-revocation behavior. Record `hyprctl` state and use compositor-native capture for video; export the redacted audit store and hash every evidence file.
+
+## Security and penetration matrix
+
+Keep known-good and malicious revisions separate. At minimum attempt:
+
+- direct IPv4, IPv6, Unix, D-Bus, Wayland, SSH/GPG agent and credential-store access;
+- reads of home, `/proc`, host runtime directories, another plugin revision and another plugin's private state;
+- direct `Process`, shell, `gh`, `curl`, helper and sidecar execution outside declared sandbox-local executables;
+- broker operation spoofing, undeclared operation names, widened scopes, stale generation and epoch, replayed correlations, forged descriptors and malformed frames;
+- definition digest substitution, adapter mismatch, grant-store replacement, revision mutation and symlink/path races;
+- sidecar descriptor inheritance, child escape, fork/task exhaustion, output flooding, oversized images, render floods and crash loops;
+- revocation before dispatch, during asynchronous work and after provider effect but before result delivery;
+- hostile notification text, audio paths, storage keys and payloads, with audit-secret scanning afterward.
+
+For every case record the expected boundary, observed result, audit decision, worker/scope lifecycle, and whether any external effect occurred. A denial without an audit record or a worker crash without complete cgroup teardown is a failure.
+
+The two required sidecar gates are `plugin-sidecar-supervisor` and `plugin-sidecar-real-bwrap`. The real probe must prove that privileged control, broker and render descriptors cannot be inherited or reopened through `/proc`; host and home canaries are absent; D-Bus and Wayland environment is absent; and nested namespace creation is denied by the production-equivalent `--disable-userns` policy.
+
+## VM route
+
+The authoritative graphical route remains the sibling `omarchy-iso` harness. It requires KVM, OVMF, QEMU, socat, ImageMagick and Tesseract, installs into a 40 GB sparse qcow2 base, then runs each test from a throwaway overlay. Build a current ISO after package/install changes; otherwise an installed Omarchy 4.x base plus this `/opt` lab is sufficient and preserves the installed schema-v1 environment.
+
+The local 3.8.4 ISO boots under KVM on this machine, but its older installer and the current harness disagree at the keyboard-layout OCR step. Do not substitute manual keystrokes and call that reproducible evidence. Either harden the harness's OCR observation, use a current ISO, or provision a base image through an independently logged unattended path. CI must expose `/dev/kvm`, allow user/PID/network namespaces, support `SO_PASSCRED`, provide a graphical session inside the guest, and retain qcow overlays, serial logs, QMP screenshots, audit exports and provenance. Container-only tests do not replace the VM because they cannot prove the installed compositor, user service, package ownership and nested Bubblewrap boundary together.
+
+## Cleanup
+
+Stop all lab hosts, verify no worker or transient scope remains, archive evidence, and remove only the exact digest-named root. The helper prints but does not execute the removal command:
+
+```bash
+native/plugin-runtime/lab/omarchy-plugin-security-lab cleanup-command "$lab_root"
+```
+
+Never recursively remove `/opt/omarchy-plugin-security-lab` as a whole. Preserve the candidate while evidence refers to its digest.

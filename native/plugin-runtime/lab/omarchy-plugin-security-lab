@@ -1,0 +1,114 @@
+#!/bin/bash
+
+set -euo pipefail
+
+usage() {
+  echo "Usage: $0 prepare BUILD_DIR STAGE_PARENT"
+  echo "       $0 verify LAB_ROOT"
+  echo "       $0 launch LAB_ROOT PLUGIN_ROOT TREE_SHA256 GRANT_STORE PRIVATE_STATE AUDIT_STORE"
+  echo "       $0 cleanup-command LAB_ROOT"
+}
+
+require_absolute() {
+  [[ $1 == /* && $1 != *'/../'* && $1 != */.. ]] || {
+    echo "Path must be absolute and normalized: $1" >&2
+    exit 64
+  }
+}
+
+prepare() {
+  local build_dir=$1 stage_parent=$2 worker digest stage host pending installed_worker
+  require_absolute "$build_dir"
+  require_absolute "$stage_parent"
+  worker="$build_dir/worker/omarchy-plugin-qml-worker"
+  host="$build_dir/host/omarchy-plugin-host"
+  [[ -x $worker && -x $host ]] || {
+    echo "Build omarchy-plugin-host and omarchy-plugin-qml-worker first" >&2
+    exit 66
+  }
+  mkdir -p "$stage_parent"
+  pending=$(mktemp -d "$stage_parent/.pending.XXXXXXXX")
+  trap 'rm -rf -- "$pending"' RETURN
+  DESTDIR="$pending" cmake --install "$build_dir" --prefix /usr
+  installed_worker="$pending/usr/lib/omarchy/plugin-runtime/omarchy-plugin-qml-worker"
+  digest=$(sha256sum "$installed_worker" | cut -d' ' -f1)
+  stage="$stage_parent/$digest"
+  [[ ! -e $stage ]] || {
+    echo "Refusing to replace existing stage: $stage" >&2
+    exit 73
+  }
+  mv "$pending" "$stage"
+  trap - RETURN
+  {
+    echo "schema=omarchy-plugin-security-lab-v1"
+    echo "source_commit=$(git rev-parse HEAD)"
+    echo "source_dirty=$(git status --porcelain | sha256sum | cut -d' ' -f1)"
+    echo "worker_sha256=$digest"
+    echo "host_sha256=$(sha256sum "$stage/usr/bin/omarchy-plugin-host" | cut -d' ' -f1)"
+    echo "cmake_cache_sha256=$(sha256sum "$build_dir/CMakeCache.txt" | cut -d' ' -f1)"
+    echo "host_omarchy=$(pacman -Q omarchy 2>/dev/null || echo unavailable)"
+  } >"$stage/PROVENANCE"
+  chmod -R go-w "$stage"
+  echo "$stage"
+}
+
+verify() {
+  local root=$1 digest worker recorded
+  require_absolute "$root"
+  digest=$(basename "$root")
+  [[ $digest =~ ^[0-9a-f]{64}$ ]] || {
+    echo "Lab root is not named by a SHA-256 digest" >&2
+    exit 65
+  }
+  worker="$root/usr/lib/omarchy/plugin-runtime/omarchy-plugin-qml-worker"
+  [[ -x $worker && -f $root/PROVENANCE ]] || {
+    echo "Lab root is incomplete" >&2
+    exit 66
+  }
+  recorded=$(sed -n 's/^worker_sha256=//p' "$root/PROVENANCE")
+  [[ $recorded == "$digest" && $(sha256sum "$worker" | cut -d' ' -f1) == "$digest" ]] || {
+    echo "Lab worker provenance mismatch" >&2
+    exit 65
+  }
+  find "$root" -perm /022 -print -quit | grep -q . && {
+    echo "Lab root contains group- or world-writable entries" >&2
+    exit 65
+  }
+  echo "verified $root"
+}
+
+launch() {
+  local root=$1 plugin=$2 tree=$3 grants=$4 state=$5 audit=$6 digest host worker
+  verify "$root" >/dev/null
+  [[ $root == /opt/omarchy-plugin-security-lab/* ]] || {
+    echo "Launch requires a separately reviewed root-owned /opt stage" >&2
+    exit 77
+  }
+  digest=$(basename "$root")
+  host="$root/usr/bin/omarchy-plugin-host"
+  worker="$root/usr/lib/omarchy/plugin-runtime/omarchy-plugin-qml-worker"
+  exec env OMARCHY_PLUGIN_SCHEMA_V2_ENABLED=1 \
+    OMARCHY_PLUGIN_LIVE_LAB_ENABLED=I_ACCEPT_LAB_RISK \
+    "$host" --preview-plugin-live-lab "$plugin" "$tree" "$grants" \
+    "$state" "$audit" "$worker" "$digest"
+}
+
+cleanup_command() {
+  local root=$1 digest
+  require_absolute "$root"
+  digest=$(basename "$root")
+  [[ $(dirname "$root") == "/opt/omarchy-plugin-security-lab" &&
+     $digest =~ ^[0-9a-f]{64}$ ]] || {
+    echo "Refusing cleanup outside one digest-named lab root" >&2
+    exit 64
+  }
+  printf 'sudo rm -r -- %q\n' "$root"
+}
+
+case ${1:-} in
+  prepare) (($# == 3)) || { usage; exit 64; }; prepare "$2" "$3" ;;
+  verify) (($# == 2)) || { usage; exit 64; }; verify "$2" ;;
+  launch) (($# == 7)) || { usage; exit 64; }; launch "$2" "$3" "$4" "$5" "$6" "$7" ;;
+  cleanup-command) (($# == 2)) || { usage; exit 64; }; cleanup_command "$2" ;;
+  *) usage; exit 64 ;;
+esac
