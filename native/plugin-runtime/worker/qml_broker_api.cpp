@@ -232,11 +232,15 @@ QString BrokerCall::error() const { return error_; }
 qulonglong BrokerCall::correlation() const { return correlation_; }
 void BrokerCall::resolve(QVariant value) {
   if (finished_) return;
-  value_ = std::move(value); ok_ = true; finished_ = true; emit finishedChanged();
+  value_ = std::move(value); ok_ = true; finished_ = true;
+  QMetaObject::invokeMethod(this, [this] { emit finishedChanged(); },
+                            Qt::QueuedConnection);
 }
 void BrokerCall::reject(QString error) {
   if (finished_) return;
-  error_ = std::move(error); ok_ = false; finished_ = true; emit finishedChanged();
+  error_ = std::move(error); ok_ = false; finished_ = true;
+  QMetaObject::invokeMethod(this, [this] { emit finishedChanged(); },
+                            Qt::QueuedConnection);
 }
 
 QmlBrokerApi::QmlBrokerApi(WorkerEndpoint &endpoint,

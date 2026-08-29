@@ -7,9 +7,11 @@
 
 #include <fcntl.h>
 #include <QGuiApplication>
+#include <QEventLoop>
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
+#include <QTimer>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -359,7 +361,8 @@ void run() {
   finish(api, endpoint, pair.descriptors[1],
          qml_decoded.packet.header.correlation_id,
          broker::kBrokerResultMessage, {});
-  QCoreApplication::processEvents();
+  for (int pass = 0; pass < 3; ++pass)
+    QCoreApplication::processEvents();
   require(completion->property("phase") == QStringLiteral("allowed"),
           "authenticated reply did not update representative QML behavior");
   require(QMetaObject::invokeMethod(completion.get(), "start"),
@@ -377,7 +380,8 @@ void run() {
          qml_denied_decoded.packet.header.correlation_id,
          static_cast<std::uint16_t>(wire::CommonMessageType::typed_error),
          qml_denial);
-  QCoreApplication::processEvents();
+  for (int pass = 0; pass < 3; ++pass)
+    QCoreApplication::processEvents();
   require(completion->property("phase") == QStringLiteral("denied"),
           "authenticated denial did not update representative QML behavior");
 
