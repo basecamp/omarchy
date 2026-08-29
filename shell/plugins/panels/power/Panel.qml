@@ -981,7 +981,10 @@ Panel {
         height: parent.height - Style.space(4)
         y: Style.space(2)
         spacing: root.splitGap
-        opacity: splitBar.barIntensity
+        // NO container opacity here: the legacy barIntensity multiplied
+        // every segment by the resource's TOTAL utilization, so the same
+        // process rendered a different gray in the CPU, RAM and watts
+        // bars. The legend ink is constant; size carries the magnitude.
 
         Repeater {
           model: {
