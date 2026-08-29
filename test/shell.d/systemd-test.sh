@@ -12,6 +12,21 @@ pass "bt-agent skips when bluetooth.service is inactive"
 grep -Fx 'Restart=on-failure' "$service" >/dev/null
 pass "bt-agent still restarts after runtime failures"
 
+# The agent answers RequestAuthorization with an unconditional yes, so it must
+# not leave the adapter pairable for anyone in radio range.
+grep -q 'bluetoothctl pairable off' "$service" >/dev/null ||
+  fail "bt-agent closes the pairing window it opens"
+pass "bt-agent closes the pairing window it opens"
+
+# And it must wait first. ExecStartPost runs when ExecStart is SPAWNED, before
+# the agent has registered with bluez, and registering the default agent leaves
+# the adapter pairable - so an immediate clear reports success and is undone a
+# moment later. Guard the delay, because losing it fails silently: the unit still
+# starts, the journal still says "succeeded", and the adapter stays open.
+grep -qE 'ExecStartPost=.*sleep [0-9]+;.*bluetoothctl pairable off' "$service" ||
+  fail "bt-agent defers the pairing-window close until the agent has registered"
+pass "bt-agent defers the pairing-window close until the agent has registered"
+
 sleep_service="$ROOT/default/systemd/user/omarchy-sleep-lock.service"
 grep -Fx 'ExecStart=/usr/bin/omarchy-system-sleep-monitor' "$sleep_service" >/dev/null
 pass "sleep lock service uses the package-backed monitor path"
