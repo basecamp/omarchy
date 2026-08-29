@@ -13,6 +13,9 @@ if omarchy-cmd-present tailscale; then
 
   if [[ -n $operator && $operator != "$USER" ]]; then
     echo "Tailscale operator is already $operator; leaving it unchanged."
+    # 1785101000 may already have started this user's receiver. It cannot
+    # receive files without being the operator, so stop the access-denied loop.
+    systemctl --user disable --now omarchy-tailscale-receive.service 2>/dev/null || true
   else
     if [[ $operator != "$USER" ]]; then
       if ! error=$(sudo tailscale set --operator="$USER" 2>&1); then

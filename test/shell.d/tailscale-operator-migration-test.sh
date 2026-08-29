@@ -106,10 +106,9 @@ CALL_LOG="$CALL_LOG" \
 STUB_OPERATOR=other-user \
   bash -euo pipefail "$migration" >/dev/null
 
-if grep -q 'tailscale set --operator=' "$CALL_LOG"; then
-  fail "migration replaces an existing Tailscale operator"
-fi
-if grep -q 'enable --now omarchy-tailscale-receive.service' "$CALL_LOG"; then
-  fail "migration enables a receiver for a user who is not the operator"
-fi
-pass "migration leaves an existing operator unchanged"
+printf '%s\n' \
+  "tailscale debug prefs" \
+  "systemctl --user disable --now omarchy-tailscale-receive.service" >"$tmp_dir/expected"
+cmp -s "$CALL_LOG" "$tmp_dir/expected" ||
+  fail "migration does not disable a leftover receiver when the operator belongs to someone else" "$(cat "$CALL_LOG")"
+pass "migration disables a leftover receiver when the operator belongs to someone else"
