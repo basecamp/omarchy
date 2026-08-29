@@ -2,7 +2,6 @@
 #include <QCoreApplication>
 #include <QFile>
 #include <QGuiApplication>
-#include <QMouseEvent>
 #include <QQuickWindow>
 #include <QStringList>
 #include <QTextStream>
@@ -101,28 +100,22 @@ public:
   }
 };
 
-class PreviewPointerBridge final : public QObject {
+class PreviewPointerBridge final : public bridge::HostPointerRouter {
 public:
-  PreviewPointerBridge(surface_host::HostSurface &surface, QObject *parent)
-      : QObject(parent), surface_(surface) {}
+  explicit PreviewPointerBridge(surface_host::HostSurface &surface)
+      : surface_(surface) {}
 
-protected:
-  bool eventFilter(QObject *, QEvent *event) override {
-    if (event->type() != QEvent::MouseButtonPress &&
-        event->type() != QEvent::MouseButtonRelease)
+  bool route(const bridge::HostPointerEvent &event) override {
+    if (event.button != Qt::LeftButton || event.synthesized ||
+        sequence_ == UINT64_MAX)
       return false;
-    const auto *mouse = static_cast<QMouseEvent *>(event);
-    if (mouse->button() != Qt::LeftButton || sequence_ == UINT64_MAX)
+    if (event.x < 0 || event.y < 0)
       return false;
-    const auto position = mouse->position();
-    if (position.x() < 0 || position.y() < 0)
-      return false;
-    const auto x = static_cast<std::uint64_t>(position.x());
-    const auto y = static_cast<std::uint64_t>(position.y());
+    const auto x = static_cast<std::uint64_t>(event.x);
+    const auto y = static_cast<std::uint64_t>(event.y);
     if (x > (UINT32_MAX >> surface::kQ16FractionBits) ||
         y > (UINT32_MAX >> surface::kQ16FractionBits))
       return false;
-    const bool pressed = event->type() == QEvent::MouseButtonPress;
     const surface::InputEvent input{
         .surface = surface_.allocation().surface,
         .sequence = ++sequence_,
@@ -133,13 +126,10 @@ protected:
         .delta_y_q16 = 0,
         .code = 1,
         .state = static_cast<std::uint32_t>(
-            pressed ? surface::ButtonState::pressed
-                    : surface::ButtonState::released),
+            event.pressed ? surface::ButtonState::pressed
+                          : surface::ButtonState::released),
         .active_touch_points = 0};
-    // Only events delivered to this trusted host-owned window reach this
-    // bridge. Qt's spontaneous bit is not an input-authenticity signal: input
-    // returned by a Wayland portal/libei path may legitimately clear it.
-    return surface_.route_input(input, pressed);
+    return surface_.route_input(input, event.pressed);
   }
 
 private:
@@ -353,8 +343,8 @@ int preview(const QStringList &arguments, QGuiApplication &application,
       policy, prepared.prepared->binding, 1, width, height, 1, 1, surface,
       *transport, transport, inspection, clock);
   if (!hosted) return 78;
-  PreviewPointerBridge pointer_bridge(*hosted, &window);
-  window.installEventFilter(&pointer_bridge);
+  PreviewPointerBridge pointer_bridge(*hosted);
+  surface.bindHostPointerRouter(pointer_bridge);
   QTimer pump;
   QObject::connect(&pump, &QTimer::timeout, [&] {
     if (live_lab) {

@@ -6,6 +6,7 @@
 
 #include <QGuiApplication>
 #include <QImage>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QSizeF>
 
@@ -62,6 +63,42 @@ private:
   surface::TrustedFrameSink &sink_;
   std::optional<surface::TrustedAllocation> allocation_;
 };
+
+class RecordingPointerRouter final : public bridge::HostPointerRouter {
+public:
+  bool route(const bridge::HostPointerEvent &event) override {
+    events.push_back(event);
+    return accept;
+  }
+  std::vector<bridge::HostPointerEvent> events;
+  bool accept = true;
+};
+
+void test_quick_item_pointer_delivery() {
+  bridge::RemotePluginSurface item;
+  RecordingPointerRouter router;
+  item.bindHostPointerRouter(router);
+  QMouseEvent press(QEvent::MouseButtonPress, QPointF(12, 34),
+                    QPointF(12, 34), QPointF(12, 34), Qt::LeftButton, Qt::LeftButton,
+                    Qt::NoModifier, Qt::MouseEventNotSynthesized);
+  QMouseEvent release(QEvent::MouseButtonRelease, QPointF(12, 34),
+                      QPointF(12, 34), QPointF(12, 34), Qt::LeftButton, Qt::NoButton,
+                      Qt::NoModifier, Qt::MouseEventNotSynthesized);
+  require(QCoreApplication::sendEvent(&item, &press) &&
+              QCoreApplication::sendEvent(&item, &release) &&
+              router.events.size() == 2 && router.events[0].pressed &&
+              !router.events[1].pressed && router.events[0].x == 12 &&
+              router.events[0].y == 34 && !router.events[0].synthesized,
+          "QQuick item did not route host pointer press and release");
+
+  QMouseEvent synthesized(QEvent::MouseButtonPress, QPointF(1, 2),
+                          QPointF(1, 2), QPointF(1, 2), Qt::LeftButton, Qt::LeftButton,
+                          Qt::NoModifier,
+                          Qt::MouseEventSynthesizedByApplication);
+  require(QCoreApplication::sendEvent(&item, &synthesized) &&
+              router.events.size() == 3 && router.events.back().synthesized,
+          "QQuick item lost the synthetic-input classification");
+}
 
 surface::InputEvent pointer(surface::SurfaceKey key, std::uint64_t sequence) {
   return {.surface = key,
@@ -235,6 +272,7 @@ int main(int argc, char **argv) {
   QGuiApplication application(argc, argv);
   (void)application;
   try {
+    test_quick_item_pointer_delivery();
     test_owned_pixels_and_lifecycle();
     test_authenticated_focus_and_input();
     test_invalid_transport_and_allocation();

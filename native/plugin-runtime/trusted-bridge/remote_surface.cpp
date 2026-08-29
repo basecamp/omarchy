@@ -39,6 +39,32 @@ RemotePluginSurface::RemotePluginSurface(QQuickItem *parent)
     : QQuickPaintedItem(parent) {
   setAntialiasing(false);
   setOpaquePainting(false);
+  setAcceptedMouseButtons(Qt::LeftButton);
+}
+
+void RemotePluginSurface::bindHostPointerRouter(HostPointerRouter &router) {
+  host_pointer_router_ = &router;
+}
+
+void RemotePluginSurface::mousePressEvent(QMouseEvent *event) {
+  routeHostPointerEvent(*event, true);
+}
+
+void RemotePluginSurface::mouseReleaseEvent(QMouseEvent *event) {
+  routeHostPointerEvent(*event, false);
+}
+
+void RemotePluginSurface::routeHostPointerEvent(QMouseEvent &event,
+                                                bool pressed) {
+  const bool synthesized =
+      event.source() != Qt::MouseEventNotSynthesized;
+  event.setAccepted(host_pointer_router_ != nullptr &&
+                    host_pointer_router_->route(
+                        {.x = event.position().x(),
+                         .y = event.position().y(),
+                         .button = event.button(),
+                         .pressed = pressed,
+                         .synthesized = synthesized}));
 }
 
 void RemotePluginSurface::bindTransport(

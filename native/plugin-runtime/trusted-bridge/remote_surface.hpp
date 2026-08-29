@@ -6,6 +6,7 @@
 #include "render_input_transport.hpp"
 
 #include <QImage>
+#include <QMouseEvent>
 #include <QQuickPaintedItem>
 #include <QtQml/qqmlregistration.h>
 
@@ -14,6 +15,20 @@
 #include <optional>
 
 namespace omarchy::plugin_runtime::bridge {
+
+struct HostPointerEvent {
+  qreal x = 0;
+  qreal y = 0;
+  Qt::MouseButton button = Qt::NoButton;
+  bool pressed = false;
+  bool synthesized = true;
+};
+
+class HostPointerRouter {
+public:
+  virtual ~HostPointerRouter() = default;
+  virtual bool route(const HostPointerEvent &event) = 0;
+};
 
 class RemotePluginSurface : public QQuickPaintedItem,
                             public surface::TrustedFrameSink {
@@ -45,6 +60,7 @@ public:
   explicit RemotePluginSurface(QQuickItem *parent = nullptr);
 
   void bindTransport(std::shared_ptr<AuthenticatedInputTransport> transport);
+  void bindHostPointerRouter(HostPointerRouter &router);
   bool configure(const surface::TrustedAllocation &allocation) override;
   bool present(surface::SurfaceKey surface, std::uint64_t frame_sequence,
                std::span<const std::byte> trusted_pixels) override;
@@ -79,10 +95,14 @@ signals:
   void inspectionChanged();
 
 private:
+  void mousePressEvent(QMouseEvent *event) override;
+  void mouseReleaseEvent(QMouseEvent *event) override;
+  void routeHostPointerEvent(QMouseEvent &event, bool pressed);
   void fail(InspectionFailure failure, bool terminal);
   void resetFrame();
 
   std::shared_ptr<AuthenticatedInputTransport> transport_;
+  HostPointerRouter *host_pointer_router_ = nullptr;
   std::optional<surface::SurfaceState> state_;
   std::optional<surface::InputGate> input_gate_;
   std::optional<surface::FocusGate> focus_gate_;
