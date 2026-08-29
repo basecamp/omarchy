@@ -20,21 +20,58 @@ hypr_dispatch() {
   hyprctl dispatch "$lua" >/dev/null 2>&1 || hyprctl dispatch "$@" >/dev/null
 }
 
+lua_commands=()
+
+queue_dispatch() {
+  local lua="$1"
+  shift
+  local legacy_name="legacy_command_${#lua_commands[@]}"
+
+  lua_commands+=("$lua")
+  declare -g -a "$legacy_name"
+  local -n legacy_command="$legacy_name"
+  legacy_command=("$@")
+}
+
+dispatch_queued_command() {
+  local index="$1"
+  local -n legacy_command="legacy_command_$index"
+
+  hypr_dispatch "${lua_commands[$index]}" "${legacy_command[@]}"
+}
+
+flush_dispatches() {
+  local batch=""
+  local command index
+
+  for command in "${lua_commands[@]}"; do
+    batch+="dispatch $command ; "
+  done
+
+  hyprctl --batch "$batch" >/dev/null 2>&1 && return
+
+  for index in "${!lua_commands[@]}"; do
+    dispatch_queued_command "$index"
+  done
+}
+
 if [[ $pinned == "true" ]]; then
-  hypr_dispatch "hl.dsp.window.pin({ window = \"$window\" })" pin "$window"
-  hypr_dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
-  hypr_dispatch "hl.dsp.window.tag({ window = \"$window\", tag = \"-pop\" })" tagwindow -pop "$window"
+  queue_dispatch "hl.dsp.window.pin({ window = \"$window\" })" pin "$window"
+  queue_dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
+  queue_dispatch "hl.dsp.window.tag({ window = \"$window\", tag = \"-pop\" })" tagwindow -pop "$window"
 elif [[ -n $addr ]]; then
-  hypr_dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
-  hypr_dispatch "hl.dsp.window.resize({ window = \"$window\", x = $width, y = $height })" resizeactive exact "$width" "$height" "$window"
+  queue_dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
+  queue_dispatch "hl.dsp.window.resize({ window = \"$window\", x = $width, y = $height })" resizeactive exact "$width" "$height" "$window"
 
   if [[ -n $x && -n $y ]]; then
-    hypr_dispatch "hl.dsp.window.move({ window = \"$window\", x = $x, y = $y })" moveactive "$x" "$y" "$window"
+    queue_dispatch "hl.dsp.window.move({ window = \"$window\", x = $x, y = $y })" moveactive "$x" "$y" "$window"
   else
-    hypr_dispatch "hl.dsp.window.center({ window = \"$window\" })" centerwindow "$window"
+    queue_dispatch "hl.dsp.window.center({ window = \"$window\" })" centerwindow "$window"
   fi
 
-  hypr_dispatch "hl.dsp.window.pin({ window = \"$window\" })" pin "$window"
-  hypr_dispatch "hl.dsp.window.alter_zorder({ window = \"$window\", mode = \"top\" })" alterzorder top "$window"
-  hypr_dispatch "hl.dsp.window.tag({ window = \"$window\", tag = \"+pop\" })" tagwindow +pop "$window"
+  queue_dispatch "hl.dsp.window.pin({ window = \"$window\" })" pin "$window"
+  queue_dispatch "hl.dsp.window.alter_zorder({ window = \"$window\", mode = \"top\" })" alterzorder top "$window"
+  queue_dispatch "hl.dsp.window.tag({ window = \"$window\", tag = \"+pop\" })" tagwindow +pop "$window"
 fi
+
+(( ${#lua_commands[@]} == 0 )) || flush_dispatches
