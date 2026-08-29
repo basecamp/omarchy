@@ -159,14 +159,21 @@ Item {
     runWake()
   }
 
-  function armBlankTimer() {
+  function armBlankTimer(customInterval) {
+    // Deliberate wakes need longer than a DisplayPort re-sync (~5–15s). A
+    // hard-coded 5s re-arm in runWake blanked slow panels before the lock
+    // screen could appear, looping forever until the user typed blind.
+    var ms = (typeof customInterval === "number" && customInterval > 0) ? customInterval : 5000
+    idleBlankTimer.interval = ms
     idleBlankTimer.armedAt = Date.now()
     idleBlankTimer.restart()
   }
 
   function runWake() {
     if (!wakeProcess.running) wakeProcess.running = true
-    if (lockRequested) armBlankTimer()
+    // After an intentional wake, give the panel time to finish DPMS
+    // renegotiation before blanking again.
+    if (lockRequested) armBlankTimer(30000)
   }
 
   function runBlank() {
