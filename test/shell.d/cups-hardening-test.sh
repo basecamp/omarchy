@@ -10,11 +10,38 @@ cups_files_conf="$ROOT/etc/cups/cups-files.conf"
 sysusers_conf="$ROOT/etc/sysusers.d/omarchy-cups-browsed.conf"
 service_dropin="$ROOT/etc/systemd/system/cups-browsed.service.d/10-omarchy.conf"
 
-grep -qxF cups-browsed "$packages" || fail "cups-browsed remains in the base package set"
+# Only discovery goes. Everything else printing needs stays, or this stops
+# being a removal of one daemon and becomes a removal of printing.
+grep -qxF cups "$packages" || fail "CUPS itself remains in the base package set"
+grep -qxF cups-filters "$packages" || fail "the CUPS filters remain in the base package set"
+grep -qxF system-config-printer "$packages" || fail "Print Settings remains in the base package set"
 grep -qxF cups-pk-helper "$packages" || fail "Polkit printer administration is installed"
 ! grep -qxF cups-pdf "$packages" || fail "the root CUPS-PDF backend is removed"
 
-pass "the base install keeps discovery and replaces CUPS-PDF with Polkit administration"
+# Automatic discovery is temporarily out of the default install while it is
+# reworked. The hardened configuration below still ships: it is what a
+# hand-installed cups-browsed gets, and what discovery comes back onto.
+! grep -qxF cups-browsed "$packages" || fail "automatic printer discovery is out of the base package set"
+! grep -q 'cups-browsed' "$ROOT/install/config/enable-services.sh" ||
+  fail "a fresh install does not enable a discovery service it no longer installs"
+! grep -q 'enable_system_service cups-browsed' "$ROOT/bin/omarchy-upgrade-to-quattro" ||
+  fail "the Quattro upgrade does not enable a discovery service it no longer installs"
+
+pass "the base install keeps CUPS and Polkit administration, without automatic discovery"
+
+# The install-time override for a file has to wait for the package that owns
+# it. CUPS still ships /etc/cups/cups-files.conf, so a guard on that file no
+# longer says anything about cups-browsed: writing its override on a machine
+# without the package leaves a configuration file for a package nothing
+# installed, and pacman lands its own copy beside it as a .pacnew later.
+post_install_pacman="$ROOT/install/post-install/pacman.sh"
+
+grep -q 'cups-cups-browsed.conf && -f /etc/cups/cups-browsed.conf' "$post_install_pacman" ||
+  fail "the discovery override waits for the package that owns the file it replaces"
+grep -q 'cups-cups-files.conf && -f /etc/cups/cups-files.conf' "$post_install_pacman" ||
+  fail "the CUPS authorization override waits for the file it replaces"
+
+pass "install-time overrides wait for the packages that own their files"
 
 grep -qxF 'CacheDir /var/cache/cups-browsed' "$cups_browsed_conf" ||
   fail "cups-browsed keeps state outside the print-filter cache"

@@ -1364,7 +1364,6 @@ EOF
   as_root systemctl disable docker.service >/dev/null 2>&1 || true
 
   enable_system_service cups.service
-  enable_system_service cups-browsed.service
   enable_system_service avahi-daemon.service
   enable_system_service linux-modules-cleanup.service
   enable_system_service docker.socket
