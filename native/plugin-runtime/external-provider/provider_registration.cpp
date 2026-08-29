@@ -410,7 +410,128 @@ DependencyIndexResult rebuild_dependency_index(
   if (!published)
     unlinkat(directory, temporary.c_str(), 0);
   close(directory);
-  return published ? DependencyIndexResult::rebuilt
-                   : DependencyIndexResult::unsafe_index;
+  if (!published)
+    return DependencyIndexResult::unsafe_index;
+  DependencyIndex verified;
+  if (!verify_dependency_index(index_root, state.mutation_sequence, geteuid(),
+                               verified) ||
+      verified.content_digest != output.content_digest ||
+      verified.dependencies.size() != output.dependencies.size())
+    return DependencyIndexResult::unsafe_index;
+  output = std::move(verified);
+  return DependencyIndexResult::rebuilt;
+}
+
+bool verify_dependency_index(
+    const std::filesystem::path &index_root,
+    std::uint64_t expected_grant_mutation_sequence,
+    std::uint32_t expected_owner, DependencyIndex &output) {
+  output = {};
+  const int directory = open(index_root.c_str(),
+                             O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+  struct stat directory_status {};
+  if (directory < 0 || fstat(directory, &directory_status) < 0 ||
+      directory_status.st_uid != expected_owner ||
+      (directory_status.st_mode & 0077) != 0) {
+    if (directory >= 0)
+      close(directory);
+    return false;
+  }
+  const int record = openat(directory, "provider-dependencies-v1",
+                            O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+  struct stat record_status {};
+  if (record < 0 || fstat(record, &record_status) < 0 ||
+      !S_ISREG(record_status.st_mode) ||
+      record_status.st_uid != expected_owner ||
+      (record_status.st_mode & 0077) != 0 || record_status.st_size <= 0 ||
+      record_status.st_size > 4 * 1024 * 1024) {
+    if (record >= 0)
+      close(record);
+    close(directory);
+    return false;
+  }
+  std::string document(static_cast<std::size_t>(record_status.st_size), '\0');
+  std::size_t read_bytes = 0;
+  while (read_bytes < document.size()) {
+    const ssize_t count =
+        read(record, document.data() + read_bytes, document.size() - read_bytes);
+    if (count < 0 && errno == EINTR)
+      continue;
+    if (count <= 0)
+      break;
+    read_bytes += static_cast<std::size_t>(count);
+  }
+  close(record);
+  close(directory);
+  if (read_bytes != document.size() ||
+      !document.starts_with("OMARCHY-PROVIDER-DEPENDENCIES-V1\nmutation=") ||
+      !document.ends_with("\n"))
+    return false;
+  const auto digest_line = document.rfind("digest=");
+  if (digest_line == std::string::npos || digest_line == 0 ||
+      document.find('\n', digest_line) != document.size() - 1)
+    return false;
+  const auto canonical = std::string_view(document).substr(0, digest_line);
+  const auto digest_value = std::string_view(document).substr(
+      digest_line + 7, document.size() - digest_line - 8);
+  try {
+    output.content_digest = Digest(digest_value);
+  } catch (...) {
+    return false;
+  }
+  if (manifest::sha256_hex(canonical) != output.content_digest.view())
+    return false;
+  std::size_t offset = std::string_view(
+      "OMARCHY-PROVIDER-DEPENDENCIES-V1\nmutation=").size();
+  const auto mutation_end = document.find('\n', offset);
+  if (mutation_end == std::string::npos ||
+      !number(std::string_view(document).substr(offset, mutation_end - offset),
+              output.grant_mutation_sequence) ||
+      output.grant_mutation_sequence != expected_grant_mutation_sequence)
+    return false;
+  offset = mutation_end + 1;
+  while (offset < digest_line) {
+    const auto end = document.find('\n', offset);
+    if (end == std::string::npos || end > digest_line ||
+        output.dependencies.size() == 4096)
+      return false;
+    const std::string_view row(document.data() + offset, end - offset);
+    if (!row.starts_with("dependency="))
+      return false;
+    const auto fields = [&] {
+      std::array<std::string_view, 5> result{};
+      auto value = row.substr(11);
+      for (std::size_t index = 0; index < result.size(); ++index) {
+        const auto separator = value.find('|');
+        if (index + 1 == result.size()) {
+          if (separator != std::string_view::npos)
+            return std::array<std::string_view, 5>{};
+          result[index] = value;
+        } else {
+          if (separator == std::string_view::npos)
+            return std::array<std::string_view, 5>{};
+          result[index] = value.substr(0, separator);
+          value.remove_prefix(separator + 1);
+        }
+      }
+      return result;
+    }();
+    std::uint32_t abi = 0;
+    if (std::ranges::any_of(fields, [](auto value) { return value.empty(); }) ||
+        !number(fields[4], abi) || abi == 0)
+      return false;
+    try {
+      output.dependencies.push_back(
+          {.plugin = permissions::PluginId(fields[0]),
+           .revision = Digest(fields[1]),
+           .adapter = {.adapter_class = definitions::Name(fields[2]),
+                       .implementation_digest = Digest(fields[3]),
+                       .abi_version = abi}});
+    } catch (...) {
+      return false;
+    }
+    offset = end + 1;
+  }
+  return dependency_document(output) == canonical;
 }
 } // namespace omarchy::plugins::external_provider

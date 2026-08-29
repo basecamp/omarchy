@@ -74,5 +74,9 @@ compose_dynamic_adapter(Registration &registration);
     const definitions::TrustedDefinitionRegistry &definitions,
     const std::filesystem::path &index_root, std::uint32_t expected_uid,
     DependencyIndex &output);
+[[nodiscard]] bool verify_dependency_index(
+    const std::filesystem::path &index_root,
+    std::uint64_t expected_grant_mutation_sequence,
+    std::uint32_t expected_owner, DependencyIndex &output);
 
 } // namespace omarchy::plugins::external_provider

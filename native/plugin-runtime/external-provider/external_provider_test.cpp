@@ -406,6 +406,27 @@ int main(int argc, char **) {
               dependency_index.dependencies.front().plugin.view() ==
                   dependency_manifest.id,
           "authoritative provider dependency index was not rebuilt");
+  external_provider::DependencyIndex verified_dependency_index;
+  require(external_provider::verify_dependency_index(
+              index_root, dependency_index.grant_mutation_sequence, getuid(),
+              verified_dependency_index) &&
+              verified_dependency_index.content_digest ==
+                  dependency_index.content_digest,
+          "published dependency index did not verify");
+  {
+    std::ofstream corrupt(index_root / "provider-dependencies-v1",
+                          std::ios::app);
+    corrupt << "tampered\n";
+  }
+  require(!external_provider::verify_dependency_index(
+              index_root, dependency_index.grant_mutation_sequence, getuid(),
+              verified_dependency_index),
+          "tampered dependency index verified");
+  require(external_provider::rebuild_dependency_index(
+              dependency_grants, revision_stores, dependency_registry,
+              index_root, getuid(), dependency_index) ==
+              external_provider::DependencyIndexResult::rebuilt,
+          "dependency index did not recover atomically from tampering");
   const auto indexed_removal = external_provider::assess_registration_removal(
       loaded, r.service_id.view(), dependency_index.dependencies);
   require(indexed_removal.decision ==
