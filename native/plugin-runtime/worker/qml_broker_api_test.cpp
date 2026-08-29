@@ -1,11 +1,12 @@
 #include "qml_broker_api.hpp"
+#include "worker_runtime.hpp"
 
 #include "omarchy/plugin/wire/common.hpp"
 #include "omarchy/plugin_runtime/broker/broker_codec.hpp"
 #include "omarchy/plugin_runtime/broker/broker_schema.hpp"
 
 #include <fcntl.h>
-#include <QCoreApplication>
+#include <QGuiApplication>
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -26,6 +27,22 @@ namespace manifest = omarchy::plugins::manifest;
 namespace permissions = omarchy::plugins::permissions;
 namespace worker = omarchy::plugin_runtime::worker;
 namespace wire = omarchy::plugin::wire;
+
+class DuplicateApiBase : public QObject {
+  Q_OBJECT
+public:
+  Q_INVOKABLE QVariant invoke(const QString &, const QVariantMap &) { return {}; }
+};
+class DuplicateApi final : public DuplicateApiBase {
+  Q_OBJECT
+public:
+  Q_INVOKABLE QVariant invoke(const QString &, const QVariantMap &) { return {}; }
+};
+class WrongParameterApi final : public QObject {
+  Q_OBJECT
+public:
+  Q_INVOKABLE QVariant invoke(const QString &, const QVariant &) { return {}; }
+};
 
 void require(bool condition, const char *message) {
   if (!condition) throw std::runtime_error(message);
@@ -192,6 +209,17 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host) {
   worker::QmlBrokerApi api(
       endpoint, std::make_unique<worker::ManifestInvokeEncoder>(parsed),
       parsed, 77);
+  worker::WorkerRuntime production_binding_probe("/not-loaded-in-this-test");
+  require(static_cast<bool>(production_binding_probe.bind_runtime_api(api)),
+          "production permission-aware runtime API failed the exact trusted-surface validator");
+  DuplicateApi duplicate;
+  worker::WorkerRuntime duplicate_probe("/not-loaded-in-this-test");
+  require(!static_cast<bool>(duplicate_probe.bind_runtime_api(duplicate)),
+          "duplicate trusted API method signatures passed validation");
+  WrongParameterApi wrong_parameters;
+  worker::WorkerRuntime parameter_probe("/not-loaded-in-this-test");
+  require(!static_cast<bool>(parameter_probe.bind_runtime_api(wrong_parameters)),
+          "trusted API validation ignored exact parameter types");
   int changes = 0;
   QObject::connect(&api, &worker::QmlBrokerApi::permissionsChanged,
                    [&] { ++changes; });
@@ -335,8 +363,12 @@ void run() {
 }
 } // namespace
 
+#include "qml_broker_api_test.moc"
+
 int main(int argc, char **argv) {
-  QCoreApplication application(argc, argv);
+  qputenv("QT_QPA_PLATFORM", QByteArrayLiteral("offscreen"));
+  qputenv("QSG_RHI_BACKEND", QByteArrayLiteral("software"));
+  QGuiApplication application(argc, argv);
   try { run(); std::cout << "QML broker API: PASS\n"; return 0; }
   catch (const std::exception &error) {
     std::cerr << "QML broker API: " << error.what() << '\n'; return 1;

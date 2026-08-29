@@ -223,6 +223,26 @@ bool AuthenticatedBrokerChannel::send_control(
                         std::span(packet).first(encoded.bytes_written));
 }
 
+bool AuthenticatedBrokerChannel::receive_control_ack(
+    std::uint16_t message_type, std::chrono::milliseconds timeout) {
+  if (!ready_ || failed() || termination_.attempted() || message_type == 0 ||
+      timeout.count() <= 0 || !authority_->is_current(identity_))
+    return false;
+  auto message = worker_->receive(
+      launcher::EndpointRole::control,
+      wire::kHeaderSize + wire::payload_cap(wire::EndpointRole::control),
+      timeout);
+  if (!message)
+    return false;
+  const auto decoded =
+      wire::decode_packet(message.payload, wire::EndpointRole::control);
+  return decoded && decoded.packet.header.message_type == message_type &&
+         decoded.packet.header.role_protocol_version == kControlRoleVersion &&
+         decoded.packet.header.launch_generation == identity_.generation &&
+         decoded.packet.header.correlation_id == 0 &&
+         decoded.packet.payload.empty();
+}
+
 DispatchStatus
 AuthenticatedBrokerChannel::dispatch_one(std::chrono::milliseconds timeout) {
   if (!ready_ || failed() || termination_.attempted()) {

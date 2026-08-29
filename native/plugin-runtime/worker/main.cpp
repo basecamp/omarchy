@@ -109,10 +109,10 @@ public:
 
 private:
   bool fatal(std::string_view detail) {
-    qCritical().noquote() << "omarchy-plugin-qml-worker:"
-                          << QString::fromUtf8(
-                                 detail.data(),
-                                 static_cast<qsizetype>(detail.size()));
+    const std::string diagnostic = "omarchy-plugin-qml-worker: " +
+                                   std::string(detail) + "\n";
+    static_cast<void>(write(STDERR_FILENO, diagnostic.data(),
+                            diagnostic.size()));
     control_notifier_.setEnabled(false);
     broker_notifier_.setEnabled(false);
     render_notifier_.setEnabled(false);
@@ -159,13 +159,23 @@ private:
         fatal("permission snapshot failed runtime validation");
         return;
       }
-      if (!runtime_loaded_) {
-        const auto loaded = runtime_.load_manifest_entry();
-        if (!loaded) {
-          fatal(loaded.detail);
-          return;
-        }
-        runtime_loaded_ = true;
+      if (!runtime_loaded_ && !runtime_load_pending_) {
+        runtime_load_pending_ = true;
+        QTimer::singleShot(0, [&] {
+          const auto loaded = runtime_.load_manifest_entry();
+          if (!loaded) {
+            fatal(loaded.detail);
+            return;
+          }
+          runtime_loaded_ = true;
+          runtime_load_pending_ = false;
+          if (!control_.send(wire::kPermissionSnapshotAcceptedMessage, {}, 0))
+            fatal("permission snapshot acknowledgement failed");
+        });
+      } else if (runtime_loaded_ &&
+                 !control_.send(wire::kPermissionSnapshotAcceptedMessage, {},
+                                0)) {
+        fatal("permission snapshot acknowledgement failed");
       }
       return;
     }
@@ -183,10 +193,21 @@ private:
   }
 
   void ready_runtime() {
+    // Trusted Qt type preparation may run a nested Qt event loop. Keep all
+    // authenticated endpoints quiescent until the broker API and steady-state
+    // filter are fully installed; queued packets remain on their sockets.
+    control_notifier_.setEnabled(false);
+    broker_notifier_.setEnabled(false);
+    render_notifier_.setEnabled(false);
     render_state_ = std::make_unique<wire::SelectedEndpointState<32>>(
         wire::EndpointRole::render, render_.selected_version(),
         render_.generation(), render_.maximum_payload(),
         render_.maximum_in_flight(), registry_);
+    const auto trusted_types = runtime_.prepare_trusted_qt_types();
+    if (!trusted_types) {
+      fatal(trusted_types.detail);
+      return;
+    }
     std::string seccomp_error;
     if (!worker::install_steady_state_seccomp(seccomp_error)) {
       fatal(seccomp_error);
@@ -200,6 +221,9 @@ private:
       fatal(bound.detail);
       return;
     }
+    control_notifier_.setEnabled(true);
+    broker_notifier_.setEnabled(true);
+    render_notifier_.setEnabled(true);
     // QML is loaded only after the authenticated host supplies the initial
     // permission snapshot, so feature decisions never observe guessed grants.
   }
@@ -361,6 +385,7 @@ private:
   std::unique_ptr<wire::SelectedEndpointState<32>> render_state_;
   std::unique_ptr<worker::QmlBrokerApi> broker_api_;
   bool runtime_loaded_ = false;
+  bool runtime_load_pending_ = false;
   QSocketNotifier control_notifier_;
   QSocketNotifier broker_notifier_;
   QSocketNotifier render_notifier_;
@@ -405,6 +430,10 @@ int main(int argc, char *argv[]) {
   }
   QGuiApplication application(argc, argv);
   application.setApplicationName(QStringLiteral("omarchy-plugin-qml-worker"));
+  // The worker owns only offscreen render-control windows. Loading QML after
+  // the authenticated startup snapshot happens inside the event loop, where
+  // Qt's GUI default would otherwise quit when it observes no visible window.
+  application.setQuitOnLastWindowClosed(false);
   WorkerApplication worker(manifest);
   if (!worker.start())
     return 70;

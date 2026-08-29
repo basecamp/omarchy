@@ -67,6 +67,9 @@ public:
   WorkerRuntime &operator=(const WorkerRuntime &) = delete;
 
   [[nodiscard]] RuntimeResult load_manifest_entry();
+  // Loads and instantiates only a host-authored Qt type probe before the
+  // steady-state filter. No plugin source is parsed or executed here.
+  [[nodiscard]] RuntimeResult prepare_trusted_qt_types();
   [[nodiscard]] RuntimeResult load_entry(std::string entry_path);
   [[nodiscard]] RuntimeResult bind_runtime_api(QObject &runtime_api);
   [[nodiscard]] RuntimeResult

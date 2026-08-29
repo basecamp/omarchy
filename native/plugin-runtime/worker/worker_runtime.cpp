@@ -12,6 +12,7 @@
 #include <QKeyEvent>
 #include <QLibraryInfo>
 #include <QMetaMethod>
+#include <QMetaProperty>
 #include <QMouseEvent>
 #include <QPointingDevice>
 #include <QQmlAbstractUrlInterceptor>
@@ -133,25 +134,73 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
       !runtime_api.dynamicPropertyNames().empty())
     return false;
   const QMetaObject *meta = runtime_api.metaObject();
-  if (meta == nullptr ||
-      meta->propertyCount() != QObject::staticMetaObject.propertyCount())
+  if (meta == nullptr)
     return false;
-  std::size_t invoke_methods = 0;
+  const int inherited_properties = QObject::staticMetaObject.propertyCount();
+  const int own_properties = meta->propertyCount() - inherited_properties;
+  if (own_properties != 0 && own_properties != 2)
+    return false;
+  if (own_properties == 2) {
+    const QMetaProperty permissions = meta->property(inherited_properties);
+    const QMetaProperty generation = meta->property(inherited_properties + 1);
+    if (permissions.name() != QByteArrayLiteral("permissions") ||
+        permissions.metaType().id() != QMetaType::QVariantMap ||
+        !permissions.isReadable() || permissions.isWritable() ||
+        generation.name() != QByteArrayLiteral("permissionGeneration") ||
+        generation.metaType().id() != QMetaType::ULongLong ||
+        !generation.isReadable() || generation.isWritable())
+      return false;
+  }
+  std::size_t invoke = 0;
+  std::size_t has_permission = 0;
+  std::size_t permission_state = 0;
+  std::size_t permission_changed = 0;
   for (int index = QObject::staticMetaObject.methodCount();
        index < meta->methodCount(); ++index) {
     const QMetaMethod method = meta->method(index);
-    if (method.methodSignature() !=
-            QByteArrayLiteral("invoke(QString,QVariantMap)") ||
-        method.access() != QMetaMethod::Public ||
-        method.methodType() != QMetaMethod::Method ||
-        method.returnMetaType().id() != QMetaType::QVariant ||
-        method.parameterCount() != 2 ||
-        method.parameterMetaType(0).id() != QMetaType::QString ||
-        method.parameterMetaType(1).id() != QMetaType::QVariantMap)
+    if (method.access() != QMetaMethod::Public)
       return false;
-    ++invoke_methods;
+    if (method.methodSignature() ==
+            QByteArrayLiteral("invoke(QString,QVariantMap)") &&
+        method.methodType() == QMetaMethod::Method &&
+        method.returnMetaType().id() == QMetaType::QVariant &&
+        method.parameterCount() == 2 &&
+        method.parameterMetaType(0).id() == QMetaType::QString &&
+        method.parameterMetaType(1).id() == QMetaType::QVariantMap) {
+      ++invoke;
+    } else if (own_properties == 2 &&
+               method.methodSignature() ==
+                   QByteArrayLiteral("hasPermission(QString,QString)") &&
+               method.methodType() == QMetaMethod::Method &&
+               method.returnMetaType().id() == QMetaType::Bool &&
+               method.parameterCount() == 2 &&
+               method.parameterMetaType(0).id() == QMetaType::QString &&
+               method.parameterMetaType(1).id() == QMetaType::QString) {
+      ++has_permission;
+    } else if (own_properties == 2 &&
+               method.methodSignature() ==
+                   QByteArrayLiteral("permissionState(QString,QString)") &&
+               method.methodType() == QMetaMethod::Method &&
+               method.returnMetaType().id() == QMetaType::QString &&
+               method.parameterCount() == 2 &&
+               method.parameterMetaType(0).id() == QMetaType::QString &&
+               method.parameterMetaType(1).id() == QMetaType::QString) {
+      ++permission_state;
+    } else if (own_properties == 2 &&
+               method.methodSignature() ==
+                   QByteArrayLiteral("permissionsChanged()") &&
+               method.methodType() == QMetaMethod::Signal &&
+               method.returnMetaType().id() == QMetaType::Void &&
+               method.parameterCount() == 0) {
+      ++permission_changed;
+    } else {
+      return false;
+    }
   }
-  return invoke_methods == 1;
+  return invoke == 1 &&
+         (own_properties == 0 ||
+          (has_permission == 1 && permission_state == 1 &&
+           permission_changed == 1));
 }
 
 class ResourceInterceptor final : public QQmlAbstractUrlInterceptor {
@@ -161,9 +210,12 @@ public:
       : plugin_root_(std::move(plugin_root)), qt_root_(std::move(qt_root)) {}
 
   QUrl intercept(const QUrl &url, DataType) override {
-    if (url.scheme() == QStringLiteral("qrc") &&
-        url.path().startsWith(QStringLiteral("/qt/qml/")))
-      return url;
+    if (url.scheme() == QStringLiteral("qrc")) {
+      const auto path = url.path();
+      if (path.startsWith(QStringLiteral("/qt/qml/")) ||
+          path.startsWith(QStringLiteral("/qt-project.org/imports/")))
+        return url;
+    }
     if (!url.isLocalFile())
       return denied();
     const std::filesystem::path candidate(
@@ -345,6 +397,29 @@ WorkerRuntime::WorkerRuntime(std::filesystem::path source_root)
     : implementation_(std::make_unique<Impl>(std::move(source_root))) {}
 
 WorkerRuntime::~WorkerRuntime() = default;
+
+RuntimeResult WorkerRuntime::prepare_trusted_qt_types() {
+  if (implementation_->root_item != nullptr ||
+      implementation_->component != nullptr)
+    return failure(RuntimeFailure::invalid_transition,
+                   "trusted Qt types must load before plugin QML");
+  QQmlComponent probe(&implementation_->engine);
+  probe.setData(R"(
+    import QtQuick
+    import QtQml as Qml
+    Item {
+      Qml.Timer { interval: 1000 }
+    }
+  )", QUrl(QStringLiteral("qrc:/qt/qml/Omarchy/TrustedTypeProbe.qml")));
+  if (!probe.isReady())
+    return failure(RuntimeFailure::qml_load_failed,
+                   probe.errorString().left(2048).toStdString());
+  std::unique_ptr<QObject> object(probe.create());
+  if (!object)
+    return failure(RuntimeFailure::qml_load_failed,
+                   "trusted Qt type probe could not instantiate");
+  return {};
+}
 
 bool safe_relative_qml_path(std::string_view path) {
   if (path.empty() || path.size() > kMaximumEntryPathBytes ||

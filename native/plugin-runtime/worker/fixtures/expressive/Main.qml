@@ -2,7 +2,15 @@ import QtQuick
 
 Rectangle {
     id: root
+    property int timerTicks: 0
     color: mouse.pressed ? "#80ff3377" : "#803366ff"
+
+    Timer {
+        interval: 25
+        running: true
+        repeat: true
+        onTriggered: root.timerTicks += 1
+    }
 
     Rectangle {
         width: 12

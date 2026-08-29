@@ -267,10 +267,14 @@ headless::StartResult launch_with_broker_for_lab(
       supervisor, request, prepared.binding, health, std::move(dispatcher),
       std::move(authority), now_seconds, negotiation_timeout);
   if (started && !update_permission_availability(*started.session, prepared)) {
+    const auto diagnostic = started.session->take_worker_standard_error();
     (void)started.session->stop();
     return {.session = nullptr,
             .failure = headless::StartFailure::readiness,
-            .detail = "initial permission snapshot delivery failed"};
+            .detail = diagnostic.empty()
+                          ? "initial permission snapshot delivery failed"
+                          : "initial permission snapshot delivery failed: " +
+                                diagnostic};
   }
   return started;
 }
@@ -284,8 +288,11 @@ bool update_permission_availability(headless::Session &session,
       session.binding().generation != prepared.binding.generation)
     return false;
   const auto payload = permission_snapshot_payload(prepared);
-  return session.send_control(
-      omarchy::plugin::wire::kPermissionSnapshotMessage, payload);
+  return session.send_control(omarchy::plugin::wire::kPermissionSnapshotMessage,
+                              payload) &&
+         session.receive_control_ack(
+             omarchy::plugin::wire::kPermissionSnapshotAcceptedMessage,
+             std::chrono::seconds(5));
 }
 
 } // namespace omarchy::plugin_runtime::product_host

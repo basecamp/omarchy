@@ -59,6 +59,8 @@ private:
 
 void render_and_input() {
   worker::WorkerRuntime runtime(fixture("expressive"));
+  require(static_cast<bool>(runtime.prepare_trusted_qt_types()),
+          "trusted Qt type preparation failed");
   require(static_cast<bool>(runtime.load_manifest_entry()),
           "schema-v2 QML fixture did not load");
   require(runtime.loaded() && runtime.object_count() > 2,

@@ -107,10 +107,15 @@ StartResult Session::start(
       std::move(opened.channel));
   const auto adopted = health_supervisor.adopt(
       std::make_unique<ChannelControl>(authenticated), binding, now_seconds);
-  if (adopted != health::Status::accepted)
+  if (adopted != health::Status::accepted) {
+    const auto diagnostic = authenticated->take_worker_standard_error();
     return {.session = nullptr,
             .failure = StartFailure::health_admission,
-            .detail = "health supervisor rejected authenticated worker"};
+            .detail = diagnostic.empty()
+                          ? "health supervisor rejected authenticated worker"
+                          : "health supervisor rejected authenticated worker: " +
+                                diagnostic};
+  }
   if (!authenticated->negotiate(negotiation_timeout)) {
     (void)health_supervisor.stop(binding);
     return {.session = nullptr,
@@ -184,6 +189,16 @@ bool Session::send_render(std::span<const std::byte> packet,
 bool Session::send_control(std::uint16_t message_type,
                            std::span<const std::byte> payload) {
   if (!active_ || !channel_->send_control(message_type, payload)) {
+    active_ = false;
+    (void)health_.stop(binding_);
+    return false;
+  }
+  return true;
+}
+
+bool Session::receive_control_ack(std::uint16_t message_type,
+                                  std::chrono::milliseconds timeout) {
+  if (!active_ || !channel_->receive_control_ack(message_type, timeout)) {
     active_ = false;
     (void)health_.stop(binding_);
     return false;

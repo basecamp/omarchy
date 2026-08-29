@@ -97,6 +97,8 @@ public:
                                  std::span<const int> descriptors = {});
   [[nodiscard]] bool send_control(std::uint16_t message_type,
                                   std::span<const std::byte> payload);
+  [[nodiscard]] bool receive_control_ack(std::uint16_t message_type,
+                                         std::chrono::milliseconds timeout);
   [[nodiscard]] bool ready() const;
   [[nodiscard]] bool alive() const;
   [[nodiscard]] bool failed() const;
