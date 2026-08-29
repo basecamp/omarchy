@@ -30,4 +30,9 @@ assert(
   !/onAuthenticatingChanged:/.test(serviceQml),
   'the combined authenticating state no longer drives the blank timer'
 )
+
+assert(
+  /function runWake\(force\) \{\s*if \(!force && locked && \(Date\.now\(\) - lastBlankedAt\) < 1500\) return/.test(serviceQml),
+  'runWake ignores unforced wake events during the 1.5s post-blanking debounce window'
+)
 JS
