@@ -166,13 +166,14 @@ Omarchy 4.0 is upgraded through `bin/omarchy-upgrade-to-quattro`, not through th
 normal migration runner. Do not add compatibility migrations for old installer
 layouts; put pre-4 package-layout transition work in the upgrade command instead.
 
-Clearing a pre-4 layout that is a security defect is the exception, and belongs in
-a migration. The upgrade command only runs on a machine still making the 3 to 4
-crossing, so anything put there never reaches an install that crossed already —
-and a file an old installer wrote with a vulnerability in it is still sitting on
-those machines. The upgrade command finishes by running `omarchy-migrate`
-(`run_post_upgrade_migrations`), so one migration reaches both populations;
-a copy in the upgrade command would only be a second copy of the same predicate
-to keep correct. Such a migration must name the defect it clears and match the
-state the old installer actually produced, so a file the user wrote themselves is
-left alone.
+Clearing a privileged file that a retired installer left on disk is the exception,
+and belongs in a migration whether or not that installer was part of a package
+layout transition. The upgrade command only runs on a machine still making the 3
+to 4 crossing, so anything put there never reaches an install that crossed
+already, and it never runs at all for an installer that was retired on its own —
+while the file the installer wrote is still sitting on those machines. The upgrade
+command finishes by running `omarchy-migrate` (`run_post_upgrade_migrations`), so
+one migration reaches every population; a copy in the upgrade command would only
+be a second copy of the same predicate to keep correct. Such a migration must name
+the defect it clears and match what the old installer actually produced, so a file
+an administrator wrote themselves is left alone.
