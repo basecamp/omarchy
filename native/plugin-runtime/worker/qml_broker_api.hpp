@@ -58,6 +58,7 @@ class BrokerCall final : public QObject {
   Q_PROPERTY(bool finished READ finished NOTIFY finishedChanged)
   Q_PROPERTY(bool ok READ ok NOTIFY finishedChanged)
   Q_PROPERTY(QVariant value READ value NOTIFY finishedChanged)
+  Q_PROPERTY(QString utf8Text READ utf8Text NOTIFY finishedChanged)
   Q_PROPERTY(QString error READ error NOTIFY finishedChanged)
   Q_PROPERTY(qulonglong correlation READ correlation CONSTANT)
 
@@ -66,6 +67,7 @@ public:
   [[nodiscard]] bool finished() const;
   [[nodiscard]] bool ok() const;
   [[nodiscard]] QVariant value() const;
+  [[nodiscard]] QString utf8Text() const;
   [[nodiscard]] QString error() const;
   [[nodiscard]] qulonglong correlation() const;
   void resolve(QVariant value);

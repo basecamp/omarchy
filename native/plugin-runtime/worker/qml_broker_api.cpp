@@ -7,6 +7,7 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QStringDecoder>
 
 #include <algorithm>
 #include <limits>
@@ -228,6 +229,13 @@ BrokerCall::BrokerCall(std::uint64_t correlation, QObject *parent)
 bool BrokerCall::finished() const { return finished_; }
 bool BrokerCall::ok() const { return ok_; }
 QVariant BrokerCall::value() const { return value_; }
+QString BrokerCall::utf8Text() const {
+  if (!finished_ || !ok_ || !value_.canConvert<QByteArray>()) return {};
+  QStringDecoder decoder(QStringDecoder::Utf8);
+  const QByteArray bytes = value_.toByteArray();
+  const QString text = decoder.decode(bytes);
+  return decoder.hasError() ? QString{} : text;
+}
 QString BrokerCall::error() const { return error_; }
 qulonglong BrokerCall::correlation() const { return correlation_; }
 void BrokerCall::resolve(QVariant value) {

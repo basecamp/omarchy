@@ -316,6 +316,14 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host) {
           "revocation did not notify representative QML and hide its feature");
 }
 void run() {
+  worker::BrokerCall text_call(1);
+  text_call.resolve(QByteArray("{\"station\":\"M\xC3\xBCnchen\"}"));
+  require(text_call.utf8Text() == QString::fromUtf8("{\"station\":\"M\xC3\xBCnchen\"}"),
+          "successful UTF-8 broker result was not exposed safely to QML");
+  worker::BrokerCall binary_call(2);
+  binary_call.resolve(QByteArray("\xff", 1));
+  require(binary_call.utf8Text().isEmpty(),
+          "invalid UTF-8 broker result was exposed as text");
   Pair pair;
   worker::WorkerEndpoint endpoint(pair.descriptors[0], wire::EndpointRole::broker,
                                   broker::kBrokerRoleVersion);
