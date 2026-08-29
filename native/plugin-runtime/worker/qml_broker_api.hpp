@@ -123,6 +123,7 @@ public:
   void disconnect(QString reason);
 
 signals:
+  void callFinished(QObject *call);
   void permissionsChanged();
 
 private:
@@ -134,6 +135,7 @@ private:
   };
   Pending *find(std::uint64_t correlation);
   QVariant rejected(QString reason);
+  void notifyFinished(BrokerCall *call);
 
   WorkerEndpoint &endpoint_;
   std::unique_ptr<InvokeEncoder> encoder_;

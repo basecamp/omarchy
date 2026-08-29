@@ -11,6 +11,8 @@ Item {
     readonly property int maximumFramesPerSecond: 15
     property var writeCall: null
     property var readCall: null
+    property double writeCorrelation: 0
+    property double readCorrelation: 0
     property string phase: "STARTING"
     property string detail: "Waiting for authenticated broker"
 
@@ -23,6 +25,7 @@ Item {
             quotaBytes: 65536,
             itemBytes: 4096
         })
+        writeCorrelation = writeCall ? writeCall.correlation : 0
         if (writeCall && writeCall.finished)
             finishWrite()
     }
@@ -40,6 +43,7 @@ Item {
             quotaBytes: 65536,
             itemBytes: 4096
         })
+        readCorrelation = readCall ? readCall.correlation : 0
         if (readCall && readCall.finished)
             finishRead()
     }
@@ -62,17 +66,15 @@ Item {
     }
 
     Connections {
-        target: root.writeCall
-        function onFinishedChanged() {
-            if (root.writeCall && root.writeCall.finished)
+        target: runtime
+        function onCallFinished(call) {
+            if (call && root.writeCall && call.finished &&
+                    call.correlation === root.writeCorrelation &&
+                    root.writeCall.correlation === call.correlation)
                 root.finishWrite()
-        }
-    }
-
-    Connections {
-        target: root.readCall
-        function onFinishedChanged() {
-            if (root.readCall && root.readCall.finished)
+            else if (call && root.readCall && call.finished &&
+                     call.correlation === root.readCorrelation &&
+                     root.readCall.correlation === call.correlation)
                 root.finishRead()
         }
     }

@@ -154,6 +154,7 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
   std::size_t invoke = 0;
   std::size_t has_permission = 0;
   std::size_t permission_state = 0;
+  std::size_t call_finished = 0;
   std::size_t permission_changed = 0;
   for (int index = QObject::staticMetaObject.methodCount();
        index < meta->methodCount(); ++index) {
@@ -168,6 +169,14 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
         method.parameterMetaType(0).id() == QMetaType::QString &&
         method.parameterMetaType(1).id() == QMetaType::QVariantMap) {
       ++invoke;
+    } else if (own_properties == 2 &&
+               method.methodSignature() ==
+                   QByteArrayLiteral("callFinished(QObject*)") &&
+               method.methodType() == QMetaMethod::Signal &&
+               method.returnMetaType().id() == QMetaType::Void &&
+               method.parameterCount() == 1 &&
+               method.parameterMetaType(0).id() == QMetaType::QObjectStar) {
+      ++call_finished;
     } else if (own_properties == 2 &&
                method.methodSignature() ==
                    QByteArrayLiteral("hasPermission(QString,QString)") &&
@@ -199,7 +208,7 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
   }
   return invoke == 1 &&
          (own_properties == 0 ||
-          (has_permission == 1 && permission_state == 1 &&
+          (has_permission == 1 && permission_state == 1 && call_finished == 1 &&
            permission_changed == 1));
 }
 
@@ -547,7 +556,9 @@ bool WorkerRuntime::invoke_test_function(std::string_view function) {
                                    method.constData(), Qt::DirectConnection);
 }
 
-void WorkerRuntime::request_render() { implementation_->dirty = true; }
+void WorkerRuntime::request_render() {
+  implementation_->dirty = true;
+}
 
 RuntimeResult
 WorkerRuntime::select_software_profile(const surface::ProfileOffer &offer) {

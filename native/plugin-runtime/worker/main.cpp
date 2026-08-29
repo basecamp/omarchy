@@ -10,6 +10,8 @@
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
 
 #include <QGuiApplication>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSocketNotifier>
 #include <QStringList>
 #include <QTextStream>
@@ -20,6 +22,7 @@
 #include <unistd.h>
 
 #include <array>
+#include <algorithm>
 #include <cstdlib>
 #include <fstream>
 #include <memory>
@@ -32,6 +35,22 @@ namespace {
 namespace surface = omarchy::plugin_runtime::surface;
 namespace worker = omarchy::plugin_runtime::worker;
 namespace wire = omarchy::plugin::wire;
+
+int frame_interval(const omarchy::plugins::manifest::ManifestV2 &manifest) {
+  const auto document = QJsonDocument::fromJson(
+      QByteArray::fromStdString(manifest.canonical_surfaces));
+  int maximum_frames_per_second = 60;
+  for (const auto surface : document.object()) {
+    maximum_frames_per_second = std::min(
+        maximum_frames_per_second,
+        surface.toObject()
+            .value(QStringLiteral("maximumFramesPerSecond"))
+            .toInt(60));
+  }
+  return (1000 + maximum_frames_per_second - 1) /
+             maximum_frames_per_second +
+         1;
+}
 
 constexpr int kControlDescriptor = 3;
 constexpr int kBrokerDescriptor = 4;
@@ -88,6 +107,7 @@ public:
         control_notifier_(kControlDescriptor, QSocketNotifier::Read),
         broker_notifier_(kBrokerDescriptor, QSocketNotifier::Read),
         render_notifier_(kRenderDescriptor, QSocketNotifier::Read),
+        frame_interval_ms_(frame_interval(manifest)),
         manifest_(manifest) {
     QObject::connect(&control_notifier_, &QSocketNotifier::activated,
                      [&] { receive(control_); });
@@ -98,7 +118,8 @@ public:
     broker_poll_timer_.setInterval(5);
     QObject::connect(&broker_poll_timer_, &QTimer::timeout,
                      [&] { receive_broker_if_ready(); });
-    frame_timer_.setInterval(16);
+    frame_timer_.setInterval(frame_interval_ms_);
+    frame_timer_.setTimerType(Qt::PreciseTimer);
     QObject::connect(&frame_timer_, &QTimer::timeout, [&] { publish_frame(); });
   }
 
@@ -203,7 +224,6 @@ private:
         fatal("permission snapshot failed runtime validation");
         return;
       }
-      runtime_.request_render();
       if (!runtime_loaded_ && !runtime_load_pending_) {
         runtime_load_pending_ = true;
         QTimer::singleShot(0, [&] {
@@ -248,6 +268,26 @@ private:
     broker_api_ = std::make_unique<worker::QmlBrokerApi>(
         broker_, std::make_unique<worker::ManifestInvokeEncoder>(manifest_),
         manifest_, broker_.generation());
+    QObject::connect(broker_api_.get(), &worker::QmlBrokerApi::callFinished,
+                     broker_api_.get(),
+                     [&] {
+                       QTimer::singleShot(1, broker_api_.get(),
+                                          [&] { runtime_.request_render(); });
+                       QTimer::singleShot(frame_interval_ms_ + 1,
+                                          broker_api_.get(),
+                                          [&] { runtime_.request_render(); });
+                     });
+    QObject::connect(broker_api_.get(), &worker::QmlBrokerApi::permissionsChanged,
+                     broker_api_.get(),
+                     [&] {
+                       QTimer::singleShot(1, broker_api_.get(),
+                                          [&] {
+                                            runtime_.request_render();
+                                          });
+                       QTimer::singleShot(frame_interval_ms_ + 1,
+                                          broker_api_.get(),
+                                          [&] { runtime_.request_render(); });
+                     });
     const auto bound = runtime_.bind_runtime_api(*broker_api_);
     if (!bound) {
       fatal(bound.detail);
@@ -430,6 +470,7 @@ private:
   QSocketNotifier render_notifier_;
   QTimer frame_timer_;
   QTimer broker_poll_timer_;
+  int frame_interval_ms_ = 17;
   omarchy::plugins::manifest::ManifestV2 manifest_;
 };
 

@@ -60,6 +60,15 @@ target_link_libraries(omarchy-plugin-qml-worker
 install(TARGETS omarchy-plugin-qml-worker RUNTIME DESTINATION "${CMAKE_INSTALL_LIBDIR}/omarchy/plugin-runtime")
 
 if(BUILD_TESTING)
+  qt_add_executable(omarchy-plugin-product-e2e-worker main.cpp)
+  omarchy_plugin_target_defaults(omarchy-plugin-product-e2e-worker)
+  omarchy_plugin_worker_sanitize(omarchy-plugin-product-e2e-worker)
+  target_compile_definitions(omarchy-plugin-product-e2e-worker PRIVATE
+    OMARCHY_PLUGIN_PRODUCT_E2E=1)
+  target_link_libraries(omarchy-plugin-product-e2e-worker PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Omarchy::PluginRuntimeVersion
+    omarchy-plugin-worker-runtime)
+
   add_executable(omarchy-plugin-sidecar-probe sidecar_probe.cpp)
   omarchy_plugin_target_defaults(omarchy-plugin-sidecar-probe)
   add_executable(omarchy-plugin-sidecar-supervisor-test

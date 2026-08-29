@@ -49,6 +49,11 @@ public:
 void require(bool condition, const char *message) {
   if (!condition) throw std::runtime_error(message);
 }
+
+void drain_events() {
+  for (int pass = 0; pass < 3; ++pass)
+    QCoreApplication::processEvents();
+}
 struct Pair {
   std::array<int, 2> descriptors{-1, -1};
   Pair() { require(socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0,
@@ -232,7 +237,10 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host) {
       worker::QmlBrokerApi::HostPermission{"storage.private", "read", true},
       worker::QmlBrokerApi::HostPermission{"storage.private", "write", true},
       worker::QmlBrokerApi::HostPermission{"notifications.send", "send", false}};
-  require(api.applyHostPermissionSnapshot(77, initial) && changes == 1 &&
+  require(api.applyHostPermissionSnapshot(77, initial),
+          "initial host permission snapshot was rejected");
+  drain_events();
+  require(changes == 1 &&
               api.hasPermission("storage.private", "read") &&
               !api.hasPermission("notifications.send", "send") &&
               api.permissionState("notifications.send", "send") == "denied",
@@ -252,7 +260,10 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host) {
       worker::QmlBrokerApi::HostPermission{"storage.private", "read", true},
       worker::QmlBrokerApi::HostPermission{"storage.private", "write", true},
       worker::QmlBrokerApi::HostPermission{"notifications.send", "send", true}};
-  require(api.applyHostPermissionSnapshot(77, activated) && changes == 2 &&
+  require(api.applyHostPermissionSnapshot(77, activated),
+          "activated host permission snapshot was rejected");
+  drain_events();
+  require(changes == 2 &&
               api.hasPermission("notifications.send", "send"),
           "optional permission activation was not surfaced");
 
@@ -292,7 +303,10 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host) {
       worker::QmlBrokerApi::HostPermission{"storage.private", "read", true},
       worker::QmlBrokerApi::HostPermission{"storage.private", "write", true},
       worker::QmlBrokerApi::HostPermission{"notifications.send", "send", false}};
-  require(api.applyHostPermissionSnapshot(77, revoked) && changes == 3 &&
+  require(api.applyHostPermissionSnapshot(77, revoked),
+          "revoked host permission snapshot was rejected");
+  drain_events();
+  require(changes == 3 &&
               !api.hasPermission("notifications.send", "send") &&
               !qml->property("notificationsAvailable").toBool(),
           "revocation did not notify representative QML and hide its feature");
@@ -342,10 +356,11 @@ void run() {
         phase = "waiting"
       }
       property Connections completion: Connections {
-        target: root.call
-        function onFinishedChanged() {
-          if (root.call.finished)
-            root.phase = root.call.ok ? "allowed" : "denied"
+        target: runtime
+        function onCallFinished(call) {
+          if (call && root.call && call.finished &&
+              call.correlation === root.call.correlation)
+            root.phase = call.ok ? "allowed" : "denied"
         }
       }
     })", QUrl());
@@ -361,8 +376,7 @@ void run() {
   finish(api, endpoint, pair.descriptors[1],
          qml_decoded.packet.header.correlation_id,
          broker::kBrokerResultMessage, {});
-  for (int pass = 0; pass < 3; ++pass)
-    QCoreApplication::processEvents();
+  drain_events();
   require(completion->property("phase") == QStringLiteral("allowed"),
           "authenticated reply did not update representative QML behavior");
   require(QMetaObject::invokeMethod(completion.get(), "start"),
@@ -380,8 +394,7 @@ void run() {
          qml_denied_decoded.packet.header.correlation_id,
          static_cast<std::uint16_t>(wire::CommonMessageType::typed_error),
          qml_denial);
-  for (int pass = 0; pass < 3; ++pass)
-    QCoreApplication::processEvents();
+  drain_events();
   require(completion->property("phase") == QStringLiteral("denied"),
           "authenticated denial did not update representative QML behavior");
 

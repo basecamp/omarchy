@@ -70,7 +70,7 @@ grant_capability() {
 }
 
 launch() {
-  local name=$1 calls=$2 frames=$3 render_packets=$4 mutation=$5 post_mutation_frames=$6
+  local name=$1 calls=$2 frames=$3 render_packets=$4 mutation=$5 post_mutation_frames=$6 post_call_frames=$7
   local run=$test_root/$name tree
   tree=$(sed -n 's/^tree=//p' "$run/identity")
   env OMARCHY_PLUGIN_SCHEMA_V2_ENABLED=1 \
@@ -80,18 +80,19 @@ launch() {
     OMARCHY_PLUGIN_E2E_EXPECT_RENDER_PACKETS=$render_packets \
     OMARCHY_PLUGIN_E2E_EXPECT_MUTATION=$mutation \
     OMARCHY_PLUGIN_E2E_EXPECT_POST_MUTATION_FRAMES=$post_mutation_frames \
+    OMARCHY_PLUGIN_E2E_EXPECT_POST_CALL_FRAMES=$post_call_frames \
     "$host" --preview-plugin-live-lab "$run/plugins/$name" "$tree" \
     "$run/grants" "$run/state" "$run/audit" "$worker" ignored ignored
 }
 
 prepare lab-authorized
 grant_capability lab-authorized --required storage.private@1=quota:65536:4096
-launch lab-authorized 2 1 1 2 0 >"$test_root/lab-authorized/host.log" 2>&1 || {
+launch lab-authorized 2 1 2 2 0 1 >"$test_root/lab-authorized/host.log" 2>&1 || {
   status=$?
   cat "$test_root/lab-authorized/host.log" >&2
   fail "authorized host failed with $status"
 }
-grep -q 'PRODUCT_E2E complete calls 2 frames 1' "$test_root/lab-authorized/host.log" || \
+grep -q 'PRODUCT_E2E complete calls 2 frames' "$test_root/lab-authorized/host.log" || \
   fail "authorized broker/frame terminal evidence missing"
 find "$test_root/lab-authorized/state" -type f -size +0c -print -quit | grep -q . || \
   fail "authorized provider state missing"
@@ -100,14 +101,14 @@ find "$test_root/lab-authorized/audit" -type f -size +0c -print -quit | grep -q 
 
 prepare lab-denied
 grant_capability lab-denied --required storage.private@1=quota:65536:4096
-launch lab-denied 1 1 1 2 0 >"$test_root/lab-denied/host.log" 2>&1 || {
+launch lab-denied 1 1 2 2 0 1 >"$test_root/lab-denied/host.log" 2>&1 || {
   cat "$test_root/lab-denied/host.log" >&2
   fail "denied host failed"
 }
-grep -q 'PRODUCT_E2E complete calls 1 frames 1' "$test_root/lab-denied/host.log" || \
+grep -q 'PRODUCT_E2E complete calls 1 frames' "$test_root/lab-denied/host.log" || \
   fail "denied broker/frame terminal evidence missing"
-authorized_hash=$(awk '/PRODUCT_E2E frame 1/ { print $4; exit }' "$test_root/lab-authorized/host.log")
-denied_hash=$(awk '/PRODUCT_E2E frame 1/ { print $4; exit }' "$test_root/lab-denied/host.log")
+authorized_hash=$(awk '/PRODUCT_E2E frame/ { hash = $4 } END { print hash }' "$test_root/lab-authorized/host.log")
+denied_hash=$(awk '/PRODUCT_E2E frame/ { hash = $4 } END { print hash }' "$test_root/lab-denied/host.log")
 [[ -n $authorized_hash && -n $denied_hash && $authorized_hash != "$denied_hash" ]] || \
   fail "allowed and denied QML terminal frames were not distinct"
 find "$test_root/lab-denied/audit" -type f -size +0c -print -quit | grep -q . || \
@@ -115,7 +116,7 @@ find "$test_root/lab-denied/audit" -type f -size +0c -print -quit | grep -q . ||
 
 prepare lab-permission
 grant_capability lab-permission --optional notifications.send@1=tokens:proof
-launch lab-permission 0 1 2 3 1 >"$test_root/lab-permission/host.log" 2>&1 &
+launch lab-permission 0 2 2 3 1 0 >"$test_root/lab-permission/host.log" 2>&1 &
 permission_pid=$!
 for ((attempt = 0; attempt < 100; attempt++)); do
   grep -q 'PRODUCT_E2E frame 1' "$test_root/lab-permission/host.log" && break

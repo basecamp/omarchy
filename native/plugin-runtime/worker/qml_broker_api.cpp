@@ -343,8 +343,10 @@ bool QmlBrokerApi::applyHostPermissionSnapshot(
     requested_permissions_[index].granted = next[index];
   }
   host_snapshot_received_ = true;
-  if (changed)
-    emit permissionsChanged();
+  if (changed) {
+    QMetaObject::invokeMethod(this, [this] { emit permissionsChanged(); },
+                              Qt::QueuedConnection);
+  }
   return true;
 }
 
@@ -395,7 +397,13 @@ bool QmlBrokerApi::applyHostPermissionSnapshotPayload(
 QVariant QmlBrokerApi::rejected(QString reason) {
   auto *call = new BrokerCall(0, this);
   call->reject(std::move(reason));
+  notifyFinished(call);
   return QVariant::fromValue(static_cast<QObject *>(call));
+}
+
+void QmlBrokerApi::notifyFinished(BrokerCall *call) {
+  QMetaObject::invokeMethod(
+      this, [this, call] { emit callFinished(call); }, Qt::QueuedConnection);
 }
 
 QVariant QmlBrokerApi::invoke(const QString &operation,
@@ -418,6 +426,7 @@ QVariant QmlBrokerApi::invoke(const QString &operation,
   if (!endpoint_.send(encoded->message_type, encoded->payload, correlation)) {
     *slot = {};
     call->reject(QStringLiteral("transport-failed"));
+    notifyFinished(call);
     disconnect(QStringLiteral("failed"));
   }
   return QVariant::fromValue(static_cast<QObject *>(call));
@@ -460,6 +469,7 @@ bool QmlBrokerApi::receive(ReceivedPacket packet) {
     disconnect(QStringLiteral("protocol-failed"));
     return false;
   }
+  notifyFinished(pending->call);
   *pending = {};
   return true;
 }
@@ -469,7 +479,10 @@ void QmlBrokerApi::disconnect(QString reason) {
   if (status_ != QStringLiteral("ready")) return;
   status_ = std::move(reason);
   for (auto &pending : pending_) {
-    if (pending.call != nullptr) pending.call->reject(QStringLiteral("broker-disconnected"));
+    if (pending.call != nullptr) {
+      pending.call->reject(QStringLiteral("broker-disconnected"));
+      notifyFinished(pending.call);
+    }
     pending = {};
   }
 }

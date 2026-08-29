@@ -10,20 +10,38 @@ Item {
     readonly property bool acceptsKeyboardFocus: false
     readonly property int maximumFramesPerSecond: 15
     property int observedChanges: 0
-    property string permissionState: "WAITING"
-
-    function refreshPermission() {
-        observedChanges += 1
-        permissionState = runtime.permissionState("notifications.send", "send").toUpperCase()
+    property bool startupReady: false
+    property bool countChanges: false
+    property string permissionState: {
+        if (!startupReady)
+            return "WAITING"
+        const capability = runtime.permissions["notifications.send"]
+        return capability && capability.send ? "GRANTED" : "DENIED"
     }
 
-    Qml.Component.onCompleted: {
-        permissionState = runtime.permissionState("notifications.send", "send").toUpperCase()
+    Qml.Timer {
+        interval: 0
+        running: true
+        repeat: false
+        onTriggered: {
+            root.startupReady = true
+            enableChangeCounting.start()
+        }
+    }
+
+    Qml.Timer {
+        id: enableChangeCounting
+        interval: 0
+        repeat: false
+        onTriggered: root.countChanges = true
     }
 
     Qml.Connections {
         target: runtime
-        function onPermissionsChanged() { root.refreshPermission() }
+        function onPermissionsChanged() {
+            if (root.countChanges)
+                root.observedChanges += 1
+        }
     }
 
     Rectangle {

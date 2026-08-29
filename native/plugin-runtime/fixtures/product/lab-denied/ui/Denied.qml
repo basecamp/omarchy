@@ -10,6 +10,7 @@ Item {
     readonly property bool acceptsKeyboardFocus: false
     readonly property int maximumFramesPerSecond: 15
     property var deniedCall: null
+    property double deniedCorrelation: 0
     property string phase: "ATTEMPTING"
     property string detail: "Invoking unrequested notifications.send/send"
 
@@ -29,6 +30,7 @@ Item {
             title: "This must not appear",
             body: "The manifest never requested notification authority"
         })
+        deniedCorrelation = deniedCall ? deniedCall.correlation : 0
         if (deniedCall && deniedCall.finished)
             finishAttempt()
     }
@@ -41,9 +43,11 @@ Item {
     }
 
     Connections {
-        target: root.deniedCall
-        function onFinishedChanged() {
-            if (root.deniedCall && root.deniedCall.finished)
+        target: runtime
+        function onCallFinished(call) {
+            if (call && root.deniedCall && call.finished &&
+                    call.correlation === root.deniedCorrelation &&
+                    root.deniedCall.correlation === call.correlation)
                 root.finishAttempt()
         }
     }

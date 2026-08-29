@@ -26,11 +26,11 @@ if(BUILD_TESTING)
     omarchy-plugin-lifecycle
     omarchy-plugin-audit-store)
   add_dependencies(omarchy-plugin-product-e2e-host
-    omarchy-plugin-qml-worker omarchy-plugin-permission-store)
+    omarchy-plugin-product-e2e-worker omarchy-plugin-permission-store)
   add_test(NAME plugin-product-e2e-bwrap
     COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/product_e2e_test.sh"
       $<TARGET_FILE:omarchy-plugin-product-e2e-host>
-      $<TARGET_FILE:omarchy-plugin-qml-worker>
+      $<TARGET_FILE:omarchy-plugin-product-e2e-worker>
       $<TARGET_FILE:omarchy-plugin-permission-store>
       "${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/product")
   set_tests_properties(plugin-product-e2e-bwrap PROPERTIES

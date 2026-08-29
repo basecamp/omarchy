@@ -48,16 +48,19 @@ class FakeCall final : public QObject {
   Q_PROPERTY(bool ok READ ok NOTIFY finishedChanged)
   Q_PROPERTY(QString error READ error NOTIFY finishedChanged)
   Q_PROPERTY(QVariant value READ value NOTIFY finishedChanged)
+  Q_PROPERTY(qulonglong correlation READ correlation CONSTANT)
 
 public:
-  FakeCall(bool ok, QString error, QVariant value, QObject *parent)
+  FakeCall(bool ok, QString error, QVariant value, qulonglong correlation,
+           QObject *parent)
       : QObject(parent), ok_(ok), error_(std::move(error)),
-        value_(std::move(value)) {}
+        value_(std::move(value)), correlation_(correlation) {}
 
   [[nodiscard]] bool finished() const { return finished_; }
   [[nodiscard]] bool ok() const { return ok_; }
   [[nodiscard]] QString error() const { return error_; }
   [[nodiscard]] QVariant value() const { return value_; }
+  [[nodiscard]] qulonglong correlation() const { return correlation_; }
 
   void complete() {
     finished_ = true;
@@ -72,10 +75,12 @@ private:
   bool ok_;
   QString error_;
   QVariant value_;
+  qulonglong correlation_ = 0;
 };
 
 class FakeRuntime final : public QObject {
   Q_OBJECT
+  Q_PROPERTY(QVariantMap permissions READ permissions NOTIFY permissionsChanged)
 
 public:
   explicit FakeRuntime(QSet<QString> allowed, bool asynchronous = false,
@@ -128,6 +133,13 @@ public:
                                                 : QStringLiteral("denied");
   }
 
+  [[nodiscard]] QVariantMap permissions() const {
+    return {{QStringLiteral("notifications.send"),
+             QVariantMap{{QStringLiteral("send"),
+                          allowed_.contains(QStringLiteral("notification_send"))},
+                         {QStringLiteral("required"), false}}}};
+  }
+
   void setNotificationGranted(bool granted) {
     if (granted)
       allowed_.insert(QStringLiteral("notification_send"));
@@ -137,15 +149,20 @@ public:
   }
 
 signals:
+  void callFinished(QObject *call);
   void permissionsChanged();
 
 private:
   QVariant asynchronousCall(bool ok, QString error, QVariant value) {
     auto call = std::make_unique<FakeCall>(ok, std::move(error),
-                                          std::move(value), this);
+                                          std::move(value), next_correlation_++,
+                                          this);
     auto *pointer = call.get();
     calls_.push_back(std::move(call));
-    QTimer::singleShot(0, pointer, [pointer] { pointer->complete(); });
+    QTimer::singleShot(0, pointer, [this, pointer] {
+      pointer->complete();
+      emit callFinished(pointer);
+    });
     return QVariant::fromValue(static_cast<QObject *>(pointer));
   }
 
@@ -156,6 +173,7 @@ private:
   QList<QVariantMap> payloads_;
   QVariantList statuses_;
   std::vector<std::unique_ptr<FakeCall>> calls_;
+  qulonglong next_correlation_ = 1;
 };
 
 struct LoadedFixture {
@@ -292,15 +310,22 @@ void test_live_evidence_fixtures() {
 
   FakeRuntime permission({QStringLiteral("notification_send")});
   auto permission_fixture = load("lab-permission", permission);
+  QEventLoop permission_startup_loop;
+  QTimer::singleShot(5, &permission_startup_loop, &QEventLoop::quit);
+  permission_startup_loop.exec();
   require(permission_fixture->object->property("permissionState").toString() ==
                   QStringLiteral("GRANTED") &&
               permission_fixture->object->property("observedChanges").toInt() == 0,
           "permission fixture did not render its initial availability");
   permission.setNotificationGranted(false);
+  QEventLoop permission_revocation_loop;
+  QTimer::singleShot(5, &permission_revocation_loop, &QEventLoop::quit);
+  permission_revocation_loop.exec();
   require(permission_fixture->object->property("permissionState").toString() ==
-              QStringLiteral("DENIED") &&
-              permission_fixture->object->property("observedChanges").toInt() == 1,
-          "permission fixture did not react visibly to permissionsChanged");
+              QStringLiteral("DENIED"),
+          "permission fixture did not render revoked availability");
+  require(permission_fixture->object->property("observedChanges").toInt() == 1,
+          "permission fixture did not count exactly one revocation");
 }
 
 } // namespace
