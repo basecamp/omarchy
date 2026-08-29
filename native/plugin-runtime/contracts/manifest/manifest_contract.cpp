@@ -824,6 +824,9 @@ ManifestV2 parse_manifest_v2(std::string_view bytes) {
       }
       request.erase("capability");
       request.erase("reason");
+      request.erase("definitionGeneration");
+      request.erase("definitionDigest");
+      request.erase("operations");
       result.requests.push_back({.capability = capability,
                                  .reason = reason,
                                  .canonical_scope = canonical(Json{request}),

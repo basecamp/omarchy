@@ -59,7 +59,8 @@ void parser_contract(const std::filesystem::path &fixtures) {
               dynamic.requests[0].definition_generation == 7 &&
               dynamic.requests[0].definition_digest == std::string(64, 'a') &&
               dynamic.requests[0].operations ==
-                  std::vector<std::string>{"status.read"},
+                  std::vector<std::string>{"status.read"} &&
+              dynamic.requests[0].canonical_scope == "{\"resource\":4}",
           "dynamic definition reference was not preserved");
 
   const auto with_sidecars = omarchy::plugins::manifest::parse_manifest_v2(
