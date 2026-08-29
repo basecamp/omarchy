@@ -332,6 +332,28 @@ int main(int argc, char *argv[]) {
   QCoreApplication application(argc, argv);
   application.setApplicationName(QStringLiteral("omarchy-plugin-host"));
   const auto arguments = application.arguments();
+  if (arguments.size() == 4 &&
+      arguments.at(1) == QStringLiteral("--activate-plugin-live-lab")) {
+    const char *schema_gate = std::getenv("OMARCHY_PLUGIN_SCHEMA_V2_ENABLED");
+    const char *lab_gate = std::getenv("OMARCHY_PLUGIN_LIVE_LAB_ENABLED");
+    if (schema_gate == nullptr || std::string_view(schema_gate) != "1" ||
+        lab_gate == nullptr ||
+        std::string_view(lab_gate) != "I_ACCEPT_LAB_RISK")
+      return 77;
+    try {
+      grants::GrantStore store(arguments.at(2).toStdString());
+      const auto state = store.read();
+      const permissions::PluginId plugin(arguments.at(3).toStdString());
+      const auto record = std::ranges::find_if(
+          state.plugins, [&](const auto &item) { return item.plugin == plugin; });
+      if (record == state.plugins.end() || !record->candidate) return 78;
+      store.activate_candidate(record->candidate->binding);
+      return 0;
+    } catch (const std::exception &error) {
+      qCritical().noquote() << error.what();
+      return 78;
+    }
+  }
   if (arguments.size() == 3 &&
       arguments.at(1) == QStringLiteral("--identify-plugin-live-lab")) {
     const char *schema_gate = std::getenv("OMARCHY_PLUGIN_SCHEMA_V2_ENABLED");
