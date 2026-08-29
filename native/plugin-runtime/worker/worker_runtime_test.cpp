@@ -232,6 +232,66 @@ void device_pixel_ratio_scales_scene_pixels() {
           "DPR 2 scene occupied only the logical-size corner of its buffer");
 }
 
+void asynchronous_scene_change_publishes_distinct_frame() {
+  worker::WorkerRuntime runtime(fixture("async-change"));
+  require(static_cast<bool>(runtime.load_manifest_entry()) &&
+              static_cast<bool>(runtime.select_software_profile(
+                  surface::software_profile_offer())),
+          "async scene did not load");
+  const auto page_size = sysconf(_SC_PAGESIZE);
+  require(page_size > 0, "page size unavailable for async scene");
+  const auto allocation = surface::make_allocation(
+      {.id = 43, .generation = 11}, 64, 32, 64, 32, 1, 1,
+      static_cast<std::uint64_t>(page_size));
+  require(allocation.has_value(), "async allocation failed");
+  const int descriptor = static_cast<int>(
+      syscall(SYS_memfd_create, "worker-async-test", MFD_CLOEXEC));
+  require(descriptor >= 0 &&
+              ftruncate(descriptor,
+                        static_cast<off_t>(allocation->mapping_bytes)) == 0,
+          "async memfd failed");
+  Mapping mapping(descriptor,
+                  static_cast<std::size_t>(allocation->mapping_bytes));
+  const int worker_descriptor = fcntl(descriptor, F_DUPFD_CLOEXEC, 64);
+  close(descriptor);
+  require(worker_descriptor >= 0 && static_cast<bool>(runtime.allocate(
+                                        *allocation, worker_descriptor)),
+          "async allocation was rejected");
+  auto consumer = surface::FrameConsumer::create(*allocation);
+  const auto first = runtime.render();
+  require(first.has_value() && consumer.has_value() &&
+              consumer->consume(mapping.bytes(), first->ready) ==
+                  surface::ConsumeResult::accepted,
+          "async initial frame was not consumable");
+  const QImage first_image(
+      reinterpret_cast<const uchar *>(consumer->last_frame()->pixels.data()),
+      static_cast<int>(allocation->pixel_width),
+      static_cast<int>(allocation->pixel_height),
+      static_cast<int>(allocation->stride),
+      QImage::Format_RGBA8888_Premultiplied);
+  const QImage first_copy = first_image.copy();
+  require(!runtime.render().has_value(),
+          "clean async scene was redundantly republished");
+  QEventLoop loop;
+  QTimer::singleShot(60, &loop, &QEventLoop::quit);
+  loop.exec();
+  require(runtime.render_requested(),
+          "async QML property change did not dirty render control");
+  const auto second = runtime.render();
+  require(second.has_value() && second->ready.frame_sequence == 2 &&
+              consumer->consume(mapping.bytes(), second->ready) ==
+                  surface::ConsumeResult::accepted,
+          "async changed frame was not consumable");
+  const QImage second_image(
+      reinterpret_cast<const uchar *>(consumer->last_frame()->pixels.data()),
+      static_cast<int>(allocation->pixel_width),
+      static_cast<int>(allocation->pixel_height),
+      static_cast<int>(allocation->stride),
+      QImage::Format_RGBA8888_Premultiplied);
+  require(second_image != first_copy,
+          "async QML property change republished stale pixels");
+}
+
 void hostile_loading() {
   require(!worker::safe_relative_qml_path("../Main.qml") &&
               !worker::safe_relative_qml_path("/plugin/Main.qml") &&
@@ -348,6 +408,7 @@ int main(int argc, char **argv) {
     QGuiApplication application(argc, argv);
     render_and_input();
     device_pixel_ratio_scales_scene_pixels();
+    asynchronous_scene_change_publishes_distinct_frame();
     hostile_loading();
     bounded_image_decoding();
     steady_state_denies_exec();

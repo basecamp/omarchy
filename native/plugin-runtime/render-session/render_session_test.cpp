@@ -40,6 +40,19 @@ void require(bool condition, std::string_view message) {
     throw std::runtime_error(std::string(message));
 }
 
+void wait_for_render_request(worker::WorkerRuntime &runtime,
+                             int timeout_milliseconds = 100) {
+  const auto deadline = std::chrono::steady_clock::now() +
+                        std::chrono::milliseconds(timeout_milliseconds);
+  while (!runtime.render_requested() &&
+         std::chrono::steady_clock::now() < deadline) {
+    QEventLoop loop;
+    QTimer::singleShot(2, &loop, &QEventLoop::quit);
+    loop.exec();
+  }
+  require(runtime.render_requested(), "timed out waiting for a dirty scene");
+}
+
 std::vector<std::byte> encode(const wire::EnvelopeHeader &header,
                               std::span<const std::byte> payload) {
   std::vector<std::byte> output(wire::kHeaderSize + payload.size());
@@ -106,9 +119,10 @@ public:
 
 struct Harness {
   explicit Harness(std::uint64_t generation, std::uint32_t logical_width = 64,
-                   std::uint32_t logical_height = 32, std::uint32_t dpr = 1)
+                   std::uint32_t logical_height = 32, std::uint32_t dpr = 1,
+                   std::string_view fixture_name = "expressive")
       : generation(generation),
-        runtime(std::filesystem::path(D2_WORKER_FIXTURE_ROOT) / "expressive"),
+        runtime(std::filesystem::path(D2_WORKER_FIXTURE_ROOT) / fixture_name),
         input_sink(std::make_shared<NullInputSink>()),
         transport(std::make_shared<bridge::AuthenticatedInputTransport>(
             generation, input_sink)),
@@ -185,6 +199,26 @@ struct Harness {
   std::optional<surface::TrustedAllocation> allocation;
 };
 
+void asynchronous_change_reaches_host_surface() {
+  Harness harness(38, 64, 32, 1, "async-change");
+  harness.negotiate();
+  static_cast<void>(harness.publish());
+  const QImage first_image = harness.item.ownedImage();
+  require(!harness.runtime.render().has_value(),
+          "clean worker scene produced a duplicate frame");
+
+  QEventLoop loop;
+  QTimer::singleShot(60, &loop, &QEventLoop::quit);
+  loop.exec();
+  require(harness.runtime.render_requested(),
+          "asynchronous QML change did not request a later frame");
+  const auto second = harness.publish();
+  require(second.frame_sequence == 2 && harness.item.frameSequence() == 2 &&
+              harness.item.ownedImage() != first_image &&
+              harness.host.statistics().accepted_frames == 2,
+          "host did not present the asynchronous QML frame");
+}
+
 void animated_alpha_and_throughput() {
   Harness harness(31);
   harness.negotiate();
@@ -199,9 +233,7 @@ void animated_alpha_and_throughput() {
   bool changed = false;
   const auto started = std::chrono::steady_clock::now();
   for (int frame = 0; frame < 120; ++frame) {
-    QEventLoop loop;
-    QTimer::singleShot(2, &loop, &QEventLoop::quit);
-    loop.exec();
+    wait_for_render_request(harness.runtime);
     static_cast<void>(harness.publish());
     changed = changed || harness.item.ownedImage() != first_image;
   }
@@ -353,6 +385,7 @@ int main(int argc, char **argv) {
   try {
     QGuiApplication application(argc, argv);
     animated_alpha_and_throughput();
+    asynchronous_change_reaches_host_surface();
     resize_dpr_and_peer_loss();
     graceful_close_releases_worker_mapping();
     malformed_and_oversized_fail_closed();

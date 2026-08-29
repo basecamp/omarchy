@@ -772,7 +772,8 @@ RuntimeResult WorkerRuntime::input(const surface::InputEvent &event) {
 }
 
 std::optional<PublishedFrame> WorkerRuntime::render() {
-  if (!active() || implementation_->root_item == nullptr)
+  if (!active() || implementation_->root_item == nullptr ||
+      !implementation_->dirty)
     return std::nullopt;
   implementation_->dirty = false;
   const auto count = object_count();
