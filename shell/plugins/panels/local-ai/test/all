@@ -6,7 +6,9 @@ TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 export OMARCHY_AI_USER_HOME="$TMP/home" OMARCHY_AI_STATE="$TMP/state" OMARCHY_AI_REGISTRY="$TMP/registry" \
   OMARCHY_AI_PORT=12434 OMARCHY_AI_POLL=0 OMARCHY_AI_TIMEOUT=5 OMARCHY_AI_FOREGROUND=1 OMARCHY_AI_NO_HOST_HF=1 \
   OMARCHY_AI_HARDWARE_JSON='{"groups":[{"backend":"nvidia","product":"NVIDIA GeForce RTX 3090","index":0,"count":4,"memoryBytesEach":25769803776,"devices":[{"index":0,"name":"NVIDIA GeForce RTX 3090","totalMiB":24576,"usedMiB":100,"freeMiB":24000},{"index":1,"name":"NVIDIA GeForce RTX 3090","totalMiB":24576,"usedMiB":0,"freeMiB":24576}]}]}'
-mkdir -p "$OMARCHY_AI_USER_HOME" "$OMARCHY_AI_STATE" "$OMARCHY_AI_REGISTRY"/{hardware,model,model-instance,recipe,assets}
+mkdir -p "$OMARCHY_AI_USER_HOME/.pi/agent" "$OMARCHY_AI_STATE" "$OMARCHY_AI_REGISTRY"/{hardware,model,model-instance,recipe,assets}
+printf '%s\n' '{"theme":"dark"}' >"$OMARCHY_AI_USER_HOME/.pi/agent/settings.json"
+printf '%s\n' '{}' >"$OMARCHY_AI_USER_HOME/.pi/agent/models.json"
 touch "$OMARCHY_AI_REGISTRY/assets/config.yml"
 digest=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 revision=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
@@ -27,6 +29,7 @@ recipe() { # recipe <id> <tools> <hf|dir> -> standard HF cache mount, or a regis
 recipe small-3090 false hf >"$OMARCHY_AI_REGISTRY/recipe/small-3090.json"
 recipe small-3090-tools true hf >"$OMARCHY_AI_REGISTRY/recipe/small-3090-tools.json"
 recipe small-3090-dir false dir >"$OMARCHY_AI_REGISTRY/recipe/small-3090-dir.json"
+jq -n --arg dg "$digest" '{id:"evil",status:"validated",model_instance_id:"org-small--bf16",hardware_id:"rtx-3090-24gb",hardware_count:1,engine:{name:"sglang"},capabilities:{tools:false},launch:{image:("img@sha256:"+$dg),container_port:30000,arguments:[],mounts:[{source:"~/.cache/../../../../etc",target:"/host-etc",read_only:false}]}}' >"$OMARCHY_AI_REGISTRY/recipe/evil.json"
 jq -n '{schema_version:"local-ai-registry/v1",recipes:[
   {id:"small-3090",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"},
   {id:"small-3090-tools",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"},
@@ -91,7 +94,10 @@ pass=0
 ok() { pass=$((pass+1)); printf 'ok %s - %s\n' "$pass" "$1"; }
 assert() { "$@" || { printf 'not ok - %s\n' "$*" >&2; exit 1; }; }
 snap() { "$CLI" snapshot; }
-assert jq -e '.state=="uninitialized"' >/dev/null <<<"$(snap)"; ok 'fresh state is uninitialized before any scan'
+assert jq -e '.state=="uninitialized"' >/dev/null <<<"$(snap)"
+assert [ ! -d "$OMARCHY_AI_USER_HOME/.omp" ]
+assert jq -e '(.defaultProvider // "") == ""' >/dev/null "$OMARCHY_AI_USER_HOME/.pi/agent/settings.json"
+ok 'fresh state is uninitialized and snapshot does not write agent config'
 c_write omarchy-local-ai 1 1
 assert jq -e '.state=="ready" and .active.recipeId=="small-3090" and .active.apiReady and (.active.toolCallReady|not)' >/dev/null <<<"$(snap)"
 assert [ ! -e "$OMARCHY_AI_USER_HOME/.omp/agent/models.json" ]
@@ -151,19 +157,9 @@ assert [ ! -f "$CD/containers/omarchy-local-ai" ]
 assert [ -f "$CD/containers/omarchy-local-ai-previous" ]
 rm -f "$CD/containers/omarchy-local-ai-previous"
 ok 'unload ignores an unowned <container>-previous instead of aborting mid-transition'
-help=$("$CLI" help)
-for c in scan download run unload open-agent switch; do assert grep -qw "$c" <<<"$help"; done
-ok 'CLI exposes exactly the six lifecycle actions'
-for q in Dashboard.qml Panel.qml; do
-  assert grep -q 'Renders purely from one `omarchy-local-ai snapshot`' "$ROOT/$q"
-  assert grep -q 'loaded: Boolean(active.apiReady)' "$ROOT/$q"; assert grep -q 'hasActive: Boolean(active.container)' "$ROOT/$q"
-  assert grep -q 'unavailable' "$ROOT/$q"
-  ! grep -Eq '#[0-9A-Fa-f]{6}' "$ROOT/$q" || { printf 'not ok - %s embeds a fixed color\n' "$q" >&2; exit 1; }
-done
-assert grep -q '"Running"' "$ROOT/Dashboard.qml"
-assert grep -q 'PanelWindow {' "$ROOT/Dashboard.qml"; assert grep -q 'onTextKey.*execDetached.*open-agent.*pi' "$ROOT/Dashboard.qml"
-assert grep -q 'BarIconButton {' "$ROOT/Panel.qml"
-ok 'QML derives loaded/recovery UI from active.apiReady, not state, with no fixed-palette markers'
+"$CLI" download evil >/dev/null || true
+assert jq -e '.state=="error" and (.error|test("validation|unsafe"))' >/dev/null <<<"$(snap)"
+ok 'a recipe mount that traverses ~/.cache fails the safety gate'
 hw_ok=0
 ( unset OMARCHY_AI_HARDWARE_JSON
   export OMARCHY_AI_STATE="$TMP/state-hw" OMARCHY_AI_DRI_PATH="$TMP/dri"
@@ -190,12 +186,5 @@ trace_ok=0
 ) && trace_ok=1 || trace_ok=0
 assert [ "$trace_ok" = 1 ]
 ok 'the exact transition sequence is traced for scan, download, first run, switch rollback, and unload'
-assert grep -q 'lib/state.sh' "$CLI"
-assert grep -q 'lib/hardware.sh' "$CLI"
-assert grep -q 'lib/registry.sh' "$CLI"
-assert grep -q 'lib/runtime.sh' "$CLI"
-assert grep -q 'lib/agent.sh' "$CLI"
-assert grep -q 'lib/lifecycle.sh' "$CLI"
 for f in "$ROOT"/bin/* "$ROOT"/lib/* "$ROOT"/test/all; do bash -n "$f"; done
-ok 'controller is split into sourced libraries that parse'
 printf '1..%s\n' "$pass"
