@@ -409,6 +409,43 @@ assert_no_temporary_files "$fake_root"
 
 pass "an unreadable source swap before open fails without publication"
 
+# Opening a directory read-only succeeds on Linux, but the resulting descriptor
+# is not a regular file. Swap one in immediately before exec: this gets past the
+# open itself and makes the /proc descriptor check the only caller-side control
+# that can stop sudo from starting.
+setup_run
+nonregular_hook="$run_dir/nonregular-hook"
+nonregular_marker="$run_dir/nonregular-marker"
+cat >"$nonregular_hook" <<'SH'
+if [[ $0 == */bin/omarchy-plymouth-set ]]; then
+  set -T
+  trap '
+    if [[ $BASH_COMMAND == exec* && $BASH_COMMAND == *logo_fd* &&
+          ! -e $TEST_NONREGULAR_MARKER ]]; then
+      mv -T -- "$logo_path" "$logo_path.before-nonregular-swap"
+      mkdir -- "$logo_path"
+      printf "swapped\n" >"$TEST_NONREGULAR_MARKER"
+    fi
+  ' DEBUG
+fi
+SH
+
+output=$(TEST_NONREGULAR_MARKER="$nonregular_marker" BASH_ENV="$nonregular_hook" run_set 077 env 2>&1)
+status=$?
+rmdir "$test_tmp/logo.png"
+mv "$test_tmp/logo.png.before-nonregular-swap" "$test_tmp/logo.png"
+
+(( status != 0 )) || fail "a non-regular opened logo descriptor aborts publication"
+[[ -s $nonregular_marker ]] || fail "the non-regular pre-open source swap ran deterministically" "$output"
+[[ $output == *"no longer a regular file"* ]] || fail "the descriptor check says why it refused the opened directory" "$output"
+if [[ -e $sudo_log ]] && grep -Fq 'root transaction' "$sudo_log"; then
+  fail "sudo started despite the non-regular opened logo descriptor"
+fi
+[[ $(cat "$theme/logo.png") == 'old plymouth logo.png' ]] || fail "a non-regular opened logo leaves the live logo unchanged"
+assert_no_temporary_files "$fake_root"
+
+pass "the caller refuses an opened descriptor that is not a regular file"
+
 # Plant both a malicious script and a root-file symlink where the old
 # caller-owned stage lived. The privileged transaction must ignore that tree:
 # executable/config assets come only from its root-trusted source and are built
