@@ -1,0 +1,9 @@
+755 bin/omarchy-plugin-qml-worker
+644 policy/builtin-capabilities-v1.json
+755 qml/Omarchy/PluginHost/libomarchy-plugin-host-bridge.so
+644 qml/Omarchy/PluginHost/omarchy-plugin-host-bridge.qmltypes
+644 qml/Omarchy/PluginHost/qmldir
+644 shell/SecureBarSurface.qml
+644 shell/SecureOverlaySurface.qml
+644 shell/SecurePanelSurface.qml
+644 shell/SecurePluginHost.qml

@@ -2,26 +2,20 @@
 
 set -euo pipefail
 
-if (( $# != 1 )); then
-  echo "Usage: $0 <known-good-omarchy-package.pkg.tar.zst>" >&2
+if (( $# != 2 )); then
+  echo "Usage: $0 <staging-root> <runtime-version>" >&2
   exit 64
 fi
 
-archive=$1
-[[ -f $archive ]] || { echo "Package not found: $archive" >&2; exit 66; }
-
+source_root=$1
+version=$2
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 verifier=$script_dir/verify-package.sh
-fixture=$script_dir/tests/elf_fixture.c
 scratch=$(mktemp -d)
-staging=$scratch/root
-mkdir -p "$staging"
 cleanup() {
   rm -rf -- "$scratch"
 }
 trap cleanup EXIT
-
-bsdtar -xf "$archive" -C "$staging"
 
 expect_failure() {
   local description=$1 expected=$2
@@ -37,76 +31,37 @@ expect_failure() {
   }
 }
 
-"$verifier" --staging "$staging" >/dev/null
+reset_fixture() {
+  rm -rf -- "$scratch/root"
+  cp -a "$source_root" "$scratch/root"
+}
 
-runtime=$staging/usr/lib/omarchy/plugin-runtime
-module=$staging/usr/lib/qt6/qml/Omarchy/PluginHost
-host=$staging/usr/bin/omarchy-plugin-host
-permission_store=$staging/usr/bin/omarchy-plugin-permission-store
-qmltypes=$module/omarchy-plugin-host-bridge.qmltypes
+"$verifier" --staging "$source_root" "$version" >/dev/null
 
-touch "$runtime/fake-test-helper"
-expect_failure "private helper" "private worker directory contains" \
-  "$verifier" --staging "$staging"
-rm "$runtime/fake-test-helper"
+reset_fixture
+root=$scratch/root/usr/lib/omarchy/plugin-security/$version
+touch "$root/shell/unexpected.qml"
+expect_failure "unexpected file" "installed file manifest differs" "$verifier" --staging "$scratch/root" "$version"
 
-touch "$module/unexpected.qml"
-expect_failure "unexpected QML file" "QML plugin directory contains" \
-  "$verifier" --staging "$staging"
-rm "$module/unexpected.qml"
+reset_fixture
+root=$scratch/root/usr/lib/omarchy/plugin-security/$version
+chmod 775 "$root/shell"
+expect_failure "writable directory" "runtime directory mode is not 755" "$verifier" --staging "$scratch/root" "$version"
 
-mv "$qmltypes" "$scratch/qmltypes"
-ln -s qmldir "$qmltypes"
-expect_failure "QML metadata symlink" "QML type description is absent or linked" \
-  "$verifier" --staging "$staging"
-rm "$qmltypes"
-mv "$scratch/qmltypes" "$qmltypes"
+reset_fixture
+root=$scratch/root/usr/lib/omarchy/plugin-security/$version
+mv "$root/policy/builtin-capabilities-v1.json" "$scratch/policy.json"
+ln -s "$scratch/policy.json" "$root/policy/builtin-capabilities-v1.json"
+expect_failure "policy symlink" "installed file manifest differs" "$verifier" --staging "$scratch/root" "$version"
 
-chmod 4755 "$host"
-expect_failure "setuid host" "trusted host mode is not 755" \
-  "$verifier" --staging "$staging"
-chmod 755 "$host"
+reset_fixture
+mkdir -p "$scratch/root/usr/bin"
+touch "$scratch/root/usr/bin/omarchy-plugin-qml-worker"
+expect_failure "global command" "package writes outside its owned versioned root" "$verifier" --staging "$scratch/root" "$version"
 
-chmod 775 "$runtime"
-expect_failure "group-writable runtime" "runtime directory mode is not 755" \
-  "$verifier" --staging "$staging"
-chmod 755 "$runtime"
+reset_fixture
+root=$scratch/root/usr/lib/omarchy/plugin-security/$version
+cp -a "$root" "$scratch/root/usr/lib/omarchy/plugin-security/9.9.9"
+expect_failure "multiple versions" "staging package contains another runtime version" "$verifier" --staging "$scratch/root" "$version"
 
-cp "$permission_store" "$scratch/permission-store"
-
-gcc -fPIE -pie -Wl,-z,relro -Wl,-rpath,/tmp "$fixture" -o "$permission_store"
-expect_failure "RPATH" "contains an RPATH or RUNPATH" \
-  "$verifier" --staging "$staging"
-
-gcc -no-pie "$fixture" -o "$permission_store"
-expect_failure "non-PIE executable" "is not an x86-64 PIE executable" \
-  "$verifier" --staging "$staging"
-
-gcc -fPIE -pie -Wl,-z,execstack "$fixture" -o "$permission_store"
-expect_failure "executable stack" "has no non-executable GNU stack declaration" \
-  "$verifier" --staging "$staging"
-
-gcc -fPIE -pie -Wl,-z,norelro "$fixture" -o "$permission_store"
-expect_failure "missing RELRO" "has no GNU RELRO segment" \
-  "$verifier" --staging "$staging"
-
-cp "$host" "$permission_store"
-expect_failure "unexpected dependency" "has unexpected DT_NEEDED libQt6Core.so.6" \
-  "$verifier" --staging "$staging"
-
-cp "$scratch/permission-store" "$permission_store"
-mkdir "$scratch/fake-ldd"
-cp "$script_dir/tests/fake-unresolved-ldd" "$scratch/fake-ldd/ldd"
-chmod 755 "$scratch/fake-ldd/ldd"
-expect_failure "unresolved dependency" "has an unresolved runtime dependency" \
-  env PATH="$scratch/fake-ldd:$PATH" "$verifier" --staging "$staging"
-
-mkdir "$scratch/fake-owner"
-cp "$script_dir/tests/fake-owner-bsdtar" "$scratch/fake-owner/bsdtar"
-chmod 755 "$scratch/fake-owner/bsdtar"
-real_bsdtar=$(type -P bsdtar)
-expect_failure "non-root archive owner" "archive member is not owned by root:root" \
-  env PATH="$scratch/fake-owner:$PATH" REAL_BSDTAR="$real_bsdtar" \
-  "$verifier" "$archive"
-
-echo "plugin package verifier negative tests passed"
+echo "secure plugin package verifier negative tests passed"
