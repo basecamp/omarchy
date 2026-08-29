@@ -15,4 +15,11 @@ for skill in "$OMARCHY_PATH"/default/agents/skills/*/; do
   skill=${skill%/}
   name=${skill##*/}
   ln -sfn "$skill" "$HOME/.hermes/skills/$name"
+  if [[ -d $HOME/.hermes/profiles ]]; then
+    for profile in "$HOME"/.hermes/profiles/*/; do
+      [[ -d $profile ]] || continue
+      mkdir -p "$profile/skills"
+      ln -sfn "$skill" "$profile/skills/$name"
+    done
+  fi
 done
