@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <sys/stat.h>
 
 namespace {
 
@@ -200,6 +201,20 @@ void digest_contract(const std::filesystem::path &fixtures) {
                   "symlink in content tree was accepted");
 
   std::filesystem::remove(temporary / "alias.qml");
+  require(mkfifo((temporary / "host-channel").c_str(), 0600) == 0,
+          "special-file fixture could not be created");
+  expect_rejected([&] { (void)identify_tree(temporary, copied_manifest); },
+                  "special file in content tree was accepted");
+  std::filesystem::remove(temporary / "host-channel");
+  {
+    std::ofstream oversized(temporary / "oversized.bin",
+                            std::ios::binary | std::ios::trunc);
+    oversized.seekp(64ULL * 1024ULL * 1024ULL);
+    oversized.put('\0');
+  }
+  expect_rejected([&] { (void)identify_tree(temporary, copied_manifest); },
+                  "oversized content tree was accepted");
+  std::filesystem::remove(temporary / "oversized.bin");
   std::filesystem::create_directories(temporary / "bin");
   {
     std::ofstream sidecar(temporary / "bin/helper", std::ios::binary);
@@ -299,6 +314,33 @@ void lifecycle_contract() {
                   "failed candidate became an eligible rollback target");
 }
 
+void mutation_contract(const std::filesystem::path &fixtures) {
+  const auto seed = read(fixtures / "valid-minimal/manifest.json");
+  std::size_t accepted = 0;
+  std::size_t rejected = 0;
+  for (std::size_t iteration = 0; iteration < 2048; ++iteration) {
+    std::string candidate = seed;
+    const std::size_t offset =
+        (iteration * 2654435761ULL + 17ULL) % candidate.size();
+    candidate[offset] = static_cast<char>(
+        static_cast<unsigned char>(candidate[offset]) ^
+        static_cast<unsigned char>(1U << (iteration % 8)));
+    try {
+      const auto parsed =
+          omarchy::plugins::manifest::parse_manifest_v2(candidate);
+      const auto reparsed = omarchy::plugins::manifest::parse_manifest_v2(
+          parsed.canonical_json);
+      require(parsed == reparsed,
+              "accepted manifest mutation was not canonically stable");
+      ++accepted;
+    } catch (const std::runtime_error &) {
+      ++rejected;
+    }
+  }
+  require(accepted > 0 && rejected > 0,
+          "manifest mutation corpus did not exercise both parser outcomes");
+}
+
 } // namespace
 
 int main() {
@@ -307,6 +349,7 @@ int main() {
     parser_contract(fixtures);
     digest_contract(fixtures);
     lifecycle_contract();
+    mutation_contract(fixtures);
     std::cout << "manifest v2 and lifecycle contract: PASS\n";
     return 0;
   } catch (const std::exception &error) {
