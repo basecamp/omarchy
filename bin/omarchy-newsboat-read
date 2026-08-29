@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# omarchy:summary=Open a freshly collected, finite feed inbox
+
+set -euo pipefail
+
+if (($# != 0)); then
+  echo "Usage: omarchy newsboat read" >&2
+  exit 1
+fi
+
+if omarchy-pkg-missing newsboat; then
+  echo "Install Feeds first with: omarchy install newsboat" >&2
+  exit 1
+fi
+
+unread_count() {
+  local output
+
+  output=$(newsboat -q -x print-unread 2>/dev/null) || return 1
+  if [[ $output =~ ^([0-9]+) ]]; then
+    printf '%s\n' "${BASH_REMATCH[1]}"
+  else
+    return 1
+  fi
+}
+
+# Refresh once before the interface opens. The resulting edition then stays
+# finite until the reader chooses to refresh it again with r.
+newsboat -q -x reload >/dev/null 2>&1 || true
+before=$(unread_count || printf '0\n')
+
+set +e
+newsboat
+status=$?
+set -e
+
+after=$(unread_count || printf '%s\n' "$before")
+if (( status == 0 && before > 0 && after == 0 )); then
+  omarchy-notification-send -g  "You're all caught up" "Go make something."
+fi
+
+exit "$status"

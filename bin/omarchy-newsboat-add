@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# omarchy:summary=Add an RSS or Atom feed to Newsboat
+# omarchy:args=<feed-url>
+# omarchy:examples=omarchy newsboat add https://example.com/feed.xml
+
+set -euo pipefail
+
+if (( $# != 1 )) || [[ ! $1 =~ ^https?://[^[:space:]]+$ ]]; then
+  echo "Usage: omarchy newsboat add <http-or-https-feed-url>" >&2
+  exit 1
+fi
+
+if omarchy-pkg-missing newsboat; then
+  echo "Install Newsboat first with: omarchy install newsboat" >&2
+  exit 1
+fi
+
+feed_url="$1"
+newsboat_config_dir="$HOME/.config/newsboat"
+newsboat_urls="$newsboat_config_dir/urls"
+lock_file="${XDG_RUNTIME_DIR:-/tmp}/omarchy-newsboat-$UID-urls.lock"
+
+mkdir -p "$newsboat_config_dir"
+if [[ ! -f $newsboat_urls ]]; then
+  install -m 600 /dev/null "$newsboat_urls"
+fi
+
+{
+  flock 9
+
+  while IFS= read -r line || [[ -n $line ]]; do
+    read -r existing_url _ <<<"$line"
+    if [[ $existing_url == "$feed_url" ]]; then
+      echo "Already subscribed: $feed_url"
+      exit 0
+    fi
+  done <"$newsboat_urls"
+
+  if [[ -s $newsboat_urls && -n $(tail -c 1 "$newsboat_urls") ]]; then
+    printf '\n' >>"$newsboat_urls"
+  fi
+  printf '%s\n' "$feed_url" >>"$newsboat_urls"
+} 9>"$lock_file"
+
+echo "Added feed: $feed_url"

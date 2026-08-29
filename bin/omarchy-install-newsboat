@@ -1,0 +1,124 @@
+#!/bin/bash
+
+# omarchy:summary=Install Newsboat with Omarchy defaults and an app launcher
+
+set -Eeuo pipefail
+
+echo "Installing Newsboat..."
+omarchy-pkg-add newsboat
+
+newsboat_config_dir="$HOME/.config/newsboat"
+newsboat_config="$newsboat_config_dir/config"
+newsboat_managed_config="$newsboat_config_dir/omarchy.conf"
+newsboat_urls="$newsboat_config_dir/urls"
+launcher_dir="$HOME/.local/share/applications"
+launcher="$launcher_dir/Feeds.desktop"
+transaction_dir=$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/omarchy-newsboat-install.XXXXXX")
+config_dir_was_present=false
+launcher_dir_was_present=false
+transaction_active=true
+inbox_stage=""
+
+[[ -d $newsboat_config_dir ]] && config_dir_was_present=true
+[[ -d $launcher_dir ]] && launcher_dir_was_present=true
+
+snapshot_target() {
+  local name="$1"
+  local target="$2"
+
+  if [[ -e $target || -L $target ]]; then
+    if [[ ! -f $target && ! -L $target ]]; then
+      echo "Cannot install Newsboat: expected a file at $target" >&2
+      exit 1
+    fi
+    cp -a -- "$target" "$transaction_dir/$name"
+    touch "$transaction_dir/$name.existed"
+  fi
+}
+
+restore_target() {
+  local name="$1"
+  local target="$2"
+
+  rm -f -- "$target"
+  if [[ -f $transaction_dir/$name.existed ]]; then
+    cp -a -- "$transaction_dir/$name" "$target"
+  fi
+}
+
+cleanup_transaction() {
+  [[ -z $inbox_stage ]] || rm -f -- "$inbox_stage"
+  rm -f -- "$transaction_dir"/* 2>/dev/null || true
+  rmdir "$transaction_dir" 2>/dev/null || true
+}
+
+rollback() {
+  local status=$?
+  trap - ERR
+  set +e
+
+  if [[ $transaction_active == "true" ]]; then
+    restore_target launcher "$launcher"
+    restore_target urls "$newsboat_urls"
+    restore_target config "$newsboat_config"
+    restore_target managed "$newsboat_managed_config"
+    [[ $launcher_dir_was_present == "true" ]] || rmdir "$launcher_dir" 2>/dev/null
+    [[ $config_dir_was_present == "true" ]] || rmdir "$newsboat_config_dir" 2>/dev/null
+  fi
+
+  cleanup_transaction
+  exit "$status"
+}
+
+trap rollback ERR
+trap '[[ -d $transaction_dir ]] && cleanup_transaction' EXIT
+
+snapshot_target managed "$newsboat_managed_config"
+snapshot_target config "$newsboat_config"
+snapshot_target urls "$newsboat_urls"
+snapshot_target launcher "$launcher"
+
+mkdir -p "$newsboat_config_dir"
+
+# This symlink is the managed boundary: Omarchy updates the target while the
+# user's config and subscriptions remain entirely user-owned.
+if [[ ! -e $newsboat_managed_config || -L $newsboat_managed_config ]]; then
+  ln -sfn "$OMARCHY_PATH/default/newsboat/omarchy.conf" "$newsboat_managed_config"
+else
+  echo "Keeping existing $newsboat_managed_config; it is not an Omarchy-managed symlink."
+fi
+
+# Newsboat owns these files after installation. Seed a useful first run, but
+# never replace subscriptions or preferences that the user already has.
+if [[ ! -f $newsboat_config ]]; then
+  install -m 600 "$OMARCHY_PATH/default/newsboat/config" "$newsboat_config"
+fi
+
+if [[ ! -f $newsboat_urls ]]; then
+  install -m 600 "$OMARCHY_PATH/default/newsboat/urls" "$newsboat_urls"
+fi
+
+# Existing Newsboat users keep every subscription and gain the finite Inbox.
+# Avoid replacing a user-managed symlink; those users can add the documented
+# query themselves while retaining complete ownership of the target file.
+inbox_query='"query:Inbox:unread = \"yes\""'
+if [[ ! -L $newsboat_urls ]] && ! grep -Fxq "$inbox_query" "$newsboat_urls"; then
+  inbox_stage=$(mktemp "$newsboat_config_dir/urls.inbox.XXXXXX")
+  cp -p -- "$newsboat_urls" "$inbox_stage"
+  {
+    printf '%s\n\n' "$inbox_query"
+    cat "$newsboat_urls"
+  } >"$inbox_stage"
+  mv -f -- "$inbox_stage" "$newsboat_urls"
+  inbox_stage=""
+fi
+
+mkdir -p "$launcher_dir"
+omarchy-tui-install "Feeds" "omarchy-feeds" tile newsboat
+
+transaction_active=false
+trap - ERR
+cleanup_transaction
+
+echo
+echo "Feeds is ready. Launch it with Super + Space."

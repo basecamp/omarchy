@@ -1,0 +1,6 @@
+# Inbox is a finite view of everything unread across every subscription.
+"query:Inbox:unread = \"yes\""
+
+# Starter feeds make the first launch useful. Manage them with omarchy newsboat.
+https://github.com/basecamp/omarchy/releases.atom "Omarchy"
+https://archlinux.org/feeds/news/ "Arch Linux"

@@ -1,0 +1,59 @@
+#!/bin/bash
+
+# omarchy:summary=Export Newsboat subscriptions to a new OPML file
+# omarchy:args=<opml-file>
+# omarchy:examples=omarchy newsboat export ~/Downloads/subscriptions.opml
+
+set -euo pipefail
+
+if (( $# != 1 )); then
+  echo "Usage: omarchy newsboat export <new-opml-file>" >&2
+  exit 1
+fi
+
+if omarchy-pkg-missing newsboat; then
+  echo "Install Newsboat first with: omarchy install newsboat" >&2
+  exit 1
+fi
+
+newsboat_urls="$HOME/.config/newsboat/urls"
+output_file="$1"
+output_dir=$(dirname -- "$output_file")
+output_name=$(basename -- "$output_file")
+lock_file="${XDG_RUNTIME_DIR:-/tmp}/omarchy-newsboat-$UID-urls.lock"
+staged_output=""
+
+if [[ ! -f $newsboat_urls ]]; then
+  echo "No Newsboat subscriptions found at $newsboat_urls" >&2
+  exit 1
+fi
+
+if [[ ! -d $output_dir ]]; then
+  echo "Export directory does not exist: $output_dir" >&2
+  exit 1
+fi
+
+if [[ -e $output_file || -L $output_file ]]; then
+  echo "Refusing to overwrite existing file: $output_file" >&2
+  exit 1
+fi
+
+cleanup() {
+  [[ -z $staged_output ]] || rm -f -- "$staged_output"
+}
+trap cleanup EXIT
+
+{
+  flock -s 9
+  staged_output=$(mktemp "$output_dir/.${output_name}.tmp.XXXXXX")
+  newsboat -u "$newsboat_urls" --export-to-opml2 >"$staged_output"
+  [[ -s $staged_output ]]
+
+  # A hard link publishes the completed export atomically and refuses a file
+  # that appeared after the earlier existence check.
+  ln -- "$staged_output" "$output_file"
+  rm -f -- "$staged_output"
+  staged_output=""
+} 9>"$lock_file"
+
+echo "Exported subscriptions to: $output_file"

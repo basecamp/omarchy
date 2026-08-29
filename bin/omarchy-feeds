@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# omarchy:summary=Open the finite Feeds inbox
+
+exec omarchy-newsboat-read "$@"

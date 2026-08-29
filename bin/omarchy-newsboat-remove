@@ -1,0 +1,74 @@
+#!/bin/bash
+
+# omarchy:summary=Remove an RSS or Atom feed from Newsboat
+# omarchy:args=<feed-url>
+# omarchy:examples=omarchy newsboat remove https://example.com/feed.xml
+
+set -euo pipefail
+
+if (( $# != 1 )) || [[ ! $1 =~ ^https?://[^[:space:]]+$ ]]; then
+  echo "Usage: omarchy newsboat remove <http-or-https-feed-url>" >&2
+  exit 1
+fi
+
+if omarchy-pkg-missing newsboat; then
+  echo "Install Newsboat first with: omarchy install newsboat" >&2
+  exit 1
+fi
+
+feed_url="$1"
+newsboat_urls="$HOME/.config/newsboat/urls"
+lock_file="${XDG_RUNTIME_DIR:-/tmp}/omarchy-newsboat-$UID-urls.lock"
+staged_urls=""
+removed=false
+
+cleanup() {
+  [[ -z $staged_urls ]] || rm -f -- "$staged_urls"
+}
+trap cleanup EXIT
+
+{
+  flock 9
+
+  if [[ ! -f $newsboat_urls ]]; then
+    echo "Not subscribed: $feed_url"
+    exit 0
+  fi
+
+  subscription_file=$(realpath -- "$newsboat_urls")
+  subscription_dir=$(dirname -- "$subscription_file")
+  subscription_name=$(basename -- "$subscription_file")
+  staged_urls=$(mktemp "$subscription_dir/.${subscription_name}.remove.XXXXXX")
+  cp -p -- "$subscription_file" "$staged_urls"
+
+  while true; do
+    line=""
+    if IFS= read -r line; then
+      line_terminated=true
+    elif [[ -n $line ]]; then
+      line_terminated=false
+    else
+      break
+    fi
+
+    read -r existing_url _ <<<"$line"
+    if [[ $existing_url == "$feed_url" ]]; then
+      removed=true
+    elif [[ $line_terminated == true ]]; then
+      printf '%s\n' "$line"
+    else
+      printf '%s' "$line"
+    fi
+  done <"$subscription_file" >"$staged_urls"
+
+  if [[ $removed == true ]]; then
+    mv -f -- "$staged_urls" "$subscription_file"
+    staged_urls=""
+  fi
+} 9>"$lock_file"
+
+if [[ $removed == true ]]; then
+  echo "Removed feed: $feed_url"
+else
+  echo "Not subscribed: $feed_url"
+fi
