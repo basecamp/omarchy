@@ -197,8 +197,27 @@ Item {
     var now = Date.now()
     if (!FingerprintModel.shouldNudge(now, fingerprintLastNudgeMs, fingerprintRetryTimer.interval)) return
     fingerprintLastNudgeMs = now
-    fingerprintRetryTimer.interval = FingerprintModel.MATCH_RETRY_MS
+    armFingerprintRetry(FingerprintModel.MATCH_RETRY_MS)
+  }
+
+  function armFingerprintRetry(delayMs) {
+    fingerprintRetryTimer.interval = delayMs
+    fingerprintRetryTimer.armedAt = Date.now()
     fingerprintRetryTimer.restart()
+  }
+
+  // The retry timer counts monotonic time, which suspend pauses, so a wait
+  // armed before the sleep picks up mid-count afterwards -- and the streak it
+  // was pacing was built against the reader as it stood before the sleep. The
+  // resume hook has restarted fprintd since, so that streak is stale: start
+  // over against the fresh reader now, instead of after the remaining wait or
+  // the next keypress, and without the pre-suspend misses counting toward the
+  // notice.
+  function restartFingerprintAfterSleep() {
+    fingerprintUnreachedStreak = 0
+    if (fingerprintAuthenticating || fingerprintPam.active) return
+    if (!fingerprintRetryTimer.running) return
+    armFingerprintRetry(FingerprintModel.MATCH_RETRY_MS)
   }
 
   function runBlank() {
@@ -290,8 +309,7 @@ Item {
     if (!lockRequested || !fingerprintConfigured) return
 
     fingerprintUnreachedStreak = FingerprintModel.nextStreak(fingerprintUnreachedStreak, fingerprintAttemptReachedDevice)
-    fingerprintRetryTimer.interval = FingerprintModel.retryDelayMs(fingerprintUnreachedStreak)
-    fingerprintRetryTimer.restart()
+    armFingerprintRetry(FingerprintModel.retryDelayMs(fingerprintUnreachedStreak))
   }
 
   function handleFingerprintFinished(result) {
@@ -434,7 +452,30 @@ Item {
     id: fingerprintRetryTimer
     interval: FingerprintModel.MATCH_RETRY_MS
     repeat: false
-    onTriggered: root.startFingerprint()
+    property double armedAt: 0
+    onTriggered: {
+      // A wait that took far longer on the wall clock than its interval
+      // spanned a suspend; see restartFingerprintAfterSleep.
+      if (Date.now() - armedAt > interval + 2000) root.fingerprintUnreachedStreak = 0
+      root.startFingerprint()
+    }
+  }
+
+  // Watches the wall clock while a backed-off wait is pending, so a resume is
+  // noticed within a tick rather than when the paused wait finally runs out.
+  Timer {
+    id: fingerprintSleepWatch
+    interval: 1000
+    repeat: true
+    running: fingerprintRetryTimer.running && fingerprintRetryTimer.interval > FingerprintModel.MATCH_RETRY_MS
+    property double lastTickMs: 0
+    onRunningChanged: lastTickMs = Date.now()
+    onTriggered: {
+      var now = Date.now()
+      var slept = now - lastTickMs > interval + 2000
+      lastTickMs = now
+      if (slept) root.restartFingerprintAfterSleep()
+    }
   }
 
   Timer {
