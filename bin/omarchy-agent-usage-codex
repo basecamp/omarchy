@@ -549,6 +549,7 @@ def fetch_codex_rpc():
 
     account = (account_msg.get("result") or {}).get("account") or {}
     limits = (limits_msg.get("result") or {}).get("rateLimits") or {}
+    result["authHelpText"] = ""
     plan = limits.get("planType") or account.get("planType") or account.get("type") or ""
     result["tierLabel"] = str(plan) if plan else ""
 
