@@ -110,7 +110,10 @@ Item {
   }
 
   function refreshFingerprintStatus() {
-    if (fingerprintSleepPaused) return
+    if (fingerprintSleepPaused) {
+      logEvent("fingerprint-check-skipped: sleep-paused")
+      return
+    }
     if (!fingerprintCheckProc.running) fingerprintCheckProc.running = true
   }
 
@@ -416,6 +419,7 @@ Item {
     repeat: false
     onTriggered: {
       if (root.fingerprintResumeAttempts > 0) root.fingerprintResumeAttempts -= 1
+      root.logEvent("fingerprint-resume-check attempts=" + root.fingerprintResumeAttempts)
       root.refreshFingerprintStatus()
     }
   }
@@ -474,9 +478,13 @@ Item {
       // question that no longer applies. Drop it and let the next probe decide.
       if (root.fingerprintCheckAborted) {
         root.fingerprintCheckAborted = false
+        root.logEvent("fingerprint-check-aborted")
         return
       }
-      if (root.fingerprintSleepPaused) return
+      if (root.fingerprintSleepPaused) {
+        root.logEvent("fingerprint-check-ignored: sleep-paused")
+        return
+      }
 
       var configured = String(fingerprintCheckStdout.text || "").trim() === "yes"
       if (configured) {
@@ -487,6 +495,7 @@ Item {
       } else if (SleepFingerprintModel.shouldRetryResumeProbe(root.fingerprintResumeAttempts, root.fingerprintResumeDeadlineAt, Date.now())) {
         // Fresh out of sleep, the reader may still be recovering. Keep
         // re-probing on the resume budget instead of taking "no" at face value.
+        root.logEvent("fingerprint-not-ready attempts=" + root.fingerprintResumeAttempts)
         fingerprintResumeTimer.restart()
       } else {
         root.fingerprintConfigured = false
