@@ -792,6 +792,7 @@ int preview(const QStringList &arguments, QGuiApplication &application,
   Inspection inspection;
   Clock clock;
   struct PreviewSurface {
+    std::string name;
     std::unique_ptr<QQuickWindow> window;
     std::unique_ptr<bridge::RemotePluginSurface> bridge;
     std::unique_ptr<surface_host::HostSurface> hosted;
@@ -814,6 +815,7 @@ int preview(const QStringList &arguments, QGuiApplication &application,
       break;
     }
     PreviewSurface preview;
+    preview.name = policy.surface_name;
     preview.window = std::make_unique<QQuickWindow>();
     preview.window->resize(static_cast<int>(width), static_cast<int>(height));
     preview.window->setTitle(
@@ -861,7 +863,11 @@ int preview(const QStringList &arguments, QGuiApplication &application,
       qEnvironmentVariableIntValue("OMARCHY_PLUGIN_E2E_EXPECT_POST_MUTATION_FRAMES");
   const int expected_post_call_frames =
       qEnvironmentVariableIntValue("OMARCHY_PLUGIN_E2E_EXPECT_POST_CALL_FRAMES");
-  std::vector<QByteArray> frame_hashes;
+  struct FrameEvidence {
+    std::uint64_t surface_id;
+    QByteArray hash;
+  };
+  std::vector<FrameEvidence> frame_hashes;
   std::uint64_t render_packets = 0;
   std::uint64_t post_mutation_frames = 0;
   std::uint64_t post_call_frames = 0;
@@ -953,18 +959,29 @@ int preview(const QStringList &arguments, QGuiApplication &application,
       if (target == previews.end() ||
           (!target->hosted->receive_render(message.payload) &&
            !target->hosted->inspection().render_active)) {
-        if (decoded)
+        if (decoded) {
           qCritical() << "omarchy-plugin-host: host surface rejected render packet"
                       << decoded.packet.header.message_type
-                      << decoded.packet.header.correlation_id;
-        else
+                      << decoded.packet.header.correlation_id << "target"
+                      << target_surface_id << "declared surfaces";
+          for (const auto &preview : previews)
+            qCritical() << QString::fromStdString(preview.name)
+                        << preview.hosted->allocation().surface.id;
+        } else {
           qCritical() << "omarchy-plugin-host: host surface rejected malformed render packet";
+        }
         application.exit(79);
+        return;
       }
 #ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+      const auto message_type = decoded
+          ? static_cast<surface::RenderMessageType>(
+                decoded.packet.header.message_type)
+          : surface::RenderMessageType{};
       const auto &image = target->bridge->ownedImage();
-      if (!image.isNull()) {
-        ++render_packets;
+      ++render_packets;
+      if (message_type == surface::RenderMessageType::frame_ready &&
+          !image.isNull()) {
         if (observed_grant_mutation > startup_grant_mutation)
           ++post_mutation_frames;
         if (lab_broker->dispatch_count() >=
@@ -973,12 +990,20 @@ int preview(const QStringList &arguments, QGuiApplication &application,
         const auto bytes = QByteArrayView(
             reinterpret_cast<const char *>(image.constBits()), image.sizeInBytes());
         const auto hash = QCryptographicHash::hash(bytes, QCryptographicHash::Sha256);
-        if (std::ranges::find(frame_hashes, hash) == frame_hashes.end()) {
-          frame_hashes.push_back(hash);
-          std::cerr << "PRODUCT_E2E frame " << frame_hashes.size() << ' '
-                    << hash.toHex().constData() << '\n';
+        const auto evidence = std::ranges::find_if(
+            frame_hashes, [&](const auto &frame) {
+              return frame.surface_id == target_surface_id &&
+                     frame.hash == hash;
+            });
+        if (evidence == frame_hashes.end()) {
+          frame_hashes.push_back(
+              {.surface_id = target_surface_id, .hash = hash});
+          std::cerr << "PRODUCT_E2E frame " << frame_hashes.size()
+                    << " surface " << target->name << ' ' << target_surface_id
+                    << " hash " << hash.toHex().constData() << '\n';
           qInfo().noquote() << "PRODUCT_E2E frame" << frame_hashes.size()
-                            << hash.toHex();
+                            << "surface" << QString::fromStdString(target->name)
+                            << target_surface_id << "hash" << hash.toHex();
         }
         if (!injected_pointer &&
             qEnvironmentVariableIsSet("OMARCHY_PLUGIN_E2E_CLICK_X") &&

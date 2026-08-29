@@ -135,8 +135,8 @@ launch lab-denied 1 1 2 2 0 1 >"$test_root/lab-denied/host.log" 2>&1 || {
 }
 grep -q 'PRODUCT_E2E complete calls 1 frames' "$test_root/lab-denied/host.log" || \
   fail "denied broker/frame terminal evidence missing"
-authorized_hash=$(awk '/PRODUCT_E2E frame/ { hash = $4 } END { print hash }' "$test_root/lab-authorized/host.log")
-denied_hash=$(awk '/PRODUCT_E2E frame/ { hash = $4 } END { print hash }' "$test_root/lab-denied/host.log")
+authorized_hash=$(awk '/PRODUCT_E2E frame/ { hash = $NF } END { print hash }' "$test_root/lab-authorized/host.log")
+denied_hash=$(awk '/PRODUCT_E2E frame/ { hash = $NF } END { print hash }' "$test_root/lab-denied/host.log")
 [[ -n $authorized_hash && -n $denied_hash && $authorized_hash != "$denied_hash" ]] || \
   fail "allowed and denied QML terminal frames were not distinct"
 find "$test_root/lab-denied/audit" -type f -size +0c -print -quit | grep -q . || \
