@@ -10,6 +10,7 @@ if(NOT TARGET omarchy-plugin-broker-core)
 endif()
 
 add_library(omarchy-plugin-providers STATIC
+  src/private_storage_backend.cpp
   src/provider_set.cpp
   src/provider_schemas.cpp
 )
@@ -51,5 +52,22 @@ if(BUILD_TESTING)
   )
   set_tests_properties(plugin-provider-schemas PROPERTIES
     LABELS "unit;protocol;adversarial;providers;golden"
+  )
+
+  add_executable(omarchy-plugin-private-storage-test
+    tests/private_storage_backend_test.cpp
+  )
+  target_compile_features(omarchy-plugin-private-storage-test PRIVATE cxx_std_20)
+  target_compile_options(omarchy-plugin-private-storage-test PRIVATE
+    -Wall -Wextra -Wpedantic -Werror
+  )
+  target_link_libraries(omarchy-plugin-private-storage-test PRIVATE
+    omarchy-plugin-providers
+  )
+  add_test(NAME plugin-private-storage
+    COMMAND omarchy-plugin-private-storage-test
+  )
+  set_tests_properties(plugin-private-storage PROPERTIES
+    LABELS "unit;adversarial;providers;filesystem"
   )
 endif()
