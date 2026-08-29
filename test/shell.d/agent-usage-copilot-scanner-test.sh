@@ -202,3 +202,31 @@ else
   fail "Exhausted quota message formatting"
 fi
 
+# Test 10: A symlinked session store is rejected before querying (fail closed)
+mkdir -p "$TEST_HOME/symlink-copilot"
+ln -s "$db_path" "$TEST_HOME/symlink-copilot/session-store.db"
+result_symlink=$(HOME="$TEST_HOME/empty-home" COPILOT_HOME="$TEST_HOME/symlink-copilot" "$ROOT/bin/omarchy-agent-usage-copilot")
+[[ $(jq -r '.todayTotalTokens' <<<"$result_symlink") == "0" ]] ||
+  fail "Copilot collector rejects a symlinked session store" "$result_symlink"
+pass "Copilot collector rejects a symlinked session store"
+
+# Test 11: An oversized model name fails closed to empty stats, never a
+# truncated or partially populated record.
+mkdir -p "$TEST_HOME/bounds-copilot"
+bounds_db="$TEST_HOME/bounds-copilot/session-store.db"
+sqlite3 "$bounds_db" <<EOF
+CREATE TABLE turns (session_id TEXT, turn_index INTEGER);
+CREATE TABLE assistant_usage_events (
+  session_id TEXT, turn_index INTEGER, created_at TEXT,
+  input_tokens INTEGER, output_tokens INTEGER,
+  cache_read_tokens INTEGER, cache_write_tokens INTEGER, model TEXT
+);
+INSERT INTO turns VALUES ('session-1', 0);
+INSERT INTO assistant_usage_events VALUES
+  ('session-1', 0, datetime('now'), 100, 50, 10, 5, '$(printf 'x%.0s' {1..500})');
+EOF
+result_bounds=$(HOME="$TEST_HOME/empty-home" COPILOT_HOME="$TEST_HOME/bounds-copilot" "$ROOT/bin/omarchy-agent-usage-copilot")
+[[ $(jq -r '.todayTotalTokens' <<<"$result_bounds") == "0" && $(jq -r '.modelUsage | length' <<<"$result_bounds") == "0" ]] ||
+  fail "Copilot collector fails closed on an oversized model name" "$result_bounds"
+pass "Copilot collector fails closed on an oversized model name"
+

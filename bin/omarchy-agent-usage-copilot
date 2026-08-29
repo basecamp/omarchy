@@ -16,6 +16,7 @@ import argparse
 import datetime as dt
 import http.client
 import json
+import math
 import os
 import sqlite3
 import stat
@@ -40,6 +41,17 @@ QUOTA_DISPLAY_NAMES = {
   "chat": "Chat",
   "completions": "Completions",
 }
+
+# Resource ceilings for data read from the mutable local session store and
+# for the shell-facing output record. Any violation fails closed: the
+# collector publishes a fresh empty-stats record, never a truncated one.
+MAX_DB_BYTES = 512 * 1024 * 1024  # session-store.db plus its -wal sibling
+MAX_STAT_ROWS = 20_000  # grouped date/model rows fetched from the store
+MAX_ACTIVE_DATES = 4_000  # distinct calendar days retained
+MAX_MODELS = 200  # distinct model names retained
+MAX_MODEL_NAME_LEN = 200  # characters per model name
+MAX_COUNTER_VALUE = 10**15  # per-counter ceiling; keeps arithmetic sane
+MAX_RECORD_BYTES = 1_000_000  # serialized JSON record ceiling
 
 
 def expand_path(value: str) -> Path:
@@ -142,6 +154,8 @@ def fetch_quota(token: str) -> dict[str, Any] | None:
     total = snapshot.get("entitlement", 0)
     if not isinstance(used, (int, float)) or not isinstance(total, (int, float)):
       continue
+    if not math.isfinite(used) or not math.isfinite(total):
+      continue
     # Unmetered buckets (e.g. "chat" reporting 0/0 with has_quota true) carry
     # no displayable numbers; skip them so a metered bucket can win instead.
     if total <= 0 and used <= 0:
@@ -153,8 +167,9 @@ def fetch_quota(token: str) -> dict[str, Any] | None:
       # has_quota false on a metered bucket means the allowance is used up.
       "exhausted": not snapshot.get("has_quota", False),
     }
-    if "quota_reset_date_utc" in data:
-      result["resetsAt"] = data["quota_reset_date_utc"]
+    reset_date = data.get("quota_reset_date_utc")
+    if isinstance(reset_date, str) and len(reset_date) <= 64:
+      result["resetsAt"] = reset_date
     return result
   return None
 
@@ -190,6 +205,59 @@ def add_model_tokens(bucket: dict[str, dict[str, int]], model: str,
   entry["cacheCreationInputTokens"] += cache_write
 
 
+def session_db_safe_to_read(db_path: Path) -> bool:
+  """Validate the session store before querying it.
+
+  The store is mutable, so oversized or non-regular files must be rejected
+  before sqlite touches them: open the main file once with no-follow and
+  nonblocking semantics, validate that same descriptor as an owner-appropriate
+  regular file within the size ceiling, and check the WAL sibling (which
+  sqlite will also open) via lstat so a symlinked or oversized WAL is
+  rejected too.
+  """
+  if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_NONBLOCK"):
+    return False
+  flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+
+  try:
+    fd = os.open(str(db_path), flags)
+  except OSError:
+    return False
+  try:
+    st = os.fstat(fd)
+  finally:
+    os.close(fd)
+  if not stat.S_ISREG(st.st_mode) or st.st_uid not in (os.geteuid(), 0):
+    return False
+  total_bytes = st.st_size
+
+  wal_path = db_path.parent / (db_path.name + "-wal")
+  try:
+    wal_st = os.lstat(str(wal_path))
+  except OSError:
+    wal_st = None
+  if wal_st is not None:
+    if not stat.S_ISREG(wal_st.st_mode) or wal_st.st_uid not in (os.geteuid(), 0):
+      return False
+    total_bytes += wal_st.st_size
+
+  return total_bytes <= MAX_DB_BYTES
+
+
+def bounded_count(value: Any) -> int | None:
+  """Coerce a sqlite aggregate to a bounded non-negative int, or None."""
+  if value is None:
+    return 0
+  if isinstance(value, bool) or not isinstance(value, (int, float)):
+    return None
+  if isinstance(value, float) and not math.isfinite(value):
+    return None
+  value = int(value)
+  if value < 0 or value > MAX_COUNTER_VALUE:
+    return None
+  return value
+
+
 def read_copilot_stats() -> dict[str, Any]:
   """Read usage statistics from Copilot session store."""
   db_path = copilot_dir() / "session-store.db"
@@ -198,16 +266,25 @@ def read_copilot_stats() -> dict[str, Any]:
   if not db_path.exists():
     return stats
 
+  # Fail closed on an oversized or unsafe store rather than querying it.
+  if not session_db_safe_to_read(db_path):
+    return stats
+
   conn = None
   try:
     conn = sqlite3.connect(f"{db_path.as_uri()}?mode=ro", uri=True)
     cursor = conn.cursor()
 
     cursor.execute("SELECT COUNT(DISTINCT session_id) FROM turns")
-    stats["totalSessions"] = cursor.fetchone()[0] or 0
+    total_sessions = bounded_count(cursor.fetchone()[0])
+    if total_sessions is None:
+      return empty_usage_stats()
+    stats["totalSessions"] = total_sessions
 
     # created_at is stored in UTC (ISO 8601 with Z suffix); convert to the
     # local calendar day so buckets line up with the local "today" below.
+    # LIMIT is one past the ceiling so an over-limit store is detected and
+    # rejected instead of silently truncated.
     cursor.execute("""
       SELECT DATE(created_at, 'localtime'), COUNT(*),
              SUM(input_tokens), SUM(output_tokens),
@@ -216,7 +293,12 @@ def read_copilot_stats() -> dict[str, Any]:
       FROM assistant_usage_events
       WHERE created_at IS NOT NULL
       GROUP BY DATE(created_at, 'localtime'), model
-    """)
+      LIMIT ?
+    """, (MAX_STAT_ROWS + 1,))
+
+    rows = cursor.fetchall()
+    if len(rows) > MAX_STAT_ROWS:
+      return empty_usage_stats()
 
     date_stats: dict[str, dict[str, int]] = {}
     model_stats: dict[str, dict[str, int]] = {}
@@ -225,14 +307,28 @@ def read_copilot_stats() -> dict[str, Any]:
     # consistent on one clock sample even if midnight passes mid-run.
     today = stats["recentDays"][-1]["date"]
 
-    for date_str, event_count, input_tokens, output_tokens, cache_read, cache_write, model in cursor.fetchall():
-      if not date_str:
+    for date_str, event_count, input_tokens, output_tokens, cache_read, cache_write, model in rows:
+      if not date_str or not isinstance(date_str, str):
         continue
 
-      input_tokens = input_tokens or 0
-      output_tokens = output_tokens or 0
-      cache_read = cache_read or 0
-      cache_write = cache_write or 0
+      event_count = bounded_count(event_count)
+      input_tokens = bounded_count(input_tokens)
+      output_tokens = bounded_count(output_tokens)
+      cache_read = bounded_count(cache_read)
+      cache_write = bounded_count(cache_write)
+      if (event_count is None or input_tokens is None or output_tokens is None
+          or cache_read is None or cache_write is None):
+        return empty_usage_stats()
+
+      # Bound retained cardinality and string lengths; a store that exceeds
+      # these ceilings is rejected outright, never partially published.
+      if date_str not in date_stats and len(date_stats) >= MAX_ACTIVE_DATES:
+        return empty_usage_stats()
+      if model is not None:
+        if not isinstance(model, str) or len(model) > MAX_MODEL_NAME_LEN:
+          return empty_usage_stats()
+        if model and model not in model_stats and len(model_stats) >= MAX_MODELS:
+          return empty_usage_stats()
 
       # input_tokens already includes cache reads/writes, so the day total is
       # input + output; adding the cache columns would double-count them.
@@ -268,7 +364,10 @@ def read_copilot_stats() -> dict[str, Any]:
     stats["activeDays"] = len(stats["activeDates"])
 
     cursor.execute("SELECT COUNT(*) FROM assistant_usage_events")
-    stats["totalPrompts"] = cursor.fetchone()[0] or 0
+    total_prompts = bounded_count(cursor.fetchone()[0])
+    if total_prompts is None:
+      return empty_usage_stats()
+    stats["totalPrompts"] = total_prompts
 
     if today in date_stats:
       cursor.execute("""
@@ -276,7 +375,10 @@ def read_copilot_stats() -> dict[str, Any]:
         FROM assistant_usage_events
         WHERE DATE(created_at, 'localtime') = ?
       """, (today,))
-      stats["todaySessions"] = cursor.fetchone()[0] or 0
+      today_sessions = bounded_count(cursor.fetchone()[0])
+      if today_sessions is None:
+        return empty_usage_stats()
+      stats["todaySessions"] = today_sessions
   except (OSError, sqlite3.Error):
     # A display collector must never crash the panel; fall back to a fresh
     # empty record rather than returning partially populated stats.
@@ -328,21 +430,28 @@ def main() -> None:
       limit_entry["resetsAt"] = quota["resetsAt"]
     limits = [limit_entry]
 
-  record = {
-    "schemaVersion": 1,
-    "id": AGENT_ID,
-    "name": AGENT_NAME,
-    "ready": True,
-    "hasLocalStats": bool(stats.get("modelUsage")),
-    "authHelpText": AUTH_HELP,
-    "usageStatusText": "",
-    "tierLabel": "",
-    "limits": limits,
-    "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
-    **stats,
-  }
+  def build_record(record_stats: dict[str, Any], record_limits: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+      "schemaVersion": 1,
+      "id": AGENT_ID,
+      "name": AGENT_NAME,
+      "ready": True,
+      "hasLocalStats": bool(record_stats.get("modelUsage")),
+      "authHelpText": AUTH_HELP,
+      "usageStatusText": "",
+      "tierLabel": "",
+      "limits": record_limits,
+      "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+      **record_stats,
+    }
 
-  print(json.dumps(record, indent=2))
+  payload = json.dumps(build_record(stats, limits), indent=2)
+  if len(payload.encode("utf-8")) > MAX_RECORD_BYTES:
+    # Hard ceiling on the shell-facing document: fail closed with a fresh
+    # well-formed empty record rather than publishing a truncated structure.
+    payload = json.dumps(build_record(empty_usage_stats(), []), indent=2)
+
+  print(payload)
 
 
 if __name__ == "__main__":
