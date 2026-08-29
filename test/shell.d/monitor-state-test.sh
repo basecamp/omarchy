@@ -52,13 +52,13 @@ assert_line() {
 assert_line_count() {
   local description="$1"
 
-  (( ${#state_lines[@]} == 8 )) ||
-    fail "$description" "expected 8 lines, got ${#state_lines[@]}"
+  (( ${#state_lines[@]} == 9 )) ||
+    fail "$description" "expected 9 lines, got ${#state_lines[@]}"
 }
 
 extended='[
-  { "name": "eDP-1", "mirrorOf": "none", "disabled": false, "focused": false, "width": 1920, "height": 1080 },
-  { "name": "DP-1", "mirrorOf": "none", "disabled": false, "focused": true, "width": 2560, "height": 1440 }
+  { "name": "eDP-1", "description": "Panasonic Industry Company TDM13O56", "serial": "Panasonic Industry Company", "mirrorOf": "none", "disabled": false, "focused": false, "width": 1920, "height": 1080, "x": 0, "y": 0, "scale": 1, "transform": 0, "refreshRate": 60.00, "availableModes": ["1920x1080@60.00Hz"] },
+  { "name": "DP-1", "description": "LG Electronics LG ULTRAGEAR 101NTKF0A749", "serial": "LG Electronics", "mirrorOf": "none", "disabled": false, "focused": true, "width": 2560, "height": 1440, "x": 1920, "y": 0, "scale": 1.25, "transform": 0, "refreshRate": 59.95, "availableModes": ["2560x1440@59.95Hz", "1920x1080@60.00Hz"] }
 ]'
 
 # Omarchy mirrors by pointing the external at the internal, so `mirrorOf` lands
@@ -115,3 +115,23 @@ monitor_state "$clamshell"
 [[ ${state_lines[7]-} == '[{"name":"eDP-1","enabled":false,"focused":false,"width":0,"height":0},{"name":"DP-1","enabled":true,"focused":true,"width":2560,"height":1440}]' ]] ||
   fail "monitor state lists every display for the panel" "actual: ${state_lines[7]-<missing>}"
 pass "monitor state lists every display with its enabled and focused state"
+
+# Line 9 (index 8) is additive: a richer per-display shape for the display
+# panel's arrangement UI, keyed by description/serial rather than connector
+# name so a DisplayLink reconnect that renumbers DVI-I-1/DVI-I-2 doesn't
+# invalidate identity. It must not disturb line 8 above, which existing
+# consumers already read by index.
+monitor_state "$extended"
+[[ ${state_lines[8]-} == '[{"name":"eDP-1","description":"Panasonic Industry Company TDM13O56","serial":"Panasonic Industry Company","enabled":true,"focused":false,"x":0,"y":0,"width":1920,"height":1080,"scale":1,"transform":0,"currentMode":"1920x1080@60.00","availableModes":["1920x1080@60.00Hz"]},{"name":"DP-1","description":"LG Electronics LG ULTRAGEAR 101NTKF0A749","serial":"LG Electronics","enabled":true,"focused":true,"x":1920,"y":0,"width":2560,"height":1440,"scale":1.25,"transform":0,"currentMode":"2560x1440@59.95","availableModes":["2560x1440@59.95Hz","1920x1080@60.00Hz"]}]' ]] ||
+  fail "monitor state lists extended per-display detail keyed by description" "actual: ${state_lines[8]-<missing>}"
+pass "monitor state's extended line carries description/serial identity and mode detail"
+
+# A monitor with no EDID description (rare virtual/headless outputs) still
+# answers with empty strings rather than dropping the field or erroring.
+no_description='[
+  { "name": "HEADLESS-1", "mirrorOf": "none", "disabled": false, "focused": true, "width": 1920, "height": 1080, "x": 0, "y": 0, "scale": 1, "transform": 0, "refreshRate": 60.00 }
+]'
+monitor_state "$no_description"
+[[ ${state_lines[8]-} == '[{"name":"HEADLESS-1","description":"","serial":"","enabled":true,"focused":true,"x":0,"y":0,"width":1920,"height":1080,"scale":1,"transform":0,"currentMode":"1920x1080@60.00","availableModes":[]}]' ]] ||
+  fail "monitor state falls back to empty identity fields without EDID" "actual: ${state_lines[8]-<missing>}"
+pass "monitor state tolerates a monitor with no description/serial/availableModes"

@@ -1,0 +1,373 @@
+#!/bin/bash
+
+# omarchy:summary=Validate, apply, or persist a multi-monitor arrangement for the display panel
+# omarchy:group=monitor
+# omarchy:args=<validate|apply|persist> (reads a JSON layout array on stdin)
+
+set -euo pipefail
+
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy"
+ARRANGE_LOG="$STATE_DIR/monitor-arrange.log"
+MONITORS_LUA="${OMARCHY_MONITORS_LUA:-$HOME/.config/hypr/monitors.lua}"
+MANAGED_BEGIN="-- omarchy-display-panel:managed:begin"
+MANAGED_END="-- omarchy-display-panel:managed:end"
+
+usage() {
+  cat <<'EOF'
+Usage: omarchy-monitor-arrange <command> < layout.json
+
+Commands:
+  validate   Read a JSON layout array from stdin; print it normalized, or
+             fail on stderr with a reason. Makes no changes.
+  apply      Read a JSON layout array from stdin; apply it live via
+             `hyprctl eval hl.monitor(...)`, addressed by description
+             (desc:...) wherever possible. Transient: does not touch
+             monitors.lua. Prints {"success":bool,"message":string}.
+  persist    Read a JSON layout array from stdin; back up monitors.lua and
+             rewrite its managed block to match. Does not touch live
+             Hyprland state. Prints {"success":bool,"message":string}.
+
+Layout entry shape:
+  {
+    "identity": "desc:<description>" | "<connector-name>",
+    "mode": "WIDTHxHEIGHT@REFRESH" | "preferred",
+    "x": <integer>, "y": <integer>,
+    "scale": <number>, "transform": <0-7>, "enabled": <bool>
+  }
+
+`apply` is also how a caller reverts: feed it the pre-change layout captured
+before the original apply. `persist` is the confirm step, called only after
+the caller has verified the applied layout actually stuck.
+EOF
+}
+
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
+
+# One jq program does full structural + range validation and fills defaults,
+# so `apply`/`persist` never have to re-derive what "valid" means. Fails
+# closed: `error(...)` aborts the whole filter and jq exits non-zero with the
+# message on stderr, which is surfaced to the caller as-is.
+read -r -d '' VALIDATE_FILTER <<'JQ' || true
+if (type != "array") then
+  error("layout must be a JSON array")
+elif (length == 0) then
+  error("layout must contain at least one monitor")
+else . end
+| map(
+    if (type != "object") then
+      error("each layout entry must be an object")
+    else . end
+    | (.identity // "") as $identity
+    | if ($identity | type) != "string" or ($identity | length) == 0 then
+        error("identity is required")
+      else . end
+    | (.mode // "preferred") as $mode
+    | if ($mode | test("^preferred$|^[0-9]+x[0-9]+@[0-9]+(\\.[0-9]+)?$")) | not then
+        error("mode must be \"preferred\" or WIDTHxHEIGHT@REFRESH: " + $identity)
+      else . end
+    | (.x // 0) as $x
+    | (.y // 0) as $y
+    | if ($x | type) != "number" or ($x | floor) != $x then
+        error("x must be an integer: " + $identity)
+      elif ($y | type) != "number" or ($y | floor) != $y then
+        error("y must be an integer: " + $identity)
+      else . end
+    | (.scale // 1) as $scale
+    | if ($scale | type) != "number" or $scale <= 0 or $scale > 10 then
+        error("scale must be a number in (0, 10]: " + $identity)
+      else . end
+    | (.transform // 0) as $transform
+    | if ($transform | type) != "number" or ($transform | floor) != $transform
+         or $transform < 0 or $transform > 7 then
+        error("transform must be an integer 0-7: " + $identity)
+      else . end
+    | (if (.enabled == null) then true else .enabled end) as $enabled
+    | if ($enabled | type) != "boolean" then
+        error("enabled must be a boolean: " + $identity)
+      else . end
+    | {
+        identity: $identity,
+        mode: $mode,
+        x: ($x | floor),
+        y: ($y | floor),
+        scale: $scale,
+        transform: ($transform | floor),
+        enabled: $enabled
+      }
+  )
+| . as $normalized
+| if (($normalized | map(.identity) | unique | length) != ($normalized | length)) then
+    error("layout has duplicate monitor identities")
+  elif (($normalized | map(select(.enabled)) | length) == 0) then
+    error("layout disables every monitor")
+  else $normalized end
+JQ
+
+# Reads the raw layout from stdin, prints the normalized array on stdout, or
+# fails the whole script with jq's error message on stderr.
+validate_layout() {
+  local raw
+  raw=$(cat)
+  jq -e -c "$VALIDATE_FILTER" <<<"$raw"
+}
+
+# ---------------------------------------------------------------------------
+# Identity -> safe Lua string literal
+# ---------------------------------------------------------------------------
+
+# `identity` is interpolated into a Lua string literal handed to `hyprctl
+# eval`. A `desc:` identity carries a monitor's free-form EDID description
+# (manufacturer/model text), which can contain characters a naive
+# interpolation would let break out of the string. Fail closed rather than
+# attempt to escape everything: reject control characters, quotes, and
+# backslashes instead of guessing at a safe encoding. A bare connector name
+# is restricted to the same charset omarchy-hyprland-monitor-scaling already
+# requires for the same reason.
+lua_output_literal() {
+  local identity="$1"
+
+  if [[ $identity == desc:* ]]; then
+    local desc="${identity#desc:}"
+    if [[ -z $desc ]]; then
+      echo "Refusing empty monitor description" >&2
+      return 1
+    fi
+    if [[ $desc == *$'\n'* || $desc == *$'\t'* || $desc == *'"'* || $desc == *'\'* ]]; then
+      echo "Refusing unsafe monitor description: $desc" >&2
+      return 1
+    fi
+    printf 'desc:%s' "$desc"
+    return 0
+  fi
+
+  if [[ $identity =~ ^[A-Za-z0-9._-]+$ ]]; then
+    printf '%s' "$identity"
+    return 0
+  fi
+
+  echo "Refusing unsafe monitor identity: $identity" >&2
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# Audit log (mirrors omarchy-hyprland-monitor-scaling's audit trail)
+# ---------------------------------------------------------------------------
+
+cmdline_for_pid() {
+  local pid="$1"
+
+  [[ -r /proc/$pid/cmdline ]] || return 0
+  tr '\0\t\n' '   ' <"/proc/$pid/cmdline" | sed -E 's/[[:space:]]+/ /g; s/[[:space:]]+$//'
+}
+
+audit_arrange() {
+  local action="$1"
+  local detail="$2"
+  local parent_pid="$PPID"
+  local grandparent_pid
+  local parent_cmd
+  local grandparent_cmd
+
+  mkdir -p "$STATE_DIR" || return 0
+
+  grandparent_pid=$(ps -o ppid= -p "$parent_pid" 2>/dev/null | tr -d ' ')
+  parent_cmd=$(cmdline_for_pid "$parent_pid")
+  grandparent_cmd=$(cmdline_for_pid "$grandparent_pid")
+
+  if ! printf 'at=%s\taction=%s\tdetail=%s\tpid=%s\tppid=%s\tparent=%s\tgppid=%s\tgrandparent=%s\n' \
+    "$(date --iso-8601=seconds)" \
+    "$action" \
+    "$detail" \
+    "$$" \
+    "$parent_pid" \
+    "$parent_cmd" \
+    "$grandparent_pid" \
+    "$grandparent_cmd" >>"$ARRANGE_LOG"; then
+    return 0
+  fi
+}
+
+json_result() {
+  local success="$1"
+  local message="$2"
+
+  jq -n -c --argjson success "$success" --arg message "$message" '{success: $success, message: $message}'
+}
+
+# ---------------------------------------------------------------------------
+# apply: transient, live only
+# ---------------------------------------------------------------------------
+
+cmd_apply() {
+  local normalized
+  if ! normalized=$(validate_layout); then
+    json_result false "invalid layout"
+    return 1
+  fi
+
+  local statements=()
+  local identity mode x y scale transform enabled output_literal disabled_field
+  local entry
+  while IFS= read -r entry; do
+    identity=$(jq -r '.identity' <<<"$entry")
+    mode=$(jq -r '.mode' <<<"$entry")
+    x=$(jq -r '.x' <<<"$entry")
+    y=$(jq -r '.y' <<<"$entry")
+    scale=$(jq -r '.scale' <<<"$entry")
+    transform=$(jq -r '.transform' <<<"$entry")
+    enabled=$(jq -r '.enabled' <<<"$entry")
+
+    if ! output_literal=$(lua_output_literal "$identity"); then
+      json_result false "unsafe monitor identity: $identity"
+      return 1
+    fi
+
+    disabled_field=""
+    [[ $enabled == "false" ]] && disabled_field=", disabled = true"
+
+    statements+=("hl.monitor({ output = \"$output_literal\", mode = \"$mode\", position = \"${x}x${y}\", scale = $scale, transform = $transform$disabled_field })")
+  done < <(jq -c '.[]' <<<"$normalized")
+
+  local combined
+  combined=$(IFS='; '; echo "${statements[*]}")
+
+  local result
+  result=$(hyprctl eval "$combined" 2>&1) || {
+    audit_arrange "apply-failed" "$result"
+    json_result false "$result"
+    return 1
+  }
+
+  if [[ $result != "ok" ]]; then
+    audit_arrange "apply-rejected" "$result"
+    json_result false "$result"
+    return 1
+  fi
+
+  audit_arrange "apply" "${#statements[@]} monitor(s)"
+  json_result true "applied ${#statements[@]} monitor(s)"
+}
+
+# ---------------------------------------------------------------------------
+# persist: managed-block rewrite, live untouched
+# ---------------------------------------------------------------------------
+
+render_lua_entry() {
+  local entry="$1"
+  local identity mode x y scale transform enabled output_literal disabled_field
+
+  identity=$(jq -r '.identity' <<<"$entry")
+  mode=$(jq -r '.mode' <<<"$entry")
+  x=$(jq -r '.x' <<<"$entry")
+  y=$(jq -r '.y' <<<"$entry")
+  scale=$(jq -r '.scale' <<<"$entry")
+  transform=$(jq -r '.transform' <<<"$entry")
+  enabled=$(jq -r '.enabled' <<<"$entry")
+
+  output_literal=$(lua_output_literal "$identity") || return 1
+
+  disabled_field=""
+  [[ $enabled == "false" ]] && disabled_field=", disabled = true"
+
+  printf 'hl.monitor({ output = "%s", mode = "%s", position = "%sx%s", scale = %s, transform = %s%s })\n' \
+    "$output_literal" "$mode" "$x" "$y" "$scale" "$transform" "$disabled_field"
+}
+
+cmd_persist() {
+  local normalized
+  if ! normalized=$(validate_layout); then
+    json_result false "invalid layout"
+    return 1
+  fi
+
+  local block=""
+  local entry line
+  while IFS= read -r entry; do
+    line=$(render_lua_entry "$entry") || {
+      json_result false "unsafe monitor identity in layout"
+      return 1
+    }
+    # Command substitution strips the trailing newline render_lua_entry
+    # printed, so it has to be put back explicitly or every entry after the
+    # first collapses onto one line.
+    block+="$line"$'\n'
+  done < <(jq -c '.[]' <<<"$normalized")
+
+  mkdir -p "$(dirname "$MONITORS_LUA")"
+
+  if [[ -f $MONITORS_LUA ]]; then
+    local begin_count end_count
+    begin_count=$(grep -c -F -- "$MANAGED_BEGIN" "$MONITORS_LUA" || true)
+    end_count=$(grep -c -F -- "$MANAGED_END" "$MONITORS_LUA" || true)
+
+    if (( begin_count > 1 || end_count > 1 )); then
+      json_result false "monitors.lua has more than one managed block marker; refusing to guess"
+      return 1
+    fi
+
+    if (( begin_count == 1 && end_count == 0 )) || (( begin_count == 0 && end_count == 1 )); then
+      json_result false "monitors.lua has an unbalanced managed block marker; refusing to guess"
+      return 1
+    fi
+
+    local backup="${MONITORS_LUA}.bak.$(date +%s)"
+    cp "$MONITORS_LUA" "$backup"
+
+    local rewritten
+    rewritten=$(mktemp)
+    if (( begin_count == 1 && end_count == 1 )); then
+      # Replace strictly between the two markers, leaving everything else in
+      # the file — a user's own hl.env calls, comments, whatever precedes or
+      # follows — byte-for-byte untouched.
+      awk -v begin="$MANAGED_BEGIN" -v end="$MANAGED_END" -v block="$block" '
+        $0 == begin { print; printf "%s", block; skipping = 1; next }
+        $0 == end { skipping = 0; print; next }
+        skipping { next }
+        { print }
+      ' "$MONITORS_LUA" >"$rewritten"
+    else
+      # No managed block yet: adopt the file by appending one, leaving all
+      # existing content untouched rather than rewriting anything in place.
+      cp "$MONITORS_LUA" "$rewritten"
+      {
+        printf '\n%s\n' "$MANAGED_BEGIN"
+        printf '%s' "$block"
+        printf '%s\n' "$MANAGED_END"
+      } >>"$rewritten"
+    fi
+    mv "$rewritten" "$MONITORS_LUA"
+    audit_arrange "persist" "updated $MONITORS_LUA (backup: $backup)"
+  else
+    {
+      printf '%s\n' "$MANAGED_BEGIN"
+      printf '%s' "$block"
+      printf '%s\n' "$MANAGED_END"
+    } >"$MONITORS_LUA"
+    audit_arrange "persist" "created $MONITORS_LUA"
+  fi
+
+  json_result true "persisted arrangement to $MONITORS_LUA"
+}
+
+# ---------------------------------------------------------------------------
+
+case "${1:-}" in
+  validate)
+    validate_layout
+    ;;
+  apply)
+    cmd_apply
+    ;;
+  persist)
+    cmd_persist
+    ;;
+  -h | --help | "")
+    usage
+    ;;
+  *)
+    usage >&2
+    exit 1
+    ;;
+esac
