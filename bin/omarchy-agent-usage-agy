@@ -1,0 +1,238 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Antigravity usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Antigravity (agy) usage into one display-ready JSON record.
+
+Scans local session/transcript logs under ~/.gemini/antigravity-cli (or AGY/Gemini
+data directories) to summarize token usage, prompts, and models for the agents panel.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+import sys
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "agy"
+AGENT_NAME = "Antigravity"
+
+
+def expand_path(value: str) -> Path:
+  return Path(os.path.expandvars(os.path.expanduser(value))).resolve()
+
+
+def cache_root() -> Path:
+  root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "omarchy" / "agent-usage"
+  root.mkdir(parents=True, exist_ok=True)
+  return root
+
+
+def date_string(value: dt.date) -> str:
+  return value.strftime("%Y-%m-%d")
+
+
+def recent_date_strings() -> list[str]:
+  today = dt.datetime.now().date()
+  return [date_string(today - dt.timedelta(days=offset)) for offset in range(6, -1, -1)]
+
+
+def local_date_string() -> str:
+  return date_string(dt.datetime.now().date())
+
+
+def local_date_from_timestamp(value: Any) -> str:
+  if value is None:
+    return local_date_string()
+
+  if isinstance(value, (int, float)):
+    try:
+      seconds = float(value) / 1000.0 if float(value) > 10_000_000_000 else float(value)
+      return date_string(dt.datetime.fromtimestamp(seconds).date())
+    except Exception:
+      return local_date_string()
+
+  raw = str(value).strip()
+  if not raw:
+    return local_date_string()
+
+  try:
+    parsed = dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    if parsed.tzinfo is not None:
+      parsed = parsed.astimezone()
+    return date_string(parsed.date())
+  except Exception:
+    return local_date_string()
+
+
+def number(value: Any) -> int:
+  try:
+    n = float(value or 0)
+    return round(n) if n == n else 0
+  except Exception:
+    return 0
+
+
+def empty_bucket() -> dict[str, int]:
+  return {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  }
+
+
+def scan_agy_sessions() -> dict[str, Any]:
+  today = local_date_string()
+  recent_dates = recent_date_strings()
+  recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
+
+  seen: set[str] = set()
+  sessions: set[str] = set()
+  active_days: set[str] = set()
+  today_sessions: set[str] = set()
+  today_tokens: dict[str, int] = {}
+  usage_by_model: dict[str, dict[str, int]] = {}
+  prompts = 0
+  today_prompt_count = 0
+  today_token_total = 0
+
+  session_dirs = [
+    expand_path(os.environ.get("AGY_DATA_DIR") or "~/.gemini/antigravity-cli/brain"),
+    expand_path("~/.antigravity/brain"),
+    expand_path("~/.gemini/brain"),
+  ]
+
+  for sdir in session_dirs:
+    if not sdir.is_dir():
+      continue
+    files = list(sdir.rglob("*.jsonl")) + list(sdir.rglob("*.json"))
+    for path in files:
+      try:
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+          for line_number, line in enumerate(handle, 1):
+            if '"usage"' not in line and '"tool_calls"' not in line and '"step_index"' not in line:
+              continue
+            try:
+              entry = json.loads(line)
+            except Exception:
+              continue
+
+            if not isinstance(entry, dict):
+              continue
+
+            step_type = entry.get("type")
+            source = entry.get("source")
+            content = entry.get("content") or ""
+            thinking = entry.get("thinking") or ""
+            created_at = entry.get("created_at") or entry.get("timestamp")
+            day = local_date_from_timestamp(created_at)
+            session_key = str(path.parent.parent.name if "logs" in path.parts else path.parent.name)
+            sessions.add(session_key)
+            active_days.add(day)
+
+            model = "gemini-3.7-flash"
+            if "Model Selection" in content:
+              import re
+              m = re.search(r"Model Selection` from [^ ]+ to ([^.\n]+)", content)
+              if m:
+                raw_m = m.group(1).strip().lower()
+                if "flash" in raw_m:
+                  model = "gemini-3.7-flash"
+                elif "pro" in raw_m:
+                  model = "gemini-pro"
+                else:
+                  model = raw_m
+
+            if step_type == "USER_INPUT" or source == "USER_EXPLICIT":
+              prompts += 1
+              if day == today:
+                today_prompt_count += 1
+                today_sessions.add(session_key)
+
+            usage = entry.get("usage")
+            input_tokens = 0
+            output_tokens = 0
+            cache_read = 0
+            cache_write = 0
+
+            if isinstance(usage, dict):
+              input_tokens = number(usage.get("input_tokens") or usage.get("prompt_tokens") or usage.get("inputTokens"))
+              output_tokens = number(usage.get("output_tokens") or usage.get("completion_tokens") or usage.get("outputTokens"))
+              cache_read = number(usage.get("cached_tokens") or usage.get("cache_read_input_tokens") or usage.get("cacheReadInputTokens"))
+              cache_write = number(usage.get("cache_creation_input_tokens") or usage.get("cacheCreationInputTokens"))
+              model = str(entry.get("model") or entry.get("model_name") or model)
+            else:
+              if step_type == "USER_INPUT" or source == "USER_EXPLICIT":
+                input_tokens = max(1, len(content) // 4)
+              elif source == "MODEL" or step_type == "PLANNER_RESPONSE":
+                output_tokens = max(1, (len(content) + len(thinking)) // 4)
+              elif content:
+                input_tokens = max(1, len(content) // 4)
+
+            total = input_tokens + output_tokens + cache_read + cache_write
+            if total <= 0:
+              continue
+
+            bucket = usage_by_model.setdefault(model, empty_bucket())
+            bucket["inputTokens"] += input_tokens
+            bucket["outputTokens"] += output_tokens
+            bucket["cacheReadInputTokens"] += cache_read
+            bucket["cacheCreationInputTokens"] += cache_write
+
+            if day in recent:
+              recent[day]["messageCount"] += total
+
+            if day == today:
+              today_sessions.add(session_key)
+              today_token_total += total
+              today_tokens[model] = today_tokens.get(model, 0) + total
+      except Exception:
+        continue
+
+  return {
+    "todayPrompts": today_prompt_count,
+    "todaySessions": len(today_sessions),
+    "todayTotalTokens": today_token_total,
+    "todayTokensByModel": today_tokens,
+    "recentDays": [recent[day] for day in recent_dates],
+    "modelUsage": usage_by_model,
+    "totalPrompts": prompts,
+    "totalSessions": len(sessions),
+    "activeDays": len(active_days),
+    "activeDates": sorted(active_days),
+  }
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  parser.parse_args()
+
+  stats = scan_agy_sessions()
+  ready = number(stats.get("totalPrompts")) > 0 or number(stats.get("todayTotalTokens")) > 0
+
+  record = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+    "ready": ready,
+    "hasLocalStats": True,
+    "tierLabel": "",
+    "usageStatusText": "",
+    "authHelpText": "Run `agy auth` or set environment keys to restore usage.",
+    "limits": [],
+  }
+  record.update(stats)
+  print(json.dumps(record, separators=(",", ":"), sort_keys=True))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
