@@ -270,11 +270,24 @@ pass "B: a panel the user disabled stays disabled through clamshell and out of i
 # loads, so the overlay transition takes effect beside the broken config.
 # Rollback under I3 therefore fires on an unreachable or hung reload, not on a
 # Lua error in the user's config. Asserted so a Hyprland that starts failing
-# the reload instead shows up here.
+# the reload instead shows up here — and the transition half is asserted too:
+# both command-driven transitions are made under the rejected config.
+apply_config <<LUA
+$catch_all
+LUA
+await panel_enabled || fail "A5: the panel is enabled before the config breaks" "$(panel)"
 printf 'local x = (\n' >"$monitor_lua"
 status=0
 hyprctl reload >/dev/null 2>&1 || status=$?
 errors=$(hyprctl configerrors 2>/dev/null || true)
 (( status == 0 )) || fail "A5: hyprctl reload exits 0 on a config Hyprland rejects" "exit $status"
 [[ $errors == *monitors.lua* ]] || fail "A5: configerrors names the rejected config" "$errors"
-pass "A5: a rejected config reloads 'ok'; the error surfaces in configerrors"
+set_lid closed
+run_command || fail "A5: the command runs into clamshell beside the rejected config"
+await panel_disabled || fail "A5: the overlay still disables the panel beside the rejected config" "$(panel)"
+[[ -f $overlay && $(< "$overlay") == "$expected_overlay" ]] || fail "A5: the overlay is exact beside the rejected config" "$(cat "$overlay" 2>/dev/null)"
+set_lid open
+run_command || fail "A5: the command runs out of clamshell beside the rejected config"
+await panel_enabled || fail "A5: removing the overlay still enables the panel beside the rejected config" "$(panel)"
+[[ ! -e $overlay ]] || fail "A5: the overlay is gone beside the rejected config"
+pass "A5: a rejected config reloads 'ok' with the error in configerrors, and the overlay transitions still apply beside it"

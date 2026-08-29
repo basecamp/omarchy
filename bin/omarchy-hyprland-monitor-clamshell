@@ -21,14 +21,18 @@ MIRROR_FLAG="$TOGGLES_DIR/internal-monitor-mirror.lua"
 LOCK="${XDG_RUNTIME_DIR:-/tmp}/omarchy-monitor-clamshell.lock"
 
 # Every invocation is serialized, blocking without a deadline so a lid event is
-# queued rather than dropped. What bounds the wait is that every call below
-# that can reach Hyprland carries a timeout, so a hung compositor cannot hold
-# the lock. The timeout is a knob only so tests can hang a stub cheaply.
+# queued rather than dropped. A lock that cannot be taken is a run that must
+# not happen: nothing below may run unserialized. What bounds the wait is that
+# every call below that can reach Hyprland carries a timeout, so a hung
+# compositor cannot hold the lock. The timeout is a knob only so tests can
+# hang a stub cheaply.
 exec 9>"$LOCK"
-flock 9
+flock 9 || exit 1
 
+# TERM at the deadline, KILL a second later: a callee that ignores TERM would
+# otherwise be waited on forever, holding the lock.
 bounded() {
-  timeout "${OMARCHY_HYPRCTL_TIMEOUT:-15}" "$@"
+  timeout --kill-after=1 "${OMARCHY_HYPRCTL_TIMEOUT:-15}" "$@"
 }
 
 # A predicate answers true, false, or unknown: exit 0, its contracted exit 1,
@@ -57,7 +61,11 @@ fi
 # when the toggle it exists to recover is present, since with it absent each
 # would be a no-op that still asks Hyprland several questions every poll. One
 # that fails or times out may have made half of its own transition, so the run
-# stops here rather than carry on over it; the next event or poll runs again.
+# stops here rather than carry on over it. What a killed helper can leave is
+# the helpers' own pre-existing residual, not repaired here: the toggle
+# removes its flag and only then reloads, so one killed between the two leaves
+# the flag absent and the rule still held, a later run sees no flag, and the
+# rule stays until an unrelated reload.
 if [[ -f $MANUAL_DISABLE_FLAG ]]; then
   bounded omarchy-hyprland-monitor-internal recover >/dev/null 2>&1 || exit 0
 fi

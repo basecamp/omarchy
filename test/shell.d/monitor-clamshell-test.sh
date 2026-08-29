@@ -34,7 +34,8 @@ mkdir -p "$stub_bin" "$toggles" "$home_dir/.config/hypr" "$run_dir" "$ctl"
 
 # Every collaborator is a stub that logs what it was asked and answers as the
 # control directory says: a file named hang-<stub> makes it sleep past the
-# command's bound; fail-<stub> makes it exit 1; odd-<stub> exit 3.
+# command's bound; stubborn-<stub> makes it ignore TERM while doing so, which
+# only a KILL escalation bounds; fail-<stub> makes it exit 1; odd-<stub> exit 3.
 cat >"$stub_bin/hyprctl" <<'SH'
 #!/bin/bash
 printf 'hyprctl %s\n' "$*" >>"$OMARCHY_TEST_LOG"
@@ -50,7 +51,16 @@ cat >"$stub_bin/omarchy-hyprland-monitor-laptop" <<'SH'
 #!/bin/bash
 printf 'laptop\n' >>"$OMARCHY_TEST_LOG"
 [[ -e $OMARCHY_TEST_CTL/hang-laptop ]] && sleep 5
+[[ -e $OMARCHY_TEST_CTL/stubborn-laptop ]] && { trap '' TERM; sleep 5 >/dev/null 2>&1; }
 cat "$OMARCHY_TEST_CTL/internal"
+SH
+
+# The command's own flock, interposable: fail-flock refuses acquisition, so the
+# refusal path can be walked; otherwise the real flock runs.
+cat >"$stub_bin/flock" <<SH
+#!/bin/bash
+[[ -e \$OMARCHY_TEST_CTL/fail-flock ]] && exit 1
+exec $(command -v flock) "\$@"
 SH
 
 for predicate in omarchy-hw-clamshell omarchy-hyprland-monitor-external-active; do
@@ -71,6 +81,7 @@ for helper in internal internal-mirror; do
 #!/bin/bash
 printf 'helper $helper %s\n' "\$*" >>"\$OMARCHY_TEST_LOG"
 [[ -e \$OMARCHY_TEST_CTL/hang-helper-$helper ]] && sleep 5
+[[ -e \$OMARCHY_TEST_CTL/stubborn-helper-$helper ]] && { trap '' TERM; sleep 5 >/dev/null 2>&1; }
 [[ -e \$OMARCHY_TEST_CTL/fail-helper-$helper ]] && exit 1
 if [[ -e \$OMARCHY_TEST_CTL/stale-helper-$helper ]]; then
   rm -f "\$OMARCHY_TEST_FLAG_$(tr '-' '_' <<<"$helper")"
@@ -337,6 +348,17 @@ hang_case() {
   flock -n "$lock" true || fail "T3 hang ($what): the lock is released"
   eval "$check" || fail "T3 hang ($what): the conservative outcome"
 }
+# A callee that ignores TERM: only the KILL escalation bounds it. The same
+# assertions as a hang, held under the harder stub.
+stubborn_case() {
+  local what="$1" prep="$2" check="$3"
+  reset_state; eval "$prep"; touch "$ctl/stubborn-$what"
+  started=$SECONDS; run_command || true; elapsed=$(( SECONDS - started ))
+  (( elapsed <= bound + 3 )) || fail "T3 stubborn ($what): the command finishes within the bound and the kill grace" "elapsed ${elapsed}s"
+  flock -n "$lock" true || fail "T3 stubborn ($what): the lock is released"
+  eval "$check" || fail "T3 stubborn ($what): the conservative outcome"
+}
+
 still_stale='overlay_equals "$stale_overlay" && (( $(reloads) == 0 ))'
 hang_case laptop 'clamshell; stale' "$still_stale"
 hang_case clamshell 'printf 0 >"$ctl/active"; stale' "$still_stale"
@@ -346,7 +368,17 @@ hang_case reload 'clamshell' '[[ ! -e $overlay_file ]] && (( $(reloads) == 1 ))'
 hang_case dispatch 'stale' '[[ ! -e $overlay_file ]] && (( $(reloads) == 1 && $(dispatches) == 1 ))'
 hang_case helper-internal 'touch "$manual_flag"; stale' "$still_stale"
 hang_case helper-internal-mirror 'touch "$mirror_flag"; stale' "$still_stale"
+stubborn_case laptop 'clamshell; stale' "$still_stale"
+stubborn_case helper-internal 'touch "$manual_flag"; stale' "$still_stale"
 pass "T3: every call class is bounded, releases the lock, and fails toward untouched"
+
+# A lock that cannot be taken is a run that must not happen: exit 1 before any
+# lookup, helper or transition.
+reset_state; clamshell; touch "$manual_flag" "$ctl/fail-flock"
+! run_command || fail "T3 flock: a lock that cannot be taken exits non-zero"
+[[ ! -s $log ]] || fail "T3 flock: no collaborator is called unserialized" "$(cat "$log")"
+[[ ! -e $overlay_file ]] || fail "T3 flock: no transition is made unserialized"
+pass "T3: a lock that cannot be taken stops the run before any effect"
 
 # The hosted helpers: not entered without their flags; entered and ordered with them; a failure stops the run.
 reset_state; run_command || true
