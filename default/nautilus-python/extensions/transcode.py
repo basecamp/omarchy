@@ -1,4 +1,3 @@
-import shlex
 import shutil
 
 from gi import require_version
@@ -22,16 +21,22 @@ class TranscodeAction(GObject.GObject, Nautilus.MenuProvider):
         if not wrapper or not binary:
             return
 
+        # The wrapper takes a command and its arguments as separate words, so a
+        # path travels as an argument rather than as a line of shell it would
+        # have to be quoted back out of.
         if len(paths) == 1:
-            cmd = shlex.join([binary, paths[0]])
+            argv = [wrapper, binary, paths[0]]
         else:
-            cmd = "; ".join(
-                f"echo {shlex.quote(f'Transcoding {path}')} && "
-                f"{shlex.join([binary, path])} || true"
-                for path in paths
-            )
+            argv = [
+                wrapper,
+                "bash",
+                "-c",
+                'for path; do echo "Transcoding $path" && "$0" "$path" || true; done',
+                binary,
+                *paths,
+            ]
 
-        Gio.Subprocess.new([wrapper, cmd], Gio.SubprocessFlags.NONE)
+        Gio.Subprocess.new(argv, Gio.SubprocessFlags.NONE)
 
     def _is_supported(self, file):
         mime = file.get_mime_type() or ""
