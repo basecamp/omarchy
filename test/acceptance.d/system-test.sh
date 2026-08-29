@@ -83,6 +83,7 @@ verify_printing_security() {
 
   for path in \
     /etc/cups/cups-browsed.conf \
+    /etc/cups/cups-browsed.conf.pacsave \
     /usr/bin/cups-browsed \
     /usr/lib/cups/backend/implicitclass \
     /usr/lib/systemd/system/cups-browsed.service \
