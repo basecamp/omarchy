@@ -124,7 +124,9 @@ cat >"$stub_dir/setsid" <<'STUB'
 #!/bin/bash
 while (( $# >= 3 )); do
   if [[ $1 == "bash" && $2 == "-c" ]]; then
-    exec bash -c "$3"
+    # The wrapper passes the wrapped command's words after the script, so hand
+    # them on: dropping them would leave "$@" empty and run nothing at all.
+    exec bash -c "$3" "${@:4}"
   fi
   shift
 done
