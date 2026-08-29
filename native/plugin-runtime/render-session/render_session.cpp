@@ -22,8 +22,10 @@ const wire::RoleSchemaRegistryView &schemas() {
 
 HostRenderSession::HostRenderSession(std::uint64_t launch_generation,
                                      surface::TrustedFrameSink &sink,
-                                     PacketSender &sender)
-    : generation_(launch_generation), sink_(sink), sender_(sender) {}
+                                     PacketSender &sender,
+                                     std::uint64_t correlation_base)
+    : generation_(launch_generation), correlation_base_(correlation_base),
+      sink_(sink), sender_(sender) {}
 
 HostRenderSession::~HostRenderSession() {
   if (phase_ != Phase::idle && phase_ != Phase::failed &&
@@ -53,7 +55,7 @@ bool HostRenderSession::start(const surface::TrustedAllocation &allocation) {
   phase_ = Phase::awaiting_profile;
   return send(
       static_cast<std::uint16_t>(surface::RenderMessageType::profile_offer),
-      offer, 1);
+      offer, correlation_base_ + 1);
 }
 
 bool HostRenderSession::send(std::uint16_t message_type,
@@ -110,7 +112,7 @@ bool HostRenderSession::handle(const wire::PacketView &packet) {
     phase_ = Phase::awaiting_allocation;
     const bool sent = send(static_cast<std::uint16_t>(
                                surface::RenderMessageType::surface_allocate),
-                           payload, 2, descriptors);
+                           payload, correlation_base_ + 2, descriptors);
     ::close(descriptor);
     return sent;
   }

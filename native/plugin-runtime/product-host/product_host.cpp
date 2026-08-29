@@ -401,4 +401,28 @@ bool update_permission_availability(headless::Session &session,
              std::chrono::seconds(5));
 }
 
+bool bind_surface_session(headless::Session &session,
+                          const PreparedPlugin &prepared,
+                          std::string_view surface, std::uint64_t surface_id,
+                          std::uint64_t surface_generation) {
+  MultiSurfaceActivation activation(prepared);
+  if (session.binding().plugin != prepared.binding.plugin ||
+      session.binding().revision != prepared.binding.revision ||
+      session.binding().policy_fingerprint !=
+          prepared.binding.policy_fingerprint ||
+      session.binding().generation != prepared.binding.generation ||
+      !activation.qml_entry(surface))
+    return false;
+  const auto payload = omarchy::plugin::wire::encode_surface_binding(
+      {.id = surface_id,
+       .generation = surface_generation,
+       .surface = std::string(surface)});
+  return !payload.empty() &&
+         session.send_control(omarchy::plugin::wire::kSurfaceBindingMessage,
+                              payload) &&
+         session.receive_control_ack(
+             omarchy::plugin::wire::kSurfaceBindingAcceptedMessage,
+             std::chrono::seconds(5));
+}
+
 } // namespace omarchy::plugin_runtime::product_host

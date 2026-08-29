@@ -213,7 +213,9 @@ std::unique_ptr<HostSurface> HostSurface::create(
       !valid_policy_enums(policy) || policy.plugin_id != bound_plugin ||
       !exact_revision_digest(bound_revision) ||
       !exact_revision_digest(bound_policy) || binding.generation == 0 ||
-      surface_id == 0 || logical_width == 0 || logical_height == 0 ||
+      surface_id == 0 ||
+      surface_id > (std::numeric_limits<std::uint64_t>::max() - 2) / 4 ||
+      logical_width == 0 || logical_height == 0 ||
       logical_width > policy.maximum_width ||
       logical_height > policy.maximum_height || dpr_numerator == 0 ||
       dpr_denominator == 0 || input_sink == nullptr)
@@ -263,7 +265,8 @@ HostSurface::HostSurface(NamedSurfacePolicy policy,
       allocation_(allocation), bridge_item_(bridge_item),
       input_transport_(std::make_shared<bridge::AuthenticatedInputTransport>(
           binding_.generation, std::move(input_sink))),
-      render_session_(binding_.generation, bridge_item, render_sender),
+      render_session_(binding_.generation, bridge_item, render_sender,
+                      allocation.surface.id * 4),
       inspection_authority_(inspection_authority), clock_(clock) {
   bridge_item_.bindTransport(input_transport_);
 }

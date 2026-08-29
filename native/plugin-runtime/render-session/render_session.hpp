@@ -46,7 +46,8 @@ struct Statistics {
 class HostRenderSession final {
 public:
   HostRenderSession(std::uint64_t launch_generation,
-                    surface::TrustedFrameSink &sink, PacketSender &sender);
+                    surface::TrustedFrameSink &sink, PacketSender &sender,
+                    std::uint64_t correlation_base = 0);
   ~HostRenderSession();
   HostRenderSession(const HostRenderSession &) = delete;
   HostRenderSession &operator=(const HostRenderSession &) = delete;
@@ -68,6 +69,7 @@ private:
   bool handle(const wire::PacketView &packet);
 
   std::uint64_t generation_ = 0;
+  std::uint64_t correlation_base_ = 0;
   surface::TrustedFrameSink &sink_;
   PacketSender &sender_;
   std::unique_ptr<wire::SelectedEndpointState<8>> endpoint_;

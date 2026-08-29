@@ -72,6 +72,10 @@ public:
   // steady-state filter. No plugin source is parsed or executed here.
   [[nodiscard]] RuntimeResult prepare_trusted_qt_types();
   [[nodiscard]] RuntimeResult load_entry(std::string entry_path);
+  [[nodiscard]] RuntimeResult load_surface_entry(std::string surface_name,
+                                                 std::string entry_path);
+  [[nodiscard]] RuntimeResult bind_surface(std::string_view surface_name,
+                                           surface::SurfaceKey surface);
   [[nodiscard]] RuntimeResult bind_runtime_api(QObject &runtime_api);
   [[nodiscard]] RuntimeResult
   select_software_profile(const surface::ProfileOffer &offer);
@@ -90,7 +94,8 @@ public:
   void request_render();
   [[nodiscard]] std::optional<PublishedFrame> render();
   [[nodiscard]] std::optional<surface::InputRegionUpdate>
-  input_region_update(std::uint64_t generation) const;
+  input_region_update(surface::SurfaceKey surface,
+                      std::uint64_t generation) const;
 
   [[nodiscard]] bool loaded() const;
   [[nodiscard]] bool allocated() const;

@@ -179,5 +179,9 @@ private:
 // channel. Revocation/update callers rebuild it from the current grant store.
 [[nodiscard]] bool update_permission_availability(
     headless::Session &session, const PreparedPlugin &prepared);
+[[nodiscard]] bool bind_surface_session(
+    headless::Session &session, const PreparedPlugin &prepared,
+    std::string_view surface, std::uint64_t surface_id,
+    std::uint64_t surface_generation);
 
 } // namespace omarchy::plugin_runtime::product_host

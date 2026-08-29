@@ -774,32 +774,64 @@ int preview(const QStringList &arguments, QGuiApplication &application,
                           << QString::fromStdString(started.detail);
     return 78;
   }
-  const auto &policy = prepared.prepared->surfaces.front();
-  const auto width = std::min<std::uint32_t>(policy.maximum_width, 640);
-  const auto height = std::min<std::uint32_t>(policy.maximum_height, 480);
-  QQuickWindow window;
-  window.resize(static_cast<int>(width), static_cast<int>(height));
-  window.setTitle(QStringLiteral("Omarchy secure plugin preview: ") + QString::fromStdString(parsed.name));
-  bridge::RemotePluginSurface surface(window.contentItem());
-  surface.setWidth(width);
-  surface.setHeight(height);
   auto transport = std::make_shared<Transport>(*started.session);
   Inspection inspection;
   Clock clock;
-  auto hosted = surface_host::HostSurface::create(
-      policy, prepared.prepared->binding, 1, width, height, 1, 1, surface,
-      *transport, transport, inspection, clock);
-  if (!hosted) {
+  struct PreviewSurface {
+    std::unique_ptr<QQuickWindow> window;
+    std::unique_ptr<bridge::RemotePluginSurface> bridge;
+    std::unique_ptr<surface_host::HostSurface> hosted;
+    std::unique_ptr<PreviewPointerBridge> pointer;
+    std::unique_ptr<PreviewInputRegionBridge> input_regions;
+  };
+  std::vector<PreviewSurface> previews;
+  previews.reserve(prepared.prepared->surfaces.size());
+  bool composition_failed = false;
+  for (std::size_t index = 0; index < prepared.prepared->surfaces.size();
+       ++index) {
+    const auto &policy = prepared.prepared->surfaces[index];
+    const auto width = std::min<std::uint32_t>(policy.maximum_width, 640);
+    const auto height = std::min<std::uint32_t>(policy.maximum_height, 480);
+    const auto surface_id = static_cast<std::uint64_t>(index + 1);
+    if (!host::bind_surface_session(
+            *started.session, *prepared.prepared, policy.surface_name,
+            surface_id, prepared.prepared->binding.generation)) {
+      composition_failed = true;
+      break;
+    }
+    PreviewSurface preview;
+    preview.window = std::make_unique<QQuickWindow>();
+    preview.window->resize(static_cast<int>(width), static_cast<int>(height));
+    preview.window->setTitle(
+        QStringLiteral("Omarchy secure plugin preview: ") +
+        QString::fromStdString(parsed.name) + QStringLiteral(" — ") +
+        QString::fromStdString(policy.surface_name));
+    preview.bridge = std::make_unique<bridge::RemotePluginSurface>(
+        preview.window->contentItem());
+    preview.bridge->setWidth(width);
+    preview.bridge->setHeight(height);
+    preview.hosted = surface_host::HostSurface::create(
+        policy, prepared.prepared->binding, surface_id, width, height, 1, 1,
+        *preview.bridge, *transport, transport, inspection, clock);
+    if (!preview.hosted) {
+      composition_failed = true;
+      break;
+    }
+    preview.pointer =
+        std::make_unique<PreviewPointerBridge>(*preview.hosted);
+    preview.input_regions =
+        std::make_unique<PreviewInputRegionBridge>(*preview.hosted);
+    preview.bridge->bindHostPointerRouter(*preview.pointer);
+    preview.bridge->bindHostInputRegionRouter(*preview.input_regions);
+    previews.push_back(std::move(preview));
+  }
+  if (composition_failed || previews.empty()) {
 #ifdef OMARCHY_PLUGIN_PRODUCT_E2E
     std::cerr << "PRODUCT_E2E host surface creation failed\n";
     qCritical() << "PRODUCT_E2E host surface creation failed";
 #endif
     return 78;
   }
-  PreviewPointerBridge pointer_bridge(*hosted);
-  PreviewInputRegionBridge input_region_bridge(*hosted);
-  surface.bindHostPointerRouter(pointer_bridge);
-  surface.bindHostInputRegionRouter(input_region_bridge);
   QTimer pump;
   std::uint64_t observed_grant_mutation = state.mutation_sequence;
 #ifdef OMARCHY_PLUGIN_PRODUCT_E2E
@@ -882,10 +914,31 @@ int preview(const QStringList &arguments, QGuiApplication &application,
     }
     auto message = started.session->receive_render(std::chrono::milliseconds(1));
     if (message) {
-      if (!hosted->receive_render(message.payload) &&
-          !hosted->inspection().render_active) {
-        const auto decoded = wire::decode_packet(
-            message.payload, wire::EndpointRole::render);
+      const auto decoded = wire::decode_packet(
+          message.payload, wire::EndpointRole::render);
+      std::uint64_t target_surface_id = 0;
+      if (decoded && decoded.packet.header.correlation_id != 0) {
+        target_surface_id = decoded.packet.header.correlation_id / 4;
+      } else if (decoded) {
+        const auto type = static_cast<surface::RenderMessageType>(
+            decoded.packet.header.message_type);
+        if (type == surface::RenderMessageType::frame_ready) {
+          surface::FrameReady frame{};
+          if (surface::decode_frame_ready(decoded.packet.payload, frame))
+            target_surface_id = frame.surface.id;
+        } else if (type == surface::RenderMessageType::input_regions) {
+          surface::InputRegionUpdate regions{};
+          if (surface::decode_input_region_update(decoded.packet.payload,
+                                                   regions))
+            target_surface_id = regions.surface.id;
+        }
+      }
+      auto target = std::ranges::find_if(previews, [&](const auto &preview) {
+        return preview.hosted->allocation().surface.id == target_surface_id;
+      });
+      if (target == previews.end() ||
+          (!target->hosted->receive_render(message.payload) &&
+           !target->hosted->inspection().render_active)) {
         if (decoded)
           qCritical() << "omarchy-plugin-host: host surface rejected render packet"
                       << decoded.packet.header.message_type
@@ -895,7 +948,7 @@ int preview(const QStringList &arguments, QGuiApplication &application,
         application.exit(79);
       }
 #ifdef OMARCHY_PLUGIN_PRODUCT_E2E
-      const auto &image = surface.ownedImage();
+      const auto &image = target->bridge->ownedImage();
       if (!image.isNull()) {
         ++render_packets;
         if (observed_grant_mutation > startup_grant_mutation)
@@ -920,11 +973,11 @@ int preview(const QStringList &arguments, QGuiApplication &application,
                     "OMARCHY_PLUGIN_E2E_CLICK_AFTER_MUTATION"))) {
           const auto x = qEnvironmentVariableIntValue("OMARCHY_PLUGIN_E2E_CLICK_X");
           const auto y = qEnvironmentVariableIntValue("OMARCHY_PLUGIN_E2E_CLICK_Y");
-          injected_pointer = pointer_bridge.route(
+          injected_pointer = previews.front().pointer->route(
               {.x = static_cast<qreal>(x), .y = static_cast<qreal>(y),
                .button = Qt::LeftButton, .pressed = true,
                .application_synthesized = false}) &&
-              pointer_bridge.route(
+              previews.front().pointer->route(
                   {.x = static_cast<qreal>(x), .y = static_cast<qreal>(y),
                    .button = Qt::LeftButton, .pressed = false,
                    .application_synthesized = false});
@@ -967,7 +1020,8 @@ int preview(const QStringList &arguments, QGuiApplication &application,
     }
   });
   pump.start(4);
-  window.show();
+  for (auto &preview : previews)
+    preview.window->show();
   return application.exec();
 }
 } // namespace

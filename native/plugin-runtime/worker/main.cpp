@@ -190,6 +190,10 @@ private:
         apply_surface_selection(std::move(packet));
         return;
       }
+      if (packet.header.message_type == wire::kSurfaceBindingMessage) {
+        apply_surface_binding(std::move(packet));
+        return;
+      }
       if (pending_permission_snapshot_ ||
           packet.header.message_type != wire::kPermissionSnapshotMessage ||
           packet.header.correlation_id != 0 || !packet.descriptors.empty()) {
@@ -202,6 +206,10 @@ private:
     if (endpoint.role() == wire::EndpointRole::control && broker_api_) {
       if (packet.header.message_type == wire::kSurfaceSelectionMessage) {
         apply_surface_selection(std::move(packet));
+        return;
+      }
+      if (packet.header.message_type == wire::kSurfaceBindingMessage) {
+        apply_surface_binding(std::move(packet));
         return;
       }
       apply_permission_snapshot(std::move(packet));
@@ -250,9 +258,25 @@ private:
       return;
     }
     selected_entry_ = entry->qml;
+    selected_surface_ = surface;
     surface_selection_received_ = true;
     if (!control_.send(wire::kSurfaceSelectionAcceptedMessage, {}, 0))
       fatal("surface selection acknowledgement failed");
+  }
+
+  void apply_surface_binding(worker::ReceivedPacket packet) {
+    wire::SurfaceBinding binding;
+    if (!runtime_loaded_ || packet.header.correlation_id != 0 ||
+        !packet.descriptors.empty() ||
+        !wire::decode_surface_binding(packet.payload, binding) ||
+        !runtime_.bind_surface(
+            binding.surface,
+            {.id = binding.id, .generation = binding.generation})) {
+      fatal("surface binding failed runtime validation");
+      return;
+    }
+    if (!control_.send(wire::kSurfaceBindingAcceptedMessage, {}, 0))
+      fatal("surface binding acknowledgement failed");
   }
 
   void apply_permission_snapshot(worker::ReceivedPacket packet) {
@@ -270,10 +294,36 @@ private:
       if (!runtime_loaded_ && !runtime_load_pending_) {
         runtime_load_pending_ = true;
         QTimer::singleShot(0, [&] {
-          const auto loaded = runtime_.load_entry(selected_entry_);
-          if (!loaded) {
-            fatal(loaded.detail);
-            return;
+          if (surface_selection_received_) {
+            const auto loaded = runtime_.load_surface_entry(
+                selected_surface_, selected_entry_);
+            if (!loaded) {
+              fatal(loaded.detail);
+              return;
+            }
+          } else if (!manifest_.runtime.surface_qml.empty()) {
+            for (const auto &entry : manifest_.runtime.surface_qml) {
+              const auto loaded =
+                  runtime_.load_surface_entry(entry.surface, entry.qml);
+              if (!loaded) {
+                fatal(loaded.detail);
+                return;
+              }
+            }
+          } else {
+            const auto surfaces = QJsonDocument::fromJson(
+                QByteArray::fromStdString(manifest_.canonical_surfaces));
+            if (!surfaces.isObject() || surfaces.object().size() != 1) {
+              fatal("single-entry runtime requires exactly one surface");
+              return;
+            }
+            const auto loaded = runtime_.load_surface_entry(
+                surfaces.object().begin().key().toStdString(),
+                selected_entry_);
+            if (!loaded) {
+              fatal(loaded.detail);
+              return;
+            }
           }
           runtime_loaded_ = true;
           runtime_load_pending_ = false;
@@ -461,7 +511,8 @@ private:
         fatal(result.detail);
         return;
       }
-      if (type == surface::RenderMessageType::surface_release)
+      if (type == surface::RenderMessageType::surface_release &&
+          !runtime_.active())
         frame_timer_.stop();
       return;
     }
@@ -491,7 +542,8 @@ private:
         fatal(runtime_.last_error());
       return;
     }
-    const auto regions = runtime_.input_region_update(frame->ready.frame_sequence);
+    const auto regions = runtime_.input_region_update(
+        frame->ready.surface, frame->ready.frame_sequence);
     if (regions) {
       const auto region_payload = surface::encode_input_region_update(*regions);
       send_render(static_cast<std::uint16_t>(
@@ -525,6 +577,7 @@ private:
   int frame_interval_ms_ = 17;
   omarchy::plugins::manifest::ManifestV2 manifest_;
   std::string selected_entry_;
+  std::string selected_surface_;
 };
 
 } // namespace

@@ -192,6 +192,91 @@ void render_and_input() {
   require(!runtime.allocated(), "released mapping remained allocated");
 }
 
+void two_surface_activation() {
+  worker::WorkerRuntime runtime(fixture("multi-surface"));
+  const auto loaded_bar = runtime.load_surface_entry("bar", "Bar.qml");
+  if (!loaded_bar)
+    throw std::runtime_error("bar QML did not load: " + loaded_bar.detail);
+  const auto loaded_atlas =
+      runtime.load_surface_entry("atlas", "Atlas.qml");
+  if (!loaded_atlas)
+    throw std::runtime_error("atlas QML did not load: " +
+                             loaded_atlas.detail);
+  require(runtime.object_count() >= 2,
+          "two declared QML roots did not share one runtime");
+  require(static_cast<bool>(runtime.select_software_profile(
+              surface::software_profile_offer())),
+          "multi-surface software profile was not selected");
+  const auto page_size = sysconf(_SC_PAGESIZE);
+  require(page_size > 0, "multi-surface page size unavailable");
+  const auto bar = surface::make_allocation(
+      {.id = 51, .generation = 12}, 72, 48, 72, 48, 1, 1,
+      static_cast<std::uint64_t>(page_size));
+  const auto atlas = surface::make_allocation(
+      {.id = 52, .generation = 12}, 320, 200, 320, 200, 1, 1,
+      static_cast<std::uint64_t>(page_size));
+  require(bar && atlas &&
+              static_cast<bool>(runtime.bind_surface("bar", bar->surface)) &&
+              static_cast<bool>(
+                  runtime.bind_surface("atlas", atlas->surface)),
+          "declared roots did not bind distinct host surface identities");
+
+  const int bar_fd = static_cast<int>(
+      syscall(SYS_memfd_create, "worker-bar-frame", MFD_CLOEXEC));
+  const int atlas_fd = static_cast<int>(
+      syscall(SYS_memfd_create, "worker-atlas-frame", MFD_CLOEXEC));
+  require(bar_fd >= 0 && atlas_fd >= 0 &&
+              ftruncate(bar_fd, static_cast<off_t>(bar->mapping_bytes)) == 0 &&
+              ftruncate(atlas_fd, static_cast<off_t>(atlas->mapping_bytes)) ==
+                  0,
+          "multi-surface frame mappings failed");
+  Mapping bar_mapping(bar_fd, static_cast<std::size_t>(bar->mapping_bytes));
+  Mapping atlas_mapping(atlas_fd,
+                        static_cast<std::size_t>(atlas->mapping_bytes));
+  const int bar_worker_fd = fcntl(bar_fd, F_DUPFD_CLOEXEC, 64);
+  const int atlas_worker_fd = fcntl(atlas_fd, F_DUPFD_CLOEXEC, 64);
+  close(bar_fd);
+  close(atlas_fd);
+  require(bar_worker_fd >= 0 && atlas_worker_fd >= 0 &&
+              static_cast<bool>(runtime.allocate(*bar, bar_worker_fd)) &&
+              static_cast<bool>(runtime.allocate(*atlas, atlas_worker_fd)),
+          "two surface allocations were not admitted independently");
+
+  const auto first = runtime.render();
+  const auto second = runtime.render();
+  require(first && second && first->ready.surface == bar->surface &&
+              second->ready.surface == atlas->surface,
+          "round-robin frames lost per-surface identity");
+  auto bar_consumer = surface::FrameConsumer::create(*bar);
+  auto atlas_consumer = surface::FrameConsumer::create(*atlas);
+  require(bar_consumer && atlas_consumer &&
+              bar_consumer->consume(bar_mapping.bytes(), first->ready) ==
+                  surface::ConsumeResult::accepted &&
+              atlas_consumer->consume(atlas_mapping.bytes(), second->ready) ==
+                  surface::ConsumeResult::accepted &&
+              bar_consumer->last_frame()->pixels !=
+                  atlas_consumer->last_frame()->pixels,
+          "distinct QML roots did not publish distinct trusted frames");
+
+  require(static_cast<bool>(runtime.focus(
+              {.surface = bar->surface, .sequence = 1, .focused = true})) &&
+              static_cast<bool>(runtime.focus(
+                  {.surface = atlas->surface,
+                   .sequence = 1,
+                   .focused = true})),
+          "surface focus gates were not independent");
+  require(static_cast<bool>(runtime.release(bar->surface)) &&
+              runtime.active() &&
+              !static_cast<bool>(runtime.resume(bar->surface)),
+          "one surface teardown damaged or revived another surface");
+  runtime.request_render();
+  const auto survivor = runtime.render();
+  require(survivor && survivor->ready.surface == atlas->surface &&
+              static_cast<bool>(runtime.release(atlas->surface)) &&
+              !runtime.allocated(),
+          "surviving surface did not render and tear down independently");
+}
+
 void device_pixel_ratio_scales_scene_pixels() {
   worker::WorkerRuntime runtime(fixture("expressive"));
   require(static_cast<bool>(runtime.load_manifest_entry()) &&
@@ -407,6 +492,7 @@ int main(int argc, char **argv) {
   try {
     QGuiApplication application(argc, argv);
     render_and_input();
+    two_surface_activation();
     device_pixel_ratio_scales_scene_pixels();
     asynchronous_scene_change_publishes_distinct_frame();
     hostile_loading();

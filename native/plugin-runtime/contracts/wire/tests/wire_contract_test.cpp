@@ -1,4 +1,5 @@
 #include "omarchy/plugin/wire/common.hpp"
+#include "omarchy/plugin/wire/control.hpp"
 #include "omarchy/plugin/wire/role_registry.hpp"
 #include "omarchy/plugin/wire/state.hpp"
 
@@ -435,6 +436,29 @@ void classification_test() {
           "fatal/recoverable classification changed");
 }
 
+void surface_binding_test() {
+  const SurfaceBinding binding{
+      .id = 0x0102030405060708ULL,
+      .generation = 17,
+      .surface = "barWidget"};
+  const auto encoded = encode_surface_binding(binding);
+  SurfaceBinding decoded;
+  require(!encoded.empty() && decode_surface_binding(encoded, decoded) &&
+              decoded.id == binding.id &&
+              decoded.generation == binding.generation &&
+              decoded.surface == binding.surface,
+          "surface binding did not round trip exactly");
+  auto malformed = encoded;
+  malformed[16] = std::byte{64};
+  require(!decode_surface_binding(malformed, decoded),
+          "malformed surface binding length was accepted");
+  malformed = encoded;
+  malformed.back() = std::byte{'/'};
+  require(!decode_surface_binding(malformed, decoded) &&
+              encode_surface_binding({}).empty(),
+          "unsafe or empty surface binding was accepted");
+}
+
 } // namespace
 
 int main() {
@@ -444,6 +468,7 @@ int main() {
     negotiation_test();
     state_test();
     classification_test();
+    surface_binding_test();
     std::cout << "plugin wire contract: PASS\n";
     return 0;
   } catch (const std::exception &error) {
