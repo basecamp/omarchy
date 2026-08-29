@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QGuiApplication>
 #include <QQuickWindow>
+#include <QScreen>
 #include <QStringList>
 #include <QTextStream>
 #include <QTimer>
@@ -458,6 +459,7 @@ bool apply_lab_revocation_update(
     providers::RadioProvider *radio_provider,
     providers::AudioDeviceProvider *audio_device_provider,
     providers::GitHubProvider *github_provider,
+    providers::SystemObserveProvider *system_observe_provider,
     host::PreparedPlugin &prepared,
     headless::Session &session) {
   if (updated.binding != broker_runtime.binding() ||
@@ -549,6 +551,11 @@ bool apply_lab_revocation_update(
       if (github_provider == nullptr)
         return false;
       (void)github_provider->revoke_open(found->grant.epoch);
+    } else if (found->request.definition.canonical_name.view() ==
+               "system.observe") {
+      if (system_observe_provider == nullptr ||
+          !system_observe_provider->revoke(found->grant.epoch))
+        return false;
     } else {
       return false;
     }
@@ -898,8 +905,17 @@ int preview(const QStringList &arguments, QGuiApplication &application,
   for (std::size_t index = 0; index < prepared.prepared->surfaces.size();
        ++index) {
     const auto &policy = prepared.prepared->surfaces[index];
-    const auto width = std::min<std::uint32_t>(policy.maximum_width, 640);
-    const auto height = std::min<std::uint32_t>(policy.maximum_height, 480);
+    const auto desktop = application.primaryScreen()
+                             ? application.primaryScreen()->geometry()
+                             : QRect(0, 0, 640, 480);
+    const auto width = policy.role == surface_host::SurfaceRole::desktop_overlay
+                           ? std::min<std::uint32_t>(policy.maximum_width,
+                               static_cast<std::uint32_t>(desktop.width()))
+                           : std::min<std::uint32_t>(policy.maximum_width, 640);
+    const auto height = policy.role == surface_host::SurfaceRole::desktop_overlay
+                            ? std::min<std::uint32_t>(policy.maximum_height,
+                                static_cast<std::uint32_t>(desktop.height()))
+                            : std::min<std::uint32_t>(policy.maximum_height, 480);
     const auto surface_id = static_cast<std::uint64_t>(index + 1);
     if (!host::bind_surface_session(
             *started.session, *prepared.prepared, policy.surface_name,
@@ -1008,6 +1024,7 @@ int preview(const QStringList &arguments, QGuiApplication &application,
                                            dynamic_runtime.get(), radio_provider.get(),
                                            audio_device_provider.get(),
                                            github_provider.get(),
+                                           system_observe_provider.get(),
                                            *prepared.prepared, *started.session)) {
             std::cerr << "PRODUCT_E2E fatal grant-update-not-exact mutation "
                       << latest.mutation_sequence << '\n';
