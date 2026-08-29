@@ -170,10 +170,11 @@ Item {
     if (serial !== root.launchSerial) return
     launchDelay.stop()
     launchTimeout.stop()
-    if (root.launchOsdOpen) {
-      Quickshell.execDetached(["omarchy-shell", "osd", "close"])
-      root.launchOsdOpen = false
-    }
+    // Always issue close. show/close are separate detached processes; a close
+    // that loses the race to show would otherwise leave duration-0 OSD up, and
+    // the launchOsdOpen guard would then refuse every later close.
+    Quickshell.execDetached(["omarchy-shell", "osd", "close"])
+    root.launchOsdOpen = false
   }
 
   function maybeFinishLaunchFeedback() {
