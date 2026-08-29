@@ -15,6 +15,9 @@ Item {
   readonly property string lowBatterySummary: "Time to recharge!"
   property string pendingPowerSource: ""
   property bool pendingDismiss: false
+  // -1 for none. A level is always 0..threshold when one is owed, because
+  // checkBattery only asks for a warning on a present, discharging battery.
+  property int pendingWarningLevel: -1
 
   PersistentProperties {
     id: persisted
@@ -41,13 +44,20 @@ Item {
   // stays on screen until it is clicked. Take it down once the battery is no
   // longer low, which is normally the moment the charger goes in.
   //
-  // checkBattery clears notifiedLowBattery before this runs, and `dismiss` is
-  // only ever computed from that latch, so a request dropped here is never
-  // recomputed by a later poll and the toast that never expires stays up for
-  // good. Every path therefore either issues the dismiss or holds it: a
-  // warning still in flight has not posted its toast for us to match, and a
-  // dismiss already running cannot carry a second request.
+  // Both commands are spawned, and the dismiss takes down every toast whose
+  // summary contains the headline, so the two must never overlap. A dismiss
+  // racing a warning either matches nothing and strands the toast that lands
+  // just behind it, or sweeps that toast away along with the one it was sent
+  // for. Neither is recoverable: checkBattery latches notifiedLowBattery
+  // before either command runs and computes both `notify` and `dismiss` from
+  // that latch, so a request dropped here is never recomputed by a later
+  // poll. The user is left either with a warning that never expires and no
+  // longer applies, or under the threshold with nothing on screen. So each
+  // request is issued only when the other process has exited, and held until
+  // then.
   function dismissLowBatteryWarning() {
+    // Charging again, so a warning we were holding no longer applies.
+    pendingWarningLevel = -1
     if (warningProcess.running || dismissProcess.running) {
       pendingDismiss = true
       return
@@ -58,15 +68,26 @@ Item {
   }
 
   function sendLowBatteryWarning(level) {
-    // Unplugged again before the last warning finished: its toast is the
-    // current one, so the dismiss that was waiting on it no longer applies.
+    // Unplugged again before the dismiss went out, so it no longer applies.
     pendingDismiss = false
+    if (dismissProcess.running) {
+      pendingWarningLevel = level
+      return
+    }
+    pendingWarningLevel = -1
+    // A warning already on its way is this same warning.
     if (warningProcess.running) return
     warningProcess.command = [
       "omarchy-battery-low",
       String(level)
     ]
     warningProcess.running = true
+  }
+
+  // Only ever one of the two is held: each function clears the other's.
+  function runPendingBatteryNotification() {
+    if (pendingDismiss) dismissLowBatteryWarning()
+    else if (pendingWarningLevel >= 0) sendLowBatteryWarning(pendingWarningLevel)
   }
 
   function applyPowerProfile() {
@@ -82,12 +103,12 @@ Item {
 
   Process {
     id: warningProcess
-    onExited: if (root.pendingDismiss) root.dismissLowBatteryWarning()
+    onExited: root.runPendingBatteryNotification()
   }
 
   Process {
     id: dismissProcess
-    onExited: if (root.pendingDismiss) root.dismissLowBatteryWarning()
+    onExited: root.runPendingBatteryNotification()
   }
 
   Process {

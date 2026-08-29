@@ -8,36 +8,78 @@ battery_service="$ROOT/shell/plugins/services/battery/Service.qml"
 
 # The model decides whether to dismiss; these cover the service acting on that
 # decision, which the model tests below cannot reach.
-grep -F 'else if (state.dismiss) dismissLowBatteryWarning()' "$battery_service" >/dev/null
-grep -F 'dismissProcess.command = ["omarchy-notification-dismiss", lowBatterySummary]' "$battery_service" >/dev/null
-grep -F 'readonly property string lowBatterySummary: "Time to recharge!"' "$battery_service" >/dev/null
+grep -F 'else if (state.dismiss) dismissLowBatteryWarning()' "$battery_service" >/dev/null ||
+  fail "battery service dismisses the warning by its own summary"
+grep -F 'dismissProcess.command = ["omarchy-notification-dismiss", lowBatterySummary]' "$battery_service" >/dev/null ||
+  fail "battery service dismisses the warning by its own summary"
+grep -F 'readonly property string lowBatterySummary: "Time to recharge!"' "$battery_service" >/dev/null ||
+  fail "battery service dismisses the warning by its own summary"
 pass "battery service dismisses the warning by its own summary"
 
-# omarchy-battery-low posts the toast from a spawned process, so a dismiss sent
-# while that is still in flight matches nothing and strands the popup that lands
-# just after it. A dismiss already running cannot carry a second request either.
-grep -F 'if (warningProcess.running || dismissProcess.running) {' "$battery_service" >/dev/null
-grep -F 'pendingDismiss = true' "$battery_service" >/dev/null
+# Both commands are spawned, and the dismiss takes down every toast whose
+# summary contains the headline, so the two must never overlap. checkBattery
+# latches notifiedLowBattery before either runs and computes both decisions
+# from that latch, so whatever is dropped here is never recomputed by a later
+# poll: a dismiss that races ahead of its warning strands a toast that never
+# expires, and a warning posted under a running dismiss is swept away with the
+# toast that dismiss was sent for, leaving the user low with nothing on screen.
+grep -A9 -F 'function dismissLowBatteryWarning() {' "$battery_service" |
+  grep -F 'if (warningProcess.running || dismissProcess.running) {' >/dev/null ||
+  fail "battery service holds a dismiss while either process is in flight"
+grep -A9 -F 'function dismissLowBatteryWarning() {' "$battery_service" |
+  grep -F 'pendingDismiss = true' >/dev/null ||
+  fail "battery service holds a dismiss while either process is in flight"
 pass "battery service holds a dismiss while either process is in flight"
 
-# checkBattery clears the latch before dismissing and `dismiss` is only computed
-# from that latch, so a request dropped here is never recomputed and the toast
-# that never expires stays up for good. Both processes must replay it, and the
-# pending flag may only clear on the path that actually issues the command.
-(( $(grep -c 'onExited: if (root.pendingDismiss) root.dismissLowBatteryWarning()' "$battery_service") == 2 )) ||
-  fail "both the warning and the dismiss replay a held dismiss when they exit"
-pass "both the warning and the dismiss replay a held dismiss when they exit"
-grep -A6 -F 'function dismissLowBatteryWarning() {' "$battery_service" | grep -A1 -F 'pendingDismiss = false' | grep -F 'dismissProcess.command' >/dev/null
-pass "battery service clears the pending dismiss only when it issues one"
+grep -A10 -F 'function sendLowBatteryWarning(level) {' "$battery_service" |
+  grep -F 'if (dismissProcess.running) {' >/dev/null ||
+  fail "battery service holds a warning while a dismiss is in flight"
+grep -A10 -F 'function sendLowBatteryWarning(level) {' "$battery_service" |
+  grep -F 'pendingWarningLevel = level' >/dev/null ||
+  fail "battery service holds a warning while a dismiss is in flight"
+pass "battery service holds a warning while a dismiss is in flight"
 
-# Unplugged again before that warning finished: its toast is the current one,
-# so the queued dismiss must not fire on the way out.
-grep -F 'pendingDismiss = false' "$battery_service" >/dev/null
-grep -B2 -F 'if (warningProcess.running) return' "$battery_service" | grep -F 'pendingDismiss = false' >/dev/null
-pass "battery service drops a queued dismiss when a fresh warning supersedes it"
+# The held request may only clear on the path that actually issues the command,
+# and each function has to drop the other's: charging again retracts a held
+# warning, and unplugging again retracts a held dismiss.
+grep -A9 -F 'function dismissLowBatteryWarning() {' "$battery_service" |
+  grep -A1 -F 'pendingDismiss = false' | grep -F 'dismissProcess.command' >/dev/null ||
+  fail "battery service clears the held dismiss only when it issues one"
+grep -A10 -F 'function sendLowBatteryWarning(level) {' "$battery_service" |
+  grep -A3 -F 'pendingWarningLevel = -1' | grep -F 'warningProcess.command' >/dev/null ||
+  fail "battery service clears the held warning only when it issues one"
+pass "battery service clears a held request only when it issues one"
+
+grep -A2 -F 'function dismissLowBatteryWarning() {' "$battery_service" |
+  grep -F 'pendingWarningLevel = -1' >/dev/null ||
+  fail "battery service retracts a held warning when the battery starts charging"
+grep -A2 -F 'function sendLowBatteryWarning(level) {' "$battery_service" |
+  grep -F 'pendingDismiss = false' >/dev/null ||
+  fail "battery service retracts a held dismiss when a fresh warning supersedes it"
+pass "battery service retracts the request the other decision supersedes"
+
+# A second warning while one is already going out would only duplicate the
+# toast, so that one is dropped rather than held.
+grep -A10 -F 'function sendLowBatteryWarning(level) {' "$battery_service" |
+  grep -F 'if (warningProcess.running) return' >/dev/null ||
+  fail "battery service drops a duplicate warning while one is already going out"
+pass "battery service drops a duplicate warning while one is already going out"
+
+# Whichever process was in flight has to replay what was held behind it, or the
+# request is lost for good.
+(( $(grep -c 'onExited: root.runPendingBatteryNotification()' "$battery_service") == 2 )) ||
+  fail "both the warning and the dismiss replay a held request when they exit"
+grep -A3 -F 'function runPendingBatteryNotification() {' "$battery_service" |
+  grep -F 'if (pendingDismiss) dismissLowBatteryWarning()' >/dev/null ||
+  fail "the replay issues a held dismiss"
+grep -A3 -F 'function runPendingBatteryNotification() {' "$battery_service" |
+  grep -F 'else if (pendingWarningLevel >= 0) sendLowBatteryWarning(pendingWarningLevel)' >/dev/null ||
+  fail "the replay issues a held warning"
+pass "both the warning and the dismiss replay a held request when they exit"
 
 # The summary the service dismisses has to be the headline the command sends.
-grep -F '"Time to recharge!"' "$ROOT/bin/omarchy-battery-low" >/dev/null
+grep -F '"Time to recharge!"' "$ROOT/bin/omarchy-battery-low" >/dev/null ||
+  fail "battery warning headline matches the summary the service dismisses"
 pass "battery warning headline matches the summary the service dismisses"
 
 run_node_test <<'JS'
