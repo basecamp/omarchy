@@ -29,15 +29,17 @@ iso2sd() {
   sudo eject "$drive"
 }
 
-# Format an entire drive for a single partition using exFAT
-# First partition path for a block device (nvme/mmcblk/loop/md use a `p` separator).
+# First partition path for a device. The kernel separates the partition number with
+# `p` when the device name ends in a digit: nvme0n1p1 and md127p1, but sda1 and md/data1.
 format-drive-partition() {
-  case "$1" in
-  *nvme* | *mmcblk* | *loop* | *md*) printf '%s\n' "${1}p1" ;;
-  *) printf '%s\n' "${1}1" ;;
-  esac
+  if [[ $1 == *[0-9] ]]; then
+    printf '%s\n' "${1}p1"
+  else
+    printf '%s\n' "${1}1"
+  fi
 }
 
+# Format an entire drive for a single partition using exFAT
 format-drive() {
   if (( $# != 2 )); then
     echo "Usage: format-drive <device> <name>"

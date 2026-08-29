@@ -20,3 +20,6 @@ expect_partition /dev/nvme0n1 /dev/nvme0n1p1
 expect_partition /dev/mmcblk0 /dev/mmcblk0p1
 expect_partition /dev/loop0 /dev/loop0p1
 expect_partition /dev/md0 /dev/md0p1
+expect_partition /dev/md127 /dev/md127p1
+expect_partition /dev/md/data /dev/md/data1
+expect_partition /dev/nbd0 /dev/nbd0p1
