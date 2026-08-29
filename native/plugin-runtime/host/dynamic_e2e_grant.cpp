@@ -5,6 +5,7 @@
 #include "omarchy/plugin_runtime/providers/audio_device_provider.hpp"
 #include "omarchy/plugin_runtime/providers/github_provider.hpp"
 #include "omarchy/plugin_runtime/providers/radio_provider.hpp"
+#include "omarchy/plugin_runtime/providers/system_observe_provider.hpp"
 
 #include <fstream>
 #include <array>
@@ -25,7 +26,7 @@ namespace providers = omarchy::plugin_runtime::providers;
 
 namespace {
 struct Adapters {
-  std::array<definitions::DynamicAdapter, 7> values;
+  std::array<definitions::DynamicAdapter, 8> values;
 };
 
 bool available(std::string_view name, const definitions::Digest &digest,
@@ -72,12 +73,15 @@ int main(int argc, char **argv) try {
   providers::GitHubProvider github_provider(
       {.binding = {}, .read_epoch = 0, .write_epoch = 0,
        .open_epoch = 0, .backend = {}});
+  providers::SystemObserveProvider system_observe_provider(
+      {.binding = {}, .epoch = 0, .backend = {}});
   Adapters adapters{{provider.fetch_adapter(), provider.media_adapter(),
                      audio_provider.observe_adapter(),
                      audio_provider.control_adapter(),
                      github_provider.read_adapter(),
                      github_provider.write_adapter(),
-                     github_provider.open_adapter()}};
+                     github_provider.open_adapter(),
+                     system_observe_provider.adapter()}};
   definitions::TrustedDefinitionRegistry registry;
   std::size_t loaded = 0;
   const definitions::AdapterVerifier verifier{.available = available,
