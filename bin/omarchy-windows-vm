@@ -691,6 +691,10 @@ write_compose_atomically() (
   esc_password=${esc_password//\$/\$\$}
 
   tmp=$(mktemp "$RUNTIME_DIR/.compose.XXXXXX") || exit 1
+  # omarchy:heredoc-expands paths=EXPECTED_STORAGE,EXPECTED_SHARED -- both are
+  # root-protected anchors derived from the authenticated caller uid and bound
+  # to source inodes that were opened and validated before this compose is
+  # written. The remaining expansions are revalidated scalar settings.
   cat >"$tmp" <<EOF || exit 1
 services:
   windows:
