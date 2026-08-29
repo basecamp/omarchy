@@ -42,11 +42,8 @@ int main(int argc, char *argv[]) {
   if (mode == QStringLiteral("protocol")) {
     return omarchy::plugin_runtime::envelope_version() == 1 ? 0 : 1;
   }
-  if (mode == QStringLiteral("versions") && arguments.size() == 4) {
-    return verify_version(arguments.at(2)) == 0 &&
-                   verify_version(arguments.at(3)) == 0
-               ? 0
-               : 1;
+  if (mode == QStringLiteral("version") && arguments.size() == 3) {
+    return verify_version(arguments.at(2));
   }
   if (mode == QStringLiteral("worker-denial") && arguments.size() == 3) {
     QProcess process;

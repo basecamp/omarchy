@@ -6,8 +6,7 @@ add_test(NAME plugin-runtime-protocol-version COMMAND omarchy-plugin-runtime-con
 set_tests_properties(plugin-runtime-protocol-version PROPERTIES LABELS "unit;protocol" TIMEOUT 10)
 
 add_test(NAME plugin-runtime-version-reporting
-  COMMAND omarchy-plugin-runtime-contract-test versions
-    "$<TARGET_FILE:omarchy-plugin-host>"
+  COMMAND omarchy-plugin-runtime-contract-test version
     "$<TARGET_FILE:omarchy-plugin-qml-worker>"
 )
 set_tests_properties(plugin-runtime-version-reporting PROPERTIES LABELS "integration" TIMEOUT 10)

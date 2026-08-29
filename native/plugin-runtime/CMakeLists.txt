@@ -61,15 +61,7 @@ endif()
 if(TARGET omarchy-plugin-wire
     AND TARGET omarchy-plugin-surface-contract)
   add_subdirectory(trusted-bridge)
-  add_subdirectory(render-session)
   add_subdirectory(bridge)
-endif()
-
-if(TARGET omarchy-plugin-manifest-contract
-    AND TARGET omarchy-plugin-permission-contract
-    AND TARGET omarchy-plugin-render-session
-    AND TARGET omarchy-plugin-trusted-bridge)
-  add_subdirectory(surface-host)
 endif()
 
 if(TARGET omarchy-plugin-sandbox-policy
@@ -86,21 +78,6 @@ add_subdirectory(discovery)
 add_subdirectory(revision-store)
 add_subdirectory(grants)
 add_subdirectory(audit)
-if(TARGET omarchy-plugin-capability-definitions
-    AND TARGET omarchy-plugin-audit-store
-    AND TARGET omarchy-plugin-launcher)
-  add_subdirectory(external-provider)
-endif()
-add_subdirectory(lifecycle)
-add_subdirectory(update-hardening)
-add_subdirectory(migration-report)
-
-if(TARGET omarchy-plugin-launcher
-    AND TARGET omarchy-plugin-audit-store
-    AND TARGET omarchy-plugin-surface-contract
-    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/supervisor-health/CMakeLists.txt")
-  add_subdirectory(supervisor-health)
-endif()
 
 if(TARGET omarchy-plugin-broker-core
     AND TARGET omarchy-plugin-providers
@@ -117,50 +94,8 @@ if(TARGET omarchy-plugin-launcher
   add_subdirectory(channel-integration)
 endif()
 
-if(TARGET omarchy-plugin-channel-integration
-    AND TARGET omarchy-plugin-lifecycle
-    AND TARGET omarchy-plugin-broker-runtime
-    AND TARGET omarchy-plugin-supervisor-health
-    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/update-transition/CMakeLists.txt")
-  add_subdirectory(update-transition)
-endif()
-
-if(TARGET omarchy-plugin-channel-integration
-    AND TARGET omarchy-plugin-supervisor-health)
-  add_subdirectory(headless-slice)
-endif()
-
-if(TARGET omarchy-plugin-headless-slice
-    AND TARGET omarchy-plugin-discovery
-    AND TARGET omarchy-plugin-grant-store
-    AND TARGET omarchy-plugin-surface-host)
-  add_subdirectory(product-host)
-endif()
-
-if(TARGET omarchy-plugin-product-host)
-  add_subdirectory(host)
-
-  install(FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/network-fetch.capability"
-    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/media-play-stream.capability"
-    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/device-observe.capability"
-    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/device-control.capability"
-    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/remote-account-read.capability"
-    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/remote-account-write.capability"
-    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/external-open-uri.capability"
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/omarchy/plugin-capabilities.d")
-endif()
-
-if(TARGET omarchy-plugin-surface-host)
-  add_subdirectory(expressive-surface)
-endif()
-
 if(BUILD_TESTING)
   add_subdirectory(fixtures/product)
   add_subdirectory(tests/adversarial)
-  add_subdirectory(brokered-action)
-  add_subdirectory(vertical-slices/embedded-bar)
-  add_subdirectory(render-proof)
   add_subdirectory(tests)
-  add_subdirectory(proof-exhaustion)
 endif()
