@@ -29,10 +29,11 @@ If a PR is already open, add to that discussion instead of filing again.
 
 ## Verify Against the Default Branch
 
-Check the bug against the branch development actually happens on, not against
-whatever `git clone` or a raw URL hands you. `master` is not it, and can be
-weeks behind a shipped release — so a bug "confirmed" there may already be
-fixed, or the code may not match what users are running:
+Check the bug against the branch development actually happens on. A fresh
+`git clone` lands there, but an older checkout or a raw URL pinned to
+`master` does not — `master` can be weeks behind a shipped release, so a bug
+"confirmed" there may already be fixed, or the code may not match what users
+are running:
 
 ```bash
 gh repo view basecamp/omarchy --json defaultBranchRef --jq .defaultBranchRef.name
@@ -95,5 +96,5 @@ For tests, `AGENTS.md` asks for the focused suite covering the area changed —
 too if you like, but treat unrelated failures as a signal about the machine
 rather than the change: parts of it depend on the local environment, such as
 attached-monitor counts or a sibling checkout, and can fail on a clean tree.
-Confirm by stashing the change and re-running, then say what you ran in the
-PR.
+Confirm by stashing the change (`git stash -u`, so new files go too) and
+re-running, then `git stash pop` and say what you ran in the PR.
