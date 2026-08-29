@@ -24,6 +24,8 @@ Item {
   property bool passwordPamConfigured: false
   property bool fingerprintConfigured: false
   property bool previewVisible: false
+  property bool displayBlanked: false
+  property int focusRequestVersion: 0
   property string enteredPassword: ""
   property string pendingPassword: ""
   property string failureMessage: ""
@@ -206,11 +208,17 @@ Item {
   }
 
   function runWake() {
-    if (!wakeProcess.running) wakeProcess.running = true
+    displayBlanked = false
+    focusRequestVersion += 1
+    // A wake dispatched while the blank is still running can observe a lit
+    // display, no-op, and then lose the race to the pending DPMS off. Let the
+    // blank land first and dispatch the wake from its completion handler.
+    if (!blankProcess.running && !wakeProcess.running) wakeProcess.running = true
     if (lockRequested) armBlankTimer()
   }
 
   function runBlank() {
+    displayBlanked = true
     if (!blankProcess.running) blankProcess.running = true
   }
 
@@ -319,6 +327,8 @@ Item {
         inputEnabled: root.lockRequested
         loadBackground: root.locked
         passwordText: root.enteredPassword
+        displayBlanked: root.displayBlanked
+        focusRequestVersion: root.focusRequestVersion
         onPasswordTextEdited: function(password) { root.enteredPassword = password }
         onSubmitPassword: function(password) { root.submitPassword(password) }
         onClearFailureRequested: root.failureMessage = ""
@@ -451,6 +461,21 @@ Item {
   Process {
     id: blankProcess
     command: ["bash", "-c", "omarchy-brightness-keyboard off; omarchy-brightness-display off"]
+    onExited: if (!root.displayBlanked && !wakeProcess.running) wakeProcess.running = true
+  }
+
+  // Keyboard activity still reaches the compositor when no lock surface has
+  // focus. Keep this armed for the whole lock so the first key after DPMS-off
+  // can both wake the display and re-arm the bounded password-focus retry.
+  IdleMonitor {
+    enabled: root.lockRequested
+    timeout: 1
+    respectInhibitors: false
+    onIsIdleChanged: {
+      if (isIdle) return
+      root.focusRequestVersion += 1
+      if (root.displayBlanked) root.runWake()
+    }
   }
 
   Timer {
@@ -510,6 +535,7 @@ Item {
     target: Quickshell
     function onScreensChanged() {
       root.requestSessionLock()
+      if (root.lockRequested) root.focusRequestVersion += 1
 
       // A monitor still coming up has no workspace, so cannot answer yet.
       strandedLockRetryTimer.rearm()
