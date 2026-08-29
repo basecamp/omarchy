@@ -10,6 +10,24 @@ if omarchy-cmd-present alacritty; then
   cp "$OMARCHY_PATH/default/alacritty/Alacritty.desktop" ~/.local/share/applications/
 fi
 
+# Nautilus hands "Open in Console" (Ctrl+.) to the org.gnome.Console D-Bus
+# service, which GNOME Console provides. Omarchy ships foot instead, so stand in
+# for that service -- unless the real Console is installed, in which case get out
+# of its way rather than shadowing it.
+console_desktop=~/.local/share/applications/org.gnome.Console.desktop
+console_service=~/.local/share/dbus-1/services/org.gnome.Console.service
+
+if omarchy-pkg-present gnome-console; then
+  rm -f "$console_desktop" "$console_service"
+else
+  cp "$OMARCHY_PATH/default/applications/org.gnome.Console.desktop" "$console_desktop"
+
+  # The service file needs an absolute Exec, which differs under a dev link.
+  mkdir -p ~/.local/share/dbus-1/services
+  sed "s|@BIN@|$OMARCHY_PATH/bin/omarchy-cmd-console|" \
+    "$OMARCHY_PATH/default/dbus-1/services/org.gnome.Console.service" >"$console_service"
+fi
+
 if [[ -f "$OMARCHY_PATH/install/user/mise.sh" ]]; then
   bash "$OMARCHY_PATH/install/user/mise.sh"
 fi
