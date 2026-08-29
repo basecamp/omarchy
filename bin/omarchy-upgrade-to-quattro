@@ -1328,7 +1328,7 @@ apply_system_transition() {
       '
   fi
   as_root install -d -m 0755 /usr/lib/chromium
-  printf '%s\n' '{"browser":{"theme":{"color_scheme":0,"color_scheme2":0}}}' | \
+  printf '%s\n' '{"distribution":{"require_eula":false},"browser":{"theme":{"color_scheme":0,"color_scheme2":0}}}' | \
     as_root tee /usr/lib/chromium/initial_preferences >/dev/null
 
   # Deliberately do NOT add the user to the docker group. That group is
