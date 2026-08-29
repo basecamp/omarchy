@@ -29,7 +29,7 @@ prepare() {
   mkdir -p "$stage_parent"
   pending=$(mktemp -d "$stage_parent/.pending.XXXXXXXX")
   trap 'rm -rf -- "$pending"' RETURN
-  DESTDIR="$pending" cmake --install "$build_dir" --prefix /usr
+  DESTDIR="$pending" cmake --install "$build_dir" --prefix /usr >&2
   installed_worker="$pending/usr/lib/omarchy/plugin-runtime/omarchy-plugin-qml-worker"
   digest=$(sha256sum "$installed_worker" | cut -d' ' -f1)
   stage="$stage_parent/$digest"
@@ -49,6 +49,7 @@ prepare() {
     echo "host_omarchy=$(pacman -Q omarchy 2>/dev/null || echo unavailable)"
   } >"$stage/PROVENANCE"
   chmod -R go-w "$stage"
+  chmod 0755 "$stage"
   echo "$stage"
 }
 

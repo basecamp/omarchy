@@ -37,6 +37,7 @@ sudo install -d -o root -g root -m 0755 /opt/omarchy-plugin-security-lab
 sudo cp -a --no-preserve=ownership "$stage" "$lab_root"
 sudo chown -R root:root "$lab_root"
 sudo chmod -R go-w "$lab_root"
+sudo chmod 0755 "$lab_root"
 native/plugin-runtime/lab/omarchy-plugin-security-lab verify "$lab_root"
 ```
 
