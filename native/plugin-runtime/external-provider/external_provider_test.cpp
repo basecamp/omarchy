@@ -32,14 +32,18 @@ struct AuthorizationProbe {
 };
 struct Scope final
     : omarchy::plugin_runtime::launcher::ResourceScopeController {
+  unsigned attached = 0;
+  unsigned killed = 0;
+  unsigned removed = 0;
   bool probe(std::string &) override { return true; }
   bool attach(std::string_view, pid_t, pid_t,
               const omarchy::plugin_runtime::sandbox::SandboxPlan &,
               std::chrono::milliseconds, std::string &) override {
+    ++attached;
     return true;
   }
-  void kill(std::string_view) noexcept override {}
-  void remove(std::string_view) noexcept override {}
+  void kill(std::string_view) noexcept override { ++killed; }
+  void remove(std::string_view) noexcept override { ++removed; }
 };
 bool authorized(const definitions::DynamicAuthorizationContext &,
                 void *context) noexcept {
@@ -59,10 +63,26 @@ int main(int argc, char **) {
     }
     external_provider::RequestFrame q{};
     if (!external_provider::decode_request(f, q) ||
-        q.service_id.view() != "local.fake-provider" ||
-        q.operation.view() != "status") {
+        q.service_id.view() != "local.fake-provider") {
       return 72;
     }
+    if (q.operation.view() == "crash")
+      return 88;
+    if (q.operation.view() == "timeout")
+      for (;;)
+        pause();
+    if (q.operation.view() == "descendant") {
+      const pid_t child = fork();
+      if (child == 0)
+        for (;;)
+          pause();
+      if (child > 0)
+        for (;;)
+          pause();
+      return 89;
+    }
+    if (q.operation.view() != "status")
+      return 72;
     std::array<std::byte, definitions::kMaximumDynamicPayloadBytes>
         payload_copy{};
     std::ranges::copy(q.payload, payload_copy.begin());
@@ -79,8 +99,9 @@ int main(int argc, char **) {
   const auto self = std::filesystem::canonical("/proc/self/exe");
   std::ifstream stream(self, std::ios::binary);
   const std::string bytes((std::istreambuf_iterator<char>(stream)), {});
+  auto scope = std::make_shared<Scope>();
   auto launcher = omarchy::plugin_runtime::launcher::Supervisor::forTestOnly(
-      "/usr/bin/bwrap", self.string(), std::make_shared<Scope>());
+      "/usr/bin/bwrap", self.string(), scope);
   external_provider::Registration r{
       .service_id = definitions::Name("local.fake-provider"),
       .adapter = {.adapter_class = definitions::Name("fake-bounded-harness"),
@@ -138,6 +159,29 @@ int main(int argc, char **) {
               dynamic_adapter.dispatch(q, out, n, dynamic_adapter.context) &&
               n == payload.size(),
           "trusted registration did not compose into a live dynamic adapter");
+  auto hostile = q;
+  hostile.operation = "crash";
+  require(external_provider::invoke(r, hostile, out, n,
+                                    std::chrono::milliseconds(250), 4) ==
+              external_provider::Result::crashed,
+          "crashed provider was not reported");
+  hostile.operation = "timeout";
+  require(external_provider::invoke(r, hostile, out, n,
+                                    std::chrono::milliseconds(100), 4) ==
+              external_provider::Result::timeout,
+          "hung provider was not bounded");
+  hostile.operation = "descendant";
+  const auto descendant_result = external_provider::invoke(
+      r, hostile, out, n, std::chrono::milliseconds(100), 4);
+  require(descendant_result == external_provider::Result::crashed ||
+              descendant_result == external_provider::Result::timeout,
+          "descendant attempt escaped provider teardown");
+  require(scope->attached >= 5 && scope->removed == scope->attached &&
+              scope->killed >= 1,
+          "provider crash/timeout did not tear down its complete scope: " +
+              std::to_string(scope->attached) + "/" +
+              std::to_string(scope->removed) + "/" +
+              std::to_string(scope->killed));
   std::array audit_template{'/', 't', 'm', 'p', '/', 'o', 'm', 'a', 'r', 'c',
                             'h', 'y', '-', 'e', 'x', 't', '-', 'a', 'u', 'd',
                             'i', 't', '-', 'X', 'X', 'X', 'X', 'X', 'X', '\0'};

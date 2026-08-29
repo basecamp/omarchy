@@ -313,7 +313,10 @@ Result invoke(const Registration &r,
   auto received = provider.receive(plugin_runtime::launcher::EndpointRole::control,
                                    kMaximumFrameBytes, timeout);
   if (!received)
-    return fail(Result::timeout);
+    return fail(received.failure ==
+                        plugin_runtime::launcher::ReceiveFailure::timeout
+                    ? Result::timeout
+                    : Result::crashed);
   got = received.payload;
   if (!verify_handshake_echo(r, n, got))
     return fail(Result::identity_mismatch);
@@ -333,7 +336,10 @@ Result invoke(const Registration &r,
   received = provider.receive(plugin_runtime::launcher::EndpointRole::control,
                               kMaximumFrameBytes, timeout);
   if (!received)
-    return fail(Result::timeout);
+    return fail(received.failure ==
+                        plugin_runtime::launcher::ReceiveFailure::timeout
+                    ? Result::timeout
+                    : Result::crashed);
   got = received.payload;
   ReplyFrame reply;
   if (!decode_reply(got, reply) || reply.correlation != correlation ||
