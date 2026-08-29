@@ -1,0 +1,244 @@
+#!/bin/bash
+
+# omarchy:summary=Put /var/lib/docker on its own top-level Btrfs subvolume so root snapshots and rollbacks leave container data alone
+# omarchy:args=[--migrate]
+# omarchy:examples=omarchy btrfs isolate-docker | sudo omarchy-btrfs-isolate-docker --migrate
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+migrate=0
+while (($#)); do
+  case "$1" in
+  --migrate)
+    migrate=1
+    shift
+    ;;
+  -h | --help)
+    cat <<'EOF'
+Usage: omarchy-btrfs-isolate-docker [--migrate]
+
+Create a top-level @docker Btrfs subvolume, mount it at /var/lib/docker, and
+record it in /etc/fstab so Snapper snapshots of @ (and limine-snapper-restore
+rollbacks) no longer carry or revert Docker image layers and volumes.
+
+--migrate  stop Docker, move an existing /var/lib/docker tree into the new
+           subvolume, then start Docker again. Use on installs that already
+           wrote data into the root subvolume.
+EOF
+    exit 0
+    ;;
+  *)
+    echo "Unknown option: $1" >&2
+    exit 1
+    ;;
+  esac
+done
+
+if ((EUID != 0)); then
+  echo "Error: omarchy-btrfs-isolate-docker must run as root" >&2
+  exit 1
+fi
+
+DOCKER_DIR=/var/lib/docker
+SUBVOL_NAME=@docker
+FSTAB=/etc/fstab
+
+root_is_omarchy_btrfs() {
+  [[ $(findmnt -no FSTYPE /) == btrfs ]] && findmnt -no OPTIONS / | grep -q 'subvol=/@\(,\|$\)'
+}
+
+docker_already_isolated() {
+  # Mounted from the dedicated subvolume, or the path is already that subvolume
+  # and listed in fstab (install-time create before first mount).
+  local source opts
+  source=$(findmnt -no SOURCE --target "$DOCKER_DIR" 2>/dev/null || true)
+  opts=$(findmnt -no OPTIONS --target "$DOCKER_DIR" 2>/dev/null || true)
+  if [[ -n $source && $opts == *subvol=/@docker* ]]; then
+    return 0
+  fi
+  if [[ -n $source && $opts == *subvol=@docker* ]]; then
+    return 0
+  fi
+  grep -Eq '^[^#].*[[:space:]]/var/lib/docker[[:space:]].*subvol=/@docker' "$FSTAB" 2>/dev/null
+}
+
+root_device() {
+  local source
+  source=$(findmnt -no SOURCE /)
+  # SOURCE may be /dev/nvme0n1p2[/@] — strip the subvol suffix.
+  source=${source%%\[*}
+  printf '%s\n' "$source"
+}
+
+root_uuid() {
+  findmnt -no UUID /
+}
+
+# Match compress/ssd flags from the root mount so @docker does not fight the
+# rest of the filesystem's mount options.
+docker_mount_options() {
+  local opts
+  opts=$(findmnt -no OPTIONS /)
+  # Drop subvol* and the snapper-related defaults we do not want on a data vol.
+  opts=$(printf '%s\n' "$opts" | tr ',' '\n' | grep -Ev '^(subvol|subvolid)=' | paste -sd, -)
+  if [[ -n $opts ]]; then
+    printf 'subvol=/@docker,%s\n' "$opts"
+  else
+    printf 'subvol=/@docker\n'
+  fi
+}
+
+ensure_fstab() {
+  local uuid options line
+  uuid=$(root_uuid)
+  [[ -n $uuid ]] || {
+    echo "Error: could not read UUID of /" >&2
+    exit 1
+  }
+  options=$(docker_mount_options)
+  line="UUID=$uuid $DOCKER_DIR btrfs $options 0 0"
+
+  if grep -Eq '^[^#].*[[:space:]]/var/lib/docker[[:space:]]' "$FSTAB"; then
+    return 0
+  fi
+
+  cp -a "$FSTAB" "$FSTAB.$(date +%Y%m%d%H%M%S).back"
+  printf '\n# Docker data — top-level subvolume so root Snapper rollbacks leave it alone\n%s\n' "$line" >>"$FSTAB"
+}
+
+create_top_level_subvolume() {
+  local device top
+  device=$(root_device)
+  [[ -n $device && -b $device ]] || {
+    echo "Error: could not determine the btrfs root device" >&2
+    exit 1
+  }
+
+  top=$(mktemp -d)
+  mount -o subvolid=5 "$device" "$top"
+  if [[ -d $top/$SUBVOL_NAME ]]; then
+    if btrfs subvolume show "$top/$SUBVOL_NAME" >/dev/null 2>&1; then
+      umount "$top"
+      rmdir "$top" 2>/dev/null || true
+      return 0
+    fi
+    umount "$top"
+    rmdir "$top" 2>/dev/null || true
+    echo "Error: $SUBVOL_NAME exists on the top level and is not a btrfs subvolume" >&2
+    exit 1
+  fi
+  btrfs subvolume create "$top/$SUBVOL_NAME" >/dev/null
+  umount "$top"
+  rmdir "$top" 2>/dev/null || true
+}
+
+path_is_empty() {
+  local dir=$1
+  [[ -d $dir ]] || return 0
+  [[ -z $(ls -A "$dir" 2>/dev/null) ]]
+}
+
+mount_docker_subvolume() {
+  local device options
+  mkdir -p "$DOCKER_DIR"
+  if findmnt -no TARGET --target "$DOCKER_DIR" 2>/dev/null | grep -qx "$DOCKER_DIR"; then
+    return 0
+  fi
+  # Prefer an explicit device+options mount: fstab UUID lookup needs udev
+  # by-uuid links that a chroot or early boot may not have yet. fstab still
+  # carries the UUID form for normal boots after install.
+  device=$(root_device)
+  options=$(docker_mount_options)
+  if ! mount -t btrfs -o "$options" "$device" "$DOCKER_DIR"; then
+    mount "$DOCKER_DIR"
+  fi
+}
+
+stop_docker() {
+  if command -v systemctl >/dev/null; then
+    systemctl stop docker.service docker.socket 2>/dev/null || true
+  fi
+}
+
+start_docker() {
+  if command -v systemctl >/dev/null; then
+    systemctl start docker.socket 2>/dev/null || true
+    systemctl start docker.service 2>/dev/null || true
+  fi
+}
+
+migrate_existing_tree() {
+  local staging
+  stop_docker
+
+  if findmnt -no TARGET --target "$DOCKER_DIR" 2>/dev/null | grep -qx "$DOCKER_DIR"; then
+    echo "Error: $DOCKER_DIR is already a mount point; unmount it before --migrate" >&2
+    exit 1
+  fi
+
+  if [[ -d $DOCKER_DIR ]] && ! path_is_empty "$DOCKER_DIR"; then
+    staging="${DOCKER_DIR}.omarchy-migrate-$$"
+    mv "$DOCKER_DIR" "$staging"
+  else
+    staging=""
+    rm -rf "$DOCKER_DIR"
+  fi
+
+  create_top_level_subvolume
+  ensure_fstab
+  mkdir -p "$DOCKER_DIR"
+  mount_docker_subvolume
+
+  if [[ -n $staging ]]; then
+    # Preserve ownership, xattrs, hardlinks; docker layer stores need them.
+    rsync -aHAX --info=stats2 "$staging"/ "$DOCKER_DIR"/
+    rm -rf "$staging"
+  fi
+
+  start_docker
+}
+
+install_fresh() {
+  if docker_already_isolated; then
+    echo "Docker data is already isolated on its own Btrfs subvolume"
+    return 0
+  fi
+
+  if [[ -d $DOCKER_DIR ]] && ! path_is_empty "$DOCKER_DIR"; then
+    echo "Error: $DOCKER_DIR is not empty. Re-run with --migrate to move existing data." >&2
+    exit 1
+  fi
+
+  # Drop an empty plain directory so the mount can take its place.
+  if [[ -d $DOCKER_DIR ]]; then
+    rmdir "$DOCKER_DIR"
+  fi
+
+  create_top_level_subvolume
+  ensure_fstab
+  mount_docker_subvolume
+  echo "Isolated $DOCKER_DIR on Btrfs subvolume $SUBVOL_NAME"
+}
+
+if ! root_is_omarchy_btrfs; then
+  echo "Skipping Docker Btrfs isolation (root is not the Omarchy @ subvolume layout)"
+  exit 0
+fi
+
+if ! command -v btrfs >/dev/null; then
+  echo "Error: btrfs-progs is required" >&2
+  exit 1
+fi
+
+if ((migrate)); then
+  if docker_already_isolated; then
+    echo "Docker data is already isolated on its own Btrfs subvolume"
+    exit 0
+  fi
+  migrate_existing_tree
+  echo "Migrated $DOCKER_DIR onto Btrfs subvolume $SUBVOL_NAME"
+  exit 0
+fi
+
+install_fresh
