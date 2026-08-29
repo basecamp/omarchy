@@ -238,9 +238,10 @@ private:
             fatal("permission snapshot acknowledgement failed");
         });
       } else if (runtime_loaded_ &&
-                 !control_.send(wire::kPermissionSnapshotAcceptedMessage, {},
-                                0)) {
-        fatal("permission snapshot acknowledgement failed");
+                 packet.header.launch_generation != 0) {
+        runtime_.request_render();
+        if (!control_.send(wire::kPermissionSnapshotAcceptedMessage, {}, 0))
+          fatal("permission snapshot acknowledgement failed");
       }
   }
 
