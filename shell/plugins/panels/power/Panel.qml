@@ -22,6 +22,7 @@ Panel {
   property var topProcesses: []
   property var systemRows: []
   property var resourceSplits: null
+  property var heat: ({})
   property var processColumns: []
   // Composition-bar gap geometry: a constant separator width and a constant
   // budget for the maximum segment count, so fills scale identically across
@@ -145,16 +146,16 @@ Panel {
     return modeLabel()
   }
 
-  // Ink, not hue: every surface speaks foreground-at-load. The system
-  // block/row is WHITE (the machine itself); a process's ink dims with its
-  // load — opacity 0.35..1.0 mapped from its share of the bar's busiest
-  // process. Identity is carried by ORDER (biggest to lightest, mirroring
-  // the table) and by label; brightness carries magnitude. This matches
-  // the shell's native monochrome language (operator decision, 2026-08-29).
+  // Ink, not hue: one heat per process — foreground at 0.35..1.0 mapped
+  // from its CPU share against the busiest process, and that value follows
+  // the process everywhere (row mark, every bar segment). The system
+  // block/row is WHITE (the machine itself); ink fades monotonically down
+  // the table's rank. Identity is positional and by label; brightness is
+  // the process's heat (operator decisions, 2026-08-29).
   function segmentInk(seg) {
     if (seg.kind === "system") return 1
     if (seg.ink !== undefined) return seg.ink
-    return 1
+    return 0.35
   }
 
   function segmentColor(seg) {
@@ -313,22 +314,31 @@ Panel {
     }
     processColumns = cols
     resourceSplits = Model.buildResourceSplits(prevSnapshot, snap, 5, draw, baseWatts)
-    // Ink follows load (operator decision, 2026-08-29): every comm segment
-    // carries its own opacity — 0.35..1.0 mapped from its share of that
-    // bar's busiest process. System leads at full ink (white: the machine
-    // itself); brightness IS magnitude, order IS identity. The muted frame
-    // (rest) stays muted. Computed here, once per refresh, so delegates
-    // bind a plain number.
+    // ONE HEAT PER PROCESS (operator decision, 2026-08-29): a process's ink
+    // is a single value — its share of the busiest process's CPU load,
+    // 0.35..1.0 — and that value follows it EVERYWHERE: the table row's
+    // mark, its segment in every composition bar. Like a heatmap of
+    // processes: the system leads in white (the machine itself), the top
+    // process glows brightest, and ink fades monotonically down the table's
+    // rank. Segment SIZE still encodes each bar's own metric share; INK
+    // encodes who the process is and how hot it runs. One writer: computed
+    // here, once per refresh, onto plain numbers.
+    var heatMap = {}
+    var maxHeat = 0
+    var cpuBar = resourceSplits.cpu
+    for (var hi = 0; hi < cpuBar.length; hi++)
+      if (cpuBar[hi].kind === "comm" && cpuBar[hi].share > maxHeat) maxHeat = cpuBar[hi].share
+    for (var hj = 0; hj < cpuBar.length; hj++)
+      if (cpuBar[hj].kind === "comm")
+        heatMap[cpuBar[hj].key] = 0.35 + 0.65 * (maxHeat > 0 ? cpuBar[hj].share / maxHeat : 0)
     var allBars = [resourceSplits.cpu, resourceSplits.ram, resourceSplits.watts, resourceSplits.gpu]
     for (var bi = 0; bi < allBars.length; bi++) {
       var bar = allBars[bi]
       if (!bar) continue
-      var maxComm = 0
-      for (var si2 = 0; si2 < bar.length; si2++)
-        if (bar[si2].kind === "comm" && bar[si2].share > maxComm) maxComm = bar[si2].share
       for (var si3 = 0; si3 < bar.length; si3++)
-        if (bar[si3].kind === "comm") bar[si3].ink = 0.35 + 0.65 * (maxComm > 0 ? bar[si3].share / maxComm : 0)
+        if (bar[si3].kind === "comm") bar[si3].ink = heatMap[bar[si3].key] !== undefined ? heatMap[bar[si3].key] : 0.35
     }
+    heat = heatMap
     // Vitals rows are rebuilt complete with their segments attached: a
     // property added to a plain JS object after the fact carries no change
     // signal, so a delegate that bound before the attach would stay null.
@@ -715,11 +725,11 @@ Panel {
               columns: root.processColumns
               anchor: modelData.key === "system"
               commColor: root.bar ? root.bar.foreground : Color.foreground
-              // The mark rides the same load ladder as its bar segment:
-              // the row's CPU-cell intensity IS share/busiest-share, so
-              // mark, cells, and bar all dim together.
-              commInk: modelData.key === "system" || modelData.cells === undefined
-                || modelData.cells.length === 0 ? 1 : modelData.cells[0].intensity
+              // The mark IS the process's heat — the same one-writer value
+              // its bar segments use (root.heat), so mark and bars can
+              // never disagree about a process.
+              commInk: modelData.key === "system" ? 1
+                : (root.heat[modelData.key] !== undefined ? root.heat[modelData.key] : 0.35)
             }
           }
 
