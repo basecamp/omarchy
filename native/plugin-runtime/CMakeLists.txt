@@ -40,6 +40,11 @@ foreach(contract IN ITEMS manifest wire surface permissions sandbox)
   endif()
 endforeach()
 
+if(TARGET omarchy-plugin-permission-contract
+    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/contracts/capability-definitions/CMakeLists.txt")
+  add_subdirectory(contracts/capability-definitions)
+endif()
+
 if(TARGET omarchy-plugin-wire
     AND TARGET omarchy-plugin-surface-contract
     AND TARGET omarchy-plugin-sandbox-policy)

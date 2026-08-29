@@ -61,6 +61,8 @@ bool safe_token(std::string_view value) {
 bool valid_definition(const CapabilityDefinition &definition) {
   if (!canonical_name(definition.canonical_name.view()) ||
       !canonical_name(definition.authority_identity.view()) ||
+      !canonical_name(definition.display_category_id.view()) ||
+      definition.display_category_label.size() == 0 ||
       !canonical_name(definition.adapter.adapter_class.view()) ||
       !hex_digest(definition.adapter.implementation_digest) ||
       definition.adapter.abi_version == 0 || definition.operations.size() == 0 ||
@@ -68,10 +70,10 @@ bool valid_definition(const CapabilityDefinition &definition) {
       !definition.audit.record_decision || !definition.audit.redact_payload ||
       !definition.audit.redact_tokens)
     return false;
-  if ((definition.category == AuthorityCategory::external_open_uri) !=
+  if ((definition.enforcement_family == EnforcementFamily::external_open_uri) !=
       (definition.scope_schema == ScopeSchema::https_origins_after_gesture))
     return false;
-  if (definition.category == AuthorityCategory::external_open_uri &&
+  if (definition.enforcement_family == EnforcementFamily::external_open_uri &&
       std::any_of(definition.operations.values().begin(),
                   definition.operations.values().end(), [](const auto &op) {
                     return !op.requires_fresh_gesture;
@@ -88,7 +90,9 @@ Digest definition_digest(const CapabilityDefinition &definition) {
   std::string bytes("OMARCHY-CAPABILITY-DEFINITION-V1\0", 33);
   append(bytes, definition.canonical_name.view());
   append(bytes, definition.authority_identity.view());
-  bytes.push_back(static_cast<char>(definition.category));
+  bytes.push_back(static_cast<char>(definition.enforcement_family));
+  append(bytes, definition.display_category_id.view());
+  append(bytes, definition.display_category_label.view());
   bytes.push_back(static_cast<char>(definition.scope_schema));
   append(bytes, definition.title.view());
   append(bytes, definition.risk_text.view());
@@ -226,6 +230,56 @@ bool authorize_cli_invocation(const CliHarnessProfile &profile,
   std::copy(argv.begin(), argv.end(), output.argv.begin());
   output.argc = argv.size();
   return true;
+}
+
+DynamicAuthorization authorize_dynamic_operation(
+    const TrustedDefinitionRegistry &registry, const DynamicRequest &request,
+    const DynamicGrant &grant, std::string_view operation,
+    const AdapterBinding &running_adapter, bool fresh_gesture) {
+  const auto by_name = registry.find(request.definition.canonical_name.view());
+  if (!by_name)
+    return {.decision = DynamicDecision::unknown_definition};
+  const auto resolved = registry.resolve(request.definition);
+  if (!resolved || grant.definition.canonical_name != request.definition.canonical_name ||
+      grant.definition.definition_generation != request.definition.definition_generation ||
+      grant.definition.definition_digest != request.definition.definition_digest)
+    return {.decision = DynamicDecision::stale_definition};
+  if (!std::any_of(request.operations.values().begin(),
+                   request.operations.values().end(), [operation](const auto &item) {
+                     return item.view() == operation;
+                   }))
+    return {.decision = DynamicDecision::operation_undeclared,
+            .definition = resolved->definition};
+  const auto found = std::find_if(
+      resolved->definition->operations.values().begin(),
+      resolved->definition->operations.values().end(), [operation](const auto &item) {
+        return item.name.view() == operation;
+      });
+  if (found == resolved->definition->operations.values().end())
+    return {.decision = DynamicDecision::operation_undeclared,
+            .definition = resolved->definition};
+  if (grant.state == permissions::GrantState::denied)
+    return {.decision = DynamicDecision::denied,
+            .definition = resolved->definition, .operation = &*found};
+  if (grant.state == permissions::GrantState::revoked || grant.epoch == 0)
+    return {.decision = DynamicDecision::revoked,
+            .definition = resolved->definition, .operation = &*found};
+  if (!std::any_of(grant.operations.values().begin(),
+                   grant.operations.values().end(), [operation](const auto &item) {
+                     return item.view() == operation;
+                   }))
+    return {.decision = DynamicDecision::operation_ungranted,
+            .definition = resolved->definition, .operation = &*found};
+  if (running_adapter != resolved->definition->adapter)
+    return {.decision = DynamicDecision::adapter_mismatch,
+            .definition = resolved->definition, .operation = &*found};
+  if (found->requires_fresh_gesture && !fresh_gesture)
+    return {.decision = DynamicDecision::gesture_missing,
+            .definition = resolved->definition, .operation = &*found};
+  return {.decision = DynamicDecision::allowed,
+          .definition = resolved->definition,
+          .operation = &*found,
+          .grant_epoch = grant.epoch};
 }
 
 } // namespace omarchy::plugins::definitions

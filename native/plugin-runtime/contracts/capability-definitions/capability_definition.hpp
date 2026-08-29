@@ -17,7 +17,7 @@ using Digest = permissions::Digest;
 using Token = permissions::ScopeToken;
 
 enum class DefinitionSource : std::uint8_t { omarchy_package, local_admin };
-enum class AuthorityCategory : std::uint8_t {
+enum class EnforcementFamily : std::uint8_t {
   network_fetch,
   external_open_uri,
   system_observe,
@@ -69,7 +69,9 @@ struct AdapterBinding {
 struct CapabilityDefinition {
   Name canonical_name;
   Name authority_identity;
-  AuthorityCategory category = AuthorityCategory::network_fetch;
+  EnforcementFamily enforcement_family = EnforcementFamily::network_fetch;
+  Name display_category_id;
+  Label display_category_label;
   ScopeSchema scope_schema = ScopeSchema::https_origins_and_methods;
   Label title;
   Label risk_text;
@@ -159,5 +161,44 @@ struct CliInvocation {
                                             const Digest &actual_executable,
                                             std::span<const std::string_view> argv,
                                             CliInvocation &output);
+
+struct DynamicRequest {
+  CapabilityReference definition;
+  permissions::FixedSet<Name, 16> operations;
+};
+
+struct DynamicGrant {
+  CapabilityReference definition;
+  permissions::FixedSet<Name, 16> operations;
+  permissions::GrantState state = permissions::GrantState::denied;
+  std::uint64_t epoch = 0;
+};
+
+enum class DynamicDecision : std::uint8_t {
+  allowed,
+  unknown_definition,
+  stale_definition,
+  operation_undeclared,
+  operation_ungranted,
+  denied,
+  revoked,
+  adapter_mismatch,
+  gesture_missing,
+};
+
+struct DynamicAuthorization {
+  DynamicDecision decision = DynamicDecision::denied;
+  const CapabilityDefinition *definition = nullptr;
+  const OperationDefinition *operation = nullptr;
+  std::uint64_t grant_epoch = 0;
+  [[nodiscard]] bool allowed() const {
+    return decision == DynamicDecision::allowed;
+  }
+};
+
+[[nodiscard]] DynamicAuthorization authorize_dynamic_operation(
+    const TrustedDefinitionRegistry &registry, const DynamicRequest &request,
+    const DynamicGrant &grant, std::string_view operation,
+    const AdapterBinding &running_adapter, bool fresh_gesture);
 
 } // namespace omarchy::plugins::definitions
