@@ -70,7 +70,7 @@ grant_capability() {
 }
 
 launch() {
-  local name=$1 calls=$2 frames=$3 render_packets=$4 mutation=$5
+  local name=$1 calls=$2 frames=$3 render_packets=$4 mutation=$5 post_mutation_frames=$6
   local run=$test_root/$name tree
   tree=$(sed -n 's/^tree=//p' "$run/identity")
   env OMARCHY_PLUGIN_SCHEMA_V2_ENABLED=1 \
@@ -79,13 +79,14 @@ launch() {
     OMARCHY_PLUGIN_E2E_EXPECT_FRAMES=$frames \
     OMARCHY_PLUGIN_E2E_EXPECT_RENDER_PACKETS=$render_packets \
     OMARCHY_PLUGIN_E2E_EXPECT_MUTATION=$mutation \
+    OMARCHY_PLUGIN_E2E_EXPECT_POST_MUTATION_FRAMES=$post_mutation_frames \
     "$host" --preview-plugin-live-lab "$run/plugins/$name" "$tree" \
     "$run/grants" "$run/state" "$run/audit" "$worker" ignored ignored
 }
 
 prepare lab-authorized
 grant_capability lab-authorized --required storage.private@1=quota:65536:4096
-launch lab-authorized 2 1 1 2 >"$test_root/lab-authorized/host.log" 2>&1 || {
+launch lab-authorized 2 1 1 2 0 >"$test_root/lab-authorized/host.log" 2>&1 || {
   status=$?
   cat "$test_root/lab-authorized/host.log" >&2
   fail "authorized host failed with $status"
@@ -99,7 +100,7 @@ find "$test_root/lab-authorized/audit" -type f -size +0c -print -quit | grep -q 
 
 prepare lab-denied
 grant_capability lab-denied --required storage.private@1=quota:65536:4096
-launch lab-denied 1 1 1 2 >"$test_root/lab-denied/host.log" 2>&1 || {
+launch lab-denied 1 1 1 2 0 >"$test_root/lab-denied/host.log" 2>&1 || {
   cat "$test_root/lab-denied/host.log" >&2
   fail "denied host failed"
 }
@@ -114,7 +115,7 @@ find "$test_root/lab-denied/audit" -type f -size +0c -print -quit | grep -q . ||
 
 prepare lab-permission
 grant_capability lab-permission --optional notifications.send@1=tokens:proof
-launch lab-permission 0 1 2 3 >"$test_root/lab-permission/host.log" 2>&1 &
+launch lab-permission 0 1 2 3 1 >"$test_root/lab-permission/host.log" 2>&1 &
 permission_pid=$!
 for ((attempt = 0; attempt < 100; attempt++)); do
   grep -q 'PRODUCT_E2E frame 1' "$test_root/lab-permission/host.log" && break
@@ -130,8 +131,10 @@ wait "$permission_pid" || {
   cat "$test_root/lab-permission/host.log" >&2
   fail "permission revoke host failed"
 }
-grep -q 'PRODUCT_E2E complete calls 0 frames 1 render_packets 2 grant_mutation 3' \
-  "$test_root/lab-permission/host.log" || \
+permission_completion=$(awk '/PRODUCT_E2E complete calls 0/ { print; exit }' \
+  "$test_root/lab-permission/host.log")
+[[ $permission_completion =~ post_mutation_frames\ ([1-9][0-9]*) &&
+   $permission_completion =~ grant_mutation\ 3 ]] || \
   fail "permission revoke did not produce an authenticated follow-up frame"
 
 echo "product host real-bwrap e2e: PASS"

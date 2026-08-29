@@ -438,6 +438,7 @@ int preview(const QStringList &arguments, QGuiApplication &application,
   QTimer pump;
   std::uint64_t observed_grant_mutation = state.mutation_sequence;
 #ifdef OMARCHY_PLUGIN_PRODUCT_E2E
+  const std::uint64_t startup_grant_mutation = state.mutation_sequence;
   const int expected_calls = qEnvironmentVariableIntValue("OMARCHY_PLUGIN_E2E_EXPECT_CALLS");
   const bool expected_calls_set = qEnvironmentVariableIsSet("OMARCHY_PLUGIN_E2E_EXPECT_CALLS");
   const int expected_frames = qEnvironmentVariableIntValue("OMARCHY_PLUGIN_E2E_EXPECT_FRAMES");
@@ -445,15 +446,19 @@ int preview(const QStringList &arguments, QGuiApplication &application,
       qEnvironmentVariableIntValue("OMARCHY_PLUGIN_E2E_EXPECT_RENDER_PACKETS");
   const int expected_mutation =
       qEnvironmentVariableIntValue("OMARCHY_PLUGIN_E2E_EXPECT_MUTATION");
+  const int expected_post_mutation_frames =
+      qEnvironmentVariableIntValue("OMARCHY_PLUGIN_E2E_EXPECT_POST_MUTATION_FRAMES");
   std::vector<QByteArray> frame_hashes;
   std::uint64_t render_packets = 0;
+  std::uint64_t post_mutation_frames = 0;
   QTimer deadline;
   deadline.setSingleShot(true);
   QObject::connect(&deadline, &QTimer::timeout, [&] {
     const auto worker_error = started.session->take_worker_standard_error();
     std::cerr << "PRODUCT_E2E timeout calls " << lab_broker->dispatch_count()
               << " frames " << frame_hashes.size() << " render_packets "
-              << render_packets << " worker_stderr "
+              << render_packets << " post_mutation_frames "
+              << post_mutation_frames << " worker_stderr "
               << worker_error << " grant_mutation " << observed_grant_mutation
               << '\n';
     qCritical() << "PRODUCT_E2E timeout calls" << lab_broker->dispatch_count()
@@ -480,6 +485,9 @@ int preview(const QStringList &arguments, QGuiApplication &application,
             return;
           }
           observed_grant_mutation = latest.mutation_sequence;
+          std::cerr << "PRODUCT_E2E grant_mutation "
+                    << observed_grant_mutation << " render_packets "
+                    << render_packets << '\n';
         }
       } catch (const std::exception &error) {
         qCritical().noquote() << "omarchy-plugin-host: live grant reload failed:"
@@ -513,6 +521,8 @@ int preview(const QStringList &arguments, QGuiApplication &application,
       const auto &image = surface.ownedImage();
       if (!image.isNull()) {
         ++render_packets;
+        if (observed_grant_mutation > startup_grant_mutation)
+          ++post_mutation_frames;
         const auto bytes = QByteArrayView(
             reinterpret_cast<const char *>(image.constBits()), image.sizeInBytes());
         const auto hash = QCryptographicHash::hash(bytes, QCryptographicHash::Sha256);
@@ -528,6 +538,8 @@ int preview(const QStringList &arguments, QGuiApplication &application,
           lab_broker->dispatch_count() >= static_cast<std::uint64_t>(expected_calls) &&
           frame_hashes.size() >= static_cast<std::size_t>(expected_frames) &&
           render_packets >= static_cast<std::uint64_t>(expected_render_packets) &&
+          post_mutation_frames >=
+              static_cast<std::uint64_t>(expected_post_mutation_frames) &&
           observed_grant_mutation >= static_cast<std::uint64_t>(expected_mutation)) {
         qInfo() << "PRODUCT_E2E complete calls" << lab_broker->dispatch_count()
                 << "frames" << frame_hashes.size()
@@ -535,6 +547,7 @@ int preview(const QStringList &arguments, QGuiApplication &application,
         std::cerr << "PRODUCT_E2E complete calls " << lab_broker->dispatch_count()
                   << " frames " << frame_hashes.size()
                   << " render_packets " << render_packets
+                  << " post_mutation_frames " << post_mutation_frames
                   << " grant_mutation " << observed_grant_mutation << '\n';
         application.exit(0);
       }
