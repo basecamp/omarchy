@@ -1,42 +1,332 @@
 #include "external_provider.hpp"
+#include <algorithm>
 #include <array>
 #include <cerrno>
-#include <cstring>
-#include <poll.h>
 #include <fcntl.h>
-#include <sys/stat.h>
+#include <poll.h>
+#include <sys/random.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 namespace omarchy::plugins::external_provider {
 namespace {
-bool all(int fd, const void *data, std::size_t size) { const auto *p=static_cast<const std::byte*>(data); while(size){auto n=write(fd,p,size);if(n<=0)return false;p+=n;size-=n;}return true; }
-bool read_all(int fd, void *data, std::size_t size) { auto *p=static_cast<std::byte*>(data); while(size){auto n=read(fd,p,size);if(n<=0)return false;p+=n;size-=n;}return true; }
+constexpr std::array<std::byte, 8> hs{
+    std::byte{'O'}, std::byte{'M'}, std::byte{'P'}, std::byte{'H'},
+    std::byte{'E'}, std::byte{'L'}, std::byte{'O'}, std::byte{2}};
+constexpr std::array<std::byte, 8> rq{
+    std::byte{'O'}, std::byte{'M'}, std::byte{'P'}, std::byte{'R'},
+    std::byte{'E'}, std::byte{'Q'}, std::byte{'S'}, std::byte{2}};
+constexpr std::array<std::byte, 8> rp{
+    std::byte{'O'}, std::byte{'M'}, std::byte{'P'}, std::byte{'R'},
+    std::byte{'E'}, std::byte{'P'}, std::byte{'L'}, std::byte{2}};
+struct W {
+  std::span<std::byte> b;
+  size_t n = 0;
+  bool raw(std::span<const std::byte> x) {
+    if (n > b.size() || x.size() > b.size() - n)
+      return false;
+    std::ranges::copy(x, b.begin() + static_cast<std::ptrdiff_t>(n));
+    n += x.size();
+    return true;
+  }
+  bool u16(uint16_t x) {
+    std::array<std::byte, 2> a{std::byte(x >> 8), std::byte(x)};
+    return raw(a);
+  }
+  bool u32(uint32_t x) {
+    std::array<std::byte, 4> a{};
+    for (int i = 0; i < 4; i++)
+      a[i] = std::byte(x >> ((3 - i) * 8));
+    return raw(a);
+  }
+  bool u64(uint64_t x) {
+    std::array<std::byte, 8> a{};
+    for (int i = 0; i < 8; i++)
+      a[i] = std::byte(x >> ((7 - i) * 8));
+    return raw(a);
+  }
+  bool text(std::string_view x) {
+    return !x.empty() && x.size() <= UINT16_MAX && u16(x.size()) &&
+           raw(std::as_bytes(std::span(x)));
+  }
+};
+struct R {
+  std::span<const std::byte> b;
+  size_t n = 0;
+  bool raw(size_t z, std::span<const std::byte> &x) {
+    if (n > b.size() || z > b.size() - n)
+      return false;
+    x = b.subspan(n, z);
+    n += z;
+    return true;
+  }
+  bool u16(uint16_t &x) {
+    std::span<const std::byte> a;
+    if (!raw(2, a))
+      return false;
+    x = (std::to_integer<uint16_t>(a[0]) << 8) |
+        std::to_integer<uint16_t>(a[1]);
+    return true;
+  }
+  bool u32(uint32_t &x) {
+    std::span<const std::byte> a;
+    if (!raw(4, a))
+      return false;
+    x = 0;
+    for (auto q : a)
+      x = (x << 8) | std::to_integer<uint32_t>(q);
+    return true;
+  }
+  bool u64(uint64_t &x) {
+    std::span<const std::byte> a;
+    if (!raw(8, a))
+      return false;
+    x = 0;
+    for (auto q : a)
+      x = (x << 8) | std::to_integer<uint64_t>(q);
+    return true;
+  }
+  bool text(std::string_view &x) {
+    uint16_t z;
+    std::span<const std::byte> a;
+    if (!u16(z) || z == 0 || !raw(z, a))
+      return false;
+    x = {reinterpret_cast<const char *>(a.data()), a.size()};
+    return x.find('\0') == std::string_view::npos;
+  }
+};
+bool magic(R &r, const auto &m) {
+  std::span<const std::byte> x;
+  return r.raw(m.size(), x) && std::ranges::equal(x, m);
 }
+bool ident(W &w, const Registration &r) {
+  return w.u32(r.protocol_version) && w.text(r.service_id.view()) &&
+         w.text(r.adapter.adapter_class.view()) &&
+         w.text(r.adapter.implementation_digest.view()) &&
+         w.u32(r.adapter.abi_version);
+}
+bool tx(int fd, std::span<const std::byte> x) {
+  return write(fd, x.data(), x.size()) ==
+         static_cast<ssize_t>(x.size());
+}
+bool rx(int fd, std::span<std::byte> s, std::span<const std::byte> &x) {
+  auto n = recv(fd, s.data(), s.size(), 0);
+  if (n <= 0)
+    return false;
+  x = std::span<const std::byte>(s).first(n);
+  return true;
+}
+bool nonce(std::span<std::byte, kNonceBytes> x) {
+  size_t n = 0;
+  while (n < x.size()) {
+    auto z = getrandom(x.data() + n, x.size() - n, 0);
+    if (z < 0 && errno == EINTR)
+      continue;
+    if (z <= 0)
+      return false;
+    n += z;
+  }
+  return std::ranges::any_of(x, [](auto b) { return b != std::byte{}; });
+}
+} // namespace
 bool valid_registration(const Registration &v) {
-  if(v.service_id.view().empty() || v.adapter.abi_version == 0 ||
-     v.protocol_version != 1 || !v.executable.is_absolute() ||
-     v.executable.filename() == "sh" || v.executable.filename() == "bash" ||
-     v.executable_digest.size() != 64) return false;
-  const int fd=open(v.executable.c_str(),O_RDONLY|O_CLOEXEC|O_NOFOLLOW);struct stat s{};
-  if(fd<0||fstat(fd,&s)!=0||!S_ISREG(s.st_mode)||static_cast<std::uint32_t>(s.st_uid)!=v.expected_uid||(s.st_mode&(S_IWGRP|S_IWOTH))||s.st_size<=0||s.st_size>64*1024*1024){if(fd>=0)close(fd);return false;}
-  std::string bytes(static_cast<std::size_t>(s.st_size),'\0');const auto n=read(fd,bytes.data(),bytes.size());close(fd);
-  return n==s.st_size&&definitions::Digest(manifest::sha256_hex(bytes))==v.executable_digest;
+  if (v.service_id.view().empty() || v.adapter.abi_version == 0 ||
+      v.protocol_version != 2 || !v.executable.is_absolute() ||
+      v.executable.filename() == "sh" || v.executable.filename() == "bash" ||
+      v.executable_digest.size() != 64)
+    return false;
+  int fd = open(v.executable.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+  struct stat s{};
+  if (fd < 0 || fstat(fd, &s) || !S_ISREG(s.st_mode) ||
+      uint32_t(s.st_uid) != v.expected_uid ||
+      (s.st_mode & (S_IWGRP | S_IWOTH)) || s.st_size <= 0 ||
+      s.st_size > 64 * 1024 * 1024) {
+    if (fd >= 0)
+      close(fd);
+    return false;
+  }
+  std::string b(s.st_size, '\0');
+  auto n = read(fd, b.data(), b.size());
+  close(fd);
+  return n == s.st_size &&
+         Digest(manifest::sha256_hex(b)) == v.executable_digest;
 }
-Result invoke(const Registration &r,const definitions::AuthorizedDynamicRequest &q,
-              std::span<std::byte> out,std::size_t &written,
-              std::chrono::milliseconds timeout,std::uint64_t epoch) {
-  written=0;if(!valid_registration(r))return Result::invalid_registration;
-  if(epoch==0||epoch!=q.authorization.grant_epoch)return Result::revoked;
-  if(q.payload.size()>definitions::kMaximumDynamicPayloadBytes||out.size()>definitions::kMaximumDynamicPayloadBytes)return Result::malformed;
-  int fd[2];if(socketpair(AF_UNIX,SOCK_SEQPACKET|SOCK_CLOEXEC,0,fd)!=0)return Result::crashed;
-  const auto pid=fork();if(pid<0){close(fd[0]);close(fd[1]);return Result::crashed;}
-  if(pid==0){close(fd[0]);dup2(fd[1],3);close(fd[1]);execl(r.executable.c_str(),r.executable.c_str(),"--omarchy-provider-fd=3",nullptr);_exit(127);}
-  close(fd[1]);std::array<std::uint32_t,2> header{1,static_cast<std::uint32_t>(q.payload.size())};
-  if(!all(fd[0],header.data(),sizeof(header))||!all(fd[0],q.payload.data(),q.payload.size())){close(fd[0]);waitpid(pid,nullptr,0);return Result::crashed;}
-  pollfd p{fd[0],POLLIN,0};if(poll(&p,1,static_cast<int>(timeout.count()))<=0){kill(pid,SIGKILL);close(fd[0]);waitpid(pid,nullptr,0);return Result::timeout;}
-  std::uint32_t size=0;if(!read_all(fd[0],&size,sizeof(size))||size>out.size()||!read_all(fd[0],out.data(),size)){close(fd[0]);waitpid(pid,nullptr,0);return Result::malformed;}
-  written=size;close(fd[0]);int status=0;waitpid(pid,&status,0);return WIFEXITED(status)&&WEXITSTATUS(status)==0?Result::completed:Result::crashed;
+bool encode_handshake(const Registration &r,
+                      std::span<const std::byte, kNonceBytes> n,
+                      std::span<std::byte> o, size_t &w) {
+  w = 0;
+  W x{o};
+  if (!x.raw(hs) || !ident(x, r) || !x.raw(n))
+    return false;
+  w = x.n;
+  return true;
+}
+bool verify_handshake_echo(const Registration &r,
+                           std::span<const std::byte, kNonceBytes> n,
+                           std::span<const std::byte> i) {
+  std::array<std::byte, kMaximumFrameBytes> x{};
+  size_t z = 0;
+  return encode_handshake(r, n, x, z) && i.size() == z &&
+         std::ranges::equal(i, std::span(x).first(z));
+}
+bool encode_request(const RequestFrame &q, std::span<std::byte> o, size_t &w) {
+  w = 0;
+  if (!q.correlation || !q.authorization.grant_epoch ||
+      q.payload.size() > definitions::kMaximumDynamicPayloadBytes)
+    return false;
+  W x{o};
+  auto &a = q.authorization;
+  if (!x.raw(rq) || !x.u32(2) || !x.text(q.service_id.view()) ||
+      !x.text(q.adapter.adapter_class.view()) ||
+      !x.text(q.adapter.implementation_digest.view()) ||
+      !x.u32(q.adapter.abi_version) || !x.text(a.binding.plugin.view()) ||
+      !x.text(a.binding.revision.view()) ||
+      !x.text(a.binding.policy_fingerprint.view()) ||
+      !x.u64(a.binding.generation) ||
+      !x.text(a.definition.canonical_name.view()) ||
+      !x.u32(a.definition.definition_generation) ||
+      !x.text(a.definition.definition_digest.view()) || !x.u64(a.grant_epoch) ||
+      !x.text(q.operation.view()) || !x.text(q.demand_scope.view()) ||
+      !x.u64(q.correlation) || !x.raw(q.host_nonce) ||
+      !x.u32(q.payload.size()) || !x.raw(q.payload))
+    return false;
+  w = x.n;
+  return true;
+}
+bool decode_request(std::span<const std::byte> i, RequestFrame &q) {
+  q = {};
+  if (i.size() > kMaximumFrameBytes)
+    return false;
+  R r{i};
+  uint32_t v, abi, dg, ps;
+  std::string_view sid, ac, ad, p, rev, pol, dn, dd, op, sc;
+  std::span<const std::byte> nn, pl;
+  try {
+    auto &a = q.authorization;
+    if (!magic(r, rq) || !r.u32(v) || v != 2 || !r.text(sid) || !r.text(ac) ||
+        !r.text(ad) || !r.u32(abi) || !abi || !r.text(p) || !r.text(rev) ||
+        !r.text(pol) || !r.u64(a.binding.generation) || !r.text(dn) ||
+        !r.u32(dg) || !dg || !r.text(dd) || !r.u64(a.grant_epoch) ||
+        !a.grant_epoch || !r.text(op) || !r.text(sc) || !r.u64(q.correlation) ||
+        !q.correlation || !r.raw(kNonceBytes, nn) || !r.u32(ps) ||
+        ps > definitions::kMaximumDynamicPayloadBytes || !r.raw(ps, pl) ||
+        r.n != i.size())
+      return false;
+    q.service_id = definitions::Name(sid);
+    q.adapter = {definitions::Name(ac), Digest(ad), abi};
+    a.binding = {permissions::PluginId(p), Digest(rev), Digest(pol),
+                 a.binding.generation};
+    a.definition = {definitions::Name(dn), dg, Digest(dd)};
+    q.operation = definitions::Name(op);
+    q.demand_scope = definitions::CanonicalScope(sc);
+    std::ranges::copy(nn, q.host_nonce.begin());
+    q.payload = pl;
+  } catch (...) {
+    return false;
+  }
+  return true;
+}
+bool encode_reply(const ReplyFrame &q, std::span<std::byte> o, size_t &w) {
+  w = 0;
+  if (!q.correlation ||
+      q.payload.size() > definitions::kMaximumDynamicPayloadBytes)
+    return false;
+  W x{o};
+  if (!x.raw(rp) || !x.u32(2) || !x.u64(q.correlation) ||
+      !x.raw(q.host_nonce) || !x.u32(q.payload.size()) || !x.raw(q.payload))
+    return false;
+  w = x.n;
+  return true;
+}
+bool decode_reply(std::span<const std::byte> i, ReplyFrame &q) {
+  q = {};
+  R r{i};
+  uint32_t v, z;
+  std::span<const std::byte> n, p;
+  if (i.size() > kMaximumFrameBytes || !magic(r, rp) || !r.u32(v) || v != 2 ||
+      !r.u64(q.correlation) || !q.correlation || !r.raw(kNonceBytes, n) ||
+      !r.u32(z) || z > definitions::kMaximumDynamicPayloadBytes ||
+      !r.raw(z, p) || r.n != i.size())
+    return false;
+  std::ranges::copy(n, q.host_nonce.begin());
+  q.payload = p;
+  return true;
+}
+Result invoke(const Registration &r,
+              const definitions::AuthorizedDynamicRequest &q,
+              std::span<std::byte> out, size_t &w,
+              std::chrono::milliseconds timeout, uint64_t epoch) {
+  w = 0;
+  if (!valid_registration(r))
+    return Result::invalid_registration;
+  if (!epoch || epoch != q.authorization.grant_epoch)
+    return Result::revoked;
+  int f[2];
+  if (socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, f))
+    return Result::crashed;
+  auto pid = fork();
+  if (pid < 0) {
+    close(f[0]);
+    close(f[1]);
+    return Result::crashed;
+  }
+  if (!pid) {
+    close(f[0]);
+    if (f[1] != 3) {
+      dup2(f[1], 3);
+      close(f[1]);
+    }
+    execl(r.executable.c_str(), r.executable.c_str(), "--omarchy-provider-fd=3",
+          nullptr);
+    _exit(127);
+  }
+  close(f[1]);
+  auto fail = [&](Result x) {
+    kill(pid, SIGKILL);
+    close(f[0]);
+    waitpid(pid, nullptr, 0);
+    return x;
+  };
+  std::array<std::byte, kNonceBytes> n{};
+  std::array<std::byte, kMaximumFrameBytes> b{};
+  size_t z;
+  std::span<const std::byte> got;
+  if (!nonce(n) || !encode_handshake(r, n, b, z) ||
+      !tx(f[0], std::span(b).first(z))) {
+    return fail(Result::crashed);
+  }
+  pollfd p{f[0], POLLIN, 0};
+  if (poll(&p, 1, timeout.count()) <= 0)
+    return fail(Result::timeout);
+  if (!rx(f[0], b, got) || !verify_handshake_echo(r, n, got))
+    return fail(Result::identity_mismatch);
+  RequestFrame req{r.service_id,
+                   r.adapter,
+                   q.authorization,
+                   definitions::Name(q.operation),
+                   definitions::CanonicalScope(q.demand_scope),
+                   q.payload,
+                   1,
+                   n};
+  if (!encode_request(req, b, z) || !tx(f[0], std::span(b).first(z))) {
+    return fail(Result::crashed);
+  }
+  if (poll(&p, 1, timeout.count()) <= 0)
+    return fail(Result::timeout);
+  if (!rx(f[0], b, got))
+    return fail(Result::malformed);
+  ReplyFrame reply;
+  if (!decode_reply(got, reply) || reply.correlation != 1 ||
+      reply.host_nonce != n || reply.payload.size() > out.size())
+    return fail(Result::malformed);
+  std::ranges::copy(reply.payload, out.begin());
+  w = reply.payload.size();
+  close(f[0]);
+  int status;
+  waitpid(pid, &status, 0);
+  return WIFEXITED(status) && !WEXITSTATUS(status) ? Result::completed
+                                                   : Result::crashed;
 }
 } // namespace omarchy::plugins::external_provider
