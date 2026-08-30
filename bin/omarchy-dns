@@ -6,6 +6,18 @@
 
 set -euo pipefail
 
+# Whenever this runs as root — invoked directly through the passwordless
+# sudoers rule, or re-execed by require_root below — sudo's secure_path decides
+# where a bare helper resolves, and a dev link (etc/sudoers.d/omarchy-dev-path)
+# prepends a user-writable checkout bin/ to it. Every helper this script calls
+# by bare name (dirname, install, tee, rm, nmcli, systemctl, awk) is a system
+# tool, never an omarchy-* command, so pin PATH to trusted system directories
+# and keep root from resolving one out of that checkout. The unprivileged
+# wrapper phase keeps the caller's PATH so it can still find sudo/pkexec.
+if (( EUID == 0 )); then
+  export PATH=/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
+fi
+
 NM_DNS_CONF=/etc/NetworkManager/conf.d/20-omarchy-dns.conf
 
 provider_from_arg() {
