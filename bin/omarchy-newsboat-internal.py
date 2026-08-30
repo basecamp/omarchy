@@ -15,13 +15,13 @@ import sqlite3
 import sys
 import time
 import xml.etree.ElementTree as ET
+import xml.parsers.expat as expat
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import quote, urljoin, urlparse
 
 
 WEB_URL = re.compile(r"https?://\S+")
-FORBIDDEN_XML_DECLARATION = re.compile(br"<!\s*(?:DOCTYPE|ENTITY)\b", re.IGNORECASE)
 
 
 class NewsboatError(Exception):
@@ -156,14 +156,35 @@ def text_of(element):
     return clean("".join(element.itertext())) if element is not None else ""
 
 
-def validate_feed(args):
-    data = Path(args.document).read_bytes()
-    if FORBIDDEN_XML_DECLARATION.search(data):
-        raise NewsboatError("Advertised feed may not declare a DTD or entity", 4)
+class ForbiddenXMLDeclaration(Exception):
+    pass
+
+
+def parse_feed_xml(data):
+    """Reject DTDs structurally before ElementTree can expand their entities."""
+    parser = expat.ParserCreate()
+
+    def reject_declaration(*_args):
+        raise ForbiddenXMLDeclaration
+
+    parser.StartDoctypeDeclHandler = reject_declaration
+    parser.EntityDeclHandler = reject_declaration
     try:
-        root = ET.fromstring(data)
+        parser.Parse(data, True)
+    except ForbiddenXMLDeclaration as error:
+        raise NewsboatError("Advertised feed may not declare a DTD or entity", 4) from error
+    except expat.ExpatError as error:
+        raise NewsboatError(f"Advertised feed is not valid XML: {error}", 4) from error
+
+    try:
+        return ET.fromstring(data)
     except ET.ParseError as error:
         raise NewsboatError(f"Advertised feed is not valid XML: {error}", 4) from error
+
+
+def validate_feed(args):
+    data = Path(args.document).read_bytes()
+    root = parse_feed_xml(data)
 
     root_name = local_name(root.tag)
     if root_name not in {"rss", "feed", "rdf"}:

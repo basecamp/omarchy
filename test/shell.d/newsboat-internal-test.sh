@@ -62,6 +62,21 @@ assert feed["recent_titles"] == ["One useful thing"]
 PY
 pass "Newsboat accepts a bounded ordinary RSS document"
 
+python3 - "$test_tmp/feed.xml" "$test_tmp/feed-utf16.xml" <<'PY'
+import pathlib
+import sys
+
+source = pathlib.Path(sys.argv[1]).read_text()
+pathlib.Path(sys.argv[2]).write_bytes(source.encode("utf-16"))
+PY
+feed=$(python3 "$helper" validate-feed \
+  https://safe.example/ \
+  https://safe.example/feed.xml \
+  'Safe page' \
+  "$test_tmp/feed-utf16.xml")
+[[ $(python3 -c 'import json, sys; print(json.loads(sys.argv[1])["name"])' "$feed") == "Safe Dispatch" ]] || fail "Newsboat corrupts a safe UTF-16 feed"
+pass "Newsboat accepts safe XML encodings structurally"
+
 cat >"$test_tmp/hostile.xml" <<'XML'
 <?xml version="1.0"?>
 <!DOCTYPE rss [<!ENTITY injected "This must never expand">]>
@@ -76,6 +91,24 @@ if python3 "$helper" validate-feed \
 fi
 grep -Fq 'may not declare a DTD or entity' "$test_tmp/hostile-error" || fail "unsafe XML does not explain why it was rejected"
 pass "Newsboat rejects DTD and entity declarations before XML parsing"
+
+python3 - "$test_tmp/hostile.xml" "$test_tmp/hostile-utf16.xml" <<'PY'
+import pathlib
+import sys
+
+source = pathlib.Path(sys.argv[1]).read_text()
+pathlib.Path(sys.argv[2]).write_bytes(source.encode("utf-16"))
+PY
+if python3 "$helper" validate-feed \
+  https://hostile.example/ \
+  https://hostile.example/feed.xml \
+  'Hostile page' \
+  "$test_tmp/hostile-utf16.xml" >"$test_tmp/hostile-utf16-output" 2>"$test_tmp/hostile-utf16-error"; then
+  fail "Newsboat accepts an encoded DTD or expands its entity"
+fi
+grep -Fq 'may not declare a DTD or entity' "$test_tmp/hostile-utf16-error" || fail "encoded unsafe XML does not explain why it was rejected"
+[[ ! -s $test_tmp/hostile-utf16-output ]] || fail "Newsboat exposes an entity-expanded value before rejecting encoded unsafe XML"
+pass "Newsboat rejects DTDs structurally across XML encodings"
 
 cat >"$test_tmp/not-a-feed.xml" <<'XML'
 <?xml version="1.0"?><html><title>Not a feed</title></html>
