@@ -1,0 +1,123 @@
+#!/bin/bash
+
+# omarchy:summary=Write the current theme color into the browser policy directories
+# omarchy:args=<rrggbb>
+# omarchy:hidden=true
+
+set -euo pipefail
+
+# Whenever this runs as root — invoked directly through the passwordless
+# sudoers rule, or re-execed by require_root below — sudo's secure_path decides
+# where a bare helper resolves, and a dev link (etc/sudoers.d/omarchy-dev-path)
+# prepends a user-writable checkout bin/ to it. Every helper this script calls
+# by bare name (printf's builtin aside: install, mktemp, rm) is a system tool,
+# never an omarchy-* command, so pin PATH to trusted system directories and keep
+# root from resolving one out of that checkout. The unprivileged wrapper phase
+# keeps the caller's PATH so it can still find sudo/pkexec.
+if (( EUID == 0 )); then
+  export PATH=/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
+fi
+
+# Enterprise policy trust roots. The list is fixed here rather than taken from
+# the caller: the caller chooses a color, never a path.
+POLICY_DIRS=(
+  /etc/chromium/policies/managed
+  /etc/opt/chrome/policies/managed
+  /etc/opt/edge/policies/managed
+  /etc/brave/policies/managed
+)
+
+# The path etc/sudoers.d/omarchy-theme-browser names. The privileged half always
+# runs from there rather than from whichever copy was invoked, so the rule
+# matches even where $OMARCHY_PATH points at a checkout.
+PACKAGED_PATH=/usr/bin/omarchy-theme-set-browser-policy
+
+usage() {
+  echo "Usage: omarchy-theme-set-browser-policy <rrggbb>" >&2
+}
+
+if (( $# != 1 )); then
+  usage
+  exit 1
+fi
+
+color="$1"
+
+# Six lowercase hex digits is the whole of what this accepts. The leading "#"
+# is added when the JSON is written rather than passed in: "#" opens a comment
+# in sudoers, and keeping it out of argv lets the sudoers rule spell the
+# argument as a plain six-character glob.
+if [[ ! $color =~ ^[0-9a-f]{6}$ ]]; then
+  echo "omarchy-theme-set-browser-policy: expected six lowercase hex digits, got '$color'" >&2
+  exit 1
+fi
+
+# True when sudo would run this exact command without stopping for a password.
+# `sudo -l` on its own reports whether a command is permitted, which the blanket
+# %wheel rule answers yes to for everything; the long listing prints the matched
+# entry's tags, so !authenticate is the grant in
+# etc/sudoers.d/omarchy-theme-browser and nothing else. Listing runs nothing
+# and, under -n, prompts for nothing.
+sudo_grants_passwordless() {
+  sudo -n -l -l "$PACKAGED_PATH" "$@" 2>/dev/null | grep -q '!authenticate'
+}
+
+require_root() {
+  if (( EUID == 0 )); then
+    return
+  elif [[ -t 0 ]] || sudo_grants_passwordless "$@"; then
+    exec sudo "$PACKAGED_PATH" "$@"
+  else
+    exec pkexec "$PACKAGED_PATH" "$@"
+  fi
+}
+
+require_root "$color"
+
+failed=0
+staged=""
+# Bash 5.3 makes the EXIT trap's last command decide the script's exit status,
+# so this handler must not end on a false test. Every successful run clears
+# staged, and a trailing `[[ -n $staged ]] && ...` would report that as failure.
+cleanup() {
+  if [[ -n $staged ]]; then
+    rm -f "$staged"
+  fi
+}
+trap cleanup EXIT
+
+for policy_dir in "${POLICY_DIRS[@]}"; do
+  # Only browsers Omarchy has installed have a policy directory. Creating one
+  # here would hand a browser a managed-policy root it does not otherwise have.
+  [[ -d $policy_dir && ! -L $policy_dir ]] || continue
+
+  dest=$policy_dir/color.json
+  staged=$(mktemp) || {
+    failed=1
+    continue
+  }
+  printf '{"BrowserThemeColor": "#%s", "BrowserColorScheme": "device"}\n' "$color" >"$staged"
+
+  if [[ -L $dest || -d $dest ]]; then
+    if ! rm -rf -- "$dest"; then
+      rm -f "$staged"
+      staged=""
+      echo "omarchy-theme-set-browser-policy: cannot replace $dest" >&2
+      failed=1
+      continue
+    fi
+  fi
+
+  if ! install -m 0644 -o root -g root -T "$staged" "$dest"; then
+    rm -f "$staged"
+    staged=""
+    echo "omarchy-theme-set-browser-policy: cannot write $dest" >&2
+    failed=1
+    continue
+  fi
+
+  rm -f "$staged"
+  staged=""
+done
+
+exit "$failed"
