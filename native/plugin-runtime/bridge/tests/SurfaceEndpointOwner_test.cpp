@@ -494,6 +494,37 @@ void remote_close_reentry_cannot_prune_the_on_stack_endpoint() {
           "closed reentrant record was not pruned exactly once");
 }
 
+void close_all_rejects_reentrant_attachment() {
+  Clock clock;
+  Port port;
+  auto owner = bridge::SurfaceEndpointOwnerTestAccess::create(
+      clock, port.description.binding, 1, port);
+  QQuickWindow window;
+  bridge::RemotePluginSurface remote;
+  bridge::RemotePluginSurface replacement;
+  place(remote, window);
+  place(replacement, window);
+  const QString key = QStringLiteral("opaque-close-all-reentry");
+  auto slot = published(port, key);
+  require(bridge::SurfaceEndpointOwnerTestAccess::attach(
+              *owner, slot, key, remote) ==
+              bridge::SurfaceEndpointAttachResult::attached,
+          "close-all reentry fixture did not attach");
+
+  bridge::SurfaceEndpointAttachResult retry =
+      bridge::SurfaceEndpointAttachResult::attached;
+  port.reenter = [&] {
+    auto duplicate = published(port, key);
+    retry = bridge::SurfaceEndpointOwnerTestAccess::attach(
+        *owner, duplicate, key, replacement);
+  };
+  bridge::SurfaceEndpointOwnerTestAccess::close_all(*owner);
+  require(retry == bridge::SurfaceEndpointAttachResult::rejected &&
+              bridge::SurfaceEndpointOwnerTestAccess::count(*owner) == 0 &&
+              port.detach_calls == 1,
+          "close-all admitted a replacement during terminal teardown");
+}
+
 void failed_endpoint_attach_is_transactional() {
   Port port;
   port.fail_attach = true;
@@ -528,5 +559,6 @@ void run_surface_endpoint_owner_tests() {
   eighth_endpoint_is_accepted_and_ninth_is_rejected();
   teardown_replacement_and_remote_destruction_are_exact();
   remote_close_reentry_cannot_prune_the_on_stack_endpoint();
+  close_all_rejects_reentrant_attachment();
   failed_endpoint_attach_is_transactional();
 }

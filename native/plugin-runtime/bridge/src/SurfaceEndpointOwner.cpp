@@ -117,7 +117,8 @@ SurfaceEndpointOwner::~SurfaceEndpointOwner() noexcept {
 SurfaceEndpointAttachResult SurfaceEndpointOwner::attach(
     const PublishedSurfaceAttachment &published, QStringView qml_key,
     RemotePluginSurface &surface_item) noexcept {
-  if (!on_owner_thread() || QThread::currentThread() != surface_item.thread())
+  if (!on_owner_thread() || closing_all_ ||
+      QThread::currentThread() != surface_item.thread())
     return SurfaceEndpointAttachResult::rejected;
   prune_closed();
   if (qml_key != published.surface_key_ || published.surface_key_.isEmpty() ||
