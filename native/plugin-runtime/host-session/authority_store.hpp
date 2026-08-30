@@ -24,6 +24,11 @@ struct AuthoritySlots {
   std::optional<AuthorityRevisionRef> candidate;
 };
 
+struct AuthorityView {
+  AuthoritySlots slots;
+  std::optional<policy::GrantSnapshot> active;
+};
+
 enum class AuthorityMutationResult {
   applied,
   invalid,
@@ -48,6 +53,9 @@ public:
   AuthorityStore &operator=(const AuthorityStore &) = delete;
 
   [[nodiscard]] std::optional<AuthoritySlots> read_slots() const;
+  // Coherent review baseline: slots and active snapshot are read under one
+  // mutex. A later mutation is rejected by publish_candidate's sequence CAS.
+  [[nodiscard]] std::optional<AuthorityView> read_authority_view() const;
   [[nodiscard]] AuthorityMutationResult
   publish_candidate(const VerifiedRevision &verified,
                     const policy::GrantSnapshot &snapshot,

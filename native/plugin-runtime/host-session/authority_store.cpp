@@ -594,6 +594,22 @@ std::optional<AuthoritySlots> AuthorityStore::read_slots() const {
   return slots;
 }
 
+std::optional<AuthorityView> AuthorityStore::read_authority_view() const {
+  std::scoped_lock lock(mutation_mutex_);
+  if (::getpid() != owner_pid_)
+    return std::nullopt;
+  auto slots = read_slots_unlocked(root_.get(), expected_uid_);
+  if (!slots || !valid_slots(*slots))
+    return std::nullopt;
+  std::optional<policy::GrantSnapshot> active;
+  if (slots->active) {
+    active = load_snapshot(root_.get(), expected_uid_, *slots->active);
+    if (!active || active->binding.plugin != expected_plugin_)
+      return std::nullopt;
+  }
+  return AuthorityView{.slots = *slots, .active = std::move(active)};
+}
+
 AuthorityMutationResult AuthorityStore::replace_slots(AuthoritySlots slots) {
   const auto bytes = encode_slots(slots);
   if (bytes.empty())
