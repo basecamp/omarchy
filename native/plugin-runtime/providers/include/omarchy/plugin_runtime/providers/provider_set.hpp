@@ -60,9 +60,9 @@ struct AudioBackend {
 struct ProviderConfiguration {
   // The runtime replaces these authority fields from its verified snapshot;
   // backend callers cannot supply or extend provider authority.
-  permissions::ActivationBinding binding;
-  permissions::RequestSet requests;
-  permissions::GrantSet grants;
+  permissions::ActivationBinding binding{};
+  permissions::RequestSet requests{};
+  permissions::GrantSet grants{};
   std::uint64_t storage_epoch = 0;
   std::uint64_t notification_epoch = 0;
   std::uint64_t audio_epoch = 0;
