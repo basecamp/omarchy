@@ -26,13 +26,16 @@ LOCK="${XDG_RUNTIME_DIR:-/tmp}/omarchy-monitor-clamshell.lock"
 # every call below that can reach Hyprland carries a timeout, so a hung
 # compositor cannot hold the lock. The timeout is a knob only so tests can
 # hang a stub cheaply.
-exec 9>"$LOCK"
+exec 9>"$LOCK" || exit 1
 flock 9 || exit 1
 
 # TERM at the deadline, KILL a second later: a callee that ignores TERM would
-# otherwise be waited on forever, holding the lock.
+# otherwise be waited on forever, holding the lock. The lock descriptor is not
+# lent to these bounded callees -- the only calls that can outlive the command
+# -- since timeout escalates only its direct child, and a descendant that
+# outlives it would otherwise keep holding fd 9 after this command has exited.
 bounded() {
-  timeout --kill-after=1 "${OMARCHY_HYPRCTL_TIMEOUT:-15}" "$@"
+  timeout --kill-after=1 "${OMARCHY_HYPRCTL_TIMEOUT:-15}" "$@" 9>&-
 }
 
 # A predicate answers true, false, or unknown: exit 0, its contracted exit 1,

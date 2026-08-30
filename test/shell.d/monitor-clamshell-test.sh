@@ -82,6 +82,7 @@ for helper in internal internal-mirror; do
 printf 'helper $helper %s\n' "\$*" >>"\$OMARCHY_TEST_LOG"
 [[ -e \$OMARCHY_TEST_CTL/hang-helper-$helper ]] && sleep 5
 [[ -e \$OMARCHY_TEST_CTL/stubborn-helper-$helper ]] && { trap '' TERM; sleep 5 >/dev/null 2>&1; }
+[[ -e \$OMARCHY_TEST_CTL/escapee-helper-$helper ]] && { (trap '' TERM; exec sleep 5) >/dev/null 2>&1 & exec sleep 5; }
 [[ -e \$OMARCHY_TEST_CTL/fail-helper-$helper ]] && exit 1
 if [[ -e \$OMARCHY_TEST_CTL/stale-helper-$helper ]]; then
   rm -f "\$OMARCHY_TEST_FLAG_$(tr '-' '_' <<<"$helper")"
@@ -372,12 +373,26 @@ stubborn_case laptop 'clamshell; stale' "$still_stale"
 stubborn_case helper-internal 'touch "$manual_flag"; stale' "$still_stale"
 pass "T3: every call class is bounded, releases the lock, and fails toward untouched"
 
+# A callee that dies on TERM but leaves a TERM-ignoring descendant behind: the
+# descendant must not have the lock descriptor to hold, so the lock is free the
+# moment the command exits.
+reset_state; touch "$manual_flag" "$ctl/escapee-helper-internal"; stale
+started=$SECONDS; run_command || true; elapsed=$(( SECONDS - started ))
+(( elapsed <= bound + 3 )) || fail "T3 escapee: the command finishes within the bound" "elapsed ${elapsed}s"
+flock -n "$lock" true || fail "T3 escapee: no descendant holds the lock after the command exits"
+overlay_equals "$stale_overlay" && (( $(reloads) == 0 )) || fail "T3 escapee: the conservative outcome"
+pass "T3: a surviving descendant of a bounded callee cannot hold the lock"
+
 # A lock that cannot be taken is a run that must not happen: exit 1 before any
 # lookup, helper or transition.
 reset_state; clamshell; touch "$manual_flag" "$ctl/fail-flock"
 ! run_command || fail "T3 flock: a lock that cannot be taken exits non-zero"
 [[ ! -s $log ]] || fail "T3 flock: no collaborator is called unserialized" "$(cat "$log")"
 [[ ! -e $overlay_file ]] || fail "T3 flock: no transition is made unserialized"
+reset_state; clamshell; rm -f "$lock"; chmod 555 "$run_dir"
+! run_command || fail "T3 flock: a lock file that cannot be opened exits non-zero"
+chmod 755 "$run_dir"
+[[ ! -s $log ]] || fail "T3 flock: no collaborator is called without a lock file" "$(cat "$log")"
 pass "T3: a lock that cannot be taken stops the run before any effect"
 
 # The hosted helpers: not entered without their flags; entered and ordered with them; a failure stops the run.

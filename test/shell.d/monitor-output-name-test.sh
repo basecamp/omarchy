@@ -43,6 +43,7 @@ run_monitor() {
   : >"$eval_log"
   HOME="$home_dir" \
     XDG_STATE_HOME="$home_dir/.local/state" \
+    XDG_RUNTIME_DIR="$tmpdir" \
     LAPTOP_NAME="${LAPTOP_NAME:-eDP-1}" \
     MONITORS_JSON="$monitors_json" \
     EVAL_LOG="$eval_log" \
