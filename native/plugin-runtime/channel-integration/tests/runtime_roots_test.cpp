@@ -1,4 +1,5 @@
 #include "runtime_roots.hpp"
+#include "runtime_roots_test_access.hpp"
 
 #include <fcntl.h>
 #include <pwd.h>

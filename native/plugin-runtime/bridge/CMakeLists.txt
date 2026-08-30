@@ -65,6 +65,7 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/../trusted-bridge/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/../channel-integration/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../channel-integration/tests"
   )
   target_link_libraries(omarchy-plugin-surface-service-test PRIVATE
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick

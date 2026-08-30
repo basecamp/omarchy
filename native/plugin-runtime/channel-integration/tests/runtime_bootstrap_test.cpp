@@ -1,4 +1,5 @@
 #include "runtime_bootstrap.hpp"
+#include "runtime_roots_test_access.hpp"
 
 #include "capability_definition_loader.hpp"
 #include "omarchy/plugin_runtime/Version.h"

@@ -1,4 +1,5 @@
 #include "authority_store.hpp"
+#include "authority_store_test_access.hpp"
 
 #include "manifest_contract.hpp"
 

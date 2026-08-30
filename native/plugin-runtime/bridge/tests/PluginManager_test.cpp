@@ -4,6 +4,7 @@
 #include "omarchy/plugin_runtime/runtime_paths.hpp"
 #include "runtime_bootstrap.hpp"
 #include "runtime_roots.hpp"
+#include "runtime_roots_test_access.hpp"
 #include "remote_surface.hpp"
 #include "revision_verifier_adapter.hpp"
 #include "authority_store.hpp"
