@@ -1,0 +1,17 @@
+# Font size for the screensaver wordmark on a monitor of the given scale.
+# Usage: omarchy_screensaver_font_size <scale>
+omarchy_screensaver_font_size() {
+  local scale="${1:-1}"
+
+  # The wordmark is roughly 1178 physical px wide at font 18. Shrinking the
+  # font by the monitor's scale keeps that physical size — and with it the
+  # column budget the art needs — constant on every display. A fixed 18pt
+  # font did not scale: at scale 2, a 1080p panel offered only 66 of the 81
+  # columns the art needs and centred-cropped the wordmark down to "MARCH".
+  awk -v scale="$scale" 'BEGIN {
+    size = int(18 / scale + 0.5)
+    if (size < 6) size = 6
+    if (size > 18) size = 18
+    print size
+  }'
+}
