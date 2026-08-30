@@ -22,6 +22,27 @@ namespace runtime = omarchy::plugin_runtime::runtime;
 namespace wire = omarchy::plugin::wire;
 
 class BrokerInstanceOrigin;
+// One exact, broker-minted identity follows a request through settlement.
+// Its opaque origin prevents equal visible binding fields from being replayed.
+class BrokerAuthorityStamp final {
+  BrokerAuthorityStamp() = default;
+  BrokerAuthorityStamp(permissions::ActivationBinding binding,
+                       std::uint64_t session_nonce,
+                       std::shared_ptr<const BrokerInstanceOrigin> origin);
+
+  [[nodiscard]] bool valid() const noexcept;
+  [[nodiscard]] bool
+  exactly_matches(const BrokerAuthorityStamp &other) const noexcept;
+
+  permissions::ActivationBinding binding_{};
+  std::uint64_t session_nonce_ = 0;
+  std::shared_ptr<const BrokerInstanceOrigin> origin_;
+
+  friend class AdmittedBrokerRequest;
+  friend class AuthenticatedBrokerAdmission;
+  friend class BrokerTransaction;
+  friend class StructuredBroker;
+};
 
 inline constexpr std::size_t kMaximumOwnedBrokerRequestBytes =
     wire::payload_cap(wire::EndpointRole::broker);
@@ -35,9 +56,7 @@ public:
 
 private:
   AdmittedBrokerRequest(wire::PacketView packet,
-                        permissions::ActivationBinding binding,
-                        std::uint64_t session_nonce,
-                        std::shared_ptr<const BrokerInstanceOrigin> origin);
+                        const BrokerAuthorityStamp &authority);
 
   [[nodiscard]] wire::PacketView packet() const noexcept;
   void consume() noexcept;
@@ -45,9 +64,7 @@ private:
   wire::EnvelopeHeader header_{};
   std::array<std::byte, kMaximumOwnedBrokerRequestBytes> payload_{};
   std::size_t payload_size_ = 0;
-  permissions::ActivationBinding binding_{};
-  std::uint64_t session_nonce_ = 0;
-  std::shared_ptr<const BrokerInstanceOrigin> origin_;
+  BrokerAuthorityStamp authority_;
   bool available_ = false;
 
   friend class AuthenticatedBrokerAdmission;
@@ -89,14 +106,10 @@ public:
   [[nodiscard]] AdmissionResult admit(const wire::PacketView &packet);
 
 private:
-  AuthenticatedBrokerAdmission(permissions::ActivationBinding binding,
-                               std::uint64_t session_nonce,
-                               std::shared_ptr<const BrokerInstanceOrigin> origin)
-      noexcept;
+  explicit AuthenticatedBrokerAdmission(
+      const BrokerAuthorityStamp &authority) noexcept;
 
-  permissions::ActivationBinding binding_;
-  std::uint64_t session_nonce_ = 0;
-  std::shared_ptr<const BrokerInstanceOrigin> origin_;
+  BrokerAuthorityStamp authority_;
   std::uint64_t last_correlation_ = 0;
 
   friend class StructuredBroker;
@@ -192,10 +205,7 @@ private:
                                         std::uint16_t message_type,
                                         std::span<const std::byte> wire_payload,
                                         std::size_t provider_response_bytes,
-                                        permissions::ActivationBinding binding,
-                                        std::uint64_t session_nonce,
-                                        std::shared_ptr<const BrokerInstanceOrigin>
-                                            origin);
+                                        const BrokerAuthorityStamp &authority);
   BrokerTransaction() = default;
   void consume() noexcept;
 
@@ -208,9 +218,7 @@ private:
   std::array<std::byte, kMaximumOwnedBrokerReplyBytes> payload_{};
   std::size_t payload_size_ = 0;
   std::size_t provider_response_bytes_ = 0;
-  permissions::ActivationBinding binding_{};
-  std::uint64_t session_nonce_ = 0;
-  std::shared_ptr<const BrokerInstanceOrigin> origin_;
+  BrokerAuthorityStamp authority_;
   bool settled_ = false;
 
   friend class StructuredBroker;
@@ -262,13 +270,15 @@ private:
   dispatch_dynamic(const wire::PacketView &packet,
                    std::span<std::byte> provider_response,
                    runtime::DynamicGestureAuthority *gesture);
+  [[nodiscard]] BrokerTransaction
+  typed_error_reply(BrokerTransaction::Route route,
+                    const wire::PacketView &request, ReplyKind kind,
+                    permissions::GrantDecisionCode decision);
   [[nodiscard]] static std::array<std::byte, broker::kBrokerErrorBytes>
   typed_error(const wire::PacketView &request, ReplyKind kind,
               permissions::GrantDecisionCode decision);
 
-  permissions::ActivationBinding binding_;
-  std::uint64_t session_nonce_ = 0;
-  std::shared_ptr<const BrokerInstanceOrigin> origin_;
+  BrokerAuthorityStamp authority_stamp_;
   std::atomic<bool> admission_extracted_{false};
   std::atomic<bool> failed_{false};
   runtime::AuditedBrokerRuntime &builtin_;

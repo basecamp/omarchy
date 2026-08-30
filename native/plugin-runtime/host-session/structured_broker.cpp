@@ -51,14 +51,27 @@ dynamic_decision_code(definitions::DynamicDecision decision) {
 
 } // namespace
 
-AdmittedBrokerRequest::AdmittedBrokerRequest(
-    wire::PacketView packet, permissions::ActivationBinding binding,
-    std::uint64_t session_nonce,
+BrokerAuthorityStamp::BrokerAuthorityStamp(
+    permissions::ActivationBinding binding, std::uint64_t session_nonce,
     std::shared_ptr<const BrokerInstanceOrigin> origin)
+    : binding_(std::move(binding)), session_nonce_(session_nonce),
+      origin_(std::move(origin)) {}
+
+bool BrokerAuthorityStamp::valid() const noexcept {
+  return session_nonce_ != 0 && origin_ != nullptr;
+}
+
+bool BrokerAuthorityStamp::exactly_matches(
+    const BrokerAuthorityStamp &other) const noexcept {
+  return valid() && other.valid() && origin_ == other.origin_ &&
+         binding_ == other.binding_ && session_nonce_ == other.session_nonce_;
+}
+
+AdmittedBrokerRequest::AdmittedBrokerRequest(
+    wire::PacketView packet, const BrokerAuthorityStamp &authority)
     : header_(packet.header), payload_size_(packet.payload.size()),
-      binding_(std::move(binding)), session_nonce_(session_nonce),
-      origin_(std::move(origin)), available_(true) {
-  if (payload_size_ > payload_.size() || origin_ == nullptr)
+      authority_(authority), available_(true) {
+  if (payload_size_ > payload_.size() || !authority_.valid())
     throw std::invalid_argument("admitted broker request is not bounded");
   std::ranges::copy(packet.payload, payload_.begin());
 }
@@ -66,9 +79,7 @@ AdmittedBrokerRequest::AdmittedBrokerRequest(
 AdmittedBrokerRequest::AdmittedBrokerRequest(
     AdmittedBrokerRequest &&other) noexcept
     : header_(other.header_), payload_size_(other.payload_size_),
-      binding_(std::move(other.binding_)),
-      session_nonce_(other.session_nonce_), origin_(std::move(other.origin_)),
-      available_(other.available_) {
+      authority_(std::move(other.authority_)), available_(other.available_) {
   std::copy_n(other.payload_.begin(), payload_size_, payload_.begin());
   other.consume();
 }
@@ -81,18 +92,13 @@ wire::PacketView AdmittedBrokerRequest::packet() const noexcept {
 void AdmittedBrokerRequest::consume() noexcept {
   header_ = {};
   payload_size_ = 0;
-  binding_ = {};
-  session_nonce_ = 0;
-  origin_.reset();
+  authority_ = {};
   available_ = false;
 }
 
 AuthenticatedBrokerAdmission::AuthenticatedBrokerAdmission(
-    permissions::ActivationBinding binding,
-    std::uint64_t session_nonce,
-    std::shared_ptr<const BrokerInstanceOrigin> origin) noexcept
-    : binding_(std::move(binding)), session_nonce_(session_nonce),
-      origin_(std::move(origin)) {}
+    const BrokerAuthorityStamp &authority) noexcept
+    : authority_(authority) {}
 
 AdmissionResult
 AuthenticatedBrokerAdmission::admit(const wire::PacketView &packet) {
@@ -102,13 +108,13 @@ AuthenticatedBrokerAdmission::admit(const wire::PacketView &packet) {
       packet.header.flags != 0 || packet.header.reserved != 0)
     return {.request = std::nullopt,
             .failure = AdmissionFailure::noncanonical_header};
-  if (session_nonce_ == 0 || origin_ == nullptr ||
+  if (!authority_.valid() ||
       packet.header.endpoint_role != wire::EndpointRole::broker)
     return {.request = std::nullopt, .failure = AdmissionFailure::wrong_role};
   if (packet.header.role_protocol_version != broker::kBrokerRoleVersion)
     return {.request = std::nullopt,
             .failure = AdmissionFailure::wrong_version};
-  if (packet.header.launch_generation != binding_.generation)
+  if (packet.header.launch_generation != authority_.binding_.generation)
     return {.request = std::nullopt,
             .failure = AdmissionFailure::stale_binding};
   if (packet.header.payload_length != packet.payload.size() ||
@@ -121,8 +127,7 @@ AuthenticatedBrokerAdmission::admit(const wire::PacketView &packet) {
   if (packet.header.correlation_id <= last_correlation_)
     return {.request = std::nullopt, .failure = AdmissionFailure::replay};
   last_correlation_ = packet.header.correlation_id;
-  return {.request =
-              AdmittedBrokerRequest(packet, binding_, session_nonce_, origin_),
+  return {.request = AdmittedBrokerRequest(packet, authority_),
           .failure = AdmissionFailure::none};
 }
 
@@ -131,8 +136,7 @@ BrokerTransaction::BrokerTransaction(BrokerTransaction &&other) noexcept
       route_(other.route_), correlation_(other.correlation_),
       message_type_(other.message_type_), payload_size_(other.payload_size_),
       provider_response_bytes_(other.provider_response_bytes_),
-      binding_(std::move(other.binding_)), session_nonce_(other.session_nonce_),
-      origin_(std::move(other.origin_)), settled_(other.settled_) {
+      authority_(std::move(other.authority_)), settled_(other.settled_) {
   std::copy_n(other.payload_.begin(), payload_size_, payload_.begin());
   other.consume();
 }
@@ -146,9 +150,7 @@ void BrokerTransaction::consume() noexcept {
   message_type_ = 0;
   payload_size_ = 0;
   provider_response_bytes_ = 0;
-  binding_ = {};
-  session_nonce_ = 0;
-  origin_.reset();
+  authority_ = {};
   settled_ = true;
 }
 
@@ -171,12 +173,11 @@ BrokerTransaction BrokerTransaction::reply_result(
     Route route, ReplyKind kind, std::uint64_t correlation,
     std::uint16_t message_type, std::span<const std::byte> wire_payload,
     std::size_t provider_response_bytes,
-    permissions::ActivationBinding binding, std::uint64_t session_nonce,
-    std::shared_ptr<const BrokerInstanceOrigin> origin) {
+    const BrokerAuthorityStamp &authority) {
   if (route == Route::none || correlation == 0 || message_type == 0 ||
       wire_payload.size() > kMaximumOwnedBrokerReplyBytes ||
       (kind != ReplyKind::result && provider_response_bytes != 0) ||
-      session_nonce == 0 || origin == nullptr)
+      !authority.valid())
     return fatal_result(DispatchFatal::runtime_failed, correlation);
   BrokerTransaction result;
   result.state_ = TransactionState::reply;
@@ -188,9 +189,7 @@ BrokerTransaction BrokerTransaction::reply_result(
   std::ranges::copy(wire_payload, result.payload_.begin());
   result.payload_size_ = wire_payload.size();
   result.provider_response_bytes_ = provider_response_bytes;
-  result.binding_ = std::move(binding);
-  result.session_nonce_ = session_nonce;
-  result.origin_ = std::move(origin);
+  result.authority_ = authority;
   result.settled_ = false;
   return result;
 }
@@ -200,11 +199,12 @@ StructuredBroker::StructuredBroker(permissions::ActivationBinding binding,
                                    runtime::AuditedBrokerRuntime &builtin,
                                    runtime::DynamicBrokerRuntime &dynamic,
                                    DispatchAuthority &authority)
-    : binding_(std::move(binding)), session_nonce_(session_nonce),
-      origin_(std::shared_ptr<const BrokerInstanceOrigin>(
-          new BrokerInstanceOrigin)),
+    : authority_stamp_(
+          std::move(binding), session_nonce,
+          std::shared_ptr<const BrokerInstanceOrigin>(new BrokerInstanceOrigin)),
       builtin_(builtin), dynamic_(dynamic), authority_(authority) {
-  if (session_nonce_ == 0 || builtin_.binding() != binding_)
+  if (!authority_stamp_.valid() ||
+      builtin_.binding() != authority_stamp_.binding_)
     throw std::invalid_argument(
         "broker runtimes do not match the admitted activation");
   // N4B must add an exact DynamicBrokerRuntime activation-binding accessor so
@@ -218,15 +218,13 @@ AdmissionExtractionResult StructuredBroker::take_admission() {
   if (admission_extracted_.exchange(true))
     return {.admission = std::nullopt,
             .failure = AdmissionExtractionFailure::already_extracted};
-  return {.admission = AuthenticatedBrokerAdmission(binding_, session_nonce_,
-                                                     origin_),
+  return {.admission = AuthenticatedBrokerAdmission(authority_stamp_),
           .failure = AdmissionExtractionFailure::none};
 }
 
 bool StructuredBroker::owns(
     const BrokerTransaction &transaction) const noexcept {
-  return transaction.origin_ == origin_ && transaction.binding_ == binding_ &&
-         transaction.session_nonce_ == session_nonce_;
+  return authority_stamp_.exactly_matches(transaction.authority_);
 }
 
 BrokerTransaction
@@ -237,24 +235,23 @@ StructuredBroker::dispatch(AdmittedBrokerRequest &&request,
                            runtime::DynamicGestureAuthority *dynamic_gesture) {
   if (!request.available_)
     return BrokerTransaction::fatal_result(DispatchFatal::admission_reused);
-  if (request.origin_ != origin_ || request.binding_ != binding_ ||
-      request.session_nonce_ != session_nonce_)
+  if (!authority_stamp_.exactly_matches(request.authority_))
     return BrokerTransaction::fatal_result(DispatchFatal::identity_mismatch);
   const auto packet = request.packet();
-  const auto admitted_binding = request.binding_;
-  const auto admitted_nonce = request.session_nonce_;
+  const auto admitted_authority = request.authority_;
   request.consume();
   if (failed_.load())
     return BrokerTransaction::fatal_result(DispatchFatal::runtime_failed,
                                            packet.header.correlation_id);
-  if (admitted_binding != binding_ || admitted_nonce != session_nonce_ ||
-      packet.header.launch_generation != binding_.generation)
+  if (!authority_stamp_.exactly_matches(admitted_authority) ||
+      packet.header.launch_generation != authority_stamp_.binding_.generation)
     return BrokerTransaction::fatal_result(DispatchFatal::identity_mismatch,
                                            packet.header.correlation_id);
 
   std::unique_ptr<DispatchAuthorityLease> lease;
   try {
-    lease = authority_.acquire(binding_, session_nonce_, packet);
+    lease = authority_.acquire(authority_stamp_.binding_,
+                               authority_stamp_.session_nonce_, packet);
   } catch (...) {
     fail_closed();
     return BrokerTransaction::fatal_result(DispatchFatal::runtime_failed,
@@ -293,34 +290,18 @@ StructuredBroker::dispatch_builtin(const wire::PacketView &packet,
         packet.header.correlation_id, broker::kBrokerResultMessage,
         std::span<const std::byte>(provider_response)
             .first(result.response_bytes),
-        result.response_bytes, binding_, session_nonce_, origin_);
-  case broker::DispatchOutcome::denied: {
-    const auto error =
-        typed_error(packet, ReplyKind::denied, result.decision.code);
-    return BrokerTransaction::reply_result(
-        BrokerTransaction::Route::builtin, ReplyKind::denied,
-        packet.header.correlation_id,
-        static_cast<std::uint16_t>(wire::CommonMessageType::typed_error), error,
-        0, binding_, session_nonce_, origin_);
-  }
-  case broker::DispatchOutcome::provider_unavailable: {
-    const auto error = typed_error(packet, ReplyKind::provider_unavailable,
-                                   result.decision.code);
-    return BrokerTransaction::reply_result(
-        BrokerTransaction::Route::builtin, ReplyKind::provider_unavailable,
-        packet.header.correlation_id,
-        static_cast<std::uint16_t>(wire::CommonMessageType::typed_error), error,
-        0, binding_, session_nonce_, origin_);
-  }
-  case broker::DispatchOutcome::provider_failed: {
-    const auto error =
-        typed_error(packet, ReplyKind::provider_failed, result.decision.code);
-    return BrokerTransaction::reply_result(
-        BrokerTransaction::Route::builtin, ReplyKind::provider_failed,
-        packet.header.correlation_id,
-        static_cast<std::uint16_t>(wire::CommonMessageType::typed_error), error,
-        0, binding_, session_nonce_, origin_);
-  }
+        result.response_bytes, authority_stamp_);
+  case broker::DispatchOutcome::denied:
+    return typed_error_reply(BrokerTransaction::Route::builtin, packet,
+                             ReplyKind::denied, result.decision.code);
+  case broker::DispatchOutcome::provider_unavailable:
+    return typed_error_reply(BrokerTransaction::Route::builtin, packet,
+                             ReplyKind::provider_unavailable,
+                             result.decision.code);
+  case broker::DispatchOutcome::provider_failed:
+    return typed_error_reply(BrokerTransaction::Route::builtin, packet,
+                             ReplyKind::provider_failed,
+                             result.decision.code);
   case broker::DispatchOutcome::pending:
     fail_closed();
     return BrokerTransaction::fatal_result(DispatchFatal::pending_unsupported,
@@ -345,7 +326,8 @@ StructuredBroker::dispatch_dynamic(const wire::PacketView &packet,
                                    std::span<std::byte> provider_response,
                                    runtime::DynamicGestureAuthority *gesture) {
   const auto result =
-      dynamic_.dispatch(packet, binding_, provider_response, gesture);
+      dynamic_.dispatch(packet, authority_stamp_.binding_, provider_response,
+                        gesture);
   if (dynamic_.failed())
     return BrokerTransaction::fatal_result(DispatchFatal::runtime_failed,
                                            packet.header.correlation_id);
@@ -358,25 +340,17 @@ StructuredBroker::dispatch_dynamic(const wire::PacketView &packet,
         packet.header.correlation_id, broker::kBrokerResultMessage,
         std::span<const std::byte>(provider_response)
             .first(result.response_bytes),
-        result.response_bytes, binding_, session_nonce_, origin_);
+        result.response_bytes, authority_stamp_);
   }
   if (result.outcome == definitions::DynamicDispatchResult::denied) {
-    const auto error = typed_error(packet, ReplyKind::denied,
-                                   dynamic_decision_code(result.decision));
-    return BrokerTransaction::reply_result(
-        BrokerTransaction::Route::dynamic, ReplyKind::denied,
-        packet.header.correlation_id,
-        static_cast<std::uint16_t>(wire::CommonMessageType::typed_error), error,
-        0, binding_, session_nonce_, origin_);
+    return typed_error_reply(BrokerTransaction::Route::dynamic, packet,
+                             ReplyKind::denied,
+                             dynamic_decision_code(result.decision));
   }
   if (result.outcome == definitions::DynamicDispatchResult::adapter_failed) {
-    const auto error = typed_error(packet, ReplyKind::provider_failed,
-                                   dynamic_decision_code(result.decision));
-    return BrokerTransaction::reply_result(
-        BrokerTransaction::Route::dynamic, ReplyKind::provider_failed,
-        packet.header.correlation_id,
-        static_cast<std::uint16_t>(wire::CommonMessageType::typed_error), error,
-        0, binding_, session_nonce_, origin_);
+    return typed_error_reply(BrokerTransaction::Route::dynamic, packet,
+                             ReplyKind::provider_failed,
+                             dynamic_decision_code(result.decision));
   }
   if (result.outcome == definitions::DynamicDispatchResult::stale_activation)
     return BrokerTransaction::fatal_result(DispatchFatal::identity_mismatch,
@@ -408,7 +382,7 @@ bool StructuredBroker::commit_sent(BrokerTransaction &&transaction) {
                  .message_type = transaction.message_type_,
                  .role_protocol_version = broker::kBrokerRoleVersion,
                  .payload_length = static_cast<std::uint32_t>(payload.size()),
-                 .launch_generation = binding_.generation,
+                 .launch_generation = authority_stamp_.binding_.generation,
                  .correlation_id = transaction.correlation_},
       .payload = payload};
   transaction.consume();
@@ -490,6 +464,16 @@ void StructuredBroker::fail_closed() noexcept {
     // before this seam can observe it. Other runtime/audit exceptions remain
     // contained and force the channel to tear down this failed broker.
   }
+}
+
+BrokerTransaction StructuredBroker::typed_error_reply(
+    BrokerTransaction::Route route, const wire::PacketView &request,
+    ReplyKind kind, permissions::GrantDecisionCode decision) {
+  const auto payload = typed_error(request, kind, decision);
+  return BrokerTransaction::reply_result(
+      route, kind, request.header.correlation_id,
+      static_cast<std::uint16_t>(wire::CommonMessageType::typed_error), payload,
+      0, authority_stamp_);
 }
 
 std::array<std::byte, broker::kBrokerErrorBytes>
