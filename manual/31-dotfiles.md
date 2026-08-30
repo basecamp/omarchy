@@ -45,6 +45,8 @@ Omarchy fires hooks at a handful of moments, and you can hang your own scripts o
 
 Each of those directories already holds a `.sample` file showing the shape of a hook — drop the `.sample` from the name to put it to work. To install a script you've written elsewhere, use `omarchy hook install post-boot ~/my-hook`, which copies it in and makes it executable.
 
+Software packages can provide their own Omarchy hooks too. Package and Omarchy hooks run first; your hooks run afterward so they can react to or customize packaged behavior.
+
 ### Adding your own menu entries
 
 The Omarchy menu (`Super + Space`) can be extended with your own rows by editing `~/.config/omarchy/extensions/omarchy-menu.jsonc`. Entries are keyed by a dotted id, and the id is what places them in the tree, so `personal` shows up on the root menu and `personal.notes` shows up inside it:

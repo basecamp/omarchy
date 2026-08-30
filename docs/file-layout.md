@@ -59,6 +59,8 @@ Current generated theme state lives under
 may intentionally version in a dotfile manager, such as user themes, hooks,
 shell layout, plugins, and themed template overrides.
 
+Independently packaged event hooks live under `omarchy/hooks/` in the absolute data directories listed by `XDG_DATA_DIRS`, such as `/usr/share/omarchy/hooks/`. Hook discovery does not rely only on `$OMARCHY_PATH`, so package-provided integrations remain available while `omarchy dev link` points the active Omarchy tree at a checkout. See [`default/agents/skills/omarchy/hooks.md`](../default/agents/skills/omarchy/hooks.md) for lookup order and hook layout.
+
 ## Build-time map (repo → installed paths)
 
 ```

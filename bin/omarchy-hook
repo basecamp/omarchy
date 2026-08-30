@@ -1,28 +1,109 @@
 #!/bin/bash
 
-# omarchy:summary=Run a named hook from ~/.config/omarchy/hooks/<name> and ~/.config/omarchy/hooks/<name>.d/.
+# omarchy:summary=Run package, core, and user hooks for a named event
 # omarchy:args=[name] [args...]
 
 set -e
 
-if (( $# < 1 )); then
-  echo "Usage: omarchy-hook [name] [args...]"
-  exit 1
-fi
+omarchy_hook_roots() {
+  local data_dirs=${XDG_DATA_DIRS:-/usr/local/share:/usr/share}
+  local -a xdg_data_dirs candidates=("$OMARCHY_PATH/hooks") seen
+  local data_dir candidate canonical seen_root
 
-HOOK=$1
-HOOK_PATH="$HOME/.config/omarchy/hooks/$1"
-HOOK_DIR="$HOOK_PATH.d"
-shift
+  IFS=: read -r -a xdg_data_dirs <<<"$data_dirs"
 
-if [[ -f $HOOK_PATH ]]; then
-  bash "$HOOK_PATH" "$@" || echo "Hook failed: $HOOK_PATH"
-fi
-
-if [[ -d $HOOK_DIR ]]; then
-  for hook in "$HOOK_DIR"/*; do
-    [[ -f $hook ]] || continue
-    [[ $hook == *.sample ]] && continue
-    bash "$hook" "$@" || echo "Hook failed: $hook"
+  for data_dir in "${xdg_data_dirs[@]}"; do
+    [[ $data_dir == /* ]] || continue
+    candidates+=("$data_dir/omarchy/hooks")
   done
+
+  candidates+=("$HOME/.config/omarchy/hooks")
+
+  for candidate in "${candidates[@]}"; do
+    if ! canonical=$(realpath -m -- "$candidate" 2>/dev/null); then
+      continue
+    fi
+
+    for seen_root in "${seen[@]}"; do
+      [[ $canonical == "$seen_root" ]] && continue 2
+    done
+
+    seen+=("$canonical")
+    printf '%s\0' "$canonical"
+  done
+}
+
+omarchy_system_hook_seen() {
+  local name=$1
+  local seen_name
+
+  for seen_name in "${OMARCHY_SEEN_SYSTEM_HOOKS[@]}"; do
+    [[ $name == "$seen_name" ]] && return 0
+  done
+
+  return 1
+}
+
+omarchy_run_hook_file() {
+  local name=$1
+  local path=$2
+  local shadow_duplicates=$3
+  shift 3
+
+  if [[ $shadow_duplicates == "true" ]]; then
+    omarchy_system_hook_seen "$name" && return
+    OMARCHY_SEEN_SYSTEM_HOOKS+=("$name")
+  fi
+
+  bash "$path" "$@" || echo "Hook failed: $path"
+}
+
+omarchy_run_hook_root() {
+  local root=$1
+  local event=$2
+  local shadow_duplicates=$3
+  local hook_path="$root/$event"
+  local hook_dir="$hook_path.d"
+  local hook
+  shift 3
+
+  if [[ -f $hook_path ]]; then
+    omarchy_run_hook_file flat "$hook_path" "$shadow_duplicates" "$@"
+  fi
+
+  if [[ -d $hook_dir ]]; then
+    for hook in "$hook_dir"/*; do
+      [[ -f $hook ]] || continue
+      [[ $hook == *.sample ]] && continue
+      omarchy_run_hook_file "directory/${hook##*/}" "$hook" "$shadow_duplicates" "$@"
+    done
+  fi
+}
+
+omarchy_hook_main() {
+  if (( $# < 1 )); then
+    echo "Usage: omarchy-hook [name] [args...]"
+    exit 1
+  fi
+
+  local event=$1
+  local user_root root shadow_duplicates
+  local -a OMARCHY_SEEN_SYSTEM_HOOKS=()
+  shift
+
+  user_root=$(realpath -m -- "$HOME/.config/omarchy/hooks")
+
+  while IFS= read -r -d '' root; do
+    if [[ $root == "$user_root" ]]; then
+      shadow_duplicates=false
+    else
+      shadow_duplicates=true
+    fi
+
+    omarchy_run_hook_root "$root" "$event" "$shadow_duplicates" "$@"
+  done < <(omarchy_hook_roots)
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  omarchy_hook_main "$@"
 fi
