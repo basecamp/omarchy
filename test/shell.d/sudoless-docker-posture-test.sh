@@ -1,10 +1,7 @@
 #!/bin/bash
 #
-# The docker group is root-equivalent, so no automatic path may grant it. These
-# tests guard the paths that are not exercised by a fresh-install run: first-boot
-# provisioning replaying a recorded (or factory-snapshot) group list, and the
-# Quattro upgrade. Opting in stays a deliberate, warned step
-# (omarchy-setup-security-sudoless-docker).
+# Docker is root-equivalent, so no automatic path may grant it. Raw input access
+# is likewise excluded unless a feature that explicitly needs it is installed.
 
 set -euo pipefail
 
@@ -13,11 +10,15 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
-# First-boot provisioning must never grant docker even when it is recorded (an
-# older install, or a factory snapshot predating the opt-in default).
+# First-boot provisioning must not replay old privileged defaults.
 mkdir -p "$TMPDIR/bin"
 printf '#!/bin/bash\nexit 0\n' >"$TMPDIR/bin/getent" # every group "exists"
-chmod +x "$TMPDIR/bin/getent"
+cat >"$TMPDIR/bin/pacman" <<'STUB'
+#!/bin/bash
+[[ $1 == "-Qq" ]] || exit 2
+[[ " ${STUB_PACKAGES:-} " == *" $2 "* ]]
+STUB
+chmod +x "$TMPDIR/bin/getent" "$TMPDIR/bin/pacman"
 export PATH="$TMPDIR/bin:$PATH"
 
 PROVISIONING_DIR="$TMPDIR/prov"
@@ -29,9 +30,15 @@ eval "$(sed -n '/^user_groups() {/,/^}/p' "$ROOT/bin/omarchy-provision-owner")"
 groups=$(user_groups)
 
 [[ ",$groups," == *",wheel,"* ]] || fail "user_groups always includes wheel"
-[[ ",$groups," == *",input,"* ]] || fail "user_groups includes recorded non-docker groups"
+[[ ",$groups," != *",input,"* ]] || fail "user_groups must not replay the blanket input grant"
 [[ ",$groups," == *",docker,"* ]] && fail "user_groups must never grant the docker group"
-pass "first-boot user_groups includes recorded groups but never docker"
+pass "first-boot user_groups replays neither privileged default"
+
+groups=$(STUB_PACKAGES=xpadneo-dkms user_groups)
+[[ ",$groups," == *",input,"* ]] || fail "user_groups keeps input for installed controller support"
+groups=$(STUB_PACKAGES=ydotool user_groups)
+[[ ",$groups," == *",input,"* ]] || fail "user_groups keeps input for installed ydotool support"
+pass "first-boot user_groups keeps deliberate input-group opt-ins"
 
 # The Quattro upgrade must not re-add the user to docker.
 if rg -q 'usermod -aG docker' "$ROOT/bin/omarchy-upgrade-to-quattro"; then
