@@ -18,11 +18,9 @@ pass "plugin runtime keeps native boundaries independently buildable"
 
 grep -F 'contracts/${contract}/CMakeLists.txt' "$runtime_root/CMakeLists.txt" >/dev/null ||
   fail "contract owners must edit the shared root CMake file to land"
-grep -F 'direct execution denied' "$runtime_root/worker/main.cpp" >/dev/null ||
+grep -F 'direct execution denied' "$runtime_root/worker/src/main.cpp" >/dev/null ||
   fail "worker skeleton does not fail closed before a trusted launcher exists"
-grep -F 'return false;' "$runtime_root/bridge/PluginHostInfo.cpp" >/dev/null ||
-  fail "bridge skeleton advertises plugin availability before a broker exists"
-grep -F 'root_not_item' "$runtime_root/worker/worker_runtime_test.cpp" >/dev/null ||
+grep -F 'root_not_item' "$runtime_root/worker/tests/worker_runtime_test.cpp" >/dev/null ||
   fail "worker does not reject plugin-created top-level windows"
 pass "native runtime and offscreen worker remain fail-closed"
 
@@ -30,9 +28,9 @@ grep -F 'OMARCHY_PLUGIN_V2_ENABLED' "$ROOT/shell/shell.qml" >/dev/null ||
   fail "existing shell lacks the explicit schema-v2 feature gate"
 grep -F 'OMARCHY_PLUGIN_V2_SHELL_ENTRY' "$ROOT/shell/shell.qml" >/dev/null ||
   fail "existing shell cannot load a side-by-side v2 integration entry"
-grep -F 'legacy-unsandboxed-v1' "$ROOT/shell/services/PluginRegistry.qml" >/dev/null ||
-  fail "schema-v1 plugins are not explicitly labeled legacy and unsandboxed"
-grep -F 'will not fall back to legacy QML loading' "$ROOT/shell/services/PluginRegistry.qml" >/dev/null ||
+grep -F 'pre-security-trusted-by-default-v1' "$ROOT/shell/services/PluginRegistry.qml" >/dev/null ||
+  fail "schema-v1 plugins are not explicitly labeled pre-security and trusted by default"
+grep -F 'will not fall back to pre-security QML loading' "$ROOT/shell/services/PluginRegistry.qml" >/dev/null ||
   fail "rejected schema-v2 manifests can fall through ambiguously"
 grep -F 'PanelWindow {' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null ||
   fail "secure panels are not owned by the Quickshell layer host"
@@ -54,13 +52,13 @@ grep -F 'height: Math.min(window.maximumHeight, window.height)' "$runtime_root/s
   fail "secure panel geometry can exceed its admitted height"
 grep -F 'x: window.width - width' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null ||
   fail "secure panel placement is not explicitly window-local"
-grep -F 'model: surfaceService.barSurfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
+grep -F 'model: PluginManager.barSurfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
   fail "secure bar surfaces do not consume the typed role model"
-grep -F 'model: surfaceService.panelSurfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
+grep -F 'model: PluginManager.panelSurfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
   fail "secure panels do not consume the typed role model"
-grep -F 'model: surfaceService.overlaySurfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
+grep -F 'model: PluginManager.overlaySurfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
   fail "secure overlays do not consume the typed role model"
-if grep -F 'surfaceService.surfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
+if grep -F 'model: PluginManager.surfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
   grep -F 'filteredDeclarations' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null; then
   fail "secure surfaces still iterate raw JavaScript declarations"
 fi

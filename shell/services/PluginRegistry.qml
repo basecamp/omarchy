@@ -25,7 +25,7 @@ QtObject {
   property int registryRevision: 0
   property bool scanning: false
   property string lastEnableError: ""
-  readonly property string securityModel: "legacy-unsandboxed-v1"
+  readonly property string securityModel: "pre-security-trusted-by-default-v1"
 
   signal pluginsChanged()
   signal scanFinished()
@@ -47,11 +47,11 @@ QtObject {
       return null
     }
     if (manifest.schemaVersion === 2) {
-      console.warn("PluginRegistry: schema-v2 manifest belongs to the secure runtime and will not fall back to legacy QML loading at " + sourcePath)
+      console.warn("PluginRegistry: schema-v2 manifest belongs to the secure runtime and will not fall back to pre-security QML loading at " + sourcePath)
       return null
     }
     if (manifest.schemaVersion !== 1) {
-      console.warn("PluginRegistry: unsupported legacy schemaVersion at " + sourcePath)
+      console.warn("PluginRegistry: unsupported pre-security schemaVersion at " + sourcePath)
       return null
     }
     var required = ["id", "name", "version", "kinds", "entryPoints"]
@@ -92,13 +92,13 @@ QtObject {
         return null
       }
     }
-    manifest.__securityStatus = "legacy-unsandboxed"
+    manifest.__securityStatus = "pre-security-unsandboxed-trusted-by-default"
     return manifest
   }
 
   function securityStatusFor(id) {
     var manifest = installedPlugins[String(id || "")]
-    return manifest ? String(manifest.__securityStatus || "legacy-unsandboxed") : "unknown"
+    return manifest ? String(manifest.__securityStatus || "pre-security-unsandboxed-trusted-by-default") : "unknown"
   }
 
   function entryPointUrl(manifest, kind) {

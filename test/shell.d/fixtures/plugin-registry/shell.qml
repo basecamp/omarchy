@@ -132,8 +132,8 @@ ShellRoot {
 
     root.assertTrue(registry.installedPlugins["omarchy.first-widget"].__isFirstParty === true, "first-party manifests are stamped")
     root.assertTrue(registry.installedPlugins["third.panel"].__isFirstParty === false, "third-party manifests are stamped")
-    root.assertEqual(registry.securityModel, "legacy-unsandboxed-v1", "v1 registry identifies its security boundary")
-    root.assertEqual(registry.securityStatusFor("third.panel"), "legacy-unsandboxed", "v1 plugins are explicitly labeled unsandboxed")
+    root.assertEqual(registry.securityModel, "pre-security-trusted-by-default-v1", "v1 registry identifies its pre-security boundary")
+    root.assertEqual(registry.securityStatusFor("third.panel"), "pre-security-unsandboxed-trusted-by-default", "v1 plugins are explicitly labeled unsandboxed and trusted by default")
     root.assertEqual(registry.securityStatusFor("third.schema"), "unknown", "rejected v2 plugins never acquire v1 status")
     root.assertEqual(registry.installedPlugins["omarchy.grouped-panel"].__sourceDir, "/first/panels/grouped", "grouped plugin source paths are preserved")
     root.assertEqual(registry.entryPointUrl(registry.installedPlugins["third.panel"], "panel"), "file:///third/panel/Panel.qml", "entryPointUrl resolves plugin-relative paths")
