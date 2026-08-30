@@ -1,0 +1,16 @@
+/* ---------------------------------------------------------------------------
+ * A tile is usually narrower than the desktop layout YouTube assumes, so the
+ * video grid sits inside its own max-width with dead margins down both sides.
+ * Let it use the width the tiling layout actually gave the window.
+ * ------------------------------------------------------------------------- */
+
+html.omy-wide-grid ytd-rich-grid-renderer,
+html.omy-wide-grid #contents.ytd-rich-grid-renderer {
+  --ytd-rich-grid-content-max-width: 100% !important;
+  --ytd-rich-grid-item-margin: 8px !important;
+}
+
+html.omy-wide-grid ytd-browse[page-subtype="home"] #primary,
+html.omy-wide-grid ytd-two-column-browse-results-renderer {
+  max-width: 100% !important;
+}

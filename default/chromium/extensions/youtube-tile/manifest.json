@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube Tile Mode",
+  "version": "1.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAn2B5axkS4ruVu7gSNMxcE4AaW0JdNywg30xqSuyJjBaqGi+Hw7zQ3jvqvAeN8anYaDEue8e0PYi3dXEDj8+thnZ+47sXusdbmjCOCxztzzULwE+BxLTHjo0f68toxAgxtfCRscuvI9zLPsZlI4K1yJFdsCA5jy+SQsLnUaOzIEwISYO9sHefBZo9GXHYZixXQdSvHV1hr71Ektutc2jyTYXXwZHJ/kGYpiMU6NNuIawcRGDXG8pDx3yHT4cdh17lhZ8hffvtouF6ESqYEY8Hd1KfYhxMeWQAymMisJobcH+t+cKrr7LRfzRoTduZ+50Hpss6p1EDRCZUJvkybgvqdQIDAQAB",
+  "description": "Fill the tile with the video instead of taking over the monitor, this extension is installed by Omarchy",
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "permissions": [
+    "storage"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.youtube.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "tile.css",
+        "grid.css"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ]
+}
