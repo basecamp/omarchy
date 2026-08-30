@@ -51,9 +51,7 @@ struct SurfaceProjectionModel::Publication {
 
 struct SurfaceProjectionModel::SurfaceRow {
   QString surface_key;
-  QString plugin_id;
-  QString surface_name;
-  qulonglong generation = 0;
+  plugins::permissions::ActivationBinding binding;
   qulonglong publication_revision = 0;
   SurfaceDeclaration declaration;
 };
@@ -114,13 +112,13 @@ QVariant SurfaceProjectionModel::data(const QModelIndex &index, int role) const 
   case SurfaceKeyRole:
     return row.surface_key;
   case PluginIdRole:
-    return row.plugin_id;
+    return text(row.binding.plugin.view());
   case SurfaceNameRole:
-    return row.surface_name;
+    return text(row.declaration.surface_name);
   case SurfaceRoleRole:
     return static_cast<int>(row.declaration.role);
   case GenerationRole:
-    return QString::number(row.generation);
+    return QString::number(row.binding.generation);
   case PublicationRevisionRole:
     return QString::number(row.publication_revision);
   case ScreenNameRole:
@@ -158,9 +156,53 @@ QHash<int, QByteArray> SurfaceProjectionModel::roleNames() const {
 bool SurfaceProjectionModel::publishSurfaces(
     const plugins::permissions::ActivationBinding &binding,
     std::vector<SurfaceDeclaration> declarations, qulonglong revision) {
-  if (!onOwnerThread() || revision == 0 ||
+  if (!onOwnerThread() || revision == 0 || binding.generation == 0 ||
+      binding.plugin.view().empty() || binding.revision.view().empty() ||
+      binding.policy_fingerprint.view().empty() ||
+      declarations.empty() ||
       declarations.size() > wire::kMaximumPluginSurfaces)
     return false;
+  for (std::size_t index = 0; index < declarations.size(); ++index) {
+    const auto &declaration = declarations[index];
+    if (!wire::valid_surface_name(declaration.surface_name) ||
+        std::ranges::any_of(
+            declarations | std::views::take(index),
+            [&](const SurfaceDeclaration &prior) {
+              return prior.surface_name == declaration.surface_name;
+            }) ||
+        declaration.maximum_width == 0 || declaration.maximum_height == 0)
+      return false;
+    switch (declaration.role) {
+    case Role::Bar:
+      if (declaration.maximum_width > 2048 ||
+          declaration.maximum_height > 256)
+        return false;
+      switch (declaration.default_bar_section) {
+      case BarSection::Unspecified:
+      case BarSection::Left:
+      case BarSection::Center:
+      case BarSection::Right:
+        break;
+      default:
+        return false;
+      }
+      break;
+    case Role::Panel:
+      if (declaration.maximum_width > 1024 ||
+          declaration.maximum_height > 2048 ||
+          declaration.default_bar_section != BarSection::Unspecified)
+        return false;
+      break;
+    case Role::Overlay:
+      if (declaration.maximum_width > 2048 ||
+          declaration.maximum_height > 2048 ||
+          declaration.default_bar_section != BarSection::Unspecified)
+        return false;
+      break;
+    default:
+      return false;
+    }
+  }
 
   const auto publication = std::ranges::find_if(
       publications_, [&binding](const Publication &candidate) {
@@ -265,11 +307,11 @@ bool SurfaceProjectionModel::publishIntent(
       canonical_surface_key(publication->binding(), publication->target_name());
   const auto *source_declaration = declared(source);
   const auto *target_declaration = declared(target);
-  const qulonglong generation = publication->binding().generation;
+  const auto &binding = publication->binding();
+  const qulonglong generation = binding.generation;
   if (generation == 0 || source_declaration == nullptr ||
-      target_declaration == nullptr ||
-      source_declaration->generation != generation ||
-      target_declaration->generation != generation)
+      target_declaration == nullptr || source_declaration->binding != binding ||
+      target_declaration->binding != binding)
     return false;
   switch (publication->action()) {
   case surface::SurfaceIntentAction::open:
@@ -294,8 +336,16 @@ SurfaceProjectionModel::declared(QStringView surface_key) const {
   return found == surfaces_.end() ? nullptr : &*found;
 }
 
-bool SurfaceProjectionModel::contains(QStringView surface_key) const {
-  return onOwnerThread() && declared(surface_key) != nullptr;
+std::optional<PublishedSurfaceAttachment>
+SurfaceProjectionModel::resolve(QStringView surface_key) const {
+  if (!onOwnerThread() || surface_key.isEmpty())
+    return std::nullopt;
+  const auto *row = declared(surface_key);
+  if (row == nullptr)
+    return std::nullopt;
+  return PublishedSurfaceAttachment(row->surface_key, row->binding,
+                                    row->declaration.surface_name,
+                                    row->publication_revision);
 }
 
 bool SurfaceProjectionModel::onOwnerThread() const {
@@ -318,9 +368,7 @@ std::vector<SurfaceProjectionModel::SurfaceRow> SurfaceProjectionModel::rowsFor(
     rows.push_back(
         {.surface_key =
              canonical_surface_key(publication.binding, declaration.surface_name),
-         .plugin_id = text(publication.binding.plugin.view()),
-         .surface_name = text(declaration.surface_name),
-         .generation = publication.binding.generation,
+         .binding = publication.binding,
          .publication_revision = publication.revision,
          .declaration = declaration});
   }

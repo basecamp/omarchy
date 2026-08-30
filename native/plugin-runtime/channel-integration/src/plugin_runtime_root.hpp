@@ -66,11 +66,8 @@ public:
   void stop();
   [[nodiscard]] std::optional<permissions::ActivationBinding>
   session_binding() const;
-  // Transport-only seam. Permission projection through the runtime manager
-  // remains mandatory before any declaration may be published to QML.
-  [[nodiscard]] SurfaceSessionPort &surface_session() noexcept;
-
 private:
+  [[nodiscard]] SurfaceSessionPort &surface_session() noexcept;
   struct Configuration final {
     int activation_root_fd = -1;
     int revision_root_fd = -1;
@@ -138,6 +135,10 @@ private:
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
 class PluginRuntimeRootTestAccess final {
 public:
+  [[nodiscard]] static SurfaceSessionPort &
+  surface_session(PluginRuntimeRoot &root) noexcept {
+    return root.surface_session();
+  }
   [[nodiscard]] static std::unique_ptr<PreparedPluginRuntime>
   prepare_from_parts(
       int activation_root_fd, int revision_root_fd, int state_root_fd,

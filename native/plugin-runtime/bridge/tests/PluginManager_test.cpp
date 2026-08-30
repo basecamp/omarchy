@@ -1,13 +1,17 @@
 #include "PluginManager.h"
 
 #include "omarchy/plugin_runtime/Version.h"
+#include "omarchy/plugin_runtime/runtime_paths.hpp"
 #include "runtime_bootstrap.hpp"
 #include "runtime_roots.hpp"
 #include "remote_surface.hpp"
+#include "revision_verifier_adapter.hpp"
+#include "authority_store.hpp"
 
 #include <QCoreApplication>
 #include <QMetaMethod>
 #include <QQmlEngine>
+#include <QQuickWindow>
 
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -18,7 +22,9 @@
 #include <barrier>
 #include <chrono>
 #include <condition_variable>
+#include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <ranges>
 #include <mutex>
@@ -33,6 +39,8 @@ namespace bridge = omarchy::plugin_runtime::bridge;
 namespace permissions = omarchy::plugins::permissions;
 namespace channel = omarchy::plugin_runtime::channel;
 namespace host = omarchy::plugin_runtime::host_session;
+namespace policy = omarchy::plugin_runtime::policy;
+namespace definitions = omarchy::plugins::definitions;
 
 void require(bool condition, std::string_view message) {
   if (!condition)
@@ -174,6 +182,79 @@ public:
 
   void putInvalid() { write("!", "invalid\n", O_CREAT | O_EXCL); }
 
+  permissions::ActivationBinding seedRuntime(std::string_view plugin) {
+    const auto revision = revisions() / "ready-installed";
+    create(revision / "ui", 0755);
+    {
+      std::ofstream manifest_file(revision / "manifest.json");
+      manifest_file
+          << "{\n  \"schemaVersion\": 2,\n  \"id\": \"" << plugin
+          << "\",\n  \"name\": \"Manager fixture\",\n"
+             "  \"version\": \"1.0.0\",\n"
+             "  \"runtime\": {\"apiVersion\": 1, \"qml\": "
+             "\"ui/Main.qml\"},\n  \"surfaces\": {\"bar\": {"
+             "\"role\": \"bar-embedded\", \"defaultSection\": "
+             "\"right\", \"maximumWidth\": 320, \"maximumHeight\": 64, "
+             "\"maximumFramesPerSecond\": 60}},\n  \"permissions\": {"
+             "\"required\": [], "
+             "\"optional\": []}\n}\n";
+    }
+    std::ofstream(revision / "ui/Main.qml") << "import QtQuick\nItem {}\n";
+    for (const auto &entry :
+         std::filesystem::recursive_directory_iterator(revision))
+      require(::chmod(entry.path().c_str(),
+                      entry.is_directory() ? 0555 : 0444) == 0,
+              "manager ready revision mode failed");
+    require(::chmod(revision.c_str(), 0555) == 0,
+            "manager ready revision root mode failed");
+    create(state() / std::string(plugin), 0700);
+    create(authority() / std::string(plugin), 0700);
+
+    const int revision_fd = ::open(
+        revision.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    require(revision_fd >= 0, "manager ready revision open failed");
+    host::DescriptorRevisionVerifier verifier;
+    auto verified = verifier.verify_open_revision(revision_fd);
+    ::close(revision_fd);
+    require(verified && verified->manifest.id == plugin,
+            "manager ready revision verification failed");
+
+    write(plugin,
+          "format=omarchy-plugin-activation-v2\nplugin=" +
+              std::string(plugin) +
+              "\nrevision-directory=ready-installed\nrevision-sha256=" +
+              verified->tree_sha256 + "\nstate-directory=" +
+              std::string(plugin) + "\n",
+          O_CREAT | O_EXCL);
+    const int authority_fd = ::open(
+        (authority() / std::string(plugin)).c_str(),
+        O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    require(authority_fd >= 0, "manager ready authority open failed");
+    auto store = host::AuthorityStore::open(
+        authority_fd, ::getuid(), permissions::PluginId(plugin));
+    ::close(authority_fd);
+    require(store != nullptr, "manager ready authority store failed");
+    policy::GrantSnapshot snapshot;
+    snapshot.requests =
+        permissions::requests_from_manifest(verified->manifest);
+    snapshot.binding = {
+        .plugin = permissions::PluginId(plugin),
+        .revision = permissions::Digest(verified->tree_sha256),
+        .policy_fingerprint = permissions::Digest(
+            permissions::policy_request_fingerprint(snapshot.requests)),
+        .generation = 1,
+    };
+    snapshot.source_request_fingerprint =
+        permissions::Digest(verified->request_sha256);
+    definitions::TrustedDefinitionRegistry registry;
+    require(store->publish_candidate(*verified, snapshot, 0, registry, {}) ==
+                    host::AuthorityMutationResult::applied &&
+                store->promote_candidate(snapshot.binding, 1) ==
+                    host::AuthorityMutationResult::applied,
+            "manager ready authority activation failed");
+    return snapshot.binding;
+  }
+
   void erase(std::string_view name) {
     require(std::filesystem::remove(activations() / std::string(name)),
             "manager runtime fixture erase failed");
@@ -208,6 +289,15 @@ public:
 private:
   std::filesystem::path activations() const {
     return home_ / ".local/state/omarchy/plugin-security/v2/activations";
+  }
+  std::filesystem::path revisions() const {
+    return home_ / ".local/share/omarchy/plugin-security/v2/revisions";
+  }
+  std::filesystem::path authority() const {
+    return home_ / ".local/state/omarchy/plugin-security/v2/authority";
+  }
+  std::filesystem::path state() const {
+    return home_ / ".local/state/omarchy/plugin-security/v2/state";
   }
 
   void create(const std::filesystem::path &path, mode_t leaf_mode) {
@@ -330,7 +420,7 @@ void private_projection_seam_preserves_fail_closed_boundary() {
                           .maximum_height = 480,
                           .dynamic_input_regions = true});
   const auto exact = binding();
-  require(bridge::PluginManagerTestAccess::publishSurfaces(
+  require(bridge::SurfaceProjectionModelTestAccess::publish(
               manager, exact, std::move(declarations), 1) &&
               manager.count() == 1 && changes == 1 && !manager.available(),
           "private readiness seam did not project one exact row");
@@ -346,14 +436,24 @@ void private_projection_seam_preserves_fail_closed_boundary() {
   bool off_thread = true;
   std::thread worker([&] {
     off_thread =
-        bridge::PluginManagerTestAccess::withdrawSurfaces(manager, exact);
+        bridge::SurfaceProjectionModelTestAccess::withdraw(manager, exact);
   });
   worker.join();
   require(
       !off_thread && manager.count() == 1 &&
-          bridge::PluginManagerTestAccess::withdrawSurfaces(manager, exact) &&
+          bridge::SurfaceProjectionModelTestAccess::withdraw(manager, exact) &&
           manager.count() == 0 && changes == 2,
       "projection seam escaped UI-thread or exact-binding confinement");
+}
+
+void manager_policy_is_fixed_and_fail_closed() {
+  RuntimeFixture fixture;
+  auto manager = bridge::PluginManagerTestAccess::create();
+  bridge::PluginManagerTestAccess::installRuntime(*manager,
+                                                  fixture.bootstrap());
+  require(bridge::PluginManagerTestAccess::clockIsNondecreasing(*manager) &&
+              bridge::PluginManagerTestAccess::inspectionDenied(*manager),
+          "manager clock or deny-only inspection policy was configurable");
 }
 
 void last_good_reconciliation_and_stale_callback_are_fail_closed() {
@@ -790,6 +890,144 @@ void runtime_jobs_enter_off_ui_and_commit_on_ui_drain() {
           "runtime scan or preparation executed on the UI thread");
 }
 
+void real_root_publishes_attaches_and_tears_down_exactly() {
+  if (std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_TEST") == nullptr)
+    return;
+  const bool packaged_worker_available =
+      ::access(std::string(omarchy::plugin_runtime::kPackagedWorkerPath).c_str(),
+               X_OK) == 0;
+  require(packaged_worker_available,
+          "required packaged worker integration test was unavailable");
+  using Model = bridge::SurfaceProjectionModel;
+  constexpr std::string_view plugin = "org.example.status";
+  RuntimeFixture fixture;
+  const auto exact_binding = fixture.seedRuntime(plugin);
+  DeterministicJobs scheduler;
+  auto manager = bridge::PluginManagerTestAccess::create();
+  bridge::PluginManagerTestAccess::installRuntime(*manager,
+                                                  fixture.bootstrap());
+  bridge::PluginManagerTestAccess::setJobSubmitter(
+      *manager, [&](auto kind, auto job) {
+        return scheduler.submit(kind, std::move(job));
+      });
+  require(bridge::PluginManagerTestAccess::scanRuntime(*manager) &&
+              scheduler.jobs.size() == 1 &&
+              scheduler.kinds.front() ==
+                  bridge::PluginManagerTestAccess::TestJobKind::preparation,
+          "real root preparation did not enter the bounded manager lane");
+  std::thread preparation([&] { scheduler.runOne(); });
+  preparation.join();
+  bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  const bool reached_running = await([&] {
+    bridge::PluginManagerTestAccess::drainRuntime(*manager);
+    const auto observations =
+        bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+    return observations.size() == 1 &&
+           observations.front().running_unpublished;
+  });
+  if (!reached_running) {
+    const auto observations =
+        bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+    require(!observations.empty(), "real committed root slot disappeared");
+    const auto &failure = observations.front();
+    throw std::runtime_error(
+        "real root lifecycle failure: state=" +
+        std::to_string(failure.last_state) +
+        " error=" + std::to_string(failure.last_error) +
+        " opening=" + std::to_string(failure.opening) +
+        " starting=" + std::to_string(failure.starting) +
+        " retry=" + std::to_string(failure.retry_wait));
+  }
+  const auto slot =
+      bridge::PluginManagerTestAccess::runtimeSlots(*manager).front();
+  require(manager->count() == 0 && !slot.has_endpoint_owner,
+          "running transport published before typed readiness");
+
+  QQuickWindow window;
+  window.resize(320, 64);
+  window.show();
+  bridge::RemotePluginSurface remote(window.contentItem());
+  remote.setWidth(320);
+  remote.setHeight(64);
+  bool attached_in_signal = false;
+  QObject::connect(manager.get(), &bridge::PluginManager::surfacesChanged,
+                   [&] {
+                     if (manager->count() != 1)
+                       return;
+                     const auto key = manager->barSurfaces()
+                                          ->data(manager->barSurfaces()->index(0, 0),
+                                                 Model::SurfaceKeyRole)
+                                          .toString();
+                     attached_in_signal = manager->attach(key, &remote);
+                   });
+  const auto declarations = [] {
+    std::vector<Model::SurfaceDeclaration> value;
+    value.push_back({.surface_name = "bar",
+                     .role = Model::Role::Bar,
+                     .screen_name = {},
+                     .initially_visible = false,
+                     .maximum_width = 320,
+                     .maximum_height = 64,
+                     .dynamic_input_regions = false,
+                     .default_bar_section = Model::BarSection::Right});
+    return value;
+  }();
+  auto wrong_binding = exact_binding;
+  wrong_binding.revision = permissions::Digest(std::string(64, 'c'));
+  require(!bridge::PluginManagerTestAccess::publishReady(
+              *manager, plugin, slot.epoch + 1, exact_binding, declarations) &&
+              !bridge::PluginManagerTestAccess::publishReady(
+                  *manager, plugin, slot.epoch, wrong_binding, declarations) &&
+              manager->count() == 0 &&
+              !bridge::PluginManagerTestAccess::runtimeSlots(*manager)
+                   .front()
+                   .has_endpoint_owner,
+          "wrong readiness epoch or full binding created publication state");
+  const auto throwing_publication = QObject::connect(
+      manager.get(), &bridge::PluginManager::surfacesChanged,
+      [] { throw std::runtime_error("injected publication signal failure"); });
+  require(!bridge::PluginManagerTestAccess::publishReady(
+              *manager, plugin, slot.epoch, exact_binding, declarations) &&
+              manager->count() == 0 &&
+              bridge::PluginManagerTestAccess::runtimeSlots(*manager)
+                  .front()
+                  .running_unpublished &&
+              !bridge::PluginManagerTestAccess::runtimeSlots(*manager)
+                   .front()
+                   .has_endpoint_owner,
+          "throwing publication signal escaped noexcept rollback");
+  QObject::disconnect(throwing_publication);
+  require(bridge::PluginManagerTestAccess::publishReady(
+              *manager, plugin, slot.epoch, exact_binding, declarations) &&
+              attached_in_signal && remote.connected() && manager->count() == 1,
+          "exact readiness did not install owner before row publication");
+  require(!bridge::PluginManagerTestAccess::publishReady(
+              *manager, plugin, slot.epoch, exact_binding, declarations),
+          "second readiness event replaced an active publication");
+
+  const auto published_key = manager->barSurfaces()
+                                 ->data(manager->barSurfaces()->index(0, 0),
+                                        Model::SurfaceKeyRole)
+                                 .toString();
+  bool detached_before_withdraw_signal = false;
+  bool reentrant_old_key_rejected = false;
+  QObject::connect(manager.get(), &bridge::PluginManager::surfacesChanged,
+                   [&] {
+                     if (manager->count() != 0)
+                       return;
+                     detached_before_withdraw_signal = !remote.connected();
+                     reentrant_old_key_rejected =
+                         !manager->attach(published_key, &remote);
+                   });
+  fixture.erase(plugin);
+  require(bridge::PluginManagerTestAccess::scanRuntime(*manager) &&
+              manager->count() == 0 && !remote.connected() &&
+              bridge::PluginManagerTestAccess::runtimeSlots(*manager).empty() &&
+              detached_before_withdraw_signal && reentrant_old_key_rejected,
+          "catalog removal did not close endpoint before withdrawing rows");
+  manager.reset();
+}
+
 } // namespace
 
 void run_plugin_manager_tests() {
@@ -797,10 +1035,12 @@ void run_plugin_manager_tests() {
   concurrent_engines_have_one_process_winner();
   singleton_boundary_is_inert_and_not_configurable();
   private_projection_seam_preserves_fail_closed_boundary();
+  manager_policy_is_fixed_and_fail_closed();
   last_good_reconciliation_and_stale_callback_are_fail_closed();
   bounded_mailbox_coalesces_and_recovers_without_backoff();
   mailbox_results_are_safe_across_replacement_and_destruction();
   lifecycle_mailbox_keeps_latest_exact_terminal_state();
   blocked_replacement_preserves_independent_plugin();
   runtime_jobs_enter_off_ui_and_commit_on_ui_drain();
+  real_root_publishes_attaches_and_tears_down_exactly();
 }

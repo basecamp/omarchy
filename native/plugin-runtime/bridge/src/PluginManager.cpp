@@ -1,7 +1,10 @@
 #include "PluginManager.h"
 
+#include "SurfaceEndpointOwner.h"
 #include "omarchy/plugin_runtime/Version.h"
+#include "remote_surface.hpp"
 #include "runtime_bootstrap.hpp"
+#include "surface_host.hpp"
 
 #include <QQmlEngine>
 #include <QThread>
@@ -38,6 +41,26 @@ constexpr std::uint8_t kMaximumRetryExponent = 7;
 
 std::atomic<QQmlEngine *> claimed_engine = nullptr;
 
+class ManagerMonotonicClock final : public surface_host::MonotonicClock {
+public:
+  std::uint64_t now_nanoseconds() const override {
+    static_assert(std::chrono::steady_clock::is_steady);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                             std::chrono::steady_clock::now().time_since_epoch())
+                             .count();
+    return elapsed < 0 ? 0 : static_cast<std::uint64_t>(elapsed);
+  }
+};
+
+class DenyInspectionAuthority final
+    : public surface_host::InspectionAuthority {
+public:
+  bool perform(surface_host::InspectionAction, std::string_view,
+               std::string_view, std::string_view) noexcept override {
+    return false;
+  }
+};
+
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
 std::atomic_bool fail_next_manager_construction = false;
 #endif
@@ -51,7 +74,9 @@ struct PluginManager::Runtime final {
     opening,
     starting,
     running_unpublished,
+    running_published,
     retry_wait,
+    stopping,
   };
   enum class JobKind : std::uint8_t { scan, preparation };
 
@@ -97,6 +122,11 @@ struct PluginManager::Runtime final {
     std::shared_ptr<HookState> callback_state;
     std::unique_ptr<Hook> hook;
     std::unique_ptr<channel::PluginRuntimeRoot> root;
+    std::unique_ptr<SurfaceEndpointOwner> endpoint_owner;
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+    std::uint8_t last_state = 0;
+    std::uint8_t last_error = 0;
+#endif
   };
 
   struct ScanResult final {
@@ -482,6 +512,10 @@ struct PluginManager::Runtime final {
     auto *slot = exact(plugin, epoch);
     if (slot == nullptr)
       return;
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+    slot->last_state = static_cast<std::uint8_t>(state);
+    slot->last_error = static_cast<std::uint8_t>(error);
+#endif
     if (state == host_session::SessionState::running &&
         error == host_session::SessionError::none) {
       try {
@@ -503,6 +537,48 @@ struct PluginManager::Runtime final {
         state == host_session::SessionState::stopped ||
         state == host_session::SessionState::revoked)
       fail(*slot);
+  }
+
+  bool publishReady(
+      std::string_view plugin, std::uint64_t epoch,
+      const plugins::permissions::ActivationBinding &binding,
+      std::vector<SurfaceProjectionModel::SurfaceDeclaration> declarations)
+      noexcept {
+    if (QThread::currentThread() != manager_.thread() || epoch == 0)
+      return false;
+    auto *slot = exact(plugin, epoch);
+    if (slot == nullptr || slot->phase != Phase::running_unpublished ||
+        slot->plugin != binding.plugin.view() || !slot->root || !slot->hook ||
+        slot->endpoint_owner)
+      return false;
+    const auto rollback = [&]() noexcept {
+      slot->phase = Phase::running_unpublished;
+      if (slot->endpoint_owner)
+        slot->endpoint_owner->close_all();
+      try {
+        static_cast<void>(manager_.surfaces_.withdrawSurfaces(binding));
+      } catch (...) {
+      }
+      slot->endpoint_owner.reset();
+    };
+    try {
+      const auto live_binding = slot->root->session_binding();
+      if (!live_binding || *live_binding != binding)
+        return false;
+      auto owner = std::unique_ptr<SurfaceEndpointOwner>(new SurfaceEndpointOwner(
+          inspection_, clock_, binding, epoch, slot->root->surface_session()));
+      slot->endpoint_owner = std::move(owner);
+      slot->phase = Phase::running_published;
+      if (!manager_.surfaces_.publishSurfaces(binding, std::move(declarations),
+                                              epoch)) {
+        rollback();
+        return false;
+      }
+      return true;
+    } catch (...) {
+      rollback();
+      return false;
+    }
   }
 
   Slot *exact(std::string_view plugin, std::uint64_t epoch) noexcept {
@@ -559,9 +635,19 @@ struct PluginManager::Runtime final {
   }
 
   void stopRuntime(Slot &slot) noexcept {
+    slot.phase = Phase::stopping;
     slot.epoch = nextEpoch();
     slot.retry_due.reset();
     slot.preparing = false;
+    if (slot.endpoint_owner) {
+      slot.endpoint_owner->close_all();
+      try {
+        static_cast<void>(manager_.surfaces_.withdrawSurfaces(
+            slot.endpoint_owner->binding_));
+      } catch (...) {
+      }
+    }
+    slot.endpoint_owner.reset();
     slot.root.reset();
     slot.hook.reset();
     slot.callback_state.reset();
@@ -577,6 +663,8 @@ struct PluginManager::Runtime final {
   std::shared_ptr<const channel::RuntimeBootstrap> bootstrap_;
   std::shared_ptr<DeliveryGate> gate_ = std::make_shared<DeliveryGate>();
   std::unique_ptr<channel::ActivationCatalog> catalog_;
+  ManagerMonotonicClock clock_;
+  DenyInspectionAuthority inspection_;
   std::vector<Slot> slots_;
   QTimer scan_timer_;
   QTimer retry_timer_;
@@ -590,6 +678,21 @@ struct PluginManager::Runtime final {
 };
 
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+bool SurfaceProjectionModelTestAccess::publish(
+    PluginManager &manager,
+    const plugins::permissions::ActivationBinding &binding,
+    std::vector<SurfaceProjectionModel::SurfaceDeclaration> declarations,
+    qulonglong revision) {
+  return manager.surfaces_.publishSurfaces(binding, std::move(declarations),
+                                           revision);
+}
+
+bool SurfaceProjectionModelTestAccess::withdraw(
+    PluginManager &manager,
+    const plugins::permissions::ActivationBinding &binding) {
+  return manager.surfaces_.withdrawSurfaces(binding);
+}
+
 void PluginManagerTestAccess::installRuntime(
     PluginManager &manager,
     std::unique_ptr<channel::RuntimeBootstrap> bootstrap) {
@@ -624,7 +727,16 @@ PluginManagerTestAccess::runtimeSlots(const PluginManager &manager) {
                                     PluginManager::Runtime::Phase::retry_wait,
                       .opening = slot.phase ==
                                  PluginManager::Runtime::Phase::opening,
-                      .preparing = slot.preparing});
+                      .starting = slot.phase ==
+                                  PluginManager::Runtime::Phase::starting,
+                      .preparing = slot.preparing,
+                      .running_unpublished =
+                          slot.phase == PluginManager::Runtime::Phase::running_unpublished,
+                      .running_published =
+                          slot.phase == PluginManager::Runtime::Phase::running_published,
+                      .has_endpoint_owner = slot.endpoint_owner != nullptr,
+                      .last_state = slot.last_state,
+                      .last_error = slot.last_error});
   return result;
 }
 
@@ -735,6 +847,34 @@ bool PluginManagerTestAccess::deliverLifecycle(
   }
 }
 
+bool PluginManagerTestAccess::publishReady(
+    PluginManager &manager, std::string_view plugin, std::uint64_t epoch,
+    const plugins::permissions::ActivationBinding &binding,
+    std::vector<SurfaceProjectionModel::SurfaceDeclaration> declarations) {
+  return manager.runtime_ && manager.runtime_->publishReady(
+                                 plugin, epoch, binding,
+                                 std::move(declarations));
+}
+
+bool PluginManagerTestAccess::clockIsNondecreasing(PluginManager &manager) {
+  if (!manager.runtime_)
+    return false;
+  const auto first = manager.runtime_->clock_.now_nanoseconds();
+  const auto second = manager.runtime_->clock_.now_nanoseconds();
+  return second >= first;
+}
+
+bool PluginManagerTestAccess::inspectionDenied(PluginManager &manager) {
+  if (!manager.runtime_)
+    return false;
+  return !manager.runtime_->inspection_.perform(
+             surface_host::InspectionAction::open_permissions, "plugin",
+             "revision", "surface") &&
+         !manager.runtime_->inspection_.perform(
+             surface_host::InspectionAction::terminate, "plugin", "revision",
+             "surface");
+}
+
 std::weak_ptr<const void>
 PluginManagerTestAccess::deliveryGate(const PluginManager &manager) {
   return manager.runtime_
@@ -833,24 +973,37 @@ QAbstractItemModel *PluginManager::overlaySurfaces() {
 
 int PluginManager::count() const noexcept { return surfaces_.count(); }
 
-bool PluginManager::attach(const QString &surface_key, QObject *surface) {
-  // A running transport alone never creates model rows or an attachment
-  // owner; exact typed readiness is required.
-  Q_UNUSED(surface_key)
-  Q_UNUSED(surface)
-  return false;
-}
-
-bool PluginManager::publishSurfaces(
-    const plugins::permissions::ActivationBinding &binding,
-    std::vector<SurfaceProjectionModel::SurfaceDeclaration> declarations,
-    qulonglong revision) {
-  return surfaces_.publishSurfaces(binding, std::move(declarations), revision);
-}
-
-bool PluginManager::withdrawSurfaces(
-    const plugins::permissions::ActivationBinding &binding) {
-  return surfaces_.withdrawSurfaces(binding);
+bool PluginManager::attach(const QString &surface_key,
+                           QObject *surface) noexcept {
+  constexpr qsizetype kMaximumPublishedSurfaceKeyCharacters = 512;
+  if (QThread::currentThread() != thread() || !runtime_ || !surface ||
+      surface_key.isEmpty() ||
+      surface_key.size() > kMaximumPublishedSurfaceKeyCharacters)
+    return false;
+  auto *remote = qobject_cast<RemotePluginSurface *>(surface);
+  if (!remote)
+    return false;
+  try {
+    auto published = surfaces_.resolve(surface_key);
+    if (!published)
+      return false;
+    const auto plugin = published->binding_.plugin.view();
+    const auto found = std::ranges::lower_bound(
+        runtime_->slots_, plugin, {},
+        [](const Runtime::Slot &slot) { return slot.plugin; });
+    if (found == runtime_->slots_.end() || found->plugin != plugin ||
+        found->phase != Runtime::Phase::running_published ||
+        found->epoch != published->publication_revision_ || !found->root ||
+        !found->endpoint_owner)
+      return false;
+    const auto binding = found->root->session_binding();
+    if (!binding || *binding != published->binding_)
+      return false;
+    return found->endpoint_owner->attach(*published, surface_key, *remote) ==
+           SurfaceEndpointAttachResult::attached;
+  } catch (...) {
+    return false;
+  }
 }
 
 bool PluginManager::publishIntent(host_session::AdmittedSurfaceIntent intent) {

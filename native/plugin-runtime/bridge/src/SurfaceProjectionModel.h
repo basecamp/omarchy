@@ -1,5 +1,6 @@
 #pragma once
 
+#include "SurfaceEndpointOwner.h"
 #include "permission_contract.hpp"
 
 #include <QAbstractListModel>
@@ -7,6 +8,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -17,6 +19,9 @@ class AdmittedSurfaceIntent;
 namespace omarchy::plugin_runtime::bridge {
 
 class PluginManager;
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+class SurfaceProjectionModelTestAccess;
+#endif
 
 // Internal projection model. Host publication and attachment are owned
 // by the singleton PluginManager; this type is deliberately not a QML type.
@@ -96,7 +101,8 @@ private:
   bool withdrawSurfaces(
       const plugins::permissions::ActivationBinding &binding);
   bool publishIntent(host_session::AdmittedSurfaceIntent intent);
-  [[nodiscard]] bool contains(QStringView surface_key) const;
+  [[nodiscard]] std::optional<PublishedSurfaceAttachment>
+  resolve(QStringView surface_key) const;
 
   class RoleFilterModel;
   struct Publication;
@@ -115,6 +121,39 @@ private:
   std::unique_ptr<RoleFilterModel> overlay_surfaces_;
 
   friend class PluginManager;
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+  friend class SurfaceProjectionModelTestAccess;
+#endif
 };
+
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+class SurfaceProjectionModelTestAccess final {
+public:
+  struct Resolved final {
+    QString key;
+    plugins::permissions::ActivationBinding binding;
+    std::string surface_name;
+    qulonglong revision = 0;
+  };
+  [[nodiscard]] static bool publish(
+      PluginManager &manager,
+      const plugins::permissions::ActivationBinding &binding,
+      std::vector<SurfaceProjectionModel::SurfaceDeclaration> declarations,
+      qulonglong revision);
+  [[nodiscard]] static bool
+  withdraw(PluginManager &manager,
+           const plugins::permissions::ActivationBinding &binding);
+  [[nodiscard]] static std::optional<Resolved>
+  resolve(const SurfaceProjectionModel &model, QStringView key) {
+    auto value = model.resolve(key);
+    if (!value)
+      return std::nullopt;
+    return Resolved{.key = value->surface_key_,
+                    .binding = value->binding_,
+                    .surface_name = value->declared_surface_,
+                    .revision = value->publication_revision_};
+  }
+};
+#endif
 
 } // namespace omarchy::plugin_runtime::bridge

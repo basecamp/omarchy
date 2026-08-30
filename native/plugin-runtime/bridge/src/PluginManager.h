@@ -57,7 +57,8 @@ public:
   // This is the complete QML attachment boundary. It resolves only opaque
   // published keys to manager-owned roots and endpoints; without exact typed
   // readiness, attachment and publication stay inert.
-  Q_INVOKABLE bool attach(const QString &surface_key, QObject *surface);
+  Q_INVOKABLE bool attach(const QString &surface_key,
+                          QObject *surface) noexcept;
 
 signals:
   void availableChanged();
@@ -89,12 +90,6 @@ private:
   };
 
   PluginManager(QObject *parent, ProcessClaim claim);
-  [[nodiscard]] bool publishSurfaces(
-      const plugins::permissions::ActivationBinding &binding,
-      std::vector<SurfaceProjectionModel::SurfaceDeclaration> declarations,
-      qulonglong revision);
-  [[nodiscard]] bool
-  withdrawSurfaces(const plugins::permissions::ActivationBinding &binding);
   [[nodiscard]] bool publishIntent(host_session::AdmittedSurfaceIntent intent);
 
   struct Runtime;
@@ -108,6 +103,7 @@ private:
 
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
   friend class PluginManagerTestAccess;
+  friend class SurfaceProjectionModelTestAccess;
 #endif
 };
 
@@ -121,7 +117,13 @@ public:
     std::uint8_t retry_attempts = 0;
     bool retry_wait = false;
     bool opening = false;
+    bool starting = false;
     bool preparing = false;
+    bool running_unpublished = false;
+    bool running_published = false;
+    bool has_endpoint_owner = false;
+    std::uint8_t last_state = 0;
+    std::uint8_t last_error = 0;
   };
 
   // Focused unit tests exercise manager internals without consuming the one
@@ -161,20 +163,14 @@ public:
   [[nodiscard]] static bool deliverLifecycle(
       PluginManager &manager, std::string_view plugin, std::uint64_t epoch,
       std::uint8_t state, std::uint8_t error);
+  [[nodiscard]] static bool publishReady(
+      PluginManager &manager, std::string_view plugin, std::uint64_t epoch,
+      const plugins::permissions::ActivationBinding &binding,
+      std::vector<SurfaceProjectionModel::SurfaceDeclaration> declarations);
+  [[nodiscard]] static bool clockIsNondecreasing(PluginManager &manager);
+  [[nodiscard]] static bool inspectionDenied(PluginManager &manager);
   [[nodiscard]] static std::weak_ptr<const void>
   deliveryGate(const PluginManager &manager);
-  [[nodiscard]] static bool publishSurfaces(
-      PluginManager &manager,
-      const plugins::permissions::ActivationBinding &binding,
-      std::vector<SurfaceProjectionModel::SurfaceDeclaration> declarations,
-      qulonglong revision) {
-    return manager.publishSurfaces(binding, std::move(declarations), revision);
-  }
-  [[nodiscard]] static bool
-  withdrawSurfaces(PluginManager &manager,
-                   const plugins::permissions::ActivationBinding &binding) {
-    return manager.withdrawSurfaces(binding);
-  }
   [[nodiscard]] static bool
   publishIntent(PluginManager &manager,
                 host_session::AdmittedSurfaceIntent intent) {

@@ -105,13 +105,13 @@ void run() {
   surfaces.push_back(declaration("overlay", Service::Role::Overlay));
   surfaces.push_back(declaration(maximum_name.toStdString(), Service::Role::Panel));
   const auto fixture_binding = binding("org.omarchy.fixture");
-  require(bridge::PluginManagerTestAccess::publishSurfaces(
+  require(bridge::SurfaceProjectionModelTestAccess::publish(
               service_manager, fixture_binding, surfaces, 2) &&
               service.count() == 4 &&
               service.barSurfaces()->rowCount() == 1 &&
               service.panelSurfaces()->rowCount() == 2 &&
               service.overlaySurfaces()->rowCount() == 1 &&
-              !bridge::PluginManagerTestAccess::publishSurfaces(
+              !bridge::SurfaceProjectionModelTestAccess::publish(
                   service_manager, fixture_binding, surfaces, 2),
           "typed shell surface model or monotonic revision was incorrect");
   require(value(service, 0, Service::SurfaceKeyRole) ==
@@ -133,12 +133,38 @@ void run() {
                   .data(service.index(2), Service::DynamicInputRegionsRole)
                   .toBool(),
           "model roles were not derived from exact typed activation state");
+  const auto exact_key = value(service, 0, Service::SurfaceKeyRole);
+  const auto resolved = bridge::SurfaceProjectionModelTestAccess::resolve(
+      service, exact_key);
+  require(resolved && resolved->key == exact_key &&
+              resolved->binding == fixture_binding &&
+              resolved->surface_name == "bar" && resolved->revision == 2 &&
+              !bridge::SurfaceProjectionModelTestAccess::resolve(service, {}) &&
+              !bridge::SurfaceProjectionModelTestAccess::resolve(
+                  service, exact_key + u'x') &&
+              !bridge::SurfaceProjectionModelTestAccess::resolve(
+                  service, QString(513, u'x')),
+          "private surface resolver did not preserve the exact row authority");
+  bool off_thread_resolved = true;
+  std::thread resolve_worker([&] {
+    off_thread_resolved = bridge::SurfaceProjectionModelTestAccess::resolve(
+                              service, exact_key)
+                              .has_value();
+  });
+  resolve_worker.join();
+  require(!off_thread_resolved,
+          "private surface resolver escaped model-thread confinement");
+
+  auto invalid = declaration("duplicate", Service::Role::Panel);
+  require(!bridge::SurfaceProjectionModelTestAccess::publish(
+              service_manager, fixture_binding, {invalid, invalid}, 3),
+          "duplicate surface declarations entered the model");
 
   std::vector<Service::SurfaceDeclaration> overflow;
   for (int index = 0; index <= 8; ++index)
     overflow.push_back(
         declaration("surface" + std::to_string(index), Service::Role::Panel));
-  require(!bridge::PluginManagerTestAccess::publishSurfaces(
+  require(!bridge::SurfaceProjectionModelTestAccess::publish(
               service_manager, fixture_binding, std::move(overflow), 3),
           "shell bridge accepted more than the product surface limit");
 
@@ -147,7 +173,7 @@ void run() {
   auto &multi_service = bridge::PluginManagerTestAccess::model(multi_manager);
   const auto binding_a = binding("a.plugin", 4);
   const auto binding_b = binding("b.plugin", 9);
-  require(bridge::PluginManagerTestAccess::publishSurfaces(
+  require(bridge::SurfaceProjectionModelTestAccess::publish(
               multi_manager, binding_a,
               {declaration("PanelA", Service::Role::Panel)}, 5),
           "first plugin publication did not reach the aggregate model");
@@ -156,7 +182,7 @@ void run() {
   QPersistentModelIndex persistent_panel_a(
       multi_service.panelSurfaces()->index(0, 0));
   ModelSignalSpy panel_spy(*multi_service.panelSurfaces());
-  require(bridge::PluginManagerTestAccess::publishSurfaces(
+  require(bridge::SurfaceProjectionModelTestAccess::publish(
               multi_manager, binding_b,
               {declaration("PanelB", Service::Role::Panel)}, 1) &&
               multi_service.count() == 2 &&
@@ -173,12 +199,12 @@ void run() {
                             Service::PublicationRevisionRole)
                       .toString() == QStringLiteral("1"),
           "plugin publications did not retain independent revisions and rows");
-  require(bridge::PluginManagerTestAccess::publishSurfaces(
+  require(bridge::SurfaceProjectionModelTestAccess::publish(
               multi_manager, binding_b,
               {declaration("PanelB", Service::Role::Panel),
                declaration("OverlayB", Service::Role::Overlay)},
               2) &&
-              bridge::PluginManagerTestAccess::withdrawSurfaces(multi_manager,
+              bridge::SurfaceProjectionModelTestAccess::withdraw(multi_manager,
                                                                  binding_b) &&
               multi_spy.resets == 0 && panel_spy.resets == 0 &&
               persistent_a.isValid() && persistent_panel_a.isValid() &&
@@ -203,7 +229,7 @@ void run() {
                   [](const auto &range) { return range.first > 0; }) &&
               multi_service.count() == 1,
           "plugin B reset, removed, or recreated plugin A model rows");
-  require(bridge::PluginManagerTestAccess::publishSurfaces(
+  require(bridge::SurfaceProjectionModelTestAccess::publish(
               multi_manager, binding_b,
               {declaration("PanelB", Service::Role::Panel)}, 1),
           "withdrawn plugin B did not republish independently");
@@ -247,7 +273,7 @@ void run() {
        .target = stale_panel,
        .input_sequence = 1,
        .action = surface::SurfaceIntentAction::toggle});
-  require(bridge::PluginManagerTestAccess::publishSurfaces(
+  require(bridge::SurfaceProjectionModelTestAccess::publish(
               multi_manager, newer_a,
               {declaration("PanelA", Service::Role::Panel)}, 6) &&
               multi_service.count() == 2 &&
@@ -258,10 +284,10 @@ void run() {
               !bridge::PluginManagerTestAccess::publishIntent(
                   multi_manager, std::move(*stale_intent.intent)) &&
               stale_toggles == 0 &&
-              !bridge::PluginManagerTestAccess::withdrawSurfaces(multi_manager,
+              !bridge::SurfaceProjectionModelTestAccess::withdraw(multi_manager,
                                                                   binding_a) &&
               multi_service.count() == 2 &&
-              bridge::PluginManagerTestAccess::withdrawSurfaces(multi_manager,
+              bridge::SurfaceProjectionModelTestAccess::withdraw(multi_manager,
                                                                  newer_a) &&
               multi_service.count() == 1 &&
               value(multi_service, 0, Service::PluginIdRole) ==
@@ -274,18 +300,18 @@ void run() {
   bool off_thread_result = true;
   const auto thread_binding = binding("thread.plugin", 3);
   std::thread off_thread_publish([&] {
-    off_thread_result = bridge::PluginManagerTestAccess::publishSurfaces(
+    off_thread_result = bridge::SurfaceProjectionModelTestAccess::publish(
         thread_manager, thread_binding,
         {declaration("Panel", Service::Role::Panel)}, 1);
   });
   off_thread_publish.join();
   require(!off_thread_result && thread_service.count() == 0 &&
-              bridge::PluginManagerTestAccess::publishSurfaces(
+              bridge::SurfaceProjectionModelTestAccess::publish(
                   thread_manager, thread_binding,
                   {declaration("Panel", Service::Role::Panel)}, 1),
           "off-owner-thread publication mutated the shell model");
   std::thread off_thread_withdraw([&] {
-    off_thread_result = bridge::PluginManagerTestAccess::withdrawSurfaces(
+    off_thread_result = bridge::SurfaceProjectionModelTestAccess::withdraw(
         thread_manager, thread_binding);
   });
   off_thread_withdraw.join();
@@ -321,7 +347,7 @@ void run() {
   auto &collision_manager = *collision_owner;
   auto &collision_service =
       bridge::PluginManagerTestAccess::model(collision_manager);
-  require(bridge::PluginManagerTestAccess::publishSurfaces(
+  require(bridge::SurfaceProjectionModelTestAccess::publish(
               collision_manager, binding("a.b"),
               {declaration("c", Service::Role::Panel)}, 1),
           "first collision fixture did not publish");
@@ -331,9 +357,9 @@ void run() {
   auto &second_collision_manager = *second_collision_owner;
   auto &second_collision_service =
       bridge::PluginManagerTestAccess::model(second_collision_manager);
-  require(bridge::PluginManagerTestAccess::publishSurfaces(
+  require(bridge::SurfaceProjectionModelTestAccess::publish(
               second_collision_manager, binding("a"),
-              {declaration("b.c", Service::Role::Panel)}, 1) &&
+              {declaration("bc", Service::Role::Panel)}, 1) &&
               first_key !=
                   value(second_collision_service, 0,
                         Service::SurfaceKeyRole),
