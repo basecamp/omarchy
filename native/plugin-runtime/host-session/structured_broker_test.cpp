@@ -588,6 +588,72 @@ void test_admission_is_exact_and_destructive() {
           "forged payload length was admitted");
 }
 
+void test_authenticated_semantics_are_privately_stamped() {
+  RuntimeFixture fixture;
+  require(fixture.broker_mux.accepts(fixture.snapshot.binding, 19) &&
+              !fixture.broker_mux.accepts(fixture.snapshot.binding, 20),
+          "structured broker did not bind the exact session nonce");
+  auto foreign = fixture.snapshot.binding;
+  ++foreign.generation;
+  require(!fixture.broker_mux.accepts(foreign, 19),
+          "structured broker accepted a foreign activation binding");
+
+  const auto payload =
+      token_request(permissions::OperationId::notification_send, "timer");
+  auto admitted = fixture.admission.admit_authenticated(
+      {.message_type = static_cast<std::uint16_t>(
+           permissions::OperationId::notification_send),
+       .correlation_id = 1,
+       .payload = payload});
+  require(
+      admitted &&
+          fixture.admission.admit(packet(broker::kDynamicInvokeMessage, 1, {}))
+                  .failure == AdmissionFailure::replay,
+      "semantic admission did not share its opaque replay watermark");
+  std::array<std::byte, 64> response{};
+  auto transaction =
+      fixture.broker_mux.dispatch(std::move(*admitted.request), 100, response);
+  require(transaction.state() == TransactionState::reply &&
+              transaction.reply_kind() == ReplyKind::denied &&
+              fixture.broker_mux.abort_send(std::move(transaction)),
+          "privately stamped semantic request did not dispatch");
+
+  RuntimeFixture invalid;
+  std::vector<std::byte> oversized(
+      wire::payload_cap(wire::EndpointRole::broker) + 1);
+  require(
+      invalid.admission
+                  .admit_authenticated(
+                      {.message_type = 0, .correlation_id = 1, .payload = {}})
+                  .failure == AdmissionFailure::invalid_message_type &&
+          invalid.admission
+                  .admit_authenticated(
+                      {.message_type = broker::kDynamicInvokeMessage,
+                       .correlation_id = 0,
+                       .payload = {}})
+                  .failure == AdmissionFailure::invalid_correlation &&
+          invalid.admission
+                  .admit_authenticated(
+                      {.message_type = broker::kDynamicInvokeMessage,
+                       .correlation_id = 1,
+                       .payload = oversized})
+                  .failure == AdmissionFailure::malformed_length,
+      "semantic admission accepted zero or oversized authority fields");
+
+  RuntimeFixture failed;
+  failed.authority.throw_on_acquire(true);
+  auto request = failed.admission.admit_authenticated(
+      {.message_type = broker::kDynamicInvokeMessage,
+       .correlation_id = 1,
+       .payload = {}});
+  auto fatal =
+      failed.broker_mux.dispatch(std::move(*request.request), 100, response);
+  require(fatal.state() == TransactionState::fatal &&
+              !failed.broker_mux.accepts(failed.snapshot.binding,
+                                         RuntimeFixture::session_nonce),
+          "fail-stopped broker retained composition authority");
+}
+
 void test_admission_revalidates_canonical_header() {
   RuntimeFixture fixture;
   const auto payload =
@@ -824,6 +890,31 @@ void test_dynamic_operation_and_oversize_are_bounded() {
               oversized_result.wire_payload().size() ==
                   broker::kBrokerErrorBytes,
           "oversize dynamic adapter leaked an out-of-range byte count");
+}
+
+void test_dynamic_send_failure_fail_stops_without_later_effect() {
+  RuntimeFixture fixture;
+  const std::array body{std::byte{0x46}};
+  const auto invocation = fixture.dynamic_fixture.invocation(body);
+  std::array<std::byte, 8> response{};
+  auto transaction = fixture.dispatch(
+      packet(broker::kDynamicInvokeMessage, 1, invocation), response);
+  require(transaction.state() == TransactionState::reply &&
+              fixture.dynamic_fixture.probe.calls == 1 &&
+              !fixture.broker_mux.abort_send(std::move(transaction)) &&
+              transaction.settled() &&
+              !fixture.broker_mux.accepts(fixture.snapshot.binding,
+                                          RuntimeFixture::session_nonce),
+          "unsent dynamic effect did not fail-stop broker composition");
+  auto after_abort = fixture.admission.admit(
+      packet(broker::kDynamicInvokeMessage, 2, invocation));
+  require(static_cast<bool>(after_abort),
+          "dynamic abort fixture could not admit the follow-up request");
+  const auto failed = fixture.broker_mux.dispatch(
+      std::move(*after_abort.request), 100, response);
+  require(failed.fatal() == DispatchFatal::runtime_failed &&
+              fixture.dynamic_fixture.probe.calls == 1,
+          "dynamic abort failure allowed a later adapter effect");
 }
 
 void test_runtime_audit_exceptions_fail_closed() {
@@ -1176,12 +1267,14 @@ int main() {
     test_constructor_validates_dynamic_binding();
     test_typed_dynamic_revocation_results();
     test_admission_is_exact_and_destructive();
+    test_authenticated_semantics_are_privately_stamped();
     test_admission_revalidates_canonical_header();
     test_reply_is_owned_and_committed_only_after_send();
     test_request_move_owns_payload_and_invalidates_source();
     test_transaction_move_and_foreign_settlement_are_destructive();
     test_send_failure_aborts_without_fake_terminal();
     test_dynamic_operation_and_oversize_are_bounded();
+    test_dynamic_send_failure_fail_stops_without_later_effect();
     test_runtime_audit_exceptions_fail_closed();
     test_authority_exception_fails_closed_before_provider_effect();
     test_invalid_builtin_authority_is_rejected();

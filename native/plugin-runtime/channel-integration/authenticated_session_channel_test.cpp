@@ -2,8 +2,8 @@
 #error "adapter test seam must not be compiled into production"
 #endif
 
-#include "authenticated_session_channel.hpp"
 #include "authenticated_session_backend_p.hpp"
+#include "authenticated_session_channel.hpp"
 
 #include <QCoreApplication>
 #include <QEventLoop>
@@ -30,8 +30,9 @@ namespace wire = omarchy::plugin::wire;
 
 using namespace std::chrono_literals;
 
-static_assert(!std::is_copy_constructible_v<channel::AuthenticatedSessionChannel> &&
-              !std::is_move_constructible_v<channel::AuthenticatedSessionChannel>);
+static_assert(
+    !std::is_copy_constructible_v<channel::AuthenticatedSessionChannel> &&
+    !std::is_move_constructible_v<channel::AuthenticatedSessionChannel>);
 static_assert(!std::is_copy_constructible_v<channel::AuthenticatedMessage> &&
               std::is_move_constructible_v<channel::AuthenticatedMessage>);
 
@@ -152,15 +153,15 @@ public:
     return true;
   }
 
-  session::SendStatus
-  try_send(std::span<const int> descriptors,
-           launcher::Deadline deadline) override {
+  session::SendStatus try_send(std::span<const int> descriptors,
+                               launcher::Deadline deadline) override {
     std::lock_guard lock(state_->mutex);
     state_->deadlines.push_back(deadline);
     state_->sent_descriptor_count = descriptors.size();
-    state_->sent_descriptors_valid = std::all_of(
-        descriptors.begin(), descriptors.end(),
-        [](int descriptor) { return ::fcntl(descriptor, F_GETFD) >= 0; });
+    state_->sent_descriptors_valid =
+        std::all_of(descriptors.begin(), descriptors.end(), [](int descriptor) {
+          return ::fcntl(descriptor, F_GETFD) >= 0;
+        });
     ++state_->send_count;
     const auto result = state_->send_results.empty()
                             ? session::SendStatus::complete
@@ -270,23 +271,22 @@ void test_deadline_and_exact_would_block_retry() {
   ::close(descriptors[1]);
   value.terminate(deadline);
   std::lock_guard lock(state->mutex);
-  require(state->launch_deadline == deadline &&
-              state->handshake_deadline == deadline &&
-              state->deadlines ==
-                  std::vector<launcher::Deadline>({deadline, deadline}) &&
-              state->prepare_count == 1 && state->send_count == 2 &&
-              state->prepared_role == wire::EndpointRole::render &&
-              state->prepared_type == 0x2010 &&
-              state->prepared_correlation == 41 &&
-              state->prepared_payload ==
-                  std::vector<std::byte>(96, std::byte{0x5a}) &&
-              state->prepared_descriptor_count == 1 &&
-              state->terminate_count == 1 &&
-              state->terminate_deadline == deadline,
-          "aggregate deadline or byte-identical prepared retry changed");
+  require(
+      state->launch_deadline == deadline &&
+          state->handshake_deadline == deadline &&
+          state->deadlines ==
+              std::vector<launcher::Deadline>({deadline, deadline}) &&
+          state->prepare_count == 1 && state->send_count == 2 &&
+          state->prepared_role == wire::EndpointRole::render &&
+          state->prepared_type == 0x2010 && state->prepared_correlation == 41 &&
+          state->prepared_payload ==
+              std::vector<std::byte>(96, std::byte{0x5a}) &&
+          state->prepared_descriptor_count == 1 &&
+          state->terminate_count == 1 && state->terminate_deadline == deadline,
+      "aggregate deadline or byte-identical prepared retry changed");
 }
 
-void test_broker_retry_has_no_descriptor_authority() {
+void test_host_broker_send_is_rejected() {
   auto state = std::make_shared<BackendState>();
   state->send_results = {session::SendStatus::would_block,
                          session::SendStatus::complete};
@@ -295,15 +295,35 @@ void test_broker_retry_has_no_descriptor_authority() {
   const auto deadline = std::chrono::steady_clock::now() + 5s;
   start_direct(value, deadline);
   auto message = outbound(token(), 1);
-  require(value.send(message, deadline) == session::SendStatus::would_block &&
-              value.send(message, deadline) == session::SendStatus::complete,
-          "descriptor-free broker retry did not preserve prepared bytes");
+  require(value.send(message, deadline) == session::SendStatus::fatal,
+          "host-originated broker message reached the transport");
   std::lock_guard lock(state->mutex);
-  require(state->prepare_count == 1 && state->send_count == 2 &&
-              state->prepared_descriptor_count == 0 &&
-              state->sent_descriptor_count == 0 &&
-              state->sent_descriptors_valid,
-          "broker retry acquired descriptor authority");
+  require(state->prepare_count == 0 && state->send_count == 0 &&
+              state->terminate_count == 1,
+          "rejected host broker message retained channel authority");
+}
+
+void test_backend_broker_message_cannot_reach_session() {
+  auto state = std::make_shared<BackendState>();
+  channel::AuthenticatedMessage broker_message;
+  broker_message.role = wire::EndpointRole::broker;
+  broker_message.message_type = 0x0101;
+  broker_message.correlation_id = 9;
+  broker_message.payload.assign(24, std::byte{});
+  state->incoming.push_back(
+      {.status = channel::AuthenticatedReceiveStatus::message,
+       .message = std::move(broker_message)});
+  channel::AuthenticatedSessionChannel value(
+      std::make_unique<FakeBackend>(state));
+  const auto deadline = std::chrono::steady_clock::now() + 5s;
+  start_direct(value, deadline);
+  const auto received = value.receive(deadline);
+  require(received.status == session::ReceiveStatus::fatal &&
+              received.message.message_type == 0,
+          "backend broker traffic reached the semantic session");
+  std::lock_guard lock(state->mutex);
+  require(state->terminate_count == 1,
+          "backend broker traffic did not fail-stop the adapter");
 }
 
 class Observer final : public session::SessionObserver {
@@ -357,7 +377,7 @@ void test_live_readiness_stamping_and_revoke_fence() {
     std::lock_guard lock(state->mutex);
     before = state->receive_count;
     state->incoming.push_back(incoming(wire::EndpointRole::control, 0x0100, 3));
-    state->incoming.push_back(incoming(wire::EndpointRole::broker, 0x0101, 4));
+    state->incoming.push_back(incoming(wire::EndpointRole::render, 0x0101, 4));
     state->incoming.push_back(incoming(wire::EndpointRole::render, 0x0102, 5));
   }
   state->signal(100);
@@ -374,27 +394,24 @@ void test_live_readiness_stamping_and_revoke_fence() {
   state->signal();
   QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
   std::lock_guard lock(state->mutex);
-  require(observer.tokens == std::vector<session::SessionToken>(3, token()) &&
-              observer.lanes ==
-                  std::vector<session::ChannelLane>(
-                      {session::ChannelLane::control,
-                       session::ChannelLane::broker,
-                       session::ChannelLane::render}) &&
-              observer.correlations ==
-                  std::vector<std::uint64_t>({3, 4, 5}) &&
-              observer.sequences ==
-                  std::vector<std::uint64_t>({1, 2, 3}) &&
-              state->operation_threads.front() != ui_thread &&
-              std::all_of(state->operation_threads.begin(),
-                          state->operation_threads.end(),
-                          [&](auto thread) {
-                            return thread == state->operation_threads.front();
-                          }) &&
-              state->receive_count >= before + 3 &&
-              state->receive_count <= before + 4 &&
-              state->receive_count == after_revoke &&
-              state->terminate_count == 1,
-          "token stamping, worker affinity, coalescing, or revoke fence failed");
+  require(
+      observer.tokens == std::vector<session::SessionToken>(3, token()) &&
+          observer.lanes ==
+              std::vector<session::ChannelLane>(
+                  {session::ChannelLane::control, session::ChannelLane::render,
+                   session::ChannelLane::render}) &&
+          observer.correlations == std::vector<std::uint64_t>({3, 4, 5}) &&
+          observer.sequences == std::vector<std::uint64_t>({1, 2, 3}) &&
+          state->operation_threads.front() != ui_thread &&
+          std::all_of(state->operation_threads.begin(),
+                      state->operation_threads.end(),
+                      [&](auto thread) {
+                        return thread == state->operation_threads.front();
+                      }) &&
+          state->receive_count >= before + 3 &&
+          state->receive_count <= before + 4 &&
+          state->receive_count == after_revoke && state->terminate_count == 1,
+      "token stamping, worker affinity, coalescing, or revoke fence failed");
 }
 
 void test_invalid_lane_and_stale_token_fail_closed() {
@@ -424,8 +441,8 @@ void test_seventeen_transport_descriptors_fail_before_effect() {
   const auto deadline = std::chrono::steady_clock::now() + 5s;
   start_direct(value, deadline);
   auto message = outbound(token(), 1);
-  for (std::size_t index = 0;
-       index <= launcher::kMaximumTransportDescriptors; ++index) {
+  for (std::size_t index = 0; index <= launcher::kMaximumTransportDescriptors;
+       ++index) {
     const int descriptor = ::open("/dev/null", O_RDONLY | O_CLOEXEC);
     require(descriptor >= 0, "outbound descriptor-bound fixture failed");
     message.descriptors.emplace_back(descriptor);
@@ -445,8 +462,8 @@ void test_seventeen_transport_descriptors_fail_before_effect() {
   start_direct(inbound_value, deadline);
   auto inbound_message = incoming(wire::EndpointRole::render, 0x2020, 0);
   std::vector<int> transferred;
-  for (std::size_t index = 0;
-       index <= launcher::kMaximumTransportDescriptors; ++index) {
+  for (std::size_t index = 0; index <= launcher::kMaximumTransportDescriptors;
+       ++index) {
     const int descriptor = ::open("/dev/null", O_RDONLY | O_CLOEXEC);
     require(descriptor >= 0, "inbound descriptor-bound fixture failed");
     transferred.push_back(descriptor);
@@ -459,9 +476,8 @@ void test_seventeen_transport_descriptors_fail_before_effect() {
   require(inbound_value.receive(deadline).status ==
               session::ReceiveStatus::fatal,
           "oversized inbound descriptor set reached publication");
-  require(std::all_of(transferred.begin(), transferred.end(), [](int fd) {
-            return ::fcntl(fd, F_GETFD) == -1;
-          }),
+  require(std::all_of(transferred.begin(), transferred.end(),
+                      [](int fd) { return ::fcntl(fd, F_GETFD) == -1; }),
           "rejected inbound descriptors were not closed");
   std::lock_guard lock(inbound_state->mutex);
   require(inbound_state->terminate_count == 1,
@@ -678,7 +694,8 @@ void test_blocked_receive_cannot_cross_revoke_epoch() {
 
 void run() {
   test_deadline_and_exact_would_block_retry();
-  test_broker_retry_has_no_descriptor_authority();
+  test_host_broker_send_is_rejected();
+  test_backend_broker_message_cannot_reach_session();
   test_live_readiness_stamping_and_revoke_fence();
   test_invalid_lane_and_stale_token_fail_closed();
   test_seventeen_transport_descriptors_fail_before_effect();

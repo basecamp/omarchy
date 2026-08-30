@@ -53,6 +53,26 @@ target_link_libraries(omarchy-plugin-channel-integration PUBLIC
   omarchy-plugin-surface-contract
 )
 
+# Standalone builds validate the low transport target above. The native runtime
+# root supplies host-session and is the authenticated composition build owner.
+if(TARGET omarchy-plugin-host-session)
+  add_library(omarchy-plugin-authenticated-session STATIC
+    authenticated_session_channel.cpp
+    broker_session_settlement.cpp
+  )
+  target_include_directories(omarchy-plugin-authenticated-session PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+  )
+  omarchy_plugin_target_defaults(omarchy-plugin-authenticated-session)
+  target_link_libraries(omarchy-plugin-authenticated-session PUBLIC
+    omarchy-plugin-channel-integration
+    omarchy-plugin-host-session
+  )
+  target_link_libraries(omarchy-plugin-authenticated-session PRIVATE Qt6::Core)
+  set_target_properties(omarchy-plugin-authenticated-session PROPERTIES
+    POSITION_INDEPENDENT_CODE ON)
+endif()
+
 if(BUILD_TESTING)
   add_executable(omarchy-plugin-channel-peer channel_peer.cpp)
   omarchy_plugin_target_defaults(omarchy-plugin-channel-peer)
@@ -96,4 +116,41 @@ if(BUILD_TESTING)
     SKIP_RETURN_CODE 77
     LABELS "integration;adversarial;protocol;broker;launcher;sandbox;linux"
   )
+
+  if(TARGET omarchy-plugin-authenticated-session)
+    add_executable(omarchy-plugin-authenticated-session-adapter-test
+      authenticated_session_channel.cpp
+      broker_session_settlement.cpp
+      authenticated_session_channel_test.cpp
+    )
+    omarchy_plugin_target_defaults(
+      omarchy-plugin-authenticated-session-adapter-test)
+    target_compile_definitions(
+      omarchy-plugin-authenticated-session-adapter-test PRIVATE
+      OMARCHY_AUTHENTICATED_SESSION_CHANNEL_TESTING)
+    target_link_libraries(
+      omarchy-plugin-authenticated-session-adapter-test PRIVATE
+      omarchy-plugin-channel-integration
+      omarchy-plugin-host-session
+      Qt6::Core)
+    add_test(NAME plugin-authenticated-session-adapter
+      COMMAND omarchy-plugin-authenticated-session-adapter-test)
+    set_tests_properties(plugin-authenticated-session-adapter PROPERTIES
+      TIMEOUT 30 LABELS "unit;security;session;adversarial")
+
+    add_executable(omarchy-plugin-broker-session-settlement-test
+      broker_session_settlement.cpp
+      broker_session_settlement_test.cpp)
+    omarchy_plugin_target_defaults(
+      omarchy-plugin-broker-session-settlement-test)
+    target_compile_definitions(
+      omarchy-plugin-broker-session-settlement-test PRIVATE
+      OMARCHY_BROKER_SETTLEMENT_TESTING)
+    target_link_libraries(omarchy-plugin-broker-session-settlement-test PRIVATE
+      omarchy-plugin-channel-integration omarchy-plugin-host-session)
+    add_test(NAME plugin-broker-session-settlement
+      COMMAND omarchy-plugin-broker-session-settlement-test)
+    set_tests_properties(plugin-broker-session-settlement PROPERTIES
+      TIMEOUT 30 LABELS "unit;security;session;broker;adversarial")
+  endif()
 endif()

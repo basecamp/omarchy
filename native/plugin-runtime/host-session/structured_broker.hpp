@@ -71,6 +71,15 @@ private:
   friend class StructuredBroker;
 };
 
+// Semantic broker fields copied from an already authenticated channel. The
+// opaque admission supplies every wire-authority field; callers cannot choose
+// a role, protocol version, generation, or activation binding.
+struct AuthenticatedBrokerRequestView final {
+  std::uint16_t message_type = 0;
+  std::uint64_t correlation_id = 0;
+  std::span<const std::byte> payload;
+};
+
 enum class AdmissionFailure : std::uint8_t {
   none,
   noncanonical_header,
@@ -78,6 +87,7 @@ enum class AdmissionFailure : std::uint8_t {
   wrong_version,
   stale_binding,
   malformed_length,
+  invalid_message_type,
   invalid_correlation,
   replay,
 };
@@ -104,6 +114,8 @@ public:
   operator=(AuthenticatedBrokerAdmission &&) noexcept = default;
 
   [[nodiscard]] AdmissionResult admit(const wire::PacketView &packet);
+  [[nodiscard]] AdmissionResult
+  admit_authenticated(AuthenticatedBrokerRequestView request);
 
 private:
   explicit AuthenticatedBrokerAdmission(
@@ -239,6 +251,8 @@ public:
   // The trusted channel extracts the sole admission authority exactly once.
   // Correlation replay state consequently cannot be reset or split by lane.
   [[nodiscard]] AdmissionExtractionResult take_admission();
+  [[nodiscard]] bool accepts(const permissions::ActivationBinding &binding,
+                             std::uint64_t session_nonce) const noexcept;
 
   [[nodiscard]] BrokerTransaction
   dispatch(AdmittedBrokerRequest &&request, std::uint64_t now_monotonic_ns,

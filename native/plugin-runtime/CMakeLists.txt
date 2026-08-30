@@ -136,6 +136,7 @@ set(plugin_host_embedded_targets
   omarchy-plugin-activation-snapshot
   omarchy-plugin-host-session
   omarchy-plugin-channel-integration
+  omarchy-plugin-authenticated-session
 )
 foreach(target IN LISTS plugin_host_embedded_targets)
   if(TARGET "${target}")

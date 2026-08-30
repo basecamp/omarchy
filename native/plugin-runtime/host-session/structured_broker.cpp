@@ -131,6 +131,36 @@ AuthenticatedBrokerAdmission::admit(const wire::PacketView &packet) {
           .failure = AdmissionFailure::none};
 }
 
+AdmissionResult AuthenticatedBrokerAdmission::admit_authenticated(
+    AuthenticatedBrokerRequestView request) {
+  if (!authority_.valid())
+    return {.request = std::nullopt,
+            .failure = AdmissionFailure::stale_binding};
+  if (request.payload.size() > wire::payload_cap(wire::EndpointRole::broker))
+    return {.request = std::nullopt,
+            .failure = AdmissionFailure::malformed_length};
+  if (request.message_type == 0)
+    return {.request = std::nullopt,
+            .failure = AdmissionFailure::invalid_message_type};
+  if (request.correlation_id == 0)
+    return {.request = std::nullopt,
+            .failure = AdmissionFailure::invalid_correlation};
+  if (request.correlation_id <= last_correlation_)
+    return {.request = std::nullopt, .failure = AdmissionFailure::replay};
+  last_correlation_ = request.correlation_id;
+  const wire::PacketView packet{
+      .header = {.endpoint_role = wire::EndpointRole::broker,
+                 .message_type = request.message_type,
+                 .role_protocol_version = broker::kBrokerRoleVersion,
+                 .payload_length =
+                     static_cast<std::uint32_t>(request.payload.size()),
+                 .launch_generation = authority_.binding_.generation,
+                 .correlation_id = request.correlation_id},
+      .payload = request.payload};
+  return {.request = AdmittedBrokerRequest(packet, authority_),
+          .failure = AdmissionFailure::none};
+}
+
 BrokerTransaction::BrokerTransaction(BrokerTransaction &&other) noexcept
     : state_(other.state_), reply_kind_(other.reply_kind_),
       fatal_(other.fatal_), route_(other.route_),
@@ -218,6 +248,13 @@ AdmissionExtractionResult StructuredBroker::take_admission() {
             .failure = AdmissionExtractionFailure::already_extracted};
   return {.admission = AuthenticatedBrokerAdmission(authority_stamp_),
           .failure = AdmissionExtractionFailure::none};
+}
+
+bool StructuredBroker::accepts(const permissions::ActivationBinding &binding,
+                               std::uint64_t session_nonce) const noexcept {
+  return !failed_.load() && authority_stamp_.valid() &&
+         authority_stamp_.binding_ == binding &&
+         authority_stamp_.session_nonce_ == session_nonce;
 }
 
 bool StructuredBroker::owns(

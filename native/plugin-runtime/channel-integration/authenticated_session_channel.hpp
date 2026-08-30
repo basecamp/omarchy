@@ -1,19 +1,23 @@
 #pragma once
 
-#include "authenticated_channel.hpp"
 #include "../host-session/plugin_session_io.hpp"
+#include "authenticated_channel.hpp"
+#include "permission_contract.hpp"
 
 #include <memory>
 #include <string>
 
+namespace omarchy::plugin_runtime::host_session {
+class StructuredBroker;
+}
+
 namespace omarchy::plugin_runtime::channel {
 
 namespace session = omarchy::plugin_runtime::host_session;
+namespace permissions = omarchy::plugins::permissions;
 
 struct AuthenticatedSessionLaunch final {
-  std::string plugin_id;
-  std::string revision_sha256;
-  std::uint64_t generation = 0;
+  permissions::ActivationBinding binding;
   session::OwnedFd revision_directory;
   session::OwnedFd private_state_directory;
 };
@@ -30,7 +34,8 @@ public:
   AuthenticatedSessionChannel(
       launcher::Supervisor supervisor, AuthenticatedSessionLaunch launch,
       std::shared_ptr<BrokerDispatcher> dispatcher,
-      std::shared_ptr<const GenerationAuthority> authority);
+      std::shared_ptr<const GenerationAuthority> authority,
+      std::unique_ptr<session::StructuredBroker> broker);
 #ifdef OMARCHY_AUTHENTICATED_SESSION_CHANNEL_TESTING
   explicit AuthenticatedSessionChannel(
       std::unique_ptr<AuthenticatedSessionBackend> backend);
@@ -40,11 +45,11 @@ public:
   AuthenticatedSessionChannel &
   operator=(const AuthenticatedSessionChannel &) = delete;
 
-  [[nodiscard]] session::ChannelError
-  launch(const session::SessionToken &token, TimePoint deadline) override;
+  [[nodiscard]] session::ChannelError launch(const session::SessionToken &token,
+                                             TimePoint deadline) override;
   [[nodiscard]] session::ChannelError handshake(TimePoint deadline) override;
-  [[nodiscard]] session::SendStatus
-  send(const session::OwnedMessage &message, TimePoint deadline) override;
+  [[nodiscard]] session::SendStatus send(const session::OwnedMessage &message,
+                                         TimePoint deadline) override;
   [[nodiscard]] session::ReceiveResult receive(TimePoint deadline) override;
   [[nodiscard]] bool
   install_wake_handler(session::SessionWakeHandler handler) noexcept override;

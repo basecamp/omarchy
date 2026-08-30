@@ -1,5 +1,6 @@
 #include "authenticated_session_channel.hpp"
 #include "authenticated_session_backend_p.hpp"
+#include "broker_session_settlement_p.hpp"
 
 #include <QSocketNotifier>
 
@@ -59,6 +60,12 @@ launcher::EndpointMask lane_mask(wire::EndpointRole role) noexcept {
   return launcher::EndpointMask::none;
 }
 
+launcher::EndpointMask intersect(launcher::EndpointMask left,
+                                 launcher::EndpointMask right) noexcept {
+  return static_cast<launcher::EndpointMask>(static_cast<std::uint8_t>(left) &
+                                             static_cast<std::uint8_t>(right));
+}
+
 session::SendStatus map_send(ChannelSendStatus status) noexcept {
   switch (status) {
   case ChannelSendStatus::complete:
@@ -79,27 +86,27 @@ public:
   ProductionBackend(launcher::Supervisor supervisor,
                     AuthenticatedSessionLaunch launch,
                     std::shared_ptr<BrokerDispatcher> dispatcher,
-                    std::shared_ptr<const GenerationAuthority> authority)
+                    std::shared_ptr<const GenerationAuthority> authority,
+                    std::unique_ptr<session::StructuredBroker> broker)
       : supervisor_(std::move(supervisor)), launch_(std::move(launch)),
-        dispatcher_(std::move(dispatcher)), authority_(std::move(authority)) {}
+        dispatcher_(std::move(dispatcher)), authority_(std::move(authority)),
+        broker_(std::move(broker)) {}
 
-  ~ProductionBackend() override {
-    terminate(std::chrono::steady_clock::now());
-  }
+  ~ProductionBackend() override { terminate(std::chrono::steady_clock::now()); }
 
-  session::ChannelError
-  launch(const session::SessionToken &token,
-         launcher::Deadline deadline) override {
-    if (channel_ || token.plugin_id != launch_.plugin_id ||
-        token.revision_sha256 != launch_.revision_sha256 ||
-        token.generation != launch_.generation ||
+  session::ChannelError launch(const session::SessionToken &token,
+                               launcher::Deadline deadline) override {
+    if (channel_ || token.plugin_id != launch_.binding.plugin.view() ||
+        token.revision_sha256 != launch_.binding.revision.view() ||
+        token.generation != launch_.binding.generation ||
         !launch_.revision_directory || !launch_.private_state_directory ||
-        !dispatcher_ || !authority_)
+        !dispatcher_ || !authority_ || !broker_ ||
+        !broker_->accepts(launch_.binding, token.session_nonce))
       return session::ChannelError::launch_failed;
     const launcher::TrustedLaunchRequest request{
-        .plugin_id = launch_.plugin_id,
-        .revision_sha256 = launch_.revision_sha256,
-        .generation = launch_.generation,
+        .plugin_id = std::string(launch_.binding.plugin.view()),
+        .revision_sha256 = std::string(launch_.binding.revision.view()),
+        .generation = launch_.binding.generation,
         .revision_directory_fd = launch_.revision_directory.get(),
         .private_state_directory_fd = launch_.private_state_directory.get()};
     auto opened = AuthenticatedBrokerChannel::open(
@@ -107,6 +114,19 @@ public:
     if (!opened)
       return session::ChannelError::launch_failed;
     channel_ = std::move(opened.channel);
+    auto extracted = broker_->take_admission();
+    if (!extracted) {
+      (void)channel_->terminate(deadline);
+      channel_.reset();
+      return session::ChannelError::launch_failed;
+    }
+    try {
+      settlement_.emplace(*channel_, *broker_, std::move(*extracted.admission));
+    } catch (...) {
+      (void)channel_->terminate(deadline);
+      channel_.reset();
+      return session::ChannelError::launch_failed;
+    }
     launch_.revision_directory.reset();
     launch_.private_state_directory.reset();
     return session::ChannelError::none;
@@ -119,26 +139,24 @@ public:
   }
 
   bool prepare(wire::EndpointRole role, std::uint16_t message_type,
-               std::uint64_t correlation_id,
-               std::span<const std::byte> payload,
+               std::uint64_t correlation_id, std::span<const std::byte> payload,
                std::size_t) override {
-    if (!channel_ || prepared_)
+    if (!channel_ || prepared_ || role == wire::EndpointRole::broker)
       return false;
-    auto prepared = channel_->prepare_send(role, message_type, correlation_id,
-                                           payload);
+    auto prepared =
+        channel_->prepare_send(role, message_type, correlation_id, payload);
     if (!prepared)
       return false;
     prepared_.emplace(std::move(*prepared));
     return true;
   }
 
-  session::SendStatus
-  try_send(std::span<const int> descriptors,
-           launcher::Deadline deadline) override {
+  session::SendStatus try_send(std::span<const int> descriptors,
+                               launcher::Deadline deadline) override {
     if (!channel_ || !prepared_)
       return session::SendStatus::fatal;
-    const auto status = map_send(
-        channel_->try_send(*prepared_, deadline, descriptors));
+    const auto status =
+        map_send(channel_->try_send(*prepared_, deadline, descriptors));
     if (status != session::SendStatus::would_block)
       prepared_.reset();
     return status;
@@ -146,9 +164,28 @@ public:
 
   AuthenticatedReceiveResult receive(launcher::EndpointMask allowed_lanes,
                                      launcher::Deadline deadline) override {
-    if (!channel_)
+    if (!channel_ || !settlement_)
       return {};
-    return channel_->receive_authenticated(allowed_lanes, deadline);
+    if (settlement_->pending()) {
+      const auto flushed = settlement_->flush(deadline);
+      if (flushed == BrokerSettlementStatus::fatal)
+        return {.status = AuthenticatedReceiveStatus::fatal,
+                .message = std::nullopt};
+    }
+    const auto effective = intersect(allowed_lanes, settlement_->read_lanes());
+    if (effective == launcher::EndpointMask::none)
+      return {.status = AuthenticatedReceiveStatus::would_block,
+              .message = std::nullopt};
+    auto received = channel_->receive_authenticated(effective, deadline);
+    if (!received || received.message->role != wire::EndpointRole::broker)
+      return received;
+    const auto settled =
+        settlement_->dispatch(std::move(*received.message), deadline);
+    if (settled == BrokerSettlementStatus::fatal)
+      return {.status = AuthenticatedReceiveStatus::fatal,
+              .message = std::nullopt};
+    return {.status = AuthenticatedReceiveStatus::would_block,
+            .message = std::nullopt};
   }
 
   int readiness_fd() const noexcept override {
@@ -157,10 +194,16 @@ public:
 
   bool arm(launcher::EndpointMask reads,
            launcher::EndpointMask writes) noexcept override {
-    return channel_ && channel_->arm_readiness(reads, writes);
+    if (!channel_ || !settlement_)
+      return false;
+    return channel_->arm_readiness(intersect(reads, settlement_->read_lanes()),
+                                   writes | settlement_->write_lanes());
   }
 
   void terminate(launcher::Deadline deadline) noexcept override {
+    if (settlement_)
+      (void)settlement_->abort();
+    settlement_.reset();
     prepared_.reset();
     if (channel_)
       (void)channel_->terminate(deadline);
@@ -169,6 +212,7 @@ public:
     launch_.private_state_directory.reset();
     dispatcher_.reset();
     authority_.reset();
+    broker_.reset();
   }
 
 private:
@@ -176,7 +220,9 @@ private:
   AuthenticatedSessionLaunch launch_;
   std::shared_ptr<BrokerDispatcher> dispatcher_;
   std::shared_ptr<const GenerationAuthority> authority_;
+  std::unique_ptr<session::StructuredBroker> broker_;
   std::unique_ptr<AuthenticatedBrokerChannel> channel_;
+  std::optional<BrokerSessionSettlement> settlement_;
   std::optional<PreparedSend> prepared_;
 };
 
@@ -259,11 +305,12 @@ struct AuthenticatedSessionChannel::Impl final {
 AuthenticatedSessionChannel::AuthenticatedSessionChannel(
     launcher::Supervisor supervisor, AuthenticatedSessionLaunch launch,
     std::shared_ptr<BrokerDispatcher> dispatcher,
-    std::shared_ptr<const GenerationAuthority> authority)
-    : implementation_(std::make_unique<Impl>(
-          std::make_unique<ProductionBackend>(
-              std::move(supervisor), std::move(launch),
-              std::move(dispatcher), std::move(authority)))) {}
+    std::shared_ptr<const GenerationAuthority> authority,
+    std::unique_ptr<session::StructuredBroker> broker)
+    : implementation_(
+          std::make_unique<Impl>(std::make_unique<ProductionBackend>(
+              std::move(supervisor), std::move(launch), std::move(dispatcher),
+              std::move(authority), std::move(broker)))) {}
 
 #ifdef OMARCHY_AUTHENTICATED_SESSION_CHANNEL_TESTING
 AuthenticatedSessionChannel::AuthenticatedSessionChannel(
@@ -273,12 +320,14 @@ AuthenticatedSessionChannel::AuthenticatedSessionChannel(
 
 AuthenticatedSessionChannel::~AuthenticatedSessionChannel() = default;
 
-session::ChannelError AuthenticatedSessionChannel::launch(
-    const session::SessionToken &token, TimePoint deadline) {
+session::ChannelError
+AuthenticatedSessionChannel::launch(const session::SessionToken &token,
+                                    TimePoint deadline) {
   auto &value = *implementation_;
-  if (!value.backend || value.launched || value.terminal || token.plugin_id.empty() ||
-      token.revision_sha256.empty() || token.generation == 0 ||
-      token.session_nonce == 0 || std::chrono::steady_clock::now() >= deadline)
+  if (!value.backend || value.launched || value.terminal ||
+      token.plugin_id.empty() || token.revision_sha256.empty() ||
+      token.generation == 0 || token.session_nonce == 0 ||
+      std::chrono::steady_clock::now() >= deadline)
     return session::ChannelError::launch_failed;
   const auto result = value.backend->launch(token, deadline);
   if (result != session::ChannelError::none) {
@@ -325,10 +374,9 @@ AuthenticatedSessionChannel::send(const session::OwnedMessage &message,
     };
     if (!value.backend || !value.ready || value.terminal || !value.token ||
         !(message.token == *value.token) || !valid_lane(message.lane) ||
-        message.message_type == 0 ||
-        message.sequence == 0 ||
-        message.descriptors.size() >
-            launcher::kMaximumTransportDescriptors ||
+        message.lane == session::ChannelLane::broker ||
+        message.message_type == 0 || message.sequence == 0 ||
+        message.descriptors.size() > launcher::kMaximumTransportDescriptors ||
         message.payload.size() > wire::payload_cap(wire_role(message.lane)) ||
         std::chrono::steady_clock::now() >= deadline)
       return fail();
@@ -345,8 +393,7 @@ AuthenticatedSessionChannel::send(const session::OwnedMessage &message,
                             .correlation_id = message.correlation_id,
                             .sequence = message.sequence,
                             .payload = message.payload,
-                            .descriptor_count =
-                                message.descriptors.size()};
+                            .descriptor_count = message.descriptors.size()};
       for (const auto &descriptor : message.descriptors) {
         if (!descriptor)
           return fail();
@@ -411,7 +458,8 @@ AuthenticatedSessionChannel::receive(TimePoint deadline) {
         return fail();
       return {.status = session::ReceiveStatus::would_block, .message = {}};
     }
-    if (result.status != AuthenticatedReceiveStatus::message || !result.message) {
+    if (result.status != AuthenticatedReceiveStatus::message ||
+        !result.message) {
       const auto status =
           result.status == AuthenticatedReceiveStatus::peer_closed
               ? session::ReceiveStatus::peer_closed
@@ -423,6 +471,7 @@ AuthenticatedSessionChannel::receive(TimePoint deadline) {
     if (value.last_inbound_sequence ==
             std::numeric_limits<std::uint64_t>::max() ||
         !valid_role(result.message->role) ||
+        result.message->role == wire::EndpointRole::broker ||
         result.message->descriptors.size() >
             launcher::kMaximumTransportDescriptors)
       return fail();
@@ -468,8 +517,7 @@ bool AuthenticatedSessionChannel::install_wake_handler(
     auto *impl = &value;
     QObject::connect(value.notifier.get(), &QSocketNotifier::activated,
                      [impl](QSocketDescriptor, QSocketNotifier::Type) {
-                       if (!impl->notifier || !impl->wake ||
-                           impl->wake_pending)
+                       if (!impl->notifier || !impl->wake || impl->wake_pending)
                          return;
                        impl->notifier->setEnabled(false);
                        impl->wake_pending = true;
