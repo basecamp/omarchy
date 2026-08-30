@@ -18,6 +18,7 @@ case "$1 $2" in
 "is-enabled --quiet") [[ ${SSHD_ENABLED:-0} == 1 ]] ;;
 "is-active --quiet") [[ ${SSHD_ACTIVE:-0} == 1 ]] ;;
 "reload sshd.service") [[ ${SSHD_RELOAD_VALID:-1} == 1 ]] ;;
+"disable --now") ;;
 *) exit 2 ;;
 esac
 STUB
@@ -62,6 +63,14 @@ run_migration() {
   valid) printf '%s\n' "$public_key" >"$home/.ssh/authorized_keys" ;;
   invalid) printf 'not a public key\n' >"$home/.ssh/authorized_keys" ;;
   private) cat "$test_dir/key" >"$home/.ssh/authorized_keys" ;;
+  symlink)
+    printf '%s\n' "$public_key" >"$home/.ssh/imported_key"
+    ln -s imported_key "$home/.ssh/authorized_keys"
+    ;;
+  unreadable)
+    printf '%s\n' "$public_key" >"$home/.ssh/authorized_keys"
+    chmod 000 "$home/.ssh/authorized_keys"
+    ;;
   esac
   if [[ ${LOOSE_SSH_PERMS:-0} == 1 ]]; then
     chmod 755 "$home/.ssh"
@@ -85,6 +94,10 @@ run_migration() {
       bash -euo pipefail
 }
 
+sshd_disabled() {
+  grep -qxF "sudo systemctl disable --now sshd.service" "$test_dir/$1.calls"
+}
+
 SSHD_ENABLED=0 SSHD_ACTIVE=0 run_migration disabled
 [[ ! -e $test_dir/disabled/root/etc/ssh/sshd_config.d/10-omarchy-hardening.conf ]] ||
   fail "SSH migration leaves a disabled daemon alone"
@@ -97,23 +110,42 @@ grep -qxF "PasswordAuthentication no" "$test_dir/hardened/root/etc/ssh/sshd_conf
   fail "the existing hardening config is left alone"
 pass "SSH migration no-ops when the hardening config already exists"
 
+# Without a usable key, sshd only accepts password logins — the hole the old
+# setup command could leave open. The migration closes it by disabling sshd.
 AUTHORIZED_KEY_STATE=missing SSHD_ENABLED=1 run_migration no-key >/dev/null
 [[ ! -e $test_dir/no-key/root/etc/ssh/sshd_config.d/10-omarchy-hardening.conf ]] ||
-  fail "SSH migration must not disable passwords without an authorized key"
-! grep -q '^sudo ' "$test_dir/no-key.calls" || fail "missing SSH key does not prompt for privileges"
+  fail "SSH migration must not write the hardening config without an authorized key"
+sshd_disabled no-key || fail "SSH migration disables a password-only sshd"
+pass "SSH migration disables sshd when no key is authorized"
 
 AUTHORIZED_KEY_STATE=invalid SSHD_ENABLED=1 run_migration invalid-key >/dev/null
-[[ ! -e $test_dir/invalid-key/root/etc/ssh/sshd_config.d/10-omarchy-hardening.conf ]] ||
-  fail "SSH migration must not trust a malformed authorized_keys file"
-pass "SSH migration requires a usable authorized key before disabling passwords"
+sshd_disabled invalid-key || fail "a malformed authorized_keys leaves sshd password-only"
+pass "SSH migration disables sshd when authorized_keys holds no valid key"
 
 # ssh-keygen -lf accepts a whole private-key file, so only a per-line check
 # catches the classic `cp id_ed25519 authorized_keys` slip that sshd cannot use.
 AUTHORIZED_KEY_STATE=private SSHD_ENABLED=1 run_migration private-key >/dev/null
 [[ ! -e $test_dir/private-key/root/etc/ssh/sshd_config.d/10-omarchy-hardening.conf ]] ||
   fail "SSH migration must not treat a private key as an authorized key"
-! grep -q '^sudo ' "$test_dir/private-key.calls" || fail "a private-key authorized_keys does not prompt for privileges"
-pass "SSH migration rejects an authorized_keys holding a private key"
+sshd_disabled private-key || fail "a private-key authorized_keys leaves sshd password-only"
+pass "SSH migration disables sshd when authorized_keys holds a private key"
+
+# A dotfiles-managed symlink with a working key is a key-based setup, not a
+# keyless one; it must be hardened, never disabled.
+AUTHORIZED_KEY_STATE=symlink SSHD_ENABLED=1 SSHD_ACTIVE=1 run_migration symlink-key >/dev/null
+grep -qxF "PasswordAuthentication no" "$test_dir/symlink-key/root/etc/ssh/sshd_config.d/10-omarchy-hardening.conf" ||
+  fail "SSH migration hardens a symlinked authorized_keys with a valid key"
+! sshd_disabled symlink-key || fail "SSH migration must not disable sshd when the symlinked key is usable"
+pass "SSH migration follows an authorized_keys symlink to its key"
+
+# An unreadable file answers neither "keyless" nor "key-based": touch nothing.
+if (( EUID != 0 )); then
+  AUTHORIZED_KEY_STATE=unreadable SSHD_ENABLED=1 run_migration unreadable >/dev/null
+  [[ ! -e $test_dir/unreadable/root/etc/ssh/sshd_config.d/10-omarchy-hardening.conf ]] ||
+    fail "SSH migration must not harden against an unverifiable authorized_keys"
+  ! grep -q '^sudo ' "$test_dir/unreadable.calls" || fail "an unreadable authorized_keys does not prompt or disable"
+  pass "SSH migration leaves an unreadable authorized_keys alone"
+fi
 
 # StrictModes makes sshd ignore authorized_keys under a group-writable home,
 # so the key that validated would be unusable and passwords the only way in.
@@ -174,3 +206,8 @@ fi
 [[ ! -e $test_dir/no-sudo/root/etc/ssh/sshd_config.d/10-omarchy-hardening.conf ]] ||
   fail "no hardening config is left behind without privileges"
 pass "SSH migration stays pending until privileges are granted"
+
+if SUDO_ALLOWED=0 AUTHORIZED_KEY_STATE=missing SSHD_ENABLED=1 run_migration no-sudo-keyless >"$test_dir/no-sudo-keyless.output" 2>&1; then
+  fail "SSH migration must stay pending when it cannot disable a password-only sshd"
+fi
+pass "SSH migration stays pending when disabling sshd needs privileges"
