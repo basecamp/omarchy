@@ -98,6 +98,19 @@ function_body() {
   awk -v name="$1" '$0 == name "() {" { inside = 1; next } inside && $0 == "}" { exit } inside' "$upgrade_to_quattro"
 }
 
+# Auto-login cannot hand a password to pam_gnome_keyring, so an install whose
+# root lives inside LUKS must not have it switched on just for being encrypted.
+# Only a prior auto-login decision (the file, or the legacy seamless-login
+# service) may carry one forward.
+if function_body should_enable_sddm_autologin | grep -F 'root_filesystem_encrypted' >/dev/null; then
+  fail "quattro upgrade does not tie SDDM auto-login to an encrypted root"
+fi
+if ! function_body should_enable_sddm_autologin | grep -F '/etc/sddm.conf.d/autologin.conf' >/dev/null ||
+  ! function_body should_enable_sddm_autologin | grep -F 'omarchy-seamless-login.service' >/dev/null; then
+  fail "quattro upgrade keeps prior auto-login decisions"
+fi
+pass "quattro upgrade keeps password login on encrypted roots"
+
 if function_body cleanup_retired_services | grep -F 'systemctl disable iwd' >/dev/null; then
   fail "Omarchy 4 upgrade does not retire iwd in a step separate from the NetworkManager enable"
 fi
