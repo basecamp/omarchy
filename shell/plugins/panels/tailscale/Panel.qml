@@ -304,6 +304,12 @@ Panel {
     close()
   }
 
+  // The browser takes over from here, so get the panel out of the way.
+  function openAdminConsole() {
+    tailscale.openAdminConsole()
+    close()
+  }
+
   function openSelectedPeerCopyMenu() {
     if (!peerColumn || peerIndex < 0 || peerIndex >= peerColumn.children.length) return
     var item = peerColumn.children[peerIndex]
@@ -427,6 +433,7 @@ Panel {
         else if (t === "n" || t === "N") tailscale.copyPeerName(root.selectedPeer())
         else if (t === "d" || t === "D") tailscale.copyPeerDnsName(root.selectedPeer())
         else if (t === "s" || t === "S") root.sendPeerFile(root.selectedPeer())
+        else if (t === "a" || t === "A") root.openAdminConsole()
       }
 
       Flickable {
@@ -462,14 +469,35 @@ Panel {
               foreground: root.foreground
               fontFamily: root.fontFamily
               iconOpacity: tailscale.active ? 1.0 : 0.5
-              // Status only — the switch owns toggling, mouse and keyboard alike.
+              // Status, plus a shortcut to the admin console. The switch still
+              // owns toggling, mouse and keyboard alike — the mark never does.
               iconComponent: Component {
-                TailscaleIcon {
-                  iconSize: Style.font.display
-                  color: root.iconColor
-                  badgeColor: root.urgent
-                  crossed: !tailscale.active && !tailscale.needsLogin
-                  warning: tailscale.needsLogin
+                Item {
+                  implicitWidth: heroIcon.implicitWidth
+                  implicitHeight: heroIcon.implicitHeight
+
+                  TailscaleIcon {
+                    id: heroIcon
+                    color: root.iconColor
+                    iconSize: Style.font.display
+                    badgeColor: root.urgent
+                    crossed: !tailscale.active && !tailscale.needsLogin
+                    warning: tailscale.needsLogin
+                  }
+
+                  MouseArea {
+                    id: adminMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.openAdminConsole()
+
+                    PanelToolTip {
+                      visible: adminMouse.containsMouse
+                      text: "Open admin console"
+                      fontFamily: root.fontFamily
+                    }
+                  }
                 }
               }
 

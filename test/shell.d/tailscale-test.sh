@@ -11,6 +11,21 @@ const panelSource = fs.readFileSync(root + '/shell/plugins/panels/tailscale/Pane
 
 assert(/function toggleTailscale\(\): string \{ tailscale\.toggleTailscale\(\); return "ok" \}/.test(panelSource), 'tailscale exposes the connection toggle over IPC')
 
+const serviceSource = fs.readFileSync(root + '/shell/plugins/panels/tailscale/Service.qml', 'utf8')
+assert(/Quickshell\.execDetached\(\["omarchy-launch-browser", adminUrl\]\)/.test(serviceSource), 'tailscale opens the admin console in the default browser')
+assert(/command = \["tailscale", "debug", "prefs"\]/.test(serviceSource), 'tailscale reads the control URL from daemon prefs')
+
+assertEqual(tailscale.adminUrlFromControlUrl(''), 'https://login.tailscale.com/admin/machines', 'tailscale falls back to the hosted admin console without a control URL')
+assertEqual(tailscale.adminUrlFromControlUrl('https://controlplane.tailscale.com'), 'https://login.tailscale.com/admin/machines', 'tailscale sends the hosted control plane to the hosted admin console')
+assertEqual(tailscale.adminUrlFromControlUrl('https://controlplane.tailscale.com/'), 'https://login.tailscale.com/admin/machines', 'tailscale ignores a trailing slash on the control URL')
+assertEqual(tailscale.adminUrlFromControlUrl('https://headscale.example.com'), 'https://headscale.example.com', 'tailscale points a self-hosted tailnet at its own control server')
+assertEqual(tailscale.adminUrlFromControlUrl('https://headscale.example.com/'), 'https://headscale.example.com', 'tailscale trims a self-hosted control URL')
+assertEqual(tailscale.controlUrlFromPrefs('{"ControlURL":"https://headscale.example.com"}'), 'https://headscale.example.com', 'tailscale reads the control URL out of prefs')
+assertEqual(tailscale.controlUrlFromPrefs('not json'), '', 'tailscale ignores unreadable prefs')
+assert(/onClicked: root\.openAdminConsole\(\)/.test(panelSource), 'tailscale opens the admin console from the panel mark')
+assert(/t === "a" \|\| t === "A"\) root\.openAdminConsole\(\)/.test(panelSource), 'tailscale binds the admin console to the a key')
+assert(/function openAdminConsole\(\) \{\s*tailscale\.openAdminConsole\(\)\s*close\(\)/.test(panelSource), 'tailscale closes the panel when the admin console opens')
+
 assertDeepEqual(
   tailscale.filterIPv4(['100.64.0.1', 'fd7a:115c:a1e0::1', '192.168.1.2']),
   ['100.64.0.1'],

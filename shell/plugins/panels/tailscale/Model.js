@@ -1,3 +1,5 @@
+var HOSTED_ADMIN_URL = "https://login.tailscale.com/admin/machines"
+
 function filterIPv4(ips) {
   var result = []
   if (!ips || typeof ips.length !== "number") return result
@@ -270,6 +272,28 @@ function parseStatus(raw) {
   }
 }
 
+// Where to send someone who wants to manage this tailnet. The hosted console
+// only administers tailnets on Tailscale's own control plane; a self-hosted
+// control server (Headscale and friends) has no console at that address, so
+// its own URL is the closest thing to one.
+function adminUrlFromControlUrl(controlUrl) {
+  var value = String(controlUrl || "").trim().replace(/\/+$/, "")
+  if (value === "") return HOSTED_ADMIN_URL
+  if (/^https?:\/\/(controlplane|login)\.tailscale\.com$/i.test(value)) return HOSTED_ADMIN_URL
+  return value
+}
+
+function controlUrlFromPrefs(raw) {
+  var text = String(raw || "").trim()
+  if (text === "") return ""
+  try {
+    var parsed = JSON.parse(text)
+    return String((parsed && parsed.ControlURL) || "")
+  } catch (e) {
+    return ""
+  }
+}
+
 function parseAccounts(raw) {
   var text = String(raw || "").trim()
   if (text === "") return { accounts: [], selectedAccountId: "", selectedAccountLabel: "" }
@@ -320,6 +344,8 @@ if (typeof module !== "undefined") {
     mullvadRegionOptions: mullvadRegionOptions,
     mullvadCountryOptions: mullvadCountryOptions,
     parseStatus: parseStatus,
-    parseAccounts: parseAccounts
+    parseAccounts: parseAccounts,
+    adminUrlFromControlUrl: adminUrlFromControlUrl,
+    controlUrlFromPrefs: controlUrlFromPrefs
   }
 }

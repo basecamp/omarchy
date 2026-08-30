@@ -41,6 +41,12 @@ Item {
   property string actionStatus: ""
   property string lastError: ""
 
+  // The status JSON carries no control-plane URL, so it comes from the daemon's
+  // prefs and decides whether the admin console is Tailscale's hosted one or a
+  // self-hosted control server.
+  property string controlUrl: ""
+  readonly property string adminUrl: Model.adminUrlFromControlUrl(controlUrl)
+
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 30, 5, 3600)
   readonly property bool busy: whichProcess.running || statusProcess.running || mullvadExitNodesProcess.running || accountsProcess.running || actionProcess.running || loginProcess.running || switchProcess.running || operatorProcess.running || exitNodeProcess.running
   readonly property string userName: Quickshell.env("USER") || Quickshell.env("LOGNAME")
@@ -49,6 +55,7 @@ Item {
   property string _statusError: ""
   property string _accountsOutput: ""
   property string _accountsError: ""
+  property string _prefsOutput: ""
   property string _mullvadExitNodesOutput: ""
   property string _mullvadExitNodesError: ""
   property string _actionOutput: ""
@@ -183,6 +190,16 @@ Item {
       _lastAccountsRefreshMs = now
       accountsProcess.command = ["tailscale", "switch", "--list", "--json"]
       accountsProcess.running = true
+      launched = true
+    }
+    // The control URL only moves when the connection does, so read it once and
+    // again on the forced refresh that follows an account switch — not on the
+    // interval, which would spawn a process every tick for a value that stands
+    // still for the life of a login.
+    if ((forceAccounts === true || controlUrl === "") && !prefsProcess.running) {
+      _prefsOutput = ""
+      prefsProcess.command = ["tailscale", "debug", "prefs"]
+      prefsProcess.running = true
       launched = true
     }
     // Arm on the launch that needs watching and leave it alone after that.
@@ -363,6 +380,10 @@ Item {
     actionProcess.running = true
   }
 
+  function openAdminConsole() {
+    Quickshell.execDetached(["omarchy-launch-browser", adminUrl])
+  }
+
   function openAuthUrlFrom(text, allowFallback) {
     if (_loginUrlOpened) return true
     var match = String(text || "").match(/https?:\/\/\S+/)
@@ -431,6 +452,7 @@ Item {
       if (statusProcess.running) statusProcess.running = false
       if (mullvadExitNodesProcess.running) mullvadExitNodesProcess.running = false
       if (accountsProcess.running) accountsProcess.running = false
+      if (prefsProcess.running) prefsProcess.running = false
     }
   }
 
@@ -505,6 +527,19 @@ Item {
           root.lastError = elideStatus(stderr || stdout || "Could not list Tailscale connections")
         }
       }
+    }
+  }
+
+  Process {
+    // A daemon too old for `debug prefs`, or one that refuses it, just leaves
+    // the control URL empty and the admin link pointing at the hosted console.
+    id: prefsProcess
+    running: false
+    command: []
+    stdout: StdioCollector { id: prefsStdout; waitForEnd: true; onStreamFinished: root._prefsOutput = text }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) return
+      root.controlUrl = Model.controlUrlFromPrefs(String(prefsStdout.text || root._prefsOutput || ""))
     }
   }
 

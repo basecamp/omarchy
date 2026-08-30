@@ -6,6 +6,7 @@ Native Omarchy bar widget for Tailscale.
 
 - Shows Tailscale connection state in the bar
 - Left click opens a keyboard-friendly panel
+- Click the Tailscale mark in the panel to open the admin console in your browser — the hosted console, or your own control server for a self-hosted tailnet
 - Right click toggles Tailscale on/off
 - Switch between available Tailscale connections when multiple are available
 - Browse machines from `tailscale status --json`
@@ -22,6 +23,7 @@ Inside the panel:
 - `n`: copy selected peer name
 - `d`: copy selected peer DNS name
 - `s`: send files to selected peer
+- `a`: open the admin console
 - `t`: toggle Tailscale
 - `r`: refresh status
 - `esc`: close
