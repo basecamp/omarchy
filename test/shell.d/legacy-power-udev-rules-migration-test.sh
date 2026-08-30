@@ -105,7 +105,8 @@ pass "migration removes a Wi-Fi power save rule that runs out of a user home"
   fail "migration reloads udev after removing a rule" "$(cat "$CALLS")"
 pass "migration reloads udev after removing a rule"
 
-# Both files gone is still one machine-wide reload, not one per file.
+# Reload each removed rule immediately, so a later failure cannot leave an
+# already-deleted rule active in udevd.
 reset_machine
 write_vulnerable_power_rule
 write_vulnerable_wifi_rule
@@ -113,9 +114,9 @@ run_migration
 
 [[ ! -e $power_rule && ! -e $wifi_rule ]] ||
   fail "migration removes both legacy rules in one pass"
-(( $(reload_count) == 1 )) ||
-  fail "migration reloads udev once for both removals" "$(cat "$CALLS")"
-pass "migration removes both legacy rules and reloads udev once"
+(( $(reload_count) == 2 )) ||
+  fail "migration reloads udev after each removal" "$(cat "$CALLS")"
+pass "migration removes both legacy rules and reloads after each one"
 
 # The second run is what every other account on the machine does, and what a
 # user gets from running omarchy-migrate again.
@@ -210,29 +211,55 @@ run_migration
   fail "migration removes another user's rule rooted outside /home" "$(cat "$wifi_rule")"
 pass "migration removes another user's rule rooted outside /home"
 
-# A user who cannot elevate must leave this repair pending without preventing
-# later migrations from running. Once another account removes the machine-wide
-# file, the next retry can complete without sudo.
+# A user who cannot elevate leaves this migration pending and stops the ordered
+# queue. Once an administrator removes the machine-wide file, a retry completes.
 reset_machine
 write_vulnerable_wifi_rule
-defer_file="$test_dir/defer-signal"
-defer_token="legacy-udev-repair"
-: >"$defer_file"
 
 set +e
 HOME="$home_dir" \
   OMARCHY_UDEV_RULES_DIR="$rules_dir" \
-  OMARCHY_MIGRATION_DEFER_FILE="$defer_file" \
-  OMARCHY_MIGRATION_DEFER_TOKEN="$defer_token" \
   PATH="$test_dir/failing-bin:$PATH" \
-  bash -euo pipefail "$migration" >"$test_dir/defer.out" 2>&1
-defer_status=$?
+  bash -euo pipefail "$migration" >"$test_dir/elevation-failure.out" 2>&1
+failure_status=$?
 set -e
 
-(( defer_status == 75 )) || fail "migration defers when sudo cannot remove a vulnerable rule" "status=$defer_status"
+(( failure_status != 0 )) || fail "migration fails when sudo cannot remove a vulnerable rule"
 [[ -e $wifi_rule ]] || fail "migration keeps the vulnerable rule when its elevated removal fails"
-[[ $(<"$defer_file") == "$defer_token" ]] || fail "migration authenticates its deferral to the runner"
-pass "migration defers instead of blocking the queue when removal cannot elevate"
+grep -q 'Ask an administrator to run omarchy-migrate' "$test_dir/elevation-failure.out" ||
+  fail "migration explains how a non-sudo user can complete the repair" "$(cat "$test_dir/elevation-failure.out")"
+pass "migration fails loudly with administrator guidance when removal cannot elevate"
+
+# If the first removal succeeds but the second one cannot elevate, the first
+# rule must already have been dropped from the running udevd.
+reset_machine
+write_vulnerable_power_rule
+write_vulnerable_wifi_rule
+cat >"$test_dir/failing-bin/sudo" <<'STUB'
+#!/bin/bash
+
+printf 'sudo %s\n' "$*" >>"$CALLS"
+if [[ $* == *99-wifi-powersave.rules ]]; then
+  exit 1
+fi
+exec "$@"
+STUB
+chmod +x "$test_dir/failing-bin/sudo"
+: >"$CALLS"
+
+set +e
+HOME="$home_dir" \
+  OMARCHY_UDEV_RULES_DIR="$rules_dir" \
+  PATH="$test_dir/failing-bin:$test_dir/bin:$PATH" \
+  bash -euo pipefail "$migration" >"$test_dir/partial-failure.out" 2>&1
+partial_status=$?
+set -e
+
+(( partial_status != 0 )) || fail "migration fails when the second rule cannot be removed"
+[[ ! -e $power_rule && -e $wifi_rule ]] || fail "migration preserves the expected partial-removal state"
+(( $(reload_count) == 1 )) ||
+  fail "migration reloads udev before a later removal failure" "$(cat "$CALLS")"
+pass "a later removal failure cannot leave an already-deleted rule loaded"
 
 # Nothing named the wrong binary is ours: the same path with a different command
 # is a rule this migration cannot claim to know anything about.
