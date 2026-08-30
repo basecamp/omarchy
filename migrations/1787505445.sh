@@ -9,8 +9,8 @@ echo "Install the fingerprint resume hook on existing fingerprint setups"
 
 hook_src="${OMARCHY_FPRINTD_RESUME_SRC:-$OMARCHY_PATH/default/systemd/system-sleep/fprintd-resume}"
 hook_dst="${OMARCHY_FPRINTD_RESUME_DST:-/usr/lib/systemd/system-sleep/fprintd-resume}"
-stop_timeout_src="${OMARCHY_FPRINTD_STOP_TIMEOUT_SRC:-$OMARCHY_PATH/default/systemd/system/fprintd.service.d/stop-timeout.conf}"
-stop_timeout_dst="${OMARCHY_FPRINTD_STOP_TIMEOUT_DST:-/etc/systemd/system/fprintd.service.d/stop-timeout.conf}"
+stop_timeout_src="${OMARCHY_FPRINTD_STOP_TIMEOUT_SRC:-$OMARCHY_PATH/default/systemd/system/fprintd.service.d/10-stop-timeout.conf}"
+stop_timeout_dst="${OMARCHY_FPRINTD_STOP_TIMEOUT_DST:-/etc/systemd/system/fprintd.service.d/10-stop-timeout.conf}"
 lock_pam="${OMARCHY_LOCK_FINGERPRINT_PAM:-/etc/pam.d/omarchy-lock-fingerprint}"
 
 # Only where fingerprint is configured, and only what is absent -- an existing
@@ -23,8 +23,12 @@ if [[ -f $hook_src && ! -e $hook_dst ]]; then
   sudo install -Dm755 "$hook_src" "$hook_dst"
 fi
 
-if [[ -f $stop_timeout_src && ! -e $stop_timeout_dst ]]; then
+# An earlier build of this shipped the drop-in without the numeric prefix,
+# where it outranked an administrator's override.conf; replace that copy.
+legacy_stop_timeout="${stop_timeout_dst%/*}/stop-timeout.conf"
+if [[ -f $stop_timeout_src && ( -e $legacy_stop_timeout || ! -e $stop_timeout_dst ) ]]; then
   echo "Bounding fprintd's stop timeout"
+  sudo rm -f "$legacy_stop_timeout"
   sudo install -Dm644 "$stop_timeout_src" "$stop_timeout_dst"
   sudo systemctl daemon-reload
 fi

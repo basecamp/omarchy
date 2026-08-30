@@ -30,9 +30,9 @@ src="$TMPDIR/fprintd-resume"
 printf '#!/bin/bash\n' >"$src"
 chmod +x "$src"
 dst="$TMPDIR/system-sleep/fprintd-resume"
-dropin_src="$TMPDIR/stop-timeout.conf"
+dropin_src="$TMPDIR/10-stop-timeout.conf"
 printf '[Service]\nTimeoutStopSec=3s\n' >"$dropin_src"
-dropin_dst="$TMPDIR/fprintd.service.d/stop-timeout.conf"
+dropin_dst="$TMPDIR/fprintd.service.d/10-stop-timeout.conf"
 lock_pam="$TMPDIR/omarchy-lock-fingerprint"
 
 # omarchy-migrate runs each migration with `bash -euo pipefail`; match it.
@@ -61,7 +61,7 @@ PATH="$stub_bin:$PATH" \
   fail "migration exits clean from its default sources"
 [[ -x $dst ]] || fail "migration finds the hook at its default source path" "dst: $(stat -c '%A' "$dst" 2>/dev/null || echo missing)"
 cmp -s "$dst" "$ROOT/default/systemd/system-sleep/fprintd-resume" || fail "migration installs the shipped hook from its default source"
-cmp -s "$dropin_dst" "$ROOT/default/systemd/system/fprintd.service.d/stop-timeout.conf" || fail "migration installs the shipped drop-in from its default source"
+cmp -s "$dropin_dst" "$ROOT/default/systemd/system/fprintd.service.d/10-stop-timeout.conf" || fail "migration installs the shipped drop-in from its default source"
 pass "migration installs the shipped hook and drop-in from their default sources"
 
 # A machine with fingerprint configured but no hook yet gets it, executable,
@@ -86,6 +86,15 @@ grep -q sentinel "$dst" || fail "migration leaves an existing hook alone"
 grep -q sentinel "$dropin_dst" || fail "migration leaves an existing drop-in alone"
 [[ ! -s $reload_log ]] || fail "migration does not reload systemd when nothing changed" "calls: $(<"$reload_log")"
 pass "migration leaves existing files alone"
+
+# A copy under the old unprefixed name is replaced by the numbered one.
+legacy="$TMPDIR/fprintd.service.d/stop-timeout.conf"
+rm -f "$dropin_dst"; printf 'old\n' >"$legacy"
+: >"$reload_log"
+run_migration
+[[ ! -e $legacy && -f $dropin_dst ]] || fail "migration replaces the unprefixed drop-in" "legacy: $(ls "$legacy" 2>&1); dst: $(ls "$dropin_dst" 2>&1)"
+grep -qx "daemon-reload" "$reload_log" || fail "migration reloads systemd after replacing the drop-in"
+pass "migration replaces the unprefixed drop-in with the numbered one"
 
 # The drop-in is installed on its own where only the hook is already present.
 rm -rf "$TMPDIR/fprintd.service.d"

@@ -47,7 +47,7 @@ pass "resume from hibernate also restarts fprintd"
 
 # The drop-in installed beside the hook is what keeps a SIGTERM-ignoring
 # fprintd from turning that restart into a multi-second dead reader.
-dropin="$ROOT/default/systemd/system/fprintd.service.d/stop-timeout.conf"
+dropin="$ROOT/default/systemd/system/fprintd.service.d/10-stop-timeout.conf"
 grep -Eq '^TimeoutStopSec=[0-9]+s?$' "$dropin" ||
   fail "the stop-timeout drop-in bounds TimeoutStopSec" "content: $(<"$dropin")"
 pass "the stop-timeout drop-in bounds TimeoutStopSec"

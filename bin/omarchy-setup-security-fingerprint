@@ -75,7 +75,7 @@ install_resume_hook() {
   # A wedged fprintd can ignore SIGTERM, so the restart would otherwise wait
   # out the full stop timeout before SIGKILL; bound it so the reader is back
   # within seconds of resume.
-  sudo install -Dm644 -o root -g root "$OMARCHY_PATH/default/systemd/system/fprintd.service.d/stop-timeout.conf" /etc/systemd/system/fprintd.service.d/stop-timeout.conf
+  sudo install -Dm644 -o root -g root "$OMARCHY_PATH/default/systemd/system/fprintd.service.d/10-stop-timeout.conf" /etc/systemd/system/fprintd.service.d/10-stop-timeout.conf
   sudo systemctl daemon-reload
 }
 
