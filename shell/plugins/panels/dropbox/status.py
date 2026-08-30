@@ -15,6 +15,9 @@ PLAN_QUOTAS = {
   "essentials": 3_000_000_000_000,
 }
 
+# Dropbox's own bookkeeping, not user content.
+SKIP_DIRS = {".dropbox.cache"}
+
 
 def read_info():
   info_path = Path.home() / ".dropbox" / "info.json"
@@ -49,7 +52,10 @@ def scan_dropbox(path, limit):
   recent = []
   try:
     for root, dirs, files in os.walk(path):
-      dirs[:] = [name for name in dirs if not os.path.islink(os.path.join(root, name))]
+      dirs[:] = [
+        name for name in dirs
+        if not os.path.islink(os.path.join(root, name)) and name not in SKIP_DIRS
+      ]
       for name in files:
         file_path = os.path.join(root, name)
         if os.path.islink(file_path):
@@ -92,6 +98,12 @@ def main():
   info = read_info()
   account = dropbox_account(info)
   account_path = account.get("path") if isinstance(account.get("path"), str) else ""
+  # A team account syncs into root_path; `path` is only the member folder, and
+  # team folders are its siblings. The member folder is empty whenever every
+  # subfolder of it is excluded by selective sync.
+  root_path = account.get("root_path") if isinstance(account.get("root_path"), str) else ""
+  if root_path and Path(root_path).exists():
+    account_path = root_path
   plan = account.get("subscription_type") if isinstance(account.get("subscription_type"), str) else ""
   quota = PLAN_QUOTAS.get(plan.lower(), 0)
   authenticated = account_path != "" and Path(account_path).exists()
