@@ -22,11 +22,14 @@ The design goal is:
 | Path | Owner | Purpose |
 | --- | --- | --- |
 | `${XDG_RUNTIME_DIR:-/tmp}/omarchy-update.lock` | user | Prevent overlapping update runs. Owned by `omarchy-update-lock`; compatibility wrappers inherit/respect it. |
+| `/run/omarchy-update-file-conflicts.lock` | root | Serialize complete privileged file-conflict helper runs across users and sessions. Concurrent helpers wait for the holder. |
 | `/tmp/omarchy-update.log` | user | Transcript of `omarchy update`, used by `omarchy-update-analyze-logs`. |
 | `~/.local/state/omarchy/current/` | user | Generated active theme, selected theme name, and current background symlink. |
 | `~/.local/state/omarchy/migrations/` | user | Per-user migration markers. |
 | `~/.local/state/omarchy/reboot-required` | user | Optional reboot marker checked by `omarchy-update-restart`. |
 | `~/.local/state/omarchy/restart-*-required` | user | Optional service/app restart markers checked by `omarchy-update-restart`. The shell needs no marker: it is restarted unconditionally after every update. |
+| `/var/lib/omarchy/replaced/transaction.*/` | root | Long-lived archive metadata and displaced objects retained after package file-conflict recovery. |
+| `/etc/.omarchy-update-conflicts.*/`, `/usr/.omarchy-update-conflicts.*/` | root | Same-filesystem staging journals retained after a crash, an unsafe rollback destination, or when `/var` is on another filesystem. |
 
 ## Migration layout
 
@@ -105,6 +108,20 @@ while `/usr/share/omarchy/default/hypr/**` is replaced. The post-transaction
 hook runs `omarchy-hyprland-reload-guard resume`, forces one `hyprctl reload`,
 and restores the session's previous `misc.disable_autoreload` and
 `debug.suppress_errors` values.
+
+## Privileged file-conflict recovery
+
+`omarchy-update-system-pkgs` delegates its noninteractive Pacman transaction to the fixed packaged path `/usr/bin/omarchy-update-file-conflicts`. A dev checkout can gain the wrapper before the package providing that helper is installed; in that bootstrap case the wrapper runs one ordinary transaction through fixed `/usr/bin/pacman`, without parsing its report, quarantining paths, or retrying a file conflict. Any conflict therefore fails closed, and the wrapper never falls back to a user-controlled `PATH` entry or an active dev checkout for this privilege boundary.
+
+The helper takes a blocking root-global lock at `/run/omarchy-update-file-conflicts.lock` for its full lifetime, including the first Pacman attempt, conflict validation, quarantine, retry, rollback or archival, and report cleanup. This complements the per-user update lock: file-conflict helpers from different users or sessions wait instead of acting on stale package state concurrently. Bootstrap and interactive package-conflict transactions do not move files and rely on Pacman's own database lock.
+
+The authorizing transaction starts with `pacman -Syu`. Both a file-conflict recovery retry and the interactive package-conflict retry use `pacman -Su` against the databases that attempt just refreshed, so the retry does not introduce another mirror refresh. Before recovery is considered complete, the helper verifies that every displaced path now exists and is owned by the package that authorized it; a successful Pacman exit with a changed or empty plan therefore enters the same safe rollback or retention path as a failed retry.
+
+Recoverable conflicts are first renamed into root-only opaque slots under `/etc/.omarchy-update-conflicts.*/` or `/usr/.omarchy-update-conflicts.*/`, on the same filesystem as the original path. Each stage has a `manifest` that maps `item-N` to its original absolute path and is synchronized before the destructive rename. A failed retry restores an item only when its destination is still absent and its parent chain remains trusted; anything that cannot be restored stays in protected staging.
+
+After the retry and any rollback, remaining items are retained under `/var/lib/omarchy/replaced/transaction.*/` when an atomic same-filesystem rename is possible. Each transaction's `locations` file records where its `etc` and `usr` stages actually live. If `/var` is on another filesystem, the helper does not recursively copy a potentially mutable tree; it leaves the stage beside `/etc` or `/usr` and records that path in `locations`.
+
+Crash journals and replaced-file archives are recovery material, not an automatic replay queue. After an interrupted update, an administrator must inspect `locations` when present, then the referenced stage's `manifest` and `item-*` entries, compare them with the installed package state, and explicitly restore or discard each item. Paths from a journal must not be replayed blindly. Omarchy does not automatically prune these root-only records; retain them until their contents have been reviewed and are no longer needed.
 
 ## Path 1: `omarchy update`
 

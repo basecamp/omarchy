@@ -26,6 +26,7 @@ readonly PACKAGE_CACHE_BOUNDARY=/
 readonly MAX_REPORT_BYTES=1048576
 readonly PACKAGE_CONFLICT_STATUS=75
 readonly REPORT_PARENT=/run
+readonly TRANSACTION_LOCK=$REPORT_PARENT/omarchy-update-file-conflicts.lock
 
 allowed_packages=(omarchy omarchy-dev omarchy-settings omarchy-settings-dev)
 allowed_roots=(/etc /usr)
@@ -77,6 +78,17 @@ assert_root_directory() {
   [[ $owner == "$ROOT_UID" ]] && ! ((8#$mode & 022))
 }
 
+assert_root_private_file() {
+  local file="$1" owner group mode canonical
+  [[ -f $file && ! -L $file ]] || return 1
+  canonical=$(realpath -e -- "$file" 2>/dev/null) || return 1
+  [[ $canonical == "$file" ]] || return 1
+  owner=$(stat -Lc '%u' "$file") || return 1
+  group=$(stat -Lc '%g' "$file") || return 1
+  mode=$(stat -Lc '%a' "$file") || return 1
+  [[ $owner == "$ROOT_UID" && $group == "$ROOT_GID" && $mode == "600" ]]
+}
+
 path_within_root() {
   local path="$1" root="$2"
   if [[ $root == / ]]; then
@@ -106,7 +118,7 @@ assert_safe_parent_chain() {
 
 load_package_caches() {
   local configured cache canonical existing duplicate
-  configured=$(pacman-conf CacheDir 2>/dev/null) || return 1
+  configured=$(pacman-conf CacheDir 9>&- 2>/dev/null) || return 1
 
   while IFS= read -r cache; do
     [[ -n $cache ]] || continue
@@ -130,18 +142,18 @@ load_package_caches() {
 }
 
 load_upgrade_archives() {
-  local plan listed_package location filename cache candidate owner mode previous
+  local plan listed_package filename cache candidate owner mode previous
   load_package_caches || return 1
 
   # Ask pacman for the exact pending sysupgrade, not for an explicitly named
   # package. `pacman -Sp package` also prints inactive and already-current
   # packages, so a stale cached archive must not authorize a root move.
-  plan=$(pacman -Sup --print-format $'%n\t%l' 2>/dev/null) || return 1
-  while IFS=$'\t' read -r listed_package location; do
-    valid_package "$listed_package" && [[ -n $location ]] || continue
-    location=${location%%\?*}
-    filename=${location##*/}
-    [[ -n $filename && $filename != "$location" ]] || continue
+  plan=$(pacman -Sup --noconfirm --overwrite '/usr/share/omarchy/*' \
+    --print-format $'%n\t%f' 9>&- 2>/dev/null) || return 1
+  while IFS=$'\t' read -r listed_package filename; do
+    valid_package "$listed_package" && [[ -n $filename ]] || continue
+    [[ $filename != "." && $filename != ".." && $filename != */* &&
+      $filename != *$'\n'* && $filename != *$'\r'* && $filename != *$'\t'* ]] || return 1
     candidate=""
     for cache in "${package_caches[@]}"; do
       if [[ ! -e $cache/$filename && ! -L $cache/$filename ]]; then
@@ -162,25 +174,27 @@ load_upgrade_archives() {
 }
 
 package_archive_for() {
-  local package="$1" archive=${archive_for_package[$package]:-}
+  local package="$1" archive
+  archive=${archive_for_package[$package]:-}
   [[ -n $archive ]] || return 1
   printf '%s\n' "$archive"
 }
 
 package_contains_path() {
-  local package="$1" expected="$2" archive listed_package listed_path
+  local package="$1" expected="$2" archive listing listed_package listed_path
   archive=$(package_archive_for "$package") || return 1
+  listing=$(pacman -Qlp -- "$archive" 9>&- 2>/dev/null) || return 1
   while read -r listed_package listed_path; do
     [[ $listed_package == "$package" && -n $listed_path ]] || continue
     listed_path=${listed_path%/}
     [[ $listed_path == "$expected" ]] && return 0
-  done < <(pacman -Qlp -- "$archive" 2>/dev/null)
+  done <<<"$listing"
   return 1
 }
 
 parse_report() {
   local line clean package path conflict_count=0
-  local conflict_pattern='^(omarchy|omarchy-dev|omarchy-settings|omarchy-settings-dev): (.+) exists in filesystem$'
+  local conflict_pattern='^([^:[:space:]]+): (.+) exists in filesystem$'
   declare -A seen=()
 
   while IFS= read -r line; do
@@ -203,6 +217,26 @@ parse_report() {
   ((${#conflict_paths[@]} > 0 && ${#conflict_paths[@]} == conflict_count))
 }
 
+verify_replacements() {
+  local index package path installed_packages
+  for index in "${!conflict_paths[@]}"; do
+    package=${conflict_packages[$index]}
+    path=${conflict_paths[$index]}
+    [[ -e $path || -L $path ]] || {
+      echo "Package retry succeeded without installing its conflict path: $path" >&2
+      return 1
+    }
+    installed_packages=$(pacman -Qoq -- "$path" 9>&- 2>/dev/null) || {
+      echo "Package retry left its conflict path unowned: $path" >&2
+      return 1
+    }
+    grep -Fxq -- "$package" <<<"$installed_packages" || {
+      echo "Package retry did not assign its conflict path to $package: $path" >&2
+      return 1
+    }
+  done
+}
+
 validate_conflicts() {
   local index package path root other
   for index in "${!conflict_paths[@]}"; do
@@ -214,7 +248,7 @@ validate_conflicts() {
       echo "Refusing conflict path not shipped by $package: $path" >&2
       return 1
     }
-    if pacman -Qo -- "$path" &>/dev/null; then
+    if pacman -Qo -- "$path" 9>&- &>/dev/null; then
       echo "Refusing package-owned conflict path: $path" >&2
       return 1
     fi
@@ -388,6 +422,11 @@ cleanup_report() {
 cleanup() {
   local status=$?
   trap - EXIT INT TERM
+  # Only the explicit package-conflict branch may return the wrapper's reserved
+  # handoff status. Do not mistake an unrelated command's EX_TEMPFAIL for it.
+  if ((status == PACKAGE_CONFLICT_STATUS)); then
+    status=1
+  fi
   ((retry_succeeded)) || restore_moved
   archive_remaining || echo "Warning: protected conflict staging could not be archived." >&2
   cleanup_report
@@ -403,12 +442,43 @@ assert_root_directory "$REPORT_PARENT" || {
   echo "Could not establish a trusted pacman report directory" >&2
   exit 1
 }
+
+# Serialize the complete check/move/retry boundary across users and direct
+# helper invocations. Noclobber creates the fixed lock atomically; the trusted
+# parent prevents an unprivileged process from replacing it afterward.
+if [[ ! -e $TRANSACTION_LOCK && ! -L $TRANSACTION_LOCK ]]; then
+  (set -o noclobber; : >"$TRANSACTION_LOCK") 2>/dev/null || true
+fi
+assert_root_private_file "$TRANSACTION_LOCK" || {
+  echo "Could not establish a trusted package transaction lock" >&2
+  exit 1
+}
+lock_identity=$(stat -Lc '%d:%i' "$TRANSACTION_LOCK") || exit 1
+# Pacman children close this descriptor so hooks or descendants cannot retain
+# the helper's lock after this process exits.
+exec 9<>"$TRANSACTION_LOCK"
+lock_fd_identity=$(stat -Lc '%d:%i' /proc/$$/fd/9) || exit 1
+[[ $lock_fd_identity == "$lock_identity" ]] || {
+  echo "Package transaction lock changed while it was opened" >&2
+  exit 1
+}
+flock 9
+assert_root_private_file "$TRANSACTION_LOCK" || {
+  echo "Package transaction lock became unsafe while waiting" >&2
+  exit 1
+}
+lock_identity=$(stat -Lc '%d:%i' "$TRANSACTION_LOCK") || exit 1
+[[ $lock_identity == "$lock_fd_identity" ]] || {
+  echo "Package transaction lock changed while waiting" >&2
+  exit 1
+}
+
 report_dir=$(mktemp -d "$REPORT_PARENT/omarchy-update-pacman.XXXXXX")
 report_file=$report_dir/errors
 : >"$report_file"
 
 if env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --noconfirm \
-  --overwrite '/usr/share/omarchy/*' 2>"$report_file"; then
+  --overwrite '/usr/share/omarchy/*' 2>"$report_file" 9>&-; then
   cat "$report_file" >&2
   cleanup_report
   trap - EXIT INT TERM
@@ -417,6 +487,8 @@ fi
 cat "$report_file" >&2
 
 if grep -q 'unresolvable package conflicts detected' "$report_file"; then
+  cleanup_report
+  trap - EXIT INT TERM
   exit "$PACKAGE_CONFLICT_STATUS"
 fi
 
@@ -441,11 +513,14 @@ validate_conflicts
 move_conflicts
 
 echo -e "\e[32m\nUpdate system packages\e[0m"
-if env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --noconfirm --overwrite '/usr/share/omarchy/*'; then
-  retry_succeeded=1
-  archive_remaining
-  stage_for_root=()
-  trap - EXIT INT TERM
-  exit 0
+if env OMARCHY_UPDATE_PACMAN=1 pacman -Su --noconfirm --overwrite '/usr/share/omarchy/*' 9>&-; then
+  if verify_replacements; then
+    retry_succeeded=1
+    archive_remaining
+    stage_for_root=()
+    cleanup_report
+    trap - EXIT INT TERM
+    exit 0
+  fi
 fi
 exit 1

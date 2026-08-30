@@ -11,24 +11,37 @@ trap 'rm -rf "$test_tmp"' EXIT
 
 stub_bin="$test_tmp/bin"
 helper_copy="$test_tmp/omarchy-update-file-conflicts"
+system_pkgs_copy="$stub_bin/omarchy-update-system-pkgs"
 mkdir -p "$stub_bin"
 
 test_uid=$(id -u)
+test_gid=$(id -g)
 sed \
   -e 's/if ((EUID != 0)); then/if false; then/' \
   -e 's|export PATH=/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin|export PATH=${OMARCHY_TEST_HELPER_PATH:?}|' \
   -e 's/readonly ROOT_UID=0/readonly ROOT_UID='"$test_uid"'/' \
+  -e 's/readonly ROOT_GID=0/readonly ROOT_GID='"$test_gid"'/' \
   -e "s|readonly REPORT_PARENT=/run|readonly REPORT_PARENT=$test_tmp|" \
   "$ROOT/bin/omarchy-update-file-conflicts" >"$helper_copy"
 chmod +x "$helper_copy"
 
+sed \
+  -e "s|/usr/bin/omarchy-update-file-conflicts|$helper_copy|g" \
+  -e "s|/usr/bin/pacman|$stub_bin/pacman|g" \
+  "$ROOT/bin/omarchy-update-system-pkgs" >"$system_pkgs_copy"
+chmod +x "$system_pkgs_copy"
+
 cat >"$stub_bin/sudo" <<'STUB'
 #!/bin/bash
-if [[ ${1:-} == /usr/bin/omarchy-update-file-conflicts ]]; then
+if [[ ${1:-} == "$TEST_CONFLICT_HELPER" ]]; then
   shift
   exec env OMARCHY_TEST_ROOT_HELPER=1 "$TEST_CONFLICT_HELPER" "$@"
 fi
-exec "$@"
+if [[ ${1:-} == /usr/bin/env && ${2:-} == OMARCHY_UPDATE_PACMAN=1 && ${3:-} == "$TEST_PACMAN" ]]; then
+  exec "$@"
+fi
+echo "unexpected sudo command: $*" >&2
+exit 97
 STUB
 
 # Fails the first -Syu with the report under test, then succeeds. Every call
@@ -80,6 +93,7 @@ update_env() {
     "PACMAN_CALLS=$test_tmp/calls" \
     "CONFLICT_REPORT=$test_tmp/report" \
     "TEST_CONFLICT_HELPER=$helper_copy" \
+    "TEST_PACMAN=$stub_bin/pacman" \
     "OMARCHY_TEST_HELPER_PATH=$stub_bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin" \
     "OWNED_PATHS=" \
     "OMARCHY_UPDATE_UNATTENDED=${OMARCHY_UPDATE_UNATTENDED:-}" \
@@ -90,7 +104,7 @@ update_env() {
 # No terminal on any stream, the way a cron or ssh caller arrives.
 run_headless() {
   mapfile -t environment < <(update_env)
-  env "${environment[@]}" bash "$ROOT/bin/omarchy-update-system-pkgs" \
+    env "${environment[@]}" bash "$system_pkgs_copy" \
     </dev/null >"$test_tmp/out" 2>"$test_tmp/err"
 }
 
@@ -101,7 +115,7 @@ run_headless() {
 run_on_terminal() {
   mapfile -t environment < <(update_env)
   env "${environment[@]}" \
-    script -qec "bash '$ROOT/bin/omarchy-update-system-pkgs' ${1:-}" "$test_tmp/out" >/dev/null 2>&1
+    script -qec "bash '$system_pkgs_copy' ${1:-}" "$test_tmp/out" >/dev/null 2>&1
 }
 
 call_line() {
@@ -110,11 +124,14 @@ call_line() {
 }
 
 write_conflict_report
-run_on_terminal || fail "a package conflict is not resolved on a terminal"
+run_on_terminal ||
+  fail "a package conflict is not resolved on a terminal" "$(cat "$test_tmp/out" "$test_tmp/calls")"
 (($(cat "$test_tmp/attempts") == 2)) ||
   fail "a package conflict does not get an interactive retry"
-[[ $(call_line 2 args) == *"-Syu"* ]] ||
-  fail "the interactive retry does not upgrade"
+[[ $(call_line 1 args) == "-Syu "* ]] ||
+  fail "the report-authorizing transaction does not refresh package databases"
+[[ $(call_line 2 args) == "-Su "* ]] ||
+  fail "the interactive retry refreshes or changes the authorized transaction"
 [[ $(call_line 2 args) != *"--noconfirm"* ]] ||
   fail "the interactive retry still answers pacman's questions itself"
 [[ $(call_line 2 args) != *"--ask"* ]] ||
@@ -123,6 +140,8 @@ run_on_terminal || fail "a package conflict is not resolved on a terminal"
   fail "the report-authorizing transaction is not owned by the root helper"
 [[ $(call_line 2 root-helper) == no ]] ||
   fail "the interactive package retry unexpectedly enters the file-mutation helper"
+[[ -z $(find "$test_tmp" -maxdepth 1 -type d -name 'omarchy-update-pacman.*' -print -quit) ]] ||
+  fail "the package-conflict handoff leaves its privileged report behind"
 pass "a package conflict is put back to the person running the update"
 
 [[ $(call_line 2 tty0) == "yes" && $(call_line 2 tty2) == "yes" ]] ||

@@ -12,7 +12,7 @@ readonly PACKAGE_CONFLICT_STATUS=75
 # a stream, because an upgrade without --noconfirm prompts on stderr. The
 # handler has already said why, so no heading here either.
 if [[ ${OMARCHY_UPDATE_CONFLICT:-} == 1 && ${OMARCHY_UPDATE_INTERACTIVE:-} == 1 ]]; then
-  exec sudo env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --overwrite '/usr/share/omarchy/*'
+  exec sudo /usr/bin/env OMARCHY_UPDATE_PACMAN=1 /usr/bin/pacman -Su --overwrite '/usr/share/omarchy/*'
 fi
 
 echo -e "\e[32m\nUpdate system packages\e[0m"
@@ -20,20 +20,32 @@ echo -e "\e[32m\nUpdate system packages\e[0m"
 # /usr/share/omarchy is wholly Omarchy's; files can land there unowned and would
 # otherwise abort the upgrade. Packaged content wins there.
 #
-# The privileged helper owns the first transaction and its error report. That
-# report is the authority for any file quarantine, so it must never be writable
-# by the user running this wrapper.
-if sudo /usr/bin/omarchy-update-file-conflicts; then
-  exit 0
-else
-  update_status=$?
-fi
+# The packaged privileged helper owns the first transaction and its error
+# report. That report is the authority for any file quarantine, so it must
+# never be writable by the user running this wrapper.
+if [[ -x /usr/bin/omarchy-update-file-conflicts ]]; then
+  if sudo /usr/bin/omarchy-update-file-conflicts; then
+    update_status=0
+  else
+    update_status=$?
+  fi
 
-# Package conflicts need the person at the terminal to answer pacman. This
-# handler never mutates files; it only decides whether an interactive retry is
-# possible.
-if ((update_status == PACKAGE_CONFLICT_STATUS)); then
-  exec env OMARCHY_UPDATE_CONFLICT=1 omarchy-update-system-pkgs-when-conflicted
+  # Package conflicts need the person at the terminal to answer pacman. This
+  # handler never mutates files; it only decides whether an interactive retry
+  # is possible.
+  if ((update_status == PACKAGE_CONFLICT_STATUS)); then
+    exec env OMARCHY_UPDATE_CONFLICT=1 omarchy-update-system-pkgs-when-conflicted
+  fi
+else
+  # A dev checkout can gain this wrapper before the package providing the fixed
+  # root helper is installed. Bootstrap that package with one ordinary system
+  # transaction, but do not parse its output or attempt conflict recovery.
+  if sudo /usr/bin/env OMARCHY_UPDATE_PACMAN=1 /usr/bin/pacman -Syu --noconfirm \
+    --overwrite '/usr/share/omarchy/*'; then
+    update_status=0
+  else
+    update_status=$?
+  fi
 fi
 
 exit "$update_status"
