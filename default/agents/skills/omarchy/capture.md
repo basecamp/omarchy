@@ -27,17 +27,15 @@ omarchy screenrecord --stop-recording         # Stop; prints the saved path
 
 Optional flags: `--with-desktop-audio`, `--with-microphone-audio`,
 `--with-webcam` (plus `--webcam-device=` and `--webcam-size=`),
-`--resolution=<size>`, `--normalize-audio`, and `--no-normalize-audio`.
+`--resolution=<size>`.
 Without `--fullscreen` a region picker opens first.
 Recordings land in the configured Videos directory (override with
 `OMARCHY_SCREENRECORD_DIR`). Resize a live webcam overlay with
 `omarchy capture webcam resize <smaller|larger|reset|small|medium|large>`.
 
 After stop, audio between about -18 and -11 LUFS is left as-is. Quieter or
-louder recordings are asked whether to normalize. `--normalize-audio` /
-`--no-normalize-audio` skip the prompt; flags passed at start are remembered until
-you stop. `OMARCHY_SCREENRECORD_NORMALIZE=true|false` does the same for the whole
-session.
+louder recordings are asked whether to normalize. `OMARCHY_SCREENRECORD_NORMALIZE=true|false`
+skips the prompt for the whole session.
 
 If recording fails to start, rerun with `OMARCHY_SCREENRECORD_DEBUG=true` to
 collect a log at `/tmp/omarchy-screenrecord.log` worth attaching to a bug

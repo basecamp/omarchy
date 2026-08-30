@@ -332,27 +332,20 @@ two_pass=$(screenrecord_audio_filter yes "$(loudnorm_json -28.00)")
 [[ $two_pass == *measured_I=-28.00* ]] || fail "measured stats feed two-pass loudnorm" "$two_pass"
 pass "screenrecord_audio_filter always mutes the pop and only adds loudnorm when asked"
 
-NORMALIZE_AUDIO=true
 OMARCHY_SCREENRECORD_NORMALIZE=false
-[[ $(normalize_preference) == yes ]] || fail "invocation flags beat the env var"
-NORMALIZE_AUDIO=""
-OMARCHY_SCREENRECORD_NORMALIZE=false
-echo yes >"$NORMALIZE_FILE"
-[[ $(normalize_preference) == no ]] || fail "env var beats the start-time sidecar"
+[[ $(normalize_preference) == no ]] || fail "env false"
+OMARCHY_SCREENRECORD_NORMALIZE=true
+[[ $(normalize_preference) == yes ]] || fail "env true"
 unset OMARCHY_SCREENRECORD_NORMALIZE
-rm -f "$NORMALIZE_FILE"
-[[ $(normalize_preference) == ask ]] || fail "missing sidecar asks"
-NORMALIZE_AUDIO=true
-persist_normalize_preference
-[[ $(cat "$NORMALIZE_FILE") == yes ]] || fail "start --normalize-audio persists yes"
-NORMALIZE_AUDIO=false
-persist_normalize_preference
-[[ $(cat "$NORMALIZE_FILE") == no ]] || fail "start --no-normalize-audio persists no"
-NORMALIZE_AUDIO=""
-persist_normalize_preference
-[[ $(cat "$NORMALIZE_FILE") == ask ]] || fail "start without flags persists ask"
-rm -f "$NORMALIZE_FILE"
-pass "normalize_preference prefers flags, then env, then the start sidecar"
+[[ $(normalize_preference) == ask ]] || fail "unset env asks"
+pass "normalize_preference follows OMARCHY_SCREENRECORD_NORMALIZE"
+
+declare -f stop_screenrecording | awk '
+  /RECORDING_FILE/ && !seen { rec=NR; seen=1 }
+  /finalize_recording/ { fin=NR }
+  END { exit (rec && fin && rec < fin) ? 0 : 1 }
+' || fail "stop pins the recording path before finalize"
+pass "stop pins the recording path before finalize"
 
 cat >"$stub_bin/ffmpeg" <<'SH'
 #!/bin/bash
@@ -396,8 +389,6 @@ grep -q "volume=enable='lt(t,0.4)':volume=0" "$OMARCHY_TEST_FFMPEG_ARGS" || \
 pass "measure_loudness runs an audio-only first pass with the pop mute"
 
 unset OMARCHY_SCREENRECORD_NORMALIZE
-NORMALIZE_AUDIO=""
-rm -f "$NORMALIZE_FILE"
 
 : >"$OMARCHY_TEST_MENU_ARGS"
 export OMARCHY_TEST_LOUDNORM_JSON="$(loudnorm_json -14.20)"
@@ -461,13 +452,50 @@ pass "env false overrides the prompt"
 
 : >"$OMARCHY_TEST_MENU_ARGS"
 : >"$OMARCHY_TEST_FFMPEG_ARGS"
-NORMALIZE_AUDIO=true
+OMARCHY_SCREENRECORD_NORMALIZE=true
+export OMARCHY_TEST_LOUDNORM_JSON="$quiet_json"
 decide_normalize "$dummy_recording"
-[[ $SCREENRECORD_NORMALIZE == yes ]] || fail "flag true applies loudnorm"
-[[ -s $OMARCHY_TEST_FFMPEG_ARGS ]] && fail "flag true does not need a first pass" "$(cat "$OMARCHY_TEST_FFMPEG_ARGS")"
-[[ -s $OMARCHY_TEST_MENU_ARGS ]] && fail "flag true does not prompt" "$(cat "$OMARCHY_TEST_MENU_ARGS")"
-NORMALIZE_AUDIO=""
-pass "invocation flags override the prompt"
+[[ $SCREENRECORD_NORMALIZE == yes ]] || fail "env true applies loudnorm"
+[[ -s $OMARCHY_TEST_FFMPEG_ARGS ]] && fail "env true does not measure" "$(cat "$OMARCHY_TEST_FFMPEG_ARGS")"
+[[ -s $OMARCHY_TEST_MENU_ARGS ]] && fail "env true does not prompt" "$(cat "$OMARCHY_TEST_MENU_ARGS")"
+unset OMARCHY_SCREENRECORD_NORMALIZE
+pass "env true overrides the prompt"
+
+cat >"$stub_bin/omarchy-menu-select" <<'SH'
+#!/bin/bash
+
+sleep infinity
+SH
+chmod +x "$stub_bin/omarchy-menu-select"
+cat >"$stub_bin/omarchy-menu" <<'SH'
+#!/bin/bash
+
+printf '%s\n' "$@" >"$OMARCHY_TEST_MENU_CLOSE_ARGS"
+SH
+chmod +x "$stub_bin/omarchy-menu"
+export OMARCHY_TEST_MENU_CLOSE_ARGS="$tmp_dir/menu-close-args"
+: >"$OMARCHY_TEST_MENU_CLOSE_ARGS"
+NORMALIZE_PROMPT_TIMEOUT=1
+: >"$OMARCHY_TEST_MENU_ARGS"
+: >"$OMARCHY_TEST_FFMPEG_ARGS"
+export OMARCHY_TEST_LOUDNORM_JSON="$quiet_json"
+decide_normalize "$dummy_recording"
+[[ $SCREENRECORD_NORMALIZE == no ]] || fail "a timed-out prompt keeps original levels"
+[[ $(cat "$OMARCHY_TEST_MENU_CLOSE_ARGS") == close ]] ||
+  fail "a timed-out prompt dismisses the leftover menu" "$(cat "$OMARCHY_TEST_MENU_CLOSE_ARGS")"
+NORMALIZE_PROMPT_TIMEOUT=120
+rm -f "$stub_bin/omarchy-menu"
+cat >"$stub_bin/omarchy-menu-select" <<'SH'
+#!/bin/bash
+
+printf '%s\n' "$@" >"$OMARCHY_TEST_MENU_ARGS"
+if [[ ${OMARCHY_TEST_MENU_EXIT:-0} != 0 ]]; then
+  exit "$OMARCHY_TEST_MENU_EXIT"
+fi
+printf '%s\n' "${OMARCHY_TEST_MENU_REPLY-}"
+SH
+chmod +x "$stub_bin/omarchy-menu-select"
+pass "a hung normalize prompt times out instead of stranding stop"
 
 # --- the recording directory only gates starting ---
 

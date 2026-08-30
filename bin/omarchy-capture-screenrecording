@@ -2,7 +2,7 @@
 
 # omarchy:summary=Start or stop screen recording
 # omarchy:group=capture
-# omarchy:args=[--fullscreen] [--with-desktop-audio] [--with-microphone-audio] [--with-webcam] [--webcam-device=<device>] [--webcam-size=<small|medium|large>] [--resolution=<size>] [--normalize-audio] [--no-normalize-audio] [--stop-recording]
+# omarchy:args=[--fullscreen] [--with-desktop-audio] [--with-microphone-audio] [--with-webcam] [--webcam-device=<device>] [--webcam-size=<small|medium|large>] [--resolution=<size>] [--stop-recording]
 # omarchy:examples=omarchy screenrecord | omarchy capture screenrecording --with-desktop-audio
 # omarchy:aliases=omarchy screenrecord
 #
@@ -21,7 +21,6 @@
 # Env: OMARCHY_SCREENRECORD_NORMALIZE=true always applies loudnorm after stop;
 # false never does. Unset asks when integrated loudness is quieter than -18 LUFS
 # or louder than -11 LUFS.
-# --normalize-audio / --no-normalize-audio on start are remembered until stop.
 
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
 OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
@@ -34,11 +33,13 @@ WEBCAM_SIZE="medium"
 RESOLUTION=""
 FULLSCREEN="false"
 STOP_RECORDING="false"
-NORMALIZE_AUDIO=""
 RECORDING_FILE="/tmp/omarchy-screenrecord-filename"
 REGION_FILE="${XDG_RUNTIME_DIR:-/tmp}/omarchy-screenrecord-region"
-NORMALIZE_FILE="${XDG_RUNTIME_DIR:-/tmp}/omarchy-screenrecord-normalize"
 LOG_FILE=$([[ ${OMARCHY_SCREENRECORD_DEBUG:-false} == "true" ]] && echo "/tmp/omarchy-screenrecord.log" || echo "/dev/null")
+# Seconds to wait on the post-stop normalize prompt before keeping original
+# levels and dismissing the leftover dialog. Super+Space unstrands immediately
+# via the menu; this is for an unanswered prompt (walk-away or shell death).
+NORMALIZE_PROMPT_TIMEOUT=120
 
 # -14 LUFS is the typical target for YouTube, Spotify, and Amazon Music
 # -16 LUBS Apple Music
@@ -60,8 +61,6 @@ for arg in "$@"; do
   --webcam-size=*) WEBCAM_SIZE="${arg#*=}" ;;
   --resolution=*) RESOLUTION="${arg#*=}" ;;
   --fullscreen) FULLSCREEN="true" ;;
-  --normalize-audio) NORMALIZE_AUDIO="true" ;;
-  --no-normalize-audio) NORMALIZE_AUDIO="false" ;;
   --stop-recording) STOP_RECORDING="true" ;;
   esac
 done
@@ -158,49 +157,19 @@ select_capture_target() {
   echo "region:${BASH_REMATCH[3]}x${BASH_REMATCH[4]}+${BASH_REMATCH[1]}+${BASH_REMATCH[2]}"
 }
 
-persist_normalize_preference() {
-  local value=ask
-  if [[ $NORMALIZE_AUDIO == "true" ]]; then
-    value=yes
-  elif [[ $NORMALIZE_AUDIO == "false" ]]; then
-    value=no
-  fi
-  echo "$value" >"$NORMALIZE_FILE"
-}
-
-# Echoes yes, no, or ask. Start and stop are separate processes, so start-time
-# flags live in NORMALIZE_FILE until stop reads them.
+# Echoes yes, no, or ask from OMARCHY_SCREENRECORD_NORMALIZE.
 normalize_preference() {
-  if [[ $NORMALIZE_AUDIO == "true" ]]; then
-    echo yes
-    return
-  fi
-  if [[ $NORMALIZE_AUDIO == "false" ]]; then
-    echo no
-    return
-  fi
-
   case ${OMARCHY_SCREENRECORD_NORMALIZE:-} in
   true)
     echo yes
-    return
     ;;
   false)
     echo no
-    return
+    ;;
+  *)
+    echo ask
     ;;
   esac
-
-  local sidecar
-  sidecar=$(cat "$NORMALIZE_FILE" 2>/dev/null || true)
-  case $sidecar in
-  yes | no)
-    echo "$sidecar"
-    return
-    ;;
-  esac
-
-  echo ask
 }
 
 screenrecord_pop_filter() {
@@ -269,7 +238,7 @@ measure_loudness() {
 
 prompt_normalize_audio() {
   local input_i=$1
-  local prompt keep normalize selection
+  local prompt keep normalize selection status
   keep=$'\tKeep original levels\tas recorded'
   if awk -v i="$input_i" -v target="$LOUDNORM_I" 'BEGIN { exit (i < target) ? 0 : 1 }'; then
     prompt="Audio may be unintentionally quiet"
@@ -278,7 +247,13 @@ prompt_normalize_audio() {
     prompt="Audio may be unintentionally loud"
     normalize=$'\tNormalize\tlower to typical YouTube and Spotify volume'
   fi
-  selection=$(omarchy-menu-select "$prompt" "$keep" "$normalize" -- --width 560) || return 1
+  status=0
+  selection=$(timeout "$NORMALIZE_PROMPT_TIMEOUT" omarchy-menu-select "$prompt" "$keep" "$normalize" -- --width 560) || status=$?
+  if (( status == 124 )); then
+    omarchy-menu close >/dev/null 2>&1 || true
+    return 1
+  fi
+  (( status == 0 )) || return 1
   [[ $selection == Normalize* ]]
 }
 
@@ -373,7 +348,6 @@ start_screenrecording() {
 
   if kill -0 $pid 2>/dev/null; then
     echo "$filename" >"$RECORDING_FILE"
-    persist_normalize_preference
     toggle_screenrecording_indicator
   fi
 }
@@ -395,8 +369,9 @@ stop_screenrecording() {
     pkill -9 -f "^gpu-screen-recorder"
     omarchy-notification-send -u critical -t 5000 "Screen recording error" "Recording process had to be force-killed. Video may be corrupted."
   else
-    finalize_recording
-    local filename=$(cat "$RECORDING_FILE" 2>/dev/null)
+    local filename
+    filename=$(cat "$RECORDING_FILE" 2>/dev/null)
+    finalize_recording "$filename"
     echo "$filename"
     local preview="${filename%.mp4}-preview.png"
 
@@ -416,7 +391,7 @@ stop_screenrecording() {
     ) &
   fi
 
-  rm -f "$RECORDING_FILE" "$NORMALIZE_FILE"
+  rm -f "$RECORDING_FILE"
 }
 
 toggle_screenrecording_indicator() {
@@ -428,8 +403,7 @@ screenrecording_active() {
 }
 
 finalize_recording() {
-  local latest
-  latest=$(cat "$RECORDING_FILE" 2>/dev/null)
+  local latest=$1
   [[ -f $latest ]] || return
 
   # Re-encode only when the first GOP contains discardable warmup packets — stream copy can't
