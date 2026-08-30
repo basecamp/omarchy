@@ -1,6 +1,8 @@
 echo "Remove Omarchy 3 power udev rules that run a command out of a user home"
 
 rules_dir="${OMARCHY_UDEV_RULES_DIR:-/etc/udev/rules.d}"
+reload_needed_marker="${OMARCHY_UDEV_RELOAD_NEEDED_MARKER:-/var/lib/omarchy/migrations/1787946619-udev-reload-needed}"
+udev_control="${OMARCHY_UDEV_CONTROL:-/run/udev/control}"
 
 as_root() {
   if (( EUID == 0 )); then
@@ -78,19 +80,41 @@ rule_runs_from_home() {
   return 1
 }
 
+finish_pending_reload() {
+  # With no control socket there is no running udevd holding the deleted rule;
+  # the next daemon start reads the directory from disk. If a daemon is running,
+  # a failed reload must keep this migration pending so the in-memory root rule
+  # cannot outlive the per-user completion marker.
+  if [[ -e $udev_control ]] && ! as_root udevadm control --reload 2>/dev/null; then
+    echo "Could not reload udev after removing a vulnerable legacy rule. Ask an administrator to run omarchy-migrate." >&2
+    exit 1
+  fi
+
+  if ! as_root rm -f "$reload_needed_marker"; then
+    echo "Could not finish the legacy udev-rule repair. Ask an administrator to run omarchy-migrate." >&2
+    exit 1
+  fi
+}
+
+# Deleting the file and reloading the daemon are one repair. A prior run may
+# have removed the file and then failed before udevd accepted the new ruleset.
+if [[ -e $reload_needed_marker ]]; then
+  finish_pending_reload
+fi
+
 for legacy_rule in "99-power-profile.rules:omarchy-powerprofiles-set" "99-wifi-powersave.rules:omarchy-wifi-powersave"; do
   rule_file="$rules_dir/${legacy_rule%%:*}"
 
   if [[ -f $rule_file ]] && rule_runs_from_home "$rule_file" "${legacy_rule##*:}"; then
+    if ! as_root install -Dm644 /dev/null "$reload_needed_marker"; then
+      echo "Administrator privileges are required to remove the vulnerable legacy udev rule. Ask an administrator to run omarchy-migrate." >&2
+      exit 1
+    fi
     if ! as_root rm -f "$rule_file"; then
       echo "Administrator privileges are required to remove the vulnerable legacy udev rule. Ask an administrator to run omarchy-migrate." >&2
       exit 1
     fi
 
-    # Reload after each removal, not after the whole loop. If removing a later
-    # rule fails, udevd must not keep running one this migration already deleted.
-    # Best effort the way install/post-install/udev.sh is: a machine with no
-    # udevd to talk to has had the file removed, and the next boot reads fresh.
-    as_root udevadm control --reload 2>/dev/null || true
+    finish_pending_reload
   fi
 done

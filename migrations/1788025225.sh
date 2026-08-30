@@ -116,8 +116,8 @@ sudoers_hash_is_active() {
 # hand-written line anywhere in the file and it is not ours to delete.
 first_run_sudoers_is_generated() {
   local spec_pattern='^([^[:space:]]+) ALL=\(ALL\) NOPASSWD: (.+)$'
-  local marker_pattern='^/bin/rm -f /home/[^/]+/\.local/state/omarchy/first-run\.mode$'
-  local line user command generated_user=""
+  local marker_pattern='^/bin/rm -f /home/([^/]+)/\.local/state/omarchy/first-run\.mode$'
+  local line user command marker_user generated_user=""
   local seen_any=0 seen_marker=0 seen_spec=0
 
   while IFS= read -r line; do
@@ -161,6 +161,8 @@ first_run_sudoers_is_generated() {
     esac
 
     if [[ $command =~ $marker_pattern ]]; then
+      marker_user=${BASH_REMATCH[1]}
+      [[ $marker_user == "$generated_user" ]] || return 1
       seen_marker=1
       continue
     fi

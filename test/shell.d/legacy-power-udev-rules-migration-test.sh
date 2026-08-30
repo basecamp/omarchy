@@ -25,6 +25,10 @@ cat >"$test_dir/bin/udevadm" <<'STUB'
 #!/bin/bash
 
 printf 'udevadm %s\n' "$*" >>"$CALLS"
+if [[ -n ${FAIL_UDEV_RELOAD_ONCE_MARKER:-} && ! -e $FAIL_UDEV_RELOAD_ONCE_MARKER ]]; then
+  touch "$FAIL_UDEV_RELOAD_ONCE_MARKER"
+  exit 1
+fi
 STUB
 
 chmod +x "$test_dir/bin/"*
@@ -44,10 +48,13 @@ rules_dir="$test_dir/rules.d"
 home_dir="$test_dir/home"
 power_rule="$rules_dir/99-power-profile.rules"
 wifi_rule="$rules_dir/99-wifi-powersave.rules"
+reload_needed_marker="$test_dir/reload-needed"
+udev_control="$test_dir/udev-control"
 
 reset_machine() {
-  rm -rf "$rules_dir" "$home_dir"
+  rm -rf "$rules_dir" "$home_dir" "$reload_needed_marker" "$udev_control"
   mkdir -p "$rules_dir" "$home_dir"
+  touch "$udev_control"
 }
 
 run_migration() {
@@ -55,6 +62,8 @@ run_migration() {
 
   HOME="$home_dir" \
     OMARCHY_UDEV_RULES_DIR="$rules_dir" \
+    OMARCHY_UDEV_RELOAD_NEEDED_MARKER="$reload_needed_marker" \
+    OMARCHY_UDEV_CONTROL="$udev_control" \
     PATH="$test_dir/bin:$PATH" \
     bash -euo pipefail "$migration" >/dev/null
 }
@@ -117,6 +126,45 @@ run_migration
 (( $(reload_count) == 2 )) ||
   fail "migration reloads udev after each removal" "$(cat "$CALLS")"
 pass "migration removes both legacy rules and reloads after each one"
+
+# Removing the file and reloading the running daemon are one repair. If reload
+# fails, the durable marker must keep the migration pending even though the rule
+# has already disappeared from disk; a retry finishes that half before exiting.
+reset_machine
+write_vulnerable_wifi_rule
+reload_failure_seen="$test_dir/reload-failure-seen"
+rm -f "$reload_failure_seen"
+
+set +e
+FAIL_UDEV_RELOAD_ONCE_MARKER="$reload_failure_seen" run_migration
+reload_status=$?
+set -e
+
+(( reload_status != 0 )) || fail "migration fails when a running udevd cannot reload"
+[[ ! -e $wifi_rule && -e $reload_needed_marker ]] ||
+  fail "migration records a deleted rule whose daemon reload is still pending"
+pass "migration keeps a failed udev reload pending"
+
+run_migration
+
+[[ ! -e $reload_needed_marker ]] || fail "migration clears the reload marker after a successful retry"
+(( $(reload_count) == 1 )) ||
+  fail "migration retries the pending udev reload" "$(cat "$CALLS")"
+pass "migration retries and completes a previously failed udev reload"
+
+# A chroot or stopped daemon has no in-memory ruleset to update. An absent udev
+# control socket is therefore a completed removal, not a permanent migration
+# failure waiting for a daemon that is not running.
+reset_machine
+rm -f "$udev_control"
+write_vulnerable_wifi_rule
+run_migration
+
+[[ ! -e $wifi_rule && ! -e $reload_needed_marker ]] ||
+  fail "migration completes the disk-only repair when udevd is not running"
+(( $(reload_count) == 0 )) ||
+  fail "migration does not contact an absent udevd" "$(cat "$CALLS")"
+pass "migration permits environments with no running udev daemon"
 
 # The second run is what every other account on the machine does, and what a
 # user gets from running omarchy-migrate again.
@@ -219,6 +267,8 @@ write_vulnerable_wifi_rule
 set +e
 HOME="$home_dir" \
   OMARCHY_UDEV_RULES_DIR="$rules_dir" \
+  OMARCHY_UDEV_RELOAD_NEEDED_MARKER="$reload_needed_marker" \
+  OMARCHY_UDEV_CONTROL="$udev_control" \
   PATH="$test_dir/failing-bin:$PATH" \
   bash -euo pipefail "$migration" >"$test_dir/elevation-failure.out" 2>&1
 failure_status=$?
@@ -250,6 +300,8 @@ chmod +x "$test_dir/failing-bin/sudo"
 set +e
 HOME="$home_dir" \
   OMARCHY_UDEV_RULES_DIR="$rules_dir" \
+  OMARCHY_UDEV_RELOAD_NEEDED_MARKER="$reload_needed_marker" \
+  OMARCHY_UDEV_CONTROL="$udev_control" \
   PATH="$test_dir/failing-bin:$test_dir/bin:$PATH" \
   bash -euo pipefail "$migration" >"$test_dir/partial-failure.out" 2>&1
 partial_status=$?
@@ -257,6 +309,7 @@ set -e
 
 (( partial_status != 0 )) || fail "migration fails when the second rule cannot be removed"
 [[ ! -e $power_rule && -e $wifi_rule ]] || fail "migration preserves the expected partial-removal state"
+[[ -e $reload_needed_marker ]] || fail "migration records the second rule removal as still pending"
 (( $(reload_count) == 1 )) ||
   fail "migration reloads udev before a later removal failure" "$(cat "$CALLS")"
 pass "a later removal failure cannot leave an already-deleted rule loaded"

@@ -220,6 +220,21 @@ run_migration
   fail "migration leaves a generated file extended for another user byte for byte"
 pass "migration does not delete an administrator grant that uses a generated command"
 
+# The oldest installer variant expanded the same $USER into the sudoers account
+# and the /home/<user>/ cleanup path. A different account in the path proves the
+# line was edited or hand-written and makes the whole file administrator-owned.
+reset_machine
+cat >"$first_run" <<'EOF'
+alice ALL=(ALL) NOPASSWD: /bin/rm -f /home/bob/.local/state/omarchy/first-run.mode
+EOF
+before=$(cat "$first_run")
+run_migration
+
+[[ -e $first_run ]] || fail "migration keeps a first-run cleanup path for another account"
+[[ $(cat "$first_run") == "$before" ]] ||
+  fail "migration leaves the cross-account first-run file byte for byte"
+pass "migration requires the cleanup path account to match the granted account"
+
 # Nothing in this file ties it to Omarchy's first run: no self-cleanup line.
 reset_machine
 cat >"$first_run" <<'EOF'

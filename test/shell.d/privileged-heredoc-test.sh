@@ -121,8 +121,8 @@ strip_escapes() {
 # path. Because both halves come from one pass over one pattern, the Nth \001
 # is the Nth name, so a token can be judged against the right variable.
 mask_and_names() {
-  local text="$1" masked="" body name guard=0
-  local -a names=()
+  local text="$1" masked="" body inner tail name guard=0 nested_masked
+  local -a names=() nested_scan=() nested_names=()
 
   # Normalize backtick substitution into $( ) so one pattern covers both.
   while ((guard++ < 64)) && [[ $text =~ ^([^\`]*)\`([^\`]*)\`(.*)$ ]]; do
@@ -135,20 +135,35 @@ mask_and_names() {
     masked+="${BASH_REMATCH[1]}"$'\001'
     body=${BASH_REMATCH[2]}
     text=${BASH_REMATCH[4]}
+    nested_masked=""
+    nested_names=()
 
     if [[ $body == \(* ]]; then
       name=$COMMAND_SUBSTITUTION
     elif [[ $body == \{* ]]; then
-      body=${body:1:${#body}-2}
+      inner=${body:1:${#body}-2}
       # ${name}, ${name:-default}, ${name//a/b}, ${#name}, ${!name} all start
       # with the name once the decorations are stripped.
-      body=${body#[\#!]}
-      if [[ $body =~ ^([A-Za-z_][A-Za-z0-9_]*) ]]; then
+      inner=${inner#[\#!]}
+      if [[ $inner =~ ^([A-Za-z_][A-Za-z0-9_]*) ]]; then
         name=${BASH_REMATCH[1]}
-      elif [[ $body =~ ^[0-9@*#?$!-]$ ]]; then
+        tail=${inner#"$name"}
+      elif [[ $inner =~ ^[0-9@*#?$!-] ]]; then
         name="shell-parameter"
+        tail=${inner:1}
       else
         name=$COMMAND_SUBSTITUTION
+        tail=$inner
+      fi
+
+      # The shell expands the operator payload too. Keep it as a synthetic
+      # adjacent token so its placeholders stay aligned with their names while
+      # the outer expansion remains independently classifiable. Without this,
+      # ${target:-$HOME/path} is consumed as only `target` and hides HOME.
+      if [[ $tail =~ $EXPANSION_RE || $tail == *'`'* ]]; then
+        mapfile -t nested_scan < <(mask_and_names "$tail")
+        nested_masked=${nested_scan[0]}
+        nested_names=("${nested_scan[@]:1}")
       fi
     else
       name=${body%%\[*}
@@ -156,6 +171,10 @@ mask_and_names() {
     fi
 
     names+=("$name")
+    if ((${#nested_names[@]} > 0)); then
+      masked+=" $nested_masked"
+      names+=("${nested_names[@]}")
+    fi
   done
 
   printf '%s\n' "$masked$text"
@@ -469,25 +488,24 @@ privileged_destination() {
       unresolved+=("$dest")
     fi
 
-    # One hop: a later copy of this same expression into a root-owned path.
-    if [[ $dest == *'$'* ]]; then
-      follow=$start_index
-      while ((follow < ${#scan_lines[@]})); do
-        hop=${scan_lines[follow]}
-        follow=$((follow + 1))
-        [[ $hop =~ (^|[[:space:]])(install|cp|mv)([[:space:]]|$) ]] || continue
-        line_carries_destination "$hop" "$dest" || continue
-        while IFS= read -r hop_dest; do
-          [[ $hop_dest == $'\002elevated' ]] && continue
-          [[ $hop_dest == "$dest" ]] && continue
-          hop_dest=$(resolve_value "$hop_dest")
-          if starts_with_privileged_prefix "$hop_dest"; then
-            printf '%s' "$hop_dest"
-            return 0
-          fi
-        done < <(command_destinations "$hop")
-      done
-    fi
+    # One hop: a later copy of this same destination into a root-owned path.
+    # Literal scratch files need tracing just as much as variable destinations.
+    follow=$start_index
+    while ((follow < ${#scan_lines[@]})); do
+      hop=${scan_lines[follow]}
+      follow=$((follow + 1))
+      [[ $hop =~ (^|[[:space:]])(install|cp|mv)([[:space:]]|$) ]] || continue
+      line_carries_destination "$hop" "$dest" || continue
+      while IFS= read -r hop_dest; do
+        [[ $hop_dest == $'\002elevated' ]] && continue
+        [[ $hop_dest == "$dest" ]] && continue
+        hop_dest=$(resolve_value "$hop_dest")
+        if starts_with_privileged_prefix "$hop_dest"; then
+          printf '%s' "$hop_dest"
+          return 0
+        fi
+      done < <(command_destinations "$hop")
+    done
   done < <(command_destinations "$line")
 
   # An elevated write whose destination cannot be resolved counts as privileged:
@@ -572,7 +590,7 @@ inside_same_line_arithmetic() {
 scan_file() {
   local file="$1" display="${2:-$1}"
   local -a lines=()
-  local index lineno line scan rest raw operator match prefix guard slot delim candidate candidate_delim body_start
+  local index lineno line command scan rest raw operator match prefix guard slot delim candidate candidate_delim body_start
   local body_text unescaped destination destination_command body_line masked_line token name
   local declared_paths annotation look shown_paths shown_plain count next slots terminated
   local hd_re='(<<-?)[[:space:]]*("[A-Za-z_][A-Za-z0-9_]*"|'"'"'[A-Za-z_][A-Za-z0-9_]*'"'"'|[A-Za-z_][A-Za-z0-9_]*)'
@@ -588,9 +606,21 @@ scan_file() {
 
     [[ $line =~ ^[[:space:]]*# ]] && continue
 
+    # A backslash-escaped newline is removed before Bash parses the command, so
+    # a pipeline consumer can appear on the next physical line before heredoc
+    # body collection begins: `cat <<EOF | \\` then `sudo tee /etc/file`.
+    # Join those physical lines first. A bare newline after `|` instead starts
+    # the heredoc body and is handled after the terminator below.
+    command=$line
+    while [[ $command == *\\ ]] && ((index < ${#lines[@]})); do
+      command=${command%\\}
+      command+=" ${lines[index]}"
+      index=$((index + 1))
+    done
+
     # Herestrings are not heredocs. Blanking them keeps <<<"$x" from reading as
     # a heredoc while preserving every other offset on the line.
-    scan=${line//<<</   }
+    scan=${command//<<</   }
     [[ $scan == *"<<"* ]] || continue
 
     # Collect this line's heredoc delimiters in order. Quoted ones are safe by
@@ -661,7 +691,7 @@ scan_file() {
       unescaped=$(strip_escapes "$body_text")
       [[ $unescaped =~ $EXPANSION_RE || $unescaped == *'`'* ]] || continue
 
-      destination_command=$(continued_heredoc_command "$line" "$index" lines)
+      destination_command=$(continued_heredoc_command "$command" "$index" lines)
       destination=$(privileged_destination "$destination_command" "$index" lines) || continue
 
       # Sort the expansions into the ones that bake a path into the file and
@@ -880,12 +910,16 @@ fixture_flags route-variable-path.sh \
   "flags an elevated write whose destination is a variable resolving under /etc"
 fixture_flags route-install-hop.sh \
   "flags a scratch file that install(1) later copies into /usr"
+fixture_flags route-install-hop-literal.sh \
+  "flags a literal scratch file that install(1) later copies into /etc"
 fixture_flags route-install-hop-braced.sh \
   "flags a scratch-file hop whose variable uses braces at the privileged copy"
 fixture_flags route-install-hop-alias.sh \
   "flags a scratch-file hop carried through an alias variable"
 fixture_flags route-continued-pipeline.sh \
   "flags a privileged pipeline command continued after the heredoc terminator"
+fixture_flags route-prebody-escaped-pipeline.sh \
+  "flags an escaped-line pipeline consumer before the heredoc body"
 fixture_flags route-dash-delimiter.sh "flags an indented <<- heredoc"
 fixture_flags route-append-redirect.sh "flags an append redirect into /etc"
 fixture_flags arithmetic-left-shift-before-heredoc.sh \
@@ -894,6 +928,9 @@ fixture_flags arithmetic-left-shift-before-heredoc.sh \
 fixture_flags plain-heredoc-indented-pseudo-delimiter.sh \
   "an indented delimiter does not terminate a plain heredoc" \
   "path-shaped expansions: HOME"
+fixture_flags nested-parameter-default.sh \
+  "a nested parameter default cannot hide a baked home path" \
+  "path-shaped expansions are HOME"
 
 mapfile -t dd_destinations < <(command_destinations \
   'sudo dd if=/tmp/input bs=4M status=none of=/etc/omarchy/image')
