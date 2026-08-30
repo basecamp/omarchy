@@ -37,6 +37,7 @@ pipewire
 pipewire-alsa
 pipewire-jack
 pipewire-pulse
+pipewire-zeroconf
 qt6-wayland
 snapper
 sof-firmware
