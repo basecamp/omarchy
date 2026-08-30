@@ -75,3 +75,39 @@ set -e
 grep -q '^before-fail$' "$calls" || fail "migration runner started failing migration"
 ! grep -q '^after-fail$' "$calls" || fail "migration runner stops failing migration under strict mode"
 pass "migration runner does not mark failed migrations complete"
+
+deferred_root="$test_tmp/deferred-omarchy"
+deferred_home="$test_tmp/deferred-home"
+deferred_calls="$test_tmp/deferred-calls"
+mkdir -p "$deferred_root/migrations" "$deferred_home"
+
+cat >"$deferred_root/migrations/100-deferred.sh" <<'SH'
+echo deferred >>"$TEST_CALLS"
+exit 75
+SH
+cat >"$deferred_root/migrations/200-after.sh" <<'SH'
+echo after >>"$TEST_CALLS"
+SH
+
+HOME="$deferred_home" \
+OMARCHY_PATH="$deferred_root" \
+TEST_CALLS="$deferred_calls" \
+  "$ROOT/bin/omarchy-migrate" >"$test_tmp/deferred.out"
+
+grep -q '^deferred$' "$deferred_calls" || fail "migration runner starts a deferred migration"
+grep -q '^after$' "$deferred_calls" || fail "migration runner continues after a deferred migration"
+[[ ! -f $deferred_home/.local/state/omarchy/migrations/100-deferred.sh ]] ||
+  fail "migration runner leaves a deferred migration pending"
+[[ -f $deferred_home/.local/state/omarchy/migrations/200-after.sh ]] ||
+  fail "migration runner records a later successful migration"
+grep -q 'was deferred and will be retried later' "$test_tmp/deferred.out" ||
+  fail "migration runner reports a deferred migration"
+pass "migration runner leaves exit-75 migrations pending and continues the queue"
+
+HOME="$deferred_home" OMARCHY_PATH="$deferred_root" \
+  "$ROOT/bin/omarchy-migrate" --pending >"$test_tmp/deferred-pending.out"
+grep -q '^100-deferred\.sh$' "$test_tmp/deferred-pending.out" ||
+  fail "migration runner still reports a deferred migration as pending"
+! grep -q '^200-after\.sh$' "$test_tmp/deferred-pending.out" ||
+  fail "migration runner does not report the completed later migration as pending"
+pass "migration runner reports only the deferred migration as pending"

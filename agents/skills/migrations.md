@@ -126,6 +126,7 @@ New migration format:
 - Start with an `echo` describing what the migration does.
 - Use `$OMARCHY_PATH` to reference the Omarchy directory.
 - Be idempotent. Check existing state before changing it.
+- Exit 75 when a temporary condition must leave the migration pending without blocking later migrations. `omarchy-migrate` continues the queue, does not write that migration's completion marker, and retries it on a later run. Other non-zero statuses still abort the migration run.
 - Use helper commands such as `omarchy-cmd-present`, `omarchy-cmd-missing`,
   `omarchy-pkg-add`, `omarchy-pkg-drop`, `omarchy-pkg-present`, and
   `omarchy-pkg-missing` when appropriate.

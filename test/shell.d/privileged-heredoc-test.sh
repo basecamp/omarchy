@@ -299,20 +299,18 @@ mentions_user_writable_root() {
 # while the $HOME token stands alone.
 classify_expansion() {
   local masked="$1" name="$2" head literal piece
-  local path_shaped=1 token_has_slash=1
+  local path_shape=""
 
   head=$(literal_head "$masked")
   head=${head%%$'\001'*}
   literal=$(literal_value "$name")
 
-  [[ $masked == */* ]] && token_has_slash=0
+  [[ $masked == */* ]] && path_shape+="token "
+  in_list "$name" "${USER_WRITABLE_VARS[@]}" && path_shape+="user-root "
+  [[ -v VARS_TAINTED[$name] ]] && path_shape+="tainted "
+  [[ -n $literal && $literal == */* ]] && path_shape+="literal "
 
-  ((token_has_slash == 0)) && path_shaped=0
-  in_list "$name" "${USER_WRITABLE_VARS[@]}" && path_shaped=0
-  [[ -v VARS_TAINTED[$name] ]] && path_shaped=0
-  [[ -n $literal && $literal == */* ]] && path_shaped=0
-
-  ((path_shaped == 0)) || return 1
+  [[ -n $path_shape ]] || return 1
 
   # A path expansion anchored under a root-owned prefix cannot introduce a
   # user-writable location, so it does not need declaring.
@@ -334,8 +332,7 @@ classify_expansion() {
   # A name assigned a user root anywhere in the file is never rescued: the
   # assignment that won may be the packaged path it was later reassigned away
   # from, and the rescue would then clear it on evidence it no longer holds.
-  if ((token_has_slash != 0)) && ! in_list "$name" "${USER_WRITABLE_VARS[@]}" &&
-    ! [[ -v VARS_TAINTED[$name] ]] && [[ -n $literal ]]; then
+  if [[ $path_shape == "literal " ]]; then
     for piece in $literal; do
       piece=$(literal_head "$piece")
       if mentions_user_writable_root "$piece"; then
@@ -361,8 +358,12 @@ command_destinations() {
   # contain spaces anywhere this check runs.
   line=${line//\"/ }
   line=${line//\'/ }
-  # Detach redirects from their targets so "> /etc/x" and ">/etc/x" agree.
+  # Preserve append redirects before detaching redirect operators from their
+  # targets, so ">> /etc/x" does not become two ">" tokens whose first target
+  # is the second operator.
+  line=${line//>>/$'\003'}
   line=${line//>/ > }
+  line=${line//$'\003'/" >> "}
 
   read -r -a tokens <<<"$line"
 
@@ -373,7 +374,7 @@ command_destinations() {
 
     in_list "$token" "${ELEVATORS[@]}" && elevated=0
 
-    if [[ $token == ">" ]]; then
+    if [[ $token == ">" || $token == ">>" ]]; then
       target=${tokens[index]:-}
       index=$((index + 1))
       [[ -n $target && $target != "&"* && $target != /dev/* ]] && printf '%s\n' "$target"
@@ -386,7 +387,7 @@ command_destinations() {
     fi
 
     if in_list "$token" "${WRITE_COMMANDS[@]}"; then
-      if [[ $token == "tee" || $token == "dd" ]]; then
+      if [[ $token == "tee" ]]; then
         # Every non-flag argument to tee is a destination.
         scan=$index
         while ((scan < ${#tokens[@]})); do
@@ -397,7 +398,8 @@ command_destinations() {
           [[ $target == /dev/* ]] && continue
           printf '%s\n' "$target"
         done
-      else
+      elif [[ $token != "dd" ]]; then
+        # dd destinations are expressed only by of= operands, handled above.
         copy_like=0
       fi
       continue
@@ -485,13 +487,45 @@ count_placeholders() {
   printf '%s' "$count"
 }
 
+normalize_path_set() {
+  local value="$1"
+  local -a names=()
+
+  if [[ $value == "none" ]]; then
+    printf 'none'
+    return 0
+  fi
+
+  IFS=, read -ra names <<<"$value"
+  mapfile -t names < <(printf '%s\n' "${names[@]}" | sort -u)
+  (
+    IFS=,
+    printf '%s' "${names[*]}"
+  )
+}
+
+inside_same_line_arithmetic() {
+  local prefix="$1" opens=0 closes=0
+
+  while [[ $prefix == *"(("* ]]; do
+    opens=$((opens + 1))
+    prefix=${prefix#*"(("}
+  done
+  while [[ $prefix == *"))"* ]]; do
+    closes=$((closes + 1))
+    prefix=${prefix#*"))"}
+  done
+
+  ((opens > closes))
+}
+
 scan_file() {
   local file="$1" display="${2:-$1}"
   local -a lines=()
-  local index lineno line scan rest raw guard slot delim candidate
+  local index lineno line scan rest raw operator match prefix guard slot delim candidate candidate_delim body_start
   local body_text unescaped destination body_line masked_line token name
-  local declared_paths annotation look shown_paths shown_plain count next slots
-  local hd_re='<<-?[[:space:]]*("[A-Za-z_][A-Za-z0-9_]*"|'"'"'[A-Za-z_][A-Za-z0-9_]*'"'"'|[A-Za-z_][A-Za-z0-9_]*)'
+  local declared_paths annotation look shown_paths shown_plain count next slots terminated
+  local hd_re='(<<-?)[[:space:]]*("[A-Za-z_][A-Za-z0-9_]*"|'"'"'[A-Za-z_][A-Za-z0-9_]*'"'"'|[A-Za-z_][A-Za-z0-9_]*)'
 
   mapfile -t lines <"$file"
   collect_vars lines
@@ -512,12 +546,21 @@ scan_file() {
     # Collect this line's heredoc delimiters in order. Quoted ones are safe by
     # construction but still have to be tracked, or their bodies would be
     # parsed as code.
-    local -a delims=() quoted=()
+    local -a delims=() quoted=() strip_tabs=()
     rest=$scan
     guard=0
     while ((guard++ < 8)) && [[ $rest =~ $hd_re ]]; do
-      raw=${BASH_REMATCH[1]}
-      rest=${rest#*"${BASH_REMATCH[0]}"}
+      match=${BASH_REMATCH[0]}
+      operator=${BASH_REMATCH[1]}
+      raw=${BASH_REMATCH[2]}
+      prefix=${rest%%"$match"*}
+      rest=${rest#*"$match"}
+
+      # `(( value << shift ))` and `$(( value << shift ))` are arithmetic, not
+      # heredocs. Without this guard the shift count becomes a phantom delimiter
+      # and can consume every real heredoc below it.
+      inside_same_line_arithmetic "$prefix" && continue
+
       if [[ $raw == \"*\" || $raw == \'*\' ]]; then
         delims+=("${raw:1:${#raw}-2}")
         quoted+=(0)
@@ -525,6 +568,7 @@ scan_file() {
         delims+=("$raw")
         quoted+=(1)
       fi
+      [[ $operator == "<<-" ]] && strip_tabs+=(1) || strip_tabs+=(0)
     done
 
     ((${#delims[@]} > 0)) || continue
@@ -532,13 +576,33 @@ scan_file() {
     for slot in "${!delims[@]}"; do
       delim=${delims[slot]}
       local -a body=()
+      body_start=$index
+      terminated=1
 
       while ((index < ${#lines[@]})); do
         candidate=${lines[index]}
         index=$((index + 1))
-        [[ ${candidate#"${candidate%%[![:space:]]*}"} == "$delim" ]] && break
+        candidate_delim=$candidate
+        if ((strip_tabs[slot] == 1)); then
+          while [[ $candidate_delim == $'\t'* ]]; do
+            candidate_delim=${candidate_delim#$'\t'}
+          done
+        fi
+        if [[ $candidate_delim == "$delim" ]]; then
+          terminated=0
+          break
+        fi
         body+=("$candidate")
       done
+
+      # A valid shell source cannot contain an unterminated heredoc. If this
+      # candidate has no terminator it was syntax such as a multi-line arithmetic
+      # shift that the lightweight matcher could not classify; resume scanning
+      # below it instead of swallowing the rest of the file.
+      if ((terminated != 0)); then
+        index=$body_start
+        continue
+      fi
 
       # A quoted delimiter cannot expand anything.
       ((quoted[slot] == 1)) || continue
@@ -621,7 +685,7 @@ scan_file() {
         continue
       fi
 
-      if [[ $declared_paths != "$shown_paths" ]]; then
+      if [[ $(normalize_path_set "$declared_paths") != $(normalize_path_set "$shown_paths") ]]; then
         FINDINGS+=("$display:$lineno: heredoc annotation declares paths=$declared_paths but the path-shaped expansions are $shown_paths
     Writing to: $destination
     Every expansion used as a path outside a root-owned prefix has to be named,
@@ -761,6 +825,19 @@ fixture_flags route-variable-path.sh \
 fixture_flags route-install-hop.sh \
   "flags a scratch file that install(1) later copies into /usr"
 fixture_flags route-dash-delimiter.sh "flags an indented <<- heredoc"
+fixture_flags route-append-redirect.sh "flags an append redirect into /etc"
+fixture_flags arithmetic-left-shift-before-heredoc.sh \
+  "an arithmetic left shift does not swallow a later privileged heredoc" \
+  "path-shaped expansions: HOME"
+fixture_flags plain-heredoc-indented-pseudo-delimiter.sh \
+  "an indented delimiter does not terminate a plain heredoc" \
+  "path-shaped expansions: HOME"
+
+mapfile -t dd_destinations < <(command_destinations \
+  'sudo dd if=/tmp/input bs=4M status=none of=/etc/omarchy/image')
+[[ ${dd_destinations[0]:-} == "/etc/omarchy/image" && ${dd_destinations[1]:-} == $'\002elevated' && ${#dd_destinations[@]} == 2 ]] ||
+  fail "dd emits only its of= destination" "$(printf '%q\n' "${dd_destinations[@]:-}")"
+pass "dd emits only its of= destination"
 
 # Negatives.
 fixture_passes safe-quoted-delimiter.sh "a quoted delimiter passes"
@@ -771,6 +848,8 @@ fixture_passes safe-no-expansion.sh \
 fixture_passes safe-runtime-expansion.sh \
   "an escaped \\\$VAR left for a root daemon to expand passes"
 fixture_passes safe-annotated.sh "a declared, reasoned exemption passes"
+fixture_passes safe-annotated-reordered-paths.sh \
+  "path declarations compare as sets rather than traversal order"
 fixture_passes safe-root-anchored.sh \
   "a path expansion anchored under /etc is truthfully declared paths=none"
 fixture_passes safe-herestring.sh "a herestring is not mistaken for a heredoc"
