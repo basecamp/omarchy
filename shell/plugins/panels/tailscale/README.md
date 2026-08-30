@@ -11,6 +11,7 @@ Native Omarchy bar widget for Tailscale.
 - Browse machines from `tailscale status --json`
 - Copy a machine's Tailscale IP, host name, or DNS name
 - Send files to a machine with Taildrop, when the tailnet allows file sharing
+- Send the clipboard contents to a machine with Taildrop (an image goes over as itself, files copied in a file manager as themselves, anything else as a small text file; password-manager copies are refused)
 
 ## Keyboard shortcuts
 
@@ -22,6 +23,7 @@ Inside the panel:
 - `n`: copy selected peer name
 - `d`: copy selected peer DNS name
 - `s`: send files to selected peer
+- `v`: send clipboard contents to selected peer
 - `t`: toggle Tailscale
 - `r`: refresh status
 - `esc`: close
@@ -29,7 +31,7 @@ Inside the panel:
 ## Requirements
 
 - `tailscale` CLI on `PATH`
-- `wl-copy` for clipboard copy actions
+- `wl-copy` and `wl-paste` for the clipboard actions
 - Taildrop enabled for the tailnet, to send files
 
 ## Receiving files
@@ -37,8 +39,9 @@ Inside the panel:
 Incoming Taildrop files are saved to `~/Downloads` by the
 `omarchy-tailscale-receive` service, which announces each one with a
 notification (an image preview when the file is an image, and a click to open
-it). The Tailscale service install enables it; `omarchy tailscale receive`
-runs the same loop by hand.
+it). A clipboard text drop is announced as click-to-copy instead, putting the
+text straight on this machine's clipboard. The Tailscale service install
+enables it; `omarchy tailscale receive` runs the same loop by hand.
 
 ## Icon
 

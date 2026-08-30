@@ -98,3 +98,44 @@ pass "taildrop receive ignores downloads that arrive while it waits"
 [[ -z $(ls -A "$downloads/.omarchy-taildrop") ]] ||
   fail "taildrop receive empties its staging directory" "$(ls -A "$downloads/.omarchy-taildrop")"
 pass "taildrop receive empties its staging directory"
+
+# A clipboard drop from omarchy-tailscale-send-clipboard announces itself as
+# click-to-copy instead of click-to-open, but still lands in downloads.
+printf 'copied text' >"$WORKDIR/outbox/clipboard-123456.txt"
+receive 1 env
+
+notifications=$(<"$WORKDIR/notifications")
+
+[[ -f $downloads/clipboard-123456.txt ]] ||
+  fail "a clipboard drop still lands in downloads" "$(ls "$downloads")"
+pass "a clipboard drop still lands in downloads"
+
+grep -qF -- "Received clipboard Click to copy" <<<"$notifications" ||
+  fail "a clipboard drop announces click-to-copy" "$notifications"
+grep -qF -- "-u critical" <<<"$notifications" ||
+  fail "a clipboard drop announcement waits to be answered" "$notifications"
+pass "a clipboard drop announces click-to-copy"
+
+grep -qF -- "--exec bash -c wl-copy --trim-newline <\"\$1\" copy $downloads/clipboard-123456.txt" <<<"$notifications" ||
+  fail "answering a clipboard drop copies the delivered file" "$notifications"
+pass "answering a clipboard drop copies the delivered file"
+
+grep -qF -- "copied text" <<<"$notifications" &&
+  fail "a clipboard drop announcement does not echo the contents" "$notifications"
+pass "a clipboard drop announcement does not echo the contents"
+
+# A renamed clash still reads as a clipboard drop; an oversized one is
+# announced as the plain file it has effectively become.
+printf 'second copy' >"$WORKDIR/outbox/clipboard-123456.txt"
+head -c 300000 /dev/zero | tr '\0' 'x' >"$WORKDIR/outbox/clipboard-654321.txt"
+receive 2 env
+
+notifications=$(<"$WORKDIR/notifications")
+
+grep -qF -- "copy $downloads/clipboard-123456-1.txt" <<<"$notifications" ||
+  fail "a renamed clipboard drop keeps its click-to-copy" "$notifications"
+pass "a renamed clipboard drop keeps its click-to-copy"
+
+grep -q "^Received clipboard-654321.txt " <<<"$notifications" ||
+  fail "an oversized clipboard drop is announced as a plain file" "$notifications"
+pass "an oversized clipboard drop is announced as a plain file"

@@ -145,6 +145,13 @@ Item {
     Quickshell.execDetached(["omarchy-tailscale-send", target])
   }
 
+  function sendClipboard(peer) {
+    if (!canSendFiles(peer)) return
+    var target = peerAddress(peer)
+    if (target === "") return
+    Quickshell.execDetached(["omarchy-tailscale-send-clipboard", target])
+  }
+
   function refresh(forceAccounts) {
     if (installed) {
       refreshStatusAndAccounts(forceAccounts === true)
