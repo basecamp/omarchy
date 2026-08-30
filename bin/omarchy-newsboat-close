@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# omarchy:summary=Close running Newsboat readers before a confirmed import
+# omarchy:hidden=true
+
+set -euo pipefail
+
+if (($# != 0)); then
+  echo "Usage: omarchy-newsboat-close" >&2
+  exit 2
+fi
+
+attempts=${NEWSBOAT_CLOSE_ATTEMPTS:-50}
+if [[ ! $attempts =~ ^[0-9]+$ ]] || (( attempts < 1 || attempts > 100 )); then
+  echo "Invalid Newsboat close attempt count" >&2
+  exit 2
+fi
+
+running_status=0
+pgrep -u "$UID" -x newsboat >/dev/null 2>&1 || running_status=$?
+if (( running_status == 1 )); then
+  exit 0
+elif (( running_status != 0 )); then
+  echo "Could not inspect running Newsboat readers" >&2
+  exit 1
+fi
+
+# A terminated Newsboat lets its terminal wrapper exit naturally, removing only
+# Feeds from the tiled workspace while leaving the agent conversation running.
+pkill -TERM -u "$UID" -x newsboat >/dev/null 2>&1 || true
+
+for ((attempt = 0; attempt < attempts; attempt++)); do
+  sleep 0.1
+  running_status=0
+  pgrep -u "$UID" -x newsboat >/dev/null 2>&1 || running_status=$?
+  if (( running_status == 1 )); then
+    exit 0
+  elif (( running_status != 0 )); then
+    echo "Could not inspect running Newsboat readers" >&2
+    exit 1
+  fi
+done
+
+echo "Could not close Feeds safely. Close it manually, then confirm again." >&2
+exit 1

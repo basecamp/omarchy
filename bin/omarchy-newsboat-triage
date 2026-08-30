@@ -64,8 +64,15 @@ elif (( confirm_status != 0 )); then
   exit 1
 fi
 
+# Keep Feeds beside the agent while the person reviews the briefing. Once they
+# approve a read-state change, close the reader before revalidating and importing.
+if (( read_count > 0 )); then
+  omarchy-newsboat-close
+fi
+
 # The unread edition may change while the person is answering the separate
-# confirmation window. Revalidate it immediately before Newsboat mutates state.
+# confirmation window. Revalidate it after Feeds closes and immediately before
+# Newsboat mutates state.
 if ! result=$(python3 "$OMARCHY_PATH/bin/omarchy-newsboat-internal.py" \
   triage-prepare "$snapshot_file" "$cache_file" "$urls_file" "$expected_read" "$expected_leave" "$kept_json" "$import_file"); then
   exit 1
@@ -73,7 +80,7 @@ fi
 
 if (( read_count > 0 )); then
   if ! newsboat -q -c "$cache_file" -u "$urls_file" -I "$import_file" >/dev/null; then
-    echo "Could not update the inbox. Close Feeds if it is still open, then confirm again." >&2
+    echo "Could not update the inbox. The briefing remains available; try the confirmed command again." >&2
     exit 1
   fi
 fi

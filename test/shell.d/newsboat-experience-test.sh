@@ -34,6 +34,8 @@ newsboat_log="$test_tmp/newsboat"
 unread_state="$test_tmp/unread-state"
 import_log="$test_tmp/read-import"
 confirm_log="$test_tmp/confirm"
+close_log="$test_tmp/close"
+mutation_log="$test_tmp/mutation"
 
 export FEEDS_TEST_NOTIFICATION_LOG="$notification_log"
 export FEEDS_TEST_ADD_LOG="$add_log"
@@ -45,6 +47,8 @@ export FEEDS_TEST_IMPORT_LOG="$import_log"
 export NEWSBOAT_BRIEF_STATE_DIR="$test_tmp/briefs"
 export NEWSBOAT_CONFIRM_STATE_DIR="$test_tmp/confirmations"
 export FEEDS_TEST_CONFIRM_LOG="$confirm_log"
+export FEEDS_TEST_CLOSE_LOG="$close_log"
+export FEEDS_TEST_MUTATION_LOG="$mutation_log"
 
 write_mock omarchy-pkg-missing '[[ ${FEEDS_TEST_PACKAGE_MISSING:-0} == 1 ]]'
 write_mock omarchy-notification-send 'printf "%s\n" "$*" >>"$FEEDS_TEST_NOTIFICATION_LOG"; exit "${FEEDS_TEST_NOTIFICATION_STATUS:-0}"'
@@ -64,6 +68,11 @@ else
 fi
 '
 write_mock pgrep '[[ ${FEEDS_TEST_NEWSBOAT_RUNNING:-0} == 1 ]]'
+write_mock omarchy-newsboat-close '
+printf "close\n" >>"$FEEDS_TEST_CLOSE_LOG"
+printf "close\n" >>"$FEEDS_TEST_MUTATION_LOG"
+exit "${FEEDS_TEST_CLOSE_STATUS:-0}"
+'
 write_mock wl-paste 'printf "%s" "${FEEDS_TEST_CLIPBOARD:-}"'
 write_mock curl '
 output=""
@@ -173,6 +182,7 @@ printf "%s\n" "$*" >>"$FEEDS_TEST_NEWSBOAT_LOG"
 if [[ $* == *" -I "* ]]; then
   while (($#)); do
     if [[ $1 == "-I" ]]; then
+      printf "import\n" >>"$FEEDS_TEST_MUTATION_LOG"
       cp -- "$2" "$FEEDS_TEST_IMPORT_LOG"
       exit "${FEEDS_TEST_IMPORT_STATUS:-0}"
     fi
@@ -272,16 +282,22 @@ brief_id=$(sed -n 's/.*omarchy-newsboat-triage \([A-Za-z0-9_-]*\) READ LEAVE.*/\
 pass "Feeds gives the selected Omarchy agent a focused, confirmation-only briefing"
 
 export FEEDS_TEST_CONFIRM_STATUS=1
+: >"$close_log"
+: >"$mutation_log"
 "$ROOT/bin/omarchy-newsboat-triage" "$brief_id" 1 1 A001 >"$test_tmp/declined-triage-output"
 unset FEEDS_TEST_CONFIRM_STATUS
 [[ ! -e $import_log ]] || fail "declining the separate confirmation changes Newsboat read state"
+[[ ! -s $close_log ]] || fail "declining the separate confirmation closes Feeds"
 [[ -f $NEWSBOAT_BRIEF_STATE_DIR/brief.$brief_id ]] || fail "declining the separate confirmation consumes the briefing"
 grep -Fq 'No articles were marked read; the briefing remains available.' "$test_tmp/declined-triage-output" || fail "declined triage has no clear result for the agent"
 grep -Fq 'Mark 1 articles as read and leave 1 unread?' "$confirm_log" || fail "triage does not repeat the exact effect outside the agent terminal"
 pass "Feeds requires separate human approval after the agent conversation"
 
+: >"$close_log"
+: >"$mutation_log"
 "$ROOT/bin/omarchy-newsboat-triage" "$brief_id" 1 1 A001 >"$test_tmp/triage-output"
 [[ $(<"$import_log") == 'guid-two' ]] || fail "confirmed triage marks only articles the agent did not keep"
+[[ $(sed -n '1p' "$mutation_log") == close && $(sed -n '2p' "$mutation_log") == import ]] || fail "confirmed triage closes Feeds immediately before import"
 grep -Fq '1 marked read · 1 left for you' "$notification_log" || fail "confirmed triage reports exact applied counts"
 grep -Fq '1 marked read; 1 left unread.' "$test_tmp/triage-output" || fail "confirmed triage reports its result to the agent"
 [[ ! -e $NEWSBOAT_BRIEF_STATE_DIR/brief.$brief_id ]] || fail "a confirmation snapshot cannot be applied twice"
@@ -325,6 +341,20 @@ fi
 [[ ! -e $import_log ]] || fail "mismatched confirmation counts never reach Newsboat"
 pass "Feeds verifies the numbers shown to the user before changing read state"
 
+: >"$close_log"
+: >"$mutation_log"
+export FEEDS_TEST_CLOSE_STATUS=1
+if "$ROOT/bin/omarchy-newsboat-triage" "$brief_id" 1 1 A001 >/dev/null 2>&1; then
+  fail "triage continues when Feeds cannot close"
+fi
+unset FEEDS_TEST_CLOSE_STATUS
+[[ $(<"$close_log") == close ]] || fail "confirmed triage never attempts to close Feeds"
+if grep -Fxq import "$mutation_log"; then
+  fail "a failed Feeds close still reaches Newsboat import"
+fi
+[[ -f $NEWSBOAT_BRIEF_STATE_DIR/brief.$brief_id ]] || fail "a failed Feeds close consumes the confirmation snapshot"
+pass "Feeds fails closed when the running reader cannot stop"
+
 export FEEDS_TEST_IMPORT_STATUS=1
 if "$ROOT/bin/omarchy-newsboat-triage" "$brief_id" 1 1 A001 >/dev/null 2>&1; then
   fail "triage reports success when Newsboat rejects the read import"
@@ -359,7 +389,10 @@ grep -Fq 'auto-reload no' "$ROOT/default/newsboat/omarchy.conf" || fail "Feeds d
 grep -Fq 'prepopulate-query-feeds yes' "$ROOT/default/newsboat/omarchy.conf" || fail "Feeds prepares the Inbox at startup"
 grep -Fq 'feedlist-title-format "  Feeds · finite edition"' "$ROOT/default/newsboat/omarchy.conf" || fail "Feeds names the finite reader experience"
 grep -Fq 'macro b edit-urls "omarchy-newsboat-handoff brief"' "$ROOT/default/newsboat/omarchy.conf" || fail "Feeds exposes a query-safe whole-edition agent briefing"
-grep -F 'macro b ' "$ROOT/default/newsboat/omarchy.conf" | grep -Fq '; quit --' || fail "Feeds closes before a confirmed briefing imports read state"
+if grep -F 'macro b ' "$ROOT/default/newsboat/omarchy.conf" | grep -Fq '; quit --'; then
+  fail "Feeds closes before the person can review the briefing beside it"
+fi
+grep -Fq 'omarchy-newsboat-close' "$ROOT/bin/omarchy-newsboat-triage" || fail "confirmed triage does not close Feeds before import"
 grep -Fq 'state_dir="${NEWSBOAT_BRIEF_STATE_DIR:-/tmp/omarchy-newsboat-$UID/briefs}"' "$ROOT/bin/omarchy-newsboat-brief" || fail "Feeds keeps confirmation state in the agent-writable private temp area"
 grep -Fq 'runtime_dir=/tmp' "$ROOT/bin/omarchy-newsboat-triage" || fail "Feeds applies confirmation without requiring broader agent filesystem access"
 grep -Fq 'omarchy-newsboat-confirm" triage' "$ROOT/bin/omarchy-newsboat-triage" || fail "Feeds trusts the agent prompt as its only triage confirmation"
