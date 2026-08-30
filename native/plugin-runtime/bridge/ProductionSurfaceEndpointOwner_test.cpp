@@ -7,6 +7,7 @@
 
 #include <QQuickWindow>
 
+#include <array>
 #include <cmath>
 #include <limits>
 #include <optional>
@@ -105,6 +106,88 @@ private:
 
 public:
   std::size_t send_calls = 0;
+};
+
+class MultiplexPort final : public channel::ProductionSurfaceSessionPort {
+public:
+  MultiplexPort() {
+    for (std::size_t index = 0; index < endpoints.size(); ++index) {
+      if (!canonical.empty())
+        canonical += ',';
+      const auto name = "surface" + std::to_string(index);
+      canonical += "\"" + name +
+                   "\":{\"keyboardFocus\":false,\"maximumFramesPerSecond\":60,"
+                   "\"maximumHeight\":64,\"maximumWidth\":128,"
+                   "\"role\":\"desktop-overlay\"}";
+    }
+    canonical = '{' + canonical + '}';
+  }
+
+  std::optional<channel::ProductionSurfaceDescription>
+  describe(std::string_view name) const noexcept override {
+    ++describe_calls;
+    for (std::size_t index = 0; index < endpoints.size(); ++index)
+      if (name == "surface" + std::to_string(index))
+        return description(index);
+    return {};
+  }
+
+  bool attach(const channel::ProductionSurfaceDescription &expected,
+              host::SurfaceEndpoint &candidate) noexcept override {
+    const auto index =
+        expected.key.id == 0 ? endpoints.size() : expected.key.id - 1;
+    if (index >= endpoints.size() || expected != description(index) ||
+        endpoints[index] != nullptr)
+      return false;
+    endpoints[index] = &candidate;
+    ++attach_calls;
+    return true;
+  }
+
+  bool detach(const channel::ProductionSurfaceDescription &expected,
+              const host::SurfaceEndpoint &candidate) noexcept override {
+    const auto index =
+        expected.key.id == 0 ? endpoints.size() : expected.key.id - 1;
+    if (index >= endpoints.size() || endpoints[index] != &candidate)
+      return false;
+    endpoints[index] = nullptr;
+    ++detach_calls;
+    return true;
+  }
+
+  bool arm_surface_intent(const channel::ProductionSurfaceDescription &,
+                          std::uint64_t) noexcept override {
+    return false;
+  }
+
+  void clear_surface_intent_eligibility(
+      const channel::ProductionSurfaceDescription &) noexcept override {}
+
+  permissions::ActivationBinding exact_binding = binding();
+  mutable std::size_t describe_calls = 0;
+  std::size_t attach_calls = 0;
+  std::size_t detach_calls = 0;
+
+private:
+  channel::ProductionSurfaceDescription description(std::size_t index) const {
+    const auto name = "surface" + std::to_string(index);
+    return {.binding = exact_binding,
+            .key = {.id = index + 1, .generation = exact_binding.generation},
+            .session_nonce = 47,
+            .plugin_id = "org.example.owner",
+            .surface_name = name,
+            .canonical_surfaces = canonical};
+  }
+
+  bool
+  send_render_packet_impl(const channel::ProductionSurfaceDescription &expected,
+                          const wire::EnvelopeHeader &, std::vector<std::byte>,
+                          std::vector<host::OwnedFd>) noexcept override {
+    return expected.key.id > 0 && expected.key.id <= endpoints.size();
+  }
+
+  std::array<const host::SurfaceEndpoint *, 8> endpoints{};
+  std::string canonical;
 };
 
 class Inspection final : public surface_host::InspectionAuthority {
@@ -261,6 +344,75 @@ void duplicate_key_and_cross_slot_remote_reuse_fail() {
           "one RemotePluginSurface was reused across exact slots");
 }
 
+void key_and_expanded_pixel_bounds_are_exact() {
+  Inspection inspection;
+  Clock clock;
+  QQuickWindow window;
+  bridge::RemotePluginSurface remote;
+  place(remote, window);
+  Port oversized_port;
+  auto oversized_owner =
+      bridge::ProductionSurfaceEndpointOwnerTestAccess::create(
+          inspection, clock, oversized_port.description.binding, 1,
+          oversized_port);
+  const QString oversized_key(513, QLatin1Char('k'));
+  auto oversized = published(oversized_port, oversized_key);
+  require(bridge::ProductionSurfaceEndpointOwnerTestAccess::attach(
+              *oversized_owner, oversized, oversized_key, remote) ==
+              bridge::ProductionEndpointAttachResult::rejected,
+          "513-character opaque key crossed the manager boundary");
+
+  Port exact_port;
+  auto exact_owner = bridge::ProductionSurfaceEndpointOwnerTestAccess::create(
+      inspection, clock, exact_port.description.binding, 1, exact_port);
+  bridge::RemotePluginSurface exact_remote;
+  place(exact_remote, window);
+  const QString exact_key(512, QLatin1Char('k'));
+  auto exact = published(exact_port, exact_key);
+  require(bridge::ProductionSurfaceEndpointOwnerTestAccess::attach(
+              *exact_owner, exact, exact_key, exact_remote) ==
+              bridge::ProductionEndpointAttachResult::attached,
+          "512-character opaque key was not accepted exactly");
+  bridge::ProductionSurfaceEndpointOwnerTestAccess::close_all(*exact_owner);
+
+  require(!bridge::ProductionSurfaceEndpointOwnerTestAccess::geometry(
+              4096, 4096, 2.0),
+          "DPR-expanded allocation exceeded the pixel dimension bound");
+}
+
+void eighth_endpoint_is_accepted_and_ninth_is_rejected() {
+  MultiplexPort port;
+  Inspection inspection;
+  Clock clock;
+  auto owner = bridge::ProductionSurfaceEndpointOwnerTestAccess::create(
+      inspection, clock, port.exact_binding, 1, port);
+  QQuickWindow window;
+  std::vector<std::unique_ptr<bridge::RemotePluginSurface>> remotes;
+  for (std::size_t index = 0; index < 9; ++index) {
+    auto remote = std::make_unique<bridge::RemotePluginSurface>();
+    place(*remote, window);
+    const auto name = "surface" + std::to_string(index);
+    const auto key = QStringLiteral("opaque-") + QString::number(index);
+    auto exact = bridge::ProductionSurfaceEndpointOwnerTestAccess::published(
+        key, port.exact_binding, name, 1);
+    const auto result =
+        bridge::ProductionSurfaceEndpointOwnerTestAccess::attach(*owner, exact,
+                                                                 key, *remote);
+    require(result == (index < 8
+                           ? bridge::ProductionEndpointAttachResult::attached
+                           : bridge::ProductionEndpointAttachResult::rejected),
+            "live endpoint count bound was not exact");
+    remotes.push_back(std::move(remote));
+  }
+  require(bridge::ProductionSurfaceEndpointOwnerTestAccess::count(*owner) ==
+                  8 &&
+              port.attach_calls == 8,
+          "owner did not retain exactly eight endpoints");
+  bridge::ProductionSurfaceEndpointOwnerTestAccess::close_all(*owner);
+  require(port.detach_calls == 8,
+          "bounded endpoint set did not close before session teardown");
+}
+
 void teardown_replacement_and_remote_destruction_are_exact() {
   Inspection inspection;
   Clock clock;
@@ -341,6 +493,8 @@ void run_production_surface_endpoint_owner_tests() {
   trusted_geometry_is_derived_and_retryable();
   invalid_geometry_and_context_fail_without_ownership();
   duplicate_key_and_cross_slot_remote_reuse_fail();
+  key_and_expanded_pixel_bounds_are_exact();
+  eighth_endpoint_is_accepted_and_ninth_is_rejected();
   teardown_replacement_and_remote_destruction_are_exact();
   failed_endpoint_attach_is_transactional();
 }

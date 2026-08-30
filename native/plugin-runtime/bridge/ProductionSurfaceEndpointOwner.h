@@ -148,6 +148,8 @@ public:
   count(const ProductionSurfaceEndpointOwner &owner) noexcept;
   [[nodiscard]] static std::optional<Geometry>
   geometry(const RemotePluginSurface &surface) noexcept;
+  [[nodiscard]] static std::optional<Geometry>
+  geometry(qreal width, qreal height, qreal device_pixel_ratio) noexcept;
 };
 #endif
 

@@ -31,14 +31,8 @@ struct TrustedSurfaceGeometry final {
 
 enum class GeometryResult : std::uint8_t { ready, not_ready, rejected };
 
-GeometryResult trusted_geometry(const RemotePluginSurface &surface_item,
+GeometryResult trusted_geometry(qreal width, qreal height, qreal dpr,
                                 TrustedSurfaceGeometry &output) noexcept {
-  const auto *window = surface_item.window();
-  if (window == nullptr)
-    return GeometryResult::not_ready;
-
-  const qreal width = surface_item.width();
-  const qreal height = surface_item.height();
   if (!std::isfinite(width) || !std::isfinite(height) || width < 0 ||
       height < 0)
     return GeometryResult::rejected;
@@ -49,7 +43,6 @@ GeometryResult trusted_geometry(const RemotePluginSurface &surface_item,
       height > surface::kMaximumPixelDimension)
     return GeometryResult::rejected;
 
-  const qreal dpr = window->effectiveDevicePixelRatio();
   if (!std::isfinite(dpr) || dpr <= 0)
     return GeometryResult::rejected;
   const double scaled = static_cast<double>(dpr) * kDprScaleDenominator;
@@ -80,6 +73,15 @@ GeometryResult trusted_geometry(const RemotePluginSurface &surface_item,
       .dpr_denominator = reduced_denominator,
   };
   return GeometryResult::ready;
+}
+
+GeometryResult trusted_geometry(const RemotePluginSurface &surface_item,
+                                TrustedSurfaceGeometry &output) noexcept {
+  const auto *window = surface_item.window();
+  return window == nullptr
+             ? GeometryResult::not_ready
+             : trusted_geometry(surface_item.width(), surface_item.height(),
+                                window->effectiveDevicePixelRatio(), output);
 }
 
 } // namespace
@@ -198,6 +200,19 @@ ProductionSurfaceEndpointOwnerTestAccess::geometry(
     const RemotePluginSurface &surface) noexcept {
   TrustedSurfaceGeometry geometry;
   if (trusted_geometry(surface, geometry) != GeometryResult::ready)
+    return std::nullopt;
+  return Geometry{.logical_width = geometry.logical_width,
+                  .logical_height = geometry.logical_height,
+                  .dpr_numerator = geometry.dpr_numerator,
+                  .dpr_denominator = geometry.dpr_denominator};
+}
+
+std::optional<ProductionSurfaceEndpointOwnerTestAccess::Geometry>
+ProductionSurfaceEndpointOwnerTestAccess::geometry(
+    qreal width, qreal height, qreal device_pixel_ratio) noexcept {
+  TrustedSurfaceGeometry geometry;
+  if (trusted_geometry(width, height, device_pixel_ratio, geometry) !=
+      GeometryResult::ready)
     return std::nullopt;
   return Geometry{.logical_width = geometry.logical_width,
                   .logical_height = geometry.logical_height,
