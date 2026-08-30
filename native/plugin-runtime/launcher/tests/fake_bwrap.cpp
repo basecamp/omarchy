@@ -26,6 +26,12 @@ int integer(std::string_view value) {
 } // namespace
 
 int main(int argc, char **argv) {
+  if (argc < 1 || argv[0] == nullptr)
+    fail();
+  const std::string_view invocation(argv[0]);
+  const auto separator = invocation.find_last_of('/');
+  const auto mode = invocation.substr(
+      separator == std::string_view::npos ? 0 : separator + 1);
   int status_fd = -1;
   int barrier_fd = -1;
   std::string worker;
@@ -45,20 +51,21 @@ int main(int argc, char **argv) {
     fail();
   }
 
-#if FAKE_DUPLICATE_STATUS
-  const std::string status =
-      "{\"child-pid\":" + std::to_string(getpid()) +
-      ",\"child\\u002dpid\":" + std::to_string(getpid()) + "}\n";
-#elif FAKE_STRING_STATUS
-  const std::string status =
-      "{\"child-pid\":\"" + std::to_string(getpid()) + "\"}\n";
-#elif FAKE_EXITED_STATUS
-  const std::string status =
-      "{\"child-pid\":" + std::to_string(getpid()) + ",\"exit-code\":0}\n";
-#else
-  const std::string status = "{\"future\":{\"ignored\":true},\"child-pid\":" +
-                             std::to_string(getpid()) + "}\n";
-#endif
+  std::string status;
+  if (mode == "omarchy-plugin-fake-bwrap") {
+    status = "{\"future\":{\"ignored\":true},\"child-pid\":" +
+             std::to_string(getpid()) + "}\n";
+  } else if (mode == "omarchy-plugin-duplicate-status-bwrap") {
+    status = "{\"child-pid\":" + std::to_string(getpid()) +
+             ",\"child\\u002dpid\":" + std::to_string(getpid()) + "}\n";
+  } else if (mode == "omarchy-plugin-string-status-bwrap") {
+    status = "{\"child-pid\":\"" + std::to_string(getpid()) + "\"}\n";
+  } else if (mode == "omarchy-plugin-exited-status-bwrap") {
+    status =
+        "{\"child-pid\":" + std::to_string(getpid()) + ",\"exit-code\":0}\n";
+  } else {
+    fail();
+  }
   if (write(status_fd, status.data(), status.size()) !=
       static_cast<ssize_t>(status.size())) {
     fail();

@@ -136,6 +136,7 @@ milliseconds_remaining(std::chrono::steady_clock::time_point deadline) {
 
 [[nodiscard]] bool trusted_executable(std::string_view path,
                                       bool require_root_owner,
+                                      bool follow_test_symlink,
                                       std::string &error) {
   const std::filesystem::path candidate(path);
   if (!candidate.is_absolute() || candidate.lexically_normal() != candidate) {
@@ -143,7 +144,10 @@ milliseconds_remaining(std::chrono::steady_clock::time_point deadline) {
     return false;
   }
   struct stat metadata{};
-  if (lstat(candidate.c_str(), &metadata) < 0 || !S_ISREG(metadata.st_mode) ||
+  const int inspected = follow_test_symlink
+                            ? stat(candidate.c_str(), &metadata)
+                            : lstat(candidate.c_str(), &metadata);
+  if (inspected < 0 || !S_ISREG(metadata.st_mode) ||
       (metadata.st_mode & 0111) == 0 ||
       (metadata.st_mode & (S_IWGRP | S_IWOTH | S_ISUID | S_ISGID)) != 0 ||
       (require_root_owner && metadata.st_uid != 0)) {
@@ -1372,11 +1376,11 @@ bool Supervisor::prerequisites(Deadline deadline, std::string &error) const {
     error = "packaged executable selection changed";
     return false;
   }
-  if (!trusted_executable(
-          implementation_->bwrap_path, implementation_->packaged_selection,
-          error) ||
+  if (!trusted_executable(implementation_->bwrap_path,
+                          implementation_->packaged_selection,
+                          !implementation_->packaged_selection, error) ||
       !trusted_executable(implementation_->worker_path,
-                          implementation_->packaged_selection, error) ||
+                          implementation_->packaged_selection, false, error) ||
       !kernel_prerequisites(error) ||
       !implementation_->resource_scope->probe(deadline, error) ||
       !implementation_->resource_scope->prepare_cleanup(deadline, error) ||
