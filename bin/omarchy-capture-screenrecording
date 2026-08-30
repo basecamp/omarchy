@@ -323,11 +323,6 @@ start_screenrecording() {
   local capture_args=()
   local target
 
-  if [[ ! -d $OUTPUT_DIR ]]; then
-    omarchy-notification-send -u critical -t 3000 "Screen recording directory does not exist: $OUTPUT_DIR"
-    return 1
-  fi
-
   # Opt-in path for HDR, external-GPU monitors, and window capture (all things
   # the portal backend supports and the kms backend doesn't). Default flow uses
   # slurp + the kms backend, which avoids the EGL DMA-BUF modifier import
@@ -467,7 +462,12 @@ if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
     stop_screenrecording
   elif [[ $STOP_RECORDING == "true" ]]; then
     exit 1
-  else
+  elif [[ -d $OUTPUT_DIR ]]; then
     start_screenrecording || cleanup_webcam
+  else
+    # Only starting needs the directory; stopping still has to finalize a
+    # recording whose directory went away mid-capture.
+    omarchy-notification-send -u critical -t 3000 "Screen recording directory does not exist: $OUTPUT_DIR"
+    exit 1
   fi
 fi

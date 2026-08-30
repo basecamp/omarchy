@@ -468,3 +468,30 @@ decide_normalize "$dummy_recording"
 [[ -s $OMARCHY_TEST_MENU_ARGS ]] && fail "flag true does not prompt" "$(cat "$OMARCHY_TEST_MENU_ARGS")"
 NORMALIZE_AUDIO=""
 pass "invocation flags override the prompt"
+
+# --- the recording directory only gates starting ---
+
+cat >"$stub_bin/pgrep" <<'SH'
+#!/bin/bash
+
+exit 1
+SH
+chmod +x "$stub_bin/pgrep"
+
+missing_dir="$tmp_dir/gone"
+
+: >"$OMARCHY_TEST_NOTIFICATION_ARGS"
+if OMARCHY_SCREENRECORD_DIR="$missing_dir" "$ROOT/bin/omarchy-capture-screenrecording"; then
+  fail "starting into a missing recording directory reports failure"
+fi
+grep -Fq "Screen recording directory does not exist: $missing_dir" "$OMARCHY_TEST_NOTIFICATION_ARGS" ||
+  fail "starting into a missing recording directory names the directory" "$(cat "$OMARCHY_TEST_NOTIFICATION_ARGS")"
+pass "starting into a missing recording directory fails instead of reporting success"
+
+: >"$OMARCHY_TEST_NOTIFICATION_ARGS"
+OMARCHY_SCREENRECORD_DIR="$missing_dir" "$ROOT/bin/omarchy-capture-screenrecording" --stop-recording || true
+[[ -s $OMARCHY_TEST_NOTIFICATION_ARGS ]] &&
+  fail "stopping does not complain about the recording directory" "$(cat "$OMARCHY_TEST_NOTIFICATION_ARGS")"
+pass "a missing recording directory does not block stopping"
+
+rm -f "$stub_bin/pgrep"
