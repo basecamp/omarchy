@@ -1053,6 +1053,12 @@ void product_session_routes_two_surfaces_over_one_launch() {
   product->start();
   await([&] { return product->state() == host::SessionState::running; },
         "product session did not start");
+  channel::PluginSessionTestAccess::set_surface_attach_fault(
+      *product, channel::SurfaceAttachFault::after_router);
+  require(product->attach("barWidget", first_correlations, first).status ==
+                  channel::SurfaceAttachStatus::allocation_failed &&
+              product->surface_count() == 0,
+          "surface attach fault retained a router registration");
   require(product->attach("missing", first_correlations, first).status ==
               channel::SurfaceAttachStatus::undeclared_surface,
           "undeclared manifest surface attached");
@@ -1586,6 +1592,18 @@ void production_root_is_the_composed_authority_path() {
       channel::ProductionPluginRuntimeRootTestAccess::live_generation(*root);
   require(original_live && original_live->generation() == 1,
           "composed root did not retain exact G1 live authority");
+  const auto g1_surface = root->surface_session().describe("barWidget");
+  require(g1_surface && g1_surface->binding.generation == 1 &&
+              g1_surface->key ==
+                  surface::SurfaceKey{.id = 1, .generation = 1} &&
+              g1_surface->plugin_id == "org.example.status" &&
+              g1_surface->surface_name == "barWidget" &&
+              !g1_surface->canonical_surfaces.empty() &&
+              !root->surface_session().describe("BarWidget"),
+          "root surface port did not expose the exact G1 declaration");
+  Endpoint stale_g1_endpoint;
+  require(root->surface_session().attach(*g1_surface, stale_g1_endpoint),
+          "G1 surface endpoint did not attach");
 
   std::atomic<bool> revoke_returned = false;
   channel::PermissionRevokeApplyResult optional;
@@ -1618,6 +1636,18 @@ void production_root_is_the_composed_authority_path() {
     const auto current = root->session_binding();
     return current && current->generation == 2;
   }, "optional revoke did not produce one running G2 session");
+  const auto g2_surface = root->surface_session().describe("barWidget");
+  require(g2_surface && g2_surface->binding.generation == 2 &&
+              g2_surface->key ==
+                  surface::SurfaceKey{.id = 1, .generation = 2} &&
+              g2_surface->key != g1_surface->key,
+          "replacement session retained the stale surface generation");
+  Endpoint endpoint;
+  require(root->surface_session().detach(*g1_surface, stale_g1_endpoint) &&
+              root->surface_session().attach(*g2_surface, endpoint) &&
+              root->surface_session().detach(*g2_surface, endpoint) &&
+              !root->surface_session().detach(*g2_surface, endpoint),
+          "root surface port did not own exact attach/detach identity");
   {
     std::scoped_lock lock(probe->mutex);
     require(probe->calls == 1,

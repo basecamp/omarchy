@@ -52,7 +52,7 @@ AttachResult MultiSurfaceRouter::attach(
 }
 
 bool MultiSurfaceRouter::detach(surface::SurfaceKey key,
-                                const SurfaceEndpoint &endpoint) {
+                                const SurfaceEndpoint &endpoint) noexcept {
   if (key.id == 0 || key.generation != launch_generation_) {
     return false;
   }
@@ -71,7 +71,7 @@ bool MultiSurfaceRouter::detach(surface::SurfaceKey key,
   return true;
 }
 
-void MultiSurfaceRouter::detachAll() { registrations_.clear(); }
+void MultiSurfaceRouter::detachAll() noexcept { registrations_.clear(); }
 
 RouteResult
 MultiSurfaceRouter::route(OwnedAuthenticatedRenderMessage message) {

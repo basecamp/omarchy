@@ -42,14 +42,40 @@ RemotePluginSurface::RemotePluginSurface(QQuickItem *parent)
     : QQuickPaintedItem(parent) {
   setAntialiasing(false);
   setOpaquePainting(false);
-  setAcceptedMouseButtons(Qt::LeftButton);
+  setAcceptedMouseButtons(Qt::LeftButton | Qt::RightButton | Qt::MiddleButton |
+                          Qt::BackButton | Qt::ForwardButton);
 }
 
-void RemotePluginSurface::bindHostPointerRouter(HostPointerRouter &router) {
+RemotePluginSurface::~RemotePluginSurface() {
+  auto *observer = std::exchange(lifetime_observer_, nullptr);
+  if (observer != nullptr)
+    observer->remote_surface_destroying();
+}
+
+bool RemotePluginSurface::bindLifetimeObserver(
+    RemoteSurfaceLifetimeObserver &observer) {
+  if (lifetime_observer_ != nullptr)
+    return false;
+  lifetime_observer_ = &observer;
+  return true;
+}
+
+void RemotePluginSurface::unbindLifetimeObserver(
+    RemoteSurfaceLifetimeObserver &observer) noexcept {
+  if (lifetime_observer_ == &observer)
+    lifetime_observer_ = nullptr;
+}
+
+bool RemotePluginSurface::bindHostPointerRouter(
+    HostPointerRouter &router) noexcept {
+  if (host_pointer_router_ != nullptr)
+    return false;
   host_pointer_router_ = &router;
+  return true;
 }
 
-void RemotePluginSurface::unbindHostPointerRouter(HostPointerRouter &router) {
+void RemotePluginSurface::unbindHostPointerRouter(
+    HostPointerRouter &router) noexcept {
   if (host_pointer_router_ == &router)
     host_pointer_router_ = nullptr;
 }
@@ -63,7 +89,7 @@ bool RemotePluginSurface::bindHostInputRegionRouter(
 }
 
 void RemotePluginSurface::unbindHostInputRegionRouter(
-    HostInputRegionRouter &router) {
+    HostInputRegionRouter &router) noexcept {
   if (host_input_region_router_ == &router) {
     host_input_region_router_ = nullptr;
     resetInputRegions();
@@ -119,17 +145,25 @@ void RemotePluginSurface::routeHostPointerEvent(QMouseEvent &event,
                          .application_synthesized = application_synthesized}));
 }
 
-void RemotePluginSurface::bindTransport(
-    std::shared_ptr<AuthenticatedInputTransport> transport) {
-  if (transport_ != nullptr || state_.has_value()) {
+bool RemotePluginSurface::bindTransport(
+    std::shared_ptr<AuthenticatedInputTransport> transport) noexcept {
+  if (transport_ != nullptr || state_.has_value() || transport == nullptr ||
+      !transport->connected()) {
     if (transport != nullptr)
       transport->disconnect();
-    fail(InspectionFailure::invalid_lifecycle, true);
-    return;
+    return false;
   }
   transport_ = std::move(transport);
-  if (transport_ == nullptr || !transport_->connected())
-    fail(InspectionFailure::disconnected, true);
+  return true;
+}
+
+void RemotePluginSurface::unbindTransport(
+    const std::shared_ptr<AuthenticatedInputTransport> &transport) noexcept {
+  if (transport_ != transport)
+    return;
+  if (transport_ != nullptr)
+    transport_->disconnect();
+  transport_.reset();
 }
 
 bool RemotePluginSurface::configure(

@@ -65,8 +65,8 @@ public:
 
   // Identity checking prevents a stale owner from detaching a replacement.
   [[nodiscard]] bool detach(surface::SurfaceKey key,
-                            const SurfaceEndpoint &endpoint);
-  void detachAll();
+                            const SurfaceEndpoint &endpoint) noexcept;
+  void detachAll() noexcept;
 
   [[nodiscard]] RouteResult route(OwnedAuthenticatedRenderMessage message);
   [[nodiscard]] std::size_t size() const noexcept;

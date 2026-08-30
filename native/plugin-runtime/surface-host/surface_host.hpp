@@ -135,6 +135,7 @@ private:
   MonotonicClock &clock_;
   std::vector<surface::TransportedInputRegion> input_regions_;
   bool input_region_router_bound_ = false;
+  bool input_transport_bound_ = false;
   std::uint64_t focus_sequence_ = 0;
   std::uint64_t last_admitted_frame_ns_ = 0;
   bool has_admitted_frame_ = false;

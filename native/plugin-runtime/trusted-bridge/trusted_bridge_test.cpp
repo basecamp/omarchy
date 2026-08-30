@@ -89,7 +89,7 @@ public:
 void test_quick_item_pointer_delivery() {
   bridge::RemotePluginSurface item;
   RecordingPointerRouter router;
-  item.bindHostPointerRouter(router);
+  require(item.bindHostPointerRouter(router), "pointer router did not bind");
   QMouseEvent press(QEvent::MouseButtonPress, QPointF(12, 34),
                     QPointF(12, 34), QPointF(12, 34), Qt::LeftButton, Qt::LeftButton,
                     Qt::NoModifier, Qt::MouseEventNotSynthesized);
@@ -127,7 +127,7 @@ void test_router_unbind_is_idempotent_and_identity_checked() {
   bridge::RemotePluginSurface item;
   RecordingPointerRouter first;
   RecordingPointerRouter unrelated;
-  item.bindHostPointerRouter(first);
+  require(item.bindHostPointerRouter(first), "pointer router did not bind");
 
   item.unbindHostPointerRouter(unrelated);
   QMouseEvent routed(QEvent::MouseButtonPress, QPointF(5, 6), QPointF(5, 6),
@@ -152,7 +152,7 @@ void test_router_destruction_orders() {
   bridge::RemotePluginSurface item;
   {
     RecordingPointerRouter router;
-    item.bindHostPointerRouter(router);
+    require(item.bindHostPointerRouter(router), "pointer router did not bind");
     item.unbindHostPointerRouter(router);
   }
   QMouseEvent after_router(QEvent::MouseButtonPress, QPointF(1, 1),
@@ -164,7 +164,7 @@ void test_router_destruction_orders() {
   auto sink = std::make_shared<RecordingSink>();
   auto transport =
       std::make_shared<bridge::AuthenticatedInputTransport>(16, sink);
-  item.bindTransport(transport);
+  require(item.bindTransport(transport), "input transport did not bind");
   const auto allocation = surface::make_allocation({.id = 10, .generation = 4},
                                                    2, 2, 2, 2, 1, 1, 4096);
   require(allocation && item.configure(*allocation),
@@ -196,7 +196,8 @@ void test_router_destruction_orders() {
   RecordingPointerRouter surviving_router;
   {
     auto short_lived_item = std::make_unique<bridge::RemotePluginSurface>();
-    short_lived_item->bindHostPointerRouter(surviving_router);
+    require(short_lived_item->bindHostPointerRouter(surviving_router),
+            "surviving pointer router did not bind");
   }
   require(surviving_router.events.empty(),
           "surface teardown unexpectedly called its surviving router");
@@ -207,7 +208,7 @@ void test_input_region_projection_is_post_router_and_stable_on_reject() {
   auto transport =
       std::make_shared<bridge::AuthenticatedInputTransport>(17, sink);
   bridge::RemotePluginSurface item;
-  item.bindTransport(transport);
+  require(item.bindTransport(transport), "input transport did not bind");
   const auto allocation = surface::make_allocation({.id = 11, .generation = 5},
                                                    20, 10, 20, 10, 1, 1, 4096);
   require(allocation && item.configure(*allocation),
@@ -290,7 +291,7 @@ void test_owned_pixels_and_lifecycle() {
       std::make_shared<bridge::AuthenticatedInputTransport>(9, sink);
   bridge::RemotePluginSurface item;
   FakeFrameProducer producer(item);
-  item.bindTransport(transport);
+  require(item.bindTransport(transport), "input transport did not bind");
   const auto allocation = surface::make_allocation({.id = 7, .generation = 2},
                                                    2, 2, 2, 2, 1, 1, 4096);
   require(allocation && producer.configure(*allocation) && item.connected() &&
@@ -340,7 +341,7 @@ void test_authenticated_focus_and_input() {
   auto transport =
       std::make_shared<bridge::AuthenticatedInputTransport>(11, sink);
   bridge::RemotePluginSurface item;
-  item.bindTransport(transport);
+  require(item.bindTransport(transport), "input transport did not bind");
   const auto allocation = surface::make_allocation({.id = 8, .generation = 3},
                                                    4, 4, 4, 4, 1, 1, 4096);
   require(allocation && item.configure(*allocation), "input fixture configure");
@@ -397,7 +398,8 @@ void test_invalid_transport_and_allocation() {
   require(!invalid_transport->connected() && invalid_transport->failed(),
           "zero-generation transport was usable");
   bridge::RemotePluginSurface item;
-  item.bindTransport(invalid_transport);
+  require(!item.bindTransport(invalid_transport),
+          "invalid input transport bound");
   surface::TrustedAllocation invalid{};
   require(!item.configure(invalid) && !item.connected() &&
               !invalid_transport->connected() &&
@@ -407,7 +409,8 @@ void test_invalid_transport_and_allocation() {
   auto valid_transport =
       std::make_shared<bridge::AuthenticatedInputTransport>(12, sink);
   bridge::RemotePluginSurface duplicate;
-  duplicate.bindTransport(valid_transport);
+  require(duplicate.bindTransport(valid_transport),
+          "valid input transport did not bind");
   const auto allocation = surface::make_allocation({.id = 9, .generation = 1},
                                                    2, 2, 2, 2, 1, 1, 4096);
   require(allocation && duplicate.configure(*allocation) &&
@@ -424,11 +427,10 @@ void test_invalid_transport_and_allocation() {
   auto replacement_transport =
       std::make_shared<bridge::AuthenticatedInputTransport>(15, sink);
   bridge::RemotePluginSurface rebound;
-  rebound.bindTransport(first_transport);
-  rebound.bindTransport(replacement_transport);
-  require(!rebound.connected() && !first_transport->connected() &&
-              !replacement_transport->connected() &&
-              rebound.inspectionState() == QStringLiteral("invalid-lifecycle"),
+  require(rebound.bindTransport(first_transport) &&
+              !rebound.bindTransport(replacement_transport) &&
+              first_transport->connected() &&
+              !replacement_transport->connected(),
           "transport replacement changed the authenticated launch binding");
 
   std::shared_ptr<bridge::RenderPacketSink> missing_sink;

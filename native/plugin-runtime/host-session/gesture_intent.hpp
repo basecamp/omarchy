@@ -130,8 +130,8 @@ public:
   ~GestureIntentAuthority();
 
   [[nodiscard]] SurfaceDeclarationResult
-  declare_surface(surface::SurfaceKey key, std::string display_name);
-  [[nodiscard]] bool detach_surface(surface::SurfaceKey key);
+  declare_surface(surface::SurfaceKey key, std::string display_name) noexcept;
+  [[nodiscard]] bool detach_surface(surface::SurfaceKey key) noexcept;
   [[nodiscard]] bool arm(surface::SurfaceKey source,
                          std::uint64_t input_sequence);
   [[nodiscard]] SurfaceIntentAdmissionResult

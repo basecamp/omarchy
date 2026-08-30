@@ -276,12 +276,32 @@ PluginSession::attach(std::string_view declared_surface,
     return {.status = SurfaceAttachStatus::undeclared_surface, .key = {}};
   if (slot->endpoint != nullptr)
     return {.status = SurfaceAttachStatus::already_attached, .key = slot->key};
-  const auto attached = router_.attach(slot->key, correlations, endpoint);
+  std::string display_name;
+  session::AttachResult attached = session::AttachResult::invalid_registration;
+  try {
+    // Finish every allocation before the router publishes the endpoint.
+    display_name = slot->name;
+    attached = router_.attach(slot->key, correlations, endpoint);
+  } catch (...) {
+    return {.status = SurfaceAttachStatus::allocation_failed, .key = slot->key};
+  }
   if (attached != session::AttachResult::attached)
     return {.status = SurfaceAttachStatus::invalid_correlations,
             .key = slot->key};
-  const auto declared =
-      gesture_intents_->declare_surface(slot->key, slot->name);
+  host_session::SurfaceDeclarationResult declared;
+  try {
+#ifdef OMARCHY_PLUGIN_SESSION_TESTING
+    if (surface_attach_fault_ == SurfaceAttachFault::after_router) {
+      surface_attach_fault_ = SurfaceAttachFault::none;
+      throw std::bad_alloc();
+    }
+#endif
+    declared =
+        gesture_intents_->declare_surface(slot->key, std::move(display_name));
+  } catch (...) {
+    static_cast<void>(router_.detach(slot->key, endpoint));
+    return {.status = SurfaceAttachStatus::allocation_failed, .key = slot->key};
+  }
   if (declared != host_session::SurfaceDeclarationResult::declared) {
     static_cast<void>(router_.detach(slot->key, endpoint));
     return {.status = SurfaceAttachStatus::invalid_correlations,
@@ -292,7 +312,7 @@ PluginSession::attach(std::string_view declared_surface,
 }
 
 bool PluginSession::detach(std::string_view declared_surface,
-                           const session::SurfaceEndpoint &endpoint) {
+                           const session::SurfaceEndpoint &endpoint) noexcept {
   auto *slot = find_surface(declared_surface);
   if (slot == nullptr || slot->endpoint != &endpoint ||
       !router_.detach(slot->key, endpoint))
@@ -326,6 +346,10 @@ session::SessionError PluginSession::error() const noexcept {
 
 const permissions::ActivationBinding &PluginSession::binding() const noexcept {
   return grants_.binding;
+}
+
+std::uint64_t PluginSession::session_nonce_value() const noexcept {
+  return token_.session_nonce;
 }
 
 const plugins::manifest::ManifestV2 &PluginSession::manifest() const noexcept {
@@ -450,6 +474,11 @@ int PluginSessionTestAccess::activation_record_fd(
 std::shared_ptr<session::LiveGenerationState>
 PluginSessionTestAccess::live_generation(const PluginSession &session) noexcept {
   return session.live_;
+}
+
+void PluginSessionTestAccess::set_surface_attach_fault(
+    PluginSession &session, SurfaceAttachFault fault) noexcept {
+  session.surface_attach_fault_ = fault;
 }
 #endif
 

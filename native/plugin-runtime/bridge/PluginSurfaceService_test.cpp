@@ -2,6 +2,7 @@
 #include "gesture_intent.hpp"
 
 #include <QPersistentModelIndex>
+#include <QGuiApplication>
 
 #include <algorithm>
 #include <iostream>
@@ -11,6 +12,8 @@
 #include <thread>
 #include <utility>
 #include <vector>
+
+void run_production_surface_endpoint_tests();
 
 namespace {
 
@@ -455,9 +458,12 @@ void run() {
 
 } // namespace
 
-int main() {
+int main(int argc, char **argv) {
+  QGuiApplication application(argc, argv);
+  (void)application;
   try {
     run();
+    run_production_surface_endpoint_tests();
     return 0;
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';

@@ -36,6 +36,13 @@ public:
   virtual ~HostInputRegionRouter() = default;
   virtual bool apply(const surface::InputRegionUpdate &) = 0;
 };
+class RemoteSurfaceLifetimeObserver {
+public:
+  virtual ~RemoteSurfaceLifetimeObserver() = default;
+  // Runs at the start of RemotePluginSurface's C++ destructor, while its
+  // trusted sink, transport and QQuickItem base are still alive.
+  virtual void remote_surface_destroying() noexcept = 0;
+};
 
 class RemotePluginSurface : public QQuickPaintedItem,
                             public surface::TrustedFrameSink {
@@ -67,12 +74,20 @@ public:
   Q_ENUM(InspectionFailure)
 
   explicit RemotePluginSurface(QQuickItem *parent = nullptr);
+  ~RemotePluginSurface() override;
 
-  void bindTransport(std::shared_ptr<AuthenticatedInputTransport> transport);
-  void bindHostPointerRouter(HostPointerRouter &router);
-  void unbindHostPointerRouter(HostPointerRouter &router);
+  [[nodiscard]] bool bindTransport(
+      std::shared_ptr<AuthenticatedInputTransport> transport) noexcept;
+  void unbindTransport(
+      const std::shared_ptr<AuthenticatedInputTransport> &transport) noexcept;
+  [[nodiscard]] bool
+  bindLifetimeObserver(RemoteSurfaceLifetimeObserver &observer);
+  void unbindLifetimeObserver(
+      RemoteSurfaceLifetimeObserver &observer) noexcept;
+  [[nodiscard]] bool bindHostPointerRouter(HostPointerRouter &router) noexcept;
+  void unbindHostPointerRouter(HostPointerRouter &router) noexcept;
   [[nodiscard]] bool bindHostInputRegionRouter(HostInputRegionRouter &router);
-  void unbindHostInputRegionRouter(HostInputRegionRouter &router);
+  void unbindHostInputRegionRouter(HostInputRegionRouter &router) noexcept;
   bool configure(const surface::TrustedAllocation &allocation) override;
   bool present(surface::SurfaceKey surface, std::uint64_t frame_sequence,
                std::span<const std::byte> trusted_pixels) override;
@@ -120,6 +135,7 @@ private:
   std::shared_ptr<AuthenticatedInputTransport> transport_;
   HostPointerRouter *host_pointer_router_ = nullptr;
   HostInputRegionRouter *host_input_region_router_ = nullptr;
+  RemoteSurfaceLifetimeObserver *lifetime_observer_ = nullptr;
   std::uint64_t input_region_generation_ = 0;
   QList<QRect> input_regions_;
   std::optional<surface::SurfaceState> state_;

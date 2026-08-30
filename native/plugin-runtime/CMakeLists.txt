@@ -108,17 +108,18 @@ if(TARGET omarchy-plugin-broker-runtime
   add_subdirectory(host-session)
 endif()
 
-if(TARGET omarchy-plugin-host-session
-    AND TARGET omarchy-plugin-trusted-bridge
-    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bridge/CMakeLists.txt")
-  add_subdirectory(bridge)
-endif()
-
 if(TARGET omarchy-plugin-launcher
     AND TARGET omarchy-plugin-broker-core
     AND TARGET omarchy-plugin-surface-contract
     AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/channel-integration/CMakeLists.txt")
   add_subdirectory(channel-integration)
+endif()
+
+if(TARGET omarchy-plugin-host-session
+    AND TARGET omarchy-plugin-trusted-bridge
+    AND TARGET omarchy-plugin-authenticated-session
+    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bridge/CMakeLists.txt")
+  add_subdirectory(bridge)
 endif()
 
 # The Quickshell host is a shared QML module which embeds the native runtime.

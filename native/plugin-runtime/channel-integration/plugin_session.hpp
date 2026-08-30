@@ -71,7 +71,12 @@ enum class SurfaceAttachStatus : std::uint8_t {
   undeclared_surface,
   already_attached,
   invalid_correlations,
+  allocation_failed,
 };
+
+#ifdef OMARCHY_PLUGIN_SESSION_TESTING
+enum class SurfaceAttachFault : std::uint8_t { none, after_router };
+#endif
 
 struct SurfaceAttachResult final {
   SurfaceAttachStatus status = SurfaceAttachStatus::undeclared_surface;
@@ -104,7 +109,7 @@ public:
          std::span<const std::uint64_t> correlations,
          session::SurfaceEndpoint &endpoint);
   [[nodiscard]] bool detach(std::string_view declared_surface,
-                            const session::SurfaceEndpoint &endpoint);
+                            const session::SurfaceEndpoint &endpoint) noexcept;
   // Called only by the trusted input path after InputGate accepts physical
   // input. If the input packet cannot be sent, the caller must clear the arm.
   [[nodiscard]] bool
@@ -115,6 +120,7 @@ public:
   [[nodiscard]] session::SessionState state() const noexcept;
   [[nodiscard]] session::SessionError error() const noexcept;
   [[nodiscard]] const permissions::ActivationBinding &binding() const noexcept;
+  [[nodiscard]] std::uint64_t session_nonce_value() const noexcept;
   [[nodiscard]] const plugins::manifest::ManifestV2 &manifest() const noexcept;
   [[nodiscard]] const session::policy::GrantSnapshot &grants() const noexcept;
 
@@ -166,6 +172,7 @@ private:
   std::uint64_t outbound_sequence_ = 0;
 
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
+  SurfaceAttachFault surface_attach_fault_ = SurfaceAttachFault::none;
   friend class PluginSessionTestAccess;
 #endif
   friend class PluginActivationCoordinator;
@@ -197,6 +204,8 @@ public:
   activation_record_fd(const PluginSession &session) noexcept;
   [[nodiscard]] static std::shared_ptr<session::LiveGenerationState>
   live_generation(const PluginSession &session) noexcept;
+  static void set_surface_attach_fault(PluginSession &session,
+                                       SurfaceAttachFault fault) noexcept;
 };
 #endif
 

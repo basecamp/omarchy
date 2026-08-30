@@ -167,7 +167,7 @@ GestureIntentAuthority::GestureIntentAuthority(
 GestureIntentAuthority::~GestureIntentAuthority() { revoke(); }
 
 SurfaceDeclarationResult GestureIntentAuthority::declare_surface(
-    surface::SurfaceKey key, std::string display_name) {
+    surface::SurfaceKey key, std::string display_name) noexcept {
   if (revoked_)
     return SurfaceDeclarationResult::revoked;
   if (key.id == 0 || key.generation != binding_.generation ||
@@ -185,7 +185,7 @@ SurfaceDeclarationResult GestureIntentAuthority::declare_surface(
   return SurfaceDeclarationResult::declared;
 }
 
-bool GestureIntentAuthority::detach_surface(surface::SurfaceKey key) {
+bool GestureIntentAuthority::detach_surface(surface::SurfaceKey key) noexcept {
   eligibility_.clear();
   const auto found = std::ranges::find_if(
       declarations_, [&](const Declaration &candidate) {

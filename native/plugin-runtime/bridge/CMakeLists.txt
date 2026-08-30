@@ -9,6 +9,8 @@ qt_add_qml_module(omarchy-plugin-host-bridge
   SOURCES
     PluginHostInfo.cpp
     PluginHostInfo.h
+    ProductionSurfaceEndpoint.cpp
+    ProductionSurfaceEndpoint.h
     PluginSurfaceService.cpp
     PluginSurfaceService.h
     ../trusted-bridge/remote_surface.hpp
@@ -23,6 +25,8 @@ target_link_libraries(omarchy-plugin-host-bridge PRIVATE
   Omarchy::PluginRuntimeVersion
   omarchy-plugin-trusted-bridge
   omarchy-plugin-host-session
+  omarchy-plugin-authenticated-session
+  omarchy-plugin-surface-host
   omarchy-plugin-surface-contract
   omarchy-plugin-wire
 )
@@ -36,6 +40,8 @@ install(FILES
 
 if(BUILD_TESTING)
   add_executable(omarchy-plugin-surface-service-test
+    ProductionSurfaceEndpoint.cpp
+    ProductionSurfaceEndpoint_test.cpp
     PluginSurfaceService.cpp
     PluginSurfaceService_test.cpp
   )
@@ -47,10 +53,13 @@ if(BUILD_TESTING)
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick
     omarchy-plugin-trusted-bridge
     omarchy-plugin-host-session
+    omarchy-plugin-authenticated-session
+    omarchy-plugin-surface-host
   )
   add_test(NAME plugin-surface-service
     COMMAND omarchy-plugin-surface-service-test)
   set_tests_properties(plugin-surface-service PROPERTIES
     TIMEOUT 10
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME="
     LABELS "unit;shell;bridge;security")
 endif()

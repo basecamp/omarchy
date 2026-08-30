@@ -131,7 +131,7 @@ struct Harness {
         transport(std::make_shared<bridge::AuthenticatedInputTransport>(
             generation, input_sink)),
         host(generation, item, sender) {
-    item.bindTransport(transport);
+    require(item.bindTransport(transport), "render transport did not bind");
     const auto page_size = sysconf(_SC_PAGESIZE);
     require(page_size > 0, "system page size unavailable");
     allocation = surface::make_allocation(

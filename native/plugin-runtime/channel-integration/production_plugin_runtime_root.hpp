@@ -2,6 +2,7 @@
 
 #include "plugin_permission_controller.hpp"
 #include "production_session_runtime_factory.hpp"
+#include "production_surface_session_port.hpp"
 
 #include <cstdint>
 #include <functional>
@@ -11,8 +12,11 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 
 namespace omarchy::plugin_runtime::channel {
+
+class RootSurfaceSessionPort;
 
 // Trusted, non-owning product integration hook. It must outlive the root and
 // be constructed by the host, never from plugin or QML data. Callbacks return
@@ -75,6 +79,9 @@ public:
   void stop();
   [[nodiscard]] std::optional<permissions::ActivationBinding>
   session_binding() const;
+  // Transport-only seam. N6B permission projection and the production manager
+  // remain mandatory before any declaration may be published to QML.
+  [[nodiscard]] ProductionSurfaceSessionPort &surface_session() noexcept;
 
 private:
   ProductionPluginRuntimeRoot(
@@ -86,7 +93,11 @@ private:
   const std::string activation_record_;
   PluginActivationCoordinator coordinator_;
   PluginPermissionController controller_;
+  std::unique_ptr<ProductionSurfaceSessionPort> surface_session_;
   mutable std::mutex mutex_;
+
+  friend class ProductionSurfaceSessionPort;
+  friend class RootSurfaceSessionPort;
 
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
   friend class ProductionPluginRuntimeRootTestAccess;

@@ -1,8 +1,180 @@
 #include "production_plugin_runtime_root.hpp"
 
+#include <algorithm>
 #include <utility>
 
 namespace omarchy::plugin_runtime::channel {
+
+class RootSurfaceSessionPort final : public ProductionSurfaceSessionPort {
+public:
+  explicit RootSurfaceSessionPort(ProductionPluginRuntimeRoot &root) noexcept
+      : root_(root), owner_thread_(std::this_thread::get_id()) {}
+
+  [[nodiscard]] std::optional<ProductionSurfaceDescription>
+  describe(std::string_view declared_surface) const noexcept override;
+  [[nodiscard]] bool
+  attach(const ProductionSurfaceDescription &expected,
+         session::SurfaceEndpoint &endpoint) noexcept override;
+  [[nodiscard]] bool
+  detach(const ProductionSurfaceDescription &expected,
+         const session::SurfaceEndpoint &endpoint) noexcept override;
+  [[nodiscard]] bool
+  arm_surface_intent(const ProductionSurfaceDescription &expected,
+                     std::uint64_t input_sequence) noexcept override;
+  void clear_surface_intent_eligibility(
+      const ProductionSurfaceDescription &expected) noexcept override;
+
+private:
+  [[nodiscard]] bool send_render_packet_impl(
+      const ProductionSurfaceDescription &expected,
+      const plugin::wire::EnvelopeHeader &header,
+      std::vector<std::byte> payload,
+      std::vector<session::OwnedFd> descriptors) noexcept override;
+  [[nodiscard]] PluginSession *running_session() const noexcept;
+  [[nodiscard]] bool matches(const PluginSession &session,
+                             const ProductionSurfaceDescription &expected)
+      const noexcept;
+  [[nodiscard]] bool on_owner_thread() const noexcept {
+    return std::this_thread::get_id() == owner_thread_;
+  }
+
+  ProductionPluginRuntimeRoot &root_;
+  const std::thread::id owner_thread_;
+};
+
+PluginSession *RootSurfaceSessionPort::running_session() const noexcept {
+  auto *session = root_.coordinator_.session();
+  return session != nullptr &&
+                 session->state() == host_session::SessionState::running
+             ? session
+             : nullptr;
+}
+
+bool RootSurfaceSessionPort::matches(
+    const PluginSession &session,
+    const ProductionSurfaceDescription &expected) const noexcept {
+  if (session.binding() != expected.binding ||
+      session.session_nonce_value() != expected.session_nonce ||
+      expected.key.generation != expected.binding.generation ||
+      expected.plugin_id != session.manifest().id ||
+      expected.plugin_id != expected.binding.plugin.view())
+    return false;
+  const auto &names = session.manifest().surface_names;
+  const auto found = std::find(names.begin(), names.end(), expected.surface_name);
+  return found != names.end() &&
+         expected.key.id ==
+             static_cast<std::uint64_t>(found - names.begin()) + 1;
+}
+
+std::optional<ProductionSurfaceDescription>
+RootSurfaceSessionPort::describe(
+    std::string_view declared_surface) const noexcept {
+  if (!on_owner_thread())
+    return {};
+  try {
+    std::scoped_lock lock(root_.mutex_);
+    auto *session = running_session();
+    if (session == nullptr)
+      return {};
+    const auto &names = session->manifest().surface_names;
+    const auto found = std::find(names.begin(), names.end(), declared_surface);
+    if (found == names.end())
+      return {};
+    const auto index = static_cast<std::uint64_t>(found - names.begin());
+    return ProductionSurfaceDescription{
+        .binding = session->binding(),
+        .key = {.id = index + 1, .generation = session->binding().generation},
+        .session_nonce = session->session_nonce_value(),
+        .plugin_id = session->manifest().id,
+        .surface_name = std::string(declared_surface),
+        .canonical_surfaces = session->manifest().canonical_surfaces,
+    };
+  } catch (...) {
+    return {};
+  }
+}
+
+bool RootSurfaceSessionPort::attach(
+    const ProductionSurfaceDescription &expected,
+    session::SurfaceEndpoint &endpoint) noexcept {
+  if (!on_owner_thread())
+    return false;
+  try {
+    std::scoped_lock lock(root_.mutex_);
+    auto *session = running_session();
+    if (session == nullptr || !matches(*session, expected))
+      return false;
+    const auto correlations =
+        session::surface::render_correlations(expected.key);
+    const auto result =
+        session->attach(expected.surface_name, correlations, endpoint);
+    return result && result.key == expected.key;
+  } catch (...) {
+    // PluginSession::attach is transactional: exceptions never publish.
+    return false;
+  }
+}
+
+bool RootSurfaceSessionPort::detach(
+    const ProductionSurfaceDescription &expected,
+    const session::SurfaceEndpoint &endpoint) noexcept {
+  if (!on_owner_thread())
+    std::terminate();
+  std::scoped_lock lock(root_.mutex_);
+  auto *session = running_session();
+  // A stopped or replacement session has already fenced this exact endpoint.
+  return session == nullptr || !matches(*session, expected) ||
+         session->detach(expected.surface_name, endpoint);
+}
+
+bool RootSurfaceSessionPort::send_render_packet_impl(
+    const ProductionSurfaceDescription &expected,
+    const plugin::wire::EnvelopeHeader &header,
+    std::vector<std::byte> payload,
+    std::vector<session::OwnedFd> descriptors) noexcept {
+  if (!on_owner_thread())
+    return false;
+  try {
+    std::scoped_lock lock(root_.mutex_);
+    auto *session = running_session();
+    return session != nullptr && matches(*session, expected) &&
+           header.endpoint_role == plugin::wire::EndpointRole::render &&
+           header.launch_generation == session->binding().generation &&
+           header.role_protocol_version ==
+               session::surface::kRenderRoleVersion &&
+           header.flags == 0 && header.payload_length == payload.size() &&
+           session->send(session::ChannelLane::render, header.message_type,
+                         header.correlation_id, std::move(payload),
+                         std::move(descriptors));
+  } catch (...) {
+    return false;
+  }
+}
+
+bool RootSurfaceSessionPort::arm_surface_intent(
+    const ProductionSurfaceDescription &expected,
+    std::uint64_t input_sequence) noexcept {
+  if (!on_owner_thread())
+    return false;
+  try {
+    std::scoped_lock lock(root_.mutex_);
+    auto *session = running_session();
+    return session != nullptr && matches(*session, expected) &&
+           session->arm_surface_intent(expected.key, input_sequence);
+  } catch (...) {
+    return false;
+  }
+}
+
+void RootSurfaceSessionPort::clear_surface_intent_eligibility(
+    const ProductionSurfaceDescription &expected) noexcept {
+  if (!on_owner_thread())
+    std::terminate();
+  std::scoped_lock lock(root_.mutex_);
+  auto *session = running_session();
+  if (session != nullptr && matches(*session, expected))
+    session->clear_surface_intent_eligibility();
+}
 
 std::unique_ptr<ProductionPluginRuntimeRoot>
 ProductionPluginRuntimeRoot::open(
@@ -39,7 +211,8 @@ ProductionPluginRuntimeRoot::ProductionPluginRuntimeRoot(
           configuration.hooks, configuration.session_limits,
           configuration.hooks),
       controller_(coordinator_, runtime_factory_.definitions(),
-                  runtime_factory_.scope_validator(), activation_record_) {}
+                  runtime_factory_.scope_validator(), activation_record_),
+      surface_session_(std::make_unique<RootSurfaceSessionPort>(*this)) {}
 
 ProductionPluginRuntimeRoot::~ProductionPluginRuntimeRoot() noexcept {
   // Destruction concurrent with a public call is outside the ownership
@@ -99,6 +272,11 @@ ProductionPluginRuntimeRoot::session_binding() const {
   if (!session || session->state() != host_session::SessionState::running)
     return {};
   return session->binding();
+}
+
+ProductionSurfaceSessionPort &
+ProductionPluginRuntimeRoot::surface_session() noexcept {
+  return *surface_session_;
 }
 
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING

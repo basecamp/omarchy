@@ -233,8 +233,6 @@ std::unique_ptr<HostSurface> HostSurface::create(
   auto result = std::unique_ptr<HostSurface>(new HostSurface(
       std::move(policy), std::move(binding), *allocation, bridge_item,
       render_sender, std::move(input_sink), inspection_authority, clock));
-  if (!result->render_session_.start(result->allocation_))
-    return nullptr;
   if (!bridge_item.bindHostInputRegionRouter(*result)) {
     result->close();
     return nullptr;
@@ -244,6 +242,15 @@ std::unique_ptr<HostSurface> HostSurface::create(
     result->input_regions_.push_back(
         {.x = 0, .y = 0, .width = logical_width, .height = logical_height});
   }
+  // Publish only after every other fallible pre-start step. close() withdraws
+  // this exact transport if render-session start subsequently fails.
+  if (!bridge_item.bindTransport(result->input_transport_))
+    return nullptr;
+  result->input_transport_bound_ = true;
+  // Starting emits the profile offer, so it is deliberately the last
+  // fallible construction step. A failed create can never leave stale output.
+  if (!result->render_session_.start(result->allocation_))
+    return nullptr;
   return result;
 }
 
@@ -260,10 +267,8 @@ HostSurface::HostSurface(NamedSurfacePolicy policy,
       input_transport_(std::make_shared<bridge::AuthenticatedInputTransport>(
           binding_.generation, std::move(input_sink))),
       render_session_(binding_.generation, bridge_item, render_sender,
-                      allocation.surface.id * 4),
-      inspection_authority_(inspection_authority), clock_(clock) {
-  bridge_item_.bindTransport(input_transport_);
-}
+                      surface::render_correlation_base(allocation.surface)),
+      inspection_authority_(inspection_authority), clock_(clock) {}
 
 HostSurface::~HostSurface() { close(); }
 
@@ -577,6 +582,10 @@ void HostSurface::peer_lost() {
 
 void HostSurface::close() {
   unbind_input_region_router();
+  if (input_transport_bound_) {
+    bridge_item_.unbindTransport(input_transport_);
+    input_transport_bound_ = false;
+  }
   if (terminated_)
     return;
   render_session_.close();

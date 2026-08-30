@@ -34,6 +34,18 @@ enum class RenderMessageType : std::uint16_t {
   surface_intent = 0x2040,
 };
 
+// One collision-free correlation pair is fixed by the trusted surface key.
+// Both the session router and HostRenderSession use this single derivation.
+[[nodiscard]] inline constexpr std::uint64_t
+render_correlation_base(SurfaceKey surface) noexcept {
+  return surface.id * 4;
+}
+[[nodiscard]] inline constexpr std::array<std::uint64_t, 2>
+render_correlations(SurfaceKey surface) noexcept {
+  return {render_correlation_base(surface) + 1,
+          render_correlation_base(surface) + 2};
+}
+
 enum class RenderErrorReason : std::uint16_t {
   unsupported_profile = 1,
   invalid_allocation = 2,
