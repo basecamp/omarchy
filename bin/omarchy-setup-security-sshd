@@ -136,9 +136,11 @@ CONF
 
   # Syntax alone is insufficient because sshd uses the first value it reads for
   # these settings. An earlier administrator rule could leave passwords enabled.
+  # Match keywords case-insensitively: OpenSSH 9.x dumps them lowercase, 10.x
+  # in CamelCase.
   if ! effective_config=$(sudo sshd -T) ||
-    ! grep -qxF "passwordauthentication no" <<<"$effective_config" ||
-    ! grep -qxF "kbdinteractiveauthentication no" <<<"$effective_config"; then
+    ! grep -qixF "passwordauthentication no" <<<"$effective_config" ||
+    ! grep -qixF "kbdinteractiveauthentication no" <<<"$effective_config"; then
     echo -e "\e[31msshd did not apply the password-authentication restrictions; removing the ineffective config.\e[0m" >&2
     sudo rm -f "$config"
     return 1
