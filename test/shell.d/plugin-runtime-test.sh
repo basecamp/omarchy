@@ -62,6 +62,17 @@ if grep -F 'model: PluginManager.surfaces' "$runtime_root/shell/SecurePluginHost
   grep -F 'filteredDeclarations' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null; then
   fail "secure surfaces still iterate raw JavaScript declarations"
 fi
+
+for surface in SecurePanelSurface.qml SecureOverlaySurface.qml; do
+  grep -F 'onSurfaceKeyChanged: attachIfReady()' "$runtime_root/shell/$surface" >/dev/null ||
+    fail "$surface does not retry after its surface identity/readiness changes"
+  grep -F 'Window.onWindowChanged: window.attachIfReady()' "$runtime_root/shell/$surface" >/dev/null ||
+    fail "$surface does not retry after its Remote gains a window"
+  grep -F 'onWidthChanged: window.attachIfReady()' "$runtime_root/shell/$surface" >/dev/null ||
+    fail "$surface does not retry after its Remote width settles"
+  grep -F 'onHeightChanged: window.attachIfReady()' "$runtime_root/shell/$surface" >/dev/null ||
+    fail "$surface does not retry after its Remote height settles"
+done
 pass "schema-v2 integrates through dormant shell-owned surfaces without v1 fallback"
 
 [[ ! -e $runtime_root/host ]] ||

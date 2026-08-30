@@ -18,6 +18,13 @@ PanelWindow {
   required property bool dynamicInputRegions
   readonly property bool opened: panelController.open
 
+  function attachIfReady() {
+    if (!remote.connected && remote.Window.window !== null && remote.width > 0 && remote.height > 0)
+      surfaceService.attach(surfaceKey, remote)
+  }
+
+  onSurfaceKeyChanged: attachIfReady()
+
   screen: host.screenFor(screenName)
   visible: screen !== null && opened
   anchors { top: true; right: true; bottom: true; left: true }
@@ -55,8 +62,13 @@ PanelWindow {
     // rounding it wider or narrower than the admitted rectangle.
     x: Math.floor((window.width - width) / 2)
     y: Math.floor((window.height - height) / 2)
-    Component.onCompleted: window.surfaceService.attach(window.surfaceKey, remote)
+    Window.onWindowChanged: window.attachIfReady()
+    onWidthChanged: window.attachIfReady()
+    onHeightChanged: window.attachIfReady()
   }
 
-  Component.onCompleted: panelController.open = initiallyVisible
+  Component.onCompleted: {
+    panelController.open = initiallyVisible
+    attachIfReady()
+  }
 }

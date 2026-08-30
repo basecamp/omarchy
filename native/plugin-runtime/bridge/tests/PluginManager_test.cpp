@@ -10,9 +10,17 @@
 #include "authority_store.hpp"
 
 #include <QCoreApplication>
+#include <QColor>
+#include <QImage>
+#include <QJSValue>
 #include <QMetaMethod>
+#include <QPainter>
+#include <QQmlComponent>
 #include <QQmlEngine>
+#include <QQuickItem>
 #include <QQuickWindow>
+#include <QUrl>
+#include <QtQml/qqml.h>
 
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -147,6 +155,16 @@ std::string activationRecord(std::string_view plugin, char digest = 'a') {
          "\n";
 }
 
+std::string readyActivationRecord(std::string_view plugin,
+                                  std::string_view revision_directory,
+                                  std::string_view revision_sha256) {
+  return "format=omarchy-plugin-activation-v2\nplugin=" +
+         std::string(plugin) + "\nrevision-directory=" +
+         std::string(revision_directory) + "\nrevision-sha256=" +
+         std::string(revision_sha256) +
+         "\nstate-directory=" + std::string(plugin) + "\n";
+}
+
 class RuntimeFixture final {
 public:
   RuntimeFixture() {
@@ -183,8 +201,23 @@ public:
 
   void putInvalid() { write("!", "invalid\n", O_CREAT | O_EXCL); }
 
-  permissions::ActivationBinding seedRuntime(std::string_view plugin) {
-    const auto revision = revisions() / "ready-installed";
+  permissions::ActivationBinding seedRuntime(
+      std::string_view plugin,
+      std::string_view qml = "import QtQuick\nItem {}\n") {
+    const auto binding = stageRuntime(plugin, 1, qml);
+    promoteRuntime(binding, 0);
+    write(plugin,
+          readyActivationRecord(plugin, revisionDirectory(plugin, 1),
+                                binding.revision.view()),
+          O_CREAT | O_EXCL);
+    return binding;
+  }
+
+  permissions::ActivationBinding stageRuntime(std::string_view plugin,
+                                              std::uint64_t generation,
+                                              std::string_view qml) {
+    const auto revision_name = revisionDirectory(plugin, generation);
+    const auto revision = revisions() / revision_name;
     create(revision / "ui", 0755);
     {
       std::ofstream manifest_file(revision / "manifest.json");
@@ -200,7 +233,7 @@ public:
              "\"required\": [], "
              "\"optional\": []}\n}\n";
     }
-    std::ofstream(revision / "ui/Main.qml") << "import QtQuick\nItem {}\n";
+    std::ofstream(revision / "ui/Main.qml") << qml;
     for (const auto &entry :
          std::filesystem::recursive_directory_iterator(revision))
       require(::chmod(entry.path().c_str(),
@@ -208,8 +241,10 @@ public:
               "manager ready revision mode failed");
     require(::chmod(revision.c_str(), 0555) == 0,
             "manager ready revision root mode failed");
-    create(state() / std::string(plugin), 0700);
-    create(authority() / std::string(plugin), 0700);
+    if (generation == 1) {
+      create(state() / std::string(plugin), 0700);
+      create(authority() / std::string(plugin), 0700);
+    }
 
     const int revision_fd = ::open(
         revision.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
@@ -220,40 +255,64 @@ public:
     require(verified && verified->manifest.id == plugin,
             "manager ready revision verification failed");
 
-    write(plugin,
-          "format=omarchy-plugin-activation-v2\nplugin=" +
-              std::string(plugin) +
-              "\nrevision-directory=ready-installed\nrevision-sha256=" +
-              verified->tree_sha256 + "\nstate-directory=" +
-              std::string(plugin) + "\n",
-          O_CREAT | O_EXCL);
-    const int authority_fd = ::open(
-        (authority() / std::string(plugin)).c_str(),
-        O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
-    require(authority_fd >= 0, "manager ready authority open failed");
-    auto store = host::AuthorityStore::open(
-        authority_fd, ::getuid(), permissions::PluginId(plugin));
-    ::close(authority_fd);
-    require(store != nullptr, "manager ready authority store failed");
-    policy::GrantSnapshot snapshot;
-    snapshot.requests =
-        permissions::requests_from_manifest(verified->manifest);
-    snapshot.binding = {
+    return {
         .plugin = permissions::PluginId(plugin),
         .revision = permissions::Digest(verified->tree_sha256),
         .policy_fingerprint = permissions::Digest(
-            permissions::policy_request_fingerprint(snapshot.requests)),
-        .generation = 1,
+            permissions::policy_request_fingerprint(
+                permissions::requests_from_manifest(verified->manifest))),
+        .generation = generation,
     };
+  }
+
+  void promoteRuntime(const permissions::ActivationBinding &binding,
+                      std::uint64_t expected_sequence) {
+    const int authority_fd = ::open(
+        (authority() / std::string(binding.plugin.view())).c_str(),
+        O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    require(authority_fd >= 0, "manager ready authority open failed");
+    auto store = host::AuthorityStore::open(
+        authority_fd, ::getuid(), binding.plugin);
+    ::close(authority_fd);
+    require(store != nullptr, "manager ready authority store failed");
+
+    const auto revision = revisions() /
+                          revisionDirectory(binding.plugin.view(),
+                                            binding.generation);
+    const int revision_fd = ::open(
+        revision.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    require(revision_fd >= 0, "manager ready revision reopen failed");
+    host::DescriptorRevisionVerifier verifier;
+    auto verified = verifier.verify_open_revision(revision_fd);
+    ::close(revision_fd);
+    require(verified && verified->tree_sha256 == binding.revision.view(),
+            "manager staged revision identity changed");
+    policy::GrantSnapshot snapshot;
+    snapshot.requests =
+        permissions::requests_from_manifest(verified->manifest);
+    snapshot.binding = binding;
     snapshot.source_request_fingerprint =
         permissions::Digest(verified->request_sha256);
     definitions::TrustedDefinitionRegistry registry;
-    require(store->publish_candidate(*verified, snapshot, 0, registry, {}) ==
+    require(store->publish_candidate(*verified, snapshot, expected_sequence,
+                                     registry, {}) ==
                     host::AuthorityMutationResult::applied &&
-                store->promote_candidate(snapshot.binding, 1) ==
+                store->promote_candidate(snapshot.binding,
+                                         expected_sequence + 1) ==
                     host::AuthorityMutationResult::applied,
             "manager ready authority activation failed");
-    return snapshot.binding;
+  }
+
+  void selectReplacement(const permissions::ActivationBinding &binding) {
+    require(std::filesystem::remove(activations() /
+                                    std::string(binding.plugin.view())),
+            "manager ready activation replacement unlink failed");
+    write(binding.plugin.view(),
+          readyActivationRecord(binding.plugin.view(),
+                                revisionDirectory(binding.plugin.view(),
+                                                  binding.generation),
+                                binding.revision.view()),
+          O_CREAT | O_EXCL);
   }
 
   void erase(std::string_view name) {
@@ -288,6 +347,11 @@ public:
   }
 
 private:
+  static std::string revisionDirectory(std::string_view plugin,
+                                       std::uint64_t generation) {
+    return std::string(plugin) + "-g" + std::to_string(generation);
+  }
+
   std::filesystem::path activations() const {
     return home_ / ".local/state/omarchy/plugin-security/v2/activations";
   }
@@ -376,6 +440,199 @@ observed(const std::vector<bridge::PluginManagerTestAccess::SlotObservation>
       &bridge::PluginManagerTestAccess::SlotObservation::plugin);
   require(found != observations.end(), "expected manager runtime slot absent");
   return *found;
+}
+
+std::vector<bridge::SurfaceProjectionModel::SurfaceDeclaration>
+barDeclaration() {
+  using Model = bridge::SurfaceProjectionModel;
+  std::vector<Model::SurfaceDeclaration> declarations;
+  declarations.push_back({.surface_name = "bar",
+                          .role = Model::Role::Bar,
+                          .screen_name = {},
+                          .initially_visible = false,
+                          .maximum_width = 64,
+                          .maximum_height = 64,
+                          .dynamic_input_regions = false,
+                          .default_bar_section = Model::BarSection::Right});
+  return declarations;
+}
+
+QString barSurfaceKey(bridge::PluginManager &manager,
+                      std::string_view plugin) {
+  using Model = bridge::SurfaceProjectionModel;
+  const auto expected = QString::fromUtf8(plugin.data(), plugin.size());
+  auto *model = manager.barSurfaces();
+  for (int row = 0; row < model->rowCount(); ++row) {
+    const auto index = model->index(row, 0);
+    if (model->data(index, Model::PluginIdRole).toString() == expected)
+      return model->data(index, Model::SurfaceKeyRole).toString();
+  }
+  return {};
+}
+
+QImage paintedFrame(bridge::RemotePluginSurface &remote) {
+  QImage image(64, 64, QImage::Format_RGBA8888_Premultiplied);
+  image.fill(Qt::transparent);
+  QPainter painter(&image);
+  remote.paint(&painter);
+  painter.end();
+  return image;
+}
+
+bool redSignature(const QImage &image) {
+  const auto color = image.pixelColor(32, 32);
+  return color.alpha() >= 250 && color.red() >= 160 &&
+         color.red() >= color.green() + 90 &&
+         color.red() >= color.blue() + 80;
+}
+
+bool blueSignature(const QImage &image) {
+  const auto color = image.pixelColor(32, 32);
+  return color.alpha() >= 250 && color.blue() >= 170 &&
+         color.blue() >= color.red() + 100 &&
+         color.blue() >= color.green() + 90;
+}
+
+bool greenSignature(const QImage &image) {
+  const auto center = image.pixelColor(32, 32);
+  const auto border = image.pixelColor(2, 2);
+  return center.alpha() >= 250 && center.green() >= 140 &&
+         center.green() >= center.red() + 90 &&
+         center.green() >= center.blue() + 100 && border.red() >= 190 &&
+         border.green() >= 150 && border.blue() <= 100;
+}
+
+constexpr std::string_view animatedRedQml = R"QML(import QtQuick
+Item {
+  property real phase: 0
+  NumberAnimation on phase { from: 0; to: 1; duration: 240; loops: Animation.Infinite }
+  Rectangle { anchors.fill: parent; color: Qt.rgba(0.65 + parent.phase * 0.35, 0.05, 0.08, 1) }
+}
+)QML";
+
+constexpr std::string_view animatedBlueQml = R"QML(import QtQuick
+Item {
+  property real phase: 0
+  NumberAnimation on phase { from: 0; to: 1; duration: 300; loops: Animation.Infinite }
+  Rectangle { anchors.fill: parent; color: Qt.rgba(0.04, 0.08 + parent.phase * 0.2, 0.7 + parent.phase * 0.25, 1) }
+}
+)QML";
+
+constexpr std::string_view animatedGreenQml = R"QML(import QtQuick
+Item {
+  property real phase: 0
+  SequentialAnimation on phase {
+    loops: Animation.Infinite
+    NumberAnimation { to: 1; duration: 180; easing.type: Easing.InOutQuad }
+    NumberAnimation { to: 0; duration: 180; easing.type: Easing.InOutQuad }
+  }
+  Rectangle {
+    anchors.fill: parent
+    color: Qt.rgba(0.12, 0.55 + parent.phase * 0.4, 0.06, 1)
+    border.width: 6
+    border.color: "#ffdc39"
+  }
+}
+)QML";
+
+std::filesystem::path secureBarQmlPath() {
+  return std::filesystem::path(__FILE__)
+             .parent_path()
+             .parent_path()
+             .parent_path() /
+         "shell/SecureBarSurface.qml";
+}
+
+std::unique_ptr<QObject>
+createSecureBar(QQmlComponent &component, QObject &service, QString surface_key,
+                std::uint64_t generation, QQuickItem &parent) {
+  QVariantMap properties{
+      {QStringLiteral("surfaceService"),
+       QVariant::fromValue(static_cast<QObject *>(&service))},
+      {QStringLiteral("surfaceKey"), std::move(surface_key)},
+      {QStringLiteral("generation"), QString::number(generation)},
+      {QStringLiteral("maximumWidth"), 64},
+      {QStringLiteral("maximumHeight"), 64},
+  };
+  std::unique_ptr<QObject> object(
+      component.createWithInitialProperties(properties));
+  require(object != nullptr, "secure bar wrapper did not instantiate");
+  auto *item = qobject_cast<QQuickItem *>(object.get());
+  require(item != nullptr, "secure bar wrapper root was not a QQuickItem");
+  item->setParentItem(&parent);
+  item->setWidth(64);
+  item->setHeight(64);
+  require(item->width() == 64 && item->height() == 64,
+          "secure bar wrapper geometry did not settle");
+  return object;
+}
+
+void secure_bar_retries_only_on_readiness_events() {
+  QQmlEngine engine;
+  QQmlComponent component(
+      &engine,
+      QUrl::fromLocalFile(QString::fromStdString(secureBarQmlPath())));
+  if (!component.isReady()) {
+    std::string errors = "secure bar QML component did not load:";
+    for (const auto &error : component.errors())
+      errors += "\n" + error.toString().toStdString();
+    throw std::runtime_error(errors);
+  }
+  QJSValue service = engine.evaluate(
+      "({ attempts: 0, lastKey: '', lastSurface: null, "
+      "attach: function(key, surface) { this.attempts += 1; "
+      "this.lastKey = key; this.lastSurface = surface; return false; } })");
+  require(!service.isError(), "counting surface service did not initialize");
+  QVariantMap properties{
+      {QStringLiteral("surfaceService"), QVariant::fromValue(service)},
+      {QStringLiteral("surfaceKey"), QStringLiteral("first-key")},
+      {QStringLiteral("generation"), QStringLiteral("1")},
+      {QStringLiteral("maximumWidth"), 0},
+      {QStringLiteral("maximumHeight"), 0},
+  };
+  std::unique_ptr<QObject> object(
+      component.createWithInitialProperties(properties));
+  require(object != nullptr, "secure bar QML component did not instantiate");
+  auto *item = qobject_cast<QQuickItem *>(object.get());
+  auto *remote = object->findChild<bridge::RemotePluginSurface *>();
+  require(item && remote && item->width() == 0 && item->height() == 0 &&
+              service.property("attempts").toInt() == 0,
+          "zero-geometry secure bar attempted attachment on completion");
+
+  QQuickWindow window;
+  window.resize(128, 64);
+  window.show();
+  item->setParentItem(window.contentItem());
+  QCoreApplication::processEvents();
+  require(remote->window() == &window && remote->width() == 0 &&
+              remote->height() == 0 &&
+              service.property("attempts").toInt() == 0,
+          "window readiness bypassed zero-geometry attachment guard");
+  item->setWidth(64);
+  QCoreApplication::processEvents();
+  require(service.property("attempts").toInt() == 0,
+          "partial geometry triggered attachment");
+  item->setHeight(64);
+  QCoreApplication::processEvents();
+  require(service.property("attempts").toInt() == 1 &&
+              service.property("lastKey").toString() ==
+                  QStringLiteral("first-key") &&
+              service.property("lastSurface").toQObject() == remote,
+          "settled geometry did not make one exact attachment attempt");
+
+  require(item->setProperty("surfaceKey", QStringLiteral("replacement-key")) &&
+              service.property("attempts").toInt() == 2 &&
+              service.property("lastKey").toString() ==
+                  QStringLiteral("replacement-key"),
+          "replacement surface key did not make one retry attempt");
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
+  while (std::chrono::steady_clock::now() < deadline) {
+    QCoreApplication::processEvents();
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  require(service.property("attempts").toInt() == 2,
+          "secure bar polled or retried without a readiness event");
 }
 
 void singleton_boundary_is_inert_and_not_configurable() {
@@ -1028,9 +1285,212 @@ void real_root_publishes_attaches_and_tears_down_exactly() {
   manager.reset();
 }
 
+void joined_runtimes_replace_and_render_without_cross_routing() {
+  if (std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_TEST") == nullptr &&
+      std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_N8E_TEST") == nullptr)
+    return;
+  require(::access(std::string(omarchy::plugin_runtime::kPackagedWorkerPath)
+                       .c_str(),
+                   X_OK) == 0,
+          "joined packaged worker integration test was unavailable");
+  constexpr std::string_view plugin_a = "a.plugin";
+  constexpr std::string_view plugin_b = "b.plugin";
+
+  RuntimeFixture fixture;
+  const auto first_a = fixture.seedRuntime(plugin_a, animatedRedQml);
+  const auto binding_b = fixture.seedRuntime(plugin_b, animatedBlueQml);
+  const auto replacement_a =
+      fixture.stageRuntime(plugin_a, 2, animatedGreenQml);
+  require(first_a.revision != replacement_a.revision &&
+              first_a.generation != replacement_a.generation,
+          "replacement A did not name a distinct immutable generation");
+
+  DeterministicJobs scheduler;
+  auto manager = bridge::PluginManagerTestAccess::create();
+  bridge::PluginManagerTestAccess::installRuntime(*manager,
+                                                  fixture.bootstrap());
+  bridge::PluginManagerTestAccess::setJobSubmitter(
+      *manager, [&](auto kind, auto job) {
+        return scheduler.submit(kind, std::move(job));
+      });
+  require(bridge::PluginManagerTestAccess::scanRuntime(*manager) &&
+              scheduler.jobs.size() == 2,
+          "joined fixture did not schedule two packaged runtimes");
+  while (!scheduler.jobs.empty()) {
+    std::thread preparation([&] { scheduler.runOne(); });
+    preparation.join();
+    bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  }
+  const bool both_running = await([&] {
+    bridge::PluginManagerTestAccess::drainRuntime(*manager);
+    const auto observations =
+        bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+    return observations.size() == 2 &&
+           observed(observations, plugin_a).running_unpublished &&
+           observed(observations, plugin_b).running_unpublished;
+  });
+  if (!both_running) {
+    const auto observations =
+        bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+    const auto &a = observed(observations, plugin_a);
+    const auto &b = observed(observations, plugin_b);
+    throw std::runtime_error(
+        "two packaged workers did not coexist: A state/error=" +
+        std::to_string(a.last_state) + "/" + std::to_string(a.last_error) +
+        ", B state/error=" + std::to_string(b.last_state) + "/" +
+        std::to_string(b.last_error));
+  }
+  const auto initial_slots =
+      bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+  const auto first_a_epoch = observed(initial_slots, plugin_a).epoch;
+  const auto b_epoch = observed(initial_slots, plugin_b).epoch;
+
+  require(bridge::PluginManagerTestAccess::publishReady(
+              *manager, plugin_a, first_a_epoch, first_a, barDeclaration()) &&
+              bridge::PluginManagerTestAccess::publishReady(
+                  *manager, plugin_b, b_epoch, binding_b, barDeclaration()) &&
+              manager->count() == 2,
+          "two exact runtime bindings did not publish independently");
+
+  QQmlEngine shell_engine;
+  QQmlComponent bar_component(
+      &shell_engine,
+      QUrl::fromLocalFile(QString::fromStdString(secureBarQmlPath())));
+  require(bar_component.isReady(),
+          "joined secure bar QML component did not load");
+  QQuickWindow window;
+  window.resize(128, 64);
+  window.show();
+  const auto first_a_key = barSurfaceKey(*manager, plugin_a);
+  const auto b_key = barSurfaceKey(*manager, plugin_b);
+  require(!first_a_key.isEmpty() && !b_key.isEmpty(),
+          "two published runtimes omitted their secure bar keys");
+  auto bar_a = createSecureBar(bar_component, *manager, first_a_key,
+                               first_a.generation, *window.contentItem());
+  auto bar_b = createSecureBar(bar_component, *manager, b_key,
+                               binding_b.generation, *window.contentItem());
+  auto *stale_a = bar_a->findChild<bridge::RemotePluginSurface *>();
+  auto *remote_b = bar_b->findChild<bridge::RemotePluginSurface *>();
+  require(stale_a && remote_b,
+          "secure bar wrappers omitted their real Remote surfaces");
+  qobject_cast<QQuickItem *>(bar_b.get())->setX(64);
+  require(await([&] {
+            return stale_a->ready() && remote_b->ready() &&
+                   stale_a->frameSequence() >= 2 &&
+                   remote_b->frameSequence() >= 2;
+          }),
+          "secure bar wrappers did not attach two real framed runtimes");
+  const auto first_a_image = paintedFrame(*stale_a);
+  const auto first_a_sequence = stale_a->frameSequence();
+  const auto first_b_image = paintedFrame(*remote_b);
+  const auto first_b_sequence = remote_b->frameSequence();
+  require(await([&] {
+            return stale_a->frameSequence() > first_a_sequence &&
+                   remote_b->frameSequence() > first_b_sequence &&
+                   paintedFrame(*stale_a) != first_a_image &&
+                   paintedFrame(*remote_b) != first_b_image;
+          }),
+          "animated arbitrary QML did not change its painted frame pixels");
+  require(redSignature(paintedFrame(*stale_a)) &&
+              blueSignature(paintedFrame(*remote_b)),
+          "A1/B frame content crossed its red/blue runtime route");
+
+  const auto b_surface_id = remote_b->surfaceId();
+  const auto b_surface_generation = remote_b->surfaceGeneration();
+  const auto b_before_replacement = remote_b->frameSequence();
+  fixture.selectReplacement(replacement_a);
+  require(bridge::PluginManagerTestAccess::scanRuntime(*manager) &&
+              scheduler.jobs.size() == 1 && manager->count() == 1 &&
+              !stale_a->connected() && remote_b->connected() &&
+              barSurfaceKey(*manager, plugin_b) == b_key &&
+              remote_b->surfaceId() == b_surface_id &&
+              remote_b->surfaceGeneration() == b_surface_generation,
+          "replacement A disturbed the exact published B runtime");
+  const auto replacement_slots =
+      bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+  const auto replacement_a_epoch = observed(replacement_slots, plugin_a).epoch;
+  require(replacement_a_epoch != first_a_epoch &&
+              observed(replacement_slots, plugin_b).epoch == b_epoch &&
+              !manager->attach(first_a_key, stale_a),
+          "stale A retained attachment authority after replacement");
+
+  // The stopped root released its authority lock. Install the already staged,
+  // immutable generation before allowing its bounded preparation to execute.
+  fixture.promoteRuntime(replacement_a, 2);
+  std::thread replacement_preparation([&] { scheduler.runOne(); });
+  replacement_preparation.join();
+  require(await([&] {
+            bridge::PluginManagerTestAccess::drainRuntime(*manager);
+            const auto observations =
+                bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+            return observed(observations, plugin_a).running_unpublished &&
+                   observed(observations, plugin_b).running_published;
+          }),
+          "replacement A did not start alongside unchanged B");
+  require(bridge::PluginManagerTestAccess::publishReady(
+              *manager, plugin_a, replacement_a_epoch, replacement_a,
+              barDeclaration()) &&
+              manager->count() == 2,
+          "replacement A did not publish its distinct binding");
+  const auto replacement_a_key = barSurfaceKey(*manager, plugin_a);
+  require(!replacement_a_key.isEmpty() &&
+              replacement_a_key != first_a_key &&
+              !manager->attach(replacement_a_key, stale_a),
+          "replacement A accepted its stale disconnected Remote");
+
+  bar_a.reset();
+  auto replacement_bar_a =
+      createSecureBar(bar_component, *manager, replacement_a_key,
+                      replacement_a.generation, *window.contentItem());
+  auto *remote_a =
+      replacement_bar_a->findChild<bridge::RemotePluginSurface *>();
+  require(remote_a && await([&] { return remote_a->ready(); }),
+          "replacement secure bar did not attach its real Remote");
+  replacement_bar_a.reset();
+  require(remote_b->connected() &&
+              await([&] {
+                return remote_b->frameSequence() > b_before_replacement;
+              }),
+          "secure bar A destruction disturbed independent B frames");
+
+  auto fresh_bar_a =
+      createSecureBar(bar_component, *manager, replacement_a_key,
+                      replacement_a.generation, *window.contentItem());
+  auto *fresh_a = fresh_bar_a->findChild<bridge::RemotePluginSurface *>();
+  require(fresh_a && await([&] { return fresh_a->ready(); }) &&
+              remote_b->connected(),
+          "destroyed secure bar A did not permit a fresh exact attachment");
+  const auto fresh_sequence = fresh_a->frameSequence();
+  const auto fresh_image = paintedFrame(*fresh_a);
+  const auto b_before_comparison = remote_b->frameSequence();
+  require(fresh_sequence != 0 &&
+              await([&] {
+                return fresh_a->frameSequence() > fresh_sequence &&
+                       paintedFrame(*fresh_a) != fresh_image &&
+                       remote_b->frameSequence() > b_before_comparison;
+              }),
+          "distinct animated A2 and B did not both advance");
+  const auto a2_image = paintedFrame(*fresh_a);
+  const auto continued_b_image = paintedFrame(*remote_b);
+  require(greenSignature(a2_image) && blueSignature(continued_b_image) &&
+              a2_image != continued_b_image &&
+              remote_b->surfaceId() == b_surface_id &&
+              remote_b->surfaceGeneration() == b_surface_generation &&
+              remote_b->frameSequence() > b_before_replacement,
+          "A2/B frame content or exact B identity crossed runtime routes");
+
+  manager.reset();
+  require(!fresh_a->connected() && !remote_b->connected(),
+          "joined manager teardown left a Remote transport connected");
+}
+
 } // namespace
 
 void run_plugin_manager_tests() {
+  require(qmlRegisterType<bridge::RemotePluginSurface>(
+              "Omarchy.PluginHost", 1, 0, "RemotePluginSurface") >= 0,
+          "real RemotePluginSurface QML type registration failed");
+  secure_bar_retries_only_on_readiness_events();
   process_singleton_factory_is_exact_and_recoverable();
   concurrent_engines_have_one_process_winner();
   singleton_boundary_is_inert_and_not_configurable();
@@ -1043,4 +1503,5 @@ void run_plugin_manager_tests() {
   blocked_replacement_preserves_independent_plugin();
   runtime_jobs_enter_off_ui_and_commit_on_ui_drain();
   real_root_publishes_attaches_and_tears_down_exactly();
+  joined_runtimes_replace_and_render_without_cross_routing();
 }

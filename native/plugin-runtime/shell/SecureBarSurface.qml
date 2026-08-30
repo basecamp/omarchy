@@ -13,9 +13,20 @@ Item {
   implicitWidth: maximumWidth
   implicitHeight: maximumHeight
 
+  function attachIfReady() {
+    if (!remote.connected && remote.Window.window !== null && remote.width > 0 && remote.height > 0)
+      surfaceService.attach(surfaceKey, remote)
+  }
+
+  onSurfaceKeyChanged: attachIfReady()
+
   RemotePluginSurface {
     id: remote
     anchors.fill: parent
-    Component.onCompleted: root.surfaceService.attach(root.surfaceKey, remote)
+    Window.onWindowChanged: root.attachIfReady()
+    onWidthChanged: root.attachIfReady()
+    onHeightChanged: root.attachIfReady()
   }
+
+  Component.onCompleted: attachIfReady()
 }
