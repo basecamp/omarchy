@@ -384,6 +384,25 @@ Relogin=false
 CONF
 }
 
+seed_omarchy_home() {
+  local username=$1 home group omarchy_root
+
+  home=$(getent passwd "$username" | cut -d: -f6)
+  group=$(id -gn "$username")
+  omarchy_root=$(cd -- "$command_dir/.." && pwd)
+  [[ -d $home && -d $omarchy_root/config ]] || return 1
+
+  # omarchy-settings normally seeds these through /etc/skel. Keep new managed
+  # accounts usable on older and community images whose skeleton predates the
+  # current desktop, without copying any private files from the administrator.
+  if [[ ! -f $home/.config/hypr/hyprland.lua ]]; then
+    install -d -m 0700 -o "$username" -g "$group" "$home/.config"
+    cp -a "$omarchy_root/config/." "$home/.config/"
+    install -m 0644 -o "$username" -g "$group" "$omarchy_root/default/bashrc" "$home/.bashrc"
+    chown -R "$username:$group" "$home/.config"
+  fi
+}
+
 ensure_squid() {
   omarchy-pkg-add squid
   getent passwd proxy >/dev/null || error "the Squid proxy account was not installed"
@@ -405,6 +424,10 @@ add_account() {
     if ! passwd "$username"; then
       userdel -r "$username" 2>/dev/null || true
       error "password setup failed; the new account was rolled back"
+    fi
+    if ! seed_omarchy_home "$username"; then
+      userdel -r "$username" 2>/dev/null || true
+      error "Omarchy desktop setup failed; the new account was rolled back"
     fi
   fi
 

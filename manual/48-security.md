@@ -34,7 +34,7 @@ Create one from _Setup > Security > Managed Account_, or from a terminal:
 omarchy managed add kid khanacademy.org https://school.example/lessons
 ```
 
-The menu asks for the login name, the initial allowed websites, and the account's login password. Omarchy disables automatic administrator login when the first managed account is added, so after logging out or rebooting you can choose between the administrator and managed accounts at the login screen.
+The menu asks for the login name, the initial allowed websites, and the account's login password. New logins receive the shipped Omarchy desktop defaults without copying private files from the administrator. Omarchy disables automatic administrator login when the first managed account is added, so after logging out or rebooting you can choose between the administrator and managed accounts at the login screen.
 
 The allowlist is made of website hosts. Pasting a URL is convenient, but `https://school.example/lessons` becomes `school.example` and includes its subdomains. HTTPS encrypts the path after the host, and Omarchy deliberately does not install a certificate to intercept it. Modern sites often load sign-in pages, video, fonts, or other assets from additional hosts; add those hosts when a page needs them.
 
