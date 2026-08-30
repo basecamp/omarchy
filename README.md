@@ -61,19 +61,18 @@ its screenshots are also hosted.
 - [Prompt](manual/40-prompt.md)
 - [Branding](manual/41-branding.md)
 - [Common tweaks](manual/42-common-tweaks.md)
-- [Extra themes](manual/43-extra-themes.md)
-- [Making your own theme](manual/44-making-your-own-theme.md)
+- [Making your own theme](manual/43-making-your-own-theme.md)
 
 **The Rest**
 
-- [Mac support](manual/45-mac-support.md)
-- [Troubleshooting](manual/46-troubleshooting.md)
-- [FAQ](manual/47-faq.md)
-- [System snapshots](manual/48-system-snapshots.md)
-- [Security](manual/49-security.md)
-- [Omarchy on...](manual/50-omarchy-on.md)
-- [Dual Boot Install](manual/51-dual-boot-install.md)
-- [Unattended Installs](manual/52-unattended-installs.md)
+- [Mac support](manual/44-mac-support.md)
+- [Troubleshooting](manual/45-troubleshooting.md)
+- [FAQ](manual/46-faq.md)
+- [System snapshots](manual/47-system-snapshots.md)
+- [Security](manual/48-security.md)
+- [Omarchy on...](manual/49-omarchy-on.md)
+- [Dual Boot Install](manual/50-dual-boot-install.md)
+- [Unattended Installs](manual/51-unattended-installs.md)
 
 ## License
 

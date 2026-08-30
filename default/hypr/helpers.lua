@@ -136,7 +136,7 @@ function o.bind_toggle(keys, description, toggle, options)
 end
 
 function o.notify(message)
-  return "notify-send -u low " .. shell_quote(message)
+  return "omarchy-notification-send -u low " .. shell_quote(message)
 end
 
 function o.window(match, rules)

@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# omarchy:summary=Check that a git URL names a repository, not a transport helper
+# omarchy:args=<git-url>
+# omarchy:hidden=true
+
+set -euo pipefail
+
+# git picks a remote helper -- an executable it runs at clone time -- out of a URL
+# in exactly two shapes, and no others: `<helper>::<address>`, and
+# `<scheme>://<address>` for any scheme git does not handle itself. A single
+# colon is always scp-style ssh, and a bare path is always a path; neither can
+# reach a helper. So constraining those two shapes covers the whole surface.
+#
+# The `::` shape is refused outright, because no helper reachable that way is one
+# a theme or plugin URL has business naming, and `ext::` runs a shell command.
+# The `://` shape cannot be refused the same way, since it is also how every
+# legitimate URL arrives -- so it is allowlisted instead. The list is the
+# transports git still connects itself, `git+ssh` and `ssh+git` included: those
+# two are spelled like a helper but are read as plain ssh. `ext` and `fd` are
+# left out deliberately -- git ships a helper for each, and `ext` runs whatever
+# command the URL carries.
+TRANSPORTS=(ssh git git+ssh ssh+git http https ftp ftps file)
+
+fail() {
+  echo "omarchy-git-url-check: $*" >&2
+  exit 1
+}
+
+url="${1-}"
+
+if [[ -z $url ]]; then
+  fail "a git URL is required"
+fi
+
+if [[ $url == -* || $url =~ ^[A-Za-z0-9][A-Za-z0-9+.-]*:: ]]; then
+  fail "'$url' names a git option or transport helper, not a repository."
+fi
+
+if [[ $url =~ ^([A-Za-z0-9][A-Za-z0-9+.-]*):// ]]; then
+  scheme="${BASH_REMATCH[1]}"
+
+  for transport in "${TRANSPORTS[@]}"; do
+    if [[ $scheme == "$transport" ]]; then
+      exit 0
+    fi
+  done
+
+  fail "'$url' names the '$scheme' transport, which Omarchy does not clone from."
+fi
