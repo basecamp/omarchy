@@ -58,7 +58,11 @@ struct AudioBackend {
 };
 
 struct ProviderConfiguration {
+  // The runtime replaces these authority fields from its verified snapshot;
+  // backend callers cannot supply or extend provider authority.
   permissions::ActivationBinding binding;
+  permissions::RequestSet requests;
+  permissions::GrantSet grants;
   std::uint64_t storage_epoch = 0;
   std::uint64_t notification_epoch = 0;
   std::uint64_t audio_epoch = 0;
@@ -74,8 +78,8 @@ public:
   ProviderSet &operator=(const ProviderSet &) = delete;
 
   [[nodiscard]] broker::ProviderRegistry<5> registry() noexcept;
-  [[nodiscard]] std::size_t revoke(const permissions::CapabilityKey &capability,
-                                   std::uint64_t new_epoch) noexcept;
+  [[nodiscard]] bool revoke(const permissions::CapabilityKey &capability,
+                            std::uint64_t new_epoch) noexcept;
 
 private:
   static broker::ProviderResult
@@ -95,11 +99,12 @@ private:
                  void *) noexcept;
   static bool cancel_synchronous(std::uint64_t, void *) noexcept;
 
-  [[nodiscard]] bool authorized(const broker::AuthorizedRequest &request,
-                                std::uint64_t expected_epoch) const noexcept;
+  [[nodiscard]] bool
+  authorized(const broker::AuthorizedRequest &request) const noexcept;
   [[nodiscard]] static std::string_view
   exact_token(const permissions::Scope &scope) noexcept;
   ProviderConfiguration configuration_;
+  permissions::PermissionAuthority effect_authority_;
 };
 
 } // namespace omarchy::plugin_runtime::providers

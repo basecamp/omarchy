@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <limits>
 #include <variant>
 
 namespace omarchy::plugin_runtime::providers {
@@ -14,10 +15,29 @@ bool capability_is(const permissions::CapabilityKey &capability,
   return capability.version == 1 && capability.id.view() == id;
 }
 
+std::uint64_t configured_epoch(const ProviderConfiguration &configuration,
+                               OperationId operation) noexcept {
+  switch (operation) {
+  case OperationId::storage_read:
+  case OperationId::storage_write:
+  case OperationId::storage_remove:
+    return configuration.storage_epoch;
+  case OperationId::notification_send:
+    return configuration.notification_epoch;
+  case OperationId::audio_play_cue:
+    return configuration.audio_epoch;
+  }
+  return 0;
+}
+
 } // namespace
 
 ProviderSet::ProviderSet(ProviderConfiguration configuration)
-    : configuration_(std::move(configuration)) {}
+    : configuration_(std::move(configuration)),
+      effect_authority_(
+          configuration_.binding, configuration_.requests,
+          configuration_.grants,
+          permissions::PermissionAuthority::ValidatedCombinedPolicy{}) {}
 
 broker::ProviderRegistry<5> ProviderSet::registry() noexcept {
   broker::ProviderRegistry<5> result;
@@ -40,32 +60,49 @@ broker::ProviderRegistry<5> ProviderSet::registry() noexcept {
   return result;
 }
 
-std::size_t ProviderSet::revoke(const permissions::CapabilityKey &capability,
-                                std::uint64_t new_epoch) noexcept {
-  if (capability_is(capability, "storage.private")) {
-    if (new_epoch <= configuration_.storage_epoch)
-      return 0;
-    configuration_.storage_epoch = new_epoch;
-  } else if (capability_is(capability, "notifications.send")) {
-    if (new_epoch <= configuration_.notification_epoch)
-      return 0;
-    configuration_.notification_epoch = new_epoch;
-  } else if (capability_is(capability, "audio.play-cue")) {
-    if (new_epoch <= configuration_.audio_epoch)
-      return 0;
-    configuration_.audio_epoch = new_epoch;
+bool ProviderSet::revoke(const permissions::CapabilityKey &capability,
+                         std::uint64_t new_epoch) noexcept {
+  std::uint64_t *configured_epoch = nullptr;
+  if (capability_is(capability, "storage.private"))
+    configured_epoch = &configuration_.storage_epoch;
+  else if (capability_is(capability, "notifications.send"))
+    configured_epoch = &configuration_.notification_epoch;
+  else if (capability_is(capability, "audio.play-cue"))
+    configured_epoch = &configuration_.audio_epoch;
+  if (configured_epoch == nullptr)
+    return false;
+  const auto current = std::ranges::find_if(
+      effect_authority_.grants().values(), [&](const auto &grant) {
+        return grant.capability == capability;
+      });
+  if (current == effect_authority_.grants().values().end() ||
+      current->epoch == std::numeric_limits<std::uint64_t>::max() ||
+      new_epoch != current->epoch + 1)
+    return false;
+  try {
+    if (effect_authority_.revoke(capability) != new_epoch)
+      return false;
+  } catch (...) {
+    return false;
   }
-  return 0;
+  *configured_epoch = new_epoch;
+  return true;
 }
 
-bool ProviderSet::authorized(const broker::AuthorizedRequest &request,
-                             std::uint64_t expected_epoch) const noexcept {
-  const auto *definition = permissions::find_operation(request.operation);
-  return definition != nullptr &&
-         request.authorization.capability == definition->key &&
-         request.authorization.binding == configuration_.binding &&
-         expected_epoch > 0 &&
-         request.authorization.grant_epoch == expected_epoch;
+bool ProviderSet::authorized(
+    const broker::AuthorizedRequest &request) const noexcept {
+  try {
+    const auto decision = effect_authority_.authorize(
+        request.operation, request.demand, request.authorization.binding, 0);
+    return decision.allowed() &&
+           request.authorization.binding == configuration_.binding &&
+           request.authorization.capability == decision.capability &&
+           request.authorization.grant_epoch == decision.grant_epoch &&
+           decision.grant_epoch ==
+               configured_epoch(configuration_, request.operation);
+  } catch (...) {
+    return false;
+  }
 }
 
 std::string_view ProviderSet::exact_token(
@@ -84,7 +121,7 @@ ProviderSet::dispatch_storage_read(const broker::AuthorizedRequest &request,
   const auto *quota = std::get_if<permissions::QuotaScope>(&request.demand);
   StorageReadRequest decoded{};
   if (request.operation != OperationId::storage_read ||
-      !self.authorized(request, self.configuration_.storage_epoch) ||
+      !self.authorized(request) ||
       quota == nullptr ||
       quota->total_bytes > self.configuration_.storage.maximum_total_bytes ||
       quota->item_bytes > self.configuration_.storage.maximum_item_bytes ||
@@ -118,7 +155,7 @@ ProviderSet::dispatch_storage_write(const broker::AuthorizedRequest &request,
   const auto *quota = std::get_if<permissions::QuotaScope>(&request.demand);
   StorageWriteRequest decoded{};
   if (request.operation != OperationId::storage_write ||
-      !self.authorized(request, self.configuration_.storage_epoch) ||
+      !self.authorized(request) ||
       quota == nullptr ||
       quota->total_bytes > self.configuration_.storage.maximum_total_bytes ||
       quota->item_bytes > self.configuration_.storage.maximum_item_bytes ||
@@ -139,7 +176,7 @@ ProviderSet::dispatch_storage_remove(const broker::AuthorizedRequest &request,
   const auto *quota = std::get_if<permissions::QuotaScope>(&request.demand);
   StorageReadRequest decoded{};
   if (request.operation != OperationId::storage_remove ||
-      !self.authorized(request, self.configuration_.storage_epoch) ||
+      !self.authorized(request) ||
       quota == nullptr ||
       quota->total_bytes > self.configuration_.storage.maximum_total_bytes ||
       quota->item_bytes > self.configuration_.storage.maximum_item_bytes ||
@@ -159,7 +196,7 @@ ProviderSet::dispatch_notification(const broker::AuthorizedRequest &request,
   NotificationRequest decoded{};
   const auto category = exact_token(request.demand);
   if (request.operation != OperationId::notification_send ||
-      !self.authorized(request, self.configuration_.notification_epoch) ||
+      !self.authorized(request) ||
       category.empty() ||
       self.configuration_.notification.send == nullptr ||
       !decode_notification(request.payload, decoded) ||
@@ -176,7 +213,7 @@ ProviderSet::dispatch_audio(const broker::AuthorizedRequest &request,
   auto &self = *static_cast<ProviderSet *>(context);
   const auto cue = exact_token(request.demand);
   if (request.operation != OperationId::audio_play_cue ||
-      !self.authorized(request, self.configuration_.audio_epoch) ||
+      !self.authorized(request) ||
       cue.empty() || !request.payload.empty() ||
       self.configuration_.audio.play == nullptr ||
       !self.configuration_.audio.play(cue, self.configuration_.audio.context))

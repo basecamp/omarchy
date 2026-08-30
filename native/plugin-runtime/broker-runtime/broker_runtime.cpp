@@ -52,6 +52,8 @@ providers::ProviderConfiguration AuditedBrokerRuntime::normalize_configuration(
     const policy::GrantSnapshot &revision,
     providers::ProviderConfiguration configuration) {
   configuration.binding = revision.binding;
+  configuration.requests = revision.requests;
+  configuration.grants = revision.grants;
   configuration.storage_epoch = epoch_for(revision, "storage.private");
   configuration.notification_epoch = epoch_for(revision, "notifications.send");
   configuration.audio_epoch = epoch_for(revision, "audio.play-cue");
@@ -314,9 +316,9 @@ AuditedBrokerRuntime::apply_revocation(const policy::Revocation &revocation) {
     }
     tracked->cancel_requested = true;
   }
-  const auto cancelled =
-      providers_.revoke(revocation.grant.capability, revocation.grant.epoch);
-  if (cancelled != plan.cancel_count) {
+  if (plan.cancel_count != 0 ||
+      !providers_.revoke(revocation.grant.capability,
+                         revocation.grant.epoch)) {
     failed_ = true;
     result.status = RuntimeStatus::failed;
     return result;
