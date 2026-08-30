@@ -6,8 +6,14 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 service="$ROOT/default/systemd/user/bt-agent.service"
 
-grep -Fx 'ExecCondition=/usr/bin/systemctl is-active --quiet bluetooth.service' "$service" >/dev/null
-pass "bt-agent skips when bluetooth.service is inactive"
+grep -Fx "ExecStartPre=/usr/bin/timeout 30 /bin/bash -c 'until /usr/bin/systemctl is-active --quiet bluetooth.service; do sleep 1; done'" "$service" >/dev/null ||
+  fail "bt-agent waits for the system Bluetooth service during login"
+if grep -q '^ExecCondition=.*bluetooth.service' "$service"; then
+  fail "bt-agent no longer turns an early Bluetooth check into a permanent skip"
+fi
+grep -Fx 'StartLimitIntervalSec=120' "$service" >/dev/null || fail "bt-agent bounds failed startup retries"
+grep -Fx 'StartLimitBurst=3' "$service" >/dev/null || fail "bt-agent bounds failed startup retries"
+pass "bt-agent waits through the system service startup race"
 
 grep -Fx 'Restart=on-failure' "$service" >/dev/null
 pass "bt-agent still restarts after runtime failures"
