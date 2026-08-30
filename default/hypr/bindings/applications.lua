@@ -1,6 +1,12 @@
 -- Essential application bindings.
 o.bind("SUPER + RETURN", "Terminal", { omarchy = "terminal" })
 o.bind("SUPER + SHIFT + RETURN", "Browser", { omarchy = "browser" })
+-- Some keyboards emit KP_Enter for their only Enter key, and full-size
+-- keyboards have a numpad Enter; applications treat both like Return. Mirror
+-- the RETURN bindings without descriptions so the keybindings menu doesn't
+-- list duplicates.
+o.bind("SUPER + KP_Enter", nil, { omarchy = "terminal" })
+o.bind("SUPER + SHIFT + KP_Enter", nil, { omarchy = "browser" })
 o.bind("SUPER + SHIFT + F", "File manager", { omarchy = "nautilus" })
 o.bind("SUPER + ALT + SHIFT + F", "File manager (cwd)", { omarchy = "nautilus-cwd" })
 o.bind("SUPER + SHIFT + B", "Browser", { omarchy = "browser" })
@@ -11,6 +17,8 @@ if o.preinstalled_bindings_enabled() then
   -- Bindings for preinstalled Omarchy applications, TUIs, and web apps.
   o.bind("SUPER + ALT + RETURN", "Tmux", { omarchy = "terminal-tmux" })
   o.bind("SUPER + CTRL + RETURN", "Herdr", { omarchy = "terminal-herdr" })
+  o.bind("SUPER + ALT + KP_Enter", nil, { omarchy = "terminal-tmux" })
+  o.bind("SUPER + CTRL + KP_Enter", nil, { omarchy = "terminal-herdr" })
   o.bind("SUPER + SHIFT + M", "Music", { omarchy = "spotify" })
   o.bind("SUPER + SHIFT + ALT + M", "Music TUI", { tui = "cliamp", focus = true })
   o.bind("SUPER + SHIFT + D", "Docker", { tui = "omarchy-launch-docker-tui" })
