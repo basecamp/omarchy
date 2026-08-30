@@ -27,6 +27,8 @@ echo "Theme changed to: $THEME_NAME"
 
 Packages can install hooks under `omarchy/hooks/` in an absolute directory from `${XDG_DATA_DIRS:-/usr/local/share:/usr/share}`. For example, a package can install `/usr/share/omarchy/hooks/theme-set.d/50-windows-xp`. These hooks remain available when `omarchy dev link` points `$OMARCHY_PATH` at a source checkout.
 
+Package hook paths are executable trust boundaries. The runner accepts an XDG package root only when it and every existing path component are owned by root or the invoking user and cannot be written by another user; a sticky shared ancestor such as `/tmp` is allowed only above the package root. Symlinked XDG package roots, event directories, and hook files are skipped. The explicit active-tree and user roots retain symlink support.
+
 The active Omarchy tree can also ship hooks under `$OMARCHY_PATH/hooks/`. The runner canonicalizes hook roots, so the normal `/usr/share/omarchy` tree is not run twice when it appears through both `$OMARCHY_PATH` and `XDG_DATA_DIRS`.
 
 Hook roots run in this order:
