@@ -47,7 +47,7 @@ struct ConsentReview {
   VerifiedRevision verified;
   permissions::Digest fingerprint;
   std::uint64_t expected_sequence = 0;
-  std::uint64_t generation = 0;
+  permissions::ActivationBinding candidate_binding;
   std::vector<BuiltinReviewRow> builtin_rows;
   std::vector<DynamicReviewRow> dynamic_rows;
 };

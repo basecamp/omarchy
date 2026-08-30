@@ -100,15 +100,14 @@ dynamic_delta(const definitions::DynamicRequest &next,
 }
 
 std::string review_fingerprint(const ConsentReview &review,
-                               const AuthorityView &view,
-                               std::string_view policy_fingerprint) {
+                               const AuthorityView &view) {
   std::string bytes = "OMARCHY-PLUGIN-CONSENT-REVIEW-V1\0";
-  field(bytes, review.verified.manifest.id);
-  field(bytes, review.verified.tree_sha256);
+  field(bytes, review.candidate_binding.plugin.view());
+  field(bytes, review.candidate_binding.revision.view());
   field(bytes, review.verified.request_sha256);
-  field(bytes, policy_fingerprint);
+  field(bytes, review.candidate_binding.policy_fingerprint.view());
   number(bytes, review.expected_sequence);
-  number(bytes, review.generation);
+  number(bytes, review.candidate_binding.generation);
   if (view.authority_slots.active) {
     field(bytes, view.authority_slots.active->snapshot_digest.view());
     number(bytes, view.authority_slots.active->generation);
@@ -150,8 +149,17 @@ build_review(const AuthorityView &view, const VerifiedRevision &verified,
     ConsentReview review{.verified = verified,
                          .fingerprint = {},
                          .expected_sequence = view.authority_slots.sequence,
-                         .generation =
-                             view.authority_slots.generation_high_watermark + 1,
+                         .candidate_binding =
+                             {.plugin = permissions::PluginId(
+                                  verified.manifest.id),
+                              .revision =
+                                  permissions::Digest(verified.tree_sha256),
+                              .policy_fingerprint =
+                                  permissions::Digest(policy_fingerprint),
+                              .generation =
+                                  view.authority_slots
+                                          .generation_high_watermark +
+                                      1},
                          .builtin_rows = {},
                          .dynamic_rows = {}};
 
@@ -249,8 +257,8 @@ build_review(const AuthorityView &view, const VerifiedRevision &verified,
           row.requested ? row.requested : row.previous_request;
       return request->definition.canonical_name;
     });
-    review.fingerprint = permissions::Digest(
-        review_fingerprint(review, view, policy_fingerprint));
+    review.fingerprint =
+        permissions::Digest(review_fingerprint(review, view));
     return review;
   } catch (...) {
     return std::nullopt;
@@ -344,7 +352,7 @@ ConsentResult publish_consent_review(
     const auto choices = compute_decision_fingerprint(review, builtin_decisions,
                                                       dynamic_decisions);
     if (!exact || exact->fingerprint != review.fingerprint ||
-        exact->generation != review.generation ||
+        exact->candidate_binding != review.candidate_binding ||
         !confirmed(*exact, confirmation, choices))
       return ConsentResult::invalid_review;
     auto builtin =
@@ -353,12 +361,7 @@ ConsentResult publish_consent_review(
     if (builtin_decisions.size() != builtin.size() ||
         dynamic_decisions.size() != dynamic.size())
       return ConsentResult::incomplete_decisions;
-    permissions::ActivationBinding binding{
-        .plugin = permissions::PluginId(review.verified.manifest.id),
-        .revision = permissions::Digest(review.verified.tree_sha256),
-        .policy_fingerprint = permissions::Digest(
-            permissions::policy_request_fingerprint(builtin)),
-        .generation = review.generation};
+    const auto binding = review.candidate_binding;
     policy::GrantSnapshot snapshot{
         .binding = binding,
         .source_request_fingerprint =
@@ -397,7 +400,7 @@ ConsentResult publish_consent_review(
            .state = choice.decision == permissions::UserDecision::grant
                         ? permissions::GrantState::granted
                         : permissions::GrantState::denied,
-           .epoch = review.generation});
+           .epoch = review.candidate_binding.generation});
     }
     for (const auto &request : dynamic) {
       if (std::ranges::count(dynamic_decisions, request.definition,
@@ -420,7 +423,7 @@ ConsentResult publish_consent_review(
           .state = choice.decision == permissions::UserDecision::grant
                        ? permissions::GrantState::granted
                        : permissions::GrantState::denied,
-          .epoch = review.generation};
+          .epoch = review.candidate_binding.generation};
       if (request.required &&
           choice.decision != permissions::UserDecision::grant)
         return ConsentResult::required_denied;

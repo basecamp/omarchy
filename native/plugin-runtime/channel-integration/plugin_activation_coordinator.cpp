@@ -76,6 +76,11 @@ launcher::Supervisor PluginActivationCoordinator::supervisor() const {
   return launcher::Supervisor::production();
 }
 
+std::optional<host_session::VerifiedRevision>
+PluginActivationCoordinator::verify_revision(std::string_view record_name) const {
+  return activation_source_.verified_revision(record_name);
+}
+
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
 void PluginActivationCoordinator::set_supervisor_factory(
     SupervisorFactory factory) {

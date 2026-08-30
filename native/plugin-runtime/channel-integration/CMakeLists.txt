@@ -60,6 +60,7 @@ if(TARGET omarchy-plugin-host-session)
     authenticated_session_channel.cpp
     broker_session_settlement.cpp
     plugin_activation_coordinator.cpp
+    plugin_permission_controller.cpp
     plugin_session.cpp
   )
   target_include_directories(omarchy-plugin-authenticated-session PUBLIC
@@ -185,6 +186,7 @@ if(BUILD_TESTING)
       authenticated_session_channel.cpp
       broker_session_settlement.cpp
       plugin_activation_coordinator.cpp
+      plugin_permission_controller.cpp
       plugin_session.cpp
       plugin_session_test.cpp)
     omarchy_plugin_target_defaults(omarchy-plugin-product-session-test)

@@ -12,6 +12,7 @@
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
+#include <type_traits>
 #include <unistd.h>
 #include <vector>
 
@@ -902,28 +903,38 @@ AuthorityRevocationResult AuthorityStore::revoke_active(
   if (auto live = bound_live_.lock())
     live->revoke();
   bound_live_.reset();
-  AuthorityRevisionRef reference;
-  const auto stored = store_snapshot_record(root_.get(), expected_uid_,
-                                            *active, reference);
-  if (stored != AuthorityMutationResult::applied) {
-    poisoned_ = true;
-    return failure(stored);
-  }
+  // From this fence until a complete typed success result exists, every exit
+  // leaves this process unable to reuse potentially ambiguous durable state.
+  poisoned_ = true;
+  try {
+    AuthorityRevisionRef reference;
+    const auto stored = store_snapshot_record(root_.get(), expected_uid_,
+                                              *active, reference);
+    if (stored != AuthorityMutationResult::applied)
+      return failure(stored);
 
-  const auto previous = *slots;
-  slots->active = reference;
-  slots->candidate.reset();
-  slots->generation_high_watermark = next_generation;
-  ++slots->sequence;
-  const auto replaced = replace_slots(*slots);
-  if (replaced != AuthorityMutationResult::applied) {
-    poisoned_ = true;
-    return failure(replaced);
+    const auto previous = *slots;
+    slots->active = reference;
+    slots->candidate.reset();
+    slots->generation_high_watermark = next_generation;
+    ++slots->sequence;
+    const auto replaced = replace_slots(*slots);
+    if (replaced != AuthorityMutationResult::applied)
+      return failure(replaced);
+    cleanup_unreferenced(root_.get(), previous, *slots);
+    AuthorityRevocationResult success{
+        .status = AuthorityMutationResult::applied,
+        .binding = active->binding,
+        .activatable = activatable(*active)};
+    static_assert(
+        std::is_nothrow_move_constructible_v<AuthorityRevocationResult>);
+    poisoned_ = false;
+    return success;
+  } catch (...) {
+    // Once the old live generation is fenced, no exceptional persistence path
+    // may leave this in-process store usable against ambiguous durable state.
+    return failure(AuthorityMutationResult::io_error);
   }
-  cleanup_unreferenced(root_.get(), previous, *slots);
-  return {.status = AuthorityMutationResult::applied,
-          .binding = active->binding,
-          .activatable = activatable(*active)};
 }
 
 std::optional<policy::GrantSnapshot>

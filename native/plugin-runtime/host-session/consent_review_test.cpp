@@ -414,7 +414,7 @@ void replay_and_parallel_review_cas() {
           "candidate discard failed");
   auto retried = host::prepare_consent_review(
       *fixture.store, candidate, fixture.definitions, fixture.validator);
-  require(retried && retried->generation == 2 &&
+  require(retried && retried->candidate_binding.generation == 2 &&
               retried->fingerprint != first->fingerprint,
           "re-review did not bind a new generation/sequence");
   require(host::publish_consent_review(*fixture.store, *retried, accepted,

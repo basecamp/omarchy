@@ -2,9 +2,11 @@
 
 #include "manifest_contract.hpp"
 
+#include <cstdlib>
 #include <filesystem>
 #include <fcntl.h>
 #include <iostream>
+#include <new>
 #include <stdexcept>
 #include <sys/wait.h>
 #include <sys/stat.h>
@@ -16,6 +18,35 @@ namespace policy = omarchy::plugin_runtime::policy;
 namespace permissions = omarchy::plugins::permissions;
 namespace definitions = omarchy::plugins::definitions;
 namespace manifest = omarchy::plugins::manifest;
+
+namespace allocation_failure {
+thread_local bool armed = false;
+thread_local bool fired = false;
+thread_local std::weak_ptr<host::LiveGenerationState> live;
+thread_local permissions::ActivationBinding binding;
+} // namespace allocation_failure
+
+void *operator new(std::size_t size) {
+  if (allocation_failure::armed) {
+    const auto live = allocation_failure::live.lock();
+    if (live && !live->current(allocation_failure::binding)) {
+      allocation_failure::armed = false;
+      allocation_failure::fired = true;
+      throw std::bad_alloc();
+    }
+  }
+  if (void *memory = std::malloc(size == 0 ? 1 : size))
+    return memory;
+  throw std::bad_alloc();
+}
+
+void *operator new[](std::size_t size) { return ::operator new(size); }
+void operator delete(void *memory) noexcept { std::free(memory); }
+void operator delete[](void *memory) noexcept { std::free(memory); }
+void operator delete(void *memory, std::size_t) noexcept { std::free(memory); }
+void operator delete[](void *memory, std::size_t) noexcept {
+  std::free(memory);
+}
 
 namespace {
 constexpr std::string_view kPlugin = "org.example.authority";
@@ -486,6 +517,43 @@ void revoke_io_failures_poison_after_effect_fence() {
           "post-fence revoke failure did not poison all activation paths");
 }
 
+void revoke_allocation_failure_poison_after_effect_fence() {
+  Fixture fixture;
+  auto value = review(1, 'a', false);
+  require(fixture.store->publish_candidate(value.verified, value.snapshot, 0,
+                                            fixture.definitions, {}) ==
+                  host::AuthorityMutationResult::applied &&
+              fixture.store->promote_candidate(value.snapshot.binding, 1) ==
+                  host::AuthorityMutationResult::applied,
+          "allocation poison fixture activation failed");
+  auto live =
+      std::make_shared<host::LiveGenerationState>(value.snapshot.binding);
+  require(fixture.store->bind_live_activation(value.snapshot.binding, live),
+          "allocation poison fixture live bind failed");
+
+  allocation_failure::live = live;
+  allocation_failure::binding = value.snapshot.binding;
+  allocation_failure::fired = false;
+  allocation_failure::armed = true;
+  const auto result = host::AuthorityStoreTestAccess::revoke_active(
+      *fixture.store, value.snapshot.grants[0].capability, 2);
+  allocation_failure::armed = false;
+  allocation_failure::live.reset();
+
+  require(allocation_failure::fired &&
+              result.status == host::AuthorityMutationResult::io_error &&
+              !live->current(value.snapshot.binding) &&
+              !fixture.store->read_slots() &&
+              !fixture.store->resolve(kPlugin, hex('a')) &&
+              !fixture.store->bind_live_activation(value.snapshot.binding,
+                                                   live) &&
+              fixture.store
+                      ->publish_candidate(value.verified, value.snapshot, 2,
+                                          fixture.definitions, {}) ==
+                  host::AuthorityMutationResult::poisoned,
+          "post-fence allocation failure escaped or left authority usable");
+}
+
 void crash_orphan_retry_and_cleanup() {
   Fixture fixture;
   auto first = review(1);
@@ -747,6 +815,7 @@ int main() {
     exact_builtin_revoke_rebases_and_invalidates_candidate();
     exact_dynamic_revoke_rebases_every_epoch();
     revoke_io_failures_poison_after_effect_fence();
+    revoke_allocation_failure_poison_after_effect_fence();
     crash_orphan_retry_and_cleanup();
     concurrency_fork_and_umask();
     required_denial_cannot_promote();

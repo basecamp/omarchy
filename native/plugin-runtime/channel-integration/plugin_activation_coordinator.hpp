@@ -11,6 +11,8 @@
 
 namespace omarchy::plugin_runtime::channel {
 
+class PluginPermissionController;
+
 struct PluginActivationResult final {
   PluginSession *session = nullptr;
   host_session::ActivationError activation_error =
@@ -44,6 +46,8 @@ public:
 
 private:
   [[nodiscard]] launcher::Supervisor supervisor() const;
+  [[nodiscard]] std::optional<host_session::VerifiedRevision>
+  verify_revision(std::string_view record_name) const;
 
   host_session::AuthorityStore &authority_;
   permissions::PluginId expected_plugin_;
@@ -56,6 +60,8 @@ private:
   SurfaceIntentSink *intent_sink_;
   QObject *parent_;
   std::unique_ptr<PluginSession> session_;
+
+  friend class PluginPermissionController;
 
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
   using SupervisorFactory = std::function<launcher::Supervisor()>;

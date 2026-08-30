@@ -144,8 +144,21 @@ public:
                    std::uint32_t trusted_uid);
 
   [[nodiscard]] ActivationResult load(std::string_view record_name) const;
+  // Trusted-host read-only selection. This verifies through the same
+  // descriptor-pinned selection as load(), but returns no authority or FDs.
+  [[nodiscard]] std::optional<VerifiedRevision>
+  verified_revision(std::string_view record_name) const;
 
 private:
+  struct VerifiedSelection {
+    ActivationRecord record;
+    VerifiedRevision verified;
+    OwnedDescriptor activation_record;
+    OwnedDescriptor revision_directory;
+    OwnedDescriptor state_directory;
+  };
+  [[nodiscard]] std::optional<VerifiedSelection>
+  select(std::string_view record_name, ActivationError &error) const;
   OwnedDescriptor activation_root_;
   OwnedDescriptor revision_root_;
   OwnedDescriptor state_root_;

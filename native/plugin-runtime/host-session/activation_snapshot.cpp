@@ -242,78 +242,104 @@ ActivationSource::ActivationSource(int activation_root_fd, int revision_root_fd,
       expected_state_directory_(std::move(expected_state_directory)),
       trusted_uid_(trusted_uid) {}
 
-ActivationResult ActivationSource::load(std::string_view record_name) const {
+std::optional<ActivationSource::VerifiedSelection>
+ActivationSource::select(std::string_view record_name,
+                         ActivationError &error) const {
+  const auto reject = [&](ActivationError value) {
+    error = value;
+    return std::optional<VerifiedSelection>{};
+  };
+  error = ActivationError::none;
   if (!component(record_name))
-    return failure(ActivationError::invalid_name);
-  ActivationError read_error = ActivationError::none;
+    return reject(ActivationError::invalid_name);
   if (!activation_root_ || !revision_root_ || !state_root_)
-    return failure(ActivationError::root_unavailable);
+    return reject(ActivationError::root_unavailable);
   auto opened_record = read_record(activation_root_.get(), record_name,
-                                   trusted_uid_, read_error);
+                                   trusted_uid_, error);
   if (!opened_record)
-    return failure(read_error);
+    return {};
   const auto record = parse_record(opened_record->bytes);
   if (!record || record->state_directory != expected_state_directory_)
-    return failure(ActivationError::record_invalid);
+    return reject(ActivationError::record_invalid);
 
   struct stat activation_root{}, revision_root{}, state_root{};
   if (::fstat(activation_root_.get(), &activation_root) < 0 ||
       ::fstat(revision_root_.get(), &revision_root) < 0 ||
       ::fstat(state_root_.get(), &state_root) < 0)
-    return failure(ActivationError::root_unavailable);
+    return reject(ActivationError::root_unavailable);
   if (!trusted_metadata(activation_root, trusted_uid_, S_IFDIR) ||
       !trusted_metadata(revision_root, trusted_uid_, S_IFDIR) ||
       !trusted_metadata(state_root, trusted_uid_, S_IFDIR))
-    return failure(ActivationError::root_untrusted);
+    return reject(ActivationError::root_untrusted);
   const std::array root_identities{identity_of(activation_root),
                                    identity_of(revision_root),
                                    identity_of(state_root),
                                    grant_authority_root_};
   if (!distinct_authority_objects(root_identities))
-    return failure(ActivationError::root_alias);
+    return reject(ActivationError::root_alias);
 
   auto revision =
       open_directory(revision_root_.get(), record->revision_directory);
   if (!revision)
-    return failure(ActivationError::revision_unavailable);
+    return reject(ActivationError::revision_unavailable);
   auto state = open_directory(state_root_.get(), record->state_directory);
   if (!state)
-    return failure(ActivationError::state_unavailable);
+    return reject(ActivationError::state_unavailable);
   struct stat revision_metadata{}, state_metadata{};
   if (::fstat(revision->get(), &revision_metadata) < 0 ||
       ::fstat(state->get(), &state_metadata) < 0)
-    return failure(ActivationError::revision_state_alias);
+    return reject(ActivationError::revision_state_alias);
   if (!trusted_metadata(revision_metadata, trusted_uid_, S_IFDIR))
-    return failure(ActivationError::revision_unavailable);
+    return reject(ActivationError::revision_unavailable);
   if (!trusted_metadata(state_metadata, trusted_uid_, S_IFDIR) ||
       (state_metadata.st_mode & 07777) != 0700)
-    return failure(ActivationError::state_unavailable);
+    return reject(ActivationError::state_unavailable);
   const std::array authority_identities{
       root_identities[0], root_identities[1], root_identities[2],
       root_identities[3], identity_of(revision_metadata),
       identity_of(state_metadata)};
   if (!distinct_authority_objects(authority_identities))
-    return failure(ActivationError::revision_state_alias);
+    return reject(ActivationError::revision_state_alias);
 
   auto verified =
       revision_verifier_.verify_open_revision(revision->get());
   if (!verified || verified->manifest.id != record->plugin_id ||
       verified->tree_sha256 != record->revision_sha256)
-    return failure(ActivationError::revision_unverified);
-  auto grants =
-      grant_authority_.resolve(record->plugin_id, record->revision_sha256);
+    return reject(ActivationError::revision_unverified);
+  return VerifiedSelection{
+      .record = *record,
+      .verified = std::move(*verified),
+      .activation_record = std::move(opened_record->descriptor),
+      .revision_directory = std::move(*revision),
+      .state_directory = std::move(*state)};
+}
+
+std::optional<VerifiedRevision>
+ActivationSource::verified_revision(std::string_view record_name) const {
+  ActivationError error = ActivationError::none;
+  auto selected = select(record_name, error);
+  return selected ? std::optional(std::move(selected->verified)) : std::nullopt;
+}
+
+ActivationResult ActivationSource::load(std::string_view record_name) const {
+  ActivationError error = ActivationError::none;
+  auto selected = select(record_name, error);
+  if (!selected)
+    return failure(error);
+  auto grants = grant_authority_.resolve(selected->record.plugin_id,
+                                         selected->record.revision_sha256);
   if (!grants)
     return failure(ActivationError::grant_unavailable);
-  if (!authoritative_snapshot(*grants, *record, *verified))
+  if (!authoritative_snapshot(*grants, selected->record, selected->verified))
     return failure(ActivationError::grant_mismatch);
   auto live = std::make_shared<LiveGenerationState>(grants->binding);
   return {.snapshot = ActivationSnapshot{
-              .record = *record,
-              .manifest = std::move(verified->manifest),
+              .record = std::move(selected->record),
+              .manifest = std::move(selected->verified.manifest),
               .grants = std::move(*grants),
-              .activation_record = std::move(opened_record->descriptor),
-              .revision_directory = std::move(*revision),
-              .state_directory = std::move(*state),
+              .activation_record = std::move(selected->activation_record),
+              .revision_directory = std::move(selected->revision_directory),
+              .state_directory = std::move(selected->state_directory),
               .live = std::move(live)}};
 }
 

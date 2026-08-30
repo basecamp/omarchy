@@ -7,6 +7,10 @@
 #include <mutex>
 #include <sys/types.h>
 
+namespace omarchy::plugin_runtime::channel {
+class PluginPermissionController;
+}
+
 namespace omarchy::plugin_runtime::host_session {
 
 namespace definitions = omarchy::plugins::definitions;
@@ -43,7 +47,6 @@ struct AuthorityRevocationResult {
   bool activatable = false;
 };
 
-class PermissionController;
 class AuthorityStoreTestAccess;
 
 // Descriptor-rooted, single-owner authority for exact reviewed grants. Open
@@ -114,7 +117,7 @@ private:
   std::weak_ptr<LiveGenerationState> bound_live_;
   bool poisoned_ = false;
 
-  friend class PermissionController;
+  friend class omarchy::plugin_runtime::channel::PluginPermissionController;
   friend class AuthorityStoreTestAccess;
 };
 
