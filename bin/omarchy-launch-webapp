@@ -10,4 +10,13 @@ google-chrome* | brave* | microsoft-edge* | opera* | vivaldi* | helium*) ;;
 *) browser="chromium.desktop" ;;
 esac
 
-exec setsid uwsm-app -- $(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1) --app="$1" "${@:2}"
+bin=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null < /dev/null | head -1)
+
+if [[ -z $bin ]]; then
+  echo "omarchy-launch-webapp: cannot launch web app without a Chromium-based browser." >&2
+  echo "Install one (e.g. Brave, Chrome, Edge) or set it as the default browser." >&2
+  omarchy-notification-send -u low "Web app failed to launch" "No Chromium-based browser is installed (e.g. Brave, Chrome, Edge)."
+  exit 1
+fi
+
+exec setsid uwsm-app -- "$bin" --app="$1" "${@:2}"
