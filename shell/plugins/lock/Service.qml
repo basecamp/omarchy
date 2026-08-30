@@ -27,7 +27,6 @@ Item {
   property bool fingerprintAttemptReachedDevice: false
   property double fingerprintLastNudgeMs: 0
   property double fingerprintLastSettleMs: 0
-  property double fingerprintAttemptStartedMs: 0
   property double fingerprintResumedAtMs: 0
   property bool previewVisible: false
   property string enteredPassword: ""
@@ -137,7 +136,6 @@ Item {
     fingerprintUnreachedStreak = 0
     fingerprintLastNudgeMs = 0
     fingerprintLastSettleMs = 0
-    fingerprintAttemptStartedMs = 0
     fingerprintResumedAtMs = 0
     fingerprintRetryTimer.stop()
     fingerprintReachTimer.stop()
@@ -279,7 +277,6 @@ Item {
 
     fingerprintAuthenticating = true
     fingerprintAttemptReachedDevice = false
-    fingerprintAttemptStartedMs = Date.now()
     if (!fingerprintPam.start()) {
       // A start that fails before PAM even runs is a configuration problem
       // (the PAM file removed under the lock), not a reader miss. Settle for
@@ -326,11 +323,15 @@ Item {
     fingerprintReachTimer.stop()
     if (!lockRequested || !fingerprintConfigured) return
 
-    // An unreached attempt cannot outlive the reach bound on the monotonic
-    // clock; one that did on the wall clock was in flight across a suspend
-    // and was ended by the restart, not by the reader.
+    // The sleep watch ticks every second while locked, so a settle that finds
+    // its last tick far in the past is the first thing to run after a resume:
+    // this attempt was in flight across the suspend and was ended by the
+    // restart, not by the reader. Judged from the tick rather than the
+    // attempt's own age so a suspend shorter than the reach bound is caught
+    // too, before the tick itself gets a chance to.
     var now = Date.now()
-    if (!fingerprintAttemptReachedDevice && FingerprintModel.spannedSleep(now - fingerprintAttemptStartedMs, FingerprintModel.REACH_TIMEOUT_MS)) {
+    if (!fingerprintAttemptReachedDevice && fingerprintSleepWatch.running
+        && FingerprintModel.spannedSleep(now - fingerprintSleepWatch.lastTickMs, fingerprintSleepWatch.interval)) {
       noteFingerprintResumed()
     }
 
