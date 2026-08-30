@@ -32,6 +32,11 @@
             "description": "Voice typing status"
           },
           {
+            "value": "Screenshot",
+            "label": "Screenshot",
+            "description": "Copy a selected region to the clipboard"
+          },
+          {
             "value": "ScreenRecording",
             "label": "Screen recording",
             "description": "GPU screen recorder status"
