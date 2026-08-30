@@ -62,13 +62,28 @@ Panel {
   // no pending change; follow Style.font.baseSize.
   property int textSizePreviewIndex: -1
 
-  // Per-surface rows behind the disclosure. The CLI reports GTK as a scale
-  // factor and terminals in points; both are shown in px against the 12px /
-  // 9pt reference it uses. 0 = not read yet, so the row shows "—".
-  readonly property var textScopeKeys: ["shell", "gtk", "terminals"]
+  // Terminal row notches: every whole point whose px image passes the CLI's
+  // valid_size range (9–20px) — ptToPx(6) is 8px and ptToPx(16) is 21px, both
+  // rejected, and textScaleProc never checks the exit code, so an out-of-range
+  // write would be a silent no-op behind a stale optimistic row. pt→px→pt is
+  // the identity on 7–15, which is what lets writeTextSize's optimistic
+  // pxToPt(px) echo the chosen pt back instead of storing it directly.
+  readonly property var termSizeStops: [7, 8, 9, 10, 11, 12, 13, 14, 15]
+
+  // Per-surface rows behind the disclosure, keyed by row index. The CLI
+  // reports GTK as a scale factor, shown in px against its 12px reference;
+  // terminals keep their native points. 0 = not read yet, so the row shows
+  // "—" with the placeholder notch. (Named textScopeSpecs because an
+  // unqualified `textScopes` inside the scope rows resolves to the gutter
+  // Item id below, not a root property.)
+  readonly property var textScopeSpecs: [
+    { key: "shell", stops: textSizeStops, unit: "px", placeholder: 12 },
+    { key: "gtk", stops: textSizeStops, unit: "px", placeholder: 12 },
+    { key: "terminals", stops: termSizeStops, unit: "pt", placeholder: 9 }
+  ]
   property bool textSizeExpanded: false
   property real gtkPx: 0
-  property real termPx: 0
+  property real termPt: 0
 
   // A text-size change reflows the whole panel (both font and spacing scale),
   // which slides rows under a stationary pointer and fires synthetic hover.
@@ -93,7 +108,7 @@ Panel {
     if (section === "brightness") return 0  // only the slider sentinel at -1
     // Collapsed: just the slider sentinel at -1, like brightness. Expanded: the
     // three scope rows at 0..2, with the unified slider still at -1.
-    if (section === "textsize") return textSizeExpanded ? textScopeKeys.length : 0
+    if (section === "textsize") return textSizeExpanded ? textScopeSpecs.length : 0
     if (section === "scale") return scaleValues.length
     if (section === "monitors") return displays.length
     return 0
@@ -336,15 +351,19 @@ Panel {
     if (!actionProc.running) actionProc.running = true
   }
 
-  // ---- Text size (shell base font + GTK text-scaling, via one CLI) ----
-  function nearestTextStop(px) {
+  // ---- Text size (shell base font, GTK text-scaling, terminal points — one CLI) ----
+  function nearestStop(stops, value) {
     var best = 0
     var bestDist = 1e9
-    for (var i = 0; i < textSizeStops.length; i++) {
-      var d = Math.abs(textSizeStops[i] - px)
+    for (var i = 0; i < stops.length; i++) {
+      var d = Math.abs(stops[i] - value)
       if (d < bestDist) { bestDist = d; best = i }
     }
     return best
+  }
+
+  function nearestTextStop(px) {
+    return nearestStop(textSizeStops, px)
   }
 
   // Effective stop index: the pending choice while a change is in flight,
@@ -365,9 +384,10 @@ Panel {
   property var pendingTextWrites: ({})
 
   // scope "" writes every surface at once (the unified slider); otherwise it is
-  // one of textScopeKeys and becomes the matching CLI flag. The row is updated
-  // from what we asked for rather than read back — if the write fails, the next
-  // status read corrects it.
+  // a textScopeSpecs key and becomes the matching CLI flag. px is always the
+  // CLI's unit; the terminal row's optimistic pt mirrors the CLI's own px→pt
+  // conversion. The row is updated from what we asked for rather than read
+  // back — if the write fails, the next status read corrects it.
   function writeTextSize(scope, px) {
     if (textScaleProc.running) {
       // A unified write supersedes any per-scope writes queued before it.
@@ -378,7 +398,7 @@ Panel {
     }
 
     if (scope === "" || scope === "gtk") root.gtkPx = px
-    if (scope === "" || scope === "terminals") root.termPx = px
+    if (scope === "" || scope === "terminals") root.termPt = Model.pxToPt(px)
     if (scope === "" || scope === "shell") {
       markReflowing()
       root.textSizePreviewIndex = nearestTextStop(px)
@@ -397,23 +417,34 @@ Panel {
     writeTextSize("", px)
   }
 
-  // px a scope row currently sits on. Shell follows Style's live base size, so
-  // it needs no read; the other two come from the status read.
-  function textScopePx(rowIndex) {
+  // Value a scope row currently sits on, in the row's own unit (px, or pt for
+  // terminals). Shell follows Style's live base size, so it needs no read; the
+  // other two come from the status read.
+  function textScopeValue(rowIndex) {
     if (rowIndex === 0) return displayedTextPx()
     if (rowIndex === 1) return root.gtkPx
-    return root.termPx
+    return root.termPt
+  }
+
+  // Single conversion site for row writes: takes a stop in the row's unit and
+  // hands writeTextSize the px the CLI accepts. `unit` doubles as the
+  // conversion selector, so a future pt row on a different anchor needs its
+  // own discriminator.
+  function writeTextScope(rowIndex, stopValue) {
+    var spec = textScopeSpecs[rowIndex]
+    writeTextSize(spec.key, spec.unit === "pt" ? Model.ptToPx(stopValue) : stopValue)
   }
 
   function adjustTextScope(rowIndex, deltaSteps) {
-    var px = textScopePx(rowIndex)
+    var value = textScopeValue(rowIndex)
     // Nothing read yet: the knob is a placeholder, so there is no stop to step
     // from. Dragging still works — that picks a stop outright.
-    if (!px) return
-    var idx = nearestTextStop(px) + deltaSteps
+    if (!value) return
+    var stops = textScopeSpecs[rowIndex].stops
+    var idx = nearestStop(stops, value) + deltaSteps
     if (idx < 0) idx = 0
-    if (idx > textSizeStops.length - 1) idx = textSizeStops.length - 1
-    writeTextSize(textScopeKeys[rowIndex], textSizeStops[idx])
+    if (idx > stops.length - 1) idx = stops.length - 1
+    writeTextScope(rowIndex, stops[idx])
   }
 
   function readTextScopes() {
@@ -423,7 +454,7 @@ Panel {
   function updateTextScopes(raw) {
     var parsed = Model.parseTextSizeStatus(raw)
     root.gtkPx = parsed.gtkPx
-    root.termPx = parsed.termPx
+    root.termPt = parsed.termPt
   }
 
   function adjustTextSize(deltaSteps) {
@@ -1028,7 +1059,8 @@ Panel {
     required property string label
     required property int rowIndex
 
-    readonly property real px: root.textScopePx(rowIndex)
+    readonly property var spec: root.textScopeSpecs[rowIndex]
+    readonly property real value: root.textScopeValue(rowIndex)
 
     spacing: Style.space(4)
 
@@ -1053,10 +1085,12 @@ Panel {
 
       Text {
         id: scopeValue
-        // Terminal points don't land on whole px, so allow one decimal.
+        // GTK's factor quantizes to whole points, so its px reads back
+        // fractional; the terminals row reads back whatever the config holds,
+        // which may be off-ladder. Allow one decimal on either.
         text: scopeSlider.dragging
-              ? root.textSizeStops[Math.round(scopeSlider.liveValue)] + "px"
-              : (scopeRow.px ? Math.round(scopeRow.px * 10) / 10 + "px" : "—")
+              ? scopeRow.spec.stops[Math.round(scopeSlider.liveValue)] + scopeRow.spec.unit
+              : (scopeRow.value ? Math.round(scopeRow.value * 10) / 10 + scopeRow.spec.unit : "—")
         color: Qt.darker(root.bar.foreground, 1.4)
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.caption
@@ -1083,15 +1117,15 @@ Panel {
         anchors.leftMargin: Style.space(6)
         anchors.rightMargin: Style.space(6)
         minimum: 0
-        maximum: root.textSizeStops.length - 1
+        maximum: scopeRow.spec.stops.length - 1
         step: 1
         integer: true
-        tickCount: root.textSizeStops.length
-        // Unread rows park on the 12px notch as a placeholder; the label says "—".
-        value: root.nearestTextStop(scopeRow.px || 12)
+        tickCount: scopeRow.spec.stops.length
+        // Unread rows park on the row's default notch (12px / 9pt) as a
+        // placeholder; the label says "—".
+        value: root.nearestStop(scopeRow.spec.stops, scopeRow.value || scopeRow.spec.placeholder)
         onReleased: function(v) {
-          root.writeTextSize(root.textScopeKeys[scopeRow.rowIndex],
-                             root.textSizeStops[Math.round(v)])
+          root.writeTextScope(scopeRow.rowIndex, scopeRow.spec.stops[Math.round(v)])
         }
       }
 

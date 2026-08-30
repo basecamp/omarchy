@@ -112,19 +112,32 @@ function parseDisplays(raw) {
 }
 
 // omarchy-display-text-size reports GTK as a scale factor and terminals in
-// points, both against this reference. The panel shows every scope in px.
+// points, both against this reference. The panel shows the GTK scope in px and
+// the terminal scope in its native points.
 var TEXT_REFERENCE_PX = 12
 var TERM_REFERENCE_PT = 9
 
+// Terminal pt ⇄ px against the 12px/9pt anchors. pxToPt mirrors the CLI's
+// term_pt_for, so an optimistic pxToPt(px) matches what the CLI writes.
+function ptToPx(pt) {
+  return Math.round(pt * TEXT_REFERENCE_PX / TERM_REFERENCE_PT)
+}
+
+function pxToPt(px) {
+  return Math.round(px * TERM_REFERENCE_PT / TEXT_REFERENCE_PX)
+}
+
 // 0 for a scope the status output doesn't describe (unset, "n/a", or garbage);
-// the row shows "—" rather than a made-up size.
+// the row shows "—" rather than a made-up size. The pt match accepts strings
+// Number() can't parse (e.g. "10..5"), so finite-check rather than pass NaN on.
 function parseTextSizeStatus(raw) {
   var text = String(raw || "")
   var gtk = text.match(/gtk text-scaling-factor:\s*([0-9.]+)/)
   var term = text.match(/terminal font:\s*([0-9.]+)\s*pt/)
+  var pt = term ? Number(term[1]) : 0
   return {
     gtkPx: gtk ? Number(gtk[1]) * TEXT_REFERENCE_PX : 0,
-    termPx: term ? Number(term[1]) * TEXT_REFERENCE_PX / TERM_REFERENCE_PT : 0
+    termPt: isFinite(pt) ? pt : 0
   }
 }
 
@@ -137,6 +150,8 @@ if (typeof module !== "undefined") {
     availableScales: availableScales,
     brightnessName: brightnessName,
     parseDisplays: parseDisplays,
-    parseTextSizeStatus: parseTextSizeStatus
+    parseTextSizeStatus: parseTextSizeStatus,
+    ptToPx: ptToPx,
+    pxToPt: pxToPt
   }
 }
