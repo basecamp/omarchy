@@ -18,10 +18,20 @@ case "${1:-}" in
     ;;
 esac
 
-battery=$(upower -e 2>/dev/null | grep BAT | head -n 1)
-[[ -z $battery ]] && exit 0
+# Check for physical batteries
+batteries=($(upower -e 2>/dev/null | grep BAT))
+display_device=$(upower -e 2>/dev/null | grep -i 'DisplayDevice' | head -n 1)
 
-battery_info=$(upower -i "$battery")
+if (( ${#batteries[@]} == 0 )) && [[ -z $display_device ]]; then
+  exit 0
+fi
+
+# Prefer aggregated DisplayDevice if present and reporting a battery
+if [[ -n $display_device ]]; then
+  battery_info=$(upower -i "$display_device")
+else
+  battery_info=$(upower -i "${batteries[0]}")
+fi
 
 percentage=$(awk '/percentage/ { print int($2); exit }' <<<"$battery_info")
 capacity=$(awk '/energy-full:/ { printf "%d", $2; exit }' <<<"$battery_info")
@@ -42,18 +52,21 @@ time_remaining=$(awk '/time to (empty|full)/ {
   exit
 }' <<<"$battery_info")
 power_rate_raw=$(awk '/energy-rate/ { print $2; exit }' <<<"$battery_info")
-native_path=$(awk '/native-path/ { print $2; exit }' <<<"$battery_info")
-battery_path="$power_supply_path/$native_path"
 
-# UPower's energy-rate can lag the kernel telemetry by tens of seconds. Use
-# the instantaneous sysfs reading when available so the open panel stays live.
-if [[ -r $battery_path/power_now ]]; then
-  power_rate_raw=$(awk -v microwatts="$(<"$battery_path/power_now")" 'BEGIN { print microwatts / 1000000 }')
-elif [[ -r $battery_path/current_now && -r $battery_path/voltage_now ]]; then
-  power_rate_raw=$(awk \
-    -v microamps="$(<"$battery_path/current_now")" \
-    -v microvolts="$(<"$battery_path/voltage_now")" \
-    'BEGIN { print microamps * microvolts / 1000000000000 }')
+# UPower's energy-rate can lag the kernel telemetry by tens of seconds. Sum
+# instantaneous sysfs readings across all present batteries when available.
+total_microwatts=0
+has_power_now=false
+for p in "$power_supply_path"/BAT*/power_now; do
+  if [[ -r $p ]]; then
+    val=$(<"$p")
+    total_microwatts=$((total_microwatts + val))
+    has_power_now=true
+  fi
+done
+
+if [[ $has_power_now == "true" ]]; then
+  power_rate_raw=$(awk -v microwatts="$total_microwatts" 'BEGIN { print microwatts / 1000000 }')
 fi
 
 power_rate=$(awk -v rate="${power_rate_raw:-0}" 'BEGIN {
@@ -107,9 +120,21 @@ if [[ $shell_output == "true" ]]; then
   printf 'size\t%s\n' "${capacity}Wh"
   printf 'time\t%s\n' "$time_remaining"
 
-  cycles=$(cat "$power_supply_path"/BAT*/cycle_count 2>/dev/null | head -1)
+  total_cycles=0
+  has_cycles=false
+  for c in "$power_supply_path"/BAT*/cycle_count; do
+    if [[ -r $c ]]; then
+      cval=$(<"$c")
+      if [[ $cval =~ ^[0-9]+$ ]]; then
+        total_cycles=$((total_cycles + cval))
+        has_cycles=true
+      fi
+    fi
+  done
 
-  [[ -n $cycles ]] && printf 'cycles\t%s\n' "$cycles"
+  if [[ $has_cycles == "true" ]]; then
+    printf 'cycles\t%s\n' "$total_cycles"
+  fi
 
   if [[ -n $threshold_end ]]; then
     if [[ -n $threshold_start && $threshold_start != $threshold_end ]]; then
