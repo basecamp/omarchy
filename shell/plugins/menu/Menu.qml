@@ -852,6 +852,13 @@ Item {
   }
 
   function openExistingMenu(initialMenu) {
+    // Turning back into a regular menu drops any request still waiting on an
+    // answer. Setting mode first also clears dmenuActive, so a later cancel()
+    // would not finish it either -- retire it here or its caller waits for
+    // the life of the session.
+    if (requestActive && doneFile)
+      finishDoneFile(doneFile)
+
     requestSerial += 1
     mode = "menu"
     requestActive = false

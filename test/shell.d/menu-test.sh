@@ -411,6 +411,10 @@ assert(
   'released done files queue behind their own process so they cannot race a result still being written'
 )
 assert(
+  /function openExistingMenu\(initialMenu\) \{[\s\S]*?if \(requestActive && doneFile\)\s*\n\s*finishDoneFile\(doneFile\)[\s\S]*?mode = "menu"/.test(menuQml),
+  'turning back into a regular menu retires a pending request, which clearing dmenuActive would otherwise strand beyond the reach of cancel()'
+)
+assert(
   /omarchy-launch-floating-terminal-with-presentation "omarchy-plugin-remove/.test(pluginPicker),
   'plugin picker removes where the confirmation and backup path are visible'
 )
