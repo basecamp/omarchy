@@ -5,6 +5,11 @@
 echo
 
 confirm_reboot() {
+  if [[ ${OMARCHY_UPDATE_UNATTENDED:-} == 1 ]]; then
+    echo "$1 Re-run 'omarchy update' in a terminal to confirm reboot."
+    return
+  fi
+
   gum confirm "$1" && { omarchy-system-reboot; exit 0; }
 }
 
