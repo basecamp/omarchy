@@ -1090,6 +1090,7 @@ Item {
 
         Text {
           id: tooltipLabel
+          textFormat: Text.PlainText
           anchors.centerIn: parent
           text: root.tooltipText
           color: Color.tooltip.text

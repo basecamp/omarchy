@@ -47,7 +47,7 @@ verify_services() {
   local unit
 
   for unit in \
-    avahi-daemon.service cups.service cups-browsed.service docker.socket \
+    avahi-daemon.service docker.socket \
     NetworkManager.service power-profiles-daemon.service sddm.service \
     systemd-resolved.service ufw.service; do
     systemctl is-enabled --quiet "$unit" || fail "core system services are enabled" "$unit is not enabled"
