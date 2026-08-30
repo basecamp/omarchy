@@ -78,8 +78,20 @@ bool number(std::string_view input, Integer &output) {
 bool trusted_stat(const struct stat &status, std::uint32_t expected_uid,
                   bool directory) {
   return static_cast<std::uint32_t>(status.st_uid) == expected_uid &&
-         (status.st_mode & (S_IWGRP | S_IWOTH)) == 0 &&
-         (directory ? S_ISDIR(status.st_mode) : S_ISREG(status.st_mode));
+         (status.st_mode & 07777) == (directory ? 0755 : 0644) &&
+         (directory ? S_ISDIR(status.st_mode)
+                    : S_ISREG(status.st_mode) && status.st_nlink == 1);
+}
+
+bool stable_stat(const struct stat &before, const struct stat &after) {
+  return before.st_dev == after.st_dev && before.st_ino == after.st_ino &&
+         before.st_mode == after.st_mode && before.st_uid == after.st_uid &&
+         before.st_gid == after.st_gid && before.st_nlink == after.st_nlink &&
+         before.st_size == after.st_size &&
+         before.st_mtim.tv_sec == after.st_mtim.tv_sec &&
+         before.st_mtim.tv_nsec == after.st_mtim.tv_nsec &&
+         before.st_ctim.tv_sec == after.st_ctim.tv_sec &&
+         before.st_ctim.tv_nsec == after.st_ctim.tv_nsec;
 }
 
 } // namespace
@@ -235,32 +247,42 @@ LoadResult parse_definition_document(std::string_view document,
   return LoadResult::loaded;
 }
 
-LoadResult load_definition_directory(std::string_view path,
-                                     DefinitionSource source,
-                                     std::uint32_t expected_uid,
-                                     const AdapterVerifier &verifier,
-                                     TrustedDefinitionRegistry &registry,
-                                     std::size_t &loaded_count) {
+LoadResult load_definition_directory_fd(
+    int directory_fd, DefinitionSource source, std::uint32_t expected_uid,
+    const AdapterVerifier &verifier, TrustedDefinitionRegistry &registry,
+    std::size_t &loaded_count) {
   loaded_count = 0;
-  const std::string owned_path(path);
-  const int directory_fd = open(owned_path.c_str(), O_RDONLY | O_DIRECTORY |
-                                                    O_CLOEXEC | O_NOFOLLOW);
-  if (directory_fd < 0)
+  struct stat directory_before {};
+  if (directory_fd < 0 || fstat(directory_fd, &directory_before) != 0 ||
+      !trusted_stat(directory_before, expected_uid, true))
     return LoadResult::untrusted_path;
-  struct stat directory_status {};
-  if (fstat(directory_fd, &directory_status) != 0 ||
-      !trusted_stat(directory_status, expected_uid, true)) {
-    close(directory_fd);
+
+  const int scan_fd = openat(directory_fd, ".",
+                             O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+  if (scan_fd < 0)
+    return LoadResult::untrusted_path;
+  struct stat scan_status {};
+  if (fstat(scan_fd, &scan_status) != 0 ||
+      !stable_stat(directory_before, scan_status)) {
+    close(scan_fd);
     return LoadResult::untrusted_path;
   }
-  DIR *directory = fdopendir(dup(directory_fd));
+  DIR *directory = fdopendir(scan_fd);
   if (directory == nullptr) {
-    close(directory_fd);
+    close(scan_fd);
     return LoadResult::untrusted_path;
   }
+  const int pinned_directory_fd = dirfd(directory);
   LoadResult result = LoadResult::loaded;
   auto candidate_registry = registry;
-  while (const auto *entry = readdir(directory)) {
+  for (;;) {
+    errno = 0;
+    const auto *entry = readdir(directory);
+    if (entry == nullptr) {
+      if (errno != 0)
+        result = LoadResult::untrusted_path;
+      break;
+    }
     const std::string_view name(entry->d_name);
     if (name == "." || name == "..")
       continue;
@@ -268,21 +290,34 @@ LoadResult load_definition_directory(std::string_view path,
       result = LoadResult::bound_exceeded;
       break;
     }
-    const int file_fd = openat(directory_fd, entry->d_name,
+    const int file_fd = openat(pinned_directory_fd, entry->d_name,
                                O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
-    struct stat status {};
-    if (file_fd < 0 || fstat(file_fd, &status) != 0 ||
-        !trusted_stat(status, expected_uid, false) || status.st_size <= 0 ||
-        static_cast<std::size_t>(status.st_size) > kMaximumDocumentBytes) {
+    struct stat before {};
+    if (file_fd < 0 || fstat(file_fd, &before) != 0 ||
+        !trusted_stat(before, expected_uid, false) || before.st_size <= 0 ||
+        before.st_size > static_cast<off_t>(kMaximumDocumentBytes)) {
       if (file_fd >= 0) close(file_fd);
       result = LoadResult::untrusted_path;
       break;
     }
-    std::string document(static_cast<std::size_t>(status.st_size), '\0');
-    const auto bytes = read(file_fd, document.data(), document.size());
+    std::string document(static_cast<std::size_t>(before.st_size), '\0');
+    std::size_t offset = 0;
+    while (offset < document.size()) {
+      const auto bytes = read(file_fd, document.data() + offset,
+                              document.size() - offset);
+      if (bytes < 0 && errno == EINTR)
+        continue;
+      if (bytes <= 0)
+        break;
+      offset += static_cast<std::size_t>(bytes);
+    }
+    struct stat after {};
+    const bool stable = offset == document.size() &&
+                        fstat(file_fd, &after) == 0 &&
+                        stable_stat(before, after);
     close(file_fd);
-    if (bytes != status.st_size) {
-      result = LoadResult::invalid_document;
+    if (!stable) {
+      result = LoadResult::untrusted_path;
       break;
     }
     LoadedDefinition loaded;
@@ -295,12 +330,35 @@ LoadResult load_definition_directory(std::string_view path,
       break;
     }
   }
+  struct stat directory_after {};
+  if (result == LoadResult::loaded &&
+      (fstat(pinned_directory_fd, &directory_after) != 0 ||
+       !stable_stat(directory_before, directory_after)))
+    result = LoadResult::untrusted_path;
   closedir(directory);
-  close(directory_fd);
   if (result != LoadResult::loaded)
     loaded_count = 0;
   else
     registry = candidate_registry;
+  return result;
+}
+
+LoadResult load_definition_directory(std::string_view path,
+                                     DefinitionSource source,
+                                     std::uint32_t expected_uid,
+                                     const AdapterVerifier &verifier,
+                                     TrustedDefinitionRegistry &registry,
+                                     std::size_t &loaded_count) {
+  const std::string owned_path(path);
+  const int directory_fd = open(owned_path.c_str(), O_RDONLY | O_DIRECTORY |
+                                                    O_CLOEXEC | O_NOFOLLOW);
+  if (directory_fd < 0) {
+    loaded_count = 0;
+    return LoadResult::untrusted_path;
+  }
+  const auto result = load_definition_directory_fd(
+      directory_fd, source, expected_uid, verifier, registry, loaded_count);
+  close(directory_fd);
   return result;
 }
 

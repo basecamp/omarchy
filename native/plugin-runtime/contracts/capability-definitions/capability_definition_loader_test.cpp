@@ -1,10 +1,13 @@
 #include "capability_definition_loader.hpp"
 
+#include <atomic>
+#include <fcntl.h>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
 #include <string>
 #include <sys/stat.h>
+#include <thread>
 #include <unistd.h>
 
 namespace {
@@ -75,11 +78,155 @@ void capability_definition_loader_tests() {
   chmod(root.c_str(), 0755);
   TrustedDefinitionRegistry registry;
   std::size_t loaded = 0;
-  require(load_definition_directory(root.string(), DefinitionSource::local_admin,
-                                    static_cast<std::uint32_t>(getuid()), verifier,
-                                    registry, loaded) == LoadResult::loaded &&
+  const int root_fd = open(root.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+  require(root_fd >= 0, "trusted root descriptor did not open");
+  require(load_definition_directory_fd(
+              root_fd, DefinitionSource::local_admin,
+              static_cast<std::uint32_t>(getuid()), verifier, registry,
+              loaded) == LoadResult::loaded &&
               loaded == 1 && registry.find("local.weather-fetch"),
-          "trusted local-admin directory did not load");
+          "trusted descriptor-rooted local-admin directory did not load");
+
+  TrustedDefinitionRegistry compatibility_registry;
+  require(load_definition_directory(
+              root.string(), DefinitionSource::local_admin,
+              static_cast<std::uint32_t>(getuid()), verifier,
+              compatibility_registry, loaded) == LoadResult::loaded &&
+              loaded == 1,
+          "temporary pathname compatibility seam did not load");
+
+  TrustedDefinitionRegistry wrong_owner_registry;
+  require(load_definition_directory_fd(
+              root_fd, DefinitionSource::local_admin,
+              static_cast<std::uint32_t>(getuid()) + 1, verifier,
+              wrong_owner_registry, loaded) == LoadResult::untrusted_path &&
+              loaded == 0 && wrong_owner_registry.size() == 0,
+          "definition root with a mismatched trusted uid was accepted");
+
+  TrustedDefinitionRegistry invalid_descriptor_registry;
+  loaded = 99;
+  require(load_definition_directory_fd(
+              -1, DefinitionSource::local_admin,
+              static_cast<std::uint32_t>(getuid()), verifier,
+              invalid_descriptor_registry, loaded) ==
+              LoadResult::untrusted_path &&
+              loaded == 0 && invalid_descriptor_registry.size() == 0,
+          "invalid definition root descriptor did not fail transactionally");
+  const int regular_file_fd =
+      open((root / "weather.capability").c_str(), O_RDONLY | O_CLOEXEC);
+  require(regular_file_fd >= 0, "regular-file root fixture did not open");
+  loaded = 99;
+  require(load_definition_directory_fd(
+              regular_file_fd, DefinitionSource::local_admin,
+              static_cast<std::uint32_t>(getuid()), verifier,
+              invalid_descriptor_registry, loaded) ==
+              LoadResult::untrusted_path &&
+              loaded == 0 && invalid_descriptor_registry.size() == 0,
+          "non-directory definition root did not fail transactionally");
+  close(regular_file_fd);
+  close(root_fd);
+
+  const auto assert_rejected = [&](std::string_view message) {
+    TrustedDefinitionRegistry candidate = registry;
+    const auto before = candidate.size();
+    const int descriptor =
+        open(root.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    require(descriptor >= 0, "negative root descriptor did not open");
+    const auto result = load_definition_directory_fd(
+        descriptor, DefinitionSource::local_admin,
+        static_cast<std::uint32_t>(getuid()), verifier, candidate, loaded);
+    close(descriptor);
+    require(result != LoadResult::loaded && loaded == 0 &&
+                candidate.size() == before &&
+                candidate.find("local.weather-fetch"),
+            message);
+  };
+
+  chmod((root / "weather.capability").c_str(), 0600);
+  assert_rejected("mode-0600 definition entered the trust registry");
+  chmod((root / "weather.capability").c_str(), 0644);
+
+  chmod(root.c_str(), 0775);
+  assert_rejected("mode-0775 definition root entered the trust registry");
+  chmod(root.c_str(), 0755);
+
+  std::filesystem::create_hard_link(root / "weather.capability",
+                                    root / "alias.capability");
+  assert_rejected("hard-linked definition entered the trust registry");
+  std::filesystem::remove(root / "alias.capability");
+
+  std::atomic<bool> mutate{true};
+  std::atomic<std::size_t> mutations{0};
+  std::thread mutator([&] {
+    while (mutate.load(std::memory_order_acquire)) {
+      chmod((root / "weather.capability").c_str(), 0600);
+      chmod((root / "weather.capability").c_str(), 0644);
+      mutations.fetch_add(1, std::memory_order_release);
+    }
+  });
+  while (mutations.load(std::memory_order_acquire) < 100) {
+  }
+  bool rejected_mutation = false;
+  for (int attempt = 0; attempt < 100 && !rejected_mutation; ++attempt) {
+    TrustedDefinitionRegistry mutation_registry;
+    const int descriptor =
+        open(root.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    require(descriptor >= 0, "mutation root descriptor did not open");
+    const auto result = load_definition_directory_fd(
+        descriptor, DefinitionSource::local_admin,
+        static_cast<std::uint32_t>(getuid()), verifier, mutation_registry,
+        loaded);
+    close(descriptor);
+    if (result != LoadResult::loaded) {
+      require(loaded == 0 && mutation_registry.size() == 0,
+              "file mutation failure published a partial registry");
+      rejected_mutation = true;
+    }
+  }
+  mutate.store(false, std::memory_order_release);
+  mutator.join();
+  chmod((root / "weather.capability").c_str(), 0644);
+  require(rejected_mutation,
+          "concurrent definition metadata mutation was never rejected");
+
+  std::atomic<bool> mutate_directory{true};
+  std::atomic<std::size_t> directory_mutations{0};
+  std::thread directory_mutator([&] {
+    const auto churn = root / "churn";
+    while (mutate_directory.load(std::memory_order_acquire)) {
+      const int descriptor =
+          open(churn.c_str(), O_WRONLY | O_CREAT | O_CLOEXEC, 0644);
+      if (descriptor >= 0)
+        close(descriptor);
+      unlink(churn.c_str());
+      directory_mutations.fetch_add(1, std::memory_order_release);
+    }
+  });
+  while (directory_mutations.load(std::memory_order_acquire) < 100) {
+  }
+  bool rejected_directory_mutation = false;
+  for (int attempt = 0;
+       attempt < 100 && !rejected_directory_mutation; ++attempt) {
+    TrustedDefinitionRegistry mutation_registry;
+    const int descriptor =
+        open(root.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    require(descriptor >= 0, "directory mutation root did not open");
+    const auto result = load_definition_directory_fd(
+        descriptor, DefinitionSource::local_admin,
+        static_cast<std::uint32_t>(getuid()), verifier, mutation_registry,
+        loaded);
+    close(descriptor);
+    if (result != LoadResult::loaded) {
+      require(loaded == 0 && mutation_registry.size() == 0,
+              "directory mutation failure published a partial registry");
+      rejected_directory_mutation = true;
+    }
+  }
+  mutate_directory.store(false, std::memory_order_release);
+  directory_mutator.join();
+  std::filesystem::remove(root / "churn");
+  require(rejected_directory_mutation,
+          "concurrent definition directory mutation was never rejected");
 
   std::filesystem::remove(root / "weather.capability");
   std::filesystem::create_symlink("/etc/passwd", root / "escape.capability");

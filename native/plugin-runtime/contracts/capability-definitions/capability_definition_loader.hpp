@@ -36,6 +36,17 @@ enum class LoadResult : std::uint8_t {
 [[nodiscard]] LoadResult parse_definition_document(
     std::string_view document, DefinitionSource source,
     const AdapterVerifier &verifier, LoadedDefinition &output);
+// Production callers open the fixed package or administrator trust root and
+// pass that exact directory object here. The loader never recovers a pathname
+// from the descriptor and does not take ownership of it.
+[[nodiscard]] LoadResult load_definition_directory_fd(
+    int directory_fd, DefinitionSource source, std::uint32_t expected_uid,
+    const AdapterVerifier &verifier, TrustedDefinitionRegistry &registry,
+    std::size_t &loaded_count);
+// Compatibility seam for tests and administrative tooling. Product bootstrap
+// uses load_definition_directory_fd so QML, plugin data, and environment
+// strings cannot select a definition root. Remove this path seam in N12 once
+// all callers have moved to pre-opened roots.
 [[nodiscard]] LoadResult load_definition_directory(
     std::string_view path, DefinitionSource source, std::uint32_t expected_uid,
     const AdapterVerifier &verifier, TrustedDefinitionRegistry &registry,
