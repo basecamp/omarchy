@@ -1,4 +1,4 @@
-#include "PluginSurfaceService.h"
+#include "SurfaceProjectionModel.h"
 
 #include "gesture_intent.hpp"
 #include "omarchy/plugin/wire/surface_name.hpp"
@@ -28,14 +28,14 @@ QString canonical_surface_key(
          text(surface_name);
 }
 
-QString bar_section_name(PluginSurfaceService::BarSection section) {
+QString bar_section_name(SurfaceProjectionModel::BarSection section) {
   switch (section) {
-  case PluginSurfaceService::BarSection::Left:
+  case SurfaceProjectionModel::BarSection::Left:
     return QStringLiteral("left");
-  case PluginSurfaceService::BarSection::Right:
+  case SurfaceProjectionModel::BarSection::Right:
     return QStringLiteral("right");
-  case PluginSurfaceService::BarSection::Unspecified:
-  case PluginSurfaceService::BarSection::Center:
+  case SurfaceProjectionModel::BarSection::Unspecified:
+  case SurfaceProjectionModel::BarSection::Center:
     return QStringLiteral("center");
   }
   return QStringLiteral("center");
@@ -43,13 +43,13 @@ QString bar_section_name(PluginSurfaceService::BarSection section) {
 
 } // namespace
 
-struct PluginSurfaceService::Publication {
+struct SurfaceProjectionModel::Publication {
   plugins::permissions::ActivationBinding binding;
   qulonglong revision = 0;
   std::vector<SurfaceDeclaration> declarations;
 };
 
-struct PluginSurfaceService::SurfaceRow {
+struct SurfaceProjectionModel::SurfaceRow {
   QString surface_key;
   QString plugin_id;
   QString surface_name;
@@ -58,10 +58,10 @@ struct PluginSurfaceService::SurfaceRow {
   SurfaceDeclaration declaration;
 };
 
-class PluginSurfaceService::RoleFilterModel final
+class SurfaceProjectionModel::RoleFilterModel final
     : public QSortFilterProxyModel {
 public:
-  RoleFilterModel(Role role, PluginSurfaceService &source)
+  RoleFilterModel(Role role, SurfaceProjectionModel &source)
       : QSortFilterProxyModel(&source), role_(role) {
     setSourceModel(&source);
   }
@@ -78,34 +78,34 @@ private:
   Role role_;
 };
 
-PluginSurfaceService::PluginSurfaceService(QObject *parent)
+SurfaceProjectionModel::SurfaceProjectionModel(QObject *parent)
     : QAbstractListModel(parent),
       bar_surfaces_(std::make_unique<RoleFilterModel>(Role::Bar, *this)),
       panel_surfaces_(std::make_unique<RoleFilterModel>(Role::Panel, *this)),
       overlay_surfaces_(
           std::make_unique<RoleFilterModel>(Role::Overlay, *this)) {}
 
-PluginSurfaceService::~PluginSurfaceService() = default;
+SurfaceProjectionModel::~SurfaceProjectionModel() = default;
 
-QAbstractItemModel *PluginSurfaceService::barSurfaces() {
+QAbstractItemModel *SurfaceProjectionModel::barSurfaces() {
   return bar_surfaces_.get();
 }
 
-QAbstractItemModel *PluginSurfaceService::panelSurfaces() {
+QAbstractItemModel *SurfaceProjectionModel::panelSurfaces() {
   return panel_surfaces_.get();
 }
 
-QAbstractItemModel *PluginSurfaceService::overlaySurfaces() {
+QAbstractItemModel *SurfaceProjectionModel::overlaySurfaces() {
   return overlay_surfaces_.get();
 }
 
-int PluginSurfaceService::count() const { return rowCount(); }
+int SurfaceProjectionModel::count() const { return rowCount(); }
 
-int PluginSurfaceService::rowCount(const QModelIndex &parent) const {
+int SurfaceProjectionModel::rowCount(const QModelIndex &parent) const {
   return parent.isValid() ? 0 : static_cast<int>(surfaces_.size());
 }
 
-QVariant PluginSurfaceService::data(const QModelIndex &index, int role) const {
+QVariant SurfaceProjectionModel::data(const QModelIndex &index, int role) const {
   if (!index.isValid() || index.column() != 0 || index.row() < 0 ||
       index.row() >= rowCount())
     return {};
@@ -140,7 +140,7 @@ QVariant PluginSurfaceService::data(const QModelIndex &index, int role) const {
   }
 }
 
-QHash<int, QByteArray> PluginSurfaceService::roleNames() const {
+QHash<int, QByteArray> SurfaceProjectionModel::roleNames() const {
   return {{SurfaceKeyRole, "surfaceKey"},
           {PluginIdRole, "pluginId"},
           {SurfaceNameRole, "surfaceName"},
@@ -155,7 +155,7 @@ QHash<int, QByteArray> PluginSurfaceService::roleNames() const {
           {DefaultSectionRole, "defaultSection"}};
 }
 
-bool PluginSurfaceService::publishSurfaces(
+bool SurfaceProjectionModel::publishSurfaces(
     const plugins::permissions::ActivationBinding &binding,
     std::vector<SurfaceDeclaration> declarations, qulonglong revision) {
   if (!onOwnerThread() || revision == 0 ||
@@ -223,7 +223,7 @@ bool PluginSurfaceService::publishSurfaces(
   return true;
 }
 
-bool PluginSurfaceService::withdrawSurfaces(
+bool SurfaceProjectionModel::withdrawSurfaces(
     const plugins::permissions::ActivationBinding &binding) {
   if (!onOwnerThread())
     return false;
@@ -249,7 +249,7 @@ bool PluginSurfaceService::withdrawSurfaces(
   return true;
 }
 
-bool PluginSurfaceService::publishIntent(
+bool SurfaceProjectionModel::publishIntent(
     host_session::AdmittedSurfaceIntent intent) {
   // The product adapter must queue this move-owned value to this object's
   // thread. Freshness is intentionally consumed only at the UI publication
@@ -285,8 +285,8 @@ bool PluginSurfaceService::publishIntent(
   return false;
 }
 
-const PluginSurfaceService::SurfaceRow *
-PluginSurfaceService::declared(QStringView surface_key) const {
+const SurfaceProjectionModel::SurfaceRow *
+SurfaceProjectionModel::declared(QStringView surface_key) const {
   const auto found = std::ranges::find_if(
       surfaces_, [surface_key](const SurfaceRow &row) {
         return row.surface_key == surface_key;
@@ -294,15 +294,15 @@ PluginSurfaceService::declared(QStringView surface_key) const {
   return found == surfaces_.end() ? nullptr : &*found;
 }
 
-bool PluginSurfaceService::contains(QStringView surface_key) const {
+bool SurfaceProjectionModel::contains(QStringView surface_key) const {
   return onOwnerThread() && declared(surface_key) != nullptr;
 }
 
-bool PluginSurfaceService::onOwnerThread() const {
+bool SurfaceProjectionModel::onOwnerThread() const {
   return QThread::currentThread() == thread();
 }
 
-qsizetype PluginSurfaceService::firstRow(
+qsizetype SurfaceProjectionModel::firstRow(
     std::size_t publication_index) const {
   qsizetype first = 0;
   for (std::size_t index = 0; index < publication_index; ++index)
@@ -310,7 +310,7 @@ qsizetype PluginSurfaceService::firstRow(
   return first;
 }
 
-std::vector<PluginSurfaceService::SurfaceRow> PluginSurfaceService::rowsFor(
+std::vector<SurfaceProjectionModel::SurfaceRow> SurfaceProjectionModel::rowsFor(
     const Publication &publication) const {
   std::vector<SurfaceRow> rows;
   rows.reserve(publication.declarations.size());

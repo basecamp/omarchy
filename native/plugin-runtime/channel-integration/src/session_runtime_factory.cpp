@@ -1,4 +1,4 @@
-#include "production_session_runtime_factory.hpp"
+#include "session_runtime_factory.hpp"
 
 #include "audit_store.hpp"
 #include "omarchy/plugin_runtime/providers/private_storage_backend.hpp"
@@ -80,7 +80,7 @@ private:
 
 providers::ProviderConfiguration provider_configuration(
     providers::PrivateStorageBackend &storage,
-    const ProductionRuntimeServices &services,
+    const RuntimeServices &services,
     const PreparedRuntime &prepared) {
   providers::ProviderConfiguration configuration;
   if (prepared.storage)
@@ -92,16 +92,16 @@ providers::ProviderConfiguration provider_configuration(
   return configuration;
 }
 
-class ProductionRuntime final : public AuthenticatedSessionRuntime {
+class ComposedSessionRuntime final : public AuthenticatedSessionRuntime {
 public:
-  ProductionRuntime(
+  ComposedSessionRuntime(
       std::shared_ptr<const definitions::TrustedDefinitionRegistry> definitions,
-      const ProductionRuntimeServices &services,
+      const RuntimeServices &services,
       const policy::GrantSnapshot &grants,
       PreparedRuntime prepared, int state_directory_fd,
       std::uint64_t session_nonce,
       std::shared_ptr<session::LiveGenerationState> live,
-      const ProductionRuntimeLimits &limits)
+      const Limits &limits)
       : definitions_(std::move(definitions)), context_(services.context),
         storage_(state_directory_fd,
                  prepared.storage ? prepared.storage->total_bytes : 0,
@@ -135,8 +135,8 @@ private:
 std::optional<PreparedRuntime> prepare_runtime(
     const policy::GrantSnapshot &grants,
     const definitions::TrustedDefinitionRegistry &registry,
-    const ProductionRuntimeServices &services,
-    const ProductionRuntimeLimits &limits) {
+    const RuntimeServices &services,
+    const Limits &limits) {
   PreparedRuntime prepared;
   for (const auto &grant : grants.grants.values()) {
     if (grant.state != permissions::GrantState::granted)
@@ -191,43 +191,43 @@ std::optional<PreparedRuntime> prepare_runtime(
 } // namespace
 
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
-ProductionSessionRuntimeFactory::ProductionSessionRuntimeFactory(
+SessionRuntimeFactory::SessionRuntimeFactory(
     definitions::TrustedDefinitionRegistry definitions,
-    ProductionRuntimeServices services, ProductionRuntimeLimits limits)
-    : ProductionSessionRuntimeFactory(
+    RuntimeServices services, Limits limits)
+    : SessionRuntimeFactory(
           std::make_shared<const definitions::TrustedDefinitionRegistry>(
               std::move(definitions)),
-          std::make_shared<const ProductionRuntimeServices>(
+          std::make_shared<const RuntimeServices>(
               std::move(services)),
           limits) {}
 #endif
 
-ProductionSessionRuntimeFactory::ProductionSessionRuntimeFactory(
+SessionRuntimeFactory::SessionRuntimeFactory(
     std::shared_ptr<const definitions::TrustedDefinitionRegistry> definitions,
-    std::shared_ptr<const ProductionRuntimeServices> services,
-    ProductionRuntimeLimits limits)
+    std::shared_ptr<const RuntimeServices> services,
+    Limits limits)
     : definitions_(std::move(definitions)), services_(std::move(services)),
       limits_(limits) {
   if (!definitions_ || !services_ || limits_.maximum_audit_records == 0 ||
       limits_.maximum_audit_records > audit::kHardMaximumRecords ||
       limits_.maximum_storage_item_bytes == 0 ||
       limits_.maximum_storage_item_bytes > limits_.maximum_storage_bytes)
-    throw std::invalid_argument("invalid production runtime configuration");
+    throw std::invalid_argument("invalid runtime configuration");
 }
 
 const definitions::TrustedDefinitionRegistry &
-ProductionSessionRuntimeFactory::definitions() const noexcept {
+SessionRuntimeFactory::definitions() const noexcept {
   return *definitions_;
 }
 
 definitions::DynamicScopeValidator
-ProductionSessionRuntimeFactory::scope_validator() const noexcept {
+SessionRuntimeFactory::scope_validator() const noexcept {
   return {.compare = services_->compare_scope,
           .context = services_->context.get()};
 }
 
 std::unique_ptr<AuthenticatedSessionRuntime>
-ProductionSessionRuntimeFactory::create(
+SessionRuntimeFactory::create(
     const plugins::manifest::ManifestV2 &manifest,
     const session::policy::GrantSnapshot &grants, int revision_directory_fd,
     int private_state_directory_fd, std::uint64_t session_nonce,
@@ -243,7 +243,7 @@ ProductionSessionRuntimeFactory::create(
   if (!prepared)
     return {};
   try {
-    auto runtime = std::make_unique<ProductionRuntime>(
+    auto runtime = std::make_unique<ComposedSessionRuntime>(
         definitions_, *services_, grants, std::move(*prepared),
         private_state_directory_fd, session_nonce, std::move(live_generation),
         limits_);

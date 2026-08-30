@@ -4,7 +4,7 @@
 
 namespace omarchy::plugin_runtime::host_session {
 
-// Production adapter from the activation seam to descriptor-relative plugin
+// Runtime adapter from the activation seam to descriptor-relative plugin
 // discovery. It intentionally has no pathname-based fallback.
 class DescriptorRevisionVerifier final : public RevisionVerifier {
 public:

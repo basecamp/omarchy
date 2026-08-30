@@ -213,7 +213,7 @@ void verify_seccomp(const SandboxPlan &plan) {
 
 int main() {
   constexpr std::string_view worker =
-      omarchy::plugin_runtime::kProductionWorkerPath;
+      omarchy::plugin_runtime::kPackagedWorkerPath;
   const SandboxPlan plan = build_plan();
   require(plan.argv.front() == "/usr/bin/bwrap" &&
               plan.argv.back() == "/runtime/worker",

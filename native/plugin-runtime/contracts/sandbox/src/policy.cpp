@@ -278,7 +278,7 @@ SandboxPlan build_test_plan_for_worker(std::string worker_path) {
 }
 
 SandboxPlan build_plan() {
-  return build_test_plan_for_worker(std::string(kProductionWorkerPath));
+  return build_test_plan_for_worker(std::string(kPackagedWorkerPath));
 }
 
 SandboxPlan build_provider_plan(std::string trusted_executable_path) {

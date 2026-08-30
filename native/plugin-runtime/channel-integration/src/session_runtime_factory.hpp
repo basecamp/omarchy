@@ -14,7 +14,7 @@ namespace omarchy::plugin_runtime::channel {
 namespace definitions = omarchy::plugins::definitions;
 namespace providers = omarchy::plugin_runtime::providers;
 
-class ProductionPluginRuntimeRoot;
+class PluginRuntimeRoot;
 
 struct TrustedDynamicService final {
   definitions::AdapterBinding binding;
@@ -25,7 +25,7 @@ struct TrustedDynamicService final {
 // effect before returning, must not invoke permission/session lifecycle APIs,
 // and must not retain requests, payloads, or authority for later work. The
 // shared context is retained for every runtime using it.
-struct ProductionRuntimeServices final {
+struct RuntimeServices final {
   std::shared_ptr<void> context;
   providers::NotificationSend notification_send = nullptr;
   providers::AudioPlay audio_play = nullptr;
@@ -33,23 +33,23 @@ struct ProductionRuntimeServices final {
   std::vector<TrustedDynamicService> dynamic_services;
 };
 
-struct ProductionRuntimeLimits final {
+struct Limits final {
   std::size_t maximum_audit_records = 1024;
   std::uint64_t maximum_storage_bytes = 64 * 1024 * 1024;
   std::uint64_t maximum_storage_item_bytes = 1024 * 1024;
 };
 
-// Sole concrete factory for the production authenticated-session path. Plugin
+// Sole concrete factory for the runtime authenticated-session path. Plugin
 // data supplies no callback, provider pointer, definition, quota, or path.
-class ProductionSessionRuntimeFactory final
+class SessionRuntimeFactory final
     : public AuthenticatedSessionRuntimeFactory {
 public:
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
-  // Test-only value seam. Production composition shares one frozen registry
-  // and service context from ProductionPluginBootstrap.
-  ProductionSessionRuntimeFactory(
+  // Test-only value seam. Runtime composition shares one frozen registry
+  // and service context from RuntimeBootstrap.
+  SessionRuntimeFactory(
       definitions::TrustedDefinitionRegistry definitions,
-      ProductionRuntimeServices services, ProductionRuntimeLimits limits = {});
+      RuntimeServices services, Limits limits = {});
 #endif
   [[nodiscard]] const definitions::TrustedDefinitionRegistry &
   definitions() const noexcept;
@@ -66,16 +66,16 @@ public:
              gesture_eligibility) override;
 
 private:
-  ProductionSessionRuntimeFactory(
+  SessionRuntimeFactory(
       std::shared_ptr<const definitions::TrustedDefinitionRegistry> definitions,
-      std::shared_ptr<const ProductionRuntimeServices> services,
-      ProductionRuntimeLimits limits = {});
+      std::shared_ptr<const RuntimeServices> services,
+      Limits limits = {});
 
   std::shared_ptr<const definitions::TrustedDefinitionRegistry> definitions_;
-  std::shared_ptr<const ProductionRuntimeServices> services_;
-  ProductionRuntimeLimits limits_;
+  std::shared_ptr<const RuntimeServices> services_;
+  Limits limits_;
 
-  friend class ProductionPluginRuntimeRoot;
+  friend class PluginRuntimeRoot;
 };
 
 } // namespace omarchy::plugin_runtime::channel

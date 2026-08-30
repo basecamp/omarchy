@@ -1,4 +1,4 @@
-#include "production_plugin_roots.hpp"
+#include "runtime_roots.hpp"
 
 #include <fcntl.h>
 #include <pwd.h>
@@ -53,10 +53,10 @@ OwnedDescriptor duplicate_directory(int descriptor) noexcept {
 template <std::size_t Size>
 OwnedDescriptor
 open_fixed_root(int home_fd, const std::array<std::string_view, Size> &parts,
-                std::uint32_t uid, ProductionPluginRootsError &error) {
+                std::uint32_t uid, RuntimeRootsError &error) {
   auto current = duplicate_directory(home_fd);
   if (!current) {
-    error = ProductionPluginRootsError::home_untrusted;
+    error = RuntimeRootsError::home_untrusted;
     return {};
   }
   for (std::size_t index = 0; index < parts.size(); ++index) {
@@ -65,18 +65,18 @@ open_fixed_root(int home_fd, const std::array<std::string_view, Size> &parts,
         ::openat(current.get(), component.c_str(),
                  O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
     if (!next) {
-      error = ProductionPluginRootsError::path_unavailable;
+      error = RuntimeRootsError::path_unavailable;
       return {};
     }
     struct stat metadata{};
     if (::fstat(next.get(), &metadata) < 0) {
-      error = ProductionPluginRootsError::path_unavailable;
+      error = RuntimeRootsError::path_unavailable;
       return {};
     }
     const bool leaf = index + 1 == parts.size();
     if ((leaf && !exact_private_root(metadata, uid)) ||
         (!leaf && !secure_parent(metadata, uid))) {
-      error = ProductionPluginRootsError::root_untrusted;
+      error = RuntimeRootsError::root_untrusted;
       return {};
     }
     current = std::move(next);
@@ -96,13 +96,13 @@ identity(int descriptor) noexcept {
 
 } // namespace
 
-std::unique_ptr<ProductionPluginRoots>
-ProductionPluginRoots::open_from_home_fd_impl(
-    int home_fd, std::uint32_t uid, ProductionPluginRootsError &error) {
+std::unique_ptr<RuntimeRoots>
+RuntimeRoots::open_from_home_fd_impl(
+    int home_fd, std::uint32_t uid, RuntimeRootsError &error) {
   struct stat home_metadata{};
   if (home_fd < 0 || ::fstat(home_fd, &home_metadata) < 0 ||
       !secure_parent(home_metadata, uid)) {
-    error = ProductionPluginRootsError::home_untrusted;
+    error = RuntimeRootsError::home_untrusted;
     return {};
   }
   auto revisions = open_fixed_root(home_fd, kRevisionComponents, uid, error);
@@ -124,17 +124,17 @@ ProductionPluginRoots::open_from_home_fd_impl(
                               identity(authority.get()), identity(state.get())};
   if (!std::ranges::all_of(
           identities, [](const auto &value) { return value.has_value(); })) {
-    error = ProductionPluginRootsError::root_untrusted;
+    error = RuntimeRootsError::root_untrusted;
     return {};
   }
   const std::array exact{*identities[0], *identities[1], *identities[2],
                          *identities[3]};
   if (!host_session::distinct_authority_objects(exact)) {
-    error = ProductionPluginRootsError::aliased_roots;
+    error = RuntimeRootsError::aliased_roots;
     return {};
   }
-  error = ProductionPluginRootsError::none;
-  return std::unique_ptr<ProductionPluginRoots>(new ProductionPluginRoots(
+  error = RuntimeRootsError::none;
+  return std::unique_ptr<RuntimeRoots>(new RuntimeRoots(
       uid, std::move(revisions), std::move(activations), std::move(authority),
       std::move(state)));
 }
@@ -200,10 +200,10 @@ int system_account_lookup(uid_t uid, struct passwd *account, char *buffer,
 OwnedDescriptor resolve_account_home(uid_t effective_uid,
                                      std::size_t initial_buffer_size,
                                      AccountLookup lookup,
-                                     ProductionPluginRootsError &error) {
+                                     RuntimeRootsError &error) {
   if (lookup == nullptr || initial_buffer_size == 0 ||
       initial_buffer_size > kMaximumPasswdBuffer) {
-    error = ProductionPluginRootsError::account_unavailable;
+    error = RuntimeRootsError::account_unavailable;
     return {};
   }
   std::vector<char> buffer(initial_buffer_size);
@@ -230,19 +230,19 @@ OwnedDescriptor resolve_account_home(uid_t effective_uid,
   }
   if (!completed || status != 0 || result != &account ||
       account.pw_uid != effective_uid || account.pw_dir == nullptr) {
-    error = ProductionPluginRootsError::account_unavailable;
+    error = RuntimeRootsError::account_unavailable;
     return {};
   }
   auto home = open_absolute_home(account.pw_dir,
                                  static_cast<std::uint32_t>(effective_uid));
   if (!home)
-    error = ProductionPluginRootsError::home_untrusted;
+    error = RuntimeRootsError::home_untrusted;
   return home;
 }
 
 } // namespace
 
-ProductionPluginRoots::ProductionPluginRoots(std::uint32_t trusted_uid,
+RuntimeRoots::RuntimeRoots(std::uint32_t trusted_uid,
                                              OwnedDescriptor revisions,
                                              OwnedDescriptor activations,
                                              OwnedDescriptor authority,
@@ -251,21 +251,21 @@ ProductionPluginRoots::ProductionPluginRoots(std::uint32_t trusted_uid,
       activations_(std::move(activations)), authority_(std::move(authority)),
       state_(std::move(state)) {}
 
-std::unique_ptr<ProductionPluginRoots>
-ProductionPluginRoots::open(ProductionPluginRootsError &error) noexcept {
-  error = ProductionPluginRootsError::none;
+std::unique_ptr<RuntimeRoots>
+RuntimeRoots::open(RuntimeRootsError &error) noexcept {
+  error = RuntimeRootsError::none;
   try {
     const uid_t effective_uid = ::geteuid();
     if (static_cast<std::uintmax_t>(effective_uid) >
         std::numeric_limits<std::uint32_t>::max()) {
-      error = ProductionPluginRootsError::account_unavailable;
+      error = RuntimeRootsError::account_unavailable;
       return {};
     }
     long suggested = ::sysconf(_SC_GETPW_R_SIZE_MAX);
     if (suggested < 0)
       suggested = 16 * 1024;
     if (static_cast<std::uintmax_t>(suggested) > kMaximumPasswdBuffer) {
-      error = ProductionPluginRootsError::account_unavailable;
+      error = RuntimeRootsError::account_unavailable;
       return {};
     }
     std::size_t buffer_size = static_cast<std::size_t>(suggested);
@@ -278,71 +278,71 @@ ProductionPluginRoots::open(ProductionPluginRootsError &error) noexcept {
     return open_from_home_fd_impl(
         home.get(), static_cast<std::uint32_t>(effective_uid), error);
   } catch (const std::bad_alloc &) {
-    error = ProductionPluginRootsError::resource_exhausted;
+    error = RuntimeRootsError::resource_exhausted;
     return {};
   } catch (...) {
-    error = ProductionPluginRootsError::internal_failure;
+    error = RuntimeRootsError::internal_failure;
     return {};
   }
 }
 
-#ifdef OMARCHY_PRODUCTION_PLUGIN_ROOTS_TESTING
-std::unique_ptr<ProductionPluginRoots> ProductionPluginRoots::open_from_home_fd(
+#ifdef OMARCHY_RUNTIME_ROOTS_TESTING
+std::unique_ptr<RuntimeRoots> RuntimeRoots::open_from_home_fd(
     int home_fd, std::uint32_t trusted_uid,
-    ProductionPluginRootsError &error) noexcept {
-  error = ProductionPluginRootsError::none;
+    RuntimeRootsError &error) noexcept {
+  error = RuntimeRootsError::none;
   try {
     return open_from_home_fd_impl(home_fd, trusted_uid, error);
   } catch (const std::bad_alloc &) {
-    error = ProductionPluginRootsError::resource_exhausted;
+    error = RuntimeRootsError::resource_exhausted;
     return {};
   } catch (...) {
-    error = ProductionPluginRootsError::internal_failure;
+    error = RuntimeRootsError::internal_failure;
     return {};
   }
 }
 
-int ProductionPluginRoots::open_absolute_home_for_test(
+int RuntimeRoots::open_absolute_home_for_test(
     const char *path, std::uint32_t trusted_uid,
-    ProductionPluginRootsError &error) noexcept {
-  error = ProductionPluginRootsError::none;
+    RuntimeRootsError &error) noexcept {
+  error = RuntimeRootsError::none;
   if (path == nullptr) {
-    error = ProductionPluginRootsError::home_untrusted;
+    error = RuntimeRootsError::home_untrusted;
     return -1;
   }
   try {
     auto home = open_absolute_home(path, trusted_uid);
     if (!home)
-      error = ProductionPluginRootsError::home_untrusted;
+      error = RuntimeRootsError::home_untrusted;
     return home.release();
   } catch (const std::bad_alloc &) {
-    error = ProductionPluginRootsError::resource_exhausted;
+    error = RuntimeRootsError::resource_exhausted;
     return -1;
   } catch (...) {
-    error = ProductionPluginRootsError::internal_failure;
+    error = RuntimeRootsError::internal_failure;
     return -1;
   }
 }
 
-int ProductionPluginRoots::resolve_account_home_for_test(
+int RuntimeRoots::resolve_account_home_for_test(
     std::uint32_t trusted_uid, std::size_t initial_buffer_size,
     AccountLookupForTest lookup,
-    ProductionPluginRootsError &error) noexcept {
-  error = ProductionPluginRootsError::none;
+    RuntimeRootsError &error) noexcept {
+  error = RuntimeRootsError::none;
   try {
     auto home = resolve_account_home(static_cast<uid_t>(trusted_uid),
                                      initial_buffer_size, lookup, error);
     return home.release();
   } catch (const std::bad_alloc &) {
-    error = ProductionPluginRootsError::resource_exhausted;
+    error = RuntimeRootsError::resource_exhausted;
     return -1;
   } catch (...) {
-    error = ProductionPluginRootsError::internal_failure;
+    error = RuntimeRootsError::internal_failure;
     return -1;
   }
 }
 
-bool ProductionPluginRoots::absolute_ancestor_is_secure_for_test(
+bool RuntimeRoots::absolute_ancestor_is_secure_for_test(
     std::uint32_t owner_uid, std::uint32_t mode,
     std::uint32_t trusted_uid) noexcept {
   struct stat metadata{};

@@ -49,7 +49,7 @@ namespace {
 using detail::CleanupJob;
 using detail::ProcessScopeReaper;
 using detail::ReapCompletion;
-constexpr std::string_view kProductionBwrap = "/usr/bin/bwrap";
+constexpr std::string_view kSystemBwrapPath = "/usr/bin/bwrap";
 constexpr std::size_t kMaximumStatusLine = 4096;
 constexpr unsigned kMaximumStatusRecords = 32;
 constexpr int kExecErrorFd = 11;
@@ -1468,7 +1468,7 @@ struct Supervisor::Impl {
   std::string worker_path;
   std::shared_ptr<ResourceScopeController> resource_scope;
   std::shared_ptr<ProcessScopeReaper> reaper;
-  bool production = true;
+  bool packaged_selection = true;
 };
 
 namespace {
@@ -1490,9 +1490,9 @@ Supervisor::Supervisor(Supervisor &&) noexcept = default;
 Supervisor &Supervisor::operator=(Supervisor &&) noexcept = default;
 Supervisor::~Supervisor() = default;
 
-Supervisor Supervisor::production() {
+Supervisor Supervisor::packaged() {
   return Supervisor(std::make_unique<Impl>(
-      std::string(kProductionBwrap), std::string(kProductionWorkerPath),
+      std::string(kSystemBwrapPath), std::string(kPackagedWorkerPath),
       make_systemd_resource_scope_controller(),
       shared_process_reaper(false), true));
 }
@@ -1524,17 +1524,17 @@ bool Supervisor::prerequisites(Deadline deadline, std::string &error) const {
     error = "resource scope controller is absent";
     return false;
   }
-  if (implementation_->production &&
-      (implementation_->bwrap_path != kProductionBwrap ||
-       implementation_->worker_path != kProductionWorkerPath)) {
-    error = "production executable selection changed";
+  if (implementation_->packaged_selection &&
+      (implementation_->bwrap_path != kSystemBwrapPath ||
+       implementation_->worker_path != kPackagedWorkerPath)) {
+    error = "packaged executable selection changed";
     return false;
   }
   if (!trusted_executable(
-          implementation_->bwrap_path, implementation_->production,
+          implementation_->bwrap_path, implementation_->packaged_selection,
           error) ||
       !trusted_executable(implementation_->worker_path,
-                          implementation_->production, error) ||
+                          implementation_->packaged_selection, error) ||
       !kernel_prerequisites(error) ||
       !implementation_->resource_scope->probe(deadline, error) ||
       !implementation_->resource_scope->prepare_cleanup(deadline, error) ||
@@ -1546,7 +1546,7 @@ bool Supervisor::prerequisites(Deadline deadline, std::string &error) const {
 
 LaunchResult Supervisor::launch(const TrustedLaunchRequest &request) const {
   const sandbox::SandboxPlan plan =
-      implementation_->production
+      implementation_->packaged_selection
           ? sandbox::build_plan()
           : sandbox::build_test_plan_for_worker(implementation_->worker_path);
   return launch(request, std::chrono::steady_clock::now() +
@@ -1601,7 +1601,7 @@ LaunchResult Supervisor::launch(const TrustedLaunchRequest &request,
   }
 
   sandbox::SandboxPlan plan =
-      implementation_->production
+      implementation_->packaged_selection
           ? sandbox::build_plan()
           : sandbox::build_test_plan_for_worker(implementation_->worker_path);
   Fd seccomp = compile_seccomp(plan.seccomp, result.detail);

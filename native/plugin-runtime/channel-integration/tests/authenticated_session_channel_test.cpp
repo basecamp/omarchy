@@ -1,5 +1,5 @@
 #ifndef OMARCHY_AUTHENTICATED_SESSION_CHANNEL_TESTING
-#error "adapter test seam must not be compiled into production"
+#error "adapter test seam must not be compiled into the shipping module"
 #endif
 
 #include "authenticated_session_backend_p.hpp"

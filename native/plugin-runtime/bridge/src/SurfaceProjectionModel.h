@@ -18,9 +18,9 @@ namespace omarchy::plugin_runtime::bridge {
 
 class PluginManager;
 
-// Internal projection model. Production publication and attachment are owned
+// Internal projection model. Host publication and attachment are owned
 // by the singleton PluginManager; this type is deliberately not a QML type.
-class PluginSurfaceService : public QAbstractListModel {
+class SurfaceProjectionModel : public QAbstractListModel {
   Q_OBJECT
 
 public:
@@ -66,7 +66,7 @@ public:
     DefaultSectionRole,
   };
 
-  ~PluginSurfaceService() override;
+  ~SurfaceProjectionModel() override;
 
   [[nodiscard]] QAbstractItemModel *barSurfaces();
   [[nodiscard]] QAbstractItemModel *panelSurfaces();
@@ -89,7 +89,7 @@ signals:
                         QString generation);
 
 private:
-  explicit PluginSurfaceService(QObject *parent = nullptr);
+  explicit SurfaceProjectionModel(QObject *parent = nullptr);
   bool publishSurfaces(
       const plugins::permissions::ActivationBinding &binding,
       std::vector<SurfaceDeclaration> declarations, qulonglong revision);

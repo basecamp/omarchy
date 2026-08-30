@@ -6,7 +6,7 @@
 
 namespace omarchy::plugin_runtime::channel {
 
-// Private transport seam shared by the production implementation and the
+// Private transport seam shared by the runtime implementation and the
 // standalone macro-gated adapter test. It is not part of the installed API.
 class AuthenticatedSessionBackend {
 public:

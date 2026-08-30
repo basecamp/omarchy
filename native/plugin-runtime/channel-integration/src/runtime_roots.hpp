@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <memory>
 
-#ifdef OMARCHY_PRODUCTION_PLUGIN_ROOTS_TESTING
+#ifdef OMARCHY_RUNTIME_ROOTS_TESTING
 #include <cstddef>
 #include <sys/types.h>
 struct passwd;
@@ -13,7 +13,7 @@ struct passwd;
 
 namespace omarchy::plugin_runtime::channel {
 
-enum class ProductionPluginRootsError : std::uint8_t {
+enum class RuntimeRootsError : std::uint8_t {
   none,
   account_unavailable,
   home_untrusted,
@@ -24,18 +24,18 @@ enum class ProductionPluginRootsError : std::uint8_t {
   internal_failure,
 };
 
-// The only production bootstrap for v2 filesystem authority. Paths come from
+// The only runtime bootstrap for v2 filesystem authority. Paths come from
 // the effective user's passwd entry plus fixed host constants; environment,
 // QML, and plugin data cannot select or replace them.
-class ProductionPluginRoots final {
+class RuntimeRoots final {
 public:
-  ProductionPluginRoots(ProductionPluginRoots &&) noexcept = default;
-  ProductionPluginRoots &operator=(ProductionPluginRoots &&) noexcept = default;
-  ProductionPluginRoots(const ProductionPluginRoots &) = delete;
-  ProductionPluginRoots &operator=(const ProductionPluginRoots &) = delete;
+  RuntimeRoots(RuntimeRoots &&) noexcept = default;
+  RuntimeRoots &operator=(RuntimeRoots &&) noexcept = default;
+  RuntimeRoots(const RuntimeRoots &) = delete;
+  RuntimeRoots &operator=(const RuntimeRoots &) = delete;
 
-  [[nodiscard]] static std::unique_ptr<ProductionPluginRoots>
-  open(ProductionPluginRootsError &error) noexcept;
+  [[nodiscard]] static std::unique_ptr<RuntimeRoots>
+  open(RuntimeRootsError &error) noexcept;
 
   [[nodiscard]] std::uint32_t trusted_uid() const noexcept {
     return trusted_uid_;
@@ -48,32 +48,32 @@ public:
   [[nodiscard]] int state_fd() const noexcept { return state_.get(); }
 
 private:
-  ProductionPluginRoots(std::uint32_t trusted_uid,
+  RuntimeRoots(std::uint32_t trusted_uid,
                         host_session::OwnedDescriptor revisions,
                         host_session::OwnedDescriptor activations,
                         host_session::OwnedDescriptor authority,
                         host_session::OwnedDescriptor state) noexcept;
-  [[nodiscard]] static std::unique_ptr<ProductionPluginRoots>
+  [[nodiscard]] static std::unique_ptr<RuntimeRoots>
   open_from_home_fd_impl(int home_fd, std::uint32_t trusted_uid,
-                         ProductionPluginRootsError &error);
+                         RuntimeRootsError &error);
 
-#ifdef OMARCHY_PRODUCTION_PLUGIN_ROOTS_TESTING
+#ifdef OMARCHY_RUNTIME_ROOTS_TESTING
   using AccountLookupForTest = int (*)(uid_t, struct passwd *, char *,
                                        std::size_t, struct passwd **);
-  [[nodiscard]] static std::unique_ptr<ProductionPluginRoots>
+  [[nodiscard]] static std::unique_ptr<RuntimeRoots>
   open_from_home_fd(int home_fd, std::uint32_t trusted_uid,
-                    ProductionPluginRootsError &error) noexcept;
+                    RuntimeRootsError &error) noexcept;
   [[nodiscard]] static int
   open_absolute_home_for_test(const char *path, std::uint32_t trusted_uid,
-                              ProductionPluginRootsError &error) noexcept;
+                              RuntimeRootsError &error) noexcept;
   [[nodiscard]] static int resolve_account_home_for_test(
       std::uint32_t trusted_uid, std::size_t initial_buffer_size,
       AccountLookupForTest lookup,
-      ProductionPluginRootsError &error) noexcept;
+      RuntimeRootsError &error) noexcept;
   [[nodiscard]] static bool absolute_ancestor_is_secure_for_test(
       std::uint32_t owner_uid, std::uint32_t mode,
       std::uint32_t trusted_uid) noexcept;
-  friend class ProductionPluginRootsTestAccess;
+  friend class RuntimeRootsTestAccess;
 #endif
 
   std::uint32_t trusted_uid_ = 0;
@@ -83,33 +83,33 @@ private:
   host_session::OwnedDescriptor state_;
 };
 
-#ifdef OMARCHY_PRODUCTION_PLUGIN_ROOTS_TESTING
-class ProductionPluginRootsTestAccess final {
+#ifdef OMARCHY_RUNTIME_ROOTS_TESTING
+class RuntimeRootsTestAccess final {
 public:
-  using AccountLookup = ProductionPluginRoots::AccountLookupForTest;
-  [[nodiscard]] static std::unique_ptr<ProductionPluginRoots>
+  using AccountLookup = RuntimeRoots::AccountLookupForTest;
+  [[nodiscard]] static std::unique_ptr<RuntimeRoots>
   open_from_home_fd(int home_fd, std::uint32_t trusted_uid,
-                    ProductionPluginRootsError &error) noexcept {
-    return ProductionPluginRoots::open_from_home_fd(home_fd, trusted_uid,
+                    RuntimeRootsError &error) noexcept {
+    return RuntimeRoots::open_from_home_fd(home_fd, trusted_uid,
                                                     error);
   }
   [[nodiscard]] static int
   open_absolute_home(const char *path, std::uint32_t trusted_uid,
-                     ProductionPluginRootsError &error) noexcept {
-    return ProductionPluginRoots::open_absolute_home_for_test(
+                     RuntimeRootsError &error) noexcept {
+    return RuntimeRoots::open_absolute_home_for_test(
         path, trusted_uid, error);
   }
   [[nodiscard]] static int
   resolve_account_home(std::uint32_t trusted_uid,
                        std::size_t initial_buffer_size, AccountLookup lookup,
-                       ProductionPluginRootsError &error) noexcept {
-    return ProductionPluginRoots::resolve_account_home_for_test(
+                       RuntimeRootsError &error) noexcept {
+    return RuntimeRoots::resolve_account_home_for_test(
         trusted_uid, initial_buffer_size, lookup, error);
   }
   [[nodiscard]] static bool
   absolute_ancestor_is_secure(std::uint32_t owner_uid, std::uint32_t mode,
                               std::uint32_t trusted_uid) noexcept {
-    return ProductionPluginRoots::absolute_ancestor_is_secure_for_test(
+    return RuntimeRoots::absolute_ancestor_is_secure_for_test(
         owner_uid, mode, trusted_uid);
   }
 };

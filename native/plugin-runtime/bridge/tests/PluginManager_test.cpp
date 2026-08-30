@@ -1,8 +1,8 @@
 #include "PluginManager.h"
 
 #include "omarchy/plugin_runtime/Version.h"
-#include "production_plugin_bootstrap.hpp"
-#include "production_plugin_roots.hpp"
+#include "runtime_bootstrap.hpp"
+#include "runtime_roots.hpp"
 #include "remote_surface.hpp"
 
 #include <QCoreApplication>
@@ -105,28 +105,28 @@ public:
             "manager runtime fixture erase failed");
   }
 
-  std::unique_ptr<channel::ProductionPluginBootstrap> bootstrap() const {
+  std::unique_ptr<channel::RuntimeBootstrap> bootstrap() const {
     const int home =
         ::open(home_.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
     require(home >= 0, "manager runtime fixture home unavailable");
-    channel::ProductionPluginRootsError roots_error{};
-    auto roots = channel::ProductionPluginRootsTestAccess::open_from_home_fd(
+    channel::RuntimeRootsError roots_error{};
+    auto roots = channel::RuntimeRootsTestAccess::open_from_home_fd(
         home, static_cast<std::uint32_t>(::getuid()), roots_error);
     ::close(home);
-    require(roots && roots_error == channel::ProductionPluginRootsError::none,
+    require(roots && roots_error == channel::RuntimeRootsError::none,
             "manager runtime fixture roots rejected");
     const int filesystem_root =
         ::open(root_.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
     require(filesystem_root >= 0,
             "manager runtime fixture filesystem root unavailable");
-    channel::ProductionPluginBootstrapError bootstrap_error{};
+    channel::RuntimeBootstrapError bootstrap_error{};
     auto result =
-        channel::ProductionPluginBootstrapTestAccess::open_from_filesystem_root(
+        channel::RuntimeBootstrapTestAccess::open_from_filesystem_root(
             std::move(roots), filesystem_root,
             static_cast<std::uint32_t>(::getuid()), bootstrap_error);
     ::close(filesystem_root);
     require(result && bootstrap_error ==
-                          channel::ProductionPluginBootstrapError::none,
+                          channel::RuntimeBootstrapError::none,
             "manager runtime fixture bootstrap rejected");
     return result;
   }
@@ -241,7 +241,7 @@ void singleton_boundary_is_inert_and_not_configurable() {
 }
 
 void private_projection_seam_preserves_fail_closed_boundary() {
-  using Service = bridge::PluginSurfaceService;
+  using Service = bridge::SurfaceProjectionModel;
   auto manager_owner = bridge::PluginManagerTestAccess::create();
   auto &manager = *manager_owner;
   int changes = 0;
@@ -678,7 +678,7 @@ void blocked_replacement_preserves_independent_plugin() {
           "replacement A result disturbed independently accepted B");
 }
 
-void production_jobs_enter_off_ui_and_commit_on_ui_drain() {
+void runtime_jobs_enter_off_ui_and_commit_on_ui_drain() {
   RuntimeFixture fixture;
   fixture.put("a.plugin");
   auto manager = bridge::PluginManagerTestAccess::create();
@@ -703,17 +703,17 @@ void production_jobs_enter_off_ui_and_commit_on_ui_drain() {
             return scan_thread != std::thread::id{} &&
                    preparation_thread != std::thread::id{};
           }),
-          "production scan/preparation jobs did not both enter");
+          "runtime scan/preparation jobs did not both enter");
   require(await([&] {
             bridge::PluginManagerTestAccess::drainRuntime(*manager);
             return bridge::PluginManagerTestAccess::runtimeSlots(*manager)
                 .front()
                 .retry_wait;
           }),
-          "UI drain did not commit production preparation failure");
+          "UI drain did not commit runtime preparation failure");
   std::scoped_lock lock(observed_mutex);
   require(scan_thread != ui_thread && preparation_thread != ui_thread,
-          "production scan or preparation executed on the UI thread");
+          "runtime scan or preparation executed on the UI thread");
 }
 
 } // namespace
@@ -726,5 +726,5 @@ void run_plugin_manager_tests() {
   mailbox_results_are_safe_across_replacement_and_destruction();
   lifecycle_mailbox_keeps_latest_exact_terminal_state();
   blocked_replacement_preserves_independent_plugin();
-  production_jobs_enter_off_ui_and_commit_on_ui_drain();
+  runtime_jobs_enter_off_ui_and_commit_on_ui_drain();
 }

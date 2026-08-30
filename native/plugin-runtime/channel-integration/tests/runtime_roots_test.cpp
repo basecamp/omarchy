@@ -1,4 +1,4 @@
-#include "production_plugin_roots.hpp"
+#include "runtime_roots.hpp"
 
 #include <fcntl.h>
 #include <pwd.h>
@@ -51,7 +51,7 @@ void require(bool condition, std::string_view message) {
 class Fixture final {
 public:
   Fixture() {
-    std::string pattern = "/tmp/omarchy-production-roots.XXXXXX";
+    std::string pattern = "/tmp/omarchy-runtime-roots.XXXXXX";
     const auto *created = ::mkdtemp(pattern.data());
     require(created != nullptr, "root fixture creation failed");
     home_ = created;
@@ -86,12 +86,12 @@ private:
   std::filesystem::path home_;
 };
 
-std::unique_ptr<channel::ProductionPluginRoots>
-load(const Fixture &fixture, channel::ProductionPluginRootsError &error,
+std::unique_ptr<channel::RuntimeRoots>
+load(const Fixture &fixture, channel::RuntimeRootsError &error,
      std::uint32_t uid = static_cast<std::uint32_t>(::getuid())) {
   const int home = fixture.open_home();
   require(home >= 0, "fixture home open failed");
-  auto result = channel::ProductionPluginRootsTestAccess::open_from_home_fd(
+  auto result = channel::RuntimeRootsTestAccess::open_from_home_fd(
       home, uid, error);
   ::close(home);
   return result;
@@ -99,9 +99,9 @@ load(const Fixture &fixture, channel::ProductionPluginRootsError &error,
 
 void fixed_roots_are_exact_distinct_and_pinned() {
   Fixture fixture;
-  channel::ProductionPluginRootsError error{};
+  channel::RuntimeRootsError error{};
   auto roots = load(fixture, error);
-  require(roots && error == channel::ProductionPluginRootsError::none &&
+  require(roots && error == channel::RuntimeRootsError::none &&
               roots->trusted_uid() == static_cast<std::uint32_t>(::getuid()),
           "fixed root set did not load");
   const std::array descriptors{roots->revisions_fd(), roots->activations_fd(),
@@ -140,9 +140,9 @@ void unsafe_home_components_and_roots_fail_closed() {
     Fixture fixture;
     require(::chmod(fixture.home().c_str(), 0770) == 0,
             "unsafe home mode setup failed");
-    channel::ProductionPluginRootsError error{};
+    channel::RuntimeRootsError error{};
     require(!load(fixture, error) &&
-                error == channel::ProductionPluginRootsError::home_untrusted,
+                error == channel::RuntimeRootsError::home_untrusted,
             "group-writable home was accepted");
   }
   {
@@ -150,9 +150,9 @@ void unsafe_home_components_and_roots_fail_closed() {
     const auto component = fixture.home() / ".local/share/omarchy";
     require(::chmod(component.c_str(), 0770) == 0,
             "unsafe component mode setup failed");
-    channel::ProductionPluginRootsError error{};
+    channel::RuntimeRootsError error{};
     require(!load(fixture, error) &&
-                error == channel::ProductionPluginRootsError::root_untrusted,
+                error == channel::RuntimeRootsError::root_untrusted,
             "group-writable fixed-path component was accepted");
   }
   {
@@ -161,9 +161,9 @@ void unsafe_home_components_and_roots_fail_closed() {
         fixture.home() / ".local/share/omarchy/plugin-security/v2/revisions";
     require(::chmod(revisions.c_str(), 0755) == 0,
             "inexact leaf mode setup failed");
-    channel::ProductionPluginRootsError error{};
+    channel::RuntimeRootsError error{};
     require(!load(fixture, error) &&
-                error == channel::ProductionPluginRootsError::root_untrusted,
+                error == channel::RuntimeRootsError::root_untrusted,
             "non-0700 fixed root was accepted");
   }
   {
@@ -173,24 +173,24 @@ void unsafe_home_components_and_roots_fail_closed() {
     const auto moved = fixture.home() / "real-activations";
     std::filesystem::rename(activations, moved);
     std::filesystem::create_directory_symlink(moved, activations);
-    channel::ProductionPluginRootsError error{};
+    channel::RuntimeRootsError error{};
     require(!load(fixture, error) &&
-                error == channel::ProductionPluginRootsError::path_unavailable,
+                error == channel::RuntimeRootsError::path_unavailable,
             "symlinked fixed root was accepted");
   }
   {
     Fixture fixture;
-    channel::ProductionPluginRootsError error{};
+    channel::RuntimeRootsError error{};
     require(!load(fixture, error, static_cast<std::uint32_t>(::getuid()) + 1) &&
-                error == channel::ProductionPluginRootsError::home_untrusted,
+                error == channel::RuntimeRootsError::home_untrusted,
             "wrong trusted UID was accepted");
   }
   {
-    channel::ProductionPluginRootsError error{};
-    auto roots = channel::ProductionPluginRootsTestAccess::open_from_home_fd(
+    channel::RuntimeRootsError error{};
+    auto roots = channel::RuntimeRootsTestAccess::open_from_home_fd(
         -1, static_cast<std::uint32_t>(::getuid()), error);
     require(!roots &&
-                error == channel::ProductionPluginRootsError::home_untrusted,
+                error == channel::RuntimeRootsError::home_untrusted,
             "invalid borrowed home descriptor was accepted");
   }
 }
@@ -200,10 +200,10 @@ void absolute_home_walker_rejects_untrusted_paths() {
   require(::stat("/home", &system_home) == 0,
           "system home metadata unavailable");
   const auto owner = static_cast<std::uint32_t>(system_home.st_uid);
-  channel::ProductionPluginRootsError error{};
+  channel::RuntimeRootsError error{};
   auto open_home = [&](const char *path, std::uint32_t uid = 0) {
     const int descriptor =
-        channel::ProductionPluginRootsTestAccess::open_absolute_home(
+        channel::RuntimeRootsTestAccess::open_absolute_home(
             path, uid == 0 ? owner : uid, error);
     if (descriptor >= 0)
       ::close(descriptor);
@@ -211,31 +211,31 @@ void absolute_home_walker_rejects_untrusted_paths() {
   };
 
   require(open_home("/home") >= 0 &&
-              error == channel::ProductionPluginRootsError::none,
+              error == channel::RuntimeRootsError::none,
           "target-owned absolute home was rejected");
   require(open_home("home") < 0 &&
-              error == channel::ProductionPluginRootsError::home_untrusted,
+              error == channel::RuntimeRootsError::home_untrusted,
           "non-absolute home was accepted");
   require(open_home("/home/.") < 0 &&
-              error == channel::ProductionPluginRootsError::home_untrusted,
+              error == channel::RuntimeRootsError::home_untrusted,
           "dot home component was accepted");
   require(open_home("/home/../home") < 0 &&
-              error == channel::ProductionPluginRootsError::home_untrusted,
+              error == channel::RuntimeRootsError::home_untrusted,
           "dot-dot home component was accepted");
   require(open_home("/bin") < 0 &&
-              error == channel::ProductionPluginRootsError::home_untrusted,
+              error == channel::RuntimeRootsError::home_untrusted,
           "symlinked home component was accepted");
   const auto *current_account = ::getpwuid(::getuid());
   require(current_account != nullptr && current_account->pw_dir != nullptr,
           "current account home unavailable");
   require(open_home(current_account->pw_dir) < 0 &&
-              error == channel::ProductionPluginRootsError::home_untrusted,
+              error == channel::RuntimeRootsError::home_untrusted,
           "wrong-owned final home was accepted");
 
-  require(channel::ProductionPluginRootsTestAccess::
+  require(channel::RuntimeRootsTestAccess::
               absolute_ancestor_is_secure(0, S_IFDIR | 0755, 1000),
           "root-owned safe system ancestor was rejected");
-  require(!channel::ProductionPluginRootsTestAccess::
+  require(!channel::RuntimeRootsTestAccess::
                absolute_ancestor_is_secure(0, S_IFDIR | 0775, 1000),
           "root-owned writable system ancestor was accepted");
 }
@@ -245,12 +245,12 @@ void account_resolution_is_bounded_and_exact() {
   require(::stat("/home", &system_home) == 0,
           "system home metadata unavailable");
   lookup_home_uid = system_home.st_uid;
-  channel::ProductionPluginRootsError error{};
+  channel::RuntimeRootsError error{};
   auto resolve = [&](LookupBehavior behavior) {
     lookup_behavior = behavior;
     lookup_calls = 0;
     const int descriptor =
-        channel::ProductionPluginRootsTestAccess::resolve_account_home(
+        channel::RuntimeRootsTestAccess::resolve_account_home(
             static_cast<std::uint32_t>(lookup_home_uid), 128,
             scripted_lookup, error);
     if (descriptor >= 0)
@@ -260,17 +260,17 @@ void account_resolution_is_bounded_and_exact() {
 
   require(resolve(LookupBehavior::mixed_then_success) >= 0 &&
               lookup_calls == 16 &&
-              error == channel::ProductionPluginRootsError::none,
+              error == channel::RuntimeRootsError::none,
           "bounded mixed EINTR/ERANGE lookup did not complete");
   require(resolve(LookupBehavior::interrupt_forever) < 0 &&
               lookup_calls == 16 &&
-              error == channel::ProductionPluginRootsError::account_unavailable,
+              error == channel::RuntimeRootsError::account_unavailable,
           "account lookup exceeded its total attempt budget");
   require(resolve(LookupBehavior::wrong_result) < 0 &&
-              error == channel::ProductionPluginRootsError::account_unavailable,
+              error == channel::RuntimeRootsError::account_unavailable,
           "non-account result pointer was accepted");
   require(resolve(LookupBehavior::wrong_uid) < 0 &&
-              error == channel::ProductionPluginRootsError::account_unavailable,
+              error == channel::RuntimeRootsError::account_unavailable,
           "mismatched account UID was accepted");
 }
 
@@ -284,7 +284,7 @@ int main() {
     account_resolution_is_bounded_and_exact();
     return 0;
   } catch (const std::exception &error) {
-    std::cerr << "production plugin roots test failed: " << error.what()
+    std::cerr << "runtime roots test failed: " << error.what()
               << '\n';
     return 1;
   }

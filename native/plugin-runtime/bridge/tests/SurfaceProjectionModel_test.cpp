@@ -13,8 +13,8 @@
 #include <utility>
 #include <vector>
 
-void run_production_surface_endpoint_tests();
-void run_production_surface_endpoint_owner_tests();
+void run_surface_endpoint_tests();
+void run_surface_endpoint_owner_tests();
 void run_plugin_manager_tests();
 
 namespace {
@@ -70,9 +70,9 @@ permissions::ActivationBinding binding(std::string_view plugin,
           .generation = generation};
 }
 
-bridge::PluginSurfaceService::SurfaceDeclaration declaration(
-    std::string name, bridge::PluginSurfaceService::Role role) {
-  using Service = bridge::PluginSurfaceService;
+bridge::SurfaceProjectionModel::SurfaceDeclaration declaration(
+    std::string name, bridge::SurfaceProjectionModel::Role role) {
+  using Service = bridge::SurfaceProjectionModel;
   const bool bar = role == Service::Role::Bar;
   return {.surface_name = std::move(name),
           .role = role,
@@ -86,12 +86,12 @@ bridge::PluginSurfaceService::SurfaceDeclaration declaration(
                   : Service::BarSection::Unspecified};
 }
 
-QString value(const bridge::PluginSurfaceService &service, int row, int role) {
+QString value(const bridge::SurfaceProjectionModel &service, int row, int role) {
   return service.data(service.index(row), role).toString();
 }
 
 void run() {
-  using Service = bridge::PluginSurfaceService;
+  using Service = bridge::SurfaceProjectionModel;
   auto service_owner = bridge::PluginManagerTestAccess::create();
   auto &service_manager = *service_owner;
   auto &service = bridge::PluginManagerTestAccess::model(service_manager);
@@ -436,8 +436,8 @@ int main(int argc, char **argv) {
   try {
     run();
     run_plugin_manager_tests();
-    run_production_surface_endpoint_tests();
-    run_production_surface_endpoint_owner_tests();
+    run_surface_endpoint_tests();
+    run_surface_endpoint_owner_tests();
     return 0;
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';

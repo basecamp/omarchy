@@ -12,7 +12,7 @@
 #include <vector>
 
 namespace omarchy::plugin_runtime::bridge {
-class ProductionSurfaceEndpoint;
+class SurfaceEndpoint;
 }
 
 namespace omarchy::plugin_runtime::channel {
@@ -20,7 +20,7 @@ namespace omarchy::plugin_runtime::channel {
 namespace session = omarchy::plugin_runtime::host_session;
 namespace permissions = omarchy::plugins::permissions;
 
-struct ProductionSurfaceDescription final {
+struct SurfaceDescription final {
   permissions::ActivationBinding binding;
   session::surface::SurfaceKey key;
   std::uint64_t session_nonce = 0;
@@ -28,7 +28,7 @@ struct ProductionSurfaceDescription final {
   std::string surface_name;
   std::string canonical_surfaces;
 
-  bool operator==(const ProductionSurfaceDescription &) const = default;
+  bool operator==(const SurfaceDescription &) const = default;
 };
 
 // UI/event-loop-confined access to one root-owned running session. A
@@ -36,28 +36,28 @@ struct ProductionSurfaceDescription final {
 // exact permission projection before exposing this surface to QML.
 // This seam deliberately exposes neither PluginSession nor permission and
 // lifecycle authorities.
-class ProductionSurfaceSessionPort {
+class SurfaceSessionPort {
 public:
-  virtual ~ProductionSurfaceSessionPort() = default;
-  [[nodiscard]] virtual std::optional<ProductionSurfaceDescription>
+  virtual ~SurfaceSessionPort() = default;
+  [[nodiscard]] virtual std::optional<SurfaceDescription>
   describe(std::string_view declared_surface) const noexcept = 0;
   // All-or-nothing: false guarantees endpoint was not published.
   [[nodiscard]] virtual bool
-  attach(const ProductionSurfaceDescription &expected,
+  attach(const SurfaceDescription &expected,
          session::SurfaceEndpoint &endpoint) noexcept = 0;
   // Exact identity makes late G1 teardown a successful no-op after G2 exists.
   [[nodiscard]] virtual bool
-  detach(const ProductionSurfaceDescription &expected,
+  detach(const SurfaceDescription &expected,
          const session::SurfaceEndpoint &endpoint) noexcept = 0;
   [[nodiscard]] virtual bool
-  arm_surface_intent(const ProductionSurfaceDescription &expected,
+  arm_surface_intent(const SurfaceDescription &expected,
                      std::uint64_t input_sequence) noexcept = 0;
   virtual void clear_surface_intent_eligibility(
-      const ProductionSurfaceDescription &expected) noexcept = 0;
+      const SurfaceDescription &expected) noexcept = 0;
 
 private:
   [[nodiscard]] bool send_render_packet(
-      const ProductionSurfaceDescription &expected,
+      const SurfaceDescription &expected,
       const plugin::wire::EnvelopeHeader &header,
       std::vector<std::byte> payload,
       std::vector<session::OwnedFd> descriptors) noexcept {
@@ -65,12 +65,12 @@ private:
                                    std::move(descriptors));
   }
   [[nodiscard]] virtual bool send_render_packet_impl(
-      const ProductionSurfaceDescription &expected,
+      const SurfaceDescription &expected,
       const plugin::wire::EnvelopeHeader &header,
       std::vector<std::byte> payload,
       std::vector<session::OwnedFd> descriptors) noexcept = 0;
 
-  friend class omarchy::plugin_runtime::bridge::ProductionSurfaceEndpoint;
+  friend class omarchy::plugin_runtime::bridge::SurfaceEndpoint;
 };
 
 } // namespace omarchy::plugin_runtime::channel

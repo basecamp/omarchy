@@ -1,4 +1,4 @@
-#include "ProductionSurfaceEndpoint.h"
+#include "SurfaceEndpoint.h"
 
 #include "surface_host.hpp"
 
@@ -52,7 +52,7 @@ std::optional<std::uint32_t> q16_coordinate(qreal value,
 
 } // namespace
 
-struct ProductionSurfaceEndpoint::Impl final {
+struct SurfaceEndpoint::Impl final {
   struct OutboundGate final {
     bool render = false;
     bool input = false;
@@ -66,7 +66,7 @@ struct ProductionSurfaceEndpoint::Impl final {
 
   class RenderSender final : public render_session::PacketSender {
   public:
-    RenderSender(ProductionSurfaceEndpoint &owner,
+    RenderSender(SurfaceEndpoint &owner,
                  std::shared_ptr<OutboundGate> gate)
         : owner_(owner), gate_(std::move(gate)) {}
 
@@ -78,13 +78,13 @@ struct ProductionSurfaceEndpoint::Impl final {
     }
 
   private:
-    ProductionSurfaceEndpoint &owner_;
+    SurfaceEndpoint &owner_;
     std::shared_ptr<OutboundGate> gate_;
   };
 
   class InputSink final : public RenderPacketSink {
   public:
-    InputSink(ProductionSurfaceEndpoint &owner,
+    InputSink(SurfaceEndpoint &owner,
               std::shared_ptr<OutboundGate> gate)
         : owner_(owner), gate_(std::move(gate)) {}
 
@@ -94,7 +94,7 @@ struct ProductionSurfaceEndpoint::Impl final {
     }
 
   private:
-    ProductionSurfaceEndpoint &owner_;
+    SurfaceEndpoint &owner_;
     std::shared_ptr<OutboundGate> gate_;
   };
 
@@ -104,7 +104,7 @@ struct ProductionSurfaceEndpoint::Impl final {
   std::shared_ptr<InputSink> input_sink;
   std::unique_ptr<surface_host::HostSurface> host;
   RemotePluginSurface *remote = nullptr;
-  std::optional<channel::ProductionSurfaceDescription> description;
+  std::optional<channel::SurfaceDescription> description;
   std::optional<PendingGesture> pending_gesture;
   std::uint32_t logical_width = 0;
   std::uint32_t logical_height = 0;
@@ -112,14 +112,14 @@ struct ProductionSurfaceEndpoint::Impl final {
   bool pointer_router_bound = false;
 };
 
-ProductionSurfaceEndpoint::ProductionSurfaceEndpoint(
-    channel::ProductionSurfaceSessionPort &session,
+SurfaceEndpoint::SurfaceEndpoint(
+    channel::SurfaceSessionPort &session,
     std::string declared_surface)
     : session_(session), declared_surface_(std::move(declared_surface)),
       owner_thread_(std::this_thread::get_id()),
       implementation_(std::make_unique<Impl>()) {}
 
-ProductionSurfaceEndpoint::~ProductionSurfaceEndpoint() {
+SurfaceEndpoint::~SurfaceEndpoint() {
   // Manager ownership is event-loop confined. Continuing teardown on another
   // thread could leave PluginSession routing to a destroyed endpoint.
   if (std::this_thread::get_id() != owner_thread_)
@@ -127,7 +127,7 @@ ProductionSurfaceEndpoint::~ProductionSurfaceEndpoint() {
   close();
 }
 
-bool ProductionSurfaceEndpoint::attach(
+bool SurfaceEndpoint::attach(
     RemotePluginSurface &surface_item, std::uint32_t logical_width,
     std::uint32_t logical_height, std::uint32_t dpr_numerator,
     std::uint32_t dpr_denominator,
@@ -227,7 +227,7 @@ bool ProductionSurfaceEndpoint::attach(
   return true;
 }
 
-bool ProductionSurfaceEndpoint::receive(
+bool SurfaceEndpoint::receive(
     host_session::OwnedAuthenticatedRenderMessage message) {
   auto &value = *implementation_;
   if (std::this_thread::get_id() != owner_thread_ ||
@@ -243,7 +243,7 @@ bool ProductionSurfaceEndpoint::receive(
   return value.host->receive_render(packet);
 }
 
-bool ProductionSurfaceEndpoint::route_input(const surface::InputEvent &event,
+bool SurfaceEndpoint::route_input(const surface::InputEvent &event,
                                             bool trusted_gesture) {
   auto &value = *implementation_;
   if (std::this_thread::get_id() != owner_thread_ ||
@@ -270,7 +270,7 @@ bool ProductionSurfaceEndpoint::route_input(const surface::InputEvent &event,
   return routed;
 }
 
-bool ProductionSurfaceEndpoint::route(const HostPointerEvent &event) {
+bool SurfaceEndpoint::route(const HostPointerEvent &event) {
   auto &value = *implementation_;
   if (std::this_thread::get_id() != owner_thread_ ||
       value.state != State::active || !value.host || !value.description ||
@@ -299,7 +299,7 @@ bool ProductionSurfaceEndpoint::route(const HostPointerEvent &event) {
   return route_input(input, event.pressed && !event.application_synthesized);
 }
 
-bool ProductionSurfaceEndpoint::forward_input(
+bool SurfaceEndpoint::forward_input(
     const plugin::wire::EnvelopeHeader &header,
     std::span<const std::byte> payload) {
   auto &value = *implementation_;
@@ -336,7 +336,7 @@ bool ProductionSurfaceEndpoint::forward_input(
   return false;
 }
 
-bool ProductionSurfaceEndpoint::forward_render(
+bool SurfaceEndpoint::forward_render(
     const plugin::wire::EnvelopeHeader &header,
     std::span<const std::byte> payload, std::span<const int> descriptors) {
   auto &value = *implementation_;
@@ -361,9 +361,9 @@ bool ProductionSurfaceEndpoint::forward_render(
       std::move(owned));
 }
 
-void ProductionSurfaceEndpoint::close() noexcept { close_impl(); }
+void SurfaceEndpoint::close() noexcept { close_impl(); }
 
-void ProductionSurfaceEndpoint::close_impl() noexcept {
+void SurfaceEndpoint::close_impl() noexcept {
   auto &value = *implementation_;
   if (std::this_thread::get_id() != owner_thread_)
     std::terminate();
@@ -396,16 +396,16 @@ void ProductionSurfaceEndpoint::close_impl() noexcept {
   value.logical_height = 0;
 }
 
-void ProductionSurfaceEndpoint::remote_surface_destroying() noexcept {
+void SurfaceEndpoint::remote_surface_destroying() noexcept {
   close_impl();
 }
 
-ProductionSurfaceEndpoint::State ProductionSurfaceEndpoint::state() const
+SurfaceEndpoint::State SurfaceEndpoint::state() const
     noexcept {
   return implementation_->state;
 }
 
-std::string_view ProductionSurfaceEndpoint::declared_surface() const noexcept {
+std::string_view SurfaceEndpoint::declared_surface() const noexcept {
   return declared_surface_;
 }
 

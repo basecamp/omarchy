@@ -1,4 +1,4 @@
-#include "production_plugin_bootstrap.hpp"
+#include "runtime_bootstrap.hpp"
 
 #include "capability_definition_loader.hpp"
 #include "omarchy/plugin_runtime/Version.h"
@@ -120,30 +120,30 @@ bool compiled_adapter_available(std::string_view, const definitions::Digest &,
   return false;
 }
 
-ProductionPluginBootstrapError
+RuntimeBootstrapError
 definition_error(definitions::LoadResult result) noexcept {
   switch (result) {
   case definitions::LoadResult::loaded:
-    return ProductionPluginBootstrapError::none;
+    return RuntimeBootstrapError::none;
   case definitions::LoadResult::adapter_unavailable:
-    return ProductionPluginBootstrapError::definition_adapter_unavailable;
+    return RuntimeBootstrapError::definition_adapter_unavailable;
   case definitions::LoadResult::registry_rejected:
-    return ProductionPluginBootstrapError::definition_registry_rejected;
+    return RuntimeBootstrapError::definition_registry_rejected;
   case definitions::LoadResult::bound_exceeded:
-    return ProductionPluginBootstrapError::definition_bound_exceeded;
+    return RuntimeBootstrapError::definition_bound_exceeded;
   case definitions::LoadResult::invalid_document:
   case definitions::LoadResult::untrusted_path:
-    return ProductionPluginBootstrapError::definition_document_rejected;
+    return RuntimeBootstrapError::definition_document_rejected;
   }
-  return ProductionPluginBootstrapError::internal_failure;
+  return RuntimeBootstrapError::internal_failure;
 }
 
 } // namespace
 
-std::unique_ptr<ProductionPluginBootstrap>
-ProductionPluginBootstrap::compose_from_filesystem_root(
-    std::unique_ptr<ProductionPluginRoots> roots, int filesystem_root_fd,
-    std::uint32_t definition_uid, ProductionPluginBootstrapError &error) {
+std::unique_ptr<RuntimeBootstrap>
+RuntimeBootstrap::compose_from_filesystem_root(
+    std::unique_ptr<RuntimeRoots> roots, int filesystem_root_fd,
+    std::uint32_t definition_uid, RuntimeBootstrapError &error) {
   const std::string_view version = build_version();
   const std::array<std::string_view, 6> package_components{
       "usr", "lib", "omarchy", "plugin-security", version, "capabilities.d"};
@@ -155,15 +155,15 @@ ProductionPluginBootstrap::compose_from_filesystem_root(
   if (package_result != FixedDirectoryResult::opened) {
     error =
         package_result == FixedDirectoryResult::absent
-                ? ProductionPluginBootstrapError::package_definitions_unavailable
-                : ProductionPluginBootstrapError::package_definitions_untrusted;
+                ? RuntimeBootstrapError::package_definitions_unavailable
+                : RuntimeBootstrapError::package_definitions_untrusted;
     return {};
   }
   OwnedDescriptor admin;
   const auto admin_result = open_fixed_directory(
       filesystem_root_fd, admin_components, definition_uid, admin);
   if (admin_result == FixedDirectoryResult::rejected) {
-    error = ProductionPluginBootstrapError::admin_definitions_untrusted;
+    error = RuntimeBootstrapError::admin_definitions_untrusted;
     return {};
   }
 
@@ -176,7 +176,7 @@ ProductionPluginBootstrap::compose_from_filesystem_root(
       definition_uid, verifier, registry, loaded);
   if (load_result != definitions::LoadResult::loaded) {
     error = load_result == definitions::LoadResult::untrusted_path
-                ? ProductionPluginBootstrapError::package_definitions_untrusted
+                ? RuntimeBootstrapError::package_definitions_untrusted
                 : definition_error(load_result);
     return {};
   }
@@ -186,7 +186,7 @@ ProductionPluginBootstrap::compose_from_filesystem_root(
         verifier, registry, loaded);
     if (load_result != definitions::LoadResult::loaded) {
       error = load_result == definitions::LoadResult::untrusted_path
-                  ? ProductionPluginBootstrapError::admin_definitions_untrusted
+                  ? RuntimeBootstrapError::admin_definitions_untrusted
                   : definition_error(load_result);
       return {};
     }
@@ -195,51 +195,51 @@ ProductionPluginBootstrap::compose_from_filesystem_root(
   auto definitions =
       std::make_shared<const definitions::TrustedDefinitionRegistry>(
           std::move(registry));
-  auto services = std::make_shared<const ProductionRuntimeServices>();
-  error = ProductionPluginBootstrapError::none;
-  return std::unique_ptr<ProductionPluginBootstrap>(
-      new ProductionPluginBootstrap(std::move(roots), std::move(definitions),
+  auto services = std::make_shared<const RuntimeServices>();
+  error = RuntimeBootstrapError::none;
+  return std::unique_ptr<RuntimeBootstrap>(
+      new RuntimeBootstrap(std::move(roots), std::move(definitions),
                                     std::move(services)));
 }
 
-ProductionPluginBootstrap::ProductionPluginBootstrap(
-    std::unique_ptr<ProductionPluginRoots> roots,
+RuntimeBootstrap::RuntimeBootstrap(
+    std::unique_ptr<RuntimeRoots> roots,
     std::shared_ptr<const definitions::TrustedDefinitionRegistry> definitions,
-    std::shared_ptr<const ProductionRuntimeServices> services) noexcept
+    std::shared_ptr<const RuntimeServices> services) noexcept
     : roots_(std::move(roots)), definitions_(std::move(definitions)),
       services_(std::move(services)) {}
 
-std::unique_ptr<ProductionPluginBootstrap> ProductionPluginBootstrap::open(
-    ProductionPluginBootstrapError &error) noexcept {
-  error = ProductionPluginBootstrapError::none;
+std::unique_ptr<RuntimeBootstrap> RuntimeBootstrap::open(
+    RuntimeBootstrapError &error) noexcept {
+  error = RuntimeBootstrapError::none;
   try {
-    ProductionPluginRootsError roots_error{};
-    auto roots = ProductionPluginRoots::open(roots_error);
+    RuntimeRootsError roots_error{};
+    auto roots = RuntimeRoots::open(roots_error);
     if (!roots) {
-      error = ProductionPluginBootstrapError::roots_unavailable;
+      error = RuntimeBootstrapError::roots_unavailable;
       return {};
     }
     OwnedDescriptor filesystem_root(
         ::open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
     if (!filesystem_root) {
-      error = ProductionPluginBootstrapError::package_definitions_unavailable;
+      error = RuntimeBootstrapError::package_definitions_unavailable;
       return {};
     }
     return compose_from_filesystem_root(std::move(roots), filesystem_root.get(),
                                         0, error);
   } catch (const std::bad_alloc &) {
-    error = ProductionPluginBootstrapError::resource_exhausted;
+    error = RuntimeBootstrapError::resource_exhausted;
     return {};
   } catch (...) {
-    error = ProductionPluginBootstrapError::internal_failure;
+    error = RuntimeBootstrapError::internal_failure;
     return {};
   }
 }
 
-std::optional<ProductionPluginRuntimeConfiguration>
-ProductionPluginBootstrap::configuration(std::string_view record_name,
+std::optional<PluginRuntimeConfiguration>
+RuntimeBootstrap::configuration(std::string_view record_name,
                                          const permissions::PluginId &plugin,
-                                         ProductionPluginRuntimeHooks *hooks,
+                                         PluginRuntimeHooks *hooks,
                                          bool preparation) const {
   if (record_name != plugin.view() || (hooks == nullptr && !preparation) ||
       !exact_plugin_id(plugin.view()))
@@ -248,7 +248,7 @@ ProductionPluginBootstrap::configuration(std::string_view record_name,
                                          roots_->trusted_uid());
   if (!authority)
     return std::nullopt;
-  return ProductionPluginRuntimeConfiguration{
+  return PluginRuntimeConfiguration{
       .activation_root_fd = roots_->activations_fd(),
       .revision_root_fd = roots_->revisions_fd(),
       .state_root_fd = roots_->state_fd(),
@@ -264,13 +264,13 @@ ProductionPluginBootstrap::configuration(std::string_view record_name,
   };
 }
 
-std::unique_ptr<ProductionPluginRuntimeRoot>
-ProductionPluginBootstrap::open_runtime(
+std::unique_ptr<PluginRuntimeRoot>
+RuntimeBootstrap::open_runtime(
     std::string_view record_name, const permissions::PluginId &plugin,
-    ProductionPluginRuntimeHooks &hooks) const noexcept {
+    PluginRuntimeHooks &hooks) const noexcept {
   try {
     auto candidate = configuration(record_name, plugin, &hooks);
-    return candidate ? ProductionPluginRuntimeRoot::open(std::move(*candidate))
+    return candidate ? PluginRuntimeRoot::open(std::move(*candidate))
                      : nullptr;
   } catch (...) {
     return {};
@@ -278,57 +278,57 @@ ProductionPluginBootstrap::open_runtime(
 }
 
 std::unique_ptr<PreparedPluginRuntime>
-ProductionPluginBootstrap::prepare_runtime(
+RuntimeBootstrap::prepare_runtime(
     std::string_view record_name,
     const permissions::PluginId &plugin) const noexcept {
   try {
     auto candidate = configuration(record_name, plugin, nullptr, true);
     return candidate
-               ? ProductionPluginRuntimeRoot::prepare(std::move(*candidate))
+               ? PluginRuntimeRoot::prepare(std::move(*candidate))
                : nullptr;
   } catch (...) {
     return {};
   }
 }
 
-std::unique_ptr<ProductionPluginCatalog>
-ProductionPluginBootstrap::scan_catalog(
-    ProductionPluginCatalogError &error) const noexcept {
-  return ProductionPluginCatalog::load(roots_->activations_fd(),
+std::unique_ptr<ActivationCatalog>
+RuntimeBootstrap::scan_catalog(
+    ActivationCatalogError &error) const noexcept {
+  return ActivationCatalog::load(roots_->activations_fd(),
                                        roots_->trusted_uid(), error);
 }
 
-#ifdef OMARCHY_PRODUCTION_PLUGIN_BOOTSTRAP_TESTING
-std::unique_ptr<ProductionPluginBootstrap>
-ProductionPluginBootstrap::open_from_test_filesystem_root(
-    std::unique_ptr<ProductionPluginRoots> roots, int filesystem_root_fd,
+#ifdef OMARCHY_RUNTIME_BOOTSTRAP_TESTING
+std::unique_ptr<RuntimeBootstrap>
+RuntimeBootstrap::open_from_test_filesystem_root(
+    std::unique_ptr<RuntimeRoots> roots, int filesystem_root_fd,
     std::uint32_t definition_uid,
-    ProductionPluginBootstrapError &error) noexcept {
-  error = ProductionPluginBootstrapError::none;
+    RuntimeBootstrapError &error) noexcept {
+  error = RuntimeBootstrapError::none;
   try {
     if (!roots) {
-      error = ProductionPluginBootstrapError::roots_unavailable;
+      error = RuntimeBootstrapError::roots_unavailable;
       return {};
     }
     return compose_from_filesystem_root(std::move(roots), filesystem_root_fd,
                                         definition_uid, error);
   } catch (const std::bad_alloc &) {
-    error = ProductionPluginBootstrapError::resource_exhausted;
+    error = RuntimeBootstrapError::resource_exhausted;
     return {};
   } catch (...) {
-    error = ProductionPluginBootstrapError::internal_failure;
+    error = RuntimeBootstrapError::internal_failure;
     return {};
   }
 }
 
-bool ProductionPluginBootstrap::adapter_available_for_test(
+bool RuntimeBootstrap::adapter_available_for_test(
     std::string_view adapter_class, const definitions::Digest &digest,
     std::uint32_t abi_version) noexcept {
   return compiled_adapter_available(adapter_class, digest, abi_version,
                                     nullptr);
 }
 
-bool ProductionPluginBootstrap::authority_directory_accepted_for_test(
+bool RuntimeBootstrap::authority_directory_accepted_for_test(
     std::uint32_t owner_uid, std::uint32_t mode,
     std::uint32_t trusted_uid) noexcept {
   struct stat metadata{};

@@ -127,7 +127,7 @@ launcher::Supervisor PluginActivationCoordinator::supervisor() const {
   if (supervisor_factory_)
     return supervisor_factory_();
 #endif
-  return launcher::Supervisor::production();
+  return launcher::Supervisor::packaged();
 }
 
 std::optional<host_session::VerifiedRevision>

@@ -259,7 +259,7 @@ struct LaunchResult {
 
 class Supervisor {
 public:
-  [[nodiscard]] static Supervisor production();
+  [[nodiscard]] static Supervisor packaged();
   [[nodiscard]] static Supervisor
   forTestOnly(std::string bwrap_path, std::string worker_path,
               std::shared_ptr<ResourceScopeController> resource_scope,

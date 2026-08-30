@@ -103,9 +103,9 @@ private:
   permissions::ActivationBinding binding_;
 };
 
-class ProductionBackend final : public AuthenticatedSessionBackend {
+class LauncherSessionBackend final : public AuthenticatedSessionBackend {
 public:
-  ProductionBackend(
+  LauncherSessionBackend(
       launcher::Supervisor supervisor, AuthenticatedSessionLaunch launch,
                     std::shared_ptr<const GenerationAuthority> authority,
                     std::unique_ptr<AuthenticatedSessionRuntime> runtime,
@@ -115,7 +115,7 @@ public:
         authority_(std::move(authority)), runtime_(std::move(runtime)),
         gesture_eligibility_(std::move(gesture_eligibility)) {}
 
-  ProductionBackend(launcher::Supervisor supervisor,
+  LauncherSessionBackend(launcher::Supervisor supervisor,
                     AuthenticatedSessionLaunch launch,
                     std::shared_ptr<BrokerDispatcher> dispatcher,
                     std::shared_ptr<const GenerationAuthority> authority,
@@ -124,7 +124,7 @@ public:
         dispatcher_(std::move(dispatcher)), authority_(std::move(authority)),
         broker_(std::move(broker)) {}
 
-  ~ProductionBackend() override { terminate(std::chrono::steady_clock::now()); }
+  ~LauncherSessionBackend() override { terminate(std::chrono::steady_clock::now()); }
 
   session::ChannelError launch(const session::SessionToken &token,
                                launcher::Deadline deadline) override {
@@ -354,7 +354,7 @@ AuthenticatedSessionChannel::AuthenticatedSessionChannel(
     std::unique_ptr<AuthenticatedSessionRuntime> runtime,
     std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility)
     : implementation_(
-          std::make_unique<Impl>(std::make_unique<ProductionBackend>(
+          std::make_unique<Impl>(std::make_unique<LauncherSessionBackend>(
               std::move(supervisor), std::move(launch), std::move(authority),
               std::move(runtime), std::move(gesture_eligibility)))) {}
 
@@ -364,7 +364,7 @@ AuthenticatedSessionChannel::AuthenticatedSessionChannel(
     std::shared_ptr<const GenerationAuthority> authority,
     std::unique_ptr<session::StructuredBroker> broker)
     : implementation_(
-          std::make_unique<Impl>(std::make_unique<ProductionBackend>(
+          std::make_unique<Impl>(std::make_unique<LauncherSessionBackend>(
               std::move(supervisor), std::move(launch), std::move(dispatcher),
               std::move(authority), std::move(broker)))) {}
 

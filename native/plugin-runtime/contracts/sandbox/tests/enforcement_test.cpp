@@ -206,7 +206,7 @@ int bounded_wait(pid_t child) {
     close(pidfd);
   } else {
     // This is a direct-child test fixture, so the unreaped PID cannot have been
-    // recycled. Production launch requires pidfd acquisition before release.
+    // recycled. Host launch requires pidfd acquisition before release.
     static_cast<void>(kill(child, SIGKILL));
   }
 

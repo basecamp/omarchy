@@ -82,7 +82,7 @@ int main(int argc, char *argv[]) {
     std::unique_ptr<QObject> forbidden_object(forbidden.create());
     QQmlComponent internal_model(&engine);
     internal_model.setData(
-        "import Omarchy.PluginHost 1.0\nPluginSurfaceService {}\n", QUrl());
+        "import Omarchy.PluginHost 1.0\nSurfaceProjectionModel {}\n", QUrl());
     std::unique_ptr<QObject> internal_model_object(internal_model.create());
     return remote_surface_type >= 0 && !forbidden_object &&
                    !internal_model_object &&

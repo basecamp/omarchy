@@ -12,7 +12,7 @@
 namespace omarchy::plugin_runtime::channel {
 
 class PluginPermissionController;
-class ProductionPluginRuntimeRoot;
+class PluginRuntimeRoot;
 
 struct PluginActivationResult final {
   PluginSession *session = nullptr;
@@ -83,7 +83,7 @@ private:
   std::unique_ptr<PluginSession> session_;
 
   friend class PluginPermissionController;
-  friend class ProductionPluginRuntimeRoot;
+  friend class PluginRuntimeRoot;
 
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
   using SupervisorFactory = std::function<launcher::Supervisor()>;

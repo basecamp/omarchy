@@ -36,7 +36,7 @@ enum class LoadResult : std::uint8_t {
 [[nodiscard]] LoadResult parse_definition_document(
     std::string_view document, DefinitionSource source,
     const AdapterVerifier &verifier, LoadedDefinition &output);
-// Production callers open the fixed package or administrator trust root and
+// Trusted callers open the fixed package or administrator trust root and
 // pass that exact directory object here. The loader never recovers a pathname
 // from the descriptor and does not take ownership of it.
 [[nodiscard]] LoadResult load_definition_directory_fd(

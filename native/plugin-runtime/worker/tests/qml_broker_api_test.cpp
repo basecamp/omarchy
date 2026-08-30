@@ -259,9 +259,9 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host) {
               api.readPackagedText("countries.json", 8).isEmpty() &&
               api.readPackagedText("/etc/passwd", 512 * 1024).isEmpty(),
           "packaged text projection escaped its bounded read-only contract");
-  worker::WorkerRuntime production_binding_probe("/not-loaded-in-this-test");
-  require(static_cast<bool>(production_binding_probe.bind_runtime_api(api)),
-          "production permission-aware runtime API failed the exact trusted-surface validator");
+  worker::WorkerRuntime runtime_binding_probe("/not-loaded-in-this-test");
+  require(static_cast<bool>(runtime_binding_probe.bind_runtime_api(api)),
+          "runtime permission-aware API failed the exact trusted-surface validator");
   DuplicateApi duplicate;
   worker::WorkerRuntime duplicate_probe("/not-loaded-in-this-test");
   require(!static_cast<bool>(duplicate_probe.bind_runtime_api(duplicate)),

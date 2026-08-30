@@ -1,4 +1,4 @@
-#include "production_plugin_catalog.hpp"
+#include "activation_catalog.hpp"
 
 #include <atomic>
 #include <fcntl.h>
@@ -51,18 +51,18 @@ concept ExposesPartialRootEpoch = requires(const Value &left,
                                            const Value &right) {
   left.same_root_epoch(right);
 };
-static_assert(!ExposesParsedRecord<catalog::ProductionPluginCatalogEntry>);
-static_assert(!ExposesRecordDescriptor<catalog::ProductionPluginCatalogEntry>);
-static_assert(!ExposesRootDescriptor<catalog::ProductionPluginCatalog>);
-static_assert(!ExposesRecordName<catalog::ProductionPluginCatalogEntry>);
-static_assert(!ExposesChangedAlias<catalog::ProductionPluginCatalogEntry>);
-static_assert(!ExposesChangedAlias<catalog::ProductionPluginCatalog>);
-static_assert(!ExposesPartialRootEpoch<catalog::ProductionPluginCatalog>);
+static_assert(!ExposesParsedRecord<catalog::ActivationCatalogEntry>);
+static_assert(!ExposesRecordDescriptor<catalog::ActivationCatalogEntry>);
+static_assert(!ExposesRootDescriptor<catalog::ActivationCatalog>);
+static_assert(!ExposesRecordName<catalog::ActivationCatalogEntry>);
+static_assert(!ExposesChangedAlias<catalog::ActivationCatalogEntry>);
+static_assert(!ExposesChangedAlias<catalog::ActivationCatalog>);
+static_assert(!ExposesPartialRootEpoch<catalog::ActivationCatalog>);
 
 class Fixture final {
 public:
   Fixture() {
-    std::string pattern = "/tmp/omarchy-production-catalog.XXXXXX";
+    std::string pattern = "/tmp/omarchy-activation-catalog.XXXXXX";
     const auto *created = ::mkdtemp(pattern.data());
     require(created != nullptr, "catalog fixture creation failed");
     root_ = created;
@@ -126,22 +126,22 @@ private:
   std::filesystem::path root_;
 };
 
-std::unique_ptr<catalog::ProductionPluginCatalog>
-load(const Fixture &fixture, catalog::ProductionPluginCatalogError &error,
+std::unique_ptr<catalog::ActivationCatalog>
+load(const Fixture &fixture, catalog::ActivationCatalogError &error,
      std::uint32_t uid = static_cast<std::uint32_t>(::getuid())) {
   const int root = fixture.open_root();
-  auto result = catalog::ProductionPluginCatalog::load(root, uid, error);
+  auto result = catalog::ActivationCatalog::load(root, uid, error);
   ::close(root);
   return result;
 }
 
 void descriptor_and_format_rejections_are_typed() {
   {
-    catalog::ProductionPluginCatalogError error{};
-    auto loaded = catalog::ProductionPluginCatalog::load(
+    catalog::ActivationCatalogError error{};
+    auto loaded = catalog::ActivationCatalog::load(
         -1, static_cast<std::uint32_t>(::getuid()), error);
     require(!loaded &&
-                error == catalog::ProductionPluginCatalogError::root_untrusted,
+                error == catalog::ActivationCatalogError::root_untrusted,
             "invalid catalog descriptor did not fail transactionally");
   }
   {
@@ -150,12 +150,12 @@ void descriptor_and_format_rejections_are_typed() {
     const int record_fd = ::open((fixture.root() / "org.example.valid").c_str(),
                                  O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
     require(record_fd >= 0, "non-directory root fixture open failed");
-    catalog::ProductionPluginCatalogError error{};
-    auto loaded = catalog::ProductionPluginCatalog::load(
+    catalog::ActivationCatalogError error{};
+    auto loaded = catalog::ActivationCatalog::load(
         record_fd, static_cast<std::uint32_t>(::getuid()), error);
     ::close(record_fd);
     require(!loaded &&
-                error == catalog::ProductionPluginCatalogError::root_untrusted,
+                error == catalog::ActivationCatalogError::root_untrusted,
             "non-directory catalog descriptor did not fail transactionally");
   }
 
@@ -164,11 +164,11 @@ void descriptor_and_format_rejections_are_typed() {
         std::string("org.example-"), std::string(129, 'a')}) {
     Fixture fixture;
     fixture.put(invalid_name);
-    catalog::ProductionPluginCatalogError error{};
+    catalog::ActivationCatalogError error{};
     auto loaded = load(fixture, error);
     require(!loaded &&
                 error ==
-                    catalog::ProductionPluginCatalogError::unexpected_entry,
+                    catalog::ActivationCatalogError::unexpected_entry,
             "invalid canonical plugin ID did not fail transactionally");
   }
 
@@ -177,10 +177,10 @@ void descriptor_and_format_rejections_are_typed() {
         std::string_view("format=omarchy-plugin-activation-v2\nplugin=")}) {
     Fixture fixture;
     fixture.put_bytes("org.example.malformed", malformed);
-    catalog::ProductionPluginCatalogError error{};
+    catalog::ActivationCatalogError error{};
     auto loaded = load(fixture, error);
     require(!loaded &&
-                error == catalog::ProductionPluginCatalogError::invalid_record,
+                error == catalog::ActivationCatalogError::invalid_record,
             "malformed activation record did not fail transactionally");
   }
 }
@@ -189,9 +189,9 @@ void valid_catalog_is_opaque_stable_and_sorted() {
   Fixture fixture;
   fixture.put("org.example.zeta");
   fixture.put("org.example.alpha");
-  catalog::ProductionPluginCatalogError error{};
+  catalog::ActivationCatalogError error{};
   auto loaded = load(fixture, error);
-  require(loaded && error == catalog::ProductionPluginCatalogError::none &&
+  require(loaded && error == catalog::ActivationCatalogError::none &&
               loaded->entries().size() == 2,
           "valid descriptor catalog did not load");
   require(loaded->entries()[0].plugin_id() == "org.example.alpha" &&
@@ -213,7 +213,7 @@ void successful_scans_report_every_inventory_change() {
   {
     Fixture fixture;
     fixture.put("org.example.first");
-    catalog::ProductionPluginCatalogError error{};
+    catalog::ActivationCatalogError error{};
     auto before = load(fixture, error);
     fixture.put("org.example.second");
     auto after = load(fixture, error);
@@ -225,7 +225,7 @@ void successful_scans_report_every_inventory_change() {
     Fixture fixture;
     fixture.put("org.example.first");
     fixture.put("org.example.second");
-    catalog::ProductionPluginCatalogError error{};
+    catalog::ActivationCatalogError error{};
     auto before = load(fixture, error);
     fixture.erase("org.example.second");
     auto after = load(fixture, error);
@@ -236,7 +236,7 @@ void successful_scans_report_every_inventory_change() {
   {
     Fixture fixture;
     fixture.put("org.example.first");
-    catalog::ProductionPluginCatalogError error{};
+    catalog::ActivationCatalogError error{};
     auto before = load(fixture, error);
     fixture.overwrite("org.example.first", record("org.example.first", 'b'));
     auto after = load(fixture, error);
@@ -248,7 +248,7 @@ void successful_scans_report_every_inventory_change() {
   {
     Fixture fixture;
     fixture.put("org.example.first");
-    catalog::ProductionPluginCatalogError error{};
+    catalog::ActivationCatalogError error{};
     auto before = load(fixture, error);
     fixture.erase("org.example.first");
     fixture.put("org.example.first");
@@ -262,7 +262,7 @@ void successful_scans_report_every_inventory_change() {
 void failed_scan_never_replaces_the_callers_last_good_catalog() {
   Fixture fixture;
   fixture.put("org.example.stable");
-  catalog::ProductionPluginCatalogError error{};
+  catalog::ActivationCatalogError error{};
   auto last_good = load(fixture, error);
   require(last_good && last_good->entries().size() == 1,
           "last-good catalog setup failed");
@@ -273,7 +273,7 @@ void failed_scan_never_replaces_the_callers_last_good_catalog() {
   ::close(unexpected);
   auto rejected = load(fixture, error);
   require(!rejected &&
-              error == catalog::ProductionPluginCatalogError::unexpected_entry &&
+              error == catalog::ActivationCatalogError::unexpected_entry &&
               last_good->entries().size() == 1 &&
               last_good->entries()[0].plugin_id() == "org.example.stable" &&
               !last_good->unchanged(),
@@ -286,17 +286,17 @@ void metadata_and_entry_rejections_are_transactional() {
     fixture.put("org.example.valid");
     require(::chmod(fixture.root().c_str(), 0755) == 0,
             "root mode mutation failed");
-    catalog::ProductionPluginCatalogError error{};
+    catalog::ActivationCatalogError error{};
     require(!load(fixture, error) &&
-                error == catalog::ProductionPluginCatalogError::root_untrusted,
+                error == catalog::ActivationCatalogError::root_untrusted,
             "non-0700 catalog root was accepted");
   }
   {
     Fixture fixture;
     fixture.put("org.example.valid");
-    catalog::ProductionPluginCatalogError error{};
+    catalog::ActivationCatalogError error{};
     require(!load(fixture, error, static_cast<std::uint32_t>(::getuid()) + 1) &&
-                error == catalog::ProductionPluginCatalogError::root_untrusted,
+                error == catalog::ActivationCatalogError::root_untrusted,
             "wrong-owner catalog root was accepted");
   }
   {
@@ -304,9 +304,9 @@ void metadata_and_entry_rejections_are_transactional() {
     fixture.put("org.example.valid");
     require(::chmod((fixture.root() / "org.example.valid").c_str(), 0644) == 0,
             "record mode mutation failed");
-    catalog::ProductionPluginCatalogError error{};
+    catalog::ActivationCatalogError error{};
     require(!load(fixture, error) &&
-                error == catalog::ProductionPluginCatalogError::invalid_record,
+                error == catalog::ActivationCatalogError::invalid_record,
             "non-0600 activation record was accepted");
   }
   {
@@ -314,7 +314,7 @@ void metadata_and_entry_rejections_are_transactional() {
     fixture.put("org.example.valid");
     std::filesystem::create_hard_link(fixture.root() / "org.example.valid",
                                       fixture.root() / "org.example.alias");
-    catalog::ProductionPluginCatalogError error{};
+    catalog::ActivationCatalogError error{};
     require(!load(fixture, error),
             "hard-linked activation record was accepted");
   }
@@ -323,20 +323,20 @@ void metadata_and_entry_rejections_are_transactional() {
     fixture.put("org.example.target");
     std::filesystem::create_symlink("org.example.target",
                                     fixture.root() / "org.example.link");
-    catalog::ProductionPluginCatalogError error{};
+    catalog::ActivationCatalogError error{};
     require(!load(fixture, error) &&
                 error ==
-                    catalog::ProductionPluginCatalogError::unexpected_entry,
+                    catalog::ActivationCatalogError::unexpected_entry,
             "activation-record symlink was accepted");
   }
   {
     Fixture fixture;
     fixture.put("org.example.valid");
     std::filesystem::create_directory(fixture.root() / "org.example.dir");
-    catalog::ProductionPluginCatalogError error{};
+    catalog::ActivationCatalogError error{};
     require(!load(fixture, error) &&
                 error ==
-                    catalog::ProductionPluginCatalogError::unexpected_entry,
+                    catalog::ActivationCatalogError::unexpected_entry,
             "activation-record directory was accepted");
   }
   {
@@ -344,10 +344,10 @@ void metadata_and_entry_rejections_are_transactional() {
     fixture.put("org.example.valid");
     require(::mkfifo((fixture.root() / "org.example.fifo").c_str(), 0600) == 0,
             "special-file fixture creation failed");
-    catalog::ProductionPluginCatalogError error{};
+    catalog::ActivationCatalogError error{};
     require(!load(fixture, error) &&
                 error ==
-                    catalog::ProductionPluginCatalogError::unexpected_entry,
+                    catalog::ActivationCatalogError::unexpected_entry,
             "activation-record special file was accepted");
   }
   {
@@ -357,25 +357,25 @@ void metadata_and_entry_rejections_are_transactional() {
                                O_WRONLY | O_CREAT | O_CLOEXEC, 0600);
     require(unknown >= 0, "unknown-entry fixture creation failed");
     ::close(unknown);
-    catalog::ProductionPluginCatalogError error{};
+    catalog::ActivationCatalogError error{};
     require(!load(fixture, error) &&
                 error ==
-                    catalog::ProductionPluginCatalogError::unexpected_entry,
+                    catalog::ActivationCatalogError::unexpected_entry,
             "unknown catalog entry was ignored");
   }
   {
     Fixture fixture;
     fixture.put("org.example.actual", "org.example.other");
-    catalog::ProductionPluginCatalogError error{};
+    catalog::ActivationCatalogError error{};
     require(!load(fixture, error) &&
-                error == catalog::ProductionPluginCatalogError::invalid_record,
+                error == catalog::ActivationCatalogError::invalid_record,
             "filename and record plugin mismatch was accepted");
   }
   {
     Fixture fixture;
     fixture.put("org.example.first");
     fixture.put("org.example.alias", "org.example.first");
-    catalog::ProductionPluginCatalogError error{};
+    catalog::ActivationCatalogError error{};
     require(!load(fixture, error), "duplicate plugin identity was accepted");
   }
 }
@@ -384,12 +384,12 @@ void bounds_and_mutation_fail_closed() {
   {
     Fixture fixture;
     for (std::size_t index = 0;
-         index <= catalog::kMaximumProductionPluginCatalogEntries; ++index) {
+         index <= catalog::kMaximumActivationCatalogEntries; ++index) {
       fixture.put("org.example.plugin" + std::to_string(index));
     }
-    catalog::ProductionPluginCatalogError error{};
+    catalog::ActivationCatalogError error{};
     require(!load(fixture, error) &&
-                error == catalog::ProductionPluginCatalogError::bound_exceeded,
+                error == catalog::ActivationCatalogError::bound_exceeded,
             "catalog entry bound was not enforced");
   }
   {
@@ -409,7 +409,7 @@ void bounds_and_mutation_fail_closed() {
     }
     bool rejected = false;
     for (int attempt = 0; attempt < 100 && !rejected; ++attempt) {
-      catalog::ProductionPluginCatalogError error{};
+      catalog::ActivationCatalogError error{};
       rejected = !load(fixture, error);
     }
     run.store(false, std::memory_order_release);
@@ -437,7 +437,7 @@ void bounds_and_mutation_fail_closed() {
     }
     bool rejected = false;
     for (int attempt = 0; attempt < 100 && !rejected; ++attempt) {
-      catalog::ProductionPluginCatalogError error{};
+      catalog::ActivationCatalogError error{};
       rejected = !load(fixture, error);
     }
     run.store(false, std::memory_order_release);
@@ -459,7 +459,7 @@ int main() {
     bounds_and_mutation_fail_closed();
     return 0;
   } catch (const std::exception &error) {
-    std::cerr << "production plugin catalog test failed: " << error.what()
+    std::cerr << "activation catalog test failed: " << error.what()
               << '\n';
     return 1;
   }

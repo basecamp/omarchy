@@ -1,4 +1,4 @@
-#include "production_session_runtime_factory.hpp"
+#include "session_runtime_factory.hpp"
 
 #include "omarchy/plugin_runtime/broker/broker_schema.hpp"
 #include "structured_broker.hpp"
@@ -289,20 +289,20 @@ void provider_completeness_and_effect_fence() {
   definitions::TrustedDefinitionRegistry definitions;
   auto grants = audio_snapshot();
   auto live = std::make_shared<host::LiveGenerationState>(grants.binding);
-  channel::ProductionSessionRuntimeFactory missing(definitions, {});
+  channel::SessionRuntimeFactory missing(definitions, {});
   require(!missing.create(plugin_manifest(), grants, directories.revision,
                           directories.state, 41, live, gesture()),
           "granted audio accepted a missing host service");
 
   auto probe = std::make_shared<ServiceProbe>();
   std::weak_ptr<ServiceProbe> retained = probe;
-  channel::ProductionRuntimeServices services{
+  channel::RuntimeServices services{
       .context = probe,
       .notification_send = nullptr,
       .audio_play = play_audio,
       .compare_scope = nullptr,
       .dynamic_services = {}};
-  auto factory = std::make_unique<channel::ProductionSessionRuntimeFactory>(
+  auto factory = std::make_unique<channel::SessionRuntimeFactory>(
       definitions, services);
   auto product = factory->create(plugin_manifest(), grants,
                                  directories.revision, directories.state, 41,
@@ -352,14 +352,14 @@ void descriptor_quota_and_dynamic_catalog_validation() {
   definitions::TrustedDefinitionRegistry empty;
   auto storage = storage_snapshot(4096, 1024);
   auto live = std::make_shared<host::LiveGenerationState>(storage.binding);
-  channel::ProductionSessionRuntimeFactory constrained(
+  channel::SessionRuntimeFactory constrained(
       empty, {}, {.maximum_audit_records = 8,
                   .maximum_storage_bytes = 2048,
                   .maximum_storage_item_bytes = 1024});
   require(!constrained.create(plugin_manifest(), storage, directories.revision,
                               directories.state, 42, live, gesture()),
           "granted storage quota exceeded the host ceiling");
-  channel::ProductionSessionRuntimeFactory exact(
+  channel::SessionRuntimeFactory exact(
       empty, {}, {.maximum_audit_records = 8,
                   .maximum_storage_bytes = 4096,
                   .maximum_storage_item_bytes = 1024});
@@ -411,13 +411,13 @@ void descriptor_quota_and_dynamic_catalog_validation() {
   auto dynamic_live =
       std::make_shared<host::LiveGenerationState>(dynamic.binding);
   auto probe = std::make_shared<ServiceProbe>();
-  channel::ProductionRuntimeServices missing_route{
+  channel::RuntimeServices missing_route{
       .context = probe,
       .notification_send = nullptr,
       .audio_play = nullptr,
       .compare_scope = exact_scope,
       .dynamic_services = {}};
-  channel::ProductionSessionRuntimeFactory missing_dynamic(
+  channel::SessionRuntimeFactory missing_dynamic(
       mutable_definitions, missing_route);
   require(!missing_dynamic.create(plugin_manifest(), dynamic,
                                   directories.revision, directories.state, 43,
@@ -427,7 +427,7 @@ void descriptor_quota_and_dynamic_catalog_validation() {
   wrong.implementation_digest = digest('e');
   missing_route.dynamic_services.push_back(
       {.binding = wrong, .dispatch = dynamic_dispatch});
-  channel::ProductionSessionRuntimeFactory wrong_dynamic(
+  channel::SessionRuntimeFactory wrong_dynamic(
       mutable_definitions, missing_route);
   require(!wrong_dynamic.create(plugin_manifest(), dynamic,
                                 directories.revision, directories.state, 43,
@@ -436,7 +436,7 @@ void descriptor_quota_and_dynamic_catalog_validation() {
   missing_route.dynamic_services[0].binding = definition.adapter;
   missing_route.dynamic_services.push_back(
       {.binding = definition.adapter, .dispatch = dynamic_dispatch});
-  channel::ProductionSessionRuntimeFactory duplicate_dynamic(
+  channel::SessionRuntimeFactory duplicate_dynamic(
       mutable_definitions, missing_route);
   require(!duplicate_dynamic.create(plugin_manifest(), dynamic,
                                     directories.revision, directories.state,
@@ -444,14 +444,14 @@ void descriptor_quota_and_dynamic_catalog_validation() {
           "duplicate exact dynamic adapters were accepted");
   missing_route.dynamic_services.pop_back();
   missing_route.dynamic_services[0].binding.abi_version = 2;
-  channel::ProductionSessionRuntimeFactory wrong_abi_dynamic(
+  channel::SessionRuntimeFactory wrong_abi_dynamic(
       mutable_definitions, missing_route);
   require(!wrong_abi_dynamic.create(plugin_manifest(), dynamic,
                                     directories.revision, directories.state,
                                     43, dynamic_live, gesture()),
           "dynamic route accepted the wrong adapter ABI");
   missing_route.dynamic_services[0].binding = definition.adapter;
-  channel::ProductionSessionRuntimeFactory exact_dynamic(
+  channel::SessionRuntimeFactory exact_dynamic(
       mutable_definitions, missing_route);
   auto changed_definition = dynamic_definition();
   changed_definition.canonical_name = definitions::Name("service.other");
@@ -506,7 +506,7 @@ void descriptor_quota_and_dynamic_catalog_validation() {
   auto denied = dynamic_snapshot(*resolved, permissions::GrantState::denied);
   auto denied_live =
       std::make_shared<host::LiveGenerationState>(denied.binding);
-  channel::ProductionSessionRuntimeFactory denied_dynamic(
+  channel::SessionRuntimeFactory denied_dynamic(
       mutable_definitions, {});
   require(denied_dynamic.create(plugin_manifest(), denied,
                                 directories.revision, directories.state, 44,
@@ -555,7 +555,7 @@ void synchronous_effects_drain_before_revocation_acknowledges() {
 
   auto live = std::make_shared<host::LiveGenerationState>(grants.binding);
   auto probe = std::make_shared<BlockingProbe>();
-  channel::ProductionSessionRuntimeFactory factory(
+  channel::SessionRuntimeFactory factory(
       definitions,
       {.context = probe,
        .notification_send = nullptr,
@@ -629,7 +629,7 @@ void synchronous_effects_drain_before_revocation_acknowledges() {
 
 } // namespace
 
-void production_session_runtime_factory_tests() {
+void session_runtime_factory_tests() {
   provider_completeness_and_effect_fence();
   descriptor_quota_and_dynamic_catalog_validation();
   synchronous_effects_drain_before_revocation_acknowledges();

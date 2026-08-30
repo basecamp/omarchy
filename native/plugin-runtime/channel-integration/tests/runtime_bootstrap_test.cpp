@@ -1,4 +1,4 @@
-#include "production_plugin_bootstrap.hpp"
+#include "runtime_bootstrap.hpp"
 
 #include "capability_definition_loader.hpp"
 #include "omarchy/plugin_runtime/Version.h"
@@ -28,7 +28,7 @@ void require(bool condition, std::string_view message) {
     throw std::runtime_error(std::string(message));
 }
 
-class Hooks final : public channel::ProductionPluginRuntimeHooks {
+class Hooks final : public channel::PluginRuntimeHooks {
 public:
   void state_changed(host_session::SessionState,
                      host_session::SessionError) override {}
@@ -42,7 +42,7 @@ public:
 class Fixture final {
 public:
   Fixture() {
-    std::string pattern = "/tmp/omarchy-production-bootstrap.XXXXXX";
+    std::string pattern = "/tmp/omarchy-runtime-bootstrap.XXXXXX";
     const auto *created = ::mkdtemp(pattern.data());
     require(created != nullptr, "bootstrap fixture creation failed");
     root_ = created;
@@ -80,16 +80,16 @@ public:
     return ::open(root_.c_str(),
                   O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
   }
-  [[nodiscard]] std::unique_ptr<channel::ProductionPluginRoots> roots() const {
+  [[nodiscard]] std::unique_ptr<channel::RuntimeRoots> roots() const {
     const int home = ::open(home_.c_str(),
                             O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
     require(home >= 0, "fixture home descriptor unavailable");
-    channel::ProductionPluginRootsError error{};
-    auto result = channel::ProductionPluginRootsTestAccess::open_from_home_fd(
+    channel::RuntimeRootsError error{};
+    auto result = channel::RuntimeRootsTestAccess::open_from_home_fd(
         home, static_cast<std::uint32_t>(::getuid()), error);
     ::close(home);
-    require(result && error == channel::ProductionPluginRootsError::none,
-            "fixture production roots unavailable");
+    require(result && error == channel::RuntimeRootsError::none,
+            "fixture runtime roots unavailable");
     return result;
   }
   void create_admin(mode_t mode = 0755) {
@@ -117,11 +117,11 @@ private:
   std::filesystem::path home_;
 };
 
-std::unique_ptr<channel::ProductionPluginBootstrap>
-load(Fixture &fixture, channel::ProductionPluginBootstrapError &error) {
+std::unique_ptr<channel::RuntimeBootstrap>
+load(Fixture &fixture, channel::RuntimeBootstrapError &error) {
   const int root = fixture.open_root();
   require(root >= 0, "fixture filesystem root unavailable");
-  auto result = channel::ProductionPluginBootstrapTestAccess::
+  auto result = channel::RuntimeBootstrapTestAccess::
       open_from_filesystem_root(fixture.roots(), root,
                                 static_cast<std::uint32_t>(::getuid()), error);
   ::close(root);
@@ -199,9 +199,9 @@ Review review(std::string_view plugin, std::uint64_t generation,
 
 void empty_package_and_absent_admin_compose_one_shared_context() {
   Fixture fixture;
-  channel::ProductionPluginBootstrapError error{};
+  channel::RuntimeBootstrapError error{};
   auto bootstrap = load(fixture, error);
-  require(bootstrap && error == channel::ProductionPluginBootstrapError::none &&
+  require(bootstrap && error == channel::RuntimeBootstrapError::none &&
               bootstrap->definitions().size() == 0 &&
               bootstrap->services().notification_send == nullptr &&
               bootstrap->services().audio_play == nullptr &&
@@ -210,18 +210,18 @@ void empty_package_and_absent_admin_compose_one_shared_context() {
 
   Hooks hooks;
   const permissions::PluginId plugin("example.plugin");
-  auto first = channel::ProductionPluginBootstrapTestAccess::configuration(
+  auto first = channel::RuntimeBootstrapTestAccess::configuration(
       *bootstrap, "example.plugin", plugin, &hooks);
-  auto second = channel::ProductionPluginBootstrapTestAccess::configuration(
+  auto second = channel::RuntimeBootstrapTestAccess::configuration(
       *bootstrap, "example.plugin", plugin, &hooks);
   require(first && second && first->definitions == second->definitions &&
               first->services == second->services &&
               first->definitions.get() == &bootstrap->definitions() &&
               first->services.get() == &bootstrap->services(),
           "plugin configurations copied their trusted host context");
-  require(!channel::ProductionPluginBootstrapTestAccess::configuration(
+  require(!channel::RuntimeBootstrapTestAccess::configuration(
               *bootstrap, "other.plugin", plugin, &hooks) &&
-              !channel::ProductionPluginBootstrapTestAccess::configuration(
+              !channel::RuntimeBootstrapTestAccess::configuration(
                   *bootstrap, "example.plugin", plugin, nullptr),
           "unmatched or hookless activation candidate was accepted");
 }
@@ -229,21 +229,21 @@ void empty_package_and_absent_admin_compose_one_shared_context() {
 void mandatory_package_and_optional_admin_are_exact() {
   {
     Fixture fixture;
-    channel::ProductionPluginBootstrapError error{};
-    require(!channel::ProductionPluginBootstrapTestAccess::
+    channel::RuntimeBootstrapError error{};
+    require(!channel::RuntimeBootstrapTestAccess::
                  open_from_filesystem_root(
                      fixture.roots(), -1,
                      static_cast<std::uint32_t>(::getuid()), error) &&
-                error == channel::ProductionPluginBootstrapError::
+                error == channel::RuntimeBootstrapError::
                              package_definitions_untrusted,
             "invalid fixed filesystem descriptor was accepted");
   }
   {
     Fixture fixture;
     std::filesystem::remove(fixture.package());
-    channel::ProductionPluginBootstrapError error{};
+    channel::RuntimeBootstrapError error{};
     require(!load(fixture, error) &&
-                error == channel::ProductionPluginBootstrapError::
+                error == channel::RuntimeBootstrapError::
                              package_definitions_unavailable,
             "missing mandatory package definitions were accepted");
   }
@@ -251,9 +251,9 @@ void mandatory_package_and_optional_admin_are_exact() {
     Fixture fixture;
     require(::chmod(fixture.package().c_str(), 0775) == 0,
             "package trust-root mode setup failed");
-    channel::ProductionPluginBootstrapError error{};
+    channel::RuntimeBootstrapError error{};
     require(!load(fixture, error) &&
-                error == channel::ProductionPluginBootstrapError::
+                error == channel::RuntimeBootstrapError::
                              package_definitions_untrusted,
             "writable package definitions were accepted");
   }
@@ -266,18 +266,18 @@ void mandatory_package_and_optional_admin_are_exact() {
     require(::chmod(target.c_str(), 0755) == 0,
             "package symlink target mode setup failed");
     std::filesystem::create_directory_symlink(target, package);
-    channel::ProductionPluginBootstrapError error{};
+    channel::RuntimeBootstrapError error{};
     require(!load(fixture, error) &&
-                error == channel::ProductionPluginBootstrapError::
+                error == channel::RuntimeBootstrapError::
                              package_definitions_untrusted,
             "symlinked package definitions were accepted");
   }
   {
     Fixture fixture;
     fixture.create_admin(0775);
-    channel::ProductionPluginBootstrapError error{};
+    channel::RuntimeBootstrapError error{};
     require(!load(fixture, error) &&
-                error == channel::ProductionPluginBootstrapError::
+                error == channel::RuntimeBootstrapError::
                              admin_definitions_untrusted,
             "malformed existing admin definitions were treated as absent");
   }
@@ -291,9 +291,9 @@ void mandatory_package_and_optional_admin_are_exact() {
     }
     require(::chmod(document.c_str(), 0644) == 0,
             "malformed admin definition mode setup failed");
-    channel::ProductionPluginBootstrapError error{};
+    channel::RuntimeBootstrapError error{};
     require(!load(fixture, error) &&
-                error == channel::ProductionPluginBootstrapError::
+                error == channel::RuntimeBootstrapError::
                              definition_document_rejected,
             "malformed admin document entered a partial bootstrap");
   }
@@ -301,13 +301,13 @@ void mandatory_package_and_optional_admin_are_exact() {
 
 void authority_children_are_exact_and_never_created() {
   const auto uid = static_cast<std::uint32_t>(::getuid());
-  require(channel::ProductionPluginBootstrapTestAccess::
+  require(channel::RuntimeBootstrapTestAccess::
                   authority_directory_accepted(uid, S_IFDIR | 0700, uid) &&
-              !channel::ProductionPluginBootstrapTestAccess::
+              !channel::RuntimeBootstrapTestAccess::
                   authority_directory_accepted(uid + 1, S_IFDIR | 0700, uid) &&
-              !channel::ProductionPluginBootstrapTestAccess::
+              !channel::RuntimeBootstrapTestAccess::
                   authority_directory_accepted(uid, S_IFDIR | 0750, uid) &&
-              !channel::ProductionPluginBootstrapTestAccess::
+              !channel::RuntimeBootstrapTestAccess::
                   authority_directory_accepted(uid, S_IFREG | 0700, uid),
           "per-plugin authority metadata predicate widened ownership or mode");
 
@@ -316,10 +316,10 @@ void authority_children_are_exact_and_never_created() {
   {
     Fixture fixture;
     std::filesystem::remove(fixture.authority("example.plugin"));
-    channel::ProductionPluginBootstrapError error{};
+    channel::RuntimeBootstrapError error{};
     auto bootstrap = load(fixture, error);
     require(bootstrap &&
-                !channel::ProductionPluginBootstrapTestAccess::configuration(
+                !channel::RuntimeBootstrapTestAccess::configuration(
                     *bootstrap, "example.plugin", plugin, &hooks) &&
                 !std::filesystem::exists(fixture.authority("example.plugin")),
             "bootstrap created a missing authority child");
@@ -328,10 +328,10 @@ void authority_children_are_exact_and_never_created() {
     Fixture fixture;
     require(::chmod(fixture.authority("example.plugin").c_str(), 0750) == 0,
             "authority mode fixture setup failed");
-    channel::ProductionPluginBootstrapError error{};
+    channel::RuntimeBootstrapError error{};
     auto bootstrap = load(fixture, error);
     require(bootstrap &&
-                !channel::ProductionPluginBootstrapTestAccess::configuration(
+                !channel::RuntimeBootstrapTestAccess::configuration(
                     *bootstrap, "example.plugin", plugin, &hooks),
             "widened per-plugin authority directory was accepted");
   }
@@ -342,20 +342,20 @@ void authority_children_are_exact_and_never_created() {
     std::filesystem::remove(child);
     fixture.create_authority("alternate.plugin");
     std::filesystem::create_directory_symlink(target, child);
-    channel::ProductionPluginBootstrapError error{};
+    channel::RuntimeBootstrapError error{};
     auto bootstrap = load(fixture, error);
     require(bootstrap &&
-                !channel::ProductionPluginBootstrapTestAccess::configuration(
+                !channel::RuntimeBootstrapTestAccess::configuration(
                     *bootstrap, "example.plugin", plugin, &hooks),
             "symlinked per-plugin authority directory was accepted");
   }
   {
     Fixture fixture;
-    channel::ProductionPluginBootstrapError error{};
+    channel::RuntimeBootstrapError error{};
     auto bootstrap = load(fixture, error);
     const permissions::PluginId path_plugin("../example.plugin");
     require(bootstrap &&
-                !channel::ProductionPluginBootstrapTestAccess::configuration(
+                !channel::RuntimeBootstrapTestAccess::configuration(
                     *bootstrap, path_plugin.view(), path_plugin, &hooks),
             "noncanonical plugin name selected an authority path");
   }
@@ -364,16 +364,16 @@ void authority_children_are_exact_and_never_created() {
 void authority_stores_are_physically_isolated_per_plugin() {
   Fixture fixture;
   fixture.create_authority("second.plugin");
-  channel::ProductionPluginBootstrapError error{};
+  channel::RuntimeBootstrapError error{};
   auto bootstrap = load(fixture, error);
   Hooks hooks;
   const permissions::PluginId first_plugin("example.plugin");
   const permissions::PluginId second_plugin("second.plugin");
   auto first_configuration =
-      channel::ProductionPluginBootstrapTestAccess::configuration(
+      channel::RuntimeBootstrapTestAccess::configuration(
           *bootstrap, first_plugin.view(), first_plugin, &hooks);
   auto second_configuration =
-      channel::ProductionPluginBootstrapTestAccess::configuration(
+      channel::RuntimeBootstrapTestAccess::configuration(
           *bootstrap, second_plugin.view(), second_plugin, &hooks);
   require(first_configuration && second_configuration &&
               first_configuration->authority_root &&
@@ -437,15 +437,15 @@ void authority_stores_are_physically_isolated_per_plugin() {
 
   first_store.reset();
   second_store.reset();
-  auto first_root = channel::ProductionPluginRuntimeRoot::open(
+  auto first_root = channel::PluginRuntimeRoot::open(
       std::move(*first_configuration));
-  auto second_root = channel::ProductionPluginRuntimeRoot::open(
+  auto second_root = channel::PluginRuntimeRoot::open(
       std::move(*second_configuration));
   auto duplicate_configuration =
-      channel::ProductionPluginBootstrapTestAccess::configuration(
+      channel::RuntimeBootstrapTestAccess::configuration(
           *bootstrap, first_plugin.view(), first_plugin, &hooks);
   require(first_root && second_root && duplicate_configuration &&
-              !channel::ProductionPluginRuntimeRoot::open(
+              !channel::PluginRuntimeRoot::open(
                   std::move(*duplicate_configuration)),
           "per-plugin product roots did not preserve independent lock scope");
 }
@@ -462,11 +462,11 @@ void every_unregistered_native_adapter_fails_closed() {
   }
   require(::chmod(file.c_str(), 0644) == 0,
           "dynamic definition mode setup failed");
-  channel::ProductionPluginBootstrapError error{};
+  channel::RuntimeBootstrapError error{};
   require(!load(fixture, error) &&
-              error == channel::ProductionPluginBootstrapError::
+              error == channel::RuntimeBootstrapError::
                            definition_adapter_unavailable &&
-              !channel::ProductionPluginBootstrapTestAccess::adapter_available(
+              !channel::RuntimeBootstrapTestAccess::adapter_available(
                   definition.adapter.adapter_class.view(),
                   definition.adapter.implementation_digest,
                   definition.adapter.abi_version),
@@ -484,7 +484,7 @@ int main() {
     every_unregistered_native_adapter_fails_closed();
     return 0;
   } catch (const std::exception &error) {
-    std::cerr << "production plugin bootstrap test failed: " << error.what()
+    std::cerr << "runtime bootstrap test failed: " << error.what()
               << '\n';
     return 1;
   }

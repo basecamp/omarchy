@@ -1,6 +1,6 @@
 #pragma once
 
-#include "PluginSurfaceService.h"
+#include "SurfaceProjectionModel.h"
 #include "gesture_intent.hpp"
 
 #include <QObject>
@@ -23,7 +23,7 @@ class QQmlEngine;
 
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
 namespace omarchy::plugin_runtime::channel {
-class ProductionPluginBootstrap;
+class RuntimeBootstrap;
 }
 #endif
 
@@ -73,7 +73,7 @@ private:
   explicit PluginManager(QObject *parent = nullptr);
   [[nodiscard]] bool publishSurfaces(
       const plugins::permissions::ActivationBinding &binding,
-      std::vector<PluginSurfaceService::SurfaceDeclaration> declarations,
+      std::vector<SurfaceProjectionModel::SurfaceDeclaration> declarations,
       qulonglong revision);
   [[nodiscard]] bool
   withdrawSurfaces(const plugins::permissions::ActivationBinding &binding);
@@ -81,7 +81,7 @@ private:
 
   struct Runtime;
 
-  PluginSurfaceService surfaces_;
+  SurfaceProjectionModel surfaces_;
   std::unique_ptr<Runtime> runtime_;
   bool available_ = false;
 
@@ -106,12 +106,12 @@ public:
   [[nodiscard]] static std::unique_ptr<PluginManager> create() {
     return std::unique_ptr<PluginManager>(new PluginManager);
   }
-  [[nodiscard]] static PluginSurfaceService &model(PluginManager &manager) {
+  [[nodiscard]] static SurfaceProjectionModel &model(PluginManager &manager) {
     return manager.surfaces_;
   }
   static void
   installRuntime(PluginManager &manager,
-                 std::unique_ptr<channel::ProductionPluginBootstrap> bootstrap);
+                 std::unique_ptr<channel::RuntimeBootstrap> bootstrap);
   [[nodiscard]] static bool scanRuntime(PluginManager &manager);
   [[nodiscard]] static std::vector<SlotObservation>
   runtimeSlots(const PluginManager &manager);
@@ -140,7 +140,7 @@ public:
   [[nodiscard]] static bool publishSurfaces(
       PluginManager &manager,
       const plugins::permissions::ActivationBinding &binding,
-      std::vector<PluginSurfaceService::SurfaceDeclaration> declarations,
+      std::vector<SurfaceProjectionModel::SurfaceDeclaration> declarations,
       qulonglong revision) {
     return manager.publishSurfaces(binding, std::move(declarations), revision);
   }

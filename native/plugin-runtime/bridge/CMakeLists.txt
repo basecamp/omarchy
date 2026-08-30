@@ -9,12 +9,12 @@ qt_add_qml_module(omarchy-plugin-host-bridge
   SOURCES
     src/PluginManager.cpp
     src/PluginManager.h
-    src/ProductionSurfaceEndpoint.cpp
-    src/ProductionSurfaceEndpoint.h
-    src/ProductionSurfaceEndpointOwner.cpp
-    src/ProductionSurfaceEndpointOwner.h
-    src/PluginSurfaceService.cpp
-    src/PluginSurfaceService.h
+    src/SurfaceEndpoint.cpp
+    src/SurfaceEndpoint.h
+    src/SurfaceEndpointOwner.cpp
+    src/SurfaceEndpointOwner.h
+    src/SurfaceProjectionModel.cpp
+    src/SurfaceProjectionModel.h
     ../trusted-bridge/src/remote_surface.hpp
 )
 
@@ -45,21 +45,21 @@ if(BUILD_TESTING)
   add_executable(omarchy-plugin-surface-service-test
     src/PluginManager.cpp
     tests/PluginManager_test.cpp
-    src/ProductionSurfaceEndpoint.cpp
-    tests/ProductionSurfaceEndpoint_test.cpp
-    src/ProductionSurfaceEndpointOwner.cpp
-    tests/ProductionSurfaceEndpointOwner_test.cpp
-    src/PluginSurfaceService.cpp
-    tests/PluginSurfaceService_test.cpp
-    ../channel-integration/src/production_plugin_bootstrap.cpp
-    ../channel-integration/src/production_plugin_roots.cpp
+    src/SurfaceEndpoint.cpp
+    tests/SurfaceEndpoint_test.cpp
+    src/SurfaceEndpointOwner.cpp
+    tests/SurfaceEndpointOwner_test.cpp
+    src/SurfaceProjectionModel.cpp
+    tests/SurfaceProjectionModel_test.cpp
+    ../channel-integration/src/runtime_bootstrap.cpp
+    ../channel-integration/src/runtime_roots.cpp
   )
   omarchy_plugin_target_defaults(omarchy-plugin-surface-service-test)
   target_compile_definitions(omarchy-plugin-surface-service-test PRIVATE
     OMARCHY_PLUGIN_MANAGER_TESTING
-    OMARCHY_PRODUCTION_PLUGIN_BOOTSTRAP_TESTING
-    OMARCHY_PRODUCTION_PLUGIN_ROOTS_TESTING
-    OMARCHY_PRODUCTION_SURFACE_ENDPOINT_OWNER_TESTING)
+    OMARCHY_RUNTIME_BOOTSTRAP_TESTING
+    OMARCHY_RUNTIME_ROOTS_TESTING
+    OMARCHY_SURFACE_ENDPOINT_OWNER_TESTING)
   target_include_directories(omarchy-plugin-surface-service-test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${CMAKE_CURRENT_SOURCE_DIR}/../trusted-bridge/src"

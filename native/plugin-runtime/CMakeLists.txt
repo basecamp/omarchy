@@ -10,9 +10,9 @@ set(OMARCHY_PLUGIN_INSTALL_ROOT
   "${CMAKE_INSTALL_LIBDIR}/omarchy/plugin-security/${PROJECT_VERSION}"
   CACHE STRING "Versioned side-by-side secure plugin runtime root")
 
-set(OMARCHY_PLUGIN_PRODUCTION_WORKER
+set(OMARCHY_PLUGIN_PACKAGED_WORKER
   "${CMAKE_INSTALL_PREFIX}/${OMARCHY_PLUGIN_INSTALL_ROOT}/bin/omarchy-plugin-qml-worker")
-cmake_path(NORMAL_PATH OMARCHY_PLUGIN_PRODUCTION_WORKER)
+cmake_path(NORMAL_PATH OMARCHY_PLUGIN_PACKAGED_WORKER)
 configure_file(cmake/runtime_paths.hpp.in
   "${CMAKE_CURRENT_BINARY_DIR}/generated/omarchy/plugin_runtime/runtime_paths.hpp"
   @ONLY)
@@ -123,7 +123,7 @@ if(TARGET omarchy-plugin-host-session
 endif()
 
 # The Quickshell host is a shared QML module which embeds the native runtime.
-# Keep that linkage requirement owned here, where the complete production
+# Keep that linkage requirement owned here, where the complete runtime
 # target graph is visible, instead of relying on a global compiler setting.
 set(plugin_host_embedded_targets
   omarchy-plugin-manifest-contract

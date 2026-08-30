@@ -1,7 +1,7 @@
 #include "PluginManager.h"
 
 #include "omarchy/plugin_runtime/Version.h"
-#include "production_plugin_bootstrap.hpp"
+#include "runtime_bootstrap.hpp"
 
 #include <QQmlEngine>
 #include <QThreadPool>
@@ -57,7 +57,7 @@ struct PluginManager::Runtime final {
     std::atomic<std::uint16_t> lifecycle = 0;
   };
 
-  struct Hook final : channel::ProductionPluginRuntimeHooks {
+  struct Hook final : channel::PluginRuntimeHooks {
     explicit Hook(std::shared_ptr<HookState> state) : state(std::move(state)) {}
 
     void state_changed(host_session::SessionState state,
@@ -88,11 +88,11 @@ struct PluginManager::Runtime final {
     bool preparing = false;
     std::shared_ptr<HookState> callback_state;
     std::unique_ptr<Hook> hook;
-    std::unique_ptr<channel::ProductionPluginRuntimeRoot> root;
+    std::unique_ptr<channel::PluginRuntimeRoot> root;
   };
 
   struct ScanResult final {
-    std::unique_ptr<channel::ProductionPluginCatalog> catalog;
+    std::unique_ptr<channel::ActivationCatalog> catalog;
   };
 
   struct PreparationResult final {
@@ -112,8 +112,8 @@ struct PluginManager::Runtime final {
 
   static std::unique_ptr<Runtime> open(PluginManager &manager) noexcept {
     try {
-      channel::ProductionPluginBootstrapError error{};
-      auto bootstrap = channel::ProductionPluginBootstrap::open(error);
+      channel::RuntimeBootstrapError error{};
+      auto bootstrap = channel::RuntimeBootstrap::open(error);
       if (!bootstrap)
         return {};
       return std::unique_ptr<Runtime>(
@@ -124,7 +124,7 @@ struct PluginManager::Runtime final {
   }
 
   Runtime(PluginManager &manager,
-          std::unique_ptr<channel::ProductionPluginBootstrap> bootstrap)
+          std::unique_ptr<channel::RuntimeBootstrap> bootstrap)
       : manager_(manager), bootstrap_(std::move(bootstrap)) {
     configureTimers();
     scan_timer_.start();
@@ -134,7 +134,7 @@ struct PluginManager::Runtime final {
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
   struct ManualTestTag final {};
   Runtime(PluginManager &manager,
-          std::unique_ptr<channel::ProductionPluginBootstrap> bootstrap,
+          std::unique_ptr<channel::RuntimeBootstrap> bootstrap,
           ManualTestTag)
       : manager_(manager), bootstrap_(std::move(bootstrap)),
         manual_test_(true) {
@@ -186,7 +186,7 @@ struct PluginManager::Runtime final {
               entry_probe(PluginManagerTestAccess::TestJobKind::scan);
 #endif
             try {
-              channel::ProductionPluginCatalogError error{};
+              channel::ActivationCatalogError error{};
               result->catalog = bootstrap->scan_catalog(error);
               std::scoped_lock lock(gate->mutex);
               if (!gate->canceled.load(std::memory_order_acquire)) {
@@ -230,7 +230,7 @@ struct PluginManager::Runtime final {
         auto callback_state =
             std::make_shared<HookState>(slot->plugin, slot->epoch);
         auto hook = std::make_unique<Hook>(callback_state);
-        auto root = channel::ProductionPluginRuntimeRoot::commit(
+        auto root = channel::PluginRuntimeRoot::commit(
             std::move(result->prepared), *hook, manager_);
         if (!root) {
           fail(*slot);
@@ -262,14 +262,14 @@ struct PluginManager::Runtime final {
   }
 
   bool reconcile(
-      std::unique_ptr<channel::ProductionPluginCatalog> candidate) noexcept {
+      std::unique_ptr<channel::ActivationCatalog> candidate) noexcept {
     try {
       if (catalog_ && catalog_->same_epoch(*candidate))
         return candidate->unchanged();
       const auto incoming = candidate->entries();
       const auto previous =
           catalog_ ? catalog_->entries()
-                   : std::span<const channel::ProductionPluginCatalogEntry>{};
+                   : std::span<const channel::ActivationCatalogEntry>{};
       std::vector<std::optional<Slot>> additions(incoming.size());
       for (std::size_t index = 0; index < incoming.size(); ++index) {
         const auto old = std::ranges::lower_bound(
@@ -337,7 +337,7 @@ struct PluginManager::Runtime final {
   }
 
   bool acceptScan(
-      std::unique_ptr<channel::ProductionPluginCatalog> candidate) noexcept {
+      std::unique_ptr<channel::ActivationCatalog> candidate) noexcept {
     if (!candidate || !reconcile(std::move(candidate)))
       return false;
     if (!manager_.available_) {
@@ -566,9 +566,9 @@ struct PluginManager::Runtime final {
   }
 
   PluginManager &manager_;
-  std::shared_ptr<const channel::ProductionPluginBootstrap> bootstrap_;
+  std::shared_ptr<const channel::RuntimeBootstrap> bootstrap_;
   std::shared_ptr<DeliveryGate> gate_ = std::make_shared<DeliveryGate>();
-  std::unique_ptr<channel::ProductionPluginCatalog> catalog_;
+  std::unique_ptr<channel::ActivationCatalog> catalog_;
   std::vector<Slot> slots_;
   QTimer scan_timer_;
   QTimer retry_timer_;
@@ -584,7 +584,7 @@ struct PluginManager::Runtime final {
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
 void PluginManagerTestAccess::installRuntime(
     PluginManager &manager,
-    std::unique_ptr<channel::ProductionPluginBootstrap> bootstrap) {
+    std::unique_ptr<channel::RuntimeBootstrap> bootstrap) {
   manager.runtime_.reset();
   manager.available_ = false;
   if (bootstrap)
@@ -596,7 +596,7 @@ void PluginManagerTestAccess::installRuntime(
 bool PluginManagerTestAccess::scanRuntime(PluginManager &manager) {
   if (!manager.runtime_)
     return false;
-  channel::ProductionPluginCatalogError error{};
+  channel::ActivationCatalogError error{};
   auto candidate = manager.runtime_->bootstrap_->scan_catalog(error);
   return manager.runtime_->acceptScan(std::move(candidate));
 }
@@ -740,13 +740,13 @@ PluginManager *PluginManager::create(QQmlEngine *qml_engine, QJSEngine *) {
 
 PluginManager::PluginManager(QObject *parent)
     : QObject(parent), surfaces_(this) {
-  connect(&surfaces_, &PluginSurfaceService::surfacesChanged, this,
+  connect(&surfaces_, &SurfaceProjectionModel::surfacesChanged, this,
           &PluginManager::surfacesChanged);
-  connect(&surfaces_, &PluginSurfaceService::openRequested, this,
+  connect(&surfaces_, &SurfaceProjectionModel::openRequested, this,
           &PluginManager::openRequested);
-  connect(&surfaces_, &PluginSurfaceService::toggleRequested, this,
+  connect(&surfaces_, &SurfaceProjectionModel::toggleRequested, this,
           &PluginManager::toggleRequested);
-  connect(&surfaces_, &PluginSurfaceService::dismissRequested, this,
+  connect(&surfaces_, &SurfaceProjectionModel::dismissRequested, this,
           &PluginManager::dismissRequested);
 #ifndef OMARCHY_PLUGIN_MANAGER_TESTING
   // Trust roots and definitions are immutable for this singleton lifetime.
@@ -789,7 +789,7 @@ bool PluginManager::attach(const QString &surface_key, QObject *surface) {
 
 bool PluginManager::publishSurfaces(
     const plugins::permissions::ActivationBinding &binding,
-    std::vector<PluginSurfaceService::SurfaceDeclaration> declarations,
+    std::vector<SurfaceProjectionModel::SurfaceDeclaration> declarations,
     qulonglong revision) {
   return surfaces_.publishSurfaces(binding, std::move(declarations), revision);
 }

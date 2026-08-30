@@ -62,11 +62,11 @@ if(TARGET omarchy-plugin-host-session)
     src/broker_session_settlement.cpp
     src/plugin_activation_coordinator.cpp
     src/plugin_permission_controller.cpp
-    src/production_plugin_bootstrap.cpp
-    src/production_plugin_catalog.cpp
-    src/production_plugin_roots.cpp
-    src/production_plugin_runtime_root.cpp
-    src/production_session_runtime_factory.cpp
+    src/runtime_bootstrap.cpp
+    src/activation_catalog.cpp
+    src/runtime_roots.cpp
+    src/plugin_runtime_root.cpp
+    src/session_runtime_factory.cpp
     src/plugin_session.cpp
   )
   target_include_directories(omarchy-plugin-authenticated-session PUBLIC
@@ -128,43 +128,43 @@ if(BUILD_TESTING)
   )
 
   if(TARGET omarchy-plugin-authenticated-session)
-    add_executable(omarchy-plugin-production-catalog-test
-      src/production_plugin_catalog.cpp
-      tests/production_plugin_catalog_test.cpp)
-    omarchy_plugin_target_defaults(omarchy-plugin-production-catalog-test)
-    target_link_libraries(omarchy-plugin-production-catalog-test PRIVATE
+    add_executable(omarchy-plugin-activation-catalog-test
+      src/activation_catalog.cpp
+      tests/activation_catalog_test.cpp)
+    omarchy_plugin_target_defaults(omarchy-plugin-activation-catalog-test)
+    target_link_libraries(omarchy-plugin-activation-catalog-test PRIVATE
       omarchy-plugin-activation-snapshot)
-    add_test(NAME plugin-production-catalog
-      COMMAND omarchy-plugin-production-catalog-test)
-    set_tests_properties(plugin-production-catalog PROPERTIES
+    add_test(NAME plugin-activation-catalog
+      COMMAND omarchy-plugin-activation-catalog-test)
+    set_tests_properties(plugin-activation-catalog PROPERTIES
       TIMEOUT 30 LABELS "unit;security;catalog;filesystem;adversarial")
 
-    add_executable(omarchy-plugin-production-roots-test
-      src/production_plugin_roots.cpp
-      tests/production_plugin_roots_test.cpp)
-    omarchy_plugin_target_defaults(omarchy-plugin-production-roots-test)
-    target_compile_definitions(omarchy-plugin-production-roots-test PRIVATE
-      OMARCHY_PRODUCTION_PLUGIN_ROOTS_TESTING)
-    target_link_libraries(omarchy-plugin-production-roots-test PRIVATE
+    add_executable(omarchy-plugin-runtime-roots-test
+      src/runtime_roots.cpp
+      tests/runtime_roots_test.cpp)
+    omarchy_plugin_target_defaults(omarchy-plugin-runtime-roots-test)
+    target_compile_definitions(omarchy-plugin-runtime-roots-test PRIVATE
+      OMARCHY_RUNTIME_ROOTS_TESTING)
+    target_link_libraries(omarchy-plugin-runtime-roots-test PRIVATE
       omarchy-plugin-activation-snapshot)
-    add_test(NAME plugin-production-roots
-      COMMAND omarchy-plugin-production-roots-test)
-    set_tests_properties(plugin-production-roots PROPERTIES
+    add_test(NAME plugin-runtime-roots
+      COMMAND omarchy-plugin-runtime-roots-test)
+    set_tests_properties(plugin-runtime-roots PROPERTIES
       TIMEOUT 30 LABELS "unit;security;catalog;filesystem;adversarial")
 
-    add_executable(omarchy-plugin-production-bootstrap-test
-      src/production_plugin_bootstrap.cpp
-      src/production_plugin_roots.cpp
-      tests/production_plugin_bootstrap_test.cpp)
-    omarchy_plugin_target_defaults(omarchy-plugin-production-bootstrap-test)
-    target_compile_definitions(omarchy-plugin-production-bootstrap-test PRIVATE
-      OMARCHY_PRODUCTION_PLUGIN_BOOTSTRAP_TESTING
-      OMARCHY_PRODUCTION_PLUGIN_ROOTS_TESTING)
-    target_link_libraries(omarchy-plugin-production-bootstrap-test PRIVATE
+    add_executable(omarchy-plugin-runtime-bootstrap-test
+      src/runtime_bootstrap.cpp
+      src/runtime_roots.cpp
+      tests/runtime_bootstrap_test.cpp)
+    omarchy_plugin_target_defaults(omarchy-plugin-runtime-bootstrap-test)
+    target_compile_definitions(omarchy-plugin-runtime-bootstrap-test PRIVATE
+      OMARCHY_RUNTIME_BOOTSTRAP_TESTING
+      OMARCHY_RUNTIME_ROOTS_TESTING)
+    target_link_libraries(omarchy-plugin-runtime-bootstrap-test PRIVATE
       omarchy-plugin-authenticated-session)
-    add_test(NAME plugin-production-bootstrap
-      COMMAND omarchy-plugin-production-bootstrap-test)
-    set_tests_properties(plugin-production-bootstrap PROPERTIES
+    add_test(NAME plugin-runtime-bootstrap
+      COMMAND omarchy-plugin-runtime-bootstrap-test)
+    set_tests_properties(plugin-runtime-bootstrap PROPERTIES
       TIMEOUT 30 LABELS "unit;security;bootstrap;filesystem;adversarial")
 
     add_executable(omarchy-plugin-authenticated-session-adapter-test
@@ -232,9 +232,9 @@ if(BUILD_TESTING)
       src/broker_session_settlement.cpp
       src/plugin_activation_coordinator.cpp
       src/plugin_permission_controller.cpp
-      src/production_plugin_runtime_root.cpp
-      src/production_session_runtime_factory.cpp
-      tests/production_session_runtime_factory_test.cpp
+      src/plugin_runtime_root.cpp
+      src/session_runtime_factory.cpp
+      tests/session_runtime_factory_test.cpp
       src/plugin_session.cpp
       tests/plugin_session_test.cpp)
     omarchy_plugin_target_defaults(omarchy-plugin-product-session-test)

@@ -321,7 +321,7 @@ std::optional<surface::FrameReady> rendered_frame(const Observer &observer) {
 
 void require_legacy_unused(const LegacyDispatcher &legacy) {
   require(legacy.dispatches.load() == 0 && legacy.replies.load() == 0,
-          "legacy broker dispatcher handled a production session request");
+          "legacy broker dispatcher handled a authenticated session request");
 }
 
 bool has_visible_lanes(const Observer &observer) {
@@ -478,7 +478,7 @@ int run_case(std::string bwrap, std::string_view mode) {
     });
     if (!started || value.state() != session::SessionState::running) {
       throw std::runtime_error(
-          "production authenticated session did not start (state=" +
+          "authenticated session did not start (state=" +
           std::to_string(static_cast<unsigned>(value.state())) + ", error=" +
           std::to_string(static_cast<unsigned>(value.error())) + ")");
     }
@@ -582,7 +582,7 @@ int run_case(std::string bwrap, std::string_view mode) {
     } else if (mode == "session-deadline") {
       require(
           await([&] { return value.state() == session::SessionState::failed; }),
-          "aggregate I/O deadline did not fail the production session");
+          "aggregate I/O deadline did not fail the authenticated session");
       require(value.error() == session::SessionError::io_deadline_expired &&
                   deadline.invocations.load() == 1 &&
                   observer.messages.empty(),
@@ -621,7 +621,7 @@ int run_case(std::string bwrap, std::string_view mode) {
           await([&] {
             return audio.calls.load() == 1 && observer.messages.size() == 2;
           }),
-          "production session did not deliver its effect and visible lanes");
+          "authenticated session did not deliver its effect and visible lanes");
       require_visible_lanes(observer);
       const auto frame = rendered_frame(observer);
       require(frame &&
@@ -664,7 +664,7 @@ int run_case(std::string bwrap, std::string_view mode) {
     value.stop();
     require(
         await([&] { return value.state() == session::SessionState::stopped; }),
-        "production authenticated session did not stop");
+        "authenticated session did not stop");
     require(await([&] { return observer.states.size() == 4; }) &&
                 observer.states[0] == std::pair{session::SessionState::starting,
                                                 session::SessionError::none} &&
@@ -677,7 +677,7 @@ int run_case(std::string bwrap, std::string_view mode) {
             "stopped observer state sequence was not exact");
     require(await([&] { return scope->removes.load() == 1; }) &&
                 scope->kills.load() == 1 && scope->attached,
-            "production session sandbox cleanup was not exact");
+            "authenticated session sandbox cleanup was not exact");
     const auto decided =
         audit_records(log, permissions::AuditEvent::operation_decided);
     const auto completed =
@@ -722,7 +722,7 @@ int main(int argc, char **argv) {
       for (const auto mode : modes) {
         try {
           require(run_case(std::string(launcher_path), mode) == 0,
-                  "production session case failed");
+                  "authenticated session case failed");
         } catch (const std::exception &error) {
           throw std::runtime_error(std::string(mode) + ": " + error.what());
         }

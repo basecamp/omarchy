@@ -1,4 +1,4 @@
-#include "production_plugin_catalog.hpp"
+#include "activation_catalog.hpp"
 
 #include <dirent.h>
 #include <fcntl.h>
@@ -56,14 +56,14 @@ bool exact_plugin_id(std::string_view value) noexcept {
 
 } // namespace
 
-ProductionPluginCatalogEntry::ProductionPluginCatalogEntry(
+ActivationCatalogEntry::ActivationCatalogEntry(
     std::string record_name,
     host_session::InspectedActivationRecord inspected, Epoch epoch) noexcept
     : record_name_(std::move(record_name)), inspected_(std::move(inspected)),
       epoch_(epoch) {}
 
-bool ProductionPluginCatalogEntry::same_epoch(
-    const ProductionPluginCatalogEntry &other) const noexcept {
+bool ActivationCatalogEntry::same_epoch(
+    const ActivationCatalogEntry &other) const noexcept {
   const auto &left = inspected_.record();
   const auto &right = other.inspected_.record();
   return record_name_ == other.record_name_ && epoch_ == other.epoch_ &&
@@ -73,16 +73,16 @@ bool ProductionPluginCatalogEntry::same_epoch(
          left.state_directory == right.state_directory;
 }
 
-ProductionPluginCatalog::ProductionPluginCatalog(
+ActivationCatalog::ActivationCatalog(
     host_session::OwnedDescriptor activation_root,
-    ProductionPluginCatalogEntry::Epoch root_epoch,
-    std::vector<ProductionPluginCatalogEntry> entries)
+    ActivationCatalogEntry::Epoch root_epoch,
+    std::vector<ActivationCatalogEntry> entries)
     : activation_root_(std::move(activation_root)),
       root_epoch_(root_epoch),
       entries_(std::move(entries)) {}
 
-bool ProductionPluginCatalog::capture_epoch(
-    int descriptor, ProductionPluginCatalogEntry::Epoch &epoch) noexcept {
+bool ActivationCatalog::capture_epoch(
+    int descriptor, ActivationCatalogEntry::Epoch &epoch) noexcept {
   struct stat metadata{};
   if (descriptor < 0 || ::fstat(descriptor, &metadata) < 0 ||
       metadata.st_size < 0)
@@ -91,8 +91,8 @@ bool ProductionPluginCatalog::capture_epoch(
   return true;
 }
 
-ProductionPluginCatalogEntry::Epoch
-ProductionPluginCatalog::epoch_from_metadata(
+ActivationCatalogEntry::Epoch
+ActivationCatalog::epoch_from_metadata(
     const struct stat &metadata) noexcept {
   return {
       .device = static_cast<std::uint64_t>(metadata.st_dev),
@@ -109,8 +109,8 @@ ProductionPluginCatalog::epoch_from_metadata(
   };
 }
 
-bool ProductionPluginCatalog::unchanged() const noexcept {
-  ProductionPluginCatalogEntry::Epoch current{};
+bool ActivationCatalog::unchanged() const noexcept {
+  ActivationCatalogEntry::Epoch current{};
   return capture_epoch(activation_root_.get(), current) &&
          current == root_epoch_ &&
          std::ranges::all_of(entries_, [](const auto &entry) {
@@ -118,8 +118,8 @@ bool ProductionPluginCatalog::unchanged() const noexcept {
          });
 }
 
-bool ProductionPluginCatalog::same_epoch(
-    const ProductionPluginCatalog &other) const noexcept {
+bool ActivationCatalog::same_epoch(
+    const ActivationCatalog &other) const noexcept {
   if (root_epoch_ != other.root_epoch_ ||
       entries_.size() != other.entries_.size())
     return false;
@@ -130,16 +130,16 @@ bool ProductionPluginCatalog::same_epoch(
   return true;
 }
 
-std::unique_ptr<ProductionPluginCatalog>
-ProductionPluginCatalog::load(int activation_root_fd, std::uint32_t trusted_uid,
-                              ProductionPluginCatalogError &error) noexcept {
-  error = ProductionPluginCatalogError::none;
+std::unique_ptr<ActivationCatalog>
+ActivationCatalog::load(int activation_root_fd, std::uint32_t trusted_uid,
+                              ActivationCatalogError &error) noexcept {
+  error = ActivationCatalogError::none;
   try {
     struct stat root_before{};
     if (activation_root_fd < 0 ||
         ::fstat(activation_root_fd, &root_before) < 0 ||
         !trusted_root(root_before, trusted_uid)) {
-      error = ProductionPluginCatalogError::root_untrusted;
+      error = ActivationCatalogError::root_untrusted;
       return {};
     }
 
@@ -149,102 +149,102 @@ ProductionPluginCatalog::load(int activation_root_fd, std::uint32_t trusted_uid,
     struct stat pinned_root{};
     if (!root || ::fstat(root.get(), &pinned_root) < 0 ||
         !stable(root_before, pinned_root)) {
-      error = ProductionPluginCatalogError::root_untrusted;
+      error = ActivationCatalogError::root_untrusted;
       return {};
     }
 
     const int scan_fd = ::openat(
         root.get(), ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
     if (scan_fd < 0) {
-      error = ProductionPluginCatalogError::enumeration_failed;
+      error = ActivationCatalogError::enumeration_failed;
       return {};
     }
     std::unique_ptr<DIR, DirectoryCloser> directory(::fdopendir(scan_fd));
     if (!directory) {
       ::close(scan_fd);
-      error = ProductionPluginCatalogError::enumeration_failed;
+      error = ActivationCatalogError::enumeration_failed;
       return {};
     }
 
-    std::vector<ProductionPluginCatalogEntry> entries;
+    std::vector<ActivationCatalogEntry> entries;
     for (;;) {
       errno = 0;
       const auto *entry = ::readdir(directory.get());
       if (entry == nullptr) {
         if (errno != 0)
-          error = ProductionPluginCatalogError::enumeration_failed;
+          error = ActivationCatalogError::enumeration_failed;
         break;
       }
       const std::string_view name(entry->d_name);
       if (name == "." || name == "..")
         continue;
-      if (entries.size() == kMaximumProductionPluginCatalogEntries) {
-        error = ProductionPluginCatalogError::bound_exceeded;
+      if (entries.size() == kMaximumActivationCatalogEntries) {
+        error = ActivationCatalogError::bound_exceeded;
         break;
       }
       if (!exact_plugin_id(name)) {
-        error = ProductionPluginCatalogError::unexpected_entry;
+        error = ActivationCatalogError::unexpected_entry;
         break;
       }
       struct stat entry_metadata{};
       if (::fstatat(root.get(), entry->d_name, &entry_metadata,
                     AT_SYMLINK_NOFOLLOW) < 0 ||
           !S_ISREG(entry_metadata.st_mode)) {
-        error = ProductionPluginCatalogError::unexpected_entry;
+        error = ActivationCatalogError::unexpected_entry;
         break;
       }
       auto inspected = host_session::inspect_activation_record(root.get(), name,
                                                                trusted_uid);
       if (!inspected) {
-        error = ProductionPluginCatalogError::invalid_record;
+        error = ActivationCatalogError::invalid_record;
         break;
       }
       if (std::ranges::any_of(entries, [&](const auto &candidate) {
             return candidate.plugin_id() ==
                    inspected->record().plugin_id;
           })) {
-        error = ProductionPluginCatalogError::duplicate_plugin;
+        error = ActivationCatalogError::duplicate_plugin;
         break;
       }
       if (inspected->record().plugin_id != name) {
-        error = ProductionPluginCatalogError::invalid_record;
+        error = ActivationCatalogError::invalid_record;
         break;
       }
-      ProductionPluginCatalogEntry::Epoch record_epoch{};
+      ActivationCatalogEntry::Epoch record_epoch{};
       if (!capture_epoch(inspected->descriptor(), record_epoch)) {
-        error = ProductionPluginCatalogError::mutated;
+        error = ActivationCatalogError::mutated;
         break;
       }
-      entries.push_back(ProductionPluginCatalogEntry(
+      entries.push_back(ActivationCatalogEntry(
           std::string(name), std::move(*inspected), record_epoch));
     }
 
     struct stat root_after{};
-    if (error == ProductionPluginCatalogError::none &&
+    if (error == ActivationCatalogError::none &&
         (::fstat(root.get(), &root_after) < 0 ||
          !stable(root_before, root_after) ||
          std::ranges::any_of(entries, [](const auto &candidate) {
            return !candidate.currently_unchanged();
          })))
-      error = ProductionPluginCatalogError::mutated;
+      error = ActivationCatalogError::mutated;
 
     if (::closedir(directory.release()) < 0 &&
-        error == ProductionPluginCatalogError::none)
-      error = ProductionPluginCatalogError::enumeration_failed;
-    if (error != ProductionPluginCatalogError::none)
+        error == ActivationCatalogError::none)
+      error = ActivationCatalogError::enumeration_failed;
+    if (error != ActivationCatalogError::none)
       return {};
     std::ranges::sort(entries, [](const auto &left, const auto &right) {
       return left.plugin_id() < right.plugin_id();
     });
     const auto root_epoch = epoch_from_metadata(root_before);
-    return std::unique_ptr<ProductionPluginCatalog>(
-        new ProductionPluginCatalog(std::move(root), root_epoch,
+    return std::unique_ptr<ActivationCatalog>(
+        new ActivationCatalog(std::move(root), root_epoch,
                                     std::move(entries)));
   } catch (const std::bad_alloc &) {
-    error = ProductionPluginCatalogError::resource_exhausted;
+    error = ActivationCatalogError::resource_exhausted;
     return {};
   } catch (...) {
-    error = ProductionPluginCatalogError::internal_failure;
+    error = ActivationCatalogError::internal_failure;
     return {};
   }
 }

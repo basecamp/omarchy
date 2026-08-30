@@ -5,7 +5,7 @@
 #include "plugin_activation_coordinator.hpp"
 #include "plugin_permission_controller.hpp"
 #include "plugin_session.hpp"
-#include "production_plugin_runtime_root.hpp"
+#include "plugin_runtime_root.hpp"
 #include "structured_broker.hpp"
 
 #include <QCoreApplication>
@@ -31,7 +31,7 @@
 #include <string_view>
 #include <thread>
 
-void production_session_runtime_factory_tests();
+void session_runtime_factory_tests();
 
 namespace channel = omarchy::plugin_runtime::channel;
 namespace audit = omarchy::plugins::audit;
@@ -448,9 +448,9 @@ public:
     return value;
   }
 
-  channel::ProductionPluginRuntimeConfiguration
-  root_configuration(channel::ProductionRuntimeServices services = {},
-      channel::ProductionPluginRuntimeHooks *hooks = nullptr) {
+  channel::PluginRuntimeConfiguration
+  root_configuration(channel::RuntimeServices services = {},
+      channel::PluginRuntimeHooks *hooks = nullptr) {
     store_.reset();
     return {
         .activation_root_fd = activation_fd_,
@@ -464,7 +464,7 @@ public:
         .definitions =
             std::make_shared<const definitions::TrustedDefinitionRegistry>(
                 definitions_),
-            .services = std::make_shared<const channel::ProductionRuntimeServices>(
+            .services = std::make_shared<const channel::RuntimeServices>(
                 std::move(services)),
             .runtime_limits = {},
             .session_limits = {},
@@ -1559,7 +1559,7 @@ bool blocking_notification(std::string_view category, std::string_view title,
 }
 
 class QueuedStopHooks final : public QObject,
-                              public channel::ProductionPluginRuntimeHooks {
+                              public channel::PluginRuntimeHooks {
 public:
   void state_changed(host::SessionState state, host::SessionError) override {
     if (state != host::SessionState::running || queued.exchange(true))
@@ -1579,13 +1579,13 @@ public:
   void render_rejected(host::RouteResult) override {}
   bool accept(host::AdmittedSurfaceIntent) override { return false; }
 
-  channel::ProductionPluginRuntimeRoot *root = nullptr;
+  channel::PluginRuntimeRoot *root = nullptr;
   std::atomic<bool> queued = false;
   std::atomic<bool> stopped = false;
 };
 
 class CountingRuntimeHooks final
-    : public channel::ProductionPluginRuntimeHooks {
+    : public channel::PluginRuntimeHooks {
 public:
   void state_changed(host::SessionState state, host::SessionError error) override {
     if (state == host::SessionState::running &&
@@ -1631,17 +1631,17 @@ void prepared_root_commits_on_ui_and_reuses_exact_hooks() {
   std::thread::id worker_thread;
   std::thread worker([&] {
     worker_thread = std::this_thread::get_id();
-    prepared = channel::ProductionPluginRuntimeRoot::prepare(
+    prepared = channel::PluginRuntimeRoot::prepare(
         std::move(configuration));
   });
   worker.join();
   require(prepared && worker_thread != ui_thread && scope->attachments == 0,
           "worker preparation launched or failed to remain off the UI thread");
   CountingRuntimeHooks hooks;
-  auto root = channel::ProductionPluginRuntimeRootTestAccess::commit(
+  auto root = channel::PluginRuntimeRootTestAccess::commit(
       std::move(prepared), hooks, *QCoreApplication::instance());
   require(root != nullptr &&
-              channel::ProductionPluginRuntimeRootTestAccess::ui_affine(
+              channel::PluginRuntimeRootTestAccess::ui_affine(
                   *root, *QCoreApplication::instance()),
           "prepared runtime did not commit with exact UI QObject affinity");
   await([&] { return hooks.running.load(std::memory_order_acquire) == 1; },
@@ -1651,7 +1651,7 @@ void prepared_root_commits_on_ui_and_reuses_exact_hooks() {
           "prepared runtime restart was rejected");
   await([&] { return hooks.running.load(std::memory_order_acquire) == 2; },
         "prepared runtime restart lost its stored exact Hook");
-  require(channel::ProductionPluginRuntimeRootTestAccess::hooks_are(*root,
+  require(channel::PluginRuntimeRootTestAccess::hooks_are(*root,
                                                                     hooks),
           "prepared runtime restart lost its lifecycle/intent Hook pair");
 }
@@ -1671,9 +1671,9 @@ void prepared_root_final_fence_rejects_intervening_mutation() {
   configuration.test_before_final_fence = invalidate_final_fence;
   configuration.test_before_final_fence_context = &mutation;
   auto prepared =
-      channel::ProductionPluginRuntimeRoot::prepare(std::move(configuration));
+      channel::PluginRuntimeRoot::prepare(std::move(configuration));
   CountingRuntimeHooks hooks;
-  auto root = channel::ProductionPluginRuntimeRootTestAccess::commit(
+  auto root = channel::PluginRuntimeRootTestAccess::commit(
       std::move(prepared), hooks, *QCoreApplication::instance());
   require(!root && mutation.calls.load(std::memory_order_acquire) == 1 &&
               scope->attachments == 0 &&
@@ -1693,12 +1693,12 @@ void prepared_root_commit_is_ui_only_and_path_independent() {
       return launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH,
                                                CHANNEL_PEER_PATH, scope);
     };
-    auto prepared = channel::ProductionPluginRuntimeRoot::prepare(
+    auto prepared = channel::PluginRuntimeRoot::prepare(
         std::move(configuration));
     CountingRuntimeHooks hooks;
-    std::unique_ptr<channel::ProductionPluginRuntimeRoot> rejected;
+    std::unique_ptr<channel::PluginRuntimeRoot> rejected;
     std::thread wrong_thread([&] {
-      rejected = channel::ProductionPluginRuntimeRootTestAccess::commit(
+      rejected = channel::PluginRuntimeRootTestAccess::commit(
           std::move(prepared), hooks, *QCoreApplication::instance());
     });
     wrong_thread.join();
@@ -1719,7 +1719,7 @@ void prepared_root_commit_is_ui_only_and_path_independent() {
   };
   std::unique_ptr<channel::PreparedPluginRuntime> prepared;
   std::thread worker([&] {
-    prepared = channel::ProductionPluginRuntimeRoot::prepare(
+    prepared = channel::PluginRuntimeRoot::prepare(
         std::move(configuration));
   });
   worker.join();
@@ -1728,7 +1728,7 @@ void prepared_root_commit_is_ui_only_and_path_independent() {
   fixture.close_borrowed_roots();
   fixture.corrupt_prepared_backing();
   CountingRuntimeHooks hooks;
-  auto root = channel::ProductionPluginRuntimeRootTestAccess::commit(
+  auto root = channel::PluginRuntimeRootTestAccess::commit(
       std::move(prepared), hooks, *QCoreApplication::instance());
   require(root != nullptr,
           "UI commit reread corrupted activation/authority backing paths");
@@ -1736,32 +1736,32 @@ void prepared_root_commit_is_ui_only_and_path_independent() {
         "path-independent UI commit did not start its pinned runtime");
 }
 
-void production_root_is_the_composed_authority_path() {
+void composed_root_is_the_composed_authority_path() {
   using namespace std::chrono_literals;
   CoordinatorFixture fixture("session-notification");
   fixture.record();
   auto probe = std::make_shared<BlockingNotificationProbe>();
-  auto root = channel::ProductionPluginRuntimeRoot::open(
+  auto root = channel::PluginRuntimeRoot::open(
       fixture.root_configuration({.context = probe,
            .notification_send = blocking_notification,
            .audio_play = nullptr,
            .compare_scope = nullptr,
            .dynamic_services = {}}));
   NotificationReleaseGuard release_on_exit(probe);
-  require(root != nullptr, "production composition root did not open");
-  channel::ProductionPluginRuntimeRootTestAccess::set_supervisor_factory(
+  require(root != nullptr, "runtime composition root did not open");
+  channel::PluginRuntimeRootTestAccess::set_supervisor_factory(
       *root, [] {
         return launcher::Supervisor::forTestOnly(
             FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, std::make_shared<Scope>());
       });
 
-  auto locked = channel::ProductionPluginRuntimeRoot::open(
+  auto locked = channel::PluginRuntimeRoot::open(
       fixture.root_configuration({.context = probe,
            .notification_send = blocking_notification,
            .audio_play = nullptr,
            .compare_scope = nullptr,
            .dynamic_services = {}}));
-  require(!locked, "a second production root acquired the same authority");
+  require(!locked, "a second composed root acquired the same authority");
   fixture.close_borrowed_roots();
 
   auto review = root->prepare_review();
@@ -1791,7 +1791,7 @@ void production_root_is_the_composed_authority_path() {
   require(notification != initial->active->grants.values().end(),
           "optional notification grant missing from composed authority");
   const auto original_live =
-      channel::ProductionPluginRuntimeRootTestAccess::live_generation(*root);
+      channel::PluginRuntimeRootTestAccess::live_generation(*root);
   require(original_live && original_live->generation() == 1,
           "composed root did not retain exact G1 live authority");
   const auto g1_surface = root->surface_session().describe("barWidget");
@@ -1876,18 +1876,18 @@ void production_root_is_the_composed_authority_path() {
           "required revoke left a composed product session running");
 }
 
-void production_root_rejects_unusable_authority_and_providers() {
+void composed_root_rejects_unusable_authority_and_providers() {
   CoordinatorFixture bad_fd;
   {
     auto invalid = bad_fd.root_configuration();
     invalid.authority_root = host::OwnedDescriptor{};
-    require(!channel::ProductionPluginRuntimeRoot::open(std::move(invalid)),
+    require(!channel::PluginRuntimeRoot::open(std::move(invalid)),
             "invalid authority descriptor opened a product root");
   }
   {
     auto invalid_uid = bad_fd.root_configuration();
     invalid_uid.trusted_uid = std::numeric_limits<std::uint32_t>::max();
-    require(!channel::ProductionPluginRuntimeRoot::open(std::move(invalid_uid)),
+    require(!channel::PluginRuntimeRoot::open(std::move(invalid_uid)),
             "omitted trusted uid opened a product root");
   }
 
@@ -1896,7 +1896,7 @@ void production_root_rejects_unusable_authority_and_providers() {
     wrong_record.record();
     auto wrong_configuration = wrong_record.root_configuration();
     wrong_configuration.activation_record = "../current";
-    auto wrong = channel::ProductionPluginRuntimeRoot::open(
+    auto wrong = channel::PluginRuntimeRoot::open(
         std::move(wrong_configuration));
     require(wrong && !wrong->prepare_review(),
             "non-canonical fixed activation record prepared consent");
@@ -1904,11 +1904,11 @@ void production_root_rejects_unusable_authority_and_providers() {
 
   CoordinatorFixture missing_provider("session-notification");
   missing_provider.record();
-  auto root = channel::ProductionPluginRuntimeRoot::open(
+  auto root = channel::PluginRuntimeRoot::open(
       missing_provider.root_configuration());
   require(root != nullptr, "missing-provider root did not open for review");
   auto scope = std::make_shared<Scope>();
-  channel::ProductionPluginRuntimeRootTestAccess::set_supervisor_factory(
+  channel::PluginRuntimeRootTestAccess::set_supervisor_factory(
       *root, [scope] {
         return launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH,
                                                  CHANNEL_PEER_PATH, scope);
@@ -1927,15 +1927,15 @@ void production_root_rejects_unusable_authority_and_providers() {
           "granted optional permission bypassed its missing trusted provider");
 }
 
-void production_root_queues_hook_lifecycle_work() {
+void composed_root_queues_hook_lifecycle_work() {
   CoordinatorFixture fixture("session-deadline");
   fixture.record();
   QueuedStopHooks hooks;
-  auto root = channel::ProductionPluginRuntimeRoot::open(
+  auto root = channel::PluginRuntimeRoot::open(
       fixture.root_configuration({}, &hooks));
   require(root != nullptr, "queued-hook root did not open");
   hooks.root = root.get();
-  channel::ProductionPluginRuntimeRootTestAccess::set_supervisor_factory(
+  channel::PluginRuntimeRootTestAccess::set_supervisor_factory(
       *root, [] {
         return launcher::Supervisor::forTestOnly(
             FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, std::make_shared<Scope>());
@@ -2210,19 +2210,19 @@ int main(int argc, char **argv) {
   QCoreApplication application(argc, argv);
   try {
     if (argc == 2 &&
-        std::string_view(argv[1]) == "--production-runtime-factory-only") {
-      production_session_runtime_factory_tests();
-      std::cout << "production runtime factory tests passed\n";
+        std::string_view(argv[1]) == "--session-runtime-factory-only") {
+      session_runtime_factory_tests();
+      std::cout << "session runtime factory tests passed\n";
       return 0;
     }
-    if (argc == 2 && std::string_view(argv[1]) == "--production-root-only") {
-      production_root_is_the_composed_authority_path();
-      production_root_rejects_unusable_authority_and_providers();
-      production_root_queues_hook_lifecycle_work();
+    if (argc == 2 && std::string_view(argv[1]) == "--composed-root-only") {
+      composed_root_is_the_composed_authority_path();
+      composed_root_rejects_unusable_authority_and_providers();
+      composed_root_queues_hook_lifecycle_work();
       prepared_root_commits_on_ui_and_reuses_exact_hooks();
       prepared_root_final_fence_rejects_intervening_mutation();
       prepared_root_commit_is_ui_only_and_path_independent();
-      std::cout << "production root tests passed\n";
+      std::cout << "composed root tests passed\n";
       return 0;
     }
     if (argc == 2 && std::string_view(argv[1]) == "--prepared-session-only") {
@@ -2243,13 +2243,13 @@ int main(int argc, char **argv) {
     permission_controller_verifies_its_fixed_record();
     permission_controller_composes_consent_and_revocation();
     permission_controller_stops_after_fatal_revoke_io();
-    production_root_is_the_composed_authority_path();
-    production_root_rejects_unusable_authority_and_providers();
-    production_root_queues_hook_lifecycle_work();
+    composed_root_is_the_composed_authority_path();
+    composed_root_rejects_unusable_authority_and_providers();
+    composed_root_queues_hook_lifecycle_work();
     prepared_root_commits_on_ui_and_reuses_exact_hooks();
     prepared_root_final_fence_rejects_intervening_mutation();
     prepared_root_commit_is_ui_only_and_path_independent();
-    production_session_runtime_factory_tests();
+    session_runtime_factory_tests();
     failed_session_rejects_surfaces();
   } catch (const std::exception &error) {
     std::cerr << "FAIL: " << error.what() << '\n';

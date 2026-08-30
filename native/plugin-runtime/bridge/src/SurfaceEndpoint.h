@@ -1,6 +1,6 @@
 #pragma once
 
-#include "production_surface_session_port.hpp"
+#include "surface_session_port.hpp"
 #include "remote_surface.hpp"
 
 #include <memory>
@@ -20,19 +20,19 @@ namespace omarchy::plugin_runtime::bridge {
 // Manager-owned adapter for one declared surface. It remains event-loop
 // confined and owns every object that can route the session into QML. Active
 // means transport-ready only; it is not permission/publication readiness.
-class ProductionSurfaceEndpoint final
+class SurfaceEndpoint final
     : public host_session::SurfaceEndpoint,
       private RemoteSurfaceLifetimeObserver,
       private HostPointerRouter {
 public:
   enum class State { inert, attached, active, closing };
 
-  ProductionSurfaceEndpoint(channel::ProductionSurfaceSessionPort &session,
+  SurfaceEndpoint(channel::SurfaceSessionPort &session,
                             std::string declared_surface);
-  ~ProductionSurfaceEndpoint() override;
-  ProductionSurfaceEndpoint(const ProductionSurfaceEndpoint &) = delete;
-  ProductionSurfaceEndpoint &
-  operator=(const ProductionSurfaceEndpoint &) = delete;
+  ~SurfaceEndpoint() override;
+  SurfaceEndpoint(const SurfaceEndpoint &) = delete;
+  SurfaceEndpoint &
+  operator=(const SurfaceEndpoint &) = delete;
 
   [[nodiscard]] bool attach(RemotePluginSurface &surface,
                             std::uint32_t logical_width,
@@ -63,7 +63,7 @@ private:
       std::span<const std::byte> payload);
   void close_impl() noexcept;
 
-  channel::ProductionSurfaceSessionPort &session_;
+  channel::SurfaceSessionPort &session_;
   const std::string declared_surface_;
   const std::thread::id owner_thread_;
   std::unique_ptr<Impl> implementation_;

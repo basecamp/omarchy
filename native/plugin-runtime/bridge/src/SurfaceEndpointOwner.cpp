@@ -1,6 +1,6 @@
-#include "ProductionSurfaceEndpointOwner.h"
+#include "SurfaceEndpointOwner.h"
 
-#include "ProductionSurfaceEndpoint.h"
+#include "SurfaceEndpoint.h"
 #include "omarchy/plugin/wire/surface_name.hpp"
 #include "omarchy/plugin_runtime/surface/profile.hpp"
 #include "remote_surface.hpp"
@@ -93,33 +93,33 @@ PublishedSurfaceAttachment::PublishedSurfaceAttachment(
       declared_surface_(std::move(declared_surface)),
       publication_revision_(publication_revision) {}
 
-struct ProductionSurfaceEndpointOwner::Record final {
+struct SurfaceEndpointOwner::Record final {
   QString surface_key;
   RemotePluginSurface *remote = nullptr;
-  std::unique_ptr<ProductionSurfaceEndpoint> endpoint;
+  std::unique_ptr<SurfaceEndpoint> endpoint;
 };
 
-ProductionSurfaceEndpointOwner::ProductionSurfaceEndpointOwner(
+SurfaceEndpointOwner::SurfaceEndpointOwner(
     surface_host::InspectionAuthority &inspection,
     surface_host::MonotonicClock &clock,
     plugins::permissions::ActivationBinding binding,
     qulonglong publication_revision,
-    channel::ProductionSurfaceSessionPort &session) noexcept
+    channel::SurfaceSessionPort &session) noexcept
     : inspection_(inspection), clock_(clock), binding_(std::move(binding)),
       publication_revision_(publication_revision), session_(session),
       owner_thread_(std::this_thread::get_id()) {}
 
-ProductionSurfaceEndpointOwner::~ProductionSurfaceEndpointOwner() noexcept {
+SurfaceEndpointOwner::~SurfaceEndpointOwner() noexcept {
   if (!on_owner_thread())
     std::terminate();
   close_all();
 }
 
-ProductionEndpointAttachResult ProductionSurfaceEndpointOwner::attach(
+SurfaceEndpointAttachResult SurfaceEndpointOwner::attach(
     const PublishedSurfaceAttachment &published, QStringView qml_key,
     RemotePluginSurface &surface_item) noexcept {
   if (!on_owner_thread() || QThread::currentThread() != surface_item.thread())
-    return ProductionEndpointAttachResult::rejected;
+    return SurfaceEndpointAttachResult::rejected;
   prune_closed();
   if (qml_key != published.surface_key_ || published.surface_key_.isEmpty() ||
       published.surface_key_.size() > kMaximumPublishedSurfaceKeyCharacters ||
@@ -132,13 +132,13 @@ ProductionEndpointAttachResult ProductionSurfaceEndpointOwner::attach(
         return record.surface_key == published.surface_key_ ||
                record.remote == &surface_item;
       }))
-    return ProductionEndpointAttachResult::rejected;
+    return SurfaceEndpointAttachResult::rejected;
   TrustedSurfaceGeometry geometry;
   switch (trusted_geometry(surface_item, geometry)) {
   case GeometryResult::not_ready:
-    return ProductionEndpointAttachResult::not_ready;
+    return SurfaceEndpointAttachResult::not_ready;
   case GeometryResult::rejected:
-    return ProductionEndpointAttachResult::rejected;
+    return SurfaceEndpointAttachResult::rejected;
   case GeometryResult::ready:
     break;
   }
@@ -148,13 +148,13 @@ ProductionEndpointAttachResult ProductionSurfaceEndpointOwner::attach(
       description->plugin_id != published.binding_.plugin.view() ||
       description->session_nonce == 0 || description->key.id == 0 ||
       description->key.generation != published.binding_.generation)
-    return ProductionEndpointAttachResult::rejected;
+    return SurfaceEndpointAttachResult::rejected;
 
   try {
     Record record{
         .surface_key = published.surface_key_,
         .remote = &surface_item,
-        .endpoint = std::make_unique<ProductionSurfaceEndpoint>(
+        .endpoint = std::make_unique<SurfaceEndpoint>(
             session_, published.declared_surface_),
     };
     records_.reserve(records_.size() + 1);
@@ -162,15 +162,15 @@ ProductionEndpointAttachResult ProductionSurfaceEndpointOwner::attach(
                                  geometry.logical_height,
                                  geometry.dpr_numerator,
                                  geometry.dpr_denominator, inspection_, clock_))
-      return ProductionEndpointAttachResult::rejected;
+      return SurfaceEndpointAttachResult::rejected;
     records_.push_back(std::move(record));
-    return ProductionEndpointAttachResult::attached;
+    return SurfaceEndpointAttachResult::attached;
   } catch (...) {
-    return ProductionEndpointAttachResult::rejected;
+    return SurfaceEndpointAttachResult::rejected;
   }
 }
 
-void ProductionSurfaceEndpointOwner::close_all() noexcept {
+void SurfaceEndpointOwner::close_all() noexcept {
   if (!on_owner_thread())
     std::terminate();
   for (auto &record : records_)
@@ -178,25 +178,25 @@ void ProductionSurfaceEndpointOwner::close_all() noexcept {
   records_.clear();
 }
 
-void ProductionSurfaceEndpointOwner::prune_closed() noexcept {
+void SurfaceEndpointOwner::prune_closed() noexcept {
   std::erase_if(records_, [](const Record &record) {
     return record.endpoint->state() ==
-           ProductionSurfaceEndpoint::State::closing;
+           SurfaceEndpoint::State::closing;
   });
 }
 
-bool ProductionSurfaceEndpointOwner::on_owner_thread() const noexcept {
+bool SurfaceEndpointOwner::on_owner_thread() const noexcept {
   return std::this_thread::get_id() == owner_thread_;
 }
 
-#ifdef OMARCHY_PRODUCTION_SURFACE_ENDPOINT_OWNER_TESTING
-std::size_t ProductionSurfaceEndpointOwnerTestAccess::count(
-    const ProductionSurfaceEndpointOwner &owner) noexcept {
+#ifdef OMARCHY_SURFACE_ENDPOINT_OWNER_TESTING
+std::size_t SurfaceEndpointOwnerTestAccess::count(
+    const SurfaceEndpointOwner &owner) noexcept {
   return owner.records_.size();
 }
 
-std::optional<ProductionSurfaceEndpointOwnerTestAccess::Geometry>
-ProductionSurfaceEndpointOwnerTestAccess::geometry(
+std::optional<SurfaceEndpointOwnerTestAccess::Geometry>
+SurfaceEndpointOwnerTestAccess::geometry(
     const RemotePluginSurface &surface) noexcept {
   TrustedSurfaceGeometry geometry;
   if (trusted_geometry(surface, geometry) != GeometryResult::ready)
@@ -207,8 +207,8 @@ ProductionSurfaceEndpointOwnerTestAccess::geometry(
                   .dpr_denominator = geometry.dpr_denominator};
 }
 
-std::optional<ProductionSurfaceEndpointOwnerTestAccess::Geometry>
-ProductionSurfaceEndpointOwnerTestAccess::geometry(
+std::optional<SurfaceEndpointOwnerTestAccess::Geometry>
+SurfaceEndpointOwnerTestAccess::geometry(
     qreal width, qreal height, qreal device_pixel_ratio) noexcept {
   TrustedSurfaceGeometry geometry;
   if (trusted_geometry(width, height, device_pixel_ratio, geometry) !=

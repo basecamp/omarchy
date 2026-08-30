@@ -1,4 +1,4 @@
-#include "ProductionSurfaceEndpoint.h"
+#include "SurfaceEndpoint.h"
 
 #include "omarchy/plugin_runtime/surface/profile.hpp"
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
@@ -39,7 +39,7 @@ permissions::ActivationBinding binding(std::uint64_t generation = 7) {
           .generation = generation};
 }
 
-class Port final : public channel::ProductionSurfaceSessionPort {
+class Port final : public channel::SurfaceSessionPort {
 public:
   Port() {
     description = {
@@ -53,7 +53,7 @@ public:
     };
   }
 
-  std::optional<channel::ProductionSurfaceDescription>
+  std::optional<channel::SurfaceDescription>
   describe(std::string_view name) const noexcept override {
     if (fail_describe)
       return {};
@@ -62,7 +62,7 @@ public:
     return description;
   }
 
-  bool attach(const channel::ProductionSurfaceDescription &expected,
+  bool attach(const channel::SurfaceDescription &expected,
               host::SurfaceEndpoint &candidate) noexcept override {
     ++attach_calls;
     if (!running || fail_attach || expected != description ||
@@ -73,7 +73,7 @@ public:
     return true;
   }
 
-  bool detach(const channel::ProductionSurfaceDescription &expected,
+  bool detach(const channel::SurfaceDescription &expected,
               const host::SurfaceEndpoint &candidate) noexcept override {
     ++detach_calls;
     if (expected != description) {
@@ -91,7 +91,7 @@ public:
   }
 
   bool arm_surface_intent(
-      const channel::ProductionSurfaceDescription &expected,
+      const channel::SurfaceDescription &expected,
       std::uint64_t sequence) noexcept override {
     ++arm_calls;
     last_arm_sequence = sequence;
@@ -99,7 +99,7 @@ public:
   }
 
   void clear_surface_intent_eligibility(
-      const channel::ProductionSurfaceDescription &expected) noexcept override {
+      const channel::SurfaceDescription &expected) noexcept override {
     if (expected == description)
       ++clear_calls;
     else
@@ -128,7 +128,7 @@ public:
   }
 
   bool send_render_packet_impl(
-                               const channel::ProductionSurfaceDescription &expected,
+                               const channel::SurfaceDescription &expected,
                                const wire::EnvelopeHeader &header,
                                std::vector<std::byte> payload,
                                std::vector<host::OwnedFd> descriptors) noexcept override {
@@ -154,8 +154,8 @@ public:
     return !send_fails || header.message_type != fail_message_type;
   }
 
-  channel::ProductionSurfaceDescription description;
-  std::optional<channel::ProductionSurfaceDescription> attached_description;
+  channel::SurfaceDescription description;
+  std::optional<channel::SurfaceDescription> attached_description;
   host::SurfaceEndpoint *endpoint = nullptr;
   bridge::RemotePluginSurface *remote_at_detach = nullptr;
   wire::EnvelopeHeader last_header{};
@@ -215,8 +215,8 @@ struct Harness {
 
   void attach() {
     require(endpoint.attach(remote, 64, 32, 1, 1, inspection, clock),
-            "production endpoint attach failed");
-    require(endpoint.state() == bridge::ProductionSurfaceEndpoint::State::active &&
+            "surface endpoint attach failed");
+    require(endpoint.state() == bridge::SurfaceEndpoint::State::active &&
                 port.send_calls == 1,
             "endpoint did not activate through profile offer");
   }
@@ -247,13 +247,13 @@ struct Harness {
   Inspection inspection;
   Clock clock;
   bridge::RemotePluginSurface remote;
-  bridge::ProductionSurfaceEndpoint endpoint;
+  bridge::SurfaceEndpoint endpoint;
 };
 
 void lifecycle_and_descriptor_contract() {
   Harness value;
   require(value.endpoint.state() ==
-              bridge::ProductionSurfaceEndpoint::State::inert,
+              bridge::SurfaceEndpoint::State::inert,
           "endpoint did not begin inert");
   value.attach();
   require(!value.endpoint.attach(value.remote, 64, 32, 1, 1,
@@ -279,7 +279,7 @@ void lifecycle_and_descriptor_contract() {
   value.endpoint.close();
   value.endpoint.close();
   require(value.endpoint.state() ==
-              bridge::ProductionSurfaceEndpoint::State::closing &&
+              bridge::SurfaceEndpoint::State::closing &&
               value.port.detach_calls == 1 &&
               value.port.remote_was_alive_at_detach &&
               value.port.send_calls == sends_before_close,
@@ -375,14 +375,14 @@ void remote_destruction_detaches_while_cpp_object_is_alive() {
   Port port;
   Inspection inspection;
   Clock clock;
-  bridge::ProductionSurfaceEndpoint endpoint(port, "pet");
+  bridge::SurfaceEndpoint endpoint(port, "pet");
   {
     bridge::RemotePluginSurface remote;
     port.remote_at_detach = &remote;
     require(endpoint.attach(remote, 64, 32, 1, 1, inspection, clock),
             "destruction-order fixture did not attach");
   }
-  require(endpoint.state() == bridge::ProductionSurfaceEndpoint::State::closing &&
+  require(endpoint.state() == bridge::SurfaceEndpoint::State::closing &&
               port.detach_calls == 1 && port.remote_was_alive_at_detach,
           "remote C++ destruction did not fence its endpoint first");
 }
@@ -392,14 +392,14 @@ void attach_rolls_back_every_published_owner() {
   Inspection inspection;
   Clock clock;
   bridge::RemotePluginSurface remote;
-  bridge::ProductionSurfaceEndpoint endpoint(port, "pet");
+  bridge::SurfaceEndpoint endpoint(port, "pet");
   port.fail_describe = true;
   require(!endpoint.attach(remote, 64, 32, 1, 1, inspection, clock),
           "failed surface description escaped endpoint attach");
   port.fail_describe = false;
   port.fail_attach = true;
   require(!endpoint.attach(remote, 64, 32, 1, 1, inspection, clock) &&
-              endpoint.state() == bridge::ProductionSurfaceEndpoint::State::inert,
+              endpoint.state() == bridge::SurfaceEndpoint::State::inert,
           "failed transactional session attach escaped endpoint rollback");
   port.fail_attach = false;
   require(endpoint.attach(remote, 64, 32, 1, 1, inspection, clock),
@@ -408,7 +408,7 @@ void attach_rolls_back_every_published_owner() {
 
   Port bounds_port;
   bridge::RemotePluginSurface bounds_remote;
-  bridge::ProductionSurfaceEndpoint bounds(bounds_port, "pet");
+  bridge::SurfaceEndpoint bounds(bounds_port, "pet");
   require(!bounds.attach(bounds_remote, 65, 32, 1, 1, inspection, clock) &&
               bounds_port.detach_calls == 1 && bounds_port.send_calls == 0 &&
               bounds.attach(bounds_remote, 64, 32, 1, 1, inspection, clock),
@@ -420,7 +420,7 @@ void attach_rolls_back_every_published_owner() {
   RegionRouter occupied;
   require(router_remote.bindHostInputRegionRouter(occupied),
           "occupied region-router fixture did not bind");
-  bridge::ProductionSurfaceEndpoint router_endpoint(router_port, "pet");
+  bridge::SurfaceEndpoint router_endpoint(router_port, "pet");
   require(!router_endpoint.attach(router_remote, 64, 32, 1, 1, inspection,
                                   clock) &&
               router_port.detach_calls == 1 && router_port.send_calls == 0,
@@ -440,7 +440,7 @@ void attach_rolls_back_every_published_owner() {
 
   Port transport_port;
   bridge::RemotePluginSurface transport_remote;
-  bridge::ProductionSurfaceEndpoint transport_endpoint(transport_port,
+  bridge::SurfaceEndpoint transport_endpoint(transport_port,
                                                         "pet");
   auto occupied_sink = std::make_shared<InputSink>();
   auto occupied_transport =
@@ -502,14 +502,14 @@ void late_g1_remote_teardown_cannot_touch_g2() {
   Port port;
   Inspection inspection;
   Clock clock;
-  bridge::ProductionSurfaceEndpoint endpoint(port, "pet");
+  bridge::SurfaceEndpoint endpoint(port, "pet");
   {
     bridge::RemotePluginSurface remote;
     require(endpoint.attach(remote, 64, 32, 1, 1, inspection, clock),
             "late G1 teardown fixture did not attach");
     port.replace_session();
   }
-  require(endpoint.state() == bridge::ProductionSurfaceEndpoint::State::closing &&
+  require(endpoint.state() == bridge::SurfaceEndpoint::State::closing &&
               port.stale_clear_calls == 1 && port.clear_calls == 0 &&
               port.stale_detach_calls == 1,
           "late G1 teardown cleared or detached the replacement session");
@@ -517,7 +517,7 @@ void late_g1_remote_teardown_cannot_touch_g2() {
 
 } // namespace
 
-void run_production_surface_endpoint_tests() {
+void run_surface_endpoint_tests() {
   lifecycle_and_descriptor_contract();
   stale_and_malformed_messages_fail_closed();
   gesture_arming_is_exact_and_send_failure_clears();

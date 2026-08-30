@@ -120,7 +120,7 @@ if(BUILD_TESTING)
     TIMEOUT 15 LABELS "unit;security;session")
 
   # Compile the lifecycle implementation separately so deterministic fault
-  # hooks can never enter the production host-session archive.
+  # hooks can never enter the trusted host-session archive.
   add_executable(omarchy-plugin-session-io-test
     src/plugin_session_io.cpp
     tests/plugin_session_io_test.cpp)
