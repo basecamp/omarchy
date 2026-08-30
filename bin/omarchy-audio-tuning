@@ -7,6 +7,8 @@
 
 set -uo pipefail
 
+: "${OMARCHY_PATH:=/usr/share/omarchy}"
+
 tunings_dir="$OMARCHY_PATH/default/audio/tunings"
 config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
 
