@@ -2,6 +2,25 @@
 
 source "$(dirname "$0")/base-test.sh"
 
+toggle="$ROOT/bin/omarchy-toggle-hybrid-gpu"
+force_hook="$ROOT/default/systemd/system-sleep/force-igpu"
+hibernation="$ROOT/bin/omarchy-hibernation-setup"
+
+if grep -Eq 'cp .*systemd/system-sleep|rm -[^ ]*r[^ ]* .*systemd/system-sleep' "$toggle" "$hibernation"; then
+  fail "runtime commands still create or recursively remove static hooks under /usr"
+fi
+grep -F 'force_igpu_marker=/etc/omarchy/force-igpu' "$toggle" >/dev/null ||
+  fail "hybrid GPU mode has no runtime activation marker"
+grep -F 'force_igpu_hook=/usr/lib/systemd/system-sleep/omarchy-force-igpu' "$toggle" >/dev/null ||
+  fail "hybrid GPU mode does not use the package-owned hook"
+grep -F 'delay_source=/usr/share/omarchy/default/systemd/system/supergfxd.service.d/delay-start.conf' "$toggle" >/dev/null ||
+  fail "hybrid GPU mode does not use the package-owned delay source"
+marker_line=$(grep -nF '[[ -f /etc/omarchy/force-igpu ]] || exit 0' "$force_hook" | cut -d: -f1)
+case_line=$(grep -nF 'case "$1" in' "$force_hook" | cut -d: -f1)
+[[ -n $marker_line && -n $case_line ]] && (( marker_line < case_line )) ||
+  fail "the package-owned force-iGPU hook runs before checking its activation marker"
+pass "hybrid GPU sleep behavior keeps executable code package-owned"
+
 test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
 

@@ -5,35 +5,38 @@
 
 set -e
 
-# The conflict handler's last resort: pacman puts its questions to the person
-# running the update instead of answering them itself. Nothing here may capture
-# a stream, because an upgrade without --noconfirm prompts on stderr. The
-# handler has already said why, so no heading here either.
-if [[ ${OMARCHY_UPDATE_CONFLICT:-} == 1 && ${OMARCHY_UPDATE_INTERACTIVE:-} == 1 ]]; then
-  exec sudo env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --overwrite '/usr/share/omarchy/*'
-fi
-
 echo -e "\e[32m\nUpdate system packages\e[0m"
 
 errors=$(mktemp)
 trap 'rm -f "$errors"' EXIT
 
-# /usr/share/omarchy is wholly Omarchy's; files can land there unowned and would
-# otherwise abort the upgrade. Packaged content wins there.
-#
-# Progress bars stay on stdout. Errors are on stderr, kept for the conflict
-# handler below; LC_ALL=C is what keeps them parseable in any locale.
-if sudo env LC_ALL=C OMARCHY_UPDATE_PACMAN=1 pacman -Syu --noconfirm \
-  --overwrite '/usr/share/omarchy/*' 2>"$errors"; then
-  cat "$errors" >&2
-  exit 0
+# Progress bars stay on stdout. Stderr is captured only to distinguish the one
+# failure that needs a person's answer; it never authorizes filesystem changes.
+# Fixed privileged binaries keep a dev checkout out of sudo's command lookup.
+if sudo /usr/bin/env LC_ALL=C OMARCHY_UPDATE_PACMAN=1 /usr/bin/pacman -Syu --noconfirm 2>"$errors"; then
+  update_status=0
+else
+  update_status=$?
 fi
 cat "$errors" >&2
 
-# The handler takes it from here: it clears files pacman doesn't own yet and
-# runs this again, and puts a package conflict to whoever started the update.
-# Anything else, including a second failure, is for a human.
-[[ ${OMARCHY_UPDATE_RETRY:-} != 1 ]] || exit 1
-# exec, so the EXIT trap above does not fire and the handler can still read the
-# report. It takes over deleting it.
-exec env OMARCHY_UPDATE_CONFLICT=1 omarchy-update-system-pkgs-when-conflicted "$errors"
+if (( update_status == 0 )); then
+  exit 0
+fi
+
+# --noconfirm declines package replacement questions. In an attended update,
+# retry that one case against the databases the first attempt just refreshed so
+# Pacman can put the decision back to the person running it. File conflicts and
+# every other failure remain untouched and fail with Pacman's original status.
+if grep -q 'unresolvable package conflicts detected' "$errors"; then
+  if [[ ${OMARCHY_UPDATE_UNATTENDED:-} == 1 || ! -t 0 || ! -t 2 ]]; then
+    echo -e "\e[33m\nThis upgrade needs an answer. Run omarchy update interactively to give it.\e[0m" >&2
+    exit "$update_status"
+  fi
+
+  echo -e "\e[33m\nA package conflict stopped this upgrade. Running it again so you can answer:\e[0m"
+  sudo /usr/bin/env OMARCHY_UPDATE_PACMAN=1 /usr/bin/pacman -Su
+  exit $?
+fi
+
+exit "$update_status"

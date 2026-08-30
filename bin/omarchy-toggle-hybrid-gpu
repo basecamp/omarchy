@@ -3,6 +3,11 @@
 # omarchy:summary=Toggle dedicated vs integrated GPU mode via supergfxd (for hybrid gpu laptops, like Asus G14).
 # omarchy:requires-sudo=true
 
+force_igpu_marker=/etc/omarchy/force-igpu
+force_igpu_hook=/usr/lib/systemd/system-sleep/omarchy-force-igpu
+delay_source=/usr/share/omarchy/default/systemd/system/supergfxd.service.d/delay-start.conf
+delay_drop_in=/etc/systemd/system/supergfxd.service.d/10-omarchy-delay-start.conf
+
 if omarchy-cmd-missing supergfxctl; then
   omarchy-pkg-add supergfxctl
 
@@ -43,29 +48,49 @@ case "$gpu_mode" in
     # Switch to hybrid mode
     sudo sed -i "s/\"mode\": \".*\"/\"mode\": \"Hybrid\"/" /etc/supergfxd.conf
 
-    # Let hybrid mode be the default after system sleep
-    sudo rm -rf /usr/lib/systemd/system-sleep/force-igpu
+    # Let hybrid mode be the default after system sleep. The hook itself is
+    # package-owned; only its activation marker is runtime state.
+    sudo rm -f "$force_igpu_marker"
 
     # Remove the startup delay override (not needed for Hybrid mode)
-    sudo rm -rf /etc/systemd/system/supergfxd.service.d/delay-start.conf
+    sudo rm -f "$delay_drop_in"
+
+    # Retire copies made by older Omarchy releases.
+    sudo rm -f /usr/lib/systemd/system-sleep/force-igpu
+    sudo rm -f /etc/systemd/system/supergfxd.service.d/delay-start.conf
 
     omarchy-system-reboot
   fi
   ;;
 "Hybrid")
   if gum confirm "Use only integrated GPU and reboot?"; then
+    if [[ ! -x $force_igpu_hook ]]; then
+      echo "$force_igpu_hook is missing. Update omarchy-settings before enabling Integrated mode." >&2
+      exit 1
+    fi
+    if [[ ! -f $delay_source ]]; then
+      echo "$delay_source is missing. Update omarchy-settings before enabling Integrated mode." >&2
+      exit 1
+    fi
+
     # Switch to integrated mode and ensure vfio is enabled (needed for sleep/wake trick)
     sudo sed -i "s/\"mode\": \".*\"/\"mode\": \"Integrated\"/" /etc/supergfxd.conf
     sudo sed -i 's/"vfio_enable": false/"vfio_enable": true/' /etc/supergfxd.conf
 
-    # Force igpu mode after system sleep (or dgpu could get activated)
-    sudo mkdir -p /usr/lib/systemd/system-sleep
-    sudo cp -p "$OMARCHY_PATH/default/systemd/system-sleep/force-igpu" /usr/lib/systemd/system-sleep/
+    # Force iGPU mode after system sleep (or the dGPU could get activated).
+    # Static executable code stays package-owned; the marker is the state.
+    sudo install -d -m 0755 /etc/omarchy
+    sudo rm -f "$force_igpu_marker"
+    sudo install -m 0644 /dev/null "$force_igpu_marker"
 
     # Delay supergfxd startup to avoid race condition with display manager
     # that can cause system freeze when booting in Integrated mode
-    sudo mkdir -p /etc/systemd/system/supergfxd.service.d
-    sudo cp -p "$OMARCHY_PATH/default/systemd/system/supergfxd.service.d/delay-start.conf" /etc/systemd/system/supergfxd.service.d/
+    sudo install -d -m 0755 /etc/systemd/system/supergfxd.service.d
+    sudo ln -sfn "$delay_source" "$delay_drop_in"
+
+    # Retire copies made by older Omarchy releases.
+    sudo rm -f /usr/lib/systemd/system-sleep/force-igpu
+    sudo rm -f /etc/systemd/system/supergfxd.service.d/delay-start.conf
 
     omarchy-system-reboot
   fi

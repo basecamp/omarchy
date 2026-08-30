@@ -208,6 +208,8 @@ OMARCHY_TEST_REAL_BROWSER_INSTALL=true omarchy-default-browser --install chromiu
 [[ $(omarchy-default-browser) == "chromium" ]] || fail "Chromium becomes the default after its full installer succeeds"
 cmp -s "$ROOT/config/chromium-flags.conf" "$test_home/.config/chromium-flags.conf" ||
   fail "Chromium browser installer copies the default flags"
+[[ -f "$test_home/.config/chromium/EULA Accepted" ]] ||
+  fail "Chromium browser installer records per-user EULA acceptance"
 grep -Fxq 'sudo:install -d -m 0755 -o root -g root /etc/chromium' "$setup_log" ||
   fail "Chromium browser installer creates a root-owned Chromium policy parent"
 grep -Fxq 'sudo:install -d -m 0755 -o root -g root /etc/chromium/policies' "$setup_log" ||

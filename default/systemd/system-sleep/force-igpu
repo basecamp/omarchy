@@ -5,6 +5,12 @@
 # will wake after suspend in Hybrid mode, even if the system was in Integrated mode before
 # suspending.
 
+# This hook is package-owned and present on every Omarchy system. The hybrid
+# GPU toggle enables it with a root-owned marker only on machines using
+# Integrated mode.
+[[ -f /etc/omarchy/force-igpu ]] || exit 0
+[[ -x /usr/bin/supergfxctl ]] || exit 0
+
 case "$1" in
   pre)
     # Before hibernating, switch to Vfio so the nvidia driver is detached from the dGPU.

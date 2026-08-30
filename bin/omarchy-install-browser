@@ -36,6 +36,8 @@ chromium)
 
   setup_chromium_policy_directory /etc/chromium/policies/managed
   copy_chromium_flags ~/.config/chromium-flags.conf
+  mkdir -p ~/.config/chromium
+  touch ~/.config/chromium/'EULA Accepted'
   omarchy-theme-set-browser
   announce_browser_installed "Chromium"
   ;;

@@ -38,6 +38,10 @@ fail() {
   exit 1
 }
 
+# The functions in this marked block only resolve values; they never mutate the
+# system. Tests extract and execute this exact policy without sourcing the
+# self-contained upgrader's privileged top-level flow.
+# OMARCHY_UPGRADE_SELECTION_BEGIN
 normalize_channel() {
   case "${1:-}" in
     stable|master|main) echo stable ;;
@@ -55,18 +59,125 @@ valid_channel() {
 # omarchy-version-channel reads it. Order matters: mirror.omarchy.org is a
 # substring of both of the others.
 detect_installed_channel() {
-  [[ -f /etc/pacman.d/mirrorlist ]] || return 1
+  local mirrorlist=${1:-/etc/pacman.d/mirrorlist}
+  [[ -f $mirrorlist ]] || return 1
 
-  if grep -q 'https://stable-mirror.omarchy.org/' /etc/pacman.d/mirrorlist; then
+  if grep -q 'https://stable-mirror.omarchy.org/' "$mirrorlist"; then
     echo stable
-  elif grep -q 'https://rc-mirror.omarchy.org/' /etc/pacman.d/mirrorlist; then
+  elif grep -q 'https://rc-mirror.omarchy.org/' "$mirrorlist"; then
     echo rc
-  elif grep -q 'https://mirror.omarchy.org/' /etc/pacman.d/mirrorlist; then
+  elif grep -q 'https://mirror.omarchy.org/' "$mirrorlist"; then
     echo edge
   else
     return 1
   fi
 }
+
+parse_upgrade_arguments() {
+  while (($#)); do
+    case "$1" in
+      -y|--yes)
+        yes=1
+        shift
+        ;;
+      --reboot)
+        auto_reboot=1
+        shift
+        ;;
+      --dev)
+        use_dev_packages=1
+        shift
+        ;;
+      --channel)
+        channel_override="${2:-}"
+        channel_override_cli=1
+        shift 2
+        ;;
+      --user)
+        target_user="${2:-}"
+        shift 2
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        fail "Unknown option: $1"
+        ;;
+    esac
+  done
+}
+
+normalize_upgrade_dev_mode() {
+  case "$use_dev_packages" in
+    1|true|yes|on) use_dev_packages=1 ;;
+    0|false|no|off|"") use_dev_packages=0 ;;
+    *) fail "Invalid OMARCHY_UPGRADE_DEV value '$use_dev_packages'. Use 1/0, true/false, or pass --dev." ;;
+  esac
+}
+
+resolve_upgrade_channel() {
+  local installed_channel=${1:-}
+
+  # Land on the Quattro equivalent of wherever the machine already is, unless
+  # the caller said otherwise. Stable and rc carry the production package pair;
+  # edge carries the dev pair used while Quattro is still under development.
+  if [[ -z $channel_override ]] && (( ! use_dev_packages )); then
+    if [[ -z $installed_channel ]]; then
+      installed_channel=$(detect_installed_channel || true)
+    fi
+
+    case "$installed_channel" in
+      stable) channel_override=stable ;;
+      rc) channel_override=rc ;;
+      edge) channel_override=edge use_dev_packages=1 ;;
+    esac
+  fi
+
+  if (( use_dev_packages )); then
+    # The dev pair is published only to edge. Release candidates use the
+    # production pair from rc so they exercise the exact artifacts stable gets.
+    if [[ -n $channel_override ]]; then
+      if ! valid_channel "$channel_override"; then
+        fail "Invalid channel '$channel_override'. Use stable, rc, or edge."
+      fi
+      if [[ $(normalize_channel "$channel_override") != edge ]]; then
+        fail "--dev needs the edge package repo; use --channel edge."
+      fi
+    else
+      channel_override=edge
+    fi
+  fi
+
+  if { [[ -n $channel_override ]] || (( channel_override_cli )); } && ! valid_channel "$channel_override"; then
+    fail "Invalid channel '$channel_override'. Use stable, rc, or edge."
+  fi
+
+  channel=$(normalize_channel "${channel_override:-stable}")
+  case "$channel" in
+    stable)
+      mirror_server='https://stable-mirror.omarchy.org/$repo/os/$arch'
+      package_server='https://pkgs.omarchy.org/stable/$arch'
+      ;;
+    rc)
+      mirror_server='https://rc-mirror.omarchy.org/$repo/os/$arch'
+      package_server='https://pkgs.omarchy.org/rc/$arch'
+      ;;
+    edge)
+      mirror_server='https://mirror.omarchy.org/$repo/os/$arch'
+      package_server='https://pkgs.omarchy.org/edge/$arch'
+      ;;
+  esac
+}
+
+select_omarchy_package_names() {
+  if (( use_dev_packages )); then
+    printf '%s\n' 'omarchy-dev omarchy-settings-dev'
+  else
+    printf '%s\n' 'omarchy omarchy-settings'
+  fi
+}
+# OMARCHY_UPGRADE_SELECTION_END
 
 channel_override="${OMARCHY_UPGRADE_CHANNEL:-}"
 channel_override_cli=0
@@ -76,76 +187,9 @@ auto_reboot=0
 boot_cmdline_unsafe=0
 use_dev_packages=${OMARCHY_UPGRADE_DEV:-0}
 
-while (($#)); do
-  case "$1" in
-    -y|--yes)
-      yes=1
-      shift
-      ;;
-    --reboot)
-      auto_reboot=1
-      shift
-      ;;
-    --dev)
-      use_dev_packages=1
-      shift
-      ;;
-    --channel)
-      channel_override="${2:-}"
-      channel_override_cli=1
-      shift 2
-      ;;
-    --user)
-      target_user="${2:-}"
-      shift 2
-      ;;
-    -h|--help)
-      usage
-      exit 0
-      ;;
-    *)
-      fail "Unknown option: $1"
-      ;;
-  esac
-done
-
-case "$use_dev_packages" in
-  1|true|yes|on) use_dev_packages=1 ;;
-  0|false|no|off|"") use_dev_packages=0 ;;
-  *) fail "Invalid OMARCHY_UPGRADE_DEV value '$use_dev_packages'. Use 1/0, true/false, or pass --dev." ;;
-esac
-
-# Land on the Quattro equivalent of wherever the machine already is, unless the
-# caller said otherwise. Stable machines get the production packages off the
-# stable channel. rc and edge machines stay on their own mirror, but take the
-# dev packages, because that is where Quattro lives until it ships.
-if [[ -z $channel_override ]] && (( ! use_dev_packages )); then
-  case "$(detect_installed_channel || true)" in
-    stable) channel_override=stable ;;
-    rc) channel_override=rc use_dev_packages=1 ;;
-    edge) channel_override=edge use_dev_packages=1 ;;
-  esac
-fi
-
-if (( use_dev_packages )); then
-  # The dev packages are only published to the edge package repo, which the rc
-  # and edge channels both point at; only stable is incompatible. rc keeps its
-  # own Arch mirror either way.
-  if [[ -n $channel_override ]]; then
-    if ! valid_channel "$channel_override"; then
-      fail "Invalid channel '$channel_override'. Use stable, rc, or edge."
-    fi
-    if [[ $(normalize_channel "$channel_override") == stable ]]; then
-      fail "--dev needs the edge package repo; use --channel rc or --channel edge."
-    fi
-  else
-    channel_override=edge
-  fi
-fi
-
-if { [[ -n $channel_override ]] || (( channel_override_cli )); } && ! valid_channel "$channel_override"; then
-  fail "Invalid channel '$channel_override'. Use stable, rc, or edge."
-fi
+parse_upgrade_arguments "$@"
+normalize_upgrade_dev_mode
+resolve_upgrade_channel
 
 if ! command -v pacman >/dev/null 2>&1; then
   fail "This upgrade is only supported on Arch/Omarchy systems with pacman."
@@ -310,23 +354,6 @@ discover_hyprland_signature() {
   (( ${#candidates[@]} == 1 )) || return 1
   printf '%s\n' "${candidates[0]}"
 }
-
-channel=$(normalize_channel "${channel_override:-stable}")
-
-case "$channel" in
-  stable)
-    mirror_server='https://stable-mirror.omarchy.org/$repo/os/$arch'
-    package_server='https://pkgs.omarchy.org/stable/$arch'
-    ;;
-  rc)
-    mirror_server='https://rc-mirror.omarchy.org/$repo/os/$arch'
-    package_server='https://pkgs.omarchy.org/edge/$arch'
-    ;;
-  edge)
-    mirror_server='https://mirror.omarchy.org/$repo/os/$arch'
-    package_server='https://pkgs.omarchy.org/edge/$arch'
-    ;;
-esac
 
 if (( ! yes )); then
   printf '\033[2J\033[3J\033[H' >/dev/tty
@@ -712,12 +739,8 @@ migrate_1password_beta_package() {
 }
 
 install_omarchy_quattro_packages() {
-  local omarchy_package=omarchy
-  local settings_package=omarchy-settings
-  if (( use_dev_packages )); then
-    omarchy_package=omarchy-dev
-    settings_package=omarchy-settings-dev
-  fi
+  local omarchy_package settings_package
+  read -r omarchy_package settings_package < <(select_omarchy_package_names)
 
   local core_packages=(
     omarchy-keyring
@@ -729,19 +752,24 @@ install_omarchy_quattro_packages() {
   )
   local base_packages=()
 
-  log "Upgrading system packages and installing Omarchy quattro packages"
+  log "Adopting legacy system files into Omarchy quattro package ownership"
   (( use_dev_packages )) && log "Using dev packages [omarchy-dev / omarchy-settings-dev]"
   # --noconfirm answers "no" to conflict-removal prompts. --ask 4 preselects
   # removing the conflicting package, which is required for legacy packages like
   # ttf-jetbrains-mono-nerd -> ttf-jetbrains-mono-nerd-basic.
-  as_root env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --needed --noconfirm --ask 4 --overwrite='*' "${core_packages[@]}"
+  # omarchy-settings owns the static system paths written directly by 3.x. This
+  # is their one-time ownership bridge; no later package operation overwrites.
+  as_root env OMARCHY_UPDATE_PACMAN=1 pacman -S --noconfirm --ask 4 --overwrite='*' "$settings_package"
+
+  log "Upgrading system packages and installing Omarchy quattro packages"
+  as_root env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --needed --noconfirm --ask 4 "${core_packages[@]}"
   mark_packages_explicit "${core_packages[@]}"
 
   if [[ -f /usr/share/omarchy/install/omarchy-base.packages ]]; then
     log "Installing Omarchy quattro default package set"
     mapfile -t base_packages < <(sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' /usr/share/omarchy/install/omarchy-base.packages)
     if (( ${#base_packages[@]} )); then
-      as_root pacman -S --needed --noconfirm --ask 4 --overwrite='*' "${base_packages[@]}"
+      as_root pacman -S --needed --noconfirm --ask 4 "${base_packages[@]}"
       mark_packages_explicit "${base_packages[@]}"
     fi
   else
@@ -760,7 +788,7 @@ install_omarchy_quattro_packages() {
     libpulse
     wireplumber
   )
-  as_root pacman -S --needed --noconfirm --ask 4 --overwrite='*' "${audio_packages[@]}"
+  as_root pacman -S --needed --noconfirm --ask 4 "${audio_packages[@]}"
   mark_packages_explicit "${audio_packages[@]}"
 }
 
@@ -1197,32 +1225,7 @@ run_post_upgrade_migrations() {
 
 run_final_system_package_upgrade() {
   log "Checking for remaining system package updates"
-  as_root env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --noconfirm --ask 4 \
-    --overwrite '/etc/docker/daemon.json' \
-    --overwrite '/etc/gnupg/dirmngr.conf' \
-    --overwrite '/etc/mkinitcpio.conf.d/omarchy_hooks.conf' \
-    --overwrite '/etc/mkinitcpio.conf.d/thunderbolt_module.conf' \
-    --overwrite '/etc/modprobe.d/omarchy-usb-autosuspend.conf' \
-    --overwrite '/etc/sddm.conf.d/10-theme.conf' \
-    --overwrite '/etc/sddm.conf.d/10-wayland.conf' \
-    --overwrite '/etc/sudoers.d/omarchy-asdcontrol' \
-    --overwrite '/etc/sudoers.d/omarchy-passwd-tries' \
-    --overwrite '/etc/sudoers.d/omarchy-tzupdate' \
-    --overwrite '/etc/sysctl.d/90-omarchy-file-watchers.conf' \
-    --overwrite '/etc/sysctl.d/99-omarchy-sysctl.conf' \
-    --overwrite '/etc/systemd/logind.conf.d/10-ignore-power-button.conf' \
-    --overwrite '/etc/systemd/resolved.conf.d/10-disable-multicast.conf' \
-    --overwrite '/etc/systemd/resolved.conf.d/20-docker-dns.conf' \
-    --overwrite '/etc/systemd/system.conf.d/10-faster-shutdown.conf' \
-    --overwrite '/etc/systemd/system/user@.service.d/10-faster-shutdown.conf' \
-    --overwrite '/etc/systemd/system/docker.service.d/no-block-boot.conf' \
-    --overwrite '/etc/systemd/system/plocate-updatedb.service.d/ac-only.conf' \
-    --overwrite '/etc/systemd/system.conf.d/20-omarchy-nofile.conf' \
-    --overwrite '/etc/systemd/user.conf.d/20-omarchy-nofile.conf' \
-    --overwrite '/usr/lib/systemd/system-sleep/unmount-fuse' \
-    --overwrite '/usr/share/plymouth/themes/omarchy/*' \
-    --overwrite '/usr/share/sddm/hyprland.lua' \
-    --overwrite '/usr/share/sddm/themes/omarchy/*'
+  as_root env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --noconfirm --ask 4
 }
 
 run_post_upgrade_update_steps() {
@@ -1327,10 +1330,6 @@ apply_system_transition() {
         done
       '
   fi
-  as_root install -d -m 0755 /usr/lib/chromium
-  printf '%s\n' '{"distribution":{"require_eula":false},"browser":{"theme":{"color_scheme":0,"color_scheme2":0}}}' | \
-    as_root tee /usr/lib/chromium/initial_preferences >/dev/null
-
   # Deliberately do NOT add the user to the docker group. That group is
   # root-equivalent, so it is opt-in now (Setup > Security > Sudoless Docker);
   # re-granting it on upgrade would silently undo that default for everyone.
@@ -1381,14 +1380,6 @@ EOF
   apply_firewall_defaults
 
   log "Normalizing SDDM login configuration"
-  # The omarchy package already installed 10-theme.conf and 10-wayland.conf.
-  as_root install -d -m 0755 /etc/sddm.conf.d
-  cat <<'EOF' | as_root tee /etc/sddm.conf.d/99-omarchy-login.conf >/dev/null
-[Users]
-RememberLastUser=true
-RememberLastSession=true
-EOF
-
   local autologin_user
   if should_enable_sddm_autologin; then
     if as_root test -f /etc/sddm.conf.d/autologin.conf; then
