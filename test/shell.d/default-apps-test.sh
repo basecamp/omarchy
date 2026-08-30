@@ -63,6 +63,9 @@ fi
 case $installer in
 omarchy-pkg-add|omarchy-pkg-aur-add)
   package=$1
+  if [[ $package == "--yes" ]]; then
+    package=$2
+  fi
   printf 'pkg:%s\n' "$package" >>"$OMARCHY_TEST_INSTALL_LOG"
   case $package in
   chromium) command=chromium ;;

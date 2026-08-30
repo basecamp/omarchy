@@ -41,7 +41,7 @@ chromium)
   ;;
 chrome)
   echo "Installing Chrome..."
-  omarchy-pkg-aur-add google-chrome || exit 1
+  omarchy-pkg-aur-add --yes google-chrome || exit 1
 
   setup_chromium_policy_directory /etc/opt/chrome/policies/managed
   copy_chromium_flags ~/.config/chrome-flags.conf
@@ -50,7 +50,7 @@ chrome)
   ;;
 edge)
   echo "Installing Edge..."
-  omarchy-pkg-aur-add microsoft-edge-stable-bin || exit 1
+  omarchy-pkg-aur-add --yes microsoft-edge-stable-bin || exit 1
 
   setup_chromium_policy_directory /etc/opt/edge/policies/managed
   copy_chromium_flags ~/.config/microsoft-edge-stable-flags.conf
@@ -59,7 +59,7 @@ edge)
   ;;
 brave)
   echo "Installing Brave..."
-  omarchy-pkg-aur-add brave-bin || exit 1
+  omarchy-pkg-aur-add --yes brave-bin || exit 1
 
   setup_chromium_policy_directory /etc/brave/policies/managed
   copy_chromium_flags ~/.config/brave-flags.conf
@@ -68,7 +68,7 @@ brave)
   ;;
 brave-origin)
   echo "Installing Brave Origin..."
-  omarchy-pkg-aur-add brave-origin-bin || exit 1
+  omarchy-pkg-aur-add --yes brave-origin-bin || exit 1
 
   setup_chromium_policy_directory /etc/brave/policies/managed
   copy_chromium_flags ~/.config/brave-origin-flags.conf
@@ -85,7 +85,7 @@ firefox)
   ;;
 zen)
   echo "Installing Zen..."
-  omarchy-pkg-aur-add zen-browser-bin || exit 1
+  omarchy-pkg-aur-add --yes zen-browser-bin || exit 1
 
   browser_policy_setup_firefox_distribution /opt/zen-browser/distribution
   setup_firefox_wayland
