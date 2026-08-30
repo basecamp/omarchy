@@ -60,6 +60,15 @@ void parser_contract(const std::filesystem::path &fixtures) {
               dynamic.requests[0].canonical_scope == "{\"resource\":4}",
           "dynamic definition reference was not preserved");
 
+  const auto fixed_operations =
+      omarchy::plugins::manifest::parse_manifest_v2(
+          R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{},"permissions":{"required":[{"capability":"service.fake-status","resourceIds":[1],"operations":["list","acknowledge"],"reason":"status"}],"optional":[]}})");
+  require(fixed_operations.requests.size() == 1 &&
+              fixed_operations.requests[0].operations.empty() &&
+              fixed_operations.requests[0].canonical_scope ==
+                  R"({"operations":["acknowledge","list"],"resourceIds":[1]})",
+          "fixed capability operations escaped the canonical scope");
+
   const auto with_sidecars = omarchy::plugins::manifest::parse_manifest_v2(
       R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml","sidecars":[{"name":"indexer","command":["bin/indexer","--socket","/run/plugin/indexer.sock"]},{"name":"state-helper","command":["bin/state-helper"]}]} ,"surfaces":{},"permissions":{"required":[],"optional":[]}})");
   require(with_sidecars.runtime.sidecars.size() == 2 &&

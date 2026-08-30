@@ -837,6 +837,8 @@ ManifestV2 parse_manifest_v2(std::string_view bytes) {
         definition_digest =
             as_string(digest_field->second, "definitionDigest");
         require(valid_digest(definition_digest), "definitionDigest is invalid");
+      }
+      if (operations_field != request.end()) {
         const auto &operation_values =
             as_array(operations_field->second, "operations");
         require(!operation_values.empty() && operation_values.size() <= 16,
@@ -855,7 +857,16 @@ ManifestV2 parse_manifest_v2(std::string_view bytes) {
       request.erase("reason");
       request.erase("definitionGeneration");
       request.erase("definitionDigest");
-      request.erase("operations");
+      if (has_dynamic_reference) {
+        request.erase("operations");
+      } else if (!operations.empty()) {
+        Array normalized_operations;
+        normalized_operations.reserve(operations.size());
+        for (const auto &operation : operations)
+          normalized_operations.push_back(Json{operation});
+        request["operations"] = Json{std::move(normalized_operations)};
+        operations.clear();
+      }
       result.requests.push_back({.capability = capability,
                                  .reason = reason,
                                  .canonical_scope = canonical(Json{request}),
