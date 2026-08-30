@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <filesystem>
 #include <optional>
 #include <span>
 #include <string>
@@ -94,8 +93,6 @@ private:
 ManifestV2 parse_manifest_v2(std::string_view bytes);
 ContentIdentity identify_tree_contents(TreeContents contents,
                                        const ManifestV2 &manifest);
-ContentIdentity identify_tree(const std::filesystem::path &root,
-                              const ManifestV2 &manifest);
 std::string requested_capability_fingerprint(
     const std::vector<CapabilityRequest> &requests);
 std::string sha256_hex(std::span<const std::byte> bytes);

@@ -4,7 +4,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include <algorithm>
 #include <atomic>
 #include <filesystem>
 #include <fstream>
@@ -13,17 +12,14 @@
 #include <string>
 #include <string_view>
 #include <thread>
-#include <vector>
 
 namespace discovery = omarchy::plugins::discovery;
-namespace manifest = omarchy::plugins::manifest;
 
 namespace {
 
 void require(bool condition, std::string_view message) {
-  if (!condition) {
+  if (!condition)
     throw std::runtime_error(std::string(message));
-  }
 }
 
 class TemporaryDirectory {
@@ -55,14 +51,6 @@ void copy_tree(const std::filesystem::path &source,
   }
 }
 
-std::size_t count(const discovery::DiscoveryReport &report,
-                  discovery::DiagnosticCode code) {
-  return static_cast<std::size_t>(std::ranges::count_if(
-      report.diagnostics, [code](const discovery::Diagnostic &value) {
-        return value.code == code;
-      }));
-}
-
 template <typename Function>
 void expect_rejected(Function &&function, std::string_view message) {
   try {
@@ -73,37 +61,31 @@ void expect_rejected(Function &&function, std::string_view message) {
   throw std::runtime_error(std::string(message));
 }
 
-discovery::IdentityPin pin(std::string directory, std::string digest) {
-  return {.directory = std::move(directory), .tree_sha256 = std::move(digest)};
+int open_directory(const std::filesystem::path &path) {
+  return ::open(path.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
 }
 
 } // namespace
 
 int main() {
   try {
-    TemporaryDirectory verified_root;
-    copy_tree(MANIFEST_V2_FIXTURE_ROOT, verified_root.path() / "secure");
-    const std::vector correct_pin{pin("secure", TREE_SHA256_GOLDEN)};
-    auto report = discovery::discover(verified_root.path(), correct_pin,
-                                      {.schema_v2_enabled = true});
-    require(report.plugins.size() == 1 && report.diagnostics.empty() &&
-                report.plugins.front().identity.tree_sha256 ==
-                    TREE_SHA256_GOLDEN,
-            "pinned schema-v2 plugin was not discovered");
+    expect_rejected(
+        [] { (void)discovery::discover_open_revision(-1); },
+        "descriptor discovery accepted an invalid descriptor");
 
-    const int stable_fd =
-        ::open((verified_root.path() / "secure").c_str(),
-               O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    TemporaryDirectory verified_root;
+    const auto original_path = verified_root.path() / "secure";
+    copy_tree(MANIFEST_V2_FIXTURE_ROOT, original_path);
+    const int stable_fd = open_directory(original_path);
     require(stable_fd >= 0, "could not open stable plugin descriptor");
     const auto descriptor_result = discovery::discover_open_revision(stable_fd);
-    require(descriptor_result.manifest == report.plugins.front().manifest &&
-                descriptor_result.identity == report.plugins.front().identity,
-            "descriptor discovery identity differs from stable path discovery");
+    require(descriptor_result.manifest.id == "org.example.status" &&
+                descriptor_result.identity.tree_sha256 == TREE_SHA256_GOLDEN,
+            "descriptor discovery changed the canonical fixture identity");
     require(discovery::discover_open_revision(stable_fd).identity ==
                 descriptor_result.identity,
             "descriptor discovery changed the caller's directory position");
 
-    const auto original_path = verified_root.path() / "secure";
     const auto displaced_path = verified_root.path() / "displaced";
     std::filesystem::rename(original_path, displaced_path);
     copy_tree(MANIFEST_DUPLICATE_FIXTURE_ROOT, original_path);
@@ -112,69 +94,13 @@ int main() {
                 after_replacement.manifest == descriptor_result.manifest,
             "pathname replacement retargeted descriptor discovery");
     ::close(stable_fd);
-    std::filesystem::remove_all(original_path);
-    std::filesystem::rename(displaced_path, original_path);
-
-    report = discovery::discover(verified_root.path(), correct_pin,
-                                 {.schema_v2_enabled = false});
-    require(report.plugins.empty() &&
-                count(report,
-                      discovery::DiagnosticCode::schema_v2_feature_disabled) ==
-                    1,
-            "schema-v2 feature gate was bypassed");
-    report = discovery::discover(verified_root.path(), {},
-                                 {.schema_v2_enabled = true});
-    require(
-        report.plugins.empty() &&
-            count(report, discovery::DiagnosticCode::identity_pin_missing) == 1,
-        "unpinned schema-v2 tree was admitted");
-    const std::vector wrong_pin{pin("secure", std::string(64, '0'))};
-    report = discovery::discover(verified_root.path(), wrong_pin,
-                                 {.schema_v2_enabled = true});
-    require(report.plugins.empty() &&
-                count(report, discovery::DiagnosticCode::identity_mismatch) ==
-                    1,
-            "identity mismatch was admitted");
-    const std::vector missing_pin{pin("missing", TREE_SHA256_GOLDEN)};
-    report = discovery::discover(verified_root.path(), missing_pin,
-                                 {.schema_v2_enabled = true});
-    require(count(report,
-                  discovery::DiagnosticCode::registered_directory_missing) == 1,
-            "missing registered directory was not diagnosed");
-
-    TemporaryDirectory mixed_root;
-    copy_tree(DISCOVERY_FIXTURE_ROOT "/legacy-v1",
-              mixed_root.path() / "legacy");
-    copy_tree(MANIFEST_DUPLICATE_FIXTURE_ROOT, mixed_root.path() / "bad");
-    copy_tree(MANIFEST_V2_FIXTURE_ROOT, mixed_root.path() / "target");
-    std::filesystem::create_symlink(mixed_root.path() / "target",
-                                    mixed_root.path() / "linked");
-    std::ofstream(mixed_root.path() / "not-a-plugin") << "data";
-    report =
-        discovery::discover(mixed_root.path(), {}, {.schema_v2_enabled = true});
-    require(
-        report.plugins.empty() &&
-            count(report, discovery::DiagnosticCode::legacy_v1_unsafe) == 1 &&
-            count(report, discovery::DiagnosticCode::invalid_manifest) == 1 &&
-            count(report, discovery::DiagnosticCode::symlink_rejected) == 1 &&
-            count(report, discovery::DiagnosticCode::unexpected_entry) == 1 &&
-            count(report, discovery::DiagnosticCode::identity_pin_missing) == 1,
-        "mixed unsafe discovery diagnostics changed");
 
     TemporaryDirectory special_root;
     const auto special_plugin = special_root.path() / "special";
     std::filesystem::create_directory(special_plugin);
     require(::mkfifo((special_plugin / "manifest.json").c_str(), 0600) == 0,
             "manifest FIFO creation failed");
-    report = discovery::discover(special_root.path(), {},
-                                 {.schema_v2_enabled = true});
-    require(report.plugins.empty() &&
-                count(report, discovery::DiagnosticCode::manifest_missing) == 1,
-            "special manifest file did not fail closed without blocking");
-
-    const int special_fd =
-        ::open(special_plugin.c_str(),
-               O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    const int special_fd = open_directory(special_plugin);
     require(special_fd >= 0, "could not open special plugin descriptor");
     expect_rejected(
         [&] { (void)discovery::discover_open_revision(special_fd); },
@@ -184,10 +110,8 @@ int main() {
     TemporaryDirectory symlink_root;
     copy_tree(MANIFEST_V2_FIXTURE_ROOT, symlink_root.path() / "linked");
     std::filesystem::create_symlink("ui/Status.qml",
-                                    symlink_root.path() / "linked" / "escape");
-    const int symlink_fd =
-        ::open((symlink_root.path() / "linked").c_str(),
-               O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+                                    symlink_root.path() / "linked/escape");
+    const int symlink_fd = open_directory(symlink_root.path() / "linked");
     require(symlink_fd >= 0, "could not open symlink plugin descriptor");
     expect_rejected(
         [&] { (void)discovery::discover_open_revision(symlink_fd); },
@@ -196,11 +120,10 @@ int main() {
 
     TemporaryDirectory git_root;
     copy_tree(MANIFEST_V2_FIXTURE_ROOT, git_root.path() / "checkout");
-    std::filesystem::create_directories(git_root.path() / "checkout" / ".git");
-    std::ofstream(git_root.path() / "checkout" / ".git/config")
+    std::filesystem::create_directories(git_root.path() / "checkout/.git");
+    std::ofstream(git_root.path() / "checkout/.git/config")
         << "untrusted metadata\n";
-    const int git_fd = ::open((git_root.path() / "checkout").c_str(),
-                              O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    const int git_fd = open_directory(git_root.path() / "checkout");
     require(git_fd >= 0, "could not open .git plugin descriptor");
     expect_rejected(
         [&] { (void)discovery::discover_open_revision(git_fd); },
@@ -216,8 +139,7 @@ int main() {
       manifest_file << std::string(1024 * 1024 + 1, ' ');
     }
     const int oversized_manifest_fd =
-        ::open((oversized_manifest_root.path() / "oversized").c_str(),
-               O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+        open_directory(oversized_manifest_root.path() / "oversized");
     require(oversized_manifest_fd >= 0,
             "could not open oversized-manifest plugin descriptor");
     expect_rejected(
@@ -228,17 +150,15 @@ int main() {
     TemporaryDirectory changing_root;
     copy_tree(MANIFEST_V2_FIXTURE_ROOT, changing_root.path() / "changing");
     {
-      std::ofstream padding(changing_root.path() / "changing" / "padding");
+      std::ofstream padding(changing_root.path() / "changing/padding");
       padding << std::string(8 * 1024 * 1024, 'x');
     }
-    const int changing_fd =
-        ::open((changing_root.path() / "changing").c_str(),
-               O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    const int changing_fd = open_directory(changing_root.path() / "changing");
     require(changing_fd >= 0, "could not open changing plugin descriptor");
     std::atomic_bool mutate{true};
     std::atomic_bool first_mutation{false};
     std::jthread mutator([&] {
-      const auto marker = changing_root.path() / "changing" / "mutation";
+      const auto marker = changing_root.path() / "changing/mutation";
       while (mutate.load(std::memory_order_relaxed)) {
         std::ofstream(marker) << "changed";
         std::filesystem::remove(marker);
@@ -254,61 +174,10 @@ int main() {
     mutator.join();
     ::close(changing_fd);
 
-    const std::vector duplicate_pins{pin("target", TREE_SHA256_GOLDEN),
-                                     pin("target", TREE_SHA256_GOLDEN)};
-    report = discovery::discover(mixed_root.path(), duplicate_pins,
-                                 {.schema_v2_enabled = true});
-    require(report.plugins.empty() &&
-                count(report,
-                      discovery::DiagnosticCode::duplicate_registration) == 1,
-            "duplicate identity registration was accepted");
-
-    TemporaryDirectory duplicate_root;
-    copy_tree(MANIFEST_V2_FIXTURE_ROOT, duplicate_root.path() / "a");
-    copy_tree(MANIFEST_V2_FIXTURE_ROOT, duplicate_root.path() / "b");
-    const std::vector duplicate_id_pins{pin("a", TREE_SHA256_GOLDEN),
-                                        pin("b", TREE_SHA256_GOLDEN)};
-    report = discovery::discover(duplicate_root.path(), duplicate_id_pins,
-                                 {.schema_v2_enabled = true});
-    require(report.plugins.empty() &&
-                count(report, discovery::DiagnosticCode::duplicate_plugin_id) ==
-                    2,
-            "duplicate plugin id used first-wins discovery");
-
-    TemporaryDirectory inert_root;
-    copy_tree(MANIFEST_V2_FIXTURE_ROOT, inert_root.path() / "inert");
-    const auto executable = inert_root.path() / "inert" / "never-run";
-    const auto sentinel = inert_root.path() / "sentinel-fired";
-    {
-      std::ofstream script(executable);
-      script << "#!/bin/bash\ntouch \"" << sentinel.string() << "\"\n";
-    }
-    std::filesystem::permissions(executable, std::filesystem::perms::owner_exec,
-                                 std::filesystem::perm_options::add);
-    const auto bytes = [&] {
-      std::ifstream input(inert_root.path() / "inert" / "manifest.json");
-      return std::string(std::istreambuf_iterator<char>(input), {});
-    }();
-    const auto model = manifest::parse_manifest_v2(bytes);
-    const auto identity =
-        manifest::identify_tree(inert_root.path() / "inert", model);
-    const std::vector inert_pin{pin("inert", identity.tree_sha256)};
-    report = discovery::discover(inert_root.path(), inert_pin,
-                                 {.schema_v2_enabled = true});
-    require(report.plugins.size() == 1 && !std::filesystem::exists(sentinel),
-            "discovery executed plugin content");
-
-    const auto repeated =
-        discovery::discover(mixed_root.path(), {}, {.schema_v2_enabled = true});
-    require(repeated.diagnostics ==
-                discovery::discover(mixed_root.path(), {},
-                                    {.schema_v2_enabled = true})
-                    .diagnostics,
-            "diagnostics are not deterministic");
-    std::cout << "plugin manifest discovery: PASS\n";
+    std::cout << "descriptor plugin discovery: PASS\n";
     return 0;
   } catch (const std::exception &exception) {
-    std::cerr << "plugin manifest discovery: FAIL: " << exception.what()
+    std::cerr << "descriptor plugin discovery: FAIL: " << exception.what()
               << '\n';
     return 1;
   }

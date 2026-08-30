@@ -7,7 +7,7 @@
 #include <bit>
 #include <charconv>
 #include <cstddef>
-#include <fstream>
+#include <filesystem>
 #include <limits>
 #include <map>
 #include <set>
@@ -673,22 +673,6 @@ std::string fingerprint_requests(const std::vector<CapabilityRequest> &input) {
   return hex(hash.finish());
 }
 
-std::string read_file(const std::filesystem::path &path, std::uint64_t limit) {
-  std::ifstream stream(path, std::ios::binary);
-  require(stream.good(), "cannot open plugin file");
-  std::string output;
-  std::array<char, 8192> chunk{};
-  while (stream) {
-    stream.read(chunk.data(), static_cast<std::streamsize>(chunk.size()));
-    const auto count = stream.gcount();
-    require(output.size() + static_cast<std::size_t>(count) <= limit,
-            "plugin file exceeds tree limit");
-    output.append(chunk.data(), static_cast<std::size_t>(count));
-  }
-  require(stream.eof(), "cannot read plugin file");
-  return output;
-}
-
 bool valid_digest(std::string_view digest) {
   return digest.size() == 64 &&
          std::all_of(digest.begin(), digest.end(),
@@ -945,40 +929,6 @@ ContentIdentity identify_tree_contents(TreeContents contents,
   return {.tree_sha256 = hex(tree.finish()),
           .manifest_sha256 = sha256_hex(manifest_file->bytes),
           .request_sha256 = fingerprint_requests(manifest.requests)};
-}
-
-ContentIdentity identify_tree(const std::filesystem::path &root,
-                              const ManifestV2 &manifest) {
-  std::error_code error;
-  require(std::filesystem::is_directory(root, error) && !error,
-          "plugin root is not a directory");
-  TreeContents contents;
-  for (std::filesystem::recursive_directory_iterator
-           iterator(root, std::filesystem::directory_options::none, error),
-       end;
-       iterator != end; iterator.increment(error)) {
-    require(!error, "cannot enumerate plugin tree");
-    const auto relative =
-        std::filesystem::relative(iterator->path(), root, error);
-    require(!error, "cannot resolve plugin path");
-    require(*relative.begin() != ".git", ".git entry in plugin tree");
-    const auto status = iterator->symlink_status(error);
-    require(!error, "cannot inspect plugin tree entry");
-    require(!std::filesystem::is_symlink(status), "symlink in plugin tree");
-    if (std::filesystem::is_directory(status))
-      continue;
-    require(std::filesystem::is_regular_file(status),
-            "special file in plugin tree");
-    const auto permissions = status.permissions();
-    contents.add(
-        {.relative = relative.generic_string(),
-         .bytes = read_file(iterator->path(), contents.remaining_bytes()),
-         .executable = (permissions & (std::filesystem::perms::owner_exec |
-                                       std::filesystem::perms::group_exec |
-                                       std::filesystem::perms::others_exec)) !=
-                       std::filesystem::perms::none});
-  }
-  return identify_tree_contents(std::move(contents), manifest);
 }
 
 std::string requested_capability_fingerprint(

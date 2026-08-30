@@ -1,7 +1,6 @@
 #include "manifest_contract.hpp"
 
 #include <algorithm>
-#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -9,7 +8,6 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <sys/stat.h>
 
 namespace {
 
@@ -192,9 +190,20 @@ void parser_contract(const std::filesystem::path &fixtures) {
 }
 
 void digest_contract(const std::filesystem::path &fixtures) {
-  using omarchy::plugins::manifest::identify_tree;
+  using omarchy::plugins::manifest::identify_tree_contents;
   using omarchy::plugins::manifest::parse_manifest_v2;
   using omarchy::plugins::manifest::sha256_hex;
+
+  const auto make_contents = [](std::string manifest_bytes,
+                                bool qml_executable = false) {
+    omarchy::plugins::manifest::TreeContents contents;
+    contents.add({.relative = "manifest.json",
+                  .bytes = std::move(manifest_bytes)});
+    contents.add({.relative = "ui/Status.qml",
+                  .bytes = "import QtQuick\n\nItem { }\n",
+                  .executable = qml_executable});
+    return contents;
+  };
 
   require(
       sha256_hex("") ==
@@ -212,7 +221,7 @@ void digest_contract(const std::filesystem::path &fixtures) {
   const auto root = fixtures / "valid-minimal";
   const auto bytes = read(root / "manifest.json");
   const auto manifest = parse_manifest_v2(bytes);
-  const auto identity = identify_tree(root, manifest);
+  const auto identity = identify_tree_contents(make_contents(bytes), manifest);
   require(identity.tree_sha256 == TREE_SHA256_GOLDEN,
           "tree SHA-256 golden mismatch: " + identity.tree_sha256);
   require(identity.manifest_sha256 == MANIFEST_SHA256_GOLDEN,
@@ -223,7 +232,7 @@ void digest_contract(const std::filesystem::path &fixtures) {
   const auto reordered = parse_manifest_v2(
       R"({"permissions":{"optional":[{"reason":"different words","categories":["timer"],"capability":"notifications.send"}],"required":[{"reason":"also different","quotaBytes":1048576,"capability":"storage.private"}]},"surfaces":{"barWidget":{"defaultSection":"right","role":"bar-embedded"}},"runtime":{"qml":"ui/Status.qml","apiVersion":1},"version":"2.0.0","name":"Example Status","id":"org.example.status","schemaVersion":2})");
   expect_rejected(
-      [&] { (void)identify_tree(root, reordered); },
+      [&] { (void)identify_tree_contents(make_contents(bytes), reordered); },
       "stale manifest model was accepted for a different tree manifest");
   require(omarchy::plugins::manifest::requested_capability_fingerprint(
               reordered.requests) == identity.request_sha256,
@@ -234,101 +243,56 @@ void digest_contract(const std::filesystem::path &fixtures) {
               expanded.requests) != identity.request_sha256,
           "expanded scope did not change request fingerprint");
 
-  const auto temporary =
-      std::filesystem::temp_directory_path() /
-      ("omarchy-manifest-contract-" +
-       std::to_string(
-           std::chrono::steady_clock::now().time_since_epoch().count()));
-  struct RemoveTree {
-    std::filesystem::path path;
-    ~RemoveTree() {
-      std::error_code ignored;
-      std::filesystem::remove_all(path, ignored);
-    }
-  } cleanup{temporary};
-  std::filesystem::copy(root, temporary,
-                        std::filesystem::copy_options::recursive);
-  const auto copied_manifest =
-      parse_manifest_v2(read(temporary / "manifest.json"));
-  const auto copied_identity = identify_tree(temporary, copied_manifest);
-  require(copied_identity == identity, "copied tree identity changed");
-  std::filesystem::create_directories(temporary / ".git");
-  std::ofstream(temporary / ".git/config") << "untrusted metadata\n";
-  expect_rejected([&] { (void)identify_tree(temporary, copied_manifest); },
-                  ".git content was excluded from path identity");
-  std::filesystem::remove_all(temporary / ".git");
-  const auto qml = temporary / "ui/Status.qml";
-  std::filesystem::permissions(qml, std::filesystem::perms::owner_exec,
-                               std::filesystem::perm_options::add);
-  require(identify_tree(temporary, copied_manifest).tree_sha256 !=
-              identity.tree_sha256,
+  require(identify_tree_contents(make_contents(bytes, true), manifest)
+                  .tree_sha256 != identity.tree_sha256,
           "executable mode did not change tree identity");
-  std::filesystem::permissions(qml, std::filesystem::perms::owner_exec,
-                               std::filesystem::perm_options::remove);
-  std::filesystem::create_symlink("ui/Status.qml", temporary / "alias.qml");
-  expect_rejected([&] { (void)identify_tree(temporary, copied_manifest); },
-                  "symlink in content tree was accepted");
 
-  std::filesystem::remove(temporary / "alias.qml");
-  require(mkfifo((temporary / "host-channel").c_str(), 0600) == 0,
-          "special-file fixture could not be created");
-  expect_rejected([&] { (void)identify_tree(temporary, copied_manifest); },
-                  "special file in content tree was accepted");
-  std::filesystem::remove(temporary / "host-channel");
-  {
-    std::ofstream surface(temporary / "ui/BarWidget.qml",
-                          std::ios::binary | std::ios::trunc);
-    surface << "import QtQuick\nItem {}\n";
-  }
+  expect_rejected(
+      [&] {
+        auto contents = make_contents(bytes);
+        contents.add({.relative = ".git/config", .bytes = "metadata"});
+      },
+      ".git content was accepted by canonical tree contents");
+  expect_rejected(
+      [&] {
+        auto contents = make_contents(bytes);
+        contents.add({.relative = "../escape", .bytes = "content"});
+      },
+      "escaping content path was accepted");
+
   const std::string multi_surface_manifest_bytes =
       R"({"schemaVersion":2,"id":"org.example.status","name":"Example Status","version":"2.0.0","runtime":{"apiVersion":1,"qml":"ui/Status.qml","surfaceQml":{"barWidget":"ui/BarWidget.qml"}},"surfaces":{"barWidget":{"role":"bar-embedded"}},"permissions":{"required":[],"optional":[]}})";
-  {
-    std::ofstream manifest_output(temporary / "manifest.json",
-                                  std::ios::binary | std::ios::trunc);
-    manifest_output << multi_surface_manifest_bytes;
-  }
   const auto multi_surface_manifest =
       parse_manifest_v2(multi_surface_manifest_bytes);
-  (void)identify_tree(temporary, multi_surface_manifest);
-  std::filesystem::remove(temporary / "ui/BarWidget.qml");
+  auto multi_surface_contents = make_contents(multi_surface_manifest_bytes);
+  multi_surface_contents.add(
+      {.relative = "ui/BarWidget.qml", .bytes = "import QtQuick\nItem {}\n"});
+  (void)identify_tree_contents(std::move(multi_surface_contents),
+                               multi_surface_manifest);
   expect_rejected(
-      [&] { (void)identify_tree(temporary, multi_surface_manifest); },
+      [&] {
+        (void)identify_tree_contents(
+            make_contents(multi_surface_manifest_bytes),
+            multi_surface_manifest);
+      },
       "missing per-surface QML entry was accepted");
-  {
-    std::ofstream manifest_output(temporary / "manifest.json",
-                                  std::ios::binary | std::ios::trunc);
-    manifest_output << bytes;
-  }
-  {
-    std::ofstream oversized(temporary / "oversized.bin",
-                            std::ios::binary | std::ios::trunc);
-    oversized.seekp(64ULL * 1024ULL * 1024ULL);
-    oversized.put('\0');
-  }
-  expect_rejected([&] { (void)identify_tree(temporary, copied_manifest); },
-                  "oversized content tree was accepted");
-  std::filesystem::remove(temporary / "oversized.bin");
-  std::filesystem::create_directories(temporary / "bin");
-  {
-    std::ofstream sidecar(temporary / "bin/helper", std::ios::binary);
-    sidecar << "sidecar fixture\n";
-  }
-  std::filesystem::permissions(temporary / "bin/helper",
-                               std::filesystem::perms::owner_exec,
-                               std::filesystem::perm_options::add);
+
   const std::string sidecar_manifest_bytes =
       R"({"schemaVersion":2,"id":"org.example.status","name":"Example Status","version":"2.0.0","runtime":{"apiVersion":1,"qml":"ui/Status.qml","sidecars":[{"name":"helper","command":["bin/helper","--serve"]}]},"surfaces":{},"permissions":{"required":[],"optional":[]}})";
-  {
-    std::ofstream manifest_output(temporary / "manifest.json",
-                                  std::ios::binary | std::ios::trunc);
-    manifest_output << sidecar_manifest_bytes;
-  }
   const auto sidecar_manifest = parse_manifest_v2(sidecar_manifest_bytes);
-  (void)identify_tree(temporary, sidecar_manifest);
-  std::filesystem::permissions(temporary / "bin/helper",
-                               std::filesystem::perms::owner_exec,
-                               std::filesystem::perm_options::remove);
-  expect_rejected([&] { (void)identify_tree(temporary, sidecar_manifest); },
+  auto sidecar_contents = make_contents(sidecar_manifest_bytes);
+  sidecar_contents.add({.relative = "bin/helper",
+                        .bytes = "sidecar fixture\n",
+                        .executable = true});
+  (void)identify_tree_contents(std::move(sidecar_contents), sidecar_manifest);
+  expect_rejected(
+      [&] {
+        auto contents = make_contents(sidecar_manifest_bytes);
+        contents.add({.relative = "bin/helper",
+                      .bytes = "sidecar fixture\n",
+                      .executable = false});
+        (void)identify_tree_contents(std::move(contents), sidecar_manifest);
+      },
                   "non-executable declared sidecar was accepted");
 }
 
