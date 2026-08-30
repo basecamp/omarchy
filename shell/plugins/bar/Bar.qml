@@ -24,7 +24,7 @@ Item {
   // settings and persisting inline widget state.
   property var shell: null
   // Optional schema-v2 host. Its entries are transient and never mutate the
-  // legacy shell configuration.
+  // pre-security schema-v1 shell configuration.
   property var securePluginHost: null
   // Manifest for the active bar option. Present for custom bars and useful for
   // diagnostics; the built-in bar does not otherwise need it.

@@ -45,6 +45,8 @@ The plugin discovery path is documented in [plugins/README.md](plugins/README.md
 
 ## Plugin manifest
 
+This document describes schema v1: pre-security, unsandboxed, trusted-by-default QML loaded in `omarchy-shell`. Schema-v2 manifests are handled only by the separately gated secure runtime and never fall back to schema v1.
+
 Every plugin ships a `manifest.json` describing what it is and how the
 shell should load it. Minimal example:
 

@@ -81,10 +81,11 @@ shell/**                       ──►  omarchy             /usr/share/omarchy
 version                        ──►  omarchy             /usr/share/omarchy/version
                                                         + /etc/skel/.local/state/omarchy/migrations/*
 
-native/plugin-runtime/         ──►  future native       /usr/bin/omarchy-plugin-host
-                                      package             /usr/lib/omarchy/plugin-runtime/omarchy-plugin-qml-worker
-                                                          /usr/lib/qt6/qml/Omarchy/PluginHost/
-                                                        (source/install skeleton only; packaging is not wired yet)
+native/plugin-runtime/         ──►  versioned native    /usr/lib/omarchy/plugin-security/<version>/bin/omarchy-plugin-qml-worker
+                                      package             /usr/lib/omarchy/plugin-security/<version>/policy/
+                                                          /usr/lib/omarchy/plugin-security/<version>/qml/Omarchy/PluginHost/
+                                                          /usr/lib/omarchy/plugin-security/<version>/shell/
+                                                        (side-by-side and inert until explicitly activated)
 
 config/**                      ──►  omarchy-settings    /etc/skel/.config/**         (seeds new users)
                                                         /usr/share/omarchy/config/** (resync source)

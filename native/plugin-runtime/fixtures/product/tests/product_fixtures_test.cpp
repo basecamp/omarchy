@@ -196,7 +196,7 @@ std::unique_ptr<LoadedFixture> load(std::string_view name,
   return loaded;
 }
 
-void test_live_evidence_fixtures() {
+void test_permission_aware_fixtures() {
   FakeRuntime authorized({QStringLiteral("storage_read"),
                           QStringLiteral("storage_write")}, true);
   auto authorized_fixture = load("lab-authorized", authorized);
@@ -207,7 +207,7 @@ void test_live_evidence_fixtures() {
                   QStringLiteral("AUTHORIZED") &&
               authorized.count(QStringLiteral("storage_write")) == 1 &&
               authorized.count(QStringLiteral("storage_read")) == 1,
-          "authorized live fixture did not follow async broker completions");
+          "authorized fixture did not follow async broker completions");
 
   FakeRuntime denied({QStringLiteral("storage_read"),
                       QStringLiteral("storage_write")}, true);
@@ -218,7 +218,7 @@ void test_live_evidence_fixtures() {
   require(denied_fixture->object->property("phase").toString() ==
                   QStringLiteral("DENIED") &&
               denied.denied(QStringLiteral("notification_send")),
-          "denial live fixture did not follow async broker denial");
+          "denial fixture did not follow async broker denial");
 
   FakeRuntime permission({QStringLiteral("notification_send")});
   auto permission_fixture = load("lab-permission", permission);
@@ -245,11 +245,7 @@ void test_live_evidence_fixtures() {
 int main(int argc, char **argv) {
   QGuiApplication application(argc, argv);
   try {
-    if (application.arguments().contains(QStringLiteral("--live-evidence-only"))) {
-      test_live_evidence_fixtures();
-      return 0;
-    }
-    test_live_evidence_fixtures();
+    test_permission_aware_fixtures();
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';
     return 1;

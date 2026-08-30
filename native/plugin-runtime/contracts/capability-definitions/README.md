@@ -14,7 +14,7 @@ The trusted host loads package-owned `/usr/lib/omarchy/plugin-security/<runtime-
 
 The administrator root extends definitions over provider adapters already registered by the trusted host. It is not a native-module loading directory. An independently packaged provider still needs a bounded authenticated IPC protocol, service identity, executable/content pinning, confinement, update lifecycle, and adapter registration owned by Omarchy before its definition can become available. Until that provider protocol exists, dropping an executable or shared library beside a definition grants nothing and causes no code to load.
 
-`capability_lifecycle` supplies the replacement/removal policy used by future administrative UX. It lists exact plugin/revision dependencies by pinned name, generation, and digest; treats an identical definition as unchanged; requires review for a replacement; and blocks replacement or removal while active revisions still depend on the old reference. Registry insertion additionally rejects canonical-name and authority-identity collisions and rejects relabeling an identical adapter/operation binding. This contract deliberately does not expose an `install --yes` shortcut or mutate `/etc`; privileged file installation and external-provider enrollment remain unfinished product UX.
+Registry insertion rejects canonical-name and authority-identity collisions and rejects relabeling an identical adapter/operation binding. Provider enrollment, replacement administration, and privileged definition installation are not implemented; this contract exposes no installation shortcut and does not mutate `/etc`.
 
 ## Request-to-broker bridge
 
