@@ -34,45 +34,47 @@ SH
   chmod +x "$mock_bin/xdg-settings"
 }
 
-set_default_browser "zen.desktop"
+brave_desktop="$home/.local/share/applications/brave-browser.desktop"
+
+install_brave() {
+  printf '%s\n' \
+    '[Desktop Entry]' \
+    'Name=Brave' \
+    'Exec=/opt/brave/brave-bin %u' \
+    'Type=Application' \
+    >"$brave_desktop"
+}
 
 empty_launch_log() {
   : >"$OMARCHY_TEST_LOG"
 }
 
-# With the default browser outside the whitelist and no Chromium-family
-# browser installed, the launcher falls back to chromium.desktop, whose Exec
-# cannot be resolved. It must name the problem instead of launching a nonsense
-# --app=... invocation that the app daemon then rejects at runtime.
-if HOME="$home" PATH="$mock_bin:$PATH" OMARCHY_TEST_LOG="$launch_log" \
-  "$ROOT/bin/omarchy-launch-webapp" "https://web.whatsapp.com/" \
-  >"$tmpdir/out" 2>"$tmpdir/err"; then
-  fail "webapp launch fails without a Chromium browser"
-fi
-grep -Fq 'Chromium-based browser' "$tmpdir/err" ||
-  fail "webapp launch names the missing browser" "$(cat "$tmpdir/err")"
-grep -Fq 'notify:' "$tmpdir/launch.log" ||
-  fail "webapp launch shows a desktop notification" "$(cat "$tmpdir/launch.log")"
-! grep -q '^launch:' "$tmpdir/launch.log" ||
-  fail "webapp launch does not exec a browser without one installed" "$(cat "$tmpdir/launch.log")"
-pass "webapp launch warns when no Chromium browser is installed"
+launch_webapp() {
+  HOME="$home" PATH="$mock_bin:$PATH" OMARCHY_TEST_LOG="$launch_log" \
+    "$ROOT/bin/omarchy-launch-webapp" "$@"
+}
 
-# A whitelisted browser with a resolvable launcher is launched as an app window;
-# extra arguments after the URL are forwarded.
+# A whitelisted Chromium default with a resolvable launcher is launched as an
+# app window; extra arguments after the URL are forwarded.
 set_default_browser "brave-browser.desktop"
-printf '%s\n' \
-  '[Desktop Entry]' \
-  'Name=Brave' \
-  'Exec=/opt/brave/brave-bin %u' \
-  'Type=Application' \
-  >"$home/.local/share/applications/brave-browser.desktop"
-
+install_brave
 empty_launch_log
-HOME="$home" PATH="$mock_bin:$PATH" OMARCHY_TEST_LOG="$launch_log" \
-  "$ROOT/bin/omarchy-launch-webapp" "https://web.whatsapp.com/" "--flag" \
-  >"$tmpdir/out2" 2>"$tmpdir/err2" ||
-  fail "webapp launch succeeds with a Chromium browser" "$(cat "$tmpdir/err2")"
+launch_webapp "https://web.whatsapp.com/" "--flag" >"$tmpdir/out" 2>"$tmpdir/err" ||
+  fail "webapp launch succeeds with a Chromium default browser" "$(cat "$tmpdir/err")"
 grep -Fxq 'launch:uwsm-app -- /opt/brave/brave-bin --app=https://web.whatsapp.com/ --flag' \
   "$tmpdir/launch.log" ||
-  fail "webapp launch uses the browser Exec with --app" "$(cat "$tmpdir/launch.log")"
-pass "webapp launch forwards the URL and flags to the Chromium browser"
+  fail "webapp launch uses the default browser Exec with --app" "$(cat "$tmpdir/launch.log")"
+pass "webapp launch forwards the URL and flags to the default Chromium browser"
+
+# The default browser is not a supported one, but a Chromium-family browser is
+# installed anyway (e.g. Brave installed while the default is Zen). The launcher
+# should fall back to the installed Chromium browser rather than give up.
+set_default_browser "zen.desktop"
+install_brave
+empty_launch_log
+launch_webapp "https://web.whatsapp.com/" >"$tmpdir/out2" 2>"$tmpdir/err2" ||
+  fail "webapp launch falls back to an installed Chromium browser" "$(cat "$tmpdir/err2")"
+grep -Fxq 'launch:uwsm-app -- /opt/brave/brave-bin --app=https://web.whatsapp.com/' \
+  "$tmpdir/launch.log" ||
+  fail "webapp launch uses the installed browser when the default is unsupported" "$(cat "$tmpdir/launch.log")"
+pass "webapp launch falls back to an installed Chromium browser when the default is unsupported"
