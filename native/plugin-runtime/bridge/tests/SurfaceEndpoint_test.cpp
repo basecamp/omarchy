@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <functional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -210,6 +211,14 @@ public:
     ++send_calls;
     last_header = header;
     last_payload = std::move(payload);
+    message_types.push_back(header.message_type);
+    if (header.message_type == static_cast<std::uint16_t>(
+                                   surface::RenderMessageType::surface_release)) {
+      release_was_attached = endpoint != nullptr && attached_description &&
+                             *attached_description == expected;
+      if (reenter_on_release)
+        reenter_on_release();
+    }
     surface::InputEvent input;
     if (header.message_type == static_cast<std::uint16_t>(
                                    surface::RenderMessageType::input) &&
@@ -232,6 +241,7 @@ public:
   bridge::RemotePluginSurface *remote_at_detach = nullptr;
   wire::EnvelopeHeader last_header{};
   std::vector<std::byte> last_payload;
+  std::vector<std::uint16_t> message_types;
   std::vector<surface::InputEvent> inputs;
   int last_descriptor = -1;
   std::uint64_t last_arm_sequence = 0;
@@ -244,6 +254,8 @@ public:
   std::size_t stale_clear_calls = 0;
   bool descriptor_had_cloexec = false;
   bool remote_was_alive_at_detach = false;
+  bool release_was_attached = false;
+  std::function<void()> reenter_on_release;
   bool running = true;
   bool arm_succeeds = true;
   bool send_fails = false;
@@ -342,18 +354,39 @@ void lifecycle_and_descriptor_contract() {
   ::close(descriptors[1]);
 
   const auto sends_before_close = value.port.send_calls;
+  value.port.reenter_on_release = [&] {
+    bridge::SurfaceEndpointTestAccess::close(*value.endpoint);
+  };
   bridge::SurfaceEndpointTestAccess::close(*value.endpoint);
   bridge::SurfaceEndpointTestAccess::close(*value.endpoint);
   require(bridge::SurfaceEndpointTestAccess::is_closing(*value.endpoint) &&
               value.port.detach_calls == 1 &&
-              value.port.remote_was_alive_at_detach &&
-              value.port.send_calls == sends_before_close + 1 &&
+              !value.port.remote_was_alive_at_detach &&
+              value.port.release_was_attached &&
+              value.port.send_calls == sends_before_close + 2 &&
+              value.port.message_types.size() >= 2 &&
+              value.port.message_types[value.port.message_types.size() - 2] ==
+                  static_cast<std::uint16_t>(
+                      surface::RenderMessageType::input) &&
+              value.port.message_types.back() ==
+                  static_cast<std::uint16_t>(
+                      surface::RenderMessageType::surface_release) &&
               !value.port.inputs.empty() &&
               std::holds_alternative<surface::Cancel>(
                   value.port.inputs.back().payload),
-          "close did not detach before trusted surface teardown");
+          "close did not send Cancel then release over the exact live route");
   require(value.port.detach_calls == 1,
           "endpoint close was not idempotent");
+
+  bridge::RemotePluginSurface replacement_remote;
+  auto replacement = bridge::SurfaceEndpointTestAccess::create(
+      value.port, value.input_authority, "pet");
+  value.port.remote_at_detach = &replacement_remote;
+  require(bridge::SurfaceEndpointTestAccess::attach(
+              *replacement, replacement_remote, 64, 32, 1, 1, value.clock) &&
+              bridge::SurfaceEndpointTestAccess::is_active(*replacement),
+          "released route did not permit an exact replacement attachment");
+  bridge::SurfaceEndpointTestAccess::close(*replacement);
 }
 
 void stale_and_malformed_messages_fail_closed() {
@@ -480,7 +513,7 @@ void gesture_arming_is_exact_and_send_failure_clears() {
           "exact Cancel did not revoke the surface intent eligibility");
 }
 
-void remote_destruction_detaches_while_cpp_object_is_alive() {
+void remote_destruction_closes_host_before_detach() {
   Port port;
   bridge::TrustedInputAuthority input_authority;
   Clock clock;
@@ -494,8 +527,8 @@ void remote_destruction_detaches_while_cpp_object_is_alive() {
             "destruction-order fixture did not attach");
   }
   require(bridge::SurfaceEndpointTestAccess::is_closing(*endpoint) &&
-              port.detach_calls == 1 && port.remote_was_alive_at_detach,
-          "remote C++ destruction did not fence its endpoint first");
+              port.detach_calls == 1 && !port.remote_was_alive_at_detach,
+          "remote destruction detached before closing its trusted host");
 }
 
 void attach_rolls_back_every_published_owner() {
@@ -704,7 +737,7 @@ void run_surface_endpoint_tests() {
   lifecycle_and_descriptor_contract();
   stale_and_malformed_messages_fail_closed();
   gesture_arming_is_exact_and_send_failure_clears();
-  remote_destruction_detaches_while_cpp_object_is_alive();
+  remote_destruction_closes_host_before_detach();
   attach_rolls_back_every_published_owner();
   remote_pointer_events_reach_the_exact_input_path();
   sibling_gesture_survives_unrelated_endpoint_teardown();

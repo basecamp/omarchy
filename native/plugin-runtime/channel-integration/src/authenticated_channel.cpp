@@ -133,6 +133,14 @@ bool valid_typed_packet(const wire::PacketView &packet,
     return false;
   }
   const auto type = packet.header.message_type;
+  if (type == static_cast<std::uint16_t>(wire::CommonMessageType::cancel))
+    return packet.header.correlation_id != 0 && packet.payload.empty();
+  if (type ==
+      static_cast<std::uint16_t>(wire::CommonMessageType::cancel_result)) {
+    wire::CancelOutcome outcome{};
+    return packet.header.correlation_id != 0 &&
+           wire::decode_cancel_result_payload(packet.payload, outcome);
+  }
   if (type ==
       static_cast<std::uint16_t>(wire::CommonMessageType::typed_error)) {
     const bool direction_allowed =
@@ -155,6 +163,13 @@ bool valid_typed_packet(const wire::PacketView &packet,
 
 std::optional<std::uint8_t> descriptor_count(wire::EndpointRole role,
                                              std::uint16_t message_type) {
+  if (message_type ==
+          static_cast<std::uint16_t>(wire::CommonMessageType::typed_error) ||
+      message_type ==
+          static_cast<std::uint16_t>(wire::CommonMessageType::cancel) ||
+      message_type == static_cast<std::uint16_t>(
+                          wire::CommonMessageType::cancel_result))
+    return 0;
   if (role == wire::EndpointRole::render)
     return surface::render_descriptor_count(message_type);
   if (role == wire::EndpointRole::control || role == wire::EndpointRole::broker)

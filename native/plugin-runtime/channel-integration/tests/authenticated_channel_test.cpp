@@ -523,6 +523,26 @@ void fake_suite() {
         "authenticated try consumed more than one lane or changed fairness");
   }
   {
+    Session error("render-typed-error", FAKE_BWRAP_PATH);
+    require(error.opened.channel->negotiate(deadline_after(2s)),
+            "render typed-error fixture did not negotiate");
+    const auto received = error.opened.channel->receive_authenticated(
+        launcher::EndpointMask::render, deadline_after(2s));
+    surface::RenderTypedError decoded{};
+    require(received &&
+                received.message->role == wire::EndpointRole::render &&
+                received.message->message_type ==
+                    static_cast<std::uint16_t>(
+                        wire::CommonMessageType::typed_error) &&
+                received.message->descriptors.empty() &&
+                surface::decode_render_error(received.message->payload,
+                                             decoded) &&
+                decoded.reason ==
+                    surface::RenderErrorReason::invalid_allocation &&
+                !error.opened.channel->failed(),
+            "zero-descriptor render typed error failed authentication");
+  }
+  {
     Session replay("replay", FAKE_BWRAP_PATH);
     require(replay.opened.channel->negotiate(deadline_after(2s)) &&
                 await_channel_readable(*replay.opened.channel),
@@ -805,6 +825,20 @@ void fake_suite() {
                     channel::ChannelSendStatus::fatal &&
                 descriptors.opened.channel->failed(),
             "render prepared send omitted its required descriptor");
+  }
+  {
+    Session common("valid", FAKE_BWRAP_PATH);
+    require(common.opened.channel->negotiate(deadline_after(2s)),
+            "render common-message fixture did not negotiate");
+    auto prepared = common.opened.channel->prepare_send(
+        wire::EndpointRole::render,
+        static_cast<std::uint16_t>(wire::CommonMessageType::cancel), 10, {});
+    require(prepared &&
+                common.opened.channel->try_send(*prepared,
+                                                deadline_after(2s)) ==
+                    channel::ChannelSendStatus::complete &&
+                !common.opened.channel->failed(),
+            "zero-descriptor render cancellation failed preparation");
   }
   {
     Session saturated("host-saturation", FAKE_BWRAP_PATH);

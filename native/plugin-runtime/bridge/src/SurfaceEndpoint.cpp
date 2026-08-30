@@ -285,8 +285,15 @@ bool SurfaceEndpoint::forward_render(
     const plugin::wire::EnvelopeHeader &header,
     std::span<const std::byte> payload, std::span<const int> descriptors) {
   auto &value = *implementation_;
+  const bool active_route = value.state == State::attached ||
+                            value.state == State::active;
+  const bool terminal_release =
+      value.state == State::closing &&
+      header.message_type == static_cast<std::uint16_t>(
+                                 surface::RenderMessageType::surface_release) &&
+      header.correlation_id == 0 && descriptors.empty();
   if (std::this_thread::get_id() != owner_thread_ ||
-      (value.state != State::attached && value.state != State::active) ||
+      (!active_route && !terminal_release) ||
       !value.description || descriptors.size() > 1)
     return false;
 
@@ -318,13 +325,11 @@ void SurfaceEndpoint::close_impl() noexcept {
     value.state = State::closing;
     return;
   }
-  // Send the terminal Cancel while the exact authenticated route is still
-  // attached, then fence and detach before destroying the trusted surface.
+  // Send the terminal Cancel first. State::closing blocks reentrant work while
+  // HostSurface emits its one terminal release over the still-attached route.
   if (value.host && !value.host->terminated())
     (void)value.host->end_input();
   value.state = State::closing;
-  value.gate->render = false;
-  value.gate->input = false;
   value.pending_gesture.reset();
   if (value.description)
     session_.clear_surface_intent_eligibility(*value.description);
@@ -332,9 +337,11 @@ void SurfaceEndpoint::close_impl() noexcept {
     value.remote->unbindHostInputRouter(*this);
     value.input_router_bound = false;
   }
+  value.host.reset();
+  value.gate->render = false;
+  value.gate->input = false;
   if (value.description && !session_.detach(*value.description, *this))
     std::terminate();
-  value.host.reset();
   value.input_sink.reset();
   value.sender.reset();
   if (value.remote != nullptr)

@@ -493,6 +493,30 @@ void send_multi_lane(std::uint64_t generation,
                        render_payload));
   pause();
 }
+
+[[noreturn]] void send_render_typed_error(
+    std::uint64_t generation, wire::SessionSequence &sequence) {
+  const surface::SurfaceKey key{.id = 1, .generation = generation};
+  const auto payload = surface::encode_render_error(
+      {.reason = surface::RenderErrorReason::invalid_allocation,
+       .failed_message_type = static_cast<std::uint16_t>(
+           surface::RenderMessageType::surface_allocate),
+       .surface = key});
+  const auto outbound = sequence.take_outbound(wire::EndpointRole::render);
+  if (!outbound)
+    fail();
+  send_bytes(5, packet({.envelope_version = wire::kEnvelopeVersion,
+                        .header_size = wire::kHeaderSize,
+                        .endpoint_role = wire::EndpointRole::render,
+                        .message_type = static_cast<std::uint16_t>(
+                            wire::CommonMessageType::typed_error),
+                        .role_protocol_version = surface::kRenderRoleVersion,
+                        .launch_generation = generation,
+                        .correlation_id = 1,
+                        .lane_sequence = outbound.value},
+                       payload));
+  wait_forever();
+}
 } // namespace
 
 int main() {
@@ -576,6 +600,8 @@ int main() {
     session_notification(broker_generation, sequence);
   if (current == "multi-lane")
     send_multi_lane(broker_generation, sequence);
+  if (current == "render-typed-error")
+    send_render_typed_error(broker_generation, sequence);
   send_broker_request(broker_generation, current, sequence);
   return 0;
 }
