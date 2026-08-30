@@ -44,7 +44,7 @@ chmod +x "$fake_bin/snapper"
 # an unconfigured Snapper has to fail loudly instead of passing for a backup.
 : >"$test_tmp/calls.log"
 set +e
-stderr=$(TEST_LOG="$test_tmp/calls.log" PATH="$fake_bin:$PATH" \
+stderr=$(OMARCHY_SNAPSHOT_FSTYPE=btrfs TEST_LOG="$test_tmp/calls.log" PATH="$fake_bin:$PATH" \
   bash "$snapshot" create 2>&1 >/dev/null)
 status=$?
 set -e
@@ -67,7 +67,7 @@ STUB
 chmod +x "$fake_bin/snapper"
 
 : >"$test_tmp/calls.log"
-TEST_LOG="$test_tmp/calls.log" PATH="$fake_bin:$PATH" \
+OMARCHY_SNAPSHOT_FSTYPE=btrfs TEST_LOG="$test_tmp/calls.log" PATH="$fake_bin:$PATH" \
   bash "$snapshot" create >/dev/null
 
 grep -qFx 'snapper -c root create -c number -d 4.0.0' "$test_tmp/calls.log" ||
@@ -85,7 +85,7 @@ STUB
 chmod +x "$fake_bin/omarchy-cmd-missing"
 
 set +e
-TEST_LOG="$test_tmp/calls.log" PATH="$fake_bin:$PATH" \
+OMARCHY_SNAPSHOT_FSTYPE=btrfs TEST_LOG="$test_tmp/calls.log" PATH="$fake_bin:$PATH" \
   bash "$snapshot" create >/dev/null 2>&1
 status=$?
 set -e
@@ -94,6 +94,51 @@ set -e
 grep -qF 'omarchy-snapshot create || (($? == 127))' "$ROOT/bin/omarchy-update" ||
   fail "update ignores only the missing-snapper exit code"
 pass "snapshot create keeps the quiet 127 path for systems without snapper"
+
+# A non-Btrfs root uses Timeshift instead of Snapper. Snapshot create has to
+# route there, refusing to run when unconfigured and calling into it when a
+# snapshot location exists.
+cat >"$fake_bin/omarchy-cmd-missing" <<'STUB'
+#!/bin/bash
+# The first argument is the command whose presence is being checked. In this
+# block every dependency is treated as present.
+exit 1
+STUB
+chmod +x "$fake_bin/omarchy-cmd-missing"
+
+cat >"$fake_bin/timeshift" <<'STUB'
+#!/bin/bash
+printf 'timeshift %s\n' "$*" >>"$TEST_LOG"
+STUB
+chmod +x "$fake_bin/timeshift"
+
+: >"$test_tmp/calls.log"
+set +e
+stderr=$(OMARCHY_SNAPSHOT_FSTYPE=ext4 OMARCHY_TIMESHIFT_CONFIG="$test_tmp/no-config.json" \
+  TEST_LOG="$test_tmp/calls.log" PATH="$fake_bin:$PATH" \
+  bash "$snapshot" create 2>&1 >/dev/null)
+status=$?
+set -e
+
+(( status != 0 )) || fail "snapshot create fails on non-Btrfs roots without a configured Timeshift"
+grep -qF "run 'sudo timeshift-wizard' once" <<<"$stderr" ||
+  fail "snapshot create tells the user to configure Timeshift" "$stderr"
+! grep -q '^timeshift ' "$test_tmp/calls.log" ||
+  fail "snapshot create does not run Timeshift before it is configured"
+pass "snapshot create fails loudly on non-Btrfs roots without Timeshift configured"
+
+cat >"$test_tmp/timeshift.json" <<'JSON'
+{}
+JSON
+
+: >"$test_tmp/calls.log"
+OMARCHY_SNAPSHOT_FSTYPE=ext4 OMARCHY_TIMESHIFT_CONFIG="$test_tmp/timeshift.json" \
+  TEST_LOG="$test_tmp/calls.log" PATH="$fake_bin:$PATH" \
+  bash "$snapshot" create >/dev/null
+
+grep -qF 'timeshift --create --comments pre-update 4.0.0' "$test_tmp/calls.log" ||
+  fail "snapshot create runs Timeshift on non-Btrfs roots" "$(cat "$test_tmp/calls.log")"
+pass "snapshot create uses Timeshift for non-Btrfs roots"
 
 # The quattro upgrade runs under set -e, so a failed snapshot has to be warned
 # past there too or it aborts the whole upgrade at the snapshot step.
