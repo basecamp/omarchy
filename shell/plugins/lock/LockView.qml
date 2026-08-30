@@ -13,6 +13,7 @@ Item {
   property string failureMessage: ""
   property int failedAttempts: 0
   property bool inputEnabled: true
+  property bool displayBlanked: false
   property bool loadBackground: true
   property string passwordText: ""
   property bool syncingPasswordText: false
@@ -176,6 +177,11 @@ Item {
 
         Keys.onPressed: function(event) {
           root.wakeRequested()
+          // A key hit at a dark panel is there to wake it, not to type.
+          if (root.displayBlanked) {
+            event.accepted = true
+            return
+          }
           if (event.key === Qt.Key_Escape || (event.modifiers & Qt.ControlModifier && event.key === Qt.Key_U)) {
             root.passwordTextEdited("")
             event.accepted = true
