@@ -124,6 +124,7 @@ New migration format:
 - Start with an `echo` describing what the migration does.
 - Use `$OMARCHY_PATH` to reference the Omarchy directory.
 - Be idempotent. Check existing state before changing it.
+- Migrations are strictly ordered and synchronous. A migration that cannot finish must exit non-zero, remain pending, and stop the queue; never mark later migrations complete against state an earlier migration has not established.
 - Use helper commands such as `omarchy-cmd-present`, `omarchy-cmd-missing`,
   `omarchy-pkg-add`, `omarchy-pkg-drop`, `omarchy-pkg-present`, and
   `omarchy-pkg-missing` when appropriate.
@@ -163,3 +164,5 @@ omarchy-migrate
 Omarchy 4.0 is upgraded through `bin/omarchy-upgrade-to-quattro`, not through the
 normal migration runner. Do not add compatibility migrations for old installer
 layouts; put pre-4 package-layout transition work in the upgrade command instead.
+
+Clearing a privileged file that a retired installer left on disk is the exception, and belongs in a migration whether or not that installer was part of a package layout transition. The upgrade command only runs on a machine still making the 3 to 4 crossing, so anything put there never reaches an install that crossed already, and it never runs at all for an installer that was retired on its own — while the file the installer wrote is still sitting on those machines. The upgrade command finishes by running `omarchy-migrate` (`run_post_upgrade_migrations`), so one migration reaches every population; a copy in the upgrade command would only be a second copy of the same predicate to keep correct. Such a migration must name the defect it clears and match what the old installer actually produced before deleting it. Leave safe administrator-authored files alone; if one still contains the vulnerable privileged action, preserve it under an inactive name rather than discarding custom content or leaving the action executable. A user config that depends on the same retired compatibility path may be repaired in that migration when doing so eliminates an overlapping migration, but only by matching and replacing the exact legacy path while preserving the rest of the file.
