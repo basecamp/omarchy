@@ -19,6 +19,7 @@ if (( EUID == 0 )); then
 fi
 
 NM_DNS_CONF=/etc/NetworkManager/conf.d/20-omarchy-dns.conf
+dns_connections_changed=false
 
 provider_from_arg() {
   case "${1:-}" in
@@ -123,28 +124,6 @@ normalize_servers() {
   printf '%s\n' "$*" | tr ',\t\n' ' ' | xargs | tr ' ' ','
 }
 
-split_dns_servers() {
-  local servers="$1"
-  local server clean
-  ipv4_dns=""
-  ipv6_dns=""
-
-  for server in ${servers//,/ }; do
-    clean=${server#dns+tls://}
-    clean=${clean#dns+udp://}
-    clean=${clean%%#*}
-    clean=${clean#[}
-    clean=${clean%]}
-
-    [[ -n $clean ]] || continue
-    if [[ $clean == *:* ]]; then
-      ipv6_dns+="${ipv6_dns:+ }$clean"
-    else
-      ipv4_dns+="${ipv4_dns:+ }$clean"
-    fi
-  done
-}
-
 write_networkmanager_dns() {
   local servers="$1"
 
@@ -169,22 +148,16 @@ networkmanager_dns_connection() {
   esac
 }
 
-set_connection_dns() {
-  local uuid type
-  local ipv4_dns="${1:-}"
-  local ipv6_dns="${2:-}"
+connection_uses_dhcp_dns() {
+  local uuid="$1"
+  local -a dns_settings=()
 
-  while IFS=: read -r uuid type; do
-    [[ -n $uuid ]] || continue
-    networkmanager_dns_connection "$type" || continue
+  mapfile -t dns_settings < <(nmcli -g ipv4.ignore-auto-dns,ipv4.dns,ipv6.ignore-auto-dns,ipv6.dns connection show "$uuid")
 
-    nmcli connection modify "$uuid" \
-      ipv4.ignore-auto-dns yes \
-      ipv4.dns "$ipv4_dns" \
-      ipv6.ignore-auto-dns yes \
-      ipv6.dns "$ipv6_dns" \
-      >/dev/null
-  done < <(nmcli -t -f UUID,TYPE connection show)
+  [[ ${dns_settings[0]:-} == "no" &&
+    -z ${dns_settings[1]:-} &&
+    ${dns_settings[2]:-} == "no" &&
+    -z ${dns_settings[3]:-} ]]
 }
 
 clear_connection_dns() {
@@ -193,6 +166,9 @@ clear_connection_dns() {
   while IFS=: read -r uuid type; do
     [[ -n $uuid ]] || continue
     networkmanager_dns_connection "$type" || continue
+    if connection_uses_dhcp_dns "$uuid"; then
+      continue
+    fi
 
     nmcli connection modify "$uuid" \
       ipv4.ignore-auto-dns no \
@@ -200,6 +176,7 @@ clear_connection_dns() {
       ipv6.ignore-auto-dns no \
       ipv6.dns "" \
       >/dev/null
+    dns_connections_changed=true
   done < <(nmcli -t -f UUID,TYPE connection show)
 }
 
@@ -218,11 +195,15 @@ reapply_active_dns_connections() {
 
 reload_dns_stack() {
   if systemctl is-active --quiet NetworkManager.service 2>/dev/null; then
-    # Load the updated NetworkManager config first, then reapply the active
-    # profiles. A single conf,dns-full reload here pushes the old active DNS
-    # settings, making the shell toggle appear one selection behind.
+    # Global DNS overrides per-connection DNS. Load it without reapplying the
+    # active profile, because reapply restarts DHCP and can interrupt the link.
     nmcli general reload conf >/dev/null 2>&1 || systemctl reload NetworkManager.service 2>/dev/null || true
-    reapply_active_dns_connections
+
+    # Earlier Quattro builds also wrote provider DNS into every saved profile.
+    # Reapply only when DHCP has just cleaned up those legacy settings.
+    if [[ $dns_connections_changed == "true" ]]; then
+      reapply_active_dns_connections
+    fi
   fi
 
   systemctl reload systemd-resolved.service 2>/dev/null || systemctl restart systemd-resolved.service
@@ -258,7 +239,6 @@ require_root "$provider"
 case "$provider" in
 Cloudflare)
   write_networkmanager_dns "1.1.1.1,1.0.0.1,2606:4700:4700::1111,2606:4700:4700::1001"
-  set_connection_dns "1.1.1.1 1.0.0.1" "2606:4700:4700::1111 2606:4700:4700::1001"
   tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
 [Resolve]
 DNS=1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com 2606:4700:4700::1111#cloudflare-dns.com 2606:4700:4700::1001#cloudflare-dns.com
@@ -269,7 +249,6 @@ EOF
 
 Google)
   write_networkmanager_dns "8.8.8.8,8.8.4.4,2001:4860:4860::8888,2001:4860:4860::8844"
-  set_connection_dns "8.8.8.8 8.8.4.4" "2001:4860:4860::8888 2001:4860:4860::8844"
   tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
 [Resolve]
 DNS=8.8.8.8#dns.google 8.8.4.4#dns.google 2001:4860:4860::8888#dns.google 2001:4860:4860::8844#dns.google
@@ -299,9 +278,7 @@ Custom)
     exit 1
   fi
 
-  split_dns_servers "$dns_servers"
   write_networkmanager_dns "$dns_servers"
-  set_connection_dns "$ipv4_dns" "$ipv6_dns"
   tee /etc/systemd/resolved.conf >/dev/null <<EOF
 [Resolve]
 DNS=${dns_servers//,/ }
