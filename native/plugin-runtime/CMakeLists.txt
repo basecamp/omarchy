@@ -102,6 +102,12 @@ if(TARGET omarchy-plugin-broker-core
   add_subdirectory(broker-runtime)
 endif()
 
+if(TARGET omarchy-plugin-broker-runtime
+    AND TARGET omarchy-plugin-surface-contract
+    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/host-session/CMakeLists.txt")
+  add_subdirectory(host-session)
+endif()
+
 if(TARGET omarchy-plugin-launcher
     AND TARGET omarchy-plugin-broker-core
     AND TARGET omarchy-plugin-surface-contract
@@ -127,6 +133,8 @@ set(plugin_host_embedded_targets
   omarchy-plugin-providers
   omarchy-plugin-discovery
   omarchy-plugin-broker-runtime
+  omarchy-plugin-activation-snapshot
+  omarchy-plugin-host-session
   omarchy-plugin-channel-integration
 )
 foreach(target IN LISTS plugin_host_embedded_targets)

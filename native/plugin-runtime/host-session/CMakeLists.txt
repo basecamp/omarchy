@@ -3,12 +3,23 @@ cmake_minimum_required(VERSION 3.24)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   project(omarchy_plugin_host_session LANGUAGES CXX)
   include(CTest)
+  find_package(Qt6 REQUIRED COMPONENTS Core)
   add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../contracts/manifest"
                    "${CMAKE_CURRENT_BINARY_DIR}/manifest-contract")
+  add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../contracts/wire"
+                   "${CMAKE_CURRENT_BINARY_DIR}/wire-contract")
+  add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../contracts/surface"
+                   "${CMAKE_CURRENT_BINARY_DIR}/surface-contract")
   add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../contracts/permissions"
                    "${CMAKE_CURRENT_BINARY_DIR}/permission-contract")
   add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../contracts/capability-definitions"
                    "${CMAKE_CURRENT_BINARY_DIR}/capability-definitions")
+  add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../broker"
+                   "${CMAKE_CURRENT_BINARY_DIR}/broker")
+  add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../providers"
+                   "${CMAKE_CURRENT_BINARY_DIR}/providers")
+  add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../broker-runtime"
+                   "${CMAKE_CURRENT_BINARY_DIR}/broker-runtime")
   add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../discovery"
                    "${CMAKE_CURRENT_BINARY_DIR}/discovery")
 endif()
@@ -26,6 +37,23 @@ target_link_libraries(omarchy-plugin-activation-snapshot PUBLIC
 target_compile_features(omarchy-plugin-activation-snapshot PUBLIC cxx_std_20)
 target_compile_options(omarchy-plugin-activation-snapshot PRIVATE
   -Wall -Wextra -Wpedantic -Werror)
+
+add_library(omarchy-plugin-host-session STATIC
+  MultiSurfaceRouter.cpp
+  plugin_session_io.cpp
+  structured_broker.cpp)
+target_include_directories(omarchy-plugin-host-session PUBLIC
+  "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(omarchy-plugin-host-session PUBLIC
+  Qt6::Core
+  omarchy-plugin-surface-contract
+  omarchy-plugin-broker-runtime
+  omarchy-plugin-wire)
+target_compile_features(omarchy-plugin-host-session PUBLIC cxx_std_20)
+target_compile_options(omarchy-plugin-host-session PRIVATE
+  -Wall -Wextra -Wpedantic -Werror)
+set_target_properties(omarchy-plugin-host-session PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
 
 if(BUILD_TESTING)
   add_executable(omarchy-plugin-activation-snapshot-test activation_snapshot_test.cpp)
@@ -52,4 +80,45 @@ if(BUILD_TESTING)
     COMMAND omarchy-plugin-revision-verifier-adapter-test)
   set_tests_properties(plugin-revision-verifier-adapter PROPERTIES
     TIMEOUT 15 LABELS "unit;security;adversarial")
+
+  add_executable(omarchy-plugin-multi-surface-router-test
+    MultiSurfaceRouter_test.cpp)
+  target_link_libraries(omarchy-plugin-multi-surface-router-test PRIVATE
+    omarchy-plugin-host-session)
+  target_compile_features(omarchy-plugin-multi-surface-router-test PRIVATE
+    cxx_std_20)
+  target_compile_options(omarchy-plugin-multi-surface-router-test PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+  add_test(NAME plugin-multi-surface-router
+    COMMAND omarchy-plugin-multi-surface-router-test)
+  set_tests_properties(plugin-multi-surface-router PROPERTIES
+    TIMEOUT 15 LABELS "unit;security;session")
+
+  # Compile the lifecycle implementation separately so deterministic fault
+  # hooks can never enter the production host-session archive.
+  add_executable(omarchy-plugin-session-io-test
+    plugin_session_io.cpp
+    plugin_session_io_test.cpp)
+  target_link_libraries(omarchy-plugin-session-io-test PRIVATE Qt6::Core)
+  target_compile_features(omarchy-plugin-session-io-test PRIVATE cxx_std_20)
+  target_compile_options(omarchy-plugin-session-io-test PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+  target_compile_definitions(omarchy-plugin-session-io-test PRIVATE
+    OMARCHY_PLUGIN_SESSION_IO_TESTING)
+  add_test(NAME plugin-session-io COMMAND omarchy-plugin-session-io-test)
+  set_tests_properties(plugin-session-io PROPERTIES
+    TIMEOUT 30 LABELS "unit;security;session;adversarial")
+
+  add_executable(omarchy-plugin-structured-broker-test
+    structured_broker_test.cpp)
+  target_link_libraries(omarchy-plugin-structured-broker-test PRIVATE
+    omarchy-plugin-host-session)
+  target_compile_features(omarchy-plugin-structured-broker-test PRIVATE
+    cxx_std_20)
+  target_compile_options(omarchy-plugin-structured-broker-test PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+  add_test(NAME plugin-structured-broker
+    COMMAND omarchy-plugin-structured-broker-test)
+  set_tests_properties(plugin-structured-broker PROPERTIES
+    TIMEOUT 30 LABELS "unit;security;session;broker;adversarial")
 endif()
