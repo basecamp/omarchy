@@ -488,7 +488,7 @@ void identity_policy_and_mode_mismatches_are_rejected() {
     require(load(tree, verifier, authority).error ==
                 host::ActivationError::record_invalid &&
                 verifier.calls == 0 && authority.calls == 0,
-            "legacy generation-bearing activation record was accepted");
+            "generation-bearing activation record was accepted");
   }
   {
     TemporaryTree tree;

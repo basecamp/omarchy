@@ -185,7 +185,7 @@ public:
   try_send(PreparedSend &prepared, launcher::Deadline deadline,
            std::span<const int> borrowed_descriptors = {});
   // Borrowed from Worker. Any notifier must be disarmed before fail(),
-  // terminate(), or destruction invalidates the descriptor.
+  // terminate(deadline), or destruction invalidates the descriptor.
   [[nodiscard]] int readiness_fd() const noexcept;
   [[nodiscard]] bool
   arm_readiness(launcher::EndpointMask read_lanes,
@@ -218,9 +218,6 @@ public:
   [[nodiscard]] const launcher::LaunchIdentity &identity() const;
   [[nodiscard]] std::string take_worker_standard_error();
   [[nodiscard]] bool terminate(launcher::Deadline deadline) noexcept;
-  // Legacy convenience wrapper. New session code supplies one absolute
-  // shutdown deadline through the overload above.
-  [[nodiscard]] bool terminate();
 
 private:
   enum class ReceiveMode { blocking, nonblocking };

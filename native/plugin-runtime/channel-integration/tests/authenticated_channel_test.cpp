@@ -943,7 +943,8 @@ void fake_suite() {
                 session.dispatcher->calls == 0 &&
                 eventually_removed(session.scope),
             "broker dispatch was not gated on aggregate readiness");
-    require(session.opened.channel->terminate(),
+    require(session.opened.channel->terminate(
+                std::chrono::steady_clock::now() + 6s),
             "pre-readiness refusal did not tear down cleanly");
   }
   {
@@ -956,7 +957,8 @@ void fake_suite() {
                 session.dispatcher->calls == 1 &&
                 session.dispatcher->last_generation == 47,
             "authenticated broker message was not dispatched exactly once");
-    require(session.opened.channel->terminate() &&
+    require(session.opened.channel->terminate(
+                std::chrono::steady_clock::now() + 6s) &&
                 eventually_removed(session.scope),
             "valid channel teardown was not bounded");
   }
@@ -1193,7 +1195,8 @@ void fake_suite() {
             session.opened.channel->failure() ==
                 channel::ChannelFailure::peer_failure &&
             session.dispatcher->calls == 0 &&
-            session.opened.channel->terminate() &&
+            session.opened.channel->terminate(
+                std::chrono::steady_clock::now() + 6s) &&
             eventually_removed(session.scope),
         "post-readiness peer exit remained live or reached broker dispatch");
   }
@@ -1212,7 +1215,8 @@ int bwrap_suite() {
                     channel::DispatchStatus::dispatched &&
                 valid.dispatcher->calls == 1,
             "real Bubblewrap authenticated dispatch failed");
-    require(valid.opened.channel->terminate(),
+    require(valid.opened.channel->terminate(
+                std::chrono::steady_clock::now() + 6s),
             "real Bubblewrap teardown failed");
 
     Session replied("reply-allowed", BWRAP_PATH);

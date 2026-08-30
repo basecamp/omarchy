@@ -130,7 +130,7 @@ public:
   std::atomic<unsigned> removes = 0;
 };
 
-class LegacyDispatcher final : public channel::BrokerDispatcher {
+class UnreachableDispatcher final : public channel::BrokerDispatcher {
 public:
   bool
   accepts(const launcher::LaunchIdentity &identity) const noexcept override {
@@ -319,9 +319,9 @@ std::optional<surface::FrameReady> rendered_frame(const Observer &observer) {
   return std::nullopt;
 }
 
-void require_legacy_unused(const LegacyDispatcher &legacy) {
-  require(legacy.dispatches.load() == 0 && legacy.replies.load() == 0,
-          "legacy broker dispatcher handled a authenticated session request");
+void require_dispatcher_unreached(const UnreachableDispatcher &dispatcher) {
+  require(dispatcher.dispatches.load() == 0 && dispatcher.replies.load() == 0,
+          "transport dispatcher handled an authenticated session request");
 }
 
 bool has_visible_lanes(const Observer &observer) {
@@ -424,7 +424,7 @@ int run_case(std::string bwrap, std::string_view mode) {
   constexpr std::uint64_t nonce = 19;
   RevisionFixture files(mode);
   auto scope = std::make_shared<Scope>();
-  auto legacy = std::make_shared<LegacyDispatcher>();
+  auto unreachable_dispatcher = std::make_shared<UnreachableDispatcher>();
   auto generation = std::make_shared<Generation>();
   audit::BoundedAuditLog log(4096);
   auto grants = snapshot();
@@ -456,7 +456,8 @@ int run_case(std::string bwrap, std::string_view mode) {
       .revision_directory = files.take_revision(),
       .private_state_directory = files.take_state()};
   auto authenticated = std::make_unique<channel::AuthenticatedSessionChannel>(
-      std::move(supervisor), std::move(launch), legacy, generation,
+      std::move(supervisor), std::move(launch), unreachable_dispatcher,
+      generation,
       std::move(broker));
   const session::SessionToken token{
       .plugin_id = std::string(grants.binding.plugin.view()),
@@ -554,7 +555,7 @@ int run_case(std::string bwrap, std::string_view mode) {
         require(
             cancelled == 1,
             "revoke did not cancel the one pending transaction exactly once");
-        require_legacy_unused(*legacy);
+        require_dispatcher_unreached(*unreachable_dispatcher);
         return 0;
       }
       require(value.enqueue(pressure_control(token, 1, std::byte{1})),
@@ -614,7 +615,7 @@ int run_case(std::string bwrap, std::string_view mode) {
                   {session::SessionState::failed,
                    session::SessionError::io_deadline_expired}},
           "deadline observer state sequence was not exact");
-      require_legacy_unused(*legacy);
+      require_dispatcher_unreached(*unreachable_dispatcher);
       return 0;
     } else {
       require(
@@ -631,7 +632,7 @@ int run_case(std::string bwrap, std::string_view mode) {
                   frame->frame_sequence == 1,
               "happy frame-ready semantics changed");
     }
-    require_legacy_unused(*legacy);
+    require_dispatcher_unreached(*unreachable_dispatcher);
     if (value.state() == session::SessionState::failed) {
       const auto decided =
           audit_records(log, permissions::AuditEvent::operation_decided);

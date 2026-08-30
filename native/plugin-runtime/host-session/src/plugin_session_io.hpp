@@ -112,9 +112,9 @@ public:
                                         TimePoint deadline) = 0;
   // A would_block result likewise consumes no bytes or descriptors.
   [[nodiscard]] virtual ReceiveResult receive(TimePoint deadline) = 0;
-  // Legacy channels may ignore readiness callbacks because they never retain
-  // one. An implementation that returns true after retaining `handler` must
-  // make clear_wake_handler() an infallible, idempotent synchronous fence.
+  // The default implementation accepts but does not retain the callback. An
+  // implementation that returns true after retaining `handler` must make
+  // clear_wake_handler() an infallible, idempotent synchronous fence.
   [[nodiscard]] virtual bool
   install_wake_handler(SessionWakeHandler handler) noexcept {
     (void)handler;

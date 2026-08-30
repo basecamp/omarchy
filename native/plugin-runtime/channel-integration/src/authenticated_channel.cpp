@@ -22,7 +22,6 @@ namespace {
 constexpr std::uint16_t kControlRoleVersion = 1;
 constexpr std::uint32_t kMaximumInFlight = 32;
 constexpr auto kMaximumNegotiationWait = std::chrono::seconds(30);
-constexpr auto kLegacyTerminationWait = std::chrono::seconds(6);
 std::atomic<std::uint64_t> next_channel_origin{1};
 
 std::size_t role_index(wire::EndpointRole role) {
@@ -947,10 +946,6 @@ bool AuthenticatedBrokerChannel::terminate(
   ready_ = false;
   termination_.complete(worker_ == nullptr || worker_->terminate(deadline));
   return termination_.succeeded();
-}
-
-bool AuthenticatedBrokerChannel::terminate() {
-  return terminate(std::chrono::steady_clock::now() + kLegacyTerminationWait);
 }
 
 bool AuthenticatedBrokerChannel::fail(ChannelFailure failure,
