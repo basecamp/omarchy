@@ -67,6 +67,24 @@ grep -F 'OMARCHY_INSTALL_USER="$target_user"' "$upgrade_to_quattro" >/dev/null
 grep -F '"$apply_lock"' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade configures lock screen authentication for the target user"
 
+grep -F 'install/helpers/browser-policy.sh' "$upgrade_to_quattro" >/dev/null ||
+  fail "Omarchy 4 upgrade uses the shared browser-policy helper"
+grep -F 'as_root test -f "$browser_policy_helper"' "$upgrade_to_quattro" >/dev/null ||
+  fail "Omarchy 4 upgrade survives a packaged tree without the browser-policy helper"
+if grep -F 'browser_policy_setup_group' "$upgrade_to_quattro" >/dev/null; then
+  fail "Omarchy 4 upgrade does not create a browser-policy group"
+fi
+grep -F 'browser_policy_setup_dir /etc/chromium/policies/managed' "$upgrade_to_quattro" >/dev/null ||
+  fail "Omarchy 4 upgrade creates a root-owned Chromium policy directory"
+grep -F 'BROWSER_POLICY_MANAGED_DIRS' "$upgrade_to_quattro" >/dev/null ||
+  fail "Omarchy 4 upgrade hardens every Chromium-family policy directory"
+grep -F 'run_as_user_omarchy omarchy-theme-set-browser' "$upgrade_to_quattro" >/dev/null ||
+  fail "Omarchy 4 upgrade rewrites browser theme colour after a headless theme-set"
+if grep -E 'install -d -m 0?[27]?777 /etc/.*/policies|chmod a\+rw|2775' "$upgrade_to_quattro" >/dev/null; then
+  fail "Omarchy 4 upgrade does not create a world-writable Chromium policy directory"
+fi
+pass "Omarchy 4 upgrade locks the Chromium policy directory to root"
+
 grep -F 'OMARCHY_UPGRADE_TO_QUATTRO_LIVE=1' "$upgrade_to_quattro" >/dev/null
 grep -F 'systemd-networkd.service' "$upgrade_to_quattro" >/dev/null
 grep -F 'systemd-networkd.socket' "$upgrade_to_quattro" >/dev/null
