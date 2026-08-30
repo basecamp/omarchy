@@ -98,11 +98,9 @@ public:
   // mutex. A later mutation is rejected by publish_candidate's sequence CAS.
   [[nodiscard]] std::optional<AuthorityView> read_authority_view() const;
   [[nodiscard]] std::optional<FilesystemIdentity> root_identity() const;
-  // Binds one not-yet-started product session to the exact durable active
-  // revision. Promotion revokes this shared state before replacing authority.
-  [[nodiscard]] bool
-  bind_live_activation(const permissions::ActivationBinding &binding,
-      const std::shared_ptr<LiveGenerationState> &live);
+  // The prepare/commit fence binds one not-yet-started product session to the
+  // exact durable active revision. Promotion revokes this shared state before
+  // replacing authority.
   [[nodiscard]] std::optional<PreparedLiveBinding>
   prepare_live_activation(const permissions::ActivationBinding &binding,
                           const std::shared_ptr<LiveGenerationState> &live);

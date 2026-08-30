@@ -700,14 +700,6 @@ std::optional<FilesystemIdentity> AuthorityStore::root_identity() const {
                             .inode = static_cast<std::uint64_t>(metadata.st_ino)};
 }
 
-bool AuthorityStore::bind_live_activation(
-    const permissions::ActivationBinding &binding,
-    const std::shared_ptr<LiveGenerationState> &live) {
-  auto prepared = prepare_live_activation(binding, live);
-  return prepared &&
-         commit_live_activation(std::move(*prepared), binding, live);
-}
-
 std::optional<PreparedLiveBinding> AuthorityStore::prepare_live_activation(
     const permissions::ActivationBinding &binding,
     const std::shared_ptr<LiveGenerationState> &live) {

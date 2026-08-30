@@ -98,6 +98,15 @@ void require(bool condition, std::string_view message) {
     throw std::runtime_error(std::string(message));
 }
 
+bool prepare_and_commit_live(
+    host::AuthorityStore &store,
+    const permissions::ActivationBinding &binding,
+    const std::shared_ptr<host::LiveGenerationState> &live) {
+  auto prepared = store.prepare_live_activation(binding, live);
+  return prepared &&
+         store.commit_live_activation(std::move(*prepared), binding, live);
+}
+
 struct Fixture {
   std::filesystem::path path;
   int root = -1;
@@ -293,12 +302,13 @@ void live_activation_binding_and_revocation() {
   auto wrong_binding = first.snapshot.binding;
   wrong_binding.revision = permissions::Digest(hex('f'));
   auto wrong_live = std::make_shared<host::LiveGenerationState>(wrong_binding);
-  require(!fixture.store->bind_live_activation(first.snapshot.binding, {}),
+  require(!fixture.store->prepare_live_activation(first.snapshot.binding, {}),
           "null live state was accepted");
-  require(!fixture.store->bind_live_activation(wrong_binding, wrong_live),
+  require(!fixture.store->prepare_live_activation(wrong_binding, wrong_live),
           "non-active binding was accepted as live");
   require(
-      !fixture.store->bind_live_activation(first.snapshot.binding, wrong_live),
+      !fixture.store->prepare_live_activation(first.snapshot.binding,
+                                              wrong_live),
           "live state with a different binding was accepted");
 
   auto older =
@@ -419,16 +429,28 @@ void live_activation_binding_and_revocation() {
             "successful discard did not invalidate prepared authority");
   }
 
-  require(
-      fixture.store->bind_live_activation(first.snapshot.binding, live) &&
-          fixture.store->bind_live_activation(first.snapshot.binding, live) &&
+  auto initial_bind =
+      fixture.store->prepare_live_activation(first.snapshot.binding, live);
+  require(initial_bind &&
+              fixture.store->commit_live_activation(
+                  std::move(*initial_bind), first.snapshot.binding, live),
+          "initial exact live binding was not committed");
+  auto idempotent_bind =
+      fixture.store->prepare_live_activation(first.snapshot.binding, live);
+  require(idempotent_bind &&
+              fixture.store->commit_live_activation(
+                  std::move(*idempotent_bind), first.snapshot.binding, live) &&
               live->current(first.snapshot.binding),
           "same live pointer was not an idempotent exact binding");
 
   auto replacement =
       std::make_shared<host::LiveGenerationState>(first.snapshot.binding);
-  require(fixture.store->bind_live_activation(first.snapshot.binding,
-                                              replacement) &&
+  auto replacement_bind = fixture.store->prepare_live_activation(
+      first.snapshot.binding, replacement);
+  require(replacement_bind &&
+              fixture.store->commit_live_activation(
+                  std::move(*replacement_bind), first.snapshot.binding,
+                  replacement) &&
               !live->current(first.snapshot.binding) &&
               replacement->current(first.snapshot.binding),
           "new live binding did not revoke the prior state");
@@ -456,7 +478,8 @@ void live_activation_binding_and_revocation() {
 
   auto promoted =
       std::make_shared<host::LiveGenerationState>(third.snapshot.binding);
-  require(fixture.store->bind_live_activation(third.snapshot.binding, promoted),
+  require(prepare_and_commit_live(*fixture.store, third.snapshot.binding,
+                                  promoted),
           "promoted active binding was not accepted as live");
   fixture.store.reset();
   require(!promoted->current(third.snapshot.binding),
@@ -484,8 +507,6 @@ void mutation_epoch_saturates_fail_closed() {
                   std::move(*last), active.snapshot.binding, live) &&
               !fixture.store->prepare_live_activation(active.snapshot.binding,
                                                       live) &&
-              !fixture.store->bind_live_activation(active.snapshot.binding,
-                                                   live) &&
               fixture.store->publish_candidate(active.verified,
                                                 active.snapshot, UINT64_MAX,
                                                 fixture.definitions, {}) ==
@@ -524,7 +545,8 @@ void live_effect_transitions_drain_before_authority_changes() {
             "bind drain fixture activation failed");
     auto live =
         std::make_shared<host::LiveGenerationState>(value.snapshot.binding);
-    require(fixture.store->bind_live_activation(value.snapshot.binding, live),
+    require(prepare_and_commit_live(*fixture.store, value.snapshot.binding,
+                                    live),
             "bind drain fixture live bind failed");
     auto effect = live->acquire_effect(value.snapshot.binding);
     require(effect.has_value(), "bind drain effect acquisition failed");
@@ -533,8 +555,8 @@ void live_effect_transitions_drain_before_authority_changes() {
     std::atomic<bool> finished = false;
     bool rebound = false;
     std::thread binder([&] {
-      rebound = fixture.store->bind_live_activation(value.snapshot.binding,
-                                                     replacement);
+      rebound = prepare_and_commit_live(*fixture.store, value.snapshot.binding,
+                                        replacement);
       finished.store(true, std::memory_order_release);
     });
     wait_closed(live);
@@ -561,7 +583,8 @@ void live_effect_transitions_drain_before_authority_changes() {
             "promotion drain fixture setup failed");
     auto live =
         std::make_shared<host::LiveGenerationState>(first.snapshot.binding);
-    require(fixture.store->bind_live_activation(first.snapshot.binding, live),
+    require(prepare_and_commit_live(*fixture.store, first.snapshot.binding,
+                                    live),
             "promotion drain fixture live bind failed");
     auto effect = live->acquire_effect(first.snapshot.binding);
     require(effect.has_value(), "promotion drain effect acquisition failed");
@@ -592,7 +615,8 @@ void live_effect_transitions_drain_before_authority_changes() {
             "revoke drain fixture activation failed");
     auto live =
         std::make_shared<host::LiveGenerationState>(value.snapshot.binding);
-    require(fixture.store->bind_live_activation(value.snapshot.binding, live),
+    require(prepare_and_commit_live(*fixture.store, value.snapshot.binding,
+                                    live),
             "revoke drain fixture live bind failed");
     auto effect = live->acquire_effect(value.snapshot.binding);
     require(effect.has_value(), "revoke drain effect acquisition failed");
@@ -626,7 +650,8 @@ void reentrant_effect_revoke_poisoned_without_durable_change() {
   const auto before = fixture.store->read_slots();
   auto live =
       std::make_shared<host::LiveGenerationState>(value.snapshot.binding);
-  require(fixture.store->bind_live_activation(value.snapshot.binding, live),
+  require(prepare_and_commit_live(*fixture.store, value.snapshot.binding,
+                                  live),
           "reentrant revoke fixture live bind failed");
   auto effect = live->acquire_effect(value.snapshot.binding);
   require(effect.has_value(), "reentrant revoke effect acquisition failed");
@@ -655,7 +680,8 @@ void promotion_revokes_before_failed_replacement() {
           "failed replacement fixture activation failed");
   auto live =
       std::make_shared<host::LiveGenerationState>(first.snapshot.binding);
-  require(fixture.store->bind_live_activation(first.snapshot.binding, live),
+  require(prepare_and_commit_live(*fixture.store, first.snapshot.binding,
+                                  live),
           "failed replacement fixture live bind failed");
   auto second = review(2, 'b');
   require(fixture.store->publish_candidate(second.verified, second.snapshot, 2,
@@ -692,7 +718,8 @@ void exact_builtin_revoke_rebases_and_invalidates_candidate() {
           "revoke fixture activation failed");
   auto live =
       std::make_shared<host::LiveGenerationState>(first.snapshot.binding);
-  require(fixture.store->bind_live_activation(first.snapshot.binding, live),
+  require(prepare_and_commit_live(*fixture.store, first.snapshot.binding,
+                                  live),
           "revoke fixture live bind failed");
 
   auto pending = review(2, 'b', false);
@@ -717,7 +744,8 @@ void exact_builtin_revoke_rebases_and_invalidates_candidate() {
           view->active->grants[0].state == permissions::GrantState::revoked &&
               view->active->grants[0].epoch == 3 &&
               !fixture.store->resolve(kPlugin, hex('a')) &&
-          !fixture.store->bind_live_activation(*revoked.binding, revoked_live),
+              !fixture.store->prepare_live_activation(*revoked.binding,
+                                                      revoked_live),
           "required revoked authority was not durable and nonactivatable");
   require(host::AuthorityStoreTestAccess::revoke_active(
               *fixture.store, first.snapshot.grants[0].capability, 4)
@@ -797,7 +825,8 @@ void revoke_io_failures_poison_after_effect_fence() {
           "poison fixture activation failed");
   auto live =
       std::make_shared<host::LiveGenerationState>(value.snapshot.binding);
-  require(fixture.store->bind_live_activation(value.snapshot.binding, live),
+  require(prepare_and_commit_live(*fixture.store, value.snapshot.binding,
+                                  live),
           "poison fixture live bind failed");
   require(::chmod(fixture.path.c_str(), 0500) == 0,
           "poison fixture permission mutation failed");
@@ -810,7 +839,8 @@ void revoke_io_failures_poison_after_effect_fence() {
               !live->current(value.snapshot.binding) &&
               !fixture.store->read_slots() &&
               !fixture.store->resolve(kPlugin, hex('a')) &&
-          !fixture.store->bind_live_activation(value.snapshot.binding, live) &&
+              !fixture.store->prepare_live_activation(value.snapshot.binding,
+                                                      live) &&
           fixture.store->publish_candidate(value.verified, value.snapshot, 2,
                                           fixture.definitions, {}) ==
                   host::AuthorityMutationResult::poisoned,
@@ -828,7 +858,8 @@ void revoke_allocation_failure_poison_after_effect_fence() {
           "allocation poison fixture activation failed");
   auto live =
       std::make_shared<host::LiveGenerationState>(value.snapshot.binding);
-  require(fixture.store->bind_live_activation(value.snapshot.binding, live),
+  require(prepare_and_commit_live(*fixture.store, value.snapshot.binding,
+                                  live),
           "allocation poison fixture live bind failed");
 
   allocation_failure::live = live;
@@ -846,7 +877,8 @@ void revoke_allocation_failure_poison_after_effect_fence() {
               !live->current(value.snapshot.binding) &&
               !fixture.store->read_slots() &&
               !fixture.store->resolve(kPlugin, hex('a')) &&
-          !fixture.store->bind_live_activation(value.snapshot.binding, live) &&
+              !fixture.store->prepare_live_activation(value.snapshot.binding,
+                                                      live) &&
           fixture.store->publish_candidate(value.verified, value.snapshot, 2,
                                           fixture.definitions, {}) ==
                   host::AuthorityMutationResult::poisoned,
