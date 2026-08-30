@@ -113,7 +113,7 @@ if(BUILD_TESTING)
     string(SUBSTRING "${external_fixture_hash}" 0 12 external_fixture_id)
     add_test(NAME "plugin-external-fixture-${external_fixture_id}"
       COMMAND omarchy-plugin-external-fixture-test
-        --root "${external_fixture}" --function stepForTest
+        --root "${external_fixture}"
         --definitions "${OMARCHY_PLUGIN_EXTERNAL_DEFINITIONS}"
         --adapters "${OMARCHY_PLUGIN_EXTERNAL_ADAPTERS}")
     set_tests_properties("plugin-external-fixture-${external_fixture_id}" PROPERTIES

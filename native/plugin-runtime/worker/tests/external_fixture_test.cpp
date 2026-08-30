@@ -225,7 +225,7 @@ private:
   std::size_t size_ = 0;
 };
 
-void run(const std::filesystem::path &root, std::string_view function,
+void run(const std::filesystem::path &root,
          const std::filesystem::path &definition_root,
          std::string_view adapter_text) {
   auto adapters = parse_adapters(adapter_text);
@@ -295,8 +295,7 @@ void run(const std::filesystem::path &root, std::string_view function,
   const auto loaded_qml = runtime.load_manifest_entry();
   require(static_cast<bool>(loaded_qml),
           "fixture QML failed to load: " + loaded_qml.detail);
-  require(runtime.object_count() > 1 && runtime.invoke_test_function(function),
-          "fixture scene or deterministic function is unavailable");
+  require(runtime.object_count() > 1, "fixture scene is unavailable");
   require(static_cast<bool>(runtime.select_software_profile(
               surface::software_profile_offer())),
           "fixture rejected software rendering");
@@ -333,13 +332,12 @@ int main(int argc, char **argv) {
   try {
     QGuiApplication application(argc, argv);
     const QStringList args = application.arguments();
-    require(args.size() == 9 && args.at(1) == "--root" &&
-                args.at(3) == "--function" && args.at(5) == "--definitions" &&
-                args.at(7) == "--adapters",
-            "usage: external-fixture-test --root PATH --function NAME "
-            "--definitions PATH --adapters CLASS:DIGEST:ABI[;...]");
+    require(args.size() == 7 && args.at(1) == "--root" &&
+                args.at(3) == "--definitions" && args.at(5) == "--adapters",
+            "usage: external-fixture-test --root PATH --definitions PATH "
+            "--adapters CLASS:DIGEST:ABI[;...]");
     run(args.at(2).toStdString(), args.at(4).toStdString(),
-        args.at(6).toStdString(), args.at(8).toStdString());
+        args.at(6).toStdString());
     std::cout << "external plugin fixture: ok\n";
     return 0;
   } catch (const std::exception &error) {

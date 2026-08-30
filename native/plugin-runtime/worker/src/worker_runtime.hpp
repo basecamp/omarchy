@@ -91,10 +91,6 @@ public:
   [[nodiscard]] RuntimeResult release(surface::SurfaceKey surface);
   [[nodiscard]] RuntimeResult focus(const surface::FocusEvent &event);
   [[nodiscard]] RuntimeResult input(const surface::InputEvent &event);
-  // Test-only compatibility hook used by the external-fixture runner. It is
-  // deliberately limited to zero-argument methods ending in `ForTest` and is
-  // never reachable through the worker wire protocol.
-  [[nodiscard]] bool invoke_test_function(std::string_view function);
   void request_render();
   [[nodiscard]] std::optional<PublishedFrame> render();
   [[nodiscard]] std::optional<surface::InputRegionUpdate>

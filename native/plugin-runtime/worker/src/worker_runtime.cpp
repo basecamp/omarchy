@@ -36,7 +36,6 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <cctype>
 #include <cerrno>
 #include <cstring>
 #include <limits>
@@ -680,20 +679,6 @@ WorkerRuntime::surface_key(std::string_view surface_name) const {
   if (instance == nullptr)
     return std::nullopt;
   return instance->bound_key;
-}
-
-bool WorkerRuntime::invoke_test_function(std::string_view function) {
-  constexpr std::string_view suffix = "ForTest";
-  if (implementation_->surfaces.empty() || function.empty() ||
-      function.size() > 96 || !function.ends_with(suffix) ||
-      !std::ranges::all_of(function, [](unsigned char character) {
-        return std::isalnum(character) != 0 || character == '_';
-      }))
-    return false;
-  const QByteArray method(function.data(),
-                          static_cast<qsizetype>(function.size()));
-  return QMetaObject::invokeMethod(implementation_->surfaces.front()->root_item,
-                                   method.constData(), Qt::DirectConnection);
 }
 
 void WorkerRuntime::request_render() {
