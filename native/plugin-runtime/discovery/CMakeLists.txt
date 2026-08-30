@@ -27,7 +27,6 @@ if(BUILD_TESTING)
   target_compile_definitions(omarchy-plugin-discovery-test PRIVATE
     MANIFEST_V2_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../contracts/manifest/tests/fixtures/valid-minimal"
     MANIFEST_DUPLICATE_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../contracts/manifest/tests/fixtures/invalid-duplicate"
-    DISCOVERY_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
     TREE_SHA256_GOLDEN="2f7b14d861677e84433b6178ddaaa4ad7e9bf1e7a44426c872b083f6f4fadd32"
   )
   if(PLUGIN_SECURITY_ENABLE_SANITIZERS)
