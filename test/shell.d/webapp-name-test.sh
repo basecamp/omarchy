@@ -215,3 +215,17 @@ printf '[Desktop Entry]\nExec=foot\n' >"$apps_dir/foot.desktop"
 HOME="$tmp_dir/home" PATH="$ROOT/bin:$PATH" bash -c "$webapp_menu_guard" &&
   fail "the Remove menu hides Web App when no launcher is a web app"
 pass "the Remove menu hides Web App when there is none"
+
+# A launcher can be a symlink, and the remover's own scan reads one, so the menu
+# has to see it too -- a guard that misses it hides a row for something that is
+# sitting there removable.
+rm -rf "$apps_dir" "$tmp_dir/elsewhere"
+mkdir -p "$apps_dir" "$tmp_dir/elsewhere"
+cat >"$tmp_dir/elsewhere/Linked.desktop" <<'DESKTOP'
+[Desktop Entry]
+Exec=omarchy-launch-webapp https://linked.example
+DESKTOP
+ln -s "$tmp_dir/elsewhere/Linked.desktop" "$apps_dir/Linked.desktop"
+HOME="$tmp_dir/home" PATH="$ROOT/bin:$PATH" bash -c "$webapp_menu_guard" ||
+  fail "the Remove menu sees a launcher that is a symlink"
+pass "the Remove menu sees a symlinked launcher"

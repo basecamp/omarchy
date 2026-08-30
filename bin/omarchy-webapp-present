@@ -4,9 +4,14 @@
 
 DESKTOP_DIR="$HOME/.local/share/applications"
 
-# An older omarchy-webapp-install turned a slash in the name into a directory
-# level, and omarchy-webapp-remove can still reach what that left behind, so
-# look for launchers the way it does rather than only at the top level.
-grep -rqE --include='*.desktop' \
-  '^Exec=.*(omarchy-launch-webapp|omarchy-webapp-handler)' \
-  "$DESKTOP_DIR" 2>/dev/null
+# Look for launchers exactly the way omarchy-webapp-remove does, so the menu
+# cannot offer a row the remover finds nothing for, or hide one it could have
+# removed: find descends into the directories an older omarchy-webapp-install
+# made out of a slash in the name, and reads a launcher that is a symlink.
+while IFS= read -r -d '' file; do
+  if grep -q '^Exec=.*\(omarchy-launch-webapp\|omarchy-webapp-handler\).*' "$file"; then
+    exit 0
+  fi
+done < <(find "$DESKTOP_DIR" -name '*.desktop' -print0 2>/dev/null)
+
+exit 1
