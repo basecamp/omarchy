@@ -1,6 +1,7 @@
 #include "omarchy/plugin_runtime/launcher/launcher.h"
 #include "omarchy/plugin_runtime/launcher/termination_state.h"
 #include "omarchy/plugin_runtime/runtime_paths.hpp"
+#include "process_cleanup.hpp"
 
 #include "omarchy/plugin/wire/envelope.hpp"
 
@@ -17,6 +18,7 @@
 #include <seccomp.h>
 #include <signal.h>
 #include <sys/prctl.h>
+#include <sys/epoll.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -30,17 +32,23 @@
 #include <cerrno>
 #include <charconv>
 #include <chrono>
+#include <condition_variable>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string_view>
+#include <thread>
 #include <utility>
 
 namespace omarchy::plugin_runtime::launcher {
 namespace {
+using detail::CleanupJob;
+using detail::ProcessScopeReaper;
+using detail::ReapCompletion;
 constexpr std::string_view kProductionBwrap = "/usr/bin/bwrap";
 constexpr std::size_t kMaximumStatusLine = 4096;
 constexpr unsigned kMaximumStatusRecords = 32;
@@ -293,71 +301,6 @@ enum class PidfdState { alive, exited, unusable };
   return PidfdState::unusable;
 }
 
-void signal_pidfd(int descriptor) noexcept {
-  if (descriptor >= 0) {
-    static_cast<void>(
-        syscall(SYS_pidfd_send_signal, descriptor, SIGKILL, nullptr, 0));
-  }
-}
-
-[[nodiscard]] bool wait_pidfd(int descriptor,
-                              std::chrono::milliseconds timeout) {
-  if (timeout.count() < 0 ||
-      timeout.count() > std::numeric_limits<int>::max()) {
-    return false;
-  }
-  pollfd polled{.fd = descriptor, .events = POLLIN, .revents = 0};
-  const int result = poll(&polled, 1, static_cast<int>(timeout.count()));
-  return result == 1 && pidfd_has_exited(polled.revents);
-}
-
-[[nodiscard]] bool reap_direct_child(pid_t process, int pidfd,
-                                     std::chrono::milliseconds timeout) {
-  if (process <= 0 || timeout.count() < 0) {
-    return false;
-  }
-  const auto deadline = std::chrono::steady_clock::now() + timeout;
-  if (!wait_pidfd(pidfd, timeout)) {
-    return false;
-  }
-  while (true) {
-    int status = 0;
-    const pid_t waited = waitpid(process, &status, WNOHANG);
-    if (waited == process || (waited < 0 && errno == ECHILD)) {
-      return true;
-    }
-    if (waited < 0 && errno != EINTR) {
-      return false;
-    }
-    if (std::chrono::steady_clock::now() >= deadline) {
-      return false;
-    }
-    sched_yield();
-  }
-}
-
-[[nodiscard]] bool
-reap_direct_child_without_pidfd(pid_t process,
-                                std::chrono::milliseconds timeout) {
-  if (process <= 0 || timeout.count() < 0) {
-    return false;
-  }
-  static_cast<void>(kill(process, SIGKILL));
-  const auto deadline = std::chrono::steady_clock::now() + timeout;
-  while (std::chrono::steady_clock::now() < deadline) {
-    int status = 0;
-    const pid_t waited = waitpid(process, &status, WNOHANG);
-    if (waited == process || (waited < 0 && errno == ECHILD)) {
-      return true;
-    }
-    if (waited < 0 && errno != EINTR) {
-      return false;
-    }
-    sched_yield();
-  }
-  return false;
-}
-
 [[nodiscard]] bool kernel_prerequisites(std::string &error) {
   Fd own_pidfd = open_pidfd(getpid());
   if (!own_pidfd || pidfd_state(own_pidfd.get()) != PidfdState::alive) {
@@ -584,19 +527,72 @@ void write_child_error(int descriptor, int error) {
 
 } // namespace
 
+OwnedDescriptor::OwnedDescriptor(int descriptor) noexcept
+    : descriptor_(descriptor) {}
+OwnedDescriptor::OwnedDescriptor(OwnedDescriptor &&other) noexcept
+    : descriptor_(other.release()) {}
+OwnedDescriptor &OwnedDescriptor::operator=(OwnedDescriptor &&other) noexcept {
+  if (this != &other) reset(other.release());
+  return *this;
+}
+OwnedDescriptor::~OwnedDescriptor() { reset(); }
+int OwnedDescriptor::get() const noexcept { return descriptor_; }
+int OwnedDescriptor::release() noexcept {
+  return std::exchange(descriptor_, -1);
+}
+OwnedDescriptor::operator bool() const noexcept { return descriptor_ >= 0; }
+void OwnedDescriptor::reset(int descriptor) noexcept {
+  if (descriptor_ >= 0) close(descriptor_);
+  descriptor_ = descriptor;
+}
+
+bool ResourceScopeController::probe(std::string &error) {
+  return probe(std::chrono::steady_clock::now() + std::chrono::seconds(2),
+               error);
+}
+
+ResourceScopeController::AttachResult ResourceScopeController::attach(
+    std::string_view unit, pid_t monitor_pid, pid_t worker_pid,
+    const sandbox::SandboxPlan &plan, std::chrono::milliseconds timeout,
+    std::string &error) {
+  if (timeout.count() <= 0) {
+    error = "resource-scope attachment deadline expired";
+    return {};
+  }
+  return attach(unit, monitor_pid, worker_pid, plan,
+                std::chrono::steady_clock::now() + timeout, error);
+}
+
+namespace {
+[[nodiscard]] std::size_t role_index(EndpointRole role) noexcept {
+  switch (role) {
+  case EndpointRole::control: return 0;
+  case EndpointRole::broker: return 1;
+  case EndpointRole::render: return 2;
+  }
+  return 3;
+}
+
+[[nodiscard]] bool mask_contains(EndpointMask mask, EndpointRole role) noexcept {
+  const auto bits = static_cast<std::uint8_t>(mask);
+  return (bits & (1U << role_index(role))) != 0;
+}
+} // namespace
+
 struct Worker::Impl {
   LaunchIdentity identity;
   std::array<Fd, 3> channels;
   Fd worker_pidfd;
-  Fd monitor_pidfd;
   Fd standard_output;
   Fd standard_error;
-  pid_t monitor_pid = -1;
-  std::string scope;
-  std::shared_ptr<ResourceScopeController> resource_scope;
-  sandbox::TimeoutPolicy timeouts;
+  Fd readiness;
+  std::shared_ptr<ProcessScopeReaper> reaper;
+  std::unique_ptr<CleanupJob> cleanup;
   bool accepting = true;
   TerminationState termination;
+  std::shared_ptr<ReapCompletion> completion;
+  std::size_t next_receive_lane = 0;
+  EndpointMask receive_mask = EndpointMask::all;
 
   [[nodiscard]] int channel(EndpointRole role) const {
     switch (role) {
@@ -610,31 +606,74 @@ struct Worker::Impl {
     return -1;
   }
 
-  [[nodiscard]] bool terminate() {
-    if (!termination.begin())
-      return termination.succeeded();
+  [[nodiscard]] ReceivedMessage
+  receive(std::span<const EndpointRole> roles, std::size_t maximum_payload,
+          Deadline deadline, bool fair);
+
+  [[nodiscard]] bool set_receive_mask(EndpointMask allowed) noexcept {
+    const auto raw = static_cast<std::uint8_t>(allowed);
+    if (!readiness || (raw & ~static_cast<std::uint8_t>(EndpointMask::all)) != 0)
+      return false;
+    struct Change {
+      std::size_t index;
+      bool added;
+    };
+    std::array<Change, 3> changes{};
+    std::size_t change_count = 0;
+    for (std::size_t index = 0; index < channels.size(); ++index) {
+      const auto role = static_cast<EndpointRole>(index);
+      const bool was_armed = mask_contains(receive_mask, role);
+      const bool should_arm = mask_contains(allowed, role);
+      if (was_armed == should_arm) continue;
+      epoll_event event{.events = EPOLLIN | EPOLLHUP | EPOLLERR,
+                        .data = {.u64 = index}};
+      const int operation = should_arm ? EPOLL_CTL_ADD : EPOLL_CTL_DEL;
+      if (epoll_ctl(readiness.get(), operation, channels[index].get(),
+                    should_arm ? &event : nullptr) < 0) {
+        while (change_count > 0) {
+          const Change change = changes[--change_count];
+          epoll_event rollback{
+              .events = EPOLLIN | EPOLLHUP | EPOLLERR,
+              .data = {.u64 = change.index}};
+          static_cast<void>(epoll_ctl(
+              readiness.get(), change.added ? EPOLL_CTL_DEL : EPOLL_CTL_ADD,
+              channels[change.index].get(), change.added ? nullptr : &rollback));
+        }
+        return false;
+      }
+      changes[change_count++] = {.index = index, .added = should_arm};
+    }
+    receive_mask = allowed;
+    return true;
+  }
+
+  void schedule_termination(bool allow_graceful_exit) noexcept {
+    if (!termination.begin()) return;
     accepting = false;
+    readiness.reset();
     for (Fd &channel_descriptor : channels) {
       channel_descriptor.reset();
     }
-    const auto graceful =
-        std::chrono::seconds(timeouts.graceful_shutdown_seconds);
-    bool worker_exited = wait_pidfd(worker_pidfd.get(), graceful);
-    if (!worker_exited) {
-      signal_pidfd(worker_pidfd.get());
-      resource_scope->kill(scope);
-      worker_exited =
-          wait_pidfd(worker_pidfd.get(),
-                     std::chrono::seconds(timeouts.forced_teardown_seconds));
+    if (cleanup) {
+      cleanup->worker_pidfd = worker_pidfd.release();
+      cleanup->allow_graceful_exit = allow_graceful_exit;
+      reaper->submit(std::move(cleanup));
+    } else {
+      detail::complete_reap(completion, false);
     }
-    signal_pidfd(monitor_pidfd.get());
-    const bool monitor_reaped = reap_direct_child(
-        monitor_pid, monitor_pidfd.get(),
-        std::chrono::seconds(timeouts.forced_teardown_seconds));
-    resource_scope->remove(scope);
-    termination.complete(worker_exited && monitor_reaped);
+  }
+
+  [[nodiscard]] bool terminate(Deadline deadline) noexcept {
+    schedule_termination(true);
+    std::unique_lock lock(completion->mutex);
+    if (!completion->completed)
+      completion->ready.wait_until(
+          lock, deadline, [this] { return completion->completed; });
+    if (completion->completed) termination.complete(completion->succeeded);
     return termination.succeeded();
   }
+
+  ~Impl() { schedule_termination(false); }
 };
 
 Worker::Worker(std::unique_ptr<Impl> implementation)
@@ -642,59 +681,93 @@ Worker::Worker(std::unique_ptr<Impl> implementation)
 
 Worker::Worker(Worker &&) noexcept = default;
 Worker &Worker::operator=(Worker &&) noexcept = default;
-Worker::~Worker() {
-  if (implementation_) {
-    static_cast<void>(implementation_->terminate());
-  }
-}
+Worker::~Worker() = default;
 
 const LaunchIdentity &Worker::identity() const {
   return implementation_->identity;
 }
 
-ReceivedMessage Worker::receive(EndpointRole role, std::size_t maximum_payload,
-                                std::chrono::milliseconds timeout) {
+ReceivedMessage Worker::Impl::receive(std::span<const EndpointRole> roles,
+                                      std::size_t maximum_payload,
+                                      Deadline deadline, bool fair) {
   ReceivedMessage output;
   constexpr std::size_t maximum_datagram =
       omarchy::plugin::wire::kHeaderSize +
       omarchy::plugin::wire::payload_cap(
           omarchy::plugin::wire::EndpointRole::broker);
-  if (!implementation_->accepting || maximum_payload == 0 ||
-      maximum_payload > maximum_datagram || timeout.count() < 0 ||
-      timeout.count() > std::numeric_limits<int>::max()) {
+  if (!accepting || roles.size() > channels.size() ||
+      maximum_payload == 0 || maximum_payload > maximum_datagram) {
     output.failure = ReceiveFailure::invalid_role;
     return output;
   }
-  const int endpoint = implementation_->channel(role);
-  if (endpoint < 0) {
-    output.failure = ReceiveFailure::invalid_role;
-    return output;
+  std::array<pollfd, 4> polled{};
+  std::array<EndpointRole, 3> lane_map{};
+  for (std::size_t index = 0; index < roles.size(); ++index) {
+    const int endpoint = channel(roles[index]);
+    if (endpoint < 0) {
+      output.failure = ReceiveFailure::invalid_role;
+      return output;
+    }
+    polled[index] = {.fd = endpoint, .events = POLLIN, .revents = 0};
+    lane_map[index] = roles[index];
   }
-  std::array<pollfd, 2> polled = {
-      pollfd{.fd = endpoint, .events = POLLIN, .revents = 0},
-      pollfd{.fd = implementation_->worker_pidfd.get(),
-             .events = POLLIN,
-             .revents = 0}};
-  const int ready =
-      poll(polled.data(), polled.size(), static_cast<int>(timeout.count()));
-  if (ready == 0) {
+  if (std::chrono::steady_clock::now() >= deadline) {
+    output.status = ReceiveStatus::would_block;
     output.failure = ReceiveFailure::timeout;
     return output;
   }
-  if (ready < 0 ||
-      (polled.at(1).revents != 0 && polled.at(1).revents != POLLIN)) {
-    output.failure = ReceiveFailure::pidfd_unusable;
+  const std::size_t pidfd_index = roles.size();
+  polled[pidfd_index] =
+      {.fd = worker_pidfd.get(), .events = POLLIN, .revents = 0};
+  int ready = -1;
+  do {
+    ready = poll(polled.data(), pidfd_index + 1,
+                 milliseconds_remaining(deadline));
+  } while (ready < 0 && errno == EINTR &&
+           std::chrono::steady_clock::now() < deadline);
+  if (ready == 0) {
+    output.status = ReceiveStatus::would_block;
+    output.failure = ReceiveFailure::timeout;
     return output;
   }
-  if (polled.at(1).revents == POLLIN) {
-    output.failure = ReceiveFailure::worker_exited;
-    return output;
-  }
-  if ((polled.at(0).revents & POLLIN) == 0 ||
-      (polled.at(0).revents & ~(POLLIN | POLLHUP)) != 0) {
+  if (ready < 0) {
     output.failure = ReceiveFailure::io_error;
     return output;
   }
+  if (polled[pidfd_index].revents != 0 &&
+      !pidfd_has_exited(polled[pidfd_index].revents)) {
+    output.failure = ReceiveFailure::pidfd_unusable;
+    return output;
+  }
+  if (pidfd_has_exited(polled[pidfd_index].revents)) {
+    output.status = ReceiveStatus::peer_closed;
+    output.failure = ReceiveFailure::worker_exited;
+    return output;
+  }
+
+  std::optional<std::size_t> selected;
+  for (std::size_t offset = 0; offset < 3 && !selected; ++offset) {
+    const std::size_t desired = fair ? (next_receive_lane + offset) % 3 : offset;
+    for (std::size_t index = 0; index < roles.size(); ++index) {
+      if (role_index(lane_map[index]) == desired &&
+          (polled[index].revents & POLLIN) != 0 &&
+          (polled[index].revents & ~(POLLIN | POLLHUP)) == 0) {
+        selected = index;
+        break;
+      }
+    }
+  }
+  if (!selected && roles.empty()) {
+    output.status = ReceiveStatus::would_block;
+    output.failure = ReceiveFailure::timeout;
+    return output;
+  }
+  if (!selected) {
+    output.failure = ReceiveFailure::io_error;
+    return output;
+  }
+  const int endpoint = polled[*selected].fd;
+  output.role = lane_map[*selected];
 
   output.payload.resize(maximum_payload);
   iovec vector{.iov_base = output.payload.data(),
@@ -710,14 +783,20 @@ ReceivedMessage Worker::receive(EndpointRole role, std::size_t maximum_payload,
   const ssize_t received =
       recvmsg(endpoint, &message, MSG_CMSG_CLOEXEC | MSG_TRUNC | MSG_DONTWAIT);
   if (received < 0) {
-    output.failure = ReceiveFailure::io_error;
+    output.payload.clear();
+    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      output.status = ReceiveStatus::would_block;
+      output.failure = ReceiveFailure::timeout;
+    } else {
+      output.failure = ReceiveFailure::io_error;
+    }
     return output;
   }
   output.payload.resize(std::min<std::size_t>(
       static_cast<std::size_t>(received), maximum_payload));
   std::optional<ucred> credentials;
-  bool injected_descriptor = false;
   bool malformed = false;
+  constexpr std::size_t maximum_descriptors = 16;
   for (cmsghdr *header = CMSG_FIRSTHDR(&message); header != nullptr;
        header = CMSG_NXTHDR(&message, header)) {
     if (header->cmsg_level != SOL_SOCKET) {
@@ -741,18 +820,18 @@ ReceivedMessage Worker::receive(EndpointRole role, std::size_t maximum_payload,
       }
       const auto descriptor_bytes = header->cmsg_len - CMSG_LEN(0);
       const auto count = descriptor_bytes / sizeof(int);
+      if (descriptor_bytes % sizeof(int) != 0 ||
+          output.descriptors.size() + count > maximum_descriptors)
+        malformed = true;
       for (std::size_t index = 0; index < count; ++index) {
         int descriptor = -1;
         std::memcpy(&descriptor,
                     reinterpret_cast<const std::byte *>(CMSG_DATA(header)) +
                         index * sizeof(int),
                     sizeof(descriptor));
-        if (descriptor >= 0)
-          close(descriptor);
+        if (descriptor >= 0) output.descriptors.emplace_back(descriptor);
+        else malformed = true;
       }
-      injected_descriptor = count != 0;
-      if (descriptor_bytes % sizeof(int) != 0)
-        malformed = true;
       continue;
     }
     malformed = true;
@@ -762,26 +841,75 @@ ReceivedMessage Worker::receive(EndpointRole role, std::size_t maximum_payload,
     output.failure = ReceiveFailure::truncated;
   } else if (malformed || !credentials) {
     output.failure = ReceiveFailure::malformed_ancillary;
-  } else if (injected_descriptor) {
-    output.failure = ReceiveFailure::descriptor_injection;
-  } else if (credentials->pid != implementation_->identity.outer_worker_pid ||
-             credentials->uid != implementation_->identity.outer_uid ||
-             credentials->gid != implementation_->identity.outer_gid) {
+  } else if (credentials->pid != identity.outer_worker_pid ||
+             credentials->uid != identity.outer_uid ||
+             credentials->gid != identity.outer_gid) {
     output.failure = ReceiveFailure::credential_mismatch;
-  } else if (pidfd_state(implementation_->worker_pidfd.get()) !=
-             PidfdState::alive) {
+  } else if (pidfd_state(worker_pidfd.get()) != PidfdState::alive) {
+    output.status = ReceiveStatus::peer_closed;
     output.failure = ReceiveFailure::worker_exited;
+  } else {
+    output.status = ReceiveStatus::message;
+    if (fair) next_receive_lane = (role_index(output.role) + 1) % 3;
+    return output;
   }
+  output.payload.clear();
+  output.descriptors.clear();
   return output;
 }
 
-bool Worker::send(EndpointRole role, std::span<const std::byte> payload) {
-  return send_with_descriptors(role, payload, {});
+ReceivedMessage Worker::receive(EndpointRole role, std::size_t maximum_payload,
+                                Deadline deadline) {
+  if (!implementation_ ||
+      !mask_contains(implementation_->receive_mask, role)) {
+    return {.payload = {},
+            .descriptors = {},
+            .role = role,
+            .status = ReceiveStatus::fatal,
+            .failure = ReceiveFailure::invalid_role};
+  }
+  const std::array roles = {role};
+  return implementation_->receive(roles, maximum_payload, deadline, false);
 }
 
-bool Worker::send_with_descriptors(EndpointRole role,
-                                   std::span<const std::byte> payload,
-                                   std::span<const int> descriptors) {
+ReceivedMessage Worker::receive_any(std::size_t maximum_payload,
+                                    Deadline deadline) {
+  return receive_any(maximum_payload, deadline, EndpointMask::all);
+}
+
+ReceivedMessage Worker::receive_any(std::size_t maximum_payload,
+                                    Deadline deadline, EndpointMask allowed) {
+  std::array<EndpointRole, 3> roles{};
+  std::size_t count = 0;
+  for (const EndpointRole role : {EndpointRole::control, EndpointRole::broker,
+                                  EndpointRole::render}) {
+    if (mask_contains(allowed, role)) roles[count++] = role;
+  }
+  if (!implementation_->set_receive_mask(allowed))
+    return {.payload = {},
+            .descriptors = {},
+            .role = EndpointRole::control,
+            .status = ReceiveStatus::fatal,
+            .failure = ReceiveFailure::invalid_role};
+  return implementation_->receive(std::span(roles).first(count),
+                                  maximum_payload, deadline, true);
+}
+
+ReceivedMessage Worker::receive(EndpointRole role, std::size_t maximum_payload,
+                                std::chrono::milliseconds timeout) {
+  if (timeout.count() < 0)
+    return {.payload = {},
+            .descriptors = {},
+            .role = role,
+            .status = ReceiveStatus::fatal,
+            .failure = ReceiveFailure::invalid_role};
+  return receive(role, maximum_payload,
+                 std::chrono::steady_clock::now() + timeout);
+}
+
+SendStatus Worker::try_send(EndpointRole role,
+                            std::span<const std::byte> payload,
+                            std::span<const int> descriptors) noexcept {
   const int endpoint = implementation_->channel(role);
   std::size_t maximum_datagram = 0;
   switch (role) {
@@ -801,20 +929,22 @@ bool Worker::send_with_descriptors(EndpointRole role,
                            omarchy::plugin::wire::EndpointRole::render);
     break;
   }
-  if (!implementation_->accepting || payload.empty() ||
-      payload.size() > maximum_datagram || descriptors.size() > 1 ||
-      endpoint < 0 ||
-      pidfd_state(implementation_->worker_pidfd.get()) != PidfdState::alive) {
-    return false;
+  if (payload.empty() || payload.size() > maximum_datagram ||
+      descriptors.size() > 16 || endpoint < 0) {
+    return SendStatus::fatal;
   }
+  if (!implementation_->accepting) return SendStatus::peer_closed;
+  const auto process_state = pidfd_state(implementation_->worker_pidfd.get());
+  if (process_state == PidfdState::exited) return SendStatus::peer_closed;
+  if (process_state != PidfdState::alive) return SendStatus::fatal;
   for (const int descriptor : descriptors) {
     if (descriptor < 0 || fcntl(descriptor, F_GETFD) < 0) {
-      return false;
+      return SendStatus::fatal;
     }
   }
   iovec vector{.iov_base = const_cast<std::byte *>(payload.data()),
                .iov_len = payload.size()};
-  alignas(cmsghdr) std::array<std::byte, CMSG_SPACE(sizeof(int))> control{};
+  alignas(cmsghdr) std::array<std::byte, CMSG_SPACE(16 * sizeof(int))> control{};
   msghdr message{};
   message.msg_iov = &vector;
   message.msg_iovlen = 1;
@@ -824,16 +954,42 @@ bool Worker::send_with_descriptors(EndpointRole role,
     cmsghdr *header = CMSG_FIRSTHDR(&message);
     header->cmsg_level = SOL_SOCKET;
     header->cmsg_type = SCM_RIGHTS;
-    header->cmsg_len = CMSG_LEN(sizeof(int));
-    std::memcpy(CMSG_DATA(header), descriptors.data(), sizeof(int));
+    header->cmsg_len = CMSG_LEN(descriptors.size_bytes());
+    message.msg_controllen = CMSG_SPACE(descriptors.size_bytes());
+    std::memcpy(CMSG_DATA(header), descriptors.data(), descriptors.size_bytes());
   }
-  return sendmsg(endpoint, &message, MSG_NOSIGNAL | MSG_DONTWAIT) ==
-         static_cast<ssize_t>(payload.size());
+  const ssize_t sent = sendmsg(endpoint, &message, MSG_NOSIGNAL | MSG_DONTWAIT);
+  if (sent == static_cast<ssize_t>(payload.size())) return SendStatus::complete;
+  if (sent < 0 &&
+      (errno == EAGAIN || errno == EWOULDBLOCK || errno == ENOBUFS))
+    return SendStatus::would_block;
+  if (sent < 0 &&
+      (errno == EPIPE || errno == ECONNRESET || errno == ENOTCONN))
+    return SendStatus::peer_closed;
+  return SendStatus::fatal;
+}
+
+bool Worker::send(EndpointRole role, std::span<const std::byte> payload) {
+  return try_send(role, payload) == SendStatus::complete;
+}
+
+bool Worker::send_with_descriptors(EndpointRole role,
+                                   std::span<const std::byte> payload,
+                                   std::span<const int> descriptors) {
+  return try_send(role, payload, descriptors) == SendStatus::complete;
 }
 
 bool Worker::alive() const {
   return implementation_->accepting &&
          pidfd_state(implementation_->worker_pidfd.get()) == PidfdState::alive;
+}
+
+int Worker::readiness_fd() const noexcept {
+  return implementation_ ? implementation_->readiness.get() : -1;
+}
+
+bool Worker::set_receive_mask(EndpointMask allowed) noexcept {
+  return implementation_ && implementation_->set_receive_mask(allowed);
 }
 
 std::string Worker::take_standard_error() {
@@ -855,7 +1011,26 @@ std::string Worker::take_standard_error() {
   return result;
 }
 
-bool Worker::terminate() { return implementation_->terminate(); }
+bool Worker::terminate(Deadline deadline) noexcept {
+  return implementation_->terminate(deadline);
+}
+
+bool Worker::terminate(std::chrono::milliseconds timeout) noexcept {
+  if (timeout.count() < 0) return false;
+  return terminate(std::chrono::steady_clock::now() + timeout);
+}
+
+bool Worker::terminate() {
+  if (!implementation_) return false;
+  if (!implementation_->cleanup)
+    return terminate(std::chrono::steady_clock::now());
+  const auto timeouts = implementation_->cleanup->timeouts;
+  const auto timeout = std::chrono::seconds(
+      timeouts.graceful_shutdown_seconds +
+      2 * timeouts.forced_teardown_seconds + 1);
+  return terminate(
+      std::chrono::duration_cast<std::chrono::milliseconds>(timeout));
+}
 
 namespace {
 
@@ -894,9 +1069,78 @@ namespace {
 
 class SystemdResourceScope final : public ResourceScopeController {
 public:
-  ~SystemdResourceScope() override { sd_bus_unref(bus_); }
+  ~SystemdResourceScope() override {
+    sd_bus_unref(cleanup_bus_);
+    sd_bus_unref(bus_);
+  }
 
-  bool probe(std::string &error) override {
+  bool probe(Deadline deadline, std::string &error) override {
+    std::unique_lock lock(mutex_, std::defer_lock);
+    if (!lock.try_lock_until(deadline)) {
+      error = "systemd user manager lock deadline expired";
+      return false;
+    }
+    return probe_locked(deadline, error);
+  }
+
+  bool prepare_cleanup(Deadline deadline, std::string &error) override {
+    std::unique_lock lock(cleanup_mutex_, std::defer_lock);
+    if (!lock.try_lock_until(deadline)) {
+      error = "systemd cleanup bus lock deadline expired";
+      return false;
+    }
+    if (cleanup_failed_) {
+      error = "systemd cleanup bus is unusable";
+      return false;
+    }
+    if (cleanup_bus_ != nullptr) {
+      if (sd_bus_is_open(cleanup_bus_) > 0) return true;
+      cleanup_failed_ = true;
+      error = "systemd cleanup bus became unusable";
+      return false;
+    }
+    if (std::chrono::steady_clock::now() >= deadline) {
+      error = "systemd cleanup bus setup deadline expired";
+      return false;
+    }
+    if (sd_bus_open_user(&cleanup_bus_) < 0 ||
+        std::chrono::steady_clock::now() >= deadline) {
+      sd_bus_unref(cleanup_bus_);
+      cleanup_bus_ = nullptr;
+      error = "systemd cleanup bus is unavailable before launch";
+      return false;
+    }
+    return true;
+  }
+
+  AttachResult attach(std::string_view unit, pid_t monitor_pid,
+                      pid_t worker_pid, const sandbox::SandboxPlan &plan,
+                      Deadline deadline, std::string &error) override {
+    std::unique_lock lock(mutex_, std::defer_lock);
+    if (!lock.try_lock_until(deadline)) {
+      error = "systemd user manager lock deadline expired";
+      return {};
+    }
+    if (!probe_locked(deadline, error)) return {};
+    return attach_locked(unit, monitor_pid, worker_pid, plan, deadline, error);
+  }
+
+  void kill(std::string_view unit, Deadline deadline) noexcept override {
+    cleanup_unit(unit, true, deadline);
+  }
+
+  void remove(std::string_view unit, Deadline deadline) noexcept override {
+    cleanup_unit(unit, false, deadline);
+  }
+
+private:
+  bool probe_locked(Deadline deadline, std::string &error) {
+    const auto remaining = std::chrono::duration_cast<std::chrono::microseconds>(
+        deadline - std::chrono::steady_clock::now());
+    if (remaining.count() <= 0) {
+      error = "systemd user manager deadline expired";
+      return false;
+    }
     if (bus_ != nullptr) {
       return true;
     }
@@ -905,7 +1149,8 @@ public:
       bus_ = nullptr;
       return false;
     }
-    if (sd_bus_set_method_call_timeout(bus_, 2ULL * 1000ULL * 1000ULL) < 0) {
+    if (sd_bus_set_method_call_timeout(
+            bus_, static_cast<std::uint64_t>(remaining.count())) < 0) {
       error = "cannot bound systemd user manager calls";
       sd_bus_unref(bus_);
       bus_ = nullptr;
@@ -914,11 +1159,16 @@ public:
     return true;
   }
 
-  bool attach(std::string_view unit, pid_t monitor_pid, pid_t worker_pid,
-              const sandbox::SandboxPlan &plan,
-              std::chrono::milliseconds timeout, std::string &error) override {
-    if (!probe(error) || timeout.count() <= 0) {
-      return false;
+  AttachResult attach_locked(std::string_view unit, pid_t monitor_pid,
+                             pid_t worker_pid,
+                             const sandbox::SandboxPlan &plan,
+                             Deadline deadline, std::string &error) {
+    const auto call_remaining =
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            deadline - std::chrono::steady_clock::now());
+    if (call_remaining.count() <= 0) {
+      error = "resource-scope attachment deadline expired";
+      return {};
     }
     sd_bus_message *message = nullptr;
     sd_bus_message *reply = nullptr;
@@ -936,7 +1186,7 @@ public:
     const std::uint64_t cpu_weight = resources.cpu_weight;
     const std::uint64_t io_weight = resources.io_weight;
 
-    bool started = false;
+    bool attempted = false;
     bool built =
         sd_bus_message_new_method_call(
             bus_, &message, "org.freedesktop.systemd1",
@@ -960,18 +1210,16 @@ public:
     if (!built) {
       error = "cannot encode transient scope request";
     } else {
+      attempted = true;
       const std::uint64_t timeout_usec =
-          static_cast<std::uint64_t>(timeout.count()) * 1000ULL;
+          static_cast<std::uint64_t>(call_remaining.count());
       if (sd_bus_call(bus_, message, timeout_usec, &bus_error, &reply) < 0) {
         error = bus_error.message != nullptr ? bus_error.message
                                              : "StartTransientUnit failed";
         built = false;
-      } else {
-        started = true;
       }
     }
     if (built) {
-      const auto deadline = std::chrono::steady_clock::now() + timeout;
       const std::string expected = "/" + unit_name;
       bool applied = false;
       while (std::chrono::steady_clock::now() < deadline) {
@@ -1008,77 +1256,63 @@ public:
     sd_bus_error_free(&bus_error);
     sd_bus_message_unref(reply);
     sd_bus_message_unref(message);
-    if (started && !built) {
-      kill(unit_name);
-      remove(unit_name);
-    }
-    return built;
+    return {.attached = built, .cleanup_required = attempted};
   }
 
-  void kill(std::string_view unit) noexcept override {
-    if (bus_ == nullptr) {
+  void cleanup_unit(std::string_view unit, bool kill,
+                    Deadline deadline) noexcept {
+    std::unique_lock lock(cleanup_mutex_, std::defer_lock);
+    if (!lock.try_lock_until(deadline) || cleanup_failed_ ||
+        cleanup_bus_ == nullptr)
+      return;
+    if (sd_bus_is_open(cleanup_bus_) <= 0) {
+      cleanup_failed_ = true;
       return;
     }
     const std::string name(unit);
     sd_bus_error error = SD_BUS_ERROR_NULL;
     sd_bus_message *reply = nullptr;
-    static_cast<void>(sd_bus_call_method(
-        bus_, "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
-        "org.freedesktop.systemd1.Manager", "KillUnit", &error, &reply, "ssi",
-        name.c_str(), "all", SIGKILL));
-    sd_bus_error_free(&error);
-    sd_bus_message_unref(reply);
-  }
-
-  void remove(std::string_view unit) noexcept override {
-    if (bus_ == nullptr) {
+    const auto remaining = std::chrono::duration_cast<std::chrono::microseconds>(
+        deadline - std::chrono::steady_clock::now());
+    if (remaining.count() <= 0 ||
+        sd_bus_set_method_call_timeout(
+            cleanup_bus_, static_cast<std::uint64_t>(remaining.count())) < 0)
       return;
+    int call_result = 0;
+    if (kill) {
+      call_result = sd_bus_call_method(
+          cleanup_bus_, "org.freedesktop.systemd1",
+          "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager",
+          "KillUnit", &error, &reply, "ssi", name.c_str(), "all", SIGKILL);
+    } else {
+      call_result = sd_bus_call_method(
+          cleanup_bus_, "org.freedesktop.systemd1",
+          "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager",
+          "StopUnit", &error, &reply, "ss", name.c_str(), "replace");
     }
-    const std::string name(unit);
-    sd_bus_error error = SD_BUS_ERROR_NULL;
-    sd_bus_message *reply = nullptr;
-    static_cast<void>(sd_bus_call_method(
-        bus_, "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
-        "org.freedesktop.systemd1.Manager", "StopUnit", &error, &reply, "ss",
-        name.c_str(), "replace"));
+    if (call_result == -ENOTCONN || call_result == -ECONNRESET ||
+        call_result == -EPIPE)
+      cleanup_failed_ = true;
     sd_bus_error_free(&error);
     sd_bus_message_unref(reply);
   }
 
-private:
+  std::timed_mutex mutex_;
   sd_bus *bus_ = nullptr;
+  std::timed_mutex cleanup_mutex_;
+  sd_bus *cleanup_bus_ = nullptr;
+  bool cleanup_failed_ = false;
 };
 
 struct LaunchCleanup {
-  pid_t monitor_pid = -1;
-  Fd monitor_pidfd;
-  Fd worker_pidfd;
-  std::shared_ptr<ResourceScopeController> resource_scope;
-  std::string scope;
-  bool scope_attached = false;
+  std::shared_ptr<ProcessScopeReaper> reaper;
+  std::unique_ptr<CleanupJob> job;
   bool armed = true;
 
   ~LaunchCleanup() {
-    if (!armed) {
-      return;
-    }
-    signal_pidfd(worker_pidfd.get());
-    if (scope_attached) {
-      resource_scope->kill(scope);
-    }
-    signal_pidfd(monitor_pidfd.get());
-    if (monitor_pid > 0) {
-      if (monitor_pidfd) {
-        static_cast<void>(reap_direct_child(monitor_pid, monitor_pidfd.get(),
-                                            std::chrono::seconds(2)));
-      } else {
-        static_cast<void>(reap_direct_child_without_pidfd(
-            monitor_pid, std::chrono::seconds(2)));
-      }
-    }
-    if (scope_attached) {
-      resource_scope->remove(scope);
-    }
+    if (!armed || !job || job->monitor_pid <= 0) return;
+    job->allow_graceful_exit = false;
+    reaper->submit(std::move(job));
   }
 };
 
@@ -1093,8 +1327,22 @@ struct Supervisor::Impl {
   std::string bwrap_path;
   std::string worker_path;
   std::shared_ptr<ResourceScopeController> resource_scope;
+  std::shared_ptr<ProcessScopeReaper> reaper;
   bool production = true;
 };
+
+namespace {
+[[nodiscard]] std::shared_ptr<ProcessScopeReaper>
+shared_process_reaper(bool force_start_failure) {
+  if (force_start_failure)
+    return std::make_shared<ProcessScopeReaper>(true);
+  // The handle is created while constructing a Supervisor, and its thread is
+  // started by launch before fork. Worker destruction therefore only submits
+  // to an already-running process-lifetime service.
+  static const auto reaper = std::make_shared<ProcessScopeReaper>(false);
+  return reaper;
+}
+} // namespace
 
 Supervisor::Supervisor(std::unique_ptr<Impl> implementation)
     : implementation_(std::move(implementation)) {}
@@ -1105,18 +1353,33 @@ Supervisor::~Supervisor() = default;
 Supervisor Supervisor::production() {
   return Supervisor(std::make_unique<Impl>(
       std::string(kProductionBwrap), std::string(kProductionWorkerPath),
-      make_systemd_resource_scope_controller(), true));
+      make_systemd_resource_scope_controller(),
+      shared_process_reaper(false), true));
 }
 
 Supervisor Supervisor::forTestOnly(
     std::string bwrap_path, std::string worker_path,
-    std::shared_ptr<ResourceScopeController> resource_scope) {
+    std::shared_ptr<ResourceScopeController> resource_scope,
+    bool force_reaper_start_failure) {
   return Supervisor(std::make_unique<Impl>(std::move(bwrap_path),
                                            std::move(worker_path),
-                                           std::move(resource_scope), false));
+                                           std::move(resource_scope),
+                                           shared_process_reaper(
+                                               force_reaper_start_failure),
+                                           false));
 }
 
 bool Supervisor::prerequisites(std::string &error) const {
+  return prerequisites(std::chrono::steady_clock::now() +
+                           std::chrono::seconds(2),
+                       error);
+}
+
+bool Supervisor::prerequisites(Deadline deadline, std::string &error) const {
+  if (std::chrono::steady_clock::now() >= deadline) {
+    error = "launcher preflight deadline expired";
+    return false;
+  }
   if (!implementation_->resource_scope) {
     error = "resource scope controller is absent";
     return false;
@@ -1133,26 +1396,54 @@ bool Supervisor::prerequisites(std::string &error) const {
       !trusted_executable(implementation_->worker_path,
                           implementation_->production, error) ||
       !kernel_prerequisites(error) ||
-      !implementation_->resource_scope->probe(error)) {
+      !implementation_->resource_scope->probe(deadline, error) ||
+      !implementation_->resource_scope->prepare_cleanup(deadline, error) ||
+      std::chrono::steady_clock::now() >= deadline) {
     return false;
   }
   return true;
 }
 
 LaunchResult Supervisor::launch(const TrustedLaunchRequest &request) const {
+  const sandbox::SandboxPlan plan =
+      implementation_->production
+          ? sandbox::build_plan()
+          : sandbox::build_test_plan_for_worker(implementation_->worker_path);
+  return launch(request, std::chrono::steady_clock::now() +
+                             std::chrono::seconds(plan.timeouts.launch_seconds));
+}
+
+LaunchResult Supervisor::launch(const TrustedLaunchRequest &request,
+                                Deadline deadline) const {
   LaunchResult result;
+  if (std::chrono::steady_clock::now() >= deadline) {
+    result.failure = LaunchFailure::startup_timeout;
+    result.detail = "launch deadline expired before preflight";
+    return result;
+  }
   if (!canonical_plugin_id(request.plugin_id) ||
       !canonical_digest(request.revision_sha256) || request.generation == 0) {
     result.failure = LaunchFailure::invalid_trusted_record;
     result.detail = "launch identity is not canonical";
     return result;
   }
-  if (!prerequisites(result.detail)) {
-    result.failure = LaunchFailure::missing_kernel_prerequisite;
+  if (!implementation_->reaper->start(result.detail)) {
+    result.failure = LaunchFailure::resource_scope_unavailable;
+    return result;
+  }
+  if (!prerequisites(deadline, result.detail)) {
+    result.failure = std::chrono::steady_clock::now() >= deadline
+                         ? LaunchFailure::startup_timeout
+                         : LaunchFailure::missing_kernel_prerequisite;
     return result;
   }
   if (!normalize_standard_descriptors(result.detail)) {
     result.failure = LaunchFailure::descriptor_setup_failed;
+    return result;
+  }
+  if (std::chrono::steady_clock::now() >= deadline) {
+    result.failure = LaunchFailure::startup_timeout;
+    result.detail = "launch deadline expired during descriptor preflight";
     return result;
   }
 
@@ -1178,6 +1469,11 @@ LaunchResult Supervisor::launch(const TrustedLaunchRequest &request) const {
     result.failure = LaunchFailure::seccomp_compile_failed;
     return result;
   }
+  if (std::chrono::steady_clock::now() >= deadline) {
+    result.failure = LaunchFailure::startup_timeout;
+    result.detail = "launch deadline expired during sandbox preflight";
+    return result;
+  }
 
   try {
     Fd standard_input(open("/dev/null", O_RDONLY | O_CLOEXEC));
@@ -1192,6 +1488,15 @@ LaunchResult Supervisor::launch(const TrustedLaunchRequest &request) const {
     if (!standard_input) {
       throw std::runtime_error("cannot open child standard input");
     }
+
+    LaunchCleanup cleanup{
+        .reaper = implementation_->reaper,
+        .job = std::make_unique<CleanupJob>()};
+    cleanup.job->completion = std::make_shared<ReapCompletion>();
+    cleanup.job->resource_scope = implementation_->resource_scope;
+    cleanup.job->timeouts = plan.timeouts;
+    cleanup.job->scope.reserve(192);
+    auto worker = std::make_unique<Worker::Impl>();
 
     const std::array sources = {standard_input.get(),
                                 standard_output.write.get(),
@@ -1216,15 +1521,13 @@ LaunchResult Supervisor::launch(const TrustedLaunchRequest &request) const {
       child_exec(implementation_->bwrap_path, std::move(plan), sources);
     }
 
-    LaunchCleanup cleanup;
-    cleanup.monitor_pid = monitor_pid;
-    cleanup.resource_scope = implementation_->resource_scope;
-    cleanup.scope = plan.process.transient_scope_prefix +
+    cleanup.job->monitor_pid = monitor_pid;
+    cleanup.job->scope = plan.process.transient_scope_prefix +
                     request.plugin_id.substr(0, 48) + "-" +
                     request.revision_sha256.substr(0, 12) + "-" +
                     std::to_string(request.generation) + "-m" +
                     std::to_string(monitor_pid) + ".scope";
-    cleanup.monitor_pidfd = open_pidfd(monitor_pid);
+    cleanup.job->monitor_pidfd = open_pidfd(monitor_pid).release();
 
     control.worker.reset();
     broker.worker.reset();
@@ -1239,7 +1542,7 @@ LaunchResult Supervisor::launch(const TrustedLaunchRequest &request) const {
     seccomp.reset();
     standard_input.reset();
 
-    if (!cleanup.monitor_pidfd) {
+    if (cleanup.job->monitor_pidfd < 0) {
       result.failure = LaunchFailure::pidfd_failed;
       result.detail = "cannot bind Bubblewrap monitor pidfd";
       return result;
@@ -1255,8 +1558,6 @@ LaunchResult Supervisor::launch(const TrustedLaunchRequest &request) const {
       return result;
     }
 
-    const auto deadline = std::chrono::steady_clock::now() +
-                          std::chrono::seconds(plan.timeouts.launch_seconds);
     std::string status_buffer;
     unsigned records = 0;
     std::optional<pid_t> worker_pid;
@@ -1272,7 +1573,7 @@ LaunchResult Supervisor::launch(const TrustedLaunchRequest &request) const {
       std::array<pollfd, 3> polled = {
           pollfd{.fd = status.read.get(), .events = POLLIN, .revents = 0},
           pollfd{.fd = exec_error.read.get(), .events = POLLIN, .revents = 0},
-          pollfd{.fd = cleanup.monitor_pidfd.get(),
+          pollfd{.fd = cleanup.job->monitor_pidfd,
                  .events = POLLIN,
                  .revents = 0}};
       if (poll(polled.data(), polled.size(), remaining) <= 0) {
@@ -1381,29 +1682,63 @@ LaunchResult Supervisor::launch(const TrustedLaunchRequest &request) const {
       return result;
     }
 
-    cleanup.worker_pidfd = open_pidfd(*worker_pid);
-    if (!cleanup.worker_pidfd ||
-        pidfd_state(cleanup.worker_pidfd.get()) != PidfdState::alive) {
+    cleanup.job->worker_pidfd = open_pidfd(*worker_pid).release();
+    if (cleanup.job->worker_pidfd < 0 ||
+        pidfd_state(cleanup.job->worker_pidfd) != PidfdState::alive) {
       result.failure = LaunchFailure::pidfd_failed;
       result.detail = "reported worker PID was not live and bindable";
       return result;
     }
-    if (!implementation_->resource_scope->attach(
-            cleanup.scope, monitor_pid, *worker_pid, plan,
-            std::chrono::seconds(plan.timeouts.launch_seconds),
-            result.detail)) {
-      result.failure = LaunchFailure::resource_scope_failed;
+    const auto attachment = implementation_->resource_scope->attach(
+        cleanup.job->scope, monitor_pid, *worker_pid, plan, deadline,
+        result.detail);
+    cleanup.job->scope_attached = attachment.cleanup_required;
+    if (!attachment.attached) {
+      result.failure = std::chrono::steady_clock::now() >= deadline
+                           ? LaunchFailure::startup_timeout
+                           : LaunchFailure::resource_scope_failed;
       return result;
     }
-    cleanup.scope_attached = true;
-    if (pidfd_state(cleanup.worker_pidfd.get()) != PidfdState::alive) {
+    if (std::chrono::steady_clock::now() >= deadline) {
+      result.failure = LaunchFailure::startup_timeout;
+      result.detail = "launch deadline expired before startup barrier release";
+      return result;
+    }
+    if (pidfd_state(cleanup.job->worker_pidfd) != PidfdState::alive) {
       result.failure = LaunchFailure::worker_exited_early;
       result.detail = "worker exited before startup barrier release";
       return result;
     }
-    barrier.write.reset();
 
-    auto worker = std::make_unique<Worker::Impl>();
+    Fd readiness(epoll_create1(EPOLL_CLOEXEC));
+    const std::array readiness_sources = {
+        control.trusted.get(), broker.trusted.get(), render.trusted.get(),
+        cleanup.job->worker_pidfd};
+    if (!readiness) {
+      result.failure = LaunchFailure::descriptor_setup_failed;
+      result.detail = "cannot create aggregate worker readiness descriptor";
+      return result;
+    }
+    for (std::size_t index = 0; index < readiness_sources.size(); ++index) {
+      epoll_event event{.events = EPOLLIN | EPOLLHUP | EPOLLERR,
+                        .data = {.u64 = index}};
+      if (epoll_ctl(readiness.get(), EPOLL_CTL_ADD, readiness_sources[index],
+                    &event) < 0) {
+        result.failure = LaunchFailure::descriptor_setup_failed;
+        result.detail = "cannot bind aggregate worker readiness descriptor";
+        return result;
+      }
+    }
+    barrier.write.reset();
+    if (std::chrono::steady_clock::now() >= deadline ||
+        pidfd_state(cleanup.job->worker_pidfd) != PidfdState::alive) {
+      result.failure = std::chrono::steady_clock::now() >= deadline
+                           ? LaunchFailure::startup_timeout
+                           : LaunchFailure::worker_exited_early;
+      result.detail = "worker lost authority during startup barrier release";
+      return result;
+    }
+
     worker->identity = {.plugin_id = request.plugin_id,
                         .revision_sha256 = request.revision_sha256,
                         .generation = request.generation,
@@ -1412,14 +1747,14 @@ LaunchResult Supervisor::launch(const TrustedLaunchRequest &request) const {
                         .outer_gid = getgid()};
     worker->channels = {std::move(control.trusted), std::move(broker.trusted),
                         std::move(render.trusted)};
-    worker->worker_pidfd = std::move(cleanup.worker_pidfd);
-    worker->monitor_pidfd = std::move(cleanup.monitor_pidfd);
+    worker->worker_pidfd = Fd(cleanup.job->worker_pidfd);
+    cleanup.job->worker_pidfd = -1;
     worker->standard_output = std::move(standard_output.read);
     worker->standard_error = std::move(standard_error.read);
-    worker->monitor_pid = monitor_pid;
-    worker->scope = cleanup.scope;
-    worker->resource_scope = implementation_->resource_scope;
-    worker->timeouts = plan.timeouts;
+    worker->readiness = std::move(readiness);
+    worker->reaper = cleanup.reaper;
+    worker->completion = cleanup.job->completion;
+    worker->cleanup = std::move(cleanup.job);
     cleanup.armed = false;
     result.worker = std::unique_ptr<Worker>(new Worker(std::move(worker)));
     return result;

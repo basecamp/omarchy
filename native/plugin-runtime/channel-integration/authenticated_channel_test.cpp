@@ -60,24 +60,28 @@ private:
 
 class Scope final : public launcher::ResourceScopeController {
 public:
-  bool probe(std::string &) override { return true; }
-  bool attach(std::string_view unit, pid_t monitor_pid, pid_t worker_pid,
-              const sandbox::SandboxPlan &plan,
-              std::chrono::milliseconds timeout, std::string &) override {
-    require(monitor_pid > 0 && worker_pid > 0 && timeout == 5s,
+  bool probe(launcher::Deadline, std::string &) override { return true; }
+  bool prepare_cleanup(launcher::Deadline, std::string &) override {
+    return true;
+  }
+  AttachResult attach(std::string_view unit, pid_t monitor_pid,
+                      pid_t worker_pid, const sandbox::SandboxPlan &plan,
+                      launcher::Deadline deadline, std::string &) override {
+    require(monitor_pid > 0 && worker_pid > 0 &&
+                deadline > std::chrono::steady_clock::now(),
             "resource scope did not receive bounded process identities");
     require(plan.worker_descriptors == std::vector<int>({3, 4, 5}),
             "resource scope saw a changed endpoint contract");
     name = unit;
     attached = true;
-    return true;
+    return {.attached = true, .cleanup_required = true};
   }
-  void kill(std::string_view unit) noexcept override {
+  void kill(std::string_view unit, launcher::Deadline) noexcept override {
     if (unit == name) {
       ++kills;
     }
   }
-  void remove(std::string_view unit) noexcept override {
+  void remove(std::string_view unit, launcher::Deadline) noexcept override {
     if (unit == name) {
       ++removes;
     }

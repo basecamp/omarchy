@@ -2,7 +2,10 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(SECCOMP REQUIRED IMPORTED_TARGET libseccomp)
 pkg_check_modules(SYSTEMD REQUIRED IMPORTED_TARGET libsystemd)
 
-add_library(omarchy-plugin-launcher STATIC src/launcher.cpp)
+add_library(omarchy-plugin-launcher STATIC
+  src/launcher.cpp
+  src/process_cleanup.cpp
+)
 add_library(Omarchy::PluginLauncher ALIAS omarchy-plugin-launcher)
 omarchy_plugin_target_defaults(omarchy-plugin-launcher)
 target_include_directories(omarchy-plugin-launcher PUBLIC include)

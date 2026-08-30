@@ -14,7 +14,21 @@
 
 namespace omarchy::plugin_runtime::launcher {
 
+using Deadline = std::chrono::steady_clock::time_point;
+
 enum class EndpointRole { control, broker, render };
+enum class EndpointMask : std::uint8_t {
+  none = 0,
+  control = 1U << 0,
+  broker = 1U << 1,
+  render = 1U << 2,
+  all = 7,
+};
+[[nodiscard]] constexpr EndpointMask operator|(EndpointMask left,
+                                                EndpointMask right) noexcept {
+  return static_cast<EndpointMask>(static_cast<std::uint8_t>(left) |
+                                   static_cast<std::uint8_t>(right));
+}
 
 struct LaunchIdentity {
   std::string plugin_id;
@@ -65,26 +79,67 @@ enum class ReceiveFailure {
   io_error,
 };
 
+enum class SendStatus { complete, would_block, peer_closed, fatal };
+enum class ReceiveStatus { message, would_block, peer_closed, fatal };
+
+class OwnedDescriptor final {
+public:
+  explicit OwnedDescriptor(int descriptor = -1) noexcept;
+  OwnedDescriptor(OwnedDescriptor &&other) noexcept;
+  OwnedDescriptor &operator=(OwnedDescriptor &&other) noexcept;
+  OwnedDescriptor(const OwnedDescriptor &) = delete;
+  OwnedDescriptor &operator=(const OwnedDescriptor &) = delete;
+  ~OwnedDescriptor();
+
+  [[nodiscard]] int get() const noexcept;
+  [[nodiscard]] int release() noexcept;
+  [[nodiscard]] explicit operator bool() const noexcept;
+  void reset(int descriptor = -1) noexcept;
+
+private:
+  int descriptor_ = -1;
+};
+
 struct ReceivedMessage {
-  std::vector<std::byte> payload;
+  std::vector<std::byte> payload{};
+  std::vector<OwnedDescriptor> descriptors{};
+  EndpointRole role = EndpointRole::control;
+  ReceiveStatus status = ReceiveStatus::fatal;
   ReceiveFailure failure = ReceiveFailure::none;
 
   [[nodiscard]] explicit operator bool() const {
-    return failure == ReceiveFailure::none;
+    return status == ReceiveStatus::message &&
+           failure == ReceiveFailure::none;
   }
 };
 
 class ResourceScopeController {
 public:
+  struct AttachResult {
+    bool attached = false;
+    // True once scope creation may have reached the resource manager. The
+    // launch owner must then perform exactly one asynchronous cleanup.
+    bool cleanup_required = false;
+  };
+
   virtual ~ResourceScopeController() = default;
-  [[nodiscard]] virtual bool probe(std::string &error) = 0;
-  [[nodiscard]] virtual bool attach(std::string_view unit, pid_t monitor_pid,
-                                    pid_t worker_pid,
-                                    const sandbox::SandboxPlan &plan,
-                                    std::chrono::milliseconds timeout,
-                                    std::string &error) = 0;
-  virtual void kill(std::string_view unit) noexcept = 0;
-  virtual void remove(std::string_view unit) noexcept = 0;
+  [[nodiscard]] bool probe(std::string &error);
+  [[nodiscard]] virtual bool probe(Deadline deadline,
+                                   std::string &error) = 0;
+  // Establishes every resource needed for later teardown before process
+  // authority exists. Cleanup operations must never reconnect lazily.
+  [[nodiscard]] virtual bool prepare_cleanup(Deadline deadline,
+                                             std::string &error) = 0;
+  [[nodiscard]] AttachResult
+  attach(std::string_view unit, pid_t monitor_pid, pid_t worker_pid,
+         const sandbox::SandboxPlan &plan,
+         std::chrono::milliseconds timeout, std::string &error);
+  [[nodiscard]] virtual AttachResult
+  attach(std::string_view unit, pid_t monitor_pid, pid_t worker_pid,
+         const sandbox::SandboxPlan &plan, Deadline deadline,
+         std::string &error) = 0;
+  virtual void kill(std::string_view unit, Deadline deadline) noexcept = 0;
+  virtual void remove(std::string_view unit, Deadline deadline) noexcept = 0;
 };
 
 [[nodiscard]] std::shared_ptr<ResourceScopeController>
@@ -101,14 +156,38 @@ public:
   [[nodiscard]] const LaunchIdentity &identity() const;
   [[nodiscard]] ReceivedMessage receive(EndpointRole role,
                                         std::size_t maximum_payload,
+                                        Deadline deadline);
+  [[nodiscard]] ReceivedMessage receive_any(std::size_t maximum_payload,
+                                            Deadline deadline);
+  [[nodiscard]] ReceivedMessage receive_any(std::size_t maximum_payload,
+                                            Deadline deadline,
+                                            EndpointMask allowed);
+  [[nodiscard]] ReceivedMessage receive(EndpointRole role,
+                                        std::size_t maximum_payload,
                                         std::chrono::milliseconds timeout);
+  // Descriptor arguments are always borrowed. complete means the kernel made
+  // its own references; every other status makes no transport progress and
+  // retains, duplicates, or closes none of the caller's descriptors.
+  [[nodiscard]] SendStatus
+  try_send(EndpointRole role, std::span<const std::byte> payload,
+           std::span<const int> borrowed_descriptors = {}) noexcept;
   [[nodiscard]] bool send(EndpointRole role,
                           std::span<const std::byte> payload);
   [[nodiscard]] bool send_with_descriptors(EndpointRole role,
                                            std::span<const std::byte> payload,
                                            std::span<const int> descriptors);
   [[nodiscard]] bool alive() const;
+  // Borrowed level-triggered aggregate readiness descriptor. It becomes
+  // readable for any endpoint packet or worker exit; receive_any remains the
+  // sole operation allowed to consume transport data.
+  [[nodiscard]] int readiness_fd() const noexcept;
+  // Changes only which endpoint lanes feed readiness_fd; pidfd readiness is
+  // permanently armed. Disabled lanes remain unread and queued in the kernel.
+  [[nodiscard]] bool set_receive_mask(EndpointMask allowed) noexcept;
   [[nodiscard]] std::string take_standard_error();
+  [[nodiscard]] bool terminate(Deadline deadline) noexcept;
+  [[nodiscard]] bool
+  terminate(std::chrono::milliseconds timeout) noexcept;
   [[nodiscard]] bool terminate();
 
 private:
@@ -133,7 +212,8 @@ public:
   [[nodiscard]] static Supervisor production();
   [[nodiscard]] static Supervisor
   forTestOnly(std::string bwrap_path, std::string worker_path,
-              std::shared_ptr<ResourceScopeController> resource_scope);
+              std::shared_ptr<ResourceScopeController> resource_scope,
+              bool force_reaper_start_failure = false);
 
   Supervisor(const Supervisor &) = delete;
   Supervisor &operator=(const Supervisor &) = delete;
@@ -142,7 +222,11 @@ public:
   ~Supervisor();
 
   [[nodiscard]] bool prerequisites(std::string &error) const;
+  [[nodiscard]] bool prerequisites(Deadline deadline,
+                                   std::string &error) const;
   [[nodiscard]] LaunchResult launch(const TrustedLaunchRequest &request) const;
+  [[nodiscard]] LaunchResult launch(const TrustedLaunchRequest &request,
+                                    Deadline deadline) const;
 private:
   struct Impl;
   explicit Supervisor(std::unique_ptr<Impl> implementation);

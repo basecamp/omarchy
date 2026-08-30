@@ -1,6 +1,7 @@
 #include "omarchy/plugin_runtime/launcher/launcher.h"
 #include "omarchy/plugin_runtime/launcher/termination_state.h"
 #include "omarchy/plugin_runtime/test_support/test_support.h"
+#include "../src/process_cleanup.hpp"
 
 #include <fcntl.h>
 #include <poll.h>
@@ -9,7 +10,10 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <array>
+#include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -22,6 +26,8 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <thread>
+#include <type_traits>
 
 namespace launcher = omarchy::plugin_runtime::launcher;
 namespace sandbox = omarchy::plugin_runtime::sandbox;
@@ -63,6 +69,14 @@ void require(bool condition, std::string_view message) {
   }
 }
 
+template <typename Predicate>
+bool wait_until(Predicate predicate, std::chrono::milliseconds timeout) {
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (!predicate() && std::chrono::steady_clock::now() < deadline)
+    std::this_thread::yield();
+  return predicate();
+}
+
 std::size_t open_descriptor_count() {
   std::size_t count = 0;
   for (const auto &entry :
@@ -71,6 +85,28 @@ std::size_t open_descriptor_count() {
     ++count;
   }
   return count;
+}
+
+enum class WakeFault { none, interrupt_once, saturated, failed };
+std::atomic<WakeFault> wake_fault = WakeFault::none;
+std::atomic<unsigned> wake_calls = 0;
+
+ssize_t injected_wake(int descriptor, const void *bytes,
+                      std::size_t size) {
+  const unsigned call = wake_calls.fetch_add(1);
+  if (wake_fault == WakeFault::interrupt_once && call == 0) {
+    errno = EINTR;
+    return -1;
+  }
+  if (wake_fault == WakeFault::saturated) {
+    errno = EAGAIN;
+    return -1;
+  }
+  if (wake_fault == WakeFault::failed) {
+    errno = EIO;
+    return -1;
+  }
+  return write(descriptor, bytes, size);
 }
 
 template <typename Value> Value decode(std::span<const std::byte> bytes) {
@@ -82,19 +118,45 @@ template <typename Value> Value decode(std::span<const std::byte> bytes) {
 
 class FakeScope final : public launcher::ResourceScopeController {
 public:
-  bool probe(std::string &error) override {
-    if (!available) {
-      error = "synthetic resource controller unavailable";
+  bool probe(launcher::Deadline deadline, std::string &error) override {
+    probe_deadline = deadline;
+    if (probe_delay > 0ms) {
+      const auto remaining = deadline - std::chrono::steady_clock::now();
+      if (remaining <= probe_delay) {
+        std::this_thread::sleep_until(deadline);
+        error = "synthetic preflight deadline expired";
+        return false;
+      }
+      std::this_thread::sleep_for(probe_delay);
     }
+    if (!available) error = "synthetic resource controller unavailable";
     return available;
   }
 
-  bool attach(std::string_view unit, pid_t monitor_pid, pid_t worker_pid,
-              const sandbox::SandboxPlan &plan,
-              std::chrono::milliseconds timeout, std::string &error) override {
+  bool prepare_cleanup(launcher::Deadline deadline,
+                       std::string &error) override {
+    cleanup_deadline = deadline;
+    if (cleanup_setup_delay > 0ms) {
+      const auto remaining = deadline - std::chrono::steady_clock::now();
+      if (remaining <= cleanup_setup_delay) {
+        std::this_thread::sleep_until(deadline);
+        error = "synthetic cleanup setup deadline expired";
+        return false;
+      }
+      std::this_thread::sleep_for(cleanup_setup_delay);
+    }
+    cleanup_prepared = true;
+    return true;
+  }
+
+  AttachResult attach(std::string_view unit, pid_t monitor_pid,
+                      pid_t worker_pid, const sandbox::SandboxPlan &plan,
+                      launcher::Deadline deadline,
+                      std::string &error) override {
+    attach_deadline = deadline;
     if (!attach_succeeds) {
       error = "synthetic scope attachment rejected";
-      return false;
+      return {};
     }
     require(unit.starts_with("app-omarchy-plugin-worker-"),
             "scope name escaped the trusted prefix");
@@ -105,22 +167,36 @@ public:
                     std::vector<int>({3, 4, 5, 6, 7, 8, 9, 10}),
             "launcher did not consume the B5 descriptor contract");
     require(plan.resources.memory_max_bytes == 512ULL * 1024ULL * 1024ULL &&
-                plan.resources.tasks_max == 16 && timeout == 5s,
+                plan.resources.tasks_max == 16,
             "launcher did not consume the B5 resource/deadline contract");
     attached = true;
     attached_before_release = true;
     scope.assign(unit);
-    return true;
+    if (attach_delay > 0ms) {
+      const auto remaining = deadline - std::chrono::steady_clock::now();
+      if (remaining <= attach_delay) {
+        std::this_thread::sleep_until(deadline);
+        error = "synthetic attachment deadline expired";
+        return {.attached = false, .cleanup_required = true};
+      }
+      std::this_thread::sleep_for(attach_delay);
+    }
+    return {.attached = std::chrono::steady_clock::now() < deadline,
+            .cleanup_required = true};
   }
 
-  void kill(std::string_view unit) noexcept override {
+  void kill(std::string_view unit, launcher::Deadline) noexcept override {
     if (unit == scope) {
       ++kill_count;
     }
   }
 
-  void remove(std::string_view unit) noexcept override {
+  void remove(std::string_view unit,
+              launcher::Deadline deadline) noexcept override {
     if (unit == scope) {
+      if (remove_delay > 0ms)
+        std::this_thread::sleep_until(std::min(
+            deadline, std::chrono::steady_clock::now() + remove_delay));
       ++remove_count;
     }
   }
@@ -129,9 +205,77 @@ public:
   bool attach_succeeds = true;
   bool attached = false;
   bool attached_before_release = false;
-  unsigned kill_count = 0;
-  unsigned remove_count = 0;
+  std::atomic<unsigned> kill_count = 0;
+  std::atomic<unsigned> remove_count = 0;
+  std::chrono::milliseconds probe_delay{};
+  std::chrono::milliseconds cleanup_setup_delay{};
+  std::chrono::milliseconds attach_delay{};
+  std::chrono::milliseconds remove_delay{};
+  std::optional<launcher::Deadline> probe_deadline;
+  std::optional<launcher::Deadline> cleanup_deadline;
+  std::optional<launcher::Deadline> attach_deadline;
   std::string scope;
+  bool cleanup_prepared = false;
+};
+
+class LegacyOnlyController : public launcher::ResourceScopeController {
+public:
+  void kill(std::string_view, launcher::Deadline) noexcept override {}
+  void remove(std::string_view, launcher::Deadline) noexcept override {}
+};
+
+static_assert(std::is_abstract_v<LegacyOnlyController>,
+              "legacy-only controllers must not enter the launch path");
+
+class BlockingCleanupScope final : public launcher::ResourceScopeController {
+public:
+  bool probe(launcher::Deadline, std::string &) override { return true; }
+  bool prepare_cleanup(launcher::Deadline, std::string &) override {
+    return true;
+  }
+  AttachResult attach(std::string_view, pid_t, pid_t,
+                      const sandbox::SandboxPlan &, launcher::Deadline,
+                      std::string &) override {
+    return {.attached = true, .cleanup_required = true};
+  }
+  void kill(std::string_view, launcher::Deadline) noexcept override {}
+  void remove(std::string_view, launcher::Deadline) noexcept override {
+    const unsigned current = entered.fetch_add(1) + 1;
+    if (current == 1) {
+      std::unique_lock lock(mutex);
+      ready.notify_all();
+      ready.wait(lock, [&] { return released; });
+    }
+    completed.fetch_add(1);
+  }
+
+  std::mutex mutex;
+  std::condition_variable ready;
+  bool released = false;
+  std::atomic<unsigned> entered = 0;
+  std::atomic<unsigned> completed = 0;
+};
+
+class DeadlineCleanupScope final : public launcher::ResourceScopeController {
+public:
+  bool probe(launcher::Deadline, std::string &) override { return true; }
+  bool prepare_cleanup(launcher::Deadline, std::string &) override {
+    return true;
+  }
+  AttachResult attach(std::string_view, pid_t, pid_t,
+                      const sandbox::SandboxPlan &, launcher::Deadline,
+                      std::string &) override {
+    return {.attached = true, .cleanup_required = true};
+  }
+  void kill(std::string_view, launcher::Deadline) noexcept override {}
+  void remove(std::string_view, launcher::Deadline deadline) noexcept override {
+    if (calls.fetch_add(1) == 0)
+      std::this_thread::sleep_until(
+          std::min(deadline, std::chrono::steady_clock::now() + 50ms));
+    completed.fetch_add(1);
+  }
+  std::atomic<unsigned> calls = 0;
+  std::atomic<unsigned> completed = 0;
 };
 
 struct LaunchFixture {
@@ -201,6 +345,251 @@ void pidfd_reap_state_test() {
           "unexpected pidfd events were accepted as an exit certificate");
 }
 
+void deadline_and_async_cleanup_test(LaunchFixture &fixture) {
+  auto rejected_scope = std::make_shared<FakeScope>();
+  rejected_scope->attach_succeeds = false;
+  auto rejected_supervisor = launcher::Supervisor::forTestOnly(
+      FAKE_BWRAP_PATH, PROBE_PATH, rejected_scope);
+  const auto pre_call_rejected = rejected_supervisor.launch(fixture.request());
+  require(pre_call_rejected.failure ==
+              launcher::LaunchFailure::resource_scope_failed &&
+              rejected_scope->remove_count == 0,
+          "pre-call scope rejection acquired or cleaned nonexistent authority");
+
+  auto scope = std::make_shared<FakeScope>();
+  scope->remove_delay = 150ms;
+  auto supervisor =
+      launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH, PROBE_PATH, scope);
+  const auto launch_deadline = std::chrono::steady_clock::now() + 5s;
+  auto launched = supervisor.launch(fixture.request(), launch_deadline);
+  require(static_cast<bool>(launched) && scope->probe_deadline == launch_deadline &&
+              scope->cleanup_deadline == launch_deadline &&
+              scope->cleanup_prepared &&
+              scope->attach_deadline == launch_deadline,
+          "one absolute deadline was not preserved through cleanup setup/attach");
+  const auto destroy_started = std::chrono::steady_clock::now();
+  launched.worker.reset();
+  require(std::chrono::steady_clock::now() - destroy_started < 50ms,
+          "Worker destructor blocked on process/scope cleanup");
+  require(wait_until([&] { return scope->remove_count.load() == 1; }, 2s),
+          "asynchronous Worker cleanup did not remove its scope exactly once");
+
+  auto delayed_setup_scope = std::make_shared<FakeScope>();
+  delayed_setup_scope->cleanup_setup_delay = 1s;
+  auto delayed_setup = launcher::Supervisor::forTestOnly(
+      FAKE_BWRAP_PATH, PROBE_PATH, delayed_setup_scope);
+  const auto setup_deadline = std::chrono::steady_clock::now() + 30ms;
+  const auto setup_rejected =
+      delayed_setup.launch(fixture.request(), setup_deadline);
+  require(setup_rejected.failure == launcher::LaunchFailure::startup_timeout &&
+              !delayed_setup_scope->cleanup_prepared &&
+              !delayed_setup_scope->attach_deadline.has_value() &&
+              delayed_setup_scope->remove_count == 0,
+          "cleanup transport setup was delayed until after process authority");
+
+  auto expiring_scope = std::make_shared<FakeScope>();
+  expiring_scope->probe_delay = 10ms;
+  expiring_scope->attach_delay = 1s;
+  expiring_scope->remove_delay = 150ms;
+  auto expiring = launcher::Supervisor::forTestOnly(
+      FAKE_BWRAP_PATH, PROBE_PATH, expiring_scope);
+  const auto aggregate_deadline = std::chrono::steady_clock::now() + 40ms;
+  const auto launch_started = std::chrono::steady_clock::now();
+  const auto rejected = expiring.launch(fixture.request(), aggregate_deadline);
+  const auto launch_elapsed = std::chrono::steady_clock::now() - launch_started;
+  require(rejected.failure == launcher::LaunchFailure::startup_timeout &&
+              expiring_scope->probe_deadline == aggregate_deadline &&
+              expiring_scope->attach_deadline == aggregate_deadline,
+          "preflight/status/attach reset or misclassified the launch deadline");
+  require(launch_elapsed < 100ms,
+          "failed-launch cleanup blocked the absolute deadline return path");
+  require(wait_until(
+              [&] { return expiring_scope->remove_count.load() == 1; }, 2s),
+          "timed-out attachment did not receive asynchronous cleanup");
+
+  sandbox::SandboxPlan relative_plan = sandbox::build_test_plan_for_worker(
+      PROBE_PATH);
+  FakeScope relative_scope;
+  relative_scope.attach_delay = 20ms;
+  launcher::ResourceScopeController &relative_controller = relative_scope;
+  std::string relative_error;
+  const auto relative_result = relative_controller.attach(
+      "app-omarchy-plugin-worker-relative.scope", getpid(), getpid(),
+      relative_plan, 1ms, relative_error);
+  require(!relative_result.attached && relative_result.cleanup_required,
+          "relative attach adapter discarded ambiguous cleanup authority");
+}
+
+void reaper_wake_and_cleanup_deadline_test() {
+  using launcher::detail::CleanupJob;
+  using launcher::detail::ProcessScopeReaper;
+  const auto exercise = [](WakeFault fault, bool poisons_reaper) {
+    wake_fault = fault;
+    wake_calls = 0;
+    ProcessScopeReaper reaper(false, injected_wake);
+    std::string error;
+    require(reaper.start(error), "cannot start injected-wake reaper");
+    auto completion = std::make_shared<launcher::detail::ReapCompletion>();
+    auto job = std::make_unique<CleanupJob>();
+    job->completion = completion;
+    reaper.submit(std::move(job));
+    require(wait_until(
+                [&] {
+                  std::lock_guard lock(completion->mutex);
+                  return completion->completed;
+                },
+                2s),
+            "injected notifier result stranded published cleanup authority");
+    std::string restart_error;
+    require(reaper.start(restart_error) != poisons_reaper,
+            "notifier invariant failure did not produce exact fail-stop state");
+  };
+  exercise(WakeFault::interrupt_once, false);
+  require(wake_calls >= 2, "EINTR notifier write was not retried");
+  exercise(WakeFault::saturated, false);
+  exercise(WakeFault::failed, true);
+  wake_fault = WakeFault::none;
+
+  auto scope = std::make_shared<DeadlineCleanupScope>();
+  ProcessScopeReaper reaper(false);
+  std::string error;
+  require(reaper.start(error), "cannot start cleanup-deadline reaper");
+  for (unsigned index = 0; index < 2; ++index) {
+    auto job = std::make_unique<CleanupJob>();
+    job->resource_scope = scope;
+    job->scope_attached = true;
+    reaper.submit(std::move(job));
+  }
+  require(wait_until([&] { return scope->completed == 2; }, 500ms),
+          "bounded cleanup call stalled later cleanup authority");
+}
+
+void reaper_capacity_and_startup_test(LaunchFixture &fixture) {
+  auto failed_scope = std::make_shared<FakeScope>();
+  auto failed = launcher::Supervisor::forTestOnly(
+      FAKE_BWRAP_PATH, PROBE_PATH, failed_scope, true);
+  const auto rejected = failed.launch(fixture.request());
+  require(rejected.failure ==
+              launcher::LaunchFailure::resource_scope_unavailable &&
+              !failed_scope->probe_deadline.has_value(),
+          "reaper startup failure did not reject launch before process authority");
+
+  using launcher::detail::CleanupJob;
+  using launcher::detail::ProcessScopeReaper;
+  constexpr std::size_t job_count = 5000;
+  auto scope = std::make_shared<BlockingCleanupScope>();
+  ProcessScopeReaper reaper(false);
+  std::string error;
+  require(reaper.start(error), "cannot start cleanup-capacity fixture");
+  std::vector<std::unique_ptr<CleanupJob>> jobs;
+  jobs.reserve(job_count);
+  for (std::size_t index = 0; index < job_count; ++index) {
+    auto job = std::make_unique<CleanupJob>();
+    job->resource_scope = scope;
+    job->scope_attached = true;
+    jobs.push_back(std::move(job));
+  }
+  reaper.submit(std::move(jobs.front()));
+  {
+    std::unique_lock lock(scope->mutex);
+    require(scope->ready.wait_for(lock, 2s,
+                                  [&] { return scope->entered == 1; }),
+            "cleanup worker did not enter its paused first job");
+  }
+  constexpr std::size_t producer_count = 8;
+  std::array<std::thread, producer_count> producers;
+  for (std::size_t producer = 0; producer < producer_count; ++producer) {
+    producers[producer] = std::thread([&, producer] {
+      for (std::size_t index = 1 + producer; index < job_count;
+           index += producer_count)
+        reaper.submit(std::move(jobs[index]));
+    });
+  }
+  for (auto &producer : producers) producer.join();
+  {
+    std::lock_guard lock(scope->mutex);
+    scope->released = true;
+  }
+  scope->ready.notify_all();
+  require(wait_until([&] { return scope->completed == job_count; }, 5s),
+          "intrusive cleanup queue lost or duplicated a submission above the old cap");
+}
+
+void owned_descriptor_transport_test(LaunchFixture &fixture) {
+  auto scope = std::make_shared<FakeScope>();
+  auto supervisor =
+      launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH, PROBE_PATH, scope);
+  auto launched = supervisor.launch(fixture.request());
+  require(static_cast<bool>(launched),
+          "owned-descriptor transport worker did not launch");
+  pollfd readiness{.fd = launched.worker->readiness_fd(),
+                   .events = POLLIN,
+                   .revents = 0};
+  require(readiness.fd >= 0 && poll(&readiness, 1, 2000) == 1 &&
+              (readiness.revents & POLLIN) != 0,
+          "aggregate readiness did not expose a queued endpoint packet");
+  const auto probe_message = launched.worker->receive(
+      launcher::EndpointRole::control, sizeof(Probe), 2s);
+  require(probe_message &&
+              decode<Probe>(probe_message.payload).pid ==
+                  launched.worker->identity().outer_worker_pid,
+          "fake transport probe did not retain its bound outer identity");
+
+  auto descriptor_message = launched.worker->receive_any(
+      16, std::chrono::steady_clock::now() + 2s);
+  require(descriptor_message &&
+              descriptor_message.role == launcher::EndpointRole::broker &&
+              descriptor_message.descriptors.size() == 1 &&
+              (fcntl(descriptor_message.descriptors.front().get(), F_GETFD) &
+               FD_CLOEXEC) != 0,
+          "valid inbound SCM_RIGHTS was not returned as owned CLOEXEC state");
+  const auto descriptors_before = open_descriptor_count();
+  auto malformed = launched.worker->receive(
+      launcher::EndpointRole::render, 16,
+      std::chrono::steady_clock::now() + 2s);
+  require(malformed.failure == launcher::ReceiveFailure::truncated &&
+              malformed.descriptors.empty() &&
+              open_descriptor_count() == descriptors_before,
+          "truncated ancillary data leaked a received descriptor");
+
+  const std::array acknowledgement{std::byte{1}};
+  require(launched.worker->try_send(launcher::EndpointRole::control,
+                                    acknowledgement) ==
+                  launcher::SendStatus::complete &&
+              launched.worker->terminate(2s) &&
+              launched.worker->terminate(
+                  std::chrono::steady_clock::now()) &&
+              launched.worker->terminate(),
+          "owned-descriptor fixture did not tear down cleanly");
+}
+
+void pidfd_priority_test(LaunchFixture &fixture) {
+  auto scope = std::make_shared<FakeScope>();
+  auto supervisor =
+      launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH, PROBE_PATH, scope);
+  auto launched = supervisor.launch(fixture.request());
+  require(static_cast<bool>(launched), "pidfd-priority worker did not launch");
+  const std::array acknowledgement{std::byte{1}};
+  require(launched.worker->try_send(launcher::EndpointRole::control,
+                                    acknowledgement) ==
+              launcher::SendStatus::complete,
+          "pidfd-priority worker did not receive its exit trigger");
+  require(wait_until([&] { return !launched.worker->alive(); }, 2s),
+          "pidfd-priority worker did not exit");
+  const auto result = launched.worker->receive_any(
+      sizeof(Probe), std::chrono::steady_clock::now() + 2s);
+  require(result.status == launcher::ReceiveStatus::peer_closed &&
+              result.failure == launcher::ReceiveFailure::worker_exited &&
+              result.payload.empty() && result.descriptors.empty(),
+          "queued endpoint data won over authoritative pidfd exit readiness");
+  require(launched.worker->try_send(launcher::EndpointRole::control,
+                                    acknowledgement) ==
+              launcher::SendStatus::peer_closed,
+          "closed worker transport was not reported as peer_closed");
+  require(launched.worker->terminate() && scope->remove_count == 1,
+          "pidfd-priority worker did not clean up exactly once");
+}
+
 void contract_test() {
   pidfd_reap_state_test();
   auto scope = std::make_shared<FakeScope>();
@@ -266,6 +655,12 @@ void contract_test() {
   const auto failed_exec = exec_error.launch(fixture.request());
   require(failed_exec.failure == launcher::LaunchFailure::exec_failed,
           "exec-error handshake did not distinguish execve failure");
+
+  owned_descriptor_transport_test(fixture);
+  pidfd_priority_test(fixture);
+  deadline_and_async_cleanup_test(fixture);
+  reaper_wake_and_cleanup_deadline_test();
+  reaper_capacity_and_startup_test(fixture);
 }
 
 void malicious_test() {
@@ -281,12 +676,38 @@ void malicious_test() {
               .failure == launcher::ReceiveFailure::invalid_role,
       "unknown trusted endpoint role reached polling");
 
-  const auto control = launched.worker->receive(launcher::EndpointRole::control,
-                                                sizeof(Claim), 2s);
+  const auto allowed = launcher::EndpointMask::control |
+                       launcher::EndpointMask::render;
+  require(launched.worker->set_receive_mask(allowed),
+          "cannot arm the allowed endpoint readiness mask");
+  const auto control = launched.worker->receive_any(
+      sizeof(Claim), std::chrono::steady_clock::now() + 2s, allowed);
   require(static_cast<bool>(control) &&
+              control.role == launcher::EndpointRole::control &&
               decode<Claim>(control.payload).claimed_pid ==
                   launched.worker->identity().outer_worker_pid,
           "bound worker message was not accepted");
+  const auto render = launched.worker->receive_any(
+      sizeof(Claim), std::chrono::steady_clock::now() + 2s, allowed);
+  require(static_cast<bool>(render) &&
+              render.role == launcher::EndpointRole::render,
+          "disabled broker lane starved an allowed render packet");
+  const auto masked_legacy = launched.worker->receive(
+      launcher::EndpointRole::broker, sizeof(Claim),
+      std::chrono::steady_clock::now() + 10ms);
+  require(masked_legacy.failure == launcher::ReceiveFailure::invalid_role,
+          "legacy lane receive bypassed the active endpoint mask");
+  pollfd disabled_broker{.fd = launched.worker->readiness_fd(),
+                         .events = POLLIN,
+                         .revents = 0};
+  require(poll(&disabled_broker, 1, 0) == 0,
+          "disabled queued broker traffic kept aggregate readiness armed");
+  require(launched.worker->set_receive_mask(launcher::EndpointMask::broker),
+          "cannot re-arm broker readiness");
+  disabled_broker.revents = 0;
+  require(poll(&disabled_broker, 1, 1000) == 1 &&
+              (disabled_broker.revents & POLLIN) != 0,
+          "re-enabled broker traffic did not become readable");
   const auto descendant = launched.worker->receive(
       launcher::EndpointRole::broker, sizeof(Claim), 2s);
   require(descendant.failure == launcher::ReceiveFailure::credential_mismatch,
@@ -296,24 +717,34 @@ void malicious_test() {
   require(static_cast<bool>(maximum_broker) &&
               maximum_broker.payload.size() == 40 + 65536,
           "legal maximum broker envelope was rejected by the raw channel");
-  const auto render = launched.worker->receive(launcher::EndpointRole::render,
-                                               sizeof(Claim), 2s);
-  require(static_cast<bool>(render),
-          "bound render message failed after descendant rejection");
   const std::array acknowledgement{std::byte{1}};
+  support::UniqueFd passed(open("/dev/null", O_RDONLY | O_CLOEXEC));
+  const std::array one{passed.get()};
+  launcher::SendStatus saturated = launcher::SendStatus::complete;
+  for (std::size_t attempts = 0;
+       attempts < 100000 && saturated == launcher::SendStatus::complete;
+       ++attempts) {
+    saturated = launched.worker->try_send(launcher::EndpointRole::broker,
+                                          acknowledgement, one);
+  }
+  require(saturated == launcher::SendStatus::would_block && passed &&
+              fcntl(passed.get(), F_GETFD) >= 0,
+          "backpressure was not typed and atomic for borrowed SCM_RIGHTS");
   require(
       launched.worker->send(launcher::EndpointRole::control, acknowledgement),
       "descriptor-free launcher send failed");
-  support::UniqueFd passed(open("/dev/null", O_RDONLY | O_CLOEXEC));
-  const std::array one{passed.get()};
   require(passed && launched.worker->send_with_descriptors(
                         launcher::EndpointRole::control, acknowledgement, one),
           "single descriptor launcher send failed");
-  const std::array excess{passed.get(), passed.get()};
-  require(!launched.worker->send_with_descriptors(
-              launcher::EndpointRole::control, acknowledgement, excess) &&
+  std::array<int, 17> excess{};
+  excess.fill(passed.get());
+  require(launched.worker->try_send(launcher::EndpointRole::control,
+                                    acknowledgement, excess) ==
+                  launcher::SendStatus::fatal &&
               fcntl(passed.get(), F_GETFD) >= 0,
           "excess descriptors were sent or caller ownership was consumed");
+  require(launched.worker->set_receive_mask(launcher::EndpointMask::render),
+          "cannot arm render lane for descriptor report");
   const auto descriptor_report = launched.worker->receive(
       launcher::EndpointRole::render, sizeof(DescriptorReport), 2s);
   require(static_cast<bool>(descriptor_report),
@@ -321,6 +752,7 @@ void malicious_test() {
   const auto report = decode<DescriptorReport>(descriptor_report.payload);
   require(report.count == 1 && report.close_on_exec == 1,
           "worker did not receive exactly one close-on-exec descriptor");
+
   require(launched.worker->terminate() && scope->remove_count == 1,
           "bounded normal teardown failed");
 }
@@ -346,8 +778,10 @@ void bwrap_test() {
   validate_probe(*launched.worker);
   const auto injection =
       launched.worker->receive(launcher::EndpointRole::broker, 16, 2s);
-  require(injection.failure == launcher::ReceiveFailure::descriptor_injection,
-          "worker-originated descriptor was not quarantined and rejected");
+  require(injection && injection.descriptors.size() == 1 &&
+              (fcntl(injection.descriptors.front().get(), F_GETFD) &
+               FD_CLOEXEC) != 0,
+          "worker-originated descriptor was not safely owned and cloexec");
   const auto descriptors_before = open_descriptor_count();
   const auto truncated_ancillary =
       launched.worker->receive(launcher::EndpointRole::render, 16, 2s);
@@ -423,8 +857,8 @@ void systemd_scope_test() {
 
   const auto injection =
       launched.worker->receive(launcher::EndpointRole::broker, 16, 2s);
-  require(injection.failure == launcher::ReceiveFailure::descriptor_injection,
-          "systemd-scoped worker descriptor injection passed");
+  require(injection && injection.descriptors.size() == 1,
+          "systemd-scoped worker descriptor transfer was not owned");
   const std::array acknowledgement{std::byte{1}};
   require(
       launched.worker->send(launcher::EndpointRole::control, acknowledgement) &&

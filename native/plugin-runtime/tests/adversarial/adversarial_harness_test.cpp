@@ -390,30 +390,32 @@ void test_identity_and_descriptor_attacks() {
 
 class FakeScope final : public launcher::ResourceScopeController {
 public:
-  bool probe(std::string &) override { return true; }
+  bool probe(launcher::Deadline, std::string &) override { return true; }
+  bool prepare_cleanup(launcher::Deadline, std::string &) override {
+    return true;
+  }
 
-  bool attach(std::string_view unit, pid_t monitor_pid, pid_t worker_pid,
-              const sandbox::SandboxPlan &plan,
-              std::chrono::milliseconds timeout,
-              std::string &) override {
+  AttachResult attach(std::string_view unit, pid_t monitor_pid,
+                      pid_t worker_pid, const sandbox::SandboxPlan &plan,
+                      launcher::Deadline deadline, std::string &) override {
     require(unit.starts_with("app-omarchy-plugin-worker-") &&
                 monitor_pid > 0 && worker_pid > 0 &&
                 plan.worker_descriptors == std::vector<int>({3, 4, 5}) &&
                 plan.process.descendants_permitted &&
-                timeout == std::chrono::seconds(5),
+                deadline > std::chrono::steady_clock::now(),
             "sandbox launch did not consume the frozen B5 plan");
     unit_ = unit;
     attached = true;
-    return true;
+    return {.attached = true, .cleanup_required = true};
   }
 
-  void kill(std::string_view unit) noexcept override {
+  void kill(std::string_view unit, launcher::Deadline) noexcept override {
     if (unit == unit_) {
       ++kills;
     }
   }
 
-  void remove(std::string_view unit) noexcept override {
+  void remove(std::string_view unit, launcher::Deadline) noexcept override {
     if (unit == unit_) {
       ++removes;
     }
