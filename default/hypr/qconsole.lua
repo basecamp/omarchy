@@ -4,7 +4,12 @@
 
 -- How much of the usable screen the console covers, measured from the top.
 local share = 0.5
-local min_size = 64
+
+-- A console holding a single window is boxed into a centered panel this many
+-- times wider than it is tall, rather than stretched the width of the screen.
+-- A second app on the scratchpad gets the full width back: two windows splitting
+-- a half-width column is worse than the band this replaced.
+local box = 2
 
 local SCRATCHPAD = "special:scratchpad"
 
@@ -26,35 +31,25 @@ hl.config({
   },
 })
 
+-- The panel is always flush with the top and always centered, so two numbers
+-- describe it: the gap down each side and the gap underneath.
+--
 -- Refitting replaces the rule in place rather than stacking a new one, but it
 -- still schedules a monitor and window state refresh, and monitor.focused fires
 -- on every hop between screens. Most of those hops do not change the gaps, so
 -- only write the rule when it actually moves.
-local covering = nil
+local beside, below = nil, nil
 
-local function same_gaps(a, b)
-  return a
-    and b
-    and a.top == b.top
-    and a.right == b.right
-    and a.bottom == b.bottom
-    and a.left == b.left
-end
-
-local function cover(gaps_out)
-  if type(gaps_out) == "number" then
-    gaps_out = { top = 0, right = 0, bottom = gaps_out, left = 0 }
-  end
-
-  if same_gaps(covering, gaps_out) then
+local function cover(side, bottom)
+  if beside == side and below == bottom then
     return false
   end
-  covering = gaps_out
+  beside, below = side, bottom
 
   hl.workspace_rule({
     workspace = SCRATCHPAD,
     gaps_in = 0,
-    gaps_out = gaps_out,
+    gaps_out = { top = 0, right = side, bottom = bottom, left = side },
 
     -- Nothing to highlight in a console that is only ever focused when it is
     -- open, and the active border reads as a stray frame around a panel that
@@ -67,144 +62,120 @@ local function cover(gaps_out)
   return true
 end
 
-local function reserved_edges(monitor)
-  local reserved = monitor.reserved
-  if type(reserved) ~= "table" then
-    return { top = 0, right = 0, bottom = 0, left = 0 }
-  end
-
-  return {
-    top = reserved.top or 0,
-    right = reserved.right or 0,
-    bottom = reserved.bottom or 0,
-    left = reserved.left or 0,
-  }
-end
-
--- A positive omarchy_qconsole_ratio (set in hyprland.lua before defaults load)
--- centers the console in a tiling box that many times wider than it is tall.
--- Values below 1 clamp to a square. Unset keeps the full-width drop-down.
-local function box_ratio()
-  local ratio = _G.omarchy_qconsole_ratio
-  if type(ratio) == "number" and ratio > 0 then
-    return math.max(1, ratio)
-  end
-  return nil
-end
-
-local function is_scratchpad(ws)
-  return ws and (ws.name == SCRATCHPAD or ws.name == "scratchpad")
+-- One window reads as a console and gets the panel. A second app has turned the
+-- scratchpad into a workspace, and a workspace wants the whole width.
+local function alone()
+  local ws = hl.get_workspace(SCRATCHPAD)
+  return not ws or ws.windows <= 1
 end
 
 -- Sizing the console with a window rule would freeze it at whatever the screen
 -- measured when it first opened, because Hyprland resolves those expressions
 -- once, as the window maps. Rescaling the monitor afterwards would leave a
 -- console that is no longer half of anything. Gaps are re-applied by the layout
--- instead, so the console is sized by the leftover area and that area is
--- recomputed whenever the monitor it is opening on changes.
+-- instead, so the console is sized by the area left around it, and that area is
+-- recomputed whenever the monitor it opens on changes.
 local function fit(monitor)
-  monitor = monitor or hl.get_active_monitor()
-
   -- A monitor handle whose output has gone away answers nil to every field, and
   -- layout changes are exactly when that happens, so this also covers reading
-  -- height and reserved below.
+  -- width, height and reserved below.
   if not monitor or not monitor.scale or monitor.scale <= 0 then
     return false
   end
 
+  -- Width and height are the panel's own pixels, so a monitor turned on its
+  -- side still reports them the way the panel is built. The odd transforms are
+  -- the quarter turns, and those are the ones that swap the work area.
+  local width, height = monitor.width, monitor.height
+  if monitor.transform % 2 == 1 then
+    width, height = height, width
+  end
+
   -- Monitor dimensions are in physical pixels; gaps are logical, so the scale
   -- has to come out before the reserved area (already logical) comes off.
-  local reserved = reserved_edges(monitor)
-  local usable_h = monitor.height / monitor.scale - reserved.top - reserved.bottom
-  local usable_w = nil
-  if monitor.width then
-    usable_w = monitor.width / monitor.scale - reserved.left - reserved.right
+  local reserved = monitor.reserved
+  height = height / monitor.scale - reserved.top - reserved.bottom
+  width = width / monitor.scale - reserved.left - reserved.right
+
+  local tall = math.floor(height * share)
+  local wide = width
+  if alone() then
+    wide = math.min(width, tall * box)
   end
 
-  local ratio = box_ratio()
-  local h = math.max(min_size, math.floor(usable_h * share))
-  local side = 0
-  local bottom = math.max(0, math.floor(usable_h - h))
-
-  if ratio and usable_w then
-    local w = math.floor(h * ratio)
-    if w > usable_w then
-      w = math.floor(usable_w)
-    end
-    side = math.max(0, math.floor((usable_w - w) / 2))
-    if usable_w - (side * 2) < min_size then
-      side = math.max(0, math.floor((usable_w - min_size) / 2))
-    end
-  end
-
-  if usable_h - bottom < min_size then
-    bottom = math.max(0, math.floor(usable_h - min_size))
-  end
-
-  return cover({ top = 0, right = side, bottom = bottom, left = side })
+  return cover(math.floor((width - wide) / 2), math.floor(height - tall))
 end
 
-local function apply_now()
-  if hl.exec_scheduled_prop_refresh_immediately then
+-- The console keeps the geometry of the output it is open on: a follow_mouse hop
+-- onto another screen must not resize a console that is already showing. While
+-- it is hidden there is nothing to size but the output that will show it next.
+local function console_monitor()
+  local ws = hl.get_workspace(SCRATCHPAD)
+  local mon = ws and ws.visible and ws.monitor
+
+  if mon and mon.scale and mon.scale > 0 then
+    return mon
+  end
+
+  return hl.get_active_monitor()
+end
+
+local function refit(monitor)
+  if fit(monitor or console_monitor()) then
+    -- Land the new gaps in this pass rather than a frame later, so the console
+    -- does not visibly resize itself once it has already dropped down.
     hl.exec_scheduled_prop_refresh_immediately()
   end
 end
 
-local function scratchpad_on_other_monitor(mon)
-  if not hl.get_workspace or not mon then
-    return false
-  end
-
-  local ws = hl.get_workspace(SCRATCHPAD)
-  if not is_scratchpad(ws) or not ws.visible or not ws.monitor or not ws.monitor.name or not mon.name then
-    return false
-  end
-
-  return ws.monitor.name ~= mon.name
-end
-
 -- Until a monitor can be read, cover the whole work area rather than leaving
--- the console unruled, so it is never seeded without its placement.
-cover({ top = 0, right = 0, bottom = 0, left = 0 })
-fit()
+-- the console unruled, so it is never seeded without its placement. A reload
+-- runs this again with the console already on screen, so it starts from the
+-- output the console is on rather than whichever one the pointer is over.
+cover(0, 0)
+fit(console_monitor())
 
 hl.on("monitor.layout_changed", function()
-  local ws = hl.get_workspace and hl.get_workspace(SCRATCHPAD)
-  if is_scratchpad(ws) and ws.visible and ws.monitor then
-    fit(ws.monitor)
-  else
-    fit()
-  end
+  refit()
 end)
 
--- follow_mouse hops fire this; do not rewrite an open console to a different
--- output's gaps (that is what zeroed the window on the 1080p screen).
-hl.on("monitor.focused", function(mon)
-  if scratchpad_on_other_monitor(mon) then
-    return
-  end
-  fit(mon)
+hl.on("monitor.focused", function()
+  refit()
 end)
 
--- Special workspaces toggle on the monitor they open on, not whichever output
--- last happened to be focused when the rule was written.
+-- Special workspaces open on the monitor they are toggled on, not on whichever
+-- output last happened to be focused when the rule was written, so these two
+-- take the monitor they are handed rather than looking one up.
 hl.on("workspace.special_active", function(ws, mon)
-  if not is_scratchpad(ws) then
-    return
-  end
-  if fit(mon) then
-    apply_now()
+  if ws and ws.name == SCRATCHPAD then
+    refit(mon)
   end
 end)
 
 hl.on("workspace.move_to_monitor", function(ws, mon)
-  if not is_scratchpad(ws) then
-    return
-  end
-  if fit(mon) then
-    apply_now()
+  if ws and ws.name == SCRATCHPAD then
+    refit(mon)
   end
 end)
+
+-- The panel is only centered while the console holds one window, so the count
+-- has to be rechecked as apps come and go. These are the two events that run
+-- after the workspace's count has already moved: window.close and
+-- window.move_to_workspace still count the window on its way out, and refitting
+-- from those would read one too many and leave the console full width.
+--
+-- Only while it is on screen, though. A hidden console is refitted on its way in
+-- by workspace.special_active, and every window opened anywhere on the desktop
+-- would otherwise rewrite the rule.
+local function recount()
+  local ws = hl.get_workspace(SCRATCHPAD)
+  if ws and ws.visible then
+    refit()
+  end
+end
+
+hl.on("window.open", recount)
+hl.on("window.destroy", recount)
 
 -- The direction names the edge the offset is measured from, not where the
 -- workspace goes: "slide top" drops it down into view, and "slide bottom"
