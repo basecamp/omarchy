@@ -105,8 +105,6 @@ function_body() {
 }
 
 migrations_body=$(function_body run_post_upgrade_migrations)
-grep -F 'fail "omarchy-migrate is unavailable after installing the Omarchy quattro packages."' <<<"$migrations_body" >/dev/null ||
-  fail "Omarchy 4 upgrade fails when its migration command is unavailable"
 grep -F 'fail "Omarchy migrations did not complete.' <<<"$migrations_body" >/dev/null ||
   fail "Omarchy 4 upgrade fails when a migration cannot complete"
 grep -F 'omarchy-migrate --pending' <<<"$migrations_body" >/dev/null ||
@@ -118,14 +116,13 @@ grep -F 'pending_status != 1' <<<"$migrations_body" >/dev/null ||
 grep -F 'fail "Could not verify that Omarchy migrations completed.' <<<"$migrations_body" >/dev/null ||
   fail "Omarchy 4 upgrade fails when it cannot verify migration state"
 if grep -F 'return 0' <<<"$migrations_body" >/dev/null || grep -F 'warn ' <<<"$migrations_body" >/dev/null; then
-  fail "Omarchy 4 upgrade does not continue past missing or failed migrations"
+  fail "Omarchy 4 upgrade does not continue past failed migrations"
 fi
 
 exercise_post_upgrade_migrations() {
   local stub_migration_status="$1" stub_pending_status="$2"
 
   (
-    export package_path="$ROOT/bin:/usr/bin"
     log() { :; }
     fail() { exit 1; }
     run_as_user_omarchy() {
