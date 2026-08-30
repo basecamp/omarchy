@@ -232,7 +232,9 @@ BarWidget {
       id: horizontalTrayRoot
 
       readonly property int pinnedWidth: pinnedRow.implicitWidth
-      readonly property int drawerBlockWidth: root.allItems.length > 0 ? expandIcon.implicitWidth + root.drawerExtent : 0
+      // Only reserve the drawer block while something is actually in the drawer;
+      // an empty drawer would otherwise leave a chevron with nothing behind it.
+      readonly property int drawerBlockWidth: root.drawerCount > 0 ? expandIcon.implicitWidth + root.drawerExtent : 0
 
       implicitWidth: pinnedWidth + drawerBlockWidth
       implicitHeight: root.barSize
@@ -257,7 +259,7 @@ BarWidget {
         x: 0
         width: horizontalTrayRoot.drawerBlockWidth
         height: root.barSize
-        visible: root.allItems.length > 0
+        visible: root.drawerCount > 0
 
         HoverHandler {
           onHoveredChanged: root.expanded = hovered
@@ -303,7 +305,7 @@ BarWidget {
         x: drawerArea.x + horizontalTrayRoot.drawerBlockWidth
         anchors.verticalCenter: parent.verticalCenter
         spacing: root.trayItemGap
-        leftPadding: root.pinnedItems.length > 0 && root.allItems.length > 0 ? root.trayJoinGap : 0
+        leftPadding: root.pinnedItems.length > 0 && root.drawerCount > 0 ? root.trayJoinGap : 0
         Repeater {
           model: root.pinnedItems
           TrayItem {}
@@ -319,7 +321,7 @@ BarWidget {
       id: verticalTrayRoot
 
       readonly property int pinnedHeight: pinnedCol.implicitHeight
-      readonly property int drawerBlockHeight: root.allItems.length > 0 ? expandIcon.implicitHeight + root.drawerExtent : 0
+      readonly property int drawerBlockHeight: root.drawerCount > 0 ? expandIcon.implicitHeight + root.drawerExtent : 0
 
       implicitWidth: root.barSize
       implicitHeight: pinnedHeight + drawerBlockHeight
@@ -339,7 +341,7 @@ BarWidget {
         y: 0
         width: root.barSize
         height: verticalTrayRoot.drawerBlockHeight
-        visible: root.allItems.length > 0
+        visible: root.drawerCount > 0
 
         HoverHandler {
           onHoveredChanged: root.expanded = hovered
@@ -386,7 +388,7 @@ BarWidget {
         y: drawerArea.y + verticalTrayRoot.drawerBlockHeight
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: root.trayItemGap
-        topPadding: root.pinnedItems.length > 0 && root.allItems.length > 0 ? root.trayJoinGap : 0
+        topPadding: root.pinnedItems.length > 0 && root.drawerCount > 0 ? root.trayJoinGap : 0
         Repeater {
           model: root.pinnedItems
           TrayItem {}
