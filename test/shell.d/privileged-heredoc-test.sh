@@ -380,6 +380,10 @@ command_destinations() {
   # contain spaces anywhere this check runs.
   line=${line//\"/ }
   line=${line//\'/ }
+  # `>|` overrides noclobber; the bar belongs to the operator, not to a pipe.
+  # Left alone it becomes the redirect's target and hides the privileged path
+  # behind it, so a `cat <<EOF >| /etc/...` heredoc reports no destination.
+  line=${line//">|"/">"}
   # Preserve append redirects before detaching redirect operators from their
   # targets, so ">> /etc/x" does not become two ">" tokens whose first target
   # is the second operator.
@@ -922,6 +926,8 @@ fixture_flags route-prebody-escaped-pipeline.sh \
   "flags an escaped-line pipeline consumer before the heredoc body"
 fixture_flags route-dash-delimiter.sh "flags an indented <<- heredoc"
 fixture_flags route-append-redirect.sh "flags an append redirect into /etc"
+fixture_flags route-noclobber-redirect.sh \
+  "flags a noclobber-override redirect into /etc"
 fixture_flags arithmetic-left-shift-before-heredoc.sh \
   "an arithmetic left shift does not swallow a later privileged heredoc" \
   "path-shaped expansions: HOME"
