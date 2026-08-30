@@ -1,0 +1,72 @@
+# cliamp shortcuts, from the project's own docs/keybindings.md:
+# https://github.com/bjarneo/cliamp
+#
+# Only the main screen's bindings are listed. cliamp's modal screens -- file
+# browser, provider browser, playlist manager, search overlays -- rebind the
+# same keys, and cliamp reports playback state but not which screen is showing,
+# so there is no way to tell which set applies. Listing them all would offer
+# rows that quietly do something else wherever you happen to be.
+
+SPACE                            → Play / pause
+s                                → Stop
+>                                → Next track
+<                                → Previous track
+RIGHT                            → Seek forward 5s
+LEFT                             → Seek back 5s
+SHIFT + RIGHT                    → Seek forward 30s
+SHIFT + LEFT                     → Seek back 30s
++                                → Volume up
+-                                → Volume down
+m                                → Toggle mono
+CTRL + J                         → Jump to time
+]                                → Speed up 0.25x
+[                                → Slow down 0.25x
+N then j                         → Seek to N x 10% of the track (7j jumps to 70%)
+a                                → Toggle the queue (play next)
+A                                → Queue manager
+p                                → Playlist manager
+w                                → Write highlighted track to a local playlist
+x                                → Remove highlighted track from the playlist
+r                                → Cycle repeat (off / all / one)
+z                                → Toggle shuffle
+ENTER                            → Play selected track
+j                                → Scroll down / EQ band down
+k                                → Scroll up / EQ band up
+h                                → EQ cursor left
+l                                → EQ cursor right
+PAGE DOWN                        → Scroll playlist down a page
+PAGE UP                          → Scroll playlist up a page
+g                                → Go to top
+G                                → Go to end
+SHIFT + UP                       → Move track up in the playlist
+SHIFT + DOWN                     → Move track down in the playlist
+TAB                              → Cycle visible controls
+/                                → Search the playlist
+CTRL + X                         → Expand / collapse the playlist
+CTRL + Z                         → Undo the last removal or queue clear
+o                                → Open the file browser
+b                                → Back to provider
+f                                → Toggle bookmark on the selected track
+n                                → Toggle favourite on the selected track
+u                                → Load a URL (stream or playlist)
+y                                → Show or close lyrics
+i                                → Show track metadata
+CTRL + S                         → Save track to ~/Music/cliamp
+CTRL + F                         → Search with the active provider
+N                                → Open the active provider browser
+L                                → Browse local playlists
+R                                → Open radio provider
+S                                → Open Spotify provider
+Q                                → Open Qobuz provider
+T                                → Open Tidal provider
+Y                                → Open YouTube provider
+C                                → Open SoundCloud provider
+e                                → Cycle EQ preset
+t                                → Choose theme
+v                                → Cycle visualizer
+V                                → Full screen visualizer
+CTRL + V                         → Pick visualizer from a list
+CTRL + H                         → Toggle album headers
+CTRL + K                         → Show keymap (works on every screen)
+?                                → Show keymap (main screen only; types ? in text fields)
+q                                → Quit

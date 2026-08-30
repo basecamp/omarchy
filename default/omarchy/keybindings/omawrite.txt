@@ -1,0 +1,23 @@
+# Omawrite shortcuts, from the app's own "Keyboard shortcuts" dialog (Ctrl+?)
+# and its Shortcut declarations in src/Main.qml:
+# https://github.com/omacom-io/omawrite
+#
+# The in-app dialog also lists Super + F for fullscreen, but Omawrite declares no
+# Super shortcut: that is Hyprland's own SUPER + F, which fullscreens any window.
+# It belongs to the Omarchy list this menu is one row away from, not here -- an
+# app's list should not restate global bindings under the wrong owner.
+
+CTRL + S                         → Save
+CTRL + O                         → Open
+CTRL + N                         → New window
+CTRL + SHIFT + S                 → Save as
+CTRL + F                         → Find
+CTRL + H                         → Find and replace
+CTRL + G                         → Find next
+CTRL + B                         → Bold
+CTRL + I                         → Italic
+CTRL + K                         → Link
+CTRL + Z                         → Undo
+CTRL + P                         → Print
+F11                              → Fullscreen
+CTRL + ?                         → Keyboard shortcuts

@@ -1,0 +1,41 @@
+# Claude Code interactive-mode shortcuts, from the official documentation at
+# https://code.claude.com/docs/en/interactive-mode
+#
+# Multi-chord sequences are listed as the docs write them. The menu replays one
+# chord, so it refuses these rather than firing the last chord in them -- they
+# are here to be read, not run.
+#
+# watch: ~/.claude/keybindings.json
+
+SHIFT + TAB                      → Cycle permission modes
+ESC                              → Interrupt Claude, or close a dialog
+CTRL + O                         → Toggle transcript viewer
+CTRL + G                         → Open in default text editor
+CTRL + T                         → Toggle Claude's task checklist
+CTRL + R                         → Reverse search command history
+CTRL + B                         → Background running tasks
+CTRL + S                         → Stash or restore prompt
+CTRL + V                         → Paste image from clipboard
+CTRL + L                         → Redraw screen
+ALT + P                          → Switch model
+ALT + T                          → Toggle extended thinking
+ALT + O                          → Toggle fast mode
+TAB                              → Accept an autocomplete suggestion
+CTRL + P                         → Previous command in history
+CTRL + N                         → Next command in history
+CTRL + J                         → Insert a newline
+CTRL + A                         → Move cursor to start of line
+CTRL + E                         → Move cursor to end of line
+CTRL + K                         → Delete to end of line
+CTRL + U                         → Delete from cursor to line start
+CTRL + W                         → Delete previous word
+CTRL + Y                         → Paste deleted text
+ALT + B                          → Move cursor back one word
+ALT + F                          → Move cursor forward one word
+ALT + D                          → Delete next word
+CTRL + Z                         → Suspend Claude Code
+CTRL + C                         → Interrupt, or clear input
+CTRL + _                         → Undo last input edit
+CTRL + D                         → Exit Claude Code session
+ESC ESC                          → Clear input draft, or rewind
+CTRL + X CTRL + K                → Stop all background subagents
