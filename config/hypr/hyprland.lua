@@ -10,6 +10,11 @@ dofile((os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/default/hypr/boo
 -- keeping core window-manager bindings:
 -- omarchy_preinstalled_bindings = false
 
+-- Center the quake console in a tiling box. The number is how many times
+-- wider the box is than its height. 1 is a square. Comment this out for a
+-- full-width drop-down.
+omarchy_qconsole_ratio = 2
+
 -- Load Omarchy defaults.
 require("default.hypr.omarchy")
 

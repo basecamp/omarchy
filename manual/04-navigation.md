@@ -66,6 +66,8 @@ Finally, there's a special scratchpad workspace that drops down over whatever wo
 
 It works especially well for a terminal running an agent, or for controls you want to interact with quickly without leaving the current workspace. To move a window off the scratchpad, send it directly to another workspace with something like `Super + Shift + 1`.
 
+By default the scratchpad drops down as a centered panel. Open `~/.config/hypr/hyprland.lua` if you want to change how wide that panel is (`omarchy_qconsole_ratio` is near the top). `1` makes a square; `2` makes a panel twice as wide as it is tall; `3` or `4` is wider still. Anything smaller than `1` still gives you a square. Comment the line out if you'd rather have it span the full width of the screen.
+
 ### It takes some getting used to!
 
 It takes a little while to get used to navigating your desktop like this, but once you do, it'll be hard to go back to a traditional mouse-driven desktop experience!
