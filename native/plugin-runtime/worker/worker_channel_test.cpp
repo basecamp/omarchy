@@ -10,11 +10,13 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <span>
 #include <stdexcept>
@@ -51,7 +53,8 @@ struct Pair {
 bool send_packet(int descriptor, const wire::EnvelopeHeader &header,
                  std::span<const std::byte> payload,
                  std::optional<int> passed_descriptor = std::nullopt) {
-  std::vector<std::byte> packet(wire::kHeaderSize + payload.size());
+  std::vector<std::byte> packet(wire::header_size(header.envelope_version) +
+                                payload.size());
   const auto encoded = wire::encode_packet(header, payload, packet);
   if (!encoded)
     return false;
@@ -78,8 +81,13 @@ bool send_packet(int descriptor, const wire::EnvelopeHeader &header,
          static_cast<ssize_t>(encoded.bytes_written);
 }
 
-wire::EnvelopeHeader welcome_header(wire::EndpointRole role) {
-  return {.endpoint_role = role,
+wire::EnvelopeHeader welcome_header(
+    wire::EndpointRole role,
+    std::uint16_t envelope_version = wire::kEnvelopeVersionV1) {
+  return {.envelope_version = envelope_version,
+          .header_size = static_cast<std::uint16_t>(
+              wire::header_size(envelope_version)),
+          .endpoint_role = role,
           .message_type =
               static_cast<std::uint16_t>(wire::CommonMessageType::welcome),
           .role_protocol_version = 1,
@@ -94,11 +102,14 @@ void handshake(worker::WorkerEndpoint &endpoint, int host) {
                              endpoint.last_error());
   if (!endpoint.send_hello())
     throw std::runtime_error("worker HELLO failed: " + endpoint.last_error());
-  std::array<std::byte, wire::kHeaderSize + 4> hello{};
+  std::array<std::byte, wire::kHeaderSizeV2 + 4> hello{};
   const auto received = recv(host, hello.data(), hello.size(), 0);
-  require(received == static_cast<ssize_t>(hello.size()),
-          "host did not receive exact HELLO");
-  const auto decoded = wire::decode_packet(hello, endpoint.role());
+  require(received == static_cast<ssize_t>(wire::kHeaderSizeV1 + 4) ||
+              received == static_cast<ssize_t>(wire::kHeaderSizeV2 + 4),
+          "host did not receive an exact HELLO");
+  const auto decoded = wire::decode_packet(
+      std::span<const std::byte>(hello).first(static_cast<std::size_t>(received)),
+      endpoint.role());
   require(decoded &&
               decoded.packet.header.message_type ==
                   static_cast<std::uint16_t>(wire::CommonMessageType::hello),
@@ -106,7 +117,10 @@ void handshake(worker::WorkerEndpoint &endpoint, int host) {
   const auto payload = wire::encode_welcome_payload(
       {.maximum_payload = wire::payload_cap(endpoint.role()),
        .maximum_in_flight = 8});
-  require(send_packet(host, welcome_header(endpoint.role()), payload),
+  require(send_packet(host,
+                      welcome_header(endpoint.role(),
+                                     decoded.packet.header.envelope_version),
+                      payload),
           "host WELCOME send failed");
   const auto welcome = endpoint.receive();
   require(static_cast<bool>(welcome) && endpoint.accept_welcome(welcome) &&
@@ -282,6 +296,283 @@ void pending_input_probe() {
           "fallback readiness probe consumed or retained the broker reply");
 }
 
+wire::EnvelopeHeader v2_header(wire::EndpointRole role, std::uint64_t sequence,
+                               std::uint64_t correlation = 0) {
+  return {.envelope_version = wire::kEnvelopeVersionV2,
+          .header_size = wire::kHeaderSizeV2,
+          .endpoint_role = role,
+          .message_type = static_cast<std::uint16_t>(
+              wire::CommonMessageType::protocol_error),
+          .role_protocol_version = 1,
+          .payload_length = 0,
+          .launch_generation = 77,
+          .correlation_id = correlation,
+          .lane_sequence = sequence};
+}
+
+constexpr std::uint64_t lane_value(wire::EndpointRole role,
+                                   std::uint64_t counter) {
+  return (counter << 2U) | static_cast<std::uint16_t>(role);
+}
+
+wire::EnvelopeHeader receive_header(int descriptor, wire::EndpointRole role) {
+  std::array<std::byte, wire::kHeaderSizeV2> packet{};
+  const auto received = recv(descriptor, packet.data(), packet.size(), 0);
+  require(received == static_cast<ssize_t>(packet.size()),
+          "host did not receive an exact v2 packet");
+  const auto decoded = wire::decode_packet(packet, role);
+  require(static_cast<bool>(decoded), "worker emitted malformed v2 packet");
+  return decoded.packet.header;
+}
+
+void lane_tagged_v2_sequence_paths() {
+  Pair control_pair;
+  Pair broker_pair;
+  Pair render_pair;
+  wire::SessionSequence sequence;
+  worker::WorkerEndpoint control(control_pair.worker,
+                                 wire::EndpointRole::control, 1, sequence);
+  worker::WorkerEndpoint broker(broker_pair.worker, wire::EndpointRole::broker,
+                                1, sequence);
+  worker::WorkerEndpoint render(render_pair.worker, wire::EndpointRole::render,
+                                1, sequence);
+  handshake(control, control_pair.host);
+  handshake(broker, broker_pair.host);
+  handshake(render, render_pair.host);
+
+  const auto type = static_cast<std::uint16_t>(
+      wire::CommonMessageType::protocol_error);
+  require(control.send(type, {}, 1) && broker.send(type, {}, 2) &&
+              render.send(type, {}, 3),
+          "cross-lane v2 sends failed");
+  require(receive_header(control_pair.host, wire::EndpointRole::control)
+                  .lane_sequence ==
+              lane_value(wire::EndpointRole::control, 1) &&
+              receive_header(broker_pair.host, wire::EndpointRole::broker)
+                      .lane_sequence ==
+                  lane_value(wire::EndpointRole::broker, 1) &&
+              receive_header(render_pair.host, wire::EndpointRole::render)
+                      .lane_sequence ==
+                  lane_value(wire::EndpointRole::render, 1),
+          "outbound sequences were not uniquely lane tagged");
+
+  require(send_packet(
+              render_pair.host,
+              v2_header(wire::EndpointRole::render,
+                        lane_value(wire::EndpointRole::render, 2)), {}) &&
+              static_cast<bool>(render.receive()) &&
+              send_packet(
+                  broker_pair.host,
+                  v2_header(wire::EndpointRole::broker,
+                            lane_value(wire::EndpointRole::broker, 1)), {}) &&
+              static_cast<bool>(broker.receive()),
+          "independent lanes imposed a false global arrival order");
+  require(send_packet(
+              control_pair.host,
+              v2_header(wire::EndpointRole::control,
+                        lane_value(wire::EndpointRole::control, 3)), {}) &&
+              static_cast<bool>(control.receive()),
+          "same-lane counter gap was rejected");
+  require(send_packet(broker_pair.host,
+                      v2_header(wire::EndpointRole::broker,
+                                lane_value(wire::EndpointRole::broker, 1)),
+                      {}),
+          "replay fixture send failed");
+  const auto replayed = broker.receive();
+  require(!replayed &&
+              replayed.failure == worker::ChannelFailure::sequence_failed,
+          "equal same-lane sequence was accepted");
+
+  Pair lower_pair;
+  wire::SessionSequence lower_sequence;
+  worker::WorkerEndpoint lower(lower_pair.worker, wire::EndpointRole::render, 1,
+                               lower_sequence);
+  handshake(lower, lower_pair.host);
+  require(send_packet(
+              lower_pair.host,
+              v2_header(wire::EndpointRole::render,
+                        lane_value(wire::EndpointRole::render, 3)), {}) &&
+              static_cast<bool>(lower.receive()) &&
+              send_packet(
+                  lower_pair.host,
+                  v2_header(wire::EndpointRole::render,
+                            lane_value(wire::EndpointRole::render, 2)), {}),
+          "lower same-lane fixture failed");
+  const auto lowered = lower.receive();
+  require(!lowered &&
+              lowered.failure == worker::ChannelFailure::sequence_failed,
+          "lower same-lane sequence was accepted");
+
+  Pair transplant_pair;
+  wire::SessionSequence transplant_sequence;
+  worker::WorkerEndpoint transplant(transplant_pair.worker,
+                                    wire::EndpointRole::control, 1,
+                                    transplant_sequence);
+  handshake(transplant, transplant_pair.host);
+  require(send_packet(
+              transplant_pair.host,
+              v2_header(wire::EndpointRole::broker,
+                        lane_value(wire::EndpointRole::broker, 1)), {}),
+          "role transplant fixture send failed");
+  const auto role_rejected = transplant.receive();
+  require(!role_rejected && role_rejected.failure ==
+                                worker::ChannelFailure::malformed_envelope,
+          "packet transplanted to another authenticated socket was accepted");
+
+  Pair wrong_tag_pair;
+  wire::SessionSequence wrong_tag_sequence;
+  worker::WorkerEndpoint wrong_tag(wrong_tag_pair.worker,
+                                   wire::EndpointRole::control, 1,
+                                   wrong_tag_sequence);
+  handshake(wrong_tag, wrong_tag_pair.host);
+  auto wrong_tag_header = v2_header(
+      wire::EndpointRole::broker,
+      lane_value(wire::EndpointRole::broker, 1));
+  std::array<std::byte, wire::kHeaderSizeV2> wrong_tag_packet{};
+  require(static_cast<bool>(
+              wire::encode_packet(wrong_tag_header, {}, wrong_tag_packet)),
+          "wrong-tag fixture encode failed");
+  wrong_tag_packet[9] = std::byte{1};
+  require(send(wrong_tag_pair.host, wrong_tag_packet.data(),
+               wrong_tag_packet.size(), MSG_NOSIGNAL) ==
+              static_cast<ssize_t>(wrong_tag_packet.size()),
+          "wrong-tag fixture send failed");
+  const auto tag_rejected = wrong_tag.receive();
+  require(!tag_rejected &&
+              tag_rejected.failure ==
+                  worker::ChannelFailure::malformed_envelope,
+          "sequence tag from another lane was accepted");
+}
+
+void transport_send_failure_consumes_only_its_lane() {
+  wire::SessionSequence sequence;
+  Pair failed_pair;
+  worker::WorkerEndpoint failed(failed_pair.worker,
+                                wire::EndpointRole::control, 1, sequence);
+  handshake(failed, failed_pair.host);
+  require(close(failed_pair.host) == 0, "failed-send peer close failed");
+  failed_pair.host = -1;
+  const auto type = static_cast<std::uint16_t>(
+      wire::CommonMessageType::protocol_error);
+  require(!failed.send(type, {}, 1),
+          "closed transport unexpectedly accepted a send");
+
+  Pair control_pair;
+  worker::WorkerEndpoint control(control_pair.worker,
+                                 wire::EndpointRole::control, 1, sequence);
+  handshake(control, control_pair.host);
+  require(control.send(type, {}, 2) &&
+              receive_header(control_pair.host, wire::EndpointRole::control)
+                      .lane_sequence ==
+                  lane_value(wire::EndpointRole::control, 2),
+          "transport failure did not consume exactly one control value");
+
+  Pair broker_pair;
+  worker::WorkerEndpoint broker(broker_pair.worker, wire::EndpointRole::broker,
+                                1, sequence);
+  handshake(broker, broker_pair.host);
+  require(broker.send(type, {}, 3) &&
+              receive_header(broker_pair.host, wire::EndpointRole::broker)
+                      .lane_sequence ==
+                  lane_value(wire::EndpointRole::broker, 1),
+          "control transport failure advanced an unrelated lane");
+}
+
+void v2_zero_max_cross_version_and_fd_cleanup() {
+  {
+    Pair pair;
+    wire::SessionSequence sequence;
+    worker::WorkerEndpoint endpoint(pair.worker, wire::EndpointRole::broker, 1,
+                                    sequence);
+    handshake(endpoint, pair.host);
+    auto header = v2_header(wire::EndpointRole::broker,
+                            lane_value(wire::EndpointRole::broker, 1));
+    std::array<std::byte, wire::kHeaderSizeV2> packet{};
+    require(static_cast<bool>(wire::encode_packet(header, {}, packet)),
+            "zero-sequence fixture encode failed");
+    std::fill(packet.begin() + 40, packet.end(), std::byte{0});
+    require(send(pair.host, packet.data(), packet.size(), MSG_NOSIGNAL) ==
+                static_cast<ssize_t>(packet.size()),
+            "zero-sequence fixture send failed");
+    const auto rejected = endpoint.receive();
+    require(!rejected &&
+                rejected.failure == worker::ChannelFailure::malformed_envelope,
+            "v2 post-ready sequence zero was accepted");
+  }
+  {
+    Pair pair;
+    wire::SessionSequence maximum(
+        std::numeric_limits<std::uint64_t>::max() >> 2U);
+    worker::WorkerEndpoint endpoint(pair.worker, wire::EndpointRole::render, 1,
+                                    maximum);
+    handshake(endpoint, pair.host);
+    const auto type = static_cast<std::uint16_t>(
+        wire::CommonMessageType::protocol_error);
+    require(endpoint.send(type, {}, 0) &&
+                receive_header(pair.host, wire::EndpointRole::render)
+                        .lane_sequence ==
+                    std::numeric_limits<std::uint64_t>::max() &&
+                !endpoint.send(type, {}, 0),
+            "v2 outbound UINT64_MAX did not exhaust without wrapping");
+  }
+  {
+    Pair pair;
+    wire::SessionSequence sequence;
+    worker::WorkerEndpoint endpoint(pair.worker, wire::EndpointRole::control, 1,
+                                    sequence);
+    require(endpoint.send_hello(), "v2 HELLO failed");
+    std::array<std::byte, wire::kHeaderSizeV2 + 4> hello{};
+    require(recv(pair.host, hello.data(), hello.size(), 0) ==
+                static_cast<ssize_t>(hello.size()),
+            "v2 HELLO drain failed");
+    const auto payload = wire::encode_welcome_payload(
+        {.maximum_payload = wire::payload_cap(wire::EndpointRole::control),
+         .maximum_in_flight = 8});
+    require(send_packet(pair.host,
+                        welcome_header(wire::EndpointRole::control), payload),
+            "cross-version WELCOME fixture send failed");
+    const auto rejected = endpoint.receive();
+    require(!rejected &&
+                rejected.failure == worker::ChannelFailure::malformed_envelope,
+            "v2 endpoint accepted v1 WELCOME");
+  }
+  {
+    Pair pair;
+    wire::SessionSequence sequence;
+    worker::WorkerEndpoint endpoint(pair.worker, wire::EndpointRole::render, 1,
+                                    sequence);
+    handshake(endpoint, pair.host);
+    require(send_packet(pair.host,
+                        v2_header(wire::EndpointRole::render,
+                                  lane_value(wire::EndpointRole::render, 2)),
+                        {}) &&
+                static_cast<bool>(endpoint.receive()),
+            "FD replay high-water fixture failed");
+    auto allocation = v2_header(
+        wire::EndpointRole::render,
+        lane_value(wire::EndpointRole::render, 1));
+    allocation.message_type = static_cast<std::uint16_t>(
+        surface::RenderMessageType::surface_allocate);
+    const int memory = static_cast<int>(
+        syscall(SYS_memfd_create, "sequence-fd-test", MFD_CLOEXEC));
+    require(memory >= 0 && send_packet(pair.host, allocation, {}, memory),
+            "FD replay fixture send failed");
+    int quarantined = -1;
+    {
+      auto rejected = endpoint.receive();
+      require(!rejected &&
+                  rejected.failure == worker::ChannelFailure::sequence_failed &&
+                  rejected.descriptors.size() == 1,
+              "replayed packet with FD was accepted");
+      quarantined = rejected.descriptors.front();
+    }
+    errno = 0;
+    require(fcntl(quarantined, F_GETFD) < 0 && errno == EBADF,
+            "FD on sequence failure was not closed");
+    close(memory);
+  }
+}
+
 } // namespace
 
 int main() {
@@ -291,6 +582,9 @@ int main() {
     role_and_credential_rejection();
     oversized_datagram_rejection();
     pending_input_probe();
+    lane_tagged_v2_sequence_paths();
+    transport_send_failure_consumes_only_its_lane();
+    v2_zero_max_cross_version_and_fd_cleanup();
     std::cout << "plugin worker channel: ok\n";
     return 0;
   } catch (const std::exception &error) {

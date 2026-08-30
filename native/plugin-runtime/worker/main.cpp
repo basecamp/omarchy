@@ -98,11 +98,11 @@ public:
       const omarchy::plugins::manifest::ManifestV2 &manifest)
       : runtime_("/plugin"),
         control_(kControlDescriptor, wire::EndpointRole::control,
-                 kControlRoleVersion),
+                 kControlRoleVersion, sequence_),
         broker_(kBrokerDescriptor, wire::EndpointRole::broker,
-                kBrokerRoleVersion),
+                kBrokerRoleVersion, sequence_),
         render_(kRenderDescriptor, wire::EndpointRole::render,
-                surface::kRenderRoleVersion),
+                surface::kRenderRoleVersion, sequence_),
         schemas_{surface::render_role_schema()}, registry_(schemas_),
         control_notifier_(kControlDescriptor, QSocketNotifier::Read),
         broker_notifier_(kBrokerDescriptor, QSocketNotifier::Read),
@@ -593,6 +593,8 @@ private:
   }
 
   worker::WorkerRuntime runtime_;
+  // Constructed before and destroyed after every endpoint that borrows it.
+  wire::SessionSequence sequence_;
   worker::WorkerEndpoint control_;
   worker::WorkerEndpoint broker_;
   worker::WorkerEndpoint render_;

@@ -6,9 +6,97 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <span>
 
 namespace omarchy::plugin::wire {
+
+struct OutboundSequence {
+  std::uint64_t value = 0;
+  FatalReason error = FatalReason::none;
+
+  [[nodiscard]] constexpr explicit operator bool() const {
+    return error == FatalReason::none;
+  }
+};
+
+// One instance belongs to one authenticated session. Each lane advances
+// independently; the low two wire bits bind a value to its authenticated role.
+// Gaps are valid, while zero, wrong-lane, equal, and lower values are fatal.
+class SessionSequence final {
+public:
+  explicit constexpr SessionSequence(std::uint64_t first_outbound = 1)
+      : next_outbound_{first_outbound, first_outbound, first_outbound},
+        failed_(first_outbound == 0 || first_outbound > kMaximumCounter) {}
+  SessionSequence(const SessionSequence &) = delete;
+  SessionSequence &operator=(const SessionSequence &) = delete;
+  SessionSequence(SessionSequence &&) = delete;
+  SessionSequence &operator=(SessionSequence &&) = delete;
+
+  [[nodiscard]] constexpr OutboundSequence
+  take_outbound(EndpointRole role) {
+    if (failed_)
+      return {.error = FatalReason::invalid_message_order};
+    const auto index = lane_index(role);
+    if (index >= next_outbound_.size()) {
+      failed_ = true;
+      return {.error = FatalReason::invalid_lane_sequence};
+    }
+    if (outbound_exhausted_[index]) {
+      failed_ = true;
+      return {.error = FatalReason::lane_sequence_exhausted};
+    }
+    const auto counter = next_outbound_[index];
+    if (counter == kMaximumCounter)
+      outbound_exhausted_[index] = true;
+    else
+      ++next_outbound_[index];
+    return {.value = (counter << 2U) | lane_tag(role)};
+  }
+
+  [[nodiscard]] constexpr FatalReason accept_inbound(EndpointRole role,
+                                                     std::uint64_t value) {
+    if (failed_)
+      return FatalReason::invalid_message_order;
+    const auto index = lane_index(role);
+    const auto counter = value >> 2U;
+    if (index >= inbound_high_water_.size() || value == 0 || counter == 0 ||
+        (value & 0x3U) != lane_tag(role)) {
+      failed_ = true;
+      return FatalReason::invalid_lane_sequence;
+    }
+    if (counter <= inbound_high_water_[index]) {
+      failed_ = true;
+      return FatalReason::lane_sequence_replayed;
+    }
+    inbound_high_water_[index] = counter;
+    return FatalReason::none;
+  }
+
+  [[nodiscard]] constexpr bool failed() const { return failed_; }
+  [[nodiscard]] constexpr std::uint64_t
+  inbound_high_water(EndpointRole role) const {
+    const auto index = lane_index(role);
+    return index < inbound_high_water_.size() ? inbound_high_water_[index] : 0;
+  }
+
+private:
+  static constexpr std::uint64_t kMaximumCounter =
+      std::numeric_limits<std::uint64_t>::max() >> 2U;
+
+  [[nodiscard]] static constexpr std::uint64_t lane_tag(EndpointRole role) {
+    return static_cast<std::uint16_t>(role) & 0x3U;
+  }
+  [[nodiscard]] static constexpr std::size_t lane_index(EndpointRole role) {
+    const auto tag = static_cast<std::uint16_t>(role);
+    return tag >= 1 && tag <= 3 ? tag - 1 : 3;
+  }
+
+  std::array<std::uint64_t, 3> next_outbound_{};
+  std::array<std::uint64_t, 3> inbound_high_water_{};
+  std::array<bool, 3> outbound_exhausted_{};
+  bool failed_ = false;
+};
 
 enum class NegotiationKind : std::uint8_t { welcome, negotiation_failed };
 
@@ -29,11 +117,14 @@ public:
   constexpr TrustedNegotiator(EndpointRole role, VersionRange supported,
                               std::uint64_t authoritative_generation,
                               std::uint32_t maximum_payload,
-                              std::uint32_t maximum_in_flight)
+                              std::uint32_t maximum_in_flight,
+                              std::uint16_t envelope_version =
+                                  kEnvelopeVersionV1)
       : role_(role), supported_(supported),
         generation_(authoritative_generation),
         maximum_payload_(maximum_payload),
-        maximum_in_flight_(maximum_in_flight) {}
+        maximum_in_flight_(maximum_in_flight),
+        envelope_version_(envelope_version) {}
 
   [[nodiscard]] NegotiationResult accept_hello(const PacketView &packet);
   [[nodiscard]] constexpr bool selected() const { return selected_; }
@@ -48,6 +139,7 @@ private:
   std::uint64_t generation_;
   std::uint32_t maximum_payload_;
   std::uint32_t maximum_in_flight_;
+  std::uint16_t envelope_version_;
   bool hello_seen_ = false;
   bool selected_ = false;
   bool failed_ = false;
@@ -56,8 +148,11 @@ private:
 
 class WorkerNegotiator {
 public:
-  constexpr WorkerNegotiator(EndpointRole role, VersionRange supported)
-      : role_(role), supported_(supported) {}
+  constexpr WorkerNegotiator(EndpointRole role, VersionRange supported,
+                             std::uint16_t envelope_version =
+                                 kEnvelopeVersionV1)
+      : role_(role), supported_(supported),
+        envelope_version_(envelope_version) {}
 
   struct HelloResult {
     EnvelopeHeader header{};
@@ -90,6 +185,7 @@ public:
 private:
   EndpointRole role_;
   VersionRange supported_;
+  std::uint16_t envelope_version_;
   bool hello_sent_ = false;
   bool selected_ = false;
   bool failed_ = false;

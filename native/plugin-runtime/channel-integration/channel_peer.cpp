@@ -100,7 +100,8 @@ std::uint16_t version(wire::EndpointRole role) {
 
 std::vector<std::byte> packet(const wire::EnvelopeHeader &header,
                               std::span<const std::byte> payload) {
-  std::vector<std::byte> bytes(wire::kHeaderSize + payload.size());
+  std::vector<std::byte> bytes(wire::header_size(header.envelope_version) +
+                               payload.size());
   auto adjusted = header;
   adjusted.payload_length = static_cast<std::uint32_t>(payload.size());
   const auto result = wire::encode_packet(adjusted, payload, bytes);
@@ -116,7 +117,8 @@ std::uint64_t negotiate(int descriptor, wire::EndpointRole role,
       current_mode == "bad-version" && role == wire::EndpointRole::control
           ? wire::VersionRange{2, 2}
           : wire::VersionRange{version(role), version(role)};
-  wire::WorkerNegotiator negotiator(role, supported);
+  wire::WorkerNegotiator negotiator(role, supported,
+                                    wire::kEnvelopeVersionV2);
   const auto hello = negotiator.make_hello();
   if (!hello) {
     fail();
@@ -168,7 +170,8 @@ void put64(std::span<std::byte> output, std::size_t offset,
   }
 }
 
-void send_broker_request(std::uint64_t generation, std::string_view current) {
+void send_broker_request(std::uint64_t generation, std::string_view current,
+                         wire::SessionSequence &sequence) {
   std::array<std::byte, 24> payload{};
   const auto type = static_cast<std::uint16_t>(
       broker::permissions::OperationId::storage_read);
@@ -177,12 +180,18 @@ void send_broker_request(std::uint64_t generation, std::string_view current) {
   put64(payload, 8, 4096);
   put64(payload, 16, 1024);
   wire::EnvelopeHeader header{
+      .envelope_version = wire::kEnvelopeVersionV2,
+      .header_size = wire::kHeaderSizeV2,
       .endpoint_role = wire::EndpointRole::broker,
       .message_type = type,
       .role_protocol_version =
           static_cast<std::uint16_t>(current == "bad-role-version" ? 2 : 1),
       .launch_generation = current == "stale" ? generation + 1 : generation,
       .correlation_id = 1};
+  const auto outbound = sequence.take_outbound(wire::EndpointRole::broker);
+  if (!outbound)
+    fail();
+  header.lane_sequence = outbound.value;
   const auto bytes = packet(header, payload);
   send_bytes(4, bytes);
   if (current == "reply-allowed" || current == "reply-denied") {
@@ -191,7 +200,12 @@ void send_broker_request(std::uint64_t generation, std::string_view current) {
     const auto expected = current == "reply-allowed"
         ? broker::kBrokerResultMessage
         : static_cast<std::uint16_t>(wire::CommonMessageType::typed_error);
-    if (!decoded || decoded.packet.header.message_type != expected ||
+    if (!decoded || decoded.packet.header.envelope_version !=
+                        wire::kEnvelopeVersionV2 ||
+        sequence.accept_inbound(wire::EndpointRole::broker,
+                                decoded.packet.header.lane_sequence) !=
+            wire::FatalReason::none ||
+        decoded.packet.header.message_type != expected ||
         decoded.packet.header.correlation_id != 1 ||
         decoded.packet.header.launch_generation != generation)
       fail();
@@ -212,6 +226,7 @@ void send_broker_request(std::uint64_t generation, std::string_view current) {
 
 int main() {
   const std::string current = mode();
+  wire::SessionSequence sequence;
   sigset_t ready_loss_signal{};
   if (current == "ready-loss") {
     if (sigemptyset(&ready_loss_signal) != 0 ||
@@ -222,7 +237,7 @@ int main() {
   }
   if (current == "transport-max") {
     std::vector<std::byte> received(
-        wire::kHeaderSize + wire::payload_cap(wire::EndpointRole::broker));
+        wire::kHeaderSizeV2 + wire::payload_cap(wire::EndpointRole::broker));
     const ssize_t count = recv(4, received.data(), received.size(), 0);
     if (count != static_cast<ssize_t>(received.size())) {
       fail();
@@ -240,7 +255,7 @@ int main() {
     return 0;
   }
   if (current == "pre-ready") {
-    send_broker_request(control_generation, current);
+    send_broker_request(control_generation, current, sequence);
     return 0;
   }
   if (current == "wrong-role") {
@@ -258,6 +273,6 @@ int main() {
     }
     return 0;
   }
-  send_broker_request(broker_generation, current);
+  send_broker_request(broker_generation, current, sequence);
   return 0;
 }

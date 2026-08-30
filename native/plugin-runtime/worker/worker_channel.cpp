@@ -68,10 +68,13 @@ void ReceivedPacket::close_descriptors() { close_all(descriptors); }
 
 struct WorkerEndpoint::Impl {
   Impl(int endpoint_descriptor, wire::EndpointRole endpoint_role,
-       std::uint16_t role_version)
+       std::uint16_t role_version, std::uint16_t wire_version,
+       wire::SessionSequence *session_sequence)
       : descriptor(endpoint_descriptor), role(endpoint_role),
         negotiator(endpoint_role,
-                   {.minimum = role_version, .maximum = role_version}) {
+                   {.minimum = role_version, .maximum = role_version},
+                   wire_version),
+        envelope_version(wire_version), sequence(session_sequence) {
     if (descriptor < 0 || role_version == 0 || fcntl(descriptor, F_GETFD) < 0) {
       error = "endpoint descriptor is invalid";
       return;
@@ -95,6 +98,8 @@ struct WorkerEndpoint::Impl {
   int descriptor = -1;
   wire::EndpointRole role;
   wire::WorkerNegotiator negotiator;
+  std::uint16_t envelope_version = wire::kEnvelopeVersionV1;
+  wire::SessionSequence *sequence = nullptr;
   ucred peer{};
   bool valid = false;
   std::string error;
@@ -102,7 +107,15 @@ struct WorkerEndpoint::Impl {
 
 WorkerEndpoint::WorkerEndpoint(int descriptor, wire::EndpointRole role,
                                std::uint16_t role_version)
-    : implementation_(std::make_unique<Impl>(descriptor, role, role_version)) {}
+    : implementation_(std::make_unique<Impl>(
+          descriptor, role, role_version, wire::kEnvelopeVersionV1, nullptr)) {}
+
+WorkerEndpoint::WorkerEndpoint(int descriptor, wire::EndpointRole role,
+                               std::uint16_t role_version,
+                               wire::SessionSequence &sequence)
+    : implementation_(std::make_unique<Impl>(
+          descriptor, role, role_version, wire::kEnvelopeVersionV2,
+          &sequence)) {}
 
 WorkerEndpoint::~WorkerEndpoint() = default;
 
@@ -148,7 +161,7 @@ bool WorkerEndpoint::send_hello() {
     implementation_->error = "cannot construct HELLO";
     return false;
   }
-  std::array<std::byte, wire::kHeaderSize + 4> packet{};
+  std::array<std::byte, wire::kHeaderSizeV2 + 4> packet{};
   auto header = hello.header;
   header.payload_length = static_cast<std::uint32_t>(hello.payload.size());
   const auto encoded = wire::encode_packet(header, hello.payload, packet);
@@ -168,8 +181,9 @@ ReceivedPacket WorkerEndpoint::receive() {
     output.detail = implementation_->error;
     return output;
   }
-  std::vector<std::byte> packet(wire::kHeaderSize +
-                                wire::payload_cap(implementation_->role));
+  std::vector<std::byte> packet(
+      wire::header_size(implementation_->envelope_version) +
+      wire::payload_cap(implementation_->role));
   std::array<std::byte, CMSG_SPACE(sizeof(ucred)) + CMSG_SPACE(sizeof(int) * 4)>
       ancillary{};
   iovec vector{.iov_base = packet.data(), .iov_len = packet.size()};
@@ -231,7 +245,8 @@ ReceivedPacket WorkerEndpoint::receive() {
   }
   packet.resize(static_cast<std::size_t>(received));
   const auto decoded = wire::decode_packet(packet, implementation_->role);
-  if (!decoded) {
+  if (!decoded || decoded.packet.header.envelope_version !=
+                      implementation_->envelope_version) {
     output.failure = ChannelFailure::malformed_envelope;
     output.detail = "outer envelope validation failed";
     return output;
@@ -243,6 +258,15 @@ ReceivedPacket WorkerEndpoint::receive() {
     output.failure = ChannelFailure::descriptor_mismatch;
     output.detail = "message descriptor cardinality is invalid";
     return output;
+  }
+  if (implementation_->sequence && implementation_->negotiator.selected()) {
+    const auto sequence_error = implementation_->sequence->accept_inbound(
+        implementation_->role, decoded.packet.header.lane_sequence);
+    if (sequence_error != wire::FatalReason::none) {
+      output.failure = ChannelFailure::sequence_failed;
+      output.detail = "session sequence is zero, replayed, or exhausted";
+      return output;
+    }
   }
   output.header = decoded.packet.header;
   output.payload.assign(decoded.packet.payload.begin(),
@@ -273,6 +297,9 @@ bool WorkerEndpoint::send(std::uint16_t message_type,
     return false;
   }
   wire::EnvelopeHeader header{
+      .envelope_version = implementation_->envelope_version,
+      .header_size = static_cast<std::uint16_t>(
+          wire::header_size(implementation_->envelope_version)),
       .endpoint_role = role(),
       .message_type = message_type,
       .role_protocol_version = selected_version(),
@@ -280,7 +307,16 @@ bool WorkerEndpoint::send(std::uint16_t message_type,
       .launch_generation = generation(),
       .correlation_id = correlation_id,
   };
-  std::vector<std::byte> packet(wire::kHeaderSize + payload.size());
+  if (implementation_->sequence) {
+    const auto sequence = implementation_->sequence->take_outbound(role());
+    if (!sequence) {
+      implementation_->error = "session sequence exhausted";
+      return false;
+    }
+    header.lane_sequence = sequence.value;
+  }
+  std::vector<std::byte> packet(
+      wire::header_size(implementation_->envelope_version) + payload.size());
   const auto encoded = wire::encode_packet(header, payload, packet);
   if (!encoded ||
       ::send(descriptor(), packet.data(), encoded.bytes_written,
