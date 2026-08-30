@@ -3,4 +3,23 @@
 # omarchy:summary=Returns true when Hyprland has an active external monitor
 # omarchy:hidden=true
 
-hyprctl monitors all -j | jq -e '.[] | select(.name | test("^(eDP|LVDS|DSI)-") | not) | select(.disabled == false)' >/dev/null 2>&1
+# A tri-state answer (docs/clamshell.md, P1): exit 0 when an enabled
+# non-internal output exists, the contracted exit 1 when the query succeeded
+# and none does, and exit 2 when the query itself failed. jq alone would
+# answer 4 for "no match" and for "no input" alike, and a consumer reading
+# this as a tri-state must never take a failed query for false.
+#
+# FALLBACK is Hyprland's own placeholder: an enabled headless output, under a
+# name the compositor reserves, used when no real output remains. It is not a
+# monitor: counting it would answer "external active" in exactly the recovery
+# states the monitor helpers exist for.
+if ! monitors=$(hyprctl monitors all -j); then
+  exit 2
+fi
+
+jq -e 'any(.[] | select(.name | test("^(eDP|LVDS|DSI)-") | not) | select(.name != "FALLBACK") | select(.disabled == false); true)' <<<"$monitors" >/dev/null 2>&1
+case $? in
+  0) exit 0 ;;
+  1) exit 1 ;;
+  *) exit 2 ;;
+esac

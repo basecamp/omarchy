@@ -155,6 +155,47 @@ done
 grep -q 'flock' "$command_path" || fail "T1: the command serializes itself with a lock"
 pass "T1: the command's text authors nothing but the overlay and reads no config"
 
+# ------------------------------- P1: the external-active predicate's contract
+
+# The tri-state reading is only as honest as the predicates' exits: 0 true,
+# 1 known false, anything else only for a genuine unknown. The real predicate
+# is run against a controlled hyprctl: the query succeeding with no active
+# external is the contracted false, the query failing is never taken for it,
+# and Hyprland's reserved FALLBACK placeholder is never a monitor.
+p1_ctl="$test_tmp/p1-ctl"; p1_bin="$test_tmp/p1-bin"
+mkdir -p "$p1_ctl" "$p1_bin"
+cat >"$p1_bin/hyprctl" <<'SH'
+#!/bin/bash
+[[ -e $P1_CTL/fail ]] && exit 1
+cat "$P1_CTL/out"
+SH
+chmod +x "$p1_bin/hyprctl"
+p1_case() {
+  local expect="$1" label="$2" got=0
+  P1_CTL="$p1_ctl" PATH="$p1_bin:$PATH" "$ROOT/bin/omarchy-hyprland-monitor-external-active" >/dev/null 2>&1 || got=$?
+  (( got == expect )) || fail "P1 ($label): exit $expect" "got $got"
+}
+printf '[{"name":"eDP-1","disabled":false},{"name":"HDMI-A-1","disabled":false}]' >"$p1_ctl/out"
+p1_case 0 "an enabled external is true"
+printf '[{"name":"eDP-1","disabled":false}]' >"$p1_ctl/out"
+p1_case 1 "only the internal panel is the contracted false"
+printf '[{"name":"eDP-1","disabled":false},{"name":"HDMI-A-1","disabled":true}]' >"$p1_ctl/out"
+p1_case 1 "a disabled external is the contracted false"
+printf '[]' >"$p1_ctl/out"
+p1_case 1 "no outputs listed is the contracted false"
+printf '[{"name":"eDP-1","disabled":true},{"name":"Virtual-1","disabled":true},{"name":"FALLBACK","disabled":false}]' >"$p1_ctl/out"
+p1_case 1 "the FALLBACK placeholder beside disabled outputs is not an external"
+printf '[{"name":"eDP-1","disabled":true},{"name":"FALLBACK","disabled":false},{"name":"HDMI-A-1","disabled":false}]' >"$p1_ctl/out"
+p1_case 0 "a real enabled external beside FALLBACK is still true"
+printf 'not json' >"$p1_ctl/out"
+p1_case 2 "an unreadable answer is unknown"
+: >"$p1_ctl/out"
+p1_case 2 "an empty answer is unknown"
+touch "$p1_ctl/fail"
+p1_case 2 "a failing query is unknown, never false"
+rm -f "$p1_ctl/fail"
+pass "P1: the external-active predicate answers 0, 1, or unknown -- and a failure is never false"
+
 # ------------------------------------------------- T2: the config cannot matter
 
 # Both transitions are made under configs that any reader would answer
