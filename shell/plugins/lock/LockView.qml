@@ -67,6 +67,14 @@ Item {
     syncingPasswordText = false
   }
 
+  // The lock surface outlives a suspend, so the focus taken when the view was
+  // built can be gone by the time the machine resumes -- the compositor
+  // rebuilds the keyboard on the way back, and the view is never rebuilt to
+  // take focus again. Anything that wakes the screen has to leave the field
+  // ready to type into; previously only a click did, so waking the blanked
+  // screen with a mouse move left the password field swallowing keystrokes.
+  onWakeRequested: if (inputEnabled) forcePasswordFocus()
+
   onPasswordTextChanged: syncPasswordText()
   onInputEnabledChanged: {
     if (inputEnabled) Qt.callLater(forcePasswordFocus)
@@ -115,7 +123,7 @@ Item {
     MouseArea {
       anchors.fill: parent
       hoverEnabled: true
-      onClicked: { root.wakeRequested(); root.forcePasswordFocus() }
+      onClicked: root.wakeRequested()
       onPositionChanged: root.wakeRequested()
     }
 
@@ -131,6 +139,7 @@ Item {
 
       TextInput {
         id: passwordInput
+        objectName: "passwordInput"
         anchors.fill: parent
         anchors.topMargin: inputField.borderTop
         // Reserve the fingerprint icon's width on both sides so the centered
