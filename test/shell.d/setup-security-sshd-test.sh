@@ -29,8 +29,14 @@ case $1 in
   [[ ${SSHD_SYNTAX_VALID:-1} == 1 ]]
   ;;
 -T)
-  printf 'passwordauthentication %s\n' "${SSHD_PASSWORD_AUTH:-no}"
-  printf 'kbdinteractiveauthentication %s\n' "${SSHD_KBD_AUTH:-no}"
+  # OpenSSH 10.x dumps keywords in CamelCase; 9.x dumped them lowercase.
+  if [[ ${SSHD_DUMP_LOWERCASE:-0} == 1 ]]; then
+    printf 'passwordauthentication %s\n' "${SSHD_PASSWORD_AUTH:-no}"
+    printf 'kbdinteractiveauthentication %s\n' "${SSHD_KBD_AUTH:-no}"
+  else
+    printf 'PasswordAuthentication %s\n' "${SSHD_PASSWORD_AUTH:-no}"
+    printf 'KbdInteractiveAuthentication %s\n' "${SSHD_KBD_AUTH:-no}"
+  fi
   ;;
 *)
   exit 2
@@ -81,6 +87,12 @@ grep -qxF "KbdInteractiveAuthentication no" "$config" || fail "SSH setup disable
 grep -qxF "systemctl reload sshd.service" "$test_dir/success.calls" || fail "SSH setup reloads the validated config"
 grep -q "Password logins are off" <<<"$output" || fail "SSH setup reports hardening after it succeeds"
 pass "SSH setup authorizes a key and disables password logins"
+
+output=$(SSHD_DUMP_LOWERCASE=1 run_setup success-legacy)
+config="$test_dir/success-legacy/root/etc/ssh/sshd_config.d/10-omarchy-hardening.conf"
+[[ -e $config ]] || fail "SSH setup accepts the lowercase sshd -T dump of OpenSSH 9.x"
+grep -q "Password logins are off" <<<"$output" || fail "SSH setup reports hardening on OpenSSH 9.x"
+pass "SSH setup verifies settings across sshd -T keyword casings"
 
 if SSHD_PASSWORD_AUTH=yes run_setup ineffective >"$test_dir/ineffective.output" 2>&1; then
   fail "SSH setup must fail when password authentication remains effective"
