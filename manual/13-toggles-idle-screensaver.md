@@ -78,6 +78,19 @@ The Omarchy shell owns idle behavior, and the timings are a top-level `idle` blo
 
 Both numbers are seconds counted from the moment you went idle — not from each other. So with the defaults, the screensaver comes up after two and a half minutes and the lock screen takes over at five minutes, whether or not the screensaver ran. Save the file and the shell picks up the new timings right away.
 
+Either timing can be turned off on its own by setting it to `false` (`null` and `"off"` work too). On a desktop that never needs to lock but still wants the screensaver so the panel doesn't burn in:
+
+```json
+{
+  "idle": {
+    "screensaver": 150,
+    "lock": false
+  }
+}
+```
+
+Leave a key out entirely and it goes back to its default. Setting one to `0` is not "off" — it fires the instant you go idle.
+
 If you dismiss the screensaver before the lock deadline, that counts as activity and the pending lock is cancelled. You don't get locked out for glancing at your machine.
 
 To stop locking on idle entirely, `Super + Ctrl + I` — or `omarchy toggle idle` — flips stay awake on, and the coffee cup indicator appears in the bar. That's the one to hit before a long presentation or a build you want to watch. Hit it again to go back to normal. `omarchy toggle idle status` prints the current state as JSON if you need it from a script.

@@ -19,9 +19,12 @@ Item {
   readonly property var idleConfig: shell && shell.shellConfig && shell.shellConfig.idle ? shell.shellConfig.idle : ({})
   readonly property int screensaverTimeoutSeconds: secondsFromConfig(idleConfig.screensaver, defaultScreensaverSeconds)
   readonly property int lockTimeoutSeconds: secondsFromConfig(idleConfig.lock, defaultLockSeconds)
-  readonly property int firstIdleTimeoutSeconds: Math.min(screensaverTimeoutSeconds, lockTimeoutSeconds)
-  readonly property int screensaverDelaySeconds: Math.max(0, screensaverTimeoutSeconds - firstIdleTimeoutSeconds)
-  readonly property int lockDelaySeconds: Math.max(0, lockTimeoutSeconds - firstIdleTimeoutSeconds)
+  readonly property bool screensaverConfigured: !IdleModel.isDisabled(screensaverTimeoutSeconds)
+  readonly property bool lockConfigured: !IdleModel.isDisabled(lockTimeoutSeconds)
+  readonly property bool anyIdleActionConfigured: screensaverConfigured || lockConfigured
+  readonly property int firstIdleTimeoutSeconds: IdleModel.firstIdleTimeout(screensaverTimeoutSeconds, lockTimeoutSeconds)
+  readonly property int screensaverDelaySeconds: screensaverConfigured ? Math.max(0, screensaverTimeoutSeconds - firstIdleTimeoutSeconds) : 0
+  readonly property int lockDelaySeconds: lockConfigured ? Math.max(0, lockTimeoutSeconds - firstIdleTimeoutSeconds) : 0
   readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake
   readonly property string screensaverClass: "org.omarchy.screensaver"
 
@@ -38,6 +41,10 @@ Item {
 
   function secondsFromConfig(value, fallback) {
     return IdleModel.secondsFromConfig(value, fallback)
+  }
+
+  function describeTimeout(seconds) {
+    return IdleModel.isDisabled(seconds) ? "off" : String(seconds)
   }
 
   function nowIso() {
@@ -85,16 +92,20 @@ Item {
       return
     }
 
-    logEvent("idle-cycle-start", "screensaver=" + root.screensaverTimeoutSeconds + " lock=" + root.lockTimeoutSeconds)
+    logEvent("idle-cycle-start", "screensaver=" + describeTimeout(root.screensaverTimeoutSeconds) + " lock=" + describeTimeout(root.lockTimeoutSeconds))
     root.idledThisCycle = true
     root.screensaverStartedThisCycle = false
     resetScreensaverWindows()
 
-    if (root.screensaverDelaySeconds === 0) launchScreensaver()
-    else screensaverTimer.restart()
+    if (root.screensaverConfigured) {
+      if (root.screensaverDelaySeconds === 0) launchScreensaver()
+      else screensaverTimer.restart()
+    }
 
-    if (root.lockDelaySeconds === 0) lockSystem("lock-timeout-immediate")
-    else lockTimer.restart()
+    if (root.lockConfigured) {
+      if (root.lockDelaySeconds === 0) lockSystem("lock-timeout-immediate")
+      else lockTimer.restart()
+    }
   }
 
   function cancelIdleCycle(reason) {
@@ -187,7 +198,9 @@ Item {
       inIdleCycle: root.idledThisCycle,
       screensaverStarted: root.screensaverStartedThisCycle,
       screensaver: root.screensaverTimeoutSeconds,
+      screensaverConfigured: root.screensaverConfigured,
       lock: root.lockTimeoutSeconds,
+      lockConfigured: root.lockConfigured,
       screensaverDelay: root.screensaverDelaySeconds,
       lockDelay: root.lockDelaySeconds,
       screensaverWindows: root.screensaverWindowCount,
@@ -249,7 +262,7 @@ Item {
 
   IdleMonitor {
     id: idleMonitor
-    enabled: root.idleEnabled
+    enabled: root.idleEnabled && root.anyIdleActionConfigured
     timeout: root.firstIdleTimeoutSeconds
     respectInhibitors: true
     onIsIdleChanged: root.handleIdleChanged()
@@ -266,7 +279,7 @@ Item {
     id: lockTimer
     interval: root.lockDelaySeconds * 1000
     repeat: false
-    onTriggered: if (root.idleEnabled && root.idledThisCycle) root.lockSystem("lock-timeout")
+    onTriggered: if (root.idleEnabled && root.idledThisCycle && root.lockConfigured) root.lockSystem("lock-timeout")
   }
 
   Timer {
