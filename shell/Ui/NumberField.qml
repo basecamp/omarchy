@@ -25,6 +25,7 @@ Column {
   spacing: Style.spacing.md
 
   Text {
+    textFormat: Text.PlainText
     visible: root.label !== ""
     text: root.label
     color: Qt.darker(root.foreground, 1.4)
