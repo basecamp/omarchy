@@ -1,10 +1,11 @@
 #pragma once
 
-#include "omarchy/plugin/wire/state.hpp"
 #include "omarchy/plugin/wire/control.hpp"
+#include "omarchy/plugin/wire/state.hpp"
 #include "omarchy/plugin_runtime/launcher/launcher.h"
 #include "omarchy/plugin_runtime/launcher/termination_state.h"
 
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <memory>
@@ -30,6 +31,7 @@ enum class ChannelFailure : std::uint8_t {
   role_version_mismatch,
   stale_generation,
   dispatch_failed,
+  deadline_expired,
 };
 
 enum class DispatchStatus : std::uint8_t {
@@ -37,6 +39,50 @@ enum class DispatchStatus : std::uint8_t {
   timeout,
   fatal,
   not_ready,
+};
+
+enum class ChannelSendStatus : std::uint8_t {
+  complete,
+  would_block,
+  peer_closed,
+  fatal,
+  not_ready,
+};
+
+// Owns the byte-identical v2 datagram produced for one lane. A would-block
+// result leaves it intact for retry; every other result consumes it. Descriptor
+// arguments remain borrowed by the caller until a retry completes.
+class PreparedSend final {
+public:
+  PreparedSend(PreparedSend &&other) noexcept
+      : role_(other.role_), bytes_(std::move(other.bytes_)),
+        origin_(other.origin_), descriptor_count_(other.descriptor_count_),
+        pending_(other.pending_) {
+    other.origin_ = 0;
+    other.pending_ = false;
+  }
+  PreparedSend &operator=(PreparedSend &&) = delete;
+  PreparedSend(const PreparedSend &) = delete;
+  PreparedSend &operator=(const PreparedSend &) = delete;
+
+  [[nodiscard]] bool pending() const noexcept { return pending_; }
+  [[nodiscard]] wire::EndpointRole role() const noexcept { return role_; }
+  [[nodiscard]] std::span<const std::byte> bytes() const noexcept {
+    return bytes_;
+  }
+
+private:
+  PreparedSend(wire::EndpointRole role, std::vector<std::byte> bytes,
+               std::uint64_t origin, std::uint8_t descriptor_count)
+      : role_(role), bytes_(std::move(bytes)), origin_(origin),
+        descriptor_count_(descriptor_count) {}
+
+  wire::EndpointRole role_ = wire::EndpointRole::control;
+  std::vector<std::byte> bytes_;
+  std::uint64_t origin_ = 0;
+  std::uint8_t descriptor_count_ = 0;
+  bool pending_ = true;
+  friend class AuthenticatedBrokerChannel;
 };
 
 struct BrokerReply {
@@ -83,20 +129,49 @@ public:
        const launcher::TrustedLaunchRequest &request,
        std::shared_ptr<BrokerDispatcher> dispatcher,
        std::shared_ptr<const GenerationAuthority> authority);
+  [[nodiscard]] static OpenResult
+  open(launcher::Supervisor &supervisor,
+       const launcher::TrustedLaunchRequest &request,
+       std::shared_ptr<BrokerDispatcher> dispatcher,
+       std::shared_ptr<const GenerationAuthority> authority,
+       launcher::Deadline deadline);
 
   AuthenticatedBrokerChannel(const AuthenticatedBrokerChannel &) = delete;
   AuthenticatedBrokerChannel &
   operator=(const AuthenticatedBrokerChannel &) = delete;
   ~AuthenticatedBrokerChannel();
 
+  [[nodiscard]] bool negotiate(launcher::Deadline deadline);
   [[nodiscard]] bool negotiate(std::chrono::milliseconds timeout);
+  [[nodiscard]] std::optional<PreparedSend>
+  prepare_send(wire::EndpointRole role, std::uint16_t message_type,
+               std::uint64_t correlation_id,
+               std::span<const std::byte> payload);
+  [[nodiscard]] ChannelSendStatus
+  try_send(PreparedSend &prepared,
+           std::span<const int> borrowed_descriptors = {});
+  [[nodiscard]] ChannelSendStatus
+  try_send(PreparedSend &prepared, launcher::Deadline deadline,
+           std::span<const int> borrowed_descriptors = {});
+  // Borrowed from Worker. Any notifier must be disarmed before fail(),
+  // terminate(), or destruction invalidates the descriptor.
+  [[nodiscard]] int readiness_fd() const noexcept;
+  [[nodiscard]] bool
+  arm_readiness(launcher::EndpointMask read_lanes,
+                launcher::EndpointMask blocked_write_lanes) noexcept;
+  [[nodiscard]] bool arm_receive(launcher::EndpointMask lanes) noexcept;
+  [[nodiscard]] DispatchStatus dispatch_one(launcher::Deadline deadline);
   [[nodiscard]] DispatchStatus dispatch_one(std::chrono::milliseconds timeout);
+  [[nodiscard]] launcher::ReceivedMessage
+  receive_render(launcher::Deadline deadline);
   [[nodiscard]] launcher::ReceivedMessage
   receive_render(std::chrono::milliseconds timeout);
   [[nodiscard]] bool send_render(std::span<const std::byte> packet,
                                  std::span<const int> descriptors = {});
   [[nodiscard]] bool send_control(std::uint16_t message_type,
                                   std::span<const std::byte> payload);
+  [[nodiscard]] bool receive_control_ack(std::uint16_t message_type,
+                                         launcher::Deadline deadline);
   [[nodiscard]] bool receive_control_ack(std::uint16_t message_type,
                                          std::chrono::milliseconds timeout);
   [[nodiscard]] bool ready() const;
@@ -113,24 +188,35 @@ private:
       std::unique_ptr<launcher::Worker> worker,
       launcher::LaunchIdentity identity,
       std::shared_ptr<BrokerDispatcher> dispatcher,
-      std::shared_ptr<const GenerationAuthority> authority);
+      std::shared_ptr<const GenerationAuthority> authority,
+      launcher::Deadline opening_deadline);
 
-  [[nodiscard]] bool negotiate_role(wire::EndpointRole role,
-                                    std::chrono::milliseconds timeout);
+  [[nodiscard]] bool negotiate_one(launcher::ReceivedMessage message,
+                                   launcher::Deadline deadline);
+  [[nodiscard]] launcher::ReceivedMessage
+  receive_one(launcher::EndpointMask lanes, launcher::Deadline deadline);
+  [[nodiscard]] bool validate_inbound(const launcher::ReceivedMessage &message,
+                                      wire::PacketView &packet,
+                                      bool validate_descriptors);
+  [[nodiscard]] wire::TrustedNegotiator *negotiator(wire::EndpointRole role);
   bool fail(ChannelFailure failure, std::string detail);
 
   std::unique_ptr<launcher::Worker> worker_;
   launcher::LaunchIdentity identity_;
   std::shared_ptr<BrokerDispatcher> dispatcher_;
   std::shared_ptr<const GenerationAuthority> authority_;
+  launcher::Deadline opening_deadline_;
   wire::TrustedNegotiator control_;
   wire::TrustedNegotiator broker_;
   wire::TrustedNegotiator render_;
   wire::RequiredEndpointReadiness readiness_;
+  wire::SessionSequence sequence_;
+  std::array<bool, 3> negotiated_{};
   ChannelFailure failure_ = ChannelFailure::none;
   std::string detail_;
   bool ready_ = false;
   launcher::TerminationState termination_;
+  std::uint64_t origin_ = 0;
 };
 
 } // namespace omarchy::plugin_runtime::channel

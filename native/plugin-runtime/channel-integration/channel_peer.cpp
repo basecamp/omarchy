@@ -1,4 +1,5 @@
 #include "omarchy/plugin/wire/common.hpp"
+#include "omarchy/plugin/wire/control.hpp"
 #include "omarchy/plugin/wire/state.hpp"
 #include "omarchy/plugin_runtime/broker/broker_schema.hpp"
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
@@ -117,8 +118,7 @@ std::uint64_t negotiate(int descriptor, wire::EndpointRole role,
       current_mode == "bad-version" && role == wire::EndpointRole::control
           ? wire::VersionRange{2, 2}
           : wire::VersionRange{version(role), version(role)};
-  wire::WorkerNegotiator negotiator(role, supported,
-                                    wire::kEnvelopeVersionV2);
+  wire::WorkerNegotiator negotiator(role, supported, wire::kEnvelopeVersionV2);
   const auto hello = negotiator.make_hello();
   if (!hello) {
     fail();
@@ -193,15 +193,43 @@ void send_broker_request(std::uint64_t generation, std::string_view current,
     fail();
   header.lane_sequence = outbound.value;
   const auto bytes = packet(header, payload);
-  send_bytes(4, bytes);
+  auto transmitted = bytes;
+  if (current == "wrong-sequence-tag") {
+    transmitted.at(47) = static_cast<std::byte>(
+        (std::to_integer<unsigned>(transmitted.at(47)) & ~0x3U) | 0x1U);
+  } else if (current == "v1-after-ready") {
+    header.envelope_version = wire::kEnvelopeVersionV1;
+    header.header_size = wire::kHeaderSizeV1;
+    header.lane_sequence = 0;
+    transmitted = packet(header, payload);
+  } else if (current == "unknown-message") {
+    header.message_type = 0x4ffe;
+    transmitted = packet(header, payload);
+  } else if (current == "wrong-direction") {
+    header.message_type = broker::kBrokerResultMessage;
+    transmitted = packet(header, payload);
+  } else if (current == "inbound-typed-error") {
+    header.message_type =
+        static_cast<std::uint16_t>(wire::CommonMessageType::typed_error);
+    transmitted = packet(header, std::span(payload).first(8));
+  } else if (current == "short-payload") {
+    transmitted = packet(header, std::span(payload).first(23));
+  } else if (current == "zero-correlation") {
+    header.correlation_id = 0;
+    transmitted = packet(header, payload);
+  }
+  send_bytes(4, transmitted, current == "post-ready-descriptor" ? 1U : 0U);
+  if (current == "replay")
+    send_bytes(4, transmitted);
   if (current == "reply-allowed" || current == "reply-denied") {
     const auto reply = receive_bytes(4);
     const auto decoded = wire::decode_packet(reply, wire::EndpointRole::broker);
-    const auto expected = current == "reply-allowed"
-        ? broker::kBrokerResultMessage
-        : static_cast<std::uint16_t>(wire::CommonMessageType::typed_error);
-    if (!decoded || decoded.packet.header.envelope_version !=
-                        wire::kEnvelopeVersionV2 ||
+    const auto expected =
+        current == "reply-allowed"
+            ? broker::kBrokerResultMessage
+            : static_cast<std::uint16_t>(wire::CommonMessageType::typed_error);
+    if (!decoded ||
+        decoded.packet.header.envelope_version != wire::kEnvelopeVersionV2 ||
         sequence.accept_inbound(wire::EndpointRole::broker,
                                 decoded.packet.header.lane_sequence) !=
             wire::FatalReason::none ||
@@ -222,13 +250,32 @@ void send_broker_request(std::uint64_t generation, std::string_view current,
   while (recv(4, &ignored, 1, 0) < 0 && errno == EINTR) {
   }
 }
+
+void send_control_ack(std::uint64_t generation,
+                      wire::SessionSequence &sequence) {
+  const auto outbound = sequence.take_outbound(wire::EndpointRole::control);
+  if (!outbound)
+    fail();
+  const auto bytes =
+      packet({.envelope_version = wire::kEnvelopeVersionV2,
+              .header_size = wire::kHeaderSizeV2,
+              .endpoint_role = wire::EndpointRole::control,
+              .message_type = wire::kSurfaceSelectionAcceptedMessage,
+              .role_protocol_version = 1,
+              .launch_generation = generation,
+              .correlation_id = 0,
+              .lane_sequence = outbound.value},
+             {});
+  send_bytes(3, bytes);
+  pause();
+}
 } // namespace
 
 int main() {
   const std::string current = mode();
   wire::SessionSequence sequence;
   sigset_t ready_loss_signal{};
-  if (current == "ready-loss") {
+  if (current == "ready-loss" || current == "host-saturation") {
     if (sigemptyset(&ready_loss_signal) != 0 ||
         sigaddset(&ready_loss_signal, SIGUSR1) != 0 ||
         sigprocmask(SIG_BLOCK, &ready_loss_signal, nullptr) != 0) {
@@ -249,8 +296,15 @@ int main() {
   if (current == "transport-saturation") {
     pause();
   }
-  const auto control_generation =
-      negotiate(3, wire::EndpointRole::control, current);
+  std::uint64_t control_generation = 0;
+  std::uint64_t broker_generation = 0;
+  if (current == "reverse-order") {
+    static_cast<void>(negotiate(5, wire::EndpointRole::render, current));
+    broker_generation = negotiate(4, wire::EndpointRole::broker, current);
+    control_generation = negotiate(3, wire::EndpointRole::control, current);
+  } else {
+    control_generation = negotiate(3, wire::EndpointRole::control, current);
+  }
   if (current == "peer-loss") {
     return 0;
   }
@@ -262,9 +316,10 @@ int main() {
     static_cast<void>(negotiate(4, wire::EndpointRole::control, current));
     return 0;
   }
-  const auto broker_generation =
-      negotiate(4, wire::EndpointRole::broker, current);
-  static_cast<void>(negotiate(5, wire::EndpointRole::render, current));
+  if (current != "reverse-order") {
+    broker_generation = negotiate(4, wire::EndpointRole::broker, current);
+    static_cast<void>(negotiate(5, wire::EndpointRole::render, current));
+  }
   if (current == "ready-loss") {
     int received_signal = 0;
     if (sigwait(&ready_loss_signal, &received_signal) != 0 ||
@@ -273,6 +328,21 @@ int main() {
     }
     return 0;
   }
+  if (current == "host-saturation") {
+    int received_signal = 0;
+    if (sigwait(&ready_loss_signal, &received_signal) != 0 ||
+        received_signal != SIGUSR1)
+      fail();
+    const int flags = fcntl(3, F_GETFL);
+    if (flags < 0 || fcntl(3, F_SETFL, flags | O_NONBLOCK) < 0)
+      fail();
+    std::array<std::byte, 8192> drained{};
+    while (recv(3, drained.data(), drained.size(), 0) > 0) {
+    }
+    pause();
+  }
+  if (current == "wrong-control-ack")
+    send_control_ack(control_generation, sequence);
   send_broker_request(broker_generation, current, sequence);
   return 0;
 }

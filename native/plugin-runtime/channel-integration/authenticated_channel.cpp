@@ -3,11 +3,15 @@
 #include "omarchy/plugin_runtime/broker/broker_schema.hpp"
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
 
+#include <poll.h>
 #include <unistd.h>
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <cerrno>
 #include <chrono>
+#include <limits>
 #include <span>
 #include <utility>
 #include <vector>
@@ -18,6 +22,36 @@ namespace {
 constexpr std::uint16_t kControlRoleVersion = 1;
 constexpr std::uint32_t kMaximumInFlight = 32;
 constexpr auto kMaximumNegotiationWait = std::chrono::seconds(30);
+std::atomic<std::uint64_t> next_channel_origin{1};
+
+std::size_t role_index(wire::EndpointRole role) {
+  const auto value = static_cast<std::uint16_t>(role);
+  return value >= 1 && value <= 3 ? value - 1 : 3;
+}
+
+wire::EndpointRole wire_role(launcher::EndpointRole role) {
+  switch (role) {
+  case launcher::EndpointRole::control:
+    return wire::EndpointRole::control;
+  case launcher::EndpointRole::broker:
+    return wire::EndpointRole::broker;
+  case launcher::EndpointRole::render:
+    return wire::EndpointRole::render;
+  }
+  return wire::EndpointRole::control;
+}
+
+launcher::EndpointMask launcher_mask(wire::EndpointRole role) {
+  switch (role) {
+  case wire::EndpointRole::control:
+    return launcher::EndpointMask::control;
+  case wire::EndpointRole::broker:
+    return launcher::EndpointMask::broker;
+  case wire::EndpointRole::render:
+    return launcher::EndpointMask::render;
+  }
+  return launcher::EndpointMask::none;
+}
 
 launcher::EndpointRole launcher_role(wire::EndpointRole role) {
   switch (role) {
@@ -43,14 +77,90 @@ std::uint16_t role_version(wire::EndpointRole role) {
   return 0;
 }
 
-std::chrono::milliseconds
-remaining(std::chrono::steady_clock::time_point deadline) {
+const wire::RoleSchemaView *role_schema(wire::EndpointRole role) {
+  if (role == wire::EndpointRole::broker)
+    return broker::broker_schema_registry().find(role,
+                                                 broker::kBrokerRoleVersion);
+  if (role == wire::EndpointRole::render) {
+    static const auto schema = surface::render_role_schema();
+    return &schema;
+  }
+  return nullptr;
+}
+
+bool valid_typed_packet(const wire::PacketView &packet,
+                        wire::Direction direction) {
+  const auto *schema = role_schema(packet.header.endpoint_role);
+  if (schema == nullptr) {
+    if (packet.header.endpoint_role != wire::EndpointRole::control ||
+        packet.header.correlation_id != 0)
+      return false;
+    if (direction == wire::Direction::worker_to_host)
+      return (packet.header.message_type ==
+                  wire::kPermissionSnapshotAcceptedMessage ||
+              packet.header.message_type ==
+                  wire::kSurfaceSelectionAcceptedMessage ||
+              packet.header.message_type ==
+                  wire::kSurfaceBindingAcceptedMessage ||
+              packet.header.message_type ==
+                  wire::kSurfaceOpenAcceptedMessage) &&
+             packet.payload.empty();
+    if (packet.header.message_type == wire::kPermissionSnapshotMessage)
+      return !packet.payload.empty();
+    if (packet.header.message_type == wire::kSurfaceSelectionMessage) {
+      return !packet.payload.empty() && packet.payload.size() <= 64 &&
+             std::ranges::all_of(packet.payload, [](std::byte value) {
+               const auto c = std::to_integer<unsigned char>(value);
+               return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                      (c >= '0' && c <= '9') || c == '-' || c == '_';
+             });
+    }
+    if (packet.header.message_type == wire::kSurfaceBindingMessage ||
+        packet.header.message_type == wire::kSurfaceOpenMessage) {
+      wire::SurfaceBinding binding;
+      return wire::decode_surface_binding(packet.payload, binding);
+    }
+    return false;
+  }
+  const auto type = packet.header.message_type;
+  if (type ==
+      static_cast<std::uint16_t>(wire::CommonMessageType::typed_error)) {
+    const bool direction_allowed =
+        packet.header.endpoint_role == wire::EndpointRole::broker
+            ? direction == wire::Direction::host_to_worker
+            : direction == wire::Direction::worker_to_host;
+    return direction_allowed && packet.header.correlation_id != 0 &&
+           packet.payload.size() >= schema->typed_error_minimum_payload &&
+           packet.payload.size() <= schema->typed_error_maximum_payload;
+  }
+  const auto *rule = wire::find_message(*schema, type);
+  if (rule == nullptr || !wire::permits_direction(*rule, direction) ||
+      packet.payload.size() < rule->minimum_payload ||
+      packet.payload.size() > rule->maximum_payload)
+    return false;
+  return rule->correlation == wire::CorrelationRule::zero
+             ? packet.header.correlation_id == 0
+             : packet.header.correlation_id != 0;
+}
+
+std::optional<std::uint8_t> descriptor_count(wire::EndpointRole role,
+                                             std::uint16_t message_type) {
+  if (role == wire::EndpointRole::render)
+    return surface::render_descriptor_count(message_type);
+  if (role == wire::EndpointRole::control || role == wire::EndpointRole::broker)
+    return 0;
+  return {};
+}
+
+int milliseconds_until(launcher::Deadline deadline) {
   const auto now = std::chrono::steady_clock::now();
   if (now >= deadline)
-    return std::chrono::milliseconds(0);
-  return std::max(
-      std::chrono::milliseconds(1),
-      std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now));
+    return 0;
+  const auto remaining = deadline - now;
+  return static_cast<int>(std::min<std::int64_t>(
+      std::chrono::duration_cast<std::chrono::milliseconds>(remaining).count() +
+          1,
+      std::numeric_limits<int>::max()));
 }
 
 } // namespace
@@ -58,39 +168,58 @@ remaining(std::chrono::steady_clock::time_point deadline) {
 AuthenticatedBrokerChannel::AuthenticatedBrokerChannel(
     std::unique_ptr<launcher::Worker> worker, launcher::LaunchIdentity identity,
     std::shared_ptr<BrokerDispatcher> dispatcher,
-    std::shared_ptr<const GenerationAuthority> authority)
+    std::shared_ptr<const GenerationAuthority> authority,
+    launcher::Deadline opening_deadline)
     : worker_(std::move(worker)), identity_(std::move(identity)),
       dispatcher_(std::move(dispatcher)), authority_(std::move(authority)),
+      opening_deadline_(opening_deadline),
       control_(wire::EndpointRole::control,
                {kControlRoleVersion, kControlRoleVersion}, identity_.generation,
-               wire::payload_cap(wire::EndpointRole::control),
-               kMaximumInFlight),
+               wire::payload_cap(wire::EndpointRole::control), kMaximumInFlight,
+               wire::kEnvelopeVersionV2),
       broker_(wire::EndpointRole::broker,
               {broker::kBrokerRoleVersion, broker::kBrokerRoleVersion},
               identity_.generation,
-              wire::payload_cap(wire::EndpointRole::broker), kMaximumInFlight),
+              wire::payload_cap(wire::EndpointRole::broker), kMaximumInFlight,
+              wire::kEnvelopeVersionV2),
       render_(wire::EndpointRole::render,
               {surface::kRenderRoleVersion, surface::kRenderRoleVersion},
               identity_.generation,
-              wire::payload_cap(wire::EndpointRole::render), kMaximumInFlight) {
+              wire::payload_cap(wire::EndpointRole::render), kMaximumInFlight,
+              wire::kEnvelopeVersionV2),
+      origin_(next_channel_origin.fetch_add(1, std::memory_order_relaxed)) {
+  if (origin_ == 0)
+    origin_ = next_channel_origin.fetch_add(1, std::memory_order_relaxed);
 }
 
-AuthenticatedBrokerChannel::~AuthenticatedBrokerChannel() {
-  if (worker_ != nullptr && !termination_.attempted())
-    (void)worker_->terminate();
-}
+AuthenticatedBrokerChannel::~AuthenticatedBrokerChannel() = default;
 
 OpenResult AuthenticatedBrokerChannel::open(
     launcher::Supervisor &supervisor,
     const launcher::TrustedLaunchRequest &request,
     std::shared_ptr<BrokerDispatcher> dispatcher,
     std::shared_ptr<const GenerationAuthority> authority) {
+  return open(supervisor, request, std::move(dispatcher), std::move(authority),
+              std::chrono::steady_clock::now() + kMaximumNegotiationWait);
+}
+
+OpenResult AuthenticatedBrokerChannel::open(
+    launcher::Supervisor &supervisor,
+    const launcher::TrustedLaunchRequest &request,
+    std::shared_ptr<BrokerDispatcher> dispatcher,
+    std::shared_ptr<const GenerationAuthority> authority,
+    launcher::Deadline deadline) {
   if (dispatcher == nullptr || authority == nullptr)
     return {.channel = nullptr,
             .failure = ChannelFailure::identity_mismatch,
             .launch_failure = launcher::LaunchFailure::none,
             .detail = "broker dispatcher or generation authority is absent"};
-  auto launched = supervisor.launch(request);
+  if (std::chrono::steady_clock::now() >= deadline)
+    return {.channel = nullptr,
+            .failure = ChannelFailure::launch_failed,
+            .launch_failure = launcher::LaunchFailure::startup_timeout,
+            .detail = "authenticated channel deadline expired before launch"};
+  auto launched = supervisor.launch(request, deadline);
   if (!launched)
     return {.channel = nullptr,
             .failure = ChannelFailure::launch_failed,
@@ -102,30 +231,44 @@ OpenResult AuthenticatedBrokerChannel::open(
       identity.generation != request.generation ||
       identity.outer_worker_pid <= 0 || identity.outer_uid != getuid() ||
       identity.outer_gid != getgid() || !launched.worker->alive()) {
-    (void)launched.worker->terminate();
+    launched.worker.reset();
     return {.channel = nullptr,
             .failure = ChannelFailure::identity_mismatch,
             .launch_failure = launcher::LaunchFailure::none,
             .detail = "launched process identity differs from trusted request"};
   }
   if (!dispatcher->accepts(identity)) {
-    (void)launched.worker->terminate();
+    launched.worker.reset();
     return {.channel = nullptr,
             .failure = ChannelFailure::identity_mismatch,
             .launch_failure = launcher::LaunchFailure::none,
             .detail = "broker dispatcher rejects the launched identity"};
   }
   if (!authority->is_current(identity)) {
-    (void)launched.worker->terminate();
+    launched.worker.reset();
     return {.channel = nullptr,
             .failure = ChannelFailure::stale_generation,
             .launch_failure = launcher::LaunchFailure::none,
             .detail = "launched generation is no longer authoritative"};
   }
+  if (std::chrono::steady_clock::now() >= deadline) {
+    launched.worker.reset();
+    return {.channel = nullptr,
+            .failure = ChannelFailure::deadline_expired,
+            .launch_failure = launcher::LaunchFailure::startup_timeout,
+            .detail = "authenticated channel deadline expired before publish"};
+  }
   auto channel = std::unique_ptr<AuthenticatedBrokerChannel>(
       new AuthenticatedBrokerChannel(std::move(launched.worker), identity,
                                      std::move(dispatcher),
-                                     std::move(authority)));
+                                     std::move(authority), deadline));
+  if (std::chrono::steady_clock::now() >= deadline) {
+    channel.reset();
+    return {.channel = nullptr,
+            .failure = ChannelFailure::deadline_expired,
+            .launch_failure = launcher::LaunchFailure::startup_timeout,
+            .detail = "authenticated channel deadline expired before publish"};
+  }
   return {.channel = std::move(channel),
           .failure = ChannelFailure::none,
           .launch_failure = launcher::LaunchFailure::none,
@@ -133,118 +276,371 @@ OpenResult AuthenticatedBrokerChannel::open(
 }
 
 bool AuthenticatedBrokerChannel::negotiate(std::chrono::milliseconds timeout) {
-  if (failed() || ready_ || timeout.count() <= 0 ||
-      timeout > kMaximumNegotiationWait)
+  if (timeout.count() <= 0 || timeout > kMaximumNegotiationWait)
+    return fail(ChannelFailure::negotiation_failed,
+                "invalid channel negotiation deadline");
+  return negotiate(std::chrono::steady_clock::now() + timeout);
+}
+
+bool AuthenticatedBrokerChannel::negotiate(launcher::Deadline deadline) {
+  deadline = std::min(deadline, opening_deadline_);
+  if (failed() || ready_ || worker_ == nullptr ||
+      std::chrono::steady_clock::now() >= deadline)
     return fail(ChannelFailure::negotiation_failed,
                 "invalid or repeated channel negotiation");
-  const auto deadline = std::chrono::steady_clock::now() + timeout;
-  for (const auto role :
-       {wire::EndpointRole::control, wire::EndpointRole::broker,
-        wire::EndpointRole::render}) {
-    if (!negotiate_role(role, remaining(deadline)))
+  std::size_t remaining = negotiated_.size();
+  while (remaining != 0) {
+    launcher::EndpointMask allowed = launcher::EndpointMask::none;
+    for (const auto role :
+         {wire::EndpointRole::control, wire::EndpointRole::broker,
+          wire::EndpointRole::render}) {
+      if (!negotiated_[role_index(role)])
+        allowed = allowed | launcher_mask(role);
+    }
+    auto message = receive_one(allowed, deadline);
+    if (!message)
+      return fail(ChannelFailure::peer_failure,
+                  "authenticated endpoint HELLO receive failed");
+    if (!negotiate_one(std::move(message), deadline))
       return false;
+    --remaining;
   }
   bool aggregate_ready = false;
   if (!authority_->is_current(identity_) || !dispatcher_->accepts(identity_))
     return fail(ChannelFailure::stale_generation,
-                "launch generation or dispatcher binding changed during endpoint negotiation");
+                "launch generation or dispatcher binding changed during "
+                "endpoint negotiation");
+  if (std::chrono::steady_clock::now() >= deadline)
+    return fail(ChannelFailure::negotiation_failed,
+                "aggregate negotiation deadline elapsed before readiness");
   if (readiness_.ready(aggregate_ready) != wire::FatalReason::none ||
       !aggregate_ready || !worker_->alive())
     return fail(ChannelFailure::readiness_failed,
                 "required endpoint generations are not jointly ready");
+  if (std::chrono::steady_clock::now() >= deadline)
+    return fail(ChannelFailure::negotiation_failed,
+                "aggregate negotiation deadline elapsed before readiness");
   ready_ = true;
+  if (!arm_readiness(launcher::EndpointMask::all, launcher::EndpointMask::none))
+    return fail(ChannelFailure::readiness_failed,
+                "aggregate channel readiness could not be armed");
   return true;
 }
 
-bool AuthenticatedBrokerChannel::negotiate_role(
-    wire::EndpointRole role, std::chrono::milliseconds timeout) {
-  auto message =
-      worker_->receive(launcher_role(role), wire::kHeaderSize + 4, timeout);
-  if (!message)
-    return fail(ChannelFailure::peer_failure,
-                "authenticated endpoint HELLO receive failed");
+bool AuthenticatedBrokerChannel::negotiate_one(
+    launcher::ReceivedMessage message, launcher::Deadline deadline) {
+  if (!message.descriptors.empty())
+    return fail(ChannelFailure::malformed_envelope,
+                "endpoint HELLO carried descriptors");
+  const auto role = wire_role(message.role);
+  const auto index = role_index(role);
+  if (index >= negotiated_.size() || negotiated_[index])
+    return fail(ChannelFailure::negotiation_failed,
+                "endpoint sent a duplicate HELLO");
   const auto decoded = wire::decode_packet(message.payload, role);
-  if (!decoded)
+  if (!decoded ||
+      decoded.packet.header.envelope_version != wire::kEnvelopeVersionV2)
     return fail(ChannelFailure::malformed_envelope,
                 "endpoint HELLO envelope is malformed");
-  wire::TrustedNegotiator *negotiator = nullptr;
-  switch (role) {
-  case wire::EndpointRole::control:
-    negotiator = &control_;
-    break;
-  case wire::EndpointRole::broker:
-    negotiator = &broker_;
-    break;
-  case wire::EndpointRole::render:
-    negotiator = &render_;
-    break;
-  }
-  const auto negotiated = negotiator->accept_hello(decoded.packet);
+  auto *selected = negotiator(role);
+  const auto negotiated = selected->accept_hello(decoded.packet);
   if (!negotiated)
     return fail(ChannelFailure::negotiation_failed,
                 "endpoint HELLO negotiation failed");
-  std::array<std::byte, wire::kHeaderSize + 8> encoded{};
+  std::array<std::byte, wire::kHeaderSizeV2 + 8> encoded{};
   const auto payload =
       std::span(negotiated.payload).first(negotiated.payload_size);
   auto header = negotiated.header;
   header.payload_length = static_cast<std::uint32_t>(payload.size());
   const auto result = wire::encode_packet(header, payload, encoded);
-  if (!result || !worker_->send(launcher_role(role),
-                                std::span(encoded).first(result.bytes_written)))
-    return fail(ChannelFailure::peer_failure,
-                "endpoint negotiation reply send failed");
+  if (!result)
+    return fail(ChannelFailure::malformed_envelope,
+                "endpoint negotiation reply could not be encoded");
+  const auto reply_bytes = std::span(encoded).first(result.bytes_written);
+  for (;;) {
+    if (std::chrono::steady_clock::now() >= deadline)
+      return fail(ChannelFailure::negotiation_failed,
+                  "endpoint negotiation deadline elapsed before WELCOME");
+    if (!authority_->is_current(identity_) ||
+        !dispatcher_->accepts(identity_) || worker_ == nullptr ||
+        !worker_->alive())
+      return fail(ChannelFailure::stale_generation,
+                  "binding changed during endpoint negotiation reply");
+    if (std::chrono::steady_clock::now() >= deadline)
+      return fail(ChannelFailure::negotiation_failed,
+                  "endpoint negotiation deadline elapsed before WELCOME");
+    const auto sent =
+        worker_->try_send(launcher_role(role), reply_bytes,
+                          launcher::PacketSizeLimit{reply_bytes.size()});
+    if (sent == launcher::SendStatus::complete)
+      break;
+    if (sent != launcher::SendStatus::would_block ||
+        std::chrono::steady_clock::now() >= deadline)
+      return fail(ChannelFailure::peer_failure,
+                  "endpoint negotiation reply send failed");
+    if (!arm_readiness(launcher::EndpointMask::none, launcher_mask(role)))
+      return fail(ChannelFailure::readiness_failed,
+                  "negotiation write readiness could not be armed");
+    pollfd event{.fd = readiness_fd(), .events = POLLIN, .revents = 0};
+    int polled = -1;
+    do {
+      polled = poll(&event, 1, milliseconds_until(deadline));
+    } while (polled < 0 && errno == EINTR &&
+             std::chrono::steady_clock::now() < deadline);
+    if (polled <= 0 || worker_ == nullptr || !worker_->alive())
+      return fail(ChannelFailure::peer_failure,
+                  "peer exited or deadline elapsed during negotiation reply");
+  }
   if (negotiated.kind != wire::NegotiationKind::welcome)
     return fail(ChannelFailure::negotiation_failed,
                 "endpoint has no supported role version");
-  if (negotiator->selected_version() != role_version(role) ||
+  if (selected->selected_version() != role_version(role) ||
       readiness_.observe(role, identity_.generation) != wire::FatalReason::none)
     return fail(ChannelFailure::readiness_failed,
                 "endpoint selected unexpected version or generation");
+  negotiated_[index] = true;
   return true;
+}
+
+wire::TrustedNegotiator *
+AuthenticatedBrokerChannel::negotiator(wire::EndpointRole role) {
+  switch (role) {
+  case wire::EndpointRole::control:
+    return &control_;
+  case wire::EndpointRole::broker:
+    return &broker_;
+  case wire::EndpointRole::render:
+    return &render_;
+  }
+  return nullptr;
+}
+
+launcher::ReceivedMessage
+AuthenticatedBrokerChannel::receive_one(launcher::EndpointMask lanes,
+                                        launcher::Deadline deadline) {
+  if (worker_ == nullptr)
+    return {.status = launcher::ReceiveStatus::fatal,
+            .failure = launcher::ReceiveFailure::io_error};
+  if (!arm_readiness(lanes, launcher::EndpointMask::none))
+    return {.status = launcher::ReceiveStatus::fatal,
+            .failure = launcher::ReceiveFailure::io_error};
+  return worker_->receive_any(
+      launcher::PacketSizeLimit{wire::kHeaderSizeV2 +
+                                wire::payload_cap(wire::EndpointRole::broker)},
+      deadline, lanes);
+}
+
+bool AuthenticatedBrokerChannel::validate_inbound(
+    const launcher::ReceivedMessage &message, wire::PacketView &packet,
+    bool validate_descriptors) {
+  const auto role = wire_role(message.role);
+  const auto decoded = wire::decode_packet(message.payload, role);
+  if (!decoded ||
+      decoded.packet.header.envelope_version != wire::kEnvelopeVersionV2 ||
+      decoded.packet.header.role_protocol_version != role_version(role) ||
+      decoded.packet.header.launch_generation != identity_.generation ||
+      decoded.packet.header.message_type == 0 ||
+      sequence_.accept_inbound(role, decoded.packet.header.lane_sequence) !=
+          wire::FatalReason::none) {
+    fail(ChannelFailure::malformed_envelope,
+         "authenticated v2 packet failed binding or replay validation");
+    return false;
+  }
+  if (!valid_typed_packet(decoded.packet, wire::Direction::worker_to_host)) {
+    fail(ChannelFailure::malformed_envelope,
+         "authenticated packet violates its selected role schema");
+    return false;
+  }
+  std::size_t expected_descriptors = 0;
+  if (validate_descriptors && role == wire::EndpointRole::render) {
+    const auto expected =
+        descriptor_count(role, decoded.packet.header.message_type);
+    if (!expected) {
+      fail(ChannelFailure::malformed_envelope,
+           "render packet has no descriptor contract");
+      return false;
+    }
+    expected_descriptors = *expected;
+  }
+  if ((!validate_descriptors && !message.descriptors.empty()) ||
+      (validate_descriptors &&
+       message.descriptors.size() != expected_descriptors)) {
+    fail(ChannelFailure::malformed_envelope,
+         "authenticated packet descriptor count differs from its schema");
+    return false;
+  }
+  if (!authority_->is_current(identity_) || !dispatcher_->accepts(identity_) ||
+      worker_ == nullptr || !worker_->alive()) {
+    fail(ChannelFailure::stale_generation,
+         "binding changed after authenticated packet receive");
+    return false;
+  }
+  packet = decoded.packet;
+  return true;
+}
+
+std::optional<PreparedSend> AuthenticatedBrokerChannel::prepare_send(
+    wire::EndpointRole role, std::uint16_t message_type,
+    std::uint64_t correlation_id, std::span<const std::byte> payload) {
+  if (!ready_ || failed() || termination_.attempted() || worker_ == nullptr ||
+      message_type == 0 || payload.size() > wire::payload_cap(role))
+    return {};
+  if (!authority_->is_current(identity_) || !dispatcher_->accepts(identity_))
+    return fail(ChannelFailure::stale_generation,
+                "binding changed before trusted packet preparation"),
+           std::nullopt;
+  const auto expected_descriptors = descriptor_count(role, message_type);
+  if (!expected_descriptors)
+    return fail(ChannelFailure::malformed_envelope,
+                "trusted packet has no descriptor contract"),
+           std::nullopt;
+  const auto outbound = sequence_.take_outbound(role);
+  if (!outbound)
+    return fail(ChannelFailure::malformed_envelope,
+                "outbound lane sequence is exhausted"),
+           std::nullopt;
+  std::vector<std::byte> bytes(wire::kHeaderSizeV2 + payload.size());
+  const wire::EnvelopeHeader header{
+      .envelope_version = wire::kEnvelopeVersionV2,
+      .header_size = wire::kHeaderSizeV2,
+      .endpoint_role = role,
+      .message_type = message_type,
+      .role_protocol_version = role_version(role),
+      .payload_length = static_cast<std::uint32_t>(payload.size()),
+      .launch_generation = identity_.generation,
+      .correlation_id = correlation_id,
+      .lane_sequence = outbound.value};
+  const auto encoded = wire::encode_packet(header, payload, bytes);
+  if (!encoded) {
+    fail(ChannelFailure::malformed_envelope,
+         "trusted v2 packet could not be encoded");
+    return {};
+  }
+  const auto decoded = wire::decode_packet(bytes, role);
+  if (!decoded ||
+      !valid_typed_packet(decoded.packet, wire::Direction::host_to_worker)) {
+    fail(ChannelFailure::malformed_envelope,
+         "trusted packet violates its selected role schema");
+    return {};
+  }
+  bytes.resize(encoded.bytes_written);
+  return PreparedSend(role, std::move(bytes), origin_, *expected_descriptors);
+}
+
+ChannelSendStatus AuthenticatedBrokerChannel::try_send(
+    PreparedSend &prepared, std::span<const int> borrowed_descriptors) {
+  return try_send(prepared, launcher::Deadline::max(), borrowed_descriptors);
+}
+
+ChannelSendStatus AuthenticatedBrokerChannel::try_send(
+    PreparedSend &prepared, launcher::Deadline deadline,
+    std::span<const int> borrowed_descriptors) {
+  if (!prepared.pending_ || prepared.origin_ != origin_ || worker_ == nullptr)
+    return ChannelSendStatus::fatal;
+  if (std::chrono::steady_clock::now() >= deadline) {
+    prepared.pending_ = false;
+    fail(ChannelFailure::deadline_expired,
+         "prepared packet deadline elapsed before send");
+    return ChannelSendStatus::fatal;
+  }
+  if (!ready_ || failed() || termination_.attempted() ||
+      !authority_->is_current(identity_) || !dispatcher_->accepts(identity_)) {
+    prepared.pending_ = false;
+    fail(ChannelFailure::stale_generation,
+         "binding changed before prepared packet send");
+    return ChannelSendStatus::not_ready;
+  }
+  if (std::chrono::steady_clock::now() >= deadline) {
+    prepared.pending_ = false;
+    fail(ChannelFailure::deadline_expired,
+         "prepared packet deadline elapsed before send");
+    return ChannelSendStatus::fatal;
+  }
+  if (borrowed_descriptors.size() != prepared.descriptor_count_) {
+    prepared.pending_ = false;
+    fail(ChannelFailure::malformed_envelope,
+         "prepared packet descriptor count changed before send");
+    return ChannelSendStatus::fatal;
+  }
+  const auto status = worker_->try_send(
+      launcher_role(prepared.role_), prepared.bytes_,
+      launcher::PacketSizeLimit{prepared.bytes_.size()}, borrowed_descriptors);
+  if (status == launcher::SendStatus::would_block)
+    return ChannelSendStatus::would_block;
+  prepared.pending_ = false;
+  if (status == launcher::SendStatus::complete)
+    return ChannelSendStatus::complete;
+  if (status == launcher::SendStatus::peer_closed) {
+    fail(ChannelFailure::peer_failure,
+         "authenticated endpoint closed during prepared send");
+    return ChannelSendStatus::peer_closed;
+  }
+  fail(ChannelFailure::peer_failure,
+       "authenticated endpoint rejected prepared send");
+  return ChannelSendStatus::fatal;
+}
+
+int AuthenticatedBrokerChannel::readiness_fd() const noexcept {
+  return worker_ == nullptr ? -1 : worker_->readiness_fd();
+}
+
+bool AuthenticatedBrokerChannel::arm_receive(
+    launcher::EndpointMask lanes) noexcept {
+  return arm_readiness(lanes, launcher::EndpointMask::none);
+}
+
+bool AuthenticatedBrokerChannel::arm_readiness(
+    launcher::EndpointMask read_lanes,
+    launcher::EndpointMask blocked_write_lanes) noexcept {
+  return worker_ != nullptr &&
+         worker_->set_readiness_interests(
+             {.read = read_lanes, .write = blocked_write_lanes});
 }
 
 bool AuthenticatedBrokerChannel::send_control(
     std::uint16_t message_type, std::span<const std::byte> payload) {
-  if (!ready_ || failed() || termination_.attempted() || message_type == 0 ||
-      payload.size() > wire::payload_cap(wire::EndpointRole::control) ||
-      !authority_->is_current(identity_))
-    return false;
-  std::vector<std::byte> packet(wire::kHeaderSize + payload.size());
-  const auto encoded = wire::encode_packet(
-      {.endpoint_role = wire::EndpointRole::control,
-       .message_type = message_type,
-       .role_protocol_version = kControlRoleVersion,
-       .payload_length = static_cast<std::uint32_t>(payload.size()),
-       .launch_generation = identity_.generation,
-       .correlation_id = 0},
-      payload, packet);
-  return encoded && worker_->send(
-                        launcher::EndpointRole::control,
-                        std::span(packet).first(encoded.bytes_written));
+  auto prepared =
+      prepare_send(wire::EndpointRole::control, message_type, 0, payload);
+  return prepared && try_send(*prepared) == ChannelSendStatus::complete;
 }
 
 bool AuthenticatedBrokerChannel::receive_control_ack(
     std::uint16_t message_type, std::chrono::milliseconds timeout) {
-  if (!ready_ || failed() || termination_.attempted() || message_type == 0 ||
-      timeout.count() <= 0 || !authority_->is_current(identity_))
+  if (timeout.count() <= 0)
     return false;
-  auto message = worker_->receive(
-      launcher::EndpointRole::control,
-      wire::kHeaderSize + wire::payload_cap(wire::EndpointRole::control),
-      timeout);
+  return receive_control_ack(message_type,
+                             std::chrono::steady_clock::now() + timeout);
+}
+
+bool AuthenticatedBrokerChannel::receive_control_ack(
+    std::uint16_t message_type, launcher::Deadline deadline) {
+  if (!ready_ || failed() || termination_.attempted() || message_type == 0 ||
+      std::chrono::steady_clock::now() >= deadline ||
+      !authority_->is_current(identity_))
+    return false;
+  auto message = receive_one(launcher::EndpointMask::control, deadline);
   if (!message)
     return false;
-  const auto decoded =
-      wire::decode_packet(message.payload, wire::EndpointRole::control);
-  return decoded && decoded.packet.header.message_type == message_type &&
-         decoded.packet.header.role_protocol_version == kControlRoleVersion &&
-         decoded.packet.header.launch_generation == identity_.generation &&
-         decoded.packet.header.correlation_id == 0 &&
-         decoded.packet.payload.empty();
+  wire::PacketView packet{};
+  if (!validate_inbound(message, packet, false))
+    return false;
+  if (std::chrono::steady_clock::now() >= deadline)
+    return fail(ChannelFailure::deadline_expired,
+                "control deadline elapsed after consuming acknowledgement");
+  if (packet.header.message_type != message_type ||
+      packet.header.correlation_id != 0 || !packet.payload.empty())
+    return fail(ChannelFailure::malformed_envelope,
+                "consumed control acknowledgement differs from expectation");
+  return true;
 }
 
 DispatchStatus
 AuthenticatedBrokerChannel::dispatch_one(std::chrono::milliseconds timeout) {
+  return dispatch_one(std::chrono::steady_clock::now() + timeout);
+}
+
+DispatchStatus
+AuthenticatedBrokerChannel::dispatch_one(launcher::Deadline deadline) {
   if (!ready_ || failed() || termination_.attempted()) {
     if (!failed() && !termination_.attempted())
       fail(ChannelFailure::not_ready,
@@ -258,38 +654,22 @@ AuthenticatedBrokerChannel::dispatch_one(std::chrono::milliseconds timeout) {
   }
   if (!authority_->is_current(identity_) || !dispatcher_->accepts(identity_)) {
     fail(ChannelFailure::stale_generation,
-         "launch generation or dispatcher binding changed before broker receive");
+         "launch generation or dispatcher binding changed before broker "
+         "receive");
     return DispatchStatus::fatal;
   }
-  auto message = worker_->receive(
-      launcher::EndpointRole::broker,
-      wire::kHeaderSize + wire::payload_cap(wire::EndpointRole::broker),
-      timeout);
+  auto message = receive_one(launcher::EndpointMask::broker, deadline);
   if (!message) {
-    if (message.failure == launcher::ReceiveFailure::timeout)
+    if (message.status == launcher::ReceiveStatus::would_block &&
+        message.failure == launcher::ReceiveFailure::timeout)
       return DispatchStatus::timeout;
     fail(ChannelFailure::peer_failure,
          "authenticated broker endpoint receive failed");
     return DispatchStatus::fatal;
   }
-  const auto decoded =
-      wire::decode_packet(message.payload, wire::EndpointRole::broker);
-  if (!decoded) {
-    fail(ChannelFailure::malformed_envelope,
-         "broker envelope failed outer validation");
+  wire::PacketView packet{};
+  if (!validate_inbound(message, packet, false))
     return DispatchStatus::fatal;
-  }
-  if (decoded.packet.header.role_protocol_version !=
-      broker::kBrokerRoleVersion) {
-    fail(ChannelFailure::role_version_mismatch,
-         "broker role protocol version differs from negotiation");
-    return DispatchStatus::fatal;
-  }
-  if (decoded.packet.header.launch_generation != identity_.generation) {
-    fail(ChannelFailure::stale_generation,
-         "broker packet generation differs from launch identity");
-    return DispatchStatus::fatal;
-  }
   if (!worker_->alive()) {
     fail(ChannelFailure::peer_failure,
          "pidfd reports worker exit before trusted dispatch");
@@ -297,12 +677,17 @@ AuthenticatedBrokerChannel::dispatch_one(std::chrono::milliseconds timeout) {
   }
   if (!authority_->is_current(identity_) || !dispatcher_->accepts(identity_)) {
     fail(ChannelFailure::stale_generation,
-         "launch generation or dispatcher binding changed before trusted dispatch");
+         "launch generation or dispatcher binding changed before trusted "
+         "dispatch");
     return DispatchStatus::fatal;
   }
+  if (std::chrono::steady_clock::now() >= deadline)
+    return fail(ChannelFailure::deadline_expired,
+                "broker deadline elapsed after consuming request"),
+           DispatchStatus::fatal;
   bool dispatched = false;
   try {
-    dispatched = dispatcher_->dispatch(decoded.packet);
+    dispatched = dispatcher_->dispatch(packet);
   } catch (...) {
     fail(ChannelFailure::dispatch_failed,
          "C4 broker dispatcher raised across the channel boundary");
@@ -313,27 +698,35 @@ AuthenticatedBrokerChannel::dispatch_one(std::chrono::milliseconds timeout) {
          "C4 broker dispatcher rejected the authenticated packet");
     return DispatchStatus::fatal;
   }
-  if (auto reply = dispatcher_->take_reply()) {
+  if (std::chrono::steady_clock::now() >= deadline)
+    return fail(ChannelFailure::deadline_expired,
+                "broker deadline elapsed after dispatcher effect"),
+           DispatchStatus::fatal;
+  std::optional<BrokerReply> reply;
+  try {
+    reply = dispatcher_->take_reply();
+  } catch (...) {
+    fail(ChannelFailure::dispatch_failed,
+         "C4 broker reply extraction raised across the channel boundary");
+    return DispatchStatus::fatal;
+  }
+  if (std::chrono::steady_clock::now() >= deadline)
+    return fail(ChannelFailure::deadline_expired,
+                "broker deadline elapsed before response send"),
+           DispatchStatus::fatal;
+  if (reply) {
     if (reply->message_type == 0 || reply->correlation_id == 0 ||
-        reply->correlation_id != decoded.packet.header.correlation_id ||
-        reply->payload.size() >
-            wire::payload_cap(wire::EndpointRole::broker)) {
+        reply->correlation_id != packet.header.correlation_id ||
+        reply->payload.size() > wire::payload_cap(wire::EndpointRole::broker)) {
       fail(ChannelFailure::dispatch_failed,
            "C4 broker dispatcher returned an invalid response");
       return DispatchStatus::fatal;
     }
-    std::vector<std::byte> encoded(wire::kHeaderSize + reply->payload.size());
-    const wire::EnvelopeHeader header{
-        .endpoint_role = wire::EndpointRole::broker,
-        .message_type = reply->message_type,
-        .role_protocol_version = broker::kBrokerRoleVersion,
-        .payload_length = static_cast<std::uint32_t>(reply->payload.size()),
-        .launch_generation = identity_.generation,
-        .correlation_id = reply->correlation_id};
-    const auto result = wire::encode_packet(header, reply->payload, encoded);
-    if (!result || !worker_->send(launcher::EndpointRole::broker,
-                                  std::span(encoded).first(
-                                      result.bytes_written))) {
+    auto prepared =
+        prepare_send(wire::EndpointRole::broker, reply->message_type,
+                     reply->correlation_id, reply->payload);
+    if (!prepared ||
+        try_send(*prepared, deadline) != ChannelSendStatus::complete) {
       fail(ChannelFailure::peer_failure,
            "authenticated broker response send failed");
       return DispatchStatus::fatal;
@@ -342,39 +735,62 @@ AuthenticatedBrokerChannel::dispatch_one(std::chrono::milliseconds timeout) {
   return DispatchStatus::dispatched;
 }
 
-launcher::ReceivedMessage AuthenticatedBrokerChannel::receive_render(
-    std::chrono::milliseconds timeout) {
+launcher::ReceivedMessage
+AuthenticatedBrokerChannel::receive_render(std::chrono::milliseconds timeout) {
+  if (timeout.count() <= 0)
+    return {.status = launcher::ReceiveStatus::would_block,
+            .failure = launcher::ReceiveFailure::timeout};
+  return receive_render(std::chrono::steady_clock::now() + timeout);
+}
+
+launcher::ReceivedMessage
+AuthenticatedBrokerChannel::receive_render(launcher::Deadline deadline) {
   if (!ready_ || failed() || termination_.attempted() ||
       !authority_->is_current(identity_) || !dispatcher_->accepts(identity_)) {
     fail(ChannelFailure::stale_generation,
          "render receive attempted without a current ready binding");
     return {.payload = {}, .failure = launcher::ReceiveFailure::io_error};
   }
-  return worker_->receive(
-      launcher::EndpointRole::render,
-      wire::kHeaderSize + wire::payload_cap(wire::EndpointRole::render),
-      timeout);
+  auto message = receive_one(launcher::EndpointMask::render, deadline);
+  if (!message)
+    return message;
+  wire::PacketView packet{};
+  if (!validate_inbound(message, packet, true))
+    return {.status = launcher::ReceiveStatus::fatal,
+            .failure = launcher::ReceiveFailure::io_error};
+  if (std::chrono::steady_clock::now() >= deadline)
+    return fail(ChannelFailure::deadline_expired,
+                "render deadline elapsed after consuming packet"),
+           launcher::ReceivedMessage{.role = launcher::EndpointRole::render,
+                                     .status = launcher::ReceiveStatus::fatal,
+                                     .failure =
+                                         launcher::ReceiveFailure::io_error};
+  return message;
 }
 
-bool AuthenticatedBrokerChannel::send_render(
-    std::span<const std::byte> packet, std::span<const int> descriptors) {
+bool AuthenticatedBrokerChannel::send_render(std::span<const std::byte> packet,
+                                             std::span<const int> descriptors) {
   if (!ready_ || failed() || termination_.attempted() ||
       !authority_->is_current(identity_) || !dispatcher_->accepts(identity_))
     return fail(ChannelFailure::stale_generation,
                 "render send attempted without a current ready binding");
   const auto decoded = wire::decode_packet(packet, wire::EndpointRole::render);
-  if (!decoded || decoded.packet.header.role_protocol_version !=
-                      surface::kRenderRoleVersion ||
+  if (!decoded ||
+      decoded.packet.header.role_protocol_version !=
+          surface::kRenderRoleVersion ||
       decoded.packet.header.launch_generation != identity_.generation)
     return fail(ChannelFailure::malformed_envelope,
                 "trusted render packet failed binding validation");
-  const bool sent = descriptors.empty()
-                        ? worker_->send(launcher::EndpointRole::render, packet)
-                        : worker_->send_with_descriptors(
-                              launcher::EndpointRole::render, packet,
-                              descriptors);
-  return sent || fail(ChannelFailure::peer_failure,
-                      "authenticated render send failed");
+  const auto expected =
+      surface::render_descriptor_count(decoded.packet.header.message_type);
+  if (!expected || descriptors.size() != *expected)
+    return fail(ChannelFailure::malformed_envelope,
+                "trusted render packet descriptor count differs from schema");
+  auto prepared = prepare_send(
+      wire::EndpointRole::render, decoded.packet.header.message_type,
+      decoded.packet.header.correlation_id, decoded.packet.payload);
+  return prepared &&
+         try_send(*prepared, descriptors) == ChannelSendStatus::complete;
 }
 
 bool AuthenticatedBrokerChannel::ready() const { return ready_ && !failed(); }
@@ -394,7 +810,7 @@ const launcher::LaunchIdentity &AuthenticatedBrokerChannel::identity() const {
 }
 
 std::string AuthenticatedBrokerChannel::take_worker_standard_error() {
-  return worker_->take_standard_error();
+  return worker_ == nullptr ? std::string{} : worker_->take_standard_error();
 }
 
 bool AuthenticatedBrokerChannel::terminate() {
@@ -412,7 +828,10 @@ bool AuthenticatedBrokerChannel::fail(ChannelFailure failure,
     detail_ = std::move(detail);
   }
   ready_ = false;
-  (void)terminate();
+  // Worker destruction transfers its preallocated cleanup job to the launcher
+  // reaper. Protocol corruption and peer loss must never synchronously wait on
+  // process or resource-scope teardown on the channel/UI thread.
+  worker_.reset();
   return false;
 }
 
