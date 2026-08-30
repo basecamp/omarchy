@@ -87,14 +87,6 @@ void capability_definition_loader_tests() {
               loaded == 1 && registry.find("local.weather-fetch"),
           "trusted descriptor-rooted local-admin directory did not load");
 
-  TrustedDefinitionRegistry compatibility_registry;
-  require(load_definition_directory(
-              root.string(), DefinitionSource::local_admin,
-              static_cast<std::uint32_t>(getuid()), verifier,
-              compatibility_registry, loaded) == LoadResult::loaded &&
-              loaded == 1,
-          "temporary pathname compatibility seam did not load");
-
   TrustedDefinitionRegistry wrong_owner_registry;
   require(load_definition_directory_fd(
               root_fd, DefinitionSource::local_admin,
@@ -231,11 +223,16 @@ void capability_definition_loader_tests() {
   std::filesystem::remove(root / "weather.capability");
   std::filesystem::create_symlink("/etc/passwd", root / "escape.capability");
   TrustedDefinitionRegistry symlink_registry;
-  require(load_definition_directory(root.string(), DefinitionSource::local_admin,
-                                    static_cast<std::uint32_t>(getuid()), verifier,
-                                    symlink_registry, loaded) ==
+  const int symlink_root_fd =
+      open(root.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+  require(symlink_root_fd >= 0, "symlink root descriptor did not open");
+  require(load_definition_directory_fd(
+              symlink_root_fd, DefinitionSource::local_admin,
+              static_cast<std::uint32_t>(getuid()), verifier,
+              symlink_registry, loaded) ==
               LoadResult::untrusted_path &&
               symlink_registry.size() == 0,
           "symlink definition entered the trust registry");
+  close(symlink_root_fd);
   std::filesystem::remove_all(root);
 }

@@ -233,12 +233,15 @@ void run(const std::filesystem::path &root, std::string_view function,
   std::size_t loaded = 0;
   const definitions::AdapterVerifier verifier{.available = adapter_available,
                                               .context = &adapters};
-  require(definitions::load_definition_directory(
-              definition_root.string(),
-              definitions::DefinitionSource::local_admin,
-              static_cast<std::uint32_t>(getuid()), verifier, registry,
-              loaded) == definitions::LoadResult::loaded &&
-              loaded > 0,
+  const int definition_root_fd = open(
+      definition_root.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+  require(definition_root_fd >= 0,
+          "independent trusted definition root did not open");
+  const auto definition_result = definitions::load_definition_directory_fd(
+      definition_root_fd, definitions::DefinitionSource::local_admin,
+      static_cast<std::uint32_t>(getuid()), verifier, registry, loaded);
+  close(definition_root_fd);
+  require(definition_result == definitions::LoadResult::loaded && loaded > 0,
           "independent trusted definition set failed to load");
   const auto plugin =
       manifest::parse_manifest_v2(read_file(root / "manifest.json"));

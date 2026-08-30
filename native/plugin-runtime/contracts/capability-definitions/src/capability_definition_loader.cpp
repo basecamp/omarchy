@@ -343,23 +343,4 @@ LoadResult load_definition_directory_fd(
   return result;
 }
 
-LoadResult load_definition_directory(std::string_view path,
-                                     DefinitionSource source,
-                                     std::uint32_t expected_uid,
-                                     const AdapterVerifier &verifier,
-                                     TrustedDefinitionRegistry &registry,
-                                     std::size_t &loaded_count) {
-  const std::string owned_path(path);
-  const int directory_fd = open(owned_path.c_str(), O_RDONLY | O_DIRECTORY |
-                                                    O_CLOEXEC | O_NOFOLLOW);
-  if (directory_fd < 0) {
-    loaded_count = 0;
-    return LoadResult::untrusted_path;
-  }
-  const auto result = load_definition_directory_fd(
-      directory_fd, source, expected_uid, verifier, registry, loaded_count);
-  close(directory_fd);
-  return result;
-}
-
 } // namespace omarchy::plugins::definitions
