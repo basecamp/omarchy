@@ -37,19 +37,53 @@ SessionClock::TimePoint SteadySessionClock::now() const noexcept {
   return std::chrono::steady_clock::now();
 }
 
+struct QueueUsage {
+  std::size_t messages = 0;
+  std::size_t bytes = 0;
+  std::size_t descriptors = 0;
+
+  [[nodiscard]] static QueueUsage message(const OwnedMessage &value) noexcept {
+    return {.messages = 1, .bytes = value.payload.size(),
+            .descriptors = value.descriptors.size()};
+  }
+
+  [[nodiscard]] bool try_add(const QueueUsage &other,
+                             const SessionLimits &limits) noexcept {
+    const auto fits = [](std::size_t used, std::size_t added,
+                         std::size_t maximum) {
+      return used <= maximum && added <= maximum - used;
+    };
+    if (!fits(messages, other.messages, limits.maximum_queued_messages) ||
+        !fits(bytes, other.bytes, limits.maximum_queued_bytes) ||
+        !fits(descriptors, other.descriptors,
+              limits.maximum_queued_descriptors))
+      return false;
+    messages += other.messages;
+    bytes += other.bytes;
+    descriptors += other.descriptors;
+    return true;
+  }
+
+  [[nodiscard]] bool remove(const QueueUsage &other) noexcept {
+    if (other.messages > messages || other.bytes > bytes ||
+        other.descriptors > descriptors)
+      return false;
+    messages -= other.messages;
+    bytes -= other.bytes;
+    descriptors -= other.descriptors;
+    return true;
+  }
+};
+
 struct PluginSessionSharedState {
   SessionToken token;
   SessionLimits limits;
   std::shared_ptr<const SessionClock> clock;
   mutable std::mutex mutex;
-  QObject *delivery_target = nullptr;
+  PluginSessionDeliveryProxy *delivery_target = nullptr;
   std::deque<OwnedMessage> outbound;
-  std::size_t outbound_in_flight = 0;
-  std::size_t outbound_bytes = 0;
-  std::size_t outbound_descriptors = 0;
-  std::size_t delivery_messages = 0;
-  std::size_t delivery_bytes = 0;
-  std::size_t delivery_descriptors = 0;
+  QueueUsage outbound_usage;
+  QueueUsage delivery_usage;
   std::uint64_t epoch = 1;
   std::uint64_t last_outbound_sequence = 0;
   std::uint64_t last_inbound_sequence = 0;
@@ -143,27 +177,33 @@ bool valid_message_shape(const OwnedMessage &message,
 }
 
 bool combined_queue_has_room(const PluginSessionSharedState &shared,
-                             std::size_t messages, std::size_t bytes,
-                             std::size_t descriptors) {
-  const auto &limits = shared.limits;
-  const auto outbound_messages =
-      shared.outbound.size() + shared.outbound_in_flight;
-  return outbound_messages <= limits.maximum_queued_messages &&
-         shared.delivery_messages <=
-             limits.maximum_queued_messages - outbound_messages &&
-         messages <= limits.maximum_queued_messages - outbound_messages -
-                         shared.delivery_messages &&
-         shared.outbound_bytes <= limits.maximum_queued_bytes &&
-         shared.delivery_bytes <=
-             limits.maximum_queued_bytes - shared.outbound_bytes &&
-         bytes <= limits.maximum_queued_bytes - shared.outbound_bytes -
-                      shared.delivery_bytes &&
-         shared.outbound_descriptors <= limits.maximum_queued_descriptors &&
-         shared.delivery_descriptors <=
-             limits.maximum_queued_descriptors - shared.outbound_descriptors &&
-         descriptors <= limits.maximum_queued_descriptors -
-                            shared.outbound_descriptors -
-                            shared.delivery_descriptors;
+                             const QueueUsage &candidate) {
+  auto aggregate = shared.outbound_usage;
+  return aggregate.try_add(shared.delivery_usage, shared.limits) &&
+         aggregate.try_add(candidate, shared.limits);
+}
+
+struct PumpTicketClaim {
+  bool accepted = false;
+  std::optional<std::uint64_t> ticket;
+};
+
+// The caller holds shared.mutex. An accepted claim without a ticket means a
+// pump is already queued; this is successful coalescing, not a queue failure.
+PumpTicketClaim claim_pump_locked(PluginSessionSharedState &shared,
+                                  std::uint64_t epoch) {
+  if (shared.epoch != epoch || !shared.accepting)
+    return {};
+  if (shared.pump_queued)
+    return {.accepted = true, .ticket = std::nullopt};
+  shared.pump_queued = true;
+  return {.accepted = true, .ticket = ++shared.pump_ticket};
+}
+
+void rollback_pump_locked(PluginSessionSharedState &shared,
+                          std::uint64_t ticket) noexcept {
+  if (shared.pump_ticket == ticket)
+    shared.pump_queued = false;
 }
 
 SessionError map_error(ChannelError error) {
@@ -203,8 +243,7 @@ bool queue_state(const std::shared_ptr<PluginSessionSharedState> &shared,
   shared->state.store(state);
   if (shared->delivery_target == nullptr)
     return true;
-  auto *target =
-      static_cast<PluginSessionDeliveryProxy *>(shared->delivery_target);
+  auto *target = shared->delivery_target;
   return QMetaObject::invokeMethod(
       target,
       [shared, target, epoch, state, error] {
@@ -221,31 +260,25 @@ bool queue_state(const std::shared_ptr<PluginSessionSharedState> &shared,
 
 bool queue_delivery(const std::shared_ptr<PluginSessionSharedState> &shared,
                     std::uint64_t epoch, OwnedMessage message) {
-  const auto bytes = message.payload.size();
-  const auto descriptors = message.descriptors.size();
+  const auto usage = QueueUsage::message(message);
   std::lock_guard lock(shared->mutex);
   if (shared->epoch != epoch || !shared->accepting)
     return true;
   if (shared->delivery_target == nullptr)
     return true;
-  if (!combined_queue_has_room(*shared, 1, bytes, descriptors))
+  if (!combined_queue_has_room(*shared, usage) ||
+      !shared->delivery_usage.try_add(usage, shared->limits))
     return false;
-  ++shared->delivery_messages;
-  shared->delivery_bytes += bytes;
-  shared->delivery_descriptors += descriptors;
-  auto *target =
-      static_cast<PluginSessionDeliveryProxy *>(shared->delivery_target);
+  auto *target = shared->delivery_target;
   const bool queued = QMetaObject::invokeMethod(
       target,
-      [shared, target, epoch, message = std::move(message), bytes,
-       descriptors]() mutable {
+      [shared, target, epoch, message = std::move(message), usage]() mutable {
         bool deliver = false;
         {
           std::lock_guard lock(shared->mutex);
-          --shared->delivery_messages;
-          shared->delivery_bytes -= bytes;
-          shared->delivery_descriptors -= descriptors;
-          deliver = shared->epoch == epoch && shared->accepting &&
+          const bool removed = shared->delivery_usage.remove(usage);
+          Q_ASSERT(removed);
+          deliver = removed && shared->epoch == epoch && shared->accepting &&
                     shared->delivery_target == target;
         }
         if (deliver)
@@ -253,9 +286,9 @@ bool queue_delivery(const std::shared_ptr<PluginSessionSharedState> &shared,
       },
       Qt::QueuedConnection);
   if (!queued) {
-    --shared->delivery_messages;
-    shared->delivery_bytes -= bytes;
-    shared->delivery_descriptors -= descriptors;
+    const bool removed = shared->delivery_usage.remove(usage);
+    Q_ASSERT(removed);
+    (void)removed;
   }
   return queued;
 }
@@ -394,7 +427,6 @@ public:
         if (!shared_->outbound.empty()) {
           outgoing = std::move(shared_->outbound.front());
           shared_->outbound.pop_front();
-          ++shared_->outbound_in_flight;
           has_outgoing = true;
         }
       }
@@ -413,7 +445,6 @@ public:
       if (sent == SendStatus::would_block) {
         std::lock_guard lock(shared_->mutex);
         if (shared_->epoch == epoch && shared_->accepting) {
-          --shared_->outbound_in_flight;
           shared_->outbound.push_front(std::move(outgoing));
         }
         outbound_blocked = true;
@@ -482,15 +513,15 @@ public:
       host_lost();
   }
 
-  void stop(std::uint64_t epoch, bool destruction) {
+  void stop(std::uint64_t epoch, TerminationIntent intent) {
     if (!terminal_)
       terminate_channel(operation_deadline());
     terminal_ = true;
-    if (!destruction)
+    if (intent == TerminationIntent::stop)
       if (!queue_state(shared_, epoch, SessionState::stopped,
                        shared_->error.load()))
         host_lost();
-    if (destruction)
+    if (intent == TerminationIntent::destroy)
       thread_.quit();
   }
 
@@ -499,9 +530,10 @@ private:
     std::lock_guard lock(shared_->mutex);
     if (shared_->epoch != epoch || !shared_->accepting)
       return;
-    --shared_->outbound_in_flight;
-    shared_->outbound_bytes -= message.payload.size();
-    shared_->outbound_descriptors -= message.descriptors.size();
+    const bool removed =
+        shared_->outbound_usage.remove(QueueUsage::message(message));
+    Q_ASSERT(removed);
+    (void)removed;
   }
 
   bool current(std::uint64_t epoch, bool require_accepting) const {
@@ -535,22 +567,20 @@ private:
   }
 
   void schedule_pump(std::uint64_t epoch) {
-    std::uint64_t ticket = 0;
+    PumpTicketClaim claim;
     {
       std::lock_guard lock(shared_->mutex);
-      if (shared_->epoch != epoch || !shared_->accepting ||
-          shared_->pump_queued)
+      claim = claim_pump_locked(*shared_, epoch);
+      if (!claim.accepted || !claim.ticket)
         return;
-      shared_->pump_queued = true;
-      ticket = ++shared_->pump_ticket;
     }
+    const auto ticket = *claim.ticket;
     if (!QMetaObject::invokeMethod(
             this, [this, epoch, ticket] { pump(epoch, ticket); },
             Qt::QueuedConnection)) {
       {
         std::lock_guard lock(shared_->mutex);
-        if (shared_->pump_ticket == ticket)
-          shared_->pump_queued = false;
+        rollback_pump_locked(*shared_, ticket);
       }
       host_lost();
     }
@@ -621,7 +651,7 @@ PluginSessionIo::PluginSessionIo(SessionToken token,
 }
 
 PluginSessionIo::~PluginSessionIo() {
-  fence_and_queue(false, true);
+  fence_and_queue(TerminationIntent::destroy);
   QCoreApplication::removePostedEvents(delivery_);
   detach_runtime();
 }
@@ -647,15 +677,14 @@ bool PluginSessionIo::enqueue(OwnedMessage message) {
     ++shared_->stale_drops;
     return false;
   }
+  const auto usage = QueueUsage::message(message);
   if (!valid_message_shape(message, shared_->limits) ||
-      !combined_queue_has_room(*shared_, 1, message.payload.size(),
-                               message.descriptors.size())) {
+      !combined_queue_has_room(*shared_, usage) ||
+      !shared_->outbound_usage.try_add(usage, shared_->limits)) {
     shared_->error.store(SessionError::queue_limit);
     return false;
   }
   shared_->last_outbound_sequence = message.sequence;
-  shared_->outbound_bytes += message.payload.size();
-  shared_->outbound_descriptors += message.descriptors.size();
   shared_->outbound.push_back(std::move(message));
   const auto epoch = shared_->epoch;
   if (current == SessionState::running && !schedule_pump_locked(epoch))
@@ -670,8 +699,8 @@ void PluginSessionIo::wake() {
   (void)schedule_pump_locked(shared_->epoch);
 }
 
-void PluginSessionIo::revoke() { fence_and_queue(true, false); }
-void PluginSessionIo::stop() { fence_and_queue(false, false); }
+void PluginSessionIo::revoke() { fence_and_queue(TerminationIntent::revoke); }
+void PluginSessionIo::stop() { fence_and_queue(TerminationIntent::stop); }
 SessionState PluginSessionIo::state() const noexcept {
   return shared_->state.load();
 }
@@ -681,12 +710,9 @@ SessionError PluginSessionIo::error() const noexcept {
 std::uint64_t PluginSessionIo::stale_messages_dropped() const noexcept {
   return shared_->stale_drops.load();
 }
-QThread *PluginSessionIo::io_thread() const noexcept {
-  std::lock_guard lock(runtime_->mutex);
-  return runtime_->thread;
-}
-
-void PluginSessionIo::fence_and_queue(bool revoke, bool destruction) {
+void PluginSessionIo::fence_and_queue(TerminationIntent intent) {
+  const bool revoke = intent == TerminationIntent::revoke;
+  const bool destruction = intent == TerminationIntent::destroy;
   std::uint64_t epoch = 0;
   {
     std::lock_guard lock(shared_->mutex);
@@ -696,9 +722,7 @@ void PluginSessionIo::fence_and_queue(bool revoke, bool destruction) {
     ++shared_->epoch;
     epoch = shared_->epoch;
     shared_->outbound.clear();
-    shared_->outbound_in_flight = 0;
-    shared_->outbound_bytes = 0;
-    shared_->outbound_descriptors = 0;
+    shared_->outbound_usage = {};
     shared_->pump_queued = false;
     if (revoke)
       shared_->error.store(SessionError::none);
@@ -728,8 +752,8 @@ void PluginSessionIo::fence_and_queue(bool revoke, bool destruction) {
         invocation_failed_locked();
         return;
       }
-    if (!queue_worker([epoch, destruction](Worker &worker) {
-          worker.stop(epoch, destruction);
+    if (!queue_worker([epoch, intent](Worker &worker) {
+          worker.stop(epoch, intent);
         })) {
       std::lock_guard lock(shared_->mutex);
       invocation_failed_locked();
@@ -739,14 +763,16 @@ void PluginSessionIo::fence_and_queue(bool revoke, bool destruction) {
 }
 
 bool PluginSessionIo::schedule_pump_locked(std::uint64_t epoch) {
-  if (shared_->pump_queued)
+  const auto claim = claim_pump_locked(*shared_, epoch);
+  if (!claim.accepted)
+    return false;
+  if (!claim.ticket)
     return true;
-  shared_->pump_queued = true;
-  const auto ticket = ++shared_->pump_ticket;
+  const auto ticket = *claim.ticket;
   if (queue_worker(
           [epoch, ticket](Worker &worker) { worker.pump(epoch, ticket); }))
     return true;
-  shared_->pump_queued = false;
+  rollback_pump_locked(*shared_, ticket);
   invocation_failed_locked();
   return false;
 }
@@ -756,9 +782,7 @@ void PluginSessionIo::invocation_failed_locked() noexcept {
   ++shared_->epoch;
   shared_->pump_queued = false;
   shared_->outbound.clear();
-  shared_->outbound_in_flight = 0;
-  shared_->outbound_bytes = 0;
-  shared_->outbound_descriptors = 0;
+  shared_->outbound_usage = {};
   shared_->error.store(SessionError::channel_failed);
   shared_->state.store(SessionState::failed);
   std::lock_guard runtime_lock(runtime_->mutex);
@@ -816,6 +840,12 @@ void PluginSessionIoTestAccess::fail_next_invocation(
     PluginSessionIo &session) noexcept {
   std::lock_guard lock(session.runtime_->mutex);
   session.runtime_->fail_next_invocation = true;
+}
+
+QThread *PluginSessionIoTestAccess::io_thread(
+    PluginSessionIo &session) noexcept {
+  std::lock_guard lock(session.runtime_->mutex);
+  return session.runtime_->thread;
 }
 #endif
 

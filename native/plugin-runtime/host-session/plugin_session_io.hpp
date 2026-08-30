@@ -184,11 +184,11 @@ public:
   [[nodiscard]] SessionState state() const noexcept;
   [[nodiscard]] SessionError error() const noexcept;
   [[nodiscard]] std::uint64_t stale_messages_dropped() const noexcept;
-  [[nodiscard]] QThread *io_thread() const noexcept;
 
 private:
+  enum class TerminationIntent : std::uint8_t { revoke, stop, destroy };
   class Worker;
-  void fence_and_queue(bool revoke, bool destruction);
+  void fence_and_queue(TerminationIntent intent);
   [[nodiscard]] bool schedule_pump_locked(std::uint64_t epoch);
   template <typename Operation>
   [[nodiscard]] bool queue_worker(Operation operation);
@@ -210,6 +210,7 @@ class PluginSessionIoTestAccess final {
 public:
   static void fail_next_thread_start() noexcept;
   static void fail_next_invocation(PluginSessionIo &session) noexcept;
+  [[nodiscard]] static QThread *io_thread(PluginSessionIo &session) noexcept;
 };
 #endif
 

@@ -46,6 +46,29 @@ void await_without_ui_dispatch(Predicate predicate, std::string_view failure) {
   require(predicate(), failure);
 }
 
+void await_state(PluginSessionIo &session, SessionState expected,
+                 std::string_view failure) {
+  await([&] { return session.state() == expected; }, failure);
+}
+
+void await_state_without_ui(PluginSessionIo &session, SessionState expected,
+                            std::string_view failure) {
+  await_without_ui_dispatch(
+      [&] { return session.state() == expected; }, failure);
+}
+
+void start_and_await_running(PluginSessionIo &session,
+                             std::string_view failure) {
+  session.start();
+  await_state(session, SessionState::running, failure);
+}
+
+void start_and_await_running_without_ui(PluginSessionIo &session,
+                                        std::string_view failure) {
+  session.start();
+  await_state_without_ui(session, SessionState::running, failure);
+}
+
 SessionToken token(std::uint64_t generation = 7, std::uint64_t nonce = 11) {
   return {.plugin_id = "org.omarchy.fixture",
           .revision_sha256 = std::string(64, 'a'),
@@ -116,6 +139,11 @@ struct ChannelState {
   bool terminate_entered = false;
   bool release_terminate = false;
   std::chrono::milliseconds receive_cost{};
+};
+
+struct ChannelFixture {
+  std::shared_ptr<ChannelState> state = std::make_shared<ChannelState>();
+  std::shared_ptr<FakeClock> clock = std::make_shared<FakeClock>();
 };
 
 class FakeChannel final : public SessionChannel {
@@ -252,17 +280,14 @@ fake(const std::shared_ptr<ChannelState> &state,
 }
 
 void test_thread_and_ordering() {
-  auto state = std::make_shared<ChannelState>();
-  auto clock = std::make_shared<FakeClock>();
+  auto [state, clock] = ChannelFixture{};
   Observer observer;
   PluginSessionIo session(token(), fake(state), clock, &observer);
   const auto ui_thread = std::this_thread::get_id();
   require(session.enqueue(message(token(), 1)) &&
               session.enqueue(message(token(), 2)),
           "valid queued messages were rejected");
-  session.start();
-  await([&] { return session.state() == SessionState::running; },
-        "session did not become running");
+  start_and_await_running(session, "session did not become running");
   await(
       [&] {
         std::lock_guard lock(state->mutex);
@@ -285,8 +310,7 @@ void test_thread_and_ordering() {
 }
 
 void test_queue_bounds_and_fd_ownership() {
-  auto state = std::make_shared<ChannelState>();
-  auto clock = std::make_shared<FakeClock>();
+  auto [state, clock] = ChannelFixture{};
   SessionLimits limits;
   limits.maximum_queued_messages = 2;
   limits.maximum_queued_bytes = 4;
@@ -314,8 +338,7 @@ void test_queue_bounds_and_fd_ownership() {
            session.state() == SessionState::revoked) &&
               session.error() == SessionError::none,
           "revocation published state before clearing the prior error");
-  await([&] { return session.state() == SessionState::revoked; },
-        "revoke did not complete");
+  await_state(session, SessionState::revoked, "revoke did not complete");
   struct stat after_clear{};
   const bool same_descriptor =
       ::fstat(transferred, &after_clear) == 0 &&
@@ -327,30 +350,27 @@ void test_queue_bounds_and_fd_ownership() {
 }
 
 void test_deadline_is_aggregate() {
-  auto state = std::make_shared<ChannelState>();
-  auto clock = std::make_shared<FakeClock>();
+  auto [state, clock] = ChannelFixture{};
   SessionLimits limits;
   limits.startup_timeout = std::chrono::milliseconds(50);
   PluginSessionIo session(token(),
                           fake(state, clock, std::chrono::milliseconds(50)),
                           clock, nullptr, limits);
   session.start();
-  await([&] { return session.state() == SessionState::failed; },
-        "expired aggregate startup deadline was accepted");
+  await_state(session, SessionState::failed,
+              "expired aggregate startup deadline was accepted");
   require(session.error() == SessionError::startup_deadline_expired,
           "deadline failure was not classified");
 }
 
 void test_limits_and_deadline_overflow_are_rejected() {
-  auto state = std::make_shared<ChannelState>();
-  auto clock = std::make_shared<FakeClock>();
+  auto [state, clock] = ChannelFixture{};
   SessionLimits limits;
   limits.maximum_queued_bytes = SessionLimits::kMaximumBytes + 1;
   PluginSessionIo oversized(token(), fake(state), clock, nullptr, limits);
   oversized.start();
-  await_without_ui_dispatch(
-      [&] { return oversized.state() == SessionState::failed; },
-      "hard queue ceiling was not rejected");
+  await_state_without_ui(oversized, SessionState::failed,
+                         "hard queue ceiling was not rejected");
   require(oversized.error() == SessionError::invalid_configuration,
           "hard queue ceiling failure was misclassified");
 
@@ -360,9 +380,8 @@ void test_limits_and_deadline_overflow_are_rejected() {
                       std::chrono::milliseconds(1));
   PluginSessionIo overflow(token(), fake(overflow_state), overflow_clock);
   overflow.start();
-  await_without_ui_dispatch(
-      [&] { return overflow.state() == SessionState::failed; },
-      "overflowing absolute deadline was admitted");
+  await_state_without_ui(overflow, SessionState::failed,
+                         "overflowing absolute deadline was admitted");
   require(overflow.error() == SessionError::invalid_configuration,
           "overflowing deadline failure was misclassified");
 }
@@ -372,16 +391,14 @@ void test_null_channel_and_no_start_are_safe() {
   {
     PluginSessionIo session(token(), nullptr, clock);
     session.stop();
-    await_without_ui_dispatch(
-        [&] { return session.state() == SessionState::stopped; },
-        "null-channel stop did not complete safely");
+    await_state_without_ui(session, SessionState::stopped,
+                           "null-channel stop did not complete safely");
   }
   {
     PluginSessionIo session(token(), nullptr, clock);
     session.revoke();
-    await_without_ui_dispatch(
-        [&] { return session.state() == SessionState::revoked; },
-        "null-channel revoke did not complete safely");
+    await_state_without_ui(session, SessionState::revoked,
+                           "null-channel revoke did not complete safely");
   }
 
   auto state = std::make_shared<ChannelState>();
@@ -397,8 +414,7 @@ void test_null_channel_and_no_start_are_safe() {
 }
 
 void test_observer_affinity_mismatch_is_rejected() {
-  auto state = std::make_shared<ChannelState>();
-  auto clock = std::make_shared<FakeClock>();
+  auto [state, clock] = ChannelFixture{};
   QThread observer_thread;
   observer_thread.start();
   Observer observer;
@@ -406,9 +422,8 @@ void test_observer_affinity_mismatch_is_rejected() {
   {
     PluginSessionIo session(token(), fake(state), clock, &observer);
     session.start();
-    await_without_ui_dispatch(
-        [&] { return session.state() == SessionState::failed; },
-        "cross-thread observer affinity was accepted");
+    await_state_without_ui(session, SessionState::failed,
+                           "cross-thread observer affinity was accepted");
     require(session.error() == SessionError::invalid_configuration,
             "observer affinity failure was misclassified");
   }
@@ -423,17 +438,14 @@ void test_observer_affinity_mismatch_is_rejected() {
 }
 
 void test_inbound_delivery_queue_is_bounded() {
-  auto state = std::make_shared<ChannelState>();
-  auto clock = std::make_shared<FakeClock>();
+  auto [state, clock] = ChannelFixture{};
   Observer observer;
   SessionLimits limits;
   limits.maximum_queued_messages = 1;
   limits.maximum_pump_batch = 2;
   PluginSessionIo session(token(), fake(state), clock, &observer, limits);
-  session.start();
-  await_without_ui_dispatch(
-      [&] { return session.state() == SessionState::running; },
-      "session did not start for delivery-bound test");
+  start_and_await_running_without_ui(
+      session, "session did not start for delivery-bound test");
   {
     std::lock_guard lock(state->mutex);
     state->incoming.push_back(
@@ -442,22 +454,18 @@ void test_inbound_delivery_queue_is_bounded() {
         {.status = ReceiveStatus::message, .message = message(token(), 2)});
   }
   session.wake();
-  await_without_ui_dispatch(
-      [&] { return session.state() == SessionState::failed; },
-      "an unbounded UI delivery queue was admitted");
+  await_state_without_ui(session, SessionState::failed,
+                         "an unbounded UI delivery queue was admitted");
   require(session.error() == SessionError::queue_limit,
           "delivery backpressure was not classified");
   QCoreApplication::processEvents();
 }
 
 void test_stale_drop_and_delivery() {
-  auto state = std::make_shared<ChannelState>();
-  auto clock = std::make_shared<FakeClock>();
+  auto [state, clock] = ChannelFixture{};
   Observer observer;
   PluginSessionIo session(token(), fake(state), clock, &observer);
-  session.start();
-  await([&] { return session.state() == SessionState::running; },
-        "session did not start for inbound test");
+  start_and_await_running(session, "session did not start for inbound test");
   {
     std::lock_guard lock(state->mutex);
     state->incoming.push_back({.status = ReceiveStatus::message,
@@ -477,14 +485,11 @@ void test_stale_drop_and_delivery() {
 }
 
 void test_queued_delivery_is_fenced_before_revoke() {
-  auto state = std::make_shared<ChannelState>();
-  auto clock = std::make_shared<FakeClock>();
+  auto [state, clock] = ChannelFixture{};
   Observer observer;
   PluginSessionIo session(token(), fake(state), clock, &observer);
-  session.start();
-  await_without_ui_dispatch(
-      [&] { return session.state() == SessionState::running; },
-      "session did not start for delivery-fence test");
+  start_and_await_running_without_ui(
+      session, "session did not start for delivery-fence test");
   std::size_t before = 0;
   {
     std::lock_guard lock(state->mutex);
@@ -503,13 +508,12 @@ void test_queued_delivery_is_fenced_before_revoke() {
   QCoreApplication::processEvents();
   require(observer.received.empty(),
           "a pre-revoke queued delivery crossed the epoch fence");
-  await([&] { return session.state() == SessionState::revoked; },
-        "delivery-fence revoke did not terminate");
+  await_state(session, SessionState::revoked,
+              "delivery-fence revoke did not terminate");
 }
 
 void test_enqueue_is_fenced_synchronously() {
-  auto state = std::make_shared<ChannelState>();
-  auto clock = std::make_shared<FakeClock>();
+  auto [state, clock] = ChannelFixture{};
   PluginSessionIo session(token(), fake(state), clock);
   require(session.enqueue(message(token(), 1)),
           "pre-start enqueue fixture was rejected");
@@ -517,22 +521,18 @@ void test_enqueue_is_fenced_synchronously() {
   require(!session.enqueue(message(token(), 2)),
           "enqueue raced through the synchronous revoke fence");
   session.start();
-  await_without_ui_dispatch(
-      [&] { return session.state() == SessionState::revoked; },
-      "queued-work revoke did not complete");
+  await_state_without_ui(session, SessionState::revoked,
+                         "queued-work revoke did not complete");
   std::lock_guard lock(state->mutex);
   require(state->sent_sequences.empty(),
           "queued work was sent after the revoke fence");
 }
 
 void test_pump_requests_are_coalesced_and_batched() {
-  auto state = std::make_shared<ChannelState>();
-  auto clock = std::make_shared<FakeClock>();
+  auto [state, clock] = ChannelFixture{};
   PluginSessionIo session(token(), fake(state), clock);
-  session.start();
-  await_without_ui_dispatch(
-      [&] { return session.state() == SessionState::running; },
-      "session did not start for coalescing test");
+  start_and_await_running_without_ui(
+      session, "session did not start for coalescing test");
   for (int iteration = 0; iteration < 100; ++iteration) {
     std::size_t before = 0;
     {
@@ -564,14 +564,12 @@ void test_pump_requests_are_coalesced_and_batched() {
         "coalesced wake was not serviced exactly once");
   }
   session.stop();
-  await_without_ui_dispatch(
-      [&] { return session.state() == SessionState::stopped; },
-      "coalescing test did not stop");
+  await_state_without_ui(session, SessionState::stopped,
+                         "coalescing test did not stop");
 }
 
 void test_receive_is_fair_under_sustained_outbound() {
-  auto state = std::make_shared<ChannelState>();
-  auto clock = std::make_shared<FakeClock>();
+  auto [state, clock] = ChannelFixture{};
   Observer observer;
   SessionLimits limits;
   limits.maximum_pump_batch = 4;
@@ -597,8 +595,7 @@ void test_receive_is_fair_under_sustained_outbound() {
 }
 
 void test_would_block_makes_no_progress_and_keeps_fd_owned() {
-  auto state = std::make_shared<ChannelState>();
-  auto clock = std::make_shared<FakeClock>();
+  auto [state, clock] = ChannelFixture{};
   state->send_status = SendStatus::would_block;
   PluginSessionIo session(token(), fake(state), clock);
   int descriptors[2]{};
@@ -640,16 +637,13 @@ void test_would_block_makes_no_progress_and_keeps_fd_owned() {
 }
 
 void test_revoke_and_teardown_are_deterministic() {
-  auto state = std::make_shared<ChannelState>();
-  auto clock = std::make_shared<FakeClock>();
+  auto [state, clock] = ChannelFixture{};
   {
     PluginSessionIo session(token(), fake(state), clock);
-    session.start();
-    await([&] { return session.state() == SessionState::running; },
-          "session did not start for revoke test");
+    start_and_await_running(session, "session did not start for revoke test");
     session.revoke();
-    await([&] { return session.state() == SessionState::revoked; },
-          "session did not enter revoked state");
+    await_state(session, SessionState::revoked,
+                "session did not enter revoked state");
     std::lock_guard lock(state->mutex);
     const auto revoke =
         std::find(state->calls.begin(), state->calls.end(), "revoke");
@@ -665,16 +659,15 @@ void test_revoke_and_teardown_are_deterministic() {
 }
 
 void test_destructor_stops_live_channel() {
-  auto state = std::make_shared<ChannelState>();
-  auto clock = std::make_shared<FakeClock>();
+  auto [state, clock] = ChannelFixture{};
   std::atomic<bool> thread_destroyed = false;
   {
     PluginSessionIo session(token(), fake(state), clock);
-    QObject::connect(session.io_thread(), &QObject::destroyed,
+    QObject::connect(PluginSessionIoTestAccess::io_thread(session),
+                     &QObject::destroyed,
                      [&] { thread_destroyed.store(true); });
-    session.start();
-    await([&] { return session.state() == SessionState::running; },
-          "session did not start for destruction test");
+    start_and_await_running(session,
+                            "session did not start for destruction test");
   }
   await_without_ui_dispatch(
       [&] {
@@ -686,14 +679,11 @@ void test_destructor_stops_live_channel() {
 }
 
 void test_destructor_does_not_wait_for_termination() {
-  auto state = std::make_shared<ChannelState>();
-  auto clock = std::make_shared<FakeClock>();
+  auto [state, clock] = ChannelFixture{};
   {
     PluginSessionIo session(token(), fake(state), clock);
-    session.start();
-    await_without_ui_dispatch(
-        [&] { return session.state() == SessionState::running; },
-        "session did not start for asynchronous teardown test");
+    start_and_await_running_without_ui(
+        session, "session did not start for asynchronous teardown test");
     std::lock_guard lock(state->mutex);
     state->block_terminate = true;
   }
@@ -717,16 +707,13 @@ void test_destructor_does_not_wait_for_termination() {
 }
 
 void test_public_stop_is_ordered() {
-  auto state = std::make_shared<ChannelState>();
-  auto clock = std::make_shared<FakeClock>();
+  auto [state, clock] = ChannelFixture{};
   PluginSessionIo session(token(), fake(state), clock);
-  session.start();
-  await_without_ui_dispatch(
-      [&] { return session.state() == SessionState::running; },
-      "session did not start for stop test");
+  start_and_await_running_without_ui(session,
+                                     "session did not start for stop test");
   session.stop();
-  await_without_ui_dispatch(
-      [&] { return session.state() == SessionState::stopped; },
+  await_state_without_ui(
+      session, SessionState::stopped,
       "public stop did not reach a deterministic terminal state");
   std::lock_guard lock(state->mutex);
   require(state->terminate_count == 1,
@@ -734,16 +721,13 @@ void test_public_stop_is_ordered() {
 }
 
 void test_revocation_preempts_remaining_receive_batch() {
-  auto state = std::make_shared<ChannelState>();
-  auto clock = std::make_shared<FakeClock>();
+  auto [state, clock] = ChannelFixture{};
   SessionLimits limits;
   limits.maximum_pump_batch = SessionLimits::kMaximumPumpBatch;
   limits.io_timeout = SessionLimits::kMaximumIoTimeout;
   PluginSessionIo session(token(), fake(state), clock, nullptr, limits);
-  session.start();
-  await_without_ui_dispatch(
-      [&] { return session.state() == SessionState::running; },
-      "revocation-latency fixture did not start");
+  start_and_await_running_without_ui(
+      session, "revocation-latency fixture did not start");
   std::size_t before = 0;
   {
     std::lock_guard lock(state->mutex);
@@ -768,17 +752,15 @@ void test_revocation_preempts_remaining_receive_batch() {
     state->release_receive = true;
     state->condition.notify_all();
   }
-  await_without_ui_dispatch(
-      [&] { return session.state() == SessionState::revoked; },
-      "revocation remained behind the receive batch");
+  await_state_without_ui(session, SessionState::revoked,
+                         "revocation remained behind the receive batch");
   std::lock_guard lock(state->mutex);
   require(state->receive_calls == before + 1,
           "pump performed receive work after the synchronous revoke fence");
 }
 
 void test_stale_blocked_send_cannot_override_revoke() {
-  auto state = std::make_shared<ChannelState>();
-  auto clock = std::make_shared<FakeClock>();
+  auto [state, clock] = ChannelFixture{};
   SessionLimits limits;
   limits.io_timeout = std::chrono::milliseconds(10);
   {
@@ -804,8 +786,8 @@ void test_stale_blocked_send_cannot_override_revoke() {
     state->release_send = true;
     state->condition.notify_all();
   }
-  await_without_ui_dispatch(
-      [&] { return session.state() == SessionState::revoked; },
+  await_state_without_ui(
+      session, SessionState::revoked,
       "stale expired/fatal send suppressed queued revoke");
   std::lock_guard lock(state->mutex);
   require(session.error() == SessionError::none && state->revoke_count == 1 &&
@@ -819,8 +801,7 @@ void test_stale_blocked_send_cannot_override_revoke() {
 }
 
 void test_stale_blocked_receive_cannot_override_revoke() {
-  auto state = std::make_shared<ChannelState>();
-  auto clock = std::make_shared<FakeClock>();
+  auto [state, clock] = ChannelFixture{};
   SessionLimits limits;
   limits.io_timeout = std::chrono::milliseconds(10);
   {
@@ -845,8 +826,8 @@ void test_stale_blocked_receive_cannot_override_revoke() {
     state->release_receive = true;
     state->condition.notify_all();
   }
-  await_without_ui_dispatch(
-      [&] { return session.state() == SessionState::revoked; },
+  await_state_without_ui(
+      session, SessionState::revoked,
       "stale expired/fatal receive suppressed queued revoke");
   std::lock_guard lock(state->mutex);
   require(session.error() == SessionError::none && state->revoke_count == 1 &&
@@ -862,8 +843,7 @@ void test_stale_blocked_receive_cannot_override_revoke() {
 void test_in_flight_send_remains_inside_aggregate_queue_limit() {
   enum class Ceiling { messages, bytes, descriptors };
   const auto exercise = [](Ceiling ceiling) {
-    auto state = std::make_shared<ChannelState>();
-    auto clock = std::make_shared<FakeClock>();
+    auto [state, clock] = ChannelFixture{};
     SessionLimits limits;
     limits.maximum_queued_messages = ceiling == Ceiling::messages ? 1 : 2;
     limits.maximum_queued_bytes = ceiling == Ceiling::bytes ? 1 : 2;
@@ -930,9 +910,8 @@ void test_in_flight_send_remains_inside_aggregate_queue_limit() {
         },
         "would-block in-flight message was not retried exactly once");
     session.stop();
-    await_without_ui_dispatch(
-        [&] { return session.state() == SessionState::stopped; },
-        "in-flight queue fixture did not stop");
+    await_state_without_ui(session, SessionState::stopped,
+                           "in-flight queue fixture did not stop");
     if (ceiling == Ceiling::descriptors) {
       ::close(first_pipe[1]);
       ::close(second_pipe[1]);
@@ -944,17 +923,14 @@ void test_in_flight_send_remains_inside_aggregate_queue_limit() {
 }
 
 void test_pump_uses_one_absolute_deadline() {
-  auto state = std::make_shared<ChannelState>();
-  auto clock = std::make_shared<FakeClock>();
+  auto [state, clock] = ChannelFixture{};
   SessionLimits limits;
   limits.maximum_pump_batch = 4;
   limits.io_timeout = std::chrono::milliseconds(10);
   state->receive_cost = std::chrono::milliseconds(1);
   PluginSessionIo session(token(), fake(state, clock), clock, nullptr, limits);
-  session.start();
-  await_without_ui_dispatch(
-      [&] { return session.state() == SessionState::running; },
-      "aggregate-pump-deadline fixture did not start");
+  start_and_await_running_without_ui(
+      session, "aggregate-pump-deadline fixture did not start");
   std::size_t before = 0;
   {
     std::lock_guard lock(state->mutex);
@@ -978,17 +954,14 @@ void test_pump_uses_one_absolute_deadline() {
 }
 
 void test_queue_limit_is_aggregate_across_directions() {
-  auto state = std::make_shared<ChannelState>();
-  auto clock = std::make_shared<FakeClock>();
+  auto [state, clock] = ChannelFixture{};
   Observer observer;
   SessionLimits limits;
   limits.maximum_queued_messages = 1;
   limits.maximum_pump_batch = 2;
   PluginSessionIo session(token(), fake(state), clock, &observer, limits);
-  session.start();
-  await_without_ui_dispatch(
-      [&] { return session.state() == SessionState::running; },
-      "aggregate-queue fixture did not start");
+  start_and_await_running_without_ui(
+      session, "aggregate-queue fixture did not start");
   std::size_t before = 0;
   {
     std::lock_guard lock(state->mutex);
@@ -1017,7 +990,7 @@ void test_forced_start_and_invoke_failures_are_reaped() {
     PluginSessionIo session(token(), fake(start_state), clock);
     require(session.state() == SessionState::failed &&
                 session.error() == SessionError::channel_failed &&
-                session.io_thread() == nullptr,
+                PluginSessionIoTestAccess::io_thread(session) == nullptr,
             "forced thread-start failure was not fail-closed");
   }
   require(start_state->destroy_count == 1,
@@ -1027,14 +1000,12 @@ void test_forced_start_and_invoke_failures_are_reaped() {
   std::atomic<bool> thread_destroyed = false;
   {
     PluginSessionIo session(token(), fake(invoke_state), clock);
-    auto *thread = session.io_thread();
+    auto *thread = PluginSessionIoTestAccess::io_thread(session);
     require(thread != nullptr, "invoke-failure fixture has no thread");
     QObject::connect(thread, &QObject::destroyed,
                      [&] { thread_destroyed.store(true); });
-    session.start();
-    await_without_ui_dispatch(
-        [&] { return session.state() == SessionState::running; },
-        "invoke-failure fixture did not start");
+    start_and_await_running_without_ui(
+        session, "invoke-failure fixture did not start");
     PluginSessionIoTestAccess::fail_next_invocation(session);
     session.stop();
     require(session.state() == SessionState::failed &&
@@ -1054,17 +1025,15 @@ void test_forced_start_and_invoke_failures_are_reaped() {
 }
 
 void test_observer_move_detaches_before_affinity_change() {
-  auto state = std::make_shared<ChannelState>();
-  auto clock = std::make_shared<FakeClock>();
+  auto [state, clock] = ChannelFixture{};
   QThread observer_thread;
   observer_thread.start();
   Observer observer;
   {
     PluginSessionIo session(token(), fake(state), clock, &observer);
     observer.moveToThread(&observer_thread);
-    session.start();
-    await([&] { return session.state() == SessionState::running; },
-          "session failed after safely detaching a moved observer");
+    start_and_await_running(
+        session, "session failed after safely detaching a moved observer");
     require(observer.states.empty() && observer.received.empty(),
             "callbacks followed an observer across an affinity change");
   }
