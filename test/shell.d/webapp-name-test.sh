@@ -229,3 +229,16 @@ ln -s "$tmp_dir/elsewhere/Linked.desktop" "$apps_dir/Linked.desktop"
 HOME="$tmp_dir/home" PATH="$ROOT/bin:$PATH" bash -c "$webapp_menu_guard" ||
   fail "the Remove menu sees a launcher that is a symlink"
 pass "the Remove menu sees a symlinked launcher"
+
+# A predicate answers with its exit status, so a launcher it cannot read is not
+# something to say anything about: omarchy-webapp-present is run directly as
+# `omarchy webapp present`, where find's silence would not cover grep's.
+rm -rf "$apps_dir"
+mkdir -p "$apps_dir"
+printf '[Desktop Entry]\nExec=foot\n' >"$apps_dir/unreadable.desktop"
+chmod 000 "$apps_dir/unreadable.desktop"
+guard_noise=$(HOME="$tmp_dir/home" "$ROOT/bin/omarchy-webapp-present" 2>&1 >/dev/null || true)
+chmod 644 "$apps_dir/unreadable.desktop"
+[[ -n $guard_noise ]] &&
+  fail "omarchy-webapp-present stays quiet about a launcher it cannot read" "$guard_noise"
+pass "omarchy-webapp-present stays quiet about a launcher it cannot read"
