@@ -61,6 +61,7 @@ if(TARGET omarchy-plugin-host-session)
     broker_session_settlement.cpp
     plugin_activation_coordinator.cpp
     plugin_permission_controller.cpp
+    production_plugin_catalog.cpp
     production_plugin_runtime_root.cpp
     production_session_runtime_factory.cpp
     plugin_session.cpp
@@ -124,6 +125,17 @@ if(BUILD_TESTING)
   )
 
   if(TARGET omarchy-plugin-authenticated-session)
+    add_executable(omarchy-plugin-production-catalog-test
+      production_plugin_catalog.cpp
+      production_plugin_catalog_test.cpp)
+    omarchy_plugin_target_defaults(omarchy-plugin-production-catalog-test)
+    target_link_libraries(omarchy-plugin-production-catalog-test PRIVATE
+      omarchy-plugin-activation-snapshot)
+    add_test(NAME plugin-production-catalog
+      COMMAND omarchy-plugin-production-catalog-test)
+    set_tests_properties(plugin-production-catalog PROPERTIES
+      TIMEOUT 30 LABELS "unit;security;catalog;filesystem;adversarial")
+
     add_executable(omarchy-plugin-authenticated-session-adapter-test
       authenticated_session_channel.cpp
       broker_session_settlement.cpp

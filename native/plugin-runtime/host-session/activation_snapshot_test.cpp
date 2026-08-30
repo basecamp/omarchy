@@ -426,6 +426,55 @@ void every_authority_inode_must_be_distinct() {
   }
 }
 
+void inspected_activation_records_are_exact_and_pinned() {
+  {
+    TemporaryTree tree;
+    const int root = tree.open_directory(tree.activation());
+    auto inspected = host::inspect_activation_record(
+        root, "current", static_cast<std::uint32_t>(::getuid()));
+    ::close(root);
+    require(inspected && inspected->record().plugin_id == kPlugin &&
+                inspected->unchanged() &&
+                (::fcntl(inspected->descriptor(), F_GETFD) & FD_CLOEXEC) != 0,
+            "exact activation record inspection failed");
+    require(::chmod((tree.activation() / "current").c_str(), 0400) == 0 &&
+                !inspected->unchanged(),
+            "inspected activation record mutation was not detected");
+  }
+  {
+    TemporaryTree tree;
+    require(::chmod((tree.activation() / "current").c_str(), 0640) == 0,
+            "record mode mutation failed");
+    const int root = tree.open_directory(tree.activation());
+    require(!host::inspect_activation_record(
+                root, "current", static_cast<std::uint32_t>(::getuid())),
+            "non-0600 inspected activation record was accepted");
+    DescriptorVerifier verifier;
+    Authority authority;
+    const int revisions = tree.open_directory(tree.revisions());
+    const int state = tree.open_directory(tree.state());
+    host::ActivationSource source(root, revisions, state, verifier, authority,
+                                  {.device = 99, .inode = 99}, "plugin-state",
+                                  ::getuid());
+    ::close(revisions);
+    ::close(state);
+    require(source.load("current").error ==
+                host::ActivationError::record_untrusted,
+            "direct activation bypass accepted a non-0600 record");
+    ::close(root);
+  }
+  {
+    TemporaryTree tree;
+    std::filesystem::create_hard_link(tree.activation() / "current",
+                                      tree.activation() / "alias");
+    const int root = tree.open_directory(tree.activation());
+    require(!host::inspect_activation_record(
+                root, "current", static_cast<std::uint32_t>(::getuid())),
+            "hard-linked inspected activation record was accepted");
+    ::close(root);
+  }
+}
+
 void identity_policy_and_mode_mismatches_are_rejected() {
   {
     TemporaryTree tree;
@@ -552,6 +601,7 @@ int main() {
     symlinks_and_aliases_are_rejected();
     grant_authority_aliases_are_rejected();
     every_authority_inode_must_be_distinct();
+    inspected_activation_records_are_exact_and_pinned();
     identity_policy_and_mode_mismatches_are_rejected();
     std::cout << "activation snapshot tests passed\n";
     return 0;

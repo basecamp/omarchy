@@ -44,13 +44,21 @@ bool trusted_metadata(const struct stat &metadata, std::uint32_t trusted_uid,
          metadata.st_uid == trusted_uid && (metadata.st_mode & 0022) == 0;
 }
 
-bool unchanged(const struct stat &before, const struct stat &after) {
+bool unchanged_metadata(const struct stat &before, const struct stat &after) {
   return before.st_dev == after.st_dev && before.st_ino == after.st_ino &&
+         before.st_mode == after.st_mode && before.st_uid == after.st_uid &&
+         before.st_gid == after.st_gid && before.st_nlink == after.st_nlink &&
          before.st_size == after.st_size &&
          before.st_mtim.tv_sec == after.st_mtim.tv_sec &&
          before.st_mtim.tv_nsec == after.st_mtim.tv_nsec &&
          before.st_ctim.tv_sec == after.st_ctim.tv_sec &&
          before.st_ctim.tv_nsec == after.st_ctim.tv_nsec;
+}
+
+bool trusted_record_metadata(const struct stat &metadata,
+                             std::uint32_t trusted_uid) {
+  return S_ISREG(metadata.st_mode) && metadata.st_uid == trusted_uid &&
+         metadata.st_nlink == 1 && (metadata.st_mode & 07777) == 0600;
 }
 
 std::optional<OpenedRecord> read_record(int root_fd, std::string_view name,
@@ -66,7 +74,7 @@ std::optional<OpenedRecord> read_record(int root_fd, std::string_view name,
   OwnedDescriptor owned(fd);
   struct stat metadata{};
   if (::fstat(fd, &metadata) < 0 ||
-      !trusted_metadata(metadata, trusted_uid, S_IFREG)) {
+      !trusted_record_metadata(metadata, trusted_uid)) {
     error = ActivationError::record_untrusted;
     return std::nullopt;
   }
@@ -98,7 +106,7 @@ std::optional<OpenedRecord> read_record(int root_fd, std::string_view name,
   struct stat final_metadata{};
   if (bytes.size() != static_cast<std::size_t>(metadata.st_size) ||
       ::fstat(fd, &final_metadata) < 0 ||
-      !unchanged(metadata, final_metadata)) {
+      !unchanged_metadata(metadata, final_metadata)) {
     error = ActivationError::record_invalid;
     return std::nullopt;
   }
@@ -172,6 +180,61 @@ ActivationResult failure(ActivationError error) {
 }
 
 } // namespace
+
+InspectedActivationRecord::InspectedActivationRecord(
+    ActivationRecord record, OwnedDescriptor descriptor,
+    StableMetadata metadata) noexcept
+    : record_(std::move(record)), descriptor_(std::move(descriptor)),
+      metadata_(metadata) {}
+
+bool InspectedActivationRecord::unchanged() const noexcept {
+  struct stat current {};
+  return descriptor_ && ::fstat(descriptor_.get(), &current) == 0 &&
+         metadata_.device == static_cast<std::uint64_t>(current.st_dev) &&
+         metadata_.inode == static_cast<std::uint64_t>(current.st_ino) &&
+         metadata_.size == static_cast<std::uint64_t>(current.st_size) &&
+         metadata_.modified_seconds == current.st_mtim.tv_sec &&
+         metadata_.modified_nanoseconds == current.st_mtim.tv_nsec &&
+         metadata_.changed_seconds == current.st_ctim.tv_sec &&
+         metadata_.changed_nanoseconds == current.st_ctim.tv_nsec &&
+         metadata_.mode == static_cast<std::uint32_t>(current.st_mode) &&
+         metadata_.uid == static_cast<std::uint32_t>(current.st_uid) &&
+         metadata_.gid == static_cast<std::uint32_t>(current.st_gid) &&
+         metadata_.links == static_cast<std::uint64_t>(current.st_nlink);
+}
+
+std::optional<InspectedActivationRecord>
+inspect_activation_record(int activation_root_fd,
+                          std::string_view record_name,
+                          std::uint32_t trusted_uid) {
+  if (!component(record_name))
+    return std::nullopt;
+  ActivationError error = ActivationError::none;
+  auto opened = read_record(activation_root_fd, record_name, trusted_uid, error);
+  if (!opened)
+    return std::nullopt;
+  struct stat metadata {};
+  if (::fstat(opened->descriptor.get(), &metadata) < 0 ||
+      !trusted_record_metadata(metadata, trusted_uid))
+    return std::nullopt;
+  auto record = parse_record(opened->bytes);
+  if (!record)
+    return std::nullopt;
+  return InspectedActivationRecord(
+      std::move(*record), std::move(opened->descriptor),
+      InspectedActivationRecord::StableMetadata{
+          .device = static_cast<std::uint64_t>(metadata.st_dev),
+          .inode = static_cast<std::uint64_t>(metadata.st_ino),
+          .size = static_cast<std::uint64_t>(metadata.st_size),
+          .modified_seconds = metadata.st_mtim.tv_sec,
+          .modified_nanoseconds = metadata.st_mtim.tv_nsec,
+          .changed_seconds = metadata.st_ctim.tv_sec,
+          .changed_nanoseconds = metadata.st_ctim.tv_nsec,
+          .mode = static_cast<std::uint32_t>(metadata.st_mode),
+          .uid = static_cast<std::uint32_t>(metadata.st_uid),
+          .gid = static_cast<std::uint32_t>(metadata.st_gid),
+          .links = static_cast<std::uint64_t>(metadata.st_nlink)});
+}
 
 bool distinct_authority_objects(
     std::span<const FilesystemIdentity> identities) noexcept {

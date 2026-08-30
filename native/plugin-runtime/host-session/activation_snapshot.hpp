@@ -50,6 +50,56 @@ struct ActivationRecord {
   std::string state_directory;
 };
 
+// One exact, metadata-stable activation record selected relative to a trusted
+// root. Catalog/bootstrap code retains this object rather than recovering or
+// reopening a pathname after inspection.
+class InspectedActivationRecord final {
+public:
+  InspectedActivationRecord(InspectedActivationRecord &&) noexcept = default;
+  InspectedActivationRecord &
+  operator=(InspectedActivationRecord &&) noexcept = default;
+  InspectedActivationRecord(const InspectedActivationRecord &) = delete;
+  InspectedActivationRecord &
+  operator=(const InspectedActivationRecord &) = delete;
+
+  [[nodiscard]] const ActivationRecord &record() const noexcept {
+    return record_;
+  }
+  [[nodiscard]] int descriptor() const noexcept { return descriptor_.get(); }
+  [[nodiscard]] bool unchanged() const noexcept;
+
+private:
+  struct StableMetadata {
+    std::uint64_t device = 0;
+    std::uint64_t inode = 0;
+    std::uint64_t size = 0;
+    std::int64_t modified_seconds = 0;
+    std::int64_t modified_nanoseconds = 0;
+    std::int64_t changed_seconds = 0;
+    std::int64_t changed_nanoseconds = 0;
+    std::uint32_t mode = 0;
+    std::uint32_t uid = 0;
+    std::uint32_t gid = 0;
+    std::uint64_t links = 0;
+  };
+
+  InspectedActivationRecord(ActivationRecord record, OwnedDescriptor descriptor,
+                            StableMetadata metadata) noexcept;
+
+  ActivationRecord record_;
+  OwnedDescriptor descriptor_;
+  StableMetadata metadata_;
+
+  friend std::optional<InspectedActivationRecord>
+  inspect_activation_record(int, std::string_view, std::uint32_t);
+};
+
+// The borrowed root remains owned by the caller. The returned record FD is
+// close-on-exec and owned by the inspection for its complete lifetime.
+[[nodiscard]] std::optional<InspectedActivationRecord>
+inspect_activation_record(int activation_root_fd, std::string_view record_name,
+                          std::uint32_t trusted_uid);
+
 struct VerifiedRevision {
   plugins::manifest::ManifestV2 manifest;
   std::string tree_sha256;
