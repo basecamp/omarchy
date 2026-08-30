@@ -15,10 +15,14 @@ namespace omarchy::plugin_runtime::channel {
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
 class PluginSessionTestAccess;
 #endif
+class PluginActivationCoordinator;
 
 class AuthenticatedSessionRuntimeFactory {
 public:
   virtual ~AuthenticatedSessionRuntimeFactory() = default;
+  // Construction may allocate owned provider/runtime state, but it must not
+  // launch code or perform plugin-visible/system effects. Start and the
+  // authenticated generation fences are the first effect boundary.
   // Both descriptors name the exact activation objects and are borrowed only
   // for this call. A returned owner must hold any descriptor it retains. It
   // must also retain the exact supplied LiveGenerationState as long as an
@@ -82,13 +86,6 @@ struct SurfaceAttachResult final {
 // surface over that single authenticated render lane.
 class PluginSession final : private session::SessionObserver {
 public:
-  [[nodiscard]] static std::unique_ptr<PluginSession>
-  create(launcher::Supervisor supervisor, session::ActivationSnapshot snapshot,
-         AuthenticatedSessionRuntimeFactory &runtime_factory,
-         PluginSessionCreateError &error, PluginSessionEvents *events = nullptr,
-         session::SessionLimits limits = {},
-         SurfaceIntentSink *intent_sink = nullptr, QObject *parent = nullptr);
-
   ~PluginSession() override;
   PluginSession(const PluginSession &) = delete;
   PluginSession &operator=(const PluginSession &) = delete;
@@ -122,6 +119,13 @@ public:
   [[nodiscard]] const session::policy::GrantSnapshot &grants() const noexcept;
 
 private:
+  [[nodiscard]] static std::unique_ptr<PluginSession>
+  create(launcher::Supervisor supervisor, session::ActivationSnapshot snapshot,
+         AuthenticatedSessionRuntimeFactory &runtime_factory,
+         PluginSessionCreateError &error, PluginSessionEvents *events = nullptr,
+         session::SessionLimits limits = {},
+         SurfaceIntentSink *intent_sink = nullptr, QObject *parent = nullptr);
+
   class LiveAuthority;
   PluginSession(session::SessionToken token,
                 session::OwnedDescriptor activation_record,
@@ -164,11 +168,19 @@ private:
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
   friend class PluginSessionTestAccess;
 #endif
+  friend class PluginActivationCoordinator;
 };
 
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
 class PluginSessionTestAccess final {
 public:
+  [[nodiscard]] static std::unique_ptr<PluginSession>
+  create_from_activation(
+      launcher::Supervisor supervisor, session::ActivationSnapshot snapshot,
+      AuthenticatedSessionRuntimeFactory &runtime_factory,
+      PluginSessionCreateError &error, PluginSessionEvents *events = nullptr,
+      session::SessionLimits limits = {},
+      SurfaceIntentSink *intent_sink = nullptr, QObject *parent = nullptr);
   [[nodiscard]] static std::unique_ptr<PluginSession>
   create(session::SessionToken token,
          plugins::manifest::ManifestV2 manifest,

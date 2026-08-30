@@ -1,4 +1,5 @@
 #include "plugin_session.hpp"
+#include "plugin_activation_coordinator.hpp"
 #include "audit_store.hpp"
 #include "broker_runtime.hpp"
 #include "dynamic_broker_runtime.hpp"
@@ -6,6 +7,7 @@
 #include "structured_broker.hpp"
 
 #include <QCoreApplication>
+#include <QEvent>
 #include <QEventLoop>
 
 #include <fcntl.h>
@@ -195,6 +197,30 @@ public:
          std::shared_ptr<runtime::GestureEligibilityLatch>
              gesture_eligibility) override {
     ++calls;
+    if (on_create)
+      on_create();
+    if (throw_on_create)
+      throw std::runtime_error("injected runtime construction failure");
+    if (return_null)
+      return {};
+    const int marker = ::openat(revision_directory_fd, "d1-mode",
+                                O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (marker >= 0) {
+      std::array<char, 64> bytes{};
+      const auto count = ::read(marker, bytes.data(), bytes.size());
+      ::close(marker);
+      if (count > 0)
+        revision_mode.assign(bytes.data(), static_cast<std::size_t>(count));
+    }
+    const int state_marker = ::openat(private_state_directory_fd, "identity",
+                                      O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (state_marker >= 0) {
+      std::array<char, 64> bytes{};
+      const auto count = ::read(state_marker, bytes.data(), bytes.size());
+      ::close(state_marker);
+      if (count > 0)
+        state_identity.assign(bytes.data(), static_cast<std::size_t>(count));
+    }
     saw_manifest = verified_manifest.surface_names ==
                    std::vector<std::string>({"bar", "panel", "overlay"});
     descriptors_valid =
@@ -203,6 +229,7 @@ public:
     gesture_authority_valid = gesture_eligibility != nullptr;
     live_generation_valid =
         live_generation && live_generation->current(snapshot.binding);
+    last_live = live_generation;
     gesture_lifetime = gesture_eligibility;
     return std::make_unique<RuntimeOwner>(snapshot, nonce, destructions,
                                           std::move(live_generation),
@@ -212,11 +239,17 @@ public:
   std::shared_ptr<std::atomic<int>> destructions =
       std::make_shared<std::atomic<int>>(0);
   int calls = 0;
+  std::function<void()> on_create;
+  bool throw_on_create = false;
+  bool return_null = false;
+  std::string revision_mode;
+  std::string state_identity;
   bool saw_manifest = false;
   bool descriptors_valid = false;
   bool gesture_authority_valid = false;
   bool live_generation_valid = false;
   std::weak_ptr<runtime::GestureEligibilityLatch> gesture_lifetime;
+  std::shared_ptr<host::LiveGenerationState> last_live;
 };
 
 class ActivationFixture final {
@@ -276,6 +309,196 @@ private:
   std::filesystem::path root_;
   std::filesystem::path revision_;
   std::filesystem::path state_;
+};
+
+class CoordinatorFixture final {
+public:
+  CoordinatorFixture() {
+    std::string pattern = "/tmp/omarchy-product-activation-XXXXXX";
+    const char *created = ::mkdtemp(pattern.data());
+    require(created != nullptr, "cannot create coordinator fixture");
+    root_ = created;
+    activation_ = root_ / "activation";
+    revisions_ = root_ / "revisions";
+    state_ = root_ / "state";
+    authority_ = root_ / "authority";
+    revision_ = revisions_ / "installed";
+    state_directory_ = state_ / plugin_;
+    std::filesystem::create_directory(activation_);
+    std::filesystem::create_directory(revisions_);
+    std::filesystem::create_directory(state_);
+    std::filesystem::create_directory(authority_);
+    std::filesystem::copy(COORDINATOR_REVISION_FIXTURE, revision_,
+                          std::filesystem::copy_options::recursive);
+    std::ofstream(revision_ / "d1-mode") << "session-happy\n";
+    for (const auto &entry : std::filesystem::recursive_directory_iterator(
+             revision_)) {
+      const mode_t mode = entry.is_directory() ? 0555 : 0444;
+      require(::chmod(entry.path().c_str(), mode) == 0,
+              "cannot make verified revision immutable");
+    }
+    require(::chmod(revision_.c_str(), 0555) == 0,
+            "cannot make revision root immutable");
+    std::filesystem::create_directory(state_directory_);
+    std::ofstream(state_directory_ / "identity") << "pinned\n";
+    require(::chmod(authority_.c_str(), 0700) == 0 &&
+                ::chmod(state_directory_.c_str(), 0700) == 0,
+            "cannot secure coordinator authority roots");
+
+    activation_fd_ = open_directory(activation_);
+    revisions_fd_ = open_directory(revisions_);
+    state_fd_ = open_directory(state_);
+    authority_fd_ = open_directory(authority_);
+    store_ = host::AuthorityStore::open(
+        authority_fd_, ::getuid(), permissions::PluginId(plugin_));
+    require(store_ != nullptr, "cannot open coordinator authority store");
+    const int revision_fd = open_directory(revision_);
+    host::DescriptorRevisionVerifier verifier;
+    verified_ = verifier.verify_open_revision(revision_fd);
+    ::close(revision_fd);
+    require(verified_ && verified_->manifest.id == plugin_,
+            "cannot descriptor-verify coordinator fixture");
+  }
+
+  ~CoordinatorFixture() {
+    store_.reset();
+    for (const int fd : {activation_fd_, revisions_fd_, state_fd_, authority_fd_})
+      if (fd >= 0)
+        ::close(fd);
+    for (const auto &entry : std::filesystem::recursive_directory_iterator(
+             revisions_))
+      if (entry.is_directory())
+        static_cast<void>(::chmod(entry.path().c_str(), 0755));
+    static_cast<void>(::chmod(revision_.c_str(), 0755));
+    std::error_code ignored;
+    std::filesystem::remove_all(root_, ignored);
+  }
+
+  policy::GrantSnapshot snapshot(std::uint64_t generation) const {
+    policy::GrantSnapshot value;
+    value.requests =
+        permissions::requests_from_manifest(verified_->manifest);
+    value.binding = {
+        .plugin = permissions::PluginId(plugin_),
+        .revision = permissions::Digest(verified_->tree_sha256),
+        .policy_fingerprint = permissions::Digest(
+            permissions::policy_request_fingerprint(value.requests)),
+        .generation = generation};
+    value.source_request_fingerprint =
+        permissions::Digest(verified_->request_sha256);
+    for (const auto &request : value.requests.values())
+      value.grants.push_back({.capability = request.capability,
+                              .scope = request.scope,
+                              .state = permissions::GrantState::granted,
+                              .epoch = generation});
+    return value;
+  }
+
+  policy::GrantSnapshot publish(std::uint64_t generation,
+                                std::uint64_t sequence) {
+    auto value = snapshot(generation);
+    require(store_->publish_candidate(*verified_, value, sequence, definitions_,
+                                      {}) ==
+                host::AuthorityMutationResult::applied,
+            "cannot publish coordinator candidate");
+    return value;
+  }
+
+  void promote(const policy::GrantSnapshot &value, std::uint64_t sequence) {
+    require(store_->promote_candidate(value.binding, sequence) ==
+                host::AuthorityMutationResult::applied,
+            "cannot promote coordinator candidate");
+  }
+
+  void record(std::uint64_t generation,
+              std::string revision_sha256 = {}) const {
+    if (revision_sha256.empty())
+      revision_sha256 = verified_->tree_sha256;
+    const auto bytes =
+        "format=omarchy-plugin-activation-v1\nplugin=" + plugin_ +
+        "\nrevision-directory=installed\nrevision-sha256=" + revision_sha256 +
+        "\nstate-directory=" + plugin_ +
+        "\ngeneration=" + std::to_string(generation) + "\n";
+    std::ofstream file(activation_ / "current", std::ios::trunc);
+    file << bytes;
+    file.close();
+    require(::chmod((activation_ / "current").c_str(), 0600) == 0,
+            "cannot secure activation record");
+  }
+
+  std::unique_ptr<channel::PluginActivationCoordinator>
+  coordinator(RuntimeFactory &runtime_factory, std::shared_ptr<Scope> scope,
+              std::string expected_plugin = {}) {
+    if (expected_plugin.empty())
+      expected_plugin = plugin_;
+    auto value = std::make_unique<channel::PluginActivationCoordinator>(
+        activation_fd_, revisions_fd_, state_fd_, *store_,
+        permissions::PluginId(expected_plugin), ::getuid(), runtime_factory);
+    channel::PluginActivationCoordinatorTestAccess::set_supervisor_factory(
+        *value, [scope = std::move(scope)] {
+          return launcher::Supervisor::forTestOnly(
+              FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, scope);
+        });
+    return value;
+  }
+
+  void corrupt_active() {
+    const auto authority_state = store_->read_slots();
+    require(authority_state && authority_state->active,
+            "active coordinator slot missing");
+    const auto file = authority_ /
+        ("grant-" +
+         std::string(authority_state->active->snapshot_digest.view()));
+    std::fstream stream(file, std::ios::in | std::ios::out | std::ios::binary);
+    stream.put('X');
+  }
+
+  void replace_selected_paths() {
+    const auto replacement_revision = revisions_ / "replacement";
+    const auto pinned_revision = revisions_ / "pinned";
+    std::filesystem::create_directory(replacement_revision);
+    std::ofstream(replacement_revision / "d1-mode") << "replacement\n";
+    require(::chmod((replacement_revision / "d1-mode").c_str(), 0444) == 0 &&
+                ::chmod(replacement_revision.c_str(), 0555) == 0,
+            "cannot secure replacement revision");
+    std::filesystem::rename(revision_, pinned_revision);
+    std::filesystem::rename(replacement_revision, revision_);
+
+    const auto replacement_state = state_ / "replacement";
+    const auto pinned_state = state_ / "pinned";
+    std::filesystem::create_directory(replacement_state);
+    std::ofstream(replacement_state / "identity") << "replacement\n";
+    require(::chmod(replacement_state.c_str(), 0700) == 0,
+            "cannot secure replacement state");
+    std::filesystem::rename(state_directory_, pinned_state);
+    std::filesystem::rename(replacement_state, state_directory_);
+  }
+
+  host::AuthorityStore &store() { return *store_; }
+  const host::VerifiedRevision &verified() const { return *verified_; }
+
+private:
+  static int open_directory(const std::filesystem::path &path) {
+    const int fd = ::open(path.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    require(fd >= 0, "cannot open coordinator directory");
+    return fd;
+  }
+
+  const std::string plugin_ = "org.example.status";
+  std::filesystem::path root_;
+  std::filesystem::path activation_;
+  std::filesystem::path revisions_;
+  std::filesystem::path state_;
+  std::filesystem::path authority_;
+  std::filesystem::path revision_;
+  std::filesystem::path state_directory_;
+  int activation_fd_ = -1;
+  int revisions_fd_ = -1;
+  int state_fd_ = -1;
+  int authority_fd_ = -1;
+  definitions::TrustedDefinitionRegistry definitions_;
+  std::unique_ptr<host::AuthorityStore> store_;
+  std::optional<host::VerifiedRevision> verified_;
 };
 
 host::SessionToken token() {
@@ -889,7 +1112,7 @@ void public_create_retains_activation_and_reuses_one_launch() {
   RuntimeFactory runtime_factory;
   auto scope = std::make_shared<Scope>();
   channel::PluginSessionCreateError create_error{};
-  auto product = channel::PluginSession::create(
+  auto product = channel::PluginSessionTestAccess::create_from_activation(
       launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH, CHANNEL_PEER_PATH,
                                         scope),
       fixture.snapshot(), runtime_factory, create_error);
@@ -952,7 +1175,7 @@ void public_create_rejects_invalid_grant_snapshots() {
                             std::string_view message) {
     RuntimeFactory runtime_factory;
     channel::PluginSessionCreateError create_error{};
-    auto product = channel::PluginSession::create(
+    auto product = channel::PluginSessionTestAccess::create_from_activation(
         launcher::Supervisor::forTestOnly(
             FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, std::make_shared<Scope>()),
         std::move(snapshot), runtime_factory, create_error);
@@ -999,6 +1222,179 @@ void public_create_rejects_invalid_grant_snapshots() {
            "policy request fingerprint mismatch reached runtime creation");
 }
 
+void coordinator_activates_only_exact_promoted_authority() {
+  CoordinatorFixture fixture;
+  RuntimeFactory runtime_factory;
+  auto scope = std::make_shared<Scope>();
+  auto coordinator = fixture.coordinator(runtime_factory, scope);
+
+  fixture.record(1);
+  auto absent = coordinator->activate("current");
+  require(!absent &&
+              absent.activation_error ==
+                  host::ActivationError::grant_unavailable &&
+              runtime_factory.calls == 0,
+          "empty authority store reached runtime construction");
+  auto wrong_plugin = fixture.coordinator(
+      runtime_factory, scope, "org.example.different");
+  auto crossed = wrong_plugin->activate("current");
+  require(!crossed &&
+              crossed.activation_error == host::ActivationError::record_invalid &&
+              runtime_factory.calls == 0,
+          "wrong plugin coordinator crossed its expected identity");
+
+  auto first = fixture.publish(1, 0);
+  fixture.record(1);
+  auto candidate = coordinator->activate("current");
+  require(!candidate &&
+              candidate.activation_error ==
+                  host::ActivationError::grant_unavailable &&
+              runtime_factory.calls == 0 && scope->attachments == 0,
+          "unpromoted consent candidate reached product construction");
+
+  fixture.promote(first, 1);
+  auto active = coordinator->activate("current");
+  require(active && active.session == coordinator->session() &&
+              runtime_factory.calls == 1,
+          "exact promoted authority did not construct the product session");
+  await([&] { return active.session->state() == host::SessionState::running; },
+        "exact promoted authority did not start");
+  require(scope->attachments == 1,
+          "exact promoted authority did not launch exactly once");
+
+  fixture.record(1, std::string(64, 'f'));
+  auto mismatched = coordinator->activate("current");
+  require(!mismatched &&
+              mismatched.activation_error ==
+                  host::ActivationError::revision_unverified &&
+              runtime_factory.calls == 1 && scope->attachments == 1,
+          "revision mismatch reached runtime or supervisor authority");
+
+  fixture.record(2);
+  auto second = fixture.publish(2, 2);
+  auto pending_update = coordinator->activate("current");
+  require(!pending_update &&
+              pending_update.activation_error ==
+                  host::ActivationError::grant_unavailable &&
+              runtime_factory.calls == 1 && scope->attachments == 1,
+          "pending update candidate activated before promotion");
+  fixture.promote(second, 3);
+  auto updated = coordinator->activate("current");
+  require(updated && updated.session->binding() == second.binding &&
+              runtime_factory.calls == 2,
+          "promoted update did not activate its exact generation");
+  await([&] { return updated.session->state() == host::SessionState::running; },
+        "promoted update did not start");
+
+  fixture.record(1);
+  auto stale = coordinator->activate("current");
+  require(!stale &&
+              stale.activation_error == host::ActivationError::grant_unavailable &&
+              runtime_factory.calls == 2,
+          "stale authority generation reached runtime construction");
+
+  fixture.record(2);
+  fixture.corrupt_active();
+  auto corrupt = coordinator->activate("current");
+  require(!corrupt &&
+              corrupt.activation_error ==
+                  host::ActivationError::grant_unavailable &&
+              runtime_factory.calls == 2,
+          "corrupt durable authority reached runtime construction");
+}
+
+void coordinator_fences_runtime_construction_and_retries() {
+  CoordinatorFixture fixture;
+  RuntimeFactory runtime_factory;
+  auto scope = std::make_shared<Scope>();
+  auto coordinator = fixture.coordinator(runtime_factory, scope);
+  auto first = fixture.publish(1, 0);
+  fixture.promote(first, 1);
+  fixture.record(1);
+
+  runtime_factory.return_null = true;
+  auto unavailable = coordinator->activate("current");
+  require(!unavailable &&
+              unavailable.session_error ==
+                  channel::PluginSessionCreateError::runtime_unavailable &&
+              runtime_factory.calls == 1 && scope->attachments == 0,
+          "null runtime factory result reached supervisor authority");
+  runtime_factory.return_null = false;
+  auto first_running = coordinator->activate("current");
+  require(first_running && runtime_factory.calls == 2,
+          "coordinator did not retry after null runtime construction");
+  await([&] {
+    return first_running.session->state() == host::SessionState::running;
+  }, "retry after null runtime did not start");
+
+  bool old_runtime_gone_before_replacement = false;
+  runtime_factory.on_create = [&] {
+    old_runtime_gone_before_replacement =
+        runtime_factory.destructions->load() == 1;
+  };
+  runtime_factory.throw_on_create = true;
+  auto threw = coordinator->activate("current");
+  require(!threw &&
+              threw.session_error ==
+                  channel::PluginSessionCreateError::allocation_failed &&
+              old_runtime_gone_before_replacement && scope->attachments == 1,
+          "throwing runtime construction overlapped the previous session");
+  runtime_factory.throw_on_create = false;
+  runtime_factory.on_create = {};
+  auto replacement = coordinator->activate("current");
+  require(replacement && runtime_factory.calls == 4,
+          "coordinator did not retry after throwing runtime construction");
+  await([&] {
+    return replacement.session->state() == host::SessionState::running;
+  }, "replacement session did not start");
+
+  auto second = fixture.publish(2, 2);
+  bool promoted_during_create = false;
+  runtime_factory.on_create = [&] {
+    promoted_during_create =
+        fixture.store().promote_candidate(second.binding, 3) ==
+        host::AuthorityMutationResult::applied;
+  };
+  const auto attachments_before_race = scope->attachments.load();
+  auto raced = coordinator->activate("current");
+  require(promoted_during_create && !raced &&
+              raced.activation_error == host::ActivationError::grant_mismatch &&
+              scope->attachments == attachments_before_race,
+          "promotion during runtime construction reached supervisor authority");
+  runtime_factory.on_create = {};
+  fixture.record(2);
+  auto current = coordinator->activate("current");
+  require(current && current.session->binding() == second.binding,
+          "coordinator did not retry the newly promoted authority");
+  await([&] { return current.session->state() == host::SessionState::running; },
+        "newly promoted authority did not start after raced construction");
+}
+
+void coordinator_keeps_descriptor_pinned_paths() {
+  CoordinatorFixture fixture;
+  RuntimeFactory runtime_factory;
+  auto scope = std::make_shared<Scope>();
+  auto coordinator = fixture.coordinator(runtime_factory, scope);
+  auto active = fixture.publish(1, 0);
+  fixture.promote(active, 1);
+  fixture.record(1);
+  runtime_factory.on_create = [&] { fixture.replace_selected_paths(); };
+
+  auto result = coordinator->activate("current");
+  require(result && runtime_factory.revision_mode == "session-happy\n" &&
+              runtime_factory.state_identity == "pinned\n",
+          "path replacement retargeted pinned revision or state authority");
+  await([&] { return result.session->state() == host::SessionState::running; },
+        "pinned revision/state activation did not start");
+  const auto binding = result.session->binding();
+  require(runtime_factory.last_live &&
+              runtime_factory.last_live->current(binding),
+          "running coordinator session did not retain live authority");
+  coordinator.reset();
+  require(!runtime_factory.last_live->current(binding),
+          "coordinator destruction left session authority current");
+}
+
 void failed_session_rejects_surfaces() {
   auto identity = token();
   auto revision = grants();
@@ -1022,6 +1418,8 @@ void failed_session_rejects_surfaces() {
   product.reset();
   await([&] { return channel_state->destructions == 1; },
         "failed session worker was not reaped before test teardown");
+  QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+  QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
 }
 
 } // namespace
@@ -1035,6 +1433,9 @@ int main(int argc, char **argv) {
     product_session_intercepts_gesture_intents_before_render_routing();
     public_create_rejects_invalid_grant_snapshots();
     public_create_retains_activation_and_reuses_one_launch();
+    coordinator_activates_only_exact_promoted_authority();
+    coordinator_fences_runtime_construction_and_retries();
+    coordinator_keeps_descriptor_pinned_paths();
     failed_session_rejects_surfaces();
   } catch (const std::exception &error) {
     std::cerr << "FAIL: " << error.what() << '\n';

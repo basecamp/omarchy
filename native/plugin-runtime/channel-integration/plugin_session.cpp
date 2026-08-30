@@ -225,10 +225,7 @@ PluginSession::PluginSession(
 }
 
 PluginSession::~PluginSession() {
-  detach_all();
-  gesture_intents_->revoke();
-  if (io_)
-    io_->stop();
+  stop();
 }
 
 void PluginSession::start() { io_->start(); }
@@ -263,6 +260,7 @@ void PluginSession::revoke() {
 }
 
 void PluginSession::stop() {
+  live_->revoke();
   detach_all();
   gesture_intents_->revoke();
   io_->stop();
@@ -413,6 +411,17 @@ PluginSession::find_surface(std::string_view name) noexcept {
 }
 
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
+std::unique_ptr<PluginSession> PluginSessionTestAccess::create_from_activation(
+    launcher::Supervisor supervisor, session::ActivationSnapshot snapshot,
+    AuthenticatedSessionRuntimeFactory &runtime_factory,
+    PluginSessionCreateError &error, PluginSessionEvents *events,
+    session::SessionLimits limits, SurfaceIntentSink *intent_sink,
+    QObject *parent) {
+  return PluginSession::create(std::move(supervisor), std::move(snapshot),
+                               runtime_factory, error, events, limits,
+                               intent_sink, parent);
+}
+
 std::unique_ptr<PluginSession> PluginSessionTestAccess::create(
     session::SessionToken token, plugins::manifest::ManifestV2 manifest,
     session::policy::GrantSnapshot grants,

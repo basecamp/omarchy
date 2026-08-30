@@ -59,6 +59,7 @@ if(TARGET omarchy-plugin-host-session)
   add_library(omarchy-plugin-authenticated-session STATIC
     authenticated_session_channel.cpp
     broker_session_settlement.cpp
+    plugin_activation_coordinator.cpp
     plugin_session.cpp
   )
   target_include_directories(omarchy-plugin-authenticated-session PUBLIC
@@ -183,13 +184,15 @@ if(BUILD_TESTING)
     add_executable(omarchy-plugin-product-session-test
       authenticated_session_channel.cpp
       broker_session_settlement.cpp
+      plugin_activation_coordinator.cpp
       plugin_session.cpp
       plugin_session_test.cpp)
     omarchy_plugin_target_defaults(omarchy-plugin-product-session-test)
     target_compile_definitions(omarchy-plugin-product-session-test PRIVATE
       OMARCHY_PLUGIN_SESSION_TESTING
       CHANNEL_PEER_PATH="$<TARGET_FILE:omarchy-plugin-channel-peer>"
-      FAKE_BWRAP_PATH="$<TARGET_FILE:omarchy-plugin-channel-fake-bwrap>")
+      FAKE_BWRAP_PATH="$<TARGET_FILE:omarchy-plugin-channel-fake-bwrap>"
+      COORDINATOR_REVISION_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../contracts/manifest/fixtures/valid-minimal")
     target_link_libraries(omarchy-plugin-product-session-test PRIVATE
       omarchy-plugin-channel-integration omarchy-plugin-host-session Qt6::Core)
     target_link_libraries(omarchy-plugin-product-session-test PRIVATE
