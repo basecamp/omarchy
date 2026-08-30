@@ -6,7 +6,6 @@
 
 #include <algorithm>
 #include <array>
-#include <limits>
 #include <utility>
 
 namespace omarchy::plugin_runtime::render_session {
@@ -89,9 +88,33 @@ bool HostRenderSession::receive(std::span<const std::byte> encoded_packet) {
       wire::decode_packet(encoded_packet, wire::EndpointRole::render);
   if (!decoded)
     return fail("malformed render envelope");
-  if (!endpoint_->accept(decoded.packet, wire::Direction::worker_to_host))
+  return accept(decoded.packet);
+}
+
+bool HostRenderSession::receive_authenticated(
+    const AuthenticatedRenderPacket &packet) {
+  if (!endpoint_ || phase_ == Phase::failed || phase_ == Phase::disconnected ||
+      packet.payload.size() > wire::payload_cap(wire::EndpointRole::render))
+    return fail("render packet is unavailable or above the endpoint cap");
+  const wire::PacketView trusted{
+      .header = {.endpoint_role = wire::EndpointRole::render,
+                 .message_type = packet.message_type,
+                 .role_protocol_version = surface::kRenderRoleVersion,
+                 .flags = 0,
+                 .payload_length =
+                     static_cast<std::uint32_t>(packet.payload.size()),
+                 .launch_generation = generation_,
+                 .correlation_id = packet.correlation_id},
+      .payload = packet.payload};
+  return accept(trusted);
+}
+
+bool HostRenderSession::accept(const wire::PacketView &packet) {
+  if (!endpoint_ || phase_ == Phase::failed || phase_ == Phase::disconnected)
+    return fail("render packet is unavailable or above the endpoint cap");
+  if (!endpoint_->accept(packet, wire::Direction::worker_to_host))
     return fail("render packet violated the selected endpoint state");
-  return handle(decoded.packet);
+  return handle(packet);
 }
 
 bool HostRenderSession::handle(const wire::PacketView &packet) {

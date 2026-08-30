@@ -43,6 +43,16 @@ struct Statistics {
   std::chrono::nanoseconds maximum_copy_time{};
 };
 
+// A render message admitted by the authenticated channel boundary. The payload
+// is borrowed and consumed synchronously. Worker render messages never carry
+// descriptors; the channel adapter must reject descriptor-bearing messages
+// before constructing this view.
+struct AuthenticatedRenderPacket {
+  std::uint16_t message_type = 0;
+  std::uint64_t correlation_id = 0;
+  std::span<const std::byte> payload;
+};
+
 class HostRenderSession final {
 public:
   HostRenderSession(std::uint64_t launch_generation,
@@ -53,6 +63,10 @@ public:
   HostRenderSession &operator=(const HostRenderSession &) = delete;
 
   [[nodiscard]] bool start(const surface::TrustedAllocation &allocation);
+  [[nodiscard]] bool receive_authenticated(
+      const AuthenticatedRenderPacket &packet);
+  // Compatibility seam for pre-composition tests. N12 removes this once the
+  // authenticated channel adapter is the sole render ingress.
   [[nodiscard]] bool receive(std::span<const std::byte> encoded_packet);
   void peer_lost();
   void close();
@@ -66,6 +80,7 @@ private:
   bool send(std::uint16_t message_type, std::span<const std::byte> payload,
             std::uint64_t correlation, std::span<const int> descriptors = {});
   bool fail(std::string detail, bool peer_loss = false);
+  bool accept(const wire::PacketView &packet);
   bool handle(const wire::PacketView &packet);
 
   std::uint64_t generation_ = 0;

@@ -1,6 +1,5 @@
 #include "surface_host.hpp"
 
-#include "omarchy/plugin/wire/envelope.hpp"
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
 
 #include <QJsonDocument>
@@ -268,24 +267,18 @@ HostSurface::HostSurface(NamedSurfacePolicy policy,
 
 HostSurface::~HostSurface() { close(); }
 
-bool HostSurface::receive_render(std::span<const std::byte> packet) {
+bool HostSurface::receive_render(
+    const render_session::AuthenticatedRenderPacket &packet) {
   if (terminated_ || locked_)
     return false;
   bool is_frame = false;
   if (render_session_.phase() == render_session::Phase::active) {
-    const auto decoded =
-        wire::decode_packet(packet, wire::EndpointRole::render);
     surface::FrameReady ready{};
-    is_frame = decoded &&
-               decoded.packet.header.message_type ==
+    is_frame = packet.message_type ==
                    static_cast<std::uint16_t>(
                        surface::RenderMessageType::frame_ready) &&
-               decoded.packet.header.role_protocol_version ==
-                   surface::kRenderRoleVersion &&
-               decoded.packet.header.flags == 0 &&
-               decoded.packet.header.launch_generation == binding_.generation &&
-               decoded.packet.header.correlation_id == 0 &&
-               surface::decode_frame_ready(decoded.packet.payload, ready) &&
+               packet.correlation_id == 0 &&
+               surface::decode_frame_ready(packet.payload, ready) &&
                ready.surface == allocation_.surface &&
                ready.slot < surface::kSlotCount && ready.slot_sequence != 0 &&
                (ready.slot_sequence & 1U) == 0 && ready.frame_sequence != 0;
@@ -305,7 +298,7 @@ bool HostSurface::receive_render(std::span<const std::byte> packet) {
       }
     }
   }
-  const bool accepted = render_session_.receive(packet);
+  const bool accepted = render_session_.receive_authenticated(packet);
   if (accepted && is_frame) {
     last_admitted_frame_ns_ = clock_.now_nanoseconds();
     has_admitted_frame_ = true;

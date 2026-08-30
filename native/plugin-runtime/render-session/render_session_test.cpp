@@ -35,6 +35,8 @@ namespace surface = omarchy::plugin_runtime::surface;
 namespace wire = omarchy::plugin::wire;
 namespace worker = omarchy::plugin_runtime::worker;
 
+enum class Delivery { encoded, authenticated };
+
 void require(bool condition, std::string_view message) {
   if (!condition)
     throw std::runtime_error(std::string(message));
@@ -118,10 +120,12 @@ public:
 };
 
 struct Harness {
-  explicit Harness(std::uint64_t generation, std::uint32_t logical_width = 64,
+  explicit Harness(std::uint64_t generation,
+                   Delivery delivery = Delivery::authenticated,
+                   std::uint32_t logical_width = 64,
                    std::uint32_t logical_height = 32, std::uint32_t dpr = 1,
                    std::string_view fixture_name = "expressive")
-      : generation(generation),
+      : generation(generation), delivery(delivery),
         runtime(std::filesystem::path(D2_WORKER_FIXTURE_ROOT) / fixture_name),
         input_sink(std::make_shared<NullInputSink>()),
         transport(std::make_shared<bridge::AuthenticatedInputTransport>(
@@ -137,7 +141,19 @@ struct Harness {
     require(allocation.has_value(), "D2 allocation fixture failed");
   }
 
-  void negotiate() {
+  bool receive(std::uint16_t type, std::span<const std::byte> payload,
+               std::uint64_t correlation = 0) {
+    if (delivery == Delivery::encoded) {
+      return host.receive(
+          encode(worker_header(type, payload.size(), generation, correlation),
+                 payload));
+    }
+    return host.receive_authenticated({.message_type = type,
+                                       .correlation_id = correlation,
+                                       .payload = payload});
+  }
+
+  void select_profile() {
     require(static_cast<bool>(runtime.load_manifest_entry()) &&
                 host.start(*allocation) && sender.headers.size() == 1,
             "worker/host profile negotiation did not start");
@@ -149,11 +165,9 @@ struct Harness {
         surface::select_software_profile(std::array{offer.version});
     require(selected.has_value(), "profile selection fixture failed");
     const auto selected_payload = surface::encode_profile_selection(*selected);
-    require(host.receive(encode(
-                worker_header(static_cast<std::uint16_t>(
-                                  surface::RenderMessageType::profile_select),
-                              selected_payload.size(), generation, 1),
-                selected_payload)) &&
+    require(receive(static_cast<std::uint16_t>(
+                        surface::RenderMessageType::profile_select),
+                    selected_payload, 1) &&
                 sender.headers.size() == 2 && sender.worker_descriptor >= 0,
             "host did not send the B4 allocation and descriptor");
     surface::TrustedAllocation decoded{};
@@ -165,13 +179,15 @@ struct Harness {
                 static_cast<bool>(
                     runtime.allocate(decoded, sender.take_worker_descriptor())),
             "C5 worker rejected D2 frame region");
+  }
+
+  void negotiate() {
+    select_profile();
     const auto allocated = surface::encode_surface_key(allocation->surface);
     require(
-        host.receive(encode(
-            worker_header(static_cast<std::uint16_t>(
-                              surface::RenderMessageType::surface_allocated),
-                          allocated.size(), generation, 2),
-            allocated)) &&
+        receive(static_cast<std::uint16_t>(
+                    surface::RenderMessageType::surface_allocated),
+                allocated, 2) &&
             host.phase() == session::Phase::active && item.connected(),
         "surface allocation did not become active");
   }
@@ -180,16 +196,15 @@ struct Harness {
     const auto frame = runtime.render();
     require(frame.has_value(), "C5 worker did not render a frame");
     const auto payload = surface::encode_frame_ready(frame->ready);
-    require(host.receive(encode(
-                worker_header(static_cast<std::uint16_t>(
-                                  surface::RenderMessageType::frame_ready),
-                              payload.size(), generation),
-                payload)),
+    require(receive(static_cast<std::uint16_t>(
+                        surface::RenderMessageType::frame_ready),
+                    payload),
             "D2 host rejected a valid C5 frame");
     return frame->ready;
   }
 
   std::uint64_t generation;
+  Delivery delivery;
   worker::WorkerRuntime runtime;
   std::shared_ptr<NullInputSink> input_sink;
   std::shared_ptr<bridge::AuthenticatedInputTransport> transport;
@@ -199,8 +214,8 @@ struct Harness {
   std::optional<surface::TrustedAllocation> allocation;
 };
 
-void asynchronous_change_reaches_host_surface() {
-  Harness harness(38, 64, 32, 1, "async-change");
+void asynchronous_change_reaches_host_surface(Delivery delivery) {
+  Harness harness(38, delivery, 64, 32, 1, "async-change");
   harness.negotiate();
   static_cast<void>(harness.publish());
   const QImage first_image = harness.item.ownedImage();
@@ -219,8 +234,8 @@ void asynchronous_change_reaches_host_surface() {
           "host did not present the asynchronous QML frame");
 }
 
-void animated_alpha_and_throughput() {
-  Harness harness(31);
+void animated_alpha_and_throughput(Delivery delivery) {
+  Harness harness(31, delivery);
   harness.negotiate();
   const auto first = harness.publish();
   require(harness.item.ready() && harness.item.frameSequence() == 1 &&
@@ -256,19 +271,17 @@ void animated_alpha_and_throughput() {
       << '\n';
 
   const auto repeated = surface::encode_frame_ready(first);
-  require(!harness.host.receive(
-              encode(worker_header(static_cast<std::uint16_t>(
-                                       surface::RenderMessageType::frame_ready),
-                                   repeated.size(), harness.generation),
-                     repeated)) &&
+  require(!harness.receive(static_cast<std::uint16_t>(
+                               surface::RenderMessageType::frame_ready),
+                           repeated) &&
               harness.host.phase() == session::Phase::active &&
               harness.item.ready() &&
               harness.host.statistics().rejected_frames == 1,
           "stale frame did not preserve the last trusted image");
 }
 
-void resize_dpr_and_peer_loss() {
-  Harness harness(32, 48, 24, 2);
+void resize_dpr_and_peer_loss(Delivery delivery) {
+  Harness harness(32, delivery, 48, 24, 2);
   harness.negotiate();
   static_cast<void>(harness.publish());
   require(harness.item.ownedImage().width() == 96 &&
@@ -283,8 +296,8 @@ void resize_dpr_and_peer_loss() {
           "peer loss retained pixels or an active bridge");
 }
 
-void graceful_close_releases_worker_mapping() {
-  Harness harness(37);
+void graceful_close_releases_worker_mapping(Delivery delivery) {
+  Harness harness(37, delivery);
   harness.negotiate();
   static_cast<void>(harness.publish());
   harness.host.close();
@@ -301,7 +314,7 @@ void graceful_close_releases_worker_mapping() {
               !harness.item.connected() && !harness.item.ready(),
           "graceful close retained the worker mapping or trusted pixels");
 
-  Harness failed(38);
+  Harness failed(38, delivery);
   failed.negotiate();
   failed.sender.fail_send = true;
   failed.host.close();
@@ -354,6 +367,22 @@ void malformed_and_oversized_fail_closed() {
             "above-cap render packet did not fail closed");
   }
   {
+    Harness harness(39, Delivery::authenticated);
+    require(static_cast<bool>(harness.runtime.load_manifest_entry()) &&
+                harness.host.start(*harness.allocation),
+            "typed above-cap fixture did not start");
+    std::vector<std::byte> oversized(
+        wire::payload_cap(wire::EndpointRole::render) + 1, std::byte{0x7f});
+    require(!harness.host.receive_authenticated(
+                {.message_type = static_cast<std::uint16_t>(
+                     surface::RenderMessageType::profile_select),
+                 .correlation_id = 1,
+                 .payload = oversized}) &&
+                harness.host.phase() == session::Phase::failed &&
+                !harness.item.connected() && !harness.item.ready(),
+            "above-cap authenticated packet did not fail before phase progress");
+  }
+  {
     Harness harness(36);
     require(static_cast<bool>(harness.runtime.load_manifest_entry()) &&
                 harness.host.start(*harness.allocation),
@@ -379,15 +408,92 @@ void malformed_and_oversized_fail_closed() {
   }
 }
 
+enum class AuthenticatedFailure {
+  invalid_correlation,
+  invalid_schema,
+  unknown_type,
+  typed_error,
+  stale_surface,
+};
+
+std::string exercise_authenticated_failure(Delivery delivery,
+                                           AuthenticatedFailure failure) {
+  Harness harness(51, delivery);
+  if (failure == AuthenticatedFailure::stale_surface) {
+    harness.select_profile();
+    auto stale = harness.allocation->surface;
+    ++stale.generation;
+    const auto payload = surface::encode_surface_key(stale);
+    require(!harness.receive(static_cast<std::uint16_t>(
+                                 surface::RenderMessageType::surface_allocated),
+                             payload, 2),
+            "stale surface allocation was admitted");
+  } else {
+    require(static_cast<bool>(harness.runtime.load_manifest_entry()) &&
+                harness.host.start(*harness.allocation),
+            "authenticated failure fixture did not start");
+    const auto selection = surface::encode_profile_selection(
+        {.version = surface::kSoftwareProfileVersion,
+         .pixel_format = surface::kRgba8888Premultiplied});
+    if (failure == AuthenticatedFailure::invalid_correlation) {
+      require(!harness.receive(static_cast<std::uint16_t>(
+                                   surface::RenderMessageType::profile_select),
+                               selection, 0),
+              "zero-correlation profile selection was admitted");
+    } else if (failure == AuthenticatedFailure::invalid_schema) {
+      require(!harness.receive(static_cast<std::uint16_t>(
+                                   surface::RenderMessageType::profile_select),
+                               std::span(selection).first(7), 1),
+              "wrong-sized profile selection was admitted");
+    } else if (failure == AuthenticatedFailure::unknown_type) {
+      require(!harness.receive(0x20ff, selection, 1),
+              "unknown render message was admitted");
+    } else {
+      const auto error = surface::encode_render_error(
+          {.reason = surface::RenderErrorReason::unsupported_profile,
+           .failed_message_type = static_cast<std::uint16_t>(
+               surface::RenderMessageType::profile_offer),
+           .surface = {}});
+      require(!harness.receive(
+                  static_cast<std::uint16_t>(wire::CommonMessageType::typed_error),
+                  error, 1),
+              "render typed error incorrectly advanced the lifecycle");
+    }
+  }
+  require(harness.host.phase() == session::Phase::failed &&
+              !harness.item.connected() && !harness.item.ready(),
+          "adversarial authenticated render packet did not fail closed");
+  return harness.host.failure_detail();
+}
+
+void authenticated_and_encoded_ingress_have_failure_parity() {
+  for (const auto failure : {AuthenticatedFailure::invalid_correlation,
+                             AuthenticatedFailure::invalid_schema,
+                             AuthenticatedFailure::unknown_type,
+                             AuthenticatedFailure::typed_error,
+                             AuthenticatedFailure::stale_surface}) {
+    const auto encoded = exercise_authenticated_failure(Delivery::encoded,
+                                                        failure);
+    const auto authenticated = exercise_authenticated_failure(
+        Delivery::authenticated, failure);
+    require(!encoded.empty() && authenticated == encoded,
+            "typed render ingress diverged from byte-ingress validation");
+  }
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
   try {
     QGuiApplication application(argc, argv);
-    animated_alpha_and_throughput();
-    asynchronous_change_reaches_host_surface();
-    resize_dpr_and_peer_loss();
-    graceful_close_releases_worker_mapping();
+    for (const auto delivery : {Delivery::encoded,
+                                Delivery::authenticated}) {
+      animated_alpha_and_throughput(delivery);
+      asynchronous_change_reaches_host_surface(delivery);
+      resize_dpr_and_peer_loss(delivery);
+      graceful_close_releases_worker_mapping(delivery);
+    }
+    authenticated_and_encoded_ingress_have_failure_parity();
     malformed_and_oversized_fail_closed();
     std::cout << "plugin render session: ok\n";
     return 0;

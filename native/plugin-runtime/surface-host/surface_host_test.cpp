@@ -1,6 +1,5 @@
 #include "surface_host.hpp"
 
-#include "omarchy/plugin/wire/envelope.hpp"
 #include "omarchy/plugin_runtime/surface/profile.hpp"
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
 
@@ -11,7 +10,6 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <vector>
 
 namespace {
 
@@ -57,24 +55,12 @@ public:
   std::uint64_t now_nanoseconds() const override { return 1'000'000'000; }
 };
 
-std::vector<std::byte> packet(std::uint16_t type,
-                              std::span<const std::byte> payload,
-                              std::uint64_t launch_generation,
-                              std::uint64_t correlation) {
-  const wire::EnvelopeHeader header{
-      .endpoint_role = wire::EndpointRole::render,
-      .message_type = type,
-      .role_protocol_version = surface::kRenderRoleVersion,
-      .flags = 0,
-      .payload_length = static_cast<std::uint32_t>(payload.size()),
-      .launch_generation = launch_generation,
-      .correlation_id = correlation,
-  };
-  std::vector<std::byte> encoded(wire::kHeaderSize + payload.size());
-  const auto result = wire::encode_packet(header, payload, encoded);
-  require(static_cast<bool>(result), "test packet encoding failed");
-  encoded.resize(result.bytes_written);
-  return encoded;
+render_session::AuthenticatedRenderPacket
+packet(std::uint16_t type, std::span<const std::byte> payload,
+       std::uint64_t correlation) {
+  return {.message_type = type,
+          .correlation_id = correlation,
+          .payload = payload};
 }
 
 struct Harness {
@@ -106,14 +92,14 @@ struct Harness {
     require(surface_host->receive_render(
                 packet(static_cast<std::uint16_t>(
                            surface::RenderMessageType::profile_select),
-                       selection, generation, surface_id * 4 + 1)),
+                       selection, surface_id * 4 + 1)),
             "profile negotiation failed");
     const auto allocated =
         surface::encode_surface_key(surface_host->allocation().surface);
     require(surface_host->receive_render(
                 packet(static_cast<std::uint16_t>(
                            surface::RenderMessageType::surface_allocated),
-                       allocated, generation, surface_id * 4 + 2)),
+                       allocated, surface_id * 4 + 2)),
             "surface activation failed");
   }
 
@@ -122,6 +108,14 @@ struct Harness {
             .generation = region_generation,
             .regions = {{{.x = 2, .y = 3, .width = 4, .height = 5}}},
             .count = 1};
+  }
+
+  bool receive(const surface::InputRegionUpdate &value) {
+    const auto payload = surface::encode_input_region_update(value);
+    return surface_host->receive_render(
+        packet(static_cast<std::uint16_t>(
+                   surface::RenderMessageType::input_regions),
+               payload, 0));
   }
 
   static constexpr std::uint64_t generation = 7;
@@ -133,6 +127,24 @@ struct Harness {
   Clock clock;
   std::unique_ptr<host::HostSurface> surface_host;
 };
+
+void authenticated_input_regions_reach_the_single_policy_decision() {
+  Harness accepted;
+  require(accepted.receive(accepted.update()) &&
+              accepted.item.inputRegions() ==
+                  QList<QRect>{QRect(2, 3, 4, 5)} &&
+              accepted.surface_host->inspection().input_region_count == 1,
+          "authenticated input regions did not reach native policy");
+
+  Harness rejected;
+  auto invalid = rejected.update();
+  invalid.regions[0].x = -1;
+  require(!rejected.receive(invalid) &&
+              rejected.surface_host->inspection().terminated &&
+              !rejected.item.connected() &&
+              rejected.item.inputRegions().isEmpty(),
+          "invalid authenticated input regions did not fail closed");
+}
 
 void accepted_regions_are_one_enforcement_and_projection_decision() {
   Harness harness;
@@ -224,6 +236,7 @@ int main(int argc, char **argv) {
   QGuiApplication application(argc, argv);
   (void)application;
   try {
+    authenticated_input_regions_reach_the_single_policy_decision();
     accepted_regions_are_one_enforcement_and_projection_decision();
     invalid_regions_preserve_last_accepted_state();
     policy_and_lifetime_are_fail_closed();

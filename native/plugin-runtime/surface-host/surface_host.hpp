@@ -97,7 +97,8 @@ public:
   HostSurface(const HostSurface &) = delete;
   HostSurface &operator=(const HostSurface &) = delete;
 
-  [[nodiscard]] bool receive_render(std::span<const std::byte> packet);
+  [[nodiscard]] bool receive_render(
+      const render_session::AuthenticatedRenderPacket &packet);
   [[nodiscard]] bool route_input(const surface::InputEvent &event,
                                  bool trusted_gesture);
   [[nodiscard]] bool clear_focus();
