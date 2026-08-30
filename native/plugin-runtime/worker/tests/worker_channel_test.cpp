@@ -300,11 +300,11 @@ void pending_input_probe() {
       .correlation_id = 9,
       .lane_sequence = lane_value(wire::EndpointRole::broker, 1)};
   require(send_packet(pair.host, header, {}) && endpoint.has_pending_input(),
-          "host broker reply was not observable by the fallback readiness probe");
+          "host broker reply was not observable by the level-triggered readiness recheck");
   const auto received = endpoint.receive();
   require(received && received.header.correlation_id == 9 &&
               !endpoint.has_pending_input(),
-          "fallback readiness probe consumed or retained the broker reply");
+          "level-triggered readiness recheck consumed or retained the broker reply");
 }
 
 wire::EnvelopeHeader data_header(wire::EndpointRole role,

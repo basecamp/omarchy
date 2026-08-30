@@ -653,9 +653,8 @@ std::string fingerprint_requests(const std::vector<CapabilityRequest> &input) {
                               right.definition_digest, right.operations);
             });
   Sha256 hash;
-  // V2 is intentionally incompatible with the unreleased V1 identity. A
-  // dynamic request's trusted definition and operation set are authority, not
-  // display metadata, and therefore must participate in consent identity.
+  // A dynamic request's trusted definition and operation set are authority,
+  // not display metadata, and therefore participate in consent identity.
   hash.update("OMARCHY-PLUGIN-REQUESTS-V2\0"sv);
   hash_u64(hash, requests.size());
   for (const auto &request : requests) {

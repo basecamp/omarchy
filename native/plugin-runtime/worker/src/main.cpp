@@ -156,10 +156,10 @@ private:
   }
 
   void receive_broker_if_ready() {
-    // A socket-notifier activation and the level-triggered fallback may both
-    // already be queued for one datagram. Recheck readiness in the callback so
-    // the second delivery cannot enter a blocking recvmsg after the first one
-    // consumed it.
+    // A socket-notifier activation and the level-triggered readiness recheck
+    // may both be queued for one datagram. Recheck readiness in the callback
+    // so the second delivery cannot enter a blocking recvmsg after the first
+    // one consumed it.
     if (broker_.has_pending_input())
       receive(broker_);
   }

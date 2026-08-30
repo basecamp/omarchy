@@ -5,7 +5,7 @@ option(PLUGIN_SECURITY_WORKER_SANITIZERS
   "Enable AddressSanitizer and UndefinedBehaviorSanitizer for the QML worker" OFF)
 
 set(OMARCHY_PLUGIN_EXTERNAL_FIXTURES "" CACHE STRING
-  "Semicolon-separated schema-v2 plugin checkout paths for functional compatibility tests")
+  "Semicolon-separated schema-v2 plugin checkout paths for functional integration tests")
 set(OMARCHY_PLUGIN_EXTERNAL_DEFINITIONS "" CACHE PATH
   "Independent trusted capability-definition directory for external fixtures")
 set(OMARCHY_PLUGIN_EXTERNAL_ADAPTERS "" CACHE STRING

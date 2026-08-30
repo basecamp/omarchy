@@ -417,8 +417,8 @@ bool StructuredBroker::abort_send(BrokerTransaction &&transaction) {
     return false;
   }
   transaction.consume();
-  // DynamicBrokerRuntime has no shutdown/fail-stop entry point yet. Returning
-  // false requires the session owner to terminate the entire channel.
+  // A dispatched dynamic reply cannot be canceled independently. Fail-stop
+  // the broker so the session owner terminates the channel before more work.
   failed_.store(true);
   return false;
 }
