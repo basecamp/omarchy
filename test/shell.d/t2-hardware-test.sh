@@ -7,6 +7,8 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 fix_t2="$ROOT/install/hardware/apple/fix-t2.sh"
 other_packages="$ROOT/install/omarchy-other.packages"
 migration="$ROOT/migrations/1785944594.sh"
+prochot_unit="$ROOT/default/systemd/system/omarchy-t2-prochot.service"
+prochot_migration="$ROOT/migrations/1788105580.sh"
 
 grep -Fq 'KERNEL_CMDLINE[default]+=" intel_iommu=on iommu=pt pm_async=off mem_sleep_default=deep"' "$fix_t2" ||
   fail "T2 setup installs the suspend kernel parameters"
@@ -20,6 +22,16 @@ grep -Fq 'KERNEL_CMDLINE[default]+=" intel_iommu=on iommu=pt pm_async=off mem_sl
   fail "T2 setup leaves optional Touch Bar customization uninstalled"
 ! grep -qx 'tiny-dfr' "$other_packages" ||
   fail "the ISO no longer caches tiny-dfr"
+grep -Fq 'msr-tools' "$fix_t2" ||
+  fail "T2 setup installs msr-tools for the PROCHOT override"
+grep -Fq 'default/systemd/system/omarchy-t2-prochot.service' "$fix_t2" ||
+  fail "T2 setup installs the PROCHOT override unit"
+grep -Fq 'systemctl enable omarchy-t2-prochot.service' "$fix_t2" ||
+  fail "T2 setup enables the PROCHOT override unit"
+grep -Fq "wrmsr -a 0x1fc \$(( 0x\$(rdmsr 0x1fc) & ~1 ))" "$prochot_unit" ||
+  fail "the PROCHOT override unit clears BD PROCHOT on every core"
+grep -Fq 'WantedBy=multi-user.target suspend.target' "$prochot_unit" ||
+  fail "the PROCHOT override unit runs at boot and after resume"
 pass "fresh T2 setup uses t2bce-compatible suspend, fan, and Touch Bar defaults"
 
 test_tmp=$(mktemp -d)
@@ -79,6 +91,14 @@ cat >"$stub_bin/limine-mkinitcpio" <<'SH'
 #!/bin/bash
 
 echo 'limine-mkinitcpio' >>"$TEST_LOG"
+SH
+
+cat >"$stub_bin/omarchy-pkg-add" <<'SH'
+#!/bin/bash
+
+printf 'omarchy-pkg-add' >>"$TEST_LOG"
+printf '\t%s' "$@" >>"$TEST_LOG"
+printf '\n' >>"$TEST_LOG"
 SH
 
 chmod +x "$stub_bin"/*
@@ -212,3 +232,50 @@ grep -Fxq 'limine-mkinitcpio' "$calls" ||
   fail "T2 rerun migration rebuilds the boot image"
 [[ -f $repair_marker ]] || fail "T2 rerun migration records the machine-wide repair"
 pass "T2 rerun migration repairs installs the broken hardware check skipped"
+
+prochot_unit_target="$test_tmp/system/omarchy-t2-prochot.service"
+rm -rf "$test_tmp/system"
+: >"$calls"
+
+PATH="$stub_bin:$PATH" \
+  TEST_LOG="$calls" \
+  T2_HARDWARE=1 \
+  OMARCHY_PATH="$ROOT" \
+  OMARCHY_T2_PROCHOT_UNIT="$prochot_unit_target" \
+  bash -euo pipefail "$prochot_migration" >/dev/null
+
+cmp -s "$prochot_unit" "$prochot_unit_target" ||
+  fail "T2 PROCHOT migration installs the shipped unit"
+grep -Fq $'omarchy-pkg-add\tmsr-tools' "$calls" ||
+  fail "T2 PROCHOT migration installs msr-tools"
+grep -Fq $'systemctl\tdaemon-reload' "$calls" ||
+  fail "T2 PROCHOT migration reloads systemd"
+grep -Fq $'systemctl\tenable\t--now\tomarchy-t2-prochot.service' "$calls" ||
+  fail "T2 PROCHOT migration enables and starts the override"
+pass "T2 PROCHOT migration unpins existing installs"
+
+: >"$calls"
+
+PATH="$stub_bin:$PATH" \
+  TEST_LOG="$calls" \
+  T2_HARDWARE=1 \
+  OMARCHY_PATH="$ROOT" \
+  OMARCHY_T2_PROCHOT_UNIT="$prochot_unit_target" \
+  bash -euo pipefail "$prochot_migration" >/dev/null
+
+[[ ! -s $calls ]] || fail "an already repaired T2 install is left unchanged" "$(cat "$calls")"
+pass "T2 PROCHOT migration is idempotent"
+
+rm -rf "$test_tmp/system"
+: >"$calls"
+
+PATH="$stub_bin:$PATH" \
+  TEST_LOG="$calls" \
+  T2_HARDWARE=0 \
+  OMARCHY_PATH="$ROOT" \
+  OMARCHY_T2_PROCHOT_UNIT="$prochot_unit_target" \
+  bash -euo pipefail "$prochot_migration" >/dev/null
+
+[[ ! -e $prochot_unit_target ]] || fail "non-T2 systems get no PROCHOT override"
+[[ ! -s $calls ]] || fail "non-T2 systems skip the PROCHOT repair" "$(cat "$calls")"
+pass "T2 PROCHOT migration skips unrelated hardware"

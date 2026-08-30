@@ -1,0 +1,15 @@
+[Unit]
+Description=Ignore the SMC's stuck PROCHOT assertion on T2 Macs
+# The T2's SMC can leave the external PROCHOT line asserted, pinning every core
+# at its minimum frequency even though the CPU's own thermal status is clear.
+# Clearing BD PROCHOT in POWER_CTL makes the CPU ignore that line; firmware
+# restores the bit on resume, so this also runs after every sleep.
+After=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
+
+[Service]
+Type=oneshot
+ExecStartPre=/usr/bin/modprobe msr
+ExecStart=/bin/bash -c 'wrmsr -a 0x1fc $(( 0x$(rdmsr 0x1fc) & ~1 ))'
+
+[Install]
+WantedBy=multi-user.target suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
