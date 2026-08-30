@@ -38,6 +38,10 @@ fail() {
   exit 1
 }
 
+# The functions in this marked block only resolve values; they never mutate the
+# system. Tests extract and execute this exact policy without sourcing the
+# self-contained upgrader's privileged top-level flow.
+# OMARCHY_UPGRADE_SELECTION_BEGIN
 normalize_channel() {
   case "${1:-}" in
     stable|master|main) echo stable ;;
@@ -55,18 +59,125 @@ valid_channel() {
 # omarchy-version-channel reads it. Order matters: mirror.omarchy.org is a
 # substring of both of the others.
 detect_installed_channel() {
-  [[ -f /etc/pacman.d/mirrorlist ]] || return 1
+  local mirrorlist=${1:-/etc/pacman.d/mirrorlist}
+  [[ -f $mirrorlist ]] || return 1
 
-  if grep -q 'https://stable-mirror.omarchy.org/' /etc/pacman.d/mirrorlist; then
+  if grep -q 'https://stable-mirror.omarchy.org/' "$mirrorlist"; then
     echo stable
-  elif grep -q 'https://rc-mirror.omarchy.org/' /etc/pacman.d/mirrorlist; then
+  elif grep -q 'https://rc-mirror.omarchy.org/' "$mirrorlist"; then
     echo rc
-  elif grep -q 'https://mirror.omarchy.org/' /etc/pacman.d/mirrorlist; then
+  elif grep -q 'https://mirror.omarchy.org/' "$mirrorlist"; then
     echo edge
   else
     return 1
   fi
 }
+
+parse_upgrade_arguments() {
+  while (($#)); do
+    case "$1" in
+      -y|--yes)
+        yes=1
+        shift
+        ;;
+      --reboot)
+        auto_reboot=1
+        shift
+        ;;
+      --dev)
+        use_dev_packages=1
+        shift
+        ;;
+      --channel)
+        channel_override="${2:-}"
+        channel_override_cli=1
+        shift 2
+        ;;
+      --user)
+        target_user="${2:-}"
+        shift 2
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        fail "Unknown option: $1"
+        ;;
+    esac
+  done
+}
+
+normalize_upgrade_dev_mode() {
+  case "$use_dev_packages" in
+    1|true|yes|on) use_dev_packages=1 ;;
+    0|false|no|off|"") use_dev_packages=0 ;;
+    *) fail "Invalid OMARCHY_UPGRADE_DEV value '$use_dev_packages'. Use 1/0, true/false, or pass --dev." ;;
+  esac
+}
+
+resolve_upgrade_channel() {
+  local installed_channel=${1:-}
+
+  # Land on the Quattro equivalent of wherever the machine already is, unless
+  # the caller said otherwise. Stable and rc carry the production package pair;
+  # edge carries the dev pair used while Quattro is still under development.
+  if [[ -z $channel_override ]] && (( ! use_dev_packages )); then
+    if [[ -z $installed_channel ]]; then
+      installed_channel=$(detect_installed_channel || true)
+    fi
+
+    case "$installed_channel" in
+      stable) channel_override=stable ;;
+      rc) channel_override=rc ;;
+      edge) channel_override=edge use_dev_packages=1 ;;
+    esac
+  fi
+
+  if (( use_dev_packages )); then
+    # The dev pair is published only to edge. Release candidates use the
+    # production pair from rc so they exercise the exact artifacts stable gets.
+    if [[ -n $channel_override ]]; then
+      if ! valid_channel "$channel_override"; then
+        fail "Invalid channel '$channel_override'. Use stable, rc, or edge."
+      fi
+      if [[ $(normalize_channel "$channel_override") != edge ]]; then
+        fail "--dev needs the edge package repo; use --channel edge."
+      fi
+    else
+      channel_override=edge
+    fi
+  fi
+
+  if { [[ -n $channel_override ]] || (( channel_override_cli )); } && ! valid_channel "$channel_override"; then
+    fail "Invalid channel '$channel_override'. Use stable, rc, or edge."
+  fi
+
+  channel=$(normalize_channel "${channel_override:-stable}")
+  case "$channel" in
+    stable)
+      mirror_server='https://stable-mirror.omarchy.org/$repo/os/$arch'
+      package_server='https://pkgs.omarchy.org/stable/$arch'
+      ;;
+    rc)
+      mirror_server='https://rc-mirror.omarchy.org/$repo/os/$arch'
+      package_server='https://pkgs.omarchy.org/rc/$arch'
+      ;;
+    edge)
+      mirror_server='https://mirror.omarchy.org/$repo/os/$arch'
+      package_server='https://pkgs.omarchy.org/edge/$arch'
+      ;;
+  esac
+}
+
+select_omarchy_package_names() {
+  if (( use_dev_packages )); then
+    printf '%s\n' 'omarchy-dev omarchy-settings-dev'
+  else
+    printf '%s\n' 'omarchy omarchy-settings'
+  fi
+}
+# OMARCHY_UPGRADE_SELECTION_END
 
 channel_override="${OMARCHY_UPGRADE_CHANNEL:-}"
 channel_override_cli=0
@@ -76,76 +187,9 @@ auto_reboot=0
 boot_cmdline_unsafe=0
 use_dev_packages=${OMARCHY_UPGRADE_DEV:-0}
 
-while (($#)); do
-  case "$1" in
-    -y|--yes)
-      yes=1
-      shift
-      ;;
-    --reboot)
-      auto_reboot=1
-      shift
-      ;;
-    --dev)
-      use_dev_packages=1
-      shift
-      ;;
-    --channel)
-      channel_override="${2:-}"
-      channel_override_cli=1
-      shift 2
-      ;;
-    --user)
-      target_user="${2:-}"
-      shift 2
-      ;;
-    -h|--help)
-      usage
-      exit 0
-      ;;
-    *)
-      fail "Unknown option: $1"
-      ;;
-  esac
-done
-
-case "$use_dev_packages" in
-  1|true|yes|on) use_dev_packages=1 ;;
-  0|false|no|off|"") use_dev_packages=0 ;;
-  *) fail "Invalid OMARCHY_UPGRADE_DEV value '$use_dev_packages'. Use 1/0, true/false, or pass --dev." ;;
-esac
-
-# Land on the Quattro equivalent of wherever the machine already is, unless the
-# caller said otherwise. Stable and rc machines get the production packages;
-# rc pulls them from the edge package repo while keeping its own Arch mirror.
-# Only edge takes the dev packages, since that is the channel they ship on.
-if [[ -z $channel_override ]] && (( ! use_dev_packages )); then
-  case "$(detect_installed_channel || true)" in
-    stable) channel_override=stable ;;
-    rc) channel_override=rc ;;
-    edge) channel_override=edge use_dev_packages=1 ;;
-  esac
-fi
-
-if (( use_dev_packages )); then
-  # The dev packages are only published to the edge package repo, which the rc
-  # and edge channels both point at; only stable is incompatible. rc keeps its
-  # own Arch mirror either way.
-  if [[ -n $channel_override ]]; then
-    if ! valid_channel "$channel_override"; then
-      fail "Invalid channel '$channel_override'. Use stable, rc, or edge."
-    fi
-    if [[ $(normalize_channel "$channel_override") == stable ]]; then
-      fail "--dev needs the edge package repo; use --channel rc or --channel edge."
-    fi
-  else
-    channel_override=edge
-  fi
-fi
-
-if { [[ -n $channel_override ]] || (( channel_override_cli )); } && ! valid_channel "$channel_override"; then
-  fail "Invalid channel '$channel_override'. Use stable, rc, or edge."
-fi
+parse_upgrade_arguments "$@"
+normalize_upgrade_dev_mode
+resolve_upgrade_channel
 
 if ! command -v pacman >/dev/null 2>&1; then
   fail "This upgrade is only supported on Arch/Omarchy systems with pacman."
@@ -310,23 +354,6 @@ discover_hyprland_signature() {
   (( ${#candidates[@]} == 1 )) || return 1
   printf '%s\n' "${candidates[0]}"
 }
-
-channel=$(normalize_channel "${channel_override:-stable}")
-
-case "$channel" in
-  stable)
-    mirror_server='https://stable-mirror.omarchy.org/$repo/os/$arch'
-    package_server='https://pkgs.omarchy.org/stable/$arch'
-    ;;
-  rc)
-    mirror_server='https://rc-mirror.omarchy.org/$repo/os/$arch'
-    package_server='https://pkgs.omarchy.org/edge/$arch'
-    ;;
-  edge)
-    mirror_server='https://mirror.omarchy.org/$repo/os/$arch'
-    package_server='https://pkgs.omarchy.org/edge/$arch'
-    ;;
-esac
 
 if (( ! yes )); then
   printf '\033[2J\033[3J\033[H' >/dev/tty
@@ -712,12 +739,8 @@ migrate_1password_beta_package() {
 }
 
 install_omarchy_quattro_packages() {
-  local omarchy_package=omarchy
-  local settings_package=omarchy-settings
-  if (( use_dev_packages )); then
-    omarchy_package=omarchy-dev
-    settings_package=omarchy-settings-dev
-  fi
+  local omarchy_package settings_package
+  read -r omarchy_package settings_package < <(select_omarchy_package_names)
 
   local core_packages=(
     omarchy-keyring
