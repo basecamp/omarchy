@@ -34,7 +34,10 @@ struct ProductionPluginRuntimeConfiguration final {
   int activation_root_fd = -1;
   int revision_root_fd = -1;
   int state_root_fd = -1;
-  int authority_root_fd = -1;
+  // Move-owned exact per-plugin authority directory. The bootstrap opens the
+  // canonical plugin child beneath its fixed authority container; raw callers
+  // remain a temporary N12 seam and must supply the same object.
+  host_session::OwnedDescriptor authority_root;
   permissions::PluginId plugin;
   std::uint32_t trusted_uid = std::numeric_limits<std::uint32_t>::max();
   std::string activation_record;

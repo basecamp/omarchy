@@ -183,7 +183,7 @@ ProductionPluginRuntimeRoot::open(
       std::numeric_limits<std::uint32_t>::max())
     return {};
   auto authority = host_session::AuthorityStore::open(
-      configuration.authority_root_fd, configuration.trusted_uid,
+      configuration.authority_root.get(), configuration.trusted_uid,
       configuration.plugin);
   if (!authority)
     return {};

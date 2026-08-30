@@ -34,6 +34,49 @@ bool exact_definition_root(const struct stat &metadata,
          (metadata.st_mode & 07777) == 0755;
 }
 
+bool exact_private_directory(const struct stat &metadata,
+                             std::uint32_t uid) noexcept {
+  return S_ISDIR(metadata.st_mode) && metadata.st_uid == uid &&
+         (metadata.st_mode & 07777) == 0700;
+}
+
+bool exact_plugin_id(std::string_view value) noexcept {
+  if (value.empty() || value.size() > 128)
+    return false;
+  bool previous_separator = true;
+  for (const unsigned char character : value) {
+    const bool alphanumeric = (character >= 'a' && character <= 'z') ||
+                              (character >= '0' && character <= '9');
+    const bool separator =
+        character == '.' || character == '-' || character == '_';
+    if ((!alphanumeric && !separator) ||
+        (separator && previous_separator))
+      return false;
+    previous_separator = separator;
+  }
+  return !previous_separator && value.front() >= 'a' && value.front() <= 'z';
+}
+
+OwnedDescriptor open_plugin_authority(int container_fd,
+                                      std::string_view plugin,
+                                      std::uint32_t uid) {
+  // Installation owns creation. Runtime composition only opens the exact
+  // pre-provisioned child and never repairs or widens its filesystem policy.
+  struct stat metadata{};
+  if (container_fd < 0 || !exact_plugin_id(plugin) ||
+      ::fstat(container_fd, &metadata) < 0 ||
+      !exact_private_directory(metadata, uid))
+    return {};
+  const std::string name(plugin);
+  OwnedDescriptor child(::openat(container_fd, name.c_str(),
+                                 O_RDONLY | O_DIRECTORY | O_CLOEXEC |
+                                     O_NOFOLLOW));
+  if (!child || ::fstat(child.get(), &metadata) < 0 ||
+      !exact_private_directory(metadata, uid))
+    return {};
+  return child;
+}
+
 FixedDirectoryResult open_fixed_directory(
     int filesystem_root_fd, std::span<const std::string_view> components,
     std::uint32_t uid, OwnedDescriptor &output) {
@@ -198,13 +241,18 @@ std::optional<ProductionPluginRuntimeConfiguration>
 ProductionPluginBootstrap::configuration(
     std::string_view record_name, const permissions::PluginId &plugin,
     ProductionPluginRuntimeHooks *hooks) const {
-  if (record_name != plugin.view() || hooks == nullptr)
+  if (record_name != plugin.view() || hooks == nullptr ||
+      !exact_plugin_id(plugin.view()))
+    return std::nullopt;
+  auto authority = open_plugin_authority(
+      roots_->authority_fd(), plugin.view(), roots_->trusted_uid());
+  if (!authority)
     return std::nullopt;
   return ProductionPluginRuntimeConfiguration{
       .activation_root_fd = roots_->activations_fd(),
       .revision_root_fd = roots_->revisions_fd(),
       .state_root_fd = roots_->state_fd(),
-      .authority_root_fd = roots_->authority_fd(),
+      .authority_root = std::move(authority),
       .plugin = plugin,
       .trusted_uid = roots_->trusted_uid(),
       .activation_record = std::string(record_name),
@@ -257,6 +305,15 @@ bool ProductionPluginBootstrap::adapter_available_for_test(
     std::uint32_t abi_version) noexcept {
   return compiled_adapter_available(adapter_class, digest, abi_version,
                                     nullptr);
+}
+
+bool ProductionPluginBootstrap::authority_directory_accepted_for_test(
+    std::uint32_t owner_uid, std::uint32_t mode,
+    std::uint32_t trusted_uid) noexcept {
+  struct stat metadata{};
+  metadata.st_uid = static_cast<uid_t>(owner_uid);
+  metadata.st_mode = static_cast<mode_t>(mode);
+  return exact_private_directory(metadata, trusted_uid);
 }
 #endif
 

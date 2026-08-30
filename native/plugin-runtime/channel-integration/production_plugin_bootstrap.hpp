@@ -75,6 +75,9 @@ private:
   [[nodiscard]] static bool adapter_available_for_test(
       std::string_view adapter_class, const definitions::Digest &digest,
       std::uint32_t abi_version) noexcept;
+  [[nodiscard]] static bool authority_directory_accepted_for_test(
+      std::uint32_t owner_uid, std::uint32_t mode,
+      std::uint32_t trusted_uid) noexcept;
   friend class ProductionPluginBootstrapTestAccess;
 #endif
 
@@ -102,6 +105,12 @@ public:
                     std::uint32_t abi_version) noexcept {
     return ProductionPluginBootstrap::adapter_available_for_test(
         adapter_class, digest, abi_version);
+  }
+  [[nodiscard]] static bool authority_directory_accepted(
+      std::uint32_t owner_uid, std::uint32_t mode,
+      std::uint32_t trusted_uid) noexcept {
+    return ProductionPluginBootstrap::authority_directory_accepted_for_test(
+        owner_uid, mode, trusted_uid);
   }
   [[nodiscard]] static std::optional<ProductionPluginRuntimeConfiguration>
   configuration(const ProductionPluginBootstrap &bootstrap,

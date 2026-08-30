@@ -450,7 +450,8 @@ public:
     return {.activation_root_fd = activation_fd_,
             .revision_root_fd = revisions_fd_,
             .state_root_fd = state_fd_,
-            .authority_root_fd = authority_fd_,
+            .authority_root = host::OwnedDescriptor(
+                ::fcntl(authority_fd_, F_DUPFD_CLOEXEC, 0)),
             .plugin = permissions::PluginId(plugin_),
             .trusted_uid = static_cast<std::uint32_t>(::getuid()),
             .activation_record = "current",
@@ -1678,7 +1679,7 @@ void production_root_rejects_unusable_authority_and_providers() {
   CoordinatorFixture bad_fd;
   {
     auto invalid = bad_fd.root_configuration();
-    invalid.authority_root_fd = -1;
+    invalid.authority_root = host::OwnedDescriptor{};
     require(!channel::ProductionPluginRuntimeRoot::open(std::move(invalid)),
             "invalid authority descriptor opened a product root");
   }
