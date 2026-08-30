@@ -1,137 +1,276 @@
 #!/bin/bash
 
-# omarchy:summary=Display annotated Tmux keybindings using an interactive search menu.
-# omarchy:args=[--print|-p] [--config <path>]
+# omarchy:summary=Display Tmux keybindings for the focused pane, and run the one picked.
+# omarchy:args=[--print|-p]
+
+# Display the running tmux server's keybindings using an interactive search
+# menu, and run the one that is picked.
+#
+# Read from the live server rather than a throwaway one seeded from the config
+# file, so the list reflects what is actually bound right now — including
+# anything bound interactively — and so a chosen binding can be run where it
+# was listed.
+#
+# tmux cannot be driven by replaying its keys: send-keys delivers to the pane's
+# process and never reaches tmux's own key table. What runs instead is the
+# command the key is bound to, which `list-keys` reports verbatim. It is handed
+# back through `source-file` so that tmux parses its own syntax — some bindings
+# are long, brace-nested and quoted, and no shell-level quoting survives them.
+#
+# Like the Neovim menu, the listing is scoped to what the pane can act on now:
+# a pane in copy mode lists its copy-mode table, anything else lists the prefix
+# and root tables.
+
+set -uo pipefail
 
 print_only=false
-config_file="${TMUX_CONF:-$HOME/.config/tmux/tmux.conf}"
+[[ ${1:-} == "--print" || ${1:-} == "-p" ]] && print_only=true
 
-while (($#)); do
-  case "$1" in
-    --print|-p)
-      print_only=true
-      ;;
-    --config)
-      shift
-      config_file="$1"
-      ;;
-    *)
-      config_file="$1"
-      ;;
-  esac
+# A tmux client names its own server on its command line; without one it is the
+# default socket for this user.
+tmux_socket() {
+  local cmdline socket_path socket_name
 
-  shift
-done
+  if [[ ${OMARCHY_FOCUSED_PID:-} =~ ^[0-9]+$ && -r /proc/$OMARCHY_FOCUSED_PID/cmdline ]]; then
+    mapfile -d '' -t cmdline < "/proc/$OMARCHY_FOCUSED_PID/cmdline"
 
-if [[ ! -f $config_file ]]; then
-  default_config="$OMARCHY_PATH/config/tmux/tmux.conf"
-
-  if [[ -f $default_config ]]; then
-    config_file="$default_config"
-  else
-    echo "Tmux config not found: $config_file" >&2
-    exit 1
+    for ((i = 0; i < ${#cmdline[@]}; i++)); do
+      [[ ${cmdline[i]} == "-S" ]] && socket_path="${cmdline[i + 1]:-}"
+      [[ ${cmdline[i]} == "-L" ]] && socket_name="${cmdline[i + 1]:-}"
+    done
   fi
+
+  if [[ -n ${socket_path:-} ]]; then
+    printf '%s' "$socket_path"
+  elif [[ -n ${socket_name:-} ]]; then
+    printf '%s' "/tmp/tmux-$UID/${socket_name}"
+  else
+    printf '%s' "/tmp/tmux-$UID/default"
+  fi
+}
+
+socket=$(tmux_socket)
+tm() { tmux -S "$socket" "$@" 2>/dev/null; }
+
+tm has-session 2>/dev/null || {
+  echo "No tmux server at $socket" >&2
+  exit 1
+}
+
+# Commands run against the pane the menu was opened over, not against whichever
+# session tmux happens to consider current.
+target_pane() {
+  local session
+
+  if [[ ${OMARCHY_FOCUSED_PID:-} =~ ^[0-9]+$ ]]; then
+    session=$(tm list-clients -F '#{client_pid} #{session_name}' |
+      awk -v pid="$OMARCHY_FOCUSED_PID" '$1 == pid { print $2; exit }')
+  fi
+
+  # No client matched: the most recently active session is the best guess.
+  [[ -z ${session:-} ]] && session=$(tm list-sessions -F '#{session_activity} #{session_name}' |
+    sort -rn | awk 'NR == 1 { print $2 }')
+
+  [[ -n ${session:-} ]] || return 1
+  tm display-message -p -t "$session" '#{pane_id}'
+}
+
+pane=$(target_pane) || { echo "No tmux session found." >&2; exit 1; }
+
+# Which tables can act on this pane right now.
+if [[ $(tm display-message -p -t "$pane" '#{pane_in_mode}') == "1" ]]; then
+  # tmux has exactly two copy-mode tables: "copy-mode-vi" and "copy-mode", the
+  # latter holding the emacs bindings. There is no "copy-mode-emacs".
+  mode_keys=$(tm show-options -g mode-keys | awk '{ print $2 }')
+  if [[ $mode_keys == "vi" ]]; then
+    tables=(copy-mode-vi)
+  else
+    tables=(copy-mode)
+  fi
+  mode_label=" (copy mode)"
+else
+  tables=(prefix root)
+  mode_label=""
 fi
 
-output_keybindings() (
-  set -o pipefail
-  socket_dir=$(mktemp -d)
-  socket="$socket_dir/tmux"
-  trap 'tmux -S "$socket" kill-server >/dev/null 2>&1 || true; rm -f "$socket"; rmdir "$socket_dir" 2>/dev/null || true' EXIT
-  tmux -S "$socket" -f /dev/null start-server \; \
-    unbind-key -a -T prefix \; \
-    unbind-key -a -T root \; \
-    unbind-key -a -T copy-mode \; \
-    unbind-key -a -T copy-mode-vi \; \
-    source-file "$config_file" \; \
-    show-options -g prefix \; \
-    show-options -g prefix2 \; \
-    list-keys -aN -T prefix -P "prefix" \; \
-    list-keys -aN -T root -P "root" \; \
-    list-keys -aN -T copy-mode-vi -P "copy-mode-vi" | awk '
-function key_part_text(part, is_modifier, part_count) {
-  gsub(/^\\/, "", part)
+prefix_key=$(tm show-options -g prefix | awk '{ print $2 }')
 
-  if (is_modifier && part == "C") return "CTRL"
-  if (is_modifier && part == "M") return "ALT"
-  if (is_modifier && part == "S") return "SHIFT"
-  if (part == "Space") return "SPACE"
-  if (part == "BSpace") return "BACKSPACE"
-  if (part == "BTab") return "SHIFT + TAB"
-  if (part == "PPage") return "PAGE UP"
-  if (part == "NPage") return "PAGE DOWN"
-  if (part == "DC") return "DELETE"
-  if (part == "IC") return "INSERT"
-  if (part_count == 1 && part ~ /^[a-z]$/) return part
+# Notes carry the readable description but not the command; plain output carries
+# the command but not the note. Both are keyed by the binding's key, so they join
+# on it — with the key unescaped, since only the plain form escapes it.
+table_records() {
+  local table="$1"
 
-  return toupper(part)
-}
+  awk -v table="$table" -v prefix_key="$prefix_key" '
+    function unesc(k) { gsub(/\\/, "", k); return k }
 
-function key_text(key, parts, count, i, part, text) {
-  gsub(/\\/, "", key)
-  count = split(key, parts, "-")
-  text = ""
+    function pretty(key,   parts, count, i, part, out, upper) {
+      # "-" is both the modifier separator and a bindable key, so a bare
+      # single character is never split.
+      if (length(key) == 1) return key
 
-  for (i = 1; i <= count; i++) {
-    part = key_part_text(parts[i], i < count, count)
-    text = text (text == "" ? "" : " + ") part
-  }
+      count = split(key, parts, "-")
 
-  return text
-}
+      # A trailing empty part means the key itself was the separator, as in
+      # "C--" for ctrl plus minus.
+      if (parts[count] == "") parts[count] = "-"
+      out = ""
 
-function table_text(table) {
-  if (table == "copy-mode-vi") return "COPY MODE"
-  if (table == "copy-mode") return "COPY MODE"
-  if (table == "prefix") return "PREFIX"
+      for (i = 1; i <= count; i++) {
+        part = parts[i]
 
-  gsub(/-/, " ", table)
-  return toupper(table)
-}
+        if (i < count) {
+          upper = toupper(part)
+          if (upper == "C") part = "CTRL"
+          else if (upper == "M") part = "ALT"
+          else if (upper == "S") part = "SHIFT"
+          out = out (out == "" ? "" : " + ") part
+          continue
+        }
 
-$1 == "prefix" && NF == 2 { prefix = $2; next }
-$1 == "prefix2" && NF == 2 { prefix2 = $2; next }
+        if (part == "Space") part = "SPACE"
+        else if (part == "Enter" || part == "CR") part = "ENTER"
+        else if (part == "BSpace") part = "BACKSPACE"
+        else if (part == "BTab") part = "SHIFT + TAB"
+        else if (part == "PPage") part = "PAGE UP"
+        else if (part == "NPage") part = "PAGE DOWN"
+        else if (part == "DC") part = "DELETE"
+        else if (part == "IC") part = "INSERT"
+        else if (length(part) > 1) part = toupper(part)
 
-{
-  if (!header_printed) {
-    prefix_description = key_text(prefix)
+        out = out (out == "" ? "" : " + ") part
+      }
 
-    if (prefix2 != "" && prefix2 != "None") {
-      prefix_description = prefix_description " / " key_text(prefix2)
+      return out
     }
 
-    printf "%-32s → %s\n", "PREFIX", prefix_description
-    header_printed = 1
-  }
+    # Pass 0: the keys the config defines, one per line, from an isolated
+    # server that sourced nothing else. tmux ships -N notes for its own
+    # defaults too, so a note alone does not mark a binding as curated.
+    ARGIND == 1 { curated[unesc($0)] = 1; next }
 
-  table = $1
-  key = $2
-  note = $0
-  sub(/^[^ ]+ +[^ ]+ +/, "", note)
+    # Pass 1: notes. In the prefix table each line leads with the prefix key.
+    # ARGIND, not NR == FNR: some tables (copy-mode) carry no notes at all, and
+    # with an empty first file that idiom reads the whole second file as notes.
+    ARGIND == 2 {
+      line = $0
+      if (index(line, prefix_key " ") == 1) line = substr(line, length(prefix_key) + 2)
+      sub(/^[[:space:]]+/, "", line)
 
-  if (table == "root") {
-    combo = key_text(key)
-  } else {
-    combo = table_text(table) " + " key_text(key)
-  }
+      key = line
+      sub(/[[:space:]].*$/, "", key)
+      note = line
+      sub(/^[^[:space:]]+[[:space:]]+/, "", note)
 
-  printf "%-32s → %s\n", combo, note
-}'
-)
+      notes[unesc(key)] = note
+      next
+    }
 
-if [[ $print_only == "true" ]]; then
-  output_keybindings
+    # Pass 2: commands.
+    {
+      for (i = 1; i <= NF; i++) if ($i == "-T") break
+      if (i >= NF - 1) next
+
+      key = unesc($(i + 2))
+
+      command = ""
+      for (j = i + 3; j <= NF; j++) command = command (command == "" ? "" : " ") $j
+      if (command == "") next
+
+      # A pointer device is not something to pick off a keyboard menu.
+      if (key ~ /Mouse|Wheel|Click/) next
+
+      # Outside copy mode, list only the bindings the config itself defines:
+      # those are the ones Omarchy curates, and the tmux built-in defaults would
+      # outnumber them three to one and bury them (#6308). Copy mode defines
+      # none, so there the table itself is the list.
+      if (table != "copy-mode" && table != "copy-mode-vi" && !(key in curated)) next
+
+      # Copy-mode bindings carry no notes, so the command itself is the label.
+      # Nearly all of them are "send-keys -X <verb>", and the wrapper is noise.
+      label = notes[key]
+      if (label == "") {
+        label = command
+        sub(/^send-keys -X /, "", label)
+      }
+
+      combo = (table == "prefix" ? "PREFIX + " : "") pretty(key)
+
+      # Leading sort key: tmux lists keys in ASCII order, which groups nothing.
+      # Ordering by what the binding does puts "Split window horizontally" next
+      # to "Split window vertically", where someone browsing expects it.
+      printf "%s\t%-32s → %s\t%s\n", label, combo, label, command
+    }
+  ' <(curated_keys "$table") <(tm list-keys -N -T "$table") <(tm list-keys -T "$table")
+}
+
+# The keys a table would hold with only the config loaded: an isolated server
+# that unbinds everything, sources the config, lists, and exits. This is how
+# the stock viewer decided what to show, and it is what keeps tmux's own
+# defaults out of the way of Omarchy's bindings.
+curated_keys() {
+  local table="$1" config="${TMUX_CONF:-$HOME/.config/tmux/tmux.conf}" dir
+
+  [[ -f $config ]] || config="$OMARCHY_PATH/config/tmux/tmux.conf"
+  [[ -f $config ]] || return 0
+
+  dir=$(mktemp -d) || return 0
+  tmux -S "$dir/tmux" -f /dev/null start-server \; \
+    unbind-key -a -T prefix \; unbind-key -a -T root \; \
+    source-file "$config" \; list-keys -T "$table" 2>/dev/null |
+    awk '{ for (i = 1; i <= NF; i++) if ($i == "-T") { print $(i + 2); break } }'
+  tmux -S "$dir/tmux" kill-server >/dev/null 2>&1
+  rm -rf "$dir"
+}
+
+records=""
+# The prefix itself leads the list outside copy mode, as the stock viewer had
+# it: it is the first thing a tmux newcomer needs and nothing else says it.
+if [[ ${tables[0]} == "prefix" ]]; then
+  records+="$(printf '%-32s → %s\t' "PREFIX" "$(awk -v k="$prefix_key" 'BEGIN { n = split(k, p, "-"); o = ""; for (i = 1; i <= n; i++) { x = p[i]; if (i < n) x = (toupper(x) == "C") ? "CTRL" : (toupper(x) == "M") ? "ALT" : x; else x = toupper(x); o = o (o == "" ? "" : " + ") x } print o }')")"$'\n'
+fi
+for table in "${tables[@]}"; do
+  records+="$(table_records "$table")"$'\n'
+done
+# Sort on the action, then drop the sort key. Order-preserving dedupe on the
+# rendered row, since sort -u here would key on the combo again.
+records=$(grep -v '^[[:space:]]*$' <<<"$records" | sort -t$'\t' -k1,1 |
+  cut -f2- | awk -F '\t' '!seen[$1]++')
+
+if [[ -z $records ]]; then
+  echo "No tmux keybindings found." >&2
+  exit 1
+fi
+
+if [[ $print_only == true ]]; then
+  cut -f1 <<<"$records"
   exit 0
 fi
 
-records=$(output_keybindings)
-
 monitor_height=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused == true) | .height' 2>/dev/null)
+[[ $monitor_height =~ ^[0-9]+$ ]] && ((monitor_height > 0)) || monitor_height=900
 
-if [[ ! $monitor_height =~ ^[0-9]+$ ]] || ((monitor_height <= 0)); then
-  monitor_height=900
+# Rows out to the layers above: whatever hosts this app, then Omarchy's
+# own list -- so neither is ever more than one hop away.
+up_rows=$(omarchy-cmd-keybindings-up)
+
+selection=$( { [[ -n $up_rows ]] && printf '%s\n' "$up_rows"
+  cut -f1 <<<"$records"; } |
+  omarchy-menu-select "Tmux keybindings$mode_label" -- --width 800 --height $((monitor_height * 40 / 100))) || exit 0
+[[ -n $selection ]] || exit 0
+
+if [[ -n $up_rows ]] && grep -Fqx -- "$selection" <<<"$up_rows"; then
+  exec omarchy-cmd-keybindings-up --go "$selection"
 fi
 
-menu_height=$((monitor_height * 40 / 100))
-printf '%s\n' "$records" | omarchy-menu-select 'Tmux keybindings' -- --width 800 --height "$menu_height" >/dev/null || true
+command=$(awk -F '\t' -v selection="$selection" '$1 == selection { print $2; exit }' <<<"$records")
+[[ -n $command ]] || exit 0
+
+command_file=$(mktemp) || exit 1
+trap 'rm -f "$command_file"' EXIT
+printf '%s\n' "$command" >"$command_file"
+
+tm source-file -t "$pane" "$command_file" || {
+  omarchy-notification-send "Could not run binding" "$selection"
+  exit 1
+}

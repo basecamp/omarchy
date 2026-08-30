@@ -1,231 +1,236 @@
 #!/bin/bash
 
-# omarchy:summary=Display annotated Herdr keybindings using an interactive search menu.
-# omarchy:args=[--print|-p] [--config <path>]
+# omarchy:summary=Display Herdr keybindings, and run the one picked.
+# omarchy:args=[--print|-p]
+
+# Display Herdr's keybindings using an interactive search menu, and run the one
+# that is picked.
+#
+# Herdr has no way to report its resolved bindings, so the list is rebuilt the
+# way the stock menu does: `herdr --default-config` supplies the action list and
+# its defaults as commented lines, and the user's config.toml overrides them.
+#
+# Herdr's own API cannot run these. Its CLI covers the structural actions (tab,
+# pane, workspace) but not the interface ones — help, copy mode, zoom, the
+# workspace picker — and `pane send-keys` reaches the pane's process rather than
+# Herdr's key handling. So a chosen binding is replayed into the terminal window
+# as real key events, which covers every action uniformly and needs no table of
+# action-to-command mappings to keep up to date.
+
+set -uo pipefail
 
 print_only=false
+[[ ${1:-} == "--print" || ${1:-} == "-p" ]] && print_only=true
+
 config_file="${HERDR_CONFIG_PATH:-${XDG_CONFIG_HOME:-$HOME/.config}/herdr/config.toml}"
+[[ -f $config_file ]] || config_file=/dev/null
 
-while (($#)); do
-  case "$1" in
-    --print|-p)
-      print_only=true
-      ;;
-    --config)
-      shift
-      config_file="$1"
-      ;;
-    *)
-      config_file="$1"
-      ;;
-  esac
 
-  shift
-done
-
-# With no config file, Herdr runs on its own built-in defaults. Substituting the
-# Omarchy seed config here would describe bindings Herdr never loaded.
-[[ -f $config_file ]] || config_file="/dev/null"
-
-# Herdr has no CLI that dumps resolved keybindings, so the action list and its
-# defaults come from `herdr --default-config`, where every action appears as a
-# commented `# action = "binding"` line, and the user config overrides those.
-output_keybindings() (
-  set -o pipefail
-  herdr --default-config | awk -v config_file="$config_file" '
-# TOML literal strings are as valid as basic ones, so both quote characters
-# open and close a value here.
-function strip_comment(value,   i, ch, quote, out) {
-  quote = ""
-  out = ""
-
-  for (i = 1; i <= length(value); i++) {
-    ch = substr(value, i, 1)
-
-    if (quote == "" && (ch == "\"" || ch == "'\''")) quote = ch
-    else if (ch == quote) quote = ""
-    if (ch == "#" && quote == "") break
-
-    out = out ch
-  }
-
-  return out
-}
-
-# Removes every quoted run, leaving only what surrounds the strings. An
-# unterminated quote returns a sentinel no valid value can produce.
-function without_quoted(value,   i, ch, quote, out) {
-  quote = ""
-  out = ""
-
-  for (i = 1; i <= length(value); i++) {
-    ch = substr(value, i, 1)
-
-    if (quote == "") {
-      if (ch == "\"" || ch == "'"'"'") quote = ch
-      else out = out ch
-    } else if (ch == quote) {
-      quote = ""
-    }
-  }
-
-  return quote == "" ? out : "\001"
-}
-
-# Prose in the default config can read like an assignment, as in
-# `# type = "popup" opens a session-modal terminal`, so a value counts only when
-# it is a bare string or an array of them.
-function is_binding_value(value,   rest) {
-  value = strip_comment(value)
-  sub(/^[[:space:]]+/, "", value)
-  sub(/[[:space:]]+$/, "", value)
-  if (value == "") return 0
-
-  rest = without_quoted(value)
-
-  # A bare string leaves nothing behind; an array leaves only its brackets,
-  # commas, and whitespace.
-  return rest == "" || rest ~ /^\[[[:space:],]*\]$/
-}
-
-function key_text(key,   count, parts, i, text) {
-  count = split(key, parts, "+")
-  text = ""
-
-  for (i = 1; i <= count; i++) {
-    text = text (text == "" ? "" : " + ") toupper(parts[i])
-  }
-
-  return text
-}
-
-# Renders every alternate binding for one action as "A / B".
-function combo_text(value,   i, ch, quote, part, text) {
-  value = strip_comment(value)
-  quote = ""
-  part = ""
-  text = ""
-
-  for (i = 1; i <= length(value); i++) {
-    ch = substr(value, i, 1)
-
-    if (quote == "") {
-      if (ch == "\"" || ch == "'"'"'") { quote = ch; part = "" }
-      continue
+# Emits "<action>\t<binding>[ /<binding>...]" in the order the default config
+# lists them. Values that are not a quoted string or an array of them are prose,
+# not bindings — the default config is full of explanatory lines that would
+# otherwise parse like assignments.
+extract_bindings() {
+  herdr --default-config 2>/dev/null | awk -v config_file="$config_file" '
+    function strip_comment(value,   i, ch, quote, out) {
+      quote = ""; out = ""
+      for (i = 1; i <= length(value); i++) {
+        ch = substr(value, i, 1)
+        if (quote == "" && (ch == "\"" || ch == "'"'"'")) quote = ch
+        else if (ch == quote) quote = ""
+        if (ch == "#" && quote == "") break
+        out = out ch
+      }
+      return out
     }
 
-    if (ch == quote) {
-      quote = ""
-      if (part != "") text = text (text == "" ? "" : " / ") key_text(part)
-      continue
+    function without_quoted(value,   i, ch, quote, out) {
+      quote = ""; out = ""
+      for (i = 1; i <= length(value); i++) {
+        ch = substr(value, i, 1)
+        if (quote == "") {
+          if (ch == "\"" || ch == "'"'"'") quote = ch; else out = out ch
+        } else if (ch == quote) quote = ""
+      }
+      return quote == "" ? out : "\001"
     }
 
-    part = part ch
-  }
+    function is_binding_value(value,   rest) {
+      value = strip_comment(value)
+      sub(/^[[:space:]]+/, "", value); sub(/[[:space:]]+$/, "", value)
+      if (value == "") return 0
+      rest = without_quoted(value)
+      return rest == "" || rest ~ /^\[[[:space:],]*\]$/
+    }
 
-  return text
+    # Joins every alternate binding for one action as "a /b".
+    function bindings(value,   i, ch, quote, part, out) {
+      value = strip_comment(value); quote = ""; part = ""; out = ""
+      for (i = 1; i <= length(value); i++) {
+        ch = substr(value, i, 1)
+        if (quote == "") {
+          if (ch == "\"" || ch == "'"'"'") { quote = ch; part = "" }
+          continue
+        }
+        if (ch == quote) {
+          quote = ""
+          if (part != "") out = out (out == "" ? "" : " /") part
+          continue
+        }
+        part = part ch
+      }
+      return out
+    }
+
+    function remember(action) {
+      if (action in seen) return
+      seen[action] = 1
+      order[++count] = action
+    }
+
+    # Pass 1: the default config, every line of it commented out.
+    FNR == NR {
+      line = $0
+      sub(/^[[:space:]]*#[[:space:]]*/, "", line)
+      if (line ~ /^\[\[keys\.command\]\]/) { in_keys = 0; next }
+      if (line ~ /^\[/) { in_keys = (line ~ /^\[keys\]/); next }
+      if (!in_keys || line !~ /^[a-z_]+[[:space:]]*=/) next
+
+      action = line; sub(/[[:space:]]*=.*$/, "", action)
+      value = line;  sub(/^[^=]*=[[:space:]]*/, "", value)
+      if (!is_binding_value(value)) next
+
+      remember(action)
+      combos[action] = bindings(value)
+      next
+    }
+
+    # Pass 2: the user config, which wins where it sets anything.
+    {
+      if ($0 ~ /^\[\[keys\.command\]\]/) { in_user = 0; next }
+      if ($0 ~ /^\[/) { in_user = ($0 ~ /^\[keys\]/); next }
+      if (!in_user || $0 ~ /^[[:space:]]*#/) next
+      if ($0 !~ /^[[:space:]]*[a-z_]+[[:space:]]*=/) next
+
+      line = $0; sub(/^[[:space:]]*/, "", line)
+      action = line; sub(/[[:space:]]*=.*$/, "", action)
+      value = line;  sub(/^[^=]*=[[:space:]]*/, "", value)
+      if (!is_binding_value(value)) next
+
+      remember(action)
+      # An action set to nothing is unbound, not defaulted back.
+      combos[action] = bindings(value)
+    }
+
+    END {
+      for (i = 1; i <= count; i++) {
+        action = order[i]
+        if (combos[action] == "") continue
+        printf "%s\t%s\n", action, combos[action]
+      }
+    }
+  ' - "$config_file"
 }
 
-function describe(action,   text) {
-  sub(/^navigate_/, "", action)
-  gsub(/_/, " ", action)
-  text = toupper(substr(action, 1, 1)) substr(action, 2)
+# "prefix+shift+r" -> "SHIFT + R", for display only.
+# "prefix+shift+r" -> "CTRL + SPACE SHIFT + r": the row omarchy-cmd-keybinding-send
+# replays. The prefix becomes its own chord, modifiers are spelled out, and the
+# key keeps its case, since a bare capital means SHIFT to the sender.
+sendable_combo() {
+  local combo="$1" part out="" chord=""
+  local prefix_raw
 
-  return text
+  prefix_raw=$(extract_bindings | awk -F'\t' '$1 == "prefix" { print $2; exit }')
+  prefix_raw="${prefix_raw%% /*}"
+
+  while IFS= read -r part; do
+    [[ -n $part ]] || continue
+    case "${part,,}" in
+      prefix)
+        out+="${out:+ }$(sendable_combo "${prefix_raw:-ctrl+b}")"
+        ;;
+      ctrl|control) chord+="${chord:+ + }CTRL" ;;
+      shift)        chord+="${chord:+ + }SHIFT" ;;
+      alt)          chord+="${chord:+ + }ALT" ;;
+      cmd|super)    chord+="${chord:+ + }SUPER" ;;
+      backtick)     chord+="${chord:+ + }GRAVE" ;;
+      esc|enter|tab|space|backspace|delete|home|end|pageup|pagedown|left|right|up|down|minus|comma|plus|ampersand)
+                    chord+="${chord:+ + }${part^^}" ;;
+      *)            chord+="${chord:+ + }$part" ;;
+    esac
+  done < <(tr '+' '\n' <<<"$combo")
+
+  [[ -n $chord ]] && out+="${out:+ }$chord"
+  printf '%s' "$out"
 }
 
-function remember(action) {
-  if (action in seen) return
-  seen[action] = 1
-  order[++count] = action
+render_combo() {
+  local combo="$1" part out=""
+
+  while IFS= read -r part; do
+    [[ -n $part ]] || continue
+    case "${part,,}" in
+      prefix) part="PREFIX" ;;
+      ctrl|control) part="CTRL" ;;
+      shift) part="SHIFT" ;;
+      alt) part="ALT" ;;
+      cmd|super) part="SUPER" ;;
+      *) part="${part^^}" ;;
+    esac
+    out+="${out:+ + }$part"
+  done < <(tr '+' '\n' <<<"$combo")
+
+  printf '%s' "$out"
 }
 
-function bind(action, value,   combo) {
-  combo = combo_text(value)
-  if (combo == "") return
-
-  if (action ~ /^navigate_/) combo = "NAVIGATE + " combo
-  remember(action)
-  combos[action] = combo
+describe() {
+  local action="${1#navigate_}"
+  action="${action//_/ }"
+  printf '%s' "${action^}"
 }
 
-# Pass 1: default config on stdin, for the action order and default bindings.
-# Every line there is commented out, so section markers are too.
-FNR == NR {
-  line = $0
-  sub(/^[[:space:]]*#[[:space:]]*/, "", line)
+records=$(
+  while IFS=$'\t' read -r action combos; do
+    [[ -n $action && -n $combos ]] || continue
+    display=""
+    while IFS= read -r combo; do
+      [[ -n $combo ]] || continue
+      display+="${display:+ / }$(render_combo "$combo")"
+    done < <(tr '/' '\n' <<<"$combos")
 
-  if (line ~ /^\[\[keys\.command\]\]/) { in_keys = 0; next }
-  if (line ~ /^\[/) { in_keys = (line ~ /^\[keys\]/); next }
-  if (!in_keys) next
-  if (line !~ /^[a-z_]+[[:space:]]*=/) next
-
-  action = line
-  sub(/[[:space:]]*=.*$/, "", action)
-  value = line
-  sub(/^[^=]*=[[:space:]]*/, "", value)
-  if (!is_binding_value(value)) next
-
-  # Actions Herdr leaves unbound still hold their place in the listing order,
-  # for when the user config binds them.
-  remember(action)
-  bind(action, value)
-  next
-}
-
-# Pass 2: the user config, which overrides the defaults it sets.
-{
-  if ($0 ~ /^\[\[keys\.command\]\]/) { in_user_keys = 0; next }
-  if ($0 ~ /^\[/) { in_user_keys = ($0 ~ /^\[keys\]/); next }
-  if (!in_user_keys) next
-  if ($0 ~ /^[[:space:]]*#/) next
-  if ($0 !~ /^[[:space:]]*[a-z_]+[[:space:]]*=/) next
-
-  line = $0
-  sub(/^[[:space:]]*/, "", line)
-  action = line
-  sub(/[[:space:]]*=.*$/, "", action)
-  value = line
-  sub(/^[^=]*=[[:space:]]*/, "", value)
-  if (!is_binding_value(value)) next
-
-  # An action bound to nothing in the user config is unbound, not defaulted.
-  if (combo_text(value) == "") {
-    delete combos[action]
-    next
-  }
-
-  bind(action, value)
-}
-
-END {
-  if ("prefix" in combos) {
-    printf "%-32s → %s\n", "PREFIX", combos["prefix"]
-  }
-
-  for (i = 1; i <= count; i++) {
-    action = order[i]
-    if (action == "prefix") continue
-    if (!(action in combos)) continue
-
-    printf "%-32s → %s\n", combos[action], describe(action)
-  }
-}
-' - "$config_file"
+    # The first alternate is the one that runs; the rest are shown for recall.
+    printf '%-32s → %s\t%s\n' "$display" "$(describe "$action")" "$(sendable_combo "${combos%% /*}")"
+  done < <(extract_bindings)
 )
 
-if [[ $print_only == "true" ]]; then
-  output_keybindings
+if [[ -z $records ]]; then
+  echo "No Herdr keybindings found." >&2
+  exit 1
+fi
+
+if [[ $print_only == true ]]; then
+  cut -f1 <<<"$records"
   exit 0
 fi
 
-records=$(output_keybindings)
-
 monitor_height=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused == true) | .height' 2>/dev/null)
+[[ $monitor_height =~ ^[0-9]+$ ]] && ((monitor_height > 0)) || monitor_height=900
 
-if [[ ! $monitor_height =~ ^[0-9]+$ ]] || ((monitor_height <= 0)); then
-  monitor_height=900
+# Rows out to the layers above: whatever hosts this app, then Omarchy's
+# own list -- so neither is ever more than one hop away.
+up_rows=$(omarchy-cmd-keybindings-up)
+
+selection=$( { [[ -n $up_rows ]] && printf '%s\n' "$up_rows"
+  cut -f1 <<<"$records"; } |
+  omarchy-menu-select 'Herdr keybindings' -- --width 800 --height $((monitor_height * 40 / 100))) || exit 0
+[[ -n $selection ]] || exit 0
+
+if [[ -n $up_rows ]] && grep -Fqx -- "$selection" <<<"$up_rows"; then
+  exec omarchy-cmd-keybindings-up --go "$selection"
 fi
 
-menu_height=$((monitor_height * 40 / 100))
-printf '%s\n' "$records" | omarchy-menu-select 'Herdr keybindings' -- --width 800 --height "$menu_height" >/dev/null || true
+
+binding=$(awk -F '\t' -v selection="$selection" '$1 == selection { print $2; exit }' <<<"$records")
+[[ -n $binding ]] || exit 0
+
+exec omarchy-cmd-keybinding-send "$binding → $selection"
