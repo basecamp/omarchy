@@ -19,7 +19,22 @@ mkdir -p "$OMARCHY_ACCEPTANCE_DIR"
 # the session environment is inherited.
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
-export OMARCHY_PATH="${OMARCHY_PATH:-$ROOT}"
+# The suite acts on the running session, and qs matches shell instances by
+# config path — pointed at any other tree, every omarchy-shell call reads as
+# "not running". So default OMARCHY_PATH to the tree the session was started
+# from, then this checkout for standalone use, then the installed tree for
+# when only test/ was synced in (omarchy-iso-test's --sync-omarchy).
+if [[ -z ${OMARCHY_PATH:-} ]]; then
+  OMARCHY_PATH=$(systemctl --user show-environment 2>/dev/null | sed -n 's/^OMARCHY_PATH=//p' | tail -1)
+fi
+if [[ -z $OMARCHY_PATH ]]; then
+  OMARCHY_PATH=$ROOT
+fi
+if [[ ! -f $OMARCHY_PATH/shell/shell.qml && -f /usr/share/omarchy/shell/shell.qml ]]; then
+  OMARCHY_PATH=/usr/share/omarchy
+fi
+export OMARCHY_PATH
+
 export PATH="$OMARCHY_PATH/bin:$PATH"
 
 if [[ -z ${DISPLAY:-} ]]; then
