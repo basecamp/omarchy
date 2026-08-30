@@ -1190,11 +1190,23 @@ ensure_sleep_lock_service() {
 }
 
 run_post_upgrade_migrations() {
-  PATH="$package_path" command -v omarchy-migrate >/dev/null 2>&1 || return 0
+  local pending_status
+
+  if ! PATH="$package_path" command -v omarchy-migrate >/dev/null 2>&1; then
+    fail "omarchy-migrate is unavailable after installing the Omarchy quattro packages."
+  fi
 
   log "Running Omarchy migrations"
   if ! run_as_user_omarchy OMARCHY_UPGRADE_TO_QUATTRO_LIVE=1 omarchy-migrate; then
-    warn "Could not run Omarchy migrations; the user may be prompted to run them after login."
+    fail "Omarchy migrations did not complete. Fix the error above and rerun the upgrade before rebooting."
+  fi
+  if run_as_user_omarchy omarchy-migrate --pending >/dev/null; then
+    fail "Omarchy migrations are still pending. Rerun the upgrade before rebooting."
+  else
+    pending_status=$?
+    if (( pending_status != 1 )); then
+      fail "Could not verify that Omarchy migrations completed. Rerun the upgrade before rebooting."
+    fi
   fi
 }
 
@@ -2366,8 +2378,8 @@ run_as_user_omarchy omarchy-bar defaults ||
 cleanup_retired_services
 ensure_sleep_lock_service
 remove_retired_default_packages
-run_post_upgrade_migrations
 run_final_system_package_upgrade
+run_post_upgrade_migrations
 run_post_upgrade_update_steps
 refresh_current_theme_after_upgrade
 # Do not force-reload Hyprland in the live upgraded session. The legacy
