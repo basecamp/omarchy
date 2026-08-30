@@ -171,12 +171,17 @@ public:
       if (flushed == BrokerSettlementStatus::fatal)
         return {.status = AuthenticatedReceiveStatus::fatal,
                 .message = std::nullopt};
+      // Completion expands the readable lanes. Yield so PluginSessionIo can
+      // re-arm that mask before this readiness-driven backend receives again.
+      if (flushed == BrokerSettlementStatus::complete)
+        return {.status = AuthenticatedReceiveStatus::would_block,
+                .message = std::nullopt};
     }
     const auto effective = intersect(allowed_lanes, settlement_->read_lanes());
     if (effective == launcher::EndpointMask::none)
       return {.status = AuthenticatedReceiveStatus::would_block,
               .message = std::nullopt};
-    auto received = channel_->receive_authenticated(effective, deadline);
+    auto received = channel_->try_receive_authenticated(effective);
     if (!received || received.message->role != wire::EndpointRole::broker)
       return received;
     const auto settled =

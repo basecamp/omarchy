@@ -10,6 +10,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <cstddef>
@@ -79,10 +80,11 @@ void send_bytes(int descriptor, std::span<const std::byte> bytes,
   }
 }
 
-std::vector<std::byte> receive_bytes(int descriptor) {
-  std::vector<std::byte> bytes(128);
-  const ssize_t count = recv(descriptor, bytes.data(), bytes.size(), 0);
-  if (count <= 0) {
+std::vector<std::byte> receive_bytes(int descriptor,
+                                     std::size_t capacity = 128) {
+  std::vector<std::byte> bytes(capacity);
+  const ssize_t count = recv(descriptor, bytes.data(), bytes.size(), MSG_TRUNC);
+  if (count <= 0 || static_cast<std::size_t>(count) > bytes.size()) {
     fail();
   }
   bytes.resize(static_cast<std::size_t>(count));
@@ -162,12 +164,263 @@ void put16(std::span<std::byte> output, std::size_t offset,
   output[offset + 1] = static_cast<std::byte>(value);
 }
 
+void put32(std::span<std::byte> output, std::size_t offset,
+           std::uint32_t value) {
+  for (std::size_t index = 0; index < 4; ++index)
+    output[offset + index] =
+        static_cast<std::byte>(value >> ((3U - index) * 8U));
+}
+
 void put64(std::span<std::byte> output, std::size_t offset,
            std::uint64_t value) {
   for (std::size_t index = 0; index < 8; ++index) {
     output[offset + index] =
         static_cast<std::byte>(value >> ((7U - index) * 8U));
   }
+}
+
+std::vector<std::byte> audio_request(std::uint64_t generation,
+                                     std::uint64_t correlation,
+                                     wire::SessionSequence &sequence) {
+  constexpr std::string_view token = "timer";
+  std::vector<std::byte> payload(10 + token.size());
+  const auto operation = static_cast<std::uint16_t>(
+      broker::permissions::OperationId::audio_play_cue);
+  put16(payload, 0, operation);
+  put16(payload, 2, static_cast<std::uint16_t>(2 + token.size()));
+  payload[4] = std::byte{};
+  payload[5] = std::byte{};
+  payload[6] = std::byte{};
+  payload[7] = std::byte{};
+  put16(payload, 8, static_cast<std::uint16_t>(token.size()));
+  for (std::size_t index = 0; index < token.size(); ++index)
+    payload[10 + index] = static_cast<std::byte>(token[index]);
+  const auto outbound = sequence.take_outbound(wire::EndpointRole::broker);
+  if (!outbound)
+    fail();
+  return packet({.envelope_version = wire::kEnvelopeVersionV2,
+                 .header_size = wire::kHeaderSizeV2,
+                 .endpoint_role = wire::EndpointRole::broker,
+                 .message_type = operation,
+                 .role_protocol_version = broker::kBrokerRoleVersion,
+                 .launch_generation = generation,
+                 .correlation_id = correlation,
+                 .lane_sequence = outbound.value},
+                payload);
+}
+
+std::vector<std::byte> storage_request(std::uint64_t generation,
+                                       std::uint64_t correlation,
+                                       wire::SessionSequence &sequence) {
+  constexpr std::string_view key = "pressure";
+  std::vector<std::byte> payload(26 + key.size());
+  const auto operation = static_cast<std::uint16_t>(
+      broker::permissions::OperationId::storage_read);
+  put16(payload, 0, operation);
+  put16(payload, 2, 16);
+  put32(payload, 4, 2 + key.size());
+  put64(payload, 8, 4096);
+  put64(payload, 16, 4096);
+  put16(payload, 24, key.size());
+  for (std::size_t index = 0; index < key.size(); ++index)
+    payload[26 + index] = static_cast<std::byte>(key[index]);
+  const auto outbound = sequence.take_outbound(wire::EndpointRole::broker);
+  if (!outbound)
+    fail();
+  return packet({.envelope_version = wire::kEnvelopeVersionV2,
+                 .header_size = wire::kHeaderSizeV2,
+                 .endpoint_role = wire::EndpointRole::broker,
+                 .message_type = operation,
+                 .role_protocol_version = broker::kBrokerRoleVersion,
+                 .launch_generation = generation,
+                 .correlation_id = correlation,
+                 .lane_sequence = outbound.value},
+                payload);
+}
+
+void validate_audio_reply(std::span<const std::byte> bytes,
+                          std::uint64_t generation, std::uint64_t correlation,
+                          wire::SessionSequence &sequence) {
+  const auto decoded = wire::decode_packet(bytes, wire::EndpointRole::broker);
+  if (!decoded ||
+      sequence.accept_inbound(wire::EndpointRole::broker,
+                              decoded.packet.header.lane_sequence) !=
+          wire::FatalReason::none ||
+      decoded.packet.header.message_type != broker::kBrokerResultMessage ||
+      decoded.packet.header.role_protocol_version !=
+          broker::kBrokerRoleVersion ||
+      decoded.packet.header.correlation_id != correlation ||
+      decoded.packet.header.launch_generation != generation ||
+      !decoded.packet.payload.empty())
+    fail();
+}
+
+void validate_storage_reply(std::span<const std::byte> bytes,
+                            std::uint64_t generation, std::uint64_t correlation,
+                            wire::SessionSequence &sequence) {
+  const auto decoded = wire::decode_packet(bytes, wire::EndpointRole::broker);
+  if (!decoded ||
+      sequence.accept_inbound(wire::EndpointRole::broker,
+                              decoded.packet.header.lane_sequence) !=
+          wire::FatalReason::none ||
+      decoded.packet.header.message_type != broker::kBrokerResultMessage ||
+      decoded.packet.header.role_protocol_version !=
+          broker::kBrokerRoleVersion ||
+      decoded.packet.header.correlation_id != correlation ||
+      decoded.packet.header.launch_generation != generation ||
+      decoded.packet.payload.size() != 4104 ||
+      decoded.packet.payload[0] != std::byte{1} ||
+      decoded.packet.payload[1] != std::byte{} ||
+      decoded.packet.payload[2] != std::byte{} ||
+      decoded.packet.payload[3] != std::byte{} ||
+      decoded.packet.payload[4] != std::byte{} ||
+      decoded.packet.payload[5] != std::byte{} ||
+      decoded.packet.payload[6] != std::byte{0x10} ||
+      decoded.packet.payload[7] != std::byte{} ||
+      !std::all_of(decoded.packet.payload.begin() + 8,
+                   decoded.packet.payload.end(),
+                   [](std::byte value) { return value == std::byte{0x5a}; }))
+    fail();
+}
+
+void receive_pressure_control(std::uint64_t generation,
+                              std::byte expected_payload,
+                              wire::SessionSequence &sequence) {
+  const auto bytes = receive_bytes(3);
+  const auto decoded = wire::decode_packet(bytes, wire::EndpointRole::control);
+  if (!decoded ||
+      sequence.accept_inbound(wire::EndpointRole::control,
+                              decoded.packet.header.lane_sequence) !=
+          wire::FatalReason::none ||
+      decoded.packet.header.message_type != wire::kPermissionSnapshotMessage ||
+      decoded.packet.header.role_protocol_version !=
+          version(wire::EndpointRole::control) ||
+      decoded.packet.header.launch_generation != generation ||
+      decoded.packet.header.correlation_id != 0 ||
+      decoded.packet.payload.size() != 1 ||
+      decoded.packet.payload.front() != expected_payload)
+    fail();
+}
+
+void send_session_signal(int descriptor, wire::EndpointRole role,
+                         std::uint16_t type, std::uint64_t generation,
+                         std::span<const std::byte> payload,
+                         wire::SessionSequence &sequence) {
+  const auto outbound = sequence.take_outbound(role);
+  if (!outbound)
+    fail();
+  send_bytes(descriptor, packet({.envelope_version = wire::kEnvelopeVersionV2,
+                                 .header_size = wire::kHeaderSizeV2,
+                                 .endpoint_role = role,
+                                 .message_type = type,
+                                 .role_protocol_version = version(role),
+                                 .launch_generation = generation,
+                                 .correlation_id = 0,
+                                 .lane_sequence = outbound.value},
+                                payload));
+}
+
+[[noreturn]] void wait_forever() {
+  for (;;)
+    pause();
+}
+
+[[noreturn]] void session_happy(std::uint64_t generation,
+                                wire::SessionSequence &sequence) {
+  send_bytes(4, audio_request(generation, 1, sequence));
+  validate_audio_reply(receive_bytes(4), generation, 1, sequence);
+  send_session_signal(3, wire::EndpointRole::control,
+                      wire::kSurfaceSelectionAcceptedMessage, generation, {},
+                      sequence);
+  const auto frame =
+      surface::encode_frame_ready({.surface = {.id = 1, .generation = 1},
+                                   .slot = 0,
+                                   .slot_sequence = 2,
+                                   .frame_sequence = 1});
+  send_session_signal(
+      5, wire::EndpointRole::render,
+      static_cast<std::uint16_t>(surface::RenderMessageType::frame_ready),
+      generation, frame, sequence);
+  wait_forever();
+}
+
+[[noreturn]] void session_replay(std::uint64_t generation,
+                                 wire::SessionSequence &sequence) {
+  const auto request = audio_request(generation, 1, sequence);
+  send_bytes(4, request);
+  validate_audio_reply(receive_bytes(4), generation, 1, sequence);
+  send_bytes(4, request);
+  wait_forever();
+}
+
+std::uint64_t begin_session_pressure(std::uint64_t generation,
+                                     wire::SessionSequence &sequence) {
+  int send_bytes_limit = 4 * 1024 * 1024;
+  if (setsockopt(4, SOL_SOCKET, SO_SNDBUF, &send_bytes_limit,
+                 sizeof(send_bytes_limit)) < 0)
+    fail();
+  const int original = fcntl(4, F_GETFL);
+  if (original < 0 || fcntl(4, F_SETFL, original | O_NONBLOCK) < 0)
+    fail();
+  std::uint64_t sent = 0;
+  for (std::uint64_t correlation = 1; correlation <= 256; ++correlation) {
+    const auto request = storage_request(generation, correlation, sequence);
+    const ssize_t count = send(4, request.data(), request.size(), MSG_NOSIGNAL);
+    if (count == static_cast<ssize_t>(request.size())) {
+      sent = correlation;
+      continue;
+    }
+    if (count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+      break;
+    fail();
+  }
+  if (sent < 8 || fcntl(4, F_SETFL, original) < 0)
+    fail();
+
+  return sent;
+}
+
+[[noreturn]] void session_pressure(std::uint64_t generation,
+                                   wire::SessionSequence &sequence) {
+  const auto sent = begin_session_pressure(generation, sequence);
+
+  receive_pressure_control(generation, std::byte{1}, sequence);
+
+  send_session_signal(3, wire::EndpointRole::control,
+                      wire::kSurfaceSelectionAcceptedMessage, generation, {},
+                      sequence);
+  const auto frame =
+      surface::encode_frame_ready({.surface = {.id = 1, .generation = 1},
+                                   .slot = 0,
+                                   .slot_sequence = 2,
+                                   .frame_sequence = sent});
+  send_session_signal(
+      5, wire::EndpointRole::render,
+      static_cast<std::uint16_t>(surface::RenderMessageType::frame_ready),
+      generation, frame, sequence);
+
+  receive_pressure_control(generation, std::byte{2}, sequence);
+
+  for (std::uint64_t correlation = 1; correlation <= sent; ++correlation)
+    validate_storage_reply(receive_bytes(4, 8192), generation, correlation,
+                           sequence);
+
+  send_session_signal(3, wire::EndpointRole::control,
+                      wire::kPermissionSnapshotAcceptedMessage, generation, {},
+                      sequence);
+  wait_forever();
+}
+
+[[noreturn]] void session_revoke_pressure(std::uint64_t generation,
+                                          wire::SessionSequence &sequence) {
+  static_cast<void>(begin_session_pressure(generation, sequence));
+  wait_forever();
+}
+
+[[noreturn]] void session_deadline(std::uint64_t generation,
+                                   wire::SessionSequence &sequence) {
+  send_bytes(4, storage_request(generation, 1, sequence));
+  wait_forever();
 }
 
 void send_broker_request(std::uint64_t generation, std::string_view current,
@@ -384,6 +637,16 @@ int main() {
   }
   if (current == "wrong-control-ack")
     send_control_ack(control_generation, sequence);
+  if (current == "session-happy")
+    session_happy(broker_generation, sequence);
+  if (current == "session-replay")
+    session_replay(broker_generation, sequence);
+  if (current == "session-pressure")
+    session_pressure(broker_generation, sequence);
+  if (current == "session-revoke-pressure")
+    session_revoke_pressure(broker_generation, sequence);
+  if (current == "session-deadline")
+    session_deadline(broker_generation, sequence);
   if (current == "multi-lane")
     send_multi_lane(broker_generation, sequence);
   send_broker_request(broker_generation, current, sequence);

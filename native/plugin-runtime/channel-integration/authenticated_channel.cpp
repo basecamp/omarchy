@@ -610,6 +610,22 @@ bool AuthenticatedBrokerChannel::arm_readiness(
 
 AuthenticatedReceiveResult AuthenticatedBrokerChannel::receive_authenticated(
     launcher::EndpointMask allowed_lanes, launcher::Deadline deadline) {
+  return receive_authenticated_impl(allowed_lanes, deadline,
+                                    ReceiveMode::blocking);
+}
+
+AuthenticatedReceiveResult
+AuthenticatedBrokerChannel::try_receive_authenticated(
+    launcher::EndpointMask allowed_lanes) {
+  return receive_authenticated_impl(allowed_lanes, launcher::Deadline::max(),
+                                    ReceiveMode::nonblocking);
+}
+
+AuthenticatedReceiveResult
+AuthenticatedBrokerChannel::receive_authenticated_impl(
+    launcher::EndpointMask allowed_lanes, launcher::Deadline deadline,
+    ReceiveMode mode) {
+  const bool nonblocking = mode == ReceiveMode::nonblocking;
   if (!ready_ || failed() || termination_.attempted() || worker_ == nullptr) {
     if (!failed() && !termination_.attempted())
       fail(ChannelFailure::not_ready,
@@ -621,7 +637,7 @@ AuthenticatedReceiveResult AuthenticatedBrokerChannel::receive_authenticated(
     return {.status = AuthenticatedReceiveStatus::not_ready,
             .message = std::nullopt};
   }
-  if (std::chrono::steady_clock::now() >= deadline)
+  if (!nonblocking && std::chrono::steady_clock::now() >= deadline)
     return {.status = AuthenticatedReceiveStatus::would_block,
             .message = std::nullopt};
   if (!authority_->is_current(identity_) || !dispatcher_->accepts(identity_)) {
@@ -637,10 +653,11 @@ AuthenticatedReceiveResult AuthenticatedBrokerChannel::receive_authenticated(
             .message = std::nullopt};
   }
 
-  auto received = worker_->receive_any(
-      launcher::PacketSizeLimit{wire::kHeaderSizeV2 +
-                                wire::payload_cap(wire::EndpointRole::broker)},
-      deadline, allowed_lanes);
+  const launcher::PacketSizeLimit maximum{
+      wire::kHeaderSizeV2 + wire::payload_cap(wire::EndpointRole::broker)};
+  auto received = nonblocking
+                      ? worker_->try_receive_any(maximum, allowed_lanes)
+                      : worker_->receive_any(maximum, deadline, allowed_lanes);
   if (received.status == launcher::ReceiveStatus::would_block)
     return {.status = AuthenticatedReceiveStatus::would_block,
             .message = std::nullopt};
@@ -681,7 +698,7 @@ AuthenticatedReceiveResult AuthenticatedBrokerChannel::receive_authenticated(
 
   // PacketView is invalid after the owning vector move. From here onward only
   // the copied semantic fields and owned payload/descriptors may be inspected.
-  if (std::chrono::steady_clock::now() >= deadline) {
+  if (!nonblocking && std::chrono::steady_clock::now() >= deadline) {
     fail(ChannelFailure::deadline_expired,
          "authenticated receive deadline elapsed before publication");
     return {.status = AuthenticatedReceiveStatus::fatal,
@@ -699,7 +716,7 @@ AuthenticatedReceiveResult AuthenticatedBrokerChannel::receive_authenticated(
     return {.status = AuthenticatedReceiveStatus::peer_closed,
             .message = std::nullopt};
   }
-  if (std::chrono::steady_clock::now() >= deadline) {
+  if (!nonblocking && std::chrono::steady_clock::now() >= deadline) {
     fail(ChannelFailure::deadline_expired,
          "authenticated receive deadline elapsed during final authority check");
     return {.status = AuthenticatedReceiveStatus::fatal,

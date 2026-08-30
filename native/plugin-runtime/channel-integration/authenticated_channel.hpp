@@ -194,6 +194,8 @@ public:
   [[nodiscard]] AuthenticatedReceiveResult
   receive_authenticated(launcher::EndpointMask allowed_lanes,
                         launcher::Deadline deadline);
+  [[nodiscard]] AuthenticatedReceiveResult
+  try_receive_authenticated(launcher::EndpointMask allowed_lanes);
   [[nodiscard]] DispatchStatus dispatch_one(launcher::Deadline deadline);
   [[nodiscard]] DispatchStatus dispatch_one(std::chrono::milliseconds timeout);
   [[nodiscard]] launcher::ReceivedMessage
@@ -221,6 +223,7 @@ public:
   [[nodiscard]] bool terminate();
 
 private:
+  enum class ReceiveMode { blocking, nonblocking };
   AuthenticatedBrokerChannel(
       std::unique_ptr<launcher::Worker> worker,
       launcher::LaunchIdentity identity,
@@ -234,6 +237,9 @@ private:
   receive_one(launcher::EndpointMask lanes, launcher::Deadline deadline);
   [[nodiscard]] bool validate_inbound(const launcher::ReceivedMessage &message,
                                       wire::PacketView &packet);
+  [[nodiscard]] AuthenticatedReceiveResult
+  receive_authenticated_impl(launcher::EndpointMask allowed_lanes,
+                             launcher::Deadline deadline, ReceiveMode mode);
   [[nodiscard]] wire::TrustedNegotiator *negotiator(wire::EndpointRole role);
   bool fail(ChannelFailure failure, std::string detail);
 

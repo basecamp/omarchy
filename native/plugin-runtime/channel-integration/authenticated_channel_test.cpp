@@ -105,6 +105,11 @@ bool eventually_removed(const std::shared_ptr<Scope> &scope) {
   return scope->removes.load() == 1;
 }
 
+bool await_channel_readable(channel::AuthenticatedBrokerChannel &channel) {
+  pollfd ready{.fd = channel.readiness_fd(), .events = POLLIN, .revents = 0};
+  return poll(&ready, 1, 2000) == 1 && (ready.revents & POLLIN) != 0;
+}
+
 class Dispatcher final : public channel::BrokerDispatcher {
 public:
   bool
@@ -192,13 +197,23 @@ public:
 
 class Authority final : public channel::GenerationAuthority {
 public:
+  void revoke_after_successful_checks(unsigned allowed_checks) noexcept {
+    checks_before_revocation = static_cast<int>(allowed_checks);
+  }
+
   bool
   is_current(const launcher::LaunchIdentity &identity) const noexcept override {
     const auto check = checks.fetch_add(1) + 1;
     if (check == sleep_on_check.load())
       usleep(sleep_microseconds.load());
+    int remaining = checks_before_revocation.load();
+    while (remaining > 0 &&
+           !checks_before_revocation.compare_exchange_weak(remaining,
+                                                           remaining - 1)) {}
+    const bool semantically_current = remaining != 0;
     return current && identity.generation == generation &&
-           (revoke_on_check == 0 || check < revoke_on_check);
+           (revoke_on_check == 0 || check < revoke_on_check) &&
+           semantically_current;
   }
 
   std::atomic<bool> current = true;
@@ -207,6 +222,7 @@ public:
   std::atomic<unsigned> revoke_on_check = 0;
   std::atomic<unsigned> sleep_on_check = 0;
   std::atomic<unsigned> sleep_microseconds = 0;
+  mutable std::atomic<int> checks_before_revocation = -1;
 };
 
 class Fixture {
@@ -530,6 +546,121 @@ void fake_suite() {
                                             2s) &&
                 owned.payload.size() == 24 && owned.correlation_id == 1,
             "authenticated payload lifetime remained tied to channel storage");
+  }
+  {
+    Session empty("host-saturation", FAKE_BWRAP_PATH);
+    require(empty.opened.channel->negotiate(2s),
+            "nonblocking empty fixture did not negotiate");
+    const auto first = empty.opened.channel->try_receive_authenticated(
+        launcher::EndpointMask::all);
+    const auto second = empty.opened.channel->try_receive_authenticated(
+        launcher::EndpointMask::all);
+    require(first.status == channel::AuthenticatedReceiveStatus::would_block &&
+                !first.message &&
+                second.status ==
+                    channel::AuthenticatedReceiveStatus::would_block &&
+                !second.message && !empty.opened.channel->failed() &&
+                empty.dispatcher->calls == 0,
+            "empty authenticated try blocked, consumed state, or dispatched");
+  }
+  {
+    Session multi("multi-lane", FAKE_BWRAP_PATH);
+    require(multi.opened.channel->negotiate(2s) &&
+                await_channel_readable(*multi.opened.channel),
+            "nonblocking fair fixture did not become readable");
+    const auto broker_message = multi.opened.channel->try_receive_authenticated(
+        launcher::EndpointMask::all);
+    require(broker_message &&
+                broker_message.message->role == wire::EndpointRole::broker &&
+                broker_message.message->message_type ==
+                    static_cast<std::uint16_t>(
+                        permissions::OperationId::storage_read) &&
+                broker_message.message->correlation_id == 1 &&
+                broker_message.message->payload.size() == 24 &&
+                broker_message.message->descriptors.empty() &&
+                multi.dispatcher->calls == 0,
+            "authenticated try lost the first fair semantic message");
+    require(await_channel_readable(*multi.opened.channel),
+            "render lane was not readable after the fair first receive");
+    const auto render_message = multi.opened.channel->try_receive_authenticated(
+        launcher::EndpointMask::all);
+    const auto empty = multi.opened.channel->try_receive_authenticated(
+        launcher::EndpointMask::all);
+    require(
+        render_message &&
+            render_message.message->role == wire::EndpointRole::render &&
+            render_message.message->message_type ==
+                static_cast<std::uint16_t>(
+                    surface::RenderMessageType::frame_ready) &&
+            render_message.message->correlation_id == 0 &&
+            render_message.message->payload.size() == 40 &&
+            render_message.message->descriptors.empty() &&
+            empty.status == channel::AuthenticatedReceiveStatus::would_block &&
+            !empty.message && !multi.opened.channel->failed() &&
+            multi.dispatcher->calls == 0,
+        "authenticated try consumed more than one lane or changed fairness");
+  }
+  {
+    Session replay("replay", FAKE_BWRAP_PATH);
+    require(replay.opened.channel->negotiate(2s) &&
+                await_channel_readable(*replay.opened.channel),
+            "nonblocking replay fixture did not become readable");
+    const auto first = replay.opened.channel->try_receive_authenticated(
+        launcher::EndpointMask::broker);
+    require(first && await_channel_readable(*replay.opened.channel),
+            "nonblocking replay fixture lost its first message");
+    const auto repeated = replay.opened.channel->try_receive_authenticated(
+        launcher::EndpointMask::broker);
+    require(repeated.status == channel::AuthenticatedReceiveStatus::fatal &&
+                !repeated.message && replay.opened.channel->failed() &&
+                replay.dispatcher->calls == 0,
+            "authenticated try published a replayed lane sequence");
+  }
+  {
+    Session malformed("wrong-sequence-tag", FAKE_BWRAP_PATH);
+    require(malformed.opened.channel->negotiate(2s) &&
+                await_channel_readable(*malformed.opened.channel),
+            "nonblocking schema fixture did not become readable");
+    const auto result = malformed.opened.channel->try_receive_authenticated(
+        launcher::EndpointMask::broker);
+    require(result.status == channel::AuthenticatedReceiveStatus::fatal &&
+                !result.message && malformed.opened.channel->failed() &&
+                malformed.dispatcher->calls == 0,
+            "authenticated try bypassed envelope schema validation");
+  }
+  {
+    Session revoked("multi-lane", FAKE_BWRAP_PATH);
+    require(revoked.opened.channel->negotiate(2s) &&
+                await_channel_readable(*revoked.opened.channel),
+            "nonblocking authority fixture did not become readable");
+    revoked.authority->revoke_after_successful_checks(1);
+    const auto result = revoked.opened.channel->try_receive_authenticated(
+        launcher::EndpointMask::broker);
+    require(result.status == channel::AuthenticatedReceiveStatus::fatal &&
+                !result.message && revoked.opened.channel->failed() &&
+                revoked.dispatcher->calls == 0,
+            "authenticated try published across its final authority fence");
+  }
+  {
+    Session exited("ready-loss", FAKE_BWRAP_PATH);
+    require(exited.opened.channel->negotiate(2s) &&
+                kill(exited.opened.channel->identity().outer_worker_pid,
+                     SIGUSR1) == 0,
+            "nonblocking pidfd fixture did not negotiate or exit");
+    const auto deadline = std::chrono::steady_clock::now() + 2s;
+    while (exited.opened.channel->alive() &&
+           std::chrono::steady_clock::now() < deadline)
+      usleep(1000);
+    const auto result = exited.opened.channel->try_receive_authenticated(
+        launcher::EndpointMask::broker);
+    require(
+        (result.status == channel::AuthenticatedReceiveStatus::peer_closed ||
+         result.status == channel::AuthenticatedReceiveStatus::fatal) &&
+            !result.message && exited.opened.channel->failed() &&
+            exited.opened.channel->failure() ==
+                channel::ChannelFailure::peer_failure &&
+            exited.dispatcher->calls == 0,
+        "authenticated try ignored authoritative pidfd exit state");
   }
   {
     Session replay("replay", FAKE_BWRAP_PATH);

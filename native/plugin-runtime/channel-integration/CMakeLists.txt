@@ -152,5 +152,30 @@ if(BUILD_TESTING)
       COMMAND omarchy-plugin-broker-session-settlement-test)
     set_tests_properties(plugin-broker-session-settlement PROPERTIES
       TIMEOUT 30 LABELS "unit;security;session;broker;adversarial")
+
+    add_executable(omarchy-plugin-authenticated-session-integration-test
+      authenticated_session_integration_test.cpp)
+    omarchy_plugin_target_defaults(
+      omarchy-plugin-authenticated-session-integration-test)
+    target_compile_definitions(
+      omarchy-plugin-authenticated-session-integration-test PRIVATE
+      CHANNEL_PEER_PATH="$<TARGET_FILE:omarchy-plugin-channel-peer>"
+      FAKE_BWRAP_PATH="$<TARGET_FILE:omarchy-plugin-channel-fake-bwrap>"
+      BWRAP_PATH="/usr/bin/bwrap")
+    target_link_libraries(
+      omarchy-plugin-authenticated-session-integration-test PRIVATE
+      omarchy-plugin-authenticated-session Qt6::Core)
+    add_dependencies(omarchy-plugin-authenticated-session-integration-test
+      omarchy-plugin-channel-peer omarchy-plugin-channel-fake-bwrap)
+    add_test(NAME plugin-authenticated-session-integration-fake
+      COMMAND omarchy-plugin-authenticated-session-integration-test fake)
+    set_tests_properties(plugin-authenticated-session-integration-fake
+      PROPERTIES TIMEOUT 30
+      LABELS "integration;security;session;broker;launcher;adversarial")
+    add_test(NAME plugin-authenticated-session-integration-bwrap
+      COMMAND omarchy-plugin-authenticated-session-integration-test bwrap)
+    set_tests_properties(plugin-authenticated-session-integration-bwrap
+      PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77
+      LABELS "integration;security;session;broker;launcher;sandbox;linux")
   endif()
 endif()

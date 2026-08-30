@@ -78,6 +78,31 @@ bool wait_until(Predicate predicate, std::chrono::milliseconds timeout) {
   return predicate();
 }
 
+bool await_readable_lanes(launcher::Worker &worker,
+                          launcher::EndpointMask expected) {
+  const auto deadline = std::chrono::steady_clock::now() + 2s;
+  const auto expected_bits = static_cast<std::uint8_t>(expected);
+  std::uint8_t observed = 0;
+  while ((observed & expected_bits) != expected_bits &&
+         std::chrono::steady_clock::now() < deadline) {
+    std::array<epoll_event, 3> events{};
+    const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+        deadline - std::chrono::steady_clock::now());
+    const int timeout = static_cast<int>(
+        std::max<std::chrono::milliseconds::rep>(1, remaining.count()));
+    const int count =
+        epoll_wait(worker.readiness_fd(), events.data(), events.size(), timeout);
+    if (count < 0 && errno == EINTR) continue;
+    if (count <= 0) break;
+    for (int index = 0; index < count; ++index) {
+      if ((events[index].events & EPOLLIN) != 0 && events[index].data.u64 < 3) {
+        observed |= static_cast<std::uint8_t>(1U << events[index].data.u64);
+      }
+    }
+  }
+  return (observed & expected_bits) == expected_bits;
+}
+
 std::size_t open_descriptor_count() {
   std::size_t count = 0;
   for (const auto &entry :
@@ -713,18 +738,29 @@ void malicious_test() {
                        launcher::EndpointMask::render;
   require(launched.worker->set_receive_mask(allowed),
           "cannot arm the allowed endpoint readiness mask");
-  const auto control = launched.worker->receive_any(
-      sizeof(Claim), std::chrono::steady_clock::now() + 2s, allowed);
+  require(await_readable_lanes(*launched.worker, allowed),
+          "allowed endpoint lanes did not both become readable");
+  const auto control = launched.worker->try_receive_any(
+      launcher::PacketSizeLimit{sizeof(Claim)}, allowed);
   require(static_cast<bool>(control) &&
               control.role == launcher::EndpointRole::control &&
               decode<Claim>(control.payload).claimed_pid ==
                   launched.worker->identity().outer_worker_pid,
-          "bound worker message was not accepted");
-  const auto render = launched.worker->receive_any(
-      sizeof(Claim), std::chrono::steady_clock::now() + 2s, allowed);
+          "nonblocking receive lost the fair first ready lane");
+  require(await_readable_lanes(*launched.worker,
+                               launcher::EndpointMask::render),
+          "render lane was not readable after the fair first receive");
+  const auto render = launched.worker->try_receive_any(
+      launcher::PacketSizeLimit{sizeof(Claim)}, allowed);
   require(static_cast<bool>(render) &&
               render.role == launcher::EndpointRole::render,
-          "disabled broker lane starved an allowed render packet");
+          "nonblocking receive did not consume exactly one fair ready lane");
+  const auto empty = launched.worker->try_receive_any(
+      launcher::PacketSizeLimit{sizeof(Claim)}, allowed);
+  require(empty.status == launcher::ReceiveStatus::would_block &&
+              empty.failure == launcher::ReceiveFailure::none &&
+              empty.payload.empty() && empty.descriptors.empty(),
+          "empty nonblocking receive blocked, consumed, or reported timeout");
 
   require(launched.worker->set_readiness_interests(
               {.read = allowed, .write = launcher::EndpointMask::broker}),

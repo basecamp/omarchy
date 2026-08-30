@@ -179,6 +179,10 @@ public:
   [[nodiscard]] ReceivedMessage receive_any(PacketSizeLimit maximum_packet,
                                             Deadline deadline,
                                             EndpointMask allowed_reads);
+  // Performs one nonblocking receive attempt from the armed read subset.
+  [[nodiscard]] ReceivedMessage
+  try_receive_any(PacketSizeLimit maximum_packet,
+                  EndpointMask allowed_reads);
   // v1 compatibility: maximum_payload is additionally bounded by that
   // endpoint's v1 envelope maximum.
   [[nodiscard]] ReceivedMessage receive(EndpointRole role,
@@ -233,8 +237,12 @@ public:
   [[nodiscard]] bool terminate();
 
 private:
+  enum class ReceiveMode { blocking, nonblocking };
   struct Impl;
   explicit Worker(std::unique_ptr<Impl> implementation);
+  [[nodiscard]] ReceivedMessage
+  receive_any_impl(PacketSizeLimit maximum_packet, Deadline deadline,
+                   EndpointMask allowed_reads, ReceiveMode mode);
   std::unique_ptr<Impl> implementation_;
   friend class Supervisor;
 };

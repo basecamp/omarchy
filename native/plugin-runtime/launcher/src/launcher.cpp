@@ -637,7 +637,7 @@ struct Worker::Impl {
 
   [[nodiscard]] ReceivedMessage
   receive(std::span<const EndpointRole> roles, std::size_t maximum_payload,
-          Deadline deadline, bool fair);
+          Deadline deadline, bool fair, ReceiveMode mode);
 
   [[nodiscard]] bool
   set_readiness_interests(ReadinessInterests requested) noexcept {
@@ -715,7 +715,9 @@ const LaunchIdentity &Worker::identity() const {
 
 ReceivedMessage Worker::Impl::receive(std::span<const EndpointRole> roles,
                                       std::size_t maximum_payload,
-                                      Deadline deadline, bool fair) {
+                                      Deadline deadline, bool fair,
+                                      ReceiveMode mode) {
+  const bool nonblocking = mode == ReceiveMode::nonblocking;
   ReceivedMessage output;
   if (!accepting || roles.size() > channels.size() ||
       maximum_payload == 0 ||
@@ -734,7 +736,7 @@ ReceivedMessage Worker::Impl::receive(std::span<const EndpointRole> roles,
     polled[index] = {.fd = endpoint, .events = POLLIN, .revents = 0};
     lane_map[index] = roles[index];
   }
-  if (std::chrono::steady_clock::now() >= deadline) {
+  if (!nonblocking && std::chrono::steady_clock::now() >= deadline) {
     output.status = ReceiveStatus::would_block;
     output.failure = ReceiveFailure::timeout;
     return output;
@@ -745,12 +747,18 @@ ReceivedMessage Worker::Impl::receive(std::span<const EndpointRole> roles,
   int ready = -1;
   do {
     ready = poll(polled.data(), pidfd_index + 1,
-                 milliseconds_remaining(deadline));
+                 nonblocking ? 0 : milliseconds_remaining(deadline));
   } while (ready < 0 && errno == EINTR &&
-           std::chrono::steady_clock::now() < deadline);
+           !nonblocking && std::chrono::steady_clock::now() < deadline);
   if (ready == 0) {
     output.status = ReceiveStatus::would_block;
-    output.failure = ReceiveFailure::timeout;
+    output.failure = nonblocking ? ReceiveFailure::none
+                                 : ReceiveFailure::timeout;
+    return output;
+  }
+  if (ready < 0 && nonblocking && errno == EINTR) {
+    output.status = ReceiveStatus::would_block;
+    output.failure = ReceiveFailure::none;
     return output;
   }
   if (ready < 0) {
@@ -811,7 +819,8 @@ ReceivedMessage Worker::Impl::receive(std::span<const EndpointRole> roles,
     output.payload.clear();
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
       output.status = ReceiveStatus::would_block;
-      output.failure = ReceiveFailure::timeout;
+      output.failure = nonblocking ? ReceiveFailure::none
+                                   : ReceiveFailure::timeout;
     } else {
       output.failure = ReceiveFailure::io_error;
     }
@@ -897,7 +906,7 @@ ReceivedMessage Worker::receive(EndpointRole role,
   }
   const std::array roles = {role};
   return implementation_->receive(roles, maximum_packet.bytes, deadline,
-                                  false);
+                                  false, ReceiveMode::blocking);
 }
 
 ReceivedMessage Worker::receive_any(PacketSizeLimit maximum_packet,
@@ -915,6 +924,20 @@ ReceivedMessage Worker::receive_any(PacketSizeLimit maximum_packet,
 ReceivedMessage Worker::receive_any(PacketSizeLimit maximum_packet,
                                     Deadline deadline,
                                     EndpointMask allowed_reads) {
+  return receive_any_impl(maximum_packet, deadline, allowed_reads,
+                          ReceiveMode::blocking);
+}
+
+ReceivedMessage Worker::try_receive_any(PacketSizeLimit maximum_packet,
+                                        EndpointMask allowed_reads) {
+  return receive_any_impl(maximum_packet, Deadline::max(), allowed_reads,
+                          ReceiveMode::nonblocking);
+}
+
+ReceivedMessage Worker::receive_any_impl(PacketSizeLimit maximum_packet,
+                                         Deadline deadline,
+                                         EndpointMask allowed_reads,
+                                         ReceiveMode mode) {
   if (!implementation_)
     return {.payload = {},
             .descriptors = {},
@@ -936,7 +959,8 @@ ReceivedMessage Worker::receive_any(PacketSizeLimit maximum_packet,
     if (mask_contains(allowed_reads, role)) roles[count++] = role;
   }
   return implementation_->receive(std::span(roles).first(count),
-                                  maximum_packet.bytes, deadline, true);
+                                  maximum_packet.bytes, deadline, true,
+                                  mode);
 }
 
 ReceivedMessage Worker::receive(EndpointRole role, std::size_t maximum_payload,
