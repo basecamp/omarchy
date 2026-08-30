@@ -19,7 +19,7 @@ namespace omarchy::plugin_runtime::bridge {
 
 // Manager-owned adapter for one declared surface. It remains event-loop
 // confined and owns every object that can route the session into QML. Active
-// means transport-ready only; it is not N6B permission/publication readiness.
+// means transport-ready only; it is not permission/publication readiness.
 class ProductionSurfaceEndpoint final
     : public host_session::SurfaceEndpoint,
       private RemoteSurfaceLifetimeObserver,

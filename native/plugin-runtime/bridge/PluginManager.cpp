@@ -1,14 +1,738 @@
 #include "PluginManager.h"
 
 #include "omarchy/plugin_runtime/Version.h"
-#include "remote_surface.hpp"
+#include "production_plugin_bootstrap.hpp"
 
-#include <QThread>
 #include <QQmlEngine>
+#include <QThreadPool>
+#include <QTimer>
 
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+#include <functional>
+#endif
+#include <limits>
+#include <mutex>
+#include <optional>
+#include <ranges>
+#include <span>
+#include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 namespace omarchy::plugin_runtime::bridge {
+namespace {
+
+constexpr int kCatalogScanIntervalMilliseconds = 2000;
+constexpr int kActiveCompletionIntervalMilliseconds = 10;
+constexpr int kIdleCompletionIntervalMilliseconds = 200;
+constexpr int kInitialRetryMilliseconds = 250;
+constexpr int kMaximumRetryMilliseconds = 30000;
+constexpr std::uint8_t kMaximumRetryExponent = 7;
+
+} // namespace
+
+struct PluginManager::Runtime final {
+  using Clock = std::chrono::steady_clock;
+
+  enum class Phase : std::uint8_t {
+    opening,
+    starting,
+    running_unpublished,
+    retry_wait,
+  };
+  enum class JobKind : std::uint8_t { scan, preparation };
+
+  struct HookState final {
+    explicit HookState(std::string plugin, std::uint64_t epoch)
+        : plugin(std::move(plugin)), epoch(epoch) {}
+
+    const std::string plugin;
+    const std::uint64_t epoch;
+    // Zero means no pending callback; nonzero is packed state/error plus one.
+    std::atomic<std::uint16_t> lifecycle = 0;
+  };
+
+  struct Hook final : channel::ProductionPluginRuntimeHooks {
+    explicit Hook(std::shared_ptr<HookState> state) : state(std::move(state)) {}
+
+    void state_changed(host_session::SessionState state,
+                       host_session::SessionError error) override {
+      const auto packed = static_cast<std::uint16_t>(state) |
+                          (static_cast<std::uint16_t>(error) << 8U);
+      this->state->lifecycle.store(static_cast<std::uint16_t>(packed + 1U),
+                                   std::memory_order_release);
+    }
+
+    void control_received(const host_session::OwnedMessage &) override {}
+    void render_rejected(host_session::RouteResult) override {}
+    bool accept(host_session::AdmittedSurfaceIntent) override {
+      // A running transport is not typed publication readiness, so this
+      // transport-only composition keeps surface intents inert.
+      return false;
+    }
+
+    std::shared_ptr<HookState> state;
+  };
+
+  struct Slot final {
+    std::string plugin;
+    std::uint64_t epoch = 0;
+    Phase phase = Phase::opening;
+    std::uint8_t retry_attempts = 0;
+    std::optional<Clock::time_point> retry_due;
+    bool preparing = false;
+    std::shared_ptr<HookState> callback_state;
+    std::unique_ptr<Hook> hook;
+    std::unique_ptr<channel::ProductionPluginRuntimeRoot> root;
+  };
+
+  struct ScanResult final {
+    std::unique_ptr<channel::ProductionPluginCatalog> catalog;
+  };
+
+  struct PreparationResult final {
+    std::string plugin;
+    std::uint64_t epoch = 0;
+    std::unique_ptr<channel::PreparedPluginRuntime> prepared;
+  };
+
+  struct DeliveryGate final {
+    std::mutex mutex;
+    std::atomic<bool> canceled = false;
+    std::atomic<bool> scan_in_flight = false;
+    std::atomic<std::uint8_t> preparations_in_flight = 0;
+    std::shared_ptr<ScanResult> scan_result;
+    std::array<std::shared_ptr<PreparationResult>, 2> preparation_results;
+  };
+
+  static std::unique_ptr<Runtime> open(PluginManager &manager) noexcept {
+    try {
+      channel::ProductionPluginBootstrapError error{};
+      auto bootstrap = channel::ProductionPluginBootstrap::open(error);
+      if (!bootstrap)
+        return {};
+      return std::unique_ptr<Runtime>(
+          new Runtime(manager, std::move(bootstrap)));
+    } catch (...) {
+      return {};
+    }
+  }
+
+  Runtime(PluginManager &manager,
+          std::unique_ptr<channel::ProductionPluginBootstrap> bootstrap)
+      : manager_(manager), bootstrap_(std::move(bootstrap)) {
+    configureTimers();
+    scan_timer_.start();
+    QTimer::singleShot(0, &manager_, [this] { requestScan(); });
+  }
+
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+  struct ManualTestTag final {};
+  Runtime(PluginManager &manager,
+          std::unique_ptr<channel::ProductionPluginBootstrap> bootstrap,
+          ManualTestTag)
+      : manager_(manager), bootstrap_(std::move(bootstrap)),
+        manual_test_(true) {
+    configureTimers();
+  }
+#endif
+
+  void configureTimers() {
+    // A fixed bounded poll keeps catalog observation simple and
+    // non-overlapping; each scan still proves freshness before reconciliation.
+    scan_timer_.setInterval(kCatalogScanIntervalMilliseconds);
+    QObject::connect(&scan_timer_, &QTimer::timeout, &manager_,
+                     [this] { requestScan(); });
+    QObject::connect(&retry_timer_, &QTimer::timeout, &manager_,
+                     [this] { retryDue(); });
+    QObject::connect(&completion_timer_, &QTimer::timeout, &manager_,
+                     [this] { drainCompletions(); });
+    retry_timer_.setSingleShot(true);
+  }
+
+  ~Runtime() noexcept {
+    scan_timer_.stop();
+    retry_timer_.stop();
+    completion_timer_.stop();
+    gate_->canceled.store(true, std::memory_order_release);
+    for (auto &slot : slots_)
+      stopRuntime(slot);
+  }
+
+  void requestScan() noexcept {
+    if (gate_->scan_in_flight.exchange(true))
+      return;
+    try {
+      auto result = std::make_shared<ScanResult>();
+      const auto bootstrap = bootstrap_;
+      const auto gate = gate_;
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+      const auto entry_probe = job_entry_probe_;
+#endif
+      const bool started = submit(
+          JobKind::scan,
+          [bootstrap, gate, result
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+           , entry_probe
+#endif
+      ] {
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+            if (entry_probe)
+              entry_probe(PluginManagerTestAccess::TestJobKind::scan);
+#endif
+            try {
+              channel::ProductionPluginCatalogError error{};
+              result->catalog = bootstrap->scan_catalog(error);
+              std::scoped_lock lock(gate->mutex);
+              if (!gate->canceled.load(std::memory_order_acquire)) {
+                gate->scan_result = std::move(result);
+              } else {
+                gate->scan_in_flight.store(false);
+              }
+            } catch (...) {
+              gate->scan_in_flight.store(false);
+            }
+          });
+      if (!started)
+        gate_->scan_in_flight.store(false);
+    } catch (...) {
+      gate_->scan_in_flight.store(false);
+    }
+    armCompletionTimer();
+  }
+
+  void drainCompletions() noexcept {
+    std::shared_ptr<ScanResult> scan;
+    std::array<std::shared_ptr<PreparationResult>, 2> preparations;
+    {
+      std::scoped_lock lock(gate_->mutex);
+      scan = std::move(gate_->scan_result);
+      preparations = std::move(gate_->preparation_results);
+    }
+    if (scan) {
+      gate_->scan_in_flight.store(false);
+      acceptScan(std::move(scan->catalog));
+    }
+    for (auto &result : preparations) {
+      if (!result)
+        continue;
+      --gate_->preparations_in_flight;
+      auto *slot = exact(result->plugin, result->epoch);
+      if (slot == nullptr || !slot->preparing)
+        continue;
+      slot->preparing = false;
+      try {
+        auto callback_state =
+            std::make_shared<HookState>(slot->plugin, slot->epoch);
+        auto hook = std::make_unique<Hook>(callback_state);
+        auto root = channel::ProductionPluginRuntimeRoot::commit(
+            std::move(result->prepared), *hook, manager_);
+        if (!root) {
+          fail(*slot);
+        } else {
+          slot->callback_state = std::move(callback_state);
+          slot->hook = std::move(hook);
+          slot->root = std::move(root);
+          slot->phase = Phase::starting;
+        }
+      } catch (...) {
+        fail(*slot);
+      }
+    }
+    for (auto &slot : slots_) {
+      const auto state = slot.callback_state;
+      if (!state)
+        continue;
+      const auto encoded =
+          state->lifecycle.exchange(0, std::memory_order_acq_rel);
+      if (encoded == 0)
+        continue;
+      const auto packed = static_cast<std::uint16_t>(encoded - 1U);
+      stateChanged(state->plugin, state->epoch,
+                   static_cast<host_session::SessionState>(packed & 0xffU),
+                   static_cast<host_session::SessionError>(packed >> 8U));
+    }
+    requestPreparations();
+    armCompletionTimer();
+  }
+
+  bool reconcile(
+      std::unique_ptr<channel::ProductionPluginCatalog> candidate) noexcept {
+    try {
+      if (catalog_ && catalog_->same_epoch(*candidate))
+        return candidate->unchanged();
+      const auto incoming = candidate->entries();
+      const auto previous =
+          catalog_ ? catalog_->entries()
+                   : std::span<const channel::ProductionPluginCatalogEntry>{};
+      std::vector<std::optional<Slot>> additions(incoming.size());
+      for (std::size_t index = 0; index < incoming.size(); ++index) {
+        const auto old = std::ranges::lower_bound(
+            slots_, incoming[index].plugin_id(), {},
+            [](const Slot &slot) { return slot.plugin; });
+        const auto old_index =
+            static_cast<std::size_t>(std::distance(slots_.begin(), old));
+        const bool retained = old != slots_.end() &&
+                              old->plugin == incoming[index].plugin_id() &&
+                              old_index < previous.size() &&
+                              previous[old_index].same_epoch(incoming[index]);
+        if (!retained)
+          additions[index].emplace(makeSlot(incoming[index].plugin_id()));
+      }
+      std::vector<Slot> replacement;
+      replacement.reserve(incoming.size());
+
+      // This final predicate protects membership-plan coherence. Runtime open
+      // verifies live authority again, and later filesystem changes are
+      // observed by the next scan rather than trusted from this catalog.
+      if (!candidate->unchanged())
+        return false;
+
+      std::size_t old_index = 0;
+      std::size_t new_index = 0;
+      while (old_index < slots_.size() || new_index < incoming.size()) {
+        if (new_index == incoming.size() ||
+            (old_index < slots_.size() &&
+             slots_[old_index].plugin < incoming[new_index].plugin_id())) {
+          stopRuntime(slots_[old_index++]);
+          continue;
+        }
+        if (old_index == slots_.size() ||
+            incoming[new_index].plugin_id() < slots_[old_index].plugin) {
+          replacement.push_back(std::move(*additions[new_index++]));
+          continue;
+        }
+        if (old_index >= previous.size() ||
+            !previous[old_index].same_epoch(incoming[new_index])) {
+          stopRuntime(slots_[old_index]);
+          replacement.push_back(std::move(*additions[new_index]));
+        } else {
+          replacement.push_back(std::move(slots_[old_index]));
+        }
+        ++old_index;
+        ++new_index;
+      }
+      slots_ = std::move(replacement);
+      catalog_ = std::move(candidate);
+      for (auto &slot : slots_)
+        if (slot.phase == Phase::opening && slot.epoch == 0)
+          start(slot);
+      armRetryTimer();
+      requestPreparations();
+      return true;
+    } catch (...) {
+      return false;
+    }
+  }
+
+  Slot makeSlot(std::string_view plugin) {
+    Slot slot;
+    slot.plugin = std::string(plugin);
+    return slot;
+  }
+
+  bool acceptScan(
+      std::unique_ptr<channel::ProductionPluginCatalog> candidate) noexcept {
+    if (!candidate || !reconcile(std::move(candidate)))
+      return false;
+    if (!manager_.available_) {
+      manager_.available_ = true;
+      emit manager_.availableChanged();
+    }
+    return true;
+  }
+
+  void start(Slot &slot) noexcept {
+    slot.retry_due.reset();
+    slot.epoch = nextEpoch();
+    slot.phase = Phase::opening;
+    slot.preparing = false;
+  }
+
+  void requestPreparations() noexcept {
+    constexpr std::uint8_t kMaximumConcurrentPreparations = 2;
+    while (gate_->preparations_in_flight.load() <
+           kMaximumConcurrentPreparations) {
+      auto found = std::ranges::find_if(slots_, [](const Slot &slot) {
+        return slot.phase == Phase::opening && !slot.preparing;
+      });
+      if (found == slots_.end())
+        break;
+      found->preparing = true;
+      bool counted = false;
+      try {
+        auto result = std::make_shared<PreparationResult>();
+        result->plugin = found->plugin;
+        result->epoch = found->epoch;
+        const auto bootstrap = bootstrap_;
+        const auto gate = gate_;
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+        const auto entry_probe = job_entry_probe_;
+#endif
+        ++gate_->preparations_in_flight;
+        counted = true;
+        const bool started = submit(
+            JobKind::preparation,
+            [bootstrap, gate, result
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+             , entry_probe
+#endif
+        ] {
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+              if (entry_probe)
+                entry_probe(
+                    PluginManagerTestAccess::TestJobKind::preparation);
+#endif
+              try {
+                const plugins::permissions::PluginId plugin(result->plugin);
+                result->prepared =
+                    bootstrap->prepare_runtime(result->plugin, plugin);
+              } catch (...) {
+                result->prepared.reset();
+              }
+              try {
+                std::scoped_lock lock(gate->mutex);
+                if (!gate->canceled.load(std::memory_order_acquire)) {
+                  const auto empty =
+                      std::ranges::find(gate->preparation_results,
+                                        std::shared_ptr<PreparationResult>{});
+                  if (empty != gate->preparation_results.end()) {
+                    *empty = std::move(result);
+                  } else {
+                    // The in-flight bound includes occupied lanes, so this is
+                    // an internal accounting violation, not plugin failure.
+                    std::terminate();
+                  }
+                } else {
+                  --gate->preparations_in_flight;
+                }
+              } catch (...) {
+                std::terminate();
+              }
+            });
+        if (!started) {
+          --gate_->preparations_in_flight;
+          counted = false;
+          found->preparing = false;
+          break;
+        }
+      } catch (...) {
+        if (counted)
+          --gate_->preparations_in_flight;
+        found->preparing = false;
+        break;
+      }
+    }
+    armCompletionTimer();
+  }
+
+  template <typename Job>
+  bool submit(JobKind kind, Job &&job) {
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+    if (job_submitter_)
+      return job_submitter_(
+          kind == JobKind::scan ? PluginManagerTestAccess::TestJobKind::scan
+                                : PluginManagerTestAccess::TestJobKind::preparation,
+          std::function<void()>(std::forward<Job>(job)));
+#endif
+    (void)kind;
+    return QThreadPool::globalInstance()->tryStart(std::forward<Job>(job));
+  }
+
+  void armCompletionTimer() noexcept {
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+    if (manual_test_)
+      return;
+#endif
+    const bool active = gate_->scan_in_flight.load() != 0 ||
+                        gate_->preparations_in_flight.load() != 0 ||
+                        std::ranges::any_of(slots_, [](const Slot &slot) {
+                          return slot.phase == Phase::opening ||
+                                 slot.phase == Phase::starting;
+                        });
+    const bool monitoring = std::ranges::any_of(
+        slots_, [](const Slot &slot) { return slot.callback_state != nullptr; });
+    if (!active && !monitoring) {
+      completion_timer_.stop();
+      return;
+    }
+    const int interval = active ? kActiveCompletionIntervalMilliseconds
+                                : kIdleCompletionIntervalMilliseconds;
+    if (!completion_timer_.isActive() ||
+        completion_timer_.interval() != interval)
+      completion_timer_.start(interval);
+  }
+
+  void stateChanged(std::string_view plugin, std::uint64_t epoch,
+                    host_session::SessionState state,
+                    host_session::SessionError error) noexcept {
+    auto *slot = exact(plugin, epoch);
+    if (slot == nullptr)
+      return;
+    if (state == host_session::SessionState::running &&
+        error == host_session::SessionError::none) {
+      try {
+        const plugins::permissions::PluginId expected(slot->plugin);
+        const auto binding =
+            slot->root ? slot->root->session_binding() : std::nullopt;
+        if (!binding || binding->plugin != expected) {
+          fail(*slot);
+          return;
+        }
+        slot->phase = Phase::running_unpublished;
+        slot->retry_attempts = 0;
+      } catch (...) {
+        fail(*slot);
+      }
+      return;
+    }
+    if (state == host_session::SessionState::failed ||
+        state == host_session::SessionState::stopped ||
+        state == host_session::SessionState::revoked)
+      fail(*slot);
+  }
+
+  Slot *exact(std::string_view plugin, std::uint64_t epoch) noexcept {
+    const auto found = std::ranges::lower_bound(
+        slots_, plugin, {}, [](const Slot &slot) { return slot.plugin; });
+    return found != slots_.end() && found->plugin == plugin &&
+                   found->epoch == epoch
+               ? &*found
+               : nullptr;
+  }
+
+  void fail(Slot &slot) noexcept {
+    stopRuntime(slot);
+    if (slot.retry_attempts < std::numeric_limits<std::uint8_t>::max())
+      ++slot.retry_attempts;
+    const auto exponent =
+        std::min<int>(slot.retry_attempts - 1, kMaximumRetryExponent);
+    const auto delay = std::min(kInitialRetryMilliseconds * (1 << exponent),
+                                kMaximumRetryMilliseconds);
+    slot.phase = Phase::retry_wait;
+    slot.retry_due = Clock::now() + std::chrono::milliseconds(delay);
+    armRetryTimer();
+  }
+
+  void retryDue() noexcept {
+    const auto now = Clock::now();
+    for (auto &slot : slots_)
+      if (slot.phase == Phase::retry_wait && slot.retry_due &&
+          *slot.retry_due <= now)
+        start(slot);
+    armRetryTimer();
+    requestPreparations();
+  }
+
+  void armRetryTimer() noexcept {
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+    if (manual_test_)
+      return;
+#endif
+    std::optional<Clock::time_point> earliest;
+    for (const auto &slot : slots_)
+      if (slot.phase == Phase::retry_wait && slot.retry_due &&
+          (!earliest || *slot.retry_due < *earliest))
+        earliest = slot.retry_due;
+    if (!earliest) {
+      retry_timer_.stop();
+      return;
+    }
+    const auto remaining =
+        std::chrono::duration_cast<std::chrono::milliseconds>(*earliest -
+                                                              Clock::now());
+    retry_timer_.start(
+        static_cast<int>(std::max<std::int64_t>(1, remaining.count())));
+  }
+
+  void stopRuntime(Slot &slot) noexcept {
+    slot.epoch = nextEpoch();
+    slot.retry_due.reset();
+    slot.preparing = false;
+    slot.root.reset();
+    slot.hook.reset();
+    slot.callback_state.reset();
+  }
+
+  std::uint64_t nextEpoch() noexcept {
+    if (next_epoch_ == std::numeric_limits<std::uint64_t>::max())
+      std::terminate();
+    return ++next_epoch_;
+  }
+
+  PluginManager &manager_;
+  std::shared_ptr<const channel::ProductionPluginBootstrap> bootstrap_;
+  std::shared_ptr<DeliveryGate> gate_ = std::make_shared<DeliveryGate>();
+  std::unique_ptr<channel::ProductionPluginCatalog> catalog_;
+  std::vector<Slot> slots_;
+  QTimer scan_timer_;
+  QTimer retry_timer_;
+  QTimer completion_timer_;
+  std::uint64_t next_epoch_ = 0;
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+  bool manual_test_ = false;
+  PluginManagerTestAccess::JobSubmitter job_submitter_;
+  PluginManagerTestAccess::JobEntryProbe job_entry_probe_;
+#endif
+};
+
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+void PluginManagerTestAccess::installRuntime(
+    PluginManager &manager,
+    std::unique_ptr<channel::ProductionPluginBootstrap> bootstrap) {
+  manager.runtime_.reset();
+  manager.available_ = false;
+  if (bootstrap)
+    manager.runtime_ = std::unique_ptr<PluginManager::Runtime>(
+        new PluginManager::Runtime(manager, std::move(bootstrap),
+                                   PluginManager::Runtime::ManualTestTag{}));
+}
+
+bool PluginManagerTestAccess::scanRuntime(PluginManager &manager) {
+  if (!manager.runtime_)
+    return false;
+  channel::ProductionPluginCatalogError error{};
+  auto candidate = manager.runtime_->bootstrap_->scan_catalog(error);
+  return manager.runtime_->acceptScan(std::move(candidate));
+}
+
+std::vector<PluginManagerTestAccess::SlotObservation>
+PluginManagerTestAccess::runtimeSlots(const PluginManager &manager) {
+  std::vector<SlotObservation> result;
+  if (!manager.runtime_)
+    return result;
+  result.reserve(manager.runtime_->slots_.size());
+  for (const auto &slot : manager.runtime_->slots_)
+    result.push_back({.plugin = slot.plugin,
+                      .epoch = slot.epoch,
+                      .retry_attempts = slot.retry_attempts,
+                      .retry_wait = slot.phase ==
+                                    PluginManager::Runtime::Phase::retry_wait,
+                      .opening = slot.phase ==
+                                 PluginManager::Runtime::Phase::opening,
+                      .preparing = slot.preparing});
+  return result;
+}
+
+bool PluginManagerTestAccess::retryRuntime(PluginManager &manager,
+                                           std::string_view plugin) {
+  if (!manager.runtime_)
+    return false;
+  const auto found = std::ranges::lower_bound(
+      manager.runtime_->slots_, plugin, {},
+      [](const PluginManager::Runtime::Slot &slot) { return slot.plugin; });
+  if (found == manager.runtime_->slots_.end() || found->plugin != plugin ||
+      found->phase != PluginManager::Runtime::Phase::retry_wait)
+    return false;
+  manager.runtime_->start(*found);
+  manager.runtime_->requestPreparations();
+  return true;
+}
+
+bool PluginManagerTestAccess::queueStaleRunningCallback(
+    PluginManager &manager, std::string_view plugin) {
+  if (!manager.runtime_)
+    return false;
+  const auto found = std::ranges::lower_bound(
+      manager.runtime_->slots_, plugin, {},
+      [](const PluginManager::Runtime::Slot &slot) { return slot.plugin; });
+  if (found == manager.runtime_->slots_.end() || found->plugin != plugin)
+    return false;
+  try {
+    auto state = std::make_shared<PluginManager::Runtime::HookState>(
+        found->plugin, found->epoch);
+    found->callback_state = state;
+    PluginManager::Runtime::Hook hook(std::move(state));
+    hook.state_changed(host_session::SessionState::running,
+                       host_session::SessionError::none);
+    return true;
+  } catch (...) {
+    return false;
+  }
+}
+
+void PluginManagerTestAccess::setJobSubmitter(PluginManager &manager,
+                                              JobSubmitter submitter) {
+  if (manager.runtime_)
+    manager.runtime_->job_submitter_ = std::move(submitter);
+}
+
+void PluginManagerTestAccess::setJobEntryProbe(PluginManager &manager,
+                                               JobEntryProbe probe) {
+  if (manager.runtime_)
+    manager.runtime_->job_entry_probe_ = std::move(probe);
+}
+
+void PluginManagerTestAccess::requestAsyncScan(PluginManager &manager) {
+  if (manager.runtime_)
+    manager.runtime_->requestScan();
+}
+
+void PluginManagerTestAccess::requestPreparations(PluginManager &manager) {
+  if (manager.runtime_)
+    manager.runtime_->requestPreparations();
+}
+
+void PluginManagerTestAccess::drainRuntime(PluginManager &manager) {
+  if (manager.runtime_)
+    manager.runtime_->drainCompletions();
+}
+
+std::uint8_t
+PluginManagerTestAccess::preparationCount(const PluginManager &manager) {
+  return manager.runtime_
+             ? manager.runtime_->gate_->preparations_in_flight.load()
+             : 0;
+}
+
+bool PluginManagerTestAccess::scanInFlight(const PluginManager &manager) {
+  return manager.runtime_ && manager.runtime_->gate_->scan_in_flight.load();
+}
+
+std::uint8_t PluginManagerTestAccess::occupiedPreparationLanes(
+    const PluginManager &manager) {
+  if (!manager.runtime_)
+    return 0;
+  std::scoped_lock lock(manager.runtime_->gate_->mutex);
+  return static_cast<std::uint8_t>(std::ranges::count_if(
+      manager.runtime_->gate_->preparation_results,
+      [](const auto &result) { return result != nullptr; }));
+}
+
+bool PluginManagerTestAccess::deliverLifecycle(
+    PluginManager &manager, std::string_view plugin, std::uint64_t epoch,
+    std::uint8_t state, std::uint8_t error) {
+  if (!manager.runtime_)
+    return false;
+  auto *slot = manager.runtime_->exact(plugin, epoch);
+  if (!slot)
+    return false;
+  try {
+    if (!slot->callback_state)
+      slot->callback_state =
+          std::make_shared<PluginManager::Runtime::HookState>(slot->plugin,
+                                                              slot->epoch);
+    PluginManager::Runtime::Hook hook(slot->callback_state);
+    hook.state_changed(static_cast<host_session::SessionState>(state),
+                       static_cast<host_session::SessionError>(error));
+    return true;
+  } catch (...) {
+    return false;
+  }
+}
+
+std::weak_ptr<const void>
+PluginManagerTestAccess::deliveryGate(const PluginManager &manager) {
+  return manager.runtime_
+             ? std::weak_ptr<const void>(manager.runtime_->gate_)
+             : std::weak_ptr<const void>{};
+}
+#endif
 
 PluginManager *PluginManager::create(QQmlEngine *qml_engine, QJSEngine *) {
   return new PluginManager(qml_engine);
@@ -24,7 +748,14 @@ PluginManager::PluginManager(QObject *parent)
           &PluginManager::toggleRequested);
   connect(&surfaces_, &PluginSurfaceService::dismissRequested, this,
           &PluginManager::dismissRequested);
+#ifndef OMARCHY_PLUGIN_MANAGER_TESTING
+  // Trust roots and definitions are immutable for this singleton lifetime.
+  // Installation/update provisions them before an explicit shell restart.
+  runtime_ = Runtime::open(*this);
+#endif
 }
+
+PluginManager::~PluginManager() = default;
 
 bool PluginManager::available() const noexcept { return available_; }
 
@@ -49,12 +780,10 @@ QAbstractItemModel *PluginManager::overlaySurfaces() {
 int PluginManager::count() const noexcept { return surfaces_.count(); }
 
 bool PluginManager::attach(const QString &surface_key, QObject *surface) {
-  // QML cannot supply an attachment backend. N8D5C will replace this inert
-  // branch with exact lookup against its private, readiness-gated slot table.
-  if (QThread::currentThread() != thread() || surface == nullptr ||
-      qobject_cast<RemotePluginSurface *>(surface) == nullptr ||
-      !surfaces_.contains(surface_key))
-    return false;
+  // A running transport alone never creates model rows or an attachment
+  // owner; exact typed readiness is required.
+  Q_UNUSED(surface_key)
+  Q_UNUSED(surface)
   return false;
 }
 

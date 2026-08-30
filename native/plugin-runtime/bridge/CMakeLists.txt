@@ -50,10 +50,14 @@ if(BUILD_TESTING)
     ProductionSurfaceEndpointOwner_test.cpp
     PluginSurfaceService.cpp
     PluginSurfaceService_test.cpp
+    ../channel-integration/production_plugin_bootstrap.cpp
+    ../channel-integration/production_plugin_roots.cpp
   )
   omarchy_plugin_target_defaults(omarchy-plugin-surface-service-test)
   target_compile_definitions(omarchy-plugin-surface-service-test PRIVATE
     OMARCHY_PLUGIN_MANAGER_TESTING
+    OMARCHY_PRODUCTION_PLUGIN_BOOTSTRAP_TESTING
+    OMARCHY_PRODUCTION_PLUGIN_ROOTS_TESTING
     OMARCHY_PRODUCTION_SURFACE_ENDPOINT_OWNER_TESTING)
   target_include_directories(omarchy-plugin-surface-service-test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/../trusted-bridge"
