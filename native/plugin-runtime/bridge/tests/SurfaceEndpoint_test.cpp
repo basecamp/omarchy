@@ -222,8 +222,12 @@ public:
     surface::InputEvent input;
     if (header.message_type == static_cast<std::uint16_t>(
                                    surface::RenderMessageType::input) &&
-        surface::decode_input_event(last_payload, input))
+        surface::decode_input_event(last_payload, input)) {
+      const bool cancel = std::holds_alternative<surface::Cancel>(input.payload);
       inputs.push_back(std::move(input));
+      if (cancel && reenter_on_cancel)
+        reenter_on_cancel();
+    }
     last_descriptor = -1;
     if (!descriptors.empty()) {
       if (descriptors.size() != 1)
@@ -255,6 +259,7 @@ public:
   bool descriptor_had_cloexec = false;
   bool remote_was_alive_at_detach = false;
   bool release_was_attached = false;
+  std::function<void()> reenter_on_cancel;
   std::function<void()> reenter_on_release;
   bool running = true;
   bool arm_succeeds = true;
@@ -354,6 +359,13 @@ void lifecycle_and_descriptor_contract() {
   ::close(descriptors[1]);
 
   const auto sends_before_close = value.port.send_calls;
+  std::size_t cancel_reentries = 0;
+  value.port.reenter_on_cancel = [&] {
+    ++cancel_reentries;
+    require(bridge::SurfaceEndpointTestAccess::is_closing(*value.endpoint),
+            "terminal Cancel ran before the endpoint reentrancy fence");
+    bridge::SurfaceEndpointTestAccess::close(*value.endpoint);
+  };
   value.port.reenter_on_release = [&] {
     bridge::SurfaceEndpointTestAccess::close(*value.endpoint);
   };
@@ -361,6 +373,7 @@ void lifecycle_and_descriptor_contract() {
   bridge::SurfaceEndpointTestAccess::close(*value.endpoint);
   require(bridge::SurfaceEndpointTestAccess::is_closing(*value.endpoint) &&
               value.port.detach_calls == 1 &&
+              cancel_reentries == 1 &&
               !value.port.remote_was_alive_at_detach &&
               value.port.release_was_attached &&
               value.port.send_calls == sends_before_close + 2 &&

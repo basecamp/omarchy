@@ -241,8 +241,10 @@ bool SurfaceEndpoint::forward_input(
     const plugin::wire::EnvelopeHeader &header,
     std::span<const std::byte> payload) {
   auto &value = *implementation_;
+  const bool active = value.state == State::active;
+  const bool closing = value.state == State::closing;
   if (std::this_thread::get_id() != owner_thread_ ||
-      value.state != State::active || !value.description)
+      (!active && !closing) || !value.description)
     return false;
   if (header.message_type != static_cast<std::uint16_t>(
                                  surface::RenderMessageType::input))
@@ -254,10 +256,18 @@ bool SurfaceEndpoint::forward_input(
     value.pending_gesture.reset();
     return false;
   }
-  if (std::holds_alternative<surface::Cancel>(input.payload)) {
+  const bool cancel = std::holds_alternative<surface::Cancel>(input.payload);
+  if (closing && (!cancel || input.surface != value.description->key ||
+                  header.correlation_id != 0))
+    return false;
+  if (cancel) {
     session_.clear_surface_intent_eligibility(*value.description);
     value.pending_gesture.reset();
   }
+  if (closing)
+    return session_.send_render_packet(
+        *value.description, header,
+        std::vector<std::byte>(payload.begin(), payload.end()), {});
   if (!value.pending_gesture)
     return forward_render(header, payload, {});
   const auto pending = *value.pending_gesture;
@@ -325,11 +335,11 @@ void SurfaceEndpoint::close_impl() noexcept {
     value.state = State::closing;
     return;
   }
-  // Send the terminal Cancel first. State::closing blocks reentrant work while
-  // HostSurface emits its one terminal release over the still-attached route.
+  // Fence public and reentrant work before either callback-capable terminal
+  // send. Only the exact Cancel and release may cross the attached route now.
+  value.state = State::closing;
   if (value.host && !value.host->terminated())
     (void)value.host->end_input();
-  value.state = State::closing;
   value.pending_gesture.reset();
   if (value.description)
     session_.clear_surface_intent_eligibility(*value.description);
