@@ -1,6 +1,7 @@
 #include "omarchy/plugin/wire/envelope.hpp"
 #include "omarchy/plugin/wire/state.hpp"
 #include "omarchy/plugin_runtime/launcher/launcher.h"
+#include "omarchy/plugin_runtime/launcher/test_supervisor.h"
 #include "omarchy/plugin_runtime/sandbox/policy.h"
 
 #include <dirent.h>
@@ -549,7 +550,7 @@ void test_standalone_sandbox() {
   require(revision.get() >= 0 && state.get() >= 0,
           "sandbox fixture directories could not be opened");
   auto scope = std::make_shared<FakeScope>();
-  auto supervisor = launcher::Supervisor::forTestOnly(
+  auto supervisor = launcher::test_support::make_supervisor(
       "/usr/bin/bwrap", MALICIOUS_WORKER_PATH, scope);
   const launcher::TrustedLaunchRequest request{
       .plugin_id = "org.omarchy.fixture",

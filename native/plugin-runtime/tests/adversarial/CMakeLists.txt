@@ -90,7 +90,7 @@ target_compile_definitions(omarchy-plugin-adversarial-harness-test PRIVATE
 )
 target_link_libraries(omarchy-plugin-adversarial-harness-test PRIVATE
   omarchy-plugin-wire
-  Omarchy::PluginLauncher
+  Omarchy::PluginLauncherTestSupport
 )
 add_dependencies(omarchy-plugin-adversarial-harness-test
   omarchy-plugin-malicious-worker

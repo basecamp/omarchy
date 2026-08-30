@@ -81,27 +81,6 @@ session::SendStatus map_send(ChannelSendStatus status) noexcept {
   return session::SendStatus::fatal;
 }
 
-class IdentityOnlyDispatcher final : public BrokerDispatcher {
-public:
-  explicit IdentityOnlyDispatcher(permissions::ActivationBinding binding)
-      : binding_(std::move(binding)) {}
-
-  [[nodiscard]] bool
-  accepts(const launcher::LaunchIdentity &identity) const noexcept override {
-    return identity.plugin_id == binding_.plugin.view() &&
-           identity.revision_sha256 == binding_.revision.view() &&
-           identity.generation == binding_.generation;
-  }
-
-  [[nodiscard]] bool dispatch(const wire::PacketView &) override {
-    // Product sessions settle broker traffic through BrokerSessionSettlement.
-    return false;
-  }
-
-private:
-  permissions::ActivationBinding binding_;
-};
-
 class LauncherSessionBackend final : public AuthenticatedSessionBackend {
 public:
   LauncherSessionBackend(
@@ -110,7 +89,6 @@ public:
       std::unique_ptr<AuthenticatedSessionRuntime> runtime,
       std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility)
       : supervisor_(std::move(supervisor)), launch_(std::move(launch)),
-        dispatcher_(std::make_shared<IdentityOnlyDispatcher>(launch_.binding)),
         authority_(std::move(authority)), runtime_(std::move(runtime)),
         gesture_eligibility_(std::move(gesture_eligibility)) {}
 
@@ -124,7 +102,7 @@ public:
         token.revision_sha256 != launch_.binding.revision.view() ||
         token.generation != launch_.binding.generation ||
         !launch_.revision_directory || !launch_.private_state_directory ||
-        !dispatcher_ || !authority_ || !runtime_ ||
+        !authority_ || !runtime_ ||
         !runtime_->broker().accepts(launch_.binding, token.session_nonce))
       return session::ChannelError::launch_failed;
     const launcher::TrustedLaunchRequest request{
@@ -133,8 +111,8 @@ public:
         .generation = launch_.binding.generation,
         .revision_directory_fd = launch_.revision_directory.get(),
         .private_state_directory_fd = launch_.private_state_directory.get()};
-    auto opened = AuthenticatedBrokerChannel::open(
-        supervisor_, request, dispatcher_, authority_, deadline);
+    auto opened = AuthenticatedBrokerChannel::open(supervisor_, request,
+                                                   authority_, deadline);
     if (!opened)
       return session::ChannelError::launch_failed;
     channel_ = std::move(opened.channel);
@@ -241,7 +219,6 @@ public:
     channel_.reset();
     launch_.revision_directory.reset();
     launch_.private_state_directory.reset();
-    dispatcher_.reset();
     authority_.reset();
     runtime_.reset();
     gesture_eligibility_.reset();
@@ -250,7 +227,6 @@ public:
 private:
   launcher::Supervisor supervisor_;
   AuthenticatedSessionLaunch launch_;
-  std::shared_ptr<BrokerDispatcher> dispatcher_;
   std::shared_ptr<const GenerationAuthority> authority_;
   std::unique_ptr<AuthenticatedSessionRuntime> runtime_;
   std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility_;

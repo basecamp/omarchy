@@ -177,15 +177,14 @@ int milliseconds_until(launcher::Deadline deadline) {
 
 AuthenticatedBrokerChannel::AuthenticatedBrokerChannel(
     std::unique_ptr<launcher::Worker> worker, launcher::LaunchIdentity identity,
-    std::shared_ptr<BrokerDispatcher> dispatcher,
     std::shared_ptr<const GenerationAuthority> authority,
     launcher::Deadline opening_deadline)
     : worker_(std::move(worker)), identity_(std::move(identity)),
-      dispatcher_(std::move(dispatcher)), authority_(std::move(authority)),
-      opening_deadline_(opening_deadline),
+      authority_(std::move(authority)), opening_deadline_(opening_deadline),
       control_(wire::EndpointRole::control,
                {kControlRoleVersion, kControlRoleVersion}, identity_.generation,
-               wire::payload_cap(wire::EndpointRole::control), kMaximumInFlight),
+               wire::payload_cap(wire::EndpointRole::control),
+               kMaximumInFlight),
       broker_(wire::EndpointRole::broker,
               {broker::kBrokerRoleVersion, broker::kBrokerRoleVersion},
               identity_.generation,
@@ -204,14 +203,13 @@ AuthenticatedBrokerChannel::~AuthenticatedBrokerChannel() = default;
 OpenResult AuthenticatedBrokerChannel::open(
     launcher::Supervisor &supervisor,
     const launcher::TrustedLaunchRequest &request,
-    std::shared_ptr<BrokerDispatcher> dispatcher,
     std::shared_ptr<const GenerationAuthority> authority,
     launcher::Deadline deadline) {
-  if (dispatcher == nullptr || authority == nullptr)
+  if (authority == nullptr)
     return {.channel = nullptr,
             .failure = ChannelFailure::identity_mismatch,
             .launch_failure = launcher::LaunchFailure::none,
-            .detail = "broker dispatcher or generation authority is absent"};
+            .detail = "generation authority is absent"};
   if (std::chrono::steady_clock::now() >= deadline)
     return {.channel = nullptr,
             .failure = ChannelFailure::launch_failed,
@@ -235,13 +233,6 @@ OpenResult AuthenticatedBrokerChannel::open(
             .launch_failure = launcher::LaunchFailure::none,
             .detail = "launched process identity differs from trusted request"};
   }
-  if (!dispatcher->accepts(identity)) {
-    launched.worker.reset();
-    return {.channel = nullptr,
-            .failure = ChannelFailure::identity_mismatch,
-            .launch_failure = launcher::LaunchFailure::none,
-            .detail = "broker dispatcher rejects the launched identity"};
-  }
   if (!authority->is_current(identity)) {
     launched.worker.reset();
     return {.channel = nullptr,
@@ -258,7 +249,6 @@ OpenResult AuthenticatedBrokerChannel::open(
   }
   auto channel = std::unique_ptr<AuthenticatedBrokerChannel>(
       new AuthenticatedBrokerChannel(std::move(launched.worker), identity,
-                                     std::move(dispatcher),
                                      std::move(authority), deadline));
   if (std::chrono::steady_clock::now() >= deadline) {
     channel.reset();
@@ -301,10 +291,9 @@ bool AuthenticatedBrokerChannel::negotiate(launcher::Deadline deadline) {
     --remaining;
   }
   bool aggregate_ready = false;
-  if (!authority_->is_current(identity_) || !dispatcher_->accepts(identity_))
+  if (!authority_->is_current(identity_))
     return fail(ChannelFailure::stale_generation,
-                "launch generation or dispatcher binding changed during "
-                "endpoint negotiation");
+                "launch generation changed during endpoint negotiation");
   if (std::chrono::steady_clock::now() >= deadline)
     return fail(ChannelFailure::negotiation_failed,
                 "aggregate negotiation deadline elapsed before readiness");
@@ -356,8 +345,7 @@ bool AuthenticatedBrokerChannel::negotiate_one(
     if (std::chrono::steady_clock::now() >= deadline)
       return fail(ChannelFailure::negotiation_failed,
                   "endpoint negotiation deadline elapsed before WELCOME");
-    if (!authority_->is_current(identity_) ||
-        !dispatcher_->accepts(identity_) || worker_ == nullptr ||
+    if (!authority_->is_current(identity_) || worker_ == nullptr ||
         !worker_->alive())
       return fail(ChannelFailure::stale_generation,
                   "binding changed during endpoint negotiation reply");
@@ -453,8 +441,8 @@ bool AuthenticatedBrokerChannel::validate_inbound(
          "authenticated packet descriptor count differs from its schema");
     return false;
   }
-  if (!authority_->is_current(identity_) || !dispatcher_->accepts(identity_) ||
-      worker_ == nullptr || !worker_->alive()) {
+  if (!authority_->is_current(identity_) || worker_ == nullptr ||
+      !worker_->alive()) {
     fail(ChannelFailure::stale_generation,
          "binding changed after authenticated packet receive");
     return false;
@@ -469,7 +457,7 @@ std::optional<PreparedSend> AuthenticatedBrokerChannel::prepare_send(
   if (!ready_ || failed() || termination_.attempted() || worker_ == nullptr ||
       message_type == 0 || payload.size() > wire::payload_cap(role))
     return {};
-  if (!authority_->is_current(identity_) || !dispatcher_->accepts(identity_))
+  if (!authority_->is_current(identity_))
     return fail(ChannelFailure::stale_generation,
                 "binding changed before trusted packet preparation"),
            std::nullopt;
@@ -523,7 +511,7 @@ ChannelSendStatus AuthenticatedBrokerChannel::try_send(
     return ChannelSendStatus::fatal;
   }
   if (!ready_ || failed() || termination_.attempted() ||
-      !authority_->is_current(identity_) || !dispatcher_->accepts(identity_)) {
+      !authority_->is_current(identity_)) {
     prepared.pending_ = false;
     fail(ChannelFailure::stale_generation,
          "binding changed before prepared packet send");
@@ -607,7 +595,7 @@ AuthenticatedBrokerChannel::receive_authenticated_impl(
   if (!nonblocking && std::chrono::steady_clock::now() >= deadline)
     return {.status = AuthenticatedReceiveStatus::would_block,
             .message = std::nullopt};
-  if (!authority_->is_current(identity_) || !dispatcher_->accepts(identity_)) {
+  if (!authority_->is_current(identity_)) {
     fail(ChannelFailure::stale_generation,
          "binding changed before authenticated receive");
     return {.status = AuthenticatedReceiveStatus::fatal,
@@ -669,7 +657,7 @@ AuthenticatedBrokerChannel::receive_authenticated_impl(
     return {.status = AuthenticatedReceiveStatus::fatal,
             .message = std::nullopt};
   }
-  if (!authority_->is_current(identity_) || !dispatcher_->accepts(identity_)) {
+  if (!authority_->is_current(identity_)) {
     fail(ChannelFailure::stale_generation,
          "binding changed before authenticated message publication");
     return {.status = AuthenticatedReceiveStatus::fatal,
@@ -689,102 +677,6 @@ AuthenticatedBrokerChannel::receive_authenticated_impl(
   }
   return {.status = AuthenticatedReceiveStatus::message,
           .message = std::move(owned)};
-}
-
-DispatchStatus
-AuthenticatedBrokerChannel::dispatch_one(launcher::Deadline deadline) {
-  if (!ready_ || failed() || termination_.attempted()) {
-    if (!failed() && !termination_.attempted())
-      fail(ChannelFailure::not_ready,
-           "broker dispatch attempted before aggregate readiness");
-    return DispatchStatus::not_ready;
-  }
-  if (!worker_->alive()) {
-    fail(ChannelFailure::peer_failure,
-         "pidfd reports worker exit before broker dispatch");
-    return DispatchStatus::fatal;
-  }
-  if (!authority_->is_current(identity_) || !dispatcher_->accepts(identity_)) {
-    fail(ChannelFailure::stale_generation,
-         "launch generation or dispatcher binding changed before broker "
-         "receive");
-    return DispatchStatus::fatal;
-  }
-  auto message = receive_one(launcher::EndpointMask::broker, deadline);
-  if (!message) {
-    if (message.status == launcher::ReceiveStatus::would_block &&
-        message.failure == launcher::ReceiveFailure::timeout)
-      return DispatchStatus::timeout;
-    fail(ChannelFailure::peer_failure,
-         "authenticated broker endpoint receive failed");
-    return DispatchStatus::fatal;
-  }
-  wire::PacketView packet{};
-  if (!validate_inbound(message, packet))
-    return DispatchStatus::fatal;
-  if (!worker_->alive()) {
-    fail(ChannelFailure::peer_failure,
-         "pidfd reports worker exit before trusted dispatch");
-    return DispatchStatus::fatal;
-  }
-  if (!authority_->is_current(identity_) || !dispatcher_->accepts(identity_)) {
-    fail(ChannelFailure::stale_generation,
-         "launch generation or dispatcher binding changed before trusted "
-         "dispatch");
-    return DispatchStatus::fatal;
-  }
-  if (std::chrono::steady_clock::now() >= deadline)
-    return fail(ChannelFailure::deadline_expired,
-                "broker deadline elapsed after consuming request"),
-           DispatchStatus::fatal;
-  bool dispatched = false;
-  try {
-    dispatched = dispatcher_->dispatch(packet);
-  } catch (...) {
-    fail(ChannelFailure::dispatch_failed,
-         "C4 broker dispatcher raised across the channel boundary");
-    return DispatchStatus::fatal;
-  }
-  if (!dispatched) {
-    fail(ChannelFailure::dispatch_failed,
-         "C4 broker dispatcher rejected the authenticated packet");
-    return DispatchStatus::fatal;
-  }
-  if (std::chrono::steady_clock::now() >= deadline)
-    return fail(ChannelFailure::deadline_expired,
-                "broker deadline elapsed after dispatcher effect"),
-           DispatchStatus::fatal;
-  std::optional<BrokerReply> reply;
-  try {
-    reply = dispatcher_->take_reply();
-  } catch (...) {
-    fail(ChannelFailure::dispatch_failed,
-         "C4 broker reply extraction raised across the channel boundary");
-    return DispatchStatus::fatal;
-  }
-  if (std::chrono::steady_clock::now() >= deadline)
-    return fail(ChannelFailure::deadline_expired,
-                "broker deadline elapsed before response send"),
-           DispatchStatus::fatal;
-  if (reply) {
-    if (reply->message_type == 0 || reply->correlation_id == 0 ||
-        reply->correlation_id != packet.header.correlation_id ||
-        reply->payload.size() > wire::payload_cap(wire::EndpointRole::broker)) {
-      fail(ChannelFailure::dispatch_failed,
-           "C4 broker dispatcher returned an invalid response");
-      return DispatchStatus::fatal;
-    }
-    auto prepared =
-        prepare_send(wire::EndpointRole::broker, reply->message_type,
-                     reply->correlation_id, reply->payload);
-    if (!prepared ||
-        try_send(*prepared, deadline) != ChannelSendStatus::complete) {
-      fail(ChannelFailure::peer_failure,
-           "authenticated broker response send failed");
-      return DispatchStatus::fatal;
-    }
-  }
-  return DispatchStatus::dispatched;
 }
 
 bool AuthenticatedBrokerChannel::ready() const { return ready_ && !failed(); }

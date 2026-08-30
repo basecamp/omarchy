@@ -515,31 +515,6 @@ void send_broker_request(std::uint64_t generation, std::string_view current,
   send_bytes(4, transmitted, current == "post-ready-descriptor" ? 1U : 0U);
   if (current == "replay")
     send_bytes(4, transmitted);
-  if (current == "reply-allowed" || current == "reply-denied") {
-    const auto reply = receive_bytes(4);
-    const auto decoded = wire::decode_packet(reply, wire::EndpointRole::broker);
-    const auto expected =
-        current == "reply-allowed"
-            ? broker::kBrokerResultMessage
-            : static_cast<std::uint16_t>(wire::CommonMessageType::typed_error);
-    if (!decoded ||
-        decoded.packet.header.envelope_version != wire::kEnvelopeVersion ||
-        sequence.accept_inbound(wire::EndpointRole::broker,
-                                decoded.packet.header.lane_sequence) !=
-            wire::FatalReason::none ||
-        decoded.packet.header.message_type != expected ||
-        decoded.packet.header.correlation_id != 1 ||
-        decoded.packet.header.launch_generation != generation)
-      fail();
-    if (current == "reply-denied") {
-      broker::BrokerTypedError error{};
-      if (!broker::decode_broker_error(decoded.packet.payload, error) ||
-          error.failed_operation !=
-              broker::permissions::OperationId::storage_read)
-        fail();
-    }
-    return;
-  }
   std::byte ignored{};
   while (recv(4, &ignored, 1, 0) < 0 && errno == EINTR) {
   }

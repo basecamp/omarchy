@@ -1,6 +1,7 @@
 #include "audit_store.hpp"
 #include "broker_runtime.hpp"
 #include "dynamic_broker_runtime.hpp"
+#include "omarchy/plugin_runtime/launcher/test_supervisor.h"
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
 #include "plugin_activation_coordinator.hpp"
 #include "plugin_permission_controller.hpp"
@@ -1175,8 +1176,8 @@ void prepared_commit_retains_activation_and_reuses_one_launch() {
   auto scope = std::make_shared<Scope>();
   channel::PluginSessionCreateError create_error{};
   auto prepared = channel::PluginSessionTestAccess::prepare_from_activation(
-      launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH, CHANNEL_PEER_PATH,
-                                        scope),
+      launcher::test_support::make_supervisor(FAKE_BWRAP_PATH,
+                                              CHANNEL_PEER_PATH, scope),
       fixture.snapshot(), runtime_factory, create_error);
   require(prepared &&
               create_error == channel::PluginSessionCreateError::none,
@@ -1241,8 +1242,8 @@ void prepared_session_is_thread_agnostic_before_commit() {
   RuntimeFactory runtime_factory;
   channel::PluginSessionCreateError create_error{};
   auto prepared = channel::PluginSessionTestAccess::prepare_from_activation(
-      launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH, CHANNEL_PEER_PATH,
-                                        std::make_shared<Scope>()),
+      launcher::test_support::make_supervisor(
+          FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, std::make_shared<Scope>()),
       fixture.snapshot(), runtime_factory, create_error);
   require(prepared && create_error == channel::PluginSessionCreateError::none &&
               runtime_factory.calls == 1 && *runtime_factory.destructions == 0,
@@ -1262,8 +1263,8 @@ void preparation_rejects_invalid_grant_snapshots() {
     RuntimeFactory runtime_factory;
     channel::PluginSessionCreateError create_error{};
     auto prepared = channel::PluginSessionTestAccess::prepare_from_activation(
-        launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH, CHANNEL_PEER_PATH,
-                                          std::make_shared<Scope>()),
+        launcher::test_support::make_supervisor(
+            FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, std::make_shared<Scope>()),
         std::move(snapshot), runtime_factory, create_error);
     require(!prepared &&
                 create_error ==
@@ -1386,8 +1387,8 @@ void prepared_root_commits_on_ui_with_exact_hooks() {
   fixture.promote(active, 1);
   auto scope = std::make_shared<Scope>();
   auto supervisor = [scope] {
-    return launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH,
-                                             CHANNEL_PEER_PATH, scope);
+    return launcher::test_support::make_supervisor(
+        FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, scope);
   };
   std::unique_ptr<channel::PreparedPluginRuntime> prepared;
   const auto ui_thread = std::this_thread::get_id();
@@ -1418,8 +1419,8 @@ void prepared_root_final_fence_rejects_intervening_mutation() {
   auto scope = std::make_shared<Scope>();
   FinalFenceMutation mutation{.binding = active.binding};
   auto supervisor = [scope] {
-    return launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH,
-                                             CHANNEL_PEER_PATH, scope);
+    return launcher::test_support::make_supervisor(
+        FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, scope);
   };
   auto prepared = fixture.prepare_root({}, std::move(supervisor), "current",
                                        ::getuid(), true,
@@ -1441,8 +1442,8 @@ void prepared_root_commit_is_ui_only_and_path_independent() {
     fixture.promote(active, 1);
     auto scope = std::make_shared<Scope>();
     auto supervisor = [scope] {
-      return launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH,
-                                               CHANNEL_PEER_PATH, scope);
+      return launcher::test_support::make_supervisor(
+          FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, scope);
     };
     auto prepared = fixture.prepare_root({}, std::move(supervisor));
     CountingRuntimeHooks hooks;
@@ -1463,8 +1464,8 @@ void prepared_root_commit_is_ui_only_and_path_independent() {
   fixture.promote(active, 1);
   auto scope = std::make_shared<Scope>();
   auto supervisor = [scope] {
-    return launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH,
-                                             CHANNEL_PEER_PATH, scope);
+    return launcher::test_support::make_supervisor(
+        FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, scope);
   };
   std::unique_ptr<channel::PreparedPluginRuntime> prepared;
   std::thread worker([&] {
@@ -1498,7 +1499,7 @@ void composed_root_is_the_composed_authority_path() {
        .compare_scope = nullptr,
        .dynamic_services = {}},
       [] {
-        return launcher::Supervisor::forTestOnly(
+        return launcher::test_support::make_supervisor(
             FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, std::make_shared<Scope>());
       });
   NotificationReleaseGuard release_on_exit(probe);
@@ -1514,7 +1515,7 @@ void composed_root_is_the_composed_authority_path() {
        .compare_scope = nullptr,
        .dynamic_services = {}},
       [] {
-        return launcher::Supervisor::forTestOnly(
+        return launcher::test_support::make_supervisor(
             FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, std::make_shared<Scope>());
       });
   require(!locked, "a second composed root acquired the same authority");
@@ -1649,8 +1650,8 @@ void composed_root_rejects_unusable_authority_and_providers() {
   auto scope = std::make_shared<Scope>();
   auto rejected = missing_provider.prepare_root(
       {}, [scope] {
-        return launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH,
-                                                 CHANNEL_PEER_PATH, scope);
+        return launcher::test_support::make_supervisor(
+            FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, scope);
       });
   require(!rejected && scope->attachments == 0,
           "granted optional permission bypassed its missing trusted provider");

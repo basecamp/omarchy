@@ -100,6 +100,7 @@ if(BUILD_TESTING)
   omarchy_plugin_target_defaults(omarchy-plugin-channel-integration-test)
   target_link_libraries(omarchy-plugin-channel-integration-test PRIVATE
     omarchy-plugin-channel-integration
+    Omarchy::PluginLauncherTestSupport
   )
   target_compile_definitions(omarchy-plugin-channel-integration-test PRIVATE
     CHANNEL_PEER_PATH="$<TARGET_FILE:omarchy-plugin-channel-peer>"
@@ -219,7 +220,8 @@ if(BUILD_TESTING)
       FAKE_BWRAP_PATH="$<TARGET_FILE:omarchy-plugin-channel-fake-bwrap>"
       COORDINATOR_REVISION_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../contracts/manifest/tests/fixtures/valid-minimal")
     target_link_libraries(omarchy-plugin-product-session-test PRIVATE
-      omarchy-plugin-channel-integration omarchy-plugin-host-session Qt6::Core)
+      omarchy-plugin-channel-integration omarchy-plugin-host-session
+      Omarchy::PluginLauncherTestSupport Qt6::Core)
     target_link_libraries(omarchy-plugin-product-session-test PRIVATE
       omarchy-plugin-activation-snapshot)
     add_dependencies(omarchy-plugin-product-session-test

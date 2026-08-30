@@ -1,4 +1,5 @@
 #include "omarchy/plugin_runtime/launcher/launcher.h"
+#include "omarchy/plugin_runtime/launcher/test_supervisor.h"
 #include "omarchy/plugin_runtime/launcher/termination_state.h"
 #include "omarchy/plugin_runtime/test_support/test_support.h"
 #include "../src/process_cleanup.hpp"
@@ -379,7 +380,7 @@ void pidfd_reap_state_test() {
 void deadline_and_async_cleanup_test(LaunchFixture &fixture) {
   auto rejected_scope = std::make_shared<FakeScope>();
   rejected_scope->attach_succeeds = false;
-  auto rejected_supervisor = launcher::Supervisor::forTestOnly(
+  auto rejected_supervisor = launcher::test_support::make_supervisor(
       FAKE_BWRAP_PATH, PROBE_PATH, rejected_scope);
   const auto pre_call_rejected =
       rejected_supervisor.launch(fixture.request(), deadline_after(5s));
@@ -391,7 +392,8 @@ void deadline_and_async_cleanup_test(LaunchFixture &fixture) {
   auto scope = std::make_shared<FakeScope>();
   scope->remove_delay = 150ms;
   auto supervisor =
-      launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH, PROBE_PATH, scope);
+      launcher::test_support::make_supervisor(FAKE_BWRAP_PATH, PROBE_PATH,
+                                              scope);
   const auto launch_deadline = std::chrono::steady_clock::now() + 5s;
   auto launched = supervisor.launch(fixture.request(), launch_deadline);
   require(static_cast<bool>(launched) && scope->probe_deadline == launch_deadline &&
@@ -408,7 +410,7 @@ void deadline_and_async_cleanup_test(LaunchFixture &fixture) {
 
   auto delayed_setup_scope = std::make_shared<FakeScope>();
   delayed_setup_scope->cleanup_setup_delay = 1s;
-  auto delayed_setup = launcher::Supervisor::forTestOnly(
+  auto delayed_setup = launcher::test_support::make_supervisor(
       FAKE_BWRAP_PATH, PROBE_PATH, delayed_setup_scope);
   const auto setup_deadline = std::chrono::steady_clock::now() + 30ms;
   const auto setup_rejected =
@@ -423,7 +425,7 @@ void deadline_and_async_cleanup_test(LaunchFixture &fixture) {
   expiring_scope->probe_delay = 10ms;
   expiring_scope->attach_delay = 1s;
   expiring_scope->remove_delay = 150ms;
-  auto expiring = launcher::Supervisor::forTestOnly(
+  auto expiring = launcher::test_support::make_supervisor(
       FAKE_BWRAP_PATH, PROBE_PATH, expiring_scope);
   const auto aggregate_deadline = std::chrono::steady_clock::now() + 40ms;
   const auto launch_started = std::chrono::steady_clock::now();
@@ -487,7 +489,7 @@ void reaper_wake_and_cleanup_deadline_test() {
 
 void reaper_capacity_and_startup_test(LaunchFixture &fixture) {
   auto failed_scope = std::make_shared<FakeScope>();
-  auto failed = launcher::Supervisor::forTestOnly(
+  auto failed = launcher::test_support::make_supervisor(
       FAKE_BWRAP_PATH, PROBE_PATH, failed_scope, true);
   const auto rejected = failed.launch(fixture.request(), deadline_after(5s));
   require(rejected.failure ==
@@ -539,7 +541,8 @@ void reaper_capacity_and_startup_test(LaunchFixture &fixture) {
 void owned_descriptor_transport_test(LaunchFixture &fixture) {
   auto scope = std::make_shared<FakeScope>();
   auto supervisor =
-      launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH, PROBE_PATH, scope);
+      launcher::test_support::make_supervisor(FAKE_BWRAP_PATH, PROBE_PATH,
+                                              scope);
   auto launched = supervisor.launch(fixture.request(), deadline_after(5s));
   require(static_cast<bool>(launched),
           "owned-descriptor transport worker did not launch");
@@ -605,7 +608,8 @@ void owned_descriptor_transport_test(LaunchFixture &fixture) {
 void pidfd_priority_test(LaunchFixture &fixture) {
   auto scope = std::make_shared<FakeScope>();
   auto supervisor =
-      launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH, PROBE_PATH, scope);
+      launcher::test_support::make_supervisor(FAKE_BWRAP_PATH, PROBE_PATH,
+                                              scope);
   auto launched = supervisor.launch(fixture.request(), deadline_after(5s));
   require(static_cast<bool>(launched), "pidfd-priority worker did not launch");
   const std::array acknowledgement{std::byte{1}};
@@ -635,7 +639,8 @@ void pidfd_priority_test(LaunchFixture &fixture) {
 void readiness_control_failure_test(LaunchFixture &fixture) {
   auto scope = std::make_shared<FakeScope>();
   auto supervisor =
-      launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH, PROBE_PATH, scope);
+      launcher::test_support::make_supervisor(FAKE_BWRAP_PATH, PROBE_PATH,
+                                              scope);
   auto launched = supervisor.launch(fixture.request(), deadline_after(5s));
   require(static_cast<bool>(launched),
           "readiness-control failure worker did not launch");
@@ -651,11 +656,32 @@ void readiness_control_failure_test(LaunchFixture &fixture) {
           "epoll control failure retained partial transport authority");
 }
 
+void fake_bwrap_alias_test() {
+  struct stat source{};
+  require(lstat(FAKE_BWRAP_PATH, &source) == 0 &&
+              S_ISREG(source.st_mode) && !S_ISLNK(source.st_mode) &&
+              source.st_uid == geteuid(),
+          "fake bwrap source is not a regular owned executable");
+  for (const char *alias : {DUPLICATE_STATUS_BWRAP_PATH,
+                            STRING_STATUS_BWRAP_PATH,
+                            EXITED_STATUS_BWRAP_PATH}) {
+    struct stat metadata{};
+    require(lstat(alias, &metadata) == 0 && S_ISREG(metadata.st_mode) &&
+                !S_ISLNK(metadata.st_mode) && metadata.st_dev == source.st_dev &&
+                metadata.st_ino == source.st_ino &&
+                metadata.st_uid == source.st_uid &&
+                metadata.st_mode == source.st_mode,
+            "fake bwrap alias is not the exact regular hardlink");
+  }
+}
+
 void contract_test() {
   pidfd_reap_state_test();
+  fake_bwrap_alias_test();
   auto scope = std::make_shared<FakeScope>();
   auto supervisor =
-      launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH, PROBE_PATH, scope);
+      launcher::test_support::make_supervisor(FAKE_BWRAP_PATH, PROBE_PATH,
+                                              scope);
   LaunchFixture fixture;
 
   auto invalid = fixture.request();
@@ -676,13 +702,13 @@ void contract_test() {
 
   auto unavailable_scope = std::make_shared<FakeScope>();
   unavailable_scope->available = false;
-  auto unavailable = launcher::Supervisor::forTestOnly(
+  auto unavailable = launcher::test_support::make_supervisor(
       FAKE_BWRAP_PATH, PROBE_PATH, unavailable_scope);
   require(unavailable.launch(fixture.request(), deadline_after(5s)).failure ==
               launcher::LaunchFailure::missing_kernel_prerequisite,
           "launch proceeded without a resource controller");
 
-  auto duplicate = launcher::Supervisor::forTestOnly(
+  auto duplicate = launcher::test_support::make_supervisor(
       DUPLICATE_STATUS_BWRAP_PATH, PROBE_PATH, std::make_shared<FakeScope>());
   const auto duplicate_result =
       duplicate.launch(fixture.request(), deadline_after(5s));
@@ -696,13 +722,13 @@ void contract_test() {
               launcher::LaunchFailure::status_protocol_failed,
           "escaped duplicate authoritative status key was accepted");
 
-  auto string_status = launcher::Supervisor::forTestOnly(
+  auto string_status = launcher::test_support::make_supervisor(
       STRING_STATUS_BWRAP_PATH, PROBE_PATH, std::make_shared<FakeScope>());
   require(string_status.launch(fixture.request(), deadline_after(5s)).failure ==
               launcher::LaunchFailure::status_protocol_failed,
           "string child PID was accepted as authoritative status");
 
-  auto exited_status = launcher::Supervisor::forTestOnly(
+  auto exited_status = launcher::test_support::make_supervisor(
       EXITED_STATUS_BWRAP_PATH, PROBE_PATH, std::make_shared<FakeScope>());
   require(exited_status.launch(fixture.request(), deadline_after(5s)).failure ==
               launcher::LaunchFailure::worker_exited_early,
@@ -712,7 +738,7 @@ void contract_test() {
   std::ofstream(invalid_executable) << "not an executable format\n";
   require(chmod(invalid_executable.c_str(), 0700) == 0,
           "cannot prepare exec-error fixture");
-  auto exec_error = launcher::Supervisor::forTestOnly(
+  auto exec_error = launcher::test_support::make_supervisor(
       invalid_executable.string(), PROBE_PATH, std::make_shared<FakeScope>());
   const auto failed_exec =
       exec_error.launch(fixture.request(), deadline_after(5s));
@@ -729,7 +755,7 @@ void contract_test() {
 
 void malicious_test() {
   auto scope = std::make_shared<FakeScope>();
-  auto supervisor = launcher::Supervisor::forTestOnly(
+  auto supervisor = launcher::test_support::make_supervisor(
       FAKE_BWRAP_PATH, MALICIOUS_PROBE_PATH, scope);
   LaunchFixture fixture;
   auto launched = supervisor.launch(fixture.request(), deadline_after(5s));
@@ -966,8 +992,8 @@ void bwrap_test() {
     std::exit(77);
   }
   auto scope = std::make_shared<FakeScope>();
-  auto supervisor =
-      launcher::Supervisor::forTestOnly(BWRAP_PATH, PROBE_PATH, scope);
+  auto supervisor = launcher::test_support::make_supervisor(
+      BWRAP_PATH, PROBE_PATH, scope);
   LaunchFixture fixture;
   auto launched = supervisor.launch(fixture.request(), deadline_after(5s));
   if (!launched &&
@@ -1020,7 +1046,7 @@ void systemd_scope_test() {
     std::cerr << "Bubblewrap unavailable; systemd scope test skipped\n";
     std::exit(77);
   }
-  auto supervisor = launcher::Supervisor::forTestOnly(
+  auto supervisor = launcher::test_support::make_supervisor(
       BWRAP_PATH, PROBE_PATH,
       launcher::make_systemd_resource_scope_controller());
   LaunchFixture fixture;

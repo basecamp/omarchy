@@ -2,6 +2,7 @@
 #include "omarchy/plugin_runtime/launcher/termination_state.h"
 #include "omarchy/plugin_runtime/runtime_paths.hpp"
 #include "process_cleanup.hpp"
+#include "supervisor_recipe.hpp"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -134,23 +135,20 @@ milliseconds_remaining(std::chrono::steady_clock::time_point deadline) {
          });
 }
 
-[[nodiscard]] bool trusted_executable(std::string_view path,
-                                      bool require_root_owner,
-                                      bool follow_test_symlink,
-                                      std::string &error) {
-  const std::filesystem::path candidate(path);
+[[nodiscard]] bool
+trusted_executable(const detail::ExecutableRequirement &requirement,
+                   std::string &error) {
+  const std::filesystem::path candidate(requirement.path);
   if (!candidate.is_absolute() || candidate.lexically_normal() != candidate) {
     error = "trusted executable path is not absolute and normalized";
     return false;
   }
   struct stat metadata{};
-  const int inspected = follow_test_symlink
-                            ? stat(candidate.c_str(), &metadata)
-                            : lstat(candidate.c_str(), &metadata);
-  if (inspected < 0 || !S_ISREG(metadata.st_mode) ||
+  if (lstat(candidate.c_str(), &metadata) < 0 ||
+      !S_ISREG(metadata.st_mode) ||
       (metadata.st_mode & 0111) == 0 ||
       (metadata.st_mode & (S_IWGRP | S_IWOTH | S_ISUID | S_ISGID)) != 0 ||
-      (require_root_owner && metadata.st_uid != 0)) {
+      metadata.st_uid != requirement.owner) {
     error = "trusted executable metadata is unsafe";
     return false;
   }
@@ -1315,19 +1313,9 @@ make_systemd_resource_scope_controller() {
   return std::make_shared<SystemdResourceScope>();
 }
 
-struct Supervisor::Impl {
-  std::string bwrap_path;
-  std::string worker_path;
-  std::shared_ptr<ResourceScopeController> resource_scope;
-  std::shared_ptr<ProcessScopeReaper> reaper;
-  bool packaged_selection = true;
-};
-
 namespace {
 [[nodiscard]] std::shared_ptr<ProcessScopeReaper>
-shared_process_reaper(bool force_start_failure) {
-  if (force_start_failure)
-    return std::make_shared<ProcessScopeReaper>(true);
+shared_process_reaper() {
   // The handle is created while constructing a Supervisor, and its thread is
   // started by launch before fork. Worker destruction therefore only submits
   // to an already-running process-lifetime service.
@@ -1343,22 +1331,13 @@ Supervisor &Supervisor::operator=(Supervisor &&) noexcept = default;
 Supervisor::~Supervisor() = default;
 
 Supervisor Supervisor::packaged() {
-  return Supervisor(std::make_unique<Impl>(
-      std::string(kSystemBwrapPath), std::string(kPackagedWorkerPath),
-      make_systemd_resource_scope_controller(),
-      shared_process_reaper(false), true));
-}
-
-Supervisor Supervisor::forTestOnly(
-    std::string bwrap_path, std::string worker_path,
-    std::shared_ptr<ResourceScopeController> resource_scope,
-    bool force_reaper_start_failure) {
-  return Supervisor(std::make_unique<Impl>(std::move(bwrap_path),
-                                           std::move(worker_path),
-                                           std::move(resource_scope),
-                                           shared_process_reaper(
-                                               force_reaper_start_failure),
-                                           false));
+  detail::SupervisorRecipe recipe{
+      .bwrap = {.path = std::string(kSystemBwrapPath), .owner = 0},
+      .worker = {.path = std::string(kPackagedWorkerPath), .owner = 0},
+      .plan = sandbox::build_plan(),
+      .resource_scope = make_systemd_resource_scope_controller(),
+      .reaper = shared_process_reaper()};
+  return detail::SupervisorAssembler::assemble(std::move(recipe));
 }
 
 bool Supervisor::prerequisites(Deadline deadline, std::string &error) const {
@@ -1366,24 +1345,16 @@ bool Supervisor::prerequisites(Deadline deadline, std::string &error) const {
     error = "launcher preflight deadline expired";
     return false;
   }
-  if (!implementation_->resource_scope) {
+  if (!implementation_->recipe.resource_scope) {
     error = "resource scope controller is absent";
     return false;
   }
-  if (implementation_->packaged_selection &&
-      (implementation_->bwrap_path != kSystemBwrapPath ||
-       implementation_->worker_path != kPackagedWorkerPath)) {
-    error = "packaged executable selection changed";
-    return false;
-  }
-  if (!trusted_executable(implementation_->bwrap_path,
-                          implementation_->packaged_selection,
-                          !implementation_->packaged_selection, error) ||
-      !trusted_executable(implementation_->worker_path,
-                          implementation_->packaged_selection, false, error) ||
+  if (!trusted_executable(implementation_->recipe.bwrap, error) ||
+      !trusted_executable(implementation_->recipe.worker, error) ||
       !kernel_prerequisites(error) ||
-      !implementation_->resource_scope->probe(deadline, error) ||
-      !implementation_->resource_scope->prepare_cleanup(deadline, error) ||
+      !implementation_->recipe.resource_scope->probe(deadline, error) ||
+      !implementation_->recipe.resource_scope->prepare_cleanup(deadline,
+                                                                 error) ||
       std::chrono::steady_clock::now() >= deadline) {
     return false;
   }
@@ -1404,7 +1375,7 @@ LaunchResult Supervisor::launch(const TrustedLaunchRequest &request,
     result.detail = "launch identity is not canonical";
     return result;
   }
-  if (!implementation_->reaper->start(result.detail)) {
+  if (!implementation_->recipe.reaper->start(result.detail)) {
     result.failure = LaunchFailure::resource_scope_unavailable;
     return result;
   }
@@ -1437,10 +1408,7 @@ LaunchResult Supervisor::launch(const TrustedLaunchRequest &request,
     return result;
   }
 
-  sandbox::SandboxPlan plan =
-      implementation_->packaged_selection
-          ? sandbox::build_plan()
-          : sandbox::build_test_plan_for_worker(implementation_->worker_path);
+  sandbox::SandboxPlan plan = implementation_->recipe.plan;
   Fd seccomp = compile_seccomp(plan.seccomp, result.detail);
   if (!seccomp) {
     result.failure = LaunchFailure::seccomp_compile_failed;
@@ -1467,10 +1435,10 @@ LaunchResult Supervisor::launch(const TrustedLaunchRequest &request,
     }
 
     LaunchCleanup cleanup{
-        .reaper = implementation_->reaper,
+        .reaper = implementation_->recipe.reaper,
         .job = std::make_unique<CleanupJob>()};
     cleanup.job->completion = std::make_shared<ReapCompletion>();
-    cleanup.job->resource_scope = implementation_->resource_scope;
+    cleanup.job->resource_scope = implementation_->recipe.resource_scope;
     cleanup.job->timeouts = plan.timeouts;
     cleanup.job->scope.reserve(192);
     auto worker = std::make_unique<Worker::Impl>();
@@ -1495,7 +1463,7 @@ LaunchResult Supervisor::launch(const TrustedLaunchRequest &request,
       return result;
     }
     if (monitor_pid == 0) {
-      child_exec(implementation_->bwrap_path, std::move(plan), sources);
+      child_exec(implementation_->recipe.bwrap.path, std::move(plan), sources);
     }
 
     cleanup.job->monitor_pid = monitor_pid;
@@ -1666,7 +1634,7 @@ LaunchResult Supervisor::launch(const TrustedLaunchRequest &request,
       result.detail = "reported worker PID was not live and bindable";
       return result;
     }
-    const auto attachment = implementation_->resource_scope->attach(
+    const auto attachment = implementation_->recipe.resource_scope->attach(
         cleanup.job->scope, monitor_pid, *worker_pid, plan, deadline,
         result.detail);
     cleanup.job->scope_attached = attachment.cleanup_required;

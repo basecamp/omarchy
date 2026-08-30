@@ -13,3 +13,17 @@ target_link_libraries(omarchy-plugin-launcher
   PUBLIC Omarchy::PluginSandboxPolicy
   PRIVATE Qt6::Core PkgConfig::SECCOMP PkgConfig::SYSTEMD
 )
+
+if(BUILD_TESTING)
+  add_library(omarchy-plugin-launcher-test-support STATIC
+    tests/support/src/test_supervisor.cpp)
+  add_library(Omarchy::PluginLauncherTestSupport ALIAS
+    omarchy-plugin-launcher-test-support)
+  omarchy_plugin_target_defaults(omarchy-plugin-launcher-test-support)
+  target_include_directories(omarchy-plugin-launcher-test-support
+    PUBLIC tests/support/include
+    PRIVATE src)
+  target_link_libraries(omarchy-plugin-launcher-test-support PUBLIC
+    Omarchy::PluginLauncher
+    Omarchy::PluginSandboxTestSupport)
+endif()

@@ -6,22 +6,29 @@ omarchy_plugin_target_defaults(omarchy-plugin-malicious-launcher-probe)
 
 add_executable(omarchy-plugin-fake-bwrap fake_bwrap.cpp)
 omarchy_plugin_target_defaults(omarchy-plugin-fake-bwrap)
+set(fake_bwrap_aliases
+  "$<TARGET_FILE_DIR:omarchy-plugin-fake-bwrap>/omarchy-plugin-duplicate-status-bwrap"
+  "$<TARGET_FILE_DIR:omarchy-plugin-fake-bwrap>/omarchy-plugin-string-status-bwrap"
+  "$<TARGET_FILE_DIR:omarchy-plugin-fake-bwrap>/omarchy-plugin-exited-status-bwrap")
 add_custom_command(TARGET omarchy-plugin-fake-bwrap POST_BUILD
-  COMMAND "${CMAKE_COMMAND}" -E create_symlink
-    "$<TARGET_FILE_NAME:omarchy-plugin-fake-bwrap>"
+  COMMAND "${CMAKE_COMMAND}" -E rm -f ${fake_bwrap_aliases}
+  COMMAND "${CMAKE_COMMAND}" -E create_hardlink
+    "$<TARGET_FILE:omarchy-plugin-fake-bwrap>"
     "$<TARGET_FILE_DIR:omarchy-plugin-fake-bwrap>/omarchy-plugin-duplicate-status-bwrap"
-  COMMAND "${CMAKE_COMMAND}" -E create_symlink
-    "$<TARGET_FILE_NAME:omarchy-plugin-fake-bwrap>"
+  COMMAND "${CMAKE_COMMAND}" -E create_hardlink
+    "$<TARGET_FILE:omarchy-plugin-fake-bwrap>"
     "$<TARGET_FILE_DIR:omarchy-plugin-fake-bwrap>/omarchy-plugin-string-status-bwrap"
-  COMMAND "${CMAKE_COMMAND}" -E create_symlink
-    "$<TARGET_FILE_NAME:omarchy-plugin-fake-bwrap>"
+  COMMAND "${CMAKE_COMMAND}" -E create_hardlink
+    "$<TARGET_FILE:omarchy-plugin-fake-bwrap>"
     "$<TARGET_FILE_DIR:omarchy-plugin-fake-bwrap>/omarchy-plugin-exited-status-bwrap"
   VERBATIM)
+set_property(TARGET omarchy-plugin-fake-bwrap APPEND PROPERTY
+  ADDITIONAL_CLEAN_FILES "${fake_bwrap_aliases}")
 
 add_executable(omarchy-plugin-launcher-test launcher_test.cpp)
 omarchy_plugin_target_defaults(omarchy-plugin-launcher-test)
 target_link_libraries(omarchy-plugin-launcher-test PRIVATE
-  Omarchy::PluginLauncher
+  Omarchy::PluginLauncherTestSupport
   Omarchy::PluginTestSupport
 )
 target_compile_definitions(omarchy-plugin-launcher-test PRIVATE

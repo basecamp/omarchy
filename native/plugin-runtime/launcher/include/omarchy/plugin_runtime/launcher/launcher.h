@@ -14,6 +14,10 @@
 
 namespace omarchy::plugin_runtime::launcher {
 
+namespace detail {
+class SupervisorAssembler;
+}
+
 using Deadline = std::chrono::steady_clock::time_point;
 
 enum class EndpointRole { control, broker, render };
@@ -221,10 +225,6 @@ struct LaunchResult {
 class Supervisor {
 public:
   [[nodiscard]] static Supervisor packaged();
-  [[nodiscard]] static Supervisor
-  forTestOnly(std::string bwrap_path, std::string worker_path,
-              std::shared_ptr<ResourceScopeController> resource_scope,
-              bool force_reaper_start_failure = false);
 
   Supervisor(const Supervisor &) = delete;
   Supervisor &operator=(const Supervisor &) = delete;
@@ -240,6 +240,7 @@ private:
   struct Impl;
   explicit Supervisor(std::unique_ptr<Impl> implementation);
   std::unique_ptr<Impl> implementation_;
+  friend class detail::SupervisorAssembler;
 };
 
 } // namespace omarchy::plugin_runtime::launcher

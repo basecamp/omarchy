@@ -30,15 +30,7 @@ enum class ChannelFailure : std::uint8_t {
   not_ready,
   role_version_mismatch,
   stale_generation,
-  dispatch_failed,
   deadline_expired,
-};
-
-enum class DispatchStatus : std::uint8_t {
-  dispatched,
-  timeout,
-  fatal,
-  not_ready,
 };
 
 enum class ChannelSendStatus : std::uint8_t {
@@ -113,25 +105,6 @@ private:
   friend class AuthenticatedBrokerChannel;
 };
 
-struct BrokerReply {
-  std::uint16_t message_type = 0;
-  std::uint64_t correlation_id = 0;
-  std::vector<std::byte> payload;
-};
-
-class BrokerDispatcher {
-public:
-  virtual ~BrokerDispatcher() = default;
-  [[nodiscard]] virtual bool
-  accepts(const launcher::LaunchIdentity &identity) const noexcept = 0;
-  [[nodiscard]] virtual bool dispatch(const wire::PacketView &packet) = 0;
-  // A dispatcher that completes a synchronous request may return its exact
-  // response after dispatch. Existing observation-only and deny-all
-  // dispatchers return no response. Ownership transfers to the authenticated
-  // channel, which is the only component allowed to write to the worker fd.
-  [[nodiscard]] virtual std::optional<BrokerReply> take_reply() { return {}; }
-};
-
 class GenerationAuthority {
 public:
   virtual ~GenerationAuthority() = default;
@@ -155,7 +128,6 @@ public:
   [[nodiscard]] static OpenResult
   open(launcher::Supervisor &supervisor,
        const launcher::TrustedLaunchRequest &request,
-       std::shared_ptr<BrokerDispatcher> dispatcher,
        std::shared_ptr<const GenerationAuthority> authority,
        launcher::Deadline deadline);
 
@@ -183,7 +155,6 @@ public:
                         launcher::Deadline deadline);
   [[nodiscard]] AuthenticatedReceiveResult
   try_receive_authenticated(launcher::EndpointMask allowed_lanes);
-  [[nodiscard]] DispatchStatus dispatch_one(launcher::Deadline deadline);
   [[nodiscard]] bool ready() const;
   [[nodiscard]] bool alive() const;
   [[nodiscard]] bool failed() const;
@@ -198,7 +169,6 @@ private:
   AuthenticatedBrokerChannel(
       std::unique_ptr<launcher::Worker> worker,
       launcher::LaunchIdentity identity,
-      std::shared_ptr<BrokerDispatcher> dispatcher,
       std::shared_ptr<const GenerationAuthority> authority,
       launcher::Deadline opening_deadline);
 
@@ -216,7 +186,6 @@ private:
 
   std::unique_ptr<launcher::Worker> worker_;
   launcher::LaunchIdentity identity_;
-  std::shared_ptr<BrokerDispatcher> dispatcher_;
   std::shared_ptr<const GenerationAuthority> authority_;
   launcher::Deadline opening_deadline_;
   wire::TrustedNegotiator control_;
