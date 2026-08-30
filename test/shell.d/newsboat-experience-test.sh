@@ -33,6 +33,7 @@ agent_log="$test_tmp/agent"
 newsboat_log="$test_tmp/newsboat"
 unread_state="$test_tmp/unread-state"
 import_log="$test_tmp/read-import"
+confirm_log="$test_tmp/confirm"
 
 export FEEDS_TEST_NOTIFICATION_LOG="$notification_log"
 export FEEDS_TEST_ADD_LOG="$add_log"
@@ -42,10 +43,18 @@ export FEEDS_TEST_NEWSBOAT_LOG="$newsboat_log"
 export FEEDS_TEST_UNREAD_STATE="$unread_state"
 export FEEDS_TEST_IMPORT_LOG="$import_log"
 export NEWSBOAT_BRIEF_STATE_DIR="$test_tmp/briefs"
+export NEWSBOAT_CONFIRM_STATE_DIR="$test_tmp/confirmations"
+export FEEDS_TEST_CONFIRM_LOG="$confirm_log"
 
 write_mock omarchy-pkg-missing '[[ ${FEEDS_TEST_PACKAGE_MISSING:-0} == 1 ]]'
 write_mock omarchy-notification-send 'printf "%s\n" "$*" >>"$FEEDS_TEST_NOTIFICATION_LOG"; exit "${FEEDS_TEST_NOTIFICATION_STATUS:-0}"'
 write_mock flock 'exit 0'
+write_mock omarchy-launch-floating-terminal-with-presentation 'exec /bin/bash -c "$1" </dev/null'
+write_mock gum '
+printf "%s\n" "$*" >>"$FEEDS_TEST_CONFIRM_LOG"
+if [[ -n ${FEEDS_TEST_CONFIRM_HOOK:-} ]]; then "$FEEDS_TEST_CONFIRM_HOOK"; fi
+exit "${FEEDS_TEST_CONFIRM_STATUS:-0}"
+'
 write_mock omarchy-newsboat-add '
 printf "%s\n" "$1" >"$FEEDS_TEST_ADD_LOG"
 if [[ ${FEEDS_TEST_ALREADY_SUBSCRIBED:-0} == 1 ]]; then
@@ -254,6 +263,15 @@ brief_id=$(sed -n 's/.*omarchy-newsboat-triage \([A-Za-z0-9_-]*\) READ LEAVE.*/\
 [[ -n $brief_id && -f $NEWSBOAT_BRIEF_STATE_DIR/brief.$brief_id ]] || fail "the briefing creates a protected confirmation snapshot"
 pass "Feeds gives the selected Omarchy agent a focused, confirmation-only briefing"
 
+export FEEDS_TEST_CONFIRM_STATUS=1
+"$ROOT/bin/omarchy-newsboat-triage" "$brief_id" 1 1 A001 >"$test_tmp/declined-triage-output"
+unset FEEDS_TEST_CONFIRM_STATUS
+[[ ! -e $import_log ]] || fail "declining the separate confirmation changes Newsboat read state"
+[[ -f $NEWSBOAT_BRIEF_STATE_DIR/brief.$brief_id ]] || fail "declining the separate confirmation consumes the briefing"
+grep -Fq 'No articles were marked read; the briefing remains available.' "$test_tmp/declined-triage-output" || fail "declined triage has no clear result for the agent"
+grep -Fq 'Mark 1 articles as read and leave 1 unread?' "$confirm_log" || fail "triage does not repeat the exact effect outside the agent terminal"
+pass "Feeds requires separate human approval after the agent conversation"
+
 "$ROOT/bin/omarchy-newsboat-triage" "$brief_id" 1 1 A001 >"$test_tmp/triage-output"
 [[ $(<"$import_log") == 'guid-two' ]] || fail "confirmed triage marks only articles the agent did not keep"
 grep -Fq '1 marked read · 1 left for you' "$notification_log" || fail "confirmed triage reports exact applied counts"
@@ -264,6 +282,8 @@ pass "Feeds applies only the exact explicitly confirmed triage"
 rm -f "$agent_log" "$import_log"
 "$ROOT/bin/omarchy-newsboat-brief"
 brief_id=$(sed -n 's/.*omarchy-newsboat-triage \([A-Za-z0-9_-]*\) READ LEAVE.*/\1/p' "$agent_log")
+cat >"$mock_bin/feeds-test-change-unread" <<'SH'
+#!/bin/bash
 python3 - "$HOME/.local/share/newsboat/cache.db" <<'PY'
 import sqlite3
 import sys
@@ -271,11 +291,15 @@ import sys
 with sqlite3.connect(sys.argv[1]) as database:
     database.execute("UPDATE rss_item SET unread = 0 WHERE guid = 'guid-two'")
 PY
+SH
+chmod +x "$mock_bin/feeds-test-change-unread"
+export FEEDS_TEST_CONFIRM_HOOK=feeds-test-change-unread
 if "$ROOT/bin/omarchy-newsboat-triage" "$brief_id" 1 1 A001 >/dev/null 2>&1; then
   fail "triage applies after the unread edition changes"
 fi
+unset FEEDS_TEST_CONFIRM_HOOK
 [[ ! -e $import_log ]] || fail "stale triage never reaches Newsboat"
-pass "Feeds rejects a stale confirmation instead of applying it to a changed inbox"
+pass "Feeds revalidates the unread edition after separate confirmation"
 
 python3 - "$HOME/.local/share/newsboat/cache.db" <<'PY'
 import sqlite3
@@ -330,4 +354,5 @@ grep -Fq 'macro b set browser "omarchy-newsboat-brief --from-newsboat"' "$ROOT/d
 grep -F 'macro b ' "$ROOT/default/newsboat/omarchy.conf" | grep -Fq '; quit --' || fail "Feeds closes before a confirmed briefing imports read state"
 grep -Fq 'state_dir="${NEWSBOAT_BRIEF_STATE_DIR:-/tmp/omarchy-newsboat-$UID/briefs}"' "$ROOT/bin/omarchy-newsboat-brief" || fail "Feeds keeps confirmation state in the agent-writable private temp area"
 grep -Fq 'runtime_dir=/tmp' "$ROOT/bin/omarchy-newsboat-triage" || fail "Feeds applies confirmation without requiring broader agent filesystem access"
+grep -Fq 'omarchy-newsboat-confirm" triage' "$ROOT/bin/omarchy-newsboat-triage" || fail "Feeds trusts the agent prompt as its only triage confirmation"
 pass "Newsboat defaults present the finite Omarchy Feeds experience"

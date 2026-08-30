@@ -55,6 +55,22 @@ fi
 read_count=$(jq -r '.read' <<<"$result")
 leave_count=$(jq -r '.leave' <<<"$result")
 
+confirm_status=0
+"$OMARCHY_PATH/bin/omarchy-newsboat-confirm" triage "$read_count" "$leave_count" || confirm_status=$?
+if (( confirm_status == 1 )); then
+  printf 'No articles were marked read; the briefing remains available.\n'
+  exit 0
+elif (( confirm_status != 0 )); then
+  exit 1
+fi
+
+# The unread edition may change while the person is answering the separate
+# confirmation window. Revalidate it immediately before Newsboat mutates state.
+if ! result=$(python3 "$OMARCHY_PATH/bin/omarchy-newsboat-internal.py" \
+  triage-prepare "$snapshot_file" "$cache_file" "$urls_file" "$expected_read" "$expected_leave" "$kept_json" "$import_file"); then
+  exit 1
+fi
+
 if (( read_count > 0 )); then
   if ! newsboat -q -c "$cache_file" -u "$urls_file" -I "$import_file" >/dev/null; then
     echo "Could not update the inbox. Close Feeds if it is still open, then confirm again." >&2

@@ -15,6 +15,7 @@ urls_file="$test_home/.config/newsboat/urls"
 agent_log="$test_tmp/agent"
 notification_log="$test_tmp/notifications"
 curl_log="$test_tmp/curl"
+confirm_log="$test_tmp/confirm"
 mkdir -p "$mock_bin" "$(dirname "$urls_file")"
 
 export HOME="$test_home"
@@ -26,6 +27,8 @@ export NEWSBOAT_SCOUT_RUNTIME_DIR="$test_tmp"
 export SCOUT_TEST_AGENT_LOG="$agent_log"
 export SCOUT_TEST_NOTIFICATION_LOG="$notification_log"
 export SCOUT_TEST_CURL_LOG="$curl_log"
+export SCOUT_TEST_CONFIRM_LOG="$confirm_log"
+export NEWSBOAT_CONFIRM_STATE_DIR="$test_tmp/confirmations"
 
 write_mock() {
   local name=$1
@@ -50,6 +53,12 @@ write_mock omarchy-agent-prompt '
 printf "%s" "$2" >"$SCOUT_TEST_AGENT_LOG"
 '
 write_mock flock 'exit 0'
+write_mock omarchy-launch-floating-terminal-with-presentation 'exec /bin/bash -c "$1" </dev/null'
+write_mock gum '
+printf "%s\n" "$*" >>"$SCOUT_TEST_CONFIRM_LOG"
+if [[ -n ${SCOUT_TEST_CONFIRM_HOOK:-} ]]; then "$SCOUT_TEST_CONFIRM_HOOK"; fi
+exit "${SCOUT_TEST_CONFIRM_STATUS:-0}"
+'
 write_mock mv '
 destination=""
 for argument in "$@"; do destination="$argument"; done
@@ -176,6 +185,16 @@ pass "Feed Scout fails closed before researching malformed subscriptions"
 
 write_urls
 
+export SCOUT_TEST_CONFIRM_STATUS=1
+urls_before=$(<"$urls_file")
+"$ROOT/bin/omarchy-newsboat-scout-apply" "$proposal_id" 2 F001 F002 >"$test_tmp/declined-apply-output"
+unset SCOUT_TEST_CONFIRM_STATUS
+[[ $(<"$urls_file") == "$urls_before" ]] || fail "declining the separate Feed Scout confirmation changes subscriptions"
+[[ -f $NEWSBOAT_SCOUT_STATE_DIR/scout.$proposal_id ]] || fail "declining the separate Feed Scout confirmation consumes its proposal"
+grep -Fq 'No feeds were added; the Feed Scout proposal remains available.' "$test_tmp/declined-apply-output" || fail "declined Feed Scout has no clear result for the agent"
+grep -Fq 'Add 2 validated feeds to Newsboat?' "$confirm_log" || fail "Feed Scout does not repeat the exact effect outside the agent terminal"
+pass "Feed Scout requires separate human approval after the agent conversation"
+
 "$ROOT/bin/omarchy-newsboat-scout-apply" "$proposal_id" 2 F001 F002 >"$test_tmp/apply-output"
 grep -Fxq 'https://scout-one.test/feed.xml' "$urls_file" || fail "confirmed Feed Scout adds the selected RSS feed"
 grep -Fxq 'https://scout-two.test/feed.atom' "$urls_file" || fail "confirmed Feed Scout adds the selected Atom feed"
@@ -190,13 +209,15 @@ pass "Feed Scout atomically applies only an explicitly confirmed proposal"
 write_urls
 "$ROOT/bin/omarchy-newsboat-scout-propose" https://scout-three.test >"$proposal_output"
 proposal_id=$(sed -n 's/^Validated Feed Scout proposal \([A-Za-z0-9_-]*\):$/\1/p' "$proposal_output")
-printf 'https://manual.example/feed\n' >>"$urls_file"
+write_mock scout-test-change-urls 'printf "https://manual.example/feed\n" >>"$NEWSBOAT_URLS_FILE"'
+export SCOUT_TEST_CONFIRM_HOOK=scout-test-change-urls
 if "$ROOT/bin/omarchy-newsboat-scout-apply" "$proposal_id" 1 F001 >/dev/null 2>&1; then
   fail "Feed Scout applies a stale proposal after subscriptions change"
 fi
+unset SCOUT_TEST_CONFIRM_HOOK
 ! grep -Fq 'https://scout-three.test/feed.xml' "$urls_file" || fail "stale Feed Scout proposal changes subscriptions"
 [[ -f $NEWSBOAT_SCOUT_STATE_DIR/scout.$proposal_id ]] || fail "stale Feed Scout proposal remains inspectable"
-pass "Feed Scout rejects stale subscription state"
+pass "Feed Scout revalidates subscriptions after separate confirmation"
 
 write_urls
 "$ROOT/bin/omarchy-newsboat-scout-propose" https://scout-one.test https://scout-two.test/feed.atom >"$proposal_output"
@@ -241,4 +262,5 @@ pass "Feed Scout preserves externally managed subscriptions"
 grep -Fq 'macro d set browser "omarchy-newsboat-scout --from-newsboat %u %T %F"' "$ROOT/default/newsboat/omarchy.conf" || fail "Newsboat exposes article-driven Feed Scout"
 grep -F 'macro d ' "$ROOT/default/newsboat/omarchy.conf" | grep -Fq '; quit --' || fail "Newsboat closes before a confirmed Feed Scout changes subscriptions"
 grep -Fq 'state_dir="${NEWSBOAT_SCOUT_STATE_DIR:-/tmp/omarchy-newsboat-$UID/scouts}"' "$ROOT/bin/omarchy-newsboat-scout-propose" || fail "Feed Scout keeps proposal state in the agent-writable private temp area"
+grep -Fq 'omarchy-newsboat-confirm" scout' "$ROOT/bin/omarchy-newsboat-scout-apply" || fail "Feed Scout trusts the agent prompt as its only mutation confirmation"
 pass "Newsboat exposes the agent-independent Feed Scout experience"

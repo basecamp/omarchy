@@ -84,7 +84,7 @@ prompt=$(printf '%s\n' \
   "" \
   "Use only the validated candidates in that output. Give the complete recommendation, list the exact feed names and URLs, and finish with: Add <COUNT> feeds? (yes/no) — substituting the count. Do not add anything in this first response." \
   "" \
-  "Only after I explicitly confirm, run the exact omarchy-newsboat-scout-apply command returned by the validator. If I request a subset, ask a new exact confirmation naming that subset before running the helper with only its IDs. If I decline or answer ambiguously, change nothing. Report the helper's result after it finishes.")
+  "Only after I explicitly confirm, run the exact omarchy-newsboat-scout-apply command returned by the validator. If I request a subset, ask a new exact confirmation naming that subset before running the helper with only its IDs. If I decline or answer ambiguously, change nothing. The helper opens a separate Omarchy confirmation window that I must approve myself; do not claim anything changed unless the helper reports success. Report its result after it finishes.")
 
 # Feed Scout is intentionally a network-research session. Agents that sandbox
 # their shell can opt into outbound access for the read-only feed validator;
