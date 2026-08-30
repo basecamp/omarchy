@@ -51,6 +51,21 @@ the debug log URL (or attached log), and the capture.
 
 ## Submitting a PR
 
+Search the open PRs before writing a fix. The backlog is large enough that one
+bug draws several independent fixes: the lock screen losing password focus
+after suspend had four open PRs at once. A duplicate costs review time instead
+of saving it.
+
+```bash
+gh pr list --repo basecamp/omarchy --state open --search "password focus in:title"
+gh pr list --repo basecamp/omarchy --state open --search "lock screen suspend focus"
+```
+
+Search by symptom and again in a wider form — a PR describing the same area in
+different words will not match the first query. When an open PR already covers
+the change, add to that one rather than opening a competing one: confirm the
+bug on your hardware, review the approach, or contribute a test it lacks.
+
 Never develop against `/usr/share/omarchy`. Clone a working copy instead:
 
 ```bash
