@@ -284,6 +284,18 @@ int finish(Worker &worker, int timeout_ms = 2000) {
 
 void test_protocol_attacks() {
   {
+    auto worker = spawn("unsupported-envelope-version");
+    auto received = receive(worker);
+    const auto decoded =
+        wire::decode_packet(received.payload, wire::EndpointRole::control);
+    require(!decoded &&
+                decoded.error ==
+                    wire::FatalReason::unsupported_envelope_version,
+            "literal unsupported envelope version was accepted");
+    require(WIFEXITED(finish(worker)),
+            "unsupported-version worker did not exit cleanly");
+  }
+  {
     auto worker = spawn("role-swap");
     auto received = receive(worker);
     require(received.has_credentials && received.credentials.pid == worker.pid,
@@ -546,15 +558,17 @@ void test_standalone_sandbox() {
       .revision_directory_fd = revision.get(),
       .private_state_directory_fd = state.get(),
   };
-  auto launched = supervisor.launch(request);
+  auto launched = supervisor.launch(
+      request, std::chrono::steady_clock::now() + std::chrono::seconds(4));
   if (!launched) {
     throw std::runtime_error("standalone sandbox launch failed: " +
                              launched.detail);
   }
   require(scope->attached, "worker was released before fake scope attachment");
   const auto message = launched.worker->receive(
-      launcher::EndpointRole::control, sizeof(SandboxProbe),
-      std::chrono::seconds(2));
+      launcher::EndpointRole::control,
+      launcher::PacketSizeLimit{sizeof(SandboxProbe)},
+      std::chrono::steady_clock::now() + std::chrono::seconds(2));
   require(static_cast<bool>(message) && message.payload.size() == sizeof(SandboxProbe),
           "sandbox denial certificate was not received from the bound worker");
   SandboxProbe probe{};
@@ -570,10 +584,13 @@ void test_standalone_sandbox() {
               probe.revision_write_denied == 1,
           "standalone sandbox did not deny an ambient authority");
   const std::array acknowledgement{std::byte{1}};
-  require(launched.worker->send(launcher::EndpointRole::control,
-                                acknowledgement),
+  require(launched.worker->try_send(
+              launcher::EndpointRole::control, acknowledgement,
+              launcher::PacketSizeLimit{acknowledgement.size()}) ==
+              launcher::SendStatus::complete,
           "standalone sandbox acknowledgement send failed");
-  require(launched.worker->terminate(),
+  require(launched.worker->terminate(std::chrono::steady_clock::now() +
+                                     std::chrono::seconds(4)),
           "standalone sandbox supervisor teardown failed");
   require(scope->removes == 1,
           "standalone sandbox scope was not removed exactly once");

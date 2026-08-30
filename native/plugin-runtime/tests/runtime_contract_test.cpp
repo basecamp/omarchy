@@ -40,7 +40,7 @@ int main(int argc, char *argv[]) {
 
   const QString mode = arguments.at(1);
   if (mode == QStringLiteral("protocol")) {
-    return omarchy::plugin_runtime::envelope_version() == 1 ? 0 : 1;
+    return omarchy::plugin_runtime::envelope_version() == 2 ? 0 : 1;
   }
   if (mode == QStringLiteral("version") && arguments.size() == 3) {
     return verify_version(arguments.at(2));

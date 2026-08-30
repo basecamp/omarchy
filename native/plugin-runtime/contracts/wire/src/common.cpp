@@ -28,12 +28,8 @@ std::uint32_t get32(std::span<const std::byte> input, std::size_t offset) {
          get16(input, offset + 2);
 }
 
-EnvelopeHeader common_header(EndpointRole role, CommonMessageType type,
-                             std::uint16_t envelope_version) {
-  return EnvelopeHeader{.envelope_version = envelope_version,
-                        .header_size = static_cast<std::uint16_t>(
-                            header_size(envelope_version)),
-                        .endpoint_role = role,
+EnvelopeHeader common_header(EndpointRole role, CommonMessageType type) {
+  return EnvelopeHeader{.endpoint_role = role,
                         .message_type = static_cast<std::uint16_t>(type)};
 }
 
@@ -131,8 +127,7 @@ NegotiationResult TrustedNegotiator::accept_hello(const PacketView &packet) {
     return {.error = FatalReason::duplicate_hello};
   }
   hello_seen_ = true;
-  if (header_size(envelope_version_) == 0 ||
-      packet.header.envelope_version != envelope_version_ ||
+  if (packet.header.envelope_version != kEnvelopeVersion ||
       packet.header.endpoint_role != role_ ||
       packet.header.message_type !=
           static_cast<std::uint16_t>(CommonMessageType::hello) ||
@@ -158,8 +153,7 @@ NegotiationResult TrustedNegotiator::accept_hello(const PacketView &packet) {
     failed_ = true;
     NegotiationResult result{};
     result.kind = NegotiationKind::negotiation_failed;
-    result.header = common_header(role_, CommonMessageType::negotiation_failed,
-                                  envelope_version_);
+    result.header = common_header(role_, CommonMessageType::negotiation_failed);
     const auto payload = encode_negotiation_failed_payload(
         {NegotiationFailure::no_common_role_version, supported_});
     std::copy(payload.begin(), payload.end(), result.payload.begin());
@@ -171,8 +165,7 @@ NegotiationResult TrustedNegotiator::accept_hello(const PacketView &packet) {
   selected_version_ = maximum;
   NegotiationResult result{};
   result.kind = NegotiationKind::welcome;
-  result.header =
-      common_header(role_, CommonMessageType::welcome, envelope_version_);
+  result.header = common_header(role_, CommonMessageType::welcome);
   result.header.role_protocol_version = selected_version_;
   result.header.launch_generation = generation_;
   const auto payload =
@@ -183,15 +176,13 @@ NegotiationResult TrustedNegotiator::accept_hello(const PacketView &packet) {
 }
 
 WorkerNegotiator::HelloResult WorkerNegotiator::make_hello() {
-  if (hello_sent_ || selected_ || failed_ ||
-      header_size(envelope_version_) == 0 || supported_.minimum == 0 ||
+  if (hello_sent_ || selected_ || failed_ || supported_.minimum == 0 ||
       supported_.minimum > supported_.maximum) {
     failed_ = true;
     return {.error = FatalReason::invalid_message_order};
   }
   hello_sent_ = true;
-  return {.header = common_header(role_, CommonMessageType::hello,
-                                  envelope_version_),
+  return {.header = common_header(role_, CommonMessageType::hello),
           .payload = encode_hello_payload({supported_})};
 }
 
@@ -204,7 +195,7 @@ FatalReason WorkerNegotiator::accept_reply(const PacketView &packet) {
     failed_ = true;
     return FatalReason::invalid_message_order;
   }
-  if (packet.header.envelope_version != envelope_version_ ||
+  if (packet.header.envelope_version != kEnvelopeVersion ||
       packet.header.endpoint_role != role_ ||
       packet.header.correlation_id != 0 ||
       packet.header.lane_sequence != 0) {

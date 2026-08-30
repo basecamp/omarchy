@@ -275,7 +275,8 @@ std::unique_ptr<launcher::Worker>
 launch_transport(Fixture &fixture, std::shared_ptr<Scope> scope) {
   auto supervisor = launcher::Supervisor::forTestOnly(
       FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, std::move(scope));
-  auto launched = supervisor.launch(fixture.request());
+  auto launched = supervisor.launch(
+      fixture.request(), std::chrono::steady_clock::now() + 4s);
   if (!launched)
     std::cerr << "transport launch failure="
               << static_cast<int>(launched.failure)
@@ -299,22 +300,27 @@ void transport_suite() {
     Fixture fixture("transport-max");
     auto worker = launch_transport(fixture, std::make_shared<Scope>());
     std::vector<std::byte> maximum(
-        omarchy::plugin::wire::kHeaderSizeV2 +
+        omarchy::plugin::wire::kHeaderSize +
         omarchy::plugin::wire::payload_cap(
             omarchy::plugin::wire::EndpointRole::broker));
-    require(worker->send(launcher::EndpointRole::broker, maximum,
-                         launcher::PacketSizeLimit{maximum.size()}),
+    require(worker->try_send(launcher::EndpointRole::broker, maximum,
+                             launcher::PacketSizeLimit{maximum.size()}) ==
+                launcher::SendStatus::complete,
             "maximum legal broker datagram was rejected");
     const auto acknowledgement =
-        worker->receive(launcher::EndpointRole::control, 1, 2s);
+        worker->receive(launcher::EndpointRole::control,
+                        launcher::PacketSizeLimit{1},
+                        std::chrono::steady_clock::now() + 2s);
     require(acknowledgement && acknowledgement.payload.size() == 1 &&
                 acknowledgement.payload.front() == std::byte{0x5a},
             "worker did not receive the complete maximum broker datagram");
     maximum.push_back(std::byte{});
-    require(!worker->send(launcher::EndpointRole::broker, maximum,
-                          launcher::PacketSizeLimit{maximum.size()}),
+    require(worker->try_send(launcher::EndpointRole::broker, maximum,
+                             launcher::PacketSizeLimit{maximum.size()}) !=
+                launcher::SendStatus::complete,
             "above-cap broker datagram was accepted");
-    require(worker->terminate(), "maximum-datagram worker did not terminate");
+    require(worker->terminate(std::chrono::steady_clock::now() + 4s),
+            "maximum-datagram worker did not terminate");
   }
 
   {
@@ -326,8 +332,9 @@ void transport_suite() {
       const auto started = std::chrono::steady_clock::now();
       bool refused = false;
       for (unsigned attempt = 0; attempt < 10'000; ++attempt) {
-        if (!worker->send(role, datagram,
-                          launcher::PacketSizeLimit{datagram.size()})) {
+        if (worker->try_send(role, datagram,
+                             launcher::PacketSizeLimit{datagram.size()}) !=
+            launcher::SendStatus::complete) {
           refused = true;
           break;
         }
@@ -336,14 +343,15 @@ void transport_suite() {
               "saturated endpoint blocked the trusted host");
     };
     saturate(launcher::EndpointRole::broker,
-             omarchy::plugin::wire::kHeaderSizeV2 +
+             omarchy::plugin::wire::kHeaderSize +
                  omarchy::plugin::wire::payload_cap(
                      omarchy::plugin::wire::EndpointRole::broker));
     saturate(launcher::EndpointRole::render,
-             omarchy::plugin::wire::kHeaderSizeV2 +
+             omarchy::plugin::wire::kHeaderSize +
                  omarchy::plugin::wire::payload_cap(
                      omarchy::plugin::wire::EndpointRole::render));
-    require(worker->terminate(), "saturated worker did not terminate");
+    require(worker->terminate(std::chrono::steady_clock::now() + 4s),
+            "saturated worker did not terminate");
   }
 }
 
@@ -975,7 +983,8 @@ void fake_suite() {
         .role_protocol_version = surface::kRenderRoleVersion,
         .payload_length = static_cast<std::uint32_t>(payload.size()),
         .launch_generation = 47,
-        .correlation_id = 1};
+        .correlation_id = 1,
+        .lane_sequence = 7};
     std::vector<std::byte> encoded(wire::kHeaderSize + payload.size());
     const auto encoded_result = wire::encode_packet(header, payload, encoded);
     require(encoded_result &&
@@ -1042,7 +1051,8 @@ void fake_suite() {
   }
 
   for (const std::string_view mode :
-       {"wrong-sequence-tag", "v1-after-ready", "unknown-message",
+       {"wrong-sequence-tag", "unsupported-envelope-version-after-ready",
+        "unknown-message",
         "wrong-direction", "inbound-typed-error", "short-payload",
         "zero-correlation", "post-ready-descriptor"}) {
     Session session(mode, FAKE_BWRAP_PATH);
@@ -1050,7 +1060,7 @@ void fake_suite() {
                 session.opened.channel->dispatch_one(2s) ==
                     channel::DispatchStatus::fatal &&
                 session.dispatcher->calls == 0,
-            "post-ready v2 lane/type/descriptor attack reached dispatch");
+            "post-ready lane/type/descriptor attack reached dispatch");
   }
   {
     Session wrong_ack("wrong-control-ack", FAKE_BWRAP_PATH);

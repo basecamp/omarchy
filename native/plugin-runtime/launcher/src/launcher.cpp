@@ -3,8 +3,6 @@
 #include "omarchy/plugin_runtime/runtime_paths.hpp"
 #include "process_cleanup.hpp"
 
-#include "omarchy/plugin/wire/envelope.hpp"
-
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -546,23 +544,6 @@ void OwnedDescriptor::reset(int descriptor) noexcept {
   descriptor_ = descriptor;
 }
 
-bool ResourceScopeController::probe(std::string &error) {
-  return probe(std::chrono::steady_clock::now() + std::chrono::seconds(2),
-               error);
-}
-
-ResourceScopeController::AttachResult ResourceScopeController::attach(
-    std::string_view unit, pid_t monitor_pid, pid_t worker_pid,
-    const sandbox::SandboxPlan &plan, std::chrono::milliseconds timeout,
-    std::string &error) {
-  if (timeout.count() <= 0) {
-    error = "resource-scope attachment deadline expired";
-    return {};
-  }
-  return attach(unit, monitor_pid, worker_pid, plan,
-                std::chrono::steady_clock::now() + timeout, error);
-}
-
 namespace {
 [[nodiscard]] std::size_t role_index(EndpointRole role) noexcept {
   switch (role) {
@@ -594,18 +575,6 @@ namespace {
   return limit.bytes > 0 && limit.bytes <= kTransportPacketHardLimit;
 }
 
-[[nodiscard]] std::size_t v1_packet_limit(EndpointRole role) noexcept {
-  using WireRole = omarchy::plugin::wire::EndpointRole;
-  WireRole wire_role{};
-  switch (role) {
-  case EndpointRole::control: wire_role = WireRole::control; break;
-  case EndpointRole::broker: wire_role = WireRole::broker; break;
-  case EndpointRole::render: wire_role = WireRole::render; break;
-  default: return 0;
-  }
-  return omarchy::plugin::wire::kHeaderSizeV1 +
-         omarchy::plugin::wire::payload_cap(wire_role);
-}
 } // namespace
 
 struct Worker::Impl {
@@ -963,73 +932,6 @@ ReceivedMessage Worker::receive_any_impl(PacketSizeLimit maximum_packet,
                                   mode);
 }
 
-ReceivedMessage Worker::receive(EndpointRole role, std::size_t maximum_payload,
-                                Deadline deadline) {
-  if (maximum_payload > v1_packet_limit(role))
-    return {.payload = {},
-            .descriptors = {},
-            .role = role,
-            .status = ReceiveStatus::fatal,
-            .failure = ReceiveFailure::invalid_role};
-  return receive(role, PacketSizeLimit{maximum_payload}, deadline);
-}
-
-ReceivedMessage Worker::receive_any(std::size_t maximum_payload,
-                                    Deadline deadline) {
-  constexpr std::size_t maximum_v1_packet =
-      omarchy::plugin::wire::kHeaderSizeV1 +
-      omarchy::plugin::wire::payload_cap(
-          omarchy::plugin::wire::EndpointRole::broker);
-  if (maximum_payload == 0 || maximum_payload > maximum_v1_packet)
-    return {.payload = {},
-            .descriptors = {},
-            .role = EndpointRole::control,
-            .status = ReceiveStatus::fatal,
-            .failure = ReceiveFailure::invalid_role};
-  return receive_any(maximum_payload, deadline, EndpointMask::all);
-}
-
-ReceivedMessage Worker::receive_any(std::size_t maximum_payload,
-                                    Deadline deadline, EndpointMask allowed) {
-  constexpr std::size_t maximum_v1_packet =
-      omarchy::plugin::wire::kHeaderSizeV1 +
-      omarchy::plugin::wire::payload_cap(
-          omarchy::plugin::wire::EndpointRole::broker);
-  if (maximum_payload == 0 || maximum_payload > maximum_v1_packet)
-    return {.payload = {},
-            .descriptors = {},
-            .role = EndpointRole::control,
-            .status = ReceiveStatus::fatal,
-            .failure = ReceiveFailure::invalid_role};
-  if (!implementation_ || !valid_mask(allowed))
-    return {.payload = {},
-            .descriptors = {},
-            .role = EndpointRole::control,
-            .status = ReceiveStatus::fatal,
-            .failure = ReceiveFailure::invalid_role};
-  ReadinessInterests interests = implementation_->readiness_interests;
-  interests.read = allowed;
-  if (!implementation_->set_readiness_interests(interests))
-    return {.payload = {},
-            .descriptors = {},
-            .role = EndpointRole::control,
-            .status = ReceiveStatus::fatal,
-            .failure = ReceiveFailure::invalid_role};
-  return receive_any(PacketSizeLimit{maximum_payload}, deadline, allowed);
-}
-
-ReceivedMessage Worker::receive(EndpointRole role, std::size_t maximum_payload,
-                                std::chrono::milliseconds timeout) {
-  if (timeout.count() < 0)
-    return {.payload = {},
-            .descriptors = {},
-            .role = role,
-            .status = ReceiveStatus::fatal,
-            .failure = ReceiveFailure::invalid_role};
-  return receive(role, maximum_payload,
-                 std::chrono::steady_clock::now() + timeout);
-}
-
 SendStatus Worker::try_send(EndpointRole role,
                             std::span<const std::byte> payload,
                             PacketSizeLimit maximum_packet,
@@ -1081,36 +983,6 @@ SendStatus Worker::try_send(EndpointRole role,
   return SendStatus::fatal;
 }
 
-SendStatus Worker::try_send(EndpointRole role,
-                            std::span<const std::byte> payload,
-                            std::span<const int> descriptors) noexcept {
-  return try_send(role, payload, PacketSizeLimit{v1_packet_limit(role)},
-                  descriptors);
-}
-
-bool Worker::send(EndpointRole role, std::span<const std::byte> payload,
-                  PacketSizeLimit maximum_packet) {
-  return try_send(role, payload, maximum_packet) == SendStatus::complete;
-}
-
-bool Worker::send(EndpointRole role, std::span<const std::byte> payload) {
-  return try_send(role, payload) == SendStatus::complete;
-}
-
-bool Worker::send_with_descriptors(EndpointRole role,
-                                   std::span<const std::byte> payload,
-                                   PacketSizeLimit maximum_packet,
-                                   std::span<const int> descriptors) {
-  return try_send(role, payload, maximum_packet, descriptors) ==
-         SendStatus::complete;
-}
-
-bool Worker::send_with_descriptors(EndpointRole role,
-                                   std::span<const std::byte> payload,
-                                   std::span<const int> descriptors) {
-  return try_send(role, payload, descriptors) == SendStatus::complete;
-}
-
 bool Worker::alive() const {
   return implementation_->accepting &&
          pidfd_state(implementation_->worker_pidfd.get()) == PidfdState::alive;
@@ -1118,13 +990,6 @@ bool Worker::alive() const {
 
 int Worker::readiness_fd() const noexcept {
   return implementation_ ? implementation_->readiness.get() : -1;
-}
-
-bool Worker::set_receive_mask(EndpointMask allowed) noexcept {
-  if (!implementation_) return false;
-  ReadinessInterests interests = implementation_->readiness_interests;
-  interests.read = allowed;
-  return implementation_->set_readiness_interests(interests);
 }
 
 bool Worker::set_readiness_interests(ReadinessInterests interests) noexcept {
@@ -1153,23 +1018,6 @@ std::string Worker::take_standard_error() {
 
 bool Worker::terminate(Deadline deadline) noexcept {
   return implementation_->terminate(deadline);
-}
-
-bool Worker::terminate(std::chrono::milliseconds timeout) noexcept {
-  if (timeout.count() < 0) return false;
-  return terminate(std::chrono::steady_clock::now() + timeout);
-}
-
-bool Worker::terminate() {
-  if (!implementation_) return false;
-  if (!implementation_->cleanup)
-    return terminate(std::chrono::steady_clock::now());
-  const auto timeouts = implementation_->cleanup->timeouts;
-  const auto timeout = std::chrono::seconds(
-      timeouts.graceful_shutdown_seconds +
-      2 * timeouts.forced_teardown_seconds + 1);
-  return terminate(
-      std::chrono::duration_cast<std::chrono::milliseconds>(timeout));
 }
 
 namespace {
@@ -1509,12 +1357,6 @@ Supervisor Supervisor::forTestOnly(
                                            false));
 }
 
-bool Supervisor::prerequisites(std::string &error) const {
-  return prerequisites(std::chrono::steady_clock::now() +
-                           std::chrono::seconds(2),
-                       error);
-}
-
 bool Supervisor::prerequisites(Deadline deadline, std::string &error) const {
   if (std::chrono::steady_clock::now() >= deadline) {
     error = "launcher preflight deadline expired";
@@ -1542,15 +1384,6 @@ bool Supervisor::prerequisites(Deadline deadline, std::string &error) const {
     return false;
   }
   return true;
-}
-
-LaunchResult Supervisor::launch(const TrustedLaunchRequest &request) const {
-  const sandbox::SandboxPlan plan =
-      implementation_->packaged_selection
-          ? sandbox::build_plan()
-          : sandbox::build_test_plan_for_worker(implementation_->worker_path);
-  return launch(request, std::chrono::steady_clock::now() +
-                             std::chrono::seconds(plan.timeouts.launch_seconds));
 }
 
 LaunchResult Supervisor::launch(const TrustedLaunchRequest &request,

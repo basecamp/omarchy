@@ -103,8 +103,7 @@ std::uint16_t version(wire::EndpointRole role) {
 
 std::vector<std::byte> packet(const wire::EnvelopeHeader &header,
                               std::span<const std::byte> payload) {
-  std::vector<std::byte> bytes(wire::header_size(header.envelope_version) +
-                               payload.size());
+  std::vector<std::byte> bytes(wire::kHeaderSize + payload.size());
   auto adjusted = header;
   adjusted.payload_length = static_cast<std::uint32_t>(payload.size());
   const auto result = wire::encode_packet(adjusted, payload, bytes);
@@ -120,7 +119,7 @@ std::uint64_t negotiate(int descriptor, wire::EndpointRole role,
       current_mode == "bad-version" && role == wire::EndpointRole::control
           ? wire::VersionRange{2, 2}
           : wire::VersionRange{version(role), version(role)};
-  wire::WorkerNegotiator negotiator(role, supported, wire::kEnvelopeVersionV2);
+  wire::WorkerNegotiator negotiator(role, supported);
   const auto hello = negotiator.make_hello();
   if (!hello) {
     fail();
@@ -198,8 +197,8 @@ std::vector<std::byte> audio_request(std::uint64_t generation,
   const auto outbound = sequence.take_outbound(wire::EndpointRole::broker);
   if (!outbound)
     fail();
-  return packet({.envelope_version = wire::kEnvelopeVersionV2,
-                 .header_size = wire::kHeaderSizeV2,
+  return packet({.envelope_version = wire::kEnvelopeVersion,
+                 .header_size = wire::kHeaderSize,
                  .endpoint_role = wire::EndpointRole::broker,
                  .message_type = operation,
                  .role_protocol_version = broker::kBrokerRoleVersion,
@@ -230,8 +229,8 @@ std::vector<std::byte> notification_request(std::uint64_t generation,
   const auto outbound = sequence.take_outbound(wire::EndpointRole::broker);
   if (!outbound)
     fail();
-  return packet({.envelope_version = wire::kEnvelopeVersionV2,
-                 .header_size = wire::kHeaderSizeV2,
+  return packet({.envelope_version = wire::kEnvelopeVersion,
+                 .header_size = wire::kHeaderSize,
                  .endpoint_role = wire::EndpointRole::broker,
                  .message_type = operation,
                  .role_protocol_version = broker::kBrokerRoleVersion,
@@ -259,8 +258,8 @@ std::vector<std::byte> storage_request(std::uint64_t generation,
   const auto outbound = sequence.take_outbound(wire::EndpointRole::broker);
   if (!outbound)
     fail();
-  return packet({.envelope_version = wire::kEnvelopeVersionV2,
-                 .header_size = wire::kHeaderSizeV2,
+  return packet({.envelope_version = wire::kEnvelopeVersion,
+                 .header_size = wire::kHeaderSize,
                  .endpoint_role = wire::EndpointRole::broker,
                  .message_type = operation,
                  .role_protocol_version = broker::kBrokerRoleVersion,
@@ -342,8 +341,8 @@ void send_session_signal(int descriptor, wire::EndpointRole role,
   const auto outbound = sequence.take_outbound(role);
   if (!outbound)
     fail();
-  send_bytes(descriptor, packet({.envelope_version = wire::kEnvelopeVersionV2,
-                                 .header_size = wire::kHeaderSizeV2,
+  send_bytes(descriptor, packet({.envelope_version = wire::kEnvelopeVersion,
+                                 .header_size = wire::kHeaderSize,
                                  .endpoint_role = role,
                                  .message_type = type,
                                  .role_protocol_version = version(role),
@@ -477,8 +476,8 @@ void send_broker_request(std::uint64_t generation, std::string_view current,
   put64(payload, 8, 4096);
   put64(payload, 16, 1024);
   wire::EnvelopeHeader header{
-      .envelope_version = wire::kEnvelopeVersionV2,
-      .header_size = wire::kHeaderSizeV2,
+      .envelope_version = wire::kEnvelopeVersion,
+      .header_size = wire::kHeaderSize,
       .endpoint_role = wire::EndpointRole::broker,
       .message_type = type,
       .role_protocol_version =
@@ -494,11 +493,9 @@ void send_broker_request(std::uint64_t generation, std::string_view current,
   if (current == "wrong-sequence-tag") {
     transmitted.at(47) = static_cast<std::byte>(
         (std::to_integer<unsigned>(transmitted.at(47)) & ~0x3U) | 0x1U);
-  } else if (current == "v1-after-ready") {
-    header.envelope_version = wire::kEnvelopeVersionV1;
-    header.header_size = wire::kHeaderSizeV1;
-    header.lane_sequence = 0;
-    transmitted = packet(header, payload);
+  } else if (current == "unsupported-envelope-version-after-ready") {
+    transmitted[4] = std::byte{0};
+    transmitted[5] = std::byte{1};
   } else if (current == "unknown-message") {
     header.message_type = 0x4ffe;
     transmitted = packet(header, payload);
@@ -526,7 +523,7 @@ void send_broker_request(std::uint64_t generation, std::string_view current,
             ? broker::kBrokerResultMessage
             : static_cast<std::uint16_t>(wire::CommonMessageType::typed_error);
     if (!decoded ||
-        decoded.packet.header.envelope_version != wire::kEnvelopeVersionV2 ||
+        decoded.packet.header.envelope_version != wire::kEnvelopeVersion ||
         sequence.accept_inbound(wire::EndpointRole::broker,
                                 decoded.packet.header.lane_sequence) !=
             wire::FatalReason::none ||
@@ -554,8 +551,8 @@ void send_control_ack(std::uint64_t generation,
   if (!outbound)
     fail();
   const auto bytes =
-      packet({.envelope_version = wire::kEnvelopeVersionV2,
-              .header_size = wire::kHeaderSizeV2,
+      packet({.envelope_version = wire::kEnvelopeVersion,
+              .header_size = wire::kHeaderSize,
               .endpoint_role = wire::EndpointRole::control,
               .message_type = wire::kSurfaceSelectionAcceptedMessage,
               .role_protocol_version = 1,
@@ -580,8 +577,8 @@ void send_multi_lane(std::uint64_t generation,
       sequence.take_outbound(wire::EndpointRole::broker);
   if (!broker_sequence)
     fail();
-  send_bytes(4, packet({.envelope_version = wire::kEnvelopeVersionV2,
-                        .header_size = wire::kHeaderSizeV2,
+  send_bytes(4, packet({.envelope_version = wire::kEnvelopeVersion,
+                        .header_size = wire::kHeaderSize,
                         .endpoint_role = wire::EndpointRole::broker,
                         .message_type = operation,
                         .role_protocol_version = broker::kBrokerRoleVersion,
@@ -595,8 +592,8 @@ void send_multi_lane(std::uint64_t generation,
       sequence.take_outbound(wire::EndpointRole::render);
   if (!render_sequence)
     fail();
-  send_bytes(5, packet({.envelope_version = wire::kEnvelopeVersionV2,
-                        .header_size = wire::kHeaderSizeV2,
+  send_bytes(5, packet({.envelope_version = wire::kEnvelopeVersion,
+                        .header_size = wire::kHeaderSize,
                         .endpoint_role = wire::EndpointRole::render,
                         .message_type = static_cast<std::uint16_t>(
                             surface::RenderMessageType::frame_ready),
@@ -622,7 +619,7 @@ int main() {
   }
   if (current == "transport-max") {
     std::vector<std::byte> received(
-        wire::kHeaderSizeV2 + wire::payload_cap(wire::EndpointRole::broker));
+        wire::kHeaderSize + wire::payload_cap(wire::EndpointRole::broker));
     const ssize_t count = recv(4, received.data(), received.size(), 0);
     if (count != static_cast<ssize_t>(received.size())) {
       fail();

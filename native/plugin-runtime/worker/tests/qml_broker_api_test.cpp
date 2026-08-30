@@ -118,14 +118,19 @@ std::vector<std::byte> receive_packet(int fd) {
   return packet;
 }
 void finish(worker::QmlBrokerApi &api, worker::WorkerEndpoint &endpoint,
-            int host, std::uint64_t correlation, std::uint16_t type,
+            int host, wire::SessionSequence &host_sequence,
+            std::uint64_t correlation, std::uint16_t type,
             std::span<const std::byte> payload) {
+  const auto sequence =
+      host_sequence.take_outbound(wire::EndpointRole::broker);
+  require(static_cast<bool>(sequence), "host sequence exhausted");
   require(send_packet(host,
       {.endpoint_role = wire::EndpointRole::broker,
        .message_type = type,
        .role_protocol_version = broker::kBrokerRoleVersion,
        .launch_generation = 77,
-       .correlation_id = correlation}, payload), "terminal send failed");
+       .correlation_id = correlation,
+       .lane_sequence = sequence.value}, payload), "terminal send failed");
   require(api.receive(endpoint.receive()), "terminal response rejected");
 }
 definitions::Digest repeated(char value) {
@@ -238,7 +243,8 @@ void dynamic_qml_to_adapter() {
               calls == 1 && written == 1,
           "QML dynamic envelope did not pass broker authorization and adapter verification");
 }
-void permission_awareness(worker::WorkerEndpoint &endpoint, int host) {
+void permission_awareness(worker::WorkerEndpoint &endpoint, int host,
+                          wire::SessionSequence &host_sequence) {
   const std::string document =
       R"({"schemaVersion":2,"id":"org.example.widget","name":"Widget","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{},"permissions":{"required":[{"capability":"storage.private","reason":"save","quotaBytes":1024}],"optional":[{"capability":"notifications.send","reason":"alerts","categories":["status"]}]}})";
   const auto parsed = manifest::parse_manifest_v2(document);
@@ -337,7 +343,7 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host) {
       .failed_operation = permissions::OperationId::storage_read,
       .reason = broker::BrokerErrorReason::denied,
       .decision = permissions::GrantDecisionCode::explicitly_denied});
-  finish(api, endpoint, host, still_checked->correlation(),
+  finish(api, endpoint, host, host_sequence, still_checked->correlation(),
          static_cast<std::uint16_t>(wire::CommonMessageType::typed_error),
          broker_denial);
   require(still_checked->finished() && !still_checked->ok(),
@@ -364,8 +370,10 @@ void run() {
   require(binary_call.utf8Text().isEmpty(),
           "invalid UTF-8 broker result was exposed as text");
   Pair pair;
+  wire::SessionSequence worker_sequence;
+  wire::SessionSequence host_sequence;
   worker::WorkerEndpoint endpoint(pair.descriptors[0], wire::EndpointRole::broker,
-                                  broker::kBrokerRoleVersion);
+                                  broker::kBrokerRoleVersion, worker_sequence);
   handshake(endpoint, pair.descriptors[1]);
   worker::QmlBrokerApi api(endpoint,
       std::make_unique<worker::BootstrapInvokeEncoder>());
@@ -416,7 +424,8 @@ void run() {
               broker::BrokerDecodeResult::accepted &&
               decoded.operation == permissions::OperationId::storage_write,
           "compiled bootstrap request failed broker decoding");
-  finish(api, endpoint, pair.descriptors[1], allowed->correlation(),
+  finish(api, endpoint, pair.descriptors[1], host_sequence,
+         allowed->correlation(),
          broker::kBrokerResultMessage, {});
   require(allowed->finished() && allowed->ok(),
           "successful terminal response did not resolve QML call");
@@ -456,7 +465,7 @@ void run() {
       wire::decode_packet(qml_request, wire::EndpointRole::broker);
   require(static_cast<bool>(qml_decoded),
           "representative QML request was malformed");
-  finish(api, endpoint, pair.descriptors[1],
+  finish(api, endpoint, pair.descriptors[1], host_sequence,
          qml_decoded.packet.header.correlation_id,
          broker::kBrokerResultMessage, {});
   drain_events();
@@ -473,7 +482,7 @@ void run() {
       .failed_operation = permissions::OperationId::storage_write,
       .reason = broker::BrokerErrorReason::denied,
       .decision = permissions::GrantDecisionCode::explicitly_denied});
-  finish(api, endpoint, pair.descriptors[1],
+  finish(api, endpoint, pair.descriptors[1], host_sequence,
          qml_denied_decoded.packet.header.correlation_id,
          static_cast<std::uint16_t>(wire::CommonMessageType::typed_error),
          qml_denial);
@@ -488,7 +497,8 @@ void run() {
       .failed_operation = permissions::OperationId::storage_write,
       .reason = broker::BrokerErrorReason::denied,
       .decision = permissions::GrantDecisionCode::explicitly_denied});
-  finish(api, endpoint, pair.descriptors[1], denied->correlation(),
+  finish(api, endpoint, pair.descriptors[1], host_sequence,
+         denied->correlation(),
          static_cast<std::uint16_t>(wire::CommonMessageType::typed_error), denial);
   require(denied->finished() && !denied->ok() && denied->error() == "denied",
           "explicit denial did not reject QML call");
@@ -500,7 +510,8 @@ void run() {
       .failed_operation = permissions::OperationId::storage_write,
       .reason = broker::BrokerErrorReason::denied,
       .decision = permissions::GrantDecisionCode::outside_scope});
-  finish(api, endpoint, pair.descriptors[1], outside->correlation(),
+  finish(api, endpoint, pair.descriptors[1], host_sequence,
+         outside->correlation(),
          static_cast<std::uint16_t>(wire::CommonMessageType::typed_error),
          scope_denial);
   require(outside->finished() && !outside->ok(),
@@ -518,7 +529,7 @@ void run() {
               (errno == EAGAIN || errno == EWOULDBLOCK),
           "undeclared operation gained an ambient fallback or broker packet");
   dynamic_qml_to_adapter();
-  permission_awareness(endpoint, pair.descriptors[1]);
+  permission_awareness(endpoint, pair.descriptors[1], host_sequence);
 }
 } // namespace
 

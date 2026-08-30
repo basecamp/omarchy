@@ -186,18 +186,15 @@ AuthenticatedBrokerChannel::AuthenticatedBrokerChannel(
       opening_deadline_(opening_deadline),
       control_(wire::EndpointRole::control,
                {kControlRoleVersion, kControlRoleVersion}, identity_.generation,
-               wire::payload_cap(wire::EndpointRole::control), kMaximumInFlight,
-               wire::kEnvelopeVersionV2),
+               wire::payload_cap(wire::EndpointRole::control), kMaximumInFlight),
       broker_(wire::EndpointRole::broker,
               {broker::kBrokerRoleVersion, broker::kBrokerRoleVersion},
               identity_.generation,
-              wire::payload_cap(wire::EndpointRole::broker), kMaximumInFlight,
-              wire::kEnvelopeVersionV2),
+              wire::payload_cap(wire::EndpointRole::broker), kMaximumInFlight),
       render_(wire::EndpointRole::render,
               {surface::kRenderRoleVersion, surface::kRenderRoleVersion},
               identity_.generation,
-              wire::payload_cap(wire::EndpointRole::render), kMaximumInFlight,
-              wire::kEnvelopeVersionV2),
+              wire::payload_cap(wire::EndpointRole::render), kMaximumInFlight),
       origin_(next_channel_origin.fetch_add(1, std::memory_order_relaxed)) {
   if (origin_ == 0)
     origin_ = next_channel_origin.fetch_add(1, std::memory_order_relaxed);
@@ -354,7 +351,7 @@ bool AuthenticatedBrokerChannel::negotiate_one(
                 "endpoint sent a duplicate HELLO");
   const auto decoded = wire::decode_packet(message.payload, role);
   if (!decoded ||
-      decoded.packet.header.envelope_version != wire::kEnvelopeVersionV2)
+      decoded.packet.header.envelope_version != wire::kEnvelopeVersion)
     return fail(ChannelFailure::malformed_envelope,
                 "endpoint HELLO envelope is malformed");
   auto *selected = negotiator(role);
@@ -362,7 +359,7 @@ bool AuthenticatedBrokerChannel::negotiate_one(
   if (!negotiated)
     return fail(ChannelFailure::negotiation_failed,
                 "endpoint HELLO negotiation failed");
-  std::array<std::byte, wire::kHeaderSizeV2 + 8> encoded{};
+  std::array<std::byte, wire::kHeaderSize + 8> encoded{};
   const auto payload =
       std::span(negotiated.payload).first(negotiated.payload_size);
   auto header = negotiated.header;
@@ -440,7 +437,7 @@ AuthenticatedBrokerChannel::receive_one(launcher::EndpointMask lanes,
     return {.status = launcher::ReceiveStatus::fatal,
             .failure = launcher::ReceiveFailure::io_error};
   return worker_->receive_any(
-      launcher::PacketSizeLimit{wire::kHeaderSizeV2 +
+      launcher::PacketSizeLimit{wire::kHeaderSize +
                                 wire::payload_cap(wire::EndpointRole::broker)},
       deadline, lanes);
 }
@@ -450,14 +447,14 @@ bool AuthenticatedBrokerChannel::validate_inbound(
   const auto role = wire_role(message.role);
   const auto decoded = wire::decode_packet(message.payload, role);
   if (!decoded ||
-      decoded.packet.header.envelope_version != wire::kEnvelopeVersionV2 ||
+      decoded.packet.header.envelope_version != wire::kEnvelopeVersion ||
       decoded.packet.header.role_protocol_version != role_version(role) ||
       decoded.packet.header.launch_generation != identity_.generation ||
       decoded.packet.header.message_type == 0 ||
       sequence_.accept_inbound(role, decoded.packet.header.lane_sequence) !=
           wire::FatalReason::none) {
     fail(ChannelFailure::malformed_envelope,
-         "authenticated v2 packet failed binding or replay validation");
+         "authenticated packet failed binding or replay validation");
     return false;
   }
   if (!valid_typed_packet(decoded.packet, wire::Direction::worker_to_host)) {
@@ -503,10 +500,10 @@ std::optional<PreparedSend> AuthenticatedBrokerChannel::prepare_send(
     return fail(ChannelFailure::malformed_envelope,
                 "outbound lane sequence is exhausted"),
            std::nullopt;
-  std::vector<std::byte> bytes(wire::kHeaderSizeV2 + payload.size());
+  std::vector<std::byte> bytes(wire::kHeaderSize + payload.size());
   const wire::EnvelopeHeader header{
-      .envelope_version = wire::kEnvelopeVersionV2,
-      .header_size = wire::kHeaderSizeV2,
+      .envelope_version = wire::kEnvelopeVersion,
+      .header_size = wire::kHeaderSize,
       .endpoint_role = role,
       .message_type = message_type,
       .role_protocol_version = role_version(role),
@@ -517,7 +514,7 @@ std::optional<PreparedSend> AuthenticatedBrokerChannel::prepare_send(
   const auto encoded = wire::encode_packet(header, payload, bytes);
   if (!encoded) {
     fail(ChannelFailure::malformed_envelope,
-         "trusted v2 packet could not be encoded");
+         "trusted packet could not be encoded");
     return {};
   }
   const auto decoded = wire::decode_packet(bytes, role);
@@ -651,7 +648,7 @@ AuthenticatedBrokerChannel::receive_authenticated_impl(
   }
 
   const launcher::PacketSizeLimit maximum{
-      wire::kHeaderSizeV2 + wire::payload_cap(wire::EndpointRole::broker)};
+      wire::kHeaderSize + wire::payload_cap(wire::EndpointRole::broker)};
   auto received = nonblocking
                       ? worker_->try_receive_any(maximum, allowed_lanes)
                       : worker_->receive_any(maximum, deadline, allowed_lanes);
@@ -676,16 +673,14 @@ AuthenticatedBrokerChannel::receive_authenticated_impl(
     return {.status = AuthenticatedReceiveStatus::fatal,
             .message = std::nullopt};
   const auto header = packet.header;
-  const auto encoded_header_size = wire::header_size(header.envelope_version);
-  if (encoded_header_size == 0 ||
-      received.payload.size() < encoded_header_size) {
+  if (received.payload.size() < wire::kHeaderSize) {
     fail(ChannelFailure::malformed_envelope,
          "authenticated packet lost its canonical header boundary");
     return {.status = AuthenticatedReceiveStatus::fatal,
             .message = std::nullopt};
   }
   received.payload.erase(received.payload.begin(),
-                         received.payload.begin() + encoded_header_size);
+                         received.payload.begin() + wire::kHeaderSize);
   AuthenticatedMessage owned;
   owned.role = header.endpoint_role;
   owned.message_type = header.message_type;

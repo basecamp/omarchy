@@ -117,14 +117,11 @@ public:
   constexpr TrustedNegotiator(EndpointRole role, VersionRange supported,
                               std::uint64_t authoritative_generation,
                               std::uint32_t maximum_payload,
-                              std::uint32_t maximum_in_flight,
-                              std::uint16_t envelope_version =
-                                  kEnvelopeVersionV1)
+                              std::uint32_t maximum_in_flight)
       : role_(role), supported_(supported),
         generation_(authoritative_generation),
         maximum_payload_(maximum_payload),
-        maximum_in_flight_(maximum_in_flight),
-        envelope_version_(envelope_version) {}
+        maximum_in_flight_(maximum_in_flight) {}
 
   [[nodiscard]] NegotiationResult accept_hello(const PacketView &packet);
   [[nodiscard]] constexpr bool selected() const { return selected_; }
@@ -139,7 +136,6 @@ private:
   std::uint64_t generation_;
   std::uint32_t maximum_payload_;
   std::uint32_t maximum_in_flight_;
-  std::uint16_t envelope_version_;
   bool hello_seen_ = false;
   bool selected_ = false;
   bool failed_ = false;
@@ -148,11 +144,8 @@ private:
 
 class WorkerNegotiator {
 public:
-  constexpr WorkerNegotiator(EndpointRole role, VersionRange supported,
-                             std::uint16_t envelope_version =
-                                 kEnvelopeVersionV1)
-      : role_(role), supported_(supported),
-        envelope_version_(envelope_version) {}
+  constexpr WorkerNegotiator(EndpointRole role, VersionRange supported)
+      : role_(role), supported_(supported) {}
 
   struct HelloResult {
     EnvelopeHeader header{};
@@ -185,7 +178,6 @@ public:
 private:
   EndpointRole role_;
   VersionRange supported_;
-  std::uint16_t envelope_version_;
   bool hello_sent_ = false;
   bool selected_ = false;
   bool failed_ = false;

@@ -208,7 +208,10 @@ void wire_corpus_test() {
                                       .message_type = 0x1100,
                                       .role_protocol_version = 1,
                                       .launch_generation = 1,
-                                      .correlation_id = 1};
+                                      .correlation_id = 1,
+                                      .lane_sequence =
+                                          (1ULL << 2U) |
+                                          static_cast<std::uint16_t>(role)};
     require(static_cast<bool>(wire::encode_packet(header, payload, output)),
             "endpoint cap fixture was rejected");
     payload.push_back(std::byte{0});

@@ -70,6 +70,10 @@ void require(bool condition, std::string_view message) {
   }
 }
 
+launcher::Deadline deadline_after(std::chrono::milliseconds duration) {
+  return std::chrono::steady_clock::now() + duration;
+}
+
 template <typename Predicate>
 bool wait_until(Predicate predicate, std::chrono::milliseconds timeout) {
   const auto deadline = std::chrono::steady_clock::now() + timeout;
@@ -244,14 +248,14 @@ public:
   bool cleanup_prepared = false;
 };
 
-class LegacyOnlyController : public launcher::ResourceScopeController {
+class IncompleteController : public launcher::ResourceScopeController {
 public:
   void kill(std::string_view, launcher::Deadline) noexcept override {}
   void remove(std::string_view, launcher::Deadline) noexcept override {}
 };
 
-static_assert(std::is_abstract_v<LegacyOnlyController>,
-              "legacy-only controllers must not enter the launch path");
+static_assert(std::is_abstract_v<IncompleteController>,
+              "incomplete controllers must not enter the launch path");
 
 class BlockingCleanupScope final : public launcher::ResourceScopeController {
 public:
@@ -331,8 +335,9 @@ struct LaunchFixture {
 };
 
 void validate_probe(launcher::Worker &worker) {
-  const auto message =
-      worker.receive(launcher::EndpointRole::control, sizeof(Probe), 2s);
+  const auto message = worker.receive(
+      launcher::EndpointRole::control, launcher::PacketSizeLimit{sizeof(Probe)},
+      deadline_after(2s));
   require(static_cast<bool>(message), "bound worker control packet failed");
   const Probe probe = decode<Probe>(message.payload);
   require(probe.magic == 0x43575037 && probe.pid == 1 && probe.uid == 0 &&
@@ -376,7 +381,8 @@ void deadline_and_async_cleanup_test(LaunchFixture &fixture) {
   rejected_scope->attach_succeeds = false;
   auto rejected_supervisor = launcher::Supervisor::forTestOnly(
       FAKE_BWRAP_PATH, PROBE_PATH, rejected_scope);
-  const auto pre_call_rejected = rejected_supervisor.launch(fixture.request());
+  const auto pre_call_rejected =
+      rejected_supervisor.launch(fixture.request(), deadline_after(5s));
   require(pre_call_rejected.failure ==
               launcher::LaunchFailure::resource_scope_failed &&
               rejected_scope->remove_count == 0,
@@ -433,17 +439,6 @@ void deadline_and_async_cleanup_test(LaunchFixture &fixture) {
               [&] { return expiring_scope->remove_count.load() == 1; }, 2s),
           "timed-out attachment did not receive asynchronous cleanup");
 
-  sandbox::SandboxPlan relative_plan = sandbox::build_test_plan_for_worker(
-      PROBE_PATH);
-  FakeScope relative_scope;
-  relative_scope.attach_delay = 20ms;
-  launcher::ResourceScopeController &relative_controller = relative_scope;
-  std::string relative_error;
-  const auto relative_result = relative_controller.attach(
-      "app-omarchy-plugin-worker-relative.scope", getpid(), getpid(),
-      relative_plan, 1ms, relative_error);
-  require(!relative_result.attached && relative_result.cleanup_required,
-          "relative attach adapter discarded ambiguous cleanup authority");
 }
 
 void reaper_wake_and_cleanup_deadline_test() {
@@ -494,7 +489,7 @@ void reaper_capacity_and_startup_test(LaunchFixture &fixture) {
   auto failed_scope = std::make_shared<FakeScope>();
   auto failed = launcher::Supervisor::forTestOnly(
       FAKE_BWRAP_PATH, PROBE_PATH, failed_scope, true);
-  const auto rejected = failed.launch(fixture.request());
+  const auto rejected = failed.launch(fixture.request(), deadline_after(5s));
   require(rejected.failure ==
               launcher::LaunchFailure::resource_scope_unavailable &&
               !failed_scope->probe_deadline.has_value(),
@@ -545,7 +540,7 @@ void owned_descriptor_transport_test(LaunchFixture &fixture) {
   auto scope = std::make_shared<FakeScope>();
   auto supervisor =
       launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH, PROBE_PATH, scope);
-  auto launched = supervisor.launch(fixture.request());
+  auto launched = supervisor.launch(fixture.request(), deadline_after(5s));
   require(static_cast<bool>(launched),
           "owned-descriptor transport worker did not launch");
   pollfd readiness{.fd = launched.worker->readiness_fd(),
@@ -555,14 +550,15 @@ void owned_descriptor_transport_test(LaunchFixture &fixture) {
               (readiness.revents & POLLIN) != 0,
           "aggregate readiness did not expose a queued endpoint packet");
   const auto probe_message = launched.worker->receive(
-      launcher::EndpointRole::control, sizeof(Probe), 2s);
+      launcher::EndpointRole::control, launcher::PacketSizeLimit{sizeof(Probe)},
+      deadline_after(2s));
   require(probe_message &&
               decode<Probe>(probe_message.payload).pid ==
                   launched.worker->identity().outer_worker_pid,
           "fake transport probe did not retain its bound outer identity");
 
   auto descriptor_message = launched.worker->receive_any(
-      16, std::chrono::steady_clock::now() + 2s);
+      launcher::PacketSizeLimit{16}, deadline_after(2s));
   require(descriptor_message &&
               descriptor_message.role == launcher::EndpointRole::broker &&
               descriptor_message.descriptors.size() == 1 &&
@@ -571,8 +567,8 @@ void owned_descriptor_transport_test(LaunchFixture &fixture) {
           "valid inbound SCM_RIGHTS was not returned as owned CLOEXEC state");
   const auto descriptors_before = open_descriptor_count();
   auto malformed = launched.worker->receive(
-      launcher::EndpointRole::render, 16,
-      std::chrono::steady_clock::now() + 2s);
+      launcher::EndpointRole::render, launcher::PacketSizeLimit{16},
+      deadline_after(2s));
   require(malformed.failure == launcher::ReceiveFailure::truncated &&
               malformed.descriptors.empty() &&
               open_descriptor_count() == descriptors_before,
@@ -585,20 +581,24 @@ void owned_descriptor_transport_test(LaunchFixture &fixture) {
       oversized_descriptors{};
   oversized_descriptors.fill(descriptor_message.descriptors.front().get());
   require(launched.worker->try_send(launcher::EndpointRole::broker,
-                                    acknowledgement, exact_descriptors) ==
+                                    acknowledgement,
+                                    launcher::PacketSizeLimit{1},
+                                    exact_descriptors) ==
                   launcher::SendStatus::complete &&
               launched.worker->try_send(launcher::EndpointRole::broker,
                                         acknowledgement,
+                                        launcher::PacketSizeLimit{1},
                                         oversized_descriptors) ==
                   launcher::SendStatus::fatal,
           "SCM_RIGHTS transport descriptor hard bound changed");
   require(launched.worker->try_send(launcher::EndpointRole::control,
-                                    acknowledgement) ==
+                                    acknowledgement,
+                                    launcher::PacketSizeLimit{1}) ==
                   launcher::SendStatus::complete &&
-              launched.worker->terminate(2s) &&
+              launched.worker->terminate(deadline_after(2s)) &&
               launched.worker->terminate(
                   std::chrono::steady_clock::now()) &&
-              launched.worker->terminate(),
+              launched.worker->terminate(deadline_after(2s)),
           "owned-descriptor fixture did not tear down cleanly");
 }
 
@@ -606,26 +606,29 @@ void pidfd_priority_test(LaunchFixture &fixture) {
   auto scope = std::make_shared<FakeScope>();
   auto supervisor =
       launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH, PROBE_PATH, scope);
-  auto launched = supervisor.launch(fixture.request());
+  auto launched = supervisor.launch(fixture.request(), deadline_after(5s));
   require(static_cast<bool>(launched), "pidfd-priority worker did not launch");
   const std::array acknowledgement{std::byte{1}};
   require(launched.worker->try_send(launcher::EndpointRole::control,
-                                    acknowledgement) ==
+                                    acknowledgement,
+                                    launcher::PacketSizeLimit{1}) ==
               launcher::SendStatus::complete,
           "pidfd-priority worker did not receive its exit trigger");
   require(wait_until([&] { return !launched.worker->alive(); }, 2s),
           "pidfd-priority worker did not exit");
   const auto result = launched.worker->receive_any(
-      sizeof(Probe), std::chrono::steady_clock::now() + 2s);
+      launcher::PacketSizeLimit{sizeof(Probe)}, deadline_after(2s));
   require(result.status == launcher::ReceiveStatus::peer_closed &&
               result.failure == launcher::ReceiveFailure::worker_exited &&
               result.payload.empty() && result.descriptors.empty(),
           "queued endpoint data won over authoritative pidfd exit readiness");
   require(launched.worker->try_send(launcher::EndpointRole::control,
-                                    acknowledgement) ==
+                                    acknowledgement,
+                                    launcher::PacketSizeLimit{1}) ==
               launcher::SendStatus::peer_closed,
           "closed worker transport was not reported as peer_closed");
-  require(launched.worker->terminate() && scope->remove_count == 1,
+  require(launched.worker->terminate(deadline_after(5s)) &&
+              scope->remove_count == 1,
           "pidfd-priority worker did not clean up exactly once");
 }
 
@@ -633,7 +636,7 @@ void readiness_control_failure_test(LaunchFixture &fixture) {
   auto scope = std::make_shared<FakeScope>();
   auto supervisor =
       launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH, PROBE_PATH, scope);
-  auto launched = supervisor.launch(fixture.request());
+  auto launched = supervisor.launch(fixture.request(), deadline_after(5s));
   require(static_cast<bool>(launched),
           "readiness-control failure worker did not launch");
   const int borrowed_readiness = launched.worker->readiness_fd();
@@ -642,7 +645,8 @@ void readiness_control_failure_test(LaunchFixture &fixture) {
   require(!launched.worker->set_readiness_interests(
               {.read = launcher::EndpointMask::all,
                .write = launcher::EndpointMask::broker}) &&
-              !launched.worker->alive() && launched.worker->terminate(2s) &&
+              !launched.worker->alive() &&
+              launched.worker->terminate(deadline_after(2s)) &&
               scope->remove_count == 1,
           "epoll control failure retained partial transport authority");
 }
@@ -656,17 +660,17 @@ void contract_test() {
 
   auto invalid = fixture.request();
   invalid.plugin_id = "../forged";
-  require(supervisor.launch(invalid).failure ==
+  require(supervisor.launch(invalid, deadline_after(5s)).failure ==
               launcher::LaunchFailure::invalid_trusted_record,
           "plugin-controlled identity syntax reached process launch");
   invalid = fixture.request();
   invalid.plugin_id = "1.invalid";
-  require(supervisor.launch(invalid).failure ==
+  require(supervisor.launch(invalid, deadline_after(5s)).failure ==
               launcher::LaunchFailure::invalid_trusted_record,
           "non-letter plugin identity reached process launch");
   invalid = fixture.request();
   invalid.generation = 0;
-  require(supervisor.launch(invalid).failure ==
+  require(supervisor.launch(invalid, deadline_after(5s)).failure ==
               launcher::LaunchFailure::invalid_trusted_record,
           "zero generation reached process launch");
 
@@ -674,13 +678,14 @@ void contract_test() {
   unavailable_scope->available = false;
   auto unavailable = launcher::Supervisor::forTestOnly(
       FAKE_BWRAP_PATH, PROBE_PATH, unavailable_scope);
-  require(unavailable.launch(fixture.request()).failure ==
+  require(unavailable.launch(fixture.request(), deadline_after(5s)).failure ==
               launcher::LaunchFailure::missing_kernel_prerequisite,
           "launch proceeded without a resource controller");
 
   auto duplicate = launcher::Supervisor::forTestOnly(
       DUPLICATE_STATUS_BWRAP_PATH, PROBE_PATH, std::make_shared<FakeScope>());
-  const auto duplicate_result = duplicate.launch(fixture.request());
+  const auto duplicate_result =
+      duplicate.launch(fixture.request(), deadline_after(5s));
   if (duplicate_result.failure !=
       launcher::LaunchFailure::status_protocol_failed) {
     std::cerr << "duplicate status failure="
@@ -693,13 +698,13 @@ void contract_test() {
 
   auto string_status = launcher::Supervisor::forTestOnly(
       STRING_STATUS_BWRAP_PATH, PROBE_PATH, std::make_shared<FakeScope>());
-  require(string_status.launch(fixture.request()).failure ==
+  require(string_status.launch(fixture.request(), deadline_after(5s)).failure ==
               launcher::LaunchFailure::status_protocol_failed,
           "string child PID was accepted as authoritative status");
 
   auto exited_status = launcher::Supervisor::forTestOnly(
       EXITED_STATUS_BWRAP_PATH, PROBE_PATH, std::make_shared<FakeScope>());
-  require(exited_status.launch(fixture.request()).failure ==
+  require(exited_status.launch(fixture.request(), deadline_after(5s)).failure ==
               launcher::LaunchFailure::worker_exited_early,
           "combined child/exit status lost its early-exit authority");
 
@@ -709,7 +714,8 @@ void contract_test() {
           "cannot prepare exec-error fixture");
   auto exec_error = launcher::Supervisor::forTestOnly(
       invalid_executable.string(), PROBE_PATH, std::make_shared<FakeScope>());
-  const auto failed_exec = exec_error.launch(fixture.request());
+  const auto failed_exec =
+      exec_error.launch(fixture.request(), deadline_after(5s));
   require(failed_exec.failure == launcher::LaunchFailure::exec_failed,
           "exec-error handshake did not distinguish execve failure");
 
@@ -726,17 +732,21 @@ void malicious_test() {
   auto supervisor = launcher::Supervisor::forTestOnly(
       FAKE_BWRAP_PATH, MALICIOUS_PROBE_PATH, scope);
   LaunchFixture fixture;
-  auto launched = supervisor.launch(fixture.request());
+  auto launched = supervisor.launch(fixture.request(), deadline_after(5s));
   require(static_cast<bool>(launched) && scope->attached,
           "synthetic malicious worker launch failed");
   require(
-      launched.worker->receive(static_cast<launcher::EndpointRole>(99), 16, 0ms)
+      launched.worker
+              ->receive(static_cast<launcher::EndpointRole>(99),
+                        launcher::PacketSizeLimit{16},
+                        std::chrono::steady_clock::now())
               .failure == launcher::ReceiveFailure::invalid_role,
       "unknown trusted endpoint role reached polling");
 
   const auto allowed = launcher::EndpointMask::control |
                        launcher::EndpointMask::render;
-  require(launched.worker->set_receive_mask(allowed),
+  require(launched.worker->set_readiness_interests(
+              {.read = allowed, .write = launcher::EndpointMask::none}),
           "cannot arm the allowed endpoint readiness mask");
   require(await_readable_lanes(*launched.worker, allowed),
           "allowed endpoint lanes did not both become readable");
@@ -799,81 +809,80 @@ void malicious_test() {
               launched.worker
                       ->receive_any(launcher::PacketSizeLimit{sizeof(Claim)},
                                     std::chrono::steady_clock::now())
-                      .failure == launcher::ReceiveFailure::timeout &&
-              launched.worker
-                      ->receive_any(0, std::chrono::steady_clock::now(),
-                                    launcher::EndpointMask::broker)
-                      .failure == launcher::ReceiveFailure::invalid_role,
+                      .failure == launcher::ReceiveFailure::timeout,
           "invalid or narrowed receive changed sticky read interests");
-  const auto masked_legacy = launched.worker->receive(
-      launcher::EndpointRole::broker, sizeof(Claim),
-      std::chrono::steady_clock::now() + 10ms);
-  require(masked_legacy.failure == launcher::ReceiveFailure::invalid_role,
-          "legacy lane receive bypassed the active endpoint mask");
+  const auto masked = launched.worker->receive(
+      launcher::EndpointRole::broker,
+      launcher::PacketSizeLimit{sizeof(Claim)}, deadline_after(10ms));
+  require(masked.failure == launcher::ReceiveFailure::invalid_role,
+          "lane receive bypassed the active endpoint mask");
   pollfd disabled_broker{.fd = launched.worker->readiness_fd(),
                          .events = POLLIN,
                          .revents = 0};
   require(poll(&disabled_broker, 1, 0) == 0,
           "disabled queued broker traffic kept aggregate readiness armed");
-  require(launched.worker->set_receive_mask(launcher::EndpointMask::broker),
+  require(launched.worker->set_readiness_interests(
+              {.read = launcher::EndpointMask::broker,
+               .write = launcher::EndpointMask::none}),
           "cannot re-arm broker readiness");
   disabled_broker.revents = 0;
   require(poll(&disabled_broker, 1, 1000) == 1 &&
               (disabled_broker.revents & POLLIN) != 0,
           "re-enabled broker traffic did not become readable");
   const auto descendant = launched.worker->receive(
-      launcher::EndpointRole::broker, sizeof(Claim), 2s);
+      launcher::EndpointRole::broker,
+      launcher::PacketSizeLimit{sizeof(Claim)}, deadline_after(2s));
   require(descendant.failure == launcher::ReceiveFailure::credential_mismatch,
           "forked inherited-endpoint holder passed kernel PID binding");
-  const auto maximum_broker =
-      launched.worker->receive(launcher::EndpointRole::broker, 40 + 65536, 2s);
+  constexpr std::size_t probe_broker_datagram_size = 40 + 65536;
+  const auto maximum_broker = launched.worker->receive(
+      launcher::EndpointRole::broker,
+      launcher::PacketSizeLimit{launcher::kTransportPacketHardLimit},
+      deadline_after(2s));
   require(static_cast<bool>(maximum_broker) &&
-              maximum_broker.payload.size() == 40 + 65536,
-          "legal maximum broker envelope was rejected by the raw channel");
-  constexpr std::size_t v1_broker_maximum = 40 + 65536;
-  constexpr std::size_t v2_broker_maximum = 48 + 65536;
+              maximum_broker.payload.size() == probe_broker_datagram_size,
+          "legal broker datagram was rejected by the raw channel");
   require(launched.worker
                   ->receive(launcher::EndpointRole::broker,
-                            launcher::PacketSizeLimit{v2_broker_maximum},
+                            launcher::PacketSizeLimit{
+                                launcher::kTransportPacketHardLimit},
                             std::chrono::steady_clock::now())
                   .failure == launcher::ReceiveFailure::timeout &&
               launched.worker
                       ->receive(
                           launcher::EndpointRole::broker,
-                          launcher::PacketSizeLimit{v2_broker_maximum + 1},
+                          launcher::PacketSizeLimit{
+                              launcher::kTransportPacketHardLimit + 1},
                           std::chrono::steady_clock::now())
                       .failure == launcher::ReceiveFailure::invalid_role,
-          "canonical receive did not accept v2 maximum and reject +1");
-  std::vector<std::byte> v1_packet(v1_broker_maximum, std::byte{0x31});
-  std::vector<std::byte> v2_packet(v2_broker_maximum, std::byte{0x32});
-  std::vector<std::byte> v2_oversized(v2_broker_maximum + 1,
-                                      std::byte{0x33});
-  require(launched.worker->try_send(launcher::EndpointRole::broker,
-                                    v1_packet) ==
-                  launcher::SendStatus::complete &&
-              launched.worker->try_send(
-                  launcher::EndpointRole::broker, v2_packet,
-                  launcher::PacketSizeLimit{v2_broker_maximum}) ==
+          "canonical receive did not accept the transport maximum and reject +1");
+  std::vector<std::byte> maximum_packet(launcher::kTransportPacketHardLimit,
+                                        std::byte{0x32});
+  std::vector<std::byte> oversized_packet(
+      launcher::kTransportPacketHardLimit + 1, std::byte{0x33});
+  require(launched.worker->try_send(
+              launcher::EndpointRole::broker, maximum_packet,
+              launcher::PacketSizeLimit{launcher::kTransportPacketHardLimit}) ==
                   launcher::SendStatus::complete,
-          "exact v1/v2 transport packet maxima were rejected");
+          "exact transport packet maximum was rejected");
   require(launched.worker->try_send(
               launcher::EndpointRole::broker,
-              std::span(v1_packet).first(v1_broker_maximum),
-              launcher::PacketSizeLimit{v1_broker_maximum - 1}) ==
+              std::span(maximum_packet),
+              launcher::PacketSizeLimit{
+                  launcher::kTransportPacketHardLimit - 1}) ==
+                  launcher::SendStatus::fatal &&
+              launched.worker->try_send(
+                  launcher::EndpointRole::broker, oversized_packet,
+                  launcher::PacketSizeLimit{
+                      launcher::kTransportPacketHardLimit}) ==
                   launcher::SendStatus::fatal &&
               launched.worker->try_send(
                   launcher::EndpointRole::broker,
-                  std::span(v2_packet).first(v1_broker_maximum + 1)) ==
-                  launcher::SendStatus::fatal &&
-              launched.worker->try_send(
-                  launcher::EndpointRole::broker, v2_oversized,
-                  launcher::PacketSizeLimit{v2_broker_maximum}) ==
-                  launcher::SendStatus::fatal &&
-              launched.worker->try_send(
-                  launcher::EndpointRole::broker, std::span(v1_packet).first(1),
-                  launcher::PacketSizeLimit{v2_broker_maximum + 1}) ==
+                  std::span(maximum_packet).first(1),
+                  launcher::PacketSizeLimit{
+                      launcher::kTransportPacketHardLimit + 1}) ==
                   launcher::SendStatus::fatal,
-          "packet-limit +1 input escaped v1/v2 transport bounds");
+          "packet input escaped the explicit transport bounds");
   const std::array acknowledgement{std::byte{1}};
   support::UniqueFd passed(open("/dev/null", O_RDONLY | O_CLOEXEC));
   const std::array one{passed.get()};
@@ -882,28 +891,38 @@ void malicious_test() {
        attempts < 100000 && saturated == launcher::SendStatus::complete;
        ++attempts) {
     saturated = launched.worker->try_send(launcher::EndpointRole::broker,
-                                          acknowledgement, one);
+                                          acknowledgement,
+                                          launcher::PacketSizeLimit{1}, one);
   }
   require(saturated == launcher::SendStatus::would_block && passed &&
               fcntl(passed.get(), F_GETFD) >= 0,
           "backpressure was not typed and atomic for borrowed SCM_RIGHTS");
-  require(
-      launched.worker->send(launcher::EndpointRole::control, acknowledgement),
+  require(launched.worker->try_send(launcher::EndpointRole::control,
+                                    acknowledgement,
+                                    launcher::PacketSizeLimit{1}) ==
+              launcher::SendStatus::complete,
       "descriptor-free launcher send failed");
-  require(passed && launched.worker->send_with_descriptors(
-                        launcher::EndpointRole::control, acknowledgement, one),
+  require(passed &&
+              launched.worker->try_send(launcher::EndpointRole::control,
+                                        acknowledgement,
+                                        launcher::PacketSizeLimit{1}, one) ==
+                  launcher::SendStatus::complete,
           "single descriptor launcher send failed");
   std::array<int, 17> excess{};
   excess.fill(passed.get());
   require(launched.worker->try_send(launcher::EndpointRole::control,
-                                    acknowledgement, excess) ==
+                                    acknowledgement,
+                                    launcher::PacketSizeLimit{1}, excess) ==
                   launcher::SendStatus::fatal &&
               fcntl(passed.get(), F_GETFD) >= 0,
           "excess descriptors were sent or caller ownership was consumed");
-  require(launched.worker->set_receive_mask(launcher::EndpointMask::render),
+  require(launched.worker->set_readiness_interests(
+              {.read = launcher::EndpointMask::render,
+               .write = launcher::EndpointMask::none}),
           "cannot arm render lane for descriptor report");
   const auto descriptor_report = launched.worker->receive(
-      launcher::EndpointRole::render, sizeof(DescriptorReport), 2s);
+      launcher::EndpointRole::render,
+      launcher::PacketSizeLimit{sizeof(DescriptorReport)}, deadline_after(2s));
   require(static_cast<bool>(descriptor_report),
           "worker descriptor report was not received");
   const auto report = decode<DescriptorReport>(descriptor_report.payload);
@@ -936,7 +955,8 @@ void malicious_test() {
                                         launcher::PacketSizeLimit{1}) ==
                   launcher::SendStatus::peer_closed,
           "moved-from worker retained transport authority");
-  require(active_worker.terminate() && scope->remove_count == 1,
+  require(active_worker.terminate(deadline_after(5s)) &&
+              scope->remove_count == 1,
           "bounded normal teardown failed");
 }
 
@@ -949,7 +969,7 @@ void bwrap_test() {
   auto supervisor =
       launcher::Supervisor::forTestOnly(BWRAP_PATH, PROBE_PATH, scope);
   LaunchFixture fixture;
-  auto launched = supervisor.launch(fixture.request());
+  auto launched = supervisor.launch(fixture.request(), deadline_after(5s));
   if (!launched &&
       (launched.detail.find("Operation not permitted") != std::string::npos ||
        launched.detail.find("SO_PASSCRED") != std::string::npos)) {
@@ -959,23 +979,29 @@ void bwrap_test() {
   require(static_cast<bool>(launched) && scope->attached_before_release,
           "real Bubblewrap launch failed before barrier-bound scope attach");
   validate_probe(*launched.worker);
-  const auto injection =
-      launched.worker->receive(launcher::EndpointRole::broker, 16, 2s);
+  const auto injection = launched.worker->receive(
+      launcher::EndpointRole::broker, launcher::PacketSizeLimit{16},
+      deadline_after(2s));
   require(injection && injection.descriptors.size() == 1 &&
               (fcntl(injection.descriptors.front().get(), F_GETFD) &
                FD_CLOEXEC) != 0,
           "worker-originated descriptor was not safely owned and cloexec");
   const auto descriptors_before = open_descriptor_count();
   const auto truncated_ancillary =
-      launched.worker->receive(launcher::EndpointRole::render, 16, 2s);
+      launched.worker->receive(launcher::EndpointRole::render,
+                               launcher::PacketSizeLimit{16},
+                               deadline_after(2s));
   const auto descriptors_after = open_descriptor_count();
   require(truncated_ancillary.failure == launcher::ReceiveFailure::truncated &&
               descriptors_after == descriptors_before,
           "MSG_CTRUNC leaked a delivered SCM_RIGHTS descriptor");
   const std::array acknowledgement{std::byte{1}};
-  require(
-      launched.worker->send(launcher::EndpointRole::control, acknowledgement) &&
-          launched.worker->terminate() && scope->remove_count == 1,
+  require(launched.worker->try_send(launcher::EndpointRole::control,
+                                    acknowledgement,
+                                    launcher::PacketSizeLimit{1}) ==
+                  launcher::SendStatus::complete &&
+              launched.worker->terminate(deadline_after(5s)) &&
+              scope->remove_count == 1,
       "real Bubblewrap worker did not tear down within bounds");
 }
 
@@ -998,7 +1024,7 @@ void systemd_scope_test() {
       BWRAP_PATH, PROBE_PATH,
       launcher::make_systemd_resource_scope_controller());
   LaunchFixture fixture;
-  auto launched = supervisor.launch(fixture.request());
+  auto launched = supervisor.launch(fixture.request(), deadline_after(5s));
   if (!launched &&
       (launched.failure == launcher::LaunchFailure::resource_scope_failed ||
        launched.failure ==
@@ -1038,14 +1064,17 @@ void systemd_scope_test() {
                  "enforcement remains a VM gate\n";
   }
 
-  const auto injection =
-      launched.worker->receive(launcher::EndpointRole::broker, 16, 2s);
+  const auto injection = launched.worker->receive(
+      launcher::EndpointRole::broker, launcher::PacketSizeLimit{16},
+      deadline_after(2s));
   require(injection && injection.descriptors.size() == 1,
           "systemd-scoped worker descriptor transfer was not owned");
   const std::array acknowledgement{std::byte{1}};
-  require(
-      launched.worker->send(launcher::EndpointRole::control, acknowledgement) &&
-          launched.worker->terminate(),
+  require(launched.worker->try_send(launcher::EndpointRole::control,
+                                    acknowledgement,
+                                    launcher::PacketSizeLimit{1}) ==
+                  launcher::SendStatus::complete &&
+              launched.worker->terminate(deadline_after(5s)),
       "systemd-scoped worker did not tear down within bounds");
 }
 } // namespace

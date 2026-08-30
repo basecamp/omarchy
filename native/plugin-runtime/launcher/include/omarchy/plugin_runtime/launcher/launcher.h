@@ -138,17 +138,12 @@ public:
   };
 
   virtual ~ResourceScopeController() = default;
-  [[nodiscard]] bool probe(std::string &error);
   [[nodiscard]] virtual bool probe(Deadline deadline,
                                    std::string &error) = 0;
   // Establishes every resource needed for later teardown before process
   // authority exists. Cleanup operations must never reconnect lazily.
   [[nodiscard]] virtual bool prepare_cleanup(Deadline deadline,
                                              std::string &error) = 0;
-  [[nodiscard]] AttachResult
-  attach(std::string_view unit, pid_t monitor_pid, pid_t worker_pid,
-         const sandbox::SandboxPlan &plan,
-         std::chrono::milliseconds timeout, std::string &error);
   [[nodiscard]] virtual AttachResult
   attach(std::string_view unit, pid_t monitor_pid, pid_t worker_pid,
          const sandbox::SandboxPlan &plan, Deadline deadline,
@@ -183,19 +178,6 @@ public:
   [[nodiscard]] ReceivedMessage
   try_receive_any(PacketSizeLimit maximum_packet,
                   EndpointMask allowed_reads);
-  // v1 compatibility: maximum_payload is additionally bounded by that
-  // endpoint's v1 envelope maximum.
-  [[nodiscard]] ReceivedMessage receive(EndpointRole role,
-                                        std::size_t maximum_payload,
-                                        Deadline deadline);
-  [[nodiscard]] ReceivedMessage receive_any(std::size_t maximum_payload,
-                                            Deadline deadline);
-  [[nodiscard]] ReceivedMessage receive_any(std::size_t maximum_payload,
-                                            Deadline deadline,
-                                            EndpointMask allowed);
-  [[nodiscard]] ReceivedMessage receive(EndpointRole role,
-                                        std::size_t maximum_payload,
-                                        std::chrono::milliseconds timeout);
   // Descriptor arguments are always borrowed. complete means the kernel made
   // its own references; every other status makes no transport progress and
   // retains, duplicates, or closes none of the caller's descriptors.
@@ -203,22 +185,6 @@ public:
   try_send(EndpointRole role, std::span<const std::byte> payload,
            PacketSizeLimit maximum_packet,
            std::span<const int> borrowed_descriptors = {}) noexcept;
-  // v1 compatibility: the role's v1 envelope maximum is used.
-  [[nodiscard]] SendStatus
-  try_send(EndpointRole role, std::span<const std::byte> payload,
-           std::span<const int> borrowed_descriptors = {}) noexcept;
-  [[nodiscard]] bool send(EndpointRole role,
-                          std::span<const std::byte> payload,
-                          PacketSizeLimit maximum_packet);
-  [[nodiscard]] bool send(EndpointRole role,
-                          std::span<const std::byte> payload);
-  [[nodiscard]] bool send_with_descriptors(EndpointRole role,
-                                           std::span<const std::byte> payload,
-                                           PacketSizeLimit maximum_packet,
-                                           std::span<const int> descriptors);
-  [[nodiscard]] bool send_with_descriptors(EndpointRole role,
-                                           std::span<const std::byte> payload,
-                                           std::span<const int> descriptors);
   [[nodiscard]] bool alive() const;
   // Borrowed level-triggered aggregate readiness descriptor. It becomes
   // readable for armed endpoint events or worker exit. epoll_wait/poll may
@@ -228,13 +194,8 @@ public:
   // permanently armed. receive_any consumes only lanes in interests.read.
   [[nodiscard]] bool
   set_readiness_interests(ReadinessInterests interests) noexcept;
-  // v1 compatibility: changes read interests while preserving write.
-  [[nodiscard]] bool set_receive_mask(EndpointMask allowed) noexcept;
   [[nodiscard]] std::string take_standard_error();
   [[nodiscard]] bool terminate(Deadline deadline) noexcept;
-  [[nodiscard]] bool
-  terminate(std::chrono::milliseconds timeout) noexcept;
-  [[nodiscard]] bool terminate();
 
 private:
   enum class ReceiveMode { blocking, nonblocking };
@@ -271,10 +232,8 @@ public:
   Supervisor &operator=(Supervisor &&) noexcept;
   ~Supervisor();
 
-  [[nodiscard]] bool prerequisites(std::string &error) const;
   [[nodiscard]] bool prerequisites(Deadline deadline,
                                    std::string &error) const;
-  [[nodiscard]] LaunchResult launch(const TrustedLaunchRequest &request) const;
   [[nodiscard]] LaunchResult launch(const TrustedLaunchRequest &request,
                                     Deadline deadline) const;
 private:

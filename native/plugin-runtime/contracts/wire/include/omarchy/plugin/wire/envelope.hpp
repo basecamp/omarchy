@@ -9,21 +9,8 @@
 namespace omarchy::plugin::wire {
 
 inline constexpr std::uint32_t kMagic = 0x4f4d504c;
-inline constexpr std::uint16_t kEnvelopeVersionV1 = 1;
-inline constexpr std::uint16_t kEnvelopeVersionV2 = 2;
-inline constexpr std::size_t kHeaderSizeV1 = 40;
-inline constexpr std::size_t kHeaderSizeV2 = 48;
-// The unqualified aliases remain the v1 wire contract. New authenticated
-// sessions opt into v2 explicitly, so v1 and v2 cannot be confused.
-inline constexpr std::uint16_t kEnvelopeVersion = kEnvelopeVersionV1;
-inline constexpr std::size_t kHeaderSize = kHeaderSizeV1;
-
-[[nodiscard]] constexpr std::size_t
-header_size(std::uint16_t envelope_version) {
-  return envelope_version == kEnvelopeVersionV1   ? kHeaderSizeV1
-         : envelope_version == kEnvelopeVersionV2 ? kHeaderSizeV2
-                                                   : 0;
-}
+inline constexpr std::uint16_t kEnvelopeVersion = 2;
+inline constexpr std::size_t kHeaderSize = 48;
 
 enum class EndpointRole : std::uint16_t {
   control = 1,

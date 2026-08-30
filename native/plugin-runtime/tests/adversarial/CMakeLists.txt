@@ -52,6 +52,9 @@ if(PLUGIN_SECURITY_ENABLE_SANITIZERS)
 endif()
 
 add_executable(omarchy-plugin-malicious-worker malicious_worker.cpp)
+target_link_libraries(omarchy-plugin-malicious-worker PRIVATE
+  omarchy-plugin-wire
+)
 target_compile_features(omarchy-plugin-malicious-worker PRIVATE cxx_std_20)
 target_compile_options(omarchy-plugin-malicious-worker PRIVATE
   -Wall -Wextra -Wpedantic -Werror

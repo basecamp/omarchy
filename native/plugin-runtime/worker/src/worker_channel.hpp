@@ -52,8 +52,6 @@ public:
 
 class WorkerEndpoint {
 public:
-  WorkerEndpoint(int descriptor, wire::EndpointRole role,
-                 std::uint16_t role_version);
   // The shared session sequence must outlive this endpoint. Runtime owners
   // must construct it before, and therefore destroy it after, every endpoint.
   WorkerEndpoint(int descriptor, wire::EndpointRole role,

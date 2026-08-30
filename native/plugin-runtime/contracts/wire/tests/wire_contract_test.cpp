@@ -35,20 +35,17 @@ void require(bool condition, std::string_view message) {
 
 std::vector<std::byte> encode(const EnvelopeHeader &header,
                               std::span<const std::byte> payload = {}) {
-  std::vector<std::byte> output(header_size(header.envelope_version) +
-                                payload.size());
+  std::vector<std::byte> output(kHeaderSize + payload.size());
   const auto result = encode_packet(header, payload, output);
   require(static_cast<bool>(result) && result.bytes_written == output.size(),
           "packet encoding failed");
   return output;
 }
 
-EnvelopeHeader v2_header(EndpointRole role, std::uint16_t type,
-                         std::uint64_t sequence,
-                         std::uint64_t correlation = 0) {
-  return {.envelope_version = kEnvelopeVersionV2,
-          .header_size = kHeaderSizeV2,
-          .endpoint_role = role,
+EnvelopeHeader sequenced_header(EndpointRole role, std::uint16_t type,
+                                std::uint64_t sequence,
+                                std::uint64_t correlation = 0) {
+  return {.endpoint_role = role,
           .message_type = type,
           .role_protocol_version = 1,
           .launch_generation = kGeneration,
@@ -75,7 +72,12 @@ EnvelopeHeader selected_header(EndpointRole role, std::uint16_t type,
                         .message_type = type,
                         .role_protocol_version = 1,
                         .launch_generation = kGeneration,
-                        .correlation_id = correlation};
+                        .correlation_id = correlation,
+                        .lane_sequence =
+                            type == static_cast<std::uint16_t>(
+                                        CommonMessageType::welcome)
+                                ? 0
+                                : lane_value(role, 1)};
 }
 
 void golden_test() {
@@ -84,8 +86,8 @@ void golden_test() {
   const auto hello = encode(
       EnvelopeHeader{.endpoint_role = EndpointRole::control}, hello_payload);
   require(hex(hello) ==
-              "4f4d504c00010028000100010000000000000004000000000000000000000000"
-              "000000000000000000010001",
+              "4f4d504c00020030000100010000000000000004000000000000000000000000"
+              "0000000000000000000000000000000000010001",
           "HELLO literal golden mismatch");
 
   const auto welcome_payload = encode_welcome_payload({4096, 4});
@@ -94,8 +96,8 @@ void golden_test() {
                       static_cast<std::uint16_t>(CommonMessageType::welcome)),
       welcome_payload);
   require(hex(welcome) ==
-              "4f4d504c00010028000100020001000000000008000000000102030405060708"
-              "00000000000000000000100000000004",
+              "4f4d504c00020030000100020001000000000008000000000102030405060708"
+              "000000000000000000000000000000000000100000000004",
           "WELCOME literal golden mismatch");
 
   const auto failed_payload = encode_negotiation_failed_payload(
@@ -106,8 +108,8 @@ void golden_test() {
                                 CommonMessageType::negotiation_failed)},
              failed_payload);
   require(hex(failed) ==
-              "4f4d504c00010028000300030000000000000006000000000000000000000000"
-              "0000000000000000000100010001",
+              "4f4d504c00020030000300030000000000000006000000000000000000000000"
+              "00000000000000000000000000000000000100010001",
           "NEGOTIATION_FAILED literal golden mismatch");
 
   const std::array<std::byte, 2> reason{std::byte{0}, std::byte{1}};
@@ -117,16 +119,16 @@ void golden_test() {
                                             kCorrelation),
                             reason);
   require(hex(typed) ==
-              "4f4d504c00010028000200040001000000000002000000000102030405060708"
-              "11121314151617180001",
+              "4f4d504c00020030000200040001000000000002000000000102030405060708"
+              "111213141516171800000000000000060001",
           "TYPED_ERROR literal golden mismatch");
 
   const auto cancel = encode(selected_header(
       EndpointRole::broker,
       static_cast<std::uint16_t>(CommonMessageType::cancel), kCorrelation));
   require(hex(cancel) ==
-              "4f4d504c00010028000200050001000000000000000000000102030405060708"
-              "1112131415161718",
+              "4f4d504c00020030000200050001000000000000000000000102030405060708"
+              "11121314151617180000000000000006",
           "CANCEL literal golden mismatch");
 
   const auto cancel_result =
@@ -136,8 +138,8 @@ void golden_test() {
                  kCorrelation),
              encode_cancel_result_payload(CancelOutcome::accepted));
   require(hex(cancel_result) ==
-              "4f4d504c00010028000200060001000000000002000000000102030405060708"
-              "11121314151617180001",
+              "4f4d504c00020030000200060001000000000002000000000102030405060708"
+              "111213141516171800000000000000060001",
           "CANCEL_RESULT literal golden mismatch");
 
   const auto protocol_error = encode(
@@ -146,77 +148,77 @@ void golden_test() {
           static_cast<std::uint16_t>(CommonMessageType::protocol_error)),
       encode_protocol_error_payload(ProtocolErrorReason::invalid_message));
   require(hex(protocol_error) ==
-              "4f4d504c00010028000200070001000000000002000000000102030405060708"
-              "00000000000000000001",
+              "4f4d504c00020030000200070001000000000002000000000102030405060708"
+              "000000000000000000000000000000060001",
           "PROTOCOL_ERROR literal golden mismatch");
 
-  const std::array<std::byte, 2> v2_payload{std::byte{0xaa}, std::byte{0x55}};
-  const auto v2 = encode(v2_header(EndpointRole::broker, kRequestType,
-                                   0x212223242526272aULL, kCorrelation),
-                         v2_payload);
+  const std::array<std::byte, 2> payload{std::byte{0xaa}, std::byte{0x55}};
+  const auto sequenced = encode(sequenced_header(
+                                    EndpointRole::broker, kRequestType,
+                                    0x212223242526272aULL, kCorrelation),
+                                payload);
   require(
-      hex(v2) ==
+      hex(sequenced) ==
           "4f4d504c00020030000211000001000000000002000000000102030405060708"
           "1112131415161718212223242526272aaa55",
-      "v2 literal golden or sequence offset mismatch");
+      "envelope literal golden or sequence offset mismatch");
 }
 
-void v2_envelope_and_sequence_test() {
+void envelope_and_sequence_test() {
   static_assert(!std::is_copy_constructible_v<SessionSequence>);
   static_assert(!std::is_move_constructible_v<SessionSequence>);
-  const auto valid = encode(v2_header(
+  const auto valid = encode(sequenced_header(
       EndpointRole::broker, kRequestType,
       lane_value(EndpointRole::broker, 1), kCorrelation));
   const auto decoded = decode_packet(valid, EndpointRole::broker);
   require(decoded && decoded.packet.header.envelope_version ==
-                         kEnvelopeVersionV2 &&
-              decoded.packet.header.header_size == kHeaderSizeV2 &&
+                         kEnvelopeVersion &&
+              decoded.packet.header.header_size == kHeaderSize &&
               decoded.packet.header.lane_sequence ==
                   lane_value(EndpointRole::broker, 1),
-          "v2 envelope did not decode exactly");
+          "envelope did not decode exactly");
 
-  auto crossed = v2_header(EndpointRole::broker, kRequestType,
-                           lane_value(EndpointRole::broker, 1), kCorrelation);
-  crossed.header_size = kHeaderSizeV1;
-  std::array<std::byte, kHeaderSizeV2> output{};
+  auto crossed = sequenced_header(EndpointRole::broker, kRequestType,
+                                  lane_value(EndpointRole::broker, 1),
+                                  kCorrelation);
+  crossed.header_size = 40;
+  std::array<std::byte, kHeaderSize> output{};
   require(encode_packet(crossed, {}, output).error ==
               FatalReason::invalid_header_size,
-          "v2 envelope accepted the v1 header size");
+          "sole envelope accepted a noncanonical header size");
   auto crossed_bytes = valid;
   crossed_bytes[6] = std::byte{0};
-  crossed_bytes[7] = std::byte{static_cast<unsigned char>(kHeaderSizeV1)};
+  crossed_bytes[7] = std::byte{40};
   require(decode_packet(crossed_bytes, EndpointRole::broker).error ==
               FatalReason::invalid_header_size,
-          "decoder accepted the v1 header size on a v2 packet");
-  auto legacy = selected_header(EndpointRole::broker, kRequestType,
-                                kCorrelation);
-  legacy.header_size = kHeaderSizeV2;
-  require(encode_packet(legacy, {}, output).error ==
-              FatalReason::invalid_header_size,
-          "v1 envelope accepted the v2 header size");
-  legacy = selected_header(EndpointRole::broker, kRequestType, kCorrelation);
-  legacy.lane_sequence = 1;
-  require(encode_packet(legacy, {}, output).error ==
-              FatalReason::invalid_lane_sequence,
-          "v1 envelope silently encoded a v2 sequence");
+          "decoder accepted a noncanonical header size");
 
-  auto zero = v2_header(EndpointRole::broker, kRequestType, 0, kCorrelation);
+  auto unsupported = valid;
+  unsupported[4] = std::byte{0};
+  unsupported[5] = std::byte{1};
+  require(decode_packet(unsupported, EndpointRole::broker).error ==
+              FatalReason::unsupported_envelope_version,
+          "decoder accepted literal unsupported envelope version 1");
+
+  auto zero =
+      sequenced_header(EndpointRole::broker, kRequestType, 0, kCorrelation);
   require(encode_packet(zero, {}, output).error ==
               FatalReason::invalid_lane_sequence,
-          "v2 post-ready packet accepted sequence zero");
-  auto wrong_tag = v2_header(EndpointRole::control, kRequestType,
-                             lane_value(EndpointRole::broker, 1), kCorrelation);
+          "post-ready packet accepted sequence zero");
+  auto wrong_tag = sequenced_header(EndpointRole::control, kRequestType,
+                                    lane_value(EndpointRole::broker, 1),
+                                    kCorrelation);
   require(encode_packet(wrong_tag, {}, output).error ==
               FatalReason::invalid_lane_sequence,
-          "v2 envelope accepted a sequence tagged for another lane");
-  auto sequenced_hello = v2_header(
+          "envelope accepted a sequence tagged for another lane");
+  auto sequenced_hello = sequenced_header(
       EndpointRole::control,
       static_cast<std::uint16_t>(CommonMessageType::hello), 1);
   sequenced_hello.role_protocol_version = 0;
   sequenced_hello.launch_generation = 0;
   require(encode_packet(sequenced_hello, {}, output).error ==
               FatalReason::invalid_lane_sequence,
-          "v2 HELLO accepted a nonzero sequence");
+          "HELLO accepted a nonzero sequence");
 
   SessionSequence sequence;
   const auto control = sequence.take_outbound(EndpointRole::control);
@@ -312,8 +314,9 @@ void envelope_test() {
   require(decode_packet(packet, EndpointRole::control).error ==
               FatalReason::packet_length_mismatch,
           "trailing byte was accepted");
-  require(decode_packet(std::span<const std::byte>(packet).first(39),
-                        EndpointRole::control)
+  require(decode_packet(
+              std::span<const std::byte>(packet).first(kHeaderSize - 1),
+              EndpointRole::control)
                   .error == FatalReason::packet_too_short,
           "short header was accepted");
 }
@@ -331,7 +334,11 @@ void negotiation_test() {
     WorkerNegotiator worker(role, {1, 2});
     TrustedNegotiator trusted(role, {1, 1}, kGeneration, payload_cap(role), 4);
     const auto worker_hello = worker.make_hello();
-    require(static_cast<bool>(worker_hello), "worker could not create HELLO");
+    require(worker_hello &&
+                worker_hello.header.envelope_version == kEnvelopeVersion &&
+                worker_hello.header.header_size == kHeaderSize &&
+                worker_hello.header.lane_sequence == 0,
+            "worker could not create a canonical HELLO");
     const auto hello_bytes = encode(worker_hello.header, worker_hello.payload);
     const auto hello = decode_packet(hello_bytes, role);
     require(static_cast<bool>(hello), "worker HELLO did not decode");
@@ -390,34 +397,6 @@ void negotiation_test() {
             "worker did not recognize negotiation failure");
   }
 
-  WorkerNegotiator v2_worker(EndpointRole::control, {1, 1},
-                             kEnvelopeVersionV2);
-  TrustedNegotiator v2_trusted(EndpointRole::control, {1, 1}, kGeneration,
-                               payload_cap(EndpointRole::control), 4,
-                               kEnvelopeVersionV2);
-  const auto v2_hello = v2_worker.make_hello();
-  require(v2_hello && v2_hello.header.header_size == kHeaderSizeV2 &&
-              v2_hello.header.lane_sequence == 0,
-          "v2 worker did not emit a canonical HELLO");
-  const auto v2_hello_bytes = encode(v2_hello.header, v2_hello.payload);
-  const auto decoded_v2_hello =
-      decode_packet(v2_hello_bytes, EndpointRole::control);
-  const auto v2_welcome = v2_trusted.accept_hello(decoded_v2_hello.packet);
-  require(v2_welcome && v2_welcome.header.envelope_version ==
-                            kEnvelopeVersionV2 &&
-              v2_welcome.header.lane_sequence == 0,
-          "v2 trusted endpoint did not emit a canonical WELCOME");
-  WorkerNegotiator v1_worker(EndpointRole::control, {1, 1});
-  const auto v1_hello = v1_worker.make_hello();
-  const auto v1_hello_bytes = encode(v1_hello.header, v1_hello.payload);
-  const auto decoded_v1_hello =
-      decode_packet(v1_hello_bytes, EndpointRole::control);
-  TrustedNegotiator disjoint(EndpointRole::control, {1, 1}, kGeneration,
-                             payload_cap(EndpointRole::control), 4,
-                             kEnvelopeVersionV2);
-  require(disjoint.accept_hello(decoded_v1_hello.packet).error ==
-              FatalReason::invalid_message_order,
-          "v2 negotiator accepted a v1 HELLO");
 }
 
 PacketView decode_selected(const std::vector<std::byte> &bytes,
@@ -648,7 +627,7 @@ void surface_binding_test() {
 int main() {
   try {
     golden_test();
-    v2_envelope_and_sequence_test();
+    envelope_and_sequence_test();
     envelope_test();
     negotiation_test();
     state_test();
