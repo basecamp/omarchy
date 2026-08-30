@@ -203,7 +203,7 @@ cat >"$apps_dir/http:/127.0.0.1:4000/.desktop" <<'DESKTOP'
 [Desktop Entry]
 Exec=omarchy-launch-webapp https://127.0.0.1:4000
 DESKTOP
-HOME="$tmp_dir/home" bash -c "$webapp_menu_guard" ||
+HOME="$tmp_dir/home" PATH="$ROOT/bin:$PATH" bash -c "$webapp_menu_guard" ||
   fail "the Remove menu offers Web App when the only launcher is a nested one"
 pass "the Remove menu reaches a launcher an older install nested"
 
@@ -212,6 +212,6 @@ pass "the Remove menu reaches a launcher an older install nested"
 rm -rf "$apps_dir"
 mkdir -p "$apps_dir"
 printf '[Desktop Entry]\nExec=foot\n' >"$apps_dir/foot.desktop"
-HOME="$tmp_dir/home" bash -c "$webapp_menu_guard" &&
+HOME="$tmp_dir/home" PATH="$ROOT/bin:$PATH" bash -c "$webapp_menu_guard" &&
   fail "the Remove menu hides Web App when no launcher is a web app"
 pass "the Remove menu hides Web App when there is none"
