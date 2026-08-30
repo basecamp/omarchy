@@ -64,10 +64,15 @@ Panel {
   // convention. Clicking the grid's "W" heading writes the choice back to
   // shell.json.
   readonly property int weekStart: Model.normalizedWeekStart(setting("weekStartDay", null), Qt.locale().firstDayOfWeek)
-  // The interface is English throughout, so day names are not taken from the
-  // system locale. Where the week starts still is: that is a regional
-  // convention rather than a translation, and it stays overridable above.
-  readonly property var labelLocale: Qt.locale("en_US")
+  // Day and month names follow the same "locale" setting the bar label uses,
+  // so the calendar and the clock above it never disagree about what today
+  // is called; unset means the interface's English. Where the week starts is
+  // read separately, above: that is a regional convention rather than a
+  // translation, and it stays overridable.
+  readonly property var labelLocale: {
+    var name = Model.localeName(setting("locale", ""))
+    return name ? Qt.locale(name) : Qt.locale("en_US")
+  }
   readonly property string nextWeekStartLabel: labelLocale.dayName(Model.toggledWeekStart(weekStart), Locale.LongFormat)
   readonly property var weekdays: Model.weekdayOrder(weekStart)
   readonly property var weeks: Model.monthGrid(viewYear, viewMonth, weekStart, todayKey)
@@ -217,9 +222,11 @@ Panel {
     setWeekStart(Model.toggledWeekStart(root.weekStart))
   }
 
-  // English short day names, matching the rest of the interface.
+  // Short day names in the configured language. Several locales abbreviate
+  // with a trailing period ("man.", "tir.") which reads as clutter once these
+  // are column headings set in small caps, so the period comes off.
   function weekdayLabel(weekday) {
-    return String(labelLocale.dayName(weekday, Locale.ShortFormat)).toUpperCase()
+    return String(labelLocale.dayName(weekday, Locale.ShortFormat)).replace(/\.$/, "").toUpperCase()
   }
 
   SystemClock {
@@ -313,7 +320,9 @@ Panel {
                 id: heroDate
                 textFormat: Text.PlainText
                 anchors.verticalCenter: parent.verticalCenter
-                text: Qt.formatDate(root.today, "MMMM d")
+                // "August 25" in English; day-first locales get "25 August"
+                // or "25. august", following their own short date order.
+                text: root.today.toLocaleDateString(root.labelLocale, Model.heroDateFormat(root.labelLocale.dateFormat(Locale.ShortFormat)))
                 color: heroMouse.containsMouse
                   ? Style.hoverStateColor(root.contentForeground, Color.accent)
                   : root.contentForeground
@@ -721,7 +730,7 @@ Panel {
                 // "MAY 2026" and a "SEPTEMBER 2026".
                 width: Style.space(130)
                 horizontalAlignment: Text.AlignHCenter
-                text: Qt.formatDate(root.viewDate, "MMMM yyyy").toUpperCase()
+                text: root.viewDate.toLocaleDateString(root.labelLocale, "MMMM yyyy").toUpperCase()
                 color: Qt.darker(root.contentForeground, 1.4)
                 font.family: root.contentFontFamily
                 font.pixelSize: Style.font.body

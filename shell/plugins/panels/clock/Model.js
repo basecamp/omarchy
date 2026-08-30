@@ -9,6 +9,28 @@ var MS_PER_DAY = 86400000
 // Locale.Saturday, so a locale's firstDayOfWeek can be passed straight in.
 var WEEKDAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
 
+// The locale to format day and month names in, from the "locale" setting.
+// "nb_NO", "nb-NO.UTF-8" and "nb_NO.utf8" all mean nb_NO; blank, C and POSIX
+// mean "not set", which keeps the stock English names.
+//
+// This lives here rather than in the QML because it is pure string math, and
+// because both the bar label and the calendar need the same answer.
+function localeName(value) {
+  var name = String(value || "").trim().split(".")[0].replace(/-/g, "_")
+  return (name === "C" || name === "POSIX") ? "" : name
+}
+
+// How the calendar's hero date is written follows the locale's own order,
+// read off its short date format: month-first locales (en_US, "M/d/yy") keep
+// "MMMM d"; day-first ones get "d MMMM", with the ordinal period where the
+// short form uses periods ("dd.MM.yyyy" gives "25. august").
+function heroDateFormat(shortDateFormat) {
+  var f = String(shortDateFormat || "")
+  var d = f.search(/d/), m = f.search(/M/)
+  if (d < 0 || m < 0 || m < d) return "MMMM d"
+  return /d\./.test(f) ? "d. MMMM" : "d MMMM"
+}
+
 // ---- Bar label formats. Right-clicking the clock walks these in order and
 //      writes the result back to shell.json, so the label the bar shows and
 //      the format the config stores are always the same thing.
@@ -282,6 +304,8 @@ if (typeof module !== "undefined") {
   module.exports = {
     dateKey: dateKey,
     keyForDate: keyForDate,
+    localeName: localeName,
+    heroDateFormat: heroDateFormat,
     normalizedWeekStart: normalizedWeekStart,
     weekStartSettingName: weekStartSettingName,
     toggledWeekStart: toggledWeekStart,
