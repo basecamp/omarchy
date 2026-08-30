@@ -270,8 +270,6 @@ measure_loudness() {
 prompt_normalize_audio() {
   local input_i=$1
   local prompt keep normalize selection
-  # glyph<TAB>label<TAB>subtext — a leading tab is an empty glyph; without it
-  # the label is drawn as a huge icon and overlaps the measured LUFS.
   keep=$'\tKeep original levels\tas recorded'
   if awk -v i="$input_i" -v target="$LOUDNORM_I" 'BEGIN { exit (i < target) ? 0 : 1 }'; then
     prompt="Audio may be unintentionally quiet"
