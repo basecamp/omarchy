@@ -237,13 +237,17 @@ function parseStatus(raw) {
       var peer = rawPeers[id] || {}
       var normalized = peerFromStatus(id, peer)
       if (normalized.Mullvad) continue
-      if (normalized.Online) {
-        peers.push(normalized)
-        if (normalized.ExitNodeOption) exitNodes.push(normalized)
-      }
+      peers.push(normalized)
+      // Exit nodes stay online-only: routing through a machine that is down
+      // just breaks connectivity, so an offline one is never a valid choice.
+      if (normalized.Online && normalized.ExitNodeOption) exitNodes.push(normalized)
     }
 
+    // Online machines first, each group alphabetical. The ones you can act on
+    // stay at the top of the list while offline machines remain reachable for
+    // copying an address.
     peers.sort(function(a, b) {
+      if (a.Online !== b.Online) return a.Online ? -1 : 1
       return String(a.HostName).localeCompare(String(b.HostName))
     })
     exitNodes.sort(function(a, b) {
