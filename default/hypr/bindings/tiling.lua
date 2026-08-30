@@ -3,6 +3,15 @@ o.bind("SUPER + Q", "Close window", hl.dsp.window.close())
 o.bind("CTRL + ALT + DELETE", "Close all windows", "omarchy-hyprland-window-close-all")
 
 o.bind("SUPER + J", "Toggle window split", hl.dsp.layout("togglesplit"))
+
+-- Toggle the active dwindle split between an even 50/50 and a wide 2/3 - 1/3.
+-- splitratio 1.0 is even; the active window gets ratio / 2 of its parent's space.
+local split_wide = false
+o.bind("SUPER + SHIFT + J", "Toggle wide window split", function()
+  split_wide = not split_wide
+  hl.dispatch(hl.dsp.layout("splitratio " .. (split_wide and "1.3333" or "1.0") .. " exact"))
+end)
+
 o.bind("SUPER + P", "Pseudo window", hl.dsp.window.pseudo())
 o.bind("SUPER + T", "Toggle window floating/tiling", hl.dsp.window.float({ action = "toggle" }))
 o.bind("SUPER + F", "Full screen", hl.dsp.window.fullscreen({ mode = "fullscreen" }))
