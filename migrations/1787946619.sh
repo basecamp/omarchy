@@ -10,9 +10,17 @@ as_root() {
   fi
 }
 
+defer_privileged_repair() {
+  echo "Cannot remove the legacy privileged udev rule; omarchy-migrate will retry it later." >&2
+  if [[ -n ${OMARCHY_MIGRATION_DEFER_FILE:-} && -n ${OMARCHY_MIGRATION_DEFER_TOKEN:-} ]]; then
+    printf '%s\n' "$OMARCHY_MIGRATION_DEFER_TOKEN" >"$OMARCHY_MIGRATION_DEFER_FILE"
+  fi
+  exit 75
+}
+
 # Omarchy 3 generated these two rules with an unquoted heredoc, so the installing
-# user's $HOME was expanded and the file on disk names
-# /home/<user>/.local/share/omarchy/bin/<command>. udev runs RUN+= as root, and
+# user's $HOME was expanded and the file on disk names that absolute home path.
+# udev runs RUN+= as root, and
 # ~/.local/share/omarchy is a symlink that same unprivileged user owns: replacing
 # it with a tree of their own and provoking a power_supply event runs their code
 # as root. Quattro ships the rules as 99-omarchy-*.rules under /usr/bin, but the
@@ -32,7 +40,7 @@ as_root() {
 # path in a comment, and so does a legacy file already repointed at /usr/bin.
 rule_runs_from_home() {
   local file="$1" binary="$2"
-  local pattern="^(/home/[^/]+|/root)/\\.local/share/omarchy/bin/$binary\$"
+  local pattern="^/.+/\\.local/share/omarchy/bin/$binary\$"
   local line logical="" rest command word
   local -a words
 
@@ -68,7 +76,7 @@ rule_runs_from_home() {
       # argument. Compare whole words so no substring stands in for the path.
       read -ra words <<<"$command"
       for word in "${words[@]}"; do
-        if [[ $word =~ $pattern || $word == "$HOME/.local/share/omarchy/bin/$binary" ]]; then
+        if [[ $word =~ $pattern ]]; then
           return 0
         fi
       done
@@ -84,7 +92,9 @@ for legacy_rule in "99-power-profile.rules:omarchy-powerprofiles-set" "99-wifi-p
   rule_file="$rules_dir/${legacy_rule%%:*}"
 
   if [[ -f $rule_file ]] && rule_runs_from_home "$rule_file" "${legacy_rule##*:}"; then
-    as_root rm -f "$rule_file"
+    if ! as_root rm -f "$rule_file"; then
+      defer_privileged_repair
+    fi
     removed=1
   fi
 done

@@ -115,10 +115,10 @@ sudoers_hash_is_active() {
 # one line that is unmistakably this grant: its own self-cleanup. One
 # hand-written line anywhere in the file and it is not ours to delete.
 first_run_sudoers_is_generated() {
-  local spec_pattern='^[^[:space:]]+ ALL=\(ALL\) NOPASSWD: (.+)$'
+  local spec_pattern='^([^[:space:]]+) ALL=\(ALL\) NOPASSWD: (.+)$'
   local marker_pattern='^/bin/rm -f /home/[^/]+/\.local/state/omarchy/first-run\.mode$'
-  local line command
-  local seen_any=0 seen_marker=0
+  local line user command generated_user=""
+  local seen_any=0 seen_marker=0 seen_spec=0
 
   while IFS= read -r line; do
     seen_any=1
@@ -140,7 +140,13 @@ first_run_sudoers_is_generated() {
     if [[ ! $line =~ $spec_pattern ]]; then
       return 1
     fi
-    command=${BASH_REMATCH[1]}
+    user=${BASH_REMATCH[1]}
+    command=${BASH_REMATCH[2]}
+    if [[ -n $generated_user && $user != "$generated_user" ]]; then
+      return 1
+    fi
+    generated_user=$user
+    seen_spec=1
 
     case "$command" in
       "/usr/bin/systemctl" | "/usr/bin/ufw" | "/usr/bin/ufw-docker" | \
@@ -162,7 +168,7 @@ first_run_sudoers_is_generated() {
     return 1
   done < <(active_lines sudoers)
 
-  (( seen_any && seen_marker ))
+  (( seen_any && seen_marker && seen_spec ))
 }
 
 # bin/omarchy-install-tailscale (2025-08-22 to 2026-02-02) ran
@@ -202,7 +208,7 @@ tsui_sudoers_is_generated() {
 plymouth_unit_runs_from_home() {
   local binary="omarchy-plymouth-shutdown-sync"
   local exec_stop_pattern='^ExecStop[[:space:]]*=[[:space:]]*(.*)$'
-  local home_pattern="^(/home/[^/]+|/root)/\\.local/share/omarchy/bin/$binary\$"
+  local home_pattern="^/.+/\\.local/share/omarchy/bin/$binary\$"
   local line word
   local -a words
   local matched=1
@@ -229,7 +235,7 @@ plymouth_unit_runs_from_home() {
       word=${word:1}
     done
 
-    if [[ $word =~ $home_pattern || $word == "$HOME/.local/share/omarchy/bin/$binary" ]]; then
+    if [[ $word =~ $home_pattern ]]; then
       # Non-empty ExecStop= assignments append to the command list. Once a
       # vulnerable command is present it stays live until an empty assignment
       # explicitly resets the list; a later packaged command does not replace it.
@@ -249,6 +255,9 @@ tsui_sudoers="$sudoers_dir/tsui"
 
 defer_privileged_repair() {
   echo "Cannot complete the privileged installer-artifact repair; omarchy-migrate will retry it later." >&2
+  if [[ -n ${OMARCHY_MIGRATION_DEFER_FILE:-} && -n ${OMARCHY_MIGRATION_DEFER_TOKEN:-} ]]; then
+    printf '%s\n' "$OMARCHY_MIGRATION_DEFER_TOKEN" >"$OMARCHY_MIGRATION_DEFER_FILE"
+  fi
   exit 75
 }
 

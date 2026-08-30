@@ -29,6 +29,15 @@ STUB
 
 chmod +x "$test_dir/bin/"*
 
+mkdir -p "$test_dir/failing-bin"
+cat >"$test_dir/failing-bin/sudo" <<'STUB'
+#!/bin/bash
+
+echo "sudo: a terminal is required to read the password" >&2
+exit 1
+STUB
+chmod +x "$test_dir/failing-bin/sudo"
+
 export CALLS="$test_dir/calls"
 
 rules_dir="$test_dir/rules.d"
@@ -189,17 +198,41 @@ run_migration
   fail "migration keeps a legacy filename already repointed at /usr/bin"
 pass "migration keeps a legacy filename already repointed at /usr/bin"
 
-# Homes are not all under /home, so the running user's own home counts too, and
-# the argument the later variants passed must not hide the path.
+# Homes are not all under /home, and a different account may run this
+# machine-wide repair after the installer account has gone away.
 reset_machine
 cat >"$wifi_rule" <<RULE
-SUBSYSTEM=="power_supply", ATTR{type}=="Mains", ATTR{online}=="0", RUN+="/usr/bin/systemd-run --no-block --collect --unit=omarchy-wifi-powersave-on $home_dir/.local/share/omarchy/bin/omarchy-wifi-powersave on"
+SUBSYSTEM=="power_supply", ATTR{type}=="Mains", ATTR{online}=="0", RUN+="/usr/bin/systemd-run --no-block --collect --unit=omarchy-wifi-powersave-on /srv/retired-installer/.local/share/omarchy/bin/omarchy-wifi-powersave on"
 RULE
 run_migration
 
 [[ ! -e $wifi_rule ]] ||
-  fail "migration removes a rule that runs out of a home outside /home" "$(cat "$wifi_rule")"
-pass "migration removes a rule that runs out of a home outside /home"
+  fail "migration removes another user's rule rooted outside /home" "$(cat "$wifi_rule")"
+pass "migration removes another user's rule rooted outside /home"
+
+# A user who cannot elevate must leave this repair pending without preventing
+# later migrations from running. Once another account removes the machine-wide
+# file, the next retry can complete without sudo.
+reset_machine
+write_vulnerable_wifi_rule
+defer_file="$test_dir/defer-signal"
+defer_token="legacy-udev-repair"
+: >"$defer_file"
+
+set +e
+HOME="$home_dir" \
+  OMARCHY_UDEV_RULES_DIR="$rules_dir" \
+  OMARCHY_MIGRATION_DEFER_FILE="$defer_file" \
+  OMARCHY_MIGRATION_DEFER_TOKEN="$defer_token" \
+  PATH="$test_dir/failing-bin:$PATH" \
+  bash -euo pipefail "$migration" >"$test_dir/defer.out" 2>&1
+defer_status=$?
+set -e
+
+(( defer_status == 75 )) || fail "migration defers when sudo cannot remove a vulnerable rule" "status=$defer_status"
+[[ -e $wifi_rule ]] || fail "migration keeps the vulnerable rule when its elevated removal fails"
+[[ $(<"$defer_file") == "$defer_token" ]] || fail "migration authenticates its deferral to the runner"
+pass "migration defers instead of blocking the queue when removal cannot elevate"
 
 # Nothing named the wrong binary is ours: the same path with a different command
 # is a rule this migration cannot claim to know anything about.

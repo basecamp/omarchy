@@ -50,14 +50,14 @@ USER_WRITABLE_VARS=(HOME PWD OLDPWD TMPDIR OMARCHY_PATH OMARCHY_INSTALL
 WRITE_COMMANDS=(tee dd install cp mv)
 ELEVATORS=(sudo as_root pkexec doas run0)
 
-# A dollar the installing user's shell would act on: $name, ${name} or $(cmd).
+# A dollar the installing user's shell would act on: $name, ${name}, $1, or $(cmd).
 # Kept in a variable because an unquoted `(` inside a bracket expression is a
 # syntax error in [[ =~ ]].
-EXPANSION_RE='\$[A-Za-z_{(]'
+EXPANSION_RE='\$[A-Za-z_{(0-9@*#?$!-]'
 
 # One pattern for every expansion form, shared by masking and name extraction
 # so the two stay in lockstep.
-EXPANSION_SCAN_RE='^([^$]*)\$(\{[^}]*\}|\([^)]*\)|[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?)(.*)$'
+EXPANSION_SCAN_RE='^([^$]*)\$(\{[^}]*\}|\([^)]*\)|[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?|[0-9@*#?$!-])(.*)$'
 
 # Stand-in name for a command substitution, which has no variable to report.
 COMMAND_SUBSTITUTION="command-substitution"
@@ -145,11 +145,14 @@ mask_and_names() {
       body=${body#[\#!]}
       if [[ $body =~ ^([A-Za-z_][A-Za-z0-9_]*) ]]; then
         name=${BASH_REMATCH[1]}
+      elif [[ $body =~ ^[0-9@*#?$!-]$ ]]; then
+        name="shell-parameter"
       else
         name=$COMMAND_SUBSTITUTION
       fi
     else
       name=${body%%\[*}
+      [[ $name =~ ^[A-Za-z_] ]] || name="shell-parameter"
     fi
 
     names+=("$name")
@@ -418,6 +421,28 @@ command_destinations() {
   fi
 }
 
+# Does LINE carry the same resolved value as DEST? Compare resolved tokens rather
+# than source spelling so $tmp, ${tmp}, and an alias assigned from either form
+# all identify the same scratch file.
+line_carries_destination() {
+  local line="$1" dest="$2" resolved token candidate
+  local -a tokens=()
+
+  resolved=$(resolve_value "$dest")
+  line=${line//\"/ }
+  line=${line//\'/ }
+  read -r -a tokens <<<"$line"
+
+  for token in "${tokens[@]}"; do
+    token=${token#[<>]}
+    token=${token%;}
+    candidate=$(resolve_value "$token")
+    [[ $candidate == "$resolved" ]] && return 0
+  done
+
+  return 1
+}
+
 # Does the heredoc on this line reach a root-owned file? Either directly, or in
 # one hop: written to a scratch file that a later install/cp/mv carries into a
 # privileged directory.
@@ -450,7 +475,7 @@ privileged_destination() {
       while ((follow < ${#scan_lines[@]})); do
         hop=${scan_lines[follow]}
         follow=$((follow + 1))
-        [[ $hop == *"$dest"* ]] || continue
+        line_carries_destination "$hop" "$dest" || continue
         [[ $hop =~ (^|[[:space:]])(install|cp|mv)([[:space:]]|$) ]] || continue
         while IFS= read -r hop_dest; do
           [[ $hop_dest == $'\002elevated' ]] && continue
@@ -473,6 +498,31 @@ privileged_destination() {
   fi
 
   return 1
+}
+
+# A pipeline may put the command consuming a heredoc after its terminator:
+#
+#   cat <<EOF |
+#   body
+#   EOF
+#     sudo tee /etc/file
+#
+# Join only while the command is syntactically continued, leaving unrelated
+# commands below the heredoc to be scanned independently.
+continued_heredoc_command() {
+  local command="$1" next="$2"
+  local -n source_lines="$3"
+
+  while [[ $command =~ (\|\||&&|\|)[[:space:]]*$ ]] && ((next < ${#source_lines[@]})); do
+    while ((next < ${#source_lines[@]})) && [[ ${source_lines[next]} =~ ^[[:space:]]*(#.*)?$ ]]; do
+      next=$((next + 1))
+    done
+    ((next < ${#source_lines[@]})) || break
+    command+=" ${source_lines[next]}"
+    next=$((next + 1))
+  done
+
+  printf '%s' "$command"
 }
 
 # Count the \001 placeholders in a masked token.
@@ -523,7 +573,7 @@ scan_file() {
   local file="$1" display="${2:-$1}"
   local -a lines=()
   local index lineno line scan rest raw operator match prefix guard slot delim candidate candidate_delim body_start
-  local body_text unescaped destination body_line masked_line token name
+  local body_text unescaped destination destination_command body_line masked_line token name
   local declared_paths annotation look shown_paths shown_plain count next slots terminated
   local hd_re='(<<-?)[[:space:]]*("[A-Za-z_][A-Za-z0-9_]*"|'"'"'[A-Za-z_][A-Za-z0-9_]*'"'"'|[A-Za-z_][A-Za-z0-9_]*)'
 
@@ -611,7 +661,8 @@ scan_file() {
       unescaped=$(strip_escapes "$body_text")
       [[ $unescaped =~ $EXPANSION_RE || $unescaped == *'`'* ]] || continue
 
-      destination=$(privileged_destination "$line" "$index" lines) || continue
+      destination_command=$(continued_heredoc_command "$line" "$index" lines)
+      destination=$(privileged_destination "$destination_command" "$index" lines) || continue
 
       # Sort the expansions into the ones that bake a path into the file and
       # the ones that only interpolate a scalar.
@@ -802,6 +853,9 @@ fixture_flags shutdown-unit-home-execstop.sh \
 fixture_flags annotated-paths-none-still-fails.sh \
   "an annotation claiming paths=none cannot silence a baked \$HOME path" \
   "declares paths=none but the path-shaped expansions are HOME"
+fixture_flags annotated-special-parameter-before-home.sh \
+  "a shell special parameter cannot hide a later baked \$HOME path" \
+  "declares paths=none but the path-shaped expansions are HOME"
 
 # A path can hide one or more hops away from the heredoc. In each of these the
 # token in the body has no slash and the value never resolves to a literal path,
@@ -824,6 +878,12 @@ fixture_flags route-variable-path.sh \
   "flags an elevated write whose destination is a variable resolving under /etc"
 fixture_flags route-install-hop.sh \
   "flags a scratch file that install(1) later copies into /usr"
+fixture_flags route-install-hop-braced.sh \
+  "flags a scratch-file hop whose variable uses braces at the privileged copy"
+fixture_flags route-install-hop-alias.sh \
+  "flags a scratch-file hop carried through an alias variable"
+fixture_flags route-continued-pipeline.sh \
+  "flags a privileged pipeline command continued after the heredoc terminator"
 fixture_flags route-dash-delimiter.sh "flags an indented <<- heredoc"
 fixture_flags route-append-redirect.sh "flags an append redirect into /etc"
 fixture_flags arithmetic-left-shift-before-heredoc.sh \

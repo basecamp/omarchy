@@ -207,6 +207,19 @@ run_migration
 assert_changed_nothing "migration changes nothing for a hand-written first-run file"
 pass "migration keeps a first-run file carrying a hand-written rule"
 
+# The installer wrote one account name consistently. A whitelisted command for
+# another user is an administrator extension, not part of the generated body.
+reset_machine
+printf '%s\n' "${first_run_variants[-1]}" >"$first_run"
+printf '%%wheel ALL=(ALL) NOPASSWD: /usr/bin/systemctl\n' >>"$first_run"
+before=$(cat "$first_run")
+run_migration
+
+[[ -e $first_run ]] || fail "migration keeps a generated file extended for another sudoers user"
+[[ $(cat "$first_run") == "$before" ]] ||
+  fail "migration leaves a generated file extended for another user byte for byte"
+pass "migration does not delete an administrator grant that uses a generated command"
+
 # Nothing in this file ties it to Omarchy's first run: no self-cleanup line.
 reset_machine
 cat >"$first_run" <<'EOF'
@@ -301,14 +314,16 @@ reload_at=$(grep -n '^systemctl daemon-reload$' "$CALLS" | cut -d: -f1)
   fail "migration disables before removing and reloads last" "$(cat "$CALLS")"
 pass "migration disables the unit, removes it, then reloads systemd in that order"
 
-# Homes are not all under /home.
+# Homes are not all under /home, and the account running this machine-wide
+# repair may not be the account that installed the unit.
 reset_machine
-write_plymouth_unit "$home_dir/.local/share/omarchy/bin/omarchy-plymouth-shutdown-sync"
+write_plymouth_unit "/srv/retired-installer/.local/share/omarchy/bin/omarchy-plymouth-shutdown-sync"
 run_migration
 
 [[ ! -e $plymouth_unit ]] ||
-  fail "migration removes a shutdown unit rooted in a home outside /home"
-pass "migration removes a shutdown unit rooted in a home outside /home"
+  fail "migration removes another user's shutdown unit rooted outside /home"
+[[ -e $machine_marker ]] || fail "migration marks the cross-user Plymouth repair complete"
+pass "migration removes another user's shutdown unit rooted outside /home"
 
 reset_machine
 write_plymouth_unit "/usr/bin/omarchy-plymouth-shutdown-sync"
