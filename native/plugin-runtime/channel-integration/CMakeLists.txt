@@ -218,6 +218,7 @@ if(BUILD_TESTING)
       OMARCHY_PLUGIN_SESSION_TESTING
       CHANNEL_PEER_PATH="$<TARGET_FILE:omarchy-plugin-channel-peer>"
       FAKE_BWRAP_PATH="$<TARGET_FILE:omarchy-plugin-channel-fake-bwrap>"
+      QML_WORKER_PATH="$<TARGET_FILE:omarchy-plugin-qml-worker>"
       COORDINATOR_REVISION_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../contracts/manifest/tests/fixtures/valid-minimal")
     target_link_libraries(omarchy-plugin-product-session-test PRIVATE
       omarchy-plugin-channel-integration omarchy-plugin-host-session
@@ -225,10 +226,20 @@ if(BUILD_TESTING)
     target_link_libraries(omarchy-plugin-product-session-test PRIVATE
       omarchy-plugin-activation-snapshot)
     add_dependencies(omarchy-plugin-product-session-test
-      omarchy-plugin-channel-peer omarchy-plugin-channel-fake-bwrap)
+      omarchy-plugin-channel-peer omarchy-plugin-channel-fake-bwrap
+      omarchy-plugin-qml-worker)
     add_test(NAME plugin-product-session
       COMMAND omarchy-plugin-product-session-test)
     set_tests_properties(plugin-product-session PROPERTIES
       TIMEOUT 30 LABELS "unit;security;session;surface")
+    add_test(NAME plugin-product-session-real-worker-invalid-qml
+      COMMAND omarchy-plugin-product-session-test
+              --real-worker-invalid-qml-only)
+    set_tests_properties(plugin-product-session-real-worker-invalid-qml
+      PROPERTIES
+        TIMEOUT 15
+        SKIP_RETURN_CODE 77
+        LABELS "integration;security;session;qml;sandbox"
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
   endif()
 endif()

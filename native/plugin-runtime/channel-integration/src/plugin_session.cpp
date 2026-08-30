@@ -2,6 +2,7 @@
 
 #include "omarchy/plugin/wire/surface_name.hpp"
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
+#include "permission_projection.hpp"
 
 #include <sys/random.h>
 
@@ -143,6 +144,13 @@ std::unique_ptr<PreparedPluginSession> PluginSession::prepare(
   }
 
   try {
+    const auto projected = session::project_permission_snapshot(
+        snapshot.manifest, snapshot.grants);
+    if (!projected)
+      return {};
+    auto permission_snapshot = wire::permission_snapshot::encode(*projected);
+    if (permission_snapshot.empty())
+      return {};
     auto gesture_clock = std::make_shared<SteadyGestureClock>();
     auto gesture_eligibility =
         std::make_shared<runtime::GestureEligibilityLatch>(gesture_clock);
@@ -168,6 +176,7 @@ std::unique_ptr<PreparedPluginSession> PluginSession::prepare(
             session::OwnedFd(snapshot.revision_directory.release()),
         .private_state_directory =
             session::OwnedFd(snapshot.state_directory.release()),
+        .permission_snapshot = std::move(permission_snapshot),
     };
     auto channel = std::make_unique<AuthenticatedSessionChannel>(
         std::move(supervisor), std::move(launch), std::move(authority),

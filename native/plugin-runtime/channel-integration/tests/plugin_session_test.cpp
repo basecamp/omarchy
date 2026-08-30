@@ -101,11 +101,17 @@ public:
     ++attachments;
     return {.attached = true, .cleanup_required = true};
   }
-  void kill(std::string_view, launcher::Deadline) noexcept override {}
-  void remove(std::string_view, launcher::Deadline) noexcept override {}
+  void kill(std::string_view, launcher::Deadline) noexcept override {
+    ++kills;
+  }
+  void remove(std::string_view, launcher::Deadline) noexcept override {
+    ++removals;
+  }
 
   std::string name;
   std::atomic<int> attachments{0};
+  std::atomic<int> kills{0};
+  std::atomic<int> removals{0};
 };
 
 struct EffectBarrier final {
@@ -258,7 +264,7 @@ public:
 
 class ActivationFixture final {
 public:
-  ActivationFixture() {
+  explicit ActivationFixture(std::string_view worker_mode = "session-happy") {
     std::string pattern = "/tmp/omarchy-product-session-XXXXXX";
     const char *created = ::mkdtemp(pattern.data());
     require(created != nullptr, "cannot create product session fixture");
@@ -267,7 +273,7 @@ public:
     state_ = root_ / "state";
     std::filesystem::create_directories(revision_);
     std::filesystem::create_directories(state_);
-    std::ofstream(revision_ / "d1-mode") << "session-happy\n";
+    std::ofstream(revision_ / "d1-mode") << worker_mode << '\n';
     require(::chmod((revision_ / "d1-mode").c_str(), 0444) == 0 &&
                 ::chmod(revision_.c_str(), 0555) == 0,
             "cannot make product revision immutable");
@@ -292,6 +298,92 @@ public:
         ::open(state_.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     require(record >= 0 && revision >= 0 && state >= 0,
             "cannot open exact product activation descriptors");
+    return {
+        .record = {.plugin_id =
+                       std::string(snapshot_grants.binding.plugin.view()),
+                   .revision_directory = "revision",
+                   .revision_sha256 =
+                       std::string(snapshot_grants.binding.revision.view()),
+                   .state_directory = "state"},
+        .manifest = std::move(verified_manifest),
+        .grants = snapshot_grants,
+        .activation_record = host::OwnedDescriptor(record),
+        .revision_directory = host::OwnedDescriptor(revision),
+        .state_directory = host::OwnedDescriptor(state),
+        .live = live_,
+    };
+  }
+
+  const std::filesystem::path &state_directory() const noexcept {
+    return state_;
+  }
+
+  const std::shared_ptr<host::LiveGenerationState> &live() const noexcept {
+    return live_;
+  }
+
+private:
+  std::filesystem::path root_;
+  std::filesystem::path revision_;
+  std::filesystem::path state_;
+  std::shared_ptr<host::LiveGenerationState> live_ =
+      std::make_shared<host::LiveGenerationState>(binding());
+};
+
+class InvalidQmlWorkerFixture final {
+public:
+  InvalidQmlWorkerFixture() {
+    std::string pattern = "/tmp/omarchy-invalid-qml-worker-XXXXXX";
+    const char *created = ::mkdtemp(pattern.data());
+    require(created != nullptr, "cannot create invalid-QML fixture");
+    root_ = created;
+    revision_ = root_ / "revision";
+    state_ = root_ / "state";
+    std::filesystem::create_directories(revision_);
+    std::filesystem::create_directories(state_);
+    std::ofstream(revision_ / "manifest.json")
+        << R"({
+  "schemaVersion": 2,
+  "id": "fixture.product-session",
+  "name": "Invalid QML startup fixture",
+  "version": "1.0.0",
+  "runtime": {"apiVersion": 1, "qml": "Broken.qml"},
+  "surfaces": {
+    "bar": {"role": "bar-embedded", "defaultSection": "right"}
+  },
+  "permissions": {"required": [], "optional": []}
+})";
+    std::ofstream(revision_ / "Broken.qml")
+        << "import QtQuick\nItem { this is not valid QML }\n";
+    for (const auto &entry :
+         std::filesystem::directory_iterator(revision_))
+      require(::chmod(entry.path().c_str(), 0444) == 0,
+              "cannot make invalid-QML fixture files immutable");
+    require(::chmod(revision_.c_str(), 0555) == 0,
+            "cannot make invalid-QML revision immutable");
+  }
+
+  ~InvalidQmlWorkerFixture() {
+    static_cast<void>(::chmod(revision_.c_str(), 0755));
+    std::error_code ignored;
+    std::filesystem::remove_all(root_, ignored);
+  }
+
+  host::ActivationSnapshot snapshot() const {
+    auto snapshot_grants = grants();
+    manifest::ManifestV2 verified_manifest;
+    verified_manifest.id = std::string(snapshot_grants.binding.plugin.view());
+    verified_manifest.runtime.api_version = 1;
+    verified_manifest.runtime.qml = "Broken.qml";
+    verified_manifest.surface_names = {"bar"};
+    const int record =
+        ::open((revision_ / "manifest.json").c_str(), O_RDONLY | O_CLOEXEC);
+    const int revision =
+        ::open(revision_.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    const int state =
+        ::open(state_.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    require(record >= 0 && revision >= 0 && state >= 0,
+            "cannot open invalid-QML activation descriptors");
     return {
         .record = {.plugin_id =
                        std::string(snapshot_grants.binding.plugin.view()),
@@ -700,10 +792,12 @@ struct Endpoint final : host::SurfaceEndpoint {
 
 struct Events final : channel::PluginSessionEvents {
   host::SessionState last_state = host::SessionState::idle;
+  bool saw_running = false;
   std::vector<host::RouteResult> rejected;
   std::size_t controls = 0;
   void state_changed(host::SessionState state, host::SessionError) override {
     last_state = state;
+    saw_running = saw_running || state == host::SessionState::running;
   }
   void control_received(const host::OwnedMessage &) override { ++controls; }
   void render_rejected(host::RouteResult result) override {
@@ -1248,6 +1342,168 @@ void prepared_commit_retains_activation_and_reuses_one_launch() {
         "owned broker/provider runtime outlived session teardown");
 }
 
+void startup_ack_failures_never_publish_product_session() {
+  using namespace std::chrono_literals;
+  for (const std::string_view mode : {
+           "session-startup-wrong-generation",
+           "session-startup-wrong-type",
+           "session-startup-wrong-correlation",
+           "session-startup-payload",
+           "session-startup-descriptor",
+           "session-startup-peer-loss",
+           "session-startup-missing",
+       }) {
+    ActivationFixture fixture(mode);
+    RuntimeFactory runtime_factory;
+    auto scope = std::make_shared<Scope>();
+    channel::PluginSessionCreateError create_error{};
+    host::SessionLimits limits;
+    limits.startup_timeout = mode == "session-startup-missing" ? 100ms : 2s;
+    auto prepared = channel::PluginSessionTestAccess::prepare_from_activation(
+        launcher::test_support::make_supervisor(FAKE_BWRAP_PATH,
+                                                CHANNEL_PEER_PATH, scope),
+        fixture.snapshot(), runtime_factory, create_error, limits);
+    require(prepared &&
+                create_error == channel::PluginSessionCreateError::none,
+            "startup rejection fixture did not prepare");
+    Events events;
+    auto product = channel::PluginSessionTestAccess::commit(
+        std::move(prepared), create_error, &events);
+    require(product &&
+                create_error == channel::PluginSessionCreateError::none,
+            "startup rejection fixture did not commit");
+    product->start();
+    await([&] { return product->state() == host::SessionState::failed; },
+          "invalid startup acknowledgement published a product session");
+    await([&] { return events.last_state == host::SessionState::failed; },
+          "startup failure did not withdraw observer publication");
+    const auto expected_error =
+        mode == "session-startup-missing"
+            ? host::SessionError::startup_deadline_expired
+            : host::SessionError::channel_failed;
+    require(product->error() == expected_error,
+            std::string(mode) + " reported the wrong startup failure");
+    Endpoint endpoint;
+    const std::array<std::uint64_t, 1> correlations{1};
+    require(product->attach("bar", correlations, endpoint).status ==
+                channel::SurfaceAttachStatus::session_not_running,
+            std::string(mode) + " retained a surface publication path");
+    require(events.controls == 0,
+            std::string(mode) + " published rejected control traffic");
+    require(scope->attachments == 1,
+            std::string(mode) + " sandbox launch count was " +
+                std::to_string(scope->attachments.load()) + " with error " +
+                std::to_string(static_cast<unsigned>(product->error())));
+    product.reset();
+    await([&] { return *runtime_factory.destructions == 1; },
+          "failed startup retained its runtime authority");
+    await([&] { return scope->removals.load() == 1; },
+          "failed startup did not remove its resource scope");
+    require(scope->kills <= 1 && scope->removals == 1,
+            std::string(mode) + " cleanup counts were kill=" +
+                std::to_string(scope->kills.load()) + " remove=" +
+                std::to_string(scope->removals.load()));
+  }
+}
+
+void authority_loss_between_snapshot_and_ack_never_publishes() {
+  ActivationFixture fixture("session-startup-authority-loss");
+  RuntimeFactory runtime_factory;
+  auto scope = std::make_shared<Scope>();
+  channel::PluginSessionCreateError create_error{};
+  host::SessionLimits limits;
+  limits.startup_timeout = std::chrono::milliseconds(250);
+  auto prepared = channel::PluginSessionTestAccess::prepare_from_activation(
+      launcher::test_support::make_supervisor(FAKE_BWRAP_PATH,
+                                              CHANNEL_PEER_PATH, scope),
+      fixture.snapshot(), runtime_factory, create_error, limits);
+  require(prepared &&
+              create_error == channel::PluginSessionCreateError::none,
+          "authority-loss startup fixture did not prepare");
+  Events events;
+  auto product = channel::PluginSessionTestAccess::commit(
+      std::move(prepared), create_error, &events);
+  require(product &&
+              create_error == channel::PluginSessionCreateError::none,
+          "authority-loss startup fixture did not commit");
+  product->start();
+  await(
+      [&] {
+        return std::filesystem::exists(
+            fixture.state_directory() / "startup-snapshot-received");
+      },
+      "worker did not receive the projected snapshot before authority loss");
+  require(fixture.live()->revoke_and_drain() ==
+              host::LiveGenerationRevokeResult::drained,
+          "startup generation authority did not revoke");
+  std::ofstream(fixture.state_directory() / "release-startup-ack") << '\n';
+  await([&] { return product->state() == host::SessionState::failed; },
+        "post-revocation startup acknowledgement did not fail closed");
+  Endpoint endpoint;
+  const std::array<std::uint64_t, 1> correlations{1};
+  require(product->error() == host::SessionError::channel_failed &&
+              !events.saw_running && events.controls == 0 &&
+              product->attach("bar", correlations, endpoint).status ==
+                  channel::SurfaceAttachStatus::session_not_running &&
+              scope->attachments == 1,
+          "authority loss published running, control, or surface authority");
+  product.reset();
+  await([&] {
+    return *runtime_factory.destructions == 1 && scope->removals == 1;
+  }, "authority-loss startup did not clean up exactly once");
+  require(scope->kills <= 1 && scope->removals == 1,
+          "authority-loss startup repeated resource cleanup");
+}
+
+bool invalid_qml_worker_never_acknowledges_or_publishes() {
+  if (!std::filesystem::exists("/usr/bin/bwrap"))
+    return false;
+  InvalidQmlWorkerFixture fixture;
+  RuntimeFactory runtime_factory;
+  auto scope = std::make_shared<Scope>();
+  channel::PluginSessionCreateError create_error{};
+  host::SessionLimits limits;
+  limits.startup_timeout = std::chrono::seconds(3);
+  auto prepared = channel::PluginSessionTestAccess::prepare_from_activation(
+      launcher::test_support::make_supervisor("/usr/bin/bwrap",
+                                              QML_WORKER_PATH, scope),
+      fixture.snapshot(), runtime_factory, create_error, limits);
+  require(prepared &&
+              create_error == channel::PluginSessionCreateError::none,
+          "invalid-QML worker fixture did not prepare");
+  Events events;
+  auto product = channel::PluginSessionTestAccess::commit(
+      std::move(prepared), create_error, &events);
+  require(product &&
+              create_error == channel::PluginSessionCreateError::none,
+          "invalid-QML worker fixture did not commit");
+  product->start();
+  await([&] { return product->state() == host::SessionState::failed; },
+        "invalid QML reached a running product session");
+  if (scope->attachments == 0)
+    return false;
+  Endpoint endpoint;
+  const std::array<std::uint64_t, 1> correlations{1};
+  require(product->error() == host::SessionError::channel_failed &&
+              !events.saw_running && events.controls == 0 &&
+              product->attach("bar", correlations, endpoint).status ==
+                  channel::SurfaceAttachStatus::session_not_running &&
+              scope->attachments == 1,
+          "invalid QML published running, control, or surface authority");
+  product.reset();
+  await([&] {
+    return *runtime_factory.destructions == 1 && scope->removals == 1;
+  }, "invalid-QML worker startup did not clean up exactly once");
+  // The asynchronous reaper may observe the worker's fatal exit immediately
+  // or issue its one bounded fallback kill before pidfd readiness arrives.
+  // Scope removal is the exact-once cleanup authority in both schedules.
+  require(scope->kills <= 1 && scope->removals == 1,
+          "invalid-QML worker cleanup counts were kill=" +
+              std::to_string(scope->kills.load()) + " remove=" +
+              std::to_string(scope->removals.load()));
+  return true;
+}
+
 void prepared_session_is_thread_agnostic_before_commit() {
   ActivationFixture fixture;
   RuntimeFactory runtime_factory;
@@ -1318,6 +1574,29 @@ void preparation_rejects_invalid_grant_snapshots() {
       policy_mismatch.grants.binding);
   rejected(std::move(policy_mismatch),
            "policy request fingerprint mismatch reached runtime creation");
+
+  auto manifest_projection_mismatch = fixture.snapshot();
+  manifest_projection_mismatch.grants.requests.push_back({
+      .capability = {.id = permissions::CapabilityId("audio.play-cue"),
+                     .version = 1},
+      .scope = token_scope("timer"),
+      .required = false,
+  });
+  manifest_projection_mismatch.grants.grants.push_back({
+      .capability = {.id = permissions::CapabilityId("audio.play-cue"),
+                     .version = 1},
+      .scope = token_scope("timer"),
+      .state = permissions::GrantState::granted,
+      .epoch = 1,
+  });
+  manifest_projection_mismatch.grants.binding.policy_fingerprint =
+      permissions::Digest(permissions::policy_request_fingerprint(
+          manifest_projection_mismatch.grants.requests));
+  manifest_projection_mismatch.live =
+      std::make_shared<host::LiveGenerationState>(
+          manifest_projection_mismatch.grants.binding);
+  rejected(std::move(manifest_projection_mismatch),
+           "unprojectable manifest/grant authority reached runtime creation");
 }
 
 
@@ -1727,12 +2006,28 @@ int main(int argc, char **argv) {
       std::cout << "prepared session test passed\n";
       return 0;
     }
+    if (argc == 2 && std::string_view(argv[1]) == "--startup-fence-only") {
+      preparation_rejects_invalid_grant_snapshots();
+      startup_ack_failures_never_publish_product_session();
+      authority_loss_between_snapshot_and_ack_never_publishes();
+      std::cout << "startup fence tests passed\n";
+      return 0;
+    }
+    if (argc == 2 &&
+        std::string_view(argv[1]) == "--real-worker-invalid-qml-only") {
+      if (!invalid_qml_worker_never_acknowledges_or_publishes())
+        return 77;
+      std::cout << "real worker invalid-QML startup test passed\n";
+      return 0;
+    }
     product_session_routes_two_surfaces_over_one_launch();
     effect_time_revocation_fences_an_authenticated_request();
     shared_gesture_authority_has_one_concurrent_winner();
     product_session_intercepts_gesture_intents_before_render_routing();
     preparation_rejects_invalid_grant_snapshots();
     prepared_commit_retains_activation_and_reuses_one_launch();
+    startup_ack_failures_never_publish_product_session();
+    authority_loss_between_snapshot_and_ack_never_publishes();
     prepared_session_is_thread_agnostic_before_commit();
     composed_root_is_the_composed_authority_path();
     composed_root_rejects_unusable_authority_and_providers();

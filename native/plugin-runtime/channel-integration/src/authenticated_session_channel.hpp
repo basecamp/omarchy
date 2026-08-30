@@ -4,8 +4,10 @@
 #include "authenticated_channel.hpp"
 #include "permission_contract.hpp"
 
+#include <cstddef>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace omarchy::plugin_runtime::host_session {
 class StructuredBroker;
@@ -24,6 +26,10 @@ struct AuthenticatedSessionLaunch final {
   permissions::ActivationBinding binding;
   session::OwnedFd revision_directory;
   session::OwnedFd private_state_directory;
+  // Canonical manifest-indexed permission authority for this generation.
+  // The channel sends it exactly once during authenticated startup and does
+  // not become ready until the worker acknowledges loading its QML with it.
+  std::vector<std::byte> permission_snapshot;
 };
 
 // Owns the broker and every object referenced by it (audit sink, trusted
@@ -53,7 +59,8 @@ public:
       std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility);
 #ifdef OMARCHY_AUTHENTICATED_SESSION_CHANNEL_TESTING
   explicit AuthenticatedSessionChannel(
-      std::unique_ptr<AuthenticatedSessionBackend> backend);
+      std::unique_ptr<AuthenticatedSessionBackend> backend,
+      std::vector<std::byte> permission_snapshot);
 #endif
   ~AuthenticatedSessionChannel() override;
   AuthenticatedSessionChannel(const AuthenticatedSessionChannel &) = delete;

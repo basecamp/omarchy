@@ -47,6 +47,7 @@ int main(int argc, char **argv) {
   int status_fd = -1;
   int barrier_fd = -1;
   int revision_fd = -1;
+  int state_fd = -1;
   std::string worker;
   for (int index = 1; index < argc; ++index) {
     const std::string_view argument(argv[index]);
@@ -62,9 +63,14 @@ int main(int argc, char **argv) {
                std::string_view(argv[index + 2]) == "/plugin") {
       revision_fd = integer(argv[index + 1]);
       index += 2;
+    } else if (argument == "--bind-fd" && index + 2 < argc &&
+               std::string_view(argv[index + 2]) == "/state") {
+      state_fd = integer(argv[index + 1]);
+      index += 2;
     }
   }
-  if (status_fd < 0 || barrier_fd < 0 || revision_fd < 0 || worker.empty()) {
+  if (status_fd < 0 || barrier_fd < 0 || revision_fd < 0 || state_fd < 0 ||
+      worker.empty()) {
     fail();
   }
   const std::string mode = read_mode(revision_fd);
@@ -79,14 +85,18 @@ int main(int argc, char **argv) {
   do {
     count = read(barrier_fd, &byte, sizeof(byte));
   } while (count < 0 && errno == EINTR);
-  if (count != 0 || syscall(SYS_close_range, 6U, ~0U, 0U) < 0) {
+  if ((state_fd == 6 ? fcntl(state_fd, F_SETFD, 0)
+                     : dup3(state_fd, 6, 0)) < 0 ||
+      count != 0 || syscall(SYS_close_range, 7U, ~0U, 0U) < 0) {
     fail();
   }
   std::string mode_environment = "D1_MODE=" + mode;
   std::array<char *, 2> arguments{worker.data(), nullptr};
-  std::array<char *, 4> environment{const_cast<char *>("PATH=/usr/bin"),
+  std::array<char *, 5> environment{const_cast<char *>("PATH=/usr/bin"),
                                     const_cast<char *>("PWD=/"),
-                                    mode_environment.data(), nullptr};
+                                    mode_environment.data(),
+                                    const_cast<char *>("D1_STATE_FD=6"),
+                                    nullptr};
   execve(worker.c_str(), arguments.data(), environment.data());
   fail();
 }

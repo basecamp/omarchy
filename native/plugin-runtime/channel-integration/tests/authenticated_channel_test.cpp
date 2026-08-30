@@ -634,8 +634,7 @@ void fake_suite() {
                 second.opened.channel->negotiate(deadline_after(2s)),
             "prepared-send origin fixtures did not negotiate");
     auto prepared = first.opened.channel->prepare_send(
-        wire::EndpointRole::control, wire::kPermissionSnapshotMessage, 0,
-        std::array{std::byte{1}});
+        wire::EndpointRole::broker, broker::kBrokerResultMessage, 1, {});
     require(prepared.has_value(), "origin-bound send was not prepared");
     channel::PreparedSend moved(std::move(*prepared));
     require(first.opened.channel->try_send(*prepared, deadline_after(2s)) ==
@@ -654,8 +653,8 @@ void fake_suite() {
             "stale prepared-send fixture did not negotiate");
     stale.authority->generation = 48;
     require(!stale.opened.channel->prepare_send(
-                wire::EndpointRole::control, wire::kPermissionSnapshotMessage,
-                0, std::array{std::byte{1}}) &&
+                wire::EndpointRole::broker, broker::kBrokerResultMessage, 1,
+                {}) &&
                 stale.opened.channel->failed(),
             "revoked binding retained packet preparation authority");
   }
@@ -664,8 +663,7 @@ void fake_suite() {
     require(stale.opened.channel->negotiate(deadline_after(2s)),
             "prepared-send revocation fixture did not negotiate");
     auto prepared = stale.opened.channel->prepare_send(
-        wire::EndpointRole::control, wire::kPermissionSnapshotMessage, 0,
-        std::array{std::byte{1}});
+        wire::EndpointRole::broker, broker::kBrokerResultMessage, 1, {});
     stale.authority->generation = 48;
     require(
         prepared &&
@@ -818,14 +816,13 @@ void fake_suite() {
                     channel::AuthenticatedReceiveStatus::would_block &&
                 !timed_receive.message && !saturated.opened.channel->failed(),
             "healthy typed receive timeout failed the channel");
-    std::vector<std::byte> payload(
-        wire::payload_cap(wire::EndpointRole::control));
+    std::vector<std::byte> payload(65536);
     std::optional<channel::PreparedSend> blocked;
     for (unsigned attempt = 0; attempt < 10'000 && !blocked; ++attempt) {
       auto prepared = saturated.opened.channel->prepare_send(
-          wire::EndpointRole::control, wire::kPermissionSnapshotMessage, 0,
-          payload);
-      require(prepared.has_value(), "control datagram preparation failed");
+          wire::EndpointRole::broker, broker::kBrokerResultMessage,
+          attempt + 1, payload);
+      require(prepared.has_value(), "broker datagram preparation failed");
       const auto status =
           saturated.opened.channel->try_send(*prepared, deadline_after(2s));
       if (status == channel::ChannelSendStatus::would_block)
@@ -839,7 +836,7 @@ void fake_suite() {
         saturated.opened.channel->try_send(*blocked, deadline_after(2s)) ==
                 channel::ChannelSendStatus::would_block &&
             saturated.opened.channel->arm_readiness(
-                launcher::EndpointMask::none, launcher::EndpointMask::control),
+                launcher::EndpointMask::none, launcher::EndpointMask::broker),
         "would-block retry lost its pending datagram or lane interest");
     const auto invalid_receive =
         saturated.opened.channel->receive_authenticated(

@@ -1,4 +1,5 @@
 #include "worker_channel.hpp"
+#include "startup_state.hpp"
 
 #include "omarchy/plugin/wire/common.hpp"
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
@@ -31,6 +32,26 @@ namespace wire = omarchy::plugin::wire;
 void require(bool condition, const char *message) {
   if (!condition)
     throw std::runtime_error(message);
+}
+
+void startup_state_is_one_way() {
+  worker::StartupState loaded;
+  require(!loaded.loading() && !loaded.loaded() && !loaded.terminal(),
+          "startup state did not begin awaiting its snapshot");
+  require(loaded.begin_loading() && loaded.loading() &&
+              !loaded.begin_loading(),
+          "duplicate snapshot entered the QML load phase");
+  require(loaded.finish_loading() && loaded.loaded() &&
+              !loaded.finish_loading() && !loaded.begin_loading(),
+          "loaded QML accepted another startup transition");
+  require(loaded.terminate() && loaded.terminal() && !loaded.terminate(),
+          "terminal startup was not idempotent");
+
+  worker::StartupState failed_load;
+  require(failed_load.begin_loading() && failed_load.terminate() &&
+              failed_load.terminal() && !failed_load.finish_loading() &&
+              !failed_load.begin_loading(),
+          "failed QML load recovered or accepted another snapshot");
 }
 
 struct Pair {
@@ -561,6 +582,7 @@ void zero_max_and_fd_cleanup() {
 
 int main() {
   try {
+    startup_state_is_one_way();
     valid_and_descriptor_paths();
     injected_descriptor_cleanup();
     role_and_credential_rejection();

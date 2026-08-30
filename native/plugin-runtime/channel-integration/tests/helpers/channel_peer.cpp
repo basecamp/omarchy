@@ -1,5 +1,6 @@
 #include "omarchy/plugin/wire/common.hpp"
 #include "omarchy/plugin/wire/control.hpp"
+#include "omarchy/plugin/wire/permission_snapshot.hpp"
 #include "omarchy/plugin/wire/state.hpp"
 #include "omarchy/plugin_runtime/broker/broker_schema.hpp"
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
@@ -240,35 +241,6 @@ std::vector<std::byte> notification_request(std::uint64_t generation,
                 payload);
 }
 
-std::vector<std::byte> storage_request(std::uint64_t generation,
-                                       std::uint64_t correlation,
-                                       wire::SessionSequence &sequence) {
-  constexpr std::string_view key = "pressure";
-  std::vector<std::byte> payload(26 + key.size());
-  const auto operation = static_cast<std::uint16_t>(
-      broker::permissions::OperationId::storage_read);
-  put16(payload, 0, operation);
-  put16(payload, 2, 16);
-  put32(payload, 4, 2 + key.size());
-  put64(payload, 8, 4096);
-  put64(payload, 16, 4096);
-  put16(payload, 24, key.size());
-  for (std::size_t index = 0; index < key.size(); ++index)
-    payload[26 + index] = static_cast<std::byte>(key[index]);
-  const auto outbound = sequence.take_outbound(wire::EndpointRole::broker);
-  if (!outbound)
-    fail();
-  return packet({.envelope_version = wire::kEnvelopeVersion,
-                 .header_size = wire::kHeaderSize,
-                 .endpoint_role = wire::EndpointRole::broker,
-                 .message_type = operation,
-                 .role_protocol_version = broker::kBrokerRoleVersion,
-                 .launch_generation = generation,
-                 .correlation_id = correlation,
-                 .lane_sequence = outbound.value},
-                payload);
-}
-
 void validate_empty_broker_reply(std::span<const std::byte> bytes,
                                  std::uint64_t generation,
                                  std::uint64_t correlation,
@@ -284,53 +256,6 @@ void validate_empty_broker_reply(std::span<const std::byte> bytes,
       decoded.packet.header.correlation_id != correlation ||
       decoded.packet.header.launch_generation != generation ||
       !decoded.packet.payload.empty())
-    fail();
-}
-
-void validate_storage_reply(std::span<const std::byte> bytes,
-                            std::uint64_t generation, std::uint64_t correlation,
-                            wire::SessionSequence &sequence) {
-  const auto decoded = wire::decode_packet(bytes, wire::EndpointRole::broker);
-  if (!decoded ||
-      sequence.accept_inbound(wire::EndpointRole::broker,
-                              decoded.packet.header.lane_sequence) !=
-          wire::FatalReason::none ||
-      decoded.packet.header.message_type != broker::kBrokerResultMessage ||
-      decoded.packet.header.role_protocol_version !=
-          broker::kBrokerRoleVersion ||
-      decoded.packet.header.correlation_id != correlation ||
-      decoded.packet.header.launch_generation != generation ||
-      decoded.packet.payload.size() != 4104 ||
-      decoded.packet.payload[0] != std::byte{1} ||
-      decoded.packet.payload[1] != std::byte{} ||
-      decoded.packet.payload[2] != std::byte{} ||
-      decoded.packet.payload[3] != std::byte{} ||
-      decoded.packet.payload[4] != std::byte{} ||
-      decoded.packet.payload[5] != std::byte{} ||
-      decoded.packet.payload[6] != std::byte{0x10} ||
-      decoded.packet.payload[7] != std::byte{} ||
-      !std::all_of(decoded.packet.payload.begin() + 8,
-                   decoded.packet.payload.end(),
-                   [](std::byte value) { return value == std::byte{0x5a}; }))
-    fail();
-}
-
-void receive_pressure_control(std::uint64_t generation,
-                              std::byte expected_payload,
-                              wire::SessionSequence &sequence) {
-  const auto bytes = receive_bytes(3);
-  const auto decoded = wire::decode_packet(bytes, wire::EndpointRole::control);
-  if (!decoded ||
-      sequence.accept_inbound(wire::EndpointRole::control,
-                              decoded.packet.header.lane_sequence) !=
-          wire::FatalReason::none ||
-      decoded.packet.header.message_type != wire::kPermissionSnapshotMessage ||
-      decoded.packet.header.role_protocol_version !=
-          version(wire::EndpointRole::control) ||
-      decoded.packet.header.launch_generation != generation ||
-      decoded.packet.header.correlation_id != 0 ||
-      decoded.packet.payload.size() != 1 ||
-      decoded.packet.payload.front() != expected_payload)
     fail();
 }
 
@@ -350,6 +275,84 @@ void send_session_signal(int descriptor, wire::EndpointRole role,
                                  .correlation_id = 0,
                                  .lane_sequence = outbound.value},
                                 payload));
+}
+
+[[noreturn]] void wait_forever();
+
+bool accept_startup_permissions(std::uint64_t generation,
+                                std::string_view current,
+                                wire::SessionSequence &sequence) {
+  const auto bytes = receive_bytes(
+      3, wire::kHeaderSize +
+             wire::permission_snapshot::kMaximumPayloadBytes);
+  const auto decoded = wire::decode_packet(bytes, wire::EndpointRole::control);
+  wire::permission_snapshot::PermissionSnapshot snapshot;
+  if (!decoded ||
+      sequence.accept_inbound(wire::EndpointRole::control,
+                              decoded.packet.header.lane_sequence) !=
+          wire::FatalReason::none ||
+      decoded.packet.header.message_type != wire::kPermissionSnapshotMessage ||
+      decoded.packet.header.role_protocol_version !=
+          version(wire::EndpointRole::control) ||
+      decoded.packet.header.launch_generation != generation ||
+      decoded.packet.header.correlation_id != 0 ||
+      !wire::permission_snapshot::decode(decoded.packet.payload, snapshot))
+    fail();
+
+  if (current == "session-startup-authority-loss") {
+    const char *state = getenv("D1_STATE_FD");
+    if (state == nullptr || std::string_view(state) != "6")
+      fail();
+    const int marker = openat(6, "startup-snapshot-received",
+                              O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+    if (marker < 0 || close(marker) < 0)
+      fail();
+    for (;;) {
+      const int release = openat(6, "release-startup-ack",
+                                 O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+      if (release >= 0) {
+        if (close(release) < 0)
+          fail();
+        break;
+      }
+      if (errno != ENOENT)
+        fail();
+      usleep(1000);
+    }
+  }
+  if (current == "session-startup-missing")
+    wait_forever();
+  if (current == "session-startup-peer-loss")
+    return false;
+
+  const auto outbound = sequence.take_outbound(wire::EndpointRole::control);
+  if (!outbound)
+    fail();
+  const bool wrong_generation =
+      current == "session-startup-wrong-generation";
+  const bool wrong_type = current == "session-startup-wrong-type";
+  const bool wrong_correlation =
+      current == "session-startup-wrong-correlation";
+  const std::array<std::byte, 1> malformed_payload{std::byte{1}};
+  const auto payload = current == "session-startup-payload"
+                           ? std::span<const std::byte>(malformed_payload)
+                           : std::span<const std::byte>{};
+  const auto acknowledgement = packet(
+      {.envelope_version = wire::kEnvelopeVersion,
+       .header_size = wire::kHeaderSize,
+       .endpoint_role = wire::EndpointRole::control,
+       .message_type = wrong_type ? wire::kSurfaceSelectionAcceptedMessage
+                                  : wire::kPermissionSnapshotAcceptedMessage,
+       .role_protocol_version = version(wire::EndpointRole::control),
+       .launch_generation = wrong_generation ? generation + 1 : generation,
+       .correlation_id = wrong_correlation ? 1U : 0U,
+       .lane_sequence = outbound.value},
+      payload);
+  send_bytes(3, acknowledgement,
+             current == "session-startup-descriptor" ? 1U : 0U);
+  if (current.starts_with("session-startup-"))
+    wait_forever();
+  return true;
 }
 
 [[noreturn]] void wait_forever() {
@@ -393,76 +396,6 @@ void send_session_signal(int descriptor, wire::EndpointRole role,
     send_bytes(4, notification_request(generation, 1, sequence));
     validate_empty_broker_reply(receive_bytes(4), generation, 1, sequence);
   }
-  wait_forever();
-}
-
-std::uint64_t begin_session_pressure(std::uint64_t generation,
-                                     wire::SessionSequence &sequence) {
-  int send_bytes_limit = 4 * 1024 * 1024;
-  if (setsockopt(4, SOL_SOCKET, SO_SNDBUF, &send_bytes_limit,
-                 sizeof(send_bytes_limit)) < 0)
-    fail();
-  const int original = fcntl(4, F_GETFL);
-  if (original < 0 || fcntl(4, F_SETFL, original | O_NONBLOCK) < 0)
-    fail();
-  std::uint64_t sent = 0;
-  for (std::uint64_t correlation = 1; correlation <= 256; ++correlation) {
-    const auto request = storage_request(generation, correlation, sequence);
-    const ssize_t count = send(4, request.data(), request.size(), MSG_NOSIGNAL);
-    if (count == static_cast<ssize_t>(request.size())) {
-      sent = correlation;
-      continue;
-    }
-    if (count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
-      break;
-    fail();
-  }
-  if (sent < 8 || fcntl(4, F_SETFL, original) < 0)
-    fail();
-
-  return sent;
-}
-
-[[noreturn]] void session_pressure(std::uint64_t generation,
-                                   wire::SessionSequence &sequence) {
-  const auto sent = begin_session_pressure(generation, sequence);
-
-  receive_pressure_control(generation, std::byte{1}, sequence);
-
-  send_session_signal(3, wire::EndpointRole::control,
-                      wire::kSurfaceSelectionAcceptedMessage, generation, {},
-                      sequence);
-  const auto frame =
-      surface::encode_frame_ready({.surface = {.id = 1, .generation = 1},
-                                   .slot = 0,
-                                   .slot_sequence = 2,
-                                   .frame_sequence = sent});
-  send_session_signal(
-      5, wire::EndpointRole::render,
-      static_cast<std::uint16_t>(surface::RenderMessageType::frame_ready),
-      generation, frame, sequence);
-
-  receive_pressure_control(generation, std::byte{2}, sequence);
-
-  for (std::uint64_t correlation = 1; correlation <= sent; ++correlation)
-    validate_storage_reply(receive_bytes(4, 8192), generation, correlation,
-                           sequence);
-
-  send_session_signal(3, wire::EndpointRole::control,
-                      wire::kPermissionSnapshotAcceptedMessage, generation, {},
-                      sequence);
-  wait_forever();
-}
-
-[[noreturn]] void session_revoke_pressure(std::uint64_t generation,
-                                          wire::SessionSequence &sequence) {
-  static_cast<void>(begin_session_pressure(generation, sequence));
-  wait_forever();
-}
-
-[[noreturn]] void session_deadline(std::uint64_t generation,
-                                   wire::SessionSequence &sequence) {
-  send_bytes(4, storage_request(generation, 1, sequence));
   wait_forever();
 }
 
@@ -624,26 +557,23 @@ int main() {
     if (sigwait(&ready_loss_signal, &received_signal) != 0 ||
         received_signal != SIGUSR1)
       fail();
-    const int flags = fcntl(3, F_GETFL);
-    if (flags < 0 || fcntl(3, F_SETFL, flags | O_NONBLOCK) < 0)
+    const int flags = fcntl(4, F_GETFL);
+    if (flags < 0 || fcntl(4, F_SETFL, flags | O_NONBLOCK) < 0)
       fail();
     std::array<std::byte, 8192> drained{};
-    while (recv(3, drained.data(), drained.size(), 0) > 0) {
+    while (recv(4, drained.data(), drained.size(), 0) > 0) {
     }
     pause();
   }
+  if (current.starts_with("session-") &&
+      !accept_startup_permissions(control_generation, current, sequence))
+    return 0;
   if (current == "session-happy")
     session_happy(broker_generation, sequence);
   if (current == "session-replay")
     session_replay(broker_generation, sequence);
   if (current == "session-notification")
     session_notification(broker_generation, sequence);
-  if (current == "session-pressure")
-    session_pressure(broker_generation, sequence);
-  if (current == "session-revoke-pressure")
-    session_revoke_pressure(broker_generation, sequence);
-  if (current == "session-deadline")
-    session_deadline(broker_generation, sequence);
   if (current == "multi-lane")
     send_multi_lane(broker_generation, sequence);
   send_broker_request(broker_generation, current, sequence);

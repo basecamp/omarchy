@@ -1,6 +1,7 @@
 #include "worker_channel.hpp"
 #include "qml_broker_api.hpp"
 #include "sidecar_supervisor.hpp"
+#include "startup_state.hpp"
 #include "worker_runtime.hpp"
 #include "omarchy/plugin/wire/control.hpp"
 
@@ -138,7 +139,7 @@ private:
           &source,
       std::string_view target_surface,
       surface::SurfaceIntentAction action) override {
-    if (!runtime_loaded_ || source.surface_id == 0 ||
+    if (!startup_.loaded() || source.surface_id == 0 ||
         source.surface_generation == 0 || source.input_sequence == 0)
       return false;
     const auto target = runtime_.surface_key(target_surface);
@@ -160,11 +161,13 @@ private:
     // may both be queued for one datagram. Recheck readiness in the callback
     // so the second delivery cannot enter a blocking recvmsg after the first
     // one consumed it.
-    if (broker_.has_pending_input())
+    if (!startup_.terminal() && broker_.has_pending_input())
       receive(broker_);
   }
 
   bool fatal(std::string_view detail) {
+    if (!startup_.terminate())
+      return false;
     const std::string diagnostic = "omarchy-plugin-qml-worker: " +
                                    std::string(detail) + "\n";
     static_cast<void>(write(STDERR_FILENO, diagnostic.data(),
@@ -173,11 +176,14 @@ private:
     broker_notifier_.setEnabled(false);
     render_notifier_.setEnabled(false);
     frame_timer_.stop();
+    broker_poll_timer_.stop();
     QCoreApplication::exit(70);
     return false;
   }
 
   void receive(worker::WorkerEndpoint &endpoint) {
+    if (startup_.terminal())
+      return;
     auto packet = endpoint.receive();
     if (!packet) {
       fatal(packet.detail);
@@ -255,8 +261,8 @@ private:
   }
 
   void apply_surface_selection(worker::ReceivedPacket packet) {
-    if (surface_selection_received_ || runtime_loaded_ ||
-        runtime_load_pending_ || packet.header.correlation_id != 0 ||
+    if (surface_selection_received_ || startup_.loaded() ||
+        startup_.loading() || packet.header.correlation_id != 0 ||
         !packet.descriptors.empty() || packet.payload.empty() ||
         packet.payload.size() > wire::kMaximumSurfaceNameBytes) {
       fatal("surface selection failed runtime validation");
@@ -288,7 +294,7 @@ private:
 
   void apply_surface_binding(worker::ReceivedPacket packet) {
     wire::SurfaceBinding binding;
-    if (!runtime_loaded_ || packet.header.correlation_id != 0 ||
+    if (!startup_.loaded() || packet.header.correlation_id != 0 ||
         !packet.descriptors.empty() ||
         !wire::decode_surface_binding(packet.payload, binding) ||
         !runtime_.bind_surface(
@@ -303,7 +309,7 @@ private:
 
   void apply_surface_open(worker::ReceivedPacket packet) {
     wire::SurfaceBinding binding;
-    if (!runtime_loaded_ || packet.header.correlation_id != 0 ||
+    if (!startup_.loaded() || packet.header.correlation_id != 0 ||
         !packet.descriptors.empty() ||
         !wire::decode_surface_binding(packet.payload, binding) ||
         !runtime_.open_surface(
@@ -317,8 +323,8 @@ private:
   }
 
   void apply_permission_snapshot(worker::ReceivedPacket packet) {
-    if (!broker_api_) {
-      fatal("permission snapshot arrived before runtime readiness");
+    if (!broker_api_ || !startup_.begin_loading()) {
+      fatal("permission snapshot is invalid in the current runtime state");
       return;
     }
     if (packet.header.message_type != wire::kPermissionSnapshotMessage ||
@@ -328,8 +334,9 @@ private:
       fatal("permission snapshot failed runtime validation");
       return;
     }
-    runtime_load_pending_ = true;
-    QTimer::singleShot(0, [&] {
+    QTimer::singleShot(0, &control_notifier_, [this] {
+      if (startup_.terminal())
+        return;
       if (surface_selection_received_) {
         const auto loaded = runtime_.load_surface_entry(selected_surface_,
                                                         selected_entry_);
@@ -360,14 +367,18 @@ private:
           return;
         }
       }
-      runtime_loaded_ = true;
-      runtime_load_pending_ = false;
+      if (!startup_.finish_loading()) {
+        fatal("QML load completed outside the startup authority phase");
+        return;
+      }
       if (!control_.send(wire::kPermissionSnapshotAcceptedMessage, {}, 0))
         fatal("permission snapshot acknowledgement failed");
     });
   }
 
   void ready_runtime() {
+    if (startup_.terminal())
+      return;
     // Trusted Qt type preparation may run a nested Qt event loop. Keep all
     // authenticated endpoints quiescent until the broker API and steady-state
     // filter are fully installed; queued packets remain on their sockets.
@@ -571,7 +582,7 @@ private:
   }
 
   void publish_frame() {
-    if (!runtime_.active())
+    if (startup_.terminal() || !runtime_.active())
       return;
     const auto frame = runtime_.render();
     if (!frame) {
@@ -604,8 +615,7 @@ private:
   wire::RoleSchemaRegistryView registry_;
   std::unique_ptr<wire::SelectedEndpointState<32>> render_state_;
   std::unique_ptr<worker::QmlBrokerApi> broker_api_;
-  bool runtime_loaded_ = false;
-  bool runtime_load_pending_ = false;
+  worker::StartupState startup_;
   bool surface_selection_received_ = false;
   std::optional<worker::ReceivedPacket> pending_permission_snapshot_;
   QSocketNotifier control_notifier_;

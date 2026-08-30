@@ -17,6 +17,7 @@
 #include <deque>
 #include <iostream>
 #include <mutex>
+#include <ranges>
 #include <stdexcept>
 #include <string_view>
 #include <thread>
@@ -59,6 +60,17 @@ session::SessionToken token(std::uint64_t nonce = 17) {
 }
 
 struct BackendState final {
+  enum class StartupReply {
+    valid,
+    missing,
+    peer_closed,
+    wrong_role,
+    wrong_type,
+    wrong_correlation,
+    payload,
+    descriptor,
+  };
+
   BackendState() {
     require(::pipe2(readiness, O_CLOEXEC | O_NONBLOCK) == 0,
             "readiness pipe creation failed");
@@ -80,7 +92,10 @@ struct BackendState final {
   int readiness[2]{-1, -1};
   std::deque<channel::AuthenticatedReceiveResult> incoming;
   std::deque<session::SendStatus> send_results;
+  std::deque<session::SendStatus> startup_send_results;
   std::vector<launcher::Deadline> deadlines;
+  launcher::Deadline startup_send_deadline{};
+  launcher::Deadline startup_receive_deadline{};
   std::vector<std::thread::id> operation_threads;
   std::size_t sent_descriptor_count = 0;
   bool sent_descriptors_valid = true;
@@ -93,6 +108,9 @@ struct BackendState final {
   std::size_t prepare_count = 0;
   std::size_t send_count = 0;
   std::size_t receive_count = 0;
+  std::size_t startup_prepare_count = 0;
+  std::size_t startup_send_count = 0;
+  std::size_t startup_receive_count = 0;
   std::size_t arm_count = 0;
   std::size_t terminate_count = 0;
   int readiness_override = -2;
@@ -108,6 +126,8 @@ struct BackendState final {
   bool expire_launch = false;
   bool expire_handshake = false;
   bool expire_receive = false;
+  bool awaiting_startup_reply = false;
+  StartupReply startup_reply = StartupReply::valid;
 };
 
 class FakeBackend final : public channel::AuthenticatedSessionBackend {
@@ -144,7 +164,10 @@ public:
     if (state_->prepared)
       return false;
     state_->prepared = true;
-    ++state_->prepare_count;
+    if (type == wire::kPermissionSnapshotMessage)
+      ++state_->startup_prepare_count;
+    else
+      ++state_->prepare_count;
     state_->prepared_role = role;
     state_->prepared_type = type;
     state_->prepared_correlation = correlation;
@@ -156,20 +179,71 @@ public:
   session::SendStatus try_send(std::span<const int> descriptors,
                                launcher::Deadline deadline) override {
     std::lock_guard lock(state_->mutex);
-    state_->deadlines.push_back(deadline);
+    const bool startup =
+        state_->prepared_type == wire::kPermissionSnapshotMessage;
+    if (startup)
+      state_->startup_send_deadline = deadline;
+    else
+      state_->deadlines.push_back(deadline);
     state_->sent_descriptor_count = descriptors.size();
     state_->sent_descriptors_valid =
         std::all_of(descriptors.begin(), descriptors.end(), [](int descriptor) {
           return ::fcntl(descriptor, F_GETFD) >= 0;
         });
-    ++state_->send_count;
-    const auto result = state_->send_results.empty()
+    if (startup)
+      ++state_->startup_send_count;
+    else
+      ++state_->send_count;
+    auto &results = startup ? state_->startup_send_results
+                            : state_->send_results;
+    const auto result = results.empty()
                             ? session::SendStatus::complete
-                            : state_->send_results.front();
-    if (!state_->send_results.empty())
-      state_->send_results.pop_front();
-    if (result != session::SendStatus::would_block)
+                            : results.front();
+    if (!results.empty())
+      results.pop_front();
+    if (startup && result == session::SendStatus::would_block)
+      state_->signal();
+    if (result != session::SendStatus::would_block) {
       state_->prepared = false;
+      if (startup && result == session::SendStatus::complete) {
+        state_->awaiting_startup_reply = true;
+        if (state_->startup_reply != BackendState::StartupReply::missing) {
+          channel::AuthenticatedMessage reply;
+          reply.role = state_->startup_reply ==
+                               BackendState::StartupReply::wrong_role
+                           ? wire::EndpointRole::render
+                           : wire::EndpointRole::control;
+          reply.message_type =
+              state_->startup_reply == BackendState::StartupReply::wrong_type
+                  ? wire::kSurfaceSelectionAcceptedMessage
+                  : wire::kPermissionSnapshotAcceptedMessage;
+          reply.correlation_id =
+              state_->startup_reply ==
+                      BackendState::StartupReply::wrong_correlation
+                  ? 1
+                  : 0;
+          if (state_->startup_reply == BackendState::StartupReply::payload)
+            reply.payload.push_back(std::byte{1});
+          if (state_->startup_reply == BackendState::StartupReply::descriptor) {
+            const int descriptor = ::open("/dev/null", O_RDONLY | O_CLOEXEC);
+            if (descriptor < 0)
+              return session::SendStatus::fatal;
+            reply.descriptors.emplace_back(descriptor);
+          }
+          const auto status =
+              state_->startup_reply == BackendState::StartupReply::peer_closed
+                  ? channel::AuthenticatedReceiveStatus::peer_closed
+                  : channel::AuthenticatedReceiveStatus::message;
+          state_->incoming.push_front(
+              {.status = status,
+               .message = status ==
+                                  channel::AuthenticatedReceiveStatus::message
+                              ? std::optional<channel::AuthenticatedMessage>(
+                                    std::move(reply))
+                              : std::nullopt});
+        }
+      }
+    }
     return result;
   }
 
@@ -179,9 +253,14 @@ public:
       while (std::chrono::steady_clock::now() < deadline) {
       }
     std::unique_lock lock(state_->mutex);
-    state_->deadlines.push_back(deadline);
+    if (state_->awaiting_startup_reply) {
+      state_->startup_receive_deadline = deadline;
+      ++state_->startup_receive_count;
+    } else {
+      state_->deadlines.push_back(deadline);
+      ++state_->receive_count;
+    }
     state_->operation_threads.push_back(std::this_thread::get_id());
-    ++state_->receive_count;
     if (state_->block_receive) {
       state_->receive_entered = true;
       state_->condition.notify_all();
@@ -196,6 +275,8 @@ public:
               .message = {}};
     auto result = std::move(state_->incoming.front());
     state_->incoming.pop_front();
+    if (state_->awaiting_startup_reply)
+      state_->awaiting_startup_reply = false;
     return result;
   }
 
@@ -227,7 +308,12 @@ private:
 std::unique_ptr<session::SessionChannel>
 adapter(const std::shared_ptr<BackendState> &state) {
   return std::make_unique<channel::AuthenticatedSessionChannel>(
-      std::make_unique<FakeBackend>(state));
+      std::make_unique<FakeBackend>(state),
+      std::vector<std::byte>{std::byte{0x5a}});
+}
+
+std::vector<std::byte> startup_payload() {
+  return {std::byte{0x5a}};
 }
 
 session::OwnedMessage outbound(session::SessionToken identity,
@@ -249,12 +335,90 @@ void start_direct(channel::AuthenticatedSessionChannel &adapter,
           "direct adapter handshake failed");
 }
 
+void test_startup_snapshot_is_exact_and_uses_one_deadline() {
+  auto state = std::make_shared<BackendState>();
+  state->startup_send_results = {session::SendStatus::would_block,
+                                 session::SendStatus::complete};
+  const std::vector<std::byte> snapshot{std::byte{0x11}, std::byte{0x22},
+                                       std::byte{0x33}};
+  channel::AuthenticatedSessionChannel value(
+      std::make_unique<FakeBackend>(state), snapshot);
+  const auto deadline = std::chrono::steady_clock::now() + 5s;
+  start_direct(value, deadline);
+  std::lock_guard lock(state->mutex);
+  require(state->launch_deadline == deadline &&
+              state->handshake_deadline == deadline &&
+              state->startup_send_deadline == deadline &&
+              state->startup_receive_deadline == deadline &&
+              state->startup_prepare_count == 1 &&
+              state->startup_send_count == 2 &&
+              state->startup_receive_count == 1 &&
+              state->prepared_role == wire::EndpointRole::control &&
+              state->prepared_type == wire::kPermissionSnapshotMessage &&
+              state->prepared_correlation == 0 &&
+              state->prepared_descriptor_count == 0 &&
+              state->prepared_payload == snapshot,
+          "startup changed the projection bytes, deadline, or exact-once "
+          "exchange");
+}
+
+void test_invalid_or_missing_startup_ack_never_becomes_ready() {
+  using Reply = BackendState::StartupReply;
+  for (const auto reply : {Reply::peer_closed, Reply::wrong_role,
+                           Reply::wrong_type, Reply::wrong_correlation,
+                           Reply::payload, Reply::descriptor, Reply::missing}) {
+    auto state = std::make_shared<BackendState>();
+    state->startup_reply = reply;
+    channel::AuthenticatedSessionChannel value(
+        std::make_unique<FakeBackend>(state), startup_payload());
+    const auto deadline = std::chrono::steady_clock::now() +
+                          (reply == Reply::missing ? 3ms : 2s);
+    require(value.launch(token(), deadline) == session::ChannelError::none &&
+                value.handshake(deadline) ==
+                    session::ChannelError::protocol_failed,
+            "invalid startup acknowledgement became ready");
+    auto message = outbound(token(), 1);
+    message.lane = session::ChannelLane::control;
+    message.message_type = wire::kSurfaceSelectionMessage;
+    message.correlation_id = 0;
+    message.payload = {std::byte{'a'}};
+    require(value.send(message, std::chrono::steady_clock::now() + 1s) ==
+                session::SendStatus::fatal,
+            "failed startup retained send authority");
+    std::lock_guard lock(state->mutex);
+    require(state->startup_prepare_count == 1 &&
+                state->startup_send_count == 1 &&
+                state->startup_receive_count >= 1 &&
+                state->prepare_count == 0 && state->send_count == 0 &&
+                state->terminate_count == 1,
+            "failed startup published or tore down more than once");
+  }
+}
+
+void test_startup_types_are_one_shot() {
+  auto state = std::make_shared<BackendState>();
+  channel::AuthenticatedSessionChannel value(
+      std::make_unique<FakeBackend>(state), startup_payload());
+  const auto deadline = std::chrono::steady_clock::now() + 2s;
+  start_direct(value, deadline);
+  auto duplicate = outbound(token(), 1);
+  duplicate.lane = session::ChannelLane::control;
+  duplicate.message_type = wire::kPermissionSnapshotMessage;
+  duplicate.correlation_id = 0;
+  require(value.send(duplicate, deadline) == session::SendStatus::fatal,
+          "second host permission snapshot reached the transport");
+  std::lock_guard lock(state->mutex);
+  require(state->startup_prepare_count == 1 && state->prepare_count == 0 &&
+              state->terminate_count == 1,
+          "second host snapshot made transport progress");
+}
+
 void test_deadline_and_exact_would_block_retry() {
   auto state = std::make_shared<BackendState>();
   state->send_results = {session::SendStatus::would_block,
                          session::SendStatus::complete};
   channel::AuthenticatedSessionChannel value(
-      std::make_unique<FakeBackend>(state));
+      std::make_unique<FakeBackend>(state), startup_payload());
   const auto deadline = std::chrono::steady_clock::now() + 5s;
   start_direct(value, deadline);
   int descriptors[2]{};
@@ -291,7 +455,7 @@ void test_host_broker_send_is_rejected() {
   state->send_results = {session::SendStatus::would_block,
                          session::SendStatus::complete};
   channel::AuthenticatedSessionChannel value(
-      std::make_unique<FakeBackend>(state));
+      std::make_unique<FakeBackend>(state), startup_payload());
   const auto deadline = std::chrono::steady_clock::now() + 5s;
   start_direct(value, deadline);
   auto message = outbound(token(), 1);
@@ -314,7 +478,7 @@ void test_backend_broker_message_cannot_reach_session() {
       {.status = channel::AuthenticatedReceiveStatus::message,
        .message = std::move(broker_message)});
   channel::AuthenticatedSessionChannel value(
-      std::make_unique<FakeBackend>(state));
+      std::make_unique<FakeBackend>(state), startup_payload());
   const auto deadline = std::chrono::steady_clock::now() + 5s;
   start_direct(value, deadline);
   const auto received = value.receive(deadline);
@@ -361,6 +525,40 @@ channel::AuthenticatedReceiveResult incoming(wire::EndpointRole role,
   message.payload = {std::byte{0x01}};
   return {.status = channel::AuthenticatedReceiveStatus::message,
           .message = std::move(message)};
+}
+
+void test_duplicate_startup_ack_withdraws_running_session() {
+  auto state = std::make_shared<BackendState>();
+  Observer observer;
+  auto clock = std::make_shared<session::SteadySessionClock>();
+  session::PluginSessionIo io(token(), adapter(state), clock, &observer);
+  io.start();
+  await([&] { return io.state() == session::SessionState::running; },
+        "duplicate-ack fixture did not start");
+  channel::AuthenticatedMessage duplicate;
+  duplicate.role = wire::EndpointRole::control;
+  duplicate.message_type = wire::kPermissionSnapshotAcceptedMessage;
+  duplicate.correlation_id = 0;
+  {
+    std::lock_guard lock(state->mutex);
+    state->incoming.push_back(
+        {.status = channel::AuthenticatedReceiveStatus::message,
+         .message = std::move(duplicate)});
+  }
+  state->signal();
+  await([&] { return io.state() == session::SessionState::failed; },
+        "duplicate worker acknowledgement remained published");
+  await([&] {
+    return std::ranges::find(observer.states, session::SessionState::failed) !=
+           observer.states.end();
+  }, "duplicate acknowledgement failure was not delivered");
+  std::lock_guard lock(state->mutex);
+  require(io.error() == session::SessionError::channel_failed &&
+              state->terminate_count == 1 &&
+              std::ranges::find(observer.states,
+                                session::SessionState::failed) !=
+                  observer.states.end(),
+          "duplicate acknowledgement did not withdraw the session");
 }
 
 void test_live_readiness_stamping_and_revoke_fence() {
@@ -418,7 +616,7 @@ void test_invalid_lane_and_stale_token_fail_closed() {
   auto state = std::make_shared<BackendState>();
   {
     channel::AuthenticatedSessionChannel value(
-        std::make_unique<FakeBackend>(state));
+        std::make_unique<FakeBackend>(state), startup_payload());
     const auto deadline = std::chrono::steady_clock::now() + 5s;
     start_direct(value, deadline);
     auto message = outbound(token(), 1);
@@ -437,7 +635,7 @@ void test_invalid_lane_and_stale_token_fail_closed() {
 void test_seventeen_transport_descriptors_fail_before_effect() {
   auto state = std::make_shared<BackendState>();
   channel::AuthenticatedSessionChannel value(
-      std::make_unique<FakeBackend>(state));
+      std::make_unique<FakeBackend>(state), startup_payload());
   const auto deadline = std::chrono::steady_clock::now() + 5s;
   start_direct(value, deadline);
   auto message = outbound(token(), 1);
@@ -458,7 +656,7 @@ void test_seventeen_transport_descriptors_fail_before_effect() {
 
   auto inbound_state = std::make_shared<BackendState>();
   channel::AuthenticatedSessionChannel inbound_value(
-      std::make_unique<FakeBackend>(inbound_state));
+      std::make_unique<FakeBackend>(inbound_state), startup_payload());
   start_direct(inbound_value, deadline);
   auto inbound_message = incoming(wire::EndpointRole::render, 0x2020, 0);
   std::vector<int> transferred;
@@ -488,7 +686,7 @@ void test_each_token_field_is_bound_before_effect() {
   for (int field = 0; field < 4; ++field) {
     auto state = std::make_shared<BackendState>();
     channel::AuthenticatedSessionChannel value(
-        std::make_unique<FakeBackend>(state));
+        std::make_unique<FakeBackend>(state), startup_payload());
     const auto deadline = std::chrono::steady_clock::now() + 5s;
     start_direct(value, deadline);
     auto identity = token();
@@ -517,7 +715,7 @@ void test_changed_would_block_retry_is_rejected_without_fd_ownership() {
     auto state = std::make_shared<BackendState>();
     state->send_results = {session::SendStatus::would_block};
     channel::AuthenticatedSessionChannel value(
-        std::make_unique<FakeBackend>(state));
+        std::make_unique<FakeBackend>(state), startup_payload());
     const auto deadline = std::chrono::steady_clock::now() + 5s;
     start_direct(value, deadline);
     int first_pipe[2]{};
@@ -559,7 +757,7 @@ void test_install_failure_and_idempotent_direct_teardown() {
   state->readiness_override = -1;
   {
     channel::AuthenticatedSessionChannel value(
-        std::make_unique<FakeBackend>(state));
+        std::make_unique<FakeBackend>(state), startup_payload());
     const auto deadline = std::chrono::steady_clock::now() + 5s;
     start_direct(value, deadline);
     require(!value.install_wake_handler(
@@ -590,7 +788,7 @@ void test_install_failure_fails_plugin_session() {
 void test_inbound_descriptor_transfers_once_and_closes() {
   auto state = std::make_shared<BackendState>();
   channel::AuthenticatedSessionChannel value(
-      std::make_unique<FakeBackend>(state));
+      std::make_unique<FakeBackend>(state), startup_payload());
   const auto deadline = std::chrono::steady_clock::now() + 5s;
   start_direct(value, deadline);
   int descriptors[2]{};
@@ -624,7 +822,7 @@ void test_deadline_crossing_never_publishes_authority() {
     auto state = std::make_shared<BackendState>();
     state->expire_launch = true;
     channel::AuthenticatedSessionChannel value(
-        std::make_unique<FakeBackend>(state));
+        std::make_unique<FakeBackend>(state), startup_payload());
     const auto deadline = std::chrono::steady_clock::now() + 2ms;
     require(value.launch(token(), deadline) ==
                 session::ChannelError::launch_failed,
@@ -637,7 +835,7 @@ void test_deadline_crossing_never_publishes_authority() {
     auto state = std::make_shared<BackendState>();
     state->expire_handshake = true;
     channel::AuthenticatedSessionChannel value(
-        std::make_unique<FakeBackend>(state));
+        std::make_unique<FakeBackend>(state), startup_payload());
     const auto deadline = std::chrono::steady_clock::now() + 3ms;
     require(value.launch(token(), deadline) == session::ChannelError::none &&
                 value.handshake(deadline) ==
@@ -650,7 +848,7 @@ void test_deadline_crossing_never_publishes_authority() {
   {
     auto state = std::make_shared<BackendState>();
     channel::AuthenticatedSessionChannel value(
-        std::make_unique<FakeBackend>(state));
+        std::make_unique<FakeBackend>(state), startup_payload());
     start_direct(value, std::chrono::steady_clock::now() + 5s);
     state->expire_receive = true;
     const auto deadline = std::chrono::steady_clock::now() + 2ms;
@@ -693,6 +891,10 @@ void test_blocked_receive_cannot_cross_revoke_epoch() {
 }
 
 void run() {
+  test_startup_snapshot_is_exact_and_uses_one_deadline();
+  test_invalid_or_missing_startup_ack_never_becomes_ready();
+  test_startup_types_are_one_shot();
+  test_duplicate_startup_ack_withdraws_running_session();
   test_deadline_and_exact_would_block_retry();
   test_host_broker_send_is_rejected();
   test_backend_broker_message_cannot_reach_session();

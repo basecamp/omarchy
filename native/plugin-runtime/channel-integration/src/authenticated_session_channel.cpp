@@ -4,9 +4,13 @@
 
 #include <QSocketNotifier>
 
+#include <algorithm>
+#include <cerrno>
 #include <limits>
 #include <optional>
 #include <utility>
+
+#include <poll.h>
 
 namespace omarchy::plugin_runtime::channel {
 
@@ -79,6 +83,76 @@ session::SendStatus map_send(ChannelSendStatus status) noexcept {
     return session::SendStatus::fatal;
   }
   return session::SendStatus::fatal;
+}
+
+bool wait_for_channel(AuthenticatedSessionBackend &backend,
+                      launcher::EndpointMask reads,
+                      launcher::EndpointMask writes,
+                      launcher::Deadline deadline) noexcept {
+  if (std::chrono::steady_clock::now() >= deadline ||
+      !backend.arm(reads, writes))
+    return false;
+  pollfd event{.fd = backend.readiness_fd(), .events = POLLIN, .revents = 0};
+  if (event.fd < 0)
+    return false;
+  int ready = -1;
+  do {
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= deadline)
+      return false;
+    const auto remaining = deadline - now;
+    const auto timeout = static_cast<int>(std::min<std::int64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(remaining)
+                .count() +
+            1,
+        std::numeric_limits<int>::max()));
+    ready = ::poll(&event, 1, timeout);
+  } while (ready < 0 && errno == EINTR);
+  return ready == 1 && (event.revents & POLLIN) != 0 &&
+         (event.revents & (POLLERR | POLLHUP | POLLNVAL)) == 0 &&
+         std::chrono::steady_clock::now() < deadline;
+}
+
+bool establish_permission_authority(AuthenticatedSessionBackend &backend,
+                                    std::span<const std::byte> snapshot,
+                                    launcher::Deadline deadline) {
+  if (snapshot.empty() ||
+      snapshot.size() > wire::payload_cap(wire::EndpointRole::control) ||
+      std::chrono::steady_clock::now() >= deadline ||
+      !backend.prepare(wire::EndpointRole::control,
+                       wire::kPermissionSnapshotMessage, 0, snapshot, 0))
+    return false;
+
+  for (;;) {
+    const auto sent = backend.try_send({}, deadline);
+    if (sent == session::SendStatus::complete)
+      break;
+    if (sent != session::SendStatus::would_block ||
+        !wait_for_channel(backend, launcher::EndpointMask::none,
+                          launcher::EndpointMask::control, deadline))
+      return false;
+  }
+
+  for (;;) {
+    if (std::chrono::steady_clock::now() >= deadline ||
+        !backend.arm(launcher::EndpointMask::control,
+                     launcher::EndpointMask::none))
+      return false;
+    auto reply = backend.receive(launcher::EndpointMask::control, deadline);
+    if (reply.status == AuthenticatedReceiveStatus::message && reply.message) {
+      return reply.message->role == wire::EndpointRole::control &&
+             reply.message->message_type ==
+                 wire::kPermissionSnapshotAcceptedMessage &&
+             reply.message->correlation_id == 0 &&
+             reply.message->payload.empty() &&
+             reply.message->descriptors.empty() &&
+             std::chrono::steady_clock::now() < deadline;
+    }
+    if (reply.status != AuthenticatedReceiveStatus::would_block ||
+        !wait_for_channel(backend, launcher::EndpointMask::control,
+                          launcher::EndpointMask::none, deadline))
+      return false;
+  }
 }
 
 class LauncherSessionBackend final : public AuthenticatedSessionBackend {
@@ -258,8 +332,9 @@ struct AuthenticatedSessionChannel::Impl final {
     }
   };
 
-  explicit Impl(std::unique_ptr<AuthenticatedSessionBackend> value)
-      : backend(std::move(value)) {}
+  Impl(std::unique_ptr<AuthenticatedSessionBackend> value,
+       std::vector<std::byte> snapshot)
+      : backend(std::move(value)), permission_snapshot(std::move(snapshot)) {}
 
   ~Impl() { terminate(std::chrono::steady_clock::now()); }
 
@@ -281,6 +356,7 @@ struct AuthenticatedSessionChannel::Impl final {
     terminal = true;
     clear_wake();
     pending.reset();
+    permission_snapshot.clear();
     if (backend)
       backend->terminate(deadline);
     token.reset();
@@ -296,6 +372,7 @@ struct AuthenticatedSessionChannel::Impl final {
   }
 
   std::unique_ptr<AuthenticatedSessionBackend> backend;
+  std::vector<std::byte> permission_snapshot;
   std::optional<session::SessionToken> token;
   std::optional<Pending> pending;
   std::optional<launcher::Deadline> startup_deadline;
@@ -315,16 +392,21 @@ AuthenticatedSessionChannel::AuthenticatedSessionChannel(
     launcher::Supervisor supervisor, AuthenticatedSessionLaunch launch,
     std::shared_ptr<const GenerationAuthority> authority,
     std::unique_ptr<AuthenticatedSessionRuntime> runtime,
-    std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility)
-    : implementation_(
-          std::make_unique<Impl>(std::make_unique<LauncherSessionBackend>(
-              std::move(supervisor), std::move(launch), std::move(authority),
-              std::move(runtime), std::move(gesture_eligibility)))) {}
+    std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility) {
+  auto permission_snapshot = std::move(launch.permission_snapshot);
+  implementation_ = std::make_unique<Impl>(
+      std::make_unique<LauncherSessionBackend>(
+          std::move(supervisor), std::move(launch), std::move(authority),
+          std::move(runtime), std::move(gesture_eligibility)),
+      std::move(permission_snapshot));
+}
 
 #ifdef OMARCHY_AUTHENTICATED_SESSION_CHANNEL_TESTING
 AuthenticatedSessionChannel::AuthenticatedSessionChannel(
-    std::unique_ptr<AuthenticatedSessionBackend> backend)
-    : implementation_(std::make_unique<Impl>(std::move(backend))) {}
+    std::unique_ptr<AuthenticatedSessionBackend> backend,
+    std::vector<std::byte> permission_snapshot)
+    : implementation_(std::make_unique<Impl>(std::move(backend),
+                                             std::move(permission_snapshot))) {}
 #endif
 
 AuthenticatedSessionChannel::~AuthenticatedSessionChannel() = default;
@@ -334,6 +416,9 @@ AuthenticatedSessionChannel::launch(const session::SessionToken &token,
                                     TimePoint deadline) {
   auto &value = *implementation_;
   if (!value.backend || value.launched || value.terminal ||
+      value.permission_snapshot.empty() ||
+      value.permission_snapshot.size() >
+          wire::payload_cap(wire::EndpointRole::control) ||
       token.plugin_id.empty() || token.revision_sha256.empty() ||
       token.generation == 0 || token.session_nonce == 0 ||
       std::chrono::steady_clock::now() >= deadline)
@@ -360,16 +445,22 @@ AuthenticatedSessionChannel::handshake(TimePoint deadline) {
       !value.startup_deadline || deadline != *value.startup_deadline)
     return session::ChannelError::handshake_failed;
   const auto result = value.backend->handshake(deadline);
-  if (result == session::ChannelError::none &&
-      std::chrono::steady_clock::now() < deadline)
-    value.ready = true;
-  else if (result == session::ChannelError::none) {
+  if (result != session::ChannelError::none) {
+    value.terminate(deadline);
+    return result;
+  }
+  if (std::chrono::steady_clock::now() >= deadline) {
     value.terminate(deadline);
     return session::ChannelError::handshake_failed;
   }
-  if (result != session::ChannelError::none)
+  if (!establish_permission_authority(*value.backend,
+                                      value.permission_snapshot, deadline)) {
     value.terminate(deadline);
-  return result;
+    return session::ChannelError::protocol_failed;
+  }
+  value.permission_snapshot.clear();
+  value.ready = true;
+  return session::ChannelError::none;
 }
 
 session::SendStatus
@@ -384,6 +475,8 @@ AuthenticatedSessionChannel::send(const session::OwnedMessage &message,
     if (!value.backend || !value.ready || value.terminal || !value.token ||
         !(message.token == *value.token) || !valid_lane(message.lane) ||
         message.lane == session::ChannelLane::broker ||
+        (message.lane == session::ChannelLane::control &&
+         message.message_type == wire::kPermissionSnapshotMessage) ||
         message.message_type == 0 || message.sequence == 0 ||
         message.descriptors.size() > launcher::kMaximumTransportDescriptors ||
         message.payload.size() > wire::payload_cap(wire_role(message.lane)) ||
@@ -481,6 +574,9 @@ AuthenticatedSessionChannel::receive(TimePoint deadline) {
             std::numeric_limits<std::uint64_t>::max() ||
         !valid_role(result.message->role) ||
         result.message->role == wire::EndpointRole::broker ||
+        (result.message->role == wire::EndpointRole::control &&
+         result.message->message_type ==
+             wire::kPermissionSnapshotAcceptedMessage) ||
         result.message->descriptors.size() >
             launcher::kMaximumTransportDescriptors)
       return fail();
