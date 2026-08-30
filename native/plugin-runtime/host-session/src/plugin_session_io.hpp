@@ -112,15 +112,11 @@ public:
                                         TimePoint deadline) = 0;
   // A would_block result likewise consumes no bytes or descriptors.
   [[nodiscard]] virtual ReceiveResult receive(TimePoint deadline) = 0;
-  // The default implementation accepts but does not retain the callback. An
-  // implementation that returns true after retaining `handler` must make
+  // An implementation that returns true after retaining `handler` must make
   // clear_wake_handler() an infallible, idempotent synchronous fence.
   [[nodiscard]] virtual bool
-  install_wake_handler(SessionWakeHandler handler) noexcept {
-    (void)handler;
-    return true;
-  }
-  virtual void clear_wake_handler() noexcept {}
+  install_wake_handler(SessionWakeHandler handler) noexcept = 0;
+  virtual void clear_wake_handler() noexcept = 0;
   [[nodiscard]] virtual bool revoke(const SessionToken &token,
                                     TimePoint deadline) noexcept = 0;
   virtual void terminate(TimePoint deadline) noexcept = 0;

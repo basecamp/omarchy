@@ -22,6 +22,7 @@ public:
     bytes.assign(trusted_pixels.begin(), trusted_pixels.end());
     return true;
   }
+  bool updateInputRegions(const InputRegionUpdate &) override { return false; }
   void clear(SurfaceKey surface) override { cleared = surface; }
   void disconnect() override { disconnected = true; }
   bool submit(const InputEvent &event) override {
