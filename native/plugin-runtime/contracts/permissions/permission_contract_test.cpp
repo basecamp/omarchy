@@ -433,6 +433,7 @@ void audit_contract() {
                    .generation = 9,
                    .correlation = 42,
                    .dynamic_operation = std::nullopt,
+                   .dynamic_attempt = std::nullopt,
                    .operation = OperationId::storage_write,
                    .capability = key("storage.private"),
                    .decision = GrantDecisionCode::outside_scope,
@@ -465,6 +466,7 @@ void audit_contract() {
                     .generation = 9,
                     .correlation = 0,
                     .dynamic_operation = std::nullopt,
+                    .dynamic_attempt = std::nullopt,
                     .operation = std::nullopt,
                     .capability = std::nullopt,
                     .decision = GrantDecisionCode::ungranted,
@@ -472,23 +474,38 @@ void audit_contract() {
   worker.metadata.push_back(
       {.metric = AuditMetric::retry_after_seconds, .value = 2});
   validate_audit_draft(worker);
-  AuditDraft dynamic{.event = AuditEvent::operation_decided,
-                     .outcome = AuditOutcome::allowed,
-                     .plugin = PluginId("org.example.radio"),
-                     .revision = digest('a'),
-                     .generation = 9,
-                     .correlation = 43,
-                     .dynamic_operation = DynamicAuditIdentity{
-                         .capability = CapabilityId("network.fetch"),
-                         .definition_generation = 1,
-                         .definition_digest = digest('b'),
-                         .operation = BoundedString<128>("fetch"),
-                         .grant_epoch = 4},
-                     .operation = std::nullopt,
-                     .capability = std::nullopt,
-                     .decision = GrantDecisionCode::allowed,
-                     .metadata = {}};
+  AuditDraft dynamic{
+      .event = AuditEvent::operation_decided,
+      .outcome = AuditOutcome::allowed,
+      .plugin = PluginId("org.example.radio"),
+      .revision = digest('a'),
+      .generation = 9,
+      .correlation = 43,
+      .dynamic_operation =
+          DynamicAuditIdentity{.capability = CapabilityId("network.fetch"),
+                               .definition_generation = 1,
+                               .definition_digest = digest('b'),
+                               .operation = BoundedString<128>("fetch"),
+                               .grant_epoch = 4},
+      .dynamic_attempt = std::nullopt,
+      .operation = std::nullopt,
+      .capability = std::nullopt,
+      .decision = GrantDecisionCode::allowed,
+      .metadata = {}};
   validate_audit_draft(dynamic);
+  auto attempt = dynamic;
+  attempt.dynamic_operation = std::nullopt;
+  attempt.dynamic_attempt =
+      DynamicAuditAttemptIdentity{.opaque_digest = digest('e')};
+  validate_audit_draft(attempt);
+  auto spoofed_attempt = attempt;
+  spoofed_attempt.dynamic_operation = dynamic.dynamic_operation;
+  reject([&] { validate_audit_draft(spoofed_attempt); },
+         "rejected dynamic attempt accepted a plugin-provided identity");
+  auto invalid_attempt = attempt;
+  invalid_attempt.dynamic_attempt->opaque_digest = Digest();
+  reject([&] { validate_audit_draft(invalid_attempt); },
+         "dynamic audit attempt accepted an invalid opaque digest");
   auto zero_epoch = dynamic;
   zero_epoch.dynamic_operation->grant_epoch = 0;
   reject([&] { validate_audit_draft(zero_epoch); },
@@ -501,29 +518,41 @@ void audit_contract() {
         log.append(AuditProducer::broker, std::move(value), 1, 1));
   };
   const auto original_dynamic_fingerprint = dynamic_fingerprint(dynamic);
+  auto changed_attempt = attempt;
+  changed_attempt.dynamic_attempt->opaque_digest = digest('f');
+  require(dynamic_fingerprint(attempt) != dynamic_fingerprint(changed_attempt),
+          "opaque dynamic attempt digest did not affect audit fingerprint");
   const auto changed = [&](AuditDraft value, const char *message) {
-    require(dynamic_fingerprint(std::move(value)) != original_dynamic_fingerprint,
+    require(dynamic_fingerprint(std::move(value)) !=
+                original_dynamic_fingerprint,
             message);
   };
-  changed(changed_epoch, "dynamic grant epoch did not affect audit fingerprint");
+  changed(changed_epoch,
+          "dynamic grant epoch did not affect audit fingerprint");
   auto changed_capability = dynamic;
-  changed_capability.dynamic_operation->capability = CapabilityId("media.play-stream");
-  changed(changed_capability, "dynamic capability did not affect audit fingerprint");
+  changed_capability.dynamic_operation->capability =
+      CapabilityId("media.play-stream");
+  changed(changed_capability,
+          "dynamic capability did not affect audit fingerprint");
   auto changed_generation = dynamic;
   ++changed_generation.dynamic_operation->definition_generation;
-  changed(changed_generation, "definition generation did not affect audit fingerprint");
+  changed(changed_generation,
+          "definition generation did not affect audit fingerprint");
   auto changed_digest = dynamic;
   changed_digest.dynamic_operation->definition_digest = digest('c');
   changed(changed_digest, "definition digest did not affect audit fingerprint");
   auto changed_operation = dynamic;
   changed_operation.dynamic_operation->operation = BoundedString<128>("other");
-  changed(changed_operation, "dynamic operation did not affect audit fingerprint");
+  changed(changed_operation,
+          "dynamic operation did not affect audit fingerprint");
   auto changed_activation = dynamic;
   ++changed_activation.generation;
-  changed(changed_activation, "activation generation did not affect audit fingerprint");
+  changed(changed_activation,
+          "activation generation did not affect audit fingerprint");
   auto changed_revision = dynamic;
   changed_revision.revision = digest('d');
-  changed(changed_revision, "activation revision did not affect audit fingerprint");
+  changed(changed_revision,
+          "activation revision did not affect audit fingerprint");
   auto invalid_worker = worker;
   invalid_worker.correlation = 1;
   reject([&] { validate_audit_draft(invalid_worker); },

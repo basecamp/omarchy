@@ -98,6 +98,7 @@ private:
     bool authorized = false;
     bool cancel_requested = false;
     bool terminal_received = false;
+    bool completion_audited = false;
     bool occupied = false;
   };
 
@@ -121,7 +122,8 @@ private:
                                               void *) noexcept;
   static bool gate_cancel(std::uint64_t correlation, void *context) noexcept;
 
-  [[nodiscard]] bool audit_operation(permissions::AuditOutcome outcome,
+  [[nodiscard]] bool audit_operation(permissions::AuditEvent event,
+                                     permissions::AuditOutcome outcome,
                                      std::uint64_t correlation,
                                      permissions::OperationId operation,
                                      permissions::GrantDecisionCode decision,

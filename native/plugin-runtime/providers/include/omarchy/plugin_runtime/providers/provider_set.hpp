@@ -8,32 +8,52 @@
 #include <cstdint>
 #include <span>
 #include <string_view>
+#include <type_traits>
 
 namespace omarchy::plugin_runtime::providers {
 
 namespace broker = omarchy::plugin_runtime::broker;
 namespace permissions = omarchy::plugins::permissions;
 
+using StorageRead = bool (*)(std::string_view, std::span<std::byte>,
+                             std::size_t &, bool &, void *) noexcept;
+using StorageWrite = bool (*)(std::string_view, std::span<const std::byte>,
+                              void *) noexcept;
+using StorageRemove = bool (*)(std::string_view, void *) noexcept;
+using NotificationSend = bool (*)(std::string_view, std::string_view,
+                                  std::string_view, void *) noexcept;
+using AudioPlay = bool (*)(std::string_view, void *) noexcept;
+
+static_assert(std::is_nothrow_invocable_r_v<bool, StorageRead, std::string_view,
+                                            std::span<std::byte>, std::size_t &,
+                                            bool &, void *>);
+static_assert(
+    std::is_nothrow_invocable_r_v<bool, StorageWrite, std::string_view,
+                                  std::span<const std::byte>, void *>);
+static_assert(std::is_nothrow_invocable_r_v<bool, StorageRemove,
+                                            std::string_view, void *>);
+static_assert(
+    std::is_nothrow_invocable_r_v<bool, NotificationSend, std::string_view,
+                                  std::string_view, std::string_view, void *>);
+static_assert(
+    std::is_nothrow_invocable_r_v<bool, AudioPlay, std::string_view, void *>);
+
 struct StorageBackend {
-  bool (*read)(std::string_view key, std::span<std::byte> output,
-               std::size_t &bytes_written, bool &found,
-               void *context) noexcept = nullptr;
-  bool (*write)(std::string_view key, std::span<const std::byte> value,
-                void *context) noexcept = nullptr;
-  bool (*remove)(std::string_view key, void *context) noexcept = nullptr;
+  StorageRead read = nullptr;
+  StorageWrite write = nullptr;
+  StorageRemove remove = nullptr;
   void *context = nullptr;
   std::uint64_t maximum_total_bytes = 0;
   std::uint64_t maximum_item_bytes = 0;
 };
 
 struct NotificationBackend {
-  bool (*send)(std::string_view category, std::string_view title,
-               std::string_view body, void *context) noexcept = nullptr;
+  NotificationSend send = nullptr;
   void *context = nullptr;
 };
 
 struct AudioBackend {
-  bool (*play)(std::string_view cue, void *context) noexcept = nullptr;
+  AudioPlay play = nullptr;
   void *context = nullptr;
 };
 

@@ -88,7 +88,8 @@ AuditedBrokerRuntime::AuditedBrokerRuntime(
                            binding_, revision_.requests, revision_.grants)
                      : permissions::PermissionAuthority(
                            binding_, revision_.requests, revision_.grants,
-                           permissions::PermissionAuthority::ValidatedCombinedPolicy{})),
+                           permissions::PermissionAuthority::
+                               ValidatedCombinedPolicy{})),
       audit_(audit_sink),
       providers_(normalize_configuration(revision_, std::move(configuration))),
       provider_registry_(providers_.registry()), gate_(provider_registry_),
@@ -110,24 +111,22 @@ AuditedBrokerRuntime::gate_dispatch(const broker::AuthorizedRequest &request,
     const auto *definition = permissions::find_operation(request.operation);
     if (definition == nullptr)
       return {};
-    auto *tracked = self.track(
-        request.correlation, request.operation, definition->key, request.demand,
-        request.authorization.grant_epoch, true,
-        permissions::GrantDecisionCode::allowed);
-    if (tracked == nullptr ||
-        !self.audit_operation(permissions::AuditOutcome::allowed,
+    auto *tracked =
+        self.track(request.correlation, request.operation, definition->key,
+                   request.demand, request.authorization.grant_epoch, true,
+                   permissions::GrantDecisionCode::allowed);
+    if (tracked == nullptr)
+      return {};
+    if (!self.audit_operation(permissions::AuditEvent::operation_decided,
+                              permissions::AuditOutcome::allowed,
                               request.correlation, request.operation,
                               permissions::GrantDecisionCode::allowed,
-                              request.payload.size()))
+                              request.payload.size())) {
+      self.erase(*tracked);
       return {};
+    }
     const auto result = context->provider.dispatch(request, response,
                                                    context->provider.context);
-    if (result.status == broker::ProviderStatus::failed) {
-      if (!self.audit_operation(permissions::AuditOutcome::failed,
-                                request.correlation, request.operation,
-                                permissions::GrantDecisionCode::allowed))
-        return {};
-    }
     return result;
   } catch (...) {
     return {};
@@ -143,10 +142,7 @@ bool AuditedBrokerRuntime::gate_cancel(std::uint64_t correlation,
       return false;
     auto &self = *context->owner;
     auto *tracked = self.find(correlation);
-    if (tracked == nullptr ||
-        !self.audit_operation(permissions::AuditOutcome::cancelled, correlation,
-                              tracked->operation,
-                              permissions::GrantDecisionCode::allowed))
+    if (tracked == nullptr)
       return false;
     tracked->cancel_requested = true;
     return context->provider.cancel(correlation, context->provider.context);
@@ -173,32 +169,39 @@ broker::DispatchResult AuditedBrokerRuntime::dispatch(
           track(packet.header.correlation_id, decoded.operation,
                 definition->key, decoded.demand, result.decision.grant_epoch,
                 false, result.decision.code);
-      if (tracked == nullptr ||
-          !audit_operation(permissions::AuditOutcome::denied,
+      if (tracked == nullptr)
+        return {.outcome = broker::DispatchOutcome::core_failed};
+      if (!audit_operation(permissions::AuditEvent::operation_decided,
+                           permissions::AuditOutcome::denied,
                            packet.header.correlation_id, decoded.operation,
                            result.decision.code,
-                           decoded.provider_payload.size()))
+                           decoded.provider_payload.size())) {
+        erase(*tracked);
         return {.outcome = broker::DispatchOutcome::core_failed};
+      }
     }
-  } else if ((result.outcome == broker::DispatchOutcome::provider_unavailable ||
-              result.outcome == broker::DispatchOutcome::provider_failed) &&
+  } else if (result.outcome == broker::DispatchOutcome::provider_unavailable &&
              decodable) {
-    if (!audit_operation(permissions::AuditOutcome::failed,
+    const auto *definition = permissions::find_operation(decoded.operation);
+    const auto tracked =
+        definition == nullptr
+            ? nullptr
+            : track(packet.header.correlation_id, decoded.operation,
+                    definition->key, decoded.demand,
+                    result.decision.grant_epoch, true, result.decision.code);
+    if (tracked == nullptr)
+      return {.outcome = broker::DispatchOutcome::core_failed};
+    if (!audit_operation(permissions::AuditEvent::operation_decided,
+                         permissions::AuditOutcome::allowed,
                          packet.header.correlation_id, decoded.operation,
-                         result.decision.code, decoded.provider_payload.size()))
+                         result.decision.code,
+                         decoded.provider_payload.size())) {
+      erase(*tracked);
       return {.outcome = broker::DispatchOutcome::core_failed};
-  } else if (result.outcome == broker::DispatchOutcome::malformed ||
-             result.outcome == broker::DispatchOutcome::protocol_fatal ||
-             result.outcome == broker::DispatchOutcome::core_failed) {
-    const auto operation =
-        static_cast<permissions::OperationId>(packet.header.message_type);
-    if (packet.header.correlation_id != 0 &&
-        permissions::find_operation(operation) != nullptr &&
-        !audit_operation(permissions::AuditOutcome::failed,
-                         packet.header.correlation_id, operation,
-                         permissions::GrantDecisionCode::ungranted))
-      return {.outcome = broker::DispatchOutcome::core_failed};
-  }
+    }
+  } else if (result.outcome == broker::DispatchOutcome::provider_failed &&
+             (failed_ || find(packet.header.correlation_id) == nullptr))
+    return {.outcome = broker::DispatchOutcome::core_failed};
   return result;
 }
 
@@ -213,20 +216,8 @@ AuditedBrokerRuntime::accept_cancel(const wire::PacketView &packet) {
   if (tracked != nullptr && !audited_by_gate && !tracked->cancel_requested &&
       (result == broker::CancelResult::unsupported ||
        result == broker::CancelResult::accepted)) {
-    if (!audit_operation(permissions::AuditOutcome::cancelled,
-                         tracked->correlation, tracked->operation,
-                         tracked->authorized
-                             ? permissions::GrantDecisionCode::allowed
-                             : permissions::GrantDecisionCode::ungranted))
-      return broker::CancelResult::core_failed;
     tracked->cancel_requested = true;
   }
-  if ((result == broker::CancelResult::protocol_fatal ||
-       result == broker::CancelResult::core_failed) &&
-      tracked != nullptr)
-    (void)audit_operation(permissions::AuditOutcome::failed,
-                          tracked->correlation, tracked->operation,
-                          tracked->decision);
   return result;
 }
 
@@ -239,10 +230,6 @@ AuditedBrokerRuntime::accept_cancel_result(const wire::PacketView &packet) {
   if (result == broker::CancelResult::accepted && tracked != nullptr &&
       tracked->terminal_received)
     erase(*tracked);
-  else if (result != broker::CancelResult::accepted && tracked != nullptr)
-    (void)audit_operation(permissions::AuditOutcome::failed,
-                          tracked->correlation, tracked->operation,
-                          tracked->decision);
   return result;
 }
 
@@ -252,11 +239,21 @@ AuditedBrokerRuntime::accept_terminal(const wire::PacketView &packet) {
     return broker::TerminalResult::core_failed;
   auto *tracked = find(packet.header.correlation_id);
   const auto result = core_.accept_terminal(packet);
+  if (tracked != nullptr && tracked->completion_audited) {
+    if (result != broker::TerminalResult::accepted)
+      failed_ = true;
+    return result;
+  }
   if (result != broker::TerminalResult::accepted || tracked == nullptr) {
-    if (tracked != nullptr)
-      (void)audit_operation(permissions::AuditOutcome::failed,
-                            tracked->correlation, tracked->operation,
-                            tracked->decision);
+    if (tracked != nullptr) {
+      if (!audit_operation(permissions::AuditEvent::operation_completed,
+                           permissions::AuditOutcome::failed,
+                           tracked->correlation, tracked->operation,
+                           tracked->decision))
+        return broker::TerminalResult::core_failed;
+      erase(*tracked);
+    }
+    failed_ = true;
     return result;
   }
   const bool typed_error =
@@ -266,9 +263,11 @@ AuditedBrokerRuntime::accept_terminal(const wire::PacketView &packet) {
                            ? permissions::AuditOutcome::cancelled
                        : typed_error ? permissions::AuditOutcome::failed
                                      : permissions::AuditOutcome::allowed;
-  if (!audit_operation(outcome, tracked->correlation, tracked->operation,
+  if (!audit_operation(permissions::AuditEvent::operation_completed, outcome,
+                       tracked->correlation, tracked->operation,
                        tracked->decision))
     return broker::TerminalResult::core_failed;
+  tracked->completion_audited = true;
   if (tracked->cancel_requested)
     tracked->terminal_received = true;
   else
@@ -276,8 +275,8 @@ AuditedBrokerRuntime::accept_terminal(const wire::PacketView &packet) {
   return result;
 }
 
-RevocationResult AuditedBrokerRuntime::apply_revocation(
-    const policy::Revocation &revocation) {
+RevocationResult
+AuditedBrokerRuntime::apply_revocation(const policy::Revocation &revocation) {
   RevocationResult result;
   const auto *definition =
       permissions::find_capability(revocation.grant.capability);
@@ -308,11 +307,9 @@ RevocationResult AuditedBrokerRuntime::apply_revocation(
   }
   for (std::size_t index = 0; index < plan.cancel_count; ++index) {
     auto *tracked = find(plan.cancel_correlations[index]);
-    if (tracked == nullptr ||
-        !audit_operation(permissions::AuditOutcome::cancelled,
-                         tracked->correlation, tracked->operation,
-                         permissions::GrantDecisionCode::revoked)) {
-      result.status = RuntimeStatus::audit_failed;
+    if (tracked == nullptr) {
+      failed_ = true;
+      result.status = RuntimeStatus::failed;
       return result;
     }
     tracked->cancel_requested = true;
@@ -347,11 +344,16 @@ RuntimeStatus AuditedBrokerRuntime::shutdown() {
 
   bool audited = true;
   for (auto &request : requests_) {
-    if (!request.occupied || !request.authorized)
+    if (!request.occupied || request.completion_audited)
       continue;
-    if (!audit_operation(permissions::AuditOutcome::cancelled,
-                         request.correlation, request.operation,
-                         permissions::GrantDecisionCode::activation_mismatch)) {
+    if (!audit_operation(
+            permissions::AuditEvent::operation_completed,
+            request.authorized ? permissions::AuditOutcome::cancelled
+                               : permissions::AuditOutcome::denied,
+            request.correlation, request.operation,
+            request.authorized
+                ? permissions::GrantDecisionCode::activation_mismatch
+                : request.decision)) {
       audited = false;
       continue;
     }
@@ -450,22 +452,28 @@ HandleResult AuditedBrokerRuntime::resolve_handle(
 }
 
 bool AuditedBrokerRuntime::audit_operation(
-    permissions::AuditOutcome outcome, std::uint64_t correlation,
-    permissions::OperationId operation, permissions::GrantDecisionCode decision,
-    std::size_t request_bytes, std::size_t response_bytes) {
+    permissions::AuditEvent event, permissions::AuditOutcome outcome,
+    std::uint64_t correlation, permissions::OperationId operation,
+    permissions::GrantDecisionCode decision, std::size_t request_bytes,
+    std::size_t response_bytes) {
   const auto *definition = permissions::find_operation(operation);
   if (definition == nullptr || correlation == 0) {
     failed_ = true;
     return false;
   }
-  permissions::AuditDraft draft{.event =
-                                    permissions::AuditEvent::operation_decided,
+  if (event != permissions::AuditEvent::operation_decided &&
+      event != permissions::AuditEvent::operation_completed) {
+    failed_ = true;
+    return false;
+  }
+  permissions::AuditDraft draft{.event = event,
                                 .outcome = outcome,
                                 .plugin = binding_.plugin,
                                 .revision = binding_.revision,
                                 .generation = binding_.generation,
                                 .correlation = correlation,
                                 .dynamic_operation = std::nullopt,
+                                .dynamic_attempt = std::nullopt,
                                 .operation = operation,
                                 .capability = definition->key,
                                 .decision = decision,
@@ -476,11 +484,16 @@ bool AuditedBrokerRuntime::audit_operation(
   if (response_bytes > 0)
     draft.metadata.push_back({permissions::AuditMetric::response_bytes,
                               static_cast<std::int64_t>(response_bytes)});
-  const auto appended =
-      audit_.append(permissions::AuditProducer::broker, std::move(draft));
-  if (!appended.status.ok())
+  try {
+    const auto appended =
+        audit_.append(permissions::AuditProducer::broker, std::move(draft));
+    if (appended.status.ok())
+      return true;
+  } catch (...) {
+  }
+  if (!failed_)
     failed_ = true;
-  return appended.status.ok();
+  return false;
 }
 
 bool AuditedBrokerRuntime::audit_capability(
@@ -494,15 +507,20 @@ bool AuditedBrokerRuntime::audit_capability(
                                 .generation = binding_.generation,
                                 .correlation = 0,
                                 .dynamic_operation = std::nullopt,
+                                .dynamic_attempt = std::nullopt,
                                 .operation = std::nullopt,
                                 .capability = capability,
                                 .decision = decision,
                                 .metadata = {}};
-  const auto appended =
-      audit_.append(permissions::AuditProducer::broker, std::move(draft));
-  if (!appended.status.ok())
-    failed_ = true;
-  return appended.status.ok();
+  try {
+    const auto appended =
+        audit_.append(permissions::AuditProducer::broker, std::move(draft));
+    if (appended.status.ok())
+      return true;
+  } catch (...) {
+  }
+  failed_ = true;
+  return false;
 }
 
 bool AuditedBrokerRuntime::audit_handle(
@@ -521,15 +539,20 @@ bool AuditedBrokerRuntime::audit_handle(
                                 .generation = binding_.generation,
                                 .correlation = correlation,
                                 .dynamic_operation = std::nullopt,
+                                .dynamic_attempt = std::nullopt,
                                 .operation = operation,
                                 .capability = definition->key,
                                 .decision = decision,
                                 .metadata = {}};
-  const auto appended =
-      audit_.append(permissions::AuditProducer::broker, std::move(draft));
-  if (!appended.status.ok())
-    failed_ = true;
-  return appended.status.ok();
+  try {
+    const auto appended =
+        audit_.append(permissions::AuditProducer::broker, std::move(draft));
+    if (appended.status.ok())
+      return true;
+  } catch (...) {
+  }
+  failed_ = true;
+  return false;
 }
 
 AuditedBrokerRuntime::TrackedRequest *
@@ -561,6 +584,7 @@ AuditedBrokerRuntime::TrackedRequest *AuditedBrokerRuntime::track(
                  .authorized = authorized,
                  .cancel_requested = false,
                  .terminal_received = false,
+                 .completion_audited = false,
                  .occupied = true};
       return &request;
     }

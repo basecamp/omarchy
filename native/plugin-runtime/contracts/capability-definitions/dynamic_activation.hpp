@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <optional>
 #include <span>
+#include <type_traits>
 #include <utility>
 
 namespace omarchy::plugins::definitions {
@@ -19,13 +20,13 @@ struct DynamicRevisionGrant {
   DynamicGrant grant;
 };
 
-[[nodiscard]] bool review_dynamic_grant(
-    const TrustedDefinitionRegistry &registry,
-    const DynamicRevisionGrant &revision,
-    const DynamicScopeValidator &validator);
-[[nodiscard]] bool encode_dynamic_grant(
-    const DynamicRevisionGrant &revision, std::span<std::byte> output,
-    std::size_t &written);
+[[nodiscard]] bool
+review_dynamic_grant(const TrustedDefinitionRegistry &registry,
+                     const DynamicRevisionGrant &revision,
+                     const DynamicScopeValidator &validator);
+[[nodiscard]] bool encode_dynamic_grant(const DynamicRevisionGrant &revision,
+                                        std::span<std::byte> output,
+                                        std::size_t &written);
 [[nodiscard]] bool decode_dynamic_grant(std::span<const std::byte> input,
                                         DynamicRevisionGrant &output);
 
@@ -43,11 +44,11 @@ struct DynamicInvocation {
   std::span<const std::byte> payload;
 };
 
-[[nodiscard]] bool encode_dynamic_invocation(
-    const DynamicInvocation &invocation, std::span<std::byte> output,
-    std::size_t &written);
-[[nodiscard]] bool decode_dynamic_invocation(
-    std::span<const std::byte> input, DynamicInvocation &output);
+[[nodiscard]] bool
+encode_dynamic_invocation(const DynamicInvocation &invocation,
+                          std::span<std::byte> output, std::size_t &written);
+[[nodiscard]] bool decode_dynamic_invocation(std::span<const std::byte> input,
+                                             DynamicInvocation &output);
 
 struct DynamicAuthorizationContext {
   permissions::ActivationBinding binding;
@@ -62,11 +63,17 @@ struct AuthorizedDynamicRequest {
   std::span<const std::byte> payload;
 };
 
+using DynamicAdapterDispatch = bool (*)(const AuthorizedDynamicRequest &request,
+                                        std::span<std::byte> response,
+                                        std::size_t &written,
+                                        void *context) noexcept;
+static_assert(std::is_nothrow_invocable_r_v<
+              bool, DynamicAdapterDispatch, const AuthorizedDynamicRequest &,
+              std::span<std::byte>, std::size_t &, void *>);
+
 struct DynamicAdapter {
   AdapterBinding binding;
-  bool (*dispatch)(const AuthorizedDynamicRequest &request,
-                   std::span<std::byte> response, std::size_t &written,
-                   void *context) noexcept = nullptr;
+  DynamicAdapterDispatch dispatch = nullptr;
   void *context = nullptr;
 };
 
@@ -83,10 +90,10 @@ enum class DynamicPendingDecision : std::uint8_t {
 
 template <std::size_t Capacity> class DynamicPendingTable {
 public:
-  [[nodiscard]] DynamicPendingDecision begin(
-      std::uint64_t correlation,
-      const permissions::ActivationBinding &binding,
-      const CapabilityReference &definition, std::uint64_t grant_epoch) {
+  [[nodiscard]] DynamicPendingDecision
+  begin(std::uint64_t correlation,
+        const permissions::ActivationBinding &binding,
+        const CapabilityReference &definition, std::uint64_t grant_epoch) {
     if (correlation == 0 || grant_epoch == 0)
       return DynamicPendingDecision::stale_epoch;
     for (const auto &entry : entries_) {
@@ -107,10 +114,10 @@ public:
     return DynamicPendingDecision::table_full;
   }
 
-  [[nodiscard]] DynamicPendingDecision complete(
-      std::uint64_t correlation,
-      const permissions::ActivationBinding &binding,
-      const CapabilityReference &definition, std::uint64_t grant_epoch) {
+  [[nodiscard]] DynamicPendingDecision
+  complete(std::uint64_t correlation,
+           const permissions::ActivationBinding &binding,
+           const CapabilityReference &definition, std::uint64_t grant_epoch) {
     auto *entry = find(correlation);
     if (entry == nullptr)
       return DynamicPendingDecision::unknown;
@@ -129,9 +136,9 @@ public:
     return DynamicPendingDecision::accepted;
   }
 
-  [[nodiscard]] std::size_t revoke(
-      const CapabilityReference &definition, std::uint64_t old_epoch,
-      std::span<std::uint64_t> cancelled_correlations) {
+  [[nodiscard]] std::size_t
+  revoke(const CapabilityReference &definition, std::uint64_t old_epoch,
+         std::span<std::uint64_t> cancelled_correlations) {
     std::size_t cancelled = 0;
     for (auto &entry : entries_) {
       if (!entry.occupied || entry.cancelled ||
@@ -149,9 +156,9 @@ public:
     return cancelled;
   }
 
-  [[nodiscard]] std::size_t invalidate_activation(
-      const permissions::ActivationBinding &binding,
-      std::span<std::uint64_t> cancelled_correlations) {
+  [[nodiscard]] std::size_t
+  invalidate_activation(const permissions::ActivationBinding &binding,
+                        std::span<std::uint64_t> cancelled_correlations) {
     std::size_t cancelled = 0;
     for (auto &entry : entries_) {
       if (!entry.occupied || entry.cancelled || entry.binding == binding)

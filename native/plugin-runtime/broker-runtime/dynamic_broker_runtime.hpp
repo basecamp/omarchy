@@ -1,11 +1,12 @@
 #pragma once
 
-#include "dynamic_activation.hpp"
 #include "audit_store.hpp"
+#include "dynamic_activation.hpp"
 #include "omarchy/plugin_runtime/broker/broker_schema.hpp"
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -27,12 +28,24 @@ struct DynamicBrokerResult {
   std::size_t response_bytes = 0;
 };
 
+enum class DynamicRevocationStatus : std::uint8_t {
+  accepted,
+  binding_mismatch,
+  audit_failed,
+  failed,
+};
+
+struct DynamicRevocationResult {
+  DynamicRevocationStatus status = DynamicRevocationStatus::failed;
+  bool restart_worker = false;
+};
+
 class DynamicGestureAuthority {
 public:
   virtual ~DynamicGestureAuthority() = default;
-  [[nodiscard]] virtual bool consume(
-      const omarchy::plugins::permissions::ActivationBinding &binding,
-      const definitions::DynamicInvocation::GestureClaim &claim) = 0;
+  [[nodiscard]] virtual bool
+  consume(const omarchy::plugins::permissions::ActivationBinding &binding,
+          const definitions::DynamicInvocation::GestureClaim &claim) = 0;
 };
 
 class DynamicGestureClock {
@@ -44,12 +57,12 @@ public:
 class DynamicGestureLatch final : public DynamicGestureAuthority {
 public:
   explicit DynamicGestureLatch(DynamicGestureClock &clock) : clock_(clock) {}
-  [[nodiscard]] bool arm(
-      const omarchy::plugins::permissions::ActivationBinding &binding,
+  [[nodiscard]] bool
+  arm(const omarchy::plugins::permissions::ActivationBinding &binding,
       const definitions::DynamicInvocation::GestureClaim &claim);
-  [[nodiscard]] bool consume(
-      const omarchy::plugins::permissions::ActivationBinding &binding,
-      const definitions::DynamicInvocation::GestureClaim &claim) override;
+  [[nodiscard]] bool
+  consume(const omarchy::plugins::permissions::ActivationBinding &binding,
+          const definitions::DynamicInvocation::GestureClaim &claim) override;
   void clear() noexcept;
 
 private:
@@ -72,16 +85,28 @@ public:
       std::span<std::byte> response,
       DynamicGestureAuthority *gesture_authority = nullptr);
 
+  [[nodiscard]] bool accepts_binding(
+      const omarchy::plugins::permissions::ActivationBinding &binding)
+      const noexcept;
+  [[nodiscard]] bool empty() const noexcept { return routes_.empty(); }
+
   // Accepts only the next persisted epoch for the exact same request and
   // definition. The caller remains responsible for cancelling an asynchronous
   // provider before publishing the permission snapshot.
-  [[nodiscard]] bool apply_reconstructed_update(
+  [[nodiscard]] DynamicRevocationResult apply_reconstructed_revocation(
       const definitions::DynamicRevisionGrant &updated);
+  // Temporary compatibility wrapper for the N4 composition seam.
+  [[nodiscard]] bool
+  apply_reconstructed_update(const definitions::DynamicRevisionGrant &updated) {
+    return apply_reconstructed_revocation(updated).status ==
+           DynamicRevocationStatus::accepted;
+  }
   [[nodiscard]] bool failed() const noexcept { return failed_; }
 
 private:
   const definitions::TrustedDefinitionRegistry &registry_;
   std::vector<DynamicRoute> routes_;
+  std::optional<omarchy::plugins::permissions::ActivationBinding> binding_;
   omarchy::plugins::audit::AuditSink &audit_;
   std::uint64_t last_correlation_ = 0;
   bool failed_ = false;

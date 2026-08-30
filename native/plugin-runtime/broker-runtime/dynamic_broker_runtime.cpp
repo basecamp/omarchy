@@ -1,5 +1,7 @@
 #include "dynamic_broker_runtime.hpp"
 
+#include "manifest_contract.hpp"
+
 #include <algorithm>
 #include <stdexcept>
 #include <utility>
@@ -53,19 +55,38 @@ DynamicBrokerRuntime::DynamicBrokerRuntime(
     omarchy::plugins::audit::AuditSink &audit_sink)
     : registry_(registry), routes_(std::move(reconstructed_routes)),
       audit_(audit_sink) {
-  for (const auto &route : routes_) {
+  for (std::size_t index = 0; index < routes_.size(); ++index) {
+    const auto &route = routes_[index];
     if (!definitions::review_dynamic_grant(registry_, route.grant,
-                                            route.scope_validator) ||
+                                           route.scope_validator) ||
         route.adapter.dispatch == nullptr)
-      throw std::runtime_error("dynamic route was not reconstructed from an exact grant");
+      throw std::runtime_error(
+          "dynamic route was not reconstructed from an exact grant");
+    if (!binding_)
+      binding_ = route.grant.binding;
+    else if (*binding_ != route.grant.binding)
+      throw std::runtime_error("dynamic routes mix activation bindings");
+    for (std::size_t previous = 0; previous < index; ++previous) {
+      const auto &existing = routes_[previous].grant.request.definition;
+      const auto &candidate = route.grant.request.definition;
+      if (existing.canonical_name == candidate.canonical_name &&
+          existing.definition_generation == candidate.definition_generation &&
+          existing.definition_digest == candidate.definition_digest)
+        throw std::runtime_error("duplicate exact dynamic route");
+    }
   }
+}
+
+bool DynamicBrokerRuntime::accepts_binding(
+    const omarchy::plugins::permissions::ActivationBinding &binding)
+    const noexcept {
+  return binding_.has_value() && *binding_ == binding;
 }
 
 DynamicBrokerResult DynamicBrokerRuntime::dispatch(
     const wire::PacketView &packet,
     const omarchy::plugins::permissions::ActivationBinding &channel_binding,
-    std::span<std::byte> response,
-    DynamicGestureAuthority *gesture_authority) {
+    std::span<std::byte> response, DynamicGestureAuthority *gesture_authority) {
   if (failed_ || packet.header.message_type != broker::kDynamicInvokeMessage ||
       packet.header.correlation_id == 0 ||
       packet.header.correlation_id <= last_correlation_)
@@ -73,6 +94,71 @@ DynamicBrokerResult DynamicBrokerRuntime::dispatch(
   definitions::DynamicInvocation invocation;
   if (!definitions::decode_dynamic_invocation(packet.payload, invocation))
     return {.outcome = definitions::DynamicDispatchResult::malformed};
+  if (!binding_)
+    return {.outcome = definitions::DynamicDispatchResult::denied,
+            .decision = definitions::DynamicDecision::unknown_definition};
+  using omarchy::plugins::permissions::AuditEvent;
+  using omarchy::plugins::permissions::AuditMetric;
+  using omarchy::plugins::permissions::AuditOutcome;
+  using omarchy::plugins::permissions::AuditProducer;
+  using omarchy::plugins::permissions::DynamicAuditAttemptIdentity;
+  using omarchy::plugins::permissions::DynamicAuditIdentity;
+  using omarchy::plugins::permissions::GrantDecisionCode;
+  const auto attempt_identity = DynamicAuditAttemptIdentity{
+      .opaque_digest = omarchy::plugins::permissions::Digest(
+          omarchy::plugins::manifest::sha256_hex(packet.payload))};
+  const auto decision_code = [](definitions::DynamicDecision decision) {
+    switch (decision) {
+    case definitions::DynamicDecision::allowed:
+      return GrantDecisionCode::allowed;
+    case definitions::DynamicDecision::revoked:
+      return GrantDecisionCode::revoked;
+    case definitions::DynamicDecision::scope_expanded:
+      return GrantDecisionCode::outside_scope;
+    case definitions::DynamicDecision::operation_undeclared:
+      return GrantDecisionCode::capability_undeclared;
+    case definitions::DynamicDecision::operation_ungranted:
+      return GrantDecisionCode::ungranted;
+    case definitions::DynamicDecision::gesture_missing:
+      return GrantDecisionCode::gesture_missing;
+    case definitions::DynamicDecision::unknown_definition:
+    case definitions::DynamicDecision::stale_definition:
+    case definitions::DynamicDecision::denied:
+    case definitions::DynamicDecision::adapter_mismatch:
+      return GrantDecisionCode::ungranted;
+    }
+    return GrantDecisionCode::ungranted;
+  };
+  const auto append = [&](AuditEvent event, AuditOutcome outcome,
+                          definitions::DynamicDecision decision,
+                          const std::optional<DynamicAuditIdentity> &identity,
+                          std::size_t response_bytes) {
+    omarchy::plugins::permissions::AuditDraft draft{
+        .event = event,
+        .outcome = outcome,
+        .plugin = binding_->plugin,
+        .revision = binding_->revision,
+        .generation = binding_->generation,
+        .correlation = packet.header.correlation_id,
+        .dynamic_operation = identity,
+        .dynamic_attempt =
+            identity ? std::nullopt : std::optional(attempt_identity),
+        .operation = std::nullopt,
+        .capability = std::nullopt,
+        .decision = decision_code(decision),
+        .metadata = {}};
+    draft.metadata.push_back(
+        {AuditMetric::request_bytes,
+         static_cast<std::int64_t>(packet.payload.size())});
+    if (response_bytes > 0)
+      draft.metadata.push_back({AuditMetric::response_bytes,
+                                static_cast<std::int64_t>(response_bytes)});
+    try {
+      return audit_.append(AuditProducer::broker, std::move(draft)).status.ok();
+    } catch (...) {
+      return false;
+    }
+  };
   const auto route = std::ranges::find_if(routes_, [&](const auto &candidate) {
     return candidate.grant.request.definition.canonical_name ==
                invocation.definition.canonical_name &&
@@ -81,18 +167,36 @@ DynamicBrokerResult DynamicBrokerRuntime::dispatch(
            candidate.grant.request.definition.definition_digest ==
                invocation.definition.definition_digest;
   });
-  if (route == routes_.end())
-    return {};
+  if (route == routes_.end()) {
+    constexpr auto unknown = definitions::DynamicDecision::unknown_definition;
+    if (!append(AuditEvent::operation_decided, AuditOutcome::denied, unknown,
+                std::nullopt, 0)) {
+      failed_ = true;
+      return {.outcome = definitions::DynamicDispatchResult::adapter_failed,
+              .decision = unknown};
+    }
+    last_correlation_ = packet.header.correlation_id;
+    if (!append(AuditEvent::operation_completed, AuditOutcome::denied, unknown,
+                std::nullopt, 0)) {
+      failed_ = true;
+      return {.outcome = definitions::DynamicDispatchResult::adapter_failed,
+              .decision = unknown};
+    }
+    return {.outcome = definitions::DynamicDispatchResult::denied,
+            .decision = unknown};
+  }
   definitions::DynamicDecision decision = definitions::DynamicDecision::denied;
+  definitions::DynamicAuthorization authorization;
   bool authorized = false;
   if (channel_binding != route->grant.binding) {
     decision = definitions::DynamicDecision::denied;
   } else {
-    auto authorization = definitions::authorize_dynamic_operation(
+    authorization = definitions::authorize_dynamic_operation(
         registry_, route->grant.request, route->grant.grant,
         invocation.operation.view(), invocation.demand_scope.view(),
         route->adapter.binding, route->scope_validator, false);
-    if (authorization.decision == definitions::DynamicDecision::gesture_missing &&
+    if (authorization.decision ==
+            definitions::DynamicDecision::gesture_missing &&
         invocation.gesture && gesture_authority != nullptr &&
         gesture_authority->consume(channel_binding, *invocation.gesture))
       authorization = definitions::authorize_dynamic_operation(
@@ -102,48 +206,33 @@ DynamicBrokerResult DynamicBrokerRuntime::dispatch(
     decision = authorization.decision;
     authorized = authorization.allowed();
   }
-  const auto code = [&] {
-    if (decision == definitions::DynamicDecision::allowed)
-      return omarchy::plugins::permissions::GrantDecisionCode::allowed;
-    if (decision == definitions::DynamicDecision::revoked)
-      return omarchy::plugins::permissions::GrantDecisionCode::revoked;
-    if (decision == definitions::DynamicDecision::scope_expanded)
-      return omarchy::plugins::permissions::GrantDecisionCode::outside_scope;
-    return omarchy::plugins::permissions::GrantDecisionCode::ungranted;
-  }();
-  const auto identity = omarchy::plugins::permissions::DynamicAuditIdentity{
-      .capability = omarchy::plugins::permissions::CapabilityId(
-          invocation.definition.canonical_name.view()),
-      .definition_generation = invocation.definition.definition_generation,
-      .definition_digest = invocation.definition.definition_digest,
-      .operation = omarchy::plugins::permissions::BoundedString<128>(
-          invocation.operation.view()),
-      .grant_epoch = route->grant.grant.epoch};
-  const auto append = [&](omarchy::plugins::permissions::AuditEvent event,
-                          omarchy::plugins::permissions::AuditOutcome audit_outcome,
-                          std::size_t response_bytes) {
-    omarchy::plugins::permissions::AuditDraft draft{
-        .event = event, .outcome = audit_outcome,
-        .plugin = route->grant.binding.plugin,
-        .revision = route->grant.binding.revision,
-        .generation = route->grant.binding.generation,
-        .correlation = packet.header.correlation_id,
-        .dynamic_operation = identity, .operation = std::nullopt,
-        .capability = std::nullopt, .decision = code, .metadata = {}};
-    draft.metadata.push_back(
-        {omarchy::plugins::permissions::AuditMetric::request_bytes,
-         static_cast<std::int64_t>(packet.payload.size())});
-    if (response_bytes > 0)
-      draft.metadata.push_back(
-          {omarchy::plugins::permissions::AuditMetric::response_bytes,
-           static_cast<std::int64_t>(response_bytes)});
-    return audit_.append(omarchy::plugins::permissions::AuditProducer::broker,
-                         std::move(draft)).status.ok();
-  };
-  if (!append(omarchy::plugins::permissions::AuditEvent::operation_decided,
-              authorized ? omarchy::plugins::permissions::AuditOutcome::allowed
-                         : omarchy::plugins::permissions::AuditOutcome::denied,
-              0)) {
+  const auto resolved = registry_.resolve(route->grant.request.definition);
+  const auto trusted_operation =
+      resolved ? std::ranges::find_if(resolved->definition->operations.values(),
+                                      [&](const auto &operation) {
+                                        return operation.name.view() ==
+                                               invocation.operation.view();
+                                      })
+               : decltype(resolved->definition->operations.values().begin()){};
+  const bool operation_resolved =
+      resolved &&
+      trusted_operation != resolved->definition->operations.values().end();
+  const std::optional<DynamicAuditIdentity> identity =
+      operation_resolved
+          ? std::optional(DynamicAuditIdentity{
+                .capability = omarchy::plugins::permissions::CapabilityId(
+                    route->grant.request.definition.canonical_name.view()),
+                .definition_generation =
+                    route->grant.request.definition.definition_generation,
+                .definition_digest =
+                    route->grant.request.definition.definition_digest,
+                .operation = omarchy::plugins::permissions::BoundedString<128>(
+                    trusted_operation->name.view()),
+                .grant_epoch = route->grant.grant.epoch})
+          : std::nullopt;
+  if (!append(AuditEvent::operation_decided,
+              authorized ? AuditOutcome::allowed : AuditOutcome::denied,
+              decision, identity, 0)) {
     failed_ = true;
     return {.outcome = definitions::DynamicDispatchResult::adapter_failed,
             .decision = decision};
@@ -166,66 +255,96 @@ DynamicBrokerResult DynamicBrokerRuntime::dispatch(
                   ? definitions::DynamicDispatchResult::dispatched
                   : definitions::DynamicDispatchResult::adapter_failed;
   }
-  const auto terminal_outcome = outcome == definitions::DynamicDispatchResult::dispatched
-                                    ? omarchy::plugins::permissions::AuditOutcome::allowed
-                                    : (authorized
-                                           ? omarchy::plugins::permissions::AuditOutcome::failed
-                                           : omarchy::plugins::permissions::AuditOutcome::denied);
-  if (!append(omarchy::plugins::permissions::AuditEvent::operation_completed,
-              terminal_outcome, written)) {
+  const auto terminal_outcome =
+      outcome == definitions::DynamicDispatchResult::dispatched
+          ? AuditOutcome::allowed
+          : (authorized ? AuditOutcome::failed : AuditOutcome::denied);
+  const auto completed_bytes =
+      outcome == definitions::DynamicDispatchResult::dispatched ? written : 0;
+  if (!append(AuditEvent::operation_completed, terminal_outcome, decision,
+              identity, completed_bytes)) {
     failed_ = true;
     return {.outcome = definitions::DynamicDispatchResult::adapter_failed,
             .decision = decision};
   }
-  return {.outcome = outcome, .decision = decision, .response_bytes = written};
+  return {.outcome = outcome,
+          .decision = decision,
+          .response_bytes = completed_bytes};
 }
 
-bool DynamicBrokerRuntime::apply_reconstructed_update(
+DynamicRevocationResult DynamicBrokerRuntime::apply_reconstructed_revocation(
     const definitions::DynamicRevisionGrant &updated) {
+  if (failed_)
+    return {.status = DynamicRevocationStatus::failed};
   const auto route = std::ranges::find_if(routes_, [&](const auto &candidate) {
     return candidate.grant.binding == updated.binding &&
            candidate.grant.request.definition.canonical_name ==
                updated.request.definition.canonical_name;
   });
-  if (route == routes_.end() || route->grant.request.definition.definition_generation !=
-                                  updated.request.definition.definition_generation ||
+  if (route == routes_.end() ||
+      route->grant.request.definition.definition_generation !=
+          updated.request.definition.definition_generation ||
       route->grant.request.definition.definition_digest !=
           updated.request.definition.definition_digest ||
       route->grant.request.operations != updated.request.operations ||
       route->grant.request.scope != updated.request.scope ||
       route->grant.request.required != updated.request.required ||
       updated.grant.epoch != route->grant.grant.epoch + 1 ||
-      updated.grant.definition.canonical_name != route->grant.grant.definition.canonical_name ||
-      updated.grant.definition.definition_generation != route->grant.grant.definition.definition_generation ||
-      updated.grant.definition.definition_digest != route->grant.grant.definition.definition_digest ||
+      updated.grant.definition.canonical_name !=
+          route->grant.grant.definition.canonical_name ||
+      updated.grant.definition.definition_generation !=
+          route->grant.grant.definition.definition_generation ||
+      updated.grant.definition.definition_digest !=
+          route->grant.grant.definition.definition_digest ||
       !definitions::review_dynamic_grant(registry_, updated,
-                                          route->scope_validator))
-    return false;
-  for (const auto &operation : updated.grant.operations.values()) {
+                                         route->scope_validator))
+    return {.status = DynamicRevocationStatus::binding_mismatch};
+  const auto resolved = registry_.resolve(route->grant.request.definition);
+  if (!resolved ||
+      updated.grant.state != omarchy::plugins::permissions::GrantState::revoked)
+    return {.status = DynamicRevocationStatus::binding_mismatch};
+  const bool restart_worker = resolved->definition->revocation ==
+                              definitions::RevocationPolicy::restart_worker;
+  for (const auto &operation : route->grant.grant.operations.values()) {
     omarchy::plugins::permissions::AuditDraft draft{
         .event = omarchy::plugins::permissions::AuditEvent::capability_revoked,
         .outcome = omarchy::plugins::permissions::AuditOutcome::denied,
-        .plugin = updated.binding.plugin, .revision = updated.binding.revision,
-        .generation = updated.binding.generation, .correlation = 0,
-        .dynamic_operation = omarchy::plugins::permissions::DynamicAuditIdentity{
-            .capability = omarchy::plugins::permissions::CapabilityId(
-                updated.grant.definition.canonical_name.view()),
-            .definition_generation = updated.grant.definition.definition_generation,
-            .definition_digest = updated.grant.definition.definition_digest,
-            .operation = omarchy::plugins::permissions::BoundedString<128>(
-                operation.view()),
-            .grant_epoch = updated.grant.epoch},
-        .operation = std::nullopt, .capability = std::nullopt,
+        .plugin = updated.binding.plugin,
+        .revision = updated.binding.revision,
+        .generation = updated.binding.generation,
+        .correlation = 0,
+        .dynamic_operation =
+            omarchy::plugins::permissions::DynamicAuditIdentity{
+                .capability = omarchy::plugins::permissions::CapabilityId(
+                    updated.grant.definition.canonical_name.view()),
+                .definition_generation =
+                    updated.grant.definition.definition_generation,
+                .definition_digest = updated.grant.definition.definition_digest,
+                .operation = omarchy::plugins::permissions::BoundedString<128>(
+                    operation.view()),
+                .grant_epoch = updated.grant.epoch},
+        .dynamic_attempt = std::nullopt,
+        .operation = std::nullopt,
+        .capability = std::nullopt,
         .decision = omarchy::plugins::permissions::GrantDecisionCode::revoked,
         .metadata = {}};
-    if (!audit_.append(omarchy::plugins::permissions::AuditProducer::broker,
-                       std::move(draft)).status.ok()) {
+    try {
+      if (audit_
+              .append(omarchy::plugins::permissions::AuditProducer::broker,
+                      std::move(draft))
+              .status.ok())
+        continue;
+    } catch (...) {
+    }
+    {
       failed_ = true;
-      return false;
+      return {.status = DynamicRevocationStatus::audit_failed,
+              .restart_worker = restart_worker};
     }
   }
   route->grant = updated;
-  return true;
+  return {.status = DynamicRevocationStatus::accepted,
+          .restart_worker = restart_worker};
 }
 
 } // namespace omarchy::plugin_runtime::runtime

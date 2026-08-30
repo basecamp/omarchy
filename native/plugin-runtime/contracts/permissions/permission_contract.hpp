@@ -86,9 +86,7 @@ public:
       throw std::runtime_error("fixed vector is full");
     values_.push_back(std::move(value));
   }
-  [[nodiscard]] std::span<const T> values() const {
-    return values_;
-  }
+  [[nodiscard]] std::span<const T> values() const { return values_; }
   [[nodiscard]] std::span<T> values() { return values_; }
   [[nodiscard]] std::size_t size() const { return values_.size(); }
   [[nodiscard]] bool empty() const { return values_.empty(); }
@@ -477,6 +475,15 @@ struct DynamicAuditIdentity {
   bool operator==(const DynamicAuditIdentity &) const = default;
 };
 
+// Rejected dynamic requests must not promote plugin-provided names into the
+// trusted audit vocabulary. The broker records only a host-computed digest of
+// the bounded invocation envelope until an installed definition and operation
+// have both resolved.
+struct DynamicAuditAttemptIdentity {
+  Digest opaque_digest;
+  bool operator==(const DynamicAuditAttemptIdentity &) const = default;
+};
+
 struct AuditDraft {
   AuditEvent event{};
   AuditOutcome outcome{};
@@ -485,6 +492,7 @@ struct AuditDraft {
   std::uint64_t generation = 0;
   std::uint64_t correlation = 0;
   std::optional<DynamicAuditIdentity> dynamic_operation;
+  std::optional<DynamicAuditAttemptIdentity> dynamic_attempt;
   std::optional<OperationId> operation;
   std::optional<CapabilityKey> capability;
   GrantDecisionCode decision = GrantDecisionCode::ungranted;

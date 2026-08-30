@@ -204,8 +204,7 @@ template <std::size_t Size> std::string domain(const char (&value)[Size]) {
 }
 
 bool valid_scope_token(char value) {
-  return (value >= 'a' && value <= 'z') ||
-         (value >= 'A' && value <= 'Z') ||
+  return (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') ||
          (value >= '0' && value <= '9') || value == '.' || value == '_' ||
          value == '-';
 }
@@ -220,8 +219,8 @@ std::uint64_t parse_unsigned(std::string_view value) {
   return result;
 }
 
-std::vector<std::string_view> parse_token_array(
-    std::string_view value, std::string_view prefix) {
+std::vector<std::string_view> parse_token_array(std::string_view value,
+                                                std::string_view prefix) {
   constexpr std::string_view suffix = "]}";
   require(value.starts_with(prefix) && value.ends_with(suffix),
           "manifest scope has an unregistered shape");
@@ -257,8 +256,8 @@ TokenScope token_scope(std::span<const std::string_view> values) {
   return result;
 }
 
-CapabilityRequest translate_manifest_request(
-    const manifest::CapabilityRequest &request) {
+CapabilityRequest
+translate_manifest_request(const manifest::CapabilityRequest &request) {
   CapabilityRequest result{
       .capability = {CapabilityId(request.capability), 1},
       .scope = NoScope{},
@@ -269,8 +268,7 @@ CapabilityRequest translate_manifest_request(
     constexpr std::string_view simple_prefix = "{\"quotaBytes\":";
     constexpr std::string_view bounded_prefix = "{\"itemBytes\":";
     constexpr std::string_view separator = ",\"quotaBytes\":";
-    require(scope.ends_with("}"),
-            "storage scope has an unregistered shape");
+    require(scope.ends_with("}"), "storage scope has an unregistered shape");
     scope.remove_suffix(1);
     std::uint64_t item = 0;
     std::uint64_t total = 0;
@@ -762,24 +760,37 @@ void validate_audit_draft(const AuditDraft &draft) {
                 dynamic.grant_epoch > 0,
             "invalid dynamic audit identity");
   }
+  if (draft.dynamic_attempt.has_value()) {
+    require(!draft.operation.has_value() && !draft.capability.has_value() &&
+                !draft.dynamic_operation.has_value() &&
+                canonical_digest(draft.dynamic_attempt->opaque_digest),
+            "invalid dynamic audit attempt identity");
+  }
   switch (draft.event) {
   case AuditEvent::grant_changed:
     require(draft.capability.has_value() && !draft.operation.has_value() &&
-                !draft.dynamic_operation.has_value(),
+                !draft.dynamic_operation.has_value() &&
+                !draft.dynamic_attempt.has_value(),
             "grant audit event has invalid fields");
     break;
   case AuditEvent::capability_revoked:
     require((((draft.capability.has_value() && !draft.operation.has_value()) !=
-              draft.dynamic_operation.has_value())) && draft.correlation == 0,
+              draft.dynamic_operation.has_value())) &&
+                !draft.dynamic_attempt.has_value() && draft.correlation == 0,
             "revocation audit event has invalid fields");
     break;
   case AuditEvent::operation_decided:
   case AuditEvent::operation_completed:
   case AuditEvent::handle_issued:
   case AuditEvent::handle_denied:
-    require(((draft.operation.has_value() && draft.capability.has_value()) !=
-             draft.dynamic_operation.has_value()) && draft.correlation > 0,
-            "operation audit event has invalid fields");
+    require(
+        static_cast<unsigned>(draft.operation.has_value() &&
+                              draft.capability.has_value()) +
+                    static_cast<unsigned>(draft.dynamic_operation.has_value()) +
+                    static_cast<unsigned>(draft.dynamic_attempt.has_value()) ==
+                1 &&
+            draft.correlation > 0,
+        "operation audit event has invalid fields");
     break;
   case AuditEvent::worker_started:
   case AuditEvent::worker_health:
@@ -788,7 +799,7 @@ void validate_audit_draft(const AuditDraft &draft) {
   case AuditEvent::worker_disabled:
     require(!draft.operation.has_value() && !draft.capability.has_value() &&
                 !draft.dynamic_operation.has_value() &&
-                draft.correlation == 0,
+                !draft.dynamic_attempt.has_value() && draft.correlation == 0,
             "worker audit event has invalid fields");
     break;
   }
@@ -837,6 +848,8 @@ std::string audit_record_fingerprint(const AuditRecord &record) {
     append_text(bytes, record.dynamic_operation->operation.view());
     append_u64(bytes, record.dynamic_operation->grant_epoch);
   }
+  if (record.dynamic_attempt.has_value())
+    append_text(bytes, record.dynamic_attempt->opaque_digest.view());
   append_u8(bytes, static_cast<std::uint8_t>(record.decision));
   append_u8(bytes, static_cast<std::uint8_t>(record.metadata.size()));
   for (std::uint8_t value = 0;

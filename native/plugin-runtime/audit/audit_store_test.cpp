@@ -29,9 +29,11 @@ permissions::AuditDraft operation(std::uint64_t correlation,
       .generation = 4,
       .correlation = correlation,
       .dynamic_operation = std::nullopt,
+      .dynamic_attempt = std::nullopt,
       .operation = permissions::OperationId::storage_read,
-      .capability = permissions::CapabilityKey{
-          permissions::CapabilityId("storage.private"), 1},
+      .capability =
+          permissions::CapabilityKey{
+              permissions::CapabilityId("storage.private"), 1},
       .decision = permissions::GrantDecisionCode::allowed,
       .metadata = {},
   };
@@ -80,9 +82,10 @@ void rejects_invalid_input() {
   invalid.correlation = 0;
   require(!log.append(permissions::AuditProducer::broker, invalid).status.ok(),
           "invalid audit draft accepted");
-  require(!log.append(static_cast<permissions::AuditProducer>(255), operation(1))
-               .status.ok(),
-          "untrusted audit producer accepted");
+  require(
+      !log.append(static_cast<permissions::AuditProducer>(255), operation(1))
+           .status.ok(),
+      "untrusted audit producer accepted");
   audit::Query query;
   query.maximum_results = 0;
   require(!log.query(query).status.ok(), "unbounded audit query accepted");

@@ -1,13 +1,14 @@
 #pragma once
 
-#include "permission_contract.hpp"
 #include "manifest_contract.hpp"
+#include "permission_contract.hpp"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string_view>
+#include <type_traits>
 
 namespace omarchy::plugins::definitions {
 
@@ -118,8 +119,7 @@ private:
 };
 
 [[nodiscard]] bool valid_definition(const CapabilityDefinition &definition);
-[[nodiscard]] Digest
-definition_digest(const CapabilityDefinition &definition);
+[[nodiscard]] Digest definition_digest(const CapabilityDefinition &definition);
 
 struct DynamicRequest {
   CapabilityReference definition;
@@ -157,11 +157,19 @@ enum class DynamicScopeRelation : std::uint8_t {
   invalid,
 };
 
+// Trusted adapter callbacks cross the broker/provider boundary. They are
+// synchronous and noexcept: throwing across this ABI is a process-contract
+// violation, not a plugin-visible error path.
+using DynamicScopeCompare = DynamicScopeRelation (*)(
+    const CapabilityDefinition &definition, std::string_view candidate,
+    std::string_view baseline, void *context) noexcept;
+static_assert(
+    std::is_nothrow_invocable_r_v<DynamicScopeRelation, DynamicScopeCompare,
+                                  const CapabilityDefinition &,
+                                  std::string_view, std::string_view, void *>);
+
 struct DynamicScopeValidator {
-  DynamicScopeRelation (*compare)(const CapabilityDefinition &definition,
-                                  std::string_view candidate,
-                                  std::string_view baseline,
-                                  void *context) noexcept = nullptr;
+  DynamicScopeCompare compare = nullptr;
   void *context = nullptr;
 };
 
