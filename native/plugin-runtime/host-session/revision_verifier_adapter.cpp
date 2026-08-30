@@ -13,7 +13,7 @@ DescriptorRevisionVerifier::verify_open_revision(
     auto verified =
         plugins::discovery::discover_open_revision(revision_directory_fd);
     return VerifiedRevision{
-        .plugin_id = std::move(verified.manifest.id),
+        .manifest = std::move(verified.manifest),
         .tree_sha256 = std::move(verified.identity.tree_sha256),
         .request_sha256 = std::move(verified.identity.request_sha256)};
   } catch (const std::exception &) {

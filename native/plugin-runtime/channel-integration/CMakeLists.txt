@@ -59,6 +59,7 @@ if(TARGET omarchy-plugin-host-session)
   add_library(omarchy-plugin-authenticated-session STATIC
     authenticated_session_channel.cpp
     broker_session_settlement.cpp
+    plugin_session.cpp
   )
   target_include_directories(omarchy-plugin-authenticated-session PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -66,6 +67,7 @@ if(TARGET omarchy-plugin-host-session)
   omarchy_plugin_target_defaults(omarchy-plugin-authenticated-session)
   target_link_libraries(omarchy-plugin-authenticated-session PUBLIC
     omarchy-plugin-channel-integration
+    omarchy-plugin-activation-snapshot
     omarchy-plugin-host-session
   )
   target_link_libraries(omarchy-plugin-authenticated-session PRIVATE Qt6::Core)
@@ -177,5 +179,26 @@ if(BUILD_TESTING)
     set_tests_properties(plugin-authenticated-session-integration-bwrap
       PROPERTIES TIMEOUT 30 SKIP_RETURN_CODE 77
       LABELS "integration;security;session;broker;launcher;sandbox;linux")
+
+    add_executable(omarchy-plugin-product-session-test
+      authenticated_session_channel.cpp
+      broker_session_settlement.cpp
+      plugin_session.cpp
+      plugin_session_test.cpp)
+    omarchy_plugin_target_defaults(omarchy-plugin-product-session-test)
+    target_compile_definitions(omarchy-plugin-product-session-test PRIVATE
+      OMARCHY_PLUGIN_SESSION_TESTING
+      CHANNEL_PEER_PATH="$<TARGET_FILE:omarchy-plugin-channel-peer>"
+      FAKE_BWRAP_PATH="$<TARGET_FILE:omarchy-plugin-channel-fake-bwrap>")
+    target_link_libraries(omarchy-plugin-product-session-test PRIVATE
+      omarchy-plugin-channel-integration omarchy-plugin-host-session Qt6::Core)
+    target_link_libraries(omarchy-plugin-product-session-test PRIVATE
+      omarchy-plugin-activation-snapshot)
+    add_dependencies(omarchy-plugin-product-session-test
+      omarchy-plugin-channel-peer omarchy-plugin-channel-fake-bwrap)
+    add_test(NAME plugin-product-session
+      COMMAND omarchy-plugin-product-session-test)
+    set_tests_properties(plugin-product-session PROPERTIES
+      TIMEOUT 30 LABELS "unit;security;session;surface")
   endif()
 endif()

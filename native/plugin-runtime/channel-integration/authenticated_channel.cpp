@@ -122,12 +122,10 @@ bool valid_typed_packet(const wire::PacketView &packet,
     if (packet.header.message_type == wire::kPermissionSnapshotMessage)
       return !packet.payload.empty();
     if (packet.header.message_type == wire::kSurfaceSelectionMessage) {
-      return !packet.payload.empty() && packet.payload.size() <= 64 &&
-             std::ranges::all_of(packet.payload, [](std::byte value) {
-               const auto c = std::to_integer<unsigned char>(value);
-               return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                      (c >= '0' && c <= '9') || c == '-' || c == '_';
-             });
+      const std::string_view name(
+          reinterpret_cast<const char *>(packet.payload.data()),
+          packet.payload.size());
+      return wire::valid_surface_name(name);
     }
     if (packet.header.message_type == wire::kSurfaceBindingMessage ||
         packet.header.message_type == wire::kSurfaceOpenMessage) {

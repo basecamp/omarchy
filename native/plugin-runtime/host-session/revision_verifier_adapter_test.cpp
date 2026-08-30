@@ -44,7 +44,7 @@ int main() {
     const auto direct = discovery::discover_open_revision(descriptor.get());
     const host::DescriptorRevisionVerifier verifier;
     const auto adapted = verifier.verify_open_revision(descriptor.get());
-    require(adapted && adapted->plugin_id == direct.manifest.id &&
+    require(adapted && adapted->manifest == direct.manifest &&
                 adapted->tree_sha256 == direct.identity.tree_sha256 &&
                 adapted->request_sha256 == direct.identity.request_sha256,
             "revision verifier did not preserve descriptor discovery identity");

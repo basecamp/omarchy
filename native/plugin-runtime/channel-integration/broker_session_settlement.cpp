@@ -41,17 +41,20 @@ private:
 BrokerSessionSettlement::BrokerSessionSettlement(
     AuthenticatedBrokerChannel &channel,
     broker_session::StructuredBroker &broker,
-    broker_session::AuthenticatedBrokerAdmission admission)
+    broker_session::AuthenticatedBrokerAdmission admission,
+    gesture_runtime::GestureEligibilityAuthority *gesture_authority)
     : transport_(std::make_unique<ChannelBrokerReplyTransport>(channel)),
-      broker_(broker), admission_(std::move(admission)) {}
+      broker_(broker), admission_(std::move(admission)),
+      gesture_authority_(gesture_authority) {}
 
 #ifdef OMARCHY_BROKER_SETTLEMENT_TESTING
 BrokerSessionSettlement::BrokerSessionSettlement(
     std::unique_ptr<BrokerReplyTransport> transport,
     broker_session::StructuredBroker &broker,
-    broker_session::AuthenticatedBrokerAdmission admission) noexcept
+    broker_session::AuthenticatedBrokerAdmission admission,
+    gesture_runtime::GestureEligibilityAuthority *gesture_authority) noexcept
     : transport_(std::move(transport)), broker_(broker),
-      admission_(std::move(admission)) {
+      admission_(std::move(admission)), gesture_authority_(gesture_authority) {
   if (!transport_) {
     failed_ = true;
     terminal_ = true;
@@ -96,7 +99,8 @@ BrokerSessionSettlement::dispatch(AuthenticatedMessage message,
   try {
     auto transaction =
         broker_.dispatch(std::move(*admitted.request),
-                         static_cast<std::uint64_t>(now), provider_response_);
+                         static_cast<std::uint64_t>(now), provider_response_,
+                         nullptr, gesture_authority_);
     if (transaction.state() != broker_session::TransactionState::reply) {
       failed_ = true;
       terminal_ = true;

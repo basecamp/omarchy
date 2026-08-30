@@ -210,6 +210,10 @@ OwnedDescriptor &OwnedDescriptor::operator=(OwnedDescriptor &&other) noexcept {
   return *this;
 }
 
+int OwnedDescriptor::release() noexcept {
+  return std::exchange(descriptor_, -1);
+}
+
 LiveGenerationState::LiveGenerationState(permissions::ActivationBinding binding)
     : plugin_(std::move(binding.plugin)),
       revision_(std::move(binding.revision)),
@@ -293,9 +297,9 @@ ActivationResult ActivationSource::load(std::string_view record_name) const {
   if (!distinct_authority_objects(authority_identities))
     return failure(ActivationError::revision_state_alias);
 
-  const auto verified =
+  auto verified =
       revision_verifier_.verify_open_revision(revision->get());
-  if (!verified || verified->plugin_id != record->plugin_id ||
+  if (!verified || verified->manifest.id != record->plugin_id ||
       verified->tree_sha256 != record->revision_sha256)
     return failure(ActivationError::revision_unverified);
   auto grants = grant_authority_.resolve(
@@ -307,6 +311,7 @@ ActivationResult ActivationSource::load(std::string_view record_name) const {
   auto live = std::make_shared<LiveGenerationState>(grants->binding);
   return {.snapshot = ActivationSnapshot{
               .record = *record,
+              .manifest = std::move(verified->manifest),
               .grants = std::move(*grants),
               .activation_record = std::move(opened_record->descriptor),
               .revision_directory = std::move(*revision),

@@ -458,6 +458,10 @@ void validate_requests(const RequestSet &requests) {
   }
 }
 
+void validate_grants(const GrantSet &grants, const RequestSet &requests) {
+  validate_grants(grants, &requests);
+}
+
 RequestSet requests_from_manifest(const manifest::ManifestV2 &manifest) {
   RequestSet result;
   for (const auto &request : manifest.requests) {

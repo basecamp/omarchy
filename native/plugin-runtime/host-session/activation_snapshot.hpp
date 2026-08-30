@@ -1,6 +1,7 @@
 #pragma once
 
 #include "grant_snapshot.hpp"
+#include "manifest_contract.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -29,6 +30,7 @@ public:
   OwnedDescriptor &operator=(const OwnedDescriptor &) = delete;
 
   [[nodiscard]] int get() const noexcept { return descriptor_; }
+  [[nodiscard]] int release() noexcept;
   [[nodiscard]] explicit operator bool() const noexcept {
     return descriptor_ >= 0;
   }
@@ -46,7 +48,7 @@ struct ActivationRecord {
 };
 
 struct VerifiedRevision {
-  std::string plugin_id;
+  plugins::manifest::ManifestV2 manifest;
   std::string tree_sha256;
   std::string request_sha256;
 };
@@ -101,6 +103,7 @@ private:
 
 struct ActivationSnapshot {
   ActivationRecord record;
+  plugins::manifest::ManifestV2 manifest;
   policy::GrantSnapshot grants;
   // Keep the trusted record and both selected directories pinned for the full
   // activation. A rename or path replacement cannot retarget a live session.

@@ -1,11 +1,12 @@
 #pragma once
 
+#include "plugin_session_io.hpp"
+#include "omarchy/plugin/wire/surface_name.hpp"
 #include "omarchy/plugin_runtime/surface/shared_layout.hpp"
 
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <span>
 #include <vector>
 
 namespace omarchy::plugin_runtime::host_session {
@@ -14,17 +15,20 @@ namespace surface = omarchy::plugin_runtime::surface;
 
 // The channel authenticates and decodes packets before they reach this router.
 // A message may identify its destination by surface, correlation, or both.
-struct AuthenticatedRenderMessage {
+struct OwnedAuthenticatedRenderMessage {
   std::uint64_t launch_generation = 0;
+  std::uint16_t message_type = 0;
   std::uint64_t correlation = 0;
   std::optional<surface::SurfaceKey> surface;
-  std::span<const std::byte> packet;
+  std::vector<std::byte> payload;
+  std::vector<OwnedFd> descriptors;
 };
 
 class SurfaceEndpoint {
 public:
   virtual ~SurfaceEndpoint() = default;
-  virtual bool receive(const AuthenticatedRenderMessage &message) = 0;
+  // Ownership is consumed even when the endpoint rejects the message.
+  virtual bool receive(OwnedAuthenticatedRenderMessage message) = 0;
 };
 
 enum class AttachResult {
@@ -50,7 +54,6 @@ enum class RouteResult {
 // The class is intentionally event-loop confined; it performs no hidden locking.
 class MultiSurfaceRouter final {
 public:
-  static constexpr std::size_t kMaximumEndpoints = 32;
   static constexpr std::size_t kMaximumCorrelationsPerEndpoint = 8;
 
   // A router is inseparable from one concrete launch; zero is never a launch.
@@ -65,7 +68,7 @@ public:
                             const SurfaceEndpoint &endpoint);
   void detachAll();
 
-  [[nodiscard]] RouteResult route(const AuthenticatedRenderMessage &message);
+  [[nodiscard]] RouteResult route(OwnedAuthenticatedRenderMessage message);
   [[nodiscard]] std::size_t size() const noexcept;
   [[nodiscard]] std::uint64_t launchGeneration() const noexcept;
 

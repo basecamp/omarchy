@@ -1,0 +1,189 @@
+#pragma once
+
+#include "authenticated_session_channel.hpp"
+#include "../host-session/MultiSurfaceRouter.h"
+#include "../host-session/activation_snapshot.hpp"
+#include "../host-session/gesture_intent.hpp"
+
+#include <memory>
+#include <span>
+#include <string_view>
+#include <vector>
+
+namespace omarchy::plugin_runtime::channel {
+
+#ifdef OMARCHY_PLUGIN_SESSION_TESTING
+class PluginSessionTestAccess;
+#endif
+
+class AuthenticatedSessionRuntimeFactory {
+public:
+  virtual ~AuthenticatedSessionRuntimeFactory() = default;
+  // Both descriptors name the exact activation objects and are borrowed only
+  // for this call. A returned owner must hold any descriptor it retains. It
+  // must also retain the exact supplied LiveGenerationState as long as an
+  // asynchronous effect can settle, and every DispatchAuthorityLease must
+  // consult that state at effect time rather than a reconstructed generation.
+  [[nodiscard]] virtual std::unique_ptr<AuthenticatedSessionRuntime>
+  create(const plugins::manifest::ManifestV2 &manifest,
+         const session::policy::GrantSnapshot &grants,
+         int revision_directory_fd, int private_state_directory_fd,
+         std::uint64_t session_nonce,
+         std::shared_ptr<session::LiveGenerationState> live_generation,
+         std::shared_ptr<runtime::GestureEligibilityLatch>
+             gesture_eligibility) = 0;
+};
+
+class PluginSessionEvents {
+public:
+  virtual ~PluginSessionEvents() = default;
+  virtual void state_changed(session::SessionState state,
+                             session::SessionError error) = 0;
+  virtual void control_received(const session::OwnedMessage &message) = 0;
+  virtual void render_rejected(session::RouteResult result) = 0;
+};
+
+// The shell-side consumer performs the final freshness check immediately
+// before publishing the effect. Keeping this interface move-only prevents an
+// admitted intent from being copied or replayed between host components.
+class SurfaceIntentSink {
+public:
+  virtual ~SurfaceIntentSink() = default;
+  [[nodiscard]] virtual bool
+  accept(host_session::AdmittedSurfaceIntent intent) = 0;
+};
+
+enum class PluginSessionCreateError : std::uint8_t {
+  none,
+  invalid_activation,
+  nonce_unavailable,
+  runtime_unavailable,
+  allocation_failed,
+};
+
+enum class SurfaceAttachStatus : std::uint8_t {
+  attached,
+  session_not_running,
+  undeclared_surface,
+  already_attached,
+  invalid_correlations,
+};
+
+struct SurfaceAttachResult final {
+  SurfaceAttachStatus status = SurfaceAttachStatus::undeclared_surface;
+  session::surface::SurfaceKey key{};
+  [[nodiscard]] explicit operator bool() const noexcept {
+    return status == SurfaceAttachStatus::attached;
+  }
+};
+
+// Product composition root for one verified plugin activation. One instance
+// owns one worker/channel/sandbox/sidecar lifecycle and routes every attached
+// surface over that single authenticated render lane.
+class PluginSession final : private session::SessionObserver {
+public:
+  [[nodiscard]] static std::unique_ptr<PluginSession>
+  create(launcher::Supervisor supervisor, session::ActivationSnapshot snapshot,
+         AuthenticatedSessionRuntimeFactory &runtime_factory,
+         PluginSessionCreateError &error, PluginSessionEvents *events = nullptr,
+         session::SessionLimits limits = {},
+         SurfaceIntentSink *intent_sink = nullptr, QObject *parent = nullptr);
+
+  ~PluginSession() override;
+  PluginSession(const PluginSession &) = delete;
+  PluginSession &operator=(const PluginSession &) = delete;
+
+  void start();
+  [[nodiscard]] bool send(session::ChannelLane lane,
+                          std::uint16_t message_type,
+                          std::uint64_t correlation_id,
+                          std::vector<std::byte> payload,
+                          std::vector<session::OwnedFd> descriptors = {});
+  void revoke();
+  void stop();
+
+  [[nodiscard]] SurfaceAttachResult
+  attach(std::string_view declared_surface,
+         std::span<const std::uint64_t> correlations,
+         session::SurfaceEndpoint &endpoint);
+  [[nodiscard]] bool detach(std::string_view declared_surface,
+                            const session::SurfaceEndpoint &endpoint);
+  // Called only by the trusted input path after InputGate accepts physical
+  // input. If the input packet cannot be sent, the caller must clear the arm.
+  [[nodiscard]] bool
+  arm_surface_intent(session::surface::SurfaceKey source,
+                     std::uint64_t input_sequence);
+  void clear_surface_intent_eligibility() noexcept;
+  [[nodiscard]] std::size_t surface_count() const noexcept;
+  [[nodiscard]] session::SessionState state() const noexcept;
+  [[nodiscard]] session::SessionError error() const noexcept;
+  [[nodiscard]] const permissions::ActivationBinding &binding() const noexcept;
+  [[nodiscard]] const plugins::manifest::ManifestV2 &manifest() const noexcept;
+  [[nodiscard]] const session::policy::GrantSnapshot &grants() const noexcept;
+
+private:
+  class LiveAuthority;
+  PluginSession(session::SessionToken token,
+                session::OwnedDescriptor activation_record,
+                plugins::manifest::ManifestV2 manifest,
+                session::policy::GrantSnapshot grants,
+                std::shared_ptr<session::LiveGenerationState> live,
+                std::unique_ptr<session::SessionChannel> channel,
+                PluginSessionEvents *events, SurfaceIntentSink *intent_sink,
+                std::shared_ptr<runtime::GestureEligibilityLatch>
+                    gesture_eligibility,
+                session::SessionLimits limits,
+                QObject *parent);
+
+  void state_changed(session::SessionState state,
+                     session::SessionError error) override;
+  void message_received(session::OwnedMessage message) override;
+  void detach_all() noexcept;
+
+  struct SurfaceSlot final {
+    std::string name;
+    session::surface::SurfaceKey key;
+    session::SurfaceEndpoint *endpoint = nullptr;
+  };
+  [[nodiscard]] SurfaceSlot *find_surface(std::string_view name) noexcept;
+
+  session::SessionToken token_;
+  session::OwnedDescriptor activation_record_;
+  plugins::manifest::ManifestV2 manifest_;
+  session::policy::GrantSnapshot grants_;
+  std::shared_ptr<session::LiveGenerationState> live_;
+  session::MultiSurfaceRouter router_;
+  std::vector<SurfaceSlot> surfaces_;
+  PluginSessionEvents *events_ = nullptr;
+  SurfaceIntentSink *intent_sink_ = nullptr;
+  std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility_;
+  std::unique_ptr<host_session::GestureIntentAuthority> gesture_intents_;
+  std::unique_ptr<session::PluginSessionIo> io_;
+  std::uint64_t outbound_sequence_ = 0;
+
+#ifdef OMARCHY_PLUGIN_SESSION_TESTING
+  friend class PluginSessionTestAccess;
+#endif
+};
+
+#ifdef OMARCHY_PLUGIN_SESSION_TESTING
+class PluginSessionTestAccess final {
+public:
+  [[nodiscard]] static std::unique_ptr<PluginSession>
+  create(session::SessionToken token,
+         plugins::manifest::ManifestV2 manifest,
+         session::policy::GrantSnapshot grants,
+         std::shared_ptr<session::LiveGenerationState> live,
+         std::unique_ptr<session::SessionChannel> channel,
+         PluginSessionEvents *events = nullptr,
+         session::SessionLimits limits = {},
+         SurfaceIntentSink *intent_sink = nullptr,
+         std::shared_ptr<runtime::GestureEligibilityClock> gesture_clock = {},
+         std::shared_ptr<runtime::GestureEligibilityLatch>
+             gesture_eligibility = {});
+  [[nodiscard]] static int
+  activation_record_fd(const PluginSession &session) noexcept;
+};
+#endif
+
+} // namespace omarchy::plugin_runtime::channel

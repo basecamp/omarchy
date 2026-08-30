@@ -236,6 +236,7 @@ struct GrantRecord {
 };
 
 using GrantSet = FixedVector<GrantRecord, 64>;
+void validate_grants(const GrantSet &grants, const RequestSet &requests);
 std::string grant_fingerprint(const PluginId &plugin, const Digest &revision,
                               const Digest &policy_fingerprint,
                               const GrantSet &grants);

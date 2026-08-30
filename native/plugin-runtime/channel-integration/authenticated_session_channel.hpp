@@ -10,6 +10,10 @@
 namespace omarchy::plugin_runtime::host_session {
 class StructuredBroker;
 }
+namespace omarchy::plugin_runtime::runtime {
+class GestureEligibilityAuthority;
+class GestureEligibilityLatch;
+}
 
 namespace omarchy::plugin_runtime::channel {
 
@@ -22,6 +26,15 @@ struct AuthenticatedSessionLaunch final {
   session::OwnedFd private_state_directory;
 };
 
+// Owns the broker and every object referenced by it (audit sink, trusted
+// definitions, providers and dispatch authority) for the complete async
+// channel lifetime. Implementations are created by the trusted product host.
+class AuthenticatedSessionRuntime {
+public:
+  virtual ~AuthenticatedSessionRuntime() = default;
+  [[nodiscard]] virtual session::StructuredBroker &broker() noexcept = 0;
+};
+
 #ifdef OMARCHY_AUTHENTICATED_SESSION_CHANNEL_TESTING
 class AuthenticatedSessionBackend;
 #endif
@@ -31,6 +44,13 @@ class AuthenticatedSessionBackend;
 // one PluginSessionIo worker thread.
 class AuthenticatedSessionChannel final : public session::SessionChannel {
 public:
+  AuthenticatedSessionChannel(
+      launcher::Supervisor supervisor, AuthenticatedSessionLaunch launch,
+      std::shared_ptr<const GenerationAuthority> authority,
+      std::unique_ptr<AuthenticatedSessionRuntime> runtime,
+      std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility);
+  // Transitional N2A construction seam. Product composition uses the owning
+  // runtime overload above; N12 removes this legacy dispatcher surface.
   AuthenticatedSessionChannel(
       launcher::Supervisor supervisor, AuthenticatedSessionLaunch launch,
       std::shared_ptr<BrokerDispatcher> dispatcher,

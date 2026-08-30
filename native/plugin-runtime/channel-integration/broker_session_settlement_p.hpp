@@ -9,6 +9,7 @@
 namespace omarchy::plugin_runtime::channel {
 
 namespace broker_session = omarchy::plugin_runtime::host_session;
+namespace gesture_runtime = omarchy::plugin_runtime::runtime;
 
 enum class BrokerSettlementStatus : std::uint8_t {
   complete,
@@ -34,12 +35,16 @@ public:
   BrokerSessionSettlement(
       AuthenticatedBrokerChannel &channel,
       broker_session::StructuredBroker &broker,
-      broker_session::AuthenticatedBrokerAdmission admission);
+      broker_session::AuthenticatedBrokerAdmission admission,
+      gesture_runtime::GestureEligibilityAuthority *gesture_authority =
+          nullptr);
 #ifdef OMARCHY_BROKER_SETTLEMENT_TESTING
   BrokerSessionSettlement(
       std::unique_ptr<BrokerReplyTransport> transport,
       broker_session::StructuredBroker &broker,
-      broker_session::AuthenticatedBrokerAdmission admission) noexcept;
+      broker_session::AuthenticatedBrokerAdmission admission,
+      gesture_runtime::GestureEligibilityAuthority *gesture_authority =
+          nullptr) noexcept;
 #endif
   ~BrokerSessionSettlement();
   BrokerSessionSettlement(const BrokerSessionSettlement &) = delete;
@@ -61,6 +66,7 @@ private:
   std::unique_ptr<BrokerReplyTransport> transport_;
   broker_session::StructuredBroker &broker_;
   broker_session::AuthenticatedBrokerAdmission admission_;
+  gesture_runtime::GestureEligibilityAuthority *gesture_authority_ = nullptr;
   std::optional<broker_session::BrokerTransaction> pending_;
   std::array<std::byte, broker_session::kMaximumOwnedBrokerReplyBytes>
       provider_response_{};

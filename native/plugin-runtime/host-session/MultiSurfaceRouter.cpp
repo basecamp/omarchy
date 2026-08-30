@@ -2,15 +2,17 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <utility>
 
 namespace omarchy::plugin_runtime::host_session {
+namespace wire = omarchy::plugin::wire;
 
 MultiSurfaceRouter::MultiSurfaceRouter(std::uint64_t launch_generation)
     : launch_generation_(launch_generation) {
   if (launch_generation_ == 0) {
     throw std::invalid_argument("launch generation must be nonzero");
   }
-  registrations_.reserve(kMaximumEndpoints);
+  registrations_.reserve(wire::kMaximumPluginSurfaces);
 }
 
 AttachResult MultiSurfaceRouter::attach(
@@ -24,7 +26,7 @@ AttachResult MultiSurfaceRouter::attach(
   if (findSurface(key) != nullptr) {
     return AttachResult::duplicate_surface;
   }
-  if (registrations_.size() == kMaximumEndpoints) {
+  if (registrations_.size() == wire::kMaximumPluginSurfaces) {
     return AttachResult::capacity_exceeded;
   }
 
@@ -72,7 +74,7 @@ bool MultiSurfaceRouter::detach(surface::SurfaceKey key,
 void MultiSurfaceRouter::detachAll() { registrations_.clear(); }
 
 RouteResult
-MultiSurfaceRouter::route(const AuthenticatedRenderMessage &message) {
+MultiSurfaceRouter::route(OwnedAuthenticatedRenderMessage message) {
   if (message.launch_generation != launch_generation_) {
     return RouteResult::stale_generation;
   }
@@ -108,7 +110,7 @@ MultiSurfaceRouter::route(const AuthenticatedRenderMessage &message) {
   auto *registration = surface_registration != nullptr
                            ? surface_registration
                            : correlation_registration;
-  return registration->endpoint->receive(message)
+  return registration->endpoint->receive(std::move(message))
              ? RouteResult::delivered
              : RouteResult::endpoint_rejected;
 }

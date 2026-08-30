@@ -81,8 +81,41 @@ session::SendStatus map_send(ChannelSendStatus status) noexcept {
   return session::SendStatus::fatal;
 }
 
+class IdentityOnlyDispatcher final : public BrokerDispatcher {
+public:
+  explicit IdentityOnlyDispatcher(permissions::ActivationBinding binding)
+      : binding_(std::move(binding)) {}
+
+  [[nodiscard]] bool
+  accepts(const launcher::LaunchIdentity &identity) const noexcept override {
+    return identity.plugin_id == binding_.plugin.view() &&
+           identity.revision_sha256 == binding_.revision.view() &&
+           identity.generation == binding_.generation;
+  }
+
+  [[nodiscard]] bool dispatch(const wire::PacketView &) override {
+    // Product sessions settle broker traffic through BrokerSessionSettlement.
+    // AuthenticatedBrokerChannel's legacy dispatcher path is unreachable.
+    return false;
+  }
+
+private:
+  permissions::ActivationBinding binding_;
+};
+
 class ProductionBackend final : public AuthenticatedSessionBackend {
 public:
+  ProductionBackend(launcher::Supervisor supervisor,
+                    AuthenticatedSessionLaunch launch,
+                    std::shared_ptr<const GenerationAuthority> authority,
+                    std::unique_ptr<AuthenticatedSessionRuntime> runtime,
+                    std::shared_ptr<runtime::GestureEligibilityLatch>
+                        gesture_eligibility)
+      : supervisor_(std::move(supervisor)), launch_(std::move(launch)),
+        dispatcher_(std::make_shared<IdentityOnlyDispatcher>(launch_.binding)),
+        authority_(std::move(authority)), runtime_(std::move(runtime)),
+        gesture_eligibility_(std::move(gesture_eligibility)) {}
+
   ProductionBackend(launcher::Supervisor supervisor,
                     AuthenticatedSessionLaunch launch,
                     std::shared_ptr<BrokerDispatcher> dispatcher,
@@ -100,8 +133,8 @@ public:
         token.revision_sha256 != launch_.binding.revision.view() ||
         token.generation != launch_.binding.generation ||
         !launch_.revision_directory || !launch_.private_state_directory ||
-        !dispatcher_ || !authority_ || !broker_ ||
-        !broker_->accepts(launch_.binding, token.session_nonce))
+        !dispatcher_ || !authority_ || broker() == nullptr ||
+        !broker()->accepts(launch_.binding, token.session_nonce))
       return session::ChannelError::launch_failed;
     const launcher::TrustedLaunchRequest request{
         .plugin_id = std::string(launch_.binding.plugin.view()),
@@ -114,14 +147,16 @@ public:
     if (!opened)
       return session::ChannelError::launch_failed;
     channel_ = std::move(opened.channel);
-    auto extracted = broker_->take_admission();
+    auto extracted = broker()->take_admission();
     if (!extracted) {
       (void)channel_->terminate(deadline);
       channel_.reset();
       return session::ChannelError::launch_failed;
     }
     try {
-      settlement_.emplace(*channel_, *broker_, std::move(*extracted.admission));
+      settlement_.emplace(*channel_, *broker(),
+                          std::move(*extracted.admission),
+                          gesture_eligibility_.get());
     } catch (...) {
       (void)channel_->terminate(deadline);
       channel_.reset();
@@ -218,14 +253,22 @@ public:
     dispatcher_.reset();
     authority_.reset();
     broker_.reset();
+    runtime_.reset();
+    gesture_eligibility_.reset();
   }
 
 private:
+  [[nodiscard]] session::StructuredBroker *broker() noexcept {
+    return runtime_ ? &runtime_->broker() : broker_.get();
+  }
+
   launcher::Supervisor supervisor_;
   AuthenticatedSessionLaunch launch_;
   std::shared_ptr<BrokerDispatcher> dispatcher_;
   std::shared_ptr<const GenerationAuthority> authority_;
   std::unique_ptr<session::StructuredBroker> broker_;
+  std::unique_ptr<AuthenticatedSessionRuntime> runtime_;
+  std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility_;
   std::unique_ptr<AuthenticatedBrokerChannel> channel_;
   std::optional<BrokerSessionSettlement> settlement_;
   std::optional<PreparedSend> prepared_;
@@ -306,6 +349,16 @@ struct AuthenticatedSessionChannel::Impl final {
   bool ready = false;
   bool terminal = false;
 };
+
+AuthenticatedSessionChannel::AuthenticatedSessionChannel(
+    launcher::Supervisor supervisor, AuthenticatedSessionLaunch launch,
+    std::shared_ptr<const GenerationAuthority> authority,
+    std::unique_ptr<AuthenticatedSessionRuntime> runtime,
+    std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility)
+    : implementation_(
+          std::make_unique<Impl>(std::make_unique<ProductionBackend>(
+              std::move(supervisor), std::move(launch), std::move(authority),
+              std::move(runtime), std::move(gesture_eligibility)))) {}
 
 AuthenticatedSessionChannel::AuthenticatedSessionChannel(
     launcher::Supervisor supervisor, AuthenticatedSessionLaunch launch,

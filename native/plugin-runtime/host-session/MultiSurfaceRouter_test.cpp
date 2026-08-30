@@ -3,13 +3,18 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cerrno>
+#include <fcntl.h>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
+#include <unistd.h>
 #include <vector>
 
 namespace runtime = omarchy::plugin_runtime;
 namespace host = runtime::host_session;
 namespace surface = runtime::surface;
+namespace wire = omarchy::plugin::wire;
 
 namespace {
 
@@ -18,9 +23,11 @@ constexpr std::uint64_t kGeneration = 41;
 struct Endpoint final : host::SurfaceEndpoint {
   bool accept = true;
   std::size_t deliveries = 0;
+  std::optional<host::OwnedAuthenticatedRenderMessage> last;
 
-  bool receive(const host::AuthenticatedRenderMessage &) override {
+  bool receive(host::OwnedAuthenticatedRenderMessage message) override {
     ++deliveries;
+    last.emplace(std::move(message));
     return accept;
   }
 };
@@ -36,13 +43,28 @@ void expect(bool condition, const char *message) {
   }
 }
 
-host::AuthenticatedRenderMessage message(
+host::OwnedAuthenticatedRenderMessage message(
     std::uint64_t generation, std::uint64_t correlation = 0,
     std::optional<surface::SurfaceKey> key = std::nullopt) {
   return {.launch_generation = generation,
+          .message_type = 0x2020,
           .correlation = correlation,
           .surface = key,
-          .packet = {}};
+          .payload = {std::byte{0x2a}},
+          .descriptors = {}};
+}
+
+int descriptor_message(host::OwnedAuthenticatedRenderMessage &value) {
+  int descriptors[2] = {-1, -1};
+  expect(::pipe2(descriptors, O_CLOEXEC) == 0, "could not create routed fd");
+  ::close(descriptors[1]);
+  value.descriptors.emplace_back(descriptors[0]);
+  return descriptors[0];
+}
+
+bool closed(int descriptor) {
+  errno = 0;
+  return ::fcntl(descriptor, F_GETFD) == -1 && errno == EBADF;
 }
 
 } // namespace
@@ -137,6 +159,35 @@ int main() {
   expect(first.deliveries == 2 && second.deliveries == 1,
          "rejected traffic reached an endpoint");
 
+  auto owned = message(kGeneration, 101, first_key);
+  owned.message_type = 0x2010;
+  owned.payload = {std::byte{0x10}, std::byte{0x20}};
+  const int delivered_fd = descriptor_message(owned);
+  expect(router.route(std::move(owned)) == host::RouteResult::delivered &&
+             first.last && first.last->message_type == 0x2010 &&
+             first.last->payload ==
+                 std::vector<std::byte>({std::byte{0x10}, std::byte{0x20}}) &&
+             first.last->descriptors.size() == 1 &&
+             first.last->descriptors.front().get() == delivered_fd,
+         "owned type, payload, or descriptor did not arrive exactly once");
+  first.last.reset();
+  expect(closed(delivered_fd), "delivered descriptor ownership was not closed");
+
+  auto unknown_owned = message(
+      kGeneration, 0,
+      surface::SurfaceKey{.id = 999, .generation = kGeneration});
+  const int unknown_fd = descriptor_message(unknown_owned);
+  const auto unknown_result = router.route(std::move(unknown_owned));
+  expect(unknown_result == host::RouteResult::unknown_surface &&
+             closed(unknown_fd),
+         "unknown-surface rejection leaked an owned descriptor");
+  auto conflict_owned = message(kGeneration, 201, first_key);
+  const int conflict_fd = descriptor_message(conflict_owned);
+  const auto conflict_result = router.route(std::move(conflict_owned));
+  expect(conflict_result == host::RouteResult::conflicting_destination &&
+             closed(conflict_fd),
+         "conflicting-destination rejection leaked an owned descriptor");
+
   first.accept = false;
   expect(router.route(message(kGeneration, 101)) ==
              host::RouteResult::endpoint_rejected,
@@ -164,7 +215,7 @@ int main() {
   router.detachAll();
   expect(router.size() == 0, "detachAll left registrations behind");
 
-  std::vector<Endpoint> endpoints(host::MultiSurfaceRouter::kMaximumEndpoints);
+  std::vector<Endpoint> endpoints(wire::kMaximumPluginSurfaces);
   for (std::size_t index = 0; index < endpoints.size(); ++index) {
     const surface::SurfaceKey key{.id = 1000 + index,
                                   .generation = kGeneration};

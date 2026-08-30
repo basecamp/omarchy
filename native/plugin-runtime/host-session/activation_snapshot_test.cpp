@@ -13,6 +13,7 @@
 #include <utility>
 
 namespace host = omarchy::plugin_runtime::host_session;
+namespace manifest = omarchy::plugins::manifest;
 namespace permissions = omarchy::plugins::permissions;
 namespace policy = omarchy::plugin_runtime::policy;
 
@@ -138,8 +139,10 @@ public:
     if (split == std::string::npos || end == std::string::npos ||
         end + 1 != identity.size())
       return std::nullopt;
+    manifest::ManifestV2 verified_manifest;
+    verified_manifest.id = identity.substr(0, split);
     return host::VerifiedRevision{
-        .plugin_id = identity.substr(0, split),
+        .manifest = std::move(verified_manifest),
         .tree_sha256 = identity.substr(split + 1, end - split - 1),
         .request_sha256 = kRequest};
   }
@@ -217,6 +220,8 @@ void happy_path_and_revocation() {
           "valid activation failed");
   require(verifier.calls == 1 && authority.calls == 1,
           "activation authority was consulted more than once");
+  require(result.snapshot->manifest.id == kPlugin,
+          "activation discarded its descriptor-verified manifest");
   auto binding = result.snapshot->grants.binding;
   require(result.snapshot->live->current(binding),
           "fresh generation is not live");
