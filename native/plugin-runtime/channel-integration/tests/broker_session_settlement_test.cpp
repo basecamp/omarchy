@@ -1,5 +1,6 @@
 #include "audit_store.hpp"
 #include "broker_session_settlement_p.hpp"
+#include "omarchy/plugin_runtime/broker/broker_codec.hpp"
 
 #include <deque>
 #include <fcntl.h>
@@ -13,6 +14,7 @@ namespace runtime = omarchy::plugin_runtime::runtime;
 namespace permissions = omarchy::plugins::permissions;
 namespace definitions = omarchy::plugins::definitions;
 namespace providers = omarchy::plugin_runtime::providers;
+namespace broker = omarchy::plugin_runtime::broker;
 namespace audit = omarchy::plugins::audit;
 namespace wire = omarchy::plugin::wire;
 namespace policy = omarchy::plugin_runtime::policy;
@@ -33,7 +35,7 @@ permissions::TokenScope tokens() {
           "duplicate token fixture");
   return value;
 }
-policy::GrantSnapshot revision() {
+policy::GrantSnapshot revision(permissions::GrantState state) {
   policy::GrantSnapshot value;
   value.binding = {.plugin = permissions::PluginId("settlement.fixture"),
                    .revision = digest('a'),
@@ -48,7 +50,7 @@ policy::GrantSnapshot revision() {
       permissions::policy_request_fingerprint(value.requests));
   value.grants.push_back({.capability = value.requests[0].capability,
                           .scope = tokens(),
-                          .state = permissions::GrantState::granted,
+                          .state = state,
                           .epoch = 1});
   return value;
 }
@@ -98,6 +100,8 @@ class Authority final : public session::DispatchAuthority {
 struct TransportState {
   std::deque<channel::ChannelSendStatus> sends;
   std::vector<std::byte> bytes;
+  std::uint16_t message_type = 0;
+  std::uint64_t correlation = 0;
   unsigned prepares = 0;
   unsigned attempts = 0;
   bool throw_prepare = false;
@@ -111,7 +115,7 @@ class FakeTransport final : public channel::BrokerReplyTransport {
 public:
   explicit FakeTransport(std::shared_ptr<TransportState> state)
       : state_(std::move(state)) {}
-  bool prepare(std::uint16_t, std::uint64_t,
+  bool prepare(std::uint16_t message_type, std::uint64_t correlation,
                std::span<const std::byte> bytes) override {
     ++state_->prepares;
     if (state_->throw_prepare)
@@ -123,6 +127,8 @@ public:
     if (state_->prepared)
       return false;
     state_->prepared = true;
+    state_->message_type = message_type;
+    state_->correlation = correlation;
     state_->bytes.assign(bytes.begin(), bytes.end());
     return true;
   }
@@ -148,7 +154,7 @@ private:
 };
 struct Fixture {
   audit::BoundedAuditLog log;
-  policy::GrantSnapshot snapshot = revision();
+  policy::GrantSnapshot snapshot;
   runtime::AuditedBrokerRuntime builtin;
   definitions::TrustedDefinitionRegistry registry;
   runtime::DynamicBrokerRuntime dynamic;
@@ -157,8 +163,10 @@ struct Fixture {
   std::shared_ptr<TransportState> transport =
       std::make_shared<TransportState>();
   channel::BrokerSessionSettlement settlement;
-  Fixture()
-      : builtin(snapshot, provider_configuration(), log),
+  explicit Fixture(permissions::GrantState state =
+                       permissions::GrantState::granted)
+      : snapshot(revision(state)),
+        builtin(snapshot, provider_configuration(), log),
         dynamic(registry, {}, log),
         broker(snapshot.binding, 19, builtin, dynamic, authority),
         settlement(std::make_unique<FakeTransport>(transport), broker,
@@ -204,6 +212,10 @@ void test_retry_then_commit_once() {
             "reply did not retain would-block transaction");
     const auto exact = fixture.transport->bytes;
     require(fixture.settlement.pending() &&
+                fixture.transport->message_type ==
+                    broker::kBrokerResultMessage &&
+                fixture.transport->correlation == 1 &&
+                fixture.transport->bytes.empty() &&
                 fixture.settlement.read_lanes() ==
                     (launcher::EndpointMask::control |
                      launcher::EndpointMask::render) &&
@@ -232,6 +244,28 @@ void test_retry_then_commit_once() {
                 completed_count(fixture) == 1,
             "settled reply could be retried or committed twice");
   });
+}
+void test_denied_reply_keeps_request_identity() {
+  auto fixture = std::make_unique<Fixture>(permissions::GrantState::denied);
+  const auto deadline = std::chrono::steady_clock::now() + 2s;
+  require(fixture->settlement.dispatch(fixture->message(29), deadline) ==
+              channel::BrokerSettlementStatus::complete &&
+              fixture->transport->prepares == 1 &&
+              fixture->transport->attempts == 1 &&
+              fixture->transport->message_type ==
+                  static_cast<std::uint16_t>(
+                      wire::CommonMessageType::typed_error) &&
+              fixture->transport->correlation == 29,
+          "denied broker reply lost its exact type or correlation");
+  broker::BrokerTypedError error{};
+  require(broker::decode_broker_error(fixture->transport->bytes, error),
+          "denied reply did not contain a typed broker error");
+  require(error.failed_operation ==
+                  permissions::OperationId::audio_play_cue &&
+              error.reason == broker::BrokerErrorReason::denied &&
+              error.decision ==
+                  permissions::GrantDecisionCode::explicitly_denied,
+          "denied reply did not preserve the broker denial decision");
 }
 void test_abort_paths_are_terminal() {
   for (const auto failure : {channel::ChannelSendStatus::peer_closed,
@@ -359,6 +393,7 @@ void test_deadline_and_exceptions_fail_closed() {
 int main() {
   try {
     test_retry_then_commit_once();
+    test_denied_reply_keeps_request_identity();
     test_abort_paths_are_terminal();
     test_deadline_and_exceptions_fail_closed();
     return 0;
