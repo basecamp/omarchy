@@ -65,16 +65,11 @@ if(BUILD_TESTING)
   add_executable(omarchy-plugin-sidecar-supervisor-test
     tests/sidecar_supervisor_test.cpp)
   omarchy_plugin_target_defaults(omarchy-plugin-sidecar-supervisor-test)
+  omarchy_plugin_worker_sanitize(omarchy-plugin-sidecar-supervisor-test)
   target_link_libraries(omarchy-plugin-sidecar-supervisor-test PRIVATE
     omarchy-plugin-worker-runtime)
-  target_compile_definitions(omarchy-plugin-sidecar-supervisor-test PRIVATE
-    SIDECAR_PROBE_PATH="$<TARGET_FILE:omarchy-plugin-sidecar-probe>")
   add_dependencies(omarchy-plugin-sidecar-supervisor-test
     omarchy-plugin-sidecar-probe)
-  add_test(NAME plugin-sidecar-supervisor
-    COMMAND omarchy-plugin-sidecar-supervisor-test)
-  set_tests_properties(plugin-sidecar-supervisor PROPERTIES
-    LABELS "unit;integration;sandbox;security" TIMEOUT 10)
   add_test(NAME plugin-sidecar-real-bwrap
     COMMAND /usr/bin/bwrap
       --unshare-user --unshare-pid --unshare-ipc --unshare-uts --unshare-net

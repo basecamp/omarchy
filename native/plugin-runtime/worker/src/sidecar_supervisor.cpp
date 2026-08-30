@@ -31,8 +31,7 @@ namespace {
 }
 
 [[noreturn]] void run_sidecar(
-    const plugins::manifest::Runtime::Sidecar &sidecar,
-    const std::filesystem::path &plugin_root, int error_fd) {
+    const plugins::manifest::Runtime::Sidecar &sidecar, int error_fd) {
   if (syscall(SYS_close_range, 3U, static_cast<unsigned>(error_fd - 1), 0U) <
           0 ||
       syscall(SYS_close_range, static_cast<unsigned>(error_fd + 1), ~0U,
@@ -42,8 +41,7 @@ namespace {
       _exit(127);
     _exit(126);
   }
-  const std::string executable =
-      (plugin_root / sidecar.command.front()).string();
+  const std::string executable = "/plugin/" + sidecar.command.front();
   std::vector<std::string> arguments = sidecar.command;
   arguments.front() = executable;
   std::vector<char *> pointers;
@@ -77,18 +75,6 @@ SidecarSupervisor::~SidecarSupervisor() { terminate(); }
 bool SidecarSupervisor::start(
     const std::vector<plugins::manifest::Runtime::Sidecar> &sidecars,
     std::string &error) {
-  return start_at(sidecars, "/plugin", error);
-}
-
-bool SidecarSupervisor::startForTestOnly(
-    const std::vector<plugins::manifest::Runtime::Sidecar> &sidecars,
-    const std::filesystem::path &plugin_root, std::string &error) {
-  return start_at(sidecars, plugin_root, error);
-}
-
-bool SidecarSupervisor::start_at(
-    const std::vector<plugins::manifest::Runtime::Sidecar> &sidecars,
-    const std::filesystem::path &plugin_root, std::string &error) {
   if (!children_.empty()) {
     error = "sidecars already started";
     return false;
@@ -110,7 +96,7 @@ bool SidecarSupervisor::start_at(
     }
     if (pid == 0) {
       close(descriptors[0]);
-      run_sidecar(sidecar, plugin_root, descriptors[1]);
+      run_sidecar(sidecar, descriptors[1]);
     }
     close(descriptors[1]);
     int exec_error = 0;
