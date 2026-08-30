@@ -2,7 +2,25 @@
 
 # omarchy:summary=Check the update log for known failure conditions
 
-update_log="/tmp/omarchy-update.log"
+set -euo pipefail
+
+omarchy_update_log_path() {
+  local dir
+  if [[ -n ${XDG_RUNTIME_DIR:-} && -d $XDG_RUNTIME_DIR && ! -L $XDG_RUNTIME_DIR ]]; then
+    dir="$XDG_RUNTIME_DIR/omarchy-update"
+  else
+    dir="${HOME}/.cache/omarchy/update"
+  fi
+  printf '%s' "$dir/update.log"
+}
+
+# Prefer the path the current update exported; otherwise resolve the same
+# private location omarchy-update uses for new transcripts.
+update_log="${OMARCHY_UPDATE_LOG:-$(omarchy_update_log_path)}"
+
+if [[ ! -f $update_log || -L $update_log ]]; then
+  exit 0
+fi
 
 # Check for initramfs generation failure
 if grep -q "Updating linux initcpios" "$update_log"; then
