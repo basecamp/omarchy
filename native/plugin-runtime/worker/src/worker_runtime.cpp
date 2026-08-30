@@ -838,7 +838,8 @@ RuntimeResult WorkerRuntime::release(surface::SurfaceKey key) {
   instance->image = {};
   instance->device_pixel_ratio = 1.0;
   instance->state.reset();
-  instance->bound_key.reset();
+  // The authenticated name-to-key binding is valid for the worker generation;
+  // only the allocation belongs to this attachment lifetime.
   return {};
 }
 

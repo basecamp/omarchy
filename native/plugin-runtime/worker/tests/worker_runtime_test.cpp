@@ -1048,14 +1048,56 @@ void two_surface_activation() {
           "runtime-wide focus and sequence authority was not exact");
   require(static_cast<bool>(runtime.release(bar->surface)) &&
               runtime.active() &&
-              !static_cast<bool>(runtime.resume(bar->surface)),
-          "one surface teardown damaged or revived another surface");
+              !static_cast<bool>(runtime.resume(bar->surface)) &&
+              runtime.surface_key("bar") == bar->surface,
+          "one surface teardown damaged its sibling or trusted binding");
   runtime.request_render();
   const auto survivor = runtime.render();
-  require(survivor && survivor->ready.surface == atlas->surface &&
-              static_cast<bool>(runtime.release(atlas->surface)) &&
-              !runtime.allocated(),
-          "surviving surface did not render and tear down independently");
+  require(survivor && survivor->ready.surface == atlas->surface,
+          "surviving surface did not render independently");
+
+  const auto stale_bar = surface::make_allocation(
+      {.id = bar->surface.id, .generation = bar->surface.generation + 1}, 72, 48,
+      72, 48, 1, 1, static_cast<std::uint64_t>(page_size));
+  const int stale_fd = static_cast<int>(
+      syscall(SYS_memfd_create, "worker-stale-reattach", MFD_CLOEXEC));
+  require(stale_bar && stale_fd >= 0 &&
+              ftruncate(stale_fd,
+                        static_cast<off_t>(stale_bar->mapping_bytes)) == 0 &&
+              !static_cast<bool>(runtime.allocate(*stale_bar, stale_fd)),
+          "replacement attachment crossed its trusted generation binding");
+  errno = 0;
+  require(fcntl(stale_fd, F_GETFD) == -1 && errno == EBADF,
+          "rejected replacement descriptor remained open");
+
+  const int replacement_fd = static_cast<int>(
+      syscall(SYS_memfd_create, "worker-bar-reattach", MFD_CLOEXEC));
+  require(replacement_fd >= 0 &&
+              ftruncate(replacement_fd,
+                        static_cast<off_t>(bar->mapping_bytes)) == 0,
+          "replacement frame mapping failed");
+  Mapping replacement_mapping(
+      replacement_fd, static_cast<std::size_t>(bar->mapping_bytes));
+  const int replacement_worker_fd =
+      fcntl(replacement_fd, F_DUPFD_CLOEXEC, 64);
+  close(replacement_fd);
+  require(replacement_worker_fd >= 0 &&
+              static_cast<bool>(runtime.allocate(*bar, replacement_worker_fd)),
+          "exact released surface did not reallocate in the live worker");
+  const auto replacement = runtime.render();
+  auto replacement_consumer = surface::FrameConsumer::create(*bar);
+  require(replacement && replacement->ready.surface == bar->surface &&
+              replacement_consumer &&
+              replacement_consumer->consume(replacement_mapping.bytes(),
+                                            replacement->ready) ==
+                  surface::ConsumeResult::accepted,
+          "reattached surface did not publish a consumable frame");
+  require(static_cast<bool>(runtime.release(atlas->surface)) &&
+              static_cast<bool>(runtime.release(bar->surface)) &&
+              !runtime.allocated() &&
+              runtime.surface_key("bar") == bar->surface &&
+              runtime.surface_key("atlas") == atlas->surface,
+          "reattached surfaces did not tear down with exact bindings intact");
 }
 
 void device_pixel_ratio_scales_scene_pixels() {
