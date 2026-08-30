@@ -14,8 +14,9 @@ if [[ -z $name || -z $packages || -z $desktop_id ]]; then
 fi
 
 printf -v install_message '%q' "Installing ${name}..."
+printf -v packages_q '%q' "$packages"
 printf -v desktop_id_arg '%q' "$desktop_id"
 
 # The subshell keeps & from backgrounding the package installation too.
 exec omarchy-launch-floating-terminal-with-presentation \
-  "echo ${install_message}; omarchy-pkg-add ${packages} && (setsid uwsm-app -- gtk-launch ${desktop_id_arg} >/dev/null 2>&1 &)"
+  "echo ${install_message}; omarchy-pkg-add ${packages_q} && (setsid uwsm-app -- gtk-launch ${desktop_id_arg} >/dev/null 2>&1 &)"

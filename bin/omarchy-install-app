@@ -12,4 +12,8 @@ if [[ -z $name || -z $packages ]]; then
   exit 1
 fi
 
-exec omarchy-launch-floating-terminal-with-presentation "echo 'Installing ${name}...'; omarchy-pkg-add ${packages}"
+printf -v install_message '%q' "Installing ${name}..."
+printf -v packages_q '%q' "$packages"
+
+exec omarchy-launch-floating-terminal-with-presentation \
+  "echo ${install_message}; omarchy-pkg-add ${packages_q}"
