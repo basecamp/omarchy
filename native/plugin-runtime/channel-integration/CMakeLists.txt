@@ -129,10 +129,11 @@ if(BUILD_TESTING)
 
   if(TARGET omarchy-plugin-authenticated-session)
     add_executable(omarchy-plugin-activation-catalog-test
+      src/activation_catalog.cpp
       tests/activation_catalog_test.cpp)
     omarchy_plugin_target_defaults(omarchy-plugin-activation-catalog-test)
     target_link_libraries(omarchy-plugin-activation-catalog-test PRIVATE
-      omarchy-plugin-authenticated-session)
+      omarchy-plugin-activation-snapshot)
     add_test(NAME plugin-activation-catalog
       COMMAND omarchy-plugin-activation-catalog-test)
     set_tests_properties(plugin-activation-catalog PROPERTIES
@@ -202,7 +203,10 @@ if(BUILD_TESTING)
       TIMEOUT 30 LABELS "unit;security;session;broker;adversarial")
 
     add_executable(omarchy-plugin-product-session-test
+      src/authenticated_session_channel.cpp
+      src/broker_session_settlement.cpp
       src/plugin_activation_coordinator.cpp
+      src/plugin_permission_controller.cpp
       src/plugin_runtime_root.cpp
       src/session_runtime_factory.cpp
       tests/session_runtime_factory_test.cpp
@@ -215,7 +219,6 @@ if(BUILD_TESTING)
       FAKE_BWRAP_PATH="$<TARGET_FILE:omarchy-plugin-channel-fake-bwrap>"
       COORDINATOR_REVISION_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../contracts/manifest/tests/fixtures/valid-minimal")
     target_link_libraries(omarchy-plugin-product-session-test PRIVATE
-      omarchy-plugin-authenticated-session
       omarchy-plugin-channel-integration omarchy-plugin-host-session Qt6::Core)
     target_link_libraries(omarchy-plugin-product-session-test PRIVATE
       omarchy-plugin-activation-snapshot)
