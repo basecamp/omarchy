@@ -111,6 +111,96 @@ function parseDisplays(raw) {
   }
 }
 
+function modeDimensions(mode) {
+  var match = String(mode || '').match(/^(\d+)x(\d+)@/)
+  return match ? [Number(match[1]), Number(match[2])] : [1920, 1080]
+}
+
+function logicalSize(display) {
+  var dimensions = modeDimensions(display.mode)
+  var width = Math.round(dimensions[0] / Number(display.scale || 1))
+  var height = Math.round(dimensions[1] / Number(display.scale || 1))
+  if (Number(display.transform) % 2 === 1) {
+    var swap = width
+    width = height
+    height = swap
+  }
+  return [width, height]
+}
+
+function rectAt(displays, index, movedIndex, movedX, movedY) {
+  var display = displays[index]
+  var size = logicalSize(display)
+  var x = index === movedIndex ? movedX : Number(display.x)
+  var y = index === movedIndex ? movedY : Number(display.y)
+  return { left: x, top: y, right: x + size[0], bottom: y + size[1] }
+}
+
+function rectsTouch(first, second) {
+  var verticalOverlap = Math.min(first.bottom, second.bottom) - Math.max(first.top, second.top)
+  var horizontalOverlap = Math.min(first.right, second.right) - Math.max(first.left, second.left)
+  var verticalEdge = first.right === second.left || second.right === first.left
+  var horizontalEdge = first.bottom === second.top || second.bottom === first.top
+  return (verticalEdge && verticalOverlap > 0) || (horizontalEdge && horizontalOverlap > 0)
+}
+
+function overlapsAt(displays, index, x, y) {
+  if (displays[index].mirror) return false
+  var candidate = rectAt(displays, index, index, x, y)
+  for (var i = 0; i < displays.length; i++) {
+    if (i === index || displays[i].mirror) continue
+    var other = rectAt(displays, i, -1, 0, 0)
+    if (candidate.left < other.right && candidate.right > other.left
+        && candidate.top < other.bottom && candidate.bottom > other.top) return true
+  }
+  return false
+}
+
+function layoutConnectedAt(displays, movedIndex, movedX, movedY) {
+  var extended = []
+  for (var i = 0; i < displays.length; i++) if (!displays[i].mirror) extended.push(i)
+  if (extended.length < 2) return true
+  var visited = [extended[0]]
+  for (var cursor = 0; cursor < visited.length; cursor++) {
+    var current = visited[cursor]
+    var currentRect = rectAt(displays, current, movedIndex, movedX, movedY)
+    for (var candidateIndex = 0; candidateIndex < extended.length; candidateIndex++) {
+      var candidate = extended[candidateIndex]
+      if (visited.indexOf(candidate) >= 0) continue
+      if (rectsTouch(currentRect, rectAt(displays, candidate, movedIndex, movedX, movedY))) visited.push(candidate)
+    }
+  }
+  return visited.length === extended.length
+}
+
+function nearestValidPosition(displays, index, desiredX, desiredY) {
+  if (displays[index].mirror) return { x: Number(displays[index].x), y: Number(displays[index].y) }
+  var size = logicalSize(displays[index])
+  var xChoices = [desiredX]
+  var yChoices = [desiredY]
+  for (var i = 0; i < displays.length; i++) {
+    if (i === index || displays[i].mirror) continue
+    var otherSize = logicalSize(displays[i])
+    xChoices.push(Number(displays[i].x) - size[0], Number(displays[i].x) + otherSize[0])
+    yChoices.push(Number(displays[i].y) - size[1], Number(displays[i].y) + otherSize[1])
+  }
+  var best = null
+  var bestDistance = Infinity
+  for (var xIndex = 0; xIndex < xChoices.length; xIndex++) {
+    for (var yIndex = 0; yIndex < yChoices.length; yIndex++) {
+      var x = Math.round(xChoices[xIndex])
+      var y = Math.round(yChoices[yIndex])
+      if (overlapsAt(displays, index, x, y) || !layoutConnectedAt(displays, index, x, y)) continue
+      var distance = Math.pow(x - desiredX, 2) + Math.pow(y - desiredY, 2)
+      if (distance < bestDistance) {
+        best = { x: x, y: y }
+        bestDistance = distance
+      }
+    }
+  }
+  return best || { x: Number(displays[index].x), y: Number(displays[index].y) }
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     clampBrightness: clampBrightness,
@@ -119,6 +209,11 @@ if (typeof module !== "undefined") {
     matchingScaleIndex: matchingScaleIndex,
     availableScales: availableScales,
     brightnessName: brightnessName,
-    parseDisplays: parseDisplays
+    parseDisplays: parseDisplays,
+    modeDimensions: modeDimensions,
+    logicalSize: logicalSize,
+    overlapsAt: overlapsAt,
+    layoutConnectedAt: layoutConnectedAt,
+    nearestValidPosition: nearestValidPosition
   }
 }

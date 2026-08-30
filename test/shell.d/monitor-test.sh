@@ -75,4 +75,18 @@ assertDeepEqual(
 )
 
 assertDeepEqual(monitor.parseDisplays('{'), { displays: [], enabledDisplayCount: 0 }, 'monitor handles invalid display JSON')
+
+const landscape = { name: 'DP-1', mode: '2560x1440@144.00', x: 0, y: 0, scale: 1, transform: 0, mirror: '' }
+const portrait = { name: 'DP-2', mode: '1920x1080@60.00', x: 2560, y: 0, scale: 1, transform: 1, mirror: '' }
+
+assertDeepEqual(monitor.modeDimensions(landscape.mode), [2560, 1440], 'monitor parses layout mode dimensions')
+assertDeepEqual(monitor.logicalSize(portrait), [1080, 1920], 'monitor swaps logical dimensions for portrait rotation')
+assertEqual(monitor.overlapsAt([landscape, portrait], 1, 2000, 0), true, 'monitor layout rejects overlapping displays')
+assertEqual(monitor.layoutConnectedAt([landscape, portrait], 1, 2560, 0), true, 'monitor layout accepts touching display edges')
+assertEqual(monitor.layoutConnectedAt([landscape, portrait], 1, 3000, 0), false, 'monitor layout rejects disconnected displays')
+assertDeepEqual(
+  monitor.nearestValidPosition([landscape, portrait], 1, 2700, 200),
+  { x: 2560, y: 200 },
+  'monitor layout snaps a dragged display back to the nearest connected edge'
+)
 JS
