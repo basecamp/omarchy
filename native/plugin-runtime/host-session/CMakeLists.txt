@@ -90,6 +90,8 @@ if(BUILD_TESTING)
   target_compile_features(omarchy-plugin-authority-store-test PRIVATE cxx_std_20)
   target_compile_options(omarchy-plugin-authority-store-test PRIVATE
     -Wall -Wextra -Wpedantic -Werror)
+  target_compile_definitions(omarchy-plugin-authority-store-test PRIVATE
+    OMARCHY_AUTHORITY_STORE_TESTING)
   add_test(NAME plugin-authority-store COMMAND omarchy-plugin-authority-store-test)
   set_tests_properties(plugin-authority-store PROPERTIES
     TIMEOUT 20 LABELS "unit;security;authority;adversarial")

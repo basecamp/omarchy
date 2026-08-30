@@ -44,7 +44,6 @@ struct ActivationRecord {
   std::string revision_directory;
   std::string revision_sha256;
   std::string state_directory;
-  std::uint64_t generation = 0;
 };
 
 struct VerifiedRevision {
@@ -81,8 +80,8 @@ class GrantAuthority {
 public:
   virtual ~GrantAuthority() = default;
   [[nodiscard]] virtual std::optional<policy::GrantSnapshot>
-  resolve(std::string_view plugin_id, std::string_view revision_sha256,
-          std::uint64_t generation) const = 0;
+  resolve(std::string_view plugin_id,
+          std::string_view revision_sha256) const = 0;
 };
 
 class LiveGenerationState {

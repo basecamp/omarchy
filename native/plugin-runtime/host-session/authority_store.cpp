@@ -542,6 +542,60 @@ std::optional<policy::GrantSnapshot> load_snapshot(
   }
   return snapshot;
 }
+
+AuthorityMutationResult store_snapshot_record(
+    int root_fd, std::uint32_t expected_uid,
+    const policy::GrantSnapshot &snapshot, AuthorityRevisionRef &reference) {
+  std::vector<std::byte> bytes;
+  if (!encode_snapshot(snapshot, bytes))
+    return AuthorityMutationResult::invalid;
+  const auto hash = digest(bytes);
+  reference = reference_for(snapshot, hash);
+  const auto name = record_name(reference);
+  const auto temporary = temporary_name("grant");
+  OwnedDescriptor file(::openat(root_fd, temporary.c_str(),
+                                O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC |
+                                    O_NOFOLLOW,
+                                0600));
+  if (!file || !secure_created_file(file.get(), expected_uid) ||
+      !write_all(file.get(), bytes) || ::fsync(file.get()) < 0) {
+    ::unlinkat(root_fd, temporary.c_str(), 0);
+    return AuthorityMutationResult::io_error;
+  }
+  if (::syscall(SYS_renameat2, root_fd, temporary.c_str(), root_fd,
+                name.c_str(), RENAME_NOREPLACE) < 0) {
+    if (errno != EEXIST) {
+      ::unlinkat(root_fd, temporary.c_str(), 0);
+      return AuthorityMutationResult::io_error;
+    }
+    auto existing = read_file(root_fd, name, expected_uid);
+    if (!existing || *existing != bytes ||
+        ::unlinkat(root_fd, temporary.c_str(), 0) < 0) {
+      ::unlinkat(root_fd, temporary.c_str(), 0);
+      return AuthorityMutationResult::io_error;
+    }
+  }
+  return ::fsync(root_fd) == 0 ? AuthorityMutationResult::applied
+                               : AuthorityMutationResult::io_error;
+}
+
+bool activatable(const policy::GrantSnapshot &snapshot) {
+  for (const auto &request : snapshot.requests.values()) {
+    if (!request.required)
+      continue;
+    const auto granted = std::ranges::find_if(
+        snapshot.grants.values(), [&](const auto &grant) {
+          return grant.capability == request.capability &&
+                 grant.state == permissions::GrantState::granted;
+        });
+    if (granted == snapshot.grants.values().end())
+      return false;
+  }
+  return std::ranges::all_of(snapshot.dynamic_grants, [](const auto &dynamic) {
+    return !dynamic.request.required ||
+           dynamic.grant.state == permissions::GrantState::granted;
+  });
+}
 } // namespace
 
 AuthorityStore::AuthorityStore(
@@ -590,7 +644,7 @@ std::unique_ptr<AuthorityStore> AuthorityStore::open(
 
 std::optional<AuthoritySlots> AuthorityStore::read_slots() const {
   std::scoped_lock lock(mutation_mutex_);
-  if (::getpid() != owner_pid_)
+  if (::getpid() != owner_pid_ || poisoned_)
     return std::nullopt;
   auto slots = read_slots_unlocked(root_.get(), expected_uid_);
   if (!slots || !valid_slots(*slots))
@@ -600,7 +654,7 @@ std::optional<AuthoritySlots> AuthorityStore::read_slots() const {
 
 std::optional<AuthorityView> AuthorityStore::read_authority_view() const {
   std::scoped_lock lock(mutation_mutex_);
-  if (::getpid() != owner_pid_)
+  if (::getpid() != owner_pid_ || poisoned_)
     return std::nullopt;
   auto slots = read_slots_unlocked(root_.get(), expected_uid_);
   if (!slots || !valid_slots(*slots))
@@ -627,14 +681,15 @@ bool AuthorityStore::bind_live_activation(
     const permissions::ActivationBinding &binding,
     const std::shared_ptr<LiveGenerationState> &live) {
   std::scoped_lock lock(mutation_mutex_);
-  if (::getpid() != owner_pid_ || !live || !live->current(binding))
+  if (::getpid() != owner_pid_ || poisoned_ || !live ||
+      !live->current(binding))
     return false;
   auto slots = read_slots_unlocked(root_.get(), expected_uid_);
   if (!slots || !valid_slots(*slots) || !slots->active ||
       slots->active->generation != binding.generation)
     return false;
   auto active = load_snapshot(root_.get(), expected_uid_, *slots->active);
-  if (!active || active->binding != binding)
+  if (!active || active->binding != binding || !activatable(*active))
     return false;
   if (auto previous = bound_live_.lock(); previous == live)
     return true;
@@ -672,6 +727,8 @@ AuthorityMutationResult AuthorityStore::publish_candidate(
   std::scoped_lock lock(mutation_mutex_);
   if (::getpid() != owner_pid_)
     return AuthorityMutationResult::io_error;
+  if (poisoned_)
+    return AuthorityMutationResult::poisoned;
   if (!complete_snapshot(verified, snapshot, definitions, scope_validator))
     return AuthorityMutationResult::invalid;
   if (snapshot.binding.plugin != expected_plugin_)
@@ -688,37 +745,11 @@ AuthorityMutationResult AuthorityStore::publish_candidate(
     return AuthorityMutationResult::invalid;
   const auto previous = *slots;
 
-  std::vector<std::byte> bytes;
-  if (!encode_snapshot(snapshot, bytes))
-    return AuthorityMutationResult::invalid;
-  const auto hash = digest(bytes);
-  const auto reference = reference_for(snapshot, hash);
-  const auto name = record_name(reference);
-  const auto temporary = temporary_name("grant");
-  OwnedDescriptor file(::openat(root_.get(), temporary.c_str(),
-                                O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC |
-                                    O_NOFOLLOW,
-                                0600));
-  if (!file || !secure_created_file(file.get(), expected_uid_) ||
-      !write_all(file.get(), bytes) || ::fsync(file.get()) < 0) {
-    ::unlinkat(root_.get(), temporary.c_str(), 0);
-    return AuthorityMutationResult::io_error;
-  }
-  if (::syscall(SYS_renameat2, root_.get(), temporary.c_str(), root_.get(),
-                name.c_str(), RENAME_NOREPLACE) < 0) {
-    if (errno != EEXIST) {
-      ::unlinkat(root_.get(), temporary.c_str(), 0);
-      return AuthorityMutationResult::io_error;
-    }
-    auto existing = read_file(root_.get(), name, expected_uid_);
-    if (!existing || *existing != bytes ||
-        ::unlinkat(root_.get(), temporary.c_str(), 0) < 0) {
-      ::unlinkat(root_.get(), temporary.c_str(), 0);
-      return AuthorityMutationResult::io_error;
-    }
-  }
-  if (::fsync(root_.get()) < 0)
-    return AuthorityMutationResult::io_error;
+  AuthorityRevisionRef reference;
+  const auto stored =
+      store_snapshot_record(root_.get(), expected_uid_, snapshot, reference);
+  if (stored != AuthorityMutationResult::applied)
+    return stored;
   slots->candidate = reference;
   slots->generation_high_watermark = snapshot.binding.generation;
   ++slots->sequence;
@@ -734,6 +765,8 @@ AuthorityMutationResult AuthorityStore::promote_candidate(
   std::scoped_lock lock(mutation_mutex_);
   if (::getpid() != owner_pid_)
     return AuthorityMutationResult::io_error;
+  if (poisoned_)
+    return AuthorityMutationResult::poisoned;
   auto slots = read_slots_unlocked(root_.get(), expected_uid_);
   if (!slots || !valid_slots(*slots))
     return AuthorityMutationResult::io_error;
@@ -747,22 +780,8 @@ AuthorityMutationResult AuthorityStore::promote_candidate(
     return AuthorityMutationResult::invalid;
   if (candidate_snapshot->binding != candidate)
     return AuthorityMutationResult::invalid;
-  for (const auto &request : candidate_snapshot->requests.values()) {
-    if (!request.required)
-      continue;
-    const auto granted = std::ranges::find_if(
-        candidate_snapshot->grants.values(), [&](const auto &grant) {
-          return grant.capability == request.capability &&
-                 grant.state == permissions::GrantState::granted;
-        });
-    if (granted == candidate_snapshot->grants.values().end())
-      return AuthorityMutationResult::invalid;
-  }
-  for (const auto &dynamic : candidate_snapshot->dynamic_grants) {
-    if (dynamic.request.required &&
-        dynamic.grant.state != permissions::GrantState::granted)
-      return AuthorityMutationResult::invalid;
-  }
+  if (!activatable(*candidate_snapshot))
+    return AuthorityMutationResult::invalid;
   if (slots->sequence == UINT64_MAX)
     return AuthorityMutationResult::invalid;
   if (auto live = bound_live_.lock())
@@ -784,6 +803,8 @@ AuthorityMutationResult AuthorityStore::discard_candidate(
   std::scoped_lock lock(mutation_mutex_);
   if (::getpid() != owner_pid_)
     return AuthorityMutationResult::io_error;
+  if (poisoned_)
+    return AuthorityMutationResult::poisoned;
   auto slots = read_slots_unlocked(root_.get(), expected_uid_);
   if (!slots || !valid_slots(*slots))
     return AuthorityMutationResult::io_error;
@@ -806,20 +827,119 @@ AuthorityMutationResult AuthorityStore::discard_candidate(
   return result;
 }
 
-std::optional<policy::GrantSnapshot> AuthorityStore::resolve(
-    std::string_view plugin_id, std::string_view revision_sha256,
-    std::uint64_t generation) const {
+AuthorityRevocationResult AuthorityStore::revoke_active(
+    const permissions::CapabilityKey &capability,
+    std::uint64_t expected_sequence) {
+  return revoke_active(&capability, nullptr, expected_sequence);
+}
+
+AuthorityRevocationResult AuthorityStore::revoke_active(
+    const definitions::CapabilityReference &definition,
+    std::uint64_t expected_sequence) {
+  return revoke_active(nullptr, &definition, expected_sequence);
+}
+
+AuthorityRevocationResult AuthorityStore::revoke_active(
+    const permissions::CapabilityKey *capability,
+    const definitions::CapabilityReference *definition,
+    std::uint64_t expected_sequence) {
+  const auto failure = [](AuthorityMutationResult status) {
+    return AuthorityRevocationResult{
+        .status = status, .binding = std::nullopt, .activatable = false};
+  };
   std::scoped_lock lock(mutation_mutex_);
   if (::getpid() != owner_pid_)
+    return failure(AuthorityMutationResult::io_error);
+  if (poisoned_)
+    return failure(AuthorityMutationResult::poisoned);
+  if ((capability == nullptr) == (definition == nullptr))
+    return failure(AuthorityMutationResult::invalid);
+
+  auto slots = read_slots_unlocked(root_.get(), expected_uid_);
+  if (!slots || !valid_slots(*slots) || !slots->active)
+    return failure(AuthorityMutationResult::io_error);
+  if (slots->sequence != expected_sequence)
+    return failure(AuthorityMutationResult::stale_sequence);
+  if (slots->sequence == UINT64_MAX ||
+      slots->generation_high_watermark == UINT64_MAX)
+    return failure(AuthorityMutationResult::invalid);
+  auto active = load_snapshot(root_.get(), expected_uid_, *slots->active);
+  if (!active || active->binding.plugin != expected_plugin_)
+    return failure(AuthorityMutationResult::io_error);
+
+  bool found = false;
+  if (capability != nullptr) {
+    for (auto &grant : active->grants.values()) {
+      if (grant.capability != *capability)
+        continue;
+      if (found || grant.state != permissions::GrantState::granted)
+        return failure(AuthorityMutationResult::invalid);
+      grant.state = permissions::GrantState::revoked;
+      found = true;
+    }
+  } else {
+    for (auto &dynamic : active->dynamic_grants) {
+      if (dynamic.request.definition != *definition)
+        continue;
+      if (found || dynamic.grant.state != permissions::GrantState::granted)
+        return failure(AuthorityMutationResult::invalid);
+      dynamic.grant.state = permissions::GrantState::revoked;
+      found = true;
+    }
+  }
+  if (!found)
+    return failure(AuthorityMutationResult::invalid);
+
+  const auto next_generation = slots->generation_high_watermark + 1;
+  active->binding.generation = next_generation;
+  for (auto &grant : active->grants.values())
+    grant.epoch = next_generation;
+  for (auto &dynamic : active->dynamic_grants) {
+    dynamic.binding = active->binding;
+    dynamic.grant.epoch = next_generation;
+  }
+
+  if (auto live = bound_live_.lock())
+    live->revoke();
+  bound_live_.reset();
+  AuthorityRevisionRef reference;
+  const auto stored = store_snapshot_record(root_.get(), expected_uid_,
+                                            *active, reference);
+  if (stored != AuthorityMutationResult::applied) {
+    poisoned_ = true;
+    return failure(stored);
+  }
+
+  const auto previous = *slots;
+  slots->active = reference;
+  slots->candidate.reset();
+  slots->generation_high_watermark = next_generation;
+  ++slots->sequence;
+  const auto replaced = replace_slots(*slots);
+  if (replaced != AuthorityMutationResult::applied) {
+    poisoned_ = true;
+    return failure(replaced);
+  }
+  cleanup_unreferenced(root_.get(), previous, *slots);
+  return {.status = AuthorityMutationResult::applied,
+          .binding = active->binding,
+          .activatable = activatable(*active)};
+}
+
+std::optional<policy::GrantSnapshot>
+AuthorityStore::resolve(std::string_view plugin_id,
+                        std::string_view revision_sha256) const {
+  std::scoped_lock lock(mutation_mutex_);
+  if (::getpid() != owner_pid_ || poisoned_)
     return std::nullopt;
   auto slots = read_slots_unlocked(root_.get(), expected_uid_);
   if (!slots || !valid_slots(*slots) || plugin_id != expected_plugin_.view() ||
-      !slots->active || slots->active->generation != generation)
+      !slots->active)
     return std::nullopt;
   auto snapshot = load_snapshot(root_.get(), expected_uid_, *slots->active);
   if (!snapshot || snapshot->binding.plugin.view() != plugin_id ||
       snapshot->binding.revision.view() != revision_sha256 ||
-      snapshot->binding.generation != generation)
+      !activatable(*snapshot))
     return std::nullopt;
   return snapshot;
 }

@@ -293,8 +293,7 @@ public:
                    .revision_directory = "revision",
                    .revision_sha256 =
                        std::string(snapshot_grants.binding.revision.view()),
-                   .state_directory = "state",
-                   .generation = snapshot_grants.binding.generation},
+                   .state_directory = "state"},
         .manifest = std::move(verified_manifest),
         .grants = snapshot_grants,
         .activation_record = host::OwnedDescriptor(record),
@@ -410,15 +409,13 @@ public:
             "cannot promote coordinator candidate");
   }
 
-  void record(std::uint64_t generation,
-              std::string revision_sha256 = {}) const {
+  void record(std::string revision_sha256 = {}) const {
     if (revision_sha256.empty())
       revision_sha256 = verified_->tree_sha256;
     const auto bytes =
-        "format=omarchy-plugin-activation-v1\nplugin=" + plugin_ +
+        "format=omarchy-plugin-activation-v2\nplugin=" + plugin_ +
         "\nrevision-directory=installed\nrevision-sha256=" + revision_sha256 +
-        "\nstate-directory=" + plugin_ +
-        "\ngeneration=" + std::to_string(generation) + "\n";
+        "\nstate-directory=" + plugin_ + "\n";
     std::ofstream file(activation_ / "current", std::ios::trunc);
     file << bytes;
     file.close();
@@ -1228,7 +1225,7 @@ void coordinator_activates_only_exact_promoted_authority() {
   auto scope = std::make_shared<Scope>();
   auto coordinator = fixture.coordinator(runtime_factory, scope);
 
-  fixture.record(1);
+  fixture.record();
   auto absent = coordinator->activate("current");
   require(!absent &&
               absent.activation_error ==
@@ -1244,7 +1241,7 @@ void coordinator_activates_only_exact_promoted_authority() {
           "wrong plugin coordinator crossed its expected identity");
 
   auto first = fixture.publish(1, 0);
-  fixture.record(1);
+  fixture.record();
   auto candidate = coordinator->activate("current");
   require(!candidate &&
               candidate.activation_error ==
@@ -1262,44 +1259,48 @@ void coordinator_activates_only_exact_promoted_authority() {
   require(scope->attachments == 1,
           "exact promoted authority did not launch exactly once");
 
-  fixture.record(1, std::string(64, 'f'));
-  auto mismatched = coordinator->activate("current");
-  require(!mismatched &&
-              mismatched.activation_error ==
-                  host::ActivationError::revision_unverified &&
-              runtime_factory.calls == 1 && scope->attachments == 1,
-          "revision mismatch reached runtime or supervisor authority");
-
-  fixture.record(2);
   auto second = fixture.publish(2, 2);
   auto pending_update = coordinator->activate("current");
-  require(!pending_update &&
-              pending_update.activation_error ==
-                  host::ActivationError::grant_unavailable &&
-              runtime_factory.calls == 1 && scope->attachments == 1,
-          "pending update candidate activated before promotion");
+  require(pending_update &&
+              pending_update.session->binding() == first.binding &&
+              runtime_factory.calls == 2,
+          "pending candidate replaced the durable active authority");
+  await([&] {
+    return pending_update.session->state() == host::SessionState::running;
+  }, "active generation did not remain available during candidate review");
+  require(scope->attachments == 2,
+          "candidate review launched anything but the active generation");
   fixture.promote(second, 3);
   auto updated = coordinator->activate("current");
   require(updated && updated.session->binding() == second.binding &&
-              runtime_factory.calls == 2,
+              runtime_factory.calls == 3,
           "promoted update did not activate its exact generation");
   await([&] { return updated.session->state() == host::SessionState::running; },
         "promoted update did not start");
 
-  fixture.record(1);
-  auto stale = coordinator->activate("current");
-  require(!stale &&
-              stale.activation_error == host::ActivationError::grant_unavailable &&
-              runtime_factory.calls == 2,
-          "stale authority generation reached runtime construction");
+  auto same_record = coordinator->activate("current");
+  require(same_record && same_record.session->binding() == second.binding &&
+              runtime_factory.calls == 4,
+          "unchanged activation record did not follow durable generation");
+  await([&] { return same_record.session->state() == host::SessionState::running; },
+        "unchanged activation record did not restart current authority");
+  require(scope->attachments == 4,
+          "unchanged activation record did not launch exactly once");
 
-  fixture.record(2);
+  fixture.record(std::string(64, 'f'));
+  auto mismatched = coordinator->activate("current");
+  require(!mismatched &&
+              mismatched.activation_error ==
+                  host::ActivationError::revision_unverified &&
+              runtime_factory.calls == 4 && scope->attachments == 4,
+          "revision mismatch reached runtime or supervisor authority");
+  fixture.record();
   fixture.corrupt_active();
   auto corrupt = coordinator->activate("current");
   require(!corrupt &&
               corrupt.activation_error ==
                   host::ActivationError::grant_unavailable &&
-              runtime_factory.calls == 2,
+              runtime_factory.calls == 4,
           "corrupt durable authority reached runtime construction");
 }
 
@@ -1310,7 +1311,7 @@ void coordinator_fences_runtime_construction_and_retries() {
   auto coordinator = fixture.coordinator(runtime_factory, scope);
   auto first = fixture.publish(1, 0);
   fixture.promote(first, 1);
-  fixture.record(1);
+  fixture.record();
 
   runtime_factory.return_null = true;
   auto unavailable = coordinator->activate("current");
@@ -1362,7 +1363,6 @@ void coordinator_fences_runtime_construction_and_retries() {
               scope->attachments == attachments_before_race,
           "promotion during runtime construction reached supervisor authority");
   runtime_factory.on_create = {};
-  fixture.record(2);
   auto current = coordinator->activate("current");
   require(current && current.session->binding() == second.binding,
           "coordinator did not retry the newly promoted authority");
@@ -1377,7 +1377,7 @@ void coordinator_keeps_descriptor_pinned_paths() {
   auto coordinator = fixture.coordinator(runtime_factory, scope);
   auto active = fixture.publish(1, 0);
   fixture.promote(active, 1);
-  fixture.record(1);
+  fixture.record();
   runtime_factory.on_create = [&] { fixture.replace_selected_paths(); };
 
   auto result = coordinator->activate("current");

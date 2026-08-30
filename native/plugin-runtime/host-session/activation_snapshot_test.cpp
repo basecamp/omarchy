@@ -58,14 +58,13 @@ public:
   TemporaryTree &operator=(const TemporaryTree &) = delete;
 
   [[nodiscard]] static std::string
-  record(std::uint64_t generation = 7, std::string_view revision = "active",
+  record(std::string_view revision = "active",
          std::string_view state = "plugin-state") {
-    return "format=omarchy-plugin-activation-v1\nplugin=" +
+    return "format=omarchy-plugin-activation-v2\nplugin=" +
            std::string(kPlugin) +
            "\nrevision-directory=" + std::string(revision) +
            "\nrevision-sha256=" + kRevision +
-           "\nstate-directory=" + std::string(state) +
-           "\ngeneration=" + std::to_string(generation) + "\n";
+           "\nstate-directory=" + std::string(state) + "\n";
   }
 
   static void write(const std::filesystem::path &path, std::string_view bytes) {
@@ -175,12 +174,12 @@ public:
   mutable int calls = 0;
 
   std::optional<policy::GrantSnapshot>
-  resolve(std::string_view plugin_id, std::string_view revision_sha256,
-          std::uint64_t generation) const override {
+  resolve(std::string_view plugin_id,
+          std::string_view revision_sha256) const override {
     ++calls;
     if (before_return)
       before_return();
-    if (plugin_id != kPlugin || revision_sha256 != kRevision || generation == 0)
+    if (plugin_id != kPlugin || revision_sha256 != kRevision)
       return std::nullopt;
     return snapshot;
   }
@@ -247,6 +246,8 @@ void happy_path_and_revocation() {
   require(result.snapshot->manifest.id == kPlugin,
           "activation discarded its descriptor-verified manifest");
   auto binding = result.snapshot->grants.binding;
+  require(binding.generation == 7,
+          "activation record rather than durable authority selected generation");
   require(result.snapshot->live->current(binding),
           "fresh generation is not live");
   auto stale = binding;
@@ -312,7 +313,7 @@ void path_swaps_do_not_retarget_descriptors() {
   }();
   std::filesystem::rename(tree.activation() / "current",
                           tree.activation() / "original-record");
-  TemporaryTree::write(tree.activation() / "current", TemporaryTree::record(8));
+  TemporaryTree::write(tree.activation() / "current", TemporaryTree::record());
   struct stat after{};
   require(::fstat(result.snapshot->activation_record.get(), &after) == 0 &&
               before.st_dev == after.st_dev && before.st_ino == after.st_ino,
@@ -428,11 +429,25 @@ void every_authority_inode_must_be_distinct() {
 void identity_policy_and_mode_mismatches_are_rejected() {
   {
     TemporaryTree tree;
+    TemporaryTree::write(
+        tree.activation() / "current",
+        "format=omarchy-plugin-activation-v1\nplugin=" + std::string(kPlugin) +
+            "\nrevision-directory=active\nrevision-sha256=" + kRevision +
+            "\nstate-directory=plugin-state\ngeneration=7\n");
+    DescriptorVerifier verifier;
+    Authority authority;
+    require(load(tree, verifier, authority).error ==
+                host::ActivationError::record_invalid &&
+                verifier.calls == 0 && authority.calls == 0,
+            "legacy generation-bearing activation record was accepted");
+  }
+  {
+    TemporaryTree tree;
     std::filesystem::create_directory(tree.state() / "other-state");
     require(::chmod((tree.state() / "other-state").c_str(), 0700) == 0,
             "alternate state permissions failed");
     TemporaryTree::write(tree.activation() / "current",
-                         TemporaryTree::record(7, "active", "other-state"));
+                         TemporaryTree::record("active", "other-state"));
     DescriptorVerifier verifier;
     Authority authority;
     require(load(tree, verifier, authority).error ==
@@ -481,9 +496,9 @@ void identity_policy_and_mode_mismatches_are_rejected() {
     DescriptorVerifier verifier;
     Authority authority;
     authority.snapshot.binding.generation = 8;
-    require(load(tree, verifier, authority).error ==
-                host::ActivationError::grant_mismatch,
-            "stale authority generation was accepted");
+    const auto result = load(tree, verifier, authority);
+    require(result.snapshot && result.snapshot->grants.binding.generation == 8,
+            "durable authority did not supply the active generation");
   }
   {
     TemporaryTree tree;

@@ -6,7 +6,6 @@
 
 #include <array>
 #include <cerrno>
-#include <charconv>
 #include <ranges>
 #include <utility>
 
@@ -108,9 +107,9 @@ std::optional<OpenedRecord> read_record(int root_fd, std::string_view name,
 }
 
 std::optional<ActivationRecord> parse_record(std::string_view bytes) {
-  constexpr std::array<std::string_view, 6> keys{
+  constexpr std::array<std::string_view, 5> keys{
       "format",          "plugin",          "revision-directory",
-      "revision-sha256", "state-directory", "generation"};
+      "revision-sha256", "state-directory"};
   std::array<std::string_view, keys.size()> values{};
   std::size_t offset = 0;
   for (std::size_t index = 0; index < keys.size(); ++index) {
@@ -125,21 +124,14 @@ std::optional<ActivationRecord> parse_record(std::string_view bytes) {
     values[index] = line.substr(separator + 1);
     offset = end + 1;
   }
-  if (offset != bytes.size() || values[0] != "omarchy-plugin-activation-v1" ||
+  if (offset != bytes.size() || values[0] != "omarchy-plugin-activation-v2" ||
       !component(values[1]) || !component(values[2]) || !digest(values[3]) ||
       !component(values[4]))
-    return std::nullopt;
-  std::uint64_t generation = 0;
-  const auto converted = std::from_chars(
-      values[5].data(), values[5].data() + values[5].size(), generation);
-  if (converted.ec != std::errc{} ||
-      converted.ptr != values[5].data() + values[5].size() || generation == 0)
     return std::nullopt;
   return ActivationRecord{.plugin_id = std::string(values[1]),
                           .revision_directory = std::string(values[2]),
                           .revision_sha256 = std::string(values[3]),
-                          .state_directory = std::string(values[4]),
-                          .generation = generation};
+                          .state_directory = std::string(values[4])};
 }
 
 std::optional<OwnedDescriptor> open_directory(int root_fd,
@@ -157,8 +149,7 @@ bool authoritative_snapshot(const policy::GrantSnapshot &snapshot,
                             const VerifiedRevision &revision) {
   try {
     if (snapshot.binding.plugin.view() != record.plugin_id ||
-        snapshot.binding.revision.view() != record.revision_sha256 ||
-        snapshot.binding.generation != record.generation)
+        snapshot.binding.revision.view() != record.revision_sha256)
       return false;
     if (snapshot.source_request_fingerprint.view() != revision.request_sha256)
       return false;
@@ -309,8 +300,8 @@ ActivationResult ActivationSource::load(std::string_view record_name) const {
   if (!verified || verified->manifest.id != record->plugin_id ||
       verified->tree_sha256 != record->revision_sha256)
     return failure(ActivationError::revision_unverified);
-  auto grants = grant_authority_.resolve(
-      record->plugin_id, record->revision_sha256, record->generation);
+  auto grants =
+      grant_authority_.resolve(record->plugin_id, record->revision_sha256);
   if (!grants)
     return failure(ActivationError::grant_unavailable);
   if (!authoritative_snapshot(*grants, *record, *verified))

@@ -47,7 +47,6 @@ bool valid_snapshot(const session::ActivationSnapshot &snapshot) {
          snapshot.record.plugin_id == snapshot.grants.binding.plugin.view() &&
          snapshot.record.revision_sha256 ==
              snapshot.grants.binding.revision.view() &&
-         snapshot.record.generation == snapshot.grants.binding.generation &&
          snapshot.live->current(snapshot.grants.binding) &&
          snapshot.manifest.id == snapshot.record.plugin_id &&
          plugins::manifest::requested_capability_fingerprint(
