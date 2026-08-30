@@ -298,11 +298,14 @@ bool SurfaceEndpoint::forward_render(
   auto &value = *implementation_;
   const bool active_route = value.state == State::attached ||
                             value.state == State::active;
+  surface::SurfaceKey released{};
   const bool terminal_release =
       value.state == State::closing &&
       header.message_type == static_cast<std::uint16_t>(
                                  surface::RenderMessageType::surface_release) &&
-      header.correlation_id == 0 && descriptors.empty();
+      header.correlation_id == 0 && descriptors.empty() && value.description &&
+      surface::decode_surface_key(payload, released) &&
+      released == value.description->key;
   if (std::this_thread::get_id() != owner_thread_ ||
       (!active_route && !terminal_release) ||
       !value.description || descriptors.size() > 1)

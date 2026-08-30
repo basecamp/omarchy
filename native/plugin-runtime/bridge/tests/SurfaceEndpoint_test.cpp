@@ -69,6 +69,12 @@ public:
   [[nodiscard]] static bool is_closed(const SurfaceEndpoint &endpoint) noexcept {
     return endpoint.state() == SurfaceEndpoint::State::closed;
   }
+
+  [[nodiscard]] static bool forward_render(
+      SurfaceEndpoint &endpoint, const plugin::wire::EnvelopeHeader &header,
+      std::span<const std::byte> payload) {
+    return endpoint.forward_render(header, payload, {});
+  }
 };
 
 } // namespace omarchy::plugin_runtime::bridge
@@ -365,6 +371,8 @@ void lifecycle_and_descriptor_contract() {
 
   const auto sends_before_close = value.port.send_calls;
   std::size_t cancel_reentries = 0;
+  bool wrong_release_rejected = false;
+  bool malformed_release_rejected = false;
   value.port.reenter_on_cancel = [&] {
     ++cancel_reentries;
     require(bridge::SurfaceEndpointTestAccess::is_closing(*value.endpoint),
@@ -373,12 +381,23 @@ void lifecycle_and_descriptor_contract() {
   };
   value.port.reenter_on_release = [&] {
     bridge::SurfaceEndpointTestAccess::close(*value.endpoint);
+    const auto wrong = surface::encode_surface_key(
+        {.id = value.port.description.key.id + 1,
+         .generation = value.port.description.key.generation});
+    wrong_release_rejected =
+        !bridge::SurfaceEndpointTestAccess::forward_render(
+            *value.endpoint, value.port.last_header, wrong);
+    const std::array malformed{std::byte{0x01}};
+    malformed_release_rejected =
+        !bridge::SurfaceEndpointTestAccess::forward_render(
+            *value.endpoint, value.port.last_header, malformed);
   };
   bridge::SurfaceEndpointTestAccess::close(*value.endpoint);
   bridge::SurfaceEndpointTestAccess::close(*value.endpoint);
   require(bridge::SurfaceEndpointTestAccess::is_closed(*value.endpoint) &&
               value.port.detach_calls == 1 &&
               cancel_reentries == 1 &&
+              wrong_release_rejected && malformed_release_rejected &&
               !value.port.remote_was_alive_at_detach &&
               value.port.release_was_attached &&
               value.port.send_calls == sends_before_close + 2 &&
