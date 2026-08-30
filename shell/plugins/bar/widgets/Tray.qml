@@ -11,13 +11,20 @@ BarWidget {
   id: root
   moduleName: "omarchy.tray"
 
+  property bool expanded: false
+  // Raw pointer-hover state of the drawer area, tracked separately from
+  // `expanded` itself. Opening trayMenuPopup/managePopup creates a new
+  // popup surface that grabs the pointer, which delivers a hover-leave to
+  // the bar surface underneath even though the cursor never actually left
+  // the drawer on screen. Reacting to that leave by collapsing immediately
+  // used to slide the drawer's icons out from under an anchored popup
+  // (moving the very item the popup was anchored to), which is what made
+  // the popup — and the drawer holding it open — appear to close on
+  // right-click. Keeping `expanded` true while either popup is open, and
+  // only re-deriving it from real hover once both are closed, keeps the
+  // drawer (and its geometry) stable while a context menu owned by one of
+  // its icons is on screen.
   property bool drawerHovered: false
-  // Hover alone used to drive this: right-clicking a tray icon opens its
-  // context menu away from the drawer's hover area, so the pointer leaving
-  // to reach that popup made the chevron snap shut mid-interaction, before
-  // anything was chosen. Keep it forced open for as long as either popup is
-  // up, and let hover take back over once it closes.
-  readonly property bool expanded: drawerHovered || managePopupOpen || trayMenuOpen
   property bool managePopupOpen: false
   property bool trayMenuOpen: false
   property var activeTrayItem: null
@@ -39,49 +46,42 @@ BarWidget {
   property real revealProgress: expanded ? 1 : 0
   readonly property real revealExtent: drawerExtent * revealProgress
 
-  // Bar.qml paints an accent-colored "open panel" underline for whichever
-  // module owns the currently-open popup, sized from this widget's
-  // openPanelIndicatorWidth/Height when present. Without that hint it falls
-  // back to 55% of the module's slot width, centered on the slot - a sane
-  // default for a single-icon widget, but the tray's slot spans the chevron
-  // plus every pinned/drawer icon, so that fallback drew a fixed-width bar
-  // centered on the *whole* row: often straddling the boundary between the
-  // chevron and an icon rather than running under the icons actually shown
-  // (see the manage/tray-menu popups, which both report this widget as their
-  // owner, so either one can trigger the mark).
+  // Bar.qml's ModuleSlot draws an "open panel" indicator under whichever
+  // module owns the currently-open popup, sized either from these hints or,
+  // absent a hint, from an arbitrary 55% of the module's slot. That fallback
+  // fraction has no relationship to the Tray's actual content — it drifts
+  // out of alignment as the pinned/drawer icon count, bar size, or DPI
+  // changes the Tray's real footprint. Reporting the Tray's own measured
+  // width/height (already computed exactly from its icon layout above)
+  // instead of a guessed fraction is what keeps the indicator pixel-aligned
+  // with the Tray's true edge in every configuration.
+  // implicitWidth/implicitHeight (not width/height) on purpose: they're the
+  // Tray's own measured footprint straight from trayContent below, so this
+  // stays correct even if whatever loads this widget resizes the instance
+  // itself for layout purposes.
   //
-  // implicitWidth itself is the wrong source for the hint: it always reserves
-  // room for the drawer at full width (drawerBlockWidth adds root.drawerExtent
-  // unconditionally, not root.revealExtent) so the empty gap the collapsed
-  // drawer keeps for its slide-in doesn't reflow neighboring modules. Any open
-  // popup does force `expanded` true, which starts the drawer sliding open,
-  // but that slide is a 600ms Behavior on revealProgress - so right after a
-  // popup opens, implicitWidth already reports the fully-revealed width while
-  // the drawer icons are still animating into view, and the mark overshoots
-  // past the chevron into that not-yet-revealed space. Track revealExtent
-  // (the same value the icons themselves animate on) instead, so the mark's
-  // width tracks the drawer open/close exactly like the icons it's supposed
-  // to sit under, landing at the same full extent once the animation settles.
-  readonly property real visibleExtent: {
-  var content = trayContent.item
-  var pinnedExtent = content ? (root.vertical ? content.pinnedHeight : content.pinnedWidth) : 0
-  var chevronBlock = allItems.length > 0 ? trayItemExtent + revealExtent : 0
-  return chevronBlock + pinnedExtent
-}
-readonly property real openPanelIndicatorWidth: visibleExtent * 0.75
-readonly property real openPanelIndicatorHeight: visibleExtent * 0.75
-  // The collapsed drawer keeps drawerExtent worth of invisible room ahead of
-  // the chevron for its slide-in (see drawerBlockWidth/Height above) - room
-  // that Bar.qml's slot otherwise counts as part of this widget when it
-  // centers the mark. Report it so the mark centers on the chevron+pinned
-  // icons actually on screen instead of drifting toward that empty space.
-  readonly property real openPanelIndicatorOffset: allItems.length > 0 ? (drawerExtent - revealExtent) : 0
-  // Pins the mark's leading edge at a fixed distance past the offset above,
-  // independent of openPanelIndicatorWidth/Height - so widening those to
-  // reach further along the tray only pushes the trailing edge out and
-  // never moves the leading edge away from the chevron.
-  readonly property real openPanelIndicatorLeadInset: visibleExtent * 0.2
-  readonly property real openPanelIndicatorLeadInsetV: visibleExtent * 0.2
+  // The two ends of the Tray aren't visually symmetric: the chevron end
+  // (drawerArea, at x: 0) wants more breathing room than the pinned-icon
+  // end (pinnedRow, at the widget's right edge), so a single symmetric
+  // inset can't line up both at once. Two named insets plus a derived
+  // offset let Bar.qml keep centering the mark from (width, offset) while
+  // the actual left/right margins end up unequal on purpose. Tune each
+  // side independently here — both stay on the project's Style.space scale
+  // rather than raw pixel guesses.
+  readonly property real openPanelIndicatorLeftInset: Style.space(12)
+  readonly property real openPanelIndicatorRightInset: Style.space(4)
+  readonly property real openPanelIndicatorWidth: root.vertical
+    ? 0
+    : Math.max(0, root.implicitWidth - openPanelIndicatorLeftInset - openPanelIndicatorRightInset)
+  readonly property real openPanelIndicatorHeight: root.vertical
+    ? Math.max(0, root.implicitHeight - openPanelIndicatorLeftInset - openPanelIndicatorRightInset)
+    : 0
+  // Bar.qml positions the mark at center-of-slot + this offset. Re-deriving
+  // it from the two insets is what keeps the left margin at exactly
+  // openPanelIndicatorLeftInset and the right margin at exactly
+  // openPanelIndicatorRightInset instead of forcing them equal.
+  readonly property real openPanelIndicatorOffsetX: (openPanelIndicatorLeftInset - openPanelIndicatorRightInset) / 2
+  readonly property real openPanelIndicatorOffsetY: (openPanelIndicatorLeftInset - openPanelIndicatorRightInset) / 2
 
   // Submenu drill-down state. QsMenuEntry.display() renders a *platform* menu,
   // which Quickshell refuses unless the shell root sets `//@ pragma
@@ -163,6 +163,18 @@ readonly property real openPanelIndicatorHeight: visibleExtent * 0.75
     managePopupOpen = false
     trayMenuOpen = false
   }
+
+  // Single source of truth for `expanded`: real hover OR either popup this
+  // widget owns being open. Called whenever any of those three inputs
+  // change, instead of letting the drawer's HoverHandler write `expanded`
+  // directly, so a hover-leave caused by a popup grabbing the pointer can't
+  // collapse the drawer out from under its own still-open popup.
+  function syncExpanded() {
+    expanded = drawerHovered || trayMenuOpen || managePopupOpen
+  }
+
+  onTrayMenuOpenChanged: syncExpanded()
+  onManagePopupOpenChanged: syncExpanded()
 
   function openTrayMenu(item, anchorItem, mouse) {
     if (!item || !item.menu) {
@@ -310,7 +322,10 @@ readonly property real openPanelIndicatorHeight: visibleExtent * 0.75
         visible: root.allItems.length > 0
 
         HoverHandler {
-          onHoveredChanged: root.drawerHovered = hovered
+          onHoveredChanged: {
+            root.drawerHovered = hovered
+            root.syncExpanded()
+          }
         }
 
         BarIconButton {
@@ -392,7 +407,10 @@ readonly property real openPanelIndicatorHeight: visibleExtent * 0.75
         visible: root.allItems.length > 0
 
         HoverHandler {
-          onHoveredChanged: root.drawerHovered = hovered
+          onHoveredChanged: {
+            root.drawerHovered = hovered
+            root.syncExpanded()
+          }
         }
 
         BarIconButton {
@@ -517,6 +535,7 @@ readonly property real openPanelIndicatorHeight: visibleExtent * 0.75
           }
 
           Text {
+            textFormat: Text.PlainText
             anchors.verticalCenter: parent.verticalCenter
             anchors.left: rowIcon.right
             anchors.leftMargin: Style.space(10)
@@ -627,6 +646,7 @@ readonly property real openPanelIndicatorHeight: visibleExtent * 0.75
           }
 
           Text {
+            textFormat: Text.PlainText
             anchors.verticalCenter: parent.verticalCenter
             anchors.left: parent.left
             anchors.leftMargin: Style.space(28)
@@ -731,6 +751,7 @@ readonly property real openPanelIndicatorHeight: visibleExtent * 0.75
               }
 
               Text {
+                textFormat: Text.PlainText
                 visible: !menuRow.modelData.isSeparator && menuRow.modelData.buttonType !== QsMenuButtonType.None
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.left: parent.left
@@ -759,6 +780,7 @@ readonly property real openPanelIndicatorHeight: visibleExtent * 0.75
               }
 
               Text {
+                textFormat: Text.PlainText
                 visible: !menuRow.modelData.isSeparator
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.left: parent.left

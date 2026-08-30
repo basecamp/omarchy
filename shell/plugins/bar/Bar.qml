@@ -948,6 +948,21 @@ Item {
     onFileChanged: barHiddenProbe.running = true
   }
 
+  // The directory watch can permanently stop delivering events after flag
+  // changes land in quick succession, stranding the bar off screen until the
+  // shell restarts. `omarchy-toggle-bar` nudges this after flipping the flag
+  // so the probe re-reads it even when the watch has gone quiet.
+  IpcHandler {
+    target: "omarchy.bar"
+
+    // Start rather than restart: a probe already in flight was launched by the
+    // directory watch after the flag flipped, so its answer is current, and
+    // killing it here can swallow the result entirely.
+    function syncHidden(): void {
+      barHiddenProbe.running = true
+    }
+  }
+
   Variants {
     model: Quickshell.screens
 
@@ -1090,6 +1105,7 @@ Item {
 
         Text {
           id: tooltipLabel
+          textFormat: Text.PlainText
           anchors.centerIn: parent
           text: root.tooltipText
           color: Color.tooltip.text
@@ -1562,24 +1578,16 @@ Item {
       if (hint !== undefined && hint !== null && hint > 0) return Math.round(hint)
       return Math.max(Style.space(10), Math.round((root.vertical ? slot.height : slot.width) * 0.55))
     }
-    // Optional hint for modules whose slot reserves invisible space (e.g. a
-    // collapsed drawer's slide-in room) alongside the content the mark should
-    // actually track. Defaults to 0, which reproduces the plain centered
-    // behavior below exactly - so modules that don't define this hint are
-    // unaffected.
+    // Optional companion to panelIndicatorExtent: a module whose real
+    // content isn't centered under its own slot (e.g. Tray, where the app
+    // icon side needs a different margin than the chevron side) can shift
+    // the mark off dead-center by this many pixels without giving up the
+    // measured-extent centering above. Defaults to 0 for every module that
+    // doesn't define it, so this is fully backward compatible.
     readonly property real panelIndicatorOffset: {
-      var hint = activeItem && "openPanelIndicatorOffset" in activeItem ? activeItem.openPanelIndicatorOffset : undefined
-      return (hint !== undefined && hint !== null && hint > 0) ? Math.round(hint) : 0
-    }
-    // Optional hint pinning the mark's leading edge (past panelIndicatorOffset)
-    // at a fixed distance, independent of panelIndicatorExtent. Without it the
-    // mark is centered using its own width, so growing the width moves both
-    // edges outward; with it, growing the width only pushes the trailing edge
-    // further out while the leading edge stays put. -1 means "not provided".
-    readonly property real panelIndicatorLeadInset: {
-      var key = root.vertical ? "openPanelIndicatorLeadInsetV" : "openPanelIndicatorLeadInset"
+      var key = root.vertical ? "openPanelIndicatorOffsetY" : "openPanelIndicatorOffsetX"
       var hint = activeItem && key in activeItem ? activeItem[key] : undefined
-      return (hint !== undefined && hint !== null && hint >= 0) ? Math.round(hint) : -1
+      return (hint !== undefined && hint !== null) ? hint : 0
     }
     implicitWidth: activeItem && activeItem.visible ? (root.vertical ? root.barSize : activeItem.implicitWidth) : 0
     implicitHeight: activeItem && activeItem.visible ? activeItem.implicitHeight : 0
@@ -1658,13 +1666,9 @@ Item {
       // panel that opens on that side.
       x: root.vertical
         ? (root.position === "left" ? parent.width - width - inset : inset)
-        : (slot.panelIndicatorLeadInset >= 0
-            ? slot.panelIndicatorOffset + slot.panelIndicatorLeadInset
-            : slot.panelIndicatorOffset + Math.round(((parent.width - slot.panelIndicatorOffset) - width) / 2))
+        : Math.round((parent.width - width) / 2) + slot.panelIndicatorOffset
       y: root.vertical
-        ? (slot.panelIndicatorLeadInset >= 0
-            ? slot.panelIndicatorOffset + slot.panelIndicatorLeadInset
-            : slot.panelIndicatorOffset + Math.round(((parent.height - slot.panelIndicatorOffset) - height) / 2))
+        ? Math.round((parent.height - height) / 2) + slot.panelIndicatorOffset
         : (root.position === "top" ? parent.height - height - inset : inset)
       z: 50
 
