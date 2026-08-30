@@ -53,7 +53,17 @@ export FEEDS_TEST_MUTATION_LOG="$mutation_log"
 write_mock omarchy-pkg-missing '[[ ${FEEDS_TEST_PACKAGE_MISSING:-0} == 1 ]]'
 write_mock omarchy-notification-send 'printf "%s\n" "$*" >>"$FEEDS_TEST_NOTIFICATION_LOG"; exit "${FEEDS_TEST_NOTIFICATION_STATUS:-0}"'
 write_mock flock 'exit 0'
-write_mock omarchy-launch-floating-terminal-with-presentation 'exec /bin/bash -c "$1" </dev/null'
+write_mock omarchy-shell '
+case ${1:-}:${2:-} in
+  shell:launchNewsboatConfirmation)
+    "$OMARCHY_PATH/bin/omarchy-newsboat-confirm" --respond "$3" </dev/null &
+    echo ok
+    ;;
+  shell:newsboatConfirmationStatus) echo active ;;
+  shell:cancelNewsboatConfirmation) echo ok ;;
+  *) exit 64 ;;
+esac
+'
 write_mock gum '
 printf "%s\n" "$*" >>"$FEEDS_TEST_CONFIRM_LOG"
 if [[ -n ${FEEDS_TEST_CONFIRM_HOOK:-} ]]; then "$FEEDS_TEST_CONFIRM_HOOK"; fi

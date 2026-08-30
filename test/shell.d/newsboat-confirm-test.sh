@@ -23,13 +23,25 @@ export NEWSBOAT_CONFIRM_TIMEOUT_SECONDS=2
 export CONFIRM_TEST_LAUNCH_LOG="$launch_log"
 export CONFIRM_TEST_GUM_LOG="$gum_log"
 
-cat >"$mock_bin/omarchy-launch-floating-terminal-with-presentation" <<'SH'
+cat >"$mock_bin/omarchy-shell" <<'SH'
 #!/bin/bash
 printf '%s\n' "$*" >>"$CONFIRM_TEST_LAUNCH_LOG"
-if [[ ${CONFIRM_TEST_SKIP_CHILD:-false} == "true" ]]; then
-  exit 0
-fi
-exec /bin/bash -c "$1" </dev/null
+case ${1:-}:${2:-} in
+  shell:launchNewsboatConfirmation)
+    if [[ ${CONFIRM_TEST_SHELL_LAUNCH_STATUS:-0} != 0 ]]; then
+      exit "$CONFIRM_TEST_SHELL_LAUNCH_STATUS"
+    elif [[ ${CONFIRM_TEST_SHELL_LAUNCH_RESULT:-ok} != "ok" ]]; then
+      echo "$CONFIRM_TEST_SHELL_LAUNCH_RESULT"
+      exit 0
+    elif [[ ${CONFIRM_TEST_SKIP_CHILD:-false} != "true" ]]; then
+      "$OMARCHY_PATH/bin/omarchy-newsboat-confirm" --respond "$3" </dev/null &
+    fi
+    echo ok
+    ;;
+  shell:newsboatConfirmationStatus) echo "${CONFIRM_TEST_WINDOW_STATUS:-active}" ;;
+  shell:cancelNewsboatConfirmation) echo ok ;;
+  *) exit 64 ;;
+esac
 SH
 
 cat >"$mock_bin/gum" <<'SH'
@@ -43,7 +55,7 @@ else
 fi
 SH
 
-chmod +x "$mock_bin/omarchy-launch-floating-terminal-with-presentation" "$mock_bin/gum"
+chmod +x "$mock_bin/omarchy-shell" "$mock_bin/gum"
 
 file_mode() {
   if stat -c '%a' "$1" >/dev/null 2>&1; then
@@ -55,7 +67,7 @@ file_mode() {
 
 export CONFIRM_TEST_GUM_STATUS=0
 "$ROOT/bin/omarchy-newsboat-confirm" triage 44 3
-grep -Eq '/bin/omarchy-newsboat-confirm --respond [A-Za-z0-9_-]+; exit 130$' "$launch_log" || fail "Newsboat confirmation does not leave the agent terminal"
+grep -Eq '^shell launchNewsboatConfirmation [A-Za-z0-9_-]+$' "$launch_log" || fail "Newsboat confirmation does not leave the agent sandbox through Shell IPC"
 grep -Fq 'Mark 44 articles as read and leave 3 unread?' "$gum_log" || fail "Newsboat triage confirmation omits the exact effect"
 [[ -z $(find "$NEWSBOAT_CONFIRM_STATE_DIR" -type f -print -quit) ]] || fail "an approved Newsboat confirmation leaves reusable state"
 pass "Newsboat requires an exact out-of-band triage approval"
@@ -100,6 +112,28 @@ set -e
 (( piped_status == 1 )) || fail "agent-terminal stdin can approve the separate Newsboat prompt" "$piped_status"
 pass "Newsboat confirmation cannot be answered through the agent command's stdin"
 
+export CONFIRM_TEST_SHELL_LAUNCH_RESULT=busy
+set +e
+"$ROOT/bin/omarchy-newsboat-confirm" scout 1 >/dev/null 2>"$test_tmp/launch-error"
+launch_status=$?
+set -e
+unset CONFIRM_TEST_SHELL_LAUNCH_RESULT
+(( launch_status == 2 )) || fail "a rejected Shell launch waits for an invisible confirmation" "$launch_status"
+grep -Fq 'Could not open the Newsboat confirmation window: busy' "$test_tmp/launch-error" || fail "a rejected Shell launch hides its safe outcome"
+[[ -z $(find "$NEWSBOAT_CONFIRM_STATE_DIR" -type f -print -quit) ]] || fail "a rejected Shell launch leaves reusable state"
+pass "Newsboat confirmation fails immediately when Shell cannot open its window"
+
+export CONFIRM_TEST_SKIP_CHILD=true CONFIRM_TEST_WINDOW_STATUS=inactive
+set +e
+"$ROOT/bin/omarchy-newsboat-confirm" scout 1 >/dev/null 2>"$test_tmp/closed-error"
+closed_status=$?
+set -e
+unset CONFIRM_TEST_WINDOW_STATUS
+(( closed_status == 2 )) || fail "a vanished Newsboat confirmation window keeps waiting" "$closed_status"
+grep -Fq 'window closed without changing anything' "$test_tmp/closed-error" || fail "a vanished confirmation window hides its safe outcome"
+[[ -z $(find "$NEWSBOAT_CONFIRM_STATE_DIR" -type f -print -quit) ]] || fail "a vanished confirmation window leaves reusable state"
+pass "Newsboat confirmation detects a window that never appears"
+
 export CONFIRM_TEST_SKIP_CHILD=true
 export NEWSBOAT_CONFIRM_TIMEOUT_SECONDS=1
 set +e
@@ -110,3 +144,8 @@ set -e
 grep -Fq 'timed out without changing anything' "$test_tmp/timeout-error" || fail "a Newsboat confirmation timeout hides the safe outcome"
 [[ -z $(find "$NEWSBOAT_CONFIRM_STATE_DIR" -type f -print -quit) ]] || fail "a timed-out Newsboat confirmation leaves reusable state"
 pass "Newsboat confirmation fails closed when its separate window cannot answer"
+
+grep -Fq 'function launchNewsboatConfirmation(requestId: string): string' "$ROOT/shell/shell.qml" || fail "Omarchy Shell does not expose the narrow Newsboat confirmation bridge"
+grep -Fq '!/^[A-Za-z0-9_-]{8,64}$/.test(id)' "$ROOT/shell/shell.qml" || fail "the Shell bridge accepts arbitrary confirmation commands"
+grep -Fq 'newsboatConfirmationProcess.command = [' "$ROOT/shell/shell.qml" || fail "the Shell bridge does not use its tracked confirmation process"
+pass "Omarchy Shell only brokers opaque Newsboat confirmation IDs"

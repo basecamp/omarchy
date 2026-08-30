@@ -20,8 +20,8 @@ response_written=false
 response_tmp=""
 request_file=""
 response_file=""
-launcher_pid=""
-response_received=false
+request_id=""
+launcher_requested=false
 
 usage() {
   echo "Usage: omarchy-newsboat-confirm <triage <read-count> <leave-count>|scout <feed-count>>" >&2
@@ -116,16 +116,13 @@ respond() {
 cleanup_request() {
   [[ -z $request_file ]] || rm -f -- "$request_file"
   [[ -z $response_file ]] || rm -f -- "$response_file"
-  if [[ -n $launcher_pid ]]; then
-    if [[ $response_received == "false" ]] && kill -0 "$launcher_pid" 2>/dev/null; then
-      kill "$launcher_pid" 2>/dev/null || true
-    fi
-    wait "$launcher_pid" 2>/dev/null || true
+  if [[ $launcher_requested == "true" ]]; then
+    omarchy-shell -q shell cancelNewsboatConfirmation "$request_id" >/dev/null 2>&1 || true
   fi
 }
 
 request() {
-  local kind=$1 payload request_id timeout_seconds deadline decision
+  local kind=$1 payload timeout_seconds deadline decision launch_result status status_checks=0
   shift
 
   case $kind in
@@ -152,8 +149,14 @@ request() {
 
   trap cleanup_request EXIT
 
-  omarchy-launch-floating-terminal-with-presentation "$OMARCHY_PATH/bin/omarchy-newsboat-confirm --respond $request_id; exit 130" >/dev/null 2>&1 &
-  launcher_pid=$!
+  if ! launch_result=$(omarchy-shell shell launchNewsboatConfirmation "$request_id"); then
+    echo "Could not open the Newsboat confirmation window" >&2
+    exit 2
+  elif [[ $launch_result != "ok" ]]; then
+    echo "Could not open the Newsboat confirmation window: $launch_result" >&2
+    exit 2
+  fi
+  launcher_requested=true
 
   timeout_seconds=${NEWSBOAT_CONFIRM_TIMEOUT_SECONDS:-300}
   if [[ ! $timeout_seconds =~ ^[0-9]+$ ]] || (( timeout_seconds < 1 || timeout_seconds > 600 )); then
@@ -167,6 +170,13 @@ request() {
       echo "Newsboat confirmation timed out without changing anything" >&2
       exit 2
     fi
+    ((status_checks += 1))
+    if (( status_checks % 10 == 0 )); then
+      if ! status=$(omarchy-shell shell newsboatConfirmationStatus "$request_id") || [[ $status != "active" ]]; then
+        echo "The Newsboat confirmation window closed without changing anything" >&2
+        exit 2
+      fi
+    fi
     sleep 0.1
   done
 
@@ -175,7 +185,6 @@ request() {
     exit 2
   fi
   decision=$(<"$response_file")
-  response_received=true
 
   case $decision in
   approved) return 0 ;;

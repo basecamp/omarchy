@@ -890,12 +890,50 @@ ShellRoot {
     }
   }
 
+  // Newsboat agents run inside a filesystem and PID sandbox. They can reach
+  // this narrow IPC bridge, while direct GUI launchers cannot escape that
+  // namespace to create a visible confirmation window.
+  property string newsboatConfirmationRequestId: ""
+
+  Process {
+    id: newsboatConfirmationProcess
+    onExited: shell.newsboatConfirmationRequestId = ""
+  }
+
   // ---------------------------------------------------------- shell IPC
 
   IpcHandler {
     target: "shell"
 
     function ping(): string {
+      return "ok"
+    }
+
+    function launchNewsboatConfirmation(requestId: string): string {
+      var id = String(requestId || "")
+      if (!/^[A-Za-z0-9_-]{8,64}$/.test(id)) return "invalid"
+      if (newsboatConfirmationProcess.running) {
+        return shell.newsboatConfirmationRequestId === id ? "ok" : "busy"
+      }
+
+      shell.newsboatConfirmationRequestId = id
+      newsboatConfirmationProcess.command = [
+        shell.omarchyPath + "/bin/omarchy-launch-floating-terminal-with-presentation",
+        shell.omarchyPath + "/bin/omarchy-newsboat-confirm --respond " + id + "; exit 130"
+      ]
+      newsboatConfirmationProcess.running = true
+      return "ok"
+    }
+
+    function newsboatConfirmationStatus(requestId: string): string {
+      return newsboatConfirmationProcess.running
+          && shell.newsboatConfirmationRequestId === String(requestId || "")
+        ? "active" : "inactive"
+    }
+
+    function cancelNewsboatConfirmation(requestId: string): string {
+      if (shell.newsboatConfirmationRequestId !== String(requestId || "")) return "unknown"
+      if (newsboatConfirmationProcess.running) newsboatConfirmationProcess.running = false
       return "ok"
     }
 

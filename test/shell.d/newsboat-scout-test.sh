@@ -53,7 +53,17 @@ write_mock omarchy-agent-prompt '
 printf "%s" "$2" >"$SCOUT_TEST_AGENT_LOG"
 '
 write_mock flock 'exit 0'
-write_mock omarchy-launch-floating-terminal-with-presentation 'exec /bin/bash -c "$1" </dev/null'
+write_mock omarchy-shell '
+case ${1:-}:${2:-} in
+  shell:launchNewsboatConfirmation)
+    "$OMARCHY_PATH/bin/omarchy-newsboat-confirm" --respond "$3" </dev/null &
+    echo ok
+    ;;
+  shell:newsboatConfirmationStatus) echo active ;;
+  shell:cancelNewsboatConfirmation) echo ok ;;
+  *) exit 64 ;;
+esac
+'
 write_mock gum '
 printf "%s\n" "$*" >>"$SCOUT_TEST_CONFIRM_LOG"
 if [[ -n ${SCOUT_TEST_CONFIRM_HOOK:-} ]]; then "$SCOUT_TEST_CONFIRM_HOOK"; fi
