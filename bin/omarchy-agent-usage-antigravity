@@ -1,0 +1,273 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Antigravity usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Antigravity (agy) usage into one display-ready JSON record.
+
+Local stats (prompts, sessions, active days) come from
+~/.gemini/antigravity-cli/history.jsonl and conversation_summaries.db. Rate
+limits come from `agy -p "/usage" --output-format json` -- the same call the
+CLI's own /usage slash command makes -- so they are the real per-group quota
+(Gemini models; Claude and GPT models) rather than a local estimate. The
+agents panel only ever reads the JSON this prints.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import sqlite3
+import subprocess
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "antigravity"
+AGENT_NAME = "Antigravity"
+AUTH_HELP = "Run `agy` and sign in, then retry."
+
+# agy reports remaining_fraction (100% -> 0% as quota depletes). Omarchy's
+# convention, set by the Claude and Codex collectors, is percent USED (0% ->
+# 100% as quota depletes) -- so this both inverts the fraction and drops
+# "Remaining" from the label, which would otherwise contradict the number
+# next to it.
+WINDOW_LABELS = {"weekly": "Weekly", "5h": "Session (5-hour)"}
+
+
+class AntigravityError(Exception):
+  pass
+
+
+def data_dir() -> Path:
+  return Path(os.environ.get("ANTIGRAVITY_DATA_DIR") or "~/.gemini/antigravity-cli").expanduser()
+
+
+def recent_date_strings(today: date) -> list[str]:
+  return [(today - timedelta(days=offset)).isoformat() for offset in range(6, -1, -1)]
+
+
+def local_date_from_ms(value: Any) -> str:
+  try:
+    return datetime.fromtimestamp(float(value) / 1000.0).astimezone().date().isoformat()
+  except (TypeError, ValueError, OSError, OverflowError):
+    return datetime.now().astimezone().date().isoformat()
+
+
+def empty_stats() -> dict[str, Any]:
+  return {
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTotalTokens": 0,
+    "todayTokensByModel": {},
+    "recentDays": [],
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "activeDays": 0,
+    "activeDates": [],
+    "modelUsage": {},
+  }
+
+
+def base_record(**overrides: Any) -> dict[str, Any]:
+  record: dict[str, Any] = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "ready": False,
+    "hasLocalStats": False,
+    "tierLabel": "",
+    "usageStatusText": "",
+    "authHelpText": "",
+    "limits": [],
+  }
+  record.update(empty_stats())
+  record.update(overrides)
+  return record
+
+
+# ------------------------------------------------------------- local stats
+
+
+def scan_history(path: Path, today: date) -> dict[str, Any]:
+  recent_dates = recent_date_strings(today)
+  daily_prompts = {day: 0 for day in recent_dates}
+  active_dates: set[str] = set()
+  total_prompts = 0
+
+  if path.is_file():
+    with path.open(encoding="utf-8", errors="replace") as handle:
+      for line in handle:
+        line = line.strip()
+        if not line:
+          continue
+        try:
+          entry = json.loads(line)
+        except json.JSONDecodeError:
+          continue
+        total_prompts += 1
+        day = local_date_from_ms(entry.get("timestamp"))
+        active_dates.add(day)
+        if day in daily_prompts:
+          daily_prompts[day] += 1
+
+  return {
+    "todayPrompts": daily_prompts[today.isoformat()],
+    "recentDays": [{"date": d, "messageCount": daily_prompts[d]} for d in recent_dates],
+    "totalPrompts": total_prompts,
+    "activeDates": active_dates,
+  }
+
+
+def scan_sessions(db_path: Path, today: date) -> dict[str, Any]:
+  total_sessions = 0
+  today_sessions = 0
+  active_dates: set[str] = set()
+
+  if db_path.is_file():
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro&immutable=1", uri=True, timeout=5)
+    try:
+      conn.row_factory = sqlite3.Row
+      for row in conn.execute("SELECT last_modified_time FROM conversation_summaries"):
+        total_sessions += 1
+        day = local_date_from_ms(row["last_modified_time"])
+        active_dates.add(day)
+        if day == today.isoformat():
+          today_sessions += 1
+    finally:
+      conn.close()
+
+  return {"totalSessions": total_sessions, "todaySessions": today_sessions, "activeDates": active_dates}
+
+
+def local_stats(base_dir: Path, today: date | None = None) -> dict[str, Any]:
+  today = today or datetime.now().astimezone().date()
+  history = scan_history(base_dir / "history.jsonl", today)
+  sessions = scan_sessions(base_dir / "conversation_summaries.db", today)
+  active_dates = history["activeDates"] | sessions["activeDates"]
+
+  stats = empty_stats()
+  stats.update({
+    "todayPrompts": history["todayPrompts"],
+    "todaySessions": sessions["todaySessions"],
+    "recentDays": history["recentDays"],
+    "totalPrompts": history["totalPrompts"],
+    "totalSessions": sessions["totalSessions"],
+    "activeDays": len(active_dates),
+    "activeDates": sorted(active_dates),
+  })
+  return stats
+
+
+# ------------------------------------------------------------------ limits
+
+
+def limits_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+  groups = ((payload.get("command") or {}).get("data") or {}).get("groups")
+  limits = []
+  for group in groups or []:
+    if not isinstance(group, dict):
+      continue
+    group_name = str(group.get("name") or "")
+    for bucket in group.get("buckets") or []:
+      if not isinstance(bucket, dict):
+        continue
+      remaining = bucket.get("remaining_fraction")
+      if remaining is None:
+        continue
+      try:
+        percent = max(0.0, min(1.0, 1.0 - float(remaining)))
+      except (TypeError, ValueError):
+        continue
+      window = str(bucket.get("window") or "")
+      window_label = WINDOW_LABELS.get(window, str(bucket.get("name") or window))
+      label = f"{group_name} — {window_label}" if group_name else window_label
+      limits.append({
+        "label": label,
+        "title": label,
+        "percent": round(percent, 4),
+        "resetsAt": str(bucket.get("reset_time") or ""),
+      })
+  return limits
+
+
+def run_usage_command(agy_bin: str) -> dict[str, Any]:
+  try:
+    proc = subprocess.run(
+      [agy_bin, "-p", "/usage", "--output-format", "json"],
+      capture_output=True, text=True, timeout=30,
+    )
+  except OSError as error:
+    raise AntigravityError(f"Could not run agy: {error}") from error
+  except subprocess.TimeoutExpired as error:
+    raise AntigravityError("agy did not answer /usage in time") from error
+
+  if proc.returncode != 0:
+    raise AntigravityError(AUTH_HELP)
+
+  try:
+    payload = json.loads(proc.stdout)
+  except json.JSONDecodeError as error:
+    raise AntigravityError("agy returned an unreadable /usage response") from error
+
+  if not isinstance(payload, dict):
+    raise AntigravityError("agy returned an unreadable /usage response")
+  return payload
+
+
+def collect_limits(agy_bin: str | None) -> dict[str, Any]:
+  if not agy_bin:
+    return {
+      "limits": [],
+      "usageStatusText": "agy not found",
+      "authHelpText": "Install the Antigravity CLI: mise use -g agy",
+    }
+
+  try:
+    limits = limits_from_payload(run_usage_command(agy_bin))
+  except AntigravityError as error:
+    return {"limits": [], "usageStatusText": "Antigravity limits unavailable", "authHelpText": str(error)}
+
+  if not limits:
+    return {
+      "limits": [],
+      "usageStatusText": "Antigravity limits unavailable",
+      "authHelpText": "agy returned no quota buckets.",
+    }
+  return {"limits": limits, "usageStatusText": "", "authHelpText": ""}
+
+
+# -------------------------------------------------------------------- main
+
+
+def scan(agy_bin: str | None, base_dir: Path) -> dict[str, Any]:
+  stats = local_stats(base_dir)
+  limits = collect_limits(agy_bin)
+  record = base_record(
+    ready=stats["totalPrompts"] > 0 or len(limits["limits"]) > 0,
+    hasLocalStats=True,
+    usageStatusText=limits["usageStatusText"],
+    authHelpText=limits["authHelpText"],
+    limits=limits["limits"],
+  )
+  record.update(stats)
+  return record
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser(description="Print the Antigravity usage record as JSON")
+  # Neither flag changes anything the collector does -- there is no cache to
+  # force past and no faster limits-only path -- but every collector accepts
+  # the same invocation from omarchy-agent-usage-update.
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  parser.parse_args()
+
+  print(json.dumps(scan(shutil.which("agy"), data_dir()), separators=(",", ":")))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
