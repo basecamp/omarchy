@@ -303,7 +303,7 @@ bool HostSurface::receive_render(
       }
     }
   }
-  const bool accepted = render_session_.receive_authenticated(packet);
+  const bool accepted = render_session_.receive(packet);
   if (accepted && is_frame) {
     last_admitted_frame_ns_ = clock_.now_nanoseconds();
     has_admitted_frame_ = true;

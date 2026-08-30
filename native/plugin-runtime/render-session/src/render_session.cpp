@@ -79,20 +79,7 @@ bool HostRenderSession::send(std::uint16_t message_type,
   return true;
 }
 
-bool HostRenderSession::receive(std::span<const std::byte> encoded_packet) {
-  if (!endpoint_ || phase_ == Phase::failed || phase_ == Phase::disconnected ||
-      encoded_packet.size() >
-          wire::kHeaderSize + wire::payload_cap(wire::EndpointRole::render))
-    return fail("render packet is unavailable or above the endpoint cap");
-  const auto decoded =
-      wire::decode_packet(encoded_packet, wire::EndpointRole::render);
-  if (!decoded)
-    return fail("malformed render envelope");
-  return accept(decoded.packet);
-}
-
-bool HostRenderSession::receive_authenticated(
-    const AuthenticatedRenderPacket &packet) {
+bool HostRenderSession::receive(const AuthenticatedRenderPacket &packet) {
   if (!endpoint_ || phase_ == Phase::failed || phase_ == Phase::disconnected ||
       packet.payload.size() > wire::payload_cap(wire::EndpointRole::render))
     return fail("render packet is unavailable or above the endpoint cap");
