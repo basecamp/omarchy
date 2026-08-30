@@ -1,0 +1,152 @@
+#!/bin/bash
+
+# omarchy:summary=Sync Omarchy theme to Zed
+# omarchy:args=[--select]
+# omarchy:hidden=true
+
+CURRENT_THEME_DIR="$HOME/.local/state/omarchy/current/theme"
+ZED_CONFIG_DIR="$HOME/.config/zed"
+ZED_SETTINGS_PATH="$ZED_CONFIG_DIR/settings.json"
+
+select_theme() {
+  local action="$1"
+  local native_theme_ready="$2"
+
+  python3 - "$ZED_SETTINGS_PATH" "$action" "$native_theme_ready" <<'PY'
+import json
+import os
+import re
+import stat
+import sys
+import tempfile
+
+path, action, native_theme_ready = sys.argv[1:]
+with open(path, encoding="utf-8") as settings_file:
+    text = settings_file.read()
+
+try:
+    token_pattern = re.compile(r'"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/|[{}\[\]]', re.DOTALL)
+    trivia_pattern = re.compile(r'(?:\s+|//[^\n]*(?:\n|$)|/\*.*?\*/)*', re.DOTALL)
+
+    def skip_trivia(position):
+        return trivia_pattern.match(text, position).end()
+
+    root_start = skip_trivia(0)
+    if root_start >= len(text) or text[root_start] != "{":
+        raise ValueError("settings root is not an object")
+
+    start = end = None
+    pairs = {"{": "}", "[": "]"}
+    stack = []
+    for token in token_pattern.finditer(text):
+        value = token.group()
+        if value.startswith(("//", "/*")):
+            continue
+        if value in pairs:
+            stack.append(value)
+            continue
+        if stack and value == pairs[stack[-1]]:
+            stack.pop()
+            continue
+        if stack != ["{"] or json.loads(value) != "theme":
+            continue
+
+        colon = skip_trivia(token.end())
+        if colon >= len(text) or text[colon] != ":":
+            continue
+        start = skip_trivia(colon + 1)
+        if text[start] == '"':
+            value_token = token_pattern.match(text, start)
+            if value_token is None:
+                raise ValueError("unterminated theme string")
+            end = value_token.end()
+        elif text[start] in pairs:
+            value_stack = [text[start]]
+            for value_token in token_pattern.finditer(text, start + 1):
+                value = value_token.group()
+                if value.startswith(("//", "/*")) or value.startswith('"'):
+                    continue
+                if value in pairs:
+                    value_stack.append(value)
+                elif value == pairs[value_stack[-1]]:
+                    value_stack.pop()
+                    if not value_stack:
+                        end = value_token.end()
+                        break
+            if value_stack:
+                raise ValueError("unterminated theme value")
+        else:
+            delimiter = re.search(r"[,}]", text[start:])
+            end = len(text) if delimiter is None else start + delimiter.start()
+        break
+
+    if action == "select":
+        if start is None:
+            updated = text[: root_start + 1] + '\n  "theme": "Omarchy",' + text[root_start + 1 :]
+        else:
+            updated = text[:start] + '"Omarchy"' + text[end:]
+    elif start is None:
+        sys.exit(0)
+    else:
+        replacements = [
+            (token.start(), token.end())
+            for token in token_pattern.finditer(text, start, end)
+            if token.group().startswith('"') and json.loads(token.group()) == "Omazed"
+        ]
+        if not replacements:
+            sys.exit(0)
+        if native_theme_ready != "true":
+            raise ValueError("native Zed theme is not ready")
+        updated = text
+        for left, right in reversed(replacements):
+            updated = updated[:left] + '"Omarchy"' + updated[right:]
+except (ValueError, json.JSONDecodeError) as error:
+    print(f"Could not update Zed settings: {error}", file=sys.stderr)
+    sys.exit(1)
+
+target = os.path.realpath(path)
+target_stat = os.stat(target)
+descriptor, temporary = tempfile.mkstemp(prefix=".settings.json.", dir=os.path.dirname(target))
+try:
+    with os.fdopen(descriptor, "w", encoding="utf-8") as settings_file:
+        settings_file.write(updated)
+    os.chmod(temporary, stat.S_IMODE(target_stat.st_mode))
+    os.replace(temporary, target)
+finally:
+    if os.path.exists(temporary):
+        os.unlink(temporary)
+PY
+}
+
+if omarchy-cmd-missing zed && omarchy-cmd-missing zeditor && [[ ! -d $ZED_CONFIG_DIR ]]; then
+  exit 0
+fi
+
+action=${1:-sync}
+native_theme_ready=false
+
+case $action in
+  sync) ;;
+  --select) action=select ;;
+  --migrate) action=migrate ;;
+  *) echo "Usage: omarchy-theme-set-zed [--select]" >&2; exit 1 ;;
+esac
+
+if [[ -f $CURRENT_THEME_DIR/zed.json ]]; then
+  mkdir -p "$ZED_CONFIG_DIR/themes" || exit 1
+  cp "$CURRENT_THEME_DIR/zed.json" "$ZED_CONFIG_DIR/themes/omarchy.json" || exit 1
+  native_theme_ready=true
+elif [[ $action != migrate ]]; then
+  exit 0
+fi
+
+[[ $action == sync ]] && exit 0
+
+if [[ ! -f $ZED_SETTINGS_PATH ]]; then
+  if [[ $action == select ]]; then
+    printf '{\n  "theme": "Omarchy"\n}\n' >"$ZED_SETTINGS_PATH" || exit 1
+  fi
+  exit 0
+fi
+
+select_theme "$action" "$native_theme_ready"
