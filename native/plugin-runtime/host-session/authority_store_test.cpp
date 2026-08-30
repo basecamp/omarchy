@@ -5,13 +5,13 @@
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
-#include <filesystem>
 #include <fcntl.h>
+#include <filesystem>
 #include <iostream>
 #include <new>
 #include <stdexcept>
-#include <sys/wait.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
 
@@ -55,9 +55,10 @@ constexpr std::string_view kPlugin = "org.example.authority";
 
 std::string hex(char value) { return std::string(64, value); }
 
-definitions::DynamicScopeRelation compare_dynamic(
-    const definitions::CapabilityDefinition &, std::string_view candidate,
-    std::string_view baseline, void *) noexcept {
+definitions::DynamicScopeRelation
+compare_dynamic(const definitions::CapabilityDefinition &,
+                std::string_view candidate, std::string_view baseline,
+                void *) noexcept {
   if (candidate == baseline)
     return definitions::DynamicScopeRelation::equal;
   if (candidate == "narrow" && baseline == "wide")
@@ -65,8 +66,9 @@ definitions::DynamicScopeRelation compare_dynamic(
   return definitions::DynamicScopeRelation::incomparable;
 }
 
-definitions::CapabilityDefinition dynamic_definition(
-    std::string_view name, std::string_view operation, char digest_byte) {
+definitions::CapabilityDefinition dynamic_definition(std::string_view name,
+                                                     std::string_view operation,
+                                                     char digest_byte) {
   definitions::CapabilityDefinition definition{
       .canonical_name = definitions::Name(name),
       .authority_identity = definitions::Name(std::string(name) + ".authority"),
@@ -113,8 +115,8 @@ struct Fixture {
     root = ::open(created, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     require(root >= 0, "authority root open failed");
     if (open_store) {
-      store = host::AuthorityStore::open(
-          root, ::getuid(), permissions::PluginId(kPlugin));
+      store = host::AuthorityStore::open(root, ::getuid(),
+                                         permissions::PluginId(kPlugin));
       require(store != nullptr, "authority store open failed");
     }
   }
@@ -133,15 +135,15 @@ struct Review {
   policy::GrantSnapshot snapshot;
 };
 
-Review review(std::uint64_t generation, char revision = 'a',
-              bool required = true,
+Review
+review(std::uint64_t generation, char revision = 'a', bool required = true,
               permissions::GrantState state = permissions::GrantState::granted) {
   manifest::ManifestV2 manifest;
   manifest.id = kPlugin;
-  manifest.requests.push_back({.capability = "notifications.send",
+  manifest.requests.push_back(
+      {.capability = "notifications.send",
                                .reason = "status",
-                               .canonical_scope =
-                                   "{\"categories\":[\"status\"]}",
+       .canonical_scope = "{\"categories\":[\"status\"]}",
                                .definition_generation = 0,
                                .definition_digest = {},
                                .operations = {},
@@ -167,9 +169,9 @@ Review review(std::uint64_t generation, char revision = 'a',
           .snapshot = std::move(snapshot)};
 }
 
-Review dynamic_review(Fixture &fixture, std::uint64_t generation,
-                      permissions::GrantState state =
-                          permissions::GrantState::granted) {
+Review dynamic_review(
+    Fixture &fixture, std::uint64_t generation,
+    permissions::GrantState state = permissions::GrantState::granted) {
   require(fixture.definitions.install(
               dynamic_definition("zeta.fetch", "zeta.read", 'd'),
               definitions::DefinitionSource::omarchy_package, 2) &&
@@ -206,14 +208,13 @@ Review dynamic_review(Fixture &fixture, std::uint64_t generation,
     auto request = definitions::dynamic_request_from_manifest(
         manifest_request, fixture.definitions);
     require(request.has_value(), "dynamic manifest request did not resolve");
-    definitions::DynamicGrant grant{
-        .definition = request->definition,
+    definitions::DynamicGrant grant{.definition = request->definition,
         .operations = request->operations,
-        .scope = definitions::CanonicalScope("narrow"),
+                                    .scope =
+                                        definitions::CanonicalScope("narrow"),
         .state = state,
         .epoch = generation};
-    snapshot.dynamic_grants.push_back(
-        {.binding = snapshot.binding,
+    snapshot.dynamic_grants.push_back({.binding = snapshot.binding,
          .request = std::move(*request),
          .grant = std::move(grant)});
   }
@@ -240,9 +241,8 @@ void roundtrip_and_lifecycle() {
           "initial slots were not empty");
 
   auto first = review(1);
-  const auto first_publish =
-      fixture.store->publish_candidate(first.verified, first.snapshot, 0,
-                                       fixture.definitions, {});
+  const auto first_publish = fixture.store->publish_candidate(
+      first.verified, first.snapshot, 0, fixture.definitions, {});
   require(first_publish == host::AuthorityMutationResult::applied,
           "candidate publication failed: " +
               std::to_string(static_cast<int>(first_publish)));
@@ -270,8 +270,7 @@ void roundtrip_and_lifecycle() {
               host::AuthorityMutationResult::applied,
           "candidate discard failed");
   slots = fixture.store->read_slots();
-  require(slots && slots->generation_high_watermark == 2 &&
-              !slots->candidate,
+  require(slots && slots->generation_high_watermark == 2 && !slots->candidate,
           "discard lost generation high watermark");
   require(fixture.store->publish_candidate(second.verified, second.snapshot, 4,
                                             fixture.definitions, {}) ==
@@ -298,12 +297,131 @@ void live_activation_binding_and_revocation() {
           "null live state was accepted");
   require(!fixture.store->bind_live_activation(wrong_binding, wrong_live),
           "non-active binding was accepted as live");
-  require(!fixture.store->bind_live_activation(first.snapshot.binding,
-                                                wrong_live),
+  require(
+      !fixture.store->bind_live_activation(first.snapshot.binding, wrong_live),
           "live state with a different binding was accepted");
-  require(fixture.store->bind_live_activation(first.snapshot.binding, live) &&
-              fixture.store->bind_live_activation(first.snapshot.binding,
-                                                  live) &&
+
+  auto older =
+      fixture.store->prepare_live_activation(first.snapshot.binding, live);
+  auto newest =
+      fixture.store->prepare_live_activation(first.snapshot.binding, live);
+  require(older && newest &&
+              !fixture.store->commit_live_activation(
+                  std::move(*older), first.snapshot.binding, live) &&
+              fixture.store->commit_live_activation(
+                  std::move(*newest), first.snapshot.binding, live) &&
+              !fixture.store->commit_live_activation(
+                  std::move(*newest), first.snapshot.binding, live),
+          "prepared live binding was replayable or not newest-wins");
+
+  auto wrong_expected_binding =
+      fixture.store->prepare_live_activation(first.snapshot.binding, live);
+  require(wrong_expected_binding &&
+              !fixture.store->commit_live_activation(
+                  std::move(*wrong_expected_binding), wrong_binding, live),
+          "prepared authority token crossed its exact binding");
+  auto wrong_expected_live =
+      fixture.store->prepare_live_activation(first.snapshot.binding, live);
+  require(wrong_expected_live &&
+              !fixture.store->commit_live_activation(
+                  std::move(*wrong_expected_live), first.snapshot.binding,
+                  wrong_live),
+          "prepared authority token crossed its exact live state");
+
+  {
+    Fixture other;
+    auto other_first = review(1);
+    require(other.store->publish_candidate(
+                other_first.verified, other_first.snapshot, 0,
+                other.definitions, {}) ==
+                    host::AuthorityMutationResult::applied &&
+                other.store->promote_candidate(other_first.snapshot.binding,
+                                               1) ==
+                    host::AuthorityMutationResult::applied,
+            "cross-store token fixture activation failed");
+    auto cross_store =
+        fixture.store->prepare_live_activation(first.snapshot.binding, live);
+    require(cross_store &&
+                !other.store->commit_live_activation(
+                    std::move(*cross_store), first.snapshot.binding, live),
+            "prepared authority token crossed its owning store");
+  }
+
+  const auto mutation_invalidates = [&](auto mutation,
+                                        std::string_view message) {
+    auto prepared =
+        fixture.store->prepare_live_activation(first.snapshot.binding, live);
+    require(prepared.has_value(), "mutation token preparation failed");
+    mutation();
+    require(!fixture.store->commit_live_activation(
+                std::move(*prepared), first.snapshot.binding, live),
+            message);
+  };
+  mutation_invalidates(
+      [&] {
+        (void)fixture.store->publish_candidate(first.verified, first.snapshot,
+                                               UINT64_MAX, fixture.definitions,
+                                               {});
+      },
+      "publish attempt did not invalidate a prepared binding");
+  mutation_invalidates(
+      [&] {
+        (void)fixture.store->promote_candidate(first.snapshot.binding,
+                                               UINT64_MAX);
+      },
+      "promote attempt did not invalidate a prepared binding");
+  mutation_invalidates(
+      [&] {
+        (void)fixture.store->discard_candidate(first.snapshot.binding,
+                                               UINT64_MAX);
+      },
+      "discard attempt did not invalidate a prepared binding");
+  mutation_invalidates(
+      [&] {
+        (void)host::AuthorityStoreTestAccess::revoke_active(
+            *fixture.store, first.snapshot.grants[0].capability, UINT64_MAX);
+      },
+      "revoke attempt did not invalidate a prepared binding");
+
+  {
+    Fixture successful;
+    auto active = review(1);
+    auto candidate = review(2, 'b');
+    require(successful.store->publish_candidate(
+                active.verified, active.snapshot, 0, successful.definitions,
+                {}) == host::AuthorityMutationResult::applied &&
+                successful.store->promote_candidate(active.snapshot.binding,
+                                                    1) ==
+                    host::AuthorityMutationResult::applied,
+            "successful-mutation token fixture activation failed");
+    auto active_live =
+        std::make_shared<host::LiveGenerationState>(active.snapshot.binding);
+    auto before_publish = successful.store->prepare_live_activation(
+        active.snapshot.binding, active_live);
+    require(before_publish &&
+                successful.store->publish_candidate(
+                    candidate.verified, candidate.snapshot, 2,
+                    successful.definitions, {}) ==
+                    host::AuthorityMutationResult::applied &&
+                !successful.store->commit_live_activation(
+                    std::move(*before_publish), active.snapshot.binding,
+                    active_live),
+            "successful publish did not invalidate prepared authority");
+    auto before_discard = successful.store->prepare_live_activation(
+        active.snapshot.binding, active_live);
+    require(before_discard &&
+                successful.store->discard_candidate(candidate.snapshot.binding,
+                                                     3) ==
+                    host::AuthorityMutationResult::applied &&
+                !successful.store->commit_live_activation(
+                    std::move(*before_discard), active.snapshot.binding,
+                    active_live),
+            "successful discard did not invalidate prepared authority");
+  }
+
+  require(
+      fixture.store->bind_live_activation(first.snapshot.binding, live) &&
+          fixture.store->bind_live_activation(first.snapshot.binding, live) &&
               live->current(first.snapshot.binding),
           "same live pointer was not an idempotent exact binding");
 
@@ -338,12 +456,52 @@ void live_activation_binding_and_revocation() {
 
   auto promoted =
       std::make_shared<host::LiveGenerationState>(third.snapshot.binding);
-  require(fixture.store->bind_live_activation(third.snapshot.binding,
-                                              promoted),
+  require(fixture.store->bind_live_activation(third.snapshot.binding, promoted),
           "promoted active binding was not accepted as live");
   fixture.store.reset();
   require(!promoted->current(third.snapshot.binding),
           "authority store destruction did not revoke its live activation");
+}
+
+void mutation_epoch_saturates_fail_closed() {
+  Fixture fixture;
+  auto active = review(1);
+  require(fixture.store->publish_candidate(active.verified, active.snapshot, 0,
+                                           fixture.definitions, {}) ==
+                  host::AuthorityMutationResult::applied &&
+              fixture.store->promote_candidate(active.snapshot.binding, 1) ==
+                  host::AuthorityMutationResult::applied,
+          "saturation fixture activation failed");
+  const auto before = fixture.store->read_slots();
+  auto live =
+      std::make_shared<host::LiveGenerationState>(active.snapshot.binding);
+  host::AuthorityStoreTestAccess::set_mutation_epoch(*fixture.store,
+                                                     UINT64_MAX - 1);
+  auto last = fixture.store->prepare_live_activation(active.snapshot.binding,
+                                                     live);
+  require(last &&
+              !fixture.store->commit_live_activation(
+                  std::move(*last), active.snapshot.binding, live) &&
+              !fixture.store->prepare_live_activation(active.snapshot.binding,
+                                                      live) &&
+              !fixture.store->bind_live_activation(active.snapshot.binding,
+                                                   live) &&
+              fixture.store->publish_candidate(active.verified,
+                                                active.snapshot, UINT64_MAX,
+                                                fixture.definitions, {}) ==
+                  host::AuthorityMutationResult::poisoned &&
+              fixture.store->promote_candidate(active.snapshot.binding,
+                                               UINT64_MAX) ==
+                  host::AuthorityMutationResult::poisoned &&
+              fixture.store->discard_candidate(active.snapshot.binding,
+                                               UINT64_MAX) ==
+                  host::AuthorityMutationResult::poisoned &&
+              host::AuthorityStoreTestAccess::revoke_active(
+                  *fixture.store, active.snapshot.grants[0].capability,
+                  UINT64_MAX)
+                      .status == host::AuthorityMutationResult::poisoned &&
+              fixture.store->read_slots() == before,
+          "mutation epoch saturation wrapped or touched durable authority");
 }
 
 void live_effect_transitions_drain_before_authority_changes() {
@@ -397,10 +555,9 @@ void live_effect_transitions_drain_before_authority_changes() {
                     host::AuthorityMutationResult::applied &&
                 fixture.store->promote_candidate(first.snapshot.binding, 1) ==
                     host::AuthorityMutationResult::applied &&
-                fixture.store->publish_candidate(second.verified,
-                                                  second.snapshot, 2,
-                                                  fixture.definitions, {}) ==
-                    host::AuthorityMutationResult::applied,
+                fixture.store->publish_candidate(
+                    second.verified, second.snapshot, 2, fixture.definitions,
+                    {}) == host::AuthorityMutationResult::applied,
             "promotion drain fixture setup failed");
     auto live =
         std::make_shared<host::LiveGenerationState>(first.snapshot.binding);
@@ -481,8 +638,8 @@ void reentrant_effect_revoke_poisoned_without_durable_change() {
           "reentrant effect revoke acknowledged or left authority usable");
   effect.reset();
   fixture.store.reset();
-  fixture.store = host::AuthorityStore::open(
-      fixture.root, ::getuid(), permissions::PluginId(kPlugin));
+  fixture.store = host::AuthorityStore::open(fixture.root, ::getuid(),
+                                             permissions::PluginId(kPlugin));
   require(fixture.store && fixture.store->read_slots() == before,
           "reentrant effect revoke changed durable authority");
 }
@@ -518,8 +675,8 @@ void promotion_revokes_before_failed_replacement() {
               !fixture.store->resolve(kPlugin, hex('a')),
           "failed durable replacement did not revoke live authority first");
   fixture.store.reset();
-  fixture.store = host::AuthorityStore::open(
-      fixture.root, ::getuid(), permissions::PluginId(kPlugin));
+  fixture.store = host::AuthorityStore::open(fixture.root, ::getuid(),
+                                             permissions::PluginId(kPlugin));
   require(fixture.store && fixture.store->read_slots() == before,
           "failed replacement changed the durable active authority");
 }
@@ -548,21 +705,19 @@ void exact_builtin_revoke_rebases_and_invalidates_candidate() {
   require(revoked.status == host::AuthorityMutationResult::applied &&
               revoked.binding && revoked.binding->generation == 3 &&
               revoked.binding->revision == first.snapshot.binding.revision &&
-              !revoked.activatable &&
-              !live->current(first.snapshot.binding),
+              !revoked.activatable && !live->current(first.snapshot.binding),
           "exact required revoke did not advance and fence authority");
   const auto view = fixture.store->read_authority_view();
-  auto revoked_live = std::make_shared<host::LiveGenerationState>(
-      *revoked.binding);
-  require(view && view->active && !view->authority_slots.candidate &&
+  auto revoked_live =
+      std::make_shared<host::LiveGenerationState>(*revoked.binding);
+  require(
+      view && view->active && !view->authority_slots.candidate &&
               view->authority_slots.generation_high_watermark == 3 &&
               view->active->binding == *revoked.binding &&
-              view->active->grants[0].state ==
-                  permissions::GrantState::revoked &&
+          view->active->grants[0].state == permissions::GrantState::revoked &&
               view->active->grants[0].epoch == 3 &&
               !fixture.store->resolve(kPlugin, hex('a')) &&
-              !fixture.store->bind_live_activation(*revoked.binding,
-                                                   revoked_live),
+          !fixture.store->bind_live_activation(*revoked.binding, revoked_live),
           "required revoked authority was not durable and nonactivatable");
   require(host::AuthorityStoreTestAccess::revoke_active(
               *fixture.store, first.snapshot.grants[0].capability, 4)
@@ -589,8 +744,7 @@ void exact_builtin_revoke_rebases_and_invalidates_candidate() {
   require(result.status == host::AuthorityMutationResult::applied &&
               result.activatable && resolved &&
               resolved->binding.generation == 2 &&
-              resolved->grants[0].state ==
-                  permissions::GrantState::revoked,
+              resolved->grants[0].state == permissions::GrantState::revoked,
           "optional revoke did not remain activatable");
 }
 
@@ -614,8 +768,8 @@ void exact_dynamic_revoke_rebases_every_epoch() {
               view->active->binding.generation == 2 &&
               view->active->dynamic_grants.size() == 2,
           "dynamic required revoke did not persist next generation");
-  for (std::size_t index = 0;
-       index < view->active->dynamic_grants.size(); ++index) {
+  for (std::size_t index = 0; index < view->active->dynamic_grants.size();
+       ++index) {
     const auto &dynamic = view->active->dynamic_grants[index];
     require(dynamic.binding == view->active->binding &&
                 dynamic.grant.epoch == 2 &&
@@ -651,14 +805,13 @@ void revoke_io_failures_poison_after_effect_fence() {
       *fixture.store, value.snapshot.grants[0].capability, 2);
   require(::chmod(fixture.path.c_str(), 0700) == 0,
           "poison fixture permission restore failed");
-  require(result.status == host::AuthorityMutationResult::io_error &&
+  require(
+      result.status == host::AuthorityMutationResult::io_error &&
               !live->current(value.snapshot.binding) &&
               !fixture.store->read_slots() &&
               !fixture.store->resolve(kPlugin, hex('a')) &&
-              !fixture.store->bind_live_activation(value.snapshot.binding,
-                                                   live) &&
-              fixture.store
-                      ->publish_candidate(value.verified, value.snapshot, 2,
+          !fixture.store->bind_live_activation(value.snapshot.binding, live) &&
+          fixture.store->publish_candidate(value.verified, value.snapshot, 2,
                                           fixture.definitions, {}) ==
                   host::AuthorityMutationResult::poisoned,
           "post-fence revoke failure did not poison all activation paths");
@@ -687,15 +840,14 @@ void revoke_allocation_failure_poison_after_effect_fence() {
   allocation_failure::armed = false;
   allocation_failure::live.reset();
 
-  require(allocation_failure::fired &&
+  require(
+      allocation_failure::fired &&
               result.status == host::AuthorityMutationResult::io_error &&
               !live->current(value.snapshot.binding) &&
               !fixture.store->read_slots() &&
               !fixture.store->resolve(kPlugin, hex('a')) &&
-              !fixture.store->bind_live_activation(value.snapshot.binding,
-                                                   live) &&
-              fixture.store
-                      ->publish_candidate(value.verified, value.snapshot, 2,
+          !fixture.store->bind_live_activation(value.snapshot.binding, live) &&
+          fixture.store->publish_candidate(value.verified, value.snapshot, 2,
                                           fixture.definitions, {}) ==
                   host::AuthorityMutationResult::poisoned,
           "post-fence allocation failure escaped or left authority usable");
@@ -708,16 +860,18 @@ void crash_orphan_retry_and_cleanup() {
                                             fixture.definitions, {}) ==
               host::AuthorityMutationResult::applied,
           "orphan fixture publication failed");
-  const auto orphan_record = "grant-" + std::string(
+  const auto orphan_record =
+      "grant-" +
+      std::string(
       fixture.store->read_slots()->candidate->snapshot_digest.view());
   fixture.store.reset();
   require(::unlinkat(fixture.root, "slots", 0) == 0,
           "simulated pre-pointer crash failed");
-  fixture.store = host::AuthorityStore::open(
-      fixture.root, ::getuid(), permissions::PluginId(kPlugin));
+  fixture.store = host::AuthorityStore::open(fixture.root, ::getuid(),
+                                             permissions::PluginId(kPlugin));
   require(fixture.store &&
-              fixture.store->publish_candidate(first.verified, first.snapshot, 0,
-                                                fixture.definitions, {}) ==
+              fixture.store->publish_candidate(first.verified, first.snapshot,
+                                               0, fixture.definitions, {}) ==
                   host::AuthorityMutationResult::applied,
           "byte-identical orphan record was not reusable");
   require(::faccessat(fixture.root, orphan_record.c_str(), F_OK, 0) == 0,
@@ -738,8 +892,8 @@ void concurrency_fork_and_umask() {
   host::AuthorityMutationResult left_result{};
   host::AuthorityMutationResult right_result{};
   std::thread one([&] {
-    left_result = fixture.store->publish_candidate(
-        left.verified, left.snapshot, 0, fixture.definitions, {});
+    left_result = fixture.store->publish_candidate(left.verified, left.snapshot,
+                                                   0, fixture.definitions, {});
   });
   std::thread two([&] {
     right_result = fixture.store->publish_candidate(
@@ -747,8 +901,7 @@ void concurrency_fork_and_umask() {
   });
   one.join();
   two.join();
-  const int applied =
-      (left_result == host::AuthorityMutationResult::applied) +
+  const int applied = (left_result == host::AuthorityMutationResult::applied) +
       (right_result == host::AuthorityMutationResult::applied);
   require(applied == 1,
           "same-object stale CAS did not serialize to exactly one mutation");
@@ -775,8 +928,8 @@ void concurrency_fork_and_umask() {
   auto value = review(1);
   const bool published =
       hostile_umask.store &&
-      hostile_umask.store->publish_candidate(
-          value.verified, value.snapshot, 0, hostile_umask.definitions, {}) ==
+      hostile_umask.store->publish_candidate(value.verified, value.snapshot, 0,
+                                             hostile_umask.definitions, {}) ==
           host::AuthorityMutationResult::applied;
   ::umask(old_umask);
   require(published, "hostile umask created unreadable authority files");
@@ -867,14 +1020,14 @@ void dynamic_completeness_and_restart() {
               host::AuthorityMutationResult::applied,
           "complete dynamic review did not promote");
   fixture.store.reset();
-  fixture.store = host::AuthorityStore::open(
-      fixture.root, ::getuid(), permissions::PluginId(kPlugin));
+  fixture.store = host::AuthorityStore::open(fixture.root, ::getuid(),
+                                             permissions::PluginId(kPlugin));
   require(fixture.store && fixture.store->resolve(kPlugin, hex('d')),
           "dynamic exact grant did not survive authority restart");
 
   Fixture denied_fixture;
-  auto denied = dynamic_review(denied_fixture, 1,
-                               permissions::GrantState::denied);
+  auto denied =
+      dynamic_review(denied_fixture, 1, permissions::GrantState::denied);
   require(denied_fixture.store->publish_candidate(
               denied.verified, denied.snapshot, 0, denied_fixture.definitions,
               validator) == host::AuthorityMutationResult::applied,
@@ -903,7 +1056,8 @@ void corrupt_records_fail_closed() {
       require(::fchmodat(fixture.root, name.c_str(), 0644, 0) == 0,
               "mode mutation failed");
     } else {
-      require(::linkat(fixture.root, name.c_str(), fixture.root, "extra", 0) == 0,
+      require(::linkat(fixture.root, name.c_str(), fixture.root, "extra", 0) ==
+                  0,
               "hardlink mutation failed");
     }
     require(!fixture.store->resolve(kPlugin, hex('a')),
@@ -927,8 +1081,8 @@ void root_lock_and_slots_metadata() {
               root_identity->inode ==
                   static_cast<std::uint64_t>(root_metadata.st_ino),
           "authority store did not report its exact root identity");
-  require(!host::AuthorityStore::open(
-              fixture.root, ::getuid(), permissions::PluginId(kPlugin)),
+  require(!host::AuthorityStore::open(fixture.root, ::getuid(),
+                                      permissions::PluginId(kPlugin)),
           "second owner acquired nonblocking lifetime lock");
 
   Fixture malformed;
@@ -948,8 +1102,8 @@ void root_lock_and_slots_metadata() {
   Fixture special(false);
   require(::mkfifoat(special.root, ".authority.lock", 0600) == 0,
           "special lock create failed");
-  require(!host::AuthorityStore::open(
-              special.root, ::getuid(), permissions::PluginId(kPlugin)),
+  require(!host::AuthorityStore::open(special.root, ::getuid(),
+                                      permissions::PluginId(kPlugin)),
           "special lock file opened as authority lock");
 }
 } // namespace
@@ -958,6 +1112,7 @@ int main() {
   try {
     roundtrip_and_lifecycle();
     live_activation_binding_and_revocation();
+    mutation_epoch_saturates_fail_closed();
     live_effect_transitions_drain_before_authority_changes();
     reentrant_effect_revoke_poisoned_without_durable_change();
     promotion_revokes_before_failed_replacement();

@@ -5,8 +5,8 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <charconv>
 #include <cerrno>
+#include <charconv>
 #include <fcntl.h>
 #include <linux/fs.h>
 #include <sys/file.h>
@@ -47,13 +47,15 @@ struct Writer {
   bool u32(std::uint32_t value) {
     std::array<std::byte, 4> bytes{};
     for (int index = 0; index < 4; ++index)
-      bytes[index] = std::byte{static_cast<unsigned char>(value >> (24 - 8 * index))};
+      bytes[index] =
+          std::byte{static_cast<unsigned char>(value >> (24 - 8 * index))};
     return raw(bytes);
   }
   bool u64(std::uint64_t value) {
     std::array<std::byte, 8> bytes{};
     for (int index = 0; index < 8; ++index)
-      bytes[index] = std::byte{static_cast<unsigned char>(value >> (56 - 8 * index))};
+      bytes[index] =
+          std::byte{static_cast<unsigned char>(value >> (56 - 8 * index))};
     return raw(bytes);
   }
   bool text(std::string_view value) {
@@ -90,7 +92,8 @@ struct Reader {
     std::span<const std::byte> bytes;
     if (!raw(2, bytes))
       return false;
-    value = static_cast<std::uint16_t>(std::to_integer<unsigned>(bytes[0]) << 8 |
+    value =
+        static_cast<std::uint16_t>(std::to_integer<unsigned>(bytes[0]) << 8 |
                                        std::to_integer<unsigned>(bytes[1]));
     return true;
   }
@@ -186,17 +189,22 @@ bool decode_snapshot(std::span<const std::byte> bytes,
         !std::ranges::equal(magic, kSnapshotMagic) || !reader.text(text))
       return false;
     snapshot.binding.plugin = permissions::PluginId(text);
-    if (!reader.text(text)) return false;
+    if (!reader.text(text))
+      return false;
     snapshot.binding.revision = permissions::Digest(text);
-    if (!reader.text(text)) return false;
+    if (!reader.text(text))
+      return false;
     snapshot.binding.policy_fingerprint = permissions::Digest(text);
-    if (!reader.u64(snapshot.binding.generation) || !reader.text(text)) return false;
+    if (!reader.u64(snapshot.binding.generation) || !reader.text(text))
+      return false;
     snapshot.source_request_fingerprint = permissions::Digest(text);
-    if (!reader.u8(count) || count > 64) return false;
+    if (!reader.u8(count) || count > 64)
+      return false;
     for (std::uint8_t index = 0; index < count; ++index) {
       permissions::CapabilityRequest request;
       std::uint8_t required = 0;
-      if (!reader.text(text)) return false;
+      if (!reader.text(text))
+        return false;
       request.capability.id = permissions::CapabilityId(text);
       if (!reader.u16(request.capability.version) || !reader.blob(text))
         return false;
@@ -207,11 +215,13 @@ bool decode_snapshot(std::span<const std::byte> bytes,
       request.required = required;
       snapshot.requests.push_back(std::move(request));
     }
-    if (!reader.u8(count) || count > 64) return false;
+    if (!reader.u8(count) || count > 64)
+      return false;
     for (std::uint8_t index = 0; index < count; ++index) {
       permissions::GrantRecord grant;
       std::uint8_t state = 0;
-      if (!reader.text(text)) return false;
+      if (!reader.text(text))
+        return false;
       grant.capability.id = permissions::CapabilityId(text);
       if (!reader.u16(grant.capability.version) || !reader.blob(text))
         return false;
@@ -223,7 +233,8 @@ bool decode_snapshot(std::span<const std::byte> bytes,
       grant.state = static_cast<permissions::GrantState>(state);
       snapshot.grants.push_back(std::move(grant));
     }
-    if (!reader.u8(count) || count > kMaximumDynamicGrants) return false;
+    if (!reader.u8(count) || count > kMaximumDynamicGrants)
+      return false;
     for (std::uint8_t index = 0; index < count; ++index) {
       std::uint32_t size = 0;
       std::span<const std::byte> encoded;
@@ -254,7 +265,8 @@ bool complete_snapshot(const VerifiedRevision &verified,
     if (snapshot.binding.plugin.view() != verified.manifest.id ||
         snapshot.binding.revision.view() != verified.tree_sha256 ||
         snapshot.source_request_fingerprint.view() != verified.request_sha256 ||
-        verified.request_sha256 != plugins::manifest::requested_capability_fingerprint(
+        verified.request_sha256 !=
+            plugins::manifest::requested_capability_fingerprint(
                                        verified.manifest.requests) ||
         snapshot.binding.generation == 0 ||
         snapshot.binding.policy_fingerprint.view() !=
@@ -264,15 +276,15 @@ bool complete_snapshot(const VerifiedRevision &verified,
       return false;
     if (snapshot.grants.size() != snapshot.requests.size())
       return false;
-    permissions::PermissionAuthority builtin(snapshot.binding, snapshot.requests,
-                                               snapshot.grants);
+    permissions::PermissionAuthority builtin(
+        snapshot.binding, snapshot.requests, snapshot.grants);
     (void)builtin;
     std::vector<definitions::DynamicRequest> requested;
     for (const auto &manifest_request : verified.manifest.requests) {
       if (manifest_request.definition_generation == 0)
         continue;
-      auto dynamic =
-          definitions::dynamic_request_from_manifest(manifest_request, registry);
+      auto dynamic = definitions::dynamic_request_from_manifest(
+          manifest_request, registry);
       if (!dynamic)
         return false;
       requested.push_back(std::move(*dynamic));
@@ -285,13 +297,14 @@ bool complete_snapshot(const VerifiedRevision &verified,
     });
     for (std::size_t index = 0; index < requested.size(); ++index) {
       const auto &grant = snapshot.dynamic_grants[index];
-      if (grant.binding != snapshot.binding || grant.request != requested[index] ||
+      if (grant.binding != snapshot.binding ||
+          grant.request != requested[index] ||
           static_cast<std::uint8_t>(grant.grant.state) >
               static_cast<std::uint8_t>(permissions::GrantState::revoked) ||
           !definitions::review_dynamic_grant(registry, grant, validator))
         return false;
-      if (index > 0 &&
-          !(snapshot.dynamic_grants[index - 1].request.definition.canonical_name <
+      if (index > 0 && !(snapshot.dynamic_grants[index - 1]
+                             .request.definition.canonical_name <
             grant.request.definition.canonical_name))
         return false;
     }
@@ -311,8 +324,7 @@ bool write_reference(Writer &writer,
                      const std::optional<AuthorityRevisionRef> &reference) {
   if (!writer.u8(reference.has_value()))
     return false;
-  return !reference ||
-         (writer.text(reference->snapshot_digest.view()) &&
+  return !reference || (writer.text(reference->snapshot_digest.view()) &&
           writer.u64(reference->generation));
 }
 
@@ -328,9 +340,11 @@ bool read_reference(Reader &reader,
   }
   try {
     AuthorityRevisionRef value;
-    if (!reader.text(text)) return false;
+    if (!reader.text(text))
+      return false;
     value.snapshot_digest = permissions::Digest(text);
-    if (!reader.u64(value.generation) || value.generation == 0) return false;
+    if (!reader.u64(value.generation) || value.generation == 0)
+      return false;
     reference = std::move(value);
     return true;
   } catch (...) {
@@ -377,8 +391,9 @@ bool secure_created_file(int descriptor, std::uint32_t uid) {
          ::fstat(descriptor, &metadata) == 0 && trusted_file(metadata, uid);
 }
 
-std::optional<std::vector<std::byte>>
-read_file(int root_fd, std::string_view name, std::uint32_t uid,
+std::optional<std::vector<std::byte>> read_file(int root_fd,
+                                                std::string_view name,
+                                                std::uint32_t uid,
           bool missing_is_empty = false) {
   const std::string owned_name(name);
   OwnedDescriptor file(
@@ -396,8 +411,8 @@ read_file(int root_fd, std::string_view name, std::uint32_t uid,
   std::vector<std::byte> bytes(static_cast<std::size_t>(before.st_size));
   std::size_t offset = 0;
   while (offset < bytes.size()) {
-    const auto count = ::read(file.get(), bytes.data() + offset,
-                              bytes.size() - offset);
+    const auto count =
+        ::read(file.get(), bytes.data() + offset, bytes.size() - offset);
     if (count < 0 && errno == EINTR)
       continue;
     if (count <= 0)
@@ -457,8 +472,7 @@ std::optional<AuthoritySlots> read_slots_unlocked(int root_fd,
 
 bool canonical_digest(const permissions::Digest &value) {
   return value.size() == 64 && std::ranges::all_of(value.view(), [](char byte) {
-           return (byte >= '0' && byte <= '9') ||
-                  (byte >= 'a' && byte <= 'f');
+           return (byte >= '0' && byte <= '9') || (byte >= 'a' && byte <= 'f');
          });
 }
 
@@ -502,20 +516,21 @@ void cleanup_unreferenced(int root_fd, const AuthoritySlots &before,
     (void)::fsync(root_fd);
 }
 
-std::optional<policy::GrantSnapshot> load_snapshot(
-    int root_fd, std::uint32_t uid, const AuthorityRevisionRef &reference) {
+std::optional<policy::GrantSnapshot>
+load_snapshot(int root_fd, std::uint32_t uid,
+              const AuthorityRevisionRef &reference) {
   auto bytes = read_file(root_fd, record_name(reference), uid);
   if (!bytes || digest(*bytes) != reference.snapshot_digest.view())
     return std::nullopt;
   policy::GrantSnapshot snapshot;
   std::vector<std::byte> canonical;
-  if (!decode_snapshot(*bytes, snapshot) || !encode_snapshot(snapshot, canonical) ||
-      canonical != *bytes ||
+  if (!decode_snapshot(*bytes, snapshot) ||
+      !encode_snapshot(snapshot, canonical) || canonical != *bytes ||
       snapshot.binding.generation != reference.generation)
     return std::nullopt;
   try {
-    permissions::PermissionAuthority builtin(snapshot.binding, snapshot.requests,
-                                               snapshot.grants);
+    permissions::PermissionAuthority builtin(
+        snapshot.binding, snapshot.requests, snapshot.grants);
     (void)builtin;
     if (permissions::policy_request_fingerprint(snapshot.requests) !=
         snapshot.binding.policy_fingerprint.view())
@@ -530,7 +545,8 @@ std::optional<policy::GrantSnapshot> load_snapshot(
               static_cast<std::uint8_t>(permissions::GrantState::revoked) ||
           !std::ranges::all_of(dynamic.grant.operations.values(),
                               [&](const auto &operation) {
-                                return dynamic.request.operations.contains(operation);
+                                 return dynamic.request.operations.contains(
+                                     operation);
                               }) ||
           (have_previous &&
            !(previous < dynamic.request.definition.canonical_name)))
@@ -544,9 +560,10 @@ std::optional<policy::GrantSnapshot> load_snapshot(
   return snapshot;
 }
 
-AuthorityMutationResult store_snapshot_record(
-    int root_fd, std::uint32_t expected_uid,
-    const policy::GrantSnapshot &snapshot, AuthorityRevisionRef &reference) {
+AuthorityMutationResult
+store_snapshot_record(int root_fd, std::uint32_t expected_uid,
+                      const policy::GrantSnapshot &snapshot,
+                      AuthorityRevisionRef &reference) {
   std::vector<std::byte> bytes;
   if (!encode_snapshot(snapshot, bytes))
     return AuthorityMutationResult::invalid;
@@ -554,10 +571,9 @@ AuthorityMutationResult store_snapshot_record(
   reference = reference_for(snapshot, hash);
   const auto name = record_name(reference);
   const auto temporary = temporary_name("grant");
-  OwnedDescriptor file(::openat(root_fd, temporary.c_str(),
-                                O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC |
-                                    O_NOFOLLOW,
-                                0600));
+  OwnedDescriptor file(
+      ::openat(root_fd, temporary.c_str(),
+               O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600));
   if (!file || !secure_created_file(file.get(), expected_uid) ||
       !write_all(file.get(), bytes) || ::fsync(file.get()) < 0) {
     ::unlinkat(root_fd, temporary.c_str(), 0);
@@ -584,8 +600,8 @@ bool activatable(const policy::GrantSnapshot &snapshot) {
   for (const auto &request : snapshot.requests.values()) {
     if (!request.required)
       continue;
-    const auto granted = std::ranges::find_if(
-        snapshot.grants.values(), [&](const auto &grant) {
+    const auto granted =
+        std::ranges::find_if(snapshot.grants.values(), [&](const auto &grant) {
           return grant.capability == request.capability &&
                  grant.state == permissions::GrantState::granted;
         });
@@ -599,8 +615,8 @@ bool activatable(const policy::GrantSnapshot &snapshot) {
 }
 } // namespace
 
-AuthorityStore::AuthorityStore(
-    OwnedDescriptor root, OwnedDescriptor lock, std::uint32_t expected_uid,
+AuthorityStore::AuthorityStore(OwnedDescriptor root, OwnedDescriptor lock,
+                               std::uint32_t expected_uid,
     permissions::PluginId expected_plugin)
     : root_(std::move(root)), lock_(std::move(lock)),
       expected_uid_(expected_uid), expected_plugin_(std::move(expected_plugin)),
@@ -644,8 +660,8 @@ std::unique_ptr<AuthorityStore> AuthorityStore::open(
       !trusted_file(metadata, expected_uid) ||
       ::flock(lock.get(), LOCK_EX | LOCK_NB) < 0)
     return nullptr;
-  return std::unique_ptr<AuthorityStore>(new AuthorityStore(
-      std::move(root), std::move(lock), expected_uid,
+  return std::unique_ptr<AuthorityStore>(
+      new AuthorityStore(std::move(root), std::move(lock), expected_uid,
       std::move(expected_plugin)));
 }
 
@@ -687,28 +703,64 @@ std::optional<FilesystemIdentity> AuthorityStore::root_identity() const {
 bool AuthorityStore::bind_live_activation(
     const permissions::ActivationBinding &binding,
     const std::shared_ptr<LiveGenerationState> &live) {
+  auto prepared = prepare_live_activation(binding, live);
+  return prepared &&
+         commit_live_activation(std::move(*prepared), binding, live);
+}
+
+std::optional<PreparedLiveBinding> AuthorityStore::prepare_live_activation(
+    const permissions::ActivationBinding &binding,
+    const std::shared_ptr<LiveGenerationState> &live) {
   std::unique_lock lock(mutation_mutex_);
   if (::getpid() != owner_pid_ || poisoned_ || transitioning_ || !live ||
       !live->current(binding))
-    return false;
+    return {};
   auto slots = read_slots_unlocked(root_.get(), expected_uid_);
   if (!slots || !valid_slots(*slots) || !slots->active ||
       slots->active->generation != binding.generation)
-    return false;
+    return {};
   auto active = load_snapshot(root_.get(), expected_uid_, *slots->active);
   if (!active || active->binding != binding || !activatable(*active))
-    return false;
-  if (auto previous = bound_live_.lock(); previous == live)
-    return true;
-  const auto fenced = fence_bound_live(lock, *slots);
-  if (fenced != AuthorityMutationResult::applied)
-    return false;
-  if (!live->current(binding)) {
+    return {};
+  struct stat metadata {};
+  if (::fstat(root_.get(), &metadata) < 0)
+    return {};
+  const FilesystemIdentity identity{
+      .device = static_cast<std::uint64_t>(metadata.st_dev),
+      .inode = static_cast<std::uint64_t>(metadata.st_ino)};
+  prepared_root_identity_ = identity;
+  if (auto previous = bound_live_.lock(); previous != live) {
+    const auto fenced = fence_bound_live(lock, *slots);
+    if (fenced != AuthorityMutationResult::applied)
+      return {};
+    if (!live->current(binding)) {
+      transitioning_ = false;
+      return {};
+    }
+    bound_live_ = live;
     transitioning_ = false;
-    return false;
   }
-  bound_live_ = live;
-  transitioning_ = false;
+  if (mutation_epoch_ == UINT64_MAX)
+    return {};
+  ++mutation_epoch_;
+  return PreparedLiveBinding(this, identity, binding, live, mutation_epoch_);
+}
+
+bool AuthorityStore::commit_live_activation(
+    PreparedLiveBinding prepared,
+    const permissions::ActivationBinding &expected_binding,
+    const std::shared_ptr<LiveGenerationState> &expected_live) {
+  std::scoped_lock lock(mutation_mutex_);
+  const auto bound = bound_live_.lock();
+  if (prepared.owner_ != this || ::getpid() != owner_pid_ || poisoned_ ||
+      transitioning_ || prepared.mutation_epoch_ != mutation_epoch_ ||
+      prepared_root_identity_ != prepared.root_identity_ ||
+      prepared.binding_ != expected_binding ||
+      prepared.live_ != expected_live || bound != prepared.live_ ||
+      !prepared.live_ || !prepared.live_->current(prepared.binding_) ||
+      mutation_epoch_ == UINT64_MAX)
+    return false;
+  ++mutation_epoch_;
   return true;
 }
 
@@ -752,10 +804,9 @@ AuthorityMutationResult AuthorityStore::replace_slots(AuthoritySlots slots) {
   if (bytes.empty())
     return AuthorityMutationResult::invalid;
   const auto temporary = temporary_name("slots");
-  OwnedDescriptor file(::openat(root_.get(), temporary.c_str(),
-                                O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC |
-                                    O_NOFOLLOW,
-                                0600));
+  OwnedDescriptor file(
+      ::openat(root_.get(), temporary.c_str(),
+               O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600));
   if (!file || !secure_created_file(file.get(), expected_uid_) ||
       !write_all(file.get(), bytes) || ::fsync(file.get()) < 0 ||
       ::renameat(root_.get(), temporary.c_str(), root_.get(),
@@ -775,6 +826,9 @@ AuthorityMutationResult AuthorityStore::publish_candidate(
   std::scoped_lock lock(mutation_mutex_);
   if (::getpid() != owner_pid_)
     return AuthorityMutationResult::io_error;
+  if (mutation_epoch_ == UINT64_MAX)
+    return AuthorityMutationResult::poisoned;
+  ++mutation_epoch_;
   if (poisoned_ || transitioning_)
     return AuthorityMutationResult::poisoned;
   if (!complete_snapshot(verified, snapshot, definitions, scope_validator))
@@ -813,6 +867,9 @@ AuthorityMutationResult AuthorityStore::promote_candidate(
   std::unique_lock lock(mutation_mutex_);
   if (::getpid() != owner_pid_)
     return AuthorityMutationResult::io_error;
+  if (mutation_epoch_ == UINT64_MAX)
+    return AuthorityMutationResult::poisoned;
+  ++mutation_epoch_;
   if (poisoned_ || transitioning_)
     return AuthorityMutationResult::poisoned;
   auto slots = read_slots_unlocked(root_.get(), expected_uid_);
@@ -862,6 +919,9 @@ AuthorityMutationResult AuthorityStore::discard_candidate(
   std::scoped_lock lock(mutation_mutex_);
   if (::getpid() != owner_pid_)
     return AuthorityMutationResult::io_error;
+  if (mutation_epoch_ == UINT64_MAX)
+    return AuthorityMutationResult::poisoned;
+  ++mutation_epoch_;
   if (poisoned_ || transitioning_)
     return AuthorityMutationResult::poisoned;
   auto slots = read_slots_unlocked(root_.get(), expected_uid_);
@@ -886,8 +946,8 @@ AuthorityMutationResult AuthorityStore::discard_candidate(
   return result;
 }
 
-AuthorityRevocationResult AuthorityStore::revoke_active(
-    const permissions::CapabilityKey &capability,
+AuthorityRevocationResult
+AuthorityStore::revoke_active(const permissions::CapabilityKey &capability,
     std::uint64_t expected_sequence) {
   return revoke_active(&capability, nullptr, expected_sequence);
 }
@@ -909,6 +969,9 @@ AuthorityRevocationResult AuthorityStore::revoke_active(
   std::unique_lock lock(mutation_mutex_);
   if (::getpid() != owner_pid_)
     return failure(AuthorityMutationResult::io_error);
+  if (mutation_epoch_ == UINT64_MAX)
+    return failure(AuthorityMutationResult::poisoned);
+  ++mutation_epoch_;
   if (poisoned_ || transitioning_)
     return failure(AuthorityMutationResult::poisoned);
   if ((capability == nullptr) == (definition == nullptr))
@@ -967,8 +1030,8 @@ AuthorityRevocationResult AuthorityStore::revoke_active(
   poisoned_ = true;
   try {
     AuthorityRevisionRef reference;
-    const auto stored = store_snapshot_record(root_.get(), expected_uid_,
-                                              *active, reference);
+    const auto stored =
+        store_snapshot_record(root_.get(), expected_uid_, *active, reference);
     if (stored != AuthorityMutationResult::applied)
       return failure(stored);
 
@@ -980,8 +1043,8 @@ AuthorityRevocationResult AuthorityStore::revoke_active(
     if (replaced != AuthorityMutationResult::applied)
       return failure(replaced);
     cleanup_unreferenced(root_.get(), previous, *slots);
-    AuthorityRevocationResult success{
-        .status = AuthorityMutationResult::applied,
+    AuthorityRevocationResult success{.status =
+                                          AuthorityMutationResult::applied,
         .binding = active->binding,
         .activatable = activatable(*active)};
     static_assert(

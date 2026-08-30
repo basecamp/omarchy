@@ -50,6 +50,32 @@ struct AuthorityRevocationResult {
 };
 
 class AuthorityStoreTestAccess;
+class AuthorityStore;
+
+class PreparedLiveBinding final {
+public:
+  PreparedLiveBinding(PreparedLiveBinding &&) noexcept = default;
+  PreparedLiveBinding &operator=(PreparedLiveBinding &&) noexcept = default;
+  PreparedLiveBinding(const PreparedLiveBinding &) = delete;
+  PreparedLiveBinding &operator=(const PreparedLiveBinding &) = delete;
+
+private:
+  PreparedLiveBinding(AuthorityStore *owner, FilesystemIdentity root_identity,
+                      permissions::ActivationBinding binding,
+                      std::shared_ptr<LiveGenerationState> live,
+                      std::uint64_t mutation_epoch) noexcept
+      : owner_(owner), root_identity_(root_identity),
+        binding_(std::move(binding)), live_(std::move(live)),
+        mutation_epoch_(mutation_epoch) {}
+
+  AuthorityStore *owner_ = nullptr;
+  FilesystemIdentity root_identity_{};
+  permissions::ActivationBinding binding_;
+  std::shared_ptr<LiveGenerationState> live_;
+  std::uint64_t mutation_epoch_ = 0;
+
+  friend class AuthorityStore;
+};
 
 // Descriptor-rooted, single-owner authority for exact reviewed grants. Open
 // takes a nonblocking lifetime lock; all mutations route through this host
@@ -74,9 +100,16 @@ public:
   [[nodiscard]] std::optional<FilesystemIdentity> root_identity() const;
   // Binds one not-yet-started product session to the exact durable active
   // revision. Promotion revokes this shared state before replacing authority.
-  [[nodiscard]] bool bind_live_activation(
-      const permissions::ActivationBinding &binding,
+  [[nodiscard]] bool
+  bind_live_activation(const permissions::ActivationBinding &binding,
       const std::shared_ptr<LiveGenerationState> &live);
+  [[nodiscard]] std::optional<PreparedLiveBinding>
+  prepare_live_activation(const permissions::ActivationBinding &binding,
+                          const std::shared_ptr<LiveGenerationState> &live);
+  [[nodiscard]] bool commit_live_activation(
+      PreparedLiveBinding prepared,
+      const permissions::ActivationBinding &expected_binding,
+      const std::shared_ptr<LiveGenerationState> &expected_live);
   [[nodiscard]] AuthorityMutationResult
   publish_candidate(const VerifiedRevision &verified,
                     const policy::GrantSnapshot &snapshot,
@@ -105,12 +138,13 @@ private:
   [[nodiscard]] AuthorityRevocationResult
   revoke_active(const definitions::CapabilityReference &definition,
                 std::uint64_t expected_sequence);
-  [[nodiscard]] AuthorityRevocationResult revoke_active(
-      const permissions::CapabilityKey *capability,
+  [[nodiscard]] AuthorityRevocationResult
+  revoke_active(const permissions::CapabilityKey *capability,
       const definitions::CapabilityReference *definition,
       std::uint64_t expected_sequence);
-  [[nodiscard]] AuthorityMutationResult fence_bound_live(
-      std::unique_lock<std::mutex> &lock, const AuthoritySlots &preimage);
+  [[nodiscard]] AuthorityMutationResult
+  fence_bound_live(std::unique_lock<std::mutex> &lock,
+                   const AuthoritySlots &preimage);
 
   OwnedDescriptor root_;
   OwnedDescriptor lock_;
@@ -121,6 +155,8 @@ private:
   std::weak_ptr<LiveGenerationState> bound_live_;
   bool poisoned_ = false;
   bool transitioning_ = false;
+  std::uint64_t mutation_epoch_ = 0;
+  std::optional<FilesystemIdentity> prepared_root_identity_;
 
   friend class omarchy::plugin_runtime::channel::PluginPermissionController;
   friend class AuthorityStoreTestAccess;
@@ -129,6 +165,10 @@ private:
 #ifdef OMARCHY_AUTHORITY_STORE_TESTING
 class AuthorityStoreTestAccess final {
 public:
+  static void set_mutation_epoch(AuthorityStore &store,
+                                 std::uint64_t epoch) noexcept {
+    store.mutation_epoch_ = epoch;
+  }
   [[nodiscard]] static AuthorityRevocationResult
   revoke_active(AuthorityStore &store,
                 const permissions::CapabilityKey &capability,
