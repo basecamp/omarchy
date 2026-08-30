@@ -618,16 +618,26 @@ Item {
 
         // The punchcard field merges with the same additive/widest rule,
         // keyed by weekday-hour cell — an hour's tokens are that device's
-        // own, whatever date they were burned on.
+        // own, whatever date they were burned on. Each snapshot is
+        // normalized and deduplicated FIRST (last value wins within one
+        // record, invalid and non-positive cells dropped — mirroring
+        // PunchcardModel.parseUsageByHour), so duplicates inside one
+        // snapshot can neither double-count nor subtract.
         var hours = Array.isArray(stats.usageByHour) ? stats.usageByHour : []
+        var normalizedHours = {}
         for (var hc = 0; hc < hours.length; hc++) {
           var hourCell = hours[hc] || {}
+          if (hourCell.weekday === null || hourCell.hour === null || hourCell.tokens === null) continue
           var weekday = Number(hourCell.weekday)
           var hour = Number(hourCell.hour)
+          var tokens = Math.round(Number(hourCell.tokens))
           if (Math.floor(weekday) !== weekday || weekday < 0 || weekday > 6) continue
           if (Math.floor(hour) !== hour || hour < 0 || hour > 23) continue
-          var cellKey = weekday + "-" + hour
-          acc.usageByHour[cellKey] = combineNumber(additive, acc.usageByHour[cellKey], hourCell.tokens)
+          if (!isFinite(tokens) || tokens <= 0) continue
+          normalizedHours[weekday + "-" + hour] = tokens
+        }
+        for (var cellKey in normalizedHours) {
+          acc.usageByHour[cellKey] = combineNumber(additive, acc.usageByHour[cellKey], normalizedHours[cellKey])
         }
 
         var usage = stats.modelUsage || {}

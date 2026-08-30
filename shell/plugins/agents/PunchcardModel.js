@@ -43,9 +43,13 @@ function parseUsageByHour(raw) {
   var count = 0
   for (var i = 0; i < raw.length; i++) {
     var entry = raw[i] || {}
+    // null coerces to 0 through Number() and would impersonate Sunday, and
+    // a sub-0.5 token count rounds to a "lit" cell with zero ink — both
+    // rejected BEFORE the range/positivity checks.
+    if (entry.weekday === null || entry.hour === null || entry.tokens === null) continue
     var weekday = Number(entry.weekday)
     var hour = Number(entry.hour)
-    var tokens = Number(entry.tokens)
+    var tokens = Math.round(Number(entry.tokens))
     if (Math.floor(weekday) !== weekday || weekday < 0 || weekday >= WEEKDAY_COUNT) continue
     if (Math.floor(hour) !== hour || hour < 0 || hour >= HOUR_COUNT) continue
     if (!isFinite(tokens) || tokens <= 0) continue

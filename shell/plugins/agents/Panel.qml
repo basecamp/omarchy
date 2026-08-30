@@ -725,6 +725,7 @@ Panel {
 
                     width: root.punchPitch * 3
                     text: String(modelData).padStart(2, "0")
+                    textFormat: Text.PlainText
                     color: root.dim
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.caption
@@ -1054,6 +1055,7 @@ Panel {
       width: root.punchGutter
       height: root.punchPitch
       text: root.weekdayNames[punchcardRow.weekday]
+      textFormat: Text.PlainText
       color: root.dim
       font.family: root.fontFamily
       font.pixelSize: Style.font.caption
