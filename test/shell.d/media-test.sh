@@ -40,4 +40,29 @@ assert(media.trackChanged(trackSignature, { ...track, trackTitle: 'Next song' })
 assertEqual(media.labelFor({ trackTitle: 'Song', identity: 'Spotify' }), 'Song', 'media labels players by track first')
 assertEqual(media.osdMessage({ trackTitle: 'Song', trackArtist: 'Artist' }, 'Fallback'), 'Song - Artist', 'media builds OSD messages')
 assertEqual(media.osdMessage(null, 'Fallback'), 'Fallback', 'media falls back OSD messages')
+
+const browser = { dbusName: 'org.mpris.MediaPlayer2.brave.instance1', identity: 'Brave', trackTitle: 'A video' }
+const spotify = { dbusName: 'org.mpris.MediaPlayer2.spotify', identity: 'Spotify', trackTitle: 'A song' }
+const proxy = { dbusName: 'org.mpris.MediaPlayer2.playerctld', identity: 'playerctld', trackTitle: 'Proxied' }
+
+assertEqual(
+  media.mostRecentlyActivePlayer([browser, spotify], { [media.playerKey(browser)]: 100, [media.playerKey(spotify)]: 50 }),
+  browser,
+  'media prefers the player most recently observed playing'
+)
+assertEqual(
+  media.mostRecentlyActivePlayer([browser, spotify], { [media.playerKey(spotify)]: 50 }),
+  spotify,
+  'media picks the only player with recorded recency'
+)
+assertEqual(
+  media.mostRecentlyActivePlayer([browser, spotify], {}),
+  null,
+  'media has no recency opinion when nothing was ever observed playing'
+)
+assertEqual(
+  media.mostRecentlyActivePlayer([proxy], { [media.playerKey(proxy)]: 100 }),
+  null,
+  'media excludes proxy players from recency selection'
+)
 JS
