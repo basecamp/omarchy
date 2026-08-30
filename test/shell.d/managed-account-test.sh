@@ -94,6 +94,8 @@ grep -Fq 'cp -a "$omarchy_root/config/." "$home/.config/"' "$ROOT/bin/omarchy-ma
 grep -Fq '/dev/null "$done_dir/finalize-user"' "$ROOT/bin/omarchy-managed" &&
   grep -Fq '/dev/null "$done_dir/first-run-user"' "$ROOT/bin/omarchy-managed" ||
   fail "managed users skip the privileged and network-dependent first-run path"
+grep -Fq 'install/user/default-keyring.sh' "$ROOT/bin/omarchy-managed" ||
+  fail "new managed users initialize Omarchy's local keyring before Chromium starts"
 grep -Fq 'Allowed websites> ' "$ROOT/bin/omarchy-managed" ||
   fail "interactive setup asks for the initial website allowlist"
 grep -Fiq 'the Linux user and home directory were not deleted' "$ROOT/bin/omarchy-managed" ||

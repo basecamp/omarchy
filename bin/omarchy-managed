@@ -411,6 +411,9 @@ seed_omarchy_home() {
   install -d -m 0700 -o "$username" -g "$group" "$done_dir"
   install -m 0644 -o "$username" -g "$group" /dev/null "$done_dir/finalize-user"
   install -m 0644 -o "$username" -g "$group" /dev/null "$done_dir/first-run-user"
+
+  runuser -u "$username" -- env HOME="$home" \
+    /bin/bash -eE "$omarchy_root/install/user/default-keyring.sh"
 }
 
 ensure_squid() {
