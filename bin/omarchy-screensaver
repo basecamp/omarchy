@@ -7,6 +7,13 @@ screensaver_in_focus() {
 }
 
 exit_screensaver() {
+  # The pkill below matches the parent terminal (its command line carries the
+  # screensaver class), and the dying terminal signals us back. With a trap
+  # still armed that signal re-enters this handler — nesting until bash
+  # overflows its stack. Silence every trapped signal first so the cleanup
+  # runs exactly once.
+  trap '' SIGINT SIGTERM SIGHUP SIGQUIT
+
   hyprctl eval 'hl.config({ cursor = { invisible = false } })' &>/dev/null || hyprctl keyword cursor:invisible false &>/dev/null || true
   pkill -x ttfx 2>/dev/null
   pkill -f '[o]rg.omarchy.screensaver' 2>/dev/null
