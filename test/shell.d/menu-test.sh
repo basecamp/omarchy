@@ -10,6 +10,15 @@ const menu = requireFromRoot('shell/plugins/menu/MenuModel.js')
 const menuQml = fs.readFileSync(path.join(root, 'shell/plugins/menu/Menu.qml'), 'utf8')
 const defaultMenuJsonc = fs.readFileSync(path.join(root, 'default/omarchy/omarchy-menu.jsonc'), 'utf8')
 
+assert(
+  /WlrLayershell\.keyboardFocus: WlrKeyboardFocus\.OnDemand/.test(menuQml),
+  'menu keyboard focus leaves pointer input available to on-screen keyboards'
+)
+assert(
+  /exclusionMode: ExclusionMode\.Auto/.test(menuQml),
+  'menu respects the reserved area of an on-screen keyboard'
+)
+
 const parsed = menu.parseMenuJsonc(`
 {
   // comment
