@@ -519,7 +519,10 @@ case "$action" in
     if [[ -z $username ]]; then
       [[ -t 0 ]] || error "a username is required"
       username=$(gum input --prompt "Managed username> " --placeholder "kid")
-      set -- "$username"
+      sites_input=$(gum input --prompt "Allowed websites> " --placeholder "code.org school.example")
+      sites=()
+      [[ -z $sites_input ]] || read -ra sites <<<"$sites_input"
+      set -- "$username" "${sites[@]}"
     fi
     require_username "$username"
     shift

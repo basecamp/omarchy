@@ -87,6 +87,8 @@ pass "nftables rules isolate multiple managed accounts by UID"
 
 grep -Fq 'rm -f /etc/sddm.conf.d/autologin.conf' "$ROOT/bin/omarchy-managed" ||
   fail "adding a managed account disables administrator autologin"
+grep -Fq 'Allowed websites> ' "$ROOT/bin/omarchy-managed" ||
+  fail "interactive setup asks for the initial website allowlist"
 grep -Fiq 'the Linux user and home directory were not deleted' "$ROOT/bin/omarchy-managed" ||
   fail "removing management preserves the user account"
 pass "account lifecycle keeps the admin/managed login boundary safe"
