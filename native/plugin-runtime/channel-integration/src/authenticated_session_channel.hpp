@@ -51,13 +51,6 @@ public:
       std::shared_ptr<const GenerationAuthority> authority,
       std::unique_ptr<AuthenticatedSessionRuntime> runtime,
       std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility);
-  // Product composition uses the owning runtime overload above. This lower
-  // level constructor carries no product permission authority.
-  AuthenticatedSessionChannel(
-      launcher::Supervisor supervisor, AuthenticatedSessionLaunch launch,
-      std::shared_ptr<BrokerDispatcher> dispatcher,
-      std::shared_ptr<const GenerationAuthority> authority,
-      std::unique_ptr<session::StructuredBroker> broker);
 #ifdef OMARCHY_AUTHENTICATED_SESSION_CHANNEL_TESTING
   explicit AuthenticatedSessionChannel(
       std::unique_ptr<AuthenticatedSessionBackend> backend);

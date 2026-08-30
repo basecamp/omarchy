@@ -95,7 +95,6 @@ public:
 
   [[nodiscard]] bool dispatch(const wire::PacketView &) override {
     // Product sessions settle broker traffic through BrokerSessionSettlement.
-    // Product sessions settle broker traffic without this dispatcher path.
     return false;
   }
 
@@ -107,24 +106,17 @@ class LauncherSessionBackend final : public AuthenticatedSessionBackend {
 public:
   LauncherSessionBackend(
       launcher::Supervisor supervisor, AuthenticatedSessionLaunch launch,
-                    std::shared_ptr<const GenerationAuthority> authority,
-                    std::unique_ptr<AuthenticatedSessionRuntime> runtime,
+      std::shared_ptr<const GenerationAuthority> authority,
+      std::unique_ptr<AuthenticatedSessionRuntime> runtime,
       std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility)
       : supervisor_(std::move(supervisor)), launch_(std::move(launch)),
         dispatcher_(std::make_shared<IdentityOnlyDispatcher>(launch_.binding)),
         authority_(std::move(authority)), runtime_(std::move(runtime)),
         gesture_eligibility_(std::move(gesture_eligibility)) {}
 
-  LauncherSessionBackend(launcher::Supervisor supervisor,
-                    AuthenticatedSessionLaunch launch,
-                    std::shared_ptr<BrokerDispatcher> dispatcher,
-                    std::shared_ptr<const GenerationAuthority> authority,
-                    std::unique_ptr<session::StructuredBroker> broker)
-      : supervisor_(std::move(supervisor)), launch_(std::move(launch)),
-        dispatcher_(std::move(dispatcher)), authority_(std::move(authority)),
-        broker_(std::move(broker)) {}
-
-  ~LauncherSessionBackend() override { terminate(std::chrono::steady_clock::now()); }
+  ~LauncherSessionBackend() override {
+    terminate(std::chrono::steady_clock::now());
+  }
 
   session::ChannelError launch(const session::SessionToken &token,
                                launcher::Deadline deadline) override {
@@ -132,8 +124,8 @@ public:
         token.revision_sha256 != launch_.binding.revision.view() ||
         token.generation != launch_.binding.generation ||
         !launch_.revision_directory || !launch_.private_state_directory ||
-        !dispatcher_ || !authority_ || broker() == nullptr ||
-        !broker()->accepts(launch_.binding, token.session_nonce))
+        !dispatcher_ || !authority_ || !runtime_ ||
+        !runtime_->broker().accepts(launch_.binding, token.session_nonce))
       return session::ChannelError::launch_failed;
     const launcher::TrustedLaunchRequest request{
         .plugin_id = std::string(launch_.binding.plugin.view()),
@@ -146,14 +138,15 @@ public:
     if (!opened)
       return session::ChannelError::launch_failed;
     channel_ = std::move(opened.channel);
-    auto extracted = broker()->take_admission();
+    auto extracted = runtime_->broker().take_admission();
     if (!extracted) {
       (void)channel_->terminate(deadline);
       channel_.reset();
       return session::ChannelError::launch_failed;
     }
     try {
-      settlement_.emplace(*channel_, *broker(), std::move(*extracted.admission),
+      settlement_.emplace(*channel_, runtime_->broker(),
+                          std::move(*extracted.admission),
                           gesture_eligibility_.get());
     } catch (...) {
       (void)channel_->terminate(deadline);
@@ -250,21 +243,15 @@ public:
     launch_.private_state_directory.reset();
     dispatcher_.reset();
     authority_.reset();
-    broker_.reset();
     runtime_.reset();
     gesture_eligibility_.reset();
   }
 
 private:
-  [[nodiscard]] session::StructuredBroker *broker() noexcept {
-    return runtime_ ? &runtime_->broker() : broker_.get();
-  }
-
   launcher::Supervisor supervisor_;
   AuthenticatedSessionLaunch launch_;
   std::shared_ptr<BrokerDispatcher> dispatcher_;
   std::shared_ptr<const GenerationAuthority> authority_;
-  std::unique_ptr<session::StructuredBroker> broker_;
   std::unique_ptr<AuthenticatedSessionRuntime> runtime_;
   std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility_;
   std::unique_ptr<AuthenticatedBrokerChannel> channel_;
@@ -357,16 +344,6 @@ AuthenticatedSessionChannel::AuthenticatedSessionChannel(
           std::make_unique<Impl>(std::make_unique<LauncherSessionBackend>(
               std::move(supervisor), std::move(launch), std::move(authority),
               std::move(runtime), std::move(gesture_eligibility)))) {}
-
-AuthenticatedSessionChannel::AuthenticatedSessionChannel(
-    launcher::Supervisor supervisor, AuthenticatedSessionLaunch launch,
-    std::shared_ptr<BrokerDispatcher> dispatcher,
-    std::shared_ptr<const GenerationAuthority> authority,
-    std::unique_ptr<session::StructuredBroker> broker)
-    : implementation_(
-          std::make_unique<Impl>(std::make_unique<LauncherSessionBackend>(
-              std::move(supervisor), std::move(launch), std::move(dispatcher),
-              std::move(authority), std::move(broker)))) {}
 
 #ifdef OMARCHY_AUTHENTICATED_SESSION_CHANNEL_TESTING
 AuthenticatedSessionChannel::AuthenticatedSessionChannel(
