@@ -571,8 +571,8 @@ FAIL_DAEMON_RELOAD_ONCE_MARKER="$reload_failure_seen" run_migration
 reload_status=$?
 set -e
 
-(( reload_status == 75 )) ||
-  fail "migration defers after a failed daemon-reload" "status=$reload_status"
+(( reload_status != 0 )) ||
+  fail "migration fails after a failed daemon-reload" "status=$reload_status"
 [[ ! -e $plymouth_unit && -e $reload_needed_marker && ! -e $machine_marker ]] ||
   fail "migration records the pending reload without marking the repair complete"
 
@@ -606,15 +606,15 @@ HOME="$home_dir" \
 gate_status=$?
 set -e
 
-(( gate_status == 75 )) ||
-  fail "migration defers when it cannot elevate to inspect the sudoers directory" "status=$gate_status$(printf '\n%s' "$(cat "$test_dir/gate.out")")"
+(( gate_status != 0 )) ||
+  fail "migration fails when it cannot elevate to inspect the sudoers directory" "status=$gate_status$(printf '\n%s' "$(cat "$test_dir/gate.out")")"
 [[ -e $readable/first-run ]] ||
   fail "migration keeps a live grant when elevation fails"
 [[ ! -e $machine_marker ]] ||
   fail "migration leaves the machine repair unmarked when elevation fails"
-grep -q 'will retry it later' "$test_dir/gate.out" ||
-  fail "migration says why it could not inspect the directory" "$(cat "$test_dir/gate.out")"
-pass "migration defers without marking a readable sudoers directory repaired when elevation fails"
+grep -q 'An administrator must run omarchy-migrate' "$test_dir/gate.out" ||
+  fail "migration explains how the machine-wide repair can complete" "$(cat "$test_dir/gate.out")"
+pass "migration fails without marking the machine repaired and names the administrator action"
 
 # After one privileged account completes the machine repair, a non-sudo user
 # can finish their per-user migration without probing sudo again.

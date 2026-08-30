@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 # Install Plymouth package
 echo "Installing Plymouth..."

@@ -475,8 +475,8 @@ privileged_destination() {
       while ((follow < ${#scan_lines[@]})); do
         hop=${scan_lines[follow]}
         follow=$((follow + 1))
-        line_carries_destination "$hop" "$dest" || continue
         [[ $hop =~ (^|[[:space:]])(install|cp|mv)([[:space:]]|$) ]] || continue
+        line_carries_destination "$hop" "$dest" || continue
         while IFS= read -r hop_dest; do
           [[ $hop_dest == $'\002elevated' ]] && continue
           [[ $hop_dest == "$dest" ]] && continue
@@ -761,7 +761,9 @@ shell_sources() {
   local file first
 
   while IFS= read -r -d '' file; do
-    grep -Iq . "$file" 2>/dev/null || continue
+    # Binary files and sources with no heredoc operator have nothing this check
+    # can classify. Filter them before collect_vars and the line-by-line scan.
+    grep -Iq '<<' "$file" 2>/dev/null || continue
 
     case $file in
       *.sh | *.hook)

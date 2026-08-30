@@ -10,14 +10,6 @@ as_root() {
   fi
 }
 
-defer_privileged_repair() {
-  echo "Cannot remove the legacy privileged udev rule; omarchy-migrate will retry it later." >&2
-  if [[ -n ${OMARCHY_MIGRATION_DEFER_FILE:-} && -n ${OMARCHY_MIGRATION_DEFER_TOKEN:-} ]]; then
-    printf '%s\n' "$OMARCHY_MIGRATION_DEFER_TOKEN" >"$OMARCHY_MIGRATION_DEFER_FILE"
-  fi
-  exit 75
-}
-
 # Omarchy 3 generated these two rules with an unquoted heredoc, so the installing
 # user's $HOME was expanded and the file on disk names that absolute home path.
 # udev runs RUN+= as root, and
@@ -86,23 +78,19 @@ rule_runs_from_home() {
   return 1
 }
 
-removed=0
-
 for legacy_rule in "99-power-profile.rules:omarchy-powerprofiles-set" "99-wifi-powersave.rules:omarchy-wifi-powersave"; do
   rule_file="$rules_dir/${legacy_rule%%:*}"
 
   if [[ -f $rule_file ]] && rule_runs_from_home "$rule_file" "${legacy_rule##*:}"; then
     if ! as_root rm -f "$rule_file"; then
-      defer_privileged_repair
+      echo "Administrator privileges are required to remove the vulnerable legacy udev rule. Ask an administrator to run omarchy-migrate." >&2
+      exit 1
     fi
-    removed=1
+
+    # Reload after each removal, not after the whole loop. If removing a later
+    # rule fails, udevd must not keep running one this migration already deleted.
+    # Best effort the way install/post-install/udev.sh is: a machine with no
+    # udevd to talk to has had the file removed, and the next boot reads fresh.
+    as_root udevadm control --reload 2>/dev/null || true
   fi
 done
-
-if (( removed )); then
-  # Drop the rule from the running udevd too; until it reloads, the rule that was
-  # just deleted still fires on the next power_supply event. Best effort the way
-  # install/post-install/udev.sh is: a machine with no udevd to talk to has
-  # already had the file removed, and the next boot reads the directory fresh.
-  as_root udevadm control --reload 2>/dev/null || true
-fi

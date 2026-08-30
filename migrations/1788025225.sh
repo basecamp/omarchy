@@ -253,21 +253,18 @@ plymouth_unit_runs_from_home() {
 first_run_sudoers="$sudoers_dir/first-run"
 tsui_sudoers="$sudoers_dir/tsui"
 
-defer_privileged_repair() {
-  echo "Cannot complete the privileged installer-artifact repair; omarchy-migrate will retry it later." >&2
-  if [[ -n ${OMARCHY_MIGRATION_DEFER_FILE:-} && -n ${OMARCHY_MIGRATION_DEFER_TOKEN:-} ]]; then
-    printf '%s\n' "$OMARCHY_MIGRATION_DEFER_TOKEN" >"$OMARCHY_MIGRATION_DEFER_FILE"
-  fi
-  exit 75
+fail_privileged_repair() {
+  echo "Cannot complete the privileged installer-artifact repair. An administrator must run omarchy-migrate to repair this machine." >&2
+  exit 1
 }
 
 # This is a machine-wide repair with per-user migration markers. A root-owned,
 # readable marker lets later non-sudo users finish their own migration run after
 # one privileged account has inspected and repaired the machine. Until then,
-# exit 75 asks omarchy-migrate to leave this migration pending while continuing
-# with every later migration instead of wedging the whole queue.
+# the migration fails loudly and remains pending. After an administrator repairs
+# the machine, this marker lets every other account complete without using sudo.
 if ! as_root true 2>/dev/null; then
-  defer_privileged_repair
+  fail_privileged_repair
 fi
 
 # Removing a unit and reloading systemd are one repair. Persist the second half
@@ -275,10 +272,10 @@ fi
 # retry that now sees no unit on disk.
 if [[ -e $reload_needed_marker ]]; then
   if ! as_root systemctl daemon-reload >/dev/null 2>&1; then
-    defer_privileged_repair
+    fail_privileged_repair
   fi
   if ! as_root rm -f "$reload_needed_marker"; then
-    defer_privileged_repair
+    fail_privileged_repair
   fi
 fi
 
@@ -289,17 +286,17 @@ inspect_sudoers_file() {
   # an if-condition makes "file missing" indistinguishable from "sudo failed",
   # which could mark a live grant repaired without ever reading it.
   if ! kind=$(as_root bash -c 'if [[ -f $1 ]]; then printf file; elif [[ -e $1 ]]; then printf other; else printf missing; fi' bash "$file"); then
-    defer_privileged_repair
+    fail_privileged_repair
   fi
 
   [[ $kind == "file" ]] || return 0
   if ! content=$(as_root cat "$file"); then
-    defer_privileged_repair
+    fail_privileged_repair
   fi
 
   if "$predicate" <<<"$content"; then
     if ! as_root rm -f "$file"; then
-      defer_privileged_repair
+      fail_privileged_repair
     fi
   fi
 }
@@ -314,24 +311,24 @@ if [[ -f $plymouth_unit ]] && plymouth_unit_runs_from_home <"$plymouth_unit"; th
   # ExecStop is the path this migration exists to keep root away from; disabling
   # only drops the multi-user.target symlink.
   if ! as_root install -Dm644 /dev/null "$reload_needed_marker"; then
-    defer_privileged_repair
+    fail_privileged_repair
   fi
   if ! as_root systemctl disable omarchy-plymouth-shutdown.service >/dev/null 2>&1; then
-    defer_privileged_repair
+    fail_privileged_repair
   fi
   if ! as_root rm -f "$plymouth_unit"; then
-    defer_privileged_repair
+    fail_privileged_repair
   fi
   # systemd keeps serving the copy it already loaded until it rereads the
   # directory, so without this the unit is still there to run at shutdown.
   if ! as_root systemctl daemon-reload >/dev/null 2>&1; then
-    defer_privileged_repair
+    fail_privileged_repair
   fi
   if ! as_root rm -f "$reload_needed_marker"; then
-    defer_privileged_repair
+    fail_privileged_repair
   fi
 fi
 
 if ! as_root install -Dm644 /dev/null "$machine_marker"; then
-  defer_privileged_repair
+  fail_privileged_repair
 fi
