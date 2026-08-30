@@ -626,16 +626,19 @@ void surface_binding_test() {
 void permission_snapshot_test() {
   namespace snapshot_wire = omarchy::plugin::wire::permission_snapshot;
   using snapshot_wire::GrantState;
+  using snapshot_wire::PermissionRow;
   using snapshot_wire::PermissionSnapshot;
 
   const PermissionSnapshot source{
       .manifest_request_fingerprint = std::string(64, 'a'),
-      .states = {GrantState::granted, GrantState::denied, GrantState::revoked}};
+      .permissions = {{GrantState::granted, 0x0005},
+                      {GrantState::denied, 0x0000},
+                      {GrantState::revoked, 0xabcd}}};
   const auto golden = snapshot_wire::encode(source);
   require(hex(golden) ==
               "0001616161616161616161616161616161616161616161616161616161616161"
               "6161616161616161616161616161616161616161616161616161616161616161"
-              "61610003010203",
+              "6161000301000502000003abcd",
           "permission snapshot literal golden mismatch");
   PermissionSnapshot decoded;
   require(snapshot_wire::decode(golden, decoded) && decoded == source,
@@ -643,7 +646,8 @@ void permission_snapshot_test() {
 
   const PermissionSnapshot sentinel{.manifest_request_fingerprint =
                                         std::string(64, 'b'),
-                                    .states = {GrantState::revoked}};
+                                    .permissions = {
+                                        {GrantState::revoked, 0x1234}}};
   const auto rejects = [&](std::span<const std::byte> bytes,
                            std::string_view message) {
     auto output = sentinel;
@@ -675,10 +679,25 @@ void permission_snapshot_test() {
   malformed = golden;
   malformed.push_back(std::byte{1});
   rejects(malformed, "permission snapshot suffix was accepted");
+  malformed = golden;
+  malformed[73] = std::byte{1};
+  rejects(malformed, "denied permission row retained operation bits");
+  malformed = golden;
+  malformed[69] = std::byte{0};
+  malformed[70] = std::byte{0};
+  rejects(malformed, "empty granted permission row was accepted");
+  malformed = golden;
+  malformed[75] = std::byte{0};
+  malformed[76] = std::byte{0};
+  rejects(malformed, "empty revoked permission row was accepted");
 
   for (unsigned int value = 0; value <= 0xff; ++value) {
     malformed = golden;
     malformed[68] = static_cast<std::byte>(value);
+    if (value == static_cast<unsigned int>(GrantState::denied)) {
+      malformed[69] = std::byte{0};
+      malformed[70] = std::byte{0};
+    }
     auto state = sentinel;
     const bool accepted = snapshot_wire::decode(malformed, state);
     const bool valid =
@@ -691,7 +710,7 @@ void permission_snapshot_test() {
   }
 
   PermissionSnapshot empty{.manifest_request_fingerprint = std::string(64, '0'),
-                           .states = {}};
+                           .permissions = {}};
   const auto empty_encoded = snapshot_wire::encode(empty);
   require(empty_encoded.size() == snapshot_wire::kFixedPayloadBytes &&
               snapshot_wire::decode(empty_encoded, decoded) && decoded == empty,
@@ -699,14 +718,15 @@ void permission_snapshot_test() {
 
   PermissionSnapshot maximum{
       .manifest_request_fingerprint = std::string(64, 'f'),
-      .states = std::vector<GrantState>(snapshot_wire::kMaximumManifestRequests,
-                                        GrantState::denied)};
+      .permissions = std::vector<PermissionRow>(
+          snapshot_wire::kMaximumManifestRequests,
+          {GrantState::denied, 0})};
   const auto maximum_encoded = snapshot_wire::encode(maximum);
   require(maximum_encoded.size() == snapshot_wire::kMaximumPayloadBytes &&
               snapshot_wire::decode(maximum_encoded, decoded) &&
               decoded == maximum,
           "maximum permission snapshot did not round trip");
-  maximum.states.push_back(GrantState::denied);
+  maximum.permissions.push_back({GrantState::denied, 0});
   require(snapshot_wire::encode(maximum).empty(),
           "encoder exceeded the manifest request bound");
   auto too_large = maximum_encoded;
@@ -718,9 +738,21 @@ void permission_snapshot_test() {
   require(snapshot_wire::encode(invalid_source).empty(),
           "encoder accepted a noncanonical fingerprint");
   invalid_source = source;
-  invalid_source.states[0] = static_cast<GrantState>(0);
+  invalid_source.permissions[0].state = static_cast<GrantState>(0);
   require(snapshot_wire::encode(invalid_source).empty(),
           "encoder accepted an invalid grant state");
+  invalid_source = source;
+  invalid_source.permissions[1].operation_mask = 1;
+  require(snapshot_wire::encode(invalid_source).empty(),
+          "encoder accepted operation bits on a denied row");
+  invalid_source = source;
+  invalid_source.permissions[0].operation_mask = 0;
+  require(snapshot_wire::encode(invalid_source).empty(),
+          "encoder accepted an empty granted row");
+  invalid_source = source;
+  invalid_source.permissions[2].operation_mask = 0;
+  require(snapshot_wire::encode(invalid_source).empty(),
+          "encoder accepted an empty revoked row");
 
   const auto verifies = [&](std::span<const std::byte> bytes,
                             bool expected_valid, std::string_view message) {
@@ -758,13 +790,23 @@ void permission_snapshot_test() {
     case 3: {
       const auto count = static_cast<std::uint16_t>(
           random % (snapshot_wire::kMaximumManifestRequests + 1));
-      bytes.resize(snapshot_wire::kFixedPayloadBytes + count);
+      bytes.resize(snapshot_wire::kFixedPayloadBytes +
+                   count * snapshot_wire::kPermissionRowBytes);
       bytes[66] = static_cast<std::byte>(count >> 8U);
       bytes[67] = static_cast<std::byte>(count);
-      for (std::size_t index = snapshot_wire::kFixedPayloadBytes;
-           index < bytes.size(); ++index) {
+      for (std::size_t index = 0; index < count; ++index) {
         random = random * 1664525U + 1013904223U;
-        bytes[index] = static_cast<std::byte>((random % 3U) + 1U);
+        const auto offset = snapshot_wire::kFixedPayloadBytes +
+                            index * snapshot_wire::kPermissionRowBytes;
+        const auto state = (random % 3U) + 1U;
+        bytes[offset] = static_cast<std::byte>(state);
+        std::uint16_t mask = static_cast<std::uint16_t>(random);
+        if (state == 2U)
+          mask = 0;
+        else if (mask == 0)
+          mask = 1;
+        bytes[offset + 1] = static_cast<std::byte>(mask >> 8U);
+        bytes[offset + 2] = static_cast<std::byte>(mask);
       }
       verifies(bytes, true, "bounded count mutation did not round trip");
       break;
@@ -774,7 +816,8 @@ void permission_snapshot_test() {
           random % (snapshot_wire::kMaximumManifestRequests + 1));
       bytes[66] = static_cast<std::byte>(count >> 8U);
       bytes[67] = static_cast<std::byte>(count);
-      const auto exact = snapshot_wire::kFixedPayloadBytes + count;
+      const auto exact = snapshot_wire::kFixedPayloadBytes +
+                         count * snapshot_wire::kPermissionRowBytes;
       bytes.resize(exact == snapshot_wire::kMaximumPayloadBytes ? exact - 1
                                                                 : exact + 1,
                    std::byte{1});
@@ -783,11 +826,14 @@ void permission_snapshot_test() {
     }
     case 5: {
       const auto count = static_cast<std::uint16_t>((random % 256U) + 1U);
-      bytes.resize(snapshot_wire::kFixedPayloadBytes + count, std::byte{1});
+      bytes.resize(snapshot_wire::kFixedPayloadBytes +
+                       count * snapshot_wire::kPermissionRowBytes,
+                   std::byte{1});
       bytes[66] = static_cast<std::byte>(count >> 8U);
       bytes[67] = static_cast<std::byte>(count);
       random = random * 1664525U + 1013904223U;
-      bytes[snapshot_wire::kFixedPayloadBytes + (random % count)] =
+      bytes[snapshot_wire::kFixedPayloadBytes +
+            (random % count) * snapshot_wire::kPermissionRowBytes] =
           static_cast<std::byte>((random & 1U) == 0 ? 0U : 0xffU);
       verifies(bytes, false, "invalid state mutation was accepted");
       break;

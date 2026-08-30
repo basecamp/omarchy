@@ -12,11 +12,13 @@ namespace omarchy::plugin::wire::permission_snapshot {
 inline constexpr std::uint16_t kCodecVersion = 1;
 inline constexpr std::size_t kManifestRequestFingerprintBytes = 64;
 inline constexpr std::size_t kMaximumManifestRequests = 256;
+inline constexpr std::size_t kPermissionRowBytes =
+    sizeof(std::uint8_t) + sizeof(std::uint16_t);
 inline constexpr std::size_t kFixedPayloadBytes =
     sizeof(std::uint16_t) + kManifestRequestFingerprintBytes +
     sizeof(std::uint16_t);
 inline constexpr std::size_t kMaximumPayloadBytes =
-    kFixedPayloadBytes + kMaximumManifestRequests;
+    kFixedPayloadBytes + kMaximumManifestRequests * kPermissionRowBytes;
 
 // These values are the complete wire state space. They intentionally do not
 // depend on the host policy implementation's enum representation.
@@ -26,6 +28,15 @@ enum class GrantState : std::uint8_t {
   revoked = 3,
 };
 
+struct PermissionRow {
+  GrantState state = GrantState::denied;
+  // Bits are indexed by the manifest request's canonical operation order.
+  // Meaning and excess-bit validation belong to the manifest-aware endpoint.
+  std::uint16_t operation_mask = 0;
+
+  bool operator==(const PermissionRow &) const = default;
+};
+
 struct PermissionSnapshot {
   std::string manifest_request_fingerprint;
 
@@ -33,7 +44,7 @@ struct PermissionSnapshot {
   // tuple used by requested_capability_fingerprint(): capability, required,
   // canonical scope, definition generation, definition digest, and sorted
   // operations. Manifest array order therefore cannot change this mapping.
-  std::vector<GrantState> states;
+  std::vector<PermissionRow> permissions;
 
   bool operator==(const PermissionSnapshot &) const = default;
 };
