@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# omarchy:summary=Detect whether every display controller is an NVIDIA GPU.
+
+# Read the cached sysfs IDs rather than lspci, which reads PCI config space and
+# resumes runtime-suspended GPUs.
+pci_devices_path="${OMARCHY_PCI_DEVICES_PATH:-/sys/bus/pci/devices}"
+
+shopt -s nullglob
+
+nvidia_found=false
+
+for device in "$pci_devices_path"/*; do
+  [[ $(< "$device/class") == 0x03* ]] || continue
+
+  if [[ $(< "$device/vendor") == "0x10de" ]]; then
+    nvidia_found=true
+  else
+    exit 1
+  fi
+done
+
+[[ $nvidia_found == "true" ]]
