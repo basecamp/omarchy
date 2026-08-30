@@ -224,6 +224,35 @@ fi
 [[ ! -e $agent_log ]] || fail "Newsboat agent does not launch for a rejected URL"
 pass "Newsboat agent only accepts web articles"
 
+handoff_log="$test_tmp/handoff"
+export NEWSBOAT_HANDOFF_LOG="$handoff_log"
+write_mock setsid 'printf "<%s>\n" "$@" >"$NEWSBOAT_HANDOFF_LOG"'
+
+"$ROOT/bin/omarchy-newsboat-handoff" article \
+  'https://example.test/article?q=$(touch /tmp/nope)' \
+  'A title; still data' \
+  'https://example.test/feed'
+grep -Fxq '<-f>' "$handoff_log" || fail "Newsboat handoff creates a detached session"
+grep -Fxq '<omarchy-agent-newsboat>' "$handoff_log" || fail "Newsboat article handoff selects the article agent"
+grep -Fxq '<https://example.test/article?q=$(touch /tmp/nope)>' "$handoff_log" || fail "Newsboat handoff preserves URL data"
+grep -Fxq '<A title; still data>' "$handoff_log" || fail "Newsboat handoff preserves title data"
+
+"$ROOT/bin/omarchy-newsboat-handoff" brief
+grep -Fxq '<omarchy-newsboat-brief>' "$handoff_log" || fail "Newsboat brief handoff selects the edition briefing"
+grep -Fxq '<--from-newsboat>' "$handoff_log" || fail "Newsboat brief handoff identifies its caller"
+
+"$ROOT/bin/omarchy-newsboat-handoff" scout \
+  'https://example.test/article' 'A title' 'https://example.test/feed'
+grep -Fxq '<omarchy-newsboat-scout>' "$handoff_log" || fail "Newsboat scout handoff selects Feed Scout"
+grep -Fxq '<--from-newsboat>' "$handoff_log" || fail "Newsboat scout handoff identifies its caller"
+
+: >"$handoff_log"
+if "$ROOT/bin/omarchy-newsboat-handoff" unknown >/dev/null 2>&1; then
+  fail "Newsboat handoff rejects unknown actions"
+fi
+[[ ! -s $handoff_log ]] || fail "Newsboat handoff launches nothing for an unknown action"
+pass "Newsboat agent actions detach safely from the reader"
+
 newsboat_log="$test_tmp/newsboat-command"
 editor_log="$test_tmp/editor"
 export NEWSBOAT_TEST_NEWSBOAT_LOG="$newsboat_log"
@@ -379,5 +408,5 @@ unset NEWSBOAT_TEST_LN_RACE_TARGET
 grep -Fq 'include "~/.config/newsboat/omarchy.conf"' "$ROOT/default/newsboat/config" || fail "Newsboat user config includes the managed layer"
 grep -Fq 'browser "omarchy-launch-browser %u"' "$ROOT/default/newsboat/omarchy.conf" || fail "Newsboat opens normal links with the Omarchy browser"
 grep -Fq 'bind r feedlist reload-urls; reload-all -- "Refresh subscriptions and feeds"' "$ROOT/default/newsboat/omarchy.conf" || fail "Newsboat refreshes subscriptions before collecting feeds"
-grep -Fq 'macro a set browser "omarchy-agent-newsboat %u %T %F"' "$ROOT/default/newsboat/omarchy.conf" || fail "Newsboat exposes the explicit agent macro"
+grep -Fq 'macro a set browser "omarchy-newsboat-handoff article %u %T %F"' "$ROOT/default/newsboat/omarchy.conf" || fail "Newsboat exposes the non-blocking article agent macro"
 pass "Newsboat defaults integrate browser and agent actions"
