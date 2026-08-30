@@ -5,6 +5,7 @@
 
 #include <fcntl.h>
 #include <poll.h>
+#include <sys/epoll.h>
 #include <sys/syscall.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -590,6 +591,24 @@ void pidfd_priority_test(LaunchFixture &fixture) {
           "pidfd-priority worker did not clean up exactly once");
 }
 
+void readiness_control_failure_test(LaunchFixture &fixture) {
+  auto scope = std::make_shared<FakeScope>();
+  auto supervisor =
+      launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH, PROBE_PATH, scope);
+  auto launched = supervisor.launch(fixture.request());
+  require(static_cast<bool>(launched),
+          "readiness-control failure worker did not launch");
+  const int borrowed_readiness = launched.worker->readiness_fd();
+  require(borrowed_readiness >= 0 && close(borrowed_readiness) == 0,
+          "cannot inject aggregate epoll control failure");
+  require(!launched.worker->set_readiness_interests(
+              {.read = launcher::EndpointMask::all,
+               .write = launcher::EndpointMask::broker}) &&
+              !launched.worker->alive() && launched.worker->terminate(2s) &&
+              scope->remove_count == 1,
+          "epoll control failure retained partial transport authority");
+}
+
 void contract_test() {
   pidfd_reap_state_test();
   auto scope = std::make_shared<FakeScope>();
@@ -658,6 +677,7 @@ void contract_test() {
 
   owned_descriptor_transport_test(fixture);
   pidfd_priority_test(fixture);
+  readiness_control_failure_test(fixture);
   deadline_and_async_cleanup_test(fixture);
   reaper_wake_and_cleanup_deadline_test();
   reaper_capacity_and_startup_test(fixture);
@@ -692,6 +712,50 @@ void malicious_test() {
   require(static_cast<bool>(render) &&
               render.role == launcher::EndpointRole::render,
           "disabled broker lane starved an allowed render packet");
+
+  require(launched.worker->set_readiness_interests(
+              {.read = allowed, .write = launcher::EndpointMask::broker}),
+          "cannot arm broker write readiness independently of reads");
+  epoll_event ready{};
+  require(epoll_wait(launched.worker->readiness_fd(), &ready, 1, 1000) == 1 &&
+              ready.data.u64 == 1 && (ready.events & EPOLLOUT) != 0 &&
+              (ready.events & EPOLLIN) == 0,
+          "masked broker read did not expose only its requested write wake");
+  require(launched.worker->set_readiness_interests(
+              {.read = allowed, .write = launcher::EndpointMask::control}),
+          "cannot update aggregate write readiness");
+  ready = {};
+  require(epoll_wait(launched.worker->readiness_fd(), &ready, 1, 1000) == 1 &&
+              ready.data.u64 == 0 && (ready.events & EPOLLOUT) != 0,
+          "readiness update kept the prior writable lane armed");
+  require(launched.worker->set_readiness_interests(
+              {.read = allowed, .write = launcher::EndpointMask::none}),
+          "cannot disarm aggregate write readiness");
+  require(launched.worker
+                  ->receive_any(
+                      launcher::PacketSizeLimit{0},
+                      std::chrono::steady_clock::now(), allowed)
+                  .failure == launcher::ReceiveFailure::invalid_role &&
+              launched.worker
+                      ->receive_any(
+                          launcher::PacketSizeLimit{
+                              launcher::kTransportPacketHardLimit + 1},
+                          std::chrono::steady_clock::now(), allowed)
+                      .failure == launcher::ReceiveFailure::invalid_role &&
+              launched.worker
+                      ->receive_any(launcher::PacketSizeLimit{sizeof(Claim)},
+                                    std::chrono::steady_clock::now(),
+                                    launcher::EndpointMask::broker)
+                      .failure == launcher::ReceiveFailure::invalid_role &&
+              launched.worker
+                      ->receive_any(launcher::PacketSizeLimit{sizeof(Claim)},
+                                    std::chrono::steady_clock::now())
+                      .failure == launcher::ReceiveFailure::timeout &&
+              launched.worker
+                      ->receive_any(0, std::chrono::steady_clock::now(),
+                                    launcher::EndpointMask::broker)
+                      .failure == launcher::ReceiveFailure::invalid_role,
+          "invalid or narrowed receive changed sticky read interests");
   const auto masked_legacy = launched.worker->receive(
       launcher::EndpointRole::broker, sizeof(Claim),
       std::chrono::steady_clock::now() + 10ms);
@@ -717,6 +781,50 @@ void malicious_test() {
   require(static_cast<bool>(maximum_broker) &&
               maximum_broker.payload.size() == 40 + 65536,
           "legal maximum broker envelope was rejected by the raw channel");
+  constexpr std::size_t v1_broker_maximum = 40 + 65536;
+  constexpr std::size_t v2_broker_maximum = 48 + 65536;
+  require(launched.worker
+                  ->receive(launcher::EndpointRole::broker,
+                            launcher::PacketSizeLimit{v2_broker_maximum},
+                            std::chrono::steady_clock::now())
+                  .failure == launcher::ReceiveFailure::timeout &&
+              launched.worker
+                      ->receive(
+                          launcher::EndpointRole::broker,
+                          launcher::PacketSizeLimit{v2_broker_maximum + 1},
+                          std::chrono::steady_clock::now())
+                      .failure == launcher::ReceiveFailure::invalid_role,
+          "canonical receive did not accept v2 maximum and reject +1");
+  std::vector<std::byte> v1_packet(v1_broker_maximum, std::byte{0x31});
+  std::vector<std::byte> v2_packet(v2_broker_maximum, std::byte{0x32});
+  std::vector<std::byte> v2_oversized(v2_broker_maximum + 1,
+                                      std::byte{0x33});
+  require(launched.worker->try_send(launcher::EndpointRole::broker,
+                                    v1_packet) ==
+                  launcher::SendStatus::complete &&
+              launched.worker->try_send(
+                  launcher::EndpointRole::broker, v2_packet,
+                  launcher::PacketSizeLimit{v2_broker_maximum}) ==
+                  launcher::SendStatus::complete,
+          "exact v1/v2 transport packet maxima were rejected");
+  require(launched.worker->try_send(
+              launcher::EndpointRole::broker,
+              std::span(v1_packet).first(v1_broker_maximum),
+              launcher::PacketSizeLimit{v1_broker_maximum - 1}) ==
+                  launcher::SendStatus::fatal &&
+              launched.worker->try_send(
+                  launcher::EndpointRole::broker,
+                  std::span(v2_packet).first(v1_broker_maximum + 1)) ==
+                  launcher::SendStatus::fatal &&
+              launched.worker->try_send(
+                  launcher::EndpointRole::broker, v2_oversized,
+                  launcher::PacketSizeLimit{v2_broker_maximum}) ==
+                  launcher::SendStatus::fatal &&
+              launched.worker->try_send(
+                  launcher::EndpointRole::broker, std::span(v1_packet).first(1),
+                  launcher::PacketSizeLimit{v2_broker_maximum + 1}) ==
+                  launcher::SendStatus::fatal,
+          "packet-limit +1 input escaped v1/v2 transport bounds");
   const std::array acknowledgement{std::byte{1}};
   support::UniqueFd passed(open("/dev/null", O_RDONLY | O_CLOEXEC));
   const std::array one{passed.get()};
@@ -752,8 +860,34 @@ void malicious_test() {
   const auto report = decode<DescriptorReport>(descriptor_report.payload);
   require(report.count == 1 && report.close_on_exec == 1,
           "worker did not receive exactly one close-on-exec descriptor");
+  require(launched.worker->set_readiness_interests(
+              {.read = launcher::EndpointMask::none,
+               .write = launcher::EndpointMask::none}),
+          "cannot disarm all endpoint readiness");
+  pollfd exit_readiness{.fd = launched.worker->readiness_fd(),
+                        .events = POLLIN,
+                        .revents = 0};
+  require(poll(&exit_readiness, 1, 2000) == 1 &&
+              (exit_readiness.revents & POLLIN) != 0 &&
+              launched.worker
+                      ->receive_any(
+                          launcher::PacketSizeLimit{1},
+                          std::chrono::steady_clock::now() + 2s,
+                          launcher::EndpointMask::none)
+                      .failure == launcher::ReceiveFailure::worker_exited,
+          "endpoint disarm also disabled authoritative pidfd readiness");
 
-  require(launched.worker->terminate() && scope->remove_count == 1,
+  launcher::Worker active_worker(std::move(*launched.worker));
+  require(launched.worker
+                  ->receive_any(launcher::PacketSizeLimit{1},
+                                std::chrono::steady_clock::now())
+                  .failure == launcher::ReceiveFailure::invalid_role &&
+              launched.worker->try_send(launcher::EndpointRole::control,
+                                        acknowledgement,
+                                        launcher::PacketSizeLimit{1}) ==
+                  launcher::SendStatus::peer_closed,
+          "moved-from worker retained transport authority");
+  require(active_worker.terminate() && scope->remove_count == 1,
           "bounded normal teardown failed");
 }
 

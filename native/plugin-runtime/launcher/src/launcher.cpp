@@ -577,6 +577,35 @@ namespace {
   const auto bits = static_cast<std::uint8_t>(mask);
   return (bits & (1U << role_index(role))) != 0;
 }
+
+[[nodiscard]] bool valid_mask(EndpointMask mask) noexcept {
+  return (static_cast<std::uint8_t>(mask) &
+          ~static_cast<std::uint8_t>(EndpointMask::all)) == 0;
+}
+
+[[nodiscard]] bool mask_is_subset(EndpointMask subset,
+                                  EndpointMask superset) noexcept {
+  const auto subset_bits = static_cast<std::uint8_t>(subset);
+  const auto superset_bits = static_cast<std::uint8_t>(superset);
+  return (subset_bits & ~superset_bits) == 0;
+}
+
+[[nodiscard]] bool valid_packet_limit(PacketSizeLimit limit) noexcept {
+  return limit.bytes > 0 && limit.bytes <= kTransportPacketHardLimit;
+}
+
+[[nodiscard]] std::size_t v1_packet_limit(EndpointRole role) noexcept {
+  using WireRole = omarchy::plugin::wire::EndpointRole;
+  WireRole wire_role{};
+  switch (role) {
+  case EndpointRole::control: wire_role = WireRole::control; break;
+  case EndpointRole::broker: wire_role = WireRole::broker; break;
+  case EndpointRole::render: wire_role = WireRole::render; break;
+  default: return 0;
+  }
+  return omarchy::plugin::wire::kHeaderSizeV1 +
+         omarchy::plugin::wire::payload_cap(wire_role);
+}
 } // namespace
 
 struct Worker::Impl {
@@ -592,7 +621,7 @@ struct Worker::Impl {
   TerminationState termination;
   std::shared_ptr<ReapCompletion> completion;
   std::size_t next_receive_lane = 0;
-  EndpointMask receive_mask = EndpointMask::all;
+  ReadinessInterests readiness_interests{};
 
   [[nodiscard]] int channel(EndpointRole role) const {
     switch (role) {
@@ -610,40 +639,37 @@ struct Worker::Impl {
   receive(std::span<const EndpointRole> roles, std::size_t maximum_payload,
           Deadline deadline, bool fair);
 
-  [[nodiscard]] bool set_receive_mask(EndpointMask allowed) noexcept {
-    const auto raw = static_cast<std::uint8_t>(allowed);
-    if (!readiness || (raw & ~static_cast<std::uint8_t>(EndpointMask::all)) != 0)
+  [[nodiscard]] bool
+  set_readiness_interests(ReadinessInterests requested) noexcept {
+    if (!readiness || !valid_mask(requested.read) ||
+        !valid_mask(requested.write))
       return false;
-    struct Change {
-      std::size_t index;
-      bool added;
+    const auto events_for = [](ReadinessInterests interests,
+                               EndpointRole role) {
+      std::uint32_t events = 0;
+      if (mask_contains(interests.read, role)) events |= EPOLLIN;
+      if (mask_contains(interests.write, role)) events |= EPOLLOUT;
+      if (events != 0) events |= EPOLLHUP | EPOLLERR;
+      return events;
     };
-    std::array<Change, 3> changes{};
-    std::size_t change_count = 0;
     for (std::size_t index = 0; index < channels.size(); ++index) {
       const auto role = static_cast<EndpointRole>(index);
-      const bool was_armed = mask_contains(receive_mask, role);
-      const bool should_arm = mask_contains(allowed, role);
-      if (was_armed == should_arm) continue;
-      epoll_event event{.events = EPOLLIN | EPOLLHUP | EPOLLERR,
-                        .data = {.u64 = index}};
-      const int operation = should_arm ? EPOLL_CTL_ADD : EPOLL_CTL_DEL;
+      const std::uint32_t old_events = events_for(readiness_interests, role);
+      const std::uint32_t new_events = events_for(requested, role);
+      if (old_events == new_events) continue;
+      epoll_event event{.events = new_events, .data = {.u64 = index}};
+      const int operation = old_events == 0   ? EPOLL_CTL_ADD
+                            : new_events == 0 ? EPOLL_CTL_DEL
+                                              : EPOLL_CTL_MOD;
       if (epoll_ctl(readiness.get(), operation, channels[index].get(),
-                    should_arm ? &event : nullptr) < 0) {
-        while (change_count > 0) {
-          const Change change = changes[--change_count];
-          epoll_event rollback{
-              .events = EPOLLIN | EPOLLHUP | EPOLLERR,
-              .data = {.u64 = change.index}};
-          static_cast<void>(epoll_ctl(
-              readiness.get(), change.added ? EPOLL_CTL_DEL : EPOLL_CTL_ADD,
-              channels[change.index].get(), change.added ? nullptr : &rollback));
-        }
+                    new_events == 0 ? nullptr : &event) < 0) {
+        // A partial epoll update cannot be rolled back reliably. Drop all
+        // process and channel authority rather than retain divergent state.
+        schedule_termination(false);
         return false;
       }
-      changes[change_count++] = {.index = index, .added = should_arm};
     }
-    receive_mask = allowed;
+    readiness_interests = requested;
     return true;
   }
 
@@ -691,12 +717,9 @@ ReceivedMessage Worker::Impl::receive(std::span<const EndpointRole> roles,
                                       std::size_t maximum_payload,
                                       Deadline deadline, bool fair) {
   ReceivedMessage output;
-  constexpr std::size_t maximum_datagram =
-      omarchy::plugin::wire::kHeaderSize +
-      omarchy::plugin::wire::payload_cap(
-          omarchy::plugin::wire::EndpointRole::broker);
   if (!accepting || roles.size() > channels.size() ||
-      maximum_payload == 0 || maximum_payload > maximum_datagram) {
+      maximum_payload == 0 ||
+      maximum_payload > kTransportPacketHardLimit) {
     output.failure = ReceiveFailure::invalid_role;
     return output;
   }
@@ -858,10 +881,11 @@ ReceivedMessage Worker::Impl::receive(std::span<const EndpointRole> roles,
   return output;
 }
 
-ReceivedMessage Worker::receive(EndpointRole role, std::size_t maximum_payload,
+ReceivedMessage Worker::receive(EndpointRole role,
+                                PacketSizeLimit maximum_packet,
                                 Deadline deadline) {
   if (!implementation_ ||
-      !mask_contains(implementation_->receive_mask, role)) {
+      !mask_contains(implementation_->readiness_interests.read, role)) {
     return {.payload = {},
             .descriptors = {},
             .role = role,
@@ -869,30 +893,102 @@ ReceivedMessage Worker::receive(EndpointRole role, std::size_t maximum_payload,
             .failure = ReceiveFailure::invalid_role};
   }
   const std::array roles = {role};
-  return implementation_->receive(roles, maximum_payload, deadline, false);
+  return implementation_->receive(roles, maximum_packet.bytes, deadline,
+                                  false);
 }
 
-ReceivedMessage Worker::receive_any(std::size_t maximum_payload,
+ReceivedMessage Worker::receive_any(PacketSizeLimit maximum_packet,
                                     Deadline deadline) {
-  return receive_any(maximum_payload, deadline, EndpointMask::all);
-}
-
-ReceivedMessage Worker::receive_any(std::size_t maximum_payload,
-                                    Deadline deadline, EndpointMask allowed) {
-  std::array<EndpointRole, 3> roles{};
-  std::size_t count = 0;
-  for (const EndpointRole role : {EndpointRole::control, EndpointRole::broker,
-                                  EndpointRole::render}) {
-    if (mask_contains(allowed, role)) roles[count++] = role;
-  }
-  if (!implementation_->set_receive_mask(allowed))
+  if (!implementation_)
     return {.payload = {},
             .descriptors = {},
             .role = EndpointRole::control,
             .status = ReceiveStatus::fatal,
             .failure = ReceiveFailure::invalid_role};
+  return receive_any(maximum_packet, deadline,
+                     implementation_->readiness_interests.read);
+}
+
+ReceivedMessage Worker::receive_any(PacketSizeLimit maximum_packet,
+                                    Deadline deadline,
+                                    EndpointMask allowed_reads) {
+  if (!implementation_)
+    return {.payload = {},
+            .descriptors = {},
+            .role = EndpointRole::control,
+            .status = ReceiveStatus::fatal,
+            .failure = ReceiveFailure::invalid_role};
+  if (!valid_packet_limit(maximum_packet) || !valid_mask(allowed_reads) ||
+      !mask_is_subset(allowed_reads,
+                      implementation_->readiness_interests.read))
+    return {.payload = {},
+            .descriptors = {},
+            .role = EndpointRole::control,
+            .status = ReceiveStatus::fatal,
+            .failure = ReceiveFailure::invalid_role};
+  std::array<EndpointRole, 3> roles{};
+  std::size_t count = 0;
+  for (const EndpointRole role : {EndpointRole::control, EndpointRole::broker,
+                                  EndpointRole::render}) {
+    if (mask_contains(allowed_reads, role)) roles[count++] = role;
+  }
   return implementation_->receive(std::span(roles).first(count),
-                                  maximum_payload, deadline, true);
+                                  maximum_packet.bytes, deadline, true);
+}
+
+ReceivedMessage Worker::receive(EndpointRole role, std::size_t maximum_payload,
+                                Deadline deadline) {
+  if (maximum_payload > v1_packet_limit(role))
+    return {.payload = {},
+            .descriptors = {},
+            .role = role,
+            .status = ReceiveStatus::fatal,
+            .failure = ReceiveFailure::invalid_role};
+  return receive(role, PacketSizeLimit{maximum_payload}, deadline);
+}
+
+ReceivedMessage Worker::receive_any(std::size_t maximum_payload,
+                                    Deadline deadline) {
+  constexpr std::size_t maximum_v1_packet =
+      omarchy::plugin::wire::kHeaderSizeV1 +
+      omarchy::plugin::wire::payload_cap(
+          omarchy::plugin::wire::EndpointRole::broker);
+  if (maximum_payload == 0 || maximum_payload > maximum_v1_packet)
+    return {.payload = {},
+            .descriptors = {},
+            .role = EndpointRole::control,
+            .status = ReceiveStatus::fatal,
+            .failure = ReceiveFailure::invalid_role};
+  return receive_any(maximum_payload, deadline, EndpointMask::all);
+}
+
+ReceivedMessage Worker::receive_any(std::size_t maximum_payload,
+                                    Deadline deadline, EndpointMask allowed) {
+  constexpr std::size_t maximum_v1_packet =
+      omarchy::plugin::wire::kHeaderSizeV1 +
+      omarchy::plugin::wire::payload_cap(
+          omarchy::plugin::wire::EndpointRole::broker);
+  if (maximum_payload == 0 || maximum_payload > maximum_v1_packet)
+    return {.payload = {},
+            .descriptors = {},
+            .role = EndpointRole::control,
+            .status = ReceiveStatus::fatal,
+            .failure = ReceiveFailure::invalid_role};
+  if (!implementation_ || !valid_mask(allowed))
+    return {.payload = {},
+            .descriptors = {},
+            .role = EndpointRole::control,
+            .status = ReceiveStatus::fatal,
+            .failure = ReceiveFailure::invalid_role};
+  ReadinessInterests interests = implementation_->readiness_interests;
+  interests.read = allowed;
+  if (!implementation_->set_readiness_interests(interests))
+    return {.payload = {},
+            .descriptors = {},
+            .role = EndpointRole::control,
+            .status = ReceiveStatus::fatal,
+            .failure = ReceiveFailure::invalid_role};
+  return receive_any(PacketSizeLimit{maximum_payload}, deadline, allowed);
 }
 
 ReceivedMessage Worker::receive(EndpointRole role, std::size_t maximum_payload,
@@ -909,27 +1005,13 @@ ReceivedMessage Worker::receive(EndpointRole role, std::size_t maximum_payload,
 
 SendStatus Worker::try_send(EndpointRole role,
                             std::span<const std::byte> payload,
+                            PacketSizeLimit maximum_packet,
                             std::span<const int> descriptors) noexcept {
+  if (!implementation_) return SendStatus::peer_closed;
   const int endpoint = implementation_->channel(role);
-  std::size_t maximum_datagram = 0;
-  switch (role) {
-  case EndpointRole::control:
-    maximum_datagram = omarchy::plugin::wire::kHeaderSize +
-                       omarchy::plugin::wire::payload_cap(
-                           omarchy::plugin::wire::EndpointRole::control);
-    break;
-  case EndpointRole::broker:
-    maximum_datagram = omarchy::plugin::wire::kHeaderSize +
-                       omarchy::plugin::wire::payload_cap(
-                           omarchy::plugin::wire::EndpointRole::broker);
-    break;
-  case EndpointRole::render:
-    maximum_datagram = omarchy::plugin::wire::kHeaderSize +
-                       omarchy::plugin::wire::payload_cap(
-                           omarchy::plugin::wire::EndpointRole::render);
-    break;
-  }
-  if (payload.empty() || payload.size() > maximum_datagram ||
+  if (payload.empty() || maximum_packet.bytes == 0 ||
+      maximum_packet.bytes > kTransportPacketHardLimit ||
+      payload.size() > maximum_packet.bytes ||
       descriptors.size() > 16 || endpoint < 0) {
     return SendStatus::fatal;
   }
@@ -969,8 +1051,28 @@ SendStatus Worker::try_send(EndpointRole role,
   return SendStatus::fatal;
 }
 
+SendStatus Worker::try_send(EndpointRole role,
+                            std::span<const std::byte> payload,
+                            std::span<const int> descriptors) noexcept {
+  return try_send(role, payload, PacketSizeLimit{v1_packet_limit(role)},
+                  descriptors);
+}
+
+bool Worker::send(EndpointRole role, std::span<const std::byte> payload,
+                  PacketSizeLimit maximum_packet) {
+  return try_send(role, payload, maximum_packet) == SendStatus::complete;
+}
+
 bool Worker::send(EndpointRole role, std::span<const std::byte> payload) {
   return try_send(role, payload) == SendStatus::complete;
+}
+
+bool Worker::send_with_descriptors(EndpointRole role,
+                                   std::span<const std::byte> payload,
+                                   PacketSizeLimit maximum_packet,
+                                   std::span<const int> descriptors) {
+  return try_send(role, payload, maximum_packet, descriptors) ==
+         SendStatus::complete;
 }
 
 bool Worker::send_with_descriptors(EndpointRole role,
@@ -989,7 +1091,15 @@ int Worker::readiness_fd() const noexcept {
 }
 
 bool Worker::set_receive_mask(EndpointMask allowed) noexcept {
-  return implementation_ && implementation_->set_receive_mask(allowed);
+  if (!implementation_) return false;
+  ReadinessInterests interests = implementation_->readiness_interests;
+  interests.read = allowed;
+  return implementation_->set_readiness_interests(interests);
+}
+
+bool Worker::set_readiness_interests(ReadinessInterests interests) noexcept {
+  return implementation_ &&
+         implementation_->set_readiness_interests(interests);
 }
 
 std::string Worker::take_standard_error() {

@@ -30,6 +30,19 @@ enum class EndpointMask : std::uint8_t {
                                    static_cast<std::uint8_t>(right));
 }
 
+// The launcher transports opaque packets. Protocol code supplies the exact
+// bound it negotiated; this ceiling only bounds allocation and kernel I/O.
+inline constexpr std::size_t kTransportPacketHardLimit = 48U + 65536U;
+
+struct PacketSizeLimit {
+  std::size_t bytes = 0;
+};
+
+struct ReadinessInterests {
+  EndpointMask read = EndpointMask::all;
+  EndpointMask write = EndpointMask::none;
+};
+
 struct LaunchIdentity {
   std::string plugin_id;
   std::string revision_sha256;
@@ -155,6 +168,18 @@ public:
 
   [[nodiscard]] const LaunchIdentity &identity() const;
   [[nodiscard]] ReceivedMessage receive(EndpointRole role,
+                                        PacketSizeLimit maximum_packet,
+                                        Deadline deadline);
+  [[nodiscard]] ReceivedMessage receive_any(PacketSizeLimit maximum_packet,
+                                            Deadline deadline);
+  // Receives from a subset of the currently armed read interests without
+  // changing readiness configuration.
+  [[nodiscard]] ReceivedMessage receive_any(PacketSizeLimit maximum_packet,
+                                            Deadline deadline,
+                                            EndpointMask allowed_reads);
+  // v1 compatibility: maximum_payload is additionally bounded by that
+  // endpoint's v1 envelope maximum.
+  [[nodiscard]] ReceivedMessage receive(EndpointRole role,
                                         std::size_t maximum_payload,
                                         Deadline deadline);
   [[nodiscard]] ReceivedMessage receive_any(std::size_t maximum_payload,
@@ -170,19 +195,34 @@ public:
   // retains, duplicates, or closes none of the caller's descriptors.
   [[nodiscard]] SendStatus
   try_send(EndpointRole role, std::span<const std::byte> payload,
+           PacketSizeLimit maximum_packet,
+           std::span<const int> borrowed_descriptors = {}) noexcept;
+  // v1 compatibility: the role's v1 envelope maximum is used.
+  [[nodiscard]] SendStatus
+  try_send(EndpointRole role, std::span<const std::byte> payload,
            std::span<const int> borrowed_descriptors = {}) noexcept;
   [[nodiscard]] bool send(EndpointRole role,
+                          std::span<const std::byte> payload,
+                          PacketSizeLimit maximum_packet);
+  [[nodiscard]] bool send(EndpointRole role,
                           std::span<const std::byte> payload);
+  [[nodiscard]] bool send_with_descriptors(EndpointRole role,
+                                           std::span<const std::byte> payload,
+                                           PacketSizeLimit maximum_packet,
+                                           std::span<const int> descriptors);
   [[nodiscard]] bool send_with_descriptors(EndpointRole role,
                                            std::span<const std::byte> payload,
                                            std::span<const int> descriptors);
   [[nodiscard]] bool alive() const;
   // Borrowed level-triggered aggregate readiness descriptor. It becomes
-  // readable for any endpoint packet or worker exit; receive_any remains the
-  // sole operation allowed to consume transport data.
+  // readable for armed endpoint events or worker exit. epoll_wait/poll may
+  // observe it, but receive_any remains the sole multi-lane transport reader.
   [[nodiscard]] int readiness_fd() const noexcept;
-  // Changes only which endpoint lanes feed readiness_fd; pidfd readiness is
-  // permanently armed. Disabled lanes remain unread and queued in the kernel.
+  // Arms explicit level-triggered read/write interests. pidfd readiness is
+  // permanently armed. receive_any consumes only lanes in interests.read.
+  [[nodiscard]] bool
+  set_readiness_interests(ReadinessInterests interests) noexcept;
+  // v1 compatibility: changes read interests while preserving write.
   [[nodiscard]] bool set_receive_mask(EndpointMask allowed) noexcept;
   [[nodiscard]] std::string take_standard_error();
   [[nodiscard]] bool terminate(Deadline deadline) noexcept;
