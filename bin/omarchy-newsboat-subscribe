@@ -46,7 +46,11 @@ result=$(omarchy-newsboat-add "$feed_url")
 if [[ $result == Already\ subscribed:* ]]; then
   omarchy-notification-send -g  "Already in your feeds" "${feed_name:-$feed_url}" --exec omarchy-newsboat-read
 else
-  omarchy-notification-send -g  "Subscribed to ${feed_name:-this feed}" "$feed_url" --exec omarchy-newsboat-read
+  notification_body="$feed_url"
+  if pgrep -u "$UID" -x newsboat >/dev/null 2>&1; then
+    notification_body="Press r in Feeds to show it."
+  fi
+  omarchy-notification-send -g  "Subscribed to ${feed_name:-this feed}" "$notification_body" --exec omarchy-newsboat-read
 fi
 
 printf '%s\n' "$feed_url"

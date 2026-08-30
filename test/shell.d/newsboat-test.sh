@@ -378,5 +378,6 @@ unset NEWSBOAT_TEST_LN_RACE_TARGET
 
 grep -Fq 'include "~/.config/newsboat/omarchy.conf"' "$ROOT/default/newsboat/config" || fail "Newsboat user config includes the managed layer"
 grep -Fq 'browser "omarchy-launch-browser %u"' "$ROOT/default/newsboat/omarchy.conf" || fail "Newsboat opens normal links with the Omarchy browser"
+grep -Fq 'bind r feedlist reload-urls; reload-all -- "Refresh subscriptions and feeds"' "$ROOT/default/newsboat/omarchy.conf" || fail "Newsboat refreshes subscriptions before collecting feeds"
 grep -Fq 'macro a set browser "omarchy-agent-newsboat %u %T %F"' "$ROOT/default/newsboat/omarchy.conf" || fail "Newsboat exposes the explicit agent macro"
 pass "Newsboat defaults integrate browser and agent actions"

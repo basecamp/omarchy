@@ -63,6 +63,7 @@ else
   printf "Added feed: %s\n" "$1"
 fi
 '
+write_mock pgrep '[[ ${FEEDS_TEST_NEWSBOAT_RUNNING:-0} == 1 ]]'
 write_mock wl-paste 'printf "%s" "${FEEDS_TEST_CLIPBOARD:-}"'
 write_mock curl '
 output=""
@@ -127,6 +128,13 @@ export FEEDS_TEST_CLIPBOARD='https://feeds.example.test/dispatch.xml'
 [[ $(<"$add_log") == 'https://feeds.example.test/dispatch.xml' ]] || fail "Feeds accepts a direct feed from the clipboard"
 grep -Fq 'Subscribed to Direct Dispatch' "$notification_log" || fail "direct feeds use their own title in confirmation"
 pass "Feeds recognizes a direct RSS or Atom document"
+
+: >"$notification_log"
+export FEEDS_TEST_NEWSBOAT_RUNNING=1
+"$ROOT/bin/omarchy-newsboat-subscribe" 'https://feeds.example.test/dispatch.xml' >/dev/null
+grep -Fq 'Press r in Feeds to show it.' "$notification_log" || fail "a running Feeds window gets live-refresh guidance"
+pass "browser subscriptions explain how to refresh a running Feeds window"
+unset FEEDS_TEST_NEWSBOAT_RUNNING
 
 : >"$notification_log"
 export FEEDS_TEST_ALREADY_SUBSCRIBED=1
