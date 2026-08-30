@@ -66,6 +66,20 @@ assertEqual(mixed.translate('Save', { domain: 'd' }), 'Zapisz', 'a fallback loca
 assertEqual(mixed.translatePlural(5, '%1 file', '%1 files', { domain: 'd', args: [5] }), '5 files', 'a fallback locale with another plural rule does not lend plural entries')
 assertEqual(mixed.snapshot().catalogs.d['%1 file'], undefined, 'the snapshot Bash reads stays consistent with its one header per domain')
 
+// Names that collide with Object.prototype: PluginRegistry accepts them as ids
+// (built with JSON.parse, as a real catalog is: in an object literal
+// `__proto__:` would set the prototype instead of creating a key)
+const proto = I18n.createRegistry()
+proto.setCatalogs('constructor',
+  JSON.parse('{"constructor": {"toString": "cadena", "__proto__": "proto", "Open": "Obre"}}'),
+  { links: JSON.parse('{"__proto__": "constructor"}') })
+assertEqual(proto.translate('Open', { domain: 'constructor' }), 'Obre', 'a plugin id of "constructor" gets a real catalog')
+assertEqual(proto.translate('toString', { domain: 'constructor' }), 'cadena', 'a source string of "toString" is an ordinary key')
+assertEqual(proto.translate('__proto__', { domain: 'constructor' }), 'proto', 'a source string of "__proto__" is an ordinary key')
+assertEqual(Object.prototype.toString.call({}), '[object Object]', 'Object.prototype is untouched')
+assertEqual(typeof ({}).constructor, 'function', 'Object.prototype.constructor is untouched')
+assertDeepEqual(proto.domains(), ['constructor'], 'the domain list is exactly what was registered')
+
 // Clone chain: own domain, then clonedFrom, then global
 const clone = I18n.createRegistry()
 clone.setCatalogs('lang.ca', {

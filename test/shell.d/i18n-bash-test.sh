@@ -118,6 +118,11 @@ LANG=yy_YY.UTF-8
 out=$(set -e; source "$helper"; omarchy_tn 3 "%1 item" "%1 items"; echo "|ok")
 check "a malformed plural rule does not exit a set -e caller" "many|ok" "$out"
 
+printf 'not json' >"$tmp/omarchy/i18n/zz.json"
+LANG=zz_ZZ.UTF-8
+out=$(set -e; source "$helper"; omarchy_t "Update now?"; omarchy_tn 3 "%1 item" "%1 items" 3; echo "|ok")
+check "a malformed cache gives English and does not exit a set -e caller" "Update now?3 items|ok" "$out"
+
 LANG=de_DE.UTF-8
 check "a locale with no cache returns the source" "Update now?" "$(omarchy_t "Update now?")"
 

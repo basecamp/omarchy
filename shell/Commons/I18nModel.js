@@ -196,9 +196,15 @@ function parsePluralForms(header) {
 // object; every other value is a string or an array of strings. Anything else
 // is dropped entry-by-entry so one bad line does not lose the whole file.
 
+// Dictionaries keyed by untrusted names — domains are plugin ids, keys are
+// source strings — must not inherit from Object.prototype: a plugin id of
+// "constructor" would otherwise resolve to an inherited function and skip
+// initialization, and a "__proto__" key would rewrite the map's prototype.
+function dict() { return Object.create(null) }
+
 function sanitizeCatalog(raw) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
-  var out = {}
+  var out = dict()
   for (var key in raw) {
     if (!Object.prototype.hasOwnProperty.call(raw, key)) continue
     var value = raw[key]
@@ -240,9 +246,9 @@ function headerPluralForms(catalog) {
 // are rare (login, plugin toggles), so simplicity wins over incrementality.
 
 function createRegistry() {
-  var owners = {}          // ownerId -> { catalogs, links, precedence, order }
+  var owners = dict()      // ownerId -> { catalogs, links, precedence, order }
   var nextOrder = 0
-  var state = { revision: 0, merged: {}, global: {}, parents: {}, plurals: {} }
+  var state = { revision: 0, merged: dict(), global: dict(), parents: dict(), plurals: dict() }
 
   // The startup cache is registered as an ordinary owner at the lowest
   // precedence so it can answer lookups for the frames before the real packs
@@ -261,19 +267,19 @@ function createRegistry() {
       return a.precedence !== b.precedence ? b.precedence - a.precedence : a.order - b.order
     })
 
-    var merged = {}
-    var parents = {}
+    var merged = dict()
+    var parents = dict()
     var domainOrder = []
     // A domain's plural rule is the winning owner's header. Owners fold in
     // ascending order of preference, so the last header written wins.
-    var rules = {}
+    var rules = dict()
     for (var h = 0; h < list.length; h++) {
       for (var hd in list[h].catalogs) rules[hd] = pluralRuleText(list[h].catalogs[hd])
     }
     for (var i = 0; i < list.length; i++) {
       var owner = list[i]
       for (var domain in owner.catalogs) {
-        if (!merged[domain]) { merged[domain] = {}; domainOrder.push(domain) }
+        if (!merged[domain]) { merged[domain] = dict(); domainOrder.push(domain) }
         var cat = owner.catalogs[domain]
         // A lower-preference owner may supply keys the winner lacks, but a
         // plural entry is only meaningful under the rule its forms were
@@ -290,15 +296,15 @@ function createRegistry() {
       for (var child in owner.links) parents[child] = owner.links[child]
     }
 
-    var plurals = {}
+    var plurals = dict()
     for (var d = 0; d < domainOrder.length; d++) {
       plurals[domainOrder[d]] = headerPluralForms(merged[domainOrder[d]])
     }
 
     // Global merge: a domain's ancestors are folded before it, so a clone's
     // translation shadows the original's for unbound callers.
-    var global = {}
-    var folded = {}
+    var global = dict()
+    var folded = dict()
     function fold(domain, depth) {
       if (folded[domain] || depth > 16) return
       folded[domain] = true
@@ -329,7 +335,7 @@ function createRegistry() {
   // Domain chain for a bound caller: the domain, then its parents.
   function chain(domain) {
     var out = []
-    var seen = {}
+    var seen = dict()
     var current = domain ? String(domain) : ""
     while (current && !seen[current] && out.length < 16) {
       seen[current] = true
@@ -384,15 +390,17 @@ function createRegistry() {
   //   options    { links: { child: parent }, precedence: number }
   function setCatalogs(ownerId, catalogs, options) {
     var opts = options || {}
-    var clean = {}
+    var clean = dict()
     var raw = catalogs && typeof catalogs === "object" ? catalogs : {}
     for (var domain in raw) {
+      if (!Object.prototype.hasOwnProperty.call(raw, domain)) continue
       var cat = sanitizeCatalog(raw[domain])
       if (cat) clean[String(domain)] = cat
     }
-    var links = {}
+    var links = dict()
     var rawLinks = opts.links && typeof opts.links === "object" ? opts.links : {}
     for (var child in rawLinks) {
+      if (!Object.prototype.hasOwnProperty.call(rawLinks, child)) continue
       if (typeof rawLinks[child] === "string" && rawLinks[child] && rawLinks[child] !== child) {
         links[String(child)] = rawLinks[child]
       }
@@ -426,9 +434,9 @@ function createRegistry() {
   function snapshot(options) {
     var exclude = options && options.exclude !== undefined ? options.exclude : CACHE_OWNER
     var view = computeState(ownerList(exclude))
-    var catalogs = {}
+    var catalogs = dict()
     for (var domain in view.merged) catalogs[domain] = view.merged[domain]
-    var links = {}
+    var links = dict()
     for (var child in view.parents) links[child] = view.parents[child]
     return { version: 1, catalogs: catalogs, links: links }
   }

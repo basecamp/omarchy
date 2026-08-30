@@ -70,12 +70,14 @@ omarchy_i18n_interpolate() {
 }
 
 # Raw catalog value for a key: a string, a JSON array (plural), or nothing.
+# A readable cache can still be malformed; jq's failure is turned into empty
+# output here so a `set -e` caller gets the English fallback, not an exit.
 omarchy_i18n_raw() {
   local key="$1" path
   path="$(omarchy_i18n_cache_path)"
   jq -r --arg d "$OMARCHY_I18N_DOMAIN" --arg k "$key" \
     '.catalogs[$d][$k] // empty | if type == "array" then tojson else . end' \
-    "$path" 2>/dev/null
+    "$path" 2>/dev/null || true
 }
 
 # The catalog's plural rule as a bash arithmetic expression, validated to a
@@ -86,7 +88,7 @@ omarchy_i18n_plural_index() {
   [[ $n =~ ^[0-9]+$ ]] || n=0
   path="$(omarchy_i18n_cache_path)"
   header="$(jq -r --arg d "$OMARCHY_I18N_DOMAIN" \
-    '.catalogs[$d][""]["plural-forms"] // empty' "$path" 2>/dev/null)"
+    '.catalogs[$d][""]["plural-forms"] // empty' "$path" 2>/dev/null || true)"
   rule="${header#*plural=}"
   rule="${rule%%;*}"
   # Fail closed: evaluate only when the whole rule matches the whitelist,
