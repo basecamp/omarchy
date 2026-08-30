@@ -25,7 +25,7 @@ struct AuthoritySlots {
 };
 
 struct AuthorityView {
-  AuthoritySlots slots;
+  AuthoritySlots authority_slots;
   std::optional<policy::GrantSnapshot> active;
 };
 
@@ -56,6 +56,12 @@ public:
   // Coherent review baseline: slots and active snapshot are read under one
   // mutex. A later mutation is rejected by publish_candidate's sequence CAS.
   [[nodiscard]] std::optional<AuthorityView> read_authority_view() const;
+  [[nodiscard]] std::optional<FilesystemIdentity> root_identity() const;
+  // Binds one not-yet-started product session to the exact durable active
+  // revision. Promotion revokes this shared state before replacing authority.
+  [[nodiscard]] bool bind_live_activation(
+      const permissions::ActivationBinding &binding,
+      const std::shared_ptr<LiveGenerationState> &live);
   [[nodiscard]] AuthorityMutationResult
   publish_candidate(const VerifiedRevision &verified,
                     const policy::GrantSnapshot &snapshot,
@@ -85,6 +91,7 @@ private:
   permissions::PluginId expected_plugin_;
   pid_t owner_pid_;
   mutable std::mutex mutation_mutex_;
+  std::weak_ptr<LiveGenerationState> bound_live_;
 };
 
 } // namespace omarchy::plugin_runtime::host_session

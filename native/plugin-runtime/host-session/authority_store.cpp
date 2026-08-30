@@ -551,7 +551,11 @@ AuthorityStore::AuthorityStore(
       expected_uid_(expected_uid), expected_plugin_(std::move(expected_plugin)),
       owner_pid_(::getpid()) {}
 
-AuthorityStore::~AuthorityStore() = default;
+AuthorityStore::~AuthorityStore() {
+  std::scoped_lock lock(mutation_mutex_);
+  if (auto live = bound_live_.lock())
+    live->revoke();
+}
 
 std::unique_ptr<AuthorityStore> AuthorityStore::open(
     int root_directory_fd, std::uint32_t expected_uid,
@@ -607,7 +611,37 @@ std::optional<AuthorityView> AuthorityStore::read_authority_view() const {
     if (!active || active->binding.plugin != expected_plugin_)
       return std::nullopt;
   }
-  return AuthorityView{.slots = *slots, .active = std::move(active)};
+  return AuthorityView{.authority_slots = *slots, .active = std::move(active)};
+}
+
+std::optional<FilesystemIdentity> AuthorityStore::root_identity() const {
+  std::scoped_lock lock(mutation_mutex_);
+  struct stat metadata {};
+  if (::getpid() != owner_pid_ || ::fstat(root_.get(), &metadata) < 0)
+    return std::nullopt;
+  return FilesystemIdentity{.device = static_cast<std::uint64_t>(metadata.st_dev),
+                            .inode = static_cast<std::uint64_t>(metadata.st_ino)};
+}
+
+bool AuthorityStore::bind_live_activation(
+    const permissions::ActivationBinding &binding,
+    const std::shared_ptr<LiveGenerationState> &live) {
+  std::scoped_lock lock(mutation_mutex_);
+  if (::getpid() != owner_pid_ || !live || !live->current(binding))
+    return false;
+  auto slots = read_slots_unlocked(root_.get(), expected_uid_);
+  if (!slots || !valid_slots(*slots) || !slots->active ||
+      slots->active->generation != binding.generation)
+    return false;
+  auto active = load_snapshot(root_.get(), expected_uid_, *slots->active);
+  if (!active || active->binding != binding)
+    return false;
+  if (auto previous = bound_live_.lock(); previous == live)
+    return true;
+  else if (previous)
+    previous->revoke();
+  bound_live_ = live;
+  return true;
 }
 
 AuthorityMutationResult AuthorityStore::replace_slots(AuthoritySlots slots) {
@@ -731,6 +765,9 @@ AuthorityMutationResult AuthorityStore::promote_candidate(
   }
   if (slots->sequence == UINT64_MAX)
     return AuthorityMutationResult::invalid;
+  if (auto live = bound_live_.lock())
+    live->revoke();
+  bound_live_.reset();
   const auto previous = *slots;
   slots->active = std::move(slots->candidate);
   slots->candidate.reset();

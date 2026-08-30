@@ -109,9 +109,9 @@ std::string review_fingerprint(const ConsentReview &review,
   field(bytes, policy_fingerprint);
   number(bytes, review.expected_sequence);
   number(bytes, review.generation);
-  if (view.slots.active) {
-    field(bytes, view.slots.active->snapshot_digest.view());
-    number(bytes, view.slots.active->generation);
+  if (view.authority_slots.active) {
+    field(bytes, view.authority_slots.active->snapshot_digest.view());
+    number(bytes, view.authority_slots.active->generation);
   } else {
     field(bytes, {});
   }
@@ -123,8 +123,8 @@ build_review(const AuthorityView &view, const VerifiedRevision &verified,
              const definitions::TrustedDefinitionRegistry &registry,
              definitions::DynamicScopeValidator validator) {
   try {
-    if (view.slots.candidate ||
-        view.slots.generation_high_watermark == UINT64_MAX ||
+    if (view.authority_slots.candidate ||
+        view.authority_slots.generation_high_watermark == UINT64_MAX ||
         verified.request_sha256 !=
             plugins::manifest::requested_capability_fingerprint(
                 verified.manifest.requests))
@@ -149,8 +149,9 @@ build_review(const AuthorityView &view, const VerifiedRevision &verified,
       return std::nullopt;
     ConsentReview review{.verified = verified,
                          .fingerprint = {},
-                         .expected_sequence = view.slots.sequence,
-                         .generation = view.slots.generation_high_watermark + 1,
+                         .expected_sequence = view.authority_slots.sequence,
+                         .generation =
+                             view.authority_slots.generation_high_watermark + 1,
                          .builtin_rows = {},
                          .dynamic_rows = {}};
 
@@ -336,7 +337,7 @@ ConsentResult publish_consent_review(
     const auto view = store.read_authority_view();
     if (!view)
       return ConsentResult::authority_error;
-    if (view->slots.sequence != review.expected_sequence)
+    if (view->authority_slots.sequence != review.expected_sequence)
       return ConsentResult::stale_authority;
     const auto exact =
         build_review(*view, review.verified, definitions, scope_validator);

@@ -246,6 +246,106 @@ void roundtrip_and_lifecycle() {
           "discarded generation was reused");
 }
 
+void live_activation_binding_and_revocation() {
+  Fixture fixture;
+  auto first = review(1);
+  require(fixture.store->publish_candidate(first.verified, first.snapshot, 0,
+                                            fixture.definitions, {}) ==
+                  host::AuthorityMutationResult::applied &&
+              fixture.store->promote_candidate(first.snapshot.binding, 1) ==
+                  host::AuthorityMutationResult::applied,
+          "live binding fixture activation failed");
+
+  auto live =
+      std::make_shared<host::LiveGenerationState>(first.snapshot.binding);
+  auto wrong_binding = first.snapshot.binding;
+  wrong_binding.revision = permissions::Digest(hex('f'));
+  auto wrong_live = std::make_shared<host::LiveGenerationState>(wrong_binding);
+  require(!fixture.store->bind_live_activation(first.snapshot.binding, {}),
+          "null live state was accepted");
+  require(!fixture.store->bind_live_activation(wrong_binding, wrong_live),
+          "non-active binding was accepted as live");
+  require(!fixture.store->bind_live_activation(first.snapshot.binding,
+                                                wrong_live),
+          "live state with a different binding was accepted");
+  require(fixture.store->bind_live_activation(first.snapshot.binding, live) &&
+              fixture.store->bind_live_activation(first.snapshot.binding,
+                                                  live) &&
+              live->current(first.snapshot.binding),
+          "same live pointer was not an idempotent exact binding");
+
+  auto replacement =
+      std::make_shared<host::LiveGenerationState>(first.snapshot.binding);
+  require(fixture.store->bind_live_activation(first.snapshot.binding,
+                                              replacement) &&
+              !live->current(first.snapshot.binding) &&
+              replacement->current(first.snapshot.binding),
+          "new live binding did not revoke the prior state");
+
+  auto second = review(2, 'b');
+  require(fixture.store->publish_candidate(second.verified, second.snapshot, 2,
+                                            fixture.definitions, {}) ==
+                  host::AuthorityMutationResult::applied &&
+              replacement->current(first.snapshot.binding),
+          "candidate publication revoked the active live state");
+  require(fixture.store->discard_candidate(second.snapshot.binding, 3) ==
+                  host::AuthorityMutationResult::applied &&
+              replacement->current(first.snapshot.binding),
+          "candidate discard revoked the active live state");
+
+  auto third = review(3, 'c');
+  require(fixture.store->publish_candidate(third.verified, third.snapshot, 4,
+                                            fixture.definitions, {}) ==
+              host::AuthorityMutationResult::applied,
+          "replacement candidate publication failed");
+  require(fixture.store->promote_candidate(third.snapshot.binding, 5) ==
+                  host::AuthorityMutationResult::applied &&
+              !replacement->current(first.snapshot.binding),
+          "promotion did not revoke the prior live activation");
+
+  auto promoted =
+      std::make_shared<host::LiveGenerationState>(third.snapshot.binding);
+  require(fixture.store->bind_live_activation(third.snapshot.binding,
+                                              promoted),
+          "promoted active binding was not accepted as live");
+  fixture.store.reset();
+  require(!promoted->current(third.snapshot.binding),
+          "authority store destruction did not revoke its live activation");
+}
+
+void promotion_revokes_before_failed_replacement() {
+  Fixture fixture;
+  auto first = review(1);
+  require(fixture.store->publish_candidate(first.verified, first.snapshot, 0,
+                                            fixture.definitions, {}) ==
+                  host::AuthorityMutationResult::applied &&
+              fixture.store->promote_candidate(first.snapshot.binding, 1) ==
+                  host::AuthorityMutationResult::applied,
+          "failed replacement fixture activation failed");
+  auto live =
+      std::make_shared<host::LiveGenerationState>(first.snapshot.binding);
+  require(fixture.store->bind_live_activation(first.snapshot.binding, live),
+          "failed replacement fixture live bind failed");
+  auto second = review(2, 'b');
+  require(fixture.store->publish_candidate(second.verified, second.snapshot, 2,
+                                            fixture.definitions, {}) ==
+              host::AuthorityMutationResult::applied,
+          "failed replacement fixture candidate publication failed");
+  require(::chmod(fixture.path.c_str(), 0500) == 0,
+          "authority root permission mutation failed");
+  const auto promoted =
+      fixture.store->promote_candidate(second.snapshot.binding, 3);
+  require(::chmod(fixture.path.c_str(), 0700) == 0,
+          "authority root permission restore failed");
+  require(promoted == host::AuthorityMutationResult::io_error &&
+              !live->current(first.snapshot.binding),
+          "failed durable replacement did not revoke live authority first");
+  const auto slots = fixture.store->read_slots();
+  require(slots && slots->active &&
+              slots->active->generation == first.snapshot.binding.generation,
+          "failed replacement changed the durable active authority");
+}
+
 void crash_orphan_retry_and_cleanup() {
   Fixture fixture;
   auto first = review(1);
@@ -302,7 +402,8 @@ void concurrency_fork_and_umask() {
   require(child >= 0, "fork failed");
   if (child == 0) {
     const bool rejected = !fixture.store->read_slots() &&
-                          !fixture.store->resolve(kPlugin, hex('a'), 1);
+                          !fixture.store->resolve(kPlugin, hex('a'), 1) &&
+                          !fixture.store->root_identity();
     ::_exit(rejected ? 0 : 1);
   }
   int status = 0;
@@ -463,6 +564,14 @@ void root_lock_and_slots_metadata() {
   fixture.store = host::AuthorityStore::open(
       fixture.root, ::getuid(), permissions::PluginId(kPlugin));
   require(fixture.store != nullptr, "primary store open failed");
+  struct stat root_metadata {};
+  const auto root_identity = fixture.store->root_identity();
+  require(::fstat(fixture.root, &root_metadata) == 0 && root_identity &&
+              root_identity->device ==
+                  static_cast<std::uint64_t>(root_metadata.st_dev) &&
+              root_identity->inode ==
+                  static_cast<std::uint64_t>(root_metadata.st_ino),
+          "authority store did not report its exact root identity");
   require(!host::AuthorityStore::open(
               fixture.root, ::getuid(), permissions::PluginId(kPlugin)),
           "second owner acquired nonblocking lifetime lock");
@@ -493,6 +602,8 @@ void root_lock_and_slots_metadata() {
 int main() {
   try {
     roundtrip_and_lifecycle();
+    live_activation_binding_and_revocation();
+    promotion_revokes_before_failed_replacement();
     crash_orphan_retry_and_cleanup();
     concurrency_fork_and_umask();
     required_denial_cannot_promote();
