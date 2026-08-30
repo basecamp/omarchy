@@ -513,8 +513,10 @@ void authority_stores_are_physically_isolated_per_plugin() {
                                               1) ==
                   host_session::AuthorityMutationResult::applied,
           "independent plugin authority snapshots did not activate");
-  require(first_store->resolve(first_plugin.view(), hex('a')) &&
-              second_store->resolve(second_plugin.view(), hex('b')),
+  require(first_store->resolve(first_plugin.view(), hex('a')).status ==
+                  host_session::GrantStatus::activatable &&
+              second_store->resolve(second_plugin.view(), hex('b')).status ==
+                  host_session::GrantStatus::activatable,
           "one plugin authority snapshot replaced another");
 
   auto replacement = review(first_plugin.view(), 2, 'c');
@@ -525,7 +527,8 @@ void authority_stores_are_physically_isolated_per_plugin() {
               first_store->discard_candidate(replacement.snapshot.binding,
                                              3) ==
                   host_session::AuthorityMutationResult::applied &&
-              second_store->resolve(second_plugin.view(), hex('b')),
+              second_store->resolve(second_plugin.view(), hex('b')).status ==
+                  host_session::GrantStatus::activatable,
           "one plugin candidate cleanup touched another plugin store");
   const auto first_view = first_store->read_authority_view();
   const auto second_view = second_store->read_authority_view();

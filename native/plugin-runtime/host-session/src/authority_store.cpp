@@ -1061,40 +1061,23 @@ AuthorityRevocationResult AuthorityStore::revoke_active(
   }
 }
 
-std::optional<policy::GrantSnapshot>
+GrantResolution
 AuthorityStore::resolve(std::string_view plugin_id,
                         std::string_view revision_sha256) const {
   std::scoped_lock lock(mutation_mutex_);
   if (::getpid() != owner_pid_ || poisoned_ || transitioning_)
-    return std::nullopt;
+    return {};
   auto slots = read_slots_unlocked(root_.get(), expected_uid_);
   if (!slots || !valid_slots(*slots) || plugin_id != expected_plugin_.view() ||
       !slots->active)
-    return std::nullopt;
+    return {};
   auto snapshot = load_snapshot(root_.get(), expected_uid_, *slots->active);
   if (!snapshot || snapshot->binding.plugin.view() != plugin_id ||
-      snapshot->binding.revision.view() != revision_sha256 ||
-      !activatable(*snapshot))
-    return std::nullopt;
-  return snapshot;
-}
-
-ActiveRevisionStatus AuthorityStore::active_revision_status(
-    std::string_view plugin_id, std::string_view revision_sha256) const {
-  std::scoped_lock lock(mutation_mutex_);
-  if (::getpid() != owner_pid_ || poisoned_ || transitioning_ ||
-      plugin_id != expected_plugin_.view())
-    return ActiveRevisionStatus::unavailable;
-  const auto slots = read_slots_unlocked(root_.get(), expected_uid_);
-  if (!slots || !valid_slots(*slots) || !slots->active)
-    return ActiveRevisionStatus::unavailable;
-  const auto snapshot =
-      load_snapshot(root_.get(), expected_uid_, *slots->active);
-  if (!snapshot || snapshot->binding.plugin.view() != plugin_id ||
       snapshot->binding.revision.view() != revision_sha256)
-    return ActiveRevisionStatus::unavailable;
-  return activatable(*snapshot) ? ActiveRevisionStatus::activatable
-                                : ActiveRevisionStatus::permission_disabled;
+    return {};
+  const auto status = activatable(*snapshot) ? GrantStatus::activatable
+                                              : GrantStatus::permission_disabled;
+  return {.snapshot = std::move(snapshot), .status = status};
 }
 
 } // namespace omarchy::plugin_runtime::host_session

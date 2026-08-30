@@ -108,6 +108,16 @@ void require(bool condition, std::string_view message) {
     throw std::runtime_error(std::string(message));
 }
 
+bool activatable(const host::GrantResolution &resolution) {
+  return resolution.snapshot.has_value() &&
+         resolution.status == host::GrantStatus::activatable;
+}
+
+bool unavailable(const host::GrantResolution &resolution) {
+  return !resolution.snapshot &&
+         resolution.status == host::GrantStatus::unavailable;
+}
+
 bool prepare_and_commit_live(
     host::AuthorityStore &store,
     const permissions::ActivationBinding &binding,
@@ -266,15 +276,17 @@ void roundtrip_and_lifecycle() {
   require(first_publish == host::AuthorityMutationResult::applied,
           "candidate publication failed: " +
               std::to_string(static_cast<int>(first_publish)));
-  require(!fixture.store->resolve(kPlugin, hex('a')),
+  require(unavailable(fixture.store->resolve(kPlugin, hex('a'))),
           "unpromoted candidate resolved as active authority");
   require(fixture.store->promote_candidate(first.snapshot.binding, 1) ==
               host::AuthorityMutationResult::applied,
           "candidate promotion failed");
   auto resolved = fixture.store->resolve(kPlugin, hex('a'));
-  require(resolved && resolved->binding == first.snapshot.binding,
+  require(activatable(resolved) &&
+              resolved.snapshot->binding == first.snapshot.binding,
           "active exact grant did not round trip");
-  require(!fixture.store->resolve("org.example.other", hex('a')),
+  require(unavailable(
+              fixture.store->resolve("org.example.other", hex('a'))),
           "store crossed its immutable plugin identity");
 
   auto second = review(2, 'b', false, permissions::GrantState::denied);
@@ -711,7 +723,7 @@ void promotion_revokes_before_failed_replacement() {
   require(promoted == host::AuthorityMutationResult::io_error &&
               !live->current(first.snapshot.binding) &&
               !fixture.store->read_slots() &&
-              !fixture.store->resolve(kPlugin, hex('a')),
+              unavailable(fixture.store->resolve(kPlugin, hex('a'))),
           "failed durable replacement did not revoke live authority first");
   fixture.store.reset();
   fixture.store = host::AuthorityStore::open(fixture.root, ::getuid(),
@@ -756,7 +768,8 @@ void exact_builtin_revoke_rebases_and_invalidates_candidate() {
               view->active->binding == *revoked.binding &&
           view->active->grants[0].state == permissions::GrantState::revoked &&
               view->active->grants[0].epoch == 3 &&
-              !fixture.store->resolve(kPlugin, hex('a')) &&
+              fixture.store->resolve(kPlugin, hex('a')).status ==
+                  host::GrantStatus::permission_disabled &&
               !fixture.store->prepare_live_activation(*revoked.binding,
                                                       revoked_live),
           "required revoked authority was not durable and nonactivatable");
@@ -783,9 +796,10 @@ void exact_builtin_revoke_rebases_and_invalidates_candidate() {
       *optional.store, optional_value.snapshot.grants[0].capability, 2);
   const auto resolved = optional.store->resolve(kPlugin, hex('a'));
   require(result.status == host::AuthorityMutationResult::applied &&
-              result.activatable && resolved &&
-              resolved->binding.generation == 2 &&
-              resolved->grants[0].state == permissions::GrantState::revoked,
+              result.activatable && activatable(resolved) &&
+              resolved.snapshot->binding.generation == 2 &&
+              resolved.snapshot->grants[0].state ==
+                  permissions::GrantState::revoked,
           "optional revoke did not remain activatable");
 }
 
@@ -851,7 +865,7 @@ void revoke_io_failures_poison_after_effect_fence() {
       result.status == host::AuthorityMutationResult::io_error &&
               !live->current(value.snapshot.binding) &&
               !fixture.store->read_slots() &&
-              !fixture.store->resolve(kPlugin, hex('a')) &&
+              unavailable(fixture.store->resolve(kPlugin, hex('a'))) &&
               !fixture.store->prepare_live_activation(value.snapshot.binding,
                                                       live) &&
           fixture.store->publish_candidate(value.verified, value.snapshot, 2,
@@ -889,7 +903,7 @@ void revoke_allocation_failure_poison_after_effect_fence() {
               result.status == host::AuthorityMutationResult::io_error &&
               !live->current(value.snapshot.binding) &&
               !fixture.store->read_slots() &&
-              !fixture.store->resolve(kPlugin, hex('a')) &&
+              unavailable(fixture.store->resolve(kPlugin, hex('a'))) &&
               !fixture.store->prepare_live_activation(value.snapshot.binding,
                                                       live) &&
           fixture.store->publish_candidate(value.verified, value.snapshot, 2,
@@ -955,7 +969,8 @@ void concurrency_fork_and_umask() {
   require(child >= 0, "fork failed");
   if (child == 0) {
     const bool rejected = !fixture.store->read_slots() &&
-                          !fixture.store->resolve(kPlugin, hex('a')) &&
+                          unavailable(
+                              fixture.store->resolve(kPlugin, hex('a'))) &&
                           !fixture.store->root_identity();
     ::_exit(rejected ? 0 : 1);
   }
@@ -1067,7 +1082,8 @@ void dynamic_completeness_and_restart() {
   fixture.store.reset();
   fixture.store = host::AuthorityStore::open(fixture.root, ::getuid(),
                                              permissions::PluginId(kPlugin));
-  require(fixture.store && fixture.store->resolve(kPlugin, hex('d')),
+  require(fixture.store &&
+              activatable(fixture.store->resolve(kPlugin, hex('d'))),
           "dynamic exact grant did not survive authority restart");
 
   Fixture denied_fixture;
@@ -1105,7 +1121,7 @@ void corrupt_records_fail_closed() {
                   0,
               "hardlink mutation failed");
     }
-    require(!fixture.store->resolve(kPlugin, hex('a')),
+    require(unavailable(fixture.store->resolve(kPlugin, hex('a'))),
             "corrupt or untrusted record resolved");
   }
 }

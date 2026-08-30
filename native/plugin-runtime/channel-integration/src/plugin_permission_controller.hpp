@@ -64,8 +64,6 @@ private:
   [[nodiscard]] std::optional<host_session::AuthorityView> list() const;
   [[nodiscard]] std::shared_ptr<const host_session::ConsentReview>
   prepare_review();
-  [[nodiscard]] host_session::ActiveRevisionStatus
-  active_revision_status(const permissions::ActivationBinding &binding) const;
   [[nodiscard]] ReviewedPermissionApplyResult apply_review(
       const host_session::ConsentConfirmation &confirmation,
       std::span<const host_session::BuiltinConsentDecision> builtin_decisions,

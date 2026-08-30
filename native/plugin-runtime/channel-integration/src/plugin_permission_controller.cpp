@@ -102,15 +102,6 @@ PluginPermissionAuthority::prepare_review() {
   return pending_review_;
 }
 
-host_session::ActiveRevisionStatus
-PluginPermissionAuthority::active_revision_status(
-    const permissions::ActivationBinding &binding) const {
-  if (binding.plugin != expected_plugin_)
-    return host_session::ActiveRevisionStatus::unavailable;
-  return authority_->active_revision_status(expected_plugin_.view(),
-                                             binding.revision.view());
-}
-
 ReviewedPermissionApplyResult PluginPermissionAuthority::apply_review(
     const host_session::ConsentConfirmation &confirmation,
     std::span<const host_session::BuiltinConsentDecision> builtin_decisions,

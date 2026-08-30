@@ -514,14 +514,19 @@ Item {
   readonly property bool notificationsGranted:
     runtime.hasPermission("notifications.send", "send")
   property var notificationCall
-  Component.onCompleted: {
-    if (notificationsGranted) {
+  function invokeNotification() {
+    if (notificationsGranted)
       notificationCall = runtime.invoke("notification_send", {
         category: "status",
         title: "Permission generation",
         body: "The optional feature is enabled"
       })
-    }
+  }
+  Timer {
+    interval: 1
+    running: true
+    repeat: false
+    onTriggered: parent.invokeNotification()
   }
   Rectangle {
     anchors.fill: parent

@@ -49,12 +49,6 @@ enum class AuthorityMutationResult {
   poisoned,
 };
 
-enum class ActiveRevisionStatus : std::uint8_t {
-  unavailable,
-  activatable,
-  permission_disabled,
-};
-
 struct AuthorityRevocationResult {
   AuthorityMutationResult status = AuthorityMutationResult::invalid;
   std::optional<permissions::ActivationBinding> binding;
@@ -135,7 +129,7 @@ public:
   discard_candidate(const permissions::ActivationBinding &candidate,
                     std::uint64_t expected_sequence);
 
-  [[nodiscard]] std::optional<policy::GrantSnapshot>
+  [[nodiscard]] GrantResolution
   resolve(std::string_view plugin_id,
           std::string_view revision_sha256) const override;
 
@@ -144,8 +138,6 @@ private:
                  std::uint32_t expected_uid,
                  permissions::PluginId expected_plugin);
   [[nodiscard]] AuthorityMutationResult replace_slots(AuthoritySlots slots);
-  [[nodiscard]] ActiveRevisionStatus active_revision_status(
-      std::string_view plugin_id, std::string_view revision_sha256) const;
   [[nodiscard]] AuthorityRevocationResult
   revoke_active(const permissions::CapabilityKey &capability,
                 std::uint64_t expected_sequence,

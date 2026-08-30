@@ -1,4 +1,5 @@
 #include "audit_store.hpp"
+#include "../../host-session/tests/authority_store_test_access.hpp"
 #include "broker_runtime.hpp"
 #include "dynamic_broker_runtime.hpp"
 #include "omarchy/plugin_runtime/launcher/test_supervisor.h"
@@ -526,7 +527,7 @@ public:
   }
 
 
-  std::unique_ptr<channel::PreparedPluginRuntime> prepare_root(
+  channel::PluginRuntimePreparationResult prepare_result(
       channel::RuntimeServices services = {},
       std::function<launcher::Supervisor()> supervisor_factory = {},
       std::string activation_record = "current",
@@ -549,8 +550,36 @@ public:
             definitions_),
         std::make_shared<const channel::RuntimeServices>(std::move(services)),
         {}, {}, std::move(supervisor_factory), before_final_fence,
-        before_final_fence_context)
+        before_final_fence_context);
+  }
+
+  std::unique_ptr<channel::PreparedPluginRuntime> prepare_root(
+      channel::RuntimeServices services = {},
+      std::function<launcher::Supervisor()> supervisor_factory = {},
+      std::string activation_record = "current",
+      std::uint32_t trusted_uid = static_cast<std::uint32_t>(::getuid()),
+      bool valid_authority = true,
+      void (*before_final_fence)(host::AuthorityStore &, void *) noexcept =
+          nullptr,
+      void *before_final_fence_context = nullptr) {
+    return prepare_result(
+               std::move(services), std::move(supervisor_factory),
+               std::move(activation_record), trusted_uid, valid_authority,
+               before_final_fence, before_final_fence_context)
         .runtime;
+  }
+
+  host::AuthorityRevocationResult revoke_required() {
+    const auto view = store_->read_authority_view();
+    require(view && view->active,
+            "required-denial fixture lacked active authority");
+    const auto required = std::ranges::find_if(
+        view->active->requests.values(),
+        [](const auto &request) { return request.required; });
+    require(required != view->active->requests.values().end(),
+            "required-denial fixture lacked a required permission");
+    return host::AuthorityStoreTestAccess::revoke_active(
+        *store_, required->capability, view->authority_slots.sequence);
   }
 
   void close_borrowed_roots() {
@@ -1663,6 +1692,23 @@ void prepared_root_commits_on_ui_with_exact_hooks() {
         "prepared runtime did not deliver its exact running Hook");
 }
 
+void required_denied_activation_is_permission_only_after_reopen() {
+  CoordinatorFixture fixture;
+  fixture.record();
+  const auto active = fixture.publish(1, 0);
+  fixture.promote(active, 1);
+  const auto revoked = fixture.revoke_required();
+  require(revoked.status == host::AuthorityMutationResult::applied &&
+              revoked.binding.has_value() && !revoked.activatable,
+          "required permission was not durably denied");
+
+  const auto prepared = fixture.prepare_result();
+  require(!prepared.runtime &&
+              prepared.status ==
+                  channel::PluginRuntimePreparationStatus::permission_disabled,
+          "reopened required-denied authority attempted runtime assembly");
+}
+
 void prepared_root_final_fence_rejects_intervening_mutation() {
   CoordinatorFixture fixture;
   fixture.record();
@@ -1882,6 +1928,12 @@ int main(int argc, char **argv) {
       return 0;
     }
     if (argc == 2 &&
+        std::string_view(argv[1]) == "--required-denial-only") {
+      required_denied_activation_is_permission_only_after_reopen();
+      std::cout << "required-denial preparation test passed\n";
+      return 0;
+    }
+    if (argc == 2 &&
         std::string_view(argv[1]) == "--real-worker-invalid-qml-only") {
       if (!invalid_qml_worker_never_acknowledges_or_publishes())
         return 77;
@@ -1902,6 +1954,7 @@ int main(int argc, char **argv) {
     prepared_root_commits_on_ui_with_exact_hooks();
     prepared_root_final_fence_rejects_intervening_mutation();
     prepared_root_commit_is_ui_only_and_path_independent();
+    required_denied_activation_is_permission_only_after_reopen();
     session_runtime_factory_tests();
     failed_session_rejects_surfaces();
   } catch (const std::exception &error) {

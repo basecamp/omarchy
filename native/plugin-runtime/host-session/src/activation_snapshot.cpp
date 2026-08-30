@@ -176,7 +176,9 @@ bool authoritative_snapshot(const policy::GrantSnapshot &snapshot,
 }
 
 ActivationResult failure(ActivationError error) {
-  return {.snapshot = std::nullopt, .error = error};
+  return {.snapshot = std::nullopt,
+          .error = error,
+          .grant_status = GrantStatus::unavailable};
 }
 
 } // namespace
@@ -472,19 +474,23 @@ ActivationResult ActivationSource::load(std::string_view record_name) const {
     return failure(error);
   auto grants = grant_authority_.resolve(selected->record.plugin_id,
                                          selected->record.revision_sha256);
-  if (!grants)
+  if (!grants.snapshot || grants.status == GrantStatus::unavailable)
     return failure(ActivationError::grant_unavailable);
-  if (!authoritative_snapshot(*grants, selected->record, selected->verified))
+  if (!authoritative_snapshot(*grants.snapshot, selected->record,
+                              selected->verified))
     return failure(ActivationError::grant_mismatch);
-  auto live = std::make_shared<LiveGenerationState>(grants->binding);
+  auto live =
+      std::make_shared<LiveGenerationState>(grants.snapshot->binding);
   return {.snapshot = ActivationSnapshot{
               .record = std::move(selected->record),
               .manifest = std::move(selected->verified.manifest),
-              .grants = std::move(*grants),
+              .grants = std::move(*grants.snapshot),
               .activation_record = std::move(selected->activation_record),
               .revision_directory = std::move(selected->revision_directory),
               .state_directory = std::move(selected->state_directory),
-              .live = std::move(live)}};
+              .live = std::move(live)},
+          .error = ActivationError::none,
+          .grant_status = grants.status};
 }
 
 } // namespace omarchy::plugin_runtime::host_session

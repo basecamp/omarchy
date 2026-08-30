@@ -33,15 +33,25 @@ PluginActivationCoordinator::prepare() {
             .activation_error = host_session::ActivationError::grant_mismatch,
             .session_error = PluginSessionCreateError::none,
             .permission_disabled = false};
+  if (loaded.grant_status == host_session::GrantStatus::permission_disabled)
+    return {.prepared = {},
+            .live_binding = {},
+            .activation_error = host_session::ActivationError::grant_unavailable,
+            .session_error = PluginSessionCreateError::none,
+            .permission_disabled = true};
+  if (loaded.grant_status != host_session::GrantStatus::activatable)
+    return {.prepared = {},
+            .live_binding = {},
+            .activation_error = host_session::ActivationError::grant_unavailable,
+            .session_error = PluginSessionCreateError::none,
+            .permission_disabled = false};
   auto live_binding = permissions_.prepare_live_activation(binding, live);
   if (!live_binding)
     return {.prepared = {},
             .live_binding = {},
             .activation_error = host_session::ActivationError::grant_mismatch,
             .session_error = PluginSessionCreateError::none,
-            .permission_disabled =
-                permissions_.active_revision_status(binding) ==
-                host_session::ActiveRevisionStatus::permission_disabled};
+            .permission_disabled = false};
 
   // Bind before construction so an already-stale active revision cannot enter
   // even the side-effect-free runtime assembly phase.

@@ -128,12 +128,23 @@ public:
   verify_open_revision(int revision_directory_fd) const = 0;
 };
 
+enum class GrantStatus : std::uint8_t {
+  unavailable,
+  activatable,
+  permission_disabled,
+};
+
+struct GrantResolution final {
+  std::optional<policy::GrantSnapshot> snapshot;
+  GrantStatus status = GrantStatus::unavailable;
+};
+
 // The activation record never supplies grants or their fingerprint. The trusted
 // authority resolves the persisted decision for the verified identity instead.
 class GrantAuthority {
 public:
   virtual ~GrantAuthority() = default;
-  [[nodiscard]] virtual std::optional<policy::GrantSnapshot>
+  [[nodiscard]] virtual GrantResolution
   resolve(std::string_view plugin_id,
           std::string_view revision_sha256) const = 0;
 };
@@ -229,6 +240,7 @@ enum class ActivationError {
 struct ActivationResult {
   std::optional<ActivationSnapshot> snapshot;
   ActivationError error = ActivationError::none;
+  GrantStatus grant_status = GrantStatus::unavailable;
 };
 
 class ActivationSource {

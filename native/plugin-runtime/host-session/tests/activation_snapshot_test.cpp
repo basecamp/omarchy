@@ -175,18 +175,19 @@ policy::GrantSnapshot grants(std::uint64_t generation = 7) {
 class Authority final : public host::GrantAuthority {
 public:
   policy::GrantSnapshot snapshot = grants();
+  host::GrantStatus status = host::GrantStatus::activatable;
   std::function<void()> before_return;
   mutable int calls = 0;
 
-  std::optional<policy::GrantSnapshot>
+  host::GrantResolution
   resolve(std::string_view plugin_id,
           std::string_view revision_sha256) const override {
     ++calls;
     if (before_return)
       before_return();
     if (plugin_id != kPlugin || revision_sha256 != kRevision)
-      return std::nullopt;
-    return snapshot;
+      return {};
+    return {.snapshot = snapshot, .status = status};
   }
 };
 
@@ -274,6 +275,22 @@ void happy_path_and_revocation() {
               (::fcntl(result.snapshot->state_directory.get(), F_GETFD) &
                FD_CLOEXEC) != 0,
           "authority descriptors can leak across exec");
+}
+
+void required_denial_retains_verified_activation_for_administration() {
+  TemporaryTree tree;
+  DescriptorVerifier verifier;
+  Authority authority;
+  authority.status = host::GrantStatus::permission_disabled;
+
+  const auto result = load(tree, verifier, authority);
+  require(result.snapshot.has_value() &&
+              result.error == host::ActivationError::none &&
+              result.grant_status == host::GrantStatus::permission_disabled,
+          "required-denied authority was discarded as unavailable");
+  require(verifier.calls == 1 && authority.calls == 1 &&
+              result.snapshot->grants.binding == authority.snapshot.binding,
+          "required-denied activation was not classified in one exact pass");
 }
 
 void path_swaps_do_not_retarget_descriptors() {
@@ -826,6 +843,7 @@ void permission_projection_is_manifest_indexed_and_exact() {
 int main() {
   try {
     happy_path_and_revocation();
+    required_denial_retains_verified_activation_for_administration();
     path_swaps_do_not_retarget_descriptors();
     symlinks_and_aliases_are_rejected();
     grant_authority_aliases_are_rejected();
