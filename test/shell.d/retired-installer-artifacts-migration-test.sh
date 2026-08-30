@@ -115,9 +115,12 @@ WantedBy=multi-user.target
 EOF
 }
 
-# Every distinct body install/preflight/first-run-mode.sh wrote across its eight
-# rewrites, oldest first. Only the last four carry both Cmnd_Alias lines, so a
-# predicate keyed on those would leave the first four grants on disk.
+# Every distinct body the first-run-mode installer wrote across its nine rewrites,
+# oldest first. Only the later ones carry both Cmnd_Alias lines, so a predicate
+# keyed on those would leave the earlier grants on disk. The last body is the one
+# install/post-install/first-run-mode.sh shipped until it was retired: its cleanup
+# alias names /usr/bin/rm as well as /bin/rm, and it still grants passwordless
+# /usr/bin/systemctl.
 first_run_variants=(
   'installer ALL=(ALL) NOPASSWD: /usr/bin/ufw
 installer ALL=(ALL) NOPASSWD: /usr/bin/ufw-docker
@@ -160,6 +163,14 @@ installer ALL=(ALL) NOPASSWD: /usr/bin/udevadm
 installer ALL=(ALL) NOPASSWD: SYMLINK_RESOLVED
 installer ALL=(ALL) NOPASSWD: FIRST_RUN_CLEANUP'
   'Cmnd_Alias FIRST_RUN_CLEANUP = /bin/rm -f /etc/sudoers.d/first-run, /bin/rm -f /etc/sudoers.d/99-omarchy-installer-reboot
+Cmnd_Alias SYMLINK_RESOLVED = /usr/bin/ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+installer ALL=(ALL) NOPASSWD: /usr/bin/systemctl
+installer ALL=(ALL) NOPASSWD: /usr/bin/ufw
+installer ALL=(ALL) NOPASSWD: /usr/bin/ufw-docker
+installer ALL=(ALL) NOPASSWD: /usr/bin/gtk-update-icon-cache
+installer ALL=(ALL) NOPASSWD: SYMLINK_RESOLVED
+installer ALL=(ALL) NOPASSWD: FIRST_RUN_CLEANUP'
+  'Cmnd_Alias FIRST_RUN_CLEANUP = /usr/bin/rm -f /etc/sudoers.d/first-run, /bin/rm -f /etc/sudoers.d/first-run
 Cmnd_Alias SYMLINK_RESOLVED = /usr/bin/ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 installer ALL=(ALL) NOPASSWD: /usr/bin/systemctl
 installer ALL=(ALL) NOPASSWD: /usr/bin/ufw
