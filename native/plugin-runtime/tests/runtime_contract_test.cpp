@@ -60,8 +60,12 @@ int main(int argc, char *argv[]) {
     QQmlEngine engine;
     engine.addImportPath(arguments.at(2));
     QQmlComponent component(&engine);
-    component.setData("import Omarchy.PluginHost 1.0\nPluginHostInfo {}\n",
-                      QUrl());
+    component.setData(
+        "import QtQml\nimport Omarchy.PluginHost 1.0\n"
+        "QtObject { property bool available: PluginManager.available; "
+        "property string runtimeVersion: PluginManager.runtimeVersion; "
+        "property int surfaceCount: PluginManager.count }\n",
+        QUrl());
     std::unique_ptr<QObject> object(component.create());
     if (!object) {
       for (const QQmlError &error : component.errors()) {
@@ -72,8 +76,18 @@ int main(int argc, char *argv[]) {
     const auto version = omarchy::plugin_runtime::build_version();
     const auto remote_surface_type =
         qmlTypeId("Omarchy.PluginHost", 1, 0, "RemotePluginSurface");
-    return remote_surface_type >= 0 &&
+    QQmlComponent forbidden(&engine);
+    forbidden.setData(
+        "import Omarchy.PluginHost 1.0\nPluginManager {}\n", QUrl());
+    std::unique_ptr<QObject> forbidden_object(forbidden.create());
+    QQmlComponent internal_model(&engine);
+    internal_model.setData(
+        "import Omarchy.PluginHost 1.0\nPluginSurfaceService {}\n", QUrl());
+    std::unique_ptr<QObject> internal_model_object(internal_model.create());
+    return remote_surface_type >= 0 && !forbidden_object &&
+                   !internal_model_object &&
                    !object->property("available").toBool() &&
+                   object->property("surfaceCount").toInt() == 0 &&
                    object->property("runtimeVersion").toString() ==
                        QString::fromLatin1(version.data(), version.size())
                ? 0

@@ -1,4 +1,4 @@
-#include "PluginSurfaceService.h"
+#include "PluginManager.h"
 #include "gesture_intent.hpp"
 
 #include <QPersistentModelIndex>
@@ -14,6 +14,7 @@
 #include <vector>
 
 void run_production_surface_endpoint_tests();
+void run_plugin_manager_tests();
 
 namespace {
 
@@ -27,24 +28,6 @@ void require(bool condition, std::string_view message) {
   if (!condition)
     throw std::runtime_error(std::string(message));
 }
-
-class Backend final : public bridge::PluginSurfaceBackend {
-public:
-  bool attach(QStringView, bridge::RemotePluginSurface &) override {
-    ++attachments;
-    return true;
-  }
-
-  bool dismiss(QStringView surface_key) override {
-    ++dismissals;
-    last_dismissed = surface_key.toString();
-    return true;
-  }
-
-  int attachments = 0;
-  int dismissals = 0;
-  QString last_dismissed;
-};
 
 class Clock final : public runtime::GestureEligibilityClock {
 public:
@@ -108,14 +91,11 @@ QString value(const bridge::PluginSurfaceService &service, int row, int role) {
 
 void run() {
   using Service = bridge::PluginSurfaceService;
-  Service service;
-  Backend backend;
-  require(!service.available() && service.count() == 0 &&
-              service.rowCount() == 0 && !service.dismiss(QStringLiteral("panel")),
-          "unbound shell bridge did not fail closed");
-  require(service.bindBackend(backend) && service.available() &&
-              !service.bindBackend(backend),
-          "shell bridge backend binding was not exclusive");
+  auto service_owner = bridge::PluginManagerTestAccess::create();
+  auto &service_manager = *service_owner;
+  auto &service = bridge::PluginManagerTestAccess::model(service_manager);
+  require(service.count() == 0 && service.rowCount() == 0,
+          "internal shell projection did not start empty");
 
   const QString maximum_name(64, QChar(u'X'));
   std::vector<Service::SurfaceDeclaration> surfaces;
@@ -124,12 +104,14 @@ void run() {
   surfaces.push_back(declaration("overlay", Service::Role::Overlay));
   surfaces.push_back(declaration(maximum_name.toStdString(), Service::Role::Panel));
   const auto fixture_binding = binding("org.omarchy.fixture");
-  require(service.publishSurfaces(fixture_binding, surfaces, 2) &&
+  require(bridge::PluginManagerTestAccess::publishSurfaces(
+              service_manager, fixture_binding, surfaces, 2) &&
               service.count() == 4 &&
               service.barSurfaces()->rowCount() == 1 &&
               service.panelSurfaces()->rowCount() == 2 &&
               service.overlaySurfaces()->rowCount() == 1 &&
-              !service.publishSurfaces(fixture_binding, surfaces, 2),
+              !bridge::PluginManagerTestAccess::publishSurfaces(
+                  service_manager, fixture_binding, surfaces, 2),
           "typed shell surface model or monotonic revision was incorrect");
   require(value(service, 0, Service::SurfaceKeyRole) ==
                   QStringLiteral("v2.19.org.omarchy.fixture.7.bar") &&
@@ -155,24 +137,27 @@ void run() {
   for (int index = 0; index <= 8; ++index)
     overflow.push_back(
         declaration("surface" + std::to_string(index), Service::Role::Panel));
-  require(!service.publishSurfaces(fixture_binding, std::move(overflow), 3),
+  require(!bridge::PluginManagerTestAccess::publishSurfaces(
+              service_manager, fixture_binding, std::move(overflow), 3),
           "shell bridge accepted more than the product surface limit");
 
-  Service multi_service;
-  Backend multi_backend;
+  auto multi_owner = bridge::PluginManagerTestAccess::create();
+  auto &multi_manager = *multi_owner;
+  auto &multi_service = bridge::PluginManagerTestAccess::model(multi_manager);
   const auto binding_a = binding("a.plugin", 4);
   const auto binding_b = binding("b.plugin", 9);
-  require(multi_service.bindBackend(multi_backend) &&
-              multi_service.publishSurfaces(
-                  binding_a, {declaration("PanelA", Service::Role::Panel)}, 5),
+  require(bridge::PluginManagerTestAccess::publishSurfaces(
+              multi_manager, binding_a,
+              {declaration("PanelA", Service::Role::Panel)}, 5),
           "first plugin publication did not reach the aggregate model");
   QPersistentModelIndex persistent_a(multi_service.index(0));
   ModelSignalSpy multi_spy(multi_service);
   QPersistentModelIndex persistent_panel_a(
       multi_service.panelSurfaces()->index(0, 0));
   ModelSignalSpy panel_spy(*multi_service.panelSurfaces());
-  require(multi_service.publishSurfaces(
-              binding_b, {declaration("PanelB", Service::Role::Panel)}, 1) &&
+  require(bridge::PluginManagerTestAccess::publishSurfaces(
+              multi_manager, binding_b,
+              {declaration("PanelB", Service::Role::Panel)}, 1) &&
               multi_service.count() == 2 &&
               value(multi_service, 0, Service::PluginIdRole) ==
                   QStringLiteral("a.plugin") &&
@@ -187,12 +172,13 @@ void run() {
                             Service::PublicationRevisionRole)
                       .toString() == QStringLiteral("1"),
           "plugin publications did not retain independent revisions and rows");
-  require(multi_service.publishSurfaces(
-              binding_b,
+  require(bridge::PluginManagerTestAccess::publishSurfaces(
+              multi_manager, binding_b,
               {declaration("PanelB", Service::Role::Panel),
                declaration("OverlayB", Service::Role::Overlay)},
               2) &&
-              multi_service.withdrawSurfaces(binding_b) &&
+              bridge::PluginManagerTestAccess::withdrawSurfaces(multi_manager,
+                                                                 binding_b) &&
               multi_spy.resets == 0 && panel_spy.resets == 0 &&
               persistent_a.isValid() && persistent_panel_a.isValid() &&
               persistent_a.row() == 0 &&
@@ -216,8 +202,9 @@ void run() {
                   [](const auto &range) { return range.first > 0; }) &&
               multi_service.count() == 1,
           "plugin B reset, removed, or recreated plugin A model rows");
-  require(multi_service.publishSurfaces(
-              binding_b, {declaration("PanelB", Service::Role::Panel)}, 1),
+  require(bridge::PluginManagerTestAccess::publishSurfaces(
+              multi_manager, binding_b,
+              {declaration("PanelB", Service::Role::Panel)}, 1),
           "withdrawn plugin B did not republish independently");
   int cross_plugin_toggles = 0;
   QObject::connect(&multi_service, &Service::toggleRequested,
@@ -236,7 +223,8 @@ void run() {
        .input_sequence = 1,
        .action = surface::SurfaceIntentAction::toggle});
   require(cross_intent.intent &&
-              !multi_service.publishIntent(std::move(*cross_intent.intent)) &&
+              !bridge::PluginManagerTestAccess::publishIntent(
+                  multi_manager, std::move(*cross_intent.intent)) &&
               cross_plugin_toggles == 0,
           "one plugin targeted another plugin's same-named declaration");
   const auto newer_a = binding("a.plugin", 5);
@@ -258,55 +246,46 @@ void run() {
        .target = stale_panel,
        .input_sequence = 1,
        .action = surface::SurfaceIntentAction::toggle});
-  require(multi_service.publishSurfaces(
-              newer_a, {declaration("PanelA", Service::Role::Panel)}, 6) &&
+  require(bridge::PluginManagerTestAccess::publishSurfaces(
+              multi_manager, newer_a,
+              {declaration("PanelA", Service::Role::Panel)}, 6) &&
               multi_service.count() == 2 &&
               value(multi_service, 0, Service::SurfaceKeyRole) != stale_a_key &&
               value(multi_service, 0, Service::SurfaceKeyRole) ==
                   QStringLiteral("v2.8.a.plugin.5.PanelA") &&
               stale_intent.intent &&
-              !multi_service.publishIntent(std::move(*stale_intent.intent)) &&
+              !bridge::PluginManagerTestAccess::publishIntent(
+                  multi_manager, std::move(*stale_intent.intent)) &&
               stale_toggles == 0 &&
-              !multi_service.dismiss(stale_a_key) &&
-              !multi_service.withdrawSurfaces(binding_a) &&
+              !bridge::PluginManagerTestAccess::withdrawSurfaces(multi_manager,
+                                                                  binding_a) &&
               multi_service.count() == 2 &&
-              multi_service.withdrawSurfaces(newer_a) &&
+              bridge::PluginManagerTestAccess::withdrawSurfaces(multi_manager,
+                                                                 newer_a) &&
               multi_service.count() == 1 &&
               value(multi_service, 0, Service::PluginIdRole) ==
                   QStringLiteral("b.plugin"),
           "stale key or exact-binding withdrawal removed a newer publication");
 
-  Service thread_service;
-  Backend thread_backend;
+  auto thread_owner = bridge::PluginManagerTestAccess::create();
+  auto &thread_manager = *thread_owner;
+  auto &thread_service = bridge::PluginManagerTestAccess::model(thread_manager);
   bool off_thread_result = true;
-  std::thread off_thread_bind([&] {
-    off_thread_result = thread_service.bindBackend(thread_backend);
-  });
-  off_thread_bind.join();
-  require(!off_thread_result && !thread_service.available() &&
-              thread_service.bindBackend(thread_backend),
-          "off-owner-thread backend binding mutated the shell model");
   const auto thread_binding = binding("thread.plugin", 3);
   std::thread off_thread_publish([&] {
-    off_thread_result = thread_service.publishSurfaces(
-        thread_binding, {declaration("Panel", Service::Role::Panel)}, 1);
+    off_thread_result = bridge::PluginManagerTestAccess::publishSurfaces(
+        thread_manager, thread_binding,
+        {declaration("Panel", Service::Role::Panel)}, 1);
   });
   off_thread_publish.join();
   require(!off_thread_result && thread_service.count() == 0 &&
-              thread_service.publishSurfaces(
-                  thread_binding,
+              bridge::PluginManagerTestAccess::publishSurfaces(
+                  thread_manager, thread_binding,
                   {declaration("Panel", Service::Role::Panel)}, 1),
           "off-owner-thread publication mutated the shell model");
-  const QString thread_key =
-      value(thread_service, 0, Service::SurfaceKeyRole);
-  std::thread off_thread_dismiss([&] {
-    off_thread_result = thread_service.dismiss(thread_key);
-  });
-  off_thread_dismiss.join();
-  require(!off_thread_result && thread_backend.dismissals == 0,
-          "off-owner-thread dismissal reached the trusted backend");
   std::thread off_thread_withdraw([&] {
-    off_thread_result = thread_service.withdrawSurfaces(thread_binding);
+    off_thread_result = bridge::PluginManagerTestAccess::withdrawSurfaces(
+        thread_manager, thread_binding);
   });
   off_thread_withdraw.join();
   require(!off_thread_result && thread_service.count() == 1,
@@ -329,35 +308,34 @@ void run() {
   require(thread_intent.intent.has_value(),
           "off-thread intent fixture was not admitted");
   std::thread off_thread_intent(
-      [&thread_service, &off_thread_result,
+      [&thread_manager, &off_thread_result,
        intent = std::move(*thread_intent.intent)]() mutable {
-        off_thread_result =
-            thread_service.publishIntent(std::move(intent));
+        off_thread_result = bridge::PluginManagerTestAccess::publishIntent(
+            thread_manager, std::move(intent));
       });
   off_thread_intent.join();
   require(!off_thread_result && thread_service.count() == 1,
           "off-owner-thread intent reached the UI publication boundary");
-  std::thread off_thread_unbind(
-      [&] { thread_service.unbindBackend(thread_backend); });
-  off_thread_unbind.join();
-  require(thread_service.available() && thread_service.count() == 1,
-          "off-owner-thread unbind cleared the shell model");
-
-  Service collision_service;
-  Backend collision_backend;
-  require(collision_service.bindBackend(collision_backend) &&
-              collision_service.publishSurfaces(
-                  binding("a.b"),
-                  {declaration("c", Service::Role::Panel)}, 1),
+  auto collision_owner = bridge::PluginManagerTestAccess::create();
+  auto &collision_manager = *collision_owner;
+  auto &collision_service =
+      bridge::PluginManagerTestAccess::model(collision_manager);
+  require(bridge::PluginManagerTestAccess::publishSurfaces(
+              collision_manager, binding("a.b"),
+              {declaration("c", Service::Role::Panel)}, 1),
           "first collision fixture did not publish");
   const QString first_key =
       value(collision_service, 0, Service::SurfaceKeyRole);
-  collision_service.unbindBackend(collision_backend);
-  require(collision_service.bindBackend(collision_backend) &&
-              collision_service.publishSurfaces(
-                  binding("a"),
-                  {declaration("b.c", Service::Role::Panel)}, 1) &&
-              first_key != value(collision_service, 0, Service::SurfaceKeyRole),
+  auto second_collision_owner = bridge::PluginManagerTestAccess::create();
+  auto &second_collision_manager = *second_collision_owner;
+  auto &second_collision_service =
+      bridge::PluginManagerTestAccess::model(second_collision_manager);
+  require(bridge::PluginManagerTestAccess::publishSurfaces(
+              second_collision_manager, binding("a"),
+              {declaration("b.c", Service::Role::Panel)}, 1) &&
+              first_key !=
+                  value(second_collision_service, 0,
+                        Service::SurfaceKeyRole),
           "opaque canonical surface key was not injective");
 
   int toggles = 0;
@@ -388,7 +366,9 @@ void run() {
        .target = panel,
        .input_sequence = 11,
        .action = surface::SurfaceIntentAction::toggle});
-  require(admitted.intent && service.publishIntent(std::move(*admitted.intent)) &&
+  require(admitted.intent &&
+              bridge::PluginManagerTestAccess::publishIntent(
+                  service_manager, std::move(*admitted.intent)) &&
               toggles == 1 &&
               last_target ==
                   QStringLiteral("v2.19.org.omarchy.fixture.7.PanelWidget"),
@@ -400,7 +380,8 @@ void run() {
        .input_sequence = 15,
        .action = surface::SurfaceIntentAction::toggle});
   require(maximum_name_intent.intent &&
-              service.publishIntent(std::move(*maximum_name_intent.intent)) &&
+              bridge::PluginManagerTestAccess::publishIntent(
+                  service_manager, std::move(*maximum_name_intent.intent)) &&
               toggles == 2 &&
               last_target == QStringLiteral("v2.19.org.omarchy.fixture.7.") +
                                  maximum_name,
@@ -414,7 +395,9 @@ void run() {
   require(delayed.intent && delayed.intent->available(),
           "admitted delayed intent fixture failed");
   clock->now += 5'000'000'000ULL;
-  require(!service.publishIntent(std::move(*delayed.intent)) && toggles == 2,
+  require(!bridge::PluginManagerTestAccess::publishIntent(
+              service_manager, std::move(*delayed.intent)) &&
+              toggles == 2,
           "expired admitted intent reached the shell adapter");
   require(authority.arm(bar, 13), "detach invalidation gesture did not arm");
   auto detached_token = authority.admit(
@@ -423,7 +406,8 @@ void run() {
        .input_sequence = 13,
        .action = surface::SurfaceIntentAction::toggle});
   require(detached_token.intent && authority.detach_surface(panel) &&
-              !service.publishIntent(std::move(*detached_token.intent)) &&
+              !bridge::PluginManagerTestAccess::publishIntent(
+                  service_manager, std::move(*detached_token.intent)) &&
               toggles == 2,
           "admitted intent survived surface detach");
   require(authority.declare_surface(panel, "PanelWidget") ==
@@ -437,23 +421,10 @@ void run() {
        .action = surface::SurfaceIntentAction::toggle});
   require(revoked_token.intent.has_value(), "revoke intent was not admitted");
   authority.revoke();
-  require(!service.publishIntent(std::move(*revoked_token.intent)) &&
+  require(!bridge::PluginManagerTestAccess::publishIntent(
+              service_manager, std::move(*revoked_token.intent)) &&
               toggles == 2,
           "admitted intent survived session revocation");
-  require(service.dismiss(
-              QStringLiteral("v2.19.org.omarchy.fixture.7.PanelWidget")) &&
-              backend.dismissals == 1 &&
-              backend.last_dismissed ==
-                  QStringLiteral("v2.19.org.omarchy.fixture.7.PanelWidget") &&
-              !service.dismiss(QStringLiteral("missing")),
-          "shell-owned dismissal escaped its declared surface");
-
-  service.unbindBackend(backend);
-  require(!service.available() && service.count() == 0 &&
-              service.barSurfaces()->rowCount() == 0 &&
-              service.panelSurfaces()->rowCount() == 0 &&
-              service.overlaySurfaces()->rowCount() == 0,
-          "backend loss retained stale shell surfaces");
 }
 
 } // namespace
@@ -463,6 +434,7 @@ int main(int argc, char **argv) {
   (void)application;
   try {
     run();
+    run_plugin_manager_tests();
     run_production_surface_endpoint_tests();
     return 0;
   } catch (const std::exception &error) {

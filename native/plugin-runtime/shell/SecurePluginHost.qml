@@ -18,11 +18,9 @@ Item {
     return null
   }
 
-  PluginSurfaceService { id: surfaceService }
-
   Instantiator {
     id: barEntries
-    model: surfaceService.barSurfaces
+    model: PluginManager.barSurfaces
 
     delegate: QtObject {
       id: barEntry
@@ -39,7 +37,7 @@ Item {
 
       property Component surfaceComponent: Component {
         SecureBarSurface {
-          surfaceService: surfaceService
+          surfaceService: PluginManager
           surfaceKey: barEntry.surfaceKey
           generation: barEntry.generation
           maximumWidth: barEntry.maximumWidth
@@ -84,7 +82,7 @@ Item {
   }
 
   Variants {
-    model: surfaceService.panelSurfaces
+    model: PluginManager.panelSurfaces
     delegate: Component {
       SecurePanelSurface {
         required property string surfaceKey
@@ -96,13 +94,13 @@ Item {
         required property bool dynamicInputRegions
 
         host: root
-        surfaceService: surfaceService
+        surfaceService: PluginManager
       }
     }
   }
 
   Variants {
-    model: surfaceService.overlaySurfaces
+    model: PluginManager.overlaySurfaces
     delegate: Component {
       SecureOverlaySurface {
         required property string surfaceKey
@@ -114,7 +112,7 @@ Item {
         required property bool dynamicInputRegions
 
         host: root
-        surfaceService: surfaceService
+        surfaceService: PluginManager
       }
     }
   }

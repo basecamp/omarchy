@@ -4,18 +4,11 @@
 
 #include <QAbstractListModel>
 #include <QString>
-#include <QtQml/qqmlregistration.h>
 
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
-
-namespace omarchy::plugin_runtime::bridge {
-
-class RemotePluginSurface;
-
-} // namespace omarchy::plugin_runtime::bridge
 
 namespace omarchy::plugin_runtime::host_session {
 class AdmittedSurfaceIntent;
@@ -23,22 +16,12 @@ class AdmittedSurfaceIntent;
 
 namespace omarchy::plugin_runtime::bridge {
 
-class PluginSurfaceBackend {
-public:
-  virtual ~PluginSurfaceBackend() = default;
-  virtual bool attach(QStringView surface_key,
-                      RemotePluginSurface &surface) = 0;
-  virtual bool dismiss(QStringView surface_key) = 0;
-};
+class PluginManager;
 
+// Internal projection model. Production publication and attachment are owned
+// by the singleton PluginManager; this type is deliberately not a QML type.
 class PluginSurfaceService : public QAbstractListModel {
   Q_OBJECT
-  QML_ELEMENT
-  Q_PROPERTY(bool available READ available NOTIFY availableChanged)
-  Q_PROPERTY(QAbstractItemModel *barSurfaces READ barSurfaces CONSTANT)
-  Q_PROPERTY(QAbstractItemModel *panelSurfaces READ panelSurfaces CONSTANT)
-  Q_PROPERTY(QAbstractItemModel *overlaySurfaces READ overlaySurfaces CONSTANT)
-  Q_PROPERTY(int count READ count NOTIFY surfacesChanged)
 
 public:
   enum class Role : std::uint8_t { Bar, Panel, Overlay };
@@ -83,10 +66,8 @@ public:
     DefaultSectionRole,
   };
 
-  explicit PluginSurfaceService(QObject *parent = nullptr);
   ~PluginSurfaceService() override;
 
-  [[nodiscard]] bool available() const;
   [[nodiscard]] QAbstractItemModel *barSurfaces();
   [[nodiscard]] QAbstractItemModel *panelSurfaces();
   [[nodiscard]] QAbstractItemModel *overlaySurfaces();
@@ -98,20 +79,7 @@ public:
                               int role = Qt::DisplayRole) const override;
   [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
 
-  Q_INVOKABLE bool attach(const QString &surface_key, QObject *surface);
-  Q_INVOKABLE bool dismiss(const QString &surface_key);
-
-  bool bindBackend(PluginSurfaceBackend &backend);
-  void unbindBackend(PluginSurfaceBackend &backend);
-  bool publishSurfaces(
-      const plugins::permissions::ActivationBinding &binding,
-      std::vector<SurfaceDeclaration> declarations, qulonglong revision);
-  bool withdrawSurfaces(
-      const plugins::permissions::ActivationBinding &binding);
-  bool publishIntent(host_session::AdmittedSurfaceIntent intent);
-
 signals:
-  void availableChanged();
   void surfacesChanged();
   void openRequested(QString sourceSurface, QString targetSurface,
                      QString generation);
@@ -121,6 +89,15 @@ signals:
                         QString generation);
 
 private:
+  explicit PluginSurfaceService(QObject *parent = nullptr);
+  bool publishSurfaces(
+      const plugins::permissions::ActivationBinding &binding,
+      std::vector<SurfaceDeclaration> declarations, qulonglong revision);
+  bool withdrawSurfaces(
+      const plugins::permissions::ActivationBinding &binding);
+  bool publishIntent(host_session::AdmittedSurfaceIntent intent);
+  [[nodiscard]] bool contains(QStringView surface_key) const;
+
   class RoleFilterModel;
   struct Publication;
   struct SurfaceRow;
@@ -130,14 +107,14 @@ private:
   [[nodiscard]] qsizetype firstRow(std::size_t publication_index) const;
   [[nodiscard]] std::vector<SurfaceRow>
   rowsFor(const Publication &publication) const;
-  void clearSurfaces();
 
-  PluginSurfaceBackend *backend_ = nullptr;
   std::vector<Publication> publications_;
   std::vector<SurfaceRow> surfaces_;
   std::unique_ptr<RoleFilterModel> bar_surfaces_;
   std::unique_ptr<RoleFilterModel> panel_surfaces_;
   std::unique_ptr<RoleFilterModel> overlay_surfaces_;
+
+  friend class PluginManager;
 };
 
 } // namespace omarchy::plugin_runtime::bridge

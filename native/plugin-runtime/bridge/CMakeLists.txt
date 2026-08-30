@@ -7,8 +7,8 @@ qt_add_qml_module(omarchy-plugin-host-bridge
   PLUGIN_TARGET omarchy-plugin-host-bridge
   OUTPUT_DIRECTORY "${plugin_host_module_dir}"
   SOURCES
-    PluginHostInfo.cpp
-    PluginHostInfo.h
+    PluginManager.cpp
+    PluginManager.h
     ProductionSurfaceEndpoint.cpp
     ProductionSurfaceEndpoint.h
     PluginSurfaceService.cpp
@@ -40,12 +40,16 @@ install(FILES
 
 if(BUILD_TESTING)
   add_executable(omarchy-plugin-surface-service-test
+    PluginManager.cpp
+    PluginManager_test.cpp
     ProductionSurfaceEndpoint.cpp
     ProductionSurfaceEndpoint_test.cpp
     PluginSurfaceService.cpp
     PluginSurfaceService_test.cpp
   )
   omarchy_plugin_target_defaults(omarchy-plugin-surface-service-test)
+  target_compile_definitions(omarchy-plugin-surface-service-test PRIVATE
+    OMARCHY_PLUGIN_MANAGER_TESTING)
   target_include_directories(omarchy-plugin-surface-service-test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/../trusted-bridge"
   )

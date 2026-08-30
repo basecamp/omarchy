@@ -2,8 +2,6 @@
 
 #include "gesture_intent.hpp"
 #include "omarchy/plugin/wire/surface_name.hpp"
-#include "remote_surface.hpp"
-
 #include <QSortFilterProxyModel>
 #include <QThread>
 
@@ -89,8 +87,6 @@ PluginSurfaceService::PluginSurfaceService(QObject *parent)
 
 PluginSurfaceService::~PluginSurfaceService() = default;
 
-bool PluginSurfaceService::available() const { return backend_ != nullptr; }
-
 QAbstractItemModel *PluginSurfaceService::barSurfaces() {
   return bar_surfaces_.get();
 }
@@ -159,38 +155,10 @@ QHash<int, QByteArray> PluginSurfaceService::roleNames() const {
           {DefaultSectionRole, "defaultSection"}};
 }
 
-bool PluginSurfaceService::attach(const QString &surface_key,
-                                  QObject *surface) {
-  auto *remote = qobject_cast<RemotePluginSurface *>(surface);
-  return onOwnerThread() && backend_ != nullptr && remote != nullptr &&
-         declared(surface_key) && backend_->attach(surface_key, *remote);
-}
-
-bool PluginSurfaceService::dismiss(const QString &surface_key) {
-  return onOwnerThread() && backend_ != nullptr &&
-         declared(surface_key) != nullptr && backend_->dismiss(surface_key);
-}
-
-bool PluginSurfaceService::bindBackend(PluginSurfaceBackend &backend) {
-  if (!onOwnerThread() || backend_ != nullptr)
-    return false;
-  backend_ = &backend;
-  emit availableChanged();
-  return true;
-}
-
-void PluginSurfaceService::unbindBackend(PluginSurfaceBackend &backend) {
-  if (!onOwnerThread() || backend_ != &backend)
-    return;
-  backend_ = nullptr;
-  clearSurfaces();
-  emit availableChanged();
-}
-
 bool PluginSurfaceService::publishSurfaces(
     const plugins::permissions::ActivationBinding &binding,
     std::vector<SurfaceDeclaration> declarations, qulonglong revision) {
-  if (!onOwnerThread() || backend_ == nullptr || revision == 0 ||
+  if (!onOwnerThread() || revision == 0 ||
       declarations.size() > wire::kMaximumPluginSurfaces)
     return false;
 
@@ -257,7 +225,7 @@ bool PluginSurfaceService::publishSurfaces(
 
 bool PluginSurfaceService::withdrawSurfaces(
     const plugins::permissions::ActivationBinding &binding) {
-  if (!onOwnerThread() || backend_ == nullptr)
+  if (!onOwnerThread())
     return false;
   const auto publication = std::ranges::find_if(
       publications_, [&binding](const Publication &candidate) {
@@ -286,7 +254,7 @@ bool PluginSurfaceService::publishIntent(
   // The product adapter must queue this move-owned value to this object's
   // thread. Freshness is intentionally consumed only at the UI publication
   // boundary, never on the channel worker.
-  if (!onOwnerThread() || backend_ == nullptr)
+  if (!onOwnerThread())
     return false;
   auto publication = intent.take_if_fresh();
   if (!publication)
@@ -326,6 +294,10 @@ PluginSurfaceService::declared(QStringView surface_key) const {
   return found == surfaces_.end() ? nullptr : &*found;
 }
 
+bool PluginSurfaceService::contains(QStringView surface_key) const {
+  return onOwnerThread() && declared(surface_key) != nullptr;
+}
+
 bool PluginSurfaceService::onOwnerThread() const {
   return QThread::currentThread() == thread();
 }
@@ -353,14 +325,6 @@ std::vector<PluginSurfaceService::SurfaceRow> PluginSurfaceService::rowsFor(
          .declaration = declaration});
   }
   return rows;
-}
-
-void PluginSurfaceService::clearSurfaces() {
-  beginResetModel();
-  publications_.clear();
-  surfaces_.clear();
-  endResetModel();
-  emit surfacesChanged();
 }
 
 } // namespace omarchy::plugin_runtime::bridge
