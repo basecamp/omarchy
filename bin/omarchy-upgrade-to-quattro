@@ -1189,10 +1189,6 @@ ensure_sleep_lock_service() {
 run_post_upgrade_migrations() {
   local pending_status
 
-  if ! PATH="$package_path" command -v omarchy-migrate >/dev/null 2>&1; then
-    fail "omarchy-migrate is unavailable after installing the Omarchy quattro packages."
-  fi
-
   log "Running Omarchy migrations"
   if ! run_as_user_omarchy OMARCHY_UPGRADE_TO_QUATTRO_LIVE=1 omarchy-migrate; then
     fail "Omarchy migrations did not complete. Fix the error above and rerun the upgrade before rebooting."
