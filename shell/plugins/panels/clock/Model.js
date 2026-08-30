@@ -24,6 +24,26 @@ function localeName(value) {
 // read off its short date format: month-first locales (en_US, "M/d/yy") keep
 // "MMMM d"; day-first ones get "d MMMM", with the ordinal period where the
 // short form uses periods ("dd.MM.yyyy" gives "25. august").
+// Several locales abbreviate day and month names with a trailing period
+// ("tir.", "aug."), which next to an ordinal ("30.") stacks up as clutter in
+// a bar label. Given the locale's short names, this takes the period off
+// those and nothing else, so the ordinal in the format string survives.
+function abbreviatedNames(locale) {
+  var out = []
+  if (!locale) return out
+  for (var d = 1; d <= 7; d++) out.push(String(locale.dayName(d, Locale.ShortFormat)))
+  for (var m = 1; m <= 12; m++) out.push(String(locale.monthName(m, Locale.ShortFormat)))
+  return out.filter(function (n) { return /\.$/.test(n) })
+}
+function stripAbbreviationPeriods(text, names) {
+  var out = String(text)
+  for (var i = 0; i < names.length; i++) {
+    var bare = names[i].slice(0, -1)
+    if (bare) out = out.split(names[i]).join(bare)
+  }
+  return out
+}
+
 function heroDateFormat(shortDateFormat) {
   var f = String(shortDateFormat || "")
   var d = f.search(/d/), m = f.search(/M/)
@@ -305,6 +325,7 @@ if (typeof module !== "undefined") {
     dateKey: dateKey,
     keyForDate: keyForDate,
     localeName: localeName,
+    stripAbbreviationPeriods: stripAbbreviationPeriods,
     heroDateFormat: heroDateFormat,
     normalizedWeekStart: normalizedWeekStart,
     weekStartSettingName: weekStartSettingName,
