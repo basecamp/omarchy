@@ -115,6 +115,20 @@ BarWidget {
   }
 
   function openTrayMenu(item, anchorItem, mouse) {
+    // Wine exposes Windows tray menus through ContextMenu(), while advertising
+    // /NO_DBUSMENU as its Menu path. Let Wine draw that native menu instead of
+    // asking Quickshell to parse the sentinel as a DBusMenu.
+    if (TrayModel.usesNativeContextMenu(item)) {
+      var globalPoint = anchorItem.mapToGlobal(mouse.x, mouse.y)
+      Quickshell.execDetached([
+        root.bar.omarchyPath + "/bin/omarchy-tray-context-menu",
+        String(item.id || ""),
+        String(Math.round(globalPoint.x)),
+        String(Math.round(globalPoint.y))
+      ])
+      return
+    }
+
     if (!item || !item.menu) {
       var point = anchorItem.QsWindow.contentItem.mapFromItem(anchorItem, mouse.x, mouse.y)
       item.display(anchorItem.QsWindow.window, point.x, point.y)

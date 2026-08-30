@@ -30,6 +30,10 @@ function layoutHasWidget(layout, id) {
   return false
 }
 
+function usesNativeContextMenu(item) {
+  return !!item && String(item.id || "").indexOf("wine-") === 0
+}
+
 // LocalSend's item shows no state, offers only Open and Quit, and its primary
 // click is a no-op, so Share > Receive is the whole surface. Hiding it by hand
 // doesn't stick either: LocalSend picks a fresh tray id every launch.
@@ -43,6 +47,7 @@ if (typeof module !== "undefined") {
     itemNamed: itemNamed,
     entryId: entryId,
     layoutHasWidget: layoutHasWidget,
+    usesNativeContextMenu: usesNativeContextMenu,
     ownedByOmarchy: ownedByOmarchy
   }
 }
