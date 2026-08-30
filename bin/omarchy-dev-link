@@ -17,10 +17,16 @@ prompt_reboot=1
 # sudo resolves a bare command name against secure_path, never the caller's
 # PATH, so a dev-linked checkout is invisible to `sudo omarchy-*`: a command the
 # package does not ship yet fails outright, and one it does ship silently runs
-# the packaged copy while every unprivileged call runs the checkout. Prepending
-# the checkout's bin keeps root on the code being edited — the same trust the
-# link already extends to every system script Omarchy runs out of $OMARCHY_PATH.
+# the packaged copy while every unprivileged call runs the checkout.
+#
+# Prepending the checkout's bin/ itself would also make root resolve bare names
+# like pacman or systemctl out of a user-writable tree — plant a fake pacman
+# next to omarchy-pkg-add and the next update runs it as root. Instead we publish
+# root-owned symlinks that point only at omarchy-* in the checkout, and prepend
+# that private directory to secure_path. Root still picks up edited omarchy-*
+# scripts; it never searches the checkout for anything else.
 sudoers_file="/etc/sudoers.d/omarchy-dev-path"
+dev_bin_dir="/var/lib/omarchy/dev-bin"
 system_secure_path="/usr/local/sbin:/usr/local/bin:/usr/bin"
 
 if (( $# < 1 || $# > 2 )) || [[ $1 == "-h" || $1 == "--help" ]]; then
@@ -41,9 +47,9 @@ The Plymouth and SDDM themes under /usr/share are the exception: omarchy
 plymouth set and omarchy refresh plymouth republish them from the checkout,
 reading this link's authorization out of the root-owned /etc/omarchy.conf.
 
-Also writes $sudoers_file so sudo resolves omarchy-*
-from the checkout instead of the packaged copies. That part takes effect
-immediately, no reboot needed.
+Also writes $sudoers_file and refreshes $dev_bin_dir so sudo
+resolves omarchy-* from the checkout instead of the packaged copies. That
+part takes effect immediately, no reboot needed.
 
 Use --no-reboot when another command will handle the reboot prompt.
 USAGE
@@ -97,7 +103,7 @@ trap 'rm -f "$staged_sudoers"' EXIT
 
 {
   printf 'Defaults secure_path='
-  sudoers_quote "$target/bin:$system_secure_path"
+  sudoers_quote "$dev_bin_dir:$system_secure_path"
   printf '\n'
 } >"$staged_sudoers"
 
@@ -112,10 +118,24 @@ fi
   printf '\n'
 } | sudo tee /etc/omarchy.conf >/dev/null
 
+# Rebuild the symlink farm under a root-owned directory. Only omarchy-* names
+# appear there, so a planted system-tool name in the checkout cannot win.
+sudo mkdir -p "$dev_bin_dir"
+sudo find "$dev_bin_dir" -mindepth 1 -delete
+shopt -s nullglob
+for cmd in "$target"/bin/omarchy-*; do
+  [[ -f $cmd && -x $cmd ]] || continue
+  base=$(basename "$cmd")
+  # Refuse names that are not exactly omarchy-* (defensive against odd globs).
+  [[ $base == omarchy-* ]] || continue
+  sudo ln -sfn "$cmd" "$dev_bin_dir/$base"
+done
+shopt -u nullglob
+
 sudo install -Dm440 -o root -g root "$staged_sudoers" "$sudoers_file"
 
 echo "Pointed Omarchy at $target"
-echo "sudo now resolves omarchy-* from $target/bin"
+echo "sudo now resolves omarchy-* from $dev_bin_dir → $target/bin"
 echo
 
 if (( prompt_reboot )) && gum confirm "Reboot now to activate?"; then
