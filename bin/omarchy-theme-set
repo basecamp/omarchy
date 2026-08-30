@@ -22,7 +22,8 @@ OMARCHY_THEMES_PATH="$OMARCHY_PATH/themes"
 # loads its neovim.lua at startup, so no .lua from such a theme is staged at all.
 # Each terminal config names the program the terminal launches, and vscode.json
 # names an extension omarchy-theme-set-vscode installs, a VS Code extension being
-# arbitrary JavaScript. Everything else a theme ships is colour and is kept.
+# arbitrary JavaScript. Everything else a theme ships is declarative data and
+# is kept; startup.wav is parsed into bounded raw PCM before playback.
 #
 # Adding a template for another terminal, or for another editor that loads Lua,
 # means adding it here. test/shell.d/theme-staging-test.sh fails on a generated

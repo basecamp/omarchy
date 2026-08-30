@@ -30,9 +30,9 @@ Themes supplied with `unlock.png` and `preview-unlock.png` images will be listed
 
 ### Startup sound
 
-A theme can play a short sound when you log in. Add a file called `startup.wav`, `startup.flac`, `startup.ogg`, `startup.oga`, `startup.opus` or `startup.mp3` to the root of your theme and it plays once the audio system is up. Keep it short and small: playback stops after 15 seconds and files over 10 MB are ignored. You can try it out without logging in again with `omarchy theme startup sound`.
+A theme can play a short sound when you log in. Add a file called `startup.wav` to the root of your theme. For safety, it must be a plain 16-bit PCM WAV with one or two channels, a 44.1 or 48 kHz sample rate, no metadata chunks, and no more than 15 seconds of audio. Convert another audio file to that exact layout with `ffmpeg -i input.ext -t 15 -map_metadata -1 -ac 2 -ar 48000 -c:a pcm_s16le -fflags +bitexact -flags:a +bitexact startup.wav`.
 
-If you'd rather log in quietly whatever the theme says, turn startup sounds off under _Toggle > Startup Sound_ in the Omarchy menu, or with `omarchy toggle startup sound`.
+Startup sounds are off by default. Enable them under _Toggle > Startup Sound_ in the Omarchy menu, or with `omarchy toggle startup sound`, then try the current theme's sound without logging in again with `omarchy theme startup sound`. Playback is capped at 25% stream volume and stops after 15 seconds.
 
 ### Theming apps Omarchy doesn't cover
 

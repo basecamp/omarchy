@@ -67,15 +67,22 @@ What this does not cover: a theme distributed as an archive rather than a git re
 
 ## Startup sound
 
-A theme can ship one sound that plays when the session starts, named `startup.<ext>` with `<ext>` one of `wav`, `flac`, `ogg`, `oga`, `opus` or `mp3`. `default/hypr/autostart.lua` runs `omarchy-theme-startup-sound` on `hyprland.start`; it reads the sound from the staged theme at `~/.local/state/omarchy/current/theme/`, waits up to ten seconds for WirePlumber to expose a default sink, and plays it. `omarchy toggle startup sound` sets the `startup-sound-off` toggle flag, which the command honours before it looks for a file.
+A theme can ship one sound named `startup.wav`. `default/hypr/autostart.lua` runs `omarchy-theme-startup-sound` on `hyprland.start`; the command waits up to ten seconds for WirePlumber to expose a default sink and plays the sound only after the user opts in with `omarchy toggle startup sound`. Startup sounds are off by default so selecting a visual theme never unexpectedly makes noise.
 
-The sound is the one theme file a stranger's repo can ship that is neither colour nor code, and it is handled as data throughout:
+The sound is the one theme file a stranger's repo can ship that is neither colour nor code, so its processing deliberately avoids general-purpose media decoders:
 
-- It is staged like any other file — a cloned theme's `startup.ogg` is kept, a symlinked one is dropped by `stage_installed_theme` — and `omarchy-theme-startup-sound` refuses a symlink again at play time, since the staged directory is user-writable state.
-- It is played with `pw-play`, which decodes through libsndfile and understands nothing but audio. `mpv` is deliberately not used: it reads `~/.config/mpv/scripts`, follows playlists, and fetches URLs, all of which an untrusted file could steer.
-- Before playback the file must carry one of the listed extensions, be identified as `audio/*` (or `application/ogg`) by `file --mime-type`, and be no larger than 10 MiB. Playback runs under `timeout` and is cut off after 15 seconds.
+- A cloned theme's regular `startup.wav` is staged, while `stage_installed_theme` drops symlinks. At playback, `omarchy-theme-startup-sound` copies no more than one byte beyond the 2,880,044-byte valid-file limit into a private runtime snapshot without following a final symlink.
+- The snapshot must be a canonical 44-byte-header RIFF/WAVE file containing signed 16-bit little-endian PCM, one or two channels, a sample rate of 44.1 or 48 kHz, no metadata or extra chunks, and no more than 15 seconds of samples.
+- The command extracts only the sample bytes and invokes `pw-play --raw` with the validated format values. This bypasses libsndfile and other container or codec parsers entirely.
+- Playback uses a private sample file with an exact validated length, a 25% stream-volume cap, and a `timeout --kill-after` deadline. WirePlumber probes and the bounded snapshot copy have hard deadlines too.
 
-`test/shell.d/theme-startup-sound-test.sh` covers each refusal against a stub `pw-play`.
+Convert another audio file to the accepted layout with:
+
+```bash
+ffmpeg -i input.ext -t 15 -map_metadata -1 -ac 2 -ar 48000 -c:a pcm_s16le -fflags +bitexact -flags:a +bitexact startup.wav
+```
+
+`test/shell.d/theme-startup-sound-test.sh` covers the format boundary, known malicious fixtures, timeout enforcement, opt-in state, and concurrent theme replacement against a stub `pw-play`.
 
 ## `colors.toml`
 

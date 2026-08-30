@@ -99,8 +99,8 @@ assert_staged backgrounds/1-real.png "an image in backgrounds/ is staged"
 assert_not_staged unlock.png "a symlink is not followed out of the theme"
 assert_not_staged vscode.json "vscode.json names an extension to install and is not staged"
 
-# A startup sound is data that omarchy-theme-startup-sound checks again before
-# playing, so it is kept; a symlinked one is refused like any other symlink.
+# A startup sound is kept as data. The playback command accepts only canonical
+# PCM and extracts raw samples rather than sending the container to a decoder.
 assert_staged startup.wav "the theme's startup sound is staged"
 assert_not_staged startup.ogg "a symlinked startup sound is not followed"
 

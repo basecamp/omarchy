@@ -33,14 +33,8 @@ the terminal configs `alacritty.toml`, `foot.ini`, `ghostty.conf` and
 (names a VS Code extension to install). Those are regenerated from `colors.toml`
 through `$OMARCHY_PATH/default/themed/*.tpl`, and named on stderr.
 
-Everything else a cloned theme ships is kept, including `btop.theme`,
-`chromium.theme`, `helix.toml`, `icons.theme`, `keyboard.rgb`, `shell.toml` and
-a `startup.<ext>` sound (`wav`, `flac`, `ogg`, `oga`, `opus` or `mp3`), which
-`omarchy-theme-startup-sound` plays at login through `pw-play` after checking it
-really is audio, is under 10 MiB, and cutting it off at 15 seconds.
-`omarchy toggle startup sound` turns startup sounds off for every theme.
-Omarchy tells a cloned theme from the user's own by the `.git` directory a clone
-leaves behind.
+Everything else a cloned theme ships is kept, including `btop.theme`, `chromium.theme`, `helix.toml`, `icons.theme`, `keyboard.rgb`, `shell.toml` and a `startup.wav` sound. Startup sounds are off by default; `omarchy toggle startup sound` opts in. `omarchy-theme-startup-sound` accepts only canonical mono or stereo 16-bit PCM at 44.1 or 48 kHz for up to 15 seconds, extracts the raw samples into a private snapshot, and gives those to `pw-play --raw` under a hard timeout and volume cap, avoiding native container and codec parsing.
+Omarchy tells a cloned theme from the user's own by the `.git` directory a clone leaves behind.
 
 To change how Omarchy themes an app for every theme, write the template rather
 than the theme: `~/.config/omarchy/themed/<config-name>.tpl` overrides the
