@@ -100,7 +100,6 @@ struct SandboxPlan {
 };
 
 SandboxPlan build_plan();
-SandboxPlan build_test_plan_for_worker(std::string worker_path);
 bool contains_argument_pair(const SandboxPlan &plan, std::string_view option,
                             std::string_view value);
 

@@ -162,9 +162,7 @@ SeccompPolicy seccomp_policy() {
                            .forbidden_flags = forbidden}};
 }
 
-} // namespace
-
-SandboxPlan build_test_plan_for_worker(std::string worker_path) {
+SandboxPlan build_plan_for_worker(std::string worker_path) {
   validate_worker_path(worker_path);
   SandboxPlan plan;
   const auto &fd = plan.descriptors;
@@ -277,8 +275,10 @@ SandboxPlan build_test_plan_for_worker(std::string worker_path) {
   return plan;
 }
 
+} // namespace
+
 SandboxPlan build_plan() {
-  return build_test_plan_for_worker(std::string(kPackagedWorkerPath));
+  return build_plan_for_worker(std::string(kPackagedWorkerPath));
 }
 
 bool contains_argument_pair(const SandboxPlan &plan, std::string_view option,

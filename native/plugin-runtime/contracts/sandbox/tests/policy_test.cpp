@@ -1,4 +1,5 @@
 #include "omarchy/plugin_runtime/sandbox/policy.h"
+#include "omarchy/plugin_runtime/sandbox/test_plan.h"
 #include "omarchy/plugin_runtime/runtime_paths.hpp"
 
 #include <algorithm>
@@ -12,9 +13,9 @@
 #include <linux/sched.h>
 
 using omarchy::plugin_runtime::sandbox::build_plan;
-using omarchy::plugin_runtime::sandbox::build_test_plan_for_worker;
 using omarchy::plugin_runtime::sandbox::contains_argument_pair;
 using omarchy::plugin_runtime::sandbox::SandboxPlan;
+using omarchy::plugin_runtime::sandbox::test_support::build_plan_for_worker;
 
 namespace {
 [[noreturn]] void fail(std::string_view message) {
@@ -224,9 +225,23 @@ int main() {
   verify_lifecycle(plan);
   verify_seccomp(plan);
 
+  constexpr std::string_view test_worker = "/tmp/omarchy-test-worker";
+  const SandboxPlan test_plan = build_plan_for_worker(std::string(test_worker));
+  require(test_plan.argv.size() == plan.argv.size(),
+          "test worker substitution changed the argument count");
+  std::size_t changed_arguments = 0;
+  for (std::size_t index = 0; index < plan.argv.size(); ++index) {
+    changed_arguments += plan.argv.at(index) != test_plan.argv.at(index);
+  }
+  require(contains_argument_pair(test_plan, "--ro-bind", test_worker) &&
+              !contains_argument_pair(test_plan, "--ro-bind", worker) &&
+              test_plan.argv.back() == "/runtime/worker" &&
+              changed_arguments == 1,
+          "test worker substitution changed more than its bind source");
+
   bool rejected_relative = false;
   try {
-    static_cast<void>(build_test_plan_for_worker("relative-worker"));
+    static_cast<void>(build_plan_for_worker("relative-worker"));
   } catch (const std::invalid_argument &) {
     rejected_relative = true;
   }
@@ -234,7 +249,7 @@ int main() {
 
   bool rejected_noncanonical = false;
   try {
-    static_cast<void>(build_test_plan_for_worker("/tmp/../worker"));
+    static_cast<void>(build_plan_for_worker("/tmp/../worker"));
   } catch (const std::invalid_argument &) {
     rejected_noncanonical = true;
   }
