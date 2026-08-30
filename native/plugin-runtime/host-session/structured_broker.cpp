@@ -132,9 +132,10 @@ AuthenticatedBrokerAdmission::admit(const wire::PacketView &packet) {
 }
 
 BrokerTransaction::BrokerTransaction(BrokerTransaction &&other) noexcept
-    : state_(other.state_), reply_kind_(other.reply_kind_), fatal_(other.fatal_),
-      route_(other.route_), correlation_(other.correlation_),
-      message_type_(other.message_type_), payload_size_(other.payload_size_),
+    : state_(other.state_), reply_kind_(other.reply_kind_),
+      fatal_(other.fatal_), route_(other.route_),
+      correlation_(other.correlation_), message_type_(other.message_type_),
+      payload_size_(other.payload_size_),
       provider_response_bytes_(other.provider_response_bytes_),
       authority_(std::move(other.authority_)), settled_(other.settled_) {
   std::copy_n(other.payload_.begin(), payload_size_, payload_.begin());
@@ -199,19 +200,16 @@ StructuredBroker::StructuredBroker(permissions::ActivationBinding binding,
                                    runtime::AuditedBrokerRuntime &builtin,
                                    runtime::DynamicBrokerRuntime &dynamic,
                                    DispatchAuthority &authority)
-    : authority_stamp_(
-          std::move(binding), session_nonce,
-          std::shared_ptr<const BrokerInstanceOrigin>(new BrokerInstanceOrigin)),
+    : authority_stamp_(std::move(binding), session_nonce,
+                       std::shared_ptr<const BrokerInstanceOrigin>(
+                           new BrokerInstanceOrigin)),
       builtin_(builtin), dynamic_(dynamic), authority_(authority) {
   if (!authority_stamp_.valid() ||
-      builtin_.binding() != authority_stamp_.binding_)
+      builtin_.binding() != authority_stamp_.binding_ ||
+      (!dynamic_.empty() &&
+       !dynamic_.accepts_binding(authority_stamp_.binding_)))
     throw std::invalid_argument(
         "broker runtimes do not match the admitted activation");
-  // N4B must add an exact DynamicBrokerRuntime activation-binding accessor so
-  // this constructor can reject a route set reconstructed for another plugin
-  // or generation. Dynamic updates are still fail-closed below, but dispatch
-  // cannot distinguish a runtime-wide binding mismatch from an ordinary
-  // dynamic denial until that accessor exists.
 }
 
 AdmissionExtractionResult StructuredBroker::take_admission() {
@@ -300,8 +298,7 @@ StructuredBroker::dispatch_builtin(const wire::PacketView &packet,
                              result.decision.code);
   case broker::DispatchOutcome::provider_failed:
     return typed_error_reply(BrokerTransaction::Route::builtin, packet,
-                             ReplyKind::provider_failed,
-                             result.decision.code);
+                             ReplyKind::provider_failed, result.decision.code);
   case broker::DispatchOutcome::pending:
     fail_closed();
     return BrokerTransaction::fatal_result(DispatchFatal::pending_unsupported,
@@ -325,9 +322,8 @@ BrokerTransaction
 StructuredBroker::dispatch_dynamic(const wire::PacketView &packet,
                                    std::span<std::byte> provider_response,
                                    runtime::DynamicGestureAuthority *gesture) {
-  const auto result =
-      dynamic_.dispatch(packet, authority_stamp_.binding_, provider_response,
-                        gesture);
+  const auto result = dynamic_.dispatch(packet, authority_stamp_.binding_,
+                                        provider_response, gesture);
   if (dynamic_.failed())
     return BrokerTransaction::fatal_result(DispatchFatal::runtime_failed,
                                            packet.header.correlation_id);
@@ -387,8 +383,7 @@ bool StructuredBroker::commit_sent(BrokerTransaction &&transaction) {
       .payload = payload};
   transaction.consume();
   try {
-    if (builtin_.accept_terminal(terminal) ==
-        broker::TerminalResult::accepted)
+    if (builtin_.accept_terminal(terminal) == broker::TerminalResult::accepted)
       return true;
   } catch (...) {
   }
@@ -438,21 +433,22 @@ runtime::RevocationResult StructuredBroker::apply_builtin_revocation(
   }
 }
 
-bool StructuredBroker::apply_dynamic_update(
+runtime::DynamicRevocationResult StructuredBroker::apply_dynamic_update(
     const definitions::DynamicRevisionGrant &updated) {
-  if (failed_.load() || active_dispatch == this ||
-      !authority_.fence_dynamic(updated))
-    return false;
+  if (failed_.load())
+    return {.status = runtime::DynamicRevocationStatus::failed};
+  if (active_dispatch == this || !authority_.fence_dynamic(updated))
+    return {.status = runtime::DynamicRevocationStatus::binding_mismatch};
   try {
-    // DynamicBrokerRuntime does not expose its exact activation binding yet;
-    // N4B owns that accessor. The runtime still validates the updated grant,
-    // and any false/throw here fail-closes this broker instance.
-    if (dynamic_.apply_reconstructed_update(updated))
-      return true;
+    const auto result = dynamic_.apply_reconstructed_revocation(updated);
+    if (result.status == runtime::DynamicRevocationStatus::accepted)
+      return result;
+    fail_closed();
+    return result;
   } catch (...) {
+    fail_closed();
+    return {.status = runtime::DynamicRevocationStatus::failed};
   }
-  fail_closed();
-  return false;
 }
 
 void StructuredBroker::fail_closed() noexcept {

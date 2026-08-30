@@ -254,7 +254,7 @@ public:
 
   [[nodiscard]] runtime::RevocationResult
   apply_builtin_revocation(const policy::Revocation &revocation);
-  [[nodiscard]] bool
+  [[nodiscard]] runtime::DynamicRevocationResult
   apply_dynamic_update(const definitions::DynamicRevisionGrant &updated);
 
 private:
