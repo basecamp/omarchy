@@ -42,6 +42,26 @@ assertEqual(
   'power shows battery icon when unplugged before battery state refreshes'
 )
 
+assertDeepEqual(
+  power.batteryList({
+    percentage: '11%',
+    batteries: '2',
+    'battery.1.name': 'BAT0', 'battery.1.percentage': '5%', 'battery.1.state': 'pending-charge', 'battery.1.size': '22Wh', 'battery.1.rate': '0W', 'battery.1.cycles': '6',
+    'battery.2.name': 'BAT1', 'battery.2.percentage': '16%', 'battery.2.state': 'discharging', 'battery.2.size': '23Wh', 'battery.2.rate': '20.5W', 'battery.2.cycles': '12'
+  }),
+  [
+    { name: 'BAT0', percentage: '5%', fraction: 0.05, state: 'pending-charge', size: '22Wh', rate: '0W', cycles: '6' },
+    { name: 'BAT1', percentage: '16%', fraction: 0.16, state: 'discharging', size: '23Wh', rate: '20.5W', cycles: '12' }
+  ],
+  'power breaks the composite battery down per pack'
+)
+assertDeepEqual(power.batteryList({ percentage: '51%' }), [], 'power reports no packs when the status command predates the breakdown')
+assertEqual(power.fractionFromPercentage('120%'), 1, 'power clamps a per-pack fraction')
+assertEqual(power.fractionFromPercentage(''), 0, 'power treats a missing per-pack percentage as empty')
+
+assert(/visible: root\.batteries\.length > 1/.test(panelSource), 'power hides the breakdown on single-battery machines')
+assert(/readonly property var batteries: Model\.batteryList\(root\.batteryInfo\)/.test(panelSource), 'power sources the breakdown from the status command')
+
 assert(/if \(b === Qt\.RightButton\) root\.togglePercentage\(\)/.test(panelSource), 'power right click toggles the bar percentage')
 assert(/Object\.assign\([^\n]+showPercentage: !root\.showPercentage[^\n]+\)[\s\S]*updateEntryInline/.test(panelSource), 'power persists the bar percentage setting')
 assert(/Math\.round\(root\.batteryFraction \* 100\) \+ "% " \+ root\.batteryIcon\(\)/.test(panelSource), 'power places the percentage before the battery icon')

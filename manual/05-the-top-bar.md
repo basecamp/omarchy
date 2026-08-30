@@ -52,7 +52,7 @@ The panels aren't read-outs. They're where you actually do the thing:
 - **Audio** has a master volume slider, an output-device picker, and a per-app mixer, so you can turn down that one browser tab without touching everything else.
 - **Network** scans for Wi-Fi, shows signal strength, connects, and lets you pick a DNS provider.
 - **Bluetooth** lists your devices with connect/disconnect and battery levels.
-- **Power** shows battery stats, switches power profiles (it remembers a separate choice for battery and AC), and prints some system info.
+- **Power** shows battery stats, switches power profiles (it remembers a separate choice for battery and AC), and prints some system info. On a machine with more than one battery — a ThinkPad with an internal cell and a hot-swap pack, say — the headline figures cover the whole machine and a **Batteries** section breaks out each pack.
 - **Display** carries a brightness slider, text size, monitor scaling presets, and — when you have more than one screen — per-monitor controls. See [monitors](33-monitors.md) for the deeper story.
 - **Clock** opens a month grid with ISO week numbers and month stepping.
 

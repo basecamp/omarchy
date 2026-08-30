@@ -89,6 +89,41 @@ function modeLabel(device, onBattery, states) {
   return "Charging"
 }
 
+function fractionFromPercentage(text) {
+  var value = parseFloat(String(text || "").replace("%", ""))
+  if (!isFinite(value)) return 0
+  return Math.max(0, Math.min(1, value / 100))
+}
+
+// omarchy-battery-status reports the composite of every pack in the machine as
+// the top-level keys, then repeats each pack behind numbered ones. Machines
+// with a single battery still emit one entry; the panel decides whether a
+// breakdown is worth drawing.
+function batteryList(info) {
+  var source = info || {}
+  var count = Number(source.batteries || 0)
+  if (!isFinite(count) || count <= 0) return []
+
+  var list = []
+  for (var i = 1; i <= count; i++) {
+    var prefix = "battery." + i + "."
+    var name = source[prefix + "name"]
+    if (!name) continue
+
+    var percentage = source[prefix + "percentage"] || ""
+    list.push({
+      name: String(name),
+      percentage: percentage,
+      fraction: fractionFromPercentage(percentage),
+      state: source[prefix + "state"] || "",
+      size: source[prefix + "size"] || "",
+      rate: source[prefix + "rate"] || "",
+      cycles: source[prefix + "cycles"] || ""
+    })
+  }
+  return list
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     clampIndex: clampIndex,
@@ -97,6 +132,8 @@ if (typeof module !== "undefined") {
     parseProfiles: parseProfiles,
     profileIcon: profileIcon,
     batteryFraction: batteryFraction,
+    fractionFromPercentage: fractionFromPercentage,
+    batteryList: batteryList,
     chargeThresholdActive: chargeThresholdActive,
     batteryIcon: batteryIcon,
     modeLabel: modeLabel

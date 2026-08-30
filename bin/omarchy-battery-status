@@ -5,6 +5,7 @@
 
 shell_output=false
 power_supply_path="${OMARCHY_POWER_SUPPLY_PATH:-/sys/class/power_supply}"
+display_device="/org/freedesktop/UPower/devices/DisplayDevice"
 
 case "${1:-}" in
   "")
@@ -18,13 +19,90 @@ case "${1:-}" in
     ;;
 esac
 
-battery=$(upower -e 2>/dev/null | grep BAT | head -n 1)
-[[ -z $battery ]] && exit 0
+mapfile -t batteries < <(upower -e 2>/dev/null | grep BAT)
+(( ${#batteries[@]} == 0 )) && exit 0
 
-battery_info=$(upower -i "$battery")
+battery_names=()
+battery_paths=()
+battery_percentages=()
+battery_states=()
+battery_sizes=()
+battery_rates=()
+battery_cycles=()
+threshold_start=""
+threshold_end=""
 
-percentage=$(awk '/percentage/ { print int($2); exit }' <<<"$battery_info")
-capacity=$(awk '/energy-full:/ { printf "%d", $2; exit }' <<<"$battery_info")
+# Reads the value column of the first `upower -i` line carrying $2 as a literal
+# substring. Keys are matched with their trailing colon so "energy-full:" never
+# picks up "energy-full-design:".
+info_field() {
+  awk -v key="$2" -v column="${3:-2}" 'index($0, key) { print $column; exit }' <<<"$1"
+}
+
+# Instantaneous draw for one battery in watts. UPower's own energy-rate can lag
+# the kernel telemetry by tens of seconds, so prefer sysfs when it is readable.
+sysfs_power_rate() {
+  local path="$1"
+
+  if [[ -r $path/power_now ]]; then
+    awk -v microwatts="$(<"$path/power_now")" 'BEGIN { print microwatts / 1000000 }'
+  elif [[ -r $path/current_now && -r $path/voltage_now ]]; then
+    awk \
+      -v microamps="$(<"$path/current_now")" \
+      -v microvolts="$(<"$path/voltage_now")" \
+      'BEGIN { print microamps * microvolts / 1000000000000 }'
+  fi
+}
+
+format_watts() {
+  awk -v rate="${1:-0}" 'BEGIN {
+    rounded = sprintf("%.1f", rate)
+    sub(/\.0$/, "", rounded)
+    print rounded
+  }'
+}
+
+for battery in "${batteries[@]}"; do
+  info=$(upower -i "$battery" 2>/dev/null)
+  [[ -n $info ]] || continue
+
+  native_path=$(info_field "$info" "native-path:")
+  battery_path="$power_supply_path/$native_path"
+  rate=$(sysfs_power_rate "$battery_path")
+  [[ -n $rate ]] || rate=$(info_field "$info" "energy-rate:")
+  # Charge thresholds hang off the individual packs, never off the composite
+  # device, so they have to be picked up here.
+  if [[ -z $threshold_end ]]; then
+    threshold_start=$(awk '/charge-start-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$info")
+    threshold_end=$(awk '/charge-end-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$info")
+  fi
+
+  cycles=$(info_field "$info" "charge-cycles:")
+  [[ $cycles == "N/A" ]] && cycles=""
+  if [[ -z $cycles && -r $battery_path/cycle_count ]]; then
+    cycles=$(<"$battery_path/cycle_count")
+  fi
+
+  battery_names+=("${native_path:-$(basename "$battery")}")
+  battery_paths+=("$battery_path")
+  battery_percentages+=("$(awk -v value="$(info_field "$info" "percentage:")" 'BEGIN { print int(value + 0.5) }')")
+  battery_states+=("$(info_field "$info" "state:")")
+  battery_sizes+=("$(awk -v value="$(info_field "$info" "energy-full:")" 'BEGIN { printf "%d", value }')")
+  battery_rates+=("$(format_watts "$rate")")
+  battery_cycles+=("$cycles")
+done
+
+# UPower's DisplayDevice is the composite of every battery in the machine, so a
+# ThinkPad carrying an internal cell plus a hot-swap pack reports one runtime,
+# one capacity, and one percentage instead of whichever pack enumerated first.
+# Fall back to that first pack only when the composite is unavailable.
+battery_info=$(upower -i "$display_device" 2>/dev/null)
+if [[ -z $(info_field "$battery_info" "percentage:") ]]; then
+  battery_info=$(upower -i "${batteries[0]}")
+fi
+
+percentage=$(awk -v value="$(info_field "$battery_info" "percentage:")" 'BEGIN { print int(value + 0.5) }')
+capacity=$(awk -v value="$(info_field "$battery_info" "energy-full:")" 'BEGIN { printf "%d", value }')
 time_remaining=$(awk '/time to (empty|full)/ {
   value = $4
   unit = $5
@@ -41,30 +119,17 @@ time_remaining=$(awk '/time to (empty|full)/ {
   }
   exit
 }' <<<"$battery_info")
-power_rate_raw=$(awk '/energy-rate/ { print $2; exit }' <<<"$battery_info")
-native_path=$(awk '/native-path/ { print $2; exit }' <<<"$battery_info")
-battery_path="$power_supply_path/$native_path"
+state=$(info_field "$battery_info" "state:")
 
-# UPower's energy-rate can lag the kernel telemetry by tens of seconds. Use
-# the instantaneous sysfs reading when available so the open panel stays live.
-if [[ -r $battery_path/power_now ]]; then
-  power_rate_raw=$(awk -v microwatts="$(<"$battery_path/power_now")" 'BEGIN { print microwatts / 1000000 }')
-elif [[ -r $battery_path/current_now && -r $battery_path/voltage_now ]]; then
-  power_rate_raw=$(awk \
-    -v microamps="$(<"$battery_path/current_now")" \
-    -v microvolts="$(<"$battery_path/voltage_now")" \
-    'BEGIN { print microamps * microvolts / 1000000000000 }')
-fi
+# The composite draw is the sum of what each pack is actually doing right now;
+# an idle pack contributing 0W is the point, not a rounding error.
+power_rate_raw=""
+for rate in "${battery_rates[@]}"; do
+  power_rate_raw=$(awk -v total="${power_rate_raw:-0}" -v rate="$rate" 'BEGIN { print total + rate }')
+done
+[[ -n $power_rate_raw ]] || power_rate_raw=$(info_field "$battery_info" "energy-rate:")
 
-power_rate=$(awk -v rate="${power_rate_raw:-0}" 'BEGIN {
-  rounded = sprintf("%.1f", rate)
-  sub(/\.0$/, "", rounded)
-  print rounded
-}')
-state=$(awk '/state/ { print $2; exit }' <<<"$battery_info")
-threshold_start=$(awk '/charge-start-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
-threshold_end=$(awk '/charge-end-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
-
+power_rate=$(format_watts "$power_rate_raw")
 [[ -z $threshold_end ]] && threshold_end=$(cat "$power_supply_path"/BAT*/charge_control_end_threshold 2>/dev/null | head -1)
 [[ -z $threshold_start ]] && threshold_start=$(cat "$power_supply_path"/BAT*/charge_control_start_threshold 2>/dev/null | head -1)
 
@@ -107,7 +172,17 @@ if [[ $shell_output == "true" ]]; then
   printf 'size\t%s\n' "${capacity}Wh"
   printf 'time\t%s\n' "$time_remaining"
 
-  cycles=$(cat "$power_supply_path"/BAT*/cycle_count 2>/dev/null | head -1)
+  # Packs wear at their own pace, so a machine with two of them has two counts
+  # to report and no honest way to collapse them into one number.
+  cycles=""
+  for count in "${battery_cycles[@]}"; do
+    [[ -n $count ]] || continue
+    if [[ -n $cycles ]]; then
+      cycles="$cycles · $count"
+    else
+      cycles="$count"
+    fi
+  done
 
   [[ -n $cycles ]] && printf 'cycles\t%s\n' "$cycles"
 
@@ -118,6 +193,20 @@ if [[ $shell_output == "true" ]]; then
       printf 'threshold\t%s%%\n' "$threshold_end"
     fi
   fi
+
+  # Per-pack detail behind numbered keys, so the panel can break the composite
+  # down without a second protocol. Consumers that only want the totals above
+  # can keep ignoring these.
+  printf 'batteries\t%s\n' "${#battery_names[@]}"
+  for i in "${!battery_names[@]}"; do
+    index=$((i + 1))
+    printf 'battery.%s.name\t%s\n' "$index" "${battery_names[i]}"
+    printf 'battery.%s.percentage\t%s%%\n' "$index" "${battery_percentages[i]}"
+    printf 'battery.%s.state\t%s\n' "$index" "${battery_states[i]}"
+    printf 'battery.%s.size\t%sWh\n' "$index" "${battery_sizes[i]}"
+    printf 'battery.%s.rate\t%sW\n' "$index" "${battery_rates[i]}"
+    [[ -n ${battery_cycles[i]} ]] && printf 'battery.%s.cycles\t%s\n' "$index" "${battery_cycles[i]}"
+  done
 
   exit 0
 fi
@@ -131,7 +220,7 @@ if [[ $charge_holding == "true" ]]; then
 
   echo "Battery ${percentage}%  ·  Holding at ${threshold_label}  ·  ${power_rate}W / ${capacity}Wh"
 elif [[ $state == "charging" ]]; then
-  echo "Battery ${percentage}%  ·  ${time_remaining} to full  ·   ${power_rate}W / ${capacity}Wh"
+  echo "Battery ${percentage}%  ·  ${time_remaining} to full  ·   ${power_rate}W / ${capacity}Wh"
 else
-  echo "Battery ${percentage}%  ·  ${time_remaining} left  ·   ${power_rate}W / ${capacity}Wh"
+  echo "Battery ${percentage}%  ·  ${time_remaining} left  ·   ${power_rate}W / ${capacity}Wh"
 fi

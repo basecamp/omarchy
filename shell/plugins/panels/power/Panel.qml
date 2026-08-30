@@ -24,6 +24,9 @@ Panel {
   // icon, so the open-panel mark takes the painted width instead of the
   // icon-sized fraction of the slot the fallback assumes.
   readonly property real openPanelIndicatorWidth: showPercentage && !button.vertical ? button.glyphPaintedWidth : 0
+  // The status command reports every pack in the machine, not just the first
+  // one it enumerates; this is the per-pack breakdown behind the composite.
+  readonly property var batteries: Model.batteryList(root.batteryInfo)
   readonly property bool batteryPresent: {
     var device = UPower.displayDevice
     return !!(device && device.isPresent)
@@ -447,6 +450,68 @@ Panel {
             InfoPair {
               label: root.chargeThresholdActive ? "Battery state" : (root.discharging ? "Discharging" : "Charging")
               value: root.chargeThresholdActive ? "Holding" : (root.batteryFull ? "-" : (root.batteryInfo.rate || ""))
+            }
+          }
+        }
+
+        // ---------- Per-battery breakdown ----------
+        // Everything above is UPower's composite of the whole machine. A
+        // ThinkPad carrying an internal cell plus a hot-swap slice hides which
+        // pack is doing the work behind that one number, so break it out. A
+        // single-battery machine gets no section: the row would only restate
+        // the hero.
+        Column {
+          id: batteryBreakdown
+          visible: root.batteries.length > 1
+          width: parent.width
+          spacing: Style.space(10)
+
+          PanelSeparator {
+            foreground: root.bar.foreground
+          }
+
+          PanelSectionHeader {
+            text: "BATTERIES"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+          }
+
+          Repeater {
+            model: root.batteries
+
+            Column {
+              required property var modelData
+
+              width: batteryBreakdown.width
+              spacing: Style.spacing.labelGap
+
+              InfoPair {
+                label: modelData.name
+                value: modelData.percentage + "  ·  " + modelData.rate
+              }
+
+              Item {
+                width: parent.width
+                implicitHeight: Style.space(4)
+
+                Rectangle {
+                  id: cellTrack
+                  anchors.fill: parent
+                  radius: height / 2
+                  color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+                }
+
+                Rectangle {
+                  anchors.left: cellTrack.left
+                  anchors.verticalCenter: cellTrack.verticalCenter
+                  height: cellTrack.height
+                  radius: cellTrack.radius
+                  color: root.batteryFillColor
+                  width: Math.max(cellTrack.height, cellTrack.width * modelData.fraction)
+
+                  Behavior on width { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
+                }
+              }
             }
           }
         }
