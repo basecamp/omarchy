@@ -154,8 +154,8 @@ SurfaceEndpointAttachResult SurfaceEndpointOwner::attach(
     Record record{
         .surface_key = published.surface_key_,
         .remote = &surface_item,
-        .endpoint = std::make_unique<SurfaceEndpoint>(
-            session_, published.declared_surface_),
+        .endpoint = std::unique_ptr<SurfaceEndpoint>(
+            new SurfaceEndpoint(session_, published.declared_surface_)),
     };
     records_.reserve(records_.size() + 1);
     if (!record.endpoint->attach(surface_item, geometry.logical_width,

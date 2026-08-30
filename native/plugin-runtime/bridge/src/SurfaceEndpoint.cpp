@@ -405,8 +405,4 @@ SurfaceEndpoint::State SurfaceEndpoint::state() const
   return implementation_->state;
 }
 
-std::string_view SurfaceEndpoint::declared_surface() const noexcept {
-  return declared_surface_;
-}
-
 } // namespace omarchy::plugin_runtime::bridge

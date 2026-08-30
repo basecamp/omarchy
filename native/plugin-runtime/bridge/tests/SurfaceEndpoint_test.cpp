@@ -14,7 +14,53 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
+
+namespace omarchy::plugin_runtime::bridge {
+
+class SurfaceEndpointTestAccess final {
+public:
+  [[nodiscard]] static std::unique_ptr<SurfaceEndpoint>
+  create(channel::SurfaceSessionPort &session, std::string declared_surface) {
+    return std::unique_ptr<SurfaceEndpoint>(
+        new SurfaceEndpoint(session, std::move(declared_surface)));
+  }
+
+  [[nodiscard]] static bool
+  attach(SurfaceEndpoint &endpoint, RemotePluginSurface &surface,
+         std::uint32_t logical_width, std::uint32_t logical_height,
+         std::uint32_t dpr_numerator, std::uint32_t dpr_denominator,
+         surface_host::InspectionAuthority &inspection,
+         surface_host::MonotonicClock &clock) {
+    return endpoint.attach(surface, logical_width, logical_height,
+                           dpr_numerator, dpr_denominator, inspection, clock);
+  }
+
+  [[nodiscard]] static bool route_input(SurfaceEndpoint &endpoint,
+                                        const surface::InputEvent &event,
+                                        bool trusted_gesture) {
+    return endpoint.route_input(event, trusted_gesture);
+  }
+
+  static void close(SurfaceEndpoint &endpoint) noexcept { endpoint.close(); }
+
+  [[nodiscard]] static bool is_inert(const SurfaceEndpoint &endpoint) noexcept {
+    return endpoint.state() == SurfaceEndpoint::State::inert;
+  }
+
+  [[nodiscard]] static bool
+  is_active(const SurfaceEndpoint &endpoint) noexcept {
+    return endpoint.state() == SurfaceEndpoint::State::active;
+  }
+
+  [[nodiscard]] static bool
+  is_closing(const SurfaceEndpoint &endpoint) noexcept {
+    return endpoint.state() == SurfaceEndpoint::State::closing;
+  }
+};
+
+} // namespace omarchy::plugin_runtime::bridge
 
 namespace {
 
@@ -26,6 +72,11 @@ namespace render = omarchy::plugin_runtime::render_session;
 namespace surface = omarchy::plugin_runtime::surface;
 namespace surface_host = omarchy::plugin_runtime::surface_host;
 namespace wire = omarchy::plugin::wire;
+
+static_assert(
+    !std::is_constructible_v<bridge::SurfaceEndpoint,
+                             channel::SurfaceSessionPort &, std::string>,
+    "surface endpoint construction escaped its owner");
 
 void require(bool condition, std::string_view message) {
   if (!condition)
@@ -209,14 +260,16 @@ public:
 };
 
 struct Harness {
-  Harness() : endpoint(port, "pet") {
+  Harness()
+      : endpoint(bridge::SurfaceEndpointTestAccess::create(port, "pet")) {
     port.remote_at_detach = &remote;
   }
 
   void attach() {
-    require(endpoint.attach(remote, 64, 32, 1, 1, inspection, clock),
+    require(bridge::SurfaceEndpointTestAccess::attach(
+                *endpoint, remote, 64, 32, 1, 1, inspection, clock),
             "surface endpoint attach failed");
-    require(endpoint.state() == bridge::SurfaceEndpoint::State::active &&
+    require(bridge::SurfaceEndpointTestAccess::is_active(*endpoint) &&
                 port.send_calls == 1,
             "endpoint did not activate through profile offer");
   }
@@ -247,17 +300,17 @@ struct Harness {
   Inspection inspection;
   Clock clock;
   bridge::RemotePluginSurface remote;
-  bridge::SurfaceEndpoint endpoint;
+  std::unique_ptr<bridge::SurfaceEndpoint> endpoint;
 };
 
 void lifecycle_and_descriptor_contract() {
   Harness value;
-  require(value.endpoint.state() ==
-              bridge::SurfaceEndpoint::State::inert,
+  require(bridge::SurfaceEndpointTestAccess::is_inert(*value.endpoint),
           "endpoint did not begin inert");
   value.attach();
-  require(!value.endpoint.attach(value.remote, 64, 32, 1, 1,
-                                 value.inspection, value.clock),
+  require(!bridge::SurfaceEndpointTestAccess::attach(
+              *value.endpoint, value.remote, 64, 32, 1, 1, value.inspection,
+              value.clock),
           "endpoint allowed a double attach");
   value.negotiate();
 
@@ -276,10 +329,9 @@ void lifecycle_and_descriptor_contract() {
   ::close(descriptors[1]);
 
   const auto sends_before_close = value.port.send_calls;
-  value.endpoint.close();
-  value.endpoint.close();
-  require(value.endpoint.state() ==
-              bridge::SurfaceEndpoint::State::closing &&
+  bridge::SurfaceEndpointTestAccess::close(*value.endpoint);
+  bridge::SurfaceEndpointTestAccess::close(*value.endpoint);
+  require(bridge::SurfaceEndpointTestAccess::is_closing(*value.endpoint) &&
               value.port.detach_calls == 1 &&
               value.port.remote_was_alive_at_detach &&
               value.port.send_calls == sends_before_close,
@@ -327,7 +379,8 @@ void gesture_arming_is_exact_and_send_failure_clears() {
                                    .code = 0,
                                    .state = 0,
                                    .active_touch_points = 0};
-  require(value.endpoint.route_input(motion, false) &&
+  require(bridge::SurfaceEndpointTestAccess::route_input(
+              *value.endpoint, motion, false) &&
               value.port.arm_calls == 0,
           "non-press input armed surface intent authority");
 
@@ -345,7 +398,8 @@ void gesture_arming_is_exact_and_send_failure_clears() {
       .code = 1,
       .state = static_cast<std::uint32_t>(surface::ButtonState::pressed),
       .active_touch_points = 0};
-  require(!value.endpoint.route_input(press, true) &&
+  require(!bridge::SurfaceEndpointTestAccess::route_input(
+              *value.endpoint, press, true) &&
               value.port.arm_calls == 1 && value.port.last_arm_sequence == 2 &&
               value.port.clear_calls >= 2 &&
               !value.port.intent_after_focus_admitted,
@@ -365,7 +419,8 @@ void gesture_arming_is_exact_and_send_failure_clears() {
       .code = 1,
       .state = 1,
       .active_touch_points = 1};
-  require(touch.endpoint.route_input(start, true) &&
+  require(bridge::SurfaceEndpointTestAccess::route_input(
+              *touch.endpoint, start, true) &&
               touch.port.arm_calls == 1 &&
               !touch.port.intent_after_focus_admitted,
           "touch-start gesture was not armed at its exact input packet");
@@ -375,14 +430,15 @@ void remote_destruction_detaches_while_cpp_object_is_alive() {
   Port port;
   Inspection inspection;
   Clock clock;
-  bridge::SurfaceEndpoint endpoint(port, "pet");
+  auto endpoint = bridge::SurfaceEndpointTestAccess::create(port, "pet");
   {
     bridge::RemotePluginSurface remote;
     port.remote_at_detach = &remote;
-    require(endpoint.attach(remote, 64, 32, 1, 1, inspection, clock),
+    require(bridge::SurfaceEndpointTestAccess::attach(
+                *endpoint, remote, 64, 32, 1, 1, inspection, clock),
             "destruction-order fixture did not attach");
   }
-  require(endpoint.state() == bridge::SurfaceEndpoint::State::closing &&
+  require(bridge::SurfaceEndpointTestAccess::is_closing(*endpoint) &&
               port.detach_calls == 1 && port.remote_was_alive_at_detach,
           "remote C++ destruction did not fence its endpoint first");
 }
@@ -392,37 +448,45 @@ void attach_rolls_back_every_published_owner() {
   Inspection inspection;
   Clock clock;
   bridge::RemotePluginSurface remote;
-  bridge::SurfaceEndpoint endpoint(port, "pet");
+  auto endpoint = bridge::SurfaceEndpointTestAccess::create(port, "pet");
   port.fail_describe = true;
-  require(!endpoint.attach(remote, 64, 32, 1, 1, inspection, clock),
+  require(!bridge::SurfaceEndpointTestAccess::attach(
+              *endpoint, remote, 64, 32, 1, 1, inspection, clock),
           "failed surface description escaped endpoint attach");
   port.fail_describe = false;
   port.fail_attach = true;
-  require(!endpoint.attach(remote, 64, 32, 1, 1, inspection, clock) &&
-              endpoint.state() == bridge::SurfaceEndpoint::State::inert,
+  require(!bridge::SurfaceEndpointTestAccess::attach(
+              *endpoint, remote, 64, 32, 1, 1, inspection, clock) &&
+              bridge::SurfaceEndpointTestAccess::is_inert(*endpoint),
           "failed transactional session attach escaped endpoint rollback");
   port.fail_attach = false;
-  require(endpoint.attach(remote, 64, 32, 1, 1, inspection, clock),
+  require(bridge::SurfaceEndpointTestAccess::attach(
+              *endpoint, remote, 64, 32, 1, 1, inspection, clock),
           "rollback retained a Remote observer or pointer router");
-  endpoint.close();
+  bridge::SurfaceEndpointTestAccess::close(*endpoint);
 
   Port bounds_port;
   bridge::RemotePluginSurface bounds_remote;
-  bridge::SurfaceEndpoint bounds(bounds_port, "pet");
-  require(!bounds.attach(bounds_remote, 65, 32, 1, 1, inspection, clock) &&
+  auto bounds =
+      bridge::SurfaceEndpointTestAccess::create(bounds_port, "pet");
+  require(!bridge::SurfaceEndpointTestAccess::attach(
+              *bounds, bounds_remote, 65, 32, 1, 1, inspection, clock) &&
               bounds_port.detach_calls == 1 && bounds_port.send_calls == 0 &&
-              bounds.attach(bounds_remote, 64, 32, 1, 1, inspection, clock),
+              bridge::SurfaceEndpointTestAccess::attach(
+                  *bounds, bounds_remote, 64, 32, 1, 1, inspection, clock),
           "HostSurface allocation failure retained published endpoint state");
-  bounds.close();
+  bridge::SurfaceEndpointTestAccess::close(*bounds);
 
   Port router_port;
   bridge::RemotePluginSurface router_remote;
   RegionRouter occupied;
   require(router_remote.bindHostInputRegionRouter(occupied),
           "occupied region-router fixture did not bind");
-  bridge::SurfaceEndpoint router_endpoint(router_port, "pet");
-  require(!router_endpoint.attach(router_remote, 64, 32, 1, 1, inspection,
-                                  clock) &&
+  auto router_endpoint =
+      bridge::SurfaceEndpointTestAccess::create(router_port, "pet");
+  require(!bridge::SurfaceEndpointTestAccess::attach(
+              *router_endpoint, router_remote, 64, 32, 1, 1, inspection,
+              clock) &&
               router_port.detach_calls == 1 && router_port.send_calls == 0,
           "failed HostSurface construction emitted a stale profile offer");
   QMouseEvent rejected_press(
@@ -433,31 +497,34 @@ void attach_rolls_back_every_published_owner() {
   require(!rejected_press.isAccepted(),
           "failed HostSurface retained an input transport/router");
   router_remote.unbindHostInputRegionRouter(occupied);
-  require(router_endpoint.attach(router_remote, 64, 32, 1, 1, inspection,
-                                 clock),
+  require(bridge::SurfaceEndpointTestAccess::attach(
+              *router_endpoint, router_remote, 64, 32, 1, 1, inspection,
+              clock),
           "failed HostSurface retained transport state across safe reuse");
-  router_endpoint.close();
+  bridge::SurfaceEndpointTestAccess::close(*router_endpoint);
 
   Port transport_port;
   bridge::RemotePluginSurface transport_remote;
-  bridge::SurfaceEndpoint transport_endpoint(transport_port,
-                                                        "pet");
+  auto transport_endpoint =
+      bridge::SurfaceEndpointTestAccess::create(transport_port, "pet");
   auto occupied_sink = std::make_shared<InputSink>();
   auto occupied_transport =
       std::make_shared<bridge::AuthenticatedInputTransport>(99,
                                                             occupied_sink);
   require(transport_remote.bindTransport(occupied_transport) &&
-              !transport_endpoint.attach(transport_remote, 64, 32, 1, 1,
-                                         inspection, clock) &&
+              !bridge::SurfaceEndpointTestAccess::attach(
+                  *transport_endpoint, transport_remote, 64, 32, 1, 1,
+                  inspection, clock) &&
               occupied_transport->connected() &&
               transport_port.detach_calls == 1 &&
               transport_port.send_calls == 0,
           "occupied Remote transport was replaced or emitted a profile");
   transport_remote.unbindTransport(occupied_transport);
-  require(transport_endpoint.attach(transport_remote, 64, 32, 1, 1,
-                                    inspection, clock),
+  require(bridge::SurfaceEndpointTestAccess::attach(
+              *transport_endpoint, transport_remote, 64, 32, 1, 1, inspection,
+              clock),
           "occupied transport rejection prevented safe Remote reuse");
-  transport_endpoint.close();
+  bridge::SurfaceEndpointTestAccess::close(*transport_endpoint);
 }
 
 void remote_pointer_events_reach_the_exact_input_path() {
@@ -502,14 +569,15 @@ void late_g1_remote_teardown_cannot_touch_g2() {
   Port port;
   Inspection inspection;
   Clock clock;
-  bridge::SurfaceEndpoint endpoint(port, "pet");
+  auto endpoint = bridge::SurfaceEndpointTestAccess::create(port, "pet");
   {
     bridge::RemotePluginSurface remote;
-    require(endpoint.attach(remote, 64, 32, 1, 1, inspection, clock),
+    require(bridge::SurfaceEndpointTestAccess::attach(
+                *endpoint, remote, 64, 32, 1, 1, inspection, clock),
             "late G1 teardown fixture did not attach");
     port.replace_session();
   }
-  require(endpoint.state() == bridge::SurfaceEndpoint::State::closing &&
+  require(bridge::SurfaceEndpointTestAccess::is_closing(*endpoint) &&
               port.stale_clear_calls == 1 && port.clear_calls == 0 &&
               port.stale_detach_calls == 1,
           "late G1 teardown cleared or detached the replacement session");

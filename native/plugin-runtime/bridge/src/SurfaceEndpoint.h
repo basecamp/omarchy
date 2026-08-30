@@ -7,7 +7,6 @@
 #include <cstdint>
 #include <span>
 #include <string>
-#include <string_view>
 #include <thread>
 
 namespace omarchy::plugin_runtime::surface_host {
@@ -17,6 +16,11 @@ class MonotonicClock;
 
 namespace omarchy::plugin_runtime::bridge {
 
+class SurfaceEndpointOwner;
+#ifdef OMARCHY_SURFACE_ENDPOINT_TESTING
+class SurfaceEndpointTestAccess;
+#endif
+
 // Manager-owned adapter for one declared surface. It remains event-loop
 // confined and owns every object that can route the session into QML. Active
 // means transport-ready only; it is not permission/publication readiness.
@@ -25,15 +29,16 @@ class SurfaceEndpoint final
       private RemoteSurfaceLifetimeObserver,
       private HostPointerRouter {
 public:
-  enum class State { inert, attached, active, closing };
-
-  SurfaceEndpoint(channel::SurfaceSessionPort &session,
-                            std::string declared_surface);
   ~SurfaceEndpoint() override;
   SurfaceEndpoint(const SurfaceEndpoint &) = delete;
   SurfaceEndpoint &
   operator=(const SurfaceEndpoint &) = delete;
 
+private:
+  enum class State { inert, attached, active, closing };
+
+  SurfaceEndpoint(channel::SurfaceSessionPort &session,
+                  std::string declared_surface);
   [[nodiscard]] bool attach(RemotePluginSurface &surface,
                             std::uint32_t logical_width,
                             std::uint32_t logical_height,
@@ -46,9 +51,7 @@ public:
   void close() noexcept;
 
   [[nodiscard]] State state() const noexcept;
-  [[nodiscard]] std::string_view declared_surface() const noexcept;
 
-private:
   struct Impl;
   [[nodiscard]] bool
   receive(host_session::OwnedAuthenticatedRenderMessage message) override;
@@ -67,6 +70,11 @@ private:
   const std::string declared_surface_;
   const std::thread::id owner_thread_;
   std::unique_ptr<Impl> implementation_;
+
+  friend class SurfaceEndpointOwner;
+#ifdef OMARCHY_SURFACE_ENDPOINT_TESTING
+  friend class SurfaceEndpointTestAccess;
+#endif
 };
 
 } // namespace omarchy::plugin_runtime::bridge
