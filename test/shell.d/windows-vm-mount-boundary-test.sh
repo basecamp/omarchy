@@ -15,6 +15,10 @@ fi
 test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
 
+# The checkout may live under /home, which the tmpfs below hides, so take a
+# mount-safe copy of the helper before the mounts land.
+cp "$ROOT/bin/omarchy-windows-vm" "$test_tmp/omarchy-windows-vm"
+
 # Hide host state before creating the production paths used by the root helper.
 mount -t tmpfs -o mode=0755,size=8m run-test /run
 mkdir -p /run/lock
@@ -27,7 +31,7 @@ mount -t tmpfs -o uid=0,gid=0,mode=0710,size=1g home-alice /home/alice
 export HOME=/home/alice
 unset OMARCHY_WINDOWS_DIR
 set -- help
-source "$ROOT/bin/omarchy-windows-vm" >/dev/null 2>&1
+source "$test_tmp/omarchy-windows-vm" >/dev/null 2>&1
 
 # The namespace maps the host filesystem's uid 0 to nobody. Only / remains on
 # that filesystem; all paths the helper mutates are isolated tmpfs mounts.
