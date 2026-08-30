@@ -7,6 +7,7 @@ include(CTest)
 add_library(omarchy-plugin-wire STATIC
   src/common.cpp
   src/envelope.cpp
+  src/permission_snapshot.cpp
   src/version.cpp
 )
 add_library(Omarchy::PluginRuntimeVersion ALIAS omarchy-plugin-wire)

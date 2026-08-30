@@ -1,5 +1,6 @@
 #include "omarchy/plugin/wire/common.hpp"
 #include "omarchy/plugin/wire/control.hpp"
+#include "omarchy/plugin/wire/permission_snapshot.hpp"
 #include "omarchy/plugin/wire/role_registry.hpp"
 #include "omarchy/plugin/wire/state.hpp"
 
@@ -622,6 +623,187 @@ void surface_binding_test() {
           "unsafe or empty surface binding was accepted");
 }
 
+void permission_snapshot_test() {
+  namespace snapshot_wire = omarchy::plugin::wire::permission_snapshot;
+  using snapshot_wire::GrantState;
+  using snapshot_wire::PermissionSnapshot;
+
+  const PermissionSnapshot source{
+      .manifest_request_fingerprint = std::string(64, 'a'),
+      .states = {GrantState::granted, GrantState::denied, GrantState::revoked}};
+  const auto golden = snapshot_wire::encode(source);
+  require(hex(golden) ==
+              "0001616161616161616161616161616161616161616161616161616161616161"
+              "6161616161616161616161616161616161616161616161616161616161616161"
+              "61610003010203",
+          "permission snapshot literal golden mismatch");
+  PermissionSnapshot decoded;
+  require(snapshot_wire::decode(golden, decoded) && decoded == source,
+          "permission snapshot did not round trip exactly");
+
+  const PermissionSnapshot sentinel{.manifest_request_fingerprint =
+                                        std::string(64, 'b'),
+                                    .states = {GrantState::revoked}};
+  const auto rejects = [&](std::span<const std::byte> bytes,
+                           std::string_view message) {
+    auto output = sentinel;
+    require(!snapshot_wire::decode(bytes, output) && output == sentinel,
+            message);
+  };
+
+  for (std::size_t length = 0; length < golden.size(); ++length)
+    rejects(std::span(golden).first(length),
+            "permission snapshot truncation was accepted");
+
+  auto malformed = golden;
+  malformed[1] = std::byte{2};
+  rejects(malformed, "unknown permission snapshot codec was accepted");
+  malformed = golden;
+  malformed[2] = std::byte{'A'};
+  rejects(malformed,
+          "noncanonical permission snapshot fingerprint was accepted");
+  malformed = golden;
+  malformed[2] = std::byte{'g'};
+  rejects(malformed, "invalid permission snapshot fingerprint was accepted");
+  malformed = golden;
+  malformed[66] = std::byte{1};
+  malformed[67] = std::byte{1};
+  rejects(malformed, "oversized permission request count was accepted");
+  malformed = golden;
+  malformed[67] = std::byte{2};
+  rejects(malformed, "permission snapshot trailing byte was accepted");
+  malformed = golden;
+  malformed.push_back(std::byte{1});
+  rejects(malformed, "permission snapshot suffix was accepted");
+
+  for (unsigned int value = 0; value <= 0xff; ++value) {
+    malformed = golden;
+    malformed[68] = static_cast<std::byte>(value);
+    auto state = sentinel;
+    const bool accepted = snapshot_wire::decode(malformed, state);
+    const bool valid =
+        value >= static_cast<unsigned int>(GrantState::granted) &&
+        value <= static_cast<unsigned int>(GrantState::revoked);
+    require(accepted == valid &&
+                (valid ? snapshot_wire::encode(state) == malformed
+                       : state == sentinel),
+            "permission snapshot grant state validation changed");
+  }
+
+  PermissionSnapshot empty{.manifest_request_fingerprint = std::string(64, '0'),
+                           .states = {}};
+  const auto empty_encoded = snapshot_wire::encode(empty);
+  require(empty_encoded.size() == snapshot_wire::kFixedPayloadBytes &&
+              snapshot_wire::decode(empty_encoded, decoded) && decoded == empty,
+          "empty permission snapshot did not round trip");
+
+  PermissionSnapshot maximum{
+      .manifest_request_fingerprint = std::string(64, 'f'),
+      .states = std::vector<GrantState>(snapshot_wire::kMaximumManifestRequests,
+                                        GrantState::denied)};
+  const auto maximum_encoded = snapshot_wire::encode(maximum);
+  require(maximum_encoded.size() == snapshot_wire::kMaximumPayloadBytes &&
+              snapshot_wire::decode(maximum_encoded, decoded) &&
+              decoded == maximum,
+          "maximum permission snapshot did not round trip");
+  maximum.states.push_back(GrantState::denied);
+  require(snapshot_wire::encode(maximum).empty(),
+          "encoder exceeded the manifest request bound");
+  auto too_large = maximum_encoded;
+  too_large.push_back(std::byte{0});
+  rejects(too_large, "decoder exceeded the manifest request bound");
+
+  auto invalid_source = source;
+  invalid_source.manifest_request_fingerprint[0] = 'A';
+  require(snapshot_wire::encode(invalid_source).empty(),
+          "encoder accepted a noncanonical fingerprint");
+  invalid_source = source;
+  invalid_source.states[0] = static_cast<GrantState>(0);
+  require(snapshot_wire::encode(invalid_source).empty(),
+          "encoder accepted an invalid grant state");
+
+  const auto verifies = [&](std::span<const std::byte> bytes,
+                            bool expected_valid, std::string_view message) {
+    auto output = sentinel;
+    const bool accepted = snapshot_wire::decode(bytes, output);
+    require(accepted == expected_valid &&
+                (accepted
+                     ? std::ranges::equal(snapshot_wire::encode(output), bytes)
+                     : output == sentinel),
+            message);
+  };
+
+  std::uint32_t random = 0x6f6d6172U;
+  for (std::size_t iteration = 0; iteration < 4096; ++iteration) {
+    random = random * 1664525U + 1013904223U;
+    auto bytes = golden;
+    switch (iteration % 8) {
+    case 0:
+      bytes[1] = static_cast<std::byte>((random % 0xfeU) + 2U);
+      verifies(bytes, false, "mutated codec version was accepted");
+      break;
+    case 1: {
+      constexpr std::string_view digits = "0123456789abcdef";
+      bytes[2 + (random % snapshot_wire::kManifestRequestFingerprintBytes)] =
+          static_cast<std::byte>(digits[random % digits.size()]);
+      verifies(bytes, true,
+               "canonical fingerprint mutation did not round trip");
+      break;
+    }
+    case 2:
+      bytes[2 + (random % snapshot_wire::kManifestRequestFingerprintBytes)] =
+          std::byte{'G'};
+      verifies(bytes, false, "invalid fingerprint mutation was accepted");
+      break;
+    case 3: {
+      const auto count = static_cast<std::uint16_t>(
+          random % (snapshot_wire::kMaximumManifestRequests + 1));
+      bytes.resize(snapshot_wire::kFixedPayloadBytes + count);
+      bytes[66] = static_cast<std::byte>(count >> 8U);
+      bytes[67] = static_cast<std::byte>(count);
+      for (std::size_t index = snapshot_wire::kFixedPayloadBytes;
+           index < bytes.size(); ++index) {
+        random = random * 1664525U + 1013904223U;
+        bytes[index] = static_cast<std::byte>((random % 3U) + 1U);
+      }
+      verifies(bytes, true, "bounded count mutation did not round trip");
+      break;
+    }
+    case 4: {
+      const auto count = static_cast<std::uint16_t>(
+          random % (snapshot_wire::kMaximumManifestRequests + 1));
+      bytes[66] = static_cast<std::byte>(count >> 8U);
+      bytes[67] = static_cast<std::byte>(count);
+      const auto exact = snapshot_wire::kFixedPayloadBytes + count;
+      bytes.resize(exact == snapshot_wire::kMaximumPayloadBytes ? exact - 1
+                                                                : exact + 1,
+                   std::byte{1});
+      verifies(bytes, false, "mismatched count mutation was accepted");
+      break;
+    }
+    case 5: {
+      const auto count = static_cast<std::uint16_t>((random % 256U) + 1U);
+      bytes.resize(snapshot_wire::kFixedPayloadBytes + count, std::byte{1});
+      bytes[66] = static_cast<std::byte>(count >> 8U);
+      bytes[67] = static_cast<std::byte>(count);
+      random = random * 1664525U + 1013904223U;
+      bytes[snapshot_wire::kFixedPayloadBytes + (random % count)] =
+          static_cast<std::byte>((random & 1U) == 0 ? 0U : 0xffU);
+      verifies(bytes, false, "invalid state mutation was accepted");
+      break;
+    }
+    case 6:
+      bytes.resize(random % golden.size());
+      verifies(bytes, false, "structured truncation was accepted");
+      break;
+    case 7:
+      bytes.resize(golden.size() + (random % 16U) + 1U, std::byte{1});
+      verifies(bytes, false, "structured suffix was accepted");
+      break;
+    }
+  }
+}
+
 } // namespace
 
 int main() {
@@ -633,6 +815,7 @@ int main() {
     state_test();
     classification_test();
     surface_binding_test();
+    permission_snapshot_test();
     std::cout << "plugin wire contract: PASS\n";
     return 0;
   } catch (const std::exception &error) {
