@@ -669,7 +669,9 @@ Panel {
 
     if (provider === "Custom") {
       var launcher = "omarchy-launch-floating-terminal-with-presentation"
-      root.bar.run(launcher + " " + Util.shellQuote(root.dnsCommand(provider)))
+      // The wrapper runs its first word as the command, so the provider travels
+      // as its own argument instead of inside the command name.
+      root.bar.run(launcher + " omarchy-dns " + Util.shellQuote(provider))
       root.close()
       return
     }

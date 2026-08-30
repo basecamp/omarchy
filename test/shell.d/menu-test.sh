@@ -402,7 +402,7 @@ assert(
   'menu select mode reads a leading icon and a trailing subtext off an option'
 )
 assert(
-  /omarchy-launch-floating-terminal-with-presentation "omarchy-plugin-remove/.test(pluginPicker),
+  /omarchy-launch-floating-terminal-with-presentation omarchy-plugin-remove "\$id"/.test(pluginPicker),
   'plugin picker removes where the confirmation and backup path are visible'
 )
 

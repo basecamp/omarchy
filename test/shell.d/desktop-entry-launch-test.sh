@@ -29,9 +29,11 @@ cat >"$mock_bin/setsid" <<'SH'
 printf 'launch:%s\n' "$*" >>"$OMARCHY_TEST_LOG"
 SH
 
+# The wrapper takes argv now, so record every word: what the installer builds is
+# an argument list, and a joined string would hide where its boundaries fell.
 cat >"$mock_bin/omarchy-launch-floating-terminal-with-presentation" <<'SH'
 #!/bin/bash
-printf '%s\n' "$1" >"$OMARCHY_TEST_PRESENTATION"
+printf '%s\n' "$@" >"$OMARCHY_TEST_PRESENTATION"
 SH
 
 chmod +x "$mock_bin"/*
@@ -73,16 +75,23 @@ assert_detached_installer_launch omarchy-install-gaming-heroic heroic
 assert_detached_installer_launch omarchy-install-gaming-steam steam
 
 bash "$ROOT/bin/omarchy-install-and-launch" "Example App" "alpha beta" "Disk Usage"
-presentation_command=$(<"$OMARCHY_TEST_PRESENTATION")
+mapfile -t presentation_argv <"$OMARCHY_TEST_PRESENTATION"
 
-[[ $presentation_command == *'echo Installing\ Example\ App...;'* ]] ||
-  fail "generic installer shell-quotes the display name" "$presentation_command"
-[[ $presentation_command == *'omarchy-pkg-add alpha beta && (setsid uwsm-app -- gtk-launch Disk\ Usage >/dev/null 2>&1 &)'* ]] ||
-  fail "generic installer waits for packages and detaches only the scoped launch" "$presentation_command"
+# A display name and a desktop ID both hold a space, and each has to arrive as
+# one word rather than as two. The packages are one field the caller means to be
+# split, so they arrive as separate words.
+[[ ${presentation_argv[0]} == "bash" && ${presentation_argv[1]} == "-c" ]] ||
+  fail "generic installer hands the wrapper a command and its arguments" "$(printf '%s\n' "${presentation_argv[@]}")"
+[[ ${presentation_argv[4]} == "Example App" ]] ||
+  fail "generic installer keeps a display name holding a space in one word" "$(printf '%s\n' "${presentation_argv[@]}")"
+[[ ${presentation_argv[5]} == "alpha" && ${presentation_argv[6]} == "beta" ]] ||
+  fail "generic installer passes each package as its own word" "$(printf '%s\n' "${presentation_argv[@]}")"
+[[ ${presentation_argv[7]} == "Disk Usage" ]] ||
+  fail "generic installer keeps a desktop ID holding a space in one word" "$(printf '%s\n' "${presentation_argv[@]}")"
 pass "generic installer waits for packages and detaches only the scoped launch"
 
 : >"$OMARCHY_TEST_LOG"
-bash -c "$presentation_command"
+"${presentation_argv[@]}"
 grep -Fxq 'pkg:alpha beta' "$OMARCHY_TEST_LOG" ||
   fail "generic installer passes every package to the package helper"
 wait_for_launch 'launch:uwsm-app -- gtk-launch Disk Usage' ||
@@ -90,7 +99,7 @@ wait_for_launch 'launch:uwsm-app -- gtk-launch Disk Usage' ||
 pass "generic installer preserves a desktop ID containing spaces"
 
 : >"$OMARCHY_TEST_LOG"
-if OMARCHY_TEST_PKG_STATUS=1 bash -c "$presentation_command"; then
+if OMARCHY_TEST_PKG_STATUS=1 "${presentation_argv[@]}"; then
   fail "generic installer propagates package installation failure"
 fi
 if grep -q '^launch:' "$OMARCHY_TEST_LOG"; then
