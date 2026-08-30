@@ -12,6 +12,12 @@ function eventParts(event, count) {
   return String(event && event.data ? event.data : "").split(",")
 }
 
+// The idle service wakes the display only for a cycle it put to sleep, and
+// never while the session is locked: the lock screen owns the display then.
+function wakeAfterIdle(idledThisCycle, sessionLocked) {
+  return !!idledThisCycle && !sessionLocked
+}
+
 function screensaverWindowsAfter(windows, address, visible) {
   var key = String(address || "")
   if (!key) {
@@ -47,6 +53,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     secondsFromConfig: secondsFromConfig,
     eventParts: eventParts,
+    wakeAfterIdle: wakeAfterIdle,
     screensaverWindowsAfter: screensaverWindowsAfter
   }
 }
