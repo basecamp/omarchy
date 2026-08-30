@@ -17,17 +17,19 @@ target_compile_features(omarchy-plugin-capability-definitions PUBLIC cxx_std_20)
 target_compile_options(omarchy-plugin-capability-definitions PRIVATE
   -Wall -Wextra -Wpedantic -Werror)
 
-add_executable(omarchy-plugin-capability-definition-test
-  tests/capability_definition_test.cpp
-  tests/capability_definition_loader_test.cpp
-  tests/dynamic_activation_test.cpp
-  tests/permissions_extensibility_demo_test.cpp)
-target_link_libraries(omarchy-plugin-capability-definition-test PRIVATE
-  omarchy-plugin-capability-definitions)
-target_compile_features(omarchy-plugin-capability-definition-test PRIVATE cxx_std_20)
-target_compile_options(omarchy-plugin-capability-definition-test PRIVATE
-  -Wall -Wextra -Wpedantic -Werror)
-
 include(CTest)
-add_test(NAME capability-definition-contract
-  COMMAND omarchy-plugin-capability-definition-test)
+if(BUILD_TESTING)
+  add_executable(omarchy-plugin-capability-definition-test
+    tests/capability_definition_test.cpp
+    tests/capability_definition_loader_test.cpp
+    tests/dynamic_activation_test.cpp
+    tests/permissions_extensibility_demo_test.cpp)
+  target_link_libraries(omarchy-plugin-capability-definition-test PRIVATE
+    omarchy-plugin-capability-definitions)
+  target_compile_features(omarchy-plugin-capability-definition-test PRIVATE cxx_std_20)
+  target_compile_options(omarchy-plugin-capability-definition-test PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+
+  add_test(NAME capability-definition-contract
+    COMMAND omarchy-plugin-capability-definition-test)
+endif()
