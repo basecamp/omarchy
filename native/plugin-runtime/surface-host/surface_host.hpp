@@ -20,20 +20,9 @@ namespace render_session = omarchy::plugin_runtime::render_session;
 namespace surface = omarchy::plugin_runtime::surface;
 namespace permissions = omarchy::plugins::permissions;
 
-inline constexpr std::size_t kMaximumInputRegions = 16;
-
 enum class SurfaceRole { bar_embedded, desktop_overlay, panel };
 enum class KeyboardFocusPolicy { none, after_gesture };
 enum class BarSection { unspecified, left, center, right };
-
-struct InputRegion {
-  std::uint32_t x;
-  std::uint32_t y;
-  std::uint32_t width;
-  std::uint32_t height;
-
-  constexpr bool operator==(const InputRegion &) const = default;
-};
 
 struct NamedSurfacePolicy {
   std::string plugin_id;
@@ -92,7 +81,7 @@ public:
   [[nodiscard]] virtual std::uint64_t now_nanoseconds() const = 0;
 };
 
-class HostSurface final {
+class HostSurface final : private bridge::HostInputRegionRouter {
 public:
   [[nodiscard]] static std::unique_ptr<HostSurface>
   create(NamedSurfacePolicy policy, permissions::ActivationBinding binding,
@@ -109,7 +98,6 @@ public:
   HostSurface &operator=(const HostSurface &) = delete;
 
   [[nodiscard]] bool receive_render(std::span<const std::byte> packet);
-  [[nodiscard]] bool set_input_regions(std::span<const InputRegion> regions);
   [[nodiscard]] bool route_input(const surface::InputEvent &event,
                                  bool trusted_gesture);
   [[nodiscard]] bool clear_focus();
@@ -133,6 +121,8 @@ private:
   [[nodiscard]] bool point_is_inside(std::uint32_t x_q16,
                                      std::uint32_t y_q16) const;
   [[nodiscard]] bool active() const;
+  [[nodiscard]] bool apply(const surface::InputRegionUpdate &update) override;
+  void unbind_input_region_router();
 
   NamedSurfacePolicy policy_;
   permissions::ActivationBinding binding_;
@@ -142,7 +132,8 @@ private:
   render_session::HostRenderSession render_session_;
   InspectionAuthority &inspection_authority_;
   MonotonicClock &clock_;
-  std::vector<InputRegion> input_regions_;
+  std::vector<surface::TransportedInputRegion> input_regions_;
+  bool input_region_router_bound_ = false;
   std::uint64_t focus_sequence_ = 0;
   std::uint64_t last_admitted_frame_ns_ = 0;
   bool has_admitted_frame_ = false;

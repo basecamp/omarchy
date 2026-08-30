@@ -6,8 +6,10 @@
 #include "render_input_transport.hpp"
 
 #include <QImage>
+#include <QList>
 #include <QMouseEvent>
 #include <QQuickPaintedItem>
+#include <QRect>
 #include <QtQml/qqmlregistration.h>
 
 #include <cstdint>
@@ -48,6 +50,8 @@ class RemotePluginSurface : public QQuickPaintedItem,
   Q_PROPERTY(
       qulonglong surfaceGeneration READ surfaceGeneration NOTIFY surfaceChanged)
   Q_PROPERTY(qulonglong frameSequence READ frameSequence NOTIFY frameChanged)
+  Q_PROPERTY(
+      QList<QRect> inputRegions READ inputRegions NOTIFY inputRegionsChanged)
 
 public:
   enum class InspectionFailure {
@@ -67,7 +71,7 @@ public:
   void bindTransport(std::shared_ptr<AuthenticatedInputTransport> transport);
   void bindHostPointerRouter(HostPointerRouter &router);
   void unbindHostPointerRouter(HostPointerRouter &router);
-  void bindHostInputRegionRouter(HostInputRegionRouter &router);
+  [[nodiscard]] bool bindHostInputRegionRouter(HostInputRegionRouter &router);
   void unbindHostInputRegionRouter(HostInputRegionRouter &router);
   bool configure(const surface::TrustedAllocation &allocation) override;
   bool present(surface::SurfaceKey surface, std::uint64_t frame_sequence,
@@ -95,6 +99,7 @@ public:
   [[nodiscard]] qulonglong frameSequence() const;
   [[nodiscard]] InspectionFailure inspectionFailure() const;
   [[nodiscard]] const QImage &ownedImage() const;
+  [[nodiscard]] const QList<QRect> &inputRegions() const;
 
 signals:
   void connectionChanged();
@@ -102,6 +107,7 @@ signals:
   void focusChanged();
   void surfaceChanged();
   void inspectionChanged();
+  void inputRegionsChanged();
 
 private:
   void mousePressEvent(QMouseEvent *event) override;
@@ -109,11 +115,13 @@ private:
   void routeHostPointerEvent(QMouseEvent &event, bool pressed);
   void fail(InspectionFailure failure, bool terminal);
   void resetFrame();
+  void resetInputRegions();
 
   std::shared_ptr<AuthenticatedInputTransport> transport_;
   HostPointerRouter *host_pointer_router_ = nullptr;
   HostInputRegionRouter *host_input_region_router_ = nullptr;
   std::uint64_t input_region_generation_ = 0;
+  QList<QRect> input_regions_;
   std::optional<surface::SurfaceState> state_;
   std::optional<surface::InputGate> input_gate_;
   std::optional<surface::FocusGate> focus_gate_;

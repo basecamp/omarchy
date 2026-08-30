@@ -177,7 +177,10 @@ void test_router_destruction_orders() {
   {
     RecordingRegionRouter router;
     RecordingRegionRouter unrelated;
-    item.bindHostInputRegionRouter(router);
+    require(item.bindHostInputRegionRouter(router),
+            "input-region router did not bind");
+    require(!item.bindHostInputRegionRouter(unrelated),
+            "a second input-region router replaced the trusted route");
     item.unbindHostInputRegionRouter(unrelated);
     require(item.updateInputRegions(update) && router.calls == 1 &&
                 router.last_generation == 1,
@@ -197,6 +200,75 @@ void test_router_destruction_orders() {
   }
   require(surviving_router.events.empty(),
           "surface teardown unexpectedly called its surviving router");
+}
+
+void test_input_region_projection_is_post_router_and_stable_on_reject() {
+  auto sink = std::make_shared<RecordingSink>();
+  auto transport =
+      std::make_shared<bridge::AuthenticatedInputTransport>(17, sink);
+  bridge::RemotePluginSurface item;
+  item.bindTransport(transport);
+  const auto allocation = surface::make_allocation({.id = 11, .generation = 5},
+                                                   20, 10, 20, 10, 1, 1, 4096);
+  require(allocation && item.configure(*allocation),
+          "input-region projection fixture configure");
+  RecordingRegionRouter router;
+  require(item.bindHostInputRegionRouter(router),
+          "input-region projection router did not bind");
+
+  surface::InputRegionUpdate accepted{
+      .surface = allocation->surface,
+      .generation = 1,
+      .regions = {{{.x = 2, .y = 3, .width = 4, .height = 5}}},
+      .count = 1,
+  };
+  require(item.updateInputRegions(accepted) && router.calls == 1 &&
+              item.inputRegions() == QList<QRect>{QRect(2, 3, 4, 5)},
+          "router-accepted regions were not projected exactly");
+
+  auto stale = accepted;
+  stale.generation = 1;
+  stale.regions[0].x = 9;
+  require(!item.updateInputRegions(stale) && router.calls == 1 &&
+              item.inputRegions() == QList<QRect>{QRect(2, 3, 4, 5)},
+          "stale regions reached the router or replaced accepted state");
+
+  auto wrong_surface = accepted;
+  wrong_surface.surface.generation--;
+  wrong_surface.generation = 2;
+  require(!item.updateInputRegions(wrong_surface) && router.calls == 1 &&
+              item.inputRegions() == QList<QRect>{QRect(2, 3, 4, 5)},
+          "wrong-surface regions replaced accepted state");
+
+  router.accept = false;
+  auto rejected = accepted;
+  rejected.generation = 2;
+  rejected.regions[0].x = 8;
+  require(!item.updateInputRegions(rejected) && router.calls == 2 &&
+              item.inputRegions() == QList<QRect>{QRect(2, 3, 4, 5)},
+          "router-rejected regions replaced accepted state");
+
+  router.accept = true;
+  auto cleared = accepted;
+  cleared.generation = 3;
+  cleared.count = 0;
+  require(item.updateInputRegions(cleared) && item.inputRegions().isEmpty(),
+          "accepted empty regions did not clear projected state");
+
+  auto restored = accepted;
+  restored.generation = 4;
+  require(item.updateInputRegions(restored) && !item.inputRegions().isEmpty(),
+          "accepted regions were not restored");
+  const auto calls_before_destroy = router.calls;
+  require(item.beginDestroy() && item.inputRegions().isEmpty(),
+          "surface teardown retained projected input regions");
+  auto after_destroy = accepted;
+  after_destroy.generation = 5;
+  require(!item.updateInputRegions(after_destroy) &&
+              router.calls == calls_before_destroy &&
+              item.inputRegions().isEmpty(),
+          "destroying surface repopulated regions or reached the router");
+  item.unbindHostInputRegionRouter(router);
 }
 
 surface::InputEvent pointer(surface::SurfaceKey key, std::uint64_t sequence) {
@@ -374,6 +446,7 @@ int main(int argc, char **argv) {
     test_quick_item_pointer_delivery();
     test_router_unbind_is_idempotent_and_identity_checked();
     test_router_destruction_orders();
+    test_input_region_projection_is_post_router_and_stable_on_reject();
     test_owned_pixels_and_lifecycle();
     test_authenticated_focus_and_input();
     test_invalid_transport_and_allocation();

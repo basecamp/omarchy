@@ -79,14 +79,16 @@ bool valid_policy_enums(const NamedSurfacePolicy &policy) {
   return valid_role && valid_focus;
 }
 
-bool region_fits(const InputRegion &region,
+bool region_fits(const surface::TransportedInputRegion &region,
                  const surface::TrustedAllocation &allocation) {
-  if (region.width == 0 || region.height == 0 ||
-      region.x >= allocation.logical_width ||
-      region.y >= allocation.logical_height)
+  if (region.x < 0 || region.y < 0 || region.width == 0 || region.height == 0)
     return false;
-  return region.width <= allocation.logical_width - region.x &&
-         region.height <= allocation.logical_height - region.y;
+  const auto x = static_cast<std::uint32_t>(region.x);
+  const auto y = static_cast<std::uint32_t>(region.y);
+  if (x >= allocation.logical_width || y >= allocation.logical_height)
+    return false;
+  return region.width <= allocation.logical_width - x &&
+         region.height <= allocation.logical_height - y;
 }
 
 bool is_focus_gesture(const surface::InputEvent &event) {
@@ -234,6 +236,11 @@ std::unique_ptr<HostSurface> HostSurface::create(
       render_sender, std::move(input_sink), inspection_authority, clock));
   if (!result->render_session_.start(result->allocation_))
     return nullptr;
+  if (!bridge_item.bindHostInputRegionRouter(*result)) {
+    result->close();
+    return nullptr;
+  }
+  result->input_region_router_bound_ = true;
   if (!result->policy_.dynamic_input_regions) {
     result->input_regions_.push_back(
         {.x = 0, .y = 0, .width = logical_width, .height = logical_height});
@@ -304,19 +311,25 @@ bool HostSurface::receive_render(std::span<const std::byte> packet) {
     has_admitted_frame_ = true;
   }
   if (render_session_.phase() == render_session::Phase::failed ||
-      render_session_.phase() == render_session::Phase::disconnected)
+      render_session_.phase() == render_session::Phase::disconnected) {
     terminated_ = true;
+    unbind_input_region_router();
+  }
   return accepted;
 }
 
-bool HostSurface::set_input_regions(std::span<const InputRegion> regions) {
-  if (!policy_.dynamic_input_regions || terminated_ ||
-      regions.size() > kMaximumInputRegions ||
-      !std::ranges::all_of(regions, [this](const InputRegion &region) {
-        return region_fits(region, allocation_);
-      }))
+bool HostSurface::apply(const surface::InputRegionUpdate &update) {
+  if (!policy_.dynamic_input_regions || !active() ||
+      update.surface != allocation_.surface || update.generation == 0 ||
+      update.count > surface::kMaximumTransportedInputRegions ||
+      !std::ranges::all_of(
+          update.regions.begin(), update.regions.begin() + update.count,
+          [this](const surface::TransportedInputRegion &region) {
+            return region_fits(region, allocation_);
+          }))
     return false;
-  input_regions_.assign(regions.begin(), regions.end());
+  input_regions_.assign(update.regions.begin(),
+                        update.regions.begin() + update.count);
   return true;
 }
 
@@ -324,19 +337,20 @@ bool HostSurface::point_is_inside(std::uint32_t x_q16,
                                   std::uint32_t y_q16) const {
   const std::uint64_t x = x_q16;
   const std::uint64_t y = y_q16;
-  return std::ranges::any_of(input_regions_, [x, y](const InputRegion &region) {
-    const std::uint64_t left = static_cast<std::uint64_t>(region.x)
-                               << surface::kQ16FractionBits;
-    const std::uint64_t top = static_cast<std::uint64_t>(region.y)
-                              << surface::kQ16FractionBits;
-    const std::uint64_t right =
-        static_cast<std::uint64_t>(region.x + region.width)
-        << surface::kQ16FractionBits;
-    const std::uint64_t bottom =
-        static_cast<std::uint64_t>(region.y + region.height)
-        << surface::kQ16FractionBits;
-    return x >= left && x < right && y >= top && y < bottom;
-  });
+  return std::ranges::any_of(
+      input_regions_, [x, y](const surface::TransportedInputRegion &region) {
+        const std::uint64_t left = static_cast<std::uint64_t>(region.x)
+                                   << surface::kQ16FractionBits;
+        const std::uint64_t top = static_cast<std::uint64_t>(region.y)
+                                  << surface::kQ16FractionBits;
+        const std::uint64_t right =
+            static_cast<std::uint64_t>(region.x + region.width)
+            << surface::kQ16FractionBits;
+        const std::uint64_t bottom =
+            static_cast<std::uint64_t>(region.y + region.height)
+            << surface::kQ16FractionBits;
+        return x >= left && x < right && y >= top && y < bottom;
+      });
 }
 
 bool HostSurface::active() const {
@@ -560,6 +574,7 @@ bool HostSurface::perform_inspection_action(InspectionAction action) {
 void HostSurface::peer_lost() {
   if (terminated_)
     return;
+  unbind_input_region_router();
   render_session_.peer_lost();
   captured_pointer_button_ = 0;
   touch_active_ = false;
@@ -568,6 +583,7 @@ void HostSurface::peer_lost() {
 }
 
 void HostSurface::close() {
+  unbind_input_region_router();
   if (terminated_)
     return;
   render_session_.close();
@@ -575,6 +591,14 @@ void HostSurface::close() {
   touch_active_ = false;
   transient_focus_active_ = false;
   terminated_ = true;
+}
+
+void HostSurface::unbind_input_region_router() {
+  if (!input_region_router_bound_)
+    return;
+  bridge_item_.unbindHostInputRegionRouter(*this);
+  input_region_router_bound_ = false;
+  input_regions_.clear();
 }
 
 const NamedSurfacePolicy &HostSurface::policy() const { return policy_; }

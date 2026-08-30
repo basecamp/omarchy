@@ -47,3 +47,15 @@ target_link_libraries(omarchy-plugin-surface-host PUBLIC
   omarchy-plugin-permission-contract
   omarchy-plugin-render-session
   omarchy-plugin-trusted-bridge)
+
+if(BUILD_TESTING)
+  add_executable(omarchy-plugin-surface-host-test surface_host_test.cpp)
+  omarchy_surface_host_defaults(omarchy-plugin-surface-host-test)
+  target_link_libraries(omarchy-plugin-surface-host-test PRIVATE
+    omarchy-plugin-surface-host)
+  add_test(NAME plugin-surface-host COMMAND omarchy-plugin-surface-host-test)
+  set_tests_properties(plugin-surface-host PROPERTIES
+    TIMEOUT 30
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME="
+    LABELS "unit;integration;adversarial;render;qml")
+endif()

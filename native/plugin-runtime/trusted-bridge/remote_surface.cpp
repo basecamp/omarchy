@@ -5,10 +5,13 @@
 #include <QPainter>
 
 #include <limits>
+#include <type_traits>
 #include <utility>
 
 namespace omarchy::plugin_runtime::bridge {
 namespace {
+
+static_assert(std::is_nothrow_move_assignable_v<QList<QRect>>);
 
 QString failure_name(RemotePluginSurface::InspectionFailure failure) {
   using Failure = RemotePluginSurface::InspectionFailure;
@@ -51,24 +54,47 @@ void RemotePluginSurface::unbindHostPointerRouter(HostPointerRouter &router) {
     host_pointer_router_ = nullptr;
 }
 
-void RemotePluginSurface::bindHostInputRegionRouter(HostInputRegionRouter &router) {
+bool RemotePluginSurface::bindHostInputRegionRouter(
+    HostInputRegionRouter &router) {
+  if (host_input_region_router_ != nullptr)
+    return false;
   host_input_region_router_ = &router;
+  return true;
 }
 
 void RemotePluginSurface::unbindHostInputRegionRouter(
     HostInputRegionRouter &router) {
-  if (host_input_region_router_ == &router)
+  if (host_input_region_router_ == &router) {
     host_input_region_router_ = nullptr;
+    resetInputRegions();
+  }
 }
 
 bool RemotePluginSurface::updateInputRegions(
     const surface::InputRegionUpdate &update) {
   if (!state_ || update.surface != state_->allocation().surface ||
+      state_->phase() != surface::SurfacePhase::active ||
       update.generation <= input_region_generation_ ||
-      host_input_region_router_ == nullptr ||
-      !host_input_region_router_->apply(update))
+      update.count > update.regions.size() ||
+      host_input_region_router_ == nullptr)
+    return false;
+  QList<QRect> projected;
+  projected.reserve(static_cast<qsizetype>(update.count));
+  for (std::uint32_t index = 0; index < update.count; ++index) {
+    const auto &region = update.regions[index];
+    if (region.width >
+            static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
+        region.height >
+            static_cast<std::uint32_t>(std::numeric_limits<int>::max()))
+      return false;
+    projected.emplaceBack(region.x, region.y, static_cast<int>(region.width),
+                          static_cast<int>(region.height));
+  }
+  if (!host_input_region_router_->apply(update))
     return false;
   input_region_generation_ = update.generation;
+  input_regions_ = std::move(projected);
+  emit inputRegionsChanged();
   return true;
 }
 
@@ -132,6 +158,7 @@ bool RemotePluginSurface::configure(
   connected_ = true;
   focused_ = false;
   failure_ = InspectionFailure::none;
+  resetInputRegions();
   resetFrame();
   setImplicitWidth(allocation.logical_width);
   setImplicitHeight(allocation.logical_height);
@@ -222,6 +249,7 @@ bool RemotePluginSurface::beginDestroy() {
   }
   focused_ = false;
   resetFrame();
+  resetInputRegions();
   emit focusChanged();
   return true;
 }
@@ -318,6 +346,10 @@ RemotePluginSurface::inspectionFailure() const {
 }
 const QImage &RemotePluginSurface::ownedImage() const { return image_; }
 
+const QList<QRect> &RemotePluginSurface::inputRegions() const {
+  return input_regions_;
+}
+
 void RemotePluginSurface::fail(InspectionFailure failure, bool terminal) {
   failure_ = failure;
   if (terminal) {
@@ -332,6 +364,7 @@ void RemotePluginSurface::fail(InspectionFailure failure, bool terminal) {
     connected_ = false;
     focused_ = false;
     resetFrame();
+    resetInputRegions();
     emit connectionChanged();
     emit focusChanged();
   }
@@ -345,6 +378,14 @@ void RemotePluginSurface::resetFrame() {
   update();
   if (changed)
     emit frameChanged();
+}
+
+void RemotePluginSurface::resetInputRegions() {
+  input_region_generation_ = 0;
+  if (input_regions_.isEmpty())
+    return;
+  input_regions_.clear();
+  emit inputRegionsChanged();
 }
 
 } // namespace omarchy::plugin_runtime::bridge
