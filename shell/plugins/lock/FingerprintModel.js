@@ -66,9 +66,12 @@ function shouldNudge(nowMs, lastNudgeMs, lastSettleMs, currentIntervalMs) {
   var sinceNudge = nowMs - lastNudgeMs
   var sinceSettle = nowMs - lastSettleMs
   // Wall-clock time can step backwards (timesyncd corrects RTC drift right
-  // after resume); a negative gap is stale, not a fresh nudge, so allow it.
-  if (sinceNudge < 0 || sinceSettle < 0) return true
-  if (sinceNudge < Math.max(NUDGE_COOLDOWN_MS, currentIntervalMs)) return false
+  // after resume). A negative nudge gap is stale, not a fresh nudge, so it
+  // does not hold the nudge back. A negative settle gap is unknown idle time:
+  // below the cap that is harmless, but at the cap the idle stretch is the
+  // cure, so it counts as no idle at all rather than as enough.
+  if (sinceNudge >= 0 && sinceNudge < Math.max(NUDGE_COOLDOWN_MS, currentIntervalMs)) return false
+  if (sinceSettle < 0) sinceSettle = 0
   if (currentIntervalMs >= ERROR_RETRY_CAP_MS && sinceSettle < IDLE_CLEAR_MS) return false
   return true
 }
@@ -85,6 +88,10 @@ function nextStreak(streak, reachedDevice, inResumeGrace) {
 
 // Whether something that should have taken expectedMs of monotonic time took
 // so much longer on the wall clock that the machine must have slept meanwhile.
+// A stalled event loop reads the same way, and a stall over the slack opens a
+// resume grace with no suspend behind it. That is tolerated: the grace only
+// pins the streak at the first tier, so even a loop stalling continuously
+// degrades to one attempt a second, still well under the storm it replaces.
 function spannedSleep(elapsedMs, expectedMs) {
   return elapsedMs > expectedMs + SLEEP_GAP_MS
 }

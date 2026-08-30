@@ -89,6 +89,10 @@ assertEqual(collapses, 5, 'continuous input at the cap collapses once per tier')
 // stretch, then lets it through -- before the cap's own timer would fire.
 assert(!model.shouldNudge(model.IDLE_CLEAR_MS - 1, longAgo, 0, capped), 'a nudge before the idle stretch is refused at the cap')
 assert(model.shouldNudge(model.IDLE_CLEAR_MS, longAgo, 0, capped), 'a nudge after the idle stretch is allowed at the cap')
+// A clock stepped back past the settle says nothing about how long fprintd
+// has been idle, so at the cap it must not stand in for the idle stretch.
+assert(!model.shouldNudge(10000, longAgo, 15000, capped), 'a clock stepped back past the settle does not bypass the idle guard at the cap')
+assert(model.shouldNudge(10000, 15000, longAgo, capped), 'a clock stepped back past the nudge still allows the nudge at the cap once idle')
 
 // At the cap the idle stretch is measured from the settle: a nudged attempt
 // that hangs until the reach timeout must not eat into fprintd's idle exit.
