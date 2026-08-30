@@ -58,7 +58,17 @@ verify_sshd_hardening() {
   rm -f "$key_file" "$key_file.pub"
   ssh-keygen -t ed25519 -N "" -q -C "omarchy-acceptance" -f "$key_file"
 
-  if ! omarchy-setup-security-sshd --key="$(cat "$key_file.pub")" >"$ARTIFACTS/setup-security-sshd.log" 2>&1; then
+  # sudo keys its cached credential on the calling terminal and, absent one, on
+  # the caller's parent process alone, so a timestamp validated in this shell
+  # never reaches the setup command's own sudo calls when the suite runs
+  # without a terminal (omarchy-iso-test drives it over ssh with no pty). Give
+  # the exercise a pseudo-terminal and validate the password on it first, so
+  # every sudo underneath shares that terminal's credential.
+  if ! OMARCHY_ACCEPTANCE_SUDO_PASSWORD="$OMARCHY_ACCEPTANCE_SUDO_PASSWORD" \
+    OMARCHY_ACCEPTANCE_SSHD_KEY="$(cat "$key_file.pub")" SHELL=/bin/bash \
+    script -qec 'printf "%s\n" "$OMARCHY_ACCEPTANCE_SUDO_PASSWORD" | sudo -S -v 2>/dev/null &&
+      omarchy-setup-security-sshd --key="$OMARCHY_ACCEPTANCE_SSHD_KEY"' /dev/null \
+    </dev/null >"$ARTIFACTS/setup-security-sshd.log" 2>&1; then
     fail "omarchy-setup-security-sshd completes unattended" "$(tail -5 "$ARTIFACTS/setup-security-sshd.log")"
   fi
   pass "omarchy-setup-security-sshd completes unattended"
