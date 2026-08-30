@@ -1,6 +1,14 @@
 #!/bin/bash
 
 set -o pipefail
+if [[ -z ${OMARCHY_PATH:-} ]]; then
+  if [[ -f /etc/omarchy.conf ]]; then
+    . /etc/omarchy.conf
+  fi
+  : "${OMARCHY_PATH:=/usr/share/omarchy}"
+  export OMARCHY_PATH
+fi
+
 
 OMARCHY_BIN_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 METADATA_SCAN_LIMIT=80
