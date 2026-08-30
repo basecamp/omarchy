@@ -21,7 +21,6 @@ namespace {
 
 constexpr std::uint16_t kControlRoleVersion = 1;
 constexpr std::uint32_t kMaximumInFlight = 32;
-constexpr auto kMaximumNegotiationWait = std::chrono::seconds(30);
 std::atomic<std::uint64_t> next_channel_origin{1};
 
 std::size_t role_index(wire::EndpointRole role) {
@@ -206,15 +205,6 @@ OpenResult AuthenticatedBrokerChannel::open(
     launcher::Supervisor &supervisor,
     const launcher::TrustedLaunchRequest &request,
     std::shared_ptr<BrokerDispatcher> dispatcher,
-    std::shared_ptr<const GenerationAuthority> authority) {
-  return open(supervisor, request, std::move(dispatcher), std::move(authority),
-              std::chrono::steady_clock::now() + kMaximumNegotiationWait);
-}
-
-OpenResult AuthenticatedBrokerChannel::open(
-    launcher::Supervisor &supervisor,
-    const launcher::TrustedLaunchRequest &request,
-    std::shared_ptr<BrokerDispatcher> dispatcher,
     std::shared_ptr<const GenerationAuthority> authority,
     launcher::Deadline deadline) {
   if (dispatcher == nullptr || authority == nullptr)
@@ -281,13 +271,6 @@ OpenResult AuthenticatedBrokerChannel::open(
           .failure = ChannelFailure::none,
           .launch_failure = launcher::LaunchFailure::none,
           .detail = {}};
-}
-
-bool AuthenticatedBrokerChannel::negotiate(std::chrono::milliseconds timeout) {
-  if (timeout.count() <= 0 || timeout > kMaximumNegotiationWait)
-    return fail(ChannelFailure::negotiation_failed,
-                "invalid channel negotiation deadline");
-  return negotiate(std::chrono::steady_clock::now() + timeout);
 }
 
 bool AuthenticatedBrokerChannel::negotiate(launcher::Deadline deadline) {
@@ -529,11 +512,6 @@ std::optional<PreparedSend> AuthenticatedBrokerChannel::prepare_send(
 }
 
 ChannelSendStatus AuthenticatedBrokerChannel::try_send(
-    PreparedSend &prepared, std::span<const int> borrowed_descriptors) {
-  return try_send(prepared, launcher::Deadline::max(), borrowed_descriptors);
-}
-
-ChannelSendStatus AuthenticatedBrokerChannel::try_send(
     PreparedSend &prepared, launcher::Deadline deadline,
     std::span<const int> borrowed_descriptors) {
   if (!prepared.pending_ || prepared.origin_ != origin_ || worker_ == nullptr)
@@ -583,11 +561,6 @@ ChannelSendStatus AuthenticatedBrokerChannel::try_send(
 
 int AuthenticatedBrokerChannel::readiness_fd() const noexcept {
   return worker_ == nullptr ? -1 : worker_->readiness_fd();
-}
-
-bool AuthenticatedBrokerChannel::arm_receive(
-    launcher::EndpointMask lanes) noexcept {
-  return arm_readiness(lanes, launcher::EndpointMask::none);
 }
 
 bool AuthenticatedBrokerChannel::arm_readiness(
@@ -718,48 +691,6 @@ AuthenticatedBrokerChannel::receive_authenticated_impl(
           .message = std::move(owned)};
 }
 
-bool AuthenticatedBrokerChannel::send_control(
-    std::uint16_t message_type, std::span<const std::byte> payload) {
-  auto prepared =
-      prepare_send(wire::EndpointRole::control, message_type, 0, payload);
-  return prepared && try_send(*prepared) == ChannelSendStatus::complete;
-}
-
-bool AuthenticatedBrokerChannel::receive_control_ack(
-    std::uint16_t message_type, std::chrono::milliseconds timeout) {
-  if (timeout.count() <= 0)
-    return false;
-  return receive_control_ack(message_type,
-                             std::chrono::steady_clock::now() + timeout);
-}
-
-bool AuthenticatedBrokerChannel::receive_control_ack(
-    std::uint16_t message_type, launcher::Deadline deadline) {
-  if (!ready_ || failed() || termination_.attempted() || message_type == 0 ||
-      std::chrono::steady_clock::now() >= deadline ||
-      !authority_->is_current(identity_))
-    return false;
-  auto message = receive_one(launcher::EndpointMask::control, deadline);
-  if (!message)
-    return false;
-  wire::PacketView packet{};
-  if (!validate_inbound(message, packet))
-    return false;
-  if (std::chrono::steady_clock::now() >= deadline)
-    return fail(ChannelFailure::deadline_expired,
-                "control deadline elapsed after consuming acknowledgement");
-  if (packet.header.message_type != message_type ||
-      packet.header.correlation_id != 0 || !packet.payload.empty())
-    return fail(ChannelFailure::malformed_envelope,
-                "consumed control acknowledgement differs from expectation");
-  return true;
-}
-
-DispatchStatus
-AuthenticatedBrokerChannel::dispatch_one(std::chrono::milliseconds timeout) {
-  return dispatch_one(std::chrono::steady_clock::now() + timeout);
-}
-
 DispatchStatus
 AuthenticatedBrokerChannel::dispatch_one(launcher::Deadline deadline) {
   if (!ready_ || failed() || termination_.attempted()) {
@@ -854,64 +785,6 @@ AuthenticatedBrokerChannel::dispatch_one(launcher::Deadline deadline) {
     }
   }
   return DispatchStatus::dispatched;
-}
-
-launcher::ReceivedMessage
-AuthenticatedBrokerChannel::receive_render(std::chrono::milliseconds timeout) {
-  if (timeout.count() <= 0)
-    return {.status = launcher::ReceiveStatus::would_block,
-            .failure = launcher::ReceiveFailure::timeout};
-  return receive_render(std::chrono::steady_clock::now() + timeout);
-}
-
-launcher::ReceivedMessage
-AuthenticatedBrokerChannel::receive_render(launcher::Deadline deadline) {
-  if (!ready_ || failed() || termination_.attempted() ||
-      !authority_->is_current(identity_) || !dispatcher_->accepts(identity_)) {
-    fail(ChannelFailure::stale_generation,
-         "render receive attempted without a current ready binding");
-    return {.payload = {}, .failure = launcher::ReceiveFailure::io_error};
-  }
-  auto message = receive_one(launcher::EndpointMask::render, deadline);
-  if (!message)
-    return message;
-  wire::PacketView packet{};
-  if (!validate_inbound(message, packet))
-    return {.status = launcher::ReceiveStatus::fatal,
-            .failure = launcher::ReceiveFailure::io_error};
-  if (std::chrono::steady_clock::now() >= deadline)
-    return fail(ChannelFailure::deadline_expired,
-                "render deadline elapsed after consuming packet"),
-           launcher::ReceivedMessage{.role = launcher::EndpointRole::render,
-                                     .status = launcher::ReceiveStatus::fatal,
-                                     .failure =
-                                         launcher::ReceiveFailure::io_error};
-  return message;
-}
-
-bool AuthenticatedBrokerChannel::send_render(std::span<const std::byte> packet,
-                                             std::span<const int> descriptors) {
-  if (!ready_ || failed() || termination_.attempted() ||
-      !authority_->is_current(identity_) || !dispatcher_->accepts(identity_))
-    return fail(ChannelFailure::stale_generation,
-                "render send attempted without a current ready binding");
-  const auto decoded = wire::decode_packet(packet, wire::EndpointRole::render);
-  if (!decoded ||
-      decoded.packet.header.role_protocol_version !=
-          surface::kRenderRoleVersion ||
-      decoded.packet.header.launch_generation != identity_.generation)
-    return fail(ChannelFailure::malformed_envelope,
-                "trusted render packet failed binding validation");
-  const auto expected =
-      surface::render_descriptor_count(decoded.packet.header.message_type);
-  if (!expected || descriptors.size() != *expected)
-    return fail(ChannelFailure::malformed_envelope,
-                "trusted render packet descriptor count differs from schema");
-  auto prepared = prepare_send(
-      wire::EndpointRole::render, decoded.packet.header.message_type,
-      decoded.packet.header.correlation_id, decoded.packet.payload);
-  return prepared &&
-         try_send(*prepared, descriptors) == ChannelSendStatus::complete;
 }
 
 bool AuthenticatedBrokerChannel::ready() const { return ready_ && !failed(); }

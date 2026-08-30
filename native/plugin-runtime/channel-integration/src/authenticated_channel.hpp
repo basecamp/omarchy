@@ -98,9 +98,6 @@ public:
 
   [[nodiscard]] bool pending() const noexcept { return pending_; }
   [[nodiscard]] wire::EndpointRole role() const noexcept { return role_; }
-  [[nodiscard]] std::span<const std::byte> bytes() const noexcept {
-    return bytes_;
-  }
 
 private:
   PreparedSend(wire::EndpointRole role, std::vector<std::byte> bytes,
@@ -159,11 +156,6 @@ public:
   open(launcher::Supervisor &supervisor,
        const launcher::TrustedLaunchRequest &request,
        std::shared_ptr<BrokerDispatcher> dispatcher,
-       std::shared_ptr<const GenerationAuthority> authority);
-  [[nodiscard]] static OpenResult
-  open(launcher::Supervisor &supervisor,
-       const launcher::TrustedLaunchRequest &request,
-       std::shared_ptr<BrokerDispatcher> dispatcher,
        std::shared_ptr<const GenerationAuthority> authority,
        launcher::Deadline deadline);
 
@@ -173,14 +165,10 @@ public:
   ~AuthenticatedBrokerChannel();
 
   [[nodiscard]] bool negotiate(launcher::Deadline deadline);
-  [[nodiscard]] bool negotiate(std::chrono::milliseconds timeout);
   [[nodiscard]] std::optional<PreparedSend>
   prepare_send(wire::EndpointRole role, std::uint16_t message_type,
                std::uint64_t correlation_id,
                std::span<const std::byte> payload);
-  [[nodiscard]] ChannelSendStatus
-  try_send(PreparedSend &prepared,
-           std::span<const int> borrowed_descriptors = {});
   [[nodiscard]] ChannelSendStatus
   try_send(PreparedSend &prepared, launcher::Deadline deadline,
            std::span<const int> borrowed_descriptors = {});
@@ -190,26 +178,12 @@ public:
   [[nodiscard]] bool
   arm_readiness(launcher::EndpointMask read_lanes,
                 launcher::EndpointMask blocked_write_lanes) noexcept;
-  [[nodiscard]] bool arm_receive(launcher::EndpointMask lanes) noexcept;
   [[nodiscard]] AuthenticatedReceiveResult
   receive_authenticated(launcher::EndpointMask allowed_lanes,
                         launcher::Deadline deadline);
   [[nodiscard]] AuthenticatedReceiveResult
   try_receive_authenticated(launcher::EndpointMask allowed_lanes);
   [[nodiscard]] DispatchStatus dispatch_one(launcher::Deadline deadline);
-  [[nodiscard]] DispatchStatus dispatch_one(std::chrono::milliseconds timeout);
-  [[nodiscard]] launcher::ReceivedMessage
-  receive_render(launcher::Deadline deadline);
-  [[nodiscard]] launcher::ReceivedMessage
-  receive_render(std::chrono::milliseconds timeout);
-  [[nodiscard]] bool send_render(std::span<const std::byte> packet,
-                                 std::span<const int> descriptors = {});
-  [[nodiscard]] bool send_control(std::uint16_t message_type,
-                                  std::span<const std::byte> payload);
-  [[nodiscard]] bool receive_control_ack(std::uint16_t message_type,
-                                         launcher::Deadline deadline);
-  [[nodiscard]] bool receive_control_ack(std::uint16_t message_type,
-                                         std::chrono::milliseconds timeout);
   [[nodiscard]] bool ready() const;
   [[nodiscard]] bool alive() const;
   [[nodiscard]] bool failed() const;

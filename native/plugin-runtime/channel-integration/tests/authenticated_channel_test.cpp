@@ -9,7 +9,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -43,6 +42,10 @@ void require(bool condition, std::string_view message) {
   if (!condition) {
     fail(message);
   }
+}
+
+launcher::Deadline deadline_after(std::chrono::milliseconds delay) {
+  return std::chrono::steady_clock::now() + delay;
 }
 
 class Descriptor {
@@ -207,9 +210,9 @@ public:
     if (check == sleep_on_check.load())
       usleep(sleep_microseconds.load());
     int remaining = checks_before_revocation.load();
-    while (remaining > 0 &&
-           !checks_before_revocation.compare_exchange_weak(remaining,
-                                                           remaining - 1)) {}
+    while (remaining > 0 && !checks_before_revocation.compare_exchange_weak(
+                                remaining, remaining - 1)) {
+    }
     const bool semantically_current = remaining != 0;
     return current && identity.generation == generation &&
            (revoke_on_check == 0 || check < revoke_on_check) &&
@@ -275,8 +278,7 @@ std::unique_ptr<launcher::Worker>
 launch_transport(Fixture &fixture, std::shared_ptr<Scope> scope) {
   auto supervisor = launcher::Supervisor::forTestOnly(
       FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, std::move(scope));
-  auto launched = supervisor.launch(
-      fixture.request(), std::chrono::steady_clock::now() + 4s);
+  auto launched = supervisor.launch(fixture.request(), deadline_after(4s));
   if (!launched)
     std::cerr << "transport launch failure="
               << static_cast<int>(launched.failure)
@@ -309,8 +311,7 @@ void transport_suite() {
             "maximum legal broker datagram was rejected");
     const auto acknowledgement =
         worker->receive(launcher::EndpointRole::control,
-                        launcher::PacketSizeLimit{1},
-                        std::chrono::steady_clock::now() + 2s);
+                        launcher::PacketSizeLimit{1}, deadline_after(2s));
     require(acknowledgement && acknowledgement.payload.size() == 1 &&
                 acknowledgement.payload.front() == std::byte{0x5a},
             "worker did not receive the complete maximum broker datagram");
@@ -319,7 +320,7 @@ void transport_suite() {
                              launcher::PacketSizeLimit{maximum.size()}) !=
                 launcher::SendStatus::complete,
             "above-cap broker datagram was accepted");
-    require(worker->terminate(std::chrono::steady_clock::now() + 4s),
+    require(worker->terminate(deadline_after(4s)),
             "maximum-datagram worker did not terminate");
   }
 
@@ -350,7 +351,7 @@ void transport_suite() {
              omarchy::plugin::wire::kHeaderSize +
                  omarchy::plugin::wire::payload_cap(
                      omarchy::plugin::wire::EndpointRole::render));
-    require(worker->terminate(std::chrono::steady_clock::now() + 4s),
+    require(worker->terminate(deadline_after(4s)),
             "saturated worker did not terminate");
   }
 }
@@ -385,7 +386,8 @@ struct Session {
       : fixture(mode), supervisor(launcher::Supervisor::forTestOnly(
                            std::move(bwrap), CHANNEL_PEER_PATH, scope)),
         opened(channel::AuthenticatedBrokerChannel::open(
-            supervisor, fixture.request(), dispatcher, authority)) {
+            supervisor, fixture.request(), dispatcher, authority,
+            deadline_after(2s))) {
     if (!opened) {
       std::cerr << "launch failure=" << static_cast<int>(opened.launch_failure)
                 << " detail=" << opened.detail << '\n';
@@ -415,7 +417,7 @@ void fake_suite() {
     auto opened = channel::AuthenticatedBrokerChannel::open(
         supervisor, fixture.request(), dispatcher, authority, deadline);
     require(opened && opened.channel->negotiate(deadline) &&
-                opened.channel->dispatch_one(2s) ==
+                opened.channel->dispatch_one(deadline_after(2s)) ==
                     channel::DispatchStatus::dispatched,
             "one absolute launch-and-negotiate deadline was reset or lost");
   }
@@ -440,7 +442,7 @@ void fake_suite() {
         FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, scope);
     auto opened = channel::AuthenticatedBrokerChannel::open(
         supervisor, fixture.request(), dispatcher, authority,
-        std::chrono::steady_clock::now() + 200ms);
+        deadline_after(200ms));
     require(!opened &&
                 opened.failure == channel::ChannelFailure::deadline_expired &&
                 authority->checks.load() == 1 && eventually_removed(scope),
@@ -461,7 +463,7 @@ void fake_suite() {
     const auto checks_after_open = authority->checks.load();
     while (std::chrono::steady_clock::now() <= opening_deadline)
       usleep(1000);
-    require(!opened.channel->negotiate(std::chrono::steady_clock::now() + 2s) &&
+    require(!opened.channel->negotiate(deadline_after(2s)) &&
                 authority->checks.load() == checks_after_open &&
                 opened.channel->failure() ==
                     channel::ChannelFailure::negotiation_failed &&
@@ -476,21 +478,21 @@ void fake_suite() {
     auto supervisor = launcher::Supervisor::forTestOnly(
         FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, scope);
     auto opened = channel::AuthenticatedBrokerChannel::open(
-        supervisor, fixture.request(), dispatcher, authority);
+        supervisor, fixture.request(), dispatcher, authority,
+        deadline_after(2s));
     require(static_cast<bool>(opened),
             "WELCOME deadline fixture did not launch");
     const auto delayed_check = authority->checks.load() + 1;
     authority->sleep_on_check = delayed_check;
     authority->sleep_microseconds = 20'000;
-    require(
-        !opened.channel->negotiate(std::chrono::steady_clock::now() + 5ms) &&
-            authority->checks.load() >= delayed_check &&
-            opened.channel->failure() ==
-                channel::ChannelFailure::negotiation_failed &&
-            opened.channel->detail() ==
-                "endpoint negotiation deadline elapsed before WELCOME" &&
-            dispatcher->calls == 0,
-        "WELCOME was emitted after its absolute deadline");
+    require(!opened.channel->negotiate(deadline_after(5ms)) &&
+                authority->checks.load() >= delayed_check &&
+                opened.channel->failure() ==
+                    channel::ChannelFailure::negotiation_failed &&
+                opened.channel->detail() ==
+                    "endpoint negotiation deadline elapsed before WELCOME" &&
+                dispatcher->calls == 0,
+            "WELCOME was emitted after its absolute deadline");
   }
   {
     Fixture fixture("valid");
@@ -500,34 +502,34 @@ void fake_suite() {
     auto supervisor = launcher::Supervisor::forTestOnly(
         FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, scope);
     auto opened = channel::AuthenticatedBrokerChannel::open(
-        supervisor, fixture.request(), dispatcher, authority);
+        supervisor, fixture.request(), dispatcher, authority,
+        deadline_after(2s));
     require(static_cast<bool>(opened),
             "aggregate deadline fixture did not launch");
     const auto delayed_check = authority->checks.load() + 4;
     authority->sleep_on_check = delayed_check;
     authority->sleep_microseconds = 20'000;
-    require(
-        !opened.channel->negotiate(std::chrono::steady_clock::now() + 10ms) &&
-            authority->checks.load() >= delayed_check &&
-            !opened.channel->ready() && dispatcher->calls == 0,
-        "aggregate readiness published after its absolute deadline");
+    require(!opened.channel->negotiate(deadline_after(10ms)) &&
+                authority->checks.load() >= delayed_check &&
+                !opened.channel->ready() && dispatcher->calls == 0,
+            "aggregate readiness published after its absolute deadline");
   }
   {
     Session reversed("reverse-order", FAKE_BWRAP_PATH);
-    require(reversed.opened.channel->negotiate(2s) &&
-                reversed.opened.channel->dispatch_one(2s) ==
+    require(reversed.opened.channel->negotiate(deadline_after(2s)) &&
+                reversed.opened.channel->dispatch_one(deadline_after(2s)) ==
                     channel::DispatchStatus::dispatched,
             "arbitrary-order endpoint negotiation was serialized by lane");
   }
   {
     Session multi("multi-lane", FAKE_BWRAP_PATH);
     require(
-        multi.opened.channel->negotiate(2s) &&
+        multi.opened.channel->negotiate(deadline_after(2s)) &&
             multi.opened.channel->arm_readiness(
                 launcher::EndpointMask::all, launcher::EndpointMask::control),
         "authenticated multi-lane fixture did not become ready");
     auto render = multi.opened.channel->receive_authenticated(
-        launcher::EndpointMask::render, std::chrono::steady_clock::now() + 2s);
+        launcher::EndpointMask::render, deadline_after(2s));
     require(render && render.message->role == wire::EndpointRole::render &&
                 render.message->message_type ==
                     static_cast<std::uint16_t>(
@@ -538,7 +540,7 @@ void fake_suite() {
                 multi.dispatcher->calls == 0,
             "allowed render lane did not publish an owning semantic message");
     auto broker_message = multi.opened.channel->receive_authenticated(
-        launcher::EndpointMask::broker, std::chrono::steady_clock::now() + 2s);
+        launcher::EndpointMask::broker, deadline_after(2s));
     require(broker_message &&
                 broker_message.message->role == wire::EndpointRole::broker &&
                 broker_message.message->message_type ==
@@ -550,14 +552,13 @@ void fake_suite() {
                 multi.dispatcher->calls == 0,
             "disallowed queued broker lane was consumed or dispatched");
     auto owned = std::move(*broker_message.message);
-    require(multi.opened.channel->terminate(std::chrono::steady_clock::now() +
-                                            2s) &&
+    require(multi.opened.channel->terminate(deadline_after(2s)) &&
                 owned.payload.size() == 24 && owned.correlation_id == 1,
             "authenticated payload lifetime remained tied to channel storage");
   }
   {
     Session empty("host-saturation", FAKE_BWRAP_PATH);
-    require(empty.opened.channel->negotiate(2s),
+    require(empty.opened.channel->negotiate(deadline_after(2s)),
             "nonblocking empty fixture did not negotiate");
     const auto first = empty.opened.channel->try_receive_authenticated(
         launcher::EndpointMask::all);
@@ -573,7 +574,7 @@ void fake_suite() {
   }
   {
     Session multi("multi-lane", FAKE_BWRAP_PATH);
-    require(multi.opened.channel->negotiate(2s) &&
+    require(multi.opened.channel->negotiate(deadline_after(2s)) &&
                 await_channel_readable(*multi.opened.channel),
             "nonblocking fair fixture did not become readable");
     const auto broker_message = multi.opened.channel->try_receive_authenticated(
@@ -610,7 +611,7 @@ void fake_suite() {
   }
   {
     Session replay("replay", FAKE_BWRAP_PATH);
-    require(replay.opened.channel->negotiate(2s) &&
+    require(replay.opened.channel->negotiate(deadline_after(2s)) &&
                 await_channel_readable(*replay.opened.channel),
             "nonblocking replay fixture did not become readable");
     const auto first = replay.opened.channel->try_receive_authenticated(
@@ -626,7 +627,7 @@ void fake_suite() {
   }
   {
     Session malformed("wrong-sequence-tag", FAKE_BWRAP_PATH);
-    require(malformed.opened.channel->negotiate(2s) &&
+    require(malformed.opened.channel->negotiate(deadline_after(2s)) &&
                 await_channel_readable(*malformed.opened.channel),
             "nonblocking schema fixture did not become readable");
     const auto result = malformed.opened.channel->try_receive_authenticated(
@@ -638,7 +639,7 @@ void fake_suite() {
   }
   {
     Session revoked("multi-lane", FAKE_BWRAP_PATH);
-    require(revoked.opened.channel->negotiate(2s) &&
+    require(revoked.opened.channel->negotiate(deadline_after(2s)) &&
                 await_channel_readable(*revoked.opened.channel),
             "nonblocking authority fixture did not become readable");
     revoked.authority->revoke_after_successful_checks(1);
@@ -651,7 +652,7 @@ void fake_suite() {
   }
   {
     Session exited("ready-loss", FAKE_BWRAP_PATH);
-    require(exited.opened.channel->negotiate(2s) &&
+    require(exited.opened.channel->negotiate(deadline_after(2s)) &&
                 kill(exited.opened.channel->identity().outer_worker_pid,
                      SIGUSR1) == 0,
             "nonblocking pidfd fixture did not negotiate or exit");
@@ -672,12 +673,12 @@ void fake_suite() {
   }
   {
     Session replay("replay", FAKE_BWRAP_PATH);
-    require(replay.opened.channel->negotiate(2s),
+    require(replay.opened.channel->negotiate(deadline_after(2s)),
             "typed replay fixture did not negotiate");
     const auto first = replay.opened.channel->receive_authenticated(
-        launcher::EndpointMask::broker, std::chrono::steady_clock::now() + 2s);
+        launcher::EndpointMask::broker, deadline_after(2s));
     const auto second = replay.opened.channel->receive_authenticated(
-        launcher::EndpointMask::broker, std::chrono::steady_clock::now() + 2s);
+        launcher::EndpointMask::broker, deadline_after(2s));
     require(
         first && second.status == channel::AuthenticatedReceiveStatus::fatal &&
             replay.opened.channel->failed() && replay.dispatcher->calls == 0,
@@ -685,22 +686,21 @@ void fake_suite() {
   }
   {
     Session wrong_tag("wrong-sequence-tag", FAKE_BWRAP_PATH);
-    require(wrong_tag.opened.channel->negotiate(2s) &&
+    require(wrong_tag.opened.channel->negotiate(deadline_after(2s)) &&
                 wrong_tag.opened.channel
-                        ->receive_authenticated(
-                            launcher::EndpointMask::broker,
-                            std::chrono::steady_clock::now() + 2s)
+                        ->receive_authenticated(launcher::EndpointMask::broker,
+                                                deadline_after(2s))
                         .status == channel::AuthenticatedReceiveStatus::fatal &&
                 wrong_tag.dispatcher->calls == 0,
             "typed receive accepted a transplanted lane sequence");
   }
   {
     Session revoked("multi-lane", FAKE_BWRAP_PATH);
-    require(revoked.opened.channel->negotiate(2s),
+    require(revoked.opened.channel->negotiate(deadline_after(2s)),
             "post-receive revocation fixture did not negotiate");
     revoked.authority->revoke_on_check = revoked.authority->checks.load() + 3;
     auto result = revoked.opened.channel->receive_authenticated(
-        launcher::EndpointMask::render, std::chrono::steady_clock::now() + 2s);
+        launcher::EndpointMask::render, deadline_after(2s));
     require(result.status == channel::AuthenticatedReceiveStatus::fatal &&
                 !result.message && revoked.opened.channel->failed() &&
                 revoked.dispatcher->calls == 0,
@@ -708,12 +708,12 @@ void fake_suite() {
   }
   {
     Session delayed("multi-lane", FAKE_BWRAP_PATH);
-    require(delayed.opened.channel->negotiate(2s),
+    require(delayed.opened.channel->negotiate(deadline_after(2s)),
             "final receive deadline fixture did not negotiate");
     delayed.authority->sleep_on_check = delayed.authority->checks.load() + 3;
     delayed.authority->sleep_microseconds = 20'000;
     auto result = delayed.opened.channel->receive_authenticated(
-        launcher::EndpointMask::render, std::chrono::steady_clock::now() + 5ms);
+        launcher::EndpointMask::render, deadline_after(5ms));
     require(result.status == channel::AuthenticatedReceiveStatus::fatal &&
                 !result.message &&
                 delayed.opened.channel->failure() ==
@@ -724,27 +724,27 @@ void fake_suite() {
   {
     Session first("valid", FAKE_BWRAP_PATH);
     Session second("valid", FAKE_BWRAP_PATH);
-    require(first.opened.channel->negotiate(2s) &&
-                second.opened.channel->negotiate(2s),
+    require(first.opened.channel->negotiate(deadline_after(2s)) &&
+                second.opened.channel->negotiate(deadline_after(2s)),
             "prepared-send origin fixtures did not negotiate");
     auto prepared = first.opened.channel->prepare_send(
         wire::EndpointRole::control, wire::kPermissionSnapshotMessage, 0,
         std::array{std::byte{1}});
     require(prepared.has_value(), "origin-bound send was not prepared");
     channel::PreparedSend moved(std::move(*prepared));
-    require(first.opened.channel->try_send(*prepared) ==
+    require(first.opened.channel->try_send(*prepared, deadline_after(2s)) ==
                     channel::ChannelSendStatus::fatal &&
-                second.opened.channel->try_send(moved) ==
+                second.opened.channel->try_send(moved, deadline_after(2s)) ==
                     channel::ChannelSendStatus::fatal &&
                 moved.pending() &&
-                first.opened.channel->try_send(moved) ==
+                first.opened.channel->try_send(moved, deadline_after(2s)) ==
                     channel::ChannelSendStatus::complete &&
                 !moved.pending(),
             "moved-from or foreign prepared datagram retained send authority");
   }
   {
     Session stale("valid", FAKE_BWRAP_PATH);
-    require(stale.opened.channel->negotiate(2s),
+    require(stale.opened.channel->negotiate(deadline_after(2s)),
             "stale prepared-send fixture did not negotiate");
     stale.authority->generation = 48;
     require(!stale.opened.channel->prepare_send(
@@ -755,7 +755,7 @@ void fake_suite() {
   }
   {
     Session stale("valid", FAKE_BWRAP_PATH);
-    require(stale.opened.channel->negotiate(2s),
+    require(stale.opened.channel->negotiate(deadline_after(2s)),
             "prepared-send revocation fixture did not negotiate");
     auto prepared = stale.opened.channel->prepare_send(
         wire::EndpointRole::control, wire::kPermissionSnapshotMessage, 0,
@@ -763,7 +763,7 @@ void fake_suite() {
     stale.authority->generation = 48;
     require(
         prepared &&
-            stale.opened.channel->try_send(*prepared) ==
+            stale.opened.channel->try_send(*prepared, deadline_after(2s)) ==
                 channel::ChannelSendStatus::not_ready &&
             !prepared->pending() && stale.opened.channel->failed() &&
             eventually_removed(stale.scope),
@@ -772,8 +772,8 @@ void fake_suite() {
   {
     Session allowed("reply-allowed", FAKE_BWRAP_PATH);
     allowed.dispatcher->reply_type = broker::kBrokerResultMessage;
-    require(allowed.opened.channel->negotiate(2s) &&
-                allowed.opened.channel->dispatch_one(2s) ==
+    require(allowed.opened.channel->negotiate(deadline_after(2s)) &&
+                allowed.opened.channel->dispatch_one(deadline_after(2s)) ==
                     channel::DispatchStatus::dispatched &&
                 allowed.dispatcher->calls == 1,
             "allowed authenticated broker reply did not reach the worker "
@@ -788,8 +788,8 @@ void fake_suite() {
          .reason = broker::BrokerErrorReason::denied,
          .decision = permissions::GrantDecisionCode::explicitly_denied});
     denied.dispatcher->reply_payload.assign(error.begin(), error.end());
-    require(denied.opened.channel->negotiate(2s) &&
-                denied.opened.channel->dispatch_one(2s) ==
+    require(denied.opened.channel->negotiate(deadline_after(2s)) &&
+                denied.opened.channel->dispatch_one(deadline_after(2s)) ==
                     channel::DispatchStatus::dispatched &&
                 denied.dispatcher->calls == 1,
             "denied authenticated broker reply did not reach the worker "
@@ -804,20 +804,13 @@ void fake_suite() {
     auto supervisor = launcher::Supervisor::forTestOnly(
         FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, scope);
     auto opened = channel::AuthenticatedBrokerChannel::open(
-        supervisor, fixture.request(), dispatcher, authority);
+        supervisor, fixture.request(), dispatcher, authority,
+        deadline_after(2s));
     require(!opened &&
                 opened.failure == channel::ChannelFailure::identity_mismatch &&
                 dispatcher->calls == 0 && eventually_removed(scope),
             "mismatched broker dispatcher retained cross-plugin authority");
   }
-  {
-    Session session("valid", FAKE_BWRAP_PATH);
-    require(!session.opened.channel->negotiate(std::chrono::hours(24)) &&
-                session.opened.channel->failed() &&
-                session.dispatcher->calls == 0,
-            "unbounded negotiation timeout reached deadline arithmetic");
-  }
-
   {
     Fixture fixture("valid");
     auto scope = std::make_shared<Scope>();
@@ -826,9 +819,10 @@ void fake_suite() {
     auto supervisor = launcher::Supervisor::forTestOnly(
         FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, scope);
     auto opened = channel::AuthenticatedBrokerChannel::open(
-        supervisor, fixture.request(), dispatcher, authority);
-    require(opened && opened.channel->negotiate(2s) &&
-                opened.channel->dispatch_one(2s) ==
+        supervisor, fixture.request(), dispatcher, authority,
+        deadline_after(2s));
+    require(opened && opened.channel->negotiate(deadline_after(2s)) &&
+                opened.channel->dispatch_one(deadline_after(2s)) ==
                     channel::DispatchStatus::fatal &&
                 opened.channel->failure() ==
                     channel::ChannelFailure::dispatch_failed &&
@@ -843,10 +837,10 @@ void fake_suite() {
     auto supervisor = launcher::Supervisor::forTestOnly(
         FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, scope);
     auto opened = channel::AuthenticatedBrokerChannel::open(
-        supervisor, fixture.request(), dispatcher, authority);
-    require(opened && opened.channel->negotiate(2s) &&
-                opened.channel->dispatch_one(std::chrono::steady_clock::now() +
-                                             2s) ==
+        supervisor, fixture.request(), dispatcher, authority,
+        deadline_after(2s));
+    require(opened && opened.channel->negotiate(deadline_after(2s)) &&
+                opened.channel->dispatch_one(deadline_after(2s)) ==
                     channel::DispatchStatus::fatal &&
                 opened.channel->failure() ==
                     channel::ChannelFailure::dispatch_failed &&
@@ -861,10 +855,10 @@ void fake_suite() {
     auto supervisor = launcher::Supervisor::forTestOnly(
         FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, scope);
     auto opened = channel::AuthenticatedBrokerChannel::open(
-        supervisor, fixture.request(), dispatcher, authority);
-    require(opened && opened.channel->negotiate(2s) &&
-                opened.channel->dispatch_one(std::chrono::steady_clock::now() +
-                                             5ms) ==
+        supervisor, fixture.request(), dispatcher, authority,
+        deadline_after(2s));
+    require(opened && opened.channel->negotiate(deadline_after(2s)) &&
+                opened.channel->dispatch_one(deadline_after(5ms)) ==
                     channel::DispatchStatus::fatal &&
                 opened.channel->failure() ==
                     channel::ChannelFailure::deadline_expired &&
@@ -874,13 +868,12 @@ void fake_suite() {
   {
     Session delayed("reply-allowed", FAKE_BWRAP_PATH);
     delayed.dispatcher->reply_type = broker::kBrokerResultMessage;
-    require(delayed.opened.channel->negotiate(2s),
+    require(delayed.opened.channel->negotiate(deadline_after(2s)),
             "reply-send deadline fixture did not negotiate");
     const auto delayed_check = delayed.authority->checks.load() + 4;
     delayed.authority->sleep_on_check = delayed_check;
     delayed.authority->sleep_microseconds = 20'000;
-    require(delayed.opened.channel->dispatch_one(
-                std::chrono::steady_clock::now() + 5ms) ==
+    require(delayed.opened.channel->dispatch_one(deadline_after(5ms)) ==
                     channel::DispatchStatus::fatal &&
                 delayed.authority->checks.load() >= delayed_check &&
                 delayed.opened.channel->failure() ==
@@ -891,10 +884,10 @@ void fake_suite() {
   }
   {
     Session session("valid", FAKE_BWRAP_PATH);
-    require(session.opened.channel->negotiate(2s),
+    require(session.opened.channel->negotiate(deadline_after(2s)),
             "lifecycle-transition fixture did not become ready");
     session.authority->generation = 48;
-    require(session.opened.channel->dispatch_one(2s) ==
+    require(session.opened.channel->dispatch_one(deadline_after(2s)) ==
                     channel::DispatchStatus::fatal &&
                 session.opened.channel->failure() ==
                     channel::ChannelFailure::stale_generation &&
@@ -904,10 +897,10 @@ void fake_suite() {
   }
   {
     Session session("valid", FAKE_BWRAP_PATH);
-    require(session.opened.channel->negotiate(2s),
+    require(session.opened.channel->negotiate(deadline_after(2s)),
             "dispatcher-transition fixture did not become ready");
     session.dispatcher->accepted_plugin = "org.other_plugin";
-    require(session.opened.channel->dispatch_one(2s) ==
+    require(session.opened.channel->dispatch_one(deadline_after(2s)) ==
                     channel::DispatchStatus::fatal &&
                 session.opened.channel->failure() ==
                     channel::ChannelFailure::stale_generation &&
@@ -917,24 +910,22 @@ void fake_suite() {
   }
   {
     Session session("valid", FAKE_BWRAP_PATH);
-    require(session.opened.channel->negotiate(2s),
+    require(session.opened.channel->negotiate(deadline_after(2s)),
             "post-receive revocation fixture did not negotiate");
     session.authority->revoke_on_check = session.authority->checks.load() + 2;
-    require(session.opened.channel->dispatch_one(
-                std::chrono::steady_clock::now() + 2s) ==
+    require(session.opened.channel->dispatch_one(deadline_after(2s)) ==
                     channel::DispatchStatus::fatal &&
                 session.dispatcher->calls == 0,
             "authority revoked across receive reached typed dispatch");
   }
   {
     Session session("valid", FAKE_BWRAP_PATH);
-    require(session.opened.channel->negotiate(2s),
+    require(session.opened.channel->negotiate(deadline_after(2s)),
             "post-receive deadline fixture did not negotiate");
     const auto delayed_check = session.authority->checks.load() + 3;
     session.authority->sleep_on_check = delayed_check;
     session.authority->sleep_microseconds = 20'000;
-    require(session.opened.channel->dispatch_one(
-                std::chrono::steady_clock::now() + 5ms) ==
+    require(session.opened.channel->dispatch_one(deadline_after(5ms)) ==
                     channel::DispatchStatus::fatal &&
                 session.authority->checks.load() >= delayed_check &&
                 session.dispatcher->calls == 0 &&
@@ -945,65 +936,34 @@ void fake_suite() {
   }
   {
     Session session("valid", FAKE_BWRAP_PATH);
-    require(session.opened.channel->dispatch_one(0ms) ==
+    require(session.opened.channel->dispatch_one(
+                std::chrono::steady_clock::now()) ==
                     channel::DispatchStatus::not_ready &&
                 session.opened.channel->failed() &&
                 session.dispatcher->calls == 0 &&
                 eventually_removed(session.scope),
             "broker dispatch was not gated on aggregate readiness");
-    require(session.opened.channel->terminate(
-                std::chrono::steady_clock::now() + 6s),
+    require(session.opened.channel->terminate(deadline_after(6s)),
             "pre-readiness refusal did not tear down cleanly");
   }
   {
     Session session("valid", FAKE_BWRAP_PATH);
-    require(session.opened.channel->negotiate(2s) &&
+    require(session.opened.channel->negotiate(deadline_after(2s)) &&
                 session.opened.channel->ready(),
             "valid aggregate endpoint negotiation failed");
-    require(session.opened.channel->dispatch_one(2s) ==
+    require(session.opened.channel->dispatch_one(deadline_after(2s)) ==
                     channel::DispatchStatus::dispatched &&
                 session.dispatcher->calls == 1 &&
                 session.dispatcher->last_generation == 47,
             "authenticated broker message was not dispatched exactly once");
-    require(session.opened.channel->terminate(
-                std::chrono::steady_clock::now() + 6s) &&
+    require(session.opened.channel->terminate(deadline_after(6s)) &&
                 eventually_removed(session.scope),
             "valid channel teardown was not bounded");
   }
-  {
-    Session session("valid", FAKE_BWRAP_PATH);
-    require(session.opened.channel->negotiate(2s),
-            "render-transport fixture did not become ready");
-    const auto payload =
-        surface::encode_profile_offer(surface::software_profile_offer());
-    wire::EnvelopeHeader header{
-        .endpoint_role = wire::EndpointRole::render,
-        .message_type = static_cast<std::uint16_t>(
-            surface::RenderMessageType::profile_offer),
-        .role_protocol_version = surface::kRenderRoleVersion,
-        .payload_length = static_cast<std::uint32_t>(payload.size()),
-        .launch_generation = 47,
-        .correlation_id = 1,
-        .lane_sequence = 7};
-    std::vector<std::byte> encoded(wire::kHeaderSize + payload.size());
-    const auto encoded_result = wire::encode_packet(header, payload, encoded);
-    require(encoded_result &&
-                session.opened.channel->send_render(
-                    std::span(encoded).first(encoded_result.bytes_written)),
-            "bound trusted render packet was not sent");
-    session.authority->generation = 48;
-    require(!session.opened.channel->send_render(
-                std::span(encoded).first(encoded_result.bytes_written)) &&
-                session.opened.channel->failure() ==
-                    channel::ChannelFailure::stale_generation &&
-                eventually_removed(session.scope),
-            "stale generation retained trusted render authority");
-  }
-
   for (const std::string_view mode :
        {"pre-ready", "wrong-role", "bad-version", "descendant", "peer-loss"}) {
     Session session(mode, FAKE_BWRAP_PATH);
-    require(!session.opened.channel->negotiate(2s) &&
+    require(!session.opened.channel->negotiate(deadline_after(2s)) &&
                 session.opened.channel->failed() &&
                 session.dispatcher->calls == 0 &&
                 eventually_removed(session.scope),
@@ -1014,7 +974,7 @@ void fake_suite() {
     const auto descriptors_before = descriptor_count();
     for (unsigned attempt = 0; attempt < 16; ++attempt) {
       Session session(mode, FAKE_BWRAP_PATH);
-      require(!session.opened.channel->negotiate(2s) &&
+      require(!session.opened.channel->negotiate(deadline_after(2s)) &&
                   session.dispatcher->calls == 0,
               "descriptor-bearing HELLO was not quarantined");
     }
@@ -1025,11 +985,10 @@ void fake_suite() {
     const auto descriptors_before = descriptor_count();
     for (unsigned attempt = 0; attempt < 16; ++attempt) {
       Session injected("post-ready-descriptor", FAKE_BWRAP_PATH);
-      require(injected.opened.channel->negotiate(2s),
+      require(injected.opened.channel->negotiate(deadline_after(2s)),
               "typed descriptor quarantine did not negotiate");
       const auto received = injected.opened.channel->receive_authenticated(
-          launcher::EndpointMask::broker,
-          std::chrono::steady_clock::now() + 2s);
+          launcher::EndpointMask::broker, deadline_after(2s));
       require(received.status == channel::AuthenticatedReceiveStatus::fatal &&
                   !received.message && injected.dispatcher->calls == 0,
               "typed receive published an undeclared descriptor");
@@ -1040,9 +999,9 @@ void fake_suite() {
 
   for (const std::string_view mode : {"stale", "bad-role-version"}) {
     Session session(mode, FAKE_BWRAP_PATH);
-    require(session.opened.channel->negotiate(2s),
+    require(session.opened.channel->negotiate(deadline_after(2s)),
             "post-readiness attack did not negotiate first");
-    require(session.opened.channel->dispatch_one(2s) ==
+    require(session.opened.channel->dispatch_one(deadline_after(2s)) ==
                     channel::DispatchStatus::fatal &&
                 session.opened.channel->failed() &&
                 session.dispatcher->calls == 0 &&
@@ -1052,42 +1011,33 @@ void fake_suite() {
 
   for (const std::string_view mode :
        {"wrong-sequence-tag", "unsupported-envelope-version-after-ready",
-        "unknown-message",
-        "wrong-direction", "inbound-typed-error", "short-payload",
-        "zero-correlation", "post-ready-descriptor"}) {
+        "unknown-message", "wrong-direction", "inbound-typed-error",
+        "short-payload", "zero-correlation", "post-ready-descriptor"}) {
     Session session(mode, FAKE_BWRAP_PATH);
-    require(session.opened.channel->negotiate(2s) &&
-                session.opened.channel->dispatch_one(2s) ==
+    require(session.opened.channel->negotiate(deadline_after(2s)) &&
+                session.opened.channel->dispatch_one(deadline_after(2s)) ==
                     channel::DispatchStatus::fatal &&
                 session.dispatcher->calls == 0,
             "post-ready lane/type/descriptor attack reached dispatch");
   }
   {
-    Session wrong_ack("wrong-control-ack", FAKE_BWRAP_PATH);
-    require(wrong_ack.opened.channel->negotiate(2s) &&
-                !wrong_ack.opened.channel->receive_control_ack(
-                    wire::kPermissionSnapshotAcceptedMessage,
-                    std::chrono::steady_clock::now() + 2s) &&
-                wrong_ack.opened.channel->failed(),
-            "consumed mismatched control acknowledgement remained healthy");
-  }
-  {
     Session descriptors("valid", FAKE_BWRAP_PATH);
-    require(descriptors.opened.channel->negotiate(2s),
+    require(descriptors.opened.channel->negotiate(deadline_after(2s)),
             "prepared descriptor fixture did not negotiate");
     auto prepared = descriptors.opened.channel->prepare_send(
         wire::EndpointRole::broker, broker::kBrokerResultMessage, 9, {});
     Descriptor injected(open("/dev/null", O_RDONLY | O_CLOEXEC));
     const std::array borrowed{injected.get()};
     require(prepared && injected.get() >= 0 &&
-                descriptors.opened.channel->try_send(*prepared, borrowed) ==
+                descriptors.opened.channel->try_send(
+                    *prepared, deadline_after(2s), borrowed) ==
                     channel::ChannelSendStatus::fatal &&
                 !prepared->pending() && descriptors.opened.channel->failed(),
             "broker prepared send accepted an undeclared descriptor");
   }
   {
     Session descriptors("valid", FAKE_BWRAP_PATH);
-    require(descriptors.opened.channel->negotiate(2s),
+    require(descriptors.opened.channel->negotiate(deadline_after(2s)),
             "render descriptor fixture did not negotiate");
     const std::array<std::byte, 96> allocation{};
     auto prepared = descriptors.opened.channel->prepare_send(
@@ -1096,27 +1046,28 @@ void fake_suite() {
             surface::RenderMessageType::surface_allocate),
         10, allocation);
     require(prepared &&
-                descriptors.opened.channel->try_send(*prepared) ==
+                descriptors.opened.channel->try_send(*prepared,
+                                                     deadline_after(2s)) ==
                     channel::ChannelSendStatus::fatal &&
                 descriptors.opened.channel->failed(),
             "render prepared send omitted its required descriptor");
   }
   {
     Session replay("replay", FAKE_BWRAP_PATH);
-    require(replay.opened.channel->negotiate(2s) &&
-                replay.opened.channel->dispatch_one(2s) ==
+    require(replay.opened.channel->negotiate(deadline_after(2s)) &&
+                replay.opened.channel->dispatch_one(deadline_after(2s)) ==
                     channel::DispatchStatus::dispatched &&
-                replay.opened.channel->dispatch_one(2s) ==
+                replay.opened.channel->dispatch_one(deadline_after(2s)) ==
                     channel::DispatchStatus::fatal &&
                 replay.dispatcher->calls == 1,
             "same-lane replay was dispatched more than once");
   }
   {
     Session saturated("host-saturation", FAKE_BWRAP_PATH);
-    require(saturated.opened.channel->negotiate(2s),
+    require(saturated.opened.channel->negotiate(deadline_after(2s)),
             "prepared-send saturation fixture did not negotiate");
     const auto timed_receive = saturated.opened.channel->receive_authenticated(
-        launcher::EndpointMask::render, std::chrono::steady_clock::now() + 5ms);
+        launcher::EndpointMask::render, deadline_after(5ms));
     require(timed_receive.status ==
                     channel::AuthenticatedReceiveStatus::would_block &&
                 !timed_receive.message && !saturated.opened.channel->failed() &&
@@ -1130,7 +1081,8 @@ void fake_suite() {
           wire::EndpointRole::control, wire::kPermissionSnapshotMessage, 0,
           payload);
       require(prepared.has_value(), "control datagram preparation failed");
-      const auto status = saturated.opened.channel->try_send(*prepared);
+      const auto status =
+          saturated.opened.channel->try_send(*prepared, deadline_after(2s));
       if (status == channel::ChannelSendStatus::would_block)
         blocked.emplace(std::move(*prepared));
       else
@@ -1138,19 +1090,15 @@ void fake_suite() {
                 "prepared send failed before transport saturation");
     }
     require(blocked.has_value(), "trusted channel could not be saturated");
-    const std::vector<std::byte> exact(blocked->bytes().begin(),
-                                       blocked->bytes().end());
     require(
-        saturated.opened.channel->try_send(*blocked) ==
+        saturated.opened.channel->try_send(*blocked, deadline_after(2s)) ==
                 channel::ChannelSendStatus::would_block &&
-            std::ranges::equal(exact, blocked->bytes()) &&
             saturated.opened.channel->arm_readiness(
                 launcher::EndpointMask::none, launcher::EndpointMask::control),
-        "would-block retry mutated bytes or lost its lane interest");
+        "would-block retry lost its pending datagram or lane interest");
     const auto invalid_receive =
         saturated.opened.channel->receive_authenticated(
-            launcher::EndpointMask::render,
-            std::chrono::steady_clock::now() + 20ms);
+            launcher::EndpointMask::render, deadline_after(20ms));
     require(invalid_receive.status ==
                     channel::AuthenticatedReceiveStatus::not_ready &&
                 !invalid_receive.message && !saturated.opened.channel->failed(),
@@ -1160,23 +1108,23 @@ void fake_suite() {
                      .revents = 0};
     require(poll(&readiness, 1, 20) == 0,
             "masked read lane spuriously woke blocked-write readiness");
-    require(kill(saturated.opened.channel->identity().outer_worker_pid,
-                 SIGUSR1) == 0 &&
-                poll(&readiness, 1, 2000) == 1 &&
-                saturated.opened.channel->try_send(*blocked) ==
-                    channel::ChannelSendStatus::complete &&
-                !blocked->pending(),
-            "blocked prepared datagram did not complete byte-identically");
+    require(
+        kill(saturated.opened.channel->identity().outer_worker_pid, SIGUSR1) ==
+                0 &&
+            poll(&readiness, 1, 2000) == 1 &&
+            saturated.opened.channel->try_send(*blocked, deadline_after(2s)) ==
+                channel::ChannelSendStatus::complete &&
+            !blocked->pending(),
+        "blocked prepared datagram did not complete after write readiness");
   }
 
   {
     Session bounded("host-saturation", FAKE_BWRAP_PATH);
-    require(bounded.opened.channel->negotiate(2s),
+    require(bounded.opened.channel->negotiate(deadline_after(2s)),
             "bounded termination fixture did not negotiate");
     const auto started = std::chrono::steady_clock::now();
     const auto first = bounded.opened.channel->terminate(started);
-    const auto repeated = bounded.opened.channel->terminate(
-        std::chrono::steady_clock::now() + 2s);
+    const auto repeated = bounded.opened.channel->terminate(deadline_after(2s));
     require(first == repeated &&
                 std::chrono::steady_clock::now() - started < 100ms,
             "expired termination deadline blocked or reset on retry");
@@ -1184,7 +1132,7 @@ void fake_suite() {
 
   {
     Session session("ready-loss", FAKE_BWRAP_PATH);
-    require(session.opened.channel->negotiate(2s),
+    require(session.opened.channel->negotiate(deadline_after(2s)),
             "silent-exit liveness fixture did not negotiate");
     require(
         kill(session.opened.channel->identity().outer_worker_pid, SIGUSR1) == 0,
@@ -1195,7 +1143,7 @@ void fake_suite() {
       usleep(1000);
     }
     const auto terminal = session.opened.channel->receive_authenticated(
-        launcher::EndpointMask::broker, std::chrono::steady_clock::now() + 2s);
+        launcher::EndpointMask::broker, deadline_after(2s));
     require(
         !session.opened.channel->alive() &&
             (terminal.status ==
@@ -1205,8 +1153,7 @@ void fake_suite() {
             session.opened.channel->failure() ==
                 channel::ChannelFailure::peer_failure &&
             session.dispatcher->calls == 0 &&
-            session.opened.channel->terminate(
-                std::chrono::steady_clock::now() + 6s) &&
+            session.opened.channel->terminate(deadline_after(6s)) &&
             eventually_removed(session.scope),
         "post-readiness peer exit remained live or reached broker dispatch");
   }
@@ -1218,28 +1165,27 @@ int bwrap_suite() {
   }
   try {
     Session valid("valid", BWRAP_PATH);
-    if (!valid.opened.channel->negotiate(4s)) {
+    if (!valid.opened.channel->negotiate(deadline_after(4s))) {
       return 77;
     }
-    require(valid.opened.channel->dispatch_one(4s) ==
+    require(valid.opened.channel->dispatch_one(deadline_after(4s)) ==
                     channel::DispatchStatus::dispatched &&
                 valid.dispatcher->calls == 1,
             "real Bubblewrap authenticated dispatch failed");
-    require(valid.opened.channel->terminate(
-                std::chrono::steady_clock::now() + 6s),
+    require(valid.opened.channel->terminate(deadline_after(6s)),
             "real Bubblewrap teardown failed");
 
     Session replied("reply-allowed", BWRAP_PATH);
     replied.dispatcher->reply_type = broker::kBrokerResultMessage;
-    require(replied.opened.channel->negotiate(4s) &&
-                replied.opened.channel->dispatch_one(4s) ==
+    require(replied.opened.channel->negotiate(deadline_after(4s)) &&
+                replied.opened.channel->dispatch_one(deadline_after(4s)) ==
                     channel::DispatchStatus::dispatched &&
                 replied.dispatcher->calls == 1,
             "real Bubblewrap broker reply did not complete worker correlation");
 
     Session stale("stale", BWRAP_PATH);
-    require(stale.opened.channel->negotiate(4s) &&
-                stale.opened.channel->dispatch_one(4s) ==
+    require(stale.opened.channel->negotiate(deadline_after(4s)) &&
+                stale.opened.channel->dispatch_one(deadline_after(4s)) ==
                     channel::DispatchStatus::fatal &&
                 stale.dispatcher->calls == 0,
             "real Bubblewrap stale generation reached dispatch");
@@ -1248,6 +1194,7 @@ int bwrap_suite() {
   }
   return 0;
 }
+
 } // namespace
 
 int main(int argc, char **argv) {

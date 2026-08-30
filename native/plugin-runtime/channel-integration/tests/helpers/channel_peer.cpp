@@ -545,25 +545,6 @@ void send_broker_request(std::uint64_t generation, std::string_view current,
   }
 }
 
-void send_control_ack(std::uint64_t generation,
-                      wire::SessionSequence &sequence) {
-  const auto outbound = sequence.take_outbound(wire::EndpointRole::control);
-  if (!outbound)
-    fail();
-  const auto bytes =
-      packet({.envelope_version = wire::kEnvelopeVersion,
-              .header_size = wire::kHeaderSize,
-              .endpoint_role = wire::EndpointRole::control,
-              .message_type = wire::kSurfaceSelectionAcceptedMessage,
-              .role_protocol_version = 1,
-              .launch_generation = generation,
-              .correlation_id = 0,
-              .lane_sequence = outbound.value},
-             {});
-  send_bytes(3, bytes);
-  pause();
-}
-
 void send_multi_lane(std::uint64_t generation,
                      wire::SessionSequence &sequence) {
   std::array<std::byte, 24> broker_payload{};
@@ -676,8 +657,6 @@ int main() {
     }
     pause();
   }
-  if (current == "wrong-control-ack")
-    send_control_ack(control_generation, sequence);
   if (current == "session-happy")
     session_happy(broker_generation, sequence);
   if (current == "session-replay")
