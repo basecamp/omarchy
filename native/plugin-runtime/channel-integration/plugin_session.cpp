@@ -446,6 +446,11 @@ int PluginSessionTestAccess::activation_record_fd(
     const PluginSession &session) noexcept {
   return session.activation_record_.get();
 }
+
+std::shared_ptr<session::LiveGenerationState>
+PluginSessionTestAccess::live_generation(const PluginSession &session) noexcept {
+  return session.live_;
+}
 #endif
 
 } // namespace omarchy::plugin_runtime::channel

@@ -1,6 +1,7 @@
 #include "plugin_session.hpp"
 #include "plugin_activation_coordinator.hpp"
 #include "plugin_permission_controller.hpp"
+#include "production_plugin_runtime_root.hpp"
 #include "audit_store.hpp"
 #include "broker_runtime.hpp"
 #include "dynamic_broker_runtime.hpp"
@@ -315,7 +316,7 @@ private:
 
 class CoordinatorFixture final {
 public:
-  CoordinatorFixture() {
+  explicit CoordinatorFixture(std::string_view worker_mode = "session-happy") {
     std::string pattern = "/tmp/omarchy-product-activation-XXXXXX";
     const char *created = ::mkdtemp(pattern.data());
     require(created != nullptr, "cannot create coordinator fixture");
@@ -332,7 +333,7 @@ public:
     std::filesystem::create_directory(authority_);
     std::filesystem::copy(COORDINATOR_REVISION_FIXTURE, revision_,
                           std::filesystem::copy_options::recursive);
-    std::ofstream(revision_ / "d1-mode") << "session-happy\n";
+    std::ofstream(revision_ / "d1-mode") << worker_mode << '\n';
     for (const auto &entry : std::filesystem::recursive_directory_iterator(
              revision_)) {
       const mode_t mode = entry.is_directory() ? 0555 : 0444;
@@ -440,6 +441,33 @@ public:
               FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, scope);
         });
     return value;
+  }
+
+  channel::ProductionPluginRuntimeConfiguration root_configuration(
+      channel::ProductionRuntimeServices services = {},
+      channel::ProductionPluginRuntimeHooks *hooks = nullptr) {
+    store_.reset();
+    return {.activation_root_fd = activation_fd_,
+            .revision_root_fd = revisions_fd_,
+            .state_root_fd = state_fd_,
+            .authority_root_fd = authority_fd_,
+            .plugin = permissions::PluginId(plugin_),
+            .trusted_uid = static_cast<std::uint32_t>(::getuid()),
+            .activation_record = "current",
+            .definitions = definitions_,
+            .services = std::move(services),
+            .runtime_limits = {},
+            .session_limits = {},
+            .hooks = hooks};
+  }
+
+  void close_borrowed_roots() {
+    for (int *fd : {&activation_fd_, &revisions_fd_, &state_fd_,
+                    &authority_fd_}) {
+      if (*fd >= 0)
+        ::close(*fd);
+      *fd = -1;
+    }
   }
 
   void corrupt_active() {
@@ -1434,6 +1462,272 @@ host::ConsentConfirmation confirm(
   };
 }
 
+struct BlockingNotificationProbe final {
+  std::mutex mutex;
+  std::condition_variable changed;
+  bool entered = false;
+  bool release = false;
+  std::size_t calls = 0;
+};
+
+class NotificationReleaseGuard final {
+public:
+  explicit NotificationReleaseGuard(
+      std::shared_ptr<BlockingNotificationProbe> probe)
+      : probe_(std::move(probe)) {}
+  ~NotificationReleaseGuard() {
+    {
+      std::scoped_lock lock(probe_->mutex);
+      probe_->release = true;
+    }
+    probe_->changed.notify_all();
+  }
+
+private:
+  std::shared_ptr<BlockingNotificationProbe> probe_;
+};
+
+bool blocking_notification(std::string_view category, std::string_view title,
+                           std::string_view body, void *context) noexcept {
+  auto &probe = *static_cast<BlockingNotificationProbe *>(context);
+  std::unique_lock lock(probe.mutex);
+  if (category != "timer" || title != "T" || body != "OK")
+    return false;
+  ++probe.calls;
+  probe.entered = true;
+  probe.changed.notify_all();
+  probe.changed.wait(lock, [&] { return probe.release; });
+  return true;
+}
+
+class QueuedStopHooks final : public QObject,
+                              public channel::ProductionPluginRuntimeHooks {
+public:
+  void state_changed(host::SessionState state, host::SessionError) override {
+    if (state != host::SessionState::running || queued.exchange(true))
+      return;
+    QMetaObject::invokeMethod(
+        this,
+        [this] {
+          if (root)
+            root->stop();
+          root = nullptr;
+          stopped.store(true, std::memory_order_release);
+        },
+        Qt::QueuedConnection);
+  }
+
+  void control_received(const host::OwnedMessage &) override {}
+  void render_rejected(host::RouteResult) override {}
+  bool accept(host::AdmittedSurfaceIntent) override { return false; }
+
+  channel::ProductionPluginRuntimeRoot *root = nullptr;
+  std::atomic<bool> queued = false;
+  std::atomic<bool> stopped = false;
+};
+
+void production_root_is_the_composed_authority_path() {
+  using namespace std::chrono_literals;
+  CoordinatorFixture fixture("session-notification");
+  fixture.record();
+  auto probe = std::make_shared<BlockingNotificationProbe>();
+  auto root = channel::ProductionPluginRuntimeRoot::open(
+      fixture.root_configuration(
+          {.context = probe,
+           .notification_send = blocking_notification,
+           .audio_play = nullptr,
+           .compare_scope = nullptr,
+           .dynamic_services = {}}));
+  NotificationReleaseGuard release_on_exit(probe);
+  require(root != nullptr, "production composition root did not open");
+  channel::ProductionPluginRuntimeRootTestAccess::set_supervisor_factory(
+      *root, [] {
+        return launcher::Supervisor::forTestOnly(
+            FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, std::make_shared<Scope>());
+      });
+
+  auto locked = channel::ProductionPluginRuntimeRoot::open(
+      fixture.root_configuration(
+          {.context = probe,
+           .notification_send = blocking_notification,
+           .audio_play = nullptr,
+           .compare_scope = nullptr,
+           .dynamic_services = {}}));
+  require(!locked, "a second production root acquired the same authority");
+  fixture.close_borrowed_roots();
+
+  auto review = root->prepare_review();
+  require(review != nullptr,
+          "pinned root descriptors did not survive borrowed FD closure");
+  const auto decisions = grant_all(*review);
+  const auto install = root->apply_review(confirm(*review, decisions),
+                                          decisions, {});
+  require(install.publication == host::ConsentResult::applied &&
+              install.promotion == host::AuthorityMutationResult::applied &&
+              install.activation && *install.activation,
+          "composed root did not review, promote and activate G1");
+  {
+    std::unique_lock lock(probe->mutex);
+    require(probe->changed.wait_for(lock, 2s, [&] { return probe->entered; }),
+            "trusted notification provider was not reached");
+  }
+
+  const auto initial = root->list();
+  require(initial && initial->active &&
+              initial->active->binding.generation == 1,
+          "composed G1 authority was not durable");
+  const auto notification = std::ranges::find_if(
+      initial->active->grants.values(), [](const auto &grant) {
+        return grant.capability.id.view() == "notifications.send";
+      });
+  require(notification != initial->active->grants.values().end(),
+          "optional notification grant missing from composed authority");
+  const auto original_live =
+      channel::ProductionPluginRuntimeRootTestAccess::live_generation(*root);
+  require(original_live && original_live->generation() == 1,
+          "composed root did not retain exact G1 live authority");
+
+  std::atomic<bool> revoke_returned = false;
+  channel::PermissionRevokeApplyResult optional;
+  std::thread revoker([&] {
+    optional = root->revoke(notification->capability,
+                            initial->authority_slots.sequence);
+    revoke_returned.store(true, std::memory_order_release);
+  });
+  const auto fence_deadline = std::chrono::steady_clock::now() + 2s;
+  while (original_live->generation() != 0 &&
+         std::chrono::steady_clock::now() < fence_deadline)
+    std::this_thread::yield();
+  const bool fence_closed = original_live->generation() == 0;
+  const bool returned_before_release =
+      revoke_returned.load(std::memory_order_acquire);
+  {
+    std::scoped_lock lock(probe->mutex);
+    probe->release = true;
+  }
+  probe->changed.notify_all();
+  revoker.join();
+  require(fence_closed && !returned_before_release,
+          "optional revoke acknowledged before its provider effect drained");
+  require(optional.revocation.status ==
+                  host::AuthorityMutationResult::applied &&
+              optional.revocation.activatable && optional.activation &&
+              *optional.activation,
+          "optional revoke did not replace the composed session");
+  await([&] {
+    const auto current = root->session_binding();
+    return current && current->generation == 2;
+  }, "optional revoke did not produce one running G2 session");
+  {
+    std::scoped_lock lock(probe->mutex);
+    require(probe->calls == 1,
+            "a notification effect began after revoke acknowledgement");
+  }
+
+  const auto replacement = root->list();
+  require(replacement && replacement->active,
+          "G2 authority disappeared after optional revoke");
+  const auto storage = std::ranges::find_if(
+      replacement->active->grants.values(), [](const auto &grant) {
+        return grant.capability.id.view() == "storage.private";
+      });
+  require(storage != replacement->active->grants.values().end(),
+          "required storage grant missing from G2");
+  const auto required = root->revoke(
+      storage->capability, replacement->authority_slots.sequence);
+  require(required.revocation.status ==
+                  host::AuthorityMutationResult::applied &&
+              !required.revocation.activatable && !required.activation &&
+              !root->session_binding(),
+          "required revoke left a composed product session running");
+}
+
+void production_root_rejects_unusable_authority_and_providers() {
+  CoordinatorFixture bad_fd;
+  {
+    auto invalid = bad_fd.root_configuration();
+    invalid.authority_root_fd = -1;
+    require(!channel::ProductionPluginRuntimeRoot::open(std::move(invalid)),
+            "invalid authority descriptor opened a product root");
+  }
+  {
+    auto invalid_uid = bad_fd.root_configuration();
+    invalid_uid.trusted_uid = std::numeric_limits<std::uint32_t>::max();
+    require(!channel::ProductionPluginRuntimeRoot::open(
+                std::move(invalid_uid)),
+            "omitted trusted uid opened a product root");
+  }
+
+  {
+    CoordinatorFixture wrong_record;
+    wrong_record.record();
+    auto wrong_configuration = wrong_record.root_configuration();
+    wrong_configuration.activation_record = "../current";
+    auto wrong = channel::ProductionPluginRuntimeRoot::open(
+        std::move(wrong_configuration));
+    require(wrong && !wrong->prepare_review(),
+            "non-canonical fixed activation record prepared consent");
+  }
+
+  CoordinatorFixture missing_provider("session-notification");
+  missing_provider.record();
+  auto root = channel::ProductionPluginRuntimeRoot::open(
+      missing_provider.root_configuration());
+  require(root != nullptr, "missing-provider root did not open for review");
+  auto scope = std::make_shared<Scope>();
+  channel::ProductionPluginRuntimeRootTestAccess::set_supervisor_factory(
+      *root, [scope] {
+        return launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH,
+                                                 CHANNEL_PEER_PATH, scope);
+      });
+  auto review = root->prepare_review();
+  require(review != nullptr, "missing-provider review was not prepared");
+  const auto decisions = grant_all(*review);
+  const auto rejected = root->apply_review(confirm(*review, decisions),
+                                           decisions, {});
+  require(rejected.publication == host::ConsentResult::applied &&
+              rejected.promotion == host::AuthorityMutationResult::applied &&
+              rejected.activation && !*rejected.activation &&
+              rejected.activation->session_error ==
+                  channel::PluginSessionCreateError::runtime_unavailable &&
+              scope->attachments == 0 && !root->session_binding(),
+          "granted optional permission bypassed its missing trusted provider");
+}
+
+void production_root_queues_hook_lifecycle_work() {
+  CoordinatorFixture fixture("session-deadline");
+  fixture.record();
+  QueuedStopHooks hooks;
+  auto root = channel::ProductionPluginRuntimeRoot::open(
+      fixture.root_configuration({}, &hooks));
+  require(root != nullptr, "queued-hook root did not open");
+  hooks.root = root.get();
+  channel::ProductionPluginRuntimeRootTestAccess::set_supervisor_factory(
+      *root, [] {
+        return launcher::Supervisor::forTestOnly(
+            FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, std::make_shared<Scope>());
+      });
+  auto review = root->prepare_review();
+  require(review != nullptr, "queued-hook review was not prepared");
+  auto decisions = grant_all(*review);
+  const auto notification = std::ranges::find_if(
+      decisions, [](const auto &decision) {
+        return decision.capability.id.view() == "notifications.send";
+      });
+  require(notification != decisions.end(),
+          "queued-hook optional notification decision missing");
+  notification->decision = permissions::UserDecision::deny;
+  const auto install = root->apply_review(confirm(*review, decisions),
+                                          decisions, {});
+  require(install.activation && *install.activation,
+          "queued-hook session did not activate");
+  await([&] { return hooks.stopped.load(std::memory_order_acquire); },
+        "queued hook teardown did not run on the host loop");
+  require(hooks.queued.load(std::memory_order_acquire) &&
+              !root->session_binding(),
+          "queued hook teardown left a product session running");
+}
+
 void permission_controller_verifies_its_fixed_record() {
   static_assert(std::is_same_v<
                 decltype(&channel::PluginPermissionController::prepare_review),
@@ -1679,6 +1973,14 @@ int main(int argc, char **argv) {
       std::cout << "production runtime factory tests passed\n";
       return 0;
     }
+    if (argc == 2 &&
+        std::string_view(argv[1]) == "--production-root-only") {
+      production_root_is_the_composed_authority_path();
+      production_root_rejects_unusable_authority_and_providers();
+      production_root_queues_hook_lifecycle_work();
+      std::cout << "production root tests passed\n";
+      return 0;
+    }
     product_session_routes_two_surfaces_over_one_launch();
     effect_time_revocation_fences_an_authenticated_request();
     shared_gesture_authority_has_one_concurrent_winner();
@@ -1691,6 +1993,9 @@ int main(int argc, char **argv) {
     permission_controller_verifies_its_fixed_record();
     permission_controller_composes_consent_and_revocation();
     permission_controller_stops_after_fatal_revoke_io();
+    production_root_is_the_composed_authority_path();
+    production_root_rejects_unusable_authority_and_providers();
+    production_root_queues_hook_lifecycle_work();
     production_session_runtime_factory_tests();
     failed_session_rejects_surfaces();
   } catch (const std::exception &error) {

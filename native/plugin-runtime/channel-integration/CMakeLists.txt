@@ -61,6 +61,7 @@ if(TARGET omarchy-plugin-host-session)
     broker_session_settlement.cpp
     plugin_activation_coordinator.cpp
     plugin_permission_controller.cpp
+    production_plugin_runtime_root.cpp
     production_session_runtime_factory.cpp
     plugin_session.cpp
   )
@@ -188,6 +189,7 @@ if(BUILD_TESTING)
       broker_session_settlement.cpp
       plugin_activation_coordinator.cpp
       plugin_permission_controller.cpp
+      production_plugin_runtime_root.cpp
       production_session_runtime_factory.cpp
       production_session_runtime_factory_test.cpp
       plugin_session.cpp

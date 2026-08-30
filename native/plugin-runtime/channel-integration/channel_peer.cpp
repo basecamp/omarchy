@@ -209,6 +209,38 @@ std::vector<std::byte> audio_request(std::uint64_t generation,
                 payload);
 }
 
+std::vector<std::byte> notification_request(std::uint64_t generation,
+                                            std::uint64_t correlation,
+                                            wire::SessionSequence &sequence) {
+  constexpr std::string_view category = "timer";
+  constexpr std::array provider{std::byte{0}, std::byte{1}, std::byte{0},
+                                std::byte{2}, std::byte{'T'}, std::byte{'O'},
+                                std::byte{'K'}};
+  std::vector<std::byte> payload(10 + category.size() + provider.size());
+  const auto operation = static_cast<std::uint16_t>(
+      broker::permissions::OperationId::notification_send);
+  put16(payload, 0, operation);
+  put16(payload, 2, static_cast<std::uint16_t>(2 + category.size()));
+  put32(payload, 4, static_cast<std::uint32_t>(provider.size()));
+  put16(payload, 8, static_cast<std::uint16_t>(category.size()));
+  for (std::size_t index = 0; index < category.size(); ++index)
+    payload[10 + index] = static_cast<std::byte>(category[index]);
+  std::copy(provider.begin(), provider.end(),
+            payload.begin() + 10 + category.size());
+  const auto outbound = sequence.take_outbound(wire::EndpointRole::broker);
+  if (!outbound)
+    fail();
+  return packet({.envelope_version = wire::kEnvelopeVersionV2,
+                 .header_size = wire::kHeaderSizeV2,
+                 .endpoint_role = wire::EndpointRole::broker,
+                 .message_type = operation,
+                 .role_protocol_version = broker::kBrokerRoleVersion,
+                 .launch_generation = generation,
+                 .correlation_id = correlation,
+                 .lane_sequence = outbound.value},
+                payload);
+}
+
 std::vector<std::byte> storage_request(std::uint64_t generation,
                                        std::uint64_t correlation,
                                        wire::SessionSequence &sequence) {
@@ -238,9 +270,10 @@ std::vector<std::byte> storage_request(std::uint64_t generation,
                 payload);
 }
 
-void validate_audio_reply(std::span<const std::byte> bytes,
-                          std::uint64_t generation, std::uint64_t correlation,
-                          wire::SessionSequence &sequence) {
+void validate_empty_broker_reply(std::span<const std::byte> bytes,
+                                 std::uint64_t generation,
+                                 std::uint64_t correlation,
+                                 wire::SessionSequence &sequence) {
   const auto decoded = wire::decode_packet(bytes, wire::EndpointRole::broker);
   if (!decoded ||
       sequence.accept_inbound(wire::EndpointRole::broker,
@@ -328,7 +361,7 @@ void send_session_signal(int descriptor, wire::EndpointRole role,
 [[noreturn]] void session_happy(std::uint64_t generation,
                                 wire::SessionSequence &sequence) {
   send_bytes(4, audio_request(generation, 1, sequence));
-  validate_audio_reply(receive_bytes(4), generation, 1, sequence);
+  validate_empty_broker_reply(receive_bytes(4), generation, 1, sequence);
   send_session_signal(3, wire::EndpointRole::control,
                       wire::kSurfaceSelectionAcceptedMessage, generation, {},
                       sequence);
@@ -348,8 +381,19 @@ void send_session_signal(int descriptor, wire::EndpointRole role,
                                  wire::SessionSequence &sequence) {
   const auto request = audio_request(generation, 1, sequence);
   send_bytes(4, request);
-  validate_audio_reply(receive_bytes(4), generation, 1, sequence);
+  validate_empty_broker_reply(receive_bytes(4), generation, 1, sequence);
   send_bytes(4, request);
+  wait_forever();
+}
+
+[[noreturn]] void session_notification(std::uint64_t generation,
+                                       wire::SessionSequence &sequence) {
+  // The first activation exercises the optional provider. Its G+1 replacement
+  // after revocation must remain alive without attempting the revoked effect.
+  if (generation == 1) {
+    send_bytes(4, notification_request(generation, 1, sequence));
+    validate_empty_broker_reply(receive_bytes(4), generation, 1, sequence);
+  }
   wait_forever();
 }
 
@@ -641,6 +685,8 @@ int main() {
     session_happy(broker_generation, sequence);
   if (current == "session-replay")
     session_replay(broker_generation, sequence);
+  if (current == "session-notification")
+    session_notification(broker_generation, sequence);
   if (current == "session-pressure")
     session_pressure(broker_generation, sequence);
   if (current == "session-revoke-pressure")

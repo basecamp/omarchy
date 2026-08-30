@@ -195,6 +195,8 @@ public:
              gesture_eligibility = {});
   [[nodiscard]] static int
   activation_record_fd(const PluginSession &session) noexcept;
+  [[nodiscard]] static std::shared_ptr<session::LiveGenerationState>
+  live_generation(const PluginSession &session) noexcept;
 };
 #endif
 
