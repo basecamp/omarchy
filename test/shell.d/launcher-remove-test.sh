@@ -22,6 +22,7 @@ SCRIPT
 
 write_fake_command omarchy-webapp-remove web
 write_fake_command omarchy-tui-remove tui
+write_fake_command omarchy-remove-service-1password onepassword
 write_fake_command omarchy-launch-floating-terminal-with-presentation terminal
 
 cat >"$tmp_dir/bin/omarchy-notification-send" <<'SCRIPT'
@@ -56,6 +57,12 @@ Name=Docker
 Exec=xdg-terminal-exec --app-id=TUI.tile -e lazydocker
 DESKTOP
 
+cat >"$tmp_dir/system/applications/1password.desktop" <<'DESKTOP'
+[Desktop Entry]
+Name=1Password
+Exec=1password
+DESKTOP
+
 cat >"$tmp_dir/system/applications/native.desktop" <<'DESKTOP'
 [Desktop Entry]
 Name=Native
@@ -75,6 +82,7 @@ export XDG_DATA_DIRS="$tmp_dir/system"
 
 "$ROOT/bin/omarchy-remove-launcher-entry" Basecamp.desktop Basecamp
 "$ROOT/bin/omarchy-remove-launcher-entry" Docker.desktop Docker
+"$ROOT/bin/omarchy-remove-launcher-entry" 1password.desktop 1Password
 "$ROOT/bin/omarchy-remove-launcher-entry" native.desktop Native
 "$ROOT/bin/omarchy-remove-launcher-entry" aliens.desktop Aliens
 
@@ -86,11 +94,14 @@ pass "launcher remove routes web apps by desktop name"
 [[ ${lines[1]} == "tui:false:Docker" ]] || fail "launcher remove routes TUIs by desktop name" "${lines[1]}"
 pass "launcher remove routes TUIs by desktop name"
 
-[[ ${lines[2]} == "terminal::echo Uninstalling Native...; sudo pacman -Rns native-pkg" ]] || fail "launcher remove opens package uninstall flow" "${lines[2]}"
+[[ ${lines[2]} == "onepassword::" ]] || fail "launcher remove routes 1Password through its dedicated remover" "${lines[2]}"
+pass "launcher remove routes 1Password through its dedicated remover"
+
+[[ ${lines[3]} == "terminal::echo Uninstalling Native...; sudo pacman -Rns native-pkg" ]] || fail "launcher remove opens package uninstall flow" "${lines[3]}"
 pass "launcher remove opens package uninstall flow"
 
 [[ ! -e $tmp_dir/data/applications/aliens.desktop ]] || fail "launcher remove deletes user-owned desktop files"
 pass "launcher remove deletes user-owned desktop files"
 
-(( ${#lines[@]} == 3 )) || fail "launcher remove does not notify for user-owned desktop files" "$(printf '%s\n' "${lines[@]}")"
+(( ${#lines[@]} == 4 )) || fail "launcher remove does not notify for user-owned desktop files" "$(printf '%s\n' "${lines[@]}")"
 pass "launcher remove does not notify for user-owned desktop files"
