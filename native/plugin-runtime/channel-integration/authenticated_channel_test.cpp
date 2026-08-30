@@ -496,6 +496,93 @@ void fake_suite() {
             "arbitrary-order endpoint negotiation was serialized by lane");
   }
   {
+    Session multi("multi-lane", FAKE_BWRAP_PATH);
+    require(
+        multi.opened.channel->negotiate(2s) &&
+            multi.opened.channel->arm_readiness(
+                launcher::EndpointMask::all, launcher::EndpointMask::control),
+        "authenticated multi-lane fixture did not become ready");
+    auto render = multi.opened.channel->receive_authenticated(
+        launcher::EndpointMask::render, std::chrono::steady_clock::now() + 2s);
+    require(render && render.message->role == wire::EndpointRole::render &&
+                render.message->message_type ==
+                    static_cast<std::uint16_t>(
+                        surface::RenderMessageType::frame_ready) &&
+                render.message->correlation_id == 0 &&
+                render.message->payload.size() == 40 &&
+                render.message->descriptors.empty() &&
+                multi.dispatcher->calls == 0,
+            "allowed render lane did not publish an owning semantic message");
+    auto broker_message = multi.opened.channel->receive_authenticated(
+        launcher::EndpointMask::broker, std::chrono::steady_clock::now() + 2s);
+    require(broker_message &&
+                broker_message.message->role == wire::EndpointRole::broker &&
+                broker_message.message->message_type ==
+                    static_cast<std::uint16_t>(
+                        permissions::OperationId::storage_read) &&
+                broker_message.message->correlation_id == 1 &&
+                broker_message.message->payload.size() == 24 &&
+                broker_message.message->descriptors.empty() &&
+                multi.dispatcher->calls == 0,
+            "disallowed queued broker lane was consumed or dispatched");
+    auto owned = std::move(*broker_message.message);
+    require(multi.opened.channel->terminate(std::chrono::steady_clock::now() +
+                                            2s) &&
+                owned.payload.size() == 24 && owned.correlation_id == 1,
+            "authenticated payload lifetime remained tied to channel storage");
+  }
+  {
+    Session replay("replay", FAKE_BWRAP_PATH);
+    require(replay.opened.channel->negotiate(2s),
+            "typed replay fixture did not negotiate");
+    const auto first = replay.opened.channel->receive_authenticated(
+        launcher::EndpointMask::broker, std::chrono::steady_clock::now() + 2s);
+    const auto second = replay.opened.channel->receive_authenticated(
+        launcher::EndpointMask::broker, std::chrono::steady_clock::now() + 2s);
+    require(
+        first && second.status == channel::AuthenticatedReceiveStatus::fatal &&
+            replay.opened.channel->failed() && replay.dispatcher->calls == 0,
+        "typed receive published a same-lane replay or broker effect");
+  }
+  {
+    Session wrong_tag("wrong-sequence-tag", FAKE_BWRAP_PATH);
+    require(wrong_tag.opened.channel->negotiate(2s) &&
+                wrong_tag.opened.channel
+                        ->receive_authenticated(
+                            launcher::EndpointMask::broker,
+                            std::chrono::steady_clock::now() + 2s)
+                        .status == channel::AuthenticatedReceiveStatus::fatal &&
+                wrong_tag.dispatcher->calls == 0,
+            "typed receive accepted a transplanted lane sequence");
+  }
+  {
+    Session revoked("multi-lane", FAKE_BWRAP_PATH);
+    require(revoked.opened.channel->negotiate(2s),
+            "post-receive revocation fixture did not negotiate");
+    revoked.authority->revoke_on_check = revoked.authority->checks.load() + 3;
+    auto result = revoked.opened.channel->receive_authenticated(
+        launcher::EndpointMask::render, std::chrono::steady_clock::now() + 2s);
+    require(result.status == channel::AuthenticatedReceiveStatus::fatal &&
+                !result.message && revoked.opened.channel->failed() &&
+                revoked.dispatcher->calls == 0,
+            "revoked message was published after its final authority fence");
+  }
+  {
+    Session delayed("multi-lane", FAKE_BWRAP_PATH);
+    require(delayed.opened.channel->negotiate(2s),
+            "final receive deadline fixture did not negotiate");
+    delayed.authority->sleep_on_check = delayed.authority->checks.load() + 3;
+    delayed.authority->sleep_microseconds = 20'000;
+    auto result = delayed.opened.channel->receive_authenticated(
+        launcher::EndpointMask::render, std::chrono::steady_clock::now() + 5ms);
+    require(result.status == channel::AuthenticatedReceiveStatus::fatal &&
+                !result.message &&
+                delayed.opened.channel->failure() ==
+                    channel::ChannelFailure::deadline_expired &&
+                delayed.dispatcher->calls == 0,
+            "slow final authority check published after receive deadline");
+  }
+  {
     Session first("valid", FAKE_BWRAP_PATH);
     Session second("valid", FAKE_BWRAP_PATH);
     require(first.opened.channel->negotiate(2s) &&
@@ -792,6 +879,22 @@ void fake_suite() {
     require(eventually_descriptor_count_at_most(descriptors_before),
             "descriptor quarantine leaked broker-side descriptors");
   }
+  {
+    const auto descriptors_before = descriptor_count();
+    for (unsigned attempt = 0; attempt < 16; ++attempt) {
+      Session injected("post-ready-descriptor", FAKE_BWRAP_PATH);
+      require(injected.opened.channel->negotiate(2s),
+              "typed descriptor quarantine did not negotiate");
+      const auto received = injected.opened.channel->receive_authenticated(
+          launcher::EndpointMask::broker,
+          std::chrono::steady_clock::now() + 2s);
+      require(received.status == channel::AuthenticatedReceiveStatus::fatal &&
+                  !received.message && injected.dispatcher->calls == 0,
+              "typed receive published an undeclared descriptor");
+    }
+    require(eventually_descriptor_count_at_most(descriptors_before),
+            "typed receive quarantine leaked owned descriptors");
+  }
 
   for (const std::string_view mode : {"stale", "bad-role-version"}) {
     Session session(mode, FAKE_BWRAP_PATH);
@@ -869,6 +972,13 @@ void fake_suite() {
     Session saturated("host-saturation", FAKE_BWRAP_PATH);
     require(saturated.opened.channel->negotiate(2s),
             "prepared-send saturation fixture did not negotiate");
+    const auto timed_receive = saturated.opened.channel->receive_authenticated(
+        launcher::EndpointMask::render, std::chrono::steady_clock::now() + 5ms);
+    require(timed_receive.status ==
+                    channel::AuthenticatedReceiveStatus::would_block &&
+                !timed_receive.message && !saturated.opened.channel->failed() &&
+                saturated.dispatcher->calls == 0,
+            "healthy typed receive timeout failed or dispatched the channel");
     std::vector<std::byte> payload(
         wire::payload_cap(wire::EndpointRole::control));
     std::optional<channel::PreparedSend> blocked;
@@ -894,6 +1004,14 @@ void fake_suite() {
             saturated.opened.channel->arm_readiness(
                 launcher::EndpointMask::none, launcher::EndpointMask::control),
         "would-block retry mutated bytes or lost its lane interest");
+    const auto invalid_receive =
+        saturated.opened.channel->receive_authenticated(
+            launcher::EndpointMask::render,
+            std::chrono::steady_clock::now() + 20ms);
+    require(invalid_receive.status ==
+                    channel::AuthenticatedReceiveStatus::not_ready &&
+                !invalid_receive.message && !saturated.opened.channel->failed(),
+            "unarmed receive consumed transport state or killed the channel");
     pollfd readiness{.fd = saturated.opened.channel->readiness_fd(),
                      .events = POLLIN,
                      .revents = 0};
@@ -909,6 +1027,19 @@ void fake_suite() {
   }
 
   {
+    Session bounded("host-saturation", FAKE_BWRAP_PATH);
+    require(bounded.opened.channel->negotiate(2s),
+            "bounded termination fixture did not negotiate");
+    const auto started = std::chrono::steady_clock::now();
+    const auto first = bounded.opened.channel->terminate(started);
+    const auto repeated = bounded.opened.channel->terminate(
+        std::chrono::steady_clock::now() + 2s);
+    require(first == repeated &&
+                std::chrono::steady_clock::now() - started < 100ms,
+            "expired termination deadline blocked or reset on retry");
+  }
+
+  {
     Session session("ready-loss", FAKE_BWRAP_PATH);
     require(session.opened.channel->negotiate(2s),
             "silent-exit liveness fixture did not negotiate");
@@ -920,10 +1051,14 @@ void fake_suite() {
            std::chrono::steady_clock::now() < deadline) {
       usleep(1000);
     }
+    const auto terminal = session.opened.channel->receive_authenticated(
+        launcher::EndpointMask::broker, std::chrono::steady_clock::now() + 2s);
     require(
         !session.opened.channel->alive() &&
-            session.opened.channel->dispatch_one(2s) ==
-                channel::DispatchStatus::fatal &&
+            (terminal.status ==
+                 channel::AuthenticatedReceiveStatus::peer_closed ||
+             terminal.status == channel::AuthenticatedReceiveStatus::fatal) &&
+            !terminal.message &&
             session.opened.channel->failure() ==
                 channel::ChannelFailure::peer_failure &&
             session.dispatcher->calls == 0 &&

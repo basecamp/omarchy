@@ -269,6 +269,47 @@ void send_control_ack(std::uint64_t generation,
   send_bytes(3, bytes);
   pause();
 }
+
+void send_multi_lane(std::uint64_t generation,
+                     wire::SessionSequence &sequence) {
+  std::array<std::byte, 24> broker_payload{};
+  const auto operation = static_cast<std::uint16_t>(
+      broker::permissions::OperationId::storage_read);
+  put16(broker_payload, 0, operation);
+  put16(broker_payload, 2, 16);
+  put64(broker_payload, 8, 4096);
+  put64(broker_payload, 16, 1024);
+  const auto broker_sequence =
+      sequence.take_outbound(wire::EndpointRole::broker);
+  if (!broker_sequence)
+    fail();
+  send_bytes(4, packet({.envelope_version = wire::kEnvelopeVersionV2,
+                        .header_size = wire::kHeaderSizeV2,
+                        .endpoint_role = wire::EndpointRole::broker,
+                        .message_type = operation,
+                        .role_protocol_version = broker::kBrokerRoleVersion,
+                        .launch_generation = generation,
+                        .correlation_id = 1,
+                        .lane_sequence = broker_sequence.value},
+                       broker_payload));
+
+  std::array<std::byte, 40> render_payload{};
+  const auto render_sequence =
+      sequence.take_outbound(wire::EndpointRole::render);
+  if (!render_sequence)
+    fail();
+  send_bytes(5, packet({.envelope_version = wire::kEnvelopeVersionV2,
+                        .header_size = wire::kHeaderSizeV2,
+                        .endpoint_role = wire::EndpointRole::render,
+                        .message_type = static_cast<std::uint16_t>(
+                            surface::RenderMessageType::frame_ready),
+                        .role_protocol_version = surface::kRenderRoleVersion,
+                        .launch_generation = generation,
+                        .correlation_id = 0,
+                        .lane_sequence = render_sequence.value},
+                       render_payload));
+  pause();
+}
 } // namespace
 
 int main() {
@@ -343,6 +384,8 @@ int main() {
   }
   if (current == "wrong-control-ack")
     send_control_ack(control_generation, sequence);
+  if (current == "multi-lane")
+    send_multi_lane(broker_generation, sequence);
   send_broker_request(broker_generation, current, sequence);
   return 0;
 }

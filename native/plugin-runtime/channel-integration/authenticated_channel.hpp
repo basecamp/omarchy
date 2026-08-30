@@ -49,6 +49,37 @@ enum class ChannelSendStatus : std::uint8_t {
   not_ready,
 };
 
+enum class AuthenticatedReceiveStatus : std::uint8_t {
+  message,
+  would_block,
+  peer_closed,
+  fatal,
+  not_ready,
+};
+
+struct AuthenticatedMessage final {
+  wire::EndpointRole role = wire::EndpointRole::control;
+  std::uint16_t message_type = 0;
+  std::uint64_t correlation_id = 0;
+  std::vector<std::byte> payload;
+  std::vector<launcher::OwnedDescriptor> descriptors;
+
+  AuthenticatedMessage() = default;
+  AuthenticatedMessage(AuthenticatedMessage &&) noexcept = default;
+  AuthenticatedMessage &operator=(AuthenticatedMessage &&) noexcept = default;
+  AuthenticatedMessage(const AuthenticatedMessage &) = delete;
+  AuthenticatedMessage &operator=(const AuthenticatedMessage &) = delete;
+};
+
+struct AuthenticatedReceiveResult final {
+  AuthenticatedReceiveStatus status = AuthenticatedReceiveStatus::fatal;
+  std::optional<AuthenticatedMessage> message;
+
+  [[nodiscard]] explicit operator bool() const noexcept {
+    return status == AuthenticatedReceiveStatus::message && message.has_value();
+  }
+};
+
 // Owns the byte-identical v2 datagram produced for one lane. A would-block
 // result leaves it intact for retry; every other result consumes it. Descriptor
 // arguments remain borrowed by the caller until a retry completes.
@@ -160,6 +191,9 @@ public:
   arm_readiness(launcher::EndpointMask read_lanes,
                 launcher::EndpointMask blocked_write_lanes) noexcept;
   [[nodiscard]] bool arm_receive(launcher::EndpointMask lanes) noexcept;
+  [[nodiscard]] AuthenticatedReceiveResult
+  receive_authenticated(launcher::EndpointMask allowed_lanes,
+                        launcher::Deadline deadline);
   [[nodiscard]] DispatchStatus dispatch_one(launcher::Deadline deadline);
   [[nodiscard]] DispatchStatus dispatch_one(std::chrono::milliseconds timeout);
   [[nodiscard]] launcher::ReceivedMessage
@@ -181,6 +215,9 @@ public:
   [[nodiscard]] const std::string &detail() const;
   [[nodiscard]] const launcher::LaunchIdentity &identity() const;
   [[nodiscard]] std::string take_worker_standard_error();
+  [[nodiscard]] bool terminate(launcher::Deadline deadline) noexcept;
+  // Legacy convenience wrapper. New session code supplies one absolute
+  // shutdown deadline through the overload above.
   [[nodiscard]] bool terminate();
 
 private:
@@ -196,8 +233,7 @@ private:
   [[nodiscard]] launcher::ReceivedMessage
   receive_one(launcher::EndpointMask lanes, launcher::Deadline deadline);
   [[nodiscard]] bool validate_inbound(const launcher::ReceivedMessage &message,
-                                      wire::PacketView &packet,
-                                      bool validate_descriptors);
+                                      wire::PacketView &packet);
   [[nodiscard]] wire::TrustedNegotiator *negotiator(wire::EndpointRole role);
   bool fail(ChannelFailure failure, std::string detail);
 
@@ -212,6 +248,7 @@ private:
   wire::RequiredEndpointReadiness readiness_;
   wire::SessionSequence sequence_;
   std::array<bool, 3> negotiated_{};
+  launcher::EndpointMask armed_reads_ = launcher::EndpointMask::all;
   ChannelFailure failure_ = ChannelFailure::none;
   std::string detail_;
   bool ready_ = false;
