@@ -252,14 +252,14 @@ bool PluginSession::send(session::ChannelLane lane, std::uint16_t message_type,
 }
 
 void PluginSession::revoke() {
-  live_->revoke();
+  (void)live_->revoke_and_drain();
   detach_all();
   gesture_intents_->revoke();
   io_->revoke();
 }
 
 void PluginSession::stop() {
-  live_->revoke();
+  (void)live_->revoke_and_drain();
   detach_all();
   gesture_intents_->revoke();
   io_->stop();

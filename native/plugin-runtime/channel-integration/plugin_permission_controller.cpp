@@ -109,6 +109,9 @@ PermissionRevokeApplyResult PluginPermissionController::revoke_exact(
           host_session::AuthorityMutationResult::stale_sequence)
     return result;
   pending_review_.reset();
+  if (result.revocation.status ==
+      host_session::AuthorityMutationResult::reentrant_effect)
+    return result;
   coordinator_.stop();
   if (result.revocation.status ==
           host_session::AuthorityMutationResult::applied &&

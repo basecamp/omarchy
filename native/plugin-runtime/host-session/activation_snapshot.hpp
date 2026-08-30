@@ -4,12 +4,16 @@
 #include "manifest_contract.hpp"
 
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <thread>
+#include <vector>
 
 namespace omarchy::plugin_runtime::host_session {
 
@@ -84,20 +88,63 @@ public:
           std::string_view revision_sha256) const = 0;
 };
 
-class LiveGenerationState {
+enum class LiveGenerationRevokeResult : std::uint8_t { drained, reentrant };
+
+class LiveGenerationState final
+    : public std::enable_shared_from_this<LiveGenerationState> {
 public:
+  class EffectToken final {
+  public:
+    EffectToken(EffectToken &&other) noexcept;
+    EffectToken &operator=(EffectToken &&) = delete;
+    EffectToken(const EffectToken &) = delete;
+    EffectToken &operator=(const EffectToken &) = delete;
+    ~EffectToken();
+
+    [[nodiscard]] bool current() const noexcept;
+
+  private:
+    EffectToken(std::shared_ptr<LiveGenerationState> state,
+                std::uint64_t use_id) noexcept;
+    std::shared_ptr<LiveGenerationState> state_;
+    std::uint64_t use_id_ = 0;
+    friend class LiveGenerationState;
+  };
+
   explicit LiveGenerationState(permissions::ActivationBinding binding);
 
   [[nodiscard]] bool
   current(const permissions::ActivationBinding &binding) const noexcept;
   [[nodiscard]] std::uint64_t generation() const noexcept;
-  void revoke() noexcept;
+  [[nodiscard]] std::optional<EffectToken>
+  acquire_effect(const permissions::ActivationBinding &binding);
+  [[nodiscard]] LiveGenerationRevokeResult revoke_and_drain() noexcept;
 
 private:
+  enum class EffectAdmissionCloseResult : std::uint8_t {
+    ready_to_drain,
+    reentrant,
+  };
+  [[nodiscard]] EffectAdmissionCloseResult
+  close_effect_admission() noexcept;
+  void drain_closed_effects() noexcept;
+  [[nodiscard]] bool effect_current(std::uint64_t use_id) noexcept;
+  void release_effect(std::uint64_t use_id) noexcept;
+  struct EffectUse {
+    std::uint64_t id = 0;
+    std::thread::id thread;
+    bool entered = false;
+  };
   permissions::PluginId plugin_;
   permissions::Digest revision_;
   permissions::Digest policy_fingerprint_;
   std::atomic<std::uint64_t> generation_;
+  std::mutex effect_mutex_;
+  std::condition_variable effect_drained_;
+  std::vector<EffectUse> effect_uses_;
+  std::uint64_t next_effect_id_ = 0;
+
+  friend class AuthorityStore;
 };
 
 struct ActivationSnapshot {

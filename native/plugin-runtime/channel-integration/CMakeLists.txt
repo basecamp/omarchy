@@ -61,6 +61,7 @@ if(TARGET omarchy-plugin-host-session)
     broker_session_settlement.cpp
     plugin_activation_coordinator.cpp
     plugin_permission_controller.cpp
+    production_session_runtime_factory.cpp
     plugin_session.cpp
   )
   target_include_directories(omarchy-plugin-authenticated-session PUBLIC
@@ -187,6 +188,8 @@ if(BUILD_TESTING)
       broker_session_settlement.cpp
       plugin_activation_coordinator.cpp
       plugin_permission_controller.cpp
+      production_session_runtime_factory.cpp
+      production_session_runtime_factory_test.cpp
       plugin_session.cpp
       plugin_session_test.cpp)
     omarchy_plugin_target_defaults(omarchy-plugin-product-session-test)

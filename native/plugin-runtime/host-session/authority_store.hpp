@@ -26,6 +26,7 @@ struct AuthoritySlots {
   std::uint64_t generation_high_watermark = 0;
   std::optional<AuthorityRevisionRef> active;
   std::optional<AuthorityRevisionRef> candidate;
+  bool operator==(const AuthoritySlots &) const = default;
 };
 
 struct AuthorityView {
@@ -37,6 +38,7 @@ enum class AuthorityMutationResult {
   applied,
   invalid,
   stale_sequence,
+  reentrant_effect,
   io_error,
   poisoned,
 };
@@ -107,6 +109,8 @@ private:
       const permissions::CapabilityKey *capability,
       const definitions::CapabilityReference *definition,
       std::uint64_t expected_sequence);
+  [[nodiscard]] AuthorityMutationResult fence_bound_live(
+      std::unique_lock<std::mutex> &lock, const AuthoritySlots &preimage);
 
   OwnedDescriptor root_;
   OwnedDescriptor lock_;
@@ -116,6 +120,7 @@ private:
   mutable std::mutex mutation_mutex_;
   std::weak_ptr<LiveGenerationState> bound_live_;
   bool poisoned_ = false;
+  bool transitioning_ = false;
 
   friend class omarchy::plugin_runtime::channel::PluginPermissionController;
   friend class AuthorityStoreTestAccess;

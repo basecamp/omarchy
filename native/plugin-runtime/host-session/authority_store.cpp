@@ -607,9 +607,15 @@ AuthorityStore::AuthorityStore(
       owner_pid_(::getpid()) {}
 
 AuthorityStore::~AuthorityStore() {
-  std::scoped_lock lock(mutation_mutex_);
-  if (auto live = bound_live_.lock())
-    live->revoke();
+  std::unique_lock lock(mutation_mutex_);
+  auto live = bound_live_.lock();
+  bound_live_.reset();
+  if (!live)
+    return;
+  const auto closed = live->close_effect_admission();
+  lock.unlock();
+  if (closed == LiveGenerationState::EffectAdmissionCloseResult::ready_to_drain)
+    live->drain_closed_effects();
 }
 
 std::unique_ptr<AuthorityStore> AuthorityStore::open(
@@ -645,7 +651,7 @@ std::unique_ptr<AuthorityStore> AuthorityStore::open(
 
 std::optional<AuthoritySlots> AuthorityStore::read_slots() const {
   std::scoped_lock lock(mutation_mutex_);
-  if (::getpid() != owner_pid_ || poisoned_)
+  if (::getpid() != owner_pid_ || poisoned_ || transitioning_)
     return std::nullopt;
   auto slots = read_slots_unlocked(root_.get(), expected_uid_);
   if (!slots || !valid_slots(*slots))
@@ -655,7 +661,7 @@ std::optional<AuthoritySlots> AuthorityStore::read_slots() const {
 
 std::optional<AuthorityView> AuthorityStore::read_authority_view() const {
   std::scoped_lock lock(mutation_mutex_);
-  if (::getpid() != owner_pid_ || poisoned_)
+  if (::getpid() != owner_pid_ || poisoned_ || transitioning_)
     return std::nullopt;
   auto slots = read_slots_unlocked(root_.get(), expected_uid_);
   if (!slots || !valid_slots(*slots))
@@ -681,8 +687,8 @@ std::optional<FilesystemIdentity> AuthorityStore::root_identity() const {
 bool AuthorityStore::bind_live_activation(
     const permissions::ActivationBinding &binding,
     const std::shared_ptr<LiveGenerationState> &live) {
-  std::scoped_lock lock(mutation_mutex_);
-  if (::getpid() != owner_pid_ || poisoned_ || !live ||
+  std::unique_lock lock(mutation_mutex_);
+  if (::getpid() != owner_pid_ || poisoned_ || transitioning_ || !live ||
       !live->current(binding))
     return false;
   auto slots = read_slots_unlocked(root_.get(), expected_uid_);
@@ -694,10 +700,51 @@ bool AuthorityStore::bind_live_activation(
     return false;
   if (auto previous = bound_live_.lock(); previous == live)
     return true;
-  else if (previous)
-    previous->revoke();
+  const auto fenced = fence_bound_live(lock, *slots);
+  if (fenced != AuthorityMutationResult::applied)
+    return false;
+  if (!live->current(binding)) {
+    transitioning_ = false;
+    return false;
+  }
   bound_live_ = live;
+  transitioning_ = false;
   return true;
+}
+
+AuthorityMutationResult AuthorityStore::fence_bound_live(
+    std::unique_lock<std::mutex> &lock, const AuthoritySlots &preimage) {
+  if (!lock.owns_lock() || transitioning_ || poisoned_)
+    return poisoned_ ? AuthorityMutationResult::poisoned
+                     : AuthorityMutationResult::invalid;
+  transitioning_ = true;
+  auto live = bound_live_.lock();
+  bound_live_.reset();
+  if (live) {
+    const auto closed = live->close_effect_admission();
+    if (closed == LiveGenerationState::EffectAdmissionCloseResult::reentrant) {
+      transitioning_ = false;
+      poisoned_ = true;
+      return AuthorityMutationResult::reentrant_effect;
+    }
+    lock.unlock();
+    live->drain_closed_effects();
+    lock.lock();
+  }
+  try {
+    const auto exact = read_slots_unlocked(root_.get(), expected_uid_);
+    if (::getpid() != owner_pid_ || !transitioning_ || !exact ||
+        *exact != preimage) {
+      transitioning_ = false;
+      poisoned_ = true;
+      return AuthorityMutationResult::io_error;
+    }
+  } catch (...) {
+    transitioning_ = false;
+    poisoned_ = true;
+    return AuthorityMutationResult::io_error;
+  }
+  return AuthorityMutationResult::applied;
 }
 
 AuthorityMutationResult AuthorityStore::replace_slots(AuthoritySlots slots) {
@@ -728,7 +775,7 @@ AuthorityMutationResult AuthorityStore::publish_candidate(
   std::scoped_lock lock(mutation_mutex_);
   if (::getpid() != owner_pid_)
     return AuthorityMutationResult::io_error;
-  if (poisoned_)
+  if (poisoned_ || transitioning_)
     return AuthorityMutationResult::poisoned;
   if (!complete_snapshot(verified, snapshot, definitions, scope_validator))
     return AuthorityMutationResult::invalid;
@@ -763,10 +810,10 @@ AuthorityMutationResult AuthorityStore::publish_candidate(
 AuthorityMutationResult AuthorityStore::promote_candidate(
     const permissions::ActivationBinding &candidate,
     std::uint64_t expected_sequence) {
-  std::scoped_lock lock(mutation_mutex_);
+  std::unique_lock lock(mutation_mutex_);
   if (::getpid() != owner_pid_)
     return AuthorityMutationResult::io_error;
-  if (poisoned_)
+  if (poisoned_ || transitioning_)
     return AuthorityMutationResult::poisoned;
   auto slots = read_slots_unlocked(root_.get(), expected_uid_);
   if (!slots || !valid_slots(*slots))
@@ -785,17 +832,28 @@ AuthorityMutationResult AuthorityStore::promote_candidate(
     return AuthorityMutationResult::invalid;
   if (slots->sequence == UINT64_MAX)
     return AuthorityMutationResult::invalid;
-  if (auto live = bound_live_.lock())
-    live->revoke();
-  bound_live_.reset();
   const auto previous = *slots;
-  slots->active = std::move(slots->candidate);
-  slots->candidate.reset();
-  ++slots->sequence;
-  const auto result = replace_slots(*slots);
-  if (result == AuthorityMutationResult::applied)
+  const auto fenced = fence_bound_live(lock, previous);
+  if (fenced != AuthorityMutationResult::applied)
+    return fenced;
+  poisoned_ = true;
+  try {
+    slots->active = std::move(slots->candidate);
+    slots->candidate.reset();
+    ++slots->sequence;
+    const auto result = replace_slots(*slots);
+    if (result != AuthorityMutationResult::applied) {
+      transitioning_ = false;
+      return result;
+    }
     cleanup_unreferenced(root_.get(), previous, *slots);
-  return result;
+    poisoned_ = false;
+    transitioning_ = false;
+    return AuthorityMutationResult::applied;
+  } catch (...) {
+    transitioning_ = false;
+    return AuthorityMutationResult::io_error;
+  }
 }
 
 AuthorityMutationResult AuthorityStore::discard_candidate(
@@ -804,7 +862,7 @@ AuthorityMutationResult AuthorityStore::discard_candidate(
   std::scoped_lock lock(mutation_mutex_);
   if (::getpid() != owner_pid_)
     return AuthorityMutationResult::io_error;
-  if (poisoned_)
+  if (poisoned_ || transitioning_)
     return AuthorityMutationResult::poisoned;
   auto slots = read_slots_unlocked(root_.get(), expected_uid_);
   if (!slots || !valid_slots(*slots))
@@ -848,10 +906,10 @@ AuthorityRevocationResult AuthorityStore::revoke_active(
     return AuthorityRevocationResult{
         .status = status, .binding = std::nullopt, .activatable = false};
   };
-  std::scoped_lock lock(mutation_mutex_);
+  std::unique_lock lock(mutation_mutex_);
   if (::getpid() != owner_pid_)
     return failure(AuthorityMutationResult::io_error);
-  if (poisoned_)
+  if (poisoned_ || transitioning_)
     return failure(AuthorityMutationResult::poisoned);
   if ((capability == nullptr) == (definition == nullptr))
     return failure(AuthorityMutationResult::invalid);
@@ -900,9 +958,10 @@ AuthorityRevocationResult AuthorityStore::revoke_active(
     dynamic.grant.epoch = next_generation;
   }
 
-  if (auto live = bound_live_.lock())
-    live->revoke();
-  bound_live_.reset();
+  const auto previous = *slots;
+  const auto fenced = fence_bound_live(lock, previous);
+  if (fenced != AuthorityMutationResult::applied)
+    return failure(fenced);
   // From this fence until a complete typed success result exists, every exit
   // leaves this process unable to reuse potentially ambiguous durable state.
   poisoned_ = true;
@@ -913,7 +972,6 @@ AuthorityRevocationResult AuthorityStore::revoke_active(
     if (stored != AuthorityMutationResult::applied)
       return failure(stored);
 
-    const auto previous = *slots;
     slots->active = reference;
     slots->candidate.reset();
     slots->generation_high_watermark = next_generation;
@@ -929,10 +987,12 @@ AuthorityRevocationResult AuthorityStore::revoke_active(
     static_assert(
         std::is_nothrow_move_constructible_v<AuthorityRevocationResult>);
     poisoned_ = false;
+    transitioning_ = false;
     return success;
   } catch (...) {
     // Once the old live generation is fenced, no exceptional persistence path
     // may leave this in-process store usable against ambiguous durable state.
+    transitioning_ = false;
     return failure(AuthorityMutationResult::io_error);
   }
 }
@@ -941,7 +1001,7 @@ std::optional<policy::GrantSnapshot>
 AuthorityStore::resolve(std::string_view plugin_id,
                         std::string_view revision_sha256) const {
   std::scoped_lock lock(mutation_mutex_);
-  if (::getpid() != owner_pid_ || poisoned_)
+  if (::getpid() != owner_pid_ || poisoned_ || transitioning_)
     return std::nullopt;
   auto slots = read_slots_unlocked(root_.get(), expected_uid_);
   if (!slots || !valid_slots(*slots) || plugin_id != expected_plugin_.view() ||

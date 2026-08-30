@@ -30,6 +30,8 @@
 #include <string_view>
 #include <thread>
 
+void production_session_runtime_factory_tests();
+
 namespace channel = omarchy::plugin_runtime::channel;
 namespace audit = omarchy::plugins::audit;
 namespace definitions = omarchy::plugins::definitions;
@@ -871,7 +873,7 @@ void effect_time_revocation_fences_an_authenticated_request() {
     std::unique_lock lock(barrier->mutex);
     barrier->changed.wait(lock, [&] { return barrier->checking; });
   }
-  live->revoke();
+  (void)live->revoke_and_drain();
   {
     std::lock_guard lock(barrier->mutex);
     barrier->proceed = true;
@@ -1671,6 +1673,12 @@ void failed_session_rejects_surfaces() {
 int main(int argc, char **argv) {
   QCoreApplication application(argc, argv);
   try {
+    if (argc == 2 &&
+        std::string_view(argv[1]) == "--production-runtime-factory-only") {
+      production_session_runtime_factory_tests();
+      std::cout << "production runtime factory tests passed\n";
+      return 0;
+    }
     product_session_routes_two_surfaces_over_one_launch();
     effect_time_revocation_fences_an_authenticated_request();
     shared_gesture_authority_has_one_concurrent_winner();
@@ -1683,6 +1691,7 @@ int main(int argc, char **argv) {
     permission_controller_verifies_its_fixed_record();
     permission_controller_composes_consent_and_revocation();
     permission_controller_stops_after_fatal_revoke_io();
+    production_session_runtime_factory_tests();
     failed_session_rejects_surfaces();
   } catch (const std::exception &error) {
     std::cerr << "FAIL: " << error.what() << '\n';

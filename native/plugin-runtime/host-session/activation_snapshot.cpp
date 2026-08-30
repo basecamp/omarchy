@@ -223,8 +223,89 @@ std::uint64_t LiveGenerationState::generation() const noexcept {
   return generation_.load(std::memory_order_acquire);
 }
 
-void LiveGenerationState::revoke() noexcept {
+LiveGenerationState::EffectToken::EffectToken(
+    std::shared_ptr<LiveGenerationState> state, std::uint64_t use_id) noexcept
+    : state_(std::move(state)), use_id_(use_id) {}
+
+LiveGenerationState::EffectToken::EffectToken(EffectToken &&other) noexcept
+    : state_(std::move(other.state_)), use_id_(other.use_id_) {}
+
+LiveGenerationState::EffectToken::~EffectToken() {
+  if (!state_)
+    return;
+  state_->release_effect(use_id_);
+}
+
+bool LiveGenerationState::EffectToken::current() const noexcept {
+  return state_ && state_->effect_current(use_id_);
+}
+
+std::optional<LiveGenerationState::EffectToken>
+LiveGenerationState::acquire_effect(
+    const permissions::ActivationBinding &binding) {
+  auto state = shared_from_this();
+  std::scoped_lock lock(effect_mutex_);
+  if (!current(binding))
+    return std::nullopt;
+  if (next_effect_id_ == UINT64_MAX)
+    return std::nullopt;
+  const auto use_id = ++next_effect_id_;
+  effect_uses_.push_back(
+      {.id = use_id, .thread = std::this_thread::get_id(), .entered = false});
+  return EffectToken(std::move(state), use_id);
+}
+
+LiveGenerationState::EffectAdmissionCloseResult
+LiveGenerationState::close_effect_admission() noexcept {
+  std::scoped_lock lock(effect_mutex_);
   generation_.store(0, std::memory_order_release);
+  const auto owner = std::this_thread::get_id();
+  if (std::ranges::any_of(effect_uses_, [&](const auto &candidate) {
+        return candidate.thread == owner;
+      }))
+    return EffectAdmissionCloseResult::reentrant;
+  return EffectAdmissionCloseResult::ready_to_drain;
+}
+
+void LiveGenerationState::drain_closed_effects() noexcept {
+  std::unique_lock lock(effect_mutex_);
+  effect_drained_.wait(lock, [&] { return effect_uses_.empty(); });
+}
+
+LiveGenerationRevokeResult LiveGenerationState::revoke_and_drain() noexcept {
+  const auto result = close_effect_admission();
+  if (result == EffectAdmissionCloseResult::reentrant)
+    return LiveGenerationRevokeResult::reentrant;
+  drain_closed_effects();
+  return LiveGenerationRevokeResult::drained;
+}
+
+bool LiveGenerationState::effect_current(std::uint64_t use_id) noexcept {
+  std::scoped_lock lock(effect_mutex_);
+  const auto use = std::ranges::find_if(effect_uses_, [&](const auto &item) {
+    return item.id == use_id;
+  });
+  if (use == effect_uses_.end() ||
+      generation_.load(std::memory_order_acquire) == 0)
+    return false;
+  const auto executing_thread = std::this_thread::get_id();
+  if (use->entered)
+    return use->thread == executing_thread;
+  use->thread = executing_thread;
+  use->entered = true;
+  return true;
+}
+
+void LiveGenerationState::release_effect(std::uint64_t use_id) noexcept {
+  std::scoped_lock lock(effect_mutex_);
+  const auto use = std::ranges::find_if(effect_uses_, [&](const auto &item) {
+    return item.id == use_id;
+  });
+  if (use == effect_uses_.end())
+    std::terminate();
+  effect_uses_.erase(use);
+  if (effect_uses_.empty())
+    effect_drained_.notify_all();
 }
 
 ActivationSource::ActivationSource(int activation_root_fd, int revision_root_fd,

@@ -253,7 +253,7 @@ void happy_path_and_revocation() {
   auto stale = binding;
   ++stale.generation;
   require(!result.snapshot->live->current(stale), "stale generation is live");
-  result.snapshot->live->revoke();
+  (void)result.snapshot->live->revoke_and_drain();
   require(result.snapshot->live->generation() == 0 &&
               !result.snapshot->live->current(binding),
           "revoked generation remained usable");

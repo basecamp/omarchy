@@ -2,6 +2,8 @@
 
 #include "manifest_contract.hpp"
 
+#include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fcntl.h>
@@ -344,6 +346,147 @@ void live_activation_binding_and_revocation() {
           "authority store destruction did not revoke its live activation");
 }
 
+void live_effect_transitions_drain_before_authority_changes() {
+  using namespace std::chrono_literals;
+  const auto wait_closed = [](const auto &live) {
+    for (int attempt = 0; attempt < 200 && live->generation() != 0; ++attempt)
+      std::this_thread::sleep_for(1ms);
+    require(live->generation() == 0,
+            "authority transition did not close effect admission");
+  };
+
+  {
+    Fixture fixture;
+    auto value = review(1);
+    require(fixture.store->publish_candidate(value.verified, value.snapshot, 0,
+                                              fixture.definitions, {}) ==
+                    host::AuthorityMutationResult::applied &&
+                fixture.store->promote_candidate(value.snapshot.binding, 1) ==
+                    host::AuthorityMutationResult::applied,
+            "bind drain fixture activation failed");
+    auto live =
+        std::make_shared<host::LiveGenerationState>(value.snapshot.binding);
+    require(fixture.store->bind_live_activation(value.snapshot.binding, live),
+            "bind drain fixture live bind failed");
+    auto effect = live->acquire_effect(value.snapshot.binding);
+    require(effect.has_value(), "bind drain effect acquisition failed");
+    auto replacement =
+        std::make_shared<host::LiveGenerationState>(value.snapshot.binding);
+    std::atomic<bool> finished = false;
+    bool rebound = false;
+    std::thread binder([&] {
+      rebound = fixture.store->bind_live_activation(value.snapshot.binding,
+                                                     replacement);
+      finished.store(true, std::memory_order_release);
+    });
+    wait_closed(live);
+    require(!finished.load(std::memory_order_acquire) &&
+                !fixture.store->read_slots(),
+            "bind replacement escaped while an old effect was in flight");
+    effect.reset();
+    binder.join();
+    require(rebound, "bind replacement failed after its old effect drained");
+  }
+
+  {
+    Fixture fixture;
+    auto first = review(1);
+    auto second = review(2, 'b');
+    require(fixture.store->publish_candidate(first.verified, first.snapshot, 0,
+                                              fixture.definitions, {}) ==
+                    host::AuthorityMutationResult::applied &&
+                fixture.store->promote_candidate(first.snapshot.binding, 1) ==
+                    host::AuthorityMutationResult::applied &&
+                fixture.store->publish_candidate(second.verified,
+                                                  second.snapshot, 2,
+                                                  fixture.definitions, {}) ==
+                    host::AuthorityMutationResult::applied,
+            "promotion drain fixture setup failed");
+    auto live =
+        std::make_shared<host::LiveGenerationState>(first.snapshot.binding);
+    require(fixture.store->bind_live_activation(first.snapshot.binding, live),
+            "promotion drain fixture live bind failed");
+    auto effect = live->acquire_effect(first.snapshot.binding);
+    require(effect.has_value(), "promotion drain effect acquisition failed");
+    std::atomic<bool> finished = false;
+    host::AuthorityMutationResult promoted{};
+    std::thread promoter([&] {
+      promoted = fixture.store->promote_candidate(second.snapshot.binding, 3);
+      finished.store(true, std::memory_order_release);
+    });
+    wait_closed(live);
+    require(!finished.load(std::memory_order_acquire) &&
+                !fixture.store->read_slots(),
+            "promotion became visible before the old effect drained");
+    effect.reset();
+    promoter.join();
+    require(promoted == host::AuthorityMutationResult::applied,
+            "promotion failed after the old effect drained");
+  }
+
+  {
+    Fixture fixture;
+    auto value = review(1, 'a', false);
+    require(fixture.store->publish_candidate(value.verified, value.snapshot, 0,
+                                              fixture.definitions, {}) ==
+                    host::AuthorityMutationResult::applied &&
+                fixture.store->promote_candidate(value.snapshot.binding, 1) ==
+                    host::AuthorityMutationResult::applied,
+            "revoke drain fixture activation failed");
+    auto live =
+        std::make_shared<host::LiveGenerationState>(value.snapshot.binding);
+    require(fixture.store->bind_live_activation(value.snapshot.binding, live),
+            "revoke drain fixture live bind failed");
+    auto effect = live->acquire_effect(value.snapshot.binding);
+    require(effect.has_value(), "revoke drain effect acquisition failed");
+    std::atomic<bool> finished = false;
+    host::AuthorityRevocationResult revoked;
+    std::thread revoker([&] {
+      revoked = host::AuthorityStoreTestAccess::revoke_active(
+          *fixture.store, value.snapshot.grants[0].capability, 2);
+      finished.store(true, std::memory_order_release);
+    });
+    wait_closed(live);
+    require(!finished.load(std::memory_order_acquire) &&
+                !fixture.store->read_authority_view(),
+            "revocation became visible before the old effect drained");
+    effect.reset();
+    revoker.join();
+    require(revoked.status == host::AuthorityMutationResult::applied,
+            "revocation failed after the old effect drained");
+  }
+}
+
+void reentrant_effect_revoke_poisoned_without_durable_change() {
+  Fixture fixture;
+  auto value = review(1, 'a', false);
+  require(fixture.store->publish_candidate(value.verified, value.snapshot, 0,
+                                            fixture.definitions, {}) ==
+                  host::AuthorityMutationResult::applied &&
+              fixture.store->promote_candidate(value.snapshot.binding, 1) ==
+                  host::AuthorityMutationResult::applied,
+          "reentrant revoke fixture activation failed");
+  const auto before = fixture.store->read_slots();
+  auto live =
+      std::make_shared<host::LiveGenerationState>(value.snapshot.binding);
+  require(fixture.store->bind_live_activation(value.snapshot.binding, live),
+          "reentrant revoke fixture live bind failed");
+  auto effect = live->acquire_effect(value.snapshot.binding);
+  require(effect.has_value(), "reentrant revoke effect acquisition failed");
+  const auto result = host::AuthorityStoreTestAccess::revoke_active(
+      *fixture.store, value.snapshot.grants[0].capability, 2);
+  require(result.status == host::AuthorityMutationResult::reentrant_effect &&
+              !live->current(value.snapshot.binding) &&
+              !fixture.store->read_slots(),
+          "reentrant effect revoke acknowledged or left authority usable");
+  effect.reset();
+  fixture.store.reset();
+  fixture.store = host::AuthorityStore::open(
+      fixture.root, ::getuid(), permissions::PluginId(kPlugin));
+  require(fixture.store && fixture.store->read_slots() == before,
+          "reentrant effect revoke changed durable authority");
+}
+
 void promotion_revokes_before_failed_replacement() {
   Fixture fixture;
   auto first = review(1);
@@ -362,6 +505,7 @@ void promotion_revokes_before_failed_replacement() {
                                             fixture.definitions, {}) ==
               host::AuthorityMutationResult::applied,
           "failed replacement fixture candidate publication failed");
+  const auto before = fixture.store->read_slots();
   require(::chmod(fixture.path.c_str(), 0500) == 0,
           "authority root permission mutation failed");
   const auto promoted =
@@ -369,11 +513,14 @@ void promotion_revokes_before_failed_replacement() {
   require(::chmod(fixture.path.c_str(), 0700) == 0,
           "authority root permission restore failed");
   require(promoted == host::AuthorityMutationResult::io_error &&
-              !live->current(first.snapshot.binding),
+              !live->current(first.snapshot.binding) &&
+              !fixture.store->read_slots() &&
+              !fixture.store->resolve(kPlugin, hex('a')),
           "failed durable replacement did not revoke live authority first");
-  const auto slots = fixture.store->read_slots();
-  require(slots && slots->active &&
-              slots->active->generation == first.snapshot.binding.generation,
+  fixture.store.reset();
+  fixture.store = host::AuthorityStore::open(
+      fixture.root, ::getuid(), permissions::PluginId(kPlugin));
+  require(fixture.store && fixture.store->read_slots() == before,
           "failed replacement changed the durable active authority");
 }
 
@@ -811,6 +958,8 @@ int main() {
   try {
     roundtrip_and_lifecycle();
     live_activation_binding_and_revocation();
+    live_effect_transitions_drain_before_authority_changes();
+    reentrant_effect_revoke_poisoned_without_durable_change();
     promotion_revokes_before_failed_replacement();
     exact_builtin_revoke_rebases_and_invalidates_candidate();
     exact_dynamic_revoke_rebases_every_epoch();
