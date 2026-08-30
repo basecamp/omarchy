@@ -14,6 +14,8 @@ namespace omarchy::plugin_runtime::channel {
 namespace definitions = omarchy::plugins::definitions;
 namespace providers = omarchy::plugin_runtime::providers;
 
+class ProductionPluginRuntimeRoot;
+
 struct TrustedDynamicService final {
   definitions::AdapterBinding binding;
   definitions::DynamicAdapterDispatch dispatch = nullptr;
@@ -42,10 +44,13 @@ struct ProductionRuntimeLimits final {
 class ProductionSessionRuntimeFactory final
     : public AuthenticatedSessionRuntimeFactory {
 public:
+#ifdef OMARCHY_PLUGIN_SESSION_TESTING
+  // Test-only value seam. Production composition shares one frozen registry
+  // and service context from ProductionPluginBootstrap.
   ProductionSessionRuntimeFactory(
       definitions::TrustedDefinitionRegistry definitions,
       ProductionRuntimeServices services, ProductionRuntimeLimits limits = {});
-
+#endif
   [[nodiscard]] const definitions::TrustedDefinitionRegistry &
   definitions() const noexcept;
   [[nodiscard]] definitions::DynamicScopeValidator
@@ -61,9 +66,16 @@ public:
              gesture_eligibility) override;
 
 private:
+  ProductionSessionRuntimeFactory(
+      std::shared_ptr<const definitions::TrustedDefinitionRegistry> definitions,
+      std::shared_ptr<const ProductionRuntimeServices> services,
+      ProductionRuntimeLimits limits = {});
+
   std::shared_ptr<const definitions::TrustedDefinitionRegistry> definitions_;
-  ProductionRuntimeServices services_;
+  std::shared_ptr<const ProductionRuntimeServices> services_;
   ProductionRuntimeLimits limits_;
+
+  friend class ProductionPluginRuntimeRoot;
 };
 
 } // namespace omarchy::plugin_runtime::channel

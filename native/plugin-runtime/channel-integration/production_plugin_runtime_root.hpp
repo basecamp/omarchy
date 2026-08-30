@@ -38,10 +38,10 @@ struct ProductionPluginRuntimeConfiguration final {
   permissions::PluginId plugin;
   std::uint32_t trusted_uid = std::numeric_limits<std::uint32_t>::max();
   std::string activation_record;
-  definitions::TrustedDefinitionRegistry definitions;
+  std::shared_ptr<const definitions::TrustedDefinitionRegistry> definitions;
   // This retained provider context must not contain a root, controller,
   // session or hook reference; provider callbacks cannot reenter lifecycle.
-  ProductionRuntimeServices services;
+  std::shared_ptr<const ProductionRuntimeServices> services;
   ProductionRuntimeLimits runtime_limits;
   session::SessionLimits session_limits;
   ProductionPluginRuntimeHooks *hooks = nullptr;

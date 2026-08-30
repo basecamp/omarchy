@@ -454,8 +454,10 @@ public:
             .plugin = permissions::PluginId(plugin_),
             .trusted_uid = static_cast<std::uint32_t>(::getuid()),
             .activation_record = "current",
-            .definitions = definitions_,
-            .services = std::move(services),
+            .definitions = std::make_shared<
+                const definitions::TrustedDefinitionRegistry>(definitions_),
+            .services = std::make_shared<const channel::ProductionRuntimeServices>(
+                std::move(services)),
             .runtime_limits = {},
             .session_limits = {},
             .hooks = hooks};

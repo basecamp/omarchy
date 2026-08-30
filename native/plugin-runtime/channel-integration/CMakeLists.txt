@@ -61,6 +61,7 @@ if(TARGET omarchy-plugin-host-session)
     broker_session_settlement.cpp
     plugin_activation_coordinator.cpp
     plugin_permission_controller.cpp
+    production_plugin_bootstrap.cpp
     production_plugin_catalog.cpp
     production_plugin_roots.cpp
     production_plugin_runtime_root.cpp
@@ -149,6 +150,21 @@ if(BUILD_TESTING)
       COMMAND omarchy-plugin-production-roots-test)
     set_tests_properties(plugin-production-roots PROPERTIES
       TIMEOUT 30 LABELS "unit;security;catalog;filesystem;adversarial")
+
+    add_executable(omarchy-plugin-production-bootstrap-test
+      production_plugin_bootstrap.cpp
+      production_plugin_roots.cpp
+      production_plugin_bootstrap_test.cpp)
+    omarchy_plugin_target_defaults(omarchy-plugin-production-bootstrap-test)
+    target_compile_definitions(omarchy-plugin-production-bootstrap-test PRIVATE
+      OMARCHY_PRODUCTION_PLUGIN_BOOTSTRAP_TESTING
+      OMARCHY_PRODUCTION_PLUGIN_ROOTS_TESTING)
+    target_link_libraries(omarchy-plugin-production-bootstrap-test PRIVATE
+      omarchy-plugin-authenticated-session)
+    add_test(NAME plugin-production-bootstrap
+      COMMAND omarchy-plugin-production-bootstrap-test)
+    set_tests_properties(plugin-production-bootstrap PROPERTIES
+      TIMEOUT 30 LABELS "unit;security;bootstrap;filesystem;adversarial")
 
     add_executable(omarchy-plugin-authenticated-session-adapter-test
       authenticated_session_channel.cpp

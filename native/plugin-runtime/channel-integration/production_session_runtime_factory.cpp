@@ -190,15 +190,25 @@ std::optional<PreparedRuntime> prepare_runtime(
 
 } // namespace
 
+#ifdef OMARCHY_PLUGIN_SESSION_TESTING
 ProductionSessionRuntimeFactory::ProductionSessionRuntimeFactory(
     definitions::TrustedDefinitionRegistry definitions,
     ProductionRuntimeServices services, ProductionRuntimeLimits limits)
-    : definitions_(
+    : ProductionSessionRuntimeFactory(
           std::make_shared<const definitions::TrustedDefinitionRegistry>(
-              std::move(definitions))),
-      services_(std::move(services)),
+              std::move(definitions)),
+          std::make_shared<const ProductionRuntimeServices>(
+              std::move(services)),
+          limits) {}
+#endif
+
+ProductionSessionRuntimeFactory::ProductionSessionRuntimeFactory(
+    std::shared_ptr<const definitions::TrustedDefinitionRegistry> definitions,
+    std::shared_ptr<const ProductionRuntimeServices> services,
+    ProductionRuntimeLimits limits)
+    : definitions_(std::move(definitions)), services_(std::move(services)),
       limits_(limits) {
-  if (limits_.maximum_audit_records == 0 ||
+  if (!definitions_ || !services_ || limits_.maximum_audit_records == 0 ||
       limits_.maximum_audit_records > audit::kHardMaximumRecords ||
       limits_.maximum_storage_item_bytes == 0 ||
       limits_.maximum_storage_item_bytes > limits_.maximum_storage_bytes)
@@ -212,8 +222,8 @@ ProductionSessionRuntimeFactory::definitions() const noexcept {
 
 definitions::DynamicScopeValidator
 ProductionSessionRuntimeFactory::scope_validator() const noexcept {
-  return {.compare = services_.compare_scope,
-          .context = services_.context.get()};
+  return {.compare = services_->compare_scope,
+          .context = services_->context.get()};
 }
 
 std::unique_ptr<AuthenticatedSessionRuntime>
@@ -229,12 +239,12 @@ ProductionSessionRuntimeFactory::create(
       ::fcntl(revision_directory_fd, F_GETFD) < 0 ||
       ::fcntl(private_state_directory_fd, F_GETFD) < 0)
     return {};
-  auto prepared = prepare_runtime(grants, *definitions_, services_, limits_);
+  auto prepared = prepare_runtime(grants, *definitions_, *services_, limits_);
   if (!prepared)
     return {};
   try {
     auto runtime = std::make_unique<ProductionRuntime>(
-        definitions_, services_, grants, std::move(*prepared),
+        definitions_, *services_, grants, std::move(*prepared),
         private_state_directory_fd, session_nonce, std::move(live_generation),
         limits_);
     return runtime;
