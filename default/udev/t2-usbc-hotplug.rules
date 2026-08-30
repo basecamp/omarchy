@@ -1,0 +1,4 @@
+# Keep the Titan Ridge USB-C host controllers on T2 Macs out of runtime suspend.
+# They lose power in deep sleep and, once reinitialized on resume, no longer wake
+# on hot-plug, so anything plugged into the USB-C ports goes unnoticed.
+ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x8086", ATTR{device}=="0x15ec", ATTR{power/control}="on"
