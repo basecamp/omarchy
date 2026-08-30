@@ -130,6 +130,12 @@ Adding a provider means adding an entry to the `providers` map in `Menu.qml`
 (script, icon, `actionFor`, optionally `volatile`) and pointing a submenu at
 it with `provider:`.
 
+## Learned search ranking
+
+Opening the menu without typing preserves the declared menu order. Once a search query is present, results with the same match quality learn from prior activations: frequently used items rank first, then more recently used items, followed by the existing static relevance and path order. The history applies equally to applications, menus, links, provider rows, and actions because every activation is recorded by stable menu item id.
+
+Exact labels and established aliases remain stronger than prefix or description matches, regardless of history, so learning never makes a weaker textual match displace an obvious exact result. History is stored in `~/.local/state/omarchy/launcher-usage.json` using atomic writes.
+
 ## Driving the menu from the CLI
 
 `bin/omarchy-menu` is a thin wrapper over the standard plugin IPC surface:

@@ -338,6 +338,40 @@ function matchesQuery(entry, query, visible) {
   return true
 }
 
+function searchMatchPriority(entry, query) {
+  var needle = String(query || "").toLowerCase().trim()
+  if (!entry || !needle) return 0
+  var label = String(entry.label || "").toLowerCase()
+  if (label === needle) return 7
+  if (entry.kind === "app" && label.split(/\s+/).indexOf(needle) >= 0) return 7
+
+  var aliases = Array.isArray(entry.aliases) ? entry.aliases : []
+  for (var i = 0; i < aliases.length; i++) {
+    if (String(aliases[i] || "").toLowerCase().trim() === needle) return 6
+  }
+  if (label.indexOf(needle) === 0) return 5
+  for (var j = 0; j < aliases.length; j++) {
+    if (String(aliases[j] || "").toLowerCase().trim().indexOf(needle) === 0) return 4
+  }
+  if (label.indexOf(needle) >= 0) return 3
+
+  var nameText = nameSearchText(entry)
+  if (nameText.indexOf(needle) >= 0) return 2
+  if (descriptionTextMatches(needle, String(entry.description || "").toLowerCase())) return 1
+  return 0
+}
+
+function compareSearchRows(a, b) {
+  var priority = (Number(b.matchPriority) || 0) - (Number(a.matchPriority) || 0)
+  if (priority !== 0) return priority
+  var count = (Number(b.usageCount) || 0) - (Number(a.usageCount) || 0)
+  if (count !== 0) return count
+  var recent = (Number(b.lastUsedAt) || 0) - (Number(a.lastUsedAt) || 0)
+  if (recent !== 0) return recent
+  if (a.score !== b.score) return a.score - b.score
+  return String(a.path || "").localeCompare(String(b.path || ""))
+}
+
 function searchScore(items, entry, query) {
   var needle = String(query || "").toLowerCase().trim()
   var label = entry.label.toLowerCase()
@@ -518,6 +552,8 @@ if (typeof module !== "undefined") {
     termInSearchWords: termInSearchWords,
     descriptionTextMatches: descriptionTextMatches,
     matchesQuery: matchesQuery,
+    searchMatchPriority: searchMatchPriority,
+    compareSearchRows: compareSearchRows,
     searchScore: searchScore,
     displayRow: displayRow
   }
