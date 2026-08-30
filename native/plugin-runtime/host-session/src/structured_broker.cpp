@@ -100,38 +100,7 @@ AuthenticatedBrokerAdmission::AuthenticatedBrokerAdmission(
     const BrokerAuthorityStamp &authority) noexcept
     : authority_(authority) {}
 
-AdmissionResult
-AuthenticatedBrokerAdmission::admit(const wire::PacketView &packet) {
-  if (packet.header.magic != wire::kMagic ||
-      packet.header.envelope_version != wire::kEnvelopeVersion ||
-      packet.header.header_size != wire::kHeaderSize ||
-      packet.header.flags != 0 || packet.header.reserved != 0)
-    return {.request = std::nullopt,
-            .failure = AdmissionFailure::noncanonical_header};
-  if (!authority_.valid() ||
-      packet.header.endpoint_role != wire::EndpointRole::broker)
-    return {.request = std::nullopt, .failure = AdmissionFailure::wrong_role};
-  if (packet.header.role_protocol_version != broker::kBrokerRoleVersion)
-    return {.request = std::nullopt,
-            .failure = AdmissionFailure::wrong_version};
-  if (packet.header.launch_generation != authority_.binding_.generation)
-    return {.request = std::nullopt,
-            .failure = AdmissionFailure::stale_binding};
-  if (packet.header.payload_length != packet.payload.size() ||
-      packet.payload.size() > wire::payload_cap(wire::EndpointRole::broker))
-    return {.request = std::nullopt,
-            .failure = AdmissionFailure::malformed_length};
-  if (packet.header.correlation_id == 0)
-    return {.request = std::nullopt,
-            .failure = AdmissionFailure::invalid_correlation};
-  if (packet.header.correlation_id <= last_correlation_)
-    return {.request = std::nullopt, .failure = AdmissionFailure::replay};
-  last_correlation_ = packet.header.correlation_id;
-  return {.request = AdmittedBrokerRequest(packet, authority_),
-          .failure = AdmissionFailure::none};
-}
-
-AdmissionResult AuthenticatedBrokerAdmission::admit_authenticated(
+AdmissionResult AuthenticatedBrokerAdmission::admit(
     AuthenticatedBrokerRequestView request) {
   if (!authority_.valid())
     return {.request = std::nullopt,

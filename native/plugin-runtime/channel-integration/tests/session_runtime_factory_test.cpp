@@ -317,7 +317,7 @@ void provider_completeness_and_effect_fence() {
   auto admission = product->broker().take_admission();
   require(static_cast<bool>(admission), "runtime admission unavailable");
   const auto payload = audio_request();
-  auto first = admission.admission->admit_authenticated(
+  auto first = admission.admission->admit(
       {.message_type = static_cast<std::uint16_t>(
            permissions::OperationId::audio_play_cue),
        .correlation_id = 1,
@@ -332,7 +332,7 @@ void provider_completeness_and_effect_fence() {
   require(product->broker().commit_sent(std::move(allowed)),
           "audio transaction did not settle");
   (void)live->revoke_and_drain();
-  auto second = admission.admission->admit_authenticated(
+  auto second = admission.admission->admit(
       {.message_type = static_cast<std::uint16_t>(
            permissions::OperationId::audio_play_cue),
        .correlation_id = 2,
@@ -377,7 +377,7 @@ void descriptor_quota_and_dynamic_catalog_validation() {
   const std::array value{std::byte{0xaa}, std::byte{0xbb}};
   const auto storage_payload =
       storage_write_request("proof", value, 4096, 1024);
-  auto storage_request = storage_admission.admission->admit_authenticated(
+  auto storage_request = storage_admission.admission->admit(
       {.message_type = static_cast<std::uint16_t>(
            permissions::OperationId::storage_write),
        .correlation_id = 1,
@@ -488,7 +488,7 @@ void descriptor_quota_and_dynamic_catalog_validation() {
                                                  dynamic_size),
           "dynamic invocation encoding failed");
   dynamic_payload.resize(dynamic_size);
-  auto dynamic_request = dynamic_admission.admission->admit_authenticated(
+  auto dynamic_request = dynamic_admission.admission->admit(
       {.message_type = broker::kDynamicInvokeMessage,
        .correlation_id = 1,
        .payload = dynamic_payload});
@@ -568,7 +568,7 @@ void synchronous_effects_drain_before_revocation_acknowledges() {
   auto admission = product->broker().take_admission();
   require(static_cast<bool>(admission), "blocking admission unavailable");
   const auto payload = audio_request();
-  auto admitted = admission.admission->admit_authenticated(
+  auto admitted = admission.admission->admit(
       {.message_type = static_cast<std::uint16_t>(
            permissions::OperationId::audio_play_cue),
        .correlation_id = 1,
@@ -614,7 +614,7 @@ void synchronous_effects_drain_before_revocation_acknowledges() {
               probe->calls == 1,
           "revocation did not drain the exact synchronous effect");
 
-  auto denied = admission.admission->admit_authenticated(
+  auto denied = admission.admission->admit(
       {.message_type = static_cast<std::uint16_t>(
            permissions::OperationId::audio_play_cue),
        .correlation_id = 2,

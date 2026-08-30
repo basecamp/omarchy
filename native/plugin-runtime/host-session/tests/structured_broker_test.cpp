@@ -133,16 +133,12 @@ std::vector<std::byte> token_request(permissions::OperationId operation,
   return bytes;
 }
 
-wire::PacketView packet(std::uint16_t type, std::uint64_t correlation,
-                        std::span<const std::byte> payload) {
-  return {
-      .header = {.endpoint_role = wire::EndpointRole::broker,
-                 .message_type = type,
-                 .role_protocol_version = broker::kBrokerRoleVersion,
-                 .payload_length = static_cast<std::uint32_t>(payload.size()),
-                 .launch_generation = 7,
-                 .correlation_id = correlation},
-      .payload = payload};
+AuthenticatedBrokerRequestView
+request(std::uint16_t type, std::uint64_t correlation,
+        std::span<const std::byte> payload) {
+  return {.message_type = type,
+          .correlation_id = correlation,
+          .payload = payload};
 }
 
 struct AudioProbe {
@@ -387,10 +383,10 @@ struct RuntimeFixture {
                    authority),
         admission(extract_admission(broker_mux)) {}
 
-  BrokerTransaction dispatch(const wire::PacketView &value,
+  BrokerTransaction dispatch(AuthenticatedBrokerRequestView value,
                              std::span<std::byte> response) {
     auto admitted = admission.admit(value);
-    require(static_cast<bool>(admitted), "valid packet was not admitted");
+    require(static_cast<bool>(admitted), "valid request was not admitted");
     return broker_mux.dispatch(std::move(*admitted.request), 100, response);
   }
 };
@@ -425,11 +421,11 @@ struct ThrowingRuntimeFixture {
                    authority),
         admission(extract_admission(broker_mux)) {}
 
-  BrokerTransaction dispatch(const wire::PacketView &value,
+  BrokerTransaction dispatch(AuthenticatedBrokerRequestView value,
                              std::span<std::byte> response) {
     auto admitted = admission.admit(value);
     require(static_cast<bool>(admitted),
-            "throwing-runtime packet was not admitted");
+            "throwing-runtime request was not admitted");
     return broker_mux.dispatch(std::move(*admitted.request), 100, response);
   }
 };
@@ -510,7 +506,7 @@ void test_typed_dynamic_revocation_results() {
     const auto invocation = fixture.dynamic_fixture.invocation(body);
     std::array<std::byte, 64> response{};
     auto transaction = fixture.dispatch(
-        packet(broker::kDynamicInvokeMessage, 1, invocation), response);
+        request(broker::kDynamicInvokeMessage, 1, invocation), response);
     require(transaction.state() == TransactionState::reply &&
                 transaction.reply_kind() == ReplyKind::result &&
                 fixture.broker_mux.commit_sent(std::move(transaction)),
@@ -526,7 +522,7 @@ void test_admission_is_exact_and_destructive() {
           "broker minted a second replay watermark authority");
   const auto denied_payload =
       token_request(permissions::OperationId::notification_send, "timer");
-  const auto value = packet(
+  const auto value = request(
       static_cast<std::uint16_t>(permissions::OperationId::notification_send),
       1, denied_payload);
   auto admitted = fixture.admission.admit(value);
@@ -535,7 +531,7 @@ void test_admission_is_exact_and_destructive() {
   const auto dynamic_payload = fixture.dynamic_fixture.invocation(dynamic_body);
   require(
       fixture.admission
-              .admit(packet(broker::kDynamicInvokeMessage, 1, dynamic_payload))
+              .admit(request(broker::kDynamicInvokeMessage, 1, dynamic_payload))
               .failure == AdmissionFailure::replay,
       "one correlation watermark was not shared across broker routes");
   require(fixture.admission.admit(value).failure == AdmissionFailure::replay,
@@ -556,7 +552,7 @@ void test_admission_is_exact_and_destructive() {
           "test denial transaction did not abort cleanly");
 
   RuntimeFixture foreign;
-  auto crossed = foreign.admission.admit(packet(
+  auto crossed = foreign.admission.admit(request(
       static_cast<std::uint16_t>(permissions::OperationId::notification_send),
       2, denied_payload));
   require(static_cast<bool>(crossed), "cross-binding fixture was not admitted");
@@ -570,22 +566,6 @@ void test_admission_is_exact_and_destructive() {
               foreign.broker_mux.commit_sent(std::move(accepted)),
           "foreign rejection consumed the legitimate admission");
 
-  auto &admission = foreign.admission;
-  auto malformed =
-      packet(broker::kDynamicInvokeMessage, 8, std::span(response).first(1));
-  malformed.header.correlation_id = 0;
-  require(admission.admit(malformed).failure ==
-              AdmissionFailure::invalid_correlation,
-          "zero correlation was admitted");
-  malformed.header.correlation_id = 9;
-  ++malformed.header.launch_generation;
-  require(admission.admit(malformed).failure == AdmissionFailure::stale_binding,
-          "stale generation was admitted");
-  malformed.header.launch_generation = 7;
-  malformed.header.payload_length++;
-  require(admission.admit(malformed).failure ==
-              AdmissionFailure::malformed_length,
-          "forged payload length was admitted");
 }
 
 void test_authenticated_semantics_are_privately_stamped() {
@@ -600,16 +580,16 @@ void test_authenticated_semantics_are_privately_stamped() {
 
   const auto payload =
       token_request(permissions::OperationId::notification_send, "timer");
-  auto admitted = fixture.admission.admit_authenticated(
+  auto admitted = fixture.admission.admit(
       {.message_type = static_cast<std::uint16_t>(
            permissions::OperationId::notification_send),
        .correlation_id = 1,
        .payload = payload});
-  require(
-      admitted &&
-          fixture.admission.admit(packet(broker::kDynamicInvokeMessage, 1, {}))
-                  .failure == AdmissionFailure::replay,
-      "semantic admission did not share its opaque replay watermark");
+  require(admitted &&
+              fixture.admission
+                      .admit(request(broker::kDynamicInvokeMessage, 1, {}))
+                      .failure == AdmissionFailure::replay,
+          "semantic admission did not share its opaque replay watermark");
   std::array<std::byte, 64> response{};
   auto transaction =
       fixture.broker_mux.dispatch(std::move(*admitted.request), 100, response);
@@ -623,17 +603,17 @@ void test_authenticated_semantics_are_privately_stamped() {
       wire::payload_cap(wire::EndpointRole::broker) + 1);
   require(
       invalid.admission
-                  .admit_authenticated(
+                  .admit(
                       {.message_type = 0, .correlation_id = 1, .payload = {}})
                   .failure == AdmissionFailure::invalid_message_type &&
           invalid.admission
-                  .admit_authenticated(
+                  .admit(
                       {.message_type = broker::kDynamicInvokeMessage,
                        .correlation_id = 0,
                        .payload = {}})
                   .failure == AdmissionFailure::invalid_correlation &&
           invalid.admission
-                  .admit_authenticated(
+                  .admit(
                       {.message_type = broker::kDynamicInvokeMessage,
                        .correlation_id = 1,
                        .payload = oversized})
@@ -642,79 +622,17 @@ void test_authenticated_semantics_are_privately_stamped() {
 
   RuntimeFixture failed;
   failed.authority.throw_on_acquire(true);
-  auto request = failed.admission.admit_authenticated(
+  auto failed_request = failed.admission.admit(
       {.message_type = broker::kDynamicInvokeMessage,
        .correlation_id = 1,
        .payload = {}});
   auto fatal =
-      failed.broker_mux.dispatch(std::move(*request.request), 100, response);
+      failed.broker_mux.dispatch(std::move(*failed_request.request), 100,
+                                 response);
   require(fatal.state() == TransactionState::fatal &&
               !failed.broker_mux.accepts(failed.snapshot.binding,
                                          RuntimeFixture::session_nonce),
           "fail-stopped broker retained composition authority");
-}
-
-void test_admission_revalidates_canonical_header() {
-  RuntimeFixture fixture;
-  const auto payload =
-      token_request(permissions::OperationId::audio_play_cue, "complete");
-  auto value = packet(
-      static_cast<std::uint16_t>(permissions::OperationId::audio_play_cue), 1,
-      payload);
-  const auto rejects = [&](auto mutate, std::string_view message) {
-    auto malformed = value;
-    mutate(malformed.header);
-    require(fixture.admission.admit(malformed).failure ==
-                AdmissionFailure::noncanonical_header,
-            message);
-  };
-  rejects([](auto &header) { ++header.magic; },
-          "noncanonical magic reached admission");
-  rejects([](auto &header) { ++header.envelope_version; },
-          "noncanonical envelope version reached admission");
-  rejects([](auto &header) { ++header.header_size; },
-          "noncanonical header size reached admission");
-  rejects([](auto &header) { header.flags = 1; },
-          "nonzero flags reached admission");
-  rejects([](auto &header) { header.reserved = 1; },
-          "nonzero reserved field reached admission");
-  {
-    auto malformed = value;
-    malformed.header.endpoint_role = wire::EndpointRole::render;
-    require(fixture.admission.admit(malformed).failure ==
-                AdmissionFailure::wrong_role,
-            "non-broker endpoint role reached admission");
-  }
-  {
-    auto malformed = value;
-    ++malformed.header.role_protocol_version;
-    require(fixture.admission.admit(malformed).failure ==
-                AdmissionFailure::wrong_version,
-            "wrong broker protocol version reached admission");
-  }
-  {
-    auto malformed = value;
-    ++malformed.header.launch_generation;
-    require(fixture.admission.admit(malformed).failure ==
-                AdmissionFailure::stale_binding,
-            "wrong launch generation reached admission");
-  }
-  {
-    auto malformed = value;
-    ++malformed.header.payload_length;
-    require(fixture.admission.admit(malformed).failure ==
-                AdmissionFailure::malformed_length,
-            "noncanonical payload length reached admission");
-  }
-  {
-    auto malformed = value;
-    malformed.header.correlation_id = 0;
-    require(fixture.admission.admit(malformed).failure ==
-                AdmissionFailure::invalid_correlation,
-            "zero correlation reached admission");
-  }
-  require(static_cast<bool>(fixture.admission.admit(value)),
-          "canonical-header rejection advanced the replay watermark");
 }
 
 void test_reply_is_owned_and_committed_only_after_send() {
@@ -723,7 +641,7 @@ void test_reply_is_owned_and_committed_only_after_send() {
   const auto allowed_payload =
       token_request(permissions::OperationId::audio_play_cue, "complete");
   auto transaction =
-      fixture.dispatch(packet(static_cast<std::uint16_t>(
+      fixture.dispatch(request(static_cast<std::uint16_t>(
                                   permissions::OperationId::audio_play_cue),
                               1, allowed_payload),
                        response);
@@ -747,7 +665,7 @@ void test_request_move_owns_payload_and_invalidates_source() {
   std::array<std::byte, 64> response{};
   auto request_payload =
       token_request(permissions::OperationId::audio_play_cue, "complete");
-  auto admitted = fixture.admission.admit(packet(
+  auto admitted = fixture.admission.admit(request(
       static_cast<std::uint16_t>(permissions::OperationId::audio_play_cue), 1,
       request_payload));
   require(static_cast<bool>(admitted), "owned request was not admitted");
@@ -772,7 +690,7 @@ void test_transaction_move_and_foreign_settlement_are_destructive() {
     const auto payload =
         token_request(permissions::OperationId::audio_play_cue, "complete");
     auto original =
-        fixture.dispatch(packet(static_cast<std::uint16_t>(
+        fixture.dispatch(request(static_cast<std::uint16_t>(
                                     permissions::OperationId::audio_play_cue),
                                 1, payload),
                          response);
@@ -791,7 +709,7 @@ void test_transaction_move_and_foreign_settlement_are_destructive() {
     std::array<std::byte, 64> owner_response{};
     std::array<std::byte, 64> foreign_response{};
     auto transaction =
-        owner.dispatch(packet(static_cast<std::uint16_t>(
+        owner.dispatch(request(static_cast<std::uint16_t>(
                                   permissions::OperationId::audio_play_cue),
                               1, payload),
                        owner_response);
@@ -802,7 +720,7 @@ void test_transaction_move_and_foreign_settlement_are_destructive() {
     require(owner.broker_mux.commit_sent(std::move(transaction)),
             "foreign commit rejection consumed the legitimate transaction");
     auto foreign_transaction =
-        foreign.dispatch(packet(static_cast<std::uint16_t>(
+        foreign.dispatch(request(static_cast<std::uint16_t>(
                                     permissions::OperationId::audio_play_cue),
                                 1, payload),
                          foreign_response);
@@ -816,7 +734,7 @@ void test_transaction_move_and_foreign_settlement_are_destructive() {
     std::array<std::byte, 64> owner_response{};
     std::array<std::byte, 64> foreign_response{};
     auto transaction =
-        owner.dispatch(packet(static_cast<std::uint16_t>(
+        owner.dispatch(request(static_cast<std::uint16_t>(
                                   permissions::OperationId::audio_play_cue),
                               1, payload),
                        owner_response);
@@ -827,7 +745,7 @@ void test_transaction_move_and_foreign_settlement_are_destructive() {
     require(owner.broker_mux.commit_sent(std::move(transaction)),
             "foreign abort rejection consumed the legitimate transaction");
     auto foreign_transaction =
-        foreign.dispatch(packet(static_cast<std::uint16_t>(
+        foreign.dispatch(request(static_cast<std::uint16_t>(
                                     permissions::OperationId::audio_play_cue),
                                 1, payload),
                          foreign_response);
@@ -843,7 +761,7 @@ void test_send_failure_aborts_without_fake_terminal() {
   const auto allowed_payload =
       token_request(permissions::OperationId::audio_play_cue, "complete");
   auto transaction =
-      fixture.dispatch(packet(static_cast<std::uint16_t>(
+      fixture.dispatch(request(static_cast<std::uint16_t>(
                                   permissions::OperationId::audio_play_cue),
                               1, allowed_payload),
                        response);
@@ -854,7 +772,7 @@ void test_send_failure_aborts_without_fake_terminal() {
               transaction.settled() &&
               !fixture.broker_mux.abort_send(std::move(transaction)),
           "send failure did not fail-stop the built-in runtime once");
-  auto next = fixture.admission.admit(packet(
+  auto next = fixture.admission.admit(request(
       static_cast<std::uint16_t>(permissions::OperationId::audio_play_cue), 2,
       allowed_payload));
   require(static_cast<bool>(next), "post-abort admission fixture failed");
@@ -870,7 +788,7 @@ void test_dynamic_operation_and_oversize_are_bounded() {
   auto invocation = fixture.dynamic_fixture.invocation(body);
   std::array<std::byte, 8> response{};
   auto result = fixture.dispatch(
-      packet(broker::kDynamicInvokeMessage, 1, invocation), response);
+      request(broker::kDynamicInvokeMessage, 1, invocation), response);
   require(result.state() == TransactionState::reply &&
               result.reply_kind() == ReplyKind::result &&
               result.provider_response_bytes() == 1 &&
@@ -883,7 +801,7 @@ void test_dynamic_operation_and_oversize_are_bounded() {
   fixture.dynamic_fixture.probe.oversize = true;
   invocation = fixture.dynamic_fixture.invocation(body);
   auto oversized_result = fixture.dispatch(
-      packet(broker::kDynamicInvokeMessage, 2, invocation), response);
+      request(broker::kDynamicInvokeMessage, 2, invocation), response);
   require(oversized_result.state() == TransactionState::reply &&
               oversized_result.reply_kind() == ReplyKind::provider_failed &&
               oversized_result.provider_response_bytes() == 0 &&
@@ -898,7 +816,7 @@ void test_dynamic_send_failure_fail_stops_without_later_effect() {
   const auto invocation = fixture.dynamic_fixture.invocation(body);
   std::array<std::byte, 8> response{};
   auto transaction = fixture.dispatch(
-      packet(broker::kDynamicInvokeMessage, 1, invocation), response);
+      request(broker::kDynamicInvokeMessage, 1, invocation), response);
   require(transaction.state() == TransactionState::reply &&
               fixture.dynamic_fixture.probe.calls == 1 &&
               !fixture.broker_mux.abort_send(std::move(transaction)) &&
@@ -907,7 +825,7 @@ void test_dynamic_send_failure_fail_stops_without_later_effect() {
                                           RuntimeFixture::session_nonce),
           "unsent dynamic effect did not fail-stop broker composition");
   auto after_abort = fixture.admission.admit(
-      packet(broker::kDynamicInvokeMessage, 2, invocation));
+      request(broker::kDynamicInvokeMessage, 2, invocation));
   require(static_cast<bool>(after_abort),
           "dynamic abort fixture could not admit the follow-up request");
   const auto failed = fixture.broker_mux.dispatch(
@@ -924,7 +842,7 @@ void test_runtime_audit_exceptions_fail_closed() {
     ThrowingRuntimeFixture fixture(2);
     std::array<std::byte, 64> response{};
     auto transaction =
-        fixture.dispatch(packet(static_cast<std::uint16_t>(
+        fixture.dispatch(request(static_cast<std::uint16_t>(
                                     permissions::OperationId::audio_play_cue),
                                 1, payload),
                          response);
@@ -933,7 +851,7 @@ void test_runtime_audit_exceptions_fail_closed() {
                 transaction.settled(),
             "throwing terminal audit escaped or remained replayable");
     auto after_failure =
-        fixture.dispatch(packet(static_cast<std::uint16_t>(
+        fixture.dispatch(request(static_cast<std::uint16_t>(
                                     permissions::OperationId::audio_play_cue),
                                 2, payload),
                          response);
@@ -947,12 +865,12 @@ void test_runtime_audit_exceptions_fail_closed() {
     const std::array body{std::byte{0x31}};
     const auto invocation = fixture.dynamic_fixture.invocation(body);
     auto failed = fixture.dispatch(
-        packet(broker::kDynamicInvokeMessage, 1, invocation), response);
+        request(broker::kDynamicInvokeMessage, 1, invocation), response);
     require(failed.fatal() == DispatchFatal::runtime_failed &&
                 fixture.dynamic_fixture.probe.calls == 0,
             "throwing dynamic audit escaped or reached its adapter");
     auto replay = fixture.dispatch(
-        packet(broker::kDynamicInvokeMessage, 2, invocation), response);
+        request(broker::kDynamicInvokeMessage, 2, invocation), response);
     require(replay.fatal() == DispatchFatal::runtime_failed &&
                 fixture.dynamic_fixture.probe.calls == 0,
             "dynamic audit failure allowed a later adapter effect");
@@ -961,7 +879,7 @@ void test_runtime_audit_exceptions_fail_closed() {
     ThrowingRuntimeFixture fixture(2);
     std::array<std::byte, 64> response{};
     auto transaction =
-        fixture.dispatch(packet(static_cast<std::uint16_t>(
+        fixture.dispatch(request(static_cast<std::uint16_t>(
                                     permissions::OperationId::audio_play_cue),
                                 1, payload),
                          response);
@@ -970,7 +888,7 @@ void test_runtime_audit_exceptions_fail_closed() {
                 transaction.settled(),
             "throwing shutdown audit escaped or remained replayable");
     auto after_failure =
-        fixture.dispatch(packet(static_cast<std::uint16_t>(
+        fixture.dispatch(request(static_cast<std::uint16_t>(
                                     permissions::OperationId::audio_play_cue),
                                 2, payload),
                          response);
@@ -993,7 +911,7 @@ void test_runtime_audit_exceptions_fail_closed() {
     const std::array body{std::byte{0x32}};
     const auto invocation = fixture.dynamic_fixture.invocation(body);
     const auto after_failure = fixture.dispatch(
-        packet(broker::kDynamicInvokeMessage, 1, invocation), response);
+        request(broker::kDynamicInvokeMessage, 1, invocation), response);
     require(after_failure.fatal() == DispatchFatal::runtime_failed &&
                 fixture.dynamic_fixture.probe.calls == 0,
             "dynamic update audit failure allowed an adapter effect");
@@ -1011,7 +929,7 @@ void test_runtime_audit_exceptions_fail_closed() {
     const std::array body{std::byte{0x33}};
     const auto invocation = fixture.dynamic_fixture.invocation(body);
     const auto after_failure = fixture.dispatch(
-        packet(broker::kDynamicInvokeMessage, 1, invocation), response);
+        request(broker::kDynamicInvokeMessage, 1, invocation), response);
     require(after_failure.fatal() == DispatchFatal::runtime_failed &&
                 fixture.dynamic_fixture.probe.calls == 0,
             "dynamic binding mismatch did not fail closed");
@@ -1025,7 +943,7 @@ void test_authority_exception_fails_closed_before_provider_effect() {
   const auto payload =
       token_request(permissions::OperationId::audio_play_cue, "complete");
   const auto failed =
-      fixture.dispatch(packet(static_cast<std::uint16_t>(
+      fixture.dispatch(request(static_cast<std::uint16_t>(
                                   permissions::OperationId::audio_play_cue),
                               1, payload),
                        response);
@@ -1034,7 +952,7 @@ void test_authority_exception_fails_closed_before_provider_effect() {
           "authority exception did not fail-stop before provider effect");
   fixture.authority.throw_on_acquire(false);
   const auto after_failure =
-      fixture.dispatch(packet(static_cast<std::uint16_t>(
+      fixture.dispatch(request(static_cast<std::uint16_t>(
                                   permissions::OperationId::audio_play_cue),
                               2, payload),
                        response);
@@ -1076,10 +994,10 @@ void test_dispatch_lease_serializes_revocation() {
   fixture.audio_probe.block = true;
   const auto request_payload =
       token_request(permissions::OperationId::audio_play_cue, "complete");
-  const auto request = packet(
+  const auto request_view = request(
       static_cast<std::uint16_t>(permissions::OperationId::audio_play_cue), 1,
       request_payload);
-  auto admitted = fixture.admission.admit(request);
+  auto admitted = fixture.admission.admit(request_view);
   require(static_cast<bool>(admitted), "lease fixture admission failed");
   std::array<std::byte, 64> response{};
   std::optional<BrokerTransaction> dispatch_result;
@@ -1140,10 +1058,10 @@ void test_provider_reentry_fails_without_deadlock() {
   std::array<std::byte, 64> inner_response{};
   const auto payload =
       token_request(permissions::OperationId::audio_play_cue, "complete");
-  auto outer_admitted = fixture.admission.admit(packet(
+  auto outer_admitted = fixture.admission.admit(request(
       static_cast<std::uint16_t>(permissions::OperationId::audio_play_cue), 1,
       payload));
-  auto inner_admitted = fixture.admission.admit(packet(
+  auto inner_admitted = fixture.admission.admit(request(
       static_cast<std::uint16_t>(permissions::OperationId::audio_play_cue), 2,
       payload));
   require(static_cast<bool>(outer_admitted) &&
@@ -1188,7 +1106,7 @@ void test_provider_revocation_reentry_is_rejected_without_waiting() {
       token_request(permissions::OperationId::audio_play_cue, "complete");
   const auto started = std::chrono::steady_clock::now();
   auto transaction =
-      fixture.dispatch(packet(static_cast<std::uint16_t>(
+      fixture.dispatch(request(static_cast<std::uint16_t>(
                                   permissions::OperationId::audio_play_cue),
                               1, payload),
                        response);
@@ -1218,7 +1136,7 @@ void test_provider_dynamic_update_reentry_is_rejected_without_waiting() {
       token_request(permissions::OperationId::audio_play_cue, "complete");
   const auto started = std::chrono::steady_clock::now();
   auto transaction =
-      fixture.dispatch(packet(static_cast<std::uint16_t>(
+      fixture.dispatch(request(static_cast<std::uint16_t>(
                                   permissions::OperationId::audio_play_cue),
                               1, payload),
                        response);
@@ -1235,7 +1153,7 @@ void test_provider_dynamic_update_reentry_is_rejected_without_waiting() {
   const std::array body{std::byte{0x51}};
   const auto invocation = fixture.dynamic_fixture.invocation(body);
   auto dynamic_result = fixture.dispatch(
-      packet(broker::kDynamicInvokeMessage, 2, invocation), response);
+      request(broker::kDynamicInvokeMessage, 2, invocation), response);
   require(dynamic_result.state() == TransactionState::reply &&
               dynamic_result.reply_kind() == ReplyKind::result &&
               fixture.broker_mux.commit_sent(std::move(dynamic_result)),
@@ -1268,7 +1186,6 @@ int main() {
     test_typed_dynamic_revocation_results();
     test_admission_is_exact_and_destructive();
     test_authenticated_semantics_are_privately_stamped();
-    test_admission_revalidates_canonical_header();
     test_reply_is_owned_and_committed_only_after_send();
     test_request_move_owns_payload_and_invalidates_source();
     test_transaction_move_and_foreign_settlement_are_destructive();

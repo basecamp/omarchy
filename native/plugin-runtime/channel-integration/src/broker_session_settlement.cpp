@@ -79,10 +79,9 @@ BrokerSessionSettlement::dispatch(AuthenticatedMessage message,
     terminal_ = true;
     return BrokerSettlementStatus::fatal;
   }
-  auto admitted =
-      admission_.admit_authenticated({.message_type = message.message_type,
-                                      .correlation_id = message.correlation_id,
-                                      .payload = message.payload});
+  auto admitted = admission_.admit({.message_type = message.message_type,
+                                    .correlation_id = message.correlation_id,
+                                    .payload = message.payload});
   if (!admitted) {
     failed_ = true;
     terminal_ = true;

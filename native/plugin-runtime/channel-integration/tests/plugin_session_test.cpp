@@ -886,7 +886,7 @@ void effect_time_revocation_fences_an_authenticated_request() {
   require(extracted && extracted.admission,
           "effect-fence broker did not provide admission");
   const auto payload = audio_request("complete");
-  auto authenticated = extracted.admission->admit_authenticated({
+  auto authenticated = extracted.admission->admit({
       .message_type =
           static_cast<std::uint16_t>(permissions::OperationId::audio_play_cue),
       .correlation_id = 1,

@@ -82,9 +82,6 @@ struct AuthenticatedBrokerRequestView final {
 
 enum class AdmissionFailure : std::uint8_t {
   none,
-  noncanonical_header,
-  wrong_role,
-  wrong_version,
   stale_binding,
   malformed_length,
   invalid_message_type,
@@ -113,9 +110,7 @@ public:
   AuthenticatedBrokerAdmission &
   operator=(AuthenticatedBrokerAdmission &&) noexcept = default;
 
-  [[nodiscard]] AdmissionResult admit(const wire::PacketView &packet);
-  [[nodiscard]] AdmissionResult
-  admit_authenticated(AuthenticatedBrokerRequestView request);
+  [[nodiscard]] AdmissionResult admit(AuthenticatedBrokerRequestView request);
 
 private:
   explicit AuthenticatedBrokerAdmission(
