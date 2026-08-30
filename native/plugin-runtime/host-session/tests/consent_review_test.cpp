@@ -351,6 +351,46 @@ void dynamic_exactness_and_provider_identity() {
           "narrowed dynamic diff lost prior request/effective grant");
 }
 
+void dynamic_grants_require_nonempty_selected_operations() {
+  for (const bool required : {false, true}) {
+    Fixture fixture;
+    require(fixture.definitions.install(
+                dynamic_definition('b'),
+                definitions::DefinitionSource::omarchy_package, 4),
+            "partial dynamic definition install failed");
+    auto candidate = verified(
+        {dynamic_request(fixture, required, "wide", {"read", "write"})},
+        required ? '2' : '1');
+    auto review = host::prepare_consent_review(
+        *fixture.store, candidate, fixture.definitions, fixture.validator);
+    require(review && review->dynamic_rows.size() == 1,
+            "partial dynamic review was not prepared");
+    auto empty = dynamic_choice(*review, permissions::UserDecision::grant);
+    empty.operations = {};
+    empty.decided_scope = definitions::CanonicalScope("narrow");
+    const std::array empty_choice{empty};
+    require(host::publish_consent_review(
+                *fixture.store, *review,
+                confirmation(*review, {}, empty_choice), {}, empty_choice,
+                fixture.definitions, fixture.validator) ==
+                host::ConsentResult::spoofed_decision,
+            "empty dynamic grant decision was published");
+
+    auto partial = dynamic_choice(*review, permissions::UserDecision::grant);
+    partial.operations = {};
+    partial.operations.insert(definitions::Name("read"));
+    partial.decided_scope = definitions::CanonicalScope("narrow");
+    const std::array partial_choice{partial};
+    require(host::publish_consent_review(
+                *fixture.store, *review,
+                confirmation(*review, {}, partial_choice), {}, partial_choice,
+                fixture.definitions, fixture.validator) ==
+                host::ConsentResult::applied,
+            required ? "nonempty partial required grant was rejected"
+                     : "nonempty partial optional grant was rejected");
+  }
+}
+
 void exact_choice_sets_and_ordering() {
   Fixture fixture;
   auto candidate = verified(
@@ -602,6 +642,7 @@ int main() {
     explicit_install_and_denial_guards();
     optional_partial_spoof_and_invalid_enum();
     dynamic_exactness_and_provider_identity();
+    dynamic_grants_require_nonempty_selected_operations();
     exact_choice_sets_and_ordering();
     replay_and_parallel_review_cas();
     prior_builtin_grant_and_corrupt_active_fail_closed();

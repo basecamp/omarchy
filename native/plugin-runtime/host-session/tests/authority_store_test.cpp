@@ -220,8 +220,9 @@ Review dynamic_review(
     require(request.has_value(), "dynamic manifest request did not resolve");
     definitions::DynamicGrant grant{.definition = request->definition,
         .operations = request->operations,
-                                    .scope =
-                                        definitions::CanonicalScope("narrow"),
+        .scope = state == permissions::GrantState::denied
+                     ? request->scope
+                     : definitions::CanonicalScope("narrow"),
         .state = state,
         .epoch = generation};
     snapshot.dynamic_grants.push_back({.binding = snapshot.binding,

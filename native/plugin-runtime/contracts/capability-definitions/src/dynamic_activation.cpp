@@ -80,6 +80,13 @@ bool review_dynamic_grant(const TrustedDefinitionRegistry &registry,
       revision.grant.definition != revision.request.definition ||
       revision.grant.epoch == 0 || validator.compare == nullptr)
     return false;
+  if (static_cast<std::uint8_t>(revision.grant.state) >
+          static_cast<std::uint8_t>(permissions::GrantState::revoked) ||
+      (revision.grant.state == permissions::GrantState::denied
+           ? revision.grant.operations != revision.request.operations ||
+                 revision.grant.scope != revision.request.scope
+           : revision.grant.operations.size() == 0))
+    return false;
   if (!std::all_of(revision.request.operations.values().begin(),
                    revision.request.operations.values().end(), [&](const auto &op) {
                      return std::ranges::any_of(
@@ -92,7 +99,9 @@ bool review_dynamic_grant(const TrustedDefinitionRegistry &registry,
                    })) return false;
   const auto relation=validator.compare(*resolved->definition,
                                         revision.grant.scope.view(),revision.request.scope.view(),validator.context);
-  return relation==DynamicScopeRelation::equal || relation==DynamicScopeRelation::narrower;
+  return relation==DynamicScopeRelation::equal ||
+         (revision.grant.state != permissions::GrantState::denied &&
+          relation==DynamicScopeRelation::narrower);
 }
 
 bool encode_dynamic_grant(const DynamicRevisionGrant &revision,

@@ -416,6 +416,9 @@ ConsentResult publish_consent_review(
           (choice.decided_scope != request.scope ||
            choice.operations != request.operations))
         return ConsentResult::spoofed_decision;
+      if (choice.decision == permissions::UserDecision::grant &&
+          choice.operations.size() == 0)
+        return ConsentResult::spoofed_decision;
       definitions::DynamicGrant grant{
           .definition = request.definition,
           .operations = choice.operations,
