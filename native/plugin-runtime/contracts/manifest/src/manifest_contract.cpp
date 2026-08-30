@@ -637,8 +637,8 @@ void hash_field(Sha256 &hash, std::string_view value) {
   hash.update(value);
 }
 
-std::string fingerprint_requests(const std::vector<CapabilityRequest> &input) {
-  auto requests = input;
+std::vector<CapabilityRequest>
+canonical_requests(std::vector<CapabilityRequest> requests) {
   for (auto &request : requests)
     std::ranges::sort(request.operations);
   std::sort(requests.begin(), requests.end(),
@@ -652,6 +652,11 @@ std::string fingerprint_requests(const std::vector<CapabilityRequest> &input) {
                               right.definition_generation,
                               right.definition_digest, right.operations);
             });
+  return requests;
+}
+
+std::string fingerprint_requests(const std::vector<CapabilityRequest> &input) {
+  const auto requests = canonical_requests(input);
   Sha256 hash;
   // A dynamic request's trusted definition and operation set are authority,
   // not display metadata, and therefore participate in consent identity.
@@ -862,6 +867,11 @@ ManifestV2 parse_manifest_v2(std::string_view bytes) {
   }
   result.canonical_json = canonical(document);
   return result;
+}
+
+std::vector<CapabilityRequest>
+canonical_capability_requests(std::vector<CapabilityRequest> requests) {
+  return canonical_requests(std::move(requests));
 }
 
 void TreeContents::add(TreeEntry entry) {

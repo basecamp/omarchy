@@ -308,6 +308,22 @@ std::span<const CapabilityDefinition> capability_registry() {
   return kRegistry;
 }
 
+std::string_view operation_name(OperationId operation) noexcept {
+  switch (operation) {
+  case OperationId::storage_read:
+    return "read";
+  case OperationId::storage_write:
+    return "write";
+  case OperationId::storage_remove:
+    return "remove";
+  case OperationId::notification_send:
+    return "send";
+  case OperationId::audio_play_cue:
+    return "play";
+  }
+  return {};
+}
+
 const CapabilityDefinition *find_capability(const CapabilityKey &key) {
   const auto found = std::find_if(
       kRegistry.begin(), kRegistry.end(),

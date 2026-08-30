@@ -297,6 +297,7 @@ void digest_contract(const std::filesystem::path &fixtures) {
 }
 
 void request_fingerprint_v2_contract() {
+  using omarchy::plugins::manifest::canonical_capability_requests;
   using omarchy::plugins::manifest::parse_manifest_v2;
   using omarchy::plugins::manifest::requested_capability_fingerprint;
 
@@ -314,6 +315,14 @@ void request_fingerprint_v2_contract() {
   std::reverse(reordered_requests.begin(), reordered_requests.end());
   require(requested_capability_fingerprint(reordered_requests) == fingerprint,
           "request set ordering changed V2 fingerprint");
+  const auto canonical =
+      canonical_capability_requests(std::move(reordered_requests));
+  require(canonical.size() == 2 &&
+              canonical[0].capability == "local.status" &&
+              canonical[0].operations ==
+                  std::vector<std::string>{"status.read", "status.write"} &&
+              canonical[1].capability == "notifications.send",
+          "public request index order diverged from fingerprint tuples");
 
   auto changed_generation = original.requests;
   ++changed_generation.front().definition_generation;

@@ -118,6 +118,10 @@ enum class OperationId : std::uint16_t {
   audio_play_cue = 0x0301,
 };
 
+// Stable QML-facing operation name for a built-in broker operation. Dynamic
+// operations carry their canonical names in the manifest itself.
+[[nodiscard]] std::string_view operation_name(OperationId operation) noexcept;
+
 struct CapabilityKey {
   CapabilityId id;
   // This is the built-in capability's enforcement/provider ABI. Any change to

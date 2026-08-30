@@ -91,6 +91,11 @@ private:
 };
 
 ManifestV2 parse_manifest_v2(std::string_view bytes);
+// Returns owned requests in the exact tuple order used by
+// requested_capability_fingerprint(). Operations are sorted in each returned
+// request, so callers cannot accidentally construct a different index space.
+std::vector<CapabilityRequest> canonical_capability_requests(
+    std::vector<CapabilityRequest> requests);
 ContentIdentity identify_tree_contents(TreeContents contents,
                                        const ManifestV2 &manifest);
 std::string requested_capability_fingerprint(

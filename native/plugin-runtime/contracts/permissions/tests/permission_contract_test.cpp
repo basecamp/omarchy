@@ -54,6 +54,13 @@ void registry_and_scope_contract() {
   require(static_cast<std::uint16_t>(OperationId::storage_read) == 0x0101 &&
               static_cast<std::uint16_t>(OperationId::audio_play_cue) == 0x0301,
           "operation identifier golden changed");
+  require(operation_name(OperationId::storage_read) == "read" &&
+              operation_name(OperationId::storage_write) == "write" &&
+              operation_name(OperationId::storage_remove) == "remove" &&
+              operation_name(OperationId::notification_send) == "send" &&
+              operation_name(OperationId::audio_play_cue) == "play" &&
+              operation_name(static_cast<OperationId>(0xffff)).empty(),
+          "built-in QML operation names changed or became ambiguous");
   for (const auto &definition : registry) {
     require(definition.key.id.view().find("command") ==
                     std::string_view::npos &&
