@@ -1281,24 +1281,15 @@ apply_firewall_defaults() {
     warn "Could not apply firewall defaults; run 'sudo bash $firewall_script' after reboot."
 }
 
-root_filesystem_encrypted() {
-  local root_source root_type
-
-  root_source=$(findmnt -n -o SOURCE / 2>/dev/null || true)
-  [[ $root_source == /dev/mapper/* ]] && return 0
-
-  if [[ -n $root_source ]]; then
-    root_type=$(lsblk -no TYPE "$root_source" 2>/dev/null | head -n1 || true)
-    [[ $root_type == crypt ]] && return 0
-  fi
-
-  as_root bash -c '[[ -s /etc/crypttab ]] && grep -qvE "^[[:space:]]*(#|$)" /etc/crypttab' >/dev/null 2>&1
-}
-
 should_enable_sddm_autologin() {
+  # Auto-login cannot hand a password to pam_gnome_keyring, so it breaks GNOME
+  # Keyring auto-unlock ("gkr-pam: no password is available for user"). An
+  # encrypted root is not a reason to want it — the LUKS passphrase is a
+  # separate boot-time prompt — so only a prior auto-login decision carries
+  # over: an autologin.conf already on disk, or the legacy seamless-login
+  # service this upgrade replaces.
   as_root test -f /etc/sddm.conf.d/autologin.conf && return 0
-  as_root systemctl is-enabled omarchy-seamless-login.service >/dev/null 2>&1 && return 0
-  root_filesystem_encrypted
+  as_root systemctl is-enabled omarchy-seamless-login.service >/dev/null 2>&1
 }
 
 apply_system_transition() {
