@@ -46,6 +46,7 @@ install(FILES
   shell/SecureBarSurface.qml
   shell/SecurePanelSurface.qml
   shell/SecureOverlaySurface.qml
+  shell/TrustedSurfaceInputMask.qml
   DESTINATION "${OMARCHY_PLUGIN_INSTALL_ROOT}/shell")
 
 # Contract owners add their directory without changing this shared root. A missing

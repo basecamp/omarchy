@@ -36,8 +36,24 @@ grep -F 'will not fall back to legacy QML loading' "$ROOT/shell/services/PluginR
   fail "rejected schema-v2 manifests can fall through ambiguously"
 grep -F 'PanelWindow {' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null ||
   fail "secure panels are not owned by the Quickshell layer host"
-grep -F 'mask: Region { item: remote }' "$runtime_root/shell/SecureOverlaySurface.qml" >/dev/null ||
-  fail "secure overlays lack a shell-owned bounded input mask"
+[[ -f $runtime_root/shell/TrustedSurfaceInputMask.qml ]] ||
+  fail "secure surfaces lack a reusable trusted input mask"
+grep -F 'mask: TrustedSurfaceInputMask {' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null ||
+  fail "secure panels do not use the trusted compositor input mask"
+grep -F 'mask: TrustedSurfaceInputMask {' "$runtime_root/shell/SecureOverlaySurface.qml" >/dev/null ||
+  fail "secure overlays do not use the trusted compositor input mask"
+grep -F 'required property bool dynamicInputRegions' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
+  fail "typed surface delegates omit the trusted input-region policy"
+grep -F 'surface.width === surface.implicitWidth' "$runtime_root/shell/TrustedSurfaceInputMask.qml" >/dev/null ||
+  fail "trusted input masks do not fail closed without 1:1 allocation geometry"
+grep -F 'surface.inputRegions.length <= root.maximumRegionCount' "$runtime_root/shell/TrustedSurfaceInputMask.qml" >/dev/null ||
+  fail "trusted input masks do not bound projected protocol regions"
+grep -F 'x: Math.floor((window.width - width) / 2)' "$runtime_root/shell/SecureOverlaySurface.qml" >/dev/null ||
+  fail "secure overlay placement can silently round trusted region coordinates"
+grep -F 'height: Math.min(window.maximumHeight, window.height)' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null ||
+  fail "secure panel geometry can exceed its admitted height"
+grep -F 'x: window.width - width' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null ||
+  fail "secure panel placement is not explicitly window-local"
 grep -F 'model: surfaceService.barSurfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
   fail "secure bar surfaces do not consume the typed role model"
 grep -F 'model: surfaceService.panelSurfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||

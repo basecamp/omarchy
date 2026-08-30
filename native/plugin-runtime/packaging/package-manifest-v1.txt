@@ -7,3 +7,4 @@
 644 shell/SecureOverlaySurface.qml
 644 shell/SecurePanelSurface.qml
 644 shell/SecurePluginHost.qml
+644 shell/TrustedSurfaceInputMask.qml

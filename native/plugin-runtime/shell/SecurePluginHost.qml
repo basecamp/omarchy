@@ -92,6 +92,8 @@ Item {
         required property string screenName
         required property bool initiallyVisible
         required property int maximumWidth
+        required property int maximumHeight
+        required property bool dynamicInputRegions
 
         host: root
         surfaceService: surfaceService
@@ -109,6 +111,7 @@ Item {
         required property bool initiallyVisible
         required property int maximumWidth
         required property int maximumHeight
+        required property bool dynamicInputRegions
 
         host: root
         surfaceService: surfaceService

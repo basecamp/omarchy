@@ -62,6 +62,7 @@ public:
     bool initially_visible = false;
     std::uint32_t maximum_width = 0;
     std::uint32_t maximum_height = 0;
+    bool dynamic_input_regions = false;
     BarSection default_bar_section = BarSection::Unspecified;
 
     bool operator==(const SurfaceDeclaration &) const = default;
@@ -78,6 +79,7 @@ public:
     InitiallyVisibleRole,
     MaximumWidthRole,
     MaximumHeightRole,
+    DynamicInputRegionsRole,
     DefaultSectionRole,
   };
 

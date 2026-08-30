@@ -14,6 +14,8 @@ PanelWindow {
   required property string screenName
   required property bool initiallyVisible
   required property int maximumWidth
+  required property int maximumHeight
+  required property bool dynamicInputRegions
   readonly property bool opened: panelController.open
 
   screen: host.screenFor(screenName)
@@ -25,8 +27,10 @@ PanelWindow {
   WlrLayershell.namespace: "omarchy-plugin-v2-panel"
   WlrLayershell.layer: WlrLayer.Overlay
   WlrLayershell.keyboardFocus: opened ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
-  // N8 follow-up: project generation-checked HostInputRegionRouter updates into this shell-owned Region; the full-item mask remains until that trusted bridge exists.
-  mask: Region { item: remote }
+  mask: TrustedSurfaceInputMask {
+    surface: remote
+    dynamicInputRegions: window.dynamicInputRegions
+  }
 
   PanelController { id: panelController }
 
@@ -45,7 +49,10 @@ PanelWindow {
 
   RemotePluginSurface {
     id: remote
-    anchors.fill: parent
+    width: Math.min(window.maximumWidth, window.width)
+    height: Math.min(window.maximumHeight, window.height)
+    x: window.width - width
+    y: 0
     Component.onCompleted: window.surfaceService.attach(window.surfaceKey, remote)
   }
 

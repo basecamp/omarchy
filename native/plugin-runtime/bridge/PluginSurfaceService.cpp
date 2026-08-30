@@ -135,6 +135,8 @@ QVariant PluginSurfaceService::data(const QModelIndex &index, int role) const {
     return row.declaration.maximum_width;
   case MaximumHeightRole:
     return row.declaration.maximum_height;
+  case DynamicInputRegionsRole:
+    return row.declaration.dynamic_input_regions;
   case DefaultSectionRole:
     return bar_section_name(row.declaration.default_bar_section);
   default:
@@ -153,6 +155,7 @@ QHash<int, QByteArray> PluginSurfaceService::roleNames() const {
           {InitiallyVisibleRole, "initiallyVisible"},
           {MaximumWidthRole, "maximumWidth"},
           {MaximumHeightRole, "maximumHeight"},
+          {DynamicInputRegionsRole, "dynamicInputRegions"},
           {DefaultSectionRole, "defaultSection"}};
 }
 

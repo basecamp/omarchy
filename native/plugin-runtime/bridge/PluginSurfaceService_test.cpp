@@ -93,6 +93,7 @@ bridge::PluginSurfaceService::SurfaceDeclaration declaration(
           .initially_visible = true,
           .maximum_width = bar ? 280U : 640U,
           .maximum_height = bar ? 64U : 480U,
+          .dynamic_input_regions = role == Service::Role::Overlay,
           .default_bar_section =
               bar ? Service::BarSection::Left
                   : Service::BarSection::Unspecified};
@@ -138,7 +139,13 @@ void run() {
               service.data(service.index(1), Service::PublicationRevisionRole)
                       .toString() == QStringLiteral("2") &&
               service.data(service.index(0), Service::DefaultSectionRole)
-                      .toString() == QStringLiteral("left"),
+                      .toString() == QStringLiteral("left") &&
+              !service
+                   .data(service.index(1), Service::DynamicInputRegionsRole)
+                   .toBool() &&
+              service
+                  .data(service.index(2), Service::DynamicInputRegionsRole)
+                  .toBool(),
           "model roles were not derived from exact typed activation state");
 
   std::vector<Service::SurfaceDeclaration> overflow;
