@@ -172,9 +172,6 @@ public:
   [[nodiscard]] static bool ui_affine(
       const PluginRuntimeRoot &root,
       const QObject &ui_owner) noexcept;
-  [[nodiscard]] static bool hooks_are(
-      const PluginRuntimeRoot &root,
-      const PluginRuntimeHooks &hooks) noexcept;
   [[nodiscard]] static std::shared_ptr<session::LiveGenerationState>
   live_generation(const PluginRuntimeRoot &root) noexcept;
 };

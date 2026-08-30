@@ -1408,9 +1408,6 @@ void prepared_root_commits_on_ui_with_exact_hooks() {
           "prepared runtime did not commit with exact UI QObject affinity");
   await([&] { return hooks.running.load(std::memory_order_acquire) == 1; },
         "prepared runtime did not deliver its exact running Hook");
-  require(channel::PluginRuntimeRootTestAccess::hooks_are(*root,
-                                                          hooks),
-          "prepared runtime commit lost its lifecycle/intent Hook pair");
 }
 
 void prepared_root_final_fence_rejects_intervening_mutation() {

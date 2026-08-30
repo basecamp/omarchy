@@ -356,13 +356,6 @@ bool PluginRuntimeRootTestAccess::ui_affine(
          PluginSessionTestAccess::ui_affine(*session, ui_owner.thread());
 }
 
-bool PluginRuntimeRootTestAccess::hooks_are(
-    const PluginRuntimeRoot &root,
-    const PluginRuntimeHooks &hooks) noexcept {
-  return PluginActivationCoordinatorTestAccess::hooks_are(
-      root.coordinator_, &hooks, &hooks);
-}
-
 std::shared_ptr<session::LiveGenerationState>
 PluginRuntimeRootTestAccess::live_generation(
     const PluginRuntimeRoot &root) noexcept {

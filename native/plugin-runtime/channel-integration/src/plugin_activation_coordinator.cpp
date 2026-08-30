@@ -148,26 +148,6 @@ void PluginActivationCoordinator::set_before_final_fence(
   before_final_fence_context_ = context;
 }
 
-void PluginActivationCoordinatorTestAccess::set_supervisor_factory(
-    PluginActivationCoordinator &coordinator,
-    PluginActivationCoordinator::SupervisorFactory factory) {
-  coordinator.set_supervisor_factory(std::move(factory));
-}
-
-void PluginActivationCoordinatorTestAccess::set_before_final_fence(
-    PluginActivationCoordinator &coordinator,
-    PluginActivationCoordinator::BeforeFinalFence callback,
-    void *context) noexcept {
-  coordinator.set_before_final_fence(callback, context);
-}
-
-bool PluginActivationCoordinatorTestAccess::hooks_are(
-    const PluginActivationCoordinator &coordinator,
-    const PluginSessionEvents *events,
-    const SurfaceIntentSink *intent_sink) noexcept {
-  return coordinator.events_ == events &&
-         coordinator.intent_sink_ == intent_sink;
-}
 #endif
 
 } // namespace omarchy::plugin_runtime::channel

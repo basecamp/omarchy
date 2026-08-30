@@ -96,25 +96,7 @@ private:
   void set_supervisor_factory(SupervisorFactory factory);
   void set_before_final_fence(BeforeFinalFence callback,
                               void *context) noexcept;
-  friend class PluginActivationCoordinatorTestAccess;
 #endif
 };
-
-#ifdef OMARCHY_PLUGIN_SESSION_TESTING
-class PluginActivationCoordinatorTestAccess final {
-public:
-  static void set_supervisor_factory(
-      PluginActivationCoordinator &coordinator,
-      PluginActivationCoordinator::SupervisorFactory factory);
-  static void set_before_final_fence(
-      PluginActivationCoordinator &coordinator,
-      PluginActivationCoordinator::BeforeFinalFence callback,
-      void *context) noexcept;
-  [[nodiscard]] static bool hooks_are(
-      const PluginActivationCoordinator &coordinator,
-      const PluginSessionEvents *events,
-      const SurfaceIntentSink *intent_sink) noexcept;
-};
-#endif
 
 } // namespace omarchy::plugin_runtime::channel
