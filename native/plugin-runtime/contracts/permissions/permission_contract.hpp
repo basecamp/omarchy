@@ -158,6 +158,7 @@ struct HttpScope {
 
 using Scope =
     std::variant<NoScope, QuotaScope, TokenScope, ResourceScope, HttpScope>;
+inline constexpr std::size_t kMaximumCanonicalScopeBytes = 4096;
 
 enum class ScopeKind : std::uint8_t { none, quota, tokens, resources, http };
 enum class GestureRule : std::uint8_t { none, fresh_single_use };
@@ -189,6 +190,8 @@ enum class ScopeRelation : std::uint8_t {
 };
 ScopeRelation compare_scope(const Scope &candidate, const Scope &baseline);
 std::string canonical_scope(const Scope &scope);
+Scope scope_from_canonical(const CapabilityKey &capability,
+                           std::string_view canonical);
 
 struct CapabilityRequest {
   CapabilityKey capability;

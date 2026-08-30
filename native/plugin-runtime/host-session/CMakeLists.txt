@@ -26,6 +26,7 @@ endif()
 
 add_library(omarchy-plugin-activation-snapshot STATIC
   activation_snapshot.cpp
+  authority_store.cpp
   revision_verifier_adapter.cpp)
 target_include_directories(omarchy-plugin-activation-snapshot PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -81,6 +82,16 @@ if(BUILD_TESTING)
     COMMAND omarchy-plugin-revision-verifier-adapter-test)
   set_tests_properties(plugin-revision-verifier-adapter PROPERTIES
     TIMEOUT 15 LABELS "unit;security;adversarial")
+
+  add_executable(omarchy-plugin-authority-store-test authority_store_test.cpp)
+  target_link_libraries(omarchy-plugin-authority-store-test PRIVATE
+    omarchy-plugin-activation-snapshot)
+  target_compile_features(omarchy-plugin-authority-store-test PRIVATE cxx_std_20)
+  target_compile_options(omarchy-plugin-authority-store-test PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+  add_test(NAME plugin-authority-store COMMAND omarchy-plugin-authority-store-test)
+  set_tests_properties(plugin-authority-store PROPERTIES
+    TIMEOUT 20 LABELS "unit;security;authority;adversarial")
 
   add_executable(omarchy-plugin-multi-surface-router-test
     MultiSurfaceRouter_test.cpp)

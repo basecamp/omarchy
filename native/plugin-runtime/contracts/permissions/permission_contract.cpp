@@ -444,6 +444,56 @@ std::string canonical_scope(const Scope &scope) {
   return output;
 }
 
+Scope scope_from_canonical(const CapabilityKey &capability,
+                           std::string_view canonical) {
+  const auto *definition = find_capability(capability);
+  require(canonical.size() <= kMaximumCanonicalScopeBytes &&
+              definition != nullptr && !canonical.empty(),
+          "canonical scope names an unknown capability");
+  std::size_t offset = 0;
+  const auto take_u8 = [&] {
+    require(offset < canonical.size(), "canonical scope is truncated");
+    return static_cast<std::uint8_t>(canonical[offset++]);
+  };
+  const auto take_u16 = [&] {
+    const auto high = take_u8();
+    return static_cast<std::uint16_t>(high << 8 | take_u8());
+  };
+  const auto take_u64 = [&] {
+    std::uint64_t value = 0;
+    for (int index = 0; index < 8; ++index)
+      value = value << 8 | take_u8();
+    return value;
+  };
+  require(take_u8() == static_cast<std::uint8_t>(definition->scope_kind),
+          "canonical scope kind does not match capability");
+  Scope restored;
+  if (definition->scope_kind == ScopeKind::none) {
+    restored = NoScope{};
+  } else if (definition->scope_kind == ScopeKind::quota) {
+    restored = QuotaScope{.total_bytes = take_u64(),
+                          .item_bytes = take_u64()};
+  } else if (definition->scope_kind == ScopeKind::tokens) {
+    TokenScope tokens;
+    const auto count = take_u8();
+    for (std::uint8_t index = 0; index < count; ++index) {
+      const auto size = take_u16();
+      require(size <= canonical.size() - std::min(offset, canonical.size()),
+              "canonical scope token is truncated");
+      require(tokens.tokens.insert(ScopeToken(canonical.substr(offset, size))),
+              "canonical scope token is duplicated");
+      offset += size;
+    }
+    restored = std::move(tokens);
+  } else {
+    throw std::runtime_error("registered scope kind has no durable codec");
+  }
+  require(offset == canonical.size() && valid_scope(*definition, restored) &&
+              canonical_scope(restored) == canonical,
+          "scope encoding is not canonical for capability");
+  return restored;
+}
+
 void validate_requests(const RequestSet &requests) {
   FixedSet<CapabilityKey, 64> seen;
   for (const auto &request : requests.values()) {

@@ -172,6 +172,36 @@ void fingerprint_and_decision_contract() {
          "denial recorded a misleading narrowed scope");
 }
 
+void canonical_scope_restore_contract() {
+  const auto requests = baseline_requests();
+  for (const auto &request : requests.values()) {
+    const auto encoded = canonical_scope(request.scope);
+    require(scope_from_canonical(request.capability, encoded) == request.scope,
+            "registered built-in scope did not round trip canonically");
+  }
+  reject(
+      [] {
+        (void)scope_from_canonical(key("storage.private"),
+                                   "{\"quotaBytes\":004096}");
+      },
+      "noncanonical quota scope restored");
+  reject(
+      [] {
+        (void)scope_from_canonical(key("notifications.send"),
+                                   "{\"categories\":[\"alerts\",\"alerts\"]}");
+      },
+      "duplicate token scope restored");
+  reject([] { (void)scope_from_canonical(key("unknown.scope"), "{}"); },
+         "unknown capability scope restored");
+  reject(
+      [] {
+        (void)scope_from_canonical(key("storage.private"),
+                                   std::string(kMaximumCanonicalScopeBytes + 1,
+                                               'x'));
+      },
+      "oversized canonical scope restored");
+}
+
 GrantSet baseline_grants() {
   GrantSet grants;
   grants.push_back({.capability = key("storage.private"),
@@ -589,6 +619,7 @@ int main() {
     bounded_collection_contract();
     registry_and_scope_contract();
     fingerprint_and_decision_contract();
+    canonical_scope_restore_contract();
     delta_contract();
     authority_and_handle_contract();
     audit_contract();
