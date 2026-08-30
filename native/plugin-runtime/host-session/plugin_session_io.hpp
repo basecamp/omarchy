@@ -43,6 +43,9 @@ struct OwnedMessage {
   SessionToken token;
   ChannelLane lane = ChannelLane::render;
   std::uint16_t message_type = 0;
+  // Semantic request/reply correlation. The authenticated transport remains
+  // the sole encoder of wire headers and lane sequence numbers.
+  std::uint64_t correlation_id = 0;
   std::uint64_t sequence = 0;
   std::vector<std::byte> payload;
   std::vector<OwnedFd> descriptors;
@@ -72,6 +75,25 @@ struct ReceiveResult {
   OwnedMessage message;
 };
 
+// Allocation-free readiness callback representation installed and invoked
+// only on the PluginSessionIo worker thread. The callback may queue Qt work.
+// SessionChannel::clear_wake_handler() synchronously fences future callbacks
+// before terminal work continues.
+struct SessionWakeHandler {
+  using Function = void (*)(void *context) noexcept;
+
+  Function function = nullptr;
+  void *context = nullptr;
+
+  [[nodiscard]] explicit operator bool() const noexcept {
+    return function != nullptr;
+  }
+  void invoke() const noexcept {
+    if (function != nullptr)
+      function(context);
+  }
+};
+
 // Every method runs only on PluginSessionIo's private thread. Implementations
 // must perform bounded I/O and return no later than the absolute deadline. The
 // authenticated adapter, never plugin code, stamps SessionToken and validates
@@ -90,6 +112,15 @@ public:
                                         TimePoint deadline) = 0;
   // A would_block result likewise consumes no bytes or descriptors.
   [[nodiscard]] virtual ReceiveResult receive(TimePoint deadline) = 0;
+  // Legacy channels may ignore readiness callbacks because they never retain
+  // one. An implementation that returns true after retaining `handler` must
+  // make clear_wake_handler() an infallible, idempotent synchronous fence.
+  [[nodiscard]] virtual bool
+  install_wake_handler(SessionWakeHandler handler) noexcept {
+    (void)handler;
+    return true;
+  }
+  virtual void clear_wake_handler() noexcept {}
   [[nodiscard]] virtual bool revoke(const SessionToken &token,
                                     TimePoint deadline) noexcept = 0;
   virtual void terminate(TimePoint deadline) noexcept = 0;

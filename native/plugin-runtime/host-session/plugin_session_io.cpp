@@ -336,6 +336,7 @@ public:
       : shared_(std::move(shared)), channel_(std::move(channel)),
         thread_(thread) {}
   ~Worker() override {
+    clear_wake_handler();
     if (!terminal_)
       terminate_channel(operation_deadline());
   }
@@ -382,6 +383,10 @@ public:
     }
     if (result != ChannelError::none) {
       fail(epoch, map_error(result));
+      return;
+    }
+    if (!install_wake_handler(epoch)) {
+      fail(epoch, SessionError::channel_failed);
       return;
     }
     if (!queue_state(shared_, epoch, SessionState::running,
@@ -504,6 +509,7 @@ public:
   void revoke(std::uint64_t epoch) {
     if (terminal_)
       return;
+    clear_wake_handler();
     const auto io_deadline = operation_deadline();
     if (channel_ && io_deadline)
       (void)channel_->revoke(shared_->token, *io_deadline);
@@ -514,6 +520,7 @@ public:
   }
 
   void stop(std::uint64_t epoch, TerminationIntent intent) {
+    clear_wake_handler();
     if (!terminal_)
       terminate_channel(operation_deadline());
     terminal_ = true;
@@ -554,6 +561,7 @@ private:
   }
 
   void fail(std::uint64_t epoch, SessionError error) {
+    clear_wake_handler();
     terminate_channel(operation_deadline());
     terminal_ = true;
     if (!queue_state(shared_, epoch, SessionState::failed, error))
@@ -561,6 +569,7 @@ private:
   }
 
   void host_lost() {
+    clear_wake_handler();
     terminate_channel(operation_deadline());
     terminal_ = true;
     thread_.quit();
@@ -586,10 +595,56 @@ private:
     }
   }
 
+  static void channel_wake(void *context) noexcept {
+    auto *worker = static_cast<Worker *>(context);
+    if (worker == nullptr)
+      return;
+    try {
+      worker->schedule_pump(worker->wake_epoch_);
+    } catch (...) {
+      // A readiness callback is a C/Qt noexcept boundary. Allocation failure
+      // while queuing the pump must fail the session, never abort the host.
+      try {
+        worker->host_lost();
+      } catch (...) {
+        worker->terminal_ = true;
+        worker->shared_->error.store(SessionError::channel_failed);
+        worker->shared_->state.store(SessionState::failed);
+        try {
+          worker->thread_.quit();
+        } catch (...) {
+        }
+      }
+    }
+  }
+
+  [[nodiscard]] bool install_wake_handler(std::uint64_t epoch) noexcept {
+    if (!channel_ || wake_handler_installed_)
+      return false;
+    wake_epoch_ = epoch;
+    wake_handler_installed_ = channel_->install_wake_handler(
+        {.function = &Worker::channel_wake, .context = this});
+    if (!wake_handler_installed_)
+      wake_epoch_ = 0;
+    return wake_handler_installed_;
+  }
+
+  void clear_wake_handler() noexcept {
+    if (!wake_handler_installed_ || !channel_)
+      return;
+    // Clearing is synchronous by contract, so `this` cannot be observed after
+    // this call even when teardown proceeds without waiting for I/O.
+    channel_->clear_wake_handler();
+    wake_handler_installed_ = false;
+    wake_epoch_ = 0;
+  }
+
   std::shared_ptr<PluginSessionSharedState> shared_;
   std::unique_ptr<SessionChannel> channel_;
   QThread &thread_;
   bool terminal_ = false;
+  bool wake_handler_installed_ = false;
+  std::uint64_t wake_epoch_ = 0;
 };
 
 PluginSessionIo::PluginSessionIo(SessionToken token,

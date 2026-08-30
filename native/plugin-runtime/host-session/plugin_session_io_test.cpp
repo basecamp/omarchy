@@ -120,7 +120,11 @@ struct ChannelState {
   std::vector<SessionChannel::TimePoint> revoke_deadlines;
   std::vector<SessionChannel::TimePoint> terminate_deadlines;
   std::deque<ReceiveResult> incoming;
+  SessionWakeHandler wake_handler;
   std::thread::id caller;
+  std::thread::id wake_callback_thread;
+  std::thread::id wake_install_thread;
+  std::thread::id wake_clear_thread;
   SessionChannel::TimePoint deadline{};
   ChannelError launch_error = ChannelError::none;
   ChannelError handshake_error = ChannelError::none;
@@ -129,6 +133,10 @@ struct ChannelState {
   int revoke_count = 0;
   int terminate_count = 0;
   int destroy_count = 0;
+  int wake_install_count = 0;
+  int wake_clear_count = 0;
+  bool destroyed_with_wake_handler = false;
+  bool trigger_wake_on_receive = false;
   bool block_send = false;
   bool send_entered = false;
   bool release_send = false;
@@ -155,6 +163,7 @@ public:
         startup_cost_(startup_cost) {}
   ~FakeChannel() override {
     std::lock_guard lock(state_->mutex);
+    state_->destroyed_with_wake_handler = bool(state_->wake_handler);
     ++state_->destroy_count;
   }
 
@@ -202,17 +211,46 @@ public:
     if (clock_)
       clock_->advance(state_->receive_cost);
     ++state_->receive_calls;
+    const auto wake = state_->trigger_wake_on_receive
+                          ? state_->wake_handler
+                          : SessionWakeHandler{};
+    state_->trigger_wake_on_receive = false;
     if (state_->block_receive) {
       state_->receive_entered = true;
       state_->condition.notify_all();
       state_->condition.wait(lock, [&] { return state_->release_receive; });
       state_->block_receive = false;
     }
+    if (wake) {
+      state_->wake_callback_thread = std::this_thread::get_id();
+      lock.unlock();
+      wake.invoke();
+      lock.lock();
+    }
     if (state_->incoming.empty())
       return {};
     auto result = std::move(state_->incoming.front());
     state_->incoming.pop_front();
     return result;
+  }
+
+  bool install_wake_handler(SessionWakeHandler handler) noexcept override {
+    record("install_wake");
+    std::lock_guard lock(state_->mutex);
+    if (!handler || state_->wake_handler)
+      return false;
+    state_->wake_handler = handler;
+    state_->wake_install_thread = std::this_thread::get_id();
+    ++state_->wake_install_count;
+    return true;
+  }
+
+  void clear_wake_handler() noexcept override {
+    record("clear_wake");
+    std::lock_guard lock(state_->mutex);
+    state_->wake_handler = {};
+    state_->wake_clear_thread = std::this_thread::get_id();
+    ++state_->wake_clear_count;
   }
 
   bool revoke(const SessionToken &, TimePoint deadline) noexcept override {
@@ -647,15 +685,50 @@ void test_revoke_and_teardown_are_deterministic() {
     std::lock_guard lock(state->mutex);
     const auto revoke =
         std::find(state->calls.begin(), state->calls.end(), "revoke");
+    const auto clear =
+        std::find(state->calls.begin(), state->calls.end(), "clear_wake");
     const auto terminate =
         std::find(state->calls.begin(), state->calls.end(), "terminate");
-    require(revoke != state->calls.end() && terminate != state->calls.end() &&
+    require(clear != state->calls.end() && revoke != state->calls.end() &&
+                terminate != state->calls.end() && clear < revoke &&
                 revoke < terminate,
-            "revocation did not precede channel termination");
+            "wake fence, revocation, and termination were misordered");
   }
   std::lock_guard lock(state->mutex);
   require(state->terminate_count == 1,
           "destruction terminated an already-revoked channel twice");
+}
+
+void test_channel_wake_is_worker_affine_and_fenced() {
+  auto [state, clock] = ChannelFixture{};
+  {
+    std::lock_guard lock(state->mutex);
+    state->trigger_wake_on_receive = true;
+  }
+  PluginSessionIo session(token(), fake(state), clock);
+  start_and_await_running_without_ui(
+      session, "readiness-callback fixture did not start");
+  await_without_ui_dispatch(
+      [&] {
+        std::lock_guard lock(state->mutex);
+        return state->receive_calls >= 2;
+      },
+      "worker-thread readiness callback did not schedule another pump");
+  session.stop();
+  await_state_without_ui(session, SessionState::stopped,
+                         "readiness-callback fixture did not stop");
+  std::lock_guard lock(state->mutex);
+  const auto install =
+      std::find(state->calls.begin(), state->calls.end(), "install_wake");
+  const auto clear =
+      std::find(state->calls.begin(), state->calls.end(), "clear_wake");
+  const auto terminate =
+      std::find(state->calls.begin(), state->calls.end(), "terminate");
+  require(state->wake_install_count == 1 && state->wake_clear_count == 1 &&
+              !state->wake_handler && install < clear && clear < terminate &&
+              state->wake_callback_thread == state->wake_install_thread &&
+              state->wake_clear_thread == state->wake_install_thread,
+          "readiness callback was not synchronously fenced before stop");
 }
 
 void test_destructor_stops_live_channel() {
@@ -676,6 +749,10 @@ void test_destructor_stops_live_channel() {
                thread_destroyed.load();
       },
       "no-UI teardown did not destroy channel, worker, and QThread");
+  std::lock_guard lock(state->mutex);
+  require(state->wake_install_count == 1 && state->wake_clear_count == 1 &&
+              !state->destroyed_with_wake_handler,
+          "destruction retained a callback into the destroyed worker");
 }
 
 void test_destructor_does_not_wait_for_termination() {
@@ -1062,6 +1139,7 @@ void run() {
   test_receive_is_fair_under_sustained_outbound();
   test_would_block_makes_no_progress_and_keeps_fd_owned();
   test_revoke_and_teardown_are_deterministic();
+  test_channel_wake_is_worker_affine_and_fenced();
   test_destructor_stops_live_channel();
   test_destructor_does_not_wait_for_termination();
   test_public_stop_is_ordered();
