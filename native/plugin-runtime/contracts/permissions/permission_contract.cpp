@@ -635,6 +635,9 @@ DeltaSet compute_update_delta(const RequestSet &old_requests,
       } else if (grant != nullptr && delta.kind == DeltaKind::narrowed) {
         if (grant->state != GrantState::granted) {
           delta.inherited_grant = *grant;
+          // The suggestion keeps the prior state/epoch but belongs to the
+          // candidate request, whose exact narrower scope must be displayed.
+          delta.inherited_grant->scope = next.scope;
         } else {
           const auto within_grant = compare_scope(next.scope, grant->scope);
           if (within_grant == ScopeRelation::equal ||

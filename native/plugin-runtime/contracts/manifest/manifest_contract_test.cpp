@@ -1,5 +1,6 @@
 #include "manifest_contract.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -331,6 +332,41 @@ void digest_contract(const std::filesystem::path &fixtures) {
                   "non-executable declared sidecar was accepted");
 }
 
+void request_fingerprint_v2_contract() {
+  using omarchy::plugins::manifest::parse_manifest_v2;
+  using omarchy::plugins::manifest::requested_capability_fingerprint;
+
+  const auto original = parse_manifest_v2(
+      R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{},"permissions":{"required":[{"capability":"local.status","definitionGeneration":7,"definitionDigest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","operations":["status.write","status.read"],"resource":4,"reason":"status"}],"optional":[{"capability":"notifications.send","categories":["timer"],"reason":"notify"}]}})");
+  const auto equivalent = parse_manifest_v2(
+      R"({"permissions":{"optional":[{"reason":"different display text","categories":["timer"],"capability":"notifications.send"}],"required":[{"reason":"also different","resource":4,"operations":["status.read","status.write"],"definitionDigest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","definitionGeneration":7,"capability":"local.status"}]},"surfaces":{},"runtime":{"qml":"Main.qml","apiVersion":1},"version":"1","name":"x","id":"a.b","schemaVersion":2})");
+
+  const auto fingerprint = requested_capability_fingerprint(original.requests);
+  require(requested_capability_fingerprint(original.requests) == fingerprint,
+          "unchanged request set did not retain its V2 fingerprint");
+  require(requested_capability_fingerprint(equivalent.requests) == fingerprint,
+          "equivalent request or operation ordering changed V2 fingerprint");
+  auto reordered_requests = original.requests;
+  std::reverse(reordered_requests.begin(), reordered_requests.end());
+  require(requested_capability_fingerprint(reordered_requests) == fingerprint,
+          "request set ordering changed V2 fingerprint");
+
+  auto changed_generation = original.requests;
+  ++changed_generation.front().definition_generation;
+  require(requested_capability_fingerprint(changed_generation) != fingerprint,
+          "definition generation did not affect V2 request fingerprint");
+
+  auto changed_digest = original.requests;
+  changed_digest.front().definition_digest = std::string(64, 'b');
+  require(requested_capability_fingerprint(changed_digest) != fingerprint,
+          "definition digest did not affect V2 request fingerprint");
+
+  auto changed_operations = original.requests;
+  changed_operations.front().operations.back() = "status.watch";
+  require(requested_capability_fingerprint(changed_operations) != fingerprint,
+          "operations did not affect V2 request fingerprint");
+}
+
 void mutation_contract(const std::filesystem::path &fixtures) {
   const auto seed = read(fixtures / "valid-minimal/manifest.json");
   std::size_t accepted = 0;
@@ -365,6 +401,7 @@ int main() {
     const std::filesystem::path fixtures = MANIFEST_FIXTURE_ROOT;
     parser_contract(fixtures);
     digest_contract(fixtures);
+    request_fingerprint_v2_contract();
     mutation_contract(fixtures);
     std::cout << "manifest v2 contract: PASS\n";
     return 0;

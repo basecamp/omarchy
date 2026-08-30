@@ -639,15 +639,24 @@ void hash_field(Sha256 &hash, std::string_view value) {
 
 std::string fingerprint_requests(const std::vector<CapabilityRequest> &input) {
   auto requests = input;
+  for (auto &request : requests)
+    std::ranges::sort(request.operations);
   std::sort(requests.begin(), requests.end(),
             [](const auto &left, const auto &right) {
               return std::tie(left.capability, left.required,
-                              left.canonical_scope) <
+                              left.canonical_scope,
+                              left.definition_generation,
+                              left.definition_digest, left.operations) <
                      std::tie(right.capability, right.required,
-                              right.canonical_scope);
+                              right.canonical_scope,
+                              right.definition_generation,
+                              right.definition_digest, right.operations);
             });
   Sha256 hash;
-  hash.update("OMARCHY-PLUGIN-REQUESTS-V1\0"sv);
+  // V2 is intentionally incompatible with the unreleased V1 identity. A
+  // dynamic request's trusted definition and operation set are authority, not
+  // display metadata, and therefore must participate in consent identity.
+  hash.update("OMARCHY-PLUGIN-REQUESTS-V2\0"sv);
   hash_u64(hash, requests.size());
   for (const auto &request : requests) {
     const std::byte requirement{request.required ? std::uint8_t{1}
@@ -655,6 +664,11 @@ std::string fingerprint_requests(const std::vector<CapabilityRequest> &input) {
     hash.update(std::span(&requirement, 1));
     hash_field(hash, request.capability);
     hash_field(hash, request.canonical_scope);
+    hash_u64(hash, request.definition_generation);
+    hash_field(hash, request.definition_digest);
+    hash_u64(hash, request.operations.size());
+    for (const auto &operation : request.operations)
+      hash_field(hash, operation);
   }
   return hex(hash.finish());
 }

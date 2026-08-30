@@ -120,6 +120,9 @@ enum class OperationId : std::uint16_t {
 
 struct CapabilityKey {
   CapabilityId id;
+  // This is the built-in capability's enforcement/provider ABI. Any change to
+  // authority semantics requires a version bump so update review cannot treat
+  // the request as unchanged.
   std::uint16_t version = 0;
   auto operator<=>(const CapabilityKey &) const = default;
 };

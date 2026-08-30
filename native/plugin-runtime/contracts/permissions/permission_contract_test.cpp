@@ -244,6 +244,25 @@ void delta_contract() {
   require(delta[2].kind == DeltaKind::requirement_changed &&
               !delta[2].inherited_grant.has_value(),
           "requiredness change was inherited");
+
+  for (const auto state : {GrantState::denied, GrantState::revoked}) {
+    auto narrowed_requests = old_requests;
+    narrowed_requests[1].scope = tokens({"alerts"});
+    auto inherited_grants = old_grants;
+    inherited_grants[1].state = state;
+    inherited_grants[1].epoch = 11;
+    const auto narrowed_delta =
+        compute_update_delta(old_requests, inherited_grants, narrowed_requests);
+    require(narrowed_delta[1].kind == DeltaKind::narrowed &&
+                narrowed_delta[1].inherited_grant.has_value() &&
+                narrowed_delta[1].inherited_grant->scope ==
+                    narrowed_requests[1].scope &&
+                narrowed_delta[1].inherited_grant->state == state &&
+                narrowed_delta[1].inherited_grant->epoch == 11,
+            "narrowed denied or revoked grant did not inherit candidate scope, "
+            "state, and epoch");
+  }
+
   const auto identical =
       compute_update_delta(old_requests, old_grants, old_requests);
   require(identical.size() == 3 && identical[0].kind == DeltaKind::unchanged &&
