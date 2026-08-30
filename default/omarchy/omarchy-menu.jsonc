@@ -61,7 +61,7 @@
   "trigger.capture.screenrecord": {"icon":"","label":"Screenrecord"},
   "trigger.capture.text": {"icon":"󰴑","label":"Text","action":"omarchy-capture-text"},
   "trigger.capture.qr": {"icon":"󰐲","label":"QR Code","action":"omarchy-capture-qr"},
-  "trigger.capture.color": {"icon":"󰃉","label":"Color","action":"pkill hyprpicker || hyprpicker -a"},
+  "trigger.capture.color": {"icon":"󰃉","label":"Color","action":"omarchy-capture-color"},
   "trigger.capture.screenrecord.no-audio": {"icon":"","label":"With no audio","action":"omarchy-capture-screenrecording"},
   "trigger.capture.screenrecord.desktop-audio": {"icon":"","label":"With desktop audio","action":"omarchy-capture-screenrecording --with-desktop-audio"},
   "trigger.capture.screenrecord.microphone": {"icon":"","label":"With desktop + microphone audio","action":"omarchy-capture-screenrecording --with-desktop-audio --with-microphone-audio"},

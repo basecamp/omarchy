@@ -1,0 +1,7 @@
+#!/bin/bash
+
+pkill hyprpicker || hyprpicker -a
+
+COLOR_HEX=$(wl-paste)
+
+omarchy-notification-send "Color copied" "$COLOR_HEX copied to clipboard"
