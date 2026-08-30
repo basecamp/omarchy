@@ -385,7 +385,7 @@ CONF
 }
 
 seed_omarchy_home() {
-  local username=$1 home group omarchy_root
+  local username=$1 home group omarchy_root done_dir
 
   home=$(getent passwd "$username" | cut -d: -f6)
   group=$(id -gn "$username")
@@ -401,6 +401,16 @@ seed_omarchy_home() {
     install -m 0644 -o "$username" -g "$group" "$omarchy_root/default/bashrc" "$home/.bashrc"
     chown -R "$username:$group" "$home/.config"
   fi
+
+  # The normal first-run path installs developer tools from the network and
+  # applies machine-wide browser theming. Neither belongs in a restricted
+  # child's first session, and both would fail after the firewall is active.
+  install -d -m 0755 -o "$username" -g "$group" \
+    "$home/Downloads" "$home/Pictures" "$home/Videos"
+  done_dir=$home/.local/state/omarchy/done
+  install -d -m 0700 -o "$username" -g "$group" "$done_dir"
+  install -m 0644 -o "$username" -g "$group" /dev/null \
+    "$done_dir/finalize-user" "$done_dir/first-run-user"
 }
 
 ensure_squid() {
