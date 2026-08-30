@@ -44,6 +44,12 @@ You can start Grok using `Super + Shift + Alt + A`.
 
 You can start WhatsApp using `Super + Shift + Alt + G`.
 
+## Messenger
+
+[Messenger](https://www.facebook.com/messages) is Facebook's messaging app, and the one a lot of families still use. Meta retired the standalone messenger.com site, so this opens `facebook.com/messages` in a dedicated window. Log in to Facebook in the browser first.
+
+You start Messenger using the application launcher (`Super + Space`).
+
 ## Google apps
 
 Google Messages, Google Photos, Google Maps, and Google Contacts are all included as web apps too.
