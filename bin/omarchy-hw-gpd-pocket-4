@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# omarchy:summary=Detect whether the computer is a GPD Pocket 4.
+
+omarchy-hw-match "G1628-04" || omarchy-hw-match "Pocket 4"
