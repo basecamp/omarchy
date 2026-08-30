@@ -13,5 +13,12 @@ if [[ -z $name || -z $package || -z $family ]]; then
   exit 1
 fi
 
+# Every piece that reaches bash -c must be %q-quoted. Unquoted interpolation
+# lets `omarchy-install-font x 'pkg; id' y` run arbitrary commands, and
+# omarchy-pkg-add then escalates via sudo.
+printf -v install_message '%q' "Installing ${name}..."
+printf -v package_q '%q' "$package"
+printf -v family_q '%q' "$family"
+
 exec omarchy-launch-floating-terminal-with-presentation \
-  "echo 'Installing ${name}...'; omarchy-pkg-add ${package} && sleep 2 && omarchy-font-set '${family}'"
+  "echo ${install_message}; omarchy-pkg-add ${package_q} && sleep 2 && omarchy-font-set ${family_q}"
