@@ -18,14 +18,6 @@ struct DescriptorPolicy {
   int private_state = 10;
 };
 
-struct ProviderDescriptorPolicy {
-  int protocol = 3;
-  int status = 4;
-  int barrier = 5;
-  int seccomp = 6;
-  int executable = 7;
-};
-
 struct ResourcePolicy {
   std::uint64_t memory_high_bytes = 384ULL * 1024ULL * 1024ULL;
   std::uint64_t memory_max_bytes = 512ULL * 1024ULL * 1024ULL;
@@ -109,7 +101,6 @@ struct SandboxPlan {
 
 SandboxPlan build_plan();
 SandboxPlan build_test_plan_for_worker(std::string worker_path);
-SandboxPlan build_provider_plan(std::string trusted_executable_path);
 bool contains_argument_pair(const SandboxPlan &plan, std::string_view option,
                             std::string_view value);
 
