@@ -554,6 +554,19 @@ void owned_descriptor_transport_test(LaunchFixture &fixture) {
           "truncated ancillary data leaked a received descriptor");
 
   const std::array acknowledgement{std::byte{1}};
+  std::array<int, launcher::kMaximumTransportDescriptors> exact_descriptors{};
+  exact_descriptors.fill(descriptor_message.descriptors.front().get());
+  std::array<int, launcher::kMaximumTransportDescriptors + 1>
+      oversized_descriptors{};
+  oversized_descriptors.fill(descriptor_message.descriptors.front().get());
+  require(launched.worker->try_send(launcher::EndpointRole::broker,
+                                    acknowledgement, exact_descriptors) ==
+                  launcher::SendStatus::complete &&
+              launched.worker->try_send(launcher::EndpointRole::broker,
+                                        acknowledgement,
+                                        oversized_descriptors) ==
+                  launcher::SendStatus::fatal,
+          "SCM_RIGHTS transport descriptor hard bound changed");
   require(launched.worker->try_send(launcher::EndpointRole::control,
                                     acknowledgement) ==
                   launcher::SendStatus::complete &&

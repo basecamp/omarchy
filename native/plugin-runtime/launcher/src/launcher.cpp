@@ -796,7 +796,9 @@ ReceivedMessage Worker::Impl::receive(std::span<const EndpointRole> roles,
   iovec vector{.iov_base = output.payload.data(),
                .iov_len = output.payload.size()};
   alignas(cmsghdr) std::array<std::byte, CMSG_SPACE(sizeof(ucred)) +
-                                             CMSG_SPACE(16 * sizeof(int))>
+                                             CMSG_SPACE(
+                                                 kMaximumTransportDescriptors *
+                                                 sizeof(int))>
       control{};
   msghdr message{};
   message.msg_iov = &vector;
@@ -819,7 +821,8 @@ ReceivedMessage Worker::Impl::receive(std::span<const EndpointRole> roles,
       static_cast<std::size_t>(received), maximum_payload));
   std::optional<ucred> credentials;
   bool malformed = false;
-  constexpr std::size_t maximum_descriptors = 16;
+  constexpr std::size_t maximum_descriptors =
+      kMaximumTransportDescriptors;
   for (cmsghdr *header = CMSG_FIRSTHDR(&message); header != nullptr;
        header = CMSG_NXTHDR(&message, header)) {
     if (header->cmsg_level != SOL_SOCKET) {
@@ -1012,7 +1015,7 @@ SendStatus Worker::try_send(EndpointRole role,
   if (payload.empty() || maximum_packet.bytes == 0 ||
       maximum_packet.bytes > kTransportPacketHardLimit ||
       payload.size() > maximum_packet.bytes ||
-      descriptors.size() > 16 || endpoint < 0) {
+      descriptors.size() > kMaximumTransportDescriptors || endpoint < 0) {
     return SendStatus::fatal;
   }
   if (!implementation_->accepting) return SendStatus::peer_closed;
@@ -1026,7 +1029,10 @@ SendStatus Worker::try_send(EndpointRole role,
   }
   iovec vector{.iov_base = const_cast<std::byte *>(payload.data()),
                .iov_len = payload.size()};
-  alignas(cmsghdr) std::array<std::byte, CMSG_SPACE(16 * sizeof(int))> control{};
+  alignas(cmsghdr)
+      std::array<std::byte,
+                 CMSG_SPACE(kMaximumTransportDescriptors * sizeof(int))>
+          control{};
   msghdr message{};
   message.msg_iov = &vector;
   message.msg_iovlen = 1;

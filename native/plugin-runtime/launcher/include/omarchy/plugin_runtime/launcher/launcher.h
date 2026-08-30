@@ -30,9 +30,11 @@ enum class EndpointMask : std::uint8_t {
                                    static_cast<std::uint8_t>(right));
 }
 
-// The launcher transports opaque packets. Protocol code supplies the exact
-// bound it negotiated; this ceiling only bounds allocation and kernel I/O.
+// The launcher transports opaque packets and descriptors. Protocol code
+// supplies exact schema bounds; these ceilings only bound allocation and
+// kernel I/O and grant no protocol or descriptor permission.
 inline constexpr std::size_t kTransportPacketHardLimit = 48U + 65536U;
+inline constexpr std::size_t kMaximumTransportDescriptors = 16;
 
 struct PacketSizeLimit {
   std::size_t bytes = 0;
