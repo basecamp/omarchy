@@ -45,11 +45,7 @@ private:
 };
 
 PluginSession *RootSurfaceSessionPort::running_session() const noexcept {
-  auto *session = root_.coordinator_.session();
-  return session != nullptr &&
-                 session->state() == host_session::SessionState::running
-             ? session
-             : nullptr;
+  return root_.running_session_unlocked();
 }
 
 bool RootSurfaceSessionPort::matches(
@@ -289,28 +285,28 @@ PermissionRevokeApplyResult PluginRuntimeRoot::revoke(
   return controller_.revoke(definition, expected_sequence);
 }
 
-PluginActivationResult PluginRuntimeRoot::activate() {
-  std::scoped_lock lock(mutex_);
-  return coordinator_.activate(activation_record_);
-}
-
-void PluginRuntimeRoot::stop() {
-  std::scoped_lock lock(mutex_);
-  coordinator_.stop();
-}
-
 std::optional<permissions::ActivationBinding>
 PluginRuntimeRoot::session_binding() const {
   std::scoped_lock lock(mutex_);
-  const auto *session = coordinator_.session();
-  if (!session || session->state() != host_session::SessionState::running)
-    return {};
-  return session->binding();
+  const auto *session = running_session_unlocked();
+  return session ? std::optional(session->binding()) : std::nullopt;
 }
 
 SurfaceSessionPort &
 PluginRuntimeRoot::surface_session() noexcept {
   return *surface_session_;
+}
+
+PluginSession *PluginRuntimeRoot::running_session_unlocked() const noexcept {
+  auto *session = session_unlocked();
+  return session != nullptr &&
+                 session->state() == host_session::SessionState::running
+             ? session
+             : nullptr;
+}
+
+PluginSession *PluginRuntimeRoot::session_unlocked() const noexcept {
+  return coordinator_.session();
 }
 
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
@@ -355,7 +351,7 @@ PluginRuntimeRootTestAccess::commit(
 bool PluginRuntimeRootTestAccess::ui_affine(
     const PluginRuntimeRoot &root,
     const QObject &ui_owner) noexcept {
-  const auto *session = root.coordinator_.session();
+  const auto *session = root.session_unlocked();
   return session != nullptr &&
          PluginSessionTestAccess::ui_affine(*session, ui_owner.thread());
 }
@@ -370,7 +366,7 @@ bool PluginRuntimeRootTestAccess::hooks_are(
 std::shared_ptr<session::LiveGenerationState>
 PluginRuntimeRootTestAccess::live_generation(
     const PluginRuntimeRoot &root) noexcept {
-  const auto *session = root.coordinator_.session();
+  const auto *session = root.running_session_unlocked();
   return session ? PluginSessionTestAccess::live_generation(*session) : nullptr;
 }
 #endif

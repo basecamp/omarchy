@@ -48,6 +48,7 @@ public:
   PluginRuntimeRoot &
   operator=(const PluginRuntimeRoot &) = delete;
 
+private:
   [[nodiscard]] std::optional<host_session::AuthorityView> list() const;
   [[nodiscard]] std::shared_ptr<const host_session::ConsentReview>
   prepare_review();
@@ -62,12 +63,11 @@ public:
   revoke(const definitions::CapabilityReference &definition,
          std::uint64_t expected_sequence);
 
-  [[nodiscard]] PluginActivationResult activate();
-  void stop();
   [[nodiscard]] std::optional<permissions::ActivationBinding>
   session_binding() const;
-private:
   [[nodiscard]] SurfaceSessionPort &surface_session() noexcept;
+  [[nodiscard]] PluginSession *session_unlocked() const noexcept;
+  [[nodiscard]] PluginSession *running_session_unlocked() const noexcept;
   struct Configuration final {
     int activation_root_fd = -1;
     int revision_root_fd = -1;
@@ -135,6 +135,20 @@ private:
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
 class PluginRuntimeRootTestAccess final {
 public:
+  [[nodiscard]] static std::optional<host_session::AuthorityView>
+  list(const PluginRuntimeRoot &root) {
+    return root.list();
+  }
+  [[nodiscard]] static PermissionRevokeApplyResult
+  revoke(PluginRuntimeRoot &root,
+         const permissions::CapabilityKey &capability,
+         std::uint64_t expected_sequence) {
+    return root.revoke(capability, expected_sequence);
+  }
+  [[nodiscard]] static std::optional<permissions::ActivationBinding>
+  session_binding(const PluginRuntimeRoot &root) {
+    return root.session_binding();
+  }
   [[nodiscard]] static SurfaceSessionPort &
   surface_session(PluginRuntimeRoot &root) noexcept {
     return root.surface_session();

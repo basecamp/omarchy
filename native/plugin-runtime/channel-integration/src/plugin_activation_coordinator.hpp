@@ -46,6 +46,9 @@ struct PluginActivationPreparationResult final {
 // supply every authority-bearing value used to construct the session.
 class PluginActivationCoordinator final {
 public:
+  ~PluginActivationCoordinator() noexcept;
+
+private:
   PluginActivationCoordinator(
       int activation_root_fd, int revision_root_fd, int state_root_fd,
       host_session::AuthorityStore &authority,
@@ -53,13 +56,11 @@ public:
       AuthenticatedSessionRuntimeFactory &runtime_factory,
       PluginSessionEvents *events = nullptr, session::SessionLimits limits = {},
       SurfaceIntentSink *intent_sink = nullptr, QObject *parent = nullptr);
-  ~PluginActivationCoordinator() noexcept;
 
   [[nodiscard]] PluginActivationResult activate(std::string_view record_name);
   [[nodiscard]] PluginSession *session() const noexcept;
   void stop() noexcept;
 
-private:
   [[nodiscard]] PluginActivationPreparationResult
   prepare(std::string_view record_name);
   [[nodiscard]] PluginActivationResult

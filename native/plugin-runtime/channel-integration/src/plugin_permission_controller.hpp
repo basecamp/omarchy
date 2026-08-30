@@ -30,12 +30,13 @@ struct PermissionRevokeApplyResult {
 // this object: callers choose only typed decisions/selectors, while the fixed
 // activation record, descriptor verifier and AuthorityStore supply identity.
 class PluginPermissionController final {
-public:
+private:
   PluginPermissionController(
       PluginActivationCoordinator &coordinator,
       const definitions::TrustedDefinitionRegistry &definitions,
       definitions::DynamicScopeValidator scope_validator,
       std::string fixed_record_name);
+  ~PluginPermissionController() = default;
 
   [[nodiscard]] std::optional<host_session::AuthorityView> list() const;
   [[nodiscard]] std::shared_ptr<const host_session::ConsentReview>
@@ -51,7 +52,6 @@ public:
   revoke(const definitions::CapabilityReference &definition,
          std::uint64_t expected_sequence);
 
-private:
   template <typename Selector>
   [[nodiscard]] PermissionRevokeApplyResult
   revoke_exact(const Selector &selector, std::uint64_t expected_sequence);
@@ -63,6 +63,8 @@ private:
   const std::string record_name_;
   mutable std::mutex mutex_;
   std::shared_ptr<const host_session::ConsentReview> pending_review_;
+
+  friend class PluginRuntimeRoot;
 };
 
 } // namespace omarchy::plugin_runtime::channel
