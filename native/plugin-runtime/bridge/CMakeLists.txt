@@ -7,20 +7,21 @@ qt_add_qml_module(omarchy-plugin-host-bridge
   PLUGIN_TARGET omarchy-plugin-host-bridge
   OUTPUT_DIRECTORY "${plugin_host_module_dir}"
   SOURCES
-    PluginManager.cpp
-    PluginManager.h
-    ProductionSurfaceEndpoint.cpp
-    ProductionSurfaceEndpoint.h
-    ProductionSurfaceEndpointOwner.cpp
-    ProductionSurfaceEndpointOwner.h
-    PluginSurfaceService.cpp
-    PluginSurfaceService.h
-    ../trusted-bridge/remote_surface.hpp
+    src/PluginManager.cpp
+    src/PluginManager.h
+    src/ProductionSurfaceEndpoint.cpp
+    src/ProductionSurfaceEndpoint.h
+    src/ProductionSurfaceEndpointOwner.cpp
+    src/ProductionSurfaceEndpointOwner.h
+    src/PluginSurfaceService.cpp
+    src/PluginSurfaceService.h
+    ../trusted-bridge/src/remote_surface.hpp
 )
 
 omarchy_plugin_target_defaults(omarchy-plugin-host-bridge)
 target_include_directories(omarchy-plugin-host-bridge PRIVATE
-  "${CMAKE_CURRENT_SOURCE_DIR}/../trusted-bridge"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../trusted-bridge/src"
 )
 target_link_libraries(omarchy-plugin-host-bridge PRIVATE
   Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick
@@ -42,16 +43,16 @@ install(FILES
 
 if(BUILD_TESTING)
   add_executable(omarchy-plugin-surface-service-test
-    PluginManager.cpp
-    PluginManager_test.cpp
-    ProductionSurfaceEndpoint.cpp
-    ProductionSurfaceEndpoint_test.cpp
-    ProductionSurfaceEndpointOwner.cpp
-    ProductionSurfaceEndpointOwner_test.cpp
-    PluginSurfaceService.cpp
-    PluginSurfaceService_test.cpp
-    ../channel-integration/production_plugin_bootstrap.cpp
-    ../channel-integration/production_plugin_roots.cpp
+    src/PluginManager.cpp
+    tests/PluginManager_test.cpp
+    src/ProductionSurfaceEndpoint.cpp
+    tests/ProductionSurfaceEndpoint_test.cpp
+    src/ProductionSurfaceEndpointOwner.cpp
+    tests/ProductionSurfaceEndpointOwner_test.cpp
+    src/PluginSurfaceService.cpp
+    tests/PluginSurfaceService_test.cpp
+    ../channel-integration/src/production_plugin_bootstrap.cpp
+    ../channel-integration/src/production_plugin_roots.cpp
   )
   omarchy_plugin_target_defaults(omarchy-plugin-surface-service-test)
   target_compile_definitions(omarchy-plugin-surface-service-test PRIVATE
@@ -60,7 +61,9 @@ if(BUILD_TESTING)
     OMARCHY_PRODUCTION_PLUGIN_ROOTS_TESTING
     OMARCHY_PRODUCTION_SURFACE_ENDPOINT_OWNER_TESTING)
   target_include_directories(omarchy-plugin-surface-service-test PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/../trusted-bridge"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../trusted-bridge/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../channel-integration/src"
   )
   target_link_libraries(omarchy-plugin-surface-service-test PRIVATE
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick

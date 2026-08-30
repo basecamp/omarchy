@@ -17,6 +17,7 @@ find_package(Qt6 REQUIRED COMPONENTS Core)
 function(omarchy_plugin_target_defaults target)
   target_compile_features(${target} PUBLIC cxx_std_20)
   target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 endfunction()
 
 if(NOT TARGET omarchy-plugin-wire)
@@ -41,10 +42,10 @@ if(NOT TARGET omarchy-plugin-surface-contract)
 endif()
 
 add_library(omarchy-plugin-channel-integration STATIC
-  authenticated_channel.cpp
+  src/authenticated_channel.cpp
 )
 target_include_directories(omarchy-plugin-channel-integration PUBLIC
-  "${CMAKE_CURRENT_SOURCE_DIR}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 omarchy_plugin_target_defaults(omarchy-plugin-channel-integration)
 target_link_libraries(omarchy-plugin-channel-integration PUBLIC
@@ -57,19 +58,19 @@ target_link_libraries(omarchy-plugin-channel-integration PUBLIC
 # root supplies host-session and is the authenticated composition build owner.
 if(TARGET omarchy-plugin-host-session)
   add_library(omarchy-plugin-authenticated-session STATIC
-    authenticated_session_channel.cpp
-    broker_session_settlement.cpp
-    plugin_activation_coordinator.cpp
-    plugin_permission_controller.cpp
-    production_plugin_bootstrap.cpp
-    production_plugin_catalog.cpp
-    production_plugin_roots.cpp
-    production_plugin_runtime_root.cpp
-    production_session_runtime_factory.cpp
-    plugin_session.cpp
+    src/authenticated_session_channel.cpp
+    src/broker_session_settlement.cpp
+    src/plugin_activation_coordinator.cpp
+    src/plugin_permission_controller.cpp
+    src/production_plugin_bootstrap.cpp
+    src/production_plugin_catalog.cpp
+    src/production_plugin_roots.cpp
+    src/production_plugin_runtime_root.cpp
+    src/production_session_runtime_factory.cpp
+    src/plugin_session.cpp
   )
   target_include_directories(omarchy-plugin-authenticated-session PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
   )
   omarchy_plugin_target_defaults(omarchy-plugin-authenticated-session)
   target_link_libraries(omarchy-plugin-authenticated-session PUBLIC
@@ -83,18 +84,18 @@ if(TARGET omarchy-plugin-host-session)
 endif()
 
 if(BUILD_TESTING)
-  add_executable(omarchy-plugin-channel-peer channel_peer.cpp)
+  add_executable(omarchy-plugin-channel-peer tests/helpers/channel_peer.cpp)
   omarchy_plugin_target_defaults(omarchy-plugin-channel-peer)
   target_link_libraries(omarchy-plugin-channel-peer PRIVATE
     omarchy-plugin-broker-core
     omarchy-plugin-surface-contract
   )
 
-  add_executable(omarchy-plugin-channel-fake-bwrap fake_bwrap.cpp)
+  add_executable(omarchy-plugin-channel-fake-bwrap tests/helpers/fake_bwrap.cpp)
   omarchy_plugin_target_defaults(omarchy-plugin-channel-fake-bwrap)
 
   add_executable(omarchy-plugin-channel-integration-test
-    authenticated_channel_test.cpp
+    tests/authenticated_channel_test.cpp
   )
   omarchy_plugin_target_defaults(omarchy-plugin-channel-integration-test)
   target_link_libraries(omarchy-plugin-channel-integration-test PRIVATE
@@ -128,8 +129,8 @@ if(BUILD_TESTING)
 
   if(TARGET omarchy-plugin-authenticated-session)
     add_executable(omarchy-plugin-production-catalog-test
-      production_plugin_catalog.cpp
-      production_plugin_catalog_test.cpp)
+      src/production_plugin_catalog.cpp
+      tests/production_plugin_catalog_test.cpp)
     omarchy_plugin_target_defaults(omarchy-plugin-production-catalog-test)
     target_link_libraries(omarchy-plugin-production-catalog-test PRIVATE
       omarchy-plugin-activation-snapshot)
@@ -139,8 +140,8 @@ if(BUILD_TESTING)
       TIMEOUT 30 LABELS "unit;security;catalog;filesystem;adversarial")
 
     add_executable(omarchy-plugin-production-roots-test
-      production_plugin_roots.cpp
-      production_plugin_roots_test.cpp)
+      src/production_plugin_roots.cpp
+      tests/production_plugin_roots_test.cpp)
     omarchy_plugin_target_defaults(omarchy-plugin-production-roots-test)
     target_compile_definitions(omarchy-plugin-production-roots-test PRIVATE
       OMARCHY_PRODUCTION_PLUGIN_ROOTS_TESTING)
@@ -152,9 +153,9 @@ if(BUILD_TESTING)
       TIMEOUT 30 LABELS "unit;security;catalog;filesystem;adversarial")
 
     add_executable(omarchy-plugin-production-bootstrap-test
-      production_plugin_bootstrap.cpp
-      production_plugin_roots.cpp
-      production_plugin_bootstrap_test.cpp)
+      src/production_plugin_bootstrap.cpp
+      src/production_plugin_roots.cpp
+      tests/production_plugin_bootstrap_test.cpp)
     omarchy_plugin_target_defaults(omarchy-plugin-production-bootstrap-test)
     target_compile_definitions(omarchy-plugin-production-bootstrap-test PRIVATE
       OMARCHY_PRODUCTION_PLUGIN_BOOTSTRAP_TESTING
@@ -167,9 +168,9 @@ if(BUILD_TESTING)
       TIMEOUT 30 LABELS "unit;security;bootstrap;filesystem;adversarial")
 
     add_executable(omarchy-plugin-authenticated-session-adapter-test
-      authenticated_session_channel.cpp
-      broker_session_settlement.cpp
-      authenticated_session_channel_test.cpp
+      src/authenticated_session_channel.cpp
+      src/broker_session_settlement.cpp
+      tests/authenticated_session_channel_test.cpp
     )
     omarchy_plugin_target_defaults(
       omarchy-plugin-authenticated-session-adapter-test)
@@ -187,8 +188,8 @@ if(BUILD_TESTING)
       TIMEOUT 30 LABELS "unit;security;session;adversarial")
 
     add_executable(omarchy-plugin-broker-session-settlement-test
-      broker_session_settlement.cpp
-      broker_session_settlement_test.cpp)
+      src/broker_session_settlement.cpp
+      tests/broker_session_settlement_test.cpp)
     omarchy_plugin_target_defaults(
       omarchy-plugin-broker-session-settlement-test)
     target_compile_definitions(
@@ -202,7 +203,7 @@ if(BUILD_TESTING)
       TIMEOUT 30 LABELS "unit;security;session;broker;adversarial")
 
     add_executable(omarchy-plugin-authenticated-session-integration-test
-      authenticated_session_integration_test.cpp)
+      tests/authenticated_session_integration_test.cpp)
     omarchy_plugin_target_defaults(
       omarchy-plugin-authenticated-session-integration-test)
     target_compile_definitions(
@@ -227,21 +228,21 @@ if(BUILD_TESTING)
       LABELS "integration;security;session;broker;launcher;sandbox;linux")
 
     add_executable(omarchy-plugin-product-session-test
-      authenticated_session_channel.cpp
-      broker_session_settlement.cpp
-      plugin_activation_coordinator.cpp
-      plugin_permission_controller.cpp
-      production_plugin_runtime_root.cpp
-      production_session_runtime_factory.cpp
-      production_session_runtime_factory_test.cpp
-      plugin_session.cpp
-      plugin_session_test.cpp)
+      src/authenticated_session_channel.cpp
+      src/broker_session_settlement.cpp
+      src/plugin_activation_coordinator.cpp
+      src/plugin_permission_controller.cpp
+      src/production_plugin_runtime_root.cpp
+      src/production_session_runtime_factory.cpp
+      tests/production_session_runtime_factory_test.cpp
+      src/plugin_session.cpp
+      tests/plugin_session_test.cpp)
     omarchy_plugin_target_defaults(omarchy-plugin-product-session-test)
     target_compile_definitions(omarchy-plugin-product-session-test PRIVATE
       OMARCHY_PLUGIN_SESSION_TESTING
       CHANNEL_PEER_PATH="$<TARGET_FILE:omarchy-plugin-channel-peer>"
       FAKE_BWRAP_PATH="$<TARGET_FILE:omarchy-plugin-channel-fake-bwrap>"
-      COORDINATOR_REVISION_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../contracts/manifest/fixtures/valid-minimal")
+      COORDINATOR_REVISION_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../contracts/manifest/tests/fixtures/valid-minimal")
     target_link_libraries(omarchy-plugin-product-session-test PRIVATE
       omarchy-plugin-channel-integration omarchy-plugin-host-session Qt6::Core)
     target_link_libraries(omarchy-plugin-product-session-test PRIVATE

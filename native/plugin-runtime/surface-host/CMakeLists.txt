@@ -37,10 +37,10 @@ if(NOT TARGET omarchy-plugin-trusted-bridge)
                    "${CMAKE_CURRENT_BINARY_DIR}/trusted-bridge")
 endif()
 
-add_library(omarchy-plugin-surface-host STATIC surface_host.cpp)
+add_library(omarchy-plugin-surface-host STATIC src/surface_host.cpp)
 omarchy_surface_host_defaults(omarchy-plugin-surface-host)
 target_include_directories(omarchy-plugin-surface-host PUBLIC
-  "${CMAKE_CURRENT_SOURCE_DIR}")
+  "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(omarchy-plugin-surface-host PUBLIC
   Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick
   omarchy-plugin-manifest-contract
@@ -49,7 +49,7 @@ target_link_libraries(omarchy-plugin-surface-host PUBLIC
   omarchy-plugin-trusted-bridge)
 
 if(BUILD_TESTING)
-  add_executable(omarchy-plugin-surface-host-test surface_host_test.cpp)
+  add_executable(omarchy-plugin-surface-host-test tests/surface_host_test.cpp)
   omarchy_surface_host_defaults(omarchy-plugin-surface-host-test)
   target_link_libraries(omarchy-plugin-surface-host-test PRIVATE
     omarchy-plugin-surface-host)

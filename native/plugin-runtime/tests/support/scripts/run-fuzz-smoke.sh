@@ -37,7 +37,7 @@ cmake --build "$build_dir" --target plugin-security-fuzzers
 mkdir -p "$corpus_dir/envelope" "$corpus_dir/manifest" "$corpus_dir/render"
 hex_to_binary "$support_dir/../fixtures/wire/v1/hello-control.hex" \
   "$corpus_dir/envelope/hello-control"
-cp "$runtime_dir/contracts/manifest/fixtures/valid-minimal/manifest.json" \
+cp "$runtime_dir/contracts/manifest/tests/fixtures/valid-minimal/manifest.json" \
   "$corpus_dir/manifest/valid-minimal.json"
 hex_to_binary "$support_dir/../fixtures/wire/v1/welcome-control.hex" \
   "$corpus_dir/render/arbitrary-seed"

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../host-session/plugin_session_io.hpp"
+#include "plugin_session_io.hpp"
 #include "authenticated_channel.hpp"
 #include "permission_contract.hpp"
 

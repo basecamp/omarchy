@@ -14,9 +14,9 @@ endif()
 option(PLUGIN_SECURITY_PERMISSION_SANITIZERS
        "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 
-add_library(omarchy-plugin-permission-contract STATIC permission_contract.cpp)
+add_library(omarchy-plugin-permission-contract STATIC src/permission_contract.cpp)
 target_include_directories(omarchy-plugin-permission-contract PUBLIC
-  "${CMAKE_CURRENT_SOURCE_DIR}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 target_compile_features(omarchy-plugin-permission-contract PUBLIC cxx_std_20)
 target_compile_options(omarchy-plugin-permission-contract PRIVATE
@@ -36,7 +36,7 @@ if(PLUGIN_SECURITY_PERMISSION_SANITIZERS)
 endif()
 
 if(BUILD_TESTING)
-  add_executable(omarchy-plugin-permission-contract-test permission_contract_test.cpp)
+  add_executable(omarchy-plugin-permission-contract-test tests/permission_contract_test.cpp)
   target_compile_features(omarchy-plugin-permission-contract-test PRIVATE cxx_std_20)
   target_compile_options(omarchy-plugin-permission-contract-test PRIVATE
     -Wall -Wextra -Wpedantic -Werror

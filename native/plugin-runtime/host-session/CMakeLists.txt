@@ -25,13 +25,13 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 endif()
 
 add_library(omarchy-plugin-activation-snapshot STATIC
-  activation_snapshot.cpp
-  authority_store.cpp
-  consent_review.cpp
-  revision_verifier_adapter.cpp)
+  src/activation_snapshot.cpp
+  src/authority_store.cpp
+  src/consent_review.cpp
+  src/revision_verifier_adapter.cpp)
 target_include_directories(omarchy-plugin-activation-snapshot PUBLIC
-  "${CMAKE_CURRENT_SOURCE_DIR}"
-  "${CMAKE_CURRENT_SOURCE_DIR}/../policy")
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../policy/src")
 target_link_libraries(omarchy-plugin-activation-snapshot PUBLIC
   omarchy-plugin-permission-contract
   omarchy-plugin-capability-definitions
@@ -41,12 +41,12 @@ target_compile_options(omarchy-plugin-activation-snapshot PRIVATE
   -Wall -Wextra -Wpedantic -Werror)
 
 add_library(omarchy-plugin-host-session STATIC
-  gesture_intent.cpp
-  MultiSurfaceRouter.cpp
-  plugin_session_io.cpp
-  structured_broker.cpp)
+  src/gesture_intent.cpp
+  src/MultiSurfaceRouter.cpp
+  src/plugin_session_io.cpp
+  src/structured_broker.cpp)
 target_include_directories(omarchy-plugin-host-session PUBLIC
-  "${CMAKE_CURRENT_SOURCE_DIR}")
+  "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(omarchy-plugin-host-session PUBLIC
   Qt6::Core
   omarchy-plugin-surface-contract
@@ -59,7 +59,7 @@ set_target_properties(omarchy-plugin-host-session PROPERTIES
   POSITION_INDEPENDENT_CODE ON)
 
 if(BUILD_TESTING)
-  add_executable(omarchy-plugin-activation-snapshot-test activation_snapshot_test.cpp)
+  add_executable(omarchy-plugin-activation-snapshot-test tests/activation_snapshot_test.cpp)
   target_link_libraries(omarchy-plugin-activation-snapshot-test PRIVATE
     omarchy-plugin-activation-snapshot)
   target_compile_features(omarchy-plugin-activation-snapshot-test PRIVATE cxx_std_20)
@@ -70,7 +70,7 @@ if(BUILD_TESTING)
     TIMEOUT 15 LABELS "unit;security;adversarial")
 
   add_executable(omarchy-plugin-revision-verifier-adapter-test
-    revision_verifier_adapter_test.cpp)
+    tests/revision_verifier_adapter_test.cpp)
   target_link_libraries(omarchy-plugin-revision-verifier-adapter-test PRIVATE
     omarchy-plugin-activation-snapshot)
   target_compile_features(omarchy-plugin-revision-verifier-adapter-test PRIVATE
@@ -78,13 +78,13 @@ if(BUILD_TESTING)
   target_compile_options(omarchy-plugin-revision-verifier-adapter-test PRIVATE
     -Wall -Wextra -Wpedantic -Werror)
   target_compile_definitions(omarchy-plugin-revision-verifier-adapter-test PRIVATE
-    MANIFEST_V2_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../contracts/manifest/fixtures/valid-minimal")
+    MANIFEST_V2_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../contracts/manifest/tests/fixtures/valid-minimal")
   add_test(NAME plugin-revision-verifier-adapter
     COMMAND omarchy-plugin-revision-verifier-adapter-test)
   set_tests_properties(plugin-revision-verifier-adapter PROPERTIES
     TIMEOUT 15 LABELS "unit;security;adversarial")
 
-  add_executable(omarchy-plugin-authority-store-test authority_store_test.cpp)
+  add_executable(omarchy-plugin-authority-store-test tests/authority_store_test.cpp)
   target_link_libraries(omarchy-plugin-authority-store-test PRIVATE
     omarchy-plugin-activation-snapshot)
   target_compile_features(omarchy-plugin-authority-store-test PRIVATE cxx_std_20)
@@ -96,7 +96,7 @@ if(BUILD_TESTING)
   set_tests_properties(plugin-authority-store PROPERTIES
     TIMEOUT 20 LABELS "unit;security;authority;adversarial")
 
-  add_executable(omarchy-plugin-consent-review-test consent_review_test.cpp)
+  add_executable(omarchy-plugin-consent-review-test tests/consent_review_test.cpp)
   target_link_libraries(omarchy-plugin-consent-review-test PRIVATE
     omarchy-plugin-activation-snapshot)
   target_compile_features(omarchy-plugin-consent-review-test PRIVATE cxx_std_20)
@@ -107,7 +107,7 @@ if(BUILD_TESTING)
     TIMEOUT 20 LABELS "unit;security;authority;consent;adversarial")
 
   add_executable(omarchy-plugin-multi-surface-router-test
-    MultiSurfaceRouter_test.cpp)
+    tests/MultiSurfaceRouter_test.cpp)
   target_link_libraries(omarchy-plugin-multi-surface-router-test PRIVATE
     omarchy-plugin-host-session)
   target_compile_features(omarchy-plugin-multi-surface-router-test PRIVATE
@@ -122,9 +122,11 @@ if(BUILD_TESTING)
   # Compile the lifecycle implementation separately so deterministic fault
   # hooks can never enter the production host-session archive.
   add_executable(omarchy-plugin-session-io-test
-    plugin_session_io.cpp
-    plugin_session_io_test.cpp)
+    src/plugin_session_io.cpp
+    tests/plugin_session_io_test.cpp)
   target_link_libraries(omarchy-plugin-session-io-test PRIVATE Qt6::Core)
+  target_include_directories(omarchy-plugin-session-io-test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src")
   target_compile_features(omarchy-plugin-session-io-test PRIVATE cxx_std_20)
   target_compile_options(omarchy-plugin-session-io-test PRIVATE
     -Wall -Wextra -Wpedantic -Werror)
@@ -135,7 +137,7 @@ if(BUILD_TESTING)
     TIMEOUT 30 LABELS "unit;security;session;adversarial")
 
   add_executable(omarchy-plugin-structured-broker-test
-    structured_broker_test.cpp)
+    tests/structured_broker_test.cpp)
   target_link_libraries(omarchy-plugin-structured-broker-test PRIVATE
     omarchy-plugin-host-session)
   target_compile_features(omarchy-plugin-structured-broker-test PRIVATE
@@ -147,7 +149,7 @@ if(BUILD_TESTING)
   set_tests_properties(plugin-structured-broker PROPERTIES
     TIMEOUT 30 LABELS "unit;security;session;broker;adversarial")
 
-  add_executable(omarchy-plugin-gesture-intent-test gesture_intent_test.cpp)
+  add_executable(omarchy-plugin-gesture-intent-test tests/gesture_intent_test.cpp)
   target_link_libraries(omarchy-plugin-gesture-intent-test PRIVATE
     omarchy-plugin-host-session)
   target_compile_features(omarchy-plugin-gesture-intent-test PRIVATE cxx_std_20)

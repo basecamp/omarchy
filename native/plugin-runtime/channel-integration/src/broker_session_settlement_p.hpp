@@ -1,5 +1,5 @@
 #pragma once
-#include "../host-session/structured_broker.hpp"
+#include "structured_broker.hpp"
 #include "authenticated_channel.hpp"
 
 #include <array>

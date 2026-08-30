@@ -12,15 +12,15 @@ if(NOT TARGET omarchy-plugin-providers)
                    "${CMAKE_CURRENT_BINARY_DIR}/providers")
 endif()
 add_library(omarchy-plugin-broker-runtime STATIC
-  broker_runtime.cpp
-  dynamic_broker_runtime.cpp
-  gesture_eligibility.cpp
-  ../audit/audit_store.cpp
+  src/broker_runtime.cpp
+  src/dynamic_broker_runtime.cpp
+  src/gesture_eligibility.cpp
+  ../audit/src/audit_store.cpp
 )
 target_include_directories(omarchy-plugin-broker-runtime PUBLIC
-  "${CMAKE_CURRENT_SOURCE_DIR}"
-  "${CMAKE_CURRENT_SOURCE_DIR}/../audit"
-  "${CMAKE_CURRENT_SOURCE_DIR}/../policy"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../audit/src"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../policy/src"
 )
 target_compile_features(omarchy-plugin-broker-runtime PUBLIC cxx_std_20)
 target_compile_options(omarchy-plugin-broker-runtime PRIVATE
@@ -42,7 +42,7 @@ endif()
 if(BUILD_TESTING)
   find_package(Threads REQUIRED)
   add_executable(omarchy-plugin-audit-store-test
-    ../audit/audit_store_test.cpp)
+    ../audit/tests/audit_store_test.cpp)
   target_compile_features(omarchy-plugin-audit-store-test PRIVATE cxx_std_20)
   target_compile_options(omarchy-plugin-audit-store-test PRIVATE
     -Wall -Wextra -Wpedantic -Werror)
@@ -53,7 +53,7 @@ if(BUILD_TESTING)
     TIMEOUT 30 LABELS "unit;integration;adversarial;audit")
 
   add_executable(omarchy-plugin-dynamic-broker-runtime-test
-    dynamic_broker_runtime_test.cpp)
+    tests/dynamic_broker_runtime_test.cpp)
   target_compile_features(omarchy-plugin-dynamic-broker-runtime-test PRIVATE cxx_std_20)
   target_compile_options(omarchy-plugin-dynamic-broker-runtime-test PRIVATE
     -Wall -Wextra -Wpedantic -Werror)
@@ -63,7 +63,7 @@ if(BUILD_TESTING)
     COMMAND omarchy-plugin-dynamic-broker-runtime-test)
 
   add_executable(omarchy-plugin-gesture-eligibility-test
-    gesture_eligibility_test.cpp)
+    tests/gesture_eligibility_test.cpp)
   target_compile_features(omarchy-plugin-gesture-eligibility-test PRIVATE cxx_std_20)
   target_compile_options(omarchy-plugin-gesture-eligibility-test PRIVATE
     -Wall -Wextra -Wpedantic -Werror)

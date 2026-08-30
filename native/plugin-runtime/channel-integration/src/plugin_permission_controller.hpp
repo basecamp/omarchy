@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../host-session/consent_review.hpp"
+#include "consent_review.hpp"
 #include "plugin_activation_coordinator.hpp"
 
 #include <memory>

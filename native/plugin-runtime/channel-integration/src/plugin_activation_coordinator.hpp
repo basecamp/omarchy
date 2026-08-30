@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../host-session/authority_store.hpp"
-#include "../host-session/revision_verifier_adapter.hpp"
+#include "authority_store.hpp"
+#include "revision_verifier_adapter.hpp"
 #include "plugin_session.hpp"
 
 #include <functional>

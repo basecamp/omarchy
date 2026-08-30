@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../host-session/MultiSurfaceRouter.h"
+#include "MultiSurfaceRouter.h"
 #include "omarchy/plugin/wire/state.hpp"
 #include "permission_contract.hpp"
 

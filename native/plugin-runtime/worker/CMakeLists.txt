@@ -19,16 +19,16 @@ function(omarchy_plugin_worker_sanitize target)
 endfunction()
 
 add_library(omarchy-plugin-worker-runtime STATIC
-  qml_broker_api.cpp
-  sidecar_supervisor.cpp
-  worker_channel.cpp
-  worker_runtime.cpp
-  steady_seccomp.cpp
+  src/qml_broker_api.cpp
+  src/sidecar_supervisor.cpp
+  src/worker_channel.cpp
+  src/worker_runtime.cpp
+  src/steady_seccomp.cpp
 )
 omarchy_plugin_target_defaults(omarchy-plugin-worker-runtime)
 omarchy_plugin_worker_sanitize(omarchy-plugin-worker-runtime)
 target_include_directories(omarchy-plugin-worker-runtime PUBLIC
-  "${CMAKE_CURRENT_SOURCE_DIR}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
   "${CMAKE_CURRENT_SOURCE_DIR}/../contracts/wire/include"
   "${CMAKE_CURRENT_SOURCE_DIR}/../contracts/surface/include"
   "${CMAKE_CURRENT_SOURCE_DIR}/../contracts/sandbox/include"
@@ -41,7 +41,7 @@ target_link_libraries(omarchy-plugin-worker-runtime
           PkgConfig::WORKER_SECCOMP
 )
 
-qt_add_executable(omarchy-plugin-qml-worker main.cpp)
+qt_add_executable(omarchy-plugin-qml-worker src/main.cpp)
 
 qt_add_qml_module(omarchy-plugin-qml-worker
   URI Omarchy.PluginWorker
@@ -60,10 +60,10 @@ target_link_libraries(omarchy-plugin-qml-worker
 install(TARGETS omarchy-plugin-qml-worker RUNTIME DESTINATION "${OMARCHY_PLUGIN_INSTALL_ROOT}/bin")
 
 if(BUILD_TESTING)
-  add_executable(omarchy-plugin-sidecar-probe sidecar_probe.cpp)
+  add_executable(omarchy-plugin-sidecar-probe src/sidecar_probe.cpp)
   omarchy_plugin_target_defaults(omarchy-plugin-sidecar-probe)
   add_executable(omarchy-plugin-sidecar-supervisor-test
-    sidecar_supervisor_test.cpp)
+    tests/sidecar_supervisor_test.cpp)
   omarchy_plugin_target_defaults(omarchy-plugin-sidecar-supervisor-test)
   target_link_libraries(omarchy-plugin-sidecar-supervisor-test PRIVATE
     omarchy-plugin-worker-runtime)
@@ -92,7 +92,7 @@ if(BUILD_TESTING)
   set_tests_properties(plugin-sidecar-real-bwrap PROPERTIES
     LABELS "integration;sandbox;security;real-bwrap" TIMEOUT 10)
 
-  add_executable(omarchy-plugin-external-fixture-test external_fixture_test.cpp)
+  add_executable(omarchy-plugin-external-fixture-test tests/external_fixture_test.cpp)
   omarchy_plugin_target_defaults(omarchy-plugin-external-fixture-test)
   omarchy_plugin_worker_sanitize(omarchy-plugin-external-fixture-test)
   target_link_libraries(omarchy-plugin-external-fixture-test PRIVATE
@@ -123,14 +123,14 @@ if(BUILD_TESTING)
     )
   endforeach()
 
-  add_executable(omarchy-plugin-worker-runtime-test worker_runtime_test.cpp)
+  add_executable(omarchy-plugin-worker-runtime-test tests/worker_runtime_test.cpp)
   omarchy_plugin_target_defaults(omarchy-plugin-worker-runtime-test)
   omarchy_plugin_worker_sanitize(omarchy-plugin-worker-runtime-test)
   target_link_libraries(omarchy-plugin-worker-runtime-test PRIVATE
     omarchy-plugin-worker-runtime
   )
   target_compile_definitions(omarchy-plugin-worker-runtime-test PRIVATE
-    WORKER_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+    WORKER_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
   )
   add_test(NAME plugin-worker-runtime COMMAND omarchy-plugin-worker-runtime-test)
   set_tests_properties(plugin-worker-runtime PROPERTIES
@@ -139,7 +139,7 @@ if(BUILD_TESTING)
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QSG_RHI_BACKEND=software;QSG_SOFTWARE_RENDERER_FORCE_PARTIAL_UPDATES=0"
   )
 
-  add_executable(omarchy-plugin-worker-channel-test worker_channel_test.cpp)
+  add_executable(omarchy-plugin-worker-channel-test tests/worker_channel_test.cpp)
   omarchy_plugin_target_defaults(omarchy-plugin-worker-channel-test)
   omarchy_plugin_worker_sanitize(omarchy-plugin-worker-channel-test)
   target_link_libraries(omarchy-plugin-worker-channel-test PRIVATE
@@ -151,7 +151,7 @@ if(BUILD_TESTING)
     TIMEOUT 20
   )
 
-  add_executable(omarchy-plugin-qml-broker-api-test qml_broker_api_test.cpp)
+  add_executable(omarchy-plugin-qml-broker-api-test tests/qml_broker_api_test.cpp)
   omarchy_plugin_target_defaults(omarchy-plugin-qml-broker-api-test)
   omarchy_plugin_worker_sanitize(omarchy-plugin-qml-broker-api-test)
   target_link_libraries(omarchy-plugin-qml-broker-api-test PRIVATE

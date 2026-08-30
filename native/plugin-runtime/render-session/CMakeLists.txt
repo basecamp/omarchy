@@ -32,11 +32,11 @@ if(NOT TARGET omarchy-plugin-surface-contract)
                    "${CMAKE_CURRENT_BINARY_DIR}/surface")
 endif()
 
-add_library(omarchy-plugin-render-session STATIC render_session.cpp)
+add_library(omarchy-plugin-render-session STATIC src/render_session.cpp)
 omarchy_plugin_target_defaults(omarchy-plugin-render-session)
 omarchy_render_session_sanitize(omarchy-plugin-render-session)
 target_include_directories(omarchy-plugin-render-session PUBLIC
-  "${CMAKE_CURRENT_SOURCE_DIR}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 target_link_libraries(omarchy-plugin-render-session PUBLIC
   omarchy-plugin-wire omarchy-plugin-surface-contract
@@ -50,22 +50,22 @@ if(BUILD_TESTING)
   omarchy_render_session_sanitize(omarchy-plugin-trusted-bridge)
 
   add_library(omarchy-plugin-d2-worker-render STATIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/../worker/worker_runtime.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../worker/src/worker_runtime.cpp"
   )
   omarchy_plugin_target_defaults(omarchy-plugin-d2-worker-render)
   omarchy_render_session_sanitize(omarchy-plugin-d2-worker-render)
   target_include_directories(omarchy-plugin-d2-worker-render PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/../worker"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../worker/src"
   )
   target_link_libraries(omarchy-plugin-d2-worker-render PUBLIC
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick omarchy-plugin-surface-contract
   )
 
-  add_executable(omarchy-plugin-render-session-test render_session_test.cpp)
+  add_executable(omarchy-plugin-render-session-test tests/render_session_test.cpp)
   omarchy_plugin_target_defaults(omarchy-plugin-render-session-test)
   omarchy_render_session_sanitize(omarchy-plugin-render-session-test)
   target_compile_definitions(omarchy-plugin-render-session-test PRIVATE
-    D2_WORKER_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../worker/fixtures"
+    D2_WORKER_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../worker/tests/fixtures"
   )
   target_link_libraries(omarchy-plugin-render-session-test PRIVATE
     omarchy-plugin-render-session omarchy-plugin-d2-worker-render

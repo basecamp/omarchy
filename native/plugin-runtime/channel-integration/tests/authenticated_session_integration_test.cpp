@@ -1,6 +1,6 @@
 #include "authenticated_session_channel.hpp"
 
-#include "../host-session/structured_broker.hpp"
+#include "structured_broker.hpp"
 #include "audit_store.hpp"
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
 

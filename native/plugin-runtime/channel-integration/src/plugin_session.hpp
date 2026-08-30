@@ -1,8 +1,8 @@
 #pragma once
 
-#include "../host-session/MultiSurfaceRouter.h"
-#include "../host-session/activation_snapshot.hpp"
-#include "../host-session/gesture_intent.hpp"
+#include "MultiSurfaceRouter.h"
+#include "activation_snapshot.hpp"
+#include "gesture_intent.hpp"
 #include "authenticated_session_channel.hpp"
 
 #include <memory>
