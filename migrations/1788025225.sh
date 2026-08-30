@@ -109,7 +109,9 @@ sudoers_hash_is_active() {
 # touch the network. Any failure in between leaves the grant on the machine with
 # nothing left to retry it.
 #
-# The installer rewrote this file eight times, and only the last four carry both
+# The installer rewrote this file nine times across two locations -- the last two
+# bodies came from install/post-install/first-run-mode.sh, whose cleanup alias
+# names /usr/bin/rm as well as /bin/rm -- and only the later ones carry both
 # Cmnd_Alias lines, so keying on those would walk past the earlier ones. Instead
 # require every active line to be one the installer itself emitted, plus at least
 # one line that is unmistakably this grant: its own self-cleanup. One
@@ -128,7 +130,8 @@ first_run_sudoers_is_generated() {
         continue
         ;;
       "Cmnd_Alias FIRST_RUN_CLEANUP = /bin/rm -f /etc/sudoers.d/first-run" | \
-        "Cmnd_Alias FIRST_RUN_CLEANUP = /bin/rm -f /etc/sudoers.d/first-run, /bin/rm -f /etc/sudoers.d/99-omarchy-installer-reboot")
+        "Cmnd_Alias FIRST_RUN_CLEANUP = /bin/rm -f /etc/sudoers.d/first-run, /bin/rm -f /etc/sudoers.d/99-omarchy-installer-reboot" | \
+        "Cmnd_Alias FIRST_RUN_CLEANUP = /usr/bin/rm -f /etc/sudoers.d/first-run, /bin/rm -f /etc/sudoers.d/first-run")
         seen_marker=1
         continue
         ;;
