@@ -7,7 +7,26 @@
 
 set -e
 
-AUTHORIZED_KEYS="$HOME/.ssh/authorized_keys"
+# The authorized keys belong to the person who ran the setup, not to the
+# account the command finally executes as. Under sudo or pkexec, $HOME points
+# at root and would silently authorize the key for root instead. Resolve the
+# invoking user and their real home before touching the machine, and refuse
+# an invocation where neither can be determined.
+if [[ -n ${PKEXEC_UID:-} ]]; then
+  invoking_user=$(getent passwd "$PKEXEC_UID" 2>/dev/null | cut -d: -f1 || true)
+elif [[ -n ${SUDO_USER:-} && $SUDO_USER != root ]]; then
+  invoking_user=$SUDO_USER
+else
+  invoking_user=${USER:-$(id -un)}
+fi
+invoking_home=$({ getent passwd "$invoking_user" 2>/dev/null || true; } | cut -d: -f6)
+
+if [[ -z $invoking_user || -z ${invoking_home:-} ]]; then
+  echo "omarchy-setup-security-sshd: could not resolve the invoking user's home; refusing to authorize keys into a privileged home." >&2
+  exit 1
+fi
+
+AUTHORIZED_KEYS="$invoking_home/.ssh/authorized_keys"
 KEY=""
 GITHUB_USER=""
 
@@ -86,8 +105,8 @@ authorize_key() {
     return 1
   fi
 
-  mkdir -p "$HOME/.ssh"
-  chmod 700 "$HOME/.ssh"
+  mkdir -p "$invoking_home/.ssh"
+  chmod 700 "$invoking_home/.ssh"
   touch "$AUTHORIZED_KEYS"
   chmod 600 "$AUTHORIZED_KEYS"
 
@@ -162,4 +181,4 @@ else
 fi
 
 echo -e "\e[32m\nPerfect! The SSH server is running and your key is authorized.\e[0m"
-echo "You can now connect with: ssh $USER@$(hostname)"
+echo "You can now connect with: ssh $invoking_user@$(hostname)"
