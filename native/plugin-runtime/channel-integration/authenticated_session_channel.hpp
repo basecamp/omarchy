@@ -13,7 +13,7 @@ class StructuredBroker;
 namespace omarchy::plugin_runtime::runtime {
 class GestureEligibilityAuthority;
 class GestureEligibilityLatch;
-}
+} // namespace omarchy::plugin_runtime::runtime
 
 namespace omarchy::plugin_runtime::channel {
 
@@ -40,8 +40,10 @@ class AuthenticatedSessionBackend;
 #endif
 
 // Adapts the authenticated v2 transport to PluginSessionIo's semantic message
-// contract. All methods, including wake installation and destruction, run on
-// one PluginSessionIo worker thread.
+// contract. Before transfer into PluginSessionIo an unlaunched instance owns
+// no QObject, notifier, thread affinity, or installed wake callback and may be
+// destroyed on any thread. After transfer, all methods and destruction run on
+// the one PluginSessionIo worker thread.
 class AuthenticatedSessionChannel final : public session::SessionChannel {
 public:
   AuthenticatedSessionChannel(
@@ -49,8 +51,8 @@ public:
       std::shared_ptr<const GenerationAuthority> authority,
       std::unique_ptr<AuthenticatedSessionRuntime> runtime,
       std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility);
-  // Transitional N2A construction seam. Product composition uses the owning
-  // runtime overload above; N12 removes this legacy dispatcher surface.
+  // Product composition uses the owning runtime overload above. This lower
+  // level constructor carries no product permission authority.
   AuthenticatedSessionChannel(
       launcher::Supervisor supervisor, AuthenticatedSessionLaunch launch,
       std::shared_ptr<BrokerDispatcher> dispatcher,

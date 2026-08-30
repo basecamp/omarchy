@@ -1,5 +1,7 @@
 #include "production_plugin_runtime_root.hpp"
 
+#include <QThread>
+
 #include <algorithm>
 #include <utility>
 
@@ -31,9 +33,9 @@ private:
       std::vector<std::byte> payload,
       std::vector<session::OwnedFd> descriptors) noexcept override;
   [[nodiscard]] PluginSession *running_session() const noexcept;
-  [[nodiscard]] bool matches(const PluginSession &session,
-                             const ProductionSurfaceDescription &expected)
-      const noexcept;
+  [[nodiscard]] bool
+  matches(const PluginSession &session,
+          const ProductionSurfaceDescription &expected) const noexcept;
   [[nodiscard]] bool on_owner_thread() const noexcept {
     return std::this_thread::get_id() == owner_thread_;
   }
@@ -60,14 +62,14 @@ bool RootSurfaceSessionPort::matches(
       expected.plugin_id != expected.binding.plugin.view())
     return false;
   const auto &names = session.manifest().surface_names;
-  const auto found = std::find(names.begin(), names.end(), expected.surface_name);
+  const auto found =
+      std::find(names.begin(), names.end(), expected.surface_name);
   return found != names.end() &&
          expected.key.id ==
              static_cast<std::uint64_t>(found - names.begin()) + 1;
 }
 
-std::optional<ProductionSurfaceDescription>
-RootSurfaceSessionPort::describe(
+std::optional<ProductionSurfaceDescription> RootSurfaceSessionPort::describe(
     std::string_view declared_surface) const noexcept {
   if (!on_owner_thread())
     return {};
@@ -129,8 +131,7 @@ bool RootSurfaceSessionPort::detach(
 
 bool RootSurfaceSessionPort::send_render_packet_impl(
     const ProductionSurfaceDescription &expected,
-    const plugin::wire::EnvelopeHeader &header,
-    std::vector<std::byte> payload,
+    const plugin::wire::EnvelopeHeader &header, std::vector<std::byte> payload,
     std::vector<session::OwnedFd> descriptors) noexcept {
   if (!on_owner_thread())
     return false;
@@ -176,11 +177,9 @@ void RootSurfaceSessionPort::clear_surface_intent_eligibility(
     session->clear_surface_intent_eligibility();
 }
 
-std::unique_ptr<ProductionPluginRuntimeRoot>
-ProductionPluginRuntimeRoot::open(
+std::unique_ptr<ProductionPluginRuntimeRoot> ProductionPluginRuntimeRoot::open(
     ProductionPluginRuntimeConfiguration &&configuration) {
-  if (configuration.trusted_uid ==
-      std::numeric_limits<std::uint32_t>::max())
+  if (configuration.trusted_uid == std::numeric_limits<std::uint32_t>::max())
     return {};
   auto authority = host_session::AuthorityStore::open(
       configuration.authority_root.get(), configuration.trusted_uid,
@@ -188,9 +187,56 @@ ProductionPluginRuntimeRoot::open(
   if (!authority)
     return {};
   try {
-    return std::unique_ptr<ProductionPluginRuntimeRoot>(
-        new ProductionPluginRuntimeRoot(configuration,
-                                        std::move(authority)));
+    auto root = std::unique_ptr<ProductionPluginRuntimeRoot>(
+        new ProductionPluginRuntimeRoot(configuration, std::move(authority)));
+    root->surface_session_ = std::make_unique<RootSurfaceSessionPort>(*root);
+    return root;
+  } catch (...) {
+    return {};
+  }
+}
+
+std::unique_ptr<PreparedPluginRuntime> ProductionPluginRuntimeRoot::prepare(
+    ProductionPluginRuntimeConfiguration &&configuration) {
+  if (configuration.trusted_uid == std::numeric_limits<std::uint32_t>::max() ||
+      configuration.hooks != nullptr)
+    return {};
+  auto authority = host_session::AuthorityStore::open(
+      configuration.authority_root.get(), configuration.trusted_uid,
+      configuration.plugin);
+  if (!authority)
+    return {};
+  try {
+    auto root = std::unique_ptr<ProductionPluginRuntimeRoot>(
+        new ProductionPluginRuntimeRoot(configuration, std::move(authority)));
+    auto activation = root->coordinator_.prepare(root->activation_record_);
+    if (!activation)
+      return {};
+    auto prepared =
+        std::unique_ptr<PreparedPluginRuntime>(new PreparedPluginRuntime);
+    prepared->root = std::move(root);
+    prepared->session = std::move(activation.prepared);
+    prepared->live_binding = std::move(activation.live_binding);
+    return prepared;
+  } catch (...) {
+    return {};
+  }
+}
+
+std::unique_ptr<ProductionPluginRuntimeRoot>
+ProductionPluginRuntimeRoot::commit(
+    std::unique_ptr<PreparedPluginRuntime> prepared,
+    ProductionPluginRuntimeHooks &hooks, QObject &ui_owner) {
+  if (!prepared || !prepared->root || !prepared->session ||
+      !prepared->live_binding || QThread::currentThread() != ui_owner.thread())
+    return {};
+  try {
+    auto root = std::move(prepared->root);
+    root->surface_session_ = std::make_unique<RootSurfaceSessionPort>(*root);
+    const auto activated = root->coordinator_.commit(
+        std::move(prepared->session), std::move(*prepared->live_binding),
+        &hooks, &hooks);
+    return activated ? std::move(root) : nullptr;
   } catch (...) {
     return {};
   }
@@ -204,15 +250,23 @@ ProductionPluginRuntimeRoot::ProductionPluginRuntimeRoot(
                        configuration.runtime_limits),
       authority_(std::move(authority)),
       activation_record_(std::move(configuration.activation_record)),
-      coordinator_(
-          configuration.activation_root_fd, configuration.revision_root_fd,
-          configuration.state_root_fd, *authority_, configuration.plugin,
-          configuration.trusted_uid, runtime_factory_,
-          configuration.hooks, configuration.session_limits,
-          configuration.hooks),
+      coordinator_(configuration.activation_root_fd,
+                   configuration.revision_root_fd, configuration.state_root_fd,
+                   *authority_, configuration.plugin, configuration.trusted_uid,
+                   runtime_factory_, configuration.hooks,
+                   configuration.session_limits, configuration.hooks),
       controller_(coordinator_, runtime_factory_.definitions(),
-                  runtime_factory_.scope_validator(), activation_record_),
-      surface_session_(std::make_unique<RootSurfaceSessionPort>(*this)) {}
+                  runtime_factory_.scope_validator(), activation_record_) {
+#ifdef OMARCHY_PLUGIN_SESSION_TESTING
+  if (configuration.test_supervisor_factory)
+    coordinator_.set_supervisor_factory(
+        std::move(configuration.test_supervisor_factory));
+  if (configuration.test_before_final_fence)
+    coordinator_.set_before_final_fence(
+        configuration.test_before_final_fence,
+        configuration.test_before_final_fence_context);
+#endif
+}
 
 ProductionPluginRuntimeRoot::~ProductionPluginRuntimeRoot() noexcept {
   // Destruction concurrent with a public call is outside the ownership
@@ -280,6 +334,29 @@ ProductionPluginRuntimeRoot::surface_session() noexcept {
 }
 
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
+std::unique_ptr<ProductionPluginRuntimeRoot>
+ProductionPluginRuntimeRootTestAccess::commit(
+    std::unique_ptr<PreparedPluginRuntime> prepared,
+    ProductionPluginRuntimeHooks &hooks, QObject &ui_owner) {
+  return ProductionPluginRuntimeRoot::commit(std::move(prepared), hooks,
+                                             ui_owner);
+}
+
+bool ProductionPluginRuntimeRootTestAccess::ui_affine(
+    const ProductionPluginRuntimeRoot &root,
+    const QObject &ui_owner) noexcept {
+  const auto *session = root.coordinator_.session();
+  return session != nullptr &&
+         PluginSessionTestAccess::ui_affine(*session, ui_owner.thread());
+}
+
+bool ProductionPluginRuntimeRootTestAccess::hooks_are(
+    const ProductionPluginRuntimeRoot &root,
+    const ProductionPluginRuntimeHooks &hooks) noexcept {
+  return PluginActivationCoordinatorTestAccess::hooks_are(
+      root.coordinator_, &hooks, &hooks);
+}
+
 void ProductionPluginRuntimeRootTestAccess::set_supervisor_factory(
     ProductionPluginRuntimeRoot &root,
     std::function<launcher::Supervisor()> factory) {

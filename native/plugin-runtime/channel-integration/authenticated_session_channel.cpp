@@ -95,7 +95,7 @@ public:
 
   [[nodiscard]] bool dispatch(const wire::PacketView &) override {
     // Product sessions settle broker traffic through BrokerSessionSettlement.
-    // AuthenticatedBrokerChannel's legacy dispatcher path is unreachable.
+    // Product sessions settle broker traffic without this dispatcher path.
     return false;
   }
 
@@ -105,12 +105,11 @@ private:
 
 class ProductionBackend final : public AuthenticatedSessionBackend {
 public:
-  ProductionBackend(launcher::Supervisor supervisor,
-                    AuthenticatedSessionLaunch launch,
+  ProductionBackend(
+      launcher::Supervisor supervisor, AuthenticatedSessionLaunch launch,
                     std::shared_ptr<const GenerationAuthority> authority,
                     std::unique_ptr<AuthenticatedSessionRuntime> runtime,
-                    std::shared_ptr<runtime::GestureEligibilityLatch>
-                        gesture_eligibility)
+      std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility)
       : supervisor_(std::move(supervisor)), launch_(std::move(launch)),
         dispatcher_(std::make_shared<IdentityOnlyDispatcher>(launch_.binding)),
         authority_(std::move(authority)), runtime_(std::move(runtime)),
@@ -154,8 +153,7 @@ public:
       return session::ChannelError::launch_failed;
     }
     try {
-      settlement_.emplace(*channel_, *broker(),
-                          std::move(*extracted.admission),
+      settlement_.emplace(*channel_, *broker(), std::move(*extracted.admission),
                           gesture_eligibility_.get());
     } catch (...) {
       (void)channel_->terminate(deadline);

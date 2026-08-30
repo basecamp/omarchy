@@ -32,8 +32,8 @@ struct ProductionSurfaceDescription final {
 };
 
 // UI/event-loop-confined access to one root-owned running session. A
-// description is not publication readiness: the future manager must also
-// complete N6B permission projection before exposing this surface to QML.
+// description is not publication readiness: the manager must also complete
+// exact permission projection before exposing this surface to QML.
 // This seam deliberately exposes neither PluginSession nor permission and
 // lifecycle authorities.
 class ProductionSurfaceSessionPort {

@@ -12,6 +12,7 @@
 namespace omarchy::plugin_runtime::channel {
 
 class PluginPermissionController;
+class ProductionPluginRuntimeRoot;
 
 struct PluginActivationResult final {
   PluginSession *session = nullptr;
@@ -21,6 +22,20 @@ struct PluginActivationResult final {
 
   [[nodiscard]] explicit operator bool() const noexcept {
     return session != nullptr &&
+           activation_error == host_session::ActivationError::none &&
+           session_error == PluginSessionCreateError::none;
+  }
+};
+
+struct PluginActivationPreparationResult final {
+  std::unique_ptr<PreparedPluginSession> prepared;
+  std::optional<host_session::PreparedLiveBinding> live_binding;
+  host_session::ActivationError activation_error =
+      host_session::ActivationError::none;
+  PluginSessionCreateError session_error = PluginSessionCreateError::none;
+
+  [[nodiscard]] explicit operator bool() const noexcept {
+    return prepared != nullptr && live_binding.has_value() &&
            activation_error == host_session::ActivationError::none &&
            session_error == PluginSessionCreateError::none;
   }
@@ -45,6 +60,12 @@ public:
   void stop() noexcept;
 
 private:
+  [[nodiscard]] PluginActivationPreparationResult
+  prepare(std::string_view record_name);
+  [[nodiscard]] PluginActivationResult
+  commit(std::unique_ptr<PreparedPluginSession> prepared,
+         host_session::PreparedLiveBinding live_binding,
+         PluginSessionEvents *events, SurfaceIntentSink *intent_sink);
   [[nodiscard]] launcher::Supervisor supervisor() const;
   [[nodiscard]] std::optional<host_session::VerifiedRevision>
   verify_revision(std::string_view record_name) const;
@@ -62,11 +83,18 @@ private:
   std::unique_ptr<PluginSession> session_;
 
   friend class PluginPermissionController;
+  friend class ProductionPluginRuntimeRoot;
 
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
   using SupervisorFactory = std::function<launcher::Supervisor()>;
+  using BeforeFinalFence =
+      void (*)(host_session::AuthorityStore &, void *) noexcept;
   SupervisorFactory supervisor_factory_;
+  BeforeFinalFence before_final_fence_ = nullptr;
+  void *before_final_fence_context_ = nullptr;
   void set_supervisor_factory(SupervisorFactory factory);
+  void set_before_final_fence(BeforeFinalFence callback,
+                              void *context) noexcept;
   friend class PluginActivationCoordinatorTestAccess;
 #endif
 };
@@ -77,6 +105,14 @@ public:
   static void set_supervisor_factory(
       PluginActivationCoordinator &coordinator,
       PluginActivationCoordinator::SupervisorFactory factory);
+  static void set_before_final_fence(
+      PluginActivationCoordinator &coordinator,
+      PluginActivationCoordinator::BeforeFinalFence callback,
+      void *context) noexcept;
+  [[nodiscard]] static bool hooks_are(
+      const PluginActivationCoordinator &coordinator,
+      const PluginSessionEvents *events,
+      const SurfaceIntentSink *intent_sink) noexcept;
 };
 #endif
 

@@ -6,8 +6,8 @@
 #include <sys/random.h>
 
 #include <algorithm>
-#include <chrono>
 #include <cerrno>
+#include <chrono>
 #include <limits>
 #include <utility>
 
@@ -52,8 +52,7 @@ bool valid_snapshot(const session::ActivationSnapshot &snapshot) {
          plugins::manifest::requested_capability_fingerprint(
              snapshot.manifest.requests) ==
              snapshot.grants.source_request_fingerprint.view() &&
-         snapshot.manifest.surface_names.size() <=
-             wire::kMaximumPluginSurfaces))
+        snapshot.manifest.surface_names.size() <= wire::kMaximumPluginSurfaces))
     return false;
   permissions::validate_requests(snapshot.grants.requests);
   permissions::validate_grants(snapshot.grants.grants,
@@ -90,8 +89,7 @@ RenderDestination render_destination(const session::OwnedMessage &message) {
   }
   if (type == RenderMessageType::input_regions) {
     session::surface::InputRegionUpdate regions{};
-    if (!session::surface::decode_input_region_update(message.payload,
-                                                       regions))
+    if (!session::surface::decode_input_region_update(message.payload, regions))
       return {.surface = std::nullopt, .valid = false};
     return {.surface = regions.surface, .valid = true};
   }
@@ -126,12 +124,10 @@ private:
   std::shared_ptr<session::LiveGenerationState> live_;
 };
 
-std::unique_ptr<PluginSession> PluginSession::create(
+std::unique_ptr<PreparedPluginSession> PluginSession::prepare(
     launcher::Supervisor supervisor, session::ActivationSnapshot snapshot,
     AuthenticatedSessionRuntimeFactory &runtime_factory,
-    PluginSessionCreateError &error, PluginSessionEvents *events,
-    session::SessionLimits limits, SurfaceIntentSink *intent_sink,
-    QObject *parent) {
+    PluginSessionCreateError &error, session::SessionLimits limits) {
   error = PluginSessionCreateError::invalid_activation;
   try {
     if (!valid_snapshot(snapshot))
@@ -150,10 +146,10 @@ std::unique_ptr<PluginSession> PluginSession::create(
     auto gesture_clock = std::make_shared<SteadyGestureClock>();
     auto gesture_eligibility =
         std::make_shared<runtime::GestureEligibilityLatch>(gesture_clock);
-    auto runtime = runtime_factory.create(
-        snapshot.manifest, snapshot.grants, snapshot.revision_directory.get(),
-        snapshot.state_directory.get(), nonce, snapshot.live,
-        gesture_eligibility);
+    auto runtime = runtime_factory.create(snapshot.manifest, snapshot.grants,
+                                          snapshot.revision_directory.get(),
+                                          snapshot.state_directory.get(), nonce,
+                                          snapshot.live, gesture_eligibility);
     if (!runtime) {
       error = PluginSessionCreateError::runtime_unavailable;
       return {};
@@ -165,8 +161,7 @@ std::unique_ptr<PluginSession> PluginSession::create(
         .generation = binding.generation,
         .session_nonce = nonce,
     };
-    auto authority =
-        std::make_shared<LiveAuthority>(binding, snapshot.live);
+    auto authority = std::make_shared<LiveAuthority>(binding, snapshot.live);
     AuthenticatedSessionLaunch launch{
         .binding = binding,
         .revision_directory =
@@ -177,18 +172,55 @@ std::unique_ptr<PluginSession> PluginSession::create(
     auto channel = std::make_unique<AuthenticatedSessionChannel>(
         std::move(supervisor), std::move(launch), std::move(authority),
         std::move(runtime), gesture_eligibility);
-    auto product = std::unique_ptr<PluginSession>(new PluginSession(
+    auto product =
+        std::unique_ptr<PreparedPluginSession>(new PreparedPluginSession(
         std::move(token), std::move(snapshot.activation_record),
-        std::move(snapshot.manifest),
-        std::move(snapshot.grants), std::move(snapshot.live),
-        std::move(channel), events, intent_sink,
-        std::move(gesture_eligibility), limits, parent));
+            std::move(snapshot.manifest), std::move(snapshot.grants),
+            std::move(snapshot.live), std::move(channel),
+            std::move(gesture_eligibility), limits));
     error = PluginSessionCreateError::none;
     return product;
   } catch (...) {
     error = PluginSessionCreateError::allocation_failed;
     return {};
   }
+}
+
+std::unique_ptr<PluginSession>
+PluginSession::commit(std::unique_ptr<PreparedPluginSession> prepared,
+                      PluginSessionCreateError &error,
+                      PluginSessionEvents *events,
+                      SurfaceIntentSink *intent_sink, QObject *parent) {
+  if (!prepared) {
+    error = PluginSessionCreateError::invalid_activation;
+    return {};
+  }
+  try {
+    auto product = std::unique_ptr<PluginSession>(new PluginSession(
+        std::move(prepared->token), std::move(prepared->activation_record),
+        std::move(prepared->manifest), std::move(prepared->grants),
+        std::move(prepared->live), std::move(prepared->channel), events,
+        intent_sink, std::move(prepared->gesture_eligibility), prepared->limits,
+        parent));
+    error = PluginSessionCreateError::none;
+    return product;
+  } catch (...) {
+    error = PluginSessionCreateError::allocation_failed;
+    return {};
+  }
+}
+
+std::unique_ptr<PluginSession> PluginSession::create(
+    launcher::Supervisor supervisor, session::ActivationSnapshot snapshot,
+    AuthenticatedSessionRuntimeFactory &runtime_factory,
+    PluginSessionCreateError &error, PluginSessionEvents *events,
+    session::SessionLimits limits, SurfaceIntentSink *intent_sink,
+    QObject *parent) {
+  auto prepared = prepare(std::move(supervisor), std::move(snapshot),
+                          runtime_factory, error, limits);
+  return prepared
+             ? commit(std::move(prepared), error, events, intent_sink, parent)
+             : nullptr;
 }
 
 PluginSession::PluginSession(
@@ -202,9 +234,9 @@ PluginSession::PluginSession(
     session::SessionLimits limits, QObject *parent)
     : SessionObserver(parent), token_(std::move(token)),
       activation_record_(std::move(activation_record)),
-      manifest_(std::move(manifest)),
-      grants_(std::move(grants)), live_(std::move(live)),
-      router_(token_.generation), events_(events), intent_sink_(intent_sink),
+      manifest_(std::move(manifest)), grants_(std::move(grants)),
+      live_(std::move(live)), router_(token_.generation), events_(events),
+      intent_sink_(intent_sink),
       gesture_eligibility_(std::move(gesture_eligibility)),
       gesture_intents_(std::make_unique<host_session::GestureIntentAuthority>(
           grants_.binding, *gesture_eligibility_)),
@@ -223,9 +255,7 @@ PluginSession::PluginSession(
   }
 }
 
-PluginSession::~PluginSession() {
-  stop();
-}
+PluginSession::~PluginSession() { stop(); }
 
 void PluginSession::start() { io_->start(); }
 
@@ -374,9 +404,9 @@ void PluginSession::state_changed(session::SessionState state,
 
 void PluginSession::message_received(session::OwnedMessage message) {
   if (message.lane == session::ChannelLane::render) {
-    if (message.message_type == static_cast<std::uint16_t>(
-                                    session::surface::RenderMessageType::
-                                        surface_intent)) {
+    if (message.message_type ==
+        static_cast<std::uint16_t>(
+            session::surface::RenderMessageType::surface_intent)) {
       session::surface::SurfaceIntentRequest request{};
       if (message.correlation_id != 0 || !message.descriptors.empty() ||
           !session::surface::decode_surface_intent(message.payload, request)) {
@@ -427,13 +457,21 @@ void PluginSession::detach_all() noexcept {
 PluginSession::SurfaceSlot *
 PluginSession::find_surface(std::string_view name) noexcept {
   const auto found =
-      std::find_if(surfaces_.begin(), surfaces_.end(), [name](const auto &slot) {
-        return slot.name == name;
-      });
+      std::find_if(surfaces_.begin(), surfaces_.end(),
+                   [name](const auto &slot) { return slot.name == name; });
   return found == surfaces_.end() ? nullptr : &*found;
 }
 
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
+std::unique_ptr<PreparedPluginSession>
+PluginSessionTestAccess::prepare_from_activation(
+    launcher::Supervisor supervisor, session::ActivationSnapshot snapshot,
+    AuthenticatedSessionRuntimeFactory &runtime_factory,
+    PluginSessionCreateError &error, session::SessionLimits limits) {
+  return PluginSession::prepare(std::move(supervisor), std::move(snapshot),
+                                runtime_factory, error, limits);
+}
+
 std::unique_ptr<PluginSession> PluginSessionTestAccess::create_from_activation(
     launcher::Supervisor supervisor, session::ActivationSnapshot snapshot,
     AuthenticatedSessionRuntimeFactory &runtime_factory,
@@ -460,10 +498,9 @@ std::unique_ptr<PluginSession> PluginSessionTestAccess::create(
     gesture_eligibility =
         std::make_shared<runtime::GestureEligibilityLatch>(gesture_clock);
   return std::unique_ptr<PluginSession>(new PluginSession(
-      std::move(token), session::OwnedDescriptor{},
-      std::move(manifest), std::move(grants),
-      std::move(live), std::move(channel), events, intent_sink,
-      std::move(gesture_eligibility), limits, nullptr));
+      std::move(token), session::OwnedDescriptor{}, std::move(manifest),
+      std::move(grants), std::move(live), std::move(channel), events,
+      intent_sink, std::move(gesture_eligibility), limits, nullptr));
 }
 
 int PluginSessionTestAccess::activation_record_fd(
@@ -472,8 +509,15 @@ int PluginSessionTestAccess::activation_record_fd(
 }
 
 std::shared_ptr<session::LiveGenerationState>
-PluginSessionTestAccess::live_generation(const PluginSession &session) noexcept {
+PluginSessionTestAccess::live_generation(
+    const PluginSession &session) noexcept {
   return session.live_;
+}
+
+bool PluginSessionTestAccess::ui_affine(const PluginSession &session,
+                                        const QThread *thread) noexcept {
+  return session.QObject::thread() == thread && session.io_ &&
+         session.io_->thread() == thread;
 }
 
 void PluginSessionTestAccess::set_surface_attach_fault(

@@ -1,13 +1,14 @@
 #pragma once
 
-#include "authenticated_session_channel.hpp"
 #include "../host-session/MultiSurfaceRouter.h"
 #include "../host-session/activation_snapshot.hpp"
 #include "../host-session/gesture_intent.hpp"
+#include "authenticated_session_channel.hpp"
 
 #include <memory>
 #include <span>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace omarchy::plugin_runtime::channel {
@@ -16,6 +17,7 @@ namespace omarchy::plugin_runtime::channel {
 class PluginSessionTestAccess;
 #endif
 class PluginActivationCoordinator;
+class PreparedPluginSession;
 
 class AuthenticatedSessionRuntimeFactory {
 public:
@@ -96,8 +98,7 @@ public:
   PluginSession &operator=(const PluginSession &) = delete;
 
   void start();
-  [[nodiscard]] bool send(session::ChannelLane lane,
-                          std::uint16_t message_type,
+  [[nodiscard]] bool send(session::ChannelLane lane, std::uint16_t message_type,
                           std::uint64_t correlation_id,
                           std::vector<std::byte> payload,
                           std::vector<session::OwnedFd> descriptors = {});
@@ -112,8 +113,7 @@ public:
                             const session::SurfaceEndpoint &endpoint) noexcept;
   // Called only by the trusted input path after InputGate accepts physical
   // input. If the input packet cannot be sent, the caller must clear the arm.
-  [[nodiscard]] bool
-  arm_surface_intent(session::surface::SurfaceKey source,
+  [[nodiscard]] bool arm_surface_intent(session::surface::SurfaceKey source,
                      std::uint64_t input_sequence);
   void clear_surface_intent_eligibility() noexcept;
   [[nodiscard]] std::size_t surface_count() const noexcept;
@@ -125,6 +125,14 @@ public:
   [[nodiscard]] const session::policy::GrantSnapshot &grants() const noexcept;
 
 private:
+  [[nodiscard]] static std::unique_ptr<PreparedPluginSession>
+  prepare(launcher::Supervisor supervisor, session::ActivationSnapshot snapshot,
+          AuthenticatedSessionRuntimeFactory &runtime_factory,
+          PluginSessionCreateError &error, session::SessionLimits limits);
+  [[nodiscard]] static std::unique_ptr<PluginSession>
+  commit(std::unique_ptr<PreparedPluginSession> prepared,
+         PluginSessionCreateError &error, PluginSessionEvents *events,
+         SurfaceIntentSink *intent_sink, QObject *parent);
   [[nodiscard]] static std::unique_ptr<PluginSession>
   create(launcher::Supervisor supervisor, session::ActivationSnapshot snapshot,
          AuthenticatedSessionRuntimeFactory &runtime_factory,
@@ -133,17 +141,15 @@ private:
          SurfaceIntentSink *intent_sink = nullptr, QObject *parent = nullptr);
 
   class LiveAuthority;
-  PluginSession(session::SessionToken token,
-                session::OwnedDescriptor activation_record,
+  PluginSession(
+      session::SessionToken token, session::OwnedDescriptor activation_record,
                 plugins::manifest::ManifestV2 manifest,
                 session::policy::GrantSnapshot grants,
                 std::shared_ptr<session::LiveGenerationState> live,
                 std::unique_ptr<session::SessionChannel> channel,
                 PluginSessionEvents *events, SurfaceIntentSink *intent_sink,
-                std::shared_ptr<runtime::GestureEligibilityLatch>
-                    gesture_eligibility,
-                session::SessionLimits limits,
-                QObject *parent);
+      std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility,
+      session::SessionLimits limits, QObject *parent);
 
   void state_changed(session::SessionState state,
                      session::SessionError error) override;
@@ -178,19 +184,61 @@ private:
   friend class PluginActivationCoordinator;
 };
 
+// Fully validated and assembled activation state with no QObject ownership or
+// effects. It may cross from a lifecycle worker to the UI thread; only
+// PluginSession::commit constructs the observer and PluginSessionIo there.
+class PreparedPluginSession final {
+public:
+  PreparedPluginSession(PreparedPluginSession &&) noexcept = default;
+  PreparedPluginSession &operator=(PreparedPluginSession &&) noexcept = default;
+  PreparedPluginSession(const PreparedPluginSession &) = delete;
+  PreparedPluginSession &operator=(const PreparedPluginSession &) = delete;
+
+private:
+  PreparedPluginSession(
+      session::SessionToken token, session::OwnedDescriptor activation_record,
+      plugins::manifest::ManifestV2 manifest,
+      session::policy::GrantSnapshot grants,
+      std::shared_ptr<session::LiveGenerationState> live,
+      std::unique_ptr<session::SessionChannel> channel,
+      std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility,
+      session::SessionLimits limits) noexcept
+      : token(std::move(token)),
+        activation_record(std::move(activation_record)),
+        manifest(std::move(manifest)), grants(std::move(grants)),
+        live(std::move(live)), channel(std::move(channel)),
+        gesture_eligibility(std::move(gesture_eligibility)), limits(limits) {}
+
+  session::SessionToken token;
+  session::OwnedDescriptor activation_record;
+  plugins::manifest::ManifestV2 manifest;
+  session::policy::GrantSnapshot grants;
+  std::shared_ptr<session::LiveGenerationState> live;
+  std::unique_ptr<session::SessionChannel> channel;
+  std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility;
+  session::SessionLimits limits;
+
+  friend class PluginSession;
+  friend class PluginActivationCoordinator;
+};
+
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
 class PluginSessionTestAccess final {
 public:
-  [[nodiscard]] static std::unique_ptr<PluginSession>
-  create_from_activation(
+  [[nodiscard]] static std::unique_ptr<PreparedPluginSession>
+  prepare_from_activation(launcher::Supervisor supervisor,
+                          session::ActivationSnapshot snapshot,
+                          AuthenticatedSessionRuntimeFactory &runtime_factory,
+                          PluginSessionCreateError &error,
+                          session::SessionLimits limits = {});
+  [[nodiscard]] static std::unique_ptr<PluginSession> create_from_activation(
       launcher::Supervisor supervisor, session::ActivationSnapshot snapshot,
       AuthenticatedSessionRuntimeFactory &runtime_factory,
       PluginSessionCreateError &error, PluginSessionEvents *events = nullptr,
       session::SessionLimits limits = {},
       SurfaceIntentSink *intent_sink = nullptr, QObject *parent = nullptr);
   [[nodiscard]] static std::unique_ptr<PluginSession>
-  create(session::SessionToken token,
-         plugins::manifest::ManifestV2 manifest,
+  create(session::SessionToken token, plugins::manifest::ManifestV2 manifest,
          session::policy::GrantSnapshot grants,
          std::shared_ptr<session::LiveGenerationState> live,
          std::unique_ptr<session::SessionChannel> channel,
@@ -198,12 +246,14 @@ public:
          session::SessionLimits limits = {},
          SurfaceIntentSink *intent_sink = nullptr,
          std::shared_ptr<runtime::GestureEligibilityClock> gesture_clock = {},
-         std::shared_ptr<runtime::GestureEligibilityLatch>
-             gesture_eligibility = {});
+         std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility =
+             {});
   [[nodiscard]] static int
   activation_record_fd(const PluginSession &session) noexcept;
   [[nodiscard]] static std::shared_ptr<session::LiveGenerationState>
   live_generation(const PluginSession &session) noexcept;
+  [[nodiscard]] static bool ui_affine(const PluginSession &session,
+                                      const QThread *thread) noexcept;
   static void set_surface_attach_fault(PluginSession &session,
                                        SurfaceAttachFault fault) noexcept;
 };

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "production_plugin_catalog.hpp"
 #include "production_plugin_roots.hpp"
 #include "production_plugin_runtime_root.hpp"
 
@@ -42,6 +43,11 @@ public:
   open_runtime(std::string_view record_name,
                const permissions::PluginId &plugin,
                ProductionPluginRuntimeHooks &hooks) const noexcept;
+  [[nodiscard]] std::unique_ptr<PreparedPluginRuntime>
+  prepare_runtime(std::string_view record_name,
+                  const permissions::PluginId &plugin) const noexcept;
+  [[nodiscard]] std::unique_ptr<ProductionPluginCatalog>
+  scan_catalog(ProductionPluginCatalogError &error) const noexcept;
 
   [[nodiscard]] const definitions::TrustedDefinitionRegistry &
   definitions() const noexcept {
@@ -57,14 +63,15 @@ private:
       std::shared_ptr<const definitions::TrustedDefinitionRegistry> definitions,
       std::shared_ptr<const ProductionRuntimeServices> services) noexcept;
   [[nodiscard]] static std::unique_ptr<ProductionPluginBootstrap>
-  compose_from_filesystem_root(
-      std::unique_ptr<ProductionPluginRoots> roots, int filesystem_root_fd,
+  compose_from_filesystem_root(std::unique_ptr<ProductionPluginRoots> roots,
+                               int filesystem_root_fd,
       std::uint32_t definition_uid,
       ProductionPluginBootstrapError &error);
   [[nodiscard]] std::optional<ProductionPluginRuntimeConfiguration>
   configuration(std::string_view record_name,
                 const permissions::PluginId &plugin,
-                ProductionPluginRuntimeHooks *hooks) const;
+                ProductionPluginRuntimeHooks *hooks,
+                bool preparation = false) const;
 
 #ifdef OMARCHY_PRODUCTION_PLUGIN_BOOTSTRAP_TESTING
   [[nodiscard]] static std::unique_ptr<ProductionPluginBootstrap>
@@ -72,11 +79,13 @@ private:
       std::unique_ptr<ProductionPluginRoots> roots, int filesystem_root_fd,
       std::uint32_t definition_uid,
       ProductionPluginBootstrapError &error) noexcept;
-  [[nodiscard]] static bool adapter_available_for_test(
-      std::string_view adapter_class, const definitions::Digest &digest,
+  [[nodiscard]] static bool
+  adapter_available_for_test(std::string_view adapter_class,
+                             const definitions::Digest &digest,
       std::uint32_t abi_version) noexcept;
-  [[nodiscard]] static bool authority_directory_accepted_for_test(
-      std::uint32_t owner_uid, std::uint32_t mode,
+  [[nodiscard]] static bool
+  authority_directory_accepted_for_test(std::uint32_t owner_uid,
+                                        std::uint32_t mode,
       std::uint32_t trusted_uid) noexcept;
   friend class ProductionPluginBootstrapTestAccess;
 #endif
@@ -92,8 +101,8 @@ private:
 class ProductionPluginBootstrapTestAccess final {
 public:
   [[nodiscard]] static std::unique_ptr<ProductionPluginBootstrap>
-  open_from_filesystem_root(
-      std::unique_ptr<ProductionPluginRoots> roots, int filesystem_root_fd,
+  open_from_filesystem_root(std::unique_ptr<ProductionPluginRoots> roots,
+                            int filesystem_root_fd,
       std::uint32_t definition_uid,
       ProductionPluginBootstrapError &error) noexcept {
     return ProductionPluginBootstrap::open_from_test_filesystem_root(
@@ -106,8 +115,8 @@ public:
     return ProductionPluginBootstrap::adapter_available_for_test(
         adapter_class, digest, abi_version);
   }
-  [[nodiscard]] static bool authority_directory_accepted(
-      std::uint32_t owner_uid, std::uint32_t mode,
+  [[nodiscard]] static bool
+  authority_directory_accepted(std::uint32_t owner_uid, std::uint32_t mode,
       std::uint32_t trusted_uid) noexcept {
     return ProductionPluginBootstrap::authority_directory_accepted_for_test(
         owner_uid, mode, trusted_uid);

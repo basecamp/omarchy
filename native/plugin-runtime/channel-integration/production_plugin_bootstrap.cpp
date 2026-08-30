@@ -49,16 +49,14 @@ bool exact_plugin_id(std::string_view value) noexcept {
                               (character >= '0' && character <= '9');
     const bool separator =
         character == '.' || character == '-' || character == '_';
-    if ((!alphanumeric && !separator) ||
-        (separator && previous_separator))
+    if ((!alphanumeric && !separator) || (separator && previous_separator))
       return false;
     previous_separator = separator;
   }
   return !previous_separator && value.front() >= 'a' && value.front() <= 'z';
 }
 
-OwnedDescriptor open_plugin_authority(int container_fd,
-                                      std::string_view plugin,
+OwnedDescriptor open_plugin_authority(int container_fd, std::string_view plugin,
                                       std::uint32_t uid) {
   // Installation owns creation. Runtime composition only opens the exact
   // pre-provisioned child and never repairs or widens its filesystem policy.
@@ -68,21 +66,22 @@ OwnedDescriptor open_plugin_authority(int container_fd,
       !exact_private_directory(metadata, uid))
     return {};
   const std::string name(plugin);
-  OwnedDescriptor child(::openat(container_fd, name.c_str(),
-                                 O_RDONLY | O_DIRECTORY | O_CLOEXEC |
-                                     O_NOFOLLOW));
+  OwnedDescriptor child(
+      ::openat(container_fd, name.c_str(),
+               O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
   if (!child || ::fstat(child.get(), &metadata) < 0 ||
       !exact_private_directory(metadata, uid))
     return {};
   return child;
 }
 
-FixedDirectoryResult open_fixed_directory(
-    int filesystem_root_fd, std::span<const std::string_view> components,
+FixedDirectoryResult
+open_fixed_directory(int filesystem_root_fd,
+                     std::span<const std::string_view> components,
     std::uint32_t uid, OwnedDescriptor &output) {
-  OwnedDescriptor current(::openat(filesystem_root_fd, ".",
-                                   O_RDONLY | O_DIRECTORY | O_CLOEXEC |
-                                       O_NOFOLLOW));
+  OwnedDescriptor current(
+      ::openat(filesystem_root_fd, ".",
+               O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
   struct stat metadata{};
   if (!current || ::fstat(current.get(), &metadata) < 0 ||
       !secure_root_directory(metadata, uid))
@@ -93,9 +92,9 @@ FixedDirectoryResult open_fixed_directory(
         component.find('/') != std::string_view::npos)
       return FixedDirectoryResult::rejected;
     const std::string name(component);
-    OwnedDescriptor next(::openat(current.get(), name.c_str(),
-                                  O_RDONLY | O_DIRECTORY | O_CLOEXEC |
-                                      O_NOFOLLOW));
+    OwnedDescriptor next(
+        ::openat(current.get(), name.c_str(),
+                 O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
     if (!next) {
       if (errno == ENOENT)
         return FixedDirectoryResult::absent;
@@ -147,15 +146,15 @@ ProductionPluginBootstrap::compose_from_filesystem_root(
     std::uint32_t definition_uid, ProductionPluginBootstrapError &error) {
   const std::string_view version = build_version();
   const std::array<std::string_view, 6> package_components{
-      "usr", "lib", "omarchy", "plugin-security", version,
-      "capabilities.d"};
+      "usr", "lib", "omarchy", "plugin-security", version, "capabilities.d"};
   const std::array<std::string_view, 3> admin_components{
       "etc", "omarchy", "plugin-capabilities.d"};
   OwnedDescriptor package;
   const auto package_result = open_fixed_directory(
       filesystem_root_fd, package_components, definition_uid, package);
   if (package_result != FixedDirectoryResult::opened) {
-    error = package_result == FixedDirectoryResult::absent
+    error =
+        package_result == FixedDirectoryResult::absent
                 ? ProductionPluginBootstrapError::package_definitions_unavailable
                 : ProductionPluginBootstrapError::package_definitions_untrusted;
     return {};
@@ -169,8 +168,8 @@ ProductionPluginBootstrap::compose_from_filesystem_root(
   }
 
   definitions::TrustedDefinitionRegistry registry;
-  const definitions::AdapterVerifier verifier{
-      .available = compiled_adapter_available};
+  const definitions::AdapterVerifier verifier{.available =
+                                                  compiled_adapter_available};
   std::size_t loaded = 0;
   auto load_result = definitions::load_definition_directory_fd(
       package.get(), definitions::DefinitionSource::omarchy_package,
@@ -183,8 +182,8 @@ ProductionPluginBootstrap::compose_from_filesystem_root(
   }
   if (admin_result == FixedDirectoryResult::opened) {
     load_result = definitions::load_definition_directory_fd(
-        admin.get(), definitions::DefinitionSource::local_admin,
-        definition_uid, verifier, registry, loaded);
+        admin.get(), definitions::DefinitionSource::local_admin, definition_uid,
+        verifier, registry, loaded);
     if (load_result != definitions::LoadResult::loaded) {
       error = load_result == definitions::LoadResult::untrusted_path
                   ? ProductionPluginBootstrapError::admin_definitions_untrusted
@@ -210,8 +209,8 @@ ProductionPluginBootstrap::ProductionPluginBootstrap(
     : roots_(std::move(roots)), definitions_(std::move(definitions)),
       services_(std::move(services)) {}
 
-std::unique_ptr<ProductionPluginBootstrap>
-ProductionPluginBootstrap::open(ProductionPluginBootstrapError &error) noexcept {
+std::unique_ptr<ProductionPluginBootstrap> ProductionPluginBootstrap::open(
+    ProductionPluginBootstrapError &error) noexcept {
   error = ProductionPluginBootstrapError::none;
   try {
     ProductionPluginRootsError roots_error{};
@@ -238,14 +237,15 @@ ProductionPluginBootstrap::open(ProductionPluginBootstrapError &error) noexcept 
 }
 
 std::optional<ProductionPluginRuntimeConfiguration>
-ProductionPluginBootstrap::configuration(
-    std::string_view record_name, const permissions::PluginId &plugin,
-    ProductionPluginRuntimeHooks *hooks) const {
-  if (record_name != plugin.view() || hooks == nullptr ||
+ProductionPluginBootstrap::configuration(std::string_view record_name,
+                                         const permissions::PluginId &plugin,
+                                         ProductionPluginRuntimeHooks *hooks,
+                                         bool preparation) const {
+  if (record_name != plugin.view() || (hooks == nullptr && !preparation) ||
       !exact_plugin_id(plugin.view()))
     return std::nullopt;
-  auto authority = open_plugin_authority(
-      roots_->authority_fd(), plugin.view(), roots_->trusted_uid());
+  auto authority = open_plugin_authority(roots_->authority_fd(), plugin.view(),
+                                         roots_->trusted_uid());
   if (!authority)
     return std::nullopt;
   return ProductionPluginRuntimeConfiguration{
@@ -275,6 +275,27 @@ ProductionPluginBootstrap::open_runtime(
   } catch (...) {
     return {};
   }
+}
+
+std::unique_ptr<PreparedPluginRuntime>
+ProductionPluginBootstrap::prepare_runtime(
+    std::string_view record_name,
+    const permissions::PluginId &plugin) const noexcept {
+  try {
+    auto candidate = configuration(record_name, plugin, nullptr, true);
+    return candidate
+               ? ProductionPluginRuntimeRoot::prepare(std::move(*candidate))
+               : nullptr;
+  } catch (...) {
+    return {};
+  }
+}
+
+std::unique_ptr<ProductionPluginCatalog>
+ProductionPluginBootstrap::scan_catalog(
+    ProductionPluginCatalogError &error) const noexcept {
+  return ProductionPluginCatalog::load(roots_->activations_fd(),
+                                       roots_->trusted_uid(), error);
 }
 
 #ifdef OMARCHY_PRODUCTION_PLUGIN_BOOTSTRAP_TESTING

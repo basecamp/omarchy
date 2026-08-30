@@ -14,6 +14,10 @@
 #include <string>
 #include <string_view>
 
+namespace omarchy::plugin_runtime::bridge {
+class PluginManager;
+}
+
 namespace omarchy::plugin_runtime::channel {
 
 class RootSurfaceSessionPort;
@@ -34,9 +38,8 @@ struct ProductionPluginRuntimeConfiguration final {
   int activation_root_fd = -1;
   int revision_root_fd = -1;
   int state_root_fd = -1;
-  // Move-owned exact per-plugin authority directory. The bootstrap opens the
-  // canonical plugin child beneath its fixed authority container; raw callers
-  // remain a temporary N12 seam and must supply the same object.
+  // Move-owned exact per-plugin authority directory. The trusted host opens
+  // the canonical plugin child beneath its fixed authority container.
   host_session::OwnedDescriptor authority_root;
   permissions::PluginId plugin;
   std::uint32_t trusted_uid = std::numeric_limits<std::uint32_t>::max();
@@ -48,7 +51,15 @@ struct ProductionPluginRuntimeConfiguration final {
   ProductionRuntimeLimits runtime_limits;
   session::SessionLimits session_limits;
   ProductionPluginRuntimeHooks *hooks = nullptr;
+#ifdef OMARCHY_PLUGIN_SESSION_TESTING
+  std::function<launcher::Supervisor()> test_supervisor_factory;
+  void (*test_before_final_fence)(host_session::AuthorityStore &,
+                                  void *) noexcept = nullptr;
+  void *test_before_final_fence_context = nullptr;
+#endif
 };
+
+class PreparedPluginRuntime;
 
 // Sole production composition for one secure plugin. Every authority-bearing
 // input is fixed by the trusted host before this root exists. Plugin QML,
@@ -58,6 +69,8 @@ class ProductionPluginRuntimeRoot final {
 public:
   [[nodiscard]] static std::unique_ptr<ProductionPluginRuntimeRoot>
   open(ProductionPluginRuntimeConfiguration &&configuration);
+  [[nodiscard]] static std::unique_ptr<PreparedPluginRuntime>
+  prepare(ProductionPluginRuntimeConfiguration &&configuration);
 
   ~ProductionPluginRuntimeRoot() noexcept;
   ProductionPluginRuntimeRoot(const ProductionPluginRuntimeRoot &) = delete;
@@ -82,11 +95,14 @@ public:
   void stop();
   [[nodiscard]] std::optional<permissions::ActivationBinding>
   session_binding() const;
-  // Transport-only seam. N6B permission projection and the production manager
-  // remain mandatory before any declaration may be published to QML.
+  // Transport-only seam. Permission projection through the production manager
+  // remains mandatory before any declaration may be published to QML.
   [[nodiscard]] ProductionSurfaceSessionPort &surface_session() noexcept;
 
 private:
+  [[nodiscard]] static std::unique_ptr<ProductionPluginRuntimeRoot>
+  commit(std::unique_ptr<PreparedPluginRuntime> prepared,
+         ProductionPluginRuntimeHooks &hooks, QObject &ui_owner);
   ProductionPluginRuntimeRoot(
       ProductionPluginRuntimeConfiguration &configuration,
       std::unique_ptr<host_session::AuthorityStore> authority);
@@ -101,18 +117,45 @@ private:
 
   friend class ProductionSurfaceSessionPort;
   friend class RootSurfaceSessionPort;
+  friend class PreparedPluginRuntime;
+  friend class omarchy::plugin_runtime::bridge::PluginManager;
 
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
   friend class ProductionPluginRuntimeRootTestAccess;
 #endif
 };
 
+class PreparedPluginRuntime final {
+public:
+  PreparedPluginRuntime(PreparedPluginRuntime &&) noexcept = default;
+  PreparedPluginRuntime &operator=(PreparedPluginRuntime &&) noexcept = default;
+  PreparedPluginRuntime(const PreparedPluginRuntime &) = delete;
+  PreparedPluginRuntime &operator=(const PreparedPluginRuntime &) = delete;
+
+private:
+  PreparedPluginRuntime() = default;
+  std::unique_ptr<ProductionPluginRuntimeRoot> root;
+  std::unique_ptr<PreparedPluginSession> session;
+  std::optional<host_session::PreparedLiveBinding> live_binding;
+
+  friend class ProductionPluginRuntimeRoot;
+};
+
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
 class ProductionPluginRuntimeRootTestAccess final {
 public:
-  static void set_supervisor_factory(
-      ProductionPluginRuntimeRoot &root,
-      std::function<launcher::Supervisor()> factory);
+  [[nodiscard]] static std::unique_ptr<ProductionPluginRuntimeRoot>
+  commit(std::unique_ptr<PreparedPluginRuntime> prepared,
+         ProductionPluginRuntimeHooks &hooks, QObject &ui_owner);
+  [[nodiscard]] static bool ui_affine(
+      const ProductionPluginRuntimeRoot &root,
+      const QObject &ui_owner) noexcept;
+  [[nodiscard]] static bool hooks_are(
+      const ProductionPluginRuntimeRoot &root,
+      const ProductionPluginRuntimeHooks &hooks) noexcept;
+  static void
+  set_supervisor_factory(ProductionPluginRuntimeRoot &root,
+                         std::function<launcher::Supervisor()> factory);
   [[nodiscard]] static std::shared_ptr<session::LiveGenerationState>
   live_generation(const ProductionPluginRuntimeRoot &root) noexcept;
 };

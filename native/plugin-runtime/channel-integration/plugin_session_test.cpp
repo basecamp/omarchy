@@ -1,11 +1,11 @@
-#include "plugin_session.hpp"
-#include "plugin_activation_coordinator.hpp"
-#include "plugin_permission_controller.hpp"
-#include "production_plugin_runtime_root.hpp"
 #include "audit_store.hpp"
 #include "broker_runtime.hpp"
 #include "dynamic_broker_runtime.hpp"
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
+#include "plugin_activation_coordinator.hpp"
+#include "plugin_permission_controller.hpp"
+#include "plugin_session.hpp"
+#include "production_plugin_runtime_root.hpp"
 #include "structured_broker.hpp"
 
 #include <QCoreApplication>
@@ -79,8 +79,8 @@ permissions::ActivationBinding binding() {
 policy::GrantSnapshot grants() {
   policy::GrantSnapshot value;
   value.binding = binding();
-  value.source_request_fingerprint = permissions::Digest(
-      manifest::requested_capability_fingerprint({}));
+  value.source_request_fingerprint =
+      permissions::Digest(manifest::requested_capability_fingerprint({}));
   return value;
 }
 
@@ -152,8 +152,8 @@ public:
   bool fence_builtin(const policy::Revocation &) noexcept override {
     return true;
   }
-  bool fence_dynamic(
-      const definitions::DynamicRevisionGrant &) noexcept override {
+  bool
+  fence_dynamic(const definitions::DynamicRevisionGrant &) noexcept override {
     return true;
   }
 
@@ -164,16 +164,15 @@ private:
 
 class RuntimeOwner final : public channel::AuthenticatedSessionRuntime {
 public:
-  RuntimeOwner(policy::GrantSnapshot snapshot, std::uint64_t nonce,
+  RuntimeOwner(
+      policy::GrantSnapshot snapshot, std::uint64_t nonce,
                std::shared_ptr<std::atomic<int>> destructions,
                std::shared_ptr<host::LiveGenerationState> live_generation,
-               std::shared_ptr<runtime::GestureEligibilityLatch>
-                   gesture_eligibility)
+      std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility)
       : destructions_(std::move(destructions)),
         live_generation_(std::move(live_generation)),
         gesture_eligibility_(std::move(gesture_eligibility)),
-        dispatch_(live_generation_),
-        builtin_(snapshot, {}, audit_),
+        dispatch_(live_generation_), builtin_(snapshot, {}, audit_),
         dynamic_(definitions_, {}, audit_),
         broker_(snapshot.binding, nonce, builtin_, dynamic_, dispatch_) {}
   ~RuntimeOwner() override { ++*destructions_; }
@@ -191,15 +190,16 @@ private:
   host::StructuredBroker broker_;
 };
 
-class RuntimeFactory final : public channel::AuthenticatedSessionRuntimeFactory {
+class RuntimeFactory final
+    : public channel::AuthenticatedSessionRuntimeFactory {
 public:
   std::unique_ptr<channel::AuthenticatedSessionRuntime>
   create(const manifest::ManifestV2 &verified_manifest,
          const policy::GrantSnapshot &snapshot, int revision_directory_fd,
          int private_state_directory_fd, std::uint64_t nonce,
          std::shared_ptr<host::LiveGenerationState> live_generation,
-         std::shared_ptr<runtime::GestureEligibilityLatch>
-             gesture_eligibility) override {
+         std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility)
+      override {
     ++calls;
     if (on_create)
       on_create();
@@ -227,8 +227,7 @@ public:
     }
     saw_manifest = verified_manifest.surface_names ==
                    std::vector<std::string>({"bar", "panel", "overlay"});
-    descriptors_valid =
-        ::fcntl(revision_directory_fd, F_GETFD) >= 0 &&
+    descriptors_valid = ::fcntl(revision_directory_fd, F_GETFD) >= 0 &&
         ::fcntl(private_state_directory_fd, F_GETFD) >= 0;
     gesture_authority_valid = gesture_eligibility != nullptr;
     live_generation_valid =
@@ -284,8 +283,8 @@ public:
     manifest::ManifestV2 verified_manifest;
     verified_manifest.id = std::string(snapshot_grants.binding.plugin.view());
     verified_manifest.surface_names = {"bar", "panel", "overlay"};
-    const int record = ::open((revision_ / "d1-mode").c_str(),
-                              O_RDONLY | O_CLOEXEC);
+    const int record =
+        ::open((revision_ / "d1-mode").c_str(), O_RDONLY | O_CLOEXEC);
     const int revision =
         ::open(revision_.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     const int state =
@@ -293,7 +292,8 @@ public:
     require(record >= 0 && revision >= 0 && state >= 0,
             "cannot open exact product activation descriptors");
     return {
-        .record = {.plugin_id = std::string(snapshot_grants.binding.plugin.view()),
+        .record = {.plugin_id =
+                       std::string(snapshot_grants.binding.plugin.view()),
                    .revision_directory = "revision",
                    .revision_sha256 =
                        std::string(snapshot_grants.binding.revision.view()),
@@ -334,8 +334,8 @@ public:
     std::filesystem::copy(COORDINATOR_REVISION_FIXTURE, revision_,
                           std::filesystem::copy_options::recursive);
     std::ofstream(revision_ / "d1-mode") << worker_mode << '\n';
-    for (const auto &entry : std::filesystem::recursive_directory_iterator(
-             revision_)) {
+    for (const auto &entry :
+         std::filesystem::recursive_directory_iterator(revision_)) {
       const mode_t mode = entry.is_directory() ? 0555 : 0444;
       require(::chmod(entry.path().c_str(), mode) == 0,
               "cannot make verified revision immutable");
@@ -352,8 +352,8 @@ public:
     revisions_fd_ = open_directory(revisions_);
     state_fd_ = open_directory(state_);
     authority_fd_ = open_directory(authority_);
-    store_ = host::AuthorityStore::open(
-        authority_fd_, ::getuid(), permissions::PluginId(plugin_));
+    store_ = host::AuthorityStore::open(authority_fd_, ::getuid(),
+                                        permissions::PluginId(plugin_));
     require(store_ != nullptr, "cannot open coordinator authority store");
     const int revision_fd = open_directory(revision_);
     host::DescriptorRevisionVerifier verifier;
@@ -365,11 +365,12 @@ public:
 
   ~CoordinatorFixture() {
     store_.reset();
-    for (const int fd : {activation_fd_, revisions_fd_, state_fd_, authority_fd_})
+    for (const int fd :
+         {activation_fd_, revisions_fd_, state_fd_, authority_fd_})
       if (fd >= 0)
         ::close(fd);
-    for (const auto &entry : std::filesystem::recursive_directory_iterator(
-             revisions_))
+    for (const auto &entry :
+         std::filesystem::recursive_directory_iterator(revisions_))
       if (entry.is_directory())
         static_cast<void>(::chmod(entry.path().c_str(), 0755));
     static_cast<void>(::chmod(revision_.c_str(), 0755));
@@ -379,8 +380,7 @@ public:
 
   policy::GrantSnapshot snapshot(std::uint64_t generation) const {
     policy::GrantSnapshot value;
-    value.requests =
-        permissions::requests_from_manifest(verified_->manifest);
+    value.requests = permissions::requests_from_manifest(verified_->manifest);
     value.binding = {
         .plugin = permissions::PluginId(plugin_),
         .revision = permissions::Digest(verified_->tree_sha256),
@@ -398,8 +398,13 @@ public:
   }
 
   policy::GrantSnapshot publish(std::uint64_t generation,
-                                std::uint64_t sequence) {
+                                std::uint64_t sequence,
+                                bool deny_notifications = false) {
     auto value = snapshot(generation);
+    if (deny_notifications)
+      for (auto &grant : value.grants.values())
+        if (grant.capability.id.view() == "notifications.send")
+          grant.state = permissions::GrantState::denied;
     require(store_->publish_candidate(*verified_, value, sequence, definitions_,
                                       {}) ==
                 host::AuthorityMutationResult::applied,
@@ -437,36 +442,41 @@ public:
         permissions::PluginId(expected_plugin), ::getuid(), runtime_factory);
     channel::PluginActivationCoordinatorTestAccess::set_supervisor_factory(
         *value, [scope = std::move(scope)] {
-          return launcher::Supervisor::forTestOnly(
-              FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, scope);
+          return launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH,
+                                                   CHANNEL_PEER_PATH, scope);
         });
     return value;
   }
 
-  channel::ProductionPluginRuntimeConfiguration root_configuration(
-      channel::ProductionRuntimeServices services = {},
+  channel::ProductionPluginRuntimeConfiguration
+  root_configuration(channel::ProductionRuntimeServices services = {},
       channel::ProductionPluginRuntimeHooks *hooks = nullptr) {
     store_.reset();
-    return {.activation_root_fd = activation_fd_,
+    return {
+        .activation_root_fd = activation_fd_,
             .revision_root_fd = revisions_fd_,
             .state_root_fd = state_fd_,
-            .authority_root = host::OwnedDescriptor(
-                ::fcntl(authority_fd_, F_DUPFD_CLOEXEC, 0)),
+        .authority_root =
+            host::OwnedDescriptor(::fcntl(authority_fd_, F_DUPFD_CLOEXEC, 0)),
             .plugin = permissions::PluginId(plugin_),
             .trusted_uid = static_cast<std::uint32_t>(::getuid()),
             .activation_record = "current",
-            .definitions = std::make_shared<
-                const definitions::TrustedDefinitionRegistry>(definitions_),
+        .definitions =
+            std::make_shared<const definitions::TrustedDefinitionRegistry>(
+                definitions_),
             .services = std::make_shared<const channel::ProductionRuntimeServices>(
                 std::move(services)),
             .runtime_limits = {},
             .session_limits = {},
-            .hooks = hooks};
+        .hooks = hooks,
+        .test_supervisor_factory = {},
+        .test_before_final_fence = nullptr,
+        .test_before_final_fence_context = nullptr};
   }
 
   void close_borrowed_roots() {
-    for (int *fd : {&activation_fd_, &revisions_fd_, &state_fd_,
-                    &authority_fd_}) {
+    for (int *fd :
+         {&activation_fd_, &revisions_fd_, &state_fd_, &authority_fd_}) {
       if (*fd >= 0)
         ::close(*fd);
       *fd = -1;
@@ -477,11 +487,21 @@ public:
     const auto authority_state = store_->read_slots();
     require(authority_state && authority_state->active,
             "active coordinator slot missing");
-    const auto file = authority_ /
+    const auto file =
+        authority_ /
         ("grant-" +
          std::string(authority_state->active->snapshot_digest.view()));
     std::fstream stream(file, std::ios::in | std::ios::out | std::ios::binary);
     stream.put('X');
+  }
+
+  void corrupt_prepared_backing() {
+    std::ofstream activation(activation_ / "current", std::ios::trunc);
+    activation << "invalid\n";
+    activation.close();
+    std::ofstream slots_file(authority_ / "slots", std::ios::trunc);
+    slots_file << "invalid\n";
+    slots_file.close();
   }
 
   void authority_writable(bool writable) {
@@ -597,8 +617,7 @@ public:
                                          : host::ChannelError::handshake_failed;
   }
 
-  host::SendStatus send(const host::OwnedMessage &,
-                        TimePoint) override {
+  host::SendStatus send(const host::OwnedMessage &, TimePoint) override {
     return host::SendStatus::complete;
   }
 
@@ -608,11 +627,11 @@ public:
       return {.status = host::ReceiveStatus::would_block, .message = {}};
     auto next = std::move(state_->incoming.front());
     state_->incoming.pop_front();
-    return {.status = host::ReceiveStatus::message,
-            .message = std::move(next)};
+    return {.status = host::ReceiveStatus::message, .message = std::move(next)};
   }
 
-  bool install_wake_handler(host::SessionWakeHandler handler) noexcept override {
+  bool
+  install_wake_handler(host::SessionWakeHandler handler) noexcept override {
     std::lock_guard lock(state_->mutex);
     state_->wake = handler;
     return bool(state_->wake);
@@ -660,8 +679,7 @@ host::OwnedMessage render_message(const host::SessionToken &identity,
 host::OwnedMessage allocation_message(const host::SessionToken &identity,
                                       std::uint64_t sequence,
                                       std::uint64_t correlation,
-                                      surface::SurfaceKey key,
-                                      int descriptor) {
+                                      surface::SurfaceKey key, int descriptor) {
   const auto encoded_key = surface::encode_surface_key(key);
   std::vector<std::byte> payload(96);
   std::copy(encoded_key.begin(), encoded_key.end(), payload.begin());
@@ -735,8 +753,8 @@ struct IntentSink final : channel::SurfaceIntentSink {
   std::uint64_t input_sequence = 0;
 };
 
-host::OwnedMessage intent_message(const host::SessionToken &identity,
-                                  std::uint64_t sequence,
+host::OwnedMessage
+intent_message(const host::SessionToken &identity, std::uint64_t sequence,
                                   const surface::SurfaceIntentRequest &request) {
   const auto encoded = surface::encode_surface_intent(request);
   return {
@@ -788,8 +806,8 @@ void shared_gesture_authority_has_one_concurrent_winner() {
     std::thread surface_request([&] {
       start.arrive_and_wait();
       auto admitted = intents.admit(request);
-      surface_won = admitted.intent &&
-                    admitted.intent->take_if_fresh().has_value();
+      surface_won =
+          admitted.intent && admitted.intent->take_if_fresh().has_value();
     });
     start.arrive_and_wait();
     broker.join();
@@ -884,8 +902,8 @@ void effect_time_revocation_fences_an_authenticated_request() {
           "effect-fence broker did not provide admission");
   const auto payload = audio_request("complete");
   auto authenticated = extracted.admission->admit_authenticated({
-      .message_type = static_cast<std::uint16_t>(
-          permissions::OperationId::audio_play_cue),
+      .message_type =
+          static_cast<std::uint16_t>(permissions::OperationId::audio_play_cue),
       .correlation_id = 1,
       .payload = payload,
   });
@@ -894,8 +912,8 @@ void effect_time_revocation_fences_an_authenticated_request() {
   bool authority_stale = false;
   std::thread effect([&] {
     std::array<std::byte, 64> response{};
-    auto transaction = broker.dispatch(std::move(*authenticated.request), 100,
-                                       response);
+    auto transaction =
+        broker.dispatch(std::move(*authenticated.request), 100, response);
     authority_stale =
         transaction.state() == host::TransactionState::fatal &&
         transaction.fatal() == host::DispatchFatal::authority_stale;
@@ -944,8 +962,7 @@ void product_session_intercepts_gesture_intents_before_render_routing() {
       product->attach("barWidget", bar_correlations, bar);
   const auto panel_attachment =
       product->attach("panel", panel_correlations, panel);
-  require(bar_attachment && panel_attachment,
-          "intent surfaces did not attach");
+  require(bar_attachment && panel_attachment, "intent surfaces did not attach");
   const surface::SurfaceIntentRequest request{
       .source = bar_attachment.key,
       .target = panel_attachment.key,
@@ -964,13 +981,15 @@ void product_session_intercepts_gesture_intents_before_render_routing() {
   channel_state->publish(std::move(malformed));
   await([&] { return events.rejected.size() == 2; },
         "malformed intent was not rejected");
-  require(product->arm_surface_intent(bar_attachment.key, request.input_sequence),
+  require(
+      product->arm_surface_intent(bar_attachment.key, request.input_sequence),
           "malformed intent did not safely clear its eligibility");
   product->clear_surface_intent_eligibility();
   channel_state->publish(intent_message(identity, 3, request));
   await([&] { return events.rejected.size() == 3; },
         "failed input delivery did not clear intent eligibility");
-  require(product->arm_surface_intent(bar_attachment.key, request.input_sequence),
+  require(
+      product->arm_surface_intent(bar_attachment.key, request.input_sequence),
           "trusted path could not re-arm after a failed input delivery");
   const definitions::DynamicInvocation::GestureClaim claim{
       .surface_id = bar_attachment.key.id,
@@ -982,7 +1001,8 @@ void product_session_intercepts_gesture_intents_before_render_routing() {
   channel_state->publish(intent_message(identity, 4, request));
   await([&] { return events.rejected.size() == 4; },
         "surface intent reused a gesture consumed by the broker");
-  require(product->arm_surface_intent(bar_attachment.key, request.input_sequence),
+  require(
+      product->arm_surface_intent(bar_attachment.key, request.input_sequence),
           "trusted path could not re-arm after broker consumption");
 
   channel_state->publish(intent_message(identity, 5, request));
@@ -1092,8 +1112,8 @@ void product_session_routes_two_surfaces_over_one_launch() {
       identity, 3, 101, {.id = 99, .generation = identity.generation}));
   channel_state->publish(
       render_message(identity, 4, 101, second_attachment.key));
-  channel_state->publish(render_message(
-      identity, 5, 101,
+  channel_state->publish(
+      render_message(identity, 5, 101,
       {.id = first_attachment.key.id,
        .generation = first_attachment.key.generation + 1}));
   auto malformed = render_message(identity, 6, 101, first_attachment.key);
@@ -1122,9 +1142,9 @@ void product_session_routes_two_surfaces_over_one_launch() {
   await([&] { return first.deliveries == 2; },
         "surface allocation did not reach its endpoint");
   require(first.last &&
-              first.last->message_type == static_cast<std::uint16_t>(
-                                              surface::RenderMessageType::
-                                                  surface_allocate) &&
+              first.last->message_type ==
+                  static_cast<std::uint16_t>(
+                      surface::RenderMessageType::surface_allocate) &&
               first.last->payload.size() == 96 &&
               first.last->descriptors.size() == 1 &&
               first.last->descriptors.front().get() == allocation_fds[0],
@@ -1196,8 +1216,7 @@ void public_create_retains_activation_and_reuses_one_launch() {
   require(scope->attachments == 1,
           "surface attachment relaunched the sandbox worker");
   require(product->detach("panel", panel) &&
-              product->attach("panel", panel_correlations,
-                              panel_replacement),
+              product->attach("panel", panel_correlations, panel_replacement),
           "surface did not detach and reattach on the existing session");
   require(scope->attachments == 1,
           "surface reattachment relaunched the sandbox worker");
@@ -1210,11 +1229,31 @@ void public_create_retains_activation_and_reuses_one_launch() {
                   channel::SurfaceAttachStatus::session_not_running,
           "stopped product session retained or accepted surfaces");
   product.reset();
-  await([&] {
+  await(
+      [&] {
     return *runtime_factory.destructions == 1 &&
            runtime_factory.gesture_lifetime.expired();
   },
         "owned broker/provider runtime outlived session teardown");
+}
+
+void prepared_session_is_thread_agnostic_before_commit() {
+  ActivationFixture fixture;
+  RuntimeFactory runtime_factory;
+  channel::PluginSessionCreateError create_error{};
+  auto prepared = channel::PluginSessionTestAccess::prepare_from_activation(
+      launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH, CHANNEL_PEER_PATH,
+                                        std::make_shared<Scope>()),
+      fixture.snapshot(), runtime_factory, create_error);
+  require(prepared && create_error == channel::PluginSessionCreateError::none &&
+              runtime_factory.calls == 1 && *runtime_factory.destructions == 0,
+          "side-effect-free session preparation failed");
+  const auto destructions = runtime_factory.destructions;
+  std::thread discard(
+      [prepared = std::move(prepared)]() mutable { prepared.reset(); });
+  discard.join();
+  require(*destructions == 1,
+          "unlaunched prepared channel was not thread-agnostic at discard");
 }
 
 void public_create_rejects_invalid_grant_snapshots() {
@@ -1224,8 +1263,8 @@ void public_create_rejects_invalid_grant_snapshots() {
     RuntimeFactory runtime_factory;
     channel::PluginSessionCreateError create_error{};
     auto product = channel::PluginSessionTestAccess::create_from_activation(
-        launcher::Supervisor::forTestOnly(
-            FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, std::make_shared<Scope>()),
+        launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH, CHANNEL_PEER_PATH,
+                                          std::make_shared<Scope>()),
         std::move(snapshot), runtime_factory, create_error);
     require(!product &&
                 create_error ==
@@ -1283,11 +1322,12 @@ void coordinator_activates_only_exact_promoted_authority() {
                   host::ActivationError::grant_unavailable &&
               runtime_factory.calls == 0,
           "empty authority store reached runtime construction");
-  auto wrong_plugin = fixture.coordinator(
-      runtime_factory, scope, "org.example.different");
+  auto wrong_plugin =
+      fixture.coordinator(runtime_factory, scope, "org.example.different");
   auto crossed = wrong_plugin->activate("current");
   require(!crossed &&
-              crossed.activation_error == host::ActivationError::record_invalid &&
+              crossed.activation_error ==
+                  host::ActivationError::record_invalid &&
               runtime_factory.calls == 0,
           "wrong plugin coordinator crossed its expected identity");
 
@@ -1316,9 +1356,11 @@ void coordinator_activates_only_exact_promoted_authority() {
               pending_update.session->binding() == first.binding &&
               runtime_factory.calls == 2,
           "pending candidate replaced the durable active authority");
-  await([&] {
+  await(
+      [&] {
     return pending_update.session->state() == host::SessionState::running;
-  }, "active generation did not remain available during candidate review");
+      },
+      "active generation did not remain available during candidate review");
   require(scope->attachments == 2,
           "candidate review launched anything but the active generation");
   fixture.promote(second, 3);
@@ -1333,7 +1375,10 @@ void coordinator_activates_only_exact_promoted_authority() {
   require(same_record && same_record.session->binding() == second.binding &&
               runtime_factory.calls == 4,
           "unchanged activation record did not follow durable generation");
-  await([&] { return same_record.session->state() == host::SessionState::running; },
+  await(
+      [&] {
+        return same_record.session->state() == host::SessionState::running;
+      },
         "unchanged activation record did not restart current authority");
   require(scope->attachments == 4,
           "unchanged activation record did not launch exactly once");
@@ -1375,9 +1420,11 @@ void coordinator_fences_runtime_construction_and_retries() {
   auto first_running = coordinator->activate("current");
   require(first_running && runtime_factory.calls == 2,
           "coordinator did not retry after null runtime construction");
-  await([&] {
+  await(
+      [&] {
     return first_running.session->state() == host::SessionState::running;
-  }, "retry after null runtime did not start");
+      },
+      "retry after null runtime did not start");
 
   bool old_runtime_gone_before_replacement = false;
   runtime_factory.on_create = [&] {
@@ -1396,9 +1443,11 @@ void coordinator_fences_runtime_construction_and_retries() {
   auto replacement = coordinator->activate("current");
   require(replacement && runtime_factory.calls == 4,
           "coordinator did not retry after throwing runtime construction");
-  await([&] {
+  await(
+      [&] {
     return replacement.session->state() == host::SessionState::running;
-  }, "replacement session did not start");
+      },
+      "replacement session did not start");
 
   auto second = fixture.publish(2, 2);
   bool promoted_during_create = false;
@@ -1459,8 +1508,8 @@ grant_all(const host::ConsentReview &review) {
   return decisions;
 }
 
-host::ConsentConfirmation confirm(
-    const host::ConsentReview &review,
+host::ConsentConfirmation
+confirm(const host::ConsentReview &review,
     std::span<const host::BuiltinConsentDecision> decisions) {
   return {
       .review_fingerprint = review.fingerprint,
@@ -1535,14 +1584,165 @@ public:
   std::atomic<bool> stopped = false;
 };
 
+class CountingRuntimeHooks final
+    : public channel::ProductionPluginRuntimeHooks {
+public:
+  void state_changed(host::SessionState state, host::SessionError error) override {
+    if (state == host::SessionState::running &&
+        error == host::SessionError::none)
+      running.fetch_add(1, std::memory_order_release);
+  }
+  void control_received(const host::OwnedMessage &) override {}
+  void render_rejected(host::RouteResult) override {}
+  bool accept(host::AdmittedSurfaceIntent) override {
+    intents.fetch_add(1, std::memory_order_release);
+    return false;
+  }
+
+  std::atomic<int> running = 0;
+  std::atomic<int> intents = 0;
+};
+
+struct FinalFenceMutation final {
+  permissions::ActivationBinding binding;
+  std::atomic<int> calls = 0;
+};
+
+void invalidate_final_fence(host::AuthorityStore &store,
+                            void *opaque) noexcept {
+  auto &mutation = *static_cast<FinalFenceMutation *>(opaque);
+  mutation.calls.fetch_add(1, std::memory_order_release);
+  (void)store.discard_candidate(mutation.binding, UINT64_MAX);
+}
+
+void prepared_root_commits_on_ui_and_reuses_exact_hooks() {
+  CoordinatorFixture fixture;
+  fixture.record();
+  const auto active = fixture.publish(1, 0, true);
+  fixture.promote(active, 1);
+  auto scope = std::make_shared<Scope>();
+  auto configuration = fixture.root_configuration();
+  configuration.test_supervisor_factory = [scope] {
+    return launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH,
+                                             CHANNEL_PEER_PATH, scope);
+  };
+  std::unique_ptr<channel::PreparedPluginRuntime> prepared;
+  const auto ui_thread = std::this_thread::get_id();
+  std::thread::id worker_thread;
+  std::thread worker([&] {
+    worker_thread = std::this_thread::get_id();
+    prepared = channel::ProductionPluginRuntimeRoot::prepare(
+        std::move(configuration));
+  });
+  worker.join();
+  require(prepared && worker_thread != ui_thread && scope->attachments == 0,
+          "worker preparation launched or failed to remain off the UI thread");
+  CountingRuntimeHooks hooks;
+  auto root = channel::ProductionPluginRuntimeRootTestAccess::commit(
+      std::move(prepared), hooks, *QCoreApplication::instance());
+  require(root != nullptr &&
+              channel::ProductionPluginRuntimeRootTestAccess::ui_affine(
+                  *root, *QCoreApplication::instance()),
+          "prepared runtime did not commit with exact UI QObject affinity");
+  await([&] { return hooks.running.load(std::memory_order_acquire) == 1; },
+        "prepared runtime did not deliver its exact running Hook");
+  const auto restarted = root->activate();
+  require(static_cast<bool>(restarted),
+          "prepared runtime restart was rejected");
+  await([&] { return hooks.running.load(std::memory_order_acquire) == 2; },
+        "prepared runtime restart lost its stored exact Hook");
+  require(channel::ProductionPluginRuntimeRootTestAccess::hooks_are(*root,
+                                                                    hooks),
+          "prepared runtime restart lost its lifecycle/intent Hook pair");
+}
+
+void prepared_root_final_fence_rejects_intervening_mutation() {
+  CoordinatorFixture fixture;
+  fixture.record();
+  const auto active = fixture.publish(1, 0, true);
+  fixture.promote(active, 1);
+  auto scope = std::make_shared<Scope>();
+  FinalFenceMutation mutation{.binding = active.binding};
+  auto configuration = fixture.root_configuration();
+  configuration.test_supervisor_factory = [scope] {
+    return launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH,
+                                             CHANNEL_PEER_PATH, scope);
+  };
+  configuration.test_before_final_fence = invalidate_final_fence;
+  configuration.test_before_final_fence_context = &mutation;
+  auto prepared =
+      channel::ProductionPluginRuntimeRoot::prepare(std::move(configuration));
+  CountingRuntimeHooks hooks;
+  auto root = channel::ProductionPluginRuntimeRootTestAccess::commit(
+      std::move(prepared), hooks, *QCoreApplication::instance());
+  require(!root && mutation.calls.load(std::memory_order_acquire) == 1 &&
+              scope->attachments == 0 &&
+              hooks.running.load(std::memory_order_acquire) == 0,
+          "intervening authority mutation crossed the final start fence");
+}
+
+void prepared_root_commit_is_ui_only_and_path_independent() {
+  {
+    CoordinatorFixture fixture;
+    fixture.record();
+    const auto active = fixture.publish(1, 0, true);
+    fixture.promote(active, 1);
+    auto scope = std::make_shared<Scope>();
+    auto configuration = fixture.root_configuration();
+    configuration.test_supervisor_factory = [scope] {
+      return launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH,
+                                               CHANNEL_PEER_PATH, scope);
+    };
+    auto prepared = channel::ProductionPluginRuntimeRoot::prepare(
+        std::move(configuration));
+    CountingRuntimeHooks hooks;
+    std::unique_ptr<channel::ProductionPluginRuntimeRoot> rejected;
+    std::thread wrong_thread([&] {
+      rejected = channel::ProductionPluginRuntimeRootTestAccess::commit(
+          std::move(prepared), hooks, *QCoreApplication::instance());
+    });
+    wrong_thread.join();
+    require(!rejected && scope->attachments == 0 &&
+                hooks.running.load(std::memory_order_acquire) == 0,
+            "off-UI prepared commit launched or retained a runtime");
+  }
+
+  CoordinatorFixture fixture;
+  fixture.record();
+  const auto active = fixture.publish(1, 0, true);
+  fixture.promote(active, 1);
+  auto scope = std::make_shared<Scope>();
+  auto configuration = fixture.root_configuration();
+  configuration.test_supervisor_factory = [scope] {
+    return launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH,
+                                             CHANNEL_PEER_PATH, scope);
+  };
+  std::unique_ptr<channel::PreparedPluginRuntime> prepared;
+  std::thread worker([&] {
+    prepared = channel::ProductionPluginRuntimeRoot::prepare(
+        std::move(configuration));
+  });
+  worker.join();
+  require(prepared != nullptr && scope->attachments == 0,
+          "path-independence worker preparation failed");
+  fixture.close_borrowed_roots();
+  fixture.corrupt_prepared_backing();
+  CountingRuntimeHooks hooks;
+  auto root = channel::ProductionPluginRuntimeRootTestAccess::commit(
+      std::move(prepared), hooks, *QCoreApplication::instance());
+  require(root != nullptr,
+          "UI commit reread corrupted activation/authority backing paths");
+  await([&] { return hooks.running.load(std::memory_order_acquire) == 1; },
+        "path-independent UI commit did not start its pinned runtime");
+}
+
 void production_root_is_the_composed_authority_path() {
   using namespace std::chrono_literals;
   CoordinatorFixture fixture("session-notification");
   fixture.record();
   auto probe = std::make_shared<BlockingNotificationProbe>();
   auto root = channel::ProductionPluginRuntimeRoot::open(
-      fixture.root_configuration(
-          {.context = probe,
+      fixture.root_configuration({.context = probe,
            .notification_send = blocking_notification,
            .audio_play = nullptr,
            .compare_scope = nullptr,
@@ -1556,8 +1756,7 @@ void production_root_is_the_composed_authority_path() {
       });
 
   auto locked = channel::ProductionPluginRuntimeRoot::open(
-      fixture.root_configuration(
-          {.context = probe,
+      fixture.root_configuration({.context = probe,
            .notification_send = blocking_notification,
            .audio_play = nullptr,
            .compare_scope = nullptr,
@@ -1569,8 +1768,8 @@ void production_root_is_the_composed_authority_path() {
   require(review != nullptr,
           "pinned root descriptors did not survive borrowed FD closure");
   const auto decisions = grant_all(*review);
-  const auto install = root->apply_review(confirm(*review, decisions),
-                                          decisions, {});
+  const auto install =
+      root->apply_review(confirm(*review, decisions), decisions, {});
   require(install.publication == host::ConsentResult::applied &&
               install.promotion == host::AuthorityMutationResult::applied &&
               install.activation && *install.activation,
@@ -1635,10 +1834,12 @@ void production_root_is_the_composed_authority_path() {
               optional.revocation.activatable && optional.activation &&
               *optional.activation,
           "optional revoke did not replace the composed session");
-  await([&] {
+  await(
+      [&] {
     const auto current = root->session_binding();
     return current && current->generation == 2;
-  }, "optional revoke did not produce one running G2 session");
+      },
+      "optional revoke did not produce one running G2 session");
   const auto g2_surface = root->surface_session().describe("barWidget");
   require(g2_surface && g2_surface->binding.generation == 2 &&
               g2_surface->key ==
@@ -1666,8 +1867,8 @@ void production_root_is_the_composed_authority_path() {
       });
   require(storage != replacement->active->grants.values().end(),
           "required storage grant missing from G2");
-  const auto required = root->revoke(
-      storage->capability, replacement->authority_slots.sequence);
+  const auto required =
+      root->revoke(storage->capability, replacement->authority_slots.sequence);
   require(required.revocation.status ==
                   host::AuthorityMutationResult::applied &&
               !required.revocation.activatable && !required.activation &&
@@ -1686,8 +1887,7 @@ void production_root_rejects_unusable_authority_and_providers() {
   {
     auto invalid_uid = bad_fd.root_configuration();
     invalid_uid.trusted_uid = std::numeric_limits<std::uint32_t>::max();
-    require(!channel::ProductionPluginRuntimeRoot::open(
-                std::move(invalid_uid)),
+    require(!channel::ProductionPluginRuntimeRoot::open(std::move(invalid_uid)),
             "omitted trusted uid opened a product root");
   }
 
@@ -1716,8 +1916,8 @@ void production_root_rejects_unusable_authority_and_providers() {
   auto review = root->prepare_review();
   require(review != nullptr, "missing-provider review was not prepared");
   const auto decisions = grant_all(*review);
-  const auto rejected = root->apply_review(confirm(*review, decisions),
-                                           decisions, {});
+  const auto rejected =
+      root->apply_review(confirm(*review, decisions), decisions, {});
   require(rejected.publication == host::ConsentResult::applied &&
               rejected.promotion == host::AuthorityMutationResult::applied &&
               rejected.activation && !*rejected.activation &&
@@ -1743,15 +1943,15 @@ void production_root_queues_hook_lifecycle_work() {
   auto review = root->prepare_review();
   require(review != nullptr, "queued-hook review was not prepared");
   auto decisions = grant_all(*review);
-  const auto notification = std::ranges::find_if(
-      decisions, [](const auto &decision) {
+  const auto notification =
+      std::ranges::find_if(decisions, [](const auto &decision) {
         return decision.capability.id.view() == "notifications.send";
       });
   require(notification != decisions.end(),
           "queued-hook optional notification decision missing");
   notification->decision = permissions::UserDecision::deny;
-  const auto install = root->apply_review(confirm(*review, decisions),
-                                          decisions, {});
+  const auto install =
+      root->apply_review(confirm(*review, decisions), decisions, {});
   require(install.activation && *install.activation,
           "queued-hook session did not activate");
   await([&] { return hooks.stopped.load(std::memory_order_acquire); },
@@ -1766,8 +1966,8 @@ void permission_controller_verifies_its_fixed_record() {
                 decltype(&channel::PluginPermissionController::prepare_review),
                 std::shared_ptr<const host::ConsentReview> (
                     channel::PluginPermissionController::*)()>);
-  static_assert(std::is_constructible_v<
-                channel::PluginPermissionController,
+  static_assert(
+      std::is_constructible_v<channel::PluginPermissionController,
                 channel::PluginActivationCoordinator &,
                 const definitions::TrustedDefinitionRegistry &,
                 definitions::DynamicScopeValidator, std::string>);
@@ -1778,10 +1978,11 @@ void permission_controller_verifies_its_fixed_record() {
                 definitions::DynamicScopeValidator, std::string>);
   CoordinatorFixture fixture;
   RuntimeFactory runtime_factory;
-  auto coordinator = fixture.coordinator(runtime_factory, std::make_shared<Scope>());
+  auto coordinator =
+      fixture.coordinator(runtime_factory, std::make_shared<Scope>());
   definitions::TrustedDefinitionRegistry definitions;
-  channel::PluginPermissionController controller(
-      *coordinator, definitions, {}, "current");
+  channel::PluginPermissionController controller(*coordinator, definitions, {},
+                                                 "current");
   fixture.record();
   require(controller.prepare_review() != nullptr,
           "empty authority could not prepare descriptor-verified install");
@@ -1810,8 +2011,8 @@ void permission_controller_composes_consent_and_revocation() {
   auto scope = std::make_shared<Scope>();
   auto coordinator = fixture.coordinator(runtime_factory, scope);
   definitions::TrustedDefinitionRegistry definitions;
-  channel::PluginPermissionController controller(
-      *coordinator, definitions, {}, "current");
+  channel::PluginPermissionController controller(*coordinator, definitions, {},
+                                                 "current");
   fixture.record();
 
   auto install_review = controller.prepare_review();
@@ -1825,10 +2026,12 @@ void permission_controller_composes_consent_and_revocation() {
               install.activation && *install.activation &&
               install.activation->session->binding().generation == 1,
           "controller did not publish, promote and activate install consent");
-  await([&] {
+  await(
+      [&] {
     return coordinator->session() != nullptr &&
            coordinator->session()->state() == host::SessionState::running;
-  }, "controller install session did not start");
+      },
+      "controller install session did not start");
   const auto original_session = coordinator->session();
   const auto original_live = runtime_factory.last_live;
   auto view = controller.list();
@@ -1858,10 +2061,10 @@ void permission_controller_composes_consent_and_revocation() {
           "spoofed confirmation review could not be prepared");
   const auto spoofed_choices = grant_all(*spoofed_review);
   auto spoofed_confirmation = confirm(*spoofed_review, spoofed_choices);
-  spoofed_confirmation.decision_fingerprint = permissions::Digest(
-      std::string(64, 'f'));
-  const auto spoofed = controller.apply_review(
-      spoofed_confirmation, spoofed_choices, {});
+  spoofed_confirmation.decision_fingerprint =
+      permissions::Digest(std::string(64, 'f'));
+  const auto spoofed =
+      controller.apply_review(spoofed_confirmation, spoofed_choices, {});
   unchanged = controller.list();
   require(spoofed.publication == host::ConsentResult::invalid_review,
           "invalid consent confirmation was not rejected");
@@ -1893,16 +2096,19 @@ void permission_controller_composes_consent_and_revocation() {
           "invalid revoke disturbed the running session");
 
   const auto optional = controller.revoke(notification->capability, 2);
-  require(optional.revocation.status == host::AuthorityMutationResult::applied &&
+  require(optional.revocation.status ==
+                  host::AuthorityMutationResult::applied &&
               optional.revocation.activatable && optional.activation &&
               *optional.activation &&
               optional.activation->session->binding().generation == 2 &&
               !original_live->current(view->active->binding),
           "optional revoke did not fence G1 and replace it with G2");
-  await([&] {
+  await(
+      [&] {
     return coordinator->session() != nullptr &&
            coordinator->session()->state() == host::SessionState::running;
-  }, "optional revoke replacement did not start");
+      },
+      "optional revoke replacement did not start");
   view = controller.list();
   require(view && view->active, "required grant authority unavailable");
   const auto storage = std::ranges::find_if(
@@ -1911,16 +2117,16 @@ void permission_controller_composes_consent_and_revocation() {
       });
   require(storage != view->active->grants.values().end(),
           "required storage grant missing");
-  const auto required = controller.revoke(
-      storage->capability, view->authority_slots.sequence);
-  require(required.revocation.status == host::AuthorityMutationResult::applied &&
+  const auto required =
+      controller.revoke(storage->capability, view->authority_slots.sequence);
+  require(required.revocation.status ==
+                  host::AuthorityMutationResult::applied &&
               !required.revocation.activatable && !required.activation &&
               coordinator->session() == nullptr,
           "required revoke restarted a nonactivatable session");
 
   auto regrant_review = controller.prepare_review();
-  require(regrant_review &&
-              regrant_review->candidate_binding.generation == 4,
+  require(regrant_review && regrant_review->candidate_binding.generation == 4,
           "required revoke could not prepare fresh G4 regrant review");
   const auto regrant_choices = grant_all(*regrant_review);
   const auto regrant = controller.apply_review(
@@ -1935,10 +2141,11 @@ void permission_controller_composes_consent_and_revocation() {
 void permission_controller_stops_after_fatal_revoke_io() {
   CoordinatorFixture fixture;
   RuntimeFactory runtime_factory;
-  auto coordinator = fixture.coordinator(runtime_factory, std::make_shared<Scope>());
+  auto coordinator =
+      fixture.coordinator(runtime_factory, std::make_shared<Scope>());
   definitions::TrustedDefinitionRegistry definitions;
-  channel::PluginPermissionController controller(
-      *coordinator, definitions, {}, "current");
+  channel::PluginPermissionController controller(*coordinator, definitions, {},
+                                                 "current");
   fixture.record();
   auto review = controller.prepare_review();
   require(review != nullptr, "fatal revoke fixture review failed");
@@ -1947,10 +2154,12 @@ void permission_controller_stops_after_fatal_revoke_io() {
       controller.apply_review(confirm(*review, choices), choices, {});
   require(install.activation && *install.activation,
           "fatal revoke fixture install failed");
-  await([&] {
+  await(
+      [&] {
     return coordinator->session() != nullptr &&
            coordinator->session()->state() == host::SessionState::running;
-  }, "fatal revoke fixture session did not start");
+      },
+      "fatal revoke fixture session did not start");
   auto view = controller.list();
   require(view && view->active, "fatal revoke fixture authority unavailable");
   const auto target = std::ranges::find_if(
@@ -2006,12 +2215,19 @@ int main(int argc, char **argv) {
       std::cout << "production runtime factory tests passed\n";
       return 0;
     }
-    if (argc == 2 &&
-        std::string_view(argv[1]) == "--production-root-only") {
+    if (argc == 2 && std::string_view(argv[1]) == "--production-root-only") {
       production_root_is_the_composed_authority_path();
       production_root_rejects_unusable_authority_and_providers();
       production_root_queues_hook_lifecycle_work();
+      prepared_root_commits_on_ui_and_reuses_exact_hooks();
+      prepared_root_final_fence_rejects_intervening_mutation();
+      prepared_root_commit_is_ui_only_and_path_independent();
       std::cout << "production root tests passed\n";
+      return 0;
+    }
+    if (argc == 2 && std::string_view(argv[1]) == "--prepared-session-only") {
+      prepared_session_is_thread_agnostic_before_commit();
+      std::cout << "prepared session test passed\n";
       return 0;
     }
     product_session_routes_two_surfaces_over_one_launch();
@@ -2020,6 +2236,7 @@ int main(int argc, char **argv) {
     product_session_intercepts_gesture_intents_before_render_routing();
     public_create_rejects_invalid_grant_snapshots();
     public_create_retains_activation_and_reuses_one_launch();
+    prepared_session_is_thread_agnostic_before_commit();
     coordinator_activates_only_exact_promoted_authority();
     coordinator_fences_runtime_construction_and_retries();
     coordinator_keeps_descriptor_pinned_paths();
@@ -2029,6 +2246,9 @@ int main(int argc, char **argv) {
     production_root_is_the_composed_authority_path();
     production_root_rejects_unusable_authority_and_providers();
     production_root_queues_hook_lifecycle_work();
+    prepared_root_commits_on_ui_and_reuses_exact_hooks();
+    prepared_root_final_fence_rejects_intervening_mutation();
+    prepared_root_commit_is_ui_only_and_path_independent();
     production_session_runtime_factory_tests();
     failed_session_rejects_surfaces();
   } catch (const std::exception &error) {
