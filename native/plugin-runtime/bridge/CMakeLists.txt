@@ -11,6 +11,8 @@ qt_add_qml_module(omarchy-plugin-host-bridge
     PluginManager.h
     ProductionSurfaceEndpoint.cpp
     ProductionSurfaceEndpoint.h
+    ProductionSurfaceEndpointOwner.cpp
+    ProductionSurfaceEndpointOwner.h
     PluginSurfaceService.cpp
     PluginSurfaceService.h
     ../trusted-bridge/remote_surface.hpp
@@ -44,12 +46,15 @@ if(BUILD_TESTING)
     PluginManager_test.cpp
     ProductionSurfaceEndpoint.cpp
     ProductionSurfaceEndpoint_test.cpp
+    ProductionSurfaceEndpointOwner.cpp
+    ProductionSurfaceEndpointOwner_test.cpp
     PluginSurfaceService.cpp
     PluginSurfaceService_test.cpp
   )
   omarchy_plugin_target_defaults(omarchy-plugin-surface-service-test)
   target_compile_definitions(omarchy-plugin-surface-service-test PRIVATE
-    OMARCHY_PLUGIN_MANAGER_TESTING)
+    OMARCHY_PLUGIN_MANAGER_TESTING
+    OMARCHY_PRODUCTION_SURFACE_ENDPOINT_OWNER_TESTING)
   target_include_directories(omarchy-plugin-surface-service-test PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/../trusted-bridge"
   )

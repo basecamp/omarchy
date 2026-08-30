@@ -14,6 +14,7 @@
 #include <vector>
 
 void run_production_surface_endpoint_tests();
+void run_production_surface_endpoint_owner_tests();
 void run_plugin_manager_tests();
 
 namespace {
@@ -436,6 +437,7 @@ int main(int argc, char **argv) {
     run();
     run_plugin_manager_tests();
     run_production_surface_endpoint_tests();
+    run_production_surface_endpoint_owner_tests();
     return 0;
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';

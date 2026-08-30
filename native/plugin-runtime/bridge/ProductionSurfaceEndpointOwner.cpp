@@ -1,0 +1,209 @@
+#include "ProductionSurfaceEndpointOwner.h"
+
+#include "ProductionSurfaceEndpoint.h"
+#include "omarchy/plugin/wire/surface_name.hpp"
+#include "omarchy/plugin_runtime/surface/profile.hpp"
+#include "remote_surface.hpp"
+
+#include <QQuickWindow>
+#include <QThread>
+
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <numeric>
+#include <optional>
+#include <utility>
+
+namespace omarchy::plugin_runtime::bridge {
+namespace {
+
+constexpr qsizetype kMaximumPublishedSurfaceKeyCharacters = 512;
+constexpr std::uint32_t kDprScaleDenominator = 120;
+constexpr double kDprRoundingTolerance = 0.000001;
+
+struct TrustedSurfaceGeometry final {
+  std::uint32_t logical_width = 0;
+  std::uint32_t logical_height = 0;
+  std::uint32_t dpr_numerator = 0;
+  std::uint32_t dpr_denominator = 0;
+};
+
+enum class GeometryResult : std::uint8_t { ready, not_ready, rejected };
+
+GeometryResult trusted_geometry(const RemotePluginSurface &surface_item,
+                                TrustedSurfaceGeometry &output) noexcept {
+  const auto *window = surface_item.window();
+  if (window == nullptr)
+    return GeometryResult::not_ready;
+
+  const qreal width = surface_item.width();
+  const qreal height = surface_item.height();
+  if (!std::isfinite(width) || !std::isfinite(height) || width < 0 ||
+      height < 0)
+    return GeometryResult::rejected;
+  if (width == 0 || height == 0)
+    return GeometryResult::not_ready;
+  if (std::trunc(width) != width || std::trunc(height) != height ||
+      width > surface::kMaximumPixelDimension ||
+      height > surface::kMaximumPixelDimension)
+    return GeometryResult::rejected;
+
+  const qreal dpr = window->effectiveDevicePixelRatio();
+  if (!std::isfinite(dpr) || dpr <= 0)
+    return GeometryResult::rejected;
+  const double scaled = static_cast<double>(dpr) * kDprScaleDenominator;
+  const double rounded = std::round(scaled);
+  if (std::abs(scaled - rounded) > kDprRoundingTolerance || rounded < 1 ||
+      rounded > std::numeric_limits<std::uint32_t>::max())
+    return GeometryResult::rejected;
+  const auto numerator = static_cast<std::uint32_t>(rounded);
+  const auto divisor = std::gcd(numerator, kDprScaleDenominator);
+  const auto reduced_numerator = numerator / divisor;
+  const auto reduced_denominator = kDprScaleDenominator / divisor;
+  const auto pixel_width =
+      (static_cast<std::uint64_t>(width) * reduced_numerator +
+       reduced_denominator - 1) /
+      reduced_denominator;
+  const auto pixel_height =
+      (static_cast<std::uint64_t>(height) * reduced_numerator +
+       reduced_denominator - 1) /
+      reduced_denominator;
+  if (pixel_width > surface::kMaximumPixelDimension ||
+      pixel_height > surface::kMaximumPixelDimension)
+    return GeometryResult::rejected;
+
+  output = {
+      .logical_width = static_cast<std::uint32_t>(width),
+      .logical_height = static_cast<std::uint32_t>(height),
+      .dpr_numerator = reduced_numerator,
+      .dpr_denominator = reduced_denominator,
+  };
+  return GeometryResult::ready;
+}
+
+} // namespace
+
+PublishedSurfaceAttachment::PublishedSurfaceAttachment(
+    QString surface_key, plugins::permissions::ActivationBinding binding,
+    std::string declared_surface, qulonglong publication_revision) noexcept
+    : surface_key_(std::move(surface_key)), binding_(std::move(binding)),
+      declared_surface_(std::move(declared_surface)),
+      publication_revision_(publication_revision) {}
+
+struct ProductionSurfaceEndpointOwner::Record final {
+  QString surface_key;
+  RemotePluginSurface *remote = nullptr;
+  std::unique_ptr<ProductionSurfaceEndpoint> endpoint;
+};
+
+ProductionSurfaceEndpointOwner::ProductionSurfaceEndpointOwner(
+    surface_host::InspectionAuthority &inspection,
+    surface_host::MonotonicClock &clock,
+    plugins::permissions::ActivationBinding binding,
+    qulonglong publication_revision,
+    channel::ProductionSurfaceSessionPort &session) noexcept
+    : inspection_(inspection), clock_(clock), binding_(std::move(binding)),
+      publication_revision_(publication_revision), session_(session),
+      owner_thread_(std::this_thread::get_id()) {}
+
+ProductionSurfaceEndpointOwner::~ProductionSurfaceEndpointOwner() noexcept {
+  if (!on_owner_thread())
+    std::terminate();
+  close_all();
+}
+
+ProductionEndpointAttachResult ProductionSurfaceEndpointOwner::attach(
+    const PublishedSurfaceAttachment &published, QStringView qml_key,
+    RemotePluginSurface &surface_item) noexcept {
+  if (!on_owner_thread() || QThread::currentThread() != surface_item.thread())
+    return ProductionEndpointAttachResult::rejected;
+  prune_closed();
+  if (qml_key != published.surface_key_ || published.surface_key_.isEmpty() ||
+      published.surface_key_.size() > kMaximumPublishedSurfaceKeyCharacters ||
+      publication_revision_ == 0 ||
+      published.publication_revision_ != publication_revision_ ||
+      binding_.generation == 0 || published.binding_ != binding_ ||
+      !plugin::wire::valid_surface_name(published.declared_surface_) ||
+      records_.size() >= plugin::wire::kMaximumPluginSurfaces ||
+      std::ranges::any_of(records_, [&](const Record &record) {
+        return record.surface_key == published.surface_key_ ||
+               record.remote == &surface_item;
+      }))
+    return ProductionEndpointAttachResult::rejected;
+  TrustedSurfaceGeometry geometry;
+  switch (trusted_geometry(surface_item, geometry)) {
+  case GeometryResult::not_ready:
+    return ProductionEndpointAttachResult::not_ready;
+  case GeometryResult::rejected:
+    return ProductionEndpointAttachResult::rejected;
+  case GeometryResult::ready:
+    break;
+  }
+  const auto description = session_.describe(published.declared_surface_);
+  if (!description || description->binding != binding_ ||
+      description->surface_name != published.declared_surface_ ||
+      description->plugin_id != published.binding_.plugin.view() ||
+      description->session_nonce == 0 || description->key.id == 0 ||
+      description->key.generation != published.binding_.generation)
+    return ProductionEndpointAttachResult::rejected;
+
+  try {
+    Record record{
+        .surface_key = published.surface_key_,
+        .remote = &surface_item,
+        .endpoint = std::make_unique<ProductionSurfaceEndpoint>(
+            session_, published.declared_surface_),
+    };
+    records_.reserve(records_.size() + 1);
+    if (!record.endpoint->attach(surface_item, geometry.logical_width,
+                                 geometry.logical_height,
+                                 geometry.dpr_numerator,
+                                 geometry.dpr_denominator, inspection_, clock_))
+      return ProductionEndpointAttachResult::rejected;
+    records_.push_back(std::move(record));
+    return ProductionEndpointAttachResult::attached;
+  } catch (...) {
+    return ProductionEndpointAttachResult::rejected;
+  }
+}
+
+void ProductionSurfaceEndpointOwner::close_all() noexcept {
+  if (!on_owner_thread())
+    std::terminate();
+  for (auto &record : records_)
+    record.endpoint->close();
+  records_.clear();
+}
+
+void ProductionSurfaceEndpointOwner::prune_closed() noexcept {
+  std::erase_if(records_, [](const Record &record) {
+    return record.endpoint->state() ==
+           ProductionSurfaceEndpoint::State::closing;
+  });
+}
+
+bool ProductionSurfaceEndpointOwner::on_owner_thread() const noexcept {
+  return std::this_thread::get_id() == owner_thread_;
+}
+
+#ifdef OMARCHY_PRODUCTION_SURFACE_ENDPOINT_OWNER_TESTING
+std::size_t ProductionSurfaceEndpointOwnerTestAccess::count(
+    const ProductionSurfaceEndpointOwner &owner) noexcept {
+  return owner.records_.size();
+}
+
+std::optional<ProductionSurfaceEndpointOwnerTestAccess::Geometry>
+ProductionSurfaceEndpointOwnerTestAccess::geometry(
+    const RemotePluginSurface &surface) noexcept {
+  TrustedSurfaceGeometry geometry;
+  if (trusted_geometry(surface, geometry) != GeometryResult::ready)
+    return std::nullopt;
+  return Geometry{.logical_width = geometry.logical_width,
+                  .logical_height = geometry.logical_height,
+                  .dpr_numerator = geometry.dpr_numerator,
+                  .dpr_denominator = geometry.dpr_denominator};
+}
+#endif
+
+} // namespace omarchy::plugin_runtime::bridge
