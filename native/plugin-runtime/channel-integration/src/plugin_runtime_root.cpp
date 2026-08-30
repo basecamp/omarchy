@@ -177,29 +177,9 @@ void RootSurfaceSessionPort::clear_surface_intent_eligibility(
     session->clear_surface_intent_eligibility();
 }
 
-std::unique_ptr<PluginRuntimeRoot> PluginRuntimeRoot::open(
-    PluginRuntimeConfiguration &&configuration) {
-  if (configuration.trusted_uid == std::numeric_limits<std::uint32_t>::max())
-    return {};
-  auto authority = host_session::AuthorityStore::open(
-      configuration.authority_root.get(), configuration.trusted_uid,
-      configuration.plugin);
-  if (!authority)
-    return {};
-  try {
-    auto root = std::unique_ptr<PluginRuntimeRoot>(
-        new PluginRuntimeRoot(configuration, std::move(authority)));
-    root->surface_session_ = std::make_unique<RootSurfaceSessionPort>(*root);
-    return root;
-  } catch (...) {
-    return {};
-  }
-}
-
 std::unique_ptr<PreparedPluginRuntime> PluginRuntimeRoot::prepare(
-    PluginRuntimeConfiguration &&configuration) {
-  if (configuration.trusted_uid == std::numeric_limits<std::uint32_t>::max() ||
-      configuration.hooks != nullptr)
+    Configuration &&configuration) {
+  if (configuration.trusted_uid == std::numeric_limits<std::uint32_t>::max())
     return {};
   auto authority = host_session::AuthorityStore::open(
       configuration.authority_root.get(), configuration.trusted_uid,
@@ -243,7 +223,7 @@ PluginRuntimeRoot::commit(
 }
 
 PluginRuntimeRoot::PluginRuntimeRoot(
-    PluginRuntimeConfiguration &configuration,
+    Configuration &configuration,
     std::unique_ptr<host_session::AuthorityStore> authority)
     : runtime_factory_(std::move(configuration.definitions),
                        std::move(configuration.services),
@@ -253,8 +233,8 @@ PluginRuntimeRoot::PluginRuntimeRoot(
       coordinator_(configuration.activation_root_fd,
                    configuration.revision_root_fd, configuration.state_root_fd,
                    *authority_, configuration.plugin, configuration.trusted_uid,
-                   runtime_factory_, configuration.hooks,
-                   configuration.session_limits, configuration.hooks),
+                   runtime_factory_, nullptr,
+                   configuration.session_limits, nullptr),
       controller_(coordinator_, runtime_factory_.definitions(),
                   runtime_factory_.scope_validator(), activation_record_) {
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
@@ -334,6 +314,36 @@ PluginRuntimeRoot::surface_session() noexcept {
 }
 
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
+std::unique_ptr<PreparedPluginRuntime>
+PluginRuntimeRootTestAccess::prepare_from_parts(
+    int activation_root_fd, int revision_root_fd, int state_root_fd,
+    host_session::OwnedDescriptor authority_root,
+    permissions::PluginId plugin, std::uint32_t trusted_uid,
+    std::string activation_record,
+    std::shared_ptr<const definitions::TrustedDefinitionRegistry> definitions,
+    std::shared_ptr<const RuntimeServices> services, Limits runtime_limits,
+    session::SessionLimits session_limits,
+    std::function<launcher::Supervisor()> supervisor_factory,
+    void (*before_final_fence)(host_session::AuthorityStore &, void *) noexcept,
+    void *before_final_fence_context) {
+  return PluginRuntimeRoot::prepare({
+      .activation_root_fd = activation_root_fd,
+      .revision_root_fd = revision_root_fd,
+      .state_root_fd = state_root_fd,
+      .authority_root = std::move(authority_root),
+      .plugin = std::move(plugin),
+      .trusted_uid = trusted_uid,
+      .activation_record = std::move(activation_record),
+      .definitions = std::move(definitions),
+      .services = std::move(services),
+      .runtime_limits = runtime_limits,
+      .session_limits = session_limits,
+      .test_supervisor_factory = std::move(supervisor_factory),
+      .test_before_final_fence = before_final_fence,
+      .test_before_final_fence_context = before_final_fence_context,
+  });
+}
+
 std::unique_ptr<PluginRuntimeRoot>
 PluginRuntimeRootTestAccess::commit(
     std::unique_ptr<PreparedPluginRuntime> prepared,
@@ -355,13 +365,6 @@ bool PluginRuntimeRootTestAccess::hooks_are(
     const PluginRuntimeHooks &hooks) noexcept {
   return PluginActivationCoordinatorTestAccess::hooks_are(
       root.coordinator_, &hooks, &hooks);
-}
-
-void PluginRuntimeRootTestAccess::set_supervisor_factory(
-    PluginRuntimeRoot &root,
-    std::function<launcher::Supervisor()> factory) {
-  PluginActivationCoordinatorTestAccess::set_supervisor_factory(
-      root.coordinator_, std::move(factory));
 }
 
 std::shared_ptr<session::LiveGenerationState>

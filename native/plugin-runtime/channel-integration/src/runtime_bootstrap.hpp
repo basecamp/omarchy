@@ -36,28 +36,14 @@ public:
   RuntimeBootstrap &
   operator=(const RuntimeBootstrap &) = delete;
 
+private:
   [[nodiscard]] static std::unique_ptr<RuntimeBootstrap>
   open(RuntimeBootstrapError &error) noexcept;
-
-  [[nodiscard]] std::unique_ptr<PluginRuntimeRoot>
-  open_runtime(std::string_view record_name,
-               const permissions::PluginId &plugin,
-               PluginRuntimeHooks &hooks) const noexcept;
   [[nodiscard]] std::unique_ptr<PreparedPluginRuntime>
   prepare_runtime(std::string_view record_name,
                   const permissions::PluginId &plugin) const noexcept;
   [[nodiscard]] std::unique_ptr<ActivationCatalog>
   scan_catalog(ActivationCatalogError &error) const noexcept;
-
-  [[nodiscard]] const definitions::TrustedDefinitionRegistry &
-  definitions() const noexcept {
-    return *definitions_;
-  }
-  [[nodiscard]] const RuntimeServices &services() const noexcept {
-    return *services_;
-  }
-
-private:
   RuntimeBootstrap(
       std::unique_ptr<RuntimeRoots> roots,
       std::shared_ptr<const definitions::TrustedDefinitionRegistry> definitions,
@@ -67,11 +53,9 @@ private:
                                int filesystem_root_fd,
       std::uint32_t definition_uid,
       RuntimeBootstrapError &error);
-  [[nodiscard]] std::optional<PluginRuntimeConfiguration>
+  [[nodiscard]] std::optional<PluginRuntimeRoot::Configuration>
   configuration(std::string_view record_name,
-                const permissions::PluginId &plugin,
-                PluginRuntimeHooks *hooks,
-                bool preparation = false) const;
+                const permissions::PluginId &plugin) const;
 
 #ifdef OMARCHY_RUNTIME_BOOTSTRAP_TESTING
   [[nodiscard]] static std::unique_ptr<RuntimeBootstrap>
@@ -89,6 +73,7 @@ private:
       std::uint32_t trusted_uid) noexcept;
   friend class RuntimeBootstrapTestAccess;
 #endif
+  friend class omarchy::plugin_runtime::bridge::PluginManager;
 
   std::unique_ptr<RuntimeRoots> roots_;
   std::shared_ptr<const definitions::TrustedDefinitionRegistry> definitions_;
@@ -121,12 +106,24 @@ public:
     return RuntimeBootstrap::authority_directory_accepted_for_test(
         owner_uid, mode, trusted_uid);
   }
-  [[nodiscard]] static std::optional<PluginRuntimeConfiguration>
-  configuration(const RuntimeBootstrap &bootstrap,
-                std::string_view record_name,
-                const permissions::PluginId &plugin,
-                PluginRuntimeHooks *hooks) {
-    return bootstrap.configuration(record_name, plugin, hooks);
+  [[nodiscard]] static std::unique_ptr<PreparedPluginRuntime>
+  prepare_runtime(const RuntimeBootstrap &bootstrap,
+                  std::string_view record_name,
+                  const permissions::PluginId &plugin) noexcept {
+    return bootstrap.prepare_runtime(record_name, plugin);
+  }
+  [[nodiscard]] static std::unique_ptr<ActivationCatalog>
+  scan_catalog(const RuntimeBootstrap &bootstrap,
+               ActivationCatalogError &error) noexcept {
+    return bootstrap.scan_catalog(error);
+  }
+  [[nodiscard]] static bool
+  has_fail_closed_context(const RuntimeBootstrap &bootstrap) noexcept {
+    return bootstrap.definitions_ && bootstrap.definitions_->size() == 0 &&
+           bootstrap.services_ &&
+           bootstrap.services_->notification_send == nullptr &&
+           bootstrap.services_->audio_play == nullptr &&
+           bootstrap.services_->dynamic_services.empty();
   }
 };
 #endif

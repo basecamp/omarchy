@@ -448,30 +448,30 @@ public:
     return value;
   }
 
-  channel::PluginRuntimeConfiguration
-  root_configuration(channel::RuntimeServices services = {},
-      channel::PluginRuntimeHooks *hooks = nullptr) {
+  std::unique_ptr<channel::PreparedPluginRuntime> prepare_root(
+      channel::RuntimeServices services = {},
+      std::function<launcher::Supervisor()> supervisor_factory = {},
+      std::string activation_record = "current",
+      std::uint32_t trusted_uid = static_cast<std::uint32_t>(::getuid()),
+      bool valid_authority = true,
+      void (*before_final_fence)(host::AuthorityStore &, void *) noexcept =
+          nullptr,
+      void *before_final_fence_context = nullptr) {
     store_.reset();
-    return {
-        .activation_root_fd = activation_fd_,
-            .revision_root_fd = revisions_fd_,
-            .state_root_fd = state_fd_,
-        .authority_root =
-            host::OwnedDescriptor(::fcntl(authority_fd_, F_DUPFD_CLOEXEC, 0)),
-            .plugin = permissions::PluginId(plugin_),
-            .trusted_uid = static_cast<std::uint32_t>(::getuid()),
-            .activation_record = "current",
-        .definitions =
-            std::make_shared<const definitions::TrustedDefinitionRegistry>(
-                definitions_),
-            .services = std::make_shared<const channel::RuntimeServices>(
-                std::move(services)),
-            .runtime_limits = {},
-            .session_limits = {},
-        .hooks = hooks,
-        .test_supervisor_factory = {},
-        .test_before_final_fence = nullptr,
-        .test_before_final_fence_context = nullptr};
+    auto authority =
+        valid_authority
+            ? host::OwnedDescriptor(
+                  ::fcntl(authority_fd_, F_DUPFD_CLOEXEC, 0))
+            : host::OwnedDescriptor{};
+    return channel::PluginRuntimeRootTestAccess::prepare_from_parts(
+        activation_fd_, revisions_fd_, state_fd_, std::move(authority),
+        permissions::PluginId(plugin_), trusted_uid,
+        std::move(activation_record),
+        std::make_shared<const definitions::TrustedDefinitionRegistry>(
+            definitions_),
+        std::make_shared<const channel::RuntimeServices>(std::move(services)),
+        {}, {}, std::move(supervisor_factory), before_final_fence,
+        before_final_fence_context);
   }
 
   void close_borrowed_roots() {
@@ -1635,8 +1635,7 @@ void prepared_root_commits_on_ui_and_reuses_exact_hooks() {
   const auto active = fixture.publish(1, 0, true);
   fixture.promote(active, 1);
   auto scope = std::make_shared<Scope>();
-  auto configuration = fixture.root_configuration();
-  configuration.test_supervisor_factory = [scope] {
+  auto supervisor = [scope] {
     return launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH,
                                              CHANNEL_PEER_PATH, scope);
   };
@@ -1645,8 +1644,7 @@ void prepared_root_commits_on_ui_and_reuses_exact_hooks() {
   std::thread::id worker_thread;
   std::thread worker([&] {
     worker_thread = std::this_thread::get_id();
-    prepared = channel::PluginRuntimeRoot::prepare(
-        std::move(configuration));
+    prepared = fixture.prepare_root({}, std::move(supervisor));
   });
   worker.join();
   require(prepared && worker_thread != ui_thread && scope->attachments == 0,
@@ -1677,15 +1675,13 @@ void prepared_root_final_fence_rejects_intervening_mutation() {
   fixture.promote(active, 1);
   auto scope = std::make_shared<Scope>();
   FinalFenceMutation mutation{.binding = active.binding};
-  auto configuration = fixture.root_configuration();
-  configuration.test_supervisor_factory = [scope] {
+  auto supervisor = [scope] {
     return launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH,
                                              CHANNEL_PEER_PATH, scope);
   };
-  configuration.test_before_final_fence = invalidate_final_fence;
-  configuration.test_before_final_fence_context = &mutation;
-  auto prepared =
-      channel::PluginRuntimeRoot::prepare(std::move(configuration));
+  auto prepared = fixture.prepare_root({}, std::move(supervisor), "current",
+                                       ::getuid(), true,
+                                       invalidate_final_fence, &mutation);
   CountingRuntimeHooks hooks;
   auto root = channel::PluginRuntimeRootTestAccess::commit(
       std::move(prepared), hooks, *QCoreApplication::instance());
@@ -1702,13 +1698,11 @@ void prepared_root_commit_is_ui_only_and_path_independent() {
     const auto active = fixture.publish(1, 0, true);
     fixture.promote(active, 1);
     auto scope = std::make_shared<Scope>();
-    auto configuration = fixture.root_configuration();
-    configuration.test_supervisor_factory = [scope] {
+    auto supervisor = [scope] {
       return launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH,
                                                CHANNEL_PEER_PATH, scope);
     };
-    auto prepared = channel::PluginRuntimeRoot::prepare(
-        std::move(configuration));
+    auto prepared = fixture.prepare_root({}, std::move(supervisor));
     CountingRuntimeHooks hooks;
     std::unique_ptr<channel::PluginRuntimeRoot> rejected;
     std::thread wrong_thread([&] {
@@ -1726,15 +1720,13 @@ void prepared_root_commit_is_ui_only_and_path_independent() {
   const auto active = fixture.publish(1, 0, true);
   fixture.promote(active, 1);
   auto scope = std::make_shared<Scope>();
-  auto configuration = fixture.root_configuration();
-  configuration.test_supervisor_factory = [scope] {
+  auto supervisor = [scope] {
     return launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH,
                                              CHANNEL_PEER_PATH, scope);
   };
   std::unique_ptr<channel::PreparedPluginRuntime> prepared;
   std::thread worker([&] {
-    prepared = channel::PluginRuntimeRoot::prepare(
-        std::move(configuration));
+    prepared = fixture.prepare_root({}, std::move(supervisor));
   });
   worker.join();
   require(prepared != nullptr && scope->attachments == 0,
@@ -1754,40 +1746,37 @@ void composed_root_is_the_composed_authority_path() {
   using namespace std::chrono_literals;
   CoordinatorFixture fixture("session-notification");
   fixture.record();
+  const auto active = fixture.publish(1, 0);
+  fixture.promote(active, 1);
   auto probe = std::make_shared<BlockingNotificationProbe>();
-  auto root = channel::PluginRuntimeRoot::open(
-      fixture.root_configuration({.context = probe,
-           .notification_send = blocking_notification,
-           .audio_play = nullptr,
-           .compare_scope = nullptr,
-           .dynamic_services = {}}));
-  NotificationReleaseGuard release_on_exit(probe);
-  require(root != nullptr, "runtime composition root did not open");
-  channel::PluginRuntimeRootTestAccess::set_supervisor_factory(
-      *root, [] {
+  auto prepared = fixture.prepare_root(
+      {.context = probe,
+       .notification_send = blocking_notification,
+       .audio_play = nullptr,
+       .compare_scope = nullptr,
+       .dynamic_services = {}},
+      [] {
         return launcher::Supervisor::forTestOnly(
             FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, std::make_shared<Scope>());
       });
+  NotificationReleaseGuard release_on_exit(probe);
+  CountingRuntimeHooks hooks;
+  auto root = channel::PluginRuntimeRootTestAccess::commit(
+      std::move(prepared), hooks, *QCoreApplication::instance());
+  require(root != nullptr, "prepared runtime composition did not commit");
 
-  auto locked = channel::PluginRuntimeRoot::open(
-      fixture.root_configuration({.context = probe,
-           .notification_send = blocking_notification,
-           .audio_play = nullptr,
-           .compare_scope = nullptr,
-           .dynamic_services = {}}));
+  auto locked = fixture.prepare_root(
+      {.context = probe,
+       .notification_send = blocking_notification,
+       .audio_play = nullptr,
+       .compare_scope = nullptr,
+       .dynamic_services = {}},
+      [] {
+        return launcher::Supervisor::forTestOnly(
+            FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, std::make_shared<Scope>());
+      });
   require(!locked, "a second composed root acquired the same authority");
   fixture.close_borrowed_roots();
-
-  auto review = root->prepare_review();
-  require(review != nullptr,
-          "pinned root descriptors did not survive borrowed FD closure");
-  const auto decisions = grant_all(*review);
-  const auto install =
-      root->apply_review(confirm(*review, decisions), decisions, {});
-  require(install.publication == host::ConsentResult::applied &&
-              install.promotion == host::AuthorityMutationResult::applied &&
-              install.activation && *install.activation,
-          "composed root did not review, promote and activate G1");
   {
     std::unique_lock lock(probe->mutex);
     require(probe->changed.wait_for(lock, 2s, [&] { return probe->entered; }),
@@ -1893,81 +1882,51 @@ void composed_root_is_the_composed_authority_path() {
 void composed_root_rejects_unusable_authority_and_providers() {
   CoordinatorFixture bad_fd;
   {
-    auto invalid = bad_fd.root_configuration();
-    invalid.authority_root = host::OwnedDescriptor{};
-    require(!channel::PluginRuntimeRoot::open(std::move(invalid)),
+    require(!bad_fd.prepare_root({}, {}, "current", ::getuid(), false),
             "invalid authority descriptor opened a product root");
   }
   {
-    auto invalid_uid = bad_fd.root_configuration();
-    invalid_uid.trusted_uid = std::numeric_limits<std::uint32_t>::max();
-    require(!channel::PluginRuntimeRoot::open(std::move(invalid_uid)),
+    require(!bad_fd.prepare_root(
+                {}, {}, "current", std::numeric_limits<std::uint32_t>::max()),
             "omitted trusted uid opened a product root");
   }
 
   {
     CoordinatorFixture wrong_record;
     wrong_record.record();
-    auto wrong_configuration = wrong_record.root_configuration();
-    wrong_configuration.activation_record = "../current";
-    auto wrong = channel::PluginRuntimeRoot::open(
-        std::move(wrong_configuration));
-    require(wrong && !wrong->prepare_review(),
-            "non-canonical fixed activation record prepared consent");
+    require(!wrong_record.prepare_root({}, {}, "../current"),
+            "non-canonical fixed activation record prepared a runtime");
   }
 
   CoordinatorFixture missing_provider("session-notification");
   missing_provider.record();
-  auto root = channel::PluginRuntimeRoot::open(
-      missing_provider.root_configuration());
-  require(root != nullptr, "missing-provider root did not open for review");
+  const auto active = missing_provider.publish(1, 0);
+  missing_provider.promote(active, 1);
   auto scope = std::make_shared<Scope>();
-  channel::PluginRuntimeRootTestAccess::set_supervisor_factory(
-      *root, [scope] {
+  auto rejected = missing_provider.prepare_root(
+      {}, [scope] {
         return launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH,
                                                  CHANNEL_PEER_PATH, scope);
       });
-  auto review = root->prepare_review();
-  require(review != nullptr, "missing-provider review was not prepared");
-  const auto decisions = grant_all(*review);
-  const auto rejected =
-      root->apply_review(confirm(*review, decisions), decisions, {});
-  require(rejected.publication == host::ConsentResult::applied &&
-              rejected.promotion == host::AuthorityMutationResult::applied &&
-              rejected.activation && !*rejected.activation &&
-              rejected.activation->session_error ==
-                  channel::PluginSessionCreateError::runtime_unavailable &&
-              scope->attachments == 0 && !root->session_binding(),
+  require(!rejected && scope->attachments == 0,
           "granted optional permission bypassed its missing trusted provider");
 }
 
 void composed_root_queues_hook_lifecycle_work() {
   CoordinatorFixture fixture("session-deadline");
   fixture.record();
+  const auto active = fixture.publish(1, 0, true);
+  fixture.promote(active, 1);
   QueuedStopHooks hooks;
-  auto root = channel::PluginRuntimeRoot::open(
-      fixture.root_configuration({}, &hooks));
-  require(root != nullptr, "queued-hook root did not open");
-  hooks.root = root.get();
-  channel::PluginRuntimeRootTestAccess::set_supervisor_factory(
-      *root, [] {
+  auto prepared = fixture.prepare_root(
+      {}, [] {
         return launcher::Supervisor::forTestOnly(
             FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, std::make_shared<Scope>());
       });
-  auto review = root->prepare_review();
-  require(review != nullptr, "queued-hook review was not prepared");
-  auto decisions = grant_all(*review);
-  const auto notification =
-      std::ranges::find_if(decisions, [](const auto &decision) {
-        return decision.capability.id.view() == "notifications.send";
-      });
-  require(notification != decisions.end(),
-          "queued-hook optional notification decision missing");
-  notification->decision = permissions::UserDecision::deny;
-  const auto install =
-      root->apply_review(confirm(*review, decisions), decisions, {});
-  require(install.activation && *install.activation,
-          "queued-hook session did not activate");
+  auto root = channel::PluginRuntimeRootTestAccess::commit(
+      std::move(prepared), hooks, *QCoreApplication::instance());
+  require(root != nullptr, "queued-hook prepared root did not commit");
+  hooks.root = root.get();
   await([&] { return hooks.stopped.load(std::memory_order_acquire); },
         "queued hook teardown did not run on the host loop");
   require(hooks.queued.load(std::memory_order_acquire) &&

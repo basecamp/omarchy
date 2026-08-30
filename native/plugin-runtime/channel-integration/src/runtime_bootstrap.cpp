@@ -236,19 +236,16 @@ std::unique_ptr<RuntimeBootstrap> RuntimeBootstrap::open(
   }
 }
 
-std::optional<PluginRuntimeConfiguration>
+std::optional<PluginRuntimeRoot::Configuration>
 RuntimeBootstrap::configuration(std::string_view record_name,
-                                         const permissions::PluginId &plugin,
-                                         PluginRuntimeHooks *hooks,
-                                         bool preparation) const {
-  if (record_name != plugin.view() || (hooks == nullptr && !preparation) ||
-      !exact_plugin_id(plugin.view()))
+                                const permissions::PluginId &plugin) const {
+  if (record_name != plugin.view() || !exact_plugin_id(plugin.view()))
     return std::nullopt;
   auto authority = open_plugin_authority(roots_->authority_fd(), plugin.view(),
                                          roots_->trusted_uid());
   if (!authority)
     return std::nullopt;
-  return PluginRuntimeConfiguration{
+  return PluginRuntimeRoot::Configuration{
       .activation_root_fd = roots_->activations_fd(),
       .revision_root_fd = roots_->revisions_fd(),
       .state_root_fd = roots_->state_fd(),
@@ -260,21 +257,7 @@ RuntimeBootstrap::configuration(std::string_view record_name,
       .services = services_,
       .runtime_limits = runtime_limits_,
       .session_limits = session_limits_,
-      .hooks = hooks,
   };
-}
-
-std::unique_ptr<PluginRuntimeRoot>
-RuntimeBootstrap::open_runtime(
-    std::string_view record_name, const permissions::PluginId &plugin,
-    PluginRuntimeHooks &hooks) const noexcept {
-  try {
-    auto candidate = configuration(record_name, plugin, &hooks);
-    return candidate ? PluginRuntimeRoot::open(std::move(*candidate))
-                     : nullptr;
-  } catch (...) {
-    return {};
-  }
 }
 
 std::unique_ptr<PreparedPluginRuntime>
@@ -282,7 +265,7 @@ RuntimeBootstrap::prepare_runtime(
     std::string_view record_name,
     const permissions::PluginId &plugin) const noexcept {
   try {
-    auto candidate = configuration(record_name, plugin, nullptr, true);
+    auto candidate = configuration(record_name, plugin);
     return candidate
                ? PluginRuntimeRoot::prepare(std::move(*candidate))
                : nullptr;

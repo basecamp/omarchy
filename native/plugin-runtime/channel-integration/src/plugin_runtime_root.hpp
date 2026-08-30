@@ -21,6 +21,7 @@ class PluginManager;
 namespace omarchy::plugin_runtime::channel {
 
 class RootSurfaceSessionPort;
+class RuntimeBootstrap;
 
 // Trusted, non-owning product integration hook. It must outlive the root and
 // be constructed by the host, never from plugin or QML data. Callbacks return
@@ -34,31 +35,6 @@ public:
   ~PluginRuntimeHooks() override = default;
 };
 
-struct PluginRuntimeConfiguration final {
-  int activation_root_fd = -1;
-  int revision_root_fd = -1;
-  int state_root_fd = -1;
-  // Move-owned exact per-plugin authority directory. The trusted host opens
-  // the canonical plugin child beneath its fixed authority container.
-  host_session::OwnedDescriptor authority_root;
-  permissions::PluginId plugin;
-  std::uint32_t trusted_uid = std::numeric_limits<std::uint32_t>::max();
-  std::string activation_record;
-  std::shared_ptr<const definitions::TrustedDefinitionRegistry> definitions;
-  // This retained provider context must not contain a root, controller,
-  // session or hook reference; provider callbacks cannot reenter lifecycle.
-  std::shared_ptr<const RuntimeServices> services;
-  Limits runtime_limits;
-  session::SessionLimits session_limits;
-  PluginRuntimeHooks *hooks = nullptr;
-#ifdef OMARCHY_PLUGIN_SESSION_TESTING
-  std::function<launcher::Supervisor()> test_supervisor_factory;
-  void (*test_before_final_fence)(host_session::AuthorityStore &,
-                                  void *) noexcept = nullptr;
-  void *test_before_final_fence_context = nullptr;
-#endif
-};
-
 class PreparedPluginRuntime;
 
 // Sole runtime composition for one secure plugin. Every authority-bearing
@@ -67,11 +43,6 @@ class PreparedPluginRuntime;
 // own grants, providers, session bindings or lifecycle.
 class PluginRuntimeRoot final {
 public:
-  [[nodiscard]] static std::unique_ptr<PluginRuntimeRoot>
-  open(PluginRuntimeConfiguration &&configuration);
-  [[nodiscard]] static std::unique_ptr<PreparedPluginRuntime>
-  prepare(PluginRuntimeConfiguration &&configuration);
-
   ~PluginRuntimeRoot() noexcept;
   PluginRuntimeRoot(const PluginRuntimeRoot &) = delete;
   PluginRuntimeRoot &
@@ -100,11 +71,33 @@ public:
   [[nodiscard]] SurfaceSessionPort &surface_session() noexcept;
 
 private:
+  struct Configuration final {
+    int activation_root_fd = -1;
+    int revision_root_fd = -1;
+    int state_root_fd = -1;
+    host_session::OwnedDescriptor authority_root;
+    permissions::PluginId plugin;
+    std::uint32_t trusted_uid = std::numeric_limits<std::uint32_t>::max();
+    std::string activation_record;
+    std::shared_ptr<const definitions::TrustedDefinitionRegistry> definitions;
+    std::shared_ptr<const RuntimeServices> services;
+    Limits runtime_limits;
+    session::SessionLimits session_limits;
+#ifdef OMARCHY_PLUGIN_SESSION_TESTING
+    std::function<launcher::Supervisor()> test_supervisor_factory;
+    void (*test_before_final_fence)(host_session::AuthorityStore &,
+                                    void *) noexcept = nullptr;
+    void *test_before_final_fence_context = nullptr;
+#endif
+  };
+
+  [[nodiscard]] static std::unique_ptr<PreparedPluginRuntime>
+  prepare(Configuration &&configuration);
   [[nodiscard]] static std::unique_ptr<PluginRuntimeRoot>
   commit(std::unique_ptr<PreparedPluginRuntime> prepared,
          PluginRuntimeHooks &hooks, QObject &ui_owner);
   PluginRuntimeRoot(
-      PluginRuntimeConfiguration &configuration,
+      Configuration &configuration,
       std::unique_ptr<host_session::AuthorityStore> authority);
 
   SessionRuntimeFactory runtime_factory_;
@@ -118,6 +111,7 @@ private:
   friend class SurfaceSessionPort;
   friend class RootSurfaceSessionPort;
   friend class PreparedPluginRuntime;
+  friend class RuntimeBootstrap;
   friend class omarchy::plugin_runtime::bridge::PluginManager;
 
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
@@ -144,6 +138,19 @@ private:
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
 class PluginRuntimeRootTestAccess final {
 public:
+  [[nodiscard]] static std::unique_ptr<PreparedPluginRuntime>
+  prepare_from_parts(
+      int activation_root_fd, int revision_root_fd, int state_root_fd,
+      host_session::OwnedDescriptor authority_root,
+      permissions::PluginId plugin, std::uint32_t trusted_uid,
+      std::string activation_record,
+      std::shared_ptr<const definitions::TrustedDefinitionRegistry> definitions,
+      std::shared_ptr<const RuntimeServices> services,
+      Limits runtime_limits, session::SessionLimits session_limits,
+      std::function<launcher::Supervisor()> supervisor_factory = {},
+      void (*before_final_fence)(host_session::AuthorityStore &,
+                                 void *) noexcept = nullptr,
+      void *before_final_fence_context = nullptr);
   [[nodiscard]] static std::unique_ptr<PluginRuntimeRoot>
   commit(std::unique_ptr<PreparedPluginRuntime> prepared,
          PluginRuntimeHooks &hooks, QObject &ui_owner);
@@ -153,9 +160,6 @@ public:
   [[nodiscard]] static bool hooks_are(
       const PluginRuntimeRoot &root,
       const PluginRuntimeHooks &hooks) noexcept;
-  static void
-  set_supervisor_factory(PluginRuntimeRoot &root,
-                         std::function<launcher::Supervisor()> factory);
   [[nodiscard]] static std::shared_ptr<session::LiveGenerationState>
   live_generation(const PluginRuntimeRoot &root) noexcept;
 };

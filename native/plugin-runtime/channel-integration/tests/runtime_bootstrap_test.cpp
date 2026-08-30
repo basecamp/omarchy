@@ -28,17 +28,6 @@ void require(bool condition, std::string_view message) {
     throw std::runtime_error(std::string(message));
 }
 
-class Hooks final : public channel::PluginRuntimeHooks {
-public:
-  void state_changed(host_session::SessionState,
-                     host_session::SessionError) override {}
-  void control_received(const host_session::OwnedMessage &) override {}
-  void render_rejected(host_session::RouteResult) override {}
-  bool accept(host_session::AdmittedSurfaceIntent) override {
-    return false;
-  }
-};
-
 class Fixture final {
 public:
   Fixture() {
@@ -76,6 +65,15 @@ public:
     return home_ / ".local/state/omarchy/plugin-security/v2/authority" /
            std::string(plugin);
   }
+  [[nodiscard]] std::filesystem::path activations() const {
+    return home_ / ".local/state/omarchy/plugin-security/v2/activations";
+  }
+  [[nodiscard]] std::filesystem::path revisions() const {
+    return home_ / ".local/share/omarchy/plugin-security/v2/revisions";
+  }
+  [[nodiscard]] std::filesystem::path state() const {
+    return home_ / ".local/state/omarchy/plugin-security/v2/state";
+  }
   [[nodiscard]] int open_root() const {
     return ::open(root_.c_str(),
                   O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
@@ -97,6 +95,78 @@ public:
   }
   void create_authority(std::string_view plugin, mode_t mode = 0700) {
     create(authority(plugin), mode);
+  }
+  void seed_runtime(std::string_view plugin,
+                    std::string_view revision_directory) {
+    const auto revision = revisions() / std::string(revision_directory);
+    create(revision / "ui", 0755);
+    {
+      std::ofstream manifest_file(revision / "manifest.json");
+      manifest_file
+          << "{\n  \"schemaVersion\": 2,\n  \"id\": \"" << plugin
+          << "\",\n  \"name\": \"Fixture\",\n"
+             "  \"version\": \"1.0.0\",\n"
+             "  \"runtime\": {\"apiVersion\": 1, \"qml\": "
+             "\"ui/Main.qml\"},\n  \"surfaces\": {\"bar\": {"
+             "\"role\": \"bar-embedded\", \"defaultSection\": "
+             "\"right\"}},\n  \"permissions\": {\"required\": [], "
+             "\"optional\": []}\n}\n";
+    }
+    std::ofstream(revision / "ui/Main.qml") << "import QtQuick\nItem {}\n";
+    for (const auto &entry :
+         std::filesystem::recursive_directory_iterator(revision)) {
+      require(::chmod(entry.path().c_str(), entry.is_directory() ? 0555 : 0444) ==
+                  0,
+              "cannot secure runtime revision fixture");
+    }
+    require(::chmod(revision.c_str(), 0555) == 0,
+            "cannot secure runtime revision root");
+
+    create(state() / std::string(plugin), 0700);
+    const int revision_fd = ::open(
+        revision.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    require(revision_fd >= 0, "runtime revision descriptor unavailable");
+    host_session::DescriptorRevisionVerifier verifier;
+    auto verified = verifier.verify_open_revision(revision_fd);
+    ::close(revision_fd);
+    require(verified && verified->manifest.id == plugin,
+            "runtime revision verification failed");
+
+    const auto record_path = activations() / std::string(plugin);
+    std::ofstream(record_path)
+        << "format=omarchy-plugin-activation-v2\nplugin=" << plugin
+        << "\nrevision-directory=" << revision_directory
+        << "\nrevision-sha256=" << verified->tree_sha256
+        << "\nstate-directory=" << plugin << "\n";
+    require(::chmod(record_path.c_str(), 0600) == 0,
+            "cannot secure runtime activation record");
+
+    const int authority_fd = ::open(authority(plugin).c_str(),
+                                    O_RDONLY | O_DIRECTORY | O_CLOEXEC |
+                                        O_NOFOLLOW);
+    require(authority_fd >= 0, "runtime authority descriptor unavailable");
+    auto store = host_session::AuthorityStore::open(
+        authority_fd, ::getuid(), permissions::PluginId(plugin));
+    ::close(authority_fd);
+    require(store != nullptr, "runtime authority store unavailable");
+    policy::GrantSnapshot snapshot;
+    snapshot.requests =
+        permissions::requests_from_manifest(verified->manifest);
+    snapshot.binding = {
+        .plugin = permissions::PluginId(plugin),
+        .revision = permissions::Digest(verified->tree_sha256),
+        .policy_fingerprint = permissions::Digest(
+            permissions::policy_request_fingerprint(snapshot.requests)),
+        .generation = 1,
+    };
+    snapshot.source_request_fingerprint =
+        permissions::Digest(verified->request_sha256);
+    definitions::TrustedDefinitionRegistry registry;
+    require(store->publish_candidate(*verified, snapshot, 0, registry, {}) ==
+                    host_session::AuthorityMutationResult::applied &&
+                store->promote_candidate(snapshot.binding, 1) ==
+                    host_session::AuthorityMutationResult::applied,
+            "runtime authority activation failed");
   }
 
 private:
@@ -199,31 +269,29 @@ Review review(std::string_view plugin, std::uint64_t generation,
 
 void empty_package_and_absent_admin_compose_one_shared_context() {
   Fixture fixture;
+  fixture.create_authority("second.plugin");
+  fixture.seed_runtime("example.plugin", "first-installed");
+  fixture.seed_runtime("second.plugin", "second-installed");
   channel::RuntimeBootstrapError error{};
   auto bootstrap = load(fixture, error);
   require(bootstrap && error == channel::RuntimeBootstrapError::none &&
-              bootstrap->definitions().size() == 0 &&
-              bootstrap->services().notification_send == nullptr &&
-              bootstrap->services().audio_play == nullptr &&
-              bootstrap->services().dynamic_services.empty(),
+              channel::RuntimeBootstrapTestAccess::has_fail_closed_context(
+                  *bootstrap),
           "fixed empty bootstrap did not compose fail-unavailable services");
 
-  Hooks hooks;
   const permissions::PluginId plugin("example.plugin");
-  auto first = channel::RuntimeBootstrapTestAccess::configuration(
-      *bootstrap, "example.plugin", plugin, &hooks);
-  auto second = channel::RuntimeBootstrapTestAccess::configuration(
-      *bootstrap, "example.plugin", plugin, &hooks);
-  require(first && second && first->definitions == second->definitions &&
-              first->services == second->services &&
-              first->definitions.get() == &bootstrap->definitions() &&
-              first->services.get() == &bootstrap->services(),
-          "plugin configurations copied their trusted host context");
-  require(!channel::RuntimeBootstrapTestAccess::configuration(
-              *bootstrap, "other.plugin", plugin, &hooks) &&
-              !channel::RuntimeBootstrapTestAccess::configuration(
-                  *bootstrap, "example.plugin", plugin, nullptr),
-          "unmatched or hookless activation candidate was accepted");
+  require(!channel::RuntimeBootstrapTestAccess::prepare_runtime(
+              *bootstrap, "other.plugin", plugin),
+          "mismatched activation candidate was accepted");
+  auto first = channel::RuntimeBootstrapTestAccess::prepare_runtime(
+      *bootstrap, "example.plugin", plugin);
+  auto second = channel::RuntimeBootstrapTestAccess::prepare_runtime(
+      *bootstrap, "second.plugin", permissions::PluginId("second.plugin"));
+  require(first && second,
+          "bootstrap could not prepare independent exact candidates");
+  require(!channel::RuntimeBootstrapTestAccess::prepare_runtime(
+              *bootstrap, "example.plugin", plugin),
+          "bootstrap admitted a second owner for one plugin authority");
 }
 
 void mandatory_package_and_optional_admin_are_exact() {
@@ -311,7 +379,6 @@ void authority_children_are_exact_and_never_created() {
                   authority_directory_accepted(uid, S_IFREG | 0700, uid),
           "per-plugin authority metadata predicate widened ownership or mode");
 
-  Hooks hooks;
   const permissions::PluginId plugin("example.plugin");
   {
     Fixture fixture;
@@ -319,8 +386,8 @@ void authority_children_are_exact_and_never_created() {
     channel::RuntimeBootstrapError error{};
     auto bootstrap = load(fixture, error);
     require(bootstrap &&
-                !channel::RuntimeBootstrapTestAccess::configuration(
-                    *bootstrap, "example.plugin", plugin, &hooks) &&
+                !channel::RuntimeBootstrapTestAccess::prepare_runtime(
+                    *bootstrap, "example.plugin", plugin) &&
                 !std::filesystem::exists(fixture.authority("example.plugin")),
             "bootstrap created a missing authority child");
   }
@@ -331,8 +398,8 @@ void authority_children_are_exact_and_never_created() {
     channel::RuntimeBootstrapError error{};
     auto bootstrap = load(fixture, error);
     require(bootstrap &&
-                !channel::RuntimeBootstrapTestAccess::configuration(
-                    *bootstrap, "example.plugin", plugin, &hooks),
+                !channel::RuntimeBootstrapTestAccess::prepare_runtime(
+                    *bootstrap, "example.plugin", plugin),
             "widened per-plugin authority directory was accepted");
   }
   {
@@ -345,8 +412,8 @@ void authority_children_are_exact_and_never_created() {
     channel::RuntimeBootstrapError error{};
     auto bootstrap = load(fixture, error);
     require(bootstrap &&
-                !channel::RuntimeBootstrapTestAccess::configuration(
-                    *bootstrap, "example.plugin", plugin, &hooks),
+                !channel::RuntimeBootstrapTestAccess::prepare_runtime(
+                    *bootstrap, "example.plugin", plugin),
             "symlinked per-plugin authority directory was accepted");
   }
   {
@@ -355,8 +422,8 @@ void authority_children_are_exact_and_never_created() {
     auto bootstrap = load(fixture, error);
     const permissions::PluginId path_plugin("../example.plugin");
     require(bootstrap &&
-                !channel::RuntimeBootstrapTestAccess::configuration(
-                    *bootstrap, path_plugin.view(), path_plugin, &hooks),
+                !channel::RuntimeBootstrapTestAccess::prepare_runtime(
+                    *bootstrap, path_plugin.view(), path_plugin),
             "noncanonical plugin name selected an authority path");
   }
 }
@@ -364,36 +431,30 @@ void authority_children_are_exact_and_never_created() {
 void authority_stores_are_physically_isolated_per_plugin() {
   Fixture fixture;
   fixture.create_authority("second.plugin");
-  channel::RuntimeBootstrapError error{};
-  auto bootstrap = load(fixture, error);
-  Hooks hooks;
   const permissions::PluginId first_plugin("example.plugin");
   const permissions::PluginId second_plugin("second.plugin");
-  auto first_configuration =
-      channel::RuntimeBootstrapTestAccess::configuration(
-          *bootstrap, first_plugin.view(), first_plugin, &hooks);
-  auto second_configuration =
-      channel::RuntimeBootstrapTestAccess::configuration(
-          *bootstrap, second_plugin.view(), second_plugin, &hooks);
-  require(first_configuration && second_configuration &&
-              first_configuration->authority_root &&
-              second_configuration->authority_root &&
-              (::fcntl(first_configuration->authority_root.get(), F_GETFD) &
-               FD_CLOEXEC) != 0 &&
-              (::fcntl(second_configuration->authority_root.get(), F_GETFD) &
-               FD_CLOEXEC) != 0,
+  const int first_authority =
+      ::open(fixture.authority(first_plugin.view()).c_str(),
+             O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+  const int second_authority =
+      ::open(fixture.authority(second_plugin.view()).c_str(),
+             O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+  require(first_authority >= 0 && second_authority >= 0 &&
+              (::fcntl(first_authority, F_GETFD) & FD_CLOEXEC) != 0 &&
+              (::fcntl(second_authority, F_GETFD) & FD_CLOEXEC) != 0,
           "exact per-plugin authority descriptors were unavailable");
 
   auto first_store = host_session::AuthorityStore::open(
-      first_configuration->authority_root.get(), ::getuid(), first_plugin);
+      first_authority, ::getuid(), first_plugin);
   auto second_store = host_session::AuthorityStore::open(
-      second_configuration->authority_root.get(), ::getuid(), second_plugin);
+      second_authority, ::getuid(), second_plugin);
   require(first_store && second_store,
           "different plugin authority locks could not coexist");
   require(!host_session::AuthorityStore::open(
-              first_configuration->authority_root.get(), ::getuid(),
-              first_plugin),
+              first_authority, ::getuid(), first_plugin),
           "a second owner acquired the same plugin authority lock");
+  ::close(first_authority);
+  ::close(second_authority);
 
   definitions::TrustedDefinitionRegistry registry;
   auto first_review = review(first_plugin.view(), 1, 'a');
@@ -437,17 +498,26 @@ void authority_stores_are_physically_isolated_per_plugin() {
 
   first_store.reset();
   second_store.reset();
-  auto first_root = channel::PluginRuntimeRoot::open(
-      std::move(*first_configuration));
-  auto second_root = channel::PluginRuntimeRoot::open(
-      std::move(*second_configuration));
-  auto duplicate_configuration =
-      channel::RuntimeBootstrapTestAccess::configuration(
-          *bootstrap, first_plugin.view(), first_plugin, &hooks);
-  require(first_root && second_root && duplicate_configuration &&
-              !channel::PluginRuntimeRoot::open(
-                  std::move(*duplicate_configuration)),
-          "per-plugin product roots did not preserve independent lock scope");
+
+  Fixture runtime_fixture;
+  runtime_fixture.create_authority("second.plugin");
+  runtime_fixture.seed_runtime("example.plugin", "first-installed");
+  runtime_fixture.seed_runtime("second.plugin", "second-installed");
+  channel::RuntimeBootstrapError error{};
+  auto bootstrap = load(runtime_fixture, error);
+  auto first = channel::RuntimeBootstrapTestAccess::prepare_runtime(
+      *bootstrap, first_plugin.view(), first_plugin);
+  auto second = channel::RuntimeBootstrapTestAccess::prepare_runtime(
+      *bootstrap, second_plugin.view(), second_plugin);
+  require(first && second &&
+              !channel::RuntimeBootstrapTestAccess::prepare_runtime(
+                  *bootstrap, first_plugin.view(), first_plugin),
+          "prepared roots did not preserve independent lock scope");
+  first.reset();
+  require(static_cast<bool>(
+              channel::RuntimeBootstrapTestAccess::prepare_runtime(
+                  *bootstrap, first_plugin.view(), first_plugin)),
+          "released plugin authority lock could not be reacquired");
 }
 
 void every_unregistered_native_adapter_fails_closed() {

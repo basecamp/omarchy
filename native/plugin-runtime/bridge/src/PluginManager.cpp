@@ -605,7 +605,8 @@ bool PluginManagerTestAccess::scanRuntime(PluginManager &manager) {
   if (!manager.runtime_)
     return false;
   channel::ActivationCatalogError error{};
-  auto candidate = manager.runtime_->bootstrap_->scan_catalog(error);
+  auto candidate = channel::RuntimeBootstrapTestAccess::scan_catalog(
+      *manager.runtime_->bootstrap_, error);
   return manager.runtime_->acceptScan(std::move(candidate));
 }
 
