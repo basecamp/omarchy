@@ -3,14 +3,26 @@
 # omarchy:summary=Create a desktop launcher for a terminal UI app
 # omarchy:args=[name command window-style icon-url-or-name]
 
-set -e
+set -euo pipefail
 
 ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
+APPLICATIONS_DIR="$HOME/.local/share/applications"
 
 safe_icon_name() {
   printf '%s\n' "$1" \
     | tr '[:upper:]' '[:lower:]' \
     | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//'
+}
+
+require_plain_name() {
+  # The name becomes a filename. A slash would turn it into directory levels, so
+  # the launcher lands somewhere omarchy-tui-remove cannot address; a leading
+  # ../ leaves the applications directory altogether (for example into
+  # ~/.config/autostart). Refuse rather than silently renaming what the user typed.
+  if [[ $1 == */* ]]; then
+    echo "App name cannot contain '/': $1" >&2
+    exit 1
+  fi
 }
 
 icon_name_from_ref() {
@@ -37,9 +49,38 @@ install_user_icon() {
   printf '%s\n' "$name"
 }
 
+download_icon() {
+  curl -fsSL --max-time 10 -o "$2" "$1" 2>/dev/null &&
+    [[ -s $2 && $(file -b --mime-type "$2") == image/* ]]
+}
+
+desktop_string_escape() {
+  # Desktop Entry "string" value (freedesktop Desktop Entry Spec, "Value types"):
+  # a raw newline would start a new key line and let a value inject a second
+  # Exec=. Escape backslash first, then tab/CR/LF and a leading space.
+  local value="$1"
+
+  value=${value//\\/\\\\}
+  value=${value//$'\t'/\\t}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\n'/\\n}
+  [[ $value == " "* ]] && value="\\s${value# }"
+
+  printf '%s' "$value"
+}
+
+desktop_exec_arg() {
+  # One Exec argument, double-quoted per the freedesktop Exec spec.
+  local escaped
+  escaped=$(printf '%s' "$1" \
+    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/`/\\`/g' -e 's/\$/\\$/g' -e 's/%/%%/g')
+  printf '"%s"' "$escaped"
+}
+
 if (( $# != 4 )); then
   echo -e "\e[32mLet's create a TUI shortcut you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My TUI")
+  require_plain_name "$APP_NAME"
   APP_EXEC=$(gum input --prompt "Launch Command> " --placeholder "lazydocker or bash -c 'dust; read -n 1 -s'")
   WINDOW_STYLE=$(gum choose --header "Window style" float tile)
   ICON_REF=$(gum input --prompt "Icon URL/name> " --placeholder "See https://dashboardicons.com or enter an installed icon name")
@@ -55,13 +96,15 @@ if [[ -z $APP_NAME || -z $APP_EXEC || -z $ICON_REF ]]; then
   exit 1
 fi
 
-DESKTOP_FILE="$HOME/.local/share/applications/$APP_NAME.desktop"
-mkdir -p "$(dirname "$DESKTOP_FILE")"
+require_plain_name "$APP_NAME"
+
+DESKTOP_FILE="$APPLICATIONS_DIR/$APP_NAME.desktop"
+mkdir -p "$APPLICATIONS_DIR"
 
 if [[ $ICON_REF =~ ^https?:// ]]; then
   ICON_VALUE=$(safe_icon_name "$APP_NAME")
   mkdir -p "$ICON_DIR"
-  if ! curl -sL -o "$ICON_DIR/$ICON_VALUE.png" "$ICON_REF"; then
+  if ! download_icon "$ICON_REF" "$ICON_DIR/$ICON_VALUE.png"; then
     echo "Error: Failed to download icon."
     exit 1
   fi
@@ -79,15 +122,23 @@ else
   APP_CLASS="TUI.tile"
 fi
 
+# Quote the user command as one Exec argument so metacharacters cannot reshape
+# the xdg-terminal-exec line, then escape the whole Exec value for file syntax.
+EXEC_COMMAND="xdg-terminal-exec --app-id=$APP_CLASS -e $(desktop_exec_arg "$APP_EXEC")"
+
+name_field=$(desktop_string_escape "$APP_NAME")
+exec_field=$(desktop_string_escape "$EXEC_COMMAND")
+icon_field=$(desktop_string_escape "$ICON_VALUE")
+
 cat >"$DESKTOP_FILE" <<EOF
 [Desktop Entry]
 Version=1.0
-Name=$APP_NAME
-Comment=$APP_NAME
-Exec=xdg-terminal-exec --app-id=$APP_CLASS -e $APP_EXEC
+Name=$name_field
+Comment=$name_field
+Exec=$exec_field
 Terminal=false
 Type=Application
-Icon=$ICON_VALUE
+Icon=$icon_field
 StartupNotify=true
 EOF
 
