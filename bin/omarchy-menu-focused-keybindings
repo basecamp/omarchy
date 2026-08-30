@@ -1,0 +1,405 @@
+#!/bin/bash
+
+# omarchy:summary=Show keybindings for the focused application, falling back to Hyprland's.
+
+# Show the keybindings for whatever app is focused right now, falling back to
+# the stock Hyprland keybindings menu when the app has no list of its own.
+#
+# Pressing the binding again while the menu is up closes it, the way Super +
+# Space closes the root menu. The stock Omarchy list is the preselected first
+# row, so Enter reaches it without a second binding.
+#
+# Support for an app is a file or a command existing -- never a list kept in
+# here -- so whatever ships either is picked up when it is installed and
+# forgotten when it is removed, with nothing to register or clean up:
+#
+#   - a command named omarchy-menu-<app>-keybindings, for apps whose bindings
+#     can be read back from the app itself
+#   - a command named omarchy-keybindings-<app>, printing those same rows, for
+#     apps whose bindings can be derived but whose keys are replayed like any
+#     other -- the menu and the sending stay here rather than being copied
+#   - <app>.txt in a keybindings directory, one binding per line as
+#     "<combo><TAB or spaces>→ <action>", for apps that cannot report their own
+#     (browsers, Electron apps, and the like)
+
+set -uo pipefail
+
+STATE_FILE="${XDG_RUNTIME_DIR:-/tmp}/omarchy-focused-keybindings.open"
+GLOBAL_MENU_LABEL="All Omarchy keybindings"
+STALE_LABEL="This list may be out of date"
+
+# A terminal's own app sits a few processes below its window; past that the tree
+# is an application's internals, which are not worth the walk.
+MAX_TREE_DEPTH=6
+
+# --- provider lookup -------------------------------------------------------
+
+# User first, then anything a package dropped in, then what Omarchy ships --
+# the same precedence omarchy-theme-dir uses. Nothing is ever copied into the
+# user's home, so a shipped list needs no deployment and leaves nothing behind
+# when its app goes away.
+keybindings_dirs() {
+  local dir
+
+  printf '%s\n' "${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/keybindings"
+
+  local IFS=:
+  for dir in ${XDG_DATA_DIRS:-/usr/local/share:/usr/share}; do
+    printf '%s\n' "$dir/omarchy/keybindings"
+  done
+
+  printf '%s\n' "$OMARCHY_PATH/default/omarchy/keybindings"
+}
+
+list_for() {
+  local app="$1" dir
+
+  while IFS= read -r dir; do
+    if [[ -f "$dir/$app.txt" ]]; then
+      printf '%s' "$dir/$app.txt"
+      return 0
+    fi
+  done < <(keybindings_dirs)
+
+  return 1
+}
+
+# Memoised: the process-tree walk asks about the same names repeatedly.
+declare -A SUPPORTED_CACHE=()
+
+supported() {
+  local app="$1"
+
+  [[ -n $app ]] || return 1
+
+  if [[ -z ${SUPPORTED_CACHE[$app]:-} ]]; then
+    if omarchy-cmd-present "omarchy-menu-$app-keybindings" ||
+      omarchy-cmd-present "omarchy-keybindings-$app" ||
+      list_for "$app" >/dev/null; then
+      SUPPORTED_CACHE[$app]="yes"
+    else
+      SUPPORTED_CACHE[$app]="no"
+    fi
+  fi
+
+  [[ ${SUPPORTED_CACHE[$app]} == "yes" ]]
+}
+
+# --- open-menu tracking ---------------------------------------------------
+#
+# The shell exposes summon/hide/toggle over IPC but no "is it open?", and
+# summon always opens rather than toggling. A menu is "still up" exactly as
+# long as the process that summoned it is alive, though, since
+# omarchy-menu-select blocks until the menu is dismissed. So record that PID
+# along with its start time, which keeps a recycled PID from reading as a menu
+# that is still open. Nothing has to clean the file up, which keeps it correct
+# across the exec calls below.
+#
+# Tracking our own PID rather than asking the shell also scopes the toggle: a
+# menu someone opened another way is replaced, not closed.
+
+pid_start_time() {
+  awk '{ print $22 }' "/proc/$1/stat" 2>/dev/null
+}
+
+# Which shell is holding menus right now. Empty when none is running, which
+# reads as "no menu can be open" -- also correct.
+shell_identity() {
+  pgrep -x quickshell 2>/dev/null | sort -n | head -1
+}
+
+mark_menu_open() {
+  printf '%s %s %s\n' "$$" "$(pid_start_time $$)" "$(shell_identity)" >"$STATE_FILE" 2>/dev/null
+}
+
+# Sets OPEN_PID when a menu this script opened is still on screen.
+menu_is_open() {
+  local pid start_time shell_pid
+
+  [[ -r $STATE_FILE ]] || return 1
+  read -r pid start_time shell_pid <"$STATE_FILE" || return 1
+  [[ $pid =~ ^[0-9]+$ ]] || return 1
+  [[ $(pid_start_time "$pid") == "$start_time" ]] || return 1
+
+  # A menu waits on the shell to report a selection, so a shell that restarts
+  # while one is up leaves that wait unanswered forever and the process outlives
+  # the menu it tracked. The menu cannot have survived its own shell, so a
+  # changed shell means closed -- however long ago the menu was opened.
+  [[ $shell_pid == "$(shell_identity)" ]] || return 1
+
+  OPEN_PID="$pid"
+}
+
+kill_tree() {
+  local pid="$1" child
+
+  for child in $(pgrep -P "$pid" 2>/dev/null); do
+    kill_tree "$child"
+  done
+
+  kill -TERM "$pid" 2>/dev/null
+}
+
+# --- focused app resolution ----------------------------------------------
+
+# Terminal apps all share their terminal's window class, so the class alone
+# cannot tell herdr from tmux from nvim. Walk the focused window's process tree
+# instead and take the deepest match, which is the one actually in front.
+resolve_terminal_app() {
+  local root_pid="$1"
+  local best_app="" best_depth=-1
+  local -A first_pid=()
+
+  walk() {
+    local pid="$1" depth="$2" comm child
+
+    ((depth <= MAX_TREE_DEPTH)) || return 0
+
+    comm=$(ps -o comm= -p "$pid" 2>/dev/null)
+    comm="${comm#-}"
+    # tmux renames its processes to "tmux: client" / "tmux: server", so the
+    # role after the colon is dropped before matching.
+    comm="${comm%%:*}"
+    comm="${comm// /}"
+    comm="${comm,,}"
+
+    if supported "$comm"; then
+      # An app's own helper processes carry its name too, so keep the first
+      # sighting: the one that owns the terminal, not something it spawned.
+      [[ -n ${first_pid[$comm]:-} ]] || first_pid[$comm]="$pid"
+
+      if ((depth > best_depth)); then
+        best_app="$comm"
+        best_depth=$depth
+      fi
+    fi
+
+    for child in $(pgrep -P "$pid" 2>/dev/null); do
+      walk "$child" $((depth + 1))
+    done
+  }
+
+  walk "$root_pid" 0
+  [[ -n $best_app ]] && printf '%s\t%s' "$best_app" "${first_pid[$best_app]}"
+}
+
+# A multiplexer keeps its panes under its own server, outside the focused
+# window's process tree, so the walk stops at the client and reports the
+# multiplexer however deeply nested the real app is. Any app that hosts others
+# can hand over its active pane by shipping omarchy-cmd-<app>-pane-pid.
+pane_pid_for() {
+  local app="$1" pid="$2"
+  # Separate statement: the whole `local` line is expanded before it runs, so
+  # $app would still be the caller's here.
+  local helper="omarchy-cmd-$app-pane-pid"
+
+  omarchy-cmd-present "$helper" || return 1
+  "$helper" "$pid" 2>/dev/null
+}
+
+# Chromium web apps carry a per-site class ("chrome-hey.com__-Default") but are
+# still Chromium and take the same shortcuts. A reverse-DNS class also answers
+# to its last component, so a provider can be named for the app rather than for
+# its full app id ("org.gnome.Nautilus" -> "nautilus").
+class_candidates() {
+  local class="${1,,}"
+
+  case "$class" in
+    chrome-* | google-chrome* | brave-browser) class="chromium" ;;
+  esac
+
+  printf '%s\n' "$class"
+
+  if [[ $class == *.* ]]; then
+    printf '%s\n' "${class##*.}"
+  fi
+}
+
+# Captured before the menu opens, so a chosen binding goes to the window it was
+# listed for rather than to whatever holds focus afterwards. Read at the top
+# level: assigning it inside a $(...) would strand it in the subshell.
+window_target() {
+  local address
+
+  address=$(jq -r '.address // empty' <<<"$1")
+  printf '%s' "${address:+address:}${address:-activewindow}"
+}
+
+focused_app() {
+  local window="$1" class pid candidate resolved inner deeper parent="" hops=0
+
+  class=$(jq -r '.class // empty' <<<"$window")
+  pid=$(jq -r '.pid // empty' <<<"$window")
+
+  if [[ $pid =~ ^[0-9]+$ ]] && ((pid > 0)); then
+    resolved=$(resolve_terminal_app "$pid")
+
+    # Descend through nested hosts -- Claude Code inside tmux inside a terminal
+    # is three layers -- stopping when nothing hosts anything further.
+    while [[ -n $resolved ]] && ((hops < 4)); do
+      hops=$((hops + 1))
+      inner=$(pane_pid_for "${resolved%%$'\t'*}" "${resolved#*$'\t'}") || break
+      [[ $inner =~ ^[0-9]+$ ]] || break
+
+      deeper=$(resolve_terminal_app "$inner")
+      [[ -n $deeper ]] || break
+
+      # The layer we came from is what this menu offers a way back to.
+      parent="${resolved%%$'\t'*}"
+      resolved="$deeper"
+    done
+
+    if [[ -n $resolved ]]; then
+      printf '%s\t%s' "$resolved" "$parent"
+      return 0
+    fi
+  fi
+
+  [[ -n $class ]] || return 1
+
+  while IFS= read -r candidate; do
+    if supported "$candidate"; then
+      printf '%s\t%s\t' "$candidate" "$pid"
+      return 0
+    fi
+  done < <(class_candidates "$class")
+
+  # Nothing supports it, but report the class anyway so --which stays useful.
+  printf '%s\t%s\t' "$(class_candidates "$class" | head -1)" "$pid"
+}
+
+# --- menus ----------------------------------------------------------------
+
+show_global_menu() {
+  mark_menu_open
+  exec omarchy-menu-keybindings
+}
+
+# A hand-written list cannot notice that the app was remapped, so it can say so
+# instead of quietly lying. Any "# watch: <path>" line in the list names a config
+# whose mtime, if newer than the list itself, means the two may have diverged.
+stale_watch_path() {
+  local file="$1" line path candidate list_mtime
+
+  list_mtime=$(stat -c %Y "$file" 2>/dev/null) || return 1
+
+  while IFS= read -r line; do
+    path=$(trim "${line#*watch:}")
+    path="${path/#\~/$HOME}"
+
+    # Unquoted on purpose: a watch line may name a glob.
+    for candidate in $path; do
+      [[ -e $candidate ]] || continue
+      if (( $(stat -c %Y "$candidate" 2>/dev/null || echo 0) > list_mtime )); then
+        printf '%s' "$candidate"
+        return 0
+      fi
+    done
+  done < <(grep -E '^[[:space:]]*#[[:space:]]*watch:' "$file" 2>/dev/null)
+
+  return 1
+}
+
+show_static_menu() {
+  local app="$1" rows="$2" file="${3:-}" records selection monitor_height menu_height stale
+
+  stale=""
+  [[ -n $file ]] && stale=$(stale_watch_path "$file")
+
+  local up_rows
+  up_rows=$(omarchy-cmd-keybindings-up)
+
+  # Nav rows first, so the layers above are visible the moment the menu opens
+  # and the nearest is one Enter away.
+  records=$(
+    [[ -n $up_rows ]] && printf '%s\n' "$up_rows"
+    # 34, not 32: printf pads by bytes and the glyph is three of them.
+    [[ -n $stale ]] && printf '%-34s → %s\n' "⚠" "$STALE_LABEL"
+    grep -Ev '^[[:space:]]*(#|$)' <<<"$rows"
+  )
+
+  monitor_height=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused == true) | .height' 2>/dev/null)
+  [[ $monitor_height =~ ^[0-9]+$ ]] && ((monitor_height > 0)) || monitor_height=900
+  menu_height=$((monitor_height * 40 / 100))
+
+  mark_menu_open
+  selection=$(printf '%s\n' "$records" |
+    omarchy-menu-select "${app^} keybindings" -- --width 800 --height "$menu_height") || return 0
+
+  if [[ -n $up_rows ]] && grep -Fqx -- "$selection" <<<"$up_rows"; then
+    mark_menu_open
+    exec omarchy-cmd-keybindings-up --go "$selection"
+  fi
+
+  if [[ $selection == *"$STALE_LABEL"* ]]; then
+    omarchy-notification-send "$STALE_LABEL" \
+      "$stale changed after $file was written."
+    return 0
+  fi
+
+  omarchy-cmd-keybinding-send "$selection"
+  return 0
+}
+
+# --- dispatch -------------------------------------------------------------
+
+window_json=$(hyprctl activewindow -j 2>/dev/null)
+TARGET_WINDOW=$(window_target "$window_json")
+resolved=$(focused_app "$window_json")
+app=$(cut -f1 <<<"$resolved")
+focused_pid=$(cut -f2 <<<"$resolved")
+parent_app=$(cut -f3 <<<"$resolved")
+
+# Every app menu offers one row up: to the app hosting it, or to Omarchy's own
+# list when nothing hosts it.
+if [[ -n ${parent_app:-} ]]; then
+  export OMARCHY_KEYBINDINGS_UP="omarchy-menu-$parent_app-keybindings"
+  export OMARCHY_KEYBINDINGS_UP_LABEL="${parent_app^} keybindings"
+else
+  export OMARCHY_KEYBINDINGS_UP="omarchy-menu-keybindings"
+  export OMARCHY_KEYBINDINGS_UP_LABEL="$GLOBAL_MENU_LABEL"
+fi
+
+# A generator that can drive its app directly (Neovim over RPC, say) needs to
+# know which process it is looking at.
+export OMARCHY_FOCUSED_PID="$focused_pid"
+export OMARCHY_FOCUSED_WINDOW="$TARGET_WINDOW"
+
+# Debug aid: report what the dispatcher resolved, without opening a menu. Prints
+# the send target too, since a menu that lists fine but sends nothing is the
+# failure this catches.
+if [[ ${1:-} == "--which" ]]; then
+  printf 'app:    %s\npid:    %s\ntarget: %s\n' "${app:-<none>}" "${focused_pid:-<none>}" "$TARGET_WINDOW"
+  exit 0
+fi
+
+# A menu of ours is already up, so this press closes it rather than summoning
+# a second one on top of the first.
+if menu_is_open; then
+  # Cleared first so a kill that goes wrong cannot strand the file and wedge
+  # every later press into the close branch.
+  rm -f "$STATE_FILE"
+  [[ $OPEN_PID != "$$" ]] && kill_tree "$OPEN_PID"
+  exec omarchy-menu close
+fi
+
+if [[ -n ${app:-} ]]; then
+  generator="omarchy-menu-$app-keybindings"
+
+  if omarchy-cmd-present "$generator"; then
+    mark_menu_open
+    exec "$generator"
+  fi
+
+  if omarchy-cmd-present "omarchy-keybindings-$app"; then
+    show_static_menu "$app" "$("omarchy-keybindings-$app")"
+    exit 0
+  fi
+
+  if list=$(list_for "$app"); then
+    show_static_menu "$app" "$(cat "$list")" "$list"
+    exit 0
+  fi
+fi
+
+show_global_menu

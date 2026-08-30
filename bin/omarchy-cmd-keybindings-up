@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# omarchy:summary=Print, or follow, the menu rows leaving an app's keybindings for the layers above.
+# omarchy:hidden=true
+# omarchy:args=[--go <row>]
+
+# Keybinding menus stack: Neovim inside tmux inside Omarchy. Each menu lists the
+# layers enclosing it, nearest first, so the tmux bindings that split the pane
+# are one hop from inside the editor and Omarchy's own list is one hop from
+# anywhere -- never two.
+#
+# omarchy-menu-focused-keybindings sets the variables read here.
+
+set -uo pipefail
+
+GLOBAL_COMMAND="omarchy-menu-keybindings"
+GLOBAL_LABEL="All Omarchy keybindings"
+
+parent_command="${OMARCHY_KEYBINDINGS_UP:-}"
+parent_label="${OMARCHY_KEYBINDINGS_UP_LABEL:-}"
+
+# The global list is the bottom of every stack, so it is only a separate row when
+# something else sits between here and it.
+[[ $parent_command == "$GLOBAL_COMMAND" ]] && parent_command="" && parent_label=""
+
+if [[ ${1:-} != "--go" ]]; then
+  # Only the first row is preselected, so only it is labelled ENTER.
+  if [[ -n $parent_command ]]; then
+    printf '%-32s → %s\n' "ENTER" "$parent_label"
+    printf '%-32s → %s\n' "" "$GLOBAL_LABEL"
+  elif [[ -n ${OMARCHY_KEYBINDINGS_UP:-} ]]; then
+    printf '%-32s → %s\n' "ENTER" "$GLOBAL_LABEL"
+  fi
+
+  exit 0
+fi
+
+row="${2:-}"
+
+if [[ -n $parent_command && $row == *"$parent_label"* ]]; then
+  # Arriving at the enclosing app, whose own way out is the global list.
+  export OMARCHY_KEYBINDINGS_UP="$GLOBAL_COMMAND"
+  export OMARCHY_KEYBINDINGS_UP_LABEL="$GLOBAL_LABEL"
+  exec "$parent_command"
+fi
+
+# Nothing sits above the global list.
+unset OMARCHY_KEYBINDINGS_UP OMARCHY_KEYBINDINGS_UP_LABEL
+exec "$GLOBAL_COMMAND"
