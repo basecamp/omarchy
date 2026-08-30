@@ -718,7 +718,7 @@ remove_legacy_bcm4350_wl_driver() {
   log "Removing legacy Broadcom wl driver for Apple BCM4350"
   # BCM4350 uses the in-kernel brcmfmac driver. The legacy wl packages blacklist
   # it, so remove only those packages while ignoring pre-quattro dependency edges.
-  as_root pacman -Rdd --noconfirm "${legacy_wl_packages[@]}"
+  as_root pacman -Rdd --noconfirm "${legacy_wl_packages[@]}" || warn "Could not remove legacy Broadcom driver(s) ${legacy_wl_packages[*]}; continuing."
 }
 
 migrate_1password_beta_package() {
