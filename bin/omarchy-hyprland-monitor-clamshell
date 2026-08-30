@@ -64,11 +64,11 @@ fi
 # when the toggle it exists to recover is present, since with it absent each
 # would be a no-op that still asks Hyprland several questions every poll. One
 # that fails or times out may have made half of its own transition, so the run
-# stops here rather than carry on over it. What a killed helper can leave is
-# the helpers' own pre-existing residual, not repaired here: the toggle
-# removes its flag and only then reloads, so one killed between the two leaves
-# the flag absent and the rule still held, a later run sees no flag, and the
-# rule stays until an unrelated reload.
+# stops here rather than carry on over it. A helper killed between removing
+# its flag and its reload leaves the flag absent and the rule still held; the
+# repair below answers that where it strands the machine (no external
+# active), and with an external still up the rule stands until the next
+# transition or an unrelated reload -- the user has a display meanwhile.
 if [[ -f $MANUAL_DISABLE_FLAG ]]; then
   bounded omarchy-hyprland-monitor-internal recover >/dev/null 2>&1 || exit 0
 fi
@@ -138,13 +138,62 @@ disable_internal() {
   reload_hyprland || restore_prior
 }
 
+# What the compositor holds for the panel: 0 disabled, 1 enabled, 2 unknown
+# (a failed or timed-out query, no such output, or nothing recognizable --
+# the query's status is checked before its output is parsed, so a valid
+# answer followed by a failure is still an unknown). Never the config.
+panel_state() {
+  local answer held
+  if ! answer=$(bounded hyprctl monitors all -j 2>/dev/null); then
+    return 2
+  fi
+  if ! held=$(jq -r --arg name "$INTERNAL" '[.[] | select(.name == $name)] | first | .disabled' <<<"$answer" 2>/dev/null); then
+    return 2
+  fi
+  case $held in
+    true) return 0 ;;
+    false) return 1 ;;
+    *) return 2 ;;
+  esac
+}
+
+# A panel the compositor holds disabled while nothing on disk wants it off --
+# no overlay, no manual toggle -- and no external monitor active is a machine
+# with no usable display, which a helper killed between removing its flag and
+# its reload leaves behind. One reload lets the config answer again; a panel
+# that comes back is woken, one the config still reports disabled is the
+# config's own answer and is not. The compositor cannot say WHY a panel is
+# off, so that answer is not remembered: while the gate stays open a later
+# run reloads again -- one idempotent reload per reconciliation invocation: a
+# lid event is one, a monitor-change retry chain is up to four, and there is
+# no undocked poll to multiply it further -- and a reload that brings another
+# output up closes the gate instead. Any unknown, at either query, repairs
+# and wakes nothing.
+repair_disabled_panel() {
+  [[ -n $INTERNAL ]] || return 0
+  [[ -f $MANUAL_DISABLE_FLAG ]] && return 0
+  (( external == 1 )) || return 0
+
+  panel_state
+  (( $? == 0 )) || return 0
+
+  reload_hyprland || return 0
+
+  panel_state
+  (( $? == 1 )) || return 0
+  bounded hyprctl dispatch "hl.dsp.dpms({ action = \"enable\", monitor = \"$INTERNAL\" })" >/dev/null 2>&1 || true
+}
+
 # Out of clamshell the overlay is absent, whoever it was for. Removing it is
 # followed by one reload, undone if the reload does not take; then the panel is
 # woken, unless there is no panel to name, or the manual toggle is on while an
 # external monitor is active or cannot be told to be. The wake is best-effort:
 # any key or pointer input re-lights the panel.
 enable_internal() {
-  (( prior_exists )) || return 0
+  if (( ! prior_exists )); then
+    repair_disabled_panel
+    return 0
+  fi
 
   keep_prior || return 0
   rm -f "$CLAMSHELL_FLAG" || return 0

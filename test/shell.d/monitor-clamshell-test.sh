@@ -40,8 +40,25 @@ cat >"$stub_bin/hyprctl" <<'SH'
 #!/bin/bash
 printf 'hyprctl %s\n' "$*" >>"$OMARCHY_TEST_LOG"
 case $1 in
-  monitors) [[ -e $OMARCHY_TEST_CTL/hang-monitors ]] && sleep 5; cat "$OMARCHY_TEST_CTL/monitors.json" ;;
-  reload) [[ -e $OMARCHY_TEST_CTL/hang-reload ]] && sleep 5; [[ -e $OMARCHY_TEST_CTL/fail-reload ]] && exit 1; exit 0 ;;
+  monitors)
+    [[ -e $OMARCHY_TEST_CTL/hang-monitors ]] && sleep 5
+    cat "$OMARCHY_TEST_CTL/monitors.json"
+    # A valid answer followed by a failure: the reader must treat the query as
+    # unknown, never as the printed value.
+    [[ -e $OMARCHY_TEST_CTL/slow-monitors ]] && sleep 5
+    [[ -e $OMARCHY_TEST_CTL/sour-monitors ]] && exit 1
+    exit 0
+    ;;
+  reload)
+    [[ -e $OMARCHY_TEST_CTL/hang-reload ]] && sleep 5
+    [[ -e $OMARCHY_TEST_CTL/fail-reload ]] && exit 1
+    # What the config would answer once re-read: repair-flips models a config
+    # that re-enables the panel; repair-slows and repair-sours make the answer
+    # after the reload arrive and then hang, or arrive and then fail.
+    [[ -e $OMARCHY_TEST_CTL/repair-flips ]] && printf '[{"name":"eDP-1","description":"Test Panel","disabled":false,"scale":1.25}]' >"$OMARCHY_TEST_CTL/monitors.json"
+    [[ -e $OMARCHY_TEST_CTL/repair-slows ]] && touch "$OMARCHY_TEST_CTL/slow-monitors"
+    [[ -e $OMARCHY_TEST_CTL/repair-sours ]] && touch "$OMARCHY_TEST_CTL/sour-monitors"
+    exit 0 ;;
   dispatch) [[ -e $OMARCHY_TEST_CTL/hang-dispatch ]] && sleep 5; exit 0 ;;
   *) printf 'hyprctl UNEXPECTED %s\n' "$*" >>"$OMARCHY_TEST_LOG"; exit 1 ;;
 esac
@@ -435,6 +452,59 @@ reset_state; clamshell; rm -f "$lock"; chmod 555 "$run_dir"
 chmod 755 "$run_dir"
 [[ ! -s $log ]] || fail "T3 flock: no collaborator is called without a lock file" "$(cat "$log")"
 pass "T3: a lock that cannot be taken stops the run before any effect"
+
+# The repair: a compositor holding the panel disabled while nothing on disk
+# wants it off -- what a helper killed between its flag removal and its reload
+# leaves behind -- gets one reload, only while no external monitor is active;
+# the wake follows only when the reload actually brought the panel back. A
+# config that keeps the panel disabled is reloaded again on a later run -- the
+# stated stateless trade -- but never woken; every unknown repairs nothing,
+# including a valid answer followed by a hang or a failure, at either query.
+panel_held() { printf '[{"name":"eDP-1","description":"Test Panel","disabled":%s,"scale":1.25}]' "$1" >"$ctl/monitors.json"; }
+reset_state; panel_held true; touch "$ctl/repair-flips"
+run_command || fail "T3 repair: runs"
+(( $(reloads) == 1 && $(dispatches) == 1 )) || fail "T3 repair: a stale disabled panel gets one reload and one wake" "$(cat "$log")"
+[[ ! -e $overlay_file ]] && [[ $(ls -A "$toggles" | wc -l) -eq 0 ]] || fail "T3 repair: nothing is written"
+: >"$log"; run_command || fail "T3 repair: runs once repaired"
+(( $(reloads) == 0 && $(dispatches) == 0 )) || fail "T3 repair: a panel the compositor reports enabled repairs nothing"
+reset_state; panel_held true
+run_command || fail "T3 repair (config-disabled): runs"
+(( $(reloads) == 1 && $(dispatches) == 0 )) || fail "T3 repair: a config that keeps the panel disabled is never woken" "$(cat "$log")"
+: >"$log"; run_command || fail "T3 repair (config-disabled): runs again"
+(( $(reloads) == 1 && $(dispatches) == 0 )) || fail "T3 repair: the stateless trade reloads again on a later run, and still never wakes" "$(cat "$log")"
+reset_state; printf 'not json' >"$ctl/monitors.json"
+run_command || fail "T3 repair (unreadable before): runs"
+(( $(reloads) == 0 && $(dispatches) == 0 )) || fail "T3 repair: an unreadable answer before the reload repairs nothing"
+reset_state; panel_held true; touch "$ctl/slow-monitors"
+run_command || fail "T3 repair (masked hang before): runs"
+(( $(reloads) == 0 && $(dispatches) == 0 )) || fail "T3 repair: a valid answer followed by a hang is an unknown, not a repair" "$(cat "$log")"
+reset_state; panel_held true; touch "$ctl/sour-monitors"
+run_command || fail "T3 repair (masked failure before): runs"
+(( $(reloads) == 0 && $(dispatches) == 0 )) || fail "T3 repair: a valid answer followed by a failure is an unknown, not a repair"
+reset_state; panel_held true; touch "$ctl/repair-flips" "$ctl/repair-slows"
+run_command || fail "T3 repair (masked hang after): runs"
+(( $(reloads) == 1 && $(dispatches) == 0 )) || fail "T3 repair: a valid answer followed by a hang after the reload wakes nothing" "$(cat "$log")"
+reset_state; panel_held true; touch "$ctl/repair-flips" "$ctl/repair-sours"
+run_command || fail "T3 repair (masked failure after): runs"
+(( $(reloads) == 1 && $(dispatches) == 0 )) || fail "T3 repair: a valid answer followed by a failure after the reload wakes nothing"
+reset_state; printf 0 >"$ctl/active"; panel_held true
+run_command || fail "T3 repair (external active): runs"
+(( $(reloads) == 0 && $(dispatches) == 0 )) || fail "T3 repair: an active external monitor suppresses the repair"
+reset_state; touch "$manual_flag"; panel_held true
+run_command || fail "T3 repair (manual toggle): runs"
+(( $(reloads) == 0 )) && ! grep -q '^hyprctl monitors' "$log" || fail "T3 repair: an intentional disable repairs nothing and asks nothing"
+reset_state; no_name; panel_held true
+run_command || fail "T3 repair (unknown name): runs"
+(( $(reloads) == 0 )) && ! grep -q '^hyprctl monitors' "$log" || fail "T3 repair: no name, no question, no repair"
+reset_state; panel_held true; touch "$ctl/hang-monitors"
+started=$SECONDS; run_command || true; elapsed=$(( SECONDS - started ))
+(( elapsed <= bound + 3 && $(reloads) == 0 )) || fail "T3 repair: an unanswered compositor is an unknown, bounded and repairing nothing" "elapsed ${elapsed}s"
+reset_state; panel_held true; touch "$ctl/fail-reload"
+run_command || fail "T3 repair (failed reload): runs"
+(( $(reloads) == 1 && $(dispatches) == 0 )) || fail "T3 repair: a failed repair reload wakes nothing"
+rm -f "$ctl/fail-reload"; touch "$ctl/repair-flips"; : >"$log"; run_command || fail "T3 repair (retry): runs"
+(( $(reloads) == 1 && $(dispatches) == 1 )) || fail "T3 repair: the next run retries the repair"
+pass "T3: a stale compositor-held disable is repaired exactly when it strands the machine, and no masked query is believed"
 
 # The hosted helpers: not entered without their flags; entered and ordered with them; a failure stops the run.
 reset_state; run_command || true

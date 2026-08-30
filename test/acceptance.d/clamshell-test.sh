@@ -291,3 +291,99 @@ run_command || fail "A5: the command runs out of clamshell beside the rejected c
 await panel_enabled || fail "A5: removing the overlay still enables the panel beside the rejected config" "$(panel)"
 [[ ! -e $overlay ]] || fail "A5: the overlay is gone beside the rejected config"
 pass "A5: a rejected config reloads 'ok' with the error in configerrors, and the overlay transitions still apply beside it"
+
+# The repair path, last so every earlier case keeps the normal topology.
+# Every non-internal output is made inactive: the test's own HDMI-A-1 removed,
+# the VM's Virtual-1 -- removable by nothing -- disabled at runtime with
+# hyprctl eval (test scaffolding, never the command). Hyprland then runs its
+# reserved FALLBACK placeholder, which the predicate must not count -- part of
+# the case. From here the command runs through a forwarding hyprctl wrapper
+# that logs each verb and execs the real binary, so the claimed effects --
+# exactly one real reload per gated run, a wake only when the panel came back
+# -- are observed, not inferred; Hyprland-facing behavior stays real.
+hyprctl_log="$work/hyprctl.log"
+cat >"$stub_bin/hyprctl" <<SH
+#!/bin/bash
+printf '%s\n' "\$1" >>"$hyprctl_log"
+exec $(command -v hyprctl) "\$@"
+SH
+chmod +x "$stub_bin/hyprctl"
+real_calls() { grep -c "^$1\$" "$hyprctl_log" || true; }
+no_active_external() {
+  local status=0
+  PATH="$stub_bin:$PATH" omarchy-hyprland-monitor-external-active >/dev/null 2>&1 || status=$?
+  (( status == 1 ))
+}
+virtual_disabled() { [[ $(hyprctl monitors all -j | jq -r '[.[] | select(.name == "Virtual-1")] | first | .disabled') == "true" ]]; }
+# A strict enabled assertion: an absent output or an unreadable answer must
+# fail the case, not pass as "not disabled".
+virtual_enabled() { [[ $(hyprctl monitors all -j | jq -r '[.[] | select(.name == "Virtual-1")] | first | .disabled') == "false" ]]; }
+eval_disable() { hyprctl eval "hl.monitor({ output = \"$1\", disabled = true })" >/dev/null 2>&1; }
+
+apply_config <<LUA
+$catch_all
+LUA
+await panel_enabled || fail "P1 repair: the panel is enabled at the start" "$(panel)"
+hyprctl output remove "$external" >/dev/null 2>&1 || true
+eval_disable Virtual-1
+await virtual_disabled || fail "P1 repair: Virtual-1 can be disabled at runtime" "$(hyprctl monitors all -j | jq -c '[.[] | {name, disabled}]')"
+no_active_external || fail "P1 repair: with no enabled non-internal output, the predicate answers the contracted false" "exit was not 1"
+
+# The stranded state: the compositor holds the panel disabled, disk is empty.
+# Hyprland's enabled FALLBACK placeholder is present; the predicate is
+# asserted again against it.
+eval_disable "$internal"
+await panel_disabled || fail "P1 repair: the stranded state can be staged" "$(panel)"
+no_active_external || fail "P1 repair: the FALLBACK placeholder is not an active external" "$(hyprctl monitors all -j | jq -c '[.[] | {name, disabled}]')"
+rm -f "$overlay"
+set_lid open
+: >"$hyprctl_log"
+run_command || fail "P1 repair: the command runs on the stranded state"
+await panel_enabled || fail "P1 repair: the repair enables a stranded panel through a real reload" "$(panel)"
+(( $(real_calls reload) == 1 && $(real_calls dispatch) == 1 )) || fail "P1 repair: exactly one real reload and one wake" "$(cat "$hyprctl_log")"
+pass "P1 repair: a stranded panel with no active external is repaired by the real command -- one reload, one wake, observed"
+
+# The conditional reload-per-invocation exception, pinned for real: a config
+# disabling the panel and Virtual-1 stages the state with one reload -- both
+# disabled, FALLBACK up -- and each of two runs provably enters the gate,
+# spends exactly one observed reload, and never wakes. The repair's reload
+# preserves the topology, so the second round is a genuine re-entry. Valid
+# only on a fresh compositor session, which every harness run provides.
+apply_config <<LUA
+hl.monitor({ output = "$internal", disabled = true })
+hl.monitor({ output = "Virtual-1", disabled = true })
+$catch_all
+LUA
+await panel_disabled || fail "P1 repair (two-run): the config disables the panel" "$(panel)"
+await virtual_disabled || fail "P1 repair (two-run): the config disables Virtual-1 too" "$(hyprctl monitors all -j | jq -c '[.[] | {name, disabled}]')"
+for round in 1 2; do
+  no_active_external || fail "P1 repair (two-run): the gate is provably open before run $round" "exit was not 1"
+  : >"$hyprctl_log"
+  run_command || fail "P1 repair (two-run): run $round completes"
+  sleep 2
+  panel_disabled || fail "P1 repair (two-run): the panel stays disabled after run $round" "$(panel)"
+  (( $(real_calls reload) == 1 && $(real_calls dispatch) == 0 )) || fail "P1 repair (two-run): run $round spends exactly one reload and no wake" "$(cat "$hyprctl_log")"
+done
+pass "P1 repair: a config-disabled panel enters the gate on both runs, spends one observed reload each, and is never woken"
+
+# The gate-closure variant, once: the config disables only the panel,
+# Virtual-1 is eval-disabled so FALLBACK opens the gate; the repair's reload
+# clears the eval, Virtual-1 returns, the config keeps the panel disabled --
+# no wake, observed -- and the gate honestly closes.
+apply_config <<LUA
+hl.monitor({ output = "$internal", disabled = true })
+$catch_all
+LUA
+await panel_disabled || fail "P1 repair (gate-closure): the config disables the panel" "$(panel)"
+eval_disable Virtual-1
+await virtual_disabled || fail "P1 repair (gate-closure): Virtual-1 can be disabled at runtime" "$(hyprctl monitors all -j | jq -c '[.[] | {name, disabled}]')"
+no_active_external || fail "P1 repair (gate-closure): the repair gate is provably open" "exit was not 1"
+: >"$hyprctl_log"
+run_command || fail "P1 repair (gate-closure): the run completes"
+await virtual_enabled || fail "P1 repair (gate-closure): the repair's reload brings Virtual-1 back" "$(hyprctl monitors all -j | jq -c '[.[] | {name, disabled}]')"
+sleep 2
+panel_disabled || fail "P1 repair (gate-closure): the config still governs the panel through the repair's reload" "$(panel)"
+(( $(real_calls reload) == 1 && $(real_calls dispatch) == 0 )) || fail "P1 repair (gate-closure): one reload, no wake, observed" "$(cat "$hyprctl_log")"
+PATH="$stub_bin:$PATH" omarchy-hyprland-monitor-external-active >/dev/null 2>&1 || fail "P1 repair (gate-closure): the gate closes once a real output is back"
+pass "P1 repair: a config-disabled panel is never woken; the reload restores the other output and closes the gate"
+screenshot "success-clamshell-repair"
