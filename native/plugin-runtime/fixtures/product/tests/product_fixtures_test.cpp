@@ -76,7 +76,7 @@ private:
 
 class FakeRuntime final : public QObject {
   Q_OBJECT
-  Q_PROPERTY(QVariantMap permissions READ permissions NOTIFY permissionsChanged)
+  Q_PROPERTY(QVariantMap permissions READ permissions CONSTANT)
 
 public:
   explicit FakeRuntime(QSet<QString> allowed, bool asynchronous = false,
@@ -126,22 +126,22 @@ public:
 
   [[nodiscard]] QVariantMap permissions() const {
     return {{QStringLiteral("notifications.send"),
-             QVariantMap{{QStringLiteral("send"),
-                          allowed_.contains(QStringLiteral("notification_send"))},
-                         {QStringLiteral("required"), false}}}};
-  }
-
-  void setNotificationGranted(bool granted) {
-    if (granted)
-      allowed_.insert(QStringLiteral("notification_send"));
-    else
-      allowed_.remove(QStringLiteral("notification_send"));
-    emit permissionsChanged();
+             QVariantMap{
+                 {QStringLiteral("required"), false},
+                 {QStringLiteral("state"),
+                  allowed_.contains(QStringLiteral("notification_send"))
+                      ? QStringLiteral("granted")
+                      : QStringLiteral("denied")},
+                 {QStringLiteral("operations"),
+                  QVariantMap{{QStringLiteral("send"),
+                               allowed_.contains(QStringLiteral(
+                                   "notification_send"))
+                                   ? QStringLiteral("granted")
+                                   : QStringLiteral("denied")}}}}}};
   }
 
 signals:
   void callFinished(QObject *call);
-  void permissionsChanged();
 
 private:
   QVariant asynchronousCall(bool ok, QString error, QVariant value) {
@@ -221,23 +221,21 @@ void test_permission_aware_fixtures() {
           "denial fixture did not follow async broker denial");
 
   FakeRuntime permission({QStringLiteral("notification_send")});
+  require(permission.permissions()
+                  .value(QStringLiteral("notifications.send"))
+                  .toMap()
+                  .value(QStringLiteral("operations"))
+                  .toMap()
+                  .value(QStringLiteral("send"))
+                  .toString() == QStringLiteral("granted"),
+          "permission fixture fake did not expose nested operation state");
   auto permission_fixture = load("lab-permission", permission);
   QEventLoop permission_startup_loop;
   QTimer::singleShot(5, &permission_startup_loop, &QEventLoop::quit);
   permission_startup_loop.exec();
   require(permission_fixture->object->property("permissionState").toString() ==
-                  QStringLiteral("GRANTED") &&
-              permission_fixture->object->property("observedChanges").toInt() == 0,
+              QStringLiteral("GRANTED"),
           "permission fixture did not render its initial availability");
-  permission.setNotificationGranted(false);
-  QEventLoop permission_revocation_loop;
-  QTimer::singleShot(5, &permission_revocation_loop, &QEventLoop::quit);
-  permission_revocation_loop.exec();
-  require(permission_fixture->object->property("permissionState").toString() ==
-              QStringLiteral("DENIED"),
-          "permission fixture did not render revoked availability");
-  require(permission_fixture->object->property("observedChanges").toInt() == 1,
-          "permission fixture did not count exactly one revocation");
 }
 
 } // namespace

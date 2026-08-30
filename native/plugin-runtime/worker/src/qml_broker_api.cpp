@@ -5,8 +5,6 @@
 
 #include <QByteArray>
 #include <QJsonDocument>
-#include <QJsonArray>
-#include <QJsonObject>
 #include <QStringDecoder>
 
 #include <algorithm>
@@ -18,6 +16,7 @@ namespace {
 namespace broker = omarchy::plugin_runtime::broker;
 namespace permissions = omarchy::plugins::permissions;
 namespace wire = omarchy::plugin::wire;
+namespace snapshot_wire = wire::permission_snapshot;
 
 void put16(std::span<std::byte> bytes, std::size_t offset, std::uint16_t value) {
   bytes[offset] = static_cast<std::byte>(value >> 8U);
@@ -42,6 +41,52 @@ bool bounded_text(const QByteArray &value, qsizetype maximum,
       return false;
   }
   return true;
+}
+
+QStringList operations_for(
+    const omarchy::plugins::manifest::CapabilityRequest &request) {
+  QStringList result;
+  if (!request.operations.empty()) {
+    for (const auto &operation : request.operations)
+      result.push_back(QString::fromStdString(operation));
+  } else {
+    const permissions::CapabilityKey key{
+        permissions::CapabilityId(request.capability), 1};
+    const auto *definition = permissions::find_capability(key);
+    if (definition == nullptr)
+      return {};
+    for (std::size_t index = 0; index < definition->operation_count; ++index) {
+      const auto name = permissions::operation_name(definition->operations[index]);
+      if (name.empty())
+        return {};
+      result.push_back(QString::fromUtf8(name.data(),
+                                        static_cast<qsizetype>(name.size())));
+    }
+  }
+  return result;
+}
+
+QString permission_state(snapshot_wire::GrantState state) {
+  switch (state) {
+  case snapshot_wire::GrantState::granted:
+    return QStringLiteral("granted");
+  case snapshot_wire::GrantState::denied:
+    return QStringLiteral("denied");
+  case snapshot_wire::GrantState::revoked:
+    return QStringLiteral("revoked");
+  }
+  return QStringLiteral("unavailable");
+}
+
+QString capability_state(
+    std::span<const snapshot_wire::GrantState> operations) {
+  if (operations.empty())
+    return QStringLiteral("denied");
+  if (std::ranges::all_of(operations, [&](const auto state) {
+        return state == operations.front();
+      }))
+    return permission_state(operations.front());
+  return QStringLiteral("partial");
 }
 
 std::optional<EncodedInvoke> storage(permissions::OperationId operation,
@@ -237,22 +282,20 @@ QmlBrokerApi::QmlBrokerApi(
     const omarchy::plugins::manifest::ManifestV2 &manifest,
     std::uint64_t activation_generation, QObject *parent)
     : QObject(parent), endpoint_(endpoint), encoder_(std::move(encoder)),
+      manifest_request_fingerprint_(
+          omarchy::plugins::manifest::requested_capability_fingerprint(
+              manifest.requests)),
       activation_generation_(activation_generation) {
-  for (const auto &request : manifest.requests) {
-    std::vector<std::string> operations = request.operations;
-    if (operations.empty() && request.capability == "storage.private")
-      operations = {"read", "write", "remove"};
-    else if (operations.empty() && request.capability == "notifications.send")
-      operations = {"send"};
-    else if (operations.empty() && request.capability == "audio.play-cue")
-      operations = {"play"};
-    for (const auto &operation : operations) {
-      requested_permissions_.push_back(
-          {.capability = QString::fromStdString(request.capability),
-           .operation = QString::fromStdString(operation),
-           .required = request.required,
-           .granted = false});
-    }
+  const auto ordered =
+      omarchy::plugins::manifest::canonical_capability_requests(
+          manifest.requests);
+  requested_permissions_.reserve(ordered.size());
+  for (const auto &request : ordered) {
+    requested_permissions_.push_back(
+        {.capability = QString::fromStdString(request.capability),
+         .operations = operations_for(request),
+         .required = request.required,
+         .operation_states = {}});
   }
 }
 
@@ -260,23 +303,31 @@ bool QmlBrokerApi::hasPermission(const QString &capability,
                                  const QString &operation) const {
   const auto found = std::ranges::find_if(
       requested_permissions_, [&](const RequestedPermission &item) {
-        return item.capability == capability && item.operation == operation;
+        return item.capability == capability &&
+               item.operations.contains(operation);
       });
-  return host_snapshot_received_ && found != requested_permissions_.end() &&
-         found->granted;
+  if (!host_snapshot_received_ || found == requested_permissions_.end())
+    return false;
+  const auto index = found->operations.indexOf(operation);
+  return index >= 0 &&
+         found->operation_states[static_cast<std::size_t>(index)] ==
+             snapshot_wire::GrantState::granted;
 }
 
 QString QmlBrokerApi::permissionState(const QString &capability,
                                       const QString &operation) const {
   const auto found = std::ranges::find_if(
       requested_permissions_, [&](const RequestedPermission &item) {
-        return item.capability == capability && item.operation == operation;
+        return item.capability == capability &&
+               item.operations.contains(operation);
       });
   if (found == requested_permissions_.end())
     return QStringLiteral("unrequested");
   if (!host_snapshot_received_)
     return QStringLiteral("unavailable");
-  return found->granted ? QStringLiteral("granted") : QStringLiteral("denied");
+  const auto index = found->operations.indexOf(operation);
+  return permission_state(
+      found->operation_states[static_cast<std::size_t>(index)]);
 }
 
 void QmlBrokerApi::setPackagedAssetRoot(std::filesystem::path root) {
@@ -352,10 +403,21 @@ QString QmlBrokerApi::readPackagedText(const QString &relativePath,
 QVariantMap QmlBrokerApi::permissions() const {
   QVariantMap result;
   for (const auto &item : requested_permissions_) {
-    QVariantMap capability = result.value(item.capability).toMap();
-    capability.insert(item.operation,
-                      host_snapshot_received_ && item.granted);
+    QVariantMap operations;
+    for (qsizetype index = 0; index < item.operations.size(); ++index) {
+      operations.insert(item.operations[index],
+                        host_snapshot_received_
+                            ? permission_state(item.operation_states[
+                                  static_cast<std::size_t>(index)])
+                            : QStringLiteral("unavailable"));
+    }
+    QVariantMap capability;
     capability.insert(QStringLiteral("required"), item.required);
+    capability.insert(QStringLiteral("state"),
+                      host_snapshot_received_
+                          ? capability_state(item.operation_states)
+                          : QStringLiteral("unavailable"));
+    capability.insert(QStringLiteral("operations"), operations);
     result.insert(item.capability, capability);
   }
   return result;
@@ -365,85 +427,50 @@ qulonglong QmlBrokerApi::permissionGeneration() const {
   return activation_generation_;
 }
 
-bool QmlBrokerApi::applyHostPermissionSnapshot(
-    std::uint64_t activation_generation,
-    std::span<const HostPermission> permissions) {
-  if (activation_generation_ == 0 ||
-      activation_generation != activation_generation_)
-    return false;
-  std::vector<bool> next(requested_permissions_.size(), false);
-  std::vector<bool> seen(requested_permissions_.size(), false);
-  for (const auto &permission : permissions) {
-    const QString capability = QString::fromStdString(permission.capability);
-    const QString operation = QString::fromStdString(permission.operation);
-    const auto found = std::ranges::find_if(
-        requested_permissions_, [&](const RequestedPermission &item) {
-          return item.capability == capability && item.operation == operation;
-        });
-    if (found == requested_permissions_.end())
-      return false;
-    const auto index = static_cast<std::size_t>(
-        std::distance(requested_permissions_.begin(), found));
-    if (seen[index])
-      return false;
-    seen[index] = true;
-    next[index] = permission.granted;
-  }
-  bool changed = !host_snapshot_received_;
-  for (std::size_t index = 0; index < requested_permissions_.size(); ++index) {
-    changed = changed || requested_permissions_[index].granted != next[index];
-    requested_permissions_[index].granted = next[index];
-  }
-  host_snapshot_received_ = true;
-  if (changed) {
-    QMetaObject::invokeMethod(this, [this] { emit permissionsChanged(); },
-                              Qt::QueuedConnection);
-  }
-  return true;
-}
-
-bool QmlBrokerApi::applyHostPermissionSnapshotPayload(
+bool QmlBrokerApi::applyPermissionSnapshot(
     std::uint64_t envelope_generation, std::span<const std::byte> payload) {
-  if (payload.empty() || payload.size() > 32 * 1024)
+  if (host_snapshot_received_ || activation_generation_ == 0 ||
+      envelope_generation != activation_generation_)
     return false;
-  QJsonParseError error{};
-  const auto document = QJsonDocument::fromJson(
-      QByteArray(reinterpret_cast<const char *>(payload.data()),
-                 static_cast<qsizetype>(payload.size())),
-      &error);
-  if (error.error != QJsonParseError::NoError || !document.isObject())
+  snapshot_wire::PermissionSnapshot snapshot;
+  if (!snapshot_wire::decode(payload, snapshot) ||
+      snapshot.manifest_request_fingerprint !=
+          manifest_request_fingerprint_ ||
+      snapshot.permissions.size() != requested_permissions_.size())
     return false;
-  const auto object = document.object();
-  if (object.size() != 2 || !object.value(QStringLiteral("generation")).isDouble() ||
-      !object.value(QStringLiteral("permissions")).isArray())
-    return false;
-  const auto generation_value = object.value(QStringLiteral("generation")).toDouble();
-  if (generation_value < 1 || generation_value > 9007199254740991.0 ||
-      generation_value != static_cast<double>(envelope_generation))
-    return false;
-  const auto entries = object.value(QStringLiteral("permissions")).toArray();
-  if (entries.size() > 64)
-    return false;
-  std::vector<HostPermission> decoded;
-  decoded.reserve(static_cast<std::size_t>(entries.size()));
-  for (const auto &value : entries) {
-    if (!value.isObject()) return false;
-    const auto item = value.toObject();
-    if (item.size() != 3 ||
-        !item.value(QStringLiteral("capability")).isString() ||
-        !item.value(QStringLiteral("operation")).isString() ||
-        !item.value(QStringLiteral("granted")).isBool())
+  std::vector<std::vector<snapshot_wire::GrantState>> next;
+  next.reserve(requested_permissions_.size());
+  for (std::size_t index = 0; index < snapshot.permissions.size(); ++index) {
+    const auto operation_count = requested_permissions_[index].operations.size();
+    if (operation_count < 1 || operation_count > 16)
       return false;
-    const auto capability = item.value(QStringLiteral("capability")).toString();
-    const auto operation = item.value(QStringLiteral("operation")).toString();
-    if (capability.isEmpty() || capability.size() > 128 || operation.isEmpty() ||
-        operation.size() > 128 || capability.contains(QChar::Null) ||
-        operation.contains(QChar::Null))
+    const auto valid_mask = operation_count == 16
+                                ? std::numeric_limits<std::uint16_t>::max()
+                                : static_cast<std::uint16_t>(
+                                      (1U << operation_count) - 1U);
+    if ((snapshot.permissions[index].operation_mask & ~valid_mask) != 0)
       return false;
-    decoded.push_back({capability.toStdString(), operation.toStdString(),
-                       item.value(QStringLiteral("granted")).toBool()});
+    if (snapshot.permissions[index].state ==
+            snapshot_wire::GrantState::denied &&
+        snapshot.permissions[index].operation_mask != 0)
+      return false;
+    if (requested_permissions_[index].required &&
+        snapshot.permissions[index].state !=
+            snapshot_wire::GrantState::granted)
+      return false;
+    auto &states = next.emplace_back();
+    states.reserve(static_cast<std::size_t>(operation_count));
+    for (qsizetype operation = 0; operation < operation_count; ++operation) {
+      states.push_back((snapshot.permissions[index].operation_mask &
+                        (1U << operation)) != 0
+                           ? snapshot.permissions[index].state
+                           : snapshot_wire::GrantState::denied);
+    }
   }
-  return applyHostPermissionSnapshot(envelope_generation, decoded);
+  for (std::size_t index = 0; index < next.size(); ++index)
+    requested_permissions_[index].operation_states = std::move(next[index]);
+  host_snapshot_received_ = true;
+  return true;
 }
 
 QVariant QmlBrokerApi::rejected(QString reason) {

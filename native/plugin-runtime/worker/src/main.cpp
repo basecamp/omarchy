@@ -321,58 +321,50 @@ private:
       fatal("permission snapshot arrived before runtime readiness");
       return;
     }
-      if (packet.header.message_type != wire::kPermissionSnapshotMessage ||
-          packet.header.correlation_id != 0 || !packet.descriptors.empty() ||
-          !broker_api_->applyHostPermissionSnapshotPayload(
-              packet.header.launch_generation, packet.payload)) {
-        fatal("permission snapshot failed runtime validation");
-        return;
-      }
-      if (!runtime_loaded_ && !runtime_load_pending_) {
-        runtime_load_pending_ = true;
-        QTimer::singleShot(0, [&] {
-          if (surface_selection_received_) {
-            const auto loaded = runtime_.load_surface_entry(
-                selected_surface_, selected_entry_);
-            if (!loaded) {
-              fatal(loaded.detail);
-              return;
-            }
-          } else if (!manifest_.runtime.surface_qml.empty()) {
-            for (const auto &entry : manifest_.runtime.surface_qml) {
-              const auto loaded =
-                  runtime_.load_surface_entry(entry.surface, entry.qml);
-              if (!loaded) {
-                fatal(loaded.detail);
-                return;
-              }
-            }
-          } else {
-            const auto surfaces = QJsonDocument::fromJson(
-                QByteArray::fromStdString(manifest_.canonical_surfaces));
-            if (!surfaces.isObject() || surfaces.object().size() != 1) {
-              fatal("single-entry runtime requires exactly one surface");
-              return;
-            }
-            const auto loaded = runtime_.load_surface_entry(
-                surfaces.object().begin().key().toStdString(),
-                selected_entry_);
-            if (!loaded) {
-              fatal(loaded.detail);
-              return;
-            }
+    if (packet.header.message_type != wire::kPermissionSnapshotMessage ||
+        packet.header.correlation_id != 0 || !packet.descriptors.empty() ||
+        !broker_api_->applyPermissionSnapshot(packet.header.launch_generation,
+                                              packet.payload)) {
+      fatal("permission snapshot failed runtime validation");
+      return;
+    }
+    runtime_load_pending_ = true;
+    QTimer::singleShot(0, [&] {
+      if (surface_selection_received_) {
+        const auto loaded = runtime_.load_surface_entry(selected_surface_,
+                                                        selected_entry_);
+        if (!loaded) {
+          fatal(loaded.detail);
+          return;
+        }
+      } else if (!manifest_.runtime.surface_qml.empty()) {
+        for (const auto &entry : manifest_.runtime.surface_qml) {
+          const auto loaded =
+              runtime_.load_surface_entry(entry.surface, entry.qml);
+          if (!loaded) {
+            fatal(loaded.detail);
+            return;
           }
-          runtime_loaded_ = true;
-          runtime_load_pending_ = false;
-          if (!control_.send(wire::kPermissionSnapshotAcceptedMessage, {}, 0))
-            fatal("permission snapshot acknowledgement failed");
-        });
-      } else if (runtime_loaded_ &&
-                 packet.header.launch_generation != 0) {
-        runtime_.request_render();
-        if (!control_.send(wire::kPermissionSnapshotAcceptedMessage, {}, 0))
-          fatal("permission snapshot acknowledgement failed");
+        }
+      } else {
+        const auto surfaces = QJsonDocument::fromJson(
+            QByteArray::fromStdString(manifest_.canonical_surfaces));
+        if (!surfaces.isObject() || surfaces.object().size() != 1) {
+          fatal("single-entry runtime requires exactly one surface");
+          return;
+        }
+        const auto loaded = runtime_.load_surface_entry(
+            surfaces.object().begin().key().toStdString(), selected_entry_);
+        if (!loaded) {
+          fatal(loaded.detail);
+          return;
+        }
       }
+      runtime_loaded_ = true;
+      runtime_load_pending_ = false;
+      if (!control_.send(wire::kPermissionSnapshotAcceptedMessage, {}, 0))
+        fatal("permission snapshot acknowledgement failed");
+    });
   }
 
   void ready_runtime() {
@@ -409,17 +401,6 @@ private:
                      [&] {
                        QTimer::singleShot(1, broker_api_.get(),
                                           [&] { runtime_.request_render(); });
-                       QTimer::singleShot(frame_interval_ms_ + 1,
-                                          broker_api_.get(),
-                                          [&] { runtime_.request_render(); });
-                     });
-    QObject::connect(broker_api_.get(), &worker::QmlBrokerApi::permissionsChanged,
-                     broker_api_.get(),
-                     [&] {
-                       QTimer::singleShot(1, broker_api_.get(),
-                                          [&] {
-                                            runtime_.request_render();
-                                          });
                        QTimer::singleShot(frame_interval_ms_ + 1,
                                           broker_api_.get(),
                                           [&] { runtime_.request_render(); });

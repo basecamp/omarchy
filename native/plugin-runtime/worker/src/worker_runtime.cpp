@@ -149,16 +149,17 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
     if (permissions.name() != QByteArrayLiteral("permissions") ||
         permissions.metaType().id() != QMetaType::QVariantMap ||
         !permissions.isReadable() || permissions.isWritable() ||
+        !permissions.isConstant() || permissions.hasNotifySignal() ||
         generation.name() != QByteArrayLiteral("permissionGeneration") ||
         generation.metaType().id() != QMetaType::ULongLong ||
-        !generation.isReadable() || generation.isWritable())
+        !generation.isReadable() || generation.isWritable() ||
+        !generation.isConstant() || generation.hasNotifySignal())
       return false;
   }
   std::size_t invoke = 0;
   std::size_t has_permission = 0;
   std::size_t permission_state = 0;
   std::size_t call_finished = 0;
-  std::size_t permission_changed = 0;
   std::size_t read_packaged_text = 0;
   std::size_t request_surface_intent = 0;
   for (int index = QObject::staticMetaObject.methodCount();
@@ -218,13 +219,6 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
                method.parameterMetaType(0).id() == QMetaType::QString &&
                method.parameterMetaType(1).id() == QMetaType::QString) {
       ++permission_state;
-    } else if (own_properties == 2 &&
-               method.methodSignature() ==
-                   QByteArrayLiteral("permissionsChanged()") &&
-               method.methodType() == QMetaMethod::Signal &&
-               method.returnMetaType().id() == QMetaType::Void &&
-               method.parameterCount() == 0) {
-      ++permission_changed;
     } else {
       return false;
     }
@@ -233,7 +227,7 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
          (own_properties == 0 ||
           (has_permission == 1 && permission_state == 1 &&
            read_packaged_text == 1 && call_finished == 1 &&
-           permission_changed == 1 && request_surface_intent == 1));
+           request_surface_intent == 1));
 }
 
 class ResourceInterceptor final : public QQmlAbstractUrlInterceptor {

@@ -3,6 +3,7 @@
 #include "worker_channel.hpp"
 #include "dynamic_activation.hpp"
 #include "manifest_contract.hpp"
+#include "omarchy/plugin/wire/permission_snapshot.hpp"
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
 
 #include <QObject>
@@ -100,9 +101,8 @@ private:
 
 class QmlBrokerApi final : public QObject {
   Q_OBJECT
-  Q_PROPERTY(QVariantMap permissions READ permissions NOTIFY permissionsChanged)
-  Q_PROPERTY(qulonglong permissionGeneration READ permissionGeneration
-             NOTIFY permissionsChanged)
+  Q_PROPERTY(QVariantMap permissions READ permissions CONSTANT)
+  Q_PROPERTY(qulonglong permissionGeneration READ permissionGeneration CONSTANT)
 
 public:
   QmlBrokerApi(WorkerEndpoint &endpoint,
@@ -117,6 +117,9 @@ public:
                               const QVariantMap &arguments);
   Q_INVOKABLE bool hasPermission(const QString &capability,
                                  const QString &operation) const;
+  // Presentation only: "granted" means the operation is delegated for some
+  // broker-enforced effective scope. Resource, command, and demand scope stay
+  // authoritative in the broker and are never implied by this projection.
   Q_INVOKABLE QString permissionState(const QString &capability,
                                       const QString &operation) const;
   Q_INVOKABLE QString readPackagedText(const QString &relativePath,
@@ -128,17 +131,9 @@ public:
   [[nodiscard]] QVariantMap permissions() const;
   [[nodiscard]] qulonglong permissionGeneration() const;
 
-  struct HostPermission {
-    std::string capability;
-    std::string operation;
-    bool granted = false;
-  };
   // This is accepted only from the authenticated host control path. It is a
   // UI hint; invoke() and the broker remain authoritative for every effect.
-  [[nodiscard]] bool applyHostPermissionSnapshot(
-      std::uint64_t activation_generation,
-      std::span<const HostPermission> permissions);
-  [[nodiscard]] bool applyHostPermissionSnapshotPayload(
+  [[nodiscard]] bool applyPermissionSnapshot(
       std::uint64_t envelope_generation, std::span<const std::byte> payload);
   [[nodiscard]] bool receive(ReceivedPacket packet);
   [[nodiscard]] QString status() const;
@@ -150,7 +145,6 @@ public:
 
 signals:
   void callFinished(QObject *call);
-  void permissionsChanged();
 
 private:
   static constexpr std::size_t kMaximumPending = 32;
@@ -170,11 +164,13 @@ private:
   QString status_ = QStringLiteral("ready");
   struct RequestedPermission {
     QString capability;
-    QString operation;
+    QStringList operations;
     bool required = false;
-    bool granted = false;
+    std::vector<omarchy::plugin::wire::permission_snapshot::GrantState>
+        operation_states;
   };
   std::vector<RequestedPermission> requested_permissions_;
+  std::string manifest_request_fingerprint_;
   std::uint64_t activation_generation_ = 0;
   std::filesystem::path packaged_asset_root_;
   bool host_snapshot_received_ = false;

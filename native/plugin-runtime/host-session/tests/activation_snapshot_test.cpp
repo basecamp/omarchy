@@ -1,21 +1,26 @@
 #include "activation_snapshot.hpp"
+#include "permission_projection.hpp"
 
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
 #include <array>
+#include <algorithm>
 #include <filesystem>
 #include <functional>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace host = omarchy::plugin_runtime::host_session;
+namespace definitions = omarchy::plugins::definitions;
 namespace manifest = omarchy::plugins::manifest;
 namespace permissions = omarchy::plugins::permissions;
 namespace policy = omarchy::plugin_runtime::policy;
+namespace snapshot_wire = omarchy::plugin::wire::permission_snapshot;
 
 namespace {
 
@@ -592,6 +597,230 @@ void identity_policy_and_mode_mismatches_are_rejected() {
   }
 }
 
+void permission_projection_is_manifest_indexed_and_exact() {
+  auto manifest_value = manifest::parse_manifest_v2(
+      R"({"schemaVersion":2,"id":"org.example.secure","name":"Secure","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{},"permissions":{"required":[{"capability":"storage.private","reason":"state","quotaBytes":4096}],"optional":[{"capability":"notifications.send","reason":"alerts","categories":["status"]},{"capability":"local.status","reason":"status","definitionGeneration":7,"definitionDigest":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","operations":["status.read","status.write"],"dataset":"summary"}]}})");
+  policy::GrantSnapshot snapshot;
+  snapshot.requests = permissions::requests_from_manifest(manifest_value);
+  snapshot.binding = {
+      .plugin = permissions::PluginId(manifest_value.id),
+      .revision = permissions::Digest(std::string(64, 'a')),
+      .policy_fingerprint = permissions::Digest(
+          permissions::policy_request_fingerprint(snapshot.requests)),
+      .generation = 41};
+  snapshot.source_request_fingerprint = permissions::Digest(
+      manifest::requested_capability_fingerprint(manifest_value.requests));
+  for (const auto &request : snapshot.requests.values()) {
+    snapshot.grants.push_back(
+        {.capability = request.capability,
+         .scope = request.scope,
+         .state = request.required ? permissions::GrantState::granted
+                                   : permissions::GrantState::denied,
+         .epoch = 41});
+  }
+  const auto &dynamic_manifest = *std::ranges::find_if(
+      manifest_value.requests,
+      [](const auto &request) { return request.definition_generation != 0; });
+  definitions::DynamicRequest dynamic_request{
+      .definition =
+          {.canonical_name = definitions::Name(dynamic_manifest.capability),
+           .definition_generation = dynamic_manifest.definition_generation,
+           .definition_digest =
+               definitions::Digest(dynamic_manifest.definition_digest)},
+      .operations = {},
+      .scope = definitions::CanonicalScope(dynamic_manifest.canonical_scope),
+      .required = dynamic_manifest.required};
+  for (const auto &operation : dynamic_manifest.operations)
+    dynamic_request.operations.insert(definitions::Name(operation));
+  definitions::DynamicGrant dynamic_grant{
+      .definition = dynamic_request.definition,
+      .operations = dynamic_request.operations,
+      .scope = dynamic_request.scope,
+      .state = permissions::GrantState::revoked,
+      .epoch = 41};
+  snapshot.dynamic_grants.push_back(
+      {.binding = snapshot.binding,
+       .request = dynamic_request,
+       .grant = dynamic_grant});
+
+  const auto projected =
+      host::project_permission_snapshot(manifest_value, snapshot);
+  require(projected &&
+              projected->manifest_request_fingerprint ==
+                  manifest::requested_capability_fingerprint(
+                      manifest_value.requests) &&
+              projected->permissions ==
+                  std::vector<snapshot_wire::PermissionRow>{
+                      {snapshot_wire::GrantState::revoked, 0x0003},
+                      {snapshot_wire::GrantState::denied, 0x0000},
+                      {snapshot_wire::GrantState::granted, 0x0007}},
+          "host projection did not use canonical manifest tuple order");
+
+  auto reordered = manifest_value;
+  std::ranges::reverse(reordered.requests);
+  require(host::project_permission_snapshot(reordered, snapshot) == projected,
+          "manifest array order changed permission projection indices");
+
+  const auto rejected = [&](policy::GrantSnapshot candidate,
+                            std::string_view message) {
+    require(!host::project_permission_snapshot(manifest_value, candidate),
+            message);
+  };
+  {
+    auto candidate = snapshot;
+    candidate.source_request_fingerprint =
+        permissions::Digest(std::string(64, 'f'));
+    rejected(std::move(candidate),
+             "source request fingerprint mismatch was projected");
+  }
+  {
+    auto candidate = snapshot;
+    candidate.binding.policy_fingerprint =
+        permissions::Digest(std::string(64, 'f'));
+    rejected(std::move(candidate), "policy fingerprint mismatch was projected");
+  }
+  {
+    auto candidate = snapshot;
+    candidate.grants[0].state = permissions::GrantState::denied;
+    rejected(std::move(candidate), "denied required grant was projected");
+  }
+  {
+    auto candidate = snapshot;
+    candidate.dynamic_grants[0].binding.generation++;
+    rejected(std::move(candidate), "cross-generation dynamic grant was projected");
+  }
+  {
+    auto candidate = snapshot;
+    candidate.dynamic_grants[0].request.required = true;
+    rejected(std::move(candidate), "mismatched dynamic request was projected");
+  }
+  {
+    auto candidate = snapshot;
+    candidate.dynamic_grants[0].grant.epoch = 0;
+    rejected(std::move(candidate), "zero-epoch dynamic grant was projected");
+  }
+  {
+    auto candidate = snapshot;
+    candidate.dynamic_grants[0].grant.state =
+        permissions::GrantState::granted;
+    candidate.dynamic_grants[0].grant.operations = {};
+    rejected(std::move(candidate), "empty granted dynamic row was projected");
+  }
+  {
+    auto candidate = snapshot;
+    candidate.dynamic_grants[0].grant.operations = {};
+    rejected(std::move(candidate), "empty revoked dynamic row was projected");
+  }
+  {
+    auto candidate = snapshot;
+    candidate.dynamic_grants[0].grant.state =
+        permissions::GrantState::denied;
+    const auto denied =
+        host::project_permission_snapshot(manifest_value, candidate);
+    require(denied &&
+                denied->permissions.front() ==
+                    snapshot_wire::PermissionRow{
+                        snapshot_wire::GrantState::denied, 0x0000},
+            "denied dynamic grant retained consent-time operation bits");
+  }
+  {
+    auto candidate = snapshot;
+    candidate.dynamic_grants[0].grant.state =
+        permissions::GrantState::granted;
+    candidate.dynamic_grants[0].grant.operations = {};
+    candidate.dynamic_grants[0].grant.operations.insert(
+        definitions::Name("status.read"));
+    const auto partial =
+        host::project_permission_snapshot(manifest_value, candidate);
+    require(partial &&
+                partial->permissions.front() ==
+                    snapshot_wire::PermissionRow{
+                        snapshot_wire::GrantState::granted, 0x0001},
+            "partial optional dynamic grant lost its exact operation mask");
+    auto required_manifest = manifest_value;
+    auto &required_request = *std::ranges::find_if(
+        required_manifest.requests, [](const auto &request) {
+          return request.definition_generation != 0;
+        });
+    required_request.required = true;
+    candidate.source_request_fingerprint = permissions::Digest(
+        manifest::requested_capability_fingerprint(required_manifest.requests));
+    candidate.dynamic_grants[0].request.required = true;
+    const auto required_partial =
+        host::project_permission_snapshot(required_manifest, candidate);
+    require(required_partial &&
+                required_partial->permissions.front() ==
+                    snapshot_wire::PermissionRow{
+                        snapshot_wire::GrantState::granted, 0x0001},
+            "authority-valid partial required grant was rejected");
+  }
+  {
+    auto candidate = snapshot;
+    candidate.dynamic_grants.push_back(candidate.dynamic_grants.front());
+    rejected(std::move(candidate), "duplicate dynamic grant was projected");
+  }
+
+  manifest::ManifestV2 sixteen_manifest;
+  sixteen_manifest.id = "org.example.sixteen";
+  manifest::CapabilityRequest sixteen_request{
+      .capability = "org.example.sixteen-operations",
+      .reason = "exercise the complete operation mask",
+      .canonical_scope = "{}",
+      .definition_generation = 9,
+      .definition_digest = std::string(64, 'e'),
+      .operations = {},
+      .required = false};
+  for (int index = 0; index < 16; ++index) {
+    sixteen_request.operations.push_back(
+        std::string(index < 10 ? "op-0" : "op-") + std::to_string(index));
+  }
+  sixteen_manifest.requests.push_back(sixteen_request);
+  policy::GrantSnapshot sixteen_snapshot;
+  sixteen_snapshot.binding = {
+      .plugin = permissions::PluginId(sixteen_manifest.id),
+      .revision = permissions::Digest(std::string(64, 'f')),
+      .policy_fingerprint = permissions::Digest(
+          permissions::policy_request_fingerprint(sixteen_snapshot.requests)),
+      .generation = 52};
+  sixteen_snapshot.source_request_fingerprint = permissions::Digest(
+      manifest::requested_capability_fingerprint(sixteen_manifest.requests));
+  definitions::DynamicRequest sixteen_dynamic{
+      .definition =
+          {.canonical_name = definitions::Name(sixteen_request.capability),
+           .definition_generation = sixteen_request.definition_generation,
+           .definition_digest =
+               definitions::Digest(sixteen_request.definition_digest)},
+      .operations = {},
+      .scope = definitions::CanonicalScope("{}"),
+      .required = false};
+  for (const auto &operation : sixteen_request.operations)
+    sixteen_dynamic.operations.insert(definitions::Name(operation));
+  definitions::DynamicGrant sixteen_grant{
+      .definition = sixteen_dynamic.definition,
+      .operations = {},
+      .scope = sixteen_dynamic.scope,
+      .state = permissions::GrantState::granted,
+      .epoch = 52};
+  sixteen_grant.operations.insert(definitions::Name("op-15"));
+  sixteen_snapshot.dynamic_grants.push_back(
+      {.binding = sixteen_snapshot.binding,
+       .request = sixteen_dynamic,
+       .grant = sixteen_grant});
+  const auto high_bit =
+      host::project_permission_snapshot(sixteen_manifest, sixteen_snapshot);
+  require(high_bit && high_bit->permissions.size() == 1 &&
+              high_bit->permissions.front() ==
+                  snapshot_wire::PermissionRow{
+                      snapshot_wire::GrantState::granted, 0x8000},
+          "host did not map canonical operation index 15 to bit 15");
+  sixteen_snapshot.dynamic_grants[0].grant.operations =
+      sixteen_dynamic.operations;
+  const auto full_mask =
+      host::project_permission_snapshot(sixteen_manifest, sixteen_snapshot);
+  require(full_mask && full_mask->permissions.front().operation_mask == 0xffff,
+          "host rejected or truncated the complete 16-operation mask");
+}
+
 } // namespace
 
 int main() {
@@ -603,6 +832,7 @@ int main() {
     every_authority_inode_must_be_distinct();
     inspected_activation_records_are_exact_and_pinned();
     identity_policy_and_mode_mismatches_are_rejected();
+    permission_projection_is_manifest_indexed_and_exact();
     std::cout << "activation snapshot tests passed\n";
     return 0;
   } catch (const std::exception &error) {

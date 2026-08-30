@@ -28,6 +28,7 @@ add_library(omarchy-plugin-activation-snapshot STATIC
   src/activation_snapshot.cpp
   src/authority_store.cpp
   src/consent_review.cpp
+  src/permission_projection.cpp
   src/revision_verifier_adapter.cpp)
 target_include_directories(omarchy-plugin-activation-snapshot PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}/src"
@@ -35,7 +36,8 @@ target_include_directories(omarchy-plugin-activation-snapshot PUBLIC
 target_link_libraries(omarchy-plugin-activation-snapshot PUBLIC
   omarchy-plugin-permission-contract
   omarchy-plugin-capability-definitions
-  omarchy-plugin-discovery)
+  omarchy-plugin-discovery
+  omarchy-plugin-wire)
 target_compile_features(omarchy-plugin-activation-snapshot PUBLIC cxx_std_20)
 target_compile_options(omarchy-plugin-activation-snapshot PRIVATE
   -Wall -Wextra -Wpedantic -Werror)

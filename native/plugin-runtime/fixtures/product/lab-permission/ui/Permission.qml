@@ -1,5 +1,4 @@
 import QtQuick
-import QtQml as Qml
 
 Item {
     id: root
@@ -9,41 +8,12 @@ Item {
     readonly property string surfaceRole: "panel"
     readonly property bool acceptsKeyboardFocus: false
     readonly property int maximumFramesPerSecond: 15
-    property int observedChanges: 0
-    property bool startupReady: false
-    property bool countChanges: false
     property bool pointerProof: false
     property var inputRegions: [{x: 0, y: 0, width: 520, height: 260}]
     property string permissionState: {
-        if (!startupReady)
-            return "WAITING"
         const capability = runtime.permissions["notifications.send"]
-        return capability && capability.send ? "GRANTED" : "DENIED"
-    }
-
-    Qml.Timer {
-        interval: 0
-        running: true
-        repeat: false
-        onTriggered: {
-            root.startupReady = true
-            enableChangeCounting.start()
-        }
-    }
-
-    Qml.Timer {
-        id: enableChangeCounting
-        interval: 0
-        repeat: false
-        onTriggered: root.countChanges = true
-    }
-
-    Qml.Connections {
-        target: runtime
-        function onPermissionsChanged() {
-            if (root.countChanges)
-                root.observedChanges += 1
-        }
+        const operations = capability && capability["operations"]
+        return operations && operations["send"] === "granted" ? "GRANTED" : "DENIED"
     }
 
     Rectangle {
@@ -90,7 +60,7 @@ Item {
 
             Text {
                 width: parent.width
-                text: "permissionsChanged observations: " + root.observedChanges
+                text: "immutable for this plugin generation"
                 color: "#d3d8e5"
                 font.pixelSize: 15
                 horizontalAlignment: Text.AlignHCenter

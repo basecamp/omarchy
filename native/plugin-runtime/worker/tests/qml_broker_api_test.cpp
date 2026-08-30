@@ -18,10 +18,12 @@
 #include <unistd.h>
 
 #include <array>
+#include <algorithm>
 #include <cerrno>
 #include <iostream>
 #include <span>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace {
@@ -276,45 +278,304 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host,
   worker::WorkerRuntime parameter_probe("/not-loaded-in-this-test");
   require(!static_cast<bool>(parameter_probe.bind_runtime_api(wrong_parameters)),
           "trusted API validation ignored exact parameter types");
-  int changes = 0;
-  QObject::connect(&api, &worker::QmlBrokerApi::permissionsChanged,
-                   [&] { ++changes; });
   require(api.permissionState("storage.private", "read") == "unavailable" &&
               !api.hasPermission("notifications.send", "send"),
           "permissions became available before a host snapshot");
-  const std::array initial{
-      worker::QmlBrokerApi::HostPermission{"storage.private", "read", true},
-      worker::QmlBrokerApi::HostPermission{"storage.private", "write", true},
-      worker::QmlBrokerApi::HostPermission{"notifications.send", "send", false}};
-  require(api.applyHostPermissionSnapshot(77, initial),
+  const auto payload = wire::permission_snapshot::encode({
+      .manifest_request_fingerprint =
+          manifest::requested_capability_fingerprint(parsed.requests),
+      // Canonical manifest tuple order is notifications.send, storage.private.
+      .permissions = {
+          {wire::permission_snapshot::GrantState::granted, 0x0001},
+          {wire::permission_snapshot::GrantState::granted, 0x0007}}});
+  require(api.applyPermissionSnapshot(77, payload),
           "initial host permission snapshot was rejected");
-  drain_events();
-  require(changes == 1 &&
-              api.hasPermission("storage.private", "read") &&
-              !api.hasPermission("notifications.send", "send") &&
-              api.permissionState("notifications.send", "send") == "denied",
-          "required and denied optional permissions were not represented");
+  require(api.hasPermission("storage.private", "read") &&
+              api.hasPermission("notifications.send", "send") &&
+              api.permissionState("notifications.send", "send") == "granted" &&
+              api.permissions()
+                      .value(QStringLiteral("notifications.send"))
+                      .toMap()
+                      .value(QStringLiteral("state")) ==
+                  QStringLiteral("granted") &&
+              api.permissions()
+                      .value(QStringLiteral("notifications.send"))
+                      .toMap()
+                      .value(QStringLiteral("operations"))
+                      .toMap()
+                      .value(QStringLiteral("send")) ==
+                  QStringLiteral("granted"),
+          "manifest-indexed grants were not represented");
   const auto before = api.permissions();
-  const std::array spoof{
-      worker::QmlBrokerApi::HostPermission{"shell.execute", "run", true}};
-  require(!api.applyHostPermissionSnapshot(77, spoof) &&
-              api.permissions() == before && changes == 1,
-          "an unrequested host entry spoofed QML-visible authority");
-  const std::array stale{
-      worker::QmlBrokerApi::HostPermission{"notifications.send", "send", true}};
-  require(!api.applyHostPermissionSnapshot(78, stale) &&
-              !api.hasPermission("notifications.send", "send") && changes == 1,
-          "a stale activation generation changed permission UX state");
-  const std::array activated{
-      worker::QmlBrokerApi::HostPermission{"storage.private", "read", true},
-      worker::QmlBrokerApi::HostPermission{"storage.private", "write", true},
-      worker::QmlBrokerApi::HostPermission{"notifications.send", "send", true}};
-  require(api.applyHostPermissionSnapshot(77, activated),
-          "activated host permission snapshot was rejected");
-  drain_events();
-  require(changes == 2 &&
-              api.hasPermission("notifications.send", "send"),
-          "optional permission activation was not surfaced");
+  require(!api.applyPermissionSnapshot(77, payload) &&
+              api.permissions() == before,
+          "a duplicate same-generation snapshot mutated immutable QML state");
+
+  const auto fresh_api = [&] {
+    return std::make_unique<worker::QmlBrokerApi>(
+        endpoint, std::make_unique<worker::ManifestInvokeEncoder>(parsed),
+        parsed, 77);
+  };
+  {
+    auto reordered = parsed;
+    std::ranges::reverse(reordered.requests);
+    worker::QmlBrokerApi candidate(
+        endpoint, std::make_unique<worker::ManifestInvokeEncoder>(reordered),
+        reordered, 77);
+    require(candidate.applyPermissionSnapshot(77, payload) &&
+                candidate.hasPermission("notifications.send", "send") &&
+                candidate.hasPermission("storage.private", "write"),
+            "worker manifest order did not reproduce canonical indices");
+  }
+  {
+    auto candidate = fresh_api();
+    auto excess = payload;
+    excess[69] = std::byte{0};
+    excess[70] = std::byte{2};
+    require(!candidate->applyPermissionSnapshot(77, excess) &&
+                candidate->applyPermissionSnapshot(77, payload),
+            "operation mask bits beyond the exact manifest row were accepted");
+  }
+  {
+    auto candidate = fresh_api();
+    auto empty_granted = payload;
+    empty_granted[69] = std::byte{0};
+    empty_granted[70] = std::byte{0};
+    require(!candidate->applyPermissionSnapshot(77, empty_granted) &&
+                candidate->applyPermissionSnapshot(77, payload),
+            "empty granted wire row reached QML projection");
+  }
+  {
+    auto candidate = fresh_api();
+    const auto denied_with_bits = wire::permission_snapshot::encode({
+        .manifest_request_fingerprint =
+            manifest::requested_capability_fingerprint(parsed.requests),
+        .permissions = {
+            {wire::permission_snapshot::GrantState::denied, 0x0001},
+            {wire::permission_snapshot::GrantState::granted, 0x0007}}});
+    require(!candidate->applyPermissionSnapshot(77, denied_with_bits) &&
+                candidate->applyPermissionSnapshot(77, payload),
+            "denied permission row retained an operation mask");
+  }
+  {
+    auto candidate = fresh_api();
+    auto wrong = payload;
+    wrong[2] = static_cast<std::byte>(
+        wrong[2] == std::byte{'0'} ? '1' : '0');
+    require(!candidate->applyPermissionSnapshot(77, wrong) &&
+                candidate->permissionState("storage.private", "read") ==
+                    "unavailable" &&
+                candidate->applyPermissionSnapshot(77, payload),
+            "fingerprint mismatch was not rejected transactionally");
+  }
+  {
+    auto candidate = fresh_api();
+    auto wrong = payload;
+    wrong.pop_back();
+    require(!candidate->applyPermissionSnapshot(77, wrong) &&
+                candidate->applyPermissionSnapshot(77, payload),
+            "request-count mismatch was not rejected transactionally");
+  }
+  {
+    auto candidate = fresh_api();
+    require(!candidate->applyPermissionSnapshot(78, payload) &&
+                candidate->applyPermissionSnapshot(77, payload),
+            "wrong activation generation was not rejected transactionally");
+  }
+  {
+    auto candidate = fresh_api();
+    const auto required_denied = wire::permission_snapshot::encode({
+        .manifest_request_fingerprint =
+            manifest::requested_capability_fingerprint(parsed.requests),
+        .permissions = {
+            {wire::permission_snapshot::GrantState::granted, 0x0001},
+            {wire::permission_snapshot::GrantState::denied, 0x0000}}});
+    require(!candidate->applyPermissionSnapshot(77, required_denied) &&
+                candidate->permissionState("storage.private", "read") ==
+                    "unavailable" &&
+                candidate->applyPermissionSnapshot(77, payload),
+            "denied required request was not rejected transactionally");
+  }
+  {
+    auto candidate = fresh_api();
+    const auto revoked = wire::permission_snapshot::encode({
+        .manifest_request_fingerprint =
+            manifest::requested_capability_fingerprint(parsed.requests),
+        .permissions = {
+            {wire::permission_snapshot::GrantState::revoked, 0x0001},
+            {wire::permission_snapshot::GrantState::granted, 0x0007}}});
+    require(candidate->applyPermissionSnapshot(77, revoked) &&
+                !candidate->hasPermission("notifications.send", "send") &&
+                candidate->permissionState("notifications.send", "send") ==
+                    "revoked",
+            "revoked optional request was not exposed exactly");
+  }
+  {
+    auto candidate = fresh_api();
+    auto empty_revoked = wire::permission_snapshot::encode({
+        .manifest_request_fingerprint =
+            manifest::requested_capability_fingerprint(parsed.requests),
+        .permissions = {
+            {wire::permission_snapshot::GrantState::revoked, 0x0001},
+            {wire::permission_snapshot::GrantState::granted, 0x0007}}});
+    empty_revoked[69] = std::byte{0};
+    empty_revoked[70] = std::byte{0};
+    require(!candidate->applyPermissionSnapshot(77, empty_revoked) &&
+                candidate->applyPermissionSnapshot(77, payload),
+            "empty revoked wire row reached QML projection");
+  }
+  {
+    manifest::ManifestV2 sixteen;
+    sixteen.id = "org.example.sixteen";
+    manifest::CapabilityRequest request{
+        .capability = "org.example.sixteen-operations",
+        .reason = "exercise the complete operation mask",
+        .canonical_scope = "{}",
+        .definition_generation = 1,
+        .definition_digest = std::string(64, 'c'),
+        .operations = {},
+        .required = false};
+    for (int index = 0; index < 16; ++index) {
+      request.operations.push_back(
+          std::string(index < 10 ? "op-0" : "op-") +
+          std::to_string(index));
+    }
+    sixteen.requests.push_back(request);
+    const auto fingerprint =
+        manifest::requested_capability_fingerprint(sixteen.requests);
+    worker::QmlBrokerApi high_bit(
+        endpoint, std::make_unique<worker::BootstrapInvokeEncoder>(), sixteen,
+        77);
+    const auto high_bit_payload = wire::permission_snapshot::encode({
+        .manifest_request_fingerprint = fingerprint,
+        .permissions = {
+            {wire::permission_snapshot::GrantState::granted, 0x8000}}});
+    require(high_bit.applyPermissionSnapshot(77, high_bit_payload) &&
+                high_bit.permissionState(
+                    "org.example.sixteen-operations", "op-15") == "granted" &&
+                high_bit.permissionState(
+                    "org.example.sixteen-operations", "op-14") == "denied" &&
+                high_bit.permissions()
+                        .value(QStringLiteral(
+                            "org.example.sixteen-operations"))
+                        .toMap()
+                        .value(QStringLiteral("state")) ==
+                    QStringLiteral("partial"),
+            "worker did not map bit 15 to canonical operation index 15");
+
+    worker::QmlBrokerApi full(
+        endpoint, std::make_unique<worker::BootstrapInvokeEncoder>(), sixteen,
+        77);
+    const auto full_payload = wire::permission_snapshot::encode({
+        .manifest_request_fingerprint = fingerprint,
+        .permissions = {
+            {wire::permission_snapshot::GrantState::granted, 0xffff}}});
+    require(full.applyPermissionSnapshot(77, full_payload) &&
+                full.hasPermission("org.example.sixteen-operations", "op-00") &&
+                full.hasPermission("org.example.sixteen-operations", "op-15"),
+            "worker rejected the complete 16-operation mask");
+
+    sixteen.requests.front().operations.pop_back();
+    worker::QmlBrokerApi fifteen(
+        endpoint, std::make_unique<worker::BootstrapInvokeEncoder>(), sixteen,
+        77);
+    const auto excess_payload = wire::permission_snapshot::encode({
+        .manifest_request_fingerprint =
+            manifest::requested_capability_fingerprint(sixteen.requests),
+        .permissions = {
+            {wire::permission_snapshot::GrantState::granted, 0x8000}}});
+    require(!fifteen.applyPermissionSnapshot(77, excess_payload),
+            "worker accepted bit 15 for a 15-operation manifest row");
+  }
+  {
+    manifest::ManifestV2 colliding;
+    colliding.id = "org.example.colliding";
+    colliding.requests.push_back(
+        {.capability = "org.example.reserved-operations",
+         .reason = "prove structural namespacing",
+         .canonical_scope = "{}",
+         .definition_generation = 1,
+         .definition_digest = std::string(64, 'b'),
+         .operations = {"required", "state"},
+         .required = false});
+    worker::QmlBrokerApi candidate(
+        endpoint, std::make_unique<worker::BootstrapInvokeEncoder>(),
+        colliding, 77);
+    const auto collision_payload = wire::permission_snapshot::encode({
+        .manifest_request_fingerprint =
+            manifest::requested_capability_fingerprint(colliding.requests),
+        .permissions = {
+            {wire::permission_snapshot::GrantState::granted, 0x0001}}});
+    require(candidate.applyPermissionSnapshot(77, collision_payload),
+            "reserved-name operation projection was rejected");
+    const auto capability =
+        candidate.permissions()
+            .value(QStringLiteral("org.example.reserved-operations"))
+            .toMap();
+    const auto operations =
+        capability.value(QStringLiteral("operations")).toMap();
+    require(!capability.value(QStringLiteral("required")).toBool() &&
+                capability.value(QStringLiteral("state")).toString() ==
+                    QStringLiteral("partial") &&
+                operations.value(QStringLiteral("required")).toString() ==
+                    QStringLiteral("granted") &&
+                operations.value(QStringLiteral("state")).toString() ==
+                    QStringLiteral("denied") &&
+                candidate.hasPermission("org.example.reserved-operations",
+                                        "required") &&
+                !candidate.hasPermission("org.example.reserved-operations",
+                                         "state"),
+            "partial optional operations collided with permission metadata");
+
+    colliding.requests.front().required = true;
+    worker::QmlBrokerApi required_candidate(
+        endpoint, std::make_unique<worker::BootstrapInvokeEncoder>(),
+        colliding, 77);
+    const auto required_partial = wire::permission_snapshot::encode({
+        .manifest_request_fingerprint =
+            manifest::requested_capability_fingerprint(colliding.requests),
+        .permissions = {
+            {wire::permission_snapshot::GrantState::granted, 0x0001}}});
+    require(required_candidate.applyPermissionSnapshot(77, required_partial) &&
+                required_candidate
+                    .permissions()
+                    .value(QStringLiteral("org.example.reserved-operations"))
+                    .toMap()
+                    .value(QStringLiteral("state")) ==
+                    QStringLiteral("partial") &&
+                required_candidate.hasPermission(
+                    "org.example.reserved-operations", "required") &&
+                !required_candidate.hasPermission(
+                    "org.example.reserved-operations", "state"),
+            "authority-valid partial required operations were rejected");
+  }
+  {
+    manifest::ManifestV2 many;
+    many.id = "org.example.many";
+    for (std::size_t index = 0; index < 65; ++index) {
+      many.requests.push_back(
+          {.capability = "org.example.capability-" + std::to_string(index),
+           .reason = "bounded projection",
+           .canonical_scope = "{}",
+           .definition_generation = 1,
+           .definition_digest = std::string(64, 'a'),
+           .operations = {"read"},
+           .required = false});
+    }
+    worker::QmlBrokerApi candidate(
+        endpoint, std::make_unique<worker::BootstrapInvokeEncoder>(), many,
+        77);
+    const auto many_payload = wire::permission_snapshot::encode({
+        .manifest_request_fingerprint =
+            manifest::requested_capability_fingerprint(many.requests),
+        .permissions =
+            std::vector<wire::permission_snapshot::PermissionRow>(
+                many.requests.size(),
+                {wire::permission_snapshot::GrantState::granted, 0x0001})});
+    require(candidate.applyPermissionSnapshot(77, many_payload) &&
+                candidate.hasPermission("org.example.capability-64", "read"),
+            "worker retained the removed 64-row projection limit");
+  }
 
   QQmlEngine engine;
   engine.rootContext()->setContextProperty(QStringLiteral("runtime"), &api);
@@ -323,13 +584,8 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host,
     import QtQml
     QtObject {
       id: root
-      property int permissionRevision: 0
       readonly property bool notificationsAvailable:
-        permissionRevision >= 0 && runtime.hasPermission("notifications.send", "send")
-      property Connections permissionConnection: Connections {
-        target: runtime
-        function onPermissionsChanged() { root.permissionRevision += 1 }
-      }
+        runtime.hasPermission("notifications.send", "send")
     })", QUrl());
   std::unique_ptr<QObject> qml(component.create());
   require(qml != nullptr && qml->property("notificationsAvailable").toBool(),
@@ -348,17 +604,8 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host,
          broker_denial);
   require(still_checked->finished() && !still_checked->ok(),
           "QML-visible availability bypassed authoritative broker denial");
-  const std::array revoked{
-      worker::QmlBrokerApi::HostPermission{"storage.private", "read", true},
-      worker::QmlBrokerApi::HostPermission{"storage.private", "write", true},
-      worker::QmlBrokerApi::HostPermission{"notifications.send", "send", false}};
-  require(api.applyHostPermissionSnapshot(77, revoked),
-          "revoked host permission snapshot was rejected");
-  drain_events();
-  require(changes == 3 &&
-              !api.hasPermission("notifications.send", "send") &&
-              !qml->property("notificationsAvailable").toBool(),
-          "revocation did not notify representative QML and hide its feature");
+  require(qml->property("notificationsAvailable").toBool(),
+          "one-shot permission projection was not immutable in QML");
 }
 void run() {
   worker::BrokerCall text_call(1);
