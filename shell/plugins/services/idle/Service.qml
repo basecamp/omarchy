@@ -103,7 +103,12 @@ Item {
     lockTimer.stop()
     screensaverLaunchGraceTimer.stop()
 
-    if (root.idledThisCycle) runProcess(wakeProcess, "wake", "omarchy-system-wake")
+    // Nothing to wake here. lockSystem ends the cycle, so a cancel only ever
+    // reaches this point for a cycle that never locked, and this service blanks
+    // nothing on its own: the screensaver is just a window, and the lock
+    // service owns both the blank and the matching restore. Running
+    // omarchy-system-wake anyway only re-applied brightnessctl's saved keyboard
+    // level over whatever the keyboard was showing (#7650).
 
     root.idledThisCycle = false
     root.screensaverStartedThisCycle = false
@@ -198,8 +203,7 @@ Item {
       },
       processes: {
         screensaver: screensaverProcess.running,
-        lock: lockProcess.running,
-        wake: wakeProcess.running
+        lock: lockProcess.running
       },
       lastEvent: root.lastEvent,
       lastEventAt: root.lastEventAt
@@ -292,10 +296,6 @@ Item {
   Process {
     id: lockProcess
     onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "lock exitCode=" + exitCode + " status=" + exitStatus) }
-  }
-  Process {
-    id: wakeProcess
-    onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "wake exitCode=" + exitCode + " status=" + exitStatus) }
   }
 
   Process {
