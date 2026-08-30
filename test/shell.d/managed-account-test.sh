@@ -91,7 +91,8 @@ grep -A4 -F "<<'CONF'" "$ROOT/bin/omarchy-managed" | grep -Fxq 'User=' ||
   fail "the SDDM override clears the autologin user"
 grep -Fq 'cp -a "$omarchy_root/config/." "$home/.config/"' "$ROOT/bin/omarchy-managed" ||
   fail "new managed users get shipped Omarchy desktop defaults without administrator files"
-grep -Fq '"$done_dir/finalize-user" "$done_dir/first-run-user"' "$ROOT/bin/omarchy-managed" ||
+grep -Fq '/dev/null "$done_dir/finalize-user"' "$ROOT/bin/omarchy-managed" &&
+  grep -Fq '/dev/null "$done_dir/first-run-user"' "$ROOT/bin/omarchy-managed" ||
   fail "managed users skip the privileged and network-dependent first-run path"
 grep -Fq 'Allowed websites> ' "$ROOT/bin/omarchy-managed" ||
   fail "interactive setup asks for the initial website allowlist"

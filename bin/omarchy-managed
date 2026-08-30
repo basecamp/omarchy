@@ -409,8 +409,8 @@ seed_omarchy_home() {
     "$home/Downloads" "$home/Pictures" "$home/Videos"
   done_dir=$home/.local/state/omarchy/done
   install -d -m 0700 -o "$username" -g "$group" "$done_dir"
-  install -m 0644 -o "$username" -g "$group" /dev/null \
-    "$done_dir/finalize-user" "$done_dir/first-run-user"
+  install -m 0644 -o "$username" -g "$group" /dev/null "$done_dir/finalize-user"
+  install -m 0644 -o "$username" -g "$group" /dev/null "$done_dir/first-run-user"
 }
 
 ensure_squid() {
