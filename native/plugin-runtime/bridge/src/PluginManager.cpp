@@ -4,6 +4,7 @@
 #include "runtime_bootstrap.hpp"
 
 #include <QQmlEngine>
+#include <QThread>
 #include <QThreadPool>
 #include <QTimer>
 
@@ -16,6 +17,7 @@
 #endif
 #include <limits>
 #include <mutex>
+#include <new>
 #include <optional>
 #include <ranges>
 #include <span>
@@ -33,6 +35,12 @@ constexpr int kIdleCompletionIntervalMilliseconds = 200;
 constexpr int kInitialRetryMilliseconds = 250;
 constexpr int kMaximumRetryMilliseconds = 30000;
 constexpr std::uint8_t kMaximumRetryExponent = 7;
+
+std::atomic<QQmlEngine *> claimed_engine = nullptr;
+
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+std::atomic_bool fail_next_manager_construction = false;
+#endif
 
 } // namespace
 
@@ -732,14 +740,59 @@ PluginManagerTestAccess::deliveryGate(const PluginManager &manager) {
              ? std::weak_ptr<const void>(manager.runtime_->gate_)
              : std::weak_ptr<const void>{};
 }
-#endif
 
-PluginManager *PluginManager::create(QQmlEngine *qml_engine, QJSEngine *) {
-  return new PluginManager(qml_engine);
+void PluginManagerTestAccess::failNextConstruction() noexcept {
+  fail_next_manager_construction.store(true, std::memory_order_release);
 }
 
-PluginManager::PluginManager(QObject *parent)
-    : QObject(parent), surfaces_(this) {
+bool PluginManagerTestAccess::processClaimAvailable() noexcept {
+  return claimed_engine.load(std::memory_order_acquire) == nullptr;
+}
+#endif
+
+PluginManager::ProcessClaim::ProcessClaim(QQmlEngine *engine) noexcept
+    : engine_(engine) {}
+
+PluginManager::ProcessClaim::ProcessClaim(ProcessClaim &&other) noexcept
+    : engine_(std::exchange(other.engine_, nullptr)) {}
+
+PluginManager::ProcessClaim::~ProcessClaim() noexcept {
+  if (!engine_)
+    return;
+  QQmlEngine *expected = engine_;
+  if (!claimed_engine.compare_exchange_strong(expected, nullptr,
+                                              std::memory_order_acq_rel,
+                                              std::memory_order_acquire))
+    std::terminate();
+}
+
+PluginManager *PluginManager::create(QQmlEngine *qml_engine,
+                                     QJSEngine *js_engine) noexcept {
+  if (!qml_engine || !js_engine ||
+      js_engine != static_cast<QJSEngine *>(qml_engine) ||
+      qml_engine->thread() != QThread::currentThread())
+    return nullptr;
+
+  QQmlEngine *expected = nullptr;
+  if (!claimed_engine.compare_exchange_strong(expected, qml_engine,
+                                              std::memory_order_acq_rel,
+                                              std::memory_order_acquire))
+    return nullptr;
+
+  ProcessClaim claim(qml_engine);
+  try {
+    return new PluginManager(qml_engine, std::move(claim));
+  } catch (...) {
+    return nullptr;
+  }
+}
+
+PluginManager::PluginManager(QObject *parent, ProcessClaim claim)
+    : QObject(parent), process_claim_(std::move(claim)), surfaces_(this) {
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+  if (fail_next_manager_construction.exchange(false, std::memory_order_acq_rel))
+    throw std::bad_alloc();
+#endif
   connect(&surfaces_, &SurfaceProjectionModel::surfacesChanged, this,
           &PluginManager::surfacesChanged);
   connect(&surfaces_, &SurfaceProjectionModel::openRequested, this,

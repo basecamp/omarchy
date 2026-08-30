@@ -44,7 +44,7 @@ public:
   // Qt owns the one QML singleton instance. The constructor is unavailable to
   // QML and ordinary C++ callers; Qt enters through this factory only.
   [[nodiscard]] static PluginManager *create(QQmlEngine *qml_engine,
-                                             QJSEngine *js_engine);
+                                             QJSEngine *js_engine) noexcept;
   ~PluginManager() override;
 
   [[nodiscard]] bool available() const noexcept;
@@ -70,7 +70,25 @@ signals:
                         QString generation);
 
 private:
-  explicit PluginManager(QObject *parent = nullptr);
+  class ProcessClaim final {
+  public:
+    ProcessClaim(const ProcessClaim &) = delete;
+    ProcessClaim &operator=(const ProcessClaim &) = delete;
+    ProcessClaim(ProcessClaim &&other) noexcept;
+    ProcessClaim &operator=(ProcessClaim &&) = delete;
+    ~ProcessClaim() noexcept;
+
+  private:
+    ProcessClaim() noexcept = default;
+    explicit ProcessClaim(QQmlEngine *engine) noexcept;
+
+    QQmlEngine *engine_ = nullptr;
+
+    friend class PluginManager;
+    friend class PluginManagerTestAccess;
+  };
+
+  PluginManager(QObject *parent, ProcessClaim claim);
   [[nodiscard]] bool publishSurfaces(
       const plugins::permissions::ActivationBinding &binding,
       std::vector<SurfaceProjectionModel::SurfaceDeclaration> declarations,
@@ -81,6 +99,9 @@ private:
 
   struct Runtime;
 
+  // Declared first so all authority-bearing state is destroyed before the
+  // process claim is released and another engine can create a manager.
+  ProcessClaim process_claim_;
   SurfaceProjectionModel surfaces_;
   std::unique_ptr<Runtime> runtime_;
   bool available_ = false;
@@ -103,9 +124,14 @@ public:
     bool preparing = false;
   };
 
+  // Focused unit tests exercise manager internals without consuming the one
+  // process claim. This path is compiled out of the QML module.
   [[nodiscard]] static std::unique_ptr<PluginManager> create() {
-    return std::unique_ptr<PluginManager>(new PluginManager);
+    return std::unique_ptr<PluginManager>(
+        new PluginManager(nullptr, PluginManager::ProcessClaim{}));
   }
+  static void failNextConstruction() noexcept;
+  [[nodiscard]] static bool processClaimAvailable() noexcept;
   [[nodiscard]] static SurfaceProjectionModel &model(PluginManager &manager) {
     return manager.surfaces_;
   }

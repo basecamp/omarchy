@@ -7,12 +7,15 @@
 
 #include <QCoreApplication>
 #include <QMetaMethod>
+#include <QQmlEngine>
 
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
+#include <barrier>
 #include <chrono>
 #include <condition_variable>
 #include <filesystem>
@@ -34,6 +37,77 @@ namespace host = omarchy::plugin_runtime::host_session;
 void require(bool condition, std::string_view message) {
   if (!condition)
     throw std::runtime_error(std::string(message));
+}
+
+void process_singleton_factory_is_exact_and_recoverable() {
+  require(bridge::PluginManagerTestAccess::processClaimAvailable(),
+          "process singleton claim was not initially available");
+  QQmlEngine first_engine;
+  QQmlEngine second_engine;
+  require(!bridge::PluginManager::create(nullptr, nullptr) &&
+              !bridge::PluginManager::create(&first_engine, nullptr) &&
+              !bridge::PluginManager::create(nullptr, &first_engine) &&
+              !bridge::PluginManager::create(&first_engine, &second_engine) &&
+              bridge::PluginManagerTestAccess::processClaimAvailable(),
+          "invalid engine pair consumed the process singleton claim");
+
+  std::atomic<bridge::PluginManager *> wrong_thread_result = nullptr;
+  std::thread wrong_thread([&] {
+    wrong_thread_result.store(
+        bridge::PluginManager::create(&first_engine, &first_engine),
+        std::memory_order_release);
+  });
+  wrong_thread.join();
+  require(!wrong_thread_result.load(std::memory_order_acquire) &&
+              bridge::PluginManagerTestAccess::processClaimAvailable(),
+          "wrong-thread factory call consumed the process singleton claim");
+
+  bridge::PluginManagerTestAccess::failNextConstruction();
+  require(!bridge::PluginManager::create(&first_engine, &first_engine) &&
+              bridge::PluginManagerTestAccess::processClaimAvailable(),
+          "constructor failure did not roll back the process singleton claim");
+
+  auto *first = bridge::PluginManager::create(&first_engine, &first_engine);
+  require(first && first->parent() == &first_engine &&
+              !bridge::PluginManagerTestAccess::processClaimAvailable() &&
+              !bridge::PluginManager::create(&first_engine, &first_engine) &&
+              !bridge::PluginManager::create(&second_engine, &second_engine),
+          "live manager did not exclusively retain its exact engine claim");
+  delete first;
+  require(bridge::PluginManagerTestAccess::processClaimAvailable(),
+          "manager teardown did not release the process singleton claim");
+
+  auto *replacement =
+      bridge::PluginManager::create(&second_engine, &second_engine);
+  require(replacement && replacement->parent() == &second_engine,
+          "a replacement engine could not claim the process singleton");
+  delete replacement;
+  require(bridge::PluginManagerTestAccess::processClaimAvailable(),
+          "replacement teardown did not release the process singleton claim");
+}
+
+void concurrent_engines_have_one_process_winner() {
+  for (int iteration = 0; iteration < 32; ++iteration) {
+    std::barrier enter_factory(2);
+    std::barrier hold_winner(2);
+    std::atomic<int> successes = 0;
+    auto contender = [&] {
+      QQmlEngine engine;
+      enter_factory.arrive_and_wait();
+      auto *manager = bridge::PluginManager::create(&engine, &engine);
+      if (manager)
+        successes.fetch_add(1, std::memory_order_relaxed);
+      hold_winner.arrive_and_wait();
+      delete manager;
+    };
+    std::thread first(contender);
+    std::thread second(contender);
+    first.join();
+    second.join();
+    require(successes.load(std::memory_order_relaxed) == 1 &&
+                bridge::PluginManagerTestAccess::processClaimAvailable(),
+            "concurrent engines did not produce one exact process winner");
+  }
 }
 
 template <typename Predicate> bool await(Predicate predicate) {
@@ -719,6 +793,8 @@ void runtime_jobs_enter_off_ui_and_commit_on_ui_drain() {
 } // namespace
 
 void run_plugin_manager_tests() {
+  process_singleton_factory_is_exact_and_recoverable();
+  concurrent_engines_have_one_process_winner();
   singleton_boundary_is_inert_and_not_configurable();
   private_projection_seam_preserves_fail_closed_boundary();
   last_good_reconciliation_and_stale_callback_are_fail_closed();
