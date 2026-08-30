@@ -6,7 +6,16 @@
 
 set -euo pipefail
 
-state_dir="${NEWSBOAT_CONFIRM_STATE_DIR:-${XDG_RUNTIME_DIR:-/tmp}/omarchy-newsboat-$UID/confirmations}"
+# Agent sandboxes can expose the desktop runtime directory read-only. Keep the
+# request and detached response in a private path both sides can write instead.
+runtime_dir="${NEWSBOAT_CONFIRM_RUNTIME_DIR:-/tmp}"
+state_root="$runtime_dir/omarchy-newsboat-$UID"
+if [[ -n ${NEWSBOAT_CONFIRM_STATE_DIR:-} ]]; then
+  state_dir="$NEWSBOAT_CONFIRM_STATE_DIR"
+  state_root=""
+else
+  state_dir="$state_root/confirmations"
+fi
 response_written=false
 response_tmp=""
 request_file=""
@@ -28,6 +37,20 @@ owner_uid() {
 }
 
 prepare_state_dir() {
+  if [[ -n $state_root ]]; then
+    if [[ -L $state_root ]]; then
+      echo "Newsboat confirmation runtime may not be a symlink" >&2
+      exit 2
+    fi
+
+    install -d -m 700 "$state_root"
+    if [[ $(owner_uid "$state_root") != $UID ]]; then
+      echo "Newsboat confirmation runtime is not owned by the current user" >&2
+      exit 2
+    fi
+    chmod 700 "$state_root"
+  fi
+
   if [[ -L $state_dir ]]; then
     echo "Newsboat confirmation state may not be a symlink" >&2
     exit 2

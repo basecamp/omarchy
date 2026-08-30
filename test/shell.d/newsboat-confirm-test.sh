@@ -5,13 +5,15 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 test_tmp=$(mktemp -d)
-trap 'rm -rf "$test_tmp"' EXIT
+sandbox_runtime="$test_tmp/sandbox-runtime"
+trap 'chmod 700 "$sandbox_runtime" 2>/dev/null || true; rm -rf "$test_tmp"' EXIT
 
 mock_bin="$test_tmp/bin"
 runtime_dir="$test_tmp/runtime"
+agent_runtime="$test_tmp/agent-runtime"
 launch_log="$test_tmp/launch"
 gum_log="$test_tmp/gum"
-mkdir -p "$mock_bin" "$runtime_dir"
+mkdir -p "$mock_bin" "$runtime_dir" "$sandbox_runtime"
 
 export PATH="$mock_bin:$ROOT/bin:$PATH"
 export OMARCHY_PATH="$ROOT"
@@ -43,12 +45,40 @@ SH
 
 chmod +x "$mock_bin/omarchy-launch-floating-terminal-with-presentation" "$mock_bin/gum"
 
+file_mode() {
+  if stat -c '%a' "$1" >/dev/null 2>&1; then
+    stat -c '%a' "$1"
+  else
+    stat -f '%Lp' "$1"
+  fi
+}
+
 export CONFIRM_TEST_GUM_STATUS=0
 "$ROOT/bin/omarchy-newsboat-confirm" triage 44 3
 grep -Eq '/bin/omarchy-newsboat-confirm --respond [A-Za-z0-9_-]+; exit 130$' "$launch_log" || fail "Newsboat confirmation does not leave the agent terminal"
 grep -Fq 'Mark 44 articles as read and leave 3 unread?' "$gum_log" || fail "Newsboat triage confirmation omits the exact effect"
 [[ -z $(find "$NEWSBOAT_CONFIRM_STATE_DIR" -type f -print -quit) ]] || fail "an approved Newsboat confirmation leaves reusable state"
 pass "Newsboat requires an exact out-of-band triage approval"
+
+unset NEWSBOAT_CONFIRM_STATE_DIR
+export NEWSBOAT_CONFIRM_RUNTIME_DIR="$agent_runtime"
+export XDG_RUNTIME_DIR="$sandbox_runtime"
+chmod 500 "$sandbox_runtime"
+state_root="$agent_runtime/omarchy-newsboat-$UID"
+mkdir -p "$state_root"
+chmod 755 "$state_root"
+: >"$gum_log"
+"$ROOT/bin/omarchy-newsboat-confirm" triage 2 1
+confirm_state_dir="$agent_runtime/omarchy-newsboat-$UID/confirmations"
+[[ -d $confirm_state_dir ]] || fail "Newsboat confirmation relies on the agent's read-only XDG runtime"
+[[ $(file_mode "$state_root") == 700 ]] || fail "Newsboat confirmation leaves its shared runtime visible to other users"
+[[ -z $(find "$confirm_state_dir" -type f -print -quit) ]] || fail "sandbox-compatible confirmation leaves reusable state"
+[[ -z $(find "$sandbox_runtime" -mindepth 1 -print -quit) ]] || fail "Newsboat confirmation writes inside the agent's XDG runtime"
+pass "Newsboat confirmation works when the agent's XDG runtime is read-only"
+chmod 700 "$sandbox_runtime"
+unset NEWSBOAT_CONFIRM_RUNTIME_DIR
+export XDG_RUNTIME_DIR="$runtime_dir"
+export NEWSBOAT_CONFIRM_STATE_DIR="$runtime_dir/confirmations"
 
 : >"$gum_log"
 export CONFIRM_TEST_GUM_STATUS=1
