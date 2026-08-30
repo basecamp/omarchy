@@ -49,27 +49,23 @@ if(BUILD_TESTING)
   endif()
   omarchy_render_session_sanitize(omarchy-plugin-trusted-bridge)
 
-  add_library(omarchy-plugin-d2-worker-render STATIC
+  add_executable(omarchy-plugin-render-session-test
+    tests/render_session_test.cpp
     "${CMAKE_CURRENT_SOURCE_DIR}/../worker/src/worker_runtime.cpp"
   )
-  omarchy_plugin_target_defaults(omarchy-plugin-d2-worker-render)
-  omarchy_render_session_sanitize(omarchy-plugin-d2-worker-render)
-  target_include_directories(omarchy-plugin-d2-worker-render PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/../worker/src"
-  )
-  target_link_libraries(omarchy-plugin-d2-worker-render PUBLIC
-    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick omarchy-plugin-surface-contract
-  )
-
-  add_executable(omarchy-plugin-render-session-test tests/render_session_test.cpp)
+  set_target_properties(omarchy-plugin-render-session-test PROPERTIES
+    POSITION_INDEPENDENT_CODE ON)
   omarchy_plugin_target_defaults(omarchy-plugin-render-session-test)
   omarchy_render_session_sanitize(omarchy-plugin-render-session-test)
+  target_include_directories(omarchy-plugin-render-session-test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../worker/src"
+  )
   target_compile_definitions(omarchy-plugin-render-session-test PRIVATE
     D2_WORKER_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../worker/tests/fixtures"
   )
   target_link_libraries(omarchy-plugin-render-session-test PRIVATE
-    omarchy-plugin-render-session omarchy-plugin-d2-worker-render
-    omarchy-plugin-trusted-bridge Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick
+    omarchy-plugin-render-session omarchy-plugin-trusted-bridge
+    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick
   )
   add_test(NAME plugin-render-session COMMAND omarchy-plugin-render-session-test)
   set_tests_properties(plugin-render-session PROPERTIES
