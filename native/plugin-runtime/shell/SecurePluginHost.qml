@@ -9,38 +9,8 @@ Item {
 
   property var shell: null
   property var barWidgetRegistry: null
-  property var registeredBarIds: []
-
-  readonly property var declarations: surfaceService.surfaces
-  readonly property var barEntries: {
-    var revision = surfaceService.revision
-    var result = []
-    for (var i = 0; i < declarations.length; i++) {
-      var declaration = declarations[i]
-      if (declaration.role === "bar")
-        result.push({ id: declaration.surfaceKey, section: declaration.defaultSection })
-    }
-    return result
-  }
-  readonly property var panelDeclarations: filteredDeclarations("panel")
-  readonly property var overlayDeclarations: filteredDeclarations("overlay")
 
   visible: false
-
-  function filteredDeclarations(role) {
-    var revision = surfaceService.revision
-    var result = []
-    for (var i = 0; i < declarations.length; i++)
-      if (declarations[i].role === role) result.push(declarations[i])
-    return result
-  }
-
-  function declarationFor(surfaceKey) {
-    var revision = surfaceService.revision
-    for (var i = 0; i < declarations.length; i++)
-      if (declarations[i].surfaceKey === surfaceKey) return declarations[i]
-    return null
-  }
 
   function screenFor(name) {
     for (var i = 0; i < Quickshell.screens.length; i++)
@@ -48,62 +18,101 @@ Item {
     return null
   }
 
-  function syncDeclarations() {
-    if (!barWidgetRegistry) return
-    for (var old = 0; old < registeredBarIds.length; old++)
-      barWidgetRegistry.unregister(registeredBarIds[old])
-    var nextIds = []
-    for (var bar = 0; bar < declarations.length; bar++) {
-      var entry = declarations[bar]
-      if (entry.role !== "bar") continue
-      barWidgetRegistry.register(entry.surfaceKey, barSurfaceComponent, {
-        security: "sandboxed-v2",
-        pluginId: entry.pluginId,
-        surfaceName: entry.surfaceName
-      })
-      nextIds.push(entry.surfaceKey)
+  PluginSurfaceService { id: surfaceService }
+
+  Instantiator {
+    id: barEntries
+    model: surfaceService.barSurfaces
+
+    delegate: QtObject {
+      id: barEntry
+
+      required property string surfaceKey
+      required property string pluginId
+      required property string surfaceName
+      required property string generation
+      required property string publicationRevision
+      required property int maximumWidth
+      required property int maximumHeight
+      required property string defaultSection
+      property var registeredRegistry: null
+
+      property Component surfaceComponent: Component {
+        SecureBarSurface {
+          surfaceService: surfaceService
+          surfaceKey: barEntry.surfaceKey
+          generation: barEntry.generation
+          maximumWidth: barEntry.maximumWidth
+          maximumHeight: barEntry.maximumHeight
+        }
+      }
+
+      function unregisterSurface() {
+        if (!registeredRegistry) return
+        var metadata = registeredRegistry.metadataFor(surfaceKey)
+        if (metadata && metadata.generation === generation
+            && metadata.publicationRevision === publicationRevision)
+          registeredRegistry.unregister(surfaceKey)
+        registeredRegistry = null
+      }
+
+      function syncRegistration() {
+        if (registeredRegistry === root.barWidgetRegistry) return
+        unregisterSurface()
+        if (!root.barWidgetRegistry) return
+        root.barWidgetRegistry.register(surfaceKey, surfaceComponent, {
+          security: "sandboxed-v2",
+          pluginId: pluginId,
+          surfaceName: surfaceName,
+          generation: generation,
+          publicationRevision: publicationRevision,
+          defaultSection: defaultSection
+        })
+        registeredRegistry = root.barWidgetRegistry
+      }
+
+      Component.onCompleted: syncRegistration()
+      Component.onDestruction: unregisterSurface()
     }
-    registeredBarIds = nextIds
   }
 
-  PluginSurfaceService {
-    id: surfaceService
-
-    onSurfacesChanged: root.syncDeclarations()
-  }
-
-  Component {
-    id: barSurfaceComponent
-    SecureBarSurface { host: root; surfaceService: surfaceService }
+  onBarWidgetRegistryChanged: {
+    for (var index = 0; index < barEntries.count; index++) {
+      var entry = barEntries.objectAt(index)
+      if (entry) entry.syncRegistration()
+    }
   }
 
   Variants {
-    model: root.panelDeclarations
+    model: surfaceService.panelSurfaces
     delegate: Component {
       SecurePanelSurface {
-        required property var modelData
+        required property string surfaceKey
+        required property string generation
+        required property string screenName
+        required property bool initiallyVisible
+        required property int maximumWidth
+
         host: root
         surfaceService: surfaceService
-        declaration: modelData
       }
     }
   }
 
   Variants {
-    model: root.overlayDeclarations
+    model: surfaceService.overlaySurfaces
     delegate: Component {
       SecureOverlaySurface {
-        required property var modelData
+        required property string surfaceKey
+        required property string generation
+        required property string screenName
+        required property bool initiallyVisible
+        required property int maximumWidth
+        required property int maximumHeight
+
         host: root
         surfaceService: surfaceService
-        declaration: modelData
       }
     }
-  }
-
-  Component.onDestruction: {
-    if (!barWidgetRegistry) return
-    for (var i = 0; i < registeredBarIds.length; i++)
-      barWidgetRegistry.unregister(registeredBarIds[i])
   }
 }

@@ -4,19 +4,18 @@ import Omarchy.PluginHost 1.0
 Item {
   id: root
 
-  required property var host
   required property var surfaceService
-  property string moduleName: ""
-  readonly property var declaration: host.declarationFor(moduleName)
+  required property string surfaceKey
+  required property string generation
+  required property int maximumWidth
+  required property int maximumHeight
 
-  visible: declaration !== null
-  implicitWidth: declaration ? declaration.maximumWidth : 0
-  implicitHeight: declaration ? declaration.maximumHeight : 0
+  implicitWidth: maximumWidth
+  implicitHeight: maximumHeight
 
   RemotePluginSurface {
     id: remote
     anchors.fill: parent
-    Component.onCompleted: if (root.declaration)
-      root.surfaceService.attach(root.declaration.surfaceKey, remote)
+    Component.onCompleted: root.surfaceService.attach(root.surfaceKey, remote)
   }
 }

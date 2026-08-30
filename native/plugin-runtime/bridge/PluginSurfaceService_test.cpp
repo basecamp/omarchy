@@ -1,10 +1,16 @@
 #include "PluginSurfaceService.h"
 #include "gesture_intent.hpp"
 
-#include <stdexcept>
-#include <string_view>
+#include <QPersistentModelIndex>
+
+#include <algorithm>
 #include <iostream>
 #include <memory>
+#include <stdexcept>
+#include <string_view>
+#include <thread>
+#include <utility>
+#include <vector>
 
 namespace {
 
@@ -43,87 +49,324 @@ public:
   std::uint64_t now_nanoseconds() const override { return now; }
 };
 
+class ModelSignalSpy final : public QObject {
+public:
+  explicit ModelSignalSpy(QAbstractItemModel &model) {
+    QObject::connect(&model, &QAbstractItemModel::modelReset, this,
+                     [this] { ++resets; });
+    QObject::connect(
+        &model, &QAbstractItemModel::rowsInserted, this,
+        [this](const QModelIndex &, int first, int last) {
+          inserted.emplace_back(first, last);
+        });
+    QObject::connect(
+        &model, &QAbstractItemModel::rowsRemoved, this,
+        [this](const QModelIndex &, int first, int last) {
+          removed.emplace_back(first, last);
+        });
+  }
+
+  int resets = 0;
+  std::vector<std::pair<int, int>> inserted;
+  std::vector<std::pair<int, int>> removed;
+};
+
 permissions::Digest digest(char value) {
   return permissions::Digest(std::string(64, value));
 }
 
-QVariantMap declaration(QString key, QString role) {
-  const bool bar = role == QStringLiteral("bar");
-  const QString surface_name = key;
-  QVariantMap result{
-      {QStringLiteral("surfaceKey"), QStringLiteral("v2.org.omarchy.fixture.") + key},
-      {QStringLiteral("pluginId"), QStringLiteral("org.omarchy.fixture")},
-      {QStringLiteral("surfaceName"), surface_name},
-      {QStringLiteral("role"), role},
-      {QStringLiteral("generation"), 7},
-      {QStringLiteral("screenName"), QStringLiteral("DP-1")},
-      {QStringLiteral("visible"), true},
-      {QStringLiteral("maximumWidth"), bar ? 280 : 640},
-      {QStringLiteral("maximumHeight"), bar ? 64 : 480},
-  };
-  if (bar)
-    result.insert(QStringLiteral("defaultSection"), QStringLiteral("left"));
-  if (role == QStringLiteral("overlay"))
-    result.insert(QStringLiteral("inputMask"), QStringLiteral("bounded"));
-  return result;
+permissions::ActivationBinding binding(std::string_view plugin,
+                                       std::uint64_t generation = 7) {
+  return {.plugin = permissions::PluginId(plugin),
+          .revision = digest('1'),
+          .policy_fingerprint = digest('2'),
+          .generation = generation};
+}
+
+bridge::PluginSurfaceService::SurfaceDeclaration declaration(
+    std::string name, bridge::PluginSurfaceService::Role role) {
+  using Service = bridge::PluginSurfaceService;
+  const bool bar = role == Service::Role::Bar;
+  return {.surface_name = std::move(name),
+          .role = role,
+          .screen_name = QStringLiteral("DP-1"),
+          .initially_visible = true,
+          .maximum_width = bar ? 280U : 640U,
+          .maximum_height = bar ? 64U : 480U,
+          .default_bar_section =
+              bar ? Service::BarSection::Left
+                  : Service::BarSection::Unspecified};
+}
+
+QString value(const bridge::PluginSurfaceService &service, int row, int role) {
+  return service.data(service.index(row), role).toString();
 }
 
 void run() {
-  bridge::PluginSurfaceService service;
+  using Service = bridge::PluginSurfaceService;
+  Service service;
   Backend backend;
-  require(!service.available() && service.surfaces().isEmpty() &&
-              !service.dismiss(QStringLiteral("panel")),
+  require(!service.available() && service.count() == 0 &&
+              service.rowCount() == 0 && !service.dismiss(QStringLiteral("panel")),
           "unbound shell bridge did not fail closed");
   require(service.bindBackend(backend) && service.available() &&
               !service.bindBackend(backend),
           "shell bridge backend binding was not exclusive");
 
-  const QVariantList invalid{declaration(QStringLiteral("panel"),
-                                         QStringLiteral("window"))};
-  require(!service.publishSurfaces(invalid, 1),
-          "unknown compositor role reached shell declarations");
-
   const QString maximum_name(64, QChar(u'X'));
-  const QVariantList surfaces{
-      declaration(QStringLiteral("bar"), QStringLiteral("bar")),
-      declaration(QStringLiteral("PanelWidget"), QStringLiteral("panel")),
-      declaration(QStringLiteral("overlay"), QStringLiteral("overlay")),
-      declaration(maximum_name, QStringLiteral("panel")),
-  };
-  require(service.publishSurfaces(surfaces, 2) && service.revision() == 2 &&
-              service.surfaces().size() == 4 &&
-              !service.publishSurfaces(surfaces, 2),
-          "bounded shell surface revision was not monotonic");
-  QVariantList overflow = surfaces;
-  for (int index = overflow.size(); index <= 8; ++index)
-    overflow.push_back(declaration(QStringLiteral("surface%1").arg(index),
-                                   QStringLiteral("panel")));
-  require(!service.publishSurfaces(overflow, 3),
+  std::vector<Service::SurfaceDeclaration> surfaces;
+  surfaces.push_back(declaration("bar", Service::Role::Bar));
+  surfaces.push_back(declaration("PanelWidget", Service::Role::Panel));
+  surfaces.push_back(declaration("overlay", Service::Role::Overlay));
+  surfaces.push_back(declaration(maximum_name.toStdString(), Service::Role::Panel));
+  const auto fixture_binding = binding("org.omarchy.fixture");
+  require(service.publishSurfaces(fixture_binding, surfaces, 2) &&
+              service.count() == 4 &&
+              service.barSurfaces()->rowCount() == 1 &&
+              service.panelSurfaces()->rowCount() == 2 &&
+              service.overlaySurfaces()->rowCount() == 1 &&
+              !service.publishSurfaces(fixture_binding, surfaces, 2),
+          "typed shell surface model or monotonic revision was incorrect");
+  require(value(service, 0, Service::SurfaceKeyRole) ==
+                  QStringLiteral("v2.19.org.omarchy.fixture.7.bar") &&
+              value(service, 0, Service::PluginIdRole) ==
+                  QStringLiteral("org.omarchy.fixture") &&
+              value(service, 1, Service::SurfaceNameRole) ==
+                  QStringLiteral("PanelWidget") &&
+              service.data(service.index(1), Service::GenerationRole)
+                      .toString() == QStringLiteral("7") &&
+              service.data(service.index(1), Service::PublicationRevisionRole)
+                      .toString() == QStringLiteral("2") &&
+              service.data(service.index(0), Service::DefaultSectionRole)
+                      .toString() == QStringLiteral("left"),
+          "model roles were not derived from exact typed activation state");
+
+  std::vector<Service::SurfaceDeclaration> overflow;
+  for (int index = 0; index <= 8; ++index)
+    overflow.push_back(
+        declaration("surface" + std::to_string(index), Service::Role::Panel));
+  require(!service.publishSurfaces(fixture_binding, std::move(overflow), 3),
           "shell bridge accepted more than the product surface limit");
+
+  Service multi_service;
+  Backend multi_backend;
+  const auto binding_a = binding("a.plugin", 4);
+  const auto binding_b = binding("b.plugin", 9);
+  require(multi_service.bindBackend(multi_backend) &&
+              multi_service.publishSurfaces(
+                  binding_a, {declaration("PanelA", Service::Role::Panel)}, 5),
+          "first plugin publication did not reach the aggregate model");
+  QPersistentModelIndex persistent_a(multi_service.index(0));
+  ModelSignalSpy multi_spy(multi_service);
+  QPersistentModelIndex persistent_panel_a(
+      multi_service.panelSurfaces()->index(0, 0));
+  ModelSignalSpy panel_spy(*multi_service.panelSurfaces());
+  require(multi_service.publishSurfaces(
+              binding_b, {declaration("PanelB", Service::Role::Panel)}, 1) &&
+              multi_service.count() == 2 &&
+              value(multi_service, 0, Service::PluginIdRole) ==
+                  QStringLiteral("a.plugin") &&
+              value(multi_service, 1, Service::PluginIdRole) ==
+                  QStringLiteral("b.plugin") &&
+              multi_service
+                      .data(multi_service.index(0),
+                            Service::PublicationRevisionRole)
+                      .toString() == QStringLiteral("5") &&
+              multi_service
+                      .data(multi_service.index(1),
+                            Service::PublicationRevisionRole)
+                      .toString() == QStringLiteral("1"),
+          "plugin publications did not retain independent revisions and rows");
+  require(multi_service.publishSurfaces(
+              binding_b,
+              {declaration("PanelB", Service::Role::Panel),
+               declaration("OverlayB", Service::Role::Overlay)},
+              2) &&
+              multi_service.withdrawSurfaces(binding_b) &&
+              multi_spy.resets == 0 && panel_spy.resets == 0 &&
+              persistent_a.isValid() && persistent_panel_a.isValid() &&
+              persistent_a.row() == 0 &&
+              persistent_panel_a.row() == 0 &&
+              multi_service.data(persistent_a, Service::PluginIdRole)
+                      .toString() == QStringLiteral("a.plugin") &&
+              multi_service.panelSurfaces()
+                      ->data(persistent_panel_a, Service::PluginIdRole)
+                      .toString() == QStringLiteral("a.plugin") &&
+              std::ranges::all_of(
+                  multi_spy.removed,
+                  [](const auto &range) { return range.first > 0; }) &&
+              std::ranges::all_of(
+                  multi_spy.inserted,
+                  [](const auto &range) { return range.first > 0; }) &&
+              std::ranges::all_of(
+                  panel_spy.removed,
+                  [](const auto &range) { return range.first > 0; }) &&
+              std::ranges::all_of(
+                  panel_spy.inserted,
+                  [](const auto &range) { return range.first > 0; }) &&
+              multi_service.count() == 1,
+          "plugin B reset, removed, or recreated plugin A model rows");
+  require(multi_service.publishSurfaces(
+              binding_b, {declaration("PanelB", Service::Role::Panel)}, 1),
+          "withdrawn plugin B did not republish independently");
+  int cross_plugin_toggles = 0;
+  QObject::connect(&multi_service, &Service::toggleRequested,
+                   [&cross_plugin_toggles] { ++cross_plugin_toggles; });
+  auto cross_clock = std::make_shared<Clock>();
+  runtime::GestureEligibilityLatch cross_eligibility(cross_clock);
+  host::GestureIntentAuthority cross_authority(binding_a, cross_eligibility);
+  const surface::SurfaceKey cross_panel{.id = 2, .generation = 4};
+  require(cross_authority.declare_surface(cross_panel, "PanelB") ==
+                  host::SurfaceDeclarationResult::declared &&
+              cross_authority.arm(cross_panel, 1),
+          "cross-plugin intent fixture did not arm");
+  auto cross_intent = cross_authority.admit(
+      {.source = cross_panel,
+       .target = cross_panel,
+       .input_sequence = 1,
+       .action = surface::SurfaceIntentAction::toggle});
+  require(cross_intent.intent &&
+              !multi_service.publishIntent(std::move(*cross_intent.intent)) &&
+              cross_plugin_toggles == 0,
+          "one plugin targeted another plugin's same-named declaration");
+  const auto newer_a = binding("a.plugin", 5);
+  const QString stale_a_key =
+      value(multi_service, 0, Service::SurfaceKeyRole);
+  int stale_toggles = 0;
+  QObject::connect(&multi_service, &Service::toggleRequested,
+                   [&stale_toggles] { ++stale_toggles; });
+  auto stale_clock = std::make_shared<Clock>();
+  runtime::GestureEligibilityLatch stale_eligibility(stale_clock);
+  host::GestureIntentAuthority stale_authority(binding_a, stale_eligibility);
+  const surface::SurfaceKey stale_panel{.id = 1, .generation = 4};
+  require(stale_authority.declare_surface(stale_panel, "PanelA") ==
+                  host::SurfaceDeclarationResult::declared &&
+              stale_authority.arm(stale_panel, 1),
+          "stale delegate intent fixture did not arm");
+  auto stale_intent = stale_authority.admit(
+      {.source = stale_panel,
+       .target = stale_panel,
+       .input_sequence = 1,
+       .action = surface::SurfaceIntentAction::toggle});
+  require(multi_service.publishSurfaces(
+              newer_a, {declaration("PanelA", Service::Role::Panel)}, 6) &&
+              multi_service.count() == 2 &&
+              value(multi_service, 0, Service::SurfaceKeyRole) != stale_a_key &&
+              value(multi_service, 0, Service::SurfaceKeyRole) ==
+                  QStringLiteral("v2.8.a.plugin.5.PanelA") &&
+              stale_intent.intent &&
+              !multi_service.publishIntent(std::move(*stale_intent.intent)) &&
+              stale_toggles == 0 &&
+              !multi_service.dismiss(stale_a_key) &&
+              !multi_service.withdrawSurfaces(binding_a) &&
+              multi_service.count() == 2 &&
+              multi_service.withdrawSurfaces(newer_a) &&
+              multi_service.count() == 1 &&
+              value(multi_service, 0, Service::PluginIdRole) ==
+                  QStringLiteral("b.plugin"),
+          "stale key or exact-binding withdrawal removed a newer publication");
+
+  Service thread_service;
+  Backend thread_backend;
+  bool off_thread_result = true;
+  std::thread off_thread_bind([&] {
+    off_thread_result = thread_service.bindBackend(thread_backend);
+  });
+  off_thread_bind.join();
+  require(!off_thread_result && !thread_service.available() &&
+              thread_service.bindBackend(thread_backend),
+          "off-owner-thread backend binding mutated the shell model");
+  const auto thread_binding = binding("thread.plugin", 3);
+  std::thread off_thread_publish([&] {
+    off_thread_result = thread_service.publishSurfaces(
+        thread_binding, {declaration("Panel", Service::Role::Panel)}, 1);
+  });
+  off_thread_publish.join();
+  require(!off_thread_result && thread_service.count() == 0 &&
+              thread_service.publishSurfaces(
+                  thread_binding,
+                  {declaration("Panel", Service::Role::Panel)}, 1),
+          "off-owner-thread publication mutated the shell model");
+  const QString thread_key =
+      value(thread_service, 0, Service::SurfaceKeyRole);
+  std::thread off_thread_dismiss([&] {
+    off_thread_result = thread_service.dismiss(thread_key);
+  });
+  off_thread_dismiss.join();
+  require(!off_thread_result && thread_backend.dismissals == 0,
+          "off-owner-thread dismissal reached the trusted backend");
+  std::thread off_thread_withdraw([&] {
+    off_thread_result = thread_service.withdrawSurfaces(thread_binding);
+  });
+  off_thread_withdraw.join();
+  require(!off_thread_result && thread_service.count() == 1,
+          "off-owner-thread withdrawal mutated the shell model");
+
+  auto thread_clock = std::make_shared<Clock>();
+  runtime::GestureEligibilityLatch thread_eligibility(thread_clock);
+  host::GestureIntentAuthority thread_authority(thread_binding,
+                                                 thread_eligibility);
+  const surface::SurfaceKey thread_panel{.id = 1, .generation = 3};
+  require(thread_authority.declare_surface(thread_panel, "Panel") ==
+                  host::SurfaceDeclarationResult::declared &&
+              thread_authority.arm(thread_panel, 1),
+          "off-thread intent fixture did not arm");
+  auto thread_intent = thread_authority.admit(
+      {.source = thread_panel,
+       .target = thread_panel,
+       .input_sequence = 1,
+       .action = surface::SurfaceIntentAction::toggle});
+  require(thread_intent.intent.has_value(),
+          "off-thread intent fixture was not admitted");
+  std::thread off_thread_intent(
+      [&thread_service, &off_thread_result,
+       intent = std::move(*thread_intent.intent)]() mutable {
+        off_thread_result =
+            thread_service.publishIntent(std::move(intent));
+      });
+  off_thread_intent.join();
+  require(!off_thread_result && thread_service.count() == 1,
+          "off-owner-thread intent reached the UI publication boundary");
+  std::thread off_thread_unbind(
+      [&] { thread_service.unbindBackend(thread_backend); });
+  off_thread_unbind.join();
+  require(thread_service.available() && thread_service.count() == 1,
+          "off-owner-thread unbind cleared the shell model");
+
+  Service collision_service;
+  Backend collision_backend;
+  require(collision_service.bindBackend(collision_backend) &&
+              collision_service.publishSurfaces(
+                  binding("a.b"),
+                  {declaration("c", Service::Role::Panel)}, 1),
+          "first collision fixture did not publish");
+  const QString first_key =
+      value(collision_service, 0, Service::SurfaceKeyRole);
+  collision_service.unbindBackend(collision_backend);
+  require(collision_service.bindBackend(collision_backend) &&
+              collision_service.publishSurfaces(
+                  binding("a"),
+                  {declaration("b.c", Service::Role::Panel)}, 1) &&
+              first_key != value(collision_service, 0, Service::SurfaceKeyRole),
+          "opaque canonical surface key was not injective");
 
   int toggles = 0;
   QString last_target;
-  QObject::connect(&service, &bridge::PluginSurfaceService::toggleRequested,
-                   [&toggles, &last_target](const QString &,
-                                            const QString &target,
-                                            qulonglong) {
+  QObject::connect(&service, &Service::toggleRequested,
+                   [&toggles, &last_target](const QString &, const QString &target,
+                                            const QString &) {
                      ++toggles;
                      last_target = target;
                    });
   auto clock = std::make_shared<Clock>();
   runtime::GestureEligibilityLatch eligibility(clock);
-  const permissions::ActivationBinding binding{
-      .plugin = permissions::PluginId("org.omarchy.fixture"),
-      .revision = digest('1'),
-      .policy_fingerprint = digest('2'),
-      .generation = 7};
-  host::GestureIntentAuthority authority(binding, eligibility);
+  host::GestureIntentAuthority authority(fixture_binding, eligibility);
   const surface::SurfaceKey bar{.id = 1, .generation = 7};
   const surface::SurfaceKey panel{.id = 2, .generation = 7};
   const surface::SurfaceKey maximum{.id = 3, .generation = 7};
   const std::string maximum_name_bytes(64, 'X');
   require(authority.declare_surface(bar, "bar") ==
-              host::SurfaceDeclarationResult::declared &&
+                  host::SurfaceDeclarationResult::declared &&
               authority.declare_surface(panel, "PanelWidget") ==
                   host::SurfaceDeclarationResult::declared &&
               authority.declare_surface(maximum, maximum_name_bytes) ==
@@ -138,7 +381,7 @@ void run() {
   require(admitted.intent && service.publishIntent(std::move(*admitted.intent)) &&
               toggles == 1 &&
               last_target ==
-                  QStringLiteral("v2.org.omarchy.fixture.PanelWidget"),
+                  QStringLiteral("v2.19.org.omarchy.fixture.7.PanelWidget"),
           "admitted surface intent did not reach the shell adapter");
   require(authority.arm(bar, 15), "maximum-name gesture did not arm");
   auto maximum_name_intent = authority.admit(
@@ -149,9 +392,9 @@ void run() {
   require(maximum_name_intent.intent &&
               service.publishIntent(std::move(*maximum_name_intent.intent)) &&
               toggles == 2 &&
-              last_target ==
-                  QStringLiteral("v2.org.omarchy.fixture.") + maximum_name,
-          "maximum raw manifest name was not canonicalized at publication");
+              last_target == QStringLiteral("v2.19.org.omarchy.fixture.7.") +
+                                 maximum_name,
+          "maximum raw manifest name was not preserved at publication");
   require(authority.arm(bar, 12), "delayed intent gesture did not arm");
   auto delayed = authority.admit(
       {.source = bar,
@@ -174,7 +417,7 @@ void run() {
               toggles == 2,
           "admitted intent survived surface detach");
   require(authority.declare_surface(panel, "PanelWidget") ==
-              host::SurfaceDeclarationResult::declared &&
+                  host::SurfaceDeclarationResult::declared &&
               authority.arm(bar, 14),
           "revoke invalidation fixture failed");
   auto revoked_token = authority.admit(
@@ -182,23 +425,24 @@ void run() {
        .target = panel,
        .input_sequence = 14,
        .action = surface::SurfaceIntentAction::toggle});
-  require(revoked_token.intent.has_value(),
-          "revoke intent was not admitted");
+  require(revoked_token.intent.has_value(), "revoke intent was not admitted");
   authority.revoke();
   require(!service.publishIntent(std::move(*revoked_token.intent)) &&
               toggles == 2,
           "admitted intent survived session revocation");
   require(service.dismiss(
-              QStringLiteral("v2.org.omarchy.fixture.PanelWidget")) &&
+              QStringLiteral("v2.19.org.omarchy.fixture.7.PanelWidget")) &&
               backend.dismissals == 1 &&
               backend.last_dismissed ==
-                  QStringLiteral("v2.org.omarchy.fixture.PanelWidget") &&
+                  QStringLiteral("v2.19.org.omarchy.fixture.7.PanelWidget") &&
               !service.dismiss(QStringLiteral("missing")),
           "shell-owned dismissal escaped its declared surface");
 
   service.unbindBackend(backend);
-  require(!service.available() && service.surfaces().isEmpty() &&
-              service.revision() == 0,
+  require(!service.available() && service.count() == 0 &&
+              service.barSurfaces()->rowCount() == 0 &&
+              service.panelSurfaces()->rowCount() == 0 &&
+              service.overlaySurfaces()->rowCount() == 0,
           "backend loss retained stale shell surfaces");
 }
 

@@ -38,8 +38,16 @@ grep -F 'PanelWindow {' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null 
   fail "secure panels are not owned by the Quickshell layer host"
 grep -F 'mask: Region { item: remote }' "$runtime_root/shell/SecureOverlaySurface.qml" >/dev/null ||
   fail "secure overlays lack a shell-owned bounded input mask"
-grep -F 'result.push({ id: declaration.surfaceKey' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
-  fail "secure bar surfaces are not exposed as transient existing-bar items"
+grep -F 'model: surfaceService.barSurfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
+  fail "secure bar surfaces do not consume the typed role model"
+grep -F 'model: surfaceService.panelSurfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
+  fail "secure panels do not consume the typed role model"
+grep -F 'model: surfaceService.overlaySurfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
+  fail "secure overlays do not consume the typed role model"
+if grep -F 'surfaceService.surfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
+  grep -F 'filteredDeclarations' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null; then
+  fail "secure surfaces still iterate raw JavaScript declarations"
+fi
 pass "schema-v2 integrates through dormant shell-owned surfaces without v1 fallback"
 
 [[ ! -e $runtime_root/host ]] ||

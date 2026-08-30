@@ -17,7 +17,7 @@ Item {
 
   Component.onCompleted: {
     if (!pluginHost.runtimeVersion || pluginHost.available ||
-        surfaceService.available || surfaceService.surfaces.length !== 0 ||
+        surfaceService.available || surfaceService.count !== 0 ||
         remoteSurface.connected || remoteSurface.ready)
       Qt.exit(1)
     Qt.quit()
