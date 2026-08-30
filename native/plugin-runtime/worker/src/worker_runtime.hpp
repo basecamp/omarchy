@@ -89,7 +89,6 @@ public:
   [[nodiscard]] RuntimeResult suspend(surface::SurfaceKey surface);
   [[nodiscard]] RuntimeResult resume(surface::SurfaceKey surface);
   [[nodiscard]] RuntimeResult release(surface::SurfaceKey surface);
-  [[nodiscard]] RuntimeResult focus(const surface::FocusEvent &event);
   [[nodiscard]] RuntimeResult input(const surface::InputEvent &event);
   void request_render();
   [[nodiscard]] std::optional<PublishedFrame> render();

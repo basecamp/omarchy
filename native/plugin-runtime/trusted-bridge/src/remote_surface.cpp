@@ -2,8 +2,15 @@
 
 #include "omarchy/plugin_runtime/surface/profile.hpp"
 
+#include <QFocusEvent>
+#include <QHoverEvent>
+#include <QKeyEvent>
+#include <QMouseEvent>
 #include <QPainter>
+#include <QTouchEvent>
+#include <QWheelEvent>
 
+#include <cmath>
 #include <limits>
 #include <type_traits>
 #include <utility>
@@ -36,6 +43,33 @@ QString failure_name(RemotePluginSurface::InspectionFailure failure) {
   return QStringLiteral("invalid-state");
 }
 
+std::optional<std::uint32_t> q16(qreal value, std::uint32_t bound) {
+  if (!std::isfinite(value) || value < 0 || value >= bound)
+    return std::nullopt;
+  const double scaled = std::floor(value * 65536.0);
+  if (scaled > std::numeric_limits<std::uint32_t>::max())
+    return std::nullopt;
+  return static_cast<std::uint32_t>(scaled);
+}
+
+std::uint32_t modifiers(Qt::KeyboardModifiers value) {
+  return static_cast<std::uint32_t>(value.toInt());
+}
+
+std::uint32_t buttons(Qt::MouseButtons value) {
+  return static_cast<std::uint32_t>(value.toInt());
+}
+
+std::uint64_t device_token(const QInputEvent &event) {
+  return static_cast<std::uint64_t>(
+      reinterpret_cast<std::uintptr_t>(event.device()));
+}
+
+bool trusted_pointer(const QMouseEvent &event) {
+  return event.spontaneous() &&
+         event.source() == Qt::MouseEventNotSynthesized;
+}
+
 } // namespace
 
 RemotePluginSurface::RemotePluginSurface(QQuickItem *parent)
@@ -44,6 +78,9 @@ RemotePluginSurface::RemotePluginSurface(QQuickItem *parent)
   setOpaquePainting(false);
   setAcceptedMouseButtons(Qt::LeftButton | Qt::RightButton | Qt::MiddleButton |
                           Qt::BackButton | Qt::ForwardButton);
+  setAcceptHoverEvents(true);
+  setAcceptTouchEvents(true);
+  setFlag(QQuickItem::ItemAcceptsInputMethod, true);
 }
 
 RemotePluginSurface::~RemotePluginSurface() {
@@ -66,18 +103,18 @@ void RemotePluginSurface::unbindLifetimeObserver(
     lifetime_observer_ = nullptr;
 }
 
-bool RemotePluginSurface::bindHostPointerRouter(
-    HostPointerRouter &router) noexcept {
-  if (host_pointer_router_ != nullptr)
+bool RemotePluginSurface::bindHostInputRouter(
+    HostInputRouter &router) noexcept {
+  if (host_input_router_ != nullptr)
     return false;
-  host_pointer_router_ = &router;
+  host_input_router_ = &router;
   return true;
 }
 
-void RemotePluginSurface::unbindHostPointerRouter(
-    HostPointerRouter &router) noexcept {
-  if (host_pointer_router_ == &router)
-    host_pointer_router_ = nullptr;
+void RemotePluginSurface::unbindHostInputRouter(
+    HostInputRouter &router) noexcept {
+  if (host_input_router_ == &router)
+    host_input_router_ = nullptr;
 }
 
 bool RemotePluginSurface::bindHostInputRegionRouter(
@@ -124,25 +161,232 @@ bool RemotePluginSurface::updateInputRegions(
   return true;
 }
 
+bool RemotePluginSurface::routeHostInput(HostInputPayload payload,
+                                         const QInputEvent &event,
+                                         bool trusted_physical) {
+  return host_input_router_ != nullptr &&
+         host_input_router_->route({.payload = std::move(payload),
+                                    .device = device_token(event),
+                                    .trusted_physical = trusted_physical});
+}
+
+bool RemotePluginSurface::cancelHostInput(const QInputEvent &event) {
+  return host_input_router_ != nullptr &&
+         host_input_router_->cancel(device_token(event));
+}
+
+void RemotePluginSurface::hoverMoveEvent(QHoverEvent *event) {
+  if (!state_) {
+    event->ignore();
+    return;
+  }
+  const auto x = q16(event->position().x(), state_->allocation().logical_width);
+  const auto y = q16(event->position().y(), state_->allocation().logical_height);
+  event->setAccepted(x && y && routeHostInput(
+      surface::PointerMotion{.position = {*x, *y}}, *event,
+      event->spontaneous()));
+}
+
+void RemotePluginSurface::mouseMoveEvent(QMouseEvent *event) {
+  if (!state_) {
+    event->ignore();
+    return;
+  }
+  const auto x = q16(event->position().x(), state_->allocation().logical_width);
+  const auto y = q16(event->position().y(), state_->allocation().logical_height);
+  event->setAccepted(x && y && routeHostInput(
+      surface::PointerMotion{.position = {*x, *y},
+                             .buttons = buttons(event->buttons()),
+                             .modifiers = modifiers(event->modifiers())},
+      *event, trusted_pointer(*event)));
+}
+
 void RemotePluginSurface::mousePressEvent(QMouseEvent *event) {
-  routeHostPointerEvent(*event, true);
+  if (!state_) {
+    event->ignore();
+    return;
+  }
+  const auto x = q16(event->position().x(), state_->allocation().logical_width);
+  const auto y = q16(event->position().y(), state_->allocation().logical_height);
+  event->setAccepted(x && y && routeHostInput(
+      surface::PointerButton{
+          .position = {*x, *y},
+          .button = static_cast<std::uint32_t>(event->button()),
+          .state = surface::ButtonState::pressed,
+          .buttons = buttons(event->buttons()),
+          .modifiers = modifiers(event->modifiers())},
+      *event, trusted_pointer(*event)));
 }
 
 void RemotePluginSurface::mouseReleaseEvent(QMouseEvent *event) {
-  routeHostPointerEvent(*event, false);
+  if (!state_) {
+    event->ignore();
+    return;
+  }
+  const auto x = q16(event->position().x(), state_->allocation().logical_width);
+  const auto y = q16(event->position().y(), state_->allocation().logical_height);
+  if (!x || !y) {
+    event->setAccepted(cancelHostInput(*event));
+    return;
+  }
+  event->setAccepted(routeHostInput(
+      surface::PointerButton{
+          .position = {*x, *y},
+          .button = static_cast<std::uint32_t>(event->button()),
+          .state = surface::ButtonState::released,
+          .buttons = buttons(event->buttons()),
+          .modifiers = modifiers(event->modifiers())},
+      *event, trusted_pointer(*event)));
 }
 
-void RemotePluginSurface::routeHostPointerEvent(QMouseEvent &event,
-                                                bool pressed) {
-  const bool application_synthesized =
-      event.source() == Qt::MouseEventSynthesizedByApplication;
-  event.setAccepted(host_pointer_router_ != nullptr &&
-                    host_pointer_router_->route(
-                        {.x = event.position().x(),
-                         .y = event.position().y(),
-                         .button = event.button(),
-                         .pressed = pressed,
-                         .application_synthesized = application_synthesized}));
+void RemotePluginSurface::wheelEvent(QWheelEvent *event) {
+  if (!state_) {
+    event->ignore();
+    return;
+  }
+  const auto x = q16(event->position().x(), state_->allocation().logical_width);
+  const auto y = q16(event->position().y(), state_->allocation().logical_height);
+  const auto phase = event->phase() == Qt::ScrollBegin
+                         ? surface::WheelPhase::begin
+                     : event->phase() == Qt::ScrollUpdate
+                         ? surface::WheelPhase::update
+                     : event->phase() == Qt::ScrollMomentum
+                         ? surface::WheelPhase::momentum
+                     : event->phase() == Qt::ScrollEnd
+                         ? surface::WheelPhase::end
+                         : surface::WheelPhase::discrete;
+  constexpr std::int64_t q16_scale = std::int64_t{1} << 16;
+  const auto pixel_x =
+      static_cast<std::int64_t>(event->pixelDelta().x()) * q16_scale;
+  const auto pixel_y =
+      static_cast<std::int64_t>(event->pixelDelta().y()) * q16_scale;
+  if (!x || !y || pixel_x < std::numeric_limits<std::int32_t>::min() ||
+      pixel_x > std::numeric_limits<std::int32_t>::max() ||
+      pixel_y < std::numeric_limits<std::int32_t>::min() ||
+      pixel_y > std::numeric_limits<std::int32_t>::max()) {
+    if (phase == surface::WheelPhase::end)
+      event->setAccepted(cancelHostInput(*event));
+    else
+      event->ignore();
+    return;
+  }
+  event->setAccepted(routeHostInput(
+      surface::Wheel{.position = {*x, *y},
+                     .pixel_delta_x_q16 = static_cast<std::int32_t>(pixel_x),
+                     .pixel_delta_y_q16 = static_cast<std::int32_t>(pixel_y),
+                     .angle_delta_x = event->angleDelta().x(),
+                     .angle_delta_y = event->angleDelta().y(),
+                     .phase = phase,
+                     .buttons = buttons(event->buttons()),
+                     .modifiers = modifiers(event->modifiers()),
+                     .inverted = event->inverted()},
+      *event, event->spontaneous()));
+}
+
+void RemotePluginSurface::keyPressEvent(QKeyEvent *event) {
+  event->setAccepted(routeHostInput(
+      surface::Key{.key = static_cast<std::uint32_t>(event->key()),
+                   .native_scan_code = event->nativeScanCode(),
+                   .modifiers = modifiers(event->modifiers()),
+                   .state = surface::ButtonState::pressed,
+                   .auto_repeat = event->isAutoRepeat(),
+                   .text = event->text().toUtf8().toStdString()},
+      *event, event->spontaneous()));
+}
+
+void RemotePluginSurface::keyReleaseEvent(QKeyEvent *event) {
+  if (event->isAutoRepeat()) {
+    event->accept();
+    return;
+  }
+  event->setAccepted(routeHostInput(
+      surface::Key{.key = static_cast<std::uint32_t>(event->key()),
+                   .native_scan_code = event->nativeScanCode(),
+                   .modifiers = modifiers(event->modifiers()),
+                   .state = surface::ButtonState::released,
+                   .auto_repeat = false,
+                   .text = event->text().toUtf8().toStdString()},
+      *event, event->spontaneous()));
+}
+
+void RemotePluginSurface::inputMethodEvent(QInputMethodEvent *event) {
+  if ((event->commitString().isEmpty() && event->replacementLength() == 0) ||
+      event->replacementLength() < 0) {
+    event->ignore();
+    return;
+  }
+  event->setAccepted(host_input_router_ != nullptr &&
+                     host_input_router_->route(
+                         {.payload = surface::TextCommit{
+                              .text = event->commitString().toUtf8().toStdString(),
+                              .replacement_start = event->replacementStart(),
+                              .replacement_length = static_cast<std::uint32_t>(
+                                  event->replacementLength())},
+                          .device = 0,
+                          .trusted_physical = event->spontaneous()}));
+}
+
+void RemotePluginSurface::touchEvent(QTouchEvent *event) {
+  if (!state_ || event->points().size() >
+                     static_cast<qsizetype>(surface::kMaximumTouchPoints)) {
+    if (state_ && (event->type() == QEvent::TouchEnd ||
+                   event->type() == QEvent::TouchCancel))
+      event->setAccepted(cancelHostInput(*event));
+    else
+      event->ignore();
+    return;
+  }
+  HostTouchFrame frame{
+      .phase = event->type() == QEvent::TouchBegin
+                   ? surface::TouchFramePhase::begin
+               : event->type() == QEvent::TouchEnd
+                   ? surface::TouchFramePhase::end
+               : event->type() == QEvent::TouchCancel
+                   ? surface::TouchFramePhase::cancel
+                   : surface::TouchFramePhase::update,
+      .count = event->type() == QEvent::TouchCancel
+                   ? 0U
+                   : static_cast<std::uint32_t>(event->points().size()),
+      .modifiers = modifiers(event->modifiers())};
+  for (std::size_t index = 0; index < frame.count; ++index) {
+    const auto &point = event->points()[static_cast<qsizetype>(index)];
+    const auto x = q16(point.position().x(), state_->allocation().logical_width);
+    const auto y = q16(point.position().y(), state_->allocation().logical_height);
+    if (!x || !y) {
+      if (event->type() == QEvent::TouchEnd)
+        event->setAccepted(cancelHostInput(*event));
+      else
+        event->ignore();
+      return;
+    }
+    const auto point_state = point.state() == QEventPoint::State::Pressed
+                                 ? surface::TouchPointState::pressed
+                             : point.state() == QEventPoint::State::Released
+                                 ? surface::TouchPointState::released
+                             : point.state() == QEventPoint::State::Updated
+                                 ? surface::TouchPointState::updated
+                                 : surface::TouchPointState::stationary;
+    frame.points[index] = {.id = point.id(),
+                           .state = point_state,
+                           .position = {*x, *y}};
+  }
+  event->setAccepted(routeHostInput(frame, *event, event->spontaneous()));
+}
+
+void RemotePluginSurface::focusInEvent(QFocusEvent *event) {
+  event->setAccepted(host_input_router_ != nullptr &&
+                     host_input_router_->route(
+                         {.payload = surface::FocusChanged{.focused = true},
+                          .device = 0,
+                          .trusted_physical = event->spontaneous()}));
+}
+
+void RemotePluginSurface::focusOutEvent(QFocusEvent *event) {
+  event->setAccepted(host_input_router_ != nullptr &&
+                     host_input_router_->route(
+                         {.payload = surface::FocusChanged{.focused = false},
+                          .device = 0,
+                          .trusted_physical = event->spontaneous()}));
 }
 
 bool RemotePluginSurface::bindTransport(
@@ -173,9 +417,7 @@ bool RemotePluginSurface::configure(
     return false;
   }
   auto state = surface::SurfaceState::create(allocation);
-  auto input_gate = surface::InputGate::create(allocation);
-  auto focus_gate = surface::FocusGate::create(allocation);
-  if (!state || !input_gate || !focus_gate ||
+  if (!state ||
       allocation.pixel_format != surface::kRgba8888Premultiplied ||
       allocation.frame_bytes > surface::kMaximumFrameBytes ||
       transport_ == nullptr || !transport_->connected()) {
@@ -187,8 +429,6 @@ bool RemotePluginSurface::configure(
     return false;
   }
   state_ = std::move(state);
-  input_gate_ = std::move(input_gate);
-  focus_gate_ = std::move(focus_gate);
   connected_ = true;
   focused_ = false;
   failure_ = InspectionFailure::none;
@@ -258,41 +498,10 @@ void RemotePluginSurface::disconnect() {
   fail(InspectionFailure::disconnected, true);
 }
 
-bool RemotePluginSurface::suspend() {
-  if (!state_ || !state_->apply(surface::SurfaceTransition::suspend)) {
-    fail(InspectionFailure::invalid_lifecycle, false);
-    return false;
-  }
-  focused_ = false;
-  emit focusChanged();
-  return true;
-}
-
-bool RemotePluginSurface::resume() {
-  if (!state_ || !state_->apply(surface::SurfaceTransition::resume)) {
-    fail(InspectionFailure::invalid_lifecycle, false);
-    return false;
-  }
-  return true;
-}
-
-bool RemotePluginSurface::beginDestroy() {
-  if (!state_ || !state_->apply(surface::SurfaceTransition::begin_destroy)) {
-    fail(InspectionFailure::invalid_lifecycle, false);
-    return false;
-  }
-  focused_ = false;
-  resetFrame();
-  resetInputRegions();
-  emit focusChanged();
-  return true;
-}
-
 bool RemotePluginSurface::submitInput(const surface::InputEvent &event) {
-  if (!state_ || !input_gate_ || transport_ == nullptr ||
-      input_gate_->accept(event,
-                          state_->phase() == surface::SurfacePhase::active,
-                          focused_) != surface::InputValidation::accepted) {
+  if (!state_ || transport_ == nullptr ||
+      event.surface != state_->allocation().surface ||
+      state_->phase() != surface::SurfacePhase::active) {
     fail(InspectionFailure::input_rejected, false);
     return false;
   }
@@ -300,57 +509,14 @@ bool RemotePluginSurface::submitInput(const surface::InputEvent &event) {
     fail(InspectionFailure::transport_failed, true);
     return false;
   }
-  return true;
-}
-
-bool RemotePluginSurface::submitHostRoutedPointerInput(
-    const surface::InputEvent &event) {
-  if ((event.kind != surface::InputKind::pointer_button &&
-       event.kind != surface::InputKind::touch) ||
-      !state_ || !input_gate_ || transport_ == nullptr ||
-      input_gate_->accept(event,
-                          state_->phase() == surface::SurfacePhase::active,
-                          true) != surface::InputValidation::accepted) {
-    fail(InspectionFailure::input_rejected, false);
-    return false;
+  if (const auto *focus = std::get_if<surface::FocusChanged>(&event.payload)) {
+    focused_ = focus->focused;
+    emit focusChanged();
+  } else if (std::holds_alternative<surface::Cancel>(event.payload) &&
+             focused_) {
+    focused_ = false;
+    emit focusChanged();
   }
-  if (!transport_->submit(event)) {
-    fail(InspectionFailure::transport_failed, true);
-    return false;
-  }
-  return true;
-}
-
-bool RemotePluginSurface::submitTransientFocus(
-    const surface::FocusEvent &event) {
-  if (!state_ || !focus_gate_ || transport_ == nullptr ||
-      focus_gate_->accept(event,
-                          state_->phase() == surface::SurfacePhase::active) !=
-          surface::InputValidation::accepted) {
-    fail(InspectionFailure::input_rejected, false);
-    return false;
-  }
-  if (!transport_->submit_focus(event)) {
-    fail(InspectionFailure::transport_failed, true);
-    return false;
-  }
-  return true;
-}
-
-bool RemotePluginSurface::submitFocus(const surface::FocusEvent &event) {
-  if (!state_ || !focus_gate_ || transport_ == nullptr ||
-      focus_gate_->accept(event,
-                          state_->phase() == surface::SurfacePhase::active) !=
-          surface::InputValidation::accepted) {
-    fail(InspectionFailure::input_rejected, false);
-    return false;
-  }
-  if (!transport_->submit_focus(event)) {
-    fail(InspectionFailure::transport_failed, true);
-    return false;
-  }
-  focused_ = event.focused;
-  emit focusChanged();
   return true;
 }
 
@@ -374,11 +540,6 @@ qulonglong RemotePluginSurface::surfaceGeneration() const {
 qulonglong RemotePluginSurface::frameSequence() const {
   return frame_sequence_;
 }
-RemotePluginSurface::InspectionFailure
-RemotePluginSurface::inspectionFailure() const {
-  return failure_;
-}
-const QImage &RemotePluginSurface::ownedImage() const { return image_; }
 
 const QList<QRect> &RemotePluginSurface::inputRegions() const {
   return input_regions_;

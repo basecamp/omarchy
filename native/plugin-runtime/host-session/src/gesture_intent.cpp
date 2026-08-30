@@ -186,13 +186,13 @@ SurfaceDeclarationResult GestureIntentAuthority::declare_surface(
 }
 
 bool GestureIntentAuthority::detach_surface(surface::SurfaceKey key) noexcept {
-  eligibility_.clear();
   const auto found = std::ranges::find_if(
       declarations_, [&](const Declaration &candidate) {
         return candidate.key == key;
       });
   if (found == declarations_.end())
     return false;
+  clear_surface_eligibility(key);
   declarations_.erase(found);
   lifetime_->invalidate();
   return true;
@@ -206,6 +206,11 @@ bool GestureIntentAuthority::arm(surface::SurfaceKey source,
       binding_, {.surface_id = source.id,
                  .surface_generation = source.generation,
                  .input_sequence = input_sequence});
+}
+
+void GestureIntentAuthority::clear_surface_eligibility(
+    surface::SurfaceKey source) noexcept {
+  eligibility_.clear_surface(binding_, source.id, source.generation);
 }
 
 SurfaceIntentAdmissionResult

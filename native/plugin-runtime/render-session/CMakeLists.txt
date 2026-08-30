@@ -43,6 +43,7 @@ target_link_libraries(omarchy-plugin-render-session PUBLIC
 )
 
 if(BUILD_TESTING)
+  find_package(Qt6 REQUIRED COMPONENTS GuiPrivate)
   if(NOT TARGET omarchy-plugin-trusted-bridge)
     add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../trusted-bridge"
                      "${CMAKE_CURRENT_BINARY_DIR}/trusted-bridge")
@@ -51,6 +52,7 @@ if(BUILD_TESTING)
 
   add_executable(omarchy-plugin-render-session-test
     tests/render_session_test.cpp
+    "${CMAKE_CURRENT_SOURCE_DIR}/../worker/src/qt_touch_injector.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../worker/src/worker_runtime.cpp"
   )
   set_target_properties(omarchy-plugin-render-session-test PROPERTIES
@@ -65,7 +67,7 @@ if(BUILD_TESTING)
   )
   target_link_libraries(omarchy-plugin-render-session-test PRIVATE
     omarchy-plugin-render-session omarchy-plugin-trusted-bridge
-    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick
+    Qt6::Core Qt6::Gui Qt6::GuiPrivate Qt6::Qml Qt6::Quick
   )
   add_test(NAME plugin-render-session COMMAND omarchy-plugin-render-session-test)
   set_tests_properties(plugin-render-session PROPERTIES

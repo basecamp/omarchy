@@ -8,6 +8,7 @@
 
 #include <QEventLoop>
 #include <QGuiApplication>
+#include <QPainter>
 #include <QTimer>
 
 #include <fcntl.h>
@@ -181,11 +182,26 @@ struct Harness {
   std::optional<surface::TrustedAllocation> allocation;
 };
 
+QImage painted_surface(bridge::RemotePluginSurface &item,
+                       const surface::TrustedAllocation &allocation) {
+  QImage image(static_cast<int>(allocation.pixel_width),
+               static_cast<int>(allocation.pixel_height),
+               QImage::Format_RGBA8888_Premultiplied);
+  image.setDevicePixelRatio(
+      static_cast<qreal>(allocation.dpr_numerator) /
+      static_cast<qreal>(allocation.dpr_denominator));
+  image.fill(Qt::transparent);
+  item.setSize(QSizeF(allocation.logical_width, allocation.logical_height));
+  QPainter painter(&image);
+  item.paint(&painter);
+  return image;
+}
+
 void asynchronous_change_reaches_host_surface() {
   Harness harness(38, 64, 32, 1, "async-change");
   harness.negotiate();
   static_cast<void>(harness.publish());
-  const QImage first_image = harness.item.ownedImage();
+  const QImage first_image = painted_surface(harness.item, *harness.allocation);
   require(!harness.runtime.render().has_value(),
           "clean worker scene produced a duplicate frame");
 
@@ -196,7 +212,8 @@ void asynchronous_change_reaches_host_surface() {
           "asynchronous QML change did not request a later frame");
   const auto second = harness.publish();
   require(second.frame_sequence == 2 && harness.item.frameSequence() == 2 &&
-              harness.item.ownedImage() != first_image &&
+              painted_surface(harness.item, *harness.allocation) !=
+                  first_image &&
               harness.host.statistics().accepted_frames == 2,
           "host did not present the asynchronous QML frame");
 }
@@ -205,19 +222,19 @@ void animated_alpha_and_throughput() {
   Harness harness(31);
   harness.negotiate();
   const auto first = harness.publish();
-  require(harness.item.ready() && harness.item.frameSequence() == 1 &&
-              harness.item.ownedImage().devicePixelRatio() == 1.0,
+  require(harness.item.ready() && harness.item.frameSequence() == 1,
           "trusted bridge did not expose the first copied frame");
-  const auto pixel = harness.item.ownedImage().pixelColor(0, 0);
+  const QImage first_image = painted_surface(harness.item, *harness.allocation);
+  const auto pixel = first_image.pixelColor(0, 0);
   require(pixel.alpha() > 0 && pixel.alpha() < 255,
           "premultiplied alpha was lost across the D2 loop");
-  const QImage first_image = harness.item.ownedImage();
   bool changed = false;
   const auto started = std::chrono::steady_clock::now();
   for (int frame = 0; frame < 120; ++frame) {
     wait_for_render_request(harness.runtime);
     static_cast<void>(harness.publish());
-    changed = changed || harness.item.ownedImage() != first_image;
+    changed = changed ||
+              painted_surface(harness.item, *harness.allocation) != first_image;
   }
   const auto elapsed = std::chrono::steady_clock::now() - started;
   const auto &statistics = harness.host.statistics();
@@ -247,20 +264,17 @@ void animated_alpha_and_throughput() {
           "stale frame did not preserve the last trusted image");
 }
 
-void resize_dpr_and_peer_loss() {
+void resize_and_dpr() {
   Harness harness(32, 48, 24, 2);
   harness.negotiate();
   static_cast<void>(harness.publish());
-  require(harness.item.ownedImage().width() == 96 &&
-              harness.item.ownedImage().height() == 48 &&
-              harness.item.ownedImage().devicePixelRatio() == 2.0 &&
+  const auto painted = painted_surface(harness.item, *harness.allocation);
+  require(painted.width() == 96 && painted.height() == 48 &&
+              painted.devicePixelRatio() == 2.0 &&
+              painted.pixelColor(95, 47).alpha() != 0 &&
               harness.item.implicitWidth() == 48 &&
               harness.item.implicitHeight() == 24,
           "host-owned resize or DPR was not preserved");
-  harness.host.peer_lost();
-  require(harness.host.phase() == session::Phase::disconnected &&
-              !harness.item.connected() && !harness.item.ready(),
-          "peer loss retained pixels or an active bridge");
 }
 
 void graceful_close_releases_worker_mapping() {
@@ -423,7 +437,7 @@ int main(int argc, char **argv) {
     QGuiApplication application(argc, argv);
     animated_alpha_and_throughput();
     asynchronous_change_reaches_host_surface();
-    resize_dpr_and_peer_loss();
+    resize_and_dpr();
     graceful_close_releases_worker_mapping();
     authenticated_ingress_failures_fail_closed();
     malformed_and_oversized_fail_closed();

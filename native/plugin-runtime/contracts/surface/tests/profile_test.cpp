@@ -123,36 +123,88 @@ int main() {
 
   const InputEvent input{.surface = allocation->surface,
                          .sequence = 10,
-                         .kind = InputKind::pointer_motion,
-                         .x_q16 = 1U << 16,
-                         .y_q16 = 2U << 16,
-                         .delta_x_q16 = -(1 << 16),
-                         .delta_y_q16 = 1 << 16,
-                         .code = 0,
-                         .state = 0,
-                         .active_touch_points = 0};
+                         .payload = PointerMotion{
+                             .position = {.x_q16 = 1U << 16,
+                                          .y_q16 = 2U << 16}}};
   const auto input_bytes = encode_input_event(input);
   InputEvent decoded_input{};
-  require(decode_input_event(input_bytes, decoded_input) &&
-              decoded_input.delta_x_q16 == input.delta_x_q16 &&
-              decoded_input.kind == input.kind,
+  require(input_bytes && decode_input_event(*input_bytes, decoded_input) &&
+              decoded_input == input,
           "input event round trip failed");
   auto bad_input = input_bytes;
-  bad_input[27] = std::byte{99};
-  require(!decode_input_event(bad_input, decoded_input),
+  (*bad_input)[27] = std::byte{99};
+  require(!decode_input_event(*bad_input, decoded_input),
           "unknown wire input kind accepted");
 
-  const FocusEvent focus{
-      .surface = allocation->surface, .sequence = 11, .focused = true};
-  const auto focus_bytes = encode_focus_event(focus);
-  FocusEvent decoded_focus{};
-  require(decode_focus_event(focus_bytes, decoded_focus) &&
-              decoded_focus.focused,
+  const InputEvent focus{.surface = allocation->surface,
+                         .sequence = 11,
+                         .payload = FocusChanged{.focused = true}};
+  const auto focus_bytes = encode_input_event(focus);
+  InputEvent decoded_focus{};
+  require(focus_bytes && decode_input_event(*focus_bytes, decoded_focus) &&
+              decoded_focus == focus,
           "focus event round trip failed");
   auto bad_focus = focus_bytes;
-  bad_focus[31] = std::byte{1};
-  require(!decode_focus_event(bad_focus, decoded_focus),
+  (*bad_focus)[35] = std::byte{2};
+  require(!decode_input_event(*bad_focus, decoded_focus),
           "focus reserved byte accepted");
+
+  InputEvent key{.surface = allocation->surface,
+                 .sequence = 12,
+                 .payload = Key{.key = 65,
+                                .native_scan_code = 30,
+                                .state = ButtonState::pressed,
+                                .text = "a"}};
+  auto key_bytes = encode_input_event(key);
+  require(key_bytes && decode_input_event(*key_bytes, decoded_input) &&
+              decoded_input == key,
+          "key/text event round trip failed");
+  key_bytes->back() = std::byte{0xc0};
+  require(!decode_input_event(*key_bytes, decoded_input),
+          "malformed UTF-8 became a typed key event");
+  std::get<Key>(key.payload).text = std::string("\xed\xa0\x80", 3);
+  require(!encode_input_event(key),
+          "surrogate UTF-8 was serialized");
+
+  InputEvent invalid_mask{
+      .surface = allocation->surface,
+      .sequence = 13,
+      .payload = PointerMotion{.position = {}, .buttons = 0x20}};
+  require(!encode_input_event(invalid_mask),
+          "unsupported pointer mask was serialized");
+  auto malformed_mask = input_bytes;
+  (*malformed_mask)[43] = std::byte{0x20};
+  require(!decode_input_event(*malformed_mask, decoded_input),
+          "unsupported pointer mask became a typed event");
+
+  TouchFrame maximum{.phase = TouchFramePhase::begin,
+                     .count = kMaximumTouchPoints};
+  for (std::uint32_t index = 0; index < maximum.count; ++index)
+    maximum.points[index] = {.id = index,
+                             .state = TouchPointState::pressed,
+                             .position = {index << 16, index << 16}};
+  const InputEvent maximum_touch{.surface = allocation->surface,
+                                 .sequence = 14,
+                                 .payload = maximum};
+  const auto maximum_bytes = encode_input_event(maximum_touch);
+  require(maximum_bytes && maximum_bytes->size() == 204 &&
+              decode_input_event(*maximum_bytes, decoded_input) &&
+              decoded_input == maximum_touch,
+          "maximum atomic touch frame was not representable");
+  maximum.points[1].id = maximum.points[0].id;
+  require(!encode_input_event({.surface = allocation->surface,
+                               .sequence = 15,
+                               .payload = maximum}),
+          "duplicate touch IDs were serialized");
+
+  const InputEvent invalid_replacement{
+      .surface = allocation->surface,
+      .sequence = 16,
+      .payload = TextCommit{
+          .text = "x",
+          .replacement_start = kMaximumTextReplacementOffset + 1}};
+  require(!encode_input_event(invalid_replacement),
+          "oversized text replacement was serialized");
 
   const SurfaceIntentRequest intent{
       .source = allocation->surface,

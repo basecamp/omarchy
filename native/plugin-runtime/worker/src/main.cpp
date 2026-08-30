@@ -558,30 +558,23 @@ private:
         frame_timer_.stop();
       return;
     }
-    if (type == surface::RenderMessageType::focus) {
-      surface::FocusEvent event{};
-      if (!surface::decode_focus_event(packet.payload, event) ||
-          !runtime_.focus(event))
-        fatal("focus event failed validation");
-      return;
-    }
     if (type == surface::RenderMessageType::input) {
       surface::InputEvent event{};
       if (!surface::decode_input_event(packet.payload, event)) {
         fatal("input event failed validation");
         return;
       }
-      const bool pointer = event.kind == surface::InputKind::pointer_button;
-      const bool touch = event.kind == surface::InputKind::touch;
-      const bool pressed =
-          (pointer && event.state == static_cast<std::uint32_t>(
-                                          surface::ButtonState::pressed)) ||
-          (touch && event.state == 1);
-      const bool released =
-          (pointer && event.state == static_cast<std::uint32_t>(
-                                          surface::ButtonState::released)) ||
-          (touch && (event.state == 3 || event.active_touch_points == 0));
-      if (pressed)
+      const bool trusted_activation = std::visit(
+          [](const auto &payload) {
+            using Event = std::decay_t<decltype(payload)>;
+            if constexpr (std::is_same_v<Event, surface::PointerButton>)
+              return payload.state == surface::ButtonState::pressed;
+            if constexpr (std::is_same_v<Event, surface::TouchFrame>)
+              return payload.phase == surface::TouchFramePhase::begin;
+            return false;
+          },
+          event.payload);
+      if (trusted_activation)
         broker_api_->beginTrustedGesture(
             event.surface.id, event.surface.generation, event.sequence);
       if (!runtime_.input(event)) {
@@ -589,7 +582,7 @@ private:
         fatal("input event failed validation");
         return;
       }
-      if (released)
+      if (trusted_activation)
         broker_api_->endTrustedGesture();
       return;
     }

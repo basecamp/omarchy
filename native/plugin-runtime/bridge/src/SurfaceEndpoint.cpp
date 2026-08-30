@@ -7,48 +7,11 @@
 #include <fcntl.h>
 
 #include <algorithm>
-#include <cmath>
 #include <limits>
 #include <utility>
 
 namespace omarchy::plugin_runtime::bridge {
 namespace {
-
-bool is_exact_trusted_activation(const surface::InputEvent &event,
-                                 bool trusted_gesture) noexcept {
-  return trusted_gesture &&
-         ((event.kind == surface::InputKind::pointer_button &&
-           event.state == static_cast<std::uint32_t>(
-                              surface::ButtonState::pressed)) ||
-          (event.kind == surface::InputKind::touch && event.state == 1));
-}
-
-std::uint32_t pointer_button(Qt::MouseButton button) noexcept {
-  switch (button) {
-  case Qt::LeftButton:
-    return 1;
-  case Qt::RightButton:
-    return 2;
-  case Qt::MiddleButton:
-    return 3;
-  case Qt::BackButton:
-    return 4;
-  case Qt::ForwardButton:
-    return 5;
-  default:
-    return 0;
-  }
-}
-
-std::optional<std::uint32_t> q16_coordinate(qreal value,
-                                            std::uint32_t bound) noexcept {
-  if (!std::isfinite(value) || value < 0 || value >= bound)
-    return {};
-  const double scaled = std::floor(value * (1U << surface::kQ16FractionBits));
-  if (scaled < 0 || scaled > std::numeric_limits<std::uint32_t>::max())
-    return {};
-  return static_cast<std::uint32_t>(scaled);
-}
 
 } // namespace
 
@@ -59,9 +22,7 @@ struct SurfaceEndpoint::Impl final {
   };
   struct PendingGesture final {
     surface::SurfaceKey surface;
-    std::uint64_t sequence = 0;
-    surface::InputKind kind = surface::InputKind::pointer_button;
-    std::uint32_t state = 0;
+    bool touch = false;
   };
 
   class RenderSender final : public render_session::PacketSender {
@@ -106,16 +67,15 @@ struct SurfaceEndpoint::Impl final {
   RemotePluginSurface *remote = nullptr;
   std::optional<channel::SurfaceDescription> description;
   std::optional<PendingGesture> pending_gesture;
-  std::uint32_t logical_width = 0;
-  std::uint32_t logical_height = 0;
-  std::uint64_t input_sequence = 0;
-  bool pointer_router_bound = false;
+  bool input_router_bound = false;
 };
 
 SurfaceEndpoint::SurfaceEndpoint(
     channel::SurfaceSessionPort &session,
+    TrustedInputAuthority &input_authority,
     std::string declared_surface)
-    : session_(session), declared_surface_(std::move(declared_surface)),
+    : session_(session), input_authority_(input_authority),
+      declared_surface_(std::move(declared_surface)),
       owner_thread_(std::this_thread::get_id()),
       implementation_(std::make_unique<Impl>()) {}
 
@@ -130,9 +90,7 @@ SurfaceEndpoint::~SurfaceEndpoint() {
 bool SurfaceEndpoint::attach(
     RemotePluginSurface &surface_item, std::uint32_t logical_width,
     std::uint32_t logical_height, std::uint32_t dpr_numerator,
-    std::uint32_t dpr_denominator,
-    surface_host::InspectionAuthority &inspection,
-    surface_host::MonotonicClock &clock) {
+    std::uint32_t dpr_denominator, surface_host::MonotonicClock &clock) {
   auto &value = *implementation_;
   if (std::this_thread::get_id() != owner_thread_ ||
       QThread::currentThread() != surface_item.thread() ||
@@ -164,16 +122,14 @@ bool SurfaceEndpoint::attach(
   value.description = std::move(description);
   value.sender = std::move(sender);
   value.input_sink = std::move(input_sink);
-  value.logical_width = logical_width;
-  value.logical_height = logical_height;
   bool observer_bound = false;
   bool session_attached = false;
   const auto rollback = [&]() noexcept {
     value.gate->render = false;
     value.gate->input = false;
-    if (value.pointer_router_bound) {
-      surface_item.unbindHostPointerRouter(*this);
-      value.pointer_router_bound = false;
+    if (value.input_router_bound) {
+      surface_item.unbindHostInputRouter(*this);
+      value.input_router_bound = false;
     }
     if (session_attached && value.description &&
         !session_.detach(*value.description, *this))
@@ -185,8 +141,6 @@ bool SurfaceEndpoint::attach(
     value.sender.reset();
     value.description.reset();
     value.remote = nullptr;
-    value.logical_width = 0;
-    value.logical_height = 0;
     value.state = State::inert;
   };
 
@@ -196,11 +150,11 @@ bool SurfaceEndpoint::attach(
       return false;
     }
     observer_bound = true;
-    if (!surface_item.bindHostPointerRouter(*this)) {
+    if (!surface_item.bindHostInputRouter(*this)) {
       rollback();
       return false;
     }
-    value.pointer_router_bound = true;
+    value.input_router_bound = true;
     const bool attached = session_.attach(*value.description, *this);
     if (!attached) {
       rollback();
@@ -214,7 +168,7 @@ bool SurfaceEndpoint::attach(
         std::move(policy), value.description->binding,
         value.description->key.id, logical_width, logical_height,
         dpr_numerator, dpr_denominator, surface_item, *value.sender,
-        value.input_sink, inspection, clock);
+        value.input_sink, input_authority_, clock);
     if (!value.host) {
       rollback();
       return false;
@@ -240,28 +194,32 @@ bool SurfaceEndpoint::receive(
       .correlation_id = message.correlation,
       .payload = message.payload,
   };
-  return value.host->receive_render(packet);
+  const bool accepted = value.host->receive_render(packet);
+  if (value.host->terminated())
+    session_.clear_surface_intent_eligibility(*value.description);
+  return accepted;
 }
 
-bool SurfaceEndpoint::route_input(const surface::InputEvent &event,
-                                            bool trusted_gesture) {
+bool SurfaceEndpoint::route(HostInputEvent event) {
   auto &value = *implementation_;
   if (std::this_thread::get_id() != owner_thread_ ||
-      value.state != State::active || !value.host || !value.description ||
-      event.surface != value.description->key)
+      value.state != State::active || !value.host || !value.description)
     return false;
-  const bool armed = is_exact_trusted_activation(event, trusted_gesture);
+  const bool pointer =
+      std::holds_alternative<surface::PointerButton>(event.payload) &&
+      std::get<surface::PointerButton>(event.payload).state ==
+          surface::ButtonState::pressed;
+  const bool touch = std::holds_alternative<HostTouchFrame>(event.payload) &&
+                     std::get<HostTouchFrame>(event.payload).phase ==
+                         surface::TouchFramePhase::begin;
+  const bool armed = event.trusted_physical && (pointer || touch);
   if (armed) {
     if (value.pending_gesture)
       return false;
     value.pending_gesture = Impl::PendingGesture{
-        .surface = event.surface,
-        .sequence = event.sequence,
-        .kind = event.kind,
-        .state = event.state,
-    };
+        .surface = value.description->key, .touch = touch};
   }
-  const bool routed = value.host->route_input(event, trusted_gesture);
+  const bool routed = value.host->route_input(std::move(event));
   if (armed && value.pending_gesture) {
     session_.clear_surface_intent_eligibility(*value.description);
     value.pending_gesture.reset();
@@ -270,33 +228,13 @@ bool SurfaceEndpoint::route_input(const surface::InputEvent &event,
   return routed;
 }
 
-bool SurfaceEndpoint::route(const HostPointerEvent &event) {
+bool SurfaceEndpoint::cancel(std::uint64_t device) {
   auto &value = *implementation_;
   if (std::this_thread::get_id() != owner_thread_ ||
       value.state != State::active || !value.host || !value.description ||
-      value.input_sequence == std::numeric_limits<std::uint64_t>::max())
+      !value.host->cancel_input(device))
     return false;
-  const auto x = q16_coordinate(event.x, value.logical_width);
-  const auto y = q16_coordinate(event.y, value.logical_height);
-  const auto button = pointer_button(event.button);
-  if (!x || !y || button == 0)
-    return false;
-  ++value.input_sequence;
-  const surface::InputEvent input{
-      .surface = value.description->key,
-      .sequence = value.input_sequence,
-      .kind = surface::InputKind::pointer_button,
-      .x_q16 = *x,
-      .y_q16 = *y,
-      .delta_x_q16 = 0,
-      .delta_y_q16 = 0,
-      .code = button,
-      .state = static_cast<std::uint32_t>(
-          event.pressed ? surface::ButtonState::pressed
-                        : surface::ButtonState::released),
-      .active_touch_points = 0,
-  };
-  return route_input(input, event.pressed && !event.application_synthesized);
+  return true;
 }
 
 bool SurfaceEndpoint::forward_input(
@@ -306,13 +244,9 @@ bool SurfaceEndpoint::forward_input(
   if (std::this_thread::get_id() != owner_thread_ ||
       value.state != State::active || !value.description)
     return false;
-  const auto input_type = static_cast<std::uint16_t>(
-      surface::RenderMessageType::input);
-  if (header.message_type != input_type) {
-    // Focus must never inherit eligibility from an earlier input.
-    session_.clear_surface_intent_eligibility(*value.description);
-    return forward_render(header, payload, {});
-  }
+  if (header.message_type != static_cast<std::uint16_t>(
+                                 surface::RenderMessageType::input))
+    return false;
 
   surface::InputEvent input{};
   if (!surface::decode_input_event(payload, input)) {
@@ -320,12 +254,23 @@ bool SurfaceEndpoint::forward_input(
     value.pending_gesture.reset();
     return false;
   }
+  if (std::holds_alternative<surface::Cancel>(input.payload)) {
+    session_.clear_surface_intent_eligibility(*value.description);
+    value.pending_gesture.reset();
+  }
   if (!value.pending_gesture)
     return forward_render(header, payload, {});
   const auto pending = *value.pending_gesture;
   value.pending_gesture.reset();
-  if (input.surface != pending.surface || input.sequence != pending.sequence ||
-      input.kind != pending.kind || input.state != pending.state ||
+  const bool pointer =
+      std::holds_alternative<surface::PointerButton>(input.payload) &&
+      std::get<surface::PointerButton>(input.payload).state ==
+          surface::ButtonState::pressed;
+  const bool touch = std::holds_alternative<surface::TouchFrame>(input.payload) &&
+                     std::get<surface::TouchFrame>(input.payload).phase ==
+                         surface::TouchFramePhase::begin;
+  if (input.surface != pending.surface || pointer == touch ||
+      touch != pending.touch ||
       !session_.arm_surface_intent(*value.description, input.sequence)) {
     session_.clear_surface_intent_eligibility(*value.description);
     return false;
@@ -373,15 +318,19 @@ void SurfaceEndpoint::close_impl() noexcept {
     value.state = State::closing;
     return;
   }
+  // Send the terminal Cancel while the exact authenticated route is still
+  // attached, then fence and detach before destroying the trusted surface.
+  if (value.host && !value.host->terminated())
+    (void)value.host->end_input();
   value.state = State::closing;
   value.gate->render = false;
   value.gate->input = false;
   value.pending_gesture.reset();
   if (value.description)
     session_.clear_surface_intent_eligibility(*value.description);
-  if (value.pointer_router_bound && value.remote != nullptr) {
-    value.remote->unbindHostPointerRouter(*this);
-    value.pointer_router_bound = false;
+  if (value.input_router_bound && value.remote != nullptr) {
+    value.remote->unbindHostInputRouter(*this);
+    value.input_router_bound = false;
   }
   if (value.description && !session_.detach(*value.description, *this))
     std::terminate();
@@ -392,8 +341,6 @@ void SurfaceEndpoint::close_impl() noexcept {
     value.remote->unbindLifetimeObserver(*this);
   value.remote = nullptr;
   value.description.reset();
-  value.logical_width = 0;
-  value.logical_height = 0;
 }
 
 void SurfaceEndpoint::remote_surface_destroying() noexcept {

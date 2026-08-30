@@ -12,6 +12,8 @@ if(NOT TARGET omarchy-plugin-surface-contract)
 endif()
 
 add_library(omarchy-plugin-trusted-bridge STATIC
+  src/TrustedInputAuthority.cpp
+  src/TrustedInputAuthority.h
   src/remote_surface.cpp
   src/remote_surface.hpp
   src/render_input_transport.cpp

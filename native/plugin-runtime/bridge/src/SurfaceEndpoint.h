@@ -10,7 +10,6 @@
 #include <thread>
 
 namespace omarchy::plugin_runtime::surface_host {
-class InspectionAuthority;
 class MonotonicClock;
 }
 
@@ -27,7 +26,7 @@ class SurfaceEndpointTestAccess;
 class SurfaceEndpoint final
     : public host_session::SurfaceEndpoint,
       private RemoteSurfaceLifetimeObserver,
-      private HostPointerRouter {
+      private HostInputRouter {
 public:
   ~SurfaceEndpoint() override;
   SurfaceEndpoint(const SurfaceEndpoint &) = delete;
@@ -38,16 +37,14 @@ private:
   enum class State { inert, attached, active, closing };
 
   SurfaceEndpoint(channel::SurfaceSessionPort &session,
+                  TrustedInputAuthority &input_authority,
                   std::string declared_surface);
   [[nodiscard]] bool attach(RemotePluginSurface &surface,
                             std::uint32_t logical_width,
                             std::uint32_t logical_height,
                             std::uint32_t dpr_numerator,
                             std::uint32_t dpr_denominator,
-                            surface_host::InspectionAuthority &inspection,
                             surface_host::MonotonicClock &clock);
-  [[nodiscard]] bool route_input(const surface::InputEvent &event,
-                                 bool trusted_gesture);
   void close() noexcept;
 
   [[nodiscard]] State state() const noexcept;
@@ -56,7 +53,8 @@ private:
   [[nodiscard]] bool
   receive(host_session::OwnedAuthenticatedRenderMessage message) override;
   void remote_surface_destroying() noexcept override;
-  [[nodiscard]] bool route(const HostPointerEvent &event) override;
+  [[nodiscard]] bool route(HostInputEvent event) override;
+  [[nodiscard]] bool cancel(std::uint64_t device) override;
   [[nodiscard]] bool forward_render(
       const plugin::wire::EnvelopeHeader &header,
       std::span<const std::byte> payload,
@@ -67,6 +65,7 @@ private:
   void close_impl() noexcept;
 
   channel::SurfaceSessionPort &session_;
+  TrustedInputAuthority &input_authority_;
   const std::string declared_surface_;
   const std::thread::id owner_thread_;
   std::unique_ptr<Impl> implementation_;

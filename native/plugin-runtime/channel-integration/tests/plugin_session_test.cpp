@@ -974,7 +974,7 @@ void product_session_intercepts_gesture_intents_before_render_routing() {
   require(
       product->arm_surface_intent(bar_attachment.key, request.input_sequence),
           "malformed intent did not safely clear its eligibility");
-  product->clear_surface_intent_eligibility();
+  product->clear_surface_intent_eligibility(bar_attachment.key);
   channel_state->publish(intent_message(identity, 3, request));
   await([&] { return events.rejected.size() == 3; },
         "failed input delivery did not clear intent eligibility");
@@ -988,6 +988,17 @@ void product_session_intercepts_gesture_intents_before_render_routing() {
   };
   require(shared_gesture->consume(product->binding(), claim).has_value(),
           "dynamic broker view did not receive the session gesture arm");
+  const definitions::DynamicInvocation::GestureClaim panel_claim{
+      .surface_id = panel_attachment.key.id,
+      .surface_generation = panel_attachment.key.generation,
+      .input_sequence = 92,
+  };
+  require(product->arm_surface_intent(panel_attachment.key,
+                                      panel_claim.input_sequence),
+          "second surface could not arm intent eligibility");
+  product->clear_surface_intent_eligibility(bar_attachment.key);
+  require(shared_gesture->consume(product->binding(), panel_claim).has_value(),
+          "clearing one session surface erased another surface's gesture");
   channel_state->publish(intent_message(identity, 4, request));
   await([&] { return events.rejected.size() == 4; },
         "surface intent reused a gesture consumed by the broker");

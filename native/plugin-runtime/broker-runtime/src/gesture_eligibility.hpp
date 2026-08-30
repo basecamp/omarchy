@@ -50,6 +50,11 @@ public:
   [[nodiscard]] std::optional<ConsumedGestureEligibility>
   consume(const permissions::ActivationBinding &binding,
           const definitions::DynamicInvocation::GestureClaim &claim) override;
+  // A surface-local teardown must not erase a newer gesture from a sibling
+  // surface in the same plugin session.
+  void clear_surface(const permissions::ActivationBinding &binding,
+                     std::uint64_t surface_id,
+                     std::uint64_t surface_generation) noexcept;
   void clear() noexcept;
 
 private:

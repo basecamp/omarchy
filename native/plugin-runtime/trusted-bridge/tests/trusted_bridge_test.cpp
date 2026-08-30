@@ -9,8 +9,10 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QSizeF>
+#include <QWheelEvent>
 
 #include <array>
+#include <cstdio>
 #include <cstdlib>
 #include <memory>
 #include <optional>
@@ -64,13 +66,18 @@ private:
   std::optional<surface::TrustedAllocation> allocation_;
 };
 
-class RecordingPointerRouter final : public bridge::HostPointerRouter {
+class RecordingInputRouter final : public bridge::HostInputRouter {
 public:
-  bool route(const bridge::HostPointerEvent &event) override {
-    events.push_back(event);
+  bool route(bridge::HostInputEvent event) override {
+    events.push_back(std::move(event));
     return accept;
   }
-  std::vector<bridge::HostPointerEvent> events;
+  bool cancel(std::uint64_t device) override {
+    cancelled_device = device;
+    return accept;
+  }
+  std::vector<bridge::HostInputEvent> events;
+  std::uint64_t cancelled_device = 0;
   bool accept = true;
 };
 
@@ -88,8 +95,15 @@ public:
 
 void test_quick_item_pointer_delivery() {
   bridge::RemotePluginSurface item;
-  RecordingPointerRouter router;
-  require(item.bindHostPointerRouter(router), "pointer router did not bind");
+  RecordingInputRouter router;
+  auto sink = std::make_shared<RecordingSink>();
+  auto transport =
+      std::make_shared<bridge::AuthenticatedInputTransport>(1, sink);
+  const auto allocation = surface::make_allocation(
+      {.id = 1, .generation = 1}, 64, 64, 64, 64, 1, 1, 4096);
+  require(allocation && item.bindTransport(transport) &&
+              item.configure(*allocation) && item.bindHostInputRouter(router),
+          "configured input router fixture did not bind");
   QMouseEvent press(QEvent::MouseButtonPress, QPointF(12, 34),
                     QPointF(12, 34), QPointF(12, 34), Qt::LeftButton, Qt::LeftButton,
                     Qt::NoModifier, Qt::MouseEventNotSynthesized);
@@ -98,19 +112,48 @@ void test_quick_item_pointer_delivery() {
                       Qt::NoModifier, Qt::MouseEventNotSynthesized);
   require(QCoreApplication::sendEvent(&item, &press) &&
               QCoreApplication::sendEvent(&item, &release) &&
-              router.events.size() == 2 && router.events[0].pressed &&
-              !router.events[1].pressed && router.events[0].x == 12 &&
-              router.events[0].y == 34 &&
-              !router.events[0].application_synthesized,
+              router.events.size() == 2 &&
+              std::get<surface::PointerButton>(router.events[0].payload).state ==
+                  surface::ButtonState::pressed &&
+              std::get<surface::PointerButton>(router.events[1].payload).state ==
+                  surface::ButtonState::released &&
+              !router.events[0].trusted_physical,
           "QQuick item did not route host pointer press and release");
+
+  QMouseEvent outside_release(
+      QEvent::MouseButtonRelease, QPointF(65, 1), QPointF(65, 1),
+      QPointF(65, 1), Qt::LeftButton, Qt::NoButton, Qt::NoModifier,
+      Qt::MouseEventNotSynthesized);
+  require(QCoreApplication::sendEvent(&item, &outside_release) &&
+              router.cancelled_device != 0,
+          "unrepresentable pointer release did not request exact cancel");
+
+  router.cancelled_device = 0;
+  QWheelEvent wheel_begin(QPointF(2, 2), QPointF(2, 2), QPoint(),
+                          QPoint(0, 120), Qt::NoButton, Qt::NoModifier,
+                          Qt::ScrollBegin, false);
+  QWheelEvent wheel_update(QPointF(2, 2), QPointF(2, 2), QPoint(-3, -4),
+                           QPoint(-120, -120), Qt::NoButton, Qt::NoModifier,
+                           Qt::ScrollUpdate, false);
+  QWheelEvent wheel_end(QPointF(65, 2), QPointF(65, 2), QPoint(), QPoint(),
+                        Qt::NoButton, Qt::NoModifier, Qt::ScrollEnd, false);
+  require(QCoreApplication::sendEvent(&item, &wheel_begin) &&
+              QCoreApplication::sendEvent(&item, &wheel_update) &&
+              std::get<surface::Wheel>(router.events.back().payload)
+                      .pixel_delta_x_q16 == -(3 << 16) &&
+              std::get<surface::Wheel>(router.events.back().payload)
+                      .pixel_delta_y_q16 == -(4 << 16) &&
+              QCoreApplication::sendEvent(&item, &wheel_end) &&
+              router.cancelled_device != 0,
+          "negative wheel delta or unrepresentable end was not exact");
 
   QMouseEvent synthesized(QEvent::MouseButtonPress, QPointF(1, 2),
                           QPointF(1, 2), QPointF(1, 2), Qt::LeftButton, Qt::LeftButton,
                           Qt::NoModifier,
                           Qt::MouseEventSynthesizedByApplication);
   require(QCoreApplication::sendEvent(&item, &synthesized) &&
-              router.events.size() == 3 &&
-              router.events.back().application_synthesized,
+              router.events.size() == 5 &&
+              !router.events.back().trusted_physical,
           "QQuick item lost the synthetic-input classification");
 
   QMouseEvent system_synthesized(
@@ -118,18 +161,25 @@ void test_quick_item_pointer_delivery() {
       Qt::LeftButton, Qt::LeftButton, Qt::NoModifier,
       Qt::MouseEventSynthesizedBySystem);
   require(QCoreApplication::sendEvent(&item, &system_synthesized) &&
-              router.events.size() == 4 &&
-              !router.events.back().application_synthesized,
-          "QQuick item confused compositor and application synthesis");
+              router.events.size() == 6 &&
+              !router.events.back().trusted_physical,
+          "synthetic system input minted physical provenance");
 }
 
 void test_router_unbind_is_idempotent_and_identity_checked() {
   bridge::RemotePluginSurface item;
-  RecordingPointerRouter first;
-  RecordingPointerRouter unrelated;
-  require(item.bindHostPointerRouter(first), "pointer router did not bind");
+  RecordingInputRouter first;
+  RecordingInputRouter unrelated;
+  auto sink = std::make_shared<RecordingSink>();
+  auto transport =
+      std::make_shared<bridge::AuthenticatedInputTransport>(2, sink);
+  const auto allocation = surface::make_allocation(
+      {.id = 2, .generation = 2}, 16, 16, 16, 16, 1, 1, 4096);
+  require(allocation && item.bindTransport(transport) &&
+              item.configure(*allocation) && item.bindHostInputRouter(first),
+          "configured input router did not bind");
 
-  item.unbindHostPointerRouter(unrelated);
+  item.unbindHostInputRouter(unrelated);
   QMouseEvent routed(QEvent::MouseButtonPress, QPointF(5, 6), QPointF(5, 6),
                      QPointF(5, 6), Qt::LeftButton, Qt::LeftButton,
                      Qt::NoModifier, Qt::MouseEventNotSynthesized);
@@ -137,8 +187,8 @@ void test_router_unbind_is_idempotent_and_identity_checked() {
               first.events.size() == 1,
           "an unrelated router detached the active pointer route");
 
-  item.unbindHostPointerRouter(first);
-  item.unbindHostPointerRouter(first);
+  item.unbindHostInputRouter(first);
+  item.unbindHostInputRouter(first);
   QMouseEvent detached(QEvent::MouseButtonPress, QPointF(7, 8),
                        QPointF(7, 8), QPointF(7, 8), Qt::LeftButton,
                        Qt::LeftButton, Qt::NoModifier,
@@ -151,9 +201,9 @@ void test_router_unbind_is_idempotent_and_identity_checked() {
 void test_router_destruction_orders() {
   bridge::RemotePluginSurface item;
   {
-    RecordingPointerRouter router;
-    require(item.bindHostPointerRouter(router), "pointer router did not bind");
-    item.unbindHostPointerRouter(router);
+    RecordingInputRouter router;
+    require(item.bindHostInputRouter(router), "input router did not bind");
+    item.unbindHostInputRouter(router);
   }
   QMouseEvent after_router(QEvent::MouseButtonPress, QPointF(1, 1),
                            QPointF(1, 1), QPointF(1, 1), Qt::LeftButton,
@@ -193,10 +243,10 @@ void test_router_destruction_orders() {
   require(!item.updateInputRegions(newer_update),
           "input-region routing survived router teardown");
 
-  RecordingPointerRouter surviving_router;
+  RecordingInputRouter surviving_router;
   {
     auto short_lived_item = std::make_unique<bridge::RemotePluginSurface>();
-    require(short_lived_item->bindHostPointerRouter(surviving_router),
+    require(short_lived_item->bindHostInputRouter(surviving_router),
             "surviving pointer router did not bind");
   }
   require(surviving_router.events.empty(),
@@ -261,7 +311,8 @@ void test_input_region_projection_is_post_router_and_stable_on_reject() {
   require(item.updateInputRegions(restored) && !item.inputRegions().isEmpty(),
           "accepted regions were not restored");
   const auto calls_before_destroy = router.calls;
-  require(item.beginDestroy() && item.inputRegions().isEmpty(),
+  item.disconnect();
+  require(item.inputRegions().isEmpty(),
           "surface teardown retained projected input regions");
   auto after_destroy = accepted;
   after_destroy.generation = 5;
@@ -275,14 +326,12 @@ void test_input_region_projection_is_post_router_and_stable_on_reject() {
 surface::InputEvent pointer(surface::SurfaceKey key, std::uint64_t sequence) {
   return {.surface = key,
           .sequence = sequence,
-          .kind = surface::InputKind::pointer_button,
-          .x_q16 = 1U << surface::kQ16FractionBits,
-          .y_q16 = 1U << surface::kQ16FractionBits,
-          .delta_x_q16 = 0,
-          .delta_y_q16 = 0,
-          .code = 1,
-          .state = static_cast<std::uint32_t>(surface::ButtonState::pressed),
-          .active_touch_points = 0};
+          .payload = surface::PointerButton{
+              .position = {1U << surface::kQ16FractionBits,
+                           1U << surface::kQ16FractionBits},
+              .button = static_cast<std::uint32_t>(Qt::LeftButton),
+              .state = surface::ButtonState::pressed,
+              .buttons = static_cast<std::uint32_t>(Qt::LeftButton)}};
 }
 
 void test_owned_pixels_and_lifecycle() {
@@ -303,10 +352,8 @@ void test_owned_pixels_and_lifecycle() {
   require(producer.publish(1, pixels) && item.ready() &&
               item.frameSequence() == 1,
           "trusted frame presentation failed");
-  const auto copied_byte = item.ownedImage().constBits()[0];
+  const auto copied_byte = std::to_integer<unsigned char>(pixels[0]);
   pixels[0] = std::byte{0};
-  require(item.ownedImage().constBits()[0] == copied_byte,
-          "bridge retained producer pixel memory");
 
   QImage target(4, 4, QImage::Format_RGBA8888_Premultiplied);
   target.fill(Qt::transparent);
@@ -314,7 +361,8 @@ void test_owned_pixels_and_lifecycle() {
   item.setSize(QSizeF(4, 4));
   item.paint(&painter);
   painter.end();
-  require(!target.isNull(), "trusted surface could not paint owned pixels");
+  require(!target.isNull() && target.constBits()[0] == copied_byte,
+          "trusted surface retained producer memory or failed to paint it");
 
   std::vector<std::byte> short_pixels(allocation->frame_bytes - 1);
   require(!producer.publish(2, short_pixels) && item.ready() &&
@@ -326,10 +374,6 @@ void test_owned_pixels_and_lifecycle() {
           "replayed frame replaced the last valid image");
   require(!item.present({.id = 7, .generation = 1}, 2, pixels) && item.ready(),
           "stale surface generation replaced trusted pixels");
-  require(item.suspend() &&
-              !item.submitInput(pointer(allocation->surface, 1)) &&
-              item.resume(),
-          "suspended surface accepted input or failed to resume");
   item.disconnect();
   require(!item.connected() && !item.ready() && !item.surfaceFocused() &&
               item.inspectionState() == QStringLiteral("disconnected"),
@@ -345,27 +389,27 @@ void test_authenticated_focus_and_input() {
   const auto allocation = surface::make_allocation({.id = 8, .generation = 3},
                                                    4, 4, 4, 4, 1, 1, 4096);
   require(allocation && item.configure(*allocation), "input fixture configure");
-  const surface::FocusEvent focus{
-      .surface = allocation->surface, .sequence = 1, .focused = true};
+  const surface::InputEvent focus{
+      .surface = allocation->surface,
+      .sequence = 1,
+      .payload = surface::FocusChanged{.focused = true}};
   require(
-      item.submitFocus(focus) && item.surfaceFocused() && sink->calls == 1 &&
+      item.submitInput(focus) && item.surfaceFocused() && sink->calls == 1 &&
           sink->header.endpoint_role == wire::EndpointRole::render &&
           sink->header.launch_generation == 11 &&
           sink->header.role_protocol_version == surface::kRenderRoleVersion &&
           sink->header.flags == 0 &&
           sink->header.payload_length == sink->payload.size() &&
           sink->header.message_type ==
-              static_cast<std::uint16_t>(surface::RenderMessageType::focus) &&
+              static_cast<std::uint16_t>(surface::RenderMessageType::input) &&
           sink->header.correlation_id == 0,
       "focus did not use authenticated render envelope");
-  surface::FocusEvent decoded_focus{};
-  require(surface::decode_focus_event(sink->payload, decoded_focus) &&
-              decoded_focus.surface == focus.surface &&
-              decoded_focus.sequence == focus.sequence &&
-              decoded_focus.focused == focus.focused,
+  surface::InputEvent decoded_focus{};
+  require(surface::decode_input_event(sink->payload, decoded_focus) &&
+              decoded_focus == focus,
           "focus payload changed across bridge");
 
-  const auto event = pointer(allocation->surface, 1);
+  const auto event = pointer(allocation->surface, 2);
   require(item.submitInput(event) && sink->calls == 2 &&
               sink->header.message_type ==
                   static_cast<std::uint16_t>(surface::RenderMessageType::input),
@@ -375,18 +419,18 @@ void test_authenticated_focus_and_input() {
               decoded_input.surface == event.surface &&
               decoded_input.sequence == event.sequence,
           "input payload changed across bridge");
-  require(!item.submitInput(event) && sink->calls == 2,
-          "replayed input reached transport");
-  require(!item.submitFocus({.surface = {.id = 8, .generation = 2},
-                             .sequence = 2,
-                             .focused = false}) &&
+  require(!item.submitInput({.surface = {.id = 8, .generation = 2},
+                             .sequence = 3,
+                             .payload = surface::FocusChanged{.focused = false}}) &&
               sink->calls == 2 && item.surfaceFocused(),
           "stale focus event reached transport or changed local focus");
 
   sink->accept = false;
   require(
-      !item.submitFocus(
-          {.surface = allocation->surface, .sequence = 2, .focused = false}) &&
+      !item.submitInput(
+          {.surface = allocation->surface,
+           .sequence = 3,
+           .payload = surface::FocusChanged{.focused = false}}) &&
           !item.connected() && !item.ready() && transport->failed(),
       "transport failure did not clear and disconnect surface");
 }
@@ -439,6 +483,200 @@ void test_invalid_transport_and_allocation() {
           "transport accepted a missing authenticated session sink");
 }
 
+void test_input_authority_sequence_focus_capture_and_touch_identity() {
+  bridge::TrustedInputAuthority authority;
+  const auto first = surface::make_allocation({.id = 21, .generation = 3},
+                                              8, 8, 8, 8, 1, 1, 4096);
+  const auto second = surface::make_allocation({.id = 22, .generation = 3},
+                                               8, 8, 8, 8, 1, 1, 4096);
+  require(first && second, "authority allocation fixture failed");
+
+  const surface::InputPoint point{.x_q16 = 1U << surface::kQ16FractionBits,
+                                  .y_q16 = 1U << surface::kQ16FractionBits};
+  auto press = authority.admit(
+      *first,
+      {.payload = surface::PointerButton{
+           .position = point,
+           .button = static_cast<std::uint32_t>(Qt::LeftButton),
+           .state = surface::ButtonState::pressed,
+           .buttons = static_cast<std::uint32_t>(Qt::LeftButton)},
+       .device = 41,
+       .trusted_physical = true},
+      true);
+  require(press && press->event.sequence == 1 && press->trusted_gesture &&
+              authority.pointer_captured(first->surface, 41) &&
+              !authority.pointer_captured(first->surface, 42) &&
+              !authority.pointer_captured(second->surface, 41),
+          "pointer activation did not mint one exact capture lease");
+
+  require(!authority.admit(
+      *second,
+      {.payload = surface::PointerMotion{.position = point, .buttons = 0},
+       .device = 42,
+       .trusted_physical = true},
+      true) &&
+              !authority.admit(
+                  *first,
+                  {.payload = surface::PointerMotion{
+                       .position = point,
+                       .buttons = static_cast<std::uint32_t>(Qt::LeftButton)},
+                   .device = 42,
+                   .trusted_physical = true},
+                  true),
+          "wrong-device motion borrowed another surface's pointer capture");
+  auto release = authority.admit(
+      *first,
+      {.payload = surface::PointerButton{
+           .position = point,
+           .button = static_cast<std::uint32_t>(Qt::LeftButton),
+           .state = surface::ButtonState::released,
+           .buttons = 0},
+       .device = 41,
+       .trusted_physical = true},
+      true);
+  require(release && release->event.sequence == 2 &&
+              !authority.pointer_captured(first->surface, 41),
+          "exact pointer release did not clear capture");
+
+  auto interleaved = authority.admit(
+      *second,
+      {.payload = surface::PointerMotion{.position = point, .buttons = 0},
+       .device = 42,
+       .trusted_physical = true},
+      true);
+  require(interleaved && interleaved->event.sequence == 3,
+          "cross-surface input did not share one global sequence");
+
+  auto focus_first = authority.admit(
+      *first, {.payload = surface::FocusChanged{.focused = true}}, true);
+  auto invalid_switch = authority.admit(
+      *second, {.payload = surface::FocusChanged{.focused = true}}, true);
+  auto blur_first = authority.admit(
+      *first, {.payload = surface::FocusChanged{.focused = false}}, true);
+  auto focus_second = authority.admit(
+      *second, {.payload = surface::FocusChanged{.focused = true}}, true);
+  require(focus_first && focus_first->event.sequence == 4 &&
+              !invalid_switch && blur_first && blur_first->event.sequence == 5 &&
+              focus_second && focus_second->event.sequence == 6 &&
+              authority.focused_surface() == second->surface,
+          "focus switch was not ordered old-false before new-true");
+
+  bridge::HostTouchFrame begin;
+  begin.phase = surface::TouchFramePhase::begin;
+  begin.count = 1;
+  begin.points[0] = {.id = 400,
+                     .state = surface::TouchPointState::pressed,
+                     .position = point};
+  auto touch_begin = authority.admit(
+      *first,
+      {.payload = begin, .device = 51, .trusted_physical = true}, true);
+  require(touch_begin && touch_begin->event.sequence == 7 &&
+              std::get<surface::TouchFrame>(touch_begin->event.payload)
+                      .points[0]
+                      .id == 0 &&
+              authority.touch_captured(first->surface, 51),
+          "raw touch identity was not normalized into an exact capture");
+
+  bridge::HostTouchFrame update = begin;
+  update.phase = surface::TouchFramePhase::update;
+  update.points[0].state = surface::TouchPointState::updated;
+  require(!authority.admit(
+              *first,
+              {.payload = update, .device = 52, .trusted_physical = true},
+              true) &&
+              !authority.admit(
+                  *second,
+                  {.payload = update,
+                   .device = 51,
+                   .trusted_physical = true},
+                  true),
+          "wrong-device or wrong-surface touch borrowed contact identity");
+
+  auto omitted = update;
+  omitted.points[0] = {.id = 401,
+                       .state = surface::TouchPointState::pressed,
+                       .position = point};
+  require(!authority.admit(
+              *first,
+              {.payload = omitted, .device = 51, .trusted_physical = true},
+              true),
+          "partial touch frame omitted an already-active contact");
+
+  auto add_contact = update;
+  add_contact.count = 2;
+  add_contact.points[0].state = surface::TouchPointState::stationary;
+  add_contact.points[1] = {.id = 401,
+                           .state = surface::TouchPointState::pressed,
+                           .position = point};
+  auto added = authority.admit(
+      *first,
+      {.payload = add_contact, .device = 51, .trusted_physical = true}, true);
+  require(added && added->event.sequence == 8,
+          "complete touch frame could not add a second contact");
+
+  auto end = add_contact;
+  end.phase = surface::TouchFramePhase::end;
+  end.points[0].state = surface::TouchPointState::released;
+  end.points[1].state = surface::TouchPointState::released;
+  auto touch_end = authority.admit(
+      *first, {.payload = end, .device = 51, .trusted_physical = true}, true);
+  begin.points[0].id = 900;
+  auto reused = authority.admit(
+      *first,
+      {.payload = begin, .device = 51, .trusted_physical = true}, true);
+  require(touch_end && touch_end->event.sequence == 9 && reused &&
+              reused->event.sequence == 10 &&
+              std::get<surface::TouchFrame>(reused->event.payload)
+                      .points[0]
+                      .id == 0,
+          "released touch slots were not deterministically reusable");
+  const auto cancelled = authority.cancel(*first);
+  authority.release(second->surface);
+  require(cancelled && cancelled->sequence == 11 &&
+              !authority.touch_captured(first->surface, 51) &&
+              !authority.focused_surface(),
+          "cancel/release did not clear authority state");
+  begin.points[0].id = 1200;
+  auto after_cancel = authority.admit(
+      *first,
+      {.payload = begin, .device = 52, .trusted_physical = true}, true);
+  require(after_cancel && after_cancel->event.sequence == 12 &&
+              std::get<surface::TouchFrame>(after_cancel->event.payload)
+                      .points[0]
+                      .id == 0 &&
+              authority.touch_captured(first->surface, 52),
+          "terminal cancel retained touch owner or raw-contact identity");
+  authority.release(first->surface);
+}
+
+void test_synthesized_activation_routes_without_privileged_provenance() {
+  bridge::TrustedInputAuthority authority;
+  const auto allocation = surface::make_allocation(
+      {.id = 31, .generation = 4}, 8, 8, 8, 8, 1, 1, 4096);
+  require(allocation.has_value(),
+          "synthetic authority allocation fixture failed");
+  const surface::InputPoint point{.x_q16 = 1U << surface::kQ16FractionBits,
+                                  .y_q16 = 1U << surface::kQ16FractionBits};
+  auto press = authority.admit(
+      *allocation,
+      {.payload = surface::PointerButton{
+           .position = point,
+           .button = static_cast<std::uint32_t>(Qt::LeftButton),
+           .state = surface::ButtonState::pressed,
+           .buttons = static_cast<std::uint32_t>(Qt::LeftButton)},
+       .device = 61,
+       .trusted_physical = false},
+      true);
+  require(press && !press->trusted_gesture &&
+              authority.pointer_captured(allocation->surface, 61) &&
+              !authority.surface_has_physical_activation(allocation->surface),
+          "synthetic pointer routing lease gained privileged provenance");
+  const auto cancelled = authority.cancel(*allocation);
+  require(cancelled &&
+              !authority.pointer_captured(allocation->surface, 61),
+          "synthetic pointer routing lease did not cancel cleanly");
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -452,9 +690,11 @@ int main(int argc, char **argv) {
     test_owned_pixels_and_lifecycle();
     test_authenticated_focus_and_input();
     test_invalid_transport_and_allocation();
+    test_input_authority_sequence_focus_capture_and_touch_identity();
+    test_synthesized_activation_routes_without_privileged_provenance();
     return EXIT_SUCCESS;
   } catch (const std::exception &failure) {
-    qCritical("trusted bridge test failed: %s", failure.what());
+    std::fprintf(stderr, "trusted bridge test failed: %s\n", failure.what());
     return EXIT_FAILURE;
   }
 }

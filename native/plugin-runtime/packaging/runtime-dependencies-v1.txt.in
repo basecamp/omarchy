@@ -1,0 +1,11 @@
+bubblewrap
+glibc
+libgcc
+libglvnd
+libseccomp
+libstdc++
+libxkbcommon
+qt6-base=@OMARCHY_PLUGIN_QT6_BASE_PACKAGE_VERSION@
+qt6-declarative
+quickshell
+systemd-libs

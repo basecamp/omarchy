@@ -27,14 +27,15 @@ public:
                               std::shared_ptr<RenderPacketSink> sink);
 
   bool submit(const surface::InputEvent &event) override;
-  bool submit_focus(const surface::FocusEvent &event);
+  bool submit_terminal_cancel(const surface::InputEvent &event);
   void disconnect();
 
   [[nodiscard]] bool connected() const;
   [[nodiscard]] bool failed() const;
 
 private:
-  bool send(std::uint16_t message_type, std::span<const std::byte> payload);
+  bool send(std::uint16_t message_type, std::span<const std::byte> payload,
+            bool allow_disconnected = false);
 
   std::uint64_t generation_ = 0;
   std::shared_ptr<RenderPacketSink> sink_;

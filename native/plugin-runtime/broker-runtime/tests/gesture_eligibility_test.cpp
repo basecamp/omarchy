@@ -54,6 +54,40 @@ int main() {
   require(!latch.arm(binding, stale_generation),
           "cross-generation gesture armed");
 
+  auto other_surface = claim;
+  ++other_surface.surface_id;
+  other_surface.input_sequence = 12;
+  require(latch.arm(binding, other_surface),
+          "other-surface clear fixture did not arm");
+  latch.clear_surface(binding, claim.surface_id, claim.surface_generation);
+  require(latch.consume(binding, other_surface).has_value(),
+          "clearing one surface erased another surface's gesture");
+
+  auto other_binding = binding;
+  other_binding.revision = digest('3');
+  other_surface.input_sequence = 13;
+  require(latch.arm(binding, other_surface),
+          "wrong-binding clear fixture did not arm");
+  latch.clear_surface(other_binding, other_surface.surface_id,
+                      other_surface.surface_generation);
+  require(latch.consume(binding, other_surface).has_value(),
+          "a different activation binding erased gesture eligibility");
+
+  other_surface.input_sequence = 14;
+  require(latch.arm(binding, other_surface),
+          "exact-source clear fixture did not arm");
+  latch.clear_surface(binding, other_surface.surface_id,
+                      other_surface.surface_generation);
+  require(!latch.consume(binding, other_surface),
+          "exact-source clear retained gesture eligibility");
+
+  other_surface.input_sequence = 15;
+  require(latch.arm(binding, other_surface),
+          "global clear fixture did not arm");
+  latch.clear();
+  require(!latch.consume(binding, other_surface),
+          "global clear retained gesture eligibility");
+
   constexpr int kRaceIterations = 500;
   std::barrier race_phase(4);
   std::atomic<int> successes = 0;

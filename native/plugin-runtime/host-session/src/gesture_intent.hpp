@@ -121,8 +121,9 @@ struct SurfaceIntentAdmissionResult {
 };
 
 // Event-loop-confined authority for one authenticated plugin session. The
-// physical-input path arms it only after InputGate acceptance. The render
-// request path atomically spends that eligibility before resolving targets.
+// trusted host-input path arms it only after physical-input admission. The
+// render request path atomically spends that eligibility before resolving
+// targets.
 class GestureIntentAuthority final {
 public:
   GestureIntentAuthority(permissions::ActivationBinding binding,
@@ -134,6 +135,7 @@ public:
   [[nodiscard]] bool detach_surface(surface::SurfaceKey key) noexcept;
   [[nodiscard]] bool arm(surface::SurfaceKey source,
                          std::uint64_t input_sequence);
+  void clear_surface_eligibility(surface::SurfaceKey source) noexcept;
   [[nodiscard]] SurfaceIntentAdmissionResult
   admit(const surface::SurfaceIntentRequest &request);
   void revoke() noexcept;

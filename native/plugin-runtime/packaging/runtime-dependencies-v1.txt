@@ -1,5 +1,0 @@
-bubblewrap
-libseccomp
-qt6-base
-qt6-declarative
-quickshell

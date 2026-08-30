@@ -1,4 +1,7 @@
 find_package(PkgConfig REQUIRED)
+# Qt has no public API for injecting a complete touch frame into a window.
+# Keep the exact-version QPA dependency inside the worker adapter target.
+find_package(Qt6 REQUIRED COMPONENTS GuiPrivate)
 pkg_check_modules(WORKER_SECCOMP REQUIRED IMPORTED_TARGET libseccomp)
 
 option(PLUGIN_SECURITY_WORKER_SANITIZERS
@@ -19,6 +22,7 @@ function(omarchy_plugin_worker_sanitize target)
 endfunction()
 
 add_library(omarchy-plugin-worker-runtime STATIC
+  src/qt_touch_injector.cpp
   src/qml_broker_api.cpp
   src/sidecar_supervisor.cpp
   src/worker_channel.cpp
@@ -37,7 +41,8 @@ target_link_libraries(omarchy-plugin-worker-runtime
   PUBLIC Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick
          omarchy-plugin-wire omarchy-plugin-surface-contract
          omarchy-plugin-broker-core omarchy-plugin-capability-definitions
-  PRIVATE omarchy-plugin-sandbox-policy omarchy-plugin-manifest-contract
+  PRIVATE Qt6::GuiPrivate
+          omarchy-plugin-sandbox-policy omarchy-plugin-manifest-contract
           PkgConfig::WORKER_SECCOMP
 )
 

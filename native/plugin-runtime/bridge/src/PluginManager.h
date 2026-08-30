@@ -168,7 +168,6 @@ public:
       const plugins::permissions::ActivationBinding &binding,
       std::vector<SurfaceProjectionModel::SurfaceDeclaration> declarations);
   [[nodiscard]] static bool clockIsNondecreasing(PluginManager &manager);
-  [[nodiscard]] static bool inspectionDenied(PluginManager &manager);
   [[nodiscard]] static std::weak_ptr<const void>
   deliveryGate(const PluginManager &manager);
   [[nodiscard]] static bool

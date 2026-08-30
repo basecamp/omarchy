@@ -452,9 +452,8 @@ void manager_policy_is_fixed_and_fail_closed() {
   auto manager = bridge::PluginManagerTestAccess::create();
   bridge::PluginManagerTestAccess::installRuntime(*manager,
                                                   fixture.bootstrap());
-  require(bridge::PluginManagerTestAccess::clockIsNondecreasing(*manager) &&
-              bridge::PluginManagerTestAccess::inspectionDenied(*manager),
-          "manager clock or deny-only inspection policy was configurable");
+  require(bridge::PluginManagerTestAccess::clockIsNondecreasing(*manager),
+          "manager clock was not monotonic");
 }
 
 void last_good_reconciliation_and_stale_callback_are_fail_closed() {

@@ -64,7 +64,6 @@ public:
 
   [[nodiscard]] bool start(const surface::TrustedAllocation &allocation);
   [[nodiscard]] bool receive(const AuthenticatedRenderPacket &packet);
-  void peer_lost();
   void close();
 
   [[nodiscard]] Phase phase() const;
@@ -75,7 +74,7 @@ public:
 private:
   bool send(std::uint16_t message_type, std::span<const std::byte> payload,
             std::uint64_t correlation, std::span<const int> descriptors = {});
-  bool fail(std::string detail, bool peer_loss = false);
+  bool fail(std::string detail);
   bool accept(const wire::PacketView &packet);
   bool handle(const wire::PacketView &packet);
 

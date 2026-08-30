@@ -345,8 +345,9 @@ bool PluginSession::arm_surface_intent(session::surface::SurfaceKey source,
          gesture_intents_->arm(source, input_sequence);
 }
 
-void PluginSession::clear_surface_intent_eligibility() noexcept {
-  gesture_eligibility_->clear();
+void PluginSession::clear_surface_intent_eligibility(
+    session::surface::SurfaceKey source) noexcept {
+  gesture_intents_->clear_surface_eligibility(source);
 }
 
 std::size_t PluginSession::surface_count() const noexcept {

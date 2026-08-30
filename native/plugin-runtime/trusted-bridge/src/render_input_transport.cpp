@@ -23,8 +23,9 @@ AuthenticatedInputTransport::AuthenticatedInputTransport(
 }
 
 bool AuthenticatedInputTransport::send(std::uint16_t message_type,
-                                       std::span<const std::byte> payload) {
-  if (!connected_ || failed_)
+                                       std::span<const std::byte> payload,
+                                       bool allow_disconnected) {
+  if ((!connected_ && !allow_disconnected) || failed_)
     return false;
   const wire::PacketView packet{
       .header = {.endpoint_role = wire::EndpointRole::render,
@@ -48,15 +49,20 @@ bool AuthenticatedInputTransport::send(std::uint16_t message_type,
 
 bool AuthenticatedInputTransport::submit(const surface::InputEvent &event) {
   const auto payload = surface::encode_input_event(event);
+  if (!payload)
+    return false;
   return send(static_cast<std::uint16_t>(surface::RenderMessageType::input),
-              payload);
+              *payload);
 }
 
-bool AuthenticatedInputTransport::submit_focus(
-    const surface::FocusEvent &event) {
-  const auto payload = surface::encode_focus_event(event);
-  return send(static_cast<std::uint16_t>(surface::RenderMessageType::focus),
-              payload);
+bool AuthenticatedInputTransport::submit_terminal_cancel(
+    const surface::InputEvent &event) {
+  if (connected_ || !std::holds_alternative<surface::Cancel>(event.payload))
+    return false;
+  const auto payload = surface::encode_input_event(event);
+  return payload &&
+         send(static_cast<std::uint16_t>(surface::RenderMessageType::input),
+              *payload, true);
 }
 
 void AuthenticatedInputTransport::disconnect() { connected_ = false; }

@@ -100,12 +100,11 @@ struct SurfaceEndpointOwner::Record final {
 };
 
 SurfaceEndpointOwner::SurfaceEndpointOwner(
-    surface_host::InspectionAuthority &inspection,
     surface_host::MonotonicClock &clock,
     plugins::permissions::ActivationBinding binding,
     qulonglong publication_revision,
     channel::SurfaceSessionPort &session) noexcept
-    : inspection_(inspection), clock_(clock), binding_(std::move(binding)),
+    : clock_(clock), binding_(std::move(binding)),
       publication_revision_(publication_revision), session_(session),
       owner_thread_(std::this_thread::get_id()) {}
 
@@ -155,13 +154,14 @@ SurfaceEndpointAttachResult SurfaceEndpointOwner::attach(
         .surface_key = published.surface_key_,
         .remote = &surface_item,
         .endpoint = std::unique_ptr<SurfaceEndpoint>(
-            new SurfaceEndpoint(session_, published.declared_surface_)),
+            new SurfaceEndpoint(session_, input_authority_,
+                                published.declared_surface_)),
     };
     records_.reserve(records_.size() + 1);
     if (!record.endpoint->attach(surface_item, geometry.logical_width,
                                  geometry.logical_height,
                                  geometry.dpr_numerator,
-                                 geometry.dpr_denominator, inspection_, clock_))
+                                 geometry.dpr_denominator, clock_))
       return SurfaceEndpointAttachResult::rejected;
     records_.push_back(std::move(record));
     return SurfaceEndpointAttachResult::attached;

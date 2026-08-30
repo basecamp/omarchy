@@ -55,6 +55,15 @@ std::optional<ConsumedGestureEligibility> GestureEligibilityLatch::consume(
   return proof;
 }
 
+void GestureEligibilityLatch::clear_surface(
+    const permissions::ActivationBinding &binding, std::uint64_t surface_id,
+    std::uint64_t surface_generation) noexcept {
+  const std::lock_guard lock(mutex_);
+  if (armed_ && binding == binding_ && claim_.surface_id == surface_id &&
+      claim_.surface_generation == surface_generation)
+    reset_unlocked();
+}
+
 void GestureEligibilityLatch::clear() noexcept {
   const std::lock_guard lock(mutex_);
   reset_unlocked();

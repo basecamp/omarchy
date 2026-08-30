@@ -111,11 +111,12 @@ public:
          session::SurfaceEndpoint &endpoint);
   [[nodiscard]] bool detach(std::string_view declared_surface,
                             const session::SurfaceEndpoint &endpoint) noexcept;
-  // Called only by the trusted input path after InputGate accepts physical
-  // input. If the input packet cannot be sent, the caller must clear the arm.
+  // Called only after trusted host-input admission accepts physical input. If
+  // the input packet cannot be sent, the caller must clear the exact source.
   [[nodiscard]] bool arm_surface_intent(session::surface::SurfaceKey source,
                      std::uint64_t input_sequence);
-  void clear_surface_intent_eligibility() noexcept;
+  void clear_surface_intent_eligibility(
+      session::surface::SurfaceKey source) noexcept;
   [[nodiscard]] std::size_t surface_count() const noexcept;
   [[nodiscard]] session::SessionState state() const noexcept;
   [[nodiscard]] session::SessionError error() const noexcept;

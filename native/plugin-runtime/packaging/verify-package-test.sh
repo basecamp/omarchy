@@ -64,4 +64,9 @@ root=$scratch/root/usr/lib/omarchy/plugin-security/$version
 cp -a "$root" "$scratch/root/usr/lib/omarchy/plugin-security/9.9.9"
 expect_failure "multiple versions" "staging package contains another runtime version" "$verifier" --staging "$scratch/root" "$version"
 
+reset_fixture
+root=$scratch/root/usr/lib/omarchy/plugin-security/$version
+sed -i 's/^qt6-base=.*/qt6-base=0.0.0-0/' "$root/metadata/runtime-dependencies-v1.txt"
+expect_failure "different Qt private ABI build" "runtime dependency contract differs from the required Arch package set or qt6-base build" "$verifier" --staging "$scratch/root" "$version"
+
 echo "secure plugin package verifier negative tests passed"

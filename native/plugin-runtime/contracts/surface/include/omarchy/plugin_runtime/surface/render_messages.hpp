@@ -11,13 +11,14 @@
 #include <optional>
 #include <span>
 #include <string_view>
+#include <vector>
 
 namespace omarchy::plugin_runtime::surface {
 
 using omarchy::plugin::wire::kMaximumSurfaceNameBytes;
 using omarchy::plugin::wire::valid_surface_name;
 
-inline constexpr std::uint16_t kRenderRoleVersion = 1;
+inline constexpr std::uint16_t kRenderRoleVersion = 2;
 
 enum class RenderMessageType : std::uint16_t {
   profile_offer = 0x2000,
@@ -30,7 +31,6 @@ enum class RenderMessageType : std::uint16_t {
   frame_ready = 0x2020,
   input_regions = 0x2021,
   input = 0x2030,
-  focus = 0x2031,
   surface_intent = 0x2040,
 };
 
@@ -133,14 +133,10 @@ encode_frame_ready(const FrameReady &payload);
 encode_input_region_update(const InputRegionUpdate &payload);
 [[nodiscard]] bool decode_input_region_update(std::span<const std::byte> bytes,
                                               InputRegionUpdate &output);
-[[nodiscard]] std::array<std::byte, 56>
+[[nodiscard]] std::optional<std::vector<std::byte>>
 encode_input_event(const InputEvent &payload);
 [[nodiscard]] bool decode_input_event(std::span<const std::byte> bytes,
                                       InputEvent &output);
-[[nodiscard]] std::array<std::byte, 32>
-encode_focus_event(const FocusEvent &payload);
-[[nodiscard]] bool decode_focus_event(std::span<const std::byte> bytes,
-                                      FocusEvent &output);
 [[nodiscard]] std::array<std::byte, 48>
 encode_surface_intent(const SurfaceIntentRequest &payload);
 [[nodiscard]] bool decode_surface_intent(std::span<const std::byte> bytes,

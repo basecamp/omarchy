@@ -170,7 +170,7 @@ void RootSurfaceSessionPort::clear_surface_intent_eligibility(
   std::scoped_lock lock(root_.mutex_);
   auto *session = running_session();
   if (session != nullptr && matches(*session, expected))
-    session->clear_surface_intent_eligibility();
+    session->clear_surface_intent_eligibility(expected.key);
 }
 
 std::unique_ptr<PreparedPluginRuntime> PluginRuntimeRoot::prepare(

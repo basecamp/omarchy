@@ -13,6 +13,10 @@
 #include <string_view>
 #include <vector>
 
+namespace omarchy::plugin_runtime::bridge {
+class SurfaceEndpoint;
+}
+
 namespace omarchy::plugin_runtime::surface_host {
 
 namespace bridge = omarchy::plugin_runtime::bridge;
@@ -42,39 +46,6 @@ struct NamedSurfacePolicy {
     const omarchy::plugins::manifest::ManifestV2 &manifest,
     std::string_view surface_name);
 
-enum class InspectionAction { open_permissions, terminate };
-
-class InspectionAuthority {
-public:
-  virtual ~InspectionAuthority() = default;
-  virtual bool perform(InspectionAction action, std::string_view plugin_id,
-                       std::string_view revision_digest,
-                       std::string_view surface_name) = 0;
-};
-
-struct InspectionSnapshot {
-  std::string plugin_id;
-  std::string revision_digest;
-  std::string policy_fingerprint;
-  std::string surface_name;
-  SurfaceRole role;
-  std::uint32_t logical_width;
-  std::uint32_t logical_height;
-  std::uint32_t dpr_numerator;
-  std::uint32_t dpr_denominator;
-  std::uint64_t surface_id;
-  std::uint64_t surface_generation;
-  std::uint64_t frame_sequence;
-  std::uint64_t pace_drops;
-  std::size_t input_region_count;
-  bool render_active;
-  bool visible;
-  bool focused;
-  bool locked;
-  bool terminated;
-  std::string bridge_state;
-};
-
 class MonotonicClock {
 public:
   virtual ~MonotonicClock() = default;
@@ -91,7 +62,8 @@ public:
          bridge::RemotePluginSurface &bridge_item,
          render_session::PacketSender &render_sender,
          std::shared_ptr<bridge::RenderPacketSink> input_sink,
-         InspectionAuthority &inspection_authority, MonotonicClock &clock);
+         bridge::TrustedInputAuthority &input_authority,
+         MonotonicClock &clock);
 
   ~HostSurface();
   HostSurface(const HostSurface &) = delete;
@@ -99,17 +71,12 @@ public:
 
   [[nodiscard]] bool receive_render(
       const render_session::AuthenticatedRenderPacket &packet);
-  [[nodiscard]] bool route_input(const surface::InputEvent &event,
-                                 bool trusted_gesture);
-  [[nodiscard]] bool clear_focus();
-  [[nodiscard]] bool set_locked(bool locked);
-  [[nodiscard]] bool perform_inspection_action(InspectionAction action);
-  void peer_lost();
+  [[nodiscard]] bool route_input(bridge::HostInputEvent event);
+  [[nodiscard]] bool cancel_input(std::uint64_t device);
   void close();
 
-  [[nodiscard]] const NamedSurfacePolicy &policy() const;
   [[nodiscard]] const surface::TrustedAllocation &allocation() const;
-  [[nodiscard]] InspectionSnapshot inspection() const;
+  [[nodiscard]] bool terminated() const noexcept;
 
 private:
   HostSurface(NamedSurfacePolicy policy, permissions::ActivationBinding binding,
@@ -117,34 +84,32 @@ private:
               bridge::RemotePluginSurface &bridge_item,
               render_session::PacketSender &render_sender,
               std::shared_ptr<bridge::RenderPacketSink> input_sink,
-              InspectionAuthority &inspection_authority, MonotonicClock &clock);
+              bridge::TrustedInputAuthority &input_authority,
+              MonotonicClock &clock);
 
   [[nodiscard]] bool point_is_inside(std::uint32_t x_q16,
                                      std::uint32_t y_q16) const;
+  [[nodiscard]] bool end_input();
   [[nodiscard]] bool active() const;
   [[nodiscard]] bool apply(const surface::InputRegionUpdate &update) override;
   void unbind_input_region_router();
 
   NamedSurfacePolicy policy_;
-  permissions::ActivationBinding binding_;
   surface::TrustedAllocation allocation_;
   bridge::RemotePluginSurface &bridge_item_;
   std::shared_ptr<bridge::AuthenticatedInputTransport> input_transport_;
+  bridge::TrustedInputAuthority &input_authority_;
   render_session::HostRenderSession render_session_;
-  InspectionAuthority &inspection_authority_;
   MonotonicClock &clock_;
   std::vector<surface::TransportedInputRegion> input_regions_;
   bool input_region_router_bound_ = false;
   bool input_transport_bound_ = false;
-  std::uint64_t focus_sequence_ = 0;
   std::uint64_t last_admitted_frame_ns_ = 0;
   bool has_admitted_frame_ = false;
-  std::uint64_t pace_drops_ = 0;
-  std::uint32_t captured_pointer_button_ = 0;
-  bool touch_active_ = false;
-  bool transient_focus_active_ = false;
-  bool locked_ = false;
+  bool input_ended_ = false;
   bool terminated_ = false;
+
+  friend class omarchy::plugin_runtime::bridge::SurfaceEndpoint;
 };
 
 } // namespace omarchy::plugin_runtime::surface_host

@@ -190,14 +190,6 @@ private:
   std::string canonical;
 };
 
-class Inspection final : public surface_host::InspectionAuthority {
-public:
-  bool perform(surface_host::InspectionAction, std::string_view,
-               std::string_view, std::string_view) override {
-    return true;
-  }
-};
-
 class Clock final : public surface_host::MonotonicClock {
 public:
   std::uint64_t now_nanoseconds() const override { return 1'000'000'000; }
@@ -219,10 +211,9 @@ bridge::PublishedSurfaceAttachment published(Port &port, QString key,
 
 void trusted_geometry_is_derived_and_retryable() {
   Port port;
-  Inspection inspection;
   Clock clock;
   auto owner = bridge::SurfaceEndpointOwnerTestAccess::create(
-      inspection, clock, port.description.binding, 1, port);
+      clock, port.description.binding, 1, port);
   const QString key = QStringLiteral("opaque-current-row");
   auto slot = published(port, key);
   bridge::RemotePluginSurface remote;
@@ -255,10 +246,9 @@ void trusted_geometry_is_derived_and_retryable() {
 
 void invalid_geometry_and_context_fail_without_ownership() {
   Port port;
-  Inspection inspection;
   Clock clock;
   auto owner = bridge::SurfaceEndpointOwnerTestAccess::create(
-      inspection, clock, port.description.binding, 1, port);
+      clock, port.description.binding, 1, port);
   const QString key = QStringLiteral("opaque-exact");
   auto slot = published(port, key);
   QQuickWindow window;
@@ -313,10 +303,9 @@ void invalid_geometry_and_context_fail_without_ownership() {
 
 void duplicate_key_and_cross_slot_remote_reuse_fail() {
   Port first;
-  Inspection inspection;
   Clock clock;
   auto owner = bridge::SurfaceEndpointOwnerTestAccess::create(
-      inspection, clock, first.description.binding, 1, first);
+      clock, first.description.binding, 1, first);
   QQuickWindow window;
   bridge::RemotePluginSurface first_remote;
   bridge::RemotePluginSurface second_remote;
@@ -345,7 +334,6 @@ void duplicate_key_and_cross_slot_remote_reuse_fail() {
 }
 
 void key_and_expanded_pixel_bounds_are_exact() {
-  Inspection inspection;
   Clock clock;
   QQuickWindow window;
   bridge::RemotePluginSurface remote;
@@ -353,7 +341,7 @@ void key_and_expanded_pixel_bounds_are_exact() {
   Port oversized_port;
   auto oversized_owner =
       bridge::SurfaceEndpointOwnerTestAccess::create(
-          inspection, clock, oversized_port.description.binding, 1,
+          clock, oversized_port.description.binding, 1,
           oversized_port);
   const QString oversized_key(513, QLatin1Char('k'));
   auto oversized = published(oversized_port, oversized_key);
@@ -364,7 +352,7 @@ void key_and_expanded_pixel_bounds_are_exact() {
 
   Port exact_port;
   auto exact_owner = bridge::SurfaceEndpointOwnerTestAccess::create(
-      inspection, clock, exact_port.description.binding, 1, exact_port);
+      clock, exact_port.description.binding, 1, exact_port);
   bridge::RemotePluginSurface exact_remote;
   place(exact_remote, window);
   const QString exact_key(512, QLatin1Char('k'));
@@ -382,10 +370,9 @@ void key_and_expanded_pixel_bounds_are_exact() {
 
 void eighth_endpoint_is_accepted_and_ninth_is_rejected() {
   MultiplexPort port;
-  Inspection inspection;
   Clock clock;
   auto owner = bridge::SurfaceEndpointOwnerTestAccess::create(
-      inspection, clock, port.exact_binding, 1, port);
+      clock, port.exact_binding, 1, port);
   QQuickWindow window;
   std::vector<std::unique_ptr<bridge::RemotePluginSurface>> remotes;
   for (std::size_t index = 0; index < 9; ++index) {
@@ -414,11 +401,10 @@ void eighth_endpoint_is_accepted_and_ninth_is_rejected() {
 }
 
 void teardown_replacement_and_remote_destruction_are_exact() {
-  Inspection inspection;
   Clock clock;
   Port first(7);
   auto owner = bridge::SurfaceEndpointOwnerTestAccess::create(
-      inspection, clock, first.description.binding, 1, first);
+      clock, first.description.binding, 1, first);
   QQuickWindow window;
   auto remote = std::make_unique<bridge::RemotePluginSurface>();
   place(*remote, window);
@@ -436,7 +422,7 @@ void teardown_replacement_and_remote_destruction_are_exact() {
 
   Port second(8);
   owner = bridge::SurfaceEndpointOwnerTestAccess::create(
-      inspection, clock, second.description.binding, 2, second);
+      clock, second.description.binding, 2, second);
   auto second_slot = published(second, key, 2);
   remote = std::make_unique<bridge::RemotePluginSurface>();
   place(*remote, window);
@@ -465,10 +451,9 @@ void teardown_replacement_and_remote_destruction_are_exact() {
 void failed_endpoint_attach_is_transactional() {
   Port port;
   port.fail_attach = true;
-  Inspection inspection;
   Clock clock;
   auto owner = bridge::SurfaceEndpointOwnerTestAccess::create(
-      inspection, clock, port.description.binding, 1, port);
+      clock, port.description.binding, 1, port);
   QQuickWindow window;
   bridge::RemotePluginSurface remote;
   place(remote, window);

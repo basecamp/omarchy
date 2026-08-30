@@ -1,6 +1,7 @@
 #pragma once
 
 #include "permission_contract.hpp"
+#include "TrustedInputAuthority.h"
 
 #include <QString>
 #include <QStringView>
@@ -18,7 +19,6 @@ class SurfaceSessionPort;
 }
 
 namespace omarchy::plugin_runtime::surface_host {
-class InspectionAuthority;
 class MonotonicClock;
 } // namespace omarchy::plugin_runtime::surface_host
 
@@ -82,7 +82,6 @@ public:
 
 private:
   SurfaceEndpointOwner(
-      surface_host::InspectionAuthority &inspection,
       surface_host::MonotonicClock &clock,
       plugins::permissions::ActivationBinding binding,
       qulonglong publication_revision,
@@ -97,11 +96,11 @@ private:
   void prune_closed() noexcept;
   [[nodiscard]] bool on_owner_thread() const noexcept;
 
-  surface_host::InspectionAuthority &inspection_;
   surface_host::MonotonicClock &clock_;
   const plugins::permissions::ActivationBinding binding_;
   const qulonglong publication_revision_;
   channel::SurfaceSessionPort &session_;
+  TrustedInputAuthority input_authority_;
   const std::thread::id owner_thread_;
   std::vector<Record> records_;
 
@@ -130,15 +129,13 @@ public:
         publication_revision);
   }
   [[nodiscard]] static std::unique_ptr<SurfaceEndpointOwner>
-  create(surface_host::InspectionAuthority &inspection,
-         surface_host::MonotonicClock &clock,
+  create(surface_host::MonotonicClock &clock,
          plugins::permissions::ActivationBinding binding,
          qulonglong publication_revision,
          channel::SurfaceSessionPort &session) {
     return std::unique_ptr<SurfaceEndpointOwner>(
-        new SurfaceEndpointOwner(inspection, clock,
-                                           std::move(binding),
-                                           publication_revision, session));
+        new SurfaceEndpointOwner(clock, std::move(binding),
+                                 publication_revision, session));
   }
   [[nodiscard]] static SurfaceEndpointAttachResult
   attach(SurfaceEndpointOwner &owner,

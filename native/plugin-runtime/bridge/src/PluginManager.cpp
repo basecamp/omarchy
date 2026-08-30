@@ -52,15 +52,6 @@ public:
   }
 };
 
-class DenyInspectionAuthority final
-    : public surface_host::InspectionAuthority {
-public:
-  bool perform(surface_host::InspectionAction, std::string_view,
-               std::string_view, std::string_view) noexcept override {
-    return false;
-  }
-};
-
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
 std::atomic_bool fail_next_manager_construction = false;
 #endif
@@ -566,7 +557,7 @@ struct PluginManager::Runtime final {
       if (!live_binding || *live_binding != binding)
         return false;
       auto owner = std::unique_ptr<SurfaceEndpointOwner>(new SurfaceEndpointOwner(
-          inspection_, clock_, binding, epoch, slot->root->surface_session()));
+          clock_, binding, epoch, slot->root->surface_session()));
       slot->endpoint_owner = std::move(owner);
       slot->phase = Phase::running_published;
       if (!manager_.surfaces_.publishSurfaces(binding, std::move(declarations),
@@ -664,7 +655,6 @@ struct PluginManager::Runtime final {
   std::shared_ptr<DeliveryGate> gate_ = std::make_shared<DeliveryGate>();
   std::unique_ptr<channel::ActivationCatalog> catalog_;
   ManagerMonotonicClock clock_;
-  DenyInspectionAuthority inspection_;
   std::vector<Slot> slots_;
   QTimer scan_timer_;
   QTimer retry_timer_;
@@ -862,17 +852,6 @@ bool PluginManagerTestAccess::clockIsNondecreasing(PluginManager &manager) {
   const auto first = manager.runtime_->clock_.now_nanoseconds();
   const auto second = manager.runtime_->clock_.now_nanoseconds();
   return second >= first;
-}
-
-bool PluginManagerTestAccess::inspectionDenied(PluginManager &manager) {
-  if (!manager.runtime_)
-    return false;
-  return !manager.runtime_->inspection_.perform(
-             surface_host::InspectionAction::open_permissions, "plugin",
-             "revision", "surface") &&
-         !manager.runtime_->inspection_.perform(
-             surface_host::InspectionAction::terminate, "plugin", "revision",
-             "surface");
 }
 
 std::weak_ptr<const void>

@@ -179,20 +179,16 @@ bool HostRenderSession::handle(const wire::PacketView &packet) {
   return fail("render packet arrived in the wrong lifecycle phase");
 }
 
-bool HostRenderSession::fail(std::string detail, bool peer_loss) {
+bool HostRenderSession::fail(std::string detail) {
   if (phase_ != Phase::failed && phase_ != Phase::disconnected) {
     failure_detail_ = std::move(detail);
     sink_.disconnect();
     consumer_.reset();
     region_.reset();
     endpoint_.reset();
-    phase_ = peer_loss ? Phase::disconnected : Phase::failed;
+    phase_ = Phase::failed;
   }
   return false;
-}
-
-void HostRenderSession::peer_lost() {
-  static_cast<void>(fail("worker render peer was lost", true));
 }
 
 void HostRenderSession::close() {

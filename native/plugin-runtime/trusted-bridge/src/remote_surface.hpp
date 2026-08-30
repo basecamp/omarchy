@@ -3,11 +3,12 @@
 #include "omarchy/plugin_runtime/surface/bridge_contract.hpp"
 #include "omarchy/plugin_runtime/surface/input.hpp"
 #include "omarchy/plugin_runtime/surface/surface_state.hpp"
+#include "TrustedInputAuthority.h"
 #include "render_input_transport.hpp"
 
 #include <QImage>
+#include <QInputMethodEvent>
 #include <QList>
-#include <QMouseEvent>
 #include <QQuickPaintedItem>
 #include <QRect>
 #include <QtQml/qqmlregistration.h>
@@ -18,18 +19,11 @@
 
 namespace omarchy::plugin_runtime::bridge {
 
-struct HostPointerEvent {
-  qreal x = 0;
-  qreal y = 0;
-  Qt::MouseButton button = Qt::NoButton;
-  bool pressed = false;
-  bool application_synthesized = true;
-};
-
-class HostPointerRouter {
+class HostInputRouter {
 public:
-  virtual ~HostPointerRouter() = default;
-  virtual bool route(const HostPointerEvent &event) = 0;
+  virtual ~HostInputRouter() = default;
+  virtual bool route(HostInputEvent event) = 0;
+  virtual bool cancel(std::uint64_t device) = 0;
 };
 class HostInputRegionRouter {
 public:
@@ -84,8 +78,8 @@ public:
   bindLifetimeObserver(RemoteSurfaceLifetimeObserver &observer);
   void unbindLifetimeObserver(
       RemoteSurfaceLifetimeObserver &observer) noexcept;
-  [[nodiscard]] bool bindHostPointerRouter(HostPointerRouter &router) noexcept;
-  void unbindHostPointerRouter(HostPointerRouter &router) noexcept;
+  [[nodiscard]] bool bindHostInputRouter(HostInputRouter &router) noexcept;
+  void unbindHostInputRouter(HostInputRouter &router) noexcept;
   [[nodiscard]] bool bindHostInputRegionRouter(HostInputRegionRouter &router);
   void unbindHostInputRegionRouter(HostInputRegionRouter &router) noexcept;
   bool configure(const surface::TrustedAllocation &allocation) override;
@@ -95,13 +89,7 @@ public:
   void clear(surface::SurfaceKey surface) override;
   void disconnect() override;
 
-  bool suspend();
-  bool resume();
-  bool beginDestroy();
   bool submitInput(const surface::InputEvent &event);
-  bool submitHostRoutedPointerInput(const surface::InputEvent &event);
-  bool submitTransientFocus(const surface::FocusEvent &event);
-  bool submitFocus(const surface::FocusEvent &event);
 
   void paint(QPainter *painter) override;
 
@@ -112,8 +100,6 @@ public:
   [[nodiscard]] qulonglong surfaceId() const;
   [[nodiscard]] qulonglong surfaceGeneration() const;
   [[nodiscard]] qulonglong frameSequence() const;
-  [[nodiscard]] InspectionFailure inspectionFailure() const;
-  [[nodiscard]] const QImage &ownedImage() const;
   [[nodiscard]] const QList<QRect> &inputRegions() const;
 
 signals:
@@ -125,22 +111,32 @@ signals:
   void inputRegionsChanged();
 
 private:
+  void hoverMoveEvent(QHoverEvent *event) override;
+  void mouseMoveEvent(QMouseEvent *event) override;
   void mousePressEvent(QMouseEvent *event) override;
   void mouseReleaseEvent(QMouseEvent *event) override;
-  void routeHostPointerEvent(QMouseEvent &event, bool pressed);
+  void wheelEvent(QWheelEvent *event) override;
+  void keyPressEvent(QKeyEvent *event) override;
+  void keyReleaseEvent(QKeyEvent *event) override;
+  void inputMethodEvent(QInputMethodEvent *event) override;
+  void touchEvent(QTouchEvent *event) override;
+  void focusInEvent(QFocusEvent *event) override;
+  void focusOutEvent(QFocusEvent *event) override;
+  [[nodiscard]] bool routeHostInput(HostInputPayload payload,
+                                    const QInputEvent &event,
+                                    bool trusted_physical);
+  [[nodiscard]] bool cancelHostInput(const QInputEvent &event);
   void fail(InspectionFailure failure, bool terminal);
   void resetFrame();
   void resetInputRegions();
 
   std::shared_ptr<AuthenticatedInputTransport> transport_;
-  HostPointerRouter *host_pointer_router_ = nullptr;
+  HostInputRouter *host_input_router_ = nullptr;
   HostInputRegionRouter *host_input_region_router_ = nullptr;
   RemoteSurfaceLifetimeObserver *lifetime_observer_ = nullptr;
   std::uint64_t input_region_generation_ = 0;
   QList<QRect> input_regions_;
   std::optional<surface::SurfaceState> state_;
-  std::optional<surface::InputGate> input_gate_;
-  std::optional<surface::FocusGate> focus_gate_;
   QImage image_;
   std::uint64_t frame_sequence_ = 0;
   bool focused_ = false;

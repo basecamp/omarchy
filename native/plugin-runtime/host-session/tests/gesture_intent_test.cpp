@@ -78,13 +78,34 @@ int main() {
 
   require(authority.arm(bar, 13) && authority.detach_surface(panel),
           "detach fixture failed");
-  auto detached = request;
-  detached.input_sequence = 13;
-  require(authority.admit(detached).failure ==
+  auto surviving_source = request;
+  surviving_source.target = maximum;
+  surviving_source.input_sequence = 13;
+  require(authority.admit(surviving_source).intent.has_value(),
+          "detaching another surface erased the source gesture");
+
+  surviving_source.input_sequence = 14;
+  require(authority.arm(bar, 14),
+          "unrelated source-clear fixture did not arm");
+  authority.clear_surface_eligibility(maximum);
+  require(authority.admit(surviving_source).intent.has_value(),
+          "clearing another surface erased the source gesture");
+
+  surviving_source.input_sequence = 15;
+  require(authority.arm(bar, 15), "exact source-clear fixture did not arm");
+  authority.clear_surface_eligibility(bar);
+  require(authority.admit(surviving_source).failure ==
               host::SurfaceIntentAdmissionFailure::gesture_missing,
-          "detach retained eligibility");
+          "clearing the exact source retained gesture eligibility");
+
+  surviving_source.input_sequence = 16;
+  require(authority.arm(bar, 16) && authority.detach_surface(bar),
+          "source detach fixture failed");
+  require(authority.admit(surviving_source).failure ==
+              host::SurfaceIntentAdmissionFailure::gesture_missing,
+          "detaching the source retained gesture eligibility");
   authority.revoke();
-  require(!authority.arm(bar, 14) &&
+  require(!authority.arm(bar, 17) &&
               authority.admit(request).failure ==
                   host::SurfaceIntentAdmissionFailure::revoked,
           "revoked intent authority remained usable");

@@ -29,6 +29,34 @@ else()
   qt_standard_project_setup()
 endif()
 
+# The worker consumes Qt's private QPA API. Arch does not promise ABI stability
+# for that API, so capture the complete package version (including pkgrel) and
+# ship it as an exact runtime dependency contract.
+execute_process(
+  COMMAND /usr/bin/pacman -Q -- qt6-base
+  RESULT_VARIABLE qt6_base_query_status
+  OUTPUT_VARIABLE qt6_base_query
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET)
+if(NOT qt6_base_query_status EQUAL 0 OR
+    NOT qt6_base_query MATCHES "^qt6-base ([^ ]+)$")
+  message(FATAL_ERROR
+    "The private Qt worker requires an installed Arch qt6-base package")
+endif()
+set(OMARCHY_PLUGIN_QT6_BASE_PACKAGE_VERSION "${CMAKE_MATCH_1}")
+if(NOT OMARCHY_PLUGIN_QT6_BASE_PACKAGE_VERSION MATCHES
+    "(^|:)${Qt6_VERSION}-[0-9]+(\\.[0-9]+)*$")
+  message(FATAL_ERROR
+    "Qt CMake version ${Qt6_VERSION} does not match Arch qt6-base package ${OMARCHY_PLUGIN_QT6_BASE_PACKAGE_VERSION}")
+endif()
+
+configure_file(packaging/runtime-dependencies-v1.txt.in
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/runtime-dependencies-v1.txt"
+  @ONLY)
+install(FILES
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/runtime-dependencies-v1.txt"
+  DESTINATION "${OMARCHY_PLUGIN_INSTALL_ROOT}/metadata")
+
 qt_policy(SET QTP0001 NEW)
 qt_policy(SET QTP0004 NEW)
 

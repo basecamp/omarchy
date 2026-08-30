@@ -12,6 +12,7 @@
 #include <array>
 #include <limits>
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
 
 namespace omarchy::plugin_runtime::surface_host {
@@ -88,13 +89,6 @@ bool region_fits(const surface::TransportedInputRegion &region,
     return false;
   return region.width <= allocation.logical_width - x &&
          region.height <= allocation.logical_height - y;
-}
-
-bool is_focus_gesture(const surface::InputEvent &event) {
-  return (event.kind == surface::InputKind::pointer_button &&
-          event.state ==
-              static_cast<std::uint32_t>(surface::ButtonState::pressed)) ||
-         (event.kind == surface::InputKind::touch && event.state == 1);
 }
 
 } // namespace
@@ -193,7 +187,8 @@ std::unique_ptr<HostSurface> HostSurface::create(
     std::uint32_t dpr_denominator, bridge::RemotePluginSurface &bridge_item,
     render_session::PacketSender &render_sender,
     std::shared_ptr<bridge::RenderPacketSink> input_sink,
-    InspectionAuthority &inspection_authority, MonotonicClock &clock) {
+    bridge::TrustedInputAuthority &input_authority,
+    MonotonicClock &clock) {
   const std::string_view bound_plugin = binding.plugin.view();
   const std::string_view bound_revision = binding.revision.view();
   const std::string_view bound_policy = binding.policy_fingerprint.view();
@@ -232,7 +227,7 @@ std::unique_ptr<HostSurface> HostSurface::create(
     return nullptr;
   auto result = std::unique_ptr<HostSurface>(new HostSurface(
       std::move(policy), std::move(binding), *allocation, bridge_item,
-      render_sender, std::move(input_sink), inspection_authority, clock));
+      render_sender, std::move(input_sink), input_authority, clock));
   if (!bridge_item.bindHostInputRegionRouter(*result)) {
     result->close();
     return nullptr;
@@ -260,21 +255,22 @@ HostSurface::HostSurface(NamedSurfacePolicy policy,
                          bridge::RemotePluginSurface &bridge_item,
                          render_session::PacketSender &render_sender,
                          std::shared_ptr<bridge::RenderPacketSink> input_sink,
-                         InspectionAuthority &inspection_authority,
+                         bridge::TrustedInputAuthority &input_authority,
                          MonotonicClock &clock)
-    : policy_(std::move(policy)), binding_(std::move(binding)),
-      allocation_(allocation), bridge_item_(bridge_item),
+    : policy_(std::move(policy)), allocation_(allocation),
+      bridge_item_(bridge_item),
       input_transport_(std::make_shared<bridge::AuthenticatedInputTransport>(
-          binding_.generation, std::move(input_sink))),
-      render_session_(binding_.generation, bridge_item, render_sender,
+          binding.generation, std::move(input_sink))),
+      input_authority_(input_authority),
+      render_session_(binding.generation, bridge_item, render_sender,
                       surface::render_correlation_base(allocation.surface)),
-      inspection_authority_(inspection_authority), clock_(clock) {}
+      clock_(clock) {}
 
 HostSurface::~HostSurface() { close(); }
 
 bool HostSurface::receive_render(
     const render_session::AuthenticatedRenderPacket &packet) {
-  if (terminated_ || locked_)
+  if (terminated_)
     return false;
   bool is_frame = false;
   if (render_session_.phase() == render_session::Phase::active) {
@@ -297,8 +293,6 @@ bool HostSurface::receive_render(
         return false;
       }
       if (now - last_admitted_frame_ns_ < period) {
-        if (pace_drops_ != std::numeric_limits<std::uint64_t>::max())
-          ++pace_drops_;
         return false;
       }
     }
@@ -310,6 +304,10 @@ bool HostSurface::receive_render(
   }
   if (render_session_.phase() == render_session::Phase::failed ||
       render_session_.phase() == render_session::Phase::disconnected) {
+    const auto cancel = input_authority_.cancel(allocation_);
+    if (cancel && input_transport_bound_)
+      (void)input_transport_->submit_terminal_cancel(*cancel);
+    input_authority_.release(allocation_.surface);
     terminated_ = true;
     unbind_input_region_router();
   }
@@ -352,236 +350,101 @@ bool HostSurface::point_is_inside(std::uint32_t x_q16,
 }
 
 bool HostSurface::active() const {
-  return !terminated_ && !locked_ &&
+  return !terminated_ &&
          render_session_.phase() == render_session::Phase::active &&
          bridge_item_.connected();
 }
 
-bool HostSurface::route_input(const surface::InputEvent &event,
-                              bool trusted_gesture) {
-  if (!active() || event.surface != allocation_.surface)
+bool HostSurface::terminated() const noexcept { return terminated_; }
+
+bool HostSurface::route_input(bridge::HostInputEvent input) {
+  if (!active())
     return false;
-  const auto pressed =
-      static_cast<std::uint32_t>(surface::ButtonState::pressed);
-  const auto released =
-      static_cast<std::uint32_t>(surface::ButtonState::released);
-  const bool captured_release =
-      event.kind == surface::InputKind::pointer_button &&
-      event.state == released && captured_pointer_button_ == event.code;
-  const bool touch_continuation = event.kind == surface::InputKind::touch &&
-                                  event.state != 1 && touch_active_;
-  if (event.kind == surface::InputKind::key) {
-    if (policy_.keyboard_focus != KeyboardFocusPolicy::after_gesture ||
-        !bridge_item_.surfaceFocused())
-      return false;
-  } else if (!captured_release && !touch_continuation &&
-             !point_is_inside(event.x_q16, event.y_q16)) {
+  const bool pointer_capture = input_authority_.pointer_captured(
+      allocation_.surface, input.device);
+  const bool touch_capture = input_authority_.touch_captured(
+      allocation_.surface, input.device);
+  const bool wheel_capture = input_authority_.wheel_captured(
+      allocation_.surface, input.device);
+  const bool allowed = std::visit(
+      [&](const auto &event) {
+        using Event = std::decay_t<decltype(event)>;
+        if constexpr (std::is_same_v<Event, surface::PointerMotion> ||
+                      std::is_same_v<Event, surface::PointerButton>) {
+          return pointer_capture ||
+                 point_is_inside(event.position.x_q16, event.position.y_q16);
+        } else if constexpr (std::is_same_v<Event, surface::Wheel>) {
+          return wheel_capture ||
+                 point_is_inside(event.position.x_q16, event.position.y_q16);
+        } else if constexpr (std::is_same_v<Event, bridge::HostTouchFrame>) {
+          if (event.count > event.points.size())
+            return false;
+          if (touch_capture)
+            return true;
+          return std::ranges::all_of(
+              event.points.begin(), event.points.begin() + event.count,
+              [&](const bridge::HostTouchPoint &point) {
+                return point_is_inside(point.position.x_q16,
+                                       point.position.y_q16);
+              });
+        } else if constexpr (std::is_same_v<Event, surface::Key> ||
+                             std::is_same_v<Event, surface::TextCommit>) {
+          return policy_.keyboard_focus == KeyboardFocusPolicy::after_gesture &&
+                 input_authority_.focused_surface() == allocation_.surface;
+        } else {
+          return !event.focused ||
+                 (policy_.keyboard_focus == KeyboardFocusPolicy::after_gesture &&
+                  input_authority_.surface_has_physical_activation(
+                      allocation_.surface));
+        }
+      },
+      input.payload);
+  if (!allowed)
+    return false;
+  auto admission = input_authority_.admit(allocation_, std::move(input), true);
+  if (!admission)
+    return false;
+  const bool focus_after_gesture =
+      admission->trusted_gesture &&
+      policy_.keyboard_focus == KeyboardFocusPolicy::after_gesture;
+  if (!bridge_item_.submitInput(admission->event)) {
+    close();
     return false;
   }
-  if (policy_.keyboard_focus == KeyboardFocusPolicy::none &&
-      event.kind == surface::InputKind::pointer_button) {
-    if (event.state == pressed) {
-      if (!trusted_gesture || captured_pointer_button_ != 0 ||
-          focus_sequence_ == std::numeric_limits<std::uint64_t>::max())
-        return false;
-      ++focus_sequence_;
-      if (!bridge_item_.submitTransientFocus({.surface = allocation_.surface,
-                                              .sequence = focus_sequence_,
-                                              .focused = true})) {
-        close();
-        return false;
-      }
-      transient_focus_active_ = true;
-      if (!bridge_item_.submitHostRoutedPointerInput(event)) {
-        close();
-        return false;
-      }
-      captured_pointer_button_ = event.code;
-      return true;
-    }
-    if (event.state != released || trusted_gesture ||
-        captured_pointer_button_ != event.code)
-      return false;
-    if (!bridge_item_.submitHostRoutedPointerInput(event)) {
-      close();
-      return false;
-    }
-    captured_pointer_button_ = 0;
-    if (focus_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
-      close();
-      return false;
-    }
-    ++focus_sequence_;
-    if (!bridge_item_.submitTransientFocus({.surface = allocation_.surface,
-                                            .sequence = focus_sequence_,
-                                            .focused = false})) {
-      close();
-      return false;
-    }
-    transient_focus_active_ = false;
-    return true;
-  }
-  if (policy_.keyboard_focus == KeyboardFocusPolicy::none &&
-      event.kind == surface::InputKind::touch) {
-    if (event.state == 1) {
-      if (!trusted_gesture || touch_active_ || event.active_touch_points == 0 ||
-          focus_sequence_ == std::numeric_limits<std::uint64_t>::max())
-        return false;
-      ++focus_sequence_;
-      if (!bridge_item_.submitTransientFocus({.surface = allocation_.surface,
-                                              .sequence = focus_sequence_,
-                                              .focused = true})) {
-        close();
-        return false;
-      }
-      transient_focus_active_ = true;
-      if (!bridge_item_.submitHostRoutedPointerInput(event)) {
-        close();
-        return false;
-      }
-      touch_active_ = event.active_touch_points != 0;
-      return true;
-    }
-    if (trusted_gesture || !touch_active_ ||
-        (event.state == 2 && event.active_touch_points == 0))
-      return false;
-    if (!bridge_item_.submitHostRoutedPointerInput(event)) {
-      close();
-      return false;
-    }
-    if (event.state == 3 || event.active_touch_points == 0)
-      touch_active_ = false;
-    if (!touch_active_) {
-      if (focus_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
-        close();
-        return false;
-      }
-      ++focus_sequence_;
-      if (!bridge_item_.submitTransientFocus({.surface = allocation_.surface,
-                                              .sequence = focus_sequence_,
-                                              .focused = false})) {
-        close();
-        return false;
-      }
-      transient_focus_active_ = false;
-    }
-    return true;
-  }
-  if (trusted_gesture) {
-    if (!is_focus_gesture(event) ||
-        focus_sequence_ == std::numeric_limits<std::uint64_t>::max())
-      return false;
-    if (policy_.keyboard_focus == KeyboardFocusPolicy::after_gesture) {
-      ++focus_sequence_;
-      if (!bridge_item_.submitFocus({.surface = allocation_.surface,
-                                     .sequence = focus_sequence_,
-                                     .focused = true}))
-        return false;
-    }
-  }
-  const bool submitted = bridge_item_.submitInput(event);
-  if (!submitted)
+  if (focus_after_gesture)
+    bridge_item_.forceActiveFocus(Qt::MouseFocusReason);
+  return true;
+}
+
+bool HostSurface::cancel_input(std::uint64_t device) {
+  if (!active() ||
+      (!input_authority_.pointer_captured(allocation_.surface, device) &&
+       !input_authority_.touch_captured(allocation_.surface, device) &&
+       !input_authority_.wheel_captured(allocation_.surface, device)))
     return false;
-  if (event.kind == surface::InputKind::pointer_button) {
-    if (event.state == pressed)
-      captured_pointer_button_ = event.code;
-    else if (event.state == released)
-      captured_pointer_button_ = 0;
-  } else if (event.kind == surface::InputKind::touch) {
-    if (event.state == 1)
-      touch_active_ = event.active_touch_points != 0;
-    else if (event.state == 3 || event.active_touch_points == 0)
-      touch_active_ = false;
+  const auto cancel = input_authority_.cancel(allocation_);
+  if (!cancel)
+    return false;
+  if (!bridge_item_.submitInput(*cancel)) {
+    close();
+    return false;
   }
   return true;
 }
 
-bool HostSurface::clear_focus() {
-  if (!active() || !bridge_item_.surfaceFocused())
-    return false;
-  if (focus_sequence_ == std::numeric_limits<std::uint64_t>::max())
-    return false;
-  ++focus_sequence_;
-  return bridge_item_.submitFocus({.surface = allocation_.surface,
-                                   .sequence = focus_sequence_,
-                                   .focused = false});
-}
-
-bool HostSurface::set_locked(bool locked) {
-  if (terminated_ || locked == locked_)
-    return false;
-  if (locked) {
-    locked_ = true;
-    captured_pointer_button_ = 0;
-    touch_active_ = false;
-    if (render_session_.phase() == render_session::Phase::active) {
-      bool focus_cleared = true;
-      if (transient_focus_active_) {
-        if (focus_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
-          focus_cleared = false;
-        } else {
-          ++focus_sequence_;
-          focus_cleared =
-              bridge_item_.submitTransientFocus({.surface = allocation_.surface,
-                                                 .sequence = focus_sequence_,
-                                                 .focused = false});
-          transient_focus_active_ = false;
-        }
-      }
-      if (bridge_item_.surfaceFocused()) {
-        if (focus_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
-          focus_cleared = false;
-        } else {
-          ++focus_sequence_;
-          focus_cleared =
-              bridge_item_.submitFocus({.surface = allocation_.surface,
-                                        .sequence = focus_sequence_,
-                                        .focused = false});
-        }
-      }
-      if (!focus_cleared || !bridge_item_.suspend()) {
-        close();
-        return false;
-      }
-    }
+bool HostSurface::end_input() {
+  if (input_ended_)
     return true;
-  }
-  if (render_session_.phase() == render_session::Phase::active &&
-      !bridge_item_.resume()) {
-    close();
-    return false;
-  }
-  locked_ = false;
-  return true;
-}
-
-bool HostSurface::perform_inspection_action(InspectionAction action) {
-  if (terminated_)
-    return false;
-  if (action == InspectionAction::terminate) {
-    close();
-    return inspection_authority_.perform(action, policy_.plugin_id,
-                                         binding_.revision.view(),
-                                         policy_.surface_name);
-  }
-  return inspection_authority_.perform(action, policy_.plugin_id,
-                                       binding_.revision.view(),
-                                       policy_.surface_name);
-}
-
-void HostSurface::peer_lost() {
-  if (terminated_)
-    return;
-  unbind_input_region_router();
-  render_session_.peer_lost();
-  captured_pointer_button_ = 0;
-  touch_active_ = false;
-  transient_focus_active_ = false;
-  terminated_ = true;
+  input_ended_ = true;
+  const auto cancel = input_authority_.cancel(allocation_);
+  return cancel && input_transport_bound_ && bridge_item_.submitInput(*cancel);
 }
 
 void HostSurface::close() {
   unbind_input_region_router();
+  if (!terminated_)
+    (void)end_input();
+  input_authority_.release(allocation_.surface);
   if (input_transport_bound_) {
     bridge_item_.unbindTransport(input_transport_);
     input_transport_bound_ = false;
@@ -589,9 +452,6 @@ void HostSurface::close() {
   if (terminated_)
     return;
   render_session_.close();
-  captured_pointer_button_ = 0;
-  touch_active_ = false;
-  transient_focus_active_ = false;
   terminated_ = true;
 }
 
@@ -603,34 +463,8 @@ void HostSurface::unbind_input_region_router() {
   input_regions_.clear();
 }
 
-const NamedSurfacePolicy &HostSurface::policy() const { return policy_; }
-
 const surface::TrustedAllocation &HostSurface::allocation() const {
   return allocation_;
-}
-
-InspectionSnapshot HostSurface::inspection() const {
-  return {.plugin_id = policy_.plugin_id,
-          .revision_digest = std::string(binding_.revision.view()),
-          .policy_fingerprint = std::string(binding_.policy_fingerprint.view()),
-          .surface_name = policy_.surface_name,
-          .role = policy_.role,
-          .logical_width = allocation_.logical_width,
-          .logical_height = allocation_.logical_height,
-          .dpr_numerator = allocation_.dpr_numerator,
-          .dpr_denominator = allocation_.dpr_denominator,
-          .surface_id = allocation_.surface.id,
-          .surface_generation = allocation_.surface.generation,
-          .frame_sequence = bridge_item_.frameSequence(),
-          .pace_drops = pace_drops_,
-          .input_region_count = input_regions_.size(),
-          .render_active =
-              render_session_.phase() == render_session::Phase::active,
-          .visible = active(),
-          .focused = bridge_item_.surfaceFocused(),
-          .locked = locked_,
-          .terminated = terminated_,
-          .bridge_state = bridge_item_.inspectionState().toStdString()};
 }
 
 } // namespace omarchy::plugin_runtime::surface_host
