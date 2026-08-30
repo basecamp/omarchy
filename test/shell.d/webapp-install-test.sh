@@ -4,6 +4,9 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
+require_command file
+require_command magick
+
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
 
@@ -122,3 +125,71 @@ grep -Fq 'must be http or https' "$tmpdir/err" ||
   fail "interactive webapp install refuses before fetching the URL" "$(cat "$tmpdir/curl-log")"
 [[ ! -e $(desktop_for Evil) ]] || fail "interactive webapp install writes no desktop file"
 pass "interactive webapp install refuses a bad URL before fetching it"
+
+# Sites commonly declare an SVG through rel="icon" without providing an
+# apple-touch-icon. The installer should discover it and store a real PNG for
+# the hicolor icon theme rather than SVG data under a misleading .png name.
+icon_stubs="$tmpdir/icon-stubs"
+mkdir -p "$icon_stubs"
+
+cat >"$tmpdir/icon-page.html" <<'HTML'
+<!doctype html>
+<html>
+  <head>
+    <link href="/favicon.svg" type="image/svg+xml" rel="icon">
+  </head>
+</html>
+HTML
+
+cat >"$tmpdir/favicon.svg" <<'SVG'
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" fill="#2296f3"/>
+</svg>
+SVG
+
+cat >"$icon_stubs/curl" <<'CURL'
+#!/bin/bash
+
+output=""
+url="${!#}"
+
+while (( $# > 0 )); do
+  case $1 in
+  -o)
+    output="$2"
+    shift 2
+    ;;
+  *) shift ;;
+  esac
+done
+
+if [[ -z $output ]]; then
+  cat "$ICON_PAGE_FIXTURE"
+elif [[ $url == "https://example.com/favicon.svg" ]]; then
+  cp "$ICON_SVG_FIXTURE" "$output"
+else
+  exit 1
+fi
+CURL
+
+cat >"$icon_stubs/gtk-update-icon-cache" <<'CACHE'
+#!/bin/bash
+exit 0
+CACHE
+
+chmod +x "$icon_stubs"/*
+
+if ICON_PAGE_FIXTURE="$tmpdir/icon-page.html" ICON_SVG_FIXTURE="$tmpdir/favicon.svg" \
+  PATH="$icon_stubs:$PATH" install_webapp "SVG Icon" "https://example.com/app" "" \
+  >"$tmpdir/out" 2>"$tmpdir/err"; then
+  :
+else
+  fail "webapp install discovers a standard SVG favicon" "$(cat "$tmpdir/err")"
+fi
+
+icon="$home/.local/share/icons/hicolor/256x256/apps/svg-icon.png"
+[[ $(file -b --mime-type "$icon") == "image/png" ]] ||
+  fail "webapp install stores the SVG favicon as a real PNG" "$(file "$icon")"
+grep -Fxq 'Icon=svg-icon' "$(desktop_for "SVG Icon")" ||
+  fail "webapp install references the converted favicon" "$(cat "$(desktop_for "SVG Icon")")"
+pass "webapp install discovers and converts a standard SVG favicon"

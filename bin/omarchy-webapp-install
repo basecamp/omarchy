@@ -50,8 +50,43 @@ install_user_icon() {
 }
 
 download_icon() {
-  curl -fsSL --max-time 10 -o "$2" "$1" 2>/dev/null &&
-    [[ -s $2 && $(file -b --mime-type "$2") == image/* ]]
+  local source_url="$1" dest="$2"
+  local temp mime_type
+
+  temp=$(mktemp) || return 1
+
+  if ! curl -fsSL --max-time 10 -o "$temp" "$source_url" 2>/dev/null || [[ ! -s $temp ]]; then
+    rm -f "$temp"
+    return 1
+  fi
+
+  mime_type=$(file -b --mime-type "$temp")
+  case $mime_type in
+  image/png)
+    mv "$temp" "$dest"
+    ;;
+  image/*)
+    if ! magick "${temp}[0]" "$dest" 2>/dev/null; then
+      rm -f "$temp" "$dest"
+      return 1
+    fi
+    rm -f "$temp"
+    ;;
+  *)
+    rm -f "$temp"
+    return 1
+    ;;
+  esac
+}
+
+link_href_for_rel() {
+  local page="$1" rel="$2"
+
+  grep -oiE '<link[^>]*>' <<<"$page" |
+    grep -iE "rel[[:space:]]*=[[:space:]]*[\"']([^\"']*[[:space:]])?$rel([[:space:]][^\"']*)?[\"']" |
+    grep -oiE "href[[:space:]]*=[[:space:]]*[\"'][^\"']+" |
+    head -1 |
+    sed -E "s/^href[[:space:]]*=[[:space:]]*[\"']//I"
 }
 
 # Chromium --app= treats javascript:, file:, and data: as a document to
@@ -88,10 +123,11 @@ fetch_site_icon() {
   origin=$(sed -E 's|^(https?://[^/]+).*|\1|' <<<"$site_url")
 
   # Prefer the site's own high-res icon (apple-touch-icon is typically 180px+),
-  # then the well-known path, then Google's favicon service as a last resort.
+  # then its standard favicon declaration, the well-known paths, and finally
+  # Google's favicon service.
   page=$(curl -fsSL --max-time 5 "$site_url" 2>/dev/null | head -c 100000 | tr '\n' ' ')
-  icon_url=$(grep -oiE "<link[^>]*rel=[\"'][^\"']*apple-touch-icon[^\"']*[\"'][^>]*>" <<<"$page" |
-    grep -oiE "href=[\"'][^\"']+" | head -1 | sed -E "s/^href=[\"']//")
+  icon_url=$(link_href_for_rel "$page" "apple-touch-icon")
+  [[ -n $icon_url ]] || icon_url=$(link_href_for_rel "$page" "icon")
 
   case $icon_url in
   http://* | https://*) ;;
@@ -102,6 +138,7 @@ fetch_site_icon() {
 
   { [[ -n $icon_url ]] && download_icon "$icon_url" "$dest"; } ||
     download_icon "$origin/apple-touch-icon.png" "$dest" ||
+    download_icon "$origin/favicon.ico" "$dest" ||
     download_icon "https://www.google.com/s2/favicons?domain=${site_url}&sz=256" "$dest"
 }
 
