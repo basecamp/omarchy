@@ -83,7 +83,9 @@ grep -F 'hyprctl dispatch "hl.dsp.dpms({ action = \"$action\", monitor = \"$INTE
 grep -F 'hyprctl monitors all -j' "$clamshell" >/dev/null
 grep -F 'omarchy-hyprland-monitor-external-active' "$clamshell" >/dev/null
 grep -F 'omarchy-hw-clamshell' "$clamshell" >/dev/null
+grep -F 'elif internal_enabled; then' "$clamshell" >/dev/null
 pass "clamshell monitor sync disables laptop output and force-recovers it"
+pass "clamshell disable reapplies when the compositor relights a flagged panel"
 
 grep -F "hyprctl dispatch 'hl.dsp.dpms({ action = \"enable\" })' >/dev/null 2>&1 || true" "$monitor_internal" >/dev/null
 grep -F 'omarchy-hyprland-monitor-laptop' "$monitor_internal" >/dev/null
