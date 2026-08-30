@@ -371,6 +371,19 @@ enable_account_services() {
   error "the website proxy for $username did not become ready"
 }
 
+disable_sddm_autologin() {
+  # Omarchy writes autologin.conf, while community images and existing systems
+  # can have an additional drop-in under another name. A late override keeps
+  # those files from silently booting into the administrator account.
+  rm -f /etc/sddm.conf.d/autologin.conf
+  install -Dm644 /dev/stdin /etc/sddm.conf.d/99-omarchy-managed-no-autologin.conf <<'CONF'
+[Autologin]
+User=
+Session=
+Relogin=false
+CONF
+}
+
 ensure_squid() {
   omarchy-pkg-add squid
   getent passwd proxy >/dev/null || error "the Squid proxy account was not installed"
@@ -417,7 +430,7 @@ add_account() {
   # Omarchy keeps autologin on encrypted single-user installs because the LUKS
   # prompt is normally the authentication boundary. Once a managed account
   # exists, booting straight into the administrator would defeat that split.
-  rm -f /etc/sddm.conf.d/autologin.conf
+  disable_sddm_autologin
 
   if (( created )); then
     echo "Created managed account $username."

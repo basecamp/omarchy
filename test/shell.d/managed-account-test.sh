@@ -85,8 +85,10 @@ grep -Fxq 'add rule inet omarchy_managed_accounts output meta skuid 1002 ip dadd
 grep -Fxq 'delete table inet omarchy_managed_accounts' <<<"$nft_config" || fail "firewall replacement removes the prior table atomically"
 pass "nftables rules isolate multiple managed accounts by UID"
 
-grep -Fq 'rm -f /etc/sddm.conf.d/autologin.conf' "$ROOT/bin/omarchy-managed" ||
-  fail "adding a managed account disables administrator autologin"
+grep -Fq '99-omarchy-managed-no-autologin.conf' "$ROOT/bin/omarchy-managed" ||
+  fail "adding a managed account overrides alternate SDDM autologin drop-ins"
+grep -A4 -F "<<'CONF'" "$ROOT/bin/omarchy-managed" | grep -Fxq 'User=' ||
+  fail "the SDDM override clears the autologin user"
 grep -Fq 'Allowed websites> ' "$ROOT/bin/omarchy-managed" ||
   fail "interactive setup asks for the initial website allowlist"
 grep -Fiq 'the Linux user and home directory were not deleted' "$ROOT/bin/omarchy-managed" ||
