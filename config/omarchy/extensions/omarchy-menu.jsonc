@@ -27,4 +27,40 @@
   // Example: replace the default About action by reusing the same id. Existing
   // fields are kept unless overridden.
   // "about": {"icon":"","label":"About","action":"omarchy-launch-or-focus-tui \"zsh -c 'fastfetch; read -k 1'\""},
+
+  // "keybindings" is the one top-level key here that is not a row id. It adds
+  // keys to the ones that drive the menu, one action at a time: what you list
+  // for an action joins its shipped keys rather than replacing them, and an
+  // action you leave out keeps them as they are. Actions are next, prev,
+  // pageNext, pagePrev, activate and back.
+  //
+  // A binding is one string, written the way ~/.config/hypr/bindings.lua writes
+  // a Hyprland one: modifiers and key joined by "+". Spacing is up to you and
+  // case does not matter, so "CTRL + J", "Ctrl+J" and "ctrl + j" are the same
+  // binding. Modifiers are SUPER, CTRL, ALT and SHIFT. The key is a name like
+  // DOWN, RETURN, PAGEUP or F5, or a single character.
+  //
+  // Binding a plain character costs you that character in search: on "back" only
+  // as the first one you type, thanks to the rule below; on any other action,
+  // every time. A modifier costs nothing, which is why the example uses CTRL.
+  //
+  // One rule about searching: a "back" binding with no modifier steps aside
+  // while you have text in the search box, so LEFT moves through what you typed
+  // rather than leaving the submenu. Give it a modifier -- "CTRL + H" -- and it
+  // stays live while you filter.
+  //
+  // Escape and Delete are handled before any of this and cannot be rebound.
+  // Backspace and Ctrl+U edit the search whenever it has text, so a binding on
+  // either only reaches you on an empty search -- which is how the shipped
+  // "back" gets Backspace. Setting an action to [] unbinds it, which is the
+  // only way to take a shipped key away.
+  //
+  // Example: add readline and vim-style navigation. The arrow keys keep working
+  // without being named here.
+  // "keybindings": {
+  //   "next":     ["CTRL + J", "CTRL + N"],
+  //   "prev":     ["CTRL + K", "CTRL + P"],
+  //   "activate": ["CTRL + L"],
+  //   "back":     ["CTRL + H"],
+  // },
 }

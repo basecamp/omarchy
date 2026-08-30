@@ -78,6 +78,37 @@ assertDeepEqual(
   [],
   'guard readers cover every command the shipped menu reads from more than one row'
 )
+
+// QML and Node reach MenuModel.js by two different doors. Node runs the
+// module.exports table at the bottom, which is free to rename what it exports;
+// QML imports the file as a JavaScript resource and sees only the top-level
+// function and var declarations, under the names they are declared with. So an
+// export alias that differs from its declaration resolves in every Node test
+// here and is undefined in the running shell -- silently, since QML reads a
+// missing property as undefined rather than throwing. That is how
+// MenuModel.defaultKeybindings left the keybinding fallback dead while the
+// tests that covered it passed.
+const modelSource = fs.readFileSync(path.join(root, 'shell/plugins/menu/MenuModel.js'), 'utf8')
+const menuQmlSource = fs.readFileSync(path.join(root, 'shell/plugins/menu/Menu.qml'), 'utf8')
+
+// Column zero is what makes a declaration top-level: everything nested is
+// indented, so an inner `var` cannot be mistaken for one QML can see.
+const topLevelNames = new Set(
+  [...modelSource.matchAll(/^(?:function|var|let|const)\s+([A-Za-z_$][\w$]*)/gm)].map(match => match[1])
+)
+// The import line names the file, not a property: `import "MenuModel.js" as
+// MenuModel` would otherwise be read as a reference to a member called `js`.
+const referencedNames = [...new Set(
+  [...menuQmlSource.replace(/^\s*import\s+.*$/gm, '').matchAll(/\bMenuModel\.([A-Za-z_$][\w$]*)/g)]
+    .map(match => match[1])
+)].sort()
+
+assert(referencedNames.length > 0, 'menu QML reaches MenuModel by name at all')
+assertDeepEqual(
+  referencedNames.filter(name => !topLevelNames.has(name)),
+  [],
+  'every MenuModel name Menu.qml references is a top-level declaration, not only an export alias'
+)
 JS
 
 prelude() {

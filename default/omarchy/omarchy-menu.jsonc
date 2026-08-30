@@ -19,6 +19,23 @@
   //                  goes dim, takes a ✓ and can no longer be selected. Install
   //                  rows use it so software already on the machine reads as
   //                  installed instead of vanishing from the list.
+  //
+  // "keybindings" is menu-wide configuration rather than a row, and is the one
+  // top-level key here that is not an ID. See docs/menu.md.
+
+  // Keys that drive the menu. The user extension adds to these one action at a
+  // time: the keys it lists for an action join the ones here rather than
+  // replacing them, and an action it writes as [] is unbound outright. Escape,
+  // Delete and the filter-editing keys are handled ahead of these and cannot be
+  // rebound.
+  "keybindings": {
+    "next":     ["DOWN"],
+    "prev":     ["UP"],
+    "pageNext": ["PAGEDOWN"],
+    "pagePrev": ["PAGEUP"],
+    "activate": ["RETURN", "ENTER", "RIGHT"],
+    "back":     ["BACKSPACE", "LEFT"],
+  },
 
   // Root Menu
   "apps": {"icon":"󰀻","label":"Apps","aliases":["app","applications"],"provider":"apps"},

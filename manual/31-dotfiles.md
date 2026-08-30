@@ -56,6 +56,21 @@ The Omarchy menu (`Super + Space`) can be extended with your own rows by editing
 
 Reuse an existing id and you override that row instead of adding a new one. The file ships with all the available fields documented as comments.
 
+### Changing how you move around the menu
+
+The same file decides which keys drive the menu. Add a `keybindings` block to give an action extra keys — this adds the readline and vim ones alongside the arrow keys, which keep working:
+
+```jsonc
+"keybindings": {
+  "next": ["CTRL + J", "CTRL + N"],
+  "prev": ["CTRL + K", "CTRL + P"],
+}
+```
+
+Bindings are written the same way as your Hyprland ones in `~/.config/hypr/bindings.lua` — modifiers and key joined by `+`, using `SUPER`, `CTRL`, `ALT` and `SHIFT`. Spacing and capitalization are up to you: `CTRL + J`, `Ctrl+J` and `ctrl + j` all mean the same thing.
+
+The actions are `next`, `prev`, `pageNext`, `pagePrev`, `activate` and `back`. What you list is added to what Omarchy ships, so you only name the keys you want to gain; leave an action out and it stays as shipped. To take a key away, set the action to `[]`, which unbinds it completely. One rule is worth knowing: a `back` binding with no modifier goes quiet while you have something typed in the search box, so `LEFT` moves through your text instead of leaving the menu — give it a modifier like `CTRL + H` and it keeps working while you search. Escape always closes the menu and can't be reassigned; Backspace edits your search whenever there's something typed in it. The menu picks the change up as soon as you save.
+
 ### Adding your own shell exports, functions, and aliases
 
 Omarchy ships with a bunch of ergonomic aliases and helpful functions, but it's very common to want to add your own. You should add both aliases, functions, and exports in `~/.bashrc`. This file will not be overwritten on updates. If you want to change any of the Omarchy defaults, you can also safely add them here.
