@@ -39,11 +39,15 @@ public:
     activation_ = root_ / "activation";
     revisions_ = root_ / "revisions";
     state_ = root_ / "state";
+    authority_ = root_ / "authority";
     std::filesystem::create_directory(activation_);
     std::filesystem::create_directory(revisions_);
     std::filesystem::create_directory(state_);
+    std::filesystem::create_directory(authority_);
     std::filesystem::create_directory(revisions_ / "active");
     std::filesystem::create_directory(state_ / "plugin-state");
+    require(::chmod((state_ / "plugin-state").c_str(), 0700) == 0,
+            "state permissions failed");
     write(revisions_ / "active" / "identity",
           std::string(kPlugin) + "\n" + kRevision + "\n");
     write(activation_ / "current", record());
@@ -96,12 +100,16 @@ public:
     return revisions_;
   }
   [[nodiscard]] const std::filesystem::path &state() const { return state_; }
+  [[nodiscard]] const std::filesystem::path &authority() const {
+    return authority_;
+  }
 
 private:
   std::filesystem::path root_;
   std::filesystem::path activation_;
   std::filesystem::path revisions_;
   std::filesystem::path state_;
+  std::filesystem::path authority_;
 };
 
 std::string read_relative(int directory_fd, std::string_view name) {
@@ -182,11 +190,13 @@ struct OpenRoots {
   int activation = -1;
   int revisions = -1;
   int state = -1;
+  int authority = -1;
 
   explicit OpenRoots(const TemporaryTree &tree)
       : activation(tree.open_directory(tree.activation())),
         revisions(tree.open_directory(tree.revisions())),
-        state(tree.open_directory(tree.state())) {}
+        state(tree.open_directory(tree.state())),
+        authority(tree.open_directory(tree.authority())) {}
   ~OpenRoots() {
     if (activation >= 0)
       ::close(activation);
@@ -194,15 +204,29 @@ struct OpenRoots {
       ::close(revisions);
     if (state >= 0)
       ::close(state);
+    if (authority >= 0)
+      ::close(authority);
   }
 };
 
+host::FilesystemIdentity identity(int descriptor) {
+  struct stat metadata {};
+  require(::fstat(descriptor, &metadata) == 0, "identity fstat failed");
+  return {.device = static_cast<std::uint64_t>(metadata.st_dev),
+          .inode = static_cast<std::uint64_t>(metadata.st_ino)};
+}
+
 host::ActivationResult load(const TemporaryTree &tree,
                             DescriptorVerifier &verifier,
-                            Authority &authority) {
+                            Authority &authority,
+                            std::optional<host::FilesystemIdentity>
+                                authority_root = std::nullopt,
+                            std::string expected_state = "plugin-state") {
   OpenRoots roots(tree);
   host::ActivationSource source(roots.activation, roots.revisions, roots.state,
-                                verifier, authority, ::getuid());
+                                verifier, authority,
+                                authority_root.value_or(identity(roots.authority)),
+                                std::move(expected_state), ::getuid());
   // ActivationSource owns duplicates rather than borrowing caller descriptors.
   ::close(std::exchange(roots.activation, -1));
   ::close(std::exchange(roots.revisions, -1));
@@ -338,9 +362,48 @@ void symlinks_and_aliases_are_rejected() {
     Authority authority;
     host::ActivationSource source(roots.activation, roots.revisions,
                                   roots.revisions, verifier, authority,
+                                  identity(roots.authority), "plugin-state",
                                   ::getuid());
     require(source.load("current").error == host::ActivationError::root_alias,
             "aliased revision/state roots were accepted");
+  }
+}
+
+void grant_authority_aliases_are_rejected() {
+  {
+    TemporaryTree tree;
+    OpenRoots roots(tree);
+    DescriptorVerifier verifier;
+    Authority authority;
+    require(load(tree, verifier, authority, identity(roots.activation)).error ==
+                host::ActivationError::root_alias,
+            "grant authority aliased activation root");
+    require(load(tree, verifier, authority, identity(roots.revisions)).error ==
+                host::ActivationError::root_alias,
+            "grant authority aliased revision root");
+    require(load(tree, verifier, authority, identity(roots.state)).error ==
+                host::ActivationError::root_alias,
+            "grant authority aliased state root");
+  }
+  {
+    TemporaryTree tree;
+    const int selected = tree.open_directory(tree.revisions() / "active");
+    DescriptorVerifier verifier;
+    Authority authority;
+    const auto result = load(tree, verifier, authority, identity(selected));
+    ::close(selected);
+    require(result.error == host::ActivationError::revision_state_alias,
+            "grant authority aliased selected revision");
+  }
+  {
+    TemporaryTree tree;
+    const int selected = tree.open_directory(tree.state() / "plugin-state");
+    DescriptorVerifier verifier;
+    Authority authority;
+    const auto result = load(tree, verifier, authority, identity(selected));
+    ::close(selected);
+    require(result.error == host::ActivationError::revision_state_alias,
+            "grant authority aliased selected state");
   }
 }
 
@@ -363,6 +426,26 @@ void every_authority_inode_must_be_distinct() {
 }
 
 void identity_policy_and_mode_mismatches_are_rejected() {
+  {
+    TemporaryTree tree;
+    std::filesystem::create_directory(tree.state() / "other-state");
+    require(::chmod((tree.state() / "other-state").c_str(), 0700) == 0,
+            "alternate state permissions failed");
+    TemporaryTree::write(tree.activation() / "current",
+                         TemporaryTree::record(7, "active", "other-state"));
+    DescriptorVerifier verifier;
+    Authority authority;
+    require(load(tree, verifier, authority).error ==
+                host::ActivationError::record_invalid &&
+                verifier.calls == 0 && authority.calls == 0,
+            "activation record selected an unexpected state component");
+    DescriptorVerifier expected_verifier;
+    Authority expected_authority;
+    require(load(tree, expected_verifier, expected_authority, std::nullopt,
+                 "other-state")
+                .snapshot.has_value(),
+            "activation rejected its explicitly bound state component");
+  }
   {
     TemporaryTree tree;
     TemporaryTree::write(tree.revisions() / "active" / "identity",
@@ -420,6 +503,29 @@ void identity_policy_and_mode_mismatches_are_rejected() {
                 host::ActivationError::root_untrusted,
             "group-writable state root was accepted");
   }
+  for (const mode_t mode : {mode_t{0755}, mode_t{0750}, mode_t{04700},
+                            mode_t{02700}, mode_t{01700}}) {
+    TemporaryTree tree;
+    require(::chmod((tree.state() / "plugin-state").c_str(), mode) == 0,
+            "selected state mode mutation failed");
+    DescriptorVerifier verifier;
+    Authority authority;
+    require(load(tree, verifier, authority).error ==
+                host::ActivationError::state_unavailable,
+            "selected state with non-0700 mode was accepted");
+  }
+  {
+    TemporaryTree tree;
+    struct stat metadata {};
+    require(::stat((tree.state() / "plugin-state").c_str(), &metadata) == 0 &&
+                metadata.st_uid == ::getuid() &&
+                (metadata.st_mode & 0777) == 0700,
+            "valid selected state does not have the exact trusted uid/mode");
+    DescriptorVerifier verifier;
+    Authority authority;
+    require(load(tree, verifier, authority).snapshot.has_value(),
+            "exact trusted uid and 0700 selected state were rejected");
+  }
 }
 
 } // namespace
@@ -429,6 +535,7 @@ int main() {
     happy_path_and_revocation();
     path_swaps_do_not_retarget_descriptors();
     symlinks_and_aliases_are_rejected();
+    grant_authority_aliases_are_rejected();
     every_authority_inode_must_be_distinct();
     identity_policy_and_mode_mismatches_are_rejected();
     std::cout << "activation snapshot tests passed\n";

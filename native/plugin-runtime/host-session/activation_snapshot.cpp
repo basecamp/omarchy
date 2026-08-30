@@ -240,11 +240,15 @@ ActivationSource::ActivationSource(int activation_root_fd, int revision_root_fd,
                                    int state_root_fd,
                                    const RevisionVerifier &revision_verifier,
                                    const GrantAuthority &grant_authority,
+                                   FilesystemIdentity grant_authority_root,
+                                   std::string expected_state_directory,
                                    std::uint32_t trusted_uid)
     : activation_root_(::fcntl(activation_root_fd, F_DUPFD_CLOEXEC, 0)),
       revision_root_(::fcntl(revision_root_fd, F_DUPFD_CLOEXEC, 0)),
       state_root_(::fcntl(state_root_fd, F_DUPFD_CLOEXEC, 0)),
       revision_verifier_(revision_verifier), grant_authority_(grant_authority),
+      grant_authority_root_(grant_authority_root),
+      expected_state_directory_(std::move(expected_state_directory)),
       trusted_uid_(trusted_uid) {}
 
 ActivationResult ActivationSource::load(std::string_view record_name) const {
@@ -258,7 +262,7 @@ ActivationResult ActivationSource::load(std::string_view record_name) const {
   if (!opened_record)
     return failure(read_error);
   const auto record = parse_record(opened_record->bytes);
-  if (!record)
+  if (!record || record->state_directory != expected_state_directory_)
     return failure(ActivationError::record_invalid);
 
   struct stat activation_root{}, revision_root{}, state_root{};
@@ -272,7 +276,8 @@ ActivationResult ActivationSource::load(std::string_view record_name) const {
     return failure(ActivationError::root_untrusted);
   const std::array root_identities{identity_of(activation_root),
                                    identity_of(revision_root),
-                                   identity_of(state_root)};
+                                   identity_of(state_root),
+                                   grant_authority_root_};
   if (!distinct_authority_objects(root_identities))
     return failure(ActivationError::root_alias);
 
@@ -289,11 +294,13 @@ ActivationResult ActivationSource::load(std::string_view record_name) const {
     return failure(ActivationError::revision_state_alias);
   if (!trusted_metadata(revision_metadata, trusted_uid_, S_IFDIR))
     return failure(ActivationError::revision_unavailable);
-  if (!trusted_metadata(state_metadata, trusted_uid_, S_IFDIR))
+  if (!trusted_metadata(state_metadata, trusted_uid_, S_IFDIR) ||
+      (state_metadata.st_mode & 07777) != 0700)
     return failure(ActivationError::state_unavailable);
   const std::array authority_identities{
       root_identities[0], root_identities[1], root_identities[2],
-      identity_of(revision_metadata), identity_of(state_metadata)};
+      root_identities[3], identity_of(revision_metadata),
+      identity_of(state_metadata)};
   if (!distinct_authority_objects(authority_identities))
     return failure(ActivationError::revision_state_alias);
 

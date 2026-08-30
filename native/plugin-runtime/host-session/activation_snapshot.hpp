@@ -140,6 +140,8 @@ public:
   ActivationSource(int activation_root_fd, int revision_root_fd,
                    int state_root_fd, const RevisionVerifier &revision_verifier,
                    const GrantAuthority &grant_authority,
+                   FilesystemIdentity grant_authority_root,
+                   std::string expected_state_directory,
                    std::uint32_t trusted_uid);
 
   [[nodiscard]] ActivationResult load(std::string_view record_name) const;
@@ -150,6 +152,8 @@ private:
   OwnedDescriptor state_root_;
   const RevisionVerifier &revision_verifier_;
   const GrantAuthority &grant_authority_;
+  FilesystemIdentity grant_authority_root_;
+  std::string expected_state_directory_;
   std::uint32_t trusted_uid_;
 };
 
