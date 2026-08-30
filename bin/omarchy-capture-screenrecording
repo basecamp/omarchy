@@ -352,6 +352,17 @@ start_screenrecording() {
   fi
 }
 
+# Drop the sidecar only if it still names this recording. A stop that sits in
+# finalize (measure + prompt) can outlive a new start writing a different path.
+release_recording_file() {
+  local filename=$1
+  local current
+  current=$(cat "$RECORDING_FILE" 2>/dev/null) || true
+  if [[ $current == "$filename" ]]; then
+    rm -f "$RECORDING_FILE"
+  fi
+}
+
 stop_screenrecording() {
   pkill -SIGINT -f "^gpu-screen-recorder" # SIGINT required to save video properly
 
@@ -365,12 +376,13 @@ stop_screenrecording() {
   toggle_screenrecording_indicator
   cleanup_webcam
 
+  local filename
+  filename=$(cat "$RECORDING_FILE" 2>/dev/null)
+
   if pgrep -f "^gpu-screen-recorder" >/dev/null; then
     pkill -9 -f "^gpu-screen-recorder"
     omarchy-notification-send -u critical -t 5000 "Screen recording error" "Recording process had to be force-killed. Video may be corrupted."
   else
-    local filename
-    filename=$(cat "$RECORDING_FILE" 2>/dev/null)
     finalize_recording "$filename"
     echo "$filename"
     local preview="${filename%.mp4}-preview.png"
@@ -391,7 +403,7 @@ stop_screenrecording() {
     ) &
   fi
 
-  rm -f "$RECORDING_FILE"
+  release_recording_file "$filename"
 }
 
 toggle_screenrecording_indicator() {

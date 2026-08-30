@@ -345,7 +345,28 @@ declare -f stop_screenrecording | awk '
   /finalize_recording/ { fin=NR }
   END { exit (rec && fin && rec < fin) ? 0 : 1 }
 ' || fail "stop pins the recording path before finalize"
+declare -f stop_screenrecording | grep -q 'release_recording_file "$filename"' ||
+  fail "stop drops the sidecar through release_recording_file"
 pass "stop pins the recording path before finalize"
+
+sidecar="$tmp_dir/recording-file"
+saved_recording_file=$RECORDING_FILE
+RECORDING_FILE=$sidecar
+
+echo "$tmp_dir/old.mp4" >"$sidecar"
+release_recording_file "$tmp_dir/old.mp4"
+if [[ -e $sidecar ]]; then
+  fail "release_recording_file drops the sidecar when it still names this recording"
+fi
+pass "release_recording_file drops the sidecar when it still names this recording"
+
+echo "$tmp_dir/new.mp4" >"$sidecar"
+release_recording_file "$tmp_dir/old.mp4"
+if [[ $(cat "$sidecar") != "$tmp_dir/new.mp4" ]]; then
+  fail "release_recording_file leaves the sidecar when a newer recording owns it"
+fi
+RECORDING_FILE=$saved_recording_file
+pass "release_recording_file leaves the sidecar when a newer recording owns it"
 
 cat >"$stub_bin/ffmpeg" <<'SH'
 #!/bin/bash
