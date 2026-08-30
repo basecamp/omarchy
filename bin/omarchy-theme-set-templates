@@ -690,7 +690,7 @@ if [[ -f $COLORS_FILE ]]; then
     fi
   done
 
-  if [[ $hyprland_already_exists == "false" ]]; then
+  if [[ $hyprland_already_exists == "false" || ${OMARCHY_THEME_HYPRLAND_LUA_FROM_STOCK:-0} == "1" ]]; then
     append_hyprland_toml
   fi
 
