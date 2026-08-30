@@ -64,8 +64,7 @@ struct PluginManager::Runtime final {
   enum class Phase : std::uint8_t {
     opening,
     starting,
-    running_unpublished,
-    running_published,
+    running,
     permission_changing,
     permission_disabled,
     retry_wait,
@@ -102,8 +101,8 @@ struct PluginManager::Runtime final {
     void control_received(const host_session::OwnedMessage &) override {}
     void render_rejected(host_session::RouteResult) override {}
     bool accept(host_session::AdmittedSurfaceIntent) override {
-      // A running transport is not typed publication readiness, so this
-      // transport-only composition keeps surface intents inert.
+      // Publication grants no callback-thread access to the shell model.
+      // Surface intents stay inert until they have a bounded UI mailbox.
       return false;
     }
 
@@ -634,9 +633,7 @@ struct PluginManager::Runtime final {
                        kMaximumConcurrentPermissionMutations)
       return false;
     auto *slot = exact(plugin, epoch);
-    const bool running = slot &&
-                         (slot->phase == Phase::running_unpublished ||
-                          slot->phase == Phase::running_published);
+    const bool running = slot && slot->phase == Phase::running;
     const bool review = result->kind == PermissionKind::apply_review;
     if (!slot || !slot->permissions || slot->permission_in_flight ||
         (review ? !(running || slot->phase == Phase::permission_disabled)
@@ -865,11 +862,30 @@ struct PluginManager::Runtime final {
           disable(*slot);
           return;
         }
-        slot->expected_binding.reset();
-        slot->phase = Phase::running_unpublished;
-        slot->retry_attempts = 0;
+        auto declarations = publicationDeclarations(*slot->root, *binding);
+        const std::string exact_plugin(slot->plugin);
+        if (!declarations ||
+            !publishRunning(exact_plugin, epoch, *binding,
+                            std::move(*declarations))) {
+          if (auto *current = exact(exact_plugin, epoch)) {
+            if (current->expected_binding)
+              disable(*current);
+            else
+              fail(*current);
+          }
+          return;
+        }
+        if (auto *current = exact(exact_plugin, epoch)) {
+          current->expected_binding.reset();
+          current->retry_attempts = 0;
+        }
       } catch (...) {
-        fail(*slot);
+        if (auto *current = exact(plugin, epoch)) {
+          if (current->expected_binding)
+            disable(*current);
+          else
+            fail(*current);
+        }
       }
       return;
     }
@@ -883,7 +899,63 @@ struct PluginManager::Runtime final {
     }
   }
 
-  bool publishReady(
+  static std::optional<std::vector<SurfaceProjectionModel::SurfaceDeclaration>>
+  publicationDeclarations(
+      channel::PluginRuntimeRoot &root,
+      const plugins::permissions::ActivationBinding &binding) {
+    auto descriptions = root.declared_surfaces();
+    if (!descriptions || descriptions->binding != binding ||
+        descriptions->plugin_id != binding.plugin.view())
+      return std::nullopt;
+    plugins::manifest::ManifestV2 policy_source;
+    policy_source.id = descriptions->plugin_id;
+    policy_source.canonical_surfaces = descriptions->canonical_surfaces;
+    std::vector<SurfaceProjectionModel::SurfaceDeclaration> declarations;
+    declarations.reserve(descriptions->names.size());
+    for (const auto &name : descriptions->names) {
+      const auto policy = surface_host::parse_named_surface_policy(
+          policy_source, name);
+      SurfaceProjectionModel::Role role;
+      switch (policy.role) {
+      case surface_host::SurfaceRole::bar_embedded:
+        role = SurfaceProjectionModel::Role::Bar;
+        break;
+      case surface_host::SurfaceRole::desktop_overlay:
+        role = SurfaceProjectionModel::Role::Overlay;
+        break;
+      case surface_host::SurfaceRole::panel:
+        role = SurfaceProjectionModel::Role::Panel;
+        break;
+      }
+      SurfaceProjectionModel::BarSection section;
+      switch (policy.default_bar_section) {
+      case surface_host::BarSection::unspecified:
+        section = SurfaceProjectionModel::BarSection::Unspecified;
+        break;
+      case surface_host::BarSection::left:
+        section = SurfaceProjectionModel::BarSection::Left;
+        break;
+      case surface_host::BarSection::center:
+        section = SurfaceProjectionModel::BarSection::Center;
+        break;
+      case surface_host::BarSection::right:
+        section = SurfaceProjectionModel::BarSection::Right;
+        break;
+      }
+      declarations.push_back(
+          {.surface_name = policy.surface_name,
+           .role = role,
+           .screen_name = {},
+           .initially_visible = false,
+           .maximum_width = policy.maximum_width,
+           .maximum_height = policy.maximum_height,
+           .dynamic_input_regions = policy.dynamic_input_regions,
+           .default_bar_section = section});
+    }
+    return declarations;
+  }
+
+  bool publishRunning(
       std::string_view plugin, std::uint64_t epoch,
       const plugins::permissions::ActivationBinding &binding,
       std::vector<SurfaceProjectionModel::SurfaceDeclaration> declarations)
@@ -891,35 +963,50 @@ struct PluginManager::Runtime final {
     if (QThread::currentThread() != manager_.thread() || epoch == 0)
       return false;
     auto *slot = exact(plugin, epoch);
-    if (slot == nullptr || slot->phase != Phase::running_unpublished ||
+    if (slot == nullptr || slot->phase != Phase::starting ||
         slot->plugin != binding.plugin.view() || !slot->root || !slot->hook ||
         slot->endpoint_owner ||
         (slot->expected_binding && *slot->expected_binding != binding))
       return false;
     const auto rollback = [&]() noexcept {
-      slot->phase = Phase::running_unpublished;
-      if (slot->endpoint_owner)
-        slot->endpoint_owner->close_all();
+      auto *current = exact(plugin, epoch);
+      if (current) {
+        current->phase = Phase::starting;
+        if (current->endpoint_owner)
+          current->endpoint_owner->close_all();
+        current->endpoint_owner.reset();
+      }
       try {
         static_cast<void>(manager_.surfaces_.withdrawSurfaces(binding));
       } catch (...) {
       }
-      slot->endpoint_owner.reset();
     };
     try {
       const auto live_binding = slot->root->session_binding();
       if (!live_binding || *live_binding != binding)
         return false;
+      if (declarations.empty()) {
+        slot->phase = Phase::running;
+        return true;
+      }
       auto owner = std::unique_ptr<SurfaceEndpointOwner>(new SurfaceEndpointOwner(
           clock_, binding, epoch, slot->root->surface_session()));
       slot->endpoint_owner = std::move(owner);
-      slot->phase = Phase::running_published;
+      slot->phase = Phase::running;
       if (!manager_.surfaces_.publishSurfaces(binding, std::move(declarations),
                                               epoch)) {
         rollback();
         return false;
       }
-      return true;
+      const auto *published = exact(plugin, epoch);
+      if (published && published->phase == Phase::running &&
+          published->endpoint_owner && published->root) {
+        const auto exact_binding = published->root->session_binding();
+        if (exact_binding && *exact_binding == binding)
+          return true;
+      }
+      rollback();
+      return false;
     } catch (...) {
       rollback();
       return false;
@@ -1068,10 +1155,8 @@ PluginManagerTestAccess::runtimeSlots(const PluginManager &manager) {
                       .starting = slot.phase ==
                                   PluginManager::Runtime::Phase::starting,
                       .preparing = slot.preparing,
-                      .running_unpublished =
-                          slot.phase == PluginManager::Runtime::Phase::running_unpublished,
-                      .running_published =
-                          slot.phase == PluginManager::Runtime::Phase::running_published,
+                      .running =
+                          slot.phase == PluginManager::Runtime::Phase::running,
                       .permission_in_flight = slot.permission_in_flight,
                       .permission_changing =
                           slot.phase == PluginManager::Runtime::Phase::permission_changing,
@@ -1196,15 +1281,6 @@ bool PluginManagerTestAccess::deliverLifecycle(
   } catch (...) {
     return false;
   }
-}
-
-bool PluginManagerTestAccess::publishReady(
-    PluginManager &manager, std::string_view plugin, std::uint64_t epoch,
-    const plugins::permissions::ActivationBinding &binding,
-    std::vector<SurfaceProjectionModel::SurfaceDeclaration> declarations) {
-  return manager.runtime_ && manager.runtime_->publishReady(
-                                 plugin, epoch, binding,
-                                 std::move(declarations));
 }
 
 bool PluginManagerTestAccess::clockIsNondecreasing(PluginManager &manager) {
@@ -1376,7 +1452,7 @@ bool PluginManager::attach(const QString &surface_key,
         runtime_->slots_, plugin, {},
         [](const Runtime::Slot &slot) { return slot.plugin; });
     if (found == runtime_->slots_.end() || found->plugin != plugin ||
-        found->phase != Runtime::Phase::running_published ||
+        found->phase != Runtime::Phase::running ||
         found->epoch != published->publication_revision_ || !found->root ||
         !found->endpoint_owner)
       return false;

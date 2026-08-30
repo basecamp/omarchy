@@ -248,6 +248,24 @@ PluginRuntimeRoot::session_binding() const {
   return session ? std::optional(session->binding()) : std::nullopt;
 }
 
+std::optional<PluginRuntimeRoot::DeclaredSurfaceSet>
+PluginRuntimeRoot::declared_surfaces() const noexcept {
+  try {
+    std::scoped_lock lock(mutex_);
+    const auto *session = running_session_unlocked();
+    if (session == nullptr)
+      return std::nullopt;
+    return DeclaredSurfaceSet{
+        .binding = session->binding(),
+        .plugin_id = session->manifest().id,
+        .names = session->manifest().surface_names,
+        .canonical_surfaces = session->manifest().canonical_surfaces,
+    };
+  } catch (...) {
+    return std::nullopt;
+  }
+}
+
 SurfaceSessionPort &
 PluginRuntimeRoot::surface_session() noexcept {
   return *surface_session_;

@@ -123,8 +123,7 @@ public:
     bool opening = false;
     bool starting = false;
     bool preparing = false;
-    bool running_unpublished = false;
-    bool running_published = false;
+    bool running = false;
     bool permission_in_flight = false;
     bool permission_changing = false;
     bool permission_disabled = false;
@@ -173,10 +172,6 @@ public:
   [[nodiscard]] static bool deliverLifecycle(
       PluginManager &manager, std::string_view plugin, std::uint64_t epoch,
       std::uint8_t state, std::uint8_t error);
-  [[nodiscard]] static bool publishReady(
-      PluginManager &manager, std::string_view plugin, std::uint64_t epoch,
-      const plugins::permissions::ActivationBinding &binding,
-      std::vector<SurfaceProjectionModel::SurfaceDeclaration> declarations);
   [[nodiscard]] static bool clockIsNondecreasing(PluginManager &manager);
   [[nodiscard]] static std::optional<host_session::AuthorityView>
   permissionView(PluginManager &manager, std::string_view plugin,

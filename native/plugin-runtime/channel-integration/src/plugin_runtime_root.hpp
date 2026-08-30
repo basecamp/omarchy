@@ -13,6 +13,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace omarchy::plugin_runtime::bridge {
 class PluginManager;
@@ -63,6 +64,14 @@ public:
 private:
   [[nodiscard]] std::optional<permissions::ActivationBinding>
   session_binding() const;
+  struct DeclaredSurfaceSet final {
+    permissions::ActivationBinding binding;
+    std::string plugin_id;
+    std::vector<std::string> names;
+    std::string canonical_surfaces;
+  };
+  [[nodiscard]] std::optional<DeclaredSurfaceSet>
+  declared_surfaces() const noexcept;
   [[nodiscard]] SurfaceSessionPort &surface_session() noexcept;
   [[nodiscard]] PluginSession *session_unlocked() const noexcept;
   [[nodiscard]] PluginSession *running_session_unlocked() const noexcept;

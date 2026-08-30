@@ -557,21 +557,6 @@ observed(const std::vector<bridge::PluginManagerTestAccess::SlotObservation>
   return *found;
 }
 
-std::vector<bridge::SurfaceProjectionModel::SurfaceDeclaration>
-barDeclaration() {
-  using Model = bridge::SurfaceProjectionModel;
-  std::vector<Model::SurfaceDeclaration> declarations;
-  declarations.push_back({.surface_name = "bar",
-                          .role = Model::Role::Bar,
-                          .screen_name = {},
-                          .initially_visible = false,
-                          .maximum_width = 64,
-                          .maximum_height = 64,
-                          .dynamic_input_regions = false,
-                          .default_bar_section = Model::BarSection::Right});
-  return declarations;
-}
-
 QString barSurfaceKey(bridge::PluginManager &manager,
                       std::string_view plugin) {
   using Model = bridge::SurfaceProjectionModel;
@@ -771,7 +756,7 @@ void singleton_boundary_is_inert_and_not_configurable() {
   }
   bridge::RemotePluginSurface remote;
   require(!manager.attach(QStringLiteral("missing"), &remote),
-          "inert singleton accepted an unpublished surface");
+          "inert singleton accepted a surface without runtime authority");
   QCoreApplication::processEvents();
   require(!manager.available(),
           "test-only inert singleton unexpectedly installed a runtime");
@@ -836,7 +821,7 @@ void last_good_reconciliation_and_stale_callback_are_fail_closed() {
   bridge::PluginManagerTestAccess::installRuntime(manager, fixture.bootstrap());
   require(bridge::PluginManagerTestAccess::scanRuntime(manager) &&
               manager.available() && manager.count() == 0,
-          "first good catalog did not establish unpublished service health");
+          "first good catalog did not establish service health");
   require(await([&] {
             bridge::PluginManagerTestAccess::drainRuntime(manager);
             const auto observations =
@@ -927,7 +912,7 @@ void last_good_reconciliation_and_stale_callback_are_fail_closed() {
           "stale hook callback altered its replacement or published QML");
   bridge::RemotePluginSurface remote;
   require(!manager.attach(QStringLiteral("anything"), &remote),
-          "running-unpublished manager admitted attachment without readiness");
+          "manager admitted attachment without authenticated readiness");
 }
 
 void bounded_mailbox_coalesces_and_recovers_without_backoff() {
@@ -1163,7 +1148,7 @@ void lifecycle_mailbox_keeps_latest_exact_terminal_state() {
               static_cast<std::uint8_t>(host::SessionState::running),
               static_cast<std::uint8_t>(host::SessionError::none)) &&
               manager->count() == 0,
-          "stale lifecycle epoch altered unpublished manager state");
+          "stale lifecycle epoch altered manager publication state");
 }
 
 void blocked_replacement_preserves_independent_plugin() {
@@ -1312,8 +1297,7 @@ void manager_owns_permission_generation_replacement() {
       bridge::PluginManagerTestAccess::drainRuntime(*manager);
       const auto observations =
           bridge::PluginManagerTestAccess::runtimeSlots(*manager);
-      return observations.size() == 1 &&
-             observations.front().running_unpublished;
+      return observations.size() == 1 && observations.front().running;
     });
   };
   const auto run_preparation = [&] {
@@ -1381,10 +1365,8 @@ void manager_owns_permission_generation_replacement() {
   auto slot = current_slot();
   require(current_view().active->binding == first_binding,
           "permission replacement started the wrong initial binding");
-  require(bridge::PluginManagerTestAccess::publishReady(
-              *manager, plugin, slot.epoch, first_binding, barDeclaration()) &&
-              manager->count() == 1,
-          "permission replacement fixture did not publish G1");
+  require(manager->count() == 1,
+          "permission replacement fixture did not publish G1 automatically");
   const auto stale_surface_key = barSurfaceKey(*manager, plugin);
   require(!stale_surface_key.isEmpty(),
           "permission replacement fixture lacked a G1 surface key");
@@ -1422,8 +1404,7 @@ void manager_owns_permission_generation_replacement() {
               current_slot().permission_in_flight,
           "invalid selector did not enter the bounded permission lane");
   run_job();
-  require(current_slot().epoch == slot.epoch &&
-              current_slot().running_published &&
+  require(current_slot().epoch == slot.epoch && current_slot().running &&
               !current_slot().permission_in_flight && manager->count() == 1,
           "invalid selector fenced or replaced live G1");
   require(bridge::PluginManagerTestAccess::revokePermission(
@@ -1431,16 +1412,16 @@ void manager_owns_permission_generation_replacement() {
               view.authority_slots.sequence),
           "dynamic permission selector did not enter Manager ingress");
   run_job();
-  require(current_slot().epoch == slot.epoch &&
-              current_slot().running_published && manager->count() == 1,
+  require(current_slot().epoch == slot.epoch && current_slot().running &&
+              manager->count() == 1,
           "invalid dynamic selector fenced or replaced live G1");
   require(bridge::PluginManagerTestAccess::revokePermission(
               *manager, plugin, slot.epoch, notifications,
               view.authority_slots.sequence + 1),
           "stale permission request was not queued for authoritative check");
   run_job();
-  require(current_slot().epoch == slot.epoch &&
-              current_slot().running_published && manager->count() == 1,
+  require(current_slot().epoch == slot.epoch && current_slot().running &&
+              manager->count() == 1,
           "stale permission sequence fenced or replaced live G1");
 
   require(bridge::PluginManagerTestAccess::revokePermission(
@@ -1470,10 +1451,7 @@ void manager_owns_permission_generation_replacement() {
               bridge::PluginManagerTestAccess::permissionCount(*manager) == 1 &&
               manager->count() == 0 && !live_remote.connected() &&
               reentrant_attach_attempted && !reentrant_attach_succeeded &&
-              !manager->attach(stale_surface_key, &stale_remote) &&
-              !bridge::PluginManagerTestAccess::publishReady(
-                  *manager, plugin, slot.epoch, first_binding,
-                  barDeclaration()),
+              !manager->attach(stale_surface_key, &stale_remote),
           "pre-drain fence did not retain only the stopped-admission G1 root");
   notification_backend->release("status");
   mutation.join();
@@ -1493,10 +1471,8 @@ void manager_owns_permission_generation_replacement() {
   require(revoked_optional != view.active->grants.values().end() &&
               revoked_optional->state == permissions::GrantState::revoked,
           "optional revoke did not persist revoked authority");
-  require(bridge::PluginManagerTestAccess::publishReady(
-              *manager, plugin, slot.epoch, expected_binding,
-              barDeclaration()),
-          "revoked optional generation did not publish");
+  require(manager->count() == 1,
+          "revoked optional generation did not publish automatically");
   bridge::RemotePluginSurface denied_remote(permission_window.contentItem());
   denied_remote.setWidth(64);
   denied_remote.setHeight(64);
@@ -1529,10 +1505,8 @@ void manager_owns_permission_generation_replacement() {
   expected_binding.generation = first_binding.generation + 2;
   require(view.active->binding == expected_binding,
           "optional regrant did not commit the next exact generation");
-  require(bridge::PluginManagerTestAccess::publishReady(
-              *manager, plugin, slot.epoch, expected_binding,
-              barDeclaration()),
-          "regranted optional generation did not publish");
+  require(manager->count() == 1,
+          "regranted optional generation did not publish automatically");
   bridge::RemotePluginSurface granted_remote(permission_window.contentItem());
   granted_remote.setWidth(64);
   granted_remote.setHeight(64);
@@ -1671,8 +1645,8 @@ void concurrent_permission_fences_route_exactly() {
             const auto observations =
                 bridge::PluginManagerTestAccess::runtimeSlots(*manager);
             return observations.size() == 2 &&
-                   observed(observations, plugin_a).running_unpublished &&
-                   observed(observations, plugin_b).running_unpublished;
+                   observed(observations, plugin_a).running &&
+                   observed(observations, plugin_b).running;
           }) &&
               effects->awaitEntered("a") && effects->awaitEntered("b"),
           "two packaged QML effects did not enter independently");
@@ -1680,10 +1654,7 @@ void concurrent_permission_fences_route_exactly() {
   auto observations = bridge::PluginManagerTestAccess::runtimeSlots(*manager);
   const auto epoch_a = observed(observations, plugin_a).epoch;
   const auto epoch_b = observed(observations, plugin_b).epoch;
-  require(bridge::PluginManagerTestAccess::publishReady(
-              *manager, plugin_a, epoch_a, binding_a, barDeclaration()) &&
-              bridge::PluginManagerTestAccess::publishReady(
-                  *manager, plugin_b, epoch_b, binding_b, barDeclaration()),
+  require(manager->count() == 2,
           "two permission generations did not publish independently");
   const auto key_a = barSurfaceKey(*manager, plugin_a);
   const auto key_b = barSurfaceKey(*manager, plugin_b);
@@ -1748,7 +1719,7 @@ void concurrent_permission_fences_route_exactly() {
             bridge::PluginManagerTestAccess::drainRuntime(*manager);
             const auto current =
                 bridge::PluginManagerTestAccess::runtimeSlots(*manager);
-            return observed(current, plugin_b).running_unpublished;
+            return observed(current, plugin_b).running;
           }),
           "settled B did not start its exact replacement");
   auto current_b = bridge::PluginManagerTestAccess::permissionView(
@@ -1767,7 +1738,7 @@ void concurrent_permission_fences_route_exactly() {
   worker_a.join();
   bridge::PluginManagerTestAccess::drainRuntime(*manager);
   observations = bridge::PluginManagerTestAccess::runtimeSlots(*manager);
-  require(observed(observations, plugin_b).running_unpublished &&
+  require(observed(observations, plugin_b).running &&
               observed(observations, plugin_a).opening &&
               scheduler.jobs.size() == 1,
           "settled A permission result disturbed replacement B");
@@ -1777,8 +1748,8 @@ void concurrent_permission_fences_route_exactly() {
             bridge::PluginManagerTestAccess::drainRuntime(*manager);
             const auto current =
                 bridge::PluginManagerTestAccess::runtimeSlots(*manager);
-            return observed(current, plugin_a).running_unpublished &&
-                   observed(current, plugin_b).running_unpublished;
+            return observed(current, plugin_a).running &&
+                   observed(current, plugin_b).running;
           }),
           "A replacement did not converge beside replacement B");
   const auto final_slots =
@@ -1813,38 +1784,6 @@ void real_root_publishes_attaches_and_tears_down_exactly() {
       *manager, [&](auto kind, auto job) {
         return scheduler.submit(kind, std::move(job));
       });
-  require(bridge::PluginManagerTestAccess::scanRuntime(*manager) &&
-              scheduler.jobs.size() == 1 &&
-              scheduler.kinds.front() ==
-                  bridge::PluginManagerTestAccess::TestJobKind::preparation,
-          "real root preparation did not enter the bounded manager lane");
-  std::thread preparation([&] { scheduler.runOne(); });
-  preparation.join();
-  bridge::PluginManagerTestAccess::drainRuntime(*manager);
-  const bool reached_running = await([&] {
-    bridge::PluginManagerTestAccess::drainRuntime(*manager);
-    const auto observations =
-        bridge::PluginManagerTestAccess::runtimeSlots(*manager);
-    return observations.size() == 1 &&
-           observations.front().running_unpublished;
-  });
-  if (!reached_running) {
-    const auto observations =
-        bridge::PluginManagerTestAccess::runtimeSlots(*manager);
-    require(!observations.empty(), "real committed root slot disappeared");
-    const auto &failure = observations.front();
-    throw std::runtime_error(
-        "real root lifecycle failure: state=" +
-        std::to_string(failure.last_state) +
-        " error=" + std::to_string(failure.last_error) +
-        " opening=" + std::to_string(failure.opening) +
-        " starting=" + std::to_string(failure.starting) +
-        " retry=" + std::to_string(failure.retry_wait));
-  }
-  const auto slot =
-      bridge::PluginManagerTestAccess::runtimeSlots(*manager).front();
-  require(manager->count() == 0 && !slot.has_endpoint_owner,
-          "running transport published before typed readiness");
 
   QQuickWindow window;
   window.resize(320, 64);
@@ -1865,56 +1804,88 @@ void real_root_publishes_attaches_and_tears_down_exactly() {
                      attached_in_signal =
                          manager->attach(key, attachment_remote);
                    });
-  const auto declarations = [] {
-    std::vector<Model::SurfaceDeclaration> value;
-    value.push_back({.surface_name = "bar",
-                     .role = Model::Role::Bar,
-                     .screen_name = {},
-                     .initially_visible = false,
-                     .maximum_width = 320,
-                     .maximum_height = 64,
-                     .dynamic_input_regions = false,
-                     .default_bar_section = Model::BarSection::Right});
-    return value;
-  }();
-  auto wrong_binding = exact_binding;
-  wrong_binding.revision = permissions::Digest(std::string(64, 'c'));
-  require(!bridge::PluginManagerTestAccess::publishReady(
-              *manager, plugin, slot.epoch + 1, exact_binding, declarations) &&
-              !bridge::PluginManagerTestAccess::publishReady(
-                  *manager, plugin, slot.epoch, wrong_binding, declarations) &&
-              manager->count() == 0 &&
-              !bridge::PluginManagerTestAccess::runtimeSlots(*manager)
-                   .front()
-                   .has_endpoint_owner,
-          "wrong readiness epoch or full binding created publication state");
   const auto throwing_publication = QObject::connect(
       manager.get(), &bridge::PluginManager::surfacesChanged,
       [] { throw std::runtime_error("injected publication signal failure"); });
-  require(!bridge::PluginManagerTestAccess::publishReady(
-              *manager, plugin, slot.epoch, exact_binding, declarations) &&
-              manager->count() == 0 &&
-              bridge::PluginManagerTestAccess::runtimeSlots(*manager)
-                  .front()
-                  .running_unpublished &&
+
+  require(bridge::PluginManagerTestAccess::scanRuntime(*manager) &&
+              scheduler.jobs.size() == 1 &&
+              scheduler.kinds.front() ==
+                  bridge::PluginManagerTestAccess::TestJobKind::preparation,
+          "real root preparation did not enter the bounded manager lane");
+  const auto first_epoch =
+      bridge::PluginManagerTestAccess::runtimeSlots(*manager).front().epoch;
+  std::thread preparation([&] { scheduler.runOne(); });
+  preparation.join();
+  bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  require(manager->count() == 0,
+          "prepared runtime published before authenticated startup readiness");
+  const bool rolled_back = await([&] {
+    bridge::PluginManagerTestAccess::drainRuntime(*manager);
+    const auto observations =
+        bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+    return observations.size() == 1 && observations.front().retry_wait;
+  });
+  if (!rolled_back) {
+    const auto observations =
+        bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+    require(!observations.empty(), "real committed root slot disappeared");
+    const auto &failure = observations.front();
+    throw std::runtime_error(
+        "publication rollback did not settle: state=" +
+        std::to_string(failure.last_state) +
+        " error=" + std::to_string(failure.last_error) +
+        " opening=" + std::to_string(failure.opening) +
+        " starting=" + std::to_string(failure.starting) +
+        " retry=" + std::to_string(failure.retry_wait));
+  }
+  require(manager->count() == 0 && attached_in_signal &&
+              !rollback_remote.connected() &&
               !bridge::PluginManagerTestAccess::runtimeSlots(*manager)
                    .front()
-                   .has_endpoint_owner &&
-              attached_in_signal && !rollback_remote.connected(),
-          "throwing publication signal escaped noexcept rollback");
+                   .has_endpoint_owner,
+          "automatic publication failure retained rows, endpoint, or Remote");
   QObject::disconnect(throwing_publication);
+
   bridge::RemotePluginSurface remote(window.contentItem());
   remote.setWidth(320);
   remote.setHeight(64);
   attachment_remote = &remote;
   attached_in_signal = false;
-  require(bridge::PluginManagerTestAccess::publishReady(
-              *manager, plugin, slot.epoch, exact_binding, declarations) &&
-              attached_in_signal && remote.connected() && manager->count() == 1,
-          "exact readiness did not install owner before row publication");
-  require(!bridge::PluginManagerTestAccess::publishReady(
-              *manager, plugin, slot.epoch, exact_binding, declarations),
-          "second readiness event replaced an active publication");
+  require(!bridge::PluginManagerTestAccess::deliverLifecycle(
+              *manager, plugin, first_epoch,
+              static_cast<std::uint8_t>(host::SessionState::running),
+              static_cast<std::uint8_t>(host::SessionError::none)) &&
+              bridge::PluginManagerTestAccess::retryRuntime(*manager, plugin) &&
+              scheduler.jobs.size() == 1,
+          "stale readiness epoch survived automatic-publication rollback");
+  std::thread retry_preparation([&] { scheduler.runOne(); });
+  retry_preparation.join();
+  require(await([&] {
+            bridge::PluginManagerTestAccess::drainRuntime(*manager);
+            const auto observations =
+                bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+            return observations.size() == 1 &&
+                   observations.front().running &&
+                   manager->count() == 1;
+          }) &&
+              attached_in_signal && remote.connected(),
+          "authenticated retry did not publish and attach automatically");
+
+  const auto row = manager->barSurfaces()->index(0, 0);
+  require(manager->barSurfaces()
+                  ->data(row, Model::GenerationRole)
+                  .toString() == QString::number(exact_binding.generation) &&
+              manager->barSurfaces()
+                      ->data(row, Model::MaximumWidthRole)
+                      .toUInt() == 320 &&
+              manager->barSurfaces()
+                      ->data(row, Model::MaximumHeightRole)
+                      .toUInt() == 64 &&
+              manager->barSurfaces()
+                      ->data(row, Model::DefaultSectionRole)
+                      .toString() == QStringLiteral("right"),
+          "automatic publication did not preserve exact manifest policy");
 
   const auto published_key = manager->barSurfaces()
                                  ->data(manager->barSurfaces()->index(0, 0),
@@ -1937,6 +1908,80 @@ void real_root_publishes_attaches_and_tears_down_exactly() {
               detached_before_withdraw_signal && reentrant_old_key_rejected,
           "catalog removal did not close endpoint before withdrawing rows");
   manager.reset();
+}
+
+void reentrant_publication_replacement_rechecks_exact_epoch() {
+  if (std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_TEST") == nullptr)
+    return;
+  constexpr std::string_view plugin = "org.example.reentrant";
+  RuntimeFixture fixture;
+  const auto first = fixture.seedRuntime(plugin, animatedRedQml);
+  const auto replacement = fixture.stageRuntime(plugin, 2, animatedGreenQml);
+  DeterministicJobs scheduler;
+  auto manager = bridge::PluginManagerTestAccess::create();
+  bridge::PluginManagerTestAccess::installRuntime(*manager,
+                                                  fixture.bootstrap());
+  bridge::PluginManagerTestAccess::setJobSubmitter(
+      *manager, [&](auto kind, auto job) {
+        return scheduler.submit(kind, std::move(job));
+      });
+
+  bool replacement_started_in_publication = false;
+  bool replacement_scan_succeeded = false;
+  QObject::connect(manager.get(), &bridge::PluginManager::surfacesChanged,
+                   [&] {
+                     if (replacement_started_in_publication ||
+                         manager->count() != 1)
+                       return;
+                     replacement_started_in_publication = true;
+                     fixture.selectReplacement(replacement);
+                     replacement_scan_succeeded =
+                         bridge::PluginManagerTestAccess::scanRuntime(*manager);
+                     if (replacement_scan_succeeded)
+                       fixture.promoteRuntime(replacement, 2);
+                   });
+
+  require(bridge::PluginManagerTestAccess::scanRuntime(*manager) &&
+              scheduler.jobs.size() == 1,
+          "reentrant replacement fixture did not schedule G1");
+  const auto first_epoch =
+      bridge::PluginManagerTestAccess::runtimeSlots(*manager).front().epoch;
+  std::thread first_preparation([&] { scheduler.runOne(); });
+  first_preparation.join();
+  require(await([&] {
+            bridge::PluginManagerTestAccess::drainRuntime(*manager);
+            const auto observations =
+                bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+            return replacement_started_in_publication &&
+                   replacement_scan_succeeded && observations.size() == 1 &&
+                   observations.front().epoch != first_epoch &&
+                   scheduler.jobs.size() == 1;
+          }) &&
+              manager->count() == 0,
+          "reentrant G1 publication did not leave only not-yet-ready G2");
+  require(!bridge::PluginManagerTestAccess::deliverLifecycle(
+              *manager, plugin, first_epoch,
+              static_cast<std::uint8_t>(host::SessionState::running),
+              static_cast<std::uint8_t>(host::SessionError::none)),
+          "stale G1 readiness survived reentrant replacement");
+
+  std::thread replacement_preparation([&] { scheduler.runOne(); });
+  replacement_preparation.join();
+  require(await([&] {
+            bridge::PluginManagerTestAccess::drainRuntime(*manager);
+            const auto observations =
+                bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+            return observations.size() == 1 &&
+                   observations.front().running &&
+                   manager->count() == 1;
+          }),
+          "reentrant replacement did not publish exact G2 readiness");
+  const auto row = manager->barSurfaces()->index(0, 0);
+  require(manager->barSurfaces()
+                      ->data(row, bridge::SurfaceProjectionModel::GenerationRole)
+                      .toString() == QString::number(replacement.generation) &&
+              replacement.generation != first.generation,
+          "reentrant replacement published stale G1 surface identity");
 }
 
 void joined_runtimes_replace_and_render_without_cross_routing() {
@@ -1980,8 +2025,9 @@ void joined_runtimes_replace_and_render_without_cross_routing() {
     const auto observations =
         bridge::PluginManagerTestAccess::runtimeSlots(*manager);
     return observations.size() == 2 &&
-           observed(observations, plugin_a).running_unpublished &&
-           observed(observations, plugin_b).running_unpublished;
+           observed(observations, plugin_a).running &&
+           observed(observations, plugin_b).running &&
+           manager->count() == 2;
   });
   if (!both_running) {
     const auto observations =
@@ -1998,13 +2044,8 @@ void joined_runtimes_replace_and_render_without_cross_routing() {
       bridge::PluginManagerTestAccess::runtimeSlots(*manager);
   const auto first_a_epoch = observed(initial_slots, plugin_a).epoch;
   const auto b_epoch = observed(initial_slots, plugin_b).epoch;
-
-  require(bridge::PluginManagerTestAccess::publishReady(
-              *manager, plugin_a, first_a_epoch, first_a, barDeclaration()) &&
-              bridge::PluginManagerTestAccess::publishReady(
-                  *manager, plugin_b, b_epoch, binding_b, barDeclaration()) &&
-              manager->count() == 2,
-          "two exact runtime bindings did not publish independently");
+  require(manager->count() == 2,
+          "two authenticated runtimes did not publish independently");
 
   QQmlEngine shell_engine;
   QQmlComponent bar_component(
@@ -2077,15 +2118,11 @@ void joined_runtimes_replace_and_render_without_cross_routing() {
             bridge::PluginManagerTestAccess::drainRuntime(*manager);
             const auto observations =
                 bridge::PluginManagerTestAccess::runtimeSlots(*manager);
-            return observed(observations, plugin_a).running_unpublished &&
-                   observed(observations, plugin_b).running_published;
+            return observed(observations, plugin_a).running &&
+                   observed(observations, plugin_b).running &&
+                   manager->count() == 2;
           }),
-          "replacement A did not start alongside unchanged B");
-  require(bridge::PluginManagerTestAccess::publishReady(
-              *manager, plugin_a, replacement_a_epoch, replacement_a,
-              barDeclaration()) &&
-              manager->count() == 2,
-          "replacement A did not publish its distinct binding");
+          "replacement A did not publish automatically alongside unchanged B");
   const auto replacement_a_key = barSurfaceKey(*manager, plugin_a);
   require(!replacement_a_key.isEmpty() &&
               replacement_a_key != first_a_key &&
@@ -2159,5 +2196,6 @@ void run_plugin_manager_tests() {
   manager_owns_permission_generation_replacement();
   concurrent_permission_fences_route_exactly();
   real_root_publishes_attaches_and_tears_down_exactly();
+  reentrant_publication_replacement_rechecks_exact_epoch();
   joined_runtimes_replace_and_render_without_cross_routing();
 }

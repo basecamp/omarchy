@@ -32,8 +32,8 @@ struct SurfaceDescription final {
 };
 
 // UI/event-loop-confined access to one root-owned running session. A
-// description is not publication readiness: the manager must also complete
-// exact permission projection before exposing this surface to QML.
+// A description alone is not publication readiness: the manager consumes it
+// only after the session's authenticated startup ACK and exact slot recheck.
 // This seam deliberately exposes neither PluginSession nor permission and
 // lifecycle authorities.
 class SurfaceSessionPort {
