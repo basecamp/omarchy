@@ -19,6 +19,7 @@ Item {
   property bool lockRequested: false
   property bool pendingSessionLock: false
   property bool authenticatingPassword: false
+  property bool displayBlanked: false
   property bool fingerprintAuthenticating: false
   property bool passwordPamConfigured: false
   property bool fingerprintConfigured: false
@@ -165,11 +166,13 @@ Item {
   }
 
   function runWake() {
+    displayBlanked = false
     if (!wakeProcess.running) wakeProcess.running = true
     if (lockRequested) armBlankTimer()
   }
 
   function runBlank() {
+    displayBlanked = true
     if (!blankProcess.running) blankProcess.running = true
   }
 
@@ -272,6 +275,7 @@ Item {
         backgroundVersion: root.backgroundVersion
         fingerprintConfigured: root.fingerprintConfigured
         authenticatingPassword: root.authenticatingPassword
+        displayBlanked: root.displayBlanked
         failureMessage: root.failureMessage
         failedAttempts: root.failedAttempts
         inputEnabled: root.lockRequested

@@ -10,6 +10,7 @@ Item {
   property int backgroundVersion: 0
   property bool fingerprintConfigured: false
   property bool authenticatingPassword: false
+  property bool displayBlanked: false
   property string failureMessage: ""
   property int failedAttempts: 0
   property bool inputEnabled: true
@@ -175,11 +176,20 @@ Item {
         }
 
         Keys.onPressed: function(event) {
+          // The display blanks a few seconds into the lock, so the keystroke
+          // that brings it back is the user saying "wake up", not the first
+          // character of their password. Note the state before waking, since
+          // wakeRequested() clears it.
+          var wokeDisplay = root.displayBlanked
           root.wakeRequested()
           if (event.key === Qt.Key_Escape || (event.modifiers & Qt.ControlModifier && event.key === Qt.Key_U)) {
             root.passwordTextEdited("")
             event.accepted = true
+            return
           }
+          // Swallow the wake keystroke; otherwise every unlock from a blanked
+          // display starts with a stray character in the field.
+          if (wokeDisplay) event.accepted = true
         }
       }
 
