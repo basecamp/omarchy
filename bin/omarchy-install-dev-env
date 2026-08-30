@@ -2,12 +2,12 @@
 
 # omarchy:summary=Install a supported development environment
 # omarchy:name=dev-env
-# omarchy:args=<ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala>
+# omarchy:args=<ruby|node|bun|deno|go|laravel|symfony|yii3|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala>
 # omarchy:examples=omarchy install dev-env ruby | omarchy install dev-env node
 # omarchy:requires-sudo=true
 
 if [[ -z $1 ]]; then
-  echo "Usage: omarchy-install-dev-env <ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala>" >&2
+  echo "Usage: omarchy-install-dev-env <ruby|node|bun|deno|go|laravel|symfony|yii3|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala>" >&2
   exit 1
 fi
 
@@ -92,6 +92,13 @@ symfony)
   install_php
   omarchy-pkg-add symfony-cli
   echo -e "\nYou can now run: symfony new --webapp myproject"
+  ;;
+yii3)
+  echo -e "Installing PHP for Yii3...\n"
+  install_php
+  echo -e "\nYou can now create a web app: composer create-project yiisoft/app myproject"
+  echo "Or create an API app: composer create-project yiisoft/app-api my-api"
+  echo "Or create a console app: composer create-project yiisoft/app-console my-console"
   ;;
 python)
   echo -e "Installing Python...\n"
