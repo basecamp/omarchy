@@ -2,6 +2,8 @@
 
 #include "activation_snapshot.hpp"
 
+#include <sys/stat.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -27,11 +29,9 @@ enum class ProductionPluginCatalogError : std::uint8_t {
   internal_failure,
 };
 
-// The retained record FD pins the catalog's inventory epoch and detects a
-// mutation before the snapshot is handed off. It is not a second activation
-// authority: ProductionPluginRuntimeRoot still selects and verifies through
-// ActivationSource. A future descriptor-consuming activation API must replace,
-// rather than supplement, that one selection path.
+// Candidate labels are inventory only. Opaque epoch predicates let the manager
+// preserve a last-good scan and identify additions, removals or changes without
+// exposing parsed activation authority or record descriptors.
 class ProductionPluginCatalogEntry final {
 public:
   ProductionPluginCatalogEntry(ProductionPluginCatalogEntry &&) noexcept =
@@ -42,26 +42,38 @@ public:
   ProductionPluginCatalogEntry &
   operator=(const ProductionPluginCatalogEntry &) = delete;
 
-  [[nodiscard]] std::string_view record_name() const noexcept {
+  [[nodiscard]] std::string_view plugin_id() const noexcept {
     return record_name_;
   }
-  [[nodiscard]] const host_session::ActivationRecord &record() const noexcept {
-    return inspected_.record();
-  }
-  [[nodiscard]] int inventory_record_fd() const noexcept {
-    return inspected_.descriptor();
-  }
-  [[nodiscard]] bool unchanged() const noexcept {
+  [[nodiscard]] bool
+  same_epoch(const ProductionPluginCatalogEntry &other) const noexcept;
+
+private:
+  struct Epoch final {
+    std::uint64_t device = 0;
+    std::uint64_t inode = 0;
+    std::uint64_t size = 0;
+    std::int64_t modified_seconds = 0;
+    std::int64_t modified_nanoseconds = 0;
+    std::int64_t changed_seconds = 0;
+    std::int64_t changed_nanoseconds = 0;
+    std::uint32_t mode = 0;
+    std::uint32_t uid = 0;
+    std::uint32_t gid = 0;
+    std::uint64_t links = 0;
+    bool operator==(const Epoch &) const = default;
+  };
+
+  ProductionPluginCatalogEntry(
+      std::string record_name,
+      host_session::InspectedActivationRecord inspected, Epoch epoch) noexcept;
+  [[nodiscard]] bool currently_unchanged() const noexcept {
     return inspected_.unchanged();
   }
 
-private:
-  ProductionPluginCatalogEntry(
-      std::string record_name,
-      host_session::InspectedActivationRecord inspected) noexcept;
-
   std::string record_name_;
   host_session::InspectedActivationRecord inspected_;
+  Epoch epoch_;
 
   friend class ProductionPluginCatalog;
 };
@@ -78,19 +90,26 @@ public:
   load(int activation_root_fd, std::uint32_t trusted_uid,
        ProductionPluginCatalogError &error) noexcept;
 
-  [[nodiscard]] int activation_root_fd() const noexcept {
-    return activation_root_.get();
-  }
   [[nodiscard]] std::span<const ProductionPluginCatalogEntry>
   entries() const noexcept {
     return entries_;
   }
+  [[nodiscard]] bool unchanged() const noexcept;
+  [[nodiscard]] bool
+  same_epoch(const ProductionPluginCatalog &other) const noexcept;
 
 private:
   ProductionPluginCatalog(host_session::OwnedDescriptor activation_root,
+                          ProductionPluginCatalogEntry::Epoch root_epoch,
                           std::vector<ProductionPluginCatalogEntry> entries);
+  [[nodiscard]] static bool
+  capture_epoch(int descriptor,
+                ProductionPluginCatalogEntry::Epoch &epoch) noexcept;
+  [[nodiscard]] static ProductionPluginCatalogEntry::Epoch
+  epoch_from_metadata(const struct stat &metadata) noexcept;
 
   host_session::OwnedDescriptor activation_root_;
+  ProductionPluginCatalogEntry::Epoch root_epoch_;
   std::vector<ProductionPluginCatalogEntry> entries_;
 };
 

@@ -58,14 +58,77 @@ bool exact_plugin_id(std::string_view value) noexcept {
 
 ProductionPluginCatalogEntry::ProductionPluginCatalogEntry(
     std::string record_name,
-    host_session::InspectedActivationRecord inspected) noexcept
-    : record_name_(std::move(record_name)), inspected_(std::move(inspected)) {}
+    host_session::InspectedActivationRecord inspected, Epoch epoch) noexcept
+    : record_name_(std::move(record_name)), inspected_(std::move(inspected)),
+      epoch_(epoch) {}
+
+bool ProductionPluginCatalogEntry::same_epoch(
+    const ProductionPluginCatalogEntry &other) const noexcept {
+  const auto &left = inspected_.record();
+  const auto &right = other.inspected_.record();
+  return record_name_ == other.record_name_ && epoch_ == other.epoch_ &&
+         left.plugin_id == right.plugin_id &&
+         left.revision_directory == right.revision_directory &&
+         left.revision_sha256 == right.revision_sha256 &&
+         left.state_directory == right.state_directory;
+}
 
 ProductionPluginCatalog::ProductionPluginCatalog(
     host_session::OwnedDescriptor activation_root,
+    ProductionPluginCatalogEntry::Epoch root_epoch,
     std::vector<ProductionPluginCatalogEntry> entries)
     : activation_root_(std::move(activation_root)),
+      root_epoch_(root_epoch),
       entries_(std::move(entries)) {}
+
+bool ProductionPluginCatalog::capture_epoch(
+    int descriptor, ProductionPluginCatalogEntry::Epoch &epoch) noexcept {
+  struct stat metadata{};
+  if (descriptor < 0 || ::fstat(descriptor, &metadata) < 0 ||
+      metadata.st_size < 0)
+    return false;
+  epoch = epoch_from_metadata(metadata);
+  return true;
+}
+
+ProductionPluginCatalogEntry::Epoch
+ProductionPluginCatalog::epoch_from_metadata(
+    const struct stat &metadata) noexcept {
+  return {
+      .device = static_cast<std::uint64_t>(metadata.st_dev),
+      .inode = static_cast<std::uint64_t>(metadata.st_ino),
+      .size = static_cast<std::uint64_t>(metadata.st_size),
+      .modified_seconds = metadata.st_mtim.tv_sec,
+      .modified_nanoseconds = metadata.st_mtim.tv_nsec,
+      .changed_seconds = metadata.st_ctim.tv_sec,
+      .changed_nanoseconds = metadata.st_ctim.tv_nsec,
+      .mode = static_cast<std::uint32_t>(metadata.st_mode),
+      .uid = static_cast<std::uint32_t>(metadata.st_uid),
+      .gid = static_cast<std::uint32_t>(metadata.st_gid),
+      .links = static_cast<std::uint64_t>(metadata.st_nlink),
+  };
+}
+
+bool ProductionPluginCatalog::unchanged() const noexcept {
+  ProductionPluginCatalogEntry::Epoch current{};
+  return capture_epoch(activation_root_.get(), current) &&
+         current == root_epoch_ &&
+         std::ranges::all_of(entries_, [](const auto &entry) {
+           return entry.currently_unchanged();
+         });
+}
+
+bool ProductionPluginCatalog::same_epoch(
+    const ProductionPluginCatalog &other) const noexcept {
+  if (root_epoch_ != other.root_epoch_ ||
+      entries_.size() != other.entries_.size())
+    return false;
+  for (std::size_t index = 0; index < entries_.size(); ++index) {
+    if (!entries_[index].same_epoch(other.entries_[index]))
+      return false;
+  }
+  return true;
+}
 
 std::unique_ptr<ProductionPluginCatalog>
 ProductionPluginCatalog::load(int activation_root_fd, std::uint32_t trusted_uid,
@@ -137,7 +200,7 @@ ProductionPluginCatalog::load(int activation_root_fd, std::uint32_t trusted_uid,
         break;
       }
       if (std::ranges::any_of(entries, [&](const auto &candidate) {
-            return candidate.record().plugin_id ==
+            return candidate.plugin_id() ==
                    inspected->record().plugin_id;
           })) {
         error = ProductionPluginCatalogError::duplicate_plugin;
@@ -147,8 +210,13 @@ ProductionPluginCatalog::load(int activation_root_fd, std::uint32_t trusted_uid,
         error = ProductionPluginCatalogError::invalid_record;
         break;
       }
-      entries.push_back(ProductionPluginCatalogEntry(std::string(name),
-                                                     std::move(*inspected)));
+      ProductionPluginCatalogEntry::Epoch record_epoch{};
+      if (!capture_epoch(inspected->descriptor(), record_epoch)) {
+        error = ProductionPluginCatalogError::mutated;
+        break;
+      }
+      entries.push_back(ProductionPluginCatalogEntry(
+          std::string(name), std::move(*inspected), record_epoch));
     }
 
     struct stat root_after{};
@@ -156,7 +224,7 @@ ProductionPluginCatalog::load(int activation_root_fd, std::uint32_t trusted_uid,
         (::fstat(root.get(), &root_after) < 0 ||
          !stable(root_before, root_after) ||
          std::ranges::any_of(entries, [](const auto &candidate) {
-           return !candidate.unchanged();
+           return !candidate.currently_unchanged();
          })))
       error = ProductionPluginCatalogError::mutated;
 
@@ -166,10 +234,12 @@ ProductionPluginCatalog::load(int activation_root_fd, std::uint32_t trusted_uid,
     if (error != ProductionPluginCatalogError::none)
       return {};
     std::ranges::sort(entries, [](const auto &left, const auto &right) {
-      return left.record_name() < right.record_name();
+      return left.plugin_id() < right.plugin_id();
     });
+    const auto root_epoch = epoch_from_metadata(root_before);
     return std::unique_ptr<ProductionPluginCatalog>(
-        new ProductionPluginCatalog(std::move(root), std::move(entries)));
+        new ProductionPluginCatalog(std::move(root), root_epoch,
+                                    std::move(entries)));
   } catch (const std::bad_alloc &) {
     error = ProductionPluginCatalogError::resource_exhausted;
     return {};

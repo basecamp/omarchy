@@ -19,12 +19,45 @@ void require(bool condition, std::string_view message) {
     throw std::runtime_error(std::string(message));
 }
 
-std::string record(std::string_view plugin) {
+std::string record(std::string_view plugin, char digest = 'a') {
   return "format=omarchy-plugin-activation-v2\nplugin=" + std::string(plugin) +
          "\nrevision-directory=revision\nrevision-sha256=" +
-         std::string(64, 'a') + "\nstate-directory=" + std::string(plugin) +
+         std::string(64, digest) + "\nstate-directory=" +
+         std::string(plugin) +
          "\n";
 }
+
+template <typename Value>
+concept ExposesParsedRecord = requires(const Value &value) { value.record(); };
+template <typename Value>
+concept ExposesRecordDescriptor = requires(const Value &value) {
+  value.inventory_record_fd();
+};
+template <typename Value>
+concept ExposesRootDescriptor = requires(const Value &value) {
+  value.activation_root_fd();
+};
+template <typename Value>
+concept ExposesRecordName = requires(const Value &value) {
+  value.record_name();
+};
+template <typename Value>
+concept ExposesChangedAlias = requires(const Value &left,
+                                       const Value &right) {
+  left.changed_from(right);
+};
+template <typename Value>
+concept ExposesPartialRootEpoch = requires(const Value &left,
+                                           const Value &right) {
+  left.same_root_epoch(right);
+};
+static_assert(!ExposesParsedRecord<catalog::ProductionPluginCatalogEntry>);
+static_assert(!ExposesRecordDescriptor<catalog::ProductionPluginCatalogEntry>);
+static_assert(!ExposesRootDescriptor<catalog::ProductionPluginCatalog>);
+static_assert(!ExposesRecordName<catalog::ProductionPluginCatalogEntry>);
+static_assert(!ExposesChangedAlias<catalog::ProductionPluginCatalogEntry>);
+static_assert(!ExposesChangedAlias<catalog::ProductionPluginCatalog>);
+static_assert(!ExposesPartialRootEpoch<catalog::ProductionPluginCatalog>);
 
 class Fixture final {
 public:
@@ -58,6 +91,26 @@ public:
       offset += static_cast<std::size_t>(count);
     }
     require(::close(descriptor) == 0, "catalog record close failed");
+  }
+
+  void overwrite(std::string_view name, std::string_view bytes) const {
+    const auto path = root_ / std::string(name);
+    const int descriptor =
+        ::open(path.c_str(), O_WRONLY | O_TRUNC | O_CLOEXEC | O_NOFOLLOW);
+    require(descriptor >= 0, "catalog record overwrite failed");
+    std::size_t offset = 0;
+    while (offset < bytes.size()) {
+      const auto count =
+          ::write(descriptor, bytes.data() + offset, bytes.size() - offset);
+      require(count > 0, "catalog record overwrite write failed");
+      offset += static_cast<std::size_t>(count);
+    }
+    require(::close(descriptor) == 0, "catalog overwrite close failed");
+  }
+
+  void erase(std::string_view name) const {
+    require(std::filesystem::remove(root_ / std::string(name)),
+            "catalog record removal failed");
   }
 
   [[nodiscard]] int open_root() const {
@@ -132,7 +185,7 @@ void descriptor_and_format_rejections_are_typed() {
   }
 }
 
-void valid_catalog_is_pinned_and_sorted() {
+void valid_catalog_is_opaque_stable_and_sorted() {
   Fixture fixture;
   fixture.put("org.example.zeta");
   fixture.put("org.example.alpha");
@@ -141,32 +194,90 @@ void valid_catalog_is_pinned_and_sorted() {
   require(loaded && error == catalog::ProductionPluginCatalogError::none &&
               loaded->entries().size() == 2,
           "valid descriptor catalog did not load");
-  require(loaded->entries()[0].record_name() == "org.example.alpha" &&
-              loaded->entries()[1].record_name() == "org.example.zeta",
+  require(loaded->entries()[0].plugin_id() == "org.example.alpha" &&
+              loaded->entries()[1].plugin_id() == "org.example.zeta",
           "catalog snapshot order is not deterministic");
   for (const auto &entry : loaded->entries()) {
-    require(
-        entry.record_name() == entry.record().plugin_id && entry.unchanged() &&
-            (::fcntl(entry.inventory_record_fd(), F_GETFD) & FD_CLOEXEC) != 0,
-        "catalog entry lost exact pinned identity");
+    require(!entry.plugin_id().empty(), "catalog candidate label disappeared");
   }
-  require((::fcntl(loaded->activation_root_fd(), F_GETFD) & FD_CLOEXEC) != 0,
-          "catalog root is not independently pinned close-on-exec");
+  require(loaded->unchanged(), "fresh catalog epoch was already stale");
 
-  struct stat before{};
-  require(::fstat(loaded->entries()[0].inventory_record_fd(), &before) == 0,
-          "catalog record pre-replacement fstat failed");
-  std::filesystem::rename(fixture.root() / "org.example.alpha",
-                          fixture.root() / "moved");
-  fixture.put("org.example.alpha");
-  struct stat after{};
-  require(loaded->entries()[0].record().plugin_id == "org.example.alpha" &&
-              ::fstat(loaded->entries()[0].inventory_record_fd(), &after) ==
-                  0 &&
-              before.st_dev == after.st_dev && before.st_ino == after.st_ino,
-          "path replacement retargeted a catalog entry");
-  require(!loaded->entries()[0].unchanged(),
-          "catalog did not report its post-snapshot path mutation");
+  auto same = load(fixture, error);
+  require(same && same->unchanged() && loaded->same_epoch(*same) &&
+              loaded->entries()[0].same_epoch(same->entries()[0]) &&
+              loaded->entries()[1].same_epoch(same->entries()[1]),
+          "unchanged scans did not compare as one opaque epoch");
+}
+
+void successful_scans_report_every_inventory_change() {
+  {
+    Fixture fixture;
+    fixture.put("org.example.first");
+    catalog::ProductionPluginCatalogError error{};
+    auto before = load(fixture, error);
+    fixture.put("org.example.second");
+    auto after = load(fixture, error);
+    require(before && after && after->entries().size() == 2 &&
+                !before->unchanged() && !before->same_epoch(*after),
+            "successful scan did not make an added plugin meaningful");
+  }
+  {
+    Fixture fixture;
+    fixture.put("org.example.first");
+    fixture.put("org.example.second");
+    catalog::ProductionPluginCatalogError error{};
+    auto before = load(fixture, error);
+    fixture.erase("org.example.second");
+    auto after = load(fixture, error);
+    require(before && after && after->entries().size() == 1 &&
+                !before->unchanged() && !before->same_epoch(*after),
+            "successful scan did not make a removed plugin meaningful");
+  }
+  {
+    Fixture fixture;
+    fixture.put("org.example.first");
+    catalog::ProductionPluginCatalogError error{};
+    auto before = load(fixture, error);
+    fixture.overwrite("org.example.first", record("org.example.first", 'b'));
+    auto after = load(fixture, error);
+    require(before && after && !before->unchanged() &&
+                !before->same_epoch(*after) &&
+                !before->entries()[0].same_epoch(after->entries()[0]),
+            "in-place activation record change retained its opaque epoch");
+  }
+  {
+    Fixture fixture;
+    fixture.put("org.example.first");
+    catalog::ProductionPluginCatalogError error{};
+    auto before = load(fixture, error);
+    fixture.erase("org.example.first");
+    fixture.put("org.example.first");
+    auto after = load(fixture, error);
+    require(before && after && !before->same_epoch(*after) &&
+                !before->entries()[0].same_epoch(after->entries()[0]),
+            "replacement activation record retained its opaque epoch");
+  }
+}
+
+void failed_scan_never_replaces_the_callers_last_good_catalog() {
+  Fixture fixture;
+  fixture.put("org.example.stable");
+  catalog::ProductionPluginCatalogError error{};
+  auto last_good = load(fixture, error);
+  require(last_good && last_good->entries().size() == 1,
+          "last-good catalog setup failed");
+  const int unexpected =
+      ::open((fixture.root() / ".staging").c_str(),
+             O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+  require(unexpected >= 0, "failed-scan fixture creation failed");
+  ::close(unexpected);
+  auto rejected = load(fixture, error);
+  require(!rejected &&
+              error == catalog::ProductionPluginCatalogError::unexpected_entry &&
+              last_good->entries().size() == 1 &&
+              last_good->entries()[0].plugin_id() == "org.example.stable" &&
+              !last_good->unchanged(),
+          "failed scan erased or silently refreshed caller-owned inventory");
 }
 
 void metadata_and_entry_rejections_are_transactional() {
@@ -340,7 +451,9 @@ void bounds_and_mutation_fail_closed() {
 
 int main() {
   try {
-    valid_catalog_is_pinned_and_sorted();
+    valid_catalog_is_opaque_stable_and_sorted();
+    successful_scans_report_every_inventory_change();
+    failed_scan_never_replaces_the_callers_last_good_catalog();
     descriptor_and_format_rejections_are_typed();
     metadata_and_entry_rejections_are_transactional();
     bounds_and_mutation_fail_closed();
