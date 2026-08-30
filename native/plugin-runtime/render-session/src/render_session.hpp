@@ -35,6 +35,8 @@ enum class Phase {
   disconnected,
 };
 
+enum class SinkDisposition : std::uint8_t { disconnect, abandon };
+
 struct Statistics {
   std::uint64_t accepted_frames = 0;
   std::uint64_t rejected_frames = 0;
@@ -64,7 +66,7 @@ public:
 
   [[nodiscard]] bool start(const surface::TrustedAllocation &allocation);
   [[nodiscard]] bool receive(const AuthenticatedRenderPacket &packet);
-  void close();
+  void close(SinkDisposition sink = SinkDisposition::disconnect);
 
   [[nodiscard]] Phase phase() const;
   [[nodiscard]] const Statistics &statistics() const;

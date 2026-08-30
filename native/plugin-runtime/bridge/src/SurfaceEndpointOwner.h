@@ -103,6 +103,7 @@ private:
   TrustedInputAuthority input_authority_;
   const std::thread::id owner_thread_;
   std::vector<Record> records_;
+  bool closing_all_ = false;
 
   friend class PluginManager;
 #ifdef OMARCHY_SURFACE_ENDPOINT_OWNER_TESTING

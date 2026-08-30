@@ -6,6 +6,8 @@
 #include "remote_surface.hpp"
 #include "render_session.hpp"
 
+#include <QPointer>
+
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -93,10 +95,11 @@ private:
   [[nodiscard]] bool active() const;
   [[nodiscard]] bool apply(const surface::InputRegionUpdate &update) override;
   void unbind_input_region_router();
+  void abandon_bridge_item() noexcept;
 
   NamedSurfacePolicy policy_;
   surface::TrustedAllocation allocation_;
-  bridge::RemotePluginSurface &bridge_item_;
+  QPointer<bridge::RemotePluginSurface> bridge_item_;
   std::shared_ptr<bridge::AuthenticatedInputTransport> input_transport_;
   bridge::TrustedInputAuthority &input_authority_;
   render_session::HostRenderSession render_session_;

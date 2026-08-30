@@ -65,6 +65,10 @@ public:
   is_closing(const SurfaceEndpoint &endpoint) noexcept {
     return endpoint.state() == SurfaceEndpoint::State::closing;
   }
+
+  [[nodiscard]] static bool is_closed(const SurfaceEndpoint &endpoint) noexcept {
+    return endpoint.state() == SurfaceEndpoint::State::closed;
+  }
 };
 
 } // namespace omarchy::plugin_runtime::bridge
@@ -289,6 +293,27 @@ public:
   }
 };
 
+void negotiate(Port &port) {
+  const auto selection = surface::encode_profile_selection(
+      {.version = surface::kSoftwareProfileVersion,
+       .pixel_format = surface::kRgba8888Premultiplied});
+  const auto correlations = surface::render_correlations(port.description.key);
+  require(port.deliver(static_cast<std::uint16_t>(
+                           surface::RenderMessageType::profile_select),
+                       selection, correlations[0]),
+          "profile selection failed");
+  require(port.descriptor_had_cloexec,
+          "frame descriptor lost CLOEXEC ownership");
+  errno = 0;
+  require(::fcntl(port.last_descriptor, F_GETFD) == -1 && errno == EBADF,
+          "duplicated frame descriptor escaped the send attempt");
+  const auto allocated = surface::encode_surface_key(port.description.key);
+  require(port.deliver(static_cast<std::uint16_t>(
+                           surface::RenderMessageType::surface_allocated),
+                       allocated, correlations[1]),
+          "surface allocation acknowledgement failed");
+}
+
 struct Harness {
   Harness()
       : endpoint(bridge::SurfaceEndpointTestAccess::create(
@@ -305,27 +330,7 @@ struct Harness {
             "endpoint did not activate through profile offer");
   }
 
-  void negotiate() {
-    const auto selection = surface::encode_profile_selection(
-        {.version = surface::kSoftwareProfileVersion,
-         .pixel_format = surface::kRgba8888Premultiplied});
-    require(port.deliver(static_cast<std::uint16_t>(
-                             surface::RenderMessageType::profile_select),
-                         selection, surface::render_correlations({.id = 1,
-                                                                  .generation = 7})[0]),
-            "profile selection failed");
-    require(port.descriptor_had_cloexec,
-            "frame descriptor lost CLOEXEC ownership");
-    errno = 0;
-    require(::fcntl(port.last_descriptor, F_GETFD) == -1 && errno == EBADF,
-            "duplicated frame descriptor escaped the send attempt");
-    const auto allocated = surface::encode_surface_key(port.description.key);
-    require(port.deliver(static_cast<std::uint16_t>(
-                             surface::RenderMessageType::surface_allocated),
-                         allocated, surface::render_correlations(
-                                        port.description.key)[1]),
-            "surface allocation acknowledgement failed");
-  }
+  void negotiate() { ::negotiate(port); }
 
   Port port;
   Clock clock;
@@ -371,7 +376,7 @@ void lifecycle_and_descriptor_contract() {
   };
   bridge::SurfaceEndpointTestAccess::close(*value.endpoint);
   bridge::SurfaceEndpointTestAccess::close(*value.endpoint);
-  require(bridge::SurfaceEndpointTestAccess::is_closing(*value.endpoint) &&
+  require(bridge::SurfaceEndpointTestAccess::is_closed(*value.endpoint) &&
               value.port.detach_calls == 1 &&
               cancel_reentries == 1 &&
               !value.port.remote_was_alive_at_detach &&
@@ -390,6 +395,8 @@ void lifecycle_and_descriptor_contract() {
           "close did not send Cancel then release over the exact live route");
   require(value.port.detach_calls == 1,
           "endpoint close was not idempotent");
+  value.port.reenter_on_cancel = {};
+  value.port.reenter_on_release = {};
 
   bridge::RemotePluginSurface replacement_remote;
   auto replacement = bridge::SurfaceEndpointTestAccess::create(
@@ -400,6 +407,68 @@ void lifecycle_and_descriptor_contract() {
               bridge::SurfaceEndpointTestAccess::is_active(*replacement),
           "released route did not permit an exact replacement attachment");
   bridge::SurfaceEndpointTestAccess::close(*replacement);
+}
+
+void terminal_callbacks_may_destroy_the_remote() {
+  for (const bool destroy_on_cancel : {true, false}) {
+    Port port;
+    Clock clock;
+    bridge::TrustedInputAuthority input_authority;
+    auto remote = std::make_unique<bridge::RemotePluginSurface>();
+    auto endpoint = bridge::SurfaceEndpointTestAccess::create(
+        port, input_authority, "pet");
+    require(bridge::SurfaceEndpointTestAccess::attach(
+                *endpoint, *remote, 64, 32, 1, 1, clock),
+            "destructive terminal callback fixture did not attach");
+    negotiate(port);
+    if (destroy_on_cancel)
+      port.reenter_on_cancel = [&] { remote.reset(); };
+    else
+      port.reenter_on_release = [&] { remote.reset(); };
+    bridge::SurfaceEndpointTestAccess::close(*endpoint);
+    require(!remote &&
+                bridge::SurfaceEndpointTestAccess::is_closed(*endpoint) &&
+                port.detach_calls == 1,
+            "terminal callback did not finish one exact detach");
+  }
+}
+
+void terminal_remote_signals_may_destroy_the_remote() {
+  for (const bool input_regions : {true, false}) {
+    Port port;
+    if (input_regions)
+      port.description.canonical_surfaces =
+          R"({"pet":{"inputRegions":"dynamic-bounded","keyboardFocus":false,"maximumFramesPerSecond":60,"maximumHeight":32,"maximumWidth":64,"role":"desktop-overlay"}})";
+    Clock clock;
+    bridge::TrustedInputAuthority input_authority;
+    auto remote = std::make_unique<bridge::RemotePluginSurface>();
+    auto endpoint = bridge::SurfaceEndpointTestAccess::create(
+        port, input_authority, "pet");
+    require(bridge::SurfaceEndpointTestAccess::attach(
+                *endpoint, *remote, 64, 32, 1, 1, clock),
+            "destructive Remote signal fixture did not attach");
+    negotiate(port);
+    if (input_regions) {
+      surface::InputRegionUpdate update{.surface = port.description.key,
+                                        .generation = 1,
+                                        .count = 1};
+      update.regions[0] = {.x = 0, .y = 0, .width = 8, .height = 8};
+      require(remote->updateInputRegions(update),
+              "destructive input-region fixture was not populated");
+      QObject::connect(remote.get(),
+                       &bridge::RemotePluginSurface::inputRegionsChanged,
+                       [&] { remote.reset(); });
+    } else {
+      QObject::connect(remote.get(),
+                       &bridge::RemotePluginSurface::connectionChanged,
+                       [&] { remote.reset(); });
+    }
+    bridge::SurfaceEndpointTestAccess::close(*endpoint);
+    require(!remote &&
+                bridge::SurfaceEndpointTestAccess::is_closed(*endpoint) &&
+                port.detach_calls == 1,
+            "Remote signal destruction did not finish one exact detach");
+  }
 }
 
 void stale_and_malformed_messages_fail_closed() {
@@ -530,18 +599,24 @@ void remote_destruction_closes_host_before_detach() {
   Port port;
   bridge::TrustedInputAuthority input_authority;
   Clock clock;
+  std::size_t teardown_signals = 0;
   auto endpoint = bridge::SurfaceEndpointTestAccess::create(
       port, input_authority, "pet");
   {
     bridge::RemotePluginSurface remote;
-    port.remote_at_detach = &remote;
     require(bridge::SurfaceEndpointTestAccess::attach(
                 *endpoint, remote, 64, 32, 1, 1, clock),
             "destruction-order fixture did not attach");
+    QObject::connect(&remote, &bridge::RemotePluginSurface::connectionChanged,
+                     [&] { ++teardown_signals; });
+    QObject::connect(&remote, &bridge::RemotePluginSurface::focusChanged,
+                     [&] { ++teardown_signals; });
+    QObject::connect(&remote, &bridge::RemotePluginSurface::inspectionChanged,
+                     [&] { ++teardown_signals; });
   }
-  require(bridge::SurfaceEndpointTestAccess::is_closing(*endpoint) &&
-              port.detach_calls == 1 && !port.remote_was_alive_at_detach,
-          "remote destruction detached before closing its trusted host");
+  require(bridge::SurfaceEndpointTestAccess::is_closed(*endpoint) &&
+              port.detach_calls == 1 && teardown_signals == 0,
+          "remote destruction touched its item after observer entry");
 }
 
 void attach_rolls_back_every_published_owner() {
@@ -738,7 +813,7 @@ void late_g1_remote_teardown_cannot_touch_g2() {
             "late G1 teardown fixture did not attach");
     port.replace_session();
   }
-  require(bridge::SurfaceEndpointTestAccess::is_closing(*endpoint) &&
+  require(bridge::SurfaceEndpointTestAccess::is_closed(*endpoint) &&
               port.stale_clear_calls >= 1 && port.clear_calls == 0 &&
               port.stale_detach_calls == 1,
           "late G1 teardown cleared or detached the replacement session");
@@ -748,6 +823,8 @@ void late_g1_remote_teardown_cannot_touch_g2() {
 
 void run_surface_endpoint_tests() {
   lifecycle_and_descriptor_contract();
+  terminal_callbacks_may_destroy_the_remote();
+  terminal_remote_signals_may_destroy_the_remote();
   stale_and_malformed_messages_fail_closed();
   gesture_arming_is_exact_and_send_failure_clears();
   remote_destruction_closes_host_before_detach();

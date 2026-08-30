@@ -258,7 +258,7 @@ HostSurface::HostSurface(NamedSurfacePolicy policy,
                          bridge::TrustedInputAuthority &input_authority,
                          MonotonicClock &clock)
     : policy_(std::move(policy)), allocation_(allocation),
-      bridge_item_(bridge_item),
+      bridge_item_(&bridge_item),
       input_transport_(std::make_shared<bridge::AuthenticatedInputTransport>(
           binding.generation, std::move(input_sink))),
       input_authority_(input_authority),
@@ -350,9 +350,9 @@ bool HostSurface::point_is_inside(std::uint32_t x_q16,
 }
 
 bool HostSurface::active() const {
-  return !terminated_ &&
+  return bridge_item_ && !terminated_ &&
          render_session_.phase() == render_session::Phase::active &&
-         bridge_item_.connected();
+         bridge_item_->connected();
 }
 
 bool HostSurface::terminated() const noexcept { return terminated_; }
@@ -407,12 +407,13 @@ bool HostSurface::route_input(bridge::HostInputEvent input) {
   const bool focus_after_gesture =
       admission->trusted_gesture &&
       policy_.keyboard_focus == KeyboardFocusPolicy::after_gesture;
-  if (!bridge_item_.submitInput(admission->event)) {
+  auto *bridge_item = bridge_item_.data();
+  if (bridge_item == nullptr || !bridge_item->submitInput(admission->event)) {
     close();
     return false;
   }
-  if (focus_after_gesture)
-    bridge_item_.forceActiveFocus(Qt::MouseFocusReason);
+  if (focus_after_gesture && bridge_item_)
+    bridge_item_->forceActiveFocus(Qt::MouseFocusReason);
   return true;
 }
 
@@ -425,7 +426,8 @@ bool HostSurface::cancel_input(std::uint64_t device) {
   const auto cancel = input_authority_.cancel(allocation_);
   if (!cancel)
     return false;
-  if (!bridge_item_.submitInput(*cancel)) {
+  auto *bridge_item = bridge_item_.data();
+  if (bridge_item == nullptr || !bridge_item->submitInput(*cancel)) {
     close();
     return false;
   }
@@ -437,7 +439,9 @@ bool HostSurface::end_input() {
     return true;
   input_ended_ = true;
   const auto cancel = input_authority_.cancel(allocation_);
-  return cancel && input_transport_bound_ && bridge_item_.submitInput(*cancel);
+  auto *bridge_item = bridge_item_.data();
+  return cancel && input_transport_bound_ && bridge_item != nullptr &&
+         bridge_item->submitInput(*cancel);
 }
 
 void HostSurface::close() {
@@ -446,21 +450,43 @@ void HostSurface::close() {
     (void)end_input();
   input_authority_.release(allocation_.surface);
   if (input_transport_bound_) {
-    bridge_item_.unbindTransport(input_transport_);
+    if (bridge_item_)
+      bridge_item_->unbindTransport(input_transport_);
+    else
+      input_transport_->disconnect();
     input_transport_bound_ = false;
   }
   if (terminated_)
     return;
-  render_session_.close();
+  const auto render_phase = render_session_.phase();
+  const bool disconnect_bridge =
+      render_phase != render_session::Phase::idle &&
+      render_phase != render_session::Phase::failed &&
+      render_phase != render_session::Phase::disconnected;
+  // Release may synchronously destroy the QML item. The generic render
+  // session must not retain or call its raw sink after this point.
+  render_session_.close(render_session::SinkDisposition::abandon);
+  if (disconnect_bridge && bridge_item_)
+    bridge_item_->disconnect();
   terminated_ = true;
 }
 
 void HostSurface::unbind_input_region_router() {
   if (!input_region_router_bound_)
     return;
-  bridge_item_.unbindHostInputRegionRouter(*this);
+  if (bridge_item_)
+    bridge_item_->unbindHostInputRegionRouter(*this);
   input_region_router_bound_ = false;
   input_regions_.clear();
+}
+
+void HostSurface::abandon_bridge_item() noexcept {
+  bridge_item_.clear();
+  input_region_router_bound_ = false;
+  if (input_transport_bound_) {
+    input_transport_->disconnect();
+    input_transport_bound_ = false;
+  }
 }
 
 const surface::TrustedAllocation &HostSurface::allocation() const {

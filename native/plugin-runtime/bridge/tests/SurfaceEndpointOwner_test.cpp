@@ -9,6 +9,7 @@
 
 #include <array>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <optional>
 #include <stdexcept>
@@ -75,6 +76,10 @@ public:
       return true;
     if (endpoint != &candidate)
       return false;
+    if (reenter) {
+      auto callback = std::move(reenter);
+      callback();
+    }
     endpoint = nullptr;
     return true;
   }
@@ -101,11 +106,16 @@ private:
                           const wire::EnvelopeHeader &, std::vector<std::byte>,
                           std::vector<host::OwnedFd>) noexcept override {
     ++send_calls;
+    if (reenter) {
+      auto callback = std::move(reenter);
+      callback();
+    }
     return expected == description;
   }
 
 public:
   std::size_t send_calls = 0;
+  std::function<void()> reenter;
 };
 
 class MultiplexPort final : public channel::SurfaceSessionPort {
@@ -448,6 +458,42 @@ void teardown_replacement_and_remote_destruction_are_exact() {
           "close-all did not fence every endpoint before root teardown");
 }
 
+void remote_close_reentry_cannot_prune_the_on_stack_endpoint() {
+  Clock clock;
+  Port port;
+  auto owner = bridge::SurfaceEndpointOwnerTestAccess::create(
+      clock, port.description.binding, 1, port);
+  QQuickWindow window;
+  auto remote = std::make_unique<bridge::RemotePluginSurface>();
+  bridge::RemotePluginSurface replacement;
+  place(*remote, window);
+  place(replacement, window);
+  const QString key = QStringLiteral("opaque-remote-reentry");
+  auto slot = published(port, key);
+  require(bridge::SurfaceEndpointOwnerTestAccess::attach(
+              *owner, slot, key, *remote) ==
+              bridge::SurfaceEndpointAttachResult::attached,
+          "remote-close owner fixture did not attach");
+
+  bridge::SurfaceEndpointAttachResult retry =
+      bridge::SurfaceEndpointAttachResult::attached;
+  port.reenter = [&] {
+    auto duplicate = published(port, key);
+    retry = bridge::SurfaceEndpointOwnerTestAccess::attach(
+        *owner, duplicate, key, replacement);
+    bridge::SurfaceEndpointOwnerTestAccess::close_all(*owner);
+  };
+  remote.reset();
+  require(retry == bridge::SurfaceEndpointAttachResult::rejected &&
+              port.detach_calls == 1 &&
+              bridge::SurfaceEndpointOwnerTestAccess::count(*owner) == 1,
+          "remote-close reentry deleted its on-stack endpoint");
+  bridge::SurfaceEndpointOwnerTestAccess::close_all(*owner);
+  require(bridge::SurfaceEndpointOwnerTestAccess::count(*owner) == 0 &&
+              port.detach_calls == 1,
+          "closed reentrant record was not pruned exactly once");
+}
+
 void failed_endpoint_attach_is_transactional() {
   Port port;
   port.fail_attach = true;
@@ -481,5 +527,6 @@ void run_surface_endpoint_owner_tests() {
   key_and_expanded_pixel_bounds_are_exact();
   eighth_endpoint_is_accepted_and_ninth_is_rejected();
   teardown_replacement_and_remote_destruction_are_exact();
+  remote_close_reentry_cannot_prune_the_on_stack_endpoint();
   failed_endpoint_attach_is_transactional();
 }

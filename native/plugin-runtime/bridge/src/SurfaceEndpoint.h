@@ -34,7 +34,7 @@ public:
   operator=(const SurfaceEndpoint &) = delete;
 
 private:
-  enum class State { inert, attached, active, closing };
+  enum class State { inert, attached, active, closing, closed };
 
   SurfaceEndpoint(channel::SurfaceSessionPort &session,
                   TrustedInputAuthority &input_authority,

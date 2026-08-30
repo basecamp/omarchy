@@ -173,15 +173,26 @@ SurfaceEndpointAttachResult SurfaceEndpointOwner::attach(
 void SurfaceEndpointOwner::close_all() noexcept {
   if (!on_owner_thread())
     std::terminate();
-  for (auto &record : records_)
-    record.endpoint->close();
-  records_.clear();
+  if (closing_all_)
+    return;
+  closing_all_ = true;
+  while (true) {
+    const auto candidate = std::ranges::find_if(records_, [](const Record &record) {
+      return record.endpoint->state() != SurfaceEndpoint::State::closing;
+    });
+    if (candidate == records_.end())
+      break;
+    auto endpoint = std::move(candidate->endpoint);
+    records_.erase(candidate);
+    endpoint->close();
+  }
+  closing_all_ = false;
 }
 
 void SurfaceEndpointOwner::prune_closed() noexcept {
   std::erase_if(records_, [](const Record &record) {
     return record.endpoint->state() ==
-           SurfaceEndpoint::State::closing;
+           SurfaceEndpoint::State::closed;
   });
 }
 

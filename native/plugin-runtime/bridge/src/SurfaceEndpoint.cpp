@@ -3,6 +3,7 @@
 #include "surface_host.hpp"
 
 #include <QThread>
+#include <QPointer>
 
 #include <fcntl.h>
 
@@ -64,7 +65,7 @@ struct SurfaceEndpoint::Impl final {
   std::unique_ptr<RenderSender> sender;
   std::shared_ptr<InputSink> input_sink;
   std::unique_ptr<surface_host::HostSurface> host;
-  RemotePluginSurface *remote = nullptr;
+  QPointer<RemotePluginSurface> remote;
   std::optional<channel::SurfaceDescription> description;
   std::optional<PendingGesture> pending_gesture;
   bool input_router_bound = false;
@@ -329,10 +330,10 @@ void SurfaceEndpoint::close_impl() noexcept {
   auto &value = *implementation_;
   if (std::this_thread::get_id() != owner_thread_)
     std::terminate();
-  if (value.state == State::closing)
+  if (value.state == State::closing || value.state == State::closed)
     return;
   if (value.state == State::inert) {
-    value.state = State::closing;
+    value.state = State::closed;
     return;
   }
   // Fence public and reentrant work before either callback-capable terminal
@@ -343,7 +344,7 @@ void SurfaceEndpoint::close_impl() noexcept {
   value.pending_gesture.reset();
   if (value.description)
     session_.clear_surface_intent_eligibility(*value.description);
-  if (value.input_router_bound && value.remote != nullptr) {
+  if (value.input_router_bound && value.remote) {
     value.remote->unbindHostInputRouter(*this);
     value.input_router_bound = false;
   }
@@ -354,13 +355,19 @@ void SurfaceEndpoint::close_impl() noexcept {
     std::terminate();
   value.input_sink.reset();
   value.sender.reset();
-  if (value.remote != nullptr)
+  if (value.remote)
     value.remote->unbindLifetimeObserver(*this);
   value.remote = nullptr;
   value.description.reset();
+  value.state = State::closed;
 }
 
 void SurfaceEndpoint::remote_surface_destroying() noexcept {
+  auto &value = *implementation_;
+  value.remote.clear();
+  value.input_router_bound = false;
+  if (value.host)
+    value.host->abandon_bridge_item();
   close_impl();
 }
 

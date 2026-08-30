@@ -191,7 +191,7 @@ bool HostRenderSession::fail(std::string detail) {
   return false;
 }
 
-void HostRenderSession::close() {
+void HostRenderSession::close(SinkDisposition sink) {
   if (phase_ == Phase::idle || phase_ == Phase::failed ||
       phase_ == Phase::disconnected)
     return;
@@ -202,7 +202,8 @@ void HostRenderSession::close() {
         static_cast<std::uint16_t>(surface::RenderMessageType::surface_release),
         payload, 0));
   }
-  sink_.disconnect();
+  if (sink == SinkDisposition::disconnect)
+    sink_.disconnect();
   consumer_.reset();
   region_.reset();
   endpoint_.reset();

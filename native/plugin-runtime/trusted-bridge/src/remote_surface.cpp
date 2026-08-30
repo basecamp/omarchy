@@ -7,6 +7,7 @@
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPointer>
 #include <QTouchEvent>
 #include <QWheelEvent>
 
@@ -505,10 +506,15 @@ bool RemotePluginSurface::submitInput(const surface::InputEvent &event) {
     fail(InspectionFailure::input_rejected, false);
     return false;
   }
+  QPointer<RemotePluginSurface> alive(this);
   if (!transport_->submit(event)) {
+    if (!alive)
+      return false;
     fail(InspectionFailure::transport_failed, true);
     return false;
   }
+  if (!alive)
+    return false;
   if (const auto *focus = std::get_if<surface::FocusChanged>(&event.payload)) {
     focused_ = focus->focused;
     emit focusChanged();
@@ -546,6 +552,7 @@ const QList<QRect> &RemotePluginSurface::inputRegions() const {
 }
 
 void RemotePluginSurface::fail(InspectionFailure failure, bool terminal) {
+  QPointer<RemotePluginSurface> alive(this);
   failure_ = failure;
   if (terminal) {
     if (transport_ != nullptr)
@@ -559,9 +566,17 @@ void RemotePluginSurface::fail(InspectionFailure failure, bool terminal) {
     connected_ = false;
     focused_ = false;
     resetFrame();
+    if (!alive)
+      return;
     resetInputRegions();
+    if (!alive)
+      return;
     emit connectionChanged();
+    if (!alive)
+      return;
     emit focusChanged();
+    if (!alive)
+      return;
   }
   emit inspectionChanged();
 }
