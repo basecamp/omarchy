@@ -26,7 +26,10 @@ SH
 cat >"$mock_bin/mise" <<'SH'
 #!/bin/bash
 printf '%s\0' "$@" >>"$OMARCHY_TEST_MISE_LOG"
-[[ $1 == "where" && ${OMARCHY_TEST_MISE_WHERE_OK:-0} == 1 ]] && exit 0
+if [[ $1 == "where" && ${OMARCHY_TEST_MISE_WHERE_OK:-0} == 1 ]]; then
+  printf '%s\n' "$OMARCHY_TEST_MISE_ROOT"
+  exit 0
+fi
 [[ $1 != "where" ]]
 SH
 
@@ -35,6 +38,7 @@ chmod +x "$mock_bin"/*
 run_installer() {
   OMARCHY_TEST_DESKTOP_INSTALLED="$1" \
     OMARCHY_TEST_MISE_WHERE_OK="${OMARCHY_TEST_MISE_WHERE_OK:-0}" \
+    OMARCHY_TEST_MISE_ROOT="$test_tmp/mise" \
     OMARCHY_TEST_MISE_LOG="$mise_log" \
     HOME="$test_home" \
     PATH="$mock_bin:$PATH" \
@@ -88,10 +92,17 @@ pass "takeover removes an unhealthy mise copy"
 rm -rf "$test_home/.hermes"
 rm -f "$test_home/.local/bin/hermes"
 run_installer 1 --check && fail "--check reports Hermes missing before the app installs it"
-# The venv command answers --version, as the real one does: foreign wrappers
-# below exec it, and the installer probes them by running exactly that.
+# The venv command answers the readiness probes, as the real one does: foreign
+# wrappers below exec it, and the installer runs both before trusting them.
 mkdir -p "$test_home/.hermes/hermes-agent/venv/bin"
-printf '%s\n' "#!/bin/bash" 'echo "hermes-agent 0.0.0-test"' >"$test_home/.hermes/hermes-agent/venv/bin/hermes"
+cat >"$test_home/.hermes/hermes-agent/venv/bin/hermes" <<'SH'
+#!/bin/bash
+if [[ ${1:-} == "chat" && ${2:-} == "--help" ]]; then
+  [[ ${OMARCHY_TEST_HERMES_CAPABLE:-1} == 1 ]] && echo "--oneshot"
+else
+  echo "hermes-agent 0.0.0-test"
+fi
+SH
 chmod +x "$test_home/.hermes/hermes-agent/venv/bin/hermes"
 run_installer 1 --check && fail "--check waits for the install to finish, not just the venv"
 touch "$test_home/.hermes/hermes-agent/.hermes-bootstrap-complete"
@@ -122,6 +133,14 @@ run_installer 0 --now || fail "--now over a foreign hermes command returns succe
 [[ $(cat "$test_home/.local/bin/hermes") == "$official_body" ]] ||
   fail "a foreign hermes command is left untouched"
 pass "a foreign hermes command is preserved and satisfies --check"
+
+OMARCHY_TEST_HERMES_CAPABLE=0 run_installer 0 --check &&
+  fail "--check rejects a foreign Hermes without native prompted sessions"
+OMARCHY_TEST_HERMES_CAPABLE=0 run_installer 0 &&
+  fail "installing refuses a foreign Hermes without native prompted sessions"
+[[ $(cat "$test_home/.local/bin/hermes") == "$official_body" ]] ||
+  fail "an older foreign Hermes command is left untouched"
+pass "a foreign Hermes must support native prompted sessions"
 
 # Broken foreign paths are still foreign. They cannot be used, so --check says
 # so and the installer refuses rather than replacing them.
@@ -210,6 +229,23 @@ grep -qxF "$stub_marker" "$test_home/.local/bin/hermes" || fail "the refreshed s
 grep -q "stale template" "$test_home/.local/bin/hermes" && fail "reinstalling rewrites our own stub"
 grep -q "exec env -u UV_PYTHON mise x" "$test_home/.local/bin/hermes" || fail "the refreshed stub is the current template"
 pass "reinstalling refreshes the Omarchy stub"
+
+mkdir -p "$test_tmp/mise/hermes-agent/lib/python$python_pin"
+: >"$mise_log"
+OMARCHY_TEST_MISE_WHERE_OK=1 run_installer 0 || fail "reinstalling replaces an older owned Hermes environment"
+tr '\0' '\n' <"$mise_log" | grep -q '^rm$' || fail "an older owned Hermes environment is removed from mise config"
+tr '\0' '\n' <"$mise_log" | grep -q '^uninstall$' || fail "an older owned Hermes environment is uninstalled"
+pass "reinstalling replaces an older owned Hermes environment"
+
+rm -f "$test_home/.local/bin/hermes"
+: >"$mise_log"
+OMARCHY_TEST_MISE_WHERE_OK=1 run_installer 0 &&
+  fail "installing refuses to claim an unmarked Hermes mise environment"
+tr '\0' '\n' <"$mise_log" | grep -Eq '^(rm|uninstall)$' &&
+  fail "an unmarked Hermes mise environment is never removed"
+[[ ! -e $test_home/.local/bin/hermes ]] ||
+  fail "an unmarked Hermes mise environment is not given an Omarchy wrapper"
+pass "a Hermes mise environment needs wrapper ownership before replacement"
 
 # install/user/mise.sh is sourced by install/user/all.sh through run_logged,
 # which runs it under `bash -eE` and hands its exit code back to
@@ -349,8 +385,14 @@ run_ready_check() {
 
 run_ready_check && fail "--check rejects the app's wrapper when its runtime is gone"
 
-printf '%s\n' "#!/bin/bash" 'echo "hermes-agent 0.0.0-test"' \
-  >"$ready_home/.hermes/hermes-agent/venv/bin/hermes"
+cat >"$ready_home/.hermes/hermes-agent/venv/bin/hermes" <<'SH'
+#!/bin/bash
+if [[ ${1:-} == "chat" && ${2:-} == "--help" ]]; then
+  echo "--oneshot"
+else
+  echo "hermes-agent 0.0.0-test"
+fi
+SH
 chmod +x "$ready_home/.hermes/hermes-agent/venv/bin/hermes"
 run_ready_check || fail "--check accepts the app's wrapper once it runs"
 pass "readiness runs the app's command rather than trusting its marker"
