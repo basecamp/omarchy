@@ -93,6 +93,7 @@ done
 
 rx_before=$(cat "/sys/class/net/$iface/statistics/rx_bytes")
 tx_before=$(cat "/sys/class/net/$iface/statistics/tx_bytes")
+t_before=$EPOCHREALTIME
 
 any_alive() {
   local pid
@@ -109,22 +110,26 @@ while any_alive; do
   sleep 1
   rx_after=$(cat "/sys/class/net/$iface/statistics/rx_bytes")
   tx_after=$(cat "/sys/class/net/$iface/statistics/tx_bytes")
+  t_after=$EPOCHREALTIME
 
   if [[ $direction == "down" ]]; then
-    rate=$(awk -v before="$rx_before" -v after="$rx_after" 'BEGIN {
-      if (after < before) print 0
-      else print (after - before) * 8 / 1000000
+    rate=$(awk -v before="$rx_before" -v after="$rx_after" -v t0="$t_before" -v t1="$t_after" 'BEGIN {
+      elapsed = t1 - t0
+      if (after < before || elapsed <= 0) print 0
+      else print (after - before) * 8 / 1000000 / elapsed
     }')
   else
-    rate=$(awk -v before="$tx_before" -v after="$tx_after" 'BEGIN {
-      if (after < before) print 0
-      else print (after - before) * 8 / 1000000
+    rate=$(awk -v before="$tx_before" -v after="$tx_after" -v t0="$t_before" -v t1="$t_after" 'BEGIN {
+      elapsed = t1 - t0
+      if (after < before || elapsed <= 0) print 0
+      else print (after - before) * 8 / 1000000 / elapsed
     }')
   fi
 
   format_mbps "$rate"
   rx_before=$rx_after
   tx_before=$tx_after
+  t_before=$t_after
 done
 
 wait 2>/dev/null || true
