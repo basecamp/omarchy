@@ -13,7 +13,7 @@ Item {
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   property var shell: null
   property var manifest: null
-  LauncherUsage { id: usage }
+  MenuUsageStore { id: usage }
 
   // Plugin lifecycle hooks. The host calls open(payloadJson) after
   // `omarchy-shell shell summon omarchy.menu ...` and close() when hidden.
