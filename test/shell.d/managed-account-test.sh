@@ -91,13 +91,23 @@ grep -A4 -F "<<'CONF'" "$ROOT/bin/omarchy-managed" | grep -Fxq 'User=' ||
   fail "the SDDM override clears the autologin user"
 grep -Fq 'cp -a "$omarchy_root/config/." "$home/.config/"' "$ROOT/bin/omarchy-managed" ||
   fail "new managed users get shipped Omarchy desktop defaults without administrator files"
+grep -Fq '"$home/.local" "$home/.local/state" "$state_dir"' "$ROOT/bin/omarchy-managed" ||
+  fail "new managed users own the intermediate directories for their Omarchy state"
 grep -Fq '/dev/null "$done_dir/finalize-user"' "$ROOT/bin/omarchy-managed" &&
   grep -Fq '/dev/null "$done_dir/first-run-user"' "$ROOT/bin/omarchy-managed" ||
   fail "managed users skip the privileged and network-dependent first-run path"
 grep -Fq 'install/user/default-keyring.sh' "$ROOT/bin/omarchy-managed" ||
   fail "new managed users initialize Omarchy's local keyring before Chromium starts"
-grep -Fq 'Allowed websites> ' "$ROOT/bin/omarchy-managed" ||
-  fail "interactive setup asks for the initial website allowlist"
+grep -Fq 'Allowed websites (separate multiple with spaces)> ' "$ROOT/bin/omarchy-managed" ||
+  fail "interactive setup explains how to enter multiple allowed websites"
+grep -Fq 'Websites to allow (separate multiple with spaces)> ' "$ROOT/bin/omarchy-managed" &&
+  grep -Fq 'username=$(choose_managed_account)' "$ROOT/bin/omarchy-managed" ||
+  fail "interactive updates choose an account and explain how to enter multiple websites"
+grep -Fq '"label":"Managed Accounts"' "$ROOT/default/omarchy/omarchy-menu.jsonc" &&
+  grep -Fq '"label":"Allow Websites"' "$ROOT/default/omarchy/omarchy-menu.jsonc" &&
+  grep -Fq '"label":"Remove Websites"' "$ROOT/default/omarchy/omarchy-menu.jsonc" &&
+  grep -Fq '"label":"View Websites"' "$ROOT/default/omarchy/omarchy-menu.jsonc" ||
+  fail "the Security menu exposes managed-account allowlist management"
 grep -Fiq 'the Linux user and home directory were not deleted' "$ROOT/bin/omarchy-managed" ||
   fail "removing management preserves the user account"
 pass "account lifecycle keeps the admin/managed login boundary safe"

@@ -28,15 +28,17 @@ Be clear-eyed about this one: while it's on, anything running as your user can d
 
 A managed account is a separate, non-administrator login that can reach only websites you approve. This is useful for a child's account: the restriction applies to every network client under that Linux user, not only Chromium, so installing another browser, changing DNS, using QUIC, or running `curl` does not bypass it.
 
-Create one from _Setup > Security > Managed Account_, or from a terminal:
+Create one from _Setup > Security > Managed Accounts > Add Account_, or from a terminal:
 
 ```bash
 omarchy managed add kid khanacademy.org https://school.example/lessons
 ```
 
-The menu asks for the login name, the initial allowed websites, and the account's login password. New logins receive a minimal desktop from Omarchy's shipped defaults without copying private files from the administrator or running the developer-oriented first-login setup. Omarchy disables automatic administrator login when the first managed account is added, so after logging out or rebooting you can choose between the administrator and managed accounts at the login screen.
+The menu asks for the login name, the initial allowed websites, and the account's login password. Separate multiple websites with spaces. New logins receive a minimal desktop from Omarchy's shipped defaults without copying private files from the administrator or running the developer-oriented first-login setup. Omarchy disables automatic administrator login when the first managed account is added, so after logging out or rebooting you can choose between the administrator and managed accounts at the login screen.
 
 The allowlist is made of website hosts. Pasting a URL is convenient, but `https://school.example/lessons` becomes `school.example` and includes its subdomains. HTTPS encrypts the path after the host, and Omarchy deliberately does not install a certificate to intercept it. Modern sites often load sign-in pages, video, fonts, or other assets from additional hosts; add those hosts when a page needs them.
+
+To change an existing account, use _Allow Websites_, _Remove Websites_, or _View Websites_ in the same _Managed Accounts_ menu. The first two let you choose the managed account before entering one or more websites.
 
 ```bash
 omarchy managed allow kid accounts.example school-cdn.example

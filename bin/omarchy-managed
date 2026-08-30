@@ -385,7 +385,7 @@ CONF
 }
 
 seed_omarchy_home() {
-  local username=$1 home group omarchy_root done_dir
+  local username=$1 home group omarchy_root state_dir done_dir
 
   home=$(getent passwd "$username" | cut -d: -f6)
   group=$(id -gn "$username")
@@ -407,7 +407,10 @@ seed_omarchy_home() {
   # child's first session, and both would fail after the firewall is active.
   install -d -m 0755 -o "$username" -g "$group" \
     "$home/Downloads" "$home/Pictures" "$home/Videos"
-  done_dir=$home/.local/state/omarchy/done
+  state_dir=$home/.local/state/omarchy
+  install -d -m 0755 -o "$username" -g "$group" \
+    "$home/.local" "$home/.local/state" "$state_dir"
+  done_dir=$state_dir/done
   install -d -m 0700 -o "$username" -g "$group" "$done_dir"
   install -m 0644 -o "$username" -g "$group" /dev/null "$done_dir/finalize-user"
   install -m 0644 -o "$username" -g "$group" /dev/null "$done_dir/first-run-user"
@@ -541,6 +544,22 @@ list_accounts() {
   (( found )) || echo "No managed accounts."
 }
 
+choose_managed_account() {
+  local accounts=() dir username
+
+  if [[ -d $MANAGED_STATE_DIR && ! -L $MANAGED_STATE_DIR ]]; then
+    for dir in "$MANAGED_STATE_DIR"/*; do
+      [[ -d $dir && ! -L $dir ]] || continue
+      username=${dir##*/}
+      managed_account_username_valid "$username" || continue
+      accounts+=("$username")
+    done
+  fi
+
+  (( ${#accounts[@]} )) || error "there are no managed accounts"
+  printf '%s\n' "${accounts[@]}" | gum choose --header "Managed account"
+}
+
 remove_account() {
   local username=$1 dir proxy_unit="omarchy-managed-proxy@$1.service"
 
@@ -568,7 +587,7 @@ case "$action" in
     if [[ -z $username ]]; then
       [[ -t 0 ]] || error "a username is required"
       username=$(gum input --prompt "Managed username> " --placeholder "kid")
-      sites_input=$(gum input --prompt "Allowed websites> " --placeholder "code.org school.example")
+      sites_input=$(gum input --prompt "Allowed websites (separate multiple with spaces)> " --placeholder "code.org khanacademy.org")
       sites=()
       [[ -z $sites_input ]] || read -ra sites <<<"$sites_input"
       set -- "$username" "${sites[@]}"
@@ -582,6 +601,18 @@ case "$action" in
   allow|deny)
     shift
     username=${1:-}
+    if [[ -z $username ]]; then
+      [[ -t 0 ]] || error "a username is required"
+      username=$(choose_managed_account)
+      if [[ $action == "allow" ]]; then
+        sites_input=$(gum input --prompt "Websites to allow (separate multiple with spaces)> " --placeholder "scratch.mit.edu khanacademy.org")
+      else
+        sites_input=$(gum input --prompt "Websites to remove (separate multiple with spaces)> " --placeholder "scratch.mit.edu khanacademy.org")
+      fi
+      sites=()
+      [[ -z $sites_input ]] || read -ra sites <<<"$sites_input"
+      set -- "$username" "${sites[@]}"
+    fi
     require_username "$username"
     shift
     (( $# )) || error "$action needs at least one website"
