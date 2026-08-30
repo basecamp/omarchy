@@ -1203,9 +1203,10 @@ void real_root_publishes_attaches_and_tears_down_exactly() {
   QQuickWindow window;
   window.resize(320, 64);
   window.show();
-  bridge::RemotePluginSurface remote(window.contentItem());
-  remote.setWidth(320);
-  remote.setHeight(64);
+  bridge::RemotePluginSurface rollback_remote(window.contentItem());
+  rollback_remote.setWidth(320);
+  rollback_remote.setHeight(64);
+  bridge::RemotePluginSurface *attachment_remote = &rollback_remote;
   bool attached_in_signal = false;
   QObject::connect(manager.get(), &bridge::PluginManager::surfacesChanged,
                    [&] {
@@ -1215,7 +1216,8 @@ void real_root_publishes_attaches_and_tears_down_exactly() {
                                           ->data(manager->barSurfaces()->index(0, 0),
                                                  Model::SurfaceKeyRole)
                                           .toString();
-                     attached_in_signal = manager->attach(key, &remote);
+                     attached_in_signal =
+                         manager->attach(key, attachment_remote);
                    });
   const auto declarations = [] {
     std::vector<Model::SurfaceDeclaration> value;
@@ -1251,9 +1253,15 @@ void real_root_publishes_attaches_and_tears_down_exactly() {
                   .running_unpublished &&
               !bridge::PluginManagerTestAccess::runtimeSlots(*manager)
                    .front()
-                   .has_endpoint_owner,
+                   .has_endpoint_owner &&
+              attached_in_signal && !rollback_remote.connected(),
           "throwing publication signal escaped noexcept rollback");
   QObject::disconnect(throwing_publication);
+  bridge::RemotePluginSurface remote(window.contentItem());
+  remote.setWidth(320);
+  remote.setHeight(64);
+  attachment_remote = &remote;
+  attached_in_signal = false;
   require(bridge::PluginManagerTestAccess::publishReady(
               *manager, plugin, slot.epoch, exact_binding, declarations) &&
               attached_in_signal && remote.connected() && manager->count() == 1,
