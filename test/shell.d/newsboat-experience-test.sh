@@ -358,7 +358,7 @@ grep -Fq '"query:Inbox:unread = \"yes\""' "$ROOT/default/newsboat/urls" || fail 
 grep -Fq 'auto-reload no' "$ROOT/default/newsboat/omarchy.conf" || fail "Feeds does not create a continuously replenishing stream"
 grep -Fq 'prepopulate-query-feeds yes' "$ROOT/default/newsboat/omarchy.conf" || fail "Feeds prepares the Inbox at startup"
 grep -Fq 'feedlist-title-format "  Feeds · finite edition"' "$ROOT/default/newsboat/omarchy.conf" || fail "Feeds names the finite reader experience"
-grep -Fq 'macro b set browser "omarchy-newsboat-handoff brief"' "$ROOT/default/newsboat/omarchy.conf" || fail "Feeds exposes the non-blocking whole-edition agent briefing"
+grep -Fq 'macro b edit-urls "omarchy-newsboat-handoff brief"' "$ROOT/default/newsboat/omarchy.conf" || fail "Feeds exposes a query-safe whole-edition agent briefing"
 grep -F 'macro b ' "$ROOT/default/newsboat/omarchy.conf" | grep -Fq '; quit --' || fail "Feeds closes before a confirmed briefing imports read state"
 grep -Fq 'state_dir="${NEWSBOAT_BRIEF_STATE_DIR:-/tmp/omarchy-newsboat-$UID/briefs}"' "$ROOT/bin/omarchy-newsboat-brief" || fail "Feeds keeps confirmation state in the agent-writable private temp area"
 grep -Fq 'runtime_dir=/tmp' "$ROOT/bin/omarchy-newsboat-triage" || fail "Feeds applies confirmation without requiring broader agent filesystem access"
