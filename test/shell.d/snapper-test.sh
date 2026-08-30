@@ -9,11 +9,11 @@ limine_defaults="$ROOT/etc/limine-entry-tool.d/omarchy-defaults.conf"
 limine_notify_autostart="$ROOT/config/autostart/limine-snapper-notify.desktop"
 
 grep -Fx 'NUMBER_CLEANUP="yes"' "$template" >/dev/null
-grep -Fx 'NUMBER_LIMIT="5"' "$template" >/dev/null
+grep -Fx 'NUMBER_LIMIT="10"' "$template" >/dev/null
 grep -Fx 'TIMELINE_CREATE="no"' "$template" >/dev/null
 ! grep -Eq '^TIMELINE_(CLEANUP|LIMIT_)' "$template" || fail "Snapper template keeps timeline cleanup details out of the default config"
-grep -Fx 'MAX_SNAPSHOT_ENTRIES=6' "$limine_defaults" >/dev/null || fail "Limine allows for a snapshot created before Snapper cleanup"
-pass "Snapper and Limine retain update snapshots without a transient limit mismatch"
+grep -Fx 'MAX_SNAPSHOT_ENTRIES=11' "$limine_defaults" >/dev/null || fail "Limine allows for a snapshot created before Snapper cleanup"
+pass "Snapper and Limine retain operation snapshots without a transient limit mismatch"
 
 grep -Fx '[Desktop Entry]' "$limine_notify_autostart" >/dev/null
 grep -Fx 'Hidden=true' "$limine_notify_autostart" >/dev/null
