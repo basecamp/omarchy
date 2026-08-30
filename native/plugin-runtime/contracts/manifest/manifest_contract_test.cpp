@@ -43,6 +43,8 @@ void parser_contract(const std::filesystem::path &fixtures) {
   require(manifest.runtime.api_version == 1 &&
               manifest.runtime.qml == "ui/Status.qml",
           "runtime was not parsed");
+  require(manifest.surface_names == std::vector<std::string>{"barWidget"},
+          "declared shared-QML surface names were not retained");
   require(manifest.requests.size() == 2 && manifest.requests[0].required &&
               !manifest.requests[1].required,
           "permission classes were not preserved");
@@ -70,17 +72,61 @@ void parser_contract(const std::filesystem::path &fixtures) {
   const auto multi_surface = omarchy::plugins::manifest::parse_manifest_v2(
       R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml","surfaceQml":{"atlas":"Atlas.qml","barWidget":"BarWidget.qml"}},"surfaces":{"atlas":{},"barWidget":{}},"permissions":{"required":[],"optional":[]}})");
   require(multi_surface.runtime.surface_qml.size() == 2 &&
+              multi_surface.surface_names ==
+                  std::vector<std::string>{"atlas", "barWidget"} &&
               multi_surface.runtime.surface_qml[0].surface == "atlas" &&
               multi_surface.runtime.surface_qml[0].qml == "Atlas.qml" &&
               multi_surface.runtime.surface_qml[1].surface == "barWidget" &&
               multi_surface.runtime.surface_qml[1].qml == "BarWidget.qml",
           "per-surface QML entries were not preserved exactly");
+  const std::string maximum_surface_name(64, 'X');
+  const auto maximum_surface =
+      omarchy::plugins::manifest::parse_manifest_v2(
+          std::string(R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{")") +
+          maximum_surface_name +
+          R"(":{}},"permissions":{"required":[],"optional":[]}})");
+  require(maximum_surface.surface_names ==
+              std::vector<std::string>{maximum_surface_name},
+          "maximum wire-safe surface name was rejected");
   expect_rejected(
       [] {
         (void)omarchy::plugins::manifest::parse_manifest_v2(
             R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml","surfaceQml":{"missing":"Other.qml"}},"surfaces":{"atlas":{}},"permissions":{"required":[],"optional":[]}})");
       },
       "QML entry for an undeclared surface was accepted");
+  expect_rejected(
+      [] {
+        (void)omarchy::plugins::manifest::parse_manifest_v2(
+            R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml","surfaceQml":{"atlas":"Atlas.qml"}},"surfaces":{"atlas":{},"barWidget":{}},"permissions":{"required":[],"optional":[]}})");
+      },
+      "partial per-surface QML mapping was accepted");
+  expect_rejected(
+      [] {
+        (void)omarchy::plugins::manifest::parse_manifest_v2(
+            R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{"Panel.Widget":{}},"permissions":{"required":[],"optional":[]}})");
+      },
+      "dotted surface name outside the wire contract was accepted");
+  expect_rejected(
+      [] {
+        const std::string name(65, 'X');
+        (void)omarchy::plugins::manifest::parse_manifest_v2(
+            std::string(R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{")") +
+            name +
+            R"(":{}},"permissions":{"required":[],"optional":[]}})");
+      },
+      "65-byte surface name outside the wire contract was accepted");
+  expect_rejected(
+      [] {
+        (void)omarchy::plugins::manifest::parse_manifest_v2(
+            R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{"bad\u0000name":{}},"permissions":{"required":[],"optional":[]}})");
+      },
+      "NUL surface name outside the wire contract was accepted");
+  expect_rejected(
+      [] {
+        (void)omarchy::plugins::manifest::parse_manifest_v2(
+            R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{"a":{},"b":{},"c":{},"d":{},"e":{},"f":{},"g":{},"h":{},"i":{}},"permissions":{"required":[],"optional":[]}})");
+      },
+      "more than eight declared surfaces were accepted");
   expect_rejected(
       [] {
         (void)omarchy::plugins::manifest::parse_manifest_v2(

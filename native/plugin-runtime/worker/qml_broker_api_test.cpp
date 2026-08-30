@@ -29,6 +29,7 @@ namespace broker = omarchy::plugin_runtime::broker;
 namespace definitions = omarchy::plugins::definitions;
 namespace manifest = omarchy::plugins::manifest;
 namespace permissions = omarchy::plugins::permissions;
+namespace surface = omarchy::plugin_runtime::surface;
 namespace worker = omarchy::plugin_runtime::worker;
 namespace wire = omarchy::plugin::wire;
 
@@ -46,6 +47,27 @@ class WrongParameterApi final : public QObject {
   Q_OBJECT
 public:
   Q_INVOKABLE QVariant invoke(const QString &, const QVariant &) { return {}; }
+};
+
+class IntentSink final : public worker::SurfaceIntentSink {
+public:
+  bool request_surface_intent(
+      const definitions::DynamicInvocation::GestureClaim &source,
+      std::string_view target,
+      surface::SurfaceIntentAction action) override {
+    ++calls;
+    last_source = source;
+    last_target = target;
+    last_action = action;
+    return accept && target == declared_target;
+  }
+
+  int calls = 0;
+  bool accept = true;
+  std::string declared_target = "PanelWidget";
+  definitions::DynamicInvocation::GestureClaim last_source{};
+  std::string last_target;
+  surface::SurfaceIntentAction last_action = surface::SurfaceIntentAction::open;
 };
 
 void require(bool condition, const char *message) {
@@ -347,6 +369,38 @@ void run() {
   handshake(endpoint, pair.descriptors[1]);
   worker::QmlBrokerApi api(endpoint,
       std::make_unique<worker::BootstrapInvokeEncoder>());
+  IntentSink intent_sink;
+  IntentSink second_sink;
+  require(api.bindSurfaceIntentSink(intent_sink) &&
+              !api.bindSurfaceIntentSink(second_sink) &&
+              !api.requestSurfaceIntent(QStringLiteral("panel"),
+                                        QStringLiteral("toggle")),
+          "surface intent sink was rebound or accepted without input");
+  api.beginTrustedGesture(3, 77, 9);
+  require(!api.requestSurfaceIntent(QString(), QStringLiteral("toggle")) &&
+              !api.requestSurfaceIntent(QStringLiteral("Panel.Widget"),
+                                        QStringLiteral("toggle")) &&
+              !api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
+                                        QStringLiteral("execute")) &&
+              !api.requestSurfaceIntent(QStringLiteral("MissingWidget"),
+                                       QStringLiteral("toggle")) &&
+              intent_sink.calls == 1 &&
+              !api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
+                                        QStringLiteral("toggle")),
+          "undeclared target was accepted or retained gesture eligibility");
+  api.beginTrustedGesture(3, 77, 10);
+  require(api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
+                                   QStringLiteral("toggle")) &&
+              intent_sink.calls == 2 &&
+              intent_sink.last_source.surface_id == 3 &&
+              intent_sink.last_source.surface_generation == 77 &&
+              intent_sink.last_source.input_sequence == 10 &&
+              intent_sink.last_target == "PanelWidget" &&
+              intent_sink.last_action == surface::SurfaceIntentAction::toggle &&
+              !api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
+                                        QStringLiteral("toggle")),
+          "QML intent request escaped its closed trusted sink contract");
+  api.endTrustedGesture();
 
   QVariantMap arguments{{QStringLiteral("key"), QStringLiteral("timer-state")},
                         {QStringLiteral("value"), QByteArray("saved")}};

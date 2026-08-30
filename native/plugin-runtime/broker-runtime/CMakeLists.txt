@@ -14,6 +14,7 @@ endif()
 add_library(omarchy-plugin-broker-runtime STATIC
   broker_runtime.cpp
   dynamic_broker_runtime.cpp
+  gesture_eligibility.cpp
   ../audit/audit_store.cpp
 )
 target_include_directories(omarchy-plugin-broker-runtime PUBLIC
@@ -39,6 +40,7 @@ if(PLUGIN_SECURITY_BROKER_RUNTIME_SANITIZERS)
 endif()
 
 if(BUILD_TESTING)
+  find_package(Threads REQUIRED)
   add_executable(omarchy-plugin-audit-store-test
     ../audit/audit_store_test.cpp)
   target_compile_features(omarchy-plugin-audit-store-test PRIVATE cxx_std_20)
@@ -59,4 +61,16 @@ if(BUILD_TESTING)
     omarchy-plugin-broker-runtime)
   add_test(NAME plugin-dynamic-broker-runtime
     COMMAND omarchy-plugin-dynamic-broker-runtime-test)
+
+  add_executable(omarchy-plugin-gesture-eligibility-test
+    gesture_eligibility_test.cpp)
+  target_compile_features(omarchy-plugin-gesture-eligibility-test PRIVATE cxx_std_20)
+  target_compile_options(omarchy-plugin-gesture-eligibility-test PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+  target_link_libraries(omarchy-plugin-gesture-eligibility-test PRIVATE
+    omarchy-plugin-broker-runtime Threads::Threads)
+  add_test(NAME plugin-gesture-eligibility
+    COMMAND omarchy-plugin-gesture-eligibility-test)
+  set_tests_properties(plugin-gesture-eligibility PROPERTIES
+    TIMEOUT 10 LABELS "unit;security;gesture;adversarial")
 endif()

@@ -81,7 +81,6 @@ if(TARGET omarchy-plugin-wire
   add_subdirectory(trusted-bridge)
   add_subdirectory(render-session)
   add_subdirectory(surface-host)
-  add_subdirectory(bridge)
 endif()
 
 if(TARGET omarchy-plugin-sandbox-policy
@@ -106,6 +105,12 @@ if(TARGET omarchy-plugin-broker-runtime
     AND TARGET omarchy-plugin-surface-contract
     AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/host-session/CMakeLists.txt")
   add_subdirectory(host-session)
+endif()
+
+if(TARGET omarchy-plugin-host-session
+    AND TARGET omarchy-plugin-trusted-bridge
+    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bridge/CMakeLists.txt")
+  add_subdirectory(bridge)
 endif()
 
 if(TARGET omarchy-plugin-launcher

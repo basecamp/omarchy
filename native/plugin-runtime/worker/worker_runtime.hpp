@@ -78,6 +78,8 @@ public:
                                            surface::SurfaceKey surface);
   [[nodiscard]] RuntimeResult open_surface(std::string_view surface_name,
                                            surface::SurfaceKey surface);
+  [[nodiscard]] std::optional<surface::SurfaceKey>
+  surface_key(std::string_view surface_name) const;
   [[nodiscard]] RuntimeResult bind_runtime_api(QObject &runtime_api);
   [[nodiscard]] RuntimeResult
   select_software_profile(const surface::ProfileOffer &offer);

@@ -52,6 +52,7 @@ struct ManifestV2 {
   std::string version;
   std::string description;
   Runtime runtime;
+  std::vector<std::string> surface_names;
   std::string canonical_surfaces;
   std::vector<CapabilityRequest> requests;
   std::string canonical_json;

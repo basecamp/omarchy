@@ -1,5 +1,7 @@
 #include "manifest_contract.hpp"
 
+#include "omarchy/plugin/wire/surface_name.hpp"
+
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -17,6 +19,8 @@
 
 namespace omarchy::plugins::manifest {
 namespace {
+
+namespace wire = omarchy::plugin::wire;
 
 using namespace std::literals;
 
@@ -715,10 +719,12 @@ ManifestV2 parse_manifest_v2(std::string_view bytes) {
   require(safe_relative_path(result.runtime.qml), "unsafe runtime.qml path");
   if (const auto found = runtime.find("surfaceQml"); found != runtime.end()) {
     const Object &entries = as_object(found->second, "runtime.surfaceQml");
-    require(!entries.empty() && entries.size() <= 8,
+    require(!entries.empty() &&
+                entries.size() <= wire::kMaximumPluginSurfaces,
             "runtime.surfaceQml has invalid length");
     for (const auto &[surface, entry] : entries) {
-      bounded_text(surface, 128, "runtime.surfaceQml surface");
+      require(wire::valid_surface_name(surface),
+              "runtime.surfaceQml surface has invalid wire name");
       auto qml = as_string(entry, "runtime.surfaceQml entry");
       require(safe_relative_path(qml),
               "unsafe runtime.surfaceQml entry path");
@@ -771,9 +777,21 @@ ManifestV2 parse_manifest_v2(std::string_view bytes) {
 
   const Json &surfaces = required(root, "surfaces");
   const Object &surface_entries = as_object(surfaces, "surfaces");
+  require(surface_entries.size() <= wire::kMaximumPluginSurfaces,
+          "too many declared surfaces");
+  for (const auto &[surface, ignored] : surface_entries) {
+    (void)ignored;
+    require(wire::valid_surface_name(surface),
+            "surface name has invalid wire name");
+    result.surface_names.push_back(surface);
+  }
   for (const auto &entry : result.runtime.surface_qml) {
     require(surface_entries.contains(entry.surface),
             "runtime.surfaceQml names an undeclared surface");
+  }
+  if (!result.runtime.surface_qml.empty()) {
+    require(result.runtime.surface_qml.size() == surface_entries.size(),
+            "runtime.surfaceQml must cover every declared surface");
   }
   result.canonical_surfaces = canonical(surfaces);
 

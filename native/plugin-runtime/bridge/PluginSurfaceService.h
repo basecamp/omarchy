@@ -9,6 +9,14 @@ namespace omarchy::plugin_runtime::bridge {
 
 class RemotePluginSurface;
 
+} // namespace omarchy::plugin_runtime::bridge
+
+namespace omarchy::plugin_runtime::host_session {
+class AdmittedSurfaceIntent;
+}
+
+namespace omarchy::plugin_runtime::bridge {
+
 class PluginSurfaceBackend {
 public:
   virtual ~PluginSurfaceBackend() = default;
@@ -32,13 +40,6 @@ public:
   };
   Q_ENUM(Role)
 
-  enum class Intent {
-    open,
-    toggle,
-    dismiss,
-  };
-  Q_ENUM(Intent)
-
   explicit PluginSurfaceService(QObject *parent = nullptr);
 
   [[nodiscard]] bool available() const;
@@ -51,10 +52,7 @@ public:
   bool bindBackend(PluginSurfaceBackend &backend);
   void unbindBackend(PluginSurfaceBackend &backend);
   bool publishSurfaces(const QVariantList &surfaces, qulonglong revision);
-  bool publishIntent(const QString &source_surface,
-                     const QString &target_surface, Intent intent,
-                     qulonglong generation, bool authenticated,
-                     bool fresh_gesture);
+  bool publishIntent(host_session::AdmittedSurfaceIntent intent);
 
 signals:
   void availableChanged();

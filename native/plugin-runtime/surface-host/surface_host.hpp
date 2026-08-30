@@ -1,6 +1,7 @@
 #pragma once
 
 #include "manifest_contract.hpp"
+#include "omarchy/plugin/wire/surface_name.hpp"
 #include "permission_contract.hpp"
 #include "remote_surface.hpp"
 #include "render_session.hpp"
@@ -19,7 +20,6 @@ namespace render_session = omarchy::plugin_runtime::render_session;
 namespace surface = omarchy::plugin_runtime::surface;
 namespace permissions = omarchy::plugins::permissions;
 
-inline constexpr std::size_t kMaximumSurfacesPerPlugin = 8;
 inline constexpr std::size_t kMaximumInputRegions = 16;
 
 enum class SurfaceRole { bar_embedded, desktop_overlay, panel };

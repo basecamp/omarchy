@@ -1,5 +1,7 @@
 #pragma once
 
+#include "omarchy/plugin/wire/surface_name.hpp"
+
 #include <cstdint>
 #include <cstddef>
 #include <span>
@@ -26,8 +28,8 @@ struct SurfaceBinding {
 
 inline std::vector<std::byte>
 encode_surface_binding(const SurfaceBinding &binding) {
-  if (binding.id == 0 || binding.generation == 0 || binding.surface.empty() ||
-      binding.surface.size() > 64)
+  if (binding.id == 0 || binding.generation == 0 ||
+      !valid_surface_name(binding.surface))
     return {};
   std::vector<std::byte> output(17 + binding.surface.size());
   for (std::size_t index = 0; index < 8; ++index) {
@@ -59,14 +61,11 @@ inline bool decode_surface_binding(std::span<const std::byte> input,
     return false;
   decoded.surface.reserve(input.size() - 17);
   for (std::size_t index = 17; index < input.size(); ++index) {
-    const auto character = std::to_integer<unsigned char>(input[index]);
-    if (!((character >= 'a' && character <= 'z') ||
-          (character >= 'A' && character <= 'Z') ||
-          (character >= '0' && character <= '9') || character == '-' ||
-          character == '_'))
-      return false;
-    decoded.surface.push_back(static_cast<char>(character));
+    decoded.surface.push_back(
+        static_cast<char>(std::to_integer<unsigned char>(input[index])));
   }
+  if (!valid_surface_name(decoded.surface))
+    return false;
   binding = std::move(decoded);
   return true;
 }

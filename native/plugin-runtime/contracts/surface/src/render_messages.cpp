@@ -14,7 +14,7 @@ constexpr std::uint32_t kSoftwareSceneGraph = 1U << 1U;
 constexpr std::uint32_t kRequiredProfileFlags =
     kFullFrameOnly | kSoftwareSceneGraph;
 
-constexpr std::array<wire::MessageRule, 11> kWireRules{{
+constexpr std::array<wire::MessageRule, 12> kWireRules{{
     {static_cast<std::uint16_t>(RenderMessageType::profile_offer),
      wire::DirectionMask::host_to_worker, wire::CorrelationRule::nonzero,
      wire::MessageSemantic::request, 24, 24},
@@ -48,9 +48,12 @@ constexpr std::array<wire::MessageRule, 11> kWireRules{{
     {static_cast<std::uint16_t>(RenderMessageType::focus),
      wire::DirectionMask::host_to_worker, wire::CorrelationRule::zero,
      wire::MessageSemantic::one_way, 32, 32},
+    {static_cast<std::uint16_t>(RenderMessageType::surface_intent),
+     wire::DirectionMask::worker_to_host, wire::CorrelationRule::zero,
+     wire::MessageSemantic::event, 48, 48},
 }};
 
-constexpr std::array<DescriptorRule, 11> kDescriptorRules{{
+constexpr std::array<DescriptorRule, 12> kDescriptorRules{{
     {static_cast<std::uint16_t>(RenderMessageType::profile_offer), 0},
     {static_cast<std::uint16_t>(RenderMessageType::profile_select), 0},
     {static_cast<std::uint16_t>(RenderMessageType::surface_allocate), 1},
@@ -62,6 +65,7 @@ constexpr std::array<DescriptorRule, 11> kDescriptorRules{{
     {static_cast<std::uint16_t>(RenderMessageType::input_regions), 0},
     {static_cast<std::uint16_t>(RenderMessageType::input), 0},
     {static_cast<std::uint16_t>(RenderMessageType::focus), 0},
+    {static_cast<std::uint16_t>(RenderMessageType::surface_intent), 0},
 }};
 
 constexpr std::uint32_t swap32(std::uint32_t value) {
@@ -401,6 +405,40 @@ bool decode_focus_event(std::span<const std::byte> bytes, FocusEvent &output) {
             .focused = bytes[24] == std::byte{1}};
   return output.surface.id != 0 && output.surface.generation != 0 &&
          output.sequence != 0;
+}
+
+std::array<std::byte, 48>
+encode_surface_intent(const SurfaceIntentRequest &payload) {
+  std::array<std::byte, 48> output{};
+  put<std::uint64_t>(output, 0, payload.source.id);
+  put<std::uint64_t>(output, 8, payload.source.generation);
+  put<std::uint64_t>(output, 16, payload.target.id);
+  put<std::uint64_t>(output, 24, payload.target.generation);
+  put<std::uint64_t>(output, 32, payload.input_sequence);
+  put<std::uint32_t>(output, 40, static_cast<std::uint32_t>(payload.action));
+  return output;
+}
+
+bool decode_surface_intent(std::span<const std::byte> bytes,
+                           SurfaceIntentRequest &output) {
+  if (bytes.size() != 48 || get<std::uint32_t>(bytes, 44) != 0)
+    return false;
+  const auto action =
+      static_cast<SurfaceIntentAction>(get<std::uint32_t>(bytes, 40));
+  if (action != SurfaceIntentAction::open &&
+      action != SurfaceIntentAction::toggle &&
+      action != SurfaceIntentAction::dismiss)
+    return false;
+  output = {
+      .source = {.id = get<std::uint64_t>(bytes, 0),
+                 .generation = get<std::uint64_t>(bytes, 8)},
+      .target = {.id = get<std::uint64_t>(bytes, 16),
+                 .generation = get<std::uint64_t>(bytes, 24)},
+      .input_sequence = get<std::uint64_t>(bytes, 32),
+      .action = action};
+  return output.source.id != 0 && output.source.generation != 0 &&
+         output.target.id != 0 && output.target.generation != 0 &&
+         output.input_sequence != 0;
 }
 
 std::array<std::byte, 24> encode_render_error(const RenderTypedError &payload) {

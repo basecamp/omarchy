@@ -92,7 +92,7 @@ std::string read_manifest() {
           std::istreambuf_iterator<char>()};
 }
 
-class WorkerApplication {
+class WorkerApplication final : public worker::SurfaceIntentSink {
 public:
   explicit WorkerApplication(
       const omarchy::plugins::manifest::ManifestV2 &manifest)
@@ -133,6 +133,28 @@ public:
   }
 
 private:
+  bool request_surface_intent(
+      const omarchy::plugins::definitions::DynamicInvocation::GestureClaim
+          &source,
+      std::string_view target_surface,
+      surface::SurfaceIntentAction action) override {
+    if (!runtime_loaded_ || source.surface_id == 0 ||
+        source.surface_generation == 0 || source.input_sequence == 0)
+      return false;
+    const auto target = runtime_.surface_key(target_surface);
+    if (!target || target->generation != source.surface_generation)
+      return false;
+    const auto payload = surface::encode_surface_intent(
+        {.source = {.id = source.surface_id,
+                    .generation = source.surface_generation},
+         .target = *target,
+         .input_sequence = source.input_sequence,
+         .action = action});
+    return send_render(
+        static_cast<std::uint16_t>(surface::RenderMessageType::surface_intent),
+        payload, 0);
+  }
+
   void receive_broker_if_ready() {
     // A socket-notifier activation and the level-triggered fallback may both
     // already be queued for one datagram. Recheck readiness in the callback so
@@ -236,22 +258,18 @@ private:
     if (surface_selection_received_ || runtime_loaded_ ||
         runtime_load_pending_ || packet.header.correlation_id != 0 ||
         !packet.descriptors.empty() || packet.payload.empty() ||
-        packet.payload.size() > 64) {
+        packet.payload.size() > wire::kMaximumSurfaceNameBytes) {
       fatal("surface selection failed runtime validation");
       return;
     }
     std::string surface;
     surface.reserve(packet.payload.size());
-    for (const auto byte : packet.payload) {
-      const auto character = std::to_integer<unsigned char>(byte);
-      if (!((character >= 'a' && character <= 'z') ||
-            (character >= 'A' && character <= 'Z') ||
-            (character >= '0' && character <= '9') || character == '-' ||
-            character == '_')) {
-        fatal("surface selection name is invalid");
-        return;
-      }
-      surface.push_back(static_cast<char>(character));
+    for (const auto byte : packet.payload)
+      surface.push_back(
+          static_cast<char>(std::to_integer<unsigned char>(byte)));
+    if (!wire::valid_surface_name(surface)) {
+      fatal("surface selection name is invalid");
+      return;
     }
     const auto entry = std::ranges::find_if(
         manifest_.runtime.surface_qml, [&](const auto &candidate) {
@@ -381,6 +399,10 @@ private:
     broker_api_ = std::make_unique<worker::QmlBrokerApi>(
         broker_, std::make_unique<worker::ManifestInvokeEncoder>(manifest_),
         manifest_, broker_.generation());
+    if (!broker_api_->bindSurfaceIntentSink(*this)) {
+      fatal("surface intent sink binding failed");
+      return;
+    }
     broker_api_->setPackagedAssetRoot("/plugin");
     QObject::connect(broker_api_.get(), &worker::QmlBrokerApi::callFinished,
                      broker_api_.get(),
@@ -550,20 +572,25 @@ private:
         return;
       }
       const bool pointer = event.kind == surface::InputKind::pointer_button;
-      const bool pressed = pointer &&
-          event.state == static_cast<std::uint32_t>(surface::ButtonState::pressed);
-      const bool released = pointer &&
-          event.state == static_cast<std::uint32_t>(surface::ButtonState::released);
+      const bool touch = event.kind == surface::InputKind::touch;
+      const bool pressed =
+          (pointer && event.state == static_cast<std::uint32_t>(
+                                          surface::ButtonState::pressed)) ||
+          (touch && event.state == 1);
+      const bool released =
+          (pointer && event.state == static_cast<std::uint32_t>(
+                                          surface::ButtonState::released)) ||
+          (touch && (event.state == 3 || event.active_touch_points == 0));
       if (pressed)
-        broker_api_->beginTrustedPointerGesture(
+        broker_api_->beginTrustedGesture(
             event.surface.id, event.surface.generation, event.sequence);
       if (!runtime_.input(event)) {
-        broker_api_->endTrustedPointerGesture();
+        broker_api_->endTrustedGesture();
         fatal("input event failed validation");
         return;
       }
       if (released)
-        broker_api_->endTrustedPointerGesture();
+        broker_api_->endTrustedGesture();
       return;
     }
     fatal("unexpected render message type");

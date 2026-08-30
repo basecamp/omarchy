@@ -220,6 +220,10 @@ void two_surface_activation() {
               static_cast<bool>(
                   runtime.bind_surface("atlas", atlas->surface)),
           "declared roots did not bind distinct host surface identities");
+  require(runtime.surface_key("bar") == bar->surface &&
+              runtime.surface_key("atlas") == atlas->surface &&
+              !runtime.surface_key("missing"),
+          "declared surface names did not resolve only to host bindings");
   require(!runtime.open_surface("atlas", {.id = 52, .generation = 11}),
           "stale surface generation opened a panel");
   require(!runtime.open_surface("bar", bar->surface),

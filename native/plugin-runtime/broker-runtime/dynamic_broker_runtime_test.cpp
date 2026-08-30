@@ -2,6 +2,7 @@
 #include "dynamic_broker_runtime.hpp"
 
 #include <array>
+#include <memory>
 #include <stdexcept>
 #include <vector>
 
@@ -107,7 +108,7 @@ std::vector<std::byte> quota_request(permissions::OperationId operation,
 } // namespace
 
 int main() {
-  FakeGestureClock gesture_clock;
+  auto gesture_clock = std::make_shared<FakeGestureClock>();
   runtime::DynamicGestureLatch gesture_latch(gesture_clock);
   const permissions::ActivationBinding gesture_binding{
       .plugin = permissions::PluginId("fixture.gesture"),
@@ -121,21 +122,27 @@ int main() {
   other_plugin.plugin = permissions::PluginId("fixture.other");
   require(!gesture_latch.consume(other_plugin, gesture_claim),
           "cross-plugin gesture accepted");
+  require(!gesture_latch.consume(gesture_binding, gesture_claim),
+          "cross-plugin probe retained gesture eligibility");
+  require(gesture_latch.arm(gesture_binding, gesture_claim), "gesture rearm");
   auto other_surface = gesture_claim;
   ++other_surface.surface_id;
   require(!gesture_latch.consume(gesture_binding, other_surface),
           "cross-surface gesture accepted");
-  require(gesture_latch.consume(gesture_binding, gesture_claim),
-          "exact gesture rejected after spoof attempts");
+  require(!gesture_latch.consume(gesture_binding, gesture_claim),
+          "cross-surface probe retained gesture eligibility");
+  require(gesture_latch.arm(gesture_binding, gesture_claim), "gesture rearm");
+  require(gesture_latch.consume(gesture_binding, gesture_claim).has_value(),
+          "exact gesture rejected");
   require(!gesture_latch.consume(gesture_binding, gesture_claim),
           "gesture replay accepted");
   require(gesture_latch.arm(gesture_binding, gesture_claim), "gesture rearm");
-  gesture_clock.now += 5'000'000'001ULL;
+  gesture_clock->now += 5'000'000'001ULL;
   require(!gesture_latch.consume(gesture_binding, gesture_claim),
           "expired gesture accepted");
   auto stale_sequence = gesture_claim;
   --stale_sequence.input_sequence;
-  gesture_clock.now = 200;
+  gesture_clock->now = 200;
   require(gesture_latch.arm(gesture_binding, gesture_claim) &&
               !gesture_latch.arm(gesture_binding, stale_sequence),
           "non-monotonic gesture sequence accepted");

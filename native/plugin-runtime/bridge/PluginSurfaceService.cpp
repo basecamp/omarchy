@@ -1,15 +1,19 @@
 #include "PluginSurfaceService.h"
 
 #include "remote_surface.hpp"
+#include "gesture_intent.hpp"
 
 #include <QVariantMap>
 
 #include <algorithm>
+#include <optional>
+#include <string>
 
 namespace omarchy::plugin_runtime::bridge {
 namespace {
 
-constexpr qsizetype kMaximumSurfaces = 32;
+namespace wire = omarchy::plugin::wire;
+
 constexpr int kMaximumBarWidth = 1024;
 constexpr int kMaximumBarHeight = 128;
 constexpr int kMaximumPanelWidth = 1024;
@@ -17,7 +21,7 @@ constexpr int kMaximumPanelHeight = 1024;
 constexpr int kMaximumOverlayWidth = 8192;
 constexpr int kMaximumOverlayHeight = 8192;
 
-bool bounded_name(QStringView value) {
+bool valid_plugin_id(QStringView value) {
   if (value.isEmpty() || value.size() > 128)
     return false;
   bool separator = true;
@@ -30,6 +34,34 @@ bool bounded_name(QStringView value) {
     separator = current_separator;
   }
   return !separator;
+}
+
+std::optional<QString> canonical_surface_key(
+    const omarchy::plugins::permissions::ActivationBinding &binding,
+    std::string_view raw_name) {
+  constexpr std::string_view prefix = "v2.";
+  constexpr std::size_t maximum_canonical_bytes =
+      prefix.size() + 128 + 1 + wire::kMaximumSurfaceNameBytes;
+  const auto plugin = binding.plugin.view();
+  if (!wire::valid_surface_name(raw_name) || plugin.empty() ||
+      plugin.size() > 128 ||
+      raw_name.size() >
+          maximum_canonical_bytes - prefix.size() - 1 - plugin.size())
+    return std::nullopt;
+
+  std::string bytes;
+  bytes.reserve(prefix.size() + plugin.size() + 1 + raw_name.size());
+  bytes.append(prefix);
+  bytes.append(plugin);
+  bytes.push_back('.');
+  bytes.append(raw_name);
+  const QByteArray encoded(bytes.data(), static_cast<qsizetype>(bytes.size()));
+  const QString canonical = QString::fromUtf8(encoded);
+  const QString plugin_text = QString::fromUtf8(
+      plugin.data(), static_cast<qsizetype>(plugin.size()));
+  if (canonical.toUtf8() != encoded || !valid_plugin_id(plugin_text))
+    return std::nullopt;
+  return canonical;
 }
 
 bool bounded_geometry(const QVariantMap &surface, int maximum_width,
@@ -54,7 +86,9 @@ bool valid_surface(const QVariant &value) {
   const auto generation = surface.value(QStringLiteral("generation")).toULongLong();
   const auto screen = surface.value(QStringLiteral("screenName")).toString();
   const auto visible = surface.value(QStringLiteral("visible"));
-  if (!bounded_name(key) || !bounded_name(plugin) || !bounded_name(name) ||
+  const auto encoded_name = name.toUtf8().toStdString();
+  if (!valid_plugin_id(plugin) ||
+      !wire::valid_surface_name(encoded_name) ||
       key != QStringLiteral("v2.") + plugin + u'.' + name || generation == 0 ||
       visible.metaType().id() != QMetaType::Bool ||
       screen.isEmpty() || screen.size() > 128 ||
@@ -120,7 +154,8 @@ void PluginSurfaceService::unbindBackend(PluginSurfaceBackend &backend) {
 bool PluginSurfaceService::publishSurfaces(const QVariantList &surfaces,
                                            qulonglong revision) {
   if (backend_ == nullptr || revision == 0 || revision <= revision_ ||
-      surfaces.size() > kMaximumSurfaces ||
+      surfaces.size() >
+          static_cast<qsizetype>(wire::kMaximumPluginSurfaces) ||
       !std::ranges::all_of(surfaces, valid_surface))
     return false;
   for (qsizetype index = 0; index < surfaces.size(); ++index) {
@@ -136,21 +171,44 @@ bool PluginSurfaceService::publishSurfaces(const QVariantList &surfaces,
 }
 
 bool PluginSurfaceService::publishIntent(
-    const QString &source_surface, const QString &target_surface, Intent intent,
-    qulonglong generation, bool authenticated, bool fresh_gesture) {
-  if (backend_ == nullptr || !authenticated || !fresh_gesture ||
-      generation == 0 || !declared(source_surface) ||
-      !declared(target_surface))
+    host_session::AdmittedSurfaceIntent intent) {
+  if (backend_ == nullptr)
     return false;
-  switch (intent) {
-  case Intent::open:
-    emit openRequested(source_surface, target_surface, generation);
+  auto publication = intent.take_if_fresh();
+  if (!publication)
+    return false;
+  const auto source =
+      canonical_surface_key(publication->binding(), publication->source_name());
+  const auto target =
+      canonical_surface_key(publication->binding(), publication->target_name());
+  if (!source || !target)
+    return false;
+  const qulonglong generation = publication->binding().generation;
+  const auto declared_generation = [this](QStringView key) {
+    const auto found = std::ranges::find_if(
+        surfaces_, [key](const QVariant &value) {
+          return value.toMap().value(QStringLiteral("surfaceKey")).toString() ==
+                 key;
+        });
+    return found == surfaces_.end()
+               ? qulonglong{0}
+               : found->toMap()
+                     .value(QStringLiteral("generation"))
+                     .toULongLong();
+  };
+  const auto action = publication->action();
+  if (generation == 0 || declared_generation(*source) != generation ||
+      declared_generation(*target) != generation)
+    return false;
+  switch (action) {
+  case surface::SurfaceIntentAction::open:
+    emit openRequested(*source, *target, generation);
     return true;
-  case Intent::toggle:
-    emit toggleRequested(source_surface, target_surface, generation);
+  case surface::SurfaceIntentAction::toggle:
+    emit toggleRequested(*source, *target, generation);
     return true;
-  case Intent::dismiss:
-    emit dismissRequested(source_surface, target_surface, generation);
+  case surface::SurfaceIntentAction::dismiss:
+    emit dismissRequested(*source, *target, generation);
     return true;
   }
   return false;

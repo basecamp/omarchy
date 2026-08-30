@@ -283,6 +283,37 @@ void QmlBrokerApi::setPackagedAssetRoot(std::filesystem::path root) {
   packaged_asset_root_ = std::filesystem::absolute(std::move(root)).lexically_normal();
 }
 
+bool QmlBrokerApi::bindSurfaceIntentSink(SurfaceIntentSink &sink) {
+  if (surface_intent_sink_ != nullptr)
+    return false;
+  surface_intent_sink_ = &sink;
+  return true;
+}
+
+bool QmlBrokerApi::requestSurfaceIntent(const QString &targetSurface,
+                                        const QString &action) {
+  if (status_ != QStringLiteral("ready") || surface_intent_sink_ == nullptr ||
+      !trusted_gesture_)
+    return false;
+  const auto encoded_target = targetSurface.toUtf8().toStdString();
+  if (!wire::valid_surface_name(encoded_target))
+    return false;
+  surface::SurfaceIntentAction parsed;
+  if (action == QStringLiteral("open"))
+    parsed = surface::SurfaceIntentAction::open;
+  else if (action == QStringLiteral("toggle"))
+    parsed = surface::SurfaceIntentAction::toggle;
+  else if (action == QStringLiteral("dismiss"))
+    parsed = surface::SurfaceIntentAction::dismiss;
+  else
+    return false;
+  const auto source = *trusted_gesture_;
+  const bool sent = surface_intent_sink_->request_surface_intent(
+      source, encoded_target, parsed);
+  trusted_gesture_.reset();
+  return sent;
+}
+
 QString QmlBrokerApi::readPackagedText(const QString &relativePath,
                                        int maximumBytes) const {
   if (packaged_asset_root_.empty() || maximumBytes < 1 ||
@@ -469,7 +500,7 @@ QVariant QmlBrokerApi::invoke(const QString &operation,
   return QVariant::fromValue(static_cast<QObject *>(call));
 }
 
-void QmlBrokerApi::beginTrustedPointerGesture(
+void QmlBrokerApi::beginTrustedGesture(
     std::uint64_t surface_id, std::uint64_t surface_generation,
     std::uint64_t input_sequence) {
   if (surface_id == 0 || surface_generation == 0 || input_sequence == 0) {
@@ -483,7 +514,7 @@ void QmlBrokerApi::beginTrustedPointerGesture(
           .input_sequence = input_sequence};
 }
 
-void QmlBrokerApi::endTrustedPointerGesture() { trusted_gesture_.reset(); }
+void QmlBrokerApi::endTrustedGesture() { trusted_gesture_.reset(); }
 
 QmlBrokerApi::Pending *QmlBrokerApi::find(std::uint64_t correlation) {
   const auto found = std::ranges::find_if(pending_, [&](const Pending &item) {

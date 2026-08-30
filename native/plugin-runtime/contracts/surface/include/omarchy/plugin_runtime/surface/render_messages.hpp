@@ -1,6 +1,7 @@
 #pragma once
 
 #include "omarchy/plugin/wire/role_registry.hpp"
+#include "omarchy/plugin/wire/surface_name.hpp"
 #include "omarchy/plugin_runtime/surface/input.hpp"
 #include "omarchy/plugin_runtime/surface/profile.hpp"
 
@@ -9,8 +10,12 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string_view>
 
 namespace omarchy::plugin_runtime::surface {
+
+using omarchy::plugin::wire::kMaximumSurfaceNameBytes;
+using omarchy::plugin::wire::valid_surface_name;
 
 inline constexpr std::uint16_t kRenderRoleVersion = 1;
 
@@ -26,6 +31,7 @@ enum class RenderMessageType : std::uint16_t {
   input_regions = 0x2021,
   input = 0x2030,
   focus = 0x2031,
+  surface_intent = 0x2040,
 };
 
 enum class RenderErrorReason : std::uint16_t {
@@ -60,6 +66,21 @@ struct InputRegionUpdate {
   std::uint64_t generation = 0;
   std::array<TransportedInputRegion, kMaximumTransportedInputRegions> regions{};
   std::uint32_t count = 0;
+};
+
+enum class SurfaceIntentAction : std::uint32_t {
+  open = 1,
+  toggle = 2,
+  dismiss = 3,
+};
+
+struct SurfaceIntentRequest {
+  SurfaceKey source;
+  SurfaceKey target;
+  std::uint64_t input_sequence = 0;
+  SurfaceIntentAction action = SurfaceIntentAction::open;
+
+  constexpr bool operator==(const SurfaceIntentRequest &) const = default;
 };
 
 struct RenderTypedError {
@@ -108,6 +129,10 @@ encode_input_event(const InputEvent &payload);
 encode_focus_event(const FocusEvent &payload);
 [[nodiscard]] bool decode_focus_event(std::span<const std::byte> bytes,
                                       FocusEvent &output);
+[[nodiscard]] std::array<std::byte, 48>
+encode_surface_intent(const SurfaceIntentRequest &payload);
+[[nodiscard]] bool decode_surface_intent(std::span<const std::byte> bytes,
+                                         SurfaceIntentRequest &output);
 [[nodiscard]] std::array<std::byte, 24>
 encode_render_error(const RenderTypedError &payload);
 [[nodiscard]] bool decode_render_error(std::span<const std::byte> bytes,

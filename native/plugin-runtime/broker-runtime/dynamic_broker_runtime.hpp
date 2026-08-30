@@ -2,6 +2,7 @@
 
 #include "audit_store.hpp"
 #include "dynamic_activation.hpp"
+#include "gesture_eligibility.hpp"
 #include "omarchy/plugin_runtime/broker/broker_schema.hpp"
 
 #include <cstddef>
@@ -40,38 +41,9 @@ struct DynamicRevocationResult {
   bool restart_worker = false;
 };
 
-class DynamicGestureAuthority {
-public:
-  virtual ~DynamicGestureAuthority() = default;
-  [[nodiscard]] virtual bool
-  consume(const omarchy::plugins::permissions::ActivationBinding &binding,
-          const definitions::DynamicInvocation::GestureClaim &claim) = 0;
-};
-
-class DynamicGestureClock {
-public:
-  virtual ~DynamicGestureClock() = default;
-  [[nodiscard]] virtual std::uint64_t now_nanoseconds() const = 0;
-};
-
-class DynamicGestureLatch final : public DynamicGestureAuthority {
-public:
-  explicit DynamicGestureLatch(DynamicGestureClock &clock) : clock_(clock) {}
-  [[nodiscard]] bool
-  arm(const omarchy::plugins::permissions::ActivationBinding &binding,
-      const definitions::DynamicInvocation::GestureClaim &claim);
-  [[nodiscard]] bool
-  consume(const omarchy::plugins::permissions::ActivationBinding &binding,
-          const definitions::DynamicInvocation::GestureClaim &claim) override;
-  void clear() noexcept;
-
-private:
-  DynamicGestureClock &clock_;
-  omarchy::plugins::permissions::ActivationBinding binding_{};
-  definitions::DynamicInvocation::GestureClaim claim_{};
-  std::uint64_t deadline_nanoseconds_ = 0;
-  bool armed_ = false;
-};
+using DynamicGestureAuthority = GestureEligibilityAuthority;
+using DynamicGestureClock = GestureEligibilityClock;
+using DynamicGestureLatch = GestureEligibilityLatch;
 
 class DynamicBrokerRuntime {
 public:

@@ -28,19 +28,6 @@ void require(bool condition, std::string_view detail) {
     fail(detail);
 }
 
-bool bounded_name(std::string_view value) {
-  if (value.empty() || value.size() > 64)
-    return false;
-  for (const unsigned char character : value) {
-    if (!((character >= 'a' && character <= 'z') ||
-          (character >= 'A' && character <= 'Z') ||
-          (character >= '0' && character <= '9') || character == '-' ||
-          character == '_'))
-      return false;
-  }
-  return true;
-}
-
 bool exact_revision_digest(std::string_view value) {
   return value.size() == 64 &&
          std::ranges::all_of(value, [](unsigned char character) {
@@ -114,7 +101,7 @@ bool is_focus_gesture(const surface::InputEvent &event) {
 NamedSurfacePolicy parse_named_surface_policy(
     const omarchy::plugins::manifest::ManifestV2 &manifest,
     std::string_view surface_name) {
-  require(bounded_name(surface_name), "invalid surface name");
+  require(surface::valid_surface_name(surface_name), "invalid surface name");
   QJsonParseError parse_error{};
   const auto document = QJsonDocument::fromJson(
       QByteArray::fromStdString(manifest.canonical_surfaces), &parse_error);
@@ -123,7 +110,7 @@ NamedSurfacePolicy parse_named_surface_policy(
   const QJsonObject surfaces = document.object();
   require(!surfaces.isEmpty() &&
               surfaces.size() <=
-                  static_cast<qsizetype>(kMaximumSurfacesPerPlugin),
+                  static_cast<qsizetype>(wire::kMaximumPluginSurfaces),
           "manifest has an invalid surface count");
   const auto selected = surfaces.value(QString::fromUtf8(surface_name));
   require(selected.isObject(), "named surface is absent or not an object");
@@ -209,7 +196,8 @@ std::unique_ptr<HostSurface> HostSurface::create(
   const std::string_view bound_plugin = binding.plugin.view();
   const std::string_view bound_revision = binding.revision.view();
   const std::string_view bound_policy = binding.policy_fingerprint.view();
-  if (policy.plugin_id.empty() || !bounded_name(policy.surface_name) ||
+  if (policy.plugin_id.empty() ||
+      !surface::valid_surface_name(policy.surface_name) ||
       !valid_policy_enums(policy) || policy.plugin_id != bound_plugin ||
       !exact_revision_digest(bound_revision) ||
       !exact_revision_digest(bound_policy) || binding.generation == 0 ||

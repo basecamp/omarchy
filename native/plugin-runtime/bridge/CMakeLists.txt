@@ -22,6 +22,7 @@ target_link_libraries(omarchy-plugin-host-bridge PRIVATE
   Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick
   Omarchy::PluginRuntimeVersion
   omarchy-plugin-trusted-bridge
+  omarchy-plugin-host-session
   omarchy-plugin-surface-contract
   omarchy-plugin-wire
 )
@@ -45,6 +46,7 @@ if(BUILD_TESTING)
   target_link_libraries(omarchy-plugin-surface-service-test PRIVATE
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick
     omarchy-plugin-trusted-bridge
+    omarchy-plugin-host-session
   )
   add_test(NAME plugin-surface-service
     COMMAND omarchy-plugin-surface-service-test)

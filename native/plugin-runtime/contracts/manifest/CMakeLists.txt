@@ -9,7 +9,9 @@ include(CTest)
 option(PLUGIN_SECURITY_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 
 add_library(omarchy-plugin-manifest-contract STATIC manifest_contract.cpp)
-target_include_directories(omarchy-plugin-manifest-contract PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(omarchy-plugin-manifest-contract PUBLIC
+  "${CMAKE_CURRENT_SOURCE_DIR}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../wire/include")
 target_compile_features(omarchy-plugin-manifest-contract PUBLIC cxx_std_20)
 
 target_compile_options(omarchy-plugin-manifest-contract PRIVATE -Wall -Wextra -Wpedantic -Werror)

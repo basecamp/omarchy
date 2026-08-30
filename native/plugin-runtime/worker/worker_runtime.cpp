@@ -1,5 +1,7 @@
 #include "worker_runtime.hpp"
 
+#include "omarchy/plugin/wire/surface_name.hpp"
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QEventPoint>
@@ -157,6 +159,7 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
   std::size_t call_finished = 0;
   std::size_t permission_changed = 0;
   std::size_t read_packaged_text = 0;
+  std::size_t request_surface_intent = 0;
   for (int index = QObject::staticMetaObject.methodCount();
        index < meta->methodCount(); ++index) {
     const QMetaMethod method = meta->method(index);
@@ -170,6 +173,15 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
         method.parameterMetaType(0).id() == QMetaType::QString &&
         method.parameterMetaType(1).id() == QMetaType::QVariantMap) {
       ++invoke;
+    } else if (own_properties == 2 &&
+               method.methodSignature() ==
+                   QByteArrayLiteral("requestSurfaceIntent(QString,QString)") &&
+               method.methodType() == QMetaMethod::Method &&
+               method.returnMetaType().id() == QMetaType::Bool &&
+               method.parameterCount() == 2 &&
+               method.parameterMetaType(0).id() == QMetaType::QString &&
+               method.parameterMetaType(1).id() == QMetaType::QString) {
+      ++request_surface_intent;
     } else if (own_properties == 2 &&
                method.methodSignature() ==
                    QByteArrayLiteral("readPackagedText(QString,int)") &&
@@ -220,7 +232,7 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
          (own_properties == 0 ||
           (has_permission == 1 && permission_state == 1 &&
            read_packaged_text == 1 && call_finished == 1 &&
-           permission_changed == 1));
+           permission_changed == 1 && request_surface_intent == 1));
 }
 
 class ResourceInterceptor final : public QQmlAbstractUrlInterceptor {
@@ -590,7 +602,8 @@ RuntimeResult WorkerRuntime::load_surface_entry(std::string surface_name,
       std::filesystem::is_symlink(metadata))
     return failure(RuntimeFailure::entry_missing,
                    "QML entry is absent or not a regular file");
-  if (implementation_->surfaces.size() >= 8 ||
+  if (implementation_->surfaces.size() >=
+          omarchy::plugin::wire::kMaximumPluginSurfaces ||
       implementation_->by_name(surface_name) != nullptr)
     return failure(RuntimeFailure::invalid_transition,
                    "surface entry name is duplicate or exceeds the limit");
@@ -659,6 +672,14 @@ RuntimeResult WorkerRuntime::open_surface(std::string_view surface_name,
                    "surface does not expose the presentation open lifecycle");
   request_render();
   return {};
+}
+
+std::optional<surface::SurfaceKey>
+WorkerRuntime::surface_key(std::string_view surface_name) const {
+  const auto *instance = implementation_->by_name(surface_name);
+  if (instance == nullptr)
+    return std::nullopt;
+  return instance->bound_key;
 }
 
 bool WorkerRuntime::invoke_test_function(std::string_view function) {

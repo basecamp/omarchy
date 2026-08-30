@@ -3,6 +3,7 @@
 #include "worker_channel.hpp"
 #include "dynamic_activation.hpp"
 #include "manifest_contract.hpp"
+#include "omarchy/plugin_runtime/surface/render_messages.hpp"
 
 #include <QObject>
 #include <QVariant>
@@ -18,6 +19,18 @@
 #include <vector>
 
 namespace omarchy::plugin_runtime::worker {
+
+namespace surface = omarchy::plugin_runtime::surface;
+
+class SurfaceIntentSink {
+public:
+  virtual ~SurfaceIntentSink() = default;
+  [[nodiscard]] virtual bool request_surface_intent(
+      const omarchy::plugins::definitions::DynamicInvocation::GestureClaim
+          &source,
+      std::string_view target_surface,
+      surface::SurfaceIntentAction action) = 0;
+};
 
 struct EncodedInvoke {
   std::uint16_t message_type = 0;
@@ -108,7 +121,10 @@ public:
                                       const QString &operation) const;
   Q_INVOKABLE QString readPackagedText(const QString &relativePath,
                                        int maximumBytes) const;
+  Q_INVOKABLE bool requestSurfaceIntent(const QString &targetSurface,
+                                        const QString &action);
   void setPackagedAssetRoot(std::filesystem::path root);
+  [[nodiscard]] bool bindSurfaceIntentSink(SurfaceIntentSink &sink);
   [[nodiscard]] QVariantMap permissions() const;
   [[nodiscard]] qulonglong permissionGeneration() const;
 
@@ -126,10 +142,10 @@ public:
       std::uint64_t envelope_generation, std::span<const std::byte> payload);
   [[nodiscard]] bool receive(ReceivedPacket packet);
   [[nodiscard]] QString status() const;
-  void beginTrustedPointerGesture(std::uint64_t surface_id,
-                                  std::uint64_t surface_generation,
-                                  std::uint64_t input_sequence);
-  void endTrustedPointerGesture();
+  void beginTrustedGesture(std::uint64_t surface_id,
+                           std::uint64_t surface_generation,
+                           std::uint64_t input_sequence);
+  void endTrustedGesture();
   void disconnect(QString reason);
 
 signals:
@@ -164,6 +180,7 @@ private:
   bool host_snapshot_received_ = false;
   std::optional<omarchy::plugins::definitions::DynamicInvocation::GestureClaim>
       trusted_gesture_;
+  SurfaceIntentSink *surface_intent_sink_ = nullptr;
 };
 
 } // namespace omarchy::plugin_runtime::worker

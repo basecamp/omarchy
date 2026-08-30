@@ -1,0 +1,129 @@
+#include "gesture_intent.hpp"
+
+#include <stdexcept>
+#include <string>
+#include <memory>
+
+namespace host = omarchy::plugin_runtime::host_session;
+namespace permissions = omarchy::plugins::permissions;
+namespace runtime = omarchy::plugin_runtime::runtime;
+namespace surface = omarchy::plugin_runtime::surface;
+namespace wire = omarchy::plugin::wire;
+
+namespace {
+struct Clock final : runtime::GestureEligibilityClock {
+  std::uint64_t now_nanoseconds() const override { return 100; }
+};
+void require(bool value, const char *message) {
+  if (!value)
+    throw std::runtime_error(message);
+}
+permissions::Digest digest(char value) {
+  return permissions::Digest(std::string(64, value));
+}
+} // namespace
+
+int main() {
+  auto clock = std::make_shared<Clock>();
+  runtime::GestureEligibilityLatch eligibility(clock);
+  const permissions::ActivationBinding binding{
+      .plugin = permissions::PluginId("fixture.plugin"),
+      .revision = digest('1'),
+      .policy_fingerprint = digest('2'),
+      .generation = 7};
+  host::GestureIntentAuthority authority(binding, eligibility);
+  const surface::SurfaceKey bar{.id = 1, .generation = 7};
+  const surface::SurfaceKey panel{.id = 2, .generation = 7};
+  const surface::SurfaceKey maximum{.id = 3, .generation = 7};
+  const surface::SurfaceKey invalid{.id = 4, .generation = 7};
+  require(authority.declare_surface(bar, "bar") ==
+              host::SurfaceDeclarationResult::declared &&
+              authority.declare_surface(panel, "PanelWidget") ==
+                  host::SurfaceDeclarationResult::declared &&
+              authority.declare_surface(maximum, std::string(64, 'X')) ==
+                  host::SurfaceDeclarationResult::declared &&
+              authority.declare_surface(invalid, "Panel.Widget") ==
+                  host::SurfaceDeclarationResult::invalid &&
+              authority.declare_surface(invalid, std::string(65, 'X')) ==
+                  host::SurfaceDeclarationResult::invalid,
+          "surface declarations failed");
+  require(authority.arm(bar, 11), "physical gesture did not arm");
+  const surface::SurfaceIntentRequest request{
+      .source = bar,
+      .target = panel,
+      .input_sequence = 11,
+      .action = surface::SurfaceIntentAction::toggle};
+  auto admitted = authority.admit(request);
+  require(admitted.intent && admitted.intent->available() &&
+              admitted.intent->source_name() == "bar" &&
+              admitted.intent->target_name() == "PanelWidget" &&
+              admitted.intent->action() == surface::SurfaceIntentAction::toggle,
+          "exact intent was not admitted");
+  auto moved = std::move(*admitted.intent);
+  require(moved.available() && !admitted.intent->available(),
+          "admitted intent was copyable or move did not consume source");
+  require(authority.admit(request).failure ==
+              host::SurfaceIntentAdmissionFailure::gesture_missing,
+          "intent replay was accepted");
+
+  require(authority.arm(bar, 12), "probe gesture did not arm");
+  auto unknown = request;
+  unknown.input_sequence = 12;
+  unknown.target.id = 99;
+  require(authority.admit(unknown).failure ==
+              host::SurfaceIntentAdmissionFailure::unknown_target &&
+              authority.admit(request).failure ==
+                  host::SurfaceIntentAdmissionFailure::gesture_missing,
+          "denied target probe retained eligibility");
+
+  require(authority.arm(bar, 13) && authority.detach_surface(panel),
+          "detach fixture failed");
+  auto detached = request;
+  detached.input_sequence = 13;
+  require(authority.admit(detached).failure ==
+              host::SurfaceIntentAdmissionFailure::gesture_missing,
+          "detach retained eligibility");
+  authority.revoke();
+  require(!authority.arm(bar, 14) &&
+              authority.admit(request).failure ==
+                  host::SurfaceIntentAdmissionFailure::revoked,
+          "revoked intent authority remained usable");
+
+  runtime::GestureEligibilityLatch destruction_eligibility(clock);
+  std::unique_ptr<host::AdmittedSurfaceIntent> after_destruction;
+  {
+    host::GestureIntentAuthority temporary(binding,
+                                            destruction_eligibility);
+    require(temporary.declare_surface(bar, "BarWidget") ==
+                host::SurfaceDeclarationResult::declared &&
+                temporary.declare_surface(panel, "PanelWidget") ==
+                    host::SurfaceDeclarationResult::declared &&
+                temporary.arm(bar, 21),
+            "authority destruction fixture failed");
+    auto result = temporary.admit(
+        {.source = bar,
+         .target = panel,
+         .input_sequence = 21,
+         .action = surface::SurfaceIntentAction::open});
+    require(result.intent.has_value(),
+            "authority destruction intent was not admitted");
+    after_destruction = std::make_unique<host::AdmittedSurfaceIntent>(
+        std::move(*result.intent));
+  }
+  require(!after_destruction->take_if_fresh(),
+          "intent survived authority destruction");
+
+  runtime::GestureEligibilityLatch capacity_eligibility(clock);
+  host::GestureIntentAuthority capacity(binding, capacity_eligibility);
+  for (std::size_t index = 0; index < wire::kMaximumPluginSurfaces; ++index) {
+    require(capacity.declare_surface(
+                {.id = 100 + index, .generation = binding.generation},
+                "surface" + std::to_string(index)) ==
+                host::SurfaceDeclarationResult::declared,
+            "intent authority rejected a surface below capacity");
+  }
+  require(capacity.declare_surface(
+              {.id = 999, .generation = binding.generation}, "overflow") ==
+              host::SurfaceDeclarationResult::capacity_exceeded,
+          "intent authority accepted a surface above capacity");
+}

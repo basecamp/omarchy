@@ -39,6 +39,7 @@ target_compile_options(omarchy-plugin-activation-snapshot PRIVATE
   -Wall -Wextra -Wpedantic -Werror)
 
 add_library(omarchy-plugin-host-session STATIC
+  gesture_intent.cpp
   MultiSurfaceRouter.cpp
   plugin_session_io.cpp
   structured_broker.cpp)
@@ -121,4 +122,14 @@ if(BUILD_TESTING)
     COMMAND omarchy-plugin-structured-broker-test)
   set_tests_properties(plugin-structured-broker PROPERTIES
     TIMEOUT 30 LABELS "unit;security;session;broker;adversarial")
+
+  add_executable(omarchy-plugin-gesture-intent-test gesture_intent_test.cpp)
+  target_link_libraries(omarchy-plugin-gesture-intent-test PRIVATE
+    omarchy-plugin-host-session)
+  target_compile_features(omarchy-plugin-gesture-intent-test PRIVATE cxx_std_20)
+  target_compile_options(omarchy-plugin-gesture-intent-test PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+  add_test(NAME plugin-gesture-intent COMMAND omarchy-plugin-gesture-intent-test)
+  set_tests_properties(plugin-gesture-intent PROPERTIES
+    TIMEOUT 10 LABELS "unit;security;session;gesture;adversarial")
 endif()

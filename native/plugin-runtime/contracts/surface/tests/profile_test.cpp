@@ -7,10 +7,18 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 using namespace omarchy::plugin_runtime::surface;
 
 int main() {
+  require(valid_surface_name("barWidget") &&
+              valid_surface_name(std::string(64, 'X')) &&
+              !valid_surface_name("") &&
+              !valid_surface_name("Panel.Widget") &&
+              !valid_surface_name(std::string("bad\0name", 8)) &&
+              !valid_surface_name(std::string(65, 'a')),
+          "wire-safe surface-name contract changed");
   const auto offer = software_profile_offer();
   require(offer.full_frame_only && !offer.shader_effects && !offer.particles,
           "software limitations were silently broadened");
@@ -42,6 +50,14 @@ int main() {
               frame_rule->correlation == wire::CorrelationRule::zero &&
               render_descriptor_count(frame_rule->message_type) == 0,
           "frame-ready authority contract changed");
+  const auto *intent_rule = wire::find_message(
+      schema, static_cast<std::uint16_t>(RenderMessageType::surface_intent));
+  require(intent_rule &&
+              intent_rule->directions == wire::DirectionMask::worker_to_host &&
+              intent_rule->semantic == wire::MessageSemantic::event &&
+              intent_rule->correlation == wire::CorrelationRule::zero &&
+              render_descriptor_count(intent_rule->message_type) == 0,
+          "surface intent authority contract changed");
 
   const auto offer_bytes = encode_profile_offer(offer);
   require(offer_bytes[0] == std::byte{0} && offer_bytes[3] == std::byte{1} &&
@@ -137,6 +153,25 @@ int main() {
   bad_focus[31] = std::byte{1};
   require(!decode_focus_event(bad_focus, decoded_focus),
           "focus reserved byte accepted");
+
+  const SurfaceIntentRequest intent{
+      .source = allocation->surface,
+      .target = {.id = 23, .generation = allocation->surface.generation},
+      .input_sequence = 12,
+      .action = SurfaceIntentAction::toggle};
+  const auto intent_bytes = encode_surface_intent(intent);
+  SurfaceIntentRequest decoded_intent{};
+  require(decode_surface_intent(intent_bytes, decoded_intent) &&
+              decoded_intent == intent,
+          "surface intent round trip failed");
+  auto bad_intent = intent_bytes;
+  bad_intent[47] = std::byte{1};
+  require(!decode_surface_intent(bad_intent, decoded_intent),
+          "surface intent reserved field accepted");
+  bad_intent = intent_bytes;
+  bad_intent[43] = std::byte{9};
+  require(!decode_surface_intent(bad_intent, decoded_intent),
+          "unknown surface intent action accepted");
 
   const RenderTypedError error{
       .reason = RenderErrorReason::invalid_allocation,

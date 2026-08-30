@@ -625,7 +625,21 @@ void surface_binding_test() {
   malformed = encoded;
   malformed.back() = std::byte{'/'};
   require(!decode_surface_binding(malformed, decoded) &&
-              encode_surface_binding({}).empty(),
+              encode_surface_binding({}).empty() &&
+              !encode_surface_binding(
+                   {.id = 1, .generation = 1, .surface = std::string(64, 'X')})
+                   .empty() &&
+              encode_surface_binding(
+                  {.id = 1, .generation = 1, .surface = "Panel.Widget"})
+                  .empty() &&
+              encode_surface_binding(
+                  {.id = 1,
+                   .generation = 1,
+                   .surface = std::string("bad\0name", 8)})
+                  .empty() &&
+              encode_surface_binding(
+                  {.id = 1, .generation = 1, .surface = std::string(65, 'X')})
+                  .empty(),
           "unsafe or empty surface binding was accepted");
 }
 
