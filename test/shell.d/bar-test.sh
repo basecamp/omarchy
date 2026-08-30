@@ -195,6 +195,10 @@ assert(
   'bar reads the focused monitor from Hyprland'
 )
 assert(
+  /if \("screenName" in target\) target\.screenName = screenName/.test(barSource),
+  'bar tells every widget copy which monitor owns it'
+)
+assert(
   /var slots = panelNavigationSlots\(currentSlot\.region, slotWindow\(currentSlot\)\)/.test(barSource),
   'bar tabs between panels within one bar surface'
 )

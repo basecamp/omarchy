@@ -57,10 +57,10 @@ assert(
   'an over-long Unicode name is cut with an ellipsis between code points'
 )
 
-// A name must never disappear behind the focus dot, and a named tile marks
-// its focus by colour instead.
+// A name must never disappear behind the focus dot. A named focused tile
+// marks focus by colour while an unnamed, keyed tile keeps the original dot.
 assert(/text: wsName !== "" \? wsName : \(focused && keyed \? "\\uDB85\\uDCFB" : numeral\)/.test(source), 'a name is shown in place of the numeral and the focus dot')
-assert(/active: focused && \(wsName !== "" \|\| !keyed\)/.test(source), 'a named focused tile marks its focus by colour')
+assert(/active: visibleOnMonitor && \(wsName !== "" \|\| !focused \|\| !keyed\)/.test(source), 'a named focused tile marks its focus by colour')
 
 // A vertical bar has no room for words.
 assert(/readonly property string wsName: root\.vertical \? "" : root\.nameFor\(modelData\)/.test(source), 'a vertical bar keeps the numbers')
@@ -70,4 +70,30 @@ assert(/readonly property string wsName: root\.vertical \? "" : root\.nameFor\(m
 assert(/"omarchy-hyprland-workspace-name " \+ args \+ " --widget " \+ Util\.shellQuote\(root\.moduleName\)/.test(source), 'the name command targets this widget\'s own entry')
 assert(/if \(button === Qt\.RightButton\) root\.runNameCommand\("--prompt " \+ modelData\)/.test(source), 'right-click prompts for a name')
 assert(/else if \(button === Qt\.MiddleButton\) root\.runNameCommand\("--clear " \+ modelData\)/.test(source), 'middle-click clears the name')
+JS
+
+run_node_test <<'JS'
+const fs = require('fs')
+const source = fs.readFileSync(root + '/shell/plugins/bar/widgets/Workspaces.qml', 'utf8')
+
+assert(
+  /readonly property bool visibleOnMonitor: workspace !== null && workspace\.active/.test(source),
+  'every workspace visible on a monitor is marked active'
+)
+assert(
+  /active: visibleOnMonitor && \(wsName !== "" \|\| !focused \|\| !keyed\)/.test(source),
+  'visible workspaces use colour without replacing the original focus dot'
+)
+assert(
+  /activeColor: focused \? \(root\.bar \? root\.bar\.urgent : Color\.urgent\) : Color\.accent/.test(source),
+  'the focused workspace uses the urgent colour and other visible workspaces use the accent colour'
+)
+assert(
+  /hl\.dsp\.focus\(\{ monitor = \\"" \+ root\.screenName \+ "\\" \}\)/.test(source),
+  'a workspace click first focuses the monitor that owns the clicked bar'
+)
+assert(
+  /hl\.dsp\.focus\(\{ workspace = \\"" \+ id \+ "\\", on_current_monitor = true \}\)/.test(source),
+  'a workspace click opens the workspace on that monitor'
+)
 JS
