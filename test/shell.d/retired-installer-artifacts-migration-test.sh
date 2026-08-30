@@ -25,6 +25,10 @@ cat >"$test_dir/bin/systemctl" <<'STUB'
 #!/bin/bash
 
 printf 'systemctl %s\n' "$*" >>"$CALLS"
+if [[ $* == "daemon-reload" && -n ${FAIL_DAEMON_RELOAD_ONCE_MARKER:-} && ! -e $FAIL_DAEMON_RELOAD_ONCE_MARKER ]]; then
+  touch "$FAIL_DAEMON_RELOAD_ONCE_MARKER"
+  exit 1
+fi
 STUB
 
 chmod +x "$test_dir/bin/"*
@@ -49,9 +53,11 @@ home_dir="$test_dir/home"
 first_run="$sudoers_dir/first-run"
 tsui="$sudoers_dir/tsui"
 plymouth_unit="$systemd_dir/omarchy-plymouth-shutdown.service"
+machine_marker="$test_dir/machine-marker"
+reload_needed_marker="$machine_marker.daemon-reload"
 
 reset_machine() {
-  rm -rf "$sudoers_dir" "$systemd_dir" "$home_dir"
+  rm -rf "$sudoers_dir" "$systemd_dir" "$home_dir" "$machine_marker" "$reload_needed_marker"
   mkdir -p "$sudoers_dir" "$systemd_dir" "$home_dir"
 }
 
@@ -61,6 +67,7 @@ run_migration() {
   HOME="$home_dir" \
     OMARCHY_SUDOERS_DIR="$sudoers_dir" \
     OMARCHY_SYSTEMD_SYSTEM_DIR="$systemd_dir" \
+    OMARCHY_RETIRED_INSTALLER_ARTIFACTS_MARKER="$machine_marker" \
     PATH="$test_dir/bin:$PATH" \
     bash -euo pipefail "$migration" >/dev/null
 }
@@ -83,7 +90,7 @@ assert_changed_nothing() {
 assert_read_elevated() {
   local file="$1" label="$2"
 
-  grep -qF "sudo test -f $file" "$CALLS" ||
+  grep -qF "bash $file" "$CALLS" ||
     fail "$label" "$(cat "$CALLS")"
   grep -qF "sudo cat $file" "$CALLS" ||
     fail "$label" "$(cat "$CALLS")"
@@ -173,6 +180,9 @@ for body in "${first_run_variants[@]}"; do
     fail "migration removes first-run grant variant $variant" "$(cat "$first_run")"
 done
 pass "migration removes every first-run sudoers grant the installer ever wrote"
+
+[[ -f $machine_marker ]] || fail "migration records the machine-wide repair"
+pass "migration records the machine-wide repair"
 
 grep -q '^sudo rm -f .*/sudoers\.d/first-run$' "$CALLS" ||
   fail "migration removes the first-run grant with elevated privileges" "$(cat "$CALLS")"
@@ -321,6 +331,22 @@ run_migration
 
 [[ -e $plymouth_unit ]] || fail "migration keeps a unit whose home ExecStop is commented out"
 pass "migration keeps a unit whose home ExecStop is commented out"
+
+# Non-empty ExecStop= assignments append; a packaged command after the retired
+# home command does not replace it, so the vulnerable command remains live.
+reset_machine
+cat >"$plymouth_unit" <<'EOF'
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/true
+ExecStop=/home/installer/.local/share/omarchy/bin/omarchy-plymouth-shutdown-sync
+ExecStop=/usr/bin/true
+EOF
+run_migration
+
+[[ ! -e $plymouth_unit ]] ||
+  fail "migration removes a home ExecStop followed by another command" "$(cat "$plymouth_unit")"
+pass "migration removes a home ExecStop followed by another command"
 
 reset_machine
 run_migration
@@ -517,30 +543,71 @@ run_migration
   fail "migration removes a unit whose last line ends mid-continuation"
 pass "migration removes a unit whose last line ends mid-continuation"
 
+# If removing the unit succeeds but daemon-reload fails, the loaded unit still
+# needs to be forgotten. Persist that half of the repair so the retry reloads
+# systemd even though the unit file is already gone.
+reset_machine
+write_plymouth_unit "/home/installer/.local/share/omarchy/bin/omarchy-plymouth-shutdown-sync"
+reload_failure_seen="$test_dir/reload-failure-seen"
+rm -f "$reload_failure_seen"
+
+set +e
+FAIL_DAEMON_RELOAD_ONCE_MARKER="$reload_failure_seen" run_migration
+reload_status=$?
+set -e
+
+(( reload_status == 75 )) ||
+  fail "migration defers after a failed daemon-reload" "status=$reload_status"
+[[ ! -e $plymouth_unit && -e $reload_needed_marker && ! -e $machine_marker ]] ||
+  fail "migration records the pending reload without marking the repair complete"
+
+run_migration
+[[ ! -e $reload_needed_marker && -e $machine_marker ]] ||
+  fail "migration completes a pending daemon-reload on retry"
+grep -q '^systemctl daemon-reload$' "$CALLS" ||
+  fail "migration retries daemon-reload after the unit file is gone" "$(cat "$CALLS")"
+pass "migration retries daemon-reload after the unit file is gone"
+
 # sudo cannot prompt without a terminal, and omarchy-migrate runs from places that
 # have none. bin/omarchy-migrate writes the completion marker on a zero exit, so
 # reporting success after failing to look would mark this migration done for good.
 # Observed on a real machine before this guard existed: the run printed sudo's
 # "a terminal is required" and still exited 0.
 reset_machine
-unreadable="$test_dir/unreadable-sudoers"
-rm -rf "$unreadable"
-mkdir -p "$unreadable"
-chmod 000 "$unreadable"
+readable="$test_dir/readable-sudoers"
+rm -rf "$readable"
+mkdir -p "$readable"
+chmod 755 "$readable"
+printf '%s\n' "${first_run_variants[-1]}" >"$readable/first-run"
 
 : >"$CALLS"
 set +e
 HOME="$home_dir" \
-  OMARCHY_SUDOERS_DIR="$unreadable" \
+  OMARCHY_SUDOERS_DIR="$readable" \
   OMARCHY_SYSTEMD_SYSTEM_DIR="$systemd_dir" \
+  OMARCHY_RETIRED_INSTALLER_ARTIFACTS_MARKER="$machine_marker" \
   PATH="$test_dir/failing-bin:$PATH" \
   bash -euo pipefail "$migration" >"$test_dir/gate.out" 2>&1
 gate_status=$?
 set -e
-chmod 755 "$unreadable"
 
-(( gate_status != 0 )) ||
-  fail "migration fails when it cannot elevate to inspect the sudoers directory" "$(cat "$test_dir/gate.out")"
-grep -q 'without elevation' "$test_dir/gate.out" ||
+(( gate_status == 75 )) ||
+  fail "migration defers when it cannot elevate to inspect the sudoers directory" "status=$gate_status$(printf '\n%s' "$(cat "$test_dir/gate.out")")"
+[[ -e $readable/first-run ]] ||
+  fail "migration keeps a live grant when elevation fails"
+[[ ! -e $machine_marker ]] ||
+  fail "migration leaves the machine repair unmarked when elevation fails"
+grep -q 'will retry it later' "$test_dir/gate.out" ||
   fail "migration says why it could not inspect the directory" "$(cat "$test_dir/gate.out")"
-pass "migration fails when it cannot elevate to inspect the sudoers directory"
+pass "migration defers without marking a readable sudoers directory repaired when elevation fails"
+
+# After one privileged account completes the machine repair, a non-sudo user
+# can finish their per-user migration without probing sudo again.
+touch "$machine_marker"
+HOME="$home_dir" \
+  OMARCHY_SUDOERS_DIR="$readable" \
+  OMARCHY_SYSTEMD_SYSTEM_DIR="$systemd_dir" \
+  OMARCHY_RETIRED_INSTALLER_ARTIFACTS_MARKER="$machine_marker" \
+  PATH="$test_dir/failing-bin:$PATH" \
+  bash -euo pipefail "$migration" >/dev/null
+pass "machine marker lets a non-sudo user complete after the repair"

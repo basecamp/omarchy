@@ -85,18 +85,30 @@ wait_for_pacman_transaction
 mkdir -p "$STATE_DIR"
 [[ -d $MIGRATIONS_DIR ]] || exit 0
 
+deferred=()
 while IFS=$'\t' read -r name file marker; do
   [[ -n $name ]] || continue
 
   if [[ ! -f $marker ]]; then
     echo -e "\e[32m\nRunning migration (${name%.sh})\e[0m"
-    OMARCHY_PATH="$OMARCHY_PATH" bash -euo pipefail "$file"
-    mkdir -p "$(dirname "$marker")"
-    touch "$marker"
+    if OMARCHY_PATH="$OMARCHY_PATH" bash -euo pipefail "$file"; then
+      mkdir -p "$(dirname "$marker")"
+      touch "$marker"
+    else
+      migration_status=$?
+      if (( migration_status == 75 )); then
+        deferred+=("$name")
+        echo "Migration ${name%.sh} was deferred and will be retried later."
+      else
+        exit "$migration_status"
+      fi
+    fi
   fi
 done < <(migration_entries)
 
 # Clear a login-time notification the user left sitting there and then resolved
 # by running migrations some other way. The substring matches both the current
 # and legacy notification titles.
-omarchy-notification-dismiss "Omarchy Migrations" >/dev/null 2>&1 || true
+if ((${#deferred[@]} == 0)); then
+  omarchy-notification-dismiss "Omarchy Migrations" >/dev/null 2>&1 || true
+fi
