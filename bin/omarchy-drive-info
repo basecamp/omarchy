@@ -10,13 +10,17 @@ else
   drive="$1"
 fi
 
-# Find the root drive in case we are looking at partitions
-root_drive=$(lsblk -no PKNAME "$drive" 2>/dev/null | tail -n1)
-if [[ -n $root_drive ]]; then
-  root_drive="/dev/$root_drive"
-else
-  root_drive="$drive"
-fi
+# Find the root drive in case we are looking at a partition or a mapping.
+#
+# PKNAME of a device is its immediate parent, so walk up until the device is
+# its own parent (a disk). `lsblk -no PKNAME <dev>` also lists descendants,
+# which is why the parent of the device asked about is the first non-empty
+# line: taking the last one returned the deepest parent in the subtree, so any
+# LUKS/LVM/MD layer under a partition resolved to that partition.
+root_drive="$drive"
+while parent=$(lsblk -no PKNAME "$root_drive" 2>/dev/null | awk 'NF { print; exit }'); [[ -n $parent && "/dev/$parent" != "$root_drive" ]]; do
+  root_drive="/dev/$parent"
+done
 
 # Get basic disk information
 size=$(lsblk -dno SIZE "$drive" 2>/dev/null)
