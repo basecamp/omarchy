@@ -199,6 +199,16 @@ load(Fixture &fixture, channel::RuntimeBootstrapError &error) {
   return result;
 }
 
+std::unique_ptr<channel::PreparedPluginRuntime> prepare_runtime_for_test(
+    const channel::RuntimeBootstrap &bootstrap, std::string_view record,
+    const permissions::PluginId &plugin) {
+  auto authority = channel::RuntimeBootstrapTestAccess::open_permissions(
+      bootstrap, record, plugin);
+  return channel::RuntimeBootstrapTestAccess::prepare_runtime(bootstrap,
+                                                               authority)
+      .runtime;
+}
+
 definitions::CapabilityDefinition dynamic_definition() {
   definitions::CapabilityDefinition definition{
       .canonical_name = definitions::Name("local.test"),
@@ -281,18 +291,46 @@ void empty_package_and_absent_admin_compose_one_shared_context() {
           "fixed empty bootstrap did not compose fail-unavailable services");
 
   const permissions::PluginId plugin("example.plugin");
-  require(!channel::RuntimeBootstrapTestAccess::prepare_runtime(
+  require(!prepare_runtime_for_test(
               *bootstrap, "other.plugin", plugin),
           "mismatched activation candidate was accepted");
-  auto first = channel::RuntimeBootstrapTestAccess::prepare_runtime(
+  auto first = prepare_runtime_for_test(
       *bootstrap, "example.plugin", plugin);
-  auto second = channel::RuntimeBootstrapTestAccess::prepare_runtime(
+  auto second = prepare_runtime_for_test(
       *bootstrap, "second.plugin", permissions::PluginId("second.plugin"));
   require(first && second,
           "bootstrap could not prepare independent exact candidates");
-  require(!channel::RuntimeBootstrapTestAccess::prepare_runtime(
+  require(!prepare_runtime_for_test(
               *bootstrap, "example.plugin", plugin),
           "bootstrap admitted a second owner for one plugin authority");
+}
+
+void authority_cannot_cross_runtime_service_identity() {
+  Fixture fixture;
+  fixture.seed_runtime("example.plugin", "installed");
+  channel::RuntimeBootstrapError first_error{};
+  channel::RuntimeBootstrapError second_error{};
+  auto first = load(fixture, first_error);
+  auto second = load(fixture, second_error);
+  require(first && second &&
+              first_error == channel::RuntimeBootstrapError::none &&
+              second_error == channel::RuntimeBootstrapError::none,
+          "cross-bootstrap service fixture did not compose");
+  channel::RuntimeBootstrapTestAccess::share_definitions(*second, *first);
+  const permissions::PluginId plugin("example.plugin");
+  auto authority = channel::RuntimeBootstrapTestAccess::open_permissions(
+      *first, plugin.view(), plugin);
+  require(authority != nullptr,
+          "cross-bootstrap service fixture did not open authority");
+  const auto crossed = channel::RuntimeBootstrapTestAccess::prepare_runtime(
+      *second, authority);
+  require(!crossed.runtime &&
+              crossed.status == channel::PluginRuntimePreparationStatus::failed,
+          "authority reviewed under one service context executed under another");
+  require(channel::RuntimeBootstrapTestAccess::prepare_runtime(*first,
+                                                                authority)
+                  .runtime != nullptr,
+          "matching bootstrap rejected its own authority context");
 }
 
 void mandatory_package_and_optional_admin_are_exact() {
@@ -387,7 +425,7 @@ void authority_children_are_exact_and_never_created() {
     channel::RuntimeBootstrapError error{};
     auto bootstrap = load(fixture, error);
     require(bootstrap &&
-                !channel::RuntimeBootstrapTestAccess::prepare_runtime(
+                !prepare_runtime_for_test(
                     *bootstrap, "example.plugin", plugin) &&
                 !std::filesystem::exists(fixture.authority("example.plugin")),
             "bootstrap created a missing authority child");
@@ -399,7 +437,7 @@ void authority_children_are_exact_and_never_created() {
     channel::RuntimeBootstrapError error{};
     auto bootstrap = load(fixture, error);
     require(bootstrap &&
-                !channel::RuntimeBootstrapTestAccess::prepare_runtime(
+                !prepare_runtime_for_test(
                     *bootstrap, "example.plugin", plugin),
             "widened per-plugin authority directory was accepted");
   }
@@ -413,7 +451,7 @@ void authority_children_are_exact_and_never_created() {
     channel::RuntimeBootstrapError error{};
     auto bootstrap = load(fixture, error);
     require(bootstrap &&
-                !channel::RuntimeBootstrapTestAccess::prepare_runtime(
+                !prepare_runtime_for_test(
                     *bootstrap, "example.plugin", plugin),
             "symlinked per-plugin authority directory was accepted");
   }
@@ -423,7 +461,7 @@ void authority_children_are_exact_and_never_created() {
     auto bootstrap = load(fixture, error);
     const permissions::PluginId path_plugin("../example.plugin");
     require(bootstrap &&
-                !channel::RuntimeBootstrapTestAccess::prepare_runtime(
+                !prepare_runtime_for_test(
                     *bootstrap, path_plugin.view(), path_plugin),
             "noncanonical plugin name selected an authority path");
   }
@@ -506,17 +544,17 @@ void authority_stores_are_physically_isolated_per_plugin() {
   runtime_fixture.seed_runtime("second.plugin", "second-installed");
   channel::RuntimeBootstrapError error{};
   auto bootstrap = load(runtime_fixture, error);
-  auto first = channel::RuntimeBootstrapTestAccess::prepare_runtime(
+  auto first = prepare_runtime_for_test(
       *bootstrap, first_plugin.view(), first_plugin);
-  auto second = channel::RuntimeBootstrapTestAccess::prepare_runtime(
+  auto second = prepare_runtime_for_test(
       *bootstrap, second_plugin.view(), second_plugin);
   require(first && second &&
-              !channel::RuntimeBootstrapTestAccess::prepare_runtime(
+              !prepare_runtime_for_test(
                   *bootstrap, first_plugin.view(), first_plugin),
           "prepared roots did not preserve independent lock scope");
   first.reset();
   require(static_cast<bool>(
-              channel::RuntimeBootstrapTestAccess::prepare_runtime(
+              prepare_runtime_for_test(
                   *bootstrap, first_plugin.view(), first_plugin)),
           "released plugin authority lock could not be reacquired");
 }
@@ -549,6 +587,7 @@ void every_unregistered_native_adapter_fails_closed() {
 int main() {
   try {
     empty_package_and_absent_admin_compose_one_shared_context();
+    authority_cannot_cross_runtime_service_identity();
     mandatory_package_and_optional_admin_are_exact();
     authority_children_are_exact_and_never_created();
     authority_stores_are_physically_isolated_per_plugin();

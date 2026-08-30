@@ -549,7 +549,8 @@ public:
             definitions_),
         std::make_shared<const channel::RuntimeServices>(std::move(services)),
         {}, {}, std::move(supervisor_factory), before_final_fence,
-        before_final_fence_context);
+        before_final_fence_context)
+        .runtime;
   }
 
   void close_borrowed_roots() {
@@ -1600,45 +1601,6 @@ void preparation_rejects_invalid_grant_snapshots() {
 }
 
 
-struct BlockingNotificationProbe final {
-  std::mutex mutex;
-  std::condition_variable changed;
-  bool entered = false;
-  bool release = false;
-  std::size_t calls = 0;
-};
-
-class NotificationReleaseGuard final {
-public:
-  explicit NotificationReleaseGuard(
-      std::shared_ptr<BlockingNotificationProbe> probe)
-      : probe_(std::move(probe)) {}
-  ~NotificationReleaseGuard() {
-    {
-      std::scoped_lock lock(probe_->mutex);
-      probe_->release = true;
-    }
-    probe_->changed.notify_all();
-  }
-
-private:
-  std::shared_ptr<BlockingNotificationProbe> probe_;
-};
-
-bool blocking_notification(std::string_view category, std::string_view title,
-                           std::string_view body, void *context) noexcept {
-  auto &probe = *static_cast<BlockingNotificationProbe *>(context);
-  std::unique_lock lock(probe.mutex);
-  if (category != "timer" || title != "T" || body != "OK")
-    return false;
-  ++probe.calls;
-  probe.entered = true;
-  probe.changed.notify_all();
-  probe.changed.wait(lock, [&] { return probe.release; });
-  return true;
-}
-
-
 class CountingRuntimeHooks final
     : public channel::PluginRuntimeHooks {
 public:
@@ -1779,57 +1741,30 @@ void composed_root_is_the_composed_authority_path() {
   using namespace std::chrono_literals;
   CoordinatorFixture fixture("session-notification");
   fixture.record();
-  const auto active = fixture.publish(1, 0);
+  const auto active = fixture.publish(1, 0, true);
   fixture.promote(active, 1);
-  auto probe = std::make_shared<BlockingNotificationProbe>();
   auto prepared = fixture.prepare_root(
-      {.context = probe,
-       .notification_send = blocking_notification,
-       .audio_play = nullptr,
-       .compare_scope = nullptr,
-       .dynamic_services = {}},
+      {},
       [] {
         return launcher::test_support::make_supervisor(
             FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, std::make_shared<Scope>());
       });
-  NotificationReleaseGuard release_on_exit(probe);
   CountingRuntimeHooks hooks;
   auto root = channel::PluginRuntimeRootTestAccess::commit(
       std::move(prepared), hooks, *QCoreApplication::instance());
   require(root != nullptr, "prepared runtime composition did not commit");
+  await([&] { return hooks.running.load(std::memory_order_acquire) == 1; },
+        "composed root did not reach its exact running generation");
 
   auto locked = fixture.prepare_root(
-      {.context = probe,
-       .notification_send = blocking_notification,
-       .audio_play = nullptr,
-       .compare_scope = nullptr,
-       .dynamic_services = {}},
+      {},
       [] {
         return launcher::test_support::make_supervisor(
             FAKE_BWRAP_PATH, CHANNEL_PEER_PATH, std::make_shared<Scope>());
       });
   require(!locked, "a second composed root acquired the same authority");
   fixture.close_borrowed_roots();
-  {
-    std::unique_lock lock(probe->mutex);
-    require(probe->changed.wait_for(lock, 2s, [&] { return probe->entered; }),
-            "trusted notification provider was not reached");
-  }
 
-  const auto initial = channel::PluginRuntimeRootTestAccess::list(*root);
-  require(initial && initial->active &&
-              initial->active->binding.generation == 1,
-          "composed G1 authority was not durable");
-  const auto notification = std::ranges::find_if(
-      initial->active->grants.values(), [](const auto &grant) {
-        return grant.capability.id.view() == "notifications.send";
-      });
-  require(notification != initial->active->grants.values().end(),
-          "optional notification grant missing from composed authority");
-  const auto original_live =
-      channel::PluginRuntimeRootTestAccess::live_generation(*root);
-  require(original_live && original_live->generation() == 1,
-          "composed root did not retain exact G1 live authority");
   auto &surface_session = channel::PluginRuntimeRootTestAccess::surface_session(*root);
   const auto g1_surface = surface_session.describe("barWidget");
   require(g1_surface && g1_surface->binding.generation == 1 &&
@@ -1841,77 +1776,10 @@ void composed_root_is_the_composed_authority_path() {
               !surface_session.describe("BarWidget"),
           "root surface port did not expose the exact G1 declaration");
   Endpoint stale_g1_endpoint;
-  require(surface_session.attach(*g1_surface, stale_g1_endpoint),
-          "G1 surface endpoint did not attach");
-
-  std::atomic<bool> revoke_returned = false;
-  channel::PermissionRevokeApplyResult optional;
-  std::thread revoker([&] {
-    optional = channel::PluginRuntimeRootTestAccess::revoke(
-        *root, notification->capability, initial->authority_slots.sequence);
-    revoke_returned.store(true, std::memory_order_release);
-  });
-  const auto fence_deadline = std::chrono::steady_clock::now() + 2s;
-  while (original_live->generation() != 0 &&
-         std::chrono::steady_clock::now() < fence_deadline)
-    std::this_thread::yield();
-  const bool fence_closed = original_live->generation() == 0;
-  const bool returned_before_release =
-      revoke_returned.load(std::memory_order_acquire);
-  {
-    std::scoped_lock lock(probe->mutex);
-    probe->release = true;
-  }
-  probe->changed.notify_all();
-  revoker.join();
-  require(fence_closed && !returned_before_release,
-          "optional revoke acknowledged before its provider effect drained");
-  require(optional.revocation.status ==
-                  host::AuthorityMutationResult::applied &&
-              optional.revocation.activatable && optional.activation &&
-              *optional.activation,
-          "optional revoke did not replace the composed session");
-  await(
-      [&] {
-    const auto current =
-        channel::PluginRuntimeRootTestAccess::session_binding(*root);
-    return current && current->generation == 2;
-      },
-      "optional revoke did not produce one running G2 session");
-  const auto g2_surface = surface_session.describe("barWidget");
-  require(g2_surface && g2_surface->binding.generation == 2 &&
-              g2_surface->key ==
-                  surface::SurfaceKey{.id = 1, .generation = 2} &&
-              g2_surface->key != g1_surface->key,
-          "replacement session retained the stale surface generation");
-  Endpoint endpoint;
-  require(surface_session.detach(*g1_surface, stale_g1_endpoint) &&
-              surface_session.attach(*g2_surface, endpoint) &&
-              surface_session.detach(*g2_surface, endpoint) &&
-              !surface_session.detach(*g2_surface, endpoint),
+  require(surface_session.attach(*g1_surface, stale_g1_endpoint) &&
+              surface_session.detach(*g1_surface, stale_g1_endpoint) &&
+              !surface_session.detach(*g1_surface, stale_g1_endpoint),
           "root surface port did not own exact attach/detach identity");
-  {
-    std::scoped_lock lock(probe->mutex);
-    require(probe->calls == 1,
-            "a notification effect began after revoke acknowledgement");
-  }
-
-  const auto replacement = channel::PluginRuntimeRootTestAccess::list(*root);
-  require(replacement && replacement->active,
-          "G2 authority disappeared after optional revoke");
-  const auto storage = std::ranges::find_if(
-      replacement->active->grants.values(), [](const auto &grant) {
-        return grant.capability.id.view() == "storage.private";
-      });
-  require(storage != replacement->active->grants.values().end(),
-          "required storage grant missing from G2");
-  const auto required = channel::PluginRuntimeRootTestAccess::revoke(
-      *root, storage->capability, replacement->authority_slots.sequence);
-  require(required.revocation.status ==
-                  host::AuthorityMutationResult::applied &&
-              !required.revocation.activatable && !required.activation &&
-              !channel::PluginRuntimeRootTestAccess::session_binding(*root),
-          "required revoke left a composed product session running");
 }
 
 void composed_root_rejects_unusable_authority_and_providers() {

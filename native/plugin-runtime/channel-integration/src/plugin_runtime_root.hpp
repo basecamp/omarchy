@@ -1,12 +1,12 @@
 #pragma once
 
+#include "plugin_activation_coordinator.hpp"
 #include "plugin_permission_controller.hpp"
 #include "session_runtime_factory.hpp"
 #include "surface_session_port.hpp"
 
 #include <cstdint>
 #include <functional>
-#include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -37,6 +37,18 @@ public:
 
 class PreparedPluginRuntime;
 
+enum class PluginRuntimePreparationStatus : std::uint8_t {
+  prepared,
+  permission_disabled,
+  failed,
+};
+
+struct PluginRuntimePreparationResult final {
+  std::unique_ptr<PreparedPluginRuntime> runtime;
+  PluginRuntimePreparationStatus status =
+      PluginRuntimePreparationStatus::failed;
+};
+
 // Sole runtime composition for one secure plugin. Every authority-bearing
 // input is fixed by the trusted host before this root exists. Plugin QML,
 // sidecars and IPC can neither replace these inputs nor reach the objects that
@@ -49,35 +61,13 @@ public:
   operator=(const PluginRuntimeRoot &) = delete;
 
 private:
-  [[nodiscard]] std::optional<host_session::AuthorityView> list() const;
-  [[nodiscard]] std::shared_ptr<const host_session::ConsentReview>
-  prepare_review();
-  [[nodiscard]] ReviewedPermissionApplyResult apply_review(
-      const host_session::ConsentConfirmation &confirmation,
-      std::span<const host_session::BuiltinConsentDecision> builtin_decisions,
-      std::span<const host_session::DynamicConsentDecision> dynamic_decisions);
-  [[nodiscard]] PermissionRevokeApplyResult
-  revoke(const permissions::CapabilityKey &capability,
-         std::uint64_t expected_sequence);
-  [[nodiscard]] PermissionRevokeApplyResult
-  revoke(const definitions::CapabilityReference &definition,
-         std::uint64_t expected_sequence);
-
   [[nodiscard]] std::optional<permissions::ActivationBinding>
   session_binding() const;
   [[nodiscard]] SurfaceSessionPort &surface_session() noexcept;
   [[nodiscard]] PluginSession *session_unlocked() const noexcept;
   [[nodiscard]] PluginSession *running_session_unlocked() const noexcept;
   struct Configuration final {
-    int activation_root_fd = -1;
-    int revision_root_fd = -1;
-    int state_root_fd = -1;
-    host_session::OwnedDescriptor authority_root;
-    permissions::PluginId plugin;
-    std::uint32_t trusted_uid = std::numeric_limits<std::uint32_t>::max();
-    std::string activation_record;
-    std::shared_ptr<const definitions::TrustedDefinitionRegistry> definitions;
-    std::shared_ptr<const RuntimeServices> services;
+    std::shared_ptr<PluginPermissionAuthority> permissions;
     Limits runtime_limits;
     session::SessionLimits session_limits;
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
@@ -88,20 +78,16 @@ private:
 #endif
   };
 
-  [[nodiscard]] static std::unique_ptr<PreparedPluginRuntime>
+  [[nodiscard]] static PluginRuntimePreparationResult
   prepare(Configuration &&configuration);
   [[nodiscard]] static std::unique_ptr<PluginRuntimeRoot>
   commit(std::unique_ptr<PreparedPluginRuntime> prepared,
          PluginRuntimeHooks &hooks, QObject &ui_owner);
-  PluginRuntimeRoot(
-      Configuration &configuration,
-      std::unique_ptr<host_session::AuthorityStore> authority);
+  explicit PluginRuntimeRoot(Configuration &configuration);
 
   SessionRuntimeFactory runtime_factory_;
-  std::unique_ptr<host_session::AuthorityStore> authority_;
-  const std::string activation_record_;
+  std::shared_ptr<PluginPermissionAuthority> permissions_;
   PluginActivationCoordinator coordinator_;
-  PluginPermissionController controller_;
   std::unique_ptr<SurfaceSessionPort> surface_session_;
   mutable std::mutex mutex_;
 
@@ -135,16 +121,6 @@ private:
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
 class PluginRuntimeRootTestAccess final {
 public:
-  [[nodiscard]] static std::optional<host_session::AuthorityView>
-  list(const PluginRuntimeRoot &root) {
-    return root.list();
-  }
-  [[nodiscard]] static PermissionRevokeApplyResult
-  revoke(PluginRuntimeRoot &root,
-         const permissions::CapabilityKey &capability,
-         std::uint64_t expected_sequence) {
-    return root.revoke(capability, expected_sequence);
-  }
   [[nodiscard]] static std::optional<permissions::ActivationBinding>
   session_binding(const PluginRuntimeRoot &root) {
     return root.session_binding();
@@ -153,7 +129,7 @@ public:
   surface_session(PluginRuntimeRoot &root) noexcept {
     return root.surface_session();
   }
-  [[nodiscard]] static std::unique_ptr<PreparedPluginRuntime>
+  [[nodiscard]] static PluginRuntimePreparationResult
   prepare_from_parts(
       int activation_root_fd, int revision_root_fd, int state_root_fd,
       host_session::OwnedDescriptor authority_root,
@@ -172,8 +148,6 @@ public:
   [[nodiscard]] static bool ui_affine(
       const PluginRuntimeRoot &root,
       const QObject &ui_owner) noexcept;
-  [[nodiscard]] static std::shared_ptr<session::LiveGenerationState>
-  live_generation(const PluginRuntimeRoot &root) noexcept;
 };
 #endif
 

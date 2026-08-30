@@ -11,21 +11,8 @@
 
 namespace omarchy::plugin_runtime::channel {
 
-class PluginPermissionController;
+class PluginPermissionAuthority;
 class PluginRuntimeRoot;
-
-struct PluginActivationResult final {
-  PluginSession *session = nullptr;
-  host_session::ActivationError activation_error =
-      host_session::ActivationError::none;
-  PluginSessionCreateError session_error = PluginSessionCreateError::none;
-
-  [[nodiscard]] explicit operator bool() const noexcept {
-    return session != nullptr &&
-           activation_error == host_session::ActivationError::none &&
-           session_error == PluginSessionCreateError::none;
-  }
-};
 
 struct PluginActivationPreparationResult final {
   std::unique_ptr<PreparedPluginSession> prepared;
@@ -33,6 +20,7 @@ struct PluginActivationPreparationResult final {
   host_session::ActivationError activation_error =
       host_session::ActivationError::none;
   PluginSessionCreateError session_error = PluginSessionCreateError::none;
+  bool permission_disabled = false;
 
   [[nodiscard]] explicit operator bool() const noexcept {
     return prepared != nullptr && live_binding.has_value() &&
@@ -50,40 +38,26 @@ public:
 
 private:
   PluginActivationCoordinator(
-      int activation_root_fd, int revision_root_fd, int state_root_fd,
-      host_session::AuthorityStore &authority,
-      permissions::PluginId expected_plugin, std::uint32_t trusted_uid,
+      PluginPermissionAuthority &permissions,
       AuthenticatedSessionRuntimeFactory &runtime_factory,
-      PluginSessionEvents *events = nullptr, session::SessionLimits limits = {},
-      SurfaceIntentSink *intent_sink = nullptr, QObject *parent = nullptr);
+      session::SessionLimits limits = {});
 
-  [[nodiscard]] PluginActivationResult activate(std::string_view record_name);
   [[nodiscard]] PluginSession *session() const noexcept;
   void stop() noexcept;
 
-  [[nodiscard]] PluginActivationPreparationResult
-  prepare(std::string_view record_name);
-  [[nodiscard]] PluginActivationResult
+  [[nodiscard]] PluginActivationPreparationResult prepare();
+  [[nodiscard]] bool
   commit(std::unique_ptr<PreparedPluginSession> prepared,
          host_session::PreparedLiveBinding live_binding,
          PluginSessionEvents *events, SurfaceIntentSink *intent_sink);
   [[nodiscard]] launcher::Supervisor supervisor() const;
-  [[nodiscard]] std::optional<host_session::VerifiedRevision>
-  verify_revision(std::string_view record_name) const;
 
-  host_session::AuthorityStore &authority_;
-  permissions::PluginId expected_plugin_;
-  std::optional<host_session::FilesystemIdentity> authority_root_;
-  host_session::DescriptorRevisionVerifier revision_verifier_;
-  host_session::ActivationSource activation_source_;
+  PluginPermissionAuthority &permissions_;
   AuthenticatedSessionRuntimeFactory &runtime_factory_;
-  PluginSessionEvents *events_;
   session::SessionLimits limits_;
-  SurfaceIntentSink *intent_sink_;
-  QObject *parent_;
   std::unique_ptr<PluginSession> session_;
 
-  friend class PluginPermissionController;
+  friend class PluginPermissionAuthority;
   friend class PluginRuntimeRoot;
 
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING

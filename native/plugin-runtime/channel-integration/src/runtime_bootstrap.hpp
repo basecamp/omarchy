@@ -39,9 +39,13 @@ public:
 private:
   [[nodiscard]] static std::unique_ptr<RuntimeBootstrap>
   open(RuntimeBootstrapError &error) noexcept;
-  [[nodiscard]] std::unique_ptr<PreparedPluginRuntime>
-  prepare_runtime(std::string_view record_name,
-                  const permissions::PluginId &plugin) const noexcept;
+  [[nodiscard]] PluginRuntimePreparationResult
+  prepare_runtime(
+      const std::shared_ptr<PluginPermissionAuthority> &permissions) const
+      noexcept;
+  [[nodiscard]] std::shared_ptr<PluginPermissionAuthority>
+  open_permissions(std::string_view record_name,
+                   const permissions::PluginId &plugin) const noexcept;
   [[nodiscard]] std::unique_ptr<ActivationCatalog>
   scan_catalog(ActivationCatalogError &error) const noexcept;
   RuntimeBootstrap(
@@ -54,8 +58,8 @@ private:
       std::uint32_t definition_uid,
       RuntimeBootstrapError &error);
   [[nodiscard]] std::optional<PluginRuntimeRoot::Configuration>
-  configuration(std::string_view record_name,
-                const permissions::PluginId &plugin) const;
+  configuration(
+      const std::shared_ptr<PluginPermissionAuthority> &permissions) const;
 
 #ifdef OMARCHY_RUNTIME_BOOTSTRAP_TESTING
   [[nodiscard]] static std::unique_ptr<RuntimeBootstrap>
@@ -106,11 +110,17 @@ public:
     return RuntimeBootstrap::authority_directory_accepted_for_test(
         owner_uid, mode, trusted_uid);
   }
-  [[nodiscard]] static std::unique_ptr<PreparedPluginRuntime>
+  [[nodiscard]] static PluginRuntimePreparationResult
   prepare_runtime(const RuntimeBootstrap &bootstrap,
-                  std::string_view record_name,
-                  const permissions::PluginId &plugin) noexcept {
-    return bootstrap.prepare_runtime(record_name, plugin);
+                  const std::shared_ptr<PluginPermissionAuthority> &permissions)
+      noexcept {
+    return bootstrap.prepare_runtime(permissions);
+  }
+  [[nodiscard]] static std::shared_ptr<PluginPermissionAuthority>
+  open_permissions(const RuntimeBootstrap &bootstrap,
+                   std::string_view record_name,
+                   const permissions::PluginId &plugin) noexcept {
+    return bootstrap.open_permissions(record_name, plugin);
   }
   [[nodiscard]] static std::unique_ptr<ActivationCatalog>
   scan_catalog(const RuntimeBootstrap &bootstrap,
@@ -124,6 +134,15 @@ public:
            bootstrap.services_->notification_send == nullptr &&
            bootstrap.services_->audio_play == nullptr &&
            bootstrap.services_->dynamic_services.empty();
+  }
+  static void set_services(RuntimeBootstrap &bootstrap,
+                           RuntimeServices services) {
+    bootstrap.services_ =
+        std::make_shared<const RuntimeServices>(std::move(services));
+  }
+  static void share_definitions(RuntimeBootstrap &target,
+                                const RuntimeBootstrap &source) noexcept {
+    target.definitions_ = source.definitions_;
   }
 };
 #endif

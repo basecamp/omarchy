@@ -12,8 +12,9 @@ public:
   [[nodiscard]] static AuthorityRevocationResult
   revoke_active(AuthorityStore &store,
                 const permissions::CapabilityKey &capability,
-                std::uint64_t expected_sequence) {
-    return store.revoke_active(capability, expected_sequence);
+                std::uint64_t expected_sequence,
+                AuthorityFenceObserver *observer = nullptr) {
+    return store.revoke_active(capability, expected_sequence, observer);
   }
   [[nodiscard]] static AuthorityRevocationResult
   revoke_active(AuthorityStore &store,

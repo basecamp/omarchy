@@ -237,38 +237,46 @@ std::unique_ptr<RuntimeBootstrap> RuntimeBootstrap::open(
 }
 
 std::optional<PluginRuntimeRoot::Configuration>
-RuntimeBootstrap::configuration(std::string_view record_name,
-                                const permissions::PluginId &plugin) const {
-  if (record_name != plugin.view() || !exact_plugin_id(plugin.view()))
-    return std::nullopt;
-  auto authority = open_plugin_authority(roots_->authority_fd(), plugin.view(),
-                                         roots_->trusted_uid());
-  if (!authority)
+RuntimeBootstrap::configuration(
+    const std::shared_ptr<PluginPermissionAuthority> &permissions) const {
+  if (!permissions || permissions->definitions_ != definitions_ ||
+      permissions->services_ != services_)
     return std::nullopt;
   return PluginRuntimeRoot::Configuration{
-      .activation_root_fd = roots_->activations_fd(),
-      .revision_root_fd = roots_->revisions_fd(),
-      .state_root_fd = roots_->state_fd(),
-      .authority_root = std::move(authority),
-      .plugin = plugin,
-      .trusted_uid = roots_->trusted_uid(),
-      .activation_record = std::string(record_name),
-      .definitions = definitions_,
-      .services = services_,
+      .permissions = permissions,
       .runtime_limits = runtime_limits_,
       .session_limits = session_limits_,
   };
 }
 
-std::unique_ptr<PreparedPluginRuntime>
-RuntimeBootstrap::prepare_runtime(
+std::shared_ptr<PluginPermissionAuthority>
+RuntimeBootstrap::open_permissions(
     std::string_view record_name,
     const permissions::PluginId &plugin) const noexcept {
   try {
-    auto candidate = configuration(record_name, plugin);
-    return candidate
-               ? PluginRuntimeRoot::prepare(std::move(*candidate))
-               : nullptr;
+    if (record_name != plugin.view() || !exact_plugin_id(plugin.view()))
+      return {};
+    auto authority = open_plugin_authority(
+        roots_->authority_fd(), plugin.view(), roots_->trusted_uid());
+    if (!authority)
+      return {};
+    return PluginPermissionAuthority::open(
+        roots_->activations_fd(), roots_->revisions_fd(), roots_->state_fd(),
+        std::move(authority), plugin, roots_->trusted_uid(), definitions_,
+        services_, std::string(record_name));
+  } catch (...) {
+    return {};
+  }
+}
+
+PluginRuntimePreparationResult
+RuntimeBootstrap::prepare_runtime(
+    const std::shared_ptr<PluginPermissionAuthority> &permissions) const
+    noexcept {
+  try {
+    auto candidate = configuration(permissions);
+    return candidate ? PluginRuntimeRoot::prepare(std::move(*candidate))
+                     : PluginRuntimePreparationResult{};
   } catch (...) {
     return {};
   }

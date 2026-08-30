@@ -8,12 +8,18 @@
 #include <sys/types.h>
 
 namespace omarchy::plugin_runtime::channel {
-class PluginPermissionController;
+class PluginPermissionAuthority;
 }
 
 namespace omarchy::plugin_runtime::host_session {
 
 namespace definitions = omarchy::plugins::definitions;
+
+class AuthorityFenceObserver {
+public:
+  virtual ~AuthorityFenceObserver() = default;
+  virtual void live_generation_closed() noexcept = 0;
+};
 
 struct AuthorityRevisionRef {
   permissions::Digest snapshot_digest;
@@ -41,6 +47,12 @@ enum class AuthorityMutationResult {
   reentrant_effect,
   io_error,
   poisoned,
+};
+
+enum class ActiveRevisionStatus : std::uint8_t {
+  unavailable,
+  activatable,
+  permission_disabled,
 };
 
 struct AuthorityRevocationResult {
@@ -132,19 +144,27 @@ private:
                  std::uint32_t expected_uid,
                  permissions::PluginId expected_plugin);
   [[nodiscard]] AuthorityMutationResult replace_slots(AuthoritySlots slots);
+  [[nodiscard]] ActiveRevisionStatus active_revision_status(
+      std::string_view plugin_id, std::string_view revision_sha256) const;
   [[nodiscard]] AuthorityRevocationResult
   revoke_active(const permissions::CapabilityKey &capability,
-                std::uint64_t expected_sequence);
+                std::uint64_t expected_sequence,
+                AuthorityFenceObserver *observer = nullptr);
   [[nodiscard]] AuthorityRevocationResult
   revoke_active(const definitions::CapabilityReference &definition,
-                std::uint64_t expected_sequence);
+                std::uint64_t expected_sequence,
+                AuthorityFenceObserver *observer = nullptr);
   [[nodiscard]] AuthorityRevocationResult
   revoke_active(const permissions::CapabilityKey *capability,
       const definitions::CapabilityReference *definition,
-      std::uint64_t expected_sequence);
+      std::uint64_t expected_sequence, AuthorityFenceObserver *observer);
+  [[nodiscard]] AuthorityMutationResult promote_candidate(
+      const permissions::ActivationBinding &candidate,
+      std::uint64_t expected_sequence, AuthorityFenceObserver *observer);
   [[nodiscard]] AuthorityMutationResult
   fence_bound_live(std::unique_lock<std::mutex> &lock,
-                   const AuthoritySlots &preimage);
+                   const AuthoritySlots &preimage,
+                   AuthorityFenceObserver *observer = nullptr);
 
   OwnedDescriptor root_;
   OwnedDescriptor lock_;
@@ -158,7 +178,7 @@ private:
   std::uint64_t mutation_epoch_ = 0;
   std::optional<FilesystemIdentity> prepared_root_identity_;
 
-  friend class omarchy::plugin_runtime::channel::PluginPermissionController;
+  friend class omarchy::plugin_runtime::channel::PluginPermissionAuthority;
 #ifdef OMARCHY_AUTHORITY_STORE_TESTING
   friend class AuthorityStoreTestAccess;
 #endif

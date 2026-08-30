@@ -757,7 +757,8 @@ bool AuthorityStore::commit_live_activation(
 }
 
 AuthorityMutationResult AuthorityStore::fence_bound_live(
-    std::unique_lock<std::mutex> &lock, const AuthoritySlots &preimage) {
+    std::unique_lock<std::mutex> &lock, const AuthoritySlots &preimage,
+    AuthorityFenceObserver *observer) {
   if (!lock.owns_lock() || transitioning_ || poisoned_)
     return poisoned_ ? AuthorityMutationResult::poisoned
                      : AuthorityMutationResult::invalid;
@@ -766,6 +767,8 @@ AuthorityMutationResult AuthorityStore::fence_bound_live(
   bound_live_.reset();
   if (live) {
     const auto closed = live->close_effect_admission();
+    if (observer)
+      observer->live_generation_closed();
     if (closed == LiveGenerationState::EffectAdmissionCloseResult::reentrant) {
       transitioning_ = false;
       poisoned_ = true;
@@ -856,6 +859,12 @@ AuthorityMutationResult AuthorityStore::publish_candidate(
 AuthorityMutationResult AuthorityStore::promote_candidate(
     const permissions::ActivationBinding &candidate,
     std::uint64_t expected_sequence) {
+  return promote_candidate(candidate, expected_sequence, nullptr);
+}
+
+AuthorityMutationResult AuthorityStore::promote_candidate(
+    const permissions::ActivationBinding &candidate,
+    std::uint64_t expected_sequence, AuthorityFenceObserver *observer) {
   std::unique_lock lock(mutation_mutex_);
   if (::getpid() != owner_pid_)
     return AuthorityMutationResult::io_error;
@@ -882,7 +891,7 @@ AuthorityMutationResult AuthorityStore::promote_candidate(
   if (slots->sequence == UINT64_MAX)
     return AuthorityMutationResult::invalid;
   const auto previous = *slots;
-  const auto fenced = fence_bound_live(lock, previous);
+  const auto fenced = fence_bound_live(lock, previous, observer);
   if (fenced != AuthorityMutationResult::applied)
     return fenced;
   poisoned_ = true;
@@ -940,20 +949,20 @@ AuthorityMutationResult AuthorityStore::discard_candidate(
 
 AuthorityRevocationResult
 AuthorityStore::revoke_active(const permissions::CapabilityKey &capability,
-    std::uint64_t expected_sequence) {
-  return revoke_active(&capability, nullptr, expected_sequence);
+    std::uint64_t expected_sequence, AuthorityFenceObserver *observer) {
+  return revoke_active(&capability, nullptr, expected_sequence, observer);
 }
 
 AuthorityRevocationResult AuthorityStore::revoke_active(
     const definitions::CapabilityReference &definition,
-    std::uint64_t expected_sequence) {
-  return revoke_active(nullptr, &definition, expected_sequence);
+    std::uint64_t expected_sequence, AuthorityFenceObserver *observer) {
+  return revoke_active(nullptr, &definition, expected_sequence, observer);
 }
 
 AuthorityRevocationResult AuthorityStore::revoke_active(
     const permissions::CapabilityKey *capability,
     const definitions::CapabilityReference *definition,
-    std::uint64_t expected_sequence) {
+    std::uint64_t expected_sequence, AuthorityFenceObserver *observer) {
   const auto failure = [](AuthorityMutationResult status) {
     return AuthorityRevocationResult{
         .status = status, .binding = std::nullopt, .activatable = false};
@@ -1014,7 +1023,7 @@ AuthorityRevocationResult AuthorityStore::revoke_active(
   }
 
   const auto previous = *slots;
-  const auto fenced = fence_bound_live(lock, previous);
+  const auto fenced = fence_bound_live(lock, previous, observer);
   if (fenced != AuthorityMutationResult::applied)
     return failure(fenced);
   // From this fence until a complete typed success result exists, every exit
@@ -1068,6 +1077,24 @@ AuthorityStore::resolve(std::string_view plugin_id,
       !activatable(*snapshot))
     return std::nullopt;
   return snapshot;
+}
+
+ActiveRevisionStatus AuthorityStore::active_revision_status(
+    std::string_view plugin_id, std::string_view revision_sha256) const {
+  std::scoped_lock lock(mutation_mutex_);
+  if (::getpid() != owner_pid_ || poisoned_ || transitioning_ ||
+      plugin_id != expected_plugin_.view())
+    return ActiveRevisionStatus::unavailable;
+  const auto slots = read_slots_unlocked(root_.get(), expected_uid_);
+  if (!slots || !valid_slots(*slots) || !slots->active)
+    return ActiveRevisionStatus::unavailable;
+  const auto snapshot =
+      load_snapshot(root_.get(), expected_uid_, *slots->active);
+  if (!snapshot || snapshot->binding.plugin.view() != plugin_id ||
+      snapshot->binding.revision.view() != revision_sha256)
+    return ActiveRevisionStatus::unavailable;
+  return activatable(*snapshot) ? ActiveRevisionStatus::activatable
+                                : ActiveRevisionStatus::permission_disabled;
 }
 
 } // namespace omarchy::plugin_runtime::host_session

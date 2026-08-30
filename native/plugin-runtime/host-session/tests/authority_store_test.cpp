@@ -22,6 +22,15 @@ namespace permissions = omarchy::plugins::permissions;
 namespace definitions = omarchy::plugins::definitions;
 namespace manifest = omarchy::plugins::manifest;
 
+class FenceProbe final : public host::AuthorityFenceObserver {
+public:
+  void live_generation_closed() noexcept override {
+    calls.fetch_add(1, std::memory_order_release);
+  }
+
+  std::atomic<unsigned> calls = 0;
+};
+
 namespace allocation_failure {
 thread_local bool armed = false;
 thread_local bool fired = false;
@@ -624,15 +633,17 @@ void live_effect_transitions_drain_before_authority_changes() {
     require(effect.has_value(), "revoke drain effect acquisition failed");
     std::atomic<bool> finished = false;
     host::AuthorityRevocationResult revoked;
+    FenceProbe fence;
     std::thread revoker([&] {
       revoked = host::AuthorityStoreTestAccess::revoke_active(
-          *fixture.store, value.snapshot.grants[0].capability, 2);
+          *fixture.store, value.snapshot.grants[0].capability, 2, &fence);
       finished.store(true, std::memory_order_release);
     });
     wait_closed(live);
-    require(!finished.load(std::memory_order_acquire) &&
+    require(fence.calls.load(std::memory_order_acquire) == 1 &&
+                !finished.load(std::memory_order_acquire) &&
                 !fixture.store->read_authority_view(),
-            "revocation became visible before the old effect drained");
+            "revocation fence notification was not delivered before drain");
     effect.reset();
     revoker.join();
     require(revoked.status == host::AuthorityMutationResult::applied,

@@ -12,8 +12,12 @@
 #include <vector>
 
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+#include "consent_review.hpp"
+
 #include <cstdint>
 #include <functional>
+#include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #endif
@@ -110,7 +114,7 @@ private:
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
 class PluginManagerTestAccess final {
 public:
-  enum class TestJobKind : std::uint8_t { scan, preparation };
+  enum class TestJobKind : std::uint8_t { scan, preparation, permission };
   struct SlotObservation final {
     std::string plugin;
     std::uint64_t epoch = 0;
@@ -121,6 +125,10 @@ public:
     bool preparing = false;
     bool running_unpublished = false;
     bool running_published = false;
+    bool permission_in_flight = false;
+    bool permission_changing = false;
+    bool permission_disabled = false;
+    bool has_runtime_root = false;
     bool has_endpoint_owner = false;
     std::uint8_t last_state = 0;
     std::uint8_t last_error = 0;
@@ -157,6 +165,8 @@ public:
   static void drainRuntime(PluginManager &manager);
   [[nodiscard]] static std::uint8_t
   preparationCount(const PluginManager &manager);
+  [[nodiscard]] static std::uint8_t
+  permissionCount(const PluginManager &manager);
   [[nodiscard]] static bool scanInFlight(const PluginManager &manager);
   [[nodiscard]] static std::uint8_t occupiedPreparationLanes(
       const PluginManager &manager);
@@ -168,6 +178,25 @@ public:
       const plugins::permissions::ActivationBinding &binding,
       std::vector<SurfaceProjectionModel::SurfaceDeclaration> declarations);
   [[nodiscard]] static bool clockIsNondecreasing(PluginManager &manager);
+  [[nodiscard]] static std::optional<host_session::AuthorityView>
+  permissionView(PluginManager &manager, std::string_view plugin,
+                 std::uint64_t epoch);
+  [[nodiscard]] static std::shared_ptr<const host_session::ConsentReview>
+  preparePermissionReview(PluginManager &manager, std::string_view plugin,
+                          std::uint64_t epoch);
+  [[nodiscard]] static bool revokePermission(
+      PluginManager &manager, std::string_view plugin, std::uint64_t epoch,
+      const plugins::permissions::CapabilityKey &capability,
+      std::uint64_t expected_sequence);
+  [[nodiscard]] static bool revokePermission(
+      PluginManager &manager, std::string_view plugin, std::uint64_t epoch,
+      const plugins::definitions::CapabilityReference &definition,
+      std::uint64_t expected_sequence);
+  [[nodiscard]] static bool applyPermissionReview(
+      PluginManager &manager, std::string_view plugin, std::uint64_t epoch,
+      const host_session::ConsentConfirmation &confirmation,
+      std::span<const host_session::BuiltinConsentDecision> builtin_decisions,
+      std::span<const host_session::DynamicConsentDecision> dynamic_decisions);
   [[nodiscard]] static std::weak_ptr<const void>
   deliveryGate(const PluginManager &manager);
   [[nodiscard]] static bool

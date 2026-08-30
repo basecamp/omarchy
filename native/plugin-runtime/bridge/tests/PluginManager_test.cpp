@@ -27,6 +27,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <barrier>
 #include <chrono>
@@ -203,8 +204,10 @@ public:
 
   permissions::ActivationBinding seedRuntime(
       std::string_view plugin,
-      std::string_view qml = "import QtQuick\nItem {}\n") {
-    const auto binding = stageRuntime(plugin, 1, qml);
+      std::string_view qml = "import QtQuick\nItem {}\n",
+      std::string_view permission_json =
+          "{\"required\": [], \"optional\": []}") {
+    const auto binding = stageRuntime(plugin, 1, qml, permission_json);
     promoteRuntime(binding, 0);
     write(plugin,
           readyActivationRecord(plugin, revisionDirectory(plugin, 1),
@@ -215,7 +218,9 @@ public:
 
   permissions::ActivationBinding stageRuntime(std::string_view plugin,
                                               std::uint64_t generation,
-                                              std::string_view qml) {
+                                              std::string_view qml,
+                                              std::string_view permission_json =
+                                                  "{\"required\": [], \"optional\": []}") {
     const auto revision_name = revisionDirectory(plugin, generation);
     const auto revision = revisions() / revision_name;
     create(revision / "ui", 0755);
@@ -229,9 +234,8 @@ public:
              "\"ui/Main.qml\"},\n  \"surfaces\": {\"bar\": {"
              "\"role\": \"bar-embedded\", \"defaultSection\": "
              "\"right\", \"maximumWidth\": 320, \"maximumHeight\": 64, "
-             "\"maximumFramesPerSecond\": 60}},\n  \"permissions\": {"
-             "\"required\": [], "
-             "\"optional\": []}\n}\n";
+             "\"maximumFramesPerSecond\": 60}},\n  \"permissions\": "
+          << permission_json << "\n}\n";
     }
     std::ofstream(revision / "ui/Main.qml") << qml;
     for (const auto &entry :
@@ -293,6 +297,11 @@ public:
     snapshot.binding = binding;
     snapshot.source_request_fingerprint =
         permissions::Digest(verified->request_sha256);
+    for (const auto &request : snapshot.requests.values())
+      snapshot.grants.push_back({.capability = request.capability,
+                                 .scope = request.scope,
+                                 .state = permissions::GrantState::granted,
+                                 .epoch = binding.generation});
     definitions::TrustedDefinitionRegistry registry;
     require(store->publish_candidate(*verified, snapshot, expected_sequence,
                                      registry, {}) ==
@@ -320,7 +329,9 @@ public:
             "manager runtime fixture erase failed");
   }
 
-  std::unique_ptr<channel::RuntimeBootstrap> bootstrap() const {
+  std::unique_ptr<channel::RuntimeBootstrap>
+  bootstrap(std::optional<channel::RuntimeServices> services = std::nullopt)
+      const {
     const int home =
         ::open(home_.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
     require(home >= 0, "manager runtime fixture home unavailable");
@@ -343,6 +354,9 @@ public:
     require(result && bootstrap_error ==
                           channel::RuntimeBootstrapError::none,
             "manager runtime fixture bootstrap rejected");
+    if (services)
+      channel::RuntimeBootstrapTestAccess::set_services(*result,
+                                                        std::move(*services));
     return result;
   }
 
@@ -430,6 +444,102 @@ public:
   bool refuses = false;
   bool throws = false;
 };
+
+class BlockingNotifications final {
+public:
+  static bool send(std::string_view category, std::string_view,
+                   std::string_view, void *context) noexcept {
+    auto &self = *static_cast<BlockingNotifications *>(context);
+    std::unique_lock lock(self.mutex_);
+    auto &effect = self.effect(category);
+    ++effect.calls;
+    effect.entered = true;
+    self.changed_.notify_all();
+    self.changed_.wait(lock, [&] { return effect.released; });
+    return true;
+  }
+
+  void hold(std::string_view category) {
+    std::scoped_lock lock(mutex_);
+    auto &effect = this->effect(category);
+    effect.entered = false;
+    effect.released = false;
+  }
+
+  void release(std::string_view category) {
+    {
+      std::scoped_lock lock(mutex_);
+      effect(category).released = true;
+    }
+    changed_.notify_all();
+  }
+
+  bool awaitEntered(std::string_view category) {
+    std::unique_lock lock(mutex_);
+    return changed_.wait_for(lock, std::chrono::seconds(2),
+                             [&] { return effect(category).entered; });
+  }
+
+  std::size_t calls(std::string_view category) {
+    std::scoped_lock lock(mutex_);
+    return effect(category).calls;
+  }
+
+private:
+  struct Effect final {
+    std::string_view category;
+    std::size_t calls = 0;
+    bool entered = false;
+    bool released = true;
+  };
+
+  Effect &effect(std::string_view category) {
+    auto found = std::ranges::find(effects_, category, &Effect::category);
+    if (found == effects_.end())
+      std::terminate();
+    return *found;
+  }
+
+  std::mutex mutex_;
+  std::condition_variable changed_;
+  std::array<Effect, 3> effects_{{{.category = "status"},
+                                  {.category = "a"},
+                                  {.category = "b"}}};
+};
+
+constexpr std::string_view permissionAwareQml = R"QML(import QtQuick
+Item {
+  width: 64
+  height: 64
+  readonly property bool notificationsGranted:
+    runtime.hasPermission("notifications.send", "send")
+  property var notificationCall
+  Component.onCompleted: {
+    if (notificationsGranted) {
+      notificationCall = runtime.invoke("notification_send", {
+        category: "status",
+        title: "Permission generation",
+        body: "The optional feature is enabled"
+      })
+    }
+  }
+  Rectangle {
+    anchors.fill: parent
+    color: parent.notificationsGranted ? "#20c060" : "#d02020"
+  }
+}
+)QML";
+
+std::string permissionAwareQmlFor(std::string_view category) {
+  auto qml = std::string(permissionAwareQml);
+  const auto marker = qml.find("category: \"status\"");
+  require(marker != std::string::npos,
+          "permission-aware QML category marker disappeared");
+  qml.replace(marker, std::string_view("category: \"").size() +
+                          std::string_view("status").size(),
+              "category: \"" + std::string(category));
+  return qml;
+}
 
 const bridge::PluginManagerTestAccess::SlotObservation &
 observed(const std::vector<bridge::PluginManagerTestAccess::SlotObservation>
@@ -1147,6 +1257,537 @@ void runtime_jobs_enter_off_ui_and_commit_on_ui_drain() {
           "runtime scan or preparation executed on the UI thread");
 }
 
+void manager_owns_permission_generation_replacement() {
+  if (std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_TEST") == nullptr)
+    return;
+  require(::access(std::string(omarchy::plugin_runtime::kPackagedWorkerPath)
+                       .c_str(),
+                   X_OK) == 0,
+          "permission replacement packaged worker was unavailable");
+  constexpr std::string_view plugin = "org.example.permissions";
+  constexpr std::string_view permission_json =
+      R"({"required":[{"capability":"storage.private","reason":"state","quotaBytes":4096}],"optional":[{"capability":"notifications.send","reason":"alerts","categories":["status"]}]})";
+  const permissions::CapabilityKey storage{
+      .id = permissions::CapabilityId("storage.private"), .version = 1};
+  const permissions::CapabilityKey notifications{
+      .id = permissions::CapabilityId("notifications.send"), .version = 1};
+  const permissions::CapabilityKey absent{
+      .id = permissions::CapabilityId("audio.play-cue"), .version = 1};
+  const definitions::CapabilityReference absent_dynamic{
+      .canonical_name = definitions::Name("harness.example"),
+      .definition_generation = 1,
+      .definition_digest = definitions::Digest(std::string(64, 'd'))};
+
+  RuntimeFixture fixture;
+  const auto first_binding = fixture.seedRuntime(
+      plugin, permissionAwareQml, permission_json);
+  DeterministicJobs scheduler;
+  auto manager = bridge::PluginManagerTestAccess::create();
+  auto notification_backend = std::make_shared<BlockingNotifications>();
+  notification_backend->hold("status");
+  channel::RuntimeServices services{
+      .context = notification_backend,
+      .notification_send = BlockingNotifications::send,
+      .audio_play = nullptr,
+      .compare_scope = nullptr,
+      .dynamic_services = {}};
+  bridge::PluginManagerTestAccess::installRuntime(
+      *manager, fixture.bootstrap(std::move(services)));
+  bridge::PluginManagerTestAccess::setJobSubmitter(
+      *manager, [&](auto kind, auto job) {
+        return scheduler.submit(kind, std::move(job));
+      });
+  const auto run_job = [&] {
+    std::thread worker([&] { scheduler.runOne(); });
+    worker.join();
+    bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  };
+  const auto await_running = [&] {
+    return await([&] {
+      bridge::PluginManagerTestAccess::drainRuntime(*manager);
+      const auto observations =
+          bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+      return observations.size() == 1 &&
+             observations.front().running_unpublished;
+    });
+  };
+  const auto run_preparation = [&] {
+    require(!scheduler.jobs.empty() &&
+                scheduler.kinds.front() ==
+                    bridge::PluginManagerTestAccess::TestJobKind::preparation,
+            "permission replacement did not enqueue exact preparation");
+    run_job();
+    if (!await_running()) {
+      const auto observations =
+          bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+      require(!observations.empty(),
+              "permission replacement generation slot disappeared");
+      const auto &failed = observations.front();
+      throw std::runtime_error(
+          "permission replacement generation did not reach running: state=" +
+          std::to_string(failed.last_state) +
+          " error=" + std::to_string(failed.last_error));
+    }
+  };
+  const auto current_slot = [&] {
+    const auto observations =
+        bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+    require(observations.size() == 1,
+            "permission replacement slot disappeared");
+    return observations.front();
+  };
+  const auto current_view = [&] {
+    const auto slot = current_slot();
+    auto view = bridge::PluginManagerTestAccess::permissionView(
+        *manager, plugin, slot.epoch);
+    require(view && view->active,
+            "permission replacement authority view unavailable");
+    return *view;
+  };
+  const auto review_decisions = [](const host::ConsentReview &review) {
+    std::vector<host::BuiltinConsentDecision> decisions;
+    for (const auto &row : review.builtin_rows) {
+      require(row.requested.has_value(),
+              "permission review row lacked canonical request");
+      decisions.push_back({.capability = row.requested->capability,
+                           .decided_scope = row.requested->scope,
+                           .decision = permissions::UserDecision::grant});
+    }
+    return decisions;
+  };
+  const auto confirmation = [](const host::ConsentReview &review,
+                               std::span<const host::BuiltinConsentDecision>
+                                   decisions) {
+    return host::ConsentConfirmation{
+        .review_fingerprint = review.fingerprint,
+        .decision_fingerprint =
+            host::consent_decision_fingerprint(review, decisions, {}),
+        .actor = permissions::DecisionActor::trusted_ui,
+        .confirmed_wall_seconds = 1};
+  };
+
+  require(bridge::PluginManagerTestAccess::scanRuntime(*manager) &&
+              scheduler.jobs.size() == 1,
+          "permission replacement initial preparation was not queued");
+  run_preparation();
+  require(notification_backend->awaitEntered("status") &&
+              notification_backend->calls("status") == 1,
+          "packaged QML did not select and enter its granted optional effect");
+  auto slot = current_slot();
+  require(current_view().active->binding == first_binding,
+          "permission replacement started the wrong initial binding");
+  require(bridge::PluginManagerTestAccess::publishReady(
+              *manager, plugin, slot.epoch, first_binding, barDeclaration()) &&
+              manager->count() == 1,
+          "permission replacement fixture did not publish G1");
+  const auto stale_surface_key = barSurfaceKey(*manager, plugin);
+  require(!stale_surface_key.isEmpty(),
+          "permission replacement fixture lacked a G1 surface key");
+  QQuickWindow permission_window;
+  permission_window.resize(64, 64);
+  permission_window.show();
+  bridge::RemotePluginSurface live_remote(permission_window.contentItem());
+  live_remote.setWidth(64);
+  live_remote.setHeight(64);
+  require(manager->attach(stale_surface_key, &live_remote) &&
+              live_remote.connected(),
+          "permission replacement fixture did not attach G1");
+
+  auto view = current_view();
+  scheduler.refuses = true;
+  require(!bridge::PluginManagerTestAccess::revokePermission(
+              *manager, plugin, slot.epoch, notifications,
+              view.authority_slots.sequence) &&
+              !current_slot().permission_in_flight &&
+              current_slot().epoch == slot.epoch && manager->count() == 1,
+          "permission scheduler refusal changed live G1");
+  scheduler.refuses = false;
+  scheduler.throws = true;
+  require(!bridge::PluginManagerTestAccess::revokePermission(
+              *manager, plugin, slot.epoch, notifications,
+              view.authority_slots.sequence) &&
+              !current_slot().permission_in_flight &&
+              current_slot().epoch == slot.epoch && manager->count() == 1,
+          "permission scheduler throw changed live G1");
+  scheduler.throws = false;
+
+  require(bridge::PluginManagerTestAccess::revokePermission(
+              *manager, plugin, slot.epoch, absent,
+              view.authority_slots.sequence) &&
+              current_slot().permission_in_flight,
+          "invalid selector did not enter the bounded permission lane");
+  run_job();
+  require(current_slot().epoch == slot.epoch &&
+              current_slot().running_published &&
+              !current_slot().permission_in_flight && manager->count() == 1,
+          "invalid selector fenced or replaced live G1");
+  require(bridge::PluginManagerTestAccess::revokePermission(
+              *manager, plugin, slot.epoch, absent_dynamic,
+              view.authority_slots.sequence),
+          "dynamic permission selector did not enter Manager ingress");
+  run_job();
+  require(current_slot().epoch == slot.epoch &&
+              current_slot().running_published && manager->count() == 1,
+          "invalid dynamic selector fenced or replaced live G1");
+  require(bridge::PluginManagerTestAccess::revokePermission(
+              *manager, plugin, slot.epoch, notifications,
+              view.authority_slots.sequence + 1),
+          "stale permission request was not queued for authoritative check");
+  run_job();
+  require(current_slot().epoch == slot.epoch &&
+              current_slot().running_published && manager->count() == 1,
+          "stale permission sequence fenced or replaced live G1");
+
+  require(bridge::PluginManagerTestAccess::revokePermission(
+              *manager, plugin, slot.epoch, notifications,
+              view.authority_slots.sequence),
+          "valid optional revoke was not queued");
+  bool reentrant_attach_attempted = false;
+  bool reentrant_attach_succeeded = false;
+  QObject::connect(&live_remote, &bridge::RemotePluginSurface::connectionChanged,
+                   [&] {
+                     if (live_remote.connected())
+                       return;
+                     reentrant_attach_attempted = true;
+                     reentrant_attach_succeeded =
+                         manager->attach(stale_surface_key, &live_remote);
+                   });
+  std::thread mutation([&] { scheduler.runOne(); });
+  require(await([&] {
+            bridge::PluginManagerTestAccess::drainRuntime(*manager);
+            return current_slot().permission_changing;
+          }),
+          "valid optional revoke did not deliver its pre-drain fence");
+  bridge::RemotePluginSurface stale_remote;
+  require(current_slot().permission_changing &&
+              current_slot().permission_in_flight &&
+              current_slot().has_runtime_root && scheduler.jobs.empty() &&
+              bridge::PluginManagerTestAccess::permissionCount(*manager) == 1 &&
+              manager->count() == 0 && !live_remote.connected() &&
+              reentrant_attach_attempted && !reentrant_attach_succeeded &&
+              !manager->attach(stale_surface_key, &stale_remote) &&
+              !bridge::PluginManagerTestAccess::publishReady(
+                  *manager, plugin, slot.epoch, first_binding,
+                  barDeclaration()),
+          "pre-drain fence did not retain only the stopped-admission G1 root");
+  notification_backend->release("status");
+  mutation.join();
+  bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  require(current_slot().opening && scheduler.jobs.size() == 1,
+          "settled optional revoke did not enter exact generation preparation");
+  run_preparation();
+  slot = current_slot();
+  view = current_view();
+  auto expected_binding = first_binding;
+  expected_binding.generation = first_binding.generation + 1;
+  require(view.active->binding == expected_binding,
+          "optional revoke did not publish one exact fresh generation");
+  const auto revoked_optional = std::ranges::find(
+      view.active->grants.values(), notifications,
+      &permissions::GrantRecord::capability);
+  require(revoked_optional != view.active->grants.values().end() &&
+              revoked_optional->state == permissions::GrantState::revoked,
+          "optional revoke did not persist revoked authority");
+  require(bridge::PluginManagerTestAccess::publishReady(
+              *manager, plugin, slot.epoch, expected_binding,
+              barDeclaration()),
+          "revoked optional generation did not publish");
+  bridge::RemotePluginSurface denied_remote(permission_window.contentItem());
+  denied_remote.setWidth(64);
+  denied_remote.setHeight(64);
+  const auto denied_key = barSurfaceKey(*manager, plugin);
+  require(manager->attach(denied_key, &denied_remote) &&
+              await([&] { return denied_remote.ready(); }) &&
+              redSignature(paintedFrame(denied_remote)) &&
+              notification_backend->calls("status") == 1,
+          "fresh QML generation did not hide its revoked optional feature");
+
+  auto review = bridge::PluginManagerTestAccess::preparePermissionReview(
+      *manager, plugin, slot.epoch);
+  require(review != nullptr, "running optional regrant review was unavailable");
+  auto decisions = review_decisions(*review);
+  auto confirmed = confirmation(*review, decisions);
+  require(bridge::PluginManagerTestAccess::applyPermissionReview(
+              *manager, plugin, slot.epoch, confirmed, decisions, {}),
+          "running optional regrant was not queued");
+  run_job();
+  require(current_slot().opening && scheduler.jobs.size() == 1,
+          "running optional regrant did not replace its generation");
+  notification_backend->hold("status");
+  run_preparation();
+  require(notification_backend->awaitEntered("status") &&
+              notification_backend->calls("status") == 2,
+          "fresh QML generation did not expose its regranted optional feature");
+  notification_backend->release("status");
+  slot = current_slot();
+  view = current_view();
+  expected_binding.generation = first_binding.generation + 2;
+  require(view.active->binding == expected_binding,
+          "optional regrant did not commit the next exact generation");
+  require(bridge::PluginManagerTestAccess::publishReady(
+              *manager, plugin, slot.epoch, expected_binding,
+              barDeclaration()),
+          "regranted optional generation did not publish");
+  bridge::RemotePluginSurface granted_remote(permission_window.contentItem());
+  granted_remote.setWidth(64);
+  granted_remote.setHeight(64);
+  require(manager->attach(barSurfaceKey(*manager, plugin), &granted_remote) &&
+              await([&] { return granted_remote.ready(); }) &&
+              paintedFrame(granted_remote).pixelColor(32, 32).green() >= 150,
+          "regranted QML generation did not render its enabled feature");
+
+  require(bridge::PluginManagerTestAccess::revokePermission(
+              *manager, plugin, slot.epoch, storage,
+              view.authority_slots.sequence),
+          "required revoke was not queued");
+  run_job();
+  slot = current_slot();
+  require(slot.permission_disabled && scheduler.jobs.empty(),
+          "required revoke did not retain a permission-only disabled slot");
+  manager.reset();
+
+  manager = bridge::PluginManagerTestAccess::create();
+  services.context = notification_backend;
+  services.notification_send = BlockingNotifications::send;
+  bridge::PluginManagerTestAccess::installRuntime(
+      *manager, fixture.bootstrap(std::move(services)));
+  bridge::PluginManagerTestAccess::setJobSubmitter(
+      *manager, [&](auto kind, auto job) {
+        return scheduler.submit(kind, std::move(job));
+      });
+  require(bridge::PluginManagerTestAccess::scanRuntime(*manager) &&
+              scheduler.jobs.size() == 1,
+          "disabled process restart did not open canonical authority");
+  run_job();
+  slot = current_slot();
+  require(slot.permission_disabled && scheduler.jobs.empty(),
+          "required-denied process restart attempted to start a session");
+  review = bridge::PluginManagerTestAccess::preparePermissionReview(
+      *manager, plugin, slot.epoch);
+  require(review != nullptr,
+          "required-denied restart did not retain an administrable review");
+  decisions = review_decisions(*review);
+  confirmed = confirmation(*review, decisions);
+  require(bridge::PluginManagerTestAccess::applyPermissionReview(
+              *manager, plugin, slot.epoch, confirmed, decisions, {}),
+          "required regrant was not queued from permission-only root");
+  run_job();
+  require(current_slot().opening && scheduler.jobs.size() == 1,
+          "required regrant did not enqueue exact preparation");
+  notification_backend->hold("status");
+  run_preparation();
+  require(notification_backend->awaitEntered("status"),
+          "restored generation did not enter its granted optional effect");
+  view = current_view();
+  expected_binding.generation = first_binding.generation + 4;
+  require(view.active->binding == expected_binding,
+          "required regrant did not restore the exact next generation");
+
+  slot = current_slot();
+  view = current_view();
+  require(bridge::PluginManagerTestAccess::revokePermission(
+              *manager, plugin, slot.epoch, notifications,
+              view.authority_slots.sequence) && scheduler.jobs.size() == 1,
+          "post-fence destruction mutation was not queued");
+  auto blocked_job = std::move(scheduler.jobs.front());
+  scheduler.jobs.clear();
+  scheduler.kinds.clear();
+  const auto delivery_gate =
+      bridge::PluginManagerTestAccess::deliveryGate(*manager);
+  std::thread blocked_worker([job = std::move(blocked_job)]() mutable {
+    job();
+    job = {};
+  });
+  require(await([&] {
+            bridge::PluginManagerTestAccess::drainRuntime(*manager);
+            return current_slot().permission_changing;
+          }) &&
+              current_slot().has_runtime_root &&
+              bridge::PluginManagerTestAccess::permissionCount(*manager) == 1,
+          "destruction proof did not reach post-observer effect drain");
+  std::atomic<bool> destruction_started = false;
+  std::thread release_effect([&] {
+    while (!destruction_started.load(std::memory_order_acquire))
+      std::this_thread::yield();
+    notification_backend->release("status");
+  });
+  destruction_started.store(true, std::memory_order_release);
+  manager.reset();
+  release_effect.join();
+  blocked_worker.join();
+  require(delivery_gate.expired(),
+          "post-fence canceled permission worker retained delivery state");
+}
+
+void concurrent_permission_fences_route_exactly() {
+  if (std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_TEST") == nullptr)
+    return;
+  constexpr std::string_view plugin_a = "a.permission-plugin";
+  constexpr std::string_view plugin_b = "b.permission-plugin";
+  constexpr std::string_view permissions_a =
+      R"({"required":[],"optional":[{"capability":"notifications.send","reason":"A alerts","categories":["a"]}]})";
+  constexpr std::string_view permissions_b =
+      R"({"required":[],"optional":[{"capability":"notifications.send","reason":"B alerts","categories":["b"]}]})";
+  const permissions::CapabilityKey notifications{
+      .id = permissions::CapabilityId("notifications.send"), .version = 1};
+
+  RuntimeFixture fixture;
+  const auto binding_a = fixture.seedRuntime(
+      plugin_a, permissionAwareQmlFor("a"), permissions_a);
+  const auto binding_b = fixture.seedRuntime(
+      plugin_b, permissionAwareQmlFor("b"), permissions_b);
+  auto effects = std::make_shared<BlockingNotifications>();
+  effects->hold("a");
+  effects->hold("b");
+  channel::RuntimeServices services{
+      .context = effects,
+      .notification_send = BlockingNotifications::send,
+      .audio_play = nullptr,
+      .compare_scope = nullptr,
+      .dynamic_services = {}};
+  DeterministicJobs scheduler;
+  auto manager = bridge::PluginManagerTestAccess::create();
+  bridge::PluginManagerTestAccess::installRuntime(
+      *manager, fixture.bootstrap(std::move(services)));
+  bridge::PluginManagerTestAccess::setJobSubmitter(
+      *manager, [&](auto kind, auto job) {
+        return scheduler.submit(kind, std::move(job));
+      });
+  require(bridge::PluginManagerTestAccess::scanRuntime(*manager) &&
+              scheduler.jobs.size() == 2,
+          "two-plugin permission fixture did not enqueue preparations");
+  while (!scheduler.jobs.empty()) {
+    std::thread worker([&] { scheduler.runOne(); });
+    worker.join();
+    bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  }
+  require(await([&] {
+            bridge::PluginManagerTestAccess::drainRuntime(*manager);
+            const auto observations =
+                bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+            return observations.size() == 2 &&
+                   observed(observations, plugin_a).running_unpublished &&
+                   observed(observations, plugin_b).running_unpublished;
+          }) &&
+              effects->awaitEntered("a") && effects->awaitEntered("b"),
+          "two packaged QML effects did not enter independently");
+
+  auto observations = bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+  const auto epoch_a = observed(observations, plugin_a).epoch;
+  const auto epoch_b = observed(observations, plugin_b).epoch;
+  require(bridge::PluginManagerTestAccess::publishReady(
+              *manager, plugin_a, epoch_a, binding_a, barDeclaration()) &&
+              bridge::PluginManagerTestAccess::publishReady(
+                  *manager, plugin_b, epoch_b, binding_b, barDeclaration()),
+          "two permission generations did not publish independently");
+  const auto key_a = barSurfaceKey(*manager, plugin_a);
+  const auto key_b = barSurfaceKey(*manager, plugin_b);
+  bridge::RemotePluginSurface remote_a;
+  bridge::RemotePluginSurface remote_b;
+  require(manager->attach(key_a, &remote_a) &&
+              manager->attach(key_b, &remote_b),
+          "two permission generations did not attach independently");
+  const auto view_a = bridge::PluginManagerTestAccess::permissionView(
+      *manager, plugin_a, epoch_a);
+  const auto view_b = bridge::PluginManagerTestAccess::permissionView(
+      *manager, plugin_b, epoch_b);
+  require(view_a && view_a->active && view_b && view_b->active,
+          "two permission authorities were unavailable");
+  require(bridge::PluginManagerTestAccess::revokePermission(
+              *manager, plugin_a, epoch_a, notifications,
+              view_a->authority_slots.sequence) &&
+              bridge::PluginManagerTestAccess::revokePermission(
+                  *manager, plugin_b, epoch_b, notifications,
+                  view_b->authority_slots.sequence) &&
+              scheduler.jobs.size() == 2,
+          "two permission mutations did not enter the bounded lanes");
+
+  auto job_a = std::move(scheduler.jobs.at(0));
+  auto job_b = std::move(scheduler.jobs.at(1));
+  scheduler.jobs.clear();
+  scheduler.kinds.clear();
+  std::thread worker_a([job = std::move(job_a)]() mutable { job(); });
+  std::thread worker_b([job = std::move(job_b)]() mutable { job(); });
+  require(await([&] {
+            bridge::PluginManagerTestAccess::drainRuntime(*manager);
+            const auto current =
+                bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+            return observed(current, plugin_a).permission_changing &&
+                   observed(current, plugin_b).permission_changing;
+          }),
+          "concurrent authority fences did not both reach the Manager");
+  observations = bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+  bridge::RemotePluginSurface stale_a;
+  bridge::RemotePluginSurface stale_b;
+  require(manager->count() == 0 && !remote_a.connected() &&
+              !remote_b.connected() &&
+              observed(observations, plugin_a).has_runtime_root &&
+              observed(observations, plugin_b).has_runtime_root &&
+              bridge::PluginManagerTestAccess::permissionCount(*manager) == 2 &&
+              !manager->attach(key_a, &stale_a) &&
+              !manager->attach(key_b, &stale_b),
+          "concurrent fences crossed or failed to withdraw exact generations");
+
+  effects->release("b");
+  worker_b.join();
+  bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  observations = bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+  require(observed(observations, plugin_a).permission_changing &&
+              observed(observations, plugin_a).has_runtime_root &&
+              observed(observations, plugin_b).opening &&
+              scheduler.jobs.size() == 1,
+          "settled B permission result disturbed blocked A");
+  std::thread prepare_b([&] { scheduler.runOne(); });
+  prepare_b.join();
+  require(await([&] {
+            bridge::PluginManagerTestAccess::drainRuntime(*manager);
+            const auto current =
+                bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+            return observed(current, plugin_b).running_unpublished;
+          }),
+          "settled B did not start its exact replacement");
+  auto current_b = bridge::PluginManagerTestAccess::permissionView(
+      *manager, plugin_b,
+      observed(bridge::PluginManagerTestAccess::runtimeSlots(*manager),
+               plugin_b)
+          .epoch);
+  auto expected_b = binding_b;
+  ++expected_b.generation;
+  require(current_b && current_b->active &&
+              current_b->active->binding == expected_b &&
+              effects->calls("b") == 1,
+          "B replacement binding or revoked QML selector was not exact");
+
+  effects->release("a");
+  worker_a.join();
+  bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  observations = bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+  require(observed(observations, plugin_b).running_unpublished &&
+              observed(observations, plugin_a).opening &&
+              scheduler.jobs.size() == 1,
+          "settled A permission result disturbed replacement B");
+  std::thread prepare_a([&] { scheduler.runOne(); });
+  prepare_a.join();
+  require(await([&] {
+            bridge::PluginManagerTestAccess::drainRuntime(*manager);
+            const auto current =
+                bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+            return observed(current, plugin_a).running_unpublished &&
+                   observed(current, plugin_b).running_unpublished;
+          }),
+          "A replacement did not converge beside replacement B");
+  const auto final_slots =
+      bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+  auto current_a = bridge::PluginManagerTestAccess::permissionView(
+      *manager, plugin_a, observed(final_slots, plugin_a).epoch);
+  auto expected_a = binding_a;
+  ++expected_a.generation;
+  require(current_a && current_a->active &&
+              current_a->active->binding == expected_a &&
+              effects->calls("a") == 1,
+          "A replacement binding or revoked QML selector was not exact");
+}
+
 void real_root_publishes_attaches_and_tears_down_exactly() {
   if (std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_TEST") == nullptr)
     return;
@@ -1510,6 +2151,8 @@ void run_plugin_manager_tests() {
   lifecycle_mailbox_keeps_latest_exact_terminal_state();
   blocked_replacement_preserves_independent_plugin();
   runtime_jobs_enter_off_ui_and_commit_on_ui_drain();
+  manager_owns_permission_generation_replacement();
+  concurrent_permission_fences_route_exactly();
   real_root_publishes_attaches_and_tears_down_exactly();
   joined_runtimes_replace_and_render_without_cross_routing();
 }
