@@ -80,8 +80,13 @@ BarWidget {
         opacity: occupied || focused ? 1 : 0.5
         horizontalMargin: 6
         verticalPadding: 6
-        fixedWidth: root.vertical ? root.barSize : Style.space(20)
+        // Horizontal tiles grow when a workspace id needs more room. A
+        // vertical bar stays one bar wide and clips unusually long ids; the
+        // tooltip still exposes the complete number.
+        fixedWidth: root.vertical ? root.barSize : Math.max(Style.space(20), labelWidth + scaledHorizontalMargin * 2)
         fixedHeight: root.barSize
+        clip: root.vertical
+        tooltipText: root.vertical && numeral.length > 2 ? numeral : ""
         onPressed: function() { root.focusWorkspace(modelData) }
       }
     }

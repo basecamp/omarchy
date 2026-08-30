@@ -30,4 +30,17 @@ assert(
   'only a keyed workspace swaps its numeral for the focus dot'
 )
 assert(/active: focused && !keyed/.test(source), 'an unkeyed focused workspace marks its focus by colour instead')
+
+// Arbitrarily high workspace ids must not paint over the next tile. The
+// horizontal bar can grow with the rendered numeral; a vertical bar cannot,
+// so it clips to its slot and exposes the complete number in a tooltip.
+assert(
+  /fixedWidth: root\.vertical \? root\.barSize : Math\.max\(Style\.space\(20\), labelWidth \+ scaledHorizontalMargin \* 2\)/.test(source),
+  'horizontal workspace tiles grow to fit long ids'
+)
+assert(/clip: root\.vertical/.test(source), 'vertical workspace tiles clip labels to the bar width')
+assert(
+  /tooltipText: root\.vertical && numeral\.length > 2 \? numeral : ""/.test(source),
+  'vertical workspace tiles expose long ids in a tooltip'
+)
 JS
