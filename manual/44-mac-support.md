@@ -44,9 +44,8 @@ Members of the community are constantly working on solutions to these challenges
 #### Devices with T1 Chip
 
 The Apple T1 chip was introduced in late 2016 and used exclusively in the first-generation MacBook Pro models with Touch Bar.
-- MacBook Pro 13-inch (2016, two Thunderbolt 3 ports) – Model: A1706
-- MacBook Pro 13-inch (2016, four Thunderbolt 3 ports) – Model: A1708
-- MacBook Pro 15-inch (2016) – Model: A1707
+- MacBook Pro 13-inch (2016-2017, four Thunderbolt 3 ports) – Model: A1706
+- MacBook Pro 15-inch (2016-2017) – Model: A1707
 
 #### Known Issues
 
