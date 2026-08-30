@@ -83,6 +83,7 @@ mkdir -p "$deferred_root/migrations" "$deferred_home"
 
 cat >"$deferred_root/migrations/100-deferred.sh" <<'SH'
 echo deferred >>"$TEST_CALLS"
+printf '%s\n' "$OMARCHY_MIGRATION_DEFER_TOKEN" >"$OMARCHY_MIGRATION_DEFER_FILE"
 exit 75
 SH
 cat >"$deferred_root/migrations/200-after.sh" <<'SH'
@@ -111,3 +112,32 @@ grep -q '^100-deferred\.sh$' "$test_tmp/deferred-pending.out" ||
 ! grep -q '^200-after\.sh$' "$test_tmp/deferred-pending.out" ||
   fail "migration runner does not report the completed later migration as pending"
 pass "migration runner reports only the deferred migration as pending"
+
+raw_75_root="$test_tmp/raw-75-omarchy"
+raw_75_home="$test_tmp/raw-75-home"
+raw_75_calls="$test_tmp/raw-75-calls"
+mkdir -p "$raw_75_root/migrations" "$raw_75_home"
+
+cat >"$raw_75_root/migrations/100-child-tempfail.sh" <<'SH'
+echo child-tempfail >>"$TEST_CALLS"
+bash -c 'exit 75'
+SH
+cat >"$raw_75_root/migrations/200-after.sh" <<'SH'
+echo after-tempfail >>"$TEST_CALLS"
+SH
+
+set +e
+HOME="$raw_75_home" \
+OMARCHY_PATH="$raw_75_root" \
+TEST_CALLS="$raw_75_calls" \
+  "$ROOT/bin/omarchy-migrate" >"$test_tmp/raw-75.out" 2>"$test_tmp/raw-75.err"
+raw_75_status=$?
+set -e
+
+(( raw_75_status == 75 )) ||
+  fail "migration runner preserves an unmarked child exit 75" "status=$raw_75_status"
+grep -q '^child-tempfail$' "$raw_75_calls" || fail "migration runner starts the exit-75 child"
+! grep -q '^after-tempfail$' "$raw_75_calls" || fail "migration runner stops after an unmarked exit 75"
+[[ ! -f $raw_75_home/.local/state/omarchy/migrations/100-child-tempfail.sh ]] ||
+  fail "migration runner leaves an unmarked exit-75 migration incomplete"
+pass "migration runner does not mistake a child EX_TEMPFAIL for intentional deferral"

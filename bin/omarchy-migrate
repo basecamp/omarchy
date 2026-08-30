@@ -91,18 +91,28 @@ while IFS=$'\t' read -r name file marker; do
 
   if [[ ! -f $marker ]]; then
     echo -e "\e[32m\nRunning migration (${name%.sh})\e[0m"
-    if OMARCHY_PATH="$OMARCHY_PATH" bash -euo pipefail "$file"; then
+    defer_file=$(mktemp "$STATE_DIR/.defer.XXXXXX")
+    defer_token="$BASHPID-$RANDOM-$RANDOM"
+    migration_status=0
+
+    if OMARCHY_PATH="$OMARCHY_PATH" \
+      OMARCHY_MIGRATION_DEFER_FILE="$defer_file" \
+      OMARCHY_MIGRATION_DEFER_TOKEN="$defer_token" \
+      bash -euo pipefail "$file"; then
       mkdir -p "$(dirname "$marker")"
       touch "$marker"
     else
       migration_status=$?
-      if (( migration_status == 75 )); then
+      if (( migration_status == 75 )) && [[ $(<"$defer_file") == "$defer_token" ]]; then
         deferred+=("$name")
         echo "Migration ${name%.sh} was deferred and will be retried later."
       else
+        rm -f "$defer_file"
         exit "$migration_status"
       fi
     fi
+
+    rm -f "$defer_file"
   fi
 done < <(migration_entries)
 
