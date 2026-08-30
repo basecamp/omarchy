@@ -210,19 +210,6 @@ PluginSession::commit(std::unique_ptr<PreparedPluginSession> prepared,
   }
 }
 
-std::unique_ptr<PluginSession> PluginSession::create(
-    launcher::Supervisor supervisor, session::ActivationSnapshot snapshot,
-    AuthenticatedSessionRuntimeFactory &runtime_factory,
-    PluginSessionCreateError &error, PluginSessionEvents *events,
-    session::SessionLimits limits, SurfaceIntentSink *intent_sink,
-    QObject *parent) {
-  auto prepared = prepare(std::move(supervisor), std::move(snapshot),
-                          runtime_factory, error, limits);
-  return prepared
-             ? commit(std::move(prepared), error, events, intent_sink, parent)
-             : nullptr;
-}
-
 PluginSession::PluginSession(
     session::SessionToken token, session::OwnedDescriptor activation_record,
     plugins::manifest::ManifestV2 manifest,
@@ -472,24 +459,13 @@ PluginSessionTestAccess::prepare_from_activation(
                                 runtime_factory, error, limits);
 }
 
-std::unique_ptr<PluginSession> PluginSessionTestAccess::create_from_activation(
-    launcher::Supervisor supervisor, session::ActivationSnapshot snapshot,
-    AuthenticatedSessionRuntimeFactory &runtime_factory,
-    PluginSessionCreateError &error, PluginSessionEvents *events,
-    session::SessionLimits limits, SurfaceIntentSink *intent_sink,
-    QObject *parent) {
-  return PluginSession::create(std::move(supervisor), std::move(snapshot),
-                               runtime_factory, error, events, limits,
-                               intent_sink, parent);
-}
-
-std::unique_ptr<PluginSession> PluginSessionTestAccess::create(
+std::unique_ptr<PreparedPluginSession>
+PluginSessionTestAccess::prepare_from_parts(
     session::SessionToken token, plugins::manifest::ManifestV2 manifest,
     session::policy::GrantSnapshot grants,
     std::shared_ptr<session::LiveGenerationState> live,
     std::unique_ptr<session::SessionChannel> channel,
-    PluginSessionEvents *events, session::SessionLimits limits,
-    SurfaceIntentSink *intent_sink,
+    session::SessionLimits limits,
     std::shared_ptr<runtime::GestureEligibilityClock> gesture_clock,
     std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility) {
   if (!gesture_clock)
@@ -497,10 +473,18 @@ std::unique_ptr<PluginSession> PluginSessionTestAccess::create(
   if (!gesture_eligibility)
     gesture_eligibility =
         std::make_shared<runtime::GestureEligibilityLatch>(gesture_clock);
-  return std::unique_ptr<PluginSession>(new PluginSession(
+  return std::unique_ptr<PreparedPluginSession>(new PreparedPluginSession(
       std::move(token), session::OwnedDescriptor{}, std::move(manifest),
-      std::move(grants), std::move(live), std::move(channel), events,
-      intent_sink, std::move(gesture_eligibility), limits, nullptr));
+      std::move(grants), std::move(live), std::move(channel),
+      std::move(gesture_eligibility), limits));
+}
+
+std::unique_ptr<PluginSession> PluginSessionTestAccess::commit(
+    std::unique_ptr<PreparedPluginSession> prepared,
+    PluginSessionCreateError &error, PluginSessionEvents *events,
+    SurfaceIntentSink *intent_sink, QObject *parent) {
+  return PluginSession::commit(std::move(prepared), error, events, intent_sink,
+                               parent);
 }
 
 int PluginSessionTestAccess::activation_record_fd(

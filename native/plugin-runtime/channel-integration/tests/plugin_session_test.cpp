@@ -946,10 +946,14 @@ void product_session_intercepts_gesture_intents_before_render_routing() {
   auto clock = std::make_shared<GestureClock>();
   auto shared_gesture =
       std::make_shared<runtime::GestureEligibilityLatch>(clock);
-  auto product = channel::PluginSessionTestAccess::create(
+  auto prepared = channel::PluginSessionTestAccess::prepare_from_parts(
       identity, std::move(verified_manifest), std::move(revision), live,
-      std::make_unique<FakeChannel>(channel_state), &events, {}, &sink, clock,
-      shared_gesture);
+      std::make_unique<FakeChannel>(channel_state), {}, clock, shared_gesture);
+  channel::PluginSessionCreateError create_error{};
+  auto product = channel::PluginSessionTestAccess::commit(
+      std::move(prepared), create_error, &events, &sink);
+  require(product && create_error == channel::PluginSessionCreateError::none,
+          "intent prepared session did not commit");
   product->start();
   await([&] { return product->state() == host::SessionState::running; },
         "intent product session did not start");
@@ -1061,9 +1065,14 @@ void product_session_routes_two_surfaces_over_one_launch() {
   manifest.id = identity.plugin_id;
   manifest.surface_names = {"barWidget", "panel"};
   Events events;
-  auto product = channel::PluginSessionTestAccess::create(
+  auto prepared = channel::PluginSessionTestAccess::prepare_from_parts(
       identity, std::move(manifest), std::move(revision), live,
-      std::make_unique<FakeChannel>(channel_state), &events);
+      std::make_unique<FakeChannel>(channel_state));
+  channel::PluginSessionCreateError create_error{};
+  auto product = channel::PluginSessionTestAccess::commit(
+      std::move(prepared), create_error, &events);
+  require(product && create_error == channel::PluginSessionCreateError::none,
+          "two-surface prepared session did not commit");
 
   Endpoint first;
   Endpoint second;
@@ -1175,17 +1184,22 @@ void product_session_routes_two_surfaces_over_one_launch() {
         "session worker was not reaped before test teardown");
 }
 
-void public_create_retains_activation_and_reuses_one_launch() {
+void prepared_commit_retains_activation_and_reuses_one_launch() {
   ActivationFixture fixture;
   RuntimeFactory runtime_factory;
   auto scope = std::make_shared<Scope>();
   channel::PluginSessionCreateError create_error{};
-  auto product = channel::PluginSessionTestAccess::create_from_activation(
+  auto prepared = channel::PluginSessionTestAccess::prepare_from_activation(
       launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH, CHANNEL_PEER_PATH,
                                         scope),
       fixture.snapshot(), runtime_factory, create_error);
+  require(prepared &&
+              create_error == channel::PluginSessionCreateError::none,
+          "product session preparation failed");
+  auto product = channel::PluginSessionTestAccess::commit(
+      std::move(prepared), create_error);
   require(product && create_error == channel::PluginSessionCreateError::none,
-          "public product session creation failed");
+          "prepared product session commit failed");
   require(runtime_factory.calls == 1 && runtime_factory.saw_manifest &&
               runtime_factory.descriptors_valid &&
               runtime_factory.gesture_authority_valid &&
@@ -1256,17 +1270,17 @@ void prepared_session_is_thread_agnostic_before_commit() {
           "unlaunched prepared channel was not thread-agnostic at discard");
 }
 
-void public_create_rejects_invalid_grant_snapshots() {
+void preparation_rejects_invalid_grant_snapshots() {
   ActivationFixture fixture;
   const auto rejected = [&](host::ActivationSnapshot snapshot,
                             std::string_view message) {
     RuntimeFactory runtime_factory;
     channel::PluginSessionCreateError create_error{};
-    auto product = channel::PluginSessionTestAccess::create_from_activation(
+    auto prepared = channel::PluginSessionTestAccess::prepare_from_activation(
         launcher::Supervisor::forTestOnly(FAKE_BWRAP_PATH, CHANNEL_PEER_PATH,
                                           std::make_shared<Scope>()),
         std::move(snapshot), runtime_factory, create_error);
-    require(!product &&
+    require(!prepared &&
                 create_error ==
                     channel::PluginSessionCreateError::invalid_activation &&
                 runtime_factory.calls == 0,
@@ -2186,9 +2200,14 @@ void failed_session_rejects_surfaces() {
   manifest::ManifestV2 verified_manifest;
   verified_manifest.id = identity.plugin_id;
   verified_manifest.surface_names = {"bar"};
-  auto product = channel::PluginSessionTestAccess::create(
+  auto prepared = channel::PluginSessionTestAccess::prepare_from_parts(
       identity, std::move(verified_manifest), std::move(revision), live,
       std::make_unique<FakeChannel>(channel_state));
+  channel::PluginSessionCreateError create_error{};
+  auto product = channel::PluginSessionTestAccess::commit(
+      std::move(prepared), create_error);
+  require(product && create_error == channel::PluginSessionCreateError::none,
+          "failed-channel prepared session did not commit");
   product->start();
   await([&] { return product->state() == host::SessionState::failed; },
         "failed product channel did not fail its session");
@@ -2234,8 +2253,8 @@ int main(int argc, char **argv) {
     effect_time_revocation_fences_an_authenticated_request();
     shared_gesture_authority_has_one_concurrent_winner();
     product_session_intercepts_gesture_intents_before_render_routing();
-    public_create_rejects_invalid_grant_snapshots();
-    public_create_retains_activation_and_reuses_one_launch();
+    preparation_rejects_invalid_grant_snapshots();
+    prepared_commit_retains_activation_and_reuses_one_launch();
     prepared_session_is_thread_agnostic_before_commit();
     coordinator_activates_only_exact_promoted_authority();
     coordinator_fences_runtime_construction_and_retries();

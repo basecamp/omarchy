@@ -133,12 +133,6 @@ private:
   commit(std::unique_ptr<PreparedPluginSession> prepared,
          PluginSessionCreateError &error, PluginSessionEvents *events,
          SurfaceIntentSink *intent_sink, QObject *parent);
-  [[nodiscard]] static std::unique_ptr<PluginSession>
-  create(launcher::Supervisor supervisor, session::ActivationSnapshot snapshot,
-         AuthenticatedSessionRuntimeFactory &runtime_factory,
-         PluginSessionCreateError &error, PluginSessionEvents *events = nullptr,
-         session::SessionLimits limits = {},
-         SurfaceIntentSink *intent_sink = nullptr, QObject *parent = nullptr);
 
   class LiveAuthority;
   PluginSession(
@@ -220,6 +214,9 @@ private:
 
   friend class PluginSession;
   friend class PluginActivationCoordinator;
+#ifdef OMARCHY_PLUGIN_SESSION_TESTING
+  friend class PluginSessionTestAccess;
+#endif
 };
 
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
@@ -231,23 +228,20 @@ public:
                           AuthenticatedSessionRuntimeFactory &runtime_factory,
                           PluginSessionCreateError &error,
                           session::SessionLimits limits = {});
-  [[nodiscard]] static std::unique_ptr<PluginSession> create_from_activation(
-      launcher::Supervisor supervisor, session::ActivationSnapshot snapshot,
-      AuthenticatedSessionRuntimeFactory &runtime_factory,
-      PluginSessionCreateError &error, PluginSessionEvents *events = nullptr,
+  [[nodiscard]] static std::unique_ptr<PreparedPluginSession>
+  prepare_from_parts(
+      session::SessionToken token, plugins::manifest::ManifestV2 manifest,
+      session::policy::GrantSnapshot grants,
+      std::shared_ptr<session::LiveGenerationState> live,
+      std::unique_ptr<session::SessionChannel> channel,
       session::SessionLimits limits = {},
-      SurfaceIntentSink *intent_sink = nullptr, QObject *parent = nullptr);
+      std::shared_ptr<runtime::GestureEligibilityClock> gesture_clock = {},
+      std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility =
+          {});
   [[nodiscard]] static std::unique_ptr<PluginSession>
-  create(session::SessionToken token, plugins::manifest::ManifestV2 manifest,
-         session::policy::GrantSnapshot grants,
-         std::shared_ptr<session::LiveGenerationState> live,
-         std::unique_ptr<session::SessionChannel> channel,
-         PluginSessionEvents *events = nullptr,
-         session::SessionLimits limits = {},
-         SurfaceIntentSink *intent_sink = nullptr,
-         std::shared_ptr<runtime::GestureEligibilityClock> gesture_clock = {},
-         std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility =
-             {});
+  commit(std::unique_ptr<PreparedPluginSession> prepared,
+         PluginSessionCreateError &error, PluginSessionEvents *events = nullptr,
+         SurfaceIntentSink *intent_sink = nullptr, QObject *parent = nullptr);
   [[nodiscard]] static int
   activation_record_fd(const PluginSession &session) noexcept;
   [[nodiscard]] static std::shared_ptr<session::LiveGenerationState>
