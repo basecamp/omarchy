@@ -83,6 +83,8 @@ void verify_mounts(const SandboxPlan &plan, std::string_view worker) {
           "private state is not mounted from a trusted fd");
   require(contains_argument_pair(plan, "--tmpfs", "/tmp"),
           "scratch is not private tmpfs");
+  require(contains_argument_pair(plan, "--dir", "/tmp/cache"),
+          "private cache directory is absent");
   require(contains_argument_pair(plan, "--tmpfs", "/run"),
           "runtime directory is not private tmpfs");
   require(contains_argument_pair(plan, "--tmpfs", "/home"),
