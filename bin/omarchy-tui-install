@@ -13,6 +13,18 @@ safe_icon_name() {
     | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//'
 }
 
+require_plain_name() {
+  # The name becomes a filename. A slash would turn it into directory levels, so
+  # the launcher lands somewhere omarchy-tui-remove cannot address and the app
+  # is stuck in the launcher; a leading ../ leaves the applications directory
+  # altogether. Refuse rather than silently renaming what the user typed -- most
+  # often it is a URL entered in the name field.
+  if [[ $1 == */* ]]; then
+    echo "App name cannot contain '/': $1"
+    exit 1
+  fi
+}
+
 icon_name_from_ref() {
   local ref="$1"
   local name
@@ -37,14 +49,37 @@ install_user_icon() {
   printf '%s\n' "$name"
 }
 
+desktop_string_escape() {
+  # Desktop Entry "string" value (freedesktop Desktop Entry Spec, "Value types"):
+  # a raw newline would start a new key line and let a value inject a second
+  # Exec=. Escape backslash first, then tab/CR/LF and a leading space. Every value
+  # written into the .desktop file passes through here.
+  #
+  # Parameter expansion rather than sed: GNU sed's N auto-prints the pattern space
+  # and exits at end of input, so a `:a;N;$!ba` slurp skips every following s///
+  # for a value with no newline in it - which is every value except the injection
+  # attempt this exists to stop.
+  local value="$1"
+
+  value=${value//\\/\\\\}
+  value=${value//$'\t'/\\t}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\n'/\\n}
+  [[ $value == " "* ]] && value="\\s${value# }"
+
+  printf '%s' "$value"
+}
+
 if (( $# != 4 )); then
   echo -e "\e[32mLet's create a TUI shortcut you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My TUI")
+  require_plain_name "$APP_NAME"
   APP_EXEC=$(gum input --prompt "Launch Command> " --placeholder "lazydocker or bash -c 'dust; read -n 1 -s'")
   WINDOW_STYLE=$(gum choose --header "Window style" float tile)
   ICON_REF=$(gum input --prompt "Icon URL/name> " --placeholder "See https://dashboardicons.com or enter an installed icon name")
 else
   APP_NAME="$1"
+  require_plain_name "$APP_NAME"
   APP_EXEC="$2"
   WINDOW_STYLE="$3"
   ICON_REF="$4"
@@ -79,15 +114,20 @@ else
   APP_CLASS="TUI.tile"
 fi
 
+name_field=$(desktop_string_escape "$APP_NAME")
+comment_field=$(desktop_string_escape "$APP_NAME")
+exec_field=$(desktop_string_escape "xdg-terminal-exec --app-id=$APP_CLASS -e $APP_EXEC")
+icon_field=$(desktop_string_escape "$ICON_VALUE")
+
 cat >"$DESKTOP_FILE" <<EOF
 [Desktop Entry]
 Version=1.0
-Name=$APP_NAME
-Comment=$APP_NAME
-Exec=xdg-terminal-exec --app-id=$APP_CLASS -e $APP_EXEC
+Name=$name_field
+Comment=$comment_field
+Exec=$exec_field
 Terminal=false
 Type=Application
-Icon=$ICON_VALUE
+Icon=$icon_field
 StartupNotify=true
 EOF
 
