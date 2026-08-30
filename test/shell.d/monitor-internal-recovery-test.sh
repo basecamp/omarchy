@@ -42,12 +42,17 @@ SH
 chmod +x "$fake_bin/hyprctl"
 
 write_connectors() {
-  local external_state="$1"
+  local index=1 external_state
 
   rm -rf "$drm_path"
-  mkdir -p "$drm_path/card0-eDP-1" "$drm_path/card0-HDMI-A-1"
+  mkdir -p "$drm_path/card0-eDP-1"
   printf 'connected\n' >"$drm_path/card0-eDP-1/status"
-  printf '%s\n' "$external_state" >"$drm_path/card0-HDMI-A-1/status"
+
+  for external_state in "$@"; do
+    mkdir -p "$drm_path/card0-HDMI-A-$index"
+    printf '%s\n' "$external_state" >"$drm_path/card0-HDMI-A-$index/status"
+    index=$((index + 1))
+  done
 }
 
 write_monitors() {
@@ -114,6 +119,22 @@ run_recovery omarchy-hyprland-monitor-internal-mirror
   fail "an active connected external monitor preserves the mirror toggle"
 [[ ! -s $calls ]] || fail "healthy external monitor state does not reconfigure displays" "$(<"$calls")"
 pass "an active connected external monitor preserves intentional laptop display state"
+
+# Unplugging one of two externals is not an undock. The connector scan must keep
+# looking past the one that went away rather than answer from the first it reads.
+write_connectors disconnected connected
+write_monitors "$active_external"
+: >"$calls"
+make_toggle internal-monitor-disable
+make_toggle internal-monitor-mirror
+run_recovery omarchy-hyprland-monitor-internal
+run_recovery omarchy-hyprland-monitor-internal-mirror
+[[ -f $toggles_dir/internal-monitor-disable.lua ]] ||
+  fail "a remaining external monitor preserves the laptop display toggle"
+[[ -f $toggles_dir/internal-monitor-mirror.lua ]] ||
+  fail "a remaining external monitor preserves the mirror toggle"
+[[ ! -s $calls ]] || fail "unplugging one of two externals does not reconfigure displays" "$(<"$calls")"
+pass "unplugging one of two external monitors keeps the laptop display disabled"
 
 # A connected but inactive external is not usable. Keep the compositor-side
 # half of the old recovery behavior as well as the new hardware-side fallback.
