@@ -41,7 +41,7 @@ fi
 # The shell keeps the click command with the toast, so this oneshot can hand the
 # invitation over and exit instead of staying activated until it is answered.
 omarchy-notification-send -u critical -g  "Pending Omarchy Migrations" "$message" \
-  --exec "omarchy-launch-floating-terminal-with-presentation omarchy-migrate" && exit 0
+  --exec omarchy-launch-floating-terminal-with-presentation omarchy-migrate && exit 0
 
 # Reached when the notification could not be handed off, so fall back to telling
 # the user in the terminal.

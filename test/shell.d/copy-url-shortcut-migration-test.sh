@@ -28,8 +28,18 @@ write_stale_preferences() {
 stub_bin="$test_dir/bin"
 mkdir -p "$stub_bin"
 
-REAL_PYTHON=$(command -v python3)
+cat >"$stub_bin/python3" <<'STUB'
+#!/bin/bash
+exit 127
+STUB
+chmod +x "$stub_bin/python3"
+
+# Test stubs must delegate to the system interpreter, not a user shim that can
+# route python3 back through the stubs and recurse.
+REAL_PYTHON=$(PATH="$stub_bin:$PATH" command -p -v python3)
+[[ $REAL_PYTHON != "$stub_bin/python3" ]] || fail "real Python resolution bypasses user shims"
 export REAL_PYTHON
+rm -f "$stub_bin/python3"
 
 run_migration() {
   HOME="$home" PATH="$stub_bin:$PATH" bash -euo pipefail "$migration" >/dev/null 2>&1

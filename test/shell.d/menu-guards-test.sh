@@ -194,3 +194,82 @@ printf "survived\n"' 2>/dev/null)
 [[ $errexit_result == $'hit:c:1\nmiss:c:0\nsurvived' ]] ||
   fail "guard batch survives a failing reader under errexit" "got: $errexit_result"
 pass "guard batch survives a reader that exits nonzero under errexit"
+
+# Update > Extra Themes runs omarchy-theme-update, which pulls the themes that
+# came from a git clone and skips everything else, so the guard has to answer
+# for the same set: a row that appears over a symlinked theme or a worktree's
+# `.git` file opens a terminal that prints nothing and closes. Both sides ask
+# omarchy-theme-extras today; the shapes below are what would tell us if one
+# of them stopped.
+themes_guard=$(node -e '
+  const fs = require("fs")
+  const path = require("path")
+  const menu = require(path.join(process.env.ROOT, "shell/plugins/menu/MenuModel.js"))
+  const items = menu.parseMenuJsonc(fs.readFileSync(path.join(process.env.ROOT, "default/omarchy/omarchy-menu.jsonc"), "utf8"))
+  process.stdout.write(items.find(item => item.id === "update.themes").when)
+')
+
+cat >"$stub_dir/git" <<'STUB'
+#!/bin/bash
+: "${GIT_CALLS:=/dev/null}"
+{ printf '<%s>' "$@"; printf '\n'; } >>"$GIT_CALLS"
+STUB
+chmod +x "$stub_dir/git"
+
+# The updater names each theme it pulls, so what it printed is what the row
+# would have been for. Run the guard the way the batch does, braces and all,
+# and say which shapes are meant to show it rather than only that the two
+# agree: they read the same command now, and agreement alone would hold even
+# if both went wrong together.
+assert_themes_guard_agrees() {
+  local description="$1" home="$2" expected="$3"
+  local guarded=0 updated=0
+
+  HOME="$home" PATH="$ROOT/bin:$PATH" bash -e -c "{ $themes_guard; } >/dev/null 2>&1" || guarded=$?
+  [[ -n $(HOME="$home" PATH="$ROOT/bin:$stub_dir:$PATH" "$ROOT/bin/omarchy-theme-update" 2>/dev/null) ]] || updated=1
+  ((guarded == expected)) || fail "$description" "$home: guard=$guarded expected=$expected"
+  ((updated == expected)) || fail "$description" "$home: update=$updated expected=$expected"
+}
+
+themes_home=$(mktemp -d)
+trap 'rm -rf "$stub_dir" "$themes_home"' EXIT
+
+# A theme copied by hand has nothing to pull, a symlinked one is someone's
+# working copy, and a `.git` file is a worktree living elsewhere.
+mkdir -p "$themes_home/missing"
+mkdir -p "$themes_home/empty/.config/omarchy/themes"
+mkdir -p "$themes_home/copied/.config/omarchy/themes/handmade"
+mkdir -p "$themes_home/cloned/.config/omarchy/themes/tokyo-night/.git"
+mkdir -p "$themes_home/linked/.config/omarchy/themes" "$themes_home/checkout/.git"
+ln -s "$themes_home/checkout" "$themes_home/linked/.config/omarchy/themes/in-progress"
+mkdir -p "$themes_home/worktree/.config/omarchy/themes/branch"
+printf 'gitdir: /elsewhere\n' >"$themes_home/worktree/.config/omarchy/themes/branch/.git"
+
+for shape in missing:1 empty:1 copied:1 cloned:0 linked:1 worktree:1; do
+  assert_themes_guard_agrees \
+    "Extra Themes shows exactly when omarchy-theme-update has something to pull" \
+    "$themes_home/${shape%:*}" "${shape#*:}"
+done
+pass "Extra Themes shows exactly when omarchy-theme-update has something to pull"
+
+# Which themes get pulled, not just that something did: a name with a space in
+# it is the one that goes missing the moment a path is split rather than passed
+# whole, and it would still print an Updating: line on its way to the wrong
+# directory.
+many="$themes_home/many/.config/omarchy/themes"
+mkdir -p "$many/tokyo night/.git" "$many/zen/.git" "$many/handmade"
+ln -s "$themes_home/checkout" "$many/in-progress"
+
+listed=$(HOME="$themes_home/many" LC_ALL=C "$ROOT/bin/omarchy-theme-extras")
+[[ $listed == "$many/tokyo night"$'\n'"$many/zen" ]] ||
+  fail "omarchy-theme-extras lists every clone and nothing else" "got: $listed"
+pass "omarchy-theme-extras lists every clone and nothing else"
+
+git_calls=$(mktemp)
+trap 'rm -rf "$stub_dir" "$themes_home" "$git_calls"' EXIT
+HOME="$themes_home/many" LC_ALL=C GIT_CALLS="$git_calls" PATH="$ROOT/bin:$stub_dir:$PATH" \
+  "$ROOT/bin/omarchy-theme-update" >/dev/null 2>&1
+pulled=$(<"$git_calls")
+[[ $pulled == "<-C><$many/tokyo night><pull>"$'\n'"<-C><$many/zen><pull>" ]] ||
+  fail "omarchy-theme-update pulls each clone by its whole path" "got: $pulled"
+pass "omarchy-theme-update pulls each clone by its whole path"

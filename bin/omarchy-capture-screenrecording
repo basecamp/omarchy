@@ -228,7 +228,7 @@ stop_screenrecording() {
 
     omarchy-notification-send "Screen recording saved" "Open with Super + Alt + , (or click this)" \
       -t 10000 --image "${preview:-$filename}" \
-      --exec "$(printf 'mpv %q' "$filename")"
+      --exec mpv -- "$filename"
 
     # The shell loads the thumbnail into memory when the toast appears and never
     # re-reads the file, so the preview only has to outlive that load -- not the
