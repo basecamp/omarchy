@@ -1,0 +1,35 @@
+[Unit]
+Description=Herdr terminal workspace server
+Documentation=https://herdr.dev
+# Herdr panes inherit the environment of the server process that creates them,
+# and the CLI auto-starts a server on first contact from wherever that happens
+# to be. After a reboot that first contact can come from an SSH login with no
+# WAYLAND_DISPLAY — from then on every pane and agent loses Wayland clipboard
+# access (image paste fails silently) and GUI launches from panes crash
+# (herdrdev/herdr#2448, #2859). Starting the server with the graphical session
+# gives it one defined, correct birth; SSH logins then attach instead of
+# spawning a broken server.
+#
+# Wait for the compositor: uwsm imports WAYLAND_DISPLAY into the user manager
+# before it reaches graphical-session.target.
+After=graphical-session.target
+# Stop with the session so the next login gets a fresh server with fresh
+# credentials — group membership changes (e.g. Sudoless Docker) and environment
+# only reach panes through a server born after them.
+PartOf=graphical-session.target
+# After= is ordering only. A start outside the session (an `omarchy update`
+# over SSH re-running enable --now) would create exactly the clipboard-blind
+# server this unit exists to prevent. Skip it; the unit stays enabled and
+# starts for real at graphical login. Headless/remote use keeps working
+# unchanged through the CLI's own auto-start.
+ConditionEnvironment=WAYLAND_DISPLAY
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/herdr server
+ExecStop=/usr/bin/herdr server stop
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target
