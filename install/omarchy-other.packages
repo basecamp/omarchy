@@ -23,6 +23,7 @@ limine-snapper-sync
 linux
 linux-firmware
 linux-headers
+pahole
 linux-ptl
 linux-ptl-headers
 macbook12-spi-driver-dkms
