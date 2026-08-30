@@ -1,4 +1,4 @@
-echo "Disable SSH password authentication on existing key-based setups"
+echo "Disable SSH password authentication, or sshd itself when no key is authorized"
 
 config=/etc/ssh/sshd_config.d/10-omarchy-hardening.conf
 authorized_keys="$HOME/.ssh/authorized_keys"
@@ -53,9 +53,26 @@ has_usable_key() {
   return 1
 }
 
-if [[ ! -f $authorized_keys || -L $authorized_keys || ! -s $authorized_keys || ! -r $authorized_keys ]] ||
-  ! has_usable_key; then
-  skip "$authorized_keys has no usable public key."
+# A file that exists but cannot be read leaves the key question unanswered; do
+# not treat it as proof the machine is password-only. [[ -f ]] and the read
+# both follow symlinks on purpose: a dotfiles-managed authorized_keys link with
+# a working key must not count as keyless.
+if [[ -f $authorized_keys && ! -r $authorized_keys ]]; then
+  skip "Could not read $authorized_keys to check for a usable key."
+fi
+
+# The old setup command enabled sshd before importing a key, so an aborted run
+# left a password-only server exposed. Without a usable key there is nothing to
+# harden: close the hole Omarchy opened by disabling the server. Omarchy is a
+# desktop distro, so the console remains; re-enabling password SSH afterwards
+# is an intentional, informed choice the warning explains how to make.
+if [[ ! -f $authorized_keys ]] || ! has_usable_key; then
+  if ! as_root systemctl disable --now sshd.service; then
+    echo "Administrator privileges are required to close the password-only SSH server. Run omarchy-migrate again from a terminal." >&2
+    exit 1
+  fi
+  echo "No usable SSH key is authorized, so sshd only accepted password logins. The SSH server has been disabled: run omarchy-setup-security-sshd to set it up with key-based authentication, or re-enable sshd to accept password logins anyway."
+  exit 0
 fi
 
 # Under StrictModes, sshd's default, a group- or world-writable home directory,
