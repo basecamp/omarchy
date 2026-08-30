@@ -42,7 +42,7 @@ local function universal_clipboard_shortcut(default_mods, default_key, terminal_
   end
 end
 
-o.bind("SUPER + C", "Universal copy", universal_clipboard_shortcut("CTRL", "C", "CTRL", "Insert"))
-o.bind("SUPER + V", "Universal paste", universal_clipboard_shortcut("CTRL", "V", "SHIFT", "Insert"))
-o.bind("SUPER + X", "Universal cut", send_shortcut_once("CTRL", "X"))
+o.bind("SUPER + C", "Universal copy", universal_clipboard_shortcut("CTRL", "code:46", "CTRL", "Insert"))
+o.bind("SUPER + V", "Universal paste", universal_clipboard_shortcut("CTRL", "code:47", "SHIFT", "Insert"))
+o.bind("SUPER + X", "Universal cut", send_shortcut_once("CTRL", "code:45"))
 o.bind("SUPER + CTRL + V", "Clipboard manager", "omarchy-shell shell toggle omarchy.clipboard")

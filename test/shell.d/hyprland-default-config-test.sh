@@ -119,6 +119,14 @@ if grep -F 'wtype -M' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null; th
 fi
 pass "universal clipboard shortcuts avoid virtual keyboard modifier merging"
 
+grep -F 'universal_clipboard_shortcut("CTRL", "code:46", "CTRL", "Insert")' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null ||
+  fail "universal copy sends the physical C key across keyboard layouts"
+grep -F 'universal_clipboard_shortcut("CTRL", "code:47", "SHIFT", "Insert")' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null ||
+  fail "universal paste sends the physical V key across keyboard layouts"
+grep -F 'send_shortcut_once("CTRL", "code:45")' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null ||
+  fail "universal cut sends the physical X key across keyboard layouts"
+pass "universal clipboard shortcuts use layout-independent keycodes"
+
 removed_home="$tmpdir/removed-home"
 mkdir -p "$removed_home/.local/state/omarchy"
 touch "$removed_home/.local/state/omarchy/preinstalls-removed"
