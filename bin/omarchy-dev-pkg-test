@@ -86,6 +86,7 @@ if [[ ! -d "$CHECKOUT" ]]; then
   echo "Error: checkout not found at $CHECKOUT" >&2
   exit 1
 fi
+built_pkgs=()
 for PKG in "${PKGS[@]}"; do
   PKGBUILD_DIR="$PKGBUILDS_ROOT/$PKG"
   if [[ ! -f "$PKGBUILD_DIR/PKGBUILD" ]]; then
@@ -125,13 +126,14 @@ for PKG in "${PKGS[@]}"; do
     OMARCHY_SRC="$CHECKOUT" makepkg -s --skipchecksums --noconfirm "${MAKEPKG_ARGS[@]}"
   )
 
-  # Install separately so we can pass --overwrite='*' (makepkg -i can't).
-  # Dev builds frequently conflict with files left behind by previous
-  # script-installed Omarchy versions; the build is the authoritative state.
   built_pkg=$(ls -t "$package_build_dir"/*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -1)
   if [[ -z $built_pkg ]]; then
     echo "Error: no built package found in $package_build_dir" >&2
     exit 1
   fi
-  sudo pacman -U --noconfirm --overwrite='*' "$built_pkg"
+  built_pkgs+=("$built_pkg")
 done
+
+# Install the built package set in one transaction so its
+# provides/conflicts/dependencies resolve as they do from the repository.
+sudo pacman -U --noconfirm "${built_pkgs[@]}"

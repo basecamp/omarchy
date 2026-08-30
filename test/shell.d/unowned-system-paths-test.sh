@@ -1,9 +1,8 @@
 #!/bin/bash
 
-# A file Omarchy writes into /usr belongs to nobody, and the
-# day a package starts shipping that same path, pacman refuses the upgrade for
-# everyone who has the file. omarchy-update-system-pkgs-when-conflicted recovers from
-# that, but the cheaper answer is to ship the file in the package instead.
+# A file Omarchy writes into /usr belongs to nobody. If a package later ships
+# that path, Pacman correctly blocks the upgrade instead of destroying unknown
+# state. Static system files must therefore be packaged from the outset.
 #
 # This flags a script writing such a path unless a PKGBUILD installs it, or it
 # is recorded below with the reason it cannot be packaged.
@@ -27,19 +26,11 @@ allowed = {
   # Symlinks into another package's icon theme; owning them would mean owning
   # paths inside Yaru.
   "/usr/share/icons/Yaru/scalable/actions",
-  # Hardware-conditional sleep hooks, installed only on the machines that need
-  # them so the hook does not exist where it does not apply.
-  "/usr/lib/systemd/system-sleep",
   # Written through a variable, so the scan below cannot see them at the point
   # they are written. Both drop configuration into another project's tree rather
   # than Omarchy's, which is why neither is a candidate for omarchy-settings.
   "/usr/share/chromium/extensions",
   "/usr/lib/firefox/distribution",
-  # Static content that belongs in omarchy-settings. It cannot move there in the
-  # same release that first ships omarchy-update-system-pkgs-when-conflicted: the
-  # upgrade carrying the handler is the one that would hit the conflict, and the
-  # handler only helps once it is on disk. Package it the release after.
-  "/usr/lib/chromium/initial_preferences",
 }
 
 # One-time 3.x upgrade. It runs before this rule existed and cannot be made to
@@ -50,6 +41,7 @@ pkgs_candidates = [
   root.parent / "omarchy-pkgs/pkgbuilds",
   root.parent.parent / "omarchy-pkgs/pkgbuilds",
   root.parent / "omacom/omarchy-pkgs/pkgbuilds",
+  Path.home() / "Work/omarchy/omarchy-pkgs/pkgbuilds",
   Path.home() / "Work/omacom/omarchy-pkgs/pkgbuilds",
 ]
 override = os.environ.get("OMARCHY_PKGS_PATH")

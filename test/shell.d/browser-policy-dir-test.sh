@@ -41,6 +41,9 @@ browser_policy_install_color "$write_dir" "#aabbcc" ||
   fail "theme colour writes into a writable policy directory"
 grep -F '"BrowserThemeColor": "#aabbcc"' "$write_dir/color.json" >/dev/null ||
   fail "theme colour writes BrowserThemeColor"
+if grep -q 'BrowserColorScheme' "$write_dir/color.json"; then
+  fail "theme colour writes a Chromium policy that does not exist"
+fi
 mode=$(stat -c '%a' "$write_dir/color.json")
 [[ $mode == "644" ]] || fail "theme colour creates a root-mode policy file" "mode=$mode"
 pass "theme colour writes a 0644 color.json"
