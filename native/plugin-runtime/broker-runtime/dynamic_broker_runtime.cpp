@@ -69,9 +69,7 @@ DynamicBrokerRuntime::DynamicBrokerRuntime(
     for (std::size_t previous = 0; previous < index; ++previous) {
       const auto &existing = routes_[previous].grant.request.definition;
       const auto &candidate = route.grant.request.definition;
-      if (existing.canonical_name == candidate.canonical_name &&
-          existing.definition_generation == candidate.definition_generation &&
-          existing.definition_digest == candidate.definition_digest)
+      if (existing == candidate)
         throw std::runtime_error("duplicate exact dynamic route");
     }
   }
@@ -153,19 +151,10 @@ DynamicBrokerResult DynamicBrokerRuntime::dispatch(
     if (response_bytes > 0)
       draft.metadata.push_back({AuditMetric::response_bytes,
                                 static_cast<std::int64_t>(response_bytes)});
-    try {
-      return audit_.append(AuditProducer::broker, std::move(draft)).status.ok();
-    } catch (...) {
-      return false;
-    }
+    return append_audit(std::move(draft));
   };
   const auto route = std::ranges::find_if(routes_, [&](const auto &candidate) {
-    return candidate.grant.request.definition.canonical_name ==
-               invocation.definition.canonical_name &&
-           candidate.grant.request.definition.definition_generation ==
-               invocation.definition.definition_generation &&
-           candidate.grant.request.definition.definition_digest ==
-               invocation.definition.definition_digest;
+    return candidate.grant.request.definition == invocation.definition;
   });
   if (route == routes_.end()) {
     constexpr auto unknown = definitions::DynamicDecision::unknown_definition;
@@ -278,24 +267,11 @@ DynamicRevocationResult DynamicBrokerRuntime::apply_reconstructed_revocation(
     return {.status = DynamicRevocationStatus::failed};
   const auto route = std::ranges::find_if(routes_, [&](const auto &candidate) {
     return candidate.grant.binding == updated.binding &&
-           candidate.grant.request.definition.canonical_name ==
-               updated.request.definition.canonical_name;
+           candidate.grant.request.definition == updated.request.definition;
   });
-  if (route == routes_.end() ||
-      route->grant.request.definition.definition_generation !=
-          updated.request.definition.definition_generation ||
-      route->grant.request.definition.definition_digest !=
-          updated.request.definition.definition_digest ||
-      route->grant.request.operations != updated.request.operations ||
-      route->grant.request.scope != updated.request.scope ||
-      route->grant.request.required != updated.request.required ||
+  if (route == routes_.end() || route->grant.request != updated.request ||
       updated.grant.epoch != route->grant.grant.epoch + 1 ||
-      updated.grant.definition.canonical_name !=
-          route->grant.grant.definition.canonical_name ||
-      updated.grant.definition.definition_generation !=
-          route->grant.grant.definition.definition_generation ||
-      updated.grant.definition.definition_digest !=
-          route->grant.grant.definition.definition_digest ||
+      updated.grant.definition != route->grant.grant.definition ||
       !definitions::review_dynamic_grant(registry_, updated,
                                          route->scope_validator))
     return {.status = DynamicRevocationStatus::binding_mismatch};
@@ -328,23 +304,27 @@ DynamicRevocationResult DynamicBrokerRuntime::apply_reconstructed_revocation(
         .capability = std::nullopt,
         .decision = omarchy::plugins::permissions::GrantDecisionCode::revoked,
         .metadata = {}};
-    try {
-      if (audit_
-              .append(omarchy::plugins::permissions::AuditProducer::broker,
-                      std::move(draft))
-              .status.ok())
-        continue;
-    } catch (...) {
-    }
-    {
-      failed_ = true;
+    if (!append_audit(std::move(draft)))
       return {.status = DynamicRevocationStatus::audit_failed,
               .restart_worker = restart_worker};
-    }
   }
   route->grant = updated;
   return {.status = DynamicRevocationStatus::accepted,
           .restart_worker = restart_worker};
+}
+
+bool DynamicBrokerRuntime::append_audit(
+    omarchy::plugins::permissions::AuditDraft draft) noexcept {
+  try {
+    if (audit_
+            .append(omarchy::plugins::permissions::AuditProducer::broker,
+                    std::move(draft))
+            .status.ok())
+      return true;
+  } catch (...) {
+  }
+  failed_ = true;
+  return false;
 }
 
 } // namespace omarchy::plugin_runtime::runtime

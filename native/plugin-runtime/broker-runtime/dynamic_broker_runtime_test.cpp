@@ -64,6 +64,19 @@ bool echo(const definitions::AuthorizedDynamicRequest &request,
   written = request.payload.size();
   return true;
 }
+runtime::DynamicRoute route_for(const definitions::DynamicRevisionGrant &grant,
+                                const definitions::AdapterBinding &adapter) {
+  return {.grant = grant,
+          .adapter = {.binding = adapter, .dispatch = echo, .context = nullptr},
+          .scope_validator = {.compare = exact}};
+}
+std::size_t encode_invocation(const definitions::DynamicInvocation &invocation,
+                              std::span<std::byte> output) {
+  std::size_t written = 0;
+  require(definitions::encode_dynamic_invocation(invocation, output, written),
+          "dynamic invocation encode");
+  return written;
+}
 void put16(std::vector<std::byte> &bytes, std::size_t offset,
            std::uint16_t value) {
   bytes[offset] = static_cast<std::byte>(value >> 8U);
@@ -305,14 +318,8 @@ int main() {
   require(empty_runtime.apply_reconstructed_revocation(empty_update).status ==
               runtime::DynamicRevocationStatus::binding_mismatch,
           "empty dynamic runtime accepted a reconstructed update");
-  runtime::DynamicBrokerRuntime runtime(
-      registry,
-      {{.grant = grant,
-        .adapter = {.binding = definition.adapter,
-                    .dispatch = echo,
-                    .context = nullptr},
-        .scope_validator = {.compare = exact}}},
-      audit);
+  const auto route = route_for(grant, definition.adapter);
+  runtime::DynamicBrokerRuntime runtime(registry, {route}, audit);
   require(runtime.accepts_binding(grant.binding),
           "dynamic runtime rejected its exact binding");
   auto other_binding = grant.binding;
@@ -321,19 +328,7 @@ int main() {
           "dynamic runtime accepted a foreign binding");
   bool rejected_duplicate = false;
   try {
-    runtime::DynamicBrokerRuntime duplicate(
-        registry,
-        {{.grant = grant,
-          .adapter = {.binding = definition.adapter,
-                      .dispatch = echo,
-                      .context = nullptr},
-          .scope_validator = {.compare = exact}},
-         {.grant = grant,
-          .adapter = {.binding = definition.adapter,
-                      .dispatch = echo,
-                      .context = nullptr},
-          .scope_validator = {.compare = exact}}},
-        audit);
+    runtime::DynamicBrokerRuntime duplicate(registry, {route, route}, audit);
     (void)duplicate;
   } catch (...) {
     rejected_duplicate = true;
@@ -344,18 +339,7 @@ int main() {
     auto foreign_grant = grant;
     ++foreign_grant.binding.generation;
     runtime::DynamicBrokerRuntime mixed(
-        registry,
-        {{.grant = grant,
-          .adapter = {.binding = definition.adapter,
-                      .dispatch = echo,
-                      .context = nullptr},
-          .scope_validator = {.compare = exact}},
-         {.grant = foreign_grant,
-          .adapter = {.binding = definition.adapter,
-                      .dispatch = echo,
-                      .context = nullptr},
-          .scope_validator = {.compare = exact}}},
-        audit);
+        registry, {route, route_for(foreign_grant, definition.adapter)}, audit);
     (void)mixed;
   } catch (...) {
     rejected_mixed = true;
@@ -369,9 +353,7 @@ int main() {
       .gesture = {},
       .payload = payload};
   std::array<std::byte, definitions::kMaximumDynamicEnvelopeBytes> encoded{};
-  std::size_t size = 0;
-  require(definitions::encode_dynamic_invocation(invocation, encoded, size),
-          "encode");
+  std::size_t size = encode_invocation(invocation, encoded);
   wire::PacketView packet{
       .header = {.endpoint_role = wire::EndpointRole::broker,
                  .message_type = broker::kDynamicInvokeMessage,
@@ -413,9 +395,7 @@ int main() {
   unknown_invocation.definition.canonical_name =
       definitions::Name("plugin.supplied-name");
   unknown_invocation.definition.definition_digest = digest('f');
-  require(
-      definitions::encode_dynamic_invocation(unknown_invocation, encoded, size),
-      "unknown invocation encode");
+  size = encode_invocation(unknown_invocation, encoded);
   packet.payload = std::span(encoded).first(size);
   packet.header.payload_length = static_cast<std::uint32_t>(size);
   packet.header.correlation_id = 11;
@@ -438,9 +418,7 @@ int main() {
           "unknown dynamic denial exposed a spoofable audit identity");
   auto unknown_operation = invocation;
   unknown_operation.operation = definitions::Name("plugin.spoofed-operation");
-  require(
-      definitions::encode_dynamic_invocation(unknown_operation, encoded, size),
-      "unknown operation encode");
+  size = encode_invocation(unknown_operation, encoded);
   packet.payload = std::span(encoded).first(size);
   packet.header.payload_length = static_cast<std::uint32_t>(size);
   packet.header.correlation_id = 12;
@@ -457,8 +435,7 @@ int main() {
                   .dynamic_attempt &&
               operation_audit.records.back().dynamic_attempt,
           "unresolved operation was promoted into trusted audit identity");
-  require(definitions::encode_dynamic_invocation(invocation, encoded, size),
-          "restore invocation encode");
+  size = encode_invocation(invocation, encoded);
   packet.payload = std::span(encoded).first(size);
   packet.header.payload_length = static_cast<std::uint32_t>(size);
   auto revoked = grant;
@@ -487,14 +464,8 @@ int main() {
             "monotonic dynamic dispatcher exhausted after a fixed call count");
   }
   RejectingAuditSink failure_audit;
-  runtime::DynamicBrokerRuntime failing_runtime(
-      registry,
-      {{.grant = grant,
-        .adapter = {.binding = definition.adapter,
-                    .dispatch = echo,
-                    .context = nullptr},
-        .scope_validator = {.compare = exact}}},
-      failure_audit);
+  runtime::DynamicBrokerRuntime failing_runtime(registry, {route},
+                                                failure_audit);
   packet.header.correlation_id = 100;
   result = failing_runtime.dispatch(packet, grant.binding, output);
   require(result.outcome == definitions::DynamicDispatchResult::adapter_failed,

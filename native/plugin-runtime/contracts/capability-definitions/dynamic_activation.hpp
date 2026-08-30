@@ -123,10 +123,7 @@ public:
       return DynamicPendingDecision::unknown;
     if (entry->binding != binding)
       return DynamicPendingDecision::stale_activation;
-    if (entry->definition.canonical_name != definition.canonical_name ||
-        entry->definition.definition_generation !=
-            definition.definition_generation ||
-        entry->definition.definition_digest != definition.definition_digest)
+    if (entry->definition != definition)
       return DynamicPendingDecision::stale_definition;
     if (entry->grant_epoch != grant_epoch)
       return DynamicPendingDecision::stale_epoch;
@@ -142,11 +139,7 @@ public:
     std::size_t cancelled = 0;
     for (auto &entry : entries_) {
       if (!entry.occupied || entry.cancelled ||
-          entry.definition.canonical_name != definition.canonical_name ||
-          entry.definition.definition_generation !=
-              definition.definition_generation ||
-          entry.definition.definition_digest != definition.definition_digest ||
-          entry.grant_epoch != old_epoch)
+          entry.definition != definition || entry.grant_epoch != old_epoch)
         continue;
       entry.cancelled = true;
       if (cancelled < cancelled_correlations.size())

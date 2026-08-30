@@ -153,9 +153,7 @@ DynamicAuthorization authorize_dynamic_operation(
   if (!by_name)
     return {.decision = DynamicDecision::unknown_definition};
   const auto resolved = registry.resolve(request.definition);
-  if (!resolved || grant.definition.canonical_name != request.definition.canonical_name ||
-      grant.definition.definition_generation != request.definition.definition_generation ||
-      grant.definition.definition_digest != request.definition.definition_digest)
+  if (!resolved || grant.definition != request.definition)
     return {.decision = DynamicDecision::stale_definition};
   if (!std::any_of(request.operations.values().begin(),
                    request.operations.values().end(), [operation](const auto &item) {

@@ -77,9 +77,7 @@ bool review_dynamic_grant(const TrustedDefinitionRegistry &registry,
                           const DynamicScopeValidator &validator) {
   const auto resolved = registry.resolve(revision.request.definition);
   if (!resolved ||
-      revision.grant.definition.canonical_name != revision.request.definition.canonical_name ||
-      revision.grant.definition.definition_generation != revision.request.definition.definition_generation ||
-      revision.grant.definition.definition_digest != revision.request.definition.definition_digest ||
+      revision.grant.definition != revision.request.definition ||
       revision.grant.epoch == 0 || validator.compare == nullptr)
     return false;
   if (!std::all_of(revision.request.operations.values().begin(),
@@ -162,7 +160,7 @@ DynamicDispatchResult dispatch_dynamic_invocation(const TrustedDefinitionRegistr
  bool fresh_gesture,std::span<std::byte> response,std::size_t &written,DynamicDecision &decision){
   written=0;decision=DynamicDecision::denied;if(channel_binding!=revision.binding)return DynamicDispatchResult::stale_activation;
   DynamicInvocation invocation;if(!decode_dynamic_invocation(envelope,invocation))return DynamicDispatchResult::malformed;
-  if(invocation.definition.canonical_name!=revision.request.definition.canonical_name||invocation.definition.definition_generation!=revision.request.definition.definition_generation||invocation.definition.definition_digest!=revision.request.definition.definition_digest)return DynamicDispatchResult::denied;
+  if(invocation.definition!=revision.request.definition)return DynamicDispatchResult::denied;
   const auto auth=authorize_dynamic_operation(registry,revision.request,revision.grant,invocation.operation.view(),invocation.demand_scope.view(),adapter.binding,validator,fresh_gesture);decision=auth.decision;
   if(!auth.allowed()||adapter.dispatch==nullptr)return DynamicDispatchResult::denied;
   const AuthorizedDynamicRequest request{

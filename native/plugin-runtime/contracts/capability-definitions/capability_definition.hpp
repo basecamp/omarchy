@@ -89,6 +89,7 @@ struct CapabilityReference {
   Name canonical_name;
   std::uint32_t definition_generation = 0;
   Digest definition_digest;
+  bool operator==(const CapabilityReference &) const = default;
 };
 
 struct ResolvedDefinition {
@@ -126,6 +127,7 @@ struct DynamicRequest {
   permissions::FixedSet<Name, 16> operations;
   CanonicalScope scope;
   bool required = false;
+  bool operator==(const DynamicRequest &) const = default;
 };
 
 struct DynamicGrant {

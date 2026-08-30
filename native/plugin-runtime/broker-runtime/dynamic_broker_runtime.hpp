@@ -95,15 +95,11 @@ public:
   // provider before publishing the permission snapshot.
   [[nodiscard]] DynamicRevocationResult apply_reconstructed_revocation(
       const definitions::DynamicRevisionGrant &updated);
-  // Temporary compatibility wrapper for the N4 composition seam.
-  [[nodiscard]] bool
-  apply_reconstructed_update(const definitions::DynamicRevisionGrant &updated) {
-    return apply_reconstructed_revocation(updated).status ==
-           DynamicRevocationStatus::accepted;
-  }
   [[nodiscard]] bool failed() const noexcept { return failed_; }
 
 private:
+  [[nodiscard]] bool
+  append_audit(omarchy::plugins::permissions::AuditDraft draft) noexcept;
   const definitions::TrustedDefinitionRegistry &registry_;
   std::vector<DynamicRoute> routes_;
   std::optional<omarchy::plugins::permissions::ActivationBinding> binding_;
