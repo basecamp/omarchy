@@ -24,7 +24,9 @@ By default your user is *not* in the `docker` group. That group is effectively p
 
 Remember to checkout the Lazydocker command to manage your containers in a cool TUI using `Super + Shift + D`; it asks for authorization the first time unless you have enabled sudoless Docker.
 
-You can setup the common databases for local development in Docker using _Install > Development > Docker DB_ in the Omarchy menu.
+You can set up MySQL, PostgreSQL, Redis, MongoDB, MariaDB, or SQL Server for local development using _Install > Development > Docker DB_ in the Omarchy menu. Each fresh container gets an independent generated administrator password; the installer passes it through a private Docker env/config file rather than command arguments. Recover the credentials from `~/.config/omarchy/docker-dbs/`, whose directory and files are accessible only to your account. The database ports remain bound to `127.0.0.1`, but authentication is still required because every local account shares the host loopback interface.
+
+The installer never replaces an existing named database container. Containers created by an older Omarchy version may still have empty, trust-based, absent, or publicly known administrator credentials. Back up their data and change authentication with that database's administration tools, or deliberately remove and reinstall the container once you have decided how to preserve its data.
 
 ## GitHub CLI
 
