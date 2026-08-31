@@ -225,6 +225,18 @@ Item {
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         cache: true
+        // Decode to something the screen can show, not the file's native size.
+        // A wallpaper is uncompressed once decoded: a 7680x3215 photo is 94MB
+        // of RGBA on a display that can show 16MB of it, and there are three of
+        // these Image elements, two of them building mipmaps on top.
+        //
+        // The box is 1.6x the screen rather than exactly it because with both
+        // dimensions set Qt fits the image inside while preserving aspect, so a
+        // box the size of the screen would decode a 2.39:1 wallpaper too short
+        // to crop-fill and PreserveAspectCrop would scale it back up again.
+        // 1.6x covers every aspect ratio up to 1.6 times the screen's own.
+        sourceSize.width: Math.ceil(width * Screen.devicePixelRatio * 1.6)
+        sourceSize.height: Math.ceil(height * Screen.devicePixelRatio * 1.6)
         onStatusChanged: {
           if (status === Image.Ready && root.finishingTransition) {
             root.incomingBackground = ""
@@ -243,6 +255,8 @@ Item {
         cache: false
         smooth: true
         mipmap: true
+        sourceSize.width: base.sourceSize.width
+        sourceSize.height: base.sourceSize.height
         visible: root.oldBackground !== "" && root.revealProgress < 1
         onStatusChanged: panel.maybeStartReveal()
       }
@@ -269,6 +283,8 @@ Item {
           cache: false
           smooth: true
           mipmap: true
+          sourceSize.width: base.sourceSize.width
+          sourceSize.height: base.sourceSize.height
           onStatusChanged: panel.maybeStartReveal()
         }
       }
