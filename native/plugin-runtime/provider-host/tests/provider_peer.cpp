@@ -1,5 +1,8 @@
 #include <arpa/inet.h>
+#include <fcntl.h>
+#include <sys/prctl.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <array>
@@ -8,6 +11,7 @@
 #include <cstdint>
 #include <cstring>
 #include <cstdlib>
+#include <fstream>
 #include <span>
 #include <string>
 #include <thread>
@@ -38,12 +42,32 @@ void put64(std::vector<std::byte> &bytes, std::uint64_t value) {
     bytes.push_back(static_cast<std::byte>(value >> shift));
 }
 std::string argument(int argc, char **argv) {
-  return argc == 2 ? argv[1] : "echo";
+  return argc >= 2 ? argv[1] : "echo";
+}
+bool isolated_descriptor_table(int inherited_fd) {
+  struct stat null_metadata {};
+  if (::stat("/dev/null", &null_metadata) < 0)
+    return false;
+  for (int fd = STDIN_FILENO; fd <= STDERR_FILENO; ++fd) {
+    struct stat metadata {};
+    if (::fstat(fd, &metadata) < 0 || !S_ISCHR(metadata.st_mode) ||
+        metadata.st_rdev != null_metadata.st_rdev)
+      return false;
+  }
+  struct stat channel {};
+  errno = 0;
+  return ::fstat(3, &channel) == 0 && S_ISSOCK(channel.st_mode) &&
+         ::fcntl(inherited_fd, F_GETFD) < 0 && errno == EBADF &&
+         ::prctl(PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0) == 1;
 }
 } // namespace
 
 int main(int argc, char **argv) {
   const auto mode = argument(argc, argv);
+  if (mode == "marker" && argc == 3) {
+    std::ofstream marker(argv[2]);
+    marker << ::getpid() << '\n';
+  }
   std::array<std::byte, 1024 * 1024 + 1024> request{};
   while (true) {
     iovec request_part{.iov_base = request.data(), .iov_len = request.size()};
@@ -66,6 +90,9 @@ int main(int argc, char **argv) {
     else if (mode == "environment")
       payload = std::string(::getenv("PATH") ? ::getenv("PATH") : "") + "|" +
                 (::getenv("HOME") ? ::getenv("HOME") : "");
+    else if (mode == "isolation" && argc == 3)
+      payload = isolated_descriptor_table(std::atoi(argv[2])) ? "isolated"
+                                                              : "leaked";
     else
       payload = "ok";
     std::vector<std::byte> response;
@@ -79,6 +106,10 @@ int main(int argc, char **argv) {
     response.push_back(std::byte{0});
     const auto raw = std::as_bytes(std::span(payload.data(), payload.size()));
     response.insert(response.end(), raw.begin(), raw.end());
+    if (mode == "truncated")
+      response.resize(10);
+    if (mode == "oversized")
+      response.resize(1024 * 1024, std::byte{0});
     iovec response_part{.iov_base = response.data(), .iov_len = response.size()};
     msghdr response_message{};
     response_message.msg_iov = &response_part;

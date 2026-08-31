@@ -4,8 +4,10 @@
 
 #include <dirent.h>
 #include <fcntl.h>
+#include <linux/close_range.h>
 #include <poll.h>
 #include <signal.h>
+#include <sys/prctl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
@@ -16,6 +18,7 @@
 #include <array>
 #include <cerrno>
 #include <charconv>
+#include <climits>
 #include <limits>
 #include <map>
 #include <mutex>
@@ -170,7 +173,7 @@ std::optional<std::string> read_bounded(int fd, std::size_t maximum) {
 
 bool canonical_absolute_path(std::string_view path) {
   if (path.size() < 2 || path.size() > 4096 || path.front() != '/' ||
-      path.back() == '/')
+      path.back() == '/' || path.find('\0') != std::string_view::npos)
     return false;
   std::size_t begin = 1;
   while (begin < path.size()) {
@@ -209,6 +212,7 @@ Descriptor open_executable(int filesystem_root_fd, std::string_view path,
     if (leaf) {
       if (!S_ISREG(metadata.st_mode) || metadata.st_uid != trusted_uid ||
           (metadata.st_mode & 0022) != 0 || (metadata.st_mode & 0100) == 0 ||
+          (metadata.st_mode & (S_ISUID | S_ISGID)) != 0 ||
           metadata.st_size < 0 ||
           static_cast<std::uint64_t>(metadata.st_size) > kMaximumExecutableBytes)
         return {};
@@ -425,6 +429,7 @@ bool load_directory(int directory_fd, int filesystem_root_fd,
 
 struct Process final {
   pid_t pid = -1;
+  Descriptor pidfd;
   Descriptor channel;
   bool failed = false;
   std::uint64_t next_correlation = 1;
@@ -438,27 +443,58 @@ struct Process final {
 
 void stop(Process &process) noexcept {
   process.channel.reset();
-  if (process.pid <= 0)
+  if (process.pid <= 0) {
+    process.pidfd.reset();
+    process.failed = true;
     return;
-  (void)::kill(process.pid, SIGKILL);
+  }
+  if (process.pidfd) {
+    if (::syscall(SYS_pidfd_send_signal, process.pidfd.get(), SIGKILL, nullptr,
+                  0U) < 0 &&
+        errno != ESRCH)
+      (void)::kill(process.pid, SIGKILL);
+  } else {
+    (void)::kill(process.pid, SIGKILL);
+  }
   while (::waitpid(process.pid, nullptr, 0) < 0 && errno == EINTR) {
   }
+  process.pidfd.reset();
   process.pid = -1;
   process.failed = true;
 }
 
+Descriptor open_pidfd(pid_t pid) noexcept {
+  while (true) {
+    const auto result = static_cast<int>(::syscall(SYS_pidfd_open, pid, 0U));
+    if (result >= 0)
+      return Descriptor(result);
+    if (errno != EINTR)
+      return {};
+  }
+}
+
+void kill_and_reap_new_child(pid_t pid) noexcept {
+  (void)::kill(pid, SIGKILL);
+  while (::waitpid(pid, nullptr, 0) < 0 && errno == EINTR) {
+  }
+}
+
 bool start(Process &process, const ProviderCatalog::Profile &profile) {
-  int pair[2] = {-1, -1};
-  if (::socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, pair) < 0)
-    return false;
-  Descriptor parent(pair[0]);
-  Descriptor child(pair[1]);
   std::vector<char *> arguments;
   arguments.reserve(profile.arguments.size() + 2);
   arguments.push_back(const_cast<char *>(profile.executable_path.c_str()));
   for (const auto &argument : profile.arguments)
     arguments.push_back(const_cast<char *>(argument.c_str()));
   arguments.push_back(nullptr);
+  Descriptor executable(
+      ::fcntl(profile.executable.get(), F_DUPFD_CLOEXEC, 4));
+  if (!executable)
+    return false;
+  int pair[2] = {-1, -1};
+  if (::socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, pair) < 0)
+    return false;
+  Descriptor parent(pair[0]);
+  Descriptor child(pair[1]);
   std::array<char *, 5> environment{
       const_cast<char *>("PATH=/usr/bin"), const_cast<char *>("LANG=C"),
       const_cast<char *>("LC_ALL=C"), const_cast<char *>("HOME=/nonexistent"),
@@ -475,17 +511,30 @@ bool start(Process &process, const ProviderCatalog::Profile &profile) {
       child.reset();
     if (::fcntl(3, F_SETFD, 0) < 0)
       _exit(126);
-    const int null_fd = ::open("/dev/null", O_WRONLY | O_CLOEXEC | O_NOFOLLOW);
-    if (null_fd < 0 || ::dup2(null_fd, STDERR_FILENO) != STDERR_FILENO)
+    const int null_fd = ::open("/dev/null", O_RDWR | O_CLOEXEC | O_NOFOLLOW);
+    if (null_fd < 0)
       _exit(126);
-    if (null_fd != STDERR_FILENO)
+    for (int target = STDIN_FILENO; target <= STDERR_FILENO; ++target) {
+      if (null_fd != target && ::dup2(null_fd, target) != target)
+        _exit(126);
+    }
+    if (null_fd > STDERR_FILENO)
       ::close(null_fd);
-    (void)::syscall(SYS_execveat, profile.executable.get(), "",
+    if (::prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0 ||
+        ::syscall(SYS_close_range, 4U, UINT_MAX, CLOSE_RANGE_CLOEXEC) < 0)
+      _exit(126);
+    (void)::syscall(SYS_execveat, executable.get(), "",
                     arguments.data(), environment.data(), AT_EMPTY_PATH);
     _exit(127);
   }
   child.reset();
+  auto pidfd = open_pidfd(pid);
+  if (!pidfd) {
+    kill_and_reap_new_child(pid);
+    return false;
+  }
   process.pid = pid;
+  process.pidfd = std::move(pidfd);
   process.channel = std::move(parent);
   return true;
 }
@@ -550,6 +599,73 @@ request_frame(std::uint64_t correlation,
   put_u32(frame, static_cast<std::uint32_t>(body.size()));
   frame.insert(frame.end(), body.begin(), body.end());
   return frame;
+}
+
+bool exchange(Process &process, const ProviderCatalog::Profile &profile,
+              const definitions::AdapterBinding &binding,
+              const definitions::AuthorizedDynamicRequest &request,
+              std::span<std::byte> response, std::size_t &written,
+              std::chrono::milliseconds timeout) noexcept {
+  try {
+    if (process.failed)
+      return false;
+    if (process.next_correlation == 0) {
+      stop(process);
+      return false;
+    }
+    const auto correlation = process.next_correlation;
+    const auto frame = request_frame(correlation, binding, request);
+    std::vector<std::byte> incoming(kHeaderBytes + kMaximumProviderPayload + 1);
+    if (frame.empty())
+      return false;
+    if (process.pid <= 0 && !start(process, profile)) {
+      process.failed = true;
+      return false;
+    }
+    ++process.next_correlation;
+    if (!wait_ready(process.channel.get(), POLLOUT, timeout) ||
+        send_packet(process.channel.get(), frame.data(), frame.size()) !=
+            static_cast<ssize_t>(frame.size())) {
+      stop(process);
+      return false;
+    }
+    if (!wait_ready(process.channel.get(), POLLIN, timeout)) {
+      stop(process);
+      return false;
+    }
+    const auto count =
+        receive_packet(process.channel.get(), incoming.data(), incoming.size());
+    if (count < static_cast<ssize_t>(kHeaderBytes) ||
+        count > static_cast<ssize_t>(incoming.size())) {
+      stop(process);
+      return false;
+    }
+    incoming.resize(static_cast<std::size_t>(count));
+    std::uint32_t magic = 0;
+    std::uint32_t body_size = 0;
+    std::uint64_t response_correlation = 0;
+    if (!get_u32(incoming, 0, magic) || magic != kProtocolMagic ||
+        std::to_integer<std::uint8_t>(incoming[4]) != kProtocolVersion ||
+        std::to_integer<std::uint8_t>(incoming[5]) != kResponseType ||
+        std::to_integer<std::uint8_t>(incoming[6]) != 0 ||
+        std::to_integer<std::uint8_t>(incoming[7]) != 0 ||
+        !get_u64(incoming, 8, response_correlation) ||
+        response_correlation != correlation ||
+        !get_u32(incoming, 16, body_size) ||
+        body_size + kHeaderBytes != incoming.size() || body_size < 1 ||
+        std::to_integer<std::uint8_t>(incoming[kHeaderBytes]) != 0 ||
+        body_size - 1 > response.size()) {
+      stop(process);
+      return false;
+    }
+    written = body_size - 1;
+    std::copy_n(incoming.begin() + kHeaderBytes + 1, written, response.begin());
+    return true;
+  } catch (...) {
+    if (process.pid > 0)
+      stop(process);
+    return false;
+  }
 }
 
 } // namespace
@@ -678,58 +794,8 @@ bool ProviderActivation::invoke(
     auto &[group, process] =
         *implementation_->processes.try_emplace(profile->group).first;
     (void)group;
-    if (process.failed)
-      return false;
-    if (process.pid <= 0 && !start(process, *profile)) {
-      process.failed = true;
-      return false;
-    }
-    if (process.next_correlation == 0) {
-      stop(process);
-      return false;
-    }
-    const auto correlation = process.next_correlation++;
-    const auto frame = request_frame(correlation, binding, request);
-    if (frame.empty() || !wait_ready(process.channel.get(), POLLOUT,
-                                      implementation_->timeout) ||
-        send_packet(process.channel.get(), frame.data(), frame.size()) !=
-            static_cast<ssize_t>(frame.size())) {
-      stop(process);
-      return false;
-    }
-    if (!wait_ready(process.channel.get(), POLLIN, implementation_->timeout)) {
-      stop(process);
-      return false;
-    }
-    std::vector<std::byte> incoming(kHeaderBytes + kMaximumProviderPayload + 1);
-    const auto count = receive_packet(process.channel.get(), incoming.data(),
-                                      incoming.size());
-    if (count < static_cast<ssize_t>(kHeaderBytes) ||
-        count > static_cast<ssize_t>(incoming.size())) {
-      stop(process);
-      return false;
-    }
-    incoming.resize(static_cast<std::size_t>(count));
-    std::uint32_t magic = 0;
-    std::uint32_t body_size = 0;
-    std::uint64_t response_correlation = 0;
-    if (!get_u32(incoming, 0, magic) || magic != kProtocolMagic ||
-        std::to_integer<std::uint8_t>(incoming[4]) != kProtocolVersion ||
-        std::to_integer<std::uint8_t>(incoming[5]) != kResponseType ||
-        std::to_integer<std::uint8_t>(incoming[6]) != 0 ||
-        std::to_integer<std::uint8_t>(incoming[7]) != 0 ||
-        !get_u64(incoming, 8, response_correlation) ||
-        response_correlation != correlation ||
-        !get_u32(incoming, 16, body_size) ||
-        body_size + kHeaderBytes != incoming.size() || body_size < 1 ||
-        std::to_integer<std::uint8_t>(incoming[kHeaderBytes]) != 0 ||
-        body_size - 1 > response.size()) {
-      stop(process);
-      return false;
-    }
-    written = body_size - 1;
-    std::copy_n(incoming.begin() + kHeaderBytes + 1, written, response.begin());
-    return true;
+    return exchange(process, *profile, binding, request, response, written,
+                    implementation_->timeout);
   } catch (...) {
     return false;
   }

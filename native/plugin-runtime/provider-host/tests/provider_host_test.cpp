@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <array>
@@ -76,7 +77,8 @@ struct Fixture final {
                std::string_view contract, std::string_view group,
                std::string_view mode = "pid", bool admin = false,
                std::string_view executable = "/bin/provider-peer",
-               std::string_view digest = {}) const {
+               std::string_view digest = {},
+               std::span<const std::string_view> extra_arguments = {}) const {
     std::ofstream output(profile_path(name, admin));
     output << "schema=1\n"
            << "adapter-class=" << adapter << "\n"
@@ -87,6 +89,8 @@ struct Fixture final {
            << "executable-sha256="
            << (digest.empty() ? executable_digest : digest) << "\n"
            << "arg=" << mode << "\n";
+    for (const auto argument : extra_arguments)
+      output << "arg=" << argument << "\n";
     output.close();
     std::filesystem::permissions(profile_path(name, admin),
                                  std::filesystem::perms::owner_read |
@@ -124,11 +128,12 @@ std::shared_ptr<const host::ProviderCatalog> load(
   return result;
 }
 
-bool invoke(const std::shared_ptr<host::ProviderRoute> &route,
-            const permissions::ActivationBinding &active, std::string &result) {
-  std::array<std::byte, 256> response{};
+bool dispatch(const std::shared_ptr<host::ProviderRoute> &route,
+              const permissions::ActivationBinding &active,
+              std::span<const std::byte> payload, std::size_t response_capacity,
+              std::string &result) {
+  std::vector<std::byte> response(response_capacity);
   std::size_t written = 0;
-  const std::array<std::byte, 1> payload{std::byte{7}};
   const definitions::AuthorizedDynamicRequest request{
       .authorization = {.binding = active,
                         .definition = {.canonical_name =
@@ -142,8 +147,17 @@ bool invoke(const std::shared_ptr<host::ProviderRoute> &route,
       .payload = payload};
   const bool ok = host::ProviderRoute::dispatch(request, response, written,
                                                 route.get());
-  result.assign(reinterpret_cast<const char *>(response.data()), written);
+  if (written == 0)
+    result.clear();
+  else
+    result.assign(reinterpret_cast<const char *>(response.data()), written);
   return ok;
+}
+
+bool invoke(const std::shared_ptr<host::ProviderRoute> &route,
+            const permissions::ActivationBinding &active, std::string &result) {
+  const std::array<std::byte, 1> payload{std::byte{7}};
+  return dispatch(route, active, payload, 256, result);
 }
 
 void catalog_security() {
@@ -196,6 +210,34 @@ void catalog_security() {
   require(!load(traversal, error) &&
               error == host::CatalogError::executable_rejected,
           "noncanonical executable path accepted");
+
+  Fixture embedded_nul;
+  std::string nul_path = "/bin/provider-peer";
+  nul_path.push_back('\0');
+  nul_path.append("-ignored");
+  embedded_nul.profile("bad", "test.adapter", digest('a'), "test.group",
+                       "pid", false, nul_path);
+  require(!load(embedded_nul, error) &&
+              error == host::CatalogError::executable_rejected,
+          "embedded-NUL executable path accepted");
+
+  Fixture setuid;
+  setuid.profile("bad", "test.adapter", digest('a'), "test.group");
+  std::filesystem::permissions(setuid.root / "bin/provider-peer",
+                               std::filesystem::perms::set_uid,
+                               std::filesystem::perm_options::add);
+  require(!load(setuid, error) &&
+              error == host::CatalogError::executable_rejected,
+          "setuid provider executable accepted");
+
+  Fixture setgid;
+  setgid.profile("bad", "test.adapter", digest('a'), "test.group");
+  std::filesystem::permissions(setgid.root / "bin/provider-peer",
+                               std::filesystem::perms::set_gid,
+                               std::filesystem::perm_options::add);
+  require(!load(setgid, error) &&
+              error == host::CatalogError::executable_rejected,
+          "setgid provider executable accepted");
 
   Fixture duplicate;
   duplicate.profile("one", "test.adapter", digest('a'), "test.group");
@@ -251,7 +293,8 @@ void protocol_and_lifecycle() {
 }
 
 void failure_modes() {
-  for (const auto mode : {"crash", "malformed", "wrong-correlation", "late"}) {
+  for (const auto mode : {"crash", "malformed", "wrong-correlation", "late",
+                          "truncated", "oversized"}) {
     Fixture fixture;
     fixture.profile("bad", "test.adapter", digest('a'), "bad.group", mode);
     host::CatalogError error{};
@@ -265,19 +308,86 @@ void failure_modes() {
             "bad provider response succeeded");
     require(!invoke(route, activation(8), output),
             "failed provider restarted within activation");
+    errno = 0;
+    require(::waitpid(-1, nullptr, WNOHANG) < 0 && errno == ECHILD,
+            "failed provider child was not reaped");
   }
+
+  Fixture small_response;
+  small_response.profile("small", "test.adapter", digest('a'), "small.group",
+                         "echo");
+  host::CatalogError error{};
+  auto catalog = load(small_response, error);
+  auto runtime = host::ProviderActivation::create(catalog, activation(9));
+  auto route = runtime->route(binding("test.adapter"));
+  const std::array<std::byte, 1> payload{std::byte{7}};
+  std::string output;
+  require(!dispatch(route, activation(9), payload, 0, output),
+          "provider response exceeded caller buffer");
+  require(!invoke(route, activation(9), output),
+          "caller-buffer failure did not terminate provider");
+  errno = 0;
+  require(::waitpid(-1, nullptr, WNOHANG) < 0 && errno == ECHILD,
+          "caller-buffer failure did not reap provider");
 
   Fixture environment;
   environment.profile("env", "test.adapter", digest('a'), "env.group",
                       "environment");
-  host::CatalogError error{};
-  auto catalog = load(environment, error);
-  auto runtime = host::ProviderActivation::create(catalog, activation(9));
-  auto route = runtime->route(binding("test.adapter"));
-  std::string output;
-  require(invoke(route, activation(9), output) &&
+  error = {};
+  catalog = load(environment, error);
+  runtime = host::ProviderActivation::create(catalog, activation(10));
+  route = runtime->route(binding("test.adapter"));
+  output.clear();
+  require(invoke(route, activation(10), output) &&
               output == "/usr/bin|/nonexistent",
           "provider did not receive fixed sanitized environment");
+}
+
+void launch_boundary() {
+  Fixture lazy;
+  const auto marker = lazy.root / "provider-started";
+  const std::string marker_text = marker.string();
+  const std::array<std::string_view, 1> marker_argument{marker_text};
+  lazy.profile("lazy", "test.adapter", digest('a'), "lazy.group", "marker",
+               false, "/bin/provider-peer", {}, marker_argument);
+  host::CatalogError error{};
+  auto catalog = load(lazy, error);
+  auto runtime = host::ProviderActivation::create(catalog, activation(11));
+  auto route = runtime->route(binding("test.adapter"));
+  require(route && !std::filesystem::exists(marker),
+          "catalog or route construction eagerly launched provider");
+  std::string output;
+  std::vector<std::byte> oversized(host::kMaximumProviderPayload + 1,
+                                   std::byte{0});
+  require(!dispatch(route, activation(11), oversized, 256, output) &&
+              !std::filesystem::exists(marker),
+          "invalid request launched provider before framing completed");
+  require(invoke(route, activation(11), output) &&
+              std::filesystem::exists(marker),
+          "first authorized invocation did not lazily launch provider");
+
+  Fixture descriptors;
+  const int opened = ::open((descriptors.root / "inherited").c_str(),
+                            O_RDWR | O_CREAT | O_TRUNC, 0600);
+  require(opened >= 0, "inherited descriptor setup failed");
+  const int inherited = ::fcntl(opened, F_DUPFD, 10);
+  ::close(opened);
+  require(inherited >= 10, "inherited descriptor duplication failed");
+  const int flags = ::fcntl(inherited, F_GETFD);
+  require(flags >= 0 && ::fcntl(inherited, F_SETFD, flags & ~FD_CLOEXEC) == 0,
+          "could not make inherited descriptor non-CLOEXEC");
+  const std::string inherited_text = std::to_string(inherited);
+  const std::array<std::string_view, 1> inherited_argument{inherited_text};
+  descriptors.profile("isolated", "test.adapter", digest('a'),
+                      "isolated.group", "isolation", false,
+                      "/bin/provider-peer", {}, inherited_argument);
+  catalog = load(descriptors, error);
+  runtime = host::ProviderActivation::create(catalog, activation(12));
+  route = runtime->route(binding("test.adapter"));
+  output.clear();
+  require(invoke(route, activation(12), output) && output == "isolated",
+          "provider inherited stdio or ambient descriptors");
+  ::close(inherited);
 }
 
 } // namespace
@@ -286,5 +396,6 @@ int main() {
   catalog_security();
   protocol_and_lifecycle();
   failure_modes();
+  launch_boundary();
   std::cout << "provider host tests passed\n";
 }
