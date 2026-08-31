@@ -1,19 +1,91 @@
-#!/bin/bash
+#!/bin/bash -p
 
 # omarchy:summary=Install and launch Geforce Now.
 # omarchy:group=install
 # omarchy:name=gaming geforce-now
 
-set -e
+if [[ $- != *p* ]]; then
+  echo "Refusing an unsafe Bash startup for GeForce NOW installation." >&2
+  exit 126
+fi
+
+require_privileged_bash_startup() {
+  /usr/bin/env -i /usr/bin/bash -p -c '
+    [[ $1 =~ ^[1-9][0-9]*$ ]] || exit 1
+    mapfile -d "" -t argv <"/proc/$1/cmdline" || exit 1
+    executable=$(/usr/bin/readlink -e -- "/proc/$1/exe") || exit 1
+    [[ $executable == /usr/bin/bash ]]
+    [[ ${argv[0]:-} == /bin/bash || ${argv[0]:-} == /usr/bin/bash ]]
+    [[ ${argv[1]:-} == -p ]]
+  ' omarchy-bash-startup "$$"
+}
+require_privileged_bash_startup || {
+  echo "Refusing an unsafe Bash startup for GeForce NOW installation." >&2
+  exit 126
+}
+unset -f require_privileged_bash_startup
+
+set -euo pipefail
+
+installer=""
+
+revoke_sudo_timestamp() {
+  /usr/bin/sudo -k >/dev/null 2>&1
+}
+
+cleanup() {
+  local status=$?
+  trap - EXIT HUP INT TERM
+  if ! revoke_sudo_timestamp; then
+    echo "Could not invalidate cached sudo authorization." >&2
+    ((status != 0)) || status=1
+  fi
+  if [[ -n $installer ]]; then
+    /usr/bin/rm -f -- "$installer"
+  fi
+  exit "$status"
+}
+
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# This command deliberately invalidates even a sudo timestamp that predated
+# the workflow. sudo cannot identify which command refreshed a shared terminal
+# timestamp, and downloaded vendor code must never inherit silent root access.
+if ! revoke_sudo_timestamp; then
+  echo "Could not invalidate cached sudo authorization; refusing to continue." >&2
+  exit 1
+fi
+LC_ALL=C /usr/bin/sudo -h 2>&1 |
+  /usr/bin/grep -Eq '^usage: sudo .*\[[^]]*N[^]]*\]' || {
+  echo "This sudo does not support --no-update; refusing a mixed-trust installer." >&2
+  exit 1
+}
+echo "Security note: this installer clears cached sudo authorization before running downloaded vendor code."
 
 echo "Installing GeForce NOW..."
-omarchy-pkg-add flatpak
-cd /tmp
+OMARCHY_SUDO_NO_UPDATE=1 /usr/bin/omarchy-pkg-add flatpak
 
-# Download and run GeForce NOW
-curl -LO https://international.download.nvidia.com/GFNLinux/GeForceNOWSetup.bin
-chmod +x GeForceNOWSetup.bin
-./GeForceNOWSetup.bin
+if ! revoke_sudo_timestamp; then
+  echo "Could not invalidate cached sudo authorization; refusing to run the downloaded installer." >&2
+  exit 1
+fi
+
+installer=$(/usr/bin/mktemp -- /tmp/omarchy-geforce-now.XXXXXXXX.bin)
+owner=$(/usr/bin/stat -c '%u' -- "$installer")
+mode=$(/usr/bin/stat -c '%a' -- "$installer")
+links=$(/usr/bin/stat -c '%h' -- "$installer")
+if [[ -L $installer || ! -f $installer || $owner != "$(/usr/bin/id -u)" || $mode != 600 || $links != 1 ]]; then
+  echo "Could not create a private GeForce NOW installer file." >&2
+  exit 1
+fi
+
+/usr/bin/curl --fail --location --output "$installer" \
+  https://international.download.nvidia.com/GFNLinux/GeForceNOWSetup.bin
+/usr/bin/chmod 0700 -- "$installer"
+(cd /tmp && exec "$installer")
 
 # Ensure a separate browser process not started by GFN is available.
 # If not, it seems like GFN has a tendency to hang on login.
