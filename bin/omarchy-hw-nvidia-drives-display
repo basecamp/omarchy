@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# omarchy:summary=Detect whether an NVIDIA GPU is driving a display, rather than merely being present.
+
+# Read sysfs rather than shelling out to lspci or nvidia-smi, both of which
+# resume a runtime-suspended GPU. A connector's status file is served from the
+# driver's cached state, so asking does not power the card up.
+drm_class_path="${OMARCHY_DRM_CLASS_PATH:-/sys/class/drm}"
+
+shopt -s nullglob
+
+for card in "$drm_class_path"/card[0-9]*; do
+  [[ $card == *-* ]] && continue
+  [[ $(< "$card/device/vendor") == "0x10de" ]] 2>/dev/null || continue
+
+  for connector in "$card"-*; do
+    [[ -r $connector/status ]] || continue
+    [[ $(< "$connector/status") == "connected" ]] && exit 0
+  done
+done
+
+exit 1
