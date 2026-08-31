@@ -69,10 +69,7 @@ if(BUILD_TESTING)
     LABELS "unit;integration;adversarial;render;qml")
 
   add_executable(omarchy-plugin-surface-host-render-session-test
-    tests/render_session_test.cpp
-    "${CMAKE_CURRENT_SOURCE_DIR}/../worker/src/qt_touch_injector.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../worker/src/worker_runtime.cpp"
-  )
+    tests/render_session_test.cpp)
   set_target_properties(omarchy-plugin-surface-host-render-session-test PROPERTIES
     POSITION_INDEPENDENT_CODE ON)
   omarchy_surface_host_defaults(omarchy-plugin-surface-host-render-session-test)
@@ -82,6 +79,7 @@ if(BUILD_TESTING)
     SURFACE_HOST_WORKER_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../worker/tests/fixtures")
   target_link_libraries(omarchy-plugin-surface-host-render-session-test PRIVATE
     omarchy-plugin-surface-host
+    omarchy-plugin-worker-runtime
     Qt6::Core Qt6::Gui Qt6::GuiPrivate Qt6::Qml Qt6::Quick)
   add_test(NAME plugin-render-session
     COMMAND omarchy-plugin-surface-host-render-session-test)
