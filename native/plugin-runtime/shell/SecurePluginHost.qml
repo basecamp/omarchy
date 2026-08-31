@@ -99,10 +99,6 @@ Item {
       liveScreenNames(), focusedScreenName, barOwnerScreenName, barEntries.length > 0)
   }
 
-  function barEntriesForScreen(region, screenName) {
-    return SurfacePolicy.entriesForScreen(barEntries, region, barOwnerScreenName, screenName)
-  }
-
   function refreshBarEntries() {
     var next = []
     for (var index = 0; index < barEntryInstances.count; index++) {
@@ -182,36 +178,52 @@ Item {
     }
   }
 
-  Variants {
+  Instantiator {
     model: PluginManager.panelSurfaces
-    delegate: Component {
-      SecurePanelSurface {
-        required property string surfaceKey
-        required property string generation
-        required property bool initiallyVisible
-        required property int maximumWidth
-        required property int maximumHeight
-        required property bool dynamicInputRegions
+    delegate: QtObject {
+      id: panelEntry
 
+      required property string surfaceKey
+      required property string generation
+      required property bool initiallyVisible
+      required property int maximumWidth
+      required property int maximumHeight
+      required property bool dynamicInputRegions
+
+      property SecurePanelSurface surface: SecurePanelSurface {
         host: root
         surfaceService: PluginManager
+        surfaceKey: panelEntry.surfaceKey
+        generation: panelEntry.generation
+        initiallyVisible: panelEntry.initiallyVisible
+        maximumWidth: panelEntry.maximumWidth
+        maximumHeight: panelEntry.maximumHeight
+        dynamicInputRegions: panelEntry.dynamicInputRegions
       }
     }
   }
 
-  Variants {
+  Instantiator {
     model: PluginManager.overlaySurfaces
-    delegate: Component {
-      SecureOverlaySurface {
-        required property string surfaceKey
-        required property string generation
-        required property bool initiallyVisible
-        required property int maximumWidth
-        required property int maximumHeight
-        required property bool dynamicInputRegions
+    delegate: QtObject {
+      id: overlayEntry
 
+      required property string surfaceKey
+      required property string generation
+      required property bool initiallyVisible
+      required property int maximumWidth
+      required property int maximumHeight
+      required property bool dynamicInputRegions
+
+      property SecureOverlaySurface surface: SecureOverlaySurface {
         host: root
         surfaceService: PluginManager
+        surfaceKey: overlayEntry.surfaceKey
+        generation: overlayEntry.generation
+        initiallyVisible: overlayEntry.initiallyVisible
+        maximumWidth: overlayEntry.maximumWidth
+        maximumHeight: overlayEntry.maximumHeight
+        dynamicInputRegions: overlayEntry.dynamicInputRegions
       }
     }
   }

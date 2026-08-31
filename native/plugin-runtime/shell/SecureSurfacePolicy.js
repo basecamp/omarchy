@@ -22,13 +22,3 @@ function chooseOpenScreen(values, focusedName) {
   var focused = String(focusedName || "")
   return names.indexOf(focused) !== -1 ? focused : (names.length > 0 ? names[0] : "")
 }
-
-function entriesForScreen(entries, region, ownerName, screenName) {
-  if (String(ownerName || "") === "" || String(screenName || "") !== String(ownerName)) return []
-  var result = []
-  for (var index = 0; index < entries.length; index++) {
-    var entry = entries[index]
-    if (entry && entry.section === region) result.push({ id: entry.id })
-  }
-  return result
-}

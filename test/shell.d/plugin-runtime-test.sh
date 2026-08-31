@@ -58,18 +58,42 @@ grep -F 'property var barEntries: []' "$runtime_root/shell/SecurePluginHost.qml"
   fail "secure bar surfaces do not expose a reactive plain-array layout projection"
 grep -F 'next.push({ id: entry.surfaceKey, section: entry.defaultSection })' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
   fail "secure bar layout projection does not preserve its typed id and section"
-grep -F 'barEntriesForScreen(region, screenName)' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
-  fail "secure bar layout projection is not scoped to one shell-owned monitor"
-grep -F 'root.layoutEntries("right", root.windowScreenName(Window.window))' "$ROOT/shell/plugins/bar/Bar.qml" >/dev/null ||
+! grep -F 'barEntriesForScreen' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
+  fail "secure bar layout filtering remains hidden behind a host method"
+grep -F 'readonly property var secureBarEntries: securePluginHost' "$ROOT/shell/plugins/bar/Bar.qml" >/dev/null ||
+  fail "secure bar entries are not projected into an observable bar property"
+grep -F 'readonly property string secureBarOwnerScreenName: securePluginHost' "$ROOT/shell/plugins/bar/Bar.qml" >/dev/null ||
+  fail "secure bar ownership is not projected into an observable bar property"
+[[ $(grep -Fc 'root.secureBarEntries, root.secureBarOwnerScreenName)' "$ROOT/shell/plugins/bar/Bar.qml") == 3 ]] ||
+  fail "all three declarative bar regions must receive secure layout dependencies"
+[[ $(grep -Fc 'screenName: root.windowScreenName(barWindow)' "$ROOT/shell/plugins/bar/Bar.qml") == 6 ]] ||
+  fail "bar sections do not receive their shell-owned BarPanel screen"
+grep -F 'entries: root.layoutEntries("right", screenName,' "$ROOT/shell/plugins/bar/Bar.qml" >/dev/null ||
   fail "secure bar slots are not filtered before per-monitor instantiation"
 grep -F 'id: barEntryInstances' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
   fail "secure bar delegates are not kept behind the host projection"
 grep -F 'Array.isArray(secureEntries)' "$ROOT/shell/plugins/bar/Bar.qml" >/dev/null ||
   fail "the live bar does not consume the secure host's plain-array projection"
+grep -F 'publishedSecureEntries : secureBarEntries' "$ROOT/shell/plugins/bar/Bar.qml" >/dev/null ||
+  fail "imperative bar layout readers do not default to the secure entry projection"
+grep -F 'String(publishedSecureOwner || "") : secureBarOwnerScreenName' "$ROOT/shell/plugins/bar/Bar.qml" >/dev/null ||
+  fail "imperative bar layout readers do not default to the secure owner projection"
+grep -F 'requestedScreen !== secureOwner' "$ROOT/shell/plugins/bar/Bar.qml" >/dev/null ||
+  fail "secure bar entries can instantiate on a non-owner screen"
+grep -F 'secureEntry.section === region' "$ROOT/shell/plugins/bar/Bar.qml" >/dev/null ||
+  fail "secure bar entries bypass their declared section"
 grep -F 'model: PluginManager.panelSurfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
   fail "secure panels do not consume the typed role model"
 grep -F 'model: PluginManager.overlaySurfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
   fail "secure overlays do not consume the typed role model"
+if ! perl -0ne 'exit(/Instantiator\s*\{.*?model:\s*PluginManager\.panelSurfaces.*?delegate:\s*QtObject\s*\{.*?id:\s*panelEntry.*?property\s+SecurePanelSurface\s+surface:\s*SecurePanelSurface\s*\{.*?surfaceKey:\s*panelEntry\.surfaceKey/s ? 0 : 1)' \
+  "$runtime_root/shell/SecurePluginHost.qml"; then
+  fail "secure panel model is not forwarded through its owned typed surface"
+fi
+if ! perl -0ne 'exit(/Instantiator\s*\{.*?model:\s*PluginManager\.overlaySurfaces.*?delegate:\s*QtObject\s*\{.*?id:\s*overlayEntry.*?property\s+SecureOverlaySurface\s+surface:\s*SecureOverlaySurface\s*\{.*?surfaceKey:\s*overlayEntry\.surfaceKey/s ? 0 : 1)' \
+  "$runtime_root/shell/SecurePluginHost.qml"; then
+  fail "secure overlay model is not forwarded through its owned typed surface"
+fi
 if grep -F 'model: PluginManager.surfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
   grep -F 'filteredDeclarations' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null; then
   fail "secure surfaces still iterate raw JavaScript declarations"

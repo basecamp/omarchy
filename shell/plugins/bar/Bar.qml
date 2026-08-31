@@ -26,6 +26,10 @@ Item {
   // Optional schema-v2 host. Its entries are transient and never mutate the
   // pre-security schema-v1 shell configuration.
   property var securePluginHost: null
+  readonly property var secureBarEntries: securePluginHost
+    ? securePluginHost.barEntries : []
+  readonly property string secureBarOwnerScreenName: securePluginHost
+    ? String(securePluginHost.barOwnerScreenName || "") : ""
   // Manifest for the active bar option. Present for custom bars and useful for
   // diagnostics; the built-in bar does not otherwise need it.
   property var manifest: null
@@ -392,18 +396,25 @@ Item {
 
   onBarConfigChanged: applyBarConfig()
 
-  function layoutEntries(region, screenName) {
+  function layoutEntries(region, screenName,
+                         publishedSecureEntries, publishedSecureOwner) {
     var serial = barConfigSerial
     var entries = layoutConfig ? layoutConfig[region] : null
     var result = Array.isArray(entries) ? entries.slice() : []
+    var secureEntries = arguments.length > 2
+      ? publishedSecureEntries : secureBarEntries
+    var secureOwner = arguments.length > 3
+      ? String(publishedSecureOwner || "") : secureBarOwnerScreenName
     var requestedScreen = arguments.length > 1
       ? String(screenName || "")
-      : (securePluginHost ? securePluginHost.barOwnerScreenName : "")
-    var secureEntries = securePluginHost
-      ? securePluginHost.barEntriesForScreen(region, requestedScreen)
-      : null
-    if (!Array.isArray(secureEntries)) return result
-    for (var i = 0; i < secureEntries.length; i++) result.push(secureEntries[i])
+      : secureOwner
+    if (!Array.isArray(secureEntries) || secureOwner === ""
+        || requestedScreen !== secureOwner) return result
+    for (var i = 0; i < secureEntries.length; i++) {
+      var secureEntry = secureEntries[i]
+      if (secureEntry && secureEntry.section === region)
+        result.push({ id: secureEntry.id })
+    }
     return result
   }
 
@@ -1124,15 +1135,20 @@ Item {
       Item {
         anchors.fill: parent
 
-        CenterModules { anchors.fill: parent }
+        CenterModules {
+          anchors.fill: parent
+          screenName: root.windowScreenName(barWindow)
+        }
 
         LeftModules {
+          screenName: root.windowScreenName(barWindow)
           anchors.left: parent.left
           anchors.leftMargin: Style.space(8)
           anchors.verticalCenter: parent.verticalCenter
         }
 
         RightModules {
+          screenName: root.windowScreenName(barWindow)
           anchors.right: parent.right
           anchors.rightMargin: Style.space(8)
           anchors.verticalCenter: parent.verticalCenter
@@ -1146,15 +1162,20 @@ Item {
       Item {
         anchors.fill: parent
 
-        CenterModules { anchors.fill: parent }
+        CenterModules {
+          anchors.fill: parent
+          screenName: root.windowScreenName(barWindow)
+        }
 
         LeftModules {
+          screenName: root.windowScreenName(barWindow)
           anchors.top: parent.top
           anchors.topMargin: Style.space(8)
           anchors.horizontalCenter: parent.horizontalCenter
         }
 
         RightModules {
+          screenName: root.windowScreenName(barWindow)
           anchors.bottom: parent.bottom
           anchors.bottomMargin: Style.space(8)
           anchors.horizontalCenter: parent.horizontalCenter
@@ -1292,19 +1313,25 @@ Item {
   }
 
   component LeftModules: ModuleList {
-    entries: root.layoutEntries("left", root.windowScreenName(Window.window))
+    required property string screenName
+    entries: root.layoutEntries("left", screenName,
+      root.secureBarEntries, root.secureBarOwnerScreenName)
     region: "left"
   }
 
   component RightModules: ModuleList {
-    entries: root.layoutEntries("right", root.windowScreenName(Window.window))
+    required property string screenName
+    entries: root.layoutEntries("right", screenName,
+      root.secureBarEntries, root.secureBarOwnerScreenName)
     region: "right"
   }
 
   component CenterModules: Item {
     id: centerRoot
 
-    property var entries: root.layoutEntries("center", root.windowScreenName(Window.window))
+    required property string screenName
+    property var entries: root.layoutEntries("center", screenName,
+      root.secureBarEntries, root.secureBarOwnerScreenName)
     readonly property bool hasAnchor: root.entryIndex(entries, root.centerAnchor) !== -1
     readonly property var anchorEntry: root.findCenterAnchorEntry(entries)
 

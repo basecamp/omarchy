@@ -19,20 +19,12 @@ const entries = [
 let screens = ['DP-1', 'DP-2']
 let owner = policy.chooseOwner(screens, 'DP-2', '', entries.length > 0)
 assertEqual(owner, 'DP-2', 'secure bar initially chooses the focused live monitor')
-assertEqual(policy.entriesForScreen(entries, 'right', owner, 'DP-1').length, 0,
-  'non-owner monitor instantiates no secure bar slots')
-assertEqual(policy.entriesForScreen(entries, 'right', owner, 'DP-2').length, 2,
-  'owner monitor instantiates every secure bar slot exactly once')
-
 owner = policy.chooseOwner(screens, 'DP-1', owner, true)
 assertEqual(owner, 'DP-2', 'focus changes do not churn a live secure bar owner')
 
 screens = ['DP-1']
 owner = policy.chooseOwner(screens, 'DP-1', owner, true)
 assertEqual(owner, 'DP-1', 'owner removal fails over to the remaining live monitor')
-assertEqual(policy.entriesForScreen(entries, 'right', owner, 'DP-1').length, 2,
-  'failover creates one replacement set of secure bar slots')
-
 assertEqual(policy.chooseOpenScreen(['DP-1', 'DP-2'], 'DP-2'), 'DP-2',
   'closed surface opens on the focused live monitor')
 assertEqual(policy.chooseOpenScreen(['DP-1'], 'missing'), 'DP-1',

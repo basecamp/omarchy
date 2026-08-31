@@ -3,6 +3,9 @@
 
 #include <QPersistentModelIndex>
 #include <QGuiApplication>
+#include <QQmlComponent>
+#include <QQmlContext>
+#include <QQmlEngine>
 
 #include <algorithm>
 #include <cstdlib>
@@ -135,6 +138,82 @@ void run() {
                   .data(service.index(2), Service::DynamicInputRegionsRole)
                   .toBool(),
           "model roles were not derived from exact typed activation state");
+
+  QQmlEngine qml_engine;
+  qml_engine.rootContext()->setContextProperty(QStringLiteral("panelSurfaces"),
+                                               service.panelSurfaces());
+  qml_engine.rootContext()->setContextProperty(QStringLiteral("overlaySurfaces"),
+                                               service.overlaySurfaces());
+  QQmlComponent qml_component(&qml_engine);
+  qml_component.setData(R"QML(
+import QtQml
+import QtQml.Models
+
+QtObject {
+  property alias panelCount: panels.count
+  property alias overlayCount: overlays.count
+  property string firstPanelKey: panels.count > 0 ? panels.objectAt(0).surfaceKey : ""
+  property bool overlayUsesDynamicInput: overlays.count > 0 && overlays.objectAt(0).dynamicInputRegions
+
+  property Instantiator panelInstances: Instantiator {
+    id: panels
+    model: panelSurfaces
+    delegate: QtObject {
+      required property string surfaceKey
+      required property string generation
+      required property bool initiallyVisible
+      required property int maximumWidth
+      required property int maximumHeight
+      required property bool dynamicInputRegions
+    }
+  }
+
+  property Instantiator overlayInstances: Instantiator {
+    id: overlays
+    model: overlaySurfaces
+    delegate: QtObject {
+      required property string surfaceKey
+      required property string generation
+      required property bool initiallyVisible
+      required property int maximumWidth
+      required property int maximumHeight
+      required property bool dynamicInputRegions
+    }
+  }
+}
+)QML",
+                        QUrl());
+  std::unique_ptr<QObject> qml_projection(qml_component.create());
+  if (!qml_projection) {
+    for (const QQmlError &error : qml_component.errors())
+      std::cerr << error.toString().toStdString() << '\n';
+  } else if (qml_projection->property("panelCount").toInt() != 2 ||
+             qml_projection->property("overlayCount").toInt() != 1 ||
+             qml_projection->property("firstPanelKey").toString() !=
+                 QStringLiteral(
+                     "v2.19.org.omarchy.fixture.7.PanelWidget") ||
+             !qml_projection->property("overlayUsesDynamicInput").toBool()) {
+    std::cerr << "QML projection: panels="
+              << qml_projection->property("panelCount").toInt()
+              << " overlays="
+              << qml_projection->property("overlayCount").toInt()
+              << " firstPanelKey="
+              << qml_projection->property("firstPanelKey")
+                     .toString()
+                     .toStdString()
+              << " overlayDynamic="
+              << qml_projection->property("overlayUsesDynamicInput").toBool()
+              << '\n';
+  }
+  require(qml_projection &&
+              qml_projection->property("panelCount").toInt() == 2 &&
+              qml_projection->property("overlayCount").toInt() == 1 &&
+              qml_projection->property("firstPanelKey").toString() ==
+                  QStringLiteral(
+                      "v2.19.org.omarchy.fixture.7.PanelWidget") &&
+              qml_projection->property("overlayUsesDynamicInput").toBool(),
+          "typed panel or overlay proxy rows did not instantiate in QML");
+
   const auto exact_key = value(service, 0, Service::SurfaceKeyRole);
   const auto resolved = bridge::SurfaceProjectionModelTestAccess::resolve(
       service, exact_key);
