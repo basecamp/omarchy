@@ -26,6 +26,7 @@ endif()
 
 add_library(omarchy-plugin-activation-snapshot STATIC
   src/activation_snapshot.cpp
+  src/authority_snapshot_codec.cpp
   src/authority_store.cpp
   src/consent_review.cpp
   src/permission_projection.cpp
