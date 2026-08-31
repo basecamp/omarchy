@@ -610,21 +610,10 @@ confirm_reboot() {
 }
 
 # Load the layout on the live VT and persist it for the installed system.
-# systemd-firstboot writes both the console KEYMAP and the XKB layout Hyprland
-# reads, matching what the ISO's configure_keyboard does at install time. A
-# keymap localectl doesn't know keeps the default rather than failing (defensive;
-# the picker no longer offers any such layout).
+# Shared with the form so ISO and first-boot cannot drift (omarchy_apply_keyboard).
 apply_keyboard() {
-  local keymap="$1"
-  [[ $(tty 2>/dev/null) == /dev/tty* ]] && loadkeys "$keymap" 2>/dev/null || true
-
-  if localectl --no-pager list-keymaps 2>/dev/null | grep -qix "$keymap"; then
-    systemd-firstboot --keymap="$keymap" --force >>"$LOG_FILE" 2>&1 || \
-      localectl set-keymap "$keymap" >>"$LOG_FILE" 2>&1 || \
-      log_step "could not persist keymap $keymap"
-  else
-    log_step "keymap $keymap unknown to localectl; keeping the default"
-  fi
+  omarchy_apply_keyboard "$1" >>"$LOG_FILE" 2>&1 || \
+    log_step "could not persist keymap $1"
 }
 
 # The same username/password/name/email form as the ISO configurator's Step 2.

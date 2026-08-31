@@ -75,8 +75,63 @@ Spanish|es
 Spanish (Latin American)|la-latin1
 Swedish|sv-latin1
 Tajik|tj_alt-UTF8
+Thai (Kedmanee)|th
 Turkish|trq
 Ukrainian|ua'
+
+# Picker values that are XKB layouts, not kbd console keymaps. The live
+# console and LUKS prompt stay on us so Latin passwords remain typeable;
+# XKBLAYOUT carries the choice into Hyprland. The ISO configurator parses
+# this assignment the same way it reads OMARCHY_KEYBOARD_LAYOUTS.
+OMARCHY_XKB_ONLY_LAYOUTS="th"
+
+omarchy_xkb_only_layout() {
+  [[ " $OMARCHY_XKB_ONLY_LAYOUTS " == *" $1 "* ]]
+}
+
+omarchy_console_keymap_for() {
+  if omarchy_xkb_only_layout "$1"; then
+    printf '%s\n' us
+  else
+    printf '%s\n' "$1"
+  fi
+}
+
+# Persist a picker value into vconsole.conf. Optional second argument is a
+# target root whose etc/vconsole.conf is written (ISO-style systemd-firstboot
+# --root); omit it to write the running system. XKB-only layouts persist us
+# for the console, then point XKBLAYOUT at the chosen layout.
+omarchy_apply_keyboard() {
+  local keymap=$1
+  local root=${2:-}
+  local vconsole=/etc/vconsole.conf
+  local console_map firstboot_args=()
+
+  console_map=$(omarchy_console_keymap_for "$keymap")
+  [[ -n $root ]] && vconsole="$root/etc/vconsole.conf"
+
+  [[ $(tty 2>/dev/null) == /dev/tty* ]] && loadkeys "$console_map" 2>/dev/null || true
+
+  if ! localectl --no-pager list-keymaps 2>/dev/null | grep -qix "$console_map"; then
+    return 1
+  fi
+
+  [[ -n $root ]] && firstboot_args+=(--root="$root")
+  if ! systemd-firstboot "${firstboot_args[@]}" --keymap="$console_map" --force; then
+    # A --root caller is a test or an offline target; never fall through to
+    # localectl, which always writes the running system.
+    [[ -n $root ]] && return 1
+    localectl set-keymap "$console_map" || return 1
+  fi
+
+  if omarchy_xkb_only_layout "$keymap"; then
+    if grep -q '^XKBLAYOUT=' "$vconsole" 2>/dev/null; then
+      sed -i "s/^XKBLAYOUT=.*/XKBLAYOUT=$keymap/" "$vconsole"
+    else
+      echo "XKBLAYOUT=$keymap" >>"$vconsole"
+    fi
+  fi
+}
 
 OMARCHY_USERNAME_PATTERN='^[a-z_][a-z0-9_-]*[$]?$'
 OMARCHY_RESERVED_USERNAMES='^(root|bin|daemon|mail|ftp|http|nobody|dbus|systemd-coredump|systemd-network|systemd-oom|systemd-journal-remote|systemd-resolve|systemd-timesync|tss|uuidd|alpm|git|avahi|cups|cups-browsed|lp|_talkd|polkitd|rtkit|qemu|brltty|gluster|rpc|libvirt-qemu|pcscd|nvidia-persistenced|sddm)$'

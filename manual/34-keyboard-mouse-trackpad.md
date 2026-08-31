@@ -57,6 +57,12 @@ hl.gesture({ fingers = 3, direction = "horizontal", action = "workspace" })
 
 On Dell XPS laptops with a haptic touchpad, you can also set the click strength to low, mid, or high under _Trigger > Hardware > Touchpad Haptics_.
 
+### Typing in Thai
+
+Pick _Thai (Kedmanee)_ as the keyboard layout during installation (or first-boot owner setup). The console, disk encryption prompt, and login password stay on the US layout so Latin passphrases remain typeable. The desktop comes up English until you press Left Alt and Right Alt together — the same switch as other non-Latin layouts — or click the layout chip on the menu bar. Caps Lock stays the compose key.
+
+Thai is a regular keyboard layout, not an input method: you do not need fcitx5-configtool. Other Thai maps (Pattachote, Manoonchai) still go in `kb_variant` under _Setup > Input_.
+
 ### Typing in Chinese, Japanese, and other languages
 
 Omarchy runs the [fcitx5](https://fcitx-im.org/) input method framework as part of every session — it's what powers the CapsLock compose sequences. That means the plumbing for non-Latin input is already in place: install an input engine like `fcitx5-mozc` (Japanese) or `fcitx5-chinese-addons` (Chinese) with `omarchy pkg add`, plus `fcitx5-configtool` to add the engine to your input methods and set the key that switches between them.
