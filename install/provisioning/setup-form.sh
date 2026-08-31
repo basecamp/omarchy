@@ -97,39 +97,16 @@ omarchy_console_keymap_for() {
   fi
 }
 
-# Persist a picker value into vconsole.conf. Optional second argument is a
-# target root whose etc/vconsole.conf is written (ISO-style systemd-firstboot
-# --root); omit it to write the running system. XKB-only layouts persist us
-# for the console, then point XKBLAYOUT at the chosen layout.
-omarchy_apply_keyboard() {
+# After a Latin console keymap is persisted, point XKBLAYOUT at an XKB-only
+# picker value (no matching kbd map). Optional second arg is the vconsole file.
+omarchy_write_xkblayout() {
   local keymap=$1
-  local root=${2:-}
-  local vconsole=/etc/vconsole.conf
-  local console_map firstboot_args=()
+  local vconsole=${2:-/etc/vconsole.conf}
 
-  console_map=$(omarchy_console_keymap_for "$keymap")
-  [[ -n $root ]] && vconsole="$root/etc/vconsole.conf"
-
-  [[ $(tty 2>/dev/null) == /dev/tty* ]] && loadkeys "$console_map" 2>/dev/null || true
-
-  if ! localectl --no-pager list-keymaps 2>/dev/null | grep -qix "$console_map"; then
-    return 1
-  fi
-
-  [[ -n $root ]] && firstboot_args+=(--root="$root")
-  if ! systemd-firstboot "${firstboot_args[@]}" --keymap="$console_map" --force; then
-    # A --root caller is a test or an offline target; never fall through to
-    # localectl, which always writes the running system.
-    [[ -n $root ]] && return 1
-    localectl set-keymap "$console_map" || return 1
-  fi
-
-  if omarchy_xkb_only_layout "$keymap"; then
-    if grep -q '^XKBLAYOUT=' "$vconsole" 2>/dev/null; then
-      sed -i "s/^XKBLAYOUT=.*/XKBLAYOUT=$keymap/" "$vconsole"
-    else
-      echo "XKBLAYOUT=$keymap" >>"$vconsole"
-    fi
+  if grep -q '^XKBLAYOUT=' "$vconsole" 2>/dev/null; then
+    sed -i "s/^XKBLAYOUT=.*/XKBLAYOUT=$keymap/" "$vconsole"
+  else
+    echo "XKBLAYOUT=$keymap" >>"$vconsole"
   fi
 }
 

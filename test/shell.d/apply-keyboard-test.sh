@@ -5,8 +5,6 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 require_command lua
-require_command systemd-firstboot
-require_command localectl
 
 source "$ROOT/install/provisioning/setup-form.sh"
 
@@ -48,60 +46,50 @@ require("default.hypr.input")
 LUA
 }
 
-vconsole_lines() {
-  grep -E '^(KEYMAP|XKBLAYOUT)=' "$1/etc/vconsole.conf"
-}
-
-make_root() {
-  local root=$1
-  mkdir -p "$root/etc"
-  printf '%s\n' 'KEYMAP=us' 'FONT=default8x16' >"$root/etc/vconsole.conf"
-}
-
 toggle_options="compose:caps,shift:both_capslock_cancel,grp:alts_toggle"
+owner="$ROOT/bin/omarchy-provision-owner"
 
-# First-boot persist is the shipped omarchy_apply_keyboard: real systemd-firstboot
-# --root, then the XKBLAYOUT overwrite for xkb-only picker values.
+# The original persist path must still be in apply_keyboard. Thai only adds a
+# branch in front; it must not replace loadkeys / systemd-firstboot / localectl.
+grep -q 'loadkeys "$keymap"' "$owner" || fail "apply_keyboard still loadkeys the chosen console map"
+grep -q 'systemd-firstboot --keymap="$keymap" --force' "$owner" ||
+  fail "apply_keyboard still persists known console maps with systemd-firstboot"
+grep -q 'localectl set-keymap "$keymap"' "$owner" ||
+  fail "apply_keyboard still falls back to localectl set-keymap"
+grep -q 'keeping the default' "$owner" ||
+  fail "apply_keyboard still keeps the default for unknown console maps"
+pass "apply_keyboard keeps the existing console persist path"
 
-thai_root="$tmp_dir/thai"
-make_root "$thai_root"
-omarchy_apply_keyboard th "$thai_root" || fail "omarchy_apply_keyboard persists Thai"
-vconsole_lines "$thai_root" | grep -qx 'KEYMAP=us' ||
-  fail "Thai keeps a US console keymap" "$(vconsole_lines "$thai_root")"
-vconsole_lines "$thai_root" | grep -qx 'XKBLAYOUT=th' ||
-  fail "Thai writes XKBLAYOUT=th for Hyprland" "$(vconsole_lines "$thai_root")"
-[[ $(grep -c '^XKBLAYOUT=' "$thai_root/etc/vconsole.conf") == 1 ]] ||
-  fail "Thai leaves a single XKBLAYOUT line"
-pass "omarchy_apply_keyboard persists Thai as KEYMAP=us XKBLAYOUT=th"
+grep -q 'omarchy_xkb_only_layout "$keymap"' "$owner" ||
+  fail "apply_keyboard special-cases XKB-only picker values"
+grep -q 'apply_keyboard us' "$owner" ||
+  fail "XKB-only layouts reuse apply_keyboard us for the Latin console"
+grep -q 'omarchy_write_xkblayout "$keymap"' "$owner" ||
+  fail "XKB-only layouts then write XKBLAYOUT via the shared helper"
+pass "Thai persist is an added branch, not a replacement of apply_keyboard"
 
-desktop=$(resolved_input "$(<"$thai_root/etc/vconsole.conf")")
+# After apply_keyboard us, vconsole has KEYMAP=us and XKBLAYOUT=us. The new
+# helper only rewrites XKBLAYOUT; that is the first-boot Thai step.
+vconsole="$tmp_dir/vconsole.conf"
+printf '%s\n' 'KEYMAP=us' 'XKBLAYOUT=us' 'FONT=default8x16' >"$vconsole"
+omarchy_write_xkblayout th "$vconsole"
+grep -qx 'KEYMAP=us' "$vconsole" || fail "writing XKBLAYOUT leaves KEYMAP=us" "$(<"$vconsole")"
+grep -qx 'XKBLAYOUT=th' "$vconsole" || fail "writing XKBLAYOUT sets th" "$(<"$vconsole")"
+[[ $(grep -c '^XKBLAYOUT=' "$vconsole") == 1 ]] || fail "a single XKBLAYOUT line remains"
+grep -qx 'FONT=default8x16' "$vconsole" || fail "other vconsole lines are left alone"
+pass "omarchy_write_xkblayout points XKBLAYOUT at th without touching KEYMAP"
+
+desktop=$(resolved_input "$(<"$vconsole")")
 [[ $desktop == "[us,th] [,] [$toggle_options]" ]] ||
-  fail "Hyprland duals Thai from the persisted vconsole" "expected: [us,th] [,] [$toggle_options]
+  fail "Hyprland duals Thai from the first-boot vconsole" "expected: [us,th] [,] [$toggle_options]
 actual:   $desktop"
-pass "persisted Thai vconsole becomes a us,th Hyprland session"
+pass "first-boot Thai vconsole becomes a us,th Hyprland session"
 
-de_root="$tmp_dir/de"
-make_root "$de_root"
-omarchy_apply_keyboard de "$de_root" || fail "omarchy_apply_keyboard persists German"
-vconsole_lines "$de_root" | grep -qx 'KEYMAP=de' ||
-  fail "German still writes KEYMAP=de" "$(vconsole_lines "$de_root")"
-vconsole_lines "$de_root" | grep -qx 'XKBLAYOUT=de' ||
-  fail "German still writes XKBLAYOUT=de" "$(vconsole_lines "$de_root")"
-pass "omarchy_apply_keyboard leaves console keymaps on themselves"
-
-unknown_root="$tmp_dir/unknown"
-make_root "$unknown_root"
-before=$(<"$unknown_root/etc/vconsole.conf")
-if omarchy_apply_keyboard definitely-not-a-keymap "$unknown_root"; then
-  fail "unknown picker values must not persist"
-fi
-[[ $(<"$unknown_root/etc/vconsole.conf") == "$before" ]] ||
-  fail "unknown picker values leave vconsole.conf untouched"
-pass "unknown layouts are refused without rewriting vconsole.conf"
-
-grep -q 'omarchy_apply_keyboard "\$1"' "$ROOT/bin/omarchy-provision-owner" ||
-  fail "first-boot apply_keyboard calls the shared persist helper"
-pass "omarchy-provision-owner apply_keyboard uses omarchy_apply_keyboard"
+missing="$tmp_dir/missing.conf"
+printf '%s\n' 'KEYMAP=us' >"$missing"
+omarchy_write_xkblayout th "$missing"
+grep -qx 'XKBLAYOUT=th' "$missing" || fail "helper appends XKBLAYOUT when the key is absent"
+pass "omarchy_write_xkblayout appends XKBLAYOUT when it is missing"
 
 printf '%s\n' "$OMARCHY_KEYBOARD_LAYOUTS" | grep -qx 'Thai (Kedmanee)|th' ||
   fail "the picker lists Thai (Kedmanee)"
