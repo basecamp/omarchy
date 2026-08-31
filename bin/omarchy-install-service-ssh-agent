@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# omarchy:summary=Enable an SSH agent (gcr-ssh-agent) that prompts for key passphrases graphically.
+
+set -e
+
+ENV_FILE="$HOME/.config/environment.d/90-gcr-ssh-agent.conf"
+
+systemctl --user enable --now gcr-ssh-agent.socket
+
+mkdir -p "$(dirname "$ENV_FILE")"
+echo 'SSH_AUTH_SOCK=$XDG_RUNTIME_DIR/gcr/ssh' >"$ENV_FILE"
+
+echo ""
+echo "SSH agent has been enabled. Log out and back in to make it available everywhere."
+echo "The first use of a passphrase-protected key opens a dialog, with the option to"
+echo "remember the passphrase in the keyring."

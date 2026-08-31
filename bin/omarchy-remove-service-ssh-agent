@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# omarchy:summary=Disable the gcr-ssh-agent SSH agent and its environment override.
+
+systemctl --user disable --now gcr-ssh-agent.socket 2>/dev/null || true
+systemctl --user stop gcr-ssh-agent.service 2>/dev/null || true
+rm -f "$HOME/.config/environment.d/90-gcr-ssh-agent.conf"
+
+echo ""
+echo "SSH agent has been disabled. Log out and back in for it to take full effect."
