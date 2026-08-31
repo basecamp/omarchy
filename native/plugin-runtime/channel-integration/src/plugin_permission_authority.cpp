@@ -141,49 +141,13 @@ host_session::AuthorityRevocationResult PluginPermissionAuthority::revoke(
 
 bool PluginPermissionAuthority::provider_available(
     const permissions::CapabilityKey &capability) const noexcept {
-  try {
-    const auto *definition = permissions::find_capability(capability);
-    if (!definition)
-      return false;
-    for (std::uint8_t index = 0; index < definition->operation_count; ++index) {
-      switch (definition->operations[index]) {
-      case permissions::OperationId::storage_read:
-      case permissions::OperationId::storage_write:
-      case permissions::OperationId::storage_remove:
-        break;
-      case permissions::OperationId::notification_send:
-        if (!services_->notification_send)
-          return false;
-        break;
-      case permissions::OperationId::audio_play_cue:
-        if (!services_->audio_play)
-          return false;
-        break;
-      }
-    }
-    return true;
-  } catch (...) {
-    return false;
-  }
+  return services_ && runtime_service_available(*services_, capability);
 }
 
 bool PluginPermissionAuthority::provider_available(
     const definitions::CapabilityReference &reference) const noexcept {
-  try {
-    const auto resolved = definitions_->resolve(reference);
-    if (!resolved)
-      return false;
-    const auto configured = std::ranges::find(
-        services_->dynamic_services, resolved->definition->adapter,
-        &TrustedDynamicService::binding);
-    return std::ranges::count(
-               services_->dynamic_services, resolved->definition->adapter,
-               &TrustedDynamicService::binding) == 1 &&
-           configured != services_->dynamic_services.end() &&
-           configured->dispatch;
-  } catch (...) {
-    return false;
-  }
+  return definitions_ && services_ &&
+         runtime_service_available(*definitions_, *services_, reference);
 }
 
 host_session::AuthorityRevocationResult PluginPermissionAuthority::revoke(

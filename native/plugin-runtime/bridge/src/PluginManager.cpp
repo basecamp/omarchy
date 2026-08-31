@@ -183,6 +183,7 @@ struct PluginManager::Runtime final {
     std::array<std::shared_ptr<PreparationResult>, 2> preparation_results;
     std::array<std::shared_ptr<PermissionReadResult>, 2>
         permission_read_results;
+    std::array<std::shared_ptr<PermissionTransaction>, 2> permission_results;
   };
 
   struct PermissionFenceObserver final
@@ -299,11 +300,13 @@ struct PluginManager::Runtime final {
     std::shared_ptr<ScanResult> scan;
     std::array<std::shared_ptr<PreparationResult>, 2> preparations;
     std::array<std::shared_ptr<PermissionReadResult>, 2> permission_reads;
+    std::array<std::shared_ptr<PermissionTransaction>, 2> permission_results;
     {
       std::scoped_lock lock(gate_->mutex);
       scan = std::move(gate_->scan_result);
       preparations = std::move(gate_->preparation_results);
       permission_reads = std::move(gate_->permission_read_results);
+      permission_results = std::move(gate_->permission_results);
     }
     if (scan) {
       gate_->scan_in_flight.store(false);
@@ -380,23 +383,29 @@ struct PluginManager::Runtime final {
           slot.phase != Phase::permission_changing)
         fencePermission(slot);
       if ((delivery & PermissionTransaction::complete) != 0) {
-        const bool applied =
-            transaction->kind == PermissionKind::apply_review
-                ? transaction->review.publication ==
-                          host_session::ConsentResult::applied &&
-                      transaction->review.promotion ==
-                          host_session::AuthorityMutationResult::applied &&
-                      transaction->review.binding.has_value()
-                : transaction->revocation.status ==
-                      host_session::AuthorityMutationResult::applied;
         completePermission(slot, *transaction);
-        if (transaction->control_serial != 0)
-          manager_.completePermissionMutation(
-              transaction->control_serial, applied,
-              applied ? std::string{} : std::string("authority-rejected"));
         if (slot.permission_transaction == transaction)
           slot.permission_transaction.reset();
       }
+    }
+    for (auto &result : permission_results) {
+      if (!result)
+        continue;
+      --gate_->permissions_in_flight;
+      if (result->control_serial == 0)
+        continue;
+      const bool applied =
+          result->kind == PermissionKind::apply_review
+              ? result->review.publication ==
+                        host_session::ConsentResult::applied &&
+                    result->review.promotion ==
+                        host_session::AuthorityMutationResult::applied &&
+                    result->review.binding.has_value()
+              : result->revocation.status ==
+                    host_session::AuthorityMutationResult::applied;
+      manager_.completePermissionMutation(
+          result->control_serial, applied,
+          applied ? std::string{} : std::string("authority-rejected"));
     }
     for (auto &slot : slots_) {
       const auto state = slot.callback_state;
@@ -863,7 +872,21 @@ struct PluginManager::Runtime final {
           }
           result->delivery.fetch_or(PermissionTransaction::complete,
                                     std::memory_order_release);
-          --gate->permissions_in_flight;
+          try {
+            std::scoped_lock lock(gate->mutex);
+            if (gate->canceled.load(std::memory_order_acquire)) {
+              --gate->permissions_in_flight;
+              return;
+            }
+            const auto destination =
+                std::ranges::find(gate->permission_results,
+                                  std::shared_ptr<PermissionTransaction>{});
+            if (destination == gate->permission_results.end())
+              std::terminate();
+            *destination = result;
+          } catch (...) {
+            std::terminate();
+          }
           });
     } catch (...) {
       --gate_->permissions_in_flight;
@@ -1404,8 +1427,31 @@ PluginManagerTestAccess::executingPermissionJobs(
              : 0;
 }
 
+std::optional<plugins::permissions::DecisionActor>
+PluginManagerTestAccess::pendingPermissionActor(const PluginManager &manager,
+                                                std::string_view plugin) {
+  if (!manager.runtime_)
+    return std::nullopt;
+  const auto found = std::ranges::find(manager.runtime_->slots_, plugin,
+                                       &PluginManager::Runtime::Slot::plugin);
+  return found != manager.runtime_->slots_.end() &&
+                 found->permission_transaction &&
+                 found->permission_transaction->kind ==
+                     PluginManager::Runtime::PermissionKind::apply_review
+             ? std::optional(found->permission_transaction->confirmation.actor)
+             : std::nullopt;
+}
+
 bool PluginManagerTestAccess::scanInFlight(const PluginManager &manager) {
   return manager.runtime_ && manager.runtime_->gate_->scan_in_flight.load();
+}
+
+bool PluginManagerTestAccess::revokePermissionImmediatelyForTest(
+    PluginManager &manager, std::string_view plugin, std::uint64_t epoch,
+    const plugins::permissions::CapabilityKey &capability,
+    std::uint64_t expected_sequence) {
+  return manager.revokePermissionImmediatelyForTest(
+      plugin, epoch, capability, expected_sequence);
 }
 
 std::uint8_t PluginManagerTestAccess::occupiedPreparationLanes(
@@ -1506,6 +1552,20 @@ void PluginManagerTestAccess::failNextConstruction() noexcept {
 
 bool PluginManagerTestAccess::processClaimAvailable() noexcept {
   return claimed_engine.load(std::memory_order_acquire) == nullptr;
+}
+#endif
+
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+bool PluginManager::revokePermissionImmediatelyForTest(
+    std::string_view plugin, std::uint64_t epoch,
+    const plugins::permissions::CapabilityKey &capability,
+    std::uint64_t expected_sequence) {
+  if (!runtime_)
+    return false;
+  auto *slot = runtime_->exact(plugin, epoch);
+  return slot && slot->permissions &&
+         slot->permissions->revoke(capability, expected_sequence, nullptr)
+                 .status == host_session::AuthorityMutationResult::applied;
 }
 #endif
 

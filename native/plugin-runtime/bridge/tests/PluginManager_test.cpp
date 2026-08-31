@@ -1843,22 +1843,30 @@ void permission_control_is_bounded_and_destruction_safe() {
   auto observations = bridge::PluginManagerTestAccess::runtimeSlots(*manager);
 
   auto *control = manager->permissions();
-  const auto review = control->beginReview(QString::fromUtf8(plugin));
-  require(!review.isEmpty(), "bounded plugin did not expose a review");
+  const auto review =
+      control->beginInteractiveCliReview(QString::fromUtf8(plugin));
+  require(!review.isEmpty(), "bounded plugin did not expose a CLI review");
   run_job();
   const auto rows = permissionRows(*control, review);
   require(
       rows.isEmpty() &&
+          control->apply(review, grantEveryAvailablePermission(rows))
+              .isEmpty() &&
           control->apply(review, QString(32 + 256 * 1024 + 1, 'x')).isEmpty(),
-      "oversized permission choice crossed ingress");
+      "UI ingress or oversized choice crossed the CLI review boundary");
 
   const auto apply =
-      control->apply(review, grantEveryAvailablePermission(rows));
-  require(!apply.isEmpty(), "empty bounded review could not be confirmed");
-  run_job();
+      control->applyInteractiveCli(review, grantEveryAvailablePermission(rows));
+  require(!apply.isEmpty(), "empty CLI review could not be confirmed");
+  require(!scheduler.jobs.empty(), "CLI apply job disappeared");
+  scheduler.runOne();
+  require(bridge::PluginManagerTestAccess::pendingPermissionActor(
+              *manager, plugin) == permissions::DecisionActor::interactive_cli,
+          "CLI actor did not persist through the asynchronous manager lane");
+  bridge::PluginManagerTestAccess::drainRuntime(*manager);
   require(permissionOperation(*control, apply).value("state") == "succeeded" &&
               scheduler.jobs.size() == 1,
-          "bounded review did not enter exact preparation");
+          "CLI review did not enter exact preparation");
   run_job();
   require(await([&] {
             bridge::PluginManagerTestAccess::drainRuntime(*manager);
@@ -1953,6 +1961,150 @@ void permission_control_is_bounded_and_destruction_safe() {
   read_worker.join();
   require(delivery_gate.expired(),
           "outstanding permission read retained destroyed manager state");
+}
+
+void controlled_mutations_settle_after_slot_loss() {
+  if (std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_TEST") == nullptr)
+    return;
+  constexpr std::string_view permission_json =
+      R"({"required":[],"optional":[{"capability":"storage.private","reason":"state","quotaBytes":4096}]})";
+  const auto start = [](bridge::PluginManager &manager,
+                        DeterministicJobs &scheduler) {
+    require(bridge::PluginManagerTestAccess::scanRuntime(manager) &&
+                scheduler.jobs.size() == 1,
+            "slot-loss fixture did not queue preparation");
+    scheduler.runOne();
+    require(await([&] {
+              bridge::PluginManagerTestAccess::drainRuntime(manager);
+              const auto state =
+                  bridge::PluginManagerTestAccess::runtimeSlots(manager);
+              return state.size() == 1 && state.front().running;
+            }),
+            "slot-loss fixture did not reach running");
+  };
+
+  {
+    constexpr std::string_view plugin = "org.example.removed-permission";
+    RuntimeFixture fixture;
+    fixture.seedRuntime(plugin, "import QtQuick\nItem {}\n", permission_json);
+    DeterministicJobs scheduler;
+    auto manager = bridge::PluginManagerTestAccess::create();
+    bridge::PluginManagerTestAccess::installRuntime(*manager,
+                                                    fixture.bootstrap());
+    bridge::PluginManagerTestAccess::setJobSubmitter(
+        *manager, [&](auto kind, auto job) {
+          return scheduler.submit(kind, std::move(job));
+        });
+    start(*manager, scheduler);
+    auto *control = manager->permissions();
+    const auto list = control->beginList(QString::fromUtf8(plugin));
+    require(!list.isEmpty(), "removal revoke list was not queued");
+    scheduler.runOne();
+    bridge::PluginManagerTestAccess::drainRuntime(*manager);
+    const auto row =
+        permissionRow(permissionRows(*control, list), "storage.private");
+    const auto revoke = control->revoke(list, row);
+    require(!revoke.isEmpty() && scheduler.jobs.size() == 1,
+            "removal revoke was not queued");
+    fixture.erase(plugin);
+    require(bridge::PluginManagerTestAccess::scanRuntime(*manager) &&
+                bridge::PluginManagerTestAccess::runtimeSlots(*manager).empty(),
+            "plugin removal retained its manager slot");
+    scheduler.runOne();
+    bridge::PluginManagerTestAccess::drainRuntime(*manager);
+    require(permissionOperation(*control, revoke).value("state") == "succeeded",
+            "committed revoke was orphaned by slot removal");
+  }
+
+  {
+    constexpr std::string_view plugin = "org.example.replaced-permission";
+    RuntimeFixture fixture;
+    fixture.seedRuntime(plugin, "import QtQuick\nItem {}\n", permission_json);
+    DeterministicJobs scheduler;
+    auto manager = bridge::PluginManagerTestAccess::create();
+    bridge::PluginManagerTestAccess::installRuntime(*manager,
+                                                    fixture.bootstrap());
+    bridge::PluginManagerTestAccess::setJobSubmitter(
+        *manager, [&](auto kind, auto job) {
+          return scheduler.submit(kind, std::move(job));
+        });
+    start(*manager, scheduler);
+    auto *control = manager->permissions();
+    const auto review = control->beginReview(QString::fromUtf8(plugin));
+    require(!review.isEmpty(), "replacement review was not queued");
+    scheduler.runOne();
+    bridge::PluginManagerTestAccess::drainRuntime(*manager);
+    const auto apply = control->apply(
+        review,
+        grantEveryAvailablePermission(permissionRows(*control, review)));
+    require(!apply.isEmpty() && scheduler.jobs.size() == 1,
+            "replacement apply was not queued");
+    const auto replacement = fixture.stageRuntime(
+        plugin, 2, "import QtQuick\nItem {}\n", permission_json);
+    fixture.selectReplacement(replacement);
+    require(bridge::PluginManagerTestAccess::scanRuntime(*manager),
+            "replacement scan was rejected");
+    scheduler.runAt(0);
+    bridge::PluginManagerTestAccess::drainRuntime(*manager);
+    const auto outcome = permissionOperation(*control, apply);
+    require(outcome.value("state") == "succeeded" &&
+                outcome.value("result").toObject().value("applied") == true,
+            "committed apply was orphaned by slot replacement");
+  }
+
+  {
+    constexpr std::string_view plugin = "org.example.rejected-permission";
+    constexpr std::string_view required_permission_json =
+        R"({"required":[{"capability":"storage.private","reason":"state","quotaBytes":4096}],"optional":[]})";
+    RuntimeFixture fixture;
+    fixture.seedRuntime(plugin, "import QtQuick\nItem {}\n",
+                        required_permission_json);
+    DeterministicJobs scheduler;
+    auto manager = bridge::PluginManagerTestAccess::create();
+    bridge::PluginManagerTestAccess::installRuntime(*manager,
+                                                    fixture.bootstrap());
+    bridge::PluginManagerTestAccess::setJobSubmitter(
+        *manager, [&](auto kind, auto job) {
+          return scheduler.submit(kind, std::move(job));
+        });
+    start(*manager, scheduler);
+
+    auto *control = manager->permissions();
+    const auto review = control->beginReview(QString::fromUtf8(plugin));
+    require(!review.isEmpty(), "stale-authority review was not queued");
+    scheduler.runOne();
+    bridge::PluginManagerTestAccess::drainRuntime(*manager);
+    const auto rows = permissionRows(*control, review);
+    require(rows.size() == 1, "stale-authority review row was missing");
+    const auto slot = bridge::PluginManagerTestAccess::runtimeSlots(*manager)
+                          .front();
+    const auto view = bridge::PluginManagerTestAccess::permissionView(
+        *manager, plugin, slot.epoch);
+    require(view.has_value(),
+            "stale-authority fixture lacked an authority view");
+    const auto apply = control->apply(
+        review, grantEveryAvailablePermission(rows));
+    require(!apply.isEmpty() && scheduler.jobs.size() == 1,
+            "stale-authority apply was not queued");
+    const permissions::CapabilityKey storage{
+        .id = permissions::CapabilityId("storage.private"), .version = 1};
+    require(view && bridge::PluginManagerTestAccess::
+                        revokePermissionImmediatelyForTest(
+                            *manager, plugin, slot.epoch, storage,
+                            view->authority_slots.sequence),
+            "stale-authority fixture did not advance exact authority");
+    const auto replacement = fixture.stageRuntime(
+        plugin, 2, "import QtQuick\nItem {}\n", required_permission_json);
+    fixture.selectReplacement(replacement);
+    require(bridge::PluginManagerTestAccess::scanRuntime(*manager),
+            "stale-authority replacement scan was rejected");
+    scheduler.runAt(0);
+    bridge::PluginManagerTestAccess::drainRuntime(*manager);
+    const auto outcome = permissionOperation(*control, apply);
+    require(outcome.value("state") == "failed" &&
+                outcome.value("error") == "authority-rejected",
+            "authoritative rejection was orphaned by slot replacement");
+  }
 }
 
 void concurrent_permission_fences_route_exactly() {
@@ -2615,6 +2767,7 @@ void run_plugin_manager_tests() {
   runtime_jobs_enter_off_ui_and_commit_on_ui_drain();
   manager_owns_permission_generation_replacement();
   permission_control_is_bounded_and_destruction_safe();
+  controlled_mutations_settle_after_slot_loss();
   concurrent_permission_fences_route_exactly();
   real_root_publishes_attaches_and_tears_down_exactly();
   zero_surface_runtime_has_no_publication_authority();

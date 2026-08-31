@@ -71,7 +71,7 @@ if(BUILD_TESTING)
     "${CMAKE_CURRENT_SOURCE_DIR}/../channel-integration/tests"
   )
   target_link_libraries(omarchy-plugin-surface-service-test PRIVATE
-    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick
+    Qt6::Core Qt6::DBus Qt6::Gui Qt6::Qml Qt6::Quick
     omarchy-plugin-trusted-bridge
     omarchy-plugin-host-session
     omarchy-plugin-authenticated-session

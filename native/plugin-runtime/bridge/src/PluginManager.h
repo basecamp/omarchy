@@ -122,6 +122,12 @@ private:
       std::shared_ptr<const host_session::ConsentReview> review) noexcept;
   void completePermissionMutation(std::uint64_t serial, bool applied,
                                   std::string error) noexcept;
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+  [[nodiscard]] bool revokePermissionImmediatelyForTest(
+      std::string_view plugin, std::uint64_t epoch,
+      const plugins::permissions::CapabilityKey &capability,
+      std::uint64_t expected_sequence);
+#endif
 
   struct Runtime;
 
@@ -195,6 +201,8 @@ public:
   preparationCount(const PluginManager &manager);
   [[nodiscard]] static std::uint8_t
   executingPermissionJobs(const PluginManager &manager);
+  [[nodiscard]] static std::optional<plugins::permissions::DecisionActor>
+  pendingPermissionActor(const PluginManager &manager, std::string_view plugin);
   [[nodiscard]] static bool scanInFlight(const PluginManager &manager);
   [[nodiscard]] static std::uint8_t occupiedPreparationLanes(
       const PluginManager &manager);
@@ -215,6 +223,10 @@ public:
   [[nodiscard]] static bool revokePermission(
       PluginManager &manager, std::string_view plugin, std::uint64_t epoch,
       const plugins::definitions::CapabilityReference &definition,
+      std::uint64_t expected_sequence);
+  [[nodiscard]] static bool revokePermissionImmediatelyForTest(
+      PluginManager &manager, std::string_view plugin, std::uint64_t epoch,
+      const plugins::permissions::CapabilityKey &capability,
       std::uint64_t expected_sequence);
   [[nodiscard]] static bool applyPermissionReview(
       PluginManager &manager, std::string_view plugin, std::uint64_t epoch,
