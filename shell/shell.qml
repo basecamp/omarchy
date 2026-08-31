@@ -890,14 +890,11 @@ ShellRoot {
     }
   }
 
-  // Newsboat agents run inside a filesystem and PID sandbox. They can reach
-  // this narrow IPC bridge, while direct GUI launchers cannot escape that
-  // namespace to create a visible confirmation window.
-  property string newsboatConfirmationRequestId: ""
-
-  Process {
-    id: newsboatConfirmationProcess
-    onExited: shell.newsboatConfirmationRequestId = ""
+  // Newsboat agents run inside a filesystem and PID sandbox. They can request
+  // this Shell-owned surface, but the approval action remains private to QML.
+  NewsboatConfirmation {
+    id: newsboatConfirmation
+    omarchyPath: shell.omarchyPath
   }
 
   // ---------------------------------------------------------- shell IPC
@@ -910,31 +907,15 @@ ShellRoot {
     }
 
     function launchNewsboatConfirmation(requestId: string): string {
-      var id = String(requestId || "")
-      if (!/^[A-Za-z0-9_-]{8,64}$/.test(id)) return "invalid"
-      if (newsboatConfirmationProcess.running) {
-        return shell.newsboatConfirmationRequestId === id ? "ok" : "busy"
-      }
-
-      shell.newsboatConfirmationRequestId = id
-      newsboatConfirmationProcess.command = [
-        shell.omarchyPath + "/bin/omarchy-launch-floating-terminal-with-presentation",
-        shell.omarchyPath + "/bin/omarchy-newsboat-confirm --respond " + id + "; exit 130"
-      ]
-      newsboatConfirmationProcess.running = true
-      return "ok"
+      return newsboatConfirmation.launch(requestId)
     }
 
     function newsboatConfirmationStatus(requestId: string): string {
-      return newsboatConfirmationProcess.running
-          && shell.newsboatConfirmationRequestId === String(requestId || "")
-        ? "active" : "inactive"
+      return newsboatConfirmation.status(requestId)
     }
 
     function cancelNewsboatConfirmation(requestId: string): string {
-      if (shell.newsboatConfirmationRequestId !== String(requestId || "")) return "unknown"
-      if (newsboatConfirmationProcess.running) newsboatConfirmationProcess.running = false
-      return "ok"
+      return newsboatConfirmation.cancel(requestId)
     }
 
     function applyTheme(colorsB64: string, shellB64: string): string {

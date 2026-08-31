@@ -91,7 +91,7 @@ respond() {
 
   local kind prompt read_count leave_count feed_count
   local decision=failed confirm_status=0
-  trap 'if [[ $response_written == "false" ]]; then publish_response "$response_file" failed; fi; [[ -z $response_tmp ]] || rm -f -- "$response_tmp"' EXIT
+  trap 'if [[ $response_written == "false" && -f $request_file ]]; then publish_response "$response_file" failed; fi; [[ -z $response_tmp ]] || rm -f -- "$response_tmp"' EXIT
 
   kind=$(jq -er '.kind | select(. == "triage" or . == "scout")' "$request_file") || exit 2
   if [[ $kind == "triage" ]]; then
@@ -111,6 +111,51 @@ respond() {
   fi
 
   publish_response "$response_file" "$decision"
+}
+
+bridge() {
+  (($# == 1)) || usage
+  local request_id=$1
+  [[ $request_id =~ ^[A-Za-z0-9_-]{8,64}$ ]] || usage
+
+  local parent_command
+  parent_command=$(ps -o comm= -p "$PPID" 2>/dev/null) || parent_command=""
+  parent_command=${parent_command//[[:space:]]/}
+  if [[ $parent_command != "quickshell" ]]; then
+    echo "The Newsboat confirmation bridge can only be opened by Omarchy Shell" >&2
+    exit 2
+  fi
+
+  prepare_state_dir
+
+  local request_file="$state_dir/request.$request_id"
+  local response_file="$state_dir/response.$request_id"
+  if [[ ! -f $request_file || -L $request_file || $(owner_uid "$request_file") != $UID ]]; then
+    echo "That Newsboat confirmation is no longer available" >&2
+    exit 2
+  fi
+
+  local kind read_count leave_count feed_count descriptor decision=failed
+  trap 'if [[ $response_written == "false" && -f $request_file ]]; then publish_response "$response_file" failed; fi; [[ -z $response_tmp ]] || rm -f -- "$response_tmp"' EXIT
+
+  jq -e '.version == 1' "$request_file" >/dev/null || exit 2
+  kind=$(jq -er '.kind | select(. == "triage" or . == "scout")' "$request_file") || exit 2
+  if [[ $kind == "triage" ]]; then
+    read_count=$(jq -er '.read | select(type == "number" and . >= 0 and floor == .)' "$request_file") || exit 2
+    leave_count=$(jq -er '.leave | select(type == "number" and . >= 0 and floor == .)' "$request_file") || exit 2
+    descriptor=$(jq -cn --argjson read "$read_count" --argjson leave "$leave_count" \
+      '{kind: "triage", read: $read, leave: $leave}')
+  else
+    feed_count=$(jq -er '.count | select(type == "number" and . >= 1 and . <= 5 and floor == .)' "$request_file") || exit 2
+    descriptor=$(jq -cn --argjson count "$feed_count" '{kind: "scout", count: $count}')
+  fi
+
+  printf '%s\n' "$descriptor"
+  if IFS= read -r decision && [[ $decision == "approved" || $decision == "declined" ]]; then
+    publish_response "$response_file" "$decision"
+  else
+    publish_response "$response_file" failed
+  fi
 }
 
 cleanup_request() {
@@ -202,6 +247,9 @@ request() {
 if [[ ${1:-} == "--respond" ]]; then
   shift
   respond "$@"
+elif [[ ${1:-} == "--bridge" ]]; then
+  shift
+  bridge "$@"
 else
   (($# > 0)) || usage
   request "$@"
