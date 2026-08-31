@@ -81,6 +81,43 @@ if grep -q 'unresolvable package conflicts detected' "$errors"; then
   exit 0
 fi
 
+# kernel-modules-hook restores the *running* kernel's module tree as unowned
+# files after a linux downgrade (release migration, channel switch). Pacman's
+# conflict check runs before PreTransaction hooks, so 10-linux-modules-pre never
+# clears them, and linux-modules-cleanup.service skips the running kver — every
+# omarchy update then fails with thousands of "exists in filesystem" lines until
+# reboot. When every reported conflict is an unowned path under that tree,
+# quarantine the whole tree once and retry.
+running_kver=${OMARCHY_RUNNING_KVER:-$(uname -r)}
+modules_root=${OMARCHY_MODULES_ROOT:-/usr/lib/modules}
+running_modules="$modules_root/$running_kver"
+filesystem_conflicts=$(grep -c ' exists in filesystem' "$errors" || true)
+
+mapfile -t module_leftovers < <(
+  grep -oP '^[a-z0-9@._+-]+: \K.+(?= exists in filesystem$)' "$errors" |
+    while IFS= read -r path; do
+      [[ $path == "$running_modules" || $path == "$running_modules"/* ]] || continue
+      pacman -Qo "$path" &>/dev/null || echo "$path"
+    done
+)
+
+if ((${#module_leftovers[@]} > 0)) &&
+  ((${#module_leftovers[@]} == filesystem_conflicts)) &&
+  [[ -e $running_modules || -L $running_modules ]]; then
+  echo -e "\e[33m\nClearing unowned modules for the running kernel (left by kernel-modules-hook after a downgrade):\e[0m"
+  sudo mkdir -p "$replaced${running_modules%/*}"
+  sudo mv -T --backup=numbered "$running_modules" "$replaced$running_modules"
+  moved+=("$running_modules")
+  echo "  $running_modules -> $replaced$running_modules"
+  echo
+
+  if OMARCHY_UPDATE_RETRY=1 omarchy-update-system-pkgs; then
+    moved=()
+    exit 0
+  fi
+  exit 1
+fi
+
 # Paths one of these packages installs that pacman doesn't own. Moving them out
 # of the way is what lets the upgrade through, and works on a leftover directory
 # as well as a file.
@@ -96,7 +133,7 @@ mapfile -t leftovers < <(
 
 # All of them or none: moving a subset leaves the retry blocked by the rest, and
 # the moved files inactive for nothing.
-((${#leftovers[@]} == $(grep -c ' exists in filesystem' "$errors"))) || exit 1
+((${#leftovers[@]} == filesystem_conflicts)) || exit 1
 
 echo -e "\e[33m\nTaking over files pacman doesn't own yet:\e[0m"
 for path in "${leftovers[@]}"; do

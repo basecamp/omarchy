@@ -46,6 +46,8 @@ replaced="$test_tmp/replaced"
 
 run_update() {
   OMARCHY_REPLACED_DIR="$replaced" \
+    OMARCHY_RUNNING_KVER="${OMARCHY_RUNNING_KVER:-}" \
+    OMARCHY_MODULES_ROOT="${OMARCHY_MODULES_ROOT:-}" \
     RETRY_FAILS="${RETRY_FAILS:-}" \
     RETRY_INSTALLS="${RETRY_INSTALLS:-}" \
     PACMAN_ATTEMPTS="$test_tmp/attempts" \
@@ -264,6 +266,61 @@ fi
 [[ -f $stray ]] ||
   fail "the handler moved a live file when run outside an update"
 pass "the handler refuses a report handed to it outside an update"
+
+# kernel-modules-hook leftovers: unowned files under the running kver's modules
+# tree, blamed on linux. Moving the whole tree once unblocks the upgrade.
+fresh_work
+kver="7.1.9-arch1-2"
+modules_root="$work/lib/modules"
+modules="$modules_root/$kver"
+mkdir -p "$modules/kernel"
+echo "unowned-mod" >"$modules/kernel/mod.ko"
+echo "dep" >"$modules/modules.dep"
+write_raw_report \
+  "linux: $modules/kernel/mod.ko exists in filesystem" \
+  "linux: $modules/modules.dep exists in filesystem"
+if ! OMARCHY_RUNNING_KVER="$kver" OMARCHY_MODULES_ROOT="$modules_root" \
+  run_update >"$test_tmp/out" 2>"$test_tmp/err"; then
+  fail "unowned running-kernel modules leftovers are not cleared" "$(cat "$test_tmp/err"; cat "$test_tmp/out")"
+fi
+[[ ! -e $modules ]] || fail "the running kernel modules tree is left in pacman's way"
+[[ -d $replaced$modules ]] || fail "the modules tree was not quarantined whole"
+grep -q "kernel-modules-hook" "$test_tmp/out" "$test_tmp/err" ||
+  fail "the handler does not name kernel-modules-hook leftovers"
+pass "unowned modules for the running kernel are quarantined as one tree"
+
+# A modules conflict mixed with an unrelated one must not move anything.
+fresh_work
+modules_root="$work/lib/modules"
+modules="$modules_root/$kver"
+mkdir -p "$modules"
+echo "mod" >"$modules/x"
+echo "other" >"$stray"
+write_raw_report \
+  "linux: $modules/x exists in filesystem" \
+  "some-package: $stray exists in filesystem"
+if OMARCHY_RUNNING_KVER="$kver" OMARCHY_MODULES_ROOT="$modules_root" \
+  run_update >"$test_tmp/out" 2>"$test_tmp/err"; then
+  fail "a modules leftover beside an unrelated conflict reports success"
+fi
+[[ -e $modules && -e $stray ]] ||
+  fail "a mixed conflict moved files even though the retry would still fail"
+pass "modules leftovers only clear when every reported conflict is under that tree"
+
+# Modules for a different kver than the running one are not auto-cleared: the
+# hook only restores the booted kernel, and wiping another tree is unrelated.
+fresh_work
+modules_root="$work/lib/modules"
+other_modules="$modules_root/6.0.0-other"
+mkdir -p "$other_modules"
+echo "old" >"$other_modules/x"
+write_raw_report "linux: $other_modules/x exists in filesystem"
+if OMARCHY_RUNNING_KVER="$kver" OMARCHY_MODULES_ROOT="$modules_root" \
+  run_update >"$test_tmp/out" 2>"$test_tmp/err"; then
+  fail "modules for a non-running kver are auto-cleared"
+fi
+[[ -e $other_modules ]] || fail "modules for a non-running kver were moved away"
+pass "only the running kernel's modules tree is eligible for auto-clear"
 
 # The happy path must not pay for any of this.
 fresh_work
