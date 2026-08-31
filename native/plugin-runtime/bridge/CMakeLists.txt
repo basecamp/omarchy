@@ -83,4 +83,40 @@ if(BUILD_TESTING)
     TIMEOUT 10
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME="
     LABELS "unit;shell;bridge;security")
+
+  add_executable(omarchy-plugin-permission-control-contract-test
+    src/PermissionControl.cpp
+    src/PluginManager.cpp
+    tests/PermissionControl_contract_test.cpp
+    src/SurfaceEndpoint.cpp
+    src/SurfaceEndpointOwner.cpp
+    src/SurfaceProjectionModel.cpp
+    ../channel-integration/src/runtime_bootstrap.cpp
+    ../channel-integration/src/runtime_roots.cpp
+  )
+  omarchy_plugin_target_defaults(omarchy-plugin-permission-control-contract-test)
+  target_compile_definitions(omarchy-plugin-permission-control-contract-test PRIVATE
+    OMARCHY_PLUGIN_MANAGER_TESTING
+    OMARCHY_RUNTIME_BOOTSTRAP_TESTING
+    OMARCHY_RUNTIME_ROOTS_TESTING)
+  target_include_directories(omarchy-plugin-permission-control-contract-test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../trusted-bridge/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../channel-integration/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../channel-integration/tests"
+  )
+  target_link_libraries(omarchy-plugin-permission-control-contract-test PRIVATE
+    Qt6::Core Qt6::DBus Qt6::Gui Qt6::Qml Qt6::Quick
+    omarchy-plugin-trusted-bridge
+    omarchy-plugin-host-session
+    omarchy-plugin-authenticated-session
+    omarchy-plugin-surface-host
+  )
+  add_test(NAME plugin-permission-control-contract
+    COMMAND omarchy-plugin-permission-control-contract-test)
+  set_tests_properties(plugin-permission-control-contract PROPERTIES
+    TIMEOUT 10
+    SKIP_RETURN_CODE 77
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME="
+    LABELS "unit;shell;bridge;security;permission-contract")
 endif()

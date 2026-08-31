@@ -487,36 +487,6 @@ PermissionControl::selectDynamicOperations(
 }
 
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
-QJsonObject PermissionControlTestAccess::projectBuiltinRow(
-    const permissions::CapabilityRequest &request,
-    const permissions::GrantRecord &grant, bool list) {
-  return list ? builtin_list_row("opaque-row", request, grant, true)
-              : builtin_row("opaque-row", request, grant, true);
-}
-
-QJsonObject PermissionControlTestAccess::projectDynamicRow(
-    const definitions::DynamicRequest &request,
-    const definitions::DynamicGrant &grant, bool list) {
-  return list ? dynamic_list_row("opaque-row", request, grant, true)
-              : dynamic_row("opaque-row", request, grant, std::nullopt, true);
-}
-
-std::vector<std::string> PermissionControlTestAccess::selectDynamicOperations(
-    const std::vector<std::pair<std::string, std::string>> &cached,
-    const QJsonArray &selected) {
-  PermissionControl::Row row;
-  row.dynamic = true;
-  for (const auto &[id, name] : cached)
-    row.operations.push_back({.id = id, .name = definitions::Name(name)});
-  const auto result = PermissionControl::selectDynamicOperations(row, selected);
-  std::vector<std::string> names;
-  if (result) {
-    for (const auto &name : result->values())
-      names.emplace_back(name.view());
-  }
-  return names;
-}
-
 void PermissionControlTestAccess::ageOperation(PermissionControl &control,
                                                const QString &operation_id,
                                                std::chrono::minutes age) {
