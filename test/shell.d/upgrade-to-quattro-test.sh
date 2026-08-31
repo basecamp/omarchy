@@ -143,6 +143,8 @@ for package in broadcom-wl broadcom-wl-dkms; do
   grep -F "$package" <<<"$bcm4350_body" >/dev/null ||
     fail "Omarchy 4 upgrade removes legacy package $package from Apple BCM4350 systems"
 done
+grep -F 'pacman -Rdd --noconfirm "${legacy_wl_packages[@]}" ||' <<<"$bcm4350_body" >/dev/null ||
+  fail "Omarchy 4 upgrade survives a failed legacy wl removal"
 ! function_body remove_retired_default_packages | grep -F 'broadcom-wl' >/dev/null ||
   fail "Omarchy 4 upgrade does not retire broadcom-wl globally"
 bcm4350_line=$(grep -n '^remove_legacy_bcm4350_wl_driver$' "$upgrade_to_quattro" | cut -d: -f1)
