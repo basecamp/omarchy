@@ -1,11 +1,75 @@
-#!/bin/bash
+#!/bin/bash -p
 
 # omarchy:summary=Update AUR packages if any are installed
 
-if pacman -Qem >/dev/null; then
-  if omarchy-pkg-aur-accessible; then
+if [[ $- != *p* ]]; then
+  echo "Refusing an unsafe Bash startup for the AUR update." >&2
+  exit 126
+fi
+
+require_privileged_bash_startup() {
+  [[ $- == *p* ]] || return 1
+  /usr/bin/env -i /usr/bin/bash -p -c '
+    [[ $1 =~ ^[1-9][0-9]*$ ]] || exit 1
+    mapfile -d "" -t argv <"/proc/$1/cmdline" || exit 1
+    executable=$(/usr/bin/readlink -e -- "/proc/$1/exe") || exit 1
+    [[ $executable == /usr/bin/bash ]]
+    [[ ${argv[0]:-} == /bin/bash || ${argv[0]:-} == /usr/bin/bash ]]
+    [[ ${argv[1]:-} == -p ]]
+  ' omarchy-bash-startup "$$"
+}
+if ! require_privileged_bash_startup; then
+  echo "Refusing an unsafe Bash startup for the AUR update." >&2
+  exit 126
+fi
+unset -f require_privileged_bash_startup
+
+set -e
+
+sanitize_bash_startup_environment() {
+  local environment_entry environment_name
+  local needs_reexec=0
+  local -a environment_unsets=(-u BASH_ENV -u ENV)
+
+  [[ -z ${BASH_ENV+x} && -z ${ENV+x} ]] || needs_reexec=1
+  while IFS= read -r -d '' environment_entry; do
+    environment_name="${environment_entry%%=*}"
+    if [[ $environment_name == BASH_FUNC_*%% ]]; then
+      environment_unsets+=(-u "$environment_name")
+      needs_reexec=1
+    fi
+  done < <(/usr/bin/env -0)
+
+  if (( needs_reexec )); then
+    exec /usr/bin/env "${environment_unsets[@]}" /usr/bin/bash -p "$0" "$@"
+  fi
+}
+sanitize_bash_startup_environment "$@"
+unset -f sanitize_bash_startup_environment
+
+cleanup_sudo_credentials() {
+  /usr/bin/sudo -k || true
+}
+
+LC_ALL=C /usr/bin/sudo -h 2>&1 | /usr/bin/grep -Eq '^usage: sudo .*\[[^]]*N[^]]*\]' || {
+  echo "This sudo does not support --no-update; refusing a mixed-trust AUR update." >&2
+  exit 1
+}
+trap cleanup_sudo_credentials EXIT
+/usr/bin/sudo -k || exit 1
+
+if /usr/bin/pacman -Qem >/dev/null; then
+  if /usr/bin/omarchy-pkg-aur-accessible; then
     echo -e "\e[32m\nUpdate AUR packages\e[0m"
-    yay -Sua --noconfirm --cleanafter --ignore gcc14,gcc14-libs
+
+    # A user's yay config can select another sudo command and enable a
+    # timestamp-refresh loop. Pin both settings on the command line. AUR build
+    # code may run before package authentication, so this boundary applies to
+    # standalone invocations as well as the top-level update.
+    /usr/bin/yay --sudo /usr/bin/sudo --sudoflags=-N --sudoloop=false \
+      -Sua --noconfirm --cleanafter --ignore gcc14,gcc14-libs
+    /usr/bin/sudo -k || exit 1
+    trap - EXIT
     echo
   else
     echo -e "\e[31m\nAUR is unavailable (so skipping updates)\e[0m"

@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# omarchy:summary=Run makepkg with kernel-enforced privilege escalation disabled.
+# omarchy:hidden=true
+
+# Internal makepkg boundary for AUR and local PKGBUILD execution. no_new_privs
+# is inherited by every child, so neither makepkg internals nor PKGBUILD code
+# can turn a setuid sudo invocation into root authority.
+
+set -euo pipefail
+PATH=/usr/bin:/usr/sbin:/bin:/sbin
+export PATH
+unset BASH_ENV ENV CDPATH GLOBIGNORE
+
+[[ -x /usr/bin/setpriv && -x /usr/bin/makepkg ]] || {
+  echo "Required package-build isolation tools are unavailable." >&2
+  exit 1
+}
+
+exec /usr/bin/setpriv --no-new-privs /usr/bin/makepkg "$@"
