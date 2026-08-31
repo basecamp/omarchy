@@ -310,6 +310,8 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host,
   require(!api.applyPermissionSnapshot(77, payload) &&
               api.permissions() == before,
           "a duplicate same-generation snapshot mutated immutable QML state");
+  require(!api.brokerReady() && api.markBrokerReady() && api.brokerReady(),
+          "broker readiness did not follow the accepted permission snapshot");
 
   const auto fresh_api = [&] {
     return std::make_unique<worker::QmlBrokerApi>(
@@ -624,6 +626,90 @@ void run() {
   handshake(endpoint, pair.descriptors[1]);
   worker::QmlBrokerApi api(endpoint,
       std::make_unique<worker::BootstrapInvokeEncoder>());
+  QQmlEngine readiness_engine;
+  readiness_engine.rootContext()->setContextProperty(
+      QStringLiteral("runtime"), &api);
+  QQmlComponent readiness_component(&readiness_engine);
+  readiness_component.setData(R"(
+    import QtQml
+    QtObject {
+      id: root
+      property bool observedReady: runtime.brokerReady
+      property int transitions: 0
+      property var startupCall
+      property var readyCall
+      function requestWrite() {
+        return runtime.invoke("storage_write", {
+          key: "startup-state", value: "saved",
+          quotaBytes: 65536, itemBytes: 4096
+        })
+      }
+      Component.onCompleted: startupCall = requestWrite()
+      property Connections readiness: Connections {
+        target: runtime
+        function onBrokerReadyChanged() {
+          root.transitions += 1
+          if (runtime.brokerReady)
+            root.readyCall = root.requestWrite()
+        }
+      }
+    })", QUrl());
+  std::unique_ptr<QObject> readiness(readiness_component.create());
+  require(readiness != nullptr && !api.brokerReady() &&
+              !readiness->property("observedReady").toBool(),
+          "broker was QML-visible as ready before startup acknowledgement");
+  require(fcntl(pair.descriptors[1], F_SETFL, O_NONBLOCK) == 0,
+          "early-invoke nonblocking host setup failed");
+  auto *early = qobject_cast<worker::BrokerCall *>(
+      readiness->property("startupCall").value<QObject *>());
+  std::byte early_byte{};
+  errno = 0;
+  require(early != nullptr && early->finished() && !early->ok() &&
+              early->correlation() == 0 &&
+              early->error() == QStringLiteral("broker-not-ready") &&
+              recv(pair.descriptors[1], &early_byte, 1, 0) < 0 &&
+              (errno == EAGAIN || errno == EWOULDBLOCK),
+          "startup QML emitted a broker request before readiness");
+  require(!api.markBrokerReady() && !api.brokerReady(),
+          "broker became ready before a permission snapshot existed");
+  const auto empty_snapshot = wire::permission_snapshot::encode({
+      .manifest_request_fingerprint =
+          manifest::requested_capability_fingerprint({}),
+      .permissions = {}});
+  require(api.applyPermissionSnapshot(77, empty_snapshot) &&
+              !api.brokerReady() &&
+              !readiness->property("observedReady").toBool(),
+          "accepting a permission snapshot implied broker readiness");
+  require(api.markBrokerReady() && api.brokerReady() &&
+              !api.markBrokerReady(),
+          "broker readiness was not a one-shot startup transition");
+  drain_events();
+  require(readiness->property("observedReady").toBool() &&
+              readiness->property("transitions").toInt() == 1,
+          "QML did not observe the exact broker readiness transition");
+  require(fcntl(pair.descriptors[1], F_SETFL, 0) == 0,
+          "blocking host restore failed");
+  auto *ready_call = qobject_cast<worker::BrokerCall *>(
+      readiness->property("readyCall").value<QObject *>());
+  require(ready_call != nullptr && !ready_call->finished() &&
+              ready_call->correlation() != 0,
+          "QML readiness transition did not permit a broker request");
+  const auto ready_request_bytes = receive_packet(pair.descriptors[1]);
+  const auto ready_request = wire::decode_packet(
+      ready_request_bytes, wire::EndpointRole::broker);
+  broker::DecodedBrokerRequest ready_decoded{};
+  require(ready_request &&
+              broker::decode_broker_request(
+                  ready_request.packet.header.message_type,
+                  ready_request.packet.payload, ready_decoded) ==
+                  broker::BrokerDecodeResult::accepted &&
+              ready_decoded.operation ==
+                  permissions::OperationId::storage_write,
+          "post-readiness QML request was not a bounded broker operation");
+  finish(api, endpoint, pair.descriptors[1], host_sequence,
+         ready_call->correlation(), broker::kBrokerResultMessage, {});
+  require(ready_call->finished() && ready_call->ok(),
+          "post-readiness QML request did not complete");
   IntentSink intent_sink;
   IntentSink second_sink;
   require(api.bindSurfaceIntentSink(intent_sink) &&

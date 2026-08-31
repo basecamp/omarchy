@@ -103,6 +103,7 @@ class QmlBrokerApi final : public QObject {
   Q_OBJECT
   Q_PROPERTY(QVariantMap permissions READ permissions CONSTANT)
   Q_PROPERTY(qulonglong permissionGeneration READ permissionGeneration CONSTANT)
+  Q_PROPERTY(bool brokerReady READ brokerReady NOTIFY brokerReadyChanged)
 
 public:
   QmlBrokerApi(WorkerEndpoint &endpoint,
@@ -130,6 +131,10 @@ public:
   [[nodiscard]] bool bindSurfaceIntentSink(SurfaceIntentSink &sink);
   [[nodiscard]] QVariantMap permissions() const;
   [[nodiscard]] qulonglong permissionGeneration() const;
+  [[nodiscard]] bool brokerReady() const;
+  // The worker calls this only after its permission-snapshot ACK has been
+  // written to the control channel.
+  [[nodiscard]] bool markBrokerReady();
 
   // This is accepted only from the authenticated host control path. It is a
   // UI hint; invoke() and the broker remain authoritative for every effect.
@@ -145,6 +150,7 @@ public:
 
 signals:
   void callFinished(QObject *call);
+  void brokerReadyChanged();
 
 private:
   static constexpr std::size_t kMaximumPending = 32;
@@ -162,6 +168,7 @@ private:
   std::array<Pending, kMaximumPending> pending_{};
   std::uint64_t next_correlation_ = 1;
   QString status_ = QStringLiteral("ready");
+  bool broker_ready_ = false;
   struct RequestedPermission {
     QString capability;
     QStringList operations;

@@ -275,7 +275,10 @@ void BrokerCall::reject(QString error) {
 QmlBrokerApi::QmlBrokerApi(WorkerEndpoint &endpoint,
                            std::unique_ptr<InvokeEncoder> encoder,
                            QObject *parent)
-    : QObject(parent), endpoint_(endpoint), encoder_(std::move(encoder)) {}
+    : QObject(parent), endpoint_(endpoint), encoder_(std::move(encoder)),
+      manifest_request_fingerprint_(
+          omarchy::plugins::manifest::requested_capability_fingerprint({})),
+      activation_generation_(endpoint.generation()) {}
 
 QmlBrokerApi::QmlBrokerApi(
     WorkerEndpoint &endpoint, std::unique_ptr<InvokeEncoder> encoder,
@@ -489,6 +492,8 @@ QVariant QmlBrokerApi::invoke(const QString &operation,
                               const QVariantMap &arguments) {
   if (status_ != QStringLiteral("ready") || encoder_ == nullptr)
     return rejected(QStringLiteral("broker-unavailable"));
+  if (!broker_ready_)
+    return rejected(QStringLiteral("broker-not-ready"));
   auto encoded = encoder_->encode(operation.toUtf8().toStdString(), arguments);
   if (!encoded)
     return rejected(QStringLiteral("operation-undeclared"));
@@ -586,9 +591,22 @@ bool QmlBrokerApi::receive(ReceivedPacket packet) {
 }
 
 QString QmlBrokerApi::status() const { return status_; }
+bool QmlBrokerApi::brokerReady() const { return broker_ready_; }
+bool QmlBrokerApi::markBrokerReady() {
+  if (status_ != QStringLiteral("ready") || broker_ready_ ||
+      !host_snapshot_received_)
+    return false;
+  broker_ready_ = true;
+  emit brokerReadyChanged();
+  return true;
+}
 void QmlBrokerApi::disconnect(QString reason) {
   if (status_ != QStringLiteral("ready")) return;
   status_ = std::move(reason);
+  if (broker_ready_) {
+    broker_ready_ = false;
+    emit brokerReadyChanged();
+  }
   for (auto &pending : pending_) {
     if (pending.call != nullptr) {
       pending.call->reject(QStringLiteral("broker-disconnected"));

@@ -377,8 +377,12 @@ private:
         fatal("QML load completed outside the startup authority phase");
         return;
       }
-      if (!control_.send(wire::kPermissionSnapshotAcceptedMessage, {}, 0))
+      if (!control_.send(wire::kPermissionSnapshotAcceptedMessage, {}, 0)) {
         fatal("permission snapshot acknowledgement failed");
+        return;
+      }
+      if (!broker_api_->markBrokerReady())
+        fatal("broker became ready outside the startup authority phase");
     });
   }
 
