@@ -63,8 +63,8 @@ void capability_definition_loader_tests() {
                            std::string("contract-digest").size(),
                            "adapter-digest");
   require(parse_definition_document(old_digest_field,
-                                    DefinitionSource::local_admin, verifier,
-                                    parsed) == LoadResult::invalid_document,
+                                    DefinitionSource::local_admin, parsed) ==
+              LoadResult::invalid_document,
           "removed adapter-digest field remained an accepted alias");
 
   char temporary[] = "/tmp/omarchy-capability-loader.XXXXXX";
