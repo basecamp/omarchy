@@ -22,6 +22,10 @@ Item {
   property bool fingerprintAuthenticating: false
   property bool passwordPamConfigured: false
   property bool fingerprintConfigured: false
+  // A probe that could not reach fprintd says nothing about whether a print is
+  // enrolled, so it is counted rather than believed. See fingerprintCheckProc.
+  property int fingerprintProbeMisses: 0
+  readonly property int fingerprintProbeMissLimit: 10
   property bool previewVisible: false
   property string enteredPassword: ""
   property string pendingPassword: ""
@@ -120,7 +124,9 @@ Item {
     failedAttempts = 0
     authenticatingPassword = false
     fingerprintAuthenticating = false
+    fingerprintProbeMisses = 0
     fingerprintRetryTimer.stop()
+    fingerprintProbeRetryTimer.stop()
     if (passwordPam.active) passwordPam.abort()
     if (fingerprintPam.active) fingerprintPam.abort()
   }
@@ -222,7 +228,7 @@ Item {
     if (!lockRequested) return
     if (result === PamResult.Success) {
       finishUnlock()
-    } else if (fingerprintConfigured) {
+    } else if (fingerprintConfigured && fingerprintProbeMisses === 0) {
       fingerprintRetryTimer.restart()
     }
   }
@@ -349,7 +355,9 @@ Item {
 
     onError: function(error) {
       root.fingerprintAuthenticating = false
-      if (root.lockRequested && root.fingerprintConfigured) fingerprintRetryTimer.restart()
+      if (root.lockRequested && root.fingerprintConfigured && root.fingerprintProbeMisses === 0) {
+        fingerprintRetryTimer.restart()
+      }
     }
   }
 
@@ -358,6 +366,16 @@ Item {
     interval: 250
     repeat: false
     onTriggered: root.startFingerprint()
+  }
+
+  // Slower than fingerprintRetryTimer on purpose: that one waits for a finger,
+  // this one waits for a daemon to come back. Ten tries at a second covers the
+  // resume window without adding a second tight retry loop.
+  Timer {
+    id: fingerprintProbeRetryTimer
+    interval: 1000
+    repeat: false
+    onTriggered: root.refreshFingerprintStatus()
   }
 
   Process {
@@ -377,10 +395,54 @@ Item {
 
   Process {
     id: fingerprintCheckProc
-    command: ["bash", "-c", "if [[ -f /etc/pam.d/omarchy-lock-fingerprint ]] && command -v fprintd-list >/dev/null 2>&1 && fprintd-list \"$USER\" 2>/dev/null | grep -qi finger; then echo yes; else echo no; fi"]
+    // Three states, because "the probe returned nothing useful" and "this user
+    // has no print enrolled" are not the same answer:
+    //
+    //   no      - definitive: no PAM config, no fprintd-list, or fprintd
+    //             answered and the user has nothing enrolled
+    //   yes     - fprintd answered and listed at least one enrolled print
+    //   unknown - fprintd could not be reached, so the question is unanswered
+    //
+    // unknown is what the resume window produces. fprintd is D-Bus activated,
+    // and an activation request made while it is stopping, or while systemd is
+    // still working through the resume, fails outright:
+    //
+    //   Impossible to get devices: GDBus.Error:...NameHasNoOwner: Could not
+    //   activate remote peer 'net.reactivated.Fprint': activation request failed
+    //
+    // Keyed on the output rather than the exit status: fprintd-list returns 0
+    // and 1 inconsistently for identical input (fprintd 1.94.5), so trusting
+    // the status would strand a working reader on a flaky 1.
+    //
+    // The enrolled test is ' - #' rather than a looser match on "finger"
+    // because both the negative message ("has no fingers enrolled") and the
+    // device name ("Goodix MOC Fingerprint Sensor") contain it.
+    command: ["bash", "-c", "if [[ ! -f /etc/pam.d/omarchy-lock-fingerprint ]] || ! command -v fprintd-list >/dev/null 2>&1; then echo no; else out=$(fprintd-list \"$USER\" 2>/dev/null); if grep -q ' - #' <<<\"$out\"; then echo yes; elif grep -qi 'no fingers enrolled' <<<\"$out\"; then echo no; else echo unknown; fi; fi"]
     stdout: StdioCollector { id: fingerprintCheckStdout; waitForEnd: true }
     onExited: {
-      root.fingerprintConfigured = String(fingerprintCheckStdout.text || "").trim() === "yes"
+      var answer = String(fingerprintCheckStdout.text || "").trim()
+
+      // Hold the previous answer and ask again rather than tearing fingerprint
+      // down over a daemon that is on its way back. Without this a single miss
+      // is terminal for the whole lock: fingerprintConfigured gates the retry
+      // in handleFingerprintFinished, and nothing re-probes until the next
+      // beginLock. Bounded so a genuinely broken fprintd still settles.
+      if (answer === "unknown") {
+        root.fingerprintProbeMisses += 1
+        if (root.lockRequested && root.fingerprintProbeMisses <= root.fingerprintProbeMissLimit) {
+          // Nothing can reach the reader until the daemon is back, so let the
+          // probe own the wait. Leaving the 250ms finger retry armed spins PAM
+          // subprocesses against a daemon that is not there, which is the
+          // amplifier behind #7176 and the overlapping-claim crash in #7172.
+          fingerprintRetryTimer.stop()
+          fingerprintProbeRetryTimer.restart()
+          return
+        }
+        answer = "no"
+      }
+
+      root.fingerprintProbeMisses = 0
+      root.fingerprintConfigured = answer === "yes"
       if (root.lockRequested && root.fingerprintConfigured) root.startFingerprint()
       else if (!root.fingerprintConfigured && fingerprintPam.active) fingerprintPam.abort()
     }
