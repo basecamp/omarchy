@@ -327,9 +327,11 @@ review_permissions() {
   review_id=$(jq -r '.operationId' <<<"$operation_json")
   result=$(jq -c '.result' <<<"$operation_json")
   count=$(jq -r '.permissions | length' <<<"$result")
-  (( count > 0 )) || fail "plugin '$plugin_id' has no permissions to review"
 
   printf 'Reviewing permissions for %s\n' "$(sanitize_json_string "$result" '.plugin')"
+  if (( count == 0 )); then
+    echo "  No permissions requested."
+  fi
   for (( index = 0; index < count; index++ )); do
     row=$(jq -c ".permissions[$index]" <<<"$result")
     print_permission_row "$row" "$(( index + 1 ))"

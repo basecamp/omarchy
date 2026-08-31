@@ -65,7 +65,11 @@ case ${2:-} in
         printf '%s\n' "$list_result"
         ;;
       permission-11111111111111111111111111111111)
-        printf '%s\n' '{"operationId":"permission-11111111111111111111111111111111","kind":"review","state":"succeeded","result":{"plugin":"org.example.review","permissions":[{"rowId":"row-11111111111111111111111111111111","kind":"builtin","name":"notifications.send","required":true,"available":true,"state":"undecided","scope":"desktop","operations":["send"],"delta":"added","reason":"Show status"},{"rowId":"row-22222222222222222222222222222222","kind":"dynamic","name":"cli.example","title":"Example CLI","required":false,"available":true,"state":"undecided","scope":"repository","operations":[{"operationId":"operation-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","name":"read","label":"Read\u061c\u200efiles\u200f\u202eend\u2069"},{"operationId":"operation-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","name":"write","label":"Write"}],"delta":"added","reason":"Read \u009b31m\u061c\u200eleft\u200f\u202eonly\u2069 when selected"}]}}'
+        if [[ ${PERMISSION_TEST_MODE:-} == "zero-review" ]]; then
+          printf '%s\n' '{"operationId":"permission-11111111111111111111111111111111","kind":"review","state":"succeeded","result":{"plugin":"org.example.review","permissions":[]}}'
+        else
+          printf '%s\n' '{"operationId":"permission-11111111111111111111111111111111","kind":"review","state":"succeeded","result":{"plugin":"org.example.review","permissions":[{"rowId":"row-11111111111111111111111111111111","kind":"builtin","name":"notifications.send","required":true,"available":true,"state":"undecided","scope":"desktop","operations":["send"],"delta":"added","reason":"Show status"},{"rowId":"row-22222222222222222222222222222222","kind":"dynamic","name":"cli.example","title":"Example CLI","required":false,"available":true,"state":"undecided","scope":"repository","operations":[{"operationId":"operation-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","name":"read","label":"Read\u061c\u200efiles\u200f\u202eend\u2069"},{"operationId":"operation-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","name":"write","label":"Write"}],"delta":"added","reason":"Read \u009b31m\u061c\u200eleft\u200f\u202eonly\u2069 when selected"}]}}'
+        fi
         ;;
       permission-22222222222222222222222222222222)
         [[ ${PERMISSION_TEST_MODE:-} != "poll-fail" ]] || exit 1
@@ -225,6 +229,16 @@ jq -e '
   ]
 ' <<<"$apply_choices" >/dev/null || fail "interactive review did not submit exact row and operation handles" "$apply_choices"
 pass "interactive review prompts every row and narrows dynamic operations"
+
+zero_review_output=$(PERMISSION_TEST_MODE=zero-review script -qefc \
+  "env PATH='$test_dir/bin:$PATH' PERMISSION_TEST_CALLS='$calls' PERMISSION_TEST_MODE=zero-review '$ROOT/bin/omarchy-plugin-permissions' review org.example.review" /dev/null)
+[[ $zero_review_output == *"No permissions requested."* &&
+  $zero_review_output == *"Permissions updated for org.example.review"* ]] ||
+  fail "zero-permission review did not activate without a synthetic prompt" "$zero_review_output"
+zero_choices=$(awk -F '\t' '$2 == "apply" {print $4 $5 $6}' "$calls" | tail -n1)
+jq -e '. == {choices: []}' <<<"$zero_choices" >/dev/null ||
+  fail "zero-permission review fabricated a consent row" "$zero_choices"
+pass "zero-permission review submits one exact empty decision set without prompting"
 
 revoke_output=$(printf '1\ny\n' | script -qefc \
   "env PATH='$test_dir/bin:$PATH' PERMISSION_TEST_CALLS='$calls' '$ROOT/bin/omarchy-plugin-permissions' revoke org.example.evil" /dev/null)

@@ -2596,8 +2596,30 @@ void public_archive_install_is_closed_until_exact_consent() {
               manager->installer()->beginReview(install).isEmpty() &&
               manager->count() == 0,
           "exact review replayed or activated without an apply transaction");
-  const auto stale_choices = grantEveryAvailablePermission(
-      permissionRows(*manager->permissions(), review));
+  const auto install_rows = permissionRows(*manager->permissions(), review);
+  require(install_rows.size() == 1 &&
+              install_rows.at(0).toObject().value("required").toBool() &&
+              manager->permissions()
+                  ->applyInteractiveCli(review,
+                                        QStringLiteral("{\"choices\":[]}"))
+                  .isEmpty() &&
+              scheduler.jobs.empty(),
+          "nonempty install review accepted an empty decision set");
+  QJsonArray denied_choices;
+  denied_choices.push_back(
+      QJsonObject{{QStringLiteral("rowId"),
+                   install_rows.at(0).toObject().value("rowId")},
+                  {QStringLiteral("decision"), QStringLiteral("deny")}});
+  const auto denied_required = QString::fromUtf8(
+      QJsonDocument(QJsonObject{{QStringLiteral("choices"), denied_choices}})
+          .toJson(QJsonDocument::Compact));
+  require(manager->permissions()
+              ->applyInteractiveCli(review, denied_required)
+              .isEmpty() &&
+              scheduler.jobs.empty(),
+          "required install permission accepted an explicit denial");
+  const auto stale_choices =
+      grantEveryAvailablePermission(install_rows);
   observations = bridge::PluginManagerTestAccess::runtimeSlots(*manager);
   const auto canceled_view = bridge::PluginManagerTestAccess::permissionView(
       *manager, plugin, observed(observations, plugin).epoch);
@@ -2697,6 +2719,97 @@ void public_archive_install_is_closed_until_exact_consent() {
                   ->applyInteractiveCli(update_review, stale_choices)
                   .isEmpty(),
           "apply did not exclusively promote the exact reviewed binding");
+}
+
+void public_zero_permission_archive_activates_with_empty_decisions() {
+  constexpr std::string_view plugin = "org.example.zero-permission-install";
+  constexpr std::string_view no_permissions =
+      R"({"required":[],"optional":[]})";
+  RuntimeFixture fixture;
+  const auto archive = fixture.archive(plugin, "zero-permission",
+                                       no_permissions);
+  DeterministicJobs scheduler;
+  auto manager = bridge::PluginManagerTestAccess::create();
+  bridge::PluginManagerTestAccess::installRuntime(*manager,
+                                                  fixture.bootstrap());
+  bridge::PluginManagerTestAccess::setJobSubmitter(
+      *manager, [&](auto kind, auto job) {
+        return scheduler.submit(kind, std::move(job));
+      });
+  const auto run_job = [&] {
+    require(!scheduler.jobs.empty(), "zero-permission job disappeared");
+    std::thread worker([&] { scheduler.runOne(); });
+    worker.join();
+    bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  };
+
+  const auto install = manager->installer()->begin(
+      QString::fromStdString(archive.string()));
+  require(!install.isEmpty() && scheduler.jobs.size() == 1,
+          "zero-permission archive did not enter public secure install");
+  run_job();
+  const auto installed = QJsonDocument::fromJson(
+                             manager->installer()->poll(install).toUtf8())
+                             .object();
+  require(installed.value("state") == "succeeded" &&
+              installed.value("result").toObject().value("plugin") ==
+                  QString::fromUtf8(plugin) &&
+              scheduler.jobs.size() == 1,
+          "zero-permission archive was not staged as an exact candidate");
+
+  run_job();
+  auto observations =
+      bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+  require(observations.size() == 1 &&
+              observed(observations, plugin).permission_disabled,
+          "zero-permission candidate bypassed the inactive review state");
+  const auto before = bridge::PluginManagerTestAccess::permissionView(
+      *manager, plugin, observed(observations, plugin).epoch);
+  require(before && before->authority_slots.sequence == 0 && !before->active,
+          "zero-permission candidate fabricated pre-review authority");
+
+  const auto review = manager->installer()->beginReview(install);
+  require(!review.isEmpty() && scheduler.jobs.size() == 1,
+          "zero-permission candidate did not expose its exact review");
+  run_job();
+  const auto reviewed =
+      permissionOperation(*manager->permissions(), review);
+  require(reviewed.value("state") == "succeeded" &&
+              permissionRows(*manager->permissions(), review).isEmpty() &&
+              scheduler.jobs.empty(),
+          "zero-permission review fabricated a permission row");
+
+  const auto exact_review =
+      bridge::PluginManagerTestAccess::preparePermissionReview(
+          *manager, plugin, observed(observations, plugin).epoch);
+  require(exact_review && exact_review->builtin_rows.empty() &&
+              exact_review->dynamic_rows.empty(),
+          "zero-permission native review was not exactly empty");
+  const auto apply = manager->permissions()->applyInteractiveCli(
+      review, QStringLiteral("{\"choices\":[]}"));
+  require(!apply.isEmpty() && scheduler.jobs.size() == 1,
+          "exact empty decision set did not enter the sole apply transaction");
+  run_job();
+
+  observations = bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+  const auto active = bridge::PluginManagerTestAccess::permissionView(
+      *manager, plugin, observed(observations, plugin).epoch);
+  require(permissionOperation(*manager->permissions(), apply).value("state") ==
+                  "succeeded" &&
+              observed(observations, plugin).preparing && active &&
+              active->active &&
+              active->active->binding == exact_review->candidate_binding &&
+              active->active->requests.empty() &&
+              active->active->grants.empty() &&
+              active->active->dynamic_grants.empty() &&
+              active->authority_slots.sequence > 0 &&
+              scheduler.jobs.size() == 1 &&
+              manager->permissions()
+                  ->applyInteractiveCli(
+                      review, QStringLiteral("{\"choices\":[]}"))
+                  .isEmpty(),
+          "zero-permission install did not exclusively activate its exact "
+          "empty authority snapshot");
 }
 
 void permission_control_is_bounded_and_destruction_safe() {
@@ -3917,6 +4030,7 @@ void run_plugin_manager_tests() {
   permission_control_is_bounded_and_destruction_safe();
   controlled_mutations_settle_after_slot_loss();
   public_archive_install_is_closed_until_exact_consent();
+  public_zero_permission_archive_activates_with_empty_decisions();
   concurrent_permission_fences_route_exactly();
   real_root_publishes_attaches_and_tears_down_exactly();
   zero_surface_runtime_has_no_publication_authority();
