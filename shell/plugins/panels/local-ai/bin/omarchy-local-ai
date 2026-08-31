@@ -1,6 +1,6 @@
 #!/bin/bash
 # omarchy:summary=Run validated registry models on detected local hardware
-# omarchy:args=<scan|download|run|unload|open-agent|switch>
+# omarchy:args=<scan|download|run|unload|remove|open-agent|default|switch>
 set -euo pipefail
 HOME_DIR="${OMARCHY_AI_USER_HOME:-$HOME}"
 REPO="${OMARCHY_AI_REGISTRY_REPO:-$HOME_DIR/omarchy/local-ai}"
@@ -51,7 +51,9 @@ usage() {
   download <recipe>      download the image and weights for one recipe
   run <recipe>           load one downloaded recipe
   unload                 free the hardware; keep downloads
+  remove <recipe>        delete one recipe'\''s weights and image to reclaim disk
   open-agent [pi|omp]    open an agent wired to the running model
+  default                make the running model the default agent model (pi and omp)
   switch <recipe>        replace the running model, rolling back on failure
   snapshot               print the canonical state snapshot'
 }
@@ -62,7 +64,9 @@ case $cmd in
   run) [[ -n ${1:-} ]] || fail 'choose a recipe'; setstate starting; op starting "$1" 0 true "queued"; spawn _worker-run "$1" starting ;;
   switch) [[ -n ${1:-} ]] || fail 'choose a recipe'; setstate switching; op switching "$1" 0 true "queued"; spawn _worker-run "$1" switching ;;
   unload) setstate unloading; op unload "" 0 true "queued"; spawn _worker-unload ;;
+  remove) [[ -n ${1:-} ]] || fail 'choose a recipe'; do_remove "$1" ;;
   open-agent) open_agent "${1:-pi}" ;;
+  default) set_default ;;
   snapshot) emit ;;
   _worker-scan) w_scan ;;
   _worker-download) w_download "$1" ;;

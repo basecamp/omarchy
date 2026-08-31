@@ -41,6 +41,17 @@ unwire() {
   done
   return 0
 }
+set_default() { # make the running model the default for pi and omp
+  local d tmp cur served
+  [[ $(sread | jq -r '.active.apiReady') == true ]] || { fail "load a model first"; return; }
+  served=$(sread | jq -r .active.servedModel)
+  for d in "$HOME_DIR/.pi/agent" "$HOME_DIR/.omp/agent"; do
+    mkdir -p "$d"
+    cur='{}'; [[ -f $d/settings.json ]] && cur=$(<"$d/settings.json")
+    jq -e 'type=="object"' >/dev/null 2>&1 <<<"$cur" || { fail "invalid $d/settings.json"; return; }
+    tmp=$(mktemp "$d/.s.XXXXXX") && jq --arg m "$served" '.defaultProvider="omarchy-local" | .defaultModel=$m' <<<"$cur" >"$tmp" && mv "$tmp" "$d/settings.json"
+  done
+}
 launch_tui() {
   local cmd enc rt sig
   printf -v cmd '%q ' omarchy-launch-tui --app-id=org.omarchy.agent "$@"

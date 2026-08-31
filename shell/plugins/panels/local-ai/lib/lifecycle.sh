@@ -15,8 +15,20 @@ w_scan() {
     --argjson t "$total" --argjson ss "$(sread)"
   trace "$(sread | jq -r .state)"
 }
+do_remove() { # synchronous: delete one recipe's weights and image, keep the registry entry
+  local id=$1 r kind base
+  guard || { fail "another operation is running"; return; }
+  r=$(resolve_raw "$id") || return 1
+  [[ $(sread | jq -r .active.recipeId) != "$id" ]] || { fail "unload $id before removing it"; return; }
+  read -r kind base < <(resolve_mount "$r")
+  if [[ $kind == hf ]]; then base=$(hf_cache_dir "$base" "$(jq -r .model.repository <<<"$r")"); fi
+  [[ $base == "$HOME_DIR/.cache/"* ]] || { fail "refusing to delete $base"; return; }
+  rm -rf "$base"
+  docker image rm "$(jq -r .launch.image <<<"$r")" >/dev/null 2>&1 || true
+  w_refresh_models
+}
 w_download() {
-  local id=$1 r img repo rev exp kind base hf file bytes pct pid
+  local id=$1 r img repo rev exp kind base hf file bytes pct pid free
   guard || oops "another operation is running"
   r=$(resolve "$id" 2>"$ST/gate.err") || oops "$(sed -n '$s/^local-ai: //p' "$ST/gate.err" | grep . || printf 'recipe %s failed validation' "$id")"
   img=$(jq -r .launch.image <<<"$r"); repo=$(jq -r .model.repository <<<"$r")
@@ -26,6 +38,10 @@ w_download() {
   if weights_have "$r"; then op download "$id" 100 false "weights present"
   else
     read -r kind base < <(resolve_mount "$r"); mkdir -p "$base"
+    bytes=$(progress_bytes "$r"); free=$(df -Pk "$base" 2>/dev/null | awk 'NR==2{print $4*1024}')
+    if (( exp > 0 && ${free:-0} > 0 && free < exp - bytes )); then
+      oops "need $(( (exp-bytes+1073741823)/1073741824 )) GB free under $base"
+    fi
     hf=$(hf_bin || true)
     file=$(jq -r .model.servedName <<<"$r"); local -a extra=()
     [[ $kind == dir && $file == *.gguf ]] && extra=("${file##*/}")

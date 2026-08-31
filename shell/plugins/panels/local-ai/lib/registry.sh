@@ -132,6 +132,7 @@ catalog() {
               precision:$r.model.precision,hardware:($g.registryName//$r.hardware.name),
               acceleratorCount:$r.hardware.count,available:false,
               imageDownloaded:false,weightsDownloaded:false,downloadPercent:0,downloadIndeterminate:true,
+              sizeGb:(($r.model.bytes/107374182|floor)/10),
               tools:($r.capabilities.tools//false),active:false,blocked:true,reason:$reason}]' <<<"$rows")
       continue
     fi
@@ -149,6 +150,7 @@ catalog() {
             precision:$r.model.precision,hardware:($g.registryName//$r.hardware.name),
             acceleratorCount:$r.hardware.count,available:(($g.count//0)>=$r.hardware.count),
             imageDownloaded:$img,weightsDownloaded:$wt,downloadPercent:$pct,downloadIndeterminate:$ind,
+            sizeGb:(($r.model.bytes/107374182|floor)/10),
             tools:($r.capabilities.tools//false),active:false,blocked:false,reason:""}]' <<<"$rows")
   done < <(jq -r --argjson ids "$ids" '.recipes[]|select(.status=="validated" and .launch_kind=="docker")
     |select(.hardware_id as $h|$ids|index($h))|.id' "$IDX")

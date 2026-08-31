@@ -43,7 +43,7 @@ Item {
   function primaryLabel() {
     var m = selected(); if (!m) return ""
     if (m.blocked) return "Blocked"
-    if (!m.imageDownloaded || !m.weightsDownloaded) return "Download"
+    if (!m.imageDownloaded || !m.weightsDownloaded) return m.sizeGb > 0 ? "Download · " + m.sizeGb + " GB" : "Download"
     if (loaded && active.recipeId === m.recipeId) return "Running"
     return loaded ? "Switch" : "Run"
   }
@@ -206,7 +206,7 @@ Item {
               anchors.top: parent.top; anchors.topMargin: Style.space(12)
               text: !root.selected() ? "no matching recipe"
                     : root.selected().blocked ? root.selected().recipeId + " · " + (root.selected().reason || "blocked")
-                    : root.selected().recipeId + " · " + (root.selected().available ? "available" : "unavailable") + " · image " + (root.selected().imageDownloaded ? "yes" : "no") + " · weights " + (root.selected().weightsDownloaded ? "yes" : "no")
+                    : root.selected().recipeId + (root.selected().sizeGb > 0 ? " · " + root.selected().sizeGb + " GB" : "") + " · " + (root.selected().available ? "available" : "unavailable") + " · image " + (root.selected().imageDownloaded ? "yes" : "no") + " · weights " + (root.selected().weightsDownloaded ? "yes" : "no")
             }
             Rectangle {
               visible: root.busy && !root.operation.indeterminate

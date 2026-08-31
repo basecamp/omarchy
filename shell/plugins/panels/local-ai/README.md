@@ -35,7 +35,9 @@ omarchy local ai scan
 omarchy local ai download <recipe>
 omarchy local ai run <recipe>
 omarchy local ai unload
-omarchy local ai open-agent pi   # or omp
+omarchy local ai remove <recipe>   # reclaim disk: delete weights and image
+omarchy local ai open-agent pi     # or omp
+omarchy local ai default           # make the running model the default agent model
 omarchy local ai switch <recipe>
 omarchy local ai snapshot
 ```
@@ -60,8 +62,15 @@ run, the controller writes an `omarchy-local` provider into
 valid YAML). A hand-written YAML file is never touched; the snapshot
 reports that agent as `manual` under `active.agents`. The controller
 updates `defaultModel` only when `defaultProvider` is already
-`omarchy-local`. A missing default is left alone. `snapshot` never
+`omarchy-local`. A missing default is left alone unless you run
+`omarchy local ai default`, which points both agents' default at the
+running model; unload removes that default again. `snapshot` never
 writes agent config. Unload removes that provider.
+
+Downloads persist across unload. `download` refuses to start when the
+target filesystem lacks the declared weight size; `remove <recipe>`
+deletes a recipe's weights and image (the dashboard shows each
+recipe's size before you download it).
 
 ## Registry
 

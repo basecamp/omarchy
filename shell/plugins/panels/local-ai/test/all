@@ -35,6 +35,8 @@ jq -n --arg dg "$digest" '{id:"small-mr",status:"validated",model_instance_id:"o
 jq -n --arg dg "$digest" '{id:"multi-node",status:"validated",model_instance_id:"org-small--bf16",hardware_id:"rtx-3090-24gb",hardware_count:1,engine:{name:"sglang"},capabilities:{tools:false},launch:{image:("img@sha256:"+$dg),container_port:30000,arguments:["--nnodes","2","--node-rank","${NODE_RANK}"],mounts:[]}}' >"$OMARCHY_AI_REGISTRY/recipe/multi-node.json"
 jq -n --arg dg "$digest" '{id:"hostnet",status:"validated",model_instance_id:"org-small--bf16",hardware_id:"rtx-3090-24gb",hardware_count:1,engine:{name:"sglang"},capabilities:{tools:false},launch:{image:("img@sha256:"+$dg),container_port:30000,network_mode:"host",arguments:[],mounts:[]}}' >"$OMARCHY_AI_REGISTRY/recipe/hostnet.json"
 jq -n '{schema_version:"local-ai-registry/v1",id:"org-small--norev",model_id:"small",repository:"org/small",served_name:"org/small",weights:{precision:"BF16",size_gb:0.0000001}}' >"$OMARCHY_AI_REGISTRY/model-instance/org-small--norev.json"
+jq -n --arg rev "$revision" '{schema_version:"local-ai-registry/v1",id:"org-small--big",model_id:"small",repository:"org/big",revision:$rev,served_name:"org/big",weights:{precision:"BF16",size_gb:1000}}' >"$OMARCHY_AI_REGISTRY/model-instance/org-small--big.json"
+jq -n --arg dg "$digest" '{id:"big-3090",status:"validated",model_instance_id:"org-small--big",hardware_id:"rtx-3090-24gb",hardware_count:1,engine:{name:"sglang"},capabilities:{tools:false},launch:{image:("img@sha256:"+$dg),container_port:30000,arguments:[],mounts:[{source:"~/.cache/huggingface",target:"/root/.cache/huggingface",read_only:false}]}}' >"$OMARCHY_AI_REGISTRY/recipe/big-3090.json"
 jq -n --arg dg "$digest" '{id:"no-rev",status:"validated",model_instance_id:"org-small--norev",hardware_id:"rtx-3090-24gb",hardware_count:1,engine:{name:"sglang"},capabilities:{tools:false},launch:{image:("img@sha256:"+$dg),container_port:30000,arguments:[],mounts:[{source:"~/.cache/huggingface",target:"/root/.cache/huggingface",read_only:false}]}}' >"$OMARCHY_AI_REGISTRY/recipe/no-rev.json"
 jq -n '{schema_version:"local-ai-registry/v1",recipes:[
   {id:"small-3090",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"},
@@ -43,7 +45,8 @@ jq -n '{schema_version:"local-ai-registry/v1",recipes:[
   {id:"small-mr",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"},
   {id:"multi-node",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"},
   {id:"hostnet",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"},
-  {id:"no-rev",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"}]}' >"$OMARCHY_AI_REGISTRY/index/recipes.json"
+  {id:"no-rev",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"},
+  {id:"big-3090",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"}]}' >"$OMARCHY_AI_REGISTRY/index/recipes.json"
 CD="$TMP/docker"; mkdir -p "$CD/containers" "$CD/images"
 c_write() { jq -n --argjson o "$2" --argjson r "$3" '{owned:$o,running:$r}' >"$CD/containers/$1"; }
 docker() {
@@ -98,7 +101,8 @@ curl() {
       fi ;;
   esac
 }
-export -f docker curl c_write
+df() { printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\nfake 1 1 %s 1%% /\n' "${DF_AVAIL_KB:-999999999999}"; }
+export -f docker curl c_write df
 export CD OMARCHY_AI_USER_HOME TMP
 pass=0
 ok() { pass=$((pass+1)); printf 'ok %s - %s\n' "$pass" "$1"; }
@@ -113,8 +117,9 @@ assert jq -e '.state=="ready" and .active.recipeId=="small-3090" and .active.api
 assert [ ! -e "$OMARCHY_AI_USER_HOME/.omp/agent/models.json" ]
 "$CLI" unload >/dev/null; ok 'snapshot adopts an owned live runtime after controller state is lost'
 "$CLI" scan >/dev/null
-assert jq -e '.state=="idle" and .registry.matching==7 and .registry.total==7 and .registry.revision=="" and (.gpus|length)==2
-  and (.models|length)==7 and (.models[]|select(.recipeId=="small-3090")|.available) and (.models[]|select(.recipeId=="small-3090")|.imageDownloaded|not)' >/dev/null <<<"$(snap)"
+assert jq -e '.state=="idle" and .registry.matching==8 and .registry.total==8 and .registry.revision=="" and (.gpus|length)==2
+  and (.models|length)==8 and (.models[]|select(.recipeId=="small-3090")|.available) and (.models[]|select(.recipeId=="small-3090")|.imageDownloaded|not)
+  and (.models[]|select(.recipeId=="big-3090")|.sizeGb==1000)' >/dev/null <<<"$(snap)"
 ok 'scan populates hardware, gpus, and models with downloaded vs available split'
 assert jq -e '(.models[]|select(.recipeId=="multi-node")|.blocked and (.reason|test("2 networked machines")))
   and (.models[]|select(.recipeId=="hostnet")|.blocked and (.reason|test("host networking")))
@@ -129,6 +134,9 @@ assert jq -e '.models[]|select(.recipeId=="small-mr")|(.blocked|not)' >/dev/null
 assert jq -e '.models[]|select(.recipeId=="small-mr")|.weightsDownloaded' >/dev/null <<<"$(snap)"
 assert [ -f "$OMARCHY_AI_USER_HOME/.cache/omarchy/local-ai/models/small-mr/model.bin" ]
 ok '${MODEL_ROOT} maps to the managed models dir: draft presence unblocks, primary downloads via --local-dir'
+DF_AVAIL_KB=1024 "$CLI" download big-3090 >/dev/null || true
+assert jq -e '.state=="error" and (.error|test("GB free under"))' >/dev/null <<<"$(snap)"
+ok 'a download that cannot fit on the target filesystem is refused with the shortfall in GB'
 DOCKER_FETCH_FAIL=1 "$CLI" download small-3090 >/dev/null || true
 assert jq -e '.state=="error" and (.error|length)>0' >/dev/null <<<"$(snap)"
 ok 'a failed weight download lands in error state with a message'; "$CLI" download small-3090 >/dev/null
@@ -145,7 +153,13 @@ assert jq -e '.providers["omarchy-local"].models[0].id=="org/small"' >/dev/null 
 assert [ ! -e "$OMARCHY_AI_USER_HOME/.omp/agent/models.json" ]
 assert jq -e '.active.agents.pi=="wired" and .active.agents.omp=="wired"' >/dev/null <<<"$(snap)"
 ok 'run transitions to ready, confirms API identity, and wires the collision-safe omarchy-local provider'
-ok 'omp gets models.yml (the file it actually reads), never a shadowed models.json'; jq '.state="unloading"' "$OMARCHY_AI_STATE/snapshot.json" >"$TMP/s" && mv "$TMP/s" "$OMARCHY_AI_STATE/snapshot.json"; docker stop omarchy-local-ai >/dev/null; assert jq -e '.state=="unloading" and .active.apiReady' >/dev/null <<<"$(snap)"; jq '.state="ready"' "$OMARCHY_AI_STATE/snapshot.json" >"$TMP/s" && mv "$TMP/s" "$OMARCHY_AI_STATE/snapshot.json"; assert jq -e '.state=="error" and .active.apiReady==false and .active.container!=""' >/dev/null <<<"$(snap)"; docker start omarchy-local-ai >/dev/null; assert jq -e '.state=="ready" and .active.apiReady==true' >/dev/null <<<"$(snap)"; ok 'busy snapshots stay stable; accepted idle runtime loss is exposed without hiding unload'
+ok 'omp gets models.yml (the file it actually reads), never a shadowed models.json'
+"$CLI" default >/dev/null
+assert jq -e '.defaultProvider=="omarchy-local" and .defaultModel=="org/small"' >/dev/null "$OMARCHY_AI_USER_HOME/.pi/agent/settings.json"
+assert jq -e '.defaultProvider=="omarchy-local" and .defaultModel=="org/small"' >/dev/null "$OMARCHY_AI_USER_HOME/.omp/agent/settings.json"
+remove_denied=0; "$CLI" remove small-3090 >/dev/null 2>&1 || remove_denied=1
+assert [ "$remove_denied" = 1 ]
+ok 'default points both agents at the running model; the active recipe cannot be removed'; jq '.state="unloading"' "$OMARCHY_AI_STATE/snapshot.json" >"$TMP/s" && mv "$TMP/s" "$OMARCHY_AI_STATE/snapshot.json"; docker stop omarchy-local-ai >/dev/null; assert jq -e '.state=="unloading" and .active.apiReady' >/dev/null <<<"$(snap)"; jq '.state="ready"' "$OMARCHY_AI_STATE/snapshot.json" >"$TMP/s" && mv "$TMP/s" "$OMARCHY_AI_STATE/snapshot.json"; assert jq -e '.state=="error" and .active.apiReady==false and .active.container!=""' >/dev/null <<<"$(snap)"; docker start omarchy-local-ai >/dev/null; assert jq -e '.state=="ready" and .active.apiReady==true' >/dev/null <<<"$(snap)"; ok 'busy snapshots stay stable; accepted idle runtime loss is exposed without hiding unload'
 ( export XDG_RUNTIME_DIR="$TMP/xdg" HYPRLAND_INSTANCE_SIGNATURE=sig
   mkdir -p "$XDG_RUNTIME_DIR/hypr/sig" "$OMARCHY_AI_USER_HOME/.local/bin"
   : >"$OMARCHY_AI_USER_HOME/.local/bin/pi"; chmod +x "$OMARCHY_AI_USER_HOME/.local/bin/pi"
@@ -190,7 +204,13 @@ assert jq -e '.state=="idle" and .active.recipeId=="" and (.models|all(.active|n
 assert [ ! -f "$CD/containers/omarchy-local-ai" ]
 assert [ -f "$CD/containers/omarchy-local-ai-previous" ]
 rm -f "$CD/containers/omarchy-local-ai-previous"
+assert jq -e '(.defaultProvider // "") == ""' >/dev/null "$OMARCHY_AI_USER_HOME/.pi/agent/settings.json"
 ok 'unload ignores an unowned <container>-previous instead of aborting mid-transition'
+assert [ -d "$OMARCHY_AI_USER_HOME/.cache/huggingface/hub/models--org--small" ]
+"$CLI" remove small-3090 >/dev/null
+assert [ ! -d "$OMARCHY_AI_USER_HOME/.cache/huggingface/hub/models--org--small" ]
+assert jq -e '.models[]|select(.recipeId=="small-3090")|(.weightsDownloaded|not)' >/dev/null <<<"$(snap)"
+ok 'remove deletes an unloaded recipe'\''s weights and clears its downloaded flags'
 "$CLI" download evil >/dev/null || true
 assert jq -e '.state=="error" and (.error|test("validation|unsafe"))' >/dev/null <<<"$(snap)"
 ok 'a recipe mount that traverses ~/.cache fails the safety gate'
@@ -231,7 +251,7 @@ pin_ok=0
   rm "$TMP/reg-remote/registry/index/recipes.json"   # break main past the pin to prove the pin wins
   g add -A; g commit -qm broken
   OMARCHY_AI_REGISTRY_PIN=$pin "$CLI" scan >/dev/null
-  jq -e --arg pin "$pin" '.state=="idle" and .registry.revision==$pin and .registry.total==7' >/dev/null <<<"$("$CLI" snapshot)"
+  jq -e --arg pin "$pin" '.state=="idle" and .registry.revision==$pin and .registry.total==8' >/dev/null <<<"$("$CLI" snapshot)"
 ) && pin_ok=1 || pin_ok=0
 assert [ "$pin_ok" = 1 ]
 ok 'scan checks out the pinned registry commit, not whatever main moved to'
