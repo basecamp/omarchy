@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# omarchy:summary=Check whether NetBird is installed and running
+# omarchy:hidden=true
+
+set -euo pipefail
+
+# Fast probes first: the CLI spends ~10 seconds in gRPC retries when the
+# daemon is down.
+if systemctl is-active --quiet netbird.service; then
+  exit 0
+fi
+
+# Match the daemon's command line: the CLI is the same binary, so `pgrep -x`
+# would also match the panel's own status polls.
+if pgrep -f "netbird service run" >/dev/null 2>&1; then
+  exit 0
+fi
+
+# Last resort for daemons managed some other way, bounded so the worst case
+# stays predictable.
+omarchy-cmd-present netbird && timeout 3 netbird status --json >/dev/null 2>&1

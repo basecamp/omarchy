@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# omarchy:summary=Remove NetBird and its bar plugin.
+# omarchy:requires-sudo=true
+
+sudo netbird down 2>/dev/null || true
+
+# Stop the daemon while its unit still exists: `netbird service uninstall`
+# removes the unit without stopping the process.
+sudo systemctl disable --now netbird.service 2>/dev/null || true
+
+# The unit is NetBird's own, not package-owned; dropping the package would
+# leave it behind.
+sudo netbird service uninstall 2>/dev/null || true
+omarchy-plugin-disable omarchy.netbird
+omarchy-webapp-remove "NetBird" 2>/dev/null || true
+# The source build leaves a netbird-debug package behind (makepkg defaults
+# `debug` on); pkg-drop ignores it when absent.
+omarchy-pkg-drop netbird netbird-debug
+
+echo ""
+echo "NetBird has been removed."

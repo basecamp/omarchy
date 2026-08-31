@@ -161,7 +161,7 @@ cmd_defaults() {
 
   local optional_widgets="[]"
   local service widget
-  for service in dropbox tailscale; do
+  for service in dropbox netbird tailscale; do
     if "omarchy-installed-service-$service"; then
       widget=$(jq -cn \
         --arg id "omarchy.$service" \

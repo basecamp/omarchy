@@ -28,6 +28,12 @@ You start Spotify using `Super + Shift + M`. Like 1Password, the hotkey kicks of
 
 It gets a panel in the bar, a web app for the admin console, and Taildrop for sending files between your machines — see [networking](35-networking.md).
 
+## NetBird
+
+[NetBird](https://netbird.io/) is an open source mesh VPN built on WireGuard, and an alternative to Tailscale rather than something to run alongside it. To set it up, select _Install > Service > NetBird_ from the Omarchy menu and finish the SSO login in the browser window it opens.
+
+It gets a panel in the bar for connecting, browsing peers, and picking routes and exit nodes, plus a web app for the admin console — see [networking](35-networking.md).
+
 ## ONCE
 
 [ONCE](https://once.com/) is 37signals' line of software you buy once and run on your own server, like the Campfire chat system. Select _Install > Service > ONCE_ from the Omarchy menu to install it, which enables its background service and drops you into the ONCE terminal interface to take it from there.

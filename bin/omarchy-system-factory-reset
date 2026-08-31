@@ -312,7 +312,7 @@ sanitize_factory_baseline() {
   passwd --root "$factory" --lock root >>"$LOG_FILE" 2>&1 || true
   rm -f "$factory"/etc/ssh/ssh_host_*
   rm -f "$factory"/etc/NetworkManager/system-connections/*
-  rm -rf "$factory"/var/lib/NetworkManager/* "$factory/var/lib/tailscale" "$factory/var/lib/iwd"
+  rm -rf "$factory"/var/lib/NetworkManager/* "$factory/var/lib/tailscale" "$factory/var/lib/netbird" "$factory/var/lib/iwd"
   rm -f "$factory/var/lib/sddm/state.conf" "$factory/etc/sddm.conf.d/autologin.conf"
   : >"$factory/etc/machine-id"
 
@@ -334,7 +334,7 @@ stage_full_reset() {
   systemd-id128 new >"$next/etc/machine-id"
   rm -f "$next"/etc/ssh/ssh_host_*
   rm -f "$next"/etc/NetworkManager/system-connections/*
-  rm -rf "$next"/var/lib/NetworkManager/* "$next/var/lib/tailscale" "$next/var/lib/iwd"
+  rm -rf "$next"/var/lib/NetworkManager/* "$next/var/lib/tailscale" "$next/var/lib/netbird" "$next/var/lib/iwd"
   rm -f "$next/var/lib/sddm/state.conf" "$next/etc/sddm.conf.d/autologin.conf"
 
   # A factory snapshot from a normal (normal) install contains the original

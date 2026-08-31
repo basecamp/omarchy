@@ -40,6 +40,16 @@ That gives you a Tailscale panel in the bar, which connects and disconnects the 
 
 Installing it also adds a web app for the Tailscale admin console.
 
+## NetBird
+
+[NetBird](https://netbird.io/) is an open source mesh VPN built on WireGuard — an alternative to Tailscale rather than a companion, since running both gives you two things fighting over your resolver. Install it with _Install > Service > NetBird_, which starts the daemon, walks you through the SSO login, and adds a web app for the admin console.
+
+The installer asks whether you're on NetBird Cloud. Answer no and give your own domain instead — one answer covers both the management API and the dashboard, and a deployment on a non-standard port keeps that port throughout.
+
+The NetBird panel in the bar connects and disconnects, browses your peers, and selects the routes your admin has published, exit nodes first. Select a peer and press `c`, `n`, or `d` to copy its IP, name, or full domain name; `a` opens the admin console, `r` refreshes, and a profile switcher appears when you have more than one account. Sections fold away by clicking their headings or with the left and right arrows — peers and profiles start folded, each heading keeping its summary — and a health block reports management, signal, and relay state alongside the SSO session countdown.
+
+One thing to know if names stop resolving: `omarchy dns` pins DNS through a NetworkManager global-DNS block, which overrides the split DNS NetBird installs — so a machine set to Cloudflare or Google can stop resolving the domains NetBird serves while NetBird itself looks perfectly healthy. The panel spots that and offers to hand DNS back to DHCP in one click. Nothing to do if you're on DHCP already, which is the default.
+
 ## When it stops working
 
 Before rebooting, try restarting the offending piece on its own. _Update > Hardware_ has Wi-Fi, Bluetooth, Audio, and Trackpad, and reloading one of those clears up most "it worked five minutes ago" situations. See [troubleshooting](45-troubleshooting.md).
