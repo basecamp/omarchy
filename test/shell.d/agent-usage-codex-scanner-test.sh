@@ -631,6 +631,9 @@ while read -r request; do
       has_access=$(jq -r '(.params.accessToken // "") != ""' <<<"$request")
       has_account=$(jq -r '(.params.chatgptAccountId // "") != ""' <<<"$request")
       printf 'login:%s:%s:%s\n' "$type" "$has_access" "$has_account" >>"$RPC_LOG"
+      if [[ $(jq -r '.params.accessToken == "secret-database-token" and .params.chatgptAccountId == "database-account"' <<<"$request") == "true" ]]; then
+        printf 'credential:database\n' >>"$RPC_LOG"
+      fi
       if [[ ${FAIL_EXTERNAL_LOGIN:-false} == "true" ]]; then
         jq -cn --argjson id "$id" '{id: $id, error: {message: "login failed"}}'
       else
@@ -736,3 +739,49 @@ RPC_LOG="$LIMITS_HOME/rpc.log" result=$(HOME="$LIMITS_HOME" CODEX_HOME="$LIMITS_
 [[ $(grep -c '^login:' "$LIMITS_HOME/rpc.log") == "0" ]] ||
   fail "Codex collector skips external auth for a matching account" "$(<"$LIMITS_HOME/rpc.log")"
 pass "Codex collector deduplicates matching native and OpenCode accounts"
+
+# Newer OpenCode builds migrate provider credentials into opencode.db. That
+# current database record must take precedence over a stale legacy auth.json,
+# while the file-based cases above retain backwards compatibility.
+python3 - "$LIMITS_HOME/.local/share/opencode/opencode.db" <<'PY'
+import json
+import sqlite3
+import sys
+import time
+from pathlib import Path
+
+db = Path(sys.argv[1])
+conn = sqlite3.connect(db)
+conn.execute("CREATE TABLE message (id text PRIMARY KEY, session_id text NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL)")
+conn.execute("CREATE TABLE credential (id text PRIMARY KEY, integration_id text, label text NOT NULL, value text NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL)")
+now_ms = int(time.time() * 1000)
+conn.execute("INSERT INTO credential VALUES (?, ?, ?, ?, ?, ?)", (
+  "cred_openai",
+  "openai",
+  "OAuth",
+  json.dumps({
+    "type": "oauth",
+    "access": "secret-database-token",
+    "refresh": "secret-database-refresh",
+    "expires": now_ms + 3_600_000,
+    "metadata": {"accountID": "database-account"},
+  }),
+  now_ms,
+  now_ms,
+))
+conn.commit()
+conn.close()
+PY
+printf '%s\n' '{"openai":{"type":"oauth","access":"secret-stale-token","accountId":"native-account"}}' >"$LIMITS_HOME/.local/share/opencode/auth.json"
+: >"$LIMITS_HOME/rpc.log"
+
+RPC_LOG="$LIMITS_HOME/rpc.log" result=$(HOME="$LIMITS_HOME" CODEX_HOME="$LIMITS_HOME/.codex" XDG_DATA_HOME="$LIMITS_HOME/.local/share" \
+  RPC_LOG="$LIMITS_HOME/rpc.log" PATH="$LIMITS_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --opencode-openai-limits)
+
+[[ $(jq -c '[.limits[] | [.label, .percent]]' <<<"$result") == '[["codex@example.com · Weekly (7-day)",0.1],["opencode@example.com · 5h window",0.25]]' ]] ||
+  fail "Codex collector reads current OpenCode database credentials" "$result"
+[[ $(grep -c '^credential:database$' "$LIMITS_HOME/rpc.log") == "1" ]] ||
+  fail "Codex collector prefers OpenCode database credentials over stale auth.json" "$(<"$LIMITS_HOME/rpc.log")"
+[[ $result != *"secret-database-token"* && $result != *"secret-database-refresh"* && $result != *"database-account"* ]] ||
+  fail "Codex collector keeps database-backed OpenCode credentials out of its record" "$result"
+pass "Codex collector reads database-backed OpenCode credentials"

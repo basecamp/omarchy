@@ -548,16 +548,48 @@ def codex_account_id():
   return str(tokens.get("account_id") or "") if isinstance(tokens, dict) else ""
 
 
-def opencode_openai_auth():
-  data_home = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share"))
-  auth = read_json(data_home / "opencode" / "auth.json").get("openai") or {}
+def normalize_opencode_openai_auth(auth):
   if not isinstance(auth, dict) or auth.get("type") != "oauth":
     return None
+  metadata = auth.get("metadata") or {}
+  if not isinstance(metadata, dict):
+    metadata = {}
   access_token = str(auth.get("access") or "")
-  account_id = str(auth.get("accountId") or "")
+  account_id = str(auth.get("accountId") or metadata.get("accountID") or metadata.get("accountId") or "")
   if not access_token or not account_id:
     return None
   return {"accessToken": access_token, "accountId": account_id}
+
+
+def opencode_database_auth(database):
+  if not database.is_file():
+    return None
+  try:
+    connection = sqlite3.connect(f"{database.resolve().as_uri()}?mode=ro", uri=True, timeout=0.25)
+    try:
+      row = connection.execute(
+        "SELECT value FROM credential WHERE integration_id = ? ORDER BY time_updated DESC LIMIT 1",
+        ("openai",),
+      ).fetchone()
+    finally:
+      connection.close()
+    auth = json.loads(row[0]) if row and row[0] else {}
+  except Exception:
+    return None
+  return normalize_opencode_openai_auth(auth)
+
+
+def opencode_openai_auth():
+  data_home = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share"))
+  opencode_data = data_home / "opencode"
+  # Newer OpenCode builds keep provider credentials in their database. Read
+  # that current record first, then retain auth.json compatibility for older
+  # installations and upstream OpenCode releases that still use the file.
+  database_auth = opencode_database_auth(opencode_data / "opencode.db")
+  if database_auth:
+    return database_auth
+  file_auth = read_json(opencode_data / "auth.json").get("openai") or {}
+  return normalize_opencode_openai_auth(file_auth)
 
 
 def stop_process(proc):
