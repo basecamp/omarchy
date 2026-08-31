@@ -101,6 +101,9 @@ etc/**                         ──►  omarchy-settings    /etc/**           
      cups/cups-browsed.conf, plymouth/plymouthd.conf    /usr/share/omarchy/etc-overrides/
                                                           → /etc/* (post_install cp -f, see below)
 
+omarchy-settings PKGBUILD     ──►  omarchy-settings    /usr/share/omarchy/etc-overrides/os-release
+                                                          → /etc/os-release (generated relative selector symlink)
+
 default/limine/limine.conf     ──►  omarchy-settings    /usr/share/omarchy/default/limine/limine.conf
 default/limine/default.conf    ──►  omarchy-settings    /usr/share/omarchy/default/limine/default.conf
                                                         (template; ISO substitutes @@CMDLINE@@ → /etc/default/limine)
@@ -124,8 +127,9 @@ default/**                     ──►  omarchy-settings    /usr/share/omarchy
   ├─ applications/mimeapps.list                         /usr/share/applications/mimeapps.list
   ├─ systemd/user/*.service                             /usr/lib/systemd/user/
   ├─ systemd/user/app.slice.d/10-oomd.conf              /usr/lib/systemd/user/app.slice.d/
-  ├─ systemd/system-sleep/{force-igpu,
-  │    keyboard-backlight,unmount-fuse}                 /usr/lib/systemd/system-sleep/
+  ├─ systemd/system-sleep/force-igpu                    /usr/lib/systemd/system-sleep/omarchy-force-igpu
+  ├─ systemd/system-sleep/keyboard-backlight            /usr/lib/systemd/system-sleep/omarchy-keyboard-backlight
+  ├─ systemd/system-sleep/unmount-fuse                  /usr/lib/systemd/system-sleep/unmount-fuse
   ├─ systemd/zram-generator.conf.d/90-omarchy.conf      /usr/lib/systemd/zram-generator.conf.d/
   ├─ fonts/omarchy/omarchy.ttf                          /usr/share/fonts/omarchy/
   ├─ sddm/omarchy/                                      /usr/share/sddm/themes/omarchy/
@@ -148,6 +152,11 @@ without a file conflict. Instead their sources (under `etc/` in the repo;
 `.bashrc` from `default/bashrc`) ship at
 `/usr/share/omarchy/etc-overrides/` and the `omarchy-settings` `post_install`
 / `post_upgrade` scriptlet `cp -f`'s them into place.
+
+`/etc/os-release` is the standard generated-selector exception: the relative
+symlink itself is runtime filesystem state, while the Omarchy data it selects
+is package-owned under `/usr/share/omarchy/etc-overrides/`. Removing the settings
+package restores the selector to `../usr/lib/os-release`.
 
 Tradeoff: user edits to those files get clobbered on every `omarchy-settings`
 upgrade. This is documented in the PKGBUILD.
@@ -350,7 +359,7 @@ return to the packaged default.
 | Runtime tweak that needs `$HOME` or live system state | extend `omarchy-provision-user`, or add a per-user leaf under `install/user/` and wire into `install/user/all.sh` |
 | One-time root-side setup step | `install/config/*.sh` or `install/hardware/*.sh`, wire into `install/config/all.sh` or `install/hardware/all.sh` |
 | One-time fix for existing installs | `migrations/<unix-timestamp>.sh` |
-| Package-owned path something else may already write | Prefer a path nothing else writes, such as a vendor drop-in under `/usr/lib`. Otherwise the `--overwrite` entry in `bin/omarchy-update-system-pkgs` has to ship a release before the file |
+| Package-owned system path | Add the source under `default/` or `etc/` and its PKGBUILD install line in the same change. If ownership must be transferred, use an explicit one-time package boundary such as the Quattro transition; ordinary updates must fail closed rather than seed or broadly overwrite live paths. |
 | User-facing `omarchy-*` command | `bin/omarchy-<group>-<verb>` — see `GROUP_DESCRIPTIONS` in `bin/omarchy` |
 | New stock theme | `themes/<name>/` (+ matching templates under `default/themed/` if they need theme colors) |
 | User-installed theme | `~/.config/omarchy/themes/<name>/` |
