@@ -1,6 +1,17 @@
 # Editor used by CLI
 export EDITOR="${EDITOR:-omarchy-launch-editor --inline}"
-export SUDO_EDITOR="$EDITOR"
+
+# sudo keeps whatever is on disk once the editor exits, so an editor that
+# detaches -- every graphical one omarchy-default-editor offers -- reads as
+# "closed without changing anything" and sudoedit and visudo throw the edit
+# away with no error. Send the Omarchy default through --sudo, which stays on a
+# terminal editor. An EDITOR the user set themselves is left to them, and an
+# explicit SUDO_EDITOR still wins over both.
+if [[ $EDITOR == "omarchy-launch-editor --inline" ]]; then
+  export SUDO_EDITOR="${SUDO_EDITOR:-omarchy-launch-editor --sudo}"
+else
+  export SUDO_EDITOR="${SUDO_EDITOR:-$EDITOR}"
+fi
 
 # Used by terminal programs (like gh) to open URLs detached from the terminal
 # process tree. Shell-scoped on purpose: exporting BROWSER session-wide makes
