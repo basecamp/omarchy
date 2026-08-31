@@ -21,7 +21,8 @@ using StorageWrite = bool (*)(std::string_view, std::span<const std::byte>,
                               void *) noexcept;
 using StorageRemove = bool (*)(std::string_view, void *) noexcept;
 using NotificationSend = bool (*)(std::string_view, std::string_view,
-                                  std::string_view, void *) noexcept;
+                                  std::string_view, std::string_view,
+                                  void *) noexcept;
 using AudioPlay = bool (*)(std::string_view, void *) noexcept;
 
 static_assert(std::is_nothrow_invocable_r_v<bool, StorageRead, std::string_view,
@@ -34,7 +35,8 @@ static_assert(std::is_nothrow_invocable_r_v<bool, StorageRemove,
                                             std::string_view, void *>);
 static_assert(
     std::is_nothrow_invocable_r_v<bool, NotificationSend, std::string_view,
-                                  std::string_view, std::string_view, void *>);
+                                  std::string_view, std::string_view,
+                                  std::string_view, void *>);
 static_assert(
     std::is_nothrow_invocable_r_v<bool, AudioPlay, std::string_view, void *>);
 

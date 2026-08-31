@@ -455,8 +455,9 @@ public:
 
 class BlockingNotifications final {
 public:
-  static bool send(std::string_view category, std::string_view,
-                   std::string_view, void *context) noexcept {
+  static bool send(std::string_view, std::string_view category,
+                   std::string_view, std::string_view,
+                   void *context) noexcept {
     auto &self = *static_cast<BlockingNotifications *>(context);
     std::unique_lock lock(self.mutex_);
     auto &effect = self.effect(category);

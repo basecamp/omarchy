@@ -15,6 +15,42 @@ namespace omarchy::plugin_runtime::channel {
 namespace audit = omarchy::plugins::audit;
 namespace permissions = omarchy::plugins::permissions;
 namespace policy = omarchy::plugin_runtime::policy;
+
+bool runtime_service_available(
+    const RuntimeServices &services,
+    const permissions::CapabilityKey &capability) noexcept {
+  if (capability.version != 1)
+    return false;
+  if (capability.id.view() == "storage.private")
+    return true;
+  if (capability.id.view() == "notifications.send")
+    return services.notification_send != nullptr;
+  if (capability.id.view() == "audio.play-cue")
+    return services.audio_play != nullptr;
+  return false;
+}
+
+bool runtime_service_available(
+    const definitions::TrustedDefinitionRegistry &definitions,
+    const RuntimeServices &services,
+    const definitions::CapabilityReference &definition) noexcept {
+  try {
+    const auto resolved = definitions.resolve(definition);
+    if (!resolved || services.compare_scope == nullptr)
+      return false;
+    return std::ranges::count(services.dynamic_services,
+                              resolved->definition->adapter,
+                              &TrustedDynamicService::binding) == 1 &&
+           std::ranges::any_of(
+               services.dynamic_services, [&](const auto &service) {
+                 return service.binding == resolved->definition->adapter &&
+                        service.dispatch != nullptr;
+               });
+  } catch (...) {
+    return false;
+  }
+}
+
 namespace {
 
 const permissions::CapabilityKey kStorage{
@@ -148,10 +184,10 @@ std::optional<PreparedRuntime> prepare_runtime(
         return std::nullopt;
       prepared.storage = *quota;
     } else if (grant.capability == kNotifications) {
-      if (!services.notification_send)
+      if (!runtime_service_available(services, grant.capability))
         return std::nullopt;
     } else if (grant.capability == kAudio) {
-      if (!services.audio_play)
+      if (!runtime_service_available(services, grant.capability))
         return std::nullopt;
     } else {
       return std::nullopt;
@@ -164,6 +200,8 @@ std::optional<PreparedRuntime> prepare_runtime(
     if (grant.grant.state != permissions::GrantState::granted)
       continue;
     if (grant.binding != grants.binding ||
+        !runtime_service_available(registry, services,
+                                   grant.request.definition) ||
         !definitions::review_dynamic_grant(registry, grant, validator))
       return std::nullopt;
     const auto resolved = registry.resolve(grant.request.definition);

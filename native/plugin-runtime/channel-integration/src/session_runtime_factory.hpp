@@ -33,6 +33,17 @@ struct RuntimeServices final {
   std::vector<TrustedDynamicService> dynamic_services;
 };
 
+// Trusted availability is derived from the frozen service table and exact
+// definition identity. It never returns a callback or selects a provider by a
+// plugin-supplied alias.
+[[nodiscard]] bool runtime_service_available(
+    const RuntimeServices &services,
+    const plugins::permissions::CapabilityKey &capability) noexcept;
+[[nodiscard]] bool runtime_service_available(
+    const definitions::TrustedDefinitionRegistry &definitions,
+    const RuntimeServices &services,
+    const definitions::CapabilityReference &definition) noexcept;
+
 struct Limits final {
   std::size_t maximum_audit_records = 1024;
   std::uint64_t maximum_storage_bytes = 64 * 1024 * 1024;

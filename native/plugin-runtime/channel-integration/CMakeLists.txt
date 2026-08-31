@@ -12,7 +12,7 @@ if(PLUGIN_SECURITY_CHANNEL_SANITIZERS)
   add_link_options(-fsanitize=address,undefined)
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Core)
+find_package(Qt6 REQUIRED COMPONENTS Core DBus)
 
 function(omarchy_plugin_target_defaults target)
   target_compile_features(${target} PUBLIC cxx_std_20)
@@ -60,6 +60,7 @@ if(TARGET omarchy-plugin-host-session)
   add_library(omarchy-plugin-authenticated-session STATIC
     src/authenticated_session_channel.cpp
     src/broker_session_settlement.cpp
+    src/desktop_notification_service.cpp
     src/plugin_permission_authority.cpp
     src/runtime_bootstrap.cpp
     src/activation_catalog.cpp
@@ -77,7 +78,9 @@ if(TARGET omarchy-plugin-host-session)
     omarchy-plugin-activation-snapshot
     omarchy-plugin-host-session
   )
-  target_link_libraries(omarchy-plugin-authenticated-session PRIVATE Qt6::Core)
+  target_link_libraries(omarchy-plugin-authenticated-session PRIVATE
+    Qt6::Core
+    Qt6::DBus)
   set_target_properties(omarchy-plugin-authenticated-session PROPERTIES
     POSITION_INDEPENDENT_CODE ON)
 endif()
@@ -128,6 +131,20 @@ if(BUILD_TESTING)
   )
 
   if(TARGET omarchy-plugin-authenticated-session)
+    add_executable(omarchy-plugin-desktop-notification-service-test
+      tests/desktop_notification_service_test.cpp)
+    omarchy_plugin_target_defaults(
+      omarchy-plugin-desktop-notification-service-test)
+    target_link_libraries(
+      omarchy-plugin-desktop-notification-service-test PRIVATE
+      omarchy-plugin-authenticated-session
+      Qt6::Core
+      Qt6::DBus)
+    add_test(NAME plugin-desktop-notification-service
+      COMMAND omarchy-plugin-desktop-notification-service-test)
+    set_tests_properties(plugin-desktop-notification-service PROPERTIES
+      TIMEOUT 10 LABELS "unit;security;providers;dbus")
+
     add_executable(omarchy-plugin-activation-catalog-test
       src/activation_catalog.cpp
       tests/activation_catalog_test.cpp)
@@ -161,7 +178,8 @@ if(BUILD_TESTING)
       OMARCHY_RUNTIME_BOOTSTRAP_TESTING
       OMARCHY_RUNTIME_ROOTS_TESTING)
     target_link_libraries(omarchy-plugin-runtime-bootstrap-test PRIVATE
-      omarchy-plugin-authenticated-session)
+      omarchy-plugin-authenticated-session
+      Qt6::DBus)
     add_test(NAME plugin-runtime-bootstrap
       COMMAND omarchy-plugin-runtime-bootstrap-test)
     set_tests_properties(plugin-runtime-bootstrap PROPERTIES

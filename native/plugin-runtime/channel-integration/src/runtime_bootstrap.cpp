@@ -1,6 +1,7 @@
 #include "runtime_bootstrap.hpp"
 
 #include "capability_definition_loader.hpp"
+#include "desktop_notification_service.hpp"
 #include "omarchy/plugin_runtime/Version.h"
 
 #include <fcntl.h>
@@ -195,7 +196,11 @@ RuntimeBootstrap::compose_from_filesystem_root(
   auto definitions =
       std::make_shared<const definitions::TrustedDefinitionRegistry>(
           std::move(registry));
-  auto services = std::make_shared<const RuntimeServices>();
+  auto services = make_runtime_services();
+  if (!services) {
+    error = RuntimeBootstrapError::resource_exhausted;
+    return {};
+  }
   error = RuntimeBootstrapError::none;
   return std::unique_ptr<RuntimeBootstrap>(
       new RuntimeBootstrap(std::move(roots), std::move(definitions),

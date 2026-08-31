@@ -124,9 +124,12 @@ struct BackendProbe {
     return true;
   }
 
-  static bool notify(std::string_view category, std::string_view title,
-                     std::string_view body, void *context) noexcept {
+  static bool notify(std::string_view plugin, std::string_view category,
+                     std::string_view title, std::string_view body,
+                     void *context) noexcept {
     auto &self = *static_cast<BackendProbe *>(context);
+    if (plugin != "org.example.timer")
+      return false;
     ++self.notifications;
     self.last = std::string(category) + ":" + std::string(title) + ":" +
                 std::string(body);

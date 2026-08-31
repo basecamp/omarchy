@@ -201,7 +201,8 @@ ProviderSet::dispatch_notification(const broker::AuthorizedRequest &request,
       self.configuration_.notification.send == nullptr ||
       !decode_notification(request.payload, decoded) ||
       !self.configuration_.notification.send(
-          category, decoded.title, decoded.body,
+          self.configuration_.binding.plugin.view(), category, decoded.title,
+          decoded.body,
           self.configuration_.notification.context))
     return {};
   return {.status = broker::ProviderStatus::completed, .bytes_written = 0};

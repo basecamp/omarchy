@@ -133,11 +133,13 @@ public:
     return bootstrap.scan_catalog(error);
   }
   [[nodiscard]] static bool
-  has_fail_closed_context(const RuntimeBootstrap &bootstrap) noexcept {
+  has_fixed_service_context(const RuntimeBootstrap &bootstrap) noexcept {
     return bootstrap.definitions_ && bootstrap.definitions_->size() == 0 &&
            bootstrap.services_ &&
-           bootstrap.services_->notification_send == nullptr &&
+           bootstrap.services_->context &&
+           bootstrap.services_->notification_send != nullptr &&
            bootstrap.services_->audio_play == nullptr &&
+           bootstrap.services_->compare_scope == nullptr &&
            bootstrap.services_->dynamic_services.empty();
   }
   static void set_services(RuntimeBootstrap &bootstrap,

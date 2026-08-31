@@ -286,9 +286,9 @@ void empty_package_and_absent_admin_compose_one_shared_context() {
   channel::RuntimeBootstrapError error{};
   auto bootstrap = load(fixture, error);
   require(bootstrap && error == channel::RuntimeBootstrapError::none &&
-              channel::RuntimeBootstrapTestAccess::has_fail_closed_context(
+              channel::RuntimeBootstrapTestAccess::has_fixed_service_context(
                   *bootstrap),
-          "fixed empty bootstrap did not compose fail-unavailable services");
+          "fixed bootstrap did not compose exact production services");
 
   const permissions::PluginId plugin("example.plugin");
   require(!prepare_runtime_for_test(

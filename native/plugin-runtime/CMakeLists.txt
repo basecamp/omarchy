@@ -22,10 +22,10 @@ target_include_directories(omarchy-plugin-runtime-paths INTERFACE
   "${CMAKE_CURRENT_BINARY_DIR}/generated")
 
 if(OMARCHY_PLUGIN_QT_MIN_VERSION)
-  find_package(Qt6 ${OMARCHY_PLUGIN_QT_MIN_VERSION} REQUIRED COMPONENTS Core Gui Qml Quick)
+  find_package(Qt6 ${OMARCHY_PLUGIN_QT_MIN_VERSION} REQUIRED COMPONENTS Core DBus Gui Qml Quick)
   qt_standard_project_setup(REQUIRES ${OMARCHY_PLUGIN_QT_MIN_VERSION})
 else()
-  find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick)
+  find_package(Qt6 REQUIRED COMPONENTS Core DBus Gui Qml Quick)
   qt_standard_project_setup()
 endif()
 
