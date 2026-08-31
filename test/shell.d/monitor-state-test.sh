@@ -22,11 +22,6 @@ cat >"$test_bin/omarchy-brightness-display" <<'EOF'
 echo 42
 EOF
 
-cat >"$test_bin/omarchy-hyprland-monitor-focused" <<'EOF'
-#!/bin/bash
-echo FOCUSED
-EOF
-
 cat >"$test_bin/omarchy-hyprland-monitor-scaling" <<'EOF'
 #!/bin/bash
 echo 1.5
@@ -91,14 +86,14 @@ assert_line 1 eDP-1 "monitor state names the internal monitor"
 assert_line 2 DP-1 "monitor state names the external monitor"
 assert_line 3 eDP-1 "monitor state reports the internal monitor enabled"
 assert_line 4 "" "monitor state reports no mirror while extended"
-assert_line 5 FOCUSED "monitor state reports the focused monitor"
+assert_line 5 DP-1 "monitor state reports the focused monitor"
 assert_line 6 1.5 "monitor state reports the scale"
 pass "monitor state keeps its lines aligned when nothing is mirrored"
 
 monitor_state "$mirrored"
 assert_line_count "monitor state answers every line while mirroring"
 assert_line 4 DP-1 "monitor state names the mirroring external monitor"
-assert_line 5 FOCUSED "monitor state still reports the focused monitor while mirroring"
+assert_line 5 eDP-1 "monitor state still reports the focused monitor while mirroring"
 pass "monitor state reports the external monitor when it mirrors the internal"
 
 monitor_state "$reverse_mirrored"

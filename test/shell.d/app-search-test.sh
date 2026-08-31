@@ -115,6 +115,13 @@ assert(
 )
 
 assert(
+  appLibraryQml.includes('command: ["bash", "-c", root.hiddenEntryScanCommand()]') &&
+    appLibraryQml.includes('command: ["bash", "-c", root.iconIndexScanCommand()]') &&
+    !appLibraryQml.includes('"-lc"'),
+  'app library scans avoid login shells whose profile activation retriggers the desktop-entry watcher'
+)
+
+assert(
   /if \(active === "apps"\) \{[\s\S]*?rows\.sort\(function\(a, b\)/.test(menuQml),
   'apps menu enforces alphabetical display order after provider refreshes'
 )

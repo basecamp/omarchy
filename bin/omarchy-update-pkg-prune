@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# omarchy:summary=Prune superseded versions from the pacman package cache
+# omarchy:requires-sudo=true
+
+set -e
+
+# The cache is the only offline downgrade path, so keep two. Run before the
+# packages update and the installed version survives with a spare. paccache
+# retains by version order, never by what is installed.
+echo -e "\e[32m\nPrune package cache\e[0m"
+sudo paccache -rk2 || echo -e "\e[33mCould not prune the package cache.\e[0m" >&2
+echo

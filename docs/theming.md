@@ -6,13 +6,22 @@ Omarchy themes live under `themes/<name>/` in the source tree (installed at
 `colors.toml`; Omarchy generates the active theme files from
 `default/themed/*.tpl` when `omarchy-theme-set <name>` runs.
 
+Beyond `colors.toml` and hand-written config overrides, a first-party theme can
+ship `backgrounds/` (users overlay their own via
+`~/.config/omarchy/backgrounds/<name>/`; the active image is the
+`~/.local/state/omarchy/current/background` symlink), `preview.png` and
+`preview-unlock.png` for the theme switcher, `icons.theme`, `keyboard.rgb`,
+`unlock.png`, and a `light.mode` marker file.
+
+A theme installed from a git repo is held to a much shorter list; see [What an installed theme may not ship](#what-an-installed-theme-may-not-ship).
+
 ## Theme activation flow
 
 `omarchy-theme-set <name>` builds a clean staging directory at
 `~/.local/state/omarchy/current/next-theme`:
 
 1. Copy the first-party theme from `themes/<name>/`.
-2. Overlay any user theme files from `~/.config/omarchy/themes/<name>/`.
+2. Overlay `~/.config/omarchy/themes/<name>/`, in full when the user wrote it and filtered when it came from a git repo, naming anything it dropped on stderr.
 3. If needed, generate `colors.toml` from `alacritty.toml`.
 4. Run `omarchy-theme-set-templates` to render templates into the staging
    theme.
@@ -27,6 +36,34 @@ Existing files are never overwritten by a template, so a hand-written
 User templates in `~/.config/omarchy/themed/*.tpl` are processed before the
 built-in templates. If a user template has the same output filename as a
 built-in template, the built-in output is skipped.
+
+After activation, `omarchy-theme-set` fires the `theme-set` hook
+(`~/.config/omarchy/hooks/theme-set*`, theme name in `$1`) and dispatches a
+parallel retint of running apps — terminals, Hyprland, btop, browser, editors,
+and the rest of the `post_theme_commands` list in `bin/omarchy-theme-set`.
+Making a new app follow theme changes means adding its restart/retint command
+to that list. Runs serialize on a `flock`, so scripted theme changes queue
+instead of racing.
+
+## What an installed theme may not ship
+
+`themes/<name>/` in this repo is Omarchy's own code and is trusted. So is a theme the user wrote by hand in `~/.config/omarchy/themes/<name>/`: it is their machine and their file, and both stage in full.
+
+`omarchy theme install <url>` is different. It clones a stranger's git repo straight into that same directory, so the contents are whatever the theme author pushed. `omarchy-theme-set` tells the two apart the way `omarchy-theme-extras` already does — a `.git` directory means it was cloned, while a plain directory or a symlink to a working copy is the user's own — and from a cloned one it drops only what can run code:
+
+- any `*.lua` — Hyprland `require`s a theme's `hyprland.lua` and `gum_env.lua` at login, and Neovim loads its `neovim.lua` at startup
+- `alacritty.toml`, `foot.ini`, `ghostty.conf`, `kitty.conf` — each names the program the terminal launches
+- `vscode.json` — names the extension `omarchy-theme-set-vscode` installs, and a VS Code extension is arbitrary JavaScript
+
+Symlinks are dropped with them, at any depth; in a cloned theme they point wherever the theme author chose. Everything a cloned theme ships that is colour is kept, including files Omarchy would otherwise have generated — `btop.theme`, `chromium.theme`, `helix.toml`, `shell.toml`, `icons.theme`, `keyboard.rgb` and the rest — so a theme can still say exactly how it wants each app to look. What is dropped gets generated from `default/themed/*.tpl` instead, and is named on stderr.
+
+A denylist is only right while it is maintained. Adding a template for another terminal, or for another editor that loads Lua, means adding it to `INSTALLED_THEME_DENIED` in `bin/omarchy-theme-set`; `test/shell.d/theme-staging-test.sh` fails on any `default/themed/*.tpl` whose output is recorded as neither code nor colour, so a new template cannot be added without that decision being made.
+
+A theme predating `colors.toml` is not left without a palette: its `alacritty.toml` is read through `omarchy-theme-colors-from-alacritty` into a scratch directory and only the resulting `colors.toml` is staged, so the colors survive and the terminal config does not.
+
+The restriction lives in `omarchy-theme-set` rather than in `omarchy-theme-install` on purpose. Filtering at staging also covers themes installed before the rule existed and files a theme gains later through `omarchy theme update`.
+
+What this does not cover: a theme distributed as an archive rather than a git repo, extracted into `~/.config/omarchy/themes/` by hand, is indistinguishable from one the user wrote and stages in full. `omarchy theme install` only takes git URLs, so the supported path is always filtered, but the check is a statement about where a theme came from and not a sandbox.
 
 ## `colors.toml`
 
@@ -64,7 +101,8 @@ shell palette is loaded from:
   `color4`
 - `muted` — de-emphasized elements (comments, placeholders, dividers); also
   serves as ANSI `color8`
-- `urgent` / `red` / `color1`
+- `red` / `color1` — populate the shell's urgent role; there is no `urgent`
+  palette key (one defined in `colors.toml` is ignored)
 
 Themes and user templates using the legacy short names remain supported.
 Canonical names take precedence when both forms are defined, and resolved
@@ -304,10 +342,11 @@ BorderSurface {
 }
 ```
 
-Use `Border.surfaceSpec(section, token, fallbackColor, fallbackWidth)` for
-shell theme tokens, `Border.controlSpec(state, foreground, accent)` for shared
-controls, and `Border.flat(color, width)` for a deliberate local border that
-should not be overridden by the active theme. `Color.<section>.border` is the
+Use `Border.surfaceSpec(section, token, fallbackColor, fallbackWidth, alphaKey)`
+for shell theme tokens (the optional `alphaKey` names the alpha token, e.g.
+`"border-alpha"`), `Border.controlSpec(state, foreground, accent, urgent)` for
+shared controls, and `Border.flat(color, width)` for a deliberate local border
+that should not be overridden by the active theme. `Color.<section>.border` is the
 flat first-stop color for consumers that cannot render full border specs.
 
 ## Hyprland templates
@@ -335,6 +374,7 @@ local active_border_color = { colors = { "rgba(33ccffee)", "rgba(00ff99ee)" }, a
 ## Adding or overriding theme files
 
 - Add palette values to `themes/<name>/colors.toml`.
+- Hand-written overrides work everywhere except a `.lua`, a terminal config or a `vscode.json` in a theme cloned from a git repo; see [What an installed theme may not ship](#what-an-installed-theme-may-not-ship).
 - Prefer generated files when the theme can be expressed with templates.
 - Add a hand-written file in `themes/<name>/` only when that theme needs to
   override the generated output entirely.

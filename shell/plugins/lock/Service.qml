@@ -424,7 +424,10 @@ Item {
         root.armBlankTimer()
         return
       }
-      if (root.lockRequested && !root.authenticating) root.runBlank()
+      // Only a password check in flight should hold the display up. The
+      // fingerprint PAM stays armed for the whole lock, so gating on
+      // `authenticating` here would keep the panel lit until unlock.
+      if (root.lockRequested && !root.authenticatingPassword) root.runBlank()
     }
   }
 
@@ -472,9 +475,9 @@ Item {
     }
   }
 
-  onAuthenticatingChanged: {
+  onAuthenticatingPasswordChanged: {
     if (!lockRequested) return
-    if (authenticating) idleBlankTimer.stop()
+    if (authenticatingPassword) idleBlankTimer.stop()
     else armBlankTimer()
   }
 

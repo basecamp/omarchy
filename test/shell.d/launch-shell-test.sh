@@ -28,6 +28,8 @@ cat >"$fake_bin/quickshell" <<'SH'
 #!/bin/bash
 
 printf '%s\n' "$*" >>"$OMARCHY_TEST_QS_LOG"
+printf 'watcher=%s popup=%s\n' \
+  "${QS_DISABLE_FILE_WATCHER:-unset}" "${QS_NO_RELOAD_POPUP:-unset}" >>"$OMARCHY_TEST_QS_ENV_LOG"
 
 launches=$(wc -l <"$OMARCHY_TEST_QS_LOG")
 status=$(awk -v n="$launches" 'NR == n { print; found = 1 } END { if (!found) print "0" }' <<<"$OMARCHY_TEST_QS_STATUSES")
@@ -77,17 +79,20 @@ SH
 chmod +x "$fake_bin/quickshell" "$fake_bin/systemd-cat" "$fake_bin/hyprctl" "$fake_bin/logger"
 
 qs_log="$test_tmp/quickshell.log"
+qs_env_log="$test_tmp/quickshell-env.log"
 logger_log="$test_tmp/logger.log"
 qs_terminated="$test_tmp/quickshell-terminated"
 hyprctl_misses="$test_tmp/hyprctl-misses"
 
 launch_shell() {
   : >"$qs_log"
+  : >"$qs_env_log"
   : >"$logger_log"
 
   PATH="$fake_bin:$PATH" \
   OMARCHY_PATH="$shell_root" \
   OMARCHY_TEST_QS_LOG="$qs_log" \
+  OMARCHY_TEST_QS_ENV_LOG="$qs_env_log" \
   OMARCHY_TEST_QS_STATUSES="$1" \
   OMARCHY_TEST_COMPOSITOR_GONE="${2:-0}" \
   OMARCHY_TEST_LOGGER_LOG="$logger_log" \
@@ -105,6 +110,12 @@ launch_shell '0' || fail "a clean launch succeeds"
 [[ $(launches) == 1 ]] || fail "a shell that exits cleanly is not relaunched" "$(<"$qs_log")"
 grep -F -- "-n -p $shell_root/shell" "$qs_log" >/dev/null || fail "the shell launches from OMARCHY_PATH"
 pass "a shell that exits cleanly is left alone"
+
+# A misspelled variable would leave Quickshell hot-reloading the tree pacman
+# rewrites underneath it, which is what crashes the restart that follows.
+[[ $(<"$qs_env_log") == "watcher=1 popup=1" ]] ||
+  fail "the shell launches with Quickshell's own reloading off" "$(<"$qs_env_log")"
+pass "the shell launches with Quickshell's config watcher and reload popup off"
 
 # Qt leaves through _exit(), so Quickshell's crash handler never relaunches it.
 launch_shell $'255\n0' || fail "a shell that died on a Wayland error is relaunched"
@@ -130,11 +141,13 @@ pass "a compositor too busy to answer is not mistaken for one that is gone"
 
 # A signal mid-backoff only reaches the trap once the sleep is over.
 : >"$qs_log"
+: >"$qs_env_log"
 : >"$logger_log"
 
 PATH="$fake_bin:$PATH" \
 OMARCHY_PATH="$shell_root" \
 OMARCHY_TEST_QS_LOG="$qs_log" \
+OMARCHY_TEST_QS_ENV_LOG="$qs_env_log" \
 OMARCHY_TEST_QS_STATUSES=$'255\n0' \
 OMARCHY_TEST_COMPOSITOR_GONE=0 \
 OMARCHY_TEST_LOGGER_LOG="$logger_log" \
@@ -156,12 +169,14 @@ pass "a signal during backoff stops the supervisor before it relaunches"
 
 # Stopping the launcher used to stop the shell, back when it exec'd Quickshell.
 : >"$qs_log"
+: >"$qs_env_log"
 : >"$logger_log"
 rm -f "$qs_terminated"
 
 PATH="$fake_bin:$PATH" \
 OMARCHY_PATH="$shell_root" \
 OMARCHY_TEST_QS_LOG="$qs_log" \
+OMARCHY_TEST_QS_ENV_LOG="$qs_env_log" \
 OMARCHY_TEST_QS_STATUSES='run' \
 OMARCHY_TEST_COMPOSITOR_GONE=0 \
 OMARCHY_TEST_LOGGER_LOG="$logger_log" \

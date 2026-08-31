@@ -1,6 +1,6 @@
 [Unit]
 Description=Omarchy speaker tuning filter-chain
-Documentation=https://github.com/basecamp/omarchy/blob/master/docs/AUDIO-TUNING.md
+Documentation=https://github.com/basecamp/omarchy/blob/master/docs/audio-tuning.md
 # WirePlumber does the linking, so starting before it is up risks the output being
 # linked before the speaker device has been discovered.
 After=pipewire.service wireplumber.service

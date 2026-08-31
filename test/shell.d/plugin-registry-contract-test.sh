@@ -18,10 +18,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [[ -z ${WAYLAND_DISPLAY:-} ]]; then
-  pass "no Wayland compositor; skipping plugin registry contract test"
-  exit 0
-fi
+require_compositor "plugin registry contract test"
 
 if ! command -v quickshell >/dev/null 2>&1; then
   pass "quickshell not installed; skipping plugin registry contract test"

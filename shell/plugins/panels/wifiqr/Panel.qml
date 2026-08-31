@@ -257,6 +257,7 @@ Item {
           spacing: Style.space(16)
 
           Text {
+            textFormat: Text.PlainText
             text: (root.ssid || "Wi-Fi").toUpperCase()
             color: root.onScrimDim
             font.family: root.fontFamily
@@ -318,6 +319,7 @@ Item {
           }
 
           Text {
+            textFormat: Text.PlainText
             visible: root.error !== ""
             text: root.error
             color: root.onScrimUrgent
@@ -340,6 +342,7 @@ Item {
           }
 
           Text {
+            textFormat: Text.PlainText
             visible: root.showingQr && root.secured
             text: root.passwordError !== "" ? root.passwordError
               : root.passwordVisible ? root.password

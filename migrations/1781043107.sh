@@ -99,8 +99,10 @@ relink_current_symlink() {
       ln -sfn "$current_state_dir/$suffix" "$link"
       ;;
     "~/.config/omarchy/current/"*)
+      # The filesystem never expands a literal ~ in a symlink target, so keep
+      # $HOME out of the quoted string and let the shell expand it instead.
       suffix=${target#"~/.config/omarchy/current/"}
-      ln -sfn "~/.local/state/omarchy/current/$suffix" "$link"
+      ln -sfn "$current_state_dir/$suffix" "$link"
       ;;
   esac
 }
