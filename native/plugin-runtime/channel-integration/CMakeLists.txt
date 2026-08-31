@@ -60,7 +60,7 @@ if(TARGET omarchy-plugin-host-session)
   add_library(omarchy-plugin-authenticated-session STATIC
     src/authenticated_session_channel.cpp
     src/broker_session_settlement.cpp
-    src/plugin_permission_controller.cpp
+    src/plugin_permission_authority.cpp
     src/runtime_bootstrap.cpp
     src/activation_catalog.cpp
     src/runtime_roots.cpp
@@ -205,7 +205,7 @@ if(BUILD_TESTING)
     add_executable(omarchy-plugin-product-session-test
       src/authenticated_session_channel.cpp
       src/broker_session_settlement.cpp
-      src/plugin_permission_controller.cpp
+      src/plugin_permission_authority.cpp
       src/plugin_runtime_root.cpp
       src/session_runtime_factory.cpp
       tests/session_runtime_factory_test.cpp

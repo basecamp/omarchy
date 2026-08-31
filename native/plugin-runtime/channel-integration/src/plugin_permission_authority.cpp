@@ -1,4 +1,4 @@
-#include "plugin_permission_controller.hpp"
+#include "plugin_permission_authority.hpp"
 #include "session_runtime_factory.hpp"
 
 #include <fcntl.h>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "plugin_permission_controller.hpp"
+#include "plugin_permission_authority.hpp"
 #include "plugin_session.hpp"
 #include "session_runtime_factory.hpp"
 #include "surface_session_port.hpp"

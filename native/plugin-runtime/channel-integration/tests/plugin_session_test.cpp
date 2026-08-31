@@ -4,7 +4,7 @@
 #include "dynamic_broker_runtime.hpp"
 #include "omarchy/plugin_runtime/launcher/test_supervisor.h"
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
-#include "plugin_permission_controller.hpp"
+#include "plugin_permission_authority.hpp"
 #include "plugin_session.hpp"
 #include "plugin_runtime_root.hpp"
 #include "structured_broker.hpp"
