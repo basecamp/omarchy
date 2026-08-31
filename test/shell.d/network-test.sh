@@ -293,4 +293,42 @@ assertDeepEqual(
 
 assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }), '', 'network keeps wifi band state out of the hero')
 assertEqual(network.headerDetail({ type: 'ethernet', speed: '100' }), '100mbit', 'network keeps ethernet speed in the hero')
+
+assertEqual(network.extractDbusString('   string "org.freedesktop.NetworkManager"'), 'org.freedesktop.NetworkManager', 'network extracts a quoted dbus-monitor string arg')
+assertEqual(network.extractDbusString('   string ""'), '', 'network extracts an empty dbus-monitor string arg')
+assertEqual(network.extractDbusString('signal time=123 sender=org.freedesktop.DBus -> destination=(null) serial=4 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameOwnerChanged'), null, 'network does not mistake the signal header for a string arg')
+assertEqual(network.extractDbusString(''), null, 'network handles a blank dbus-monitor line')
+
+assertEqual(network.nmServiceOwnerLost(':1.93', ''), true, 'network treats a live owner releasing the name as the daemon going down')
+assertEqual(network.nmServiceOwnerLost('', ':1.114'), false, 'network does not treat a first-ever name claim as a restart')
+assertEqual(network.nmServiceOwnerLost('', ''), false, 'network ignores a no-op owner change')
+
+assert(
+  /Process \{\s*id: nmOwnerWatch[\s\S]*?arg0='org\.freedesktop\.NetworkManager'/.test(panelSource),
+  'network watches NetworkManager\'s D-Bus name ownership for daemon restarts'
+)
+assert(
+  /onExited: nmOwnerWatchRestart\.restart\(\)/.test(panelSource),
+  'network respawns its D-Bus watcher if dbus-monitor exits'
+)
+assert(
+  /function openPanelInstance\(\) \{\s*if \(root\.opened\) return root[\s\S]*?bar\.moduleWidgets\(moduleName\)/.test(panelSource),
+  'network finds whichever per-monitor instance actually has its panel open'
+)
+assert(
+  /function performNmSelfHeal\(\) \{\s*var opener = root\.openPanelInstance\(\)\s*if \(opener\) \{\s*opener\.nmSelfHealPending = true/.test(panelSource),
+  'network defers its self-heal restart on whatever instance is open, not just itself'
+)
+assert(
+  /if \(nmSelfHealPending\) \{\s*nmSelfHealPending = false\s*root\.restartShellForNmSelfHeal\(\)/.test(panelSource),
+  'network flushes a pending self-heal restart once the panel closes'
+)
+assert(
+  /function restartShellForNmSelfHeal\(\) \{[\s\S]*?Quickshell\.env\("XDG_RUNTIME_DIR"\)[\s\S]*?flock -n[\s\S]*?omarchy-restart-shell/.test(panelSource),
+  'network lock-guards its self-heal restart under the runtime dir so a multi-monitor setup cannot fire it twice'
+)
+assert(
+  /until omarchy-restart-shell \|\| ! omarchy-hyprland-session-locked; do sleep 5; done/.test(panelSource),
+  'network retries its self-heal restart while the session is locked instead of dropping the event'
+)
 JS
