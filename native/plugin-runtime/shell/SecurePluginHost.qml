@@ -2,8 +2,10 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 import Omarchy.PluginHost 1.0
+import "SecureSurfacePolicy.js" as SurfacePolicy
 
 Item {
   id: root
@@ -13,6 +15,13 @@ Item {
   readonly property int maximumPermissionChoiceBytes: 262176
   readonly property int maximumPermissionChoiceChunkBytes: 90000
   readonly property int maximumArchivePathBytes: 4096
+  property var barEntries: []
+  property string barOwnerScreenName: ""
+  readonly property string liveScreenSignature: liveScreenNames().join("\n")
+  readonly property string focusedScreenName: {
+    var monitor = Hyprland.focusedMonitor
+    return monitor ? String(monitor.name || "") : ""
+  }
 
   visible: false
 
@@ -71,15 +80,48 @@ Item {
     }
   }
 
-  function screenFor(name) {
-    for (var i = 0; i < Quickshell.screens.length; i++)
-      if (Quickshell.screens[i].name === name) return Quickshell.screens[i]
+  function liveScreenNames() {
+    var names = []
+    for (var index = 0; index < Quickshell.screens.length; index++)
+      names.push(String(Quickshell.screens[index].name || ""))
+    return SurfacePolicy.liveScreenNames(names)
+  }
+
+  function screenForOpen() {
+    var focusedName = SurfacePolicy.chooseOpenScreen(liveScreenNames(), focusedScreenName)
+    for (var index = 0; index < Quickshell.screens.length; index++)
+      if (Quickshell.screens[index].name === focusedName) return Quickshell.screens[index]
     return null
   }
 
+  function refreshBarOwner() {
+    barOwnerScreenName = SurfacePolicy.chooseOwner(
+      liveScreenNames(), focusedScreenName, barOwnerScreenName, barEntries.length > 0)
+  }
+
+  function barEntriesForScreen(region, screenName) {
+    return SurfacePolicy.entriesForScreen(barEntries, region, barOwnerScreenName, screenName)
+  }
+
+  function refreshBarEntries() {
+    var next = []
+    for (var index = 0; index < barEntryInstances.count; index++) {
+      var entry = barEntryInstances.objectAt(index)
+      if (entry) next.push({ id: entry.surfaceKey, section: entry.defaultSection })
+    }
+    barEntries = next
+    refreshBarOwner()
+  }
+
+  onLiveScreenSignatureChanged: refreshBarOwner()
+  onFocusedScreenNameChanged: refreshBarOwner()
+
   Instantiator {
-    id: barEntries
+    id: barEntryInstances
     model: PluginManager.barSurfaces
+
+    onObjectAdded: Qt.callLater(root.refreshBarEntries)
+    onObjectRemoved: Qt.callLater(root.refreshBarEntries)
 
     delegate: QtObject {
       id: barEntry
@@ -134,8 +176,8 @@ Item {
   }
 
   onBarWidgetRegistryChanged: {
-    for (var index = 0; index < barEntries.count; index++) {
-      var entry = barEntries.objectAt(index)
+    for (var index = 0; index < barEntryInstances.count; index++) {
+      var entry = barEntryInstances.objectAt(index)
       if (entry) entry.syncRegistration()
     }
   }
@@ -146,7 +188,6 @@ Item {
       SecurePanelSurface {
         required property string surfaceKey
         required property string generation
-        required property string screenName
         required property bool initiallyVisible
         required property int maximumWidth
         required property int maximumHeight
@@ -164,7 +205,6 @@ Item {
       SecureOverlaySurface {
         required property string surfaceKey
         required property string generation
-        required property string screenName
         required property bool initiallyVisible
         required property int maximumWidth
         required property int maximumHeight

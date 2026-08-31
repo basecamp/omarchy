@@ -91,6 +91,7 @@ add_subdirectory(policy)
 
 install(FILES
   shell/SecurePluginHost.qml
+  shell/SecureSurfacePolicy.js
   shell/SecureBarSurface.qml
   shell/SecurePanelSurface.qml
   shell/SecureOverlaySurface.qml

@@ -392,15 +392,18 @@ Item {
 
   onBarConfigChanged: applyBarConfig()
 
-  function layoutEntries(region) {
+  function layoutEntries(region, screenName) {
     var serial = barConfigSerial
     var entries = layoutConfig ? layoutConfig[region] : null
     var result = Array.isArray(entries) ? entries.slice() : []
-    var secureEntries = securePluginHost ? securePluginHost.barEntries : null
+    var requestedScreen = arguments.length > 1
+      ? String(screenName || "")
+      : (securePluginHost ? securePluginHost.barOwnerScreenName : "")
+    var secureEntries = securePluginHost
+      ? securePluginHost.barEntriesForScreen(region, requestedScreen)
+      : null
     if (!Array.isArray(secureEntries)) return result
-    for (var i = 0; i < secureEntries.length; i++) {
-      if (secureEntries[i].section === region) result.push({ id: secureEntries[i].id })
-    }
+    for (var i = 0; i < secureEntries.length; i++) result.push(secureEntries[i])
     return result
   }
 
@@ -490,6 +493,10 @@ Item {
 
   function slotScreenName(slot) {
     var window = slotWindow(slot)
+    return windowScreenName(window)
+  }
+
+  function windowScreenName(window) {
     return window && window.screen ? String(window.screen.name || "") : ""
   }
 
@@ -1279,28 +1286,27 @@ Item {
     }
   }
 
-  function findCenterAnchorEntry() {
-    var entries = root.layoutEntries("center")
+  function findCenterAnchorEntry(entries) {
     var idx = root.entryIndex(entries, root.centerAnchor)
     return idx === -1 ? null : entries[idx]
   }
 
   component LeftModules: ModuleList {
-    entries: root.layoutEntries("left")
+    entries: root.layoutEntries("left", root.windowScreenName(Window.window))
     region: "left"
   }
 
   component RightModules: ModuleList {
-    entries: root.layoutEntries("right")
+    entries: root.layoutEntries("right", root.windowScreenName(Window.window))
     region: "right"
   }
 
   component CenterModules: Item {
     id: centerRoot
 
-    property var entries: root.layoutEntries("center")
+    property var entries: root.layoutEntries("center", root.windowScreenName(Window.window))
     readonly property bool hasAnchor: root.entryIndex(entries, root.centerAnchor) !== -1
-    readonly property var anchorEntry: root.findCenterAnchorEntry()
+    readonly property var anchorEntry: root.findCenterAnchorEntry(entries)
 
     Loader {
       anchors.fill: parent

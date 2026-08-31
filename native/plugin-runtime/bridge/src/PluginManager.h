@@ -203,11 +203,22 @@ public:
   using JobSubmitter =
       std::function<bool(TestJobKind, std::function<void()>)>;
   using JobEntryProbe = std::function<void(TestJobKind)>;
+  struct SurfaceIntentCallback final {
+    std::function<bool(host_session::AdmittedSurfaceIntent)> deliver;
+    std::function<std::size_t()> pending;
+  };
   static void setJobSubmitter(PluginManager &manager, JobSubmitter submitter);
   static void setJobEntryProbe(PluginManager &manager, JobEntryProbe probe);
   static void requestAsyncScan(PluginManager &manager);
   static void requestPreparations(PluginManager &manager);
   static void drainRuntime(PluginManager &manager);
+  [[nodiscard]] static std::optional<SurfaceIntentCallback>
+  surfaceIntentCallback(PluginManager &manager, std::string_view plugin,
+                        std::uint64_t epoch);
+  [[nodiscard]] static bool stageRunningSurfaceIntentSlot(
+      PluginManager &manager, std::string_view plugin, std::uint64_t epoch,
+      const plugins::permissions::ActivationBinding &binding,
+      std::vector<SurfaceProjectionModel::SurfaceDeclaration> declarations);
   [[nodiscard]] static std::uint8_t
   preparationCount(const PluginManager &manager);
   [[nodiscard]] static std::uint8_t

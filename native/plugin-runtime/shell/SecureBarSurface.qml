@@ -9,24 +9,48 @@ Item {
   required property string generation
   required property int maximumWidth
   required property int maximumHeight
+  property int attachAttempts: 0
+  readonly property int maximumAttachAttempts: 40
 
   implicitWidth: maximumWidth
   implicitHeight: maximumHeight
 
   function attachIfReady() {
-    if (!remote.connected && remote.Window.window !== null && remote.width > 0 && remote.height > 0)
-      surfaceService.attach(surfaceKey, remote)
+    if (remote.connected) {
+      attachRetry.stop()
+      return
+    }
+    if (remote.Window.window === null || remote.width <= 0 || remote.height <= 0) return
+    if (surfaceService.attach(surfaceKey, remote)) {
+      attachRetry.stop()
+      return
+    }
+    if (attachAttempts < maximumAttachAttempts) {
+      attachAttempts++
+      attachRetry.restart()
+    }
   }
 
-  onSurfaceKeyChanged: attachIfReady()
+  function retryAttach() {
+    attachAttempts = 0
+    attachIfReady()
+  }
+
+  onSurfaceKeyChanged: retryAttach()
+
+  Timer {
+    id: attachRetry
+    interval: 25
+    onTriggered: root.attachIfReady()
+  }
 
   RemotePluginSurface {
     id: remote
     anchors.fill: parent
-    Window.onWindowChanged: root.attachIfReady()
-    onWidthChanged: root.attachIfReady()
-    onHeightChanged: root.attachIfReady()
+    Window.onWindowChanged: root.retryAttach()
+    onWidthChanged: root.retryAttach()
+    onHeightChanged: root.retryAttach()
   }
 
-  Component.onCompleted: attachIfReady()
+  Component.onCompleted: retryAttach()
 }

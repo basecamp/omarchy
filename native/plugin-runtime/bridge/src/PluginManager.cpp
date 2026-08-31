@@ -15,6 +15,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <deque>
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
 #include <functional>
 #endif
@@ -80,6 +81,8 @@ struct PluginManager::Runtime final {
   };
 
   struct HookState final {
+    static constexpr std::size_t maximum_pending_surface_intents = 64;
+
     explicit HookState(std::string plugin, std::uint64_t epoch)
         : plugin(std::move(plugin)), epoch(epoch) {}
 
@@ -87,6 +90,8 @@ struct PluginManager::Runtime final {
     const std::uint64_t epoch;
     // Zero means no pending callback; nonzero is packed state/error plus one.
     std::atomic<std::uint16_t> lifecycle = 0;
+    std::mutex intent_mutex;
+    std::deque<host_session::AdmittedSurfaceIntent> intents;
   };
 
   struct Hook final : channel::PluginRuntimeHooks {
@@ -101,10 +106,20 @@ struct PluginManager::Runtime final {
     }
 
     void render_rejected(host_session::RouteResult) override {}
-    bool accept(host_session::AdmittedSurfaceIntent) override {
-      // Publication grants no callback-thread access to the shell model.
-      // Surface intents stay inert until they have a bounded UI mailbox.
-      return false;
+    bool accept(host_session::AdmittedSurfaceIntent intent) override {
+      try {
+        if (!intent.available() ||
+            intent.binding().plugin.view() != state->plugin)
+          return false;
+        std::scoped_lock lock(state->intent_mutex);
+        if (state->intents.size() >=
+            HookState::maximum_pending_surface_intents)
+          return false;
+        state->intents.push_back(std::move(intent));
+        return true;
+      } catch (...) {
+        return false;
+      }
     }
 
     std::shared_ptr<HookState> state;
@@ -176,6 +191,9 @@ struct PluginManager::Runtime final {
     std::unique_ptr<channel::PluginRuntimeRoot> root;
     std::unique_ptr<SurfaceEndpointOwner> endpoint_owner;
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+    std::optional<plugins::permissions::ActivationBinding>
+        test_running_binding;
+    bool test_surface_endpoint = false;
     std::uint8_t last_state = 0;
     std::uint8_t last_error = 0;
 #endif
@@ -444,6 +462,8 @@ struct PluginManager::Runtime final {
                    static_cast<host_session::SessionState>(packed & 0xffU),
                    static_cast<host_session::SessionError>(packed >> 8U));
     }
+    for (auto &slot : slots_)
+      drainSurfaceIntents(slot);
     requestPreparations();
     armCompletionTimer();
   }
@@ -1167,6 +1187,35 @@ struct PluginManager::Runtime final {
     }
   }
 
+  void drainSurfaceIntents(Slot &slot) noexcept {
+    const auto state = slot.callback_state;
+    if (!state)
+      return;
+    std::deque<host_session::AdmittedSurfaceIntent> pending;
+    {
+      std::scoped_lock lock(state->intent_mutex);
+      pending.swap(state->intents);
+    }
+    for (auto &intent : pending) {
+      try {
+        if (slot.callback_state != state || slot.epoch != state->epoch ||
+            slot.plugin != state->plugin || slot.phase != Phase::running)
+          continue;
+        std::optional<plugins::permissions::ActivationBinding> binding;
+        if (slot.root && slot.endpoint_owner)
+          binding = slot.root->session_binding();
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+        else if (slot.test_surface_endpoint)
+          binding = slot.test_running_binding;
+#endif
+        if (!binding || *binding != intent.binding())
+          continue;
+        static_cast<void>(manager_.publishIntent(std::move(intent)));
+      } catch (...) {
+      }
+    }
+  }
+
   static std::optional<std::vector<SurfaceProjectionModel::SurfaceDeclaration>>
   publicationDeclarations(
       channel::PluginRuntimeRoot &root,
@@ -1215,7 +1264,6 @@ struct PluginManager::Runtime final {
       declarations.push_back(
           {.surface_name = policy.surface_name,
            .role = *role,
-           .screen_name = {},
            .initially_visible = false,
            .maximum_width = policy.maximum_width,
            .maximum_height = policy.maximum_height,
@@ -1502,6 +1550,52 @@ void PluginManagerTestAccess::requestPreparations(PluginManager &manager) {
 void PluginManagerTestAccess::drainRuntime(PluginManager &manager) {
   if (manager.runtime_)
     manager.runtime_->drainCompletions();
+}
+
+std::optional<PluginManagerTestAccess::SurfaceIntentCallback>
+PluginManagerTestAccess::surfaceIntentCallback(PluginManager &manager,
+                                               std::string_view plugin,
+                                               std::uint64_t epoch) {
+  if (!manager.runtime_)
+    return std::nullopt;
+  auto *slot = manager.runtime_->exact(plugin, epoch);
+  if (!slot)
+    return std::nullopt;
+  try {
+    if (!slot->callback_state)
+      slot->callback_state =
+          std::make_shared<PluginManager::Runtime::HookState>(slot->plugin,
+                                                              slot->epoch);
+    const auto state = slot->callback_state;
+    return SurfaceIntentCallback{
+        .deliver = [state](host_session::AdmittedSurfaceIntent intent) {
+          PluginManager::Runtime::Hook hook(state);
+          return hook.accept(std::move(intent));
+        },
+        .pending = [state] {
+          std::scoped_lock lock(state->intent_mutex);
+          return state->intents.size();
+        }};
+  } catch (...) {
+    return std::nullopt;
+  }
+}
+
+bool PluginManagerTestAccess::stageRunningSurfaceIntentSlot(
+    PluginManager &manager, std::string_view plugin, std::uint64_t epoch,
+    const plugins::permissions::ActivationBinding &binding,
+    std::vector<SurfaceProjectionModel::SurfaceDeclaration> declarations) {
+  if (!manager.runtime_ || binding.plugin.view() != plugin)
+    return false;
+  auto *slot = manager.runtime_->exact(plugin, epoch);
+  if (!slot || slot->root || slot->endpoint_owner ||
+      !SurfaceProjectionModelTestAccess::publish(
+          manager, binding, std::move(declarations), epoch))
+    return false;
+  slot->phase = PluginManager::Runtime::Phase::running;
+  slot->test_running_binding = binding;
+  slot->test_surface_endpoint = true;
+  return true;
 }
 
 std::uint8_t

@@ -79,7 +79,6 @@ bridge::SurfaceProjectionModel::SurfaceDeclaration declaration(
   const bool bar = role == Service::Role::Bar;
   return {.surface_name = std::move(name),
           .role = role,
-          .screen_name = QStringLiteral("DP-1"),
           .initially_visible = true,
           .maximum_width = bar ? 280U : 640U,
           .maximum_height = bar ? 64U : 480U,

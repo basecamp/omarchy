@@ -54,6 +54,18 @@ grep -F 'x: window.width - width' "$runtime_root/shell/SecurePanelSurface.qml" >
   fail "secure panel placement is not explicitly window-local"
 grep -F 'model: PluginManager.barSurfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
   fail "secure bar surfaces do not consume the typed role model"
+grep -F 'property var barEntries: []' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
+  fail "secure bar surfaces do not expose a reactive plain-array layout projection"
+grep -F 'next.push({ id: entry.surfaceKey, section: entry.defaultSection })' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
+  fail "secure bar layout projection does not preserve its typed id and section"
+grep -F 'barEntriesForScreen(region, screenName)' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
+  fail "secure bar layout projection is not scoped to one shell-owned monitor"
+grep -F 'root.layoutEntries("right", root.windowScreenName(Window.window))' "$ROOT/shell/plugins/bar/Bar.qml" >/dev/null ||
+  fail "secure bar slots are not filtered before per-monitor instantiation"
+grep -F 'id: barEntryInstances' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
+  fail "secure bar delegates are not kept behind the host projection"
+grep -F 'Array.isArray(secureEntries)' "$ROOT/shell/plugins/bar/Bar.qml" >/dev/null ||
+  fail "the live bar does not consume the secure host's plain-array projection"
 grep -F 'model: PluginManager.panelSurfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
   fail "secure panels do not consume the typed role model"
 grep -F 'model: PluginManager.overlaySurfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
@@ -72,6 +84,16 @@ for surface in SecurePanelSurface.qml SecureOverlaySurface.qml; do
     fail "$surface does not retry after its Remote width settles"
   grep -F 'onHeightChanged: window.attachIfReady()' "$runtime_root/shell/$surface" >/dev/null ||
     fail "$surface does not retry after its Remote height settles"
+done
+grep -F 'SurfacePolicy.chooseOpenScreen(liveScreenNames(), focusedScreenName)' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
+  fail "secure surfaces do not use the shell-owned focused/live-first output policy"
+for surface in SecurePanelSurface.qml SecureOverlaySurface.qml; do
+  grep -F 'property var assignedScreen: null' "$runtime_root/shell/$surface" >/dev/null ||
+    fail "$surface does not retain its shell-selected output while open"
+  grep -F 'assignedScreen = host.screenForOpen()' "$runtime_root/shell/$surface" >/dev/null ||
+    fail "$surface does not resolve its output at closed-to-open time"
+  grep -F 'screen: assignedScreen' "$runtime_root/shell/$surface" >/dev/null ||
+    fail "$surface bypasses its shell-owned output selection"
 done
 pass "schema-v2 integrates through dormant shell-owned surfaces without v1 fallback"
 

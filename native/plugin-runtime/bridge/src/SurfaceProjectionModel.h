@@ -46,7 +46,6 @@ public:
   struct SurfaceDeclaration {
     std::string surface_name;
     Role role = Role::Panel;
-    QString screen_name;
     bool initially_visible = false;
     std::uint32_t maximum_width = 0;
     std::uint32_t maximum_height = 0;
@@ -63,7 +62,6 @@ public:
     SurfaceRoleRole,
     GenerationRole,
     PublicationRevisionRole,
-    ScreenNameRole,
     InitiallyVisibleRole,
     MaximumWidthRole,
     MaximumHeightRole,

@@ -11,12 +11,12 @@ PanelWindow {
   required property var surfaceService
   required property string surfaceKey
   required property string generation
-  required property string screenName
   required property bool initiallyVisible
   required property int maximumWidth
   required property int maximumHeight
   required property bool dynamicInputRegions
   readonly property bool opened: panelController.open
+  property var assignedScreen: null
 
   function attachIfReady() {
     if (!remote.connected && remote.Window.window !== null && remote.width > 0 && remote.height > 0)
@@ -25,7 +25,20 @@ PanelWindow {
 
   onSurfaceKeyChanged: attachIfReady()
 
-  screen: host.screenFor(screenName)
+  function showOnChosenScreen() {
+    assignedScreen = host.screenForOpen()
+    if (assignedScreen !== null) panelController.show()
+  }
+
+  function toggleOnChosenScreen() {
+    if (opened) {
+      panelController.hide()
+    } else {
+      showOnChosenScreen()
+    }
+  }
+
+  screen: assignedScreen
   visible: screen !== null && opened
   anchors { top: true; right: true; bottom: true; left: true }
   color: "transparent"
@@ -43,10 +56,10 @@ PanelWindow {
   Connections {
     target: window.surfaceService
     function onOpenRequested(sourceSurface, targetSurface, generation) {
-      if (targetSurface === window.surfaceKey && generation === window.generation) panelController.show()
+      if (targetSurface === window.surfaceKey && generation === window.generation) window.showOnChosenScreen()
     }
     function onToggleRequested(sourceSurface, targetSurface, generation) {
-      if (targetSurface === window.surfaceKey && generation === window.generation) panelController.toggle()
+      if (targetSurface === window.surfaceKey && generation === window.generation) window.toggleOnChosenScreen()
     }
     function onDismissRequested(sourceSurface, targetSurface, generation) {
       if (targetSurface === window.surfaceKey && generation === window.generation) panelController.hide()
@@ -68,7 +81,7 @@ PanelWindow {
   }
 
   Component.onCompleted: {
-    panelController.open = initiallyVisible
+    if (initiallyVisible) showOnChosenScreen()
     attachIfReady()
   }
 }

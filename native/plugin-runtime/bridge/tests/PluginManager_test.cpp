@@ -58,6 +58,8 @@ namespace channel = omarchy::plugin_runtime::channel;
 namespace host = omarchy::plugin_runtime::host_session;
 namespace policy = omarchy::plugin_runtime::policy;
 namespace definitions = omarchy::plugins::definitions;
+namespace runtime = omarchy::plugin_runtime::runtime;
+namespace surface = omarchy::plugin_runtime::surface;
 
 void require(bool condition, std::string_view message) {
   if (!condition)
@@ -1021,14 +1023,17 @@ void secure_bar_retries_only_on_readiness_events() {
               service.property("lastKey").toString() ==
                   QStringLiteral("replacement-key"),
           "replacement surface key did not make one retry attempt");
-  const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
-  while (std::chrono::steady_clock::now() < deadline) {
-    QCoreApplication::processEvents();
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  }
-  require(service.property("attempts").toInt() == 2,
-          "secure bar polled or retried without a readiness event");
+  const int bounded_attempts =
+      2 + item->property("maximumAttachAttempts").toInt();
+  require(await([&] {
+            return service.property("attempts").toInt() == bounded_attempts;
+          }),
+          "replacement secure bar did not exhaust its bounded attach retry");
+  const auto settled_attempts = service.property("attempts").toInt();
+  require(!awaitFor(std::chrono::milliseconds(100), [&] {
+            return service.property("attempts").toInt() != settled_attempts;
+          }),
+          "secure bar continued polling after its bounded attach retry");
 }
 
 void singleton_boundary_is_inert_and_not_configurable() {
@@ -1068,7 +1073,6 @@ void private_projection_seam_preserves_fail_closed_boundary() {
   std::vector<Service::SurfaceDeclaration> declarations;
   declarations.push_back({.surface_name = "panel",
                           .role = Service::Role::Panel,
-                          .screen_name = QStringLiteral("DP-1"),
                           .initially_visible = false,
                           .maximum_width = 640,
                           .maximum_height = 480,
@@ -1447,6 +1451,186 @@ void lifecycle_mailbox_keeps_latest_exact_terminal_state() {
               static_cast<std::uint8_t>(host::SessionError::none)) &&
               manager->count() == 0,
           "stale lifecycle epoch altered manager publication state");
+}
+
+host::AdmittedSurfaceIntent admittedIntent(
+    const permissions::ActivationBinding &binding, std::uint64_t sequence,
+    surface::SurfaceIntentAction action = surface::SurfaceIntentAction::toggle) {
+  class IntentClock final : public runtime::GestureEligibilityClock {
+  public:
+    std::uint64_t now_nanoseconds() const override { return 100; }
+  };
+  auto clock = std::make_shared<IntentClock>();
+  runtime::GestureEligibilityLatch eligibility(clock);
+  host::GestureIntentAuthority authority(binding, eligibility);
+  const surface::SurfaceKey key{.id = 1, .generation = binding.generation};
+  require(authority.declare_surface(key, "bar") ==
+                  host::SurfaceDeclarationResult::declared &&
+              authority.arm(key, sequence),
+          "surface intent fixture did not arm");
+  auto admission = authority.admit({.source = key,
+                                    .target = key,
+                                    .input_sequence = sequence,
+                                    .action = action});
+  require(admission.intent.has_value(),
+          "surface intent fixture was not admitted");
+  return std::move(*admission.intent);
+}
+
+void surface_intent_mailbox_is_bounded_thread_safe_and_inert_when_stale() {
+  RuntimeFixture fixture;
+  fixture.put("a.plugin");
+  DeterministicJobs scheduler;
+  auto manager = bridge::PluginManagerTestAccess::create();
+  bridge::PluginManagerTestAccess::installRuntime(*manager,
+                                                  fixture.bootstrap());
+  bridge::PluginManagerTestAccess::setJobSubmitter(
+      *manager, [&](auto kind, auto job) {
+        return scheduler.submit(kind, std::move(job));
+      });
+  require(bridge::PluginManagerTestAccess::scanRuntime(*manager),
+          "surface intent mailbox fixture catalog was rejected");
+  const auto observation =
+      bridge::PluginManagerTestAccess::runtimeSlots(*manager).front();
+  auto callback = bridge::PluginManagerTestAccess::surfaceIntentCallback(
+      *manager, observation.plugin, observation.epoch);
+  require(callback.has_value(),
+          "surface intent callback did not bind to the exact slot");
+
+  const auto exact_binding = permissions::ActivationBinding{
+      .plugin = permissions::PluginId(observation.plugin),
+      .revision = permissions::Digest(std::string(64, '1')),
+      .policy_fingerprint = permissions::Digest(std::string(64, '2')),
+      .generation = 1};
+  std::atomic_bool accepted_on_worker = true;
+  std::thread worker([&] {
+    for (std::uint64_t sequence = 1; sequence <= 64; ++sequence)
+      if (!callback->deliver(admittedIntent(exact_binding, sequence)))
+        accepted_on_worker = false;
+  });
+  worker.join();
+  require(accepted_on_worker && callback->pending() == 64 &&
+              !callback->deliver(admittedIntent(exact_binding, 65)),
+          "surface intent FIFO did not enforce its exact 64-entry bound");
+
+  int toggles = 0;
+  QObject::connect(manager.get(), &bridge::PluginManager::toggleRequested,
+                   [&] { ++toggles; });
+  bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  require(callback->pending() == 0 && toggles == 0,
+          "non-running slot published queued surface intents");
+
+  const auto wrong_binding = permissions::ActivationBinding{
+      .plugin = permissions::PluginId("other.plugin"),
+      .revision = permissions::Digest(std::string(64, '1')),
+      .policy_fingerprint = permissions::Digest(std::string(64, '2')),
+      .generation = 1};
+  require(!callback->deliver(admittedIntent(wrong_binding, 1)),
+          "callback mailbox accepted another plugin identity");
+
+  fixture.overwrite(observation.plugin, 'b');
+  require(bridge::PluginManagerTestAccess::scanRuntime(*manager) &&
+              bridge::PluginManagerTestAccess::runtimeSlots(*manager)
+                      .front()
+                      .epoch != observation.epoch &&
+              callback->deliver(admittedIntent(exact_binding, 66)),
+          "replacement did not detach the old surface intent callback");
+  bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  require(callback->pending() == 1 && toggles == 0,
+          "detached replacement callback reached the new slot");
+
+  manager.reset();
+  require(callback->deliver(admittedIntent(exact_binding, 67)) &&
+              callback->pending() == 2,
+          "detached callback state used destroyed manager memory");
+}
+
+void surface_intent_mailbox_delivers_fifo_for_running_published_slot() {
+  constexpr std::string_view plugin = "org.example.intent-fifo";
+  RuntimeFixture fixture;
+  const auto binding = fixture.seedRuntime(plugin);
+  DeterministicJobs scheduler;
+  auto manager = bridge::PluginManagerTestAccess::create();
+  bridge::PluginManagerTestAccess::installRuntime(*manager,
+                                                  fixture.bootstrap());
+  bridge::PluginManagerTestAccess::setJobSubmitter(
+      *manager, [&](auto kind, auto job) {
+        return scheduler.submit(kind, std::move(job));
+      });
+  require(bridge::PluginManagerTestAccess::scanRuntime(*manager),
+          "positive surface intent fixture catalog was rejected");
+  const auto slot =
+      bridge::PluginManagerTestAccess::runtimeSlots(*manager).front();
+  std::vector<bridge::SurfaceProjectionModel::SurfaceDeclaration>
+      declarations{{.surface_name = "bar",
+                    .role = bridge::SurfaceProjectionModel::Role::Bar,
+                    .maximum_width = 320,
+                    .maximum_height = 64,
+                    .default_bar_section =
+                        bridge::SurfaceProjectionModel::BarSection::Right}};
+  require(bridge::PluginManagerTestAccess::stageRunningSurfaceIntentSlot(
+              *manager, slot.plugin, slot.epoch, binding,
+              std::move(declarations)) &&
+              manager->count() == 1 &&
+              bridge::PluginManagerTestAccess::runtimeSlots(*manager)
+                  .front()
+                  .running,
+          "positive surface intent fixture was not running and published");
+
+  class IntentClock final : public runtime::GestureEligibilityClock {
+  public:
+    std::uint64_t now_nanoseconds() const override { return 100; }
+  };
+  auto clock = std::make_shared<IntentClock>();
+  runtime::GestureEligibilityLatch eligibility(clock);
+  host::GestureIntentAuthority authority(binding, eligibility);
+  const surface::SurfaceKey key{.id = 1,
+                                .generation = binding.generation};
+  require(authority.declare_surface(key, "bar") ==
+              host::SurfaceDeclarationResult::declared,
+          "positive surface intent fixture did not declare its source");
+  const auto admit = [&](std::uint64_t sequence,
+                         surface::SurfaceIntentAction action) {
+    require(authority.arm(key, sequence),
+            "positive surface intent fixture did not arm");
+    auto admission = authority.admit({.source = key,
+                                      .target = key,
+                                      .input_sequence = sequence,
+                                      .action = action});
+    require(admission.intent.has_value(),
+            "positive surface intent fixture was not admitted");
+    return std::move(*admission.intent);
+  };
+  auto open = admit(1, surface::SurfaceIntentAction::open);
+  auto first_toggle = admit(2, surface::SurfaceIntentAction::toggle);
+  auto second_toggle = admit(3, surface::SurfaceIntentAction::toggle);
+  auto dismiss = admit(4, surface::SurfaceIntentAction::dismiss);
+  auto callback = bridge::PluginManagerTestAccess::surfaceIntentCallback(
+      *manager, slot.plugin, slot.epoch);
+  require(callback.has_value(),
+          "positive running slot lacked its exact callback mailbox");
+  std::vector<std::string> delivered;
+  QObject::connect(manager.get(), &bridge::PluginManager::openRequested,
+                   [&] { delivered.emplace_back("open"); });
+  QObject::connect(manager.get(), &bridge::PluginManager::toggleRequested,
+                   [&] { delivered.emplace_back("toggle"); });
+  QObject::connect(manager.get(), &bridge::PluginManager::dismissRequested,
+                   [&] { delivered.emplace_back("dismiss"); });
+  bool queued = false;
+  std::thread worker([&] {
+    queued = callback->deliver(std::move(open)) &&
+             callback->deliver(std::move(first_toggle)) &&
+             callback->deliver(std::move(second_toggle)) &&
+             callback->deliver(std::move(dismiss));
+  });
+  worker.join();
+  require(queued && callback->pending() == 4 && delivered.empty(),
+          "callback thread bypassed the positive slot UI mailbox");
+  bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  require(delivered ==
+              std::vector<std::string>{"open", "toggle", "toggle", "dismiss"} &&
+              callback->pending() == 0,
+          "running published slot did not preserve FIFO intent effects");
 }
 
 void blocked_replacement_preserves_independent_plugin() {
@@ -3121,6 +3305,63 @@ void real_root_publishes_attaches_and_tears_down_exactly() {
               attached_in_signal && remote.connected(),
           "authenticated retry did not publish and attach automatically");
 
+  class IntentClock final : public runtime::GestureEligibilityClock {
+  public:
+    std::uint64_t now_nanoseconds() const override { return 100; }
+  };
+  auto intent_clock = std::make_shared<IntentClock>();
+  runtime::GestureEligibilityLatch eligibility(intent_clock);
+  host::GestureIntentAuthority intent_authority(exact_binding, eligibility);
+  const surface::SurfaceKey source{.id = 1,
+                                   .generation = exact_binding.generation};
+  require(intent_authority.declare_surface(source, "bar") ==
+              host::SurfaceDeclarationResult::declared,
+          "running surface intent fixture did not declare its exact source");
+  const auto admit = [&](std::uint64_t sequence,
+                         surface::SurfaceIntentAction action) {
+    require(intent_authority.arm(source, sequence),
+            "running surface intent fixture did not arm");
+    auto admission = intent_authority.admit({.source = source,
+                                             .target = source,
+                                             .input_sequence = sequence,
+                                             .action = action});
+    require(admission.intent.has_value(),
+            "running surface intent fixture was not admitted");
+    return std::move(*admission.intent);
+  };
+  auto open = admit(1, surface::SurfaceIntentAction::open);
+  auto first_toggle = admit(2, surface::SurfaceIntentAction::toggle);
+  auto second_toggle = admit(3, surface::SurfaceIntentAction::toggle);
+  auto dismiss = admit(4, surface::SurfaceIntentAction::dismiss);
+  const auto running =
+      bridge::PluginManagerTestAccess::runtimeSlots(*manager).front();
+  auto callback = bridge::PluginManagerTestAccess::surfaceIntentCallback(
+      *manager, running.plugin, running.epoch);
+  require(callback.has_value(),
+          "running slot did not expose its exact callback mailbox in test");
+  std::vector<std::string> delivered;
+  QObject::connect(manager.get(), &bridge::PluginManager::openRequested,
+                   [&] { delivered.emplace_back("open"); });
+  QObject::connect(manager.get(), &bridge::PluginManager::toggleRequested,
+                   [&] { delivered.emplace_back("toggle"); });
+  QObject::connect(manager.get(), &bridge::PluginManager::dismissRequested,
+                   [&] { delivered.emplace_back("dismiss"); });
+  bool queued = false;
+  std::thread intent_worker([&] {
+    queued = callback->deliver(std::move(open)) &&
+             callback->deliver(std::move(first_toggle)) &&
+             callback->deliver(std::move(second_toggle)) &&
+             callback->deliver(std::move(dismiss));
+  });
+  intent_worker.join();
+  require(queued && callback->pending() == 4 && delivered.empty(),
+          "callback-thread surface intents bypassed the bounded UI mailbox");
+  bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  require(delivered ==
+              std::vector<std::string>{"open", "toggle", "toggle", "dismiss"} &&
+              callback->pending() == 0,
+          "running exact slot did not preserve FIFO surface intent effects");
+
   const auto row = manager->barSurfaces()->index(0, 0);
   require(
       manager->barSurfaces()->data(row, Model::GenerationRole).toString() ==
@@ -3668,6 +3909,8 @@ void run_plugin_manager_tests() {
   bounded_mailbox_coalesces_and_recovers_without_backoff();
   mailbox_results_are_safe_across_replacement_and_destruction();
   lifecycle_mailbox_keeps_latest_exact_terminal_state();
+  surface_intent_mailbox_is_bounded_thread_safe_and_inert_when_stale();
+  surface_intent_mailbox_delivers_fifo_for_running_published_slot();
   blocked_replacement_preserves_independent_plugin();
   runtime_jobs_enter_off_ui_and_commit_on_ui_drain();
   manager_owns_permission_generation_replacement();

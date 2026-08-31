@@ -121,8 +121,6 @@ QVariant SurfaceProjectionModel::data(const QModelIndex &index, int role) const 
     return QString::number(row.binding.generation);
   case PublicationRevisionRole:
     return QString::number(row.publication_revision);
-  case ScreenNameRole:
-    return row.declaration.screen_name;
   case InitiallyVisibleRole:
     return row.declaration.initially_visible;
   case MaximumWidthRole:
@@ -145,7 +143,6 @@ QHash<int, QByteArray> SurfaceProjectionModel::roleNames() const {
           {SurfaceRoleRole, "surfaceRole"},
           {GenerationRole, "generation"},
           {PublicationRevisionRole, "publicationRevision"},
-          {ScreenNameRole, "screenName"},
           {InitiallyVisibleRole, "initiallyVisible"},
           {MaximumWidthRole, "maximumWidth"},
           {MaximumHeightRole, "maximumHeight"},
