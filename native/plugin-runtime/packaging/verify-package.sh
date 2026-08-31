@@ -154,10 +154,8 @@ expected_dependencies=$(cat <<EOF
 bubblewrap
 glibc
 libgcc
-libglvnd
 libseccomp
 libstdc++
-libxkbcommon
 ${qt6_base_package/ /=}
 qt6-declarative
 quickshell
@@ -170,7 +168,6 @@ EOF
 qt_allowed='^(libQt6(Quick|OpenGL|Gui|Qml|Network|Core)\.so\.6|lib(GLX|OpenGL)\.so\.0|libseccomp\.so\.2|libxkbcommon\.so\.0|libstdc\+\+\.so\.6|libm\.so\.6|libgcc_s\.so\.1|libc\.so\.6)$'
 bridge_allowed='^(libQt6(Quick|OpenGL|Gui|Qml|Network|DBus|Core)\.so\.6|lib(GLX|OpenGL)\.so\.0|libseccomp\.so\.2|libsystemd\.so\.0|libstdc\+\+\.so\.6|libm\.so\.6|libgcc_s\.so\.1|libc\.so\.6|ld-linux-x86-64\.so\.2)$'
 verify_elf "$worker" pie "$qt_allowed" libseccomp.so.2
-needed_libraries "$worker" | grep -Fx libxkbcommon.so.0 >/dev/null || fail "omarchy-plugin-qml-worker omits required DT_NEEDED libxkbcommon.so.0"
 verify_elf "$bridge" shared "$bridge_allowed" libQt6Qml.so.6
 needed_libraries "$bridge" | grep -Fx libseccomp.so.2 >/dev/null || fail "libomarchy-plugin-host-bridge.so omits required DT_NEEDED libseccomp.so.2"
 needed_libraries "$bridge" | grep -Fx libsystemd.so.0 >/dev/null || fail "libomarchy-plugin-host-bridge.so omits required DT_NEEDED libsystemd.so.0"

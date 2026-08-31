@@ -21,3 +21,5 @@ sudo env DESTDIR="$stage" cmake --install build/plugin-runtime
 ```
 
 Packagers may set `OMARCHY_PLUGIN_QT_MIN_VERSION`. The `/usr` prefix and versioned `/usr/lib/omarchy/plugin-security` package root are fixed; use only `DESTDIR` for staging. Building and installing the artifacts does not activate schema v2.
+
+`packaging/arch/build-package.sh` builds the inert Arch package from the committed runtime tree. `packaging/arch/test-package-reproducibility.sh` proves two clean builds have identical installed payloads, `.PKGINFO`, and normalized build metadata after ignoring only the `.BUILDINFO` build and start directories and their corresponding `.MTREE` entry. Those makepkg context paths intentionally keep the outer archives from being byte-identical.
