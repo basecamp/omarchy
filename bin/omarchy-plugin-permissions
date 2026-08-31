@@ -2,7 +2,7 @@
 
 # omarchy:summary=Review and change secure plugin permissions
 # omarchy:group=plugin
-# omarchy:args=[list] <id> [--json] | review <id> | revoke <id>
+# omarchy:args=[list] <id> [--json] | review <id> [--operation <handle>] | revoke <id>
 # omarchy:examples=omarchy plugin permissions org.example.weather | omarchy plugin permissions review org.example.weather | omarchy plugin permissions revoke org.example.weather
 
 set -euo pipefail
@@ -30,7 +30,7 @@ usage() {
   cat <<'USAGE'
 Usage:
   omarchy plugin permissions [list] <id> [--json]
-  omarchy plugin permissions review <id>
+  omarchy plugin permissions review <id> [--operation <handle>]
   omarchy plugin permissions revoke <id>
 
 List is read-only. Review asks about every requested permission and, for an
@@ -309,13 +309,21 @@ list_permissions() {
 
 review_permissions() {
   local plugin_id="$1"
+  local supplied_operation="${2:-}"
   local review_id result count row row_id kind required available decision
   local operation_count operation operation_id operation_label index operation_index
   local choices='[]' selected choices_json
 
   require_plugin_id "$plugin_id"
   require_interactive_mutation
-  begin_read review "$plugin_id" review
+  if [[ -n $supplied_operation ]]; then
+    require_opaque_id "$supplied_operation" permission
+    wait_for_operation "$supplied_operation" review 0
+    [[ $(jq -r '.result.plugin' <<<"$operation_json") == "$plugin_id" ]] ||
+      fail "the review handle does not belong to plugin '$plugin_id'"
+  else
+    begin_read review "$plugin_id" review
+  fi
   review_id=$(jq -r '.operationId' <<<"$operation_json")
   result=$(jq -c '.result' <<<"$operation_json")
   count=$(jq -r '.permissions | length' <<<"$result")
@@ -435,8 +443,13 @@ main() {
   command="$1"
   case $command in
     review)
-      (( $# == 2 )) || fail "Usage: omarchy plugin permissions review <id>"
-      review_permissions "$2"
+      if (( $# == 2 )); then
+        review_permissions "$2"
+      elif (( $# == 4 )) && [[ $3 == "--operation" ]]; then
+        review_permissions "$2" "$4"
+      else
+        fail "Usage: omarchy plugin permissions review <id> [--operation <handle>]"
+      fi
       ;;
     revoke)
       (( $# == 2 )) || fail "Usage: omarchy plugin permissions revoke <id>"

@@ -28,6 +28,7 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+#include <unistd.h>
 
 namespace omarchy::plugin_runtime::bridge {
 namespace {
@@ -71,7 +72,7 @@ struct PluginManager::Runtime final {
     retry_wait,
     stopping,
   };
-  enum class JobKind : std::uint8_t { scan, preparation, permission };
+  enum class JobKind : std::uint8_t { scan, preparation, permission, install };
   enum class PermissionKind : std::uint8_t {
     revoke_builtin,
     revoke_dynamic,
@@ -128,6 +129,15 @@ struct PluginManager::Runtime final {
     std::shared_ptr<channel::PluginPermissionAuthority> authority;
     std::optional<host_session::AuthorityView> view;
     std::shared_ptr<const host_session::ConsentReview> review;
+    std::optional<plugins::permissions::Digest> expected_revision;
+  };
+
+  struct InstallResult final {
+    std::uint64_t serial = 0;
+    std::string plugin;
+    std::string revision;
+    std::string error;
+    std::unique_ptr<channel::ActivationCatalog> catalog;
   };
 
   struct PermissionTransaction final {
@@ -178,11 +188,13 @@ struct PluginManager::Runtime final {
     std::atomic<std::uint8_t> preparations_in_flight = 0;
     std::atomic<std::uint8_t> permissions_in_flight = 0;
     std::atomic<std::uint8_t> permission_reads_in_flight = 0;
+    std::atomic<bool> install_in_flight = false;
     std::shared_ptr<ScanResult> scan_result;
     std::array<std::shared_ptr<PreparationResult>, 2> preparation_results;
     std::array<std::shared_ptr<PermissionReadResult>, 2>
         permission_read_results;
     std::array<std::shared_ptr<PermissionTransaction>, 2> permission_results;
+    std::shared_ptr<InstallResult> install_result;
   };
 
   struct PermissionFenceObserver final
@@ -300,16 +312,29 @@ struct PluginManager::Runtime final {
     std::array<std::shared_ptr<PreparationResult>, 2> preparations;
     std::array<std::shared_ptr<PermissionReadResult>, 2> permission_reads;
     std::array<std::shared_ptr<PermissionTransaction>, 2> permission_results;
+    std::shared_ptr<InstallResult> install;
     {
       std::scoped_lock lock(gate_->mutex);
       scan = std::move(gate_->scan_result);
       preparations = std::move(gate_->preparation_results);
       permission_reads = std::move(gate_->permission_read_results);
       permission_results = std::move(gate_->permission_results);
+      install = std::move(gate_->install_result);
     }
     if (scan) {
       gate_->scan_in_flight.store(false);
       acceptScan(std::move(scan->catalog));
+    }
+    if (install) {
+      gate_->install_in_flight.store(false);
+      if (install->error.empty()) {
+        manager_.permissions_.invalidatePlugin(install->plugin);
+        if (!install->catalog || !acceptScan(std::move(install->catalog)))
+          install->error = "catalog-rejected";
+      }
+      manager_.completeInstall(install->serial, std::move(install->plugin),
+                               std::move(install->revision),
+                               std::move(install->error));
     }
     for (auto &result : preparations) {
       if (!result)
@@ -616,8 +641,9 @@ struct PluginManager::Runtime final {
     }
   }
 
-  bool beginPermissionRead(std::uint64_t serial, std::string plugin,
-                           bool review) noexcept {
+  bool beginPermissionRead(
+      std::uint64_t serial, std::string plugin, bool review,
+      std::optional<plugins::permissions::Digest> expected_revision) noexcept {
     constexpr std::uint8_t kMaximumConcurrentPermissionReads = 2;
     if (serial == 0 || gate_->permission_reads_in_flight.load() >=
                            kMaximumConcurrentPermissionReads)
@@ -637,6 +663,7 @@ struct PluginManager::Runtime final {
       result->plugin = std::move(plugin);
       result->epoch = found->epoch;
       result->authority = found->permissions;
+      result->expected_revision = std::move(expected_revision);
       found->permission_read_serial = serial;
       ++gate_->permission_reads_in_flight;
       counted = true;
@@ -659,6 +686,10 @@ struct PluginManager::Runtime final {
               result->view = result->authority->list();
               if (review)
                 result->review = result->authority->prepare_review();
+              if (result->review && result->expected_revision &&
+                  result->review->candidate_binding.revision !=
+                      *result->expected_revision)
+                result->review.reset();
             } catch (...) {
               result->view.reset();
               result->review.reset();
@@ -690,6 +721,65 @@ struct PluginManager::Runtime final {
         --gate_->permission_reads_in_flight;
       if (found->permission_read_serial == serial)
         found->permission_read_serial = 0;
+      return false;
+    }
+  }
+
+  bool beginInstall(std::uint64_t serial, int archive_fd) noexcept {
+    host_session::OwnedDescriptor owned(archive_fd);
+    try {
+      if (serial == 0 || archive_fd < 0 ||
+          gate_->install_in_flight.exchange(true))
+        return false;
+      auto descriptor = std::make_shared<host_session::OwnedDescriptor>();
+      *descriptor = std::move(owned);
+      auto result = std::make_shared<InstallResult>();
+      result->serial = serial;
+      const auto bootstrap = bootstrap_;
+      const auto gate = gate_;
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+      const auto entry_probe = job_entry_probe_;
+#endif
+      const bool started = submit(
+          JobKind::install,
+          [bootstrap, gate, descriptor, result
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+           , entry_probe
+#endif
+      ] {
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+            if (entry_probe)
+              entry_probe(PluginManagerTestAccess::TestJobKind::install);
+#endif
+            try {
+              auto published =
+                  bootstrap->stage_revision_for_review(descriptor->get());
+              result->plugin = published.verified().manifest.id;
+              result->revision = published.verified().identity.tree_sha256;
+              channel::ActivationCatalogError error{};
+              result->catalog = bootstrap->scan_catalog(error);
+              if (!result->catalog || !result->catalog->unchanged())
+                throw std::runtime_error("catalog unavailable");
+            } catch (...) {
+              result->plugin.clear();
+              result->revision.clear();
+              result->catalog.reset();
+              result->error = "archive-rejected";
+            }
+            std::scoped_lock lock(gate->mutex);
+            if (!gate->canceled.load(std::memory_order_acquire))
+              gate->install_result = std::move(result);
+            else
+              gate->install_in_flight.store(false);
+          });
+      if (!started) {
+        gate_->install_in_flight.store(false);
+        return false;
+      }
+      armCompletionTimer();
+      return true;
+    } catch (...) {
+      gate_->install_in_flight.store(false);
       return false;
     }
   }
@@ -973,7 +1063,9 @@ struct PluginManager::Runtime final {
                                 ? PluginManagerTestAccess::TestJobKind::scan
                                 : kind == JobKind::preparation
                                       ? PluginManagerTestAccess::TestJobKind::preparation
-                                      : PluginManagerTestAccess::TestJobKind::permission,
+                                      : kind == JobKind::permission
+                                            ? PluginManagerTestAccess::TestJobKind::permission
+                                            : PluginManagerTestAccess::TestJobKind::install,
                             std::function<void()>(std::forward<Job>(job)));
 #endif
     (void)kind;
@@ -991,6 +1083,7 @@ struct PluginManager::Runtime final {
                         gate_->preparations_in_flight.load() != 0 ||
                         gate_->permissions_in_flight.load() != 0 ||
                         gate_->permission_reads_in_flight.load() != 0 ||
+                        gate_->install_in_flight.load() ||
                         std::ranges::any_of(slots_, [](const Slot &slot) {
                           return slot.phase == Phase::opening ||
                                  slot.phase == Phase::preparing ||
@@ -1607,7 +1700,7 @@ PluginManager *PluginManager::create(QQmlEngine *qml_engine,
 
 PluginManager::PluginManager(QObject *parent, ProcessClaim claim)
     : QObject(parent), process_claim_(std::move(claim)), surfaces_(this),
-      permissions_(*this) {
+      permissions_(*this), installer_(*this) {
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
   if (fail_next_manager_construction.exchange(false, std::memory_order_acq_rel))
     throw std::bad_alloc();
@@ -1641,11 +1734,34 @@ PermissionControl *PluginManager::permissions() noexcept {
   return &permissions_;
 }
 
+PluginInstallControl *PluginManager::installer() noexcept {
+  return &installer_;
+}
+
 bool PluginManager::beginPermissionRead(std::uint64_t serial,
                                         std::string plugin,
-                                        bool review) noexcept {
+                                        bool review,
+                                        std::optional<plugins::permissions::Digest>
+                                            expected_revision) noexcept {
   return runtime_ &&
-         runtime_->beginPermissionRead(serial, std::move(plugin), review);
+         runtime_->beginPermissionRead(serial, std::move(plugin), review,
+                                       std::move(expected_revision));
+}
+
+bool PluginManager::beginInstall(std::uint64_t serial,
+                                 int archive_fd) noexcept {
+  if (!runtime_) {
+    ::close(archive_fd);
+    return false;
+  }
+  return runtime_->beginInstall(serial, archive_fd);
+}
+
+void PluginManager::completeInstall(std::uint64_t serial, std::string plugin,
+                                    std::string revision,
+                                    std::string error) noexcept {
+  installer_.complete(serial, std::move(plugin), std::move(revision),
+                      std::move(error));
 }
 
 bool PluginManager::beginPermissionApply(

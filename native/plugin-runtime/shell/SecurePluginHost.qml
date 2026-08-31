@@ -12,6 +12,7 @@ Item {
   property var barWidgetRegistry: null
   readonly property int maximumPermissionChoiceBytes: 262176
   readonly property int maximumPermissionChoiceChunkBytes: 90000
+  readonly property int maximumArchivePathBytes: 4096
 
   visible: false
 
@@ -46,6 +47,27 @@ Item {
 
     function poll(operationId: string): string {
       return PluginManager.permissions.poll(operationId)
+    }
+  }
+
+  IpcHandler {
+    target: "plugin-security"
+
+    function installArchive(archivePath: string): string {
+      if (archivePath.length === 0
+          || archivePath.length > root.maximumArchivePathBytes)
+        return ""
+      return PluginManager.installer.begin(archivePath)
+    }
+
+    function pollInstall(operationId: string): string {
+      if (operationId.length !== 40) return ""
+      return PluginManager.installer.poll(operationId)
+    }
+
+    function reviewInstall(operationId: string): string {
+      if (operationId.length !== 40) return ""
+      return PluginManager.installer.beginReview(operationId)
     }
   }
 

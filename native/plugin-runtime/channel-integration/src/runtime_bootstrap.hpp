@@ -3,6 +3,7 @@
 #include "activation_catalog.hpp"
 #include "runtime_roots.hpp"
 #include "plugin_runtime_root.hpp"
+#include "revision_ingress.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -47,6 +48,8 @@ private:
                    const permissions::PluginId &plugin) const noexcept;
   [[nodiscard]] std::unique_ptr<ActivationCatalog>
   scan_catalog(ActivationCatalogError &error) const noexcept;
+  [[nodiscard]] omarchy::plugins::discovery::PublishedRevision
+  stage_revision_for_review(int archive_fd) const;
   RuntimeBootstrap(
       std::unique_ptr<RuntimeRoots> roots,
       std::shared_ptr<const definitions::TrustedDefinitionRegistry> definitions,

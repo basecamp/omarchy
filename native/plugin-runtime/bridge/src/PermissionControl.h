@@ -102,7 +102,12 @@ private:
   explicit PermissionControl(PluginManager &manager);
 
   [[nodiscard]] QString beginRead(const QString &plugin_id, Kind kind,
-                                  Ingress ingress) noexcept;
+                                  Ingress ingress,
+                                  std::optional<plugins::permissions::Digest>
+                                      expected_revision = std::nullopt) noexcept;
+  [[nodiscard]] QString beginInteractiveCliReviewExact(
+      std::string_view plugin,
+      std::string_view revision) noexcept;
   [[nodiscard]] QString applyForIngress(const QString &review_operation_id,
                                         const QString &choices_json,
                                         Ingress ingress) noexcept;
@@ -122,12 +127,14 @@ private:
       std::shared_ptr<const host_session::ConsentReview> review) noexcept;
   void completeMutation(std::uint64_t serial, bool applied,
                         std::string error) noexcept;
+  void invalidatePlugin(std::string_view plugin) noexcept;
 
   PluginManager &manager_;
   std::vector<Operation> operations_;
   std::uint64_t next_serial_ = 1;
 
   friend class PluginManager;
+  friend class PluginInstallControl;
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
   friend class PermissionControlTestAccess;
 #endif

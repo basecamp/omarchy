@@ -17,6 +17,11 @@
 #include <utility>
 
 namespace omarchy::plugin_runtime::channel {
+
+omarchy::plugins::discovery::PublishedRevision
+RuntimeBootstrap::stage_revision_for_review(int archive_fd) const {
+  return roots_->stage_revision_for_review(archive_fd);
+}
 namespace {
 
 using host_session::OwnedDescriptor;

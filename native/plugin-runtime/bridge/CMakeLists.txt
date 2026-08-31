@@ -9,6 +9,8 @@ qt_add_qml_module(omarchy-plugin-host-bridge
   SOURCES
     src/PermissionControl.cpp
     src/PermissionControl.h
+    src/PluginInstallControl.cpp
+    src/PluginInstallControl.h
     src/PluginManager.cpp
     src/PluginManager.h
     src/SurfaceEndpoint.cpp
@@ -48,6 +50,7 @@ install(FILES
 if(BUILD_TESTING)
   add_executable(omarchy-plugin-surface-service-test
     src/PermissionControl.cpp
+    src/PluginInstallControl.cpp
     src/PluginManager.cpp
     tests/PluginManager_test.cpp
     src/SurfaceEndpoint.cpp
@@ -88,6 +91,7 @@ if(BUILD_TESTING)
     LABELS "unit;shell;bridge;security")
   add_executable(omarchy-plugin-permission-control-contract-test
     src/PermissionControl.cpp
+    src/PluginInstallControl.cpp
     src/PluginManager.cpp
     tests/PermissionControl_contract_test.cpp
     src/SurfaceEndpoint.cpp

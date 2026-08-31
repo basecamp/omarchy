@@ -1,0 +1,97 @@
+#!/bin/bash
+
+# omarchy:summary=Install a sandboxed schema-v2 plugin archive
+# omarchy:group=plugin
+# omarchy:args=<archive>
+# omarchy:examples=omarchy plugin secure-install ./weather-plugin.tar
+
+set -euo pipefail
+
+readonly IPC_TARGET="plugin-security"
+readonly MAX_ARCHIVE_BYTES=$(( 72 * 1024 * 1024 ))
+readonly MAX_RESPONSE_BYTES=4096
+readonly MAX_POLL_ATTEMPTS=150
+readonly POLL_DELAY=0.1
+readonly POLL_DEADLINE_SECONDS=20
+
+fail() {
+  echo "omarchy-plugin-secure-install: $*" >&2
+  exit 1
+}
+
+usage() {
+  cat <<'USAGE'
+Usage: omarchy plugin secure-install <archive>
+
+Installs a schema-v2 plugin through the sandboxed runtime and asks for every
+permission before activation. The existing `omarchy plugin add` and
+`omarchy plugin install` commands install trusted pre-security plugins.
+USAGE
+}
+
+call_ipc() {
+  local output
+  output=$(OMARCHY_SHELL_IPC_TIMEOUT=1s omarchy-shell "$IPC_TARGET" "$@") || return 1
+  (( ${#output} <= MAX_RESPONSE_BYTES )) || return 1
+  printf '%s' "$output"
+}
+
+main() {
+  if (( $# == 1 )) && [[ $1 == "-h" || $1 == "--help" ]]; then
+    usage
+    return 0
+  fi
+  (( $# == 1 )) || fail "Usage: omarchy plugin secure-install <archive>"
+  [[ -t 0 && -t 1 ]] || fail "secure installation requires an interactive terminal"
+
+  local archive operation response state plugin review attempt
+  local deadline=$(( SECONDS + POLL_DEADLINE_SECONDS ))
+  archive=$(realpath -e -- "$1") || fail "archive does not exist"
+  [[ -f $archive ]] || fail "archive must be a regular file"
+  (( ${#archive} < 4096 )) || fail "archive path is too long"
+  (( $(stat -c %s -- "$archive") > 0 && $(stat -c %s -- "$archive") <= MAX_ARCHIVE_BYTES )) ||
+    fail "archive size is outside the supported range"
+
+  echo "Staging sandboxed schema-v2 plugin for permission review..."
+  operation=$(call_ipc installArchive "$archive") || fail "the secure plugin host is unavailable"
+  [[ $operation =~ ^install-[0-9a-f]{32}$ ]] || fail "the shell rejected the archive"
+
+  for (( attempt = 0; attempt < MAX_POLL_ATTEMPTS && SECONDS < deadline; attempt++ )); do
+    response=$(call_ipc pollInstall "$operation") || fail "could not read the install result"
+    jq -e --arg id "$operation" '
+      type == "object" and .operationId == $id and
+      (if .state == "pending" then keys == ["operationId", "state"]
+       elif .state == "failed" then (keys == ["error", "operationId", "state"] and (.error | type == "string"))
+       elif .state == "succeeded" then
+         (keys == ["operationId", "result", "state"] and
+          (.result | keys == ["plugin"] and (.plugin | type == "string" and test("^[a-z0-9]+([._-][a-z0-9]+)*$"))))
+       else false end)
+    ' <<<"$response" >/dev/null || fail "the shell returned an invalid install response"
+    state=$(jq -r '.state' <<<"$response")
+    [[ $state == "pending" ]] || break
+    sleep "$POLL_DELAY"
+  done
+  [[ ${state:-} == "succeeded" ]] || {
+    [[ ${state:-} == "failed" ]] && fail "archive was rejected"
+    fail "timed out while staging the archive"
+  }
+  plugin=$(jq -r '.result.plugin' <<<"$response")
+
+  # Reconciliation may finish just before the candidate's permission authority
+  # is attached to its disabled slot. The opaque install handle is not consumed
+  # until exact review starts, so this bounded retry is safe.
+  review=""
+  for (( attempt = 0; attempt < MAX_POLL_ATTEMPTS && SECONDS < deadline; attempt++ )); do
+    review=$(call_ipc reviewInstall "$operation") || fail "could not start permission review"
+    [[ -n $review ]] && break
+    sleep "$POLL_DELAY"
+  done
+  [[ $review =~ ^permission-[0-9a-f]{32}$ ]] || fail "candidate is no longer available for exact review"
+
+  omarchy-plugin-permissions review "$plugin" --operation "$review"
+  echo "Activated sandboxed schema-v2 plugin: $plugin"
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi

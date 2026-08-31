@@ -28,6 +28,7 @@
 
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -61,6 +62,12 @@ namespace definitions = omarchy::plugins::definitions;
 void require(bool condition, std::string_view message) {
   if (!condition)
     throw std::runtime_error(std::string(message));
+}
+
+std::size_t openDescriptorCount() {
+  return static_cast<std::size_t>(
+      std::distance(std::filesystem::directory_iterator("/proc/self/fd"),
+                    std::filesystem::directory_iterator{}));
 }
 
 void process_singleton_factory_is_exact_and_recoverable() {
@@ -283,6 +290,38 @@ public:
     }
     std::ofstream(revision / "ui/Main.qml") << qml;
     return freezeAndVerify(plugin, generation, revision);
+  }
+
+  std::filesystem::path archive(
+      std::string_view plugin, std::string_view suffix,
+      std::string_view permission_json =
+          "{\"required\": [{\"capability\": \"storage.private\", \"quotaBytes\": 1024, \"reason\": \"state\"}], \"optional\": []}") {
+    const auto source = root_ / ("archive-" + std::string(suffix));
+    create(source / "ui", 0755);
+    std::ofstream manifest(source / "manifest.json");
+    manifest << "{\"schemaVersion\":2,\"id\":\"" << plugin
+             << "\",\"name\":\"Install fixture\",\"version\":\"1.0.0\","
+                "\"runtime\":{\"apiVersion\":1,\"qml\":\"ui/Main.qml\"},"
+                "\"surfaces\":{\"overlay\":{\"role\":\"overlay\"}},"
+                "\"permissions\":"
+             << permission_json << "}";
+    manifest.close();
+    std::ofstream(source / "ui/Main.qml")
+        << "import QtQuick\nItem { property string fixture: \"" << suffix
+        << "\" }\n";
+    const auto output = root_ / ("plugin-" + std::string(suffix) + ".tar");
+    const pid_t child = ::fork();
+    require(child >= 0, "manager archive tar fork failed");
+    if (child == 0) {
+      ::execlp("tar", "tar", "--format=ustar", "-cf", output.c_str(), "-C",
+               source.c_str(), "ui", "manifest.json", nullptr);
+      ::_exit(127);
+    }
+    int status = 0;
+    require(::waitpid(child, &status, 0) == child && WIFEXITED(status) &&
+                WEXITSTATUS(status) == 0,
+            "manager archive tar creation failed");
+    return output;
   }
 
   void promoteRuntime(
@@ -2270,6 +2309,212 @@ void public_permission_lifecycle_is_closed_until_exact_consent() {
   notification_hold.release();
 }
 
+void public_archive_install_is_closed_until_exact_consent() {
+  constexpr std::string_view plugin = "org.example.secure-install";
+  RuntimeFixture fixture;
+  const auto archive = fixture.archive(plugin, "first");
+  const auto descriptor_count = openDescriptorCount();
+  {
+    auto no_runtime = bridge::PluginManagerTestAccess::create();
+    require(no_runtime->installer()
+                ->begin(QString::fromStdString(archive.string()))
+                .isEmpty() &&
+                openDescriptorCount() == descriptor_count,
+            "no-runtime install leaked its consumed archive descriptor");
+  }
+  const auto symlink = archive.parent_path() / "archive-link.tar";
+  std::filesystem::create_symlink(archive, symlink);
+  {
+    auto no_runtime = bridge::PluginManagerTestAccess::create();
+    QString embedded_nul = QStringLiteral("/tmp/archive");
+    embedded_nul.append(QChar(0));
+    embedded_nul.append(QStringLiteral("tail"));
+    require(no_runtime->installer()->begin(embedded_nul).isEmpty(),
+            "native archive ingress accepted an embedded NUL");
+  }
+  DeterministicJobs scheduler;
+  auto manager = bridge::PluginManagerTestAccess::create();
+  bridge::PluginManagerTestAccess::installRuntime(*manager,
+                                                  fixture.bootstrap());
+  bridge::PluginManagerTestAccess::setJobSubmitter(
+      *manager, [&](auto kind, auto job) {
+        return scheduler.submit(kind, std::move(job));
+      });
+
+  const auto runtime_descriptor_count = openDescriptorCount();
+  require(manager->installer()
+              ->begin(QString::fromStdString(symlink.string()))
+              .isEmpty() &&
+              scheduler.jobs.empty() &&
+              openDescriptorCount() == runtime_descriptor_count,
+          "native archive ingress followed a symlink or leaked its descriptor");
+  scheduler.refuses = true;
+  require(manager->installer()
+              ->begin(QString::fromStdString(archive.string()))
+              .isEmpty() &&
+              openDescriptorCount() == runtime_descriptor_count,
+          "refused install submission leaked its consumed descriptor");
+  scheduler.refuses = false;
+  scheduler.throws = true;
+  require(manager->installer()
+              ->begin(QString::fromStdString(archive.string()))
+              .isEmpty() &&
+              openDescriptorCount() == runtime_descriptor_count,
+          "throwing install submission leaked its consumed descriptor");
+  scheduler.throws = false;
+
+  const auto install = manager->installer()->begin(
+      QString::fromStdString(archive.string()));
+  require(!install.isEmpty() && scheduler.jobs.size() == 1 &&
+              scheduler.kinds.front() ==
+                  bridge::PluginManagerTestAccess::TestJobKind::install &&
+              manager->count() == 0,
+          "public archive entrypoint did not queue exactly one off-UI job");
+  std::thread worker([&] { scheduler.runOne(); });
+  worker.join();
+  bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  const auto installed = QJsonDocument::fromJson(
+                             manager->installer()->poll(install).toUtf8())
+                             .object();
+  require(installed.value("state") == "succeeded" &&
+              installed.value("result").toObject().value("plugin") ==
+                  QString::fromUtf8(plugin) &&
+              !installed.value("result").toObject().contains("revision") &&
+              scheduler.jobs.size() == 1 && manager->count() == 0,
+          "staged archive leaked revision authority or published before review");
+
+  auto observations = bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+  require(observations.size() == 1 && observed(observations, plugin).preparing &&
+              !observed(observations, plugin).has_runtime_root &&
+              !observed(observations, plugin).has_endpoint_owner,
+          "candidate reconciliation created runtime authority before review");
+  worker = std::thread([&] { scheduler.runOne(); });
+  worker.join();
+  bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  observations = bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+  const auto view = bridge::PluginManagerTestAccess::permissionView(
+      *manager, plugin, observed(observations, plugin).epoch);
+  require(observed(observations, plugin).permission_disabled && view &&
+              view->authority_slots.sequence == 0 && !view->active &&
+              manager->count() == 0,
+          "fresh archive candidate had grants, an active slot, or a surface");
+
+  const auto review = manager->installer()->beginReview(install);
+  require(!review.isEmpty() && scheduler.jobs.size() == 1,
+          "opaque install handle did not begin exact candidate review");
+  worker = std::thread([&] { scheduler.runOne(); });
+  worker.join();
+  bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  const auto review_result = permissionOperation(*manager->permissions(), review);
+  require(review_result.value("state") == "succeeded" &&
+              review_result.value("result").toObject().value("plugin") ==
+                  QString::fromUtf8(plugin) &&
+              manager->installer()->beginReview(install).isEmpty() &&
+              manager->count() == 0,
+          "exact review replayed or activated without an apply transaction");
+  const auto stale_choices = grantEveryAvailablePermission(
+      permissionRows(*manager->permissions(), review));
+  observations = bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+  const auto canceled_view = bridge::PluginManagerTestAccess::permissionView(
+      *manager, plugin, observed(observations, plugin).epoch);
+  require(observed(observations, plugin).permission_disabled && canceled_view &&
+              canceled_view->authority_slots.sequence == 0 &&
+              !canceled_view->active,
+          "cancelled archive review changed authority or activation state");
+
+  const auto invalid_archive = archive.parent_path() / "invalid.tar";
+  std::ofstream(invalid_archive) << "not a tar archive";
+  const auto rejected = manager->installer()->begin(
+      QString::fromStdString(invalid_archive.string()));
+  require(!rejected.isEmpty() && scheduler.jobs.size() == 1,
+          "invalid archive did not enter bounded asynchronous verification");
+  worker = std::thread([&] { scheduler.runOne(); });
+  worker.join();
+  bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  const auto rejected_result = QJsonDocument::fromJson(
+                                   manager->installer()->poll(rejected).toUtf8())
+                                   .object();
+  require(rejected_result.value("state") == "failed" &&
+              rejected_result.value("error") == "archive-rejected" &&
+              permissionOperation(*manager->permissions(), review)
+                      .value("state") == "succeeded" &&
+              scheduler.jobs.empty() && manager->count() == 0,
+          "rejected archive changed the existing review or authority state");
+
+  const auto update_archive = fixture.archive(plugin, "update");
+  const auto update = manager->installer()->begin(
+      QString::fromStdString(update_archive.string()));
+  require(!update.isEmpty() && scheduler.jobs.size() == 1,
+          "secure update did not queue one exact archive job");
+  worker = std::thread([&] { scheduler.runOne(); });
+  worker.join();
+  bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  const auto update_state = QJsonDocument::fromJson(
+                                manager->installer()->poll(update).toUtf8())
+                  .object()
+                  .value("state");
+  const auto stale_apply = manager->permissions()->applyInteractiveCli(
+      review, stale_choices);
+  if (update_state != "succeeded" || !stale_apply.isEmpty() ||
+      manager->count() != 0 || scheduler.jobs.size() != 1)
+    throw std::runtime_error(
+        "secure update admitted a stale prior-revision review: state=" +
+        update_state.toString().toStdString() + " apply=" +
+        stale_apply.toStdString() + " count=" +
+        std::to_string(manager->count()) + " jobs=" +
+        std::to_string(scheduler.jobs.size()));
+  worker = std::thread([&] { scheduler.runOne(); });
+  worker.join();
+  bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  observations = bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+  const auto updated_view = bridge::PluginManagerTestAccess::permissionView(
+      *manager, plugin, observed(observations, plugin).epoch);
+  require(observed(observations, plugin).permission_disabled && updated_view &&
+              updated_view->authority_slots.sequence == 0 &&
+              !updated_view->active && manager->count() == 0,
+          "secure update ran or granted its new revision before consent");
+  const auto update_review = manager->installer()->beginReview(update);
+  require(!update_review.isEmpty() && scheduler.jobs.size() == 1,
+          "secure update could not review its exact replacement revision");
+  worker = std::thread([&] { scheduler.runOne(); });
+  worker.join();
+  bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  require(permissionOperation(*manager->permissions(), update_review)
+                  .value("state") == "succeeded" &&
+              manager->count() == 0,
+          "exact update review activated without the sole apply transaction");
+  observations = bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+  const auto exact_candidate =
+      bridge::PluginManagerTestAccess::preparePermissionReview(
+          *manager, plugin, observed(observations, plugin).epoch);
+  require(exact_candidate != nullptr,
+          "exact update candidate was unavailable before apply proof");
+  const auto apply = manager->permissions()->applyInteractiveCli(
+      update_review,
+      grantEveryAvailablePermission(
+          permissionRows(*manager->permissions(), update_review)));
+  require(!apply.isEmpty() && scheduler.jobs.size() == 1,
+          "exact install review did not enter the sole apply transaction");
+  worker = std::thread([&] { scheduler.runOne(); });
+  worker.join();
+  bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  observations = bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+  const auto active_view = bridge::PluginManagerTestAccess::permissionView(
+      *manager, plugin, observed(observations, plugin).epoch);
+  require(permissionOperation(*manager->permissions(), apply).value("state") ==
+                  "succeeded" &&
+              observed(observations, plugin).preparing && active_view &&
+              active_view->active &&
+              active_view->active->binding ==
+                  exact_candidate->candidate_binding &&
+              active_view->authority_slots.sequence > 0 &&
+              manager->count() == 0 && scheduler.jobs.size() == 1 &&
+              manager->permissions()
+                  ->applyInteractiveCli(update_review, stale_choices)
+                  .isEmpty(),
+          "apply did not exclusively promote the exact reviewed binding");
+}
+
 void permission_control_is_bounded_and_destruction_safe() {
   if (std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_TEST") == nullptr)
     return;
@@ -3428,6 +3673,7 @@ void run_plugin_manager_tests() {
   manager_owns_permission_generation_replacement();
   permission_control_is_bounded_and_destruction_safe();
   controlled_mutations_settle_after_slot_loss();
+  public_archive_install_is_closed_until_exact_consent();
   concurrent_permission_fences_route_exactly();
   real_root_publishes_attaches_and_tears_down_exactly();
   zero_surface_runtime_has_no_publication_authority();

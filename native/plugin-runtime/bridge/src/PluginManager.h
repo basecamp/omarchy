@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PermissionControl.h"
+#include "PluginInstallControl.h"
 #include "SurfaceProjectionModel.h"
 #include "gesture_intent.hpp"
 
@@ -9,6 +10,7 @@
 #include <QtQml/qqmlregistration.h>
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -17,7 +19,6 @@
 
 #include <cstdint>
 #include <functional>
-#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -42,6 +43,8 @@ class PluginManager final : public QObject {
   Q_PROPERTY(QString runtimeVersion READ runtimeVersion CONSTANT)
   Q_PROPERTY(omarchy::plugin_runtime::bridge::PermissionControl *permissions
                  READ permissions CONSTANT)
+  Q_PROPERTY(omarchy::plugin_runtime::bridge::PluginInstallControl *installer
+                 READ installer CONSTANT)
   Q_PROPERTY(QAbstractItemModel *barSurfaces READ barSurfaces CONSTANT)
   Q_PROPERTY(QAbstractItemModel *panelSurfaces READ panelSurfaces CONSTANT)
   Q_PROPERTY(QAbstractItemModel *overlaySurfaces READ overlaySurfaces CONSTANT)
@@ -57,6 +60,7 @@ public:
   [[nodiscard]] bool available() const noexcept;
   [[nodiscard]] QString runtimeVersion() const;
   [[nodiscard]] PermissionControl *permissions() noexcept;
+  [[nodiscard]] PluginInstallControl *installer() noexcept;
   [[nodiscard]] QAbstractItemModel *barSurfaces();
   [[nodiscard]] QAbstractItemModel *panelSurfaces();
   [[nodiscard]] QAbstractItemModel *overlaySurfaces();
@@ -101,7 +105,12 @@ private:
   [[nodiscard]] bool publishIntent(host_session::AdmittedSurfaceIntent intent);
   [[nodiscard]] bool beginPermissionRead(std::uint64_t serial,
                                          std::string plugin,
-                                         bool review) noexcept;
+                                         bool review,
+                                         std::optional<plugins::permissions::Digest>
+                                             expected_revision = std::nullopt) noexcept;
+  [[nodiscard]] bool beginInstall(std::uint64_t serial, int archive_fd) noexcept;
+  void completeInstall(std::uint64_t serial, std::string plugin,
+                       std::string revision, std::string error) noexcept;
   [[nodiscard]] bool beginPermissionApply(
       std::uint64_t serial,
       const PermissionControl::ExactContext &context,
@@ -136,6 +145,7 @@ private:
   ProcessClaim process_claim_;
   SurfaceProjectionModel surfaces_;
   PermissionControl permissions_;
+  PluginInstallControl installer_;
   std::unique_ptr<Runtime> runtime_;
   bool available_ = false;
 
@@ -144,12 +154,13 @@ private:
   friend class SurfaceProjectionModelTestAccess;
 #endif
   friend class PermissionControl;
+  friend class PluginInstallControl;
 };
 
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
 class PluginManagerTestAccess final {
 public:
-  enum class TestJobKind : std::uint8_t { scan, preparation, permission };
+  enum class TestJobKind : std::uint8_t { scan, preparation, permission, install };
   struct SlotObservation final {
     std::string plugin;
     std::uint64_t epoch = 0;

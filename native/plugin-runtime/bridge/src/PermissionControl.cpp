@@ -215,6 +215,19 @@ QString PermissionControl::beginInteractiveCliReview(
   return beginRead(plugin_id, Kind::review, Ingress::interactive_cli);
 }
 
+QString PermissionControl::beginInteractiveCliReviewExact(
+    std::string_view plugin, std::string_view revision) noexcept {
+  try {
+    const permissions::PluginId exact_plugin(plugin);
+    const permissions::Digest exact_revision(revision);
+    return beginRead(QString::fromUtf8(exact_plugin.view().data(),
+                                      static_cast<qsizetype>(exact_plugin.view().size())),
+                     Kind::review, Ingress::interactive_cli, exact_revision);
+  } catch (...) {
+    return {};
+  }
+}
+
 QString
 PermissionControl::applyInteractiveCli(const QString &review_operation_id,
                                        const QString &choices_json) noexcept {
@@ -223,7 +236,9 @@ PermissionControl::applyInteractiveCli(const QString &review_operation_id,
 }
 
 QString PermissionControl::beginRead(const QString &plugin_id, Kind kind,
-                                     Ingress ingress) noexcept {
+                                     Ingress ingress,
+                                     std::optional<permissions::Digest>
+                                         expected_revision) noexcept {
   try {
     const auto encoded = plugin_id.toUtf8();
     const permissions::PluginId exact(std::string_view(
@@ -234,7 +249,8 @@ QString PermissionControl::beginRead(const QString &plugin_id, Kind kind,
       return {};
     const auto serial = operation->serial;
     if (!manager_.beginPermissionRead(serial, std::string(exact.view()),
-                                      kind == Kind::review)) {
+                                      kind == Kind::review,
+                                      std::move(expected_revision))) {
       erase(serial);
       return {};
     }
@@ -696,6 +712,12 @@ void PermissionControl::completeMutation(std::uint64_t serial, bool applied,
   operation->error = applied ? std::string{} : std::move(error);
   operation->result_json = applied ? "{\"applied\":true}" : std::string{};
   operation->touched = std::chrono::steady_clock::now();
+}
+
+void PermissionControl::invalidatePlugin(std::string_view plugin) noexcept {
+  std::erase_if(operations_, [&](const Operation &operation) {
+    return operation.context && operation.context->plugin == plugin;
+  });
 }
 
 } // namespace omarchy::plugin_runtime::bridge
