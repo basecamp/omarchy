@@ -36,9 +36,16 @@ struct DirectoryCloser {
 #ifdef OMARCHY_RUNTIME_ROOTS_TESTING
 CandidateRecordCrashPoint candidate_crash_point =
     CandidateRecordCrashPoint::none;
+ProvisioningRacePoint provisioning_race_point = ProvisioningRacePoint::none;
+ProvisioningRaceHook provisioning_race_hook = nullptr;
 void crash_candidate_if_requested(CandidateRecordCrashPoint point) noexcept {
   if (candidate_crash_point == point)
     ::_exit(90 + static_cast<int>(point));
+}
+
+void run_provisioning_race_hook(ProvisioningRacePoint point) {
+  if (provisioning_race_point == point && provisioning_race_hook != nullptr)
+    provisioning_race_hook();
 }
 #endif
 
@@ -286,10 +293,13 @@ OwnedDescriptor duplicate_directory(int descriptor) noexcept {
       descriptor, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
 }
 
+enum class FixedRootAccess : std::uint8_t { existing, provision };
+
 template <std::size_t Size>
 OwnedDescriptor
 open_fixed_root(int home_fd, const std::array<std::string_view, Size> &parts,
-                std::uint32_t uid, RuntimeRootsError &error) {
+                std::uint32_t uid, FixedRootAccess access,
+                RuntimeRootsError &error) {
   auto current = duplicate_directory(home_fd);
   if (!current) {
     error = RuntimeRootsError::home_untrusted;
@@ -297,9 +307,65 @@ open_fixed_root(int home_fd, const std::array<std::string_view, Size> &parts,
   }
   for (std::size_t index = 0; index < parts.size(); ++index) {
     const std::string component(parts[index]);
+    bool created = false;
     OwnedDescriptor next(
         ::openat(current.get(), component.c_str(),
                  O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
+    if (!next && access == FixedRootAccess::provision && errno == ENOENT) {
+      if (::mkdirat(current.get(), component.c_str(), 0700) == 0) {
+        created = true;
+      } else if (errno != EEXIST) {
+        error = RuntimeRootsError::path_unavailable;
+        return {};
+      }
+#ifdef OMARCHY_RUNTIME_ROOTS_TESTING
+      run_provisioning_race_hook(ProvisioningRacePoint::after_mkdir);
+#endif
+      OwnedDescriptor pinned(
+          ::openat(current.get(), component.c_str(),
+                   O_PATH | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
+#ifdef OMARCHY_RUNTIME_ROOTS_TESTING
+      run_provisioning_race_hook(ProvisioningRacePoint::after_pin);
+#endif
+      struct stat named{};
+      struct stat metadata{};
+      if (!pinned || ::fstat(pinned.get(), &metadata) < 0 ||
+          ::fstatat(current.get(), component.c_str(), &named,
+                    AT_SYMLINK_NOFOLLOW) < 0) {
+        error = RuntimeRootsError::root_untrusted;
+        return {};
+      }
+#ifdef OMARCHY_RUNTIME_ROOTS_TESTING
+      run_provisioning_race_hook(ProvisioningRacePoint::after_named_stat);
+#endif
+      if (!S_ISDIR(metadata.st_mode) || metadata.st_uid != uid ||
+          metadata.st_dev != named.st_dev || metadata.st_ino != named.st_ino) {
+        error = RuntimeRootsError::root_untrusted;
+        return {};
+      }
+      // fchmodat2(AT_EMPTY_PATH) is required so normalization applies to the
+      // pinned object. Kernels without it fail closed instead of reopening a
+      // potentially substituted pathname.
+      if (created &&
+          ::syscall(SYS_fchmodat2, pinned.get(), "", 0700, AT_EMPTY_PATH) < 0) {
+        error = RuntimeRootsError::path_unavailable;
+        return {};
+      }
+      next = OwnedDescriptor(
+          ::openat(current.get(), component.c_str(),
+                   O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
+      struct stat opened{};
+      if (!next || ::fstat(next.get(), &opened) < 0 ||
+          opened.st_dev != metadata.st_dev || opened.st_ino != metadata.st_ino) {
+        error = RuntimeRootsError::root_untrusted;
+        return {};
+      }
+      if (created &&
+          (::fsync(next.get()) < 0 || ::fsync(current.get()) < 0)) {
+        error = RuntimeRootsError::path_unavailable;
+        return {};
+      }
+    }
     if (!next) {
       error = RuntimeRootsError::path_unavailable;
       return {};
@@ -341,17 +407,23 @@ RuntimeRoots::open_from_home_fd_impl(
     error = RuntimeRootsError::home_untrusted;
     return {};
   }
-  auto revisions = open_fixed_root(home_fd, kRevisionComponents, uid, error);
+  auto revisions =
+      open_fixed_root(home_fd, kRevisionComponents, uid,
+                      FixedRootAccess::existing, error);
   if (!revisions)
     return {};
   auto activations =
-      open_fixed_root(home_fd, kActivationComponents, uid, error);
+      open_fixed_root(home_fd, kActivationComponents, uid,
+                      FixedRootAccess::existing, error);
   if (!activations)
     return {};
-  auto authority = open_fixed_root(home_fd, kAuthorityComponents, uid, error);
+  auto authority =
+      open_fixed_root(home_fd, kAuthorityComponents, uid,
+                      FixedRootAccess::existing, error);
   if (!authority)
     return {};
-  auto state = open_fixed_root(home_fd, kStateComponents, uid, error);
+  auto state = open_fixed_root(home_fd, kStateComponents, uid,
+                               FixedRootAccess::existing, error);
   if (!state)
     return {};
   const std::array identities{identity(revisions.get()),
@@ -376,6 +448,31 @@ RuntimeRoots::open_from_home_fd_impl(
   return std::unique_ptr<RuntimeRoots>(new RuntimeRoots(
       uid, std::move(revisions), std::move(activations), std::move(authority),
       std::move(state)));
+}
+
+std::unique_ptr<RuntimeRoots>
+RuntimeRoots::provision_from_home_fd_impl(
+    int home_fd, std::uint32_t uid, RuntimeRootsError &error) {
+  struct stat home_metadata{};
+  if (home_fd < 0 || ::fstat(home_fd, &home_metadata) < 0 ||
+      !secure_parent(home_metadata, uid)) {
+    error = RuntimeRootsError::home_untrusted;
+    return {};
+  }
+  auto locked = duplicate_directory(home_fd);
+  if (!locked || ::flock(locked.get(), LOCK_EX) < 0) {
+    error = RuntimeRootsError::home_untrusted;
+    return {};
+  }
+  for (const auto *parts : {&kRevisionComponents, &kActivationComponents,
+                            &kAuthorityComponents, &kStateComponents}) {
+    if (!open_fixed_root(locked.get(), *parts, uid,
+                         FixedRootAccess::provision, error))
+      return {};
+  }
+  // A failed attempt may leave only verified 0700 ancestor directories.
+  // Retrying is safe: existing components take the same no-follow trust path.
+  return open_from_home_fd_impl(locked.get(), uid, error);
 }
 
 namespace {
@@ -486,6 +583,12 @@ void set_candidate_record_crash_point_for_testing(
     CandidateRecordCrashPoint point) noexcept {
   candidate_crash_point = point;
 }
+
+void set_provisioning_race_hook_for_testing(
+    ProvisioningRacePoint point, ProvisioningRaceHook hook) noexcept {
+  provisioning_race_point = point;
+  provisioning_race_hook = hook;
+}
 #endif
 
 RuntimeRoots::RuntimeRoots(std::uint32_t trusted_uid,
@@ -539,7 +642,7 @@ RuntimeRoots::open(RuntimeRootsError &error) noexcept {
                                      system_account_lookup, error);
     if (!home)
       return {};
-    return open_from_home_fd_impl(
+    return provision_from_home_fd_impl(
         home.get(), static_cast<std::uint32_t>(effective_uid), error);
   } catch (const std::bad_alloc &) {
     error = RuntimeRootsError::resource_exhausted;
@@ -557,6 +660,21 @@ std::unique_ptr<RuntimeRoots> RuntimeRoots::open_from_home_fd(
   error = RuntimeRootsError::none;
   try {
     return open_from_home_fd_impl(home_fd, trusted_uid, error);
+  } catch (const std::bad_alloc &) {
+    error = RuntimeRootsError::resource_exhausted;
+    return {};
+  } catch (...) {
+    error = RuntimeRootsError::internal_failure;
+    return {};
+  }
+}
+
+std::unique_ptr<RuntimeRoots> RuntimeRoots::provision_from_home_fd(
+    int home_fd, std::uint32_t trusted_uid,
+    RuntimeRootsError &error) noexcept {
+  error = RuntimeRootsError::none;
+  try {
+    return provision_from_home_fd_impl(home_fd, trusted_uid, error);
   } catch (const std::bad_alloc &) {
     error = RuntimeRootsError::resource_exhausted;
     return {};

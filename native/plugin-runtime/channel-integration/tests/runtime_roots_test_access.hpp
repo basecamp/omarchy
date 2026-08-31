@@ -11,6 +11,11 @@ public:
                     RuntimeRootsError &error) noexcept {
     return RuntimeRoots::open_from_home_fd(home_fd, trusted_uid, error);
   }
+  [[nodiscard]] static std::unique_ptr<RuntimeRoots>
+  provision_from_home_fd(int home_fd, std::uint32_t trusted_uid,
+                         RuntimeRootsError &error) noexcept {
+    return RuntimeRoots::provision_from_home_fd(home_fd, trusted_uid, error);
+  }
   [[nodiscard]] static int
   open_absolute_home(const char *path, std::uint32_t trusted_uid,
                      RuntimeRootsError &error) noexcept {

@@ -39,11 +39,21 @@ enum class CandidateRecordCrashPoint : std::uint8_t {
 };
 void set_candidate_record_crash_point_for_testing(
     CandidateRecordCrashPoint point) noexcept;
+enum class ProvisioningRacePoint : std::uint8_t {
+  none,
+  after_mkdir,
+  after_pin,
+  after_named_stat,
+};
+using ProvisioningRaceHook = void (*)();
+void set_provisioning_race_hook_for_testing(
+    ProvisioningRacePoint point, ProvisioningRaceHook hook) noexcept;
 #endif
 
-// The only runtime bootstrap for v2 filesystem authority. Paths come from
-// the effective user's passwd entry plus fixed host constants; environment,
-// QML, and plugin data cannot select or replace them.
+// The only runtime bootstrap for v2 filesystem authority. Explicit v2 shell
+// activation provisions the fixed private roots before opening them. Paths
+// come from the effective user's passwd entry plus fixed host constants;
+// environment, QML, and plugin data cannot select or replace them.
 class RuntimeRoots final {
 public:
   RuntimeRoots(RuntimeRoots &&) noexcept = default;
@@ -75,6 +85,9 @@ private:
   [[nodiscard]] static std::unique_ptr<RuntimeRoots>
   open_from_home_fd_impl(int home_fd, std::uint32_t trusted_uid,
                          RuntimeRootsError &error);
+  [[nodiscard]] static std::unique_ptr<RuntimeRoots>
+  provision_from_home_fd_impl(int home_fd, std::uint32_t trusted_uid,
+                              RuntimeRootsError &error);
 
 #ifdef OMARCHY_RUNTIME_ROOTS_TESTING
   using AccountLookupForTest = int (*)(uid_t, struct passwd *, char *,
@@ -82,6 +95,9 @@ private:
   [[nodiscard]] static std::unique_ptr<RuntimeRoots>
   open_from_home_fd(int home_fd, std::uint32_t trusted_uid,
                     RuntimeRootsError &error) noexcept;
+  [[nodiscard]] static std::unique_ptr<RuntimeRoots>
+  provision_from_home_fd(int home_fd, std::uint32_t trusted_uid,
+                         RuntimeRootsError &error) noexcept;
   [[nodiscard]] static int
   open_absolute_home_for_test(const char *path, std::uint32_t trusted_uid,
                               RuntimeRootsError &error) noexcept;

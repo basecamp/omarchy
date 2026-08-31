@@ -37,6 +37,14 @@ LookupBehavior lookup_behavior = LookupBehavior::success;
 std::size_t lookup_calls = 0;
 uid_t lookup_home_uid = 0;
 const char *lookup_home = "/home";
+std::filesystem::path provisioning_race_home;
+
+void substitute_first_provisioned_component() {
+  const auto local = provisioning_race_home / ".local";
+  const auto displaced = provisioning_race_home / "displaced-local";
+  std::filesystem::rename(local, displaced);
+  std::filesystem::create_directory_symlink(displaced, local);
+}
 
 int scripted_lookup(uid_t requested_uid, struct passwd *account, char *,
                     std::size_t, struct passwd **result) {
@@ -112,15 +120,17 @@ int create_standard_ustar(const std::filesystem::path &home,
 
 class Fixture final {
 public:
-  Fixture() {
+  explicit Fixture(bool with_roots = true) {
     std::string pattern = "/tmp/omarchy-runtime-roots.XXXXXX";
     const auto *created = ::mkdtemp(pattern.data());
     require(created != nullptr, "root fixture creation failed");
     home_ = created;
-    create(".local/share/omarchy/plugin-security/v2/revisions");
-    create(".local/state/omarchy/plugin-security/v2/activations");
-    create(".local/state/omarchy/plugin-security/v2/authority");
-    create(".local/state/omarchy/plugin-security/v2/state");
+    if (with_roots) {
+      create(".local/share/omarchy/plugin-security/v2/revisions");
+      create(".local/state/omarchy/plugin-security/v2/activations");
+      create(".local/state/omarchy/plugin-security/v2/authority");
+      create(".local/state/omarchy/plugin-security/v2/state");
+    }
   }
 
   ~Fixture() {
@@ -177,6 +187,191 @@ load(const Fixture &fixture, channel::RuntimeRootsError &error,
       home, uid, error);
   ::close(home);
   return result;
+}
+
+std::unique_ptr<channel::RuntimeRoots>
+provision(const Fixture &fixture, channel::RuntimeRootsError &error,
+          std::uint32_t uid = static_cast<std::uint32_t>(::getuid())) {
+  const int home = fixture.open_home();
+  require(home >= 0, "fixture home open failed");
+  auto result = channel::RuntimeRootsTestAccess::provision_from_home_fd(
+      home, uid, error);
+  ::close(home);
+  return result;
+}
+
+std::size_t open_descriptor_count() {
+  return static_cast<std::size_t>(std::distance(
+      std::filesystem::directory_iterator("/proc/self/fd"),
+      std::filesystem::directory_iterator{}));
+}
+
+void fresh_home_is_provisioned_privately_and_idempotently() {
+  Fixture fixture(false);
+  channel::RuntimeRootsError error{};
+  std::unique_ptr<channel::RuntimeRoots> roots;
+  {
+    ScopedUmask hostile(0777);
+    roots = provision(fixture, error);
+  }
+  require(roots && error == channel::RuntimeRootsError::none,
+          "fresh home was not provisioned");
+
+  const std::array<std::filesystem::path, 13> created{
+      ".local",
+      ".local/share",
+      ".local/share/omarchy",
+      ".local/share/omarchy/plugin-security",
+      ".local/share/omarchy/plugin-security/v2",
+      ".local/share/omarchy/plugin-security/v2/revisions",
+      ".local/state",
+      ".local/state/omarchy",
+      ".local/state/omarchy/plugin-security",
+      ".local/state/omarchy/plugin-security/v2",
+      ".local/state/omarchy/plugin-security/v2/activations",
+      ".local/state/omarchy/plugin-security/v2/authority",
+      ".local/state/omarchy/plugin-security/v2/state"};
+  for (const auto &relative : created) {
+    struct stat metadata{};
+    const auto path = fixture.home() / relative;
+    require(::lstat(path.c_str(), &metadata) == 0 &&
+                S_ISDIR(metadata.st_mode) && metadata.st_uid == ::getuid() &&
+                (metadata.st_mode & 07777) == 0700,
+            "provisioned component is not private and user-owned");
+  }
+  const std::array leaves{
+      fixture.home() /
+          ".local/share/omarchy/plugin-security/v2/revisions",
+      fixture.home() /
+          ".local/state/omarchy/plugin-security/v2/activations",
+      fixture.home() /
+          ".local/state/omarchy/plugin-security/v2/authority",
+      fixture.home() / ".local/state/omarchy/plugin-security/v2/state"};
+  std::array<struct stat, leaves.size()> before{};
+  for (std::size_t index = 0; index < leaves.size(); ++index) {
+    require(std::filesystem::is_empty(leaves[index]) &&
+                ::stat(leaves[index].c_str(), &before[index]) == 0,
+            "provisioning fabricated plugin authority or activation data");
+  }
+  roots.reset();
+  roots = provision(fixture, error);
+  require(roots && error == channel::RuntimeRootsError::none,
+          "provisioning was not idempotent");
+  for (std::size_t index = 0; index < leaves.size(); ++index) {
+    struct stat after{};
+    require(::stat(leaves[index].c_str(), &after) == 0 &&
+                after.st_dev == before[index].st_dev &&
+                after.st_ino == before[index].st_ino &&
+                std::filesystem::is_empty(leaves[index]),
+            "idempotent provisioning replaced a root or created authority");
+  }
+}
+
+void provisioning_rejects_untrusted_existing_components() {
+  {
+    Fixture fixture(false);
+    require(::mkdir((fixture.home() / ".local").c_str(), 0700) == 0 &&
+                ::chmod((fixture.home() / ".local").c_str(), 0770) == 0,
+            "unsafe provisioning mode setup failed");
+    channel::RuntimeRootsError error{};
+    require(!provision(fixture, error) &&
+                error == channel::RuntimeRootsError::root_untrusted,
+            "group-writable existing component was provisioned");
+  }
+  {
+    Fixture fixture(false);
+    write_file(fixture.home() / ".local", "not a directory");
+    channel::RuntimeRootsError error{};
+    require(!provision(fixture, error),
+            "non-directory existing component was provisioned");
+  }
+  {
+    Fixture fixture(false);
+    const auto target = fixture.home() / "local-target";
+    require(::mkdir(target.c_str(), 0700) == 0,
+            "symlink target setup failed");
+    std::filesystem::create_directory_symlink(target,
+                                               fixture.home() / ".local");
+    channel::RuntimeRootsError error{};
+    require(!provision(fixture, error),
+            "symlinked existing component was provisioned");
+  }
+  {
+    Fixture fixture(false);
+    channel::RuntimeRootsError error{};
+    require(!provision(fixture, error,
+                       static_cast<std::uint32_t>(::getuid()) + 1) &&
+                error == channel::RuntimeRootsError::home_untrusted,
+            "wrong-owner home was provisioned");
+  }
+}
+
+void provisioning_substitution_is_rejected_at_each_identity_fence() {
+  for (const auto point : {channel::ProvisioningRacePoint::after_mkdir,
+                           channel::ProvisioningRacePoint::after_pin,
+                           channel::ProvisioningRacePoint::after_named_stat}) {
+    Fixture fixture(false);
+    provisioning_race_home = fixture.home();
+    channel::set_provisioning_race_hook_for_testing(
+        point, substitute_first_provisioned_component);
+    channel::RuntimeRootsError error{};
+    auto roots = provision(fixture, error);
+    channel::set_provisioning_race_hook_for_testing(
+        channel::ProvisioningRacePoint::none, nullptr);
+    require(!roots && error != channel::RuntimeRootsError::none,
+            "path substitution crossed a provisioning identity fence");
+    require(!std::filesystem::exists(
+                fixture.home() /
+                ".local/state/omarchy/plugin-security/v2/activations") &&
+                !std::filesystem::exists(
+                    fixture.home() /
+                    ".local/state/omarchy/plugin-security/v2/authority"),
+            "failed substitution created activation or authority roots");
+  }
+  provisioning_race_home.clear();
+}
+
+void concurrent_provisioning_converges_without_leaks() {
+  Fixture fixture(false);
+  constexpr std::size_t workers = 8;
+  std::barrier start(static_cast<std::ptrdiff_t>(workers + 1));
+  std::array<std::thread, workers> threads;
+  std::atomic<std::size_t> successes{0};
+  for (auto &thread : threads) {
+    thread = std::thread([&] {
+      start.arrive_and_wait();
+      channel::RuntimeRootsError error{};
+      auto roots = provision(fixture, error);
+      if (roots && error == channel::RuntimeRootsError::none)
+        ++successes;
+    });
+  }
+  start.arrive_and_wait();
+  for (auto &thread : threads)
+    thread.join();
+  require(successes == workers,
+          "concurrent provisioning did not converge on one root set");
+
+  const auto activations =
+      fixture.home() / ".local/state/omarchy/plugin-security/v2/activations";
+  const auto authority =
+      fixture.home() / ".local/state/omarchy/plugin-security/v2/authority";
+  require(std::filesystem::is_empty(activations) &&
+              std::filesystem::is_empty(authority),
+          "concurrent provisioning fabricated authority or activation data");
+
+  const auto displaced = fixture.home() / "real-local";
+  std::filesystem::rename(fixture.home() / ".local", displaced);
+  std::filesystem::create_directory_symlink(displaced,
+                                             fixture.home() / ".local");
+  const auto descriptors_before = open_descriptor_count();
+  for (int attempt = 0; attempt < 128; ++attempt) {
+    channel::RuntimeRootsError error{};
+    require(!provision(fixture, error),
+            "symlink race target was provisioned");
+  }
+  require(open_descriptor_count() == descriptors_before,
+          "failed provisioning leaked descriptors");
 }
 
 void fixed_roots_are_exact_distinct_and_pinned() {
@@ -809,6 +1004,10 @@ void product_review_rejects_mutated_published_metadata() {
 
 int main() {
   try {
+    fresh_home_is_provisioned_privately_and_idempotently();
+    provisioning_rejects_untrusted_existing_components();
+    provisioning_substitution_is_rejected_at_each_identity_fence();
+    concurrent_provisioning_converges_without_leaks();
     fixed_roots_are_exact_distinct_and_pinned();
     unsafe_home_components_and_roots_fail_closed();
     absolute_home_walker_rejects_untrusted_paths();
