@@ -1,26 +1,23 @@
 #include "worker_runtime.hpp"
 
+#include "plugin_source_policy.hpp"
 #include "qt_touch_injector.hpp"
 
 #include "omarchy/plugin/wire/surface_name.hpp"
 
 #include <QCoreApplication>
-#include <QDir>
 #include <QEventPoint>
 #include <QFile>
-#include <QFileInfo>
 #include <QImage>
 #include <QImageReader>
 #include <QInputMethodEvent>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
-#include <QLibraryInfo>
 #include <QMetaMethod>
 #include <QMetaProperty>
 #include <QMouseEvent>
 #include <QPointingDevice>
-#include <QQmlAbstractUrlInterceptor>
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -49,87 +46,8 @@
 namespace omarchy::plugin_runtime::worker {
 namespace {
 
-inline constexpr std::uint64_t kMaximumPluginTreeBytes =
-    64ULL * 1024ULL * 1024ULL;
-inline constexpr std::size_t kMaximumPluginTreeEntries = 4096;
-inline constexpr std::uint64_t kMaximumResourceBytes =
-    16ULL * 1024ULL * 1024ULL;
-
 RuntimeResult failure(RuntimeFailure code, std::string detail) {
   return {.failure = code, .detail = std::move(detail)};
-}
-
-bool beneath(const std::filesystem::path &candidate,
-             const std::filesystem::path &root) {
-  const auto relative = candidate.lexically_relative(root);
-  return !relative.empty() && !relative.is_absolute() &&
-         *relative.begin() != "..";
-}
-
-RuntimeResult validate_source_tree(const std::filesystem::path &root) {
-  std::error_code error;
-  const auto metadata = std::filesystem::symlink_status(root, error);
-  if (error || !std::filesystem::is_directory(metadata) ||
-      std::filesystem::is_symlink(metadata)) {
-    return failure(RuntimeFailure::invalid_source_root,
-                   "source root must be a real directory");
-  }
-  std::size_t entries = 0;
-  std::uint64_t total = 0;
-  std::filesystem::recursive_directory_iterator iterator(
-      root, std::filesystem::directory_options::none, error);
-  const std::filesystem::recursive_directory_iterator end;
-  while (!error && iterator != end) {
-    if (++entries > kMaximumPluginTreeEntries)
-      return failure(RuntimeFailure::invalid_source_root,
-                     "plugin tree entry limit exceeded");
-    const auto status = iterator->symlink_status(error);
-    if (error || std::filesystem::is_symlink(status) ||
-        (!std::filesystem::is_directory(status) &&
-         !std::filesystem::is_regular_file(status))) {
-      return failure(RuntimeFailure::invalid_source_root,
-                     "plugin tree contains a symlink or special file");
-    }
-    if (std::filesystem::is_regular_file(status)) {
-      const auto size = iterator->file_size(error);
-      if (error || size > kMaximumResourceBytes ||
-          total > kMaximumPluginTreeBytes - size)
-        return failure(RuntimeFailure::invalid_source_root,
-                       "plugin tree byte limit exceeded");
-      total += size;
-      const auto suffix = iterator->path().extension().string();
-      if ((suffix == ".qml" || suffix == ".js" || suffix == ".mjs") &&
-          size > kMaximumManifestBytes)
-        return failure(RuntimeFailure::invalid_source_root,
-                       "QML or JavaScript source exceeds byte limit");
-      if (suffix == ".qml") {
-        QFile source(QString::fromStdString(iterator->path().string()));
-        if (!source.open(QIODevice::ReadOnly))
-          return failure(RuntimeFailure::invalid_source_root,
-                         "QML source cannot be opened");
-        const auto bytes = source.readAll();
-        for (QByteArray line : bytes.split('\n')) {
-          line = line.trimmed();
-          if (!line.startsWith("import") ||
-              (line.size() > 6 && line[6] != ' ' && line[6] != '\t'))
-            continue;
-          line = line.sliced(6).trimmed();
-          if (line.startsWith('"') || line.startsWith('\'')) {
-            line = line.sliced(1).trimmed();
-            if (line.startsWith('/') || line.contains("://") ||
-                line.startsWith("file:") || line.startsWith("qrc:"))
-              return failure(RuntimeFailure::invalid_source_root,
-                             "QML URL imports must stay in the plugin tree");
-          }
-        }
-      }
-    }
-    iterator.increment(error);
-  }
-  if (error)
-    return failure(RuntimeFailure::invalid_source_root,
-                   "plugin tree changed while validating");
-  return {};
 }
 
 bool valid_runtime_api_surface(QObject &runtime_api) {
@@ -245,46 +163,6 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
            request_surface_intent == 1 && broker_ready_changed == 1));
 }
 
-class ResourceInterceptor final : public QQmlAbstractUrlInterceptor {
-public:
-  ResourceInterceptor(std::filesystem::path plugin_root,
-                      std::filesystem::path qt_root)
-      : plugin_root_(std::move(plugin_root)), qt_root_(std::move(qt_root)) {}
-
-  QUrl intercept(const QUrl &url, DataType) override {
-    if (url.scheme() == QStringLiteral("qrc")) {
-      const auto path = url.path();
-      if (path.startsWith(QStringLiteral("/qt/qml/")) ||
-          path.startsWith(QStringLiteral("/qt-project.org/imports/")))
-        return url;
-    }
-    if (!url.isLocalFile())
-      return denied();
-    const std::filesystem::path candidate(
-        QFileInfo(url.toLocalFile()).absoluteFilePath().toStdString());
-    const auto normalized = candidate.lexically_normal();
-    if (beneath(normalized, plugin_root_))
-      return url;
-    if (beneath(normalized, qt_root_)) {
-      const auto relative = normalized.lexically_relative(qt_root_);
-      if (!relative.empty()) {
-        const auto first = relative.begin()->string();
-        if (first == "Qt" || first == "QtQml" || first == "QtQuick")
-          return url;
-      }
-    }
-    return denied();
-  }
-
-private:
-  static QUrl denied() {
-    return QUrl(QStringLiteral("qrc:/__omarchy_plugin_resource_denied__"));
-  }
-
-  std::filesystem::path plugin_root_;
-  std::filesystem::path qt_root_;
-};
-
 class Mapping {
 public:
   Mapping() = default;
@@ -394,19 +272,13 @@ struct WorkerRuntime::Impl {
   };
 
   explicit Impl(std::filesystem::path requested_root)
-      : source_root(std::filesystem::absolute(std::move(requested_root))
-                        .lexically_normal()),
-        qt_root(QLibraryInfo::path(QLibraryInfo::QmlImportsPath).toStdString()),
-        interceptor(source_root, qt_root), software_backend([] {
+      : source_policy(std::move(requested_root)), software_backend([] {
           QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
           return true;
         }()),
         render_control(), window(&render_control) {
     QImageReader::setAllocationLimit(kMaximumDecodedImageMiB);
-    engine.addUrlInterceptor(&interceptor);
-    engine.setImportPathList({QString::fromStdString(source_root.string()),
-                              QLibraryInfo::path(QLibraryInfo::QmlImportsPath),
-                              QStringLiteral("qrc:/qt/qml")});
+    source_policy.configure(engine);
     window.setColor(Qt::transparent);
     render_root.setParentItem(window.contentItem());
     render_root.setTransformOrigin(QQuickItem::TopLeft);
@@ -505,9 +377,7 @@ struct WorkerRuntime::Impl {
       input_mirror.release(*instance.bound_key);
   }
 
-  std::filesystem::path source_root;
-  std::filesystem::path qt_root;
-  ResourceInterceptor interceptor;
+  PluginSourcePolicy source_policy;
   QQmlEngine engine;
   [[maybe_unused]] bool software_backend;
   QQuickRenderControl render_control;
@@ -554,26 +424,14 @@ RuntimeResult WorkerRuntime::prepare_trusted_qt_types() {
 }
 
 bool safe_relative_qml_path(std::string_view path) {
-  if (path.empty() || path.size() > kMaximumEntryPathBytes ||
-      path.find('\0') != std::string_view::npos || path.front() == '/' ||
-      path.find('\\') != std::string_view::npos)
-    return false;
-  const std::filesystem::path candidate(path);
-  if (candidate.extension() != ".qml" || candidate.is_absolute() ||
-      candidate.lexically_normal() != candidate)
-    return false;
-  for (const auto &part : candidate) {
-    if (part == "." || part == ".." || part.empty())
-      return false;
-  }
-  return true;
+  return PluginSourcePolicy::valid_entry_path(path);
 }
 
 RuntimeResult WorkerRuntime::load_manifest_entry() {
-  const auto tree = validate_source_tree(implementation_->source_root);
+  const auto tree = implementation_->source_policy.validate_tree();
   if (!tree)
     return tree;
-  const auto manifest = implementation_->source_root / "manifest.json";
+  const auto manifest = implementation_->source_policy.root() / "manifest.json";
   std::error_code error;
   const auto size = std::filesystem::file_size(manifest, error);
   if (error)
@@ -646,10 +504,10 @@ RuntimeResult WorkerRuntime::instantiate_entry(
   if (!safe_relative_qml_path(entry_path))
     return failure(RuntimeFailure::entry_path_invalid,
                    "QML entry path must be a normalized relative .qml file");
-  const auto tree = validate_source_tree(implementation_->source_root);
+  const auto tree = implementation_->source_policy.validate_tree();
   if (!tree)
     return tree;
-  const auto entry = implementation_->source_root / entry_path;
+  const auto entry = implementation_->source_policy.root() / entry_path;
   std::error_code error;
   const auto metadata = std::filesystem::symlink_status(entry, error);
   if (error || !std::filesystem::is_regular_file(metadata) ||

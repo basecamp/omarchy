@@ -22,6 +22,7 @@ function(omarchy_plugin_worker_sanitize target)
 endfunction()
 
 add_library(omarchy-plugin-worker-runtime STATIC
+  src/plugin_source_policy.cpp
   src/qt_touch_injector.cpp
   src/qml_broker_api.cpp
   src/sidecar_supervisor.cpp
