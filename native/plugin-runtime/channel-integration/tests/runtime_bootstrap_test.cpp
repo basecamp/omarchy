@@ -327,8 +327,7 @@ void authority_cannot_cross_runtime_service_identity() {
           "cross-bootstrap service fixture did not open authority");
   const auto crossed = channel::RuntimeBootstrapTestAccess::prepare_runtime(
       *second, authority);
-  require(!crossed.runtime &&
-              crossed.status == channel::PluginRuntimePreparationStatus::failed,
+  require(!crossed.runtime && !crossed.permission_disabled,
           "authority reviewed under one service context executed under another");
   require(channel::RuntimeBootstrapTestAccess::prepare_runtime(*first,
                                                                 authority)

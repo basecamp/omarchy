@@ -38,16 +38,9 @@ public:
 
 class PreparedPluginRuntime;
 
-enum class PluginRuntimePreparationStatus : std::uint8_t {
-  prepared,
-  permission_disabled,
-  failed,
-};
-
 struct PluginRuntimePreparationResult final {
   std::unique_ptr<PreparedPluginRuntime> runtime;
-  PluginRuntimePreparationStatus status =
-      PluginRuntimePreparationStatus::failed;
+  bool permission_disabled = false;
 };
 
 // Sole runtime composition for one secure plugin. Every authority-bearing

@@ -1702,9 +1702,7 @@ void required_denied_activation_is_permission_only_after_reopen() {
           "required permission was not durably denied");
 
   const auto prepared = fixture.prepare_result();
-  require(!prepared.runtime &&
-              prepared.status ==
-                  channel::PluginRuntimePreparationStatus::permission_disabled,
+  require(!prepared.runtime && prepared.permission_disabled,
           "reopened required-denied authority attempted runtime assembly");
 }
 

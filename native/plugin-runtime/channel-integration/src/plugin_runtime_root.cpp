@@ -191,9 +191,7 @@ PluginRuntimePreparationResult PluginRuntimeRoot::prepare(
       return {};
     if (loaded.grant_status ==
         host_session::GrantStatus::permission_disabled)
-      return {.runtime = {},
-              .status =
-                  PluginRuntimePreparationStatus::permission_disabled};
+      return {.runtime = {}, .permission_disabled = true};
     if (loaded.grant_status != host_session::GrantStatus::activatable)
       return {};
     auto live_binding =
@@ -214,8 +212,7 @@ PluginRuntimePreparationResult PluginRuntimeRoot::prepare(
     prepared->root = std::move(root);
     prepared->session = std::move(session);
     prepared->live_binding = std::move(live_binding);
-    return {.runtime = std::move(prepared),
-            .status = PluginRuntimePreparationStatus::prepared};
+    return {.runtime = std::move(prepared)};
   } catch (...) {
     return {};
   }

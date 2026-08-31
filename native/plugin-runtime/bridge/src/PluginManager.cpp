@@ -507,8 +507,7 @@ struct PluginManager::Runtime final {
                       bootstrap->prepare_runtime(result->permissions);
                   result->prepared = std::move(preparation.runtime);
                   result->permission_disabled =
-                      preparation.status ==
-                      channel::PluginRuntimePreparationStatus::permission_disabled;
+                      preparation.permission_disabled;
                 }
               } catch (...) {
                 result->prepared.reset();
