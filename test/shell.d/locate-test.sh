@@ -130,11 +130,19 @@ chmod +x "$fake_bin/systemctl"
 conf="$test_tmp/migration-updatedb.conf"
 stock_conf "$conf"
 
+# The migration pins /etc/updatedb.conf so a caller cannot name the file the
+# root step rewrites. Test against a copy whose pinned path points at the
+# stand-in conf. The sudo stub execs locate.sh with the caller's environment,
+# where real sudo would strip OMARCHY_UPDATEDB_CONF_PATH and leave locate.sh
+# on its own default.
+migration_copy="$test_tmp/locate-migration"
+sed "s#/etc/updatedb.conf#$conf#g" "$locate_migration" >"$migration_copy"
+
 TEST_LOG="$test_tmp/calls.log" \
 PATH="$fake_bin:$PATH" \
 OMARCHY_PATH="$ROOT" \
 OMARCHY_UPDATEDB_CONF_PATH="$conf" \
-  bash -euo pipefail "$locate_migration" >/dev/null
+  bash -euo pipefail "$migration_copy" >/dev/null
 
 grep -qFx 'PRUNE_BIND_MOUNTS = "no"' "$conf" || fail "locate migration rewrites updatedb.conf"
 grep -qF 'PRUNEPATHS = "/.snapshots /afs' "$conf" || fail "locate migration prunes /.snapshots"
@@ -147,7 +155,7 @@ TEST_LOG="$test_tmp/calls.log" \
 PATH="$fake_bin:$PATH" \
 OMARCHY_PATH="$ROOT" \
 OMARCHY_UPDATEDB_CONF_PATH="$conf" \
-  bash -euo pipefail "$locate_migration" >/dev/null
+  bash -euo pipefail "$migration_copy" >/dev/null
 
 [[ ! -s $test_tmp/calls.log ]] || fail "locate migration skips already-configured installs"
 pass "locate migration is a no-op once updatedb.conf is configured"
@@ -162,7 +170,7 @@ TEST_LOG="$test_tmp/calls.log" \
 PATH="$fake_bin:$PATH" \
 OMARCHY_PATH="$test_tmp/empty" \
 OMARCHY_UPDATEDB_CONF_PATH="$conf" \
-  bash -euo pipefail "$locate_migration" >/dev/null ||
+  bash -euo pipefail "$migration_copy" >/dev/null ||
   fail "locate migration survives a tree without the locate config script"
 
 [[ ! -s $test_tmp/calls.log ]] || fail "locate migration touches nothing without the locate config script"
