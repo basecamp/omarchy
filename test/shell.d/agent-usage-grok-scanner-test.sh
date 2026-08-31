@@ -3,6 +3,7 @@
 source "$(dirname "$0")/base-test.sh"
 
 require_command jq
+require_command python3
 
 TEST_HOME=$(mktemp -d)
 trap 'rm -rf "$TEST_HOME"' EXIT
@@ -196,8 +197,17 @@ result=$(HOME="$TEST_HOME" XDG_CACHE_HOME="$TEST_HOME/.cache" GROK_HOME="$TEST_H
   fail "Grok collector rewrites SuperGrokPro and labels monthly pools" "$result"
 pass "Grok collector rewrites SuperGrokPro and labels monthly pools"
 
-# Leftover prepaid credits become a balance; the weekly meter still draws.
-install_grok_stub '{"config":{"creditUsagePercent":10,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","end":"2026-08-29T00:00:00Z"},"prepaidBalance":{"val":12.5},"onDemandCap":{"val":20},"onDemandUsed":{"val":5}},"subscription_tier":"SuperGrok Heavy"}'
+# Live ACP Money.val is integer cents: prepaidBalance.val 488 is $4.88,
+# matching Grok Build /usage — not $488.00.
+install_grok_stub '{"config":{"creditUsagePercent":22,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","end":"2026-08-29T00:00:00Z"},"prepaidBalance":{"val":488},"onDemandCap":{"val":0},"onDemandUsed":{"val":0}},"subscription_tier":"SuperGrok Plus"}'
+result=$(HOME="$TEST_HOME" XDG_CACHE_HOME="$TEST_HOME/.cache" GROK_HOME="$TEST_HOME/.grok" \
+  "$ROOT/bin/omarchy-agent-usage-grok" --force)
+[[ $(jq '.balance.remaining == 4.88 and .balance.funded == 4.88 and .balance.spent == 0' <<<"$result") == "true" ]] ||
+  fail "Grok collector treats ACP Money.val as integer cents" "$result"
+pass "Grok collector treats ACP Money.val as integer cents"
+
+# Leftover prepaid plus unused on-demand cap, still in cents.
+install_grok_stub '{"config":{"creditUsagePercent":10,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","end":"2026-08-29T00:00:00Z"},"prepaidBalance":{"val":1250},"onDemandCap":{"val":2000},"onDemandUsed":{"val":500}},"subscription_tier":"SuperGrok Heavy"}'
 result=$(HOME="$TEST_HOME" XDG_CACHE_HOME="$TEST_HOME/.cache" GROK_HOME="$TEST_HOME/.grok" \
   "$ROOT/bin/omarchy-agent-usage-grok" --force)
 [[ $(jq '.balance.remaining == 27.5 and .balance.funded == 32.5 and .balance.spent == 5' <<<"$result") == "true" ]] ||
@@ -271,3 +281,257 @@ result=$(HOME="$TEST_HOME" XDG_CACHE_HOME="$TEST_HOME/.cache" GROK_HOME="$TEST_H
 [[ $(jq -r '.limits[0].percent * 100 | round' <<<"$result") == "4" ]] ||
   fail "Grok collector skips non-JSON wrapper lines and ACP notifications" "$result"
 pass "Grok collector skips non-JSON wrapper lines and ACP notifications"
+
+# Pi and omp can spend a SuperGrok subscription without writing Grok Build
+# transcripts. Match Claude/Codex: merge those trees, filtered to xAI.
+PI_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$EMPTY_HOME" "$PI_HOME"' EXIT
+mkdir -p "$PI_HOME/.pi/agent/sessions/project" "$PI_HOME/.omp/agent/sessions/project"
+now_ms=$(python3 -c 'import time; print(int(time.time() * 1000))')
+cat >"$PI_HOME/.pi/agent/sessions/project/pi.jsonl" <<EOF
+{"type":"message","id":"pi-1","timestamp":$now_ms,"message":{"role":"assistant","provider":"xai","model":"grok-4.6","usage":{"input":100,"output":20,"cacheRead":10,"cacheWrite":0,"reasoning":5}}}
+{"type":"message","id":"pi-auth","timestamp":$now_ms,"message":{"role":"assistant","provider":"xai-auth","model":"grok-4.6","usage":{"input":8,"output":2}}}
+{"type":"message","id":"pi-user","timestamp":$now_ms,"message":{"role":"user","provider":"xai","model":"grok-4.6","usage":{"input":50,"output":1}}}
+["usage","assistant"]
+EOF
+cat >"$PI_HOME/.omp/agent/sessions/project/omp.jsonl" <<EOF
+{"type":"message","id":"omp-1","timestamp":$now_ms,"message":{"role":"assistant","provider":"xai","model":"grok-omp","usage":{"input":20,"output":5,"cacheRead":4,"cacheWrite":1}}}
+{"type":"message","id":"other-1","timestamp":$now_ms,"message":{"role":"assistant","provider":"anthropic","model":"claude-test","usage":{"input":999,"output":999}}}
+{"type":"message","id":"proxy-1","timestamp":$now_ms,"message":{"role":"assistant","provider":"xai-proxy","model":"grok-4.6","usage":{"input":999,"output":999}}}
+EOF
+
+jq_bin=$(command -v jq)
+result=$(HOME="$PI_HOME" XDG_CACHE_HOME="$PI_HOME/.cache" XDG_DATA_HOME="$PI_HOME/.local/share" \
+  GROK_HOME="$PI_HOME/.grok" PATH="$(dirname "$jq_bin"):/usr/bin:/bin" \
+  "$ROOT/bin/omarchy-agent-usage-grok" --force)
+
+# pi: 100-10 cache = 90 input + 20 output + 10 cache (reasoning already in output)
+# xai-auth: 8 + 2
+# omp: 20-5 cache = 15 input + 5 output + 4 read + 1 write
+# total 155; anthropic, xai-proxy, user rows ignored
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "155" ]] ||
+  fail "Grok collector counts usage from pi and omp xAI sessions" "$result"
+[[ $(jq -r '.todayPrompts' <<<"$result") == "3" ]] ||
+  fail "Grok collector counts one prompt per xAI assistant message" "$result"
+[[ $(jq -r '.todaySessions' <<<"$result") == "2" ]] ||
+  fail "Grok collector counts pi and omp sessions separately" "$result"
+[[ $(jq -c '.modelUsage' <<<"$result") == '{"grok-4.6":{"cacheCreationInputTokens":0,"cacheReadInputTokens":10,"inputTokens":98,"outputTokens":22},"grok-omp":{"cacheCreationInputTokens":1,"cacheReadInputTokens":4,"inputTokens":15,"outputTokens":5}}' ]] ||
+  fail "Grok collector filters pi and omp sessions to xAI providers" "$result"
+pass "Grok collector counts pi and omp xAI subscription usage"
+
+# A subscription burned entirely through opencode has no Grok Build files.
+OPENCODE_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$EMPTY_HOME" "$PI_HOME" "$OPENCODE_HOME"' EXIT
+
+python3 - "$OPENCODE_HOME/.local/share/opencode/opencode.db" <<'PY'
+import json
+import sqlite3
+import sys
+import time
+from pathlib import Path
+
+db = Path(sys.argv[1])
+db.parent.mkdir(parents=True, exist_ok=True)
+conn = sqlite3.connect(db)
+conn.execute("CREATE TABLE message (id text PRIMARY KEY, session_id text NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL)")
+now_ms = int(time.time() * 1000)
+
+def message(id, provider, model, role="assistant", input=0, output=0, reasoning=0, read=0, write=0):
+  return (id, "ses_1", now_ms, now_ms, json.dumps({
+    "role": role,
+    "providerID": provider,
+    "modelID": model,
+    "tokens": {"input": input, "output": output, "reasoning": reasoning, "cache": {"read": read, "write": write}},
+    "time": {"created": now_ms},
+  }))
+
+conn.executemany("INSERT INTO message VALUES (?, ?, ?, ?, ?)", [
+  message("msg_1", "xai", "grok-4.6", input=80, output=40, reasoning=5, read=30),
+  message("msg_2", "anthropic", "claude-opus-5", input=999, output=999),
+  message("msg_3", "openai", "gpt-5.2-codex", input=999, output=999),
+  message("msg_4", "xai", "grok-4.6", role="user"),
+  message("msg_5", "xai-proxy", "grok-4.6", input=999, output=999),
+])
+conn.execute("INSERT INTO message VALUES ('msg_6', 'ses_1', ?, ?, '[\"not\",\"an\",\"object\"]')", (now_ms, now_ms))
+conn.commit()
+conn.close()
+PY
+
+result=$(HOME="$OPENCODE_HOME" XDG_CACHE_HOME="$OPENCODE_HOME/.cache" XDG_DATA_HOME="$OPENCODE_HOME/.local/share" \
+  GROK_HOME="$OPENCODE_HOME/.grok" PATH="$(dirname "$jq_bin"):/usr/bin:/bin" \
+  "$ROOT/bin/omarchy-agent-usage-grok" --force)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "155" ]] ||
+  fail "Grok collector counts xAI usage, reasoning included, from opencode sessions" "$result"
+[[ $(jq -c '.modelUsage' <<<"$result") == '{"grok-4.6":{"cacheCreationInputTokens":0,"cacheReadInputTokens":30,"inputTokens":80,"outputTokens":45}}' ]] ||
+  fail "Grok collector ignores prefix-colliding providers, user messages, and malformed rows" "$result"
+[[ $(jq -r '(.todayPrompts|tostring) + "/" + (.todaySessions|tostring)' <<<"$result") == "1/1" ]] ||
+  fail "Grok collector counts the opencode session once" "$result"
+pass "Grok collector counts xAI usage from opencode sessions"
+
+# A scan cut short by a database error must not be cached as the whole story.
+INTERRUPTED_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$EMPTY_HOME" "$PI_HOME" "$OPENCODE_HOME" "$INTERRUPTED_HOME"' EXIT
+
+python3 - "$INTERRUPTED_HOME/.local/share/opencode/opencode.db" <<'PY'
+import sqlite3
+import sys
+from pathlib import Path
+
+db = Path(sys.argv[1])
+db.parent.mkdir(parents=True, exist_ok=True)
+conn = sqlite3.connect(db)
+conn.execute("CREATE TABLE unrelated (id text PRIMARY KEY)")
+conn.commit()
+conn.close()
+PY
+
+result=$(HOME="$INTERRUPTED_HOME" XDG_CACHE_HOME="$INTERRUPTED_HOME/.cache" XDG_DATA_HOME="$INTERRUPTED_HOME/.local/share" \
+  GROK_HOME="$INTERRUPTED_HOME/.grok" PATH="$(dirname "$jq_bin"):/usr/bin:/bin" \
+  "$ROOT/bin/omarchy-agent-usage-grok" --force)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "0" ]] ||
+  fail "Grok collector reports what it could read from a broken database" "$result"
+[[ -z $(ls "$INTERRUPTED_HOME/.cache/omarchy/agent-usage/"grok-scan-*.json 2>/dev/null) ]] ||
+  fail "Grok collector must not cache an interrupted scan" "$result"
+
+python3 - "$INTERRUPTED_HOME/.local/share/opencode/opencode.db" <<'PY'
+import json
+import sqlite3
+import sys
+import time
+from pathlib import Path
+
+db = Path(sys.argv[1])
+conn = sqlite3.connect(db)
+conn.execute("CREATE TABLE message (id text PRIMARY KEY, session_id text NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL)")
+now_ms = int(time.time() * 1000)
+conn.execute("INSERT INTO message VALUES (?, ?, ?, ?, ?)", (
+  "i_1", "ses_1", now_ms, now_ms, json.dumps({
+    "role": "assistant",
+    "providerID": "xai",
+    "modelID": "grok-4.6",
+    "tokens": {"input": 9, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}},
+    "time": {"created": now_ms},
+  }),
+))
+conn.commit()
+conn.close()
+PY
+
+result=$(HOME="$INTERRUPTED_HOME" XDG_CACHE_HOME="$INTERRUPTED_HOME/.cache" XDG_DATA_HOME="$INTERRUPTED_HOME/.local/share" \
+  GROK_HOME="$INTERRUPTED_HOME/.grok" PATH="$(dirname "$jq_bin"):/usr/bin:/bin" \
+  "$ROOT/bin/omarchy-agent-usage-grok" --limits-only)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "9" ]] ||
+  fail "Grok collector does not reuse a snapshot from an interrupted scan" "$result"
+pass "Grok collector does not cache an interrupted opencode scan"
+
+# Cache is an optimization: the record is the contract. Stamp scanDate, reject
+# a corrupt envelope, and never let an unwritable cache take the collector down.
+CACHE_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$EMPTY_HOME" "$PI_HOME" "$OPENCODE_HOME" "$INTERRUPTED_HOME" "$CACHE_HOME"' EXIT
+cache_session="$CACHE_HOME/.grok/sessions/%2Ftmp/cache-session"
+mkdir -p "$cache_session"
+cat >"$cache_session/summary.json" <<'EOF'
+{"info":{"id":"cache-session"}}
+EOF
+cat >"$cache_session/updates.jsonl" <<EOF
+{"timestamp":"${today}T12:00:00Z","params":{"update":{"sessionUpdate":"turn_completed","prompt_id":"c1","usage":{"inputTokens":5,"outputTokens":0}}}}
+EOF
+
+result=$(HOME="$CACHE_HOME" XDG_CACHE_HOME="$CACHE_HOME/.cache" XDG_DATA_HOME="$CACHE_HOME/.local/share" \
+  GROK_HOME="$CACHE_HOME/.grok" PATH="$(dirname "$jq_bin"):/usr/bin:/bin" \
+  "$ROOT/bin/omarchy-agent-usage-grok" --force)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "5" ]] ||
+  fail "Grok collector writes a fresh local-stats cache on first scan" "$result"
+cache_file=$(ls "$CACHE_HOME/.cache/omarchy/agent-usage/"grok-scan-*.json 2>/dev/null | head -n 1)
+[[ -n $cache_file && -s $cache_file ]] ||
+  fail "Grok collector leaves a cache file behind" "$result"
+[[ $(stat -c %a "$cache_file") == "644" ]] ||
+  fail "Grok collector keeps cache files readable" "$result"
+[[ $(jq -r '.schemaVersion' "$cache_file") == "3" && $(jq -r '.scanDate' "$cache_file") == "$today" && $(jq -r '.stats.todayTotalTokens' "$cache_file") == "5" ]] ||
+  fail "Grok collector writes a versioned cache envelope with scanDate" "$result"
+pass "Grok collector writes a local-stats cache on first scan"
+
+# A parseable envelope with the wrong shape is a miss: rescan and rewrite.
+printf '{"schemaVersion":3,"scanDate":"%s","stats":{"foo":1}}\n' "$today" >"$cache_file"
+result=$(HOME="$CACHE_HOME" XDG_CACHE_HOME="$CACHE_HOME/.cache" XDG_DATA_HOME="$CACHE_HOME/.local/share" \
+  GROK_HOME="$CACHE_HOME/.grok" PATH="$(dirname "$jq_bin"):/usr/bin:/bin" \
+  "$ROOT/bin/omarchy-agent-usage-grok")
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "5" ]] ||
+  fail "Grok collector recovers from a corrupt cache file" "$result"
+[[ $(jq -r '.schemaVersion' "$cache_file") == "3" && $(jq -r '.stats.todayTotalTokens' "$cache_file") == "5" ]] ||
+  fail "Grok collector rewrites the cache after a corrupt read" "$result"
+pass "Grok collector recovers from a corrupt cache file"
+
+# A new turn changes what a scan would find; --limits-only must reuse cache.
+cat >>"$cache_session/updates.jsonl" <<EOF
+{"timestamp":"${today}T12:01:00Z","params":{"update":{"sessionUpdate":"turn_completed","prompt_id":"c2","usage":{"inputTokens":10,"outputTokens":0}}}}
+EOF
+result=$(HOME="$CACHE_HOME" XDG_CACHE_HOME="$CACHE_HOME/.cache" XDG_DATA_HOME="$CACHE_HOME/.local/share" \
+  GROK_HOME="$CACHE_HOME/.grok" PATH="$(dirname "$jq_bin"):/usr/bin:/bin" \
+  "$ROOT/bin/omarchy-agent-usage-grok" --limits-only)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "5" ]] ||
+  fail "Grok collector --limits-only reuses cached local stats" "$result"
+pass "Grok collector --limits-only reuses cached local stats"
+
+result=$(HOME="$CACHE_HOME" XDG_CACHE_HOME="$CACHE_HOME/.cache" XDG_DATA_HOME="$CACHE_HOME/.local/share" \
+  GROK_HOME="$CACHE_HOME/.grok" PATH="$(dirname "$jq_bin"):/usr/bin:/bin" \
+  "$ROOT/bin/omarchy-agent-usage-grok" --force)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "15" ]] ||
+  fail "Grok collector --force rescans past the cache" "$result"
+pass "Grok collector --force rescans past the cache"
+
+# A cache from another local date holds another day's today* stats even with
+# a fresh mtime: scanDate must turn it into a miss.
+cat >>"$cache_session/updates.jsonl" <<EOF
+{"timestamp":"${today}T12:02:00Z","params":{"update":{"sessionUpdate":"turn_completed","prompt_id":"c3","usage":{"inputTokens":10,"outputTokens":0}}}}
+EOF
+jq -c --arg day "1999-01-01" '.scanDate = $day' "$cache_file" >"$cache_file.tmp" && mv "$cache_file.tmp" "$cache_file"
+result=$(HOME="$CACHE_HOME" XDG_CACHE_HOME="$CACHE_HOME/.cache" XDG_DATA_HOME="$CACHE_HOME/.local/share" \
+  GROK_HOME="$CACHE_HOME/.grok" PATH="$(dirname "$jq_bin"):/usr/bin:/bin" \
+  "$ROOT/bin/omarchy-agent-usage-grok" --limits-only)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "25" ]] ||
+  fail "Grok collector treats a cache from another day as a miss" "$result"
+[[ $(jq -r '.scanDate' "$cache_file") == "$today" ]] ||
+  fail "Grok collector stamps the rewritten cache with the scan date" "$result"
+pass "Grok collector treats a cache from another day as a miss"
+
+# A cache stamped in the future has no trustworthy age: miss, not fresh.
+cat >>"$cache_session/updates.jsonl" <<EOF
+{"timestamp":"${today}T12:03:00Z","params":{"update":{"sessionUpdate":"turn_completed","prompt_id":"c4","usage":{"inputTokens":10,"outputTokens":0}}}}
+EOF
+touch -d "@$(( $(date +%s) + 3600 ))" "$cache_file"
+result=$(HOME="$CACHE_HOME" XDG_CACHE_HOME="$CACHE_HOME/.cache" XDG_DATA_HOME="$CACHE_HOME/.local/share" \
+  GROK_HOME="$CACHE_HOME/.grok" PATH="$(dirname "$jq_bin"):/usr/bin:/bin" \
+  "$ROOT/bin/omarchy-agent-usage-grok" --limits-only)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "35" ]] ||
+  fail "Grok collector treats a future-dated cache as a miss" "$result"
+pass "Grok collector treats a future-dated cache as a miss"
+
+# XDG_CACHE_HOME as a regular file makes mkdir fail; still print the record.
+UNWRITABLE_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$EMPTY_HOME" "$PI_HOME" "$OPENCODE_HOME" "$INTERRUPTED_HOME" "$CACHE_HOME" "$UNWRITABLE_HOME"' EXIT
+unwritable_session="$UNWRITABLE_HOME/.grok/sessions/%2Ftmp/unwritable-session"
+mkdir -p "$unwritable_session"
+cat >"$unwritable_session/summary.json" <<'EOF'
+{"info":{"id":"unwritable-session"}}
+EOF
+cat >"$unwritable_session/updates.jsonl" <<EOF
+{"timestamp":"${today}T12:00:00Z","params":{"update":{"sessionUpdate":"turn_completed","prompt_id":"u1","usage":{"inputTokens":3,"outputTokens":0}}}}
+EOF
+touch "$UNWRITABLE_HOME/not-a-dir"
+result=$(HOME="$UNWRITABLE_HOME" XDG_CACHE_HOME="$UNWRITABLE_HOME/not-a-dir" XDG_DATA_HOME="$UNWRITABLE_HOME/.local/share" \
+  GROK_HOME="$UNWRITABLE_HOME/.grok" PATH="$(dirname "$jq_bin"):/usr/bin:/bin" \
+  "$ROOT/bin/omarchy-agent-usage-grok" --force)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "3" ]] ||
+  fail "Grok collector still prints a complete record when the cache is unwritable" "$result"
+pass "Grok collector still prints a complete record when the cache is unwritable"
