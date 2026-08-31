@@ -146,23 +146,24 @@ public:
 class Fixture {
 public:
   explicit Fixture(std::string_view mode) {
-    std::string pattern = "/tmp/omarchy-d1-XXXXXX";
+    std::string pattern = "/tmp/omarchy-authenticated-channel-XXXXXX";
     root_ = mkdtemp(pattern.data());
-    require(!root_.empty(), "cannot create D1 fixture root");
+    require(!root_.empty(),
+            "cannot create authenticated-channel fixture root");
     revision_ = root_ / "revision";
     state_ = root_ / "state";
     std::filesystem::create_directories(revision_);
     std::filesystem::create_directories(state_);
-    std::ofstream(revision_ / "d1-mode") << mode << '\n';
-    require(chmod((revision_ / "d1-mode").c_str(), 0444) == 0 &&
+    std::ofstream(revision_ / "worker-mode") << mode << '\n';
+    require(chmod((revision_ / "worker-mode").c_str(), 0444) == 0 &&
                 chmod(revision_.c_str(), 0555) == 0,
-            "cannot make D1 revision immutable");
+            "cannot make authenticated-channel revision immutable");
     revision_fd_ = std::make_unique<Descriptor>(
         open(revision_.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
     state_fd_ = std::make_unique<Descriptor>(
         open(state_.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
     require(revision_fd_->get() >= 0 && state_fd_->get() >= 0,
-            "cannot open D1 fixture descriptors");
+            "cannot open authenticated-channel fixture descriptors");
   }
 
   ~Fixture() {

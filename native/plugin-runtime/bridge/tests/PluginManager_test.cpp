@@ -3820,8 +3820,7 @@ void reentrant_publication_replacement_rechecks_exact_epoch() {
 }
 
 void joined_runtimes_replace_and_render_without_cross_routing() {
-  if (std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_TEST") == nullptr &&
-      std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_N8E_TEST") == nullptr)
+  if (std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_TEST") == nullptr)
     return;
   require(::access(
               std::string(omarchy::plugin_runtime::kPackagedWorkerPath).c_str(),

@@ -28,10 +28,11 @@ if(NOT TARGET omarchy-plugin-launcher)
 endif()
 
 if(PLUGIN_SECURITY_ENABLE_SANITIZERS)
-  # Instrument every trusted dependency in the C11 path. The B5 sandbox probe
-  # itself remains uninstrumented because its exact environment intentionally
-  # cannot carry ASAN_OPTIONS and its seccomp policy denies LeakSanitizer's
-  # helper process; the C11 malicious worker is instrumented separately below.
+  # Instrument every trusted dependency in the adversarial harness path. The
+  # sandbox probe itself remains uninstrumented because its exact environment
+  # intentionally cannot carry ASAN_OPTIONS and its seccomp policy denies
+  # LeakSanitizer's helper process; the malicious worker is instrumented
+  # separately below.
   foreach(dependency_target IN ITEMS
       omarchy-plugin-wire
       omarchy-plugin-wire-contract-test

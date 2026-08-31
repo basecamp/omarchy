@@ -36,7 +36,7 @@ int main() {
   const std::array schemas{schema};
   const wire::RoleSchemaRegistryView registry(schemas);
   require(registry.validate() == wire::FatalReason::none,
-          "render schema rejected by B3");
+          "render schema rejected by bridge profile");
   const auto *allocation_rule = wire::find_message(
       schema, static_cast<std::uint16_t>(RenderMessageType::surface_allocate));
   require(allocation_rule &&
@@ -256,7 +256,7 @@ int main() {
   require(
       endpoint.accept(offer_packet, wire::Direction::host_to_worker).action ==
           wire::SessionAction::request_admitted,
-      "B3 rejected B4 profile request");
+      "bridge rejected render profile request");
   const auto selection_bytes = encode_profile_selection(*selection);
   wire::PacketView selection_packet{
       .header = {.endpoint_role = wire::EndpointRole::render,
@@ -269,5 +269,5 @@ int main() {
       .payload = selection_bytes};
   require(endpoint.accept(selection_packet, wire::Direction::worker_to_host)
                   .action == wire::SessionAction::terminal_received,
-          "B3 rejected B4 profile terminal");
+          "bridge rejected render profile terminal");
 }

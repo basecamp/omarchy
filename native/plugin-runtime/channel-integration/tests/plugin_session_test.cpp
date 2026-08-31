@@ -214,7 +214,7 @@ public:
       throw std::runtime_error("injected runtime construction failure");
     if (return_null)
       return {};
-    const int marker = ::openat(revision_directory_fd, "d1-mode",
+    const int marker = ::openat(revision_directory_fd, "worker-mode",
                                 O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
     if (marker >= 0) {
       std::array<char, 64> bytes{};
@@ -273,8 +273,8 @@ public:
     state_ = root_ / "state";
     std::filesystem::create_directories(revision_);
     std::filesystem::create_directories(state_);
-    std::ofstream(revision_ / "d1-mode") << worker_mode << '\n';
-    require(::chmod((revision_ / "d1-mode").c_str(), 0444) == 0 &&
+    std::ofstream(revision_ / "worker-mode") << worker_mode << '\n';
+    require(::chmod((revision_ / "worker-mode").c_str(), 0444) == 0 &&
                 ::chmod(revision_.c_str(), 0555) == 0,
             "cannot make product revision immutable");
   }
@@ -291,7 +291,7 @@ public:
     verified_manifest.id = std::string(snapshot_grants.binding.plugin.view());
     verified_manifest.surface_names = {"bar", "panel", "overlay"};
     const int record =
-        ::open((revision_ / "d1-mode").c_str(), O_RDONLY | O_CLOEXEC);
+        ::open((revision_ / "worker-mode").c_str(), O_RDONLY | O_CLOEXEC);
     const int revision =
         ::open(revision_.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     const int state =
@@ -426,7 +426,7 @@ public:
     std::filesystem::create_directory(authority_);
     std::filesystem::copy(RUNTIME_ROOT_REVISION_FIXTURE, revision_,
                           std::filesystem::copy_options::recursive);
-    std::ofstream(revision_ / "d1-mode") << worker_mode << '\n';
+    std::ofstream(revision_ / "worker-mode") << worker_mode << '\n';
     for (const auto &entry :
          std::filesystem::recursive_directory_iterator(revision_)) {
       const mode_t mode = entry.is_directory() ? 0555 : 0444;
@@ -643,8 +643,8 @@ public:
     const auto replacement_revision = revisions_ / "replacement";
     const auto pinned_revision = revisions_ / "pinned";
     std::filesystem::create_directory(replacement_revision);
-    std::ofstream(replacement_revision / "d1-mode") << "replacement\n";
-    require(::chmod((replacement_revision / "d1-mode").c_str(), 0444) == 0 &&
+    std::ofstream(replacement_revision / "worker-mode") << "replacement\n";
+    require(::chmod((replacement_revision / "worker-mode").c_str(), 0444) == 0 &&
                 ::chmod(replacement_revision.c_str(), 0555) == 0,
             "cannot secure replacement revision");
     std::filesystem::rename(revision_, pinned_revision);

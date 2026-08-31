@@ -59,7 +59,7 @@ if(BUILD_TESTING)
     tests/capability_definition_test.cpp
     tests/capability_definition_loader_test.cpp
     tests/dynamic_activation_test.cpp
-    tests/permissions_extensibility_demo_test.cpp)
+    tests/permissions_extensibility_contract_test.cpp)
   target_link_libraries(omarchy-plugin-capability-definition-test PRIVATE
     omarchy-plugin-capability-definitions)
   target_compile_features(omarchy-plugin-capability-definition-test PRIVATE cxx_std_20)

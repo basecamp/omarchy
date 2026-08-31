@@ -31,10 +31,11 @@ namespace {
 [[noreturn]] void fail() { _exit(120); }
 
 std::string mode() {
-  if (const char *value = getenv("D1_MODE"); value != nullptr) {
+  if (const char *value = getenv("OMARCHY_PLUGIN_TEST_WORKER_MODE");
+      value != nullptr) {
     return value;
   }
-  std::ifstream input("/plugin/d1-mode");
+  std::ifstream input("/plugin/worker-mode");
   std::string value;
   input >> value;
   return value;
@@ -300,7 +301,7 @@ bool accept_startup_permissions(std::uint64_t generation,
     fail();
 
   if (current == "session-startup-authority-loss") {
-    const char *state = getenv("D1_STATE_FD");
+    const char *state = getenv("OMARCHY_PLUGIN_TEST_STATE_FD");
     if (state == nullptr || std::string_view(state) != "6")
       fail();
     const int marker = openat(6, "startup-snapshot-received",

@@ -203,7 +203,7 @@ public:
                 request.resources.cpu_quota_per_second_usec == 500000 &&
                 request.resources.cpu_weight == 20 &&
                 request.resources.io_weight == 10,
-            "launcher did not consume the B5 resource/deadline contract");
+            "launcher did not consume the process-scope resource/deadline contract");
     attached = true;
     attached_before_release = true;
     scope.assign(request.unit);
@@ -1269,11 +1269,11 @@ void systemd_scope_test() {
               read_one_line(cgroup_root / "pids.max") == "16" &&
               read_one_line(cgroup_root / "cpu.weight") == "20" &&
               read_one_line(cgroup_root / "cpu.max").starts_with("50000 "),
-          "systemd did not realize the B5 cgroup ceilings");
+          "systemd did not realize the process-scope cgroup ceilings");
   const auto io_weight = cgroup_root / "io.weight";
   if (std::filesystem::exists(io_weight)) {
     require(read_one_line(io_weight) == "default 10",
-            "systemd did not realize B5 IOWeight");
+            "systemd did not realize process-scope IOWeight");
   } else {
     std::cerr << "io controller is not delegated on this host; IOWeight "
                  "enforcement remains a VM gate\n";

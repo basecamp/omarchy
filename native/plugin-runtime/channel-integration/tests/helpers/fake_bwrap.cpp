@@ -25,7 +25,7 @@ int integer(std::string_view value) {
 
 std::string read_mode(int revision_fd) {
   const int descriptor =
-      openat(revision_fd, "d1-mode", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+      openat(revision_fd, "worker-mode", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
   if (descriptor < 0) {
     fail();
   }
@@ -90,12 +90,13 @@ int main(int argc, char **argv) {
       count != 0 || syscall(SYS_close_range, 7U, ~0U, 0U) < 0) {
     fail();
   }
-  std::string mode_environment = "D1_MODE=" + mode;
+  std::string mode_environment = "OMARCHY_PLUGIN_TEST_WORKER_MODE=" + mode;
   std::array<char *, 2> arguments{worker.data(), nullptr};
   std::array<char *, 5> environment{const_cast<char *>("PATH=/usr/bin"),
                                     const_cast<char *>("PWD=/"),
                                     mode_environment.data(),
-                                    const_cast<char *>("D1_STATE_FD=6"),
+                                    const_cast<char *>(
+                                        "OMARCHY_PLUGIN_TEST_STATE_FD=6"),
                                     nullptr};
   execve(worker.c_str(), arguments.data(), environment.data());
   fail();

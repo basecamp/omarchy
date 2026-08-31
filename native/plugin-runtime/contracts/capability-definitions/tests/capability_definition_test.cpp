@@ -81,7 +81,7 @@ CapabilityDefinition open_uri() {
 
 void capability_definition_loader_tests();
 void dynamic_activation_tests();
-void permissions_extensibility_demo_tests();
+void permissions_extensibility_contract_tests();
 
 int main() {
   TrustedDefinitionRegistry registry;
@@ -239,6 +239,6 @@ int main() {
 
   capability_definition_loader_tests();
   dynamic_activation_tests();
-  permissions_extensibility_demo_tests();
+  permissions_extensibility_contract_tests();
   return 0;
 }

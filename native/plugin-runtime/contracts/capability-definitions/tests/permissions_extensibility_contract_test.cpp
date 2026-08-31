@@ -49,7 +49,7 @@ CapabilityDefinition bounded_harness() {
 }
 } // namespace
 
-void permissions_extensibility_demo_tests() {
+void permissions_extensibility_contract_tests() {
   TrustedDefinitionRegistry registry;
 
   // A plugin-authored name has no authority until a trusted administrator has

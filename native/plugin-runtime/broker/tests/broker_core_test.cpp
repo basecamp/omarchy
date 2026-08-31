@@ -409,7 +409,8 @@ int main() {
               core.accept_terminal(result_packet(16)) ==
                   broker::TerminalResult::protocol_fatal &&
               core.failed() && core.revoke(key("storage.private")).core_failed,
-          "duplicate terminal escaped B3 during cancellation race");
+          "duplicate terminal escaped the broker terminal gate during "
+          "cancellation race");
 
   auto crossed_fixture = std::make_unique<AuthorityFixture>();
   auto crossed_authority = std::make_unique<permissions::PermissionAuthority>(
@@ -616,7 +617,7 @@ int main() {
   require(stale_core->accept_terminal(stale_terminal) ==
                   broker::TerminalResult::protocol_fatal &&
               stale_core->failed(),
-          "stale-generation terminal bypassed B3");
+          "stale-generation terminal bypassed the broker terminal gate");
 
   auto wrong_role_fixture = std::make_unique<AuthorityFixture>();
   auto wrong_role_authority =
@@ -636,5 +637,5 @@ int main() {
   require(wrong_role_core->accept_terminal(wrong_role_terminal) ==
                   broker::TerminalResult::protocol_fatal &&
               wrong_role_core->failed(),
-          "wrong-role terminal bypassed B3");
+          "wrong-role terminal bypassed the broker terminal gate");
 }

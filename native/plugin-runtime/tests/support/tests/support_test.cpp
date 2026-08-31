@@ -241,7 +241,7 @@ void render_fake_test() {
               decoded.surface == frame.surface && decoded.slot == frame.slot &&
               decoded.slot_sequence == frame.slot_sequence &&
               decoded.frame_sequence == frame.frame_sequence,
-          "render fake does not use the B4 public codec");
+          "render fake does not use the public render codec");
   for (const auto &mutation : support::bounded_mutations(bytes, 64)) {
     static_cast<void>(surface::decode_frame_ready(mutation.bytes, decoded));
   }

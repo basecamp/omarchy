@@ -416,7 +416,7 @@ public:
                 plan.worker_descriptors == std::vector<int>({3, 4, 5}) &&
                 plan.process.descendants_permitted &&
                 deadline > std::chrono::steady_clock::now(),
-            "sandbox launch did not consume the frozen B5 plan");
+            "sandbox launch did not consume the frozen sandbox plan");
     unit_ = unit;
     attached = true;
     return {.attached = true, .cleanup_required = true};
@@ -446,7 +446,7 @@ class SandboxTree {
 public:
   SandboxTree() {
     std::array<char, 64> pattern{};
-    std::strcpy(pattern.data(), "/tmp/omarchy-c11-sandbox.XXXXXX");
+    std::strcpy(pattern.data(), "/tmp/omarchy-adversarial-sandbox.XXXXXX");
     const char *created = mkdtemp(pattern.data());
     require(created != nullptr, "sandbox fixture root creation failed");
     root_ = created;
@@ -457,7 +457,8 @@ public:
     const char *wayland = std::getenv("WAYLAND_DISPLAY");
     require(home != nullptr && *home != '\0' && runtime != nullptr &&
                 *runtime != '\0' && wayland != nullptr && *wayland != '\0',
-            "C11 sandbox proof requires HOME, XDG_RUNTIME_DIR, and WAYLAND_DISPLAY");
+            "standalone sandbox harness requires HOME, XDG_RUNTIME_DIR, and "
+            "WAYLAND_DISPLAY");
     host_home_ = home;
     bus_socket_path_ = std::filesystem::path(runtime) / "bus";
     wayland_socket_path_ = std::filesystem::path(runtime) / wayland;
@@ -542,7 +543,7 @@ struct SandboxProbe {
 
 void test_standalone_sandbox() {
   require(access("/usr/bin/bwrap", X_OK) == 0,
-          "Bubblewrap is required for the C11 standalone sandbox harness");
+          "Bubblewrap is required for the standalone sandbox harness");
   SandboxTree tree;
   UniqueFd revision(
       open(tree.revision().c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
