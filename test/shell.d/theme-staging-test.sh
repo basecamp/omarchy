@@ -64,6 +64,34 @@ color7 = "#a9b1d6"
 TOML
 }
 
+# Shape produced by omarchy-theme-colors-from-alacritty. $2 is selection, $3 is
+# color8 (empty to omit it so the repair falls back to color0).
+write_generated_colors() {
+  local selection="$2"
+  local color8="${3-#222222}"
+  {
+    cat <<TOML
+accent = "#336699"
+selection = "$selection"
+
+background = "#101010"
+foreground = "#f0f0f0"
+
+color0 = "#111111"
+color1 = "#ff0000"
+color2 = "#00ff00"
+color3 = "#ffff00"
+color4 = "#0000ff"
+color5 = "#ff00ff"
+color6 = "#00ffff"
+color7 = "#f0f0f0"
+TOML
+    if [[ -n $color8 ]]; then
+      printf 'color8 = "%s"\n' "$color8"
+    fi
+  } >"$1"
+}
+
 # A theme that ships everything it is not allowed to ship.
 hostile="$themes/hostile"
 mkdir -p "$hostile/backgrounds" "$hostile/.git"
@@ -226,3 +254,49 @@ for tpl in "$ROOT"/default/themed/*.tpl; do
 done
 
 pass "every file Omarchy generates is classified as code or colour"
+
+# An extra/git theme that committed the old generator's selection = foreground
+# fingerprint must be repaired on the staged copy, not recopied. Official
+# themes and healthy palettes stay untouched, and the source itself -- a git
+# clone here -- is left as-is rather than rewritten in place.
+stale="$themes/stale-selection"
+mkdir -p "$stale/.git"
+write_generated_colors "$stale/colors.toml" "#f0f0f0" "#222222"
+printf 'keep-me\n' >"$stale/README.md"
+
+set_theme stale-selection || fail "omarchy-theme-set applies a git theme with a stale generated selection"
+grep -Fqx 'selection = "#222222"' "$(staged colors.toml)" || fail "baked-in selection==foreground is repaired to color8" "$(cat "$(staged colors.toml)")"
+grep -Fqx 'foreground = "#f0f0f0"' "$(staged colors.toml)" || fail "repair leaves foreground alone"
+grep -Fqx 'accent = "#336699"' "$(staged colors.toml)" || fail "repair leaves unrelated keys alone"
+grep -Fqx 'color0 = "#111111"' "$(staged colors.toml)" || fail "repair leaves color0 alone"
+grep -Fqx 'selection = "#f0f0f0"' "$stale/colors.toml" || fail "source colors.toml is left untouched by the staged-copy repair"
+pass "a baked-in selection==foreground is repaired on the staged copy, source left untouched"
+
+# No color8: fall back to normal black (color0), same cascade as the generator.
+no_bright="$themes/stale-no-bright"
+mkdir -p "$no_bright/.git"
+write_generated_colors "$no_bright/colors.toml" "#f0f0f0" ""
+
+set_theme stale-no-bright || fail "omarchy-theme-set applies a git theme without color8"
+grep -Fqx 'selection = "#111111"' "$(staged colors.toml)" || fail "repair falls back to color0 when color8 is missing" "$(cat "$(staged colors.toml)")"
+grep -Fqx 'foreground = "#f0f0f0"' "$(staged colors.toml)" || fail "color0 fallback leaves foreground alone"
+pass "repair falls back to normal black when color8 is missing"
+
+healthy="$themes/healthy-selection"
+mkdir -p "$healthy/.git"
+write_generated_colors "$healthy/colors.toml" "#222222" "#222222"
+healthy_before=$(sha256sum "$healthy/colors.toml")
+
+set_theme healthy-selection || fail "omarchy-theme-set applies a git theme with a healthy selection"
+grep -Fqx 'selection = "#222222"' "$(staged colors.toml)" || fail "a healthy palette keeps its selection"
+[[ $healthy_before == $(sha256sum "$healthy/colors.toml") ]] || fail "a healthy source colors.toml is not rewritten"
+pass "a healthy palette is left untouched"
+
+# Stock Tokyo Night ships selection != foreground and must stay a no-op.
+stock_selection=$(awk -F'"' '/^selection = /{print $2; exit}' "$ROOT/themes/tokyo-night/colors.toml")
+stock_foreground=$(awk -F'"' '/^foreground = /{print $2; exit}' "$ROOT/themes/tokyo-night/colors.toml")
+[[ -n $stock_selection && $stock_selection != "$stock_foreground" ]] || fail "bundled Tokyo Night ships selection different from foreground"
+rm -rf "$themes/tokyo-night"
+set_theme "Tokyo Night" || fail "omarchy-theme-set applies bundled Tokyo Night"
+grep -Fqx "selection = \"$stock_selection\"" "$(staged colors.toml)" || fail "bundled Tokyo Night selection is not rewritten"
+pass "bundled themes with explicit selection stay no-ops"

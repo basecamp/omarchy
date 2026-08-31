@@ -174,6 +174,30 @@ stage_installed_colors_from_alacritty() {
   rm -rf "$scratch"
 }
 
+# Old omarchy-theme-colors-from-alacritty wrote selection = foreground when
+# alacritty.toml had no [colors.selection], which is invisible in Neovim, gum,
+# and btop. Theme-set skips regeneration when colors.toml already exists, so an
+# extra/git theme that committed that fingerprint would be recopied forever.
+# Rewrite only the generated `selection = "#hex"` line, and only when it equals
+# foreground, to color8 (bright black, falling back to normal black).
+repair_stale_generated_selection() {
+  local file="$1"
+  local selection foreground color8 color0 replacement
+
+  [[ -f $file && ! -L $file ]] || return 0
+
+  selection=$(awk -F'"' '/^selection = /{print $2; exit}' "$file")
+  foreground=$(awk -F'"' '/^foreground = /{print $2; exit}' "$file")
+  [[ -n $selection && $selection == "$foreground" ]] || return 0
+
+  color8=$(awk -F'"' '/^color8 = /{print $2; exit}' "$file")
+  color0=$(awk -F'"' '/^color0 = /{print $2; exit}' "$file")
+  replacement=${color8:-$color0}
+  [[ -n $replacement && $replacement != "$foreground" ]] || return 0
+
+  sed -i "s|^selection = \"$selection\"$|selection = \"$replacement\"|" "$file"
+}
+
 # Copies a directory without ever following a symlink: in an installed theme one
 # points wherever the theme author chose, which is how an unlock.png becomes a
 # copy of any file the session can read.
@@ -279,6 +303,13 @@ fi
 if [[ ! -f $NEXT_THEME_PATH/colors.toml && -f $NEXT_THEME_PATH/alacritty.toml ]]; then
   omarchy-theme-colors-from-alacritty "$NEXT_THEME_PATH"
 fi
+
+# Repair a baked-in generated fingerprint on the staged copy that is about to
+# become current. The user/extra source is left untouched -- it may be a git
+# clone or a symlink into the user's own dotfiles -- so this repeats on every
+# switch of an affected theme, which is harmless. Official bundled palettes
+# ship selection != foreground and are left alone.
+repair_stale_generated_selection "$NEXT_THEME_PATH/colors.toml"
 
 # Generate dynamic configs
 omarchy-theme-set-templates
