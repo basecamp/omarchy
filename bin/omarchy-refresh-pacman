@@ -1,26 +1,245 @@
-#!/bin/bash
+#!/bin/bash -p
 
 # omarchy:summary=Overwrite the package configuration for /etc/pacman with the Omarchy default of using its dedicated mirrors and repositories, then update all packages.
 # omarchy:requires-sudo=true
 
-sudo cp -f /etc/pacman.conf /etc/pacman.conf.bak
-sudo cp -f /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.bak
+if [[ $- != *p* ]]; then
+  echo "Refusing an unsafe Bash startup for pacman refresh." >&2
+  exit 126
+fi
 
-channel="${1:-stable}"
+require_privileged_bash_startup() {
+  [[ $- == *p* ]] || return 1
+  /usr/bin/env -i /usr/bin/bash -p -c '
+    [[ $1 =~ ^[1-9][0-9]*$ ]] || exit 1
+    mapfile -d "" -t argv <"/proc/$1/cmdline" || exit 1
+    executable=$(/usr/bin/readlink -e -- "/proc/$1/exe") || exit 1
+    [[ $executable == /usr/bin/bash ]]
+    [[ ${argv[0]:-} == /bin/bash || ${argv[0]:-} == /usr/bin/bash ]]
+    [[ ${argv[1]:-} == -p ]]
+  ' omarchy-bash-startup "$$"
+}
+if ! require_privileged_bash_startup; then
+  echo "Refusing an unsafe Bash startup for pacman refresh." >&2
+  exit 126
+fi
+unset -f require_privileged_bash_startup
 
-if [[ $channel != "stable" && $channel != "rc" && $channel != "edge" ]]; then
-  echo "Error: Invalid channel '$channel'. Must be one of: stable, rc, edge"
+set -e
+
+sanitize_bash_startup_environment() {
+  local environment_entry environment_name
+  local needs_reexec=0
+  local -a environment_unsets=(-u BASH_ENV -u ENV)
+
+  [[ -z ${BASH_ENV+x} && -z ${ENV+x} ]] || needs_reexec=1
+  while IFS= read -r -d '' environment_entry; do
+    environment_name="${environment_entry%%=*}"
+    if [[ $environment_name == BASH_FUNC_*%% ]]; then
+      environment_unsets+=(-u "$environment_name")
+      needs_reexec=1
+    fi
+  done < <(/usr/bin/env -0)
+
+  if (( needs_reexec )); then
+    exec /usr/bin/env "${environment_unsets[@]}" /usr/bin/bash -p "$0" "$@"
+  fi
+}
+sanitize_bash_startup_environment "$@"
+unset -f sanitize_bash_startup_environment
+
+usage() {
+  echo "Usage: omarchy-refresh-pacman [stable|rc|edge]" >&2
+}
+
+# Composite commands can postpone the legacy user hook until their own final
+# privilege boundary. The two internal modes are deliberately paired: a caller
+# that defers must invoke --run-deferred-hook exactly once after all of its
+# sudo-capable work has finished.
+channel=stable
+hook_mode=normal
+case "$#:$1:${2:-}" in
+  0::)
+    ;;
+  1:stable: | 1:rc: | 1:edge:)
+    channel="$1"
+    ;;
+  1:--run-deferred-hook:)
+    hook_mode=run-deferred
+    ;;
+  2:stable:--defer-hook | 2:rc:--defer-hook | 2:edge:--defer-hook)
+    channel="$1"
+    hook_mode=defer
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac
+
+trusted_directory_chain() {
+  local current="$1" allow_current_user="$2" canonical owner mode current_uid
+  current_uid=$(/usr/bin/id -u) || return 1
+
+  while :; do
+    [[ -d $current && ! -L $current ]] || return 1
+    canonical=$(/usr/bin/realpath -e -- "$current") || return 1
+    [[ $canonical == "$current" ]] || return 1
+    [[ $current == / ]] && break
+    read -r owner mode < <(/usr/bin/stat -Lc '%u %a' -- "$current") || return 1
+    if [[ $owner != 0 ]] && ! { [[ $allow_current_user == "true" && $owner == "$current_uid" ]]; }; then
+      return 1
+    fi
+    (( (8#$mode & 0022) == 0 )) || return 1
+    current=${current%/*}
+    [[ -n $current ]] || current=/
+  done
+}
+
+trusted_omarchy_source_root() {
+  local config=/etc/omarchy.conf default_root=/usr/share/omarchy configured_root="" canonical=""
+  local owner="" mode="" links="" size="" line="" encoded="" decoded="" character=""
+  local index=0 escaped=0 lines=()
+
+  if [[ ! -e $config && ! -L $config ]]; then
+    configured_root="$default_root"
+  else
+    [[ -f $config && ! -L $config ]] || return 1
+    canonical=$(/usr/bin/realpath -e -- "$config") || return 1
+    [[ $canonical == "$config" ]] || return 1
+    read -r owner mode links size < <(/usr/bin/stat -Lc '%u %a %h %s' -- "$config") || return 1
+    [[ $owner == "0" && $links == "1" ]] || return 1
+    (( (8#$mode & 0022) == 0 && size > 0 && size <= 4096 )) || return 1
+    trusted_directory_chain /etc false || return 1
+    mapfile -t lines <"$config" || return 1
+    (( ${#lines[@]} == 1 )) || return 1
+    line="${lines[0]}"
+    [[ $line == 'export OMARCHY_PATH="'*'"' ]] || return 1
+    encoded="${line#'export OMARCHY_PATH="'}"
+    encoded="${encoded%'"'}"
+    for (( index = 0; index < ${#encoded}; index++ )); do
+      character="${encoded:index:1}"
+      if (( escaped )); then
+        case "$character" in
+          '\' | '"' | '$' | '`') decoded+="$character" ;;
+          *) return 1 ;;
+        esac
+        escaped=0
+      elif [[ $character == '\' ]]; then
+        escaped=1
+      elif [[ $character == '"' ]]; then
+        return 1
+      else
+        decoded+="$character"
+      fi
+    done
+    (( escaped == 0 )) || return 1
+    configured_root="$decoded"
+  fi
+
+  [[ -d $configured_root && ! -L $configured_root ]] || return 1
+  canonical=$(/usr/bin/realpath -e -- "$configured_root") || return 1
+  [[ $canonical == "$configured_root" ]] || return 1
+  if [[ $configured_root == "$default_root" ]]; then
+    trusted_directory_chain "$configured_root" false || return 1
+  else
+    trusted_directory_chain "$configured_root" true || return 1
+  fi
+  printf '%s\n' "$configured_root"
+}
+
+trusted_omarchy_source_file() {
+  local relative="$1" source="$OMARCHY_PATH/$1" canonical owner mode links directory current_uid
+  current_uid=$(/usr/bin/id -u) || return 1
+  [[ $relative != /* && $relative != ../* && $relative != */../* && $relative != */.. ]] || return 1
+  [[ -f $source && ! -L $source ]] || return 1
+  canonical=$(/usr/bin/realpath -e -- "$source") || return 1
+  [[ $canonical == "$source" && $canonical == "$OMARCHY_PATH/"* ]] || return 1
+  read -r owner mode links < <(/usr/bin/stat -Lc '%u %a %h' -- "$source") || return 1
+  [[ $links == 1 ]] && (( (8#$mode & 0022) == 0 )) || return 1
+  if [[ $OMARCHY_PATH == /usr/share/omarchy ]]; then
+    [[ $owner == 0 ]] || return 1
+  else
+    [[ $owner == 0 || $owner == "$current_uid" ]] || return 1
+  fi
+
+  directory=${source%/*}
+  while [[ $directory == "$OMARCHY_PATH" || $directory == "$OMARCHY_PATH/"* ]]; do
+    [[ -d $directory && ! -L $directory ]] || return 1
+    canonical=$(/usr/bin/realpath -e -- "$directory") || return 1
+    [[ $canonical == "$directory" ]] || return 1
+    read -r owner mode < <(/usr/bin/stat -Lc '%u %a' -- "$directory") || return 1
+    (( (8#$mode & 0022) == 0 )) || return 1
+    if [[ $OMARCHY_PATH == /usr/share/omarchy ]]; then
+      [[ $owner == 0 ]] || return 1
+    else
+      [[ $owner == 0 || $owner == "$current_uid" ]] || return 1
+    fi
+    [[ $directory == "$OMARCHY_PATH" ]] && break
+    directory=${directory%/*}
+  done
+  printf '%s\n' "$source"
+}
+
+if ! OMARCHY_PATH=$(trusted_omarchy_source_root); then
+  echo "Refusing to refresh pacman from an untrusted Omarchy source root." >&2
   exit 1
 fi
+export OMARCHY_PATH
+user_path="${PATH:-/usr/bin:/bin}"
+PATH="$OMARCHY_PATH/bin:/usr/bin:/usr/sbin:/bin:/sbin"
+export PATH
+
+as_root() {
+  if ((EUID == 0)); then
+    "$@"
+  elif [[ ${OMARCHY_SUDO_NO_UPDATE:-0} == 1 ]]; then
+    /usr/bin/sudo -N -- "$@"
+  else
+    /usr/bin/sudo -- "$@"
+  fi
+}
+
+cleanup_sudo_credentials() {
+  /usr/bin/sudo -k || true
+}
+
+trap cleanup_sudo_credentials EXIT
+
+if [[ $hook_mode == "run-deferred" ]]; then
+  /usr/bin/sudo -k || exit 1
+  PATH="$user_path" "$OMARCHY_PATH/bin/omarchy-hook" pre-refresh-pacman
+  exit
+fi
+
+pacman_source=$(trusted_omarchy_source_file "default/pacman/pacman-$channel.conf") || {
+  echo "Refusing an untrusted pacman configuration source." >&2
+  exit 1
+}
+mirror_source=$(trusted_omarchy_source_file "default/pacman/mirrorlist-$channel") || {
+  echo "Refusing an untrusted pacman mirror source." >&2
+  exit 1
+}
+
+as_root /usr/bin/cp -f -- /etc/pacman.conf /etc/pacman.conf.bak
+as_root /usr/bin/cp -f -- /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.bak
 
 echo "Setting channel to $channel"
 echo
 
-sudo cp -f "$OMARCHY_PATH/default/pacman/pacman-$channel.conf" /etc/pacman.conf
-sudo cp -f "$OMARCHY_PATH/default/pacman/mirrorlist-$channel" /etc/pacman.d/mirrorlist
+# The unprivileged shell opens the authorized source. Root consumes only the
+# inherited descriptor, never a caller-writable development-checkout pathname.
+as_root /usr/bin/install -T -o root -g root -m 0644 /dev/stdin /etc/pacman.conf <"$pacman_source"
+as_root /usr/bin/install -T -o root -g root -m 0644 /dev/stdin /etc/pacman.d/mirrorlist <"$mirror_source"
 
-# Allow user customization of /etc/pacman.conf before the upgrade runs
-omarchy-hook pre-refresh-pacman
+# Reset all package DBs and then update.
+as_root /usr/bin/env OMARCHY_UPDATE_PACMAN=1 /usr/bin/pacman -Syyuu --noconfirm
 
-# Reset all package DBs and then update
-sudo env OMARCHY_UPDATE_PACMAN=1 pacman -Syyuu --noconfirm
+# This legacy hook used to run before pacman. Executable user code cannot
+# safely precede a later sudo authentication: a child can wait for the new
+# timestamp even if the parent invalidates around the hook. Keep the hook, but
+# run it only after every privileged refresh step and with a cold credential.
+if [[ $hook_mode == "normal" ]]; then
+  /usr/bin/sudo -k || exit 1
+  PATH="$user_path" "$OMARCHY_PATH/bin/omarchy-hook" pre-refresh-pacman
+fi
