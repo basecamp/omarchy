@@ -34,7 +34,8 @@ Recordings land in the configured Videos directory (override with
 `omarchy capture webcam resize <smaller|larger|reset|small|medium|large>`.
 
 After stop, audio between about -18 and -11 LUFS is left as-is. Quieter or
-louder recordings are asked whether to normalize. `OMARCHY_SCREENRECORD_NORMALIZE=true|false`
+louder recordings are asked whether to normalize. Recordings longer than 10
+minutes skip the loudness check and ask immediately. `OMARCHY_SCREENRECORD_NORMALIZE=true|false`
 skips the prompt for the whole session.
 
 If recording fails to start, rerun with `OMARCHY_SCREENRECORD_DEBUG=true` to

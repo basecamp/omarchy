@@ -19,8 +19,9 @@
 # users can attach a log when reporting capture failures.
 #
 # Env: OMARCHY_SCREENRECORD_NORMALIZE=true always applies loudnorm after stop;
-# false never does. Unset asks when integrated loudness is quieter than -18 LUFS
-# or louder than -11 LUFS.
+# false never does. Unset asks immediately when the recording is longer than 10
+# minutes, or when a shorter recording's integrated loudness is quieter than
+# -18 LUFS or louder than -11 LUFS.
 
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
 OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
@@ -49,6 +50,8 @@ LOUDNORM_TP=-1.5
 LOUDNORM_LRA=11
 LOUDNORM_I_QUIET_TOLERANCE=4
 LOUDNORM_I_LOUD_TOLERANCE=3
+# First-pass loudnorm decodes the whole soundtrack; skip it past this length.
+LOUDNORM_ANALYZE_MAX_SECONDS=600
 SCREENRECORD_LOUDNESS_STATS=""
 SCREENRECORD_NORMALIZE=no
 
@@ -236,25 +239,45 @@ measure_loudness() {
   printf '%s\n' "$stats"
 }
 
-prompt_normalize_audio() {
-  local input_i=$1
-  local prompt keep normalize selection status
-  keep=$'\tKeep original levels\tas recorded'
-  if awk -v i="$input_i" -v target="$LOUDNORM_I" 'BEGIN { exit (i < target) ? 0 : 1 }'; then
-    prompt="Audio may be unintentionally quiet"
-    normalize=$'\tNormalize\traise to typical YouTube and Spotify volume'
-  else
-    prompt="Audio may be unintentionally loud"
-    normalize=$'\tNormalize\tlower to typical YouTube and Spotify volume'
-  fi
-  status=0
-  selection=$(timeout "$NORMALIZE_PROMPT_TIMEOUT" omarchy-menu-select "$prompt" "$keep" "$normalize" -- --width 560) || status=$?
+# Remaining args are options in display order. Returns 0 when the user picks Normalize.
+run_normalize_prompt() {
+  local prompt=$1
+  shift
+  local selection status=0
+  selection=$(timeout "$NORMALIZE_PROMPT_TIMEOUT" omarchy-menu-select "$prompt" "$@" -- --width 560) || status=$?
   if (( status == 124 )); then
     omarchy-menu close >/dev/null 2>&1 || true
     return 1
   fi
   (( status == 0 )) || return 1
   [[ $selection == Normalize* ]]
+}
+
+prompt_normalize_audio() {
+  local input_i=$1
+  local keep normalize
+  keep=$'\tKeep original levels\tas recorded'
+  if awk -v i="$input_i" -v target="$LOUDNORM_I" 'BEGIN { exit (i < target) ? 0 : 1 }'; then
+    normalize=$'\tNormalize\traise to typical broadcast levels'
+    run_normalize_prompt "Audio may be unintentionally quiet" "$keep" "$normalize"
+  else
+    normalize=$'\tNormalize\tlower to typical broadcast levels'
+    run_normalize_prompt "Audio may be unintentionally loud" "$keep" "$normalize"
+  fi
+}
+
+prompt_normalize_long_recording() {
+  local keep=$'\tKeep original levels\tas recorded'
+  local normalize=$'\tNormalize\tRecommended'
+  run_normalize_prompt "Normalize audio to typical broadcast levels?" "$normalize" "$keep"
+}
+
+# Returns 0 when duration is strictly greater than LOUDNORM_ANALYZE_MAX_SECONDS.
+recording_too_long_to_analyze() {
+  local duration
+  duration=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$1" 2>/dev/null) || return 1
+  [[ $duration =~ ^[0-9]+(\.[0-9]+)?$ ]] || return 1
+  awk -v d="$duration" -v max="$LOUDNORM_ANALYZE_MAX_SECONDS" 'BEGIN { exit (d > max) ? 0 : 1 }'
 }
 
 # Sets SCREENRECORD_NORMALIZE to yes or no. SCREENRECORD_LOUDNESS_STATS holds
@@ -276,6 +299,13 @@ decide_normalize() {
     return
     ;;
   esac
+
+  if recording_too_long_to_analyze "$file"; then
+    if prompt_normalize_long_recording; then
+      SCREENRECORD_NORMALIZE=yes
+    fi
+    return
+  fi
 
   if SCREENRECORD_LOUDNESS_STATS=$(measure_loudness "$file"); then
     input_i=$(jq -r '.input_i' <<<"$SCREENRECORD_LOUDNESS_STATS")

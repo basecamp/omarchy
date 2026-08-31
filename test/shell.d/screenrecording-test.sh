@@ -380,6 +380,17 @@ exit 0
 SH
 chmod +x "$stub_bin/ffmpeg"
 
+cat >"$stub_bin/ffprobe" <<'SH'
+#!/bin/bash
+
+if printf '%s\n' "$@" | grep -q format=duration; then
+  printf '%s\n' "${OMARCHY_TEST_DURATION:-30}"
+  exit 0
+fi
+exit 1
+SH
+chmod +x "$stub_bin/ffprobe"
+
 cat >"$stub_bin/omarchy-menu-select" <<'SH'
 #!/bin/bash
 
@@ -421,7 +432,7 @@ pass "decide_normalize skips the prompt when loudness is already in the window"
 : >"$OMARCHY_TEST_MENU_ARGS"
 : >"$OMARCHY_TEST_FFMPEG_ARGS"
 export OMARCHY_TEST_LOUDNORM_JSON="$quiet_json"
-export OMARCHY_TEST_MENU_REPLY=$'Normalize\traise to typical YouTube and Spotify volume'
+export OMARCHY_TEST_MENU_REPLY=$'Normalize\traise to typical broadcast levels'
 decide_normalize "$dummy_recording"
 [[ $SCREENRECORD_NORMALIZE == yes ]] || fail "quiet audio normalizes when the user accepts"
 wired=$(screenrecord_audio_filter "$SCREENRECORD_NORMALIZE" "$SCREENRECORD_LOUDNESS_STATS")
@@ -429,8 +440,8 @@ wired=$(screenrecord_audio_filter "$SCREENRECORD_NORMALIZE" "$SCREENRECORD_LOUDN
 grep -q "Audio may be unintentionally quiet" "$OMARCHY_TEST_MENU_ARGS" || fail "quiet audio prompt explains the recording is quiet"
 grep -q $'\tKeep original levels\tas recorded' "$OMARCHY_TEST_MENU_ARGS" || \
   fail "keep option uses empty glyph so the label is not drawn as an icon" "$(cat "$OMARCHY_TEST_MENU_ARGS")"
-grep -q $'\tNormalize\traise to typical YouTube and Spotify volume' "$OMARCHY_TEST_MENU_ARGS" || \
-  fail "quiet normalize option says it will raise to typical streaming volume" "$(cat "$OMARCHY_TEST_MENU_ARGS")"
+grep -q $'\tNormalize\traise to typical broadcast levels' "$OMARCHY_TEST_MENU_ARGS" || \
+  fail "quiet normalize option says it will raise to typical broadcast levels" "$(cat "$OMARCHY_TEST_MENU_ARGS")"
 pass "decide_normalize prompts when audio is quiet"
 
 : >"$OMARCHY_TEST_MENU_ARGS"
@@ -439,8 +450,8 @@ export OMARCHY_TEST_MENU_REPLY=$'Keep original levels\tas recorded'
 decide_normalize "$dummy_recording"
 [[ $SCREENRECORD_NORMALIZE == no ]] || fail "hot audio keeps original levels when the user declines"
 grep -q "Audio may be unintentionally loud" "$OMARCHY_TEST_MENU_ARGS" || fail "hot audio prompt explains the recording is loud"
-grep -q $'\tNormalize\tlower to typical YouTube and Spotify volume' "$OMARCHY_TEST_MENU_ARGS" || \
-  fail "loud normalize option says it will lower to typical streaming volume" "$(cat "$OMARCHY_TEST_MENU_ARGS")"
+grep -q $'\tNormalize\tlower to typical broadcast levels' "$OMARCHY_TEST_MENU_ARGS" || \
+  fail "loud normalize option says it will lower to typical broadcast levels" "$(cat "$OMARCHY_TEST_MENU_ARGS")"
 pass "decide_normalize prompts when audio is louder than -11 LUFS"
 
 : >"$OMARCHY_TEST_MENU_ARGS"
@@ -481,6 +492,46 @@ decide_normalize "$dummy_recording"
 [[ -s $OMARCHY_TEST_MENU_ARGS ]] && fail "env true does not prompt" "$(cat "$OMARCHY_TEST_MENU_ARGS")"
 unset OMARCHY_SCREENRECORD_NORMALIZE
 pass "env true overrides the prompt"
+
+export OMARCHY_TEST_DURATION=601
+recording_too_long_to_analyze "$dummy_recording" || fail "601s is too long to analyze"
+export OMARCHY_TEST_DURATION=600
+recording_too_long_to_analyze "$dummy_recording" && fail "600s still analyzes"
+export OMARCHY_TEST_DURATION=N/A
+recording_too_long_to_analyze "$dummy_recording" && fail "unreadable duration still analyzes"
+unset OMARCHY_TEST_DURATION
+pass "recording_too_long_to_analyze is strictly greater than 10 minutes"
+
+: >"$OMARCHY_TEST_MENU_ARGS"
+: >"$OMARCHY_TEST_FFMPEG_ARGS"
+export OMARCHY_TEST_DURATION=601
+export OMARCHY_TEST_LOUDNORM_JSON="$quiet_json"
+export OMARCHY_TEST_MENU_REPLY=$'Normalize\tRecommended'
+decide_normalize "$dummy_recording"
+[[ $SCREENRECORD_NORMALIZE == yes ]] || fail "a long recording normalizes when the user accepts"
+[[ -z $SCREENRECORD_LOUDNESS_STATS ]] || fail "a long recording does not keep first-pass stats" "$SCREENRECORD_LOUDNESS_STATS"
+wired=$(screenrecord_audio_filter "$SCREENRECORD_NORMALIZE" "$SCREENRECORD_LOUDNESS_STATS")
+[[ $wired == *loudnorm=I=-14:TP=-1.5:LRA=11* ]] || fail "accepting a long recording uses single-pass loudnorm" "$wired"
+[[ $wired == *measured_I* ]] && fail "accepting a long recording must not use two-pass loudnorm" "$wired"
+grep -q "print_format=json" "$OMARCHY_TEST_FFMPEG_ARGS" && \
+  fail "a long recording does not measure loudness" "$(cat "$OMARCHY_TEST_FFMPEG_ARGS")"
+grep -q "Normalize audio to typical broadcast levels?" "$OMARCHY_TEST_MENU_ARGS" || \
+  fail "a long recording asks about typical broadcast levels" "$(cat "$OMARCHY_TEST_MENU_ARGS")"
+grep -q $'\tNormalize\tRecommended' "$OMARCHY_TEST_MENU_ARGS" || \
+  fail "a long recording marks normalize as recommended" "$(cat "$OMARCHY_TEST_MENU_ARGS")"
+awk '
+  $0 == "\tNormalize\tRecommended" { n=NR }
+  $0 == "\tKeep original levels\tas recorded" { k=NR }
+  END { exit (n && k && n < k) ? 0 : 1 }
+' "$OMARCHY_TEST_MENU_ARGS" || fail "a long recording lists Normalize before Keep" "$(cat "$OMARCHY_TEST_MENU_ARGS")"
+pass "decide_normalize skips analysis on recordings longer than 10 minutes"
+
+: >"$OMARCHY_TEST_MENU_ARGS"
+export OMARCHY_TEST_MENU_REPLY=$'Keep original levels\tas recorded'
+decide_normalize "$dummy_recording"
+[[ $SCREENRECORD_NORMALIZE == no ]] || fail "a long recording keeps original levels when the user declines"
+unset OMARCHY_TEST_DURATION
+pass "decide_normalize keeps original levels when a long recording declines"
 
 cat >"$stub_bin/omarchy-menu-select" <<'SH'
 #!/bin/bash
