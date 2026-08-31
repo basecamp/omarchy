@@ -10,12 +10,12 @@ mkdir -p "$fake_bin"
 
 cat >"$fake_bin/omarchy-cmd-missing" <<'STUB'
 #!/bin/bash
-[[ ${CARDWIRE_MISSING:-0} == 1 ]]
+[[ ${CARDWIRE_MISSING:-0} == "1" ]]
 STUB
 
 cat >"$fake_bin/omarchy-pkg-present" <<'STUB'
 #!/bin/bash
-[[ ${LEGACY_SUPERGFX:-0} == 1 ]]
+[[ ${LEGACY_SUPERGFX:-0} == "1" ]]
 STUB
 
 cat >"$fake_bin/sleep" <<'STUB'

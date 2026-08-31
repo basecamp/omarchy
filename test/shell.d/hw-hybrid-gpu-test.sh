@@ -59,7 +59,7 @@ FAIL_STATUS=1 GPU_COUNT=1 hybrid_gpu
 status=$?
 ((status == 1)) ||
   fail "hybrid GPU detection sees one GPU as non-hybrid when cardwire cannot answer" "exit status: $status"
-pass "hybrid GPU detection hides on one GPU when cardwire cannot answer"
+pass "hybrid GPU detection sees one GPU as non-hybrid when cardwire cannot answer"
 
 FAIL_STATUS=1 GPU_COUNT=2 hybrid_gpu ||
   fail "hybrid GPU detection counts multiple GPUs when cardwire cannot answer"
