@@ -1090,6 +1090,7 @@ Panel {
         // Status only — the switch owns toggling, mouse and keyboard alike.
         Text {
           id: heroIcon
+          textFormat: Text.PlainText
           text: root.icon
           color: root.bar.foreground
           font.family: root.bar.fontFamily
@@ -1170,6 +1171,7 @@ Panel {
           // rather than in a pill, which crowded the on/off switch.
           Text {
             id: heroSsid
+            textFormat: Text.PlainText
             width: parent.width
 
             readonly property string title: {
@@ -1189,6 +1191,7 @@ Panel {
 
           Text {
             id: heroMeta
+            textFormat: Text.PlainText
             width: parent.width
             text: {
               if (root.info.type === "wifi") {
@@ -1711,6 +1714,7 @@ Panel {
 
       Text {
         id: networkIcon
+        textFormat: Text.PlainText
         text: row.net ? root.wifiIconFor(row.net.signal) : ""
         color: row.statusColor
         font.family: root.bar.fontFamily
@@ -1732,6 +1736,7 @@ Panel {
 
         Text {
           id: lockIndicator
+          textFormat: Text.PlainText
           visible: row.requiresCredentials || row.forgetVisible
           width: parent.width
           anchors.verticalCenter: parent.verticalCenter
@@ -1779,6 +1784,7 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
 
         Text {
+          textFormat: Text.PlainText
           text: row.net ? (row.net.ssid || "Hidden") : ""
           color: root.bar.foreground
           font.family: root.bar.fontFamily
@@ -1787,6 +1793,7 @@ Panel {
           width: parent.width
         }
         Text {
+          textFormat: Text.PlainText
           // Signal strength is conveyed by the wifi-bars icon and the
           // right-edge glyph/buttons carry protection or forget affordances,
           // so the second line only carries action status (Connecting…,
@@ -1893,6 +1900,7 @@ Panel {
         radius: Style.cornerRadius
 
         Text {
+          textFormat: Text.PlainText
           anchors.fill: parent
           horizontalAlignment: Text.AlignHCenter
           verticalAlignment: Text.AlignVCenter
@@ -1946,6 +1954,7 @@ Panel {
   }
 
   component InfoLabel: Text {
+    textFormat: Text.PlainText
     color: root.bar.foreground
     opacity: 0.6
     font.family: root.bar.fontFamily
@@ -1953,6 +1962,7 @@ Panel {
   }
 
   component InfoValue: Text {
+    textFormat: Text.PlainText
     color: root.bar.foreground
     font.family: root.bar.fontFamily
     font.pixelSize: Style.font.bodySmall
