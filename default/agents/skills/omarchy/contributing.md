@@ -22,7 +22,8 @@ description with steps to reproduce, and diagnostics. Gather them:
 ```bash
 omarchy version
 
-# Generate the diagnostic log (also written to /tmp/omarchy-debug.log)
+# Generate the diagnostic log (also written to $XDG_RUNTIME_DIR/omarchy-debug.log,
+# or ${XDG_STATE_HOME:-~/.local/state}/omarchy/omarchy-debug.log without a session)
 omarchy debug --no-sudo --print
 
 # Interactive variant: `omarchy debug` offers to upload the log to

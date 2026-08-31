@@ -5,8 +5,19 @@
 # omarchy:hidden=true
 
 LOG_TYPE="${1:-install}"
-TEMP_LOG="/tmp/upload-log.txt"
-SYSTEM_INFO="/tmp/system-info.txt"
+
+# What lands in these two files is the whole journal, the package list and a
+# hardware inventory, and the first of them is then published to a paste. A
+# fixed name in /tmp is created world-readable by the default umask, so any
+# other local account can read the payload before it is sent -- and one that
+# creates the name first makes every write here fail closed while `curl` still
+# uploads their file and prints the URL as this user's log. mktemp gives this
+# run a directory only its owner can enter (0700), which is the actual
+# boundary -- the files created inside it still land at the default umask.
+staging_dir=$(mktemp -d) || exit 1
+trap 'rm -rf "$staging_dir"' EXIT
+TEMP_LOG="$staging_dir/upload-log.txt"
+SYSTEM_INFO="$staging_dir/system-info.txt"
 
 # Get system information if fastfetch is available
 if omarchy-cmd-present fastfetch; then
