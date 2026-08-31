@@ -10,6 +10,9 @@ if (( $# < 1 )); then
   exit 1
 fi
 
+source omarchy-path-guard || exit 1
+omarchy_reject_climbing_name "$1" "hook name" || exit 1
+
 HOOK=$1
 HOOK_PATH="$HOME/.config/omarchy/hooks/$1"
 HOOK_DIR="$HOOK_PATH.d"

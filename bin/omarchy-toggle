@@ -10,6 +10,10 @@ fi
 
 FLAG_NAME="$1"
 ACTION="${2:-toggle}"
+
+source omarchy-path-guard || exit 1
+omarchy_reject_climbing_name "$FLAG_NAME" "flag name" || exit 1
+
 FLAG="$HOME/.local/state/omarchy/toggles/$FLAG_NAME"
 
 enable() {
