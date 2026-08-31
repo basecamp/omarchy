@@ -4,7 +4,20 @@
 # omarchy:args=[toggle|on|off]
 # omarchy:examples=omarchy toggle bar | omarchy toggle bar off | omarchy toggle bar on
 
-omarchy-toggle bar-off "${1:-toggle}"
+# The flag is named for the hidden state, so the visibility this command is
+# asked for is the opposite of the flag state it has to write: "bar on" means
+# the bar is visible, which is `bar-off` cleared.
+case "${1:-toggle}" in
+  toggle) action=toggle ;;
+  on) action=off ;;
+  off) action=on ;;
+  *)
+    echo "Usage: omarchy-toggle-bar [toggle|on|off]" >&2
+    exit 1
+    ;;
+esac
+
+omarchy-toggle bar-off "$action"
 
 # The shell's watch on the toggles directory can miss flag changes that land in
 # quick succession, stranding the bar off screen until the shell restarts.

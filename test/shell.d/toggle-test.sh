@@ -40,14 +40,24 @@ HOME="$test_home" omarchy-toggle example toggle
 [[ ! -f $flag ]] || fail "generic toggle flips enabled state off"
 pass "generic toggle flips enabled state off"
 
-HOME="$test_home" omarchy-toggle-bar on
-[[ -f $bar_flag ]] || fail "bar on enables bar-off toggle"
-pass "bar on enables bar-off toggle"
-
-HOME="$test_home" omarchy-toggle-bar on
-[[ -f $bar_flag ]] || fail "bar on is idempotent"
-pass "bar on is idempotent"
+# The argument names the visibility the user asked for, and the flag names the
+# hidden state, so they are always opposites.
+HOME="$test_home" omarchy-toggle-bar off
+[[ -f $bar_flag ]] || fail "bar off sets the bar-off flag"
+pass "bar off sets the bar-off flag"
 
 HOME="$test_home" omarchy-toggle-bar off
-[[ ! -f $bar_flag ]] || fail "bar off disables bar-off toggle"
-pass "bar off disables bar-off toggle"
+[[ -f $bar_flag ]] || fail "bar off is idempotent"
+pass "bar off is idempotent"
+
+HOME="$test_home" omarchy-toggle-bar on
+[[ ! -f $bar_flag ]] || fail "bar on clears the bar-off flag"
+pass "bar on clears the bar-off flag"
+
+HOME="$test_home" omarchy-toggle-bar on
+[[ ! -f $bar_flag ]] || fail "bar on is idempotent"
+pass "bar on is idempotent"
+
+HOME="$test_home" omarchy-toggle-bar nonsense 2>/dev/null &&
+  fail "bar rejects an unknown argument"
+pass "bar rejects an unknown argument"
