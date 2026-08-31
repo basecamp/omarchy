@@ -5,30 +5,24 @@
 
 echo "Fixing NVIDIA GPU detection..."
 
-# Check if supergfxd is causing issues
-if systemctl is-active --quiet supergfxd 2>/dev/null; then
-  echo "supergfxd is active - checking for blacklist issues..."
-  
-  # Check if nvidia modules are blacklisted
-  if grep -q "blacklist nvidia" /etc/modprobe.d/supergfxd.conf 2>/dev/null; then
-    echo "Found nvidia blacklist from supergfxd!"
-    echo "Removing supergfxd nvidia blacklist and restoring Hybrid mode..."
-    
-    sudo rm -f /etc/modprobe.d/supergfxd.conf 2>/dev/null || true
-    
-    # Regenerate initramfs
-    sudo mkinitcpio -P 2>/dev/null || true
+# Check for blacklist directly - works regardless of service state
+if grep -q "blacklist nvidia" /etc/modprobe.d/supergfxd.conf 2>/dev/null; then
+  echo "Found nvidia blacklist from supergfxd!"
+  echo "Removing blacklist and restoring Hybrid mode..."
 
-    # Keep supergfxd available for hybrid-GPU switching flows
-    sudo systemctl enable --now supergfxd 2>/dev/null || true
-    sudo supergfxctl --mode Hybrid 2>/dev/null || true
-    
-    echo "✓ supergfxd blacklist removed"
-    echo "✓ supergfxd left enabled for GPU mode switching"
-    echo "⚠️  Please reboot for NVIDIA modules to load"
-  fi
+  # Remove blacklist and rebuild initramfs (best-effort during install, don't abort)
+  sudo rm -f /etc/modprobe.d/supergfxd.conf 2>/dev/null || true
+  sudo mkinitcpio -P 2>/dev/null || true
+
+  # Keep supergfxd available for hybrid-GPU switching
+  sudo systemctl enable --now supergfxd 2>/dev/null || true
+  sudo supergfxctl --mode Hybrid 2>/dev/null || true
+
+  echo "✓ supergfxd blacklist removed"
+  echo "✓ supergfxd left enabled for GPU mode switching"
+  echo "⚠️  Please reboot for NVIDIA modules to load"
 else
-  echo "supergfxd is not active, no action needed"
+  echo "No blacklist found, no action needed"
 fi
 
 echo "NVIDIA GPU detection fix complete!"
