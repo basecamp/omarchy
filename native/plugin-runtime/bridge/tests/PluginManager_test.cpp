@@ -647,6 +647,78 @@ void dynamic_permission_operations_require_opaque_exact_ids() {
           "raw, foreign, duplicate, or empty dynamic selectors were accepted");
 }
 
+void permission_list_projects_only_durable_effective_grants() {
+  const permissions::CapabilityKey storage{
+      .id = permissions::CapabilityId("storage.private"), .version = 1};
+  const permissions::CapabilityRequest builtin_request{
+      .capability = storage,
+      .scope = permissions::QuotaScope{8192, 4096},
+      .required = true};
+  const permissions::GrantRecord builtin_grant{
+      .capability = storage,
+      .scope = permissions::QuotaScope{2048, 1024},
+      .state = permissions::GrantState::granted,
+      .epoch = 71};
+  const auto builtin = bridge::PermissionControlTestAccess::projectBuiltinRow(
+      builtin_request, builtin_grant, true);
+  require(builtin.value("scope") ==
+                  QString::fromStdString(
+                      permissions::canonical_scope(builtin_grant.scope)) &&
+              builtin.value("scope") !=
+                  QString::fromStdString(
+                      permissions::canonical_scope(builtin_request.scope)),
+          "builtin list exposed requested breadth instead of effective scope");
+
+  const definitions::CapabilityReference reference{
+      .canonical_name = definitions::Name("harness.example"),
+      .definition_generation = 9,
+      .definition_digest = definitions::Digest(std::string(64, 'd'))};
+  definitions::DynamicRequest dynamic_request{
+      .definition = reference,
+      .operations = {},
+      .scope = definitions::CanonicalScope("profile=wide"),
+      .required = false};
+  require(dynamic_request.operations.insert(definitions::Name("read")) &&
+              dynamic_request.operations.insert(definitions::Name("write")),
+          "dynamic request fixture operations were invalid");
+  definitions::DynamicGrant dynamic_grant{
+      .definition = reference,
+      .operations = {},
+      .scope = definitions::CanonicalScope("profile=narrow"),
+      .state = permissions::GrantState::granted,
+      .epoch = 83};
+  require(dynamic_grant.operations.insert(definitions::Name("read")),
+          "dynamic grant fixture operation was invalid");
+  const auto dynamic = bridge::PermissionControlTestAccess::projectDynamicRow(
+      dynamic_request, dynamic_grant, true);
+  require(dynamic.value("scope") == "profile=narrow" &&
+              dynamic.value("scope") != "profile=wide" &&
+              dynamic.value("operations").toArray() == QJsonArray{"read"},
+          "dynamic list exposed requested scope or operation breadth");
+
+  const auto builtin_review =
+      bridge::PermissionControlTestAccess::projectBuiltinRow(
+          builtin_request, builtin_grant, false);
+  const auto dynamic_review =
+      bridge::PermissionControlTestAccess::projectDynamicRow(
+          dynamic_request, dynamic_grant, false);
+  require(builtin_review.value("scope") ==
+                  QString::fromStdString(
+                      permissions::canonical_scope(builtin_request.scope)) &&
+              dynamic_review.value("scope") == "profile=wide" &&
+              dynamic_review.value("operations").toArray() ==
+                  QJsonArray{"read", "write"},
+          "review rows stopped presenting requested permission breadth");
+
+  constexpr std::array internal_keys{
+      "epoch",           "sequence", "fingerprint", "version",
+      "definitionGeneration", "definitionDigest", "adapter", "actor",
+      "confirmedWallSeconds"};
+  for (const auto *key : internal_keys)
+    require(!builtin.contains(key) && !dynamic.contains(key),
+            "permission list exposed internal authority metadata");
+}
+
 QImage paintedFrame(bridge::RemotePluginSurface &remote) {
   QImage image(64, 64, QImage::Format_RGBA8888_Premultiplied);
   image.fill(Qt::transparent);
@@ -2757,6 +2829,7 @@ void run_plugin_manager_tests() {
   concurrent_engines_have_one_process_winner();
   singleton_boundary_is_inert_and_not_configurable();
   dynamic_permission_operations_require_opaque_exact_ids();
+  permission_list_projects_only_durable_effective_grants();
   private_projection_seam_preserves_fail_closed_boundary();
   manager_policy_is_fixed_and_fail_closed();
   last_good_reconciliation_and_stale_callback_are_fail_closed();

@@ -160,6 +160,28 @@ QJsonObject dynamic_row(
   return result;
 }
 
+QJsonObject builtin_list_row(
+    std::string_view row_id, const permissions::CapabilityRequest &request,
+    const std::optional<permissions::GrantRecord> &grant, bool available) {
+  auto result = builtin_row(row_id, request, grant, available);
+  if (grant)
+    result.insert(QStringLiteral("scope"),
+                  text(permissions::canonical_scope(grant->scope)));
+  return result;
+}
+
+QJsonObject dynamic_list_row(
+    std::string_view row_id, const definitions::DynamicRequest &request,
+    const std::optional<definitions::DynamicGrant> &grant, bool available) {
+  auto result = dynamic_row(row_id, request, grant, std::nullopt, available);
+  if (grant) {
+    result.insert(QStringLiteral("scope"), text(grant->scope.view()));
+    result.insert(QStringLiteral("operations"),
+                  dynamic_operations(grant->operations));
+  }
+  return result;
+}
+
 std::optional<permissions::GrantRecord>
 grant_for(const host_session::AuthorityView &view,
           const permissions::CapabilityKey &capability) {
@@ -465,6 +487,20 @@ PermissionControl::selectDynamicOperations(
 }
 
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+QJsonObject PermissionControlTestAccess::projectBuiltinRow(
+    const permissions::CapabilityRequest &request,
+    const permissions::GrantRecord &grant, bool list) {
+  return list ? builtin_list_row("opaque-row", request, grant, true)
+              : builtin_row("opaque-row", request, grant, true);
+}
+
+QJsonObject PermissionControlTestAccess::projectDynamicRow(
+    const definitions::DynamicRequest &request,
+    const definitions::DynamicGrant &grant, bool list) {
+  return list ? dynamic_list_row("opaque-row", request, grant, true)
+              : dynamic_row("opaque-row", request, grant, std::nullopt, true);
+}
+
 std::vector<std::string> PermissionControlTestAccess::selectDynamicOperations(
     const std::vector<std::pair<std::string, std::string>> &cached,
     const QJsonArray &selected) {
@@ -572,7 +608,8 @@ void PermissionControl::completeRead(
                                      .builtin = request.capability,
                                      .definition = std::nullopt,
                                      .operations = {}});
-          rows.push_back(builtin_row(row_id, request, grant, available));
+          rows.push_back(
+              builtin_list_row(row_id, request, grant, available));
         }
         for (std::size_t index = 0; index < active.dynamic_grants.size();
              ++index) {
@@ -589,8 +626,8 @@ void PermissionControl::completeRead(
                                      .builtin = std::nullopt,
                                      .definition = revision.request.definition,
                                      .operations = {}});
-          rows.push_back(dynamic_row(row_id, revision.request, revision.grant,
-                                     std::nullopt, available));
+          rows.push_back(dynamic_list_row(row_id, revision.request,
+                                          revision.grant, available));
         }
       }
     } else {

@@ -17,6 +17,10 @@
 #include <utility>
 #include <vector>
 
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+#include <QJsonObject>
+#endif
+
 namespace omarchy::plugin_runtime::channel {
 class PluginPermissionAuthority;
 }
@@ -136,6 +140,12 @@ private:
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
 class PermissionControlTestAccess final {
 public:
+  [[nodiscard]] static QJsonObject projectBuiltinRow(
+      const plugins::permissions::CapabilityRequest &request,
+      const plugins::permissions::GrantRecord &grant, bool list);
+  [[nodiscard]] static QJsonObject projectDynamicRow(
+      const plugins::definitions::DynamicRequest &request,
+      const plugins::definitions::DynamicGrant &grant, bool list);
   [[nodiscard]] static std::vector<std::string> selectDynamicOperations(
       const std::vector<std::pair<std::string, std::string>> &cached,
       const QJsonArray &selected);
