@@ -8,3 +8,10 @@
 omarchy-brightness-display on
 omarchy-brightness-keyboard restore
 omarchy-hyprland-monitor-clamshell >/dev/null 2>&1 || true
+
+# The bar clock ticks on a monotonic timer, which does not advance while the
+# machine is suspended — after resume the next tick can be up to a minute
+# late, leaving a stale label (omarchy issue #7608). The wake path runs this
+# script on unlock and on idle-wake, so nudge the clock to recompute now.
+# Best effort: the shell is not always running.
+omarchy-shell -q omarchy.clock refresh >/dev/null 2>&1 || true
