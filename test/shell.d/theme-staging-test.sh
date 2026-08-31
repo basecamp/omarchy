@@ -194,6 +194,29 @@ grep -q "$marker" "$(staged hyprland.lua)" || fail "a symlinked working copy is 
 
 pass "a symlinked working copy is the user's own"
 
+# A user theme may keep colors.toml as a relative symlink into a dotfiles tree.
+# Staging must dereference it: copying the link text lands a dangling path under
+# current/theme/ and every template silently fails to generate.
+realsrc="$home/realtheme"
+mkdir -p "$realsrc"
+write_colors "$realsrc/colors.toml"
+sed -i 's/#7aa2f7/#112233/' "$realsrc/colors.toml"
+
+relinked="$themes/relinked"
+mkdir -p "$relinked"
+# themes/relinked is under home/.config/omarchy/themes; ../../../../realtheme is home/realtheme
+ln -s ../../../../realtheme/colors.toml "$relinked/colors.toml"
+[[ -e $relinked/colors.toml ]] || fail "the relative symlink resolves from the theme directory"
+
+set_theme relinked || fail "omarchy-theme-set applies a user theme whose colors.toml is a relative symlink"
+
+assert_staged colors.toml "a relative-symlink colors.toml is staged as a real file"
+[[ ! -L $(staged colors.toml) ]] || fail "the staged colors.toml is content, not a copied symlink"
+grep -q '#112233' "$(staged colors.toml)" || fail "the staged palette is the symlink target's content"
+assert_staged ghostty.conf "templates still generate when colors.toml arrived via a relative symlink"
+
+pass "a relative-symlink colors.toml in a user theme is dereferenced on stage"
+
 # The name is joined into paths that get removed and copied into.
 for name in .. . "../../evil"; do
   if set_theme "$name" >/dev/null; then
