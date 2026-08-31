@@ -71,7 +71,7 @@ start_container() {
   "${argv[@]}" >/dev/null || return 1
   sw '.active={recipeId:$r.id,modelId:$r.model.id,name:$r.model.name,servedModel:"",container:$c,
        endpoint:("http://127.0.0.1:"+($p|tostring)+"/v1"),port:$p,gpuIndices:$ids,apiReady:false,
-       toolCallReady:false,tools:($r.capabilities.tools//false)}' \
+       toolCallReady:false,tools:($r.capabilities.tools//false),ctxTokens:$r.serving.ctxTokens,toksPerSec:$r.speed.tps}' \
     --argjson r "$r" --arg c "$CTR" --argjson p "$PORT" \
     --argjson ids "$(jq -Rsc 'rtrimstr("\n")|split(",")|map(select(length>0)|tonumber)' <<<"$(gpu_ids "$r" 2>/dev/null || true)")"
   accept "$r"

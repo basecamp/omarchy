@@ -6,10 +6,11 @@ TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 export OMARCHY_AI_USER_HOME="$TMP/home" OMARCHY_AI_STATE="$TMP/state" OMARCHY_AI_REGISTRY="$TMP/registry" \
   OMARCHY_AI_PORT=12434 OMARCHY_AI_POLL=0 OMARCHY_AI_TIMEOUT=5 OMARCHY_AI_FOREGROUND=1 OMARCHY_AI_NO_HOST_HF=1 \
   OMARCHY_AI_HARDWARE_JSON='{"groups":[{"backend":"nvidia","product":"NVIDIA GeForce RTX 3090","index":0,"count":4,"memoryBytesEach":25769803776,"devices":[{"index":0,"name":"NVIDIA GeForce RTX 3090","totalMiB":24576,"usedMiB":100,"freeMiB":24000},{"index":1,"name":"NVIDIA GeForce RTX 3090","totalMiB":24576,"usedMiB":0,"freeMiB":24576}]}]}'
-mkdir -p "$OMARCHY_AI_USER_HOME/.pi/agent" "$OMARCHY_AI_STATE" "$OMARCHY_AI_REGISTRY"/{hardware,model,model-instance,recipe,assets,index}
+mkdir -p "$OMARCHY_AI_USER_HOME/.pi/agent" "$OMARCHY_AI_STATE" "$OMARCHY_AI_REGISTRY"/{hardware,model,model-instance,recipe,assets,index,speed-sweep}
 printf '%s\n' '{"theme":"dark"}' >"$OMARCHY_AI_USER_HOME/.pi/agent/settings.json"
 printf '%s\n' '{}' >"$OMARCHY_AI_USER_HOME/.pi/agent/models.json"
 touch "$OMARCHY_AI_REGISTRY/assets/config.yml"
+jq -n '{id:"small-sweep",metrics:{peak_generation_tps:42.7}}' >"$OMARCHY_AI_REGISTRY/speed-sweep/small-sweep.json"
 digest=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 revision=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 jq -n '{schema_version:"local-ai-registry/v1",id:"rtx-3090-24gb",name:"GeForce RTX 3090",accelerator_backend:"nvidia",memory:{vram_gb:24},aliases:[]}' >"$OMARCHY_AI_REGISTRY/hardware/rtx-3090-24gb.json"
@@ -20,7 +21,8 @@ recipe() { # recipe <id> <tools> <hf|dir> -> standard HF cache mount, or a regis
   local mi=org-small--bf16; [[ $3 == dir ]] && mi=org-small--dir
   jq -n --arg id "$1" --arg dg "$digest" --argjson tools "$2" --arg mi "$mi" --arg kind "$3" '
     {id:$id,status:"validated",model_instance_id:$mi,hardware_id:"rtx-3090-24gb",hardware_count:1,
-     engine:{name:"sglang"},capabilities:{tools:$tools},
+     engine:{name:"sglang"},capabilities:{tools:$tools,vision:false,reasoning:true},
+     serving:{max_context_tokens:131072,max_concurrency:4},speed_sweep_ids:["small-sweep"],
      launch:{image:("img@sha256:"+$dg),container_port:30000,ipc:"host",shm_size:"1g",environment:{},
        arguments:(if $kind=="hf" then ["--served-model-name","org/small"] else [] end),
        mounts:[(if $kind=="hf" then {source:"~/.cache/huggingface",target:"/root/.cache/huggingface",read_only:false}
@@ -124,7 +126,8 @@ assert [ ! -e "$OMARCHY_AI_USER_HOME/.omp/agent/models.json" ]
 "$CLI" scan >/dev/null
 assert jq -e '.state=="idle" and .registry.matching==10 and .registry.total==10 and .registry.revision=="" and (.gpus|length)==2
   and (.models|length)==10 and (.models[]|select(.recipeId=="small-3090")|.available) and (.models[]|select(.recipeId=="small-3090")|.imageDownloaded|not)
-  and (.models[]|select(.recipeId=="big-3090")|.sizeGb==1000)' >/dev/null <<<"$(snap)"
+  and (.models[]|select(.recipeId=="big-3090")|.sizeGb==1000)
+  and (.models[]|select(.recipeId=="small-3090")|.ctxTokens==131072 and .toksPerSec==42 and .reasoning and (.vision|not))' >/dev/null <<<"$(snap)"
 ok 'scan populates hardware, gpus, and models with downloaded vs available split'
 assert jq -e '(.models[]|select(.recipeId=="multi-node")|.blocked and (.reason|test("2 networked machines")))
   and (.models[]|select(.recipeId=="hostnet")|.blocked and (.reason|test("host networking")))
@@ -164,6 +167,7 @@ assert jq -e '(.defaultProvider // "") == ""' >/dev/null "$OMARCHY_AI_USER_HOME/
 assert jq -e '.providers["omarchy-local"].models[0].id=="org/small"' >/dev/null "$OMARCHY_AI_USER_HOME/.omp/agent/models.yml"
 assert [ ! -e "$OMARCHY_AI_USER_HOME/.omp/agent/models.json" ]
 assert jq -e '.active.agents.pi=="wired" and .active.agents.omp=="wired"' >/dev/null <<<"$(snap)"
+assert jq -e '.active.ctxTokens==131072 and .active.toksPerSec==42' >/dev/null <<<"$(snap)"
 ok 'run transitions to ready, confirms API identity, and wires the collision-safe omarchy-local provider'
 ok 'omp gets models.yml (the file it actually reads), never a shadowed models.json'
 "$CLI" default >/dev/null

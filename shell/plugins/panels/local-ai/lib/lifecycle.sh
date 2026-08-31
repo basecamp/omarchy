@@ -138,5 +138,5 @@ adopt() {
   owned "$CTR" && running "$CTR" || return 0; rid=$(docker inspect -f "{{index .Config.Labels \"$LABEL.recipe\"}}" "$CTR" 2>/dev/null) || return 0
   r=$(resolve "$rid" 2>/dev/null) || return 0; served=$(api models 2 2>/dev/null | jq -r '.data[0].id//empty') || return 0; [[ -n $served ]] || return 0
   ids=$(docker inspect -f '{{json .HostConfig.DeviceRequests}}' "$CTR" 2>/dev/null | jq -c '[.[]?.DeviceIDs[]?|tonumber]' 2>/dev/null || printf '[]'); [[ -n $ids ]] || ids='[]'
-  sw '.active={recipeId:$r.id,modelId:$r.model.id,name:$r.model.name,servedModel:$s,container:$c,endpoint:("http://127.0.0.1:"+($p|tostring)+"/v1"),port:$p,gpuIndices:$ids,apiReady:true,toolCallReady:false,tools:($r.capabilities.tools//false)}|.models|=map(.active=(.recipeId==$r.id))|.state="ready"|.error=""' --argjson r "$r" --arg s "$served" --arg c "$CTR" --argjson p "$PORT" --argjson ids "$ids"
+  sw '.active={recipeId:$r.id,modelId:$r.model.id,name:$r.model.name,servedModel:$s,container:$c,endpoint:("http://127.0.0.1:"+($p|tostring)+"/v1"),port:$p,gpuIndices:$ids,apiReady:true,toolCallReady:false,tools:($r.capabilities.tools//false),ctxTokens:$r.serving.ctxTokens,toksPerSec:$r.speed.tps}|.models|=map(.active=(.recipeId==$r.id))|.state="ready"|.error=""' --argjson r "$r" --arg s "$served" --arg c "$CTR" --argjson p "$PORT" --argjson ids "$ids"
 }

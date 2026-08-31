@@ -18,17 +18,25 @@ sync_registry() {
   fi
   reg_ok || fail "registry invalid at $REG"
 }
-resolve_raw() { # join recipe + instance + model + hardware; interpolate owned placeholders; no gate
-  local id=$1 r i m h
+resolve_raw() { # join recipe + instance + model + hardware + speed sweep; interpolate owned placeholders; no gate
+  local id=$1 r i m h sid tps=0
   [[ -f $REG/recipe/$id.json ]] || { fail "unknown recipe $id"; return; }
   r=$(<"$REG/recipe/$id.json")
   i=$(<"$REG/model-instance/$(jq -r .model_instance_id <<<"$r").json")
   m=$(<"$REG/model/$(jq -r .model_id <<<"$i").json")
   h=$(<"$REG/hardware/$(jq -r .hardware_id <<<"$r").json")
-  jq -nc --argjson r "$r" --argjson i "$i" --argjson m "$m" --argjson h "$h" \
+  sid=$(jq -r '.speed_sweep_ids[0]//""' <<<"$r")
+  [[ -n $sid && -f $REG/speed-sweep/$sid.json ]] && tps=$(jq -r \
+    '[.metrics.peak_generation_tps,
+      ([.rows[]?|select(.concurrency==1)|(.decode_tok_s//.decode_tok_s_per_stream)]|max),
+      ([.rows[]?|(.decode_tok_s_per_stream//.decode_tok_s)]|max)]
+     | map(select(.!=null)) | .[0] // 0' "$REG/speed-sweep/$sid.json")
+  jq -nc --argjson r "$r" --argjson i "$i" --argjson m "$m" --argjson h "$h" --argjson tps "${tps:-0}" \
     --arg mr "$MODELS_SUB" --arg cr "$CACHE_SUB" '
     def arg($n): (.launch.arguments|index($n)) as $p | if $p==null then null else .launch.arguments[$p+1] end;
     {id:$r.id,status:$r.status,engine:$r.engine,capabilities:$r.capabilities,
+     serving:{ctxTokens:($r.serving.max_context_tokens//0),concurrency:($r.serving.max_concurrency//0)},
+     speed:{tps:($tps|floor)},
      model:{id:$m.id,name:$m.name,repository:($i.repository//""),revision:($i.revision//""),
        servedName:(($r|arg("--served-model-name"))//$i.served_name//$i.repository),
        precision:($i.weights.precision//"?"),bytes:((($i.weights.size_gb//0)*1073741824)|floor)},
@@ -153,7 +161,9 @@ catalog() {
               acceleratorCount:$r.hardware.count,available:false,
               imageDownloaded:false,weightsDownloaded:false,downloadPercent:0,downloadIndeterminate:true,
               sizeGb:((($r.model.bytes + (([$r.launch.mounts[]?.provision.size_gb//0]|add//0)*1073741824))/107374182|floor)/10),
-              tools:($r.capabilities.tools//false),active:false,blocked:true,reason:$reason}]' <<<"$rows")
+              ctxTokens:$r.serving.ctxTokens,toksPerSec:$r.speed.tps,
+              tools:($r.capabilities.tools//false),vision:($r.capabilities.vision//false),reasoning:($r.capabilities.reasoning//false),
+              active:false,blocked:true,reason:$reason}]' <<<"$rows")
       continue
     fi
     bytes=$(progress_bytes "$r")
@@ -171,7 +181,9 @@ catalog() {
             acceleratorCount:$r.hardware.count,available:(($g.count//0)>=$r.hardware.count),
             imageDownloaded:$img,weightsDownloaded:$wt,downloadPercent:$pct,downloadIndeterminate:$ind,
             sizeGb:((($r.model.bytes + (([$r.launch.mounts[]?.provision.size_gb//0]|add//0)*1073741824))/107374182|floor)/10),
-            tools:($r.capabilities.tools//false),active:false,blocked:false,reason:""}]' <<<"$rows")
+            ctxTokens:$r.serving.ctxTokens,toksPerSec:$r.speed.tps,
+            tools:($r.capabilities.tools//false),vision:($r.capabilities.vision//false),reasoning:($r.capabilities.reasoning//false),
+            active:false,blocked:false,reason:""}]' <<<"$rows")
   done < <(jq -r --argjson ids "$ids" '.recipes[]|select(.status=="validated" and .launch_kind=="docker")
     |select(.hardware_id as $h|$ids|index($h))|.id' "$IDX")
   jq -c 'sort_by([.blocked,.acceleratorCount,(.weightsDownloaded|not),.name])' <<<"$rows"

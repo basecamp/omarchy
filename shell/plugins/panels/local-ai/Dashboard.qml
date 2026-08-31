@@ -57,10 +57,13 @@ Item {
     if (parseError) return parseError
     if (snap.error) return "error · " + snap.error
     if (busy) return progressText()
-    if (loaded) return active.name + " · " + active.servedModel + " · " + active.endpoint
+    if (loaded) return active.name + " · " + active.servedModel + (active.toksPerSec > 0 ? " · " + fmtTps(active.toksPerSec) : "") + (active.ctxTokens > 0 ? " · " + fmtCtx(active.ctxTokens) : "") + " · " + active.endpoint
     return state === "uninitialized" ? "not scanned yet" : state
   }
   function vramText(g) { return (g.usedMiB === null || g.usedMiB === undefined ? "unavailable" : g.usedMiB + " / " + g.totalMiB + " MiB") }
+  function fmtCtx(t) { if (!t) return "—"; if (t >= 1048576) return Math.round(t / 1048576) + "M ctx"; if (t >= 1024) return Math.round(t / 1024) + "K ctx"; return t + " ctx" }
+  function fmtTps(t) { return t > 0 ? "~" + t + " tok/s" : "—" }
+  function capsText(m) { var c = []; if (m.tools) c.push("tools"); if (m.vision) c.push("vision"); if (m.reasoning) c.push("thinking"); return c.length ? c.join(" · ") : "chat" }
   function modelState(m) {
     if (m.blocked) return "blocked"
     if (m.recipeId === active.recipeId) return state
@@ -184,12 +187,13 @@ Item {
                   Row {
                     id: cells
                     anchors.fill: parent; anchors.leftMargin: Style.space(8); anchors.rightMargin: Style.space(8); spacing: Style.space(8)
-                    readonly property real usable: width - spacing * 4
-                    Cell { width: cells.usable * 0.32; text: modelData.name; color: index === root.selectedIndex ? root.foreground : root.dim }
-                    Cell { width: cells.usable * 0.20; text: modelData.engine + " · " + modelData.precision }
-                    Cell { width: cells.usable * 0.20; text: modelData.hardware }
-                    Cell { width: cells.usable * 0.10; text: modelData.acceleratorCount + "×" }
-                    Cell { width: cells.usable * 0.18; text: root.modelState(modelData) }
+                    readonly property real usable: width - spacing * 5
+                    Cell { width: cells.usable * 0.30; text: modelData.name; color: index === root.selectedIndex ? root.foreground : root.dim }
+                    Cell { width: cells.usable * 0.11; text: root.fmtCtx(modelData.ctxTokens) }
+                    Cell { width: cells.usable * 0.13; text: root.fmtTps(modelData.toksPerSec) }
+                    Cell { width: cells.usable * 0.18; text: root.capsText(modelData) }
+                    Cell { width: cells.usable * 0.07; text: modelData.acceleratorCount + "×" }
+                    Cell { width: cells.usable * 0.21; text: root.modelState(modelData) }
                   }
                   MouseArea { anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onEntered: root.choose(index); onClicked: root.choose(index); onDoubleClicked: root.primary() }
                 }
@@ -206,7 +210,7 @@ Item {
               anchors.top: parent.top; anchors.topMargin: Style.space(12)
               text: !root.selected() ? "no matching recipe"
                     : root.selected().blocked ? root.selected().recipeId + " · " + (root.selected().reason || "blocked")
-                    : root.selected().recipeId + (root.selected().sizeGb > 0 ? " · " + root.selected().sizeGb + " GB" : "") + " · " + (root.selected().available ? "available" : "unavailable") + " · image " + (root.selected().imageDownloaded ? "yes" : "no") + " · weights " + (root.selected().weightsDownloaded ? "yes" : "no")
+                    : root.selected().recipeId + " · " + root.selected().engine + " · " + root.selected().precision + (root.selected().sizeGb > 0 ? " · " + root.selected().sizeGb + " GB" : "") + " · " + root.selected().hardware + (root.selected().available ? "" : " · unavailable")
             }
             Rectangle {
               visible: root.busy && !root.operation.indeterminate

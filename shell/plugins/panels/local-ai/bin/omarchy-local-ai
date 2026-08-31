@@ -21,7 +21,7 @@ TIMEOUT="${OMARCHY_AI_TIMEOUT:-7200}"
 HERE=$(cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")")" && pwd)
 SELF="$HERE/$(basename "${BASH_SOURCE[0]}")"
 PIN=${OMARCHY_AI_REGISTRY_PIN-$([[ -f $HERE/../registry.pin ]] && tr -d '[:space:]' <"$HERE/../registry.pin" || true)}
-EMPTY='{"schemaVersion":"omarchy-local-ai/4","state":"uninitialized","updatedAt":"","error":"","operation":{"name":"","recipeId":"","percent":0,"indeterminate":false,"detail":""},"active":{"recipeId":"","modelId":"","name":"","servedModel":"","container":"","endpoint":"","port":0,"gpuIndices":[],"apiReady":false,"toolCallReady":false,"tools":false,"agents":{}},"gpus":[],"registry":{"path":"","revision":"","matching":0,"total":0},"hardware":{"groups":[]},"models":[]}'
+EMPTY='{"schemaVersion":"omarchy-local-ai/4","state":"uninitialized","updatedAt":"","error":"","operation":{"name":"","recipeId":"","percent":0,"indeterminate":false,"detail":""},"active":{"recipeId":"","modelId":"","name":"","servedModel":"","container":"","endpoint":"","port":0,"gpuIndices":[],"apiReady":false,"toolCallReady":false,"tools":false,"ctxTokens":0,"toksPerSec":0,"agents":{}},"gpus":[],"registry":{"path":"","revision":"","matching":0,"total":0},"hardware":{"groups":[]},"models":[]}'
 # shellcheck source=../lib/state.sh
 source "$HERE/../lib/state.sh"
 # shellcheck source=../lib/hardware.sh
