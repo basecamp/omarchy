@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Omarchy.PluginHost 1.0
 
 Item {
@@ -9,8 +10,43 @@ Item {
 
   property var shell: null
   property var barWidgetRegistry: null
+  readonly property int maximumPermissionChoiceBytes: 262176
+  readonly property int maximumPermissionChoiceChunkBytes: 90000
 
   visible: false
+
+  // Permission operations stay inside the trusted host. IPC receives only
+  // plugin ids, opaque operation/row ids, and bounded choice JSON; the
+  // manager retains the exact installed revision and authority context.
+  IpcHandler {
+    target: "plugin-permissions"
+
+    function list(pluginId: string): string {
+      return PluginManager.permissions.beginList(pluginId)
+    }
+
+    function review(pluginId: string): string {
+      return PluginManager.permissions.beginInteractiveCliReview(pluginId)
+    }
+
+    function apply(reviewOperationId: string, chunk0: string, chunk1: string, chunk2: string): string {
+      if (chunk0.length > root.maximumPermissionChoiceChunkBytes
+          || chunk1.length > root.maximumPermissionChoiceChunkBytes
+          || chunk2.length > root.maximumPermissionChoiceChunkBytes)
+        return ""
+      var choicesJson = chunk0 + chunk1 + chunk2
+      if (choicesJson.length > root.maximumPermissionChoiceBytes) return ""
+      return PluginManager.permissions.applyInteractiveCli(reviewOperationId, choicesJson)
+    }
+
+    function revoke(sourceOperationId: string, rowId: string): string {
+      return PluginManager.permissions.revoke(sourceOperationId, rowId)
+    }
+
+    function poll(operationId: string): string {
+      return PluginManager.permissions.poll(operationId)
+    }
+  }
 
   function screenFor(name) {
     for (var i = 0; i < Quickshell.screens.length; i++)
