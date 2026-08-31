@@ -10,6 +10,7 @@ if(NOT TARGET omarchy-plugin-capability-definitions)
 endif()
 
 add_library(omarchy-plugin-provider-host STATIC
+  src/provider_catalog.cpp
   src/provider_host.cpp
 )
 target_compile_features(omarchy-plugin-provider-host PUBLIC cxx_std_20)
