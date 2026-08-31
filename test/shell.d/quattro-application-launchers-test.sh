@@ -117,3 +117,42 @@ ALACRITTY_PRESENT=0 run_migration
 [[ ! -e $icons/GitHub.png ]] || fail "migration does not replace a dangling icon symlink"
 [[ -f $icons/ChatGPT.png ]] || fail "migration still restores later launchers after a dangling icon symlink"
 pass "migration skips a dangling icon symlink without aborting"
+
+# omarchy-migrate runs migrations with bash -euo pipefail, and the Quattro
+# upgrade now aborts outright when one does not complete, so every hazard below
+# costs a half-upgraded machine rather than one unrepaired icon.
+
+reset_home
+printf 'github-icon\n' >"$backup/GitHub.png"
+write_desktop "$apps/ChatGPT.desktop" "$icons/ChatGPT.png"
+chmod 000 "$apps/ChatGPT.desktop"
+write_desktop "$apps/GitHub.desktop" "$icons/GitHub.png"
+# Mode 000 does not stop root, and a pass that proves nothing is worse than none.
+if [[ -r $apps/ChatGPT.desktop ]]; then
+  echo "skip - the unreadable .desktop case needs an unprivileged user"
+else
+  ALACRITTY_PRESENT=0 run_migration
+  [[ -f $icons/GitHub.png ]] || fail "migration still restores launchers past an unreadable .desktop"
+  pass "migration survives an unreadable .desktop"
+fi
+chmod 644 "$apps/ChatGPT.desktop"
+
+reset_home
+printf 'github-icon\n' >"$backup/GitHub.png"
+ln -s "$home/nowhere" "$icons"
+write_desktop "$apps/GitHub.desktop" "$icons/GitHub.png"
+ALACRITTY_PRESENT=0 run_migration
+
+[[ -L $icons ]] || fail "migration leaves a dangling icons directory symlink in place"
+pass "migration survives a dangling icons directory symlink"
+
+reset_home
+older="$apps/icons.omarchy-upgrade-to-quattro.20260101000000.bak"
+mkdir -p "$older"
+printf 'older-icon\n' >"$older/GitHub.png"
+printf 'newer-icon\n' >"$backup/GitHub.png"
+write_desktop "$apps/GitHub.desktop" "$icons/GitHub.png"
+ALACRITTY_PRESENT=0 run_migration
+
+[[ $(<"$icons/GitHub.png") == newer-icon ]] || fail "migration restores from the newest upgrade backup" "$(<"$icons/GitHub.png")"
+pass "migration restores from the newest upgrade backup"

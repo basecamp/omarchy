@@ -12,20 +12,28 @@ icons_dir="$apps_dir/icons"
 restored=0
 
 for desktop in "$apps_dir"/*.desktop; do
-  [[ -f $desktop ]] || continue
-  icon=$(sed -n 's/^Icon=//p' "$desktop" | head -1)
+  # An unreadable launcher makes sed exit non-zero, and a repair migration that
+  # dies on one stray file now aborts the whole Quattro upgrade.
+  [[ -f $desktop && -r $desktop ]] || continue
+  icon=$(sed -n '/^Icon=/ { s/^Icon=//; p; q; }' "$desktop")
   icon_name="${icon##*/}"
   [[ $icon == "$icons_dir/$icon_name" ]] || continue
   # A dangling symlink is not -e, and GNU cp then refuses to write through it
   # and exits 1. Under bash -euo pipefail that aborts the rest of the loop.
   [[ -e $icon || -L $icon ]] && continue
-  for backup in "$apps_dir"/icons.omarchy-upgrade-to-quattro.*.bak/"$icon_name"; do
-    [[ -f $backup ]] || continue
-    mkdir -p "$icons_dir"
-    cp -f "$backup" "$icon"
-    restored=1
-    break
+  # Last match wins: a home that survived two upgrades has one backup per run,
+  # and the newest holds the icon the launcher was last drawn with.
+  backup=""
+  for candidate in "$apps_dir"/icons.omarchy-upgrade-to-quattro.*.bak/"$icon_name"; do
+    [[ -f $candidate ]] || continue
+    backup="$candidate"
   done
+  [[ -n $backup ]] || continue
+  # icons/ is itself a dangling symlink on some homes, and mkdir -p exits 1 on
+  # one rather than following it.
+  mkdir -p "$icons_dir" 2>/dev/null || continue
+  cp -f "$backup" "$icon"
+  restored=1
 done
 
 removed_alacritty=0
