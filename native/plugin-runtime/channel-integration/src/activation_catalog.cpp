@@ -3,6 +3,7 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/file.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -148,7 +149,16 @@ ActivationCatalog::load(int activation_root_fd, std::uint32_t trusted_uid,
                  O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
     struct stat pinned_root{};
     if (!root || ::fstat(root.get(), &pinned_root) < 0 ||
-        !stable(root_before, pinned_root)) {
+        pinned_root.st_dev != root_before.st_dev ||
+        pinned_root.st_ino != root_before.st_ino ||
+        !trusted_root(pinned_root, trusted_uid) ||
+        ::flock(root.get(), LOCK_SH) < 0) {
+      error = ActivationCatalogError::root_untrusted;
+      return {};
+    }
+    struct stat locked_root_before{};
+    if (::fstat(root.get(), &locked_root_before) < 0 ||
+        !trusted_root(locked_root_before, trusted_uid)) {
       error = ActivationCatalogError::root_untrusted;
       return {};
     }
@@ -222,7 +232,7 @@ ActivationCatalog::load(int activation_root_fd, std::uint32_t trusted_uid,
     struct stat root_after{};
     if (error == ActivationCatalogError::none &&
         (::fstat(root.get(), &root_after) < 0 ||
-         !stable(root_before, root_after) ||
+         !stable(locked_root_before, root_after) ||
          std::ranges::any_of(entries, [](const auto &candidate) {
            return !candidate.currently_unchanged();
          })))
@@ -231,12 +241,15 @@ ActivationCatalog::load(int activation_root_fd, std::uint32_t trusted_uid,
     if (::closedir(directory.release()) < 0 &&
         error == ActivationCatalogError::none)
       error = ActivationCatalogError::enumeration_failed;
+    if (::flock(root.get(), LOCK_UN) < 0 &&
+        error == ActivationCatalogError::none)
+      error = ActivationCatalogError::enumeration_failed;
     if (error != ActivationCatalogError::none)
       return {};
     std::ranges::sort(entries, [](const auto &left, const auto &right) {
       return left.plugin_id() < right.plugin_id();
     });
-    const auto root_epoch = epoch_from_metadata(root_before);
+    const auto root_epoch = epoch_from_metadata(locked_root_before);
     return std::unique_ptr<ActivationCatalog>(
         new ActivationCatalog(std::move(root), root_epoch,
                                     std::move(entries)));

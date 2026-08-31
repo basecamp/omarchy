@@ -77,12 +77,17 @@ if(TARGET omarchy-plugin-host-session)
     omarchy-plugin-channel-integration
     omarchy-plugin-activation-snapshot
     omarchy-plugin-host-session
+    omarchy-plugin-discovery
   )
   target_link_libraries(omarchy-plugin-authenticated-session PRIVATE
     Qt6::Core
     Qt6::DBus)
   set_target_properties(omarchy-plugin-authenticated-session PROPERTIES
     POSITION_INDEPENDENT_CODE ON)
+  if(BUILD_TESTING)
+    target_compile_definitions(omarchy-plugin-authenticated-session PUBLIC
+      OMARCHY_PLUGIN_PERMISSION_AUTHORITY_TESTING)
+  endif()
 endif()
 
 if(BUILD_TESTING)
@@ -158,12 +163,15 @@ if(BUILD_TESTING)
 
     add_executable(omarchy-plugin-runtime-roots-test
       src/runtime_roots.cpp
+      src/activation_catalog.cpp
       tests/runtime_roots_test.cpp)
     omarchy_plugin_target_defaults(omarchy-plugin-runtime-roots-test)
     target_compile_definitions(omarchy-plugin-runtime-roots-test PRIVATE
       OMARCHY_RUNTIME_ROOTS_TESTING)
     target_link_libraries(omarchy-plugin-runtime-roots-test PRIVATE
-      omarchy-plugin-activation-snapshot)
+      omarchy-plugin-activation-snapshot
+      omarchy-plugin-discovery
+      omarchy-plugin-authenticated-session)
     add_test(NAME plugin-runtime-roots
       COMMAND omarchy-plugin-runtime-roots-test)
     set_tests_properties(plugin-runtime-roots PROPERTIES

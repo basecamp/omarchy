@@ -43,7 +43,8 @@ target_compile_options(omarchy-plugin-activation-snapshot PRIVATE
   -Wall -Wextra -Wpedantic -Werror)
 if(BUILD_TESTING)
   target_compile_definitions(omarchy-plugin-activation-snapshot PUBLIC
-    OMARCHY_AUTHORITY_STORE_TESTING)
+    OMARCHY_AUTHORITY_STORE_TESTING
+    OMARCHY_REVISION_SOURCE_TESTING)
 endif()
 
 add_library(omarchy-plugin-host-session STATIC

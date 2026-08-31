@@ -183,6 +183,17 @@ ActivationResult failure(ActivationError error) {
 
 } // namespace
 
+std::optional<std::string>
+encode_activation_record(const ActivationRecord &record) {
+  if (!component(record.plugin_id) || !component(record.revision_directory) ||
+      !digest(record.revision_sha256) || !component(record.state_directory))
+    return std::nullopt;
+  return "format=omarchy-plugin-activation-v2\nplugin=" + record.plugin_id +
+         "\nrevision-directory=" + record.revision_directory +
+         "\nrevision-sha256=" + record.revision_sha256 +
+         "\nstate-directory=" + record.state_directory + "\n";
+}
+
 InspectedActivationRecord::InspectedActivationRecord(
     ActivationRecord record, OwnedDescriptor descriptor,
     StableMetadata metadata) noexcept

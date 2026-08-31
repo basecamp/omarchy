@@ -70,7 +70,7 @@ PluginPermissionAuthority::PluginPermissionAuthority(
     : activation_root_(std::move(activation_root)),
       revision_root_(std::move(revision_root)),
       state_root_(std::move(state_root)), authority_(std::move(authority)),
-      revision_verifier_(),
+      revision_verifier_(trusted_uid),
       activation_source_(activation_root_.get(), revision_root_.get(),
                          state_root_.get(), revision_verifier_, *authority_,
                          authority_identity, std::string(expected_plugin.view()),

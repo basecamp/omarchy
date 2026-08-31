@@ -449,7 +449,7 @@ public:
                                         permissions::PluginId(plugin_));
     require(store_ != nullptr, "cannot open runtime root authority store");
     const int revision_fd = open_directory(revision_);
-    host::DescriptorRevisionVerifier verifier;
+    host::SourceRevisionVerifier verifier;
     verified_ = verifier.verify_open_revision(revision_fd);
     ::close(revision_fd);
     require(verified_ && verified_->manifest.id == plugin_,

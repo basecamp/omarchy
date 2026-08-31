@@ -193,7 +193,7 @@ public:
     const int revision_fd = ::open(
         revision.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
     require(revision_fd >= 0, "permission contract revision open failed");
-    host::DescriptorRevisionVerifier verifier;
+    host::SourceRevisionVerifier verifier;
     auto verified = verifier.verify_open_revision(revision_fd);
     ::close(revision_fd);
     require(verified && verified->manifest.id == plugin,

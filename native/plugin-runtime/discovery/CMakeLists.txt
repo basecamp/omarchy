@@ -9,7 +9,9 @@ endif()
 
 option(PLUGIN_SECURITY_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 
-add_library(omarchy-plugin-discovery STATIC src/discovery.cpp)
+add_library(omarchy-plugin-discovery STATIC
+  src/discovery.cpp
+  src/revision_ingress.cpp)
 target_include_directories(omarchy-plugin-discovery PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_compile_features(omarchy-plugin-discovery PUBLIC cxx_std_20)
 target_compile_options(omarchy-plugin-discovery PRIVATE -Wall -Wextra -Wpedantic -Werror)
@@ -21,6 +23,8 @@ if(PLUGIN_SECURITY_ENABLE_SANITIZERS)
 endif()
 
 if(BUILD_TESTING)
+  target_compile_definitions(omarchy-plugin-discovery
+    PUBLIC OMARCHY_REVISION_INGRESS_TESTING)
   add_executable(omarchy-plugin-discovery-test tests/discovery_test.cpp)
   target_link_libraries(omarchy-plugin-discovery-test PRIVATE omarchy-plugin-discovery)
   target_compile_options(omarchy-plugin-discovery-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
@@ -35,4 +39,21 @@ if(BUILD_TESTING)
   endif()
   add_test(NAME plugin-manifest-discovery COMMAND omarchy-plugin-discovery-test)
   set_tests_properties(plugin-manifest-discovery PROPERTIES TIMEOUT 20 LABELS "unit;integration;adversarial")
+
+  add_executable(omarchy-plugin-revision-ingress-test
+    tests/revision_ingress_test.cpp)
+  target_link_libraries(omarchy-plugin-revision-ingress-test
+    PRIVATE omarchy-plugin-discovery)
+  target_compile_options(omarchy-plugin-revision-ingress-test
+    PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  if(PLUGIN_SECURITY_ENABLE_SANITIZERS)
+    target_compile_options(omarchy-plugin-revision-ingress-test
+      PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+    target_link_options(omarchy-plugin-revision-ingress-test
+      PRIVATE -fsanitize=address,undefined)
+  endif()
+  add_test(NAME plugin-revision-ingress
+    COMMAND omarchy-plugin-revision-ingress-test)
+  set_tests_properties(plugin-revision-ingress PROPERTIES
+    TIMEOUT 60 LABELS "integration;adversarial;crash-consistency")
 endif()

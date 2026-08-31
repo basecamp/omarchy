@@ -2,6 +2,8 @@
 
 #include "manifest_contract.hpp"
 
+#include <cstdint>
+
 namespace omarchy::plugins::discovery {
 
 // A verified view of the exact directory object named by an already-open file
@@ -17,5 +19,11 @@ struct DescriptorVerifiedPlugin {
 // tree entry is invalid, unsafe, unstable, or exceeds the normal tree limits.
 [[nodiscard]] DescriptorVerifiedPlugin
 discover_open_revision(int revision_directory_fd);
+
+// The ingress variant additionally requires the complete opened tree to have
+// canonical immutable publication metadata during the same bounded discovery
+// epoch used to compute its content identity.
+[[nodiscard]] DescriptorVerifiedPlugin discover_open_published_revision(
+    int revision_directory_fd, std::uint32_t expected_uid);
 
 } // namespace omarchy::plugins::discovery

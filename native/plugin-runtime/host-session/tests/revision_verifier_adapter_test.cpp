@@ -42,7 +42,7 @@ int main() {
     const std::filesystem::path fixture = MANIFEST_V2_FIXTURE_ROOT;
     Descriptor descriptor(fixture);
     const auto direct = discovery::discover_open_revision(descriptor.get());
-    const host::DescriptorRevisionVerifier verifier;
+    const host::SourceRevisionVerifier verifier;
     const auto adapted = verifier.verify_open_revision(descriptor.get());
     require(adapted && adapted->manifest == direct.manifest &&
                 adapted->tree_sha256 == direct.identity.tree_sha256 &&

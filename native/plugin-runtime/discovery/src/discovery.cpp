@@ -11,6 +11,7 @@
 #include <cerrno>
 #include <stdexcept>
 #include <string_view>
+#include <optional>
 #include <utility>
 
 namespace omarchy::plugins::discovery {
@@ -75,6 +76,10 @@ struct OpenDirectory {
   struct stat metadata{};
 };
 
+struct PublishedOwner {
+  std::uint32_t uid;
+};
+
 bool same_stable_metadata(const struct stat &before, const struct stat &after) {
   return before.st_dev == after.st_dev && before.st_ino == after.st_ino &&
          before.st_mode == after.st_mode && before.st_nlink == after.st_nlink &&
@@ -114,7 +119,8 @@ void enumerate_open_tree(int directory_fd, std::string_view prefix,
                          std::vector<OpenFile> &files,
                          std::vector<OpenDirectory> &directories,
                          manifest::TreeContents &contents,
-                         std::size_t &entry_count, std::size_t depth) {
+                         std::size_t &entry_count, std::size_t depth,
+                         std::optional<PublishedOwner> published_owner) {
   require(depth <= kMaximumTraversalDepth, "plugin tree traversal is too deep");
   Descriptor pinned(::openat(directory_fd, ".",
                              O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
@@ -123,6 +129,12 @@ void enumerate_open_tree(int directory_fd, std::string_view prefix,
   require(::fstat(pinned.get(), &directory_metadata) == 0 &&
               S_ISDIR(directory_metadata.st_mode),
           "cannot inspect plugin directory");
+  if (published_owner) {
+    require(directory_metadata.st_uid == published_owner->uid &&
+                directory_metadata.st_nlink >= 2 &&
+                (directory_metadata.st_mode & 07777) == 0555,
+            "published plugin directory metadata is unsafe");
+  }
   directories.push_back(
       {.descriptor = std::move(pinned), .metadata = directory_metadata});
   const int scan_fd = ::openat(directory_fd, ".",
@@ -152,7 +164,7 @@ void enumerate_open_tree(int directory_fd, std::string_view prefix,
                    O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
       require(child.get() >= 0, "cannot open plugin directory");
       enumerate_open_tree(child.get(), relative, files, directories, contents,
-                          entry_count, depth + 1);
+                          entry_count, depth + 1, published_owner);
       continue;
     }
     require(S_ISREG(metadata.st_mode), "special file in plugin tree");
@@ -163,6 +175,12 @@ void enumerate_open_tree(int directory_fd, std::string_view prefix,
     struct stat opened{};
     require(::fstat(file.get(), &opened) == 0 && S_ISREG(opened.st_mode),
             "plugin file changed during traversal");
+    if (published_owner) {
+      require(opened.st_uid == published_owner->uid && opened.st_nlink == 1 &&
+                  ((opened.st_mode & 07777) == 0444 ||
+                   (opened.st_mode & 07777) == 0555),
+              "published plugin file metadata is unsafe");
+    }
     contents.add(
         {.relative = relative,
          .bytes =
@@ -175,7 +193,8 @@ void enumerate_open_tree(int directory_fd, std::string_view prefix,
 
 } // namespace
 
-DescriptorVerifiedPlugin discover_open_revision(int revision_directory_fd) {
+DescriptorVerifiedPlugin discover(int revision_directory_fd,
+                                  std::optional<PublishedOwner> published_owner) {
   struct stat root_metadata{};
   require(revision_directory_fd >= 0 &&
               ::fstat(revision_directory_fd, &root_metadata) == 0 &&
@@ -187,7 +206,7 @@ DescriptorVerifiedPlugin discover_open_revision(int revision_directory_fd) {
   manifest::TreeContents contents;
   std::size_t entry_count = 0;
   enumerate_open_tree(revision_directory_fd, "", files, directories, contents,
-                      entry_count, 0);
+                      entry_count, 0, published_owner);
   const auto *manifest_file = contents.find("manifest.json");
   require(manifest_file != nullptr, "plugin tree has no manifest.json");
   require(manifest_file->bytes.size() <= kMaximumManifestBytes,
@@ -212,6 +231,16 @@ DescriptorVerifiedPlugin discover_open_revision(int revision_directory_fd) {
 
   auto identity = manifest::identify_tree_contents(std::move(contents), parsed);
   return {.manifest = std::move(parsed), .identity = std::move(identity)};
+}
+
+DescriptorVerifiedPlugin discover_open_revision(int revision_directory_fd) {
+  return discover(revision_directory_fd, std::nullopt);
+}
+
+DescriptorVerifiedPlugin discover_open_published_revision(
+    int revision_directory_fd, std::uint32_t expected_uid) {
+  return discover(revision_directory_fd,
+                  PublishedOwner{.uid = expected_uid});
 }
 
 } // namespace omarchy::plugins::discovery

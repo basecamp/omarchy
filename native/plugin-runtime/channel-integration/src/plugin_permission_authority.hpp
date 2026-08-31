@@ -13,6 +13,9 @@ namespace omarchy::plugin_runtime::channel {
 
 class PluginRuntimeRoot;
 class RuntimeBootstrap;
+#ifdef OMARCHY_PLUGIN_PERMISSION_AUTHORITY_TESTING
+class PluginPermissionAuthorityTestAccess;
+#endif
 struct RuntimeServices;
 
 } // namespace omarchy::plugin_runtime::channel
@@ -119,6 +122,9 @@ private:
 
   friend class PluginRuntimeRoot;
   friend class RuntimeBootstrap;
+#ifdef OMARCHY_PLUGIN_PERMISSION_AUTHORITY_TESTING
+  friend class PluginPermissionAuthorityTestAccess;
+#endif
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
   friend class PluginRuntimeRootTestAccess;
 #endif

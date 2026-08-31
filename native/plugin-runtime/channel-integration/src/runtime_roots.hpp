@@ -1,6 +1,7 @@
 #pragma once
 
 #include "activation_snapshot.hpp"
+#include "revision_ingress.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -28,6 +29,18 @@ enum class RuntimeRootsError : std::uint8_t {
   internal_failure,
 };
 
+#ifdef OMARCHY_RUNTIME_ROOTS_TESTING
+enum class CandidateRecordCrashPoint : std::uint8_t {
+  none,
+  write,
+  file_sync,
+  rename,
+  directory_sync,
+};
+void set_candidate_record_crash_point_for_testing(
+    CandidateRecordCrashPoint point) noexcept;
+#endif
+
 // The only runtime bootstrap for v2 filesystem authority. Paths come from
 // the effective user's passwd entry plus fixed host constants; environment,
 // QML, and plugin data cannot select or replace them.
@@ -50,6 +63,8 @@ public:
   }
   [[nodiscard]] int authority_fd() const noexcept { return authority_.get(); }
   [[nodiscard]] int state_fd() const noexcept { return state_.get(); }
+  [[nodiscard]] omarchy::plugins::discovery::PublishedRevision
+  stage_revision_for_review(int archive_fd) const;
 
 private:
   RuntimeRoots(std::uint32_t trusted_uid,

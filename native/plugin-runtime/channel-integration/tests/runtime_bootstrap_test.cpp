@@ -127,7 +127,7 @@ public:
     const int revision_fd = ::open(
         revision.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
     require(revision_fd >= 0, "runtime revision descriptor unavailable");
-    host_session::DescriptorRevisionVerifier verifier;
+    host_session::SourceRevisionVerifier verifier;
     auto verified = verifier.verify_open_revision(revision_fd);
     ::close(revision_fd);
     require(verified && verified->manifest.id == plugin,

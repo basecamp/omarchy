@@ -50,6 +50,11 @@ struct ActivationRecord {
   std::string state_directory;
 };
 
+// Canonical inverse of the strict activation-record parser. Invalid record
+// fields are rejected rather than escaped or normalized.
+[[nodiscard]] std::optional<std::string>
+encode_activation_record(const ActivationRecord &record);
+
 // One exact, metadata-stable activation record selected relative to a trusted
 // root. Catalog/bootstrap code retains this object rather than recovering or
 // reopening a pathname after inspection.
