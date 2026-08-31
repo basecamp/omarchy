@@ -14,6 +14,16 @@ fi
 
 FLAG_NAME="$1"
 ACTION="${2:-toggle}"
+
+# The name becomes a filename in two paths. A slash would turn it into
+# directory levels, so a typo like ../foo would make off delete a .lua outside
+# the toggle directory. Refuse it, the same way omarchy-webapp-install and
+# omarchy-theme-set refuse names with a slash.
+if [[ $FLAG_NAME == */* ]]; then
+  echo "Flag name cannot contain '/': $FLAG_NAME" >&2
+  exit 1
+fi
+
 FLAG_FILE="$HOME/.local/state/omarchy/toggles/hypr/$FLAG_NAME.lua"
 FLAG_SOURCE="$OMARCHY_PATH/default/hypr/toggles/$FLAG_NAME.lua"
 
