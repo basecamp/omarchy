@@ -13,6 +13,9 @@ public:
   replace_active(AuthorityStore &store, const policy::GrantSnapshot &snapshot) {
     return store.replace_active_for_testing(snapshot);
   }
+  static void crash_at(AuthorityCrashPoint point) noexcept {
+    AuthorityStore::set_crash_point_for_testing(point);
+  }
   [[nodiscard]] static AuthorityRevocationResult
   revoke_active(AuthorityStore &store,
                 const permissions::CapabilityKey &capability,

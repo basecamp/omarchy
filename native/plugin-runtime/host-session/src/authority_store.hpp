@@ -49,6 +49,20 @@ enum class AuthorityMutationResult {
   poisoned,
 };
 
+#ifdef OMARCHY_AUTHORITY_STORE_TESTING
+enum class AuthorityCrashPoint {
+  none,
+  grant_write,
+  grant_file_sync,
+  grant_rename,
+  grant_directory_sync,
+  slots_write,
+  slots_file_sync,
+  slots_rename,
+  slots_directory_sync,
+};
+#endif
+
 struct AuthorityRevocationResult {
   AuthorityMutationResult status = AuthorityMutationResult::invalid;
   std::optional<permissions::ActivationBinding> binding;
@@ -160,6 +174,7 @@ private:
 #ifdef OMARCHY_AUTHORITY_STORE_TESTING
   [[nodiscard]] AuthorityMutationResult
   replace_active_for_testing(const policy::GrantSnapshot &snapshot);
+  static void set_crash_point_for_testing(AuthorityCrashPoint point) noexcept;
 #endif
 
   OwnedDescriptor root_;

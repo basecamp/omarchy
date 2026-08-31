@@ -101,6 +101,10 @@ if(BUILD_TESTING)
   add_test(NAME plugin-authority-store COMMAND omarchy-plugin-authority-store-test)
   set_tests_properties(plugin-authority-store PROPERTIES
     TIMEOUT 20 LABELS "unit;security;authority;adversarial")
+  add_test(NAME plugin-authority-store-crash-matrix
+    COMMAND omarchy-plugin-authority-store-test --crash-matrix-only)
+  set_tests_properties(plugin-authority-store-crash-matrix PROPERTIES
+    TIMEOUT 20 LABELS "unit;security;authority;adversarial;crash")
 
   add_executable(omarchy-plugin-consent-review-test tests/consent_review_test.cpp)
   target_link_libraries(omarchy-plugin-consent-review-test PRIVATE

@@ -3,6 +3,7 @@
 
 #include "manifest_contract.hpp"
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -262,6 +263,98 @@ std::string active_record(const host::AuthoritySlots &slots) {
   require(slots.active.has_value(), "active slot missing");
   return "grant-" + std::string(slots.active->snapshot_digest.view());
 }
+
+void activate(Fixture &fixture, const Review &value) {
+  require(fixture.store->publish_candidate(value.verified, value.snapshot, 0,
+                                           fixture.definitions, {}) ==
+                  host::AuthorityMutationResult::applied &&
+              fixture.store->promote_candidate(value.snapshot.binding, 1) ==
+                  host::AuthorityMutationResult::applied,
+          "authority crash fixture activation failed");
+}
+
+void reopen(Fixture &fixture) {
+  fixture.store.reset();
+  fixture.store = host::AuthorityStore::open(fixture.root, ::getuid(),
+                                             permissions::PluginId(kPlugin));
+  require(fixture.store != nullptr, "authority crash fixture reopen failed");
+}
+
+template <typename Mutation>
+void crash_during(Fixture &fixture, host::AuthorityCrashPoint point,
+                  Mutation mutation) {
+  // This models loss of the sole mutating process after an exact syscall
+  // boundary. It verifies restart state, not storage-device power-loss rules.
+  fixture.store.reset();
+  const auto child = ::fork();
+  require(child >= 0, "authority crash fork failed");
+  if (child == 0) {
+    auto store = host::AuthorityStore::open(fixture.root, ::getuid(),
+                                            permissions::PluginId(kPlugin));
+    if (!store)
+      ::_exit(87);
+    host::AuthorityStoreTestAccess::crash_at(point);
+    mutation(*store);
+    ::_exit(88);
+  }
+  int status = 0;
+  require(::waitpid(child, &status, 0) == child && WIFEXITED(status) &&
+              WEXITSTATUS(status) == 86,
+          "authority mutation did not crash at its selected boundary");
+  reopen(fixture);
+}
+
+void require_complete_active(Fixture &fixture, const Review &expected) {
+  const auto view = fixture.store->read_authority_view();
+  require(view && view->authority_slots.active && view->active &&
+              view->authority_slots.active->generation ==
+                  expected.snapshot.binding.generation &&
+              view->active->binding == expected.snapshot.binding &&
+              activatable(fixture.store->resolve(
+                  kPlugin, expected.snapshot.binding.revision.view())),
+          "active authority did not match its referenced digest/generation");
+}
+
+std::size_t
+require_temporary_files_unreferenced(const Fixture &fixture,
+                                     const host::AuthoritySlots &slots) {
+  const auto active = slots.active ? active_record(slots) : std::string{};
+  const auto candidate =
+      slots.candidate
+          ? "grant-" + std::string(slots.candidate->snapshot_digest.view())
+          : std::string{};
+  std::size_t count = 0;
+  for (const auto &entry : std::filesystem::directory_iterator(fixture.path)) {
+    const auto name = entry.path().filename().string();
+    if (!name.starts_with(".grant.") && !name.starts_with(".slots."))
+      continue;
+    ++count;
+    require(name != active && name != candidate && name != "slots",
+            "temporary file became durable authority");
+  }
+  return count;
+}
+
+bool crashes_before_rename(host::AuthorityCrashPoint point) {
+  return point == host::AuthorityCrashPoint::grant_write ||
+         point == host::AuthorityCrashPoint::grant_file_sync ||
+         point == host::AuthorityCrashPoint::slots_write ||
+         point == host::AuthorityCrashPoint::slots_file_sync;
+}
+
+constexpr std::array grant_crash_points{
+    host::AuthorityCrashPoint::grant_write,
+    host::AuthorityCrashPoint::grant_file_sync,
+    host::AuthorityCrashPoint::grant_rename,
+    host::AuthorityCrashPoint::grant_directory_sync,
+};
+
+constexpr std::array slots_crash_points{
+    host::AuthorityCrashPoint::slots_write,
+    host::AuthorityCrashPoint::slots_file_sync,
+    host::AuthorityCrashPoint::slots_rename,
+    host::AuthorityCrashPoint::slots_directory_sync,
+};
 
 void roundtrip_and_lifecycle() {
   Fixture fixture;
@@ -944,6 +1037,142 @@ void crash_orphan_retry_and_cleanup() {
           "normal discard leaked superseded immutable record");
 }
 
+void durable_publish_and_promotion_crash_matrix() {
+  const auto first = review(1);
+  const auto second = review(2, 'b');
+  const auto publish_case = [&](host::AuthorityCrashPoint point) {
+    Fixture fixture;
+    activate(fixture, first);
+    const auto old_slots = fixture.store->read_slots();
+    require(old_slots && old_slots->active && !old_slots->candidate,
+            "publish crash fixture lacked complete old authority");
+    crash_during(fixture, point, [&](host::AuthorityStore &store) {
+      (void)store.publish_candidate(second.verified, second.snapshot,
+                                    old_slots->sequence, fixture.definitions,
+                                    {});
+    });
+
+    auto recovered = fixture.store->read_slots();
+    require(recovered && recovered->active == old_slots->active,
+            "publish crash changed active authority");
+    require_complete_active(fixture, first);
+    const auto temporary_count =
+        require_temporary_files_unreferenced(fixture, *recovered);
+    require((temporary_count > 0) == crashes_before_rename(point),
+            "crash boundary left an unexpected temporary-file state");
+    if (!recovered->candidate) {
+      require(*recovered == *old_slots &&
+                  fixture.store->publish_candidate(
+                      second.verified, second.snapshot, recovered->sequence,
+                      fixture.definitions,
+                      {}) == host::AuthorityMutationResult::applied,
+              "publish crash neither preserved old state nor allowed retry");
+      recovered = fixture.store->read_slots();
+    }
+    require(recovered && recovered->candidate && recovered->active &&
+                recovered->active->generation == 1 &&
+                recovered->candidate->generation == 2 &&
+                recovered->sequence == old_slots->sequence + 1 &&
+                unavailable(fixture.store->resolve(kPlugin, hex('b'))),
+            "publish crash exposed partial candidate as active authority");
+    require(fixture.store->promote_candidate(second.snapshot.binding,
+                                             recovered->sequence) ==
+                host::AuthorityMutationResult::applied,
+            "recovered published candidate bytes were not exact");
+    require_complete_active(fixture, second);
+  };
+
+  for (const auto point : grant_crash_points)
+    publish_case(point);
+  for (const auto point : slots_crash_points)
+    publish_case(point);
+
+  for (const auto point : slots_crash_points) {
+    Fixture fixture;
+    activate(fixture, first);
+    require(fixture.store->publish_candidate(second.verified, second.snapshot,
+                                             2, fixture.definitions, {}) ==
+                host::AuthorityMutationResult::applied,
+            "promotion crash fixture candidate setup failed");
+    const auto old_slots = fixture.store->read_slots();
+    require(old_slots && old_slots->active && old_slots->candidate,
+            "promotion crash fixture lacked complete old authority");
+    crash_during(fixture, point, [&](host::AuthorityStore &store) {
+      (void)store.promote_candidate(second.snapshot.binding,
+                                    old_slots->sequence);
+    });
+
+    auto recovered = fixture.store->read_slots();
+    require(recovered.has_value(),
+            "promotion crash produced unreadable authority slots");
+    const auto temporary_count =
+        require_temporary_files_unreferenced(fixture, *recovered);
+    require((temporary_count > 0) == crashes_before_rename(point),
+            "promotion crash left an unexpected temporary-file state");
+    if (recovered->candidate) {
+      require(*recovered == *old_slots,
+              "promotion crash exposed a mixed old/new authority");
+      require_complete_active(fixture, first);
+      require(fixture.store->promote_candidate(second.snapshot.binding,
+                                               recovered->sequence) ==
+                  host::AuthorityMutationResult::applied,
+              "old promotion authority was not retryable");
+    } else {
+      require(recovered->active && recovered->active->generation == 2 &&
+                  recovered->sequence == old_slots->sequence + 1,
+              "promotion crash exposed partial new authority");
+    }
+    require_complete_active(fixture, second);
+  }
+}
+
+void missing_and_corrupt_references_fail_closed() {
+  for (const bool candidate : {false, true}) {
+    for (const bool missing : {false, true}) {
+      Fixture fixture;
+      const auto first = review(1);
+      const auto second = review(2, 'b');
+      activate(fixture, first);
+      if (candidate)
+        require(fixture.store->publish_candidate(
+                    second.verified, second.snapshot, 2, fixture.definitions,
+                    {}) == host::AuthorityMutationResult::applied,
+                "referenced candidate fixture setup failed");
+      const auto slots = fixture.store->read_slots();
+      require(slots && slots->active && (!candidate || slots->candidate),
+              "referenced record fixture lacked exact slots");
+      const auto reference = candidate ? *slots->candidate : *slots->active;
+      const auto record =
+          "grant-" + std::string(reference.snapshot_digest.view());
+      fixture.store.reset();
+      if (missing) {
+        require(::unlinkat(fixture.root, record.c_str(), 0) == 0,
+                "referenced record removal failed");
+      } else {
+        const int file =
+            ::openat(fixture.root, record.c_str(), O_WRONLY | O_TRUNC);
+        require(file >= 0 && ::write(file, "x", 1) == 1,
+                "referenced record corruption failed");
+        ::close(file);
+      }
+      reopen(fixture);
+      if (candidate) {
+        require_complete_active(fixture, first);
+        require(fixture.store->promote_candidate(second.snapshot.binding,
+                                                 slots->sequence) ==
+                        host::AuthorityMutationResult::invalid &&
+                    activatable(fixture.store->resolve(kPlugin, hex('a'))) &&
+                    unavailable(fixture.store->resolve(kPlugin, hex('b'))),
+                "missing/corrupt candidate became active authority");
+      } else {
+        require(!fixture.store->read_authority_view() &&
+                    unavailable(fixture.store->resolve(kPlugin, hex('a'))),
+                "missing/corrupt active record did not fail closed");
+      }
+    }
+  }
+}
+
 void concurrency_fork_and_umask() {
   Fixture fixture;
   auto left = review(1, 'a');
@@ -1169,8 +1398,13 @@ void root_lock_and_slots_metadata() {
 }
 } // namespace
 
-int main() {
+int main(int argc, char **argv) {
   try {
+    if (argc == 2 && std::string_view(argv[1]) == "--crash-matrix-only") {
+      durable_publish_and_promotion_crash_matrix();
+      missing_and_corrupt_references_fail_closed();
+      return 0;
+    }
     roundtrip_and_lifecycle();
     live_activation_binding_and_revocation();
     mutation_epoch_saturates_fail_closed();
@@ -1182,6 +1416,8 @@ int main() {
     revoke_io_failures_poison_after_effect_fence();
     revoke_allocation_failure_poison_after_effect_fence();
     crash_orphan_retry_and_cleanup();
+    durable_publish_and_promotion_crash_matrix();
+    missing_and_corrupt_references_fail_closed();
     concurrency_fork_and_umask();
     required_denial_cannot_promote();
     incomplete_and_mismatched_reviews_fail();

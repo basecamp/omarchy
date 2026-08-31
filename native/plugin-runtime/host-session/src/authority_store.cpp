@@ -30,6 +30,20 @@ constexpr std::array<std::byte, 8> kSlotsMagic{
     std::byte{'O'}, std::byte{'T'}, std::byte{'S'}, std::byte{1}};
 std::atomic<std::uint64_t> temporary_sequence{1};
 
+#ifdef OMARCHY_AUTHORITY_STORE_TESTING
+std::atomic<AuthorityCrashPoint> authority_crash_point{
+    AuthorityCrashPoint::none};
+
+void crash_after(AuthorityCrashPoint point) noexcept {
+  if (authority_crash_point.load(std::memory_order_relaxed) == point)
+    ::_exit(86);
+}
+#define OMARCHY_AUTHORITY_CRASH_AFTER(point)                                   \
+  crash_after(AuthorityCrashPoint::point)
+#else
+#define OMARCHY_AUTHORITY_CRASH_AFTER(point) ((void)0)
+#endif
+
 struct Writer {
   std::vector<std::byte> bytes;
 
@@ -575,10 +589,16 @@ store_snapshot_record(int root_fd, std::uint32_t expected_uid,
       ::openat(root_fd, temporary.c_str(),
                O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600));
   if (!file || !secure_created_file(file.get(), expected_uid) ||
-      !write_all(file.get(), bytes) || ::fsync(file.get()) < 0) {
+      !write_all(file.get(), bytes)) {
     ::unlinkat(root_fd, temporary.c_str(), 0);
     return AuthorityMutationResult::io_error;
   }
+  OMARCHY_AUTHORITY_CRASH_AFTER(grant_write);
+  if (::fsync(file.get()) < 0) {
+    ::unlinkat(root_fd, temporary.c_str(), 0);
+    return AuthorityMutationResult::io_error;
+  }
+  OMARCHY_AUTHORITY_CRASH_AFTER(grant_file_sync);
   if (::syscall(SYS_renameat2, root_fd, temporary.c_str(), root_fd,
                 name.c_str(), RENAME_NOREPLACE) < 0) {
     if (errno != EEXIST) {
@@ -592,8 +612,11 @@ store_snapshot_record(int root_fd, std::uint32_t expected_uid,
       return AuthorityMutationResult::io_error;
     }
   }
-  return ::fsync(root_fd) == 0 ? AuthorityMutationResult::applied
-                               : AuthorityMutationResult::io_error;
+  OMARCHY_AUTHORITY_CRASH_AFTER(grant_rename);
+  if (::fsync(root_fd) < 0)
+    return AuthorityMutationResult::io_error;
+  OMARCHY_AUTHORITY_CRASH_AFTER(grant_directory_sync);
+  return AuthorityMutationResult::applied;
 }
 
 bool activatable(const policy::GrantSnapshot &snapshot) {
@@ -803,17 +826,36 @@ AuthorityMutationResult AuthorityStore::replace_slots(AuthoritySlots slots) {
       ::openat(root_.get(), temporary.c_str(),
                O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600));
   if (!file || !secure_created_file(file.get(), expected_uid_) ||
-      !write_all(file.get(), bytes) || ::fsync(file.get()) < 0 ||
-      ::renameat(root_.get(), temporary.c_str(), root_.get(),
-                 std::string(kSlotsName).c_str()) < 0 ||
-      ::fsync(root_.get()) < 0) {
+      !write_all(file.get(), bytes)) {
     ::unlinkat(root_.get(), temporary.c_str(), 0);
     return AuthorityMutationResult::io_error;
   }
+  OMARCHY_AUTHORITY_CRASH_AFTER(slots_write);
+  if (::fsync(file.get()) < 0) {
+    ::unlinkat(root_.get(), temporary.c_str(), 0);
+    return AuthorityMutationResult::io_error;
+  }
+  OMARCHY_AUTHORITY_CRASH_AFTER(slots_file_sync);
+  if (::renameat(root_.get(), temporary.c_str(), root_.get(),
+                 std::string(kSlotsName).c_str()) < 0) {
+    ::unlinkat(root_.get(), temporary.c_str(), 0);
+    return AuthorityMutationResult::io_error;
+  }
+  OMARCHY_AUTHORITY_CRASH_AFTER(slots_rename);
+  if (::fsync(root_.get()) < 0)
+    return AuthorityMutationResult::io_error;
+  OMARCHY_AUTHORITY_CRASH_AFTER(slots_directory_sync);
   return AuthorityMutationResult::applied;
 }
 
+#undef OMARCHY_AUTHORITY_CRASH_AFTER
+
 #ifdef OMARCHY_AUTHORITY_STORE_TESTING
+void AuthorityStore::set_crash_point_for_testing(
+    AuthorityCrashPoint point) noexcept {
+  authority_crash_point.store(point, std::memory_order_relaxed);
+}
+
 AuthorityMutationResult AuthorityStore::replace_active_for_testing(
     const policy::GrantSnapshot &snapshot) {
   std::scoped_lock lock(mutation_mutex_);
