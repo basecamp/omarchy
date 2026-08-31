@@ -53,7 +53,10 @@ reset_case() {
 }
 
 # Fixed protected anchors consume the pinned source inodes.
+mkdir -p "$HOME/.windows" "$HOME/Windows"
+chmod 02755 "$HOME/Windows"
 prepare_user_mount_sources
+[[ $(stat -Lc '%a' "$HOME/Windows") == 700 ]] || fail "user preflight preserved the container's setgid bit"
 write 4G 2 64G alice s3cret Europe/Copenhagen
 resolve_caller
 [[ -f $COMPOSE ]] || fail "writer produced a compose file"
