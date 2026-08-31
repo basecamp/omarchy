@@ -16,6 +16,12 @@ fi
 printf -v install_message '%q' "Installing ${name}..."
 printf -v desktop_id_arg '%q' "$desktop_id"
 
+# The list has to reach omarchy-pkg-add as several words, so each word is quoted
+# rather than the whole string; -d '' reads past newlines and always ends at EOF.
+read -r -d '' -a package_list <<<"$packages" || true
+printf -v packages_arg '%q ' "${package_list[@]}"
+packages_arg="${packages_arg% }"
+
 # The subshell keeps & from backgrounding the package installation too.
 exec omarchy-launch-floating-terminal-with-presentation \
-  "echo ${install_message}; omarchy-pkg-add ${packages} && (setsid uwsm-app -- gtk-launch ${desktop_id_arg} >/dev/null 2>&1 &)"
+  "echo ${install_message}; omarchy-pkg-add ${packages_arg} && (setsid uwsm-app -- gtk-launch ${desktop_id_arg} >/dev/null 2>&1 &)"

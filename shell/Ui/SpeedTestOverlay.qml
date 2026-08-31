@@ -130,6 +130,7 @@ PanelWindow {
         spacing: Style.space(16)
 
         Text {
+          textFormat: Text.PlainText
           visible: root.title !== ""
           text: root.title.toUpperCase()
           color: root.onScrimDim
@@ -182,6 +183,7 @@ PanelWindow {
         }
 
         Text {
+          textFormat: Text.PlainText
           visible: root.failed
           text: root.error
           color: root.onScrimUrgent
@@ -368,8 +370,15 @@ PanelWindow {
       spacing: 0
 
       Text {
+        textFormat: Text.PlainText
         anchors.horizontalCenter: parent.horizontalCenter
-        text: dial.reading < 10 ? dial.reading.toFixed(1) : Math.round(dial.reading).toLocaleString(Qt.locale(), 'f', 0)
+        // Both branches go through the locale: a reading is a measurement, so
+        // its separators follow the system's number conventions rather than the
+        // interface language. toFixed would have hardcoded a dot below 10 while
+        // everything above it was already grouped for the locale.
+        text: dial.reading < 10
+          ? dial.reading.toLocaleString(Qt.locale(), 'f', 1)
+          : Math.round(dial.reading).toLocaleString(Qt.locale(), 'f', 0)
         color: root.onScrim
         font.family: root.fontFamily
         font.pixelSize: Style.font.display
@@ -377,6 +386,7 @@ PanelWindow {
       }
 
       Text {
+        textFormat: Text.PlainText
         anchors.horizontalCenter: parent.horizontalCenter
         text: root.unit
         color: root.onScrimDim
@@ -388,6 +398,7 @@ PanelWindow {
     // The 90° gap at the bottom of the scale is where a cluster prints its
     // unit; here it names the direction.
     Text {
+      textFormat: Text.PlainText
       anchors.horizontalCenter: parent.horizontalCenter
       anchors.bottom: parent.bottom
       text: dial.label

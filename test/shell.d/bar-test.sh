@@ -4,6 +4,11 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
+# The command fixture follows the runtime invariant and reads defaults through
+# OMARCHY_PATH. Point it at this checkout rather than whichever install launched
+# the test (or nothing at all on a non-Omarchy development machine).
+export OMARCHY_PATH="$ROOT"
+
 if perl -0ne 'exit(/drag\s*\.\s*target\s*:\s*[^;]*\bslot\b/s ? 0 : 1)' "$ROOT/shell/plugins/bar/Bar.qml"; then
   fail "bar module dragging must not mutate ModuleSlot positions"
 fi
@@ -13,6 +18,17 @@ if rg -q 'barMoveSettling|barMoveSettleTimer' "$ROOT/shell/plugins/bar/Bar.qml";
   fail "bar move outline must clear when the pointer is released"
 fi
 pass "bar move outline has no post-release settling state"
+
+# A widget above the gesture area propagates its composed press-and-hold down
+# without handing over the grab, so the resulting move gets neither a release
+# nor a cancel and the ghost stays up for the session. Only the grabbing area
+# reports pressed, which is what separates the two, so the guard has to stay
+# ahead of the drag.
+if ! perl -0ne 'exit(/onPressAndHold:\s*function[^{]*\{[^}]*?\bpressed\b[^}]*?\bstartDrag\b/s ? 0 : 1)' \
+  "$ROOT/shell/plugins/bar/Bar.qml"; then
+  fail "bar move ignores a press-and-hold the gesture area does not hold the press for"
+fi
+pass "bar move ignores a press-and-hold propagated from a widget above"
 
 run_node_test <<'JS'
 const fs = require('fs')

@@ -1,7 +1,7 @@
 [Desktop Entry]
 Version=1.0
 Name=Docker
-Exec=xdg-terminal-exec --app-id=TUI.tile -e lazydocker
+Exec=xdg-terminal-exec --app-id=TUI.tile -e omarchy-launch-docker-tui
 Terminal=false
 Type=Application
 Icon=docker

@@ -84,7 +84,7 @@ fi
 # Dev-aware skill symlinks. Cannot live in /etc/skel because OMARCHY_PATH may
 # point at a dev checkout (omarchy dev link) where the target differs.
 # Loops every skill directory, so shipping a new one needs no edit here.
-mkdir -p ~/.agents/skills ~/.claude/skills ~/.codex/skills ~/.pi/agent/skills
+mkdir -p ~/.agents/skills ~/.claude/skills ~/.codex/skills ~/.pi/agent/skills ~/.gemini/config/skills
 for skill in "$OMARCHY_PATH"/default/agents/skills/*/; do
   skill=${skill%/}
   name=${skill##*/}
@@ -92,6 +92,7 @@ for skill in "$OMARCHY_PATH"/default/agents/skills/*/; do
   ln -sfn "$skill" ~/.claude/skills/"$name"
   ln -sfn "$skill" ~/.codex/skills/"$name"
   ln -sfn "$skill" ~/.pi/agent/skills/"$name"
+  ln -sfn "$skill" ~/.gemini/config/skills/"$name"
 done
 
 mkdir -p ~/Downloads ~/Pictures ~/Videos ~/.config/gtk-3.0
