@@ -48,6 +48,9 @@ pass "udev-name list is left alone"
 [[ $(run_sanitize "/dev/dri/card0:card1") == "/dev/dri/card0:card1" ]] || fail "mixed colon-free list is left alone"
 pass "mixed colon-free list is left alone"
 
+[[ $(run_sanitize "amd-pci-dgpu:card1") == "amd-pci-dgpu:card1" ]] || fail "udev alias containing pci- is not glued to the next pin"
+pass "udev alias containing pci- is not glued to the next pin"
+
 [[ $(run_sanitize "/dev/dri/card1::/does-not-exist") == "/dev/dri/card1:/does-not-exist" ]] || fail "empty list component does not drop the previous GPU"
 pass "empty list component does not drop the previous GPU"
 
@@ -66,6 +69,10 @@ pass "missing by-path is dropped so Aquamarine cannot split it"
 [[ $(run_sanitize "/dev/dri/by-path/pci-0000:13:00.0-card:/dev/dri/by-path/pci-0000:03:00.0-card") == "__UNSET__" ]] || fail "missing by-path list is dropped"
 pass "missing by-path list is dropped"
 
+usb_missing="/dev/dri/by-path/pci-0000:00:14.0-usb-0:8:1.0-card"
+[[ $(run_sanitize "$usb_missing") == "__UNSET__" ]] || fail "missing USB by-path is dropped instead of exporting debris"
+pass "missing USB by-path is dropped instead of exporting debris"
+
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
 mkdir -p "$dir/dri"
@@ -82,6 +89,10 @@ mixed=$(run_sanitize "$dir/dri/card0:/dev/dri/by-path/pci-0000:13:00.0-card")
 [[ $mixed == "$dir/dri/card0" ]] || fail "usable card is kept when a by-path sibling is dropped" "$mixed"
 pass "usable card is kept when a by-path sibling is dropped"
 
+usb_then_card=$(run_sanitize "$usb_missing:$dir/dri/card0")
+[[ $usb_then_card == "$dir/dri/card0" ]] || fail "usable card is kept when a missing USB by-path sibling is dropped" "$usb_then_card"
+pass "usable card is kept when a missing USB by-path sibling is dropped"
+
 by_dir="$dir/dri/by-path"
 by_path="$by_dir/pci-0000:13:00.0-card"
 if mkdir -p "$by_dir" && ln -s "$dir/dri/card0" "$by_path" 2>/dev/null; then
@@ -95,6 +106,14 @@ if mkdir -p "$by_dir" && ln -s "$dir/dri/card0" "$by_path" 2>/dev/null; then
 
     [[ $(run_sanitize "$by_path:$dir/dri/card1") == "$dir/dri/card0:$dir/dri/card1" ]] || fail "resolved by-path keeps a following colon-free pin"
     pass "resolved by-path keeps a following colon-free pin"
+
+    usb_path="$by_dir/pci-0000:00:14.0-usb-0:8:1.0-card"
+    if ln -s "$dir/dri/card0" "$usb_path" 2>/dev/null; then
+      [[ $(run_sanitize "$usb_path") == "$dir/dri/card0" ]] || fail "USB by-path with extra colons is resolved to the DRM node"
+      pass "USB by-path with extra colons is resolved to the DRM node"
+    else
+      printf 'skip - cannot create a USB by-path symlink here\n'
+    fi
 
     dangling="$by_dir/pci-0000:03:00.0-card"
     if ln -s "$dir/dri/card99" "$dangling" 2>/dev/null; then
@@ -153,7 +172,18 @@ test_home=$(mktemp -d)
 dst="$test_home/.config/uwsm/env-hyprland.d/zz-omarchy-aq-drm"
 old="$test_home/.config/uwsm/env-hyprland.d/99-omarchy-aq-drm"
 mkdir -p "$(dirname "$old")"
-printf '%s\n' '[ -r helper ] && . helper # sanitize-aq-drm-devices' >"$old"
+printf '%s\n' '# mention sanitize-aq-drm-devices in a comment' 'export FOO=1' >"$old"
+HOME=$test_home OMARCHY_PATH=$ROOT bash -euo pipefail "$migration" >/dev/null
+[[ -f $dst ]] || fail "migration installs the zz- drop-in beside a 99- comment mention"
+[[ -f $old ]] || fail "migration leaves a 99- file that only mentions the helper"
+pass "migration leaves a 99- file that only mentions the helper"
+rm -rf "$test_home"
+
+test_home=$(mktemp -d)
+dst="$test_home/.config/uwsm/env-hyprland.d/zz-omarchy-aq-drm"
+old="$test_home/.config/uwsm/env-hyprland.d/99-omarchy-aq-drm"
+mkdir -p "$(dirname "$old")"
+printf '%s\n' '# leftover' '[ -r "${OMARCHY_PATH%/}/default/uwsm/sanitize-aq-drm-devices" ] && . "${OMARCHY_PATH%/}/default/uwsm/sanitize-aq-drm-devices"' >"$old"
 HOME=$test_home OMARCHY_PATH=$ROOT bash -euo pipefail "$migration" >/dev/null
 [[ -f $dst ]] || fail "migration installs the zz- drop-in"
 [[ ! -e $old ]] || fail "migration removes the leftover sanitizer 99- drop-in"

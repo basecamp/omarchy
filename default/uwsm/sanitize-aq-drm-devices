@@ -4,14 +4,14 @@
 # and SDDM autologin loops with no compositor error.
 #
 # Sourced from ~/.config/uwsm/env-hyprland.d after the wiki-documented
-# env-hyprland export. zz- sorts after numeric and alphabetic drop-ins under
-# POSIX ls (uwsm's loader). Colon-free pins (cardN, udev names) are left alone.
-# A set-but-empty value is unset: getenv non-null takes the explicit path,
-# and CVarList on "" yields no GPUs.
+# env-hyprland export. zz- sorts after numeric prefixes and letter-named
+# files like my_vars under POSIX ls (uwsm's loader). Colon-free pins
+# (cardN, udev names) are left alone. A set-but-empty value is unset:
+# getenv non-null takes the explicit path, and CVarList on "" yields no GPUs.
 #
-# Split on ':' like Aquamarine (removeEmpty), then reassemble PCI by-path
-# fragments (pci-DOMAIN:BUS:DEV.FUNC, two colons after pci-) so the pin
-# survives.
+# Split on ':' like Aquamarine (removeEmpty). A by-path name runs to the
+# next '/', so keep absorbing colon fragments until the accumulated path
+# exists. Anything absolute starts a new entry.
 
 omarchy_sanitize_aq_drm_emit() {
   _omarchy_aq_path=$1
@@ -60,14 +60,16 @@ omarchy_sanitize_aq_drm_devices() {
       if [[ -z $_omarchy_aq_cur ]]; then
         _omarchy_aq_cur=$_omarchy_aq_part
       else
+        # A by-path name runs to the next '/', so keep absorbing colon
+        # fragments until the accumulated path exists. Anything absolute
+        # starts a new entry.
         _omarchy_aq_glue=
         case "$_omarchy_aq_cur" in
-          *pci-[0-9a-fA-F]*)
-            _omarchy_aq_pci=${_omarchy_aq_cur##*pci-}
-            _omarchy_aq_colons=${_omarchy_aq_pci//[^:]/}
-            if (( ${#_omarchy_aq_colons} < 2 )); then
+          */by-path/*)
+            if [[ ! -e $_omarchy_aq_cur ]]; then
               case "$_omarchy_aq_part" in
-                [0-9a-fA-F]*) _omarchy_aq_glue=1 ;;
+                /*) ;;
+                *) _omarchy_aq_glue=1 ;;
               esac
             fi
             ;;
@@ -96,7 +98,6 @@ omarchy_sanitize_aq_drm_devices() {
 
   unset _omarchy_aq_rest _omarchy_aq_out _omarchy_aq_path _omarchy_aq_real
   unset _omarchy_aq_part _omarchy_aq_cur _omarchy_aq_glue
-  unset _omarchy_aq_pci _omarchy_aq_colons
 }
 
 omarchy_sanitize_aq_drm_devices

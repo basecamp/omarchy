@@ -10,6 +10,6 @@ if [[ -f $src ]] && ! [[ -e $dst || -L $dst ]]; then
 fi
 
 # 99- sorts before letter-named user drop-ins under POSIX ls.
-if [[ -f $old ]] && ! [[ -L $old ]] && grep -q 'sanitize-aq-drm-devices' "$old"; then
+if [[ -f $old ]] && ! [[ -L $old ]] && grep -qxF '[ -r "${OMARCHY_PATH%/}/default/uwsm/sanitize-aq-drm-devices" ] && . "${OMARCHY_PATH%/}/default/uwsm/sanitize-aq-drm-devices"' "$old"; then
   rm -f "$old"
 fi
