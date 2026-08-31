@@ -56,7 +56,7 @@ write_mock flock 'exit 0'
 write_mock omarchy-shell '
 case ${1:-}:${2:-} in
   shell:launchNewsboatConfirmation)
-    "$OMARCHY_PATH/bin/omarchy-newsboat-confirm" --respond "$3" </dev/null &
+    "$OMARCHY_PATH/bin/omarchy-newsboat-confirm" --respond "$4" </dev/null &
     echo ok
     ;;
   shell:newsboatConfirmationStatus) echo active ;;

@@ -67,7 +67,7 @@ fi
 # Keep Feeds beside the agent while the person reviews the briefing. Once they
 # approve a read-state change, close the reader before revalidating and importing.
 if (( read_count > 0 )); then
-  omarchy-newsboat-close
+  omarchy-newsboat-close "$cache_file"
 fi
 
 # The unread edition may change while the person is answering the separate

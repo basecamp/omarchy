@@ -46,6 +46,7 @@ export FEEDS_TEST_UNREAD_STATE="$unread_state"
 export FEEDS_TEST_IMPORT_LOG="$import_log"
 export NEWSBOAT_BRIEF_STATE_DIR="$test_tmp/briefs"
 export NEWSBOAT_CONFIRM_STATE_DIR="$test_tmp/confirmations"
+export NEWSBOAT_READER_STATE_DIR="$test_tmp/readers"
 export FEEDS_TEST_CONFIRM_LOG="$confirm_log"
 export FEEDS_TEST_CLOSE_LOG="$close_log"
 export FEEDS_TEST_MUTATION_LOG="$mutation_log"
@@ -56,7 +57,7 @@ write_mock flock 'exit 0'
 write_mock omarchy-shell '
 case ${1:-}:${2:-} in
   shell:launchNewsboatConfirmation)
-    "$OMARCHY_PATH/bin/omarchy-newsboat-confirm" --respond "$3" </dev/null &
+    "$OMARCHY_PATH/bin/omarchy-newsboat-confirm" --respond "$4" </dev/null &
     echo ok
     ;;
   shell:newsboatConfirmationStatus) echo active ;;
@@ -79,7 +80,7 @@ fi
 '
 write_mock pgrep '[[ ${FEEDS_TEST_NEWSBOAT_RUNNING:-0} == 1 ]]'
 write_mock omarchy-newsboat-close '
-printf "close\n" >>"$FEEDS_TEST_CLOSE_LOG"
+printf "close:%s\n" "$*" >>"$FEEDS_TEST_CLOSE_LOG"
 printf "close\n" >>"$FEEDS_TEST_MUTATION_LOG"
 exit "${FEEDS_TEST_CLOSE_STATUS:-0}"
 '
@@ -207,6 +208,9 @@ elif [[ $* == *"print-unread"* ]]; then
     printf "%s unread articles\n" "${FEEDS_TEST_UNREAD_AFTER:-0}"
   fi
 elif [[ $* != *"-x reload"* ]]; then
+  reader_file=$(find "$NEWSBOAT_READER_STATE_DIR" -maxdepth 1 -type f -name "reader.*" -print -quit)
+  [[ -n $reader_file ]] || exit 75
+  cp -- "$reader_file" "$FEEDS_TEST_READER_STATE_LOG"
   exit "${FEEDS_TEST_READER_STATUS:-0}"
 fi
 '
@@ -215,10 +219,15 @@ fi
 : >"$notification_log"
 : >"$unread_state"
 export FEEDS_TEST_UNREAD_BEFORE=4 FEEDS_TEST_UNREAD_AFTER=0 FEEDS_TEST_READER_STATUS=0
+export FEEDS_TEST_READER_STATE_LOG="$test_tmp/reader-state"
 "$ROOT/bin/omarchy-newsboat-read"
-sed -n '1p' "$newsboat_log" | grep -Fq -- '-q -x reload' || fail "Feeds refreshes before opening"
-sed -n '2p' "$newsboat_log" | grep -Fq -- '-q -x print-unread' || fail "Feeds measures the collected edition"
-sed -n '3p' "$newsboat_log" | grep -Fxq '' || fail "Feeds opens Newsboat without continuous refresh arguments"
+cache_file="$HOME/.local/share/newsboat/cache.db"
+urls_file="$HOME/.config/newsboat/urls"
+sed -n '1p' "$newsboat_log" | grep -Fq -- "-q -c $cache_file -u $urls_file -x reload" || fail "Feeds refreshes its exact cache before opening"
+sed -n '2p' "$newsboat_log" | grep -Fq -- "-q -c $cache_file -u $urls_file -x print-unread" || fail "Feeds measures the collected edition"
+sed -n '3p' "$newsboat_log" | grep -Fxq -- "-c $cache_file -u $urls_file" || fail "Feeds opens its registered cache without continuous refresh"
+jq -e --arg cache "$cache_file" '.version == 1 and .cache == $cache and (.pid | type == "number")' "$FEEDS_TEST_READER_STATE_LOG" >/dev/null || fail "Feeds does not register the foreground reader by cache"
+[[ -z $(find "$NEWSBOAT_READER_STATE_DIR" -type f -print -quit) ]] || fail "Feeds leaves stale reader registration after exit"
 grep -Fq "You're all caught up" "$notification_log" || fail "finishing a nonempty edition produces the done state"
 pass "Feeds collects one finite edition and celebrates reaching zero"
 
@@ -358,7 +367,7 @@ if "$ROOT/bin/omarchy-newsboat-triage" "$brief_id" 1 1 A001 >/dev/null 2>&1; the
   fail "triage continues when Feeds cannot close"
 fi
 unset FEEDS_TEST_CLOSE_STATUS
-[[ $(<"$close_log") == close ]] || fail "confirmed triage never attempts to close Feeds"
+[[ $(<"$close_log") == "close:$HOME/.local/share/newsboat/cache.db" ]] || fail "confirmed triage does not target its exact Feeds cache"
 if grep -Fxq import "$mutation_log"; then
   fail "a failed Feeds close still reaches Newsboat import"
 fi

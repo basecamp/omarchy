@@ -17,7 +17,7 @@ fi
 unread_count() {
   local output
 
-  output=$(newsboat -q -x print-unread 2>/dev/null) || return 1
+  output=$(newsboat -q -c "$cache_file" -u "$urls_file" -x print-unread 2>/dev/null) || return 1
   if [[ $output =~ ^([0-9]+) ]]; then
     printf '%s\n' "${BASH_REMATCH[1]}"
   else
@@ -25,15 +25,73 @@ unread_count() {
   fi
 }
 
+owner_uid() {
+  if stat -c %u "$1" >/dev/null 2>&1; then
+    stat -c %u "$1"
+  else
+    stat -f %u "$1"
+  fi
+}
+
+prepare_reader_state() {
+  if [[ -n $reader_state_root ]]; then
+    if [[ -L $reader_state_root ]]; then
+      echo "Newsboat reader runtime may not be a symlink" >&2
+      exit 1
+    fi
+    install -d -m 700 "$reader_state_root"
+    if [[ $(owner_uid "$reader_state_root") != $UID ]]; then
+      echo "Newsboat reader runtime is not owned by the current user" >&2
+      exit 1
+    fi
+    chmod 700 "$reader_state_root"
+  fi
+
+  if [[ -L $reader_state_dir ]]; then
+    echo "Newsboat reader state may not be a symlink" >&2
+    exit 1
+  fi
+  install -d -m 700 "$reader_state_dir"
+  if [[ $(owner_uid "$reader_state_dir") != $UID ]]; then
+    echo "Newsboat reader state is not owned by the current user" >&2
+    exit 1
+  fi
+  chmod 700 "$reader_state_dir"
+}
+
+cache_file="${NEWSBOAT_CACHE_FILE:-$HOME/.local/share/newsboat/cache.db}"
+urls_file="${NEWSBOAT_URLS_FILE:-$HOME/.config/newsboat/urls}"
+reader_state_root="/tmp/omarchy-newsboat-$UID"
+reader_state_dir="${NEWSBOAT_READER_STATE_DIR:-$reader_state_root/readers}"
+if [[ -n ${NEWSBOAT_READER_STATE_DIR:-} ]]; then
+  reader_state_root=""
+fi
+reader_state_file=""
+
+cleanup_reader_state() {
+  [[ -z $reader_state_file ]] || rm -f -- "$reader_state_file"
+}
+trap cleanup_reader_state EXIT
+
 # Refresh once before the interface opens. The resulting edition then stays
 # finite until the reader chooses to refresh it again with r.
-newsboat -q -x reload >/dev/null 2>&1 || true
+newsboat -q -c "$cache_file" -u "$urls_file" -x reload >/dev/null 2>&1 || true
 before=$(unread_count || printf '0\n')
 
+prepare_reader_state
+reader_state_file="$reader_state_dir/reader.$$"
+reader_state_tmp=$(mktemp "$reader_state_dir/.reader.XXXXXXXX")
+jq -cn --argjson pid "$$" --arg cache "$cache_file" \
+  '{version: 1, pid: $pid, cache: $cache}' >"$reader_state_tmp"
+chmod 600 "$reader_state_tmp"
+mv -f -- "$reader_state_tmp" "$reader_state_file"
+
 set +e
-newsboat
+newsboat -c "$cache_file" -u "$urls_file"
 status=$?
 set -e
+rm -f -- "$reader_state_file"
+reader_state_file=""
 
 after=$(unread_count || printf '%s\n' "$before")
 if (( status == 0 && before > 0 && after == 0 )); then

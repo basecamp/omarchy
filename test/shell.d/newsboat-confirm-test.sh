@@ -46,12 +46,12 @@ case ${1:-}:${2:-} in
     elif [[ ${CONFIRM_TEST_SKIP_CHILD:-false} != "true" ]]; then
       if [[ ${CONFIRM_TEST_HANG_CHILD:-false} == "true" ]]; then
         exec 9<>"$CONFIRM_TEST_BRIDGE_FIFO"
-        "$OMARCHY_PATH/bin/omarchy-newsboat-confirm" --bridge "$3" <&9 >>"$CONFIRM_TEST_DESCRIPTOR_LOG" &
+        "$OMARCHY_PATH/bin/omarchy-newsboat-confirm" --bridge "$3" "$4" <&9 >>"$CONFIRM_TEST_DESCRIPTOR_LOG" &
         echo "$!" >"$CONFIRM_TEST_BRIDGE_PID_FILE"
         exec 9>&-
       else
         printf '%s\n' "${CONFIRM_TEST_DECISION:-approved}" | \
-          "$OMARCHY_PATH/bin/omarchy-newsboat-confirm" --bridge "$3" >>"$CONFIRM_TEST_DESCRIPTOR_LOG" &
+          "$OMARCHY_PATH/bin/omarchy-newsboat-confirm" --bridge "$3" "$4" >>"$CONFIRM_TEST_DESCRIPTOR_LOG" &
       fi
     fi
     echo ok
@@ -89,7 +89,7 @@ file_mode() {
 }
 
 "$ROOT/bin/omarchy-newsboat-confirm" triage 44 3
-grep -Eq '^shell launchNewsboatConfirmation [A-Za-z0-9_-]+$' "$launch_log" || fail "Newsboat confirmation does not leave the agent sandbox through Shell IPC"
+grep -Eq "^shell launchNewsboatConfirmation $NEWSBOAT_CONFIRM_STATE_DIR [A-Za-z0-9_-]+$" "$launch_log" || fail "Newsboat confirmation does not give Shell its private state directory"
 grep -Fxq '{"kind":"triage","read":44,"leave":3}' "$descriptor_log" || fail "Newsboat triage confirmation omits the exact effect"
 [[ -z $(find "$NEWSBOAT_CONFIRM_STATE_DIR" -type f -print -quit) ]] || fail "an approved Newsboat confirmation leaves reusable state"
 pass "Newsboat requires an exact out-of-band triage approval"
@@ -139,7 +139,7 @@ direct_request_id=directAB12
 printf '%s\n' '{"version":1,"kind":"triage","read":1,"leave":1}' >"$NEWSBOAT_CONFIRM_STATE_DIR/request.$direct_request_id"
 export CONFIRM_TEST_REAL_PARENT=true
 set +e
-printf 'approved\n' | "$ROOT/bin/omarchy-newsboat-confirm" --bridge "$direct_request_id" >/dev/null 2>"$test_tmp/direct-bridge-error"
+printf 'approved\n' | "$ROOT/bin/omarchy-newsboat-confirm" --bridge "$NEWSBOAT_CONFIRM_STATE_DIR" "$direct_request_id" >/dev/null 2>"$test_tmp/direct-bridge-error"
 direct_bridge_status=$?
 set -e
 unset CONFIRM_TEST_REAL_PARENT
@@ -213,8 +213,9 @@ fi
 rm -f "$CONFIRM_TEST_BRIDGE_PID_FILE"
 pass "Newsboat cleanup cannot race a cancelled Shell bridge response"
 
-grep -Fq 'function launchNewsboatConfirmation(requestId: string): string' "$ROOT/shell/shell.qml" || fail "Omarchy Shell does not expose the narrow Newsboat confirmation bridge"
-grep -Fq 'return newsboatConfirmation.launch(requestId)' "$ROOT/shell/shell.qml" || fail "the Shell bridge bypasses the native Newsboat surface"
+grep -Fq 'function launchNewsboatConfirmation(stateDir: string, requestId: string): string' "$ROOT/shell/shell.qml" || fail "Omarchy Shell does not expose the narrow Newsboat confirmation bridge"
+grep -Fq 'return newsboatConfirmation.launch(stateDir, requestId)' "$ROOT/shell/shell.qml" || fail "the Shell bridge drops the request state directory"
+grep -Fq 'confirmationProcess.command = [root.omarchyPath + "/bin/omarchy-newsboat-confirm", "--bridge", nextDir, nextId]' "$ROOT/shell/NewsboatConfirmation.qml" || fail "the native surface does not use the request-owned confirmation state"
 grep -Fq '!/^[A-Za-z0-9_-]{8,64}$/.test(nextId)' "$ROOT/shell/NewsboatConfirmation.qml" || fail "the Shell bridge accepts arbitrary confirmation commands"
 grep -Fq 'WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.Exclusive' "$ROOT/shell/NewsboatConfirmation.qml" || fail "the native confirmation does not own keyboard focus"
 grep -Fq 'property int selectedIndex: 0' "$ROOT/shell/NewsboatConfirmation.qml" || fail "the native confirmation does not default to Cancel"

@@ -906,8 +906,8 @@ ShellRoot {
       return "ok"
     }
 
-    function launchNewsboatConfirmation(requestId: string): string {
-      return newsboatConfirmation.launch(requestId)
+    function launchNewsboatConfirmation(stateDir: string, requestId: string): string {
+      return newsboatConfirmation.launch(stateDir, requestId)
     }
 
     function newsboatConfirmationStatus(requestId: string): string {

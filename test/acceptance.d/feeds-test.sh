@@ -33,17 +33,21 @@ triage_error="$test_root/triage-error"
 feed_port=18741
 server_pid=""
 triage_pid=""
+newsboat_pid=""
+unrelated_newsboat_pid=""
+confirmation_owned=false
 
 cleanup() {
   set +e
 
-  if layer_present "$confirmation_namespace" >/dev/null 2>&1; then
+  if [[ $confirmation_owned == "true" ]] && layer_present "$confirmation_namespace" >/dev/null 2>&1; then
     wtype -k Escape >/dev/null 2>&1 || true
   fi
   [[ -z $triage_pid ]] || kill "$triage_pid" >/dev/null 2>&1 || true
   close_windows "$agent_class"
   close_windows "$feeds_class"
-  pkill -TERM -u "$UID" -x newsboat >/dev/null 2>&1 || true
+  [[ -z $newsboat_pid ]] || kill "$newsboat_pid" >/dev/null 2>&1 || true
+  [[ -z $unrelated_newsboat_pid ]] || kill "$unrelated_newsboat_pid" >/dev/null 2>&1 || true
   [[ -z $server_pid ]] || kill "$server_pid" >/dev/null 2>&1 || true
   hyprctl dispatch "hl.dsp.focus({ workspace = \"$original_workspace\" })" >/dev/null 2>&1 || true
   if [[ ${OMARCHY_FEEDS_ACCEPTANCE_KEEP_STATE:-0} == 1 ]]; then
@@ -64,6 +68,9 @@ wait_until "Feeds acceptance focuses its isolated workspace" 15 bash -c \
 close_windows '^org\.omarchy\.screensaver$'
 wait_until "Feeds acceptance clears the idle screensaver" 15 \
   window_absent '^org\.omarchy\.screensaver$'
+if layer_present "$confirmation_namespace" >/dev/null 2>&1; then
+  fail "Feeds acceptance starts without another confirmation" "finish or cancel the existing Newsboat confirmation before running this test"
+fi
 workspace_windows=$(hyprctl -j clients | jq --argjson workspace "$test_workspace" \
   '[.[] | select(.workspace.id == $workspace)] | length')
 (( workspace_windows == 0 )) || \
@@ -130,6 +137,8 @@ export PATH="$mock_bin:$ROOT/bin:$PATH"
 export NEWSBOAT_CACHE_FILE="$test_home/.local/share/newsboat/cache.db"
 export NEWSBOAT_URLS_FILE="$test_home/.config/newsboat/urls"
 export NEWSBOAT_BRIEF_STATE_DIR="$brief_dir"
+export NEWSBOAT_CONFIRM_STATE_DIR="$test_root/confirmations"
+export NEWSBOAT_READER_STATE_DIR="$test_root/readers"
 export FEEDS_ACCEPTANCE_AGENT_LOG="$agent_log"
 
 if curl --connect-timeout 1 --silent --fail \
@@ -302,6 +311,21 @@ brief_file=$(find "$brief_dir" -maxdepth 1 -type f -name 'brief.*' -printf '%T@ 
 brief_id=${brief_file##*/brief.}
 [[ $brief_id =~ ^[A-Za-z0-9_-]{8,64}$ ]] || fail "briefing exposes a valid protected ID"
 
+# Keep an unrelated same-user process with Newsboat's process name alive for
+# the mutation journey. Confirmed triage must close only the registered Feeds
+# child for this cache, never every process named newsboat.
+python3 - <<'PY' &
+import ctypes
+import time
+
+libc = ctypes.CDLL(None)
+libc.prctl(15, b"newsboat", 0, 0, 0)
+time.sleep(300)
+PY
+unrelated_newsboat_pid=$!
+wait_until "unrelated Newsboat-named process starts" 15 bash -c \
+  '[[ $(ps -o comm= -p "$1" | tr -d "[:space:]") == newsboat ]]' _ "$unrelated_newsboat_pid"
+
 unread_count() {
   python3 - "$NEWSBOAT_CACHE_FILE" <<'PY'
 import sqlite3
@@ -324,10 +348,13 @@ wait_for_process_exit() {
 omarchy-newsboat-triage "$brief_id" 1 1 A001 >"$triage_output" 2>"$triage_error" &
 triage_pid=$!
 wait_until "triage opens the native confirmation" 15 layer_on_screen "$confirmation_namespace"
+kill -0 "$triage_pid" 2>/dev/null || fail "triage owns the visible native confirmation" "the triage helper exited before its confirmation was answered"
+confirmation_owned=true
 wait_until "confirmation explains the exact read count" 15 screen_contains "1 article will be marked read"
 screenshot "success-feeds-09-confirmation-default-cancel"
 wtype -k Return
 wait_until "default confirmation choice closes safely" 15 layer_absent "$confirmation_namespace"
+confirmation_owned=false
 wait_until "cancelled triage returns" 15 wait_for_process_exit "$triage_pid"
 triage_status=0
 wait "$triage_pid" || triage_status=$?
@@ -342,17 +369,22 @@ window_present "$feeds_class" >/dev/null || fail "cancelled triage leaves Feeds 
 omarchy-newsboat-triage "$brief_id" 1 1 A001 >"$triage_output" 2>"$triage_error" &
 triage_pid=$!
 wait_until "confirmed triage reopens the native confirmation" 15 layer_on_screen "$confirmation_namespace"
+kill -0 "$triage_pid" 2>/dev/null || fail "confirmed triage owns the visible native confirmation" "the triage helper exited before its confirmation was answered"
+confirmation_owned=true
 sleep 0.3
 wtype -k Right
 sleep 0.1
 wtype -k Return
 wait_until "approved confirmation closes" 15 layer_absent "$confirmation_namespace"
+confirmation_owned=false
 wait_until "approved triage returns" 30 wait_for_process_exit "$triage_pid"
 triage_status=0
 wait "$triage_pid" || triage_status=$?
 triage_pid=""
 (( triage_status == 0 )) || fail "approved triage applies successfully" "$(<"$triage_error")"
 wait_until "approved triage closes Feeds before import" 15 window_absent "$feeds_class"
+kill -0 "$unrelated_newsboat_pid" 2>/dev/null || fail "approved triage leaves unrelated Newsboat processes running"
+pass "approved triage leaves unrelated Newsboat processes running"
 [[ $(unread_count) == 1 ]] || fail "approved triage marks exactly one article read" "$(unread_count) remain unread"
 [[ ! -e $brief_file ]] || fail "approved triage consumes its protected briefing"
 grep -Fq '1 marked read; 1 left unread.' "$triage_output" || fail "approved triage reports its exact result"

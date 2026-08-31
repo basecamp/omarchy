@@ -12,6 +12,7 @@ Item {
   required property string omarchyPath
 
   property string requestId: ""
+  property string stateDir: ""
   property var request: ({})
   property bool opened: false
   property bool submitting: false
@@ -43,17 +44,22 @@ Item {
     return screens.length > 0 ? screens[0] : null
   }
 
-  function launch(id) {
+  function launch(dir, id) {
+    var nextDir = String(dir || "")
     var nextId = String(id || "")
+    if (!nextDir.startsWith("/")) return "invalid"
     if (!/^[A-Za-z0-9_-]{8,64}$/.test(nextId)) return "invalid"
-    if (confirmationProcess.running || opened) return requestId === nextId ? "ok" : "busy"
+    if (confirmationProcess.running || opened) {
+      return stateDir === nextDir && requestId === nextId ? "ok" : "busy"
+    }
 
+    stateDir = nextDir
     requestId = nextId
     request = ({})
     opened = false
     submitting = false
     selectedIndex = 0
-    confirmationProcess.command = [root.omarchyPath + "/bin/omarchy-newsboat-confirm", "--bridge", nextId]
+    confirmationProcess.command = [root.omarchyPath + "/bin/omarchy-newsboat-confirm", "--bridge", nextDir, nextId]
     confirmationProcess.running = true
     return "ok"
   }
@@ -74,6 +80,7 @@ Item {
     opened = false
     submitting = false
     request = ({})
+    stateDir = ""
     requestId = ""
     selectedIndex = 0
   }

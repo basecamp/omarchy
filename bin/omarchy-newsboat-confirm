@@ -194,7 +194,7 @@ request() {
 
   trap cleanup_request EXIT
 
-  if ! launch_result=$(omarchy-shell shell launchNewsboatConfirmation "$request_id"); then
+  if ! launch_result=$(omarchy-shell shell launchNewsboatConfirmation "$state_dir" "$request_id"); then
     echo "Could not open the Newsboat confirmation window" >&2
     exit 2
   elif [[ $launch_result != "ok" ]]; then
@@ -248,6 +248,10 @@ if [[ ${1:-} == "--respond" ]]; then
   shift
   respond "$@"
 elif [[ ${1:-} == "--bridge" ]]; then
+  shift
+  (($# == 2)) || usage
+  state_dir=$1
+  state_root=""
   shift
   bridge "$@"
 else
