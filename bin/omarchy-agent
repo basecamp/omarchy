@@ -32,8 +32,11 @@ while (($#)); do
 done
 
 # Agents refuse to remember trust for $HOME, so launches from the keybinding or
-# menu start in the work directory instead of re-asking on every session.
-[[ $PWD == "$HOME" && -d $HOME/Work ]] && cd "$HOME/Work"
+# menu start in the configured agent directory instead of re-asking every time.
+if [[ $PWD == "$HOME" ]]; then
+  agent_directory=$(omarchy-default-agent-directory)
+  [[ -d $agent_directory ]] && cd "$agent_directory"
+fi
 
 agent=$(omarchy-default-agent)
 
