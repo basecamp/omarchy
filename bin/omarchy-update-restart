@@ -1,51 +1,212 @@
-#!/bin/bash
+#!/bin/bash -p
 
 # omarchy:summary=Prompt for required reboot or service restarts after updates
+# omarchy:args=[--services-only|--reboot-only]
+
+if [[ $- != *p* ]]; then
+  echo "Refusing an unsafe Bash startup for update restart handling." >&2
+  exit 126
+fi
+
+require_privileged_bash_startup() {
+  [[ $- == *p* ]] || return 1
+  /usr/bin/env -i /usr/bin/bash -p -c '
+    [[ $1 =~ ^[1-9][0-9]*$ ]] || exit 1
+    mapfile -d "" -t argv <"/proc/$1/cmdline" || exit 1
+    executable=$(/usr/bin/readlink -e -- "/proc/$1/exe") || exit 1
+    [[ $executable == /usr/bin/bash ]]
+    [[ ${argv[0]:-} == /bin/bash || ${argv[0]:-} == /usr/bin/bash ]]
+    [[ ${argv[1]:-} == -p ]]
+  ' omarchy-bash-startup "$$"
+}
+if ! require_privileged_bash_startup; then
+  echo "Refusing an unsafe Bash startup for update restart handling." >&2
+  exit 126
+fi
+unset -f require_privileged_bash_startup
+
+set -e
+
+sanitize_bash_startup_environment() {
+  local environment_entry environment_name
+  local needs_reexec=0
+  local -a environment_unsets=(-u BASH_ENV -u ENV)
+
+  [[ -z ${BASH_ENV+x} && -z ${ENV+x} ]] || needs_reexec=1
+  while IFS= read -r -d '' environment_entry; do
+    environment_name="${environment_entry%%=*}"
+    if [[ $environment_name == BASH_FUNC_*%% ]]; then
+      environment_unsets+=(-u "$environment_name")
+      needs_reexec=1
+    fi
+  done < <(/usr/bin/env -0)
+
+  if (( needs_reexec )); then
+    exec /usr/bin/env "${environment_unsets[@]}" /usr/bin/bash -p "$0" "$@"
+  fi
+}
+sanitize_bash_startup_environment "$@"
+unset -f sanitize_bash_startup_environment
 
 echo
+
+trusted_directory_chain() {
+  local current="$1" allow_current_user="$2" canonical owner mode current_uid
+  current_uid=$(/usr/bin/id -u) || return 1
+
+  while :; do
+    [[ -d $current && ! -L $current ]] || return 1
+    canonical=$(/usr/bin/realpath -e -- "$current") || return 1
+    [[ $canonical == "$current" ]] || return 1
+    [[ $current == / ]] && break
+    read -r owner mode < <(/usr/bin/stat -Lc '%u %a' -- "$current") || return 1
+    if [[ $owner != 0 ]] && ! { [[ $allow_current_user == "true" && $owner == "$current_uid" ]]; }; then
+      return 1
+    fi
+    (( (8#$mode & 0022) == 0 )) || return 1
+    current=${current%/*}
+    [[ -n $current ]] || current=/
+  done
+}
+
+trusted_omarchy_source_root() {
+  local config=/etc/omarchy.conf default_root=/usr/share/omarchy configured_root="" canonical=""
+  local owner="" mode="" links="" size="" line="" encoded="" decoded="" character=""
+  local index=0 escaped=0 lines=()
+
+  if [[ ! -e $config && ! -L $config ]]; then
+    configured_root="$default_root"
+  else
+    [[ -f $config && ! -L $config ]] || return 1
+    canonical=$(/usr/bin/realpath -e -- "$config") || return 1
+    [[ $canonical == "$config" ]] || return 1
+    read -r owner mode links size < <(/usr/bin/stat -Lc '%u %a %h %s' -- "$config") || return 1
+    [[ $owner == "0" && $links == "1" ]] || return 1
+    (( (8#$mode & 0022) == 0 && size > 0 && size <= 4096 )) || return 1
+    trusted_directory_chain /etc false || return 1
+    mapfile -t lines <"$config" || return 1
+    (( ${#lines[@]} == 1 )) || return 1
+    line="${lines[0]}"
+    [[ $line == 'export OMARCHY_PATH="'*'"' ]] || return 1
+    encoded="${line#'export OMARCHY_PATH="'}"
+    encoded="${encoded%'"'}"
+    for (( index = 0; index < ${#encoded}; index++ )); do
+      character="${encoded:index:1}"
+      if (( escaped )); then
+        case "$character" in
+          '\' | '"' | '$' | '`') decoded+="$character" ;;
+          *) return 1 ;;
+        esac
+        escaped=0
+      elif [[ $character == '\' ]]; then
+        escaped=1
+      elif [[ $character == '"' ]]; then
+        return 1
+      else
+        decoded+="$character"
+      fi
+    done
+    (( escaped == 0 )) || return 1
+    configured_root="$decoded"
+  fi
+
+  [[ -d $configured_root && ! -L $configured_root ]] || return 1
+  canonical=$(/usr/bin/realpath -e -- "$configured_root") || return 1
+  [[ $canonical == "$configured_root" ]] || return 1
+  if [[ $configured_root == "$default_root" ]]; then
+    trusted_directory_chain "$configured_root" false || return 1
+  else
+    trusted_directory_chain "$configured_root" true || return 1
+  fi
+  printf '%s\n' "$configured_root"
+}
+
+if ! OMARCHY_PATH=$(trusted_omarchy_source_root); then
+  echo "Refusing to restart from an untrusted Omarchy source root." >&2
+  exit 1
+fi
+export OMARCHY_PATH
+PATH="$OMARCHY_PATH/bin:/usr/bin:/usr/sbin:/bin:/sbin"
+if [[ ${OMARCHY_SUDO_NO_UPDATE:-0} == 1 ]]; then
+  no_update_wrapper="$OMARCHY_PATH/default/omarchy/sudo-no-update/sudo"
+  if [[ ! -x $no_update_wrapper || -L $no_update_wrapper ]]; then
+    echo "Trusted no-update sudo wrapper is missing; refusing privileged restart work." >&2
+    exit 1
+  fi
+  PATH="${no_update_wrapper%/sudo}:$PATH"
+fi
+export PATH
+
+mode="${1:-all}"
+if [[ $mode != "all" && $mode != "--services-only" && $mode != "--reboot-only" ]]; then
+  echo "Usage: omarchy-update-restart [--services-only|--reboot-only]" >&2
+  exit 2
+fi
 
 confirm_reboot() {
   gum confirm "$1" && { omarchy-system-reboot; exit 0; }
 }
 
-running_kernel=$(uname -r)
-kernel_updated=true
+if [[ $mode != "--services-only" ]]; then
+  running_kernel=$(uname -r)
+  kernel_updated=true
 
-for kernel in /usr/lib/modules/*/vmlinuz; do
-  if [[ -f $kernel ]] && pacman -Qo "$kernel" &>/dev/null; then
-    installed_kernel=$(basename "$(dirname "$kernel")")
+  for kernel in /usr/lib/modules/*/vmlinuz; do
+    if [[ -f $kernel ]] && pacman -Qo "$kernel" &>/dev/null; then
+      installed_kernel=$(basename "$(dirname "$kernel")")
 
-    if [[ $installed_kernel == $running_kernel ]]; then
-      kernel_updated=false
-      break
+      if [[ $installed_kernel == $running_kernel ]]; then
+        kernel_updated=false
+        break
+      fi
     fi
-  fi
-done
+  done
 
-if [[ $kernel_updated == "true" ]]; then
-  confirm_reboot "Linux kernel has been updated. Reboot?"
-elif [[ -f $HOME/.local/state/omarchy/reboot-required ]]; then
-  confirm_reboot "Updates require reboot. Ready?"
+  if [[ $kernel_updated == "true" ]]; then
+    confirm_reboot "Linux kernel has been updated. Reboot?"
+  elif [[ -f $HOME/.local/state/omarchy/reboot-required ]]; then
+    confirm_reboot "Updates require reboot. Ready?"
+  fi
+
+  running_hyprland=$(readlink /proc/$(pgrep -x Hyprland)/exe 2>/dev/null)
+  if [[ $running_hyprland == *"(deleted)"* ]]; then
+    confirm_reboot "Hyprland has been updated. Reboot?"
+  fi
 fi
 
-running_hyprland=$(readlink /proc/$(pgrep -x Hyprland)/exe 2>/dev/null)
-if [[ $running_hyprland == *"(deleted)"* ]]; then
-  confirm_reboot "Hyprland has been updated. Reboot?"
+if [[ $mode != "--reboot-only" ]]; then
+  for file in "$HOME"/.local/state/omarchy/restart-*-required; do
+    if [[ -f $file ]]; then
+      filename="${file##*/}"
+      service="${filename#restart-}"
+      service="${service%-required}"
+
+      case "$service" in
+        audio | bluetooth | btop | helix | herdr | hyprctl | hyprsunset | opencode | shell | terminal | tmux | trackpad | wifi | xcompose) ;;
+        *)
+          echo "Ignoring unsupported restart marker: $filename" >&2
+          /usr/bin/rm -f -- "$file"
+          continue
+          ;;
+      esac
+
+      restart_command="$OMARCHY_PATH/bin/omarchy-restart-$service"
+      if [[ ! -x $restart_command ]]; then
+        echo "Ignoring unavailable restart marker: $filename" >&2
+        /usr/bin/rm -f -- "$file"
+        continue
+      fi
+
+      echo "Restarting $service"
+      /usr/bin/rm -f -- "$file"
+      "$restart_command"
+    fi
+  done
+
+  # Updates routinely replace the shell's QML, and a stale process can
+  # lazy-load new files into old code. A restart failure (locked session, ssh,
+  # TTY) only prints its reason: the next update or login gets a fresh shell.
+  echo -e "\e[32m\nRestarting shell\e[0m"
+  echo "All plugins have been reloaded"
+  "$OMARCHY_PATH/bin/omarchy-restart-shell" || true
 fi
-
-for file in "$HOME"/.local/state/omarchy/restart-*-required; do
-  if [[ -f $file ]]; then
-    filename=$(basename "$file")
-    service=$(echo "$filename" | sed 's/restart-\(.*\)-required/\1/')
-    echo "Restarting $service"
-    omarchy-state clear "$filename"
-    omarchy-restart-"$service"
-  fi
-done
-
-# Updates routinely replace the shell's QML, and a stale process can lazy-load
-# new files into old code. A restart failure (locked session, ssh, TTY) only
-# prints its reason: the next update or login gets a fresh shell anyway.
-echo -e "\e[32m\nRestarting shell\e[0m"
-echo "All plugins have been reloaded"
-omarchy-restart-shell || true
