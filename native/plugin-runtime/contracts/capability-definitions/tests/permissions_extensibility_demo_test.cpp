@@ -35,7 +35,7 @@ CapabilityDefinition bounded_harness() {
       .revocation = RevocationPolicy::cancel_inflight,
       .audit = {},
       .adapter = {.adapter_class = Name("fake-bounded-harness"),
-                  .implementation_digest = digest('d'),
+                  .contract_digest = digest('d'),
                   .abi_version = 1},
       .operations = {},
   };
@@ -147,7 +147,7 @@ void permissions_extensibility_demo_tests() {
                              .definition_digest = installed->digest}),
           "a definition generation expansion resolved without review");
   auto substituted = definition.adapter;
-  substituted.implementation_digest = digest('x');
+  substituted.contract_digest = digest('x');
   grant.state = permissions::GrantState::granted;
   require(authorize_dynamic_operation(
               registry, optional, grant, "status", optional.scope.view(),

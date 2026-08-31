@@ -22,6 +22,8 @@ std::string_view enum_name(EnforcementFamily value) {
   case EnforcementFamily::device_observe: return "device-observe";
   case EnforcementFamily::device_control: return "device-control";
   case EnforcementFamily::media_play_stream: return "media-play-stream";
+  case EnforcementFamily::remote_account_read: return "remote-account-read";
+  case EnforcementFamily::remote_account_write: return "remote-account-write";
   case EnforcementFamily::cli_harness: return "cli-harness";
   }
   return {};
@@ -32,8 +34,11 @@ std::string_view enum_name(ScopeSchema value) {
   case ScopeSchema::https_origins_and_methods: return "https-origins-methods";
   case ScopeSchema::https_origins_after_gesture: return "https-origins-gesture";
   case ScopeSchema::named_sanitized_datasets: return "named-sanitized-datasets";
-  case ScopeSchema::adapter_resources: return "adapter-resources";
-  case ScopeSchema::https_stream_origins: return "https-stream-origins";
+  case ScopeSchema::selected_device_fields: return "selected-device-fields";
+  case ScopeSchema::selected_device_controls: return "selected-device-controls";
+  case ScopeSchema::selected_remote_account: return "selected-remote-account";
+  case ScopeSchema::activation_source_handles_and_controls:
+    return "activation-source-handles-controls";
   case ScopeSchema::exact_cli_profile: return "exact-cli-profile";
   }
   return {};
@@ -119,7 +124,7 @@ std::string canonical_definition_document(const CapabilityDefinition &definition
   line("revocation", std::to_string(static_cast<unsigned>(definition.revocation)));
   line("audit", "decision,duration,bytes,redact-payload,redact-uri,redact-tokens");
   line("adapter-class", definition.adapter.adapter_class.view());
-  line("adapter-digest", definition.adapter.implementation_digest.view());
+  line("contract-digest", definition.adapter.contract_digest.view());
   line("adapter-abi", std::to_string(definition.adapter.abi_version));
   for (const auto &operation : definition.operations.values()) {
     std::string value(operation.name.view());
@@ -164,6 +169,8 @@ LoadResult parse_definition_document(std::string_view document,
         std::pair{std::string_view("device-observe"), EnforcementFamily::device_observe},
         std::pair{std::string_view("device-control"), EnforcementFamily::device_control},
         std::pair{std::string_view("media-play-stream"), EnforcementFamily::media_play_stream},
+        std::pair{std::string_view("remote-account-read"), EnforcementFamily::remote_account_read},
+        std::pair{std::string_view("remote-account-write"), EnforcementFamily::remote_account_write},
         std::pair{std::string_view("cli-harness"), EnforcementFamily::cli_harness}};
     if (!next_line(document, offset, "enforcement-family", value) ||
         !parse_enum(value, categories, definition.enforcement_family) ||
@@ -177,8 +184,11 @@ LoadResult parse_definition_document(std::string_view document,
         std::pair{std::string_view("https-origins-methods"), ScopeSchema::https_origins_and_methods},
         std::pair{std::string_view("https-origins-gesture"), ScopeSchema::https_origins_after_gesture},
         std::pair{std::string_view("named-sanitized-datasets"), ScopeSchema::named_sanitized_datasets},
-        std::pair{std::string_view("adapter-resources"), ScopeSchema::adapter_resources},
-        std::pair{std::string_view("https-stream-origins"), ScopeSchema::https_stream_origins},
+        std::pair{std::string_view("selected-device-fields"), ScopeSchema::selected_device_fields},
+        std::pair{std::string_view("selected-device-controls"), ScopeSchema::selected_device_controls},
+        std::pair{std::string_view("selected-remote-account"), ScopeSchema::selected_remote_account},
+        std::pair{std::string_view("activation-source-handles-controls"),
+                  ScopeSchema::activation_source_handles_and_controls},
         std::pair{std::string_view("exact-cli-profile"), ScopeSchema::exact_cli_profile}};
     if (!next_line(document, offset, "scope-schema", value) ||
         !parse_enum(value, scopes, definition.scope_schema) ||
@@ -202,9 +212,9 @@ LoadResult parse_definition_document(std::string_view document,
         !next_line(document, offset, "adapter-class", value))
       return LoadResult::invalid_document;
     definition.adapter.adapter_class = Name(value);
-    if (!next_line(document, offset, "adapter-digest", value))
+    if (!next_line(document, offset, "contract-digest", value))
       return LoadResult::invalid_document;
-    definition.adapter.implementation_digest = Digest(value);
+    definition.adapter.contract_digest = Digest(value);
     if (!next_line(document, offset, "adapter-abi", value) ||
         !number(value, definition.adapter.abi_version))
       return LoadResult::invalid_document;

@@ -33,7 +33,7 @@ CapabilityDefinition fixture() {
       .revocation = RevocationPolicy::cancel_inflight,
       .audit = {},
       .adapter = {.adapter_class = Name("bounded-https-fetch"),
-                  .implementation_digest = Digest(std::string(64, 'a')),
+                  .contract_digest = Digest(std::string(64, 'a')),
                   .abi_version = 1},
       .operations = {},
   };
@@ -58,6 +58,14 @@ void capability_definition_loader_tests() {
   require(parse_definition_document(mutated, DefinitionSource::local_admin,
                                     parsed) == LoadResult::invalid_document,
           "digest-bound document mutation was accepted");
+  auto old_digest_field = document;
+  old_digest_field.replace(old_digest_field.find("contract-digest"),
+                           std::string("contract-digest").size(),
+                           "adapter-digest");
+  require(parse_definition_document(old_digest_field,
+                                    DefinitionSource::local_admin, verifier,
+                                    parsed) == LoadResult::invalid_document,
+          "removed adapter-digest field remained an accepted alias");
 
   char temporary[] = "/tmp/omarchy-capability-loader.XXXXXX";
   const char *directory = mkdtemp(temporary);

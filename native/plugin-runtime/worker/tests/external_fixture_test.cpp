@@ -52,7 +52,7 @@ std::vector<RegisteredAdapter> parse_adapters(std::string_view value) {
     const auto first = item.find(':');
     const auto second = item.find(':', first + 1);
     require(first != std::string_view::npos && second != std::string_view::npos,
-            "adapter registration must be class:digest:abi");
+            "adapter registration must be class:contract-digest:abi");
     const auto abi_text = item.substr(second + 1);
     std::size_t consumed = 0;
     const auto abi = std::stoul(std::string(abi_text), &consumed);
@@ -60,7 +60,7 @@ std::vector<RegisteredAdapter> parse_adapters(std::string_view value) {
             "adapter registration ABI is invalid");
     result.push_back(
         {.binding = {.adapter_class = definitions::Name(item.substr(0, first)),
-                     .implementation_digest = definitions::Digest(
+                     .contract_digest = definitions::Digest(
                          item.substr(first + 1, second - first - 1)),
                      .abi_version = static_cast<std::uint32_t>(abi)}});
     if (end == std::string_view::npos)
@@ -265,8 +265,8 @@ void run(const std::filesystem::path &root,
             "plugin-only freeform definition entered trusted registry");
 
     auto wrong_adapter = bindings.front().adapter;
-    wrong_adapter.implementation_digest = definitions::Digest(
-        wrong_adapter.implementation_digest.view() == wrong_digest
+    wrong_adapter.contract_digest = definitions::Digest(
+        wrong_adapter.contract_digest.view() == wrong_digest
             ? std::string(64, 'e')
             : wrong_digest);
     const definitions::DynamicScopeValidator scopes{.compare = exact_scope};
@@ -276,7 +276,7 @@ void run(const std::filesystem::path &root,
         bindings.front().request.scope.view(), wrong_adapter, scopes, false);
     require(adapter_denial.decision ==
                 definitions::DynamicDecision::adapter_mismatch,
-            "adapter implementation digest mismatch was authorized");
+            "adapter contract digest mismatch was authorized");
   }
 
   StrictRuntime provider(registry, std::move(bindings), std::move(compiled));

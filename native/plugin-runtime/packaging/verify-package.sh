@@ -205,6 +205,31 @@ readelf -Ws "$worker" | grep -F '@Qt_6_PRIVATE_API' >/dev/null ||
 if ! python -m json.tool "$root/policy/builtin-capabilities-v1.json" >/dev/null 2>&1; then
   fail "builtin capability policy is not valid JSON"
 fi
+if ! jq -e '
+  .schemaVersion == 1 and
+  .manifestReferencesRequireExactPins == true and
+  [.definitions[].capability] == [
+    "network.fetch", "external.open-uri.https", "system.observe",
+    "device.observe", "device.control", "remote-account.read",
+    "remote-account.write", "media.play-stream"
+  ] and
+  all(.definitions[];
+    .definitionGeneration == 1 and
+    (.definitionDigest | test("^[0-9a-f]{64}$")) and
+    (.contractDigest | test("^[0-9a-f]{64}$")))
+' "$root/metadata/capability-catalog-v1.json" >/dev/null; then
+  fail "generated capability catalog is invalid"
+fi
+while IFS=$'\t' read -r capability definition_digest contract_digest; do
+  definition="$root/capabilities.d/$capability.capability"
+  grep -Fx "canonical-name=$capability" "$definition" >/dev/null ||
+    fail "capability definition name differs from catalog: $capability"
+  grep -Fx "definition-digest=$definition_digest" "$definition" >/dev/null ||
+    fail "capability definition digest differs from catalog: $capability"
+  grep -Fx "contract-digest=$contract_digest" "$definition" >/dev/null ||
+    fail "capability contract digest differs from catalog: $capability"
+done < <(jq -r '.definitions[] | [.capability, .definitionDigest, .contractDigest] | @tsv' \
+  "$root/metadata/capability-catalog-v1.json")
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 if ! /usr/lib/qt6/bin/qmllint -I "$root/qml" "$root"/shell/*.qml \

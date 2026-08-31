@@ -8,7 +8,39 @@
 namespace omarchy::plugins::definitions {
 namespace {
 
-bool canonical_name(std::string_view value) {
+void append(std::string &bytes, std::string_view value) {
+  bytes.append(std::to_string(value.size()));
+  bytes.push_back(':');
+  bytes.append(value);
+}
+
+bool matching_scope_schema(const CapabilityDefinition &definition) {
+  switch (definition.enforcement_family) {
+  case EnforcementFamily::network_fetch:
+    return definition.scope_schema == ScopeSchema::https_origins_and_methods;
+  case EnforcementFamily::external_open_uri:
+    return definition.scope_schema == ScopeSchema::https_origins_after_gesture;
+  case EnforcementFamily::system_observe:
+    return definition.scope_schema == ScopeSchema::named_sanitized_datasets;
+  case EnforcementFamily::device_observe:
+    return definition.scope_schema == ScopeSchema::selected_device_fields;
+  case EnforcementFamily::device_control:
+    return definition.scope_schema == ScopeSchema::selected_device_controls;
+  case EnforcementFamily::media_play_stream:
+    return definition.scope_schema ==
+           ScopeSchema::activation_source_handles_and_controls;
+  case EnforcementFamily::remote_account_read:
+  case EnforcementFamily::remote_account_write:
+    return definition.scope_schema == ScopeSchema::selected_remote_account;
+  case EnforcementFamily::cli_harness:
+    return definition.scope_schema == ScopeSchema::exact_cli_profile;
+  }
+  return false;
+}
+
+} // namespace
+
+bool canonical_identifier(std::string_view value) {
   if (value.empty())
     return false;
   bool separator = true;
@@ -24,36 +56,29 @@ bool canonical_name(std::string_view value) {
   return !separator;
 }
 
-bool hex_digest(const Digest &digest) {
+bool valid_digest(std::string_view digest) {
   return digest.size() == 64 &&
-         std::all_of(digest.view().begin(), digest.view().end(), [](char item) {
+         std::all_of(digest.begin(), digest.end(), [](char item) {
            return (item >= '0' && item <= '9') ||
                   (item >= 'a' && item <= 'f');
          });
 }
 
-void append(std::string &bytes, std::string_view value) {
-  bytes.append(std::to_string(value.size()));
-  bytes.push_back(':');
-  bytes.append(value);
-}
-
-} // namespace
+bool valid_digest(const Digest &digest) { return valid_digest(digest.view()); }
 
 bool valid_definition(const CapabilityDefinition &definition) {
-  if (!canonical_name(definition.canonical_name.view()) ||
-      !canonical_name(definition.authority_identity.view()) ||
-      !canonical_name(definition.display_category_id.view()) ||
+  if (!canonical_identifier(definition.canonical_name.view()) ||
+      !canonical_identifier(definition.authority_identity.view()) ||
+      !canonical_identifier(definition.display_category_id.view()) ||
       definition.display_category_label.size() == 0 ||
-      !canonical_name(definition.adapter.adapter_class.view()) ||
-      !hex_digest(definition.adapter.implementation_digest) ||
+      !canonical_identifier(definition.adapter.adapter_class.view()) ||
+      !valid_digest(definition.adapter.contract_digest) ||
       definition.adapter.abi_version == 0 || definition.operations.size() == 0 ||
       definition.title.size() == 0 || definition.risk_text.size() == 0 ||
       !definition.audit.record_decision || !definition.audit.redact_payload ||
       !definition.audit.redact_tokens)
     return false;
-  if ((definition.enforcement_family == EnforcementFamily::external_open_uri) !=
-      (definition.scope_schema == ScopeSchema::https_origins_after_gesture))
+  if (!matching_scope_schema(definition))
     return false;
   if (definition.enforcement_family == EnforcementFamily::external_open_uri &&
       std::any_of(definition.operations.values().begin(),
@@ -64,8 +89,15 @@ bool valid_definition(const CapabilityDefinition &definition) {
   return std::all_of(
       definition.operations.values().begin(),
       definition.operations.values().end(), [](const auto &operation) {
-        return canonical_name(operation.name.view()) && operation.label.size() > 0;
+        return canonical_identifier(operation.name.view()) &&
+               operation.label.size() > 0;
       });
+}
+
+Digest semantic_contract_digest(std::string_view descriptor) {
+  std::string bytes("OMARCHY-ADAPTER-CONTRACT-V1\0", 28);
+  append(bytes, descriptor);
+  return Digest(manifest::sha256_hex(bytes));
 }
 
 Digest definition_digest(const CapabilityDefinition &definition) {
@@ -87,7 +119,7 @@ Digest definition_digest(const CapabilityDefinition &definition) {
   bytes.push_back(definition.audit.redact_uri ? 1 : 0);
   bytes.push_back(definition.audit.redact_tokens ? 1 : 0);
   append(bytes, definition.adapter.adapter_class.view());
-  append(bytes, definition.adapter.implementation_digest.view());
+  append(bytes, definition.adapter.contract_digest.view());
   for (int shift = 24; shift >= 0; shift -= 8)
     bytes.push_back(static_cast<char>(definition.adapter.abi_version >> shift));
   for (const auto &operation : definition.operations.values()) {

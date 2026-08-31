@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "definitions": [
+    {"capability":"network.fetch","definitionGeneration":1,"definitionDigest":"6ab72b29cb9a561eab8e85b5582a637d5e9f7c4ff74f65002e9465ba2dc5b6a9","contractDigest":"e69b4b46fd9ee0e01c8d470e4b6af7f47494b652f6160b756222a8f8eae3124c"},
+    {"capability":"external.open-uri.https","definitionGeneration":1,"definitionDigest":"fa50e79ec4e1e9a59ceb06c9c0b96062777528490887c64fa4db0a6f1c9a7cbf","contractDigest":"113fd070f16ff5bf9e6d2330cbd1bf1ff118066a580f169ee46ab1b4a2327690"},
+    {"capability":"system.observe","definitionGeneration":1,"definitionDigest":"59af09ff1dd91191a3dcfb7917fd6bebc7aaac91a892c69cbd329bd45e4df520","contractDigest":"e32bc94a49b0e2170465f7e7c7d671a6a4a7d1d857cee4b4111b81dd3088c977"},
+    {"capability":"device.observe","definitionGeneration":1,"definitionDigest":"4eb1c5db51d9106086607fa841556d1d6813816d414208385accb57841e81f94","contractDigest":"8b6571dc76a636d63699e8fb119f7c727b9c03c01d3384b44b46c07769deedff"},
+    {"capability":"device.control","definitionGeneration":1,"definitionDigest":"990225ca31aff46c416e9af314126de00258daba41a1e4f64661af081b5b2bf6","contractDigest":"08cb828f6083e31dd36ff9696752b22690008786fa62c95ebb20718cd022bf25"},
+    {"capability":"remote-account.read","definitionGeneration":1,"definitionDigest":"280a961bc1c9f9f979f600d3b2847dbd85528d90be4fa76654c0eb54eaf4d776","contractDigest":"47252a552f4762c588c742f37fd36d5cdf3845feb5677eac02a4485360645fa0"},
+    {"capability":"remote-account.write","definitionGeneration":1,"definitionDigest":"07cebee04e6b136160d0178bdaa8b4637a28a1606572b82134891ee3bf5e9f72","contractDigest":"5306872dd282beda0b626fd74919db73b772b0396b1ca29bdc0217da8c441429"},
+    {"capability":"media.play-stream","definitionGeneration":1,"definitionDigest":"40709dc8191bee3db0a20c0ab1f28ddd729175eecb4c333d09b45687ae47950b","contractDigest":"f060bfec526a4355bd3431d39310bf96e61907f26be0e0dea6e6e8c2d28a415c"}
+  ],
+  "manifestReferencesRequireExactPins": true
+}

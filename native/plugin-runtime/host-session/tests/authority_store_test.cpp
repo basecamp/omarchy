@@ -100,7 +100,7 @@ definitions::CapabilityDefinition dynamic_definition(std::string_view name,
       .audit = {},
       .adapter = {.adapter_class =
                       definitions::Name(std::string(name) + ".adapter"),
-                  .implementation_digest =
+                  .contract_digest =
                       definitions::Digest(hex(digest_byte)),
                   .abi_version = 1},
       .operations = {}};

@@ -152,6 +152,18 @@ expect_failure "invalid policy document" "builtin capability policy is not valid
 
 reset_fixture
 root=$scratch/root/usr/lib/omarchy/plugin-security/$version
+sed -i 's/"manifestReferencesRequireExactPins": true/"manifestReferencesRequireExactPins": false/' \
+  "$root/metadata/capability-catalog-v1.json"
+expect_failure "invalid generated capability catalog" "generated capability catalog is invalid" "$verifier" --staging "$scratch/root" "$version"
+
+reset_fixture
+root=$scratch/root/usr/lib/omarchy/plugin-security/$version
+sed -i 's/^contract-digest=./contract-digest=f/' \
+  "$root/capabilities.d/network.fetch.capability"
+expect_failure "capability contract mismatch" "capability contract digest differs from catalog" "$verifier" --staging "$scratch/root" "$version"
+
+reset_fixture
+root=$scratch/root/usr/lib/omarchy/plugin-security/$version
 printf 'NOPE' | dd of="$root/bin/omarchy-plugin-qml-worker" bs=1 count=4 conv=notrunc status=none
 expect_failure "invalid worker ELF" "omarchy-plugin-qml-worker is not an x86-64 PIE executable" "$verifier" --staging "$scratch/root" "$version"
 

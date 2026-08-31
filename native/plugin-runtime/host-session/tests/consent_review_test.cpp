@@ -53,7 +53,7 @@ definitions::CapabilityDefinition dynamic_definition(char provider) {
       .revocation = definitions::RevocationPolicy::cancel_inflight,
       .audit = {},
       .adapter = {.adapter_class = definitions::Name("service.demo.adapter"),
-                  .implementation_digest = definitions::Digest(hex(provider)),
+                  .contract_digest = definitions::Digest(hex(provider)),
                   .abi_version = 1},
       .operations = {}};
   definition.operations.insert({.name = definitions::Name("read"),
@@ -286,7 +286,7 @@ void dynamic_exactness_and_provider_identity() {
   require(review && review->dynamic_rows.size() == 1 &&
               review->dynamic_rows[0].trusted_definition &&
               review->dynamic_rows[0]
-                      .trusted_definition->adapter.implementation_digest ==
+                      .trusted_definition->adapter.contract_digest ==
                   definitions::Digest(hex('d')),
           "trusted provider identity was not reviewable");
   auto denied = dynamic_choice(*review, permissions::UserDecision::deny);

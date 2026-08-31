@@ -216,7 +216,7 @@ struct DynamicFixture {
         .revocation = revocation,
         .audit = {},
         .adapter = {.adapter_class = definitions::Name("fixture-adapter"),
-                    .implementation_digest = digest('d'),
+                    .contract_digest = digest('d'),
                     .abi_version = 1},
         .operations = {}};
     require(definition.operations.insert({.name = definitions::Name("echo"),

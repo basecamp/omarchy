@@ -256,7 +256,7 @@ void dynamic_qml_to_adapter() {
       .revocation = definitions::RevocationPolicy::cancel_inflight,
       .audit = {},
       .adapter = {.adapter_class = definitions::Name("status-adapter"),
-                  .implementation_digest = repeated('a'),
+                  .contract_digest = repeated('a'),
                   .abi_version = 1},
       .operations = {}};
   definition.operations.insert(

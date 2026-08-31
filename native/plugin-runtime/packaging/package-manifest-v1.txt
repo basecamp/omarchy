@@ -1,4 +1,13 @@
 755 bin/omarchy-plugin-qml-worker
+644 capabilities.d/device.control.capability
+644 capabilities.d/device.observe.capability
+644 capabilities.d/external.open-uri.https.capability
+644 capabilities.d/media.play-stream.capability
+644 capabilities.d/network.fetch.capability
+644 capabilities.d/remote-account.read.capability
+644 capabilities.d/remote-account.write.capability
+644 capabilities.d/system.observe.capability
+644 metadata/capability-catalog-v1.json
 644 metadata/runtime-dependencies-v1.txt
 644 metadata/runtime-paths-v1.txt
 644 policy/builtin-capabilities-v1.json

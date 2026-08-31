@@ -43,30 +43,6 @@ bool bounded_text(const QByteArray &value, qsizetype maximum,
   return true;
 }
 
-bool canonical_name(std::string_view value) {
-  if (value.empty() || value.size() > 128)
-    return false;
-  bool separator = true;
-  for (const unsigned char item : value) {
-    const bool alphanumeric = (item >= 'a' && item <= 'z') ||
-                              (item >= '0' && item <= '9');
-    const bool current_separator = item == '.' || item == '-';
-    if ((!alphanumeric && !current_separator) ||
-        (separator && current_separator))
-      return false;
-    separator = current_separator;
-  }
-  return !separator;
-}
-
-bool canonical_digest(std::string_view value) {
-  return value.size() == 64 &&
-         std::ranges::all_of(value, [](const unsigned char item) {
-           return (item >= '0' && item <= '9') ||
-                  (item >= 'a' && item <= 'f');
-         });
-}
-
 QStringList operations_for(
     const omarchy::plugins::manifest::CapabilityRequest &request) {
   QStringList result;
@@ -172,7 +148,8 @@ std::optional<EncodedInvoke> token_request(
 ManifestInvokeEncoder::ManifestInvokeEncoder(
     const omarchy::plugins::manifest::ManifestV2 &manifest) {
   for (const auto &request : manifest.requests) {
-    if (!canonical_name(request.capability)) {
+    if (!omarchy::plugins::definitions::canonical_identifier(
+            request.capability)) {
       valid_ = false;
       continue;
     }
@@ -204,7 +181,8 @@ ManifestInvokeEncoder::ManifestInvokeEncoder(
       }
     } else {
       if (request.definition_generation == 0 ||
-          !canonical_digest(request.definition_digest) ||
+          !omarchy::plugins::definitions::valid_digest(
+              request.definition_digest) ||
           request.operations.empty()) {
         valid_ = false;
         continue;
@@ -217,7 +195,7 @@ ManifestInvokeEncoder::ManifestInvokeEncoder(
               .definition_digest = omarchy::plugins::definitions::Digest(
                   request.definition_digest)};
       for (const auto &operation : request.operations) {
-        if (!canonical_name(operation) ||
+        if (!omarchy::plugins::definitions::canonical_identifier(operation) ||
             std::ranges::find(binding.operations, operation) !=
             binding.operations.end()) {
           valid_ = false;

@@ -223,7 +223,7 @@ definitions::CapabilityDefinition dynamic_definition() {
       .revocation = definitions::RevocationPolicy::cancel_inflight,
       .audit = {},
       .adapter = {.adapter_class = definitions::Name("unregistered-adapter"),
-                  .implementation_digest =
+                  .contract_digest =
                       definitions::Digest(std::string(64, 'a')),
                   .abi_version = 1},
       .operations = {},

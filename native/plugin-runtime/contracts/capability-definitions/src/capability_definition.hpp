@@ -26,14 +26,18 @@ enum class EnforcementFamily : std::uint8_t {
   device_observe,
   device_control,
   media_play_stream,
+  remote_account_read,
+  remote_account_write,
   cli_harness,
 };
 enum class ScopeSchema : std::uint8_t {
   https_origins_and_methods,
   https_origins_after_gesture,
   named_sanitized_datasets,
-  adapter_resources,
-  https_stream_origins,
+  selected_device_fields,
+  selected_device_controls,
+  selected_remote_account,
+  activation_source_handles_and_controls,
   exact_cli_profile,
 };
 enum class RiskLevel : std::uint8_t { low, moderate, high, critical };
@@ -63,7 +67,9 @@ struct OperationDefinition {
 
 struct AdapterBinding {
   Name adapter_class;
-  Digest implementation_digest;
+  // Identifies the provider protocol and its bounded semantics. Executable
+  // identity belongs to the trusted provider profile, not this definition.
+  Digest contract_digest;
   std::uint32_t abi_version = 0;
   bool operator==(const AdapterBinding &) const = default;
 };
@@ -120,6 +126,10 @@ private:
 };
 
 [[nodiscard]] bool valid_definition(const CapabilityDefinition &definition);
+[[nodiscard]] bool canonical_identifier(std::string_view value);
+[[nodiscard]] bool valid_digest(std::string_view digest);
+[[nodiscard]] bool valid_digest(const Digest &digest);
+[[nodiscard]] Digest semantic_contract_digest(std::string_view descriptor);
 [[nodiscard]] Digest definition_digest(const CapabilityDefinition &definition);
 
 struct DynamicRequest {

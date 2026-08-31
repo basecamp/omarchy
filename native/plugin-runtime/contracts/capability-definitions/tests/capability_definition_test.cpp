@@ -40,7 +40,7 @@ CapabilityDefinition network_fetch() {
       .revocation = RevocationPolicy::cancel_inflight,
       .audit = {},
       .adapter = {.adapter_class = Name("bounded-https-fetch"),
-                  .implementation_digest = digest('a'),
+                  .contract_digest = digest('a'),
                   .abi_version = 1},
       .operations = {},
   };
@@ -66,7 +66,7 @@ CapabilityDefinition open_uri() {
       .revocation = RevocationPolicy::deny_new,
       .audit = {},
       .adapter = {.adapter_class = Name("desktop-open-uri"),
-                  .implementation_digest = digest('b'),
+                  .contract_digest = digest('b'),
                   .abi_version = 1},
       .operations = {},
   };
@@ -146,7 +146,7 @@ int main() {
               DynamicDecision::revoked,
           "revoked dynamic grant reached its adapter");
   auto substituted = installed->definition->adapter;
-  substituted.implementation_digest = digest('e');
+  substituted.contract_digest = digest('e');
   require(authorize_dynamic_operation(
               registry, request, grant, "notifications.list", "narrow",
               substituted, {.compare = compare_scope}, false).decision ==
@@ -201,6 +201,38 @@ int main() {
   dishonest_open.operations.insert(operation);
   require(!valid_definition(dishonest_open),
           "external URI definition removed the gesture rule");
+
+  auto remote_read = fetch_definition;
+  remote_read.enforcement_family = EnforcementFamily::remote_account_read;
+  remote_read.scope_schema = ScopeSchema::selected_remote_account;
+  require(valid_definition(remote_read),
+          "remote-account read rejected its selected-account scope");
+  remote_read.scope_schema = ScopeSchema::https_origins_and_methods;
+  require(!valid_definition(remote_read),
+          "remote-account read was mislabeled as network-fetch scope");
+
+  auto device_observe = fetch_definition;
+  device_observe.enforcement_family = EnforcementFamily::device_observe;
+  device_observe.scope_schema = ScopeSchema::selected_device_fields;
+  require(valid_definition(device_observe),
+          "device observation rejected its selected-field scope");
+  device_observe.scope_schema = ScopeSchema::selected_remote_account;
+  require(!valid_definition(device_observe),
+          "device observation accepted a remote-account scope");
+
+  auto media = fetch_definition;
+  media.enforcement_family = EnforcementFamily::media_play_stream;
+  media.scope_schema = ScopeSchema::activation_source_handles_and_controls;
+  require(valid_definition(media),
+          "media playback rejected its activation-bound handle scope");
+  media.scope_schema = ScopeSchema::https_origins_and_methods;
+  require(!valid_definition(media),
+          "media playback accepted an HTTPS stream-origin scope");
+
+  const auto contract = semantic_contract_digest("request=a;response=b");
+  require(contract == semantic_contract_digest("request=a;response=b") &&
+              contract != semantic_contract_digest("request=a;response=c"),
+          "semantic contract digest is not deterministic and content-bound");
 
   capability_definition_loader_tests();
   dynamic_activation_tests();

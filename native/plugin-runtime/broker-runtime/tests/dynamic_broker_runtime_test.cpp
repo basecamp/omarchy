@@ -281,7 +281,7 @@ int main() {
       .revocation = definitions::RevocationPolicy::restart_worker,
       .audit = {},
       .adapter = {.adapter_class = definitions::Name("fixture-adapter"),
-                  .implementation_digest = digest('a'),
+                  .contract_digest = digest('a'),
                   .abi_version = 1},
       .operations = {}};
   definition.operations.insert(

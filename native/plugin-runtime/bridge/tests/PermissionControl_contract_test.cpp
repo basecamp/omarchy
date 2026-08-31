@@ -95,7 +95,7 @@ definitions::CapabilityDefinition collisionDefinition() {
       .revocation = definitions::RevocationPolicy::deny_new,
       .audit = {},
       .adapter = {.adapter_class = definitions::Name("contract-adapter"),
-                  .implementation_digest =
+                  .contract_digest =
                       definitions::Digest(std::string(64, 'c')),
                   .abi_version = 1},
       .operations = {}};

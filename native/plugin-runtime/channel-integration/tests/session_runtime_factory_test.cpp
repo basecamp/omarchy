@@ -240,14 +240,14 @@ definitions::CapabilityDefinition dynamic_definition() {
       .enforcement_family = definitions::EnforcementFamily::network_fetch,
       .display_category_id = definitions::Name("developer.services"),
       .display_category_label = definitions::Label("Developer services"),
-      .scope_schema = definitions::ScopeSchema::adapter_resources,
+      .scope_schema = definitions::ScopeSchema::https_origins_and_methods,
       .title = definitions::Label("Echo"),
       .risk_text = definitions::Label("Uses trusted echo service"),
       .risk = definitions::RiskLevel::moderate,
       .revocation = definitions::RevocationPolicy::deny_new,
       .audit = {},
       .adapter = {.adapter_class = definitions::Name("service.echo.adapter"),
-                  .implementation_digest = digest('d'),
+                  .contract_digest = digest('d'),
                   .abi_version = 1},
       .operations = {}};
   definition.operations.insert(
@@ -475,7 +475,7 @@ void descriptor_quota_and_dynamic_catalog_validation() {
                                                    required_dynamic),
           "required granted permission activated without its provider");
   auto wrong = definition.adapter;
-  wrong.implementation_digest = digest('e');
+  wrong.contract_digest = digest('e');
   missing_route.dynamic_services.push_back(
       {.binding = wrong, .dispatch = dynamic_dispatch});
   channel::SessionRuntimeFactory wrong_dynamic(

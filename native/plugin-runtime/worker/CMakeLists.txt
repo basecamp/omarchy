@@ -12,7 +12,7 @@ set(OMARCHY_PLUGIN_EXTERNAL_FIXTURES "" CACHE STRING
 set(OMARCHY_PLUGIN_EXTERNAL_DEFINITIONS "" CACHE PATH
   "Independent trusted capability-definition directory for external fixtures")
 set(OMARCHY_PLUGIN_EXTERNAL_ADAPTERS "" CACHE STRING
-  "Semicolon-separated adapter-class:digest:abi registrations for external fixtures")
+  "Semicolon-separated adapter-class:contract-digest:abi registrations for external fixtures")
 
 function(omarchy_plugin_worker_sanitize target)
   if(PLUGIN_SECURITY_WORKER_SANITIZERS)
