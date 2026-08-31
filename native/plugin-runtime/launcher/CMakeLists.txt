@@ -6,6 +6,7 @@ add_library(omarchy-plugin-launcher STATIC
   src/bus_connection.cpp
   src/launcher.cpp
   src/process_cleanup.cpp
+  src/systemd_resource_scope.cpp
 )
 add_library(Omarchy::PluginLauncher ALIAS omarchy-plugin-launcher)
 omarchy_plugin_target_defaults(omarchy-plugin-launcher)
