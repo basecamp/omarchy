@@ -3,6 +3,7 @@ pkg_check_modules(SECCOMP REQUIRED IMPORTED_TARGET libseccomp)
 pkg_check_modules(SYSTEMD REQUIRED IMPORTED_TARGET libsystemd)
 
 add_library(omarchy-plugin-launcher STATIC
+  src/bus_connection.cpp
   src/launcher.cpp
   src/process_cleanup.cpp
 )

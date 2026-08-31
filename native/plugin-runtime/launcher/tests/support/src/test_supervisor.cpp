@@ -1,9 +1,11 @@
 #include "omarchy/plugin_runtime/launcher/test_supervisor.h"
 
 #include "omarchy/plugin_runtime/sandbox/test_plan.h"
+#include "bus_connection.hpp"
 #include "supervisor_recipe.hpp"
 
 #include <sys/stat.h>
+#include <systemd/sd-bus.h>
 
 #include <memory>
 #include <stdexcept>
@@ -53,6 +55,15 @@ Supervisor make_supervisor(
   return assemble(std::move(bwrap_path), bwrap_owner, std::move(worker_path),
                   worker_owner, std::move(resource_scope),
                   force_reaper_start_failure);
+}
+
+bool connect_bus(std::string_view address, Deadline deadline,
+                 std::string &error) noexcept {
+  sd_bus *bus = detail::connect_bus(address, deadline, error);
+  if (!bus)
+    return false;
+  sd_bus_close_unref(bus);
+  return true;
 }
 
 } // namespace omarchy::plugin_runtime::launcher::test_support

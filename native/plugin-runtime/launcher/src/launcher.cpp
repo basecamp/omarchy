@@ -1,6 +1,7 @@
 #include "omarchy/plugin_runtime/launcher/launcher.h"
 #include "omarchy/plugin_runtime/launcher/termination_state.h"
 #include "omarchy/plugin_runtime/runtime_paths.hpp"
+#include "bus_connection.hpp"
 #include "process_cleanup.hpp"
 #include "supervisor_recipe.hpp"
 
@@ -31,7 +32,6 @@
 #include <cerrno>
 #include <charconv>
 #include <chrono>
-#include <condition_variable>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -591,6 +591,7 @@ struct Worker::Impl {
   bool accepting = true;
   TerminationState termination;
   std::shared_ptr<ReapCompletion> completion;
+  std::uint64_t observed_cleanup_failures = 0;
   std::size_t next_receive_lane = 0;
   ReadinessInterests readiness_interests{};
 
@@ -663,10 +664,17 @@ struct Worker::Impl {
   [[nodiscard]] bool terminate(Deadline deadline) noexcept {
     schedule_termination(true);
     std::unique_lock lock(completion->mutex);
-    if (!completion->completed)
+    const auto starting_failures = completion->failed_attempts;
+    if (!completion->succeeded &&
+        starting_failures == observed_cleanup_failures)
       completion->ready.wait_until(
-          lock, deadline, [this] { return completion->completed; });
-    if (completion->completed) termination.complete(completion->succeeded);
+          lock, deadline, [this, starting_failures] {
+            return completion->succeeded ||
+                   completion->failed_attempts > starting_failures;
+          });
+    observed_cleanup_failures = completion->failed_attempts;
+    if (completion->succeeded)
+      termination.complete(true);
     return termination.succeeded();
   }
 
@@ -1022,6 +1030,19 @@ bool Worker::terminate(Deadline deadline) noexcept {
   return implementation_->terminate(deadline);
 }
 
+namespace {
+[[nodiscard]] bool valid_scope_unit(std::string_view unit) {
+  return !unit.empty() && unit.size() <= 255 && unit.ends_with(".scope") &&
+         std::ranges::all_of(unit, [](unsigned char character) {
+           return (character >= 'a' && character <= 'z') ||
+                  (character >= 'A' && character <= 'Z') ||
+                  (character >= '0' && character <= '9') || character == '-' ||
+                  character == '_' || character == '.' || character == ':' ||
+                  character == '@';
+         });
+}
+} // namespace
+
 ResourceScopeController::AttachResult ResourceScopeController::attach(
     std::string_view unit, pid_t monitor_pid, pid_t worker_pid,
     const sandbox::SandboxPlan &plan, Deadline deadline, std::string &error) {
@@ -1047,22 +1068,12 @@ ResourceScopeController::AttachResult ResourceScopeController::attach(
     const ProcessScopeRequest &request, Deadline deadline,
     std::string &error) {
   constexpr std::size_t kMaximumScopePids = 64;
-  const auto valid_unit =
-      !request.unit.empty() && request.unit.size() <= 255 &&
-      request.unit.ends_with(".scope") &&
-      std::ranges::all_of(request.unit, [](unsigned char character) {
-        return (character >= 'a' && character <= 'z') ||
-               (character >= 'A' && character <= 'Z') ||
-               (character >= '0' && character <= '9') || character == '-' ||
-               character == '_' || character == '.' || character == ':' ||
-               character == '@';
-      });
   const auto valid_description =
       !request.description.empty() && request.description.size() <= 256 &&
       std::ranges::none_of(request.description, [](unsigned char character) {
         return character < 0x20 || character == 0x7f;
       });
-  if (!valid_unit || !valid_description) {
+  if (!valid_scope_unit(request.unit) || !valid_description) {
     error = "invalid process scope identity";
     return {};
   }
@@ -1108,6 +1119,21 @@ ResourceScopeController::attach_validated(const ProcessScopeRequest &,
   return {};
 }
 
+bool ResourceScopeController::terminate_scope(std::string_view unit,
+                                              Deadline deadline,
+                                              std::string &error) noexcept {
+  error.clear();
+  if (!valid_scope_unit(unit)) {
+    error = "invalid process scope identity";
+    return false;
+  }
+  if (std::chrono::steady_clock::now() >= deadline) {
+    error = "process scope termination deadline expired";
+    return false;
+  }
+  return terminate_scope_validated(unit, deadline, error);
+}
+
 namespace {
 
 [[nodiscard]] bool append_basic_property(sd_bus_message *message,
@@ -1141,6 +1167,15 @@ namespace {
          sd_bus_message_close_container(message) >= 0;
 }
 
+[[nodiscard]] std::string user_bus_address() {
+  return "unix:path=/run/user/" + std::to_string(getuid()) + "/bus";
+}
+
+[[nodiscard]] bool bus_disconnected(int result) noexcept {
+  return result == -ENOTCONN || result == -ECONNRESET || result == -EPIPE ||
+         result == -ECONNABORTED || result == -ESHUTDOWN || result == -EBADF;
+}
+
 class SystemdResourceScope final : public ResourceScopeController {
 public:
   ~SystemdResourceScope() override {
@@ -1163,28 +1198,7 @@ public:
       error = "systemd cleanup bus lock deadline expired";
       return false;
     }
-    if (cleanup_failed_) {
-      error = "systemd cleanup bus is unusable";
-      return false;
-    }
-    if (cleanup_bus_ != nullptr) {
-      if (sd_bus_is_open(cleanup_bus_) > 0) return true;
-      cleanup_failed_ = true;
-      error = "systemd cleanup bus became unusable";
-      return false;
-    }
-    if (std::chrono::steady_clock::now() >= deadline) {
-      error = "systemd cleanup bus setup deadline expired";
-      return false;
-    }
-    if (sd_bus_open_user(&cleanup_bus_) < 0 ||
-        std::chrono::steady_clock::now() >= deadline) {
-      sd_bus_unref(cleanup_bus_);
-      cleanup_bus_ = nullptr;
-      error = "systemd cleanup bus is unavailable before launch";
-      return false;
-    }
-    return true;
+    return connect_cleanup_locked(deadline, error);
   }
 
   AttachResult attach_validated(const ProcessScopeRequest &request,
@@ -1199,15 +1213,44 @@ public:
     return attach_locked(request, deadline, error);
   }
 
-  void kill(std::string_view unit, Deadline deadline) noexcept override {
-    cleanup_unit(unit, true, deadline);
-  }
-
-  void remove(std::string_view unit, Deadline deadline) noexcept override {
-    cleanup_unit(unit, false, deadline);
+  bool terminate_scope_validated(std::string_view unit, Deadline deadline,
+                                 std::string &error) noexcept override {
+    std::unique_lock lock(cleanup_mutex_, std::defer_lock);
+    if (!lock.try_lock_until(deadline)) {
+      error = "systemd cleanup bus lock deadline expired";
+      return false;
+    }
+    return terminate_scope_locked(unit, deadline, error);
   }
 
 private:
+  void invalidate_primary() noexcept {
+    sd_bus_close_unref(bus_);
+    bus_ = nullptr;
+  }
+
+  [[nodiscard]] bool primary_disconnected(int result) const noexcept {
+    return bus_disconnected(result) || sd_bus_is_open(bus_) <= 0 ||
+           sd_bus_is_ready(bus_) <= 0;
+  }
+
+  bool connect_cleanup_locked(Deadline deadline, std::string &error) noexcept {
+    if (cleanup_bus_ != nullptr && !cleanup_failed_ &&
+        sd_bus_is_open(cleanup_bus_) > 0)
+      return true;
+    sd_bus_unref(cleanup_bus_);
+    cleanup_bus_ = nullptr;
+    cleanup_failed_ = false;
+    if (std::chrono::steady_clock::now() >= deadline) {
+      error = "systemd cleanup bus setup deadline expired";
+      return false;
+    }
+    cleanup_bus_ = detail::connect_bus(user_bus_address(), deadline, error);
+    if (!cleanup_bus_)
+      return false;
+    return true;
+  }
+
   bool probe_locked(Deadline deadline, std::string &error) {
     const auto remaining = std::chrono::duration_cast<std::chrono::microseconds>(
         deadline - std::chrono::steady_clock::now());
@@ -1216,11 +1259,19 @@ private:
       return false;
     }
     if (bus_ != nullptr) {
-      return true;
+      int processed = 0;
+      do {
+        processed = sd_bus_process(bus_, nullptr);
+      } while (processed > 0 &&
+               std::chrono::steady_clock::now() < deadline);
+      if (processed >= 0 && sd_bus_is_open(bus_) > 0 &&
+          sd_bus_is_ready(bus_) > 0)
+        return true;
+      invalidate_primary();
     }
-    if (sd_bus_open_user(&bus_) < 0) {
+    bus_ = detail::connect_bus(user_bus_address(), deadline, error);
+    if (!bus_) {
       error = "systemd user manager bus is unavailable";
-      bus_ = nullptr;
       return false;
     }
     if (sd_bus_set_method_call_timeout(
@@ -1258,11 +1309,11 @@ private:
     const std::uint64_t io_weight = resources.io_weight;
 
     bool attempted = false;
-    bool built =
-        sd_bus_message_new_method_call(
-            bus_, &message, "org.freedesktop.systemd1",
-            "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager",
-            "StartTransientUnit") >= 0 &&
+    const int message_result = sd_bus_message_new_method_call(
+        bus_, &message, "org.freedesktop.systemd1",
+        "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager",
+        "StartTransientUnit");
+    bool built = message_result >= 0 &&
         sd_bus_message_append_basic(message, 's', unit_name.c_str()) >= 0 &&
         sd_bus_message_append_basic(message, 's', mode) >= 0 &&
         sd_bus_message_open_container(message, 'a', "(sv)") >= 0 &&
@@ -1281,14 +1332,20 @@ private:
         sd_bus_message_close_container(message) >= 0;
     if (!built) {
       error = "cannot encode transient scope request";
+      if (primary_disconnected(message_result))
+        invalidate_primary();
     } else {
       attempted = true;
       const std::uint64_t timeout_usec =
           static_cast<std::uint64_t>(call_remaining.count());
-      if (sd_bus_call(bus_, message, timeout_usec, &bus_error, &reply) < 0) {
+      const int call_result =
+          sd_bus_call(bus_, message, timeout_usec, &bus_error, &reply);
+      if (call_result < 0) {
         error = bus_error.message != nullptr ? bus_error.message
                                              : "StartTransientUnit failed";
         built = false;
+        if (primary_disconnected(call_result))
+          invalidate_primary();
       }
     }
     if (built) {
@@ -1312,16 +1369,28 @@ private:
         if (std::ranges::all_of(applied, std::identity{})) {
           break;
         }
-        static_cast<void>(sd_bus_process(bus_, nullptr));
+        const int process_result = sd_bus_process(bus_, nullptr);
+        if (process_result < 0) {
+          invalidate_primary();
+          error = "systemd user manager disconnected during attachment";
+          built = false;
+          break;
+        }
         const auto remaining =
             std::chrono::duration_cast<std::chrono::microseconds>(
                 deadline - std::chrono::steady_clock::now());
         if (remaining.count() <= 0) {
           break;
         }
-        static_cast<void>(
-            sd_bus_wait(bus_, static_cast<std::uint64_t>(std::min<std::int64_t>(
-                                  remaining.count(), 10000))));
+        const int wait_result = sd_bus_wait(
+            bus_, static_cast<std::uint64_t>(
+                      std::min<std::int64_t>(remaining.count(), 10000)));
+        if (wait_result < 0) {
+          invalidate_primary();
+          error = "systemd user manager disconnected during attachment";
+          built = false;
+          break;
+        }
       }
       if (!std::ranges::all_of(applied, std::identity{})) {
         error = "transient scope did not bind every process before its deadline";
@@ -1334,42 +1403,107 @@ private:
     return {.attached = built, .cleanup_required = attempted};
   }
 
-  void cleanup_unit(std::string_view unit, bool kill,
-                    Deadline deadline) noexcept {
-    std::unique_lock lock(cleanup_mutex_, std::defer_lock);
-    if (!lock.try_lock_until(deadline) || cleanup_failed_ ||
-        cleanup_bus_ == nullptr)
-      return;
-    if (sd_bus_is_open(cleanup_bus_) <= 0) {
-      cleanup_failed_ = true;
-      return;
-    }
-    const std::string name(unit);
-    sd_bus_error error = SD_BUS_ERROR_NULL;
-    sd_bus_message *reply = nullptr;
+  enum class UnitState { present, absent, failed };
+
+  UnitState unit_state_locked(const std::string &name, Deadline deadline,
+                              std::string &error) noexcept {
     const auto remaining = std::chrono::duration_cast<std::chrono::microseconds>(
         deadline - std::chrono::steady_clock::now());
-    if (remaining.count() <= 0 ||
-        sd_bus_set_method_call_timeout(
-            cleanup_bus_, static_cast<std::uint64_t>(remaining.count())) < 0)
-      return;
-    int call_result = 0;
-    if (kill) {
-      call_result = sd_bus_call_method(
-          cleanup_bus_, "org.freedesktop.systemd1",
-          "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager",
-          "KillUnit", &error, &reply, "ssi", name.c_str(), "all", SIGKILL);
-    } else {
-      call_result = sd_bus_call_method(
-          cleanup_bus_, "org.freedesktop.systemd1",
-          "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager",
-          "StopUnit", &error, &reply, "ss", name.c_str(), "replace");
+    if (remaining.count() <= 0) {
+      error = "systemd scope termination deadline expired";
+      return UnitState::failed;
     }
-    if (call_result == -ENOTCONN || call_result == -ECONNRESET ||
-        call_result == -EPIPE)
+    if (sd_bus_set_method_call_timeout(
+            cleanup_bus_, static_cast<std::uint64_t>(remaining.count())) < 0) {
+      error = "cannot bound systemd scope verification";
+      return UnitState::failed;
+    }
+    sd_bus_error bus_error = SD_BUS_ERROR_NULL;
+    sd_bus_message *reply = nullptr;
+    const int result = sd_bus_call_method(
+        cleanup_bus_, "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
+        "org.freedesktop.systemd1.Manager", "GetUnit", &bus_error, &reply,
+        "s", name.c_str());
+    const bool absent = sd_bus_error_has_name(
+        &bus_error, "org.freedesktop.systemd1.NoSuchUnit");
+    if (result == -ENOTCONN || result == -ECONNRESET || result == -EPIPE)
       cleanup_failed_ = true;
-    sd_bus_error_free(&error);
+    if (result < 0 && !absent)
+      error = bus_error.message != nullptr
+                  ? bus_error.message
+                  : "systemd scope verification failed";
+    sd_bus_error_free(&bus_error);
     sd_bus_message_unref(reply);
+    if (absent) return UnitState::absent;
+    return result >= 0 ? UnitState::present : UnitState::failed;
+  }
+
+  bool terminate_scope_locked(std::string_view unit, Deadline deadline,
+                              std::string &error) noexcept {
+    if (!connect_cleanup_locked(deadline, error))
+      return false;
+    if (sd_bus_is_open(cleanup_bus_) <= 0) {
+      cleanup_failed_ = true;
+      error = "systemd cleanup bus became unusable";
+      return false;
+    }
+    const std::string name(unit);
+    if (unit_state_locked(name, deadline, error) != UnitState::present)
+      return error.empty();
+    for (const bool kill : {true, false}) {
+      const auto remaining =
+          std::chrono::duration_cast<std::chrono::microseconds>(
+              deadline - std::chrono::steady_clock::now());
+      if (remaining.count() <= 0 ||
+          sd_bus_set_method_call_timeout(
+              cleanup_bus_, static_cast<std::uint64_t>(remaining.count())) <
+              0) {
+        error = "systemd scope termination deadline expired";
+        return false;
+      }
+      sd_bus_error bus_error = SD_BUS_ERROR_NULL;
+      sd_bus_message *reply = nullptr;
+      const int result = kill
+                             ? sd_bus_call_method(
+                                   cleanup_bus_, "org.freedesktop.systemd1",
+                                   "/org/freedesktop/systemd1",
+                                   "org.freedesktop.systemd1.Manager",
+                                   "KillUnit", &bus_error, &reply, "ssi",
+                                   name.c_str(), "all", SIGKILL)
+                             : sd_bus_call_method(
+                                   cleanup_bus_, "org.freedesktop.systemd1",
+                                   "/org/freedesktop/systemd1",
+                                   "org.freedesktop.systemd1.Manager",
+                                   "StopUnit", &bus_error, &reply, "ss",
+                                   name.c_str(), "replace");
+      const bool absent = sd_bus_error_has_name(
+          &bus_error, "org.freedesktop.systemd1.NoSuchUnit");
+      if (result == -ENOTCONN || result == -ECONNRESET || result == -EPIPE)
+        cleanup_failed_ = true;
+      if (result < 0 && !absent)
+        error = bus_error.message != nullptr
+                    ? bus_error.message
+                    : "systemd scope termination failed";
+      sd_bus_error_free(&bus_error);
+      sd_bus_message_unref(reply);
+      if (absent) return true;
+      if (result < 0) return false;
+    }
+    while (std::chrono::steady_clock::now() < deadline) {
+      const auto state = unit_state_locked(name, deadline, error);
+      if (state == UnitState::absent) return true;
+      if (state == UnitState::failed) return false;
+      const auto remaining =
+          std::chrono::duration_cast<std::chrono::microseconds>(
+              deadline - std::chrono::steady_clock::now());
+      if (remaining.count() <= 0) break;
+      static_cast<void>(sd_bus_wait(
+          cleanup_bus_, static_cast<std::uint64_t>(std::min<std::int64_t>(
+                            remaining.count(), 10000))));
+      static_cast<void>(sd_bus_process(cleanup_bus_, nullptr));
+    }
+    error = "systemd scope termination was not verified before its deadline";
+    return false;
   }
 
   std::timed_mutex mutex_;

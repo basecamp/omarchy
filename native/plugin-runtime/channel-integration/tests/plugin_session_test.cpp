@@ -101,17 +101,15 @@ public:
     ++attachments;
     return {.attached = true, .cleanup_required = true};
   }
-  void kill(std::string_view, launcher::Deadline) noexcept override {
-    ++kills;
-  }
-  void remove(std::string_view, launcher::Deadline) noexcept override {
-    ++removals;
+  bool terminate_scope_validated(std::string_view, launcher::Deadline,
+                                  std::string &) noexcept override {
+    ++terminations;
+    return true;
   }
 
   std::string name;
   std::atomic<int> attachments{0};
-  std::atomic<int> kills{0};
-  std::atomic<int> removals{0};
+  std::atomic<int> terminations{0};
 };
 
 struct EffectBarrier final {
@@ -1438,12 +1436,11 @@ void startup_ack_failures_never_publish_product_session() {
     product.reset();
     await([&] { return *runtime_factory.destructions == 1; },
           "failed startup retained its runtime authority");
-    await([&] { return scope->removals.load() == 1; },
+    await([&] { return scope->terminations.load() == 1; },
           "failed startup did not remove its resource scope");
-    require(scope->kills <= 1 && scope->removals == 1,
-            std::string(mode) + " cleanup counts were kill=" +
-                std::to_string(scope->kills.load()) + " remove=" +
-                std::to_string(scope->removals.load()));
+    require(scope->terminations == 1,
+            std::string(mode) + " cleanup count was termination=" +
+                std::to_string(scope->terminations.load()));
   }
 }
 
@@ -1490,9 +1487,9 @@ void authority_loss_between_snapshot_and_ack_never_publishes() {
           "authority loss published running, control, or surface authority");
   product.reset();
   await([&] {
-    return *runtime_factory.destructions == 1 && scope->removals == 1;
+    return *runtime_factory.destructions == 1 && scope->terminations == 1;
   }, "authority-loss startup did not clean up exactly once");
-  require(scope->kills <= 1 && scope->removals == 1,
+  require(scope->terminations == 1,
           "authority-loss startup repeated resource cleanup");
 }
 
@@ -1533,15 +1530,11 @@ bool invalid_qml_worker_never_acknowledges_or_publishes() {
           "invalid QML published running, control, or surface authority");
   product.reset();
   await([&] {
-    return *runtime_factory.destructions == 1 && scope->removals == 1;
+    return *runtime_factory.destructions == 1 && scope->terminations == 1;
   }, "invalid-QML worker startup did not clean up exactly once");
-  // The asynchronous reaper may observe the worker's fatal exit immediately
-  // or issue its one bounded fallback kill before pidfd readiness arrives.
-  // Scope removal is the exact-once cleanup authority in both schedules.
-  require(scope->kills <= 1 && scope->removals == 1,
-          "invalid-QML worker cleanup counts were kill=" +
-              std::to_string(scope->kills.load()) + " remove=" +
-              std::to_string(scope->removals.load()));
+  require(scope->terminations == 1,
+          "invalid-QML worker cleanup count was termination=" +
+              std::to_string(scope->terminations.load()));
   return true;
 }
 

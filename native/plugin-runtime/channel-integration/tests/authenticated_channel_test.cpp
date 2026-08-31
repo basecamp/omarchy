@@ -83,29 +83,25 @@ public:
     attached = true;
     return {.attached = true, .cleanup_required = true};
   }
-  void kill(std::string_view unit, launcher::Deadline) noexcept override {
+  bool terminate_scope_validated(std::string_view unit, launcher::Deadline,
+                                  std::string &) noexcept override {
     if (unit == name) {
-      ++kills;
+      ++terminations;
     }
-  }
-  void remove(std::string_view unit, launcher::Deadline) noexcept override {
-    if (unit == name) {
-      ++removes;
-    }
+    return true;
   }
 
   std::string name;
   bool attached = false;
-  std::atomic<unsigned> kills = 0;
-  std::atomic<unsigned> removes = 0;
+  std::atomic<unsigned> terminations = 0;
 };
 
 bool eventually_removed(const std::shared_ptr<Scope> &scope) {
   const auto deadline = std::chrono::steady_clock::now() + 2s;
-  while (scope->removes.load() == 0 &&
+  while (scope->terminations.load() == 0 &&
          std::chrono::steady_clock::now() < deadline)
     usleep(1000);
-  return scope->removes.load() == 1;
+  return scope->terminations.load() == 1;
 }
 
 bool await_channel_readable(channel::AuthenticatedBrokerChannel &channel) {

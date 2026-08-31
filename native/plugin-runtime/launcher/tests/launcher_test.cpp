@@ -7,8 +7,10 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <sys/epoll.h>
+#include <sys/socket.h>
 #include <sys/syscall.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -222,28 +224,27 @@ public:
             .cleanup_required = true};
   }
 
-  void kill(std::string_view unit, launcher::Deadline) noexcept override {
-    if (unit == scope) {
-      ++kill_count;
-    }
-  }
-
-  void remove(std::string_view unit,
-              launcher::Deadline deadline) noexcept override {
+  bool terminate_scope_validated(std::string_view unit,
+                                  launcher::Deadline deadline,
+                                  std::string &error) noexcept override {
     if (unit == scope) {
       if (remove_delay > 0ms)
         std::this_thread::sleep_until(std::min(
             deadline, std::chrono::steady_clock::now() + remove_delay));
-      ++remove_count;
+      ++termination_count;
     }
+    if (!termination_succeeds)
+      error = "synthetic confirmed termination failed";
+    return termination_succeeds &&
+           std::chrono::steady_clock::now() < deadline;
   }
 
   bool available = true;
   bool attach_succeeds = true;
   bool attached = false;
   bool attached_before_release = false;
-  std::atomic<unsigned> kill_count = 0;
-  std::atomic<unsigned> remove_count = 0;
+  bool termination_succeeds = true;
+  std::atomic<unsigned> termination_count = 0;
   std::chrono::milliseconds probe_delay{};
   std::chrono::milliseconds cleanup_setup_delay{};
   std::chrono::milliseconds attach_delay{};
@@ -258,9 +259,6 @@ public:
 };
 
 class IncompleteController : public launcher::ResourceScopeController {
-public:
-  void kill(std::string_view, launcher::Deadline) noexcept override {}
-  void remove(std::string_view, launcher::Deadline) noexcept override {}
 };
 
 static_assert(std::is_abstract_v<IncompleteController>,
@@ -283,18 +281,19 @@ public:
     attach_deadline = deadline;
     return attach_result;
   }
-  void kill(std::string_view requested, launcher::Deadline) noexcept override {
-    if (requested == unit) ++kill_calls;
-  }
-  void remove(std::string_view requested,
-              launcher::Deadline) noexcept override {
-    if (requested == unit) ++remove_calls;
+  bool terminate_scope_validated(std::string_view requested,
+                                  launcher::Deadline,
+                                  std::string &error) noexcept override {
+    if (requested == unit) ++termination_calls;
+    if (!termination_succeeds)
+      error = "synthetic partial scope cleanup";
+    return termination_succeeds;
   }
 
   AttachResult attach_result{.attached = true, .cleanup_required = true};
   unsigned attach_calls = 0;
-  unsigned kill_calls = 0;
-  unsigned remove_calls = 0;
+  unsigned termination_calls = 0;
+  bool termination_succeeds = true;
   std::string unit;
   std::string description;
   std::vector<pid_t> pids;
@@ -313,8 +312,8 @@ public:
                                 std::string &) override {
     return {.attached = true, .cleanup_required = true};
   }
-  void kill(std::string_view, launcher::Deadline) noexcept override {}
-  void remove(std::string_view, launcher::Deadline) noexcept override {
+  bool terminate_scope_validated(std::string_view, launcher::Deadline,
+                                  std::string &) noexcept override {
     const unsigned current = entered.fetch_add(1) + 1;
     if (current == 1) {
       std::unique_lock lock(mutex);
@@ -322,6 +321,7 @@ public:
       ready.wait(lock, [&] { return released; });
     }
     completed.fetch_add(1);
+    return true;
   }
 
   std::mutex mutex;
@@ -342,15 +342,55 @@ public:
                                 std::string &) override {
     return {.attached = true, .cleanup_required = true};
   }
-  void kill(std::string_view, launcher::Deadline) noexcept override {}
-  void remove(std::string_view, launcher::Deadline deadline) noexcept override {
+  bool terminate_scope_validated(std::string_view,
+                                  launcher::Deadline deadline,
+                                  std::string &error) noexcept override {
     if (calls.fetch_add(1) == 0)
       std::this_thread::sleep_until(
           std::min(deadline, std::chrono::steady_clock::now() + 50ms));
     completed.fetch_add(1);
+    if (std::chrono::steady_clock::now() >= deadline) {
+      error = "synthetic confirmed termination deadline expired";
+      return false;
+    }
+    return true;
   }
   std::atomic<unsigned> calls = 0;
   std::atomic<unsigned> completed = 0;
+};
+
+class FailingCleanupScope final : public launcher::ResourceScopeController {
+public:
+  enum class Failure { bus_loss, partial_cleanup, timeout };
+  explicit FailingCleanupScope(Failure selected) : failure(selected) {}
+  bool probe(launcher::Deadline, std::string &) override { return true; }
+  bool prepare_cleanup(launcher::Deadline, std::string &) override {
+    return true;
+  }
+  AttachResult attach_validated(const launcher::ProcessScopeRequest &,
+                                launcher::Deadline,
+                                std::string &) override {
+    return {.attached = true, .cleanup_required = true};
+  }
+  bool terminate_scope_validated(std::string_view,
+                                  launcher::Deadline deadline,
+                                  std::string &error) noexcept override {
+    ++calls;
+    if (recover)
+      return true;
+    if (failure == Failure::timeout)
+      std::this_thread::sleep_until(deadline);
+    if (failure == Failure::bus_loss)
+      error = "synthetic cleanup bus lost";
+    else if (failure == Failure::partial_cleanup)
+      error = "synthetic cgroup remained populated";
+    else
+      error = "synthetic confirmed termination deadline expired";
+    return false;
+  }
+  Failure failure;
+  std::atomic<bool> recover = false;
+  std::atomic<unsigned> calls = 0;
 };
 
 struct LaunchFixture {
@@ -454,9 +494,9 @@ void generic_process_scope_request_test() {
               scope.resources.cpu_weight == 50 &&
               scope.resources.io_weight == 25,
           "generic scope request did not preserve exact processes/resources");
-  scope.kill(request.unit, deadline);
-  scope.remove(request.unit, deadline);
-  require(scope.kill_calls == 1 && scope.remove_calls == 1,
+  std::string termination_error = "stale caller text";
+  require(scope.terminate_scope(request.unit, deadline, termination_error) &&
+              scope.termination_calls == 1 && termination_error.empty(),
           "generic scope cleanup did not retain its exact unit identity");
 
   ScopeRequestProbe boundary;
@@ -547,10 +587,28 @@ void generic_process_scope_request_test() {
   require(!attempted_result.attached && attempted_result.cleanup_required &&
               attempted.attach_calls == 1,
           "attempted generic attach lost fail-stop cleanup authority");
-  attempted.kill(request.unit, deadline_after(5s));
-  attempted.remove(request.unit, deadline_after(5s));
-  require(attempted.kill_calls == 1 && attempted.remove_calls == 1,
+  std::string cleanup_error;
+  require(attempted.terminate_scope(request.unit, deadline_after(5s),
+                                    cleanup_error) &&
+              attempted.termination_calls == 1,
           "failed generic attach could not perform exact cleanup");
+
+  ScopeRequestProbe partial_cleanup;
+  partial_cleanup.unit = std::string(request.unit);
+  partial_cleanup.termination_succeeds = false;
+  std::string partial_error;
+  require(!partial_cleanup.terminate_scope(request.unit, deadline_after(5s),
+                                           partial_error) &&
+              partial_cleanup.termination_calls == 1 &&
+              partial_error.find("partial") != std::string::npos,
+          "partial generic cleanup was reported as confirmed termination");
+  ScopeRequestProbe invalid_cleanup;
+  std::string invalid_cleanup_error;
+  require(!invalid_cleanup.terminate_scope(
+              "ssh.service", deadline_after(5s), invalid_cleanup_error) &&
+              invalid_cleanup.termination_calls == 0 &&
+              invalid_cleanup_error.find("identity") != std::string::npos,
+          "non-scope cleanup identity reached the resource manager");
 
   FakeScope worker_scope;
   std::string worker_error;
@@ -575,7 +633,7 @@ void deadline_and_async_cleanup_test(LaunchFixture &fixture) {
       rejected_supervisor.launch(fixture.request(), deadline_after(5s));
   require(pre_call_rejected.failure ==
               launcher::LaunchFailure::resource_scope_failed &&
-              rejected_scope->remove_count == 0,
+              rejected_scope->termination_count == 0,
           "pre-call scope rejection acquired or cleaned nonexistent authority");
 
   auto scope = std::make_shared<FakeScope>();
@@ -594,7 +652,7 @@ void deadline_and_async_cleanup_test(LaunchFixture &fixture) {
   launched.worker.reset();
   require(std::chrono::steady_clock::now() - destroy_started < 50ms,
           "Worker destructor blocked on process/scope cleanup");
-  require(wait_until([&] { return scope->remove_count.load() == 1; }, 2s),
+  require(wait_until([&] { return scope->termination_count.load() == 1; }, 2s),
           "asynchronous Worker cleanup did not remove its scope exactly once");
 
   auto delayed_setup_scope = std::make_shared<FakeScope>();
@@ -607,7 +665,7 @@ void deadline_and_async_cleanup_test(LaunchFixture &fixture) {
   require(setup_rejected.failure == launcher::LaunchFailure::startup_timeout &&
               !delayed_setup_scope->cleanup_prepared &&
               !delayed_setup_scope->attach_deadline.has_value() &&
-              delayed_setup_scope->remove_count == 0,
+              delayed_setup_scope->termination_count == 0,
           "cleanup transport setup was delayed until after process authority");
 
   auto expiring_scope = std::make_shared<FakeScope>();
@@ -627,8 +685,77 @@ void deadline_and_async_cleanup_test(LaunchFixture &fixture) {
   require(launch_elapsed < 100ms,
           "failed-launch cleanup blocked the absolute deadline return path");
   require(wait_until(
-              [&] { return expiring_scope->remove_count.load() == 1; }, 2s),
+              [&] { return expiring_scope->termination_count.load() == 1; }, 2s),
           "timed-out attachment did not receive asynchronous cleanup");
+
+  auto retry_scope = std::make_shared<FakeScope>();
+  retry_scope->termination_succeeds = false;
+  auto retry_supervisor = launcher::test_support::make_supervisor(
+      FAKE_BWRAP_PATH, PROBE_PATH, retry_scope);
+  auto retry_worker =
+      retry_supervisor.launch(fixture.request(), deadline_after(5s));
+  require(static_cast<bool>(retry_worker),
+          "cleanup-retry worker did not launch");
+  require(!retry_worker.worker->terminate(deadline_after(2s)) &&
+              retry_scope->termination_count == 1,
+          "unconfirmed worker cleanup was reported successful");
+  retry_scope->termination_succeeds = true;
+  require(retry_worker.worker->terminate(deadline_after(2s)) &&
+              retry_worker.worker->terminate(deadline_after(2s)) &&
+              retry_scope->termination_count == 2,
+          "Worker::terminate did not retry retained cleanup exactly once");
+
+  auto abandoned_scope = std::make_shared<FakeScope>();
+  abandoned_scope->termination_succeeds = false;
+  auto abandoned_supervisor = launcher::test_support::make_supervisor(
+      FAKE_BWRAP_PATH, PROBE_PATH, abandoned_scope);
+  auto abandoned_worker =
+      abandoned_supervisor.launch(fixture.request(), deadline_after(5s));
+  require(static_cast<bool>(abandoned_worker),
+          "destructor cleanup fixture did not launch");
+  abandoned_worker.worker.reset();
+  require(wait_until(
+              [&] { return abandoned_scope->termination_count.load() >= 1; },
+              2s),
+          "worker destruction did not start autonomous cleanup");
+  const auto abandoned_failures = abandoned_scope->termination_count.load();
+  abandoned_scope->termination_succeeds = true;
+  require(wait_until(
+              [&] {
+                return abandoned_scope->termination_count.load() >
+                       abandoned_failures;
+              },
+              2s),
+          "worker destruction dropped cleanup authority after failure");
+  const auto abandoned_clean = abandoned_scope->termination_count.load();
+  std::this_thread::sleep_for(150ms);
+  require(abandoned_scope->termination_count == abandoned_clean,
+          "confirmed destructor cleanup remained queued");
+
+  auto failed_launch_scope = std::make_shared<FakeScope>();
+  failed_launch_scope->attach_delay = 100ms;
+  failed_launch_scope->termination_succeeds = false;
+  auto failed_launch_supervisor = launcher::test_support::make_supervisor(
+      FAKE_BWRAP_PATH, PROBE_PATH, failed_launch_scope);
+  const auto failed_launch = failed_launch_supervisor.launch(
+      fixture.request(), deadline_after(20ms));
+  require(!failed_launch &&
+              wait_until(
+                  [&] {
+                    return failed_launch_scope->termination_count.load() >= 1;
+                  },
+                  2s),
+          "failed launch did not retain autonomous cleanup authority");
+  const auto failed_launch_attempts =
+      failed_launch_scope->termination_count.load();
+  failed_launch_scope->termination_succeeds = true;
+  require(wait_until(
+              [&] {
+                return failed_launch_scope->termination_count.load() >
+                       failed_launch_attempts;
+              },
+              2s),
+          "failed launch cleanup was not retried after reconnection");
 
 }
 
@@ -669,11 +796,148 @@ void reaper_wake_and_cleanup_deadline_test() {
   for (unsigned index = 0; index < 2; ++index) {
     auto job = std::make_unique<CleanupJob>();
     job->resource_scope = scope;
+    job->scope = "app-omarchy-plugin-worker-deadline.scope";
     job->scope_attached = true;
     reaper.submit(std::move(job));
   }
   require(wait_until([&] { return scope->completed == 2; }, 500ms),
           "bounded cleanup call stalled later cleanup authority");
+
+  for (const auto failure : {FailingCleanupScope::Failure::bus_loss,
+                             FailingCleanupScope::Failure::partial_cleanup,
+                             FailingCleanupScope::Failure::timeout}) {
+    auto failed_scope = std::make_shared<FailingCleanupScope>(failure);
+    auto completion = std::make_shared<launcher::detail::ReapCompletion>();
+    auto job = std::make_unique<CleanupJob>();
+    job->resource_scope = failed_scope;
+    job->scope = "app-omarchy-plugin-worker-failed-cleanup.scope";
+    job->scope_attached = true;
+    job->completion = completion;
+    job->timeouts.forced_teardown_seconds = 1;
+    reaper.submit(std::move(job));
+    require(wait_until(
+                [&] {
+                  std::lock_guard lock(completion->mutex);
+                  return completion->failed_attempts >= 1;
+                },
+                2s),
+            "failed confirmed cleanup did not complete observably");
+    {
+      std::lock_guard lock(completion->mutex);
+      require(!completion->succeeded && failed_scope->calls == 1,
+              "bus-loss, timeout, or partial cleanup was reported clean");
+    }
+    failed_scope->recover = true;
+    require(wait_until(
+                [&] {
+                  std::lock_guard retry_lock(completion->mutex);
+                  return completion->succeeded;
+                },
+                500ms),
+            "autonomous reconnected cleanup retry did not complete");
+    std::lock_guard retry_lock(completion->mutex);
+    require(completion->succeeded && failed_scope->calls == 2,
+            "confirmed cleanup retry retained fail-stop authority");
+  }
+
+  auto aggregate_scope = std::make_shared<FailingCleanupScope>(
+      FailingCleanupScope::Failure::timeout);
+  auto aggregate_completion =
+      std::make_shared<launcher::detail::ReapCompletion>();
+  const pid_t stuck_monitor = fork();
+  require(stuck_monitor >= 0, "cannot fork aggregate cleanup fixture");
+  if (stuck_monitor == 0) {
+    for (;;)
+      pause();
+  }
+  const int stuck_pidfd =
+      static_cast<int>(syscall(SYS_pidfd_open, stuck_monitor, 0));
+  require(stuck_pidfd >= 0, "cannot open aggregate cleanup pidfd");
+  auto aggregate_job = std::make_unique<CleanupJob>();
+  aggregate_job->resource_scope = aggregate_scope;
+  aggregate_job->scope = "app-omarchy-plugin-worker-aggregate.scope";
+  aggregate_job->scope_attached = true;
+  aggregate_job->monitor_pid = stuck_monitor;
+  aggregate_job->monitor_pidfd = stuck_pidfd;
+  aggregate_job->completion = aggregate_completion;
+  aggregate_job->timeouts.forced_teardown_seconds = 1;
+  const auto aggregate_started = std::chrono::steady_clock::now();
+  reaper.submit(std::move(aggregate_job));
+  require(wait_until(
+              [&] {
+                std::lock_guard lock(aggregate_completion->mutex);
+                return aggregate_completion->failed_attempts >= 1;
+              },
+              1600ms) &&
+              std::chrono::steady_clock::now() - aggregate_started < 1500ms,
+          "forced cleanup reset its deadline between scope and process reap");
+  aggregate_scope->recover = true;
+  require(wait_until(
+              [&] {
+                std::lock_guard lock(aggregate_completion->mutex);
+                return aggregate_completion->succeeded;
+              },
+              2s),
+          "aggregate-deadline cleanup did not recover autonomously");
+}
+
+void nonblocking_bus_connection_test() {
+  support::SyntheticResourceTree tree;
+  const auto socket_path = tree.root() / "hung-bus";
+  support::UniqueFd listener(
+      socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0));
+  require(static_cast<bool>(listener),
+          "cannot create private hung bus listener");
+  sockaddr_un address{};
+  address.sun_family = AF_UNIX;
+  require(socket_path.string().size() < sizeof(address.sun_path),
+          "private hung bus path is too long");
+  std::memcpy(address.sun_path, socket_path.c_str(),
+              socket_path.string().size() + 1);
+  require(bind(listener.get(), reinterpret_cast<sockaddr *>(&address),
+               sizeof(address)) == 0 &&
+              listen(listener.get(), 2) == 0,
+          "cannot bind private hung bus listener");
+
+  std::atomic<unsigned> accepted = 0;
+  std::atomic<unsigned> closed = 0;
+  std::thread server([&] {
+    for (unsigned attempt = 0; attempt < 2; ++attempt) {
+      support::UniqueFd peer(
+          accept4(listener.get(), nullptr, nullptr, SOCK_CLOEXEC));
+      if (!peer)
+        return;
+      accepted.fetch_add(1);
+      const auto deadline = std::chrono::steady_clock::now() + 2s;
+      while (std::chrono::steady_clock::now() < deadline) {
+        pollfd event{.fd = peer.get(), .events = POLLIN, .revents = 0};
+        if (poll(&event, 1, 50) <= 0)
+          continue;
+        std::array<std::byte, 64> bytes{};
+        const ssize_t received = recv(peer.get(), bytes.data(), bytes.size(), 0);
+        if (received == 0) {
+          closed.fetch_add(1);
+          break;
+        }
+        if (received < 0 && errno != EINTR)
+          break;
+      }
+    }
+  });
+
+  const std::string bus_address = "unix:path=" + socket_path.string();
+  for (unsigned attempt = 0; attempt < 2; ++attempt) {
+    std::string error;
+    const auto started = std::chrono::steady_clock::now();
+    require(!launcher::test_support::connect_bus(
+                bus_address, started + 60ms, error) &&
+                std::chrono::steady_clock::now() - started < 150ms &&
+                error == "bus connection deadline expired",
+            "hung private bus attempt escaped its exact deadline");
+  }
+  server.join();
+  require(accepted == 2 && closed == 2,
+          "expired bus attempt was retained or blocked a fresh reconnect");
 }
 
 void reaper_capacity_and_startup_test(LaunchFixture &fixture) {
@@ -698,6 +962,7 @@ void reaper_capacity_and_startup_test(LaunchFixture &fixture) {
   for (std::size_t index = 0; index < job_count; ++index) {
     auto job = std::make_unique<CleanupJob>();
     job->resource_scope = scope;
+    job->scope = "app-omarchy-plugin-worker-capacity.scope";
     job->scope_attached = true;
     jobs.push_back(std::move(job));
   }
@@ -821,7 +1086,7 @@ void pidfd_priority_test(LaunchFixture &fixture) {
               launcher::SendStatus::peer_closed,
           "closed worker transport was not reported as peer_closed");
   require(launched.worker->terminate(deadline_after(5s)) &&
-              scope->remove_count == 1,
+              scope->termination_count == 1,
           "pidfd-priority worker did not clean up exactly once");
 }
 
@@ -841,7 +1106,7 @@ void readiness_control_failure_test(LaunchFixture &fixture) {
                .write = launcher::EndpointMask::broker}) &&
               !launched.worker->alive() &&
               launched.worker->terminate(deadline_after(2s)) &&
-              scope->remove_count == 1,
+              scope->termination_count == 1,
           "epoll control failure retained partial transport authority");
 }
 
@@ -1171,7 +1436,7 @@ void malicious_test() {
                   launcher::SendStatus::peer_closed,
           "moved-from worker retained transport authority");
   require(active_worker.terminate(deadline_after(5s)) &&
-              scope->remove_count == 1,
+              scope->termination_count == 1,
           "bounded normal teardown failed");
 }
 
@@ -1216,7 +1481,7 @@ void bwrap_test() {
                                     launcher::PacketSizeLimit{1}) ==
                   launcher::SendStatus::complete &&
               launched.worker->terminate(deadline_after(5s)) &&
-              scope->remove_count == 1,
+              scope->termination_count == 1,
       "real Bubblewrap worker did not tear down within bounds");
 }
 
@@ -1235,9 +1500,10 @@ void systemd_scope_test() {
     std::cerr << "Bubblewrap unavailable; systemd scope test skipped\n";
     std::exit(77);
   }
+  const auto descriptors_before = support::open_fd_set();
+  auto resource_scope = launcher::make_systemd_resource_scope_controller();
   auto supervisor = launcher::test_support::make_supervisor(
-      BWRAP_PATH, PROBE_PATH,
-      launcher::make_systemd_resource_scope_controller());
+      BWRAP_PATH, PROBE_PATH, resource_scope);
   LaunchFixture fixture;
   auto launched = supervisor.launch(fixture.request(), deadline_after(5s));
   if (!launched &&
@@ -1291,6 +1557,36 @@ void systemd_scope_test() {
                   launcher::SendStatus::complete &&
               launched.worker->terminate(deadline_after(5s)),
       "systemd-scoped worker did not tear down within bounds");
+
+  std::vector<int> bus_sockets;
+  for (const int descriptor : support::open_fd_set()) {
+    if (std::ranges::find(descriptors_before, descriptor) !=
+        descriptors_before.end())
+      continue;
+    int type = 0;
+    socklen_t size = sizeof(type);
+    if (getsockopt(descriptor, SOL_SOCKET, SO_TYPE, &type, &size) == 0 &&
+        type == SOCK_STREAM)
+      bus_sockets.push_back(descriptor);
+  }
+  require(bus_sockets.size() >= 2,
+          "systemd controller did not retain independent primary and cleanup buses");
+  // probe() opens the primary bus before prepare_cleanup() opens its independent
+  // cleanup bus, so the lower exact descriptor is the primary connection.
+  require(shutdown(*std::ranges::min_element(bus_sockets), SHUT_RDWR) == 0,
+          "cannot disconnect retained primary systemd bus");
+
+  auto reconnected =
+      supervisor.launch(fixture.request(), deadline_after(5s));
+  require(static_cast<bool>(reconnected),
+          "disconnected primary systemd bus did not reconnect for attachment");
+  validate_probe(*reconnected.worker);
+  require(reconnected.worker->try_send(launcher::EndpointRole::control,
+                                       acknowledgement,
+                                       launcher::PacketSizeLimit{1}) ==
+                  launcher::SendStatus::complete &&
+              reconnected.worker->terminate(deadline_after(5s)),
+          "reconnected primary bus launch did not clean its exact scope");
 }
 } // namespace
 
@@ -1301,6 +1597,8 @@ int main(int argc, char **argv) {
   const std::string_view mode(argv[1]);
   if (mode == "scope") {
     generic_process_scope_request_test();
+    reaper_wake_and_cleanup_deadline_test();
+    nonblocking_bus_connection_test();
   } else if (mode == "contract") {
     contract_test();
   } else if (mode == "malicious") {

@@ -422,21 +422,16 @@ public:
     return {.attached = true, .cleanup_required = true};
   }
 
-  void kill(std::string_view unit, launcher::Deadline) noexcept override {
+  bool terminate_scope_validated(std::string_view unit, launcher::Deadline,
+                                  std::string &) noexcept override {
     if (unit == unit_) {
-      ++kills;
+      ++terminations;
     }
-  }
-
-  void remove(std::string_view unit, launcher::Deadline) noexcept override {
-    if (unit == unit_) {
-      ++removes;
-    }
+    return true;
   }
 
   bool attached = false;
-  unsigned kills = 0;
-  unsigned removes = 0;
+  unsigned terminations = 0;
 
 private:
   std::string unit_;
@@ -594,10 +589,8 @@ void test_standalone_sandbox() {
   require(launched.worker->terminate(std::chrono::steady_clock::now() +
                                      std::chrono::seconds(4)),
           "standalone sandbox supervisor teardown failed");
-  require(scope->removes == 1,
+  require(scope->terminations == 1,
           "standalone sandbox scope was not removed exactly once");
-  require(scope->kills == 0,
-          "normally exited standalone sandbox required a scope kill");
 }
 
 void test_failure_bounds() {

@@ -3,7 +3,9 @@
 #include "omarchy/plugin_runtime/launcher/launcher.h"
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -11,12 +13,7 @@
 
 namespace omarchy::plugin_runtime::launcher::detail {
 
-struct ReapCompletion {
-  std::mutex mutex;
-  std::condition_variable ready;
-  bool completed = false;
-  bool succeeded = false;
-};
+struct ReapCompletion;
 
 struct CleanupJob final {
   CleanupJob() = default;
@@ -33,8 +30,20 @@ struct CleanupJob final {
   std::shared_ptr<ReapCompletion> completion;
   bool allow_graceful_exit = true;
   bool scope_attached = false;
+  std::chrono::steady_clock::time_point retry_after{};
   std::atomic<CleanupJob *> next = nullptr;
   std::atomic<bool> submitted = false;
+};
+
+struct ReapCompletion final {
+  ReapCompletion() = default;
+  ReapCompletion(const ReapCompletion &) = delete;
+  ReapCompletion &operator=(const ReapCompletion &) = delete;
+  std::mutex mutex;
+  std::condition_variable ready;
+  bool completed = false;
+  bool succeeded = false;
+  std::uint64_t failed_attempts = 0;
 };
 
 class ProcessScopeReaper final {

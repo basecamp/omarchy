@@ -55,35 +55,40 @@ void signal_pidfd(int descriptor) noexcept {
   }
 }
 
-void execute(CleanupJob &job) noexcept {
+[[nodiscard]] std::chrono::milliseconds
+remaining(std::chrono::steady_clock::time_point deadline) noexcept {
+  const auto duration = deadline - std::chrono::steady_clock::now();
+  if (duration <= std::chrono::steady_clock::duration::zero())
+    return std::chrono::milliseconds::zero();
+  return std::chrono::duration_cast<std::chrono::milliseconds>(
+      duration + std::chrono::milliseconds(1));
+}
+
+[[nodiscard]] bool execute(CleanupJob &job) noexcept {
   const auto graceful = std::chrono::seconds(
       job.allow_graceful_exit ? job.timeouts.graceful_shutdown_seconds : 0);
   bool worker_exited =
       job.worker_pidfd < 0 || wait_pidfd(job.worker_pidfd, graceful);
-  if (!worker_exited) {
+  if (!worker_exited)
     signal_pidfd(job.worker_pidfd);
-    if (job.scope_attached && job.resource_scope) {
-      job.resource_scope->kill(
-          job.scope, std::chrono::steady_clock::now() +
-                         std::chrono::seconds(
-                             job.timeouts.forced_teardown_seconds));
-    }
-    worker_exited = wait_pidfd(
-        job.worker_pidfd,
-        std::chrono::seconds(job.timeouts.forced_teardown_seconds));
+  const auto forced_deadline =
+      std::chrono::steady_clock::now() +
+      std::chrono::seconds(job.timeouts.forced_teardown_seconds);
+  bool scope_terminated = true;
+  if (job.scope_attached && job.resource_scope) {
+    std::string cleanup_error;
+    scope_terminated = job.resource_scope->terminate_scope(
+        job.scope, forced_deadline, cleanup_error);
+  }
+  if (!worker_exited) {
+    worker_exited = wait_pidfd(job.worker_pidfd, remaining(forced_deadline));
   }
   signal_pidfd(job.monitor_pidfd);
   const bool monitor_reaped =
       job.monitor_pid <= 0 ||
       reap_child(job.monitor_pid, job.monitor_pidfd,
-                 std::chrono::seconds(job.timeouts.forced_teardown_seconds));
-  if (job.scope_attached && job.resource_scope) {
-    job.resource_scope->remove(
-        job.scope, std::chrono::steady_clock::now() +
-                       std::chrono::seconds(
-                           job.timeouts.forced_teardown_seconds));
-  }
-  complete_reap(job.completion, worker_exited && monitor_reaped);
+                 remaining(forced_deadline));
+  return worker_exited && monitor_reaped && scope_terminated;
 }
 
 } // namespace
@@ -100,6 +105,8 @@ void complete_reap(const std::shared_ptr<ReapCompletion> &completion,
     std::lock_guard lock(completion->mutex);
     completion->completed = true;
     completion->succeeded = succeeded;
+    if (!succeeded)
+      ++completion->failed_attempts;
   }
   completion->ready.notify_all();
 }
@@ -171,15 +178,29 @@ void ProcessScopeReaper::submit(std::unique_ptr<CleanupJob> job) noexcept {
 }
 
 void ProcessScopeReaper::run(std::shared_ptr<State> state) noexcept {
+  CleanupJob *delayed = nullptr;
   for (;;) {
     pollfd ready{.fd = state->event, .events = POLLIN, .revents = 0};
     if (poll(&ready, 1, 10) < 0 && errno == EINTR) continue;
     std::uint64_t count = 0;
     while (read(state->event, &count, sizeof(count)) < 0 && errno == EINTR) {}
-    CleanupJob *jobs =
-        state->pending.exchange(nullptr);
+    CleanupJob *jobs = state->pending.exchange(nullptr);
     while (state->active_pushers.load() != 0)
       std::this_thread::yield();
+    CleanupJob *waiting = nullptr;
+    const auto now = std::chrono::steady_clock::now();
+    while (delayed) {
+      CleanupJob *job = delayed;
+      delayed = job->next.load(std::memory_order_relaxed);
+      if (job->retry_after <= now) {
+        job->next.store(jobs, std::memory_order_relaxed);
+        jobs = job;
+      } else {
+        job->next.store(waiting, std::memory_order_relaxed);
+        waiting = job;
+      }
+    }
+    delayed = waiting;
     CleanupJob *ordered = nullptr;
     while (jobs) {
       CleanupJob *next = jobs->next.load(std::memory_order_relaxed);
@@ -190,7 +211,15 @@ void ProcessScopeReaper::run(std::shared_ptr<State> state) noexcept {
     while (ordered) {
       std::unique_ptr<CleanupJob> job(ordered);
       ordered = job->next.load(std::memory_order_relaxed);
-      execute(*job);
+      if (execute(*job)) {
+        complete_reap(job->completion, true);
+      } else {
+        complete_reap(job->completion, false);
+        job->retry_after =
+            std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
+        job->next.store(delayed, std::memory_order_relaxed);
+        delayed = job.release();
+      }
     }
   }
 }

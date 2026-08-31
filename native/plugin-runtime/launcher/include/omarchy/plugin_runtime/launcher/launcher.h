@@ -181,13 +181,19 @@ public:
   attach(std::string_view unit, pid_t monitor_pid, pid_t worker_pid,
          const sandbox::SandboxPlan &plan, Deadline deadline,
          std::string &error);
-  virtual void kill(std::string_view unit, Deadline deadline) noexcept = 0;
-  virtual void remove(std::string_view unit, Deadline deadline) noexcept = 0;
+  // Kills every process in the exact scope and returns success only after the
+  // resource manager proves that the unit, its cgroup, and all descendants are
+  // gone. A false result retains fail-stop cleanup state at the launch owner.
+  [[nodiscard]] bool terminate_scope(std::string_view unit, Deadline deadline,
+                                     std::string &error) noexcept;
 
 protected:
   [[nodiscard]] virtual AttachResult
   attach_validated(const ProcessScopeRequest &request, Deadline deadline,
                    std::string &error);
+  [[nodiscard]] virtual bool
+  terminate_scope_validated(std::string_view unit, Deadline deadline,
+                            std::string &error) noexcept = 0;
 };
 
 [[nodiscard]] std::shared_ptr<ResourceScopeController>
