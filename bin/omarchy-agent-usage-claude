@@ -797,7 +797,8 @@ def collect_limits(access_token: str, expires_at_ms: int, force: bool) -> dict[s
   # A panel that is opened and shut repeatedly must not turn into a request
   # per flick, so recent probe results are reused for a short window — and
   # kept as the answer of record when a later probe fails.
-  probe_cache = cache_root() / "claude-limits.json"
+  digest = hashlib.sha1(str(config_dir()).encode("utf-8")).hexdigest()[:16]
+  probe_cache = cache_root() / f"claude-limits-{digest}.json"
   cached = read_fresh_json(probe_cache, float("inf")) or {}
   fallback = usable_cached_limits(cached)
 
