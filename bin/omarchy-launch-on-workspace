@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# omarchy:summary=Launch a command pinned to the currently active workspace
+# omarchy:hidden=true
+# omarchy:args=<command>
+
+set -euo pipefail
+
+if (($# == 0)); then
+  echo "Usage: omarchy-launch-on-workspace <command>" >&2
+  exit 1
+fi
+
+command=$1
+workspace=$(hyprctl activeworkspace -j 2>/dev/null | jq --raw-output '.id // empty')
+lua_command=$(jq -Rnr --arg value "$command" '$value | @json')
+
+# Pin at exec time so a slow app still maps on this workspace if you switch
+# away before its window appears. Global initial_workspace_tracking stays off
+# so portal file dialogs keep following the app that requested them.
+if [[ $workspace =~ ^[0-9]+$ ]] && hyprctl dispatch "hl.dsp.exec_cmd($lua_command, { workspace = \"$workspace silent\" })" >/dev/null 2>&1; then
+  :
+else
+  eval exec "$command"
+fi

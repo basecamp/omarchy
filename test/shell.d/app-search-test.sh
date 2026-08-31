@@ -99,9 +99,10 @@ assert(
 )
 
 assert(
-  /function launch\(desktopId, name\) \{[\s\S]*?uwsm-app[\s\S]*?\n  \}/.test(appLibraryQml) &&
-    appLibraryQml.includes('Util.execDetached("uwsm-app -- gtk-launch "'),
-  'app library launches desktop entries through gtk-launch in their own scope'
+  /function launch\(desktopId, name\) \{[\s\S]*?omarchy-launch-on-workspace[\s\S]*?\n  \}/.test(appLibraryQml) &&
+    appLibraryQml.includes('uwsm-app -- gtk-launch ') &&
+    appLibraryQml.includes('Util.execDetached("omarchy-launch-on-workspace "'),
+  'app library launches desktop entries through gtk-launch pinned to the current workspace'
 )
 
 assert(
