@@ -21,8 +21,9 @@ fi
 THEMES_DIR="$HOME/.config/omarchy/themes"
 THEME_PATH="$THEMES_DIR/$THEME_NAME"
 
-# Ensure a theme was set
-if [[ -z $THEME_NAME ]]; then
+# Ensure a theme was set, and that the name cannot climb out of THEMES_DIR
+# on its way into the rm below.
+if [[ -z $THEME_NAME || $THEME_NAME == .* || $THEME_NAME == */* ]]; then
   exit 1
 fi
 

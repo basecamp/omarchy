@@ -29,6 +29,7 @@ BarWidget {
 
     Text {
       id: labelText
+      textFormat: Text.PlainText
       anchors.verticalCenter: parent.verticalCenter
       anchors.left: parent.left
       width: parent.width

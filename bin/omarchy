@@ -27,6 +27,7 @@ declare -A BINARY_TO_KEY
 declare -A GROUP_DESCRIPTIONS
 
 GROUP_DESCRIPTIONS[agent]="AI coding agent usage data"
+GROUP_DESCRIPTIONS[ascii]="Text drawn as ASCII art"
 GROUP_DESCRIPTIONS[audio]="Audio input and output controls"
 GROUP_DESCRIPTIONS[bar]="Omarchy shell bar layout and settings"
 GROUP_DESCRIPTIONS[battery]="Battery status helpers"
@@ -39,6 +40,7 @@ GROUP_DESCRIPTIONS[channel]="Omarchy release channel management"
 GROUP_DESCRIPTIONS[clipboard]="Clipboard helpers"
 GROUP_DESCRIPTIONS[cmd]="Command and shortcut helpers"
 GROUP_DESCRIPTIONS[config]="System configuration helpers"
+GROUP_DESCRIPTIONS[crash]="Crash notification controls"
 GROUP_DESCRIPTIONS[debug]="Diagnostics and support logs"
 GROUP_DESCRIPTIONS[finalize]="Finalize user setup"
 GROUP_DESCRIPTIONS[default]="Default application selection"

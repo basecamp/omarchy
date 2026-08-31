@@ -3,22 +3,14 @@
 # omarchy:summary=Apply the current theme color to Chromium, Chrome, Edge, and Brave
 # omarchy:hidden=true
 
+source "$OMARCHY_PATH/install/helpers/browser-policy.sh"
+
 CHROMIUM_THEME=$HOME/.local/state/omarchy/current/theme/chromium.theme
+THEME_HEX_COLOR=$BROWSER_POLICY_DEFAULT_COLOR
 
 if [[ -f $CHROMIUM_THEME ]]; then
-  THEME_RGB_COLOR=$(<$CHROMIUM_THEME)
-  THEME_HEX_COLOR=$(printf '#%02x%02x%02x' ${THEME_RGB_COLOR//,/ })
-else
-  # Use a default, neutral grey if theme doesn't have a color
-  THEME_HEX_COLOR="#1c2027"
+  THEME_HEX_COLOR=$(browser_policy_theme_hex "$(<$CHROMIUM_THEME)")
 fi
-
-set_browser_policy() {
-  local policy_dir="$1"
-
-  [[ -d $policy_dir ]] || return
-  echo "{\"BrowserThemeColor\": \"$THEME_HEX_COLOR\", \"BrowserColorScheme\": \"device\"}" | tee "$policy_dir/color.json" >/dev/null
-}
 
 refresh_running_browser() {
   local process="$1"
@@ -30,17 +22,15 @@ refresh_running_browser() {
   fi
 }
 
-set_browser_policy /etc/chromium/policies/managed
+failed=0
+omarchy-theme-set-browser-policy "${THEME_HEX_COLOR#\#}" || failed=1
+
 refresh_running_browser chromium chromium
-
-set_browser_policy /etc/opt/chrome/policies/managed
 refresh_running_browser chrome google-chrome-stable || refresh_running_browser chrome google-chrome
-
-set_browser_policy /etc/opt/edge/policies/managed
 refresh_running_browser msedge microsoft-edge-stable
-
-set_browser_policy /etc/brave/policies/managed
 refresh_running_browser brave brave
 # Match on the binary path: the running process is named plain "brave", and a
 # bare -f brave-origin pattern would also match the installer's own terminal.
 refresh_running_browser /opt/brave-origin-bin/ brave-origin -f
+
+exit "$failed"

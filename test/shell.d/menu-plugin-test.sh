@@ -111,7 +111,7 @@ pick clone "$(printf 'Clock\tomarchy.clock')"
 [[ $ROWS == *"Clock"* && $ROWS != *"Weather"* ]] ||
   fail "clone picker offers only built-in plugins" "$ROWS"
 pass "clone picker offers built-in plugins"
-[[ $CALLS == *"terminal: omarchy-plugin-clone --edit omarchy.clock"* ]] ||
+[[ $CALLS == *"terminal: omarchy-plugin-clone omarchy.clock --edit"* ]] ||
   fail "clone picker delegates cloning and editing to the clone command" "$CALLS"
 pass "clone picker clones and opens the personal plugin"
 

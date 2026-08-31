@@ -398,7 +398,7 @@ Panel {
   }
 
   function canForgetNetwork(net) {
-    return !!(net && net.known && isProtected(net.security) && !net.connected)
+    return Model.canForgetNetwork(net)
   }
 
   function canShareNetwork(net) {
@@ -417,8 +417,8 @@ Panel {
   }
 
   // Enter/Space on the highlighted row. Mirrors row-click semantics:
-  // connected → disconnect, protected-unknown → password prompt,
-  // open/known → connect.
+  // connected → disconnect, credentials-required/unknown → prompt,
+  // passwordless/known → connect.
   function activateSelected() {
     if (busy || selectedIndex < 0 || selectedIndex >= wifiNetworks.length) return
     var net = wifiNetworks[selectedIndex]
@@ -428,8 +428,8 @@ Panel {
     // connectedWifiNetwork when handed null, so a row left stale by scan churn
     // would otherwise tear down whatever is connected now instead.
     if (net.connected) { disconnectRow(net.ssid); return }
-    if (isProtected(net.security) && !net.known) { openPasswordPrompt(net.ssid); return }
-    connectKnown(net.ssid)
+    if (requiresCredentials(net.security) && !net.known) { openPasswordPrompt(net.ssid); return }
+    connectDirectly(net.ssid)
   }
 
   // Bar pill state, derived from the native NetworkManager service so the
@@ -680,8 +680,8 @@ Panel {
     root.close()
   }
 
-  function isProtected(security) {
-    return Model.isProtected(security, WifiSecurityType.Open)
+  function requiresCredentials(security) {
+    return Model.requiresCredentials(security, WifiSecurityType.Open, WifiSecurityType.Owe)
   }
 
   function openPasswordPrompt(ssid) {
@@ -735,18 +735,18 @@ Panel {
     if (!network || actionKind === "" || actionSsid !== (network.name || "")) return
     actionTimeout.stop()
     failureSsid = actionSsid
-    failureReason = networkFailureReason(reason)
+    failureReason = networkFailureReason(reason, requiresCredentials(network.security))
     actionSsid = ""
     actionKind = ""
     refresh()
   }
 
-  function networkFailureReason(reason) {
-    return Model.networkFailureReason(reason, connectionFailReasons)
+  function networkFailureReason(reason, needsCredentials) {
+    return Model.networkFailureReason(reason, needsCredentials, connectionFailReasons)
   }
 
-  function shouldRepromptPassphrase(reason, isProtected) {
-    return Model.shouldRepromptPassphrase(reason, isProtected, connectionFailReasons)
+  function shouldRepromptPassphrase(reason, needsCredentials) {
+    return Model.shouldRepromptPassphrase(reason, needsCredentials, connectionFailReasons)
   }
 
   function checkActionCompletion(network) {
@@ -756,7 +756,7 @@ Panel {
     else if (actionKind === "forget" && !network.known && !network.stateChanging) clearNetworkAction()
   }
 
-  function connectKnown(ssid) {
+  function connectDirectly(ssid) {
     runNetworkAction("connect", networkForSsid(ssid), function(network) { network.connect() })
   }
 
@@ -1090,6 +1090,7 @@ Panel {
         // Status only — the switch owns toggling, mouse and keyboard alike.
         Text {
           id: heroIcon
+          textFormat: Text.PlainText
           text: root.icon
           color: root.bar.foreground
           font.family: root.bar.fontFamily
@@ -1170,6 +1171,7 @@ Panel {
           // rather than in a pill, which crowded the on/off switch.
           Text {
             id: heroSsid
+            textFormat: Text.PlainText
             width: parent.width
 
             readonly property string title: {
@@ -1189,6 +1191,7 @@ Panel {
 
           Text {
             id: heroMeta
+            textFormat: Text.PlainText
             width: parent.width
             text: {
               if (root.info.type === "wifi") {
@@ -1587,8 +1590,8 @@ Panel {
   }
 
   // A single Wi-Fi network entry. Collapses to a one-line pill normally;
-  // expands inline to a passphrase prompt when the user picks a protected
-  // network we don't have credentials for. Clicking a connected row
+  // expands inline to a passphrase prompt when the user picks a network that
+  // requires credentials we do not have. Clicking a connected row
   // disconnects.
   component NetworkRow: CursorSurface {
     id: row
@@ -1597,14 +1600,14 @@ Panel {
 
     readonly property bool isConnected: net && net.connected
     readonly property bool isKnown: !!(net && net.known)
-    readonly property bool isProtected: net ? root.isProtected(net.security) : false
+    readonly property bool requiresCredentials: net ? root.requiresCredentials(net.security) : false
     readonly property bool isEnterprise: net
       ? (net.security === WifiSecurityType.Wpa2Eap || net.security === WifiSecurityType.WpaEap)
       : false
-    readonly property bool canForgetFromLock: isKnown && isProtected && !isConnected
+    readonly property bool canForget: root.canForgetNetwork(net)
     readonly property bool isSelected: root.focusSection === "wifi" && root.selectedIndex === index
-    readonly property bool forgetFocused: isSelected && root.wifiActionFocused && canForgetFromLock
-    readonly property bool forgetVisible: canForgetFromLock && (forgetFocused || rightMouse.containsMouse)
+    readonly property bool forgetFocused: isSelected && root.wifiActionFocused && canForget
+    readonly property bool forgetVisible: canForget && (!requiresCredentials || forgetFocused || rightMouse.containsMouse)
 
     hasCursor: root.cursorActive && isSelected && !root.wifiActionFocused
     current: isConnected
@@ -1631,7 +1634,7 @@ Panel {
         // failNetworkAction, which clears the action state.
         var ours = root.actionKind === "connect" && root.actionSsid === (row.net.ssid || "")
         root.failNetworkAction(root.networkForSsid(row.net.ssid), reason)
-        if (ours && root.shouldRepromptPassphrase(reason, row.isProtected)) root.openPasswordPrompt(row.net.ssid)
+        if (ours && root.shouldRepromptPassphrase(reason, row.requiresCredentials)) root.openPasswordPrompt(row.net.ssid)
       }
       function onConnectedChanged() {
         if (row.net) root.checkActionCompletion(root.networkForSsid(row.net.ssid))
@@ -1692,11 +1695,11 @@ Panel {
           root.disconnectRow(row.net.ssid)
           return
         }
-        if (row.isProtected && !row.isKnown) {
+        if (row.requiresCredentials && !row.isKnown) {
           root.openPasswordPrompt(row.net.ssid)
           return
         }
-        root.connectKnown(row.net.ssid)
+        root.connectDirectly(row.net.ssid)
       }
     }
 
@@ -1711,6 +1714,7 @@ Panel {
 
       Text {
         id: networkIcon
+        textFormat: Text.PlainText
         text: row.net ? root.wifiIconFor(row.net.signal) : ""
         color: row.statusColor
         font.family: root.bar.fontFamily
@@ -1719,11 +1723,12 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
       }
 
-      // Shows a lock glyph for protected networks. Known disconnected
-      // networks reveal the forget action when hovering that right edge.
+      // The right edge shows a lock for networks that require credentials and
+      // reveals Forget on hover. Known passwordless networks show Forget
+      // directly rather than reserving an invisible or misleading target.
       Item {
         id: rightAction
-        visible: row.isProtected
+        visible: row.requiresCredentials || row.canForget
         width: Style.space(22)
         implicitHeight: lockIndicator.implicitHeight
         anchors.right: parent.right
@@ -1731,6 +1736,8 @@ Panel {
 
         Text {
           id: lockIndicator
+          textFormat: Text.PlainText
+          visible: row.requiresCredentials || row.forgetVisible
           width: parent.width
           anchors.verticalCenter: parent.verticalCenter
           horizontalAlignment: Text.AlignHCenter
@@ -1754,7 +1761,7 @@ Panel {
           anchors.fill: parent
           hoverEnabled: true
           acceptedButtons: Qt.LeftButton
-          enabled: row.canForgetFromLock && !root.busy
+          enabled: row.canForget && !root.busy
           cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
           onContainsMouseChanged: if (containsMouse) { root.cursorActive = true; root.focusSection = "wifi"; root.selectedIndex = row.index; root.wifiActionFocused = true }
           onClicked: if (row.net) root.forget(row.net)
@@ -1777,6 +1784,7 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
 
         Text {
+          textFormat: Text.PlainText
           text: row.net ? (row.net.ssid || "Hidden") : ""
           color: root.bar.foreground
           font.family: root.bar.fontFamily
@@ -1785,6 +1793,7 @@ Panel {
           width: parent.width
         }
         Text {
+          textFormat: Text.PlainText
           // Signal strength is conveyed by the wifi-bars icon and the
           // right-edge glyph/buttons carry protection or forget affordances,
           // so the second line only carries action status (Connecting…,
@@ -1891,6 +1900,7 @@ Panel {
         radius: Style.cornerRadius
 
         Text {
+          textFormat: Text.PlainText
           anchors.fill: parent
           horizontalAlignment: Text.AlignHCenter
           verticalAlignment: Text.AlignVCenter
@@ -1944,6 +1954,7 @@ Panel {
   }
 
   component InfoLabel: Text {
+    textFormat: Text.PlainText
     color: root.bar.foreground
     opacity: 0.6
     font.family: root.bar.fontFamily
@@ -1951,6 +1962,7 @@ Panel {
   }
 
   component InfoValue: Text {
+    textFormat: Text.PlainText
     color: root.bar.foreground
     font.family: root.bar.fontFamily
     font.pixelSize: Style.font.bodySmall
