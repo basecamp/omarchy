@@ -15,9 +15,10 @@ Item {
 
   visible: false
 
-  // Permission operations stay inside the trusted host. IPC receives only
-  // plugin ids, opaque operation/row ids, and bounded choice JSON; the
-  // manager retains the exact installed revision and authority context.
+  // Same-UID session IPC is trusted host control and is intentionally outside
+  // the isolated v2 worker boundary. It receives only plugin ids, opaque
+  // operation/row ids, and bounded choice JSON; the manager retains exact
+  // revision and authority context.
   IpcHandler {
     target: "plugin-permissions"
 

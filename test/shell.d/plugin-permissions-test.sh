@@ -37,6 +37,21 @@ case ${2:-} in
       permission-00000000000000000000000000000000)
         list_result='{"operationId":"permission-00000000000000000000000000000000","kind":"list","state":"succeeded","result":{"plugin":"org.example.evil\nplugin","permissions":[{"rowId":"row-11111111111111111111111111111111","kind":"builtin","name":"notifications.send\u001b[31m\nforged","required":true,"available":true,"state":"granted","scope":"desktop","operations":["send"]},{"rowId":"row-22222222222222222222222222222222","kind":"dynamic","name":"cli.example","title":"Example CLI","required":false,"available":true,"state":"denied","scope":"repository","operations":["Read\nfiles","Write"]}]}}'
         case ${PERMISSION_TEST_MODE:-} in
+          pending-extra)
+            printf '%s\n' '{"operationId":"permission-00000000000000000000000000000000","kind":"list","state":"pending","authoritySequence":17}'
+            exit 0
+            ;;
+          failed-nonstring)
+            printf '%s\n' '{"operationId":"permission-00000000000000000000000000000000","kind":"list","state":"failed","error":{"message":"no"}}'
+            exit 0
+            ;;
+          failed-string)
+            printf '%s\n' '{"operationId":"permission-00000000000000000000000000000000","kind":"list","state":"failed","error":"denied\u009b31m\u202eforged\u2069"}'
+            exit 0
+            ;;
+          success-extra-outer)
+            list_result=$(jq -c '.authoritySequence = 17' <<<"$list_result")
+            ;;
           malformed-row)
             list_result=$(jq -c '.result.permissions[0].required = "yes"' <<<"$list_result")
             ;;
@@ -50,11 +65,17 @@ case ${2:-} in
         printf '%s\n' "$list_result"
         ;;
       permission-11111111111111111111111111111111)
-        printf '%s\n' '{"operationId":"permission-11111111111111111111111111111111","kind":"review","state":"succeeded","result":{"plugin":"org.example.review","permissions":[{"rowId":"row-11111111111111111111111111111111","kind":"builtin","name":"notifications.send","required":true,"available":true,"state":"undecided","scope":"desktop","operations":["send"],"delta":"added","reason":"Show status"},{"rowId":"row-22222222222222222222222222222222","kind":"dynamic","name":"cli.example","title":"Example CLI","required":false,"available":true,"state":"undecided","scope":"repository","operations":[{"operationId":"operation-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","name":"read","label":"Read"},{"operationId":"operation-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","name":"write","label":"Write"}],"delta":"added","reason":"Read only when selected"}]}}'
+        printf '%s\n' '{"operationId":"permission-11111111111111111111111111111111","kind":"review","state":"succeeded","result":{"plugin":"org.example.review","permissions":[{"rowId":"row-11111111111111111111111111111111","kind":"builtin","name":"notifications.send","required":true,"available":true,"state":"undecided","scope":"desktop","operations":["send"],"delta":"added","reason":"Show status"},{"rowId":"row-22222222222222222222222222222222","kind":"dynamic","name":"cli.example","title":"Example CLI","required":false,"available":true,"state":"undecided","scope":"repository","operations":[{"operationId":"operation-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","name":"read","label":"Read\u202efiles\u2069"},{"operationId":"operation-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","name":"write","label":"Write"}],"delta":"added","reason":"Read \u009b31m\u202eonly\u2069 when selected"}]}}'
         ;;
       permission-22222222222222222222222222222222)
         [[ ${PERMISSION_TEST_MODE:-} != "poll-fail" ]] || exit 1
-        printf '%s\n' '{"operationId":"permission-22222222222222222222222222222222","kind":"apply","state":"succeeded","result":{"applied":true}}'
+        if [[ ${PERMISSION_TEST_MODE:-} == "mutation-extra-authority" ]]; then
+          printf '%s\n' '{"operationId":"permission-22222222222222222222222222222222","kind":"apply","state":"succeeded","result":{"applied":true},"authoritySequence":17}'
+        elif [[ ${PERMISSION_TEST_MODE:-} == "mutation-extra-result" ]]; then
+          printf '%s\n' '{"operationId":"permission-22222222222222222222222222222222","kind":"apply","state":"succeeded","result":{"applied":true,"sequence":17}}'
+        else
+          printf '%s\n' '{"operationId":"permission-22222222222222222222222222222222","kind":"apply","state":"succeeded","result":{"applied":true}}'
+        fi
         ;;
       permission-33333333333333333333333333333333)
         printf '%s\n' '{"operationId":"permission-33333333333333333333333333333333","kind":"revoke","state":"succeeded","result":{"applied":true}}'
@@ -123,6 +144,38 @@ for malformed_mode in malformed-row extra-authority oversized-result; do
 done
 pass "malformed rows, authority metadata, and oversized permission arrays fail closed"
 
+for response_mode in pending-extra failed-nonstring success-extra-outer; do
+  if response_output=$(PERMISSION_TEST_MODE="$response_mode" \
+    "$ROOT/bin/omarchy-plugin-permissions" org.example.evil --json 2>&1); then
+    fail "invalid state-dependent poll response was accepted: $response_mode" "$response_output"
+  fi
+  [[ $response_output == *"invalid permission response"* ]] ||
+    fail "invalid poll response did not fail at its outer schema: $response_mode" "$response_output"
+done
+pass "pending, failed, and succeeded poll responses enforce exact outer schemas"
+
+if failed_output=$(PERMISSION_TEST_MODE=failed-string \
+  "$ROOT/bin/omarchy-plugin-permissions" org.example.evil --json 2>&1); then
+  fail "valid failed permission response returned success" "$failed_output"
+fi
+[[ $failed_output == *"permission operation failed: denied 31m forged "* ]] ||
+  fail "failed permission response was not sanitized for presentation" "$failed_output"
+for forbidden_character in $'\u009b' $'\u202e' $'\u2069'; do
+  [[ $failed_output != *"$forbidden_character"* ]] || fail "failed permission response emitted a terminal-control Unicode character" "$failed_output"
+done
+pass "valid failed poll responses are sanitized before presentation"
+
+calls_before=$(wc -l <"$calls")
+for hostile_id in $'org.example\nforged' $'org.example\u202eforged'; do
+  if hostile_output=$("$ROOT/bin/omarchy-plugin-permissions" "$hostile_id" 2>&1); then
+    fail "hostile caller plugin id was accepted" "$hostile_output"
+  fi
+  [[ $hostile_output == "omarchy-plugin-permissions: plugin id is invalid" ]] ||
+    fail "hostile caller plugin id reached an error message" "$hostile_output"
+done
+[[ $(wc -l <"$calls") == "$calls_before" ]] || fail "invalid caller plugin id reached shell IPC"
+pass "caller plugin ids are validated before IPC or presentation"
+
 human_output=$("$ROOT/bin/omarchy-plugin-permissions" org.example.evil)
 [[ $human_output != *$'\e'* ]] || fail "human permission output emits an ANSI escape"
 [[ $human_output == *"org.example.evil plugin"* ]] || fail "human permission output flattens control characters" "$human_output"
@@ -154,6 +207,9 @@ require_command script
 review_output=$(printf 'y\ny\ny\nn\n' | script -qefc \
   "env PATH='$test_dir/bin:$PATH' PERMISSION_TEST_CALLS='$calls' '$ROOT/bin/omarchy-plugin-permissions' review org.example.review" /dev/null)
 [[ $review_output == *"Permissions updated for org.example.review"* ]] || fail "interactive permission review did not complete" "$review_output"
+for forbidden_character in $'\u009b' $'\u202e' $'\u2069'; do
+  [[ $review_output != *"$forbidden_character"* ]] || fail "interactive review emitted a terminal-control Unicode character" "$review_output"
+done
 apply_choices=$(awk -F '\t' '$2 == "apply" {print $4 $5 $6}' "$calls" | tail -n1)
 jq -e '
   .choices == [
@@ -193,3 +249,18 @@ set -e
 apply_calls_after=$(awk -F '\t' '$2 == "apply" {count++} END {print count+0}' "$calls")
 (( apply_calls_after == apply_calls_before + 1 )) || fail "post-submit poll failure retried the mutation"
 pass "failure after mutation submission reports unknown outcome without retrying"
+
+for mutation_schema_mode in mutation-extra-authority mutation-extra-result; do
+  apply_calls_before=$(awk -F '\t' '$2 == "apply" {count++} END {print count+0}' "$calls")
+  set +e
+  mutation_schema_output=$(printf 'y\ny\ny\nn\n' | PERMISSION_TEST_MODE="$mutation_schema_mode" script -qefc \
+    "env PATH='$test_dir/bin:$PATH' PERMISSION_TEST_CALLS='$calls' PERMISSION_TEST_MODE='$mutation_schema_mode' '$ROOT/bin/omarchy-plugin-permissions' review org.example.review" /dev/null 2>&1)
+  mutation_schema_status=$?
+  set -e
+  (( mutation_schema_status != 0 )) || fail "invalid mutation result schema returned success: $mutation_schema_mode"
+  [[ $mutation_schema_output == *"outcome is unknown"* ]] ||
+    fail "invalid mutation result schema did not preserve unknown outcome: $mutation_schema_mode" "$mutation_schema_output"
+  apply_calls_after=$(awk -F '\t' '$2 == "apply" {count++} END {print count+0}' "$calls")
+  (( apply_calls_after == apply_calls_before + 1 )) || fail "invalid mutation result schema retried apply: $mutation_schema_mode"
+done
+pass "mutation success requires exact outer and applied-result schemas"

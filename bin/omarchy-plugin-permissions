@@ -36,8 +36,19 @@ Usage:
 List is read-only. Review asks about every requested permission and, for an
 extensible permission, every requested operation. Revoke displays granted
 permissions, asks for one number, and changes only that permission after a
-second confirmation.
+second confirmation. TTY prompts are an ergonomic confirmation flow, not an
+authentication boundary.
 USAGE
+}
+
+require_plugin_id() {
+  local plugin_id="$1"
+
+  if (( ${#plugin_id} <= 128 )) && [[ $plugin_id =~ ^[a-z][a-z0-9]*([._-][a-z0-9]+)*$ ]]; then
+    return 0
+  else
+    fail "plugin id is invalid"
+  fi
 }
 
 require_opaque_id() {
@@ -61,7 +72,7 @@ sanitize_json_string() {
 
   jq -r "($filter // \"\" | tostring)
     | gsub(\"\\u001b\\\\[[0-?]*[ -/]*[@-~]\"; \"\")
-    | gsub(\"[\\u0000-\\u001f\\u007f]\"; \" \")
+    | gsub(\"[\\u0000-\\u001f\\u007f-\\u009f\\u202a-\\u202e\\u2066-\\u2069]\"; \" \")
     | .[0:160]" <<<"$json"
 }
 
@@ -69,8 +80,14 @@ wait_for_operation() {
   local operation_id="$1"
   local expected_kind="$2"
   local mutation="$3"
-  local attempt state error
+  local attempt state error mutation_json
   local deadline=$(( SECONDS + POLL_DEADLINE_SECONDS ))
+
+  if (( mutation )); then
+    mutation_json=true
+  else
+    mutation_json=false
+  fi
 
   require_opaque_id "$operation_id" "permission"
   for (( attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++ )); do
@@ -82,11 +99,25 @@ wait_for_operation() {
       fail "could not read permissions from the running secure plugin host"
     fi
     operation_json="$ipc_output"
-    jq -e --arg id "$operation_id" --arg kind "$expected_kind" '
+    jq -e --arg id "$operation_id" --arg kind "$expected_kind" --argjson mutation "$mutation_json" '
+      def exact_keys($expected): (keys | sort) == ($expected | sort);
       type == "object"
       and .operationId == $id
       and .kind == $kind
-      and (.state == "pending" or .state == "succeeded" or .state == "failed")
+      and (
+        if .state == "pending" then
+          exact_keys(["operationId", "kind", "state"])
+        elif .state == "failed" then
+          exact_keys(["operationId", "kind", "state", "error"])
+          and (.error | type == "string")
+        elif .state == "succeeded" and $mutation then
+          exact_keys(["operationId", "kind", "state", "result"])
+          and (.result | type == "object" and keys == ["applied"] and .applied == true)
+        elif .state == "succeeded" then
+          exact_keys(["operationId", "kind", "state", "result"])
+          and (.result | type == "object")
+        else false end
+      )
     ' <<<"$operation_json" >/dev/null || {
       if (( mutation )); then
         fail "permission change outcome is unknown; the shell returned an invalid response"
@@ -95,12 +126,9 @@ wait_for_operation() {
     }
     state=$(jq -r '.state' <<<"$operation_json")
     if [[ $state == "succeeded" ]]; then
-      jq -e '.result | type == "object"' <<<"$operation_json" >/dev/null || {
-        if (( mutation )); then
-          fail "permission change outcome is unknown; the shell omitted its result"
-        fi
-        fail "the shell omitted the permission result"
-      }
+      if (( !mutation )); then
+        validate_permission_result "$expected_kind" || fail "the shell returned an invalid permission result"
+      fi
       return 0
     elif [[ $state == "failed" ]]; then
       error=$(sanitize_json_string "$operation_json" '.error')
@@ -175,7 +203,6 @@ begin_read() {
   call_ipc "$method" "$plugin_id" || fail "the secure plugin permission service is unavailable"
   [[ -n $ipc_output ]] || fail "plugin '$plugin_id' is not available to the secure plugin host"
   wait_for_operation "$ipc_output" "$kind" 0
-  validate_permission_result "$kind" || fail "the shell returned an invalid permission result"
 }
 
 print_permission_row() {
@@ -196,7 +223,7 @@ print_permission_row() {
     [.operations[]? | if type == "object" then (.label // .name // "") else . end
       | tostring
       | gsub("\u001b\\[[0-?]*[ -/]*[@-~]"; "")
-      | gsub("[\u0000-\u001f\u007f]"; " ")
+      | gsub("[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]"; " ")
       | .[0:80]]
     | join(", ")
     | .[0:320]
@@ -263,6 +290,7 @@ list_permissions() {
   local json_output="$2"
   local result
 
+  require_plugin_id "$plugin_id"
   begin_read list "$plugin_id" list
   result=$(jq -c '.result' <<<"$operation_json")
   if (( json_output )); then
@@ -285,6 +313,7 @@ review_permissions() {
   local operation_count operation operation_id operation_label index operation_index
   local choices='[]' selected choices_json
 
+  require_plugin_id "$plugin_id"
   require_interactive_mutation
   begin_read review "$plugin_id" review
   review_id=$(jq -r '.operationId' <<<"$operation_json")
@@ -355,6 +384,7 @@ revoke_permission() {
   local plugin_id="$1"
   local source_id result granted count row row_id required ordinal
 
+  require_plugin_id "$plugin_id"
   require_interactive_mutation
   begin_read list "$plugin_id" list
   source_id=$(jq -r '.operationId' <<<"$operation_json")
