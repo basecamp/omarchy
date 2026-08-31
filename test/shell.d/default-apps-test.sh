@@ -312,3 +312,59 @@ if OMARCHY_TEST_INSTALL_FAIL=true omarchy-default-editor --install vim >"$test_t
 fi
 [[ $(omarchy-default-editor) == "$previous_editor" ]] || fail "failed installation preserves the default"
 pass "failed installation preserves the current default"
+
+# Every row of Defaults > Browser runs `omarchy-default-browser` in its checked
+# guard, so what the read costs and what it answers both matter.
+browser_call_log="$test_tmp/xdg-settings-log"
+cat >"$mock_bin/xdg-settings" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >>"$OMARCHY_TEST_XDG_LOG"
+case $1 in
+get) [[ -f $OMARCHY_TEST_BROWSER_FILE ]] && cat "$OMARCHY_TEST_BROWSER_FILE" ;;
+set) printf '%s\n' "$3" >"$OMARCHY_TEST_BROWSER_FILE" ;;
+esac
+SH
+chmod +x "$mock_bin/xdg-settings"
+export OMARCHY_TEST_XDG_LOG="$browser_call_log"
+
+for packaged in chromium.desktop:chromium google-chrome.desktop:chrome brave-browser.desktop:brave \
+  brave-origin.desktop:brave-origin microsoft-edge.desktop:edge firefox.desktop:firefox zen.desktop:zen; do
+  printf '%s\n' "${packaged%%:*}" >"$browser_file"
+  [[ $(omarchy-default-browser) == "${packaged##*:}" ]] || fail "${packaged%%:*} still reads as ${packaged##*:}"
+done
+pass "every packaged browser id still reads as its own name"
+
+# The unmatched arm is where the second call was, and it is the arm any browser
+# that registered itself lands in.
+: >"$browser_call_log"
+printf 'unmatched.desktop\n' >"$browser_file"
+omarchy-default-browser >/dev/null
+[[ $(wc -l <"$browser_call_log") -eq 1 ]] || fail "an unmatched browser id is read with a single xdg-settings call"
+pass "reading an unmatched browser id asks xdg-settings once"
+
+: >"$browser_call_log"
+printf 'firefox.desktop\n' >"$browser_file"
+omarchy-default-browser >/dev/null
+[[ $(wc -l <"$browser_call_log") -eq 1 ]] || fail "a packaged browser id is read with a single xdg-settings call"
+pass "reading a packaged browser id asks xdg-settings once"
+
+# A browser that registers itself gets a generated entry whose filename names no
+# browser. Zen installs exactly this.
+mkdir -p "$test_home/.local/share/applications"
+cat >"$test_home/.local/share/applications/userapp-Zen-81ROQ3.desktop" <<'DESKTOP'
+[Desktop Entry]
+Exec=/opt/zen-browser-bin/zen %u
+Name=Zen
+DESKTOP
+printf 'userapp-Zen-81ROQ3.desktop\n' >"$browser_file"
+[[ $(omarchy-default-browser) == "zen" ]] || fail "a browser registered under a generated id reads as itself"
+pass "a browser registered under a generated desktop id is recognised"
+
+: >"$browser_call_log"
+omarchy-default-browser >/dev/null
+[[ $(wc -l <"$browser_call_log") -eq 1 ]] || fail "a generated id is resolved without a second xdg-settings call"
+pass "resolving a generated id still asks xdg-settings once"
+
+printf 'something-else.desktop\n' >"$browser_file"
+[[ $(omarchy-default-browser) == "something-else.desktop" ]] || fail "an unrecognised id still reports itself"
+pass "an unrecognised desktop id still reports the raw value"

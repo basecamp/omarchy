@@ -10,8 +10,44 @@ if [[ ${1:-} == "--install" ]]; then
   shift
 fi
 
+# Maps the program a desktop entry runs to the name this command answers with.
+# A browser that registers itself through xdg-settings gets a generated entry
+# (Zen installs userapp-Zen-<id>.desktop) whose name matches none of the packaged
+# ids below, so the entry has to be opened and its Exec read to tell which
+# browser it is.
+browser_from_exec() {
+  case "${1##*/}" in
+  chromium | chromium-browser) echo "chromium" ;;
+  google-chrome-stable | google-chrome) echo "chrome" ;;
+  brave | brave-browser) echo "brave" ;;
+  brave-origin) echo "brave-origin" ;;
+  microsoft-edge-stable | microsoft-edge) echo "edge" ;;
+  firefox) echo "firefox" ;;
+  zen | zen-browser) echo "zen" ;;
+  esac
+}
+
+browser_from_desktop_id() {
+  local dir entry exec_line
+  for dir in "${XDG_DATA_HOME:-$HOME/.local/share}/applications" ${XDG_DATA_DIRS//:/\/applications }/applications; do
+    entry="$dir/$1"
+    [[ -r $entry ]] || continue
+    exec_line=$(sed -n 's/^Exec=//p' "$entry" | head -n 1)
+    [[ -n $exec_line ]] || continue
+    browser_from_exec "${exec_line%% *}"
+    return
+  done
+}
+
 if (($# == 0)); then
-  case "$(env -u BROWSER xdg-settings get default-web-browser)" in
+  # Asked once. This used to run xdg-settings twice, because the unmatched arm
+  # ran it again to echo the raw value -- and the unmatched arm is the common
+  # one for any browser that registered itself. Every row of the Defaults >
+  # Browser menu runs this command in its checked guard, so the menu paid for
+  # the second call once per row.
+  current=$(env -u BROWSER xdg-settings get default-web-browser)
+
+  case "$current" in
   chromium.desktop) echo "chromium" ;;
   google-chrome.desktop) echo "chrome" ;;
   brave-browser.desktop) echo "brave" ;;
@@ -19,7 +55,13 @@ if (($# == 0)); then
   microsoft-edge.desktop) echo "edge" ;;
   firefox.desktop) echo "firefox" ;;
   zen.desktop) echo "zen" ;;
-  *) env -u BROWSER xdg-settings get default-web-browser ;;
+  *)
+    # A generated entry names the browser in its Exec rather than its filename.
+    # Falling back to the raw id keeps the previous answer for anything this
+    # cannot identify.
+    resolved=$(browser_from_desktop_id "$current")
+    printf '%s\n' "${resolved:-$current}"
+    ;;
   esac
   exit 0
 fi
