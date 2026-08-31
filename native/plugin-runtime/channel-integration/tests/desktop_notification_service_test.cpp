@@ -178,7 +178,7 @@ void runtime_services_enable_only_implemented_adapters() {
   require(services && services->context && services->notification_send &&
               services->audio_play == nullptr &&
               services->compare_scope == nullptr &&
-              services->dynamic_services.empty(),
+              !services->provider_catalog,
           "runtime service table enabled an unsupported adapter");
   const auto capability = [](std::string_view id) {
     return omarchy::plugins::permissions::CapabilityKey{

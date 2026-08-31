@@ -24,7 +24,7 @@ arg=serve
 
 `arg` may repeat. No other key may repeat, and unknown keys reject the profile. Profiles in one group must pin the same executable path, executable digest, and argument vector. Duplicate adapter tuples reject the whole catalog rather than depending on load order.
 
-The executable must be a native ELF binary, not a script or shebang wrapper. It is hashed through its already-open descriptor. The catalog retains that descriptor, and the child is launched from it with `execveat(AT_EMPTY_PATH)`. Replacing the pathname after composition cannot retarget a launch. The child maps `/dev/null` onto standard input, output, and error; keeps only its provider channel on descriptor 3; sets `PR_SET_NO_NEW_PRIVS`; and marks every descriptor from 4 upward close-on-exec before launch.
+The executable is hashed through its already-open descriptor. The catalog retains that descriptor, and the child is launched from it with `execveat(AT_EMPTY_PATH)`. Replacing the pathname after composition cannot retarget a launch. Scripts and shebang wrappers are unsupported and fail closed during launch. The child maps `/dev/null` onto standard input, output, and error; keeps only its provider channel on descriptor 3; sets `PR_SET_NO_NEW_PRIVS`; and marks every descriptor from 4 upward close-on-exec before launch.
 
 Each plugin activation gets a separate `ProviderActivation`. It starts no process during catalog loading, permission review, or route preparation. The first authorized invocation starts one persistent process for the trusted profile group with fixed arguments and a minimal fixed environment. Plugin data cannot select a profile, executable, argument, environment variable, or process group.
 
