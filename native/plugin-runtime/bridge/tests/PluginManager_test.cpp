@@ -1471,7 +1471,7 @@ void manager_owns_permission_generation_replacement() {
   notification_backend->release("status");
   mutation.join();
   bridge::PluginManagerTestAccess::drainRuntime(*manager);
-  require(current_slot().opening && scheduler.jobs.size() == 1,
+  require(current_slot().preparing && scheduler.jobs.size() == 1,
           "settled optional revoke did not enter exact generation preparation");
   run_preparation();
   slot = current_slot();
@@ -1507,7 +1507,7 @@ void manager_owns_permission_generation_replacement() {
               *manager, plugin, slot.epoch, confirmed, decisions, {}),
           "running optional regrant was not queued");
   run_job();
-  require(current_slot().opening && scheduler.jobs.size() == 1,
+  require(current_slot().preparing && scheduler.jobs.size() == 1,
           "running optional regrant did not replace its generation");
   notification_backend->hold("status");
   run_preparation();
@@ -1566,7 +1566,7 @@ void manager_owns_permission_generation_replacement() {
               *manager, plugin, slot.epoch, confirmed, decisions, {}),
           "required regrant was not queued from permission-only root");
   run_job();
-  require(current_slot().opening && scheduler.jobs.size() == 1,
+  require(current_slot().preparing && scheduler.jobs.size() == 1,
           "required regrant did not enqueue exact preparation");
   notification_backend->hold("status");
   run_preparation();
@@ -1642,6 +1642,14 @@ void concurrent_permission_fences_route_exactly() {
       .dynamic_services = {}};
   DeterministicJobs scheduler;
   auto manager = bridge::PluginManagerTestAccess::create();
+  struct ReleaseEffects final {
+    std::shared_ptr<BlockingNotifications> effects;
+
+    ~ReleaseEffects() {
+      effects->release("a");
+      effects->release("b");
+    }
+  } release_effects{effects};
   bridge::PluginManagerTestAccess::installRuntime(
       *manager, fixture.bootstrap(std::move(services)));
   bridge::PluginManagerTestAccess::setJobSubmitter(
@@ -1674,11 +1682,23 @@ void concurrent_permission_fences_route_exactly() {
           "two permission generations did not publish independently");
   const auto key_a = barSurfaceKey(*manager, plugin_a);
   const auto key_b = barSurfaceKey(*manager, plugin_b);
-  bridge::RemotePluginSurface remote_a;
-  bridge::RemotePluginSurface remote_b;
-  require(manager->attach(key_a, &remote_a) &&
-              manager->attach(key_b, &remote_b),
-          "two permission generations did not attach independently");
+  QQuickWindow permission_window;
+  permission_window.resize(128, 64);
+  permission_window.show();
+  bridge::RemotePluginSurface remote_a(permission_window.contentItem());
+  bridge::RemotePluginSurface remote_b(permission_window.contentItem());
+  remote_a.setWidth(64);
+  remote_a.setHeight(64);
+  remote_b.setWidth(64);
+  remote_b.setHeight(64);
+  remote_b.setX(64);
+  const bool attached_a = manager->attach(key_a, &remote_a);
+  const bool attached_b = manager->attach(key_b, &remote_b);
+  require(attached_a && attached_b,
+          "two permission generations did not attach independently: A=" +
+              std::to_string(attached_a) + " key=" + key_a.toStdString() +
+              ", B=" + std::to_string(attached_b) +
+              " key=" + key_b.toStdString());
   const auto view_a = bridge::PluginManagerTestAccess::permissionView(
       *manager, plugin_a, epoch_a);
   const auto view_b = bridge::PluginManagerTestAccess::permissionView(
@@ -1727,7 +1747,7 @@ void concurrent_permission_fences_route_exactly() {
   observations = bridge::PluginManagerTestAccess::runtimeSlots(*manager);
   require(observed(observations, plugin_a).permission_changing &&
               observed(observations, plugin_a).has_runtime_root &&
-              observed(observations, plugin_b).opening &&
+              observed(observations, plugin_b).preparing &&
               scheduler.jobs.size() == 1,
           "settled B permission result disturbed blocked A");
   std::thread prepare_b([&] { scheduler.runOne(); });
@@ -1756,7 +1776,7 @@ void concurrent_permission_fences_route_exactly() {
   bridge::PluginManagerTestAccess::drainRuntime(*manager);
   observations = bridge::PluginManagerTestAccess::runtimeSlots(*manager);
   require(observed(observations, plugin_b).running &&
-              observed(observations, plugin_a).opening &&
+              observed(observations, plugin_a).preparing &&
               scheduler.jobs.size() == 1,
           "settled A permission result disturbed replacement B");
   std::thread prepare_a([&] { scheduler.runOne(); });
