@@ -3,6 +3,7 @@
 
 #include <fcntl.h>
 
+#include <ranges>
 #include <utility>
 
 namespace omarchy::plugin_runtime::channel {
@@ -136,6 +137,53 @@ host_session::AuthorityRevocationResult PluginPermissionAuthority::revoke(
     std::uint64_t expected_sequence,
     host_session::AuthorityFenceObserver *observer) {
   return revoke_exact(capability, expected_sequence, observer);
+}
+
+bool PluginPermissionAuthority::provider_available(
+    const permissions::CapabilityKey &capability) const noexcept {
+  try {
+    const auto *definition = permissions::find_capability(capability);
+    if (!definition)
+      return false;
+    for (std::uint8_t index = 0; index < definition->operation_count; ++index) {
+      switch (definition->operations[index]) {
+      case permissions::OperationId::storage_read:
+      case permissions::OperationId::storage_write:
+      case permissions::OperationId::storage_remove:
+        break;
+      case permissions::OperationId::notification_send:
+        if (!services_->notification_send)
+          return false;
+        break;
+      case permissions::OperationId::audio_play_cue:
+        if (!services_->audio_play)
+          return false;
+        break;
+      }
+    }
+    return true;
+  } catch (...) {
+    return false;
+  }
+}
+
+bool PluginPermissionAuthority::provider_available(
+    const definitions::CapabilityReference &reference) const noexcept {
+  try {
+    const auto resolved = definitions_->resolve(reference);
+    if (!resolved)
+      return false;
+    const auto configured = std::ranges::find(
+        services_->dynamic_services, resolved->definition->adapter,
+        &TrustedDynamicService::binding);
+    return std::ranges::count(
+               services_->dynamic_services, resolved->definition->adapter,
+               &TrustedDynamicService::binding) == 1 &&
+           configured != services_->dynamic_services.end() &&
+           configured->dispatch;
+  } catch (...) {
+    return false;
+  }
 }
 
 host_session::AuthorityRevocationResult PluginPermissionAuthority::revoke(

@@ -122,6 +122,15 @@ struct PluginManager::Runtime final {
     bool permission_disabled = false;
   };
 
+  struct PermissionReadResult final {
+    std::uint64_t serial = 0;
+    std::string plugin;
+    std::uint64_t epoch = 0;
+    std::shared_ptr<channel::PluginPermissionAuthority> authority;
+    std::optional<host_session::AuthorityView> view;
+    std::shared_ptr<const host_session::ConsentReview> review;
+  };
+
   struct PermissionTransaction final {
     // The authority invokes the fence observer synchronously before returning,
     // so COMPLETE publishes both the result and any preceding FENCED bit.
@@ -129,6 +138,7 @@ struct PluginManager::Runtime final {
     static constexpr std::uint8_t complete = 1U << 1U;
 
     std::atomic<std::uint8_t> delivery = 0;
+    std::uint64_t control_serial = 0;
     PermissionKind kind = PermissionKind::revoke_builtin;
     std::shared_ptr<channel::PluginPermissionAuthority> authority;
     plugins::permissions::CapabilityKey builtin;
@@ -151,6 +161,7 @@ struct PluginManager::Runtime final {
     std::shared_ptr<HookState> callback_state;
     std::unique_ptr<Hook> hook;
     std::shared_ptr<channel::PluginPermissionAuthority> permissions;
+    std::uint64_t permission_read_serial = 0;
     std::shared_ptr<PermissionTransaction> permission_transaction;
     std::optional<plugins::permissions::ActivationBinding> expected_binding;
     std::unique_ptr<channel::PluginRuntimeRoot> root;
@@ -167,8 +178,11 @@ struct PluginManager::Runtime final {
     std::atomic<bool> scan_in_flight = false;
     std::atomic<std::uint8_t> preparations_in_flight = 0;
     std::atomic<std::uint8_t> permissions_in_flight = 0;
+    std::atomic<std::uint8_t> permission_reads_in_flight = 0;
     std::shared_ptr<ScanResult> scan_result;
     std::array<std::shared_ptr<PreparationResult>, 2> preparation_results;
+    std::array<std::shared_ptr<PermissionReadResult>, 2>
+        permission_read_results;
   };
 
   struct PermissionFenceObserver final
@@ -284,10 +298,12 @@ struct PluginManager::Runtime final {
   void drainCompletions() noexcept {
     std::shared_ptr<ScanResult> scan;
     std::array<std::shared_ptr<PreparationResult>, 2> preparations;
+    std::array<std::shared_ptr<PermissionReadResult>, 2> permission_reads;
     {
       std::scoped_lock lock(gate_->mutex);
       scan = std::move(gate_->scan_result);
       preparations = std::move(gate_->preparation_results);
+      permission_reads = std::move(gate_->permission_read_results);
     }
     if (scan) {
       gate_->scan_in_flight.store(false);
@@ -337,6 +353,23 @@ struct PluginManager::Runtime final {
           fail(*slot);
       }
     }
+    for (auto &result : permission_reads) {
+      if (!result)
+        continue;
+      --gate_->permission_reads_in_flight;
+      auto *slot = exact(result->plugin, result->epoch);
+      if (!slot || slot->permissions != result->authority ||
+          slot->permission_transaction ||
+          slot->permission_read_serial != result->serial) {
+        manager_.failPermissionControl(result->serial, "stale-context");
+        continue;
+      }
+      slot->permission_read_serial = 0;
+      manager_.completePermissionRead(
+          result->serial, std::move(result->plugin), result->epoch,
+          std::move(result->authority), std::move(result->view),
+          std::move(result->review));
+    }
     for (auto &slot : slots_) {
       const auto transaction = slot.permission_transaction;
       if (!transaction)
@@ -347,7 +380,20 @@ struct PluginManager::Runtime final {
           slot.phase != Phase::permission_changing)
         fencePermission(slot);
       if ((delivery & PermissionTransaction::complete) != 0) {
+        const bool applied =
+            transaction->kind == PermissionKind::apply_review
+                ? transaction->review.publication ==
+                          host_session::ConsentResult::applied &&
+                      transaction->review.promotion ==
+                          host_session::AuthorityMutationResult::applied &&
+                      transaction->review.binding.has_value()
+                : transaction->revocation.status ==
+                      host_session::AuthorityMutationResult::applied;
         completePermission(slot, *transaction);
+        if (transaction->control_serial != 0)
+          manager_.completePermissionMutation(
+              transaction->control_serial, applied,
+              applied ? std::string{} : std::string("authority-rejected"));
         if (slot.permission_transaction == transaction)
           slot.permission_transaction.reset();
       }
@@ -562,6 +608,84 @@ struct PluginManager::Runtime final {
     }
   }
 
+  bool beginPermissionRead(std::uint64_t serial, std::string plugin,
+                           bool review) noexcept {
+    constexpr std::uint8_t kMaximumConcurrentPermissionReads = 2;
+    if (serial == 0 || gate_->permission_reads_in_flight.load() >=
+                           kMaximumConcurrentPermissionReads)
+      return false;
+    const auto found = std::ranges::lower_bound(
+        slots_, plugin, {}, [](const Slot &slot) { return slot.plugin; });
+    if (found == slots_.end() || found->plugin != plugin ||
+        !found->permissions || found->permission_transaction ||
+        found->permission_read_serial != 0 ||
+        (found->phase != Phase::running &&
+         found->phase != Phase::permission_disabled))
+      return false;
+    bool counted = false;
+    try {
+      auto result = std::make_shared<PermissionReadResult>();
+      result->serial = serial;
+      result->plugin = std::move(plugin);
+      result->epoch = found->epoch;
+      result->authority = found->permissions;
+      found->permission_read_serial = serial;
+      ++gate_->permission_reads_in_flight;
+      counted = true;
+      const auto gate = gate_;
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+      const auto entry_probe = job_entry_probe_;
+#endif
+      const bool started = submit(
+          JobKind::permission,
+          [gate, result, review
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+           , entry_probe
+#endif
+      ] {
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+            if (entry_probe)
+              entry_probe(PluginManagerTestAccess::TestJobKind::permission);
+#endif
+            try {
+              result->view = result->authority->list();
+              if (review)
+                result->review = result->authority->prepare_review();
+            } catch (...) {
+              result->view.reset();
+              result->review.reset();
+            }
+            std::scoped_lock lock(gate->mutex);
+            if (gate->canceled.load(std::memory_order_acquire)) {
+              --gate->permission_reads_in_flight;
+              return;
+            }
+            const auto destination = std::ranges::find(
+                gate->permission_read_results,
+                std::shared_ptr<PermissionReadResult>{});
+            if (destination == gate->permission_read_results.end()) {
+              --gate->permission_reads_in_flight;
+              return;
+            }
+            *destination = std::move(result);
+          });
+      if (!started) {
+        --gate_->permission_reads_in_flight;
+        counted = false;
+        found->permission_read_serial = 0;
+        return false;
+      }
+      armCompletionTimer();
+      return true;
+    } catch (...) {
+      if (counted)
+        --gate_->permission_reads_in_flight;
+      if (found->permission_read_serial == serial)
+        found->permission_read_serial = 0;
+      return false;
+    }
+  }
+
   std::optional<host_session::AuthorityView>
   permissionView(std::string_view plugin, std::uint64_t epoch) const {
     const auto found = std::ranges::lower_bound(
@@ -620,6 +744,64 @@ struct PluginManager::Runtime final {
     }
   }
 
+  bool beginControlledPermissionApply(
+      std::uint64_t serial, std::string_view plugin, std::uint64_t epoch,
+      const std::shared_ptr<channel::PluginPermissionAuthority> &authority,
+      std::shared_ptr<const host_session::ConsentReview> review,
+      const host_session::ConsentConfirmation &confirmation,
+      std::span<const host_session::BuiltinConsentDecision> builtin_decisions,
+      std::span<const host_session::DynamicConsentDecision> dynamic_decisions)
+      noexcept {
+    auto *slot = exact(plugin, epoch);
+    if (serial == 0 || !review || !slot || slot->permissions != authority)
+      return false;
+    try {
+      auto result = std::make_shared<PermissionTransaction>();
+      result->control_serial = serial;
+      result->kind = PermissionKind::apply_review;
+      result->consent_review = std::move(review);
+      result->confirmation = confirmation;
+      result->builtin_decisions.assign(builtin_decisions.begin(),
+                                       builtin_decisions.end());
+      result->dynamic_decisions.assign(dynamic_decisions.begin(),
+                                       dynamic_decisions.end());
+      return beginPermissionMutation(plugin, epoch, std::move(result));
+    } catch (...) {
+      return false;
+    }
+  }
+
+  bool beginControlledPermissionRevoke(
+      std::uint64_t serial, std::string_view plugin, std::uint64_t epoch,
+      const std::shared_ptr<channel::PluginPermissionAuthority> &authority,
+      bool dynamic,
+      const std::optional<plugins::permissions::CapabilityKey> &builtin,
+      const std::optional<plugins::definitions::CapabilityReference>
+          &definition,
+      std::uint64_t expected_sequence)
+      noexcept {
+    auto *slot = exact(plugin, epoch);
+    if (serial == 0 || !slot || slot->permissions != authority)
+      return false;
+    try {
+      auto result = std::make_shared<PermissionTransaction>();
+      result->control_serial = serial;
+      result->expected_sequence = expected_sequence;
+      if (dynamic && definition) {
+        result->kind = PermissionKind::revoke_dynamic;
+        result->dynamic = *definition;
+      } else if (!dynamic && builtin) {
+        result->kind = PermissionKind::revoke_builtin;
+        result->builtin = *builtin;
+      } else {
+        return false;
+      }
+      return beginPermissionMutation(plugin, epoch, std::move(result));
+    } catch (...) {
+      return false;
+    }
+  }
+
   bool beginPermissionMutation(std::string_view plugin, std::uint64_t epoch,
                                std::shared_ptr<PermissionTransaction> result)
       noexcept {
@@ -631,6 +813,7 @@ struct PluginManager::Runtime final {
     const bool running = slot && slot->phase == Phase::running;
     const bool review = result->kind == PermissionKind::apply_review;
     if (!slot || !slot->permissions || slot->permission_transaction ||
+        slot->permission_read_serial != 0 ||
         (review ? !(running || slot->phase == Phase::permission_disabled)
                 : !running))
       return false;
@@ -785,6 +968,7 @@ struct PluginManager::Runtime final {
     const bool active = gate_->scan_in_flight.load() != 0 ||
                         gate_->preparations_in_flight.load() != 0 ||
                         gate_->permissions_in_flight.load() != 0 ||
+                        gate_->permission_reads_in_flight.load() != 0 ||
                         std::ranges::any_of(slots_, [](const Slot &slot) {
                           return slot.phase == Phase::opening ||
                                  slot.phase == Phase::preparing ||
@@ -1042,6 +1226,7 @@ struct PluginManager::Runtime final {
     slot.epoch = nextEpoch();
     slot.retry_due.reset();
     slot.permission_transaction.reset();
+    slot.permission_read_serial = 0;
     withdraw(slot);
     slot.root.reset();
     slot.hook.reset();
@@ -1362,7 +1547,8 @@ PluginManager *PluginManager::create(QQmlEngine *qml_engine,
 }
 
 PluginManager::PluginManager(QObject *parent, ProcessClaim claim)
-    : QObject(parent), process_claim_(std::move(claim)), surfaces_(this) {
+    : QObject(parent), process_claim_(std::move(claim)), surfaces_(this),
+      permissions_(*this) {
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
   if (fail_next_manager_construction.exchange(false, std::memory_order_acq_rel))
     throw std::bad_alloc();
@@ -1390,6 +1576,60 @@ QString PluginManager::runtimeVersion() const {
   const std::string_view version = plugin_runtime::build_version();
   return QString::fromLatin1(version.data(),
                              static_cast<qsizetype>(version.size()));
+}
+
+PermissionControl *PluginManager::permissions() noexcept {
+  return &permissions_;
+}
+
+bool PluginManager::beginPermissionRead(std::uint64_t serial,
+                                        std::string plugin,
+                                        bool review) noexcept {
+  return runtime_ &&
+         runtime_->beginPermissionRead(serial, std::move(plugin), review);
+}
+
+bool PluginManager::beginPermissionApply(
+    std::uint64_t serial, const PermissionControl::ExactContext &context,
+    std::shared_ptr<const host_session::ConsentReview> review,
+    const host_session::ConsentConfirmation &confirmation,
+    std::span<const host_session::BuiltinConsentDecision> builtin_decisions,
+    std::span<const host_session::DynamicConsentDecision> dynamic_decisions)
+    noexcept {
+  return runtime_ && runtime_->beginControlledPermissionApply(
+                         serial, context.plugin, context.slot_epoch,
+                         context.authority, std::move(review), confirmation,
+                         builtin_decisions, dynamic_decisions);
+}
+
+bool PluginManager::beginPermissionRevoke(
+    std::uint64_t serial, const PermissionControl::ExactContext &context,
+    const PermissionControl::Row &row) noexcept {
+  return runtime_ && runtime_->beginControlledPermissionRevoke(
+                         serial, context.plugin, context.slot_epoch,
+                         context.authority, row.dynamic, row.builtin,
+                         row.definition, context.authority_sequence);
+}
+
+void PluginManager::failPermissionControl(std::uint64_t serial,
+                                          std::string error) noexcept {
+  permissions_.fail(serial, std::move(error));
+}
+
+void PluginManager::completePermissionRead(
+    std::uint64_t serial, std::string plugin, std::uint64_t slot_epoch,
+    std::shared_ptr<channel::PluginPermissionAuthority> authority,
+    std::optional<host_session::AuthorityView> view,
+    std::shared_ptr<const host_session::ConsentReview> review) noexcept {
+  permissions_.completeRead(serial, std::move(plugin), slot_epoch,
+                            std::move(authority), std::move(view),
+                            std::move(review));
+}
+
+void PluginManager::completePermissionMutation(std::uint64_t serial,
+                                               bool applied,
+                                               std::string error) noexcept {
+  permissions_.completeMutation(serial, applied, std::move(error));
 }
 
 QAbstractItemModel *PluginManager::barSurfaces() {

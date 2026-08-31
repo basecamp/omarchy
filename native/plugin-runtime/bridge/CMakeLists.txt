@@ -7,6 +7,8 @@ qt_add_qml_module(omarchy-plugin-host-bridge
   PLUGIN_TARGET omarchy-plugin-host-bridge
   OUTPUT_DIRECTORY "${plugin_host_module_dir}"
   SOURCES
+    src/PermissionControl.cpp
+    src/PermissionControl.h
     src/PluginManager.cpp
     src/PluginManager.h
     src/SurfaceEndpoint.cpp
@@ -43,6 +45,7 @@ install(FILES
 
 if(BUILD_TESTING)
   add_executable(omarchy-plugin-surface-service-test
+    src/PermissionControl.cpp
     src/PluginManager.cpp
     tests/PluginManager_test.cpp
     src/SurfaceEndpoint.cpp

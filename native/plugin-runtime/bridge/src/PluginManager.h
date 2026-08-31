@@ -1,5 +1,6 @@
 #pragma once
 
+#include "PermissionControl.h"
 #include "SurfaceProjectionModel.h"
 #include "gesture_intent.hpp"
 
@@ -39,6 +40,8 @@ class PluginManager final : public QObject {
   QML_SINGLETON
   Q_PROPERTY(bool available READ available NOTIFY availableChanged)
   Q_PROPERTY(QString runtimeVersion READ runtimeVersion CONSTANT)
+  Q_PROPERTY(omarchy::plugin_runtime::bridge::PermissionControl *permissions
+                 READ permissions CONSTANT)
   Q_PROPERTY(QAbstractItemModel *barSurfaces READ barSurfaces CONSTANT)
   Q_PROPERTY(QAbstractItemModel *panelSurfaces READ panelSurfaces CONSTANT)
   Q_PROPERTY(QAbstractItemModel *overlaySurfaces READ overlaySurfaces CONSTANT)
@@ -53,6 +56,7 @@ public:
 
   [[nodiscard]] bool available() const noexcept;
   [[nodiscard]] QString runtimeVersion() const;
+  [[nodiscard]] PermissionControl *permissions() noexcept;
   [[nodiscard]] QAbstractItemModel *barSurfaces();
   [[nodiscard]] QAbstractItemModel *panelSurfaces();
   [[nodiscard]] QAbstractItemModel *overlaySurfaces();
@@ -95,6 +99,29 @@ private:
 
   PluginManager(QObject *parent, ProcessClaim claim);
   [[nodiscard]] bool publishIntent(host_session::AdmittedSurfaceIntent intent);
+  [[nodiscard]] bool beginPermissionRead(std::uint64_t serial,
+                                         std::string plugin,
+                                         bool review) noexcept;
+  [[nodiscard]] bool beginPermissionApply(
+      std::uint64_t serial,
+      const PermissionControl::ExactContext &context,
+      std::shared_ptr<const host_session::ConsentReview> review,
+      const host_session::ConsentConfirmation &confirmation,
+      std::span<const host_session::BuiltinConsentDecision> builtin_decisions,
+      std::span<const host_session::DynamicConsentDecision>
+          dynamic_decisions) noexcept;
+  [[nodiscard]] bool beginPermissionRevoke(
+      std::uint64_t serial, const PermissionControl::ExactContext &context,
+      const PermissionControl::Row &row) noexcept;
+  void failPermissionControl(std::uint64_t serial,
+                             std::string error) noexcept;
+  void completePermissionRead(
+      std::uint64_t serial, std::string plugin, std::uint64_t slot_epoch,
+      std::shared_ptr<channel::PluginPermissionAuthority> authority,
+      std::optional<host_session::AuthorityView> view,
+      std::shared_ptr<const host_session::ConsentReview> review) noexcept;
+  void completePermissionMutation(std::uint64_t serial, bool applied,
+                                  std::string error) noexcept;
 
   struct Runtime;
 
@@ -102,6 +129,7 @@ private:
   // process claim is released and another engine can create a manager.
   ProcessClaim process_claim_;
   SurfaceProjectionModel surfaces_;
+  PermissionControl permissions_;
   std::unique_ptr<Runtime> runtime_;
   bool available_ = false;
 
@@ -109,6 +137,7 @@ private:
   friend class PluginManagerTestAccess;
   friend class SurfaceProjectionModelTestAccess;
 #endif
+  friend class PermissionControl;
 };
 
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING

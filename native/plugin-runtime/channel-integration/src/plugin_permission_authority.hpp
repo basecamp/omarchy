@@ -19,6 +19,7 @@ struct RuntimeServices;
 
 namespace omarchy::plugin_runtime::bridge {
 class PluginManager;
+class PermissionControl;
 }
 
 namespace omarchy::plugin_runtime::channel {
@@ -77,6 +78,11 @@ private:
   revoke(const definitions::CapabilityReference &definition,
          std::uint64_t expected_sequence,
          host_session::AuthorityFenceObserver *observer = nullptr);
+  [[nodiscard]] bool
+  provider_available(const permissions::CapabilityKey &capability) const
+      noexcept;
+  [[nodiscard]] bool provider_available(
+      const definitions::CapabilityReference &definition) const noexcept;
 
   template <typename Selector>
   [[nodiscard]] host_session::AuthorityRevocationResult
@@ -117,6 +123,7 @@ private:
   friend class PluginRuntimeRootTestAccess;
 #endif
   friend class omarchy::plugin_runtime::bridge::PluginManager;
+  friend class omarchy::plugin_runtime::bridge::PermissionControl;
 };
 
 } // namespace omarchy::plugin_runtime::channel
