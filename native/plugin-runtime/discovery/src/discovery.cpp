@@ -130,8 +130,10 @@ void enumerate_open_tree(int directory_fd, std::string_view prefix,
               S_ISDIR(directory_metadata.st_mode),
           "cannot inspect plugin directory");
   if (published_owner) {
+    // Btrfs reports one link for a named directory, unlike filesystems that
+    // include dot and parent links. Zero still identifies an unlinked inode.
     require(directory_metadata.st_uid == published_owner->uid &&
-                directory_metadata.st_nlink >= 2 &&
+                directory_metadata.st_nlink != 0 &&
                 (directory_metadata.st_mode & 07777) == 0555,
             "published plugin directory metadata is unsafe");
   }

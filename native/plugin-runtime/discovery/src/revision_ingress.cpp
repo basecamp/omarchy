@@ -191,6 +191,8 @@ Descriptor open_directory_component(int parent, std::string_view component) {
 
 void normalize_new_directory(int parent, const std::string &name,
                              std::uint32_t expected_uid) {
+  // A named directory has a nonzero link count. Do not assume traditional
+  // parent-link accounting: Btrfs validly reports one for directories.
   Descriptor path(::openat(parent, name.c_str(),
                            O_PATH | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
   struct stat named{};
@@ -199,7 +201,7 @@ void normalize_new_directory(int parent, const std::string &name,
               ::fstatat(parent, name.c_str(), &named, AT_SYMLINK_NOFOLLOW) == 0 &&
               ::fstat(path.get(), &pinned) == 0 && S_ISDIR(pinned.st_mode) &&
               pinned.st_uid == expected_uid && pinned.st_dev == named.st_dev &&
-              pinned.st_ino == named.st_ino && pinned.st_nlink >= 2,
+              pinned.st_ino == named.st_ino && pinned.st_nlink != 0,
           "new directory identity is unsafe");
   require(::syscall(SYS_fchmodat2, path.get(), "", 0700, AT_EMPTY_PATH) == 0 &&
               ::fstat(path.get(), &pinned) == 0 &&
@@ -223,7 +225,7 @@ void verify_named_identity(int parent, const char *name, int opened,
   require(::fstatat(parent, name, &named, AT_SYMLINK_NOFOLLOW) == 0 &&
               ::fstat(opened, &pinned) == 0 && named.st_dev == pinned.st_dev &&
               named.st_ino == pinned.st_ino && (pinned.st_mode & S_IFMT) == type &&
-              (type == S_IFDIR ? pinned.st_nlink >= 2 : pinned.st_nlink == 1),
+              (type == S_IFDIR ? pinned.st_nlink != 0 : pinned.st_nlink == 1),
           "archive entry identity is unsafe");
 }
 
@@ -314,7 +316,7 @@ void make_tree_immutable_and_durable(int directory_fd,
     require(::fstatat(directory_fd, name.c_str(), &metadata,
                       AT_SYMLINK_NOFOLLOW) == 0 &&
                 metadata.st_uid == expected_uid &&
-                (S_ISDIR(metadata.st_mode) ? metadata.st_nlink >= 2
+                (S_ISDIR(metadata.st_mode) ? metadata.st_nlink != 0
                                            : metadata.st_nlink == 1),
             "extracted entry metadata is unsafe");
     if (S_ISDIR(metadata.st_mode)) {
@@ -468,7 +470,7 @@ void validate_root(int fd, std::uint32_t expected_uid) {
   struct stat metadata{};
   require(fd >= 0 && ::fstat(fd, &metadata) == 0 && S_ISDIR(metadata.st_mode) &&
               metadata.st_uid == expected_uid &&
-              metadata.st_nlink >= 2 &&
+              metadata.st_nlink != 0 &&
               (metadata.st_mode & 07777) == 0700 &&
               (metadata.st_mode & (S_IWGRP | S_IWOTH)) == 0,
           "revision root is not private and trusted");

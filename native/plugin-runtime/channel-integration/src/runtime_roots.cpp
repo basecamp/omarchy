@@ -202,6 +202,8 @@ void ensure_private_plugin_directory(int root, std::string_view plugin,
     require_transaction(errno == EEXIST,
                         "cannot create plugin private state directory");
   if (created) {
+    // Btrfs reports one link for a valid named directory; only zero means the
+    // pinned inode was unlinked before its named identity was confirmed.
     OwnedDescriptor path(::openat(root, name.c_str(),
                                   O_PATH | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
     struct stat named{};
@@ -210,7 +212,7 @@ void ensure_private_plugin_directory(int root, std::string_view plugin,
         path && ::fstatat(root, name.c_str(), &named, AT_SYMLINK_NOFOLLOW) == 0 &&
             ::fstat(path.get(), &pinned) == 0 && S_ISDIR(pinned.st_mode) &&
             pinned.st_uid == trusted_uid && pinned.st_dev == named.st_dev &&
-            pinned.st_ino == named.st_ino && pinned.st_nlink >= 2 &&
+            pinned.st_ino == named.st_ino && pinned.st_nlink != 0 &&
             ::syscall(SYS_fchmodat2, path.get(), "", 0700, AT_EMPTY_PATH) == 0,
         "cannot normalize plugin private directory mode");
   }
