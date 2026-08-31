@@ -32,6 +32,12 @@ grep -F 'run_post_upgrade_migrations' "$upgrade_to_quattro" >/dev/null
 grep -F 'omarchy-migrate' "$upgrade_to_quattro" >/dev/null
 grep -F 'dust' "$upgrade_to_quattro" >/dev/null
 grep -F 'satty' "$upgrade_to_quattro" >/dev/null
+final_upgrade_line=$(grep -n '^run_final_system_package_upgrade$' "$upgrade_to_quattro" | cut -d: -f1)
+migrations_line=$(grep -n '^run_post_upgrade_migrations$' "$upgrade_to_quattro" | cut -d: -f1)
+[[ -n $final_upgrade_line && -n $migrations_line ]] ||
+  fail "final package upgrade and migration calls exist"
+(( final_upgrade_line < migrations_line )) ||
+  fail "Omarchy migrations run after the final package upgrade"
 pass "Omarchy 4 upgrade applies packaged migrations"
 
 if grep -F 'skip-first-run-update-notification' "$upgrade_to_quattro" >/dev/null; then
@@ -97,6 +103,53 @@ pass "Omarchy 4 upgrade retires systemd-networkd for NetworkManager"
 function_body() {
   awk -v name="$1" '$0 == name "() {" { inside = 1; next } inside && $0 == "}" { exit } inside' "$upgrade_to_quattro"
 }
+
+migrations_body=$(function_body run_post_upgrade_migrations)
+grep -F 'fail "Omarchy migrations did not complete.' <<<"$migrations_body" >/dev/null ||
+  fail "Omarchy 4 upgrade fails when a migration cannot complete"
+grep -F 'omarchy-migrate --pending' <<<"$migrations_body" >/dev/null ||
+  fail "Omarchy 4 upgrade verifies that migrations actually completed"
+grep -F 'fail "Omarchy migrations are still pending.' <<<"$migrations_body" >/dev/null ||
+  fail "Omarchy 4 upgrade fails when a successful migration command leaves pending work"
+grep -F 'pending_status != 1' <<<"$migrations_body" >/dev/null ||
+  fail "Omarchy 4 upgrade distinguishes no pending work from a failed verification"
+grep -F 'fail "Could not verify that Omarchy migrations completed.' <<<"$migrations_body" >/dev/null ||
+  fail "Omarchy 4 upgrade fails when it cannot verify migration state"
+if grep -F 'return 0' <<<"$migrations_body" >/dev/null || grep -F 'warn ' <<<"$migrations_body" >/dev/null; then
+  fail "Omarchy 4 upgrade does not continue past failed migrations"
+fi
+
+exercise_post_upgrade_migrations() {
+  local stub_migration_status="$1" stub_pending_status="$2"
+
+  (
+    log() { :; }
+    fail() { exit 1; }
+    run_as_user_omarchy() {
+      if [[ " $* " == *" --pending "* ]]; then
+        return "$stub_pending_status"
+      else
+        return "$stub_migration_status"
+      fi
+    }
+    eval "run_post_upgrade_migrations() { $migrations_body
+}"
+    run_post_upgrade_migrations
+  )
+}
+
+exercise_post_upgrade_migrations 0 1 >/dev/null 2>&1 ||
+  fail "Omarchy 4 upgrade accepts a completed migration queue"
+if exercise_post_upgrade_migrations 1 1 >/dev/null 2>&1; then
+  fail "Omarchy 4 upgrade accepts a failed migration"
+fi
+if exercise_post_upgrade_migrations 0 0 >/dev/null 2>&1; then
+  fail "Omarchy 4 upgrade accepts pending migrations"
+fi
+if exercise_post_upgrade_migrations 0 2 >/dev/null 2>&1; then
+  fail "Omarchy 4 upgrade accepts a failed pending-state check"
+fi
+pass "Omarchy 4 upgrade cannot finish with pending migrations"
 
 if function_body cleanup_retired_services | grep -F 'systemctl disable iwd' >/dev/null; then
   fail "Omarchy 4 upgrade does not retire iwd in a step separate from the NetworkManager enable"
