@@ -33,6 +33,7 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -276,6 +277,38 @@ void render_and_input() {
   require(static_cast<bool>(runtime.release(allocation->surface)),
           "surface did not release");
   require(!runtime.allocated(), "released mapping remained allocated");
+}
+
+void headless_entry_has_no_surface_authority() {
+  worker::WorkerRuntime runtime(fixture("expressive"));
+  require(static_cast<bool>(runtime.load_entry("Main.qml")) &&
+              runtime.loaded() && runtime.object_count() > 2,
+          "headless arbitrary QML did not remain alive");
+  require(!runtime.surface_key("") &&
+              !static_cast<bool>(runtime.bind_surface(
+                  "", {.id = 91, .generation = 7})),
+          "headless QML acquired a name-to-surface binding");
+  require(static_cast<bool>(runtime.select_software_profile(
+              surface::software_profile_offer())),
+          "headless QML profile selection failed");
+  const auto page_size = sysconf(_SC_PAGESIZE);
+  const auto allocation = surface::make_allocation(
+      {.id = 91, .generation = 7}, 32, 16, 32, 16, 1, 1,
+      static_cast<std::uint64_t>(page_size));
+  require(page_size > 0 && allocation.has_value(),
+          "headless allocation fixture failed");
+  const int descriptor = static_cast<int>(
+      syscall(SYS_memfd_create, "headless-frame-test", MFD_CLOEXEC));
+  require(descriptor >= 0 &&
+              ftruncate(descriptor,
+                        static_cast<off_t>(allocation->mapping_bytes)) == 0,
+          "headless allocation descriptor failed");
+  const auto result = runtime.allocate(*allocation, descriptor);
+  require(!result && result.failure == worker::RuntimeFailure::stale_surface &&
+              fcntl(descriptor, F_GETFD) < 0 && errno == EBADF &&
+              !runtime.allocated() && !runtime.active() &&
+              !runtime.render().has_value(),
+          "headless QML entered surface allocation or render routing");
 }
 
 void typed_input_projects_exact_qt_events() {
@@ -567,7 +600,7 @@ void touch_injector_maps_native_global_coordinates() {
 
 void touch_input_reaches_qml_handlers() {
   worker::WorkerRuntime runtime(fixture("expressive"));
-  const auto loaded = runtime.load_entry("Touch.qml");
+  const auto loaded = runtime.load_surface_entry("touch", "Touch.qml");
   if (!loaded)
     throw std::runtime_error("touch QML did not load: " + loaded.detail);
   require(static_cast<bool>(runtime.select_software_profile(
@@ -1314,7 +1347,13 @@ void steady_state_denies_exec() {
 int main(int argc, char **argv) {
   try {
     QGuiApplication application(argc, argv);
+    if (argc == 2 && std::string_view(argv[1]) == "--headless-only") {
+      headless_entry_has_no_surface_authority();
+      std::cout << "plugin worker headless boundary: ok\n";
+      return 0;
+    }
     render_and_input();
+    headless_entry_has_no_surface_authority();
     typed_input_projects_exact_qt_events();
     touch_injector_maps_native_global_coordinates();
     touch_input_reaches_qml_handlers();

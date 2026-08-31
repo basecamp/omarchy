@@ -418,6 +418,10 @@ struct WorkerRuntime::Impl {
         surface->root_item = nullptr;
       }
     }
+    if (headless_root_item != nullptr) {
+      delete headless_root_item;
+      headless_root_item = nullptr;
+    }
   }
 
   SurfaceInstance *by_key(surface::SurfaceKey key) {
@@ -497,6 +501,8 @@ struct WorkerRuntime::Impl {
   QtTouchInjector touch_injector;
   surface::InputMirror input_mirror;
   std::vector<std::unique_ptr<SurfaceInstance>> surfaces;
+  std::unique_ptr<QQmlComponent> headless_component;
+  QQuickItem *headless_root_item = nullptr;
   bool profile_selected = false;
   std::uint32_t maximum_pixel_dimension = 0;
   std::uint64_t maximum_frame_bytes = 0;
@@ -511,7 +517,7 @@ WorkerRuntime::WorkerRuntime(std::filesystem::path source_root)
 WorkerRuntime::~WorkerRuntime() = default;
 
 RuntimeResult WorkerRuntime::prepare_trusted_qt_types() {
-  if (!implementation_->surfaces.empty())
+  if (loaded())
     return failure(RuntimeFailure::invalid_transition,
                    "trusted Qt types must load before plugin QML");
   QQmlComponent probe(&implementation_->engine);
@@ -578,12 +584,18 @@ RuntimeResult WorkerRuntime::load_manifest_entry() {
   const auto entry = runtime.toObject().value(QStringLiteral("qml"));
   if (!entry.isString())
     return failure(RuntimeFailure::manifest_invalid, "runtime.qml is required");
-  return load_entry(entry.toString().toStdString());
+  const auto surfaces = root.value(QStringLiteral("surfaces"));
+  if (!surfaces.isObject() || surfaces.toObject().size() > 1)
+    return failure(RuntimeFailure::manifest_invalid,
+                   "single-entry runtime permits at most one surface");
+  if (surfaces.toObject().isEmpty())
+    return load_entry(entry.toString().toStdString());
+  return load_surface_entry(surfaces.toObject().begin().key().toStdString(),
+                            entry.toString().toStdString());
 }
 
 RuntimeResult WorkerRuntime::bind_runtime_api(QObject &runtime_api) {
-  if (implementation_->runtime_api_bound ||
-      !implementation_->surfaces.empty()) {
+  if (implementation_->runtime_api_bound || loaded()) {
     return failure(
         RuntimeFailure::invalid_runtime_api,
         "trusted runtime API must bind exactly once before QML load");
@@ -598,11 +610,23 @@ RuntimeResult WorkerRuntime::bind_runtime_api(QObject &runtime_api) {
 }
 
 RuntimeResult WorkerRuntime::load_entry(std::string entry_path) {
-  return load_surface_entry({}, std::move(entry_path));
+  if (loaded())
+    return failure(RuntimeFailure::invalid_transition,
+                   "headless entry must be the only QML entry");
+  std::unique_ptr<QQmlComponent> component;
+  QQuickItem *root_item = nullptr;
+  const auto loaded =
+      instantiate_entry(std::move(entry_path), component, root_item);
+  if (!loaded)
+    return loaded;
+  implementation_->headless_component = std::move(component);
+  implementation_->headless_root_item = root_item;
+  return {};
 }
 
-RuntimeResult WorkerRuntime::load_surface_entry(std::string surface_name,
-                                                std::string entry_path) {
+RuntimeResult WorkerRuntime::instantiate_entry(
+    std::string entry_path, std::unique_ptr<QQmlComponent> &component,
+    QQuickItem *&root_item) {
   if (!safe_relative_qml_path(entry_path))
     return failure(RuntimeFailure::entry_path_invalid,
                    "QML entry path must be a normalized relative .qml file");
@@ -616,12 +640,7 @@ RuntimeResult WorkerRuntime::load_surface_entry(std::string surface_name,
       std::filesystem::is_symlink(metadata))
     return failure(RuntimeFailure::entry_missing,
                    "QML entry is absent or not a regular file");
-  if (implementation_->surfaces.size() >=
-          omarchy::plugin::wire::kMaximumPluginSurfaces ||
-      implementation_->by_name(surface_name) != nullptr)
-    return failure(RuntimeFailure::invalid_transition,
-                   "surface entry name is duplicate or exceeds the limit");
-  auto component = std::make_unique<QQmlComponent>(
+  component = std::make_unique<QQmlComponent>(
       &implementation_->engine,
       QUrl::fromLocalFile(QString::fromStdString(entry.string())),
       QQmlComponent::PreferSynchronous);
@@ -649,10 +668,28 @@ RuntimeResult WorkerRuntime::load_surface_entry(std::string surface_name,
                    "QML object limit exceeded during creation");
   }
   item->setParent(&implementation_->engine);
+  root_item = item;
+  return {};
+}
+
+RuntimeResult WorkerRuntime::load_surface_entry(std::string surface_name,
+                                                std::string entry_path) {
+  if (implementation_->headless_root_item != nullptr ||
+      implementation_->surfaces.size() >=
+          omarchy::plugin::wire::kMaximumPluginSurfaces ||
+      implementation_->by_name(surface_name) != nullptr)
+    return failure(RuntimeFailure::invalid_transition,
+                   "surface entry name is duplicate or exceeds the limit");
+  std::unique_ptr<QQmlComponent> component;
+  QQuickItem *root_item = nullptr;
+  const auto loaded =
+      instantiate_entry(std::move(entry_path), component, root_item);
+  if (!loaded)
+    return loaded;
   auto instance = std::make_unique<Impl::SurfaceInstance>();
   instance->name = std::move(surface_name);
   instance->component = std::move(component);
-  instance->root_item = item;
+  instance->root_item = root_item;
   implementation_->surfaces.push_back(std::move(instance));
   return {};
 }
@@ -728,8 +765,11 @@ WorkerRuntime::allocate(const surface::TrustedAllocation &allocation,
   }
   if (implementation_->surfaces.empty()) {
     close(mapping_descriptor);
-    return failure(RuntimeFailure::qml_load_failed,
-                   "QML must load before allocation");
+    if (!loaded())
+      return failure(RuntimeFailure::qml_load_failed,
+                     "QML must load before allocation");
+    return failure(RuntimeFailure::stale_surface,
+                   "headless QML has no surface allocation authority");
   }
   if (implementation_->surfaces.size() == 1 &&
       !implementation_->surfaces.front()->bound_key)
@@ -1028,7 +1068,8 @@ WorkerRuntime::input_region_update(surface::SurfaceKey key,
 }
 
 bool WorkerRuntime::loaded() const {
-  return !implementation_->surfaces.empty();
+  return implementation_->headless_root_item != nullptr ||
+         !implementation_->surfaces.empty();
 }
 
 bool WorkerRuntime::allocated() const {
@@ -1060,6 +1101,9 @@ bool WorkerRuntime::render_requested() const {
 
 std::size_t WorkerRuntime::object_count() const {
   std::size_t total = 0;
+  if (implementation_->headless_root_item != nullptr)
+    total = descendants(implementation_->headless_root_item,
+                        kMaximumQmlObjects + 1);
   for (const auto &entry : implementation_->surfaces) {
     const auto count = descendants(entry->root_item, kMaximumQmlObjects + 1);
     if (count > kMaximumQmlObjects - std::min(total, kMaximumQmlObjects))

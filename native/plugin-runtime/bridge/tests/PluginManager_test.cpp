@@ -206,8 +206,10 @@ public:
       std::string_view plugin,
       std::string_view qml = "import QtQuick\nItem {}\n",
       std::string_view permission_json =
-          "{\"required\": [], \"optional\": []}") {
-    const auto binding = stageRuntime(plugin, 1, qml, permission_json);
+          "{\"required\": [], \"optional\": []}",
+      bool declares_surface = true) {
+    const auto binding =
+        stageRuntime(plugin, 1, qml, permission_json, declares_surface);
     promoteRuntime(binding, 0);
     write(plugin,
           readyActivationRecord(plugin, revisionDirectory(plugin, 1),
@@ -220,7 +222,8 @@ public:
                                               std::uint64_t generation,
                                               std::string_view qml,
                                               std::string_view permission_json =
-                                                  "{\"required\": [], \"optional\": []}") {
+                                                  "{\"required\": [], \"optional\": []}",
+                                              bool declares_surface = true) {
     const auto revision_name = revisionDirectory(plugin, generation);
     const auto revision = revisions() / revision_name;
     create(revision / "ui", 0755);
@@ -231,11 +234,16 @@ public:
           << "\",\n  \"name\": \"Manager fixture\",\n"
              "  \"version\": \"1.0.0\",\n"
              "  \"runtime\": {\"apiVersion\": 1, \"qml\": "
-             "\"ui/Main.qml\"},\n  \"surfaces\": {\"bar\": {"
-             "\"role\": \"bar-embedded\", \"defaultSection\": "
-             "\"right\", \"maximumWidth\": 320, \"maximumHeight\": 64, "
-             "\"maximumFramesPerSecond\": 60}},\n  \"permissions\": "
-          << permission_json << "\n}\n";
+             "\"ui/Main.qml\"},\n  \"surfaces\": ";
+      if (declares_surface) {
+        manifest_file
+            << "{\"bar\": {\"role\": \"bar-embedded\", "
+               "\"defaultSection\": \"right\", \"maximumWidth\": 320, "
+               "\"maximumHeight\": 64, \"maximumFramesPerSecond\": 60}}";
+      } else {
+        manifest_file << "{}";
+      }
+      manifest_file << ",\n  \"permissions\": " << permission_json << "\n}\n";
     }
     std::ofstream(revision / "ui/Main.qml") << qml;
     for (const auto &entry :
@@ -1910,6 +1918,50 @@ void real_root_publishes_attaches_and_tears_down_exactly() {
   manager.reset();
 }
 
+void zero_surface_runtime_has_no_publication_authority() {
+  if (std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_TEST") == nullptr)
+    return;
+  constexpr std::string_view plugin = "org.example.sidecar-only";
+  RuntimeFixture fixture;
+  static_cast<void>(fixture.seedRuntime(
+      plugin, "import QtQuick\nItem { objectName: \"no-surface\" }\n",
+      "{\"required\": [], \"optional\": []}", false));
+  DeterministicJobs scheduler;
+  auto manager = bridge::PluginManagerTestAccess::create();
+  bridge::PluginManagerTestAccess::installRuntime(*manager,
+                                                  fixture.bootstrap());
+  bridge::PluginManagerTestAccess::setJobSubmitter(
+      *manager, [&](auto kind, auto job) {
+        return scheduler.submit(kind, std::move(job));
+      });
+  require(bridge::PluginManagerTestAccess::scanRuntime(*manager) &&
+              scheduler.jobs.size() == 1,
+          "zero-surface runtime did not schedule preparation");
+  std::thread preparation([&] { scheduler.runOne(); });
+  preparation.join();
+  const bool running = await([&] {
+    bridge::PluginManagerTestAccess::drainRuntime(*manager);
+    const auto observations =
+        bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+    return observations.size() == 1 && observations.front().running;
+  });
+  if (!running) {
+    const auto observation =
+        bridge::PluginManagerTestAccess::runtimeSlots(*manager).front();
+    throw std::runtime_error(
+        "zero-surface startup failed: state=" +
+        std::to_string(observation.last_state) +
+        " error=" + std::to_string(observation.last_error) +
+        " retry=" + std::to_string(observation.retry_wait));
+  }
+  const auto observation =
+      bridge::PluginManagerTestAccess::runtimeSlots(*manager).front();
+  bridge::RemotePluginSurface remote;
+  require(manager->count() == 0 && !observation.has_endpoint_owner &&
+              !manager->attach(QStringLiteral("anything"), &remote),
+          "zero-surface runtime acquired model or endpoint authority");
+}
+
 void reentrant_publication_replacement_rechecks_exact_epoch() {
   if (std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_TEST") == nullptr)
     return;
@@ -2196,6 +2248,7 @@ void run_plugin_manager_tests() {
   manager_owns_permission_generation_replacement();
   concurrent_permission_fences_route_exactly();
   real_root_publishes_attaches_and_tears_down_exactly();
+  zero_surface_runtime_has_no_publication_authority();
   reentrant_publication_replacement_rechecks_exact_epoch();
   joined_runtimes_replace_and_render_without_cross_routing();
 }

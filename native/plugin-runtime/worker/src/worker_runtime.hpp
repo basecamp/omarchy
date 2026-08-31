@@ -14,6 +14,8 @@
 #include <vector>
 
 class QObject;
+class QQmlComponent;
+class QQuickItem;
 
 namespace omarchy::plugin_runtime::worker {
 
@@ -105,6 +107,10 @@ public:
   [[nodiscard]] const std::string &last_error() const;
 
 private:
+  [[nodiscard]] RuntimeResult
+  instantiate_entry(std::string entry_path,
+                    std::unique_ptr<QQmlComponent> &component,
+                    QQuickItem *&root_item);
   struct Impl;
   std::unique_ptr<Impl> implementation_;
 };

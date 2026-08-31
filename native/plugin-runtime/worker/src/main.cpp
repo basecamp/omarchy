@@ -356,12 +356,18 @@ private:
       } else {
         const auto surfaces = QJsonDocument::fromJson(
             QByteArray::fromStdString(manifest_.canonical_surfaces));
-        if (!surfaces.isObject() || surfaces.object().size() != 1) {
-          fatal("single-entry runtime requires exactly one surface");
+        if (!surfaces.isObject() || surfaces.object().size() > 1) {
+          fatal("single-entry runtime permits at most one surface");
           return;
         }
-        const auto loaded = runtime_.load_surface_entry(
-            surfaces.object().begin().key().toStdString(), selected_entry_);
+        const auto loaded = surfaces.object().isEmpty()
+                                ? runtime_.load_entry(selected_entry_)
+                                : runtime_.load_surface_entry(
+                                      surfaces.object()
+                                          .begin()
+                                          .key()
+                                          .toStdString(),
+                                      selected_entry_);
         if (!loaded) {
           fatal(loaded.detail);
           return;
